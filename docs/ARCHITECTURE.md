@@ -111,7 +111,7 @@ issue covers only Renox's own notification and mail sends.
 
 | Module | Contents | First used by |
 |---|---|---|
-| `wl-kernel` | Enabled-module manifest, business calendar (working days, UAE public holidays, Ramadan hours), branding from settings, sequential document numbers (`INV-2026-0001`), custom fields (JSON column + schema in settings), cross-module traits, polymorphic `Subject` reference; legal entities and per-entity numbering, data import, global search, notes and mentions, report library, signed admin API and entitlements | all |
+| `wl-kernel` | Enabled-module manifest, business calendar (working days, UAE public holidays, Ramadan hours), branding from settings, sequential document numbers (`INV-2026-0001`), custom fields (JSON values + a definitions table, Renox #41), cross-module traits, polymorphic `Subject` reference; legal entities and per-entity numbering, data import, global search, notes and mentions, report library, signed admin API and entitlements | all |
 | `wl-parties` | Parties: companies and people (tenants, clients, employees, patients, students), contacts, addresses, TRN, Emirates ID | all |
 | `wl-portal` | External-user login (magic link/OTP), branded portal layout, data scoped to the user's `Party` | property, accounting, logistics, clinics |
 | `wl-documents` | Documents attached to a `Subject`, document types, **expiry dates + tiered reminders** (90/30/7 days), versions, access control | property, manpower, accounting |
@@ -267,7 +267,7 @@ extension gets its own binary: `host` + the `ext/` crate linked at build time.
 
 | Phase | Scope | Done when |
 |---|---|---|
-| **F0 — Renox foundations** | R1 RTL/Arabic, R2 settings, R3 PDF, R4 admin hook, R7 make:package, R9 brand tokens, R10 sidebar hook, R12 state machines | A module crate can ship an admin page and an Arabic PDF |
+| **F0 — Renox foundations** | R1 RTL/Arabic, R2 settings, R3 PDF, R4 admin hook, R7 make:package, R9 brand tokens, R10 sidebar hook, R12 state machines (with the approval interceptor requested on Renox #39). Also needed before Build 1 ships: R13 sequences, R14 custom fields, R15 passwordless login, R17 + R18 payments and money, R22 search, R23 import, and R5, R6, R20 for 09 attendance | A module crate can ship an admin page and an Arabic PDF; a transition blocked by a limit becomes an approval request |
 | **F1 — Property** | `wl-kernel`, `wl-parties`, `wl-portal`, `wl-documents`, `wl-invoicing`, `wl-payments` (Stripe), `wl-ticketing`, `wl-notify` (email first) + `apps/property` + `host` + 1 demo client | End-to-end demo: unit → lease → VAT invoice → payment → maintenance ticket from the tenant portal |
 | **F2 — Manpower** | `wl-attendance`, R5 (geolocate, camera), R6 PWA + `apps/manpower`. **Measure** new code vs reuse; refactor modules that leaked domain logic | ≥ 60% of Manpower's features run on existing modules without modification |
 | **F3 — Fleet rollout** | `deploy/rollout`, tested backup/restore, R8 git starter, client onboarding in < 1 day | A new client goes live from `client.toml` alone |

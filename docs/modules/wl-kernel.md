@@ -791,8 +791,8 @@ import row results reference any `Subject`.
 | Outbound webhooks | inbound webhooks only | R11 |
 | API for external parties | API tokens with abilities, device tokens | Party-bound API clients → kernel. ✔ Renox has rate limits per route keyed by user, device token or IP (`rate_limit.rs`), so API tokens need no gap; R19 covers only outbound limits per provider |
 | Camera barcode/QR scanning | — | R5 (`rx-barcode-scan`: camera or keyboard-wedge scanner) |
-| Gapless document numbering | — | R13; built in the kernel until Renox ships it |
-| Custom fields | — | R14; built in the kernel until Renox ships it |
+| Gapless document numbering | — | R13 (Renox #40); the kernel uses it, no interim copy |
+| Custom fields | — | R14 (Renox #41); the kernel uses it, no interim copy |
 | Dashboards and KPI tiles | charts, grid | Tile registry and per-role layouts → kernel |
 | Masked display of sensitive values | `Encrypted<String>` (bike shop) | Masking component and reveal flow → kernel |
 | Legal entities and issuer snapshots | — | kernel (business concept, not generic) |
@@ -854,8 +854,9 @@ import row results reference any `Subject`.
    are `PLT.RUL.01`–`03`.
 2. ~~Should gapless sequences and custom fields be proposed to Renox as R13/R14, or stay in the
    kernel until a second Renox app needs them?~~ Answered by
-   [ARCHITECTURE.md](../ARCHITECTURE.md) §4a: both are proposed as R13 and R14. The kernel
-   builds them until Renox ships them. *(us, Renox maintainers)*
+   [ARCHITECTURE.md](../ARCHITECTURE.md) §4a: both are proposed as R13 and R14. Decided
+   2026-10-16: the kernel waits for Renox #40 and #41 instead of building interim copies,
+   so the work is not done twice. *(us, Renox maintainers)*
 3. Can approval thresholds be set per scope (per building, per branch), or only globally per
    client? *(client)*
 4. Is a delegate approver needed when an approver is on leave (links to `HRM.LEV.01`)?
