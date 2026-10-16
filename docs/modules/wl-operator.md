@@ -375,7 +375,7 @@ portal), `wl-notify` (billing and incident emails), `deploy/` scripts.
 | Signed requests between apps | webhook verification helpers (inbound) | R11 (signed server-to-server requests for the admin API) |
 | Client data migration from Excel | CSV import, validation, savepoints | R23 (Excel, dry run, rollback window) |
 | Operator two-factor login (`OPS.ACL.01`) | renox-2fa | — |
-| Single sign-on as a plan feature (Group) | renox-oauth (Google, Microsoft) | R24 (Entra ID provider, Workspace domain restriction); the entitlement only switches it on |
+| Single sign-on as a plan feature (Group) | renox-oauth (Google and GitHub today) | R24 (Microsoft Entra ID provider, Google Workspace domain restriction); the entitlement only switches it on |
 | Deployment | `rnx make:deploy`, systemd, Litestream | Fleet rollout scripts in `deploy/` |
 | Health endpoint | health checks | Extended payload (version, backlog, backup age) → kernel |
 

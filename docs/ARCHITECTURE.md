@@ -73,33 +73,39 @@ Based on a survey of `renox` on 2026-10-14:
 
 ### 4a. Contributions to Renox (OSS, useful to everyone)
 
+Each gap is an issue in [renox-rs/renox](https://github.com/renox-rs/renox/issues) (#28–#52,
+created 2026-10-16 after checking Renox 1.1.1; the R number links to it). Only R3 needs a new
+crate (`renox-pdf`); the others extend renox-core, renox-blocks, renox-admin, renox-billing,
+renox-oauth or renox-cli. R19 turned out to exist for jobs (`Middleware::rate_limited`); its
+issue covers only Renox's own notification and mail sends.
+
 | # | Feature | Reason |
 |---|---|---|
-| R1 | **RTL + Arabic support** (automatic `dir="rtl"` per locale, CSS logical properties throughout `renox-ui.css`, Arabic font) | Required in the UAE. Today there is a single RTL rule |
-| R2 | **Runtime settings store** (`settings` table, typed accessors, cache, admin page) | Branding, TRN, invoice number format and enabled modules must change without a redeploy |
-| R3 | **PDF generation** (recommended: the `typst` crate, pure Rust, supports Arabic shaping, stays inside one binary) | Invoices, contracts, payslips, receipts |
-| R4 | **Admin hook for modules**: `Registry::admin_resource(...)` | Today the app has to collect every resource into one `Admin`, so a module cannot register its own |
-| R5 | **New components**: `rx-signature-pad`, `rx-camera-capture`, `rx-geolocate` (check-in), `rx-status-stepper`/timeline, `rx-week-calendar` (resource schedule), `rx-barcode-scan` (camera or keyboard-wedge scanner), `rx-rating` (feedback stars) | Needed for e-POD, attendance, ticketing and booking. Generic, fits `renox-blocks` |
-| R6 | **PWA**: manifest + minimal service worker (`rnx make:pwa`) | Field workers can install the app on their phones |
-| R7 | **Package scaffold**: `rnx make:package <name>` (a `Module` crate with migrations, views and tests) | Speeds up writing `wl-*` crates and third-party modules |
-| R8 | **Starter from git**: `rnx new acme --starter git+https://…` | Creates a new client from the white-label template |
-| R9 | **Brand-token generator**: `Theme::from_brand(accent, accent_2)` → light and dark tokens with a WCAG contrast guard; brand chosen per request domain (several brands in one deployment) | Per-client branding without forking the kit. See [DESIGN-SYSTEM.md](DESIGN-SYSTEM.md) §4 |
-| R10 | **Navigation contributions from modules**: `Registry::sidebar_link(section, link, permission)` for the back office and the portal menu | Each `wl-*` module adds its own staff and portal navigation |
-| R11 | **Outbound webhooks and signed requests**: event subscriptions, HMAC signing, queued delivery with retry, delivery log; signed server-to-server requests (operator admin API) | Client-specific integrations (n8n, Zapier, Make) live outside the platform. See [WORKFLOW.md](WORKFLOW.md) §5 |
-| R12 | **State machines for models**: declared states and transitions with permission, guards and effects; transition history; available actions per user; generated diagram | One engine for every status in every module. See [WORKFLOW.md](WORKFLOW.md) §3 |
-| R13 | **Gapless sequences**: per-series counters that never skip or repeat, safe under concurrency | Invoice, credit note and receipt numbers (tax rules) |
-| R14 | **Custom fields**: JSON-backed fields with a schema, rendered in forms, grids and filters | Per-client fields without migrations ([wl-kernel](modules/wl-kernel.md)) |
-| R15 | **Passwordless login**: magic link, one-time codes by SMS or WhatsApp (✔ signed, expiring URLs already exist in Renox: `state.signed_url`, `ValidSignature`) | Portal users and recipients without passwords ([wl-portal](modules/wl-portal.md)) |
-| R16 | **Upload pipeline hooks**: malware scanning, image processing (resize, thumbnails, HEIC → JPG), per-file encryption | Identity documents, site photos, medical files ([wl-documents](modules/wl-documents.md)) |
-| R17 | **renox-billing beyond subscriptions**: one-off payments, payment links, refunds; gateway credentials per deployment owner; a Network International N-Genius adapter (Stripe and N-Genius in the MVP, Telr and Checkout.com on demand) | Rent, invoices and deposits paid online ([wl-payments](modules/wl-payments.md)) |
-| R18 | **Money and quantities**: currency per record (formatting, validation); decimal quantities with unit-of-measure conversion | Multi-currency and inventory ([wl-invoicing](modules/wl-invoicing.md), [wl-inventory](modules/wl-inventory.md)) |
-| R19 | **Rate limiting**: per provider in the queue (SMS, WhatsApp, gateways). ✔ Checked in Renox: HTTP rate limits already exist (`Routes::throttle`, named limiters keyed by user, device token or IP, `rate_limit.rs`), so API tokens are covered; the gap is only outbound limits per provider in the queue | Notifications and the client API |
-| R20 | **Geo helpers**: point-in-radius/polygon geofence check; map picker and map view components (tile provider and licence to choose) | Attendance geofences, dispatch maps |
-| R21 | **Calendar and print output**: `.ics` files for bookings; 80 mm thermal receipt layout | Booking confirmations, counter sales |
-| R22 | **Arabic text search**: normalisation and Arabic–Latin transliteration for search and duplicate matching | Party names in both scripts ([wl-parties](modules/wl-parties.md)) |
-| R23 | **Import beyond CSV**: Excel files, a dry run that validates without writing, a rollback window after commit (✔ Renox import today: CSV, row validation, savepoints, `all_or_nothing`, templates) | Client data migration ([wl-kernel](modules/wl-kernel.md) `PLT.IMP.01`) |
-| R24 | **Enterprise sign-in for renox-oauth**: a Microsoft Entra ID provider; restricting Google sign-in to the client's Workspace domain | Staff single sign-on (`PLT.SSO.01`, Later) |
-| R25 | **Offline queue for field work** (Later): actions recorded without a connection (attendance, proof of delivery, POS sales, line output) are stored on the device and sent in order when online, with conflict handling | Field PWA in 02, 03, 06, 07, 08; MVP is online only with paper fallback ([UX.md](UX.md)) |
+| [R1](https://github.com/renox-rs/renox/issues/28) | **RTL + Arabic support** (automatic `dir="rtl"` per locale, CSS logical properties throughout `renox-ui.css`, Arabic font) | Required in the UAE. Today there is a single RTL rule |
+| [R2](https://github.com/renox-rs/renox/issues/29) | **Runtime settings store** (`settings` table, typed accessors, cache, admin page) | Branding, TRN, invoice number format and enabled modules must change without a redeploy |
+| [R3](https://github.com/renox-rs/renox/issues/30) | **PDF generation** (recommended: the `typst` crate, pure Rust, supports Arabic shaping, stays inside one binary) | Invoices, contracts, payslips, receipts |
+| [R4](https://github.com/renox-rs/renox/issues/31) | **Admin hook for modules**: `Registry::admin_resource(...)` | Today the app has to collect every resource into one `Admin`, so a module cannot register its own |
+| [R5](https://github.com/renox-rs/renox/issues/32) | **New components**: `rx-signature-pad`, `rx-camera-capture`, `rx-geolocate` (check-in), `rx-status-stepper`/timeline, `rx-week-calendar` (resource schedule), `rx-barcode-scan` (camera or keyboard-wedge scanner), `rx-rating` (feedback stars) | Needed for e-POD, attendance, ticketing and booking. Generic, fits `renox-blocks` |
+| [R6](https://github.com/renox-rs/renox/issues/33) | **PWA**: manifest + minimal service worker (`rnx make:pwa`) | Field workers can install the app on their phones |
+| [R7](https://github.com/renox-rs/renox/issues/34) | **Package scaffold**: `rnx make:package <name>` (a `Module` crate with migrations, views and tests) | Speeds up writing `wl-*` crates and third-party modules |
+| [R8](https://github.com/renox-rs/renox/issues/35) | **Starter from git**: `rnx new acme --starter git+https://…` | Creates a new client from the white-label template |
+| [R9](https://github.com/renox-rs/renox/issues/36) | **Brand-token generator**: `Theme::from_brand(accent, accent_2)` → light and dark tokens with a WCAG contrast guard; brand chosen per request domain (several brands in one deployment) | Per-client branding without forking the kit. See [DESIGN-SYSTEM.md](DESIGN-SYSTEM.md) §4 |
+| [R10](https://github.com/renox-rs/renox/issues/37) | **Navigation contributions from modules**: `Registry::sidebar_link(section, link, permission)` for the back office and the portal menu | Each `wl-*` module adds its own staff and portal navigation |
+| [R11](https://github.com/renox-rs/renox/issues/38) | **Outbound webhooks and signed requests**: event subscriptions, HMAC signing, queued delivery with retry, delivery log; signed server-to-server requests (operator admin API) | Client-specific integrations (n8n, Zapier, Make) live outside the platform. See [WORKFLOW.md](WORKFLOW.md) §5 |
+| [R12](https://github.com/renox-rs/renox/issues/39) | **State machines for models**: declared states and transitions with permission, guards and effects; transition history; available actions per user; generated diagram | One engine for every status in every module. See [WORKFLOW.md](WORKFLOW.md) §3 |
+| [R13](https://github.com/renox-rs/renox/issues/40) | **Gapless sequences**: per-series counters that never skip or repeat, safe under concurrency | Invoice, credit note and receipt numbers (tax rules) |
+| [R14](https://github.com/renox-rs/renox/issues/41) | **Custom fields**: JSON-backed fields with a schema, rendered in forms, grids and filters | Per-client fields without migrations ([wl-kernel](modules/wl-kernel.md)) |
+| [R15](https://github.com/renox-rs/renox/issues/42) | **Passwordless login**: magic link, one-time codes by SMS or WhatsApp (✔ signed, expiring URLs already exist in Renox: `state.signed_url`, `ValidSignature`) | Portal users and recipients without passwords ([wl-portal](modules/wl-portal.md)) |
+| [R16](https://github.com/renox-rs/renox/issues/43) | **Upload pipeline hooks**: malware scanning, image processing (resize, thumbnails, HEIC → JPG), per-file encryption | Identity documents, site photos, medical files ([wl-documents](modules/wl-documents.md)) |
+| [R17](https://github.com/renox-rs/renox/issues/44) | **renox-billing beyond subscriptions**: one-off payments, payment links, refunds; gateway credentials per deployment owner; a Network International N-Genius adapter (Stripe and N-Genius in the MVP, Telr and Checkout.com on demand) | Rent, invoices and deposits paid online ([wl-payments](modules/wl-payments.md)) |
+| [R18](https://github.com/renox-rs/renox/issues/45) | **Money and quantities**: currency per record (formatting, validation); decimal quantities with unit-of-measure conversion | Multi-currency and inventory ([wl-invoicing](modules/wl-invoicing.md), [wl-inventory](modules/wl-inventory.md)) |
+| [R19](https://github.com/renox-rs/renox/issues/46) | **Rate limiting**: per provider in the queue (SMS, WhatsApp, gateways). ✔ Checked in Renox: HTTP rate limits already exist (`Routes::throttle`, named limiters keyed by user, device token or IP, `rate_limit.rs`), so API tokens are covered; the gap is only outbound limits per provider in the queue | Notifications and the client API |
+| [R20](https://github.com/renox-rs/renox/issues/47) | **Geo helpers**: point-in-radius/polygon geofence check; map picker and map view components (tile provider and licence to choose) | Attendance geofences, dispatch maps |
+| [R21](https://github.com/renox-rs/renox/issues/48) | **Calendar and print output**: `.ics` files for bookings; 80 mm thermal receipt layout | Booking confirmations, counter sales |
+| [R22](https://github.com/renox-rs/renox/issues/49) | **Arabic text search**: normalisation and Arabic–Latin transliteration for search and duplicate matching | Party names in both scripts ([wl-parties](modules/wl-parties.md)) |
+| [R23](https://github.com/renox-rs/renox/issues/50) | **Import beyond CSV**: Excel files, a dry run that validates without writing, a rollback window after commit (✔ Renox import today: CSV, row validation, savepoints, `all_or_nothing`, templates) | Client data migration ([wl-kernel](modules/wl-kernel.md) `PLT.IMP.01`) |
+| [R24](https://github.com/renox-rs/renox/issues/51) | **Enterprise sign-in for renox-oauth**: a Microsoft Entra ID provider; restricting Google sign-in to the client's Workspace domain | Staff single sign-on (`PLT.SSO.01`, Later) |
+| [R25](https://github.com/renox-rs/renox/issues/52) | **Offline queue for field work** (Later): actions recorded without a connection (attendance, proof of delivery, POS sales, line output) are stored on the device and sent in order when online, with conflict handling | Field PWA in 02, 03, 06, 07, 08; MVP is online only with paper fallback ([UX.md](UX.md)) |
 
 ### 4b. Business modules (private, `white-label`)
 
