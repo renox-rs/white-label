@@ -230,7 +230,7 @@ reviewed (the vertical row keeps the old ID as *formerly*).
 | `HRM.ACL.06` | Salary recoveries stay within the legal caps; no approval can exceed them | wl-hr | — | module |
 | `HRM.ACL.07` | Non-standard exits and their reversal need a second user with `employees.exit.approve` | wl-hr | — | module |
 | `HRM.ACL.08` | A locked timesheet is corrected only by an adjustment approved by someone other than its creator | wl-attendance | — | module |
-| `HRM.ACL.09` | Attendance flagged for overtime cap, invalid permit or overlap is accepted only by `attendance.review`, not the marker | wl-attendance | — | module |
+| `HRM.ACL.09` | Attendance flagged for overtime cap, invalid permit or overlap is accepted or corrected only by `attendance.review`, not the marker | wl-attendance | — | module |
 | `OPS.ACL.01`–`05` | Operator-side rules (two-factor login, support sessions, second operator to delete data, no client business data, second operator for wave 2 and hotfix rollouts) | wl-operator | — | module |
 | `STK.ACL.01` | The creator of a purchase order cannot approve it | wl-inventory | `CON.ACL.03` (merged) | in use |
 | `STK.ACL.02` | Stock adjustments and write-offs above a value need approval | wl-inventory | `MFG.ACL.09`, `AUT.ACL.10`, `FNB.ACL.03` | in use |

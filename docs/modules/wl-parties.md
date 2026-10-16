@@ -41,11 +41,11 @@ Consent record, so withdrawal reaches `wl-notify` at once.
 | **Contact point** | A way to reach the party | party, type (email / mobile / landline / address), value, label, primary flag, verified at; addresses carry emirate, area, building, Makani number |
 | **Identity record** | Structured identity fields (`PTY.KYC.01`) | party, type (Emirates ID / passport / residence visa / trade licence / TRN / driving licence / other), number, issuing country or authority, issue date, expiry date, linked document (`wl-documents`), sensitivity flag |
 | **Person details** | Fields that only a person has | date of birth, gender, nationality, profession |
-| **Company details** | Fields that only a company has | legal form, licence authority (e.g. DED, free zone), licence activities, registration date, VAT registered flag, e-invoicing recipient identifier (Peppol participant ID, entered or looked up through the entity's ASP; required by `wl-invoicing` before an invoice to a recipient in e-invoicing scope is issued; a change emits `PartyUpdated`, so rejected transmissions can be resubmitted) |
+| **Company details** | Fields that only a company has | legal form, licence authority (e.g. DED, free zone), licence activities, registration date, VAT registered flag, e-invoicing recipient identifier (Peppol participant ID; stored as entered, scheme + identifier, trimmed, with no format check until the ASP's format is confirmed, entered by hand or looked up by the company's TRN through the ASP adapter of the legal entity linked to the user's scope: a found ID is filled in for the user to confirm before saving; "not found", an error, or an ASP connection that is not `up` leaves the field empty for entry by hand; required by `wl-invoicing` before an invoice to a recipient in e-invoicing scope is issued; a change emits `PartyUpdated`, so rejected transmissions can be resubmitted) |
 | **Relationship** | A directed link between two parties (`PTY.REL.01`) | from party, to party, type (`guardian_of`, `contact_of`, `employee_of`, `shareholder_of`, `family_member_of`, `member_of_group`), position (for contacts), valid from, valid until, end reason |
 | **Ownership** | Beneficial ownership of a company (`PTY.UBO.01`) | company, owner party, ownership %, control type (shares / votes / other control / senior managing official), is UBO, effective from, effective until, source document |
 | **Consent** | A recorded consent (`PTY.CNS.01`) | party, purpose (from the configured list), channel (email / SMS / WhatsApp / all), status, given at, given by (party or guardian), source (portal, form, staff), notice version, evidence document, withdrawn at |
-| **Screening** | One check of a party against sanctions lists (`PTY.SCR.01`) | party, lists and list versions used, run at, trigger (onboarding / list update / review / manual), status, match candidates (name, list, score), reviewer, review note, stale list flag (a list used was older than the freshness limit, `PTY.RUL.02`) |
+| **Screening** | One check of a party against sanctions lists (`PTY.SCR.01`) | party, lists and list versions used, run at, trigger (onboarding / list update / review / manual), method (*automatic*, or *manual*: checked by a person against a PDF-only list, [§5.4](#54-beneficial-owners-and-screening-when-enabled) step 8), status, match candidates (name, list, score), reviewer, review note, stale list flag (a list used was older than the freshness limit, `PTY.RUL.02`) |
 | **Merge record** | Trace of a duplicate merged into a surviving party | survivor, merged party, merged at, by, moved references |
 | **Block record** | Why and when a party was blocked; one per `block`, and one per confirmed screening match on a party that is already `blocked` or `archived` (added without a transition, [§5.6](#56-block-a-party)) | party, reason code, restricted (from the reason code), note, blocked by, blocked at, unblocked by, unblocked at, unblock note. Restricted records are readable only under `PTY.ACL.02` |
 | **Sanctions list** | One list source used by screening (`PTY.SCR.01`) | name (e.g. UN Consolidated List, UAE Local Terrorist List), source, format, last download attempt, last successful update, list version or date, update source (download / manual upload, uploaded by), status (`current` / `stale`), last error |
@@ -117,8 +117,8 @@ stateDiagram-v2
 
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
-| `complete_clear` | pending | clear | system | no candidate ≥ threshold | event `ScreeningCompleted` |
-| `flag` | pending | possible_match | system | candidate ≥ threshold | task for the compliance role, visible only under `PTY.ACL.02`, due 24 hours after the flag (`PTY.RUL.01`); event `ScreeningCompleted` |
+| `complete_clear` | pending | clear | system; for a manual check, the result recorded by `screening.review` | no candidate ≥ threshold (manual: the reviewer records "no match") | event `ScreeningCompleted` |
+| `flag` | pending | possible_match | system; for a manual check, the result recorded by `screening.review` | candidate ≥ threshold (manual: the reviewer records a candidate with the list entry) | task for the compliance role, visible only under `PTY.ACL.02`, due 24 hours after the flag (`PTY.RUL.01`); when a task for the party is already open, no second task: the new run is linked to it; event `ScreeningCompleted`, delivered only to compliance listeners for `possible_match` (other listeners get nothing until the decision) |
 | `dismiss` | possible_match | false_positive | `screening.review` | review note given | — |
 | `confirm_match` | possible_match | confirmed_match | `screening.review` | review note given; second reviewer approves (`SOD`, `PLT.APR.01`) | party `block` with reason code `sanctions` (restricted); when the screened party is a UBO, director or signatory of a company party (ownership or relationship records), that company is blocked too with the same restricted reason (setting, on); a party or company already `blocked` or `archived` gets a new restricted Block record `sanctions` without a transition ([§5.6](#56-block-a-party) step 4);  **freeze task** and **report task** for the compliance role ([§5.4](#54-beneficial-owners-and-screening-when-enabled)); event `ScreeningMatchConfirmed`; never shown to portal users or client-facing staff |
 
@@ -226,7 +226,8 @@ record and starts a new one, so the UBO register keeps its history.
    only under `PTY.ACL.02`:
    - **Freeze task**, due 24 hours after the possible match was flagged: confirm that the
      block took effect, list the funds and assets the business holds for the party and its
-     agreements (client money, deposits, retainers, prepaid packages, open refunds), and
+     agreements (client money, deposits, retainers, prepaid packages, open refunds; pre-filled
+     from the modules' open balances, confirmed by hand by the compliance role), and
      record the freeze time. Money out is already refused (`PTY.ACL.03`). The 24-hour duty is
      verified ✔ [S6]; whether the 24 hours run from the list update or from the match is
      `⚠ open: lawyer (L-30)`, so the task uses the earlier start (the flag) by default.
@@ -239,13 +240,21 @@ record and starts a new one, so the UBO register keeps its history.
    the screening page and on every Screening record. If a download fails, or a list has not
    been updated for N hours, `PTY.RUL.02` alerts the compliance officer. Screenings run while
    a list is stale are marked with the stale list flag and run again after the next
-   successful update. A stale list warns at onboarding by default; a vertical can make it
+   successful update. A download that returns the version already held counts as a
+   successful update (it refreshes the last successful update and clears the stale status) but
+   emits no `SanctionsListUpdated`, so nothing is re-screened. A stale list warns at
+   onboarding by default; a vertical can make it
    block the guarded transition (e.g. engagement `activate`).
-8. **Manual list upload (fallback).** While a download fails, the compliance role may upload
+8. **Manual list upload (fallback).** Only while the list is stale (a download fails or the
+   freshness limit has passed), the compliance role may upload
    the official file downloaded by hand from the issuing authority's site (the format the
    list uses: XML, Excel; a PDF-only list is checked by hand and the check recorded on the
-   Screening as *manual*). The upload records who uploaded it, the source URL and the list
-   date; it becomes the current version with source *manual upload*, clears the stale
+   Screening as *manual*: a holder of `screening.review` uses *Record manual check* on the
+   party, names the list and its date, and records "no match" (`complete_clear`) or a
+   candidate with the list entry (`flag`); the Screening has method *manual* and the
+   reviewer as the person who ran it). The upload records who uploaded it, the source URL and the list
+   date; a file whose list date is older than the current version is refused. It becomes the
+   current version with source *manual upload*, clears the stale
    status and triggers the re-screening of `PTY.RUL.01` like a download.
 9. **Related persons.** A confirmed match on a UBO, director or signatory blocks the company
    they belong to as well (step 6 applies to it: freeze and report tasks name both). The
@@ -272,6 +281,11 @@ record and starts a new one, so the UBO register keeps its history.
    - **pause**: the agreement stays, service and billing stop, and it resumes on `unblock`;
    - **continue**: the agreement runs to its normal end; renewal and extension are refused;
    - **review**: nothing changes on its own; the decider gets a task to pause, continue or end.
+     wl-parties opens one task per agreement kind per party for the decider role in the
+     agreement's scope, listing the open agreements with the actions pause, continue or end;
+     for a restricted reason the task shows only *On hold*.
+
+   An agreement kind that no module registered gets the effect *review* (the safest).
 
    No agreement is ended automatically. **Stopping** (ending) an agreement is always a
    decision of the decider listed below, through the agreement's own `end`, `cancel` or
@@ -279,7 +293,8 @@ record and starts a new one, so the UBO register keeps its history.
    except that money out to the party waits for unblock or an approved exception
    (`PTY.ACL.03`).
 3. The pause or hold reason recorded on each agreement is the neutral `on_hold`, never the
-   real reason. Automatic messages to the party that would announce the pause are suppressed;
+   real reason. For a restricted code the party's own state history of the `block` stores
+   `on_hold` too; the real code and the note live only in the Block record. Automatic messages to the party that would announce the pause are suppressed;
    the decider chooses what to tell the party, with a neutral template.
 4. `block` runs only from `active`. When `confirm_match` hits a party (or a related company)
    that is already `blocked`, the system adds a new restricted Block record `sanctions`
@@ -299,6 +314,7 @@ record and starts a new one, so the UBO register keeps its history.
 | Project | 02 vertical | continue: work, IPAs and variations go on; no new project is started for the party; money out stops (`PTY.ACL.03`) | the vertical's decider (02: MD), through the project's `terminate` | 02 |
 | Sales orders | `wl-sales` | pause: orders not yet dispatched are held (no dispatch, no new invoice); dispatched orders complete | sales manager (`cancel` or release after unblock) | 03, 06, 07, 08 |
 | Bookings | `wl-scheduling` | review: future bookings listed for the decider; no new bookings | branch or clinic manager | 05, 10 |
+| Purchase orders (party as supplier) | `wl-inventory` | continue: issued POs may still be received; no new PO and no revision that raises the total or extends the delivery date; supplier payments stop (`PTY.ACL.03`) | procurement (`cancel` or `short_close`) | 02, 06, 07, 08 |
 | Service contracts (party as vendor) | `wl-ticketing` | review: no new visits assigned; planned visits listed for reassignment | facility manager | 01, 02 |
 | Money out (refunds, payouts, deposit returns, supplier payments) | `wl-payments` | stop until unblock (`PTY.ACL.03`) | compliance role, through an approved exception | all |
 | Money in | `wl-payments` | continue: receipts are recorded; for a restricted reason they are not refunded or paid on, and the compliance role decides | compliance role | all |
@@ -319,6 +335,8 @@ above apply when they do not.
 | `KycStatus` | Missing KYC items for a party in a role; used as a guard by other modules |
 | `Screening` | Screen a party now; latest result; used as a guard (e.g. engagement activation) |
 | `PartyUsage` | Asks every module whether a party has open records (archive guard) and moves references on merge |
+| `BlockGuard` | `check(party, action_kind)` with action kind `start`, `renew`, `extend` or `money_out`: allowed, or blocked with the display reason (neutral *on hold* without `PTY.ACL.02`) and the way to request an exception; every module calls it in the transitions `PTY.ACL.03` guards (e.g. PO `issue` in wl-inventory, vendor `assign` in wl-ticketing) |
+| `BlockEffects` | Owning modules register each agreement kind with its default block effect and decider role; `effect_for(kind, scope)` returns the effect (pause / continue / review) and the decider role after the vertical's override ([§5.6](#56-block-a-party)); a kind nobody registered returns *review*; modules call it when they handle `PartyBlocked` |
 
 **Consumes:** `wl-kernel` (Subject references, custom fields, settings, approvals, sequences
 for party codes), `wl-documents` (identity documents and expiry), `wl-ticketing` (review
@@ -337,7 +355,7 @@ tasks for possible matches).
 | `RelationshipStarted` / `RelationshipEnded` | link starts or ends | from, to, type, reason |
 | `ConsentGiven` / `ConsentWithdrawn` | consent changes | party, purpose, channel, given by |
 | `OwnershipChanged` | ownership records change | company, UBO list changed flag |
-| `ScreeningCompleted` | a run finishes | party, screening, status |
+| `ScreeningCompleted` | a run finishes | party, screening, status (a `possible_match` is delivered only to compliance listeners) |
 | `ScreeningMatchConfirmed` | a match is confirmed | party, screening (delivered only to compliance listeners) |
 | `SanctionsListStale` | a list download failed, or a list is older than the freshness limit (`PTY.RUL.02`) | list, last successful update, last error (delivered only to compliance listeners) |
 | `SanctionsListUpdated` | a list downloaded successfully, or uploaded by hand, with a new version | list, version; triggers `PTY.RUL.01` |
@@ -363,6 +381,16 @@ to a party as a `Subject` (`party`).
 | `ubo.manage` | Maintain ownership records |
 | `screening.run` / `screening.review` | Run screening; decide possible matches |
 
+**Compliance role.** "Compliance role" and "compliance officer" in this document mean the same
+role: the MLRO and the deputy by default (the vertical may name it otherwise). It holds
+`parties.block_reason.view`, `parties.block_exception` and `screening.review`, and each action
+checks its own permission: seeing restricted reasons, Block records and compliance-only tasks
+needs `parties.block_reason.view`; approving an exception to `PTY.ACL.03` needs
+`parties.block_exception`; deciding a possible match, recording a manual check and uploading a
+list file need `screening.review`. Compliance tasks and alerts go to every user holding
+`parties.block_reason.view`; an alert "at once" is an in-app alert and an email sent when the
+event happens.
+
 **Access rules** that apply to this module:
 
 | Rule | Source | Notes |
@@ -384,7 +412,7 @@ to a party as a `Subject` (`party`).
 | `DOC.RUL.01` | shared (`wl-documents`) | identity document expiry reminders |
 | `PTY.RUL.01` (generalises `ACC.RUL.08`) | wl-parties | re-screen active parties when a list is updated and at review dates; possible hits alert the compliance officer at once (24-hour freeze duty under Cabinet Decision 74 of 2020). Enabled when screening is on |
 | `ACC.RUL.05` | accounting | periodic review triggers re-screening; stays in the vertical |
-| `PTY.RUL.02` | wl-parties | a sanctions list download fails, or a list has had no successful update for N hours (default 24): alert the compliance officer at once (in-app and email), retry hourly, mark screenings run on the stale list and re-run them after the next update. Enabled when screening is on |
+| `PTY.RUL.02` | wl-parties | a sanctions list download fails, or a list has had no successful update for N hours (default 24): alert the compliance officer at once (in-app and email), retry hourly, mark screenings run on the stale list and re-run them after the next update. Compliance-critical, like `PTY.RUL.01` (a failed run alerts the owner, wl-kernel §5.15). Enabled when screening is on |
 
 ## 7. Configuration per client
 

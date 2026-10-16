@@ -68,16 +68,16 @@ Generalised from the delivery part of the Logistics *Shipment* ([03-logistics.md
 | `assign` | pending | assigned | `deliveries.dispatch` | run is `planned`; the driver is available; the run's driver passes `qualification_valid` (licence, permit) and its vehicle `document_valid` on the run date for the kinds whose `blocks` list `delivery.assign` (wl-documents §5.6) | added to the driver's day list |
 | `unassign` | assigned | pending | `deliveries.dispatch` | run not dispatched | — |
 | `dispatch` | assigned | out_for_delivery | system (run `dispatch`) | — | recipient notified with the time window; event `DeliveryOutForDelivery` |
-| `deliver` | out_for_delivery | delivered | `deliveries.complete` (the assigned driver) | the required POD methods captured; per line, delivered + refused = quantity, and every refused quantity has a refusal reason; at least one unit delivered; partial acceptance allowed for the source type; cash collected = expected (the amount to collect less the amounts of refused quantities, when the lines carry amounts) within the tolerance, or the difference has a reason and, above the tolerance, approval (`WRK.ACL.09`) | attempt and proof saved; cash collected added to the driver's cash custody (`FIN.CSH.01`); cheque registered (`FIN.CHQ.01`); refused lines come back on the run like undelivered goods; event `DeliveryDelivered` with per-line delivered and refused quantities and the COD difference |
+| `deliver` | out_for_delivery | delivered | `deliveries.complete` (the assigned driver) | the required POD methods captured; per line, delivered + refused = quantity, and every refused quantity has a refusal reason; at least one unit delivered; partial acceptance allowed for the source type (when it is off, no refused quantity: every line is delivered in full, or the driver uses `fail` with reason *refused*); cash collected not above expected (change is given back) and = expected (the amount to collect less the amounts of refused quantities, when the lines carry amounts) within the tolerance, or the difference has a reason and, above the tolerance, approval (`WRK.ACL.09`) | attempt and proof saved; cash collected added to the driver's cash custody (`FIN.CSH.01`); cheque registered (`FIN.CHQ.01`); refused lines come back on the run like undelivered goods; event `DeliveryDelivered` with per-line delivered and refused quantities and the COD difference |
 | `fail` | out_for_delivery | attempted | `deliveries.complete` | failure reason chosen; location captured | attempt saved; recipient and source notified; event `DeliveryAttemptFailed` |
 | `reattempt` | attempted | pending | `deliveries.manage` or system | attempts < max attempts; the reason allows a reattempt; not perishable (`WRK.RUL.16`) | queued for the next run |
 | `return` | attempted | returned | `deliveries.manage` or system (attempts ≥ max, or perishable policy *return*) | goods back at the origin, scanned or confirmed | event `DeliveryReturned` |
 | `discard` | attempted | discarded | `deliveries.manage` or system (perishable policy *discard*, `WRK.RUL.16`) | perishable; reason and photo; wastage above the limit approved (`STK.ACL.02`) | wastage record through `wl-inventory` with the source as reference; source notified; event `DeliveryDiscarded` |
 | `open_review` | delivered | under_review | `deliveries.manage`, or system (dispute ticket from the recipient or the client) | reason; linked ticket (`wl-ticketing`) | frozen flag set: COD of this delivery held out of remittances and settlements, billing of the source held (the issued invoice gets the `disputed` flag in `wl-invoicing`); dispatcher and source notified; event `DeliveryDisputed` |
-| `close_review` | under_review | delivered | `deliveries.manage` | outcome *upheld* and a note; ticket resolved | frozen flag cleared; billing and COD released; event `DeliveryDisputeClosed` |
-| `reverse_delivery` | delivered, under_review | out_for_delivery (run still `dispatched`), attempted (otherwise) | `deliveries.reverse` | reason (marked by mistake, recipient denies, wrong recipient); liability (driver, business, client, none); approval (`WRK.ACL.10`) | original proof kept and marked reversed, never edited; attempt with reason *reversed* that does not count against the maximum; cash recorded as collected: removed from the driver's open custody if not yet handed over, otherwise refunded to the payer or kept for the next attempt (approver's choice, `wl-payments`); driver liability goes to the cash shortage or an HR case; source reverses its fulfilment; event `DeliveryReversed` |
-| `mark_lost` | out_for_delivery, attempted, under_review | lost | system (untraced for N days, `WRK.RUL.17`) or `deliveries.reverse` | manual: reason, liability, approval (`WRK.ACL.10`) | claim ticket opened (`wl-ticketing`); the source and the sender (03: the client) notified; COD not expected any more; source excludes it from billing and decides any credit note or claim; event `DeliveryLost` |
-| `found` | lost | attempted | `deliveries.manage` | goods scanned or confirmed at a depot | attempt with reason *found* that does not count; source notified; event `DeliveryFound` |
+| `close_review` | under_review | delivered | `deliveries.manage` | outcome *upheld* and a note; ticket resolved (resolved in the same action when still open) | frozen flag cleared; billing and COD released; event `DeliveryDisputeClosed` |
+| `reverse_delivery` | delivered, under_review | out_for_delivery (run still `dispatched`), attempted (otherwise) | `deliveries.reverse` | reason (marked by mistake, recipient denies, wrong recipient); liability (driver, business, client, none); approval (`WRK.ACL.10`) | original proof kept and marked reversed, never edited; attempt with reason *reversed* that does not count against the maximum; cash recorded as collected: removed from the driver's open custody if not yet handed over, otherwise refunded to the payer or kept for the next attempt (approver's choice, `wl-payments`); driver liability goes to the cash shortage or an HR case; from `under_review`: frozen flag cleared, and the linked ticket resolved with outcome *reversed* (left open for the HR follow-up when liability is *driver*); source reverses its fulfilment; event `DeliveryReversed` |
+| `mark_lost` | out_for_delivery, attempted, under_review | lost | system (untraced for N days, `WRK.RUL.17`) or `deliveries.reverse` | manual: reason, liability, approval (`WRK.ACL.10`), and no scan, attempt, depot receipt or delivery outcome recorded after the request (re-checked at final approval; the request fails otherwise) | claim ticket opened (`wl-ticketing`); the source and the sender (03: the client) notified; COD not expected any more; source excludes it from billing and decides any credit note or claim; event `DeliveryLost` |
+| `found` | lost | attempted | `deliveries.manage` | goods scanned or confirmed at a depot | attempt with reason *found* that does not count; source notified; the claim ticket gets a comment "goods found at <depot>" and its owner is notified (not closed); event `DeliveryFound` |
 | `cancel` | pending, assigned | cancelled | `deliveries.manage` or system (source cancelled) | run not dispatched | event `DeliveryCancelled` |
 
 ```mermaid
@@ -148,9 +148,11 @@ anything is always a failed attempt.
 **Perishable deliveries.** A delivery flagged `perishable` (all F&B orders; any source may set
 it) has max attempts 1 and no reattempt. After a failed attempt `WRK.RUL.16` applies the
 policy for the source type: *return* (the goods go back to the origin and the origin decides
-reuse or wastage) or *discard* (destroyed with a photo, wastage recorded). What happens to the
-money is the source's decision: a prepaid order is refunded or not per the failure reason and
-the vertical's rule; a COD order collects nothing.
+reuse or wastage) or *discard* (destroyed with a photo, wastage recorded). For *discard*, the
+rule puts a "discard with photo" task on the driver's stop screen; `discard` runs when the
+driver submits the photo and reason, and until then the delivery stays `attempted`. What
+happens to the money is the source's decision: a prepaid order is refunded or not per the
+failure reason and the vertical's rule; a COD order collects nothing.
 
 **Lost and reversed deliveries.** A delivery whose goods are neither delivered nor received
 back is lost. `WRK.RUL.17` marks it after N days untraced, counted from the latest of the
@@ -175,12 +177,12 @@ From the Logistics *Run* ([03-logistics.md](../verticals/03-logistics.md) §7.1)
 
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
-| `dispatch` | planned | dispatched | `runs.dispatch` | driver checked in (`HRM.ATT.01`) and vehicle check done (`WRK.CHK.01`) when configured; items scanned out when configured; driver passes `qualification_valid` and vehicle passes `document_valid` today for the kinds whose `blocks` list `run.dispatch` (03: licence, rider permit, Mulkiya, insurance; no override) | deliveries `dispatch`; event `RunDispatched` |
+| `dispatch` | planned | dispatched | `runs.dispatch` | driver checked in (`HRM.ATT.01`) and vehicle check done (`WRK.CHK.01`) when configured; items scanned out when configured; driver passes `qualification_valid` and vehicle passes `document_valid` today for the kinds whose `blocks` list `run.dispatch` (03: licence, rider permit, Mulkiya, insurance; no override) | deliveries `dispatch` (deliveries handed over to the run while `planned` are already `out_for_delivery` and are skipped); event `RunDispatched` |
 | `hand_over` | dispatched | dispatched | `runs.dispatch` | receiving run is `dispatched` or `planned` with another driver; the receiving driver passes `qualification_valid` and the receiving vehicle `document_valid` today (same kinds as `run.dispatch`); perishable stops only when they can still arrive within the hand-over window (§7); the receiving driver confirms each parcel (scan or tick) and counts the cash; reason (breakdown, accident, driver unwell, load balancing) | chosen open deliveries move to the receiving run and stay `out_for_delivery` (`DeliveryAssigned`); the giving driver's cash handover is closed, counted by the receiving driver, and the amount moves to the receiving driver's custody (`FIN.CSH.01`); both drivers and the dispatcher see the custody record; event `RunHandedOver` |
 | `return_to_depot` | dispatched | returned_to_depot | `runs.drive` (the driver) | every stop has an outcome or was handed over | open deliveries `fail` with *not attempted*; cash handover opened in `wl-payments` if cash was collected |
-| `abort` | dispatched | returned_to_depot | `runs.dispatch`, or `runs.drive` with a reason | reason (breakdown, accident, driver unwell, weather, other) | stops not handed over `fail` with *run aborted*, which does not count against the maximum; perishable stops follow `WRK.RUL.16`; recipients told of the delay; cash handover opened; the vehicle's breakdown or accident ticket opened when chosen (`wl-ticketing`); dispatcher and depot manager notified; event `RunAborted` |
+| `abort` | dispatched | returned_to_depot | `runs.dispatch`, or `runs.drive` with a reason | reason (breakdown, accident, driver unwell, weather, other; *other* needs a text) | stops not handed over `fail` with *run aborted*, which does not count against the maximum; perishable stops follow `WRK.RUL.16`; recipients told of the delay; cash handover opened; the vehicle's breakdown or accident ticket opened when chosen (`wl-ticketing`); dispatcher and depot manager notified; event `RunAborted` |
 | `close` | returned_to_depot | closed | system | cash handover counted (or no cash); undelivered and refused goods received back, or reported missing (task to the dispatcher; an undelivered delivery is traced by `WRK.RUL.17`) | received and missing refused quantities recorded on the delivery lines; event `DeliveryRefusedReceived` per delivery with refused lines; event `RunClosed` |
-| `cancel` | planned | cancelled | `runs.dispatch` | — | deliveries back to `pending` |
+| `cancel` | planned | cancelled | `runs.dispatch` | the run holds no deliveries handed over to it (`hand_over`) | deliveries back to `pending` |
 
 ```mermaid
 stateDiagram-v2
@@ -195,6 +197,10 @@ stateDiagram-v2
   cancelled --> [*]
 ```
 
+A driver or vehicle document that expires after `assign` does not unassign the deliveries:
+the run's `dispatch` is refused and the dispatcher re-plans; wl-documents `DocumentExpired`
+notifies the responsible staff.
+
 When the vehicle cannot move after an abort, the goods are handed over to another run or
 collected by the depot; the run closes once each stop is delivered, handed over, received
 back or reported missing.
@@ -203,10 +209,10 @@ back or reported missing.
 
 | Vertical | Source `Subject` | How the source follows the delivery |
 |---|---|---|
-| 03 Logistics | shipment | Shipment `dispatch`, `deliver`, `fail_attempt` and `return` run on `DeliveryOutForDelivery`, `DeliveryDelivered`, `DeliveryAttemptFailed` and `DeliveryReturned`. `DeliveryLost`, `DeliveryDisputed`, `DeliveryReversed` and the COD difference on `DeliveryDelivered` drive the shipment's lost, claim and COD remittance lines (03 sets partial acceptance off for single parcels). Hub states (`picked_up`, `at_hub`, `on_hold`, `returning`) stay in `apps/logistics`. Run is this module's Run. `WRK.RUL.15` adds the midday-break warning on rider runs (below) |
+| 03 Logistics | shipment | Shipment `dispatch`, `deliver`, `fail_attempt` and `return` run on `DeliveryOutForDelivery`, `DeliveryDelivered`, `DeliveryAttemptFailed` and `DeliveryReturned`. `DeliveryLost`, `DeliveryDisputed`, `DeliveryReversed` and the COD difference on `DeliveryDelivered` drive the shipment's lost, claim and COD remittance lines (03 sets partial acceptance off for single parcels). Hub states (`picked_up`, `at_hub`, `on_hold`, `returning`) stay in `apps/logistics`. Run is this module's Run. `WRK.RUL.15` adds the midday-break warning on rider runs (below). 03 differences: run `abort` adds the reason *driver unreachable* (used by `LOG.RUL.13`); `DeliveryFound` (delivery `found` → `attempted`) takes the shipment from `lost` to `at_hub` (`found`), and the shipment is then re-planned on a new delivery; the COD absorber *customer* is not offered (`WRK.ACL.09` in 03: *client*, *business* or *driver*, none preselected) |
 | 07 Manufacturing | dispatch note (`wl-inventory`) | Dispatch note `dispatch` creates the delivery; `DeliveryDelivered` runs `confirm_delivery` with the delivered quantities; refused quantities come back to quarantine with their reason on `DeliveryRefusedReceived` at run close; `DeliveryReturned` runs `return` (goods to quarantine, complaint) |
 | 08 Auto | sales order (through its dispatch note) | Order fulfilment progress shows *out for delivery*; `DeliveryDelivered` runs the dispatch `confirm_delivery`, and its `DispatchDelivered` runs sales order `fulfil` for the delivered quantities only (the order ignores the `Delivery*` events, wl-sales §4.2); refused lines come back to quarantine at run close; `DeliveryReversed` and `DeliveryLost` reach the order through the dispatch (`reverse_fulfilment`); cheques collected go to the cheque register |
-| 06 F&B (MVP) | F&B order | Created when a direct order is `ready` and the delivery method is own rider (`FNB.DTC.03`); `DeliveryOutForDelivery` runs the order's `dispatch`, `DeliveryDelivered` runs `complete`. Deliveries are `perishable` (one attempt, no reattempt): `DeliveryAttemptFailed` runs the order's failed-delivery step, and `DeliveryDiscarded` or `DeliveryReturned` close it with the refund decision and the wastage. A run `abort` or `hand_over` moves the food to another rider or discards it. Riders use the driver PWA. Third-party couriers are Later |
+| 06 F&B (MVP) | F&B order | Created when a direct order is `ready` and the delivery method is own rider (`FNB.DTC.03`); `DeliveryOutForDelivery` runs the order's `dispatch`, `DeliveryDelivered` runs `complete` for the accepted lines (partial acceptance on: a refused line raises a sales return of kind *no goods* on a prepaid order; on cash on delivery only the accepted lines are collected), and `DeliveryRefusedReceived` at run close logs the refused food as wastage (reason *refused at delivery*). Deliveries are `perishable` (one attempt, no reattempt): `DeliveryAttemptFailed` runs the order's failed-delivery step, and `DeliveryDiscarded` or `DeliveryReturned` close it with the refund decision and the wastage. A run `abort` or `hand_over` moves the food to another rider or discards it. Riders use the driver PWA. Third-party couriers are Later |
 
 **Midday-break warning for riders (`WRK.RUL.15`, formerly `LOG.RUL.11`).** When a run for a motorbike or
 on-foot rider is assigned or dispatched inside the midday break window (12:30–15:00,
@@ -253,7 +259,10 @@ candidate (§6).
    returned or discarded, and the cash is handed over at the depot as usual. Perishable
    stops are handed over to another run only when they can still reach the recipient within
    the perishable hand-over window (§7; default the source's delivery promise, 06: the
-   brand's promise); otherwise they fail with *run aborted* at once.
+   brand's promise); otherwise they fail with *run aborted* at once. With no route
+   optimisation in the MVP, the dispatcher enters the expected arrival of each perishable
+   stop at the hand-over, and a stop whose expected arrival is after the window end is
+   refused.
 
 ### 5.4 End of day
 

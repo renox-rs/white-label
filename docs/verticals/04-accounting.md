@@ -1,6 +1,6 @@
 # 04 — Accounting Firms & Fractional CFO Services
 
-> Status: accepted · Reviewed: 2026-10-15 · Last updated: 2026-10-15
+> Status: accepted · Reviewed: 2026-10-15 · Last updated: 2026-10-16
 
 ## 1. Summary
 
@@ -117,11 +117,11 @@ users have no scope. Their access comes from party ownership (`OWN`).
 | `ACC.ACL.09` | Writing off unbilled time above a share of the engagement's WIP needs a partner | `LIM` | manager | 10% |
 | `ACC.ACL.10` | Passports, Emirates IDs and bank statements need `kyc.sensitive.view`; each view is audited | `SEN` | all staff | — |
 | `ACC.ACL.11` | Only a client user with the *approver* portal role can approve a return for filing | `OWN` | client users | — |
-| `ACC.ACL.13` | A change to the tax profile fields that drive the calendar (VAT period and stagger, financial year end, VAT or corporate tax registration or deregistration, Small Business Relief, QFZP status) takes effect only after a manager other than the requester approves it, with an effective date | `SOD` | accountant, tax specialist, manager | on |
+| `ACC.ACL.13` | A change to the tax profile fields that drive the calendar (VAT period and stagger, financial year end, VAT or corporate tax registration or deregistration, Small Business Relief, QFZP status) takes effect only after a manager other than the requester approves it, with an effective date; one pending change per profile at a time | `SOD` | accountant, tax specialist, manager | on |
 | `ACC.ACL.14` | When an engagement is suspended or ended for a restricted reason (sanctions, AML concern), staff without `parties.block_reason.view` and the portal see only "On hold" or "Ended"; no automatic message goes to the client; the MLRO decides what the client is told, with a neutral template | `SEN`, `FLD` | all except MLRO and deputy | — |
-| `ACC.ACL.15` | A return is filed only by a staff member whose FTA tax agent registration is valid on the filing date and linked to the firm's tax agency (`qualification_valid`, `HRM.QUA.01`), or recorded as filed by the client through its own EmaraTax user | `STA` | returns.file holders | — |
+| `ACC.ACL.15` | A return is filed only by a staff member whose FTA tax agent registration is valid on the filing date and linked to the firm's tax agency (`qualification_valid`, `HRM.QUA.01`), or recorded as filed by the client through its own EmaraTax user ("filed by the client's own staff"; the acknowledgement shows the client's user, noted on the return) | `STA` | returns.file holders | — |
 | `PTY.ACL.02` *(shared)* | Restricted block reasons (sanctions, AML concern) and block records are visible only to the MLRO and deputy (`parties.block_reason.view`); everyone else sees "On hold"; the portal sees no block | `SEN`, `FLD` | all staff, client users | — |
-| `PTY.ACL.03` *(shared)* | While a client is blocked, no engagement or retainer is started, renewed or extended and no money is paid out to it (refund of a prepaid retainer, credit balance) unless the MLRO approves an exception | `STA`, `LIM` | partner, billing | — |
+| `PTY.ACL.03` *(shared)* | While a client is blocked, no engagement or retainer is started, renewed or extended (no exception), and no money is paid out to it (refund of a prepaid retainer, credit balance) unless the MLRO approves an exception for that payment | `STA`, `LIM` | partner, billing | — |
 | `DOC.ACL.02` *(shared)* | An expired client KYC document blocks engagement activation; a one-use override needs a reason and the MLRO's approval, valid 72 hours | `SOD`, `TIM` | manager, MLRO | 72 hours |
 | `FIN.ACL.15` *(shared)* | Writing off an invoice balance as a bad debt needs a partner's approval; the requester cannot approve | `LIM`, `SOD` | billing, manager | AED 0 (every write-off) |
 | `POR.ACL.01` *(shared, formerly `ACC.ACL.12`)* | After an engagement ends, client users keep read-only access to their filed returns and documents, then the portal closes | `TIM` | client users | closes after 90 days |
@@ -190,8 +190,8 @@ users have no scope. Their access comes from party ownership (`OWN`).
 | Case | What happens | Where |
 |---|---|---|
 | Due date passes | The task becomes `overdue` (`ACC.RUL.04`), the partner is told, and it can still be completed (flagged *late*); a manager closes it as `missed` only with a reason | Task |
-| Tax profile changes (new stagger, financial year, registration or deregistration) | Approved by a manager (`ACC.ACL.13`) with an effective date; `ACC.RUL.10` regenerates the calendar from that date: upcoming tasks that no longer apply are waived with the reason *tax profile changed*, new tasks are created, and started or overdue tasks that no longer match are listed for the manager | `ACC.RUL.10` |
-| Deadlines fall inside a suspension | On `suspend`, `ACC.RUL.09` sends the client the statutory deadlines due in the next 90 days, says the firm will not act on them while suspended, and asks the client approver to acknowledge in the portal. No acknowledgement within 7 days: task for the partner. Not sent for a restricted reason (`ACC.ACL.14`) | Engagement `suspend` |
+| Tax profile changes (new stagger, financial year, registration or deregistration) | Approved by a manager (`ACC.ACL.13`) with an effective date; `ACC.RUL.10` regenerates the calendar from that date (tasks for periods ending before it stay as they are): upcoming tasks that no longer apply are waived with the reason *tax profile changed*, new tasks are created, and started or overdue tasks that no longer match are listed for the manager | `ACC.RUL.10` |
+| Deadlines fall inside a suspension | On `suspend`, `ACC.RUL.09` sends the client the statutory deadlines due in the next 90 days, says the firm will not act on them while suspended, and asks the client approver to acknowledge in the portal. No acknowledgement within 7 days: task for the partner. Not sent for a restricted reason (`ACC.ACL.14`); on `end` for a restricted reason the MLRO gets a task with the deadline list instead (`ACC.RUL.09`) | Engagement `suspend` |
 | Deadline notice not delivered | Statutory notice: staff task to deliver it by another means and record proof (`NTF.RUL.01`) | §9 Notices |
 
 ### 4.4 Tax return (VAT or corporate tax)
@@ -212,7 +212,7 @@ users have no scope. Their access comes from party ownership (`OWN`).
 | Case | What happens | Where |
 |---|---|---|
 | Reviewer or client sends it back | `send_back` to `preparing` with a comment | Return |
-| Client withdraws its approval before filing | `withdraw_approval` returns it to `preparing`; the signature is kept and marked withdrawn | Return |
+| Client withdraws its approval before filing | `withdraw_approval` returns it to `preparing`; the signature is kept and marked withdrawn; the preparer gets a task to rework the return and bring the linked task back to work | Return |
 | Filer is not a registered tax agent | `file` is refused unless the filer's tax agent registration is valid, or the return is recorded as filed by the client itself (`ACC.ACL.15`) | Return `file` |
 | A client KYC document has expired | `file` runs but the return is flagged for the MLRO (flag mode) | §9 Document blocks |
 | Return no longer needed (engagement ended, client files itself) | `cancel` with a reason; the client is told who now files it | Return `cancel` |
@@ -231,7 +231,7 @@ users have no scope. Their access comes from party ownership (`OWN`).
 | Case | What happens | Where |
 |---|---|---|
 | Client disputes an invoice | Client users with the approver role may raise it in the portal; the invoice is `disputed`, reminders and `ACC.RUL.07` pause, and a ticket goes to the engagement manager; resolved as *upheld* or *credited* | wl-invoicing §5.10 |
-| Cheque bounces | wl-payments cheque path (re-present, settle, legal case or write-off); the client goes on credit hold until resolved; no bounce fee by default | wl-payments |
+| Cheque bounces | wl-payments cheque path (re-present, settle, legal case or write-off); the client goes on credit hold until resolved: in 04 the hold is only a *credit hold* badge shown to billing staff and partners (there are no sales orders to hold) and blocks nothing; no bounce fee by default | wl-payments |
 | Invoice uncollectable | `write_off` with a partner's approval (`FIN.ACL.15`); the write-off notice goes to the client; VAT bad-debt relief is proposed by `FIN.RUL.14` when its conditions are met | wl-invoicing §5.9 |
 | Engagement suspended | The retainer is paused (no cycle invoices) and resumes with the engagement; time already logged stays billable | Engagement `suspend` |
 | Engagement ends mid-period | The retainer is cancelled with a pro-rata final invoice or credit; unbilled WIP is billed or written off (`ACC.ACL.09`); returns not filed are cancelled or finished first; the client gets the list of deadlines due in the next 90 days (`ACC.RUL.09`) | Engagement `end` |
@@ -245,16 +245,17 @@ users have no scope. Their access comes from party ownership (`OWN`).
    (`ACC.AML.01`, `ACC.ACL.05`).
 4. **Confirmed sanctions match on an active client** (the client, a UBO, a director or a
    signatory): `confirm_match` blocks the party with the restricted reason `sanctions`;
-   wl-parties also blocks the related client company (related-person block, on), and
-   `ACC.RUL.12` opens an AML case linked to the screening,
+   wl-parties also blocks the related client company (related-person block, on; if it did not,
+   `ACC.RUL.12` blocks it itself), and `ACC.RUL.12` opens an AML case linked to the screening,
    and the freeze and report tasks (due 24 hours after the flag) go to the MLRO. The block
    suspends the engagement with the neutral reason *on hold*, pauses the retainer, holds
    open tasks and stops money out (`PTY.ACL.03`). No message goes to the client
    (`ACC.ACL.14`). The MLRO then decides to keep the engagement suspended or exit.
 5. **MLRO exits a client:** CDD `exit` (reason visible to the MLRO only). The partner gets a
    task to `end` the engagement with the neutral reason *relationship ended*; returns not
-   filed are cancelled and the client is told, with a neutral template, which deadlines it
-   must now meet itself.
+   filed are cancelled. Nothing goes to the client automatically: on `end` the MLRO gets a task
+   with the deadline list and chooses the neutral template that tells the client which
+   deadlines it must now meet itself (`ACC.RUL.09`).
 6. **List freshness:** each list shows its last successful update. A failed or late download
    (over 24 hours) alerts the MLRO at once and retries hourly (`PTY.RUL.02`); screenings run
    on a stale list are re-run after the next update, and onboarding cannot finish meanwhile.
@@ -358,6 +359,10 @@ state machines in [01-property.md](01-property.md#71-state-machines). **Quotatio
 (proposals) and **timesheet** (time approval) reuse those in
 [02-construction.md](02-construction.md#71-state-machines).
 
+*Working day* and *business day* mean the same here: a day of the firm's kernel business
+calendar (Asia/Dubai; weekends and UAE public holidays excluded). "Due in 1 working day" is the
+next such day after the event.
+
 ### 7.1 State machines
 
 #### Engagement
@@ -372,11 +377,11 @@ state machines in [01-property.md](01-property.md#71-state-machines). **Quotatio
 
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
-| `activate` | onboarding | active | `engagements.manage` | CDD `approved` (`ACC.ACL.07`); engagement letter signed; tax profile complete; client KYC documents valid (`document_valid`, block; override `DOC.ACL.02`); latest screening not run on a stale list and no open possible match (`PTY.RUL.02`); client not blocked | compliance calendar generated; retainer subscription started |
+| `activate` | onboarding | active | `engagements.manage` | CDD `approved` (`ACC.ACL.07`); engagement letter signed; tax profile complete; client KYC documents valid (`document_valid`, block; override `DOC.ACL.02`); latest screening of each screened party of the CDD file (the client company, its UBOs, directors and signatories, as for CDD `approve`) not run on a stale list and no open possible match (`PTY.RUL.02`); client not blocked (no exception: the `PTY.ACL.03` exception covers money out only) | compliance calendar generated; retainer subscription started |
 | `decline` | onboarding | declined | `engagements.manage` | reason given | client users disabled; client told with a neutral template |
-| `suspend` | active | suspended | `engagements.manage`, or system (`ACC.RUL.07`; `PartyBlocked` with the neutral reason *on hold*) | reason given | open tasks held (no client reminders, no new request lists); retainer `pause`; for a reason that is not restricted, `ACC.RUL.09` sends the client the statutory deadlines due in the next 90 days and asks for acknowledgement; for a restricted reason nothing is sent (`ACC.ACL.14`) |
-| `resume` | suspended | active | `engagements.manage`; after a block, only once the party is unblocked and the MLRO agrees | client not blocked | tasks released, past-due ones `overdue`; retainer `resume`; request lists for skipped periods created |
-| `end` | active, suspended | ended | `engagements.end` (partner); after a CDD `exit`, on the MLRO's task | end date; every open return filed or cancelled; unbilled WIP billed or written off (`ACC.ACL.09`); final invoice or credit issued | retainer `cancel` with pro-rata final invoice or credit; upcoming tasks waived; the client gets the statutory deadlines due in the next 90 days (`ACC.RUL.09`), with a neutral template for a restricted reason; refunds to a blocked client wait (`PTY.ACL.03`) |
+| `suspend` | active | suspended | `engagements.manage`, or system (`ACC.RUL.07`; `PartyBlocked` with the neutral reason *on hold*) | reason given | open tasks held (no client reminders, no new request lists); retainer `pause`; for a reason that is not restricted, `ACC.RUL.09` sends the client the statutory deadlines due in the next 90 days and asks for acknowledgement; for a restricted reason nothing is sent (`ACC.ACL.14`); for a suspension from `PartyBlocked` nothing is sent automatically (wl-parties §5.6) and, when the block reason is not restricted, the partner gets a task with the deadline list and the neutral template (`ACC.RUL.09`). A block on an engagement already suspended runs no second transition: the shown reason becomes *on hold* and the original reason stays in the history for staff with access |
+| `resume` | suspended | active | `engagements.manage`; after a block, only once the party is unblocked, through an approval request to the MLRO or deputy (rejected or returned: stays `suspended`) | client not blocked | tasks released, past-due ones `overdue`; retainer `resume`; request lists for skipped periods created at once, due today plus the template's lead days, with one client notice for all; pending deadline notice reminders cancelled |
+| `end` | active, suspended | ended | `engagements.end` (partner); after a CDD `exit`, on the MLRO's task | end date today or later (a future date keeps the engagement `active` until a scheduled `end` on that date, with the guards checked again then; if one fails, the end does not run, the partner gets a task listing the open items, and the scheduled `end` is tried again each day until it passes or the partner changes or removes the date); every open return filed or cancelled; unbilled WIP billed or written off (`ACC.ACL.09`); final invoice or credit issued | retainer `cancel` with pro-rata final invoice or credit; upcoming tasks waived; the client gets the statutory deadlines due in the next 90 days (`ACC.RUL.09`); for a restricted reason (an `end` after a CDD `exit` or a rejected review always counts as restricted) nothing is sent automatically and the MLRO gets a task with the deadline list and the neutral template; refunds to a blocked client wait (`PTY.ACL.03`) |
 
 ```mermaid
 stateDiagram-v2
@@ -410,11 +415,11 @@ is neither refunded nor paid on without the MLRO.
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
 | `submit` | in_progress | pending_approval | `cdd.prepare` | UBOs identified; identity documents attached; screening done and not on a stale list; risk factors rated | approvers notified |
-| `approve` | pending_approval | approved | `cdd.approve` (MLRO) | `ACC.ACL.06` for high risk; no open possible match | next review date set from the rating |
+| `approve` | pending_approval | approved | `cdd.approve` (MLRO) | `ACC.ACL.06` for high risk; no open possible match; no list stale and the latest screenings not run on a stale list (`PTY.RUL.02`) | next review date set from the rating |
 | `reject` | pending_approval | rejected | `cdd.approve` | reason recorded (visible to MLRO only) | onboarding: engagement `decline`; existing client: as `exit` |
-| `flag_review` | approved | review_due | system | next review date reached, or an AML case `report` | task for the compliance officer |
+| `flag_review` | approved | review_due | system | next review date reached, or an AML case `report` (from `approved` only; a file in another state gets the task without a transition) | task for the compliance officer |
 | `reopen` | review_due, pending_approval | in_progress | `cdd.prepare` | — | — |
-| `exit` | approved, review_due, in_progress | exited | `cdd.approve` (MLRO) | reason recorded (visible to MLRO only) | task for the partner to `end` the engagement with the neutral reason *relationship ended*; no new work accepted; client told only with the neutral template the MLRO chooses (`ACC.ACL.14`) |
+| `exit` | approved, review_due, in_progress | exited | `cdd.approve` (MLRO) | reason recorded (visible to MLRO only) | task for the partner, due in 5 working days, to `end` the engagement with the neutral reason *relationship ended* (one task listing every `active` or `suspended` engagement); no new work accepted; client told only with the neutral template the MLRO chooses (`ACC.ACL.14`) |
 
 ```mermaid
 stateDiagram-v2
@@ -459,7 +464,7 @@ stateDiagram-v2
 | `complete` | in_progress, in_review | completed | `tasks.work` / `tasks.review` | evidence attached when the task type requires it | next occurrence generated |
 | `mark_overdue` | upcoming, in_progress, waiting_on_client, in_review | overdue | system (`ACC.RUL.04`) | due date passed | assignee, manager and partner notified |
 | `close_missed` | overdue | missed | `tasks.manage` | reason given | next occurrence generated |
-| `waive` | upcoming | not_required | `tasks.manage` or system (`ACC.RUL.10`, engagement `end`) | reason given | next occurrence generated, unless the engagement ended |
+| `waive` | upcoming | not_required | `tasks.manage` or system (`ACC.RUL.10`, engagement `end`) | reason given | next occurrence generated, unless the engagement ended or the waive comes from `ACC.RUL.10` (regeneration creates the new tasks) |
 
 ```mermaid
 stateDiagram-v2
@@ -538,10 +543,10 @@ stateDiagram-v2
 | `send_back` | in_review, client_approval | preparing | `returns.review` or client approver | comment given | preparer notified |
 | `review` | in_review | client_approval | `returns.review` | reviewer ≠ preparer (`ACC.ACL.03`) | summary PDF sent to the client approver |
 | `approve` | client_approval | approved | client approver (`ACC.ACL.11`) | — | signature recorded (`DOC.SIG.01`) |
-| `withdraw_approval` | approved | preparing | client approver, or `returns.review` on the client's written instruction | reason given | signature kept and marked withdrawn; preparer and reviewer notified; linked task back to `in_progress` |
-| `file` | approved | filed | `returns.file` | FTA acknowledgement attached; filer's tax agent registration valid on the filing date, or filed by the client (`ACC.ACL.15`); client not blocked, or the MLRO approves | linked task `complete`; payment reminder if tax payable; if a client KYC document has expired, the return is flagged for the MLRO (flag mode) |
-| `correct` | filed | superseded | `returns.prepare` | reason; route: *voluntary disclosure* (reference required; always for VAT errors above AED 10,000 of tax, and for corporate tax) or *next return* (VAT errors of AED 10,000 or less, the next period's return named) (`ACC.ACL.04`) | new `preparing` version created; for a voluntary disclosure, a task due 20 business days after the error was found ✔ [S18]; for the next-return route, the adjustment is attached to that return |
-| `cancel` | preparing, in_review, client_approval, approved | cancelled | `returns.review` (manager) | reason given | linked task waived or handed over; client told who files it |
+| `withdraw_approval` | approved | preparing | client approver, or `returns.review` on the client's written instruction | reason given; a reviewer attaches the written instruction | signature kept and marked withdrawn; preparer and reviewer notified; the linked task is not moved back to work by the system (`mark_overdue` may still move it to `overdue`): the preparer gets a task (due 1 working day, reason "client withdrew approval") to rework the return and bring the linked task back to work through its own transitions (`send_back` by the reviewer from `in_review`, `start` from `overdue`) |
+| `file` | approved | filed | `returns.file` | FTA acknowledgement attached; filer's tax agent registration valid on the filing date, or filed by the client (`ACC.ACL.15`); client not blocked, or the MLRO approves (an approval request valid for this return only) | linked task `complete`; payment reminder if tax payable; if a client KYC document has expired, the return is flagged for the MLRO (flag mode) |
+| `correct` | filed | superseded | `returns.prepare` | reason; error amount and the date it was found; route, fixed at `correct`: *voluntary disclosure* (always for VAT errors above AED 10,000 of tax, and for corporate tax; the reference may be entered later, but the disclosure task cannot be completed without it) or *next return* (VAT errors of AED 10,000 or less; a later VAT return of the client not yet `filed` is named, or only its period when it does not exist yet) (`ACC.ACL.04`) | new `preparing` version created; for a voluntary disclosure, a task due 20 business days after the error was found ✔ [S18]; for the next-return route, the adjustment is attached to that return (when it is opened, if named by period), and the new version, marked *corrected via next return* and never filed itself, is `cancel`led with the reason *not required* once the named return is filed |
+| `cancel` | preparing, in_review, client_approval, approved | cancelled | `returns.review` (manager) | reason given (*engagement ended*, *client files itself*, *not required*) | linked task: *not required* → waived when `upcoming`, otherwise listed for the manager; *client files itself* or *engagement ended* → handed over (completed with the evidence "handed over to client"; the portal shows the deadline as the client's); client told who files it, except for a restricted end reason, including any end after a CDD `exit` (`ACC.ACL.14`; the MLRO's template tells the client instead) |
 
 ```mermaid
 stateDiagram-v2
@@ -616,7 +621,7 @@ retainer `past_due`.
 |---|---|---|---|---|---|
 | `open` | — | open | `aml.raise` (any staff), or system (`ACC.RUL.12` on `ScreeningMatchConfirmed`) | facts given | MLRO notified; for a sanctions match the screening and the freeze and report tasks are linked |
 | `review` | open | under_review | `aml.manage` (MLRO) | — | — |
-| `report` | under_review | reported | `aml.manage` | goAML reference and date recorded | CDD `flag_review`; partner informed without client-facing staff (`ACC.ACL.05`); MLRO decides the engagement: continue, suspend (neutral reason) or CDD `exit` |
+| `report` | under_review | reported | `aml.manage` | goAML reference and date recorded | CDD `flag_review` when the file is `approved`, otherwise a task for the compliance officer "review CDD after report"; partner told only that the MLRO needs to discuss the client, with no access to the case (`ACC.ACL.05`); task for the MLRO, due 1 working day, to record the engagement decision: continue, suspend (neutral reason) or CDD `exit` |
 | `close` | under_review | closed_no_action | `aml.manage` | reason recorded; for a sanctions match, freeze and report tasks done | if the client was blocked with `aml_concern`, the MLRO decides whether to unblock |
 
 ```mermaid
@@ -642,7 +647,7 @@ stateDiagram-v2
 |---|---|---|---|---|---|
 | `publish` | draft | published | `kpi.publish` (manager) | every account mapped to a KPI category; commentary added when the template requires it | portal updated; client notified; a previous published version of the period `supersede`s |
 | `supersede` | published | superseded | system (`publish` of a newer version) | — | the old version stays readable by staff, marked superseded |
-| `withdraw` | published | withdrawn | `kpi.publish` | reason given | removed from the portal; client users told it was withdrawn; for a wrong client, a privacy incident task for the company admin |
+| `withdraw` | published | withdrawn | `kpi.publish` | reason given (*wrong client*, *wrong figures*) | removed from the portal; client users told it was withdrawn (for a wrong client, without naming the other company); for a wrong client, a privacy incident task for the company admin |
 
 ```mermaid
 stateDiagram-v2
@@ -656,7 +661,7 @@ stateDiagram-v2
 
 A trial balance imported again for a period that has a published pack creates a new `draft`
 version (`ACC.RUL.06`); the published one shows "being revised" until the new one is
-published.
+published. The client is not notified at re-import, only at the new `publish`.
 
 **Negative-flow checklist** ([WORKFLOW.md](../WORKFLOW.md) §8). Rejected or returned
 approvals leave the record in the state it had before the request (wl-kernel §4.1).
@@ -689,13 +694,13 @@ digest of voids and late entries).
 | `ACC.RUL.04` | due date passed | task not `completed`, `missed` or `not_required` | task `mark_overdue` (the task can still be completed and is flagged *late*); notify assignee, manager and partner | — | on | MVP |
 | `ACC.RUL.05` | CDD next review date reached | CDD `approved` | CDD `flag_review`; task for the compliance officer | high 12 / medium 24 / low 36 months (firm policy; the law only requires risk-based updates) | on | MVP |
 | `ACC.RUL.06` | trial balance imported for a period | — | recalculate the KPI pack; notify the manager to add commentary | — | on | MVP |
-| `ACC.RUL.07` | an invoice overdue by N days | engagement `active`; invoice not `disputed` | engagement `suspend`; notify partner | N = 60 | off | Later |
+| `ACC.RUL.07` | an invoice overdue by N days (counted from the due date; days in dispute are not excluded) | engagement `active`; invoice not `disputed` | engagement `suspend`; notify partner | N = 60 | off | Later |
 | `PTY.RUL.01` *(shared, formerly `ACC.RUL.08`)* | sanctions list updated, and at each party's review date | — | re-screen all active client parties; for each new possible hit, alert the MLRO at once and open a task due within 24 hours (freeze and report on a confirmed match) | — | on | MVP |
 | `PTY.RUL.02` *(shared)* | a sanctions list download fails, or a list has no successful update for N hours | screening on | alert the MLRO at once (in-app and e-mail); retry hourly; mark screenings run on the stale list and re-run them after the next update; while stale, engagement `activate` and CDD `submit` and `approve` are refused | N = 24 | on | MVP |
-| `ACC.RUL.09` | engagement `suspend` or `end` | reason not restricted | send the client approver the statutory deadlines due in the next N days, stating the firm will not act on them, and ask for acknowledgement in the portal; remind after 3 days; no acknowledgement after 7 days: task for the partner. Statutory notice (give-up reaction `statutory_notice`) | N = 90 | on | MVP |
-| `ACC.RUL.10` | tax profile change approved (`ACC.ACL.13`) | engagement `active` or `suspended` | regenerate the calendar from the effective date: upcoming tasks that no longer apply `waive` with the reason *tax profile changed*; new tasks created; started or overdue tasks that no longer match, and returns in progress for affected periods, listed for the manager | — | on | MVP |
-| `ACC.RUL.11` | N days after the engagement letter was sent | not signed; engagement `onboarding` | remind the client approver; at M days, task for the manager to chase or `decline` with the reason *letter not signed* | N = 7, 14; M = 30 | on | MVP |
-| `ACC.RUL.12` | `ScreeningMatchConfirmed` for a client party or its UBO, director or signatory | — | check the client company is blocked too (wl-parties related-person block, reason `sanctions`, restricted); open an AML case linked to the screening; the block suspends the engagement (neutral reason) and pauses the retainer; no client message; MLRO notified | — | on | MVP |
+| `ACC.RUL.09` | engagement `suspend` or `end` | reason not restricted (an `end` after a CDD `exit` or a rejected review counts as restricted); for `end` with a restricted reason and for a suspension from `PartyBlocked`, see Then | send the client approver the statutory deadlines due in the next N days, stating the firm will not act on them, and ask for acknowledgement in the portal; remind after 3 days; no acknowledgement after 7 days: task for the partner. Statutory notice (give-up reaction `statutory_notice`). `end` with a restricted reason: nothing sent; task for the MLRO with the deadline list and the neutral template, sent when the MLRO decides. Suspension from `PartyBlocked`: nothing sent automatically (wl-parties §5.6); for a block reason that is not restricted (e.g. `non_payment`, `legal_dispute`), task for the partner with the deadline list and the neutral template, sent when the partner decides; for a restricted block reason, no task. Restricted `suspend`: nothing sent, no task | N = 90 | on | MVP |
+| `ACC.RUL.10` | tax profile change approved (`ACC.ACL.13`) | engagement `active` or `suspended` | regenerate the calendar from the effective date (tasks for periods that end before the effective date are not compared and stay as they are; the new profile's first period starts on the effective date and ends on the new profile's first period end on or after it): upcoming tasks that no longer apply `waive` with the reason *tax profile changed*; an upcoming task of the same type and period whose due date changed gets the new due date (audited) instead of being waived and recreated; new tasks created (no duplicate of a task that still matches); started or overdue tasks that no longer match, and returns in progress for affected periods, listed for the manager | — | on | MVP |
+| `ACC.RUL.11` | N days after the engagement letter was sent (a new version re-sent restarts the count from its sent date) | not signed; engagement `onboarding` | remind the client approver; at M days, task for the manager to chase or `decline` with the reason *letter not signed* | N = 7, 14; M = 30 | on | MVP |
+| `ACC.RUL.12` | `ScreeningMatchConfirmed` for a client party or its UBO, director or signatory | — | check the client company is blocked too (wl-parties related-person block, reason `sanctions`, restricted); if it is not (related-person block off, or the person is linked only through the CDD file), block it with that reason and record this on the case; open an AML case linked to the screening, or add to the client company's open sanctions case (one per company); the block suspends the engagement (neutral reason) and pauses the retainer; no client message; MLRO notified | — | on | MVP |
 
 **Compliance-critical** (owner alert `PLT.RUL.04` to the partner role, which is this
 vertical's owner role, and the company admin): `ACC.RUL.04`, `ACC.RUL.05`, `ACC.RUL.09`,
@@ -748,15 +753,18 @@ goAML are manual in the MVP, so their outages only delay the filing task.
   disclosure is `⚠ open: accountant (A-14)`; until answered the app asks for one.
 - **Document blocks** (wl-documents §5.6):
 
-  | Document kind (subject) | `blocks` (mode) | Override | Look-ahead |
-  |---|---|---|---|
-  | Client trade licence; UBO passport and Emirates ID (party) | `engagement.activate` (block); `return.file` (flag) | with approval by the MLRO (`DOC.ACL.02`) | 30 days |
-  | FTA tax agent registration (staff, `HRM.QUA.01`) | `return.file` (block) | never (legal block) [S5], [S16] | 30 days |
+  | Document kind (subject) | `blocks` (mode) | Override | Look-ahead | Responsible role |
+  |---|---|---|---|---|
+  | Client trade licence; UBO passport and Emirates ID (party) | `engagement.activate` (block); `return.file` (flag) | with approval by the MLRO (`DOC.ACL.02`) | 30 days | compliance officer (MLRO) |
+  | FTA tax agent registration (staff, `HRM.QUA.01`) | `return.file` (block) | never (legal block) [S5], [S16] | 30 days | partner |
 
   `BlockSubjects`: an engagement → the client company and its UBOs; a return → its client
   and its filer. `FutureWork`: tasks and returns due after the expiry date. Expired KYC
   documents of an active client do not suspend the engagement on their own; they flag
-  returns and open a CDD update task.
+  returns and open a CDD update task for the compliance officer (the manager as watcher), due
+  14 days after the expiry, one per document and client, completed when the renewal is
+  accepted. The responsible role (wl-documents §5.2) gets the kind's expiry reminders
+  (`DOC.RUL.01`) and renewal task (`DOC.RUL.03`) in the subject's scope.
 - **Block effects and no tipping off:** a blocked client's engagement is suspended with the
   neutral reason and its retainer paused (§7.1); ending it is the MLRO's decision. Money out
   stops (`PTY.ACL.03`). Restricted reasons are visible only to the MLRO and deputy, and the
@@ -767,7 +775,14 @@ goAML are manual in the MVP, so their outages only delay the filing task.
   are statutory notification types: on give-up the contact point is marked invalid and a
   staff task asks for delivery by another means with proof; dependent deadlines do not start
   until then. Return approval requests go to another client approver, then a staff task.
-  Invoices and statements go to the other finance contact, then the billing role.
+  Invoices and statements go to the other finance contact, then the billing role. Each type
+  04 registers names its wl-notify group (§5.4 there): deadline notices, document requests and
+  their reminders, suspension and end notices → statutory; return approval requests →
+  *portal and signatures*, with the reaction changed to another client approver, then a staff
+  task; engagement letters, KPI pack and query notices → *portal and signatures* (staff task
+  to the engagement manager); invoices, statements, retainer and write-off notices →
+  *invoices* (collector role: billing). MLRO alerts on lists and matches are staff-only, with
+  urgency `urgent` and no group.
 - **Bad debts:** write-offs need a partner's approval (`FIN.ACL.15`, every write-off); the
   write-off notice is sent so VAT bad-debt relief can be claimed when its conditions are met
   (wl-invoicing §5.9). Client approvers may dispute invoices in the portal. No bounce fee by

@@ -50,7 +50,7 @@ What the verticals send:
 
 | Entity | Description | Important fields |
 |---|---|---|
-| Notification type | A kind of message a module can send | key (e.g. `invoice.overdue`), module, category (`transactional`, `reminder`, `security`, `marketing`), urgency (`normal`, `urgent`), statutory (yes/no: the message is a notice with legal or contractual effect, e.g. a deadline notice or a notice of changed terms), give-up reaction ([§5.4](#54-when-a-message-gives-up)), staff role told on give-up, default channels in order, default recipients, template per channel |
+| Notification type | A kind of message a module can send | key (e.g. `invoice.overdue`), module, group (the row of the [§5.4](#54-when-a-message-gives-up) default table), category (`transactional`, `reminder`, `security`, `marketing`), urgency (`normal`, `urgent`), statutory (yes/no: the message is a notice with legal or contractual effect, e.g. a deadline notice or a notice of changed terms), give-up reaction ([§5.4](#54-when-a-message-gives-up)), staff role told on give-up, default channels in order, default recipients, template per channel |
 | Template | The text of one notification type for one channel and language | type, channel, language (`en`/`ar`), subject (email), body with placeholders, provider template name and category (WhatsApp), approval status (WhatsApp), version, active |
 | Contact point | A way to reach a person | owner (user or party contact), channel, address (email or E.164 mobile), verified, primary, last bounce, status (`valid` / `invalid`), invalid since, invalid reason |
 | Preference | What a person wants to receive | owner, category or type, channels allowed, language, quiet-hours opt-in |
@@ -209,13 +209,15 @@ A message that ends `abandoned` through `give_up` was not delivered on any allow
 The requester must not assume it was. `wl-notify` emits `MessageGaveUp` and runs the
 notification type's **give-up reaction** (`NTF.RUL.01`). A requester module can listen to the
 event for its own follow-up (e.g. pause a reminder sequence), but the default reaction always
-runs, so no module is left without one.
+runs, so no module is left without one. `NTF.RUL.01` is not compliance-critical, even for
+statutory types (their `statutory_notice` task is the safeguard): a failed run is retried
+with backoff like any automation and shows as `AutomationFailed`.
 
 | Reaction | What happens |
 |---|---|
-| `staff_task` | A task (`wl-ticketing`) for the type's staff role in the subject's scope: "Could not reach {recipient} about {subject}", with the channels tried and the errors. Due in 1 working day |
-| `alternative_recipient` | The same message is queued to another contact of the same party with the same purpose (e.g. the second guardian, the company's other finance contact), then `staff_task` if there is none |
-| `mark_contact_invalid` | On a hard bounce, invalid number or unknown WhatsApp account, the contact point is marked `invalid` and the party's record shows "contact needs updating"; staff who open the party are asked to fix it. Always combined with another reaction for non-marketing types |
+| `staff_task` | A task (`wl-ticketing`) for the type's staff role in the subject's scope: "Could not reach {recipient} about {subject}", with the channels tried and the errors. Due in 1 working day. With no holder of the role in the scope, the task goes to the company admin. When a give-up task for the same subject and recipient is still open, the new give-up is added to it as a comment, not as a second task |
+| `alternative_recipient` | The same message is queued to another contact of the same party with the same purpose (e.g. the second guardian, the company's other finance contact), then `staff_task` if there is none. One alternative only: the recipient rule is re-run without the contacts already tried, `invalid` or suppressed, and the primary of the rest is chosen; if the alternative also gives up, `staff_task` runs once for the chain |
+| `mark_contact_invalid` | On a hard bounce, invalid number or unknown WhatsApp account, the contact point is marked `invalid` and the party's record shows "contact needs updating"; staff who open the party are asked to fix it. Editing or verifying the address sets it `valid` again and clears invalid since and reason. Always combined with another reaction for non-marketing types |
 | `statutory_notice` | For statutory types: `staff_task` to the responsible staff, due in 1 working day, to deliver the notice by another means (courier, registered mail, hand delivery, a call with a note) and record the proof on the subject. Until proof is recorded, the subject shows "notice not delivered", and any deadline that depends on the notice being given is not treated as started |
 | `none` | Only the delivery log records it (marketing, tracking links) |
 
@@ -231,6 +233,18 @@ runs, so no module is left without one.
 | OTP and one-time security codes | `none` to staff; the user sees the error on screen at once and may choose another channel |
 | Marketing, delivery tracking | `mark_contact_invalid` (marketing) or `none` |
 
+Each type gets its default from exactly one row, chosen in this order: (1) a type marked
+statutory takes the *Statutory notices* row, whatever its group or urgency; (2) OTP and
+one-time security codes take their row, and urgency adds nothing (no staff task ever); (3)
+otherwise the row of the group the module names in `register_type`. Urgency is not a group:
+for a type with urgency `urgent`, the *Urgent types* row adds `staff_task` (last, if the group's
+reaction does not already end with it) and an in-app alert to the type's staff role to the
+group's reaction. A type with urgency `urgent` and no group takes the *Urgent types* row alone; a type with
+neither a group nor urgency takes `staff_task`.
+For example, an urgent guardian message runs `alternative_recipient`, then `staff_task` with
+the in-app alert; an urgent booking reminder runs `mark_contact_invalid`, the "reminder not
+delivered" note, then `staff_task` with the in-app alert.
+
 The verticals mark their statutory types and may change a type's reaction. Which notices are
 statutory, and what proof of delivery counts for them, is set by the vertical.
 
@@ -244,7 +258,7 @@ statutory, and what proof of delivery counts for them, is set by the vertical.
 | `Notifier::register_type(definition)` | Modules register their notification types, variables and default templates |
 | `Notifier::send_otp(contact_point, purpose)` / `verify_otp` | One-time codes for portal login (06 F&B customers, 09 workers), signature confirmation (`wl-documents`), proof of delivery (`wl-delivery`), contact verification |
 | `Recipients` resolvers | Role in scope, party contacts by portal role, assignee; extensible |
-| Delivery log queries | "Was the overdue notice delivered?" for disputes and reports |
+| Delivery log queries | "Was the overdue notice delivered?" for disputes and reports; `Notifier::notice_status(subject, type)` returns `delivered` (with the provider delivery time), `proof_recorded` (with the delivery date entered in the proof) or `not_delivered`. Requesters start a deadline from the delivery time or the proof's delivery date, never from the time the proof was typed |
 
 **Consumes**
 

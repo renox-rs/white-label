@@ -118,7 +118,7 @@ Their access comes from party ownership (`OWN`) or assignment (`ASG`).
 | `PRP.ACL.02` | An owner sees only units under their management agreements, and the statements for them | `OWN` | owner | — |
 | `WRK.ACL.02` *(shared, formerly `PRP.ACL.03`)* | A technician or vendor sees only tickets assigned to them; the unit's tenant contact is visible only while the ticket is open | `ASG`, `TIM` | technician, vendor | — |
 | `PRP.ACL.04` | A lease can be edited only in *draft*. An active lease changes only through a new version (amendment or renewal) | `STA` | all staff | — |
-| `PRP.ACL.05` | Deposit deductions are approved by the property manager; above a threshold, finance or the owner also approves | `LIM` | accountant, coordinator, property manager | AED 5,000 |
+| `PRP.ACL.05` | Deposit deductions are approved by the property manager; above a threshold, checked on the total of the deductions (a forfeit included), finance or the owner also approves | `LIM` | accountant, coordinator, property manager | AED 5,000 |
 | `FIN.ACL.04` *(shared, formerly `PRP.ACL.06`)* | The user who records a deposit refund cannot approve it | `SOD` | all staff | on |
 | `FIN.ACL.07` *(shared, formerly `PRP.ACL.07`)* | Any rent waiver or discount needs a property manager's approval | `LIM` | accountant, leasing agent | above 0% |
 | `PRP.ACL.08` | Owner payouts are prepared by one user and approved by another | `SOD` | accountant, property manager | on |
@@ -128,17 +128,17 @@ Their access comes from party ownership (`OWN`) or assignment (`ASG`).
 | `PRP.ACL.12` | A leasing agent sees availability and asking rent in all buildings, but tenant and financial data only in their own buildings | `FLD`, scope | leasing agent | — |
 | `PRP.ACL.13` | A vendor sees only the planned visits and tickets of its own service contracts, and only for the buildings those contracts cover | `OWN`, `ASG` | vendor | — |
 | `PRP.ACL.14` | A new or renewed service contract above an annual value needs property manager approval; above a second value, the owner's approval is recorded | `LIM` | maintenance coordinator | AED 50,000 / AED 200,000 |
-| `PRP.ACL.15` | A planned visit of a compliance-critical contract (fire and life safety, lifts) can be completed only with the vendor's service report attached; it cannot be skipped, only rescheduled with a reason | `STA` | maintenance coordinator, vendor | — |
+| `PRP.ACL.15` | A planned visit of a compliance-critical contract (fire and life safety, lifts) can be completed only with the vendor's service report attached; it cannot be skipped by a user, only rescheduled with a reason. The one cancel allowed is the system's when the contract itself ends (`WRK.RUL.18`): it cancels only visits due after the end date, which are no longer owed under that contract, and the building gets the compliance flag `no_contract` until a replacement is active. Open visits due before the end date stay: the `WRK.RUL.18` task may only reassign them, not cancel them | `STA` | maintenance coordinator, vendor | — |
 | `PRP.ACL.16` | A bank statement line is matched to a tenant's invoices by one user; reversing a confirmed match needs a property manager | `SOD`, `STA` | accountant | — |
 | `FIN.ACL.01` *(shared)* | An issued invoice cannot be edited; it is corrected with a credit note | `STA` | all staff | — |
 | `FIN.ACL.02` *(shared)* | A bounced cheque can be marked replaced only by linking the replacement cheque or payment | `STA` | accountant | — |
 | `FIN.ACL.15` *(shared)* | Writing off a tenant's or owner's unpaid balance always needs approval by a property manager who did not request it; for a managed building the owner's consent is recorded, because the loss is the owner's | `LIM`, `SOD` | accountant | AED 0 (always) |
 | `WRK.ACL.11` *(shared)* | A fire and life safety ticket or planned visit cannot be resolved while the assigned vendor's Civil Defence approval is expired or missing; no override (legal block) | `STA` | vendor, technician, maintenance coordinator | — |
 | `PTY.ACL.03` *(shared)* | While a party is blocked, no new lease, renewal or amendment is activated for it, and no money goes out to it (deposit refund, owner payout, vendor payment) unless the compliance role approves an exception. Active leases continue (block effect `continue`) | `STA` | all staff | — |
-| `PRP.ACL.17` | A renewal or amendment version that raises the rent or changes other terms against the tenant is submitted only when a notice of changed terms was delivered, with proof recorded, at least the notice period before the current end date; otherwise only with the tenant's signed acceptance attached | `STA` | leasing agent, property manager | 90 days, or the contract's period |
-| `PRP.ACL.18` | Cancelling a lease after money or cheques were received, and forfeiting any of it, is requested by the leasing agent or accountant and approved by a property manager | `SOD` | leasing agent, accountant | on |
+| `PRP.ACL.17` | A renewal or amendment version that raises the rent or changes other terms against the tenant is submitted only when a notice of changed terms was delivered, with proof recorded, at least the notice period before the current end date (the deadline day counts; the proof is read from the version being replaced); otherwise only with the tenant's signed acceptance (document kind *tenant acceptance of changed terms*) attached to the draft version. An amendment version (mid-term, by agreement) that changes terms against the tenant always needs that acceptance; a notice alone is not enough. Against the tenant: a higher annual rent or deposit, or fewer cheques, than the current version, detected automatically; any other changed term (clauses, payment dates, added charges) unless the submitter answers *no* with a reason kept in history. A rent decrease alone is not against the tenant | `STA` | leasing agent, property manager | 90 days, or the contract's period |
+| `PRP.ACL.18` | Cancelling a lease after money or cheques were received (a booking deposit on the reserved unit counts), and forfeiting any of it, is requested by the leasing agent or accountant and approved by a property manager | `SOD` | leasing agent, accountant | on |
 | `PRP.ACL.19` | A forced termination (unit abandoned, or eviction executed) is requested by the property manager with evidence and approved by another user with `leases.force_terminate` | `SOD` | property manager | approver: company admin |
-| `PRP.ACL.20` | Withdrawing a tenant's notice needs the landlord side's written agreement; it is refused once a lease for another tenant on the unit has been submitted | `STA` | property manager | — |
+| `PRP.ACL.20` | Withdrawing a tenant's notice needs the landlord side's written agreement; it is refused once a lease for another tenant on the unit has been submitted (`pending_signature` or later; a draft does not count). Withdrawing a landlord's notice uses the same transition and also needs the written agreement document | `STA` | property manager | — |
 | `PRP.ACL.21` | An owner payout is refused while the owner's statement balance is negative, the statement is disputed, or the owner is blocked; a published statement is corrected only by a revision before payout, or by adjustment lines on the next statement | `STA` | accountant, property manager | — |
 | `PRP.ACL.22` | A vendor bill with the same vendor and vendor invoice number as an existing bill that is not void, or the same contract, period and amount, is held as a possible duplicate; it is approved only by another user with a reason | `STA`, `SOD` | accountant | on |
 
@@ -176,7 +176,7 @@ Their access comes from party ownership (`OWN`) or assignment (`ASG`).
 | Situation | What happens |
 |---|---|
 | The contract is generated but not signed, or the deposit not paid | `PRP.RUL.12` reminds the leasing agent and property manager after 14 days in `pending_signature`, and after 30 days gives the property manager a task to extend the date or cancel the lease |
-| The prospect backs out after paying the deposit or handing over PDCs | Lease `cancel` with a reason, approved by a property manager (`PRP.ACL.18`). Cheques not yet deposited are returned against a handover receipt. Rent already paid is refunded (`FIN.ACL.04`). The security deposit is refunded, or part of it forfeited only where the signed reservation or contract terms allow it, with the property manager's approval. Issued invoices are credited. The unit is released |
+| The prospect backs out after paying the deposit or handing over PDCs | Lease `cancel` with a reason, approved by a property manager (`PRP.ACL.18`); one approval covers the cancellation, the refunds and any forfeit, and the money effects run only at final approval, on the money received by then. Cheques not yet deposited are returned against a handover receipt; a cheque already deposited waits for `clear` (its amount joins the refund) or `bounce` (nothing to refund), and the accountant gets a task listing it. Issued invoices are credited: a paid one is first unallocated (the payment moves to the tenant's credit balance) and then credited in full; draft invoices are discarded. Rent already paid is refunded from the credit balance through the Refund flow (`FIN.ACL.04`). The security deposit is refunded, or part of it forfeited only where the signed reservation or contract terms allow it (the clause reference is recorded), with the property manager's approval; the forfeit is published to the tenant as a deduction and follows the dispute window (§7.1 *Deposit*). The unit is released |
 | A cheque bounces | Cheque `bounce` with the bank's return reason and certificate. The bounce fee charge is added when the client has set one. The tenant and property manager are told (`FIN.RUL.04`). The cheque is then re-presented (at most 2 presentations), replaced, part settled, referred to a civil legal case, or written off (`FIN.RUL.18` reminders at 3 days, decision task at 14 days) |
 | Arrears grow after the last reminder | `PRP.RUL.10`: 30 days overdue, the property manager gets a task to send a formal payment demand (statutory notice; proof of delivery recorded). When the demand period lapses unpaid, a task to open a legal case (Rental Dispute Centre claim for arrears or eviction) on the lease, or to agree a payment plan. The demand period and the grounds for eviction are `⚠ open: lawyer (L-22)` (§13 question 12) |
 | The tenant disputes an invoice | Invoice `dispute` from the portal or by staff: reminders pause, a billing-dispute ticket is opened, and the dispute ends `upheld` or `credited` (`FIN.RUL.15` escalates after 14 days) |
@@ -189,16 +189,20 @@ Their access comes from party ownership (`OWN`) or assignment (`ASG`).
 
 1. A tenant raises a request in the portal, with category, description and photos
    (`POR.SLF.01`, `WRK.TKT.01`).
-2. The coordinator triages it: priority, SLA, and whether it is chargeable to the tenant
+2. The coordinator triages it: priority, SLA, and whether it is chargeable to the tenant;
+   a chargeable job gets charge lines (description, quantity, unit price, VAT category)
    (`WRK.TKT.02`).
 3. It is assigned to an in-house technician or an external vendor (`WRK.TKT.02`).
 4. The technician updates the status from the field and uploads before/after photos
    (`WRK.TKT.03`).
 5. The tenant confirms that the job is done, or the ticket is confirmed automatically after 3
    days (`WRK.RUL.02`). The ticket closes (`WRK.TKT.03`). For a chargeable job the tenant
-   sees the amount with the confirmation request.
+   sees the amount (the charge lines' total including VAT) with the confirmation request.
 6. A chargeable job produces an invoice to the tenant only once the ticket is confirmed
-   (`FIN.INV.01`); nothing is invoiced while the tenant can still reopen it. A vendor job
+   (`FIN.INV.01`); nothing is invoiced while the tenant can still reopen it. The invoice is
+   drafted through wl-ticketing's `Invoicer` call with the ticket's charge lines, and 01
+   issues ticket drafts automatically (wl-invoicing setting *drafts issued automatically*,
+   on for the ticket source in 01). A vendor job
    produces a vendor bill, allocated to the unit's owner (`FIN.PAB.01`).
 
 **When it goes wrong**
@@ -208,17 +212,18 @@ Their access comes from party ownership (`OWN`) or assignment (`ASG`).
 | The vendor does not turn up | `WRK.RUL.19`: 2 hours after the scheduled time, a no-show is recorded against the vendor and the coordinator is offered reassignment to another vendor or a technician (reason `vendor_no_show`); the tenant is told the new time |
 | The tenant says the job is not done | The tenant reopens the ticket within the reopen window; no invoice has been issued, so nothing is credited |
 | The tenant disputes the charge after confirming | Invoice `dispute`; the coordinator answers with the photos and the triage decision; outcome `upheld` or `credited` |
-| The job is cancelled after work started | Ticket `cancel` from `on_hold` with a reason; work already done by a vendor is billed by the vendor and allocated to the owner; nothing is charged to the tenant unless the coordinator marks it chargeable with a reason |
+| The job is cancelled after work started | Ticket `cancel` from `on_hold` with a reason; work already done by a vendor is billed by the vendor and allocated to the owner; nothing is charged to the tenant unless the coordinator marks it chargeable with a reason and charge lines, in which case the invoice is drafted and issued at once (there is no confirmation step for a cancelled job) |
 | The vendor bills the same job twice | The second bill is held as a possible duplicate (`PRP.ACL.22`) and voided |
 
 Planned maintenance under a vendor's AMC follows §4.5.
 
 ### 4.3 Renewal or move-out
 
-1. Leases expiring in 120 days enter the renewal window (`PRP.RUL.01`) and appear on the
-   dashboard, with further notices at 90/60/30 days (`DOC.EXP.01`, `PRP.LSE.04`). The
-   property manager decides early whether the rent or other terms will change, because the
-   notice of changed terms must reach the tenant at least 90 days before expiry (§2).
+1. Leases expiring in 120 days (or in the contract's notice period + 30 days, when that is
+   longer) enter the renewal window (`PRP.RUL.01`) and appear on the dashboard, with further notices at 90/60/30 days (`DOC.EXP.01`, `PRP.LSE.04`). The
+   property manager records the renewal decision on the lease early (same terms, changed
+   terms, or not renewing), because the notice of changed terms must reach the tenant at
+   least 90 days before expiry (§2).
 2. If rent or terms change, the new rent is checked against the rental index (`PRP.LSE.03`)
    and the notice of changed terms is sent as a statutory notice; its proof of delivery is
    recorded on the lease (`PRP.RUL.09`). Without timely proof, the renewal keeps the current
@@ -239,11 +244,11 @@ Planned maintenance under a vendor's AMC follows §4.5.
 |---|---|
 | The tenant stays after the end date (holding over) | `PRP.RUL.03` moves the lease to `expired`, which is not an end: in Dubai the lease renews on the same terms for the same period or one year, whichever is shorter, when the landlord does not object (Art. 6, §2). Charges continue on the same terms and the property manager gets a task to issue the renewal version and renew Ejari, or record a notice (`PRP.RUL.14`). The rule in Abu Dhabi is `⚠ open: lawyer (L-22)` (§13 question 12) |
 | The notice of changed terms was late or not delivered | The renewal version is refused with changed terms (`PRP.ACL.17`); the property manager renews on the current terms or gets the tenant's signed acceptance. A notice whose delivery failed is not counted until proof is recorded (`statutory_notice`, wl-notify) |
-| Mid-term change (rent, payment plan, added tenant, parking) | Lease `amend`: a new version with an effective date is drafted, signed and activated. Charges after the effective date are reissued from the new plan; invoices already issued for those periods are corrected by credit note and a new invoice; cheques are relinked to the new charges, or returned and replaced where the amounts change; a deposit change becomes a top-up charge or a part refund; an Ejari update task is created (`PRP.RUL.02`) |
+| Mid-term change (rent, payment plan, added tenant, parking) | Lease `amend`: a new version with an effective date is drafted, signed and activated. The effective date is within the current version's term and not before the first day of the current month, so closed VAT periods are not touched. Charges after the effective date are reissued from the new plan; invoices already issued for those periods are corrected by credit note and a new invoice (a paid one is first unallocated to the tenant's credit balance, credited in full, and the credit is allocated to the new invoice, any excess kept as credit or refunded on request through the Refund flow); an invoice whose period straddles the effective date is reissued as two lines, old terms to the day before and new terms from it, pro rata; cheques are relinked to the new charges, or returned and replaced where the amounts change; a deposit increase becomes a top-up charge on the effective date, and a decrease a partial refund of the held deposit through the Refund flow (wl-payments, `FIN.ACL.04`); an Ejari update task is created (`PRP.RUL.02`) |
 | The tenant withdraws the notice | Lease `withdraw_notice` with the landlord side's written agreement (`PRP.ACL.20`); the move-out inspection is cancelled and the unit returns to `occupied` |
-| Early termination by the tenant | Notice reason *early termination*. The penalty set by the contract is added as a charge from the catalogue (charge type *early termination fee*; its VAT treatment `⚠ open: accountant (A-06)`). On `terminate`, scheduled charges after the move-out date are cancelled; invoices for periods after it are credited pro rata, unless the contract keeps rent due until a fixed date; paid amounts not used are refunded or kept as credit; later cheques are returned |
-| Deductions exceed the deposit | The deposit is applied in full (`forfeit`, reason *applied to deductions*) and the excess is invoiced to the tenant as a damages charge, which then follows the arrears flow (§4.1). VAT on damages kept as compensation is `⚠ open: accountant (A-06)` (wl-payments §10) |
-| The tenant disputes the deductions | The tenant disputes one or more deduction lines in the portal within 14 days. The deposit stays `settlement_pending` with a dispute flag; the property manager answers within 7 days with evidence (inspection photos, quotes), revises the deductions (a new published version) or upholds them. Unresolved after 14 days, `PRP.RUL.11` escalates to the property manager's manager; if the tenant files a Rental Dispute Centre case, a legal case is opened on the lease and the settlement waits for the decision |
+| Early termination by the tenant | Notice reason *early termination*. The penalty set by the contract is entered by the user (no formula) and added as a charge from the catalogue, due on the move-out date (charge type *early termination fee*, which must be configured first; its VAT treatment `⚠ open: accountant (A-06)`). On `terminate`, scheduled charges after the move-out date are cancelled; invoices for periods after it are credited pro rata (rent and recurring charges only; one-off charges stay), unless the contract keeps rent due until a fixed date (lease field `rent_due_until`); a partial credit note on a paid invoice adds its amount to the tenant's credit balance, which is applied to the deposit settlement's deductions first and the rest refunded through the Refund flow, or kept as credit when the property manager chooses; later cheques are returned |
+| Deductions exceed the deposit | The deposit is applied in full (`forfeit`, reason *applied to deductions*): first to unpaid rent invoices, oldest first, as a payment of method *deposit applied*, then to the damage lines. What is left of the damage lines is invoiced to the tenant as one damages invoice (charge type *damages*), which then follows the arrears flow (§4.1). VAT on damages kept as compensation is `⚠ open: accountant (A-06)` (wl-payments §10) |
+| The tenant disputes the deductions | The tenant disputes one or more deduction lines in the portal within 14 days. The deposit stays `settlement_pending` with a dispute flag; the property manager answers within 7 days with evidence (inspection photos, quotes), revises the deductions (a new published version) or upholds them. There is no separate reminder at 7 days; unresolved after 14 days, `PRP.RUL.11` escalates to the property manager's manager; if the tenant files a Rental Dispute Centre case, a legal case is opened on the lease and the settlement waits for the decision |
 | The tenant abandons the unit or is evicted | Lease `force_terminate` (`PRP.ACL.19`) with evidence: an abandonment inspection with photos and the legal basis for repossession (`⚠ open: lawyer (L-22)`, §13 question 12), or the judgment and execution record. The unit is vacated; the deposit settlement applies the deposit to arrears and damages; later cheques are kept as evidence or returned; remaining arrears follow the arrears flow or write-off |
 | The tenant does not pay after the formal demand | The lease carries a legal case flag (arrears or eviction), which pauses reminders on its invoices and blocks renewal; the case ends with payment, a settlement, or eviction (`force_terminate`) |
 
@@ -266,10 +271,10 @@ Planned maintenance under a vendor's AMC follows §4.5.
 
 | Situation | What happens |
 |---|---|
-| The owner's balance is negative (vacancy, AMC costs, repairs) | No payout (`PRP.ACL.21`). By default the negative balance is carried forward to the next statement; when the agreement allows, or the balance stays negative for 3 statements, the property manager may invoice it to the owner from the management company's entity (VAT on recharged costs `⚠ open: accountant (A-08)`) |
-| The owner disputes a statement line | The statement is flagged disputed and a ticket opened; the payout waits. The line is corrected by a revision before payout, or by an adjustment line on the next statement after payout; the owner is told the outcome |
+| The owner's balance is negative (vacancy, AMC costs, repairs) | No payout (`PRP.ACL.21`). By default the negative balance is carried forward to the next statement; when the agreement allows it (field `may_invoice_negative_balance`), or the latest 3 non-superseded statements of the agreement all ended negative, the property manager may invoice it to the owner from the management company's entity (VAT on recharged costs `⚠ open: accountant (A-08)`) |
+| The owner disputes a statement line | The statement is flagged disputed and a ticket opened; the payout waits. The line is corrected by a revision before payout, or by an adjustment line on the next statement after payout (a dispute raised after payout is cleared only as upheld or by an adjustment line); the owner is told the outcome |
 | A cost was allocated to the wrong owner | Corrected on the next statements of both owners by adjustment lines; a published statement is never edited |
-| The management agreement ends, or a unit is sold mid-lease | Management agreement `end` or `transfer_unit` (§7.1): from the handover date, charges are issued by the new landlord of record or stop being managed here; a handover pack lists the deposits held, cheques not yet deposited, open charges and arrears, and the Ejari details; deposits and cheques are handed over against a receipt; the tenant is told the new payee; a final owner statement is prepared. Whether a sale requires a new Ejari registration or only a landlord update is `⚠ open: authority (AU-24)` (§13 question 13) |
+| The management agreement ends, or a unit is sold mid-lease | Management agreement `end` or `transfer_unit` (§7.1): from the handover date, charges are issued by the new landlord of record or stop being managed here; a handover pack lists the deposits held, cheques not yet deposited, open charges and arrears, and the Ejari details; deposits and cheques are handed over against a receipt; the tenant is told the new payee; a final owner statement up to the handover date is prepared by hand from the agreement. Invoices already issued stay with the owner and are listed in the pack, not credited; their reminders stop, and the handed-over leases are marked "handed over on <date>" with no further automation. Whether a sale requires a new Ejari registration or only a landlord update is `⚠ open: authority (AU-24)` (§13 question 13) |
 | The owner is blocked | Payouts stop (`PTY.ACL.03`); the owner's leases continue; statements are still prepared |
 
 ### 4.5 AMC to planned visit to vendor bill
@@ -307,7 +312,7 @@ Planned maintenance under a vendor's AMC follows §4.5.
 | A planned visit is missed | `WRK.RUL.14` after 3 days; for fire and life safety and lifts the building gets the compliance flag `visit_missed`, which clears when the visit is resolved |
 | The vendor does not turn up | `WRK.RUL.19` (§4.2); repeated no-shows show on the contract page |
 | The contract expires or is terminated without a replacement | `WRK.RUL.18`: visits due after the end date are cancelled; the coordinator gets one task to reassign or cancel the other open visits; for fire and life safety and lifts the buildings get the compliance flag `no_contract` until a replacement contract is active, and the property manager and company admin are told |
-| A compliance certificate (building safety certificate, lift certificate) expires | `DOC.RUL.01` warns at 90, 30 and 7 days; on expiry the building is flagged non-compliant on the dashboard and the company admin is told (the kind is compliance-critical). The platform does not block leasing because of it |
+| A compliance certificate (building safety certificate, lift certificate) expires | `DOC.RUL.01` warns at 90, 30 and 7 days; on the day after the expiry date the building gets the compliance flag `certificate_expired`, shows as non-compliant on the dashboard, and the company admin is told (the kind is compliance-critical). The flag clears when a renewed certificate is accepted. The platform does not block leasing because of it |
 | The vendor bills twice, or for work after the end date | Held as a possible duplicate (`PRP.ACL.22`), or matched only for work done before the end date (`FIN.PAB.01`) |
 
 ### 4.6 Portfolio migration (new client)
@@ -389,16 +394,16 @@ Planned maintenance under a vendor's AMC follows §4.5.
 |---|---|---|---|
 | Building | A property under management | name, emirate, community, plot/DEWA premise no., owner(s), issuing legal entity (owner or landlord of record) | apps/property |
 | Unit | A rentable space | building, number, type (apartment/villa/office/shop/warehouse), use (residential/commercial), size sq ft, bedrooms, asking rent, status | apps/property |
-| Management agreement | Contract with a landlord | owner, units (with dates in and out), fee % or fixed, start/end, payout frequency, notice period, end reason, handover date and handover pack, status | apps/property |
+| Management agreement | Contract with a landlord | owner, units (with dates in and out), fee % or fixed, start/end, payout frequency, notice period, may invoice a negative balance (`may_invoice_negative_balance`, default no), end reason, handover date and handover pack, status | apps/property |
 | Party | Tenant, owner or vendor | type (person/company), names EN/AR, Emirates ID, passport, trade licence, TRN, contacts | wl-parties |
-| Lease | Tenancy contract | unit, parties with roles and billing shares (MVP: one billed tenant), start/end, annual rent, payment plan, deposit, Ejari no. and cancellation date, version, version kind (new, renewal, amendment) and effective date, notice of changed terms (sent, delivered, proof), notice (date, party, reason), legal case flag (type, reference, ticket), status | apps/property |
+| Lease | Tenancy contract | unit, parties with roles and billing shares (MVP: one billed tenant), start/end, annual rent, payment plan, deposit, Ejari no. and cancellation date, version, version kind (new, renewal, amendment) and effective date, contract notice period, renewal decision (`undecided`, `same_terms`, `changed_terms`, `not_renewing`; set by the property manager), notice of changed terms (sent, delivered, proof), current-terms-only marker (`PRP.RUL.09`), holding over until, notice (date, party, reason, planned move-out date), rent due until (optional: rent stays due to this date after move-out), legal case flags (type, reference, ticket, outcome), handed over on (date), status | apps/property |
 | Charge | One scheduled amount | lease, due date, charge type, amount, VAT category | wl-invoicing |
 | Charge type | An entry in the client's charge catalogue | names EN/AR, VAT category, frequency, basis (fixed or per area), issuing entity override | wl-invoicing |
 | Invoice | Tax invoice | party, lines, VAT, totals, due date, status, source (`Subject`) | wl-invoicing |
 | Cheque | A post-dated cheque | drawer, bank, number, date, amount, linked charge, status | wl-payments |
 | Payment | Money received | method, amount, date, allocations to invoices | wl-payments |
 | Deposit | Security deposit held | lease, amount, deductions (published version, dispute per line), refund method (transfer or cheque), refund, excess invoiced, status | wl-payments |
-| Ticket | Maintenance request or work order | subject (unit), category, priority, SLA, assignee, photos, chargeable, status | wl-ticketing |
+| Ticket | Maintenance request or work order | subject (unit), category, priority, SLA, assignee, photos, chargeable, charge lines (description, quantity, unit price, VAT category), status | wl-ticketing |
 | Inspection | Move-in/move-out checklist | lease, items, condition, photos, signatures | wl-ticketing |
 | Vendor bill | Cost from a supplier | vendor, ticket, unit, amount, VAT, allocated owner | wl-invoicing |
 | Owner statement | Periodic statement | owner, agreement, period, revision, collected, expenses, fee, adjustments, balance brought and carried forward, payout, dispute flag, status | apps/property |
@@ -463,7 +468,10 @@ stateDiagram-v2
 #### Lease
 
 Each lease version is one record. A renewal or amendment is a new version of the same lease;
-when it is activated, the version it replaces ends as `renewed` or `amended`.
+when it is activated, the version it replaces ends as `renewed` or `amended`. Only one renewal
+or amendment version per lease may be in `draft` or `pending_signature` at a time. Pro rata
+amounts are daily: amount × days ÷ days in the invoice's period, rounded half up to
+0.01 AED.
 
 | State | Tone | Terminal | Meaning |
 |---|---|---|---|
@@ -480,24 +488,32 @@ when it is activated, the version it replaces ends as `renewed` or `amended`.
 
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
-| `submit` | draft | pending_signature | `leases.create` | the unit is available or reserved for this tenant, or this is a renewal or amendment version of the lease on the unit for the same tenant; tenant KYC documents present; payment plan adds up to the annual rent; changed terms against the tenant: `PRP.ACL.17`; tenant not blocked (`PTY.ACL.03`) | contract PDF generated in EN/AR (`DOC.GEN.01`) |
-| `activate` | pending_signature | active | `leases.activate` | signed contract attached; deposit received or waiver approved; tenant not blocked | new lease: unit `occupy`; renewal version: previous version `renew`; amendment version: previous version `amend`; charge schedule created from the start or effective date (`FIN.BIL.01`); Ejari task (`PRP.RUL.02`); event `LeaseActivated` |
+| `submit` | draft | pending_signature | `leases.create` | the unit is available or reserved for this tenant, or this is a renewal or amendment version of the lease on the unit for the same tenant; tenant KYC documents present; payment plan adds up to the annual rent; a renewal version needs the previous version in `renewal_due` or `expired`, an amendment version needs it in `active`, `renewal_due` or `expired`; an amendment's effective date within the current term and not before the first day of the current month; changed terms against the tenant: `PRP.ACL.17`; tenant not blocked (`PTY.ACL.03`) | contract PDF generated in EN/AR (`DOC.GEN.01`) |
+| `activate` | pending_signature | active | `leases.activate` | signed contract attached; deposit received (for a renewal or amendment, the carried-over `held` deposit; a different deposit amount is handled by deposit `adjust` on activation, so an unpaid top-up does not block `activate`) or waiver approved; tenant not blocked; a renewal or amendment version: the previous version still in a state that its `renew` or `amend` accepts (checked again; `activate` and that transition run in one transaction) | new lease: unit `occupy`; renewal version: previous version `renew`; amendment version: previous version `amend`; charge schedule created from the start or effective date (`FIN.BIL.01`); a renewal or amendment whose deposit differs from the held amount: deposit `adjust` (system); Ejari task (`PRP.RUL.02`); event `LeaseActivated` |
 | `flag_renewal` | active | renewal_due | system (`PRP.RUL.01`) | — | notify manager and tenant; the notice-of-changed-terms deadline (end date − 90 days, or the contract's period) is shown on the lease |
-| `record_notice` | active, renewal_due, expired | notice_given | `leases.manage` | notice date, party and reason (end of term, early termination, landlord's ground, non-payment) recorded; a landlord's notice is a statutory notice with proof of delivery | unit `mark_notice`; move-out inspection ticket created (`PRP.RUL.04`); early termination: penalty charge per the contract |
-| `withdraw_notice` | notice_given | active, renewal_due, expired | `leases.manage` | `PRP.ACL.20`; move-out inspection not completed | back to the state the dates give; unit `cancel_notice`; move-out inspection ticket cancelled; penalty charge cancelled while not invoiced; event `LeaseNoticeWithdrawn` |
-| `renew` | renewal_due, expired | renewed | system (renewal version `activate`) | the renewal version is `active` | links old and new versions; scheduled charges of the old version that the new one covers are cancelled; invoices already issued for a holding-over period stay, and the new version does not bill those periods again |
-| `amend` | active, renewal_due, expired | amended | system (amendment version `activate`) | the amendment version is `active` | scheduled charges after the effective date cancelled and recreated by the new version; invoices issued for periods after it credited and reissued (`FIN.ACL.01`); cheques relinked to the new charges, or returned and replaced where the amounts change; deposit carried over, with a top-up charge or a part refund; event `LeaseAmended` |
+| `record_notice` | active, renewal_due, expired | notice_given | `leases.manage` | notice date, party and reason (end of term, early termination, landlord's ground, non-payment) recorded; for a tenant's notice, the planned move-out date entered; a landlord's notice is a statutory notice: allowed once sent, and the lease shows "notice not delivered" until its proof of delivery is recorded | unit `mark_notice`; move-out inspection ticket created (`PRP.RUL.04`); early termination: penalty charge per the contract, due on the planned move-out date (moved with it while not invoiced; the actual move-out date is recorded at `terminate` and does not change it); for a landlord's notice, the planned move-out date and the deadlines that depend on the notice are computed from the proof-of-delivery date |
+| `withdraw_notice` | notice_given | active, renewal_due, expired | `leases.manage` | `PRP.ACL.20`; move-out inspection not completed | back to the state the dates give; when that is `expired` and no holding-over extension exists yet, `expire`'s effects run as if it expired that day; unit `cancel_notice`; move-out inspection ticket cancelled; penalty charge cancelled while not invoiced (an invoiced penalty stays and is corrected only by a credit note); event `LeaseNoticeWithdrawn` |
+| `renew` | renewal_due, expired | renewed | system (renewal version `activate`) | the renewal version is `active` | links old and new versions; scheduled charges of the old version that the new one covers (due date on or after the new start date) are cancelled; invoices already issued for a holding-over period stay, and the new version does not bill those periods again; a different rent for a period already invoiced is not adjusted automatically: the property manager is shown the difference per period and may add a charge or credit by hand; cheques linked to cancelled charges stay `received` and the accountant gets a task to relink them to the new version's charges |
+| `amend` | active, renewal_due, expired | amended | system (amendment version `activate`) | the amendment version is `active` | scheduled charges after the effective date cancelled and recreated by the new version; invoices issued for periods after it credited and reissued (`FIN.ACL.01`): a paid invoice is first unallocated (system `unallocate`, the payment moves to the tenant's credit balance), then credited in full, and the credit is allocated to the reissued invoice; an invoice straddling the effective date is reissued as two pro rata lines; cheques in `received` relinked to new charges of the same amount, or returned with a receipt and a replacement task to the accountant where the amount changes (deposited or cleared cheques are not touched); deposit carried over and stays `held`; a changed amount runs deposit `adjust` (wl-payments): a top-up charge on the effective date, or a partial refund of the held deposit through the Refund flow (`FIN.ACL.04`), the held amount reduced when the refund is paid; event `LeaseAmended` |
 | `expire` | renewal_due | expired | system (`PRP.RUL.03`) | end date passed; no notice; no renewal version `active` | charge schedule extended on the same terms for the statutory renewal period (same period or one year, whichever is shorter); if the tenant still holds over when that period ends, the schedule is extended again for another period and the task repeats; property manager notified; holding-over task (`PRP.RUL.14`). A landlord who objects records a notice (`record_notice` with the landlord's ground); there is no separate objection guard |
-| `terminate` | notice_given | terminated | `leases.manage` | move-out inspection completed; all keys returned | unit `vacate`; deposit `start_settlement`; scheduled charges after the move-out date cancelled; invoices for periods after it credited pro rata unless the contract keeps them due; future cheques `return`; Ejari cancellation task (`PRP.RUL.13`); tenant portal read-only (`POR.ACL.01`) |
+| `terminate` | notice_given | terminated | `leases.manage` | move-out inspection completed; all keys returned | unit `vacate`; deposit `start_settlement`; scheduled charges after the move-out date (or after `rent_due_until`, when set) cancelled; rent and recurring lines of invoices for periods after it credited pro rata by partial credit note; a credit on a paid invoice goes to the tenant's credit balance, applied to the deposit settlement's deductions first, the rest refunded through the Refund flow or kept as credit (property manager's choice); cheques in `received` or `due_for_deposit` dated after that date `return`; all in one transaction; Ejari cancellation task (`PRP.RUL.13`); tenant portal read-only (`POR.ACL.01`) |
 | `force_terminate` | active, renewal_due, expired, notice_given | terminated | `leases.force_terminate` | `PRP.ACL.19`; reason `abandoned` (abandonment inspection with photos and the legal basis for repossession, `⚠ open: lawyer (L-22)`) or `eviction_executed` (judgment and execution record) | as `terminate`, with the inspection done without the tenant; the deposit settlement applies the deposit to arrears and damages; remaining arrears stay on the invoices; the legal case flag is closed with the outcome; event `LeaseForceTerminated` |
-| `cancel` | draft, pending_signature | cancelled | `leases.create` | reason given; when money or cheques were received, `PRP.ACL.18` | unit `release` if reserved; cheques not deposited `return` against a receipt; issued invoices credited; rent paid refunded; deposit refunded or forfeited where the signed terms allow it |
+| `cancel` | draft, pending_signature | cancelled | `leases.create` | reason given; when money or cheques were received, `PRP.ACL.18` | unit `release` if reserved; cheques not deposited `return` against a receipt, a deposited one waits for `clear` or `bounce`; issued invoices credited (a paid one unallocated first, its payment moved to the tenant's credit balance), drafts discarded; rent paid refunded from the credit balance through the Refund flow; deposit refunded, or part forfeited with the clause reference where the signed terms allow it |
 
 **Legal case flag** (not a state). The property manager sets it on a lease with a case type
 (arrears, eviction, deposit dispute, other), the Rental Dispute Centre or court reference,
 and a linked ticket of category *legal case*. While set, reminders on the lease's invoices
 are paused (as for an invoice `dispute`), renewal and amendment versions are refused, and
-the tenant is not sent automatic messages about the case. It is cleared with an outcome
-(paid, settled, judgment, eviction executed).
+the tenant is not sent automatic messages about the case; invoices still become `overdue`,
+and on clearing reminders resume from the next scheduled offset. The reference may be empty
+while the case is prepared, but is required to clear with outcome *judgment*. A lease may carry
+several flags; the effects apply while any is open, and each is cleared separately, with an
+outcome (paid, settled, judgment, eviction executed). Every flag has its ticket: setting the
+flag creates the linked *legal case* ticket (assigned to the property manager, subject the
+lease), unless the property manager picks an open *legal case* ticket of the same lease that
+has no flag yet; a cheque `refer_to_legal` creates the flag and its ticket the same way.
+Clearing the flag resolves its ticket if still open; resolving the ticket by hand does not
+clear the flag.
 
 **Party blocked.** A blocked tenant's active lease continues (block effect `continue`,
 decided by the property manager); new leases, renewals and amendments for it are refused;
@@ -546,9 +562,9 @@ stateDiagram-v2
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
 | `activate` | draft | active | `agreements.manage` | owner, units, fee and payout frequency set; signed agreement attached | units' issuing entity and owner set from the start date |
-| `transfer_unit` | active, ending | active, ending (unchanged) | `agreements.manage` | unit, transfer date and new owner (unit sold) or "no longer managed" recorded; property manager approval | as `end`, for that unit only; for a sale still managed by us, the unit moves to the new owner's agreement and charges from the transfer date are issued by the new landlord of record |
+| `transfer_unit` | active, ending | active, ending (unchanged) | `agreements.manage` | unit, transfer date and new owner (unit sold) or "no longer managed" recorded; approval by a property manager other than the requester | as `end`, for that unit only; for a sale still managed by us, the unit moves to the new owner's agreement (which must be `active`: `transfer_unit` is refused otherwise; the property manager creates and activates it first through its own `activate`, signed agreement attached, listing the unit with date in = transfer date, and the unit's issuer changes only at `transfer_unit`; nothing is activated automatically) and scheduled charges from the transfer date are recreated with the new landlord of record as issuer (issued invoices stay with the old owner); the deposit stays `held`, re-assigned to the new owner against the new owner's receipt, and cheques stay linked to the recreated charges |
 | `give_notice` | active | ending | `agreements.manage` | notice date, party and handover date recorded | property manager and accountant notified; handover pack started |
-| `end` | ending | ended | `agreements.manage` | handover pack complete: deposits held and cheques not deposited handed over against a receipt, open charges and arrears listed, Ejari details given; final owner statement approved | scheduled charges after the handover date cancelled; future cheques `return` with reason *handed over*; deposits handed over (deposit `transfer`); tenants told the new payee; leases stay with the new manager or owner; owner portal access read-only for 90 days |
+| `end` | ending | ended | `agreements.manage` | handover pack complete: deposits held and cheques not deposited handed over against a receipt, open charges and arrears listed, Ejari details given; no deposit in `settlement_pending`; final owner statement (prepared by hand from the agreement, up to the handover date) approved | scheduled charges after the handover date cancelled; issued invoices stay with the owner, not credited, and their reminders stop; future cheques `return` with reason *handed over*; deposits handed over (deposit `transfer`); tenants told the new payee; leases stay with the new manager or owner and are marked "handed over on <date>", with no further automation; owner portal access read-only for 90 days |
 
 ```mermaid
 stateDiagram-v2
@@ -577,13 +593,14 @@ stateDiagram-v2
 | `return` | approved | draft | `owner_statements.approve` | reason | preparer notified |
 | `publish` | approved | published | `owner_statements.prepare` | — | PDF generated and sent to the owner |
 | `revise` | published | superseded | `owner_statements.prepare` | no payout recorded; reason | new `draft` revision created; owner told a corrected statement follows |
-| `pay_out` | published | settled | `owner_statements.prepare` | balance > 0; not disputed; owner not blocked (`PRP.ACL.21`); payout approved (`PRP.ACL.08`) | payout recorded (`FIN.PAY.01`) |
+| `pay_out` | published | settled | `owner_statements.prepare` | balance > 0; not disputed; owner not blocked (`PRP.ACL.21`); payout approved (`PRP.ACL.08`; guards checked again at final approval) | payout of the full positive balance recorded (`FIN.PAY.01`); no partial payouts |
 | `carry_forward` | published | settled | `owner_statements.prepare` | balance ≤ 0 | balance brought forward on the next statement |
-| `invoice_owner` | published | settled | `owner_statements.approve` | balance < 0; property manager approval | invoice to the owner for the negative balance (`FIN.INV.01`) |
+| `invoice_owner` | published | settled | `owner_statements.approve` | balance < 0; the agreement's `may_invoice_negative_balance` is set, or the latest 3 non-superseded statements of the agreement, this one included, ended negative; approval by a property manager other than the requester | invoice to the owner for the negative balance from the management company's entity (`FIN.INV.01`) |
 
 **Dispute flag** (not a state). An owner disputes a line of a `published` statement; the
 flag opens a ticket and blocks `pay_out` until it is cleared by `revise` or with an outcome
-(upheld, or an adjustment line on the next statement).
+(upheld, or an adjustment line on the next statement). The flag can also be set on a `settled`
+statement after payout; it is then cleared only as upheld or by an adjustment line.
 
 ```mermaid
 stateDiagram-v2
@@ -724,18 +741,22 @@ stateDiagram-v2
 |---|---|---|---|---|---|
 | `start_settlement` | held | settlement_pending | system (lease `terminate`, `force_terminate`, `cancel`) | — | — |
 | `refund` | settlement_pending | refunded | `deposits.refund` | deductions itemised and published to the tenant; the 14-day dispute window has passed and no dispute is open (`PRP.RUL.11`); `PRP.ACL.05` (limit) and `FIN.ACL.04` (SoD) pass, otherwise an approval request; tenant not blocked | refund payment recorded; settlement statement generated |
-| `forfeit` | settlement_pending | forfeited | `deposits.refund` | reason given; approval by a property manager; no line disputed | settlement statement generated; when the deductions exceed the deposit, the excess is invoiced to the tenant |
+| `forfeit` | settlement_pending | forfeited | `deposits.refund` | reason given; approval by a property manager (above `PRP.ACL.05`, also finance or the owner); the forfeiture published to the tenant as the deductions it is applied to (*applied to deductions*), or as one line for the whole deposit with the reason; the 14-day dispute window of the latest published version has passed and no line is disputed (`PRP.RUL.11`), as for `refund` | settlement statement generated (deposit, deductions, excess invoice number); when the deductions exceed the deposit, the deposit is applied first to unpaid rent and then to damages, and the excess is invoiced to the tenant (§4.3) |
+| `adjust` | held | held | system (lease renewal or amendment version `activate` with a different deposit amount) or `deposits.manage` | new amount and the source version given; no adjustment still open (top-up unpaid, or part refund not `paid`, `cancelled` or `rejected`) | increase: top-up charge for the difference on the effective date, the held amount rises when it is paid; decrease: refund `request` for the difference (`FIN.ACL.04`), the held amount falls when it is `paid`; the deposit stays `held`; event `DepositAdjusted` |
 | `transfer` | held | transferred | `deposits.manage` | management agreement `end` or `transfer_unit`; receipt from the owner or new manager attached | deposit liability leaves this company; tenant told who holds it |
 
 **Deductions dispute flag** (not a state). The tenant disputes deduction lines in the portal
 within the window. While set, `refund` and `forfeit` wait; the property manager revises the
 deductions (a new published version, the window starts again) or upholds them; an open case
-at the Rental Dispute Centre keeps the flag until the decision.
+at the Rental Dispute Centre keeps the flag until the decision. A part forfeit on a cancelled
+lease (`PRP.ACL.18`) is a deduction line, with the clause reference, on `refund`; `forfeit`
+keeps the whole deposit.
 
 ```mermaid
 stateDiagram-v2
   [*] --> held
   held --> settlement_pending: start_settlement
+  held --> held: adjust
   settlement_pending --> refunded: refund
   settlement_pending --> forfeited: forfeit
   held --> transferred: transfer
@@ -764,11 +785,11 @@ stateDiagram-v2
 | `start` | assigned | in_progress | `tickets.work` (`WRK.ACL.02`) | — | — |
 | `hold` | in_progress | on_hold | `tickets.work` | hold reason chosen | SLA clock pauses |
 | `resume` | on_hold | in_progress | `tickets.work` | — | SLA clock resumes |
-| `resolve` | in_progress | resolved | `tickets.work` | after-photo attached when the category requires it; fire and life safety: the vendor's Civil Defence approval valid (`WRK.ACL.11`); compliance-critical planned visit: service report attached (`PRP.ACL.15`) | requester asked to confirm; a chargeable job shows the amount to the tenant, with no invoice yet |
-| `confirm` | resolved | closed | requester, or system (`WRK.RUL.02`) | — | chargeable job → invoice drafted and issued to the tenant (`FIN.INV.01`) |
+| `resolve` | in_progress | resolved | `tickets.work` | after-photo attached when the category requires it; fire and life safety: the vendor's Civil Defence approval valid (`WRK.ACL.11`); compliance-critical planned visit: service report attached (`PRP.ACL.15`); a chargeable job has at least one charge line | requester asked to confirm; a chargeable job shows the tenant the amount (the charge lines' total including VAT), with no invoice yet |
+| `confirm` | resolved | closed | requester, or system (`WRK.RUL.02`) | — | chargeable job → invoice drafted through `Invoicer` with the ticket's charge lines (as the module), then issued to the tenant at once because 01 turns on automatic issue of ticket drafts (`FIN.INV.01`) |
 | `close` | resolved | closed | `tickets.assign` | internal ticket or category without tenant sign-off | chargeable job → invoice as for `confirm` |
 | `reopen` | resolved | in_progress | requester or `tickets.assign` | within N days of `resolve` | assignee notified |
-| `cancel` | open, assigned, on_hold | cancelled | `tickets.assign`, or system (`WRK.RUL.18`) | reason given | requester and assignee notified; vendor work already done is billed by the vendor to the owner |
+| `cancel` | open, assigned, on_hold | cancelled | `tickets.assign`, or system (`WRK.RUL.18`) | reason given; a compliance-critical planned visit only by the system (`PRP.ACL.15`: it is rescheduled, not skipped) | requester and assignee notified; vendor work already done is billed by the vendor to the owner; charged to the tenant only when the coordinator marks it chargeable with a reason and charge lines, then invoiced as for `confirm` |
 
 ```mermaid
 stateDiagram-v2
@@ -834,9 +855,13 @@ contract's vendor.
 
 ### 7.2 Automations
 
+Days are calendar days in Asia/Dubai. Daily rules, and the "N days after" or "N days before"
+steps of the rules below, run at 02:00 Asia/Dubai unless the row gives a time; a run on the
+same day again does nothing new.
+
 | ID | When | If | Then | Parameters (default) | Default | Scope |
 |---|---|---|---|---|---|---|
-| `PRP.RUL.01` | N days before `lease.end_date` | lease is `active` | lease `flag_renewal`; notify property manager and tenant | N = 120 (leaves a month to decide before the 90-day notice deadline) | on | MVP |
+| `PRP.RUL.01` | max(N, contract notice period + 30) days before `lease.end_date` | lease is `active` | lease `flag_renewal`; notify property manager and tenant (a normal message, not a statutory notice) | N = 120 (leaves a month to decide before the 90-day notice deadline; a 120-day contract notice period flags at 150 days) | on | MVP |
 | `PRP.RUL.02` | N days after lease `activate` | no Ejari number recorded | notify property manager | N = 14 | on | MVP |
 | `PRP.RUL.03` | the day after `lease.end_date` (Asia/Dubai) | lease is `renewal_due`; no renewal version `active` | lease `expire` (holding over, billing continues); notify property manager | — | on | MVP |
 | `PRP.RUL.04` | lease → `notice_given` | — | create a move-out inspection ticket on the scheduled date | — | on | MVP |
@@ -844,12 +869,12 @@ contract's vendor.
 | `WRK.RUL.12` *(shared, formerly `PRP.RUL.06`)* | N days before a service contract's end date | contract `active` | contract `flag_expiring`; notify coordinator and property manager | N = 60 | on | MVP |
 | `WRK.RUL.14` *(shared, formerly `PRP.RUL.07`)* · compliance-critical | N days after a planned visit's due date | visit not `resolved` | notify coordinator; for fire and life safety or lifts, also notify the property manager and mark the building non-compliant on the dashboard | N = 3 | on | MVP |
 | `PRP.RUL.08` | bank statement imported | credit lines without a confident match | create a matching task for the accountant | — | on | MVP |
-| `PRP.RUL.09` · compliance-critical | N days before the notice-of-changed-terms deadline (end date − 90 days, or the contract's period) | lease `renewal_due`; no renewal decision recorded, or changed terms planned and no proof of delivery | notify the property manager; at the deadline, record on the lease that only the current terms can be renewed without the tenant's signed acceptance (`PRP.ACL.17`) | N = 14, 3 | on | MVP |
-| `PRP.RUL.10` | N days after an invoice's due date | balance > 0; not disputed; no legal case flag on the lease | task to the property manager to send a formal payment demand (statutory notice); M days after its proof of delivery, still unpaid: task to open a legal case or agree a payment plan | N = 30; M = 30 (`⚠ open: lawyer (L-22)`) | on | MVP |
-| `PRP.RUL.11` | N days after deposit deductions are published | deposit `settlement_pending` | no line disputed: notify the accountant that the settlement may proceed; a dispute open for M days without an answer or agreement: notify the property manager's manager | N = 14; M = 14 | on | MVP |
-| `PRP.RUL.12` | N and M days after lease → `pending_signature` | still `pending_signature` | at N: remind the leasing agent and property manager; at M: task to the property manager to extend or `cancel` | N = 14; M = 30 | on | MVP |
+| `PRP.RUL.09` · compliance-critical | N days before the notice-of-changed-terms deadline (end date − 90 days, or the contract's period) | lease `renewal_due`; renewal decision `undecided`, or `changed_terms` and no proof of delivery | notify the property manager; on the day after the deadline, set the current-terms-only marker: only the current terms can be renewed without the tenant's signed acceptance (`PRP.ACL.17`). Proof recorded later is stored but does not clear the marker. A lease that reaches `renewal_due` with its deadline already passed (activated late, or a term shorter than the notice period) gets the marker on the first run, with one notification to the property manager; warnings for offsets already passed are not sent | N = 14, 3 | on | MVP |
+| `PRP.RUL.10` | N days after an invoice's due date | balance > 0; not disputed; no legal case flag on the lease | task to the property manager to send a formal payment demand (statutory notice), one open task per lease listing every invoice of the lease overdue by N days or more (later ones are added to it until the demand is sent; disputed or written-off ones removed); sending the demand closes the task and freezes its list: the demand and its M-day clock cover only the invoices it lists, and an invoice reaching N days afterwards opens a new demand task (invoices on a sent demand are not listed again); M days after its proof of delivery, any listed invoice still unpaid: task to open a legal case or agree a payment plan. An agreed payment plan is recorded as a note with the agreed dates on the lease; issued invoices are not changed and the rule stays quiet for them until the latest agreed date | N = 30; M = 30 (`⚠ open: lawyer (L-22)`) | on | MVP |
+| `PRP.RUL.11` | N days after deposit deductions are published | deposit `settlement_pending` | no line disputed: notify the accountant that the settlement may proceed (once per published version; a new version restarts N); a dispute open for M days without an answer or agreement, counted from the day it was opened and while no `deposit_dispute` legal case flag is open: notify the property manager's manager (the manager set on the property manager's staff profile, otherwise the company admin) | N = 14; M = 14 | on | MVP |
+| `PRP.RUL.12` | N and M days after lease → `pending_signature` | still `pending_signature` | at N: remind the leasing agent and property manager; at M: task to the property manager to extend to a date at most 30 days ahead, or `cancel`. Extending closes the task; a lease still `pending_signature` on that date gets a new task. Never cancels automatically; nothing is sent to the tenant | N = 14; M = 30 | on | MVP |
 | `PRP.RUL.13` | N days after lease → `terminated` | Ejari or Tawtheeq registration recorded; no cancellation date recorded | notify the property manager | N = 7 | on | MVP |
-| `PRP.RUL.14` | N days after lease → `expired`, and again at the end of each statutory renewal period | no renewal version submitted (a draft or submitted version is enough to stop the task; `PRP.RUL.03` instead needs an `active` one to prevent expiry); no notice recorded | task to the property manager to issue the renewal version on the same terms and renew Ejari, or record a notice | N = 7 | on | MVP |
+| `PRP.RUL.14` | N days after lease → `expired`, and again at the end of each statutory renewal period | no renewal version submitted (a draft or submitted version is enough to stop a new task from being created; `PRP.RUL.03` instead needs an `active` one to prevent expiry); no notice recorded | task to the property manager to issue the renewal version on the same terms and renew Ejari, or record a notice; a task already open closes only when a renewal version is submitted (a draft created after it opened does not close it) | N = 7 | on | MVP |
 | `FIN.RUL.12` *(shared, absorbs the follow-up of `PRP.RUL.08`)* | N days after a statement is imported | lines still unmatched | create a task for the accountant | N = 5 | on | MVP |
 | `FIN.RUL.01` *(shared)* | N days before / M days after `invoice.due_date` | balance > 0 | notify party (before: reminder; after: overdue notice) | N = 3; M = 1, 7, 14 | on | MVP |
 | `FIN.RUL.02` *(shared)* | `invoice.due_date` passed | balance > 0 | invoice `mark_overdue` | — | on | MVP |
@@ -861,7 +886,7 @@ contract's vendor.
 | `DOC.RUL.01` *(shared)* · compliance-critical for compliance certificates and the Civil Defence approval | N days before `document.expires_on` | — | notify the record's responsible staff and, for KYC documents, the party; for compliance certificates, the coordinator and property manager | N = 90, 30, 7 | on | MVP |
 | `DOC.RUL.02`, `DOC.RUL.03` *(shared)* · compliance-critical | nightly look-ahead; document expired | kind *Civil Defence approval* | list the vendor's visits that will be blocked; on expiry flag the contract, visits and buildings (§4.5) and tell the company admin | look-ahead 30 days | on | MVP |
 | `WRK.RUL.13` *(shared)* | service contract end date passed | contract `expiring` | contract `expire` | — | on | MVP |
-| `WRK.RUL.18` *(shared)* · compliance-critical | service contract → `expired`, or its termination date reached after `terminate` | — | cancel visits due after the end date; task to reassign or cancel the others; compliance flag `no_contract` for fire and life safety and lifts without a replacement; notify the property manager | task due 1 working day | on | MVP |
+| `WRK.RUL.18` *(shared)* · compliance-critical | service contract → `expired`, or its termination date reached after `terminate` | — | cancel visits due after the end date; task to reassign or cancel the others; compliance flag `no_contract` for fire and life safety and lifts without a replacement; notify the property manager and the company admin | task due 1 working day | on | MVP |
 | `WRK.RUL.19` *(shared)* | M hours after a ticket's scheduled visit time | assigned to a vendor; not started | record a vendor no-show; offer reassignment to the coordinator; for fire and life safety and lifts, also notify the property manager | M = 2 | on | MVP |
 | `WRK.RUL.01` *(shared)* | ticket SLA reaches P% / 100% | ticket not `resolved` | notify coordinator / property manager | P = 80 | on | MVP |
 | `WRK.RUL.02` *(shared)* | N days after ticket → `resolved` | not confirmed | ticket `confirm` (system) | N = 3 | on | MVP |
@@ -869,7 +894,9 @@ contract's vendor.
 **Compliance-critical rules and owner alerts.** The rules marked compliance-critical above
 protect a legal duty (fire and life safety, lifts, the 90-day notice). If one fails or does
 not run, `PLT.RUL.04` alerts the owner role, which in 01 is the company admin by default (the
-client may name its managing director), and the admin.
+client may name its managing director), and the company admin. With the default both are the
+same role, so its holders get one alert; when the client names its managing director, the
+managing director and the company admin are both alerted.
 
 **Statutory notices.** The notice of changed terms, a landlord's notice to end a lease, the
 formal payment demand and the formal notice on a bounced cheque are statutory notice types:
@@ -882,12 +909,48 @@ vendor) and `FutureWork` (the vendor's planned visits after a date) for the kind
 Defence approval*, whose `blocks` are `service_contract.activate` and `ticket.resolve` for
 fire and life safety categories, mode `block`, override `never`, compliance-critical.
 
+**Document kinds and responsible roles.** 01 seeds these kinds; the responsible role is the
+role whose holders, in the scope of the document's subject, are told by `DOC.RUL.01` and
+`DOC.RUL.03` and get the renewal task (wl-documents §5.2).
+
+| Kind | Subject | Responsible role | Expiry | Notes |
+|---|---|---|---|---|
+| Emirates ID, passport, residence visa | party (tenant) | property manager | yes | `PRP.ACL.10`; the party is also reminded |
+| Trade licence, TRN certificate | party (tenant, owner, vendor) | property manager | trade licence | the party is also reminded |
+| Signed tenancy contract | lease | property manager | no | required on `activate` |
+| Ejari / Tawtheeq certificate | lease | property manager | yes | `PRP.RUL.02`, `PRP.RUL.13` |
+| Tenant acceptance of changed terms | lease | property manager | no | `PRP.ACL.17` |
+| Repossession basis; judgment; execution record (three kinds) | lease | property manager | no | `force_terminate` evidence (`eviction_executed` needs both the judgment and the execution record) |
+| Signed management agreement | management agreement | property manager | no | required on `activate` |
+| Civil Defence approval | party (vendor) | maintenance coordinator | yes | `blocks` as above; compliance-critical |
+| Building safety certificate, lift certificate | building | maintenance coordinator | yes | compliance-critical; `DOC.RUL.01` also tells the property manager; no `blocks` |
+| Service contract, service report | service contract, planned visit | maintenance coordinator | contract end | `PRP.ACL.15` |
+
+**Notification types.** 01 registers these types with wl-notify and names the group whose
+give-up reaction they take (wl-notify §5.4). Types that go only to staff (reminders and tasks
+to the property manager, accountant or coordinator) are registered with reaction `none`,
+because the item stays on the user's task list. The formal notice on a bounced cheque is a
+wl-payments type that 01 marks statutory. For the types in *Portal invitations, document
+requests, signature requests*, the "request's owner" who gets the `staff_task` is the property
+manager of the lease (or of the unit's building).
+
+| Type | Sent to | Group | Statutory |
+|---|---|---|---|
+| `lease.contract_for_signature` | tenant | Portal invitations, document requests, signature requests | no |
+| `lease.renewal_window` | tenant | Portal invitations, document requests, signature requests | no |
+| `lease.notice_of_changed_terms` | tenant | Statutory notices | yes |
+| `lease.landlord_notice` | tenant | Statutory notices | yes |
+| `lease.payment_demand` | tenant | Statutory notices | yes |
+| `lease.notice_withdrawn` | tenant | Portal invitations, document requests, signature requests | no |
+| `lease.new_payee` | tenant | Invoices, statements, payment reminders | no |
+| `owner_statement.published`, `owner_statement.revision_follows`, `owner_statement.dispute_outcome` | owner | Invoices, statements, payment reminders | no |
+
 **Negative-flow settings** ([WORKFLOW.md](../WORKFLOW.md) §8 checklist)
 
 | Machine | Void | Approval rejected or returned | Cancel after work started | Document guards | Party blocked | Integration and late entry | Dispute |
 |---|---|---|---|---|---|---|---|
 | Lease | no (versions are cancelled or amended) | the version stays in its state; requester told | `cancel` before activation with money: `PRP.ACL.18`; after activation: notice, `force_terminate` | KYC documents on `submit`; signed contract on `activate` | `continue`; no new version | Ejari is manual in the MVP: the number is typed in, `PRP.RUL.02` and `PRP.RUL.13` chase it | legal case flag |
-| Invoice | no; credit note | stays `draft` | — | — | issued as usual; money in continues | e-invoicing for commercial leases from 2027 (wl-invoicing); on ASP down, invoices queue | `dispute` flag |
+| Invoice | no; credit note | stays `draft` | — | — | issued as usual; money in continues | e-invoicing for commercial leases from the client's go-live date in 2027 (wl-invoicing); only recipients in scope are transmitted, so exempt residential invoices to individuals (B2C) are not; on ASP down, invoices queue; ticket drafts issued automatically | `dispute` flag |
 | Cheque | yes, while `received` (entered in error) | — | `return` before deposit | — | received cheques still deposited | bank statement file import; late entry allowed with the deposit date as business time | — |
 | Payment, bank match | yes, with approval by another user (`PLT.ACL.09`, `PRP.ACL.16`) | — | — | — | money in continues | statement import is manual; nothing to fall back from | invoice dispute |
 | Deposit | no | stays `settlement_pending` | — | — | refund waits (`PTY.ACL.03`) | — | deductions dispute flag |

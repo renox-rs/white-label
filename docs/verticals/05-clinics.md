@@ -1,6 +1,6 @@
 # 05 — Private Clinics
 
-> Status: accepted · Reviewed: 2026-10-15 · Last updated: 2026-10-15
+> Status: accepted · Reviewed: 2026-10-15 · Last updated: 2026-10-16
 
 ## 1. Summary
 
@@ -200,7 +200,7 @@ usually global.
 7. The patient pays their share. A receipt or tax invoice is issued (`FIN.INV.01`,
    `FIN.PAY.01`, `FIN.PAY.02`).
 8. Follow-ups and recalls are scheduled (`CLN.RCL.01`).
-9. At the end of each shift or day, each receptionist hands over the cash they collected. The
+9. At the end of each day, each receptionist hands over the cash they collected at the branch. The
    clinic manager (or another user, never the holder) counts it against the cash payments the
    receptionist recorded (`FIN.CSH.01`, `FIN.ACL.05`).
 
@@ -208,12 +208,12 @@ usually global.
 
 | Situation | What happens |
 |---|---|
-| Eligibility negative, or the insurance card or policy expired, at check-in | The receptionist records the result and one coverage outcome on the visit: **re-split** to another valid policy or an updated card (the patient share is recalculated), **self-pay** with the patient's signed self-pay consent showing the estimated price (`CLN.ACL.15`), or **reschedule** so the patient can sort out cover (deposit carried to the new booking) |
-| Prior authorisation missing, expired or used up before the visit | Flagged ahead by `CLN.RUL.07` and `CLN.RUL.09`. At check-in, a service that needs authorisation goes ahead only with a valid authorisation with units left on the visit date, or as self-pay with consent (`CLN.ACL.15`), or the appointment is rescheduled while a new authorisation is requested |
+| Eligibility negative, or the insurance card or policy expired, at check-in | The receptionist records the result and one coverage outcome on the visit: **re-split** to another valid policy or an updated card (the patient share is recalculated), **self-pay** with the patient's signed self-pay consent showing the estimated price (`CLN.ACL.15`), or **reschedule** so the patient can sort out cover (deposit carried to the new booking). On a self-pay visit, a service added that is not on the signed consent needs an updated consent (new signature) before charge capture accepts it; the bill uses the self-pay price list on the visit date, not the estimate. If eligibility turns positive before `start`, the receptionist may change the outcome to *insured*; the signed consent stays on file marked *superseded*. After `start` the outcome is fixed |
+| Prior authorisation missing, expired or used up before the visit | Flagged ahead by `CLN.RUL.07` and `CLN.RUL.09`. At check-in, a service that needs authorisation goes ahead only with a valid authorisation with units left on the visit date, or as self-pay with consent (`CLN.ACL.15`), or the appointment is rescheduled while a new authorisation is requested. Units left at check-in = approved − consumed − units of the same authorisation on other visits already checked in and not yet completed or cancelled. The units a visit needs for a service are entered at check-in (default 1); a checked-in visit counts those units against the authorisation |
 | Practitioner's licence expired on the day | `check_in` and `start` are refused (`SCH.ACL.04`, legal block, no override); the appointment is reassigned to an eligible practitioner or rescheduled |
 | Patient walks out after check-in | Staff cancel with reason `walked_out`. Work done (consumables used, a service already delivered) is recorded in charge capture and billed as a normal visit; a held deposit settles it first and the remainder is refunded (`SCH.ACL.05`, `SCH.ACL.06`; §13 question 8: forfeit only on a no-show or late cancellation) |
-| Clinic stops the visit after check-in (emergency, equipment failure) | Staff cancel with a business-initiated reason; nothing is charged unless the patient accepts the work done; the deposit is refunded in full |
-| Practitioner sees the patient and decides the planned procedure is not suitable | The appointment completes with the consultation in charge capture; the procedure is not charged. A procedure deposit is refunded or applied to the consultation |
+| Clinic stops the visit after check-in (emergency, equipment failure) | Staff cancel with a business-initiated reason; nothing is charged unless the patient accepts the work done; the deposit is refunded in full. Consumables already issued stay issued (the stock was used); without acceptance the visit records them at price 0 with reason *clinic stop*, and neither the patient nor the payer is charged (no claim is created). With acceptance the work done is billed as a normal visit: the payer split applies and a draft claim is created for a payer share |
+| Practitioner sees the patient and decides the planned procedure is not suitable | The appointment completes with the consultation in charge capture (the practitioner picks the consultation service they gave from the service catalogue); the procedure is not charged. A procedure deposit is applied to the consultation's patient share first and the remainder refunded; the receptionist may refund it in full instead (consultation covered by the payer, or waived by the clinic). It is never forfeited |
 | Patient disputes a patient-share invoice | The invoice is flagged `disputed` (wl-invoicing §5.10), at the front desk or from the portal complaint form; a billing complaint ticket is linked; `FIN.RUL.01` reminders pause and `FIN.RUL.15` escalates after 14 days. Outcome `upheld` or `credited` (credit note, `FIN.ACL.07` above the limit) |
 | Card payment reversed or charged back | The invoice reopens (`InvoiceReopened`); the accountant gets the evidence task (`FIN.RUL.20`); accepting the loss needs a second person (`FIN.ACL.18`). A package bought with that payment stays active and the front desk is told to collect before the next session |
 | Refund to the patient fails | The refund goes to `failed`, is retried once after 24 hours (`FIN.RUL.21`), then paid by another method or kept as the patient's credit |
@@ -236,10 +236,10 @@ usually global.
 
 | Situation | What happens |
 |---|---|
-| The channel rejects the submission for technical reasons (format, missing field, wrong member ID) | Claim `reject_submission` back to `draft` with the channel's error codes (payer bill `submission_rejected`). It is fixed, validated and submitted again with the same number; this is not a resubmission and does not count against the payer's limit |
+| The channel rejects the submission for technical reasons (format, missing field, wrong member ID) | Claim `reject_submission` back to `draft` (never to `ready`: it must be validated again) with the channel's error codes (payer bill `submission_rejected`). It is fixed, validated and submitted again with the same number; this is not a resubmission and does not count against the payer's limit. A rejected resubmission is validated against the resubmission window, not the first-submission window |
 | First-submission window about to pass | `CLN.RUL.03` tells the billing coordinator after 7 days and the clinic manager 2 days before the window ends |
 | First-submission window missed | The claim is closed from `draft` or `ready` (`write_off`) with a reason and `FIN.ACL.14` above the limit. The payer share moves to the patient only where the payer contract allows it (`CLN.ACL.16`); otherwise it is written off. A payer that accepts late claims (payer contract setting) gets the claim with a late reason instead |
-| Claim created in error (duplicate visit, wrong payer or policy) | `void` from `draft` or `ready` (`CLN.ACL.14`); the visit's payer split is removed and the visit is re-split to the right policy, which creates a new claim |
+| Claim created in error (duplicate visit, wrong payer or policy) | `void` from `draft` or `ready` (`CLN.ACL.14`); its payer bill is voided too (`voided`, number kept, never deleted). The visit's payer split is removed and the visit is re-split to the right policy, which creates a new claim. With no right policy, the visit stays without a payer split, is flagged *coverage to resolve* and the billing coordinator gets a task; nothing moves to the patient automatically |
 | Remittance pays more than is open on a line | The excess waits until a second person approves moving it to the payer credit balance (`FIN.ACL.16`) |
 | Payer recoups money paid earlier in a later remittance | Claim `record_recoupment` (from `paid`, `partially_paid` or `written_off`), with approval (`FIN.ACL.16`); the recouped lines reopen as denied with the payer's code and `CLN.RUL.05` opens the denial task (resubmit, move to the patient, or write off). The amount is set off from the payer credit balance first |
 
@@ -275,7 +275,9 @@ expire with appointments affected (`DOC.RUL.03`).
 2. Items used in a visit are issued from the branch store (`STK.MOV.01`). Every issue of a
    lot-tracked item to a visit records its lot (scanned or picked; the earliest expiry is
    proposed). The visit cannot be completed with a lot-tracked line that has no lot, except as
-   a pending issue (below).
+   a pending issue (below). A wrong lot is corrected by editing the line before check-out;
+   after check-out, by a reversing movement and a new issue (both audited), never by editing
+   the posted movement.
 3. Near-expiry lots and low stock are flagged.
 
 **When it goes wrong**
@@ -283,7 +285,7 @@ expire with appointments affected (`DOC.RUL.03`).
 | Situation | What happens |
 |---|---|
 | Not enough stock at the branch store for a visit's consumables | Every branch store uses the negative stock policy `block`. The visit is not blocked: the short quantity becomes a *pending issue* that posts when stock arrives, with the lot *assigned on arrival*; `STK.RUL.06` tells the storekeeper and, after 24 hours, the clinic manager |
-| Supplier, manufacturer or regulator recalls a lot (an injectable, a filler, a dental material) | The clinic manager or medical director opens a recall (wl-inventory §5.7): every lot in scope is held at every branch. The trace lists each visit that used the lot and its patient (`TracePartyResolver`: visit → patient); pending issues show "lot uncertain". Notices to patients name the clinic and ask them to call, never the product's clinical details in the message body; a notice that cannot be delivered becomes a call task for the front desk. Held lots are discarded, returned to the supplier or released (second person, `STK.ACL.05`). Whether the clinic must notify DHA, DoH or MOHAP, and by when, is `⚠ open: authority (AU-20)` (wl-inventory §10) |
+| Supplier, manufacturer or regulator recalls a lot (an injectable, a filler, a dental material) | The clinic manager or medical director opens a recall (wl-inventory §5.7): every lot in scope is held at every branch. The trace lists each visit that used the lot and its patient (`TracePartyResolver`: visit → patient); pending issues show "lot uncertain" (a visit's pending issue of the recalled item whose lot is not yet assigned is listed as *possible* when it was recorded while a lot in scope had a balance at that branch store, from the lot's first receipt or transfer into the store until its balance there reached zero or it was held). Notices to patients name the clinic and ask them to call, never the product's clinical details in the message body; a notice that cannot be delivered becomes a call task for the front desk. Held lots are discarded, returned to the supplier or released (second person, `STK.ACL.05`). Whether the clinic must notify DHA, DoH or MOHAP, and by when, is `⚠ open: authority (AU-20)` (wl-inventory §10) |
 | A consumable is suspect (complaint, broken cold chain) | A stock hold with reason `quality` on the lot; the storekeeper or clinic manager decides discard, return to supplier or release (`STK.RUL.07` reminds every 24 hours) |
 
 ## 5. Capabilities
@@ -309,7 +311,7 @@ expire with appointments affected (`DOC.RUL.03`).
 | `FIN.PAY.01` | Record and allocate payments (cash, card terminal, transfer) | shared | wl-payments | MVP |
 | `FIN.PAY.02` | Online payment link or card in the portal | shared | wl-payments | MVP |
 | `FIN.REC.01` | Patient and payer receivables ageing | shared | wl-invoicing | MVP |
-| `FIN.CSH.01` | Cash custody: cash collected by each receptionist at the front desk, counted at the end of the shift or day; shortages | shared | wl-payments | MVP |
+| `FIN.CSH.01` | Cash custody: cash collected by each receptionist at the front desk, counted at the end of the day; shortages | shared | wl-payments | MVP |
 | `FIN.SUB.01` | Recurring memberships billed to patients | shared | wl-invoicing (+ renox-billing via wl-payments) | Later |
 | `FIN.PAB.01` | Supplier bills with 3-way match | shared | wl-invoicing | Later |
 | `FIN.EXT.01` | Export to accounting software | shared | wl-invoicing | Later |
@@ -370,7 +372,7 @@ expire with appointments affected (`DOC.RUL.03`).
 |---|---|---|---|
 | Patient | A person receiving care | party, MRN, date of birth, gender, nationality, Emirates ID, guardians, consents | wl-parties + apps/clinics |
 | Payer | Insurer or TPA | party, regulator payer ID, networks, contract | apps/clinics |
-| Payer contract | Commercial terms with a payer | plans, tariff per service code, copay/deductible rules, prior-auth list, submission window | apps/clinics |
+| Payer contract | Commercial terms with a payer | plans, tariff per service code, copay/deductible rules, prior-auth list, first-submission window (required: a contract without it cannot be activated), resubmission window and limit, accepts late claims, missed-window share may be billed to the patient (off; owner only, `CLN.ACL.16`) | apps/clinics |
 | Insurance policy | A patient's coverage | patient, payer, plan, member ID, card images, valid from/to | apps/clinics |
 | Practitioner | Licensed professional | employee, licence no., regulator, specialty, privileges per branch, expiry | wl-hr (+ apps/clinics) |
 | Resource | Bookable practitioner, room or equipment | type, branch, availability rules | wl-scheduling |
@@ -553,14 +555,14 @@ The money side of a claim is a payer bill in [`wl-invoicing`](../modules/wl-invo
 
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
-| `validate` | draft | ready | `claims.manage` | codes present; prior authorisation linked where required; within the first-submission window, or the payer contract accepts late claims and a late reason is recorded | — |
+| `validate` | draft | ready | `claims.manage` | codes present; prior authorisation linked where required; within the window of the attempt being prepared (resubmission count 0: the first-submission window from the visit date; count above 0, after a technical rejection of a resubmission: the resubmission window from the remittance that denied it), or the payer contract accepts late claims and a late reason is recorded | — |
 | `submit` | ready | submitted | `claims.manage` | — | submission reference and date recorded; payer bill `issue` (same number when issued again) |
 | `reject_submission` | submitted, resubmitted | draft | `claims.manage` or system (integration, Later) | rejected by the channel before adjudication (format, missing field, member ID); no remittance recorded | channel error codes and messages stored with the attempt; resubmission count unchanged; payer bill `submission_rejected`; task for the billing coordinator with the errors and the submission deadline |
 | `record_remittance` | submitted, resubmitted | paid, partially_paid, denied | `claims.manage` or system (integration, Later) | remittance lines matched; an amount above the open line goes to the payer credit balance only with approval (`FIN.ACL.16`) | payments allocated; denial reasons stored; recoupment lines on the same advice run `record_recoupment` on the earlier claims |
 | `record_recoupment` | paid, partially_paid, written_off | partially_paid, denied | `claims.manage` or system (remittance import; wl-payments `PaymentReversed`) | recouped amount not above the paid amount; payer's recoupment code; approval by a second person (`FIN.ACL.16`, not for a reversal from wl-payments) | payer bill `record_recoupment`; recouped lines reopen as denied with the payer's code; set off from the payer credit balance first; denial task (`CLN.RUL.05`) |
 | `resubmit` | partially_paid, denied | resubmitted | `claims.manage` | corrections recorded; within resubmission window and limit | payer bill `resubmit` (count + 1) |
 | `write_off` | draft, ready, partially_paid, denied | written_off | `claims.writeoff` (clinic manager) | reason given; above the limit needs the owner (`FIN.ACL.14`); from `draft` or `ready` only after the first-submission window passed and the payer does not accept late claims (`CLN.ACL.16`) | balance moved to the patient where the contract allows, otherwise written off (payer bill `transfer_to_customer` or `write_off`); a missed window is reported in the denial KPI as *not submitted in time* |
-| `void` | draft, ready | voided | `claims.manage` | reason given (duplicate, wrong payer or policy); never after `submit` (`CLN.ACL.14`, `PLT.ACL.09`) | payer split removed from the visit and its draft payer bill removed; the visit is re-split to the right policy when there is one (new claim); number kept, shown as void |
+| `void` | draft, ready | voided | `claims.manage` | reason given (duplicate, wrong payer or policy); never after `submit`: a claim with any recorded submission attempt is refused (`CLN.ACL.14`, `PLT.ACL.09`) | payer split removed from the visit; its payer bill runs `void` (`voided`, number kept); the visit is re-split to the right policy when there is one (new claim), otherwise flagged *coverage to resolve* with a task for the billing coordinator; number kept, shown as void |
 
 ```mermaid
 stateDiagram-v2
@@ -604,9 +606,9 @@ invoice), `FIN.RUL.19`–`21` (pending payment, chargeback evidence, failed refu
 |---|---|---|---|---|---|---|
 | `SCH.RUL.01` *(shared)* | N hours before an appointment | appointment `booked` or `confirmed` | send a reminder with confirm/reschedule links | N = 24, 2 | on | MVP |
 | `SCH.RUL.02` *(shared)* | M minutes after the start time | appointment not `checked_in` | appointment `mark_no_show`; notify the front desk; offer the slot to the waiting list | M = 15 | on | MVP |
-| `CLN.RUL.01` | practitioner licence expiry date reached | — | block new bookings for that practitioner and branch; notify the clinic manager and the owner / medical director; appointments already booked are in conflict through `SCH.RUL.05` | — | on | MVP |
+| `CLN.RUL.01` *(generalised by `HRM.RUL.10`)* | `QualificationExpired` (wl-hr `HRM.RUL.10`) for a practitioner licence or branch privileges | — | no second expiry scan: the block on new bookings for that practitioner and branch is `HRM.RUL.10`'s (`qualification_valid` = no); 05 sends one combined message per recipient (clinic manager of the branch, owner / medical director) naming the practitioner, the branch and the number of affected appointments, and no second owner message for the same expiry (`DOC.RUL.03`); appointments already booked are in conflict through `SCH.RUL.05` | — | on | MVP |
 | `CLN.RUL.02` | recall date reached | no future appointment for the service | invite the patient to book | dental: 6 months | on | MVP |
-| `CLN.RUL.03` | N days after a visit with an insurer share; and D days before the payer's first-submission window ends | claim still `draft` or `ready` | at N: notify the billing coordinator; at D: task for the clinic manager | N = 7 (parameter per payer; set below the payer's submission window); D = 2 | on | MVP |
+| `CLN.RUL.03` | N days after a visit with an insurer share; and D days before the payer's first-submission window ends | claim still `draft` or `ready` | at N: notify the billing coordinator; at D: task for the clinic manager | N = 7 (parameter per payer; a payer contract with N not below its submission window is refused; N = 0 is allowed, for windows of 1 day, and notifies on the first run after the visit); D = 2 | on | MVP |
 | `FIN.RUL.13` *(shared, formerly `CLN.RUL.04`)* | N days after a claim → `submitted` | no remittance | create a follow-up task for the billing coordinator | N = 45 | on | MVP |
 | `CLN.RUL.05` | claim → `denied` or `partially_paid`, including after a recoupment (`PayerRecoupmentRecorded`) | — | create a task with the resubmission deadline | — | on | MVP |
 | `SAL.RUL.02` *(shared, formerly `CLN.RUL.06`)* | N days before a package expires | sessions remaining > 0 | notify the patient | N = 14 | on | MVP |
@@ -616,7 +618,7 @@ invoice), `FIN.RUL.19`–`21` (pending payment, chargeback evidence, failed refu
 | `SCH.RUL.05` *(shared)* | daily; licence or privilege expiring or expired | an appointment within D days whose practitioner will not be licensed or privileged at its start | raise `BookingConflict` (cause `eligibility`); task for the front desk to reassign or reschedule | D = 30 days | on | MVP |
 | `SCH.RUL.06` *(shared)* | H hours before the start | appointment has an open conflict | notify the clinic manager; send the patient the change message (no reason given); no normal reminder | H = 2 | on | MVP |
 | `CLN.RUL.09` | prior authorisation → `expired`, `used` or `denied`; and D days before its validity ends | a future appointment of the patient for a service it covered, with no other valid authorisation on its date | flag the appointment; task for the billing coordinator to request a new authorisation; the front desk sees the flag at check-in | D = 3 | on | MVP |
-| `CLN.RUL.10` | N days before an insured appointment | the patient's policy ends before the appointment date, or the card on file has expired | send the patient a message with a portal link to upload the new card; flag the appointment for the front desk | N = 2 | on | MVP |
+| `CLN.RUL.10` | N days before an insured appointment | the patient's policy ends before the appointment date, or the card on file has expired | send the patient a message with a portal link to upload the new card; flag the appointment for the front desk; the flag clears when staff accept an uploaded card valid on the appointment date (an upload alone does not clear it) | N = 2 | on | MVP |
 
 Compliance-critical (owner alert through `PLT.RUL.04` to the owner / medical director when
 they fail or miss their schedule): `CLN.RUL.01`, `SCH.RUL.05`, `CLN.RUL.03` (payer
@@ -629,14 +631,30 @@ submission windows) and `DOC.RUL.03` for practitioner licences and the facility 
 | Licence kinds per service type checked by `SCH.RUL.05` and at `check_in` / `start` | practitioner licence (DHA, DoH, Sharjah Health Authority or MOHAP) and branch privileges for every service type |
 | Eligibility look-ahead D (`SCH.RUL.05`) / conflict escalation H (`SCH.RUL.06`) | 30 days / 2 hours |
 | Walk-out after check-in: deposit | applied to work done; the remainder refunded (forfeit only on no-show or late cancellation, §13 question 8) |
-| Partial price for work done when cancelled after check-in | consumables used at their price; a service only if the practitioner records it as delivered, at its normal price |
+| Partial price for work done when cancelled after check-in | consumables used at their price; a service only if the practitioner records it as delivered, at its normal price; a package session is consumed only when the package's service is recorded as delivered |
 | Invoice write-off limit (`FIN.ACL.15`) for patient balances | AED 0 (always approval) |
 | Patients may raise a billing dispute in the portal | yes, through the complaint form (category *billing*) |
 | Negative stock policy | `block` at every branch store; no `allow_consumption` (consumables are lot-tracked) |
-| Cash holders | each receptionist, per person, per shift or day |
+| Cash holders | each receptionist, per person, per day at the branch (one handover per receptionist, branch and day) |
 | Recall owner | owner / medical director; notices sent by the clinic manager |
 | Records that support `void` | claim (`draft`, `ready`); payments, receipts and appointments follow their module |
 | Late entry after an outage (business time) | check-in and check-out time, cash payments, consumables issued (paper sheets entered later) |
+| Responsible role per document kind (wl-documents §5.2) | practitioner licence and branch privileges: clinic manager of the branch; facility licence: owner / medical director; patient Emirates ID and insurance card: receptionist, with the patient (or guardian) notified as the party |
+
+**Notification types registered by 05** (wl-notify §5.4: each names its group; quiet hours
+and channels follow wl-notify):
+
+| Type | Sent by | Group | Urgency | Give-up reaction |
+|---|---|---|---|---|
+| `clinic.card_upload_request` | `CLN.RUL.10` | Portal invitations, document requests, signature requests | normal | group default; the task goes to the receptionist of the appointment's branch |
+| `clinic.recall_invite` | `CLN.RUL.02` (follow-up recall, e.g. dental check-up) | Booking confirmations and reminders | normal | group default (no task) |
+| `clinic.prior_auth_denied` | prior authorisation `deny` (patient informed, no clinical reason) | Booking confirmations and reminders | normal | group default (no task) |
+| `clinic.product_recall_notice` | recall `send_notices` (template *patient*, §4.6) | — | urgent | *Urgent types* row: call task for the front desk of the visit's branch, with an in-app alert |
+
+A message about a dependant goes to the guardian (`PTY.REL.01`); when it gives up, the other
+guardian is tried first (*Guardian messages* row), then the reaction above. Booking messages
+(reminders, reassignment, clinic cancellation) are wl-scheduling's types; balance reminders
+are wl-invoicing's.
 
 ## 8. Integrations
 
@@ -655,7 +673,9 @@ submission windows) and `DOC.RUL.03` for practitioner licences and the facility 
 
 **When a connection is down** (wl-kernel §5.14, `PLT.RUL.05`): payment gateway → take the
 deposit or payment on the card terminal or in cash and record it; SMS or WhatsApp → the
-front desk calls patients with appointments in the next 24 hours from the day list; claims
+front desk calls patients from a list per branch of `booked` and `confirmed` appointments
+starting in the next 24 hours from the moment the connection went `down`, with a *called*
+tick per row; claims
 channel → submit through the payer's portal and record the reference (the MVP way). A
 reminder that gives up (`MessageGaveUp`) needs no action; a recall notice that gives up
 becomes a call task for the front desk.

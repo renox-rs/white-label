@@ -1,6 +1,6 @@
 # 06 — Cloud Kitchens & Local F&B Chains
 
-> Status: accepted · Reviewed: 2026-10-15 · Last updated: 2026-10-15
+> Status: accepted · Reviewed: 2026-10-15 · Last updated: 2026-10-16
 
 ## 1. Summary
 
@@ -98,7 +98,7 @@ repeated here.
 | Outlet / kitchen manager | staff | Runs one kitchen: orders, staff, stock counts, wastage, checklists, daily closing | orders, stock, wastage, checklists, closing, availability | outlet |
 | Head chef / central kitchen chef | staff | Recipes, production batches, prep labels, quality | recipes, production, labels, wastage | outlet |
 | Line cook / station | field | Sees and bumps kitchen tickets for their station | `kds.work` | outlet (station) |
-| Cashier / order taker | staff | Enters aggregator and phone orders, handles pickups and counter sales, small refunds; settles table bills (Later) | orders (create, update), refunds within limit, till | outlet |
+| Cashier / order taker | staff | Enters aggregator and phone orders, handles pickups and counter sales, small refunds; settles table bills (Later) | orders (create, update and amend: `orders.manage`; cancel and line cancel: `orders.cancel`, with a manager above `SAL.ACL.01` or under `SAL.ACL.05`), refunds within limit, till | outlet |
 | Host (Later) | staff | Manages reservations and the walk-in waiting list, seats guests, assigns tables | reservations, tables (seat, move), waiting list | outlet |
 | Waiter (Later) | field | Takes table orders by course on a handheld, fires courses to the kitchen, presents and splits bills | table sessions in their section, `orders.create`, bills (present, split) | outlet (section) |
 | Storekeeper / purchaser | staff | Supplier orders, receiving, transfers, counts | purchase orders, goods received, stock movements | outlet or central kitchen |
@@ -146,7 +146,7 @@ to a section for a shift (`ASG`).
 | `FIN.ACL.18` *(shared)* | Accepting a chargeback on a direct order without contesting it needs a second person | `LIM`, `SOD` | accountant | AED 0 (always) |
 | `STK.ACL.05` *(shared)* | Releasing stock held for a recall needs a second holder of `lots.release`; a temperature hold is released by one (the chef) | `SOD` | chef, kitchen manager | listed reason: `recall` |
 | `FNB.ACL.16` | Food that comes back from a failed delivery, or was held for temperature and not released by the chef, is never sold or reused; it is logged as wastage | `STA` | outlet staff | on |
-| `FNB.ACL.17` | After a failed own-rider delivery, a prepaid order is refunded in full at once when the reason is on the outlet's side (late, rider issue, run aborted, wrong item); for a customer-side reason (unreachable, wrong address, refused) no refund is made unless the kitchen manager approves one | `STA`, `LIM` | cashier, kitchen manager | customer-side: no refund `⚠ open: lawyer (L-33)` (consumer protection) |
+| `FNB.ACL.17` | After a failed own-rider delivery, a prepaid order is refunded in full at once when the reason is on the outlet's side (rider issue, run aborted, or refused because the order was late or had the wrong item; mapping in §7.1); for a customer-side reason (unreachable, wrong address, refused for another cause, no cash) no refund is made unless the kitchen manager approves one: the cashier requests it from the cancelled order within 7 days of the cancellation (`close_failed`), full or partial up to the amount paid, and the requester never approves it (`FIN.ACL.04`) | `STA`, `LIM`, `SOD` | cashier, kitchen manager | customer-side: no refund `⚠ open: lawyer (L-33)` (consumer protection) |
 
 ## 4. Value streams
 
@@ -163,16 +163,16 @@ to a section for a shift (`ASG`).
 3. Stations bump their items. The order becomes ready and is handed to the aggregator's rider.
 4. The order closes. Theoretical ingredient consumption is posted from the recipes
    (`STK.BOM.01`, `STK.MOV.01`).
-5. Cancellations and refunds are recorded with a reason and a responsible party: kitchen,
-   aggregator or customer (`SAL.ACL.01`).
+5. Cancellations and refunds are recorded with a reason and a responsible party: *business*
+   (the kitchen), *aggregator* or *customer* (`SAL.ACL.01`; the wl-sales party list).
 
 **When it goes wrong**
 
 | Situation | What happens |
 |---|---|
 | The same aggregator order is entered twice, or the middleware sends it again | The aggregator order number is unique per channel: a second entry or import is refused and points to the existing order |
-| An item runs out after the order was accepted | The cashier changes the order on the aggregator's tablet (the aggregator owns the change; amendments are off on aggregator channels) and records the result here: the line is cancelled, or the order is cancelled with responsible party *kitchen*. `FNB.RUL.06` marks the item unavailable |
-| The aggregator's rider does not arrive | `FNB.RUL.16` alerts the kitchen manager 15 minutes after `ready`; the manager chases the aggregator on its tablet. If the aggregator cancels, the order is cancelled with responsible party *aggregator*, the food is logged as wastage, and the line is flagged for the payout reconciliation (compensation expected) |
+| An item runs out after the order was accepted | The cashier changes the order on the aggregator's tablet (the aggregator owns the change; amendments are off on aggregator channels) and records the result here: the line is cancelled, or the order is cancelled with responsible party *business*. `FNB.RUL.06` marks the item unavailable |
+| The aggregator's rider does not arrive | `FNB.RUL.16` alerts the kitchen manager 15 minutes after `ready`; the manager chases the aggregator on its tablet. If the aggregator cancels, the order is cancelled with responsible party *aggregator*, the food is logged as wastage, and the line is flagged for the payout reconciliation (compensation expected). The 45-minute task goes to the kitchen manager, whose choice *cancelled by the aggregator* is the `SAL.ACL.05` approval (outcome *scrap* for every line). A flagged order with no compensation on the payout statement is listed as an unmatched difference for the accountant (`FNB.RUL.10`) |
 | Deliverect is down | Orders are taken on the aggregator tablets and entered by quick entry (`FNB.AGG.01`) with the late-entry flag where needed. On recovery, imported orders that match a quick-entered number are refused as duplicates and listed for the kitchen manager (wl-kernel §5.14) |
 
 ### 4.2 Direct order to delivery
@@ -203,8 +203,9 @@ to a section for a shift (`ASG`).
 | Own-rider delivery fails (customer unreachable, wrong address, refuses, cannot pay) | The delivery is perishable: one attempt, no reattempt (`WRK.RUL.16`). The order goes `delivery_failed`; the rider brings the food back and the outlet logs it as wastage (`FNB.ACL.16`). Refund per `FNB.ACL.17`; nothing is collected on a cash order. Repeated failed cash orders turn cash on delivery off for that customer (`FNB.RUL.14`). A remake, if the customer still wants the food, is a new order |
 | Cash on delivery short | The rider records the cash actually received; a difference above AED 5 needs the kitchen manager's approval of who absorbs it (`WRK.ACL.09`). Otherwise the attempt fails with *refused to pay* or *no cash* |
 | Rider's run is aborted (breakdown, accident) | Food not yet delivered is handed over to another rider (`hand_over`, the receiving rider confirms orders and cash) when it can still arrive within the brand's delivery promise; otherwise the stops fail with *run aborted* and the outlet refunds in full |
-| Customer says the order never arrived | The delivery goes `under_review` (cash and billing held); the kitchen manager checks the proof. If the rider was wrong, `reverse_delivery` with approval (`WRK.ACL.10`) and a full refund; otherwise the review closes and the order stays completed |
-| Complaint after delivery: cold, late, missing or wrong item | A sales return of kind *no goods* from the order or the complaint ticket, with the category and the responsible party (business, rider, supplier, customer). Refund full or partial per line; above AED 50 the kitchen manager approves (`SAL.ACL.06`). A rider fault goes to the rider's record |
+| Customer says the order never arrived | The delivery goes `under_review` (cash and billing held); the kitchen manager checks the proof. If the rider was wrong, `reverse_delivery` with approval (`WRK.ACL.10`) and a full refund; otherwise the review closes and the order stays completed. The refund is a sales return of kind *no goods* on every line (responsible party *rider*), resolved at once; the kitchen manager's reversal approval counts as its `SAL.ACL.06` approval. On cash on delivery, nothing is refunded if no cash was handed over for the order: the same return is then resolved by credit note only (no refund payment) and the order's cash is removed from the rider's expected cash; otherwise the cashier refunds in cash or by transfer and records the method |
+| Customer refuses one item at the door (wrong item) | Partial acceptance (on in 06): the rider records the refused line with the refusal reason *wrong item*; the delivery is `delivered` and the order `completed` for the accepted lines. On a prepaid order the system raises a sales return of kind *no goods* for the refused line (category *wrong item*, party *business*): up to AED 50 it is resolved at once with *refund*, above it waits for the kitchen manager (`SAL.ACL.06`). On cash on delivery the rider collects only the accepted lines' amount, so nothing is refunded. The refused food comes back on the run and is logged as wastage (reason *refused at delivery*) on `DeliveryRefusedReceived` (`FNB.ACL.16`) |
+| Complaint after delivery: cold, late, missing or wrong item | A sales return of kind *no goods* from the order or the complaint ticket, with the category and the responsible party (business, rider, supplier, customer). Refund full or partial per line; above AED 50 the kitchen manager approves (`SAL.ACL.06`). A rider fault (responsible party *rider*, here, at `close_failed` or on a reversed delivery) adds a *rider fault* entry (order, category, amount, date) to the timeline of the rider's employee record, for the rider of the delivery's last run; the kitchen manager and HR see it, other riders do not; it never touches pay |
 | Card payment charged back | The accountant gets the evidence task with the deadline (`FIN.RUL.20`); accepting the loss needs a second person (`FIN.ACL.18`) |
 | Refund fails at the gateway | Retried once after 24 hours (`FIN.RUL.21`), then refunded by another method or kept as the customer's credit |
 | Rider's cash count is short | The handover goes `short`; a third person may recount. The shortage is recovered from the rider in cash, or written off up to AED 20 (above: area manager, `FIN.ACL.06`). Salary deduction is off (`FIN.ACL.19`, `⚠ open: lawyer (L-20)` in wl-payments) |
@@ -223,7 +224,7 @@ to a section for a shift (`ASG`).
 
 | Situation | What happens |
 |---|---|
-| Aggregator refunds a customer and deducts it from the payout | On `match`, each refund line becomes a sales return of kind *no goods* on the order (resolution *refunded by the aggregator*, no money out from the outlet) with the aggregator's reason as category and responsible party *kitchen* or *aggregator*. The order's amount refunded and the refund KPI update. A refund the kitchen did not cause is disputed with the aggregator |
+| Aggregator refunds a customer and deducts it from the payout | On `match`, each refund line becomes a sales return of kind *no goods* on the order (resolution *refunded by the channel*, no money out from the outlet) with the aggregator's reason as category and responsible party *business* or *aggregator*. The order's amount refunded and the refund KPI update. A refund the kitchen did not cause is disputed with the aggregator |
 | Wrong file imported, or a file imported twice | A statement with the same aggregator and reference is refused as a duplicate. A wrong file is voided before `settled` (`void`, `PLT.ACL.09`): matching and the expected receivable are reversed and the right file is imported |
 | An order on the statement is missing here | Listed as unmatched; the cashier enters it as a late entry with the aggregator order number, or the line is explained |
 
@@ -252,7 +253,7 @@ to a section for a shift (`ASG`).
 |---|---|
 | Goods fail the temperature or quality check at receiving | The storekeeper records accepted and rejected quantity per line. Rejection reason `temperature` needs the reading from the receiving checklist. Refused goods go back with the supplier's driver: the posted receipt dispatches a Return to supplier at once, and only the accepted quantity enters stock, the PO and the 3-way match. If the supplier bill was already posted, a supplier debit note is drafted (wl-inventory §5.6) |
 | Supplier sends the wrong quantity or a replacement | The PO is revised, or reopened for the replacement (`revise`, `reopen`); returns that stay open 30 days are chased (`STK.RUL.08`) |
-| Supplier or authority recalls an ingredient lot, or a contaminated lot is found | The head chef or owner opens a recall (wl-inventory §5.7). Every lot in scope is held at every outlet and in transit; the trace follows transfers, production batches (the batches made from the lot are held too) and orders. Direct-order customers are found through the order (`TracePartyResolver`: order → customer); aggregator and counter sales without a known customer are listed per outlet and day, and the owner decides on a public notice and tells the aggregators. Held stock is discarded, returned to the supplier or released by a second person (`STK.ACL.05`). Authority notification is `⚠ open: authority (AU-20)` (wl-inventory §10) |
+| Supplier or authority recalls an ingredient lot, or a contaminated lot is found | The head chef or owner opens a recall (wl-inventory §5.7). Every lot in scope is held at every outlet and in transit; the trace follows transfers, production batches (the batches made from the lot are held too) and orders. Sales consume ingredients by recipe without recording which lot went into the food, so an order is linked to a lot only as *possible*: when its outlet had the lot (or a batch lot made from it) on hand at the order's time, between the lot's first receipt or transfer into the outlet and the time it reached zero there or was held; never *confirmed*. Direct-order customers are found through the order (`TracePartyResolver`: order → customer; one notice per customer listing their possible orders); aggregator and counter sales without a known customer are listed per outlet and day, and the owner decides on a public notice and tells the aggregators. Held stock is discarded, returned to the supplier or released by a second person (`STK.ACL.05`). Authority notification is `⚠ open: authority (AU-20)` (wl-inventory §10) |
 | Not enough stock at an outlet for an order's recipe | Outlet kitchens use the negative stock policy `allow_consumption` for items that are not lot-tracked: the sale goes through and the next receipt covers the negative balance. Lot-tracked items and the central kitchen use `block`: the short quantity becomes a pending issue. `STK.RUL.06` alerts the storekeeper in both cases |
 
 ### 4.5 Menu management
@@ -286,9 +287,9 @@ to a section for a shift (`ASG`).
 
 | Situation | What happens |
 |---|---|
-| A fridge or freezer reads out of range | `FNB.RUL.05` opens an equipment ticket and places a stock hold (reason `temperature`) on the stock in that unit, with the reading as reference. The chef (`lots.release`) decides per line: release, discard (wastage, `STK.ACL.02`) or return to supplier, recording the reading and how long the food was out of range. Held food cannot be used meanwhile; `STK.RUL.07` reminds after 2 hours and escalates to the kitchen manager after 4 |
+| A fridge or freezer reads out of range | `FNB.RUL.05` opens an equipment ticket and places a stock hold (reason `temperature`) on the stock in that unit, with the reading as reference. The chef (`lots.release`) decides per line: release, discard (wastage, `STK.ACL.02`) or return to supplier, recording the reading and how long the food was out of range. Held food cannot be used meanwhile; stock moved into the unit while its hold is open is added to that hold as new lines (the receiving and transfer screens warn first). `STK.RUL.07` reminds after 2 hours and escalates to the kitchen manager after 4 |
 | Till cash is short at closing | The till session's variance above the threshold needs approval in wl-sales; the shortage goes to a cash handover (till session mode) and is recovered from the cashier in cash or written off up to AED 20, above that by the area manager (`FIN.ACL.06`) |
-| Internet or power outage at the outlet | `FNB.RUL.15` pauses the outlet's brands on the D2C site when its devices stop answering; staff pause aggregators on their tablets. The kitchen works from aggregator tablet printouts and paper tickets; counter sales go on paper. When the outlet is back, orders, sales, wastage and temperature readings are entered with the late-entry flag and their business time (wl-kernel §5.13); after 24 hours, or into a submitted daily closing, the area manager approves (`PLT.ACL.10`). The kitchen manager resumes the channels |
+| Internet or power outage at the outlet | `FNB.RUL.15` pauses the outlet's brands on the D2C site when its devices stop answering; staff pause aggregators on their tablets. The kitchen works from aggregator tablet printouts and paper tickets; counter sales go on paper. When the outlet is back, orders, sales, wastage and temperature readings are entered with the late-entry flag and their business time (wl-kernel §5.13); after 24 hours, or into a submitted daily closing, the area manager approves (`PLT.ACL.10`) and the closing is `reopened`. A late entry into an `approved` closing is refused; the area manager gets a task to record it as an adjustment in the next day's closing. The kitchen manager resumes the channels |
 | Food handler's health card or the PIC certificate expires | Reminders as today (`DOC.RUL.01`); on expiry the owner is alerted (compliance-critical, `DOC.RUL.03`). In the MVP no transition is blocked, as there is no shift attendance; with shift attendance (Later) an expired card flags the attendance record |
 
 ### 4.7 Dine-in order to payment (Later)
@@ -485,19 +486,34 @@ gateway confirms it, and appears here as `placed` only then.
 | `reject` | placed | rejected | `orders.manage` or system | reason given | payment refunded; customer notified |
 | `start` | accepted | preparing | system (first ticket started) | — | — |
 | `amend` | placed, accepted | same state | `orders.manage` | direct orders only (aggregator orders are changed on the aggregator); customer agreed; changed lines not started by the kitchen | sales order `amend`: price difference refunded, or charged through a payment link; kitchen tickets updated |
-| `cancel_line` | accepted, preparing | same state | `orders.cancel` | item unavailable or customer request; line not yet bumped; `SAL.ACL.05` when the kitchen started it | sales order `cancel_line`; line refunded if paid; started food logged as wastage |
+| `cancel_line` | accepted, preparing | same state | `orders.cancel` | item unavailable or customer request; line not yet bumped; at least one other line stays open (otherwise order `cancel`, wl-sales); `SAL.ACL.05` when the kitchen started it | sales order `cancel_line`; line refunded if paid; started food logged as wastage |
 | `mark_ready` | preparing | ready | system (all tickets bumped) | — | customer or rider notified |
 | `dispatch` | ready | dispatched | `orders.manage` | delivery order; rider or courier assigned | customer notified |
-| `fail_delivery` | dispatched | delivery_failed | system (`DeliveryAttemptFailed`, or a run `abort` with no hand-over) | failure reason recorded (customer unreachable, wrong address, refused, no cash, rider issue, run aborted) | one attempt only (perishable, `WRK.RUL.16`): no reattempt; food returned to the outlet (policy *return*); customer told; nothing collected on cash on delivery; `FNB.RUL.14` counts customer-side failures on cash orders |
-| `close_failed` | delivery_failed | cancelled | system (`DeliveryReturned` or `DeliveryDiscarded`) or `orders.manage` | refund decision per `FNB.ACL.17`; responsible party recorded (customer, rider, business) | refund per decision; returned food logged as wastage (`FNB.ACL.16`); event `SalesOrderCancelled` with outcome *scrap* |
+| `fail_delivery` | dispatched | delivery_failed | system (`DeliveryAttemptFailed`, or a run `abort` with no hand-over) | failure reason recorded, mapped from the wl-delivery reason (table below) | one attempt only (perishable, `WRK.RUL.16`): no reattempt; food returned to the outlet (policy *return*); customer told; nothing collected on cash on delivery; `FNB.RUL.14` counts customer-side failures on cash orders |
+| `close_failed` | delivery_failed | cancelled | system (`DeliveryReturned` or `DeliveryDiscarded`) or `orders.manage` | refund decision per `FNB.ACL.17` (the system proposes *full refund* for an outlet-side reason, *no refund* for a customer-side one, *not applicable* on cash on delivery); responsible party recorded (customer, rider, business); no `SAL.ACL.05` approval | refund per decision (everything paid: items and delivery fee); food logged as wastage once (`FNB.ACL.16`): with policy *return*, `SalesOrderCancelled` with outcome *scrap* posts it (reason *failed delivery*); with *discard*, the wastage record of the wl-delivery `discard` is the posting, the event carries its reference and no second movement is posted |
 | `complete` | ready, dispatched | completed | `orders.manage`, rider, or system | — | stock consumed by recipe; receipt sent |
-| `cancel` | placed, accepted, preparing, ready | cancelled | customer (from `placed` only, before acceptance) or `orders.cancel` | from `placed`: none; after acceptance: `SAL.ACL.01`, and `SAL.ACL.05` once the kitchen started; reason and responsible party (kitchen / aggregator / customer) | full refund from `placed`; otherwise refund if paid; prepared food logged as wastage |
+| `cancel` | placed, accepted, preparing, ready | cancelled | customer (from `placed` only, before acceptance) or `orders.cancel` | from `placed`: none; after acceptance: `SAL.ACL.01`, and `SAL.ACL.05` once the kitchen started; reason and responsible party (business / aggregator / customer) | full refund from `placed`; otherwise refund if paid; prepared food logged as wastage |
 
 A delivered order the customer says never arrived stays `completed`; the delivery goes
 `under_review` in wl-delivery and a refund follows `reverse_delivery` or a sales return of
-kind *no goods*. An order entered by mistake is cancelled with reason *entered in error*; the
-order itself does not use `void`, because its receipt may already be issued (a receipt is
+kind *no goods*. An order entered by mistake is cancelled with reason *entered in error* and responsible
+party *business*; the order itself does not use `void`, because its receipt may already be issued (a receipt is
 corrected by a sales return, `SAL.ACL.04`).
+
+**Failure reasons from wl-delivery.** 06 adds *rider issue* to the wl-delivery failure reason
+list (not counted, no reattempt), and the rider picks the customer's stated cause when
+recording *refused*: *late*, *wrong item* or *other*. The wl-delivery reason is kept on the
+order too; the kitchen manager may change the proposed responsible party with a note.
+
+| wl-delivery reason | Order failure reason | Side (`FNB.ACL.17`) | Proposed responsible party |
+|---|---|---|---|
+| not home, access denied | customer unreachable | customer | customer |
+| wrong address | wrong address | customer | customer |
+| refused, cause *other* | refused | customer | customer |
+| refused to pay, no cash | no cash | customer | customer |
+| refused, cause *late* or *wrong item* | refused (late / wrong item) | outlet | business |
+| rider issue (vehicle, lost, late beyond the promise), not attempted | rider issue | outlet | rider |
+| run aborted | run aborted | outlet | business |
 
 ```mermaid
 stateDiagram-v2
@@ -568,11 +584,11 @@ stateDiagram-v2
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
 | `start` | planned | in_production | `production.manage` | ingredients in stock; no ingredient lot on hold | ingredient lots used are recorded (lot genealogy for recalls) |
-| `finish` | in_production | produced | `production.manage` | actual yield recorded | ingredients consumed; lot created with expiry; labels printed |
+| `finish` | in_production | produced | `production.manage` | actual yield recorded | ingredients consumed; lot created with the expiry entered at `finish` (required; not later than the earliest expiry of the ingredient lots used); labels printed; if an ingredient lot used is on hold at that moment, the output lot is created on hold with the same reason and the batch runs `hold` at once |
 | `hold` | produced | on_hold | system (`LotHeld` for the batch's lot, e.g. a recall traced through an ingredient lot) | — | batch blocked at every outlet it was transferred to; chef notified |
 | `release` | on_hold | produced | system (`LotReleased`) | — | — |
 | `consume` | produced | consumed | system (stock reaches zero) | — | — |
-| `discard` | produced, on_hold | discarded | `production.manage`, or system (`LotDiscarded`) | reason; `STK.ACL.02` | wastage entry created |
+| `discard` | produced, on_hold | discarded | `production.manage` (from `produced`), or system (`LotDiscarded`) | reason; `STK.ACL.02`; from `on_hold` only through the stock hold line decision *discard*, so the hold's approvals apply (`STK.ACL.05` for a recall) | wastage entry created and posted once for the remaining quantity: from `produced` the batch posts the `wastage` movement; on `LotDiscarded` the lot's discard movement is the posting and the entry links it |
 | `cancel` | planned | — (deleted) | `production.manage` | — | — |
 
 ```mermaid
@@ -628,12 +644,12 @@ stateDiagram-v2
 
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
-| `import` | — | imported | `reconciliation.manage` | aggregator and statement reference not already imported (a duplicate is refused) | lines matched to orders by aggregator order number |
-| `match` | imported | matched | `reconciliation.manage` | no unmatched lines, or each one explained | receivable booked for the net payout; each refund line creates a sales return of kind *no goods* on its order (refunded by the aggregator, settled through the payout) with the aggregator's reason and a responsible party |
+| `import` | — | imported | `reconciliation.manage` | aggregator and statement reference (trimmed, case-insensitive) not already on a statement that is not `voided` (a duplicate is refused) | lines matched to orders by aggregator order number |
+| `match` | imported | matched | `reconciliation.manage` | no unmatched lines, or each one explained | receivable booked for the net payout; each refund line creates a sales return of kind *no goods* on its order (resolution *refunded by the channel*: no credit note, no refund payment and no `SAL.ACL.06` approval, as no money leaves the outlet; settled through the payout) with the aggregator's reason and a responsible party |
 | `dispute` | imported, matched | disputed | `reconciliation.manage` | disputed lines and reason | follow-up task created |
-| `resolve` | disputed | matched | `reconciliation.manage` | aggregator answer recorded | adjustments booked; a refund the aggregator reverses cancels its sales return |
+| `resolve` | disputed | matched | `reconciliation.manage` | aggregator answer recorded | adjustments booked; a refund the aggregator reverses runs wl-sales `reverse` on its sales return (reason *aggregator took the refund back*) |
 | `settle` | matched | settled | system (bank receipt allocated) | — | — |
-| `void` | imported, matched, disputed | voided | `reconciliation.manage` | reason given; no bank receipt allocated (`PLT.ACL.09`) | matching, sales returns from refund lines and the expected receivable reversed; number kept |
+| `void` | imported, matched, disputed | voided | `reconciliation.manage` | reason given; no bank receipt allocated (`PLT.ACL.09`) | matching and the expected receivable reversed; sales returns from refund lines run wl-sales `reverse` (reason *statement voided*) and the orders' amount refunded reduced back (no money moves); the reference may be imported again; number kept |
 
 ```mermaid
 stateDiagram-v2
@@ -663,7 +679,7 @@ stateDiagram-v2
 
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
-| `submit` | open, reopened | submitted | `closing.submit` | closing checklist completed; cash counted; business-day cut-off passed (orders up to the cut-off belong to this day) | cash variance calculated; a shortage goes to the till's cash handover (`TillSessionClosed`), recovered from the cashier or written off (`FIN.ACL.06`, AED 20) |
+| `submit` | open, reopened | submitted | `closing.submit` | closing checklist completed; cash counted; business-day cut-off passed (orders up to the cut-off belong to this day), also for an outlet that closes earlier: it submits after the cut-off, e.g. next morning (`FNB.RUL.08`) | cash variance calculated; a shortage goes to the till's cash handover (`TillSessionClosed`), recovered from the cashier or written off (`FIN.ACL.06`, AED 20) |
 | `approve` | submitted | approved | `closing.approve` | — | — |
 | `reopen` | submitted | reopened | `closing.approve` (area manager) | reason given (also: late entries after an outage, `PLT.ACL.10`) | kitchen manager notified |
 
@@ -734,7 +750,7 @@ payment refunded), `FIN.RUL.20`–`21` (chargeback evidence, failed refund), `ST
 | `FNB.RUL.02` | kitchen ticket exceeds its prep target | ticket not `done` | highlight on the kitchen display; notify kitchen manager | target per item | on | MVP |
 | `FNB.RUL.03` | daily, H hours before opening | — | open the opening checklist; if not completed at opening, notify kitchen manager | H = 1 | on | MVP |
 | `FNB.RUL.04` | every H hours while open | no temperature reading for a unit | notify kitchen manager | H = 4 (client policy; no fixed interval found in the Food Code [S5]) | on | MVP |
-| `FNB.RUL.05` | temperature reading recorded | outside the unit's range | create an equipment ticket; place a stock hold (reason `temperature`, the reading as reference) on the stock in that unit through `StockHoldService`; notify chef and kitchen manager (the chef decides each line) | range per unit (Dubai: cold ≤ 5°C, hot ≥ 60°C ✔ [S5]) | on | MVP |
+| `FNB.RUL.05` | temperature reading recorded | outside the unit's range | create an equipment ticket; place a stock hold (reason `temperature`, the reading as reference) on the stock in that unit through `StockHoldService` (each temperature-logged cold unit is a stock location of the outlet, required before the unit can log temperatures); notify chef and kitchen manager (the chef decides each line) | range per unit (Dubai: cold ≤ 5°C, hot ≥ 60°C ✔ [S5]) | on | MVP |
 | `FNB.RUL.06` | stock of a key ingredient reaches zero at an outlet | — | mark dependent menu items unavailable on D2C; add the change to the aggregator change list | — | on | MVP |
 | `FNB.RUL.07` | N hours before a production batch expires | batch `produced` | notify chef; at expiry, prompt `discard` | N = 4 | on | MVP |
 | `FNB.RUL.08` | next day at time T | daily closing still `open` | notify area manager | T = 10:00 | on | MVP |
@@ -743,8 +759,8 @@ payment refunded), `FIN.RUL.20`–`21` (chargeback evidence, failed refund), `ST
 | `FNB.RUL.11` | N minutes after a table session is `seated` | nothing fired | notify the section's waiter (Later) | N = 10 | on | Later |
 | `FNB.RUL.12` | M minutes after a bill is presented | session not `settled` | notify the outlet manager (Later) | M = 20 | on | Later |
 | `FNB.RUL.13` | table session open longer than the outlet's turn time | reservation waiting for the table | alert the host (Later) | turn time per area | on | Later |
-| `FNB.RUL.14` | own-rider delivery of a cash-on-delivery order fails for a customer-side reason (unreachable, wrong address, refused, no cash) | the customer has N such failures within D days | turn cash on delivery off for the customer (online payment only); notify the kitchen manager, who can turn it back on | N = 2, D = 90 | on | MVP |
-| `FNB.RUL.15` | an outlet's kitchen devices stop answering for N minutes during opening hours | — | pause the outlet's brands on the D2C site ("temporarily closed"); notify the kitchen manager and the area manager to pause aggregators on their tablets; when devices answer again, ask the kitchen manager to resume and to enter paper orders as late entries | N = 5 | on | MVP |
+| `FNB.RUL.14` | own-rider delivery of a cash-on-delivery order fails for a customer-side reason (unreachable, wrong address, refused, no cash) | the customer has N such failures within D days (customer = the customer party found by phone number: D2C orders need OTP login, there is no guest checkout; phone orders are linked to the party with that number, created if new) | turn cash on delivery off for the customer (online payment only); notify the kitchen manager, who can turn it back on; failures before it was last turned back on are not counted | N = 2, D = 90 | on | MVP |
+| `FNB.RUL.15` | an outlet's kitchen devices stop answering for N minutes during opening hours | — | pause the outlet's brands on the D2C site ("temporarily closed"); notify the kitchen manager and the area manager to pause aggregators on their tablets; when devices answer again, ask the kitchen manager to resume and to enter paper orders as late entries, repeated every R minutes while devices are up and channels paused (never resumed automatically) | N = 5, R = 15 | on | MVP |
 | `FNB.RUL.16` | N minutes after an aggregator order is `ready` | not picked up | notify the kitchen manager to chase the aggregator; at M minutes, task to record the outcome (picked up late, or cancelled by the aggregator with the food as wastage) | N = 15, M = 45 | on | MVP |
 | `STK.RUL.04` *(shared)* | daily at time T | stock below par for an item with a preferred supplier | draft purchase orders for the storekeeper to confirm | T = 22:00 | on | MVP |
 | `STK.RUL.07` *(shared)* | a stock hold stays open H hours | lines undecided | remind the deciders (chef); after 2H, the kitchen manager | H = 2 (module default 24; lowered for food) | on | MVP |
@@ -759,7 +775,7 @@ certificate.
 
 | Setting | 06 value |
 |---|---|
-| Perishable policy for own-rider deliveries (`WRK.RUL.16`) | *return* to the outlet; *discard* only when the rider cannot return (run aborted), with a photo |
+| Perishable policy for own-rider deliveries (`WRK.RUL.16`) | *return* to the outlet (replaces the wl-delivery default *discard* for cooked food); *discard* only when the rider cannot return (run aborted), with a photo |
 | Reuse of returned or temperature-held food | never (`FNB.ACL.16`) |
 | Refund after a failed delivery | `FNB.ACL.17` |
 | Partial acceptance at proof of delivery | on (the customer may refuse a wrong item) |
@@ -770,12 +786,26 @@ certificate.
 | Till and rider shortage write-off without approval (`FIN.ACL.06`) | AED 20 per handover |
 | Negative stock policy | outlet kitchens: `allow_consumption` for items that are not lot-tracked; central kitchen and lot-tracked items: `block` |
 | Goods receipt rejection evidence | `temperature` needs the reading from the receiving checklist |
-| Stock hold deciders (`lots.release`) | head chef and central kitchen chef; kitchen manager as deputy |
+| Stock hold deciders (`lots.release`) | the head chef of the outlet (role *Head chef / central kitchen chef*, scoped to that outlet; the central kitchen chef for the central kitchen); the outlet's kitchen manager as deputy |
 | Recall owner | owner / operations director with the head chef |
 | Business-day cut-off per outlet | 04:00 |
 | Records that support `void` | payout statement; orders are cancelled, receipts reversed by a sales return |
 | Late entry after an outage (business time) | order time, counter sale time, wastage, temperature readings, delivery proof |
+| Delivery failure reasons (wl-delivery) | adds *rider issue*; *refused* asks the cause (*late*, *wrong item*, *other*); mapping in §7.1 |
+| Online payment window before `payment_failed` | 15 minutes (wl-sales default; `FIN.RUL.19` asks the gateway at 10) |
+| Till variance needing approval (wl-sales) | AED 20, the same as the write-off limit |
+| Responsible role per document kind (wl-documents §5.2) | trade licence: owner / operations director; food permits, health cards and PIC certificate: kitchen manager of the outlet |
 | Integration fallbacks (wl-kernel §5.14) | Deliverect down → aggregator tablets and quick entry; gateway down → D2C online payment paused, cash on delivery and counter card terminal stay; SMS down → OTP login unavailable, orders by phone |
+
+**Notification types registered by 06** (wl-notify §5.4: each names its group):
+
+| Type | Sent by | Group | Urgency | Give-up reaction |
+|---|---|---|---|---|
+| `fnb.order_status` | order `accept`, `reject`, `mark_ready`, `dispatch`, `fail_delivery`, `close_failed` | Marketing, delivery tracking | normal | `none` (the order page shows the status) |
+| `fnb.login_otp` | D2C phone login | OTP and one-time security codes | — | `none` to staff; the customer sees the error on screen |
+| `fnb.recall_notice` | recall `send_notices` (template *customer*) | — | urgent | *Urgent types* row: task to the recall owner with an in-app alert; the line returns to `pending` (wl-inventory) |
+
+Receipts are wl-invoicing's types; marketing messages are wl-notify's marketing types.
 
 ## 8. Integrations
 

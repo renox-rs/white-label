@@ -254,14 +254,19 @@ settings, Subject, automations), Renox Auth (users, sessions, password, 2FA).
 `wl-parties`). Vertical contract-end events (lease terminated, engagement ended, worker
 exited) are mapped in configuration to `end`.
 
-On `PartyBlocked` the portal never shows a block, a status or a reason (`PTY.ACL.02`, no
-tipping off). The grants of the party's users stay as they are: no `suspend`, no message.
-History, documents and statements stay visible, and paying an open invoice still works
-(money in continues). Actions that start new business or move money out (new booking, order,
-request for a refund or a deposit release, signing a new agreement) are refused with one
-neutral text, the same whatever the reason: *"This request cannot be completed online. Please
-contact us."* The refusal is logged for staff with `parties.block_reason.view`. On
-`PartyUnblocked` the actions are available again.
+On `PartyBlocked` the portal never shows a block, a block status or a block reason (ordinary
+request statuses are shown as usual) (`PTY.ACL.02`, no tipping off). The grants of the
+party's users stay as they are: no `suspend`, no message. History, documents and statements
+stay visible, and paying an open invoice still works (money in continues). Actions that
+start new business or move money out (new booking, order, request for a refund or a deposit
+release, signing a new agreement) are refused with one neutral text, the same whatever the
+reason: *"This request cannot be completed online. Please contact us."* (Arabic: *"هذا الطلب
+لا يمكن إتمامه عبر الإنترنت. يرجى التواصل معنا."*). The list of refused actions is closed:
+every other portal action (a maintenance request, a complaint, a message, a document upload,
+a profile change, cancelling without a refund) works as usual; a cancellation that would produce
+a refund is money out and refused with the same text. Refused actions stay visible and are
+refused on submit, because hiding them would reveal a change. The refusal is logged for
+staff with `parties.block_reason.view`. On `PartyUnblocked` the actions are available again.
 
 **Attaches to:** request lists and document requests attach to a party and, optionally, to
 another `Subject` (e.g. an engagement period). Signed links point to any `Subject`.
@@ -328,7 +333,7 @@ logistics.
 | Request list templates | from the vertical (e.g. accounting VAT period list) |
 | Portal domain and brand | from `PLT.ORG.01`; several brands per deployment where the vertical allows (F&B) |
 | Lockout after failed logins | 5 attempts, 15 minutes |
-| Neutral text for actions refused while the party is blocked (EN/AR) | "This request cannot be completed online. Please contact us." |
+| Neutral text for actions refused while the party is blocked (EN/AR) | EN "This request cannot be completed online. Please contact us."; AR "هذا الطلب لا يمكن إتمامه عبر الإنترنت. يرجى التواصل معنا." |
 
 ## 8. Extension points
 

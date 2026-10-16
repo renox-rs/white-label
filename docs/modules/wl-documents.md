@@ -45,7 +45,7 @@ What the verticals use them for:
 
 | Entity | Description | Important fields |
 |---|---|---|
-| Document kind | A catalogue entry that says how a type of document behaves. Seeded per vertical, extended per client | key, names EN/AR, allowed subject types, required for (subject type + condition), has expiry, has number, reminder offsets (days), sensitivity class, retention rule, allowed file types, max size, portal upload allowed, needs review (always on for kinds with `blocks`, `DOC.ACL.03`), `blocks` (list of guarded `<entity>.<transition>` entries, each with mode `block` or `flag` and an optional condition on the guarded record; §5.6), override mode (`never` / `with_approval`), legal block (locked by the platform), look-ahead days, compliance-critical |
+| Document kind | A catalogue entry that says how a type of document behaves. Seeded per vertical, extended per client | key, names EN/AR, allowed subject types, required for (subject type + condition), has expiry, has number, reminder offsets (days), sensitivity class, retention rule, allowed file types, max size, portal upload allowed, needs review (always on for kinds with `blocks`, `DOC.ACL.03`), `blocks` (list of guarded `<entity>.<transition>` entries, each with mode `block` or `flag` and an optional condition on the guarded record; §5.6), override mode (`never` / `with_approval`), legal block (locked by the platform), look-ahead days, compliance-critical, responsible role (the role whose holders are the kind's *responsible staff*, §5.2) |
 | Document | One logical document attached to a record | subject (`subject_type`, `subject_id`), kind, title, number (e.g. passport no.), issue date, expiry date, issuing authority, current version, status, uploaded by, source (`upload` / `generated` / `signed`) |
 | Document version | One file of a document | document, version no., file (storage key), file name, mime type, size, checksum (SHA-256), uploaded by, uploaded at, note |
 | Document template | A layout used to generate a document | key, document kind, language mode (`en`, `ar`, `bilingual`), body, paper size, version, active |
@@ -190,6 +190,15 @@ Single-signer *click-to-accept* is the same machine with one signer and method
    per document per offset.
 3. `wl-notify` sends the reminder to the record's responsible staff and, for kinds marked
    *notify party*, to the party (e.g. a tenant's Emirates ID, a patient's insurance card).
+   The responsible staff are the users who hold the kind's responsible role in the scope
+   unit of the document's subject; for a subject without a scope (a party, e.g. a vendor),
+   in the scope units of the records the document guards or lists as `affected` (e.g. the
+   coordinator of the building where the vendor's visits are planned). For a subject
+   without a scope and without such records (e.g. an item's certificate), the vertical's
+   `ReminderSchedule` for the kind names the scope units (07: each plant that holds stock
+   of the item or has an open work order for it, every plant when none does); without one,
+   the role's holders in every scope are notified. The vertical seeds the role per kind and
+   the client may change it (§7).
 4. Other modules react to the events, for example by blocking bookings for an expired
    practitioner licence (`HRM.QUA.01`, formerly `CLN.LIC.01`) or flagging a deployment with
    an expired site pass.
@@ -241,7 +250,9 @@ guards in its `blocks` setting. Each entry is `<entity>.<transition>` with a mod
 
 - `block`: the transition is refused while the document is expired or missing;
 - `flag`: the transition runs, but the record is flagged for review (used where the fact
-  cannot be refused, e.g. a worker who did turn up and is marked present).
+  cannot be refused, e.g. a worker who did turn up and is marked present). The flag is never
+  removed: it stays as a historical fact, also after a renewal; a reviewer marks it
+  *reviewed* with a note.
 
 An entry may carry an optional **condition** on the guarded record: one field the guarded
 module exposes for conditions and a list of values (e.g. `ticket.resolve` when the ticket's
@@ -261,7 +272,7 @@ shown in the refusal message and pushed to the top of the review queue. The guar
 maps its record to the document subjects through a `BlockSubjects` provider (e.g. a run →
 its driver and its vehicle; a booking → its practitioner). For employee licences and
 permits, `wl-hr` wraps the same check with role and scope as
-`qualification_valid(employee, kind, on_date)` (`HRM.QUA.01`).
+`qualification_valid(employee, kind, on_date[, role, scope])` (`HRM.QUA.01`).
 
 **When it is checked.**
 
@@ -282,7 +293,8 @@ permits, `wl-hr` wraps the same check with role and scope as
    within the kind's look-ahead window (default 30 days), each guarded module lists, through
    its `FutureWork` provider, the planned items dated after the expiry date. They are
    added to `DocumentExpiring` as `affected`, and the record's responsible staff get one
-   message with the list. Modules flag the items (e.g. `wl-scheduling` raises
+   message with the list. A later night sends a new message only when new items appear in
+   `affected`, listing only the new ones. Modules flag the items (e.g. `wl-scheduling` raises
    `BookingConflict`).
 4. *On expiry (`DOC.RUL.03`):* on the first nightly run after the expiry date (the
    document is valid through its expiry date), `DocumentExpired` is emitted with the open
@@ -297,10 +309,11 @@ permits, `wl-hr` wraps the same check with role and scope as
 **Override (`DOC.ACL.02`).** Only for kinds whose override mode is `with_approval`. The user
 asks for an override for one record and one transition with a reason. A second user with
 `documents.block.override` in the scope approves it (`PLT.APR.01`). The override is valid for
-one use, within a time limit (default 72 hours), and is audited with both users and the
-reason. Kinds marked *legal block* (the law forbids the act without the document) have
-override mode `never`: the platform locks it, and no client setting or role can change it.
-Which kinds are legal blocks in each vertical is to be confirmed `⚠ open: lawyer (L-19)` (§10).
+one use, within a time limit (default 72 hours), only by the user who requested it, and is
+audited with both users and the reason. Kinds marked *legal block* (the law forbids the act
+without the document) have override mode `never`: the platform locks it, and no client
+setting or role can change it. Which kinds are legal blocks in each vertical is to be
+confirmed `⚠ open: lawyer (L-19)` (§10).
 
 **Example blocks the verticals set** (phase 2 sets the final values in each vertical):
 
@@ -407,8 +420,8 @@ sales order, invoice, ticket.
 | ID | When | If | Then | Parameters (default) |
 |---|---|---|---|---|
 | `DOC.RUL.01` | N days before `document.expires_on` | document `accepted` | notify the record's responsible staff and, for kinds marked *notify party*, the party | N = 90, 30, 7 (per kind) |
-| `DOC.RUL.02` | nightly | document of a kind with `blocks` expires within N days, and guarded modules report planned items dated after the expiry date | emit `DocumentExpiring` with `affected`; notify the responsible staff once with the list; modules flag the items (e.g. `BookingConflict`) | N = 30 (look-ahead, per kind) |
-| `DOC.RUL.03` | nightly, on the first run after the expiry date (the document is valid through that date) | document of a kind with `blocks` | emit `DocumentExpired` with the blocked records; notify the responsible staff; for *compliance-critical* kinds also the business owner; open a renewal task for the responsible role | — |
+| `DOC.RUL.02` | nightly (01:00 Asia/Dubai) | document of a kind with `blocks` expires within N days, and guarded modules report planned items dated after the expiry date | emit `DocumentExpiring` with `affected`; notify the responsible staff once with the list (again only for new items, listing only those); modules flag the items (e.g. `BookingConflict`) | N = 30 (look-ahead, per kind) |
+| `DOC.RUL.03` | nightly (01:00 Asia/Dubai), on the first run after the expiry date (the document is valid through that date) | document of a kind with `blocks` | emit `DocumentExpired` with the blocked records; notify the responsible staff; for *compliance-critical* kinds also the business owner; open a renewal task for the responsible role | — |
 
 ## 7. Configuration per client
 
@@ -416,7 +429,7 @@ sales order, invoice, ticket.
 |---|---|
 | Document kinds: enable, rename, add | the vertical's seeded kinds |
 | Reminder offsets per kind | 90, 30, 7 days |
-| Who is notified per kind: responsible role in scope, party | role in scope; party for identity and insurance kinds |
+| Who is notified per kind: responsible role in scope, party | the kind's responsible role (seeded per kind by the vertical) in the scope of the document's subject; for a subject without a scope, in the scopes of the guarded or `affected` records, else in the scopes the vertical names for the kind (§5.2 step 3); party for identity and insurance kinds |
 | Kinds that need review when uploaded by external users | identity, licence and financial kinds; kinds with `blocks` always, whoever uploads (`DOC.ACL.03`, not editable) |
 | Languages of generated documents | EN + AR (bilingual) for documents sent to parties; EN for internal ones |
 | Templates: wording, clauses, footer text, signatory block | the vertical's templates |
@@ -436,7 +449,8 @@ sales order, invoice, ticket.
 - **Data providers** per subject type, so templates of any module or app can read its data.
 - **Strategy traits:**
   - `ReminderSchedule`: who and when to remind for a kind, e.g. visa reminders aligned with
-    renewal lead times.
+    renewal lead times, and the scope units of the responsible role for a subject without a
+    scope (07: the plants that hold or use the item).
   - `RetentionRule`: the retention period, computed from the kind, the subject and dates
     (e.g. 5 years after the tax period, 25 years for health records).
   - `SignatureMethod`: to add a method later, e.g. UAE PASS.

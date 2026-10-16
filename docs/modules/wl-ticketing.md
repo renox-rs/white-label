@@ -43,7 +43,7 @@ complaints.
 
 | Entity | Description | Important fields |
 |---|---|---|
-| Ticket | One request or work order | number, subject (`Subject`), category, priority, requester (user, portal user or party), channel (portal, staff, email, phone, system), title, description, assignee (staff user or vendor party), visit scheduled at (optional appointment with the requester or a vendor), reassignment history with reason (e.g. `vendor_no_show`), SLA policy, response due, resolution due, hold reason, chargeable flag, confidential flag, status |
+| Ticket | One request or work order | number, subject (`Subject`), category, priority, requester (user, portal user or party), channel (portal, staff, email, phone, system), title, description, assignee (staff user or vendor party), visit scheduled at (optional appointment with the requester or a vendor), reassignment history with reason (e.g. `vendor_no_show`), SLA policy, response due, resolution due, hold reason, chargeable flag, charge lines (chargeable tickets: description, quantity, unit price, VAT category; the amount the requester is shown and the lines the invoice draft carries), planned due date (planned visits only: the due date of the maintenance plan occurrence that created the ticket, from `MaintenanceDue`; not the visit scheduled at and not an SLA due time), confidential flag, status |
 | Ticket category | A kind of ticket | name (EN/AR), default priority, SLA policy, default assignee role, requires after-photo, requires requester sign-off, confidential, chargeable by default, custom fields schema |
 | SLA policy | Time targets | per priority: response time, resolution time; business-hours calendar; pause on hold (yes/no per hold reason) |
 | Hold reason | Why work is paused | name, pauses SLA (yes/no) |
@@ -58,7 +58,7 @@ complaints.
 | Feedback request | One request for feedback, and its answer | setting, subject, party, contact, channel, sent at, expires at, rating, comment, tags, low (yes/no), follow-up ticket, status |
 | Service contract | An agreement with a vendor to maintain covered assets or subjects | number, vendor (party), issuing entity (`PLT.ENT.01`), title, start date, end date, renewal notice days, value and billing terms (fixed per period, per visit, or included), SLA policy, visit schedule (every N days/weeks/months, or a list of dates), checklist template, cost allocation basis for recharges (area, units, asset or manual %; set by the vertical), contract document, previous version, compliance contract (yes/no; yes when a covered category is compliance-critical), vendor document flag (set while a vendor document the contract's categories need is expired or missing), status |
 | Contract coverage | One asset or subject covered by a contract | contract, subject (unit, building system, asset, machine, outlet equipment), covered categories, exclusions, visit schedule override |
-| Compliance flag | A covered subject that is not compliant for a compliance-critical category | subject (building, building system, asset), category, reason (`no_contract`: a compliance contract ended with no replacement; `visit_missed`: `WRK.RUL.14`; `vendor_document_expired`: the vendor's required approval expired), contract, raised at, cleared at, cleared by (replacement contract `active`, visit resolved, document renewed) |
+| Compliance flag | A covered subject that is not compliant for a compliance-critical category | subject (building, building system, asset), category, reason (`no_contract`: a compliance contract ended with no replacement; `visit_missed`: `WRK.RUL.14`; `vendor_document_expired`: the vendor's required approval expired), contract, raised at, cleared at, cleared by (replacement contract `active`, visit resolved, document renewed; a `visit_missed` flag is cleared only by resolving that visit, not by cancelling it) |
 
 Tickets, checklist runs, tasks, feedback requests and contract coverage attach to any record through `Subject`
 ([ARCHITECTURE.md](../ARCHITECTURE.md) §5). Verticals add fields through custom fields
@@ -84,12 +84,12 @@ generalised. Two settings per category let one machine serve every vertical:
 
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
-| `assign` | open, assigned | assigned | `tickets.assign` | priority and category set; a reassignment records a reason (e.g. `vendor_no_show`, `contract_ended`) | SLA clocks start (first time; a reassignment does not restart them); assignee notified, and the previous assignee told the job was withdrawn; event `TicketAssigned` |
+| `assign` | open, assigned | assigned | `tickets.assign` | priority and category set; a reassignment records a reason (e.g. `vendor_no_show`, `contract_ended`); when the assignee is a vendor party, `BlockGuard::check(vendor, start)` passes: assigning work to a vendor counts as starting new business with it (`PTY.ACL.03`) | SLA clocks start (first time; a reassignment does not restart them); assignee notified, and the previous assignee told the job was withdrawn; event `TicketAssigned` |
 | `start` | assigned | in_progress | `tickets.work` (assignee) | — | response SLA met |
 | `hold` | in_progress | on_hold | `tickets.work` | hold reason chosen | SLA clock pauses if the reason pauses SLA |
 | `resume` | on_hold | in_progress | `tickets.work` or system | — | SLA clock resumes |
-| `resolve` | in_progress | resolved | `tickets.work` | after-photo attached when the category requires it; required custom fields filled; for a category guarded by a document kind, `document_valid(assignee, kind, today)` for the assigned vendor (`WRK.ACL.11`) | requester asked to confirm; chargeable and the category invoices on *resolve* → invoice draft through `Invoicer`; when it invoices on *close*, the requester sees the amount, no invoice yet |
-| `confirm` | resolved | closed | requester, or system (`WRK.RUL.02`) | — | chargeable and the category invoices on *close* → invoice drafted through `Invoicer`; event `TicketClosed` |
+| `resolve` | in_progress | resolved | `tickets.work` | after-photo attached when the category requires it; required custom fields filled; for a category guarded by a document kind, `document_valid(assignee, kind, today)` for the assigned vendor (`WRK.ACL.11`); a chargeable ticket has at least one charge line | requester asked to confirm; chargeable and the category invoices on *resolve* → invoice draft through `Invoicer` with the ticket's charge lines (one draft per ticket: after `reopen` the draft stays a draft, is not issued while the ticket is `in_progress`, and the next `resolve` updates it instead of creating a second); when it invoices on *close*, the requester sees the amount (the charge lines' total including VAT at each line's VAT category), no invoice yet |
+| `confirm` | resolved | closed | requester, or system (`WRK.RUL.02`) | — | chargeable and the category invoices on *close* → invoice drafted through `Invoicer` with the ticket's charge lines; event `TicketClosed` |
 | `close` | resolved | closed | `tickets.assign` | category does not require requester sign-off, or no requester (internal ticket) | as `confirm`; event `TicketClosed` |
 | `reopen` | resolved | in_progress | requester or `tickets.assign` | within the reopen window | assignee notified; resolution SLA resumes |
 | `cancel` | open, assigned, on_hold | cancelled | `tickets.assign`, or system (`WRK.RUL.18`, contract ended) | reason given | requester and assignee notified |
@@ -124,8 +124,8 @@ stateDiagram-v2
 | 05 Clinics | Patient complaints and feedback | Category *complaint* is **confidential**; no field work, `close` by staff |
 | 06 F&B | Equipment faults | As 01, with vendor assignment |
 | 07 Manufacturing | Machine breakdowns, customer complaints | Breakdown categories set the asset's downtime (promotion candidate `MFG.MNT.01`) |
-| 08 Auto | Customer warranty claims | Category *warranty*, linked to the original sale or job card; required custom field *warranty decision* (accepted or rejected) on `resolve`; accepting applies `AUT.ACL.13`. Supplier recovery stays in the vertical (`AUT.WAR.02`) |
-| 09 Manpower | Client complaints, worker grievances, absence cases | Category *grievance* is **confidential**; requester is the worker. Category *absence* is opened by `MPW.RUL.09` after N working days without attendance or approved leave |
+| 08 Auto | Customer warranty claims | Category *warranty*, linked to the original sale or job card; required custom field *warranty decision* (accepted or rejected) on `resolve`; accepting applies `AUT.ACL.13`. Supplier recovery stays in the vertical (`AUT.WAR.02`). Category *vehicle incident* (damage in the workshop's care or on a test drive) is a vertical category seeded by 08, not a platform category: linked to the job card, check-in photos compared, required custom field *liability decision* on `resolve`, decided by the branch manager, not the technician or advisor involved (`AUT.ACL.22`) |
+| 09 Manpower | Client complaints, worker grievances, absence cases | Category *grievance* is **confidential**; requester is the worker. Category *absence* is opened by `MPW.RUL.09` after N consecutive calendar days without attendance or approved leave (default 7) |
 
 `on_hold` in 01 already had configurable reasons. The extra 04 state *waiting on client* is
 a hold reason, not a new state.
@@ -134,7 +134,8 @@ a hold reason, not a new state.
 `expiring` service contract for the ticket's category (§4.6), or by a `terminated` one
 whose termination date has not yet been reached, `assign` proposes the contract's vendor and
 the contract's SLA policy replaces the category's SLA policy. The ticket records the
-contract it was handled under.
+contract it was handled under. While the contract's vendor is blocked (`PTY.ACL.03`), new
+planned visits of its plans are created unassigned and `assign` does not propose it.
 
 **Vendor no-show.** When a vendor does not start a ticket M hours after its visit scheduled
 time (elapsed clock hours, not working hours; or, without an appointment, by its response
@@ -357,9 +358,12 @@ categories (01: Civil Defence approval for fire and life safety) is expired or m
 open planned visits are flagged, `resolve` is refused on them (`WRK.ACL.11`), the covered
 subjects get a compliance flag `vendor_document_expired`, and the coordinator and the
 manager in scope are told. The vendor may still attend, but a visit completed by an
-unapproved vendor does not count. The flags clear on `DocumentAccepted` for a renewed
+unapproved vendor does not count. All flags clear on `DocumentAccepted` for a renewed
 document; otherwise the coordinator reassigns the visits (`assign`, reason
-`vendor_document_expired`) or terminates the contract.
+`vendor_document_expired`), which clears that visit's flag, or terminates the contract. A
+subject's `vendor_document_expired` flag also clears when a replacement contract covering
+that subject and category becomes `active`; when the contract ends without one, `WRK.RUL.18`
+clears it and raises `no_contract` instead.
 
 ## 5. Workflows
 
@@ -444,12 +448,13 @@ document; otherwise the coordinator reassigns the visits (`assign`, reason
 6. **When a contract ends without renewal** (`expire`, or the termination date of a
    `terminate` is reached; a contract terminated with a future date keeps covering its
    subjects until then), `WRK.RUL.18`:
-   - cancels the open planned visits due after the end date (system `cancel`, reason
-     `contract_ended`; the vendor is told);
+   - cancels the open planned visits due after the end date (`open`, `assigned` or
+     `on_hold`; system `cancel`, reason `contract_ended`; the vendor is told);
    - leaves visits already `in_progress` to finish, under the contract's terms;
    - gives the coordinator one task listing the other open visits (due on or before the end
      date, not started), to reassign each to another vendor or to staff (`assign`, reason
-     `contract_ended`) or cancel it with a reason;
+     `contract_ended`) or cancel it with a reason; a vertical may limit the task to reassign
+     for some categories (§7; 01: compliance-critical visits cannot be cancelled);
    - for a compliance contract, unless another `active` contract covers the same subject and
      category, raises the compliance flag `no_contract` on each covered subject and tells the
      manager in scope. The flag shows on the subject, on the dashboard and in the compliance
@@ -471,6 +476,7 @@ document; otherwise the coordinator reassigns the visits (`assign`, reason
 | `Checklists::start(template, subject)` and `Checklists::outcome(subject, template)` | Start a run; read the latest outcome as a guard | verticals (auto job cards, manufacturing lots, construction handover) |
 | `MaintenancePlans::create(subject, trigger, task_template)` | Create plans from other flows | verticals (auto fleet contracts, logistics vehicles) |
 | `Tasks::schedule(template, subject)` | Attach a recurring task template to a subject | verticals (accounting engagements) |
+| `Tasks::hold(source)` / `Tasks::release(source)` | Set or clear the *held* flag on every task of a source agreement (§4.4 "Held tasks") | the owning module on pause and resume (04 engagement, `wl-invoicing` subscription) |
 | `Feedback::request(subject, party)` | Ask for feedback on completed work outside the standard completing events | verticals (auto job cards, EdTech batches) |
 | `Feedback::score(scope, period)` | Satisfaction score and counts | dashboards, report library, verticals |
 | `ServiceContracts::coverage(subject, category, date)` | The contract, vendor and SLA covering a subject, if any | `TicketRouter`, `wl-invoicing` (vendor bill matching), verticals |
@@ -556,7 +562,7 @@ the register):
 | `WRK.RUL.11` | N days after feedback → `sent` | not answered | feedback `expire` | N = 7 |
 | `WRK.RUL.12` | N days before a service contract's end date | contract `active` | contract `flag_expiring`; notify the contract owner | N = the contract's renewal notice days (default 60) |
 | `WRK.RUL.13` | service contract end date passed | contract `expiring` | contract `expire`; notify the contract owner and the coordinators of covered subjects | — |
-| `WRK.RUL.14` | N days after a planned visit's due date | visit ticket not `resolved` | notify the coordinator; for compliance-critical categories (01: fire and life safety, lifts) also notify the manager in scope and raise the compliance flag `visit_missed` on the subject | N = 3 |
+| `WRK.RUL.14` | N days after a planned visit's planned due date (the Ticket field) | visit ticket not `resolved` | notify the coordinator; for compliance-critical categories (01: fire and life safety, lifts) also notify the manager in scope and raise the compliance flag `visit_missed` on the subject | N = 3 |
 | `WRK.RUL.18` | service contract → `expired`; or the termination date of a `terminated` contract reached (at once when it is today) | — | cancel open planned visits due after the end date; task for the coordinator to reassign or cancel the other open visits; for a compliance contract with no replacement covering the subject and category, raise the compliance flag `no_contract` on each covered subject and notify the manager in scope | task due 1 working day |
 | `WRK.RUL.19` | M hours after a ticket's visit scheduled time (elapsed clock hours, not working hours), or at its response due time when it has no appointment | assigned to a vendor; not started | record a vendor no-show (event `VendorNoShow`); notify the coordinator with a reassign action; for compliance-critical categories also the manager in scope | M = 2 clock hours |
 
@@ -574,8 +580,9 @@ and `WRK.RUL.10` are on when the client enables feedback. `WRK.RUL.07`–`08` be
 |---|---|
 | Ticket categories (name, default priority, SLA, assignee role, after-photo, sign-off, confidential, chargeable, invoice on *resolve* or *close*) | Seeded per vertical; invoice on *resolve* (01: *close*) |
 | Tasks: *waive a started task* allowed (§4.4) | on (04: off) |
-| Platform categories opened by other modules (seeded when the opening module is on; the vertical may rename them, not remove them) | *billing dispute* (`wl-invoicing` `dispute`; assignee: invoice owner); *labour case* (`wl-hr` settlement `dispute`; confidential, assignee role HR, visible to HR, the accountant and MD only; custom fields: forum (MoHRE, court), reference, hearing or reply dates; no requester sign-off); *delivery claim* (`wl-delivery` `open_review` and lost deliveries) |
+| Platform categories opened by other modules (seeded when the opening module is on; the vertical may rename them, not remove them; priority and SLA are the category defaults, Normal, until the vertical sets them) | *billing dispute* (`wl-invoicing` `dispute`; assignee: invoice owner, i.e. the user who ran the invoice's `issue`, or, when the system issued it or that user is no longer active, the holders of the receivables role in the invoice's scope); *labour case* (`wl-hr` settlement `dispute`; confidential, assignee role HR, visible to HR, the accountant and MD only; custom fields: forum (MoHRE, court), reference, hearing or reply dates; no requester sign-off); *delivery claim* (`wl-delivery` `open_review` and lost deliveries) |
 | Priorities and SLA matrix (response / resolution) | Urgent 2 h / 24 h · High 8 h / 3 days · Normal 1 day / 7 days · Low 3 days / 14 days, in business hours |
+| Reassignment reasons (`assign` on an assigned ticket) | `vendor_no_show`, `contract_ended`, `vendor_document_expired` (also used by the system), `workload`, `other` (with text) |
 | Hold reasons and whether each pauses the SLA | Parts (pauses), Access (pauses), Waiting on requester (pauses), Approval (does not pause) |
 | SLA warning threshold (`WRK.RUL.01`) | 80% |
 | Auto-close after resolve (`WRK.RUL.02`) | 3 days |
@@ -596,6 +603,7 @@ and `WRK.RUL.10` are on when the client enables feedback. `WRK.RUL.07`–`08` be
 | Compliance-critical categories (compliance contracts, compliance flags) | from the vertical (01: fire and life safety, lifts) |
 | Vendor document kinds that guard categories | from the vertical, through the document kind's `blocks` in `wl-documents` (01: Civil Defence approval → `ticket.resolve` and `service_contract.activate` for fire and life safety) |
 | Open visits on contract end (`WRK.RUL.18`) | cancel those due after the end date (for `terminate`: the termination date, when it is reached); task for the rest |
+| Coordinator options in the `WRK.RUL.18` task, per category | reassign or cancel (01: reassign only for compliance-critical categories, `PRP.ACL.15`) |
 | Vendor no-show after (`WRK.RUL.19`) | 2 clock hours after the visit scheduled time; at the response due time without an appointment |
 
 ## 8. Extension points

@@ -47,7 +47,9 @@ at overlapping times beyond its capacity, even when two people book at once. The
 the insert happen in one transaction that locks the resource's slot, so for the last seat
 of a group slot exactly one booker wins. Holds count towards capacity while they last: a
 `requested` hold, an unpaid self-booking hold and a waiting-list offer. The loser is told
-the slot was just taken and shown the nearest free slots, or offered the waiting list. If a
+the slot was just taken and shown the nearest free slots (up to 3, same service type and
+location, from the requested time up to the booking horizon: first the same resource, then
+the earliest of other eligible resources, by start), or offered the waiting list. If a
 payment arrives for a hold that already expired (the booking was cancelled as *unpaid*), the
 payment is always refunded in full automatically (`wl-payments` refund with reason *slot not
 available*), whether or not the slot is still free. The cancelled booking is not revived;
@@ -78,7 +80,7 @@ off per service type, so every vertical keeps its flow without new states:
 
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
-| `request` | — | requested | party (self-booking) or `bookings.manage` | service type requires acceptance; slot free | slot held for N minutes; staff notified |
+| `request` | — | requested | party (self-booking) or `bookings.manage` | service type requires acceptance; slot free | slot held for the request hold time (§7; counts towards capacity until then, §3); staff notified |
 | `book` | — | booked | `bookings.manage`, or party (self-booking without acceptance) | slot free for all required resources; resource eligible at the booking's start (`ResourceEligibility`; refused, not warned, `SCH.ACL.04`) | confirmation sent; reminders scheduled; event `BookingBooked` |
 | `accept` | requested | booked | `bookings.manage` | slot still free; resource eligible at the booking's start | party notified; reminders scheduled |
 | `decline` | requested | cancelled | `bookings.manage` | reason given | slot released; party notified |
@@ -88,7 +90,7 @@ off per service type, so every vertical keeps its flow without new states:
 | `start` | checked_in | in_progress | the resource (e.g. practitioner) or `bookings.checkin` | service type tracks in-progress; resource eligible now (`ResourceEligibility`) | — |
 | `complete` | booked, confirmed, checked_in, in_progress | completed | the resource, `bookings.manage`, or system (a vertical record completes) | start time passed; from `booked`/`confirmed` only if the service type does not require check-in | event `BookingCompleted` (packages consume a credit; charges are captured) |
 | `mark_no_show` | booked, confirmed | no_show | system (`SCH.RUL.02`), the resource, or `bookings.manage` | start time + grace period passed; no open conflict on the booking (a conflicted booking is resolved by staff, not marked no-show) | slot released; booking deposit forfeited if the service type requires one; event `BookingNoShow` |
-| `reassign` | requested, booked, confirmed | same state | `bookings.manage` | same time; new resources free and eligible (`ResourceEligibility` at the booking time) | old resources' slot released; party notified of the new resource with *accept*, *reschedule* and *cancel* links (the reason, e.g. illness, is not disclosed); a party who refuses cancels as business-initiated; conflict cleared; event `BookingReassigned` |
+| `reassign` | requested, booked, confirmed | same state | `bookings.manage` | reason code given (not shown to the party); same time; new resources free and eligible (`ResourceEligibility` at the booking time) | old resources' slot released; party notified of the new resource with *accept*, *pick another time* and *cancel* links (the reason, e.g. illness, is not disclosed); a party who cancels from that message cancels as business-initiated (§4.1 reason codes); conflict cleared; event `BookingReassigned` |
 | `cancel` | requested, booked, confirmed, checked_in, in_progress | cancelled | party (before the cancellation cut-off; never after check-in), `bookings.manage`, or system | reason code given; initiated by `party` or `business` recorded; from `checked_in`/`in_progress`: `bookings.manage` only, and the vertical record opened at check-in (visit, job card) has its work done captured or marked *none* (`SCH.ACL.06`) | slot released (`SlotReleased`) for the remaining time; deposit per `SCH.ACL.05`: business-initiated → refunded in full; party-initiated inside the forfeit window → forfeited, after first settling any work done; walk-out → applied to work done, the remainder forfeited or refunded per the walk-out setting (§7); work done is billed by the vertical (charges from the visit or job card); event `BookingCancelled` |
 
 ```mermaid
@@ -141,17 +143,27 @@ The label of `booked` can be set per client: 08 and 10 show it as *Confirmed*.
 (illness, emergency), `resource_ineligible` (licence or document expired), `site_closed`,
 `equipment_failure`, `service_not_suitable` (decided after check-in), `other`. Codes are
 mapped to *initiated by*: `party_request`, `walked_out` and `unpaid` are party-initiated;
+`walked_out` is offered only from `checked_in` or `in_progress`; `decline` records `other`
+with the staff's reason text, initiated by `business`;
 the others are business-initiated unless staff record otherwise with a note. Verticals may
-add codes.
+add codes. A party who cancels from an ordinary link or the portal gets `party_request`
+(initiated by `party`). A party who cancels from a *change message* the business sent
+(reassign, §5.5 step 3, `SCH.RUL.06`) cancels as initiated by `business`, with the reason
+code of the change (e.g. `resource_unavailable`), and the cancellation cut-off does not apply
+to that link. A cancellation is *late* (`BookingCancelled`) when it is made less than the
+deposit forfeit window before the start; for a service type without a deposit, less than
+the cancellation cut-off. Only a late party-initiated cancellation forfeits a deposit.
 
 **Cancel after check-in.** From `checked_in` or `in_progress`, only staff cancel. The
 vertical record opened at check-in decides what was done: nothing (deposit rules apply as
 above), or work done (consumables used, a part of the service delivered). Work done is
-charged through the vertical's own record at its normal price or a set *partial* price; a
-held deposit is applied to it first. For a walk-out the deposit settles work done; the
-remainder is forfeited or refunded per the walk-out setting (§7; default forfeited, 05:
-refunded). For a business-initiated cancel nothing is
-charged unless the party accepts the work done, and the deposit is refunded in full.
+charged through the vertical's own record at its normal price or a set *partial* price.
+A party who leaves is cancelled by staff with `walked_out`; a party who asks staff to stop
+is cancelled by staff with `party_request`. For both (party-initiated) the held deposit is
+applied to work done first; the remainder is forfeited or refunded per the walk-out setting
+(§7; default forfeited, 05: refunded). For a business-initiated cancel the deposit is never
+applied: it is refunded in full, and nothing is charged unless the party accepts the work
+done, which the vertical then bills separately.
 
 ### 4.2 Waiting list entry
 
@@ -204,13 +216,20 @@ future bookings is refused until those bookings are moved or cancelled.
 
 1. On the client's website or portal, the party picks a service, a branch, optionally a
    resource, and a free slot (`SCH.SLF.01`).
-2. If the service type requires acceptance, the slot is held for a few minutes and staff
-   accept or decline. Otherwise it is booked immediately.
+2. If the service type requires acceptance, the booking is `requested` and the slot is held
+   for the request hold time (§7) while staff accept or decline; after that the booking
+   stays `requested` without a hold, and `accept` checks the slot again. Otherwise it is
+   booked immediately.
 3. Where configured, a prepayment or deposit is requested through a payment link
-   (`FIN.PAY.02`). Unpaid holds expire: on `PaymentLinkExpired` or `PaymentFailed` from
-   `wl-payments` for the booking's prepayment, the system runs `cancel` with reason code
-   *unpaid* (initiated by `party`; nothing to forfeit or refund); the slot is released
-   (`SlotReleased`, offered to the waiting list) and the party is told. A payment confirmed
+   (`FIN.PAY.02`). The booking (`requested` or `booked`) holds the slot until the payment
+   link expires; the link is created with expiry = the prepayment hold time (§7), so there
+   is one timer. A `PaymentFailed` does not end the hold: the party may retry on the same
+   link until it expires ([wl-payments](wl-payments.md) §4). On `PaymentLinkExpired` for
+   the booking's prepayment, or when `SCH.RUL.04` finds the hold time passed and the booking
+   still unpaid (whichever comes first; the second finds it `cancelled` and does nothing),
+   the system runs `cancel` with reason code *unpaid* (initiated by `party`; nothing to
+   forfeit or refund); the slot is released (`SlotReleased`, offered to the waiting list)
+   and the party is told. A payment confirmed
    after that is always refunded in full automatically, even if the slot is still free; the
    party books again (§3).
 4. The party can reschedule or cancel from the link in their confirmation, until the
@@ -238,7 +257,9 @@ before the start. No fee is invoiced after the event, and it is never billed to 
    `apps/edtech` and public holidays from the `wl-kernel` business calendar arrive as
    blocks.
 3. A new block that overlaps existing bookings does not cancel them. It lists them for
-   staff to move (event `BookingConflict`, cause `block`).
+   staff to move (event `BookingConflict`, cause `block`). When the block is removed (e.g.
+   the leave is cancelled), the conflicts it caused are cleared. A booking keeps each cause
+   (`block`, `eligibility`) separately; clearing one leaves the other.
 
 ### 5.5 Resource unavailable on the day (bulk move)
 
@@ -248,24 +269,30 @@ before the start. No fee is invoiced after the event, and it is never billed to 
 2. Staff open the conflict list and act in bulk: **reassign** each booking to another
    eligible resource at the same time (`reassign`), **reschedule** to the resource's next
    free slots (offered to the party as a choice), or **cancel** as business-initiated.
+   A bulk reschedule does not move the bookings: it sends each party up to 3 next free
+   slots of the same resource (not held). The booking stays conflicted until the party picks
+   one (the party's `reschedule` then runs, re-checking the slot, and clears the conflict)
+   or staff act; `SCH.RUL.06` escalates if it is still open.
 3. Each party gets one message with the change and *accept*, *pick another time* and
-   *cancel* links. The reason is not disclosed. A party who cancels from this message gets
-   the deposit back in full.
+   *cancel* links (one message per party and day, listing all their affected bookings). The reason is not disclosed. A party who cancels from this message
+   cancels as business-initiated (§4.1 reason codes) and gets the deposit back in full.
 4. Reminders (`SCH.RUL.01`) are not sent for conflicted bookings. If a conflict is still open
-   H hours before the start, `SCH.RUL.06` escalates to the branch manager and asks the party
+   H hours before the start, `SCH.RUL.06` escalates to the branch manager (§6 *Automations*)
+   and asks the party
    to choose from the link.
 
 ### 5.6 Resource will not be eligible at the booking time
 
 1. `SCH.RUL.05` checks future bookings daily (02:00), and at once on `DocumentExpiring`,
-   `DocumentExpired`, `QualificationExpiring` or `QualificationExpired`. For each booking up to
-   D days ahead it asks `qualification_valid(employee, kind, on_date)` (`wl-hr`,
-   `HRM.QUA.01`) and `document_valid(subject, kind, on_date)` (`wl-documents`) with
-   `on_date` = **the booking's start**. On `DocumentExpiring` it does not search again: it
-   takes the event's `affected` list, which wl-documents built from this module's
-   `FutureWork` provider (bookings of the resource dated after the expiry date), and
-   applies the same D-day window, so the nightly check and the event flag the same bookings
-   once.
+   `DocumentExpired`, `QualificationExpiring` or `QualificationExpired`. For each booking up
+   to D days ahead it asks `qualification_valid(employee, kind, on_date, role, scope)`
+   (`wl-hr`, `HRM.QUA.01`; role and scope = the booking's resource role and branch, needed
+   for role-bound kinds such as practitioner licences) and `document_valid(subject, kind,
+   on_date)` (`wl-documents`) with `on_date` = **the booking's start**. On
+   `DocumentExpiring` it does not search again: it takes the event's `affected` list, which
+   wl-documents built from this module's `FutureWork` provider (bookings of the resource
+   dated after the expiry date), and applies the same D-day window, so the nightly check and
+   the event flag the same bookings once.
 2. A booking that will fail raises `BookingConflict` with cause `eligibility`. Staff reassign
    or reschedule (§5.5 steps 2–3); the party is told only that the booking changed.
 3. When the licence or document is renewed before the start, the conflict clears and the
@@ -287,7 +314,7 @@ before the start. No fee is invoiced after the event, and it is never billed to 
 | `Availability::free_slots(service_type, resources?, period, location?)` | Free slots, honouring rules, blocks, bookings, capacity and eligibility | portal self-booking; `apps/edtech` batch planning (`EDU.BAT.01`) |
 | `Availability::is_free(resources, start, end)` | Check a time without booking | `apps/edtech` sessions, verticals |
 | `Bookings::book / cancel / complete` | Create or end bookings from code | verticals (auto job card completes the booking) |
-| `Bookings::conflicts(resource?, period?) / bulk_resolve(bookings, action)` | List conflicted bookings; reassign, reschedule or cancel them in one action | front desk, verticals |
+| `Bookings::conflicts(resource?, period?) / bulk_resolve(bookings, action)` | List conflicted bookings; reassign or cancel them in one action, or send their parties a reschedule offer in one action (§5.5 step 2) | front desk, verticals |
 | `AvailabilitySource` (trait implemented by others) | Supply blocks | `wl-hr` (leave), `wl-attendance` (rosters), `apps/edtech` (sessions) |
 
 **Consumes:** `Subject`, numbering, settings and the business calendar from `wl-kernel`.
@@ -295,9 +322,10 @@ Parties from `wl-parties`. Portal pages and portal users from `wl-portal`. Notif
 from `wl-notify`. Catalogue items and packages from `wl-sales` (price, and credit consumed
 on `BookingCompleted`). Payment links and deposit refunds (`Refund` `request`) from
 `wl-payments`, with events `PaymentReceived`, `PaymentFailed` and `PaymentLinkExpired` for a
-booking's prepayment (an unpaid hold is cancelled and its slot released, §5.2). Employees
+booking's prepayment (an unpaid hold is cancelled on `PaymentLinkExpired` and its slot
+released; `PaymentFailed` keeps the hold, §5.2). Employees
 from `wl-hr` and assets from `wl-inventory` (linked resources). Guard
-`qualification_valid(employee, kind, on_date)` and events `LeaveApproved`,
+`qualification_valid(employee, kind, on_date[, role, scope])` and events `LeaveApproved`,
 `QualificationExpiring`/`QualificationExpired` from `wl-hr`; guard
 `document_valid(subject, kind, on_date)` and events `DocumentExpiring` (with `affected`
 bookings) / `DocumentExpired` from `wl-documents`; this module registers the `BlockSubjects`
@@ -354,9 +382,13 @@ Portal roles get self-booking rights on their own party.
 | `SCH.RUL.01` | N hours before a booking | booking `booked` or `confirmed` | send a reminder with confirm/reschedule/cancel links | N = 24 and 2 (05, 10); 24 (08) |
 | `SCH.RUL.02` | M minutes after the start time | booking `booked` or `confirmed` (not checked in or completed) | booking `mark_no_show`; notify the front desk; offer the slot to the waiting list | M = 15 |
 | `SCH.RUL.03` | `SlotReleased` | a waiting entry matches | waiting entry `offer` | hold H = 30 min |
-| `SCH.RUL.04` | request hold time passed | booking `requested`, prepayment required and unpaid | booking `cancel` (system) | 15 min |
+| `SCH.RUL.04` | prepayment hold time passed (same moment as the payment link's expiry, §5.2) | booking `requested` or `booked`, prepayment required and unpaid, not yet cancelled by `PaymentLinkExpired` | booking `cancel` (system, reason `unpaid`) | 15 min |
 | `SCH.RUL.05` | daily at T; `DocumentExpiring`, `DocumentExpired`, `QualificationExpiring`, `QualificationExpired` | a future booking within D days whose resource fails `qualification_valid` or `document_valid` for the service type's required kinds at the booking's start (on `DocumentExpiring`: the bookings in its `affected` list within D days); not already flagged with the same cause | raise `BookingConflict` (cause `eligibility`); task for the front desk to reassign or reschedule; clear the conflict when the item is renewed | D = 30 days; T = 02:00 Asia/Dubai |
 | `SCH.RUL.06` | H hours before the start | booking has an open conflict | notify the branch manager; send the party the change message with *accept*, *pick another time* and *cancel* links; suppress the normal reminder | H = 2 h (at once when the conflict is raised inside H) |
+
+*Branch manager* (`SCH.RUL.06`): the users who hold the vertical's manager role in the
+booking's location scope (branch, workshop, campus), resolved by the kernel
+`ApproverResolver`; if nobody holds it, the users with `bookings.manage` in that scope.
 
 `SCH.RUL.01` is in use by 05, 08 and 10 and `SCH.RUL.02` by 05 (both for 06 reservations,
 Later). `SCH.RUL.03`–`06` are module defaults: generic and on for every vertical that uses bookings.
@@ -380,6 +412,8 @@ Later). `SCH.RUL.03`–`06` are module defaults: generic and on for every vertic
 | Minimum notice for self-booking | 2 h |
 | Slot step in the calendar | 15 min |
 | Waiting list offer hold | 30 min |
+| Request hold time (`request`) | 15 min |
+| Prepayment hold for self-booking (payment link expiry; `SCH.RUL.04`) | 15 min |
 | Prepayment for self-booking | Off |
 | Label of `booked` | *Booked* (08 and 10: *Confirmed*) |
 | Booking number format | `BKG-{YYYY}-{seq}` |
@@ -398,6 +432,9 @@ Later). `SCH.RUL.03`–`06` are module defaults: generic and on for every vertic
     typed by staff; integrations (Zoom, Teams, a licensed telehealth platform) come Later.
   - `BookingDeposit`: computes the deposit for a service type and whether it is forfeited
     after a no-show or late cancellation.
+  - `WorkDoneStatus`: the vertical's `work_done_status(booking)` returning `captured`, `none`
+    or `pending` for the record opened at check-in; `cancel` from `checked_in` or
+    `in_progress` is refused while it is `pending` (`SCH.ACL.06`).
 - **Events:** all events in §6. Verticals open their own records on `BookingCheckedIn` (a
   visit, a job card), consume package credits on `BookingCompleted`, and count no-shows on
   `BookingNoShow`.

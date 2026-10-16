@@ -172,13 +172,25 @@ stateDiagram-v2
   already moved to `<state>`" on the request, still releases what the module reserved at
   submit, and tells the requester.
 - Nothing the action would have done is half-done: no money, stock or document effect runs
-  before final approval ([WORKFLOW.md](../WORKFLOW.md) §3.2, atomic). Effects a module ran at submit time (a hold on stock,
-  a reserved slot, a reserved number) are released by the same back transition.
+  before final approval ([WORKFLOW.md](../WORKFLOW.md) §3.2, atomic). Effects a module ran
+  at submit time (a hold on stock, a reserved slot, a reserved number) are undone by the
+  module's release handler, which the kernel runs on every end that is not `approve`,
+  whether or not the module has a waiting state: in the same transaction as the back
+  transition when there is one, otherwise in the same transaction as the request's own end.
 - The requester is notified with the approver's comment. The record's timeline shows the
   request and the decision.
 - `rejected` means the same action with the same payload is not resubmitted silently: a new
-  request shows the earlier rejection to the approver. `returned` invites a changed
-  resubmission.
+  request shows the earlier rejection to the approver. "The same action with the same
+  payload" means the same action key (e.g. `deposits.refund`), the same subject and an equal
+  payload snapshot (amounts compared at 2 decimals, the reason text ignored); such a request
+  is allowed, and the approver's card shows the earlier rejection (date, approver, comment).
+  `returned` invites a changed resubmission; an unchanged one is allowed too, and the
+  approver sees the return comment the same way. The requester's "fix and resubmit" task
+  closes when a linked resubmission is submitted, or when the requester closes it with "not
+  resubmitting".
+- When a request ends by `withdraw`, `expire` or `fail`, the subject's history shows a fixed
+  reason: "approval withdrawn by requester", "approval expired" or "approval failed: <guard
+  message>".
 
 **Vertical mapping**
 
@@ -365,9 +377,15 @@ the platform (a kitchen display, a till, a scanner). For a device, the health si
 heartbeat: each heartbeat counts as a successful call and a missed heartbeat as a failed
 one, so `degrade`, `go_down` and `recover` work the same way. A device connection belongs to
 a scope (outlet, branch, site) and may have an active window (e.g. opening hours); outside
-the window silence is not counted. One connection may group the devices of a scope (down
-when none of them answers). Consumers react to `IntegrationStatusChanged` (06: `FNB.RUL.15`
-pauses the outlet's brands on the website when its kitchen devices go silent for 5 minutes).
+the window silence is not counted, and a connection that is `down` when its window closes
+stays `down` until a heartbeat arrives but sends no new alerts until the window opens again. A heartbeat is missed when none arrives within one
+interval plus half an interval of the previous one (or of the window start); that missed
+heartbeat is the failed call that runs `degrade`. For a device, `failed since` is the time
+of the last heartbeat (or the window start, if the last heartbeat was before it), so "down
+after 5 minutes" means 5 minutes of silence. One connection may group the devices of a scope
+(down when none of them answers). Consumers react to `IntegrationStatusChanged` (06:
+`FNB.RUL.15` pauses the outlet's brands on the website when its kitchen devices go silent
+for 5 minutes).
 
 Legal entities have no lifecycle beyond `active` / `archived`. An entity with issued documents
 is archived, never deleted.
@@ -518,9 +536,12 @@ adjustment).
    a terminal state `voided` (tone neutral), and a reverse handler for each effect the record
    had (ledger posting, payment allocation, stock move, reserved slot, sent task).
 2. The user runs `void` with a reason. `PLT.ACL.09` decides whether it is allowed and whether
-   it needs approval.
+   it needs approval. The approver is any user holding the void permission for that entity in
+   the record's scope, except the requester (one step, SoD).
 3. In one transaction the kernel runs the module's reverse handlers, moves the record to
-   `voided` and writes a Void record. The record **keeps its number**; a gapless series shows
+   `voided` and writes a Void record. If a reverse handler reports that its posting falls in a
+   locked period, the void is refused with that message, and the module's own correction
+   document is used instead. The record **keeps its number**; a gapless series shows
    the number as void and never reuses it.
 4. Voided records stay visible (struck through), are excluded from totals and reports, and
    cannot be edited or reopened. Event `RecordVoided`.
@@ -534,10 +555,14 @@ The MVP is online only. When a site loses internet or power, staff keep working 
 (tickets, POS slips, attendance sheets, delivery notes) and enter the records later.
 
 1. A module opts in to the late-entry check for an entity and names its business-time field
-   (e.g. order time, check-in time, POD time).
+   (e.g. order time, check-in time, POD time) and, optionally, one parent-subject field: the
+   `Subject` reference of the record the entry belongs to (e.g. `booking` on a check-in,
+   `order` on a POD).
 2. When the business time is more than M minutes before the entry time, the record is
    flagged **late entry**. The user gives a reason and may link an outage reference (an
-   integration `down` period, or a manual "outage at branch X from–to" note).
+   integration `down` period, or a manual "outage at branch X from–to" note). Changing the
+   business-time field of an existing record is checked the same way, against the time of the
+   edit.
 3. Up to N hours late, the flag and reason are enough. Beyond N hours, or for a business time
    in a closed period (locked timesheet, locked VAT period, closed payroll), the entry needs
    approval (`PLT.ACL.10`) or is refused when the module's period lock forbids it.
@@ -547,26 +572,41 @@ The MVP is online only. When a site loses internet or power, staff keep working 
    "no-show".
 5. Automations that already ran before the late record was entered (e.g. a no-show marked at
    09:15 for a check-in entered at 10:30 with business time 09:05) are not undone by the
-   kernel. The kernel lists on the late entry the rule runs on the same subject (or on the
-   record the late entry belongs to, e.g. the booking of a check-in) whose trigger time falls
+   kernel. The kernel lists on the late entry the rule runs whose subject is the late record
+   itself or the record named in its parent-subject field (point 1) and whose trigger time falls
    between the business time and the entry time, as "already fired, review"; the module that
    owns the affected record corrects its own state, by its own transitions, and the entry
    appears with these runs in the `PLT.RUL.06` digest.
-6. `PLT.RUL.06` sends managers a digest of late entries and voids in their scope.
+6. `PLT.RUL.06` sends managers a digest of late entries and voids in their scope. A manager
+   here is a user who holds `late_entries.approve` in a scope unit of the records (the
+   approvers of `PLT.ACL.10`); the digest also lists, under each late entry, the rule runs it
+   lists as "already fired, review". It covers 07:00 the previous day to 07:00 today
+   (Asia/Dubai), by the Void record time and the entry time; a manager with nothing in the
+   period gets no digest.
 
 ### 5.14 Integration down
 
 1. Each module registers its integration connections (external systems and site devices,
-   §4.5 connection kinds) with the screens they affect and a manual fallback (e.g. take card payments on the standalone terminal and record them later;
-   accept aggregator orders on the aggregator tablet; file on the regulator portal by hand).
-2. Outbound work is never lost: calls go through the queue and are retried with backoff.
-   After the limit, the connection goes `down` (`PLT.RUL.05`).
+   §4.5 connection kinds) with the screens they affect and a manual fallback (e.g. take card
+   payments on the standalone terminal and record them later; accept aggregator orders on
+   the aggregator tablet; file on the regulator portal by hand).
+2. Outbound work is never lost: calls go through the queue and are retried with backoff
+   (waits of 1, 2, 4 and 8 minutes between attempts, then 15 minutes) with no attempt limit: a
+   queued item is only removed when it is sent or reported obsolete by its module. "The
+   limit" is time, not attempts: after N minutes without a successful call the connection
+   goes `down` (`PLT.RUL.05`); retries continue while it is `down`.
 3. While down, affected screens show a banner with the fallback instructions; users record
    work done by hand with the late-entry flag ([§5.13](#513-late-entry-after-an-outage)).
-4. On `recover`, the queue is drained in order (late sync). Items done manually while down
-   are matched to the late sync results; mismatches open a reconciliation task for the
-   owner role. Duplicates are prevented by the module's natural key (e.g. external order
-   number).
+4. On `recover`, the queue is drained in order (late sync). `recover` commits the move to
+   `up` first; the drain then runs as queued work. A call that fails during the drain is a
+   failed call of an `up` connection: `degrade` runs and the rest of the queue waits.
+   Before each queued item is sent, its module's send handler is asked whether it is still
+   due; an item whose record changed while queued (voided, cancelled) is reported obsolete,
+   is not sent and is listed on the reconciliation task.
+   Items done manually while down are matched to the late sync results; mismatches open a
+   reconciliation task for the owner role. Duplicates are prevented by the module's natural
+   key (e.g. external order number, the gateway's transaction reference for a card
+   payment), which the module declares when it registers the connection.
 5. Inbound data that arrives late (a gateway callback, an aggregator order) is processed with
    its own business time, under the same late-entry rules.
 
@@ -578,6 +618,10 @@ The MVP is online only. When a site loses internet or power, staff keep working 
    in the daily digest (`PLT.RUL.03`), and opens a task for the owner role.
 3. The task closes when the rule has run successfully for the missed occurrence, or when the
    owner records how the duty was met by hand.
+4. A run is missed when a scheduler check (every 15 minutes, at :00, :15, :30 and :45
+   Asia/Dubai) finds an occurrence of a compliance-critical *Schedule* or *Date reached* rule
+   whose planned time is 60 minutes or more in the past with no rule run. "At once" means at
+   that check, and each occurrence counts as missed once.
 
 ## 6. Interfaces to other modules
 

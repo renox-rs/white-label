@@ -51,7 +51,7 @@ Every document here depends on `PLT.ENT.01` (legal entities and per-entity seque
 | Rate card line | One price rule | service or role key, pricing model (see below), dimensions (zone, weight band, route, vehicle class, shift…), unit (hour, day, month, item, trip, kg, pallet, CBM, panel), price or price table, price rule (list − %, cost + %), multipliers (overtime, public holiday, rest day, night), minimum quantity or charge (e.g. minimum hours per shift), surcharges (fuel, remote area, COD fee as % of the collected amount with a minimum), default VAT category |
 | Usage record | One priced transaction waiting to be billed | party, issuing entity (from the source, e.g. the worker's sponsoring entity in 09), source (`Subject`: shipment, timesheet entry, job card, storage day), date, rate card line, quantity, amount, VAT category, cost object, billed invoice |
 | Disbursement | A cost paid for a client and recharged at cost | party, source job (`Subject`), payee, supplier bill or receipt (attached), amount, currency, VATP013 checklist (third-party invoice in the client's name, client's authorisation, exact amount without markup), treatment (`out_of_scope` only when every condition is checked, otherwise a reimbursement with the VAT of the main supply), billed invoice |
-| Invoice | A tax invoice, simplified tax invoice or commercial invoice | number, kind, issuing entity, issuer snapshot, party (with TRN), billing address, lines, currency, exchange rate, totals per VAT category, AED VAT total, issue date, due date, source (`Subject`), customer PO reference (required when the contract says so, e.g. 08 fleet PO per job or per month), receivable shares (customer and payers, `FIN.TPP.01`), balance, dispute (`disputed` flag, reason, disputed amount, ticket, raised by and at), write-off (amount, reason code, approval, customer notice date, recovered amount), e-invoice status (from the latest transmission), status |
+| Invoice | A tax invoice, simplified tax invoice or commercial invoice | number, kind, issuing entity, issuer snapshot, party (with TRN), billing address, lines, currency, exchange rate, totals per VAT category, AED VAT total, issue date, due date, source (`Subject`), customer PO reference (required when the contract says so, e.g. 08 fleet PO per job or per month), receivable shares (customer and payers, `FIN.TPP.01`), balance, dispute (`disputed` flag, reason, disputed amount, disputed lines (optional), ticket, raised by and at), write-off (amount, reason code, approval, customer notice date, recovered amount), e-invoice status (from the latest transmission), owner (see below), status |
 | Invoice line | One billed amount | description, quantity, unit price, discount, VAT category, VAT amount, zero-rating evidence (documents, when the line's `VatRule` requires it), payer share (`FIN.TPP.01`), cost object, origin (charge, usage record, subscription cycle, disbursement, sales order line, payer split line) |
 | Credit note | A tax credit note against an invoice | number, invoice, issuing entity (always the invoice's), issuer snapshot, lines, reason, totals, status |
 | Cost object | Anything costs and revenue are collected on | `Subject` (project, job, deployment, employee, work order, vehicle, unit), budget lines |
@@ -59,7 +59,7 @@ Every document here depends on `PLT.ENT.01` (legal entities and per-entity seque
 | Cost entry | A committed or actual cost | cost object, cost code, kind (committed / actual), amount, source (`Subject`: PO, goods received, timesheet, supplier bill, stock issue, stock wastage or adjustment, purchase price variance, landed cost variance, expense claim, cost amortisation) |
 | Cost amortisation | A cost spread evenly over a term, for margin reporting only (09 §13 question 5) | source cost (supplier bill line, expense line), holder (`Subject`: employee, vehicle), cost code, term in months (default 24), start, monthly amount, target rule (the holder's active cost objects each month, e.g. the worker's deployments), amount remaining |
 | E-invoice transmission | One sending of an invoice or credit note to the accredited service provider (ASP) | document (invoice or credit note), issuing entity, ASP adapter, recipient identifier (Peppol ID, TRN), payload (structured data and hash), attempt count, submitted at, ASP reference, response at, error codes and messages, replaced by (the credit note and new invoice, when corrected), status |
-| Supplier bill | A bill from a supplier | supplier, receiving entity (defaults from the PO), number, date, due date, lines, VAT, currency, PO and goods-received references, service contract or ticket (wl-ticketing, for vendor bills without a PO), landed cost (per line: a freight, duty or clearing line coded to a wl-inventory landed cost), match result, allocation basis (area, number of units, asset, manual %; default from the service contract), cost allocations, debit notes applied, status |
+| Supplier bill | A bill from a supplier | supplier, receiving entity (defaults from the PO), number, date, due date, lines (with the service date or period for contract and ticket work), VAT, currency, PO and goods-received references, service contract or ticket (wl-ticketing, for vendor bills without a PO), landed cost (per line: a freight, duty or clearing line coded to a wl-inventory landed cost of the bill's receiving entity; a landed cost of another entity is refused at `submit`), match result, allocation basis (area, number of units, asset, manual %; default from the service contract), cost allocations, debit notes applied, status |
 | Supplier debit note | The business's claim on a supplier against a supplier bill: goods returned, rejected after billing, short delivery or a price difference | number (receiving entity's own sequence), receiving entity, supplier, supplier bill (empty while the bill has not arrived), source (`Subject`: wl-inventory *Return to supplier*, or manual), lines (bill line, quantity, unit price, VAT category, VAT amount, cost object), reason code, totals, supplier's tax credit note (number, date, file, once received), settlement (set off against the bill, against a later bill, or refund received through wl-payments), status |
 | Exchange rate | Rate for a currency on a date | currency, date, rate to AED, source (manual or feed) |
 | Reminder log | Reminders sent for an invoice | invoice, rule, step, channel, sent at |
@@ -70,8 +70,16 @@ Every document here depends on `PLT.ENT.01` (legal entities and per-entity seque
 | Payer agreement | Terms with a third-party payer (`FIN.TPP.01`) | payer (party: insurer, TPA), source contract (`Subject`: clinic payer contract, insurer terms), VAT recipient (customer or payer), rate card (optional, `FIN.RAT.01`), payment terms, resubmission window and limit, write-off limit, invoice wording (approval reference, claim number, excess line), remittance import preset, active |
 | Payer split | How one billable source is shared between the customer and a payer | source (`Subject`: visit, job card), payer agreement, payer reference (prior authorisation, approval or LPO, claim number), lines (source line, customer share, payer share, basis: copay %, deductible, excess, non-covered, approved amount) |
 | Payer bill | What one payer is asked to pay for one source | number, issuing entity, payer, payer agreement, source (`Subject`: clinic claim, insurance claim), payer split, customer, VAT recipient, tax document (the payer's tax invoice when the payer is the recipient; otherwise the customer's tax invoice that carries the payer share), lines (claimed, paid, denied, recouped, written off, transferred), resubmission count, submission errors (codes, messages, date; kept per attempt), balance, status |
-| Remittance advice | A payer's statement of what it paid per line | payer, date, reference, total, payment (wl-payments), file (when imported), lines (payer bill line, paid, denied, adjustment, recoupment of an earlier bill's line, overpayment, denial or recoupment code and reason) |
+| Remittance advice | A payer's statement of what it paid per line | payer, date, reference (unique per payer; an import with a reference already recorded is refused), total, payment (wl-payments), file (when imported), lines (payer bill line, paid, denied, adjustment, recoupment of an earlier bill's line, overpayment, denial or recoupment code and reason) |
 | Payer credit balance | Money a payer has paid beyond what it owes; the amount sits in the payer's party credit balance in wl-payments, and the movements are recorded here | payer, entity, amount, movements (overpayment in, recoupment set off, refund to the payer through wl-payments), approval per movement |
+
+**Invoice owner.** The user who ran the invoice's `issue` is its owner and receives the
+tasks and notices this module addresses to "the invoice owner" (disputes, e-invoice
+rejections, reopened invoices). When the system issued the invoice (a subscription cycle, a
+vertical automation) or the owner is no longer active, the owner is the receivables role:
+the holders of `invoices.issue` in the invoice's scope (issuing entity and, where the
+vertical scopes invoices, branch or site). Only the owner is stored; the fallback is resolved
+when a task or notice is sent.
 
 **VAT categories** (per line): `standard` (5%), `zero_rated`, `exempt`, `out_of_scope`
 (e.g. disbursements recharged at cost), `reverse_charge`. ✔ Each vertical's §9 states which
@@ -222,9 +230,9 @@ of a written-off invoice, the invoice returns to `written_off`, not to `overdue`
 
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
-| `issue` | draft | issued | `invoices.issue` | every line has a VAT category; a `zero_rated` line whose `VatRule` needs evidence has it attached (03: bill of lading or air waybill and customs declaration for an international job); issuing entity set and, when VAT applies, VAT-registered with a TRN; customer TRN set for a B2B tax invoice where required; customer PO reference set when the contract requires one; exchange rate set for a foreign currency; date of supply not in a locked VAT period of the entity (`FIN.ACL.09`); kind is not `simplified_tax_invoice` once e-invoicing applies to the entity; when the recipient is in e-invoicing scope, the recipient identifier is set | number assigned from the entity's sequence; issuer snapshot copied; PDF generated (`DOC.GEN.01`); party notified; origins marked billed; e-invoice transmission `queued` when in scope; event `InvoiceIssued` |
+| `issue` | draft | issued | `invoices.issue` | every line has a VAT category; a `zero_rated` line whose `VatRule` needs evidence has it attached (03: bill of lading or air waybill and customs declaration for an international job); issuing entity set and, when VAT applies, VAT-registered with a TRN; customer TRN set for a B2B tax invoice where required; customer PO reference set when the contract requires one; exchange rate set for a foreign currency; date of supply not in a locked VAT period of the entity (`FIN.ACL.09`); kind is not `simplified_tax_invoice` once e-invoicing applies to the entity; when the recipient is in e-invoicing scope, the party has a recipient identifier (wl-parties) | number assigned from the entity's sequence; issuer snapshot copied; PDF generated (`DOC.GEN.01`); party notified; origins marked billed; e-invoice transmission `queued` when in scope; event `InvoiceIssued` |
 | `allocate` | issued, partially_paid, overdue | partially_paid, paid | system (payment or credit note allocated) | — | `paid` when the balance reaches zero; event `InvoicePaid` |
-| `unallocate` | paid, partially_paid, overdue, written_off | issued, partially_paid, overdue, written_off | system (wl-payments payment `reverse`, consumed as `PaymentReversed`; or an allocation moved to another document) | amount not above what is allocated to this invoice; on a `written_off` invoice, or a `paid` one that left `written_off` through `recover`, only an allocation made through `recover` | balance increased by the amount; new state by balance and due date: `overdue` if the due date has passed, otherwise `issued` when nothing remains allocated, else `partially_paid`; reminders (`FIN.RUL.01`) resume at the step matching the days overdue. A reversed recovery instead reduces the recovered amount and the invoice goes back to, or stays, `written_off` (never `overdue`; reminders stay stopped); the VAT share of the amount is undone on the relief side: a pending or proposed `bad_debt_relief` is increased again, an open `bad_debt_recovery` adjustment is reduced, and one already included gets a `bad_debt_relief` adjustment for that VAT share in the next open period `⚠ open: accountant (A-09)`; accountant notified. In every case the invoice owner and the receivables role are notified with the reversal reason; the issued document and its VAT are unchanged; event `InvoiceReopened` |
+| `unallocate` | paid, partially_paid, overdue, written_off | issued, partially_paid, overdue, written_off | system (wl-payments payment `reverse`, consumed as `PaymentReversed`; or an allocation moved to another document) | amount not above what is allocated to this invoice; on a `written_off` invoice, or a `paid` one that left `written_off` through `recover`, only an allocation made through `recover` | balance increased by the amount; new state by balance and due date: `overdue` if the due date has passed, otherwise `issued` when nothing remains allocated, else `partially_paid`; reminders (`FIN.RUL.01`) resume at the step matching the days overdue. A reversed recovery instead reduces the recovered amount and the invoice goes back to, or stays, `written_off` (never `overdue`; reminders stay stopped); the VAT share of the amount is undone on the relief side: a pending or proposed `bad_debt_relief` is increased again, an open `bad_debt_recovery` adjustment is reduced, and one already included gets a `bad_debt_relief` adjustment for that VAT share, created as `proposed` on the entity's `open` VAT summary because its conditions were met when the relief was first claimed (as `pending` while the entity has no `open` summary, so `FIN.RUL.14` proposes it later) `⚠ open: accountant (A-09)`; accountant notified. In every case the invoice owner and the receivables role are notified with the reversal reason; the issued document and its VAT are unchanged; event `InvoiceReopened` |
 | `mark_overdue` | issued, partially_paid | overdue | system (`FIN.RUL.02`) | due date passed; balance > 0 | event `InvoiceOverdue` |
 | `credit` | issued, overdue | credited | `invoices.credit` | no payments allocated; reason given | full credit note issued; origins released for re-billing if chosen; event `InvoiceCredited` |
 | `write_off` | issued, partially_paid, overdue | written_off | `invoices.write_off` | balance > 0; reason code given (insolvent, untraceable, uneconomic to pursue, settlement agreed, other with text); not `disputed`; `FIN.ACL.15`: above the limit an approval request (`PLT.APR.01`), approver ≠ requester; at final approval the balance still equals the amount in the request, otherwise the request `fail`s and the requester submits again for the new balance | open balance recorded as the write-off amount (no credit note: the supply stood and the tax invoice stays valid); reminders stop; customer write-off notice generated (`DOC.GEN.01`) and sent (wl-notify) when configured, its date recorded; a `bad_debt_relief` VAT adjustment is created as pending for the VAT share of the written-off amount, and `FIN.RUL.14` proposes it once the conditions are met (§10); write-off exported to accounting; event `InvoiceWrittenOff` |
@@ -272,8 +280,8 @@ from `issued` to `overdue`. The flag pauses chasing without changing the lifecyc
 
 | Action | Allowed in | By | Guards | Effects |
 |---|---|---|---|---|
-| `dispute` | issued, partially_paid, overdue | `invoices.dispute`, the party in the portal when allowed, or system (wl-delivery `DeliveryDisputed` for the invoice of the delivery's source; reason *delivery disputed*, disputed amount = the delivery's lines, the delivery's ticket linked) | reason given; disputed amount ≤ balance; not already `disputed` | `disputed` set; a ticket is linked or opened (wl-ticketing `WRK.TKT.01`, category billing dispute) and assigned to the invoice owner; `FIN.RUL.01` reminders paused; the invoice is left out of overdue escalation (subscription `mark_past_due` and `suspend`, collection tasks, `write_off`); `FIN.RUL.02` still marks it `overdue` because the due date is a fact; ageing shows disputed amounts in their own column; party gets an acknowledgement; event `InvoiceDisputed` |
-| `resolve_dispute` | any state while `disputed` | `invoices.dispute` (outcome `credited` also needs `invoices.credit`), or system (`DeliveryDisputeClosed` with outcome *upheld* → `upheld`) | outcome `upheld` (the invoice stands) or `credited` (a credit note for the agreed amount, through `credit` or a partial credit note; above `FIN.ACL.07` an approval request); for hours billed from timesheets, `credited` names the adjustment timesheet (origin `client_dispute`) that carries the agreed hours; resolution note | `disputed` cleared; linked ticket resolved; party notified of the outcome with the credit note if any; `upheld`: reminders resume after the grace period, the due date is not moved; event `InvoiceDisputeResolved` (outcome, credited amount) |
+| `dispute` | issued, partially_paid, overdue | `invoices.dispute`, the party in the portal when allowed, or system (wl-delivery `DeliveryDisputed`, for each issued invoice that bills lines of the delivery; reason *delivery disputed*, disputed amount = that invoice's amount for the delivery's lines, capped at its balance, the delivery's ticket linked) | reason given; disputed amount ≤ balance; disputed lines optional: when given, lines of this invoice, and the disputed amount defaults to their amount (still editable, ≤ balance); not already `disputed` (for the system, an invoice already `disputed` is not flagged again: the delivery's ticket is linked to the open dispute with a note) | `disputed` set; a ticket is linked or opened (wl-ticketing `WRK.TKT.01`, category billing dispute) and assigned to the invoice owner; `FIN.RUL.01` reminders paused; the invoice is left out of overdue escalation (subscription `mark_past_due` and `suspend`, collection tasks, `write_off`); `FIN.RUL.02` still marks it `overdue` because the due date is a fact; ageing shows disputed amounts in their own column; disputed lines (if any) marked on the invoice and in the ticket; party gets an acknowledgement; event `InvoiceDisputed` |
+| `resolve_dispute` | any state while `disputed` | `invoices.dispute` (outcome `credited` also needs `invoices.credit`), or system (`DeliveryDisputeClosed` with outcome *upheld* → `upheld`, only for a dispute the system raised for that delivery) | outcome `upheld` (the invoice stands) or `credited` (a credit note for the agreed amount, through `credit` or a partial credit note; above `FIN.ACL.07` an approval request); for hours billed from timesheets, `credited` names the adjustment timesheet (origin `client_dispute`) that carries the agreed hours; resolution note | `disputed` cleared; linked ticket resolved; party notified of the outcome with the credit note if any; `upheld`: reminders and the overdue escalation (subscription `mark_past_due` and `suspend`, collection tasks, `write_off`) resume after the grace period, the due date is not moved; event `InvoiceDisputeResolved` (outcome, credited amount) |
 
 ### Credit note
 
@@ -315,12 +323,12 @@ blocks nothing already issued; it raises a task.
 
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
-| `queue` | — | queued | system (invoice or credit note `issue`) | e-invoicing applies to the entity on the issue date of the document being queued (a credit note follows its own issue date, not the invoice's); recipient in scope (`EInvoiceScope`) | structured payload built from the issued document (no data typed again) |
+| `queue` | — | queued | system (invoice or credit note `issue`) | e-invoicing applies to the entity on the issue date of the document being queued (a credit note follows its own issue date, not the invoice's); recipient in scope (`EInvoiceScope`) | structured payload built from the issued document (no data typed again), with the recipient identifier read from the party (wl-parties) and stored on the transmission, not on the document |
 | `submit` | queued | submitted, queued | system (immediately, then retries) | ASP adapter configured for the entity | sent through the ASP adapter; ASP reference stored. If the ASP cannot be reached, the transmission stays `queued`, retries on the schedule (§7) and then every 6 hours until sent (a queued transmission is never dropped), and a banner shows the queue; `FIN.RUL.16` raises a task when it is still not sent H hours after `issue` (integration-down pattern, wl-kernel) |
 | `accept` | submitted | accepted | system (ASP response) | — | invoice's e-invoice status set; event `EInvoiceAccepted` |
 | `reject` | submitted | rejected | system (ASP response) | — | error codes and messages stored; `FIN.RUL.16` task for the invoice owner and the accountant; the issued invoice, its balance and its reminders are not changed; event `EInvoiceRejected` |
-| `resubmit` | rejected | queued | `einvoices.manage` | the cause is outside the issued document (recipient identifier, party master data, ASP or format setting) and has been fixed | payload rebuilt from the same document; attempt count + 1 |
-| `supersede` | rejected | superseded | system (credit note issued against the document with reason `e-invoice correction`) | the cause is in the issued document (amounts, VAT, TRN, lines) | linked to the credit note and the new invoice, each with its own transmission (`FIN.ACL.01`); task closed |
+| `resubmit` | rejected | queued | `einvoices.manage` | the cause is outside the issued document (recipient identifier, party master data, ASP or format setting) and has been fixed | payload rebuilt from the same document, with the recipient identifier and party data read again from wl-parties and the entity's current ASP and format settings, so the fixed cause is sent; attempt count + 1 |
+| `supersede` | rejected | superseded | system (credit note issued against the document with reason `e-invoice correction`) | the cause is in the issued document (amounts, VAT, TRN, lines) | linked to the credit note at once and to the new invoice when it is issued (the user names, on the new invoice, the invoice it replaces), each with its own transmission (`FIN.ACL.01`); task closed |
 
 ```mermaid
 stateDiagram-v2
@@ -337,7 +345,16 @@ stateDiagram-v2
 
 Whether a document counts as issued for VAT before the ASP accepts it, the time allowed to
 transmit, and the full data fields are `⚠ open: accountant (A-10)` / `authority` (§12 question 4).
-Until answered, the document is issued and its PDF is sent at `issue` as today.
+Until answered, the document is issued and its PDF is sent at `issue` as today, and the payload
+carries the fields printed on the tax document: issuer snapshot (names, TRN, address), the
+recipient's name, TRN and recipient identifier, document kind, number, issue date and date of
+supply, currency and exchange rate, each line (description, quantity, unit price, discount, VAT
+category, VAT amount), totals per VAT category and AED VAT total, and for a credit note the
+invoice it credits. The adapter maps these to the ASP's format; the hash is computed over the
+stored payload so a recomputation must match it.
+
+Retry times (§7) are measured from `issue` (the first attempt), not from the previous attempt:
+with the default, attempts at issue, +5 min, +30 min, +2 h, +6 h, then +12 h, +18 h, +24 h, …
 
 ### Subscription
 
@@ -354,12 +371,12 @@ of [10-edtech.md](../verticals/10-edtech.md).
 
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
-| `mark_past_due` | active | past_due | system | cycle invoice `overdue` and not `disputed`, or automatic charge failed (event from wl-payments), or a paid cycle invoice reopened by a reversed payment (`InvoiceReopened`, e.g. a chargeback) | party notified; retry schedule starts for automatic payment (`FIN.RUL.06`) |
+| `mark_past_due` | active | past_due | system | cycle invoice `overdue`, not `disputed` and not within the grace period after a dispute resolved `upheld`, or automatic charge failed (event from wl-payments), or a paid cycle invoice reopened by a reversed payment (`InvoiceReopened`, e.g. a chargeback) | party notified; retry schedule starts for automatic payment (`FIN.RUL.06`) |
 | `settle` | past_due, suspended | active | system | outstanding cycle invoices paid | event `SubscriptionSettled`; the vertical restores the service |
-| `suspend` | past_due | suspended | system (`FIN.RUL.06`) | last retry or reminder done; suspension enabled for the client | event `SubscriptionSuspended` |
-| `pause` | active, past_due | paused | `subscriptions.manage`, or system (the vertical's agreement is paused, e.g. 10 enrolment `freeze`, 04 engagement `suspend`; `PartyBlocked` where the block effect is pause, wl-parties §5.6) | reason; pause allowance not exceeded (not counted for a system pause) | billing stops; end date extended if configured; each pause cause is stored (user pause with its end date, the agreement's pause, a party block), and a `pause` on an already `paused` subscription only adds its cause; a block pause records the reason `on_hold` and sends the party nothing (wl-parties §5.6); from `past_due` the overdue cycle invoices stay open and their reminders continue unless the invoice is `disputed` |
+| `suspend` | past_due | suspended | system (`FIN.RUL.06`) | last retry or reminder done; suspension enabled for the client; not while the only overdue cycle invoices are `disputed` (the subscription stays `past_due`) | event `SubscriptionSuspended` |
+| `pause` | active, past_due, paused | paused | `subscriptions.manage`, or system (the vertical's agreement is paused, e.g. 10 enrolment `freeze`, 04 engagement `suspend`; `PartyBlocked` where the block effect is pause, wl-parties §5.6) | reason; pause allowance not exceeded (not counted for a system pause) | billing stops for cycles starting after the pause (no pro rata credit for the current paid cycle); end date extended if configured; each pause cause is stored (user pause with its end date, the agreement's pause, a party block), and a `pause` on an already `paused` subscription only adds its cause (the state stays `paused`, and the allowance guard applies only to a user pause); a block pause records the reason `on_hold` and sends the party nothing (wl-parties §5.6); from `past_due` the overdue cycle invoices stay open and their reminders continue unless the invoice is `disputed` |
 | `resume` | paused | active, past_due | `subscriptions.manage` or system (pause end date; the vertical's agreement resumed; `PartyUnblocked`) | after a block: party no longer blocked; each trigger removes only its own pause cause, and the subscription resumes only when no cause remains (a user pause ends on its end date) | next cycle date recalculated from the resume date and the anchor day; back to `past_due` when cycle invoices from before the pause are still overdue |
-| `cancel` | active, past_due, paused, suspended | cancelled | `subscriptions.manage`, the party (portal, if allowed), or system (the vertical's agreement ended or withdrawn, e.g. 10 enrolment `withdraw`, 04 engagement `end`) | notice period respected (not for a system cancel) | ends at period end or immediately; a system cancel ends at once with a pro rata credit note for the unused part of a paid cycle (or a final pro rata invoice) unless the vertical's own settlement has already done it; pro rata is by calendar days, the cancel day counted as used; final pro rata invoice or credit if configured; refunds to a blocked party wait (`PTY.ACL.03`); event `SubscriptionCancelled` |
+| `cancel` | active, past_due, paused, suspended | cancelled | `subscriptions.manage`, the party (portal, if allowed), or system (the vertical's agreement ended or withdrawn, e.g. 10 enrolment `withdraw`, 04 engagement `end`) | notice period respected (not for a system cancel) | ends at period end or immediately; a system cancel ends at once with a pro rata credit note for the unused part of a paid cycle (or a final pro rata invoice) unless the vertical's own settlement has already done it; when the cycle invoice is still unpaid, the credit note reduces it (the unused part is not owed) and nothing is refunded; pro rata is by calendar days, the cancel day counted as used; when cancelled while `paused`, the unused part is the paid cycle's days from the pause start day (the first day not used) to the cycle end, whatever the cancel date; a user or party cancel gives a final pro rata invoice or credit only when the setting *pro rata on cancel* is on (default off), otherwise there is no proration; refunds to a blocked party wait (`PTY.ACL.03`); event `SubscriptionCancelled` |
 
 ```mermaid
 stateDiagram-v2
@@ -370,6 +387,7 @@ stateDiagram-v2
   past_due --> suspended: suspend
   active --> paused: pause
   past_due --> paused: pause
+  paused --> paused: pause
   paused --> active: resume
   paused --> past_due: resume
   active --> cancelled: cancel
@@ -401,11 +419,11 @@ stateDiagram-v2
 
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
-| `submit` | draft | matched, exception | `supplier_bills.create` | supplier, lines and VAT entered; receiving entity set | duplicate check (§7): a bill with the same supplier and supplier invoice number (compared without surrounding spaces and ignoring case) as a bill that is not `void` (or the other keys set, e.g. the same contract, period and amount) goes to `exception` with reason *possible duplicate*, the earlier bill linked and the accountant notified; otherwise the match runs against the PO and goods received (when a PO exists), or against the service contract's billing terms (`ServiceContracts::coverage` in wl-ticketing); bills without a PO or contract go to `matched` if none is required for the category (e.g. freelance tutor bills built from recorded sessions, 10) |
+| `submit` | draft | matched, exception | `supplier_bills.create` | supplier, lines and VAT entered; receiving entity set; a bill against a service contract has a service date on every line | duplicate check (§7): a bill with the same supplier and supplier invoice number (compared without surrounding spaces and ignoring case) as a bill that is not `void`, or a match on any other key set the client turns on (each key set is checked on its own, always within the same supplier; e.g. the same contract, period and amount), goes to `exception` with reason *possible duplicate*, the earlier bill linked and the accountant notified; otherwise the match runs against the PO and goods received (when a PO exists), or against the service contract's billing terms (`ServiceContracts::coverage` in wl-ticketing, checked per line on its service date: a line for work after the contract's end date, or after its termination date when terminated, is not covered and sends the bill to `exception` with reason *work after contract end*); bills without a PO or contract go to `matched` if none is required for the category (e.g. freelance tutor bills built from recorded sessions, 10) |
 | `approve` | matched, exception | approved | `supplier_bills.approve` | `FIN.ACL.03`: `matched`, or approval of the exception; bill date not in a locked VAT period (`FIN.ACL.09`), otherwise it is recorded as an adjustment of the next open period | actual cost posted to cost objects, split by the allocation basis; lines coded to a landed cost post no cost here (wl-inventory allocates them to the receipts, or adjusts after allocation); input VAT recorded for the bill's period; event `SupplierBillApproved`; for PO-linked bills, event `SupplierBillMatched` (PO lines and billed quantities; wl-inventory closes the PO when every line is billed) |
 | `pay` | approved, partially_paid | partially_paid, paid | system (payment from wl-payments, or a supplier debit note applied) | — | open balance reduced; `paid` when it reaches zero |
 | `void` | draft, matched, exception | void | `supplier_bills.approve` | reason given | — |
-| `unallocate` | partially_paid, paid | approved, partially_paid | system (wl-payments `PaymentReversed` on an outgoing payment, e.g. a transfer returned by the bank or a cancelled issued cheque; or `SupplierDebitNoteCancelled` for a debit note that reduced this bill through `pay`) | amount not above what the payment or debit note applied to this bill | open balance restored by the reversed payment or the cancelled debit note's amount; `approved` when nothing remains paid or reduced by a debit note, otherwise `partially_paid`; accountant notified to pay again or fix the supplier's bank details (or, for a cancelled debit note, that the full amount is payable again); event `SupplierBillReopened` |
+| `unallocate` | partially_paid, paid | approved, partially_paid | system (wl-payments `PaymentReversed` on an outgoing payment, e.g. a transfer entered in error or returned by the bank; an issued cheque records its payment only at `clear`, so cancelling it or its bounce before that reopens nothing; or `SupplierDebitNoteCancelled` for a debit note that reduced this bill through `pay`) | amount not above what the payment or debit note applied to this bill | open balance restored by the reversed payment or the cancelled debit note's amount; `approved` when nothing remains paid or reduced by a debit note, otherwise `partially_paid`; accountant notified to pay again or fix the supplier's bank details (or, for a cancelled debit note, that the full amount is payable again); event `SupplierBillReopened` |
 
 A debit note issued against a bill that is already `paid` leaves the bill as it is; the
 amount becomes the supplier's debit balance, set off against the supplier's next bill or
@@ -482,8 +500,8 @@ Generalises the money side of the clinic *Claim* ([05-clinics.md](../verticals/0
 | `record_remittance` | issued | paid, partially_paid, denied | `payer_bills.reconcile` or system (remittance import) | every remittance line matched to a bill line; amounts not above the open line amounts, except an overpayment moved to the payer credit balance with approval (`FIN.ACL.16`) | paid amounts allocated per line through wl-payments; denial codes and reasons stored; an approved overpayment goes to the payer credit balance; recoupment lines on the same advice run `record_recoupment` on the earlier bills; event `PayerRemittanceRecorded` |
 | `record_recoupment` | paid, partially_paid, closed | partially_paid, denied | `payer_bills.reconcile` or system (remittance import; wl-payments `PaymentReversed` for a payment allocated to the bill) | recouped amount not above the paid amount of the lines; payer's recoupment code or reason; approval per `FIN.ACL.16` (not needed for a reversal from wl-payments) | paid amounts on the lines reduced and reopened as denied with the payer's code; the money is taken from the payer credit balance first, otherwise deducted from the later remittance that carried it (through wl-payments); payer receivable reopened; billing coordinator notified (the vertical's denial task, e.g. 05 `CLN.RUL.05`, reacts to the event); the reopened amount then follows `resubmit`, `transfer_to_customer` or `write_off`; event `PayerRecoupmentRecorded` |
 | `resubmit` | partially_paid, denied | issued | `payer_bills.issue` or system (05 claim `resubmit`) | corrections recorded; within the agreement's resubmission window and limit | resubmission count + 1; a changed amount on a payer tax invoice is corrected by a credit note or an extra invoice (`FIN.ACL.01`) |
-| `transfer_to_customer` | draft, partially_paid, denied | closed | `payer_bills.write_off` | the agreement allows billing the customer for the lines; reason given; from `draft`: the payer's first-submission window has passed and the agreement does not accept late submissions | customer is recipient: the open amount moves to the customer's share of the same tax invoice; payer is recipient: credit note to the payer and a tax invoice to the customer; customer notified; event `PayerBillClosed` |
-| `write_off` | draft, partially_paid, denied | closed | `payer_bills.write_off` | reason given; above the agreement's write-off limit, an approval request (`PLT.APR.01`, `FIN.ACL.14`); from `draft`: the payer's first-submission window has passed and the agreement does not accept late submissions | credit note for the written-off amount against the tax document that carries it (none when a never-issued draft is not yet on any tax document); the amount is reported as *not submitted in time* when closed from `draft`; event `PayerBillClosed` |
+| `transfer_to_customer` | draft, partially_paid, denied | closed | `payer_bills.write_off` | the agreement allows billing the customer for the lines; reason given; from `draft`: the payer's first-submission window has passed and the agreement does not accept late submissions | customer is recipient: the open amount moves to the customer's share of the same tax invoice; payer is recipient: credit note to the payer (none for a `draft` whose payer tax invoice was never issued) and a tax invoice to the customer; customer notified; event `PayerBillClosed` |
+| `write_off` | draft, partially_paid, denied | closed | `payer_bills.write_off` | reason given; above the agreement's write-off limit, an approval request (`PLT.APR.01`, `FIN.ACL.14`); from `draft`: the payer's first-submission window has passed and the agreement does not accept late submissions | credit note for the written-off amount against the tax document that carries it: when the customer is the VAT recipient, the customer's tax invoice, issued for the full supply when the customer's share was billed (§3, §5.8 step 2), so it carries the payer lines even while the payer bill is a `draft`; when the payer is the recipient, the payer's tax invoice, so none for a `draft` whose payer tax invoice was never issued; the amount is reported as *not submitted in time* when closed from `draft`; event `PayerBillClosed` |
 | `void` | draft | voided | `payer_bills.issue` | reason given (duplicate, wrong payer or policy); never once a remittance was recorded (`PLT.ACL.09`); the vertical may allow it only before the first submission (05: `CLN.ACL.14`) | payer split removed from the source, which may be split again to the right payer (a new payer bill); a payer tax invoice already issued is cancelled by a credit note (`FIN.ACL.01`); billing coordinator notified; event `PayerBillClosed` (outcome voided) |
 
 ```mermaid
@@ -518,7 +536,7 @@ stateDiagram-v2
 |---|---|---|
 | 05 Clinics (claim) | `draft`, `ready`, `submitted`, `resubmitted` | Coding, validation and the submission channel stay in apps/clinics (`CLN.CLM.01`–`03`). Claim `submit` runs `issue`; claim `resubmit` runs `resubmit`; claim `record_remittance` is this `record_remittance` |
 | 05 | `written_off` ("moved to the patient where the contract allows, otherwise written off") | `transfer_to_customer` or `write_off`; the write-off limit is the clinic's `LIM` above which the owner approves |
-| 05 | technical rejection at submission | `submission_rejected`: back to `draft` with the channel's error codes, not counted against the resubmission limit; the claim returns to `draft` or `ready` in apps/clinics |
+| 05 | technical rejection at submission | `submission_rejected`: back to `draft` with the channel's error codes, not counted against the resubmission limit; the claim returns to `draft` in apps/clinics (05 claim `reject_submission`) |
 | 05 | `write_off` from `draft` or `ready` after the first-submission window (`CLN.ACL.16`); `void` from `draft` or `ready` (`CLN.ACL.14`) | `write_off` or `transfer_to_customer` from `draft`; `void` → `voided` |
 | 05 | overpayment or recoupment in a later remittance | overpayment to the payer credit balance and `record_recoupment`, both with approval (`FIN.ACL.16`) |
 | 08 Auto (insurance claim) | `invoice` (insurer invoice and customer excess invoice) | `issue` with the insurer as VAT recipient, plus a customer invoice for the excess and private items |
@@ -589,12 +607,20 @@ active until its amount remaining is zero.
    per-line delivered qty of `DeliveryDelivered` (through the source's fulfilment, e.g.
    wl-sales `fulfil`); refused qty is never billed. A COD difference that the customer
    still owes stays open on the invoice and is chased as usual; one absorbed by the client
-   (03) goes to its remittance line; one absorbed by the business or the driver is not billed.
+   (03) goes to its remittance line; one absorbed by the business or the driver is not billed. A difference that is
+   not billed reduces a draft by a negative line *COD difference absorbed* (reason and
+   absorber named), or, when the invoice was already issued, gets a credit note for the
+   difference with the same reason (`FIN.ACL.01`); the driver's share is recovered in the
+   cash handover (wl-payments), never from the customer.
 5. Hours corrected after billing arrive as an approved adjustment timesheet (wl-attendance,
    `TimesheetApproved` kind `adjustment`, `affects` billing or both). Not yet invoiced: billed
    with the original. Already invoiced: − hours give a credit note against the original
    invoice (`FIN.ACL.01`); + hours give an extra usage line on the next invoice (or a separate
-   invoice, per the client's setting in wl-attendance). The credit note or line names the
+   invoice, per the client's setting *Adjustment of already-invoiced hours (+)* in wl-attendance
+   §7, default: extra line on the next usage invoice). The hours are priced with the rate
+   card line, multipliers and rate date of the original usage record, not today's rate; the
+   + and − entries of one adjustment are netted per invoice line (a negative net gives the
+   credit note, a positive net the extra line). The credit note or line names the
    adjustment, and a dispute resolved `credited` is linked to it (§5.10).
 
 ### 5.3 Receivables and reminders
@@ -602,7 +628,10 @@ active until its amount remaining is zero.
 1. Every issued invoice appears in ageing buckets (0–30, 31–60, 61–90, 90+ days) per party,
    filterable by issuing entity.
 2. `FIN.RUL.01` sends reminders before and after the due date; `FIN.RUL.02` marks invoices
-   overdue. Disputed invoices are not reminded (§5.10).
+   overdue. Disputed invoices are not reminded (§5.10). When reminders resume (after the
+   grace period of a dispute resolved `upheld`, or on an invoice reopened by `unallocate`),
+   the next run sends once the latest step whose day has passed, unless it was already sent,
+   then the later steps on their days.
 3. Statements of account per party are available on demand and in the portal.
 4. An invoice that cannot be collected is written off (§5.9); a reversed payment reopens it
    (§5.11).
@@ -616,8 +645,16 @@ active until its amount remaining is zero.
    tolerance.
 3. A matched bill can be approved. An exception needs an approval request
    (`FIN.ACL.03`). A bill held as a possible duplicate (same supplier and supplier invoice
-   number as an earlier bill that is not void, or the other keys the client sets) is
-   approved only by another user with a reason, or voided.
+   number as an earlier bill that is not void, or any other key set the client turns on, each
+   checked on its own within the same supplier) stays in `exception` until a user other than
+   its creator approves it with a reason, or a user with `supplier_bills.approve` voids it with
+   a reason. Nothing voids it automatically. A contract bill is matched only for work done
+   up to the contract's end date (or termination date). Each line needs a service date; a
+   period line counts by its last day. A line dated after the end sends the bill to
+   `exception` with reason *work after contract end*. The accountant approves the exception
+   with a reason (`FIN.ACL.03`), e.g. agreed work to finish an open visit, or voids the bill
+   and asks the vendor for a corrected one (the later work billed on a ticket or a new
+   contract).
 4. Approval posts actual cost to the cost objects and makes the bill payable in wl-payments.
    A freight, duty or clearing line is coded to a landed cost instead; its amount goes to
    wl-inventory with `SupplierBillApproved`, which allocates it or, when the landed cost is
@@ -705,11 +742,15 @@ active until its amount remaining is zero.
    amount. The VAT share is computed per VAT category in proportion to the invoice's open
    balance: for each category, written-off amount × (category VAT ÷ invoice gross total),
    rounded half-up to fils per category. Zero-rated, exempt and out-of-scope lines carry no
-   VAT and give no relief. How relief applies to a partly paid invoice is still
+   VAT and give no relief. One adjustment is created per invoice; its amount is the sum of
+   the rounded per-category shares. For an invoice in a foreign currency the shares use the
+   invoice's AED VAT figures: category AED VAT × (written-off amount ÷ gross total in the
+   invoice currency); the write-off amount itself stays in the invoice currency. How relief applies to a partly paid invoice is still
    `⚠ open: accountant (A-09)`; this is the default until answered.
    While the write-off waits for approval, a payment can still be allocated; the request
    then fails at approval (the balance changed) and is submitted again. `FIN.RUL.14` checks it daily and, once the conditions in §10 are met, proposes it
-   on the next open VAT summary and tells the accountant.
+   on the next open VAT summary and tells the accountant. An adjustment the preparer
+   excluded from a summary stays `excluded`; `FIN.RUL.14` does not propose it again.
 4. If the customer pays later, the payment is allocated to the written-off invoice
    (`recover`). When relief was already claimed, a bad-debt recovery adjustment is proposed
    for the next open period; when it was not yet claimed, the pending or proposed relief is
@@ -719,21 +760,30 @@ active until its amount remaining is zero.
 ### 5.10 Disputed invoices
 
 1. Staff, or the party in the portal when allowed, flag an invoice as `disputed` with a
-   reason and the disputed amount. A ticket is opened or linked and assigned to the invoice
-   owner; the party gets an acknowledgement.
+   reason and the disputed amount, and may tick the disputed lines (the amount then defaults
+   to their amount; a vertical may act on them, e.g. 07 quality NCRs). A ticket is opened or
+   linked and assigned to the invoice owner; the party gets an acknowledgement.
 2. Reminders stop for that invoice. It still shows as overdue, in its own disputed column of
-   the ageing, but it does not drive subscription suspension or collection tasks.
+   the ageing, but it does not drive subscription suspension or collection tasks. That column
+   shows the lesser of the disputed amount and the balance; the stored disputed amount is
+   not changed when payments bring the balance below it.
 3. `FIN.RUL.15` reminds the owner, then escalates to the finance manager, while the dispute
    stays open.
 4. The dispute is resolved `upheld` (reminders resume after the grace period) or `credited`
    (a credit note for the agreed amount; above the waiver limit `FIN.ACL.07` an approval
    request). The ticket closes and the party is told the outcome. For disputed hours, the
    credit note is the one raised from the client-dispute adjustment timesheet (§5.2).
-5. A delivery put under review in wl-delivery (`DeliveryDisputed`) flags the invoice of its
-   source by the system, with the same ticket. `DeliveryDisputeClosed` (*upheld*) resolves it
-   `upheld`. When the delivery is reversed or marked lost instead (`DeliveryReversed`,
-   `DeliveryLost`), the flag stays and the invoice owner gets a task to resolve it, usually
-   `credited` for the undelivered lines.
+5. A delivery put under review in wl-delivery (`DeliveryDisputed`) flags, by the system and
+   with the same ticket, each issued invoice that bills lines of the delivery, for that
+   invoice's amount of those lines capped at its balance. An invoice already `disputed` is not
+   flagged again; the delivery's ticket is linked to its open dispute with a note.
+   `DeliveryDisputeClosed` (*upheld*) resolves `upheld` the disputes the system raised for that
+   delivery; a dispute it was only linked to stays open. When the delivery is reversed or
+   marked lost instead (`DeliveryReversed`, `DeliveryLost`), the flag stays and the invoice
+   owner gets a task to resolve it, usually `credited` for the undelivered lines. When the
+   delivery's lines are not on an issued invoice yet (draft or not billed), nothing is
+   flagged: a draft that bills them is not issued automatically while the delivery is under
+   review, and the receivables role gets a task *delivery disputed before issue*.
 
 ### 5.11 Payment reversals and failed refunds
 
@@ -762,7 +812,9 @@ active until its amount remaining is zero.
 4. If the cause is outside the document (recipient identifier, party data, ASP setting), it
    is fixed and the transmission is resubmitted. If the cause is in the document (amount,
    VAT, TRN), the invoice is credited with reason `e-invoice correction` and a new invoice is
-   issued; the old transmission becomes `superseded`.
+   issued; the old transmission becomes `superseded`. On a partly paid invoice the credit
+   note may be for the full value; the part above the balance becomes the party's credit and
+   is allocated to the new invoice.
 5. The e-invoicing board lists transmissions per entity and state; ageing and statements
    show the e-invoice status of each invoice.
 
@@ -776,12 +828,21 @@ active until its amount remaining is zero.
 2. A debit note for a price difference or a short delivery found after billing is drafted by
    hand and needs approval by a second person (`FIN.ACL.17`).
 3. On `issue`, the debit note is sent to the supplier, the bill's payable falls by its total
-   (or a supplier debit balance opens when the bill is paid), the cost is reversed on the
+   (or a supplier debit balance opens when the bill is paid; on a partly paid bill `pay`
+   reduces the open balance to zero and the rest opens a supplier debit balance), the cost is reversed on the
    cost objects, and input VAT is reduced in the VAT summary per the input VAT timing
    setting.
 4. The supplier's tax credit note is recorded when it arrives, and the debit balance is set
    off against the next bill or refunded by the supplier (a received payment in
-   wl-payments); the debit note is then `settled`.
+   wl-payments); the debit note is then `settled`. To set off, a user with
+   `supplier_bills.approve` applies the debit balance to an `approved` or `partially_paid` bill
+   of the same supplier and receiving entity; that bill runs `pay` for the amount applied. Set
+   off and refund move money only, so they may happen before the tax credit note is recorded.
+   The debit note runs `settle` once its whole amount is applied (to its own bill at `issue`,
+   set off on a later bill, or refunded) and the tax credit note is recorded (or the setting
+   accepts the debit note alone): by the system when the last set off or refund completes it,
+   or by the user who records the tax credit note when that comes last. Until then it stays
+   `issued`; a `cancel` in that time also runs `unallocate` on any later bill it was set off on.
 5. If the supplier refuses the claim or the return is cancelled, the debit note is
    cancelled and every effect is reversed: the bill it reduced reopens (`unallocate`, also
    from `paid`), or the supplier debit balance it opened is closed.
@@ -837,7 +898,7 @@ vendor contract bills and their allocation basis; tickets for invoice disputes,
 | `InvoiceReopened` | `unallocate` | invoice, party, source, amount reopened, balance, new state, reason (payment reversed, allocation moved, recovery reversed) |
 | `InvoiceWrittenOff` | `write_off` | invoice, party, source, amount written off, reason code, approver |
 | `BadDebtRecovered` | `recover` | invoice, party, amount recovered, relief claimed (yes/no) |
-| `InvoiceDisputed` / `InvoiceDisputeResolved` | `dispute` / `resolve_dispute` | invoice, party, disputed amount, ticket, outcome, credit note |
+| `InvoiceDisputed` / `InvoiceDisputeResolved` | `dispute` / `resolve_dispute` | invoice, party, disputed amount, disputed lines, ticket, outcome, credit note |
 | `CreditNoteReopened` | credit note `reopen` | credit note, party, amount restored, failed refund |
 | `EInvoiceAccepted` / `EInvoiceRejected` | transmission `accept` / `reject` | transmission, document, entity, ASP reference, error codes |
 | `SupplierDebitNoteIssued` / `SupplierDebitNoteSettled` / `SupplierDebitNoteCancelled` | debit note transitions | debit note, supplier, bill, return to supplier, amount, VAT |
@@ -906,7 +967,7 @@ have status `module`.
 | `FIN.RUL.13` (from `CLN.RUL.04`) | N days after a payer bill is `issued` | no remittance recorded | create a follow-up task for the billing or insurance coordinator | N = 45 (05), 30 (08) |
 | `FIN.RUL.14` | daily at T | invoice `written_off` with a pending bad-debt relief; more than M months since the date of supply (first eligible the day after the date of supply + M months); customer write-off notice date recorded; the period of the original supply is `locked` | propose the `bad_debt_relief` adjustment on the entity's `open` VAT summary; notify the accountant. When the entity has no `open` summary, nothing is proposed and the next run tries again | T = 02:00; M = 6 (legal minimum, not below 6) ✔ [S2] |
 | `FIN.RUL.15` | N days after an invoice is flagged `disputed`, then every N days | still `disputed` | notify the invoice owner; from the second time, also the finance manager | N = 14 |
-| `FIN.RUL.16` | e-invoice transmission `rejected`, or still `queued` or `submitted` H hours after `issue` | — | create a task for the invoice owner and the accountant with the error codes or the waiting time; notify the company admin when the ASP has been unreachable for all of the entity's transmissions | H = 24; retries at 5 min, 30 min, 2 h, 6 h, then every 6 h until sent |
+| `FIN.RUL.16` | e-invoice transmission `rejected`, or still `queued` or `submitted` H hours after `issue` | — | create a task for the invoice owner and the accountant with the error codes or the waiting time; notify the company admin, once per outage, when the ASP has been unreachable for all of the entity's transmissions (every transmission of the entity sent in the last H hours is still `queued`) | H = 24; retries at 5 min, 30 min, 2 h, 6 h after `issue`, then every 6 h until sent |
 | `FIN.RUL.17` | wl-inventory `SupplierReturnDispatched` | — | draft a supplier debit note for the returned lines at the bill's prices; when the bill has not arrived, at the PO price from the event, re-priced at the bill's prices when the bill is approved and linked; notify the accountant | on |
 
 `FIN.RUL.03`, `FIN.RUL.04` (cheques) and `FIN.RUL.10`–`12` belong to
@@ -928,7 +989,7 @@ have status `module`.
 | Reminder steps (`FIN.RUL.01`) | before 3; after 1, 7, 14 days |
 | Subscription: suspension enabled, retry days, pause allowance, party may cancel, pro rata on cancel | on; 1, 3, 7; 0 days; off; off |
 | 3-way match tolerance (price and quantity) | 2% |
-| Supplier bill duplicate check (`FIN.ACL.03`): keys | on; same supplier and supplier invoice number, trimmed and case-insensitive (01 adds: same contract, period and amount) |
+| Supplier bill duplicate check (`FIN.ACL.03`): keys | on; same supplier and supplier invoice number, trimmed and case-insensitive (01 adds, as a second key set checked on its own: same supplier, contract, period and amount) |
 | Budget warning threshold | 90% |
 | Cost amortisation default term | 24 months |
 | Rate card pricing models enabled | all |
@@ -941,7 +1002,7 @@ have status `module`.
 | Bad-debt relief proposal (`FIN.RUL.14`): run time; months after the date of supply | on; daily at 02:00; more than 6 months (not below 6) |
 | Disputes: party may dispute in the portal; escalation (`FIN.RUL.15`); grace before reminders resume after `upheld` | off; 14 days; 7 days |
 | E-invoicing per entity: go-live date, ASP adapter, recipients in scope | none (off); none; B2B and B2G |
-| E-invoice retries and task after (`FIN.RUL.16`) | 5 min, 30 min, 2 h, 6 h, then every 6 h until sent; 24 hours |
+| E-invoice retries and task after (`FIN.RUL.16`) | 5 min, 30 min, 2 h, 6 h after `issue`, then every 6 h until sent; 24 hours |
 | Supplier debit note: input VAT timing; supplier's tax credit note required to settle | reduce input VAT on debit note `issue`; required |
 | Supplier debit note number format per entity | `DN-{ENTITY}-{YYYY}-{0000}` |
 | Base currency and enabled currencies; exchange-rate source | AED; AED only; manual |
@@ -1070,7 +1131,11 @@ have status `module`.
   invoice `write_off` records the write-off and sends the notice; `FIN.RUL.14` proposes the
   adjustment only when all three conditions are recorded, and the period of the supply is
   locked (as evidence that the output VAT was declared). Still `⚠ open: accountant (A-09)`: the
-  form and content of the customer notice, the period in which the relief is claimed, how
+  form and content of the customer notice (default until answered: a letter to the party's
+  billing contact with the invoice number, issue date, date of supply, gross total, the amount
+  written off, the VAT share of it, the write-off date and a statement that the business has
+  written the amount off as a bad debt; sent by email, and its sent date is the notice date),
+  the period in which the relief is claimed, how
   the relief is computed on a partly paid invoice (default: the VAT share of the written-off
   amount), and the output VAT due when a written-off debt is later paid (default: a
   bad-debt recovery adjustment, `recover`).

@@ -401,7 +401,7 @@ The full rows are in each vertical's §5.
 | `AUT.INS.04` | Split billing: approved amount to the insurer; excess and private items to the customer |
 | `AUT.INS.06` | Replacement car allocation and recharge to the insurer |
 | `AUT.INS.07` | Insurer and surveyor portal: claims, estimates, approvals, repair status |
-| `AUT.EXP.01` | Export sales: zero-rated VAT invoice, packing list and commercial invoice in USD; exit certificate and bill of lading tracked within 90 days |
+| `AUT.EXP.01` | Export sales: zero-rated VAT invoice, packing list and commercial invoice in USD; exit certificate, bill of lading or airway bill tracked within 90 days |
 | `AUT.RPT.01` | Reports: sales and margin by brand and part, dead stock, bay utilisation, technician productivity |
 
 </details>

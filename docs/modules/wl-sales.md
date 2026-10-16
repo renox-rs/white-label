@@ -45,14 +45,14 @@ to the parties that buy on terms.
 | Customer account | Commercial terms of a buying party | party, price list or tier, payment terms (days), credit limit, credit group (optional), grace days, sales rep, customer PO required (none, per month, per order), on-hold flag with reason (e.g. *bounced cheque*) and its open sources (cleared by *Clear account hold*, §4.2), status |
 | Credit group | Companies under one owner sharing a combined limit (08 §13 question 4) | the `wl-parties` company group (`member_of_group`, `PTY.REL.01`), combined limit, member accounts |
 | Channel | Where orders come from | code (counter, phone, portal, website, aggregator, sales rep; dine-in Later), brand, integration (manual quick entry, or Deliverect middleware for aggregators), commission rate (for margin reports), requires acceptance, credit check on/off, default price list |
-| Sales order | A customer's order | number, revision (starts at 1; earlier revisions kept read-only), issuing entity, party, channel, branch, lines (item, options, quantity, unit price, discount, VAT category, quantity fulfilled, quantity invoiced, quantity cancelled, cancellation reason and outcome), delivery method (collect, deliver, none), payment (prepaid online, cash on delivery, on account), payment status (not required, pending, received, failed), amount refunded, requested date, external order number (e.g. aggregator order number; unique per channel), customer PO reference and file, source (quotation, reorder of a previous order, uploaded PO), state before credit hold, status |
+| Sales order | A customer's order | number, revision (starts at 1; earlier revisions kept read-only), issuing entity, party, channel, branch, lines (item, options, quantity, unit price, discount, VAT category, quantity fulfilled, quantity invoiced, quantity cancelled, quantity back-ordered, cancellation reason and outcome), delivery method (collect, deliver, none), payment (prepaid online, cash on delivery, on account), payment status (not required, pending, received, failed), amount refunded, requested date, external order number (e.g. aggregator order number; unique per channel), customer PO reference, call-off number and file, source (quotation, reorder of a previous order, uploaded PO), state before credit hold, status |
 | Till session | One cash drawer for one shift or day | branch or outlet, register, opened by, opening float, expected totals by payment method, counted totals, variance, status |
 | Counter sale | A POS ticket paid on the spot, or charged to a customer account | till session, lines, payments, on account (customer account; credit check runs), receipt number (simplified or full tax invoice), party (optional; required on account), status |
 | Package | Prepaid credits bought by a party | party (holder) and payer, catalogue item, credits total and used, unit (session, hour, item), price paid, valid from/to, extension history, status |
 | Package movement | A change to the credit balance | package, kind (consume, reverse, extend, adjust, refund), quantity, source `Subject` (booking, attendance, job card), user, time |
 | Discount rule | A reusable discount | name, kind (percentage, amount, fixed price), applies to (items, categories, whole order), eligibility (party group, related parties, date window, minimum spend, promo code), stacking allowed, usage limit per code and per party, validity |
 | Promo code | A code that activates a discount rule | code, rule, uses, max uses, valid to |
-| Sales return | Goods coming back, or a refund after completion with nothing to return | number, kind (*goods*, or *no goods* for food and services), original sale (order or counter sale) and lines, reason, complaint category, responsible party, linked ticket, recall (when the goods are under a `wl-inventory` recall), quantity, condition, lot, resolution (credit note, refund, replacement), restocking fee, status |
+| Sales return | Goods coming back, or a refund after completion with nothing to return | number, kind (*goods*, or *no goods* for food and services), original sale (order or counter sale) and lines, reason, complaint category, responsible party, linked ticket, recall (when the goods are under a `wl-inventory` recall), quantity, condition, lot, resolution (credit note, refund, replacement, refunded by the channel), restocking fee, status |
 | Credit check | Result of checking an order | order, exposure (open invoices + uncleared post-dated cheques + confirmed orders not yet invoiced), overdue beyond grace, order value, customer limit, group exposure and combined limit, result, time |
 
 Vertical fields (for example a vehicle on an auto parts order, or a recipient's Makani number)
@@ -128,18 +128,18 @@ fact.
 
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
-| `submit` | draft | awaiting_payment, pending_acceptance, credit_hold, confirmed | `sales_orders.create`, or the external party through the portal | lines priced; manual prices and discounts within limits (`SAL.ACL.02`) or approved; the external order number is not already used on this channel (a duplicate import is refused and points to the existing order) | target: `awaiting_payment` if paid online and not yet confirmed; else `pending_acceptance` if the channel needs acceptance; otherwise credit check → `credit_hold` or `confirmed`; on `confirmed`: stock reserved, confirmation sent, event `SalesOrderConfirmed` |
+| `submit` | draft | awaiting_payment, pending_acceptance, credit_hold, confirmed | `sales_orders.create`, or the external party through the portal | lines priced; manual prices and discounts within limits (`SAL.ACL.02`) or approved; the external order number (compared trimmed and case-insensitive) is not already used on this channel (a duplicate import is refused and points to the existing order); when *Unique customer PO number per customer* is on, the customer PO reference with its call-off number is not already used by another order of the same customer, cancelled orders included (refused, pointing to the existing order); payment on account: the customer account is not on hold (`SAL.RUL.05`; refused, the order stays `draft`) | target: `awaiting_payment` if paid online and not yet confirmed; else `pending_acceptance` if the channel needs acceptance; otherwise credit check → `credit_hold` or `confirmed`; on `confirmed`: stock reserved (when back-orders are allowed, quantity without available stock is back-ordered instead of refused), confirmation sent, event `SalesOrderConfirmed` |
 | `confirm_payment` | awaiting_payment | pending_acceptance, confirmed | system (`PaymentReceived` from `wl-payments` for the order's payment) | amount equals the order total | as `submit` from acceptance on; prepaid orders skip the credit check |
 | `payment_failed` | awaiting_payment | cancelled | system (`PaymentFailed`, including the gateway timeout) | — | reason *payment failed*; promo code use released; the customer is told and may place a new order; nothing reaches fulfilment; event `SalesOrderCancelled` |
 | `accept` | pending_acceptance | credit_hold, confirmed | `sales_orders.accept` | channel open; items available | as `submit` from the credit check on |
 | `reject` | pending_acceptance | rejected | `sales_orders.accept` or system (acceptance timeout) | reason given | prepayment refunded; party notified; a payment confirmed later is refunded too (`SAL.RUL.06`) |
 | `hold` | confirmed, partially_fulfilled | credit_hold | system (re-check at dispatch fails, or `SAL.RUL.05` on a bounced cheque) | order on account | state before the hold kept; dispatch blocked, reservations kept; event `SalesOrderCreditHeld` |
-| `release` | credit_hold | confirmed, partially_fulfilled | `credit.release` | approval (`PLT.APR.01`); releaser ≠ creator (`SAL.ACL.03`) | back to the state before the hold (`confirmed` from submit); event `SalesOrderConfirmed` when first confirmed |
-| `amend` | pending_acceptance, credit_hold, confirmed, partially_fulfilled | same state, or credit_hold | `sales_orders.amend` | reason; no line below its fulfilled quantity; prices and discounts within `SAL.ACL.02`; channel allows amendments (aggregator orders are changed on the aggregator); approval when fulfilment started (`SAL.ACL.05`) | revision + 1 and the previous revision kept; reservations and vertical fulfilment adjusted; credit check re-run when the value rises (fails → `credit_hold`); prepaid: payment link for an increase, refund of a decrease (`wl-payments`); a draft invoice is updated, an issued one is corrected by credit note or an extra invoice (`wl-invoicing`); revised confirmation sent; event `SalesOrderAmended` |
-| `cancel_line` | confirmed, partially_fulfilled | same state, fulfilled | `sales_orders.cancel` | reason; open quantity only; at least one line stays open or fulfilled (otherwise `cancel`); outcome per line and approval when fulfilment of the line started (`SAL.ACL.05`) | quantity cancelled; outcome applied (below); prepaid share refunded less any fee; `fulfilled` when nothing is open; event `SalesOrderLineCancelled` |
+| `release` | credit_hold | confirmed, partially_fulfilled | `credit.release` | approval (`PLT.APR.01`); releaser ≠ creator (`SAL.ACL.03`) | back to the state before the hold (`confirmed` from submit); open back-orders of the order reserved from available stock at the branch (Back-orders below); event `SalesOrderConfirmed` when first confirmed |
+| `amend` | pending_acceptance, credit_hold, confirmed, partially_fulfilled | same state, or credit_hold | `sales_orders.amend` | reason; no line below its fulfilled quantity; a line whose fulfilment started is not reduced by `amend` (it goes through `cancel_line`, which asks for an outcome); prices and discounts within `SAL.ACL.02`; channel allows amendments (aggregator orders are changed on the aggregator); approval when fulfilment started (`SAL.ACL.05`); a changed customer PO reference or call-off number passes the same uniqueness check as `submit` | revision + 1 and the previous revision kept; reservations and vertical fulfilment adjusted; credit check re-run when the value rises (fails → `credit_hold`); prepaid: payment link for an increase, refund of a decrease (`wl-payments`); a draft invoice is updated, an issued one is corrected by credit note or an extra invoice (`wl-invoicing`); revised confirmation sent; event `SalesOrderAmended` |
+| `cancel_line` | confirmed, partially_fulfilled | same state, fulfilled | `sales_orders.cancel` | reason; open quantity only; at least one line stays open or fulfilled (otherwise `cancel`); outcome per line and approval when fulfilment of the line started (`SAL.ACL.05`) | quantity cancelled; outcome applied (below); prepaid share refunded less any fee; an invoice already issued for the line is corrected by a credit note for the cancelled value (`wl-invoicing`); `fulfilled` when nothing is open; event `SalesOrderLineCancelled` |
 | `fulfil` | confirmed, partially_fulfilled | partially_fulfilled, fulfilled | system (`DispatchDelivered` for an order shipped on a dispatch note; `DeliveryDelivered` only for an order delivered without a dispatch note; collection recorded; or vertical fulfilment completed) | dispatch of an order on account passes `credit_recheck`; not yet fulfilled from the same dispatch or delivery (idempotent per source) | accepted quantities fulfilled (refused delivery lines are not); `fulfilled` when nothing is open; invoice drafted when the client invoices on delivery |
 | `reverse_fulfilment` | partially_fulfilled, fulfilled | confirmed, partially_fulfilled | system (`DispatchReversed`, or `DispatchLost` of a `delivered` dispatch; for an order delivered without a dispatch note, `DeliveryReversed`, or `DeliveryLost` from `under_review`) | the quantities were fulfilled from that dispatch or delivery | quantity fulfilled reduced by them; `confirmed` when nothing stays fulfilled, otherwise `partially_fulfilled`; a draft invoice is updated, an issued one is left as it is and the accountant gets a task (credit note or keep for re-delivery, `wl-invoicing`); sales rep told; event `SalesOrderFulfilmentReversed` |
-| `cancel_remaining` | partially_fulfilled | fulfilled | `sales_orders.cancel` | reason given; outcome per line and approval when fulfilment of a line started (`SAL.ACL.05`) | open lines cancelled with their outcomes; reservations released |
+| `cancel_remaining` | partially_fulfilled | fulfilled | `sales_orders.cancel` | reason given; outcome per line and approval when fulfilment of a line started (`SAL.ACL.05`) | open lines cancelled with their outcomes; reservations released; one event `SalesOrderLineCancelled` per cancelled line |
 | `close` | fulfilled | closed | system | all fulfilled quantities invoiced or receipted | event `SalesOrderClosed` |
 | `cancel` | draft, pending_acceptance, credit_hold, confirmed | cancelled | `sales_orders.cancel` | nothing fulfilled; paid order above a value, or after vertical fulfilment started, needs approval (`SAL.ACL.01`); outcome per line when fulfilment started | reservations released; outcomes applied; refund if paid, less any cancellation fee; vertical fulfilment cancelled (event `SalesOrderCancelled` with the outcome per line) |
 
@@ -200,15 +200,45 @@ approval. The event carries the outcome and the owning module acts on it:
 | *Scrap* | work in progress or prepared goods written off as scrap or wastage (`wl-inventory`, `STK.ACL.02`) | cost recorded as a loss; prepaid share refunded, less any fee |
 | *Cancellation fee* (with any of the above) | — | a fee line invoiced, or kept from the prepayment with a tax document (`wl-invoicing`); the manager may waive it |
 
+**Back-orders.** When the setting *Back-orders allowed* is on for the channel, a line whose
+quantity cannot be reserved from available stock at the order's branch on `confirmed` is not
+refused: the available part is reserved and the rest is *back-ordered* (quantity
+back-ordered on the line; the order stays `confirmed` or `partially_fulfilled`, and the other
+lines are picked and fulfilled). Back-ordered quantity not yet covered by an open purchase
+order counts as demand in `STK.RUL.04` (`wl-inventory`). When stock arrives at the branch
+(`StockMoved` for a `receive` or `transfer_in` movement, `wl-inventory`), it is reserved for
+the open back-orders of the item oldest first (by the time the line was confirmed; on a tie,
+by order number, then line number); orders on `credit_hold` are skipped. When such an order
+is released (`release`), its open back-orders are reserved at once from the stock then
+available at the branch, in the same order; what stays short waits for the next arrival.
+The customer gets one message per order when any of its back-orders is reserved. A goods
+receipt that is reversed releases the reservations made from it, and the lines are
+back-ordered again. The customer may cancel a back-order with `cancel_line` (no
+outcome needed: nothing was picked) or `cancel_remaining`; a cancelled back-order leaves the
+demand of `STK.RUL.04`.
+
+**Customer PO number.** When *Unique customer PO number per customer* is on, `submit` and
+`amend` refuse a customer PO reference that another order of the same customer already uses,
+compared trimmed and case-insensitive with its call-off number (a call-off against a blanket
+PO carries its own call-off number). Cancelled orders still count, so the customer sends a new
+number or a call-off number. The same number for different customers is allowed; orders
+without a customer PO reference are not checked. A portal upload refused for this reason
+shows the buyer only the existing order's number and status.
+
 **Credit re-check at dispatch.** For orders on account, the dispatch note `dispatch` in
 `wl-inventory` (and any vertical step that hands goods over) calls the guard
 `credit_recheck(order)` through `CreditChecker`. It recomputes the exposure, overdue balance
 and the account's on-hold flag as at submit. A failure runs `hold`: the goods stay reserved,
 the accountant and sales rep are told (`SAL.RUL.01`), and only `release` lets the dispatch go.
+After a `release`, the re-check passes while the release approval is later than the last
+change to the account's exposure; once the exposure changes, it checks again.
 
 **Account hold.** `SAL.RUL.05` sets the account's on-hold flag with its source (the bounced
 cheque). Each further bounced cheque adds a source, and the flag stays while any source is
-open. While it is set, `credit_recheck` and the credit check fail. The flag is removed only by
+open. While it is set, `submit` of a new order on account and a counter sale on account are
+refused (the order stays `draft`; cash, card or online payment is still possible), and for
+orders already submitted the credit check (`accept`, `amend`) and `credit_recheck` fail
+(`credit_hold`). The flag is removed only by
 the action *Clear account hold* on the customer account: requested by a holder of
 `credit.release` with a reason (cheque replaced, balance paid, other) and approved
 (`PLT.APR.01`) by another holder of `credit.release`; the requester cannot approve
@@ -240,8 +270,16 @@ delivery are ignored, so one hand-over is never counted twice. Only an order han
 
 **Online payment.** An order paid online is placed (visible to the outlet or fulfilment) only
 after the gateway confirms the payment. A failed or timed-out payment cancels it. A payment
-that is confirmed after the order was cancelled or rejected is refunded in full without
-staff action (`SAL.RUL.06`).
+that is confirmed after the order was cancelled or rejected, or whose amount differs from the
+order total while the order is `awaiting_payment`, is refunded in full without staff action
+(`SAL.RUL.06`).
+
+**Amendment of a prepaid order.** An increase sends the customer a payment link for the
+difference; the added quantity is reserved but not fulfilled until the link is paid. When the
+link expires unpaid (after the online payment window for website orders, 24 hours for other
+channels), the order owner gets a task (the sales rep, or the outlet manager for website and
+portal orders without a sales rep): resend the link, or amend the order back. The revision
+stays until then.
 
 **Vertical mapping**
 
@@ -358,6 +396,8 @@ state: credits already used stay used and the package stays `active`. The staff 
 (05: front desk; 10: counsellor) get a task to collect before the next use, and the holder is
 told the balance is due. A setting can suspend further `consume` until the reopened balance
 is paid (off by default); the vertical then decides whether a booked session goes ahead.
+Refused consumptions are not replayed when the balance is paid: the seller's task lists them
+for a manual `consume`.
 
 **Vertical mapping**
 
@@ -374,14 +414,16 @@ From [08-auto.md](../verticals/08-auto.md) §7.1, with manufacturing's lot link 
 |---|---|---|---|
 | `requested` | neutral | no | Customer asked to return goods |
 | `received` | info | no | Goods back in a quarantine location; being inspected |
-| `resolved` | success | yes | Credited, refunded or replaced; stock restored or written off |
+| `resolved` | success | no | Credited, refunded or replaced; stock restored or written off. Final, except that a refund made by the channel can still be reversed |
+| `reversed` | neutral | yes | A refund made by the channel was taken back by the channel or recorded in error; the order's amount refunded is reduced again |
 | `rejected` | neutral | yes | Not accepted; goods handed back |
 
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
-| `receive` | requested | received | `returns.handle` | original sale linked; within the return window or approved (a return of recalled goods is always accepted) | stock received into quarantine (`wl-inventory`); a lot under an open recall links the return to the recall and adds the qty to its stock hold |
-| `resolve` | received; requested (kind *no goods*) | resolved | `returns.handle` | inspection recorded (kind *goods*); resolution chosen; restocking fee set; value above threshold approved; kind *no goods*: complaint category, responsible party and approval (`SAL.ACL.06`) | credit note (`wl-invoicing`) or refund (`wl-payments`) or replacement order at zero price; stock restored or written off (kind *goods*); order's amount refunded updated; event `ReturnResolved` |
+| `receive` | requested | received | `returns.handle` | original sale linked; within the return window or approved (a return of recalled goods, including a non-lot item sold in an open recall's trace window, is always accepted) | stock received into quarantine (`wl-inventory`); a lot under an open recall links the return to the recall and adds the qty to its stock hold; an item not tracked by lot is treated the same when it is in an open recall by item and received date range and the original sale is dated in the recall's trace window |
+| `resolve` | received; requested (kind *no goods*) | resolved | `returns.handle`, or system (vertical: 06 payout statement `match`, resolution *refunded by the channel*) | inspection recorded (kind *goods*); resolution chosen; restocking fee set; value above threshold approved; kind *no goods*: complaint category, responsible party and approval (`SAL.ACL.06`); resolution *refunded by the channel* only for kind *no goods* on an order of an aggregator channel | credit note (`wl-invoicing`) or refund (`wl-payments`) or replacement order at zero price, or, for *refunded by the channel*, no credit note and no refund (the channel refunded the customer and deducts it from its payout); stock restored or written off (kind *goods*); order's amount refunded updated; event `ReturnResolved` |
 | `reject` | requested, received | rejected | `returns.handle` | reason given | goods released back to the customer |
+| `reverse` | resolved | reversed | system (vertical: 06 payout statement `void`, or `resolve` of a dispute in which the aggregator takes the refund back) or `returns.handle` | resolution *refunded by the channel*; reason given | the order's amount refunded reduced by the return's value; refund reports exclude the return; no money and no document moves; event `ReturnReversed` |
 
 ```mermaid
 stateDiagram-v2
@@ -391,7 +433,8 @@ stateDiagram-v2
   requested --> resolved: resolve
   requested --> rejected: reject
   received --> rejected: reject
-  resolved --> [*]
+  resolved --> reversed: reverse
+  reversed --> [*]
   rejected --> [*]
 ```
 
@@ -403,9 +446,20 @@ other) and a responsible party (business, driver or rider, aggregator, supplier,
 The responsible party drives reports and recovery: a supplier fault can open a supplier
 claim, a rider fault goes to the rider's record. The refund is full or partial per line.
 
+**Refunded by the channel.** An aggregator refunds its customer itself and deducts the amount
+from its payout. The vertical records it as a *no goods* return resolved *refunded by the
+channel* (06: on payout statement `match`): no credit note, no refund payment and no
+`SAL.ACL.06` approval, because no money leaves the business; category and responsible party
+are still required. The order's amount refunded and the refund reports include it. When the
+channel takes the refund back, or the statement it came from is voided, the return runs
+`reverse`. Returns resolved by credit note, refund or replacement are never reversed: they
+are corrected with a new document.
+
 **Vertical mapping:** 08's `credited` is `resolved` with resolution *credit note* or
 *refund*. In 07, a return that comes from a quality complaint links to an NCR
-(`MFG.QCL.02`) through `ReturnResolved`.
+(`MFG.QCL.02`) through `ReturnResolved`. In 06, an aggregator refund line on a payout
+statement is a *no goods* return resolved *refunded by the channel*; the statement's `void`,
+or a dispute the aggregator resolves by taking the refund back, runs `reverse`.
 
 ## 5. Workflows
 
@@ -523,6 +577,8 @@ claim, a rider fault goes to the rider's record. The refund is full or partial p
   invoice (task to collect, holder told; consumption suspended only when the setting is on,
   §4.4).
 - `wl-inventory`: availability, reservations, dispatch notes (which call `credit_recheck`).
+  `StockMoved` for `receive` and `transfer_in` movements reserves arriving stock for open
+  back-orders.
   Events consumed for orders shipped on a dispatch note: `DispatchDelivered` (`fulfil` for
   delivered quantities), `DispatchReturned` (as `DeliveryReturned` below), `DispatchReversed`
   and `DispatchLost` (`reverse_fulfilment` when fulfilled; lost lines to the sales rep's
@@ -557,6 +613,7 @@ claim, a rider fault goes to the rider's record. The refund is full or partial p
 | `TillSessionClosed` | till counted and submitted | session, expected, counted, variance |
 | `PackageActivated`, `PackageConsumed`, `PackageExtended`, `PackageExpired`, `PackageRefunded` | package changes | package, party, credits, source |
 | `ReturnResolved` | return resolved | return, kind, original sale, resolution, value, lot, complaint category, responsible party |
+| `ReturnReversed` | `reverse` | return, original sale, value, reason |
 | `CreditLimitChanged` | limit or terms approved | party, old and new values, approver |
 
 **Attaches to:** a sales order and a lead may reference any `Subject` as their source
@@ -583,7 +640,7 @@ them.
 | `SAL.ACL.03` | An order over the customer's or group's credit limit, or with invoices overdue beyond the grace days, goes on credit hold; the hold is released only by a role with `credit.release`, not by the order's creator; an account hold (`SAL.RUL.05`) is cleared by a holder of `credit.release` with another holder's approval, never the requester | `LIM`, `SOD` | grace 30 days past terms | `MFG.ACL.04`, `AUT.ACL.04`, `AUT.ACL.05` |
 | `SAL.ACL.04` | A completed counter sale is never edited or voided; it is reversed by a sales return with a credit note | `STA` | — | `AUT.ACL.06` |
 | `SAL.ACL.05` | Amending an order or cancelling a line after its fulfilment started needs a manager, as does choosing *finish to stock* or *scrap* or waiving the cancellation fee; the requester cannot approve | `STA`, `SOD` | any value | — |
-| `SAL.ACL.06` | A refund or credit after completion with nothing returned needs a complaint category and a responsible party; above a value it needs a manager, and whoever records it cannot approve it | `LIM`, `SOD` | AED 50 | — |
+| `SAL.ACL.06` | A refund or credit after completion with nothing returned needs a complaint category and a responsible party; above a value it needs a manager, and whoever records it cannot approve it (not for resolution *refunded by the channel*, where no money leaves the business) | `LIM`, `SOD` | AED 50 | — |
 
 **Shared automations** (registered in [WORKFLOW.md](../WORKFLOW.md) §7, all `in use`)
 
@@ -594,7 +651,7 @@ them.
 | `SAL.RUL.03` | package credit consumed | credits remaining ≤ N | notify the holder or payer with a renewal link | N = 2 | `EDU.RUL.03` |
 | `SAL.RUL.04` | N days after the dispatch of a *collect* order reaches `picked` (ready for collection) | not collected | notify the customer and the sales rep | N = 3 | `AUT.RUL.06` |
 | `SAL.RUL.05` | `ChequeBounced` (`wl-payments`) | the drawer has a customer account | set the account on hold (and the credit group when configured); run `hold` on its orders on account not yet dispatched; refuse new orders and counter sales on account until the account hold is cleared (*Clear account hold*, §4.2); notify the accountant and the sales rep | whole group: on | — |
-| `SAL.RUL.06` | `PaymentReceived` for an order | order is `cancelled` or `rejected`, or already fully paid | request a full refund of that payment (`wl-payments` `Refunds`, reason *late payment*); notify the customer and the outlet or sales manager; the order stays as it is | — | — |
+| `SAL.RUL.06` | `PaymentReceived` for an order | order is `cancelled` or `rejected`, or already fully paid, or `awaiting_payment` and the amount differs from the order total (partial or over-payment: it cannot confirm the order, which then times out) | request a full refund of that payment (`wl-payments` `Refunds`, reason *late payment*); notify the customer and the outlet or sales manager; the order stays as it is | — | — |
 
 ## 7. Configuration per client
 
@@ -610,8 +667,10 @@ them.
 | Return window and restocking fee | 14 days; 0% |
 | Online payment window before `payment_failed` (gateway timeout) | 15 min |
 | Unique external order number per channel | on |
+| Unique customer PO number per customer (with call-off number) | off (07: on) |
+| Back-orders allowed per channel | off (08: on for counter, phone and sales rep channels) |
 | Amendments allowed per channel | on, except aggregator channels |
-| Cancellation after fulfilment started: outcomes offered; fee (% of the line or amount) | return to stock, finish to stock, scrap; 0 |
+| Cancellation after fulfilment started: outcomes offered; fee (% of the line or amount) | return to stock, finish to stock, scrap, limited to what the vertical can do (06: return to stock, scrap; 08: return to stock); 0 |
 | Credit re-check at dispatch for orders on account | on |
 | Bounced cheque hold (`SAL.RUL.05`): hold the whole credit group | on |
 | Refund after completion: approval above (`SAL.ACL.06`); complaint categories; responsible parties | AED 50; cold, late, missing item, wrong item, quality, service not delivered, other; business, driver or rider, aggregator, supplier, customer |

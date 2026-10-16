@@ -62,6 +62,10 @@ See [docs/modules/](docs/modules/).
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how the platform is layered and deployed
 - [docs/CAPABILITY-MAP.md](docs/CAPABILITY-MAP.md): what is shared and what is specific
 - [docs/verticals/](docs/verticals/): one document per business
+- [docs/backlog/](docs/backlog/README.md): about 400 build-ready issues, each self-contained
+  enough for a developer or a coding model
+- [SME problem map](docs/reviews/2026-10-16-sme-problem-map.md): 50 common SME problems and
+  how the platform answers them
 
 ## Built on Renox
 

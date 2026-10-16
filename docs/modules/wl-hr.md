@@ -53,10 +53,14 @@ tables list `HRM.QUA.01`). Health cards and PIC certificates (06) are kept as do
 with expiry on the employee record (`HRM.EMP.01`, `DOC.EXP.01`).
 
 **Standard guard (X-13).** Other modules call `qualification_valid(employee, kind, on_date)`
-(the `Qualifications` service). It answers *yes* when the employee has a valid qualification
+(the `Qualifications` service), or `qualification_valid(employee, kind, on_date, role,
+scope)` for a role-bound kind. It answers *yes* when the employee has a valid qualification
 or employee document of that kind on `on_date` (through `document_valid` in
-[wl-documents](wl-documents.md) §5.6) and, for role-bound kinds, the role and scope match.
-The document kind's `blocks` setting names the transitions it guards. Verticals that use it:
+[wl-documents](wl-documents.md) §5.6) and, for role-bound kinds, the qualification's roles
+and scope include the `role` and `scope` passed (the role and branch of the work being
+guarded, e.g. the booking's service role and branch). For a role-bound kind called without
+`role` and `scope`, it answers *no*. The document kind's `blocks` setting names the
+transitions it guards. Verticals that use it:
 05 (bookings, `SCH.ACL.04`), 09 (deployments, `MPW.ACL.07`), 10 (tutor assignment), 03
 (run dispatch), 04 (tax agent registration on return filing).
 
@@ -64,12 +68,12 @@ The document kind's `blocks` setting names the transitions it guards. Verticals 
 
 | Entity | Description | Important fields |
 |---|---|---|
-| Employee | A person who works for the client company | party (person, `wl-parties`), employing legal entity (`PLT.ENT.01`; the visa sponsor and MoHRE establishment), employee number, job title, trade or role, department, scope assignments, employment type (full-time, part-time, temporary, `freelance`), hire date, probation end, contract end, labour contract number, MoHRE person ID / labour card number, residence emirate, sponsor (company or free zone), MoHRE absence report (number, date, withdrawal reference; `MPW.RUL.09`), exit route (standard, onboarding cancelled, absconding, death), date of death and the estate's representative (when recorded), status |
+| Employee | A person who works for the client company | party (person, `wl-parties`), employing legal entity (`PLT.ENT.01`; the visa sponsor and MoHRE establishment), employee number, job title, trade or role, department, scope assignments, employment type (full-time, part-time, temporary, `freelance`), hire date, probation end, contract end, labour contract number, MoHRE person ID / labour card number, residence emirate, sponsor (company or free zone), contact attempts during an absence (date, method, by whom, outcome), MoHRE absence report (number, date, withdrawal reference, date the worker returned; `MPW.RUL.09`), exit route (standard, onboarding cancelled, absconding, death), date of death and the estate's representative (when recorded), status |
 | Salary structure | Pay agreed for a period | employee, effective from, basic, housing, transport, other fixed allowances, variable components allowed, currency (AED), cost rate per hour (derived or set; overrides a trade or role rate) |
 | Freelance rate | Pay agreed with a freelancer (no salary structure) | employee (`freelance`), effective from, rate per session or per hour, currency; visible per `EDU.ACL.11` |
-| Pay account | Where salary is paid | employee, channel (bank account / exchange-house salary card), bank or agent routing code, IBAN or card number (`SEN`), account holder name, requested by, approved by, notice sent to (mobile number on record), notice undelivered (`MessageGaveUp`), worker reached (by, method, date), cooling ends at, status (§4) |
+| Pay account | Where salary is paid | employee, channel (bank account / exchange-house salary card), bank or agent routing code, IBAN or card number (`SEN`), account holder name, name mismatch explanation (text, optional document), requested by, approved by, notice sent to (mobile number on record), notice undelivered (`MessageGaveUp`), worker reached (by, method, date), cooling ends at, status (§4) |
 | Qualification | A licence, permit or certificate | employee, type (practitioner licence, SIRA, health card, driving licence, teaching permit…), number, issuer, scope (branches, roles), valid from/to, document (`wl-documents`) |
-| Visa case | One visa process | employee (or candidate party), sponsoring legal entity (visa quota per entity), type (`new`, `renewal`, `cancellation`; `transfer` and `status_change` as configured types), emirate/authority, steps, fees, rejection (authority reference, reason, date), status |
+| Visa case | One visa process | employee (or candidate party), sponsoring legal entity (visa quota per entity), type (`new`, `renewal`, `cancellation`; `transfer` and `status_change` as configured types), emirate/authority, steps, fees, rejection (authority reference, reason, date), cancellation not needed (on a *new* case whose permit was issued: by whom, reason; recorded by `visas.manage`), status |
 | Visa case step | One step of a case | case, step type (work permit, entry permit, change of status, medical fitness, Emirates ID biometrics, residence visa, labour contract, health insurance, ILOE, cancellation), mandatory, target days (from the template), due date, date done, reference number, document, fee, amortisation term (default: visa term, 24 months) |
 | Leave policy | Rules for a leave type | type (annual, sick, maternity, parental, bereavement, Hajj, study, unpaid), entitlement, accrual, pay rate per band, carry-over, documents required |
 | Leave balance | Entitlement per employee and type | employee, type, year, accrued, taken, remaining |
@@ -93,6 +97,12 @@ the worker's signed written consent attached, the Art. 25 caps still apply, and 
 shows a warning to take legal advice. No adjustment type exists for visa or recruitment
 costs (Art. 6(4)).
 
+**The employee's manager.** The employee record has no manager field. Where this module
+says "the manager" or "the line manager" of an employee, it means every user who holds the
+*manager* role in one of the employee's scope assignments, resolved through wl-kernel's
+`ApproverResolver` ("manager of the employee's branch"). When no such user exists, the
+message or right falls to HR (`employees.manage`).
+
 ## 4. Lifecycles
 
 The machines below are the canonical form of those first written in
@@ -108,7 +118,7 @@ machines' events.
 | `active` | success | no | Can work and be paid |
 | `on_leave` | info | no | On approved leave |
 | `notice` | warning | no | Resigned or terminated; serving notice |
-| `absconded` | error | no | Absent without notice; MoHRE absence report filed; not paid through WPS while the report is valid |
+| `absconded` | error | no | Absent without notice; MoHRE absence report filed; no line is put in a new SIF file while the report is valid (a file already sent is not recalled) |
 | `deceased` | neutral | no | Died in service; settlement due to the estate |
 | `exited` | neutral | yes | Settled; visa cancelled where the company sponsored it |
 | `onboarding_cancelled` | neutral | yes | Never started work (visa refused or cancelled, candidate withdrew, medically unfit) |
@@ -121,11 +131,11 @@ machines' events.
 | `give_notice` | active, on_leave | notice | `employees.manage` | notice date, last working day and reason recorded | final settlement drafted; *cancellation* visa case opened when sponsored; event `EmployeeNoticeGiven` |
 | `exit` | notice | exited | `employees.manage` | final settlement `paid` or `closed`; *cancellation* visa case `completed` when sponsored | portal becomes read-only, then closes (TIM rule); event `EmployeeExited` with exit route *standard* |
 | `exit` | absconded, deceased | exited | `employees.manage` | *cancellation* visa case `completed`, or the authority's cancellation reference recorded; final settlement `approved`, `paid` or `closed` (absconded; `disputed` blocks the exit) or `paid` or `closed` to the estate (deceased); no signed acknowledgement needed | portal becomes read-only, then closes (TIM rule); event `EmployeeExited` with exit route *absconding* or *death* |
-| `cancel_onboarding` | onboarding | onboarding_cancelled | `employees.manage`, approved under `HRM.ACL.07` | reason given; open *new* visa case `cancel`led or `rejected`; when a work permit or entry permit was already issued, a *cancellation* visa case `completed` (or the PRO records that none is needed); wages for any days worked paid by a final settlement (`paid`) | planned deployments and assignments cancelled through event `EmployeeOnboardingCancelled`; visa and onboarding costs stay on the employee cost object and are not recovered from the person (Art. 6(4)); portal account (if any) closed |
+| `cancel_onboarding` | onboarding | onboarding_cancelled | `employees.manage`, approved under `HRM.ACL.07` | reason given; open *new* visa case `cancel`led or `rejected`; when a work permit or entry permit was already issued, a *cancellation* visa case `completed` (or *cancellation not needed* recorded on the *new* case by `visas.manage`, with a reason); when the employee has attendance, wages for those days paid by a final settlement (`paid`) that HR drafted with reason *onboarding cancelled* (§5.4); no settlement needed without attendance | planned deployments and assignments cancelled through event `EmployeeOnboardingCancelled`; visa and onboarding costs stay on the employee cost object and are not recovered from the person (Art. 6(4)); portal account (if any) closed |
 | `withdraw_notice` | notice | active | `employees.manage`, approved under `HRM.ACL.07` | the other party's written agreement attached (`⚠ open: lawyer (L-26)`, §10); *cancellation* visa case not `completed`; final settlement `draft` or `approved` with no payment recorded against it (a settlement `paid`, `disputed` or partly paid cannot be cancelled, so the notice stands) | draft or approved final settlement `cancel`led; *cancellation* visa case `cancel`led; last working day cleared; event `EmployeeNoticeWithdrawn` |
-| `report_absconding` | active, on_leave, notice | absconded | `employees.manage`, approved under `HRM.ACL.07` | an open absence case older than N consecutive days without attendance or approved leave (default 7) and the worker cannot be reached (ER Art. 28 ✔ [S1]); MoHRE absence report number and date recorded | open payroll lines held with reason *absence report* (outside WPS while the report is valid, MR 340/2026 Art. 4 ✔ [S2]); deployments ended; portal and attendance disabled; final settlement drafted; *cancellation* visa case opened from the absconding step template; event `EmployeeAbsconded` |
-| `reinstate` | absconded | active | `employees.manage`, approved under `HRM.ACL.07` | the worker returned and the report's withdrawal or cancellation reference recorded (`⚠ open: authority (AU-22)`, §10); *cancellation* visa case not `completed`; final settlement `draft` or `approved` with no payment recorded against it (otherwise refused: the worker is rehired as a new employee) | held lines released through `HRM.RUL.12`; draft or approved final settlement and *cancellation* case `cancel`led; event `EmployeeReinstated` |
-| `record_death` | active, on_leave, notice, absconded | deceased | `employees.manage`, approved under `HRM.ACL.07` | date of death and death certificate (or the authority's notice) attached | payroll lines from the date held; deployments ended; portal disabled and every message to the employee stopped; final settlement drafted with payee *estate*; *cancellation* visa case opened; HR task list (visa cancellation, insurance claim, repatriation) opened; event `EmployeeDeceased` |
+| `report_absconding` | active, on_leave, notice | absconded | `employees.manage`, approved under `HRM.ACL.07` | an absence case is open and more than N consecutive calendar days (default 7) have passed since the last day with attendance or approved leave, and the worker cannot be reached: at least two failed contact attempts recorded on different days of the absence (ER Art. 28 ✔ [S1]); MoHRE absence report number and date recorded | payroll lines in runs not yet `submitted` held with reason *absence report* (outside WPS while the report is valid, MR 340/2026 Art. 4 ✔ [S2]; a line in a file already sent stays, and if the bank fails it, it is held); deployments ended; portal and attendance disabled; final settlement drafted (or, from `notice`, the existing one gets reason *absconding* and no second one is drafted); *cancellation* visa case opened from the *absconding* variant of the cancellation step template (§8); event `EmployeeAbsconded` |
+| `reinstate` | absconded | active | `employees.manage`, approved under `HRM.ACL.07` | the date the worker returned recorded (not in the future) and the report's withdrawal or cancellation reference recorded (`⚠ open: authority (AU-22)`, §10); *cancellation* visa case not `completed`; final settlement `draft` or `approved` with no payment recorded against it (otherwise refused: the worker is rehired as a new employee) | held lines released through `HRM.RUL.12`; draft or approved final settlement and *cancellation* case `cancel`led; the employee returns to `active` whatever the state before absconding (a notice or leave that was running is not resumed; HR gives notice or records leave again); event `EmployeeReinstated` |
+| `record_death` | active, on_leave, notice, absconded | deceased | `employees.manage`, approved under `HRM.ACL.07` | date of death and death certificate (or the authority's notice) attached | payroll lines in runs not yet `submitted` held with reason *death* and never released by `HRM.RUL.12`: the salary they owe up to the date of death is moved into the final settlement as unpaid salary, and the line is marked *settled in the final settlement*; deployments ended; portal disabled and every message to the employee stopped; leave requests `requested` or `approved` that have not started cancelled by the system; final settlement drafted with payee *estate*; *cancellation* visa case opened; HR task list (visa cancellation, insurance claim, repatriation) opened; event `EmployeeDeceased` |
 
 ```mermaid
 stateDiagram-v2
@@ -173,7 +183,7 @@ not states.
 | `resume` | on_hold | in_progress | `visas.manage` | — | — |
 | `complete` | in_progress | completed | `visas.manage` | all mandatory steps done; resulting documents attached with numbers and expiry dates | *new*: employee may `activate`; *cancellation*: employee may `exit`; fees posted to the employee as cost object (`FIN.CST.01`), amortised evenly over the visa or contract term (default 24 months) for management reporting; event `VisaCaseCompleted` |
 | `cancel` | open, in_progress, on_hold | cancelled | `visas.manage` | reason given | fees already paid stay posted |
-| `reject` | in_progress, on_hold | rejected | `visas.manage` | authority reference and reason recorded | fees already paid stay posted; event `VisaCaseRejected`. *New*: HR task to `cancel_onboarding` or open another case. *Renewal*: HR task with a deadline N days before the current residence visa expires (default 30) to open a new case by another route, or to `give_notice` and open a *cancellation* case; active deployments told through `DocumentExpiring` (`affected`); MD notified |
+| `reject` | in_progress, on_hold | rejected | `visas.manage` | authority reference and reason recorded | fees already paid stay posted; event `VisaCaseRejected`. *New*: HR task to `cancel_onboarding` or open another case. *Renewal*: HR task with a deadline N days before the current residence visa expires (default 30; due today when that day has passed) to open a new case by another route, or to `give_notice` and open a *cancellation* case; active deployments told through `VisaCaseRejected`, which carries the current visa's expiry date (the vertical reacts; 09 deployments), and again through `DocumentExpiring` (`affected`) once the visa enters its look-ahead window (`DOC.RUL.02`); MD notified |
 
 ```mermaid
 stateDiagram-v2
@@ -205,7 +215,7 @@ stateDiagram-v2
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
 | `approve` | requested | approved | `leave.approve` | balance sufficient, or the excess marked unpaid; required document attached (e.g. sick note) | calendars blocked (`wl-scheduling`, rosters); event `LeaveApproved` |
-| `record_sick` | — | approved | `leave.approve`, or the line manager | type sick; starts today (the employee called in sick); the sick note may follow within N days | same effects as `approve` at once, so today's bookings and rosters are moved (`wl-scheduling` §5.5); event `LeaveApproved`; a task to HR when the sick note is not attached after N days |
+| `record_sick` | — | approved | `leave.approve`, or the employee's manager (§3) | type sick; starts today (the employee called in sick); the sick note may follow within N days | same effects as `approve` at once, so today's bookings and rosters are moved (`wl-scheduling` §5.5); event `LeaveApproved`; a task to HR when the sick note is not attached by the end of the Nth working day after the start date (raised at 00:00 Asia/Dubai the next day) |
 | `reject` | requested | rejected | `leave.approve` | reason given | employee notified |
 | `cancel` | requested, approved | cancelled | the employee or `leave.approve` | start date not reached | balance restored; calendars released |
 | `complete` | approved | completed | system (end date) | — | balance deducted; unpaid days passed to payroll |
@@ -247,15 +257,15 @@ stateDiagram-v2
 
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
-| `calculate` | draft, calculated | calculated | `payroll.prepare` | hours for the period from `Timesheets::hours_for_payroll(period)` (approved hours, and accepted attendance hours marked *provisional* for timesheets not yet approved, per the wl-attendance cut-off policy), or listed exceptions | lines recalculated for the run's legal entity only (`freelance` employees excluded) from salary structures, timesheets (`wl-attendance`; provisional hours shown as such on the line), approved adjustment timesheets affecting payroll, reconciliation differences (`TimesheetReconciliationNeeded`), leave, adjustments and expense reimbursements; lines of employees with an open absence case marked *held* |
+| `calculate` | draft, calculated | calculated | `payroll.prepare` | hours for the period from `Timesheets::hours_for_payroll(period)` (approved hours, and accepted attendance hours marked *provisional* for timesheets not yet approved, per the wl-attendance cut-off policy); an employee with no hours for the period does not block the run: the line is listed as an exception (missing timesheet, §5.3 step 3) | lines recalculated for the run's legal entity only (`freelance` employees excluded) from salary structures, timesheets (`wl-attendance`; provisional hours shown as such on the line), approved adjustment timesheets affecting payroll, reconciliation differences (`TimesheetReconciliationNeeded`), leave, adjustments and expense reimbursements; lines of employees with an open absence case marked *held* |
 | `approve` | calculated | approved | `payroll.approve` | segregation of duties: approver ≠ preparer | — |
-| `return` | calculated, approved | draft | `payroll.approve` | reason given; comments on the lines to fix | approval cleared; preparer notified with the reason and comments; event `PayrollRunReturned` |
+| `return` | calculated, approved | draft | `payroll.approve` | returner ≠ the preparer; reason given; at least one comment on a line to fix | approval cleared; preparer notified with the reason and comments; event `PayrollRunReturned` |
 | `submit` | approved | submitted | `payroll.prepare` | every paid employee has a WPS-eligible pay account (or an approved non-WPS method) | SIF file generated per entity, named with its MoHRE establishment ID (`HRM.WPS.01`); held lines and lines with net ≤ 0 left out (no SIF when no line is left, e.g. a supplementary run with only negative differences); approved timesheets used are `lock`ed; timesheets paid on provisional hours get `paid_provisionally_by` = this run |
 | `record_rejection` | submitted | rejected | `payroll.prepare` | the bank's rejection notice attached; reason (file format, establishment ID, funding, other) | every line marked `failed`; preparer and approver notified (`HRM.RUL.11`); the WPS deadline alerts (`HRM.RUL.03`) keep running; event `PayrollLinesFailed` |
 | `record_partial` | submitted | partially_rejected | `payroll.prepare` | the bank's result file attached; each failed line has a reason (invalid IBAN or card, routing code, name or labour card mismatch, account closed) | paid lines marked `paid` and their payslips published; failed lines marked `failed`; a task per failed line (`HRM.RUL.11`); event `PayrollLinesFailed` |
-| `resubmit` | rejected | submitted | `payroll.prepare` | cause fixed; amounts unchanged (`return` is not possible once the file was sent: an amount error is corrected after payment by a supplementary run, §5.6) | new SIF version generated for the same lines; lines reset from `failed` to `included`; the previous file kept |
+| `resubmit` | rejected | submitted | `payroll.prepare` | cause fixed: a note on the fix entered (every reason); for reason *establishment ID*, the legal entity's MoHRE establishment ID differs from the one in the rejected SIF version; amounts unchanged (`return` is not possible once the file was sent: an amount error is corrected after payment by a supplementary run, §5.6) | new SIF version generated for the same lines; lines reset from `failed` to `included`; the previous file kept |
 | `regenerate` | partially_rejected | submitted | `payroll.prepare` | each failed line fixed (pay account changed under `HRM.ACL.05`) or moved out of the run (held, or paid by an approved non-WPS method) | SIF generated with only the fixed lines, as a new version linked to the run |
-| `confirm_paid` | submitted, partially_rejected | paid | `payroll.approve` | bank or exchange-house confirmation attached for every line not held with net > 0 (none needed when no SIF was generated); no line left `failed` (fix it or hold it) | payslips generated (`DOC.GEN.01`) and published to the employee portal; salary cost posted to cost objects (`FIN.CST.01`); held lines wait for `HRM.RUL.12`; for a supplementary run, overpayment recovery adjustments created for the negative differences; event `PayrollRunPaid` |
+| `confirm_paid` | submitted, partially_rejected | paid | `payroll.approve` | bank or exchange-house confirmation attached for every line not held with net > 0 that is in a SIF version (the result file attached at `record_partial` confirms the lines it shows paid; none needed when no SIF was generated); a line moved out to an approved non-WPS method has its payment recorded (`FIN.PAY.01`) instead; no line left `failed` (fix it or hold it) | payslips generated (`DOC.GEN.01`) and published to the employee portal; salary cost posted to cost objects (`FIN.CST.01`); held lines wait for `HRM.RUL.12`; for a supplementary run, overpayment recovery adjustments created for the negative differences; event `PayrollRunPaid` |
 | `cancel` | draft, calculated | cancelled | `payroll.prepare` | — | — |
 
 ```mermaid
@@ -283,12 +293,13 @@ stateDiagram-v2
 
 - `regular`: the monthly run (`HRM.RUL.02`).
 - `off_cycle`: pays held lines released after the regular run (`HRM.RUL.12`), lines that
-  failed and were moved out, and positive differences of a supplementary run. It has its own
-  SIF file and the same approval.
+  failed and were moved out, and positive differences of a supplementary run that were held
+  at its `submit`. It has its own SIF file and the same approval.
 - `supplementary`: a correction of a `paid` run, which is never edited. Created by
   `payroll.prepare` from the paid run with a reason; it holds only the affected employees
-  and the difference per component. A positive difference is paid (in this run or an
-  off-cycle run). A negative difference becomes an *overpayment recovery* adjustment spread
+  and the difference per component. A positive difference is paid in this run, through its
+  own SIF; only a line held at its `submit` (e.g. no usable pay account) is paid later in an
+  off-cycle run (`HRM.RUL.12`). A negative difference becomes an *overpayment recovery* adjustment spread
   over the next regular runs, at most 20% of the wage a month and within the 50% total
   (Art. 25 ✔ [S1]; `HRM.ACL.06`). Corrected payslips are published and the cost difference
   is posted to the same cost objects. Approval is by another user (`HRM.ACL.04`).
@@ -314,10 +325,10 @@ stateDiagram-v2
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
 | `approve` | draft | approved | `settlements.approve` | approver ≠ preparer | settlement statement generated (`DOC.GEN.01`) |
-| `pay` | approved | paid | `settlements.pay` | payment of the net still unpaid recorded through WPS or transfer (`FIN.PAY.01`) to the payee; or nothing payable (net ≤ 0) | acknowledgement sent for signature (`DOC.SIG.01`; not for the estate); employee may `exit`; recoveries above the caps create a receivable from the employee (see *Negative net* below); event `SettlementPaid` |
+| `pay` | approved | paid | `settlements.pay` | payment of the net still unpaid recorded through WPS or transfer (`FIN.PAY.01`) to the payee (for payee *estate*: the estate's representative and the document giving the right recorded, `⚠ open: lawyer (L-25)`); or nothing payable (net 0) | acknowledgement sent for signature (`DOC.SIG.01`; not for the estate); employee may `exit`; recoveries above the caps create a receivable from the employee (see *Negative net* below); event `SettlementPaid` |
 | `dispute` | approved, paid | disputed | `settlements.prepare` | source (worker, MoHRE complaint, court) and reference given; undisputed amount entered | labour-case ticket opened (`wl-ticketing`, category *labour case*) with the hearing or reply dates; HR, accountant and MD notified; the undisputed amount can still be paid on time as a payment against the settlement; event `SettlementDisputed` |
-| `resolve` | disputed | approved, closed | `settlements.approve` | outcome (`upheld`, `revised`) and the MoHRE decision, agreement or judgment attached | `revised`: amounts recalculated and approved again by another user, then `approved` and the difference paid with `pay` (a revised net below the amount already paid makes the excess a receivable from the employee, as for a negative net); `upheld`: `closed` when the net is paid in full (or nothing is payable), otherwise `approved` so the rest is paid with `pay`; labour-case ticket closed |
-| `close` | paid | closed | system | N days after `pay` with no dispute (default 30), or acknowledgement signed | — |
+| `resolve` | disputed | approved, closed | `settlements.approve` | outcome (`upheld`, `revised`) and the MoHRE decision, agreement or judgment attached | `revised`: while `disputed`, a `settlements.prepare` user enters the recalculated amounts; `resolve` is then run by a `settlements.approve` user other than the one who entered them (`HRM.ACL.04`); the settlement goes to `approved` with a new statement and the difference is paid with `pay` (a revised net below the amount already paid makes the excess a receivable from the employee, as for a negative net); `upheld`: `closed` when the net is paid in full (or nothing is payable), otherwise `approved` so the rest is paid with `pay`; labour-case ticket closed |
+| `close` | paid | closed | system | N days after `pay` with no dispute (default 30), or acknowledgement signed | a later claim (e.g. a MoHRE case) is handled outside the machine on a *labour case* ticket on the employee |
 | `cancel` | draft, approved | cancelled | `settlements.prepare` or system (`withdraw_notice`, `reinstate`) | nothing paid against it | — |
 
 ```mermaid
@@ -336,9 +347,14 @@ stateDiagram-v2
   cancelled --> [*]
 ```
 
-**Negative net.** Recoveries (advances, loans, overpayments, damage) are offset against the
+**Negative net (recoveries above the caps).** A settlement "goes negative" when its
+recoveries are larger than what may be offset; the net itself never falls below 0.
+Recoveries (advances, loans, overpayments, damage) are offset against the
 dues only within the Art. 25 caps (`HRM.ACL.06`: per type and 50% in total, computed on the
-settlement's dues). The recoveries above the caps are the amount due from the employee: `pay`
+settlement's dues). The settlement counts as one period: each monthly per-type cap applies
+once, as a share of the dues (overpayments 20%, fines 5%, court debts 25%), and damage at
+most 5 days' wage of the last salary structure (a day's wage per §7). The recoveries above
+the caps are the amount due from the employee: `pay`
 creates a receivable for it on the employee's party (a non-VAT receivable, not a tax
 invoice) with a recovery task for the accountant. The net (dues minus the capped offset) may
 therefore still be positive, and is then paid as usual; a net of 0 is settled by `pay` with
@@ -360,12 +376,12 @@ A change of pay account is the classic payroll fraud. A new account is never use
 
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
-| `request` | — | pending_approval | `employees.manage`, or the employee (portal) | IBAN or card format and routing code valid; account holder name matches the employee, or the mismatch explained | approver notified |
-| `approve` | pending_approval | cooling | `pay_accounts.approve` (`HRM.ACL.05`) | approver ≠ requester | SMS (and e-mail where known) to the worker's mobile number on record before the request, naming the last 4 digits and the date it takes effect; cooling ends after N days (default 5) |
+| `request` | — | pending_approval | `employees.manage`, or the employee (portal) | IBAN or card format and routing code valid; account holder name matches the employee, or the mismatch explained; no other request of the employee `pending_approval` or `cooling` (the same flow applies to a new employee's first account) | approver notified |
+| `approve` | pending_approval | cooling | `pay_accounts.approve` (`HRM.ACL.05`) | approver ≠ requester | SMS (and e-mail where known) to the worker's mobile number on record before the request, naming the last 4 digits and the date it takes effect (no mobile number on record: handled as an undelivered notice, below); cooling ends after N days (default 5) |
 | `reject` | pending_approval | rejected | `pay_accounts.approve` | reason given | requester notified |
 | `stop` | cooling | rejected | the worker (reply link, portal) or `employees.manage` | — | old account stays active; security ticket opened; MD notified |
 | `activate` | cooling | active | system (cooling ended, or worker reached recorded after it ended) | the change notice was not given up (`MessageGaveUp`), or HR recorded that the worker was reached (by whom, method, date) | previous active account `retired`; event `PayAccountChanged` |
-| `waive_cooling` | cooling | active | `payroll.approve` + MD approval (`HRM.ACL.05`) | reason given (e.g. a failed WPS line, worker verified in person with their Emirates ID); the MD approver is not the requester of the change (otherwise another MD-level approver) | as `activate`; audited |
+| `waive_cooling` | cooling | active | `payroll.approve` + MD approval (`HRM.ACL.05`) | reason given (e.g. a failed WPS line, worker verified in person with their Emirates ID); approved through a wl-kernel approval request with one step for the *MD* role; the approver is neither the `payroll.approve` user who asks nor the requester of the change (if the MD is either, another user with the *MD* role approves; with none, the request waits) | as `activate`; audited |
 | `retire` | active | retired | system | a newer account activated | — |
 
 ```mermaid
@@ -383,6 +399,13 @@ stateDiagram-v2
 
 A run uses the account that is `active` when it is submitted. If that account is closed and
 the new one is still cooling, the line is held and paid in an off-cycle run.
+
+**Undelivered notice and worker reached.** When the change notice gives up (`MessageGaveUp`
+from wl-notify), or there is no mobile number on record at `approve`, the account records
+*notice undelivered* and HR gets a task to reach the worker. A user with `employees.manage`
+then records *worker reached* (by whom, method, date) on the cooling account; this is a field
+update, not a transition. `activate` runs at the cooling end, or at once when *worker
+reached* is recorded after the cooling end.
 
 **Vertical mapping (employee, payroll, settlement):**
 
@@ -464,13 +487,17 @@ Other exits:
   cancelled and nothing has been paid on the settlement).
 - **Onboarding cancelled** (visa refused or cancelled, candidate withdrew): planned work is
   cancelled, any days worked are paid, a cancellation case runs when a permit was issued,
-  and the costs stay with the employer.
+  and the costs stay with the employer. The employee never enters `notice`, so nothing
+  drafts a settlement automatically: when the employee has attendance, HR drafts the final
+  settlement (reason *onboarding cancelled*: unpaid salary for the days worked), has it
+  approved and paid, and then requests `cancel_onboarding`.
 - **Absconding:** after the absence case (09 `MPW.RUL.09`) and the MoHRE absence report,
   `report_absconding` holds pay, ends deployments and opens the cancellation case. Exit does
   not wait for the worker's signature or for payment; the approved settlement stays as a
   liability until it is paid as legal advice says (`⚠ open: lawyer (L-24)`, §10).
-- **Death:** `record_death` stops all messages to the employee, holds pay from the date of
-  death and drafts the settlement to the estate. Who receives it and which documents are
+- **Death:** `record_death` stops all messages to the employee, holds the open payroll
+  lines, moves the salary owed up to the date of death into the settlement and drafts the
+  settlement to the estate. Who receives it and which documents are
   needed is `⚠ open: lawyer (L-25)`.
 - **Renewal refused:** a rejected *renewal* visa case gives HR a task with a deadline before
   the current visa expires: try another route, or give notice and open a cancellation case.
@@ -501,6 +528,9 @@ Other exits:
    date of its period where possible. Carrying it into the next regular run is allowed with
    a reason, and the system warns when that pays after the due date. Lines held because of
    a valid absence report are outside WPS (MR 340/2026 Art. 4 ✔ [S2]) and carry no warning.
+   When the reason clears before its run is `paid`, the line is un-held in that run if the
+   run is not yet `submitted`; otherwise it waits until the run is `paid` and `HRM.RUL.12`
+   applies.
 
 ### 5.7 Pay account change
 
@@ -511,10 +541,10 @@ Other exits:
    worker can stop the change from the message link or the portal; a stopped change opens a
    security ticket and tells the MD.
 4. After cooling, the new account becomes active for the next run submitted.
-5. If the SMS cannot be delivered (`MessageGaveUp`), the change stays in cooling past its end
-   date and HR gets a task to reach the worker by another way. When HR records that the
-   worker was reached (by whom, method, date), the account activates at once if the cooling
-   period has ended.
+5. If the SMS cannot be delivered (`MessageGaveUp`), or there is no mobile number on record,
+   the change stays in cooling past its end date and HR gets a task to reach the worker by
+   another way. When HR records that the worker was reached (by whom, method, date), the
+   account activates at once if the cooling period has ended.
 
 ## 6. Interfaces to other modules
 
@@ -523,7 +553,7 @@ Other exits:
 | Service | Purpose | Used by |
 |---|---|---|
 | `Workforce` | Is an employee active / on leave / exited on a date; employees in a scope; employing entity and employment type | wl-attendance, wl-scheduling, apps |
-| `Qualifications` | May employee E perform role R at scope S on date D (`HRM.QUA.01`); the guard `qualification_valid(employee, kind, on_date)` | wl-scheduling (`SCH.ACL.04`, clinic bookings), wl-delivery (run dispatch), apps (09 deployments, 10 tutor assignment, 04 return filing) |
+| `Qualifications` | May employee E perform role R at scope S on date D (`HRM.QUA.01`); the guard `qualification_valid(employee, kind, on_date[, role, scope])` (role and scope required for role-bound kinds, §2) | wl-scheduling (`SCH.ACL.04`, clinic bookings), wl-delivery (run dispatch), apps (09 deployments, 10 tutor assignment, 04 return filing) |
 | `LeaveCalendar` | Approved leave per employee and period | wl-scheduling, wl-attendance (rosters) |
 | `CostRates` | Hourly cost rate per employee on a date (set on the salary structure, derived from it, or a freelance rate); answers "none" when the vertical's own rate applies (e.g. 02 trade rate) | wl-attendance (labour cost on approval, via its `CostRateResolver`), wl-invoicing (job costing) |
 | `SalaryFile` | Build a SIF file from a list of payments (payroll run or final settlement) | payroll, settlements |
@@ -558,12 +588,12 @@ Other exits:
 | `PayrollRunPaid` | `confirm_paid` | run, period, totals, employees |
 | `SettlementPaid` | `pay` | settlement, employee, amount |
 | `SalaryChanged` | new salary structure effective | employee, old and new totals, approver |
-| `QualificationExpiring` / `QualificationExpired` | from document expiry (`HRM.RUL.10`) | employee, qualification, scope, affected planned work |
+| `QualificationExpiring` / `QualificationExpired` | from document expiry (`HRM.RUL.10`) | employee, qualification, scope, affected work (`QualificationExpiring`: the `affected` list of `DocumentExpiring`; `QualificationExpired`: the blocked open and planned records of `DocumentExpired`) |
 | `EmployeeOnboardingCancelled` | `cancel_onboarding` | employee, reason |
 | `EmployeeNoticeWithdrawn` | `withdraw_notice` | employee |
 | `EmployeeAbsconded` / `EmployeeReinstated` | `report_absconding` / `reinstate` | employee, report number and date |
 | `EmployeeDeceased` | `record_death` | employee, date |
-| `VisaCaseRejected` | visa case `reject` | case, type, employee, deadline |
+| `VisaCaseRejected` | visa case `reject` | case, type, employee, deadline, current residence visa expiry date (*renewal*) |
 | `PayrollRunReturned` | `return` | run, reason |
 | `PayrollLinesFailed` | `record_rejection`, `record_partial` | run, failed lines with reasons |
 | `SettlementDisputed` | settlement `dispute` | settlement, employee, source, reference |
@@ -599,7 +629,7 @@ status *in use*):
 | `HRM.ACL.04` | A payroll run or a final settlement is prepared by one user and approved by another | `MPW.ACL.05`, `MPW.ACL.12` | `SOD` | on |
 | `HRM.ACL.05` | A new pay account is approved by a user other than the requester, the worker is told by SMS on the number on record, and payroll uses it only after the cooling period; waiving the cooling needs MD approval and a reason | new (X-15) | `SOD`, `TIM` | 5 days |
 | `HRM.ACL.06` | A salary recovery (overpayment from a supplementary run, advance, damage, settlement offset) stays within the Art. 25 caps per type and 50% in total per payroll line, computed on the line's gross fixed wage for the period (a settlement offset: on the settlement's dues); a line above the caps is refused, not trimmed silently, and no approval can exceed the legal caps | new (X-15) | `LIM` | caps per §7 |
-| `HRM.ACL.07` | A non-standard exit or reversal (`cancel_onboarding`, `withdraw_notice`, `report_absconding`, `reinstate`, `record_death`) is requested by HR and approved by another user with `employees.exit.approve`, with reason and documents; audited | new (X-15) | `SOD` | approver: MD |
+| `HRM.ACL.07` | A non-standard exit or reversal (`cancel_onboarding`, `withdraw_notice`, `report_absconding`, `reinstate`, `record_death`) is requested by HR and approved by another user with `employees.exit.approve`, with reason and documents; one pending request per employee (a second is refused until the first ends); audited | new (X-15) | `SOD` | approver: MD |
 
 Rules used here but owned elsewhere, and remaining promotion candidates:
 
@@ -623,8 +653,8 @@ Rules used here but owned elsewhere, and remaining promotion candidates:
 | `HRM.RUL.05` (from `MPW.RUL.07`) | employee → `notice` | — | draft the final settlement; open a *cancellation* visa case | — |
 | `HRM.RUL.06` (from `MPW.RUL.08`) | N days before probation ends | employee `active` | notify HR | N = 14 |
 | `HRM.RUL.09` | N days after the last working day, and on the legal deadline | final settlement `draft` or `approved`, or `disputed` with less than the undisputed amount paid (not `paid`, `closed` or `cancelled`) | notify HR and the accountant at N; on the deadline notify the MD that it is overdue; for `disputed`, remind to pay the undisputed amount | N = 10; deadline 14 days after the end of the contract (Art. 53 ✔ [S1]) |
-| `HRM.RUL.10` (from `CLN.RUL.01`) | qualification or employee document of a blocking kind reaches its expiry date (`DocumentExpired`) | — | `qualification_valid` answers *no* for that role and scope; emit `QualificationExpired` with the employee's open and planned work; notify the manager and HR | — |
-| `HRM.RUL.11` | run `rejected` or `partially_rejected` | — | task per failed line for the preparer; notify the approver; if not resubmitted N days before the WPS due date, notify the MD and accountant | N = 1 |
+| `HRM.RUL.10` (from `CLN.RUL.01`) | qualification or employee document of a blocking kind reaches its expiry date (`DocumentExpired`) | — | `qualification_valid` answers *no* for that role and scope; emit `QualificationExpired` with the employee's open and planned work (the blocked records carried by `DocumentExpired`); notify the employee's manager (§3) and HR | — |
+| `HRM.RUL.11` | run `rejected` or `partially_rejected` | — | task per failed line for the preparer; notify the approver; if the run is still `rejected` (not resubmitted) or `partially_rejected` (not regenerated or confirmed paid) at 00:00 Asia/Dubai N days before the WPS due date, notify the MD and accountant (at once when the rejection is recorded after that point) | N = 1 |
 | `HRM.RUL.12` | hold reason cleared (absence case closed, report withdrawn, line fixed), and at each cut-off for lines still held | payroll line held in a `paid` run | propose an off-cycle run for the released lines; when carried into the next regular run, require a reason and warn if payment falls after the WPS due date of its period | — |
 
 ## 7. Configuration per client
@@ -639,9 +669,9 @@ Rules used here but owned elsewhere, and remaining promotion candidates:
 | Leave policies | annual 30 days per year after one year (2 days/month after 6 months) (Art. 29); sick up to 90 days per year after probation (15 full pay, 30 half, the rest unpaid; unpaid during probation) (Art. 31); maternity 60 days (45 full, 15 half), plus up to 45 unpaid days for related illness (Art. 30); parental 5 working days within 6 months of birth; bereavement 5 days (spouse) or 3 days (parent, child, sibling, grandchild, grandparent); study 10 working days a year after 2 years' service (Art. 32) ✔ [S1]. The current law has no Hajj leave; Hajj is unpaid leave by agreement (Art. 33) ✔ [S1] |
 | Gratuity formula | 21 days' basic per year for the first 5 years, 30 days per year after, capped at 2 years' wage, after 1 year of service; pro rata for part years; unpaid absence excluded (Art. 51) |
 | Leave encashment basis | at end of service: basic wage; cash in lieu during service (up to half the leave may be carried forward instead): the wage at the time of entitlement (ER Art. 19) ✔ [S1] |
-| Maximum total deductions | 50% of wage (Art. 25); per type: overpayments 20%, fines 5%, court debts 25%, damage 5 days' wage a month; advances: the 50% total only. Wage = the line's gross fixed wage for the period (basic plus fixed allowances) |
+| Maximum total deductions | 50% of wage (Art. 25); per type: overpayments 20%, fines 5%, court debts 25%, damage 5 days' wage a month; advances: the 50% total only. Wage = the line's gross fixed wage for the period (basic plus fixed allowances); a day's wage = the monthly gross fixed wage ÷ 30 |
 | Payroll cut-off day | 25 |
-| Sick note due after same-day sick leave (`record_sick`) | 2 working days |
+| Sick note due after same-day sick leave (`record_sick`) | 2 working days after the start date; HR task at 00:00 Asia/Dubai the next day |
 | Payroll runs and WPS files | one per legal entity (decision 0003; fixed) |
 | Employment types in use | full-time, part-time, temporary; `freelance` on for 10 EdTech |
 | Visa and onboarding cost amortisation term | visa or contract term, default 24 months (management reporting only) |
@@ -678,8 +708,10 @@ scheme from 1 February 2020 ✔ [S8], [S9], [S10] (secondary sources).
   scheme that replaces gratuity for enrolled workers (Cabinet Resolution 96 of 2023)
   ✔ [S7], [S8], [S9].
 - **`LeavePolicy`** (strategy): accrual and day counting per leave type.
-- **`VisaStepTemplate`** (configuration): steps per case type and emirate, each with a
-  mandatory flag and a target number of days from the previous step (or the case start);
+- **`VisaStepTemplate`** (configuration): steps per case type and emirate, with variants per
+  exit route for *cancellation* cases (*standard*, *absconding*: starts from the MoHRE
+  absence report and needs no worker signature; *death*: starts from the death certificate),
+  each step with a mandatory flag and a target number of days from the previous step (or the case start);
   the vertical's rule alerts on a late step (09: `MPW.RUL.14`).
 - **`SalaryFileFormat`** (strategy): SIF variants per bank or exchange house; a non-WPS
   format for free-zone or exempt employees.

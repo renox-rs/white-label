@@ -134,7 +134,7 @@ global. Sales representatives are global but see only the customers assigned to 
 | `FIN.ACL.01` *(shared)* | An issued invoice cannot be edited; it is corrected with a credit note | `STA` | all staff | — |
 | `AUT.ACL.20` | Accident damage is repaired only when the police accident report (the repair permit) is attached to the job card or its insurance claim; no override, also for private repairs ✔ [S1] | `STA` | service advisor, insurance coordinator, workshop manager | legal block |
 | `AUT.ACL.21` | A job card is cancelled after work started only by the service advisor with a reason, the work done recorded per line and the customer's acknowledgement; billing less than the work done, or waiving it, needs branch manager approval | `STA`, `SOD` | service advisor, branch manager | on |
-| `AUT.ACL.22` | A vehicle incident (damage while in the workshop's care or on a test drive) is closed only with a liability decision by the branch manager, not by the technician or advisor involved | `SOD` | branch manager | — |
+| `AUT.ACL.22` | A vehicle incident (damage while in the workshop's care or on a test drive) is closed only with a liability decision by the branch manager, not by the technician or advisor involved; when the branch manager was involved, another branch manager or the owner decides | `SOD` | branch manager | — |
 | `SAL.ACL.05` *(shared)* | Amending or cancelling a sales order line after its goods were picked needs an outcome (return to stock) and branch manager approval | `STA`, `SOD` | counter sales, sales rep | — |
 | `STK.ACL.06` *(shared)* | A Return to supplier or a landed cost adjustment above a value needs approval, not by its creator | `LIM`, `SOD` | purchaser | AED 5,000 |
 | `FIN.ACL.15` *(shared)* | An invoice is written off as bad debt only with approval above the limit; the requester cannot approve | `LIM`, `SOD` | accountant, owner | AED 0 (always approval) |
@@ -227,13 +227,14 @@ global. Sales representatives are global but see only the customers assigned to 
 
 | Situation | What happens |
 |---|---|
-| The customer does not answer the estimate | `AUT.RUL.03` reminds the advisor after 4 hours. After 7 days with nothing approved the estimate expires and the job card is `declined` by the system; the customer is asked to collect the vehicle (`AUT.RUL.17`) |
-| The customer stops the job after work started | Job card `cancel` (`AUT.ACL.21`): work done is recorded per line and invoiced (labour done, parts fitted; special-order parts that cannot be returned, when the customer agreed to them in the estimate); issued parts not fitted go back to stock; the vehicle is put back in a safe, drivable state where possible, or released as is with the customer's signature. The booking is cancelled by staff with the work done (`SCH.ACL.06`) |
-| Parts do not arrive | `AUT.RUL.16` counts days in `awaiting_parts` against the legal supply period (7, 14 or 30 days ✔ [S6]); the customer is told the new date. A warranty repair that takes longer than 7 days gets a substitute vehicle, recorded on the job card ✔ [S6] |
-| The vehicle is damaged in the workshop or on a test drive | An incident ticket (category *vehicle incident*) linked to the job card, with photos compared to the check-in photos; the branch manager decides liability (`AUT.ACL.22`). Damage the workshop caused is repaired on an internal job card at no charge; accident damage needs a police report first (`AUT.ACL.20`). Test drives are recorded on the job card: driver, time, mileage out and in |
-| The vehicle is not collected | `AUT.RUL.18` reminds the customer after 3 and 7 days and gives the branch manager a task after 30 days. A storage fee is charged only when the client turns it on and the customer agreed to it at check-in. What the workshop may do with an abandoned vehicle is `⚠ open: lawyer (L-36)` |
+| The customer does not answer the estimate | `AUT.RUL.03` reminds the advisor after 4 hours. After 7 days with nothing approved the estimate expires and the job card is `declined` by the system; the customer is asked to collect the vehicle (`AUT.RUL.17`). A job card funded by an open insurance claim does not expire: the insurer's answer is chased by `AUT.RUL.10` and `AUT.RUL.14` |
+| The customer leaves before an estimate is sent | Job card `decline` from `checked_in` or `inspecting`, with no labour or parts recorded; an inspection fee is invoiced only when agreed at check-in |
+| The customer stops the job after work started | Job card `cancel` (`AUT.ACL.21`): work done is recorded per line and invoiced (labour done, parts fitted; special-order parts that cannot be returned, when the customer agreed to them in the estimate); issued parts not fitted go back to stock; billed special-order parts are handed to the customer with the vehicle; an open supplier PO for a special-order part is not cancelled by itself (the purchaser gets a task to revise it). The vehicle is put back in a safe, drivable state where possible, or released as is with the customer's signature. A customer who refuses to sign is recorded as *refused to sign* with a staff witness, and the branch manager approves the cancel. The booking is cancelled by staff with the work done (`SCH.ACL.06`) |
+| Parts do not arrive | `AUT.RUL.16` counts days in `awaiting_parts` against the legal supply period (7, 14 or 30 days ✔ [S6]; with parts from several sources the shortest period counts); the customer is told the new date. A warranty repair not `ready` 7 days after check-in, whatever its state, gets a substitute vehicle, recorded on the job card ✔ [S6] |
+| The vehicle is damaged in the workshop or on a test drive | An incident ticket (category *vehicle incident*) linked to the job card, with photos compared to the check-in photos; the branch manager decides liability (`AUT.ACL.22`; another branch manager or the owner when the branch manager was involved), and the advisor informs the customer. The ticket records whether the damage came from a road accident (required field). Damage the workshop caused is repaired on an internal job card at no charge to the customer; a road accident sets that job card's accident damage flag, so it needs a police report first (`AUT.ACL.20`). With liability *not workshop* no internal job card is created: a repair is offered to the customer as an estimate on the job card, at the customer's cost. Test drives are recorded on the job card: driver, time, mileage out and in |
+| The vehicle is not collected | `AUT.RUL.18` reminds the customer after 3 and 7 days and gives the branch manager a task after 30 days. A storage fee is charged only when the client turns it on and the customer agreed to it at check-in: one day's fee for each day from the first reminder to the day before the vehicle is released (*release vehicle*, §7.1), invoiced at release. What the workshop may do with an abandoned vehicle is `⚠ open: lawyer (L-36)` |
 | The customer disputes the invoice | Invoice `dispute`; the vehicle is released only under `AUT.ACL.17` or on account; a warranty or quality complaint opens a *warranty* ticket |
-| A job card was opened in error (duplicate check-in) | `void` from `checked_in` before any work or parts (`PLT.ACL.09`); its booking is cancelled by staff with work done *none* |
+| A job card was opened in error (duplicate check-in) | `void` from `checked_in` before any work or parts (`PLT.ACL.09`), not while an insurance claim is linked (first `void` the claim when nothing was sent to the insurer, which unlinks it, or `cancel` it, which declines the job card); its booking is cancelled by staff with work done *none* |
 
 ### 4.5 Fleet service contract
 
@@ -250,7 +251,9 @@ global. Sales representatives are global but see only the customers assigned to 
    and an effective date: future schedules and bookings are cancelled, open job cards are
    finished and billed at contract rates, a final consolidated invoice covers the period up
    to the effective date, and an early termination fee is invoiced when the contract has
-   one. The owner approves.
+   one (waived only with the owner's approval). The owner approves. The effective date is
+   the contract's last day of service. Until it has passed the contract keeps its state,
+   marked *termination scheduled*; the daily job (00:30) of the next day ends it.
 
 ### 4.6 Warranty claim
 
@@ -297,7 +300,7 @@ global. Sales representatives are global but see only the customers assigned to 
 |---|---|
 | No police report | The claim cannot be submitted or approved and the job card cannot start accident repair (`AUT.ACL.20`, legal block). The vehicle may stay checked in for inspection only |
 | The insurer rejects the claim | Claim `rejected`; the customer is offered a private estimate on the same job card; the police report rule still applies |
-| The customer withdraws the claim after approval | Claim `cancel` (reason *withdrawn*); the insurer is told in writing. The customer either continues privately (new private estimate approved on the job card) or stops the job: job card `cancel`, work done billed to the customer |
+| The customer withdraws the claim after approval | Claim `cancel` (reason *withdrawn*); the insurer is told in writing. With no work started the job card is `decline`d. Otherwise the customer either continues privately (new private estimate approved on the job card; unsigned after 7 days counts as *stop*) or stops the job: job card `cancel`, work done billed to the customer |
 | The insurer declares a total loss after approval or strip-down | Claim `declare_total_loss` with the insurer's notice: work stops, job card `cancel` with reason *total loss*; strip-down, labour done and storage are invoiced to the insurer as far as it approved them, the rest to the customer; the vehicle is released to the insurer or the owner on the insurer's instruction, with a signature |
 | The insurer pays less than invoiced, or late | Payer bill short payment: resubmit, transfer to the customer where the approval allows, or write off with approval (`FIN.TPP.01`); `FIN.RUL.13` and `AUT.RUL.13` chase |
 | A claim was registered in error | `void` from `registered`, before anything was sent to the insurer |
@@ -392,7 +395,7 @@ global. Sales representatives are global but see only the customers assigned to 
 | `FIN.TPP.01` | Third-party payer billing: split billing between insurer and customer, insurer invoices, remittance reconciliation, insurer receivables board and statements (formerly `AUT.INS.05`) | shared (**new**) | wl-invoicing | MVP |
 | `AUT.INS.06` | Replacement car allocation and recharge to the insurer | specific | apps/auto | Later |
 | `AUT.INS.07` | Insurer and surveyor portal: claims, estimates, approvals, repair status | specific | apps/auto | Later |
-| `AUT.EXP.01` | Export sales: zero-rated VAT invoice, packing list and commercial invoice in USD; exit certificate and bill of lading tracked within 90 days | specific | apps/auto | MVP |
+| `AUT.EXP.01` | Export sales: zero-rated VAT invoice, packing list and commercial invoice in USD; exit certificate, bill of lading or airway bill tracked within 90 days | specific | apps/auto | MVP |
 | `AUT.RPT.01` | Reports: sales and margin by brand and part, dead stock, bay utilisation, technician productivity | specific | apps/auto | MVP |
 
 ## 6. Key entities
@@ -409,9 +412,9 @@ global. Sales representatives are global but see only the customers assigned to 
 | Delivery | A drop to a customer | order, driver, run, POD, cheque collected | wl-delivery |
 | Vehicle | A customer's vehicle | plate (emirate, code, number), VIN, make, model, year, mileage, owner/fleet | apps/auto |
 | Booking | A workshop slot | vehicle, customer, service, bay, time, status | wl-scheduling |
-| Job card | Workshop work order | vehicle, check-in data, complaints, accident damage flag and police report, labour lines, parts issued, work done per line, technician, QC, test drives (driver, time, mileage out/in), parts wait start and legal supply date, substitute vehicle (plate, from, to), cancellation (reason, acknowledgement), vehicle released at, status | apps/auto |
+| Job card | Workshop work order | vehicle, check-in data, complaints, accident damage flag and police report, labour lines, parts issued, work done per line, technician, QC, test drives (driver, time, mileage out/in), parts wait start and legal supply date, substitute vehicle (plate, from, to), cancellation (reason, acknowledgement), vehicle release (at, recipient, condition, signature), storage fee agreed (daily rate), status | apps/auto |
 | Labour operation | Menu item | code, description, flat hours, rate | apps/auto |
-| Fleet contract | Service agreement | fleet, vehicles, rates, inclusions, schedule, term, notice period, early termination fee, termination (reason, notice date, effective date), status | apps/auto |
+| Fleet contract | Service agreement | fleet, vehicles, rates, inclusions, schedule, term, notice period, early termination fee, termination (reason, notice date, effective date, scheduled flag), status | apps/auto |
 | Warranty claim | A ticket of category *warranty* | original sale/job, part, failure, photos, warranty decision | wl-ticketing |
 | Supplier warranty claim | Recovery from the supplier | warranty ticket, supplier, part, claim document, status | apps/auto |
 | Insurer | An insurance company (and its surveyors) | party, payment terms, claim email, surveyor contacts, labour rate agreed | wl-parties (role) |
@@ -463,7 +466,11 @@ order** reuse [02-construction.md](02-construction.md#71-state-machines).
 
 Back-orders: a line without stock stays open and feeds reorder suggestions
 (`STK.RUL.04`). When the parts arrive they are reserved for open back-orders first come,
-first served, and the customer is told.
+first served by the line's confirmation time (lines confirmed at the same time by order
+number, then line number), and the customer is told; orders on `credit_hold` are skipped and
+served when released: at `release` the branch's available stock is reserved for their
+back-orders, the rest waits for the next receipt. This is the `wl-sales` setting
+*Back-orders allowed*, on in this vertical for the counter, phone and sales rep channels.
 
 ```mermaid
 stateDiagram-v2
@@ -597,7 +604,7 @@ stateDiagram-v2
 | `quality_check` | info | no | Work done; QC checklist in progress |
 | `ready` | success | no | Ready for collection; customer notified |
 | `delivered` | success | yes | Collected and invoiced |
-| `declined` | neutral | yes | Customer declined the estimate, or it expired; inspection fee invoiced if any |
+| `declined` | neutral | yes | Customer declined the estimate or left before one was sent, or it expired; inspection fee invoiced if any |
 | `cancelled` | neutral | yes | Stopped after work started (customer, claim withdrawn, total loss); work done invoiced; unused parts returned |
 | `voided` | neutral | yes | Opened in error; no work or parts recorded |
 
@@ -606,15 +613,35 @@ stateDiagram-v2
 | `start_inspection` | checked_in | inspecting | `job_cards.work` | technician assigned | — |
 | `send_estimate` | inspecting, in_progress | awaiting_approval | `job_cards.advise` | estimate lines priced | approval link sent (`DOC.SIG.01`) |
 | `approve` | awaiting_approval | in_progress | customer or `job_cards.advise` (recorded approval) | accident damage flagged: police report attached (`AUT.ACL.20`, legal block) | parts reserved |
-| `decline` | awaiting_approval | declined, in_progress | customer, `job_cards.advise`, or system (estimate expired, `AUT.RUL.17`) | — | `declined` if nothing was approved yet; otherwise work continues without the added items; customer asked to collect the vehicle |
-| `wait_parts` | in_progress | awaiting_parts | `job_cards.work` | parts request raised | parts wait start and legal supply date recorded (`AUT.RUL.16`) |
+| `decline` | checked_in, inspecting, awaiting_approval | declined, in_progress | customer, `job_cards.advise`, or system (estimate expired, `AUT.RUL.17`; claim `cancel` or `declare_total_loss` with no work started) | from `checked_in` or `inspecting`: no labour or parts recorded (target `declined`) | `declined` if nothing was approved yet: booking `cancel` (`SCH.ACL.06`, reason *estimate declined*), inspection fee invoiced when agreed at check-in, customer asked to collect the vehicle; otherwise work continues without the added items |
+| `wait_parts` | in_progress | awaiting_parts | `job_cards.work` | parts request raised | parts wait start and legal supply date recorded: wait start + the shortest supply period among the requested parts' sources (`AUT.RUL.16`); not editable by hand |
 | `parts_arrived` | awaiting_parts | in_progress | system (stock issued) | — | — |
 | `finish_work` | in_progress | quality_check | `job_cards.work` | all labour lines done | — |
 | `pass_qc` | quality_check | ready | `job_cards.qc` | QC checklist complete (`AUT.ACL.09`) | customer notified (`NTF.MSG.03`) |
 | `fail_qc` | quality_check | in_progress | `job_cards.qc` | findings recorded | technician notified |
 | `deliver` | ready | delivered | `job_cards.advise` | invoice paid or on account | invoice issued; booking `complete`; next service recorded |
-| `cancel` | inspecting, awaiting_approval, in_progress, awaiting_parts, quality_check | cancelled | `job_cards.advise`, or system (claim `cancel` or `declare_total_loss` when the customer does not continue privately) | reason (customer stopped, claim withdrawn, total loss); work done recorded per line; customer acknowledgement (`DOC.SIG.01`) or the insurer's notice; `AUT.ACL.21` | invoice for work done (labour done, parts fitted, agreed special-order parts) to the customer or, for a total loss, to the insurer as approved; issued parts not fitted returned to stock; open parts requests cancelled; booking `cancel` (`SCH.ACL.06`); vehicle released when paid or on account, or under `AUT.ACL.17` for insurance jobs; event `JobCardCancelled` |
-| `void` | checked_in | voided | `job_cards.advise` | reason given; no labour or parts recorded (`PLT.ACL.09`) | booking cancelled with work done *none* |
+| `cancel` | inspecting, awaiting_approval, in_progress, awaiting_parts, quality_check | cancelled | `job_cards.advise`, or system (claim `cancel` or `declare_total_loss` when the customer does not continue privately; `AUT.RUL.17` when the private estimate after a claim `cancel` is not signed in 7 days) | reason (customer stopped, claim withdrawn, total loss); work done recorded per line; customer acknowledgement (`DOC.SIG.01`), or *refused to sign* with a staff witness and branch manager approval, or the insurer's notice or the customer's written withdrawal; `AUT.ACL.21`: approval whenever the invoice is below the work-done value (labour done at the estimate's prices, parts fitted, agreed special-order parts) | invoice for work done (labour done, parts fitted, agreed special-order parts) to the customer; for a total loss no job card invoice: the work-done lines go to the claim, which invoices; billed special-order parts handed over with the vehicle; issued parts not fitted returned to stock; open parts requests cancelled; an open supplier PO for a special-order part kept, with a task to the purchaser to revise it; booking `cancel` (`SCH.ACL.06`); vehicle released when paid or on account, or under `AUT.ACL.17` for insurance jobs; event `JobCardCancelled` |
+| `void` | checked_in | voided | `job_cards.advise` | reason given; no labour or parts recorded (`PLT.ACL.09`); no insurance claim linked | booking cancelled with work done *none* |
+
+**Release vehicle** is an action on a `declined` or `cancelled` job card (on `delivered` it is
+part of `deliver`), not a transition: it records released at (Asia/Dubai), the recipient,
+the condition *safe* or *as is* (as is needs the customer's signature) and the signature. It
+is allowed when the invoices are paid or the customer is on account; for insurance jobs
+`AUT.ACL.17` applies, and after a total loss the insurer's written instruction is required
+and is enough, paid or not. It stops `AUT.RUL.18` and closes the storage fee, invoiced at
+release.
+
+Labour *part done* on a cancelled job card is valued at the hours done × the line's hourly
+rate in the estimate; a flat-rate line at its flat price × hours done ÷ its flat hours, never
+above the flat price. Where a job card transition says an invoice is *invoiced*, the invoice
+is issued (not left in draft) when the transition runs.
+
+While the customer of a job card is blocked (`wl-parties`), no new estimate lines are
+approved on it (settings, *Party blocked*); the branch manager's review finishes the lines
+marked *safety work* and removes the other lines not yet started from the job card with
+reason *party blocked* (not billed), so the job card can go on to `finish_work`. The
+accident damage flag is cleared only with a reason and the workshop manager's approval (not
+the requester), and never while a claim is linked.
 
 ```mermaid
 stateDiagram-v2
@@ -623,6 +650,8 @@ stateDiagram-v2
   inspecting --> awaiting_approval: send_estimate
   in_progress --> awaiting_approval: send_estimate
   awaiting_approval --> in_progress: approve
+  checked_in --> declined: decline
+  inspecting --> declined: decline
   awaiting_approval --> declined: decline
   awaiting_approval --> in_progress: decline
   in_progress --> awaiting_parts: wait_parts
@@ -659,7 +688,12 @@ stateDiagram-v2
 
 Raised from a closed warranty ticket whose decision is *accepted* and whose part carries a
 supplier warranty (`AUT.WAR.02`). Warranty terms (period, mileage, labour included) are
-stored per brand or supplier in the catalogue. Claims go to suppliers by email or PDF.
+stored per brand or supplier in the catalogue. Claims go to suppliers by email or PDF. The
+supplier warranty *applies* when the failure date is within the period from the part's
+purchase date from the supplier and, when the terms set a mileage and the part was fitted on
+a job card, the vehicle's mileage at the failure less its mileage at fitting is within it (a
+part sold over the counter is checked on the period only). *Labour included* does not decide
+whether it applies: it adds the job card's labour for the replacement to the claim amount.
 
 | State | Tone | Terminal | Meaning |
 |---|---|---|---|
@@ -695,12 +729,12 @@ stateDiagram-v2
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
 | `activate` | draft | active | `fleet_contracts.manage` | vehicles, rates and schedule set; signed contract attached | service schedules created (`WRK.PPM.01`) |
-| `suspend` | active, renewal_due | suspended | `fleet_contracts.manage` | reason given (unpaid invoices, fleet put on hold) | new bookings blocked; open job cards finish |
+| `suspend` | active, renewal_due | suspended | `fleet_contracts.manage` | reason given (unpaid invoices, fleet put on hold) | new bookings blocked; bookings already made are kept and listed for the advisor to confirm or cancel; open job cards finish |
 | `resume` | suspended | active | `fleet_contracts.manage` | — | — |
 | `flag_renewal` | active | renewal_due | system | end date within N days | notify owner and sales rep |
 | `renew` | renewal_due | active | `fleet_contracts.manage` | new end date and rates set | — |
-| `end` | active, suspended, renewal_due | ended | system (end date passed) | — | future schedules and bookings cancelled; last consolidated invoice drafted; fleet contact notified |
-| `terminate` | active, suspended, renewal_due | ended | `fleet_contracts.manage` | reason (fleet sold, non-payment, breach, agreement); notice date and effective date; approval by the owner (`PLT.APR.01`) | on the effective date: future schedules and bookings cancelled; open job cards finished and billed at contract rates; final consolidated invoice for the period up to the effective date; early termination fee invoiced when the contract has one; fleet contact notified; event `FleetContractTerminated` |
+| `end` | active, suspended, renewal_due | ended | system (daily job, 00:30 Asia/Dubai, on the first run after the end date; the contract is valid through its end date) | — | future schedules and bookings cancelled; last consolidated invoice drafted; fleet contact notified |
+| `terminate` | active, suspended, renewal_due | ended | requested by `fleet_contracts.manage`, approved by the owner (`PLT.APR.01`), not the requester; runs at approval when the effective date is before today, otherwise by the system (daily job, 00:30 Asia/Dubai) on the first run after the effective date (the contract is valid through its effective date, its last day) | reason (fleet sold, non-payment, breach, agreement); notice date and effective date; effective date not before the notice date nor inside an already invoiced period | at approval: termination recorded and the contract marked *termination scheduled* (it keeps its state; `AUT.RUL.04` requests no booking after the effective date). On the effective date: future schedules and bookings cancelled; open job cards finished and billed at contract rates; final consolidated invoice for the period up to the effective date; early termination fee invoiced when the contract has one (waived only with the owner's approval); fleet contact notified; event `FleetContractTerminated` |
 
 ```mermaid
 stateDiagram-v2
@@ -752,10 +786,10 @@ claim, the job card's `approve` is run by the system when the claim is approved,
 | `approve_supplementary` | supplementary_pending | approved | `insurance.manage` | approval document attached | approved amount increased; job card lines released |
 | `decline_supplementary` | supplementary_pending | approved | `insurance.manage` | insurer's reason recorded | lines removed, or offered to the customer as private items (`AUT.ACL.15`) |
 | `complete` | approved | repair_complete | system (job card `pass_qc`) | no supplementary pending | coordinator notified to bill |
-| `invoice` | repair_complete, total_loss | invoiced | `invoices.issue` | — | from `repair_complete`: insurer invoice for the approved amount, customer invoice for excess and private items (`AUT.INS.04`); from `total_loss`: insurer invoice for strip-down, labour done and storage as the insurer approved, customer invoice for the rest |
-| `settle` | invoiced | settled | system (both invoices paid) | — | claim closed in the insurer statement |
-| `declare_total_loss` | awaiting_survey, estimate_submitted, approved, supplementary_pending | total_loss | `insurance.manage` | insurer's total-loss notice attached ✔ [S3] | work stops; job card `cancel` (reason *total loss*); charges for strip-down, labour done and storage listed for the insurer's approval; vehicle released to the insurer or the owner on the insurer's written instruction, with a signature (`DOC.SIG.01`); customer notified |
-| `cancel` | registered, awaiting_survey, estimate_submitted, approved, supplementary_pending | cancelled | `insurance.manage` | reason given (withdrawn by the customer); from `approved` or `supplementary_pending`: the customer's written withdrawal | insurer told in writing; job card: `decline` when no work started; otherwise the customer chooses to continue privately (a private estimate approved on the job card) or to stop (job card `cancel`, work done invoiced to the customer); inspection or storage fee invoiced if any |
+| `invoice` | repair_complete, total_loss | invoiced | `invoices.issue` | from `total_loss`: the insurer's approval of the charges attached (reference, lines, amount, document) | from `repair_complete`: insurer invoice for the approved amount, customer invoice for excess and private items (`AUT.INS.04`); from `total_loss`: insurer invoice for strip-down, labour done and storage as the insurer approved, customer invoice for the rest (none when the insurer approved every line) |
+| `settle` | invoiced | settled | system (every invoice of the claim paid) | — | claim closed in the insurer statement |
+| `declare_total_loss` | awaiting_survey, estimate_submitted, approved, supplementary_pending | total_loss | `insurance.manage` | insurer's total-loss notice attached ✔ [S3] | work stops; job card `cancel` (reason *total loss*), or `decline` when no work started; charges for strip-down, labour done and storage (from check-in to release at the storage rate of the insurer's rate card, 0 when it has none) listed for the insurer's approval; vehicle released to the insurer or the owner on the insurer's written instruction, with a signature (`DOC.SIG.01`); customer notified |
+| `cancel` | registered, awaiting_survey, estimate_submitted, approved, supplementary_pending | cancelled | `insurance.manage` | reason given (withdrawn by the customer); from `approved` or `supplementary_pending`: the customer's written withdrawal | insurer told in writing; job card: `decline` when no work started; otherwise the customer chooses to continue privately (a private estimate sent with `send_estimate` and approved on the job card; no labour or parts recorded until it is signed, and unsigned after 7 days counts as *stop*, `AUT.RUL.17`) or to stop (job card `cancel`, work done invoiced to the customer); inspection or storage fee invoiced to the customer if any (never to the insurer) |
 | `void` | registered | voided | `insurance.manage` | reason given; nothing sent to the insurer (`PLT.ACL.09`) | job card unlinked from the claim |
 
 ```mermaid
@@ -798,13 +832,36 @@ before the request (`wl-kernel`). Settings for this vertical:
 | Void | Job cards from `checked_in` and insurance claims from `registered` (above); draft sales orders. Never counter sales (`SAL.ACL.04`), invoices or anything sent to an insurer: those are corrected by sales return, credit note or a supplementary |
 | Cancel after work started | Job card `cancel` (`AUT.ACL.21`): work done billed, unused parts returned; booking `cancel` after check-in by staff only; sales order lines after picking: *return to stock* (`SAL.ACL.05`), no cancellation fee by default |
 | Document blocks | Police accident report (job card or claim): `job_card.approve` and `insurance_claim.approve` (block), override `never` (legal block ✔ [S1]). Customer trade licences and fleet contracts: reminders only (`DOC.RUL.01`) |
-| Party blocked | Sales orders not yet dispatched held (module default); fleet contract: review (the owner decides `suspend` or `terminate`); vehicles in the workshop: review (finish safety work, then release); insurance claims with a blocked insurer continue (money in continues) |
+| Party blocked | Sales orders not yet dispatched held (module default); fleet contract: review (the owner decides `suspend` or `terminate`); vehicles in the workshop: review (finish safety work, then release; no new estimate lines approved while blocked); insurance claims with a blocked insurer continue (money in continues) |
 | Integrations | SMS gateway down → advisors call the customer, messages queued (`PLT.RUL.05`). E-invoicing provider down (from 2027) → invoices queued and sent on recovery. Insurer portals and police reports are manual already (§8) |
 | Late entry | Job card times, test drives and deliveries keep their business time; more than 24 hours late needs the branch or workshop manager (`PLT.ACL.10`) |
 | Disputes | Invoices, by the accountant or the B2B buyer in the portal (on); insurer short payments go through the payer bill (`FIN.TPP.01`) |
 | Compliance-critical rules | `AUT.RUL.15` (export VAT), `AUT.RUL.16` (legal parts supply period and substitute vehicle); owner role: Owner / GM (`PLT.RUL.04`) |
 | Bad debt and cheques | Write-off limit AED 0 (`FIN.ACL.15`); bounce fee off unless the client sets a charge type; maximum two presentations; bounced cheque holds the whole credit group (`SAL.RUL.05`) |
-| Recall | A supplier recall of a part is traced through job cards and sales (`TracePartyResolver`: job card → vehicle owner or fleet; sales order and account sale → customer; walk-in counter sales → a count per branch and day). Parts are not lot-tracked in the MVP, so the trace covers parts sold or fitted since the date the client gives |
+| Recall | A supplier recall of a part is traced through job cards and sales (`TracePartyResolver`: job card → vehicle owner or fleet, the owner when the fleet contract has ended; sales order and account sale → customer; walk-in counter sales → a count per branch and day). Parts are not lot-tracked in the MVP, so the client gives the received date range from the supplier's notice and the trace covers parts sold or fitted on or after the first receipt of the part in that range (`wl-inventory`, items not tracked by lot), every line *possible*. Recalls are opened by the Owner / GM and branch managers (`recalls.manage`) |
+| Responsible role per document kind (wl-documents §5.2) | customer trade licences and export exit evidence → accountant; fleet contracts → Owner / GM; police accident report and claim documents (driving licence, Mulkiya, Emirates ID) → insurance coordinator of the workshop |
+
+**Notification types registered by 08** (wl-notify §5.4: each names its group):
+
+| Type | Sent by | Group | Urgency | Give-up reaction |
+|---|---|---|---|---|
+| `auto.vehicle_ready`, `auto.claim_approved` | `AUT.RUL.02`, `AUT.RUL.12` (SMS) | Booking confirmations and reminders | normal | `mark_contact_invalid`; the job card shows "message not delivered" to the service advisor |
+| `auto.collect_vehicle` | job card `decline` and `AUT.RUL.17`, `AUT.RUL.18`, claim `declare_total_loss` | Booking confirmations and reminders | normal | as above |
+| `auto.parts_delay` | `AUT.RUL.16` (to the customer) | Booking confirmations and reminders | urgent | as above, then a task to the service advisor with an in-app alert |
+| `auto.service_reminder` | `AUT.RUL.01` (opted-in contacts only) | Marketing, delivery tracking | normal | `mark_contact_invalid` |
+| `auto.fleet_booking_request`, `auto.fleet_contract_ended` | `AUT.RUL.04`, fleet contract `end` | Booking confirmations and reminders | normal | group default (no task) |
+| `auto.fleet_termination_notice` | fleet contract `terminate` | Statutory notices (08 marks it statutory) | normal | `mark_contact_invalid` + `statutory_notice` to the Owner / GM |
+| `auto.insurer_request` | claim `book_survey`, `submit_estimate`, `request_supplementary` (estimate PDF by email) | Portal invitations, document requests, signature requests | normal | `mark_contact_invalid` + `staff_task` to the insurance coordinator |
+| `auto.claim_withdrawal_letter` | claim `cancel` (insurer told in writing) | Statutory notices (08 marks it statutory) | normal | `mark_contact_invalid` + `statutory_notice` to the insurance coordinator |
+| `auto.insurer_statement` | `AUT.RUL.13` | Invoices, statements, payment reminders | normal | `mark_contact_invalid` + `alternative_recipient` (the insurer's other claim contact), then `staff_task` to the insurance coordinator |
+| `auto.supplier_warranty_claim` | supplier warranty claim `raise` | Portal invitations, document requests, signature requests | normal | `mark_contact_invalid` + `staff_task` to the purchaser |
+| `auto.recall_notice` | recall `send_notices` to vehicle owners, fleets and customers | — | urgent | *Urgent types* row: task to the recall owner with an in-app alert |
+
+Estimate approval links and sign-off are wl-documents' signature types; booking reminders
+are wl-scheduling's; invoices, statements and payment reminders to customers are
+wl-invoicing's. Alerts sent only to staff users (`AUT.RUL.03`, `05`, `07`, `08`, `10`, `11`,
+`14`, `15`, the branch manager steps of `AUT.RUL.16` and `AUT.RUL.18`) name no group and take
+`none` (staff always also get the in-app notification, wl-notify §5.1).
 
 ### 7.2 Automations
 
@@ -825,17 +882,17 @@ minimum) is **on** by default in this vertical.
 | `AUT.RUL.05` | schedule: monthly on day D | fleet contract `active` | draft the consolidated fleet invoice for the previous month; notify accountant | D = 1 | on | MVP |
 | `SAL.RUL.04` *(shared, formerly `AUT.RUL.06`)* | N days after sales order → `ready` for collection | not collected | notify the customer and sales rep | N = 3 | on | MVP |
 | `AUT.RUL.07` | warranty ticket → `closed` | *warranty decision* is accepted and the part has a supplier warranty | create a task for the purchaser to raise the supplier claim | — | on | MVP |
-| `AUT.RUL.08` | N days after supplier warranty claim → `raised` | not `recovered` | notify purchaser and branch manager | N = 60 | on | MVP |
+| `AUT.RUL.08` | N days after supplier warranty claim → `raised` | not `recovered` | notify purchaser and branch manager, once (no repeat) | N = 60 | on | MVP |
 | `STK.RUL.05` *(shared, formerly `AUT.RUL.09`)* | schedule: monthly | item had no sale or issue for N days | add to the dead-stock report; notify owner | N = 180 | on | MVP |
 | `AUT.RUL.10` | N working days after insurance claim → `estimate_submitted` | not `approved` or `rejected` | notify the insurance coordinator to chase the insurer | N = 3 | on | MVP |
 | `AUT.RUL.11` | N working days after claim → `supplementary_pending` | still pending | notify the coordinator and the workshop manager | N = 2 | on | MVP |
 | `AUT.RUL.12` | insurance claim → `approved` | — | notify the customer by SMS with the expected completion date | — | on | MVP |
 | `AUT.RUL.13` | schedule: weekly | insurer has unpaid insurance invoices | send the insurer a statement of open claims and invoices; notify the accountant of items overdue beyond the insurer's terms | Monday 08:00 | on | MVP |
 | `AUT.RUL.14` | N days after check-in of an insurance vehicle | claim not `approved` | notify the workshop manager (bay and storage occupied) | N = 7 | on | MVP |
-| `AUT.RUL.15` | N days after a zero-rated export sale | exit certificate or bill of lading missing | notify the accountant; at 90 days, flag that 5% VAT is due and create a task to correct the invoice (credit note and a new invoice at 5%; recharge the VAT to the customer where the sale terms allow, otherwise absorb it). Compliance-critical | N = 60, 90 | on | MVP |
-| `AUT.RUL.16` | daily, for job cards in `awaiting_parts` | days waiting reach N days before the legal supply date, or the date itself | notify the service advisor and the customer with the new date; at the legal date notify the branch manager. For a warranty repair (linked *warranty* ticket) still open after 7 days: task to provide a substitute vehicle, recorded on the job card ✔ [S6]. Compliance-critical | N = 2; supply period per part source set at onboarding (7, 14 or 30 days) | on | MVP |
-| `AUT.RUL.17` | N days after job card → `awaiting_approval` | nothing approved yet | estimate expires; job card `decline` (system, reason *no response*); customer asked to collect the vehicle; inspection fee invoiced if agreed at check-in | N = 7 | on | MVP |
-| `AUT.RUL.18` | N days after job card → `ready`, `declined` or `cancelled` | vehicle not released | remind the customer at each N; at M create a task for the branch manager; storage fee charged per day only when turned on and agreed at check-in | N = 3, 7; M = 30; storage fee off | on | MVP |
+| `AUT.RUL.15` | N days after the supply date (delivery or collection) of a zero-rated export sale (checked daily at 08:00 Asia/Dubai) | exit evidence (customs exit certificate, bill of lading or airway bill) missing | notify the accountant; at 90 days, flag that 5% VAT is due and create a task to correct the invoice (credit note and a new invoice at 5%; recharge the VAT to the customer where the sale terms allow, otherwise absorb it). Compliance-critical | N = 60, 90 | on | MVP |
+| `AUT.RUL.16` | daily at 08:00, for open job cards | in `awaiting_parts`: N days before the legal supply date, or the date itself; any state before `ready`: a warranty repair (linked *warranty* ticket) 7 days after check-in | parts: notify the service advisor and the customer with the new date (the expected arrival date on the parts request; when none, "we will confirm the date" and a task to the advisor); at the legal date notify the branch manager. Warranty repair: task to provide a substitute vehicle, recorded on the job card, closed only by the substitute record or the customer's refusal with a reason ✔ [S6]. Each step fires once (per wait for parts; per job card for the substitute); a late run fires every step whose day has passed and that has not fired, in order. Compliance-critical | N = 2; supply period per part source set at onboarding (7, 14 or 30 days) | on | MVP |
+| `AUT.RUL.17` | N days after job card → `awaiting_approval` | nothing approved yet and no open insurance claim linked; or the estimate is the private estimate sent after a claim `cancel` (*continue privately*) and is not signed | estimate expires. Nothing approved: job card `decline` (system, reason *no response*); customer asked to collect the vehicle; inspection fee invoiced if agreed at check-in. Private estimate after a claim withdrawal: job card `cancel` (system, reason *claim withdrawn*), work done invoiced to the customer | N = 7 | on | MVP |
+| `AUT.RUL.18` | N days after job card → `ready`, `declined` or `cancelled` | vehicle not released | remind the customer at each N; at M create a task for the branch manager; storage fee charged only when turned on and agreed at check-in: one day's fee at the agreed daily rate for each calendar day from the first reminder to the day before *release vehicle*, invoiced at release; no storage fee on a job card cancelled for a total loss (storage is billed through the claim, `declare_total_loss`) | N = 3, 7; M = 30; storage fee off | on | MVP |
 | `SAL.RUL.01` *(shared)* | sales order → `credit_hold` | — | notify accountant and the sales rep | — | on | MVP |
 | `SCH.RUL.01` *(shared)* | N hours before a booking | booking `confirmed` | send a reminder to the customer | N = 24 | on | MVP |
 | `STK.RUL.04` *(shared)* | schedule: daily at time T | items at or below reorder point | build reorder suggestions per supplier; notify purchaser | T = 07:00 | on | MVP |

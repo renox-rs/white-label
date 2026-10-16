@@ -102,10 +102,10 @@ comes from party ownership (`OWN`) and guardian links.
 | `EDU.ACL.11` | Tutor pay rates are visible only to the accountant, centre manager and the tutor themself | `FLD` | all staff | — |
 | `EDU.ACL.12` | An online class link is visible only to enrolled students, from a short time before the session | `OWN`, `TIM` | student | 30 minutes before |
 | `EDU.ACL.13` | An enrolment with an attended session cannot be deleted; it ends through `withdraw` or `transfer` | `STA` | all staff | — |
-| `EDU.ACL.14` | A tutor is assigned to a batch, a session or a one-to-one booking only if `qualification_valid` passes on every session date for the kinds the course requires (police clearance when minors are enrolled; MoHRE private tutor permit or freelance visa for freelance tutors). Override per §9 | `STA` | coordinator, counsellor | — |
+| `EDU.ACL.14` | A tutor is assigned to a batch, a session or a one-to-one booking only if `qualification_valid` passes on every session date for the kinds the course requires (police clearance when minors are enrolled: the course is marked *for minors*, or the batch has a `pending_payment`, `active` or `frozen` enrolment of a student under 18 on the session date; MoHRE private tutor permit or freelance visa, either one, for freelance tutors). Override per §9 | `STA` | coordinator, counsellor | — |
 | `EDU.ACL.15` | Terminating a running batch is requested by the coordinator and approved by the centre manager; refunds from it follow `FIN.ACL.04` | `SOD` | coordinator, centre manager | — |
 | `EDU.ACL.16` | Correcting attendance of a `held` session after the tutor's window (`EDU.ACL.04`) needs the coordinator and a reason; a change that affects an issued certificate goes through certificate `reissue` or `revoke` | `STA` | coordinator | — |
-| `EDU.ACL.17` | Seats are taken atomically: an enrolment or seat hold is refused when active, frozen and held enrolments reach the batch capacity; only the centre manager may exceed capacity, up to the room's limit | `STA`, `LIM` | counsellor, portal | — |
+| `EDU.ACL.17` | Seats are taken atomically: an enrolment or seat hold is refused when active, frozen and held enrolments reach the batch capacity; only the centre manager may exceed capacity, up to the room's limit (for a room without a limit, the capacity is the hard limit) | `STA`, `LIM` | counsellor, portal | — |
 | `FIN.ACL.06` *(shared)* | A cash shortage at the desk is written off only with approval | `LIM` | counsellor, accountant | AED 0 |
 
 ## 4. Value streams
@@ -133,10 +133,10 @@ comes from party ownership (`OWN`) and guardian links.
 
 | Situation | What happens |
 |---|---|
-| The first payment never arrives | The seat is held in `pending_payment` for N hours (default 48). `EDU.RUL.11` then runs `lapse`: the seat is released, the payment link is cancelled and the guardian is told. An online payment still `pending` is settled by `FIN.RUL.19`; a payment that arrives after the lapse is refunded automatically (wl-payments `late_confirm`) unless the counsellor re-enrols the student while a seat is free |
-| The online payment fails | The enrolment stays `pending_payment`; the guardian gets a new payment link; the seat hold keeps running |
-| Two people take the last seat | Seats are taken atomically (`EDU.ACL.17`); the second attempt is refused and offered another batch or the waiting list |
-| The payer is blocked (`PartyBlocked`) | Enrolment block effect: pause through `freeze` without the freeze-day limit; the seat is kept; the centre manager decides any `withdraw`; refunds wait (`PTY.ACL.03`) |
+| The first payment never arrives | The seat is held in `pending_payment` for N hours (default 48; *seat hold until* is stored on the enrolment). `EDU.RUL.11` then runs `lapse`: the seat is released, the payment link is cancelled and the guardian is told. A partial first payment counts as a payment: the enrolment does not lapse and the counsellor sees the balance. A discount approval still pending does not stop the lapse. An online payment still `pending` is settled by `FIN.RUL.19`, and the enrolment lapses at once if it fails. A payment that arrives after the lapse is refunded automatically (wl-payments `late_confirm`: the lapsed enrolment is no longer an active subject), also when the counsellor has meanwhile re-enrolled the student; the new enrolment is paid through its own payment link |
+| The online payment fails | The enrolment stays `pending_payment`; the guardian gets a new payment link; the seat hold keeps running and is not extended |
+| Two people take the last seat | Seats are taken atomically (`EDU.ACL.17`); the second attempt is refused and offered other `open` batches of the same course and level with free seats, or an entry on the batch's waiting list: a plain list (student, payer, created at) that counsellors see; no seat is held and nothing is offered automatically when a seat frees |
+| The payer is blocked (`PartyBlocked`) | Enrolment block effect, for enrolments whose payer or student is the blocked party: pause through `freeze` without the freeze-day limit; the seat is kept; nothing is sent to the blocked party, and staff without `parties.block_reason.view` see *On hold*. An enrolment already frozen by the student keeps its freeze and gets the block as a second cause; `PartyUnblocked` removes only the block's cause. `pending_payment` enrolments are left to lapse. Only the centre manager may `withdraw`; the credit note is issued and the refund waits (`PTY.ACL.03`) |
 | A message to a guardian cannot be delivered | `NTF.RUL.01`: the message goes to the other guardian (`alternative_recipient`), then a task to the counsellor |
 
 ### 4.2 Timetable to delivery
@@ -157,12 +157,12 @@ comes from party ownership (`OWN`) and guardian links.
 
 | Situation | What happens |
 |---|---|
-| A tutor's police clearance or permit will expire | `DOC.RUL.02` looks 30 days ahead; `EDU.RUL.12` lists the tutor's batches, sessions and one-to-one bookings after the expiry date and gives the coordinator a task to change the tutor. On expiry the tutor cannot be assigned or teach (`EDU.ACL.14`); open conflicts H hours before a session go to the centre manager |
-| A tutor is sick or leaves | Same-day sick leave or a manual block raises conflicts (wl-scheduling §5.5): the coordinator runs `change_tutor` on the batch or session, or cancels the session with a make-up. One-to-one bookings are reassigned or rescheduled; a business-initiated cancel refunds any deposit in full |
-| The course approval or centre permit expires | `batch.open` and `certificate.issue` are blocked (§9). `EDU.RUL.13` tells the centre manager and the owner about running batches; whether a running batch may finish under an expired approval is `⚠ open: authority (AU-25)` |
+| A tutor's police clearance or permit will expire | `DOC.RUL.02` looks 30 days ahead; `EDU.RUL.12` lists the tutor's batches, sessions and one-to-one bookings after the expiry date and gives the coordinator a task to change the tutor. On expiry the tutor cannot be assigned or teach (`EDU.ACL.14`); open conflicts H hours before a session go to the centre manager. A minor may still enrol in a batch whose tutor lacks a valid clearance (enrolment is not guarded); the batch's sessions are flagged by `EDU.RUL.12` |
+| A tutor is sick or leaves | A manual availability block on the tutor (wl-scheduling; tutor leave from `HRM.LEV.01` is Later for 10) raises conflicts for bookings (wl-scheduling §5.5) and `EDU.RUL.12` flags the sessions it overlaps: the coordinator runs `change_tutor` on the batch or session, or cancels the session with a make-up. One-to-one bookings are reassigned or rescheduled; a business-initiated cancel refunds any deposit in full |
+| The course approval or centre permit expires | `batch.open` is blocked, and `certificate.issue` always by the centre permit, by the course approval only when the certificate states it (§9). `EDU.RUL.13` tells the coordinator, the centre manager and the owner about running batches and gives the kind's responsible role (centre permit: centre manager; course approval: academic coordinator) a renewal task; whether a running batch may finish under an expired approval is `⚠ open: authority (AU-25)` |
 | A running batch must stop | Batch `terminate` (`EDU.ACL.15`): remaining sessions cancelled; each enrolment is transferred to another batch or withdrawn with a refund of the unused sessions without admin fee; students and guardians told. If the regulator revoked the authorisation, learners must be settled ✔ [S1], [S5] |
 | Attendance was marked wrong | Within 24 hours the tutor corrects it; later the coordinator runs `correct_attendance` with a reason (`EDU.ACL.16`). Credits are reversed or consumed, completion is re-evaluated, and a locked tutor timesheet is corrected by an adjustment |
-| A student is absent | The catalogue item's absence policy decides: by default an unexcused absence consumes a package credit; an absence notified at least N hours before (default 24) is *excused*, consumes nothing and gives a make-up right. Memberships consume nothing |
+| A student is absent | The catalogue item's absence policy (the one stored with the enrolment) decides: by default an unexcused absence consumes a package credit; an absence notified at least N hours before the session start (default 24) is *excused*, consumes nothing and gives a make-up right. The notice comes through the portal, or the counsellor records it, with its time; the student is then pre-marked *excused*. A later notice is unexcused unless the coordinator excuses it with a reason. Late arrival counts as present. Memberships consume nothing; course-fee enrolments have no credits, but an excused absence still gives a make-up right. A make-up right is one per excused absence and lasts until the enrolment ends |
 
 ### 4.3 Fees to cash
 
@@ -182,9 +182,9 @@ comes from party ownership (`OWN`) and guardian links.
 | Situation | What happens |
 |---|---|
 | A student withdraws | `withdraw` calculates the refund per the accepted policy. A credit note covers the paid amount not used; scheduled instalments are cancelled; a membership is `cancel`led; a package is `refund`ed. If the sessions used plus fees exceed what was paid, an invoice for the amount owed is issued instead. The refund is approved by another user (`FIN.ACL.04`) |
-| The refund fails | `FIN.RUL.21` retries once, then the accountant pays by another method; the credit note balance is restored meanwhile |
-| A card payment is charged back | The payment is reversed and the invoice reopened (`InvoiceReopened`); a membership goes `past_due`; for a course fee the counsellor gets a task. Evidence is collected under `FIN.RUL.20` |
-| The membership is paused | Pausing the subscription freezes the enrolment and the other way round (`EDU.RUL.14`); the pause allowance applies |
+| The refund fails | `FIN.RUL.21` retries once after 24 hours (module default), then gives the accountant a task to pay by another method; meanwhile wl-invoicing restores the credit note balance (`RefundFailed`) and the enrolment stays `withdrawn` |
+| A card payment is charged back | The payment is reversed and the invoice reopened (`InvoiceReopened`); a membership goes `past_due`; for a course fee, instalment or package invoice the counsellor gets a task (one per enrolment, due in 2 working days, closed automatically when the invoice is paid again). Evidence is collected under `FIN.RUL.20` |
+| The membership is paused | Pausing the subscription freezes the enrolment and the other way round (`EDU.RUL.14`); the allowance (30 days a year, shared by membership pause and enrolment freeze) is checked and counted once, on the side the user acted on |
 | The desk cash is short | Recovered from the counsellor or written off with approval (`FIN.ACL.06`, AED 0); salary recovery is off by default |
 | A corporate invoice is disputed or the e-invoice is rejected | Invoice `dispute` (corporate contacts may raise it in the portal: off until the corporate portal ships); e-invoice rejection by `FIN.RUL.16`. Write-off needs approval (`FIN.ACL.15`, AED 0) |
 
@@ -305,12 +305,12 @@ reconciled in [CAPABILITY-MAP.md](../CAPABILITY-MAP.md)).
 |---|---|---|---|
 | Party | Student, guardian, corporate client, freelance tutor | type, names EN/AR, date of birth, Emirates ID, contacts, guardian links | wl-parties |
 | Lead | An enquiry | source, course of interest, level, preferred times, owner, status | wl-sales |
-| Catalogue item | A sellable course, package or membership | type, course, sessions, validity, price, VAT category, refund policy, absence policy (unexcused absence consumes a credit: yes; notice for an excused absence: 24 h) | wl-sales |
+| Catalogue item | A sellable course, package or membership | type, course, sessions, validity, price, registration fee and admin fee (set per item at onboarding; no platform default), VAT category, refund policy, absence policy (unexcused absence consumes a credit: yes; notice for an excused absence: 24 h), freeze and pause allowance (30 days a year) | wl-sales |
 | Course | What is taught | programme, level, modules, hours, prerequisites, delivery mode, approval no. | apps/edtech |
-| Batch | One run of a course | course, campus, capacity, start/end, weekly pattern, tutor, room, termination reason, status | apps/edtech |
+| Batch | One run of a course | course, campus, capacity, start/end, weekly pattern, tutor, room, waiting list (student, payer, created at), termination reason, status | apps/edtech |
 | Session | One class meeting | batch, date, time, room, tutor, online link, status | apps/edtech |
 | Booking | A trial, placement test or 1:1 slot | resource(s), party, time, type, status | wl-scheduling |
-| Enrolment | A student in a batch, package or membership | student, payer, batch or package, price, discount, completion criteria, seat hold until, withdrawal refund or amount owed, status | apps/edtech |
+| Enrolment | A student in a batch, package or membership | student, payer, campus, counsellor (the user who enrolled the student; reassignable), batch or package, price, discount, completion criteria, seat hold until, withdrawal refund or amount owed, status | apps/edtech |
 | Package balance | Credits of a session package (the *Package* in `wl-sales`) | enrolment, credits total/used, expiry | wl-sales |
 | Attendance | Presence at a session | session, student, present/absent/late/excused, make-up link | apps/edtech |
 | Material | Learning resource | course or session, file or link, visibility | apps/edtech |
@@ -426,8 +426,8 @@ type takes one, `SCH.ACL.05` applies.
 | `fail_payment` | active | past_due | system (gateway; also a paid cycle invoice reopened by a chargeback) | — | party notified; retry schedule starts |
 | `recover` | past_due, suspended | active | system (payment succeeded) | — | access restored |
 | `suspend` | past_due | suspended | system | retries exhausted | enrolment access blocked; counsellor notified |
-| `pause` | active, past_due | paused | `subscriptions.manage`, or system (enrolment `freeze`, `PartyBlocked`) | pause within the allowed days per year (not for a block) | billing stops; end date extended; enrolment `freeze` (`EDU.RUL.14`) |
-| `resume` | paused | active | `subscriptions.manage` or system (pause end, enrolment `unfreeze`, `PartyUnblocked`) | — | billing resumes; enrolment `unfreeze` |
+| `pause` | active, past_due | paused | `subscriptions.manage`, or system (enrolment `freeze`, `PartyBlocked`) | user pause within the allowance: 30 days a year, shared with enrolment `freeze` (10 overrides the wl-invoicing default of 0); a system pause is not counted | billing stops; end date extended; enrolment `freeze` (`EDU.RUL.14`) |
+| `resume` | paused | active, past_due | `subscriptions.manage` or system (pause end, enrolment `unfreeze`, `PartyUnblocked`) | each trigger removes only its own pause cause; resumes when none remains | billing resumes; back to `past_due` when cycle invoices from before the pause are still overdue; enrolment `unfreeze` either way (session access is decided by `suspend`) |
 | `cancel` | active, past_due, paused, suspended | cancelled | `subscriptions.manage`, the party, or system (enrolment `withdraw`) | notice period respected (not on withdrawal) | ends at period end, or at once on withdrawal with a pro rata credit; enrolment `complete` or `withdraw` |
 
 ```mermaid
@@ -440,6 +440,7 @@ stateDiagram-v2
   active --> paused: pause
   past_due --> paused: pause
   paused --> active: resume
+  paused --> past_due: resume
   active --> cancelled: cancel
   past_due --> cancelled: cancel
   paused --> cancelled: cancel
@@ -460,12 +461,12 @@ stateDiagram-v2
 
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
-| `open` | planned | open | `batches.manage` | tutor and room available for every session; `document_valid` for the centre permit and the course approval where required (§9); tutor passes `EDU.ACL.14` on every session date | sessions generated; listed in the catalogue |
-| `change_tutor` | open, running | same state | `batches.manage` | from a date; the new tutor is free and passes `EDU.ACL.14` on every remaining session date | remaining sessions reassigned; students and guardians told; conflicts on the old tutor cleared |
+| `open` | planned | open | `batches.manage` | tutor and room available for every session; `document_valid` for the centre permit and the course approval where required (§9) on the batch's last session date; tutor passes `EDU.ACL.14` on every session date | sessions generated; listed in the catalogue |
+| `change_tutor` | open, running | same state | `batches.manage` | from a date; the new tutor is free and passes `EDU.ACL.14` on every remaining session date (all or nothing: the failing dates are shown) | remaining sessions of the batch's current tutor reassigned (sessions already moved to another tutor keep theirs); batch tutor set from that date; each student or guardian told once; conflicts on the old tutor cleared |
 | `start` | open | running | system (first session date) | — | — |
 | `complete` | running | completed | system (last session held) or `batches.manage` | all session attendance submitted | completion criteria evaluated per enrolment |
-| `cancel` | planned, open | cancelled | `batches.manage` | reason given | enrolments transferred, or withdrawn with a full refund including the registration fee (business-initiated); parties notified |
-| `terminate` | running | terminated | `batches.manage`, approved by the centre manager (`EDU.ACL.15`) | reason (tutor unavailable, approval expired or revoked, venue, too few students) | remaining sessions cancelled; each `active` or `frozen` enrolment transferred (seat in the target batch) or withdrawn with the unused sessions refunded pro rata without admin fee; tutor paid only for sessions taught; students and guardians told; centre manager and owner told when the reason is regulatory |
+| `cancel` | planned, open | cancelled | `batches.manage` | reason given; per enrolment the choice *transfer to batch X* or *withdraw* (default withdraw) | enrolments transferred, or withdrawn with a full refund including the registration fee (business-initiated); a transfer whose target seat is gone at that moment falls back to withdraw and the coordinator is told; `pending_payment` enrolments withdrawn with nothing to refund and the link cancelled; parties notified |
+| `terminate` | running | terminated | `batches.manage`, approved by the centre manager (`EDU.ACL.15`) | reason (tutor unavailable, approval expired or revoked, venue, too few students); per enrolment the choice *transfer to batch X* or *withdraw* (default withdraw) | sessions held before the approval count as used; remaining sessions cancelled; each `active` or `frozen` enrolment transferred (seat in the target batch at approval, else withdraw and the coordinator told; the unused value moves to the new enrolment, price differences invoiced or credited there) or withdrawn with the unused sessions refunded pro rata (price paid ÷ sessions × unused, capped at the amount paid) without admin fee or the no-refund tier, the registration fee not refunded; `pending_payment` enrolments withdrawn with nothing to refund; tutor paid only for sessions taught; students and guardians told; centre manager and owner told when the reason is regulatory |
 
 ```mermaid
 stateDiagram-v2
@@ -499,10 +500,10 @@ stateDiagram-v2
 |---|---|---|---|---|---|
 | `activate` | pending_payment | active | system (first payment) or `enrolments.manage` | terms accepted (`DOC.SIG.01`); discount approved if above limit | portal access; lead `win`; seat confirmed |
 | `lapse` | pending_payment | lapsed | system (`EDU.RUL.11`) | no payment N hours after the hold | seat released; open payment link cancelled; guardian told; a later payment is refunded automatically |
-| `freeze` | active | frozen | `enrolments.manage`, or system (subscription `pause`, `PartyBlocked`) | within the allowed freeze days (not for a block) | package `extend`; membership `pause` (`EDU.RUL.14`) |
-| `unfreeze` | frozen | active | `enrolments.manage` or system (freeze end, subscription `resume`, `PartyUnblocked`) | — | membership `resume` |
+| `freeze` | active | frozen | `enrolments.manage`, or system (subscription `pause`, `PartyBlocked`) | within the allowance of 30 days a year, shared with membership `pause` (not counted for a block or a mirrored system freeze) | each freeze cause stored (a freeze on a `frozen` enrolment only adds its cause); package `extend` by the frozen days; membership `pause` (`EDU.RUL.14`) |
+| `unfreeze` | frozen | active | `enrolments.manage` or system (freeze end, subscription `resume`, `PartyUnblocked`) | each trigger removes only its own cause; unfreezes when none remains | membership `resume` |
 | `complete` | active | completed | system (batch `complete` or credits used up) | — | certificate evaluated (`EDU.ACL.06`) |
-| `withdraw` | pending_payment, active, frozen | withdrawn | `enrolments.manage`, or system (batch `terminate` when no transfer is chosen) | refund calculated per policy (`EDU.REF.01`), or per batch `terminate`; approval per `FIN.ACL.04`; party not blocked, or a compliance exception (`PTY.ACL.03`) | credit note for the paid amount not used; future instalments cancelled; membership `cancel`led at once; package `refund`ed; refund paid (`wl-payments`); if used sessions and fees exceed what was paid, an invoice for the amount owed; seat released |
+| `withdraw` | pending_payment, active, frozen | withdrawn | `enrolments.manage` (the centre manager while the party is blocked), or system (batch `terminate` or `cancel` when no transfer is chosen) | refund calculated per policy (`EDU.REF.01`), or per batch `terminate` or `cancel`; approval per `FIN.ACL.04` (the state changes only on approval); refund paid only when the party is not blocked, or with a compliance exception (`PTY.ACL.03`) | credit note for the refund the policy gives (the admin fee and a kept registration fee stay revenue; session value = price ÷ sessions; *used* = sessions `held` up to the withdrawal date, attended or not); issued but unpaid instalment invoices credited in full and future instalments cancelled; membership `cancel`led at once (its own pro rata credit, not repeated); package `refund`ed (its own valuation); refund paid (`wl-payments`); if used sessions and fees exceed what was paid, one invoice for the amount owed; from `pending_payment`: no credit note, payment link cancelled; seat released |
 | `transfer` | active, frozen | transferred | `enrolments.manage`, or system (batch `terminate`) | target batch has a seat (`EDU.ACL.17`) | new `active` enrolment with remaining credits or balance |
 
 ```mermaid
@@ -525,8 +526,10 @@ stateDiagram-v2
 ```
 
 A paid course fee reopened by a chargeback (`InvoiceReopened`) does not change the
-enrolment by itself; the counsellor gets a task to collect or `withdraw`. A refund that
-fails (`RefundFailed`) leaves the enrolment `withdrawn` and restores the credit note balance.
+enrolment by itself; the enrolment's counsellor (or, when that user is no longer active, the
+counsellors of the enrolment's campus) gets a task to collect or `withdraw`. A refund that
+fails (`RefundFailed`) leaves the enrolment `withdrawn`; wl-invoicing restores the credit note
+balance.
 
 #### Session
 
@@ -539,9 +542,9 @@ fails (`RefundFailed`) leaves the enrolment `withdrawn` and restores the credit 
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
 | `reschedule` | scheduled | scheduled | `batches.manage` | tutor and room free at the new time; tutor passes `EDU.ACL.14` on the new date | students and guardians notified |
-| `change_tutor` | scheduled | scheduled | `batches.manage`, or system (batch `change_tutor`) | new tutor free and passes `EDU.ACL.14` on the date | students and guardians told; conflict cleared |
-| `submit_attendance` | scheduled | held | `sessions.teach` (`EDU.ACL.03`, `EDU.ACL.04`) | start time passed; every enrolled student marked | package credits consumed per the absence policy; absences evaluated (`EDU.RUL.02`); session flagged for the centre manager if the tutor failed `EDU.ACL.14` that day |
-| `correct_attendance` | held | held | `sessions.teach` within 24 hours, then the coordinator (`EDU.ACL.16`) | reason given | credits `reverse`d or consumed; completion re-evaluated; guardian told when an absence alert was sent; tutor timesheet adjusted (adjustment when locked) |
+| `change_tutor` | scheduled | scheduled | `batches.manage`, or system (batch `change_tutor`) | new tutor free and passes `EDU.ACL.14` on the date | students and guardians told (no reason given); conflict cleared |
+| `submit_attendance` | scheduled | held | `sessions.teach` (`EDU.ACL.03`, `EDU.ACL.04`) | start time passed; every enrolled student marked | package credits consumed per the absence policy; absences evaluated (`EDU.RUL.02`); session flagged for the centre manager if the session's tutor failed `EDU.ACL.14` that day (police clearance or freelance permit; §9 `flag`), whoever submitted; the centre manager closes the flag with a note; credits and tutor pay are not changed by it |
+| `correct_attendance` | held | held | `sessions.teach` within 24 hours of the scheduled end, then the coordinator (`EDU.ACL.16`) | reason given | credits `reverse`d or consumed (with no credit left, the correction is saved and the counsellor gets a task to sell credits); completion re-evaluated (a draft certificate whose criteria now fail is discarded; an issued one gets a coordinator task to `reissue` or `revoke`); guardian told when an absence alert was sent; tutor timesheet adjusted only when a timesheet entry changes (adjustment when locked) |
 | `cancel` | scheduled | cancelled | `batches.manage` | reason given | students notified; no credits consumed; optional make-up session added to the batch |
 
 ```mermaid
@@ -595,8 +598,8 @@ stateDiagram-v2
 
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
-| `issue` | draft | issued | `certificates.issue` | `EDU.ACL.06` criteria met; `document_valid` for the course approval when the certificate states it (§9) | number and verification code assigned; PDF in the portal |
-| `reissue` | issued | superseded | `certificates.issue` | reason (name or date correction, changed result); the corrected data saved | new draft created with a new number, linked to the old one; student notified when the new one is issued |
+| `issue` | draft | issued | `certificates.issue` | `EDU.ACL.06` criteria met; `document_valid` for the centre permit, and for the course approval when the certificate states it (§9); for a reissued draft both checks use the enrolment's completion date | number and verification code assigned; PDF in the portal; a superseded certificate's page now links this one |
+| `reissue` | issued | superseded | `certificates.issue` | reason (name or date correction, changed result that still meets the criteria; otherwise `revoke`); the corrected data saved | new draft created, linked to the old one, numbered when issued; the old page shows "superseded, replacement pending" until then; a recorded KHDA attestation is copied only if the coordinator confirms; student notified when the new one is issued |
 | `revoke` | issued | revoked | `certificates.revoke` (company admin) | reason given | public verification shows *revoked*; student notified |
 
 ```mermaid
@@ -636,10 +639,24 @@ once): `DOC.RUL.03`, `EDU.RUL.12`, `EDU.RUL.13`.
 | `EDU.RUL.10` | schedule: monthly on day D | — | collect sessions taught per tutor into timesheets; notify accountant | D = 1 | on | MVP |
 | `SCH.RUL.01` *(shared)* | N hours before a booking | booking `confirmed` | remind the party | N = 24, 2 | on | MVP |
 | `FIN.RUL.06` *(shared)* | subscription → `past_due` | — | retry the payment on a schedule; notify the party each time; `suspend` after the last retry | retries at 1, 3, 7 days | on | MVP |
-| `EDU.RUL.11` | N hours after an enrolment is created | still `pending_payment`; no payment `pending` at the gateway | `lapse` the enrolment; release the seat; cancel the payment link; tell the student or guardian and the counsellor | N = 48 | on | MVP |
-| `EDU.RUL.12` | `DocumentExpiring`, `DocumentExpired`, `QualificationExpired`, `LeaveApproved` or `EmployeeNoticeGiven` for a tutor; daily | the tutor is assigned to sessions or one-to-one bookings within D days on or after the date | flag the sessions; task to the coordinator to `change_tutor` or reschedule; if still unresolved H hours before a session, notify the centre manager | D = 30; H = 24 | on | MVP |
-| `EDU.RUL.13` | `DocumentExpiring` or `DocumentExpired` for the centre permit or a course approval | — | list the batches of that course (or campus): `open` ones can take no new `open` and issue no certificate; tell the coordinator, the centre manager and the owner; renewal task | look-ahead 60 days | on | MVP |
-| `EDU.RUL.14` | subscription `pause` or `resume`; enrolment `freeze` or `unfreeze` | the membership and the enrolment belong together and the other side is not already in that state | run the matching transition on the other side | — | on | MVP |
+| `EDU.RUL.11` | N hours after an enrolment is created; a gateway payment of a held enrolment failing (`PaymentFailed`) after that time | still `pending_payment`; nothing paid; no payment `pending` at the gateway | `lapse` the enrolment; release the seat; cancel the payment link; tell the student or guardian and the counsellor | N = 48 | on | MVP |
+| `EDU.RUL.12` | `DocumentExpiring`, `DocumentExpired`, `QualificationExpired`, `EmployeeNoticeGiven` for a tutor, or a manual availability block on the tutor (wl-scheduling) created or changed; daily. `LeaveApproved` is a trigger too but stays inactive until tutor leave (`HRM.LEV.01`, Later for 10) is enabled | the tutor is assigned to sessions or one-to-one bookings dated on or after the date and no more than D days after the later of the date and today (the window moves with the daily run): the date is the day after the expiry date for document events, the leave or block start, the day after the last working day for a notice (for leave and blocks, only sessions inside the period) | flag the sessions; one task per tutor and trigger to the coordinator to `change_tutor` or reschedule, updated by the daily run as sessions enter the window; one-to-one bookings are listed in the task but flagged and escalated only by wl-scheduling (`BookingConflict`, `SCH.RUL.05`–`06`); if a flagged session is still unresolved H hours before it, notify the centre manager once | D = 30; H = 24 | on | MVP |
+| `EDU.RUL.13` | `DocumentExpiring` or `DocumentExpired` for the centre permit or a course approval | — | list the `open` and `running` batches of that course (or campus): no new batch `open`, and certificates blocked as in §9; tell the coordinator, the centre manager and the owner in one message; renewal task to the kind's responsible role (§9: centre permit → centre manager; course approval → academic coordinator), due on the expiry date; running batches are not stopped | look-ahead 60 days | on | MVP |
+| `EDU.RUL.14` | subscription `pause` or `resume`; enrolment `freeze` or `unfreeze` | the membership and the enrolment belong together (the subscription was created by the enrolment) and the other side is not already in that state | run the matching transition on the other side, with cause *linked* (it neither triggers this rule again nor counts against the allowance); a subscription resumed into `past_due` still unfreezes the enrolment; `suspended` is not a pause | — | on | MVP |
+
+**Notification types.** Each type 10 registers names its group (the row of the wl-notify
+§5.4 default table) in `register_type`, which sets its give-up reaction (`NTF.RUL.01`).
+10 marks no type statutory.
+
+| 10 notification types | Group (wl-notify §5.4) | Give-up reaction |
+|---|---|---|
+| Messages to students and guardians: session reminders and changes, absence alerts, tutor changes, seat hold and lapse notices, package reminders, certificate notices | Guardian messages | `alternative_recipient` (the other guardian), then `staff_task` to the counsellor; an adult student without a guardian goes straight to the task |
+| Invoices, membership charges, failed payment notices, payment links, overdue reminders | Invoices, statements, payment reminders | `mark_contact_invalid` + `alternative_recipient` (the other guardian or payer contact), then `staff_task` to the accountant |
+| Terms, refund policy and guardian consent requests | Portal invitations, document requests, signature requests | `mark_contact_invalid` + `staff_task` to the counsellor |
+
+Trial and one-to-one booking messages keep the wl-scheduling group (*Booking confirmations
+and reminders*). Types sent only to staff users name no group and take `none`: staff always
+also get the in-app notification (wl-notify §5.1).
 
 ## 8. Integrations
 
@@ -681,12 +698,18 @@ coordinator (`EDU.ACL.04`, `EDU.ACL.16`).
 - **Documents that block work:** set per document kind (wl-documents §5.6). Override mode
   `never` below is the platform default; which kinds are legal blocks is `⚠ open: lawyer (L-19)`.
 
-  | Document kind (subject) | `blocks` (mode) | Override |
-  |---|---|---|
-  | Centre permit (legal entity, campus) | `batch.open`, `certificate.issue` (block) | never |
-  | Course approval (course, where required) | `batch.open`, `certificate.issue` (block) | never |
-  | Police clearance (tutor; required for courses with minors) | `batch.open`, `batch.change_tutor`, `session.change_tutor`, `session.reschedule`, `booking.book`, `booking.reassign` (block); `session.submit_attendance` (flag) | never by default (best practice, not a legal block; the client may switch it to approval by the owner) |
-  | MoHRE private tutor permit or freelance visa (freelance tutor) | as police clearance (block) | never |
+  | Document kind (subject) | `blocks` (mode) | Override | Responsible role |
+  |---|---|---|---|
+  | Centre permit (legal entity, campus) | `batch.open`, `certificate.issue` (block, always) | never | centre manager |
+  | Course approval (course, where required) | `batch.open` (block); `certificate.issue` (block, condition: the certificate states the approval) | never | academic coordinator |
+  | Police clearance (tutor; required for courses with minors) | `batch.open`, `batch.change_tutor`, `session.change_tutor`, `session.reschedule`, `booking.book`, `booking.reassign` (block); `session.submit_attendance` (flag) | never by default (best practice, not a legal block; the client may switch it to approval by the owner, one use, 72 hours) | academic coordinator |
+  | MoHRE private tutor permit or freelance visa (freelance tutor) | as police clearance (block and flag) | never | academic coordinator |
+
+  The responsible role's holders are the kind's responsible staff (wl-documents §5.2): in the
+  campus of the subject, or for a tutor (no scope) in the campuses of the batches and
+  bookings the document guards or lists as `affected`; the coordinator may be scoped to the
+  course. The client may change the role per kind. Look-ahead: 60 days for the centre permit
+  and course approvals (`EDU.RUL.13`), 30 days for the tutor kinds.
 
   The batch and session records register `BlockSubjects` (batch → course, campus, tutor;
   session → tutor) and `FutureWork` (sessions and one-to-one bookings after the expiry

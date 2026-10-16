@@ -145,9 +145,9 @@ are scoped to a warehouse location. Sales, procurement and accounts are usually 
 | The customer's credit worsens before dispatch (overdue invoice, bounced cheque) | Dispatch `dispatch` runs `credit_recheck`; a failure puts the order on `on_credit_hold` with the goods reserved (`SAL.RUL.01` notifies). A bounced cheque holds every open order on account at once (`SAL.RUL.05`). Only `credit.release` lets it go (`SAL.ACL.03`) |
 | The customer accepts only part of a delivery | The driver records delivered and refused quantity per line with a reason (`WRK.POD.01`). The order is fulfilled for the accepted quantity only; the invoice covers accepted quantities (`MFG.RUL.04`). Refused goods come back to quarantine for QC (`MFG.RUL.10`); sales re-delivers them or cancels the open quantity (`cancel_line`) |
 | The whole delivery is refused or returned | Dispatch `return`: goods back to quarantine and a complaint ticket. QC inspects: release back to stock, NCR (rework or scrap). Sales re-delivers or cancels the line (`MFG.RUL.10`) |
-| The same customer PO is uploaded or entered twice | `submit` refuses a second order with the same customer PO number for the same customer and points to the existing order; a call-off against a blanket PO is entered with a call-off number |
+| The same customer PO is uploaded or entered twice | `submit` refuses a second order with the same customer PO number and call-off number for the same customer and points to the existing order (wl-sales setting *Unique customer PO number per customer*, on in this vertical); numbers are compared trimmed and case-insensitive, other characters as entered ("PO 8812" and "PO-8812" are different numbers), and a cancelled order still holds its number. A call-off against a blanket PO is entered with its own call-off number, so the same PO number with a new call-off number is accepted |
 | A post-dated cheque bounces | Cheque `bounced` (`wl-payments`): reminders at 3 and 14 days, then re-presentation, replacement, legal case or write-off (`FIN.RUL.18`). No bounce fee by default; a client that charges one sets the charge type and amount at onboarding |
-| An invoice is disputed (quantity, price, quality) | Invoice `dispute` by the accountant, or by the customer buyer in the portal (on in this vertical); reminders pause and a ticket is linked; resolved as upheld or by credit note. A quality dispute links an NCR |
+| An invoice is disputed (quantity, price, quality) | Invoice `dispute` by the accountant, or by the customer buyer in the portal (on in this vertical); reminders pause and a ticket is linked; resolved as upheld or by credit note. A quality dispute opens an `open` NCR on each invoiced lot of the disputed lines with the buyer's text (or links that lot's open NCR; an item not lot-tracked gets one on the item and dispatch) and notifies QC; the NCR follows its own lifecycle. The disputed lines are the invoice lines ticked on the quality dispute form (all lines when none is ticked); an invoice line leads to its lots through the dispatch line it was drafted from (`MFG.RUL.04`) |
 | The customer never pays | Invoice `write_off` with approval (`FIN.ACL.15`, AED 0) and a notice to the customer; VAT bad-debt relief is proposed after 6 months (`FIN.RUL.14`) |
 | An export does not leave within 90 days | `MFG.RUL.08`: alert at 60 days, flag at 90 days that 5% VAT is due, and a task to correct the invoice |
 
@@ -174,7 +174,7 @@ are scoped to a warehouse location. Sales, procurement and accounts are usually 
 | A work order must stop after materials were issued (order cancelled, wrong BOM, material defect) | Work order `abort` with approval (`MFG.ACL.12`): unused issued materials go back to the store, the work in progress is scrapped (wastage, `STK.ACL.02` above AED 2,000), good output already made goes to quarantine as a lot. Actual cost is closed and the loss reported |
 | A sales order is cancelled but the goods are worth finishing | Work order `unlink`: it keeps running and its output goes to free stock |
 | Wi-Fi drops on the line | Operators use paper job cards; the supervisor enters them at the end of the shift with the business time and a late-entry flag (`PLT.ACL.10`; more than 24 hours late needs the production manager's approval) |
-| A material is short when it should be issued | The location's negative stock policy is `block`: the issue waits as a pending issue (`STK.RUL.06`), and the work order is put `on_hold` with reason *material* |
+| A material is short when it should be issued | The location's negative stock policy is `block`. A material issue to a work order is posted by the work order as consumption (`ConsumptionSource`, `wl-inventory`), so its short quantity waits as a pending issue (`STK.RUL.06`), without a lot until it posts; any other movement below zero (transfer, dispatch) is refused. `hold` stays a user transition: for an `in_progress` work order the line's supervisor gets one task to put it `on_hold` with reason *material* (no breakdown ticket); a `released` one is not held and the pending issue shows on the schedule board. When no pending issue of the work order is `open` any more (each one `posted` or `cleared`): a work order `on_hold` with reason *material* gives the supervisor a task to `resume` it; a work order still `in_progress` has its open hold task closed instead (no resume task) |
 
 ### 4.3 Procure to pay
 
@@ -192,7 +192,7 @@ are scoped to a warehouse location. Sales, procurement and accounts are usually 
 | Situation | What happens |
 |---|---|
 | Goods are damaged, wrong or short at the door | The storekeeper records accepted and rejected quantity per line with a reason. Only accepted quantity enters stock and the 3-way match; refused goods leave with the supplier's driver on a Return to supplier dispatched at once (`STK.GRN.01`) |
-| A lot fails incoming inspection | Lot `reject` and an NCR. The NCR disposition *return to supplier* creates a Return to supplier from the quarantine location (`STK.ACL.06` above AED 5,000). On dispatch, a supplier debit note is drafted for *credit* lines (`FIN.RUL.17`); *replace* lines reopen the PO quantity. `STK.RUL.08` chases the supplier after 30 days |
+| A lot fails incoming inspection | Lot `reject` and an NCR. The NCR disposition *return to supplier* creates a Return to supplier from the quarantine location (`STK.ACL.06` above AED 5,000). On dispatch, a supplier debit note is drafted for *credit* lines (`FIN.RUL.17`); *replace* lines reopen the PO quantity. `STK.RUL.08` chases the supplier after 30 days. If the Return to supplier is cancelled (the supplier refuses collection), the NCR is reopened for a new disposition |
 | The supplier changes price, quantity or date after the PO was issued | PO `revise`: a new revision is sent; a higher total is approved again |
 | Freight, duty or clearing is billed after the landed cost was allocated | Landed cost `adjust`: stock still on hand is re-valued, the consumed share goes to the landed cost variance; standard cost is not changed until the next BOM roll-up |
 
@@ -216,8 +216,11 @@ are scoped to a warehouse location. Sales, procurement and accounts are usually 
    at every location. The forward trace follows the lot genealogy through work orders to
    the finished lots, and through dispatches to the customers (`TracePartyResolver`:
    dispatch → its sales order's customer; a work order for an undelivered order → that
-   order's customer, marked *not shipped*, and its dispatch is stopped). Notices go to the
-   customer buyers in EN/AR. Each held lot gets an outcome: discard, return to supplier, or
+   order's customer, marked *not shipped*, and its dispatch is stopped: its `draft` or
+   `picked` dispatches holding the work order's output lots are flagged for re-pick with a
+   task to the storekeeper, and a `dispatched` one is listed for the recall owner to bring
+   back). Notices go to every active customer buyer in EN/AR, or to the customer's main
+   contact email when it has none. Each held lot gets an outcome: discard, return to supplier, or
    release by a second person (`STK.ACL.05`). The recall report is kept with the lot
    documents. Whether the business must notify MoIAT or another authority is
    `⚠ open: authority (AU-20)`.
@@ -229,12 +232,14 @@ are scoped to a warehouse location. Sales, procurement and accounts are usually 
 1. A customer buyer logs in to the portal (`POR.SLF.01`).
 2. They repeat a previous order or upload their PO. Sales checks it against the contract
    price list and confirms it (`SAL.CAT.01`, `SAL.ORD.01`). An upload whose customer PO
-   number already has an order is refused and the buyer is shown the existing order.
+   number and call-off number already have an order is refused and the buyer is shown the
+   existing order's number and status.
    Ordering from a full catalogue with a cart is Later.
 3. They follow the order's status: confirmed, in production, dispatched, delivered.
 4. They download delivery notes, invoices and certificates for their lots.
-5. They may flag an invoice as disputed with a reason; sales and the accountant see it on
-   the linked ticket.
+5. They may flag an invoice as disputed with a reason; for reason *quality* they may tick
+   the affected invoice lines (all lines when none is ticked). Sales and the accountant see
+   it on the linked ticket.
 
 ### 4.6 Machine breakdown
 
@@ -330,12 +335,12 @@ are scoped to a warehouse location. Sales, procurement and accounts are usually 
 
 | Entity | Description | Important fields | Owned by |
 |---|---|---|---|
-| Item | Raw material, component or finished good | code, name, type, base unit, fixed unit conversions (purchase, stock, sales units), lot-tracked flag, regulated flag, export-only flag, shelf life, min stock, standard cost | wl-inventory |
+| Item | Raw material, component or finished good | code, name, type, base unit, fixed unit conversions (purchase, stock, sales units), lot-tracked flag, regulated flag, accepted conformity certificate kinds (regulated items; ECAS, EQM, food-contact, set per item at onboarding, default all three), export-only flag, customer-specific flag, shelf life, min stock, standard cost | wl-inventory |
 | BOM | Recipe for one finished item | item, version, components with quantity per unit and scrap %, standard hours per line, status | wl-inventory |
 | Price list | Prices per customer or group | customer, items, prices, validity | wl-sales |
 | Customer | A B2B buyer (party) | trade licence, TRN, credit limit, payment terms, price list | wl-parties + wl-sales |
 | Sales order | Customer's order | customer, lines, promised dates, price source, status | wl-sales |
-| Work order | Instruction to produce | item, BOM version, quantity, line, planned dates, actual start/stop, source (sales order or stock), status | apps/manufacturing |
+| Work order | Instruction to produce | item, BOM version, quantity, quantity for stock (excess after an order decrease), line, planned dates, actual start/stop, source (sales order or stock), status | apps/manufacturing |
 | Production report | Output from a line | work order, quantity good, scrap, operator, time | apps/manufacturing |
 | Lot | A batch of one item | item, number, source (supplier lot or work order), quantity, expiry, status | wl-inventory |
 | QC plan | What to inspect | item, stage, characteristics, limits, sampling | apps/manufacturing |
@@ -381,8 +386,9 @@ unchanged.
 | `cancel` | draft, on_credit_hold, confirmed | cancelled | `sales_orders.cancel` | nothing dispatched; reason given; outcome per line and approval when a linked work order started or goods were picked (`SAL.ACL.05`) | reservations released; work orders not started cancelled, started ones follow the outcome (`MFG.RUL.09`); cancellation fee invoiced when set; customer notified; event `SalesOrderCancelled` |
 
 Cancellation outcomes offered in this vertical: *finish to stock* (default for standard
-items), *scrap* (default for customer-specific items such as printed labels and packaging),
-*return to stock* for picked finished goods. Cancellation fee: 0% by default; the client may
+items), *scrap* (default for items flagged *customer-specific*, such as printed labels and
+packaging; the flag is off by default), *return to stock* for picked finished goods. Sales
+may change the proposed outcome per line. Cancellation fee: 0% by default; the client may
 set a percentage per customer. VAT on a fee kept from a prepayment is `⚠ open: accountant (A-04)`
 (see `wl-sales`).
 
@@ -447,9 +453,9 @@ stateDiagram-v2
 | `released` | info | no | On a line in the schedule; materials can be issued |
 | `in_progress` | info | no | Production started |
 | `on_hold` | warning | no | Stopped; reason from a list (material, machine, quality) |
-| `completed` | success | no | Output reported; finished lot created in quarantine; locked (`MFG.ACL.10`) |
+| `completed` | success | no | Output reported; finished lot in quarantine; locked (`MFG.ACL.10`) |
 | `closed` | success | yes | Actual cost calculated |
-| `cancelled` | neutral | yes | Cancelled before any material issue |
+| `cancelled` | neutral | yes | Cancelled before any material issue or output report |
 | `aborted` | error | yes | Stopped after materials were issued; work in progress returned, scrapped or put to quarantine; actual cost closed |
 
 | Transition | From | To | By | Guards | Effects |
@@ -458,15 +464,41 @@ stateDiagram-v2
 | `start` | released | in_progress | `work_orders.report` (`MFG.ACL.01`) | — | start time recorded |
 | `hold` | in_progress | on_hold | `work_orders.report` | reason chosen | breakdown ticket created when the reason is *machine* |
 | `resume` | on_hold | in_progress | `work_orders.report` | — | — |
-| `complete` | in_progress | completed | `work_orders.report` | good quantity and scrap reported | finished lot created in `quarantine`; final inspection requested |
+| `complete` | in_progress | completed | `work_orders.report` | good quantity and scrap reported | the output lot (the finished lot, opened in `quarantine` by the first production report) takes no more output; final inspection requested |
 | `close` | completed | closed | system or `work_orders.close` | all issues and output posted | actual vs standard cost calculated (`MFG.CST.01`) |
-| `cancel` | planned, released | cancelled | `work_orders.release` | no material issued | pick list withdrawn; sales order link removed |
-| `unlink` | planned, released, in_progress, on_hold | same state | `work_orders.release` or system (`MFG.RUL.09`, outcome *finish to stock*) | reason given | source changed from the sales order to stock; output goes to free stock; planner notified |
-| `abort` | released, in_progress, on_hold | aborted | `work_orders.release` | material issued or output reported; reason given; outcome per line: unused materials back to store, work in progress scrapped, good output to a lot in quarantine; approval by the production manager, not the requester (`MFG.ACL.12`); scrap above the value also under `STK.ACL.02` | return and `wastage` movements posted; good output lot created in `quarantine`; actual cost calculated and the loss reported (`MFG.CST.01`); linked sales order line told; event `WorkOrderAborted` |
+| `cancel` | planned, released, in_progress, on_hold | cancelled | `work_orders.release`, or system (`MFG.RUL.09`) | no material issued and no output reported; reason given from `in_progress` or `on_hold` | pick list withdrawn; sales order link removed; an open breakdown ticket stays open |
+| `unlink` | planned, released, in_progress, on_hold | same state | `work_orders.release` or system (`MFG.RUL.09`: outcome *finish to stock*, or the line's open quantity cut to 0) | reason given; source is still the sales order | source changed from the sales order to stock; output goes to free stock, and output lots already reserved for a cancelled line are released to free stock; planner notified |
+| `abort` | released, in_progress, on_hold | aborted | `work_orders.release` | material issued or output reported; reason given; outcome per line: unused materials back to store (not more than issued less returned per item and lot), work in progress scrapped, good output to a lot in quarantine; one approval request: step 1 the production manager, not the requester (`MFG.ACL.12`), step 2 under `STK.ACL.02` only when the scrap value is above its limit; the posted quantities still match the request at final approval | at final approval, in one transaction: return and `wastage` movements posted; good output stays in the work order's output lot in `quarantine` with a final inspection requested; actual cost calculated and the loss reported (`MFG.CST.01`); linked sales order line's owner told the outcome; event `WorkOrderAborted` |
+
+A work order is *started* once it is `in_progress` or `on_hold`, or has material issued or
+output reported; this decides whether `SAL.ACL.05` and the outcomes of `MFG.RUL.09` apply.
+
+Each production report posts a `produce` movement of its good quantity into the work order's
+output lot and a `wastage` movement of its scrap (`wl-inventory`). The output lot (one per
+work order, source = the work order) is created in `quarantine` at the line's finished goods
+location by the first report with good quantity; it is the finished lot of `complete` and
+cannot be picked or issued before QC releases it (`MFG.ACL.02`).
+
+While an `abort` request waits, new issues and production reports on the work order are
+refused ("abort pending"); if the posted quantities differ at final approval (a late entry),
+the request fails and a new one is made. The scrap value is the cost of materials issued,
+less materials returned, less good output × the BOM's standard material cost per unit, never
+below 0, at the cost each issue was posted with; a returned quantity is valued at the
+average unit cost of this work order's issues of the same item and lot (issued value ÷
+issued quantity). The loss is the actual cost (materials issued less returned, plus
+start/stop hours × the line rate) less good output at standard cost; it is shown on the work
+order and in the aborted work orders report. Start/stop hours run from the start time
+recorded by `start` to the stop time (for `abort`, the final approval time; 0 when the work
+order never started), time `on_hold` included. The line rate is the hourly rate of the work
+order's line (labour and overhead, `MFG.CST.01`). Standard cost per unit is the BOM
+version's rolled-up cost: materials at landed cost plus standard hours × the line rate.
 
 A completed work order stays locked (`MFG.ACL.10`); a production report entered on the wrong
 work order before `complete` is voided with a reason (`PLT.ACL.09`) and its movements
-reversed.
+reversed. The void is approved by the line's supervisor or the production manager, not the
+requester; it is refused when the output lot no longer holds the report's good quantity
+(part of it was moved, issued or picked; the production manager then corrects with a
+reversing movement).
 
 ```mermaid
 stateDiagram-v2
@@ -479,6 +511,8 @@ stateDiagram-v2
   completed --> closed: close
   planned --> cancelled: cancel
   released --> cancelled: cancel
+  in_progress --> cancelled: cancel
+  on_hold --> cancelled: cancel
   planned --> planned: unlink
   released --> released: unlink
   in_progress --> in_progress: unlink
@@ -547,13 +581,26 @@ stateDiagram-v2
 |---|---|---|---|---|---|
 | `disposition` | open | dispositioned | `ncrs.disposition` | disposition chosen (rework, scrap, use as is, return to supplier); `MFG.ACL.03` for use as is; return to supplier: supplier lot known, outcome *credit* or *replace* | rework → work order; scrap → lot `discard` or a `wastage` movement (`STK.ACL.02`); return → a draft Return to supplier in `wl-inventory` for the lot's supplier, from the quarantine location (`STK.ACL.06` on dispatch) |
 | `close` | dispositioned | closed | `ncrs.disposition` | rework work order completed, scrap posted, or the Return to supplier `dispatched` | supplier credit chased on the Return to supplier (`STK.RUL.08`), not on the NCR |
+| `reopen` | dispositioned | open | system (the linked Return to supplier is `cancelled`, or the rework work order is `cancelled` or `aborted`), or `ncrs.disposition` | the disposition's action did not happen; reason given | previous disposition kept in history; QC gets a task to choose a new disposition (`MFG.ACL.03` again for *use as is*) |
 | `cancel` | open | cancelled | `ncrs.disposition` | reason given | — |
+
+When the rework work order completes, the scrap posts or the Return to supplier is
+`dispatched`, QC gets a task to `close` the NCR; it is not closed by the system.
+
+An NCR may cover only part of a lot. Then the lot is not `reject`ed or `discard`ed (those
+move the whole lot): it keeps its state and is not `release`d while the NCR is `open` or
+`dispositioned`. The NCR quantity leaves the lot through the disposition's own movement: a
+`wastage` movement for *scrap* (`STK.ACL.02`), or `return_out` when the Return to supplier
+is `dispatched`. QC may then release what remains (`MFG.ACL.02`); *use as is* releases the
+whole lot. When the NCR covers the whole remaining quantity, lot `reject` or `discard`
+applies as in the table.
 
 ```mermaid
 stateDiagram-v2
   [*] --> open
   open --> dispositioned: disposition
   dispositioned --> closed: close
+  dispositioned --> open: reopen
   open --> cancelled: cancel
   closed --> [*]
   cancelled --> [*]
@@ -574,8 +621,8 @@ stateDiagram-v2
 
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
-| `pick` | draft | picked | `dispatch.manage` | only `released` lots, no held quantity; `MFG.ACL.11` (valid conformity certificate, export-only flag) | stock reserved |
-| `dispatch` | picked | dispatched | `dispatch.manage` | vehicle and driver set; no picked lot on hold (re-pick otherwise); `credit_recheck` for orders on account (fails → sales order `hold`) | stock moved out; delivery note PDF |
+| `pick` | draft | picked | `dispatch.manage` | only `released` lots, no held quantity; `MFG.ACL.11` (a regulated item needs one of its conformity certificate kinds accepted and valid on the pick date; export-only flag) | stock reserved |
+| `dispatch` | picked | dispatched | `dispatch.manage` | vehicle and driver set; no picked lot on hold (re-pick otherwise); `MFG.ACL.11` again on the dispatch date (an expired certificate refuses it; the dispatch may be `cancel`led); `credit_recheck` for orders on account (fails → sales order `hold`) | stock moved out; delivery note PDF |
 | `confirm_delivery` | dispatched | delivered | driver or `dispatch.manage` | proof of delivery captured (`WRK.POD.01`) with delivered and refused quantity per line; every refused quantity has a reason; at least one unit delivered | sales order `deliver` for the accepted quantities; refused goods back to quarantine with their reason (`MFG.RUL.10`); event `DispatchDelivered` |
 | `return` | dispatched | returned | `dispatch.manage` | reason recorded | goods back to quarantine; complaint ticket created; QC inspection and sales decision (`MFG.RUL.10`) |
 | `cancel` | draft, picked | cancelled | `dispatch.manage` | — | reservation released |
@@ -606,13 +653,25 @@ before the request (`wl-kernel`). Settings for this vertical:
 |---|---|
 | Void | Production reports before the work order is `completed`, goods receipts not yet billed (`reverse`), draft dispatches (`cancel`). Never invoices, delivery notes or certificates already sent to a customer: those are corrected by credit note or a new version |
 | Cancel after work started | Sales order outcomes (*finish to stock*, *scrap*, *return to stock*, fee 0%) with `SAL.ACL.05`; work order `abort` with `MFG.ACL.12` |
-| Document blocks | Conformity certificate (ECAS, EQM, food-contact) of a regulated item blocks `dispatch.pick` (block); override `never` (proposed; legal block `⚠ open: lawyer (L-19)`). Industrial licence, Industrial Registry and ICV certificate: reminders only (`DOC.RUL.01`), no block. Expiry look-ahead 30 days |
+| Document blocks | Conformity certificate (ECAS, EQM, food-contact) of a regulated item blocks `dispatch.pick` and `dispatch.dispatch` (block; any one valid kind among the item's accepted kinds passes; a renewal still in `pending_review` does not); override `never` (proposed; legal block `⚠ open: lawyer (L-19)`). Industrial licence, Industrial Registry and ICV certificate: reminders only (`DOC.RUL.01`), no block. Expiry look-ahead 30 days |
 | Party blocked | Sales orders not yet dispatched are held (module default); their work orders continue and the planner may `unlink` them to stock; money in continues |
 | Integrations | Line tablets offline → paper job cards, late entry (`PLT.ACL.10`). E-invoicing provider down (from 2027) → invoices queued and sent on recovery (`PLT.RUL.05`). Email down → documents downloaded from the record and sent by hand |
 | Late entry | Production reports, inspections and goods receipts keep their business time; more than 24 hours late needs the production manager (`PLT.ACL.10`) |
 | Disputes | Invoices, by the accountant or the customer buyer in the portal (on); a quality dispute links an NCR; `FIN.RUL.15` escalates after 14 days |
 | Compliance-critical rules | `MFG.RUL.08` (export VAT), `DOC.RUL.03` for conformity certificates; owner role: general manager / owner (`PLT.RUL.04`) |
 | Bad debt and cheques | Write-off limit AED 0 (`FIN.ACL.15`); bounce fee off unless the client sets a charge type; maximum two presentations |
+| Responsible role per document kind (wl-documents §5.2) | conformity certificates (ECAS, EQM, food-contact) → QC inspectors of each plant that holds stock of the item or has an open work order for it (every plant when none does; the item has no scope of its own); calibration certificates → QC inspector of the plant; industrial licence, Industrial Registry and ICV certificate → general manager / owner; export exit evidence → accountant |
+
+**Notification types registered by 07** (wl-notify §5.4: each names its group):
+
+| Type | Sent by | Group | Urgency | Give-up reaction |
+|---|---|---|---|---|
+| `mfg.recall_notice` | recall `send_notices` to customer buyers (§4.4 step 8) | — | urgent | *Urgent types* row: task to the recall owner with an in-app alert |
+
+No type of this vertical is statutory. Order confirmations and cancellation notes are
+wl-sales' types; invoices, statements, dispute and write-off notices are wl-invoicing's. The other alerts of `MFG.RUL.01`–`10` and the work order `unlink` and `abort`
+notices go to staff users only: they name no group and take `none` (staff always also get
+the in-app notification, wl-notify §5.1).
 
 ### 7.2 Automations
 
@@ -635,9 +694,9 @@ stock holds, returns to suppliers).
 | `MFG.RUL.06` | work order → `completed` | scrap above P% of good quantity | create an NCR; notify production manager | P = 5 | on | MVP |
 | `STK.RUL.03` *(shared)* | N days before a lot's expiry date | lot `released` with quantity > 0 | notify storekeeper and planner | N = 30 | on | MVP |
 | `MFG.RUL.07` | schedule: yearly, N days before the ICV certificate expires | — | prepare the ICV data pack; notify GM | N = 60 | off | Later |
-| `MFG.RUL.08` | N days after a zero-rated export dispatch | exit evidence (customs exit certificate, bill of lading or airway bill) not attached | notify the accountant; at M days flag that 5% VAT is due and create a task to correct the invoice (credit note and a standard-rated invoice); whether the VAT is recharged to the customer depends on the contract. Compliance-critical | N = 60, M = 90 | on | MVP |
-| `MFG.RUL.09` | `SalesOrderAmended`, `SalesOrderLineCancelled` or `SalesOrderCancelled` | linked work orders exist | not started: change the quantity or `cancel`; started: an increase creates a planned work order for the difference; a decrease or outcome *finish to stock* runs `unlink` for the excess; outcome *scrap* asks the production manager to `abort` (`MFG.ACL.12`); notify planner | — | on | MVP |
-| `MFG.RUL.10` | dispatch → `returned`, or `DispatchDelivered` with refused quantity | — | create a QC inspection of the returned goods in quarantine; create a task for sales to re-deliver or cancel the open quantity (`cancel_line`); notify the account's sales person | — | on | MVP |
+| `MFG.RUL.08` | N days after a zero-rated export dispatch (checked daily at 08:00 Asia/Dubai) | exit evidence (customs exit certificate, bill of lading or airway bill) not attached | notify the accountant; at M days flag that 5% VAT is due and create a task to correct the invoice (credit note and a standard-rated invoice); whether the VAT is recharged to the customer depends on the contract. Evidence attached after day M keeps the flag and notifies the accountant "evidence received after correction"; nothing is reversed (A-12). Compliance-critical | N = 60, M = 90 | on | MVP |
+| `MFG.RUL.09` | `SalesOrderAmended`, `SalesOrderLineCancelled` or `SalesOrderCancelled` | linked work orders exist | not started: change the quantity to the line's new open quantity or, at 0, `cancel`; started: an increase creates a planned work order for the difference; a decrease keeps the work order's quantity and flags the output above the line's new open quantity *for stock* (released to free stock when reported); an open quantity cut to 0 or outcome *finish to stock* runs `unlink`; outcome *scrap* gives the production manager a task to request `abort` (`MFG.ACL.12`), or runs `cancel` when nothing was issued or reported; notify planner | — | on | MVP |
+| `MFG.RUL.10` | the goods of a dispatch → `returned`, or the refused quantity of `DispatchDelivered`, are booked into quarantine (run close) | — | create a QC inspection per returned lot in quarantine; create a task for sales to re-deliver or cancel the open quantity (`cancel_line`), closed when all of it is re-dispatched or cancelled (a part re-dispatched lowers the task's open quantity); notify the account's sales person (the sales role in scope when the account has none) | — | on | MVP |
 
 ## 8. Integrations
 
@@ -679,14 +738,17 @@ stock holds, returns to suppliers).
 - **E-invoicing:** ✔ B2B and B2G invoices go through an accredited service provider: from
   1 January 2027 for revenue of AED 50m or more, from 1 July 2027 for the rest [S18].
 - **Product conformity:** ✔ items carry a *regulated* flag; a regulated item is dispatched
-  only while a valid ECAS, EQM or food-contact certificate is on file (`MFG.ACL.11`).
+  only while a valid ECAS, EQM or food-contact certificate of one of its accepted kinds is on
+  file (`MFG.ACL.11`).
   Certificates are documents with expiry (`DOC.EXP.01`) whose kind blocks
-  `dispatch.pick` without override (proposed; `⚠ open: lawyer (L-19)` on the legal block); orders
+  `dispatch.pick` and `dispatch.dispatch` without override (proposed; `⚠ open: lawyer (L-19)` on the legal block); orders
   planned to ship after the expiry date are listed 30 days ahead (`DOC.RUL.02`). Items
   under the single-use plastics ban carry an *export only* flag and cannot be sold for
   domestic delivery [S10].
 - **Traceability and recall:** lot genealogy is kept so that a recall can name the affected
-  customers. Every issue of a lot-tracked material to a work order records its lot. A recall
+  customers. Every issue of a lot-tracked material to a work order records its lot; only the
+  short quantity of an issue that waits as a pending issue (§4.2) gets its lot when it posts
+  (*assigned on arrival*, a recall treats it as *lot uncertain*). A recall
   (`wl-inventory`) holds every lot in scope, traces forward to customers, sends notices and
   keeps a report. Whether a recall must be notified to MoIAT or another authority is
   `⚠ open: authority (AU-20)`.

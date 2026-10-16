@@ -1,6 +1,6 @@
 # 03 — Logistics & Freight Forwarding
 
-> Status: accepted · Reviewed: 2026-10-15 · Last updated: 2026-10-15
+> Status: accepted · Reviewed: 2026-10-15 · Last updated: 2026-10-16
 
 ## 1. Summary
 
@@ -130,23 +130,27 @@ account: they get a signed, time-limited tracking link.
 | `LOG.ACL.02` | A client user sees only their own company's shipments, invoices and COD statements | `OWN` | client user | — |
 | `LOG.ACL.03` | The public tracking link shows the status timeline, the recipient's first name and area only; it expires after delivery | `FLD`, `TIM` | recipient | 14 days after delivery |
 | `WRK.ACL.06` *(shared, formerly `LOG.ACL.04`)* | A delivery's e-POD is never edited once the shipment is `delivered`. A correction is only an audited `reverse_delivery` that keeps the original proof and marks it reversed; a dispute is a ticket and puts the shipment `under_review` | `STA` | all staff | — |
-| `WRK.ACL.09` *(shared)* | COD collected below the amount due by more than the tolerance is accepted only with a difference reason and an operations manager's approval from the phone, who chooses who absorbs it; the driver cannot approve; without an answer the attempt fails | `LIM`, `SOD` | driver, operations manager | AED 0 |
+| `WRK.ACL.09` *(shared)* | COD collected below the amount due by more than the tolerance is accepted only with a difference reason and an operations manager's approval from the phone, who chooses who absorbs it (*client*, *business* or *driver*; none preselected, the wl-delivery option *customer* not offered); the driver cannot approve; without an answer the attempt fails | `LIM`, `SOD` | driver, operations manager | AED 0 |
 | `WRK.ACL.10` *(shared)* | `reverse_delivery` and a manual `mark_lost` of a delivery need an operations manager's approval; the requester cannot approve, and the driver of the run can neither request nor approve | `SOD`, `STA` | all staff | on |
 | `FIN.ACL.05` *(shared, formerly `LOG.ACL.05`)* | The cash handover is counted by a cashier or operations manager, never by the driver who hands it over | `SOD` | driver, cashier | on |
 | `FIN.ACL.06` *(shared, formerly `LOG.ACL.06`)* | Writing off a driver's cash shortage needs an operations manager's approval above a threshold | `LIM` | cashier | AED 50 |
 | `FIN.ACL.19` *(shared)* | Recovering a cash shortage by salary deduction needs approval by another user than the counter, and the driver's acknowledgement | `SOD` | cashier, operations manager | off (`⚠ open: lawyer (L-20)`, as in wl-payments) |
 | `LOG.ACL.07` | A COD remittance is prepared by one user and approved by another before payment | `SOD` | accountant | on |
 | `LOG.ACL.08` | Any change to a client's rate card needs a manager's approval | `LIM` | accountant, customer service | any change |
-| `LOG.ACL.09` | A client user can cancel a shipment only while it is `created`. After pickup only a dispatcher or operations manager can cancel it, on the client's instruction: the shipment goes back to the client (`cancel_return` to `returning`, return charge per rate card). A shipment out for delivery is first stopped by a failed attempt with the reason *cancelled by client* | `STA` | client user, dispatcher | — |
+| `LOG.ACL.09` | A client user can cancel a shipment only while it is `created`. After pickup only a dispatcher or operations manager can cancel it, on the client's instruction (a note of who asked, when and how, or the client user's portal request "ask us to return it", a ticket of category *client instruction*): the shipment goes back to the client (`cancel_return` to `returning`, return charge per rate card). A shipment out for delivery is first stopped by a failed attempt with the reason *cancelled by client* | `STA` | client user, dispatcher | — |
 | `LOG.ACL.10` | A fine or toll allocated to a driver for salary deduction needs an operations manager's approval | `SOD` | fleet manager | on |
 | `LOG.ACL.11` | Commercial invoices and declared values on freight jobs are visible only to the documentation team, accountants and the client | `FLD`, `OWN` | all staff | — |
-| `LOG.ACL.12` | An adjustment line on a COD remittance (a correction after payment, a reversed or disputed delivery, a statement dispute outcome) is prepared by one user and approved by another with `remittances.approve`; the client sees the line and its reason on the next statement | `SOD` | accountant | on |
-| `LOG.ACL.13` | A change to a client's remittance bank account takes effect only after a second user approves it and the client confirms it from its known contact; until then remittances use the old account or wait | `SOD` | accountant | on |
+| `LOG.ACL.12` | An adjustment line on a COD remittance (a correction after payment, a reversed or disputed delivery, a statement dispute outcome) is prepared by one user and approved by another with `remittances.approve`; a user may approve both a line and the remittance if they prepared neither; the client sees the line and its reason on the next statement | `SOD` | accountant | on |
+| `LOG.ACL.13` | A change to a client's remittance bank account takes effect only after a second user approves it and the client confirms it from its known contact (the primary contact on record before the request, never a contact added or changed in the same request); until then remittances use the old account or wait. One pending change per client at a time; a pending change not both approved and confirmed within 14 days lapses and the requester is told | `SOD` | accountant | on; lapses after 14 days |
 | `LOG.ACL.14` | A shipment that is not on a delivery (`picked_up`, `at_hub`, `on_hold`, `returning`) is marked `lost` or `disposed` only with an operations manager's approval; the requester cannot approve. Disposal also needs the client's written instruction attached, unless the goods are dangerous | `SOD`, `STA` | hub staff, dispatcher | on |
-| `PTY.ACL.03` *(shared)* | While a client is blocked, no COD remittance or refund is paid to it and no rate card is renewed or extended, unless the finance manager approves an exception (screening is off in 03) | `STA`, `LIM` | accountant | — |
+| `PTY.ACL.03` *(shared)* | While a client is blocked, no COD remittance or refund is paid to it and no rate card is renewed or extended, unless the company admin approves an exception (03 has no finance manager role; the requester cannot approve; screening is off in 03) | `STA`, `LIM` | accountant | — |
 | `FIN.ACL.15` *(shared)* | Writing off an invoice balance as a bad debt needs approval; the requester cannot approve | `LIM`, `SOD` | accountant | AED 0 (every write-off approved by the operations manager or company admin) |
 | `POR.ACL.01` *(shared)* | After a client's contract ends, its portal users keep read-only access to shipments, invoices and COD statements, then the portal closes | `TIM` | client user | closes after 90 days |
 | `FIN.ACL.08` *(shared)* | Job costs, carrier rates and margins are hidden from drivers, hub staff, customer service and external users | `FLD` | listed roles | — |
+
+Where a rule above asks for an operations manager's approval (`WRK.ACL.09`, `WRK.ACL.10`,
+`FIN.ACL.06`, `LOG.ACL.14`), the company admin may also approve, because it holds every
+permission (for example in a depot with a single operations manager); the requester never may.
 
 ## 4. Value streams
 
@@ -180,24 +184,24 @@ account: they get a signed, time-limited tracking link.
 
 | Case | What happens | Where |
 |---|---|---|
-| Duplicate booking | A CSV row or API shipment with a client reference already used by the same client is refused; a duplicate found later is voided while `created` (no charge, number kept) | Shipment `void`, `PLT.ACL.09` |
-| Client cancels | Before pickup: `cancel` (cancellation fee only if the rate card has one). After pickup: the dispatcher runs `cancel_return` and the goods go back with the return charge. Out for delivery: the driver fails the stop with *cancelled by client*, then `cancel_return` | `LOG.ACL.09` |
-| Fewer parcels handed over than booked | `pick_up` records the missing parcels as *not received*; the shipment goes ahead with the parcels received, weight and price are recalculated, the client is told. No parcel handed over: the pickup attempt fails and the shipment stays `created` | Shipment `pick_up` |
-| Weight or size differs at the hub | Hub staff record the measured weight and dimensions with a photo of the scale. Above the client's tolerance the shipment is priced on the measured values (re-weigh surcharge on the monthly invoice) and the client is told; the client may dispute it through a ticket before the invoice is issued | `LOG.HUB.01`, `FIN.RAT.01` |
-| Wrong or incomplete address | Before dispatch, the client or customer service corrects it (audited; a zone change re-prices the shipment). After a failed attempt with *wrong address*, the shipment is put `on_hold` until the client confirms the address, then `release` | Shipment `hold`, `release` |
-| Parcel damaged at the hub | Shipment `hold` with reason *damaged* and photos; the client chooses: deliver as is (`release`), return (`return`) or dispose (`dispose`, written instruction, `LOG.ACL.14`). When the company is liable, a claim ticket is opened | §4.4 |
+| Duplicate booking | A CSV row or API shipment with a client reference already used by the same client, in any state including `voided` and `cancelled`, is refused (a real re-booking needs a new reference); a booking without a reference is not checked; a duplicate found later is voided while `created` (no charge, number kept) | Shipment `void`, `PLT.ACL.09` |
+| Client cancels | Before pickup: `cancel` (cancellation fee only if the rate card has one). After pickup: the dispatcher runs `cancel_return` and the goods go back with the return charge; a shipment returned before any delivery attempt is billed the return charge only. Out for delivery: the driver fails the stop with *cancelled by client* (not counted as an attempt), then `cancel_return` | `LOG.ACL.09` |
+| Fewer parcels handed over than booked | `pick_up` (or `receive_at_hub` for a drop-off) records the missing parcels as *not received*; the shipment goes ahead with the parcels received, weight and price are recalculated, the client is told. Parcels *not received* are never picked up later on that shipment: the client books a new one. The COD amount is not changed; the client may edit it before dispatch (audited). No parcel handed over: the pickup attempt fails and the shipment stays `created` | Shipment `pick_up` |
+| Weight or size differs at the hub | Hub staff record the measured weight and dimensions with a photo of the scale. Above the client's tolerance (0 kg when the rate card sets none) the shipment is priced on the measured values (re-weigh surcharge on the monthly invoice) and the client is told; a measured weight lower than the booked one never reprices. The tolerance is compared on the chargeable weight: the higher of actual and volumetric weight when the rate card prices by volume (volumetric divisor from the rate card). When the shipment is re-weighed, the latest measurement counts. The client may dispute it through a ticket before the invoice is issued; the surcharge is held out of the draft while the ticket is open, and the shipment is held (`hold`, *re-weigh dispute*) only if the client asks to stop delivery | `LOG.HUB.01`, `FIN.RAT.01` |
+| Wrong or incomplete address | Before dispatch, the client or customer service corrects it (audited; a zone change re-prices the shipment). After a failed attempt with *wrong address*, the system puts the shipment `on_hold` (reason *address issue*) instead of queuing a reattempt, and the client is asked to confirm the address in the portal; then `release` | Shipment `hold`, `release` |
+| Parcel damaged at the hub | Shipment `hold` with reason *damaged* and photos; the client chooses: deliver as is (`release`), return (`return`) or dispose (`dispose`, written instruction, `LOG.ACL.14`). When the company is liable (set on the hold or later, while `on_hold`), a claim ticket is opened | §4.4 |
 | Driver or vehicle document expired | Run `dispatch` and delivery assignment are refused; planned runs are flagged in advance (`DOC.RUL.02`) | §9 Document blocks |
-| Recipient refuses some parcels of a multi-parcel shipment | Partial acceptance: delivered for the accepted parcels; refused parcels come back with the driver and go back to the client on a linked return shipment with the return charge. Single-parcel shipments: partial acceptance is off | `WRK.POD.01` |
-| Recipient pays less than the COD amount or refuses to pay | The driver records the cash collected. Above the tolerance (AED 0), the driver enters a reason and asks the operations manager from the phone (`WRK.ACL.09`), who chooses who absorbs the difference: *client* (only with the client's instruction, e.g. an agreed discount: deducted on the remittance line with the reason, shown on the statement), *business* (COD loss) or *driver* (stays expected in the cash handover). No answer during the stop, or nothing paid: forced failed attempt *refused to pay* or *no cash* | wl-delivery §4.1 |
-| Recipient denies the delivery, or it was marked by mistake | Customer service opens a dispute ticket: shipment `under_review`, its COD held out of remittances and its billing held. Outcome: `close_review` (upheld) or `reverse_delivery` with an operations manager's approval and a liability decision (driver, business, client, none). Already remitted COD that is refunded to the payer becomes a negative adjustment line on the next remittance (`LOG.ACL.12`); an invoiced shipment gets a credit note | `WRK.ACL.10`, Shipment `reverse_delivery` |
-| Shipment cannot be found | On a delivery: `WRK.RUL.17` marks it `lost` after 7 days untraced. Elsewhere (hub, return): `LOG.RUL.12` opens a trace task after 3 days and asks for `mark_lost` after 7. The client is told, a claim ticket is opened, the shipment is left out of billing (credit note if already invoiced), and no COD is expected. If found, it goes back to `at_hub` | §4.4, `LOG.ACL.14` |
+| Recipient refuses some parcels of a multi-parcel shipment | Partial acceptance: delivered for the accepted parcels; refused parcels come back with the driver and go back to the client on a linked return shipment with the return charge. Parcels carry no COD amount, so the shipment's COD amount stays expected in full; a shortfall follows the COD difference row below. Single-parcel shipments: partial acceptance is off | `WRK.POD.01` |
+| Recipient pays less than the COD amount or refuses to pay | The driver records the cash collected. Above the tolerance (AED 0), the driver enters a reason and asks the operations manager from the phone (`WRK.ACL.09`), who must choose who absorbs the difference (none preselected): *client* (only with the client's instruction, e.g. an agreed discount: deducted on the remittance line with the reason, shown on the statement), *business* (COD loss) or *driver* (stays expected in the cash handover). No answer during the stop, or nothing paid: forced failed attempt *refused to pay* or *no cash* | wl-delivery §4.1 |
+| Recipient denies the delivery, or it was marked by mistake | Customer service opens a dispute ticket: shipment `under_review`, its COD held out of remittances and its billing held. Outcome: `close_review` (upheld) or `reverse_delivery` with an operations manager's approval and a liability decision (driver, business, client, none); *driver* gives the operations manager a task to raise a later cash shortage against the driver (`raise_shortage`, wl-payments) or open an HR case. Already remitted COD that is refunded to the payer becomes a negative adjustment line on the next remittance (`LOG.ACL.12`); an invoiced shipment gets a credit note | `WRK.ACL.10`, Shipment `reverse_delivery` |
+| Shipment cannot be found | On a delivery: `WRK.RUL.17` marks it `lost` after 7 days untraced. Elsewhere (hub, return): `LOG.RUL.12` opens a trace task after 3 days and, after 7 (both counted from the last scan, tracking event or note), escalates it to the operations manager so that a user requests `mark_lost`; a user may also request it earlier. The client is told, a claim ticket is always opened (liability is decided on the claim), the shipment is left out of billing (credit note if already invoiced), and no COD is expected. If found, it goes back to `at_hub`; after a settled claim it is then held (*client instruction*) until the client chooses (§4.4) | §4.4, `LOG.ACL.14` |
 | Run cannot continue (breakdown, accident, driver unwell) | Run `hand_over` to another driver, who confirms each parcel and counts the cash; or run `abort`: open stops fail with *run aborted* (not counted as an attempt), recipients are told of the delay, and a breakdown or accident ticket is opened | Run |
 | Driver does not hand over the cash, or disappears | `LOG.RUL.05` and `LOG.RUL.13` escalate. After 48 hours the operations manager aborts the run if needed and counts the handover at what was received (often zero): the full amount is a shortage. HR follows the absconding path (`report_absconding` after 7 days of absence, wl-hr); recovery by deduction from salary or final dues only if allowed (`FIN.ACL.19`, §13 question 13); the rest is written off with approval (`FIN.ACL.06`). The client is remitted in full in any case | Cash handover, `LOG.RUL.13` |
 | Remittance wrong after payment | Never edited: an adjustment line (positive or negative, with reason) goes on the next remittance, approved by a second user (`LOG.ACL.12`), and the client sees it on the statement | COD remittance |
 | Bank returns the remittance transfer | Remittance `return_payment`: the amount is owed to the client again, the client is asked to confirm its bank account (`LOG.ACL.13`), then `repay` | COD remittance |
 | Client disputes a COD statement | `dispute` flag with a ticket; the outcome is *upheld* or an adjustment line on the next remittance | COD remittance |
 | Client owes invoices | When the client's contract allows netting, the draft remittance offsets open, undisputed delivery invoices; on `pay` the offsets are recorded as payments allocated to those invoices | `LOG.COD.01`, `FIN.PAY.01` |
-| Client blocked (e.g. non-payment, legal dispute) | New bookings are refused with a neutral message; shipments already picked up are delivered or returned as normal; COD remittances wait for unblock or an approved exception (`PTY.ACL.03`); invoices and receipts continue | wl-parties §5.6 |
+| Client blocked (e.g. non-payment, legal dispute) | New bookings are refused with a neutral message; shipments booked before the block may still be picked up (the dispatcher sees "client on hold"); shipments already picked up are delivered or returned as normal; COD remittances wait for unblock or an approved exception (`PTY.ACL.03`); invoices and receipts continue | wl-parties §5.6 |
 | Driver without signal at a stop | The MVP is online only: the driver records the stop on the paper run sheet and enters it later; the e-POD keeps the stop time as its business time and gets a late-entry flag with a reason; beyond 24 hours an operations manager approves (`PLT.ACL.10`) | wl-kernel §5.13 |
 
 ### 4.2 Freight job (forwarding and B2B trucking)
@@ -223,9 +227,9 @@ account: they get a signed, time-limited tracking link.
 |---|---|---|
 | Customs hold, inspection, declaration rejected, duty unpaid, documents missing | Freight job `hold` with a reason: the job is `on_hold` and its milestone clock stops; the client and the documentation officer are told; the reason is shown in the portal. `release` returns the job to where it was | Freight job |
 | Mirsal or ATLP down | Declarations are filed on the portal or by the clearing agent anyway (there is no integration in the MVP); a hold with reason *customs platform down* records the delay for the client | Freight job `hold` |
-| Container free time running out (demurrage, detention, port storage) | Each container records its free-time end dates. `LOG.RUL.14` alerts the documentation officer and the client 2 days before and on the day. Daily charges, when billed by the shipping line or port, are allocated to the job as costs with a liability: *client* (late documents, late duty payment, late collection by the client) recharged per the quotation terms, as a disbursement only when the VATP013 conditions are met [S17]; *company* absorbed in the job margin | `LOG.JOB.01`, `FIN.PAB.01`, `FIN.DSB.01` |
-| Supplier bill arrives after the job is closed | The job is reopened (`reopen`, reason), the cost allocated, a supplementary invoice issued if rechargeable, and the job closed again with the new margin | Freight job `reopen` |
-| Client cancels before departure | `cancel` with cancellation charges per the quotation; costs already incurred are recharged per its terms | Freight job `cancel` |
+| Container free time running out (demurrage, detention, port storage) | Each container records its free-time end dates. `LOG.RUL.14` alerts the documentation officer and the client 2 days before and on the day, then only logs each day past it. Daily charges, when billed by the shipping line or port, are allocated to the job as costs with a liability, required before the bill is approved for the job: *client* (late documents, late duty payment, late collection by the client) recharged per the quotation terms, as a disbursement only when the VATP013 conditions are met [S17]; *company* (company delay, other) absorbed in the job margin | `LOG.JOB.01`, `FIN.PAB.01`, `FIN.DSB.01` |
+| Supplier bill arrives after the job is closed | The job is reopened (`reopen`, reason: late supplier bill, demurrage, port storage, or *other* with a note), the cost allocated, a supplementary invoice issued if rechargeable, and the job closed again with the new margin | Freight job `reopen` |
+| Client cancels before departure | `cancel` with cancellation charges per the quotation; costs already incurred are recharged per its terms. A quotation without cancellation terms drafts no charge, and the documentation officer gets a task to decide the incurred costs. A cost billed after `cancel` is allocated to the cancelled job (it stays `cancelled`) and the accountant decides whether to invoice it | Freight job `cancel` |
 
 ### 4.3 Fleet
 
@@ -243,8 +247,10 @@ account: they get a signed, time-limited tracking link.
 1. A client or recipient reports a problem: late, damaged, lost (`WRK.TKT.01`).
 2. Customer service investigates with the tracking timeline and e-POD (`LOG.TRK.01`).
 3. A claim is valued against the liability limit in the client's terms (`LOG.CLM.01`).
-   In the MVP the claim is a ticket (category *claim*) opened automatically for a lost,
-   reversed or disposed shipment where the company is liable; customer service values it by
+   In the MVP the claim is a ticket (category *claim*) opened automatically for every lost
+   shipment (its liability is decided on the claim, so a system marking with liability *none*
+   still opens one) and for a reversed or disposed shipment where the company is liable
+   (*driver* or *business*); customer service values it by
    hand against the client's terms and records the decision and the liability (driver,
    business, client). Valuation from liability limits is Later.
 4. An approved claim becomes a credit note (`FIN.INV.01`). A shipment marked lost is left
@@ -340,7 +346,7 @@ assigned when the capability map is built.
 
 | Entity | Description | Important fields | Owned by |
 |---|---|---|---|
-| Shipment | One consignment to one recipient | client, client reference (unique per client), recipient name/phone, address, area, pin, parcels, booked and measured weight, service, COD amount, COD collected and difference, run, liability (when lost, reversed or disposed), claim ticket, return shipment link, status | apps/logistics |
+| Shipment | One consignment to one recipient | client, client reference (optional; when given, unique per client across all states), recipient name/phone, address, area, pin, parcels, booked and measured weight, service, COD amount, COD collected and difference, COD already remitted (kept after a reversal), run, liability (when lost, reversed or disposed), claim ticket, return shipment link, status | apps/logistics |
 | Parcel | One labelled piece | shipment, barcode, weight, dimensions | apps/logistics |
 | Tracking event | A status change or scan | shipment, type, time, actor, location at the moment, note | apps/logistics |
 | Delivery attempt | One try to deliver | shipment, run, result, failure reason, e-POD | wl-delivery |
@@ -387,23 +393,24 @@ in [02-construction.md](02-construction.md#71-state-machines). All unchanged.
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
 | `pick_up` | created | picked_up | `shipments.scan` | at least one parcel scanned; parcels not handed over marked *not received* | tracking event; weight and price recalculated from the parcels received; client told of missing parcels |
-| `receive_at_hub` | created, picked_up, attempted, returning | at_hub | `shipments.scan` | — | tracking event |
+| `receive_at_hub` | created, picked_up, attempted, returning | at_hub | `shipments.scan` | from `created` (drop-off): as `pick_up`, parcels not handed over marked *not received* | tracking event; from `created`: as `pick_up` |
 | `dispatch` | at_hub | out_for_delivery | system (run `dispatch`) | on a run; driver and vehicle documents valid (run guard, §9) | recipient SMS with tracking link |
-| `deliver` | out_for_delivery | delivered | `shipments.deliver` (`WRK.ACL.05`) | e-POD captured; COD collected as due, or the difference approved (`WRK.ACL.09`); in a multi-parcel shipment every refused parcel has a reason | tracking event; refused parcels go back to the client on a linked return shipment (`returning`, return charge); event `ShipmentDelivered` |
-| `fail_attempt` | out_for_delivery | attempted | `shipments.deliver` | failure reason chosen (including *refused to pay*, *no cash*, *cancelled by client*, *run aborted*) | recipient and client notified |
-| `hold` | created, at_hub, attempted | on_hold | `shipments.manage` or `shipments.scan` (hub exception) | exception reason; photos when damaged | client notified |
+| `deliver` | out_for_delivery | delivered | `shipments.deliver` (`WRK.ACL.05`) | e-POD captured; COD collected as due, or the difference approved (`WRK.ACL.09`); in a multi-parcel shipment every refused parcel has a reason | tracking event; refused parcels go back to the client on a linked return shipment (`create_return`); event `ShipmentDelivered` |
+| `create_return` | — (new record) | returning | system (`deliver` with refused parcels) | at least one refused parcel with a reason | new shipment linked to the original, created directly in `returning` because the parcels are on the vehicle: refused parcels moved to it (barcodes kept), client = the original client, address = the client's pickup address, COD = 0; the return charge is on this shipment only |
+| `fail_attempt` | out_for_delivery | attempted | `shipments.deliver` | failure reason chosen (including *refused to pay*, *no cash*, *cancelled by client*, *run aborted*, *wrong address*); *cancelled by client* and *run aborted* are not counted as attempts (`WRK.RUL.08`) | recipient and client notified; *wrong address*: system `hold` with reason *address issue* |
+| `hold` | created, at_hub, attempted | on_hold | `shipments.manage` or `shipments.scan` (hub exception), or system (failed attempt with *wrong address*; `found` after a settled claim, reason *client instruction*) | exception reason; photos when damaged | client notified; *address issue*: client asked to confirm the address in the portal |
 | `release` | on_hold | at_hub | `shipments.manage` | address confirmed or client instruction recorded | — |
 | `return` | attempted, on_hold | returning | `shipments.manage` or system (`WRK.RUL.08`) | — | return charge per rate card; client notified |
 | `cancel_return` | picked_up, at_hub, attempted, on_hold | returning | `shipments.manage` (dispatcher, `LOG.ACL.09`) | client's instruction recorded | return charge per rate card; open delivery cancelled; client notified |
 | `return_delivered` | returning | returned | `shipments.deliver` | e-POD from the client | — |
 | `cancel` | created | cancelled | client user or `shipments.manage` (`LOG.ACL.09`) | not picked up | cancellation fee only if the rate card has one; delivery cancelled |
 | `void` | created | voided | `shipments.manage`, or the client user who booked it | reason (duplicate, entered in error); no parcel scanned (`PLT.ACL.09`) | label invalidated; never billed; number kept; event `RecordVoided` |
-| `open_review` | delivered | under_review | system (`DeliveryDisputed`) | dispute ticket linked | COD held out of remittances; billing held, or the issued invoice set `disputed`; client notified |
+| `open_review` | delivered | under_review | system (`DeliveryDisputed`) | dispute ticket linked | COD held out of remittances (its line removed from a `draft`; an `approved` remittance holding it goes back to `draft` with `reopen` and the accountant is told); billing held, or the issued invoice set `disputed`; client notified |
 | `close_review` | under_review | delivered | system (`DeliveryDisputeClosed`) | outcome *upheld* | COD and billing released |
-| `reverse_delivery` | delivered, under_review | out_for_delivery, attempted | system (`DeliveryReversed`) | approved under `WRK.ACL.10` | original proof kept, marked reversed; out of billing until delivered again (credit note if invoiced); COD kept for the next attempt or refunded to the payer, as a negative adjustment line if already remitted (`LOG.ACL.12`); liability: *driver* → cash shortage (`FIN.ACL.06`) or HR case, *business* → loss; client notified |
-| `mark_lost` | out_for_delivery, attempted, under_review, picked_up, at_hub, on_hold, returning | lost | system (`DeliveryLost`, `WRK.RUL.17`) while on a delivery; otherwise `shipments.manage` after `LOG.RUL.12` | manual: reason, liability and approval (`WRK.ACL.10` on a delivery, `LOG.ACL.14` otherwise) | claim ticket opened; client notified; out of billing (credit note if invoiced); no COD expected; event `ShipmentLost` |
-| `found` | lost | at_hub | `shipments.scan`, or system (`DeliveryFound`) | scanned at a depot | client notified; claim ticket updated, reopened if already settled (§4.4) |
-| `dispose` | on_hold | disposed | `shipments.manage` | reason and photo; client's written instruction attached and approval (`LOG.ACL.14`) | claim ticket when the company is liable; disposal charged only when the client caused it; client notified |
+| `reverse_delivery` | delivered, under_review | out_for_delivery, attempted | system (`DeliveryReversed`) | approved under `WRK.ACL.10` | original proof kept, marked reversed; out of billing until delivered again (credit note if invoiced); COD kept for the next attempt (marked *already remitted* when it was, so it is never remitted again) or refunded to the payer, as a negative adjustment line if already remitted (`LOG.ACL.12`); liability: *driver* → task for the operations manager naming the amount, to raise a later cash shortage against the driver (`raise_shortage` in wl-payments; while the driver's handover for that cash is still `open`, the amount is added to its expected total instead) or open an HR case, *business* → loss; claim ticket when *driver* or *business*; client notified |
+| `mark_lost` | out_for_delivery, attempted, under_review, picked_up, at_hub, on_hold, returning | lost | system (`DeliveryLost`, `WRK.RUL.17`) while on a delivery; otherwise a user with `shipments.manage` requests it (usually prompted by the `LOG.RUL.12` trace task; it may be requested earlier) | manual: reason, liability and approval (`WRK.ACL.10` on a delivery, `LOG.ACL.14` otherwise); no scan since the request, checked at final approval | claim ticket opened (always, whatever the liability; liability is decided on the claim, §4.4); client notified; out of billing (if invoiced: a task for the invoice owner to credit the charge); no COD expected (COD already remitted is not taken back automatically: customer service decides through the claim); event `ShipmentLost` |
+| `found` | lost | at_hub | `shipments.scan`, or system (`DeliveryFound`) | scanned at a depot | client notified; claim ticket updated, reopened if already settled (§4.4); after a settled claim, system `hold` with reason *client instruction* until the client chooses |
+| `dispose` | on_hold | disposed | `shipments.manage` | reason and photo; client's written instruction attached and approval (`LOG.ACL.14`) | claim ticket when the company is liable; disposal charged only when the client caused it (AED 0 and a note to the accountant when the rate card has no disposal line); client notified |
 
 ```mermaid
 stateDiagram-v2
@@ -429,6 +436,7 @@ stateDiagram-v2
   returning --> returned: return_delivered
   created --> cancelled: cancel
   created --> voided: void
+  [*] --> returning: create_return
   delivered --> under_review: open_review
   under_review --> delivered: close_review
   delivered --> out_for_delivery: reverse_delivery
@@ -537,9 +545,9 @@ anyway.
 |---|---|---|---|---|---|
 | `approve` | draft | approved | `remittances.approve` | approver ≠ preparer; adjustment lines approved (`LOG.ACL.12`) | — |
 | `reopen` | approved | draft | `remittances.approve` | — | — |
-| `pay` | approved | paid | `remittances.pay` | payment reference recorded; client not blocked, or an exception approved (`PTY.ACL.03`); bank account approved (`LOG.ACL.13`) | statement PDF published to the client portal; invoice offsets recorded as payments allocated to those invoices |
+| `pay` | approved | paid | `remittances.pay` | payment reference recorded; client not blocked, or an exception approved (`PTY.ACL.03`); bank account approved (`LOG.ACL.13`); each invoice offset re-checked: one that became `disputed`, paid or written off sends the remittance back to `draft` with a message, never a silently smaller payment | statement PDF published to the client portal; invoice offsets recorded as payments allocated to those invoices |
 | `return_payment` | paid | payment_returned | `remittances.pay` | bank return advice attached | client told and asked to confirm its bank account; offsets stay allocated |
-| `repay` | payment_returned | paid | `remittances.pay` | new payment reference; changed bank account approved (`LOG.ACL.13`) | statement updated |
+| `repay` | payment_returned | paid | `remittances.pay` | new payment reference; client not blocked, or an exception approved (`PTY.ACL.03`); a changed bank account approved (`LOG.ACL.13`), or, for the same account, the client's confirmation that it is correct recorded | statement updated |
 | `dispute` | approved, paid | approved, paid | client user in the portal or customer service | reason given | `disputed` set; ticket opened for the accountant |
 | `resolve_dispute` | approved, paid | approved, paid | `remittances.approve` | outcome *upheld* or *adjusted* with a note | `disputed` cleared; *adjusted*: an adjustment line on the next draft remittance (`LOG.ACL.12`); client told of the outcome |
 
@@ -560,7 +568,11 @@ stateDiagram-v2
 A paid remittance is never edited. Any later correction (a reversed or disputed delivery, a
 statement dispute, a COD difference the client agreed to absorb after the statement) is an
 adjustment line on the next draft. Shipments `under_review` or `lost` are left out of the
-draft until their outcome is known.
+draft until their outcome is known. `dispute` is not offered while a transfer is returned
+(`payment_returned`); the client's question is a normal ticket. An adjustment line is *open*
+until the remittance carrying it is `paid`: a line with no draft yet waits for the next weekly
+run, and rebuilding a `draft` recomputes its shipment lines and offsets but keeps the
+adjustment lines attached to it (approved or not).
 
 #### Freight job
 
@@ -586,8 +598,8 @@ draft until their outcome is known.
 | `release` | on_hold | in_transit, customs_clearance, ready_for_delivery | `jobs.manage` | hold reason resolved (e.g. inspection passed, declaration accepted, duty paid) | back to the state before the hold; client notified |
 | `deliver` | ready_for_delivery | delivered | `jobs.deliver` | e-POD captured | — |
 | `close` | delivered | closed | `jobs.close` | all supplier bills and disbursements allocated; invoice issued | job margin final |
-| `reopen` | closed | delivered | `jobs.close` | reason (late supplier bill, demurrage, port storage) | late cost allocated; supplementary invoice when rechargeable; margin recalculated at the next `close` |
-| `cancel` | booked, documents_pending | cancelled | `jobs.manage` | reason given | cancellation charges per quotation |
+| `reopen` | closed | delivered | `jobs.close` | reason (late supplier bill, demurrage, port storage, or *other* with a note) | late cost allocated; supplementary invoice when rechargeable; margin recalculated at the next `close` |
+| `cancel` | booked, documents_pending | cancelled | `jobs.manage` | reason given | cancellation charges per quotation and rechargeable incurred costs drafted on one invoice; no cancellation terms: no charge, task for the documentation officer; costs billed later are allocated to the cancelled job and the accountant decides whether to invoice them |
 
 ```mermaid
 stateDiagram-v2
@@ -670,20 +682,20 @@ entries).
 | ID | When | If | Then | Parameters (default) | Default | Scope |
 |---|---|---|---|---|---|---|
 | `WRK.RUL.07` *(shared, formerly `LOG.RUL.01`)* | shipment → `out_for_delivery` | recipient phone present | SMS to the recipient with the tracking link | — | on | MVP |
-| `WRK.RUL.08` *(shared, formerly `LOG.RUL.02` and `LOG.RUL.03`)* | shipment → `attempted` | attempts < N: notify recipient and client, queue for reattempt next day; attempts ≥ N: shipment `return`, notify client | per attempt policy | N = 3 | on | MVP |
+| `WRK.RUL.08` *(shared, formerly `LOG.RUL.02` and `LOG.RUL.03`)* | shipment → `attempted` | failure reason not *wrong address* (that one goes `on_hold`, §7.1 `fail_attempt`); attempts counted without *run aborted* and *cancelled by client* | attempts < N: notify recipient and client, queue for reattempt next day; attempts ≥ N: shipment `return`, notify client | N = 3 | on | MVP |
 | `LOG.RUL.04` | shipment `at_hub` for N hours | not on a run | notify dispatcher | N = 24 | on | MVP |
 | `LOG.RUL.05` | daily at time T | run `returned_to_depot` with cash handover still `open` | notify operations manager | T = 21:00 | on | MVP |
-| `LOG.RUL.06` | schedule: weekly on day D | client has COD collected in the period, or open adjustment lines | create draft COD remittance from delivered shipments with COD recorded (whatever the state of the drivers' cash handovers), less fees and client-absorbed COD differences, plus adjustment lines and, where the contract allows netting, offsets of open undisputed invoices; shipments `under_review` or `lost` left out; notify accountant | D = Monday | on | MVP |
-| `LOG.RUL.07` | schedule: monthly on day D | client has delivered shipments in the previous month | create draft invoice from the rate card, with re-weigh surcharges and return charges; shipments `under_review`, `lost`, `voided` or `disposed` (unless client-caused) left out | D = 1 | on | MVP |
+| `LOG.RUL.06` | schedule: weekly on day D | client has COD collected in the period, or open adjustment lines | create (or rebuild the client's existing `draft`) a draft COD remittance from every delivered shipment with COD recorded that is not yet on a remittance and was delivered by the period end, so shipments released from review later are picked up cumulatively (whatever the state of the drivers' cash handovers), less fees and client-absorbed COD differences, plus adjustment lines and, where the contract allows netting, offsets of open undisputed invoices capped so the net is not negative; shipments `under_review`, `lost` or marked *already remitted* left out; a net below zero from adjustment lines is set to AED 0 and the rest carried as an open adjustment line to the next draft; notify accountant | D = Monday | on | MVP |
+| `LOG.RUL.07` | schedule: monthly on day D | client has billable shipments in the previous month (delivered, returned to it, or disposed when client-caused) | create draft invoice from the rate card, with re-weigh surcharges and return charges (a return charge is recorded when the return starts, at `return`, `cancel_return` or `create_return`, and billed in the month of `return_delivered`); shipments `under_review`, `lost`, `voided` or `disposed` (unless client-caused) left out | D = 1 | on | MVP |
 | `HRM.RUL.07` *(shared, formerly `LOG.RUL.08`)* | N minutes after the driver's shift or first run start | driver expected, not checked in | notify dispatcher | N = 15 | on | MVP |
-| `LOG.RUL.09` | freight job ETA date reached | job not `ready_for_delivery` | notify documentation officer | — | on | MVP |
+| `LOG.RUL.09` | freight job ETA date reached | job not `ready_for_delivery` and not `on_hold` (hold periods are stored and left out of on-time measures; after `release` the alert applies to the ETA as recorded) | notify documentation officer | — | on | MVP |
 | `LOG.RUL.10` | vehicle document expired | vehicle `active` | vehicle `ground`; notify fleet manager and dispatcher | — | on | MVP |
 | `WRK.RUL.15` *(shared, formerly `LOG.RUL.11`)* | run assigned to a motorbike or on-foot rider | run time overlaps the midday break window, and stops > N or estimated duration > M minutes | warn the dispatcher; record the override in the audit; the rider may decline the run | window 12:30–15:00, 15 Jun–15 Sep; N = 3; M = 60 | on | MVP |
 | `WRK.RUL.03` *(shared)* | odometer reading recorded | reading ≥ next service kilometres | create planned service ticket | — | on | MVP |
 | `WRK.RUL.17` *(shared)* | a delivery `out_for_delivery`, `attempted` or `under_review` untraced for N days | goods not received back or traced | delivery and shipment `mark_lost`; notify the dispatcher and the client; open a claim ticket | N = 7 | on | MVP |
-| `LOG.RUL.12` | daily | shipment `picked_up`, `at_hub`, `on_hold` or `returning` with no scan for N days | trace task for the operations manager of the last depot; after M days still untraced, request `mark_lost` (`LOG.ACL.14`) | N = 3; M = 7 | on | MVP |
-| `LOG.RUL.13` | N hours after a run's `return_to_depot`, or at the end of the driver's shift for a run still `dispatched` | cash handover `open`, or the driver has not returned | task for the operations manager (call the driver, abort the run); after M hours notify the company admin, and the operations manager counts the handover at what was received; the driver's HR record gets an absence note for the absconding path | N = 12; M = 48 | on | MVP |
-| `LOG.RUL.14` | daily | a container on an open freight job is N days before or past a free-time end date (port storage, demurrage, detention) | notify the documentation officer and the client; past the date, add a daily line to the job's free-time log so the later supplier bill can be checked | N = 2 | on | MVP |
+| `LOG.RUL.12` | daily | shipment `picked_up`, `at_hub`, `on_hold` or `returning` (not on a delivery) with no scan, tracking event or note for N days | trace task for the operations manager of the last depot (one open task per shipment; a scan closes it); after M days still untraced (M counted, like N, from the last scan, tracking event or note), the task is escalated to the depot's operations manager as "request `mark_lost` now": a user requests it and another approves (`LOG.ACL.14`); the rule never requests it itself | N = 3; M = 7 | on | MVP |
+| `LOG.RUL.13` | N hours after a run's `return_to_depot`, or after the end of the driver's shift (23:59 of the run date when no shift is recorded) for a run still `dispatched`; M counted from the same start | cash handover `open`, or the driver has not returned | task for the operations manager (call the driver, abort the run); after M hours notify the company admin, and the operations manager counts the handover at what was received; if the driver has not checked in since the start (no wl-attendance check-in, `HRM.ATT.01`, recorded after it), the driver's HR record gets an absence note for the absconding path. Replaces `FIN.RUL.22` for drivers | N = 12; M = 48 | on | MVP |
+| `LOG.RUL.14` | daily | a container on an open freight job (any state but `closed` and `cancelled`) is N days before a free-time end date (port storage, demurrage, detention), on that date, or past it and not yet collected or returned empty | N days before and on the date: notify the documentation officer and the client, once each per container, charge type and end date (an extended end date gets its own notices); past the date: no notice, add a daily line to the job's free-time log so the later supplier bill can be checked | N = 2 | on | MVP |
 
 **Compliance-critical** (owner alert `PLT.RUL.04` to the company admin, the owner role in
 this vertical): `LOG.RUL.10` (expired vehicle documents ground the vehicle), `DOC.RUL.03` for
@@ -720,7 +732,9 @@ written on the run sheet and entered later with the late-entry flag (§4.1).
   category. `zero_rated` can be chosen only when the job is marked international with the
   client contracted for the whole move, and the invoice cannot be issued until the evidence
   (bill of lading or air waybill, customs declaration) is attached. A subcontracted
-  domestic leg defaults to 5%. The client's accountant has the final say.
+  domestic leg defaults to 5%. Cancellation charges of a freight job cancelled before
+  departure are standard rated (5%): no transport took place, so there is no evidence for zero
+  rating. The client's accountant has the final say.
 - **Disbursements:** ✔ each cost paid for a client records the VATP013 conditions (invoice
   in the client's name, client's authorisation, exact amount) [S17]. When all are met it is
   billed as `out_of_scope` in a separate invoice section, with the receipt attached and no
@@ -749,18 +763,23 @@ written on the run sheet and entered later with the late-entry flag (§4.1).
   grounds the vehicle (`LOG.RUL.10`).
 - **Document blocks** (wl-documents §5.6). These kinds block, not only remind:
 
-  | Document kind (subject) | `blocks` (mode) | Override | Look-ahead |
-  |---|---|---|---|
-  | Driving licence (driver, through `HRM.QUA.01`) | `run.dispatch`, `delivery.assign` (block) | never (legal block) | 30 days |
-  | RTA rider permit and qualification certificate (motorbike rider, Dubai) [S9] | `run.dispatch`, `delivery.assign` (block) | never (legal block) | 30 days |
-  | Mulkiya, vehicle insurance, Asateel or other vehicle permit (vehicle) [S1] | `run.dispatch` (block); the vehicle is also grounded (`LOG.RUL.10`) | never (legal block) | 30 days |
+  | Document kind (subject) | `blocks` (mode) | Override | Look-ahead | Responsible role |
+  |---|---|---|---|---|
+  | Driving licence (driver, through `HRM.QUA.01`) | `run.dispatch`, `delivery.assign` (block) | never (legal block) | 30 days | operations manager (driver's depot) |
+  | RTA rider permit and qualification certificate (motorbike rider, Dubai) [S9] | `run.dispatch`, `delivery.assign` (block) | never (legal block) | 30 days | operations manager (driver's depot) |
+  | Mulkiya, vehicle insurance, Asateel or other vehicle permit (vehicle) [S1] | `run.dispatch` (block); the vehicle is also grounded (`LOG.RUL.10`) | never (legal block) | 30 days | fleet manager |
 
   Each guarded record maps to its subjects through `BlockSubjects` (a run → its driver and
   vehicle; a delivery → the run's driver) and lists planned runs through `FutureWork`. A run
   dispatched before midnight finishes its day; the next day's dispatch is refused. Whether
   these kinds are legal blocks in the strict sense (the law forbids driving without them) is
-  assumed and `⚠ open: lawyer (L-19)` per wl-documents; until confirmed no override is offered.
-  They are compliance-critical: on expiry the company admin is told as well.
+  assumed and `⚠ open: lawyer (L-19)` per wl-documents; until confirmed no override is offered
+  and the override mode of these kinds cannot be changed in the settings. They are
+  compliance-critical: on expiry the company admin is told as well. The responsible role is
+  seeded per kind (wl-documents §5.2): it receives the expiry reminders (`DOC.RUL.01`) and the
+  renewal task (`DOC.RUL.03`) in the subject's scope. Other 03 kinds: shipping and customs
+  documents of a freight job → documentation officer; client contracts and rate card
+  agreements → accountant.
 - **COD and the client's money:** a driver's shortage, a written-off shortage or a driver who
   absconds never reduces what the client is remitted; only a COD difference the client
   agreed to absorb, or an approved adjustment line, does (`LOG.ACL.12`).
@@ -768,6 +787,15 @@ written on the run sheet and entered later with the late-entry flag (§4.1).
   every write-off approved), the write-off notice is sent to the client, and the VAT
   bad-debt relief is proposed by `FIN.RUL.14` once its conditions are met (wl-invoicing
   §5.9). A bounce fee on a returned cheque is off by default.
+- **Notification types:** each type 03 registers names its wl-notify group (§5.4 there), which
+  sets its give-up reaction. Client shipment notices (pickup short, re-weigh, hold, failed
+  attempt, lost, found, returned, disposed) and recipient tracking SMS → *marketing and
+  tracking* (`none`). Requests that ask the client to act (address confirmation, instruction
+  for a damaged parcel, bank account confirmation, freight documents requested) and freight
+  job holds and free-time alerts → *portal and signatures* (contact marked invalid, staff task
+  to the request's owner: the dispatcher, the accountant or the documentation officer). COD
+  remittance statements and adjustment notices → *invoices* (the client's other finance
+  contact, then the accountant as collector role). No 03 type is statutory.
 - **Customs records:** ✔ declarations and supporting documents are kept for 5 years from
   filing (Dubai Customs Notice 04/2023) [S11].
 

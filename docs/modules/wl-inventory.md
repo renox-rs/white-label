@@ -75,7 +75,7 @@ Related capabilities owned elsewhere and used here:
 | Landed cost | Import costs spread over receipts | receipts, cost lines (freight, duty, clearing, insurance), allocation basis (`value`, `quantity`, `weight`, `volume`), adjustments, status |
 | Landed cost adjustment | A late or corrected import cost after allocation | landed cost, cost lines (positive or negative) with the supplier bill reference, posting date, split per item into re-valued (on hand) and variance (consumed) amounts |
 | Stock hold | A block on stock pending a decision | number, reason (`recall`, `quality`, `temperature`, `complaint`, `other`), reference (`Subject`: recall, ticket, NCR, checklist reading), scope (whole lots, or a location with all or selected items), lines (item, location, lot, held qty, outcome `release` / `discard` / `return_to_supplier`, decided by, decided at), status |
-| Recall | Withdrawal of lots that may be unsafe or defective | number, source (`supplier`, `authority`, `internal`, `complaint`), reason, scope (items and lot or supplier lot numbers, or item + supplier + received date range), lots in scope (including lots made from them), stock hold, affected lines (subject, party, lot, qty, date, notice status `pending` / `sent` / `waived`), outcomes, status |
+| Recall | Withdrawal of lots that may be unsafe or defective | number, source (`supplier`, `authority`, `internal`, `complaint`), reason, scope (items and lot or supplier lot numbers, or item + supplier + received date range and an optional trace end date), lots in scope (including lots made from them), stock hold, affected lines (subject, party, lot, qty, date, notice status `pending` / `sent` / `waived`), outcomes, status |
 | Pending issue | Consumption that could not be posted because stock was short | item, location, qty, source and cost object (`Subject`), recorded at, cleared by (receipt, transfer, count or storekeeper), lot assigned, status (`open`, `posted`, `cleared`) |
 | BOM | Components to make one unit, or a recipe | output item, version, output quantity and yield %, lines (component item, quantity, unit, scrap %), sub-BOMs, status, rolled-up cost |
 | Dispatch | Picking, packing and shipping goods to a recipient | recipient (`Party`), address, source (`Subject`, e.g. sales order), lines with lots, packages, delivery note no., handover (own delivery run or courier), status |
@@ -96,6 +96,10 @@ accountant accepts it is §12 question 1.
 receipt. Only `released` lots can be picked or issued, and never a held quantity. Every
 issue or consumption of a lot-tracked item records its lot (scanned, or the FEFO lot when not
 scanned), so a recall can trace every visit, job, order and work order that used the lot.
+Consumption that a `ConsumptionSource` derives from a recipe or BOM without a scan (06: an
+F&B sale) is *theoretical*: it posts against the FEFO lot to keep lot balances right, but
+the lot is not proof of what was used. A recall trace lists the subjects of theoretical
+consumption as *possible* (see Recall).
 
 **Negative stock (decided 2026-10-15).** Each location has a negative stock policy, set per
 client:
@@ -104,15 +108,24 @@ client:
   quantity below zero is refused. Manual issues, transfers, dispatches and returns to
   supplier stop there. Consumption that another module posts automatically (an F&B sale, a
   clinic visit, a work order backflush, through `ConsumptionSource`) does not block the
-  business event: the short quantity becomes a *pending issue* and `STK.RUL.06` tells the
-  storekeeper. The pending issue posts automatically, oldest first, when stock arrives at
-  the location (receipt, transfer or approved count), or the storekeeper clears it with a
-  reason (an `adjust` movement within `STK.ACL.02`).
+  business event. A material issue to a work order (07) is such consumption: the work order
+  posts it through `ConsumptionSource`, not as a manual issue. The short quantity becomes a
+  *pending issue* and `STK.RUL.06` tells the storekeeper. The pending issue posts
+  automatically, oldest first, when stock arrives at the location (receipt, transfer or
+  approved count), or the storekeeper clears it with a reason (the stock was used but never
+  on the books): an `adjust` movement adds the pending quantity at the item's current
+  average cost (lot entered for lot-tracked items; value within `STK.ACL.02`), and the
+  pending consumption then posts against it to its source and cost object, so the balance
+  does not change and the pending issue is `cleared`. When the source is cancelled before
+  posting (e.g. a voided visit), the pending issue is `cleared` with reason *source
+  cancelled* and no movement.
 - `allow_consumption`: automatic consumption of items that are **not** lot-tracked may take
   the balance below zero at the current average cost. Every other movement is still blocked.
   The next receipt covers the negative quantity first; the difference between its unit cost
   and the cost already used goes to the purchase price variance. `STK.RUL.06` alerts the
-  storekeeper while the balance stays negative.
+  storekeeper while the balance stays negative. Held quantity is never consumed: while any
+  quantity of the item is held at the location, automatic consumption beyond the available
+  quantity becomes a pending issue, as under `block`.
 
 A lot balance is never negative. For lot-tracked items, short consumption is always a pending
 issue. When it posts, the lot that covers it is recorded as *assigned on arrival*; a recall
@@ -211,8 +224,8 @@ generalised and extended with `short_close`, `revise` and `reopen`.
 
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
-| `issue` | draft | issued | `purchase_orders.issue` | supplier, prices, delivery location set; `STK.ACL.01` (SoD) and vertical value limits → approval request when not met | number assigned; PDF sent to supplier; event `PurchaseOrderIssued` (committed cost) |
-| `revise` | issued, partially_received | same state | `purchase_orders.issue` | reason given; no line reduced below its accepted qty; `STK.ACL.01`; a higher total re-checks `STK.ACL.03` → approval request, and the current revision stays valid until it is approved | revision number + 1; previous revision kept read-only; PDF marked "Revision N" re-sent to the supplier; committed cost adjusted; open receipts use the new lines; event `PurchaseOrderRevised` |
+| `issue` | draft | issued | `purchase_orders.issue` | supplier, prices, delivery location set; supplier not blocked: `BlockGuard::check(supplier, start)` passes (`PTY.ACL.03`; refused with the neutral *on hold* reason unless an exception is approved); `STK.ACL.01` (SoD) and vertical value limits → approval request when not met | number assigned; PDF sent to supplier; event `PurchaseOrderIssued` (committed cost) |
+| `revise` | issued, partially_received | same state | `purchase_orders.issue` | reason given; currency unchanged (a currency change needs `cancel` and a new PO); no line reduced below its accepted qty; `STK.ACL.01`; a higher total or a later delivery date needs `BlockGuard::check(supplier, extend)` (`PTY.ACL.03`); a higher total re-checks `STK.ACL.03` on the new total: when the new total is above a limit, an approval request for the steps the new total needs, and the current revision stays valid until it is approved; a higher total that stays below the first limit, or a total not higher, applies at once | revision number + 1; previous revision kept read-only; PDF marked "Revision N" re-sent to the supplier; committed cost adjusted; open receipts use the new lines; event `PurchaseOrderRevised` |
 | `receive` | issued, partially_received | partially_received, received | system (goods receipt `post`) | over-receipt tolerance on accepted qty | only accepted qty counts; rejected qty stays outstanding; `received` when every line is fully accepted |
 | `reopen` | received | partially_received | system (Return to supplier `dispatch` with outcome `replace`) | PO not `closed` | returned qty outstanding again; committed cost restored |
 | `short_close` | partially_received | received | `purchase_orders.issue` | reason given | remaining quantities released from committed cost; supplier informed |
@@ -251,13 +264,24 @@ stateDiagram-v2
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
 | `post` | draft | posted | `goods_receipts.post` | location in the user's scope; source is a PO, or a dispatched Return to supplier (no PO: free replacement, lines and qty not above the returned lines); lot and expiry for lot-tracked items; per line accepted + rejected = received; a reason for every rejected qty; over-receipt within tolerance, otherwise approval | `receive` movements for accepted qty only; against a Return to supplier: received at zero cost (average cost diluted accordingly), no PO update and nothing to match in wl-invoicing, the return line counted as replaced (Return to supplier `credit` when all lines are covered); lots created (`quarantine` or `released` per item); average cost updated; PO `receive`; rejected lines → a Return to supplier (dispatched at once when refused at the door, `draft` when kept for collection; rejected goods never enter stock); event `GoodsReceived` with accepted and rejected qty per line |
-| `reverse` | posted | reversed | `goods_receipts.reverse` | stock still available; not yet billed; no Return to supplier from it dispatched | reversing movements; PO quantities restored; draft returns from it cancelled |
+| `reverse` | posted | reversed | `goods_receipts.reverse` | stock still available: the full accepted qty of every line (and lot) is still available at the receipt's location, none of it consumed, moved, reserved or held (otherwise correct it by an adjustment or a Return to supplier); not yet billed; no Return to supplier from it dispatched | reversing movements; PO quantities restored; draft returns from it cancelled |
 
 Rejection reasons (configurable list): `temperature`, `quality`, `damaged`, `wrong_item`,
 `short_shelf_life`, `excess`, `other`. A vertical may require a reading or photo for a
 reason (06: a temperature reading from the receiving checklist). The storekeeper sees the
 rejected qty on the receipt; procurement and the supplier contact are notified through the
 Return to supplier.
+
+Over-receipt above the tolerance (`STK.ACL.04`) sends the receipt to approval (`PLT.APR.01`)
+by a holder of `purchase_orders.issue` in the location's scope who is not the user posting it;
+the receipt stays `draft` until approved, and a rejection returns it for correction.
+
+Rejected lines of one receipt make at most two returns: one for the lines refused at the door
+(dispatched at once, the goods receipt as collection proof) and one `draft` for the lines kept
+for collection. A rejected line's wanted outcome defaults to `replace`, because its qty stays
+outstanding on the PO; a user who switches it to `credit` short-closes the PO line when no
+replacement is wanted.
+
 ```mermaid
 stateDiagram-v2
   [*] --> draft
@@ -278,7 +302,7 @@ stateDiagram-v2
 
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
-| `dispatch` | draft | dispatched | `supplier_returns.manage`, or system (goods receipt `post` for goods refused at the door) | supplier and lines set; lines from stock available in the quarantine or source location; collection proof (supplier driver signature `DOC.SIG.01`, courier no., or the goods receipt); `STK.ACL.06` above the value | `return_out` movements for lines from stock, valued at the source receipt's unit cost when known, else average cost (difference to the price variance); none for lines rejected at receipt; lot `reject` (system) when nothing of a held lot remains; `replace` lines from stock: PO outstanding qty restored (PO `reopen` when `received`); lines rejected at receipt restore nothing (their qty stayed outstanding at `post`); return note PDF; supplier contact notified; event `SupplierReturnDispatched` |
+| `dispatch` | draft | dispatched | `supplier_returns.manage`, or system (goods receipt `post` for goods refused at the door) | supplier and lines set; lines from stock available in the quarantine or source location; collection proof (supplier driver signature `DOC.SIG.01`, courier no., or the goods receipt); `STK.ACL.06` above the value (value = qty × unit cost per line, lines rejected at receipt at the PO price, excl. VAT), except for the system dispatch of goods refused at the door, which never entered stock and already left | `return_out` movements for lines from stock, valued at the source receipt's unit cost when known, else average cost (difference to the price variance); none for lines rejected at receipt; lot `reject` (system) when nothing of a held lot remains; `replace` lines from stock: PO outstanding qty restored (PO `reopen` when `received`); lines rejected at receipt restore nothing (their qty stayed outstanding at `post`); return note PDF; supplier contact notified; event `SupplierReturnDispatched` |
 | `credit` | dispatched | credited | system (`SupplierDebitNoteIssued` from wl-invoicing covers every `credit` line and replacement receipts cover every `replace` line), or `supplier_returns.manage` | manual: reason (refund received in wl-payments, supplier refused); a refused credit is a loss within `STK.ACL.02` | event `SupplierReturnCredited`; refused value posted as wastage with reason |
 | `cancel` | draft | cancelled | `supplier_returns.manage` | reason given | reserved stock released back to its location; rejected-at-receipt goods kept are then received on a new goods receipt or discarded |
 
@@ -287,6 +311,12 @@ lines at the PO price until the supplier bill arrives, then at the bill's prices
 (`FIN.RUL.17`; input VAT adjusted there). When the supplier bill is not yet posted,
 the 3-way match bills accepted qty only and no debit note is needed. `STK.RUL.08` chases
 returns that stay `dispatched`.
+
+A `replace` line with an open PO line is received on the PO. A `replace` line on a `closed` PO,
+or kept without a PO line, reopens nothing and is received only as a free replacement against
+the return (goods receipt with the return as source). `credited` is terminal: when the supplier
+debit note is cancelled afterwards, procurement gets a task and finance handles the bill
+(wl-invoicing); the return does not reopen.
 
 ```mermaid
 stateDiagram-v2
@@ -370,10 +400,11 @@ Canonical base: [07-manufacturing.md](../verticals/07-manufacturing.md#lot-share
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
 | `release` | quarantine, on_hold | released | `lots.release`, or system (stock hold line decided `release`) | passed inspection when the item requires it; vertical `SOD` rule (e.g. `MFG.ACL.02`); from `on_hold`: no other open hold on the lot, and `STK.ACL.05` for a recall hold | event `LotReleased` |
-| `hold` | quarantine, released | on_hold | system (stock hold `place` with whole-lot scope, or recall `open`) | reason given | lot blocked from picking, issue, consumption, transfer and dispatch; picked dispatches with the lot flagged; event `LotHeld` |
+| `hold` | quarantine, released | on_hold | system (stock hold `place` with whole-lot scope, or recall `open`) | reason given | status before the hold stored on the lot (for `unhold`); lot blocked from picking, issue, consumption, transfer and dispatch; picked dispatches with the lot flagged; event `LotHeld` |
 | `expire` | released, on_hold | expired | system | expiry date reached | lot blocked; storekeeper notified; an open hold stays open |
 | `reject` | quarantine, on_hold | rejected | `lots.release`, or system (Return to supplier `dispatch` takes the last quantity) | failed inspection or return recorded | remaining quantity moved to scrap or to a Return to supplier; vertical may open an NCR |
 | `discard` | on_hold, expired | rejected | `lots.release`, or system (stock hold line decided `discard`) | reason given; `STK.ACL.02` above the value | `wastage` movements to scrap for the remaining quantity, with the hold or expiry reason; event `LotDiscarded` |
+| `unhold` | on_hold | quarantine, released | system (stock hold `cancel`) | no other open hold on the lot | back to the status the lot had before `hold` (stored on the lot at `hold`); no inspection or approval, as the hold was placed in error |
 | `deplete` | released | depleted | system | quantity = 0 | — |
 
 Lots of items that need no inspection are created directly in `released`. A hold limited to
@@ -389,6 +420,8 @@ stateDiagram-v2
   released --> on_hold: hold
   released --> expired: expire
   on_hold --> expired: expire
+  on_hold --> quarantine: unhold
+  on_hold --> released: unhold
   quarantine --> rejected: reject
   on_hold --> rejected: reject
   on_hold --> rejected: discard
@@ -413,8 +446,9 @@ excursions (a fridge or freezer out of range). A vertical automation may place a
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
 | `place` | — | open | `stock.hold`, or system (recall `open`, vertical automation) | reason and reference; scope set; at least one balance with quantity | lines created from the balances in scope (item, location, lot, qty); held qty leaves available; whole-lot scope → lot `hold`; holders of `lots.release` in the location's scope notified (push and in-app); event `StockHoldPlaced` |
+| `add_lines` | open | open | system (goods receipt `post` or transfer `receive` into the location of an open location-scoped hold, after the warning), or `stock.hold` | location scope; the item is in the hold's scope; quantity moved in | new lines (item, location, lot, qty) with the hold's reason and reference; the quantity never becomes available; deciders notified |
 | `close` | open | closed | system (last line decided) | every line decided, its approval given where needed and its effect posted | event `StockHoldClosed` with per-line outcomes |
-| `cancel` | open | cancelled | `lots.release` | no line decided yet; reason `placed in error`; not a recall hold | held qty available again; lots back to their previous status |
+| `cancel` | open | cancelled | `lots.release` | no line decided yet; reason `placed in error`; not a recall hold | held qty available again; lots back to their status before the hold (lot `unhold`, when no other hold is open on the lot) |
 
 Each line is decided by a holder of `lots.release` in the location's scope. The effect posts
 when the decision is final: at once, or only after its approval when one is needed (`release`
@@ -429,11 +463,22 @@ last line is decided, the hold closes. The effects:
 - `return_to_supplier`: the quantity is moved to the quarantine location and added to a
   draft Return to supplier for the lot's supplier.
 
+Stock moved into a location while a location-scoped hold on it is open joins that hold. The
+goods receipt and transfer screens warn first (e.g. "Fridge 2 is on temperature hold"); if the
+user goes on, `add_lines` adds the moved quantity as new lines, decided like the others. A
+whole-lot hold needs no new lines: it covers the lot wherever it moves.
+
+Reserved quantity in scope stays reserved but cannot be picked; picked dispatches with it are
+flagged (the `dispatch` guard). The balance of an `expired` lot is still added as a hold line,
+but the lot stays `expired` (no lot `hold`); `release` is not offered for lines of an expired
+lot (at placing or when it expires during the hold), only `discard` or `return_to_supplier`.
+
 `STK.RUL.07` reminds the deciders while a hold stays open.
 
 ```mermaid
 stateDiagram-v2
   [*] --> open: place
+  open --> open: add_lines
   open --> closed: close
   open --> cancelled: cancel
   closed --> [*]
@@ -464,7 +509,8 @@ stateDiagram-v2
 | `issue` / `consume` to a cost object | The subject (visit, job card, work order, project, sales order) and its party |
 | `dispatch` | The dispatch, its recipient and the delivery status (an undelivered delivery can still be stopped) |
 | Pending issues with lots *assigned on arrival* | The subject, marked "lot uncertain" |
-| `issue` / `consume` / `dispatch` of an item not tracked by lot, dated on or after the first receipt in the scope's date range | The subject and its party, marked *possible* (the unit used cannot be proven to come from the recalled receipts); the end of the trace is the date the scope gives, or today |
+| Theoretical `consume` (recipe or BOM consumption without a scan, e.g. 06 sales) of the item of a lot in scope | Every subject that consumed the item at a location while that lot had a balance there (from its first receipt or transfer into the location until its balance there reached zero or was held), with its party, marked *possible* whichever lot the posting used (this row replaces the cost-object row for theoretical consumption); never marked confirmed |
+| `issue` / `consume` / `dispatch` of an item not tracked by lot, dated on or after the first receipt in the scope's date range | The subject and its party, marked *possible* (the unit used cannot be proven to come from the recalled receipts); the trace ends on the scope's trace end date when one is given, otherwise today (the received date range only chooses the receipts that start the trace) |
 
 Items not tracked by lot (e.g. 08 parts in the MVP) are recalled by item, supplier and
 received date range. The trace finds the receipts in the range and lists every later
@@ -527,8 +573,16 @@ stateDiagram-v2
 | `cancel` | draft | cancelled | `landed_costs.post` | — | — |
 
 A supplier bill coded to an allocated landed cost (wl-invoicing) creates a draft adjustment and
-notifies the purchaser. A negative adjustment (duty refund, credit from the forwarder) works
-the same way. Earlier movements are never changed.
+notifies the purchaser; coded to a `draft` landed cost, it is added as a cost line of that
+draft and no adjustment is made. Each bill makes its own draft adjustment, even while an
+earlier one is unposted; drafts are never merged, and each is posted, approved (`STK.ACL.06`)
+and traced to its own bill. A negative adjustment (duty refund, credit from the forwarder)
+works the same way, but re-values on-hand stock at most down to zero value; the rest goes to
+the variance. Earlier movements are never changed.
+
+The share on qty still on hand, per item: min(on-hand qty of the item at the receipt's
+location now, qty received on the allocated receipts) ÷ qty received (average cost keeps no
+receipt layers).
 
 ```mermaid
 stateDiagram-v2
@@ -594,6 +648,16 @@ reason *missing on return*, `STK.ACL.02` above the value) and the dispatcher get
 courier or a manual confirmation, `dispatch.manage` records the refused goods received back.
 The dispatch state does not change.
 
+**Cancelled sales order lines.** When only some lines of a dispatch are cancelled with *return
+to stock*, the dispatch is not cancelled: those lines are removed from it and their
+reservation released. A dispatch already `dispatched` has no `cancel`: the event is logged,
+the dispatcher gets a task, and the goods follow the delivery (return or refusal). For *scrap*
+of a recipe item (06), the components exploded for the cancelled qty are posted as `wastage`
+when the recipe consumption was not yet posted; when it was, no second movement is posted and
+the order line is reported as wastage value. A wastage above the `STK.ACL.02` value needs its
+own approval by someone other than the recorder, even when the cancellation was approved
+(`SAL.ACL.05`).
+
 ### Asset
 
 Canonical base: *Vehicle* in [03-logistics.md](../verticals/03-logistics.md#vehicle-shared--wl-inventory-asset),
@@ -641,14 +705,14 @@ stateDiagram-v2
 | 06 F&B | Stock count | Unchanged, plus `cancel`. `FNB.ACL.04` = the `submitted` lock. Partial counts of key items = scope `items list` |
 | 06 F&B | Purchase request | Outlet requisitions to the optional central kitchen: the request's `order` runs on the transfer's `send`, not on a PO. PO approval limits `STK.ACL.03` (formerly `FNB.ACL.06`; AED 5,000) |
 | 06 F&B | Recipe → BOM | Recipe with sub-recipes and yield. Sales consume ingredients through the `ConsumptionSource` extension (theoretical usage). Wastage is a `wastage` movement with reason (`FNB.ACL.03` limits) |
-| 07 Manufacturing | Lot | Adds `expired` (system) so expired stock is blocked automatically; adds `discard` and system `hold` (stock holds, recalls); NCR creation stays in apps/manufacturing on `reject`. The NCR disposition *return to supplier* creates a Return to supplier (the NCR's "supplier return note") |
+| 07 Manufacturing | Lot | Adds `expired` (system) so expired stock is blocked automatically; adds `discard`, system `hold` and system `unhold` (stock holds, recalls); NCR creation stays in apps/manufacturing on `reject`. The NCR disposition *return to supplier* creates a Return to supplier (the NCR's "supplier return note") |
 | 07 Manufacturing | Item | Lot-tracked, regulated and export-only flags; fixed unit conversions for purchase, stock and sales units. `MFG.ACL.11` guards `pick` / `dispatch` and domestic sales |
 | 07 Manufacturing | Dispatch | Delivery confirmation now comes from wl-delivery's proof of delivery; `confirm_delivery` and `return` run on `DeliveryDelivered` and `DeliveryReturned` |
 | 07 Manufacturing | BOM | Unchanged; standard cost roll-up feeds `MFG.CST.01` |
 | 08 Auto | Location | Stock per branch and bin; staff see every branch but sell, pick or move only from their own (`STK.ACL.04`, formerly `AUT.ACL.11`). Part fitment and cross-references stay in apps/auto, from the client's own parts data |
 | 08 Auto | Purchase order + landed cost | Import POs in foreign currency; landed cost allocated by value or weight. Reorder suggestions per supplier (`STK.RUL.04`) |
 | 05 Clinics, 06 F&B, 07 Manufacturing, 08 Auto | Recall | Party per subject from the vertical's `TracePartyResolver` (05: visit → patient; 06: order → customer; 07: sales order / dispatch → customer; 08: job card → vehicle owner or fleet, sale → customer). 08 parts are not lot-tracked in the MVP: recall by item and received date range, lines marked *possible* |
-| 06 F&B | Stock hold | A temperature excursion places a location-scoped hold (reason `temperature`) on the unit's stock; the chef holds `lots.release` and decides discard or release |
+| 06 F&B | Stock hold | A temperature excursion places a location-scoped hold (reason `temperature`) on the unit's stock; stock moved into the unit while the hold is open is added to it (`add_lines`); the chef holds `lots.release` and decides discard or release |
 
 ## 5. Workflows
 
@@ -730,7 +794,8 @@ stateDiagram-v2
 ### 5.7 Holds and recalls
 
 1. Anyone with `stock.hold` can block stock: whole lots (quality, complaint) or one location
-   (a fridge out of range). A vertical automation can do the same.
+   (a fridge out of range). A vertical automation can do the same. Stock moved into a
+   location under an open location hold is added to that hold (after a warning).
 2. The deciders are notified. Each line is decided: `release`, `discard` (wastage with the
    reason) or `return_to_supplier`. `STK.RUL.07` reminds and escalates while lines wait.
 3. A recall is opened from a supplier or authority notice, or an internal finding. Every lot
@@ -738,7 +803,9 @@ stateDiagram-v2
 4. The forward trace lists every transfer, production batch or work order (and the lots made
    from it), issue, visit, job, sales order and dispatch that used the lots, with the party.
    For items not tracked by lot, the scope is the item and a received date range; later
-   issues and sales of the item are listed as *possible*.
+   issues and sales of the item are listed as *possible*. Sales that consume by recipe
+   (theoretical consumption) are listed as *possible* when the lot was on hand at that
+   location at the time of the sale.
 5. Procurement or the owner sends notices to the affected parties through wl-notify and
    stops undelivered deliveries. Returned goods come back into quarantine under the recall.
 6. Each held lot gets an outcome: discard, return to supplier, or release (second person,
@@ -762,7 +829,7 @@ stateDiagram-v2
 | Service | Purpose |
 |---|---|
 | `StockService` | Reserve, release, issue, consume, produce, transfer and adjust stock, with source and cost object; returns the movements, or a pending issue when automatic consumption is short (§3 negative stock) |
-| `StockHoldService` | Place a stock hold on lots or on a location's stock with a reason and reference (used by recalls and vertical automations, e.g. 06 temperature excursions) |
+| `StockHoldService` | Place a stock hold on lots or on a location's stock with a reason and reference, or add lines to an open location hold (used by recalls and vertical automations, e.g. 06 temperature excursions and stock moved into the held fridge) |
 | `LotTrace` | Forward trace (lot → movements → subjects, output lots and parties) and backward trace (output lot → component lots) |
 | `Availability` | Available quantity per item and location (all or in the user's scope) |
 | `ItemLookup` | Find an item or lot by code or barcode |
@@ -777,7 +844,7 @@ stateDiagram-v2
 | From | What |
 |---|---|
 | wl-kernel | `Subject` references, document numbering, approvals, state machines, custom fields, settings, automations |
-| wl-parties | Suppliers and recipients (`Party`) |
+| wl-parties | Suppliers and recipients (`Party`); `BlockGuard::check` on PO `issue` and `revise` (`PTY.ACL.03`); block effect for open POs (§5.6 of wl-parties) |
 | wl-documents | Delivery notes, PO and GRN PDFs, asset documents and their expiry |
 | wl-invoicing | `CostPoster` for committed and actual cost per cost object, wastage and the price and landed cost variances; events `SupplierBillMatched`, `SupplierDebitNoteIssued` (credits a Return to supplier), `SupplierDebitNoteCancelled` (the return stays `dispatched`; task to procurement), `SupplierBillApproved` with a landed cost reference per line (drafts a landed cost adjustment when the landed cost is already allocated) |
 | wl-sales | `CreditChecker.credit_recheck(order)` as the dispatch guard for orders on account; customer returns of recalled goods into quarantine, linked to the recall; events `SalesOrderCancelled` and `SalesOrderLineCancelled` with outcome per line (*return to stock* cancels the dispatch, *scrap* posts wastage) |
@@ -848,9 +915,16 @@ through `stock.cost.view`.
 | `STK.RUL.03` | N days before a lot expires | lot `released`, quantity > 0 | notify storekeeper (and planner) | N = 30 (clinics 60) | on |
 | `STK.RUL.04` | daily at time T | items at or below reorder point / par with a preferred supplier | create reorder suggestions per supplier, or draft POs when the client opts in; notify purchaser | T = 07:00; mode = suggestions | on |
 | `STK.RUL.05` | schedule: monthly | item had no sale or issue for N days | add to the dead-stock report; notify the owner | N = 180 | on |
-| `STK.RUL.06` | a pending issue is recorded, or a balance goes below zero | — | notify the location's storekeeper; still open or negative after H hours → task to the storekeeper (count or clear) and notify the manager | H = 24 | on |
-| `STK.RUL.07` | every H hours | stock hold `open` with undecided lines | remind the deciders (`lots.release` in scope); after 2 × H notify the escalation role | H = 24 (a vertical may set fewer hours for food); escalation role = owner (06: kitchen manager, H = 2) | on |
-| `STK.RUL.08` | daily | Return to supplier `dispatched` for more than N days | notify procurement and finance; task to procurement to chase the supplier | N = 30 | on |
+| `STK.RUL.06` | a pending issue is recorded, or a balance goes below zero | — | notify the location's storekeeper (at most one notification per item and location per hour); still open or negative after H hours → task to the storekeeper (count or clear) and notify the manager | H = 24 | on |
+| `STK.RUL.07` | every H hours | stock hold `open` with undecided lines | remind the deciders (`lots.release` in scope); after 2 × H notify the escalation role, again every further 2 × H while lines stay undecided | H = 24 (a vertical may set fewer hours for food); escalation role = owner (06: kitchen manager, H = 2) | on |
+| `STK.RUL.08` | daily | Return to supplier `dispatched` for more than N days | notify procurement and finance on the first run after day N, then every N days from that notice; one task to procurement to chase the supplier, kept while the return stays `dispatched` | N = 30 | on |
+
+Back-ordered sales order quantity (`wl-sales`, setting *Back-orders allowed*) not yet covered
+by an open PO is added to the `STK.RUL.04` suggestion for the item: the suggested quantity is
+the quantity from the item's `ReorderPolicy` (min/max: up to max; par: up to par; reorder point
++ lead time in 08), plus that back-ordered quantity. When the item is above its reorder point,
+the policy suggests nothing and the suggestion is the back-ordered quantity alone. A cancelled
+back-order drops out at the next run.
 
 `STK.RUL.04` merges the two vertical versions: F&B drafts POs at 22:00, Auto builds suggestions
 at 07:00. Both are a mode and a time of the same rule. `STK.RUL.05` generalises `AUT.RUL.09`.
@@ -898,9 +972,9 @@ at 07:00. Both are a mode and a time of the same rule. `STK.RUL.05` generalises 
 | `ReorderPolicy` | How a reorder quantity is computed | min/max (default), par level (F&B), reorder point + lead time (Auto) |
 | `PickingStrategy` | Which lots and locations to pick | FEFO (default), oldest receipt, specific bin |
 | `LandedCostAllocation` | How import costs are spread | by value (default), quantity, weight, volume |
-| `ConsumptionSource` | Turns a business event into ingredient or component consumption | F&B sale explodes a recipe; work order issues components |
+| `ConsumptionSource` | Turns a business event into ingredient or component consumption | F&B sale explodes a recipe; work order issues components (07: every material issue to a work order, so a short one becomes a pending issue) |
 | `AssetMeterPolicy` | When a meter reading means a service is due | every N km (vehicles), every N hours (machines) |
-| `TracePartyResolver` | The party behind a subject in a recall trace | 05: visit → patient; 08: job card → customer |
+| `TracePartyResolver` | The party behind a subject in a recall trace | 05: visit → patient; 06: order → customer; 08: job card → vehicle owner or fleet |
 | Events | §6 | apps/fnb marks menu items unavailable on `ItemOutOfStock` (`FNB.RUL.06`) |
 | Overridable views | PO PDF, GRN, delivery note, pick list, labels | client logo and Arabic layout |
 | Custom fields | Item, location, lot, asset | Auto: fitment and OEM numbers (in apps/auto); Clinics: storage temperature |

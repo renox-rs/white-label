@@ -106,16 +106,16 @@ usually global.
 | `HRM.ACL.03` *(shared, formerly `CON.ACL.08`)* | Worker salaries, passports and visa documents need `employees.sensitive.view`; each view is audited | `SEN` | all staff | — |
 | `HRM.ACL.02` *(shared, formerly `CON.ACL.09`)* | An approved timesheet is locked; changes need the project manager to reopen it | `STA` | supervisor | — |
 | `FIN.ACL.03` *(shared, formerly `CON.ACL.10`)* | A supplier bill is approved for payment only after a 3-way match (PO, goods received, bill) within tolerance, otherwise it needs approval | `STA`, `LIM` | accountant | 2% |
-| `CON.ACL.11` | A retention release is invoiced only after practical completion (first part) or the end of the defects liability period (rest) is recorded, per the project's release split | `STA` | accountant | 50:50 |
+| `CON.ACL.11` | A retention release is invoiced only after practical completion (first part) or the end of the defects liability period (rest) is recorded, per the project's release split; a part is also invoiced once an `active` retention bond linked to it replaces it, or once the project's termination effective date is reached (both parts, unless `retention_due_on_termination` is off) | `STA` | accountant | 50:50 |
 | `CON.ACL.12` | A client contact sees only IPAs, certificates, variations and handover documents of their own projects | `OWN` | client contact | — |
-| `CON.ACL.13` | A purchase order to a subcontractor on a Dubai project needs approval when the subcontractor has no valid Dubai Municipality contractor registration on file | `LIM` | procurement, project manager | on for Dubai projects |
+| `CON.ACL.13` | A purchase order to a subcontractor (a supplier party with the role `subcontractor`) on a Dubai project needs approval when the subcontractor has no valid Dubai Municipality contractor registration on file on the PO date; checked on `issue` and again on each `revise`; the approver is the project manager of the PO's project, never the PO's issuer | `LIM` | procurement, project manager | on for Dubai projects |
 | `POR.ACL.01` *(shared)* | After a project's final account is closed, client contacts keep read-only access to its documents, then the portal closes | `TIM` | client contact | closes after 90 days |
 | `HRM.ACL.08` *(shared)* | A locked timesheet is never edited or reopened; it is corrected by an adjustment timesheet approved by a project manager who did not create it | `STA`, `SOD` | supervisor, project manager | — |
-| `HRM.ACL.09` *(shared)* | Attendance flagged `overtime_cap`, `permit_invalid` or `overlap` is accepted only by `attendance.review` with a reason, not by the supervisor who marked it | `STA`, `SOD` | supervisor | reviewer: project manager (overtime, overlap), HR (permit) |
+| `HRM.ACL.09` *(shared)* | Attendance flagged `overtime_cap`, `midday_break`, `permit_invalid` or `overlap` is accepted only by `attendance.review` with a reason, not by the supervisor who marked it | `STA`, `SOD` | supervisor | reviewer: project manager (overtime, midday break, overlap), HR (permit) |
 | `HRM.ACL.07` *(shared)* | Reporting a worker as absconded is requested by HR and approved by another user with `employees.exit.approve` | `SOD` | HR / PRO | approver: MD |
 | `STK.ACL.06` *(shared)* | A return to supplier above a value needs approval by someone other than its creator | `LIM`, `SOD` | storekeeper, procurement | AED 10,000; approver: project manager |
 | `FIN.ACL.15` *(shared)* | Writing off a client's unpaid balance always needs approval by someone other than the requester | `LIM`, `SOD` | accountant | AED 0 (always); approver: MD |
-| `CON.ACL.14` | Deductions on a certificate (back-charge, contra-charge, liquidated damages) and deductions from retention are recorded by the QS; the project manager accepts or disputes each one; accepting one above a value needs the MD | `LIM`, `SOD` | QS, project manager | AED 25,000 |
+| `CON.ACL.14` | Deductions on a certificate (back-charge, contra-charge, liquidated damages) and deductions from retention are recorded by the QS; the project manager accepts or disputes each one (never the user who recorded it); accepting one above a value, checked per line excluding VAT, needs the MD | `LIM`, `SOD` | QS, project manager | AED 25,000 |
 | `CON.ACL.15` | Terminating a project mid-way is requested by the project manager and approved by the MD | `SOD` | project manager | on |
 | `CON.ACL.16` | Abandoning a rejected variation or an unsettled claim (its cost stays unrecovered) needs MD approval | `LIM` | project manager | any amount |
 
@@ -177,7 +177,9 @@ usually global.
 7. Committed (PO) and actual (received/issued) costs update the project budget
    (`FIN.CST.01`).
 8. Site stores are counted at least once a quarter and before a project closes; approved
-   variances become adjustments charged to the project (`STK.CNT.01`, `STK.ACL.02`).
+   variances become adjustments charged to the project (`STK.CNT.01`, `STK.ACL.02`). No rule
+   enforces the quarterly count; the only automatic count is the one project `terminate`
+   opens, and closing a project with a count still open shows a warning, not a refusal.
 
 **When it goes wrong**
 
@@ -199,8 +201,10 @@ usually global.
    certified* is the cumulative certified amount of the latest IPA that is `certified` or
    `invoiced`; an IPA still waiting for its certificate is never counted.
 4. The project manager submits it, with a PDF and supporting photos (`DOC.GEN.01`).
-5. The certified amount is recorded when the certificate arrives, with any deductions the
-   client made as typed lines. The difference from the claim is tracked (`CON.IPA.02`).
+5. The certified amount is recorded when the certificate arrives: the amount the client
+   certifies for the work before its deductions, which are separate typed lines. The difference
+   from the claim compares the claim with the certified work, not with the net paid
+   (`CON.IPA.02`).
 6. A tax invoice is issued for the certified amount of work (`FIN.INV.01`). Retention is not
    invoiced here; it follows its own lifecycle (§7.1 Retention).
 7. Payment arrives, often as a post-dated cheque, and is allocated (`FIN.PAY.01`,
@@ -211,7 +215,7 @@ usually global.
 | Situation | What happens |
 |---|---|
 | The previous IPA is not certified at the next cut-off | `CON.RUL.03` still creates the draft, marked *previous pending*, and tells the QS and project manager. The new IPA can be submitted only as a replacement of the pending one, which becomes `superseded` and the client is told; a certificate that arrives later for the superseded IPA is recorded on the one that replaced it. `CON.RUL.04` keeps chasing the certificate |
-| The client deducts back-charges, contra-charges or liquidated damages from a certificate | Each deduction is a typed line on the certificate (`back_charge`, `contra_charge`, `liquidated_damages`, `other`) with its reference, which the project manager accepts or disputes (`CON.ACL.14`). Accepted back- and contra-charges for goods, services or labour the client supplied are recorded as a supplier bill from the client and set off against the IPA invoice; accepted liquidated damages and price reductions are a credit note against the IPA invoice (VAT treatment of liquidated damages `⚠ open: accountant (A-07)`). A disputed deduction stays on the IPA as *contested*, the unpaid part of the invoice is flagged `disputed`, and it is carried into the final account |
+| The client deducts back-charges, contra-charges or liquidated damages from a certificate | Each deduction is a typed line on the certificate (`back_charge`, `contra_charge`, `liquidated_damages`, `other`) with its reference, which the project manager accepts or disputes (`CON.ACL.14`). Accepted back- and contra-charges for goods, services or labour the client supplied are recorded as a supplier bill from the client and set off against the IPA invoice (a payment of method `set_off` in wl-payments, allocated to both and moving no money); accepted liquidated damages and price reductions, and accepted lines of type `other` (which need a description), are a credit note against the IPA invoice (VAT treatment of liquidated damages `⚠ open: accountant (A-07)`). A disputed deduction stays on the IPA as *contested*, the unpaid part of the invoice is flagged `disputed`, and it is carried into the final account |
 | The client certifies less than claimed | The gap is tracked per IPA; the unclaimed work stays in the cumulative valuation of the next IPA |
 | A client cheque bounces | Cheque `bounce`, follow-up as in wl-payments (re-present, replace, legal case, write-off). No bounce fee in 02 by default. The project manager is told and decides whether to slow or suspend work under the contract (suspension rights `⚠ open: lawyer (L-37)`) |
 | The client disputes an invoice | Invoice `dispute`: reminders pause; the dispute ends `upheld` or `credited`; `FIN.RUL.15` escalates after 14 days |
@@ -265,7 +269,7 @@ usually global.
 | The client disputes or delays the retention release | The part stays `due`; the accountant still issues the retention invoice before the one-year limit (`CON.RUL.07`) unless the accountant decides otherwise; a disputed invoice follows invoice `dispute` |
 | Retention is replaced by a bond | A guarantee of type *retention bond* is recorded; the retention part becomes `due` and is invoiced; the bond is released at the end of the defects liability period |
 | A guarantee is about to expire before it may be released | `CON.RUL.11` gives the accountant a task 60 days before expiry to extend it; the client may call a guarantee that is not extended |
-| The client calls a guarantee | Guarantee `call` with the demand notice: the MD, project manager and accountant are told at once; the amount paid by the bank is booked to the project and, when disputed, carried as a claim in the final account |
+| The client calls a guarantee | Guarantee `call` with the demand notice: the MD, project manager and accountant are told at once; the amount paid by the bank is booked to the project and, when disputed, carried as a claim in the final account. A call the beneficiary withdraws before payment is closed by `settle_call` with amount paid 0 and the withdrawal letter, and the guarantee is `active` again |
 
 ### 4.7 Daily site report
 
@@ -278,7 +282,8 @@ usually global.
 1. The client terminates the subcontract, the main contractor becomes insolvent, or both
    sides agree to stop. The project manager records the termination with the notice and the
    effective date; the MD approves (`CON.ACL.15`).
-2. From the effective date attendance stops; crews are released to other projects; open
+2. The effective date is the last working day: from the day after it attendance stops and
+   crews are released to other projects (their assignments end on the effective date); open
    purchase requests are cancelled; issued POs are cancelled or short-closed with the
    supplier.
 3. The site store is counted. Each material is transferred to another site or the central
@@ -376,7 +381,7 @@ usually global.
 | Entity | Description | Important fields | Owned by |
 |---|---|---|---|
 | Quotation | Priced offer | party, lines (from BOQ), validity, terms, status | wl-invoicing |
-| Project | An awarded contract | client, main contractor, consultant, contract value, retention %, cap and release split, defects liability period, advance % and recovery method, payment terms, sites, geofence, dates, termination (reason, notice, effective date), status | apps/construction |
+| Project | An awarded contract | client, main contractor, consultant, contract value, retention %, cap and release split, retention due on termination (`retention_due_on_termination`, default yes, `⚠ open: lawyer (L-37)`), defects liability period, advance % and recovery method, payment terms, notice period for delay events, sites, geofence, dates, termination (reason, notice, effective date), status | apps/construction |
 | BOQ line / cost code | One item of work | section, description, unit, quantity, rate, amount, budget | apps/construction |
 | Site | A physical location | project, address, geofence polygon, store | apps/construction |
 | Worker | A field employee | party, trade, cost rate override, visa and ID documents, crew | wl-hr (+ wl-parties); crews in wl-attendance |
@@ -390,8 +395,8 @@ usually global.
 | Purchase order | Order to supplier | supplier, lines, delivery site, dates, status | wl-inventory |
 | Goods received | Delivery recorded | PO, lines, delivery note, store | wl-inventory |
 | Supplier bill | Supplier invoice | supplier, PO, lines, VAT, match result | wl-invoicing |
-| Variation | Change to scope or time | project, kind (addition, omission, time), description, site instruction reference, executed before approval (yes/no), own cost code, priced amount, approved amount, days asked and granted, event date and notice date, revision, status | apps/construction |
-| IPA | Interim payment application | project, period, kind (interim, final account), revision, replaces (pending IPA), lines (cumulative), variations, retention, advance recovery, claimed, certified, deduction lines (type, reference, amount, accepted or contested), status | apps/construction |
+| Variation | Change to scope or time | project, kind (one per variation: addition, omission, time; an addition with an extension of time is two variations linked by the same instruction), description, site instruction reference, executed before approval (yes/no), own cost code, priced amount, approved amount, days asked and granted, event date and notice date, notice late (marker), revision, resubmitted as (revision), status | apps/construction |
+| IPA | Interim payment application | project, period, kind (interim, final account), revision, replaces (pending IPA), lines (cumulative), variations, retention, advance recovery, claimed, certified (the work, before deductions), deduction lines (type, reference, amount, accepted or contested), status | apps/construction |
 | Retention | Held amount, one record per release part (first, final) | project, part, % and amount held, deductions (reason, notice, cost code), retention invoice, replaced by bond, dates, status | apps/construction |
 | Guarantee | Bank guarantee or bond | type (advance, performance, retention bond), bank, beneficiary, amount, expiry, amendments, call (date, notice, amount, paid), project, status | apps/construction |
 | Daily report | Site diary | project, date, manpower, work done, photos, issues | apps/construction |
@@ -402,7 +407,8 @@ Follows [WORKFLOW.md](../WORKFLOW.md). **Invoice, cheque and ticket** (snags, de
 the module state machines shown in [01-property.md](01-property.md#71-state-machines), with
 these 02 settings: write-off always approved by the MD (`FIN.ACL.15`); client disputes
 recorded by staff (portal Later); no bounce fee; at most 2 presentations of a bounced cheque;
-snag and defect tickets are never chargeable.
+snag and defect tickets are never chargeable; payment method *set-off* enabled (wl-payments
+"Payment methods enabled"), for back- and contra-charges set off against an IPA invoice.
 
 ### 7.1 State machines
 
@@ -457,9 +463,9 @@ stateDiagram-v2
 | `hold` | in_progress | on_hold | `projects.manage` | reason given | attendance blocked |
 | `resume` | on_hold | in_progress | `projects.manage` | — | — |
 | `complete` | in_progress | practical_completion | `projects.manage` | handover certificate attached; no open snags marked blocking | defects liability end date set; first retention part `make_due` |
-| `close` | practical_completion | closed | `projects.manage` | defects liability end date passed; no open defect tickets | final retention part `make_due`; performance bond release task |
-| `terminate` | in_progress, on_hold | terminated | `projects.cancel` | `CON.ACL.15`; reason (terminated by the client, for our default, main contractor insolvent, agreed), termination notice and effective date recorded | attendance blocked from the effective date; crew assignments ended (task to reassign); open purchase requests cancelled; task to cancel or short-close open POs; site store count opened (`STK.CNT.01`); final account IPA drafted; both retention parts `make_due` unless the contract says otherwise; guarantee follow-up tasks; open snags and defects cancelled with the reason; client contact told; event `ProjectTerminated` |
-| `settle_final_account` | terminated | closed | `projects.manage` | final account certified, or decided by a court or arbitration and recorded; final account IPA invoiced, or its balance written off | client portal read-only (`POR.ACL.01`) |
+| `close` | practical_completion | closed | `projects.manage` | defects liability end date passed; no open defect tickets; a site store count still open is a warning, not a guard | final retention part `make_due`; performance bond release task (one per `active` performance or retention bond) |
+| `terminate` | in_progress, on_hold | terminated | `projects.cancel` | `CON.ACL.15`; reason (terminated by the client, for our default, main contractor insolvent, agreed), termination notice and effective date recorded | the effective date is the last working day: attendance blocked from the day after it (an effective date in the past is allowed: attendance already recorded after it is kept, flagged for the project manager's review and stays costed until accepted or adjusted); crew assignments end on the effective date, so crews work until then (task to reassign created on approval); open purchase requests without a PO cancelled; one task to procurement to cancel or short-close open POs; site store count opened (`STK.CNT.01`); final account IPA drafted (a `draft` IPA of the project becomes it, valued to the effective date; an IPA still `submitted` stays and is certified normally); both retention parts `make_due` unless `retention_due_on_termination` is off; guarantee follow-up tasks; open snags and defects cancelled with the reason; client contact told; event `ProjectTerminated` |
+| `settle_final_account` | terminated | closed | `projects.manage` | final account certified, or decided by a court or arbitration and recorded (as the final account IPA's certificate, with the judgment attached); final account IPA invoiced, or its balance written off; open retention parts, guarantees and a site store count still open are warnings, not guards (they keep their own lifecycles) | client portal read-only (`POR.ACL.01`) |
 | `cancel` | setup | cancelled | `projects.cancel` (MD) | reason given; no attendance, goods receipt or IPA recorded | open POs flagged for cancellation |
 
 ```mermaid
@@ -570,10 +576,10 @@ stateDiagram-v2
 
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
-| `submit` | draft | submitted | `variations.submit` (project manager) | priced (time: days asked and delay event); `CON.ACL.06`; omission: omitted quantity not above the quantity not yet done | PDF generated |
-| `approve` | submitted | approved | `variations.record` | approved amount (or days) and client reference recorded | contract value, budget and next IPA updated (an omission reduces them); time: completion date moved |
+| `submit` | draft | submitted | `variations.submit` (project manager) | priced (time: days asked and delay event); `CON.ACL.06`; omission: omitted quantity not above the quantity not yet done (from the latest recorded progress: the draft IPA if any, else the latest submitted or certified IPA) | PDF generated; notice date set; when after the contract's notice deadline (`CON.RUL.10`), the variation is marked *notice late* (not refused) |
+| `approve` | submitted | approved | `variations.record` | approved amount (or days) and client reference recorded | contract value, budget and next IPA updated (an omission reduces them); time: completion date moved; an omission that now exceeds the quantity not yet done is still approved and the QS is warned to record the excess as a claim |
 | `reject` | submitted | rejected | `variations.record` | reason recorded | executed work: its cost stays on the variation's cost code, marked unrecovered; QS and project manager notified |
-| `resubmit` | rejected | draft | `variations.submit` | — | new revision; the rejected one kept |
+| `resubmit` | rejected | draft | `variations.submit` | — | new revision; the rejected one kept read-only, shown as "resubmitted as rev n+1", and can no longer be claimed or abandoned |
 | `claim` | rejected | claimed | `variations.submit` | work executed on a site instruction | listed in the project's claims for the final account |
 | `settle_claim` | claimed | approved | `variations.record` | agreed amount and client reference recorded | as `approve` |
 | `abandon` | rejected, claimed | abandoned | `variations.submit` | `CON.ACL.16` (MD) | cost written into the project's unrecovered variations |
@@ -611,9 +617,9 @@ stateDiagram-v2
 |---|---|---|---|---|---|
 | `submit` | draft | submitted | `ipas.submit` (project manager) | progress recorded for the period; no earlier IPA of the project still `submitted`, unless this one replaces it | PDF with photos generated; a replaced IPA `supersede`, and the client told |
 | `revise` | submitted | superseded | `ipas.prepare` | — | new `draft` revision created from this one |
-| `supersede` | submitted | superseded | system (a later IPA `submit` that replaces it) | — | a certificate arriving later for it is recorded on the replacing IPA |
-| `certify` | submitted | certified | `ipas.certify` | certified amount and certificate attached; each deduction line typed and accepted or contested (`CON.ACL.14`) | difference from claim recorded; contested deductions listed for the final account |
-| `invoice` | certified | invoiced | `invoices.issue` | — | tax invoice created for the certified work (`FIN.INV.01`); retention added to the held retention parts; advance recovery booked; accepted back- and contra-charges recorded as a supplier bill from the client and set off; accepted liquidated damages and price reductions issued as a credit note against the invoice; the unpaid part for contested deductions flagged `disputed` |
+| `supersede` | submitted | superseded | system (a later IPA `submit` that replaces it) | — | a certificate arriving later for it is recorded on the replacing IPA; when that one is already `certified`, it is attached for reference only, no amounts change, and the QS is told |
+| `certify` | submitted | certified | `ipas.certify` | certified amount (the work, before deductions) and certificate attached; each deduction line typed and accepted or contested (`CON.ACL.14`); lines editable until `certify` | difference from claim recorded; contested deductions listed for the final account |
+| `invoice` | certified | invoiced | `invoices.issue` | — | tax invoice created for the certified work (`FIN.INV.01`); retention added to the held retention parts; advance recovery booked; accepted back- and contra-charges recorded as a supplier bill from the client (no PO match; approved by the accountant) and, once it is approved, set off by the accountant with a payment of method `set_off` (wl-payments); accepted liquidated damages, price reductions and `other` lines issued as a credit note against the invoice; the unpaid part for contested deductions flagged `disputed` |
 
 *Previous certified* in the IPA calculation is the cumulative certified amount of the latest
 IPA in `certified` or `invoiced`.
@@ -633,7 +639,13 @@ stateDiagram-v2
 #### Retention
 
 One record per release part (first and final, per the project's release split). Retention is
-not invoiced on the IPA invoice; VAT is due on a separate retention invoice (§9).
+not invoiced on the IPA invoice; VAT is due on a separate retention invoice (§9). Each IPA
+`invoice` withholds retention % × the period's certified work and adds it to the parts per the
+release split, until the total withheld on the project reaches its cap (an amount in AED; no
+cap when empty). The IPA that reaches the cap withholds only the rest up to the cap, and later
+IPAs withhold nothing (the accountant is notified once when the cap is reached). The withheld
+amount is split per the release split whatever its size, rounded half up to 0.01 AED with the
+remainder cent to the final part, so at the cap the parts hold cap × split exactly.
 
 | State | Tone | Terminal | Meaning |
 |---|---|---|---|
@@ -645,10 +657,10 @@ not invoiced on the IPA invoice; VAT is due on a separate retention invoice (§9
 
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
-| `make_due` | held | due | system (project `complete` for the first part; `close` or the end of the defects liability period for the final part; `terminate` for both) or `retentions.manage` (replaced by a retention bond) | `CON.ACL.11`; for a bond, a guarantee of type *retention bond* `active` | accountant notified |
+| `make_due` | held | due | system (project `complete` for the first part; `close` or the end of the defects liability period for the final part; `terminate` for both) or `retentions.manage` (replaced by a retention bond) | `CON.ACL.11`; for a bond, a guarantee of type *retention bond* `active` and linked to the part (a bond amount below the part's held amount is a warning) | accountant notified |
 | `deduct` | held, due | held, due, kept | `retentions.manage` | reason and the client's notice or contra-charge reference; `CON.ACL.14` | amount reduced; deducted amount booked to the project's back-charge cost code; no tax document; `kept` when nothing remains |
 | `invoice` | due | invoiced | `invoices.issue` | `CON.ACL.11` | retention tax invoice at 5% for the remaining amount (`FIN.INV.01`); `CON.RUL.07` stops |
-| `settle` | invoiced | settled | system (retention invoice `paid`, `credited` or `written_off`) | — | a deduction made after invoicing goes through invoice `dispute` and ends as a credit note (outcome `credited`) |
+| `settle` | invoiced | settled | system (retention invoice `paid`, `credited` or `written_off`) | — | a deduction made after invoicing goes through invoice `dispute` and ends as a credit note (outcome `credited`); `settled` stays terminal if the invoice is later reopened, and the retention report reads the invoice's state |
 
 ```mermaid
 stateDiagram-v2
@@ -680,9 +692,15 @@ stateDiagram-v2
 | `reduce` | active | active | `guarantees.manage` | bank amendment or the beneficiary's consent attached; advance guarantee: not below the unrecovered advance | amount updated |
 | `extend` | active | active | `guarantees.manage` | bank amendment with the new expiry attached | reminders reset |
 | `call` | active | called | `guarantees.manage` | the beneficiary's demand notice and amount recorded | MD, project manager and accountant told at once; task to respond to the call |
-| `settle_call` | called | released, active | `guarantees.manage` | bank's debit advice attached | amount paid booked to the project's cost code for called guarantees; when disputed, carried as a claim in the final account; `active` with the remaining amount when the call was partial |
+| `settle_call` | called | released, active | `guarantees.manage` | bank's debit advice attached with the amount paid; or, for a call withdrawn before payment, amount paid 0 with the beneficiary's withdrawal letter | amount paid booked to the project's cost code for called guarantees; when disputed, carried as a claim in the final account; `active` with the remaining amount when the call was partial, or with the full amount when it was withdrawn |
 | `release` | active | released | `guarantees.manage` | original returned or the bank's cancellation letter attached | — |
 | `expire` | active | expired | system | expiry date passed; no extension recorded | accountant and project manager notified |
+
+A `called` guarantee does not expire: a demand made before the expiry date stays valid with
+the bank, so the guarantee stays `called` past its expiry date until `settle_call`. If
+`settle_call` returns it to `active` (partial or withdrawn call) after the expiry date, `expire`
+runs on the next daily run; `CON.RUL.11` sends no extension task for a guarantee that is
+`called`.
 
 ```mermaid
 stateDiagram-v2
@@ -736,24 +754,29 @@ stateDiagram-v2
 Reused unchanged from [01-property.md](01-property.md#72-automations): `FIN.RUL.01`–`04`,
 `DOC.RUL.01` (guarantees, permits, visas), `WRK.RUL.01`–`02` (snags, defects).
 
+Days are calendar days in Asia/Dubai unless a row says working days. Daily rules, and the
+"N days after" or "N days before" steps of the rules below, run at 02:00 Asia/Dubai unless the
+row gives a time (a rule about attendance looks at the previous days, so entries made within the
+late-entry window are seen); a run on the same day again does nothing new.
+
 | ID | When | If | Then | Parameters (default) | Default | Scope |
 |---|---|---|---|---|---|---|
 | `HRM.RUL.07` *(shared, formerly `CON.RUL.01`)* | daily at time T | project `in_progress`, site day is a working day, no attendance recorded | notify supervisor | T = 10:00 | on | MVP |
 | `CON.RUL.02` | daily at time T | project `in_progress`, no daily report filed | notify supervisor and project manager | T = 18:00 | on | MVP |
-| `CON.RUL.03` | schedule: monthly on cut-off day D | project `in_progress`; no IPA of the project in `draft` | create a draft IPA; when an earlier IPA is still `submitted`, mark the draft *previous pending* and notify the QS and project manager; otherwise notify the QS | D = 25 | on | MVP |
+| `CON.RUL.03` | schedule: monthly on cut-off day D (the last day of the month when D does not exist in it) | project `in_progress`; no IPA of the project in `draft` | create a draft IPA; when an earlier IPA is still `submitted`, mark the draft *previous pending* and notify the QS and project manager; otherwise notify the QS | D = 25 | on | MVP |
 | `CON.RUL.04` | N days after IPA → `submitted` | not `certified` | notify QS and project manager | N = 14 | on | MVP |
 | `CON.RUL.05` | N days before the defects liability end date | project `practical_completion` | notify project manager and accountant to prepare the final retention invoice | N = 30 | on | MVP |
-| `CON.RUL.07` | N days before 12 months after the completion certificate | a retention part `held` or `due` | notify the accountant that VAT on the retention becomes due | N = 30 | on | MVP |
-| `CON.RUL.08` | daily | a worker assigned to a crew has no attendance and no approved leave for N consecutive working days | open an absence case ticket for HR (category *absence*); notify the supervisor; at 7 days, remind HR that `report_absconding` may be requested | N = 3 | on | MVP |
+| `CON.RUL.07` | N days before 12 months after the completion certificate, or after the termination effective date for a terminated project | a retention part `held` or `due` | notify the accountant that VAT on the retention becomes due; the accountant may dismiss the notice with a reason, which changes nothing else | N = 30 | on | MVP |
+| `CON.RUL.08` | daily | a worker assigned to a crew has no attendance and no approved leave for N consecutive working days of the crew's site (days when the project is `on_hold` or `terminated` do not count) | open an absence case ticket for HR (category *absence*), one per absence spell; notify the supervisor; at M consecutive working days, counted the same way, remind HR that `report_absconding` may be requested; attendance recorded again stops the count | N = 3; M = 7 | on | MVP |
 | `CON.RUL.09` | N and M days after variation → `submitted` | not approved or rejected | at N: remind the project manager to chase the client; at M: notify the MD | N = 14; M = 30 | on | MVP |
 | `CON.RUL.10` | N days before the contract's notice deadline for a delay event or variation | variation of the project in `draft` for that event | notify the project manager and QS | N = 7, 2; deadline per project (none by default) | on | MVP |
-| `CON.RUL.11` | N days before a guarantee's expiry | guarantee `active`; the project has not reached the guarantee's release point (completion for advance and performance, end of the defects liability period for performance and retention bonds) | task to the accountant to request an extension from the bank; notify the project manager | N = 60 | on | MVP |
+| `CON.RUL.11` | N days before a guarantee's expiry | guarantee `active`; the project has not reached the guarantee's release point (completion for the advance guarantee, end of the defects liability period for performance and retention bonds) | task to the accountant to request an extension from the bank; notify the project manager | N = 60 | on | MVP |
 | `FIN.RUL.07` *(shared, formerly `CON.RUL.06`)* | quotation validity in N days | quotation `sent` | notify QS | N = 3 | on | MVP |
 | `FIN.RUL.05` *(shared)* | committed + actual cost reaches P% of a cost code's budget | — | notify project manager | P = 90 | on | MVP |
 | `STK.RUL.01` *(shared)* | PO expected delivery date passed | PO `issued` or `partially_received` | notify procurement | — | on | MVP |
 | `STK.RUL.02` *(shared)* | stock of an item at a location below its minimum | — | notify storekeeper | — | off | Later |
 | `HRM.RUL.01` *(shared)* · compliance-critical | worker checks in during the midday break period | outdoor site | flag the attendance for review; notify HSE officer | 12:30–15:00, 15 Jun–15 Sep | on | MVP |
-| `HRM.RUL.13` *(shared)* · compliance-critical | attendance recorded or corrected; timesheet entry saved | hours above 8 + 2 a day across sites, overtime above 144 h in three weeks, or at an outdoor site in the season worked hours crossing the midday break | flag `overtime_cap` or `midday_break`; notify the supervisor and HSE officer | caps 2 h/day, 144 h/3 weeks; break field pre-filled on outdoor sites | on | MVP |
+| `HRM.RUL.13` *(shared)* · compliance-critical | attendance recorded or corrected; timesheet entry saved | hours above 8 + 2 a day across sites, overtime above 144 h in three weeks (a rolling 21-day window ending on the attendance day), or at an outdoor site in the season worked hours crossing the midday break | flag `overtime_cap` or `midday_break`; notify the supervisor and HSE officer | caps 2 h/day, 144 h/3 weeks; break field pre-filled on outdoor sites | on | MVP |
 | `HRM.RUL.14` *(shared)* · compliance-critical | attendance recorded | the worker's work permit or residence visa not valid on the date | flag `permit_invalid`; notify HR and the supervisor | kinds: work permit, residence visa | on | MVP |
 | `STK.RUL.08` *(shared)* | 30 days after Return to supplier → `dispatched` | not credited | task to procurement to chase the supplier | — | on | MVP |
 | `FIN.RUL.18` *(shared)* | 3 and 14 days after cheque → `bounced` | still `bounced` | remind the client and the project manager; then task to re-present, refer to legal or write off | no bounce fee in 02 | on | MVP |
@@ -761,7 +784,9 @@ Reused unchanged from [01-property.md](01-property.md#72-automations): `FIN.RUL.
 
 **Compliance-critical rules and owner alerts.** The rules marked compliance-critical protect
 labour law duties (midday break, overtime cap, work permits). If one fails or does not run,
-`PLT.RUL.04` alerts the owner role, which in 02 is the MD, and the company admin.
+`PLT.RUL.04` alerts the owner role, which in 02 is the MD, and the company admin. The caps,
+the midday break window and its season are legal values: the seed marks them read-only for
+clients.
 
 **Expired documents.** Worker visa and work permit kinds block `attendance_record.accept` in
 `flag` mode (no override needed, the record is reviewed). Guarantees, permits and the
@@ -772,7 +797,7 @@ contractor registration only remind (`DOC.RUL.01`); the subcontractor registrati
 
 | Machine | Void | Approval rejected or returned | Cancel after work started | Document guards | Party blocked | Integration and late entry | Dispute |
 |---|---|---|---|---|---|---|---|
-| Project | no | — | `terminate` with final account (§4.8) | — | client blocked: block effect `continue` (decided by the MD); IPAs and variations still prepared; money out to the client stops (`PTY.ACL.03`) | — | via invoices and contested deductions |
+| Project | no | — | `terminate` with final account (§4.8) | — | client blocked: block effect `continue` (decided by the MD); IPAs and variations still prepared; quotations may still be sent, but `accept` is refused, so no new project starts; money out to the client stops (`PTY.ACL.03`), including a `set_off` of a supplier bill from the client, which waits with the IPA invoice open for that amount | — | via invoices and contested deductions |
 | Variation | no; `withdraw` | stays `draft` | executed work: `claim` | — | — | — | `rejected` → `claim` |
 | IPA | no; `revise` while `submitted` | — | — | — | — | — | contested deductions; invoice `dispute` |
 | Retention, guarantee | no | — | — | bank documents attached on each transition | — | — | retention invoice `dispute` |

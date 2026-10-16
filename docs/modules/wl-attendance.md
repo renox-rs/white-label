@@ -48,7 +48,7 @@ Related capabilities owned elsewhere:
 | Work calendar | Working time rules for a scope; read from the business calendar in [`wl-kernel`](wl-kernel.md) | working days, weekend days (default Sat–Sun), normal hours per day/week, public holidays per year, reduced hours periods (e.g. Ramadan, 2 hours less per day) ✔ [S1]. Kept here: midday break window and dates per scope |
 | Attendance record | Presence of one employee on one day at one location | employee, work location, date, check-in time, check-out time, mark (present, absent, late), method (`supervisor`, `self`, `device`, `import`), recorded by, recorded at, check-in/out position (only at those two moments), within geofence (yes/no/unknown), breaks taken (from–to; for crews marked in the midday break season the window is pre-filled), photo (optional), late-entry evidence (photo of the paper list, optional), flags, status |
 | Attendance flag | A reason a record needs review | type (`outside_geofence`, `midday_break`, `missing_checkout`, `late`, `late_entry`, `manual_correction`, `duplicate`, `overtime_cap`, `permit_invalid`, `overlap`), note. The last three hold the record for review (`HRM.ACL.09`) |
-| Timesheet | Hours of one owner for one period, waiting for approval | owner (employee or crew), period (from/to), context (`Subject`: deployment, project, engagement…), kind (`regular` or `adjustment`), approver kind (`internal` or `external`), approver role or party, approval basis (`approved`, `on_behalf`, `deemed`), consumers (`billed_by`, `paid_by`, `paid_provisionally_by`, `exported_at`), status |
+| Timesheet | Hours of one owner for one period, waiting for approval | owner (employee or crew), period (from/to), context (`Subject`: deployment, project, engagement…), kind (`regular` or `adjustment`), approver kind (`internal` or `external`), approver role or party, approval basis (`approved`, `on_behalf`, `deemed`), consumers (`billed_by`, `paid_by`, `paid_provisionally_by`, `exported_at`), adjusted by (list of links to its adjustment timesheets; adding a link is not an edit of the timesheet), status |
 | Adjustment timesheet | A timesheet of kind `adjustment` that corrects a `locked` timesheet. The original is never edited | adjusts (original timesheet), reason, origin (`client_dispute`, `attendance_error`, `payroll_error`, `provisional_reconciliation`), linked ticket or invoice dispute, affects (`billing`, `payroll` or `both`), entries with signed hours (+ or −) per day, cost object and category |
 | Timesheet entry | Hours on one day against one cost object | timesheet, employee, date, cost object (`Subject`: cost code, work order, engagement service, job card, session), hours by category (normal, overtime, night, rest day, public holiday), billable flag, source (attendance, manual, generated), cost rate used per category (from `CostRateResolver`, §8), note |
 | Approval evidence | Proof of an approval given outside the system | timesheet, document (signed sheet), approver name, date |
@@ -74,10 +74,10 @@ on an accounting entry.
 
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
-| `record` | — | recorded | `attendance.mark` (supervisor), `attendance.self`, or system (import) | employee active; within the late-entry window (`HRM.ACL.01`); self check-in: the employee has no open check-in at another location (they must check out first) | supervisor marking or import that overlaps another record of the same employee (any location or project) flags both `overlap`; `HRM.RUL.13` and `HRM.RUL.14` run; event `AttendanceRecorded` |
+| `record` | — | recorded | `attendance.mark` (supervisor), `attendance.self`, or system (import) | employee active; within the late-entry window (`HRM.ACL.01`); self check-in: the employee has no open check-in at another location (they must check out first) and none at the same location (a duplicate, refused with "already checked in here") | supervisor marking or import that overlaps another record of the same employee (any location or project; `rejected` records do not count) flags both `overlap`, or only the new one when the other is `locked`; `HRM.RUL.13` and `HRM.RUL.14` run; event `AttendanceRecorded` |
 | `flag` | recorded, accepted | flagged | system | a flag rule matched (outside geofence, midday break, missing check-out, overtime cap, permit invalid, overlap) | reviewer notified |
 | `accept` | recorded, flagged | accepted | `attendance.review`, or system at check-out when no flag | flags `overtime_cap`, `permit_invalid` and `overlap` need a reviewer's reason and are not accepted by the person who marked the record (`HRM.ACL.09`); an `overlap` is accepted only once the hours no longer overlap | hours proposed on the open timesheet; hours from a `permit_invalid` record are proposed non-billable |
-| `correct` | recorded, flagged, accepted | accepted | `attendance.correct` | reason given; within the correction window | original values kept in history; `manual_correction` flag noted |
+| `correct` | recorded, flagged, accepted | accepted | `attendance.correct` | reason given; within the correction window; on a record with a held flag (`overtime_cap`, `permit_invalid`, `overlap`) the `accept` conditions of `HRM.ACL.09` apply: a reviewer's reason, not the person who marked it, and an `overlap` only if the corrected hours no longer overlap | original values kept in history; `manual_correction` flag noted; the overlap check, `HRM.RUL.13` and `HRM.RUL.14` run again on the corrected values, so a correction that creates an overlap flags both records `overlap` |
 | `reject` | recorded, flagged | rejected | `attendance.review` | reason given | proposed hours removed |
 | `lock` | accepted | locked | system (timesheet `approve`) | — | — |
 
@@ -118,14 +118,14 @@ stateDiagram-v2
 
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
-| `open_adjustment` | — | open | `timesheets.adjust`, or system (`provisional_reconciliation`, §5.7) | the original is `locked`; reason and origin given; for `client_dispute`, the linked ticket or invoice dispute | adjustment timesheet created with kind `adjustment`, linked to the original (`adjusted_by` on the original); the original is not changed |
+| `open_adjustment` | — | open | `timesheets.adjust`, or system (`provisional_reconciliation`, §5.7) | the original is `locked` and of kind `regular` (an adjustment always points to the original, never to another adjustment); reason and origin given; for `client_dispute`, the linked ticket or invoice dispute, still open | adjustment timesheet created with kind `adjustment`, linked to the original (the link is added to `adjusted_by` on the original); the original's entries, totals, state and consumers are not changed |
 | `submit` | open | submitted | `timesheets.submit`, or system (period end) | every accepted attendance day has hours allocated to a cost object; no attendance left `flagged` | approver notified (staff, or external party through the portal or an emailed approval link) |
-| `approve` | submitted | approved | `timesheets.approve` (internal), or an external approver role on the context's party (portal or signed emailed link) | approver kind matches the timesheet; adjustment: approver kind as the original's and the creator is not the approver (`HRM.ACL.08`) | attendance `lock`; labour cost posted to cost objects when the context posts cost from hours (`FIN.CST.01`, *Labour cost* below); adjustment: the signed delta is posted the same way; if payroll already used provisional hours (§5.7), the difference is sent to payroll (`TimesheetReconciliationNeeded`); event `TimesheetApproved` |
+| `approve` | submitted | approved | `timesheets.approve` (internal), or an external approver role on the context's party (portal or signed emailed link), or system for a `provisional_reconciliation` adjustment (§5.7 step 3) | approver kind matches the timesheet; adjustment: approver kind as the original's and the creator is not the approver (`HRM.ACL.08`) | attendance `lock`; labour cost posted to cost objects when the context posts cost from hours (`FIN.CST.01`, *Labour cost* below); adjustment: the signed delta is posted the same way; if payroll already used provisional hours (§5.7), the timesheet is `lock`ed at once (payroll is its first consumer) and the difference is sent to payroll (`TimesheetReconciliationNeeded`); event `TimesheetApproved` (not for a `provisional_reconciliation` adjustment, whose only event is `TimesheetReconciliationNeeded`) |
 | `approve_on_behalf` | submitted | approved | `timesheets.approve_on_behalf` | approver kind is `external`; approval evidence attached (signed sheet) | as `approve`; evidence stored with the timesheet |
 | `deem_approve` | submitted | approved | system (`HRM.RUL.15`) | approver kind is `external`; the context's contract has a deemed-approval clause (N days, from `ApproverResolver`); N days since `submit` with no approval or rejection | as `approve`, approval basis `deemed`; the external approver and the account manager are told the hours and that they were deemed approved |
 | `reject` | submitted | open | approver | reason given | submitter notified |
 | `reopen` | approved | open | `timesheets.reopen` | not consumed (provisional payroll use counts as consumed); for external approval, a new external approval will be needed (`HRM.ACL.02`) | labour cost reversed (if posted); attendance unlocked |
-| `lock` | approved | locked | system (first consumer: payroll run, usage invoice, WIP billing, export) | — | consumer recorded; later consumers still read it |
+| `lock` | approved | locked | system (first consumer: payroll run, usage invoice, WIP billing, export; or at `approve` of a timesheet that already has `paid_provisionally_by`) | — | consumer recorded (`paid_provisionally_by` stays as the payroll consumer); later consumers still read it |
 
 ```mermaid
 stateDiagram-v2
@@ -159,11 +159,18 @@ signed agreed outcome) approves the adjustment. Its `affects` field says where i
 | `payroll` | + hours paid in the next run; − hours recovered as a deduction within the Art. 25 limits ([wl-hr](wl-hr.md)); after `paid`, through a supplementary run | nothing |
 | `both` | as `payroll` | as `billing` |
 
-A client dispute about billed hours sets `disputed` on the invoice (`wl-invoicing`). If the
-dispute ends `credited`, the credit note is linked to an adjustment timesheet with origin
-`client_dispute`. By default it affects `billing` only: the worker's pay is not reduced because
+A client dispute about billed hours sets `disputed` on the invoice (`wl-invoicing`). When the
+business and the client agree to cut hours, a user with `timesheets.adjust` opens an adjustment
+timesheet with origin `client_dispute`, linked to the open dispute, while the invoice is still
+`disputed`; nothing opens it automatically. Its approval raises the credit note (`wl-invoicing`
+§5.2), and the dispute is then resolved `credited`, naming the adjustment; the credit note and
+the adjustment link to each other. A dispute resolved `upheld` needs no adjustment. By default it affects `billing` only: the worker's pay is not reduced because
 the client disputes an invoice, unless the attendance itself was wrong (then `both`, with the
 attendance evidence). Each adjustment records its own consumers; the original keeps its own.
+A signed delta may not take the original plus its approved adjustments below 0 h for a day and
+category; such an entry is refused on save. When the linked dispute is resolved `upheld`
+before its adjustment is approved, the adjustment's `submit` is refused ("dispute resolved
+upheld") and its creator is notified; it has no payroll or billing effect.
 
 **Vertical mapping**
 
@@ -269,25 +276,39 @@ Optional per client in 02; the usual method for drivers (03) and deployed worker
 1. **Overtime cap.** `HRM.RUL.13` checks each employee's day across all locations and
    timesheets: hours above the daily normal hours plus the overtime cap (default 2 h a day;
    in Ramadan the normal hours are 2 h shorter) and overtime above 144 hours in any three
-   weeks ✔ [S1] flag `overtime_cap`. The flag does not block; a reviewer accepts with a reason
+   weeks ✔ [S1] flag `overtime_cap`. Normal hours come from the business calendar for that
+   date (0 on a rest day or public holiday, so the daily cap is then 2 h). Every record of the
+   employee on that day that is not `locked` or `rejected` is flagged, so the reviewer sees the
+   whole day; when all are `locked`, the supervisor is notified without a flag. The flag does not block; a reviewer accepts with a reason
    (`HRM.ACL.09`). Whether any of the law's exceptions to the cap applies is the employer's
    call, recorded in the reason.
 2. **Midday break on marked hours.** `HRM.RUL.01` flags a check-in inside the window.
    `HRM.RUL.13` also checks the worked span (in to out, minus the breaks taken) of supervisor
    marking and manual timesheet entries at outdoor locations, so crews marked as a block are
-   caught too.
+   caught too. A manual entry is checked only when it has from–to times; an entry with hours
+   only has no span to compare and is not checked.
 3. **Work permit and visa.** `HRM.RUL.14` checks, at the attendance date,
    `document_valid(employee, kind, on_date)` (`wl-documents`) for the work permit and
-   residence visa, and `qualification_valid(employee, kind, on_date)` (`wl-hr`) for
-   qualifications the context
-   requires (e.g. a SIRA licence). A failure flags `permit_invalid`: HR and the supervisor are
-   told; the hours count for payroll but are proposed non-billable until HR reviews. In 09 the
+   residence visa, and `qualification_valid(employee, kind, on_date[, role, scope])`
+   (`wl-hr`; role and scope of the context for role-bound kinds) for qualifications the
+   context requires (e.g. a SIRA licence). A failure flags `permit_invalid`: HR and the supervisor are
+   told. While the record is `flagged`, no hours are proposed on the timesheet and the
+   timesheet cannot be submitted (`submit` guard). HR's review is the `accept` by a reviewer
+   (`HRM.ACL.09`); its hours are then proposed non-billable, and they count for payroll. In 09 the
    deployment `suspend` (from `DocumentExpired`) should stop attendance before it happens; this
-   flag catches what slips through.
+   flag catches what slips through. Only the document kinds configured for the client and the
+   context's required qualifications are checked; a freelancer (no company work permit) is
+   checked for the work permit only when the client adds that kind.
 4. **Overlap.** One employee cannot be present at two places at once. Self check-in elsewhere
    is refused until the employee checks out. Supervisor marking or import that overlaps
-   another record flags both `overlap`. Timesheet `submit` refuses entries whose hours for an
-   employee and day, summed across all timesheets and projects, exceed the attended hours.
+   another record flags both `overlap` (a `locked` record cannot change, so only the new one is
+   flagged and its note names the locked record). Timesheet `submit` refuses entries whose
+   hours for an employee and day, summed across all timesheets and projects, exceed the
+   attended hours. The check applies only to contexts whose hours come from attendance (02,
+   09; §4 vertical mapping), not to manual or generated hours (04, 10), and adjustment
+   timesheets are left out of the sum (their correction is approved explicitly). When the
+   system `submit` at period end (`HRM.RUL.08`) fails this or another guard, the timesheet
+   stays `open` and the submitter gets a task listing the days.
 
 ### 5.6 Approver does not respond
 
@@ -295,8 +316,16 @@ Optional per client in 02; the usual method for drivers (03) and deployed worker
    reminder also notifies the account manager.
 2. `HRM.RUL.15` continues the ladder: at E days the client's escalation contact (from the
    contract) and the account manager's manager are notified; the account manager gets a task to
-   collect a signed sheet (`approve_on_behalf`).
+   collect a signed sheet (`approve_on_behalf`). Days are calendar days in Asia/Dubai from the
+   latest `submit` date; the rule runs once a day at 08:00. The manager is the account
+   manager's line manager in wl-hr; without one, the users with
+   `timesheets.approve_on_behalf` in the context's scope are notified and the task says no
+   manager was found. Without an escalation contact on the contract, only the manager is
+   notified and the task says so.
 3. If the contract has a deemed-approval clause, at its N days the system runs `deem_approve`.
+   N is read from `ApproverResolver` when the rule runs, so a contract change while waiting
+   applies. When N ≤ E, `deem_approve` runs first in the same daily run and the escalation at
+   E then finds nothing to send.
    The client is told the hours and the dispute route. A later dispute is handled as an
    adjustment (§4). Without the clause, the timesheet stays `submitted` and the task stays
    open.
@@ -311,15 +340,19 @@ Salary does not wait for the client. The WPS due date is fixed by law (wl-hr, MR
    and for timesheets still `open` or `submitted` the accepted attendance hours, marked
    *provisional*. Only `accepted` attendance counts: a record still `flagged` at the cut-off
    is left out, and its hours reach payroll later through the reconciliation in step 3 once
-   it is accepted. The policy is a setting: `attendance` (default) or `wait` (only for
+   it is accepted. The period is the payroll period from `PayrollCalendar` (wl-hr); hours not
+   yet recorded at the cut-off are picked up by the reconciliation. The policy is a setting: `attendance` (default) or `wait` (only for
    internal approvers who are the employer's own staff).
 2. The payroll run records `paid_provisionally_by` on those timesheets. They can no longer be
    reopened without an adjustment.
-3. When the timesheet is approved (or deemed approved), the approved hours are compared with
-   the provisional hours. A difference creates an adjustment timesheet with origin
-   `provisional_reconciliation`, affecting `payroll`, and emits
-   `TimesheetReconciliationNeeded`; `wl-hr` puts the difference in the next run (− within the
-   Art. 25 limits).
+3. When the timesheet is approved (or deemed approved), it is `lock`ed at once (payroll is
+   its first consumer) and the approved hours are compared with the provisional hours. A
+   difference creates an adjustment timesheet with origin `provisional_reconciliation`,
+   affecting `payroll`, and emits `TimesheetReconciliationNeeded`; `wl-hr` puts the difference
+   in the next run (− within the Art. 25 limits). The original's approval already covers these
+   hours, so the system submits and approves the adjustment in the same step: approver and
+   approval basis are copied from the original's approval, it is not sent to the approver
+   again, and it emits no `TimesheetApproved` of its own (payroll applies the difference once).
 4. If the client cuts billable hours but the attendance stands, the cut is a billing matter
    (`affects` = `billing`); the worker keeps the pay.
 
@@ -328,7 +361,8 @@ Salary does not wait for the client. The WPS due date is fixed by law (wl-hr, MR
 1. A user with `timesheets.adjust` opens an adjustment on the locked timesheet: reason,
    origin, `affects`, signed hours; for a client dispute, the invoice dispute or ticket.
 2. It is submitted and approved like any timesheet, by the original approver kind; its creator
-   cannot approve it (`HRM.ACL.08`).
+   cannot approve it (`HRM.ACL.08`). The exception is a system `provisional_reconciliation`
+   adjustment, approved in the same step as the original (§5.7 step 3).
 3. On approval, `TimesheetApproved` (kind `adjustment`) tells payroll and billing; they act per
    the table in §4. Every step is audited and linked both ways.
 
@@ -425,8 +459,8 @@ Remaining promotion candidates:
 | `HRM.RUL.07` (from `MPW.RUL.02`, `CON.RUL.01`, `LOG.RUL.08`) | N minutes after shift start, or at time T | no attendance for an assigned or rostered employee | notify supervisor (no-show) | 30 min (03: 15 min) / 10:00 |
 | `HRM.RUL.08` (from `MPW.RUL.03`, `MPW.RUL.04`) | period end; N days after submit | open timesheet with entries; not approved | submit to the approver; remind the approver, escalate on the second reminder | N = 3 |
 | `HRM.RUL.13` | attendance recorded or corrected; timesheet entry saved | the employee's hours that day (all locations and timesheets) exceed normal hours + the daily overtime cap, or overtime exceeds the 3-week cap; or, at an outdoor location in the season, the worked span minus breaks crosses the midday break window | flag `overtime_cap` or `midday_break`; notify the supervisor (and the HSE officer for the midday break) | cap 2 h/day, 144 h per 3 weeks ✔ [S1]; window as `HRM.RUL.01` |
-| `HRM.RUL.14` | attendance recorded | `document_valid(employee, work_permit, date)` or `document_valid(employee, residence_visa, date)` fails at the attendance date, or `qualification_valid(employee, kind, date)` fails for a qualification the context requires | flag `permit_invalid`; notify HR and the supervisor; hours proposed non-billable | kinds checked: work permit, residence visa (per client) |
-| `HRM.RUL.15` | E days after submit; N days after submit | external timesheet still `submitted` | at E: notify the client's escalation contact and the account manager's manager, task to collect a signed sheet; at N, if the contract has a deemed-approval clause: timesheet `deem_approve` and notify the client | E = 6; N = per contract (off when the contract has no clause) |
+| `HRM.RUL.14` | attendance recorded | `document_valid(employee, work_permit, date)` or `document_valid(employee, residence_visa, date)` fails at the attendance date, or `qualification_valid(employee, kind, date)` fails for a qualification the context requires | flag `permit_invalid`; notify HR and the supervisor; on `accept` the hours are proposed non-billable | kinds checked: work permit, residence visa (per client) |
+| `HRM.RUL.15` | E days after submit; N days after submit | external timesheet still `submitted` | at E: notify the client's escalation contact and the account manager's manager, task to collect a signed sheet; at N, if the contract has a deemed-approval clause: timesheet `deem_approve` and notify the client | E = 6; N = per contract (off when the contract has no clause); calendar days, checked daily at 08:00 Asia/Dubai |
 | Candidate (new) | end of day | record without check-out | flag `missing_checkout`; notify employee and supervisor | 23:00 |
 
 `HRM.RUL.15` continues the ladder of `HRM.RUL.08` (reminder at N = 3 days, account manager

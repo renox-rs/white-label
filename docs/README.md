@@ -24,7 +24,8 @@ verticals. **The current phase is documentation only** ([decision 0002](decision
 | Know why something was decided | [decisions/](decisions/) |
 | See what is still open: questions for lawyers, accountants, authorities, and owner decisions | [OPEN-ITEMS.md](OPEN-ITEMS.md) |
 | Find and approach leads for a vertical | [go-to-market/](go-to-market/README.md) |
-| See review findings and how they were closed (e.g. negative flows) | [reviews/](reviews/) |
+| See review findings and how they were closed (negative flows, SME problem map) | [reviews/](reviews/) |
+| Pick up build work: draft issues per module and vertical, written for developers and coding models | [backlog/](backlog/README.md) |
 
 ## Verticals
 
