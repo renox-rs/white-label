@@ -336,7 +336,7 @@ to a section for a shift (`ASG`).
 | `PTY.PTY.01` | Parties: customers, suppliers, aggregators, corporate accounts | shared | wl-parties | MVP |
 | `PTY.CNS.01` | Consent records: marketing opt-in per channel (`NTF.ACL.01`) | shared | wl-parties | MVP |
 | `DOC.FIL.01` | Attach documents (licences, supplier certificates, inspection reports) | shared | wl-documents | MVP |
-| `DOC.EXP.01` | Expiry reminders (trade licence, food permit, PIC certificate, health cards) | shared | wl-documents | MVP |
+| `DOC.EXP.01` | Expiry reminders (trade licence, food permit, PIC certificate, health cards, Halal certificates, trademark) | shared | wl-documents | MVP |
 | `DOC.GEN.01` | Generate documents (receipts, POs, daily closing, change lists) | shared | wl-documents | MVP |
 | `FIN.INV.01` | Tax invoices: consumer receipts and B2B catering invoices | shared | wl-invoicing | MVP |
 | `FIN.PAY.01` | Record and allocate payments (cash, card, aggregator payouts) | shared | wl-payments | MVP |
@@ -410,7 +410,13 @@ to a section for a shift (`ASG`).
 | `FNB.DIN.05` | Service charge (hotel- or tourism-licensed outlets only, up to 10%) and Dubai municipality fee (7%) lines per outlet configuration | specific | apps/fnb | Later |
 | `FNB.DIN.06` | Reservation table allocation by party size and turn time; walk-in waiting list | specific | apps/fnb | Later |
 | `SAL.DSC.01` | Promo codes for direct orders (formerly `FNB.PRM.01`) | shared (**new**) | wl-sales | MVP |
-| `FNB.LOY.01` | Loyalty points for direct customers | specific | apps/fnb | Later |
+| `SAL.LOY.01` | Loyalty and retention: points or visit rewards, customer segments, and retention campaigns sent with marketing consent (formerly `FNB.LOY.01`) | shared | wl-sales + wl-notify | MVP |
+| `SAL.CRM.01` | Leads and enquiries pipeline (corporate catering and B2B) | shared | wl-sales | MVP |
+| `SAL.CRM.02` | Lead sources and campaigns: cost per campaign, conversion by source and channel, cost per lead, customer acquisition cost and return on ad spend | shared | wl-sales | MVP |
+| `FIN.CFL.01` | Cash-flow forecast: expected receipts and payments by week from invoices, supplier bills, scheduled charges, post-dated cheques, payroll and budgets | shared | wl-invoicing | MVP |
+| `STK.SUP.01` | Supplier scorecard and alternative suppliers: on-time delivery, rejected quantity, NCRs, price variance; preferred and alternative suppliers per item | shared | wl-inventory | MVP |
+| `FIN.BUD.01` | Company budget vs actual by period, category and entity; owner drawings kept apart from operating cost | shared | wl-invoicing | MVP |
+| `HRM.ONB.01` | Staff onboarding checklists per role and a library of SOP documents with acknowledgement | shared | wl-hr + wl-documents | MVP |
 | `FNB.CST.01` | Theoretical vs actual food cost and variance per item and outlet | specific | apps/fnb | MVP |
 | `FNB.WST.01` | Wastage logging with reasons and value | specific | apps/fnb | MVP |
 | `FNB.PRD.01` | Central kitchen production planning and batches | specific | apps/fnb | MVP |
@@ -796,6 +802,17 @@ certificate.
 | Till variance needing approval (wl-sales) | AED 20, the same as the write-off limit |
 | Responsible role per document kind (wl-documents §5.2) | trade licence: owner / operations director; food permits, health cards and PIC certificate: kitchen manager of the outlet |
 | Integration fallbacks (wl-kernel §5.14) | Deliverect down → aggregator tablets and quick entry; gateway down → D2C online payment paused, cash on delivery and counter card terminal stay; SMS down → OTP login unavailable, orders by phone |
+| Cash-flow forecast alert (`FIN.CFL.01`, `FIN.RUL.23`) | projected balance below AED 50,000 in any of the next 13 weeks (weeks start Monday): `FIN.RUL.23` alerts the owner / operations director and the accountant, checked daily at 06:00; aggregator payouts by their payout schedule; due dates adjusted by average days late: off (customers pay at order); disputed amounts counted: off |
+| Budget categories and approval (`FIN.BUD.01`, `FIN.RUL.24`) | categories (food cost, packaging, staff, rent, aggregator commission, marketing) owned by the accountant and mapped to the export accounts; approved by the owner / operations director; `FIN.RUL.24` warns the category's owner role and the accountant when a month's actual reaches 100% of its line |
+| Owner drawings (`FIN.BUD.01`, `FIN.ACL.21`) | expense category and payment purpose *owner drawings*, kept out of food cost, operating cost and profit; every drawing (AED 0) approved by the owner / operations director, never by the requester (`FIN.ACL.21`) |
+| Lead sources used (`SAL.CRM.02`) | walk-in, website, social, paid ads, aggregator, referral, event, partner (corporate catering), other; corporate and B2B enquiries are leads (`SAL.CRM.01`); a direct customer takes the source of their first order; no source requires a campaign |
+| Campaign channels (`SAL.CRM.02`, `SAL.ACL.07`) | Instagram, TikTok, search ads, aggregator promotions, SMS, email; a promo code (`SAL.DSC.01`) may belong to a campaign; converted value: the customer's first direct order; a cost entry that takes a campaign over its budget needs a manager (`SAL.ACL.07`: on) |
+| Supplier scorecard review (`STK.SUP.01`, `STK.RUL.09`, `STK.ACL.07`) | score on a 0–100 scale from the module weights; a monthly snapshot below 70 over a 1-month window (module: 3 months) makes `STK.RUL.09` open a review task to the storekeeper / purchaser, the area manager told; preferred and alternative suppliers per ingredient used by par-level reorder suggestions (`STK.ROP.01`); making another supplier preferred needs a second person (`STK.ACL.07`: on) |
+| Loyalty earn and redeem (`SAL.LOY.01`, `SAL.RUL.07`) | `SAL.RUL.07` earns 1 point per AED 1 on direct orders (D2C site and counter); none on aggregator orders; 100 points = an AED 5 discount line, at most 50% of the order, confirmed by a one-time code to the member (VAT on the discounted supply: `⚠ open: accountant (A-15)`) |
+| Loyalty expiry, segments and campaigns (`SAL.LOY.01`, `SAL.RUL.08`, `SAL.ACL.07`, `NTF.RUL.02`, `NTF.ACL.03`) | points expire 12 months after they are earned, the member reminded 30 days before (`SAL.RUL.08`); a manual adjustment above 500 points needs a manager (`SAL.ACL.07`); segments: first order only, regulars (3 or more orders in 30 days), lapsed (no order in 45 days), corporate catering customers; campaigns only to opted-in customers (`NTF.ACL.01`), with opt-out, sent 07:00–21:00 and at most 2 marketing messages per customer in 7 days (`NTF.RUL.02`); a broadcast to more than 200 recipients needs a second person (`NTF.ACL.03`) |
+| Onboarding checklists (`HRM.ONB.01`, `HRM.RUL.16`, `HRM.RUL.17`, `HRM.ACL.10`) | templates for line cook, cashier / order taker, rider, storekeeper / purchaser and outlet / kitchen manager, started by `HRM.RUL.16` when the employee is created; checklist steps use `WRK.CHK.01`; tasks to the outlet / kitchen manager, the head chef and the employee; the employee's own steps recorded only by them (`HRM.ACL.10`); `HRM.RUL.17` reminds overdue steps every 2 days and tells HR and the line manager after 5 days; completion blocks nothing (health cards stay tracked by `DOC.EXP.01`) |
+| SOP library (`HRM.ONB.01`, `DOC.RUL.04`, `HRM.ACL.10`) | SOP owners: head chef / central kitchen chef (recipes, food safety) and area manager (service, cash and delivery); required readers by role per outlet; `DOC.RUL.04` asks each reader to acknowledge within 7 days, reminds every 3 days and tells the manager and the owner role after 7 days; acknowledged only by the reader (`HRM.ACL.10`); a new version asks for a new acknowledgement |
+| Registration and certification kinds (`DOC.EXP.01`, `DOC.RUL.01`) | *Halal certificate* (subject: item, for central kitchen products and supplier ingredients; responsible role storekeeper / purchaser); *Trademark registration* (brand, legal entity) and *Other certification* (legal entity; owner / operations director); `DOC.RUL.01` at 90, 30 and 7 days; no `blocks` |
 
 **Notification types registered by 06** (wl-notify §5.4: each names its group):
 
@@ -897,7 +914,7 @@ Receipts are wl-invoicing's types; marketing messages are wl-notify's marketing 
   and kitchen display, so the extension adds only `FNB.DIN.*`.
 - **New shared module:** `wl-sales` for the catalogue, price lists, orders and POS
   (`SAL.*`), also needed by manufacturing and auto parts.
-- **Estimated reuse:** 67 of 92 capabilities (73%) come from shared modules or Renox.
+- **Estimated reuse:** 74 of 98 capabilities (76%) come from shared modules or Renox.
 
 ## 12. MVP scope
 
@@ -926,6 +943,10 @@ Receipts are wl-invoicing's types; marketing messages are wl-notify's marketing 
   responsible party, aggregator refunds from payouts, receiving rejections and returns to
   the supplier, temperature holds, recalls, outage pause and late entry;
 - online payment through Stripe or N-Genius;
+- leads with sources and campaigns, loyalty and retention campaigns, cash-flow forecast,
+  supplier scorecards, budget with owner drawings, onboarding and SOPs, Halal and trademark
+  reminders (`SAL.CRM.01`, `SAL.CRM.02`, `SAL.LOY.01`, `FIN.CFL.01`, `STK.SUP.01`,
+  `FIN.BUD.01`, `HRM.ONB.01`, `DOC.EXP.01`);
 - dashboards and reports.
 
 **Excluded from the MVP:**
@@ -934,7 +955,7 @@ Receipts are wl-invoicing's types; marketing messages are wl-notify's marketing 
   orders by course, bill splitting, service charge and fee lines, table reservations and the
   walk-in waiting list (`FNB.DIN.*`, `SCH.*`);
 - third-party courier integration;
-- loyalty, meal-plan subscriptions, customer feedback;
+- meal-plan subscriptions, customer feedback;
 - planned maintenance and the equipment register;
 - shift attendance and payroll;
 - accounting export;

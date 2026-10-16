@@ -1,6 +1,6 @@
 # 02 — Construction & Fit-out Subcontractors
 
-> Status: accepted · Reviewed: 2026-10-15 · Last updated: 2026-10-15
+> Status: accepted · Reviewed: 2026-10-15 · Last updated: 2026-10-16
 
 ## 1. Summary
 
@@ -314,7 +314,7 @@ usually global.
 | `PTY.PTY.01` | Parties: clients, main contractors, consultants, suppliers | shared | wl-parties | MVP |
 | `PTY.KYC.01` | Identity fields: trade licence, TRN, Emirates ID, passport | shared | wl-parties | MVP |
 | `DOC.FIL.01` | Attach documents to any record (drawings, LPOs, certificates) | shared | wl-documents | MVP |
-| `DOC.EXP.01` | Expiry reminders (guarantees, permits, insurance, worker passes, visas) | shared | wl-documents | MVP |
+| `DOC.EXP.01` | Expiry reminders (guarantees, permits, insurance, worker passes, visas, ISO certificates, trademark) | shared | wl-documents | MVP |
 | `DOC.GEN.01` | Generate documents (quotation, IPA, variation, daily report) | shared | wl-documents | MVP |
 | `FIN.QUO.01` | Quotations with lines, validity, terms; accepted → order or project | shared (**new**) | wl-invoicing | MVP |
 | `FIN.CST.01` | Cost objects and job costing: budget vs committed vs actual per cost code | shared (**new**) | wl-invoicing | MVP |
@@ -357,6 +357,12 @@ usually global.
 | `FIN.VAT.01` | VAT summary per period and entity: output and input VAT, for the accountant | shared | wl-invoicing | MVP |
 | `FIN.EXP.01` | Expense claims and petty cash: submit with receipt, approve, reimburse, top up | shared | wl-payments | MVP |
 | `FIN.BNK.01` | Bank statement import and matching of receipts to open invoices | shared | wl-payments | Later |
+| `SAL.CRM.01` | Leads and enquiries pipeline (tenders and enquiries from main contractors) | shared | wl-sales | MVP |
+| `SAL.CRM.02` | Lead sources and campaigns: cost per campaign, conversion by source and channel, cost per lead, customer acquisition cost and return on ad spend | shared | wl-sales | MVP |
+| `FIN.CFL.01` | Cash-flow forecast: expected receipts and payments by week from invoices, supplier bills, scheduled charges, post-dated cheques, payroll and budgets | shared | wl-invoicing | MVP |
+| `STK.SUP.01` | Supplier scorecard and alternative suppliers: on-time delivery, rejected quantity, NCRs, price variance; preferred and alternative suppliers per item | shared | wl-inventory | MVP |
+| `FIN.BUD.01` | Company budget vs actual by period, category and entity; owner drawings kept apart from operating cost | shared | wl-invoicing | MVP |
+| `HRM.ONB.01` | Staff onboarding checklists per role and a library of SOP documents with acknowledgement | shared | wl-hr + wl-documents | MVP |
 | `CON.TND.01` | BOQ import from Excel and pricing per line | specific | apps/construction | MVP |
 | `CON.PRJ.01` | Project: contract value, terms, retention %, advance %, sites, geofence | specific | apps/construction | MVP |
 | `CON.PRJ.02` | Cost codes from BOQ lines | specific | apps/construction | MVP |
@@ -805,6 +811,21 @@ contractor registration only remind (`DOC.RUL.01`); the subcontractor registrati
 | Goods receipt | `reverse` while unbilled | — | — | — | — | entered late with the delivery date as business time | rejected quantity |
 | Attendance, timesheet | no; adjustment timesheet | `reject` back to `open` | — | visa, work permit (`flag`) | — | online only; paper list entered within the late-entry window (`HRM.ACL.01`, `PLT.ACL.10`) | — |
 
+**Settings for the shared sales, finance, staff and document capabilities (02
+defaults):**
+
+| Setting | 02 value |
+|---|---|
+| Cash-flow forecast alert (`FIN.CFL.01`, `FIN.RUL.23`) | projected balance below AED 200,000 in any of the next 13 weeks (weeks start Monday): `FIN.RUL.23` alerts the MD and the accountant, checked daily at 06:00; certified IPAs by due date; retention releases on their expected release date; payroll by the WPS due date; due dates adjusted by each client's average days late: on; disputed amounts counted: off |
+| Budget categories and approval (`FIN.BUD.01`, `FIN.RUL.24`) | company budget (overheads: office, yard, plant, staff) per legal entity and month; categories owned by the accountant and mapped to cost codes; approved by the MD; project budgets stay in job costing; `FIN.RUL.24` warns the category's owner role and the accountant when a month's actual reaches 100% of its line |
+| Owner drawings (`FIN.BUD.01`, `FIN.ACL.21`) | expense category and payment purpose *owner drawings*, kept out of operating cost, project cost and profit; every drawing (AED 0) approved by the MD, never by the requester (`FIN.ACL.21`) |
+| Lead sources used (`SAL.CRM.02`) | referral, website, event, partner (consultants and main contractors), other; tenders and enquiries from main contractors are leads (`SAL.CRM.01`); no source requires a campaign |
+| Campaign channels (`SAL.CRM.02`, `SAL.ACL.07`) | tender invitations, exhibitions, LinkedIn, email, company profile mailings; converted value: the first accepted quotation; a cost entry that takes a campaign over its budget needs a manager (`SAL.ACL.07`: on) |
+| Supplier scorecard review (`STK.SUP.01`, `STK.RUL.09`, `STK.ACL.07`) | score on a 0–100 scale over a 3-month window (grace 1 day, at least 3 receipts, module weights); below 70 `STK.RUL.09` gives the procurement officer a review task and tells the project manager; preferred and alternative suppliers per item offered on purchase requests and reorder suggestions; making another supplier an item's preferred one needs a second person (`STK.ACL.07`: on) |
+| Onboarding checklists (`HRM.ONB.01`, `HRM.RUL.16`, `HRM.RUL.17`, `HRM.ACL.10`) | templates for worker (site induction, PPE issue, visa and ID documents), supervisor, storekeeper, procurement officer and QS, started by `HRM.RUL.16` when the employee record (`HRM.EMP.01`) is created; checklist steps use `WRK.CHK.01`; tasks to HR / PRO, the project manager and the employee; the employee's own steps recorded only by them (`HRM.ACL.10`); `HRM.RUL.17` reminds overdue steps every 2 days and tells HR / PRO and the line manager after 5 days; completion blocks nothing (role activation not blocked) |
+| SOP library (`HRM.ONB.01`, `DOC.RUL.04`, `HRM.ACL.10`) | SOP owners: HSE officer (safety SOPs, method statements) and project manager (site SOPs); required readers: supervisors and the workers of the project's crews; `DOC.RUL.04` asks each reader to acknowledge within 7 days, reminds every 3 days and tells the manager and the owner role (MD) after 7 days; acknowledged only by the reader, in person with a drawn signature and a staff witness for workers without a session (`HRM.ACL.10`); a new version asks for a new acknowledgement |
+| Registration and certification kinds (`DOC.EXP.01`, `DOC.RUL.01`) | *ISO certificate* (subject: legal entity; responsible role HSE officer); *Trademark registration* and *Other certification* (legal entity; MD); `DOC.RUL.01` at 90, 30 and 7 days; no `blocks` |
+
 ## 8. Integrations
 
 | System | Purpose | Required for MVP | Access / notes |
@@ -892,7 +913,7 @@ contractor registration only remind (`DOC.RUL.01`); the subcontractor registrati
 - **Specific to this vertical:** BOQ pricing, projects and cost codes, progress measurement,
   IPAs and certification, variations, retentions, guarantees, daily site reports, handover
   and defects liability.
-- **Estimated reuse:** 53 of 69 capabilities (77%) come from shared modules or Renox. Among
+- **Estimated reuse:** 59 of 75 capabilities (79%) come from shared modules or Renox. Among
   them are 12 shared capabilities first needed here (quotations, job costing,
   attendance, timesheets, WPS, inventory and purchasing, assets). These are reused by
   manufacturing, F&B, auto and manpower.
@@ -913,6 +934,11 @@ certificate deductions, retention deductions and release disputes, the guarantee
 with calls, overlapping IPAs, rejected deliveries with returns to suppliers and debit notes,
 PO revisions, site stock counts, attendance flags for the midday break, overtime and expired
 permits, adjustment timesheets, and absence cases leading to an absconding report.
+
+**Also included:** tenders and enquiries as leads with sources and campaigns (`SAL.CRM.01`,
+`SAL.CRM.02`), the cash-flow forecast (`FIN.CFL.01`), supplier scorecards (`STK.SUP.01`),
+company budget with owner drawings (`FIN.BUD.01`), onboarding and SOPs (`HRM.ONB.01`), ISO and
+trademark reminders (`DOC.EXP.01`).
 
 **Excluded from the MVP:** cost build-up estimating (rates are entered per BOQ line),
 submittals and RFIs, HSE, equipment register, own-subcontractor payment applications, WPS

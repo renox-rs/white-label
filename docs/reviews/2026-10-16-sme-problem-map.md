@@ -1,6 +1,6 @@
 # Review: Common SME Problems Mapped to the Platform
 
-> Status: open · Date: 2026-10-16 · Scope: the shared modules and the ten verticals
+> Status: decided · Date: 2026-10-16 · All seven gaps accepted as MVP on 2026-10-16 · Scope: the shared modules and the ten verticals
 
 A list of 50 problems that small and medium businesses commonly face, grouped into 10
 business areas, was checked against the platform. For each problem the review asks: does the
@@ -145,8 +145,26 @@ ten verticals. Each is a candidate for a decision; none is in scope yet.
 G6 and G7 are mostly configuration of existing modules. G1 to G5 add data and reports but no
 new state machines.
 
-## 4. Next step
+## 4. Decision (2026-10-16)
 
-The owner decides which gaps to add. An accepted gap gets a capability ID in the shared
-domain, a row in [CAPABILITY-MAP.md](../CAPABILITY-MAP.md), the module specification, and
-backlog issues ([backlog/README.md](../backlog/README.md)).
+The owner accepted all seven gaps, all in the MVP.
+
+| Gap | Capability | Module | Verticals |
+|---|---|---|---|
+| G1 | `SAL.CRM.02` | wl-sales | all; `SAL.CRM.01` (leads) moves to MVP where it was Later, and 01 `PRP.LEA.01` (enquiries) too |
+| G2 | `FIN.CFL.01` | wl-invoicing | all |
+| G3 | `STK.SUP.01` | wl-inventory | 02, 06, 07, 08 (05 Later, with its purchasing) |
+| G4 | `SAL.LOY.01` (formerly `FNB.LOY.01`) | wl-sales + wl-notify | 05, 06, 08, 10 |
+| G5 | `FIN.BUD.01` | wl-invoicing | all |
+| G6 | `HRM.ONB.01` | wl-hr + wl-documents | all; the minimal employee record (`HRM.EMP.01`) moves to MVP in 01, 07 and 08, and checklists (`WRK.CHK.01`) are added to 05, 09 and 10 |
+| G7 | `DOC.EXP.01` seeded kinds (no new ID) | wl-documents | per vertical setting |
+
+New rules: `SAL.RUL.07`–`08`, `NTF.RUL.02`, `FIN.RUL.23`–`24`, `STK.RUL.09`, `HRM.RUL.16`–`17`,
+`DOC.RUL.04`. New access rules: `SAL.ACL.07`, `NTF.ACL.03`, `FIN.ACL.21`, `STK.ACL.07`,
+`HRM.ACL.10`. Open questions: L-38, A-15, A-16. Backlog issues carry the label `area:sme-gap`.
+
+## 5. Where it is written
+
+Each gap has its capability row in [CAPABILITY-MAP.md](../CAPABILITY-MAP.md), its module
+specification, the vertical settings, and backlog issues
+([backlog/README.md](../backlog/README.md)).

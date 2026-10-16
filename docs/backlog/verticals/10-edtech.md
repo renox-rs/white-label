@@ -1,6 +1,6 @@
 # Epic: 10 EdTech — negative flows
 
-> Status: draft · Last updated: 2026-10-15 · Spec version: same commit as this file
+> Status: draft · Last updated: 2026-10-16 · Spec version: same commit as this file
 
 This epic builds the negative flows that belong to the EdTech vertical itself: seat holds that
 lapse and seats taken atomically, withdrawal with its money documents, enrolments of a blocked
@@ -31,8 +31,8 @@ booking and document mechanics live in the module epics.
 | BL-EDU-14 | Correct attendance of a held session (`correct_attendance`, `EDU.ACL.16`) | medium | m | Launch 10 | BL-EDU-15; BL-ATT-07; BL-ATT-08; Base: wl-sales Package `reverse` |
 | BL-EDU-15 | Consume package credits by the absence policy | medium | m | Launch 10 | Base: wl-sales Package `consume`; Base: 10 Session lifecycle |
 | BL-EDU-16 | Reissue a certificate (`reissue`) and print a copy | medium | m | Launch 10 | Base: 10 Certificate lifecycle; BL-EDU-07 |
-| BL-EDU-17 | 10: configure shared negative-flow settings (documents, scheduling, notifications, alerts, integrations) | high | m | Launch 10 | BL-DOC-01; BL-DOC-02; BL-DOC-06; BL-SCH-02; BL-SCH-05; BL-SCH-07; BL-PTY-03; BL-NTF-06; BL-KRN-05; BL-KRN-08 |
-| BL-EDU-18 | 10: configure shared negative-flow settings (fees, refunds, payments, cash) | high | m | Launch 10 | BL-INV-01; BL-INV-04; BL-INV-10; BL-INV-20; BL-PAY-02; BL-PAY-04; BL-PAY-07; BL-PAY-17 |
+| BL-EDU-17 | 10: configure shared negative-flow settings (documents, scheduling, notifications, alerts, integrations) | high | m | Launch 10 | BL-DOC-01; BL-DOC-02; BL-DOC-06; BL-SCH-02; BL-SCH-05; BL-SCH-07; BL-PTY-03; BL-NTF-06; BL-KRN-05; BL-KRN-08; BL-SAL-19; BL-SAL-20; BL-SAL-21; BL-SAL-22; BL-SAL-23; BL-SAL-24; BL-SAL-25; BL-NTF-07; BL-NTF-08; BL-HRM-26; BL-HRM-27; BL-HRM-28; BL-DOC-08; BL-DOC-09; BL-DOC-10 |
+| BL-EDU-18 | 10: configure shared negative-flow settings (fees, refunds, payments, cash) | high | m | Launch 10 | BL-INV-01; BL-INV-04; BL-INV-10; BL-INV-20; BL-PAY-02; BL-PAY-04; BL-PAY-07; BL-PAY-17; BL-INV-25; BL-INV-26; BL-INV-27; BL-INV-28; BL-INV-29; BL-INV-30; BL-PAY-25; BL-PAY-26 |
 
 ---
 
@@ -1167,7 +1167,7 @@ without any change.
 ### BL-EDU-17 — 10 EdTech: configure shared negative-flow settings (documents, scheduling, notifications, alerts, integrations)
 
 **Labels:** `vertical:10-edtech` `area:negative-flow` `priority:high` `blocked:open-item` · **Milestone:** Launch 10 · **Size:** m
-**Depends on:** BL-DOC-01 · BL-DOC-02 · BL-DOC-06 · BL-SCH-02 · BL-SCH-05 · BL-SCH-07 · BL-PTY-03 · BL-NTF-06 · BL-KRN-05 · BL-KRN-08 · **Blocks:** None
+**Depends on:** BL-DOC-01 · BL-DOC-02 · BL-DOC-06 · BL-SCH-02 · BL-SCH-05 · BL-SCH-07 · BL-PTY-03 · BL-NTF-06 · BL-KRN-05 · BL-KRN-08 · BL-SAL-19 · BL-SAL-20 · BL-SAL-21 · BL-SAL-22 · BL-SAL-23 · BL-SAL-24 · BL-SAL-25 · BL-NTF-07 · BL-NTF-08 · BL-HRM-26 · BL-HRM-27 · BL-HRM-28 · BL-DOC-08 · BL-DOC-09 · BL-DOC-10 · **Blocks:** None
 **Review items:** X-13, X-17, X-18, X-19, X-20
 
 #### Goal
@@ -1175,12 +1175,19 @@ Seed the 10 starter configuration for the shared mechanisms that are not about f
 blocks and overrides, look-ahead windows, one-to-one booking eligibility and conflicts, the block
 effect for enrolments, guardian message give-up, compliance-critical rules and the owner, and the
 manual fallbacks when an integration is down.
+It also seeds the 10 values for lead sources and campaigns (`SAL.CRM.02`), loyalty
+(`SAL.LOY.01`), onboarding and SOPs (`HRM.ONB.01`) and registration kinds (`DOC.EXP.01`), added
+on 2026-10-16: `SAL.RUL.07`, `SAL.RUL.08`, `SAL.ACL.07`, `NTF.RUL.02`, `NTF.ACL.03`,
+`HRM.RUL.16`, `HRM.RUL.17`, `HRM.ACL.10`, `DOC.RUL.04` and `DOC.RUL.01`.
 
 #### Files to read
 - `docs/verticals/10-edtech.md` §4.1 rows "The payer is blocked", "A message to a guardian cannot
   be delivered", §7.1 *Booking* paragraph, §7.2 (intro), §8 (last paragraph), §9
 - Configuration tables (§7) of `wl-documents`, `wl-scheduling`, `wl-parties`, `wl-notify`,
   `wl-kernel`
+- `docs/modules/wl-sales.md` §4.6, §4.7, §5.8, §5.10 and §7 (campaigns, loyalty, segments);
+  `docs/modules/wl-notify.md` §4.3, §5.3 (marketing broadcasts); `docs/modules/wl-hr.md` §5.8
+  and §7 (onboarding); `docs/modules/wl-documents.md` §3, §5.7 and §7 (SOPs, registration kinds)
 - `docs/OPEN-ITEMS.md` L-19, AU-13, AU-25
 
 #### Terms
@@ -1217,8 +1224,17 @@ manual fallbacks when an integration is down.
 | Integration fallback — WhatsApp | email | §8 |
 | Integration fallback — attendance | paper, entered later by the tutor or coordinator (`EDU.ACL.04`, `EDU.ACL.16`) | §8 |
 | Integration fallback — ASP | `FIN.RUL.16` (corporate invoices) | §8 |
+| Lead sources used (`SAL.CRM.02`) | referral, walk-in, website, social, paid ads, event (school fairs), partner (schools, corporates), other; recorded on the lead (`SAL.CRM.01`) and on the student or guardian party; no source requires a campaign | §5; §7.2 settings |
+| Campaign channels (`SAL.CRM.02`, `SAL.ACL.07`) | Instagram, TikTok, search ads, WhatsApp, email, school and community events; converted value: the first enrolment invoice; a cost entry that takes a campaign over its budget needs a manager (`SAL.ACL.07`: on) | §5; §7.2 settings |
+| Loyalty earn and redeem (`SAL.LOY.01`, `SAL.RUL.07`) | `SAL.RUL.07` earns 1 point per AED 10 of fees paid by the student or guardian (none on corporate-paid fees) and reverses in proportion on a refund or credit note; 100 points = an AED 10 discount line on a later enrolment or package, at most 10% of its fee, confirmed by a one-time code to the member (VAT on the discounted supply: `⚠ open: accountant (A-15)`) | §5; §7.2 settings |
+| Loyalty expiry, adjustments and segments (`SAL.LOY.01`, `SAL.RUL.08`, `SAL.ACL.07`, `NTF.RUL.02`, `NTF.ACL.03`) | points expire 12 months after they are earned, with a reminder 30 days before (`SAL.RUL.08`); a manual adjustment above 500 points, or closing an account with points, needs a manager (`SAL.ACL.07`); segments: package with 2 credits or fewer, course completed without re-enrolment in 30 days, trial attended and not enrolled, guardians with two or more students; campaigns only with marketing consent (`NTF.ACL.01`), the guardian's for a minor, with opt-out; sent 07:00–21:00 and at most 2 marketing messages per recipient in 7 days (`NTF.RUL.02`); a broadcast to more than 200 recipients needs a second approver (`NTF.ACL.03`) | §5; §7.2 settings |
+| Onboarding checklists (`HRM.ONB.01`, `HRM.RUL.16`, `HRM.RUL.17`, `HRM.ACL.10`) | templates for tutor / trainer, admissions counsellor and academic coordinator, started by `HRM.RUL.16` when the employee record (`HRM.EMP.01`) is created; checklist steps use `WRK.CHK.01`; tasks to the centre manager, the academic coordinator and the employee; the employee's own steps recorded only by them (`HRM.ACL.10`); `HRM.RUL.17` reminds overdue steps every 2 days and tells the centre manager (HR) and the line manager after 5 days; completion blocks nothing (sessions stay guarded by tutor permits and police clearance) | §5; §7.2 settings |
+| SOP library (`HRM.ONB.01`, `DOC.RUL.04`, `HRM.ACL.10`) | SOP owners: academic coordinator (teaching, assessment, safeguarding) and centre manager (front desk, refunds); required readers by role per campus; `DOC.RUL.04` asks each reader to acknowledge within 7 days, reminds every 3 days and tells the manager and the owner role after 7 days; acknowledged only by the reader (`HRM.ACL.10`); a new version asks for a new acknowledgement | §5; §7.2 settings |
+| Registration and certification kinds (`DOC.EXP.01`, `DOC.RUL.01`) | *Trademark registration* and *Other certification* (subject: legal entity); responsible role company owner; `DOC.RUL.01` at 90, 30 and 7 days; no `blocks` | §5; §7.2 settings |
 
 #### Edge cases decided
+- **Loyalty VAT:** a redeemed points discount reduces the VAT of the discounted supply only
+  (`⚠ open: accountant (A-15)`); the rest of the loyalty settings can be built.
 - **Open items:** which kinds are legal blocks (L-19), the licensing body outside Dubai, Abu Dhabi
   and Sharjah (AU-13), running batches after expiry (AU-25) do not change the seeded values; only
   the data changes when answered.
@@ -1258,6 +1274,27 @@ manual fallbacks when an integration is down.
       guardian goes by email; with the ASP `down`, a corporate invoice is still issued and sent
       as PDF (`FIN.RUL.16`); paper attendance entered by the coordinator after the tutor's
       24-hour window needs a reason (`EDU.ACL.16`).
+- [ ] **Lead sources:** a new lead or party offers the sources referral, walk-in, website, social,
+      paid ads, event, partner and other; a campaign with channel *Instagram*, a budget and cost
+      entries reports leads, conversion, cost per lead, CAC and ROAS; a cost entry over the
+      budget waits for a manager (`SAL.ACL.07`).
+- [ ] **Loyalty:** fees of AED 1,000 paid by a guardian earn 100 points and corporate-paid fees
+      earn none; redeeming 100 points adds an AED 10 discount line, refused above 10% of the fee;
+      points earned on 2026-11-01 expire on 2027-11-01, with a reminder on 2027-10-02
+      (`SAL.RUL.07`, `SAL.RUL.08`); a manual adjustment of 600 points waits for a manager
+      (`SAL.ACL.07`); a guardian without marketing consent is left out of a campaign; a
+      campaign message queued at 22:00 is deferred to 07:00, a third marketing message in 7
+      days is suppressed (`NTF.RUL.02`), and a campaign to 201 guardians needs a second
+      approver (`NTF.ACL.03`).
+- [ ] **Onboarding and SOPs:** hiring a tutor / trainer creates the tutor / trainer checklist with
+      tasks to the centre manager, the line manager and the employee, and the role is active
+      before it is complete; a step open 2 days past its due date reminds its assignee
+      (`HRM.RUL.17`); a new version of an SOP owned by the academic coordinator asks every
+      required reader to acknowledge again within 7 days (`DOC.RUL.04`), and no one else can
+      acknowledge for them (`HRM.ACL.10`).
+- [ ] **Registrations:** a fresh 10 deployment lists *Trademark registration* and *Other
+      certification* with responsible role company owner; a trademark registration expiring in 90
+      days notifies the company owner.
 
 #### Out of scope
 Fees and payments (BL-EDU-18).
@@ -1267,7 +1304,7 @@ Fees and payments (BL-EDU-18).
 ### BL-EDU-18 — 10 EdTech: configure shared negative-flow settings (fees, refunds, payments, cash)
 
 **Labels:** `vertical:10-edtech` `area:negative-flow` `priority:high` · **Milestone:** Launch 10 · **Size:** m
-**Depends on:** BL-INV-01 · BL-INV-04 · BL-INV-10 · BL-INV-20 · BL-PAY-02 · BL-PAY-04 · BL-PAY-07 · BL-PAY-17 · **Blocks:** None
+**Depends on:** BL-INV-01 · BL-INV-04 · BL-INV-10 · BL-INV-20 · BL-PAY-02 · BL-PAY-04 · BL-PAY-07 · BL-PAY-17 · BL-INV-25 · BL-INV-26 · BL-INV-27 · BL-INV-28 · BL-INV-29 · BL-INV-30 · BL-PAY-25 · BL-PAY-26 · **Blocks:** None
 **Review items:** X-01, X-02, X-04, X-06, X-07, 10-N3-f
 
 #### Goal
@@ -1275,11 +1312,16 @@ Seed the 10 values for the money mechanisms: refund approval and failed refunds,
 payments and chargebacks, membership retries and pauses, packages, desk cash, corporate invoice
 disputes, e-invoice rejection and write-offs, plus the catalogue defaults for the refund and
 absence policies.
+It also seeds the 10 values for the cash-flow forecast alert (`FIN.CFL.01`) and the
+company budget with owner drawings (`FIN.BUD.01`), added on 2026-10-16: `FIN.RUL.23`,
+`FIN.RUL.24` and `FIN.ACL.21`.
 
 #### Files to read
 - `docs/verticals/10-edtech.md` §3.3 (`FIN.ACL.04`, `FIN.ACL.06`), §4.3 "When it goes wrong",
   §6 (Catalogue item), §7.1 *Subscription*, §7.2, §9 (refund policy), §13 question 5
 - Configuration tables (§7) of `wl-invoicing`, `wl-payments`, `wl-sales`
+- `docs/modules/wl-invoicing.md` §5.14–§5.16 (cash-flow forecast, company budget, owner
+  drawings); `docs/modules/wl-payments.md` (open cheques, owner-drawings payments)
 
 #### Terms
 - **`FIN.ACL.04`:** the user who records a refund cannot approve it.
@@ -1311,6 +1353,9 @@ absence policies.
 | Bad-debt write-off (`FIN.ACL.15`) | AED 0 (every write-off approved) | §4.3 |
 | Refund policy template (catalogue default) | before the start 100% minus the registration fee; after the start unused sessions pro rata minus an admin fee; after 50% no refund | §9, §13 q5 |
 | Absence policy (catalogue default) | unexcused absence consumes a credit: yes; notice for an excused absence: 24 h | §6 |
+| Cash-flow forecast alert (`FIN.CFL.01`, `FIN.RUL.23`) | projected balance below AED 25,000 in any of the next 13 weeks (weeks start Monday): `FIN.RUL.23` alerts the company owner and the accountant, checked daily at 06:00; instalments by due date; due dates adjusted by each payer's average days late: on; disputed amounts counted: off | §5; §7.2 settings |
+| Budget categories and approval (`FIN.BUD.01`, `FIN.RUL.24`) | categories (tutor costs, rent, marketing, materials, staff) owned by the accountant and mapped to the export accounts; one budget per legal entity and month, approved by the company owner; `FIN.RUL.24` warns the category's owner role and the accountant when a month's actual reaches 100% of its line | §5; §7.2 settings |
+| Owner drawings (`FIN.BUD.01`, `FIN.ACL.21`) | expense category and payment purpose *owner drawings*, kept out of operating cost and profit; every drawing (AED 0) approved by the company owner, never by the requester (`FIN.ACL.21`) | §5; §7.2 settings |
 
 #### Edge cases decided
 - **Pause and freeze allowance:** 30 days per year, one shared value per catalogue item for
@@ -1337,6 +1382,14 @@ absence policies.
 - [ ] **Corporate:** corporate contacts cannot dispute in the portal; a write-off of AED 100 needs
       approval.
 - [ ] **Catalogue:** a new course item gets the tiered refund policy and the absence policy above.
+- [ ] **Cash-flow forecast:** in a fresh 10 deployment, a projected balance of AED 24,999 in week
+      5 alerts the company owner and the accountant once (`FIN.RUL.23`, 06:00 run); AED 25,000
+      or more in every week alerts no one; the forecast shows 13 weekly buckets from Monday.
+- [ ] **Budget and drawings:** a monthly budget for a legal entity prepared by the accountant
+      needs approval by the company owner; an expense with category *owner drawings* is left out
+      of operating cost and profit reports, and the user who records it cannot approve it
+      (`FIN.ACL.21`); an expense line reaching 100% of its month's budget line warns the
+      category's owner role and the accountant once (`FIN.RUL.24`).
 
 #### Out of scope
 Documents, scheduling, notifications and integrations (BL-EDU-17); the mechanisms (module epics).

@@ -49,17 +49,17 @@ verticals. **The current phase is documentation only** ([decision 0002](decision
 | [`wl-kernel`](modules/wl-kernel.md) | Platform services: settings, branding, legal entities, sequences, custom fields, approvals, automations, business calendar, import, search, notes, reports | draft |
 | [`wl-parties`](modules/wl-parties.md) | Companies and people in any role, identity, relationships, consents, UBO, screening | draft |
 | [`wl-portal`](modules/wl-portal.md) | External users: access grants, self-service, document requests | draft |
-| [`wl-documents`](modules/wl-documents.md) | Files, expiry reminders, generated PDFs, e-signature | draft |
-| [`wl-notify`](modules/wl-notify.md) | Email, WhatsApp, SMS | draft |
-| [`wl-invoicing`](modules/wl-invoicing.md) | Quotations, invoices, subscriptions, rate cards, usage billing, costing, receivables, supplier bills, VAT summary | draft |
+| [`wl-documents`](modules/wl-documents.md) | Files, expiry reminders, generated PDFs, e-signature, SOP library with acknowledgements | draft |
+| [`wl-notify`](modules/wl-notify.md) | Email, WhatsApp, SMS, marketing broadcasts with consent | draft |
+| [`wl-invoicing`](modules/wl-invoicing.md) | Quotations, invoices, subscriptions, rate cards, usage billing, costing, receivables, supplier bills, VAT summary, company budget, cash-flow forecast | draft |
 | [`wl-payments`](modules/wl-payments.md) | Payments, payment links, cheques, deposits, cash custody, expense claims and petty cash, bank statement matching | draft |
-| [`wl-sales`](modules/wl-sales.md) | Leads, catalogue, orders, POS, packages, discounts, returns, credit limits | draft |
+| [`wl-sales`](modules/wl-sales.md) | Leads, campaigns and acquisition cost, catalogue, orders, POS, packages, discounts, loyalty, returns, credit limits | draft |
 | [`wl-ticketing`](modules/wl-ticketing.md) | Tickets, checklists, planned maintenance, recurring tasks, customer feedback, vendor service contracts | draft |
 | [`wl-delivery`](modules/wl-delivery.md) | Dispatch, runs, proof of delivery | draft |
 | [`wl-scheduling`](modules/wl-scheduling.md) | Resources, bookings, self-booking, reminders, waiting list | draft |
 | [`wl-attendance`](modules/wl-attendance.md) | Attendance, timesheets, rosters | draft |
-| [`wl-hr`](modules/wl-hr.md) | Employees, qualifications, visa cases, leave, payroll, WPS, final settlement | draft |
-| [`wl-inventory`](modules/wl-inventory.md) | Items, stock, purchasing, lots, BOMs, dispatch notes, assets | draft |
+| [`wl-hr`](modules/wl-hr.md) | Employees, onboarding, qualifications, visa cases, leave, payroll, WPS, final settlement | draft |
+| [`wl-inventory`](modules/wl-inventory.md) | Items, stock, purchasing, supplier scorecards, lots, BOMs, dispatch notes, assets | draft |
 | [`wl-operator`](modules/wl-operator.md) | **Ours, not the clients':** clients, provisioning, plans and entitlements, billing our clients, rollout, monitoring, support, demo instances | draft |
 
 ## Reconciliation

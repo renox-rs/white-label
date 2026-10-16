@@ -278,7 +278,7 @@ permission (for example in a depot with a single operations manager); the reques
 | `PTY.PTY.01` | Parties: clients, recipients, carriers, agents, suppliers | shared | wl-parties | MVP |
 | `PTY.KYC.01` | Identity fields: trade licence, TRN, driver Emirates ID and licence | shared | wl-parties | MVP |
 | `DOC.FIL.01` | Attach documents (shipping documents, POD, vehicle papers) | shared | wl-documents | MVP |
-| `DOC.EXP.01` | Expiry reminders (Mulkiya, insurance, permits, driving licences) | shared | wl-documents | MVP |
+| `DOC.EXP.01` | Expiry reminders (Mulkiya, insurance, permits, driving licences, trademark and other registrations) | shared | wl-documents | MVP |
 | `DOC.GEN.01` | Generate documents (labels, waybills, run sheets, remittance statements) | shared | wl-documents | MVP |
 | `FIN.QUO.01` | Quotations for freight jobs | shared | wl-invoicing | MVP |
 | `FIN.CST.01` | Job costing per freight job | shared | wl-invoicing | MVP |
@@ -309,7 +309,7 @@ permission (for example in a depot with a single operations manager); the reques
 | `HRM.EMP.01` | Driver and staff records with licences and documents | shared (**new**) | wl-hr | MVP |
 | `HRM.QUA.01` | Driving licences and RTA rider permits per driver, with the validity guard on run dispatch and delivery assignment | shared | wl-hr | MVP |
 | `STK.AST.01` | Asset register: vehicles | shared | wl-inventory | MVP |
-| `SAL.CRM.01` | Leads and enquiries pipeline | shared (**new**) | wl-sales | Later |
+| `SAL.CRM.01` | Leads and enquiries pipeline | shared (**new**) | wl-sales | MVP |
 | `PLT.ENT.01` | Legal entities: several trade licences and TRNs in one deployment; issuer on every document | shared | wl-kernel | MVP |
 | `PLT.IMP.01` | Data import and migration: Excel templates per entity, validation, dry run, rollback | shared | wl-kernel | MVP |
 | `PLT.SRC.01` | Global search across records, including Arabic names | shared | wl-kernel + Renox search | MVP |
@@ -331,6 +331,10 @@ permission (for example in a depot with a single operations manager); the reques
 | `LOG.TRK.02` | Live vehicle location from telematics devices | specific | apps/logistics | Later |
 | `LOG.COD.01` | COD collection and weekly remittance to clients | specific | apps/logistics | MVP |
 | `FIN.RAT.01` | Rate cards per client: each line priced per zone × weight, per trip or route, per hour or day, or per pallet or CBM (including storage per day); COD fee and surcharges (formerly `LOG.RAT.01`) | shared (**new**) | wl-invoicing | MVP |
+| `SAL.CRM.02` | Lead sources and campaigns: cost per campaign, conversion by source and channel, cost per lead, customer acquisition cost and return on ad spend | shared | wl-sales | MVP |
+| `FIN.CFL.01` | Cash-flow forecast: expected receipts and payments by week from invoices, supplier bills, scheduled charges, post-dated cheques, payroll and budgets | shared | wl-invoicing | MVP |
+| `FIN.BUD.01` | Company budget vs actual by period, category and entity; owner drawings kept apart from operating cost | shared | wl-invoicing | MVP |
+| `HRM.ONB.01` | Staff onboarding checklists per role and a library of SOP documents with acknowledgement | shared | wl-hr + wl-documents | MVP |
 | `LOG.JOB.01` | Freight jobs: mode, route, BL/AWB, containers, milestones | specific | apps/logistics | MVP |
 | `LOG.CUS.01` | Customs and free-zone documentation: declaration numbers, duties, delivery orders | specific | apps/logistics | MVP |
 | `LOG.FLT.01` | Fleet details: odometer, fuel logs, vehicle documents | specific | apps/logistics | MVP |
@@ -701,6 +705,20 @@ entries).
 this vertical): `LOG.RUL.10` (expired vehicle documents ground the vehicle), `DOC.RUL.03` for
 the blocking kinds in §9, and `WRK.RUL.15` (midday break).
 
+**Settings for the shared sales, finance, staff and document capabilities (03
+defaults):**
+
+| Setting | 03 value |
+|---|---|
+| Cash-flow forecast alert (`FIN.CFL.01`, `FIN.RUL.23`) | projected balance below AED 100,000 in any of the next 13 weeks (weeks start Monday): `FIN.RUL.23` alerts the company admin and the accountant, checked daily at 06:00; COD remittances to clients counted as payments on their schedule; disbursements by their recharge invoice; due dates adjusted by each client's average days late: on; disputed amounts counted: off |
+| Budget categories and approval (`FIN.BUD.01`, `FIN.RUL.24`) | categories (fuel, tolls and fines, vehicle maintenance, rent, staff, carriers) owned by the accountant and mapped to the export accounts; one budget per legal entity and month, approved by the company admin; `FIN.RUL.24` warns the category's owner role and the accountant when a month's actual reaches 100% of its line |
+| Owner drawings (`FIN.BUD.01`, `FIN.ACL.21`) | expense category and payment purpose *owner drawings*, kept out of operating cost and profit; every drawing (AED 0) approved by the company admin, never by the requester (`FIN.ACL.21`) |
+| Lead sources used (`SAL.CRM.02`) | referral, website, social, paid ads, partner (e-commerce platforms, freight agents), event, other; recorded on the lead (`SAL.CRM.01`) and carried to the client party when it converts; no source requires a campaign |
+| Campaign channels (`SAL.CRM.02`, `SAL.ACL.07`) | LinkedIn, search ads, email, trade events, marketplaces; converted value: the client's first invoice; a cost entry that takes a campaign over its budget needs a manager (`SAL.ACL.07`: on) |
+| Onboarding checklists (`HRM.ONB.01`, `HRM.RUL.16`, `HRM.RUL.17`, `HRM.ACL.10`) | templates for driver (licence and documents, vehicle handover, PWA and e-POD training, cash handover), hub staff, dispatcher and customer service, started by `HRM.RUL.16` when an employee record (`HRM.EMP.01`) is created; checklist steps use `WRK.CHK.01`; tasks to the operations manager, the line manager and the employee; the employee's own steps recorded only by them (`HRM.ACL.10`); `HRM.RUL.17` reminds overdue steps every 2 days and tells the operations manager and the line manager after 5 days; completion blocks nothing (run dispatch stays guarded by the driving licence) |
+| SOP library (`HRM.ONB.01`, `DOC.RUL.04`, `HRM.ACL.10`) | SOP owners: operations manager (dispatch, delivery, cash handover, hub) and fleet manager (daily vehicle check); required readers by role per depot; `DOC.RUL.04` asks each reader to acknowledge within 7 days, reminds every 3 days and tells the manager and the owner role after 7 days; acknowledged only by the reader (`HRM.ACL.10`); a new version asks for a new acknowledgement |
+| Registration and certification kinds (`DOC.EXP.01`, `DOC.RUL.01`) | *Trademark registration* and *Other certification* (subject: legal entity); responsible role company admin; `DOC.RUL.01` at 90, 30 and 7 days; no `blocks` |
+
 ## 8. Integrations
 
 | System | Purpose | Required for MVP | Access / notes |
@@ -827,7 +845,7 @@ written on the run sheet and entered later with the late-entry flag (§4.1).
   tracking timeline, delivery attempts, COD and remittances, rate cards, freight jobs,
   customs documentation, fleet details, fines and tolls, claims, subcontracted carriers,
   operations reports.
-- **Estimated reuse:** 57 of 72 capabilities (79%) come from shared modules or Renox. Among
+- **Estimated reuse:** 61 of 76 capabilities (80%) come from shared modules or Renox. Among
   them are 12 shared capabilities first needed here: multi-currency, SMS, proof of
   delivery, dispatch, employee records, leads, usage billing, rate cards, cash custody,
   disbursements, barcode scanning and the client API.
@@ -852,11 +870,15 @@ for drivers who do not hand over, remittance adjustment lines, returned transfer
 statement disputes, COD netting against invoices, document blocks on run dispatch, freight
 job holds, free-time alerts and reopening for late costs.
 
+**Also included:** leads with sources and campaigns (`SAL.CRM.01`, `SAL.CRM.02`), the
+cash-flow forecast (`FIN.CFL.01`), budget vs actual with owner drawings (`FIN.BUD.01`),
+onboarding checklists and SOPs (`HRM.ONB.01`) and trademark reminders (`DOC.EXP.01`).
+
 **Excluded from the MVP:** live vehicle tracking (telematics), route optimisation, client
 API and e-commerce plugins, outbound webhooks, WhatsApp, recipient delivery-slot choice,
 card-on-delivery, claims valuation from liability limits, subcontracted carriers, address geocoding services,
 customs system integration, warehouse management (bin locations, stock per client SKU,
-pick and pack), leads pipeline, accounting export.
+pick and pack), accounting export.
 
 ## 13. Open questions
 

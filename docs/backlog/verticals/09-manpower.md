@@ -1,6 +1,6 @@
 # Epic: 09 Manpower — negative flows
 
-> Status: draft · Last updated: 2026-10-15 · Spec version: same commit as this file
+> Status: draft · Last updated: 2026-10-16 · Spec version: same commit as this file
 
 This epic builds the negative flows that belong to the Manpower vertical itself: the new client
 contract lifecycle (credit hold, release, early termination, renewal and end with its
@@ -34,8 +34,8 @@ invoice and cheque behaviour lives in the module epics and is only configured he
 | BL-MPW-17 | Open and close an absence case (`MPW.RUL.09`) | high | m | Build 1 | Base: wl-ticketing Ticket lifecycle; BL-HRM-07; BL-HRM-18; BL-KRN-08 |
 | BL-MPW-18 | Escalate late visa case steps (`MPW.RUL.14`) | medium | s | Build 1 | Base: wl-hr Visa case lifecycle (step templates) |
 | BL-MPW-19 | Give wl-attendance the client approver, escalation contact and deemed-approval days | medium | s | Build 1 | BL-ATT-10; BL-ATT-11 |
-| BL-MPW-20 | 09: configure shared negative-flow settings (documents, parties, notifications, alerts, integrations) | high | m | Build 1 | BL-DOC-01; BL-DOC-02; BL-DOC-06; BL-PTY-03; BL-NTF-06; BL-KRN-05; BL-KRN-08; BL-TKT-11 |
-| BL-MPW-21 | 09: configure shared negative-flow settings (finance, attendance, payroll and HR) | high | m | Build 1 | BL-INV-01; BL-INV-04; BL-INV-10; BL-PAY-09; BL-ATT-02; BL-ATT-04; BL-ATT-10; BL-ATT-12; BL-HRM-04; BL-HRM-14; BL-HRM-15; BL-HRM-19; BL-HRM-25 |
+| BL-MPW-20 | 09: configure shared negative-flow settings (documents, parties, notifications, alerts, integrations) | high | m | Build 1 | BL-DOC-01; BL-DOC-02; BL-DOC-06; BL-PTY-03; BL-NTF-06; BL-KRN-05; BL-KRN-08; BL-TKT-11; BL-SAL-19; BL-SAL-20; BL-SAL-21; BL-HRM-26; BL-HRM-27; BL-HRM-28; BL-DOC-08; BL-DOC-09; BL-DOC-10 |
+| BL-MPW-21 | 09: configure shared negative-flow settings (finance, attendance, payroll and HR) | high | m | Build 1 | BL-INV-01; BL-INV-04; BL-INV-10; BL-PAY-09; BL-ATT-02; BL-ATT-04; BL-ATT-10; BL-ATT-12; BL-HRM-04; BL-HRM-14; BL-HRM-15; BL-HRM-19; BL-HRM-25; BL-INV-25; BL-INV-26; BL-INV-27; BL-INV-28; BL-INV-29; BL-INV-30; BL-PAY-25; BL-PAY-26 |
 
 ---
 
@@ -1437,7 +1437,7 @@ Escalation and deemed approval themselves (BL-ATT-10, BL-ATT-11).
 ### BL-MPW-20 — 09 Manpower: configure shared negative-flow settings (documents, parties, notifications, alerts, integrations)
 
 **Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `blocked:open-item` · **Milestone:** Build 1 · **Size:** m
-**Depends on:** BL-DOC-01 · BL-DOC-02 · BL-DOC-06 · BL-PTY-03 · BL-NTF-06 · BL-KRN-05 · BL-KRN-08 · BL-TKT-11 (*labour case* category) · **Blocks:** None
+**Depends on:** BL-DOC-01 · BL-DOC-02 · BL-DOC-06 · BL-PTY-03 · BL-NTF-06 · BL-KRN-05 · BL-KRN-08 · BL-TKT-11 (*labour case* category) · BL-SAL-19 · BL-SAL-20 · BL-SAL-21 · BL-HRM-26 · BL-HRM-27 · BL-HRM-28 · BL-DOC-08 · BL-DOC-09 · BL-DOC-10 · **Blocks:** None
 **Review items:** X-13, X-18, X-19, X-20
 
 #### Goal
@@ -1446,6 +1446,10 @@ payroll: which document kinds block which deployment and attendance transitions 
 can be overridden, the block effect for deployments, message give-up reactions, which rules are
 compliance-critical and who the owner is, who sees confidential tickets (labour cases), and the
 manual fallbacks when an integration is down.
+It also seeds the 09 values for lead sources and campaigns (`SAL.CRM.02`), onboarding and SOPs
+(`HRM.ONB.01`) and registration kinds (`DOC.EXP.01`), added on 2026-10-16: `SAL.ACL.07`,
+`HRM.RUL.16`, `HRM.RUL.17`, `HRM.ACL.10`, `DOC.RUL.04` and `DOC.RUL.01`. Onboarding
+checklist steps use `WRK.CHK.01` (MVP in 09 since 2026-10-16).
 
 #### Files to read
 - `docs/verticals/09-manpower.md` §3.2 (ticket visibility paragraph), §3.3 (`MPW.ACL.07`),
@@ -1454,6 +1458,9 @@ manual fallbacks when an integration is down.
 - `docs/modules/wl-documents.md` §5.6, §7 · `docs/modules/wl-parties.md` §5.6, §7 ·
   `docs/modules/wl-notify.md` §5.4, §7 · `docs/modules/wl-kernel.md` §7 (owner alert, integration
   down)
+- `docs/modules/wl-sales.md` §4.6, §5.8 and §7 (campaigns, sources); `docs/modules/wl-hr.md`
+  §5.8 and §7 (onboarding); `docs/modules/wl-documents.md` §3, §5.7 and §7 (SOPs, registration
+  kinds)
 - `docs/OPEN-ITEMS.md` L-19, AU-11, AU-12
 
 #### Terms
@@ -1483,6 +1490,11 @@ manual fallbacks when an integration is down.
 | Integration fallback — SMS | give-up → task to HR via site supervisor | §8 |
 | Integration fallback — attendance | paper, entered late (`HRM.ACL.01` 1 day back, late-entry flag) | §8 |
 | Integration fallback — ASP (e-invoicing) | invoices still issued and sent as PDF while the ASP is down (`FIN.RUL.16`) | §8 |
+| Lead sources used (`SAL.CRM.02`) | referral, website, paid ads, partner, event, other; on prospective client leads (`SAL.CRM.01`); no source requires a campaign | §5; §7.2 settings |
+| Campaign channels (`SAL.CRM.02`, `SAL.ACL.07`) | LinkedIn, search ads, email, industry events; converted value: the first client contract's first invoice; a cost entry that takes a campaign over its budget needs a manager (`SAL.ACL.07`: on) | §5; §7.2 settings |
+| Onboarding checklists (`HRM.ONB.01`, `HRM.RUL.16`, `HRM.RUL.17`, `HRM.ACL.10`) | templates for worker (deployment induction, PPE, site pass), recruiter, site supervisor and account manager, started by `HRM.RUL.16` when an employee is created in `onboarding` (`HRM.EMP.01`); induction and PPE steps use `WRK.CHK.01` checklists with photos and the worker's signature; tasks to the HR / payroll officer, the account manager and the employee; the employee's own steps recorded only by them, in the worker portal or in person with a drawn signature and a staff witness (`HRM.ACL.10`); `HRM.RUL.17` reminds overdue steps every 2 days and tells the HR / payroll officer and the line manager after 5 days; visa steps stay in visa cases; completion blocks nothing (deployment stays guarded by documents) | §5; §7.2 settings |
+| SOP library (`HRM.ONB.01`, `DOC.RUL.04`, `HRM.ACL.10`) | SOP owners: HR / payroll officer (HR and payroll SOPs) and account manager (client-site rules per contract); required readers by role; `DOC.RUL.04` asks each reader to acknowledge within 7 days, reminds every 3 days and tells the manager and the owner role after 7 days; workers acknowledge in the worker portal or in person with a drawn signature and a staff witness, never by someone else (`HRM.ACL.10`); a new version asks for a new acknowledgement | §5; §7.2 settings |
+| Registration and certification kinds (`DOC.EXP.01`, `DOC.RUL.01`) | *Trademark registration* and *Other certification* (subject: legal entity); responsible role MD; `DOC.RUL.01` at 90, 30 and 7 days; no `blocks` | §5; §7.2 settings |
 
 #### Edge cases decided
 - **Legal blocks (L-19):** `never` is seeded and locked; when L-19 is answered the seed changes,
@@ -1530,6 +1542,20 @@ manual fallbacks when an integration is down.
       in the MVP); for attendance, a supervisor enters yesterday's paper attendance, which is
       saved with the late-entry flag, while an entry two days back is refused (`HRM.ACL.01`,
       1 day back).
+- [ ] **Lead sources:** a new lead or party offers the sources referral, website, paid ads,
+      partner, event and other; a campaign with channel *LinkedIn*, a budget and cost entries
+      reports leads, conversion, cost per lead, CAC and ROAS; a cost entry over the budget waits
+      for a manager (`SAL.ACL.07`).
+- [ ] **Onboarding and SOPs:** hiring a worker creates the worker checklist with tasks to the HR /
+      payroll officer, the account manager and the employee (`HRM.RUL.16`), its PPE step is a
+      `WRK.CHK.01` checklist signed by the worker, and the role is active before it is complete;
+      a step open 2 days past its due date reminds its assignee (`HRM.RUL.17`); an HR user
+      cannot mark the worker's own step done without the worker's signature and a witness
+      (`HRM.ACL.10`); a new version of an SOP owned by the HR / payroll officer asks every
+      required reader to acknowledge again within 7 days (`DOC.RUL.04`).
+- [ ] **Registrations:** a fresh 09 deployment lists *Trademark registration* and *Other
+      certification* with responsible role MD; a trademark registration expiring in 90 days
+      notifies the MD.
 
 #### Out of scope
 Finance, attendance and payroll values (BL-MPW-21); the mechanisms (module epics).
@@ -1539,7 +1565,7 @@ Finance, attendance and payroll values (BL-MPW-21); the mechanisms (module epics
 ### BL-MPW-21 — 09 Manpower: configure shared negative-flow settings (finance, attendance, payroll and HR)
 
 **Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `blocked:open-item` · **Milestone:** Build 1 · **Size:** m
-**Depends on:** BL-INV-01 · BL-INV-04 · BL-INV-10 · BL-PAY-09 · BL-ATT-02 · BL-ATT-04 · BL-ATT-10 · BL-ATT-12 · BL-HRM-04 · BL-HRM-14 · BL-HRM-15 · BL-HRM-19 · BL-HRM-25 · **Blocks:** None
+**Depends on:** BL-INV-01 · BL-INV-04 · BL-INV-10 · BL-PAY-09 · BL-ATT-02 · BL-ATT-04 · BL-ATT-10 · BL-ATT-12 · BL-HRM-04 · BL-HRM-14 · BL-HRM-15 · BL-HRM-19 · BL-HRM-25 · BL-INV-25 · BL-INV-26 · BL-INV-27 · BL-INV-28 · BL-INV-29 · BL-INV-30 · BL-PAY-25 · BL-PAY-26 · **Blocks:** None
 **Review items:** X-01, X-02, X-04, X-05, X-15, X-16, 09-N4-a, 09-N5-b, 09-N5-c, 09-N5-d, 09-N7-a, 09-N7-b, 09-N11-b
 
 #### Goal
@@ -1547,11 +1573,16 @@ Seed the 09 values for the money, attendance and payroll mechanisms built in the
 invoice write-off, disputes from the portal, cheque bounce handling, e-invoice rejection,
 attendance flags and escalation, provisional payroll at the cut-off, WPS alerts, recovery caps,
 pay account change control, exit approvals and the settlement deadline.
+It also seeds the 09 values for the cash-flow forecast alert (`FIN.CFL.01`) and the
+company budget with owner drawings (`FIN.BUD.01`), added on 2026-10-16: `FIN.RUL.23`,
+`FIN.RUL.24` and `FIN.ACL.21`.
 
 #### Files to read
 - `docs/verticals/09-manpower.md` §3.3 (`HRM.ACL.05`–`09`), §4.3, §4.4, §4.7 "When it goes wrong"
   tables, §7 (reused machines paragraph), §7.1 *Visa case* intro and *Pay account* note, §7.2, §9
 - Configuration tables (§7) of `wl-invoicing`, `wl-payments`, `wl-attendance`, `wl-hr`
+- `docs/modules/wl-invoicing.md` §5.14–§5.16 and §7 (cash-flow forecast, company budget, owner
+  drawings); `docs/modules/wl-payments.md` (open cheques, owner-drawings payments)
 - `docs/OPEN-ITEMS.md` L-23, L-24, L-25, L-26, O-01
 
 #### Terms
@@ -1587,6 +1618,9 @@ pay account change control, exit approvals and the settlement deadline.
 | Visa step templates | per emirate, with the *cancellation* variants *standard*, *absconding* (starts from the MoHRE absence report, no worker signature) and *death* (starts from the death certificate) | §7.1 *Visa case* |
 | Payroll and settlement SoD (`HRM.ACL.04`) | on | §3.3 |
 | Salary change approval (`MPW.ACL.06`) | above 10%, MD | §3.3 |
+| Cash-flow forecast alert (`FIN.CFL.01`, `FIN.RUL.23`) | projected balance below AED 250,000 in any of the next 13 weeks (weeks start Monday): `FIN.RUL.23` alerts the MD and the accountant, checked daily at 06:00; payroll by the WPS due date; visa and insurance costs by their schedule; due dates adjusted by each client's average days late: on; disputed amounts counted: off | §5; §7.2 settings |
+| Budget categories and approval (`FIN.BUD.01`, `FIN.RUL.24`) | categories (payroll, visa and insurance costs, accommodation, transport, office) owned by the accountant and mapped to the export accounts; approved by the MD; `FIN.RUL.24` warns the category's owner role and the accountant when a month's actual reaches 100% of its line | §5; §7.2 settings |
+| Owner drawings (`FIN.BUD.01`, `FIN.ACL.21`) | expense category and payment purpose *owner drawings*, kept out of operating cost, margin and profit; every drawing (AED 0) approved by the MD, never by the requester (`FIN.ACL.21`) | §5; §7.2 settings |
 
 #### Edge cases decided
 - **Open legal items:** negative settlement offset (L-23), withholding from absconded workers
@@ -1623,6 +1657,14 @@ pay account change control, exit approvals and the settlement deadline.
 - [ ] **Settlement:** given a last working day (end of the contract) of 2026-11-30 and the
       settlement not `paid`, HR and the accountant are alerted on 2026-12-10 and the MD on
       2026-12-14.
+- [ ] **Cash-flow forecast:** in a fresh 09 deployment, a projected balance of AED 249,999 in week
+      5 alerts the MD and the accountant once (`FIN.RUL.23`, 06:00 run); AED 250,000 or more in
+      every week alerts no one; the forecast shows 13 weekly buckets from Monday.
+- [ ] **Budget and drawings:** a monthly budget for a legal entity prepared by the accountant
+      needs approval by the MD; an expense with category *owner drawings* is left out of operating
+      cost and profit reports, and the user who records it cannot approve it (`FIN.ACL.21`); an
+      expense line reaching 100% of its month's budget line warns the category's owner role and
+      the accountant once (`FIN.RUL.24`).
 
 #### Out of scope
 Document, party, notification and integration values (BL-MPW-20); the mechanisms (module epics).

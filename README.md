@@ -16,19 +16,19 @@ stock, scheduling, HR and more. Only the vertical's own workflows differ.
 
 | # | Vertical | Who it is for | Reuse from shared modules |
 |---|---|---|---|
-| 01 | [Property & building management](docs/verticals/01-property.md) | Leases, Ejari, PDCs, maintenance, owner statements | 78% |
-| 02 | [Construction & fit-out](docs/verticals/02-construction.md) | Subcontractors: IPAs, retention, variations, site labour | 77% |
-| 03 | [Logistics & freight](docs/verticals/03-logistics.md) | Last-mile delivery, COD, freight forwarding | 79% |
-| 04 | [Accounting firms](docs/verticals/04-accounting.md) | VAT and corporate tax filing, AML/CDD, fractional CFO | 76% |
-| 05 | [Private clinics](docs/verticals/05-clinics.md) | Appointments, insurance claims, licences | 84% |
-| 06 | [Cloud kitchens & F&B](docs/verticals/06-fnb.md) | Aggregators, own delivery, recipes, food safety | 73% |
-| 07 | [Light manufacturing](docs/verticals/07-manufacturing.md) | Work orders, lots, quality, landed cost | 84% |
-| 08 | [Auto parts & fleet services](docs/verticals/08-auto.md) | Workshop job cards, insurance repairs, parts sales | 80% |
-| 09 | [Manpower supply](docs/verticals/09-manpower.md) | Deployments, timesheets, visas, WPS payroll | 85% |
-| 10 | [Training centres & EdTech](docs/verticals/10-edtech.md) | Batches, enrolments, tutors, certificates | 79% |
+| 01 | [Property & building management](docs/verticals/01-property.md) | Leases, Ejari, PDCs, maintenance, owner statements | 80% |
+| 02 | [Construction & fit-out](docs/verticals/02-construction.md) | Subcontractors: IPAs, retention, variations, site labour | 79% |
+| 03 | [Logistics & freight](docs/verticals/03-logistics.md) | Last-mile delivery, COD, freight forwarding | 80% |
+| 04 | [Accounting firms](docs/verticals/04-accounting.md) | VAT and corporate tax filing, AML/CDD, fractional CFO | 78% |
+| 05 | [Private clinics](docs/verticals/05-clinics.md) | Appointments, insurance claims, licences | 85% |
+| 06 | [Cloud kitchens & F&B](docs/verticals/06-fnb.md) | Aggregators, own delivery, recipes, food safety | 76% |
+| 07 | [Light manufacturing](docs/verticals/07-manufacturing.md) | Work orders, lots, quality, landed cost | 85% |
+| 08 | [Auto parts & fleet services](docs/verticals/08-auto.md) | Workshop job cards, insurance repairs, parts sales | 81% |
+| 09 | [Manpower supply](docs/verticals/09-manpower.md) | Deployments, timesheets, visas, WPS payroll | 86% |
+| 10 | [Training centres & EdTech](docs/verticals/10-edtech.md) | Batches, enrolments, tutors, certificates | 81% |
 
-Across the ten verticals there are 249 distinct capabilities. 100 of them are shared, so each
-vertical adds only 9–25 of its own ([capability map](docs/CAPABILITY-MAP.md)).
+Across the ten verticals there are 254 distinct capabilities. 106 of them are shared, so each
+vertical adds only 9–24 of its own ([capability map](docs/CAPABILITY-MAP.md)).
 
 ## What makes it different
 

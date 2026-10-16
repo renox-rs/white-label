@@ -1,12 +1,13 @@
 # wl-sales
 
-> Status: draft · Last updated: 2026-10-15
+> Status: draft · Last updated: 2026-10-16
 
 ## 1. Purpose
 
 Everything between "someone is interested" and "goods or services are handed over and
-billable": leads, what the business sells and at what price, orders from every channel,
-counter sales, prepaid packages, discounts, returns and credit control. The module owns the
+billable": leads and the campaigns that bring them, what the business sells and at what
+price, orders from every channel, counter sales, prepaid packages, discounts, loyalty, returns
+and credit control. The module owns the
 commercial side of a sale. Stock (`wl-inventory`), delivery (`wl-delivery`), invoices
 (`wl-invoicing`) and payments (`wl-payments`) do the rest, and each vertical adds its own
 fulfilment, for example the F&B kitchen or the workshop job card.
@@ -17,7 +18,8 @@ fulfilment, for example the F&B kitchen or the workshop job card.
 
 | ID | Capability | Used by verticals | Scope |
 |---|---|---|---|
-| `SAL.CRM.01` | Leads and enquiries pipeline | 03 ○, 04 ○, 05 ○, 07 ○, 08 ○, 09 ○, 10 ● | MVP (10), Later elsewhere |
+| `SAL.CRM.01` | Leads and enquiries pipeline | 02 ●, 03 ●, 04 ●, 05 ●, 06 ●, 07 ●, 08 ●, 09 ●, 10 ● | MVP |
+| `SAL.CRM.02` | Lead sources and campaigns: cost per campaign, conversion by source and channel, cost per lead, customer acquisition cost and return on ad spend | 01–10 ● | MVP |
 | `SAL.CAT.01` | Sellable catalogue and price lists | 05 ●, 06 ●, 07 ●, 08 ●, 10 ● | MVP |
 | `SAL.ORD.01` | Sales orders from every channel | 06 ●, 07 ●, 08 ● | MVP |
 | `SAL.POS.01` | Counter sale / point of sale with receipt and day closing (absorbs `FNB.CSH.01`) | 06 ● (counter takeaway and daily closing; dine-in Later), 08 ● | MVP |
@@ -25,10 +27,15 @@ fulfilment, for example the F&B kitchen or the workshop job card.
 | `SAL.DSC.01` | Discounts and promo codes (formerly `FNB.PRM.01`) | 06 ●, 10 ● | MVP |
 | `SAL.RET.01` | Sales returns with inspection, credit note or refund, restocking (formerly `MFG.RTN.01`) | 07 ○, 08 ● | MVP (08) |
 | `SAL.CRD.01` | Customer credit limits, credit check and credit hold | 07 ●, 08 ● | MVP |
+| `SAL.LOY.01` | Loyalty and retention: points or visit rewards, customer segments, and retention campaigns sent with marketing consent (formerly `FNB.LOY.01`) | 05 ●, 06 ●, 08 ●, 10 ● | MVP |
 
-`SAL.CRM.01` is a candidate for 01: enquiries and viewings (`PRP.LEA.01`, Later) are marked
-there as a candidate for a shared CRM. Manual discounts in 05 and 08 use `SAL.ACL.02` without
-the `SAL.DSC.01` rule engine.
+`SAL.CRM.01` became MVP in every vertical that lists it (2026-10-16), because `SAL.CRM.02`
+needs leads; 02 uses it for tenders and enquiries from main contractors, 06 for corporate
+catering and B2B. 01 keeps its enquiries and viewings (`PRP.LEA.01`, apps/property) and uses
+`SAL.CRM.02` on top: source and campaign on the enquiry and on the tenant or buyer party.
+`SAL.CRM.02` also works without leads: the source and campaign of a party are recorded when
+it is created, so a counter or walk-in business still sees acquisition by source. Manual
+discounts in 05 and 08 use `SAL.ACL.02` without the `SAL.DSC.01` rule engine.
 
 ## 3. Concepts and entities
 
@@ -37,7 +44,7 @@ to the parties that buy on terms.
 
 | Entity | Description | Important fields |
 |---|---|---|
-| Lead | An enquiry not yet converted | party (may be a new, unverified party), source, interest (catalogue items or free text), owner (staff), next action date, lost reason, converted subject, status |
+| Lead | An enquiry not yet converted | party (may be a new, unverified party), source (from the lead source list), campaign (optional; set from the campaign code of a web form link or promo code, or by staff), interest (catalogue items or free text), owner (staff), next action date, lost reason, converted subject, status |
 | Catalogue item | Something that can be sold | code, external code (e.g. CPT for a clinic service, OEM number for a part), names EN/AR, type (`product` linked to a stock item, `service`, `bundle`, `package`, `membership`, `course`), brands (multi-brand clients), photo, unit and sales units with fixed conversions (from the wl-inventory item), VAT category, default price, single-unit price (values unused package credits), payment options (upfront, instalment plan through `FIN.BIL.01`), refund policy (per item, applied by the vertical, e.g. EdTech's tiered default), duration and resources (bookable services, wl-scheduling), trial or placement test offered (EdTech), sale restrictions (e.g. *export only*, *regulated*; enforced by the vertical, `MFG.ACL.11`), sellable channels, option groups, active |
 | Option group | Choices on an item (F&B modifiers, sizes, add-ons) | item, name, min/max choices, options with price deltas and recipe effect (stock item and quantity, wl-inventory) |
 | Price list | A set of prices | name, currency, VAT-inclusive flag, applies to (customer, customer group or tier, channel, branch), validity, lines (item, unit price, minimum quantity) |
@@ -53,10 +60,24 @@ to the parties that buy on terms.
 | Discount rule | A reusable discount | name, kind (percentage, amount, fixed price), applies to (items, categories, whole order), eligibility (party group, related parties, date window, minimum spend, promo code), stacking allowed, usage limit per code and per party, validity |
 | Promo code | A code that activates a discount rule | code, rule, uses, max uses, valid to |
 | Sales return | Goods coming back, or a refund after completion with nothing to return | number, kind (*goods*, or *no goods* for food and services), original sale (order or counter sale) and lines, reason, complaint category, responsible party, linked ticket, recall (when the goods are under a `wl-inventory` recall), quantity, condition, lot, resolution (credit note, refund, replacement, refunded by the channel), restocking fee, status |
+| Lead source | Where a lead or a customer came from (`SAL.CRM.02`) | code, name EN/AR, active. Seeded: referral, walk-in, website, social, paid ads, aggregator, event, partner, other; the client may add more but not delete a source in use |
+| Party acquisition | How a party became a customer, kept per party (`SAL.CRM.02`) | party, source, campaign (optional), set from (lead, staff, web form, promo code), first sale (`Subject`: the first confirmed sales order, completed counter sale, issued invoice, or the vertical's conversion record such as a lease, enrolment or engagement), first sale date, first sale value (excluding VAT), acquired at |
+| Campaign | A paid or unpaid marketing action with a period (`SAL.CRM.02`), or a message to a segment (`SAL.LOY.01`) | name, code (unique; used in web form links and linked promo codes), purpose (`acquisition`, `retention`), marketing channel (Google, Meta, TikTok, other online, print, radio or outdoor, event, email, SMS, WhatsApp, partner, other; not the order *Channel*), lead source it implies (e.g. *paid ads*), brand, branch (optional), start, end, budget (AED), promo code (optional, `SAL.DSC.01`), retention only: segment, notification template, message channel, send time, status |
+| Campaign cost entry | Money spent on a campaign | campaign, date, amount excluding VAT, description, supplier bill line (optional, `wl-invoicing`), entered by; an entry linked to a bill takes its amount from the bill line |
+| Loyalty programme | The earn and redeem terms of the client (`SAL.LOY.01`) | name, brand (one programme per brand at most), earn kind (`per_aed`: points per AED spent; `per_visit`: one visit per qualifying sale), earn rate (points per AED, or visits per reward), minimum qualifying amount, excluded items or categories, point value (AED per point), minimum points to redeem, maximum share of a sale paid with points, visit reward (fixed discount or a free catalogue item), points validity (months after earning), terms version, active |
+| Loyalty account | A party's membership | programme, party, enrolled at, enrolled by (staff, portal, counter), terms version accepted, points balance, visits since the last reward, status (`active`, `closed`) |
+| Points movement | A change to a loyalty account | account, kind (`earn`, `redeem`, `reverse_earn`, `reverse_redeem`, `expire`, `adjust`), points (or visits), AED value, source `Subject` (counter sale, sales order, invoice, sales return, credit note), earn lot expiry date (earn), lot consumed (redeem, expire), reason and approval (adjust), user, time |
+| Customer segment | A saved set of rules that selects parties (`SAL.LOY.01`) | name, rules (days since last sale, spend in a period, number of sales, items or categories bought, loyalty balance, branch, party group, enrolled in loyalty), combined with *all* or *any*, evaluated when used, last member count |
 | Credit check | Result of checking an order | order, exposure (open invoices + uncleared post-dated cheques + confirmed orders not yet invoiced), overdue beyond grace, order value, customer limit, group exposure and combined limit, result, time |
 
 Vertical fields (for example a vehicle on an auto parts order, or a recipient's Makani number)
 are custom fields or vertical tables that reference the sales order as a `Subject`.
+
+The source and campaign of a party live in its *party acquisition* record here, not on the
+`wl-parties` record, so that a party bought by several brands of the client keeps one record
+per client and the attribution stays in the module that reports on it. Source is required
+when a party gets its first sale (staff pick it; a web form or a promo code sets it); a party
+created before `SAL.CRM.02` was turned on is shown as *unknown*.
 
 ## 4. Lifecycles
 
@@ -77,7 +98,7 @@ listed in each *Vertical mapping* table.
 |---|---|---|---|---|---|
 | `contact` | new | contacted | `leads.manage` | contact note recorded | — |
 | `qualify` | contacted | qualified | `leads.manage` | qualification fields set (configurable per vertical) | — |
-| `win` | contacted, qualified | won | system (conversion event) | — | converted `Subject` and source recorded; event `LeadWon` |
+| `win` | contacted, qualified | won | system (conversion event) | — | converted `Subject` and source recorded; the party acquisition takes the lead's source and campaign when the party has none yet; event `LeadWon` |
 | `lose` | new, contacted, qualified | lost | `leads.manage` | reason from the configured list | event `LeadLost` |
 | `reopen` | lost | contacted | `leads.manage` | — | — |
 
@@ -100,10 +121,12 @@ stateDiagram-v2
 | Vertical | Conversion event that runs `win` | Notes |
 |---|---|---|
 | 10 EdTech | enrolment activated | Source of the machine ([10-edtech.md](../verticals/10-edtech.md) §7.1). Trial booking is a `qualified` lead with a booking |
-| 05 Clinics | first booking completed | Campaign source required |
+| 05 Clinics | first booking completed | Source required; campaign required when the source is *paid ads* or *social* |
 | 04 Accounting | engagement letter signed | — |
+| 02 Construction | quotation or tender accepted (`FIN.QUO.01`), or the subcontract signed | Leads are tenders and enquiries from main contractors |
 | 03, 07, 08, 09 | quotation accepted (`FIN.QUO.01`) | — |
-| 01 Property (candidate, Later) | lease activated | Stays `PRP.LEA.01` in apps/property until 01 adopts `SAL.CRM.01`; viewings would be bookings on the lead (`SCH.BKG.01`) |
+| 06 F&B | quotation accepted (`FIN.QUO.01`) or first B2B order confirmed | Corporate catering and B2B only; consumers are counted through their party acquisition, not leads |
+| 01 Property | lease activated | No `SAL.CRM.01`: enquiries stay `PRP.LEA.01` in apps/property and carry source and campaign (`SAL.CRM.02`); the activated lease is the first sale of the tenant's party acquisition |
 
 ### 4.2 Sales order
 
@@ -461,14 +484,57 @@ are corrected with a new document.
 statement is a *no goods* return resolved *refunded by the channel*; the statement's `void`,
 or a dispute the aggregator resolves by taking the refund back, runs `reverse`.
 
+### 4.6 Campaign
+
+Small on purpose: a campaign is a period with a budget and costs. Attribution and reports
+are computed from leads and party acquisitions, never stored as states.
+
+| State | Tone | Terminal | Meaning |
+|---|---|---|---|
+| `draft` | neutral | no | Being prepared; its code cannot be used yet |
+| `active` | info | no | Running; leads and parties can be attributed to it |
+| `ended` | neutral | no | Past its end date or stopped; can be reopened |
+
+| Transition | From | To | By | Guards | Effects |
+|---|---|---|---|---|---|
+| `activate` | draft | active | `campaigns.manage`, or system (start date reached) | name, code, purpose, marketing channel, start set; retention: segment, approved template and message channel set (`SAL.LOY.01`); the vertical's guards pass (05: `CLN.ACL.13` when the campaign promotes services) | code usable in links and the linked promo code; retention: the send is requested from `wl-notify` for the send time (§5.10); event `CampaignActivated` |
+| `end` | active | ended | `campaigns.manage`, or system (end date passed) | — | new leads stop taking the campaign after the late-response days (§7); the linked promo code expires with it; event `CampaignEnded` |
+| `reopen` | ended | active | `campaigns.manage` | new end date in the future; retention: no second send (a new campaign is created for that) | — |
+
+```mermaid
+stateDiagram-v2
+  [*] --> draft
+  draft --> active: activate
+  active --> ended: end
+  ended --> active: reopen
+```
+
+A draft campaign is deleted, not cancelled. Cost entries may be added in any state, because
+bills often arrive after the end; one above the remaining budget needs a manager
+(`SAL.ACL.07`). A campaign with leads, acquisitions or cost entries is never deleted.
+
+**Vertical mapping:** no vertical had a campaign machine. 05 records the regulator's
+advertising permit on a campaign that promotes services (`CLN.ACL.13`).
+
+### 4.7 Loyalty account
+
+Two states, no diagram: `active` (earns and redeems) and `closed` (terminal; the party asked
+to leave, or the party was merged or erased under `wl-parties`). Closing an account with
+points forfeits them with an `adjust` movement (`SAL.ACL.07`); a closed account is never
+reopened, the party enrols again with a zero balance. Earn lots are consumed oldest expiry
+first by `redeem` and `expire`.
+
 ## 5. Workflows
 
 ### 5.1 Lead to customer
 
 1. A lead is captured from a web form, the portal, an import or by staff. Source and
-   consent are recorded (`PTY.CNS.01`).
+   consent are recorded (`PTY.CNS.01`). A web form link with a campaign code sets the
+   campaign and its source.
 2. The owner contacts and qualifies it. Next-action dates drive the follow-up list.
-3. The vertical's conversion event runs `win`, and the lead's party becomes a customer.
+3. The vertical's conversion event runs `win`, and the lead's party becomes a customer. Its
+   party acquisition takes the lead's source and campaign, and the first sale is linked
+   when it happens.
 
 ### 5.2 Order to cash (B2B, on account)
 
@@ -549,6 +615,68 @@ or a dispute the aggregator resolves by taking the refund back, runs `reverse`.
    `credit.release` then requests *Clear account hold* and another approves (§4.2); the held
    orders are released one by one.
 
+### 5.8 Campaigns and acquisition reports (`SAL.CRM.02`)
+
+1. Marketing staff create a campaign with its marketing channel, period, budget and code,
+   and activate it (or it activates on its start date). Links to web forms and the linked
+   promo code carry the code.
+2. Costs are entered as they are spent, or linked to the supplier bill line of the agency or
+   the ad platform (`wl-invoicing`). An entry beyond the budget needs a manager.
+3. Every lead and every new party gets a source and, when known, a campaign. Attribution is
+   single and first-touch: the campaign of the lead that converted the party, otherwise the
+   campaign set on the party acquisition (by staff, a form or the promo code of the first
+   sale). A lead that arrives with the code after the campaign ended is still attributed
+   during the late-response days (§7), then gets the source only.
+4. The first sale of the party is linked when it happens (first confirmed sales order,
+   completed counter sale, issued invoice, or the vertical's conversion record). Its value
+   excluding VAT is the *converted value*; with the setting *attribution window*, the value
+   is the party's sales in the first N months instead.
+5. The acquisition report shows, per source, campaign, marketing channel, brand, branch and
+   period: leads, leads won, conversion rate (won ÷ leads), new customers (party
+   acquisitions with a first sale in the period), cost, cost per lead (cost ÷ leads),
+   customer acquisition cost (cost ÷ new customers) and return on ad spend (converted value
+   ÷ cost). Sources without campaigns show leads and conversion with no cost. Costs are
+   counted in the period of the entry date; leads and customers in the period they were
+   created or won. A ratio with a zero divisor shows "—", never zero.
+
+### 5.9 Loyalty (`SAL.LOY.01`)
+
+1. A customer enrols at the counter, in the portal or on the ordering site; the terms
+   version is recorded. Enrolment is not marketing consent: that is asked for separately
+   (`PTY.CNS.01`).
+2. A qualifying sale earns points or a visit (`SAL.RUL.07`): a completed counter sale, a
+   sales order reaching `fulfilled`, or a paid invoice for a sale not made through an order
+   or a counter sale (05 treatments, 10 courses). Points are computed on the amount the
+   member paid, excluding VAT, fees, tips, excluded items and the redeemed value; the share
+   paid by an insurer (`FIN.TPP.01`) or with package credits earns nothing. Each sale earns
+   once.
+3. At the next sale the member redeems points as a discount line *Loyalty redemption*
+   (`DiscountEngine`), within the minimum points and the maximum share of the sale. When
+   *confirm redemption by code* is on, the member confirms with a one-time code to their
+   mobile (`Notifier::send_otp`) or is logged in to the portal. A visit reward is redeemed
+   the same way. The redemption is applied after the other discounts and is not limited by
+   *Discount stacking*.
+4. A sales return or credit note on an earning sale reverses the earned points in proportion
+   (`reverse_earn`); the balance may go below zero and later earnings offset it, with no cash
+   recovery. A return of a sale that redeemed points gives the points back (`reverse_redeem`)
+   with their original expiry, or 30 days when that date has passed.
+5. Points expire per earn lot (`SAL.RUL.08`), with a reminder before. Manual adjustments
+   need a manager (`SAL.ACL.07`).
+6. The points liability report shows outstanding points and their AED value by age and
+   expiry month, per brand and entity, for the accountant.
+
+### 5.10 Segments and retention campaigns (`SAL.LOY.01`)
+
+1. Staff define a segment by rules, for example *no sale for 60 days and spend over AED 500
+   in the last year*, and preview its member count.
+2. A retention campaign names the segment, a marketing template and the message channel,
+   with a send time. On `activate` it asks `wl-notify` for a marketing broadcast
+   (`wl-notify` §5.3): the segment is evaluated at send time, and only members with marketing
+   consent for the channel and no opt-out receive it (`NTF.ACL.01`); send window, frequency
+   cap and approval follow `NTF.RUL.02` and `NTF.ACL.03`.
+3. The campaign report shows recipients, delivered, opted out, members who bought within the
+   response days after the send (§7) and their sales value, against the campaign's cost.
+
 ## 6. Interfaces to other modules
 
 **Provides**
@@ -560,7 +688,10 @@ or a dispute the aggregator resolves by taking the refund back, runs `reverse`.
 | `OrderFulfilment` | `fulfil(order, lines, quantities, source)` and `reverse(order, lines, quantities, source)`, called from `wl-inventory` and `wl-delivery` events and by vertical fulfilment; idempotent per source |
 | `PackageLedger` | `consume`, `reverse` and `balance` for a party and item, called by `wl-scheduling` and verticals |
 | `LeadConversion` | Mark a lead won from any vertical event |
-| `DiscountEngine` | Evaluate discount rules and promo codes for a cart; record usage |
+| `DiscountEngine` | Evaluate discount rules and promo codes for a cart, and a loyalty redemption line; record usage |
+| `CampaignAttribution` | `attribute(party or lead, source, campaign, set_from)` and `record_first_sale(party, subject, value)`, called by verticals whose first sale is their own record (01 lease, 04 engagement, 10 enrolment) |
+| `LoyaltyLedger` | `earn`, `redeem`, `reverse` and `balance` for a party, called by sales returns, `wl-invoicing` credit notes and verticals |
+| `Segments` | `members(segment, at)` for a retention campaign and for `wl-notify` broadcasts |
 
 **Consumes**
 
@@ -586,6 +717,9 @@ or a dispute the aggregator resolves by taking the refund back, runs `reverse`.
   scrap and wastage for cancelled lines; `LotTrace` to find whether a returned lot is
   recalled.
 - `wl-ticketing`: complaint tickets linked to a refund after completion.
+- `wl-invoicing` for `SAL.CRM.02` and `SAL.LOY.01`: supplier bill lines linked to campaign
+  cost entries; `InvoiceIssued` (first sale), `InvoicePaid` (earning for invoices not made
+  from an order or a counter sale), `CreditNoteIssued` (points reversal).
 - `wl-delivery`: delivery requests for orders with delivery method *deliver*. Events
   consumed only for orders delivered without a dispatch note (§4.2 *Fulfilment from
   deliveries*): `DeliveryDelivered` (`fulfil` for accepted quantities), `DeliveryReturned`
@@ -593,8 +727,9 @@ or a dispute the aggregator resolves by taking the refund back, runs `reverse`.
   kept; sales rep and customer told), `DeliveryReversed` (`reverse_fulfilment`),
   `DeliveryLost` (`reverse_fulfilment` when it was under review; lost lines to the sales
   rep's task).
-- `wl-notify`: confirmations, receipts, reminders. `wl-documents`: order confirmations,
-  receipts, Z reports.
+- `wl-notify`: confirmations, receipts, reminders; `send_otp` for redemption by code;
+  marketing broadcasts for retention campaigns, with their results (`BroadcastCompleted`).
+  `wl-documents`: order confirmations, receipts, Z reports.
 
 **Events emitted**
 
@@ -615,9 +750,12 @@ or a dispute the aggregator resolves by taking the refund back, runs `reverse`.
 | `ReturnResolved` | return resolved | return, kind, original sale, resolution, value, lot, complaint category, responsible party |
 | `ReturnReversed` | `reverse` | return, original sale, value, reason |
 | `CreditLimitChanged` | limit or terms approved | party, old and new values, approver |
+| `CampaignActivated`, `CampaignEnded` | campaign changes | campaign, purpose, marketing channel, period, budget |
+| `CustomerAcquired` | a party's first sale is linked | party, source, campaign, first sale, value |
+| `PointsEarned`, `PointsRedeemed`, `PointsReversed`, `PointsExpired`, `PointsAdjusted` | points movement | account, party, points, AED value, source |
 
 **Attaches to:** a sales order and a lead may reference any `Subject` as their source
-(quotation, booking, campaign). Package movements reference the `Subject` that consumed
+(quotation, booking, campaign). A campaign cost entry may reference a supplier bill line. Package movements reference the `Subject` that consumed
 them.
 
 **Permissions**
@@ -628,10 +766,12 @@ them.
 `credit.limits.propose`, `credit.limits.approve` · `pos.sell`, `pos.open_till`,
 `pos.close_till`, `pos.reopen_till`, `pos.review` · `packages.view`, `packages.sell`,
 `packages.extend`, `packages.adjust`, `packages.refund` · `discounts.manage`,
-`discounts.apply_manual` · `returns.request`, `returns.handle`.
+`discounts.apply_manual` · `returns.request`, `returns.handle` · `campaigns.view`,
+`campaigns.manage`, `campaigns.costs.manage`, `acquisition.reports.view` · `loyalty.view`,
+`loyalty.enrol`, `loyalty.redeem`, `loyalty.adjust`, `loyalty.manage`, `segments.manage`.
 
 **Shared access rules** (registered in [ACCESS-CONTROL.md](../ACCESS-CONTROL.md) §9, all
-`in use`)
+`in use`; `SAL.ACL.07` added 2026-10-16)
 
 | ID | Rule | Pattern | Parameter (default) | Generalises |
 |---|---|---|---|---|
@@ -641,8 +781,10 @@ them.
 | `SAL.ACL.04` | A completed counter sale is never edited or voided; it is reversed by a sales return with a credit note | `STA` | — | `AUT.ACL.06` |
 | `SAL.ACL.05` | Amending an order or cancelling a line after its fulfilment started needs a manager, as does choosing *finish to stock* or *scrap* or waiving the cancellation fee; the requester cannot approve | `STA`, `SOD` | any value | — |
 | `SAL.ACL.06` | A refund or credit after completion with nothing returned needs a complaint category and a responsible party; above a value it needs a manager, and whoever records it cannot approve it (not for resolution *refunded by the channel*, where no money leaves the business) | `LIM`, `SOD` | AED 50 | — |
+| `SAL.ACL.07` | A manual points adjustment above a number of points, or closing a loyalty account that still has points, needs a manager, and the requester cannot approve; a campaign cost entry that takes the campaign over its budget needs a manager | `LIM`, `SOD` | 500 points; any budget overrun | — |
 
-**Shared automations** (registered in [WORKFLOW.md](../WORKFLOW.md) §7, all `in use`)
+**Shared automations** (registered in [WORKFLOW.md](../WORKFLOW.md) §7, all `in use`;
+`SAL.RUL.07` and `SAL.RUL.08` added 2026-10-16)
 
 | ID | When | If | Then | Parameters (default) | Generalises |
 |---|---|---|---|---|---|
@@ -652,6 +794,8 @@ them.
 | `SAL.RUL.04` | N days after the dispatch of a *collect* order reaches `picked` (ready for collection) | not collected | notify the customer and the sales rep | N = 3 | `AUT.RUL.06` |
 | `SAL.RUL.05` | `ChequeBounced` (`wl-payments`) | the drawer has a customer account | set the account on hold (and the credit group when configured); run `hold` on its orders on account not yet dispatched; refuse new orders and counter sales on account until the account hold is cleared (*Clear account hold*, §4.2); notify the accountant and the sales rep | whole group: on | — |
 | `SAL.RUL.06` | `PaymentReceived` for an order | order is `cancelled` or `rejected`, or already fully paid, or `awaiting_payment` and the amount differs from the order total (partial or over-payment: it cannot confirm the order, which then times out) | request a full refund of that payment (`wl-payments` `Refunds`, reason *late payment*); notify the customer and the outlet or sales manager; the order stays as it is | — | — |
+| `SAL.RUL.07` | a qualifying sale completes (`CounterSaleCompleted`; sales order → `fulfilled`; `InvoicePaid` for an invoice not made from an order or a counter sale), or a sales return or credit note on such a sale is issued | the party has an `active` loyalty account; eligible amount ≥ the minimum; not yet earned (or reversed) for this source | `earn` points or a visit with the lot's expiry date, or `reverse_earn` in proportion; when visits reach the reward, the reward is made available and the member told | 1 point per AED 1; minimum AED 0; validity 12 months | — |
+| `SAL.RUL.08` | N days before an earn lot expires; and on its expiry date | points of the lot remain | notify the member (category *reminder*, opt-out respected); on the date, `expire` the rest of the lot | N = 30 | — |
 
 ## 7. Configuration per client
 
@@ -681,7 +825,18 @@ them.
 | Credit groups with a combined limit | off |
 | Counter sales on account | off (08: on) |
 | Discount stacking | off |
-| Lead sources, lost reasons, qualification fields | per vertical starter list |
+| Lead sources, lost reasons, qualification fields | seeded sources (§3 *Lead source*); lost reasons and qualification fields per vertical starter list |
+| Campaign required for sources (`SAL.CRM.02`) | none (05: *paid ads*, *social*) |
+| Late-response days after a campaign ends (leads still attributed) | 30 |
+| Attribution window for the converted value | first sale only (alternative: sales in the first N months, N = 12) |
+| Campaign cost over budget needs a manager (`SAL.ACL.07`) | on |
+| Loyalty programme (`SAL.LOY.01`): earn kind, rate, minimum, exclusions, point value, minimum to redeem, maximum share of a sale | off; when on: per AED, 1 point per AED 1, AED 0, none, AED 0.01 per point, 500 points, 100% (06: 50%) |
+| Points validity; expiry reminder (`SAL.RUL.08`) | 12 months; 30 days before |
+| Confirm redemption by a one-time code to the member | on |
+| Points given back on a return after their expiry | 30 days |
+| Manual points adjustment needing a manager (`SAL.ACL.07`) | above 500 points |
+| Retention campaign response days (bought after the send) | 30 |
+| Segment rules on clinical services (05) | off: segments in 05 use visit dates, spend and non-clinical items only |
 | Numbering | `SO-`, `RCPT-`, `RET-` + year + sequence |
 
 ## 8. Extension points
@@ -689,10 +844,13 @@ them.
 - **Strategy traits:** `PriceRule` (e.g. auto parts tier pricing, F&B channel prices),
   `CreditPolicy` (e.g. a fleet customer checked per contract), `ConversionRule` (which
   event wins a lead), `PackageConsumptionRule` (what consumes how many credits),
-  `ReturnPolicy`.
+  `ReturnPolicy`, `FirstSaleRule` (which record is a party's first sale, e.g. the 01 lease),
+  `EarnRule` (what earns how many points or visits), `SegmentRule` (add a rule kind, e.g. a
+  vehicle's next service due in 08).
 - **Events:** every event in §6. Vertical fulfilment (F&B kitchen, workshop) starts from
   `SalesOrderConfirmed` and reports back through `OrderFulfilment`.
-- **Custom fields:** on lead, catalogue item, customer account, sales order and order line.
+- **Custom fields:** on lead, catalogue item, customer account, sales order, order line and
+  campaign.
 - **Overridable views:** order confirmation, receipt (80 mm and A4), Z report, return note,
   portal order pages, catalogue cards.
 
@@ -705,6 +863,7 @@ them.
 | Receipts and Z reports | `Download::bytes` | PDF (R3), Arabic (R1); 80 mm thermal receipt layout (R21) |
 | Catalogue and price import (08 part master with cross-references from Excel) | import (CSV, row validation, templates) | R23 (Excel files, dry run, rollback window) |
 | Lead pipeline board | `kanban` block | — |
+| Acquisition and loyalty reports (by source, campaign, period) | grid with grouping, export | Charts on report pages: as for other module reports |
 | Approvals, settings, state machines | — | wl-kernel; R2; R12 |
 | Online payment for direct orders | renox-billing gateways (Stripe, Xendit) | Stripe and N-Genius through `wl-payments` (R17; N-Genius adapter is a gap) |
 | POS during a network outage | — | Offline queue: one shared Renox gap (R25), Later. The MVP is online only ([ARCHITECTURE.md](../ARCHITECTURE.md) §1 decision 4) |
@@ -728,16 +887,25 @@ them.
   was found in Cabinet Resolution 66 of 2023 [S5]; whether an expiry term is enforceable is
   `⚠ open: lawyer (L-08)`.
 - **Marketing:** leads and promo campaigns need a recorded consent (`PTY.CNS.01`, PDPL).
-  ✔ The client registers its alphanumeric SMS sender ID (one per brand) with e& and du
+  Retention campaigns go only to members with marketing consent for the channel and offer
+  an opt-out (`NTF.ACL.01`, [wl-notify](wl-notify.md) §10). ✔ The client registers its alphanumeric SMS sender ID (one per brand) with e& and du
   through its SMS provider under TDRA rules; promotional SMS use the `AD-` prefix [S6].
+- **Loyalty points:** a redemption is shown as a discount line on the sale. Whether points
+  redeemed reduce the taxable value of the discounted supply only (5% VAT on the price after
+  the redemption), and how points given away for free and their expiry are treated for VAT
+  and in the accounts (liability or provision), is `⚠ open: accountant (A-15)`; until answered, the
+  redemption line reduces the taxable amount of the sale it is on and the liability report
+  values points at the point value.
+- **Advertising by clinics:** a campaign that promotes health services needs the regulator's
+  permit before sending; 05 records it on the campaign (`CLN.ACL.13`, 05 §10).
 - **Amended and cancelled orders:** an amendment after an invoice was issued is corrected by
   a tax credit note or an additional invoice, never by editing the invoice. Whether a
   cancellation fee kept from a prepayment is consideration for a supply (5% VAT) or
   compensation outside the scope of VAT is `⚠ open: accountant (A-04)`; the fee line takes a
   configurable VAT category until this is answered.
 - **Audit:** price overrides, discounts above the limit, credit releases, order amendments
-  and revisions, cancellation outcomes, till variances and refunds are audited and visible in
-  reports.
+  and revisions, cancellation outcomes, till variances, refunds, campaign costs and points
+  adjustments are audited and visible in reports.
 
 ## 11. Out of scope
 
@@ -752,8 +920,9 @@ them.
 | Workshop job cards and supplier warranty recovery | `apps/auto` (`AUT.WAR.02`) |
 | Customer warranty claims | `wl-ticketing`, category *warranty* (formerly `AUT.WAR.01`) |
 | Third-party payer split (insurer and customer) | `wl-invoicing` (`FIN.TPP.01`) |
-| Loyalty points | `apps/fnb` (`FNB.LOY.01`); shared once a second vertical asks |
-| Sales commissions, marketing campaigns, CPQ, EDI | not planned |
+| Multi-touch attribution, ad platform imports (spend and clicks from Google or Meta), A/B tests, journeys | not planned; costs are entered or linked to supplier bills |
+| Sending messages, consent records | `wl-notify`, `wl-parties` (`PTY.CNS.01`) |
+| Sales commissions, CPQ, EDI | not planned |
 
 ## 12. Open questions
 
@@ -777,6 +946,14 @@ session, service charge and fee lines ([06-fnb.md](../verticals/06-fnb.md) §4.7
 charge (up to 10%) is allowed only for hotel- or tourism-licensed outlets, and Dubai adds a
 7% municipality fee for them [S7]; a mandatory service charge carries 5% VAT, voluntary tips
 passed to staff do not [S8].
+
+**Added for the SME problem map (2026-10-16):** `SAL.CRM.02` and `SAL.LOY.01` (gaps G1 and
+G4 of [the problem map](../reviews/2026-10-16-sme-problem-map.md) §3).
+
+7. Is a free points balance on a cash-paid sale a separate supply, and how is the points
+   liability booked? `⚠ open: accountant (A-15)` (§10). *(accountant)*
+8. Should a customer's points be shared across the brands of one client? Default: one
+   programme per brand, no sharing. *(clients 06, 08)*
 
 ## Sources
 

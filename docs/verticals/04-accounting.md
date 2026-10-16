@@ -280,7 +280,7 @@ users have no scope. Their access comes from party ownership (`OWN`).
 | `PTY.UBO.01` | Ownership structure and beneficial owners of a company party | shared (**new**) | wl-parties | MVP |
 | `PTY.SCR.01` | Sanctions and watch-list screening of parties, with re-screening and results log | shared (**new**) | wl-parties | MVP |
 | `DOC.FIL.01` | Attach documents (filings, acknowledgements, workpapers) | shared | wl-documents | MVP |
-| `DOC.EXP.01` | Expiry reminders (trade licences, passports, Emirates IDs of UBOs) | shared | wl-documents | MVP |
+| `DOC.EXP.01` | Expiry reminders (trade licences, passports, Emirates IDs of UBOs, trademark and other registrations of the firm) | shared | wl-documents | MVP |
 | `DOC.GEN.01` | Generate documents (proposal, engagement letter, KPI pack) | shared | wl-documents | MVP |
 | `DOC.SIG.01` | E-signature / acceptance (engagement letters, return approvals) | shared (**new**) | wl-documents | MVP |
 | `FIN.QUO.01` | Proposals (quotations) | shared | wl-invoicing | MVP |
@@ -304,7 +304,7 @@ users have no scope. Their access comes from party ownership (`OWN`).
 | `HRM.TMS.01` | Time entries against engagements and services | shared | wl-attendance | MVP |
 | `HRM.EMP.01` | Minimal staff records for time entries: person, team, cost rate (no payroll or visas) | shared | wl-hr | MVP |
 | `HRM.QUA.01` | FTA tax agent registration per staff member, with the validity guard on return filing | shared | wl-hr | MVP |
-| `SAL.CRM.01` | Leads and enquiries pipeline | shared | wl-sales | Later |
+| `SAL.CRM.01` | Leads and enquiries pipeline | shared | wl-sales | MVP |
 | `PLT.ENT.01` | Legal entities: several trade licences and TRNs in one deployment; issuer on every document | shared | wl-kernel | MVP |
 | `PLT.IMP.01` | Data import and migration: Excel templates per entity, validation, dry run, rollback | shared | wl-kernel | MVP |
 | `PLT.SRC.01` | Global search across records, including Arabic names | shared | wl-kernel + Renox search | MVP |
@@ -315,6 +315,10 @@ users have no scope. Their access comes from party ownership (`OWN`).
 | `FIN.VAT.01` | VAT summary per period and entity: output and input VAT, for the accountant | shared | wl-invoicing | MVP |
 | `FIN.EXP.01` | Expense claims and petty cash: submit with receipt, approve, reimburse, top up | shared | wl-payments | Later |
 | `FIN.BNK.01` | Bank statement import and matching of receipts to open invoices | shared | wl-payments | MVP |
+| `SAL.CRM.02` | Lead sources and campaigns: cost per campaign, conversion by source and channel, cost per lead, customer acquisition cost and return on ad spend | shared | wl-sales | MVP |
+| `FIN.CFL.01` | Cash-flow forecast: expected receipts and payments by week from invoices, supplier bills, scheduled charges, post-dated cheques, payroll and budgets | shared | wl-invoicing | MVP |
+| `FIN.BUD.01` | Company budget vs actual by period, category and entity; owner drawings kept apart from operating cost | shared | wl-invoicing | MVP |
+| `HRM.ONB.01` | Staff onboarding checklists per role and a library of SOP documents with acknowledgement | shared | wl-hr + wl-documents | MVP |
 | `ACC.KYC.01` | CDD risk assessment and rating, enhanced due diligence, approval | specific | apps/accounting | MVP |
 | `ACC.KYC.02` | Periodic CDD reviews scheduled by risk rating | specific | apps/accounting | MVP |
 | `ACC.AML.01` | AML case log for the MLRO, with goAML report references | specific | apps/accounting | MVP |
@@ -706,6 +710,20 @@ digest of voids and late entries).
 vertical's owner role, and the company admin): `ACC.RUL.04`, `ACC.RUL.05`, `ACC.RUL.09`,
 `ACC.RUL.12`, `PTY.RUL.01`, `PTY.RUL.02`, and `DOC.RUL.03` for the blocking kinds in §9.
 
+**Settings for the shared sales, finance, staff and document capabilities (04
+defaults):**
+
+| Setting | 04 value |
+|---|---|
+| Cash-flow forecast alert (`FIN.CFL.01`, `FIN.RUL.23`) | the firm's own cash: projected balance below AED 25,000 in any of the next 13 weeks (weeks start Monday): `FIN.RUL.23` alerts the partner and billing / admin, checked daily at 06:00; retainers by cycle date; due dates adjusted by each client's average days late: on; disputed amounts counted: off |
+| Budget categories and approval (`FIN.BUD.01`, `FIN.RUL.24`) | categories owned by billing / admin and mapped to the export accounts; one budget per legal entity and month, approved by a partner; `FIN.RUL.24` warns the category's owner role and billing / admin when a month's actual reaches 100% of its line |
+| Owner drawings (`FIN.BUD.01`, `FIN.ACL.21`) | expense category and payment purpose *owner drawings* (partner drawings), kept out of operating cost and profit; every drawing (AED 0) approved by a partner other than the requester (`FIN.ACL.21`) |
+| Lead sources used (`SAL.CRM.02`) | referral, website, social, paid ads, partner (banks, business setup consultants), event, other; recorded on the lead (`SAL.CRM.01`) and carried to the client party when the engagement letter is signed; no source requires a campaign |
+| Campaign channels (`SAL.CRM.02`, `SAL.ACL.07`) | search ads, LinkedIn, email newsletters, seminars and webinars; converted value: the first engagement's fees; a cost entry that takes a campaign over its budget needs a manager (`SAL.ACL.07`: on) |
+| Onboarding checklists (`HRM.ONB.01`, `HRM.RUL.16`, `HRM.RUL.17`, `HRM.ACL.10`) | templates for accountant / associate, tax specialist and billing / admin, started by `HRM.RUL.16` when an employee record (`HRM.EMP.01`) is created; checklist steps use `WRK.CHK.01`; tasks to the manager and the employee; the employee's own steps recorded only by them (`HRM.ACL.10`); `HRM.RUL.17` reminds overdue steps every 2 days and tells billing / admin (HR) and the manager after 5 days; completion blocks nothing (role activation not blocked) |
+| SOP library (`HRM.ONB.01`, `DOC.RUL.04`, `HRM.ACL.10`) | SOP owners: MLRO (the firm's AML and CDD procedures, read by every client-facing role) and manager (engagement, return and month-end close procedures); `DOC.RUL.04` asks each reader to acknowledge within 7 days, reminds every 3 days and tells the manager and the owner role after 7 days; acknowledged only by the reader (`HRM.ACL.10`); a new version asks for a new acknowledgement |
+| Registration and certification kinds (`DOC.EXP.01`, `DOC.RUL.01`) | *Trademark registration* and *Other certification* (subject: the firm's legal entity); responsible role partner; `DOC.RUL.01` at 90, 30 and 7 days; no `blocks` |
+
 ## 8. Integrations
 
 | System | Purpose | Required for MVP | Access / notes |
@@ -819,7 +837,7 @@ goAML are manual in the MVP, so their outages only delay the filing task.
 - **Specific to this vertical:** CDD and AML case management, engagements, tax profiles,
   compliance calendar generation, VAT and corporate tax return workflows, document request
   templates, month-end close templates, KPI packs, WIP billing, firm reports.
-- **Estimated reuse:** 48 of 63 capabilities (76%) come from shared modules or Renox.
+- **Estimated reuse:** 52 of 67 capabilities (78%) come from shared modules or Renox.
 
 ## 12. MVP scope
 
@@ -838,8 +856,12 @@ check on filing, KYC document blocks, sanctions list freshness, automatic AML ca
 confirmed match, CDD exit, neutral reasons, invoice disputes and bad-debt write-offs, KPI pack
 versions and withdrawal.
 
+**Also included:** the leads pipeline with sources and campaigns (`SAL.CRM.01`,
+`SAL.CRM.02`), the firm's cash-flow forecast (`FIN.CFL.01`), budget vs actual with partner
+drawings (`FIN.BUD.01`), onboarding and SOPs (`HRM.ONB.01`), trademark reminders (`DOC.EXP.01`).
+
 **Excluded from the MVP:** general ledger and bookkeeping, live accounting connectors, direct
-filing to EmaraTax or goAML, commercial screening providers, UAE PASS signing, lead pipeline,
+filing to EmaraTax or goAML, commercial screening providers, UAE PASS signing,
 online payment, WhatsApp, capacity planning, ESR, payroll processing for clients, audit
 engagement methodology (working papers per auditing standards).
 

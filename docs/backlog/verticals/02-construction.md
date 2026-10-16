@@ -1,6 +1,6 @@
 # Epic: 02 Construction — negative flows
 
-> Status: draft · Last updated: 2026-10-15 · Spec version: same commit as this file
+> Status: draft · Last updated: 2026-10-16 · Spec version: same commit as this file
 
 This epic builds the negative flows that the negative-flow review added to
 [02 Construction](../../verticals/02-construction.md): project termination with a final account,
@@ -29,8 +29,8 @@ absconding, write-off, cheques). Review items: D-04, D-05, 02-N1-a, 02-N2-a, 02-
 | BL-CON-14 | Warn before a contract notice deadline for a delay event (`CON.RUL.10`) | medium | s | Launch 02 | BL-CON-12 |
 | BL-CON-15 | Open an absence case for a worker who stops coming (`CON.RUL.08`) | medium | s | Launch 02 | Base: wl-attendance Attendance record lifecycle; BL-HRM-07; BL-TKT-11 |
 | BL-CON-16 | Hold a PO to an unregistered subcontractor on a Dubai project (`CON.ACL.13`) | medium | s | Launch 02 | Base: wl-inventory Purchase order lifecycle; BL-KRN-01 |
-| BL-CON-17 | 02: configure shared negative-flow settings — money and procurement | high | m | Launch 02 | BL-INV-01; BL-INV-04; BL-INV-10; BL-INV-13; BL-PAY-09; BL-PAY-24; BL-STK-01; BL-STK-03; BL-STK-07; BL-STK-08; BL-STK-27; BL-CON-03 |
-| BL-CON-18 | 02: configure shared negative-flow settings — labour and compliance | high | m | Launch 02 | BL-ATT-01 to BL-ATT-08; BL-HRM-01; BL-HRM-04; BL-HRM-07; BL-DOC-02; BL-DOC-04; BL-KRN-04; BL-KRN-08 |
+| BL-CON-17 | 02: configure shared negative-flow settings — money and procurement | high | m | Launch 02 | BL-INV-01; BL-INV-04; BL-INV-10; BL-INV-13; BL-PAY-09; BL-PAY-24; BL-STK-01; BL-STK-03; BL-STK-07; BL-STK-08; BL-STK-27; BL-CON-03; BL-INV-25; BL-INV-26; BL-INV-27; BL-INV-28; BL-INV-29; BL-INV-30; BL-PAY-25; BL-PAY-26; BL-STK-28; BL-STK-29; BL-STK-30; BL-STK-31 |
+| BL-CON-18 | 02: configure shared negative-flow settings — labour and compliance | high | m | Launch 02 | BL-ATT-01 to BL-ATT-08; BL-HRM-01; BL-HRM-04; BL-HRM-07; BL-DOC-02; BL-DOC-04; BL-KRN-04; BL-KRN-08; BL-SAL-19; BL-SAL-20; BL-SAL-21; BL-HRM-26; BL-HRM-27; BL-HRM-28; BL-DOC-08; BL-DOC-09; BL-DOC-10 |
 | BL-CON-19 | Make the client portal read-only after the final account | medium | s | Later | BL-CON-02; Base: wl-portal client portal (`POR.SLF.01`, Later in 02) |
 
 ---
@@ -1192,7 +1192,7 @@ PO SoD and revision (Epic wl-inventory: BL-STK-08).
 ### BL-CON-17 — 02 Construction: configure shared negative-flow settings — money and procurement
 
 **Labels:** `vertical:02-construction` `area:negative-flow` `priority:high` `blocked:open-item` `size:m` · **Milestone:** Launch 02 · **Size:** m
-**Depends on:** BL-INV-01 · BL-INV-04 · BL-INV-05 · BL-INV-10 · BL-INV-13 · BL-PAY-09 · BL-PAY-10 · BL-PAY-14 · BL-PAY-24 · BL-STK-01 · BL-STK-03 · BL-STK-04 · BL-STK-05 · BL-STK-07 · BL-STK-08 · BL-STK-27 · BL-PTY-03 · BL-KRN-01 · BL-CON-03 · **Blocks:** None.
+**Depends on:** BL-INV-01 · BL-INV-04 · BL-INV-05 · BL-INV-10 · BL-INV-13 · BL-PAY-09 · BL-PAY-10 · BL-PAY-14 · BL-PAY-24 · BL-STK-01 · BL-STK-03 · BL-STK-04 · BL-STK-05 · BL-STK-07 · BL-STK-08 · BL-STK-27 · BL-PTY-03 · BL-KRN-01 · BL-CON-03 · BL-INV-25 · BL-INV-26 · BL-INV-27 · BL-INV-28 · BL-INV-29 · BL-INV-30 · BL-PAY-25 · BL-PAY-26 · BL-STK-28 · BL-STK-29 · BL-STK-30 · BL-STK-31 · **Blocks:** None.
 **Review items:** X-01, X-02, X-04, X-05, X-08, X-18, 02-N10-a, 02 MEDIUM "PO revision", "site stock counts" (review §6)
 
 #### Goal
@@ -1201,6 +1201,10 @@ write-off, invoice disputes, e-invoice rejection, bounced client cheques, reject
 returns to suppliers, PO revision, stock count variances, party block effects for suppliers, and
 non-chargeable snag tickets. Nothing new is built here; each value is configured in the 02 seed and
 checked by a test.
+It also seeds the 02 values for the cash-flow forecast alert (`FIN.CFL.01`), the company
+budget with owner drawings (`FIN.BUD.01`) and the supplier scorecard (`STK.SUP.01`), added on
+2026-10-16: `FIN.RUL.23`, `FIN.RUL.24`, `FIN.ACL.21`, `STK.RUL.09` and `STK.ACL.07`. The
+supplier scorecard moved here from BL-CON-18 on 2026-10-16, with the procurement settings.
 
 #### Files to read
 - `docs/verticals/02-construction.md` §3.3, §4.3, §4.4 (tables "When it goes wrong"), §7
@@ -1208,6 +1212,9 @@ checked by a test.
   settings")
 - The module settings sections (§7) of `docs/modules/wl-invoicing.md`, `wl-payments.md`,
   `wl-inventory.md`, `wl-parties.md`
+- `docs/modules/wl-invoicing.md` §5.14–§5.16 and §7 (cash-flow forecast, company budget, owner
+  drawings); `docs/modules/wl-payments.md` (open cheques, owner-drawings payments);
+  `docs/modules/wl-inventory.md` §5.9 (supplier scorecard and alternative suppliers)
 - `docs/OPEN-ITEMS.md` L-37
 
 #### Terms
@@ -1246,6 +1253,12 @@ checked by a test.
 | 21 | Snag and defect tickets | never chargeable | §7 intro |
 | **Payments** | | | |
 | 22 | Payment method *set-off* (BL-PAY-24) | on (back- and contra-charges set off against an IPA invoice, BL-CON-06) | §7 intro; §7.1 *IPA* `invoice` |
+| **Cash-flow forecast and budget** | | | |
+| 23 | Cash-flow forecast alert (`FIN.CFL.01`, `FIN.RUL.23`) | projected balance below AED 200,000 in any of the next 13 weeks (weeks start Monday): `FIN.RUL.23` alerts the MD and the accountant, checked daily at 06:00; certified IPAs by due date; retention releases on their expected release date; payroll by the WPS due date; due dates adjusted by each client's average days late: on; disputed amounts counted: off | §5; §7.2 settings |
+| 24 | Budget categories and approval (`FIN.BUD.01`, `FIN.RUL.24`) | company budget (overheads: office, yard, plant, staff) per legal entity and month; categories owned by the accountant and mapped to cost codes; approved by the MD; project budgets stay in job costing; `FIN.RUL.24` warns the category's owner role and the accountant when a month's actual reaches 100% of its line | §5; §7.2 settings |
+| 25 | Owner drawings (`FIN.BUD.01`, `FIN.ACL.21`) | expense category and payment purpose *owner drawings*, kept out of operating cost, project cost and profit; every drawing (AED 0) approved by the MD, never by the requester (`FIN.ACL.21`) | §5; §7.2 settings |
+| **Supplier scorecard** | | | |
+| 26 | Supplier scorecard review (`STK.SUP.01`, `STK.RUL.09`, `STK.ACL.07`) | score on a 0–100 scale over a 3-month window (grace 1 day, at least 3 receipts, module weights); below 70 `STK.RUL.09` gives the procurement officer a review task and tells the project manager; preferred and alternative suppliers per item offered on purchase requests and reorder suggestions; making another supplier an item's preferred one needs a second person (`STK.ACL.07`: on) | §5; §7.2 settings |
 
 #### Edge cases decided
 - **Item 9:** a notification to the project manager with the cheque and client; no automatic
@@ -1294,6 +1307,19 @@ checked by a test.
       attendance (the full behaviour is tested in BL-CON-03).
 - [ ] **Payments (item 22):** method *set-off* is offered to the accountant in a fresh 02
       deployment.
+- [ ] **Cash-flow forecast:** in a fresh 02 deployment, a projected balance of AED 199,999 in week
+      5 alerts the MD and the accountant once (`FIN.RUL.23`, 06:00 run); AED 200,000 or more in
+      every week alerts no one; the forecast shows 13 weekly buckets from Monday.
+- [ ] **Budget and drawings:** a monthly budget for a legal entity prepared by the accountant
+      needs approval by the MD; an expense with category *owner drawings* is left out of operating
+      cost and profit reports, and the user who records it cannot approve it (`FIN.ACL.21`); an
+      expense line reaching 100% of its month's budget line warns the category's owner role and
+      the accountant once (`FIN.RUL.24`).
+- [ ] **Supplier scorecard (item 26):** a supplier whose monthly snapshot scores 69 of 100 over
+      the 3-month window gives the procurement officer one review task and tells the project
+      manager (`STK.RUL.09`); 70 creates none; a supplier with fewer than 3 receipts gets no
+      score; an item's alternative supplier is offered on a purchase request for the item; making
+      it the preferred supplier waits for a second person (`STK.ACL.07`).
 
 #### Out of scope
 The mechanisms themselves (module epics in Depends on); labour and compliance (BL-CON-18).
@@ -1303,13 +1329,17 @@ The mechanisms themselves (module epics in Depends on); labour and compliance (B
 ### BL-CON-18 — 02 Construction: configure shared negative-flow settings — labour and compliance
 
 **Labels:** `vertical:02-construction` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 02 · **Size:** m
-**Depends on:** BL-ATT-01 · BL-ATT-02 · BL-ATT-03 · BL-ATT-04 · BL-ATT-05 · BL-ATT-06 · BL-ATT-07 · BL-ATT-08 · BL-HRM-01 · BL-HRM-04 · BL-HRM-07 · BL-DOC-02 · BL-DOC-04 · BL-KRN-04 · BL-KRN-08 · **Blocks:** None.
+**Depends on:** BL-ATT-01 · BL-ATT-02 · BL-ATT-03 · BL-ATT-04 · BL-ATT-05 · BL-ATT-06 · BL-ATT-07 · BL-ATT-08 · BL-HRM-01 · BL-HRM-04 · BL-HRM-07 · BL-DOC-02 · BL-DOC-04 · BL-KRN-04 · BL-KRN-08 · BL-SAL-19 · BL-SAL-20 · BL-SAL-21 · BL-HRM-26 · BL-HRM-27 · BL-HRM-28 · BL-DOC-08 · BL-DOC-09 · BL-DOC-10 · **Blocks:** None.
 **Review items:** X-13, X-15, X-16, X-19, 02-N5-d, 02-N8-a
 
 #### Goal
 02 seeds its values for the shared labour-law mechanisms: the owner role and compliance-critical
 rules, the overtime cap and midday-break flags, the expired visa or permit flag, the reviewers of
 flagged attendance, adjustment timesheets, absconding approval and late entry of attendance.
+It also seeds the 02 values for lead sources and campaigns (`SAL.CRM.02`), onboarding and SOPs
+(`HRM.ONB.01`) and registration kinds (`DOC.EXP.01`), added on 2026-10-16: `SAL.ACL.07`,
+`HRM.RUL.16`, `HRM.RUL.17`, `HRM.ACL.10`, `DOC.RUL.04` and `DOC.RUL.01`. The supplier
+scorecard (`STK.SUP.01`) is seeded in BL-CON-17.
 
 #### Files to read
 - `docs/verticals/02-construction.md` §2 "Labour", §3.3 (`HRM.ACL.01`, `HRM.ACL.07`–`09`), §4.2
@@ -1318,6 +1348,8 @@ flagged attendance, adjustment timesheets, absconding approval and late entry of
   settings")
 - The module settings sections (§7) of `docs/modules/wl-attendance.md`, `wl-hr.md`,
   `wl-documents.md`, `wl-kernel.md`
+- `docs/modules/wl-sales.md` §4.6, §5.8 and §7 (campaigns, sources); `docs/modules/wl-hr.md` §5.8
+  and §7 (onboarding); `docs/modules/wl-documents.md` §3, §5.7 and §7 (SOPs, registration kinds)
 
 #### Terms
 - **Flag:** a marker on an attendance record that holds it for review (`overtime_cap`,
@@ -1347,6 +1379,12 @@ flagged attendance, adjustment timesheets, absconding approval and late entry of
 | 13 | Absconding report (`HRM.ACL.07`) | requested by HR, approved by the MD | §3.3 `HRM.ACL.07` |
 | **Late entry** | | | |
 | 14 | Attendance by the supervisor (`HRM.ACL.01`) | today or 1 day back; later only by the project manager with the late-entry flag and a reason (`PLT.ACL.10`) | §3.3 `HRM.ACL.01`; §4.2 row "Attendance entered after the late-entry window" |
+| **Sales, finance, staff and registrations** | | | |
+| 15 | Lead sources used (`SAL.CRM.02`) | referral, website, event, partner (consultants and main contractors), other; tenders and enquiries from main contractors are leads (`SAL.CRM.01`); no source requires a campaign | §5; §7.2 settings |
+| 16 | Campaign channels (`SAL.CRM.02`, `SAL.ACL.07`) | tender invitations, exhibitions, LinkedIn, email, company profile mailings; converted value: the first accepted quotation; a cost entry that takes a campaign over its budget needs a manager (`SAL.ACL.07`: on) | §5; §7.2 settings |
+| 17 | Onboarding checklists (`HRM.ONB.01`, `HRM.RUL.16`, `HRM.RUL.17`, `HRM.ACL.10`) | templates for worker (site induction, PPE issue, visa and ID documents), supervisor, storekeeper, procurement officer and QS, started by `HRM.RUL.16` when the employee record (`HRM.EMP.01`) is created; checklist steps use `WRK.CHK.01`; tasks to HR / PRO, the project manager and the employee; the employee's own steps recorded only by them (`HRM.ACL.10`); `HRM.RUL.17` reminds overdue steps every 2 days and tells HR / PRO and the line manager after 5 days; completion blocks nothing (role activation not blocked) | §5; §7.2 settings |
+| 18 | SOP library (`HRM.ONB.01`, `DOC.RUL.04`, `HRM.ACL.10`) | SOP owners: HSE officer (safety SOPs, method statements) and project manager (site SOPs); required readers: supervisors and the workers of the project's crews; `DOC.RUL.04` asks each reader to acknowledge within 7 days, reminds every 3 days and tells the manager and the owner role (MD) after 7 days; acknowledged only by the reader, in person with a drawn signature and a staff witness for workers without a session (`HRM.ACL.10`); a new version asks for a new acknowledgement | §5; §7.2 settings |
+| 19 | Registration and certification kinds (`DOC.EXP.01`, `DOC.RUL.01`) | *ISO certificate* (subject: legal entity; responsible role HSE officer); *Trademark registration* and *Other certification* (legal entity; MD); `DOC.RUL.01` at 90, 30 and 7 days; no `blocks` | §5; §7.2 settings |
 
 #### Edge cases decided
 - **`midday_break` reviewer:** `HRM.ACL.09` covers `midday_break` too; it is reviewed by the
@@ -1384,9 +1422,23 @@ flagged attendance, adjustment timesheets, absconding approval and late entry of
       on the day after either expires, no transition is refused or flagged because of it.
 - [ ] **Late entry:** a supervisor entering attendance for 3 days ago is refused; the project
       manager enters it with a reason and a late-entry flag.
+- [ ] **Lead sources:** a new lead or party offers the sources referral, website, event, partner
+      and other; a campaign with channel *tender invitations*, a budget and cost entries reports
+      leads, conversion, cost per lead, CAC and ROAS; a cost entry over the budget waits for a
+      manager (`SAL.ACL.07`).
+- [ ] **Onboarding and SOPs:** hiring a worker creates the worker checklist with tasks to HR /
+      PRO, the line manager and the employee, and the role is active before it is complete; a step
+      open 2 days past its due date reminds its assignee (`HRM.RUL.17`); a new version of an SOP
+      owned by the HSE officer asks every required reader to acknowledge again within 7 days
+      (`DOC.RUL.04`); a worker without a session acknowledges in person with a drawn signature and
+      a staff witness, and no one else can acknowledge for them (`HRM.ACL.10`).
+- [ ] **Registrations:** a fresh 02 deployment lists *ISO certificate*, *Trademark registration*
+      and *Other certification* with responsible role HSE officer for ISO, MD for the others; a
+      trademark registration expiring in 90 days notifies the MD.
 
 #### Out of scope
-The mechanisms themselves (module epics in Depends on); the absence case (BL-CON-15).
+The mechanisms themselves (module epics in Depends on); the absence case (BL-CON-15); the supplier
+scorecard (BL-CON-17).
 
 ---
 

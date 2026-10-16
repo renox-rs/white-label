@@ -1,6 +1,6 @@
 # Epic: 08 Auto — negative flows
 
-> Status: draft · Last updated: 2026-10-15 · Spec version: same commit as this file
+> Status: draft · Last updated: 2026-10-16 · Spec version: same commit as this file
 
 This epic builds the negative flows that belong to the [08 Auto](../../verticals/08-auto.md)
 vertical itself: job card cancellation after work started, void, estimate expiry, the parts-wait
@@ -34,7 +34,7 @@ and X-19.
 | BL-AUT-15 | Back-order lines without stock and serve them first come, first served | medium | m | Launch 08 | BL-SAL-17; BL-SAL-08; BL-SAL-09; Base: wl-inventory `STK.RUL.04` |
 | BL-AUT-16 | Resolve recall trace lines to vehicle owners, fleets and customers (`TracePartyResolver` for 08) | high | m | Launch 08 | BL-STK-14; BL-STK-15; BL-STK-17 |
 | BL-AUT-17 | React to a blocked party: fleet contracts, vehicles in the workshop, insurers | high | s | Launch 08 | BL-PTY-03; BL-AUT-12; BL-AUT-13 |
-| BL-AUT-18 | 08 Auto: configure shared negative-flow settings | high | m | Launch 08 | BL-KRN-03; BL-KRN-04; BL-KRN-05; BL-KRN-08; BL-DOC-01; BL-INV-01; BL-INV-02; BL-INV-04; BL-PAY-09; BL-PAY-10; BL-PAY-14; BL-PAY-18; BL-SAL-07; BL-SAL-10; BL-SAL-12; BL-STK-03; BL-STK-09; BL-DLV-02; BL-SCH-03 |
+| BL-AUT-18 | 08 Auto: configure shared negative-flow settings | high | m | Launch 08 | BL-KRN-03; BL-KRN-04; BL-KRN-05; BL-KRN-08; BL-DOC-01; BL-INV-01; BL-INV-02; BL-INV-04; BL-PAY-09; BL-PAY-10; BL-PAY-14; BL-PAY-18; BL-SAL-07; BL-SAL-10; BL-SAL-12; BL-STK-03; BL-STK-09; BL-DLV-02; BL-SCH-03; BL-INV-25; BL-INV-26; BL-INV-27; BL-INV-28; BL-INV-29; BL-INV-30; BL-PAY-25; BL-PAY-26; BL-SAL-19; BL-SAL-20; BL-SAL-21; BL-STK-28; BL-STK-29; BL-STK-30; BL-STK-31; BL-SAL-22; BL-SAL-23; BL-SAL-24; BL-SAL-25; BL-NTF-07; BL-NTF-08; BL-HRM-26; BL-HRM-27; BL-HRM-28; BL-DOC-08; BL-DOC-09; BL-DOC-10 |
 
 ---
 
@@ -1098,17 +1098,30 @@ Sales order hold (Epic wl-sales: order hold on block).
 
 ### BL-AUT-18 — 08 Auto: configure shared negative-flow settings
 
-**Labels:** `vertical:08-auto` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 08 · **Size:** m
-**Depends on:** BL-KRN-03 · BL-KRN-04 · BL-KRN-05 · BL-KRN-08 · BL-DOC-01 · BL-INV-01 · BL-INV-02 · BL-INV-04 · BL-PAY-09 · BL-PAY-10 · BL-PAY-14 · BL-PAY-18 · BL-SAL-07 · BL-SAL-10 · BL-SAL-12 · BL-STK-03 · BL-STK-09 · BL-DLV-02 · BL-SCH-03 · **Blocks:** None
+**Labels:** `vertical:08-auto` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` · **Milestone:** Launch 08 · **Size:** m
+**Depends on:** BL-KRN-03 · BL-KRN-04 · BL-KRN-05 · BL-KRN-08 · BL-DOC-01 · BL-INV-01 · BL-INV-02 · BL-INV-04 · BL-PAY-09 · BL-PAY-10 · BL-PAY-14 · BL-PAY-18 · BL-SAL-07 · BL-SAL-10 · BL-SAL-12 · BL-STK-03 · BL-STK-09 · BL-DLV-02 · BL-SCH-03 · BL-INV-25 · BL-INV-26 · BL-INV-27 · BL-INV-28 · BL-INV-29 · BL-INV-30 · BL-PAY-25 · BL-PAY-26 · BL-SAL-19 · BL-SAL-20 · BL-SAL-21 · BL-STK-28 · BL-STK-29 · BL-STK-30 · BL-STK-31 · BL-SAL-22 · BL-SAL-23 · BL-SAL-24 · BL-SAL-25 · BL-NTF-07 · BL-NTF-08 · BL-HRM-26 · BL-HRM-27 · BL-HRM-28 · BL-DOC-08 · BL-DOC-09 · BL-DOC-10 · **Blocks:** None
 **Review items:** X-01, X-02, X-05, X-07, X-08, X-10, X-11, X-13, X-14, X-17, X-19
 
 #### Goal
 Seed the 08 deployment template with the vertical's values for every shared negative-flow
 mechanism, so a new parts and workshop client starts with the right limits, blocks, roles and
 fallbacks.
+It also seeds the 08 values for the cash-flow forecast alert (`FIN.CFL.01`), the budget with
+owner drawings (`FIN.BUD.01`), lead sources and campaigns (`SAL.CRM.02`), the supplier scorecard
+(`STK.SUP.01`), loyalty (`SAL.LOY.01`), onboarding and SOPs (`HRM.ONB.01`) and registration
+kinds (`DOC.EXP.01`), added on 2026-10-16: `FIN.RUL.23`, `FIN.RUL.24`, `FIN.ACL.21`,
+`SAL.ACL.07`, `STK.RUL.09`, `STK.ACL.07`, `SAL.RUL.07`, `SAL.RUL.08`, `NTF.RUL.02`, `NTF.ACL.03`,
+`HRM.RUL.16`, `HRM.RUL.17`, `HRM.ACL.10`, `DOC.RUL.04` and `DOC.RUL.01`. Onboarding runs on the
+minimal staff records (`HRM.EMP.01`, MVP since 2026-10-16).
 
 #### Files to read
 - `docs/verticals/08-auto.md` §3.3, §4 "When it goes wrong" tables, §7.1 *Booking* paragraph, §7.1 "Negative-flow settings", §7.2 (reused rules)
+- `docs/modules/wl-invoicing.md` §5.14–§5.16 and §7 (cash-flow forecast, company budget, owner
+  drawings); `docs/modules/wl-payments.md` (open cheques, owner-drawings payments)
+- `docs/modules/wl-sales.md` §4.6, §4.7, §5.8, §5.10 and §7 (campaigns, loyalty, segments);
+  `docs/modules/wl-notify.md` §4.3, §5.3 and §7 (marketing broadcasts)
+- `docs/modules/wl-inventory.md` §5.9 and §7 (supplier scorecard); `docs/modules/wl-hr.md` §5.8
+  and §7 (onboarding); `docs/modules/wl-documents.md` §3, §5.7 and §7 (SOPs, registration kinds)
 - `docs/WORKFLOW.md` §8
 
 #### Terms
@@ -1152,8 +1165,21 @@ fallbacks.
 | Back-orders allowed (wl-sales) | on for counter, phone and sales rep channels (set by BL-AUT-15) | §7.1 *Sales order* |
 | Responsible role per document kind (wl-documents §5.2) | customer trade licences, export exit evidence → accountant; fleet contracts → Owner / GM; police accident report, driving licence, Mulkiya, Emirates ID on a claim → insurance coordinator of the workshop | §7.1 settings |
 | Notification types (wl-notify §5.4 group) | statutory: `auto.claim_withdrawal_letter` (insurance coordinator), `auto.fleet_termination_notice` (Owner / GM); *Booking confirmations and reminders*: `auto.vehicle_ready`, `auto.claim_approved`, `auto.collect_vehicle`, `auto.fleet_booking_request`, `auto.fleet_contract_ended`, `auto.parts_delay` (`urgent`); *Portal invitations, document requests, signature requests*: `auto.insurer_request`, `auto.supplier_warranty_claim`; *Invoices, statements, payment reminders*: `auto.insurer_statement`; *Marketing*: `auto.service_reminder`; no group, `urgent`: `auto.recall_notice`; staff-only alerts: no group, give-up `none` | §7.1 *Notification types registered by 08* |
+| Cash-flow forecast alert (`FIN.CFL.01`, `FIN.RUL.23`) | projected balance below AED 100,000 in any of the next 13 weeks (weeks start Monday): `FIN.RUL.23` alerts the Owner / GM and the accountant, checked daily at 06:00; insurer receivables by their due dates (`FIN.TPP.01`); foreign-currency POs at the latest rate; due dates adjusted by each customer's average days late: on; disputed amounts counted: off | §5; §7.1 settings |
+| Budget categories and approval (`FIN.BUD.01`, `FIN.RUL.24`) | categories owned by the accountant and mapped to the export accounts; one budget per legal entity and month, approved by the Owner / GM; `FIN.RUL.24` warns the category's owner role and the accountant when a month's actual reaches 100% of its line | §5; §7.1 settings |
+| Owner drawings (`FIN.BUD.01`, `FIN.ACL.21`) | expense category and payment purpose *owner drawings*, kept out of operating cost and profit; every drawing (AED 0) approved by the Owner / GM, never by the requester (`FIN.ACL.21`) | §5; §7.1 settings |
+| Lead sources used (`SAL.CRM.02`) | referral, walk-in, website, social, paid ads, partner (insurers, fleet brokers), event, other; fleet contract enquiries are leads (`SAL.CRM.01`); walk-in customers get the source on their party; no source requires a campaign | §5; §7.1 settings |
+| Campaign channels (`SAL.CRM.02`, `SAL.ACL.07`) | search ads, Instagram, SMS, email, trade events; converted value: the first sales order, job card or fleet contract invoice; a cost entry that takes a campaign over its budget needs a manager (`SAL.ACL.07`: on) | §5; §7.1 settings |
+| Supplier scorecard review (`STK.SUP.01`, `STK.RUL.09`, `STK.ACL.07`) | score 0–100 over a 3-month window (minimum 3 receipts, 1 grace day); below 70: `STK.RUL.09` gives a review task to the purchaser / importer and tells the branch manager; preferred and alternative suppliers per part used by reorder suggestions (`STK.ROP.01`); changing a part's preferred supplier needs a second person (`STK.ACL.07`: on) | §5; §7.1 settings |
+| Loyalty earn and redeem (`SAL.LOY.01`, `SAL.RUL.07`) | individual car owners only: `SAL.RUL.07` earns 1 point per AED 10 on workshop invoices and counter sales, reversed on returns and credit notes; none on B2B trade, fleet or insurer-paid jobs; 100 points = an AED 10 discount line on a later workshop invoice, confirmed by a one-time code to the member (VAT on the discounted supply: `⚠ open: accountant (A-15)`) | §5; §7.1 settings |
+| Loyalty expiry, adjustments and segments (`SAL.LOY.01`, `SAL.RUL.08`, `SAL.ACL.07`, `NTF.RUL.02`, `NTF.ACL.03`) | points expire 24 months after they are earned, the member reminded 30 days before (`SAL.RUL.08`); a manual adjustment above 500 points needs a manager (`SAL.ACL.07`); segments: service due by date or mileage, no visit in 12 months, vehicle make, spend over AED 5,000 in 12 months; campaigns only to opted-in contacts (`NTF.ACL.01`), with opt-out, sent 07:00–21:00 and at most 2 marketing messages per contact in 7 days (`NTF.RUL.02`); a broadcast to more than 200 recipients needs a second person (`NTF.ACL.03`); `AUT.RUL.01` service reminders unchanged | §5; §7.1 settings |
+| Onboarding checklists (`HRM.ONB.01`, `HRM.RUL.16`, `HRM.RUL.17`, `HRM.ACL.10`) | templates for technician, service advisor, counter sales, storekeeper and delivery driver, started by `HRM.RUL.16` when a staff record (`HRM.EMP.01`) is created; checklist steps use `WRK.CHK.01`; tasks to the branch manager (workshop manager for workshop roles), the line manager and the employee; the employee's own steps recorded only by them (`HRM.ACL.10`); `HRM.RUL.17` reminds overdue steps every 2 days and tells the branch manager and the line manager after 5 days; completion blocks nothing (role activation not blocked) | §5; §7.1 settings |
+| SOP library (`HRM.ONB.01`, `DOC.RUL.04`, `HRM.ACL.10`) | SOP owners: workshop manager (check-in, QC, workshop safety) and branch manager (counter, cash, returns); required readers by role per branch; `DOC.RUL.04` asks each reader to acknowledge within 7 days, reminds every 3 days and tells the manager and the owner role after 7 days; acknowledged only by the reader (`HRM.ACL.10`); a new version asks for a new acknowledgement | §5; §7.1 settings |
+| Registration and certification kinds (`DOC.EXP.01`, `DOC.RUL.01`) | *Trademark registration* and *Other certification* (subject: legal entity); responsible role Owner / GM; `DOC.RUL.01` at 90, 30 and 7 days; no `blocks` | §5; §7.1 settings |
 
 #### Edge cases decided
+- **Loyalty VAT:** a redeemed points discount reduces the VAT of the discounted supply only
+  (`⚠ open: accountant (A-15)`); the rest of the loyalty settings can be built.
 - **Client changes:** every value may be changed per client by the company admin, except the police report override mode `never` and `PLT.ACL.09`.
 - **Existing clients:** migration sets only values still at the platform default.
 - **Credit group off for a customer** (no group): the hold applies to the customer only.
@@ -1174,6 +1200,37 @@ fallbacks.
 - [ ] **Disputes:** a B2B buyer can flag an invoice as disputed in the portal.
 - [ ] **Responsible roles:** an expiring customer trade licence notifies the accountant; a police report submitted for review on a claim goes to the insurance coordinators of the workshop.
 - [ ] **Notifications:** when `auto.claim_withdrawal_letter` gives up, the contact point is marked invalid and the insurance coordinator gets a `statutory_notice` task; when `auto.vehicle_ready` gives up, the job card shows "message not delivered" and no task is created; `auto.parts_delay` giving up also creates a task to the service advisor.
+- [ ] **Cash-flow forecast:** in a fresh 08 deployment, a projected balance of AED 99,999 in week
+      5 alerts the Owner / GM and the accountant once (`FIN.RUL.23`, 06:00 run); AED 100,000 or
+      more in every week alerts no one; the forecast shows 13 weekly buckets from Monday.
+- [ ] **Budget and drawings:** a monthly budget for a legal entity prepared by the accountant
+      needs approval by the Owner / GM; an expense with category *owner drawings* is left out of
+      operating cost and profit reports, and the user who records it cannot approve it
+      (`FIN.ACL.21`); an expense line reaching 100% of its month's budget line warns the
+      category's owner role and the accountant once (`FIN.RUL.24`).
+- [ ] **Lead sources:** a new lead or party offers the sources referral, walk-in, website, social,
+      paid ads, partner, event and other; a campaign with channel *search ads*, a budget and cost
+      entries reports leads, conversion, cost per lead, CAC and ROAS; a cost entry over the budget
+      waits for a manager (`SAL.ACL.07`).
+- [ ] **Supplier scorecard:** a supplier whose monthly snapshot over the 3-month window scores 69
+      of 100 gets one review task for the purchaser / importer (`STK.RUL.09`); 70 creates none; an
+      item's alternative supplier is offered on the reorder suggestion; making it the preferred
+      supplier waits for a second person (`STK.ACL.07`).
+- [ ] **Loyalty:** a workshop invoice of AED 500 to an individual car owner earns 50 points and a
+      fleet job earns none; redeeming 100 points adds an AED 10 discount line; points earned on
+      2026-11-01 expire on 2028-11-01, with a reminder on 2028-10-02 (`SAL.RUL.08`); a manual
+      adjustment of 600 points waits for a manager (`SAL.ACL.07`); a contact who has not opted in
+      is left out of a campaign, a campaign message queued at 22:00 is deferred to 07:00 and a
+      third marketing message in 7 days is suppressed (`NTF.RUL.02`); a broadcast to 201
+      recipients waits for a second person (`NTF.ACL.03`).
+- [ ] **Onboarding and SOPs:** hiring a technician creates the technician checklist with tasks to
+      the workshop manager, the line manager and the employee, and the role is active before it is
+      complete; a step open 2 days past its due date reminds its assignee (`HRM.RUL.17`); a new
+      version of an SOP owned by the workshop manager asks every required reader to acknowledge
+      again within 7 days (`DOC.RUL.04`), and no one else can acknowledge for them (`HRM.ACL.10`).
+- [ ] **Registrations:** a fresh 08 deployment lists *Trademark registration* and *Other
+      certification* with responsible role Owner / GM; a trademark registration expiring in 90
+      days notifies the Owner / GM.
 
 #### Out of scope
 The mechanisms themselves (module epics listed in Depends on).

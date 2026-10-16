@@ -37,8 +37,8 @@ Review items: D-09, D-10, X-13, X-18, X-20, 04-N5-c, 04-N6-a, 04-N7-b, 04-N8-a, 
 | BL-ACC-20 | Version a KPI pack on re-import and supersede the published one | medium | s | Launch 04 | Base: 04 KPI pack (`ACC.KPI.01`) |
 | BL-ACC-21 | Withdraw a published KPI pack | medium | s | Launch 04 | BL-ACC-20 |
 | BL-ACC-22 | Suspend an engagement for overdue invoices, never for disputed ones (`ACC.RUL.07`) | medium | s | Later | BL-ACC-03; BL-INV-04 |
-| BL-ACC-23 | 04 Accounting: configure shared negative-flow settings — compliance, documents, blocks and integrations | high | m | Launch 04 | BL-DOC-01; BL-DOC-02; BL-DOC-04; BL-DOC-06; BL-HRM-01; BL-PTY-01; BL-PTY-03; BL-PTY-04; BL-PTY-06; BL-PTY-07; BL-PTY-08; BL-PTY-09; BL-INV-09; BL-INV-20; BL-KRN-05; BL-KRN-08 |
-| BL-ACC-24 | 04 Accounting: configure shared negative-flow settings — notices, receivables, tasks and portal | high | m | Launch 04 | BL-NTF-01; BL-NTF-02; BL-NTF-03; BL-NTF-04; BL-NTF-05; BL-NTF-06; BL-INV-01; BL-INV-02; BL-INV-04; BL-INV-05; BL-INV-19; BL-INV-21; BL-PAY-09; BL-PAY-14; BL-TKT-09; BL-TKT-10; BL-KRN-04 |
+| BL-ACC-23 | 04 Accounting: configure shared negative-flow settings — compliance, documents, blocks and integrations | high | m | Launch 04 | BL-DOC-01; BL-DOC-02; BL-DOC-04; BL-DOC-06; BL-HRM-01; BL-PTY-01; BL-PTY-03; BL-PTY-04; BL-PTY-06; BL-PTY-07; BL-PTY-08; BL-PTY-09; BL-INV-09; BL-INV-20; BL-KRN-05; BL-KRN-08; BL-SAL-19; BL-SAL-20; BL-SAL-21; BL-HRM-26; BL-HRM-27; BL-HRM-28; BL-DOC-08; BL-DOC-09; BL-DOC-10 |
+| BL-ACC-24 | 04 Accounting: configure shared negative-flow settings — notices, receivables, tasks and portal | high | m | Launch 04 | BL-NTF-01; BL-NTF-02; BL-NTF-03; BL-NTF-04; BL-NTF-05; BL-NTF-06; BL-INV-01; BL-INV-02; BL-INV-04; BL-INV-05; BL-INV-19; BL-INV-21; BL-PAY-09; BL-PAY-14; BL-TKT-09; BL-TKT-10; BL-KRN-04; BL-INV-25; BL-INV-26; BL-INV-27; BL-INV-28; BL-INV-29; BL-INV-30; BL-PAY-25; BL-PAY-26 |
 
 ---
 
@@ -1353,17 +1353,21 @@ Invoice disputes (BL-INV-04). Suspend effects (BL-ACC-03).
 ### BL-ACC-23 — 04 Accounting: configure shared negative-flow settings — compliance, documents, blocks and integrations
 
 **Labels:** `vertical:04-accounting` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` · **Milestone:** Launch 04 · **Size:** m
-**Depends on:** BL-DOC-01 · BL-DOC-02 · BL-DOC-04 · BL-DOC-06 · BL-HRM-01 · BL-PTY-01 · BL-PTY-03 · BL-PTY-04 · BL-PTY-06 · BL-PTY-07 · BL-PTY-08 · BL-PTY-09 · BL-INV-09 · BL-INV-20 · BL-KRN-05 · BL-KRN-08 · **Blocks:** None.
+**Depends on:** BL-DOC-01 · BL-DOC-02 · BL-DOC-04 · BL-DOC-06 · BL-HRM-01 · BL-PTY-01 · BL-PTY-03 · BL-PTY-04 · BL-PTY-06 · BL-PTY-07 · BL-PTY-08 · BL-PTY-09 · BL-INV-09 · BL-INV-20 · BL-KRN-05 · BL-KRN-08 · BL-SAL-19 · BL-SAL-20 · BL-SAL-21 · BL-HRM-26 · BL-HRM-27 · BL-HRM-28 · BL-DOC-08 · BL-DOC-09 · BL-DOC-10 · **Blocks:** None.
 **Review items:** X-13, X-18, X-19, 04-N7-b, 04-N8-a, 04-N11-a
 
 #### Goal
 Seed the 04 deployment's values for document blocks, sanctions screening, party blocks and their
 effects, compliance-critical rules and integration fallbacks. No new behaviour: each value
 configures a module mechanism.
+It also seeds the 04 values for lead sources and campaigns (`SAL.CRM.02`), onboarding and SOPs
+(`HRM.ONB.01`) and registration kinds (`DOC.EXP.01`), added on 2026-10-16: `SAL.ACL.07`,
+`HRM.RUL.16`, `HRM.RUL.17`, `HRM.ACL.10`, `DOC.RUL.04` and `DOC.RUL.01`.
 
 #### Files to read
 - `docs/verticals/04-accounting.md` §3.3 (`PTY.ACL.02`, `PTY.ACL.03`, `DOC.ACL.02`), §4.6, §5 `HRM.QUA.01`, §7.1 *Engagement* (paragraph *Block effect*), §7.1 checklist, §7.2 (compliance-critical paragraph), §8 (*Integration down*), §9 *Document blocks*, *Block effects and no tipping off*
 - `docs/modules/wl-parties.md` §7; `docs/modules/wl-documents.md` §5.2, §5.6; `docs/modules/wl-kernel.md` §5.14
+- `docs/modules/wl-sales.md` §4.6, §5.8 and §7 (campaigns, sources); `docs/modules/wl-hr.md` §5.8 and §7 (onboarding); `docs/modules/wl-documents.md` §3, §5.7 and §7 (SOPs, registration kinds)
 - `docs/OPEN-ITEMS.md` L-30
 
 #### Terms
@@ -1440,6 +1444,11 @@ flag".
 | E-mail fallback | notices stay visible in the portal; statutory notices delivered by other means | §8 |
 | E-invoicing ASP fallback | transmissions queued and sent on recovery; `FIN.RUL.16` task | §8 |
 | EmaraTax, goAML | not registered as connections (manual) | §8 |
+| Lead sources used (`SAL.CRM.02`) | referral, website, social, paid ads, partner (banks, business setup consultants), event, other; recorded on the lead (`SAL.CRM.01`) and carried to the client party when the engagement letter is signed; no source requires a campaign | §5; §7.2 settings |
+| Campaign channels (`SAL.CRM.02`, `SAL.ACL.07`) | search ads, LinkedIn, email newsletters, seminars and webinars; converted value: the first engagement's fees; a cost entry that takes a campaign over its budget needs a manager (`SAL.ACL.07`: on) | §5; §7.2 settings |
+| Onboarding checklists (`HRM.ONB.01`, `HRM.RUL.16`, `HRM.RUL.17`, `HRM.ACL.10`) | templates for accountant / associate, tax specialist and billing / admin, started by `HRM.RUL.16` when an employee record (`HRM.EMP.01`) is created; checklist steps use `WRK.CHK.01`; tasks to the manager and the employee; the employee's own steps recorded only by them (`HRM.ACL.10`); `HRM.RUL.17` reminds overdue steps every 2 days and tells billing / admin (HR) and the manager after 5 days; completion blocks nothing (role activation not blocked) | §5; §7.2 settings |
+| SOP library (`HRM.ONB.01`, `DOC.RUL.04`, `HRM.ACL.10`) | SOP owners: MLRO (the firm's AML and CDD procedures, read by every client-facing role) and manager (engagement, return and month-end close procedures); `DOC.RUL.04` asks each reader to acknowledge within 7 days, reminds every 3 days and tells the manager and the owner role after 7 days; acknowledged only by the reader (`HRM.ACL.10`); a new version asks for a new acknowledgement | §5; §7.2 settings |
+| Registration and certification kinds (`DOC.EXP.01`, `DOC.RUL.01`) | *Trademark registration* and *Other certification* (subject: the firm's legal entity); responsible role partner; `DOC.RUL.01` at 90, 30 and 7 days; no `blocks` | §5; §7.2 settings |
 
 #### Edge cases decided
 - **PTY.RUL.02 compliance-critical:** listed by the 04 spec (the wl-parties epic chose it as a default too, BL-PTY-07).
@@ -1457,6 +1466,9 @@ flag".
 - [ ] Blocks: a confirmed match on a UBO blocks the client company; a partner sees "On hold"; a refund of a prepaid retainer waits for the MLRO's exception.
 - [ ] Rules: given a list download failure that triggers `PTY.RUL.02`, and the rule run itself made to end `failed` in the test (its action raises an error, so no MLRO alert or stale marking is done), the partner role and the company admin each get one owner alert (`PLT.RUL.04`, BL-KRN-08); the same for a run that is `stop`ped. A failed list download with a successful rule run gives only the MLRO alert, no owner alert.
 - [ ] Integrations: with the e-mail connection `down`, notices stay visible in the portal and statutory notices create staff delivery tasks.
+- [ ] Lead sources: a new lead or party offers the sources referral, website, social, paid ads, partner, event and other; a campaign with channel *search ads*, a budget and cost entries reports leads, conversion, cost per lead, CAC and ROAS; a cost entry over the budget waits for a manager (`SAL.ACL.07`).
+- [ ] Onboarding and SOPs: hiring a tax specialist creates the tax specialist checklist with tasks to the manager, the line manager and the employee, and the role is active before it is complete; a step open 2 days past its due date reminds its assignee (`HRM.RUL.17`); a new version of an SOP owned by the MLRO asks every required reader to acknowledge again within 7 days (`DOC.RUL.04`), and no one else can acknowledge for them (`HRM.ACL.10`).
+- [ ] Registrations: a fresh 04 deployment lists *Trademark registration* and *Other certification* with responsible role partner; a trademark registration expiring in 90 days notifies the partner.
 
 #### Out of scope
 The mechanisms (module epics listed in Depends on). Notices, receivables, tasks and portal settings
@@ -1467,17 +1479,21 @@ The mechanisms (module epics listed in Depends on). Notices, receivables, tasks 
 ### BL-ACC-24 — 04 Accounting: configure shared negative-flow settings — notices, receivables, tasks and portal
 
 **Labels:** `vertical:04-accounting` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 04 · **Size:** m
-**Depends on:** BL-NTF-01 · BL-NTF-02 · BL-NTF-03 · BL-NTF-04 · BL-NTF-05 · BL-NTF-06 · BL-INV-01 · BL-INV-02 · BL-INV-04 · BL-INV-05 · BL-INV-19 · BL-INV-21 · BL-PAY-09 · BL-PAY-14 · BL-TKT-09 · BL-TKT-10 · BL-KRN-04 · **Blocks:** None.
+**Depends on:** BL-NTF-01 · BL-NTF-02 · BL-NTF-03 · BL-NTF-04 · BL-NTF-05 · BL-NTF-06 · BL-INV-01 · BL-INV-02 · BL-INV-04 · BL-INV-05 · BL-INV-19 · BL-INV-21 · BL-PAY-09 · BL-PAY-14 · BL-TKT-09 · BL-TKT-10 · BL-KRN-04 · BL-INV-25 · BL-INV-26 · BL-INV-27 · BL-INV-28 · BL-INV-29 · BL-INV-30 · BL-PAY-25 · BL-PAY-26 · **Blocks:** None.
 **Review items:** X-01, X-02, X-05, X-20, 04 MEDIUM "e-mail bounces"
 
 #### Goal
 Seed the 04 deployment's values for give-up reactions of client messages, receivables (write-offs,
 disputes, bounced cheques, retainers), deadline tasks, the portal after an engagement ends, and late
 time entries.
+It also seeds the 04 values for the cash-flow forecast alert (`FIN.CFL.01`) and the
+company budget with owner drawings (`FIN.BUD.01`), added on 2026-10-16: `FIN.RUL.23`,
+`FIN.RUL.24` and `FIN.ACL.21`.
 
 #### Files to read
 - `docs/verticals/04-accounting.md` §3.3 (`FIN.ACL.15`, `POR.ACL.01`), §4.2 "When it goes wrong" (row *Request e-mail bounces*), §4.5 "When it goes wrong", §7.1 *Task* (paragraph about `waiting_on_client`), §7.1 *Subscription* (paragraph after the diagram), §7.1 checklist (row *Time entry*), §7.2 (reused rules), §9 *Notices*, *Bad debts*
 - `docs/modules/wl-notify.md` §5.4; `docs/modules/wl-invoicing.md` §5.9, §5.10; `docs/modules/wl-ticketing.md` §4.4
+- `docs/modules/wl-invoicing.md` §5.14–§5.16 and §7 (cash-flow forecast, company budget, owner drawings); `docs/modules/wl-payments.md` (open cheques, owner-drawings payments)
 
 #### Terms
 - **Give-up reaction:** what wl-notify does when a message could not be delivered after all retries.
@@ -1541,6 +1557,9 @@ entry*: "into a locked timesheet period only with approval (`PLT.ACL.10`)".
 | Tasks held while the engagement is suspended | on | §7.1 |
 | Portal after engagement end (`POR.ACL.01`) | read-only, closes after 90 days | §3.3 |
 | Late time entries (`PLT.ACL.10`) | into a locked timesheet period only with a manager's approval | §7.1 checklist |
+| Cash-flow forecast alert (`FIN.CFL.01`, `FIN.RUL.23`) | the firm's own cash: projected balance below AED 25,000 in any of the next 13 weeks (weeks start Monday): `FIN.RUL.23` alerts the partner and billing / admin, checked daily at 06:00; retainers by cycle date; due dates adjusted by each client's average days late: on; disputed amounts counted: off | §5; §7.2 settings |
+| Budget categories and approval (`FIN.BUD.01`, `FIN.RUL.24`) | categories owned by billing / admin and mapped to the export accounts; one budget per legal entity and month, approved by a partner; `FIN.RUL.24` warns the category's owner role and billing / admin when a month's actual reaches 100% of its line | §5; §7.2 settings |
+| Owner drawings (`FIN.BUD.01`, `FIN.ACL.21`) | expense category and payment purpose *owner drawings* (partner drawings), kept out of operating cost and profit; every drawing (AED 0) approved by a partner other than the requester (`FIN.ACL.21`) | §5; §7.2 settings |
 
 #### Edge cases decided
 - **Credit hold in 04:** there are no sales orders, so the client shows a *credit hold* badge to billing staff and partners until the cheque is resolved; nothing else is blocked (not activation, filing or time entries).
@@ -1559,6 +1578,8 @@ entry*: "into a locked timesheet period only with approval (`PLT.ACL.10`)".
 - [ ] Receivables: every write-off needs a partner other than the requester; the client gets the write-off notice; a client approver can dispute an invoice in the portal and the engagement manager gets the ticket; a disputed cycle invoice leaves the retainer `active`; a bounced cheque adds no fee and shows the credit hold badge.
 - [ ] Tasks: an `in_progress` task is never waived automatically; the waiting state shows *waiting on client*.
 - [ ] Portal: an engagement ended 2026-11-01 gives read-only access until 2027-01-30 and none from 2027-01-31.
+- [ ] Cash-flow forecast: in a fresh 04 deployment, a projected balance of AED 24,999 in week 5 alerts the partner and the billing / admin once (`FIN.RUL.23`, 06:00 run); AED 25,000 or more in every week alerts no one; the forecast shows 13 weekly buckets from Monday.
+- [ ] Budget and drawings: a monthly budget for a legal entity prepared by the billing / admin needs approval by a partner other than the requester; an expense with category *owner drawings* is left out of operating cost and profit reports, and the user who records it cannot approve it (`FIN.ACL.21`); an expense line reaching 100% of its month's budget line warns the category's owner role and billing / admin once (`FIN.RUL.24`).
 
 #### Out of scope
 The mechanisms (module epics listed in Depends on). Compliance, documents, blocks and integrations

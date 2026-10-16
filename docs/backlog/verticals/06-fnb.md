@@ -32,8 +32,8 @@ X-08, X-09, X-10, X-11, X-12, X-14 and X-19.
 | BL-FNB-13 | Trace a recalled ingredient lot to orders and customers | high | m | Launch 06 | BL-FNB-11; BL-STK-14; BL-STK-15; BL-STK-16 |
 | BL-FNB-14 | Pause an outlet's channels during an outage and resume (`FNB.RUL.15`) | high | m | Launch 06 | BL-KRN-04; BL-KRN-06; BL-KRN-07 |
 | BL-FNB-15 | Assign orders to a business day by the cut-off and reopen a closing for late entries | medium | m | Launch 06 | Base: wl-sales Till session; BL-KRN-04; BL-PAY-19 |
-| BL-FNB-16 | 06: configure shared negative-flow settings (delivery, sales, payments, cash) | high | m | Launch 06 | BL-DLV-02; BL-DLV-03; BL-DLV-05 to BL-DLV-10; BL-SAL-01 to BL-SAL-09; BL-SAL-14; BL-PAY-02 to BL-PAY-07; BL-PAY-17; BL-PAY-19 |
-| BL-FNB-17 | 06: configure shared negative-flow settings (stock, compliance, connections) | high | m | Launch 06 | BL-STK-01; BL-STK-03; BL-STK-07; BL-STK-11 to BL-STK-19; BL-DOC-02; BL-KRN-03 to BL-KRN-08; BL-SAL-01 |
+| BL-FNB-16 | 06: configure shared negative-flow settings (delivery, sales, payments, cash) | high | m | Launch 06 | BL-DLV-02; BL-DLV-03; BL-DLV-05 to BL-DLV-10; BL-SAL-01 to BL-SAL-09; BL-SAL-14; BL-PAY-02 to BL-PAY-07; BL-PAY-17; BL-PAY-19; BL-INV-25; BL-INV-26; BL-INV-27; BL-INV-28; BL-INV-29; BL-INV-30; BL-PAY-25; BL-PAY-26 |
+| BL-FNB-17 | 06: configure shared negative-flow settings (stock, compliance, connections) | high | m | Launch 06 | BL-STK-01; BL-STK-03; BL-STK-07; BL-STK-11 to BL-STK-19; BL-DOC-02; BL-KRN-03 to BL-KRN-08; BL-SAL-01; BL-SAL-19; BL-SAL-20; BL-SAL-21; BL-SAL-22; BL-SAL-23; BL-SAL-24; BL-SAL-25; BL-NTF-07; BL-NTF-08; BL-STK-28; BL-STK-29; BL-STK-30; BL-STK-31; BL-HRM-26; BL-HRM-27; BL-HRM-28; BL-DOC-08; BL-DOC-09; BL-DOC-10 |
 
 ---
 
@@ -1123,7 +1123,7 @@ Till session mechanics (Epic wl-sales); handover recovery and write-off (BL-PAY-
 ### BL-FNB-16 — 06 F&B: configure shared negative-flow settings (delivery, sales, payments, cash)
 
 **Labels:** `vertical:06-fnb` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` · **Milestone:** Launch 06 · **Size:** m
-**Depends on:** BL-DLV-02 · BL-DLV-03 · BL-DLV-05 to BL-DLV-10 · BL-SAL-01 to BL-SAL-09 · BL-SAL-14 · BL-PAY-02 to BL-PAY-07 · BL-PAY-17 · BL-PAY-19 · **Blocks:** None.
+**Depends on:** BL-DLV-02 · BL-DLV-03 · BL-DLV-05 to BL-DLV-10 · BL-SAL-01 to BL-SAL-09 · BL-SAL-14 · BL-PAY-02 to BL-PAY-07 · BL-PAY-17 · BL-PAY-19 · BL-INV-25 · BL-INV-26 · BL-INV-27 · BL-INV-28 · BL-INV-29 · BL-INV-30 · BL-PAY-25 · BL-PAY-26 · **Blocks:** None.
 **Review items:** X-06, X-07, X-11, X-12, X-14, D-12, 06-N3-a, 06-N9-b
 
 #### Goal
@@ -1131,11 +1131,16 @@ Seed 06's values for the shared delivery, sales, payment and cash mechanisms: pe
 partial acceptance, COD tolerance, refunds after completion, amendments off on aggregator
 channels, cancel outcomes, online payment timing, chargebacks, failed refunds, and cash custody
 for riders (MVP, D-12) and tills.
+It also seeds the 06 values for the cash-flow forecast alert (`FIN.CFL.01`) and the
+company budget with owner drawings (`FIN.BUD.01`), added on 2026-10-16: `FIN.RUL.23`,
+`FIN.RUL.24` and `FIN.ACL.21`.
 
 #### Files to read
 - `docs/verticals/06-fnb.md` §3.3 (shared rules), §4.2 "When it goes wrong", §4.6 (till), §7.2
   (settings table, `FIN.RUL.19`)
 - `docs/modules/wl-delivery.md` §7; `docs/modules/wl-sales.md` §7; `docs/modules/wl-payments.md` §7
+- `docs/modules/wl-invoicing.md` §5.14–§5.16 and §7 (cash-flow forecast, company budget, owner
+  drawings); `docs/modules/wl-payments.md` (open cheques, owner-drawings payments)
 - `docs/OPEN-ITEMS.md` L-20
 
 #### Terms
@@ -1169,6 +1174,9 @@ for riders (MVP, D-12) and tills.
 | Delivery failure reasons (wl-delivery) | adds *rider issue*; *refused* asks the cause (*late*, *wrong item*, *other*); mapping in §7.1 | §7.2 settings |
 | Online payment window before `payment_failed` | 15 minutes (wl-sales default; `FIN.RUL.19` asks the gateway at 10) | §7.2 settings |
 | Till variance needing approval (wl-sales) | AED 20, the same as the write-off limit | §7.2 settings |
+| Cash-flow forecast alert (`FIN.CFL.01`, `FIN.RUL.23`) | projected balance below AED 50,000 in any of the next 13 weeks (weeks start Monday): `FIN.RUL.23` alerts the owner / operations director and the accountant, checked daily at 06:00; aggregator payouts by their payout schedule; due dates adjusted by average days late: off (customers pay at order); disputed amounts counted: off | §5; §7.2 settings |
+| Budget categories and approval (`FIN.BUD.01`, `FIN.RUL.24`) | categories (food cost, packaging, staff, rent, aggregator commission, marketing) owned by the accountant and mapped to the export accounts; approved by the owner / operations director; `FIN.RUL.24` warns the category's owner role and the accountant when a month's actual reaches 100% of its line | §5; §7.2 settings |
+| Owner drawings (`FIN.BUD.01`, `FIN.ACL.21`) | expense category and payment purpose *owner drawings*, kept out of food cost, operating cost and profit; every drawing (AED 0) approved by the owner / operations director, never by the requester (`FIN.ACL.21`) | §5; §7.2 settings |
 
 #### Edge cases decided
 - **Online payment window before `payment_failed`:** the wl-sales default 15 minutes stays; `FIN.RUL.19` asks the gateway at 10 minutes, so most orders are decided
@@ -1214,6 +1222,15 @@ for riders (MVP, D-12) and tills.
         without approval; AED 25.00 needs the area manager; salary recovery is not offered.
   - [ ] Closing a till session with a shortage creates the till's handover; a variance of
         AED 20.01 needs approval, AED 20.00 does not.
+- Cash-flow forecast and budget
+  - [ ] in a fresh 06 deployment, a projected balance of AED 49,999 in week 5 alerts the owner /
+        operations director and the accountant once (`FIN.RUL.23`, 06:00 run); AED 50,000 or
+        more in every week alerts no one; the forecast shows 13 weekly buckets from Monday.
+  - [ ] a monthly budget for a legal entity prepared by the accountant needs approval by the owner
+        / operations director; an expense with category *owner drawings* is left out of operating
+        cost and profit reports, and the user who records it cannot approve it (`FIN.ACL.21`);
+        an expense line reaching 100% of its month's budget line warns the category's owner role
+        and the accountant once (`FIN.RUL.24`).
 
 #### Out of scope
 Module mechanisms (their epics); stock, compliance and connections (BL-FNB-17).
@@ -1223,7 +1240,7 @@ Module mechanisms (their epics); stock, compliance and connections (BL-FNB-17).
 ### BL-FNB-17 — 06 F&B: configure shared negative-flow settings (stock, compliance, connections)
 
 **Labels:** `vertical:06-fnb` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` · **Milestone:** Launch 06 · **Size:** m
-**Depends on:** BL-STK-01 · BL-STK-03 · BL-STK-07 · BL-STK-11 to BL-STK-19 · BL-DOC-02 · BL-KRN-03 to BL-KRN-08 · BL-SAL-01 · **Blocks:** None.
+**Depends on:** BL-STK-01 · BL-STK-03 · BL-STK-07 · BL-STK-11 to BL-STK-19 · BL-DOC-02 · BL-KRN-03 to BL-KRN-08 · BL-SAL-01 · BL-SAL-19 · BL-SAL-20 · BL-SAL-21 · BL-SAL-22 · BL-SAL-23 · BL-SAL-24 · BL-SAL-25 · BL-NTF-07 · BL-NTF-08 · BL-STK-28 · BL-STK-29 · BL-STK-30 · BL-STK-31 · BL-HRM-26 · BL-HRM-27 · BL-HRM-28 · BL-DOC-08 · BL-DOC-09 · BL-DOC-10 · **Blocks:** None.
 **Review items:** X-08, X-09, X-10, X-13, X-19, 06-N10-b, 06 MEDIUM "duplicate external orders"
 
 #### Goal
@@ -1231,12 +1248,21 @@ Seed 06's values for the shared stock, document, kernel and connection mechanism
 per location, receiving rejection evidence, hold deciders and reminders, recalls, the
 compliance-critical food safety rules and documents, void, late entry, device connections and
 the integration fallbacks (Deliverect, gateway, SMS).
+It also seeds the 06 values for lead sources and campaigns (`SAL.CRM.02`), the supplier
+scorecard (`STK.SUP.01`), loyalty (`SAL.LOY.01`), onboarding and SOPs (`HRM.ONB.01`) and
+registration kinds (`DOC.EXP.01`), added on 2026-10-16: `SAL.ACL.07`, `STK.RUL.09`,
+`STK.ACL.07`, `SAL.RUL.07`, `SAL.RUL.08`, `NTF.RUL.02`, `NTF.ACL.03`, `HRM.RUL.16`, `HRM.RUL.17`,
+`HRM.ACL.10`, `DOC.RUL.04` and `DOC.RUL.01`.
 
 #### Files to read
 - `docs/verticals/06-fnb.md` §4.1 "When it goes wrong" (row "Deliverect is down"), §4.4 "When it
   goes wrong", §4.6 "When it goes wrong" (health card row), §7.2 (compliance-critical list,
   settings table)
 - `docs/modules/wl-inventory.md` §7; `docs/modules/wl-documents.md` §7; `docs/modules/wl-kernel.md` §7
+- `docs/modules/wl-sales.md` §4.6, §4.7, §5.8, §5.10 and §7 (campaigns, sources, loyalty);
+  `docs/modules/wl-notify.md` §4.3, §5.3 and §7 (marketing broadcasts); `docs/modules/wl-inventory.md`
+  §5.9 (supplier scorecard); `docs/modules/wl-hr.md` §5.8 and §7 (onboarding);
+  `docs/modules/wl-documents.md` §3, §5.7 (SOPs, registration kinds)
 - `docs/OPEN-ITEMS.md` AU-15, AU-20
 
 #### Terms
@@ -1267,8 +1293,18 @@ the integration fallbacks (Deliverect, gateway, SMS).
 | Business-day cut-off per outlet | 04:00 (BL-FNB-15) | §7.2 settings |
 | Responsible role per document kind (wl-documents §5.2) | trade licence: owner / operations director; food permits, health cards and PIC certificate: kitchen manager of the outlet | §7.2 settings |
 | Notification types and groups (wl-notify §5.4) | `fnb.order_status`: *Marketing, delivery tracking* (`none`); `fnb.login_otp`: *OTP*; `fnb.recall_notice`: no group, urgent (task to the recall owner) | §7.2 |
+| Lead sources used (`SAL.CRM.02`) | walk-in, website, social, paid ads, aggregator, referral, event, partner (corporate catering), other; corporate and B2B enquiries are leads (`SAL.CRM.01`); a direct customer takes the source of their first order; no source requires a campaign | §5; §7.2 settings |
+| Campaign channels (`SAL.CRM.02`, `SAL.ACL.07`) | Instagram, TikTok, search ads, aggregator promotions, SMS, email; a promo code (`SAL.DSC.01`) may belong to a campaign; converted value: the customer's first direct order; a cost entry that takes a campaign over its budget needs a manager (`SAL.ACL.07`: on) | §5; §7.2 settings |
+| Supplier scorecard review (`STK.SUP.01`, `STK.RUL.09`, `STK.ACL.07`) | score on a 0–100 scale from the module weights; a monthly snapshot below 70 over a 1-month window (module: 3 months) makes `STK.RUL.09` open a review task to the storekeeper / purchaser, the area manager told; preferred and alternative suppliers per ingredient used by par-level reorder suggestions (`STK.ROP.01`); making another supplier preferred needs a second person (`STK.ACL.07`: on) | §5; §7.2 settings |
+| Loyalty earn and redeem (`SAL.LOY.01`, `SAL.RUL.07`) | `SAL.RUL.07` earns 1 point per AED 1 on direct orders (D2C site and counter); none on aggregator orders; 100 points = an AED 5 discount line, at most 50% of the order, confirmed by a one-time code to the member (VAT on the discounted supply: `⚠ open: accountant (A-15)`) | §5; §7.2 settings |
+| Loyalty expiry, segments and campaigns (`SAL.LOY.01`, `SAL.RUL.08`, `SAL.ACL.07`, `NTF.RUL.02`, `NTF.ACL.03`) | points expire 12 months after they are earned, the member reminded 30 days before (`SAL.RUL.08`); a manual adjustment above 500 points needs a manager (`SAL.ACL.07`); segments: first order only, regulars (3 or more orders in 30 days), lapsed (no order in 45 days), corporate catering customers; campaigns only to opted-in customers (`NTF.ACL.01`), with opt-out, sent 07:00–21:00 and at most 2 marketing messages per customer in 7 days (`NTF.RUL.02`); a broadcast to more than 200 recipients needs a second person (`NTF.ACL.03`) | §5; §7.2 settings |
+| Onboarding checklists (`HRM.ONB.01`, `HRM.RUL.16`, `HRM.RUL.17`, `HRM.ACL.10`) | templates for line cook, cashier / order taker, rider, storekeeper / purchaser and outlet / kitchen manager, started by `HRM.RUL.16` when the employee is created; checklist steps use `WRK.CHK.01`; tasks to the outlet / kitchen manager, the head chef and the employee; the employee's own steps recorded only by them (`HRM.ACL.10`); `HRM.RUL.17` reminds overdue steps every 2 days and tells HR and the line manager after 5 days; completion blocks nothing (health cards stay tracked by `DOC.EXP.01`) | §5; §7.2 settings |
+| SOP library (`HRM.ONB.01`, `DOC.RUL.04`, `HRM.ACL.10`) | SOP owners: head chef / central kitchen chef (recipes, food safety) and area manager (service, cash and delivery); required readers by role per outlet; `DOC.RUL.04` asks each reader to acknowledge within 7 days, reminds every 3 days and tells the manager and the owner role after 7 days; acknowledged only by the reader (`HRM.ACL.10`); a new version asks for a new acknowledgement | §5; §7.2 settings |
+| Registration and certification kinds (`DOC.EXP.01`, `DOC.RUL.01`) | *Halal certificate* (subject: item, for central kitchen products and supplier ingredients; responsible role storekeeper / purchaser); *Trademark registration* (brand, legal entity) and *Other certification* (legal entity; owner / operations director); `DOC.RUL.01` at 90, 30 and 7 days; no `blocks` | §5; §7.2 settings |
 
 #### Edge cases decided
+- **Loyalty VAT:** a redeemed points discount reduces the VAT of the discounted supply only
+  (`⚠ open: accountant (A-15)`); the rest of the loyalty settings can be built.
 - **Health card kinds:** no `blocks` entries in the MVP (no shift attendance); the kinds are
   compliance-critical for the owner alert only. Their validity is the expiry printed on the card
   (`⚠ open: authority (AU-15)`).
@@ -1312,6 +1348,32 @@ the integration fallbacks (Deliverect, gateway, SMS).
         already quick-entered is refused and listed for the kitchen manager.
   - [ ] With the gateway `down`, the D2C checkout offers COD only and online payment is hidden.
   - [ ] With SMS `down`, the login screen shows the outlet phone.
+- Sales, finance, staff and registrations
+  - [ ] a new lead or party offers the sources walk-in, website, social, paid ads, aggregator,
+        referral, event, partner and other; a campaign with channel *Instagram*, a budget and cost
+        entries reports leads, conversion, cost per lead, CAC and ROAS; a cost entry over the
+        budget waits for a manager (`SAL.ACL.07`).
+  - [ ] a supplier scoring 69 of 100 for a month creates a review task for the storekeeper /
+        purchaser (`STK.RUL.09`); 70 creates none; an item's alternative supplier is offered on
+        the par-level reorder suggestion; making it the preferred supplier waits for a second
+        person (`STK.ACL.07`).
+  - [ ] a direct order of AED 200 earns 200 points and an aggregator order earns none; redeeming
+        100 points adds an AED 5 discount line, refused above 50% of the order; points earned on
+        2026-11-01 expire on 2027-11-01 (`SAL.RUL.08`, reminder on 2027-10-02); a manual
+        adjustment of 501 points waits for a manager (`SAL.ACL.07`); a customer who has not opted
+        in is left out of a campaign; a campaign message queued at 22:00 is deferred to 07:00 and
+        a third marketing message to one customer in 7 days is suppressed (`NTF.RUL.02`); a
+        broadcast to 201 customers waits for a second person (`NTF.ACL.03`).
+  - [ ] hiring a line cook creates the line cook checklist with tasks to the outlet / kitchen
+        manager, the line manager and the employee, and the role is active before it is complete;
+        a step open 2 days past its due date reminds its assignee (`HRM.RUL.17`); a new version
+        of an SOP owned by the head chef / central kitchen chef asks every required reader to
+        acknowledge again within 7 days (`DOC.RUL.04`), and no one else can acknowledge for them
+        (`HRM.ACL.10`).
+  - [ ] a fresh 06 deployment lists *Halal certificate*, *Trademark registration* and *Other
+        certification* with responsible role storekeeper / purchaser for Halal, owner / operations
+        director for the others; a trademark registration expiring in 90 days notifies the owner /
+        operations director.
 
 #### Out of scope
 Module mechanisms (their epics); delivery, sales, payments and cash (BL-FNB-16).

@@ -1,6 +1,6 @@
 # 10 — Training Centres & EdTech
 
-> Status: accepted · Reviewed: 2026-10-15 · Last updated: 2026-10-15
+> Status: accepted · Reviewed: 2026-10-15 · Last updated: 2026-10-16
 
 ## 1. Summary
 
@@ -236,7 +236,7 @@ comes from party ownership (`OWN`) and guardian links.
 | `PTY.KYC.01` | Identity fields: Emirates ID, passport, trade licence, TRN | shared | wl-parties | MVP |
 | `PTY.REL.01` | Guardian–dependant relationships with delegated access and billing | shared | wl-parties | MVP |
 | `DOC.FIL.01` | Attach documents to any record | shared | wl-documents | MVP |
-| `DOC.EXP.01` | Expiry reminders (centre permit, course approvals, tutor permits, police clearance) and blocks on expiry | shared | wl-documents | MVP |
+| `DOC.EXP.01` | Expiry reminders (centre permit, course approvals, tutor permits, police clearance, trademark and other registrations) and blocks on expiry | shared | wl-documents | MVP |
 | `DOC.GEN.01` | Generate documents (enrolment form, receipt, progress report, certificate) | shared | wl-documents | MVP |
 | `DOC.SIG.01` | E-signature / consent capture (terms, refund policy, guardian consent) | shared | wl-documents | MVP |
 | `FIN.BIL.01` | Instalment schedule from an enrolment | shared | wl-invoicing | MVP |
@@ -284,6 +284,12 @@ comes from party ownership (`OWN`) and guardian links.
 | `EDU.BAT.01` | Batches with capacity, weekly pattern, tutor, room; sessions generated around holidays | specific | apps/edtech | MVP |
 | `EDU.ENR.01` | Enrolments in batches, packages or memberships, with completion criteria | specific | apps/edtech | MVP |
 | `SAL.PKG.01` | Prepaid session packages: credits, consumption per attended session, expiry (formerly `EDU.PKG.01`) | shared | wl-sales | MVP |
+| `SAL.CRM.02` | Lead sources and campaigns: cost per campaign, conversion by source and channel, cost per lead, customer acquisition cost and return on ad spend | shared | wl-sales | MVP |
+| `FIN.CFL.01` | Cash-flow forecast: expected receipts and payments by week from invoices, supplier bills, scheduled charges, post-dated cheques, payroll and budgets | shared | wl-invoicing | MVP |
+| `SAL.LOY.01` | Loyalty and retention: points or visit rewards, customer segments, and retention campaigns sent with marketing consent | shared | wl-sales + wl-notify | MVP |
+| `FIN.BUD.01` | Company budget vs actual by period, category and entity; owner drawings kept apart from operating cost | shared | wl-invoicing | MVP |
+| `HRM.ONB.01` | Staff onboarding checklists per role and a library of SOP documents with acknowledgement | shared | wl-hr + wl-documents | MVP |
+| `WRK.CHK.01` | Checklists with photos and signature (onboarding steps, `HRM.ONB.01`) | shared | wl-ticketing | MVP |
 | `EDU.ATT.01` | Student attendance per session | specific | apps/edtech | MVP |
 | `EDU.MKP.01` | Make-up sessions and transfers between batches | specific | apps/edtech | MVP |
 | `EDU.TRL.01` | Trial classes and placement tests (required per catalogue item; score or level entered by the tutor, suggested batch) with conversion tracking | specific | apps/edtech | MVP |
@@ -658,6 +664,22 @@ Trial and one-to-one booking messages keep the wl-scheduling group (*Booking con
 and reminders*). Types sent only to staff users name no group and take `none`: staff always
 also get the in-app notification (wl-notify §5.1).
 
+**Settings for the shared sales, finance, staff and document capabilities (10
+defaults):**
+
+| Setting | 10 value |
+|---|---|
+| Cash-flow forecast alert (`FIN.CFL.01`, `FIN.RUL.23`) | projected balance below AED 25,000 in any of the next 13 weeks (weeks start Monday): `FIN.RUL.23` alerts the company owner and the accountant, checked daily at 06:00; instalments by due date; due dates adjusted by each payer's average days late: on; disputed amounts counted: off |
+| Budget categories and approval (`FIN.BUD.01`, `FIN.RUL.24`) | categories (tutor costs, rent, marketing, materials, staff) owned by the accountant and mapped to the export accounts; one budget per legal entity and month, approved by the company owner; `FIN.RUL.24` warns the category's owner role and the accountant when a month's actual reaches 100% of its line |
+| Owner drawings (`FIN.BUD.01`, `FIN.ACL.21`) | expense category and payment purpose *owner drawings*, kept out of operating cost and profit; every drawing (AED 0) approved by the company owner, never by the requester (`FIN.ACL.21`) |
+| Lead sources used (`SAL.CRM.02`) | referral, walk-in, website, social, paid ads, event (school fairs), partner (schools, corporates), other; recorded on the lead (`SAL.CRM.01`) and on the student or guardian party; no source requires a campaign |
+| Campaign channels (`SAL.CRM.02`, `SAL.ACL.07`) | Instagram, TikTok, search ads, WhatsApp, email, school and community events; converted value: the first enrolment invoice; a cost entry that takes a campaign over its budget needs a manager (`SAL.ACL.07`: on) |
+| Loyalty earn and redeem (`SAL.LOY.01`, `SAL.RUL.07`) | `SAL.RUL.07` earns 1 point per AED 10 of fees paid by the student or guardian (none on corporate-paid fees) and reverses in proportion on a refund or credit note; 100 points = an AED 10 discount line on a later enrolment or package, at most 10% of its fee, confirmed by a one-time code to the member (VAT on the discounted supply: `⚠ open: accountant (A-15)`) |
+| Loyalty expiry, adjustments and segments (`SAL.LOY.01`, `SAL.RUL.08`, `SAL.ACL.07`, `NTF.RUL.02`, `NTF.ACL.03`) | points expire 12 months after they are earned, with a reminder 30 days before (`SAL.RUL.08`); a manual adjustment above 500 points, or closing an account with points, needs a manager (`SAL.ACL.07`); segments: package with 2 credits or fewer, course completed without re-enrolment in 30 days, trial attended and not enrolled, guardians with two or more students; campaigns only with marketing consent (`NTF.ACL.01`), the guardian's for a minor, with opt-out; sent 07:00–21:00 and at most 2 marketing messages per recipient in 7 days (`NTF.RUL.02`); a broadcast to more than 200 recipients needs a second approver (`NTF.ACL.03`) |
+| Onboarding checklists (`HRM.ONB.01`, `HRM.RUL.16`, `HRM.RUL.17`, `HRM.ACL.10`) | templates for tutor / trainer, admissions counsellor and academic coordinator, started by `HRM.RUL.16` when the employee record (`HRM.EMP.01`) is created; checklist steps use `WRK.CHK.01`; tasks to the centre manager, the academic coordinator and the employee; the employee's own steps recorded only by them (`HRM.ACL.10`); `HRM.RUL.17` reminds overdue steps every 2 days and tells the centre manager (HR) and the line manager after 5 days; completion blocks nothing (sessions stay guarded by tutor permits and police clearance) |
+| SOP library (`HRM.ONB.01`, `DOC.RUL.04`, `HRM.ACL.10`) | SOP owners: academic coordinator (teaching, assessment, safeguarding) and centre manager (front desk, refunds); required readers by role per campus; `DOC.RUL.04` asks each reader to acknowledge within 7 days, reminds every 3 days and tells the manager and the owner role after 7 days; acknowledged only by the reader (`HRM.ACL.10`); a new version asks for a new acknowledgement |
+| Registration and certification kinds (`DOC.EXP.01`, `DOC.RUL.01`) | *Trademark registration* and *Other certification* (subject: legal entity); responsible role company owner; `DOC.RUL.01` at 90, 30 and 7 days; no `blocks` |
+
 ## 8. Integrations
 
 | System | Purpose | Required for MVP | Access / notes |
@@ -747,7 +769,7 @@ coordinator (`EDU.ACL.04`, `EDU.ACL.16`).
 - **Specific to this vertical:** courses and approvals, batches and sessions, enrolments,
   student attendance, make-ups and transfers, trials, refunds, light LMS,
   assessments, certificates with verification, progress reports.
-- **Estimated reuse:** 56 of 71 capabilities (79%) come from shared modules or Renox.
+- **Estimated reuse:** 62 of 77 capabilities (81%) come from shared modules or Renox.
 - **Gaps in Renox:** a week/resource calendar (R5 `rx-week-calendar`) for timetables; no
   video-meeting integration.
 
@@ -765,6 +787,11 @@ future charges, batch termination with transfers or refunds, document blocks on 
 sessions, bookings and certificates, tutor change, attendance correction, absence policy per
 catalogue item, certificate reissue, membership pause linked to freeze, failed refunds and
 chargebacks, desk cash handover.
+
+**Also included:** lead sources and campaigns (`SAL.CRM.02`), loyalty and retention
+campaigns (`SAL.LOY.01`), the cash-flow forecast (`FIN.CFL.01`), budget with owner drawings
+(`FIN.BUD.01`), onboarding and SOPs (`HRM.ONB.01`) with checklists with photos and signature
+(`WRK.CHK.01`) for the onboarding steps, and trademark reminders (`DOC.EXP.01`).
 
 **Excluded from the MVP:** online self-booking, assignments and submissions, progress
 reports, corporate portal and quotations, SMS, video-meeting integration, ICS

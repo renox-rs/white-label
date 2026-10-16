@@ -152,7 +152,7 @@ usually global.
 | `CLN.ACL.10` | A package session cannot be used after the package expires, unless the clinic manager extends it | `STA`, `LIM` | receptionist | — |
 | `NTF.ACL.01` *(shared, formerly `CLN.ACL.11`)* | Patient lists for campaigns include only patients with marketing consent, and exporting them needs `patients.export` | `SEN` | marketing coordinator | — |
 | `CLN.ACL.12` | Emirates ID and insurance card images need `patients.sensitive.view` | `SEN` | all staff | — |
-| `CLN.ACL.13` | A promotional campaign can be sent only with a regulator advertising permit number and validity recorded, approved by the medical director (campaigns are Later) | `STA` | marketing coordinator | on |
+| `CLN.ACL.13` | A campaign that promotes services (`SAL.CRM.02` acquisition or `SAL.LOY.01` retention) can be activated and sent only with a regulator advertising permit number and validity recorded, approved by the medical director; it goes only to patients with marketing consent (`NTF.ACL.01`), with opt-out; its content and segments use no clinical data (segment rules on clinical services off, wl-sales §7) | `STA` | marketing coordinator | on |
 | `FIN.ACL.14` *(shared)* | Writing off the open amount of a claim above a limit needs the owner's approval | `LIM` | clinic manager | AED 1,000 |
 | `FIN.ACL.16` *(shared)* | Moving a payer overpayment to the payer credit balance, or recording a payer recoupment, needs a second person (a reversal from wl-payments is exempt) | `SOD`, `LIM` | billing coordinator, accountant | any amount |
 | `SCH.ACL.05` *(shared)* | A booking deposit is forfeited only on a patient's late cancellation or a no-show (a walk-out after check-in applies it to work done and refunds the remainder, §13 question 8); a clinic-initiated cancel or reschedule refunds it in full; waiving a forfeiture needs `bookings.waive_deposit` | `STA` | receptionist, clinic manager | waiver: clinic manager |
@@ -304,7 +304,7 @@ expire with appointments affected (`DOC.RUL.03`).
 | `PTY.REL.01` | Links between parties: guardian ↔ dependant, family members | shared (**new**) | wl-parties | MVP |
 | `PTY.CNS.01` | Recorded consents per party and purpose (data processing, marketing, channel), with date and withdrawal | shared (**new**) | wl-parties | MVP |
 | `DOC.FIL.01` | Attach documents (insurance cards, referrals, reports from the EMR) | shared | wl-documents | MVP |
-| `DOC.EXP.01` | Expiry reminders (practitioner licences, facility licence, insurance cards) | shared | wl-documents | MVP |
+| `DOC.EXP.01` | Expiry reminders (practitioner licences, facility licence, insurance cards, trademark and other registrations) | shared | wl-documents | MVP |
 | `DOC.GEN.01` | Generate documents (receipts, invoices, package statements, forms) | shared | wl-documents | MVP |
 | `DOC.SIG.01` | Signature / consent capture on a tablet or in the portal | shared | wl-documents | MVP |
 | `FIN.INV.01` | Tax invoices and receipts with per-service VAT | shared | wl-invoicing | MVP |
@@ -316,7 +316,7 @@ expire with appointments affected (`DOC.RUL.03`).
 | `FIN.PAB.01` | Supplier bills with 3-way match | shared | wl-invoicing | Later |
 | `FIN.EXT.01` | Export to accounting software | shared | wl-invoicing | Later |
 | `SAL.PKG.01` | Prepaid packages of sessions or units: sell, consume, expire, refund, liability | shared (**new**) | wl-sales | MVP |
-| `SAL.CRM.01` | Leads and enquiries pipeline (aesthetics, campaigns) | shared | wl-sales | Later |
+| `SAL.CRM.01` | Leads and enquiries pipeline (aesthetics, campaigns) | shared | wl-sales | MVP |
 | `SAL.CAT.01` | Service catalogue with self-pay price lists | shared (**new**) | wl-sales | MVP |
 | `WRK.TKT.01` | Patient complaints and feedback as tickets | shared | wl-ticketing | MVP |
 | `WRK.TKT.02` | Complaint triage, assignment and SLA | shared | wl-ticketing | MVP |
@@ -361,6 +361,13 @@ expire with appointments affected (`DOC.RUL.03`).
 | `CLN.CLM.03` | Denial management with denial codes, resubmission, write-off | specific | apps/clinics | MVP |
 | `HRM.QUA.01` | Practitioner licences and privileges per branch, with booking guard (formerly `CLN.LIC.01`) | shared (**new**) | wl-hr | MVP |
 | `HRM.ROS.01` | Rosters: practitioners to branches, rooms and session types (formerly `CLN.ROS.01`) | shared (**new**) | wl-attendance | MVP |
+| `SAL.CRM.02` | Lead sources and campaigns: cost per campaign, conversion by source and channel, cost per lead, customer acquisition cost and return on ad spend | shared | wl-sales | MVP |
+| `FIN.CFL.01` | Cash-flow forecast: expected receipts and payments by week from invoices, supplier bills, scheduled charges, post-dated cheques, payroll and budgets | shared | wl-invoicing | MVP |
+| `SAL.LOY.01` | Loyalty and retention: points or visit rewards, customer segments, and retention campaigns sent with marketing consent | shared | wl-sales + wl-notify | MVP |
+| `FIN.BUD.01` | Company budget vs actual by period, category and entity; owner drawings kept apart from operating cost | shared | wl-invoicing | MVP |
+| `HRM.ONB.01` | Staff onboarding checklists per role and a library of SOP documents with acknowledgement | shared | wl-hr + wl-documents | MVP |
+| `WRK.CHK.01` | Checklists with photos and signature (onboarding steps, `HRM.ONB.01`) | shared | wl-ticketing | MVP |
+| `STK.SUP.01` | Supplier scorecard and alternative suppliers: on-time delivery, rejected quantity, NCRs, price variance; preferred and alternative suppliers per item | shared | wl-inventory | Later |
 | `CLN.RCL.01` | Recalls and follow-up schedules (e.g. 6-month dental check-up) | specific | apps/clinics | MVP |
 | `CLN.TEL.01` | Telehealth appointments via a licensed provider | specific | apps/clinics | Later |
 | `CLN.HIE.01` | EMR integration: import charge capture, export bookings and demographics (HL7/FHIR) | specific | apps/clinics | Later |
@@ -640,6 +647,16 @@ submission windows) and `DOC.RUL.03` for practitioner licences and the facility 
 | Records that support `void` | claim (`draft`, `ready`); payments, receipts and appointments follow their module |
 | Late entry after an outage (business time) | check-in and check-out time, cash payments, consumables issued (paper sheets entered later) |
 | Responsible role per document kind (wl-documents §5.2) | practitioner licence and branch privileges: clinic manager of the branch; facility licence: owner / medical director; patient Emirates ID and insurance card: receptionist, with the patient (or guardian) notified as the party |
+| Cash-flow forecast alert (`FIN.CFL.01`, `FIN.RUL.23`) | projected balance below AED 50,000 in any of the next 13 weeks (weeks start Monday): `FIN.RUL.23` alerts the owner / medical director and the accountant, checked daily at 06:00; insurer remittances by claim due date, adjusted by each payer's average days late: on; disputed amounts counted: off |
+| Budget categories and approval (`FIN.BUD.01`, `FIN.RUL.24`) | categories owned by the accountant and mapped to the export accounts; one budget per legal entity and month, branches as categories where wanted; approved by the owner / medical director; `FIN.RUL.24` warns the category's owner role and the accountant when a month's actual reaches 100% of its line |
+| Owner drawings (`FIN.BUD.01`, `FIN.ACL.21`) | expense category and payment purpose *owner drawings*, kept out of operating cost and profit; every drawing (AED 0) approved by the owner / medical director, never by the requester (`FIN.ACL.21`) |
+| Lead sources used (`SAL.CRM.02`) | referral, walk-in, website, social, paid ads, aggregator (booking platforms), partner (insurers, corporates), event, other; on leads and patients; a source is required, and a campaign is required for *paid ads* and *social* |
+| Campaign channels (`SAL.CRM.02`, `SAL.ACL.07`, `CLN.ACL.13`) | Instagram, TikTok, search ads, SMS, WhatsApp, email; converted value: the patient's first paid visit; a cost entry that takes a campaign over its budget needs a manager (`SAL.ACL.07`: on); a campaign that promotes services needs the advertising permit before it is activated (`CLN.ACL.13`); whether campaign content needs health authority approval beyond the permit is outside the platform (`⚠ open: lawyer (L-38)`) |
+| Loyalty earn and redeem (`SAL.LOY.01`, `SAL.RUL.07`) | `SAL.RUL.07` earns 1 point per AED 10 paid by the patient for self-pay services and products; none on the insurer's share or on package sessions; 100 points = an AED 10 discount line on a later self-pay invoice, confirmed by a one-time code to the patient (whether health authority rules limit rewards on medical services: `⚠ open: lawyer (L-38)`; VAT on the discounted supply: `⚠ open: accountant (A-15)`) |
+| Loyalty expiry, segments and retention campaigns (`SAL.LOY.01`, `SAL.RUL.08`, `SAL.ACL.07`, `NTF.RUL.02`, `NTF.ACL.03`) | points expire 12 months after they are earned, reminder 30 days before (`SAL.RUL.08`); a manual adjustment above 500 points needs a manager (`SAL.ACL.07`); segments: no visit in 6 months, package with sessions left and no booking in 30 days, birthday month (segment rules on clinical services off: visit dates, spend and non-clinical items only); campaigns only to patients with marketing consent (`NTF.ACL.01`), with opt-out and the advertising permit (`CLN.ACL.13`); sent 07:00–21:00, at most 2 marketing messages per patient in 7 days (`NTF.RUL.02`); a broadcast to more than 200 patients needs a second approver (`NTF.ACL.03`) |
+| Onboarding checklists (`HRM.ONB.01`, `HRM.RUL.16`, `HRM.RUL.17`, `HRM.ACL.10`) | templates for receptionist, call-centre agent, nurse / assistant, practitioner, billing coordinator and storekeeper, started by `HRM.RUL.16` when an employee record (`HRM.EMP.01`) is created; checklist steps use `WRK.CHK.01` (photos and signature); tasks to the clinic manager, the line manager and the employee; the employee's own steps recorded only by them (`HRM.ACL.10`); `HRM.RUL.17` reminds overdue steps every 2 days and tells the clinic manager and the line manager after 5 days; completion blocks nothing (bookings stay guarded by licences, `SCH.ACL.04`) |
+| SOP library (`HRM.ONB.01`, `DOC.RUL.04`, `HRM.ACL.10`) | SOP owners: clinic manager (front desk, billing, complaints) and owner / medical director (infection control and clinical SOPs); required readers by role per branch; `DOC.RUL.04` asks each reader to acknowledge within 7 days, reminds every 3 days and tells the manager and the owner role after 7 days; acknowledged only by the reader (`HRM.ACL.10`); a new version asks for a new acknowledgement |
+| Registration and certification kinds (`DOC.EXP.01`, `DOC.RUL.01`) | *Trademark registration* and *Other certification* (subject: legal entity); responsible role owner / medical director; `DOC.RUL.01` at 90, 30 and 7 days; no `blocks` |
 
 **Notification types registered by 05** (wl-notify §5.4: each names its group; quiet hours
 and channels follow wl-notify):
@@ -702,7 +719,8 @@ becomes a call task for the front desk.
 - **Minors:** guardians act for dependants; access ends at the configured age (`PTY.ACL.01`).
 - **Advertising:** a campaign that promotes services needs the regulator's permit before
   sending ✔ [S6], [S7]. The app records the permit number and validity on the campaign and
-  blocks sending without them (`CLN.ACL.13`). Reminders and transactional messages are not
+  blocks activating or sending it without them, for acquisition (`SAL.CRM.02`) and retention
+  (`SAL.LOY.01`) campaigns alike (`CLN.ACL.13`). Reminders and transactional messages are not
   advertising.
 - **Self-pay consent:** when insurance or prior authorisation fails, the patient signs a
   self-pay consent with the estimated price before the service (`CLN.ACL.15`); it is kept
@@ -739,11 +757,11 @@ becomes a call task for the front desk.
 - **Shared modules provide:** parties with guardians and consents, documents and signatures,
   scheduling with self-booking and reminders, invoicing and payments, packages and
   memberships, complaints as tickets, portal, notifications by SMS/WhatsApp/email, staff
-  records and leave, consumables with lots.
+  records and leave, onboarding checklists and SOPs, consumables with lots.
 - **Specific to this vertical:** payer contracts and tariffs, insurance policies and
   eligibility, prior authorisations, charge capture, patient-share calculation, claims and
   remittances, practitioner licences and rosters, recalls, EMR and claims integrations.
-- **Estimated reuse:** 61 of 73 capabilities (84%) come from shared modules or Renox.
+- **Estimated reuse:** 68 of 80 capabilities (85%) come from shared modules or Renox.
 
 ## 12. MVP scope
 
@@ -772,7 +790,12 @@ becomes a call task for the front desk.
 - technical rejections, recoupments, late closing and void of claims;
 - end-of-day cash handover per receptionist (`FIN.CSH.01`);
 - recalls and dashboards;
-- 25-year retention of all patient data.
+- 25-year retention of all patient data;
+- leads with sources and campaigns, loyalty and retention campaigns, cash-flow forecast,
+  budget with owner drawings, onboarding and SOPs with checklists (photos and signature),
+  trademark reminders (`SAL.CRM.01`, `SAL.CRM.02`, `SAL.LOY.01`, `FIN.CFL.01`,
+  `FIN.BUD.01`, `HRM.ONB.01`, `WRK.CHK.01`, `DOC.EXP.01`); campaigns that promote services
+  keep the advertising permit guard (`CLN.ACL.13`).
 
 **Excluded from the MVP:**
 - clinical records of any kind (notes, prescriptions, results, treatment plans) and HIE
@@ -781,7 +804,6 @@ becomes a call task for the front desk.
 - EMR integration;
 - telehealth;
 - memberships;
-- leads pipeline and campaigns;
 - purchasing and goods received (stock is adjusted on receipt);
 - Emirates ID reader;
 - accounting export.

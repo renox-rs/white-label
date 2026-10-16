@@ -30,8 +30,8 @@ X-13, X-17, X-19 and X-20.
 | BL-CLN-12 | Block bookings and alert the owner when a practitioner licence expires (`CLN.RUL.01`) | high | s | Launch 05 | BL-HRM-01; BL-DOC-05; BL-SCH-07; BL-KRN-08 |
 | BL-CLN-13 | Record the lot of every consumable issued to a visit | high | s | Launch 05 | Base: wl-inventory Lot and stock movements; BL-STK-11; BL-STK-18 |
 | BL-CLN-14 | Trace a recalled lot to patients and send neutral notices | high | m | Launch 05 | BL-CLN-13; BL-STK-14; BL-STK-15; BL-STK-16; BL-NTF-02 |
-| BL-CLN-15 | 05: configure shared negative-flow settings (bookings, licences, alerts, connections, messages) | high | m | Launch 05 | BL-SCH-01 to BL-SCH-10; BL-DOC-01; BL-DOC-06; BL-KRN-05; BL-KRN-08; BL-NTF-01 |
-| BL-CLN-16 | 05: configure shared negative-flow settings (money and stock) | high | m | Launch 05 | BL-INV-04; BL-INV-05; BL-INV-18; BL-PAY-02 to BL-PAY-07; BL-PAY-17; BL-SAL-16; BL-STK-11 to BL-STK-20 |
+| BL-CLN-15 | 05: configure shared negative-flow settings (bookings, licences, alerts, connections, messages) | high | m | Launch 05 | BL-SCH-01 to BL-SCH-10; BL-DOC-01; BL-DOC-06; BL-KRN-05; BL-KRN-08; BL-NTF-01; BL-SAL-19; BL-SAL-20; BL-SAL-21; BL-SAL-22; BL-SAL-23; BL-SAL-24; BL-SAL-25; BL-NTF-07; BL-NTF-08; BL-HRM-26; BL-HRM-27; BL-HRM-28; BL-DOC-08; BL-DOC-09; BL-DOC-10 |
+| BL-CLN-16 | 05: configure shared negative-flow settings (money and stock) | high | m | Launch 05 | BL-INV-04; BL-INV-05; BL-INV-18; BL-PAY-02 to BL-PAY-07; BL-PAY-17; BL-SAL-16; BL-STK-11 to BL-STK-20; BL-INV-25; BL-INV-26; BL-INV-27; BL-INV-28; BL-INV-29; BL-INV-30; BL-PAY-25; BL-PAY-26 |
 
 ---
 
@@ -1147,7 +1147,7 @@ Recall opening, holds and decisions (BL-STK-14, BL-STK-12, BL-STK-16); authority
 ### BL-CLN-15 — 05 Clinics: configure shared negative-flow settings (bookings, licences, alerts, connections, messages)
 
 **Labels:** `vertical:05-clinics` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` · **Milestone:** Launch 05 · **Size:** m
-**Depends on:** BL-SCH-01 to BL-SCH-10 · BL-DOC-01 · BL-DOC-06 · BL-KRN-05 · BL-KRN-08 · BL-NTF-01 · BL-NTF-02 · **Blocks:** None.
+**Depends on:** BL-SCH-01 to BL-SCH-10 · BL-DOC-01 · BL-DOC-06 · BL-KRN-05 · BL-KRN-08 · BL-NTF-01 · BL-NTF-02 · BL-SAL-19 · BL-SAL-20 · BL-SAL-21 · BL-SAL-22 · BL-SAL-23 · BL-SAL-24 · BL-SAL-25 · BL-NTF-07 · BL-NTF-08 · BL-HRM-26 · BL-HRM-27 · BL-HRM-28 · BL-DOC-08 · BL-DOC-09 · BL-DOC-10 · **Blocks:** None.
 **Review items:** X-13, X-17, X-19, X-20, 05-N8-a, 05 MEDIUM "practitioner sick on the day", "clinic-side cancellation and deposit refund"
 
 #### Goal
@@ -1156,13 +1156,21 @@ the module behaviour runs with the clinic rules: practitioner licences as blocki
 override, the eligibility look-ahead and conflict escalation, deposit outcomes, the
 compliance-critical rules, the connection fallbacks, the give-up reactions, and patient change
 messages without reasons.
+It also seeds the 05 values for lead sources and campaigns (`SAL.CRM.02`), loyalty
+(`SAL.LOY.01`), onboarding and SOPs (`HRM.ONB.01`) and registration kinds (`DOC.EXP.01`), added
+on 2026-10-16: `SAL.RUL.07`, `SAL.RUL.08`, `SAL.ACL.07`, `NTF.RUL.02`, `NTF.ACL.03`,
+`HRM.RUL.16`, `HRM.RUL.17`, `HRM.ACL.10`, `DOC.RUL.04` and `DOC.RUL.01`. Campaigns that promote
+services keep the advertising permit guard (`CLN.ACL.13`).
 
 #### Files to read
 - `docs/verticals/05-clinics.md` §3.3 (`SCH.ACL.04`, `SCH.ACL.05`, `SCH.ACL.06`), §4.1 "When it
   goes wrong", §4.5, §7.2 (compliance-critical list and settings table), §8 ("When a connection
   is down"), §9 (Patient messages after a change)
 - `docs/modules/wl-scheduling.md` §7; `docs/modules/wl-documents.md` §7; `docs/modules/wl-kernel.md`
-  §7; `docs/modules/wl-notify.md` §5.4, §7
+  §7; `docs/modules/wl-notify.md` §5.3, §5.4, §7
+- `docs/modules/wl-sales.md` §4.6, §4.7, §5.8, §5.10 and §7 (campaigns, sources, loyalty,
+  segments); `docs/modules/wl-hr.md` §5.8 and §7 (onboarding); `docs/modules/wl-documents.md` §3,
+  §5.7 and §7 (SOPs, registration kinds)
 
 #### Terms
 - **Seeded setting:** the value installed for a 05 deployment; the module provides the mechanism.
@@ -1194,8 +1202,20 @@ messages without reasons.
 | Patient change messages (reassignment, clinic cancellation, recall) | clinic, time and link or phone only; never the reason or clinical detail | §9 |
 | Responsible role per document kind (wl-documents §5.2) | practitioner licence and branch privileges: clinic manager of the branch; facility licence: owner / medical director; patient Emirates ID and insurance card: receptionist, with the patient (or guardian) notified as the party | §7.2 settings |
 | Notification types and groups (wl-notify §5.4) | `clinic.card_upload_request`: *Portal invitations, document requests*, task to the receptionist; `clinic.recall_invite` and `clinic.prior_auth_denied`: *Booking confirmations and reminders*; `clinic.product_recall_notice`: no group, urgent (call task for the front desk); dependants: other guardian first | §7.2 |
+| Lead sources used (`SAL.CRM.02`) | referral, walk-in, website, social, paid ads, aggregator (booking platforms), partner (insurers, corporates), event, other; on leads and patients; a source is required, and a campaign is required for *paid ads* and *social* | §5; §7.2 settings |
+| Campaign channels (`SAL.CRM.02`, `SAL.ACL.07`, `CLN.ACL.13`) | Instagram, TikTok, search ads, SMS, WhatsApp, email; converted value: the patient's first paid visit; a cost entry that takes a campaign over its budget needs a manager (`SAL.ACL.07`: on); a campaign that promotes services needs the advertising permit before it is activated (`CLN.ACL.13`); whether campaign content needs health authority approval beyond the permit is outside the platform (`⚠ open: lawyer (L-38)`) | §5; §7.2 settings |
+| Loyalty earn and redeem (`SAL.LOY.01`, `SAL.RUL.07`) | `SAL.RUL.07` earns 1 point per AED 10 paid by the patient for self-pay services and products; none on the insurer's share or on package sessions; 100 points = an AED 10 discount line on a later self-pay invoice, confirmed by a one-time code to the patient (whether health authority rules limit rewards on medical services: `⚠ open: lawyer (L-38)`; VAT on the discounted supply: `⚠ open: accountant (A-15)`) | §5; §7.2 settings |
+| Loyalty expiry, segments and retention campaigns (`SAL.LOY.01`, `SAL.RUL.08`, `SAL.ACL.07`, `NTF.RUL.02`, `NTF.ACL.03`) | points expire 12 months after they are earned, reminder 30 days before (`SAL.RUL.08`); a manual adjustment above 500 points needs a manager (`SAL.ACL.07`); segments: no visit in 6 months, package with sessions left and no booking in 30 days, birthday month (segment rules on clinical services off: visit dates, spend and non-clinical items only); campaigns only to patients with marketing consent (`NTF.ACL.01`), with opt-out and the advertising permit (`CLN.ACL.13`); sent 07:00–21:00, at most 2 marketing messages per patient in 7 days (`NTF.RUL.02`); a broadcast to more than 200 patients needs a second approver (`NTF.ACL.03`) | §5; §7.2 settings |
+| Onboarding checklists (`HRM.ONB.01`, `HRM.RUL.16`, `HRM.RUL.17`, `HRM.ACL.10`) | templates for receptionist, call-centre agent, nurse / assistant, practitioner, billing coordinator and storekeeper, started by `HRM.RUL.16` when an employee record (`HRM.EMP.01`) is created; checklist steps use `WRK.CHK.01` (photos and signature); tasks to the clinic manager, the line manager and the employee; the employee's own steps recorded only by them (`HRM.ACL.10`); `HRM.RUL.17` reminds overdue steps every 2 days and tells the clinic manager and the line manager after 5 days; completion blocks nothing (bookings stay guarded by licences, `SCH.ACL.04`) | §5; §7.2 settings |
+| SOP library (`HRM.ONB.01`, `DOC.RUL.04`, `HRM.ACL.10`) | SOP owners: clinic manager (front desk, billing, complaints) and owner / medical director (infection control and clinical SOPs); required readers by role per branch; `DOC.RUL.04` asks each reader to acknowledge within 7 days, reminds every 3 days and tells the manager and the owner role after 7 days; acknowledged only by the reader (`HRM.ACL.10`); a new version asks for a new acknowledgement | §5; §7.2 settings |
+| Registration and certification kinds (`DOC.EXP.01`, `DOC.RUL.01`) | *Trademark registration* and *Other certification* (subject: legal entity); responsible role owner / medical director; `DOC.RUL.01` at 90, 30 and 7 days; no `blocks` | §5; §7.2 settings |
 
 #### Edge cases decided
+- **Loyalty VAT:** a redeemed points discount reduces the VAT of the discounted supply only
+  (`⚠ open: accountant (A-15)`); the rest of the loyalty settings can be built.
+- **Loyalty on medical services:** whether health authority rules limit rewards on medical
+  services, and whether campaign content needs their approval, is `⚠ open: lawyer (L-38)`; the
+  seed earns points on self-pay services until answered.
 - **SMS/WhatsApp down list:** the fallback screen lists `booked` and `confirmed` appointments
   starting in the next 24 hours from the moment the connection went `down`, per branch, with a
   *called* tick per row.
@@ -1235,6 +1255,28 @@ messages without reasons.
 - Late entry
   - [ ] Check-in time, check-out time, cash payments and consumables issued accept a business time
         with the late-entry flag.
+- Sales, finance, staff and registrations
+  - [ ] a new lead or party offers the sources referral, walk-in, website, social, paid ads,
+        aggregator, partner, event and other; a campaign with channel *Instagram*, a budget and
+        cost entries reports leads, conversion, cost per lead, CAC and ROAS; a lead with source
+        *paid ads* and no campaign is refused; a cost entry over the budget waits for a manager
+        (`SAL.ACL.07`); a campaign promoting services without a permit number cannot be
+        activated (`CLN.ACL.13`).
+  - [ ] a self-pay invoice of AED 200 paid by the patient earns 20 points and the insurer's share
+        earns none; redeeming 100 points adds an AED 10 discount line; points earned on 2026-11-01
+        expire on 2027-11-01 with a reminder on 2027-10-02 (`SAL.RUL.08`); an adjustment of 600
+        points needs a manager (`SAL.ACL.07`); a patient without marketing consent is left out of
+        a campaign; a retention message queued at 22:00 is deferred to 07:00, a third marketing
+        message in 7 days is suppressed (`NTF.RUL.02`); a send to 201 patients needs a second
+        approver (`NTF.ACL.03`); a segment cannot use a clinical service as a rule.
+  - [ ] hiring a receptionist creates the receptionist checklist with tasks to the clinic manager,
+        the line manager and the employee, and the role is active before it is complete; a step
+        open 2 days past its due date reminds its assignee (`HRM.RUL.17`); a new version of an
+        SOP owned by the clinic manager asks every required reader to acknowledge again within 7
+        days (`DOC.RUL.04`), and no one else can acknowledge for them (`HRM.ACL.10`).
+  - [ ] a fresh 05 deployment lists *Trademark registration* and *Other certification* with
+        responsible role owner / medical director; a trademark registration expiring in 90 days
+        notifies the owner / medical director.
 
 #### Out of scope
 Module mechanisms (their epics); money and stock settings (BL-CLN-16).
@@ -1244,7 +1286,7 @@ Module mechanisms (their epics); money and stock settings (BL-CLN-16).
 ### BL-CLN-16 — 05 Clinics: configure shared negative-flow settings (money and stock)
 
 **Labels:** `vertical:05-clinics` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` · **Milestone:** Launch 05 · **Size:** m
-**Depends on:** BL-INV-04 · BL-INV-05 · BL-INV-18 · BL-PAY-02 to BL-PAY-07 · BL-PAY-17 · BL-SAL-16 · BL-STK-11 to BL-STK-20 · **Blocks:** None.
+**Depends on:** BL-INV-04 · BL-INV-05 · BL-INV-18 · BL-PAY-02 to BL-PAY-07 · BL-PAY-17 · BL-SAL-16 · BL-STK-11 to BL-STK-20 · BL-INV-25 · BL-INV-26 · BL-INV-27 · BL-INV-28 · BL-INV-29 · BL-INV-30 · BL-PAY-25 · BL-PAY-26 · **Blocks:** None.
 **Review items:** X-02, X-03, X-06, X-07, X-09, X-10, 05-N11-a, 05 MEDIUM "billing disputes", "negative stock"
 
 #### Goal
@@ -1252,12 +1294,17 @@ Seed 05's values for the shared money and stock mechanisms: patient invoice writ
 disputes, claim write-off limit, payer overpayment approval, failed and pending payments,
 chargebacks and failed refunds, front-desk cash custody per receptionist and day, packages after a
 payment reversal, negative stock, stock holds and recalls.
+It also seeds the 05 values for the cash-flow forecast alert (`FIN.CFL.01`) and the
+company budget with owner drawings (`FIN.BUD.01`), added on 2026-10-16: `FIN.RUL.23`,
+`FIN.RUL.24` and `FIN.ACL.21`.
 
 #### Files to read
 - `docs/verticals/05-clinics.md` §3.3 (`FIN.ACL.14`, `FIN.ACL.16`, `FIN.ACL.05`, `FIN.ACL.06`,
   `FIN.ACL.19`, `STK.ACL.05`), §4.1 and §4.2 "When it goes wrong", §4.6, §7.2 settings
 - `docs/modules/wl-invoicing.md` §7; `docs/modules/wl-payments.md` §7; `docs/modules/wl-sales.md`
   §7; `docs/modules/wl-inventory.md` §7
+- `docs/modules/wl-invoicing.md` §5.14–§5.16 (cash-flow forecast, company budget, owner
+  drawings); `docs/modules/wl-payments.md` (open cheques, owner-drawings payments)
 - `docs/OPEN-ITEMS.md` L-20
 
 #### Terms
@@ -1290,6 +1337,9 @@ payment reversal, negative stock, stock holds and recalls.
 | Recall hold release (`STK.ACL.05`) | second holder of `lots.release` | §3.3 |
 | Recall owner | owner / medical director; notices sent by the clinic manager | §7.2 settings |
 | Recall notice template | *patient* (BL-CLN-14) | §4.6 |
+| Cash-flow forecast alert (`FIN.CFL.01`, `FIN.RUL.23`) | projected balance below AED 50,000 in any of the next 13 weeks (weeks start Monday): `FIN.RUL.23` alerts the owner / medical director and the accountant, checked daily at 06:00; insurer remittances by claim due date, adjusted by each payer's average days late: on; disputed amounts counted: off | §5; §7.2 settings |
+| Budget categories and approval (`FIN.BUD.01`, `FIN.RUL.24`) | categories owned by the accountant and mapped to the export accounts; one budget per legal entity and month, branches as categories where wanted; approved by the owner / medical director; `FIN.RUL.24` warns the category's owner role and the accountant when a month's actual reaches 100% of its line | §5; §7.2 settings |
+| Owner drawings (`FIN.BUD.01`, `FIN.ACL.21`) | expense category and payment purpose *owner drawings*, kept out of operating cost and profit; every drawing (AED 0) approved by the owner / medical director, never by the requester (`FIN.ACL.21`) | §5; §7.2 settings |
 
 #### Edge cases decided
 - **Handover unit:** one handover per receptionist, branch and day (Asia/Dubai); a receptionist
@@ -1322,6 +1372,15 @@ payment reversal, negative stock, stock holds and recalls.
   - [ ] An issue to a visit beyond stock at a branch store creates a pending issue; after 24 hours
         the clinic manager is told.
   - [ ] Releasing a recall-held lot needs a second `lots.release` holder.
+- Cash-flow forecast and budget
+  - [ ] in a fresh 05 deployment, a projected balance of AED 49,999 in week 5 alerts the owner /
+        medical director and the accountant once (`FIN.RUL.23`, 06:00 run); AED 50,000 or more in
+        every week alerts no one; the forecast shows 13 weekly buckets from Monday.
+  - [ ] a monthly budget for a legal entity prepared by the accountant needs approval by the owner
+        / medical director; an expense with category *owner drawings* is left out of operating
+        cost and profit reports, and the user who records it cannot approve it (`FIN.ACL.21`); an
+        expense line reaching 100% of its month's budget line warns the category's owner role and
+        the accountant once (`FIN.RUL.24`).
 
 #### Out of scope
 Module mechanisms (their epics); bookings, licences and messages (BL-CLN-15).

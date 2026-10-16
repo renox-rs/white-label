@@ -1,6 +1,6 @@
 # 07 — Light Manufacturing & Assembly
 
-> Status: accepted · Reviewed: 2026-10-15 · Last updated: 2026-10-15
+> Status: accepted · Reviewed: 2026-10-15 · Last updated: 2026-10-16
 
 ## 1. Summary
 
@@ -264,7 +264,7 @@ are scoped to a warehouse location. Sales, procurement and accounts are usually 
 | `PTY.PTY.01` | Parties: customers, suppliers, carriers | shared | wl-parties | MVP |
 | `PTY.KYC.01` | Identity fields: trade licence, TRN, industrial licence | shared | wl-parties | MVP |
 | `DOC.FIL.01` | Attach documents (drawings, specs, test reports, customer POs) | shared | wl-documents | MVP |
-| `DOC.EXP.01` | Expiry reminders (industrial licence, conformity certificates, ICV certificate, calibration) | shared | wl-documents | MVP |
+| `DOC.EXP.01` | Expiry reminders (industrial licence, conformity certificates, ICV certificate, calibration, Halal and ISO certificates, trademark) | shared | wl-documents | MVP |
 | `DOC.GEN.01` | Generate documents (quotation, order confirmation, delivery note, certificate, lot labels) | shared | wl-documents | MVP |
 | `FIN.QUO.01` | Quotations | shared | wl-invoicing | MVP |
 | `FIN.CST.01` | Job costing per work order: standard vs actual | shared | wl-invoicing | MVP |
@@ -288,7 +288,7 @@ are scoped to a warehouse location. Sales, procurement and accounts are usually 
 | `RPT.DSH.01` | Role-based dashboards | shared | Renox charts + wl-kernel | MVP |
 | `HRM.ATT.01` | Shift attendance | shared | wl-attendance | Later |
 | `HRM.TMS.01` | Labour hours booked to work orders | shared | wl-attendance | Later |
-| `HRM.EMP.01` | Minimal staff records for labour booking: person, line, cost rate | shared | wl-hr | Later |
+| `HRM.EMP.01` | Minimal employee records: person, line, cost rate, documents (no payroll or visas); needed by onboarding (`HRM.ONB.01`), later by labour booking | shared | wl-hr | MVP |
 | `STK.ITM.01` | Item catalogue: raw materials, components, finished goods, units of measure and conversions | shared | wl-inventory | MVP |
 | `STK.LOC.01` | Stock per location (raw material store, WIP, finished goods, quarantine) | shared | wl-inventory | MVP |
 | `STK.MOV.01` | Stock movements: receive, issue to work order, output, transfer, adjust | shared | wl-inventory | MVP |
@@ -299,7 +299,7 @@ are scoped to a warehouse location. Sales, procurement and accounts are usually 
 | `STK.LOT.01` | Lot/batch tracking with status and expiry, for items flagged lot-tracked | shared | wl-inventory | MVP |
 | `STK.LND.01` | Landed cost: freight, duty and clearing spread over received raw materials | shared | wl-inventory | MVP |
 | `STK.BOM.01` | Bills of materials with versions; explosion against stock | shared | wl-inventory | MVP |
-| `SAL.CRM.01` | Leads and enquiries pipeline | shared | wl-sales | Later |
+| `SAL.CRM.01` | Leads and enquiries pipeline | shared | wl-sales | MVP |
 | `SAL.CAT.01` | Sellable catalogue and customer price lists | shared | wl-sales | MVP |
 | `SAL.ORD.01` | Sales orders | shared | wl-sales | MVP |
 | `SAL.CRD.01` | Customer credit limits, credit check and credit hold | shared (**new**) | wl-sales | MVP |
@@ -327,6 +327,11 @@ are scoped to a warehouse location. Sales, procurement and accounts are usually 
 | `MFG.ICV.01` | ICV data pack: manufacturing cost, local spend, Emirati headcount, assets, export revenue for the certifying body (the certificate itself is a document with expiry in the MVP) | specific | apps/manufacturing | Later |
 | `MFG.CMP.01` | Product conformity register: schemes, test reports, certifying bodies, links to lots (the *regulated* and *export only* item flags and certificates as documents are in the MVP) | specific | apps/manufacturing | Later |
 | `SAL.RET.01` | Customer complaints and returns linked to lots (formerly `MFG.RTN.01`) | shared (**new**) | wl-sales | Later |
+| `SAL.CRM.02` | Lead sources and campaigns: cost per campaign, conversion by source and channel, cost per lead, customer acquisition cost and return on ad spend | shared | wl-sales | MVP |
+| `FIN.CFL.01` | Cash-flow forecast: expected receipts and payments by week from invoices, supplier bills, scheduled charges, post-dated cheques, payroll and budgets | shared | wl-invoicing | MVP |
+| `STK.SUP.01` | Supplier scorecard and alternative suppliers: on-time delivery, rejected quantity, NCRs, price variance; preferred and alternative suppliers per item | shared | wl-inventory | MVP |
+| `FIN.BUD.01` | Company budget vs actual by period, category and entity; owner drawings kept apart from operating cost | shared | wl-invoicing | MVP |
+| `HRM.ONB.01` | Staff onboarding checklists per role and a library of SOP documents with acknowledgement | shared | wl-hr + wl-documents | MVP |
 | `MFG.RPT.01` | Production reports: output vs plan, yield and scrap, on-time delivery, WIP | specific | apps/manufacturing | MVP |
 
 *New* = a shared capability first needed by this vertical among 03–10.
@@ -661,6 +666,15 @@ before the request (`wl-kernel`). Settings for this vertical:
 | Compliance-critical rules | `MFG.RUL.08` (export VAT), `DOC.RUL.03` for conformity certificates; owner role: general manager / owner (`PLT.RUL.04`) |
 | Bad debt and cheques | Write-off limit AED 0 (`FIN.ACL.15`); bounce fee off unless the client sets a charge type; maximum two presentations |
 | Responsible role per document kind (wl-documents §5.2) | conformity certificates (ECAS, EQM, food-contact) → QC inspectors of each plant that holds stock of the item or has an open work order for it (every plant when none does; the item has no scope of its own); calibration certificates → QC inspector of the plant; industrial licence, Industrial Registry and ICV certificate → general manager / owner; export exit evidence → accountant |
+| Cash-flow forecast alert (`FIN.CFL.01`, `FIN.RUL.23`) | projected balance below AED 200,000 in any of the next 13 weeks (weeks start Monday): `FIN.RUL.23` alerts the general manager / owner and the accountant, checked daily at 06:00; foreign-currency supplier bills at the latest rate; due dates adjusted by each customer's average days late: on; disputed amounts counted: off |
+| Budget categories and approval (`FIN.BUD.01`, `FIN.RUL.24`) | categories owned by the accountant and mapped to the export accounts; one budget per legal entity and month, approved by the general manager / owner; `FIN.RUL.24` warns the category's owner role and the accountant when a month's actual reaches 100% of its line |
+| Owner drawings (`FIN.BUD.01`, `FIN.ACL.21`) | expense category and payment purpose *owner drawings*, kept out of operating cost, product cost and profit; every drawing (AED 0) approved by the general manager / owner, never by the requester (`FIN.ACL.21`) |
+| Lead sources used (`SAL.CRM.02`) | referral, website, event, partner (distributors, agents), paid ads, other; enquiries and RFQs are leads (`SAL.CRM.01`); no source requires a campaign |
+| Campaign channels (`SAL.CRM.02`, `SAL.ACL.07`) | trade exhibitions, LinkedIn, search ads, email; converted value: the customer's first sales order; a cost entry that takes a campaign over its budget needs a manager (`SAL.ACL.07`: on) |
+| Supplier scorecard review (`STK.SUP.01`, `STK.RUL.09`, `STK.ACL.07`) | score on a 0–100 scale over a 3-month window (monthly snapshots, at least 3 receipts); below 70: `STK.RUL.09` opens a review task to the procurement officer, the QC inspector told; preferred and alternative suppliers per raw material offered on purchase requests; changing an item's preferred supplier needs a second person (`STK.ACL.07`: on) |
+| Onboarding checklists (`HRM.ONB.01`, `HRM.RUL.16`, `HRM.RUL.17`, `HRM.ACL.10`) | templates for operator, line supervisor, QC inspector, storekeeper and maintenance technician, started by `HRM.RUL.16` when an employee record (`HRM.EMP.01`) is created; checklist steps use `WRK.CHK.01`; tasks to the production manager, the line supervisor and the employee; the employee's own steps recorded only by them (`HRM.ACL.10`); `HRM.RUL.17` reminds overdue steps every 2 days and tells the production manager and the line supervisor after 5 days; completion blocks nothing (role activation not blocked) |
+| SOP library (`HRM.ONB.01`, `DOC.RUL.04`, `HRM.ACL.10`) | SOP owners: production manager (work instructions per line) and QC inspector (inspection and quality SOPs); required readers by role per plant; `DOC.RUL.04` asks each reader to acknowledge within 7 days, reminds every 3 days and tells the manager and the owner role after 7 days; acknowledged only by the reader (`HRM.ACL.10`); a new version asks for a new acknowledgement |
+| Registration and certification kinds (`DOC.EXP.01`, `DOC.RUL.01`) | *Halal certificate* (subject: item or legal entity), *ISO certificate* and *Other certification* (legal entity or plant): responsible role QC inspector; *Trademark registration* (legal entity): general manager / owner; product conformity stays on the conformity kinds; `DOC.RUL.01` at 90, 30 and 7 days; no `blocks` |
 
 **Notification types registered by 07** (wl-notify §5.4: each names its group):
 
@@ -784,7 +798,7 @@ stock holds, returns to suppliers).
 - **Specific to this vertical:** work orders and shop-floor reporting, the schedule board,
   QC plans, NCRs, certificates, traceability, standard costing, ICV data, conformity
   register, downtime, returns, production reports.
-- **Estimated reuse:** 62 of 74 capabilities (84%) come from shared modules or Renox.
+- **Estimated reuse:** 67 of 79 capabilities (85%) come from shared modules or Renox.
 
 ## 12. MVP scope
 
@@ -803,6 +817,12 @@ credit re-check at dispatch, partial acceptance at delivery, returned deliveries
 quarantine, rejection at goods receipt and returns to suppliers with debit notes, stock
 holds and recalls through lot genealogy, bounced cheque follow-up, invoice disputes and
 bad-debt write-off, export evidence alerts.
+
+**Also included:** leads with sources and campaigns (`SAL.CRM.01`, `SAL.CRM.02`), the
+cash-flow forecast (`FIN.CFL.01`), supplier scorecards (`STK.SUP.01`), budget with owner
+drawings (`FIN.BUD.01`), onboarding and SOPs (`HRM.ONB.01`) on minimal employee records
+(`HRM.EMP.01`, no payroll or visas; labour booking stays Later), Halal, ISO and trademark
+reminders (`DOC.EXP.01`).
 
 **Excluded from the MVP:** routings with standard times per operation, shift attendance and
 labour booking, machine register, planned maintenance, downtime and OEE, customer returns,
@@ -835,7 +855,7 @@ lifecycle management (PLM), ISO document control systems.
 6. ~~How is labour cost set?~~ Decided (2026-10-15): an hourly rate per line covering labour and
    overhead. Standard = standard hours on the BOM × rate; actual = the work order's
    start/stop hours × rate (`MFG.CST.01`). Labour booking per employee (`HRM.TMS.01`) stays
-   Later.
+   Later; the minimal employee record (`HRM.EMP.01`) is MVP since 2026-10-16 for onboarding.
 7. ~~How many of their customers require an ICV certificate or certificates of analysis?~~
    Decided (2026-10-15): certificates of analysis or conformity per lot are in the MVP
    (`MFG.QCL.03`). The ICV certificate is kept as a document with expiry (reminder 60 days

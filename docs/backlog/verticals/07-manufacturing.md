@@ -1,6 +1,6 @@
 # Epic: 07 Manufacturing — negative flows
 
-> Status: draft · Last updated: 2026-10-15 · Spec version: same commit as this file
+> Status: draft · Last updated: 2026-10-16 · Spec version: same commit as this file
 
 This epic builds the negative flows that belong to the
 [07 Manufacturing](../../verticals/07-manufacturing.md) vertical itself: the work order's `abort`
@@ -29,7 +29,7 @@ items of review §6, and the 07 parts of X-02, X-05, X-08, X-09, X-11, X-13, X-1
 | BL-MFG-11 | Block picking of regulated items without a valid conformity certificate (`MFG.ACL.11`) | high | m | Launch 07 | BL-DOC-01; BL-DOC-04; BL-DOC-05 |
 | BL-MFG-12 | Alert on missing export evidence and open the VAT correction (`MFG.RUL.08`) | high | m | Launch 07 | BL-KRN-08; Base: wl-invoicing Invoice and Credit note lifecycle |
 | BL-MFG-13 | Link a quality dispute on an invoice to an NCR | medium | s | Launch 07 | BL-INV-04; BL-INV-05 |
-| BL-MFG-14 | 07 Manufacturing: configure shared negative-flow settings | high | m | Launch 07 | BL-KRN-03; BL-KRN-04; BL-KRN-05; BL-KRN-08; BL-DOC-01; BL-PTY-03; BL-INV-01; BL-INV-02; BL-INV-04; BL-PAY-09; BL-PAY-10; BL-PAY-14; BL-SAL-07; BL-SAL-12; BL-STK-03; BL-STK-11; BL-STK-18; BL-DLV-02 |
+| BL-MFG-14 | 07 Manufacturing: configure shared negative-flow settings | high | m | Launch 07 | BL-KRN-03; BL-KRN-04; BL-KRN-05; BL-KRN-08; BL-DOC-01; BL-PTY-03; BL-INV-01; BL-INV-02; BL-INV-04; BL-PAY-09; BL-PAY-10; BL-PAY-14; BL-SAL-07; BL-SAL-12; BL-STK-03; BL-STK-11; BL-STK-18; BL-DLV-02; BL-INV-25; BL-INV-26; BL-INV-27; BL-INV-28; BL-INV-29; BL-INV-30; BL-PAY-25; BL-PAY-26; BL-SAL-19; BL-SAL-20; BL-SAL-21; BL-STK-28; BL-STK-29; BL-STK-30; BL-STK-31; BL-HRM-26; BL-HRM-27; BL-HRM-28; BL-DOC-08; BL-DOC-09; BL-DOC-10 |
 
 ---
 
@@ -929,17 +929,27 @@ Dispute flag, reminders pause and escalation (BL-INV-04, BL-INV-05).
 ### BL-MFG-14 — 07 Manufacturing: configure shared negative-flow settings
 
 **Labels:** `vertical:07-manufacturing` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` · **Milestone:** Launch 07 · **Size:** m
-**Depends on:** BL-KRN-03 · BL-KRN-04 · BL-KRN-05 · BL-KRN-08 · BL-DOC-01 · BL-PTY-03 · BL-INV-01 · BL-INV-02 · BL-INV-04 · BL-PAY-09 · BL-PAY-10 · BL-PAY-14 · BL-SAL-07 · BL-SAL-12 · BL-STK-03 · BL-STK-11 · BL-STK-18 · BL-DLV-02 · **Blocks:** None
+**Depends on:** BL-KRN-03 · BL-KRN-04 · BL-KRN-05 · BL-KRN-08 · BL-DOC-01 · BL-PTY-03 · BL-INV-01 · BL-INV-02 · BL-INV-04 · BL-PAY-09 · BL-PAY-10 · BL-PAY-14 · BL-SAL-07 · BL-SAL-12 · BL-STK-03 · BL-STK-11 · BL-STK-18 · BL-DLV-02 · BL-INV-25 · BL-INV-26 · BL-INV-27 · BL-INV-28 · BL-INV-29 · BL-INV-30 · BL-PAY-25 · BL-PAY-26 · BL-SAL-19 · BL-SAL-20 · BL-SAL-21 · BL-STK-28 · BL-STK-29 · BL-STK-30 · BL-STK-31 · BL-HRM-26 · BL-HRM-27 · BL-HRM-28 · BL-DOC-08 · BL-DOC-09 · BL-DOC-10 · **Blocks:** None
 **Review items:** X-01, X-02, X-05, X-08, X-09, X-10, X-11, X-13, X-14, X-18, X-19
 
 #### Goal
 The shared modules build each negative-flow mechanism once with settings. This issue seeds the
 07 deployment template with the vertical's values, so a new manufacturing client gets the right
 limits, blocks, roles and fallbacks on day one.
+It also seeds the 07 values for the cash-flow forecast alert (`FIN.CFL.01`), the budget with
+owner drawings (`FIN.BUD.01`), lead sources and campaigns (`SAL.CRM.02`), the supplier scorecard
+(`STK.SUP.01`), onboarding and SOPs (`HRM.ONB.01`) and registration kinds (`DOC.EXP.01`), added
+on 2026-10-16: `FIN.RUL.23`, `FIN.RUL.24`, `FIN.ACL.21`, `SAL.ACL.07`, `STK.RUL.09`,
+`STK.ACL.07`, `HRM.RUL.16`, `HRM.RUL.17`, `HRM.ACL.10`, `DOC.RUL.04` and `DOC.RUL.01`.
+Onboarding runs on the minimal employee record (`HRM.EMP.01`, MVP since 2026-10-16).
 
 #### Files to read
 - `docs/verticals/07-manufacturing.md` §3.3, §4 "When it goes wrong" tables, §7.1 "Negative-flow settings", §7.2 (reused rules)
 - `docs/WORKFLOW.md` §8
+- `docs/modules/wl-invoicing.md` §5.14–§5.16 and §7; `docs/modules/wl-payments.md` (open
+  cheques, owner-drawings payments); `docs/modules/wl-sales.md` §4.6, §5.8 and §7;
+  `docs/modules/wl-inventory.md` §5.9 and §7; `docs/modules/wl-hr.md` §5.8 and §7;
+  `docs/modules/wl-documents.md` §3, §5.7 and §7
 - `docs/OPEN-ITEMS.md` A-04, L-19
 
 #### Terms
@@ -987,6 +997,15 @@ limits, blocks, roles and fallbacks on day one.
 | Recall openers | `recalls.manage`: general manager, production manager | §4.4 step 8 |
 | Responsible role per document kind (wl-documents §5.2) | conformity certificates (ECAS, EQM, food-contact) → QC inspectors of each plant that holds stock of the item or has an open work order for it (every plant when none does); calibration certificates → QC inspector of the plant; industrial licence, Industrial Registry, ICV certificate → general manager / owner; export exit evidence → accountant | §7.1 settings |
 | Notification types (wl-notify §5.4 group) | `mfg.recall_notice`: no group, urgency `urgent` (task to the recall owner with an in-app alert); no statutory types; staff-only alerts (`MFG.RUL.01`–`10`, WO `unlink` and `abort` notices): no group, give-up `none` | §7.1 *Notification types registered by 07* |
+| Cash-flow forecast alert (`FIN.CFL.01`, `FIN.RUL.23`) | projected balance below AED 200,000 in any of the next 13 weeks (weeks start Monday): `FIN.RUL.23` alerts the general manager / owner and the accountant, checked daily at 06:00; foreign-currency supplier bills at the latest rate; due dates adjusted by each customer's average days late: on; disputed amounts counted: off | §5; §7.1 settings |
+| Budget categories and approval (`FIN.BUD.01`, `FIN.RUL.24`) | categories owned by the accountant and mapped to the export accounts; one budget per legal entity and month, approved by the general manager / owner; `FIN.RUL.24` warns the category's owner role and the accountant when a month's actual reaches 100% of its line | §5; §7.1 settings |
+| Owner drawings (`FIN.BUD.01`, `FIN.ACL.21`) | expense category and payment purpose *owner drawings*, kept out of operating cost, product cost and profit; every drawing (AED 0) approved by the general manager / owner, never by the requester (`FIN.ACL.21`) | §5; §7.1 settings |
+| Lead sources used (`SAL.CRM.02`) | referral, website, event, partner (distributors, agents), paid ads, other; enquiries and RFQs are leads (`SAL.CRM.01`); no source requires a campaign | §5; §7.1 settings |
+| Campaign channels (`SAL.CRM.02`, `SAL.ACL.07`) | trade exhibitions, LinkedIn, search ads, email; converted value: the customer's first sales order; a cost entry that takes a campaign over its budget needs a manager (`SAL.ACL.07`: on) | §5; §7.1 settings |
+| Supplier scorecard review (`STK.SUP.01`, `STK.RUL.09`, `STK.ACL.07`) | score on a 0–100 scale over a 3-month window (monthly snapshots, at least 3 receipts); below 70: `STK.RUL.09` opens a review task to the procurement officer, the QC inspector told; preferred and alternative suppliers per raw material offered on purchase requests; changing an item's preferred supplier needs a second person (`STK.ACL.07`: on) | §5; §7.1 settings |
+| Onboarding checklists (`HRM.ONB.01`, `HRM.RUL.16`, `HRM.RUL.17`, `HRM.ACL.10`) | templates for operator, line supervisor, QC inspector, storekeeper and maintenance technician, started by `HRM.RUL.16` when an employee record (`HRM.EMP.01`) is created; checklist steps use `WRK.CHK.01`; tasks to the production manager, the line supervisor and the employee; the employee's own steps recorded only by them (`HRM.ACL.10`); `HRM.RUL.17` reminds overdue steps every 2 days and tells the production manager and the line supervisor after 5 days; completion blocks nothing (role activation not blocked) | §5; §7.1 settings |
+| SOP library (`HRM.ONB.01`, `DOC.RUL.04`, `HRM.ACL.10`) | SOP owners: production manager (work instructions per line) and QC inspector (inspection and quality SOPs); required readers by role per plant; `DOC.RUL.04` asks each reader to acknowledge within 7 days, reminds every 3 days and tells the manager and the owner role after 7 days; acknowledged only by the reader (`HRM.ACL.10`); a new version asks for a new acknowledgement | §5; §7.1 settings |
+| Registration and certification kinds (`DOC.EXP.01`, `DOC.RUL.01`) | *Halal certificate* (subject: item or legal entity), *ISO certificate* and *Other certification* (legal entity or plant): responsible role QC inspector; *Trademark registration* (legal entity): general manager / owner; product conformity stays on the conformity kinds; `DOC.RUL.01` at 90, 30 and 7 days; no `blocks` | §5; §7.1 settings |
 
 #### Edge cases decided
 - **Client changes:** every value except the override mode `never` for conformity kinds and `PLT.ACL.09` may be changed per client by the company admin; the template is only the seed.
@@ -1012,6 +1031,33 @@ limits, blocks, roles and fallbacks on day one.
 - [ ] **Money:** every invoice write-off creates an approval request (AED 0).
 - [ ] **Stock:** a wastage of AED 2,100 needs approval; an RTS of AED 5,100 needs approval; a work order material issue below zero creates a pending issue, a transfer below zero is refused.
 - [ ] **Disputes:** a portal buyer sees "Dispute this invoice"; an open dispute escalates on day 14.
+- [ ] **Cash-flow forecast:** in a fresh 07 deployment, a projected balance of AED 199,999 in week
+      5 alerts the general manager / owner and the accountant once (`FIN.RUL.23`, 06:00 run);
+      AED 200,000 or more in every week alerts no one; the forecast shows 13 weekly buckets from
+      Monday.
+- [ ] **Budget and drawings:** a monthly budget for a legal entity prepared by the accountant
+      needs approval by the general manager / owner; an expense with category *owner drawings* is
+      left out of operating cost and profit reports, and the user who records it cannot approve
+      it (`FIN.ACL.21`); an expense line reaching 100% of its month's budget line warns the
+      category's owner role and the accountant once (`FIN.RUL.24`).
+- [ ] **Lead sources:** a new lead or party offers the sources referral, website, event, partner,
+      paid ads and other; a campaign with channel *trade exhibitions*, a budget and cost entries
+      reports leads, conversion, cost per lead, CAC and ROAS; a cost entry over the budget waits
+      for a manager (`SAL.ACL.07`).
+- [ ] **Supplier scorecard:** a supplier scoring 69 of 100 over the 3-month window creates a
+      review task for the procurement officer (`STK.RUL.09`); 70 creates none; an item's
+      alternative supplier is offered on a purchase request for the item; making it the preferred
+      supplier waits for a second person (`STK.ACL.07`).
+- [ ] **Onboarding and SOPs:** creating an operator's employee record creates the operator
+      checklist with tasks to the production manager, the line supervisor and the employee
+      (`HRM.RUL.16`), and the role is active before it is complete; a step open 2 days past its
+      due date reminds its assignee (`HRM.RUL.17`); a new version of an SOP owned by the
+      production manager asks every required reader to acknowledge again within 7 days
+      (`DOC.RUL.04`), and no one else can acknowledge for them (`HRM.ACL.10`).
+- [ ] **Registrations:** a fresh 07 deployment lists *Halal certificate*, *ISO certificate*,
+      *Other certification* and *Trademark registration* with responsible role QC inspector, and
+      general manager / owner for the trademark; a trademark registration expiring in 90 days
+      notifies the general manager / owner.
 
 #### Out of scope
 The mechanisms themselves (module epics listed in Depends on).

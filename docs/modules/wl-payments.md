@@ -1,6 +1,6 @@
 # wl-payments
 
-> Status: draft · Last updated: 2026-10-15
+> Status: draft · Last updated: 2026-10-16
 
 ## 1. Purpose
 
@@ -39,7 +39,7 @@ recovered or written off here (§4 Cash handover, till session mode).
 
 | Entity | Description | Important fields |
 |---|---|---|
-| Payment | Money received from or paid to a party | direction (in / out), entity, bank account (for transfers, cards and cheques), party, method (cash, card, transfer, cheque, gateway, direct debit, wallet, set-off), amount, currency, date, reference, gateway transaction, collected by (staff), prepayment for (`Subject`: booking, reservation, order; optional), chargeback (gateway dispute reference, reason, evidence due date, evidence submitted), status |
+| Payment | Money received from or paid to a party | direction (in / out), entity, bank account (for transfers, cards and cheques), party, method (cash, card, transfer, cheque, gateway, direct debit, wallet, set-off), amount, currency, date, reference, gateway transaction, collected by (staff), prepayment for (`Subject`: booking, reservation, order; optional), purpose (outgoing only: none or *owner drawings*, `FIN.BUD.01`; a drawing is paid to the owner's party and allocated to no document), chargeback (gateway dispute reference, reason, evidence due date, evidence submitted), status |
 | Allocation | Part of a payment applied to a document | payment, target (invoice, supplier bill, credit note, deposit, supplier debit note for a supplier debit balance, payer credit balance), amount |
 | Refund | Money returned to a party | party, source (payment, credit note, deposit, party credit balance, payer credit balance, `Subject`: order, booking), amount, method, reason, requested by, approved by, attempts (method, date, failure reason), status |
 | Payment link | A request to pay online | party, target invoice(s) or amount, currency, expiry, gateway, URL token, status |
@@ -53,7 +53,7 @@ recovered or written off here (§4 Cash handover, till session mode).
 | Expense line | One receipt | date, merchant, merchant TRN (if shown), category, amount, VAT amount, VAT recoverable (from the category and a valid tax invoice), receipt photo (wl-documents), cost code |
 | Expense category | A kind of spending | name, default VAT treatment (recoverable / blocked / none), receipt required above, account mapping for export |
 | Petty cash float | Cash advanced to a holder for small expenses (imprest) | holder (cash holder), entity, float amount, current balance, low threshold, status |
-| Bank statement import | One uploaded statement file for one bank account | entity, bank account, file, format (CSV, Excel, MT940), period, number of lines, imported by, status |
+| Bank statement import | One uploaded statement file for one bank account | entity, bank account, file, format (CSV, Excel, MT940), period, closing balance (from the file when it carries one, otherwise entered at upload; optional), number of lines, imported by, status |
 | Statement line | One bank transaction | import, date, amount (in / out), description, reference, counterparty, match (payment, cheque, invoice, supplier bill, expense claim, refund), line status (unmatched, suggested, matched, ignored) |
 | Match rule | A saved rule that suggests matches | text pattern, amount tolerance, party, target type, created by |
 
@@ -83,7 +83,7 @@ that are returned at the end of an agreement.
 
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
-| `record` | — | received | `payments.record` | method details complete (cheque payments are created by the cheque `clear` and `settle_part` transitions) | event `PaymentReceived` |
+| `record` | — | received | `payments.record` | method details complete (cheque payments are created by the cheque `clear` and `settle_part` transitions); purpose *owner drawings*: an approved request (`FIN.ACL.21`, wl-invoicing) | event `PaymentReceived` |
 | `start_online` | — | pending | party (portal, payment link) or system (automatic charge) | gateway account enabled | redirect to the gateway's hosted page |
 | `confirm` | pending | received | system (verified gateway webhook, or the gateway's status query in `FIN.RUL.19`) | webhook signature and amount match | allocation to the link's targets; receipt sent; event `PaymentReceived` |
 | `fail` | pending | failed | system (gateway webhook: declined, reason from the gateway; or the hosted session cancelled or expired by the payer, reason *abandoned*; or `FIN.RUL.19` when the gateway gives no final answer before the timeout, reason timeout, which also covers a payer who leaves without the gateway telling the platform) | — | payment link stays `open` until its expiry; the party sees the reason and a retry button; event `PaymentFailed` (consumers below) |
@@ -403,7 +403,7 @@ is approved like any claim and reduces the float instead of producing a payment.
 |---|---|---|---|---|---|
 | `submit` | draft | submitted | `expenses.submit` (claimant) | every line has a category and, above the category's threshold, a receipt photo; dates within the claim window; cost object set where the category requires it | approvers notified (line manager or the cost object's manager) |
 | `return` | submitted | draft | `expenses.approve` | reason given | claimant notified |
-| `approve` | submitted | approved | `expenses.approve` | approver ≠ claimant (`FIN.ACL.11`); total within the approver's limit, otherwise an approval request in steps (`FIN.ACL.12`) | actual cost posted to cost objects (`FIN.CST.01`); recoverable VAT lines become input VAT of the entity's period (`FIN.VAT.01`); event `ExpenseClaimApproved` |
+| `approve` | submitted | approved | `expenses.approve` | approver ≠ claimant (`FIN.ACL.11`); total within the approver's limit, otherwise an approval request in steps (`FIN.ACL.12`); a line in the *owner drawings* category also needs `FIN.ACL.21` (approver holds `drawings.approve`, ≠ requester) | actual cost posted to cost objects (`FIN.CST.01`); recoverable VAT lines become input VAT of the entity's period (`FIN.VAT.01`); event `ExpenseClaimApproved` |
 | `reject` | submitted | rejected | `expenses.approve` | reason given | claimant notified |
 | `reimburse` | approved | reimbursed | `expenses.reimburse` or system | method set | outgoing payment recorded; or a line added to the claimant's next payroll run (wl-hr); or the holder's float balance reduced; event `ExpenseClaimReimbursed` |
 | `cancel` | draft | cancelled | claimant | — | — |
@@ -656,16 +656,16 @@ incoming payment allocated to the debit note, which then runs `settle`.
 
 | Service | Purpose |
 |---|---|
-| `PaymentRecorder` | Record, allocate, reverse payments; party credit balance (the capability trait named in wl-kernel) |
+| `PaymentRecorder` | Record, allocate, reverse payments; party credit balance (the capability trait named in wl-kernel); payments per bank account after a date, payments with purpose owner drawings, and approved refunds not yet paid (wl-invoicing cash-flow forecast `FIN.CFL.01` and budget vs actual `FIN.BUD.01`) |
 | `PaymentLinks` | Create a link for invoices or an amount; return its URL |
 | `Gateway` | Charge a saved method, refund through the gateway, verify webhooks; adapters per provider |
-| `Cheques` | Register, deposit, clear, bounce, re-present, settle and refer cheques; open bounced amount per party (for the credit check in wl-sales) |
+| `Cheques` | Register, deposit, clear, bounce, re-present, settle and refer cheques; open bounced amount per party (for the credit check in wl-sales); cheques not yet cleared (`received`, `due_for_deposit`, `deposited`) by direction, entity and cheque date, with open amount and linked documents (`FIN.CFL.01`) |
 | `Deposits` | Hold, settle, refund deposits for a source `Subject` |
 | `Refunds` | Request and pay refunds with approval |
 | `CashCustody` | Open, count and close handovers per holder; create a handover from a closed till session |
 | `Expenses` | Create, approve and reimburse expense claims; claims per cost object |
 | `PettyCash` | Issue, top up and close floats; current balance per holder |
-| `BankStatements` | Import a statement file, suggest and confirm matches |
+| `BankStatements` | Import a statement file, suggest and confirm matches; latest closing balance per bank account with its date, from the latest completed import (`FIN.CFL.01`) |
 | `InputVatSource` (implementation) | Recoverable VAT from approved expense claims, for the VAT summary in wl-invoicing |
 
 **Consumes:** `wl-invoicing` (targets and allocation transitions), `wl-parties`,

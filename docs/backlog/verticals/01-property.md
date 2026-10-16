@@ -1,6 +1,6 @@
 # Epic: 01 Property — negative flows
 
-> Status: draft · Last updated: 2026-10-15 · Spec version: same commit as this file
+> Status: draft · Last updated: 2026-10-16 · Spec version: same commit as this file
 
 This epic builds the negative flows that the negative-flow review added to
 [01 Property](../../verticals/01-property.md): the lease machine (cancel after payment, the
@@ -39,8 +39,8 @@ items of review §6.
 | BL-PRP-23 | Transfer a unit out of a management agreement when it is sold or no longer managed (`transfer_unit`) | high | m | Build 1 | BL-PRP-22 |
 | BL-PRP-24 | Cancel a maintenance job after work started and guard compliance visits (`PRP.ACL.15`) | medium | s | Build 1 | Base: wl-ticketing Ticket lifecycle; BL-TKT-02; BL-TKT-04 |
 | BL-PRP-25 | Show building compliance flags and expiring certificates without blocking leasing | high | s | Build 1 | BL-TKT-03; BL-TKT-04; BL-TKT-07; BL-KRN-08 |
-| BL-PRP-26 | 01: configure shared negative-flow settings — money | high | m | Build 1 | BL-INV-01; BL-INV-04; BL-INV-11; BL-INV-24; BL-PAY-09; BL-PAY-15; BL-PTY-03; BL-KRN-03 |
-| BL-PRP-27 | 01: configure shared negative-flow settings — compliance, documents and notices | high | m | Build 1 | BL-DOC-01; BL-DOC-04; BL-TKT-03 to BL-TKT-08; BL-NTF-05; BL-KRN-08 |
+| BL-PRP-26 | 01: configure shared negative-flow settings — money | high | m | Build 1 | BL-INV-01; BL-INV-04; BL-INV-11; BL-INV-24; BL-PAY-09; BL-PAY-15; BL-PTY-03; BL-KRN-03; BL-INV-25; BL-INV-26; BL-INV-27; BL-INV-28; BL-INV-29; BL-INV-30; BL-PAY-25; BL-PAY-26 |
+| BL-PRP-27 | 01: configure shared negative-flow settings — compliance, documents and notices | high | m | Build 1 | BL-DOC-01; BL-DOC-04; BL-TKT-03 to BL-TKT-08; BL-NTF-05; BL-KRN-08; BL-SAL-19; BL-SAL-20; BL-SAL-21; BL-HRM-26; BL-HRM-27; BL-HRM-28; BL-DOC-08; BL-DOC-09; BL-DOC-10; Base: 01 Enquiries and viewings (`PRP.LEA.01`) |
 | BL-PRP-28 | Release a reserved unit and settle its booking deposit | medium | s | Later | Base: 01 Unit reservation (`PRP.LEA.02`, Later); BL-PRP-01 |
 | BL-PRP-29 | Owner portal: dispute a statement line and keep read-only access after the agreement ends | medium | s | Later | BL-PRP-21; BL-PRP-22; Base: wl-portal owner portal (`POR.SLF.02`, Later) |
 
@@ -2055,7 +2055,7 @@ Raising and clearing the ticketing flags (BL-TKT-03, BL-TKT-04, BL-TKT-07).
 ### BL-PRP-26 — 01 Property: configure shared negative-flow settings — money
 
 **Labels:** `vertical:01-property` `area:negative-flow` `priority:high` `blocked:open-item` `size:m` · **Milestone:** Build 1 · **Size:** m
-**Depends on:** BL-INV-01 · BL-INV-04 · BL-INV-05 · BL-INV-09 · BL-INV-11 · BL-INV-24 · BL-PAY-09 · BL-PAY-10 · BL-PAY-14 · BL-PAY-15 · BL-PTY-03 · BL-PTY-04 · BL-KRN-03 · BL-TKT-02 · **Blocks:** None.
+**Depends on:** BL-INV-01 · BL-INV-04 · BL-INV-05 · BL-INV-09 · BL-INV-11 · BL-INV-24 · BL-PAY-09 · BL-PAY-10 · BL-PAY-14 · BL-PAY-15 · BL-PTY-03 · BL-PTY-04 · BL-KRN-03 · BL-TKT-02 · BL-INV-25 · BL-INV-26 · BL-INV-27 · BL-INV-28 · BL-INV-29 · BL-INV-30 · BL-PAY-25 · BL-PAY-26 · **Blocks:** None.
 **Review items:** X-01, X-02, X-03, X-04, X-05, X-18, X-19, D-14, 01-N3-a, 01 MEDIUM "duplicate vendor bills" (review §6)
 
 #### Goal
@@ -2063,6 +2063,9 @@ Raising and clearing the ticketing flags (BL-TKT-03, BL-TKT-04, BL-TKT-07).
 invoice disputes, e-invoicing, bounced cheques, voids and bank match reversal, deposit disputes,
 duplicate vendor bills, chargeable tickets and party block effects. Nothing new is built here;
 each value is configured in the 01 seed and checked by a test.
+It also seeds the 01 values for the cash-flow forecast alert (`FIN.CFL.01`) and the
+company budget with owner drawings (`FIN.BUD.01`), added on 2026-10-16: `FIN.RUL.23`,
+`FIN.RUL.24` and `FIN.ACL.21`.
 
 #### Files to read
 - `docs/verticals/01-property.md` §3.3, §4.1, §4.2, §4.4 (tables "When it goes wrong"), §7.1
@@ -2070,6 +2073,8 @@ each value is configured in the 01 seed and checked by a test.
   settings" table), §9 (bounced cheques, e-invoicing)
 - The module settings sections (§7) of `docs/modules/wl-invoicing.md`, `wl-payments.md`,
   `wl-parties.md`, `wl-ticketing.md`, `wl-kernel.md`
+- `docs/modules/wl-invoicing.md` §5.14–§5.16 and §7 (cash-flow forecast, company budget, owner
+  drawings); `docs/modules/wl-payments.md` (open cheques, owner-drawings payments)
 - `docs/OPEN-ITEMS.md` L-22, A-05
 
 #### Terms
@@ -2113,6 +2118,10 @@ each value is configured in the 01 seed and checked by a test.
 | 22 | Block effect on service contracts (vendor) | `review`; decider property manager | §7.1 *Service contract* note |
 | 23 | Money out stopped for a blocked party | deposit refund, owner payout, vendor payment; exception through `PTY.ACL.03` | §3.3 `PTY.ACL.03`; §4.4 row "The owner is blocked" |
 | 24 | Money in from a blocked party | continues | §7.2 settings table rows Invoice, Payment |
+| **Cash-flow forecast and budget** | | | |
+| 25 | Cash-flow forecast alert (`FIN.CFL.01`, `FIN.RUL.23`) | projected balance below AED 50,000 in any of the next 13 weeks (weeks start Monday): `FIN.RUL.23` alerts the company admin and the accountant, checked daily at 06:00; post-dated rent cheques by cheque date; owner payouts (`PRP.OWN.01`) counted as payments; due dates adjusted by each tenant's average days late: on; disputed amounts counted: off | §5; §7.2 settings |
+| 26 | Budget categories and approval (`FIN.BUD.01`, `FIN.RUL.24`) | categories owned by the accountant and mapped to the export accounts; one budget per legal entity and month, approved by the company admin; `FIN.RUL.24` warns the category's owner role and the accountant when a month's actual reaches 100% of its line | §5; §7.2 settings |
+| 27 | Owner drawings (`FIN.BUD.01`, `FIN.ACL.21`) | expense category and payment purpose *owner drawings*, kept out of operating cost and profit; every drawing (AED 0) approved by the company admin, never by the requester (`FIN.ACL.21`); payouts to landlords (`PRP.OWN.01`) are not drawings | §5; §7.2 settings |
 
 #### Edge cases decided
 - **Bounce fee unset:** no fee charge is created and the `FIN.RUL.18` reminder shows only the open
@@ -2163,6 +2172,14 @@ each value is configured in the 01 seed and checked by a test.
       O blocked, O's payout waits; with vendor V blocked, a payment to V waits; each runs once the
       compliance role approves an exception (23). A rent payment from blocked T is recorded and
       allocated as usual (24).
+- [ ] **Cash-flow forecast:** in a fresh 01 deployment, a projected balance of AED 49,999 in week
+      5 alerts the company admin and the accountant once (`FIN.RUL.23`, 06:00 run); AED 50,000
+      or more in every week alerts no one; the forecast shows 13 weekly buckets from Monday.
+- [ ] **Budget and drawings:** a monthly budget for a legal entity prepared by the accountant
+      needs approval by the company admin; an expense with category *owner drawings* is left out
+      of operating cost and profit reports, and the user who records it cannot approve it
+      (`FIN.ACL.21`); an expense line reaching 100% of its month's budget line warns the
+      category's owner role and the accountant once (`FIN.RUL.24`).
 
 #### Out of scope
 The mechanisms themselves (module epics named in Depends on); compliance, documents and notices
@@ -2173,7 +2190,7 @@ The mechanisms themselves (module epics named in Depends on); compliance, docume
 ### BL-PRP-27 — 01 Property: configure shared negative-flow settings — compliance, documents and notices
 
 **Labels:** `vertical:01-property` `area:negative-flow` `priority:high` `blocked:open-item` `size:m` · **Milestone:** Build 1 · **Size:** m
-**Depends on:** BL-DOC-01 · BL-DOC-04 · BL-DOC-05 · BL-TKT-01 · BL-TKT-03 · BL-TKT-04 · BL-TKT-05 · BL-TKT-06 · BL-TKT-07 · BL-TKT-08 · BL-TKT-11 · BL-NTF-05 · BL-KRN-04 · BL-KRN-08 · **Blocks:** None.
+**Depends on:** BL-DOC-01 · BL-DOC-04 · BL-DOC-05 · BL-TKT-01 · BL-TKT-03 · BL-TKT-04 · BL-TKT-05 · BL-TKT-06 · BL-TKT-07 · BL-TKT-08 · BL-TKT-11 · BL-NTF-05 · BL-KRN-04 · BL-KRN-08 · BL-SAL-19 · BL-SAL-20 · BL-SAL-21 · BL-HRM-26 · BL-HRM-27 · BL-HRM-28 · BL-DOC-08 · BL-DOC-09 · BL-DOC-10 · Base: 01 Enquiries and viewings (`PRP.LEA.01`) · **Blocks:** None.
 **Review items:** X-13, X-19, X-20, D-13, 01-N8-b, 01 MEDIUM "vendor no-show reassignment" (review §6)
 
 #### Goal
@@ -2181,6 +2198,10 @@ The mechanisms themselves (module epics named in Depends on); compliance, docume
 compliance-critical rules, the vendor's Civil Defence approval as a blocking document kind, the
 compliance-critical ticket categories and contract-end and no-show rules, the statutory notice
 types, and late entry of field updates.
+It also seeds the 01 values for lead sources and campaigns (`SAL.CRM.02`), onboarding and SOPs
+(`HRM.ONB.01`) and registration kinds (`DOC.EXP.01`), added on 2026-10-16: `SAL.ACL.07`,
+`HRM.RUL.16`, `HRM.RUL.17`, `HRM.ACL.10`, `DOC.RUL.04` and `DOC.RUL.01`. Lead sources are
+recorded on the enquiry (`PRP.LEA.01`, MVP since 2026-10-16).
 
 #### Files to read
 - `docs/verticals/01-property.md` §4.5 (table "When it goes wrong"), §7.2 (rules marked shared and
@@ -2188,6 +2209,8 @@ types, and late entry of field updates.
   notices", "Document guard hooks", "Negative-flow settings"), §9 "Vendor approvals"
 - `docs/modules/wl-documents.md` §5.6, §7; `docs/modules/wl-ticketing.md` §7;
   `docs/modules/wl-notify.md` §5.4; `docs/modules/wl-kernel.md` §5.13, §5.15
+- `docs/modules/wl-sales.md` §4.6, §5.8 and §7 (campaigns, sources); `docs/modules/wl-hr.md` §5.8 and
+  §7 (onboarding); `docs/modules/wl-documents.md` §3, §5.7 and §7 (SOPs, registration kinds)
 - `docs/OPEN-ITEMS.md` L-19, AU-08
 
 #### Terms
@@ -2226,6 +2249,12 @@ types, and late entry of field updates.
 | **Late entry and integrations** | | | |
 | 16 | Late field updates on tickets | keep the work time as business time (`PLT.ACL.10`: flagged above 30 minutes, manager approval above 24 hours) | §7.2 settings table row Ticket |
 | 17 | Ejari / Tawtheeq | manual in the MVP; `PRP.RUL.02` (N = 14) and `PRP.RUL.13` (N = 7) chase the number and the cancellation; no integration connection to monitor | §7.2 settings table row Lease; §8 |
+| **Sales, finance, staff and registrations** | | | |
+| 18 | Lead sources used (`SAL.CRM.02`) | referral, walk-in, website, social, paid ads, partner (brokers), event, other; recorded on the enquiry (`PRP.LEA.01`) and carried to the tenant party when the enquiry converts; a tenant without an enquiry gets the source on its party; no source requires a campaign | §5; §7.2 settings |
+| 19 | Campaign channels (`SAL.CRM.02`, `SAL.ACL.07`) | listing portals, social media, search ads, email, signboards, brokers; converted value: the first lease's contract value; a cost entry that takes a campaign over its budget needs a manager (`SAL.ACL.07`: on) | §5; §7.2 settings |
+| 20 | Onboarding checklists (`HRM.ONB.01`, `HRM.RUL.16`, `HRM.RUL.17`, `HRM.ACL.10`) | templates for property manager, leasing agent, accountant, maintenance coordinator and technician, started by `HRM.RUL.16` when an employee record (`HRM.EMP.01`) is created; checklist steps use `WRK.CHK.01`; tasks to the company admin, the line manager and the new staff member; the new staff member's own steps recorded only by them (`HRM.ACL.10`); `HRM.RUL.17` reminds overdue steps every 2 days and tells the company admin and the line manager after 5 days; completion blocks nothing (role activation not blocked) | §5; §7.2 settings |
+| 21 | SOP library (`HRM.ONB.01`, `DOC.RUL.04`, `HRM.ACL.10`) | SOP owners: property manager (leasing, move-in, move-out, maintenance) and accountant (cheques, deposits, owner statements); required readers by role; `DOC.RUL.04` asks each reader to acknowledge within 7 days, reminds every 3 days and tells the manager and the owner role after 7 days; acknowledged only by the reader (`HRM.ACL.10`); a new version asks for a new acknowledgement | §5; §7.2 settings |
+| 22 | Registration and certification kinds (`DOC.EXP.01`, `DOC.RUL.01`) | *Trademark registration* and *Other certification* (subject: legal entity); responsible role company admin; `DOC.RUL.01` at 90, 30 and 7 days; no `blocks` | §5; §7.2 settings |
 
 #### Edge cases decided
 - **Legal block:** whether the law forbids the work outright is `⚠ open: lawyer (L-19)`; the seed
@@ -2264,6 +2293,20 @@ types, and late entry of field updates.
       fails creates no task.
 - [ ] **Late entry:** a ticket update entered 3 hours late keeps the work time and carries a
       late-entry flag with a reason.
+- [ ] **Lead sources:** a new enquiry offers the sources referral, walk-in, website, social, paid
+      ads, partner, event and other, and its source and campaign reach the tenant party when it
+      converts; a campaign with channel *listing portals*, a budget and cost entries reports
+      enquiries, conversion, cost per lead, CAC and ROAS; a cost entry over the budget waits for a
+      manager (`SAL.ACL.07`).
+- [ ] **Onboarding and SOPs:** hiring a leasing agent creates the leasing agent checklist with
+      tasks to the company admin, the line manager and the employee, and the role is active before
+      it is complete; a step open 2 days past its due date reminds its assignee (`HRM.RUL.17`); a
+      new version of an SOP owned by the property manager asks every required reader to
+      acknowledge again within 7 days (`DOC.RUL.04`), and no one else can acknowledge for them
+      (`HRM.ACL.10`).
+- [ ] **Registrations:** a fresh 01 deployment lists *Trademark registration* and *Other
+      certification* with responsible role company admin; a trademark registration expiring in 90
+      days notifies the company admin.
 
 #### Out of scope
 The mechanisms themselves (module epics named in Depends on); money settings (BL-PRP-26); the

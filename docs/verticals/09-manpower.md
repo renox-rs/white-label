@@ -1,6 +1,6 @@
 # 09 — Manpower Supply & Outsourcing
 
-> Status: accepted · Reviewed: 2026-10-15 · Last updated: 2026-10-15
+> Status: accepted · Reviewed: 2026-10-15 · Last updated: 2026-10-16
 
 ## 1. Summary
 
@@ -313,7 +313,7 @@ the confidential *grievance* tickets).
 | `PTY.PTY.01` | Parties: client companies, contacts, workers, candidates | shared | wl-parties | MVP |
 | `PTY.KYC.01` | Identity fields: passport, Emirates ID, visa, trade licence, TRN | shared | wl-parties | MVP |
 | `DOC.FIL.01` | Attach documents (contracts, visa pages, medical results, licences) | shared | wl-documents | MVP |
-| `DOC.EXP.01` | Expiry reminders (visa, Emirates ID, passport, insurance, ILOE, site passes, licences) | shared | wl-documents | MVP |
+| `DOC.EXP.01` | Expiry reminders (visa, Emirates ID, passport, insurance, ILOE, site passes, licences, trademark and other registrations) | shared | wl-documents | MVP |
 | `DOC.GEN.01` | Generate documents (offer letter, contract, payslip, invoice, settlement) | shared | wl-documents | MVP |
 | `DOC.SIG.01` | E-signature / acceptance (client contract, offer letter, settlement acknowledgement) | shared | wl-documents | MVP |
 | `FIN.QUO.01` | Quotations to clients with rate cards | shared | wl-invoicing | MVP |
@@ -327,6 +327,7 @@ the confidential *grievance* tickets).
 | `FIN.RAT.01` | Rate cards per client contract: roles, shifts, multipliers, minimums | shared | wl-invoicing | MVP |
 | `WRK.TKT.01` | Raise tickets (client complaints, worker grievances) | shared | wl-ticketing | MVP |
 | `WRK.TKT.02` | Triage and assignment | shared | wl-ticketing | MVP |
+| `WRK.CHK.01` | Checklists with photos and signature (onboarding and deployment induction steps, `HRM.ONB.01`) | shared | wl-ticketing | MVP |
 | `POR.SLF.01` | Client portal: deployed workers, timesheet approval, invoices, requests | shared | wl-portal | MVP |
 | `POR.SLF.02` | Worker portal (PWA, SMS one-time code login): payslips, leave, documents | shared | wl-portal | MVP |
 | `POR.DOC.01` | Secure document upload by workers and clients | shared | wl-portal | Later |
@@ -334,7 +335,7 @@ the confidential *grievance* tickets).
 | `NTF.MSG.02` | WhatsApp notifications | shared | wl-notify | Later |
 | `NTF.MSG.03` | SMS notifications (workers without email) | shared | wl-notify | MVP |
 | `RPT.DSH.01` | Role-based dashboards | shared | Renox charts + wl-kernel | MVP |
-| `SAL.CRM.01` | Leads and enquiries from prospective clients | shared | wl-sales | Later |
+| `SAL.CRM.01` | Leads and enquiries from prospective clients | shared | wl-sales | MVP |
 | `HRM.EMP.01` | Employee records: personal data, salary structure, bank account, documents | shared | wl-hr | MVP |
 | `HRM.ATT.01` | Attendance at client sites (supervisor marking, self check-in in a geofence) | shared | wl-attendance | MVP |
 | `HRM.TMS.01` | Timesheets per deployment, overtime, approval (absorbs `MPW.TSA.01`) | shared | wl-attendance | MVP |
@@ -355,6 +356,10 @@ the confidential *grievance* tickets).
 | `FIN.VAT.01` | VAT summary per period and entity: output and input VAT, for the accountant | shared | wl-invoicing | MVP |
 | `FIN.EXP.01` | Expense claims and petty cash: submit with receipt, approve, reimburse, top up | shared | wl-payments | Later |
 | `FIN.BNK.01` | Bank statement import and matching of receipts to open invoices | shared | wl-payments | MVP |
+| `SAL.CRM.02` | Lead sources and campaigns: cost per campaign, conversion by source and channel, cost per lead, customer acquisition cost and return on ad spend | shared | wl-sales | MVP |
+| `FIN.CFL.01` | Cash-flow forecast: expected receipts and payments by week from invoices, supplier bills, scheduled charges, post-dated cheques, payroll and budgets | shared | wl-invoicing | MVP |
+| `FIN.BUD.01` | Company budget vs actual by period, category and entity; owner drawings kept apart from operating cost | shared | wl-invoicing | MVP |
+| `HRM.ONB.01` | Staff onboarding checklists per role and a library of SOP documents with acknowledgement | shared | wl-hr + wl-documents | MVP |
 | `MPW.CTR.01` | Client contracts and rate cards (roles, shifts, multipliers, minimums, billing cycle) | specific | apps/manpower | MVP |
 | `MPW.ORD.01` | Manpower requests from clients | specific | apps/manpower | MVP |
 | `MPW.REC.01` | Candidate pipeline: sourcing, screening, interview, offer | specific | apps/manpower | Later |
@@ -883,6 +888,20 @@ The pay account change SMS (wl-hr, *Security notices to an employee*) and portal
 codes (*OTP*) keep their module groups. Types sent only to staff users name no group and
 take `none`: staff always also get the in-app notification (wl-notify §5.1).
 
+**Settings for the shared sales, finance, staff and document capabilities (09
+defaults):**
+
+| Setting | 09 value |
+|---|---|
+| Cash-flow forecast alert (`FIN.CFL.01`, `FIN.RUL.23`) | projected balance below AED 250,000 in any of the next 13 weeks (weeks start Monday): `FIN.RUL.23` alerts the MD and the accountant, checked daily at 06:00; payroll by the WPS due date; visa and insurance costs by their schedule; due dates adjusted by each client's average days late: on; disputed amounts counted: off |
+| Budget categories and approval (`FIN.BUD.01`, `FIN.RUL.24`) | categories (payroll, visa and insurance costs, accommodation, transport, office) owned by the accountant and mapped to the export accounts; approved by the MD; `FIN.RUL.24` warns the category's owner role and the accountant when a month's actual reaches 100% of its line |
+| Owner drawings (`FIN.BUD.01`, `FIN.ACL.21`) | expense category and payment purpose *owner drawings*, kept out of operating cost, margin and profit; every drawing (AED 0) approved by the MD, never by the requester (`FIN.ACL.21`) |
+| Lead sources used (`SAL.CRM.02`) | referral, website, paid ads, partner, event, other; on prospective client leads (`SAL.CRM.01`); no source requires a campaign |
+| Campaign channels (`SAL.CRM.02`, `SAL.ACL.07`) | LinkedIn, search ads, email, industry events; converted value: the first client contract's first invoice; a cost entry that takes a campaign over its budget needs a manager (`SAL.ACL.07`: on) |
+| Onboarding checklists (`HRM.ONB.01`, `HRM.RUL.16`, `HRM.RUL.17`, `HRM.ACL.10`) | templates for worker (deployment induction, PPE, site pass), recruiter, site supervisor and account manager, started by `HRM.RUL.16` when an employee is created in `onboarding` (`HRM.EMP.01`); induction and PPE steps use `WRK.CHK.01` checklists with photos and the worker's signature; tasks to the HR / payroll officer, the account manager and the employee; the employee's own steps recorded only by them, in the worker portal or in person with a drawn signature and a staff witness (`HRM.ACL.10`); `HRM.RUL.17` reminds overdue steps every 2 days and tells the HR / payroll officer and the line manager after 5 days; visa steps stay in visa cases; completion blocks nothing (deployment stays guarded by documents) |
+| SOP library (`HRM.ONB.01`, `DOC.RUL.04`, `HRM.ACL.10`) | SOP owners: HR / payroll officer (HR and payroll SOPs) and account manager (client-site rules per contract); required readers by role; `DOC.RUL.04` asks each reader to acknowledge within 7 days, reminds every 3 days and tells the manager and the owner role after 7 days; workers acknowledge in the worker portal or in person with a drawn signature and a staff witness, never by someone else (`HRM.ACL.10`); a new version asks for a new acknowledgement |
+| Registration and certification kinds (`DOC.EXP.01`, `DOC.RUL.01`) | *Trademark registration* and *Other certification* (subject: legal entity); responsible role MD; `DOC.RUL.01` at 90, 30 and 7 days; no `blocks` |
+
 ## 8. Integrations
 
 | System | Purpose | Required for MVP | Access / notes |
@@ -981,7 +1000,7 @@ on paper and entered late (`HRM.ACL.01`, late-entry flag).
   - parties and identity fields;
   - documents, expiry reminders, document generation;
   - invoices, payments, cheques, receivables;
-  - tickets;
+  - tickets and checklists with photos and signature (`WRK.CHK.01`, for onboarding);
   - portal;
   - email;
   - approvals, state machines, automation rules;
@@ -1006,7 +1025,7 @@ on paper and entered late (`HRM.ACL.01`, late-entry flag).
 - **Specific to this vertical:** client contracts and rate cards, manpower requests,
   deployments and replacements, client timesheet approval, site requirements, candidates,
   accommodation, Emiratisation, margin reporting.
-- **Estimated reuse:** 52 of 61 capabilities (85%) come from shared modules or Renox. 39 of
+- **Estimated reuse:** 57 of 66 capabilities (86%) come from shared modules or Renox. 40 of
   them already exist in Property or Construction.
 
 ## 12. MVP scope
@@ -1039,10 +1058,14 @@ on paper and entered late (`HRM.ACL.01`, late-entry flag).
 - non-standard exits (onboarding cancelled, notice withdrawn, absconding, death) and
   settlement disputes;
 - email and SMS;
+- client leads with sources and campaigns, cash-flow forecast, budget with owner drawings,
+  onboarding checklists with photos and signature and SOPs, trademark reminders
+  (`SAL.CRM.01`, `SAL.CRM.02`, `FIN.CFL.01`, `FIN.BUD.01`, `HRM.ONB.01`, `WRK.CHK.01`,
+  `DOC.EXP.01`);
 - margin reports with visa and insurance costs amortised, utilisation reports, dashboards.
 
 **Excluded from the MVP:**
-- candidate pipeline and client CRM;
+- candidate pipeline;
 - shift rostering;
 - accommodation and transport;
 - Emiratisation tracking;

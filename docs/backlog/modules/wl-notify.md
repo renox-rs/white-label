@@ -1,12 +1,17 @@
 # Epic: wl-notify — negative flows
 
-> Status: draft · Last updated: 2026-10-15 · Spec version: same commit as this file
+> Status: draft · Last updated: 2026-10-16 · Spec version: same commit as this file
 
 What happens when a message gives up: after all retries and fallbacks, `give_up` emits
 `MessageGaveUp` with full detail and `NTF.RUL.01` runs the notification type's give-up reaction,
 so no module is left assuming a message arrived. The reactions are a staff task, an alternative
 recipient, marking the contact point invalid, and the statutory-notice task for notices with
 legal effect. Review item X-20 (and the 01 and 04 statutory notices that depend on it).
+
+BL-NTF-07 and BL-NTF-08 (label `area:sme-gap`, added 2026-10-16) add marketing broadcasts for
+the retention campaigns of `SAL.LOY.01` (gap G4 of the
+[SME problem map](../../reviews/2026-10-16-sme-problem-map.md) §3). They are not negative
+flows; they follow the same template.
 
 | ID | Title | Priority | Size | Milestone | Depends on |
 |---|---|---|---|---|---|
@@ -16,6 +21,8 @@ legal effect. Review item X-20 (and the 01 and 04 statutory notices that depend 
 | BL-NTF-04 | Mark a contact point invalid after a hard failure | medium | s | Build 1 | BL-NTF-01 |
 | BL-NTF-05 | Hold the deadline of a statutory notice until proof of delivery | high | m | Build 1 | BL-NTF-01, BL-NTF-02 |
 | BL-NTF-06 | Seed the default give-up reaction per type group | medium | s | Build 1 | BL-NTF-01 to BL-NTF-05 |
+| BL-NTF-07 | Send a marketing broadcast to a segment, with approval above a size (`NTF.ACL.03`) | medium | m | Launch 05 | Base: wl-notify Message lifecycle; Base: wl-parties consents; Base: wl-kernel approvals |
+| BL-NTF-08 | Apply the marketing send window and frequency cap (`NTF.RUL.02`) | medium | s | Launch 05 | BL-NTF-07 |
 
 ---
 
@@ -438,3 +445,194 @@ group takes the *Urgent types* row alone; a type with neither a group nor urgenc
 
 #### Out of scope
 How the booking page shows "reminder not delivered" (`Epic wl-scheduling`).
+
+---
+
+### BL-NTF-07 — wl-notify: send a marketing broadcast to a segment, with approval above a size (`NTF.ACL.03`)
+
+**Labels:** `module:wl-notify` `area:sme-gap` `priority:medium` `size:m` · **Milestone:** Launch 05 · **Size:** m
+**Depends on:** Base: wl-notify Message lifecycle · Base: wl-parties consents (`PTY.CNS.01`) · Base: wl-kernel approvals · **Blocks:** BL-NTF-08, BL-SAL-25, BL-AUT-18, BL-CLN-15, BL-EDU-17, BL-FNB-17
+**Review items:** G4 (SME problem map 32, 35)
+
+#### Goal
+A retention campaign in wl-sales (or a marketer) sends one marketing message to a segment of
+customers. wl-notify resolves the recipients at send time, keeps only those with marketing
+consent for the channel and no opt-out or suppression, adds the opt-out, and records what was
+excluded and why. A large broadcast needs a second person's approval.
+
+#### Files to read
+- `docs/modules/wl-notify.md` §2 (paragraph *Marketing broadcasts*), §3 *Broadcast*, §4.3,
+  §5.2, §5.3, §6 (`Notifier::broadcast`, `BroadcastCompleted`, `NTF.ACL.01`, `NTF.ACL.03`),
+  §7 rows on broadcasts
+- `docs/modules/wl-sales.md` §6 `Segments`
+
+#### Terms
+- **Broadcast:** one message of one type to a list of recipients, sent once.
+- **Recipient source:** a wl-sales segment (`members(segment, at)`) or a filtered party list.
+- **Excluded counts:** how many were left out per reason; names are not shown.
+- `AD-` **sender ID:** the registered SMS sender ID used for promotions.
+
+#### Spec excerpt (authoritative for this issue)
+
+| Entity | Description | Important fields |
+|---|---|---|
+| Broadcast | One message of one marketing or manual type to a list of recipients | requester `Subject` (e.g. a wl-sales campaign), notification type, template, channel, recipient source (a wl-sales segment, or a filtered party list), send at, recipients resolved, excluded counts by reason (no consent, opted out, suppressed, no contact point, frequency cap), requested by, approved by, results (sent, delivered, failed, opted out), status |
+
+### 4.3 Broadcast
+
+| State | Tone | Terminal | Meaning |
+|---|---|---|---|
+| `pending_approval` | warning | no | Waiting for a second person (`NTF.ACL.03`) |
+| `scheduled` | info | no | Approved or below the limit; waits for its send time |
+| `sending` | info | no | Recipients resolved; messages being queued |
+| `completed` | success | yes | Every message queued; results keep updating from delivery events |
+| `cancelled` | neutral | yes | Rejected, or cancelled before sending |
+
+| Transition | From | To | By | Guards | Effects |
+|---|---|---|---|---|---|
+| `request` | — | pending_approval, scheduled | `notifications.marketing.send` (marketing types), `notifications.broadcast.send` (other types, Later), or the requester module | type of category `marketing` or a manual type; template active (WhatsApp: `approved`) in every language used; SMS: an `AD-` sender ID configured | estimated recipients shown; `pending_approval` when the estimate is above the limit of `NTF.ACL.03`, otherwise `scheduled` |
+| `approve` | pending_approval | scheduled | `notifications.marketing.send` | approver ≠ requester (`NTF.ACL.03`) | — |
+| `reject` | pending_approval | cancelled | `notifications.marketing.send` | reason; rejecter ≠ requester | requester told; event `BroadcastCancelled` |
+| `start` | scheduled | sending | system (send at reached) | — | recipients resolved now; consent, opt-out, suppression and `NTF.RUL.02` applied per recipient; excluded counts recorded |
+| `complete` | sending | completed | system | every recipient has a message or an exclusion | event `BroadcastCompleted` |
+| `cancel` | pending_approval, scheduled | cancelled | requester, or `notifications.marketing.send` | — | event `BroadcastCancelled` |
+
+Messages already queued by a broadcast are not recalled; a message deferred by the send
+window is still sent when the window opens. A broadcast is sent once: running it again is a
+new broadcast, and a recipient gets at most one message per broadcast.
+
+### 5.3 Marketing broadcasts (MVP for 05, 06, 08, 10) and manual bulk messages (Later)
+
+1. A retention campaign in wl-sales is activated (`SAL.LOY.01`), or staff with
+   `notifications.marketing.send` start a broadcast from a segment. The broadcast names a
+   marketing template, the channel and the send time.
+2. Above the recipient limit, a second holder of `notifications.marketing.send` approves it
+   (`NTF.ACL.03`).
+3. At the send time the segment is evaluated again. Only recipients with marketing consent
+   for that channel (`PTY.CNS.01`, `NTF.ACL.01`), no opt-out or suppression and a valid
+   contact point get a message; `NTF.RUL.02` defers messages outside the marketing send
+   window and skips recipients over the frequency cap. The excluded counts are kept by
+   reason; the names of excluded recipients are not listed to the requester.
+4. Every marketing message identifies the client's brand and carries an opt-out: an
+   unsubscribe link in email, a reply keyword (e.g. STOP) in SMS and WhatsApp. An opt-out
+   withdraws the marketing consent for that channel (§5.2).
+5. Results (sent, delivered, failed, opted out) are kept on the broadcast and returned to
+   the requester through `BroadcastCompleted` and the delivery log.
+
+Manual bulk messages of other types (e.g. all tenants of a building, all guardians of a
+batch) use the same broadcast with `notifications.broadcast.send` and stay Later. The same
+consent, suppression and quiet-hour rules apply.
+
+| ID | Rule | Pattern | Parameter (default) |
+|---|---|---|---|
+| `NTF.ACL.01` | Marketing messages go only to recipients with marketing consent for that channel; exporting recipient lists needs a sensitive-export permission and is audited. Generalises `FNB.ACL.10` and `CLN.ACL.11` | `SEN` | — |
+| `NTF.ACL.03` | A marketing broadcast to more than N recipients needs approval by a second holder of `notifications.marketing.send`; the requester cannot approve it | `LIM`, `SOD` | N = 200 |
+
+| Setting | Default |
+|---|---|
+| Broadcast approval above (`NTF.ACL.03`) | 200 recipients |
+
+#### Edge cases decided
+- **Estimate vs actual:** the approval limit uses the estimate at `request`; a segment that
+  grows past the limit by send time is not sent back for approval.
+- **Approver's scope:** the approver sees the template, channel, estimate and segment rules, not
+  the recipient names.
+- **Same person twice:** a party with two contact points on the channel gets one message (the
+  primary).
+- **Consent withdrawn between `request` and `start`:** excluded (consent is checked at `start`
+  and again by the message `send` guard).
+- **WhatsApp template paused at send time:** the message falls back as any message does;
+  marketing types have no fallback to another channel unless consent exists there.
+- **Idempotency:** `start` runs once per broadcast; a retry after a crash skips recipients that
+  already have a message of this broadcast.
+- **Approval pending at send time:** stays `pending_approval`; it starts when approved if the
+  send time passed, otherwise at the send time.
+
+#### Must not
+- Must not send to a recipient without marketing consent for that channel.
+- Must not let the requester approve their own broadcast.
+- Must not send a marketing SMS without the `AD-` sender ID.
+- Must not list excluded recipients' names to the requester.
+
+#### Done when
+- [ ] Given a segment of 150 with 100 SMS-consented, requester A's broadcast goes straight to
+      `scheduled` and at send time queues 100 messages; excluded: 50 *no consent*.
+- [ ] Given an estimate of 350 (limit 200), A's request is `pending_approval`; A cannot approve;
+      B approves and it becomes `scheduled`.
+- [ ] B rejects with a reason: `cancelled`, A told, `BroadcastCancelled` emitted.
+- [ ] A party who opts out after the request and before the send gets no message.
+- [ ] Each marketing email has an unsubscribe link; each marketing SMS uses the `AD-` sender
+      and carries the opt-out keyword.
+- [ ] A crash after 40 of 100 messages and a retry queues the other 60 only;
+      `BroadcastCompleted` is emitted once.
+
+#### Out of scope
+Send window and frequency cap (BL-NTF-08); segments and the retention campaign (BL-SAL-25);
+manual bulk messages of other types (Later).
+
+---
+
+### BL-NTF-08 — wl-notify: apply the marketing send window and frequency cap (`NTF.RUL.02`)
+
+**Labels:** `module:wl-notify` `area:sme-gap` `priority:medium` `size:s` · **Milestone:** Launch 05 · **Size:** s
+**Depends on:** BL-NTF-07 · Base: wl-notify Message lifecycle (`defer`, `suppress`) · **Blocks:** BL-SAL-25, BL-AUT-18, BL-CLN-15, BL-EDU-17, BL-FNB-17
+**Review items:** G4 (SME problem map 32)
+
+#### Goal
+Marketing messages go out only between 07:00 and 21:00 Asia/Dubai (the TDRA hours for
+promotional SMS, applied to every channel), and no customer gets more than the cap of
+marketing messages in 7 days, however many campaigns run.
+
+#### Files to read
+- `docs/modules/wl-notify.md` §4.1 rows `defer` and `suppress`, §6 `NTF.RUL.02`, §7 row on
+  the send window, §10 *TDRA SMS rules*
+
+#### Terms
+- **Send window:** the hours in which a marketing message may be sent.
+- **Frequency cap:** the largest number of marketing messages a recipient may get in 7 days.
+
+#### Spec excerpt (authoritative for this issue)
+
+| Transition | From | To | By | Guards | Effects |
+|---|---|---|---|---|---|
+| `defer` | queued | deferred | system | normal urgency, external recipient, inside quiet hours; or category `marketing` outside the marketing send window (`NTF.RUL.02`) | scheduled for the end of quiet hours or the next opening of the window |
+| `suppress` | queued | suppressed | system | a send guard fails permanently, or the recipient is over the marketing frequency cap (`NTF.RUL.02`) | reason recorded; event `MessageSuppressed` |
+
+| ID | Rule | When | Then | Parameter (default) |
+|---|---|---|---|---|
+| `NTF.RUL.02` | Marketing send window and frequency cap | a message of category `marketing` is queued | outside the send window (Asia/Dubai) → `defer` to the next opening; when the recipient already got the cap of marketing messages in the last 7 days (across all broadcasts of the client) → `suppress` with reason *frequency cap* | window 07:00–21:00, every channel; cap 2 per 7 days; on |
+
+| Setting | Default |
+|---|---|
+| Marketing send window; frequency cap (`NTF.RUL.02`) | 07:00–21:00 on every channel (SMS may not be widened, §10); 2 messages per 7 days |
+
+- **TDRA SMS rules:** sender IDs must be registered through a licensed provider. Promotional
+  SMS carry the `AD-` prefix in the sender ID, may only be sent 07:00–21:00, need consent
+  and must offer an opt-out. Transactional SMS (OTP, reminders, receipts) need no prefix.
+  `NTF.RUL.02` applies the 07:00–21:00 window to every marketing channel; for SMS it may not
+  be widened.
+  Registration with e& and du takes about 5–25 working days ✔ [S2] (vendor sources).
+
+#### Edge cases decided
+- **Counting:** messages of category `marketing` that reached `sent` or later in the last 7 × 24
+  hours, any channel, any broadcast; suppressed and abandoned ones do not count.
+- **Order:** the cap is checked when the message would be sent (after a `defer`), not when
+  queued.
+- **Window settings:** a client may narrow the window; widening the SMS window past 07:00–21:00
+  is refused on save.
+- **Day boundary:** a message deferred at 21:00 is released at 07:00 the next day.
+- **Transactional, reminder and security types:** not affected.
+
+#### Must not
+- Must not send a marketing message outside the window.
+- Must not count a suppressed message towards the cap.
+
+#### Done when
+- [ ] A marketing SMS queued at 22:15 is deferred and sent at 07:00 the next day.
+- [ ] Given recipient R with 2 marketing messages sent in the last 7 days, a third is suppressed
+      with reason *frequency cap*.
+- [ ] Setting the SMS window to 06:00–22:00 is refused; 09:00–20:00 is accepted.
+- [ ] A booking reminder at 22:15 follows quiet hours only, not `NTF.RUL.02`.
+
+#### Out of scope
+Quiet hours for other categories (existing); the broadcast itself (BL-NTF-07).

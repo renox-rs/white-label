@@ -15,6 +15,9 @@ specification before this backlog was written.
 
 - **In:** the negative flows: states, transitions, guards, effects, rules and access rules added
   or changed by the review fixes.
+- **Also in:** the capabilities G1–G7 approved from the
+  [SME problem map](../reviews/2026-10-16-sme-problem-map.md) (label `area:sme-gap`); their
+  **Review items** line names the gap and the problem rows it solves.
 - **Not in:** the happy path of each entity (create, issue, pay…). Those come in a separate
   backlog. An issue that needs one names it under **Depends on** as
   `Base: <module> <Entity> lifecycle`.
@@ -69,7 +72,8 @@ issues are created on GitHub, the IDs stay in the title prefix so links can be r
 | Label | Meaning |
 |---|---|
 | `module:<name>` or `vertical:<NN-name>` | Where the work lives |
-| `area:negative-flow` | Every issue in this backlog |
+| `area:negative-flow` | Issues from the [negative-flow review](../reviews/2026-10-15-negative-flows.md) |
+| `area:sme-gap` | Issues for capabilities G1–G7 added from the [SME problem map](../reviews/2026-10-16-sme-problem-map.md) |
 | `priority:high` / `priority:medium` | From the review's impact: money, legal or data loss = high |
 | `blocked:open-item` | Waits for an answer in [OPEN-ITEMS.md](../OPEN-ITEMS.md); the default in the issue may be built, the open part is flagged |
 | `size:s` / `size:m` | s = one transition or rule; m = a small state machine or several linked transitions. Nothing larger: split it |

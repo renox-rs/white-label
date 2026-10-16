@@ -38,8 +38,8 @@ Review items: D-11, X-11, X-12, X-13, X-18, X-19, 03-N3-a, 03-N5-a, 03-N6-c, 03-
 | BL-LOG-22 | Reopen a closed freight job for a late cost | medium | s | Launch 03 | Base: 03 Freight job lifecycle; Base: wl-invoicing job costing (`FIN.CST.01`) |
 | BL-LOG-23 | Cancel a freight job before departure with charges and incurred costs | medium | s | Launch 03 | Base: 03 Freight job lifecycle; Base: wl-invoicing quotations (`FIN.QUO.01`) |
 | BL-LOG-24 | Alert on container free time and allocate demurrage by liability (`LOG.RUL.14`) | high | m | Launch 03 | Base: 03 Freight job lifecycle; Base: wl-invoicing supplier bills and disbursements; BL-LOG-22 |
-| BL-LOG-25 | 03 Logistics: configure shared negative-flow settings — documents, rules and integrations | high | m | Launch 03 | BL-DOC-01; BL-DOC-04; BL-DOC-05; BL-HRM-01; BL-DLV-01; BL-KRN-04; BL-KRN-05; BL-KRN-08; BL-KRN-09; BL-INV-09; BL-INV-10; BL-NTF-06 |
-| BL-LOG-26 | 03 Logistics: configure shared negative-flow settings — delivery, cash, money and access | high | m | Launch 03 | BL-DLV-02; BL-DLV-03; BL-DLV-05; BL-DLV-06; BL-DLV-08; BL-DLV-09; BL-PAY-09; BL-PAY-17; BL-PAY-21; BL-INV-01; BL-INV-02; BL-INV-04; BL-INV-05; BL-PTY-04 |
+| BL-LOG-25 | 03 Logistics: configure shared negative-flow settings — documents, rules and integrations | high | m | Launch 03 | BL-DOC-01; BL-DOC-04; BL-DOC-05; BL-HRM-01; BL-DLV-01; BL-KRN-04; BL-KRN-05; BL-KRN-08; BL-KRN-09; BL-INV-09; BL-INV-10; BL-NTF-06; BL-SAL-19; BL-SAL-20; BL-SAL-21; BL-HRM-26; BL-HRM-27; BL-HRM-28; BL-DOC-08; BL-DOC-09; BL-DOC-10 |
+| BL-LOG-26 | 03 Logistics: configure shared negative-flow settings — delivery, cash, money and access | high | m | Launch 03 | BL-DLV-02; BL-DLV-03; BL-DLV-05; BL-DLV-06; BL-DLV-08; BL-DLV-09; BL-PAY-09; BL-PAY-17; BL-PAY-21; BL-INV-01; BL-INV-02; BL-INV-04; BL-INV-05; BL-PTY-04; BL-INV-25; BL-INV-26; BL-INV-27; BL-INV-28; BL-INV-29; BL-INV-30; BL-PAY-25; BL-PAY-26 |
 
 ---
 
@@ -1613,7 +1613,7 @@ Reopening a closed job (BL-LOG-22). Holds (BL-LOG-21).
 ### BL-LOG-25 — 03 Logistics: configure shared negative-flow settings — documents, rules and integrations
 
 **Labels:** `vertical:03-logistics` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` · **Milestone:** Launch 03 · **Size:** m
-**Depends on:** BL-DOC-01 · BL-DOC-04 · BL-DOC-05 · BL-HRM-01 · BL-DLV-01 · BL-KRN-04 · BL-KRN-05 · BL-KRN-08 · BL-KRN-09 · BL-INV-09 · BL-INV-10 · BL-NTF-06 · **Blocks:** None.
+**Depends on:** BL-DOC-01 · BL-DOC-04 · BL-DOC-05 · BL-HRM-01 · BL-DLV-01 · BL-KRN-04 · BL-KRN-05 · BL-KRN-08 · BL-KRN-09 · BL-INV-09 · BL-INV-10 · BL-NTF-06 · BL-SAL-19 · BL-SAL-20 · BL-SAL-21 · BL-HRM-26 · BL-HRM-27 · BL-HRM-28 · BL-DOC-08 · BL-DOC-09 · BL-DOC-10 · **Blocks:** None.
 **Review items:** X-13, X-19, 03-N8-a
 
 #### Goal
@@ -1622,10 +1622,14 @@ rules, integrations, notifications and late entries: which document kinds block 
 delivery assignment and which role is responsible for each kind, which rules alert the owner, which
 connections have a manual fallback, which wl-notify group each 03 notification type names, the
 late-entry limits, and the e-invoicing scope. No new behaviour: each value configures a module mechanism.
+It also seeds the 03 values for lead sources and campaigns (`SAL.CRM.02`), onboarding and SOPs
+(`HRM.ONB.01`) and registration kinds (`DOC.EXP.01`), added on 2026-10-16: `SAL.ACL.07`,
+`HRM.RUL.16`, `HRM.RUL.17`, `HRM.ACL.10`, `DOC.RUL.04` and `DOC.RUL.01`.
 
 #### Files to read
 - `docs/verticals/03-logistics.md` §4.1 (row *Driver without signal at a stop*), §5 `HRM.QUA.01`, §7.1 checklist, §7.2 (reused rules and the compliance-critical paragraph), §8 (E-invoicing ASP row, *Integration down*), §9 (*E-invoicing*, *Document blocks*, *Notification types*), §13 question 12
 - `docs/modules/wl-documents.md` §5.2, §5.6; `docs/modules/wl-kernel.md` §5.13, §5.14, `PLT.RUL.04`; `docs/modules/wl-notify.md` §5.4
+- `docs/modules/wl-sales.md` §4.6, §5.8 and §7 (campaigns, sources); `docs/modules/wl-hr.md` §5.8 and §7 (onboarding); `docs/modules/wl-documents.md` §3, §5.7 and §7 (SOPs, registration kinds)
 - `docs/OPEN-ITEMS.md` L-19
 
 #### Terms
@@ -1707,6 +1711,11 @@ and road freight are not [excluded]."
 | `EInvoiceScope` | exclude invoices for international goods transport with an air waybill for 24 months from the entity's go-live; include sea and road | §9 |
 | Late entry (`PLT.ACL.10`) | M = 30 minutes (flag with a reason), N = 24 hours (operations manager approves) | §4.1, wl-kernel |
 | Digest of voids and late entries (`PLT.RUL.06`) | on, to operations managers per depot | §7.2 |
+| Lead sources used (`SAL.CRM.02`) | referral, website, social, paid ads, partner (e-commerce platforms, freight agents), event, other; recorded on the lead (`SAL.CRM.01`) and carried to the client party when it converts; no source requires a campaign | §5; §7.2 settings |
+| Campaign channels (`SAL.CRM.02`, `SAL.ACL.07`) | LinkedIn, search ads, email, trade events, marketplaces; converted value: the client's first invoice; a cost entry that takes a campaign over its budget needs a manager (`SAL.ACL.07`: on) | §5; §7.2 settings |
+| Onboarding checklists (`HRM.ONB.01`, `HRM.RUL.16`, `HRM.RUL.17`, `HRM.ACL.10`) | templates for driver (licence and documents, vehicle handover, PWA and e-POD training, cash handover), hub staff, dispatcher and customer service, started by `HRM.RUL.16` when an employee record (`HRM.EMP.01`) is created; checklist steps use `WRK.CHK.01`; tasks to the operations manager, the line manager and the employee; the employee's own steps recorded only by them (`HRM.ACL.10`); `HRM.RUL.17` reminds overdue steps every 2 days and tells the operations manager and the line manager after 5 days; completion blocks nothing (run dispatch stays guarded by the driving licence) | §5; §7.2 settings |
+| SOP library (`HRM.ONB.01`, `DOC.RUL.04`, `HRM.ACL.10`) | SOP owners: operations manager (dispatch, delivery, cash handover, hub) and fleet manager (daily vehicle check); required readers by role per depot; `DOC.RUL.04` asks each reader to acknowledge within 7 days, reminds every 3 days and tells the manager and the owner role after 7 days; acknowledged only by the reader (`HRM.ACL.10`); a new version asks for a new acknowledgement | §5; §7.2 settings |
+| Registration and certification kinds (`DOC.EXP.01`, `DOC.RUL.01`) | *Trademark registration* and *Other certification* (subject: legal entity); responsible role company admin; `DOC.RUL.01` at 90, 30 and 7 days; no `blocks` | §5; §7.2 settings |
 
 #### Edge cases decided
 - **Overrides:** with override `never`, no override button is shown anywhere; this changes only after L-19 is answered (`blocked:open-item` covers that answer, the block itself is built).
@@ -1727,6 +1736,9 @@ and road freight are not [excluded]."
 - [ ] Integrations: when the SMS gateway is `down`, tracking SMS are queued, the dispatcher has a task listing today's recipients, and clients receive the e-mail; when the ASP is down for 24 hours, a `FIN.RUL.16` task exists.
 - [ ] Late entry: an e-POD entered 3 hours after the stop is flagged with a reason; one entered 30 hours after needs an operations manager's approval.
 - [ ] E-invoicing: an invoice for an international air job with an AWB dated within 24 months of go-live is not transmitted; a sea freight invoice is.
+- [ ] Lead sources: a new lead or party offers the sources referral, website, social, paid ads, partner, event and other; a campaign with channel *LinkedIn*, a budget and cost entries reports leads, conversion, cost per lead, CAC and ROAS; a cost entry over the budget waits for a manager (`SAL.ACL.07`).
+- [ ] Onboarding and SOPs: hiring a driver creates the driver checklist with tasks to the operations manager, the line manager and the employee, and the role is active before it is complete; a step open 2 days past its due date reminds its assignee (`HRM.RUL.17`); a new version of an SOP owned by the operations manager asks every required reader to acknowledge again within 7 days (`DOC.RUL.04`), and no one else can acknowledge for them (`HRM.ACL.10`).
+- [ ] Registrations: a fresh 03 deployment lists *Trademark registration* and *Other certification* with responsible role company admin; a trademark registration expiring in 90 days notifies the company admin.
 
 #### Out of scope
 The guard, look-ahead, override and alert mechanics (BL-DOC-01, BL-DOC-04, BL-DOC-05, BL-HRM-01,
@@ -1737,7 +1749,7 @@ BL-DLV-01, BL-KRN-08). Delivery, cash and money settings (BL-LOG-26).
 ### BL-LOG-26 — 03 Logistics: configure shared negative-flow settings — delivery, cash, money and access
 
 **Labels:** `vertical:03-logistics` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` · **Milestone:** Launch 03 · **Size:** m
-**Depends on:** BL-DLV-02 · BL-DLV-03 · BL-DLV-05 · BL-DLV-06 · BL-DLV-08 · BL-DLV-09 · BL-PAY-17 · BL-PAY-21 · BL-INV-01 · BL-INV-02 · BL-INV-04 · BL-INV-05 · BL-PAY-09 · BL-PTY-04 · **Blocks:** BL-LOG-02
+**Depends on:** BL-DLV-02 · BL-DLV-03 · BL-DLV-05 · BL-DLV-06 · BL-DLV-08 · BL-DLV-09 · BL-PAY-17 · BL-PAY-21 · BL-INV-01 · BL-INV-02 · BL-INV-04 · BL-INV-05 · BL-PAY-09 · BL-PTY-04 · BL-INV-25 · BL-INV-26 · BL-INV-27 · BL-INV-28 · BL-INV-29 · BL-INV-30 · BL-PAY-25 · BL-PAY-26 · **Blocks:** BL-LOG-02
 **Review items:** X-01, X-02, X-05, X-11, X-12, X-18, 03-N3-a, 03-N9-a
 
 #### Goal
@@ -1745,10 +1757,14 @@ Seed the 03 deployment's values for the shared delivery, cash, receivables and a
 partial acceptance, failure and abort reasons, COD tolerance and approver, reversal and lost
 approval, cash count and write-off limits, salary deduction, invoice write-off and dispute,
 bounced-cheque fee, blocked-client exceptions and portal closure.
+It also seeds the 03 values for the cash-flow forecast alert (`FIN.CFL.01`) and the
+company budget with owner drawings (`FIN.BUD.01`), added on 2026-10-16: `FIN.RUL.23`,
+`FIN.RUL.24` and `FIN.ACL.21`.
 
 #### Files to read
 - `docs/verticals/03-logistics.md` §3.3 (`WRK.ACL.09`, `WRK.ACL.10`, `FIN.ACL.05`, `FIN.ACL.06`, `FIN.ACL.19`, `PTY.ACL.03`, `FIN.ACL.15`, `POR.ACL.01`), §4.1 "When it goes wrong", §4.4 step 5, §7.1 *Shipment* (`fail_attempt` reasons), *Run* (`abort` reasons, `hand_over`), §7.2 (reused rules), §9 *Bad debts*, §13 question 13
 - `docs/modules/wl-delivery.md` §7; `docs/modules/wl-payments.md` §7; `docs/modules/wl-invoicing.md` §5.9, §5.10
+- `docs/modules/wl-invoicing.md` §5.14–§5.16 and §7 (cash-flow forecast, company budget, owner drawings); `docs/modules/wl-payments.md` (open cheques, owner-drawings payments)
 - `docs/OPEN-ITEMS.md` L-20
 
 #### Terms
@@ -1814,6 +1830,9 @@ rejected or late).
 | Blocked-client exception approver (`PTY.ACL.03`) | company admin; the requester cannot approve | §3.3 |
 | Sanctions screening | off | §3.3 |
 | Portal after contract end (`POR.ACL.01`) | read-only, closes after 90 days | §3.3 |
+| Cash-flow forecast alert (`FIN.CFL.01`, `FIN.RUL.23`) | projected balance below AED 100,000 in any of the next 13 weeks (weeks start Monday): `FIN.RUL.23` alerts the company admin and the accountant, checked daily at 06:00; COD remittances to clients counted as payments on their schedule; disbursements by their recharge invoice; due dates adjusted by each client's average days late: on; disputed amounts counted: off | §5; §7.2 settings |
+| Budget categories and approval (`FIN.BUD.01`, `FIN.RUL.24`) | categories (fuel, tolls and fines, vehicle maintenance, rent, staff, carriers) owned by the accountant and mapped to the export accounts; one budget per legal entity and month, approved by the company admin; `FIN.RUL.24` warns the category's owner role and the accountant when a month's actual reaches 100% of its line | §5; §7.2 settings |
+| Owner drawings (`FIN.BUD.01`, `FIN.ACL.21`) | expense category and payment purpose *owner drawings*, kept out of operating cost and profit; every drawing (AED 0) approved by the company admin, never by the requester (`FIN.ACL.21`) | §5; §7.2 settings |
 
 #### Edge cases decided
 - **Operations manager approvals in a depot with one manager:** the company admin may approve; the requester never may.
@@ -1833,6 +1852,8 @@ rejected or late).
 - [ ] Cash: a AED 40 shortage can be written off by the cashier; AED 60 needs approval; salary deduction is not offered.
 - [ ] Receivables: every invoice write-off needs approval by the operations manager or company admin, not the requester; the client receives the write-off notice; a returned cheque adds no bounce fee; a client user can dispute an invoice in the portal.
 - [ ] Access: a blocked client's remittance exception is approved by the company admin, not by the requesting accountant; a client whose contract ended 2026-11-01 has read-only portal access until 2027-01-30 and none from 2027-01-31.
+- [ ] Cash-flow forecast: in a fresh 03 deployment, a projected balance of AED 99,999 in week 5 alerts the company admin and the accountant once (`FIN.RUL.23`, 06:00 run); AED 100,000 or more in every week alerts no one; the forecast shows 13 weekly buckets from Monday.
+- [ ] Budget and drawings: a monthly budget for a legal entity prepared by the accountant needs approval by the company admin; an expense with category *owner drawings* is left out of operating cost and profit reports, and the user who records it cannot approve it (`FIN.ACL.21`); an expense line reaching 100% of its month's budget line warns the category's owner role and the accountant once (`FIN.RUL.24`).
 
 #### Out of scope
 The mechanisms themselves (module epics listed in Depends on). Documents, rules and integrations

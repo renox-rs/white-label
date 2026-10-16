@@ -1,6 +1,6 @@
 # 08 — Auto Parts Suppliers & Fleet/Workshop Services
 
-> Status: accepted · Reviewed: 2026-10-15 · Last updated: 2026-10-15
+> Status: accepted · Reviewed: 2026-10-15 · Last updated: 2026-10-16
 
 ## 1. Summary
 
@@ -319,7 +319,7 @@ global. Sales representatives are global but see only the customers assigned to 
 | `PTY.PTY.01` | Parties: B2B customers, fleets, walk-ins, suppliers | shared | wl-parties | MVP |
 | `PTY.KYC.01` | Identity fields: trade licence, TRN, Emirates ID | shared | wl-parties | MVP |
 | `DOC.FIL.01` | Attach documents (photos of parts, delivery notes, supplier invoices) | shared | wl-documents | MVP |
-| `DOC.EXP.01` | Expiry reminders (customer trade licences, fleet contracts) | shared | wl-documents | MVP |
+| `DOC.EXP.01` | Expiry reminders (customer trade licences, fleet contracts, trademark and other registrations) | shared | wl-documents | MVP |
 | `DOC.GEN.01` | Generate documents (estimates, job cards, delivery notes, statements) | shared | wl-documents | MVP |
 | `DOC.SIG.01` | Customer approval of estimates and sign-off at delivery | shared | wl-documents | MVP |
 | `FIN.BIL.01` | Charge schedule from a fleet contract | shared | wl-invoicing | MVP |
@@ -345,7 +345,7 @@ global. Sales representatives are global but see only the customers assigned to 
 | `NTF.MSG.02` | WhatsApp notifications | shared | wl-notify | Later |
 | `NTF.MSG.03` | SMS notifications (vehicle ready, booking reminders) | shared | wl-notify | MVP |
 | `RPT.DSH.01` | Role-based dashboards | shared | Renox charts + wl-kernel | MVP |
-| `SAL.CRM.01` | Leads and enquiries pipeline (fleet contracts) | shared | wl-sales | Later |
+| `SAL.CRM.01` | Leads and enquiries pipeline (fleet contracts) | shared | wl-sales | MVP |
 | `SAL.CAT.01` | Sellable catalogue with price tiers and special prices | shared | wl-sales | MVP |
 | `SAL.ORD.01` | Sales orders with reservation, picking and fulfilment | shared | wl-sales | MVP |
 | `SAL.POS.01` | Counter sale / POS with VAT receipt | shared | wl-sales | MVP |
@@ -355,7 +355,7 @@ global. Sales representatives are global but see only the customers assigned to 
 | `SCH.SLF.01` | Online self-booking | shared | wl-scheduling | Later |
 | `SCH.RMD.01` | Booking reminders and no-shows | shared | wl-scheduling | MVP |
 | `HRM.TMS.01` | Technician time on job cards (clock on/off) | shared | wl-attendance | Later |
-| `HRM.EMP.01` | Minimal technician records for job-card time: person, branch, cost rate | shared | wl-hr | Later |
+| `HRM.EMP.01` | Minimal staff records for onboarding and job-card time: person, branch, job role, cost rate, documents (no payroll or visas) | shared | wl-hr | MVP |
 | `STK.ITM.01` | Item catalogue with units of measure | shared | wl-inventory | MVP |
 | `STK.LOC.01` | Stock per location and bin | shared | wl-inventory | MVP |
 | `STK.MOV.01` | Stock movements: receive, pick, issue to job, transfer, adjust, count | shared | wl-inventory | MVP |
@@ -393,6 +393,12 @@ global. Sales representatives are global but see only the customers assigned to 
 | `AUT.INS.03` | Supplementary estimates and approvals for hidden damage | specific | apps/auto | MVP |
 | `AUT.INS.04` | Split billing: approved amount to the insurer; excess and private items to the customer | specific | apps/auto | MVP |
 | `FIN.TPP.01` | Third-party payer billing: split billing between insurer and customer, insurer invoices, remittance reconciliation, insurer receivables board and statements (formerly `AUT.INS.05`) | shared (**new**) | wl-invoicing | MVP |
+| `SAL.CRM.02` | Lead sources and campaigns: cost per campaign, conversion by source and channel, cost per lead, customer acquisition cost and return on ad spend | shared | wl-sales | MVP |
+| `FIN.CFL.01` | Cash-flow forecast: expected receipts and payments by week from invoices, supplier bills, scheduled charges, post-dated cheques, payroll and budgets | shared | wl-invoicing | MVP |
+| `STK.SUP.01` | Supplier scorecard and alternative suppliers: on-time delivery, rejected quantity, NCRs, price variance; preferred and alternative suppliers per item | shared | wl-inventory | MVP |
+| `SAL.LOY.01` | Loyalty and retention: points or visit rewards, customer segments, and retention campaigns sent with marketing consent | shared | wl-sales + wl-notify | MVP |
+| `FIN.BUD.01` | Company budget vs actual by period, category and entity; owner drawings kept apart from operating cost | shared | wl-invoicing | MVP |
+| `HRM.ONB.01` | Staff onboarding checklists per role and a library of SOP documents with acknowledgement | shared | wl-hr + wl-documents | MVP |
 | `AUT.INS.06` | Replacement car allocation and recharge to the insurer | specific | apps/auto | Later |
 | `AUT.INS.07` | Insurer and surveyor portal: claims, estimates, approvals, repair status | specific | apps/auto | Later |
 | `AUT.EXP.01` | Export sales: zero-rated VAT invoice, packing list and commercial invoice in USD; exit certificate, bill of lading or airway bill tracked within 90 days | specific | apps/auto | MVP |
@@ -840,6 +846,17 @@ before the request (`wl-kernel`). Settings for this vertical:
 | Bad debt and cheques | Write-off limit AED 0 (`FIN.ACL.15`); bounce fee off unless the client sets a charge type; maximum two presentations; bounced cheque holds the whole credit group (`SAL.RUL.05`) |
 | Recall | A supplier recall of a part is traced through job cards and sales (`TracePartyResolver`: job card → vehicle owner or fleet, the owner when the fleet contract has ended; sales order and account sale → customer; walk-in counter sales → a count per branch and day). Parts are not lot-tracked in the MVP, so the client gives the received date range from the supplier's notice and the trace covers parts sold or fitted on or after the first receipt of the part in that range (`wl-inventory`, items not tracked by lot), every line *possible*. Recalls are opened by the Owner / GM and branch managers (`recalls.manage`) |
 | Responsible role per document kind (wl-documents §5.2) | customer trade licences and export exit evidence → accountant; fleet contracts → Owner / GM; police accident report and claim documents (driving licence, Mulkiya, Emirates ID) → insurance coordinator of the workshop |
+| Cash-flow forecast alert (`FIN.CFL.01`, `FIN.RUL.23`) | projected balance below AED 100,000 in any of the next 13 weeks (weeks start Monday): `FIN.RUL.23` alerts the Owner / GM and the accountant, checked daily at 06:00; insurer receivables by their due dates (`FIN.TPP.01`); foreign-currency POs at the latest rate; due dates adjusted by each customer's average days late: on; disputed amounts counted: off |
+| Budget categories and approval (`FIN.BUD.01`, `FIN.RUL.24`) | categories owned by the accountant and mapped to the export accounts; one budget per legal entity and month, approved by the Owner / GM; `FIN.RUL.24` warns the category's owner role and the accountant when a month's actual reaches 100% of its line |
+| Owner drawings (`FIN.BUD.01`, `FIN.ACL.21`) | expense category and payment purpose *owner drawings*, kept out of operating cost and profit; every drawing (AED 0) approved by the Owner / GM, never by the requester (`FIN.ACL.21`) |
+| Lead sources used (`SAL.CRM.02`) | referral, walk-in, website, social, paid ads, partner (insurers, fleet brokers), event, other; fleet contract enquiries are leads (`SAL.CRM.01`); walk-in customers get the source on their party; no source requires a campaign |
+| Campaign channels (`SAL.CRM.02`, `SAL.ACL.07`) | search ads, Instagram, SMS, email, trade events; converted value: the first sales order, job card or fleet contract invoice; a cost entry that takes a campaign over its budget needs a manager (`SAL.ACL.07`: on) |
+| Supplier scorecard review (`STK.SUP.01`, `STK.RUL.09`, `STK.ACL.07`) | score 0–100 over a 3-month window (minimum 3 receipts, 1 grace day); below 70: `STK.RUL.09` gives a review task to the purchaser / importer and tells the branch manager; preferred and alternative suppliers per part used by reorder suggestions (`STK.ROP.01`); changing a part's preferred supplier needs a second person (`STK.ACL.07`: on) |
+| Loyalty earn and redeem (`SAL.LOY.01`, `SAL.RUL.07`) | individual car owners only: `SAL.RUL.07` earns 1 point per AED 10 on workshop invoices and counter sales, reversed on returns and credit notes; none on B2B trade, fleet or insurer-paid jobs; 100 points = an AED 10 discount line on a later workshop invoice, confirmed by a one-time code to the member (VAT on the discounted supply: `⚠ open: accountant (A-15)`) |
+| Loyalty expiry, adjustments and segments (`SAL.LOY.01`, `SAL.RUL.08`, `SAL.ACL.07`, `NTF.RUL.02`, `NTF.ACL.03`) | points expire 24 months after they are earned, the member reminded 30 days before (`SAL.RUL.08`); a manual adjustment above 500 points needs a manager (`SAL.ACL.07`); segments: service due by date or mileage, no visit in 12 months, vehicle make, spend over AED 5,000 in 12 months; campaigns only to opted-in contacts (`NTF.ACL.01`), with opt-out, sent 07:00–21:00 and at most 2 marketing messages per contact in 7 days (`NTF.RUL.02`); a broadcast to more than 200 recipients needs a second person (`NTF.ACL.03`); `AUT.RUL.01` service reminders unchanged |
+| Onboarding checklists (`HRM.ONB.01`, `HRM.RUL.16`, `HRM.RUL.17`, `HRM.ACL.10`) | templates for technician, service advisor, counter sales, storekeeper and delivery driver, started by `HRM.RUL.16` when a staff record (`HRM.EMP.01`) is created; checklist steps use `WRK.CHK.01`; tasks to the branch manager (workshop manager for workshop roles), the line manager and the employee; the employee's own steps recorded only by them (`HRM.ACL.10`); `HRM.RUL.17` reminds overdue steps every 2 days and tells the branch manager and the line manager after 5 days; completion blocks nothing (role activation not blocked) |
+| SOP library (`HRM.ONB.01`, `DOC.RUL.04`, `HRM.ACL.10`) | SOP owners: workshop manager (check-in, QC, workshop safety) and branch manager (counter, cash, returns); required readers by role per branch; `DOC.RUL.04` asks each reader to acknowledge within 7 days, reminds every 3 days and tells the manager and the owner role after 7 days; acknowledged only by the reader (`HRM.ACL.10`); a new version asks for a new acknowledgement |
+| Registration and certification kinds (`DOC.EXP.01`, `DOC.RUL.01`) | *Trademark registration* and *Other certification* (subject: legal entity); responsible role Owner / GM; `DOC.RUL.01` at 90, 30 and 7 days; no `blocks` |
 
 **Notification types registered by 08** (wl-notify §5.4: each names its group):
 
@@ -998,7 +1015,7 @@ minimum) is **on** by default in this vertical.
   fleet contracts and consolidated billing, warranty claims both ways, insurance accident
   repairs (claims, insurer approvals, split billing, insurer receivables), export sales,
   auto-specific reports.
-- **Estimated reuse:** 70 of 88 capabilities (80%) come from shared modules or Renox. This
+- **Estimated reuse:** 76 of 94 capabilities (81%) come from shared modules or Renox. This
   vertical leans most on the sales module (`wl-sales`: catalogue, price tiers, sales orders,
   POS, returns, credit limits), shared with F&B, manufacturing, clinics and EdTech.
 
@@ -1025,8 +1042,15 @@ bounced-cheque credit hold for the credit group, cheque handover by drivers and 
 (`FIN.CSH.01`), returns to suppliers with debit notes, late landed cost, fleet contract
 termination, invoice disputes and bad-debt write-off.
 
+**Also included:** leads with sources and campaigns (`SAL.CRM.01`, `SAL.CRM.02`), loyalty and
+retention campaigns (`SAL.LOY.01`), the cash-flow forecast (`FIN.CFL.01`), supplier
+scorecards (`STK.SUP.01`), budget with owner drawings (`FIN.BUD.01`), onboarding and SOPs
+(`HRM.ONB.01`) on minimal staff records (`HRM.EMP.01`, MVP since 2026-10-16 because
+onboarding needs employee records; no payroll or visas) and trademark reminders
+(`DOC.EXP.01`).
+
 **Excluded from the MVP:** licensed parts data and VIN decoding, online self-booking,
-online payment, WhatsApp, fleet portal, lead pipeline, technician time clocking, customs
+online payment, WhatsApp, fleet portal, technician time clocking, customs
 documents (certificate of origin, declarations), integrated card terminals, accounting export, marketplace listings
 (e.g. third-party parts marketplaces), tyre storage (hotel) and vehicle rental, replacement
 cars for insurance repairs, insurer portal and insurer system integrations, salvage

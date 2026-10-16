@@ -10,20 +10,20 @@ who uses it. ID conventions are in [README.md](README.md).
 
 | # | Vertical | Capabilities | Shared | Specific | Reuse |
 |---|---|---|---|---|---|
-| 01 | [Property](verticals/01-property.md) | 55 | 43 | 12 | 78% |
-| 02 | [Construction](verticals/02-construction.md) | 69 | 53 | 16 | 77% |
-| 03 | [Logistics](verticals/03-logistics.md) | 72 | 57 | 15 | 79% |
-| 04 | [Accounting](verticals/04-accounting.md) | 63 | 48 | 15 | 76% |
-| 05 | [Clinics](verticals/05-clinics.md) | 73 | 61 | 12 | 84% |
-| 06 | [F&B](verticals/06-fnb.md) | 92 | 67 | 25 | 73% |
-| 07 | [Manufacturing](verticals/07-manufacturing.md) | 74 | 62 | 12 | 84% |
-| 08 | [Auto](verticals/08-auto.md) | 88 | 70 | 18 | 80% |
-| 09 | [Manpower](verticals/09-manpower.md) | 61 | 52 | 9 | 85% |
-| 10 | [EdTech](verticals/10-edtech.md) | 71 | 56 | 15 | 79% |
-| | **Distinct** | **249** | **100** | **149** | |
+| 01 | [Property](verticals/01-property.md) | 60 | 48 | 12 | 80% |
+| 02 | [Construction](verticals/02-construction.md) | 75 | 59 | 16 | 79% |
+| 03 | [Logistics](verticals/03-logistics.md) | 76 | 61 | 15 | 80% |
+| 04 | [Accounting](verticals/04-accounting.md) | 67 | 52 | 15 | 78% |
+| 05 | [Clinics](verticals/05-clinics.md) | 80 | 68 | 12 | 85% |
+| 06 | [F&B](verticals/06-fnb.md) | 98 | 74 | 24 | 76% |
+| 07 | [Manufacturing](verticals/07-manufacturing.md) | 79 | 67 | 12 | 85% |
+| 08 | [Auto](verticals/08-auto.md) | 94 | 76 | 18 | 81% |
+| 09 | [Manpower](verticals/09-manpower.md) | 66 | 57 | 9 | 86% |
+| 10 | [EdTech](verticals/10-edtech.md) | 77 | 62 | 15 | 81% |
+| | **Distinct** | **254** | **106** | **148** | |
 
-Every vertical gets 73–85% of its capabilities from shared modules. Building the shared
-modules once covers 100 capabilities; each vertical then adds 9–25 of its own.
+Every vertical gets 76–86% of its capabilities from shared modules. Building the shared
+modules once covers 106 capabilities; each vertical then adds 9–24 of its own.
 
 ## 2. Modules
 
@@ -34,15 +34,15 @@ modules once covers 100 capabilities; each vertical then adds 9–25 of its own.
 | `wl-portal` | 3 | 10 verticals | External users' self-service and document exchange |
 | `wl-documents` | 4 | 10 verticals | Files, expiry reminders, generated PDFs, e-signature |
 | `wl-notify` | 3 | 10 verticals | Email, WhatsApp, SMS |
-| `wl-invoicing` | 14 | 10 verticals | Quotations, invoices, subscriptions, rate cards, usage billing, costing, receivables, supplier bills, VAT summary |
+| `wl-invoicing` | 16 | 10 verticals | Quotations, invoices, subscriptions, rate cards, usage billing, costing, receivables, supplier bills, VAT summary |
 | `wl-payments` | 7 | 10 verticals | Payments, online payment, cheques, deposits, cash custody, expenses, bank statement matching |
-| `wl-sales` | 8 | 8 verticals | **New.** Leads, catalogue, orders, POS, packages, discounts, returns, credit limits |
+| `wl-sales` | 10 | 10 verticals | **New.** Leads, catalogue, orders, POS, packages, discounts, returns, credit limits |
 | `wl-ticketing` | 8 | 10 verticals | Tickets, checklists, planned maintenance, recurring tasks, feedback, service contracts |
 | `wl-delivery` | 2 | 4 verticals | **New** ([§5](#5-resolved-overlaps)). Dispatch and proof of delivery |
 | `wl-scheduling` | 4 | 4 verticals | Resources, bookings, self-booking, reminders |
 | `wl-attendance` | 3 | 9 verticals | Attendance, timesheets, rosters |
-| `wl-hr` | 7 | 9 verticals | **New.** Employees, visas, leave, payroll, WPS, final settlement |
-| `wl-inventory` | 13 | 6 verticals | Items, stock, purchasing, lots, BOMs, dispatch notes, assets |
+| `wl-hr` | 8 | 10 verticals | **New.** Employees, visas, leave, payroll, WPS, final settlement |
+| `wl-inventory` | 14 | 6 verticals | Items, stock, purchasing, lots, BOMs, dispatch notes, assets |
 
 Not in this table: [`wl-operator`](modules/wl-operator.md), our own control plane (domain `OPS`). Its capabilities serve us, not the clients.
 
@@ -115,6 +115,8 @@ although their document does not list it yet; confirm when that vertical is revi
 | ID | Capability | Module | 01 | 02 | 03 | 04 | 05 | 06 | 07 | 08 | 09 | 10 | Expected also |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | `FIN.BIL.01` | Charge schedule from an agreement: instalments, recurring fees | wl-invoicing | ● |  |  | ● |  |  |  | ● |  | ● |  |
+| `FIN.BUD.01` | Company budget vs actual by period, category and entity; owner drawings kept apart from operating cost | wl-invoicing | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● |  |
+| `FIN.CFL.01` | Cash-flow forecast: expected receipts and payments by week from invoices, supplier bills, scheduled charges, post-dated cheques, payroll and budgets | wl-invoicing | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● |  |
 | `FIN.CST.01` | Job costing: budget vs committed vs actual per cost object | wl-invoicing |  | ● | ● |  |  |  | ● |  | ● |  |  |
 | `FIN.CUR.01` | Multi-currency amounts with exchange rates | wl-invoicing |  | ● | ● |  |  |  | ● | ● |  |  |  |
 | `FIN.DSB.01` | Disbursements: costs paid on a client's behalf, recharged at cost | wl-invoicing |  |  | ● |  |  |  |  |  |  |  |  |
@@ -147,8 +149,10 @@ although their document does not list it yet; confirm when that vertical is revi
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | `SAL.CAT.01` | Sellable catalogue and price lists | wl-sales |  |  |  |  | ● | ● | ● | ● |  | ● |  |
 | `SAL.CRD.01` | Customer credit limits, credit check and credit hold | wl-sales |  |  |  |  |  |  | ● | ● |  |  |  |
-| `SAL.CRM.01` | Leads and enquiries pipeline | wl-sales |  |  | ○ | ○ | ○ |  | ○ | ○ | ○ | ● | 01 (viewings) |
+| `SAL.CRM.01` | Leads and enquiries pipeline | wl-sales |  | ● | ● | ● | ● | ● | ● | ● | ● | ● | 01 (viewings) |
+| `SAL.CRM.02` | Lead sources and campaigns: cost per campaign, conversion by source and channel, cost per lead, customer acquisition cost and return on ad spend | wl-sales | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● |  |
 | `SAL.DSC.01` | Discounts and promo codes (formerly `FNB.PRM.01`) | wl-sales |  |  |  |  |  | ● |  |  |  | ● |  |
+| `SAL.LOY.01` | Loyalty and retention: points or visit rewards, customer segments, and retention campaigns sent with marketing consent (formerly `FNB.LOY.01`) | wl-sales + wl-notify |  |  |  |  | ● | ● |  | ● |  | ● |  |
 | `SAL.ORD.01` | Sales orders from every channel | wl-sales |  |  |  |  |  | ● | ● | ● |  |  |  |
 | `SAL.PKG.01` | Prepaid packages of sessions or units: sell, consume, expire, refund (formerly `EDU.PKG.01`) | wl-sales |  |  |  |  | ● |  |  |  |  | ● |  |
 | `SAL.POS.01` | Counter sale / point of sale with receipt and day closing | wl-sales |  |  |  |  |  | ● |  | ● |  |  |  |
@@ -158,7 +162,7 @@ although their document does not list it yet; confirm when that vertical is revi
 
 | ID | Capability | Module | 01 | 02 | 03 | 04 | 05 | 06 | 07 | 08 | 09 | 10 | Expected also |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `WRK.CHK.01` | Checklists with photos and signature | wl-ticketing | ● | ● | ● | ● |  | ● | ● | ● |  |  |  |
+| `WRK.CHK.01` | Checklists with photos and signature | wl-ticketing | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● |  |
 | `WRK.FBK.01` | Customer feedback and ratings after a completed service; low ratings open a ticket | wl-ticketing | ○ |  | ○ |  | ● | ○ |  | ● |  | ○ |  |
 | `WRK.PPM.01` | Planned preventive maintenance by date or meter | wl-ticketing | ● |  | ● |  |  | ○ | ○ | ● |  |  |  |
 | `WRK.SVC.01` | Vendor service contracts (AMC): scope, assets, planned visits, SLA, cost | wl-ticketing | ● |  |  |  | ○ | ○ | ○ |  |  |  |  |
@@ -195,9 +199,10 @@ although their document does not list it yet; confirm when that vertical is revi
 
 | ID | Capability | Module | 01 | 02 | 03 | 04 | 05 | 06 | 07 | 08 | 09 | 10 | Expected also |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `HRM.EMP.01` | Employee records with documents and professional licences | wl-hr |  | ● | ● | ● | ● | ● | ○ | ○ | ● | ● |  |
+| `HRM.EMP.01` | Employee records with documents and professional licences | wl-hr | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● |  |
 | `HRM.EOS.01` | Final settlement: gratuity, leave encashment, recoveries | wl-hr |  |  |  |  |  |  |  |  | ● |  |  |
 | `HRM.LEV.01` | Leave and absence, blocking calendars | wl-hr |  |  |  |  | ○ |  |  |  | ● | ○ |  |
+| `HRM.ONB.01` | Staff onboarding checklists per role and a library of SOP documents with acknowledgement | wl-hr + wl-documents | ● | ● | ● | ● | ● | ● | ● | ● | ● | ● |  |
 | `HRM.PAY.01` | Payroll calculation: salary structure, overtime, allowances, deductions | wl-hr |  | ○ |  |  |  | ○ |  |  | ● | ○ |  |
 | `HRM.QUA.01` | Qualifications and licences per role and scope, with a validity guard (formerly `CLN.LIC.01`) | wl-hr |  |  | ● | ● | ● |  |  |  | ● | ● |  |
 | `HRM.VIS.01` | Visa cases (new, renewal, cancellation) as tracked steps | wl-hr |  |  |  |  |  |  |  |  | ● |  |  |
@@ -220,6 +225,7 @@ although their document does not list it yet; confirm when that vertical is revi
 | `STK.PRQ.01` | Purchase requests with approval | wl-inventory |  | ● |  |  |  | ● | ● |  |  |  |  |
 | `STK.PUR.01` | Purchase orders to suppliers | wl-inventory |  | ● |  |  | ○ | ● | ● | ● |  |  |  |
 | `STK.ROP.01` | Reorder points and suggested purchase lists | wl-inventory |  |  |  |  |  | ● |  | ● |  |  |  |
+| `STK.SUP.01` | Supplier scorecard and alternative suppliers: on-time delivery, rejected quantity, NCRs, price variance; preferred and alternative suppliers per item | wl-inventory |  | ● |  |  | ○ | ● | ● | ● |  |  |  |
 
 ## 4. Vertical-specific capabilities
 
@@ -232,7 +238,7 @@ The full rows are in each vertical's §5.
 | `PRP.PRT.01` | Portfolio: buildings, floors, units and their attributes (type, size, use) |
 | `PRP.PRT.02` | Unit availability and status |
 | `PRP.PRT.03` | Ownership and management agreements (owner, fee %) |
-| `PRP.LEA.01` | Enquiries and viewings |
+| `PRP.LEA.01` | Enquiries and viewings, with lead source and campaign (`SAL.CRM.02`) |
 | `PRP.LEA.02` | Reservation with booking deposit |
 | `PRP.LSE.01` | Lease: parties, unit, term, rent, payment plan, deposit, clauses, versions |
 | `PRP.LSE.02` | Ejari/Tawtheeq registration tracking (number, dates, certificate) |
@@ -330,7 +336,7 @@ The full rows are in each vertical's §5.
 
 </details>
 
-<details><summary><b>06 F&B</b>: 25 specific capabilities</summary>
+<details><summary><b>06 F&B</b>: 24 specific capabilities</summary>
 
 | ID | Capability |
 |---|---|
@@ -351,7 +357,6 @@ The full rows are in each vertical's §5.
 | `FNB.DIN.04` | Bill presentation and splitting (by seat, by item, equal shares), several payments per bill, tips |
 | `FNB.DIN.05` | Service charge (hotel- or tourism-licensed outlets only, up to 10%) and Dubai municipality fee (7%) lines per outlet configuration |
 | `FNB.DIN.06` | Reservation table allocation by party size and turn time; walk-in waiting list |
-| `FNB.LOY.01` | Loyalty points for direct customers |
 | `FNB.CST.01` | Theoretical vs actual food cost and variance per item and outlet |
 | `FNB.WST.01` | Wastage logging with reasons and value |
 | `FNB.PRD.01` | Central kitchen production planning and batches |
@@ -481,7 +486,7 @@ moved to §5, row 10.
 | `AUT.FLT.01` fleet service contracts | `FIN.RAT.01`, `FIN.USG.01` | Partly: rates use shared rate cards; inclusions and service schedules stay in Auto |
 | `CLN.TEL.01` telehealth, `EDU.ONL.01` online classes | `SCH.BKG.01` | Partly: the meeting link and provider hook are on the shared Booking; clinical telehealth rules stay in Clinics |
 | `AUT.VEH.01` customer vehicles | `STK.AST.01` | Rejected: customer vehicles are not company assets |
-| `FNB.LOY.01` loyalty points | — | Rejected for now: becomes a shared `SAL` capability when a second vertical asks for it |
+| `FNB.LOY.01` loyalty points | `SAL.LOY.01` | Promoted 2026-10-16 (SME problem map, G4): shared loyalty and retention for 05, 06, 08, 10, MVP |
 
 ## 7. Keeping this map current
 

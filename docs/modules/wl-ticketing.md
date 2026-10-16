@@ -1,6 +1,6 @@
 # wl-ticketing
 
-> Status: draft · Last updated: 2026-10-15
+> Status: draft · Last updated: 2026-10-16
 
 ## 1. Purpose
 
@@ -28,7 +28,7 @@ of them knows anything about a particular vertical:
 | `WRK.TKT.01` | Raise a ticket from the portal or by staff, with category and photos | 01 maintenance, 02 snags and defects, 03 breakdowns and claims, 04 client queries, 05 complaints, 06 equipment faults, 07 breakdowns and complaints, 08 customer warranty claims (formerly `AUT.WAR.01`), 09 complaints, grievances and absence cases; 10 low ratings and complaints (Later) | MVP |
 | `WRK.TKT.02` | Triage: priority, SLA, assignment to staff or vendor | 01, 02, 03, 04, 05, 06, 07, 09 | MVP |
 | `WRK.TKT.03` | Field updates, before/after photos, requester sign-off | 01, 02, 03, 06, 07 | MVP |
-| `WRK.CHK.01` | Checklists with photos and signature | 01 inspections, 02 snag walks/QC/HSE, 03 daily vehicle check, 04 month-end and onboarding, 06 opening/closing/temperature, 07 incoming/in-process/final QC, 08 check-in/QC | MVP |
+| `WRK.CHK.01` | Checklists with photos and signature | 01 inspections, 02 snag walks/QC/HSE, 03 daily vehicle check, 04 month-end and onboarding, 06 opening/closing/temperature, 07 incoming/in-process/final QC, 08 check-in/QC; staff onboarding steps in all ten (wl-hr `HRM.ONB.01`) | MVP |
 | `WRK.PPM.01` | Planned preventive maintenance by date or meter | 01 (MVP for compliance-critical AMCs: fire and life safety, lifts), 03 (MVP), 08 (MVP); 06, 07 (Later) | MVP |
 | `WRK.TSK.01` | Recurring tasks and deadline calendar | 04 (MVP) | MVP |
 | `WRK.FBK.01` | Customer feedback and ratings after a completed service; low ratings open a ticket | 05 (after visits), 08 (after job cards) MVP; 06 (direct orders, absorbs `FNB.FDB.01`), 01 (after maintenance), 03 (after delivery), 10 (after sessions) Later | MVP |
@@ -473,7 +473,7 @@ clears it and raises `no_contract` instead.
 | Service / trait | Purpose | Called by |
 |---|---|---|
 | `Tickets::open(subject, category, …)` | Raise a ticket from code | automations (*create task* action), `wl-delivery` (failed delivery disputes), verticals |
-| `Checklists::start(template, subject)` and `Checklists::outcome(subject, template)` | Start a run; read the latest outcome as a guard | verticals (auto job cards, manufacturing lots, construction handover) |
+| `Checklists::start(template, subject)` and `Checklists::outcome(subject, template)` | Start a run; read the latest outcome as a guard | verticals (auto job cards, manufacturing lots, construction handover); wl-hr (`checklist` onboarding steps, subject = the onboarding step; `ChecklistCompleted` passed marks the step done) |
 | `MaintenancePlans::create(subject, trigger, task_template)` | Create plans from other flows | verticals (auto fleet contracts, logistics vehicles) |
 | `Tasks::schedule(template, subject)` | Attach a recurring task template to a subject | verticals (accounting engagements) |
 | `Tasks::hold(source)` / `Tasks::release(source)` | Set or clear the *held* flag on every task of a source agreement (§4.4 "Held tasks") | the owning module on pause and resume (04 engagement, `wl-invoicing` subscription) |

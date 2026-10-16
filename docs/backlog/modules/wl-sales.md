@@ -1,6 +1,6 @@
 # Epic: wl-sales — negative flows
 
-> Status: draft · Last updated: 2026-10-15 · Spec version: same commit as this file
+> Status: draft · Last updated: 2026-10-16 · Spec version: same commit as this file
 
 This epic builds the negative flows of the Sales order, Sales return and Package machines in
 [wl-sales](../../modules/wl-sales.md): payment-first online orders and late payments, duplicate
@@ -10,6 +10,11 @@ fulfilment from refused deliveries, refunds after completion with nothing return
 recalled goods, a package whose payment is reversed, back-orders for lines without stock and
 duplicate customer PO numbers. It closes X-14 and the sales parts of X-03, X-05 and X-09,
 and the HIGH items 06-N3-a, 06-N4-b, 07-N2-a, 07-N3-b and 08-N3-a.
+
+BL-SAL-19 to BL-SAL-25 (label `area:sme-gap`, added 2026-10-16) build two capabilities from the
+[SME problem map](../../reviews/2026-10-16-sme-problem-map.md) §3: lead sources and campaigns
+with acquisition reports (`SAL.CRM.02`, gap G1) and loyalty with segments and retention
+campaigns (`SAL.LOY.01`, gap G4). They are not negative flows; they follow the same template.
 
 | ID | Title | Priority | Size | Milestone | Depends on |
 |---|---|---|---|---|---|
@@ -31,6 +36,13 @@ and the HIGH items 06-N3-a, 06-N4-b, 07-N2-a, 07-N3-b and 08-N3-a.
 | BL-SAL-16 | Keep a package active when its payment is reversed | high | m | Launch 05 | Base: wl-sales Package lifecycle; Epic wl-invoicing: `InvoiceReopened` |
 | BL-SAL-17 | Back-order lines without stock and serve them oldest first | medium | m | Launch 08 | Base: wl-sales Sales order lifecycle; BL-SAL-08; BL-SAL-09; BL-SAL-11; Base: wl-inventory `STK.RUL.04` and goods receipt |
 | BL-SAL-18 | Refuse a second order with the same customer PO number for a customer | medium | s | Launch 07 | Base: wl-sales Sales order lifecycle; BL-SAL-05 |
+| BL-SAL-19 | Run campaigns with a budget and cost entries | medium | m | Build 1 | Base: wl-kernel state machines and approvals; Base: wl-invoicing supplier bills |
+| BL-SAL-20 | Record the source and campaign of leads and parties and link the first sale | medium | m | Build 1 | BL-SAL-19; Base: wl-sales Lead lifecycle; Base: wl-invoicing `InvoiceIssued` |
+| BL-SAL-21 | Report leads, conversion, cost per lead, CAC and ROAS | medium | m | Build 1 | BL-SAL-19; BL-SAL-20 |
+| BL-SAL-22 | Enrol members and earn points or visits on qualifying sales (`SAL.RUL.07`) | medium | m | Launch 05 | Base: wl-sales Counter sale, Sales order and Sales return lifecycles; Base: wl-invoicing `InvoicePaid`, `CreditNoteIssued` |
+| BL-SAL-23 | Redeem points as a discount line, confirmed by the member | medium | m | Launch 05 | BL-SAL-22; Base: `DiscountEngine`; Base: wl-notify `send_otp` |
+| BL-SAL-24 | Expire points, adjust by hand with approval and report the points liability (`SAL.RUL.08`, `SAL.ACL.07`) | medium | m | Launch 05 | BL-SAL-22; BL-SAL-23; Base: wl-kernel approvals |
+| BL-SAL-25 | Define customer segments and send retention campaigns through wl-notify | medium | m | Launch 05 | BL-SAL-19; BL-SAL-21; BL-SAL-22; BL-NTF-07; BL-NTF-08 |
 
 ---
 
@@ -1169,3 +1181,590 @@ shows the buyer only the existing order's number and status.
 #### Out of scope
 Duplicate external numbers per channel (BL-SAL-01); 07 settings and portal upload screen
 (BL-MFG-06).
+
+---
+
+### BL-SAL-19 — wl-sales: run campaigns with a budget and cost entries
+
+**Labels:** `module:wl-sales` `area:sme-gap` `priority:medium` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Depends on:** Base: wl-kernel state machines and approvals · Base: wl-invoicing supplier bills · **Blocks:** BL-SAL-20, BL-SAL-21, BL-SAL-25, BL-ACC-23, BL-AUT-18, BL-CLN-15, BL-CON-18, BL-EDU-17, BL-FNB-17, BL-LOG-25, BL-MFG-14, BL-MPW-20, BL-PRP-27
+**Review items:** G1 (SME problem map 1, 2, 4)
+
+#### Goal
+Marketing staff record each campaign (an ad set, a flyer run, an event) with its marketing
+channel, period, budget and a code, and enter what it cost, or link the agency's or ad
+platform's supplier bill line. The campaign moves through `draft`, `active` and `ended`, on
+its dates or by hand. Without costs per campaign the business cannot see what a customer
+costs to win (`SAL.CRM.02`).
+
+#### Files to read
+- `docs/modules/wl-sales.md` §3 *Campaign*, *Campaign cost entry*; §4.6; §5.8 steps 1–2;
+  §6 `SAL.ACL.07`; §7 rows on campaigns
+- `docs/modules/wl-invoicing.md` §3 supplier bill (only the line fields)
+
+#### Terms
+- **Marketing channel:** where the campaign runs (Google, Meta, print…); not the order
+  *Channel* of sales orders.
+- **Campaign code:** a unique short code put in web form links and on a linked promo code, so
+  leads and sales find their campaign.
+- **Purpose:** `acquisition` (win new customers) or `retention` (message existing ones,
+  BL-SAL-25).
+- `SAL.ACL.07`: shared access rule; here only its budget part.
+
+#### Spec excerpt (authoritative for this issue)
+
+| Entity | Description | Important fields |
+|---|---|---|
+| Campaign | A paid or unpaid marketing action with a period (`SAL.CRM.02`), or a message to a segment (`SAL.LOY.01`) | name, code (unique; used in web form links and linked promo codes), purpose (`acquisition`, `retention`), marketing channel (Google, Meta, TikTok, other online, print, radio or outdoor, event, email, SMS, WhatsApp, partner, other; not the order *Channel*), lead source it implies (e.g. *paid ads*), brand, branch (optional), start, end, budget (AED), promo code (optional, `SAL.DSC.01`), retention only: segment, notification template, message channel, send time, status |
+| Campaign cost entry | Money spent on a campaign | campaign, date, amount excluding VAT, description, supplier bill line (optional, `wl-invoicing`), entered by; an entry linked to a bill takes its amount from the bill line |
+
+| State | Tone | Terminal | Meaning |
+|---|---|---|---|
+| `draft` | neutral | no | Being prepared; its code cannot be used yet |
+| `active` | info | no | Running; leads and parties can be attributed to it |
+| `ended` | neutral | no | Past its end date or stopped; can be reopened |
+
+| Transition | From | To | By | Guards | Effects |
+|---|---|---|---|---|---|
+| `activate` | draft | active | `campaigns.manage`, or system (start date reached) | name, code, purpose, marketing channel, start set; retention: segment, approved template and message channel set (`SAL.LOY.01`); the vertical's guards pass (05: `CLN.ACL.13` when the campaign promotes services) | code usable in links and the linked promo code; retention: the send is requested from `wl-notify` for the send time (§5.10); event `CampaignActivated` |
+| `end` | active | ended | `campaigns.manage`, or system (end date passed) | — | new leads stop taking the campaign after the late-response days (§7); the linked promo code expires with it; event `CampaignEnded` |
+| `reopen` | ended | active | `campaigns.manage` | new end date in the future; retention: no second send (a new campaign is created for that) | — |
+
+A draft campaign is deleted, not cancelled. Cost entries may be added in any state, because
+bills often arrive after the end; one above the remaining budget needs a manager
+(`SAL.ACL.07`). A campaign with leads, acquisitions or cost entries is never deleted.
+
+| ID | Rule | Pattern | Parameter (default) | Generalises |
+|---|---|---|---|---|
+| `SAL.ACL.07` | A manual points adjustment above a number of points, or closing a loyalty account that still has points, needs a manager, and the requester cannot approve; a campaign cost entry that takes the campaign over its budget needs a manager | `LIM`, `SOD` | 500 points; any budget overrun | — |
+
+| Setting | Default |
+|---|---|
+| Campaign cost over budget needs a manager (`SAL.ACL.07`) | on |
+| Late-response days after a campaign ends (leads still attributed) | 30 |
+
+#### Edge cases decided
+- **Start date in the past on `activate`:** allowed; the campaign is active from now, the
+  start date stays as entered for reports.
+- **System `activate` and `end`:** run daily at 00:05 Asia/Dubai; idempotent per campaign
+  and date. An end date earlier than the start date is refused on save.
+- **Cost linked to a supplier bill line:** amount taken from the line excluding VAT; one bill
+  line may be split over several campaigns, but the sum may not exceed the line. A bill line
+  later credited by a debit note does not change the entry: the accountant adjusts it by a
+  negative entry.
+- **Budget empty:** no over-budget check. **Over budget:** the entry is saved as *pending
+  approval* and counts in reports only after approval; the requester cannot approve.
+- **Retention guards** (segment, template) are checked here as fields only; sending is
+  BL-SAL-25.
+- **Code reuse:** codes are unique for the client for ever, ended campaigns included.
+
+#### Must not
+- Must not delete a campaign that has leads, acquisitions or cost entries.
+- Must not count a cost entry pending approval in any report.
+- Must not reuse a code of an ended campaign.
+
+#### Done when
+- [ ] Given draft campaign C1 (code `SPRING26`, Meta, 1–31 Mar 2026, budget AED 5,000), on
+      1 Mar at 00:05 it becomes `active` and `CampaignActivated` is emitted once.
+- [ ] Given C1 active, on 1 Apr at 00:05 it becomes `ended`; `reopen` with end 15 Apr makes
+      it `active`; `reopen` with an end date in the past is refused.
+- [ ] Given C1 with AED 4,800 of costs, user A adds AED 400: the entry waits for approval; B
+      (manager) approves it; A cannot approve it.
+- [ ] Given a supplier bill line of AED 3,000, two entries of AED 2,000 and AED 1,000 are
+      accepted and a third of AED 1 is refused.
+- [ ] A second campaign with code `spring26` is refused.
+- [ ] Deleting C1 after a cost entry is refused; deleting a draft with nothing linked works.
+
+#### Out of scope
+Attribution of leads and parties (BL-SAL-20); reports (BL-SAL-21); retention sending
+(BL-SAL-25); 05's advertising permit guard (`CLN.ACL.13`, 05 epic).
+
+---
+
+### BL-SAL-20 — wl-sales: record the source and campaign of leads and parties and link the first sale
+
+**Labels:** `module:wl-sales` `area:sme-gap` `priority:medium` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Depends on:** BL-SAL-19 · Base: wl-sales Lead lifecycle · Base: wl-invoicing Invoice lifecycle (`InvoiceIssued`) · **Blocks:** BL-SAL-21, BL-ACC-23, BL-AUT-18, BL-CLN-15, BL-CON-18, BL-EDU-17, BL-FNB-17, BL-LOG-25, BL-MFG-14, BL-MPW-20, BL-PRP-27
+**Review items:** G1 (SME problem map 1, 2, 4)
+
+#### Goal
+Every lead and every new customer gets a source (referral, walk-in, website…) and, when
+known, a campaign. The party's first sale is linked with its value, so the business can say
+which source and campaign brought which customers and how much they bought. This works with
+or without leads (a counter business has no pipeline).
+
+#### Files to read
+- `docs/modules/wl-sales.md` §3 *Lead*, *Lead source*, *Party acquisition* and the
+  paragraph after the entity table; §4.1 row `win` and *Vertical mapping*; §5.1; §5.8
+  steps 3–4; §6 `CampaignAttribution`, `CustomerAcquired`; §7 rows on campaigns
+
+#### Terms
+- **Party acquisition:** one record per party saying how it became a customer.
+- **First sale:** the first confirmed sales order, completed counter sale, issued invoice, or
+  the vertical's conversion record (01 lease, 04 engagement, 10 enrolment) of the party.
+- **First-touch, single attribution:** the first campaign known for the party gets all the
+  credit.
+- **Late-response days:** after a campaign ends, leads arriving with its code are still
+  attributed for this many days.
+
+#### Spec excerpt (authoritative for this issue)
+
+| Entity | Description | Important fields |
+|---|---|---|
+| Lead | An enquiry not yet converted | party (may be a new, unverified party), source (from the lead source list), campaign (optional; set from the campaign code of a web form link or promo code, or by staff), interest (catalogue items or free text), owner (staff), next action date, lost reason, converted subject, status |
+| Lead source | Where a lead or a customer came from (`SAL.CRM.02`) | code, name EN/AR, active. Seeded: referral, walk-in, website, social, paid ads, aggregator, event, partner, other; the client may add more but not delete a source in use |
+| Party acquisition | How a party became a customer, kept per party (`SAL.CRM.02`) | party, source, campaign (optional), set from (lead, staff, web form, promo code), first sale (`Subject`: the first confirmed sales order, completed counter sale, issued invoice, or the vertical's conversion record such as a lease, enrolment or engagement), first sale date, first sale value (excluding VAT), acquired at |
+
+| Transition | From | To | By | Guards | Effects |
+|---|---|---|---|---|---|
+| `win` | contacted, qualified | won | system (conversion event) | — | converted `Subject` and source recorded; the party acquisition takes the lead's source and campaign when the party has none yet; event `LeadWon` |
+
+The source and campaign of a party live in its *party acquisition* record here, not on the
+`wl-parties` record, so that a party bought by several brands of the client keeps one record
+per client and the attribution stays in the module that reports on it. Source is required
+when a party gets its first sale (staff pick it; a web form or a promo code sets it); a party
+created before `SAL.CRM.02` was turned on is shown as *unknown*.
+
+§5.8 steps 3–4:
+
+3. Every lead and every new party gets a source and, when known, a campaign. Attribution is
+   single and first-touch: the campaign of the lead that converted the party, otherwise the
+   campaign set on the party acquisition (by staff, a form or the promo code of the first
+   sale). A lead that arrives with the code after the campaign ended is still attributed
+   during the late-response days (§7), then gets the source only.
+4. The first sale of the party is linked when it happens (first confirmed sales order,
+   completed counter sale, issued invoice, or the vertical's conversion record). Its value
+   excluding VAT is the *converted value*; with the setting *attribution window*, the value
+   is the party's sales in the first N months instead.
+
+| Setting | Default |
+|---|---|
+| Lead sources, lost reasons, qualification fields | seeded sources (§3 *Lead source*); lost reasons and qualification fields per vertical starter list |
+| Campaign required for sources (`SAL.CRM.02`) | none (05: *paid ads*, *social*) |
+| Late-response days after a campaign ends (leads still attributed) | 30 |
+| Attribution window for the converted value | first sale only (alternative: sales in the first N months, N = 12) |
+
+#### Edge cases decided
+- **Order of the first sale:** the earliest by document date; on a tie, the one recorded
+  first. A first sale later cancelled or credited in full is replaced by the next one at the
+  next nightly run; the acquisition date stays the first.
+- **Party with no source at first sale:** staff must pick one before the sale completes; an
+  import or an API sale without one is set *other* and listed on an exceptions report.
+- **Party created before the capability was on:** source *unknown*; not counted as a new
+  customer.
+- **Lead and party disagree:** the converting lead wins only when the party has no
+  acquisition yet; an existing acquisition is never overwritten automatically (staff may
+  edit it, audited).
+- **Campaign code of a draft campaign:** ignored (source only). Of an ended campaign: attributed
+  within the late-response days, else source only.
+- **Several brands:** one acquisition per party per client.
+- **Idempotency:** `record_first_sale` called twice for the same party keeps the first.
+
+#### Must not
+- Must not overwrite an existing party acquisition from a later lead or promo code.
+- Must not store attribution on the `wl-parties` record.
+
+#### Done when
+- [ ] Given web form link `?c=SPRING26` while C1 is active, the new lead has source *paid ads*
+      and campaign C1.
+- [ ] Given lead L1 (C1) won by a quotation accepted, party P gets acquisition source *paid
+      ads*, campaign C1; P's first invoice of AED 2,100 incl. VAT (AED 2,000 excl.) is linked as
+      first sale with value AED 2,000 and `CustomerAcquired` is emitted once.
+- [ ] Given C1 ended on 31 Mar, a lead with `SPRING26` on 20 Apr is attributed to C1 and one on
+      5 May gets the source only.
+- [ ] Given P already acquired through *referral*, a later lead L2 with C1 won for P leaves P's
+      acquisition unchanged.
+- [ ] A counter sale for a new walk-in party cannot complete until a source is picked (05 also
+      needs a campaign for *paid ads*).
+- [ ] Given P's first sale SO-1 cancelled, the nightly run links P's next sale SO-2.
+
+#### Out of scope
+Reports (BL-SAL-21); verticals calling `record_first_sale` for their records (vertical
+epics); 01 enquiry fields (`PRP.LEA.01`, 01 epic).
+
+---
+
+### BL-SAL-21 — wl-sales: report leads, conversion, cost per lead, CAC and ROAS
+
+**Labels:** `module:wl-sales` `area:sme-gap` `priority:medium` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Depends on:** BL-SAL-19 · BL-SAL-20 · **Blocks:** BL-SAL-25, BL-ACC-23, BL-AUT-18, BL-CLN-15, BL-CON-18, BL-EDU-17, BL-FNB-17, BL-LOG-25, BL-MFG-14, BL-MPW-20, BL-PRP-27
+**Review items:** G1 (SME problem map 1, 2, 4)
+
+#### Goal
+The owner sees, per source, campaign, marketing channel, brand, branch and period, how many
+leads came, how many converted, what they cost, what a new customer cost (CAC) and how much
+revenue each dirham of spend brought (ROAS), and exports it.
+
+#### Files to read
+- `docs/modules/wl-sales.md` §5.8 step 5; §3 *Party acquisition*, *Campaign cost entry*
+
+#### Terms
+- **Conversion rate:** leads won ÷ leads.
+- **Cost per lead:** cost ÷ leads. **CAC:** cost ÷ new customers.
+- **ROAS (return on ad spend):** converted value ÷ cost.
+- **Converted value:** the first sale value excluding VAT (or sales in the attribution window).
+
+#### Spec excerpt (authoritative for this issue)
+
+5. The acquisition report shows, per source, campaign, marketing channel, brand, branch and
+   period: leads, leads won, conversion rate (won ÷ leads), new customers (party
+   acquisitions with a first sale in the period), cost, cost per lead (cost ÷ leads),
+   customer acquisition cost (cost ÷ new customers) and return on ad spend (converted value
+   ÷ cost). Sources without campaigns show leads and conversion with no cost. Costs are
+   counted in the period of the entry date; leads and customers in the period they were
+   created or won. A ratio with a zero divisor shows "—", never zero.
+
+#### Edge cases decided
+- **Periods:** months in Asia/Dubai; costs by entry date; leads by created date; leads won and
+  new customers by win or first sale date. So a campaign's cost and its customers can fall in
+  different months; the per-campaign view (all time) shows them together.
+- **Pending cost entries** (BL-SAL-19) are excluded.
+- **Zero divisor:** "—", never 0 or infinity.
+- **Rounding:** AED to 2 decimals, rates to 1 decimal %, ROAS to 2 decimals.
+- **Scope:** a user sees branches in their scope only; totals are of what they can see.
+- **Attribution window setting changed:** the report recomputes; values are not stored.
+
+#### Must not
+- Must not include VAT in converted value or cost.
+- Must not show 0 for an undefined ratio.
+
+#### Done when
+- [ ] Given C1 with costs AED 5,000, 50 leads, 10 won, 8 new customers with first sales of
+      AED 20,000 excl. VAT, the report shows conversion 20.0%, cost per lead AED 100.00, CAC
+      AED 625.00 and ROAS 4.00.
+- [ ] Source *referral* with 12 leads and no campaign shows leads and conversion and "—" for
+      cost per lead, CAC and ROAS.
+- [ ] With the attribution window set to 12 months, ROAS uses those 8 customers' sales in their
+      first 12 months.
+- [ ] A user scoped to branch B1 does not see B2's leads or costs.
+- [ ] The report exports to CSV with the same numbers.
+
+#### Out of scope
+Retention campaign results (BL-SAL-25); charts (shared report work).
+
+---
+
+### BL-SAL-22 — wl-sales: enrol members and earn points or visits on qualifying sales (`SAL.RUL.07`)
+
+**Labels:** `module:wl-sales` `area:sme-gap` `priority:medium` `size:m` · **Milestone:** Launch 05 · **Size:** m
+**Depends on:** Base: wl-sales Counter sale, Sales order and Sales return lifecycles · Base: wl-invoicing `InvoicePaid`, `CreditNoteIssued` · **Blocks:** BL-SAL-23, BL-SAL-24, BL-SAL-25, BL-AUT-18, BL-CLN-15, BL-EDU-17, BL-FNB-17
+**Review items:** G4 (SME problem map 32, 35)
+
+#### Goal
+A client turns on a loyalty programme; customers enrol and earn points per AED spent or a
+visit per sale. A return or credit note takes the points back in proportion. This replaces
+the F&B-only `FNB.LOY.01` with a shared capability used by 05, 06, 08 and 10.
+
+#### Files to read
+- `docs/modules/wl-sales.md` §3 *Loyalty programme*, *Loyalty account*, *Points movement*;
+  §4.7; §5.9 steps 1, 2 and 4; §6 `LoyaltyLedger`, `SAL.RUL.07`, `Points*` events; §7 loyalty rows
+
+#### Terms
+- **Qualifying sale:** a completed counter sale, a sales order reaching `fulfilled`, or a paid
+  invoice not made from an order or counter sale.
+- **Earn lot:** the points of one `earn` movement with their own expiry date.
+- **Eligible amount:** paid by the member, excluding VAT, fees, tips, excluded items, the
+  redeemed value, insurer share (`FIN.TPP.01`) and package credits.
+
+#### Spec excerpt (authoritative for this issue)
+
+| Entity | Description | Important fields |
+|---|---|---|
+| Loyalty programme | The earn and redeem terms of the client (`SAL.LOY.01`) | name, brand (one programme per brand at most), earn kind (`per_aed`: points per AED spent; `per_visit`: one visit per qualifying sale), earn rate (points per AED, or visits per reward), minimum qualifying amount, excluded items or categories, point value (AED per point), minimum points to redeem, maximum share of a sale paid with points, visit reward (fixed discount or a free catalogue item), points validity (months after earning), terms version, active |
+| Loyalty account | A party's membership | programme, party, enrolled at, enrolled by (staff, portal, counter), terms version accepted, points balance, visits since the last reward, status (`active`, `closed`) |
+| Points movement | A change to a loyalty account | account, kind (`earn`, `redeem`, `reverse_earn`, `reverse_redeem`, `expire`, `adjust`), points (or visits), AED value, source `Subject` (counter sale, sales order, invoice, sales return, credit note), earn lot expiry date (earn), lot consumed (redeem, expire), reason and approval (adjust), user, time |
+
+### 4.7 Loyalty account
+
+Two states, no diagram: `active` (earns and redeems) and `closed` (terminal; the party asked
+to leave, or the party was merged or erased under `wl-parties`). Closing an account with
+points forfeits them with an `adjust` movement (`SAL.ACL.07`); a closed account is never
+reopened, the party enrols again with a zero balance. Earn lots are consumed oldest expiry
+first by `redeem` and `expire`.
+
+§5.9 steps 1, 2 and 4:
+
+1. A customer enrols at the counter, in the portal or on the ordering site; the terms
+   version is recorded. Enrolment is not marketing consent: that is asked for separately
+   (`PTY.CNS.01`).
+2. A qualifying sale earns points or a visit (`SAL.RUL.07`): a completed counter sale, a
+   sales order reaching `fulfilled`, or a paid invoice for a sale not made through an order
+   or a counter sale (05 treatments, 10 courses). Points are computed on the amount the
+   member paid, excluding VAT, fees, tips, excluded items and the redeemed value; the share
+   paid by an insurer (`FIN.TPP.01`) or with package credits earns nothing. Each sale earns
+   once.
+4. A sales return or credit note on an earning sale reverses the earned points in proportion
+   (`reverse_earn`); the balance may go below zero and later earnings offset it, with no cash
+   recovery. A return of a sale that redeemed points gives the points back (`reverse_redeem`)
+   with their original expiry, or 30 days when that date has passed.
+
+| ID | When | If | Then | Parameters (default) | Generalises |
+|---|---|---|---|---|---|
+| `SAL.RUL.07` | a qualifying sale completes (`CounterSaleCompleted`; sales order → `fulfilled`; `InvoicePaid` for an invoice not made from an order or a counter sale), or a sales return or credit note on such a sale is issued | the party has an `active` loyalty account; eligible amount ≥ the minimum; not yet earned (or reversed) for this source | `earn` points or a visit with the lot's expiry date, or `reverse_earn` in proportion; when visits reach the reward, the reward is made available and the member told | 1 point per AED 1; minimum AED 0; validity 12 months | — |
+
+| Setting | Default |
+|---|---|
+| Loyalty programme (`SAL.LOY.01`): earn kind, rate, minimum, exclusions, point value, minimum to redeem, maximum share of a sale | off; when on: per AED, 1 point per AED 1, AED 0, none, AED 0.01 per point, 500 points, 100% (06: 50%) |
+| Points validity; expiry reminder (`SAL.RUL.08`) | 12 months; 30 days before |
+
+#### Edge cases decided
+- **Rounding:** points are whole numbers, rounded down per sale (AED 99.90 → 99 points).
+- **One earn per source:** the source `Subject` is the key; an invoice made from an order or a
+  counter sale never earns again.
+- **Per visit:** one visit per sale at or above the minimum; a reward becomes available when
+  visits reach the rate and the counter restarts at 0.
+- **Partial return:** reversed points = earned points × returned eligible amount ÷ original
+  eligible amount, rounded up; never more than earned.
+- **Negative balance:** allowed after a reversal; next earnings offset it; no cash recovery.
+- **Enrolment after the sale:** earns nothing for past sales.
+- **Closed account:** earns nothing; a return on a sale earned before closing reverses nothing.
+- **Programme off:** no earning; balances stay.
+
+#### Must not
+- Must not earn on VAT, on the insurer's share or on the redeemed value.
+- Must not earn twice for one sale.
+- Must not treat enrolment as marketing consent.
+
+#### Done when
+- [ ] Given programme 1 point per AED 1 and member M, a counter sale of AED 105 incl. 5% VAT
+      earns 100 points expiring 12 months later.
+- [ ] Given an invoice of AED 1,000 excl. VAT with AED 800 paid by an insurer, M earns 200.
+- [ ] A sales order invoiced on fulfilment earns once (on `fulfilled`), not again on `InvoicePaid`.
+- [ ] Returning half of the AED 100 eligible amount reverses 50 points; with a balance of 20 the
+      balance becomes −30.
+- [ ] Given per-visit with 10 visits per reward, the 10th sale makes the reward available and
+      M is told; visits restart at 0.
+- [ ] Enrolment records the terms version and does not create a marketing consent.
+
+#### Out of scope
+Redemption (BL-SAL-23); expiry, adjustments and the liability report (BL-SAL-24); segments
+and campaigns (BL-SAL-25).
+
+---
+
+### BL-SAL-23 — wl-sales: redeem points as a discount line, confirmed by the member
+
+**Labels:** `module:wl-sales` `area:sme-gap` `priority:medium` `size:m` · **Milestone:** Launch 05 · **Size:** m
+**Depends on:** BL-SAL-22 · Base: wl-sales `DiscountEngine` (`SAL.DSC.01`) · Base: wl-notify `send_otp` · **Blocks:** BL-SAL-24, BL-AUT-18, BL-CLN-15, BL-EDU-17, BL-FNB-17
+**Review items:** G4 (SME problem map 35)
+
+#### Goal
+At the counter, on the ordering site or in the portal, a member pays part of a sale with
+points or a visit reward. The redemption is a discount line on the sale, confirmed by a code
+to the member's phone so staff cannot spend other people's points. A return gives the points
+back.
+
+#### Files to read
+- `docs/modules/wl-sales.md` §5.9 steps 3–4; §10 *Loyalty points*; §6 `DiscountEngine`;
+  §7 loyalty rows; `docs/modules/wl-notify.md` §6 `send_otp`
+
+#### Terms
+- **Loyalty redemption line:** a discount line on the sale worth points × point value.
+- **Maximum share:** the largest part of a sale (after other discounts) that points may pay.
+
+#### Spec excerpt (authoritative for this issue)
+
+3. At the next sale the member redeems points as a discount line *Loyalty redemption*
+   (`DiscountEngine`), within the minimum points and the maximum share of the sale. When
+   *confirm redemption by code* is on, the member confirms with a one-time code to their
+   mobile (`Notifier::send_otp`) or is logged in to the portal. A visit reward is redeemed
+   the same way. The redemption is applied after the other discounts and is not limited by
+   *Discount stacking*.
+4. A sales return or credit note on an earning sale reverses the earned points in proportion
+   (`reverse_earn`); the balance may go below zero and later earnings offset it, with no cash
+   recovery. A return of a sale that redeemed points gives the points back (`reverse_redeem`)
+   with their original expiry, or 30 days when that date has passed.
+
+- **Loyalty points:** a redemption is shown as a discount line on the sale. Whether points
+  redeemed reduce the taxable value of the discounted supply only (5% VAT on the price after
+  the redemption), and how points given away for free and their expiry are treated for VAT
+  and in the accounts (liability or provision), is `⚠ open: accountant (A-15)`; until answered, the
+  redemption line reduces the taxable amount of the sale it is on and the liability report
+  values points at the point value.
+
+| Setting | Default |
+|---|---|
+| Loyalty programme (`SAL.LOY.01`): earn kind, rate, minimum, exclusions, point value, minimum to redeem, maximum share of a sale | off; when on: per AED, 1 point per AED 1, AED 0, none, AED 0.01 per point, 500 points, 100% (06: 50%) |
+| Confirm redemption by a one-time code to the member | on |
+| Points given back on a return after their expiry | 30 days |
+
+#### Edge cases decided
+- **VAT:** the redemption line reduces the taxable amount of the sale it is on (the default
+  in §10); the treatment is `⚠ open: accountant (A-15)`, so keep the VAT effect of the line in one
+  place, where an answer can change it.
+- **Order of discounts:** other discounts first, then the redemption, capped by the maximum
+  share; with *Discount stacking* off, a promo code and points can still be combined (the
+  redemption is not limited by *Discount stacking*, §5.9).
+- **Lots:** points are taken from the lots with the earliest expiry first.
+- **Code:** wl-notify OTP defaults (validity, tries); when the code cannot be sent, staff
+  see it at once and the sale goes on without redemption.
+- **Sale cancelled before completion:** nothing is redeemed (the movement is written on
+  completion).
+- **Return:** points given back with their original lot expiry; a lot already past it gets the
+  setting's days.
+
+#### Must not
+- Must not redeem without the member's code when the setting is on.
+- Must not redeem below the minimum points or above the maximum share.
+- Must not give cash for points.
+
+#### Done when
+- [ ] Given M with 800 points, value AED 0.01, minimum 500, a sale of AED 40 redeems 800 points as
+      an AED 8.00 discount line after M enters the code.
+- [ ] With 06's maximum share 50%, a sale of AED 10 accepts at most AED 5.00 (500 points).
+- [ ] A wrong code, past the OTP tries, blocks redemption for that sale.
+- [ ] M with 400 points cannot redeem (minimum 500).
+- [ ] Returning the sale gives the 800 points back; a lot that expired gets 30 days.
+- [ ] With the default treatment, the AED 8.00 redemption on a VAT-inclusive AED 40 sale lowers
+      the VAT of the sale from AED 1.90 to AED 1.52.
+
+#### Out of scope
+Expiry and adjustments (BL-SAL-24); the accountant's answer on VAT (open item).
+
+---
+
+### BL-SAL-24 — wl-sales: expire points, adjust by hand with approval and report the points liability (`SAL.RUL.08`, `SAL.ACL.07`)
+
+**Labels:** `module:wl-sales` `area:sme-gap` `priority:medium` `size:m` · **Milestone:** Launch 05 · **Size:** m
+**Depends on:** BL-SAL-22 · BL-SAL-23 · Base: wl-kernel approvals (`PLT.APR.01`) · **Blocks:** BL-AUT-18, BL-CLN-15, BL-EDU-17, BL-FNB-17
+**Review items:** G4 (SME problem map 35)
+
+#### Goal
+Points expire per earn lot after their validity, with a reminder to the member before. Staff
+can correct a balance by hand, but large corrections and closing an account with points need
+a manager. The accountant sees the outstanding points and their value.
+
+#### Files to read
+- `docs/modules/wl-sales.md` §4.7; §5.9 steps 5–6; §6 `SAL.RUL.08`, `SAL.ACL.07`; §7 loyalty rows
+
+#### Terms
+- **Points liability:** outstanding points × point value, what the business owes members in
+  discounts.
+
+#### Spec excerpt (authoritative for this issue)
+
+5. Points expire per earn lot (`SAL.RUL.08`), with a reminder before. Manual adjustments
+   need a manager (`SAL.ACL.07`).
+6. The points liability report shows outstanding points and their AED value by age and
+   expiry month, per brand and entity, for the accountant.
+
+| ID | When | If | Then | Parameters (default) | Generalises |
+|---|---|---|---|---|---|
+| `SAL.RUL.08` | N days before an earn lot expires; and on its expiry date | points of the lot remain | notify the member (category *reminder*, opt-out respected); on the date, `expire` the rest of the lot | N = 30 | — |
+
+| ID | Rule | Pattern | Parameter (default) | Generalises |
+|---|---|---|---|---|
+| `SAL.ACL.07` | A manual points adjustment above a number of points, or closing a loyalty account that still has points, needs a manager, and the requester cannot approve; a campaign cost entry that takes the campaign over its budget needs a manager | `LIM`, `SOD` | 500 points; any budget overrun | — |
+
+| Setting | Default |
+|---|---|
+| Points validity; expiry reminder (`SAL.RUL.08`) | 12 months; 30 days before |
+| Manual points adjustment needing a manager (`SAL.ACL.07`) | above 500 points |
+
+#### Edge cases decided
+- **Schedule:** daily at 02:00 Asia/Dubai; a lot expires at the end of its expiry date.
+- **Reminder:** one message per member per day, summing all lots expiring in N days; skipped
+  for a member who opted out of reminders.
+- **Partly used lot:** only the rest expires. **Negative balance:** nothing to expire.
+- **Adjustment at or below 500 points:** `loyalty.adjust` with a reason, no approval; above:
+  approval, requester cannot approve. Closing an account with any points needs approval.
+- **Liability report:** as at a date, by brand, entity, earn age and expiry month; negative
+  balances count as zero.
+
+#### Must not
+- Must not expire points of a lot before its date, or twice.
+- Must not let the requester approve their own adjustment.
+
+#### Done when
+- [ ] Given a lot of 300 points expiring 30 Nov with 100 used, on 31 Oct M gets one reminder and
+      on 1 Dec at 02:00 200 points expire with `PointsExpired`.
+- [ ] Re-running the job on 1 Dec expires nothing more.
+- [ ] A +400 adjustment by A is saved; a −900 adjustment by A waits for B's approval; A cannot
+      approve.
+- [ ] Closing M's account with 50 points needs approval and writes an `adjust` of −50.
+- [ ] The liability report on 31 Dec with 120,000 points at AED 0.01 shows AED 1,200.00.
+
+#### Out of scope
+How the liability is booked in the accounts (`⚠ open: accountant (A-15)`).
+
+---
+
+### BL-SAL-25 — wl-sales: define customer segments and send retention campaigns through wl-notify
+
+**Labels:** `module:wl-sales` `area:sme-gap` `priority:medium` `size:m` · **Milestone:** Launch 05 · **Size:** m
+**Depends on:** BL-SAL-19 · BL-SAL-21 · BL-SAL-22 · BL-NTF-07 · BL-NTF-08 · **Blocks:** BL-AUT-18, BL-CLN-15, BL-EDU-17, BL-FNB-17
+**Review items:** G4 (SME problem map 32, 35)
+
+#### Goal
+Staff pick customers by rules (for example no visit for 60 days and spend over AED 500 last
+year) and send them a retention campaign. The send goes through wl-notify, so only customers
+with marketing consent and no opt-out get it. The campaign report shows who came back and
+what they spent.
+
+#### Files to read
+- `docs/modules/wl-sales.md` §3 *Customer segment*, *Campaign*; §4.6 row `activate`; §5.10;
+  §6 `Segments`; §7 rows on retention and 05 segment rules
+- `docs/modules/wl-notify.md` §4.3, §5.3
+
+#### Terms
+- **Segment:** saved rules, evaluated each time they are used (not a stored list).
+- **Response days:** a member who buys within this many days after the send counts as
+  returned.
+- `NTF.ACL.01`: marketing only to recipients with marketing consent for that channel.
+
+#### Spec excerpt (authoritative for this issue)
+
+| Entity | Description | Important fields |
+|---|---|---|
+| Customer segment | A saved set of rules that selects parties (`SAL.LOY.01`) | name, rules (days since last sale, spend in a period, number of sales, items or categories bought, loyalty balance, branch, party group, enrolled in loyalty), combined with *all* or *any*, evaluated when used, last member count |
+
+| Transition | From | To | By | Guards | Effects |
+|---|---|---|---|---|---|
+| `activate` | draft | active | `campaigns.manage`, or system (start date reached) | name, code, purpose, marketing channel, start set; retention: segment, approved template and message channel set (`SAL.LOY.01`); the vertical's guards pass (05: `CLN.ACL.13` when the campaign promotes services) | code usable in links and the linked promo code; retention: the send is requested from `wl-notify` for the send time (§5.10); event `CampaignActivated` |
+
+### 5.10 Segments and retention campaigns (`SAL.LOY.01`)
+
+1. Staff define a segment by rules, for example *no sale for 60 days and spend over AED 500
+   in the last year*, and preview its member count.
+2. A retention campaign names the segment, a marketing template and the message channel,
+   with a send time. On `activate` it asks `wl-notify` for a marketing broadcast
+   (`wl-notify` §5.3): the segment is evaluated at send time, and only members with marketing
+   consent for the channel and no opt-out receive it (`NTF.ACL.01`); send window, frequency
+   cap and approval follow `NTF.RUL.02` and `NTF.ACL.03`.
+3. The campaign report shows recipients, delivered, opted out, members who bought within the
+   response days after the send (§7) and their sales value, against the campaign's cost.
+
+| Setting | Default |
+|---|---|
+| Retention campaign response days (bought after the send) | 30 |
+| Segment rules on clinical services (05) | off: segments in 05 use visit dates, spend and non-clinical items only |
+
+#### Edge cases decided
+- **Evaluation time:** the preview count is an estimate; wl-notify evaluates the segment again at
+  send time (`members(segment, at)`).
+- **Send once:** `reopen` never sends again; a new campaign is needed.
+- **Returned member:** any qualifying sale (BL-SAL-22 definition) within the response days;
+  value excluding VAT. A member in two campaigns counts in both.
+- **05:** rules on clinical items are hidden unless the setting is on; no clinical data in the
+  message (`NTF.ACL.02`); `CLN.ACL.13` is a 05 guard on `activate`.
+- **Export of segment members:** follows `NTF.ACL.01` (sensitive export permission, audited).
+- **Broadcast cancelled or rejected** (`BroadcastCancelled`): the campaign stays `active` and
+  shows "not sent"; staff may end it.
+
+#### Must not
+- Must not send messages directly; only through `Notifier::broadcast`.
+- Must not show the requester the names of excluded recipients.
+
+#### Done when
+- [ ] Given segment S (no sale for 60 days, spend > AED 500 in 12 months) matching 300 parties of
+      which 180 have SMS marketing consent, activating retention campaign R requests one
+      broadcast; the result shows 180 recipients and 120 excluded *no consent*.
+- [ ] Two members of R buy for AED 150 and AED 250 excl. VAT within 30 days: the report shows 2
+      returned and AED 400 against R's cost.
+- [ ] `reopen` of R after `end` sends nothing.
+- [ ] In 05, the segment editor does not offer clinical service items by default.
+- [ ] Exporting S's members without the sensitive export permission is refused.
+
+#### Out of scope
+Broadcast approval, send window and frequency cap (BL-NTF-07, BL-NTF-08); 05 permit guard
+(05 epic).

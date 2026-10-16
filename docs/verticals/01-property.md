@@ -1,6 +1,6 @@
 # 01 — Property & Building Management
 
-> Status: accepted · Reviewed: 2026-10-15 · Last updated: 2026-10-15
+> Status: accepted · Reviewed: 2026-10-15 · Last updated: 2026-10-16
 
 ## 1. Summary
 
@@ -342,7 +342,7 @@ Planned maintenance under a vendor's AMC follows §4.5.
 | `PTY.PTY.01` | Register of parties: tenants, owners, vendors (companies and individuals) | shared | wl-parties | MVP |
 | `PTY.KYC.01` | Identity fields: Emirates ID, passport, visa, trade licence, TRN | shared | wl-parties | MVP |
 | `DOC.FIL.01` | Attach documents to any record | shared | wl-documents | MVP |
-| `DOC.EXP.01` | Expiry tracking with tiered reminders (lease, Ejari, Emirates ID, trade licence) | shared | wl-documents | MVP |
+| `DOC.EXP.01` | Expiry tracking with tiered reminders (lease, Ejari, Emirates ID, trade licence, trademark and other registrations) | shared | wl-documents | MVP |
 | `DOC.GEN.01` | Generate documents from templates in EN/AR (contract, receipt, statement) | shared | wl-documents | MVP |
 | `FIN.BIL.01` | Charge schedule from an agreement (instalments, recurring fees) | shared | wl-invoicing | MVP |
 | `FIN.INV.01` | Tax invoice with per-line VAT category (standard 5%, zero, exempt) | shared | wl-invoicing | MVP |
@@ -375,10 +375,15 @@ Planned maintenance under a vendor's AMC follows §4.5.
 | `FIN.BNK.01` | Bank statement import and matching of receipts to open invoices | shared | wl-payments | MVP |
 | `WRK.FBK.01` | Customer feedback and ratings after a completed service; low ratings open a ticket | shared | wl-ticketing | Later |
 | `WRK.SVC.01` | Vendor service contracts (AMC): scope, assets, planned visits, SLA, cost (MVP: register for all categories, planned visits for fire and life safety and lifts) | shared | wl-ticketing | MVP |
+| `SAL.CRM.02` | Lead sources and campaigns: cost per campaign, conversion by source and channel, cost per lead, customer acquisition cost and return on ad spend | shared | wl-sales | MVP |
+| `FIN.CFL.01` | Cash-flow forecast: expected receipts and payments by week from invoices, supplier bills, scheduled charges, post-dated cheques, payroll and budgets | shared | wl-invoicing | MVP |
+| `FIN.BUD.01` | Company budget vs actual by period, category and entity; owner drawings kept apart from operating cost | shared | wl-invoicing | MVP |
+| `HRM.ONB.01` | Staff onboarding checklists per role and a library of SOP documents with acknowledgement | shared | wl-hr + wl-documents | MVP |
+| `HRM.EMP.01` | Minimal employee records for onboarding: person, job role, building scope, documents (no payroll or visas) | shared | wl-hr | MVP |
 | `PRP.PRT.01` | Portfolio: buildings, floors, units and their attributes (type, size, use) | specific | apps/property | MVP |
 | `PRP.PRT.02` | Unit availability and status | specific | apps/property | MVP |
 | `PRP.PRT.03` | Ownership and management agreements (owner, fee %) | specific | apps/property | MVP |
-| `PRP.LEA.01` | Enquiries and viewings | specific (candidate for a shared CRM) | apps/property | Later |
+| `PRP.LEA.01` | Enquiries and viewings, with lead source and campaign (`SAL.CRM.02`) | specific (candidate for a shared CRM) | apps/property | MVP |
 | `PRP.LEA.02` | Reservation with booking deposit | specific | apps/property | Later |
 | `PRP.LSE.01` | Lease: parties, unit, term, rent, payment plan, deposit, clauses, versions | specific | apps/property | MVP |
 | `PRP.LSE.02` | Ejari/Tawtheeq registration tracking (number, dates, certificate) | specific | apps/property | MVP |
@@ -925,6 +930,7 @@ role whose holders, in the scope of the document's subject, are told by `DOC.RUL
 | Civil Defence approval | party (vendor) | maintenance coordinator | yes | `blocks` as above; compliance-critical |
 | Building safety certificate, lift certificate | building | maintenance coordinator | yes | compliance-critical; `DOC.RUL.01` also tells the property manager; no `blocks` |
 | Service contract, service report | service contract, planned visit | maintenance coordinator | contract end | `PRP.ACL.15` |
+| Trademark registration, other certification | legal entity | company admin | yes | `DOC.EXP.01`; `DOC.RUL.01` reminders; no `blocks` |
 
 **Notification types.** 01 registers these types with wl-notify and names the group whose
 give-up reaction they take (wl-notify §5.4). Types that go only to staff (reminders and tasks
@@ -958,6 +964,20 @@ manager of the lease (or of the unit's building).
 | Service contract | no; `discard` while `draft` | back to `draft` with the reason | `terminate` | Civil Defence approval on `activate` (block, never overridden) | review | — | — |
 | Owner statement | no; `revise` before payout | back to `draft` (`return`) | — | — | payout stops | — | dispute flag |
 | Management agreement | no | stays in its state | `give_notice` then `end` with handover | — | owner's leases continue; payouts stop | — | — |
+
+**Settings for the shared sales, finance, staff and document capabilities (01
+defaults):**
+
+| Setting | 01 value |
+|---|---|
+| Cash-flow forecast alert (`FIN.CFL.01`, `FIN.RUL.23`) | projected balance below AED 50,000 in any of the next 13 weeks (weeks start Monday): `FIN.RUL.23` alerts the company admin and the accountant, checked daily at 06:00; post-dated rent cheques by cheque date; owner payouts (`PRP.OWN.01`) counted as payments; due dates adjusted by each tenant's average days late: on; disputed amounts counted: off |
+| Budget categories and approval (`FIN.BUD.01`, `FIN.RUL.24`) | categories owned by the accountant and mapped to the export accounts; one budget per legal entity and month, approved by the company admin; `FIN.RUL.24` warns the category's owner role and the accountant when a month's actual reaches 100% of its line |
+| Owner drawings (`FIN.BUD.01`, `FIN.ACL.21`) | expense category and payment purpose *owner drawings*, kept out of operating cost and profit; every drawing (AED 0) approved by the company admin, never by the requester (`FIN.ACL.21`); payouts to landlords (`PRP.OWN.01`) are not drawings |
+| Lead sources used (`SAL.CRM.02`) | referral, walk-in, website, social, paid ads, partner (brokers), event, other; recorded on the enquiry (`PRP.LEA.01`) and carried to the tenant party when the enquiry converts; a tenant without an enquiry gets the source on its party; no source requires a campaign |
+| Campaign channels (`SAL.CRM.02`, `SAL.ACL.07`) | listing portals, social media, search ads, email, signboards, brokers; converted value: the first lease's contract value; a cost entry that takes a campaign over its budget needs a manager (`SAL.ACL.07`: on) |
+| Onboarding checklists (`HRM.ONB.01`, `HRM.RUL.16`, `HRM.RUL.17`, `HRM.ACL.10`) | templates for property manager, leasing agent, accountant, maintenance coordinator and technician, started by `HRM.RUL.16` when an employee record (`HRM.EMP.01`) is created; checklist steps use `WRK.CHK.01`; tasks to the company admin, the line manager and the new staff member; the new staff member's own steps recorded only by them (`HRM.ACL.10`); `HRM.RUL.17` reminds overdue steps every 2 days and tells the company admin and the line manager after 5 days; completion blocks nothing (role activation not blocked) |
+| SOP library (`HRM.ONB.01`, `DOC.RUL.04`, `HRM.ACL.10`) | SOP owners: property manager (leasing, move-in, move-out, maintenance) and accountant (cheques, deposits, owner statements); required readers by role; `DOC.RUL.04` asks each reader to acknowledge within 7 days, reminds every 3 days and tells the manager and the owner role after 7 days; acknowledged only by the reader (`HRM.ACL.10`); a new version asks for a new acknowledgement |
+| Registration and certification kinds (`DOC.EXP.01`, `DOC.RUL.01`) | *Trademark registration* and *Other certification* (subject: legal entity); responsible role company admin; `DOC.RUL.01` at 90, 30 and 7 days; no `blocks` |
 
 ## 8. Integrations
 
@@ -1053,7 +1073,7 @@ manager of the lease (or of the unit's building).
   import, search, notes and reports.
 - **Specific to this vertical:** portfolio (buildings, units), management agreements, leases
   and their lifecycle, Ejari tracking, rent index check, owner statements, rent roll.
-- **Estimated reuse:** 43 of 55 capabilities (78%) come from shared modules or Renox.
+- **Estimated reuse:** 48 of 60 capabilities (80%) come from shared modules or Renox.
 
 ## 12. MVP scope
 
@@ -1072,7 +1092,13 @@ cheque follow-up and write-off, deposit disputes and excess damages, owner state
 revision and negative balances, management agreement handover, vendor no-shows, expired
 Civil Defence approvals and compliance flags.
 
-**Excluded from the MVP:** lead/viewing CRM, reservations, online payment, WhatsApp, owner
+**Also included:** enquiries and viewings (`PRP.LEA.01`) with lead sources and campaigns
+(`SAL.CRM.02`), so every campaign has enquiries to attach to; the cash-flow forecast
+(`FIN.CFL.01`), budget vs actual with owner drawings (`FIN.BUD.01`), onboarding checklists
+and SOPs (`HRM.ONB.01`) on minimal employee records (`HRM.EMP.01`, no payroll or visas), and
+trademark reminders (`DOC.EXP.01`).
+
+**Excluded from the MVP:** reservations, online payment, WhatsApp, owner
 portal, rental index check, planned visit schedules for non-critical AMC categories (HVAC,
 pest control, cleaning, security), vendor self-service portal (contract view, bill
 submission), accounting export, Ejari integration, split invoicing of one lease across

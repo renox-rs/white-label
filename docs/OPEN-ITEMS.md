@@ -24,16 +24,17 @@ here as `~~question~~ Answered (date): ...`.
 | Owner | Items | Build 1 | Client 1 | Outreach | Launch | Onboarding | Later |
 |---|---|---|---|---|---|---|---|
 | Owner decision (`D`) | 5 (all decided) | — | 0 | — | — | — | — |
-| Lawyer (`L`) | 37 | 2 | 5 | 1 | 27 | 1 | 1 |
-| Accountant (`A`) | 14 | — | — | — | 13 | 1 | — |
+| Lawyer (`L`) | 38 | 2 | 5 | 1 | 28 | 1 | 1 |
+| Accountant (`A`) | 16 | — | — | — | 15 | 1 | — |
 | Authority (`AU`) | 25 | — | — | — | 21 | 2 | 2 |
 | Client (`C`) | 3 | — | — | — | 1 | 2 | — |
 | Onboarding (`O`) | 4 | — | 2 | — | — | 2 | — |
-| **Total open** | **83** | **2** | **7** | **1** | **62** | **8** | **3** |
+| **Total open** | **86** | **2** | **7** | **1** | **65** | **8** | **3** |
 
 **Before Build 1:** L-05 and L-10. **Before outreach at scale:** L-18. **Before Client 1:**
 L-01, L-02, L-03, L-11, L-13, O-01, O-02. The owner decisions D-01 to D-05 were taken on 2026-10-15.
 The items added from the negative-flow pass (L-19 to L-37, A-04 to A-14, AU-20 to AU-25, C-03)
+and from the SME gaps (L-38, A-15, A-16)
 are not needed before Build 1: each has a safe default in its document (the stricter
 choice, off by default, or a configurable parameter).
 
@@ -90,6 +91,7 @@ The prices themselves are filled in [PRICING.md](PRICING.md) by the owner.
 | L-35 | Which legal parts supply period (7, 14 or 30 days) applies to which part, by demand and source? | [08-auto.md](verticals/08-auto.md) §9 | 08 | Onboarding |
 | L-36 | What may a workshop do with a vehicle the customer never collects, and does a storage fee need more than the customer's agreement at check-in? | [08-auto.md](verticals/08-auto.md) §4, §9 | 08 | Launch 08 |
 | L-37 | Construction: does retention become due when a contract is terminated (unless the contract says otherwise)? May a subcontractor suspend work for non-payment? How does a subcontractor claim against an insolvent main contractor? | [02-construction.md](verticals/02-construction.md) §4, §9 | 02 | Launch 02 |
+| L-38 | Clinics: do health regulators limit loyalty rewards or discounts on medical services, and does campaign content for a clinic need their approval? | [05-clinics.md](verticals/05-clinics.md) §7.2 | 05 | Launch 05 |
 
 ## 4. Accountant
 
@@ -109,6 +111,8 @@ The prices themselves are filled in [PRICING.md](PRICING.md) by the owner.
 | A-12 | After an export's zero rate was corrected to 5% because exit evidence did not arrive within 90 days, can the zero rate be restored when the evidence arrives later? | [07-manufacturing.md](verticals/07-manufacturing.md) §9; [08-auto.md](verticals/08-auto.md) §9 | 07, 08 | Launch 07 |
 | A-13 | Does VAT become due on construction retention at the one-year limit even when the client still holds it, and how is a retention the client keeps for good treated? | [02-construction.md](verticals/02-construction.md) §9 | 02 | Launch 02 |
 | A-14 | Can a small corporate tax error be corrected in a later return without a voluntary disclosure, as for VAT errors up to AED 10,000? | [04-accounting.md](verticals/04-accounting.md) §3, §9 | 04 | Launch 04 |
+| A-15 | Loyalty points: does redeeming points reduce the taxable amount of the sale it is used on, how are free points and their expiry treated for VAT, and is the outstanding balance a liability or a provision? | [wl-sales](modules/wl-sales.md) §10; verticals 05, 06, 08, 10 §7.2 | 05, 06, 08, 10 | Launch 05 |
+| A-16 | Owner drawings: how are drawings treated for VAT (input VAT on goods taken for private use) and for corporate tax? | [wl-invoicing](modules/wl-invoicing.md) §10 | all | Launch 01 |
 
 ## 5. Authority
 
@@ -217,6 +221,8 @@ data hosted in the UAE). Our clients are the data controllers; we are their proc
     parts supply period applies to which part; vehicles never collected and storage fees.
 16. **Construction** (L-37): Retention on termination; a subcontractor's right to suspend
     work for non-payment; claims against an insolvent main contractor.
+17. **Clinic marketing** (L-38): Limits on loyalty rewards or discounts for medical services,
+    and whether a regulator must approve campaign content.
 
 ### 8.2 For a UAE tax accountant
 
@@ -242,3 +248,7 @@ data hosted in the UAE). Our clients are the data controllers; we are their proc
    the client still holds it, and how is retention the client keeps treated?
 9. **Corporate tax corrections** (A-14): Can a small corporate tax error be corrected
    without a voluntary disclosure?
+10. **Loyalty points** (A-15): VAT on a redemption, on free points and their expiry, and how
+    the outstanding points are booked.
+11. **Owner drawings** (A-16): VAT and corporate tax treatment of drawings, including goods
+    taken for private use.

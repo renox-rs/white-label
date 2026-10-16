@@ -179,6 +179,7 @@ reviewed (the vertical row keeps the old ID as *formerly*).
 | `DOC.ACL.03` | The expiry date or number of an accepted blocking document is never edited; a new version is accepted by another user | wl-documents | — | module |
 | `NTF.ACL.01` | Marketing messages go only to recipients with recorded consent; list exports are audited | wl-notify | `CLN.ACL.11`, `FNB.ACL.10` | in use |
 | `NTF.ACL.02` | No health or identity data in message bodies | wl-notify | — | module |
+| `NTF.ACL.03` | A marketing broadcast above a recipient count needs a second approver | wl-notify | — | module |
 | `FIN.ACL.01` | An issued invoice is never edited; it is corrected by a credit note | wl-invoicing | — | in use |
 | `FIN.ACL.02` | A bounced cheque is marked replaced only by linking the replacement | wl-payments | — | in use |
 | `FIN.ACL.03` | A supplier bill is approved only after a 3-way match within tolerance, otherwise by approval; a possible duplicate is held for a second user | wl-invoicing | `CON.ACL.10` (merged) | in use |
@@ -199,12 +200,14 @@ reviewed (the vertical row keeps the old ID as *formerly*).
 | `FIN.ACL.18` | Accepting a chargeback needs approval by someone other than the requester | wl-payments | — | module |
 | `FIN.ACL.19` | Recovering a cash shortage from salary needs another person's approval and the holder's acknowledgement | wl-payments | — | module |
 | `FIN.ACL.20` | A cheque collected in the field is deposited only after a handover counted by someone other than the collector | wl-payments | — | module |
+| `FIN.ACL.21` | Every owner drawing needs approval by someone other than the requester | wl-invoicing | — | module |
 | `SAL.ACL.01` | Cancelling or refunding a paid order above a value, or after fulfilment started, needs a manager | wl-sales | `FNB.ACL.11` (void after fire, proposed) | in use |
 | `SAL.ACL.02` | A manual discount or a price below list beyond a limit needs a manager | wl-sales | `CLN.ACL.07`, `EDU.ACL.07`, `AUT.ACL.03`, `MFG.ACL.05` | in use |
 | `SAL.ACL.03` | A credit hold is released, and an account hold cleared, only by a role with `credit.release`, not by the order's creator or the requester | wl-sales | `MFG.ACL.04`, `AUT.ACL.04`, `AUT.ACL.05` | in use |
 | `SAL.ACL.04` | A completed counter sale is never edited; it is corrected by a return | wl-sales | `AUT.ACL.06` | in use |
 | `SAL.ACL.05` | Amending or cancelling after fulfilment started, finishing to stock, scrapping or waiving the fee needs a manager | wl-sales | — | module |
 | `SAL.ACL.06` | A refund or credit after completion with nothing returned needs a complaint category and responsible party; a manager above a limit | wl-sales | — | module |
+| `SAL.ACL.07` | Large manual points adjustments, closing an account with points, and campaign cost over budget need a manager other than the requester | wl-sales | — | module |
 | `WRK.ACL.01` | An external requester sees only their tickets and the comments marked visible | wl-ticketing | — | module |
 | `WRK.ACL.02` | A field user or vendor sees only assigned tickets; requester contact only while open | wl-ticketing | `PRP.ACL.03` | in use |
 | `WRK.ACL.03` | Confidential ticket categories are visible only with `tickets.confidential.view` | wl-ticketing | — | module |
@@ -231,6 +234,7 @@ reviewed (the vertical row keeps the old ID as *formerly*).
 | `HRM.ACL.07` | Non-standard exits and their reversal need a second user with `employees.exit.approve` | wl-hr | — | module |
 | `HRM.ACL.08` | A locked timesheet is corrected only by an adjustment approved by someone other than its creator | wl-attendance | — | module |
 | `HRM.ACL.09` | Attendance flagged for overtime cap, invalid permit or overlap is accepted or corrected only by `attendance.review`, not the marker | wl-attendance | — | module |
+| `HRM.ACL.10` | Only the employee completes their own onboarding steps and SOP acknowledgements; an assignee cannot waive their own step | wl-hr | — | module |
 | `OPS.ACL.01`–`05` | Operator-side rules (two-factor login, support sessions, second operator to delete data, no client business data, second operator for wave 2 and hotfix rollouts) | wl-operator | — | module |
 | `STK.ACL.01` | The creator of a purchase order cannot approve it | wl-inventory | `CON.ACL.03` (merged) | in use |
 | `STK.ACL.02` | Stock adjustments and write-offs above a value need approval | wl-inventory | `MFG.ACL.09`, `AUT.ACL.10`, `FNB.ACL.03` | in use |
@@ -238,3 +242,4 @@ reviewed (the vertical row keeps the old ID as *formerly*).
 | `STK.ACL.04` | Stock is received and moved only at the user's own locations | wl-inventory | `CON.ACL.04`, `AUT.ACL.11` | in use |
 | `STK.ACL.05` | Stock held for a listed reason (default recall) is released only by a second holder of `lots.release` | wl-inventory | — | module |
 | `STK.ACL.06` | A landed cost adjustment or return to supplier above a value needs approval by someone other than its creator | wl-inventory | — | module |
+| `STK.ACL.07` | Changing an item's preferred supplier needs approval by a second person | wl-inventory | — | module |

@@ -1,6 +1,6 @@
 # wl-inventory
 
-> Status: draft · Last updated: 2026-10-15
+> Status: draft · Last updated: 2026-10-16
 
 ## 1. Purpose
 
@@ -15,7 +15,9 @@ equipment and vehicles. It records:
   returns to suppliers, landed cost;
 - **what is blocked:** stock holds and recalls, with a forward trace to the affected parties;
 - **how it is made and sent:** bills of materials and recipes; pick, pack and dispatch notes;
-- **what the company owns:** an asset register with meters and service dates.
+- **what the company owns:** an asset register with meters and service dates;
+- **how suppliers perform:** a scorecard per supplier and period, and preferred and
+  alternative suppliers per item.
 
 Every quantity change is a movement that refers to the record that caused it (a `Subject`).
 Stock levels, costs and traceability are therefore always explainable. The module knows
@@ -39,6 +41,7 @@ and cost objects.
 | `STK.BOM.01` | Bills of materials and recipes, versioned, with yields | 06, 07 (MVP) | MVP |
 | `STK.DSP.01` | Pick, pack and dispatch with delivery notes | 07 (MVP) | MVP |
 | `STK.AST.01` | Asset register: equipment, vehicles, tools; location, assignment, service due | 03 (MVP); 02, 06, 07 (Later) | MVP for 03, Later elsewhere |
+| `STK.SUP.01` | Supplier scorecard and alternative suppliers: on-time delivery, rejected quantity, NCRs, price variance; preferred and alternative suppliers per item | 02, 06, 07, 08 (MVP); 05 (Later, with its purchasing) | MVP |
 
 Candidates not yet listed by the verticals (proposed vertical changes):
 
@@ -60,7 +63,7 @@ Related capabilities owned elsewhere and used here:
 
 | Entity | Description | Important fields |
 |---|---|---|
-| Item | Anything stocked or bought | code, name EN/AR, type (`stocked`, `non_stocked`, `consumable`, `finished`, `component`, `service`), category, base unit, purchase unit, stock unit, sales unit, lot-tracked flag, regulated flag, export-only flag, shelf life (days), barcodes, preferred supplier, min / reorder point / max (or par), standard cost (optional), average cost, VAT category, custom fields |
+| Item | Anything stocked or bought | code, name EN/AR, type (`stocked`, `non_stocked`, `consumable`, `finished`, `component`, `service`), category, base unit, purchase unit, stock unit, sales unit, lot-tracked flag, regulated flag, export-only flag, shelf life (days), barcodes, item suppliers (one preferred, alternatives ranked), min / reorder point / max (or par), standard cost (optional), average cost, VAT category, custom fields |
 | Unit conversion | How units relate for an item | item (or global), from unit, to unit, fixed factor. E.g. 1 roll = 500 m, 1 carton = 24 pcs. No dimension formulas |
 | Location | A place that holds stock | code, name, type (`warehouse`, `central_store`, `store`, `site`, `outlet`, `kitchen`, `branch`, `van`, `in_transit`, `quarantine`, `scrap`), parent, scope link (building / project / outlet / branch), cost object on receipt (optional), negative stock policy (`block` or `allow_consumption`) |
 | Stock balance | Derived quantity per item, location and lot | on hand, reserved, on hold, available (on hand − reserved − on hold), value. Never edited directly |
@@ -81,7 +84,9 @@ Related capabilities owned elsewhere and used here:
 | Dispatch | Picking, packing and shipping goods to a recipient | recipient (`Party`), address, source (`Subject`, e.g. sales order), lines with lots, packages, delivery note no., handover (own delivery run or courier), status |
 | Asset | Equipment, vehicle, tool or machine the company owns or leases | code, type, category, serial / plate / VIN, location or assignee, purchase date and cost, meters (km, hours), next service date / meter, documents (registration, insurance), status, custom fields |
 | Meter reading | A recorded asset meter value | asset, meter, value, time, source |
-| Reorder suggestion | Proposed purchase from stock levels | item, location, supplier, suggested qty, reason, status (`open`, `converted`, `dismissed`) |
+| Reorder suggestion | Proposed purchase from stock levels | item, location, supplier, supplier role (`preferred` or `alternative`, with the reason the preferred one was skipped), alternatives shown (supplier, lead time, last price, score), suggested qty, reason, status (`open`, `converted`, `dismissed`) |
+| Item supplier | A supplier that can deliver an item (`STK.SUP.01`) | item, supplier (`Party`), role (`preferred` or `alternative`), rank among alternatives, supplier item code, purchase unit, lead time (days), minimum order qty, last price (derived), active flag, notes. At most one preferred per item |
+| Supplier score | A monthly snapshot of one supplier's performance (`STK.SUP.01`) | supplier, window (the 3 months ending with the snapshot month), receipts counted, on-time %, rejected value %, quality incidents (NCRs, supplier recalls), debit notes (count, value), price variance %, score 0–100, band (`good`, `watch`, `below_threshold`, `not_enough_data`), computed at. Derived and never edited |
 
 **Costing (decision).** Stock is valued at **moving weighted average cost per item**, across
 the client's deployment. Manufacturing may also keep a **standard cost**, rolled up from the
@@ -146,6 +151,49 @@ that falls on quantities still on hand re-values that stock (average cost update
 that falls on quantities already consumed goes to the landed cost variance, or to the cost
 object that was charged on receipt (site stores, 02). Nothing already posted is changed.
 
+**Supplier scorecard and alternative suppliers (`STK.SUP.01`, decided 2026-10-16).** Every
+supplier the client buys from gets a score from what the module already records. The live
+view covers the last 3 months up to today; on day 1 of each month a *Supplier score* snapshot
+is kept for the window that just ended. Inputs per supplier in the window:
+
+- **On time:** each goods receipt against a PO is on time when it is posted on or before the
+  PO's expected date plus the grace days (default 1, Asia/Dubai dates). A PO delivered in
+  three receipts counts three times. Free replacements against a Return to supplier have no
+  PO date and are not counted.
+- **Rejected value:** rejected qty at receipt (reason `excess` excluded: an over-delivery is
+  not a quality failure) at the PO price, plus Return to supplier lines from stock (from a
+  stock hold, recall or NCR) at their unit cost, divided by the value received at PO price.
+- **Quality incidents:** NCRs that name the supplier, reported by verticals through
+  `SupplierIncidentSource` (07: NCRs on incoming lots), plus recalls with source `supplier`
+  whose lots came from the supplier.
+- **Debit notes:** count and value of supplier debit notes (`SupplierDebitNoteIssued`). They
+  are shown but not scored, because they follow from rejected and returned goods that are
+  already counted.
+- **Price variance:** for PO lines issued in the window that have a last price, Σ (PO price −
+  last price) × qty ÷ Σ last price × qty. Only an increase lowers the score. *Last price* is
+  the unit price per base unit, excl. VAT and in AED at the PO's rate, of the latest posted
+  receipt line from that supplier for the item before the PO; without one, the latest issued
+  PO line price; without either, none.
+
+Score = W1 × on-time % + W2 × (1 − min(1, rejected % ÷ R)) + W3 × max(0, 1 − incidents ÷ I)
+\+ W4 × (1 − min(1, max(0, price variance %) ÷ P)), rounded to a whole number. Defaults:
+W1 = 40, W2 = 30, W3 = 15, W4 = 15; R = 10%, I = 3, P = 10%. A component without data (no PO
+line with a last price) drops out and its weight is spread over the others in proportion.
+With fewer than N receipts in the window (N = 3) the band is `not_enough_data` and no
+score is shown. Bands: `good` at 85 or more, `watch` from the threshold to 84,
+`below_threshold` under the threshold T (70). `STK.RUL.09` asks procurement to review a
+supplier below the threshold.
+
+Each item lists its suppliers: one `preferred` and ranked `alternative`s, each with lead
+time, last price and the supplier's current score. Reorder suggestions (`STK.RUL.04`) use
+the preferred supplier. When it is inactive for the item or blocked
+(`BlockGuard::check(supplier, start)` fails, `PTY.ACL.03`), the suggestion goes to the first
+active alternative that passes the check, marked *alternative* with the reason; with none
+left, the suggestion has no supplier and the purchaser picks one. Lead time comes from the
+chosen item supplier (08 reorder point + lead time). The purchaser can switch a suggestion to
+another listed supplier; that changes nothing on the item. Making another supplier the
+item's preferred one needs a second person (`STK.ACL.07`).
+
 **Item flags (decided at the 07 review).** Each item carries three flags:
 
 - *lot-tracked*: lots, expiry and genealogy only for flagged items. Defaults per item
@@ -170,7 +218,8 @@ central kitchen fulfils them by transfer.
 ## 4. Lifecycles
 
 Items, locations and movements have no lifecycle; movements are immutable and corrected by
-reversing movements. The following entities have state machines.
+reversing movements. Item suppliers have only an active flag, and supplier scores are
+derived snapshots. The following entities have state machines.
 
 ### Purchase request
 
@@ -712,6 +761,9 @@ stateDiagram-v2
 | 08 Auto | Location | Stock per branch and bin; staff see every branch but sell, pick or move only from their own (`STK.ACL.04`, formerly `AUT.ACL.11`). Part fitment and cross-references stay in apps/auto, from the client's own parts data |
 | 08 Auto | Purchase order + landed cost | Import POs in foreign currency; landed cost allocated by value or weight. Reorder suggestions per supplier (`STK.RUL.04`) |
 | 05 Clinics, 06 F&B, 07 Manufacturing, 08 Auto | Recall | Party per subject from the vertical's `TracePartyResolver` (05: visit → patient; 06: order → customer; 07: sales order / dispatch → customer; 08: job card → vehicle owner or fleet, sale → customer). 08 parts are not lot-tracked in the MVP: recall by item and received date range, lines marked *possible* |
+| 07 Manufacturing | Supplier score | NCRs on incoming lots from apps/manufacturing count as quality incidents (`SupplierIncidentSource`) |
+| 02, 06, 08 | Supplier score | No NCR source in the MVP: incidents are supplier recalls only; on time, rejected value and price variance as in §3 |
+| 05 Clinics | Item supplier, Supplier score | Later, with 05's purchase orders and receipts (`STK.PUR.01`, `STK.GRN.01`) |
 | 06 F&B | Stock hold | A temperature excursion places a location-scoped hold (reason `temperature`) on the unit's stock; stock moved into the unit while the hold is open is added to it (`add_lines`); the chef holds `lots.release` and decides discard or release |
 
 ## 5. Workflows
@@ -822,6 +874,21 @@ stateDiagram-v2
    issue. It posts when stock arrives or the storekeeper clears it after a count
    (`STK.RUL.06`).
 
+### 5.9 Supplier scorecard and alternative suppliers
+
+1. Procurement lists the suppliers per item: one preferred and ranked alternatives, with
+   lead time and supplier item code. Last price and score fill in from receipts.
+2. Every receipt, rejection, return, debit note, NCR and PO price updates the supplier's
+   live score (§3). On day 1 of each month a snapshot is kept per supplier.
+3. `STK.RUL.04` sends each reorder suggestion to the preferred supplier, or to the first
+   active, unblocked alternative. The purchaser compares the alternatives (lead time, last
+   price, score) and may switch the suggestion.
+4. When a supplier's snapshot is below the threshold, `STK.RUL.09` gives procurement one
+   review task with the score breakdown and the items where the supplier is preferred.
+5. Procurement closes the task with a decision: *keep*, *watch*, *change preferred* (a
+   request per item, approved by a second person, `STK.ACL.07`) or *request block* (a block
+   request in wl-parties).
+
 ## 6. Interfaces to other modules
 
 **Provides**
@@ -837,6 +904,7 @@ stateDiagram-v2
 | `Purchasing` | Create a purchase request or PO from another module (e.g. reorder, work order shortfall) |
 | `BomExplosion` | Components and quantities needed for N units of an output item |
 | `AssetRegistry` | Asset status and availability for planning (runs, bookings, jobs) |
+| `SupplierScorecard` | Live score and monthly snapshots per supplier; item suppliers with lead time and last price (used by the supplier view in wl-parties and by verticals) |
 | `PurchaseMatchSource` (trait implemented for wl-invoicing) | PO and goods-received lines for the supplier bill 3-way match |
 
 **Consumes**
@@ -846,12 +914,12 @@ stateDiagram-v2
 | wl-kernel | `Subject` references, document numbering, approvals, state machines, custom fields, settings, automations |
 | wl-parties | Suppliers and recipients (`Party`); `BlockGuard::check` on PO `issue` and `revise` (`PTY.ACL.03`); block effect for open POs (§5.6 of wl-parties) |
 | wl-documents | Delivery notes, PO and GRN PDFs, asset documents and their expiry |
-| wl-invoicing | `CostPoster` for committed and actual cost per cost object, wastage and the price and landed cost variances; events `SupplierBillMatched`, `SupplierDebitNoteIssued` (credits a Return to supplier), `SupplierDebitNoteCancelled` (the return stays `dispatched`; task to procurement), `SupplierBillApproved` with a landed cost reference per line (drafts a landed cost adjustment when the landed cost is already allocated) |
+| wl-invoicing | `CostPoster` for committed and actual cost per cost object, wastage and the price and landed cost variances; events `SupplierBillMatched`, `SupplierDebitNoteIssued` (credits a Return to supplier), `SupplierDebitNoteCancelled` (the return stays `dispatched`; task to procurement), `SupplierBillApproved` with a landed cost reference per line (drafts a landed cost adjustment when the landed cost is already allocated); debit notes are also counted on the supplier scorecard |
 | wl-sales | `CreditChecker.credit_recheck(order)` as the dispatch guard for orders on account; customer returns of recalled goods into quarantine, linked to the recall; events `SalesOrderCancelled` and `SalesOrderLineCancelled` with outcome per line (*return to stock* cancels the dispatch, *scrap* posts wastage) |
 | wl-delivery | `DeliveryRequester` to create a delivery from a dispatch; events `DeliveryDelivered` (per-line delivered and refused qty), `DeliveryRefusedReceived` (refused goods received back or missing at run close), `DeliveryReturned`, `DeliveryDiscarded`, `DeliveryLost`, `DeliveryFound`, `DeliveryReversed` |
 | wl-ticketing | Maintenance tickets for assets |
 | wl-notify | Notifications from automations; recall notices to affected parties; event `MessageGaveUp` |
-| Verticals | `TracePartyResolver`: the party behind a subject in a recall trace |
+| Verticals | `TracePartyResolver`: the party behind a subject in a recall trace; `SupplierIncidentSource`: NCRs per supplier for the scorecard (07) |
 
 **Events emitted**
 
@@ -875,6 +943,8 @@ stateDiagram-v2
 | `DispatchSent` / `DispatchDelivered` / `DispatchReturned` / `DispatchDiscarded` / `DispatchLost` / `DispatchReversed` | Dispatch transitions | dispatch id, source, lines (delivered and refused qty with reason where known), recipient |
 | `AssetStatusChanged` | Asset transition | asset id, from, to, reason |
 | `MeterReadingRecorded` | New meter value | asset, meter, value |
+| `SupplierScoreBelowThreshold` | Monthly snapshot under the threshold (`STK.RUL.09`) | supplier, window, score, components |
+| `PreferredSupplierChanged` | Another item supplier made preferred (after `STK.ACL.07`) | item, old and new supplier, requester, approver |
 
 **Attaches to:** stock movements, purchase requests and dispatches refer to any `Subject` as
 source or cost object (project / cost code, work order, job card, sales order, outlet, ticket).
@@ -887,7 +957,8 @@ Documents and tickets attach to items, lots, receipts, dispatches and assets.
 `purchase_requests.approve`, `purchase_orders.view`, `purchase_orders.issue`, `goods_receipts.post`,
 `goods_receipts.reverse`, `landed_costs.post`, `lots.release`, `stock.hold`,
 `supplier_returns.manage`, `recalls.manage`, `boms.view`, `boms.manage`, `boms.release`,
-`dispatch.manage`, `assets.view`, `assets.manage`, `assets.dispose`.
+`dispatch.manage`, `assets.view`, `assets.manage`, `assets.dispose`, `item_suppliers.manage`,
+`item_suppliers.approve`, `supplier_scores.view`.
 
 `stock.cost.view` controls every cost, value and margin field (`FLD`). Stock permissions are
 checked in the scope of the location.
@@ -902,6 +973,7 @@ checked in the scope of the location.
 | `STK.ACL.04` | Stock is received and moved only at the user's own locations; stock levels may be visible in all locations; over-receipt beyond a tolerance needs approval | scope, `LIM`, `FLD` | 5% | `CON.ACL.04`, `AUT.ACL.11` |
 | `STK.ACL.05` | Releasing held stock for a listed hold reason (a hold line decided `release`, including the lines of a recall's hold) needs approval by a second holder of `lots.release`, not the one who decides; other holds are released by one holder of `lots.release` | `SOD` | on; listed reasons = `recall` | — |
 | `STK.ACL.06` | A landed cost adjustment or a Return to supplier above a value needs approval; the creator cannot approve | `LIM`, `SOD` | AED 5,000 | — |
+| `STK.ACL.07` | Making another supplier the preferred supplier of an item needs approval by a holder of `item_suppliers.approve` who is not the requester; the request shows both suppliers' scores, lead times and last prices. The first preferred supplier of an item, alternatives, and switching a single reorder suggestion need no approval | `SOD` | on | — |
 
 Cost and margin fields are hidden by `FIN.ACL.08` (wl-invoicing, `costs.view`), applied here
 through `stock.cost.view`.
@@ -918,6 +990,7 @@ through `stock.cost.view`.
 | `STK.RUL.06` | a pending issue is recorded, or a balance goes below zero | — | notify the location's storekeeper (at most one notification per item and location per hour); still open or negative after H hours → task to the storekeeper (count or clear) and notify the manager | H = 24 | on |
 | `STK.RUL.07` | every H hours | stock hold `open` with undecided lines | remind the deciders (`lots.release` in scope); after 2 × H notify the escalation role, again every further 2 × H while lines stay undecided | H = 24 (a vertical may set fewer hours for food); escalation role = owner (06: kitchen manager, H = 2) | on |
 | `STK.RUL.08` | daily | Return to supplier `dispatched` for more than N days | notify procurement and finance on the first run after day N, then every N days from that notice; one task to procurement to chase the supplier, kept while the return stays `dispatched` | N = 30 | on |
+| `STK.RUL.09` | monthly, day 1 at time T | a supplier's new snapshot score is under the threshold (band `below_threshold`; `not_enough_data` never fires) | one review task to procurement per supplier, with the score breakdown, the items where it is preferred and their alternatives; notify the procurement manager; while that task is open a new snapshot under the threshold updates it instead of creating another; event `SupplierScoreBelowThreshold` | T = 06:00; threshold = 70; minimum receipts N = 3 | on |
 
 Back-ordered sales order quantity (`wl-sales`, setting *Back-orders allowed*) not yet covered
 by an open PO is added to the `STK.RUL.04` suggestion for the item: the suggested quantity is
@@ -925,6 +998,10 @@ the quantity from the item's `ReorderPolicy` (min/max: up to max; par: up to par
 + lead time in 08), plus that back-ordered quantity. When the item is above its reorder point,
 the policy suggests nothing and the suggestion is the back-ordered quantity alone. A cancelled
 back-order drops out at the next run.
+
+`STK.RUL.04` takes the supplier from the item's suppliers: the preferred one, or the first
+active alternative that passes `BlockGuard` (§3 *Supplier scorecard and alternative
+suppliers*).
 
 `STK.RUL.04` merges the two vertical versions: F&B drafts POs at 22:00, Auto builds suggestions
 at 07:00. Both are a mode and a time of the same rule. `STK.RUL.05` generalises `AUT.RUL.09`.
@@ -952,6 +1029,9 @@ at 07:00. Both are a mode and a time of the same rule. `STK.RUL.05` generalises 
 | Landed cost variance destination | variance account; the cost object charged on receipt for site-store receipts |
 | Recall notice templates (EN/AR) per party type | customer, patient, internal |
 | Pending issue alert hours (`STK.RUL.06`), hold reminder hours (`STK.RUL.07`), return chase days (`STK.RUL.08`) | 24, 24, 30 |
+| Supplier score weights W1–W4 (on time, rejected value, incidents, price) and caps R, I, P (§3) | 40, 30, 15, 15; 10%, 3, 10% |
+| Supplier score grace days, window, minimum receipts, threshold (`STK.RUL.09`) | 1 day, 3 months, 3, 70 |
+| Second person for a preferred supplier change (`STK.ACL.07`) | on |
 | Stock hold escalation role (`STK.RUL.07`), per reason or location | owner (06: kitchen manager) |
 | Lot tracking and shelf life per item | off; default per item category (07: on for food-contact, chemical and certified materials) |
 | Regulated and export-only item flags | off (used by 07, `MFG.ACL.11`) |
@@ -975,6 +1055,7 @@ at 07:00. Both are a mode and a time of the same rule. `STK.RUL.05` generalises 
 | `ConsumptionSource` | Turns a business event into ingredient or component consumption | F&B sale explodes a recipe; work order issues components (07: every material issue to a work order, so a short one becomes a pending issue) |
 | `AssetMeterPolicy` | When a meter reading means a service is due | every N km (vehicles), every N hours (machines) |
 | `TracePartyResolver` | The party behind a subject in a recall trace | 05: visit → patient; 06: order → customer; 08: job card → vehicle owner or fleet |
+| `SupplierIncidentSource` | Quality incidents per supplier and date for the scorecard | 07: NCRs on incoming lots (apps/manufacturing) |
 | Events | §6 | apps/fnb marks menu items unavailable on `ItemOutOfStock` (`FNB.RUL.06`) |
 | Overridable views | PO PDF, GRN, delivery note, pick list, labels | client logo and Arabic layout |
 | Custom fields | Item, location, lot, asset | Auto: fitment and OEM numbers (in apps/auto); Clinics: storage temperature |
@@ -993,6 +1074,7 @@ at 07:00. Both are a mode and a time of the same rule. `STK.RUL.05` generalises 
 | Approvals for limits | — | wl-kernel `PLT.APR.01` |
 | Decimal quantities with units and exact money values | typed models | Decimal quantities with unit-of-measure conversion (R18) |
 | Stock reports and dashboards | charts, grid export | — |
+| Supplier scorecard report and monthly snapshots | charts, grid export, scheduler | — |
 | Location-scoped permissions | `has_permission_in`, `scopes_with` | — |
 
 ## 10. Compliance
@@ -1046,6 +1128,7 @@ at 07:00. Both are a mode and a time of the same rule. `STK.RUL.05` generalises 
 | Serial-number tracking per unit | Later candidate (equipment). 08 handles customer warranty claims as `warranty` tickets in wl-ticketing, linked to the sale or job |
 | Consignment stock, intercompany transfers, demand forecasting, EDI | Not planned |
 | FIFO and lot-level costing | Not in MVP (see §3 costing decision) |
+| Supplier audits, qualification questionnaires and supplier self-assessment | Not planned; an audit can be a checklist (`WRK.CHK.01`) on a ticket linked to the supplier in wl-ticketing |
 
 ## 12. Open questions
 
@@ -1067,6 +1150,8 @@ at 07:00. Both are a mode and a time of the same rule. `STK.RUL.05` generalises 
    branch? *(client, accountant)*
 6. Which documents make an asset unusable when expired, per asset type (registration,
    insurance, inspection certificate)? *(client)*
+7. Are the default supplier score weights and the threshold of 70 (§3, `STK.RUL.09`) right
+   for 02 and 06, where delivery time matters more than price? *(client)*
 
 ## Sources
 

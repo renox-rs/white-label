@@ -1,6 +1,6 @@
 # Epic: wl-documents — negative flows
 
-> Status: draft · Last updated: 2026-10-15 · Spec version: same commit as this file
+> Status: draft · Last updated: 2026-10-16 · Spec version: same commit as this file
 
 Expired documents no longer only remind: a document kind names the transitions it guards
 (`blocks`), and every guarded module calls the standard guard `document_valid`. This epic
@@ -8,6 +8,9 @@ builds the guard (block and flag modes), the warning when future work is planned
 look-ahead (`DOC.RUL.02`), the expiry reaction (`DOC.RUL.03`), lifting the block on renewal,
 one-use overrides (`DOC.ACL.02`) and the rule that blocking documents are never edited in place
 (`DOC.ACL.03`). Review item X-13 (with 01-N8-b, 03-N8-a, 05-N8-a, 09-N8-b, 10-N8-a, 10-N8-c).
+BL-DOC-08 to 10 add the SOP library with acknowledgements (`HRM.ONB.01`, gap G6) and the seeded
+registration and certification kinds (`DOC.EXP.01`, gap G7) of the
+[SME problem map](../../reviews/2026-10-16-sme-problem-map.md).
 
 | ID | Title | Priority | Size | Milestone | Depends on |
 |---|---|---|---|---|---|
@@ -18,6 +21,9 @@ one-use overrides (`DOC.ACL.02`) and the rule that blocking documents are never 
 | BL-DOC-05 | Emit the blocked records on expiry and lift the block on renewal | high | m | Build 1 | BL-DOC-01, BL-DOC-04, BL-KRN-08 |
 | BL-DOC-06 | Approve a one-use override of a document block | high | m | Build 1 | BL-DOC-01, BL-KRN-01 |
 | BL-DOC-07 | Correct a blocking document only through a new version accepted by another user | high | s | Build 1 | Base: wl-documents Document lifecycle |
+| BL-DOC-08 | Keep SOPs with versions, owner role and required readers | medium | m | Build 1 | Base: wl-documents Document lifecycle |
+| BL-DOC-09 | Request, remind and record SOP acknowledgements (`DOC.RUL.04`) | medium | m | Build 1 | BL-DOC-08, BL-HRM-26 |
+| BL-DOC-10 | Seed document kinds for registrations and certifications | medium | s | Build 1 | Base: wl-documents Document kinds and expiry reminders |
 
 ---
 
@@ -558,3 +564,187 @@ whoever uploads (not editable).
 
 #### Out of scope
 Ordinary renewals (base).
+
+---
+
+### BL-DOC-08 — wl-documents: keep SOPs with versions, owner role and required readers
+
+**Labels:** `module:wl-documents` `area:sme-gap` `priority:medium` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Depends on:** Base: wl-documents Document lifecycle · **Blocks:** BL-DOC-09, BL-ACC-23, BL-AUT-18, BL-CLN-15, BL-CON-18, BL-EDU-17, BL-FNB-17, BL-LOG-25, BL-MFG-14, BL-MPW-20, BL-PRP-27
+**Review items:** G6 (SME problem map 7, 18)
+
+#### Goal
+The company keeps its standard operating procedures in one library. Each SOP has an owner
+role, the roles and scopes that must read it, and a review interval. A version is uploaded and
+accepted by the owner role; a newer accepted version supersedes the old one. Staff always read
+the current version, and the owner is reminded when a review is due.
+
+#### Files to read
+- `docs/modules/wl-documents.md` §2 (paragraph *Related capability owned elsewhere*), §3
+  (*SOP*, paragraph *SOP versions*), §4.1, §5.7 steps 1–2, 6–7, §6 (`Sops::required_for`,
+  `SopPublished`, `sops.manage`), §7 (*SOP review interval*)
+
+#### Terms
+- **Required readers:** job roles or trades with scopes, or *all staff*; resolved to employees
+  through wl-hr `Workforce::employees_in(role, scope)`.
+- **Kind *SOP*:** the document kind of SOP versions; its expiry date is the next review date.
+
+#### Spec excerpt (authoritative for this issue)
+
+| Entity | Description | Important fields |
+|---|---|---|
+| SOP | A standard operating procedure the staff must follow (`HRM.ONB.01`). Its versions are documents of kind *SOP* attached to it | code, title EN/AR, category, legal entity, owner role, required readers (job roles or trades with scopes, or *all staff*), review interval (months), acknowledgement due days, current version (the accepted document), status (derived: `draft` before the first accepted version, `active`, `withdrawn` when the current version is archived) |
+
+§3 *SOP versions*: A new version of an SOP is a new document of kind *SOP* on the SOP,
+submitted to `pending_review` and accepted by a holder of `sops.manage` with the SOP's owner
+role; accepting it supersedes the previous version as for any kind. Every accepted version
+needs a new acknowledgement from every required reader, also when an earlier version was
+acknowledged (`DOC.RUL.04`). The kind *SOP* uses the expiry date as the next review date
+(accepted date + review interval): `DOC.RUL.01` reminds the owner role to review it, and an SOP
+past its review date stays in force. The kind has no `blocks`.
+
+| Event | When | Payload |
+|---|---|---|
+| `SopPublished` | a version of an SOP is accepted | SOP, document id, version, required readers |
+
+#### Edge cases decided
+- **SOP code:** unique per legal entity.
+- **Accept by the uploader:** allowed when the uploader holds the owner role (no SoD rule for SOPs).
+- **Review date passed:** the SOP stays `active`; the list shows *review overdue*.
+- **Withdraw:** `archive` of the current version; the SOP becomes `withdrawn` and cannot get new readers.
+- **Required readers changed:** saved on the SOP; `DOC.RUL.04` (BL-DOC-09) requests the new readers.
+
+#### Must not
+- Must not overwrite an accepted SOP file; a change is a new version.
+- Must not block any transition because an SOP is past its review date.
+
+#### Done when
+- [ ] Given SOP "SOP-HSE-01 Working at height" with owner role HSE officer and readers
+      "site worker, all sites", when HSE officer A accepts version 1, the SOP is `active`,
+      its review date is accepted date + 12 months, and `SopPublished` is emitted.
+- [ ] Given version 2 accepted, version 1 is `superseded` and `SopPublished` is emitted again.
+- [ ] A user without the owner role cannot accept a version.
+- [ ] 30 days before the review date the HSE officers are reminded (`DOC.RUL.01`).
+
+#### Out of scope
+Acknowledgements (BL-DOC-09); onboarding steps (BL-HRM-27).
+
+---
+
+### BL-DOC-09 — wl-documents: request, remind and record SOP acknowledgements (`DOC.RUL.04`)
+
+**Labels:** `module:wl-documents` `area:sme-gap` `priority:medium` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Depends on:** BL-DOC-08 · BL-HRM-26 · **Blocks:** BL-HRM-27, BL-ACC-23, BL-AUT-18, BL-CLN-15, BL-CON-18, BL-EDU-17, BL-FNB-17, BL-LOG-25, BL-MFG-14, BL-MPW-20, BL-PRP-27
+**Review items:** G6 (SME problem map 7, 18)
+
+#### Goal
+Every required reader acknowledges the current version of each SOP that applies to them: when
+a version is published, when they join, and when they take a new role. Overdue readers are
+reminded, then their manager and the SOP owner are told. The acknowledgement is the reader's
+own act, with the same evidence as a signature.
+
+#### Files to read
+- `docs/modules/wl-documents.md` §3 (*Acknowledgement*), §4.3, §5.7 steps 3–6, §6 (*Consumes*
+  wl-hr, `SopAcknowledged`, `Sops::pending_for`, `HRM.ACL.10` row, `DOC.RUL.04`), §7
+- `docs/modules/wl-hr.md` §6 (`HRM.ACL.10`, events `OnboardingStarted`, `EmployeeAssignmentChanged`)
+
+#### Terms
+- **Evidence:** method (`click-to-accept` in own session, `drawn` in person), timestamp, IP,
+  user agent, document checksum, witness (in person), stored as a Signature (§3).
+
+#### Spec excerpt (authoritative for this issue)
+
+| Transition | From | To | By | Guards | Effects |
+|---|---|---|---|---|---|
+| `request` | — | pending | system (`DOC.RUL.04`) | the reader is a required reader of the SOP; no `pending` or `acknowledged` acknowledgement of this version for the reader | due date = today + the SOP's acknowledgement due days; reader notified (staff inbox or employee portal, through `wl-notify`) |
+| `acknowledge` | pending | acknowledged | the reader (`HRM.ACL.10`) | the reader opened this version; document checksum unchanged; in person: drawn signature and the staff user as witness | evidence stored; event `SopAcknowledged` (wl-hr marks `sop_acknowledgement` steps) |
+| `replace` | pending | replaced | system (a newer version of the SOP accepted) | — | a new `request` for the new version |
+| `cancel` | pending | cancelled | system (`EmployeeAssignmentChanged` removing the role or scope, `EmployeeExited`, `EmployeeOnboardingCancelled`, SOP withdrawn) | — | — |
+
+| ID | When | If | Then | Parameters (default) |
+|---|---|---|---|---|
+| `DOC.RUL.04` | an SOP version is accepted (`SopPublished`); an employee becomes a required reader (`OnboardingStarted`, `EmployeeAssignmentChanged`); and daily at 08:00 Asia/Dubai | the reader has no `pending` or `acknowledged` acknowledgement of the current version | `request` an acknowledgement (due in the SOP's due days); daily: remind readers whose due date has passed, on the first run after it and then every R days; after E days overdue notify the reader's manager and the SOP's owner role once | due days = 7 (per SOP); R = 3; E = 7 |
+
+| ID | Rule | Pattern | Parameter (default) |
+|---|---|---|---|
+| `HRM.ACL.10` (wl-hr) | An SOP acknowledgement is recorded only by the reader: in their own session, or in person with a drawn signature, a staff user recorded as witness | `OWN` | on |
+
+#### Edge cases decided
+- **Earlier version acknowledged:** stays `acknowledged` as history; a new `pending` for the new version.
+- **Reader in two matching roles:** one acknowledgement per SOP version and reader.
+- **"Opened":** the version was displayed to the reader in this session (the viewer reports it).
+- **Manager:** the employee's manager as wl-hr defines it (HR when none).
+- **Report:** the SOP page lists acknowledged, pending and overdue readers per version.
+- **Idempotency:** the guard of `request` prevents duplicates on repeated events.
+
+#### Must not
+- Must not let anyone acknowledge for another reader without the reader's drawn signature in person.
+- Must not carry an acknowledgement over to a new version.
+
+#### Done when
+- [ ] Given 12 site workers and version 1 of SOP-HSE-01 accepted on 2026-11-02, 12 pending
+      acknowledgements due 2026-11-09 are created.
+- [ ] Given worker "Ali S." acknowledges in the worker portal, his acknowledgement is
+      `acknowledged` with method `click-to-accept` and `SopAcknowledged` is emitted.
+- [ ] Given Ali still pending on 2026-11-10, he is reminded on 2026-11-10 and 2026-11-13; on
+      2026-11-16 his manager and the HSE officers are told once.
+- [ ] Given version 2 accepted on 2026-11-20, pending ones are `replaced` and every reader,
+      Ali included, gets a new `pending` one.
+- [ ] Given Ali exits, his pending acknowledgement is `cancelled`.
+- [ ] Given a new site worker hired (`OnboardingStarted`), a pending acknowledgement is created.
+
+#### Out of scope
+Onboarding steps that read the acknowledgements (BL-HRM-27).
+
+---
+
+### BL-DOC-10 — wl-documents: seed document kinds for registrations and certifications
+
+**Labels:** `module:wl-documents` `area:sme-gap` `priority:medium` `size:s` · **Milestone:** Build 1 · **Size:** s
+**Depends on:** Base: wl-documents Document kinds and expiry reminders (`DOC.RUL.01`) · **Blocks:** BL-ACC-23, BL-AUT-18, BL-CLN-15, BL-CON-18, BL-EDU-17, BL-FNB-17, BL-LOG-25, BL-MFG-14, BL-MPW-20, BL-PRP-27
+**Review items:** G7 (SME problem map 37, 40)
+
+#### Goal
+Clients forget to renew trademarks, Halal and ISO certificates and product registrations.
+Every client gets seeded document kinds for them, enabled per vertical, with expiry and
+reminders to a responsible role. They block nothing by default; a vertical may add blocks.
+
+#### Files to read
+- `docs/modules/wl-documents.md` §2 (`DOC.EXP.01` row), §3 paragraph *Seeded kinds for
+  registrations and certifications* and its table, §5.2, §7 (seeded kinds row)
+
+#### Terms
+- **Quality role:** the vertical's role for quality or compliance (07: QA manager); the owner where none.
+- **Subject:** legal entity (`PLT.ENT.01`) or item (`STK.ITM.01`).
+
+#### Spec excerpt (authoritative for this issue)
+
+| Kind | Subjects | Fields | Reminders (days) | Responsible role (seed) | Enabled in (proposed) |
+|---|---|---|---|---|---|
+| Trademark registration | legal entity (`PLT.ENT.01`) | registration number, mark (text or image), classes, registry, filing date, expiry date | 180, 90, 30 | owner | all verticals |
+| Halal certificate | legal entity, item (`STK.ITM.01`) | certificate number, certification body, products or sites covered, expiry date | 90, 30, 7 | quality role, else owner | 06, 07 |
+| ISO certificate | legal entity | standard (e.g. ISO 9001, 14001, 22000, 45001), certification body, scope, expiry date | 90, 30, 7 | quality role, else owner | 02, 03, 07, 08 |
+| Product registration / conformity | item, legal entity | registration or certificate number, authority or body, products covered, expiry date | 90, 30, 7 | quality role, else owner | 05, 07, 08 (07: the conformity certificates of regulated items) |
+| Other certification | legal entity, item | name, number, issuer, expiry date (optional) | 90, 30, 7 | owner | all verticals |
+
+They have expiry and reminders (`DOC.RUL.01`) and no `blocks` by default; a vertical may add
+`blocks` entries (e.g. 07 dispatch of regulated items, `MFG.ACL.11`). The platform does not
+decide which registration or certificate the law requires.
+
+#### Edge cases decided
+- **Verticals without items:** only the legal entity subject is offered.
+- **Item subject reminders:** scope units per §5.2 step 3 (the vertical's `ReminderSchedule`, else every scope).
+- **Client disables a kind:** existing documents stay; no new ones; reminders continue for accepted ones.
+- **Renewal:** a new document of the same kind and subject supersedes the old one (base).
+
+#### Must not
+- Must not add `blocks` or *legal block* to these kinds in the seed.
+
+#### Done when
+- [ ] Given a new 06 client, the kinds Trademark registration, Halal certificate and Other
+      certification are enabled; ISO certificate is available but off.
+- [ ] Given a trademark expiring 2027-06-30, the owner is reminded on 2027-01-01, 2027-04-01 and 2027-05-31.
+- [ ] Given an expired Halal certificate on an item, no transition is refused.
+
+#### Out of scope
+07's conformity guard (`MFG.ACL.11`, Epic 07 Manufacturing).
