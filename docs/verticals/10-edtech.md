@@ -1,0 +1,802 @@
+# 10 — Training Centres & EdTech
+
+> Status: accepted · Reviewed: 2026-10-15 · Last updated: 2026-10-15
+
+## 1. Summary
+
+Licensed training institutes and tutoring centres in the UAE sell courses, session packages
+and monthly memberships for professional certification, languages, IT skills, test
+preparation and school tutoring. They run admissions from WhatsApp, timetables in Excel or
+Google Sheets, attendance on paper, and collect fees by card terminal and bank transfer, with
+no clear view of unused sessions or overdue fees. The app runs the student journey from
+enquiry and trial class to enrolment, timetable, attendance, fees, light learning materials
+and certificates. Students, parents and corporate clients get a branded portal.
+
+## 2. Business context (UAE)
+
+- **Customer size:** 1–5 branches, 5–60 tutors (many part-time or freelance), 150–3,000
+  active students, 20–200 classes a week. Some also deliver corporate training cohorts for
+  companies.
+- **How they work today:** enquiries on WhatsApp and Instagram, a spreadsheet of students,
+  timetables shared as images, paper or Google Form attendance, fees tracked in the
+  accounting tool or a notebook, certificates designed in Word.
+- **Rules and practice that shape the work:**
+  - Training institutes and tutoring centres need a permit from their emirate's regulator:
+    **KHDA** in Dubai, including free zones such as DIFC (Executive Council Resolution 50 of
+    2015; permit valid one year, alongside the trade licence) ✔ [S1]; **ACTVET** in Abu Dhabi
+    (ADEK regulates schools) ✔ [S2]; **SPEA** in Sharjah, including its free zones ✔ [S3].
+    For the other emirates, MoHESR enforced in 2025 [S4]. Its 2024 inspection framework
+    says training providers outside Abu Dhabi and Dubai are licensed by the local
+    authorities, with MoHESR accreditation only for programmes leading to national
+    qualifications; in Ras Al Khaimah the Department of Knowledge regulates private
+    education, and RAKEZ licenses centres in its free zone ✔ [S11], [S12]. The licensing body
+    for a training centre in Ajman, Umm Al Quwain or Fujairah is confirmed per client
+    `⚠ open: authority (AU-13)`.
+  - In Dubai **each programme needs KHDA approval**; a single course can be authorised
+    with the instructor's ID and CV. There is no separate trainer licence. Certificates of
+    KHDA-authorised courses can be **attested by KHDA**; the law sets no wording, so a
+    certificate must not claim an approval the course lacks. Advertisements need approval
+    (misleading ads fined AED 25,000) (Administrative Resolution 2 of 2018) ✔ [S5].
+  - **Fees and refunds:** KHDA requires fees to be declared before an activity runs, but sets
+    no refund rule for training institutes; learners must be settled only if an
+    authorisation is revoked ✔ [S1], [S5]. Refunds follow the centre's own published policy
+    and consumer law.
+  - **Private tutors** working outside a licensed centre need the free MoHRE private tutor
+    permit (since December 2023, valid two years, good-conduct certificate and code of
+    conduct required) ✔ [S6]. It is a personal permit; a centre's own tutors are covered by
+    the centre's permit and their employment or freelance status, which the centre checks.
+  - Many students are **minors**: a parent or guardian enrols, pays and receives reports.
+    No training-centre rule on police clearance was found; the app tracks a good-conduct
+    certificate for staff working with minors as best practice (child protection policy
+    and Wadeema Law 3 of 2016 may apply) [S7].
+  - Pricing is a mix of **course fees** (upfront or in instalments), **session packages**
+    (e.g. 10 sessions within 3 months), **monthly memberships**, and **corporate cohorts**
+    invoiced to a company.
+  - **VAT:** training courses, test preparation and private tutoring are standard-rated at
+    5%. Zero-rating needs a qualifying institution and a recognised curriculum, read
+    narrowly; a KHDA permit alone does not qualify (FTA education guide VATGED1, June
+    2026) ✔ [S8].
+
+## 3. Users and access
+
+Follows [ACCESS-CONTROL.md](../ACCESS-CONTROL.md). Platform-wide rules (`PLT.ACL.*`) are not
+repeated here.
+
+### 3.1 Roles
+
+| Role | Actor type | What they do | Permissions (summary) | Typical scope |
+|---|---|---|---|---|
+| Company admin / owner | staff | Configures the company, branches, fees, users; sees all figures | all | global |
+| Centre manager | staff | Runs a campus: timetable, tutors, discounts and refunds approval, reports | batches, enrolments, approvals, reports | campus |
+| Admissions counsellor (front desk) | staff | Enquiries, trial classes, enrolments, fee collection at the desk | leads, bookings, enrolments, payments (record) | campus |
+| Academic coordinator | staff | Course structure, batches, tutor and room allocation, assessments, certificates | courses, batches, timetable, grades (approve), certificates | campus or course |
+| Tutor / trainer | staff (or freelance) | Teaches sessions, marks attendance, publishes materials and assignments, grades | `sessions.teach`, attendance, materials, grading on assigned batches | assigned batches |
+| Accountant | staff | Invoices, subscriptions, refunds, tutor pay, receivables | finance, tutor pay | global |
+| Student (adult) | external | Sees timetable, materials, assignments, grades, certificates, invoices; books trial or make-up sessions; pays | portal: own learning and fees | own enrolments |
+| Parent / guardian | external | Enrols and pays for minors, sees attendance and progress reports | portal: dependants' learning and fees | own dependants |
+| Corporate client contact | external | Sees cohort attendance, results and invoices for their employees (Later) | portal: corporate | own company |
+
+### 3.2 Scope
+
+The scope unit is the **campus** (branch). A tutor's access comes from **assignment** to
+batches (`ASG`), not from a campus role, so a tutor teaching at two campuses sees only their
+batches at both. Academic coordinators may be scoped to a **course** across campuses.
+Company admins and accountants are usually global. External users have no scope; access
+comes from party ownership (`OWN`) and guardian links.
+
+### 3.3 Access rules
+
+| ID | Rule | Pattern | Applies to | Parameter (default) |
+|---|---|---|---|---|
+| `EDU.ACL.01` | A student sees only their own enrolments, sessions, materials of enrolled batches, grades, certificates and invoices | `OWN` | student | — |
+| `EDU.ACL.02` | A guardian sees the records of linked dependants only; a dependant under the age of majority has no portal login of their own for payments | `OWN` | guardian, student | — |
+| `PTY.ACL.01` *(shared)* | Guardian access ends when the dependant reaches the age of majority | `TIM` | guardian | 18 years (Decree-Law 25 of 2025) |
+| `EDU.ACL.03` | A tutor sees only batches assigned to them; for minors, the tutor sees names but not phone numbers, email or ID | `ASG`, `FLD` | tutor | — |
+| `EDU.ACL.04` | A tutor can mark or change attendance only until a time after the session ends; later changes need the coordinator | `TIM` | tutor | 24 hours |
+| `EDU.ACL.05` | Published grades are locked; changing one needs the coordinator's approval | `STA`, `LIM` | tutor, coordinator | — |
+| `EDU.ACL.06` | A certificate is issued only when the completion criteria are met (attendance and assessment) | `STA` | coordinator | attendance ≥ 80%, assessment passed |
+| `SAL.ACL.02` *(shared, formerly `EDU.ACL.07`)* | A discount above a threshold needs the centre manager's approval | `LIM` | counsellor, accountant | 10% |
+| `FIN.ACL.04` *(shared, formerly `EDU.ACL.08`)* | The user who records a refund cannot approve it | `SOD` | counsellor, accountant | on |
+| `EDU.ACL.09` | Minors' personal data (date of birth, ID, photos, learning-support notes) needs `students.sensitive.view`; each view is audited | `SEN` | all staff | — |
+| `EDU.ACL.10` | A corporate client contact sees only the enrolments, attendance and results of their own employees | `OWN` | corporate contact | — |
+| `EDU.ACL.11` | Tutor pay rates are visible only to the accountant, centre manager and the tutor themself | `FLD` | all staff | — |
+| `EDU.ACL.12` | An online class link is visible only to enrolled students, from a short time before the session | `OWN`, `TIM` | student | 30 minutes before |
+| `EDU.ACL.13` | An enrolment with an attended session cannot be deleted; it ends through `withdraw` or `transfer` | `STA` | all staff | — |
+| `EDU.ACL.14` | A tutor is assigned to a batch, a session or a one-to-one booking only if `qualification_valid` passes on every session date for the kinds the course requires (police clearance when minors are enrolled; MoHRE private tutor permit or freelance visa for freelance tutors). Override per §9 | `STA` | coordinator, counsellor | — |
+| `EDU.ACL.15` | Terminating a running batch is requested by the coordinator and approved by the centre manager; refunds from it follow `FIN.ACL.04` | `SOD` | coordinator, centre manager | — |
+| `EDU.ACL.16` | Correcting attendance of a `held` session after the tutor's window (`EDU.ACL.04`) needs the coordinator and a reason; a change that affects an issued certificate goes through certificate `reissue` or `revoke` | `STA` | coordinator | — |
+| `EDU.ACL.17` | Seats are taken atomically: an enrolment or seat hold is refused when active, frozen and held enrolments reach the batch capacity; only the centre manager may exceed capacity, up to the room's limit | `STA`, `LIM` | counsellor, portal | — |
+| `FIN.ACL.06` *(shared)* | A cash shortage at the desk is written off only with approval | `LIM` | counsellor, accountant | AED 0 |
+
+## 4. Value streams
+
+### 4.1 Enquiry to enrolment
+
+1. An enquiry comes in from the website, WhatsApp, a walk-in or a referral and is recorded
+   as a lead with the course of interest (`SAL.CRM.01`).
+2. The counsellor qualifies it (level, goals, schedule) and books a trial class or placement
+   test, from the desk or by self-booking in the portal (`EDU.TRL.01`, `SCH.BKG.01`,
+   `SCH.SLF.01`).
+3. A reminder goes out before the trial. Attendance or no-show is recorded (`SCH.RMD.01`).
+4. The student (or a guardian for a minor) is registered as a party, with guardian links
+   (`PTY.PTY.01`, `PTY.REL.01`).
+5. The student is enrolled in a batch, a session package or a membership, at the catalogue
+   price minus any discount (`EDU.ENR.01`, `SAL.PKG.01`, `SAL.CAT.01`, `SAL.DSC.01`).
+6. Terms, refund policy and (for minors) photo and data consent are accepted electronically
+   (`DOC.SIG.01`).
+7. Fees are billed: upfront, in instalments, or as a monthly subscription. The first payment
+   is taken online or at the desk (`FIN.BIL.01`, `FIN.SUB.01`, `FIN.INV.01`,
+   `FIN.PAY.01`, `FIN.PAY.02`).
+8. Portal access is created for the student and/or guardian (`POR.SLF.01`).
+
+**When it goes wrong:**
+
+| Situation | What happens |
+|---|---|
+| The first payment never arrives | The seat is held in `pending_payment` for N hours (default 48). `EDU.RUL.11` then runs `lapse`: the seat is released, the payment link is cancelled and the guardian is told. An online payment still `pending` is settled by `FIN.RUL.19`; a payment that arrives after the lapse is refunded automatically (wl-payments `late_confirm`) unless the counsellor re-enrols the student while a seat is free |
+| The online payment fails | The enrolment stays `pending_payment`; the guardian gets a new payment link; the seat hold keeps running |
+| Two people take the last seat | Seats are taken atomically (`EDU.ACL.17`); the second attempt is refused and offered another batch or the waiting list |
+| The payer is blocked (`PartyBlocked`) | Enrolment block effect: pause through `freeze` without the freeze-day limit; the seat is kept; the centre manager decides any `withdraw`; refunds wait (`PTY.ACL.03`) |
+| A message to a guardian cannot be delivered | `NTF.RUL.01`: the message goes to the other guardian (`alternative_recipient`), then a task to the counsellor |
+
+### 4.2 Timetable to delivery
+
+1. The coordinator defines courses with levels, modules and hours (`EDU.CRS.01`), and
+   records regulator approvals where required (`EDU.CRS.02`).
+2. Batches are planned with capacity, start and end dates, a weekly pattern, a tutor and a
+   room. Availability of rooms and tutors is checked (`EDU.BAT.01`, `SCH.RES.01`).
+3. Sessions are generated from the weekly pattern, skipping public holidays (`EDU.BAT.01`).
+4. The tutor marks attendance per session, from a phone or the classroom PC (`EDU.ATT.01`).
+5. Each attended session consumes a credit from a package where applicable (`SAL.PKG.01`).
+6. Absent students can book a make-up session in another batch, or transfer
+   (`EDU.MKP.01`).
+7. Cancelled or rescheduled sessions are announced to students and guardians
+   (`NTF.MSG.01`, `NTF.MSG.02`).
+
+**When it goes wrong:**
+
+| Situation | What happens |
+|---|---|
+| A tutor's police clearance or permit will expire | `DOC.RUL.02` looks 30 days ahead; `EDU.RUL.12` lists the tutor's batches, sessions and one-to-one bookings after the expiry date and gives the coordinator a task to change the tutor. On expiry the tutor cannot be assigned or teach (`EDU.ACL.14`); open conflicts H hours before a session go to the centre manager |
+| A tutor is sick or leaves | Same-day sick leave or a manual block raises conflicts (wl-scheduling §5.5): the coordinator runs `change_tutor` on the batch or session, or cancels the session with a make-up. One-to-one bookings are reassigned or rescheduled; a business-initiated cancel refunds any deposit in full |
+| The course approval or centre permit expires | `batch.open` and `certificate.issue` are blocked (§9). `EDU.RUL.13` tells the centre manager and the owner about running batches; whether a running batch may finish under an expired approval is `⚠ open: authority (AU-25)` |
+| A running batch must stop | Batch `terminate` (`EDU.ACL.15`): remaining sessions cancelled; each enrolment is transferred to another batch or withdrawn with a refund of the unused sessions without admin fee; students and guardians told. If the regulator revoked the authorisation, learners must be settled ✔ [S1], [S5] |
+| Attendance was marked wrong | Within 24 hours the tutor corrects it; later the coordinator runs `correct_attendance` with a reason (`EDU.ACL.16`). Credits are reversed or consumed, completion is re-evaluated, and a locked tutor timesheet is corrected by an adjustment |
+| A student is absent | The catalogue item's absence policy decides: by default an unexcused absence consumes a package credit; an absence notified at least N hours before (default 24) is *excused*, consumes nothing and gives a make-up right. Memberships consume nothing |
+
+### 4.3 Fees to cash
+
+1. Instalments and memberships create invoices on their due dates (`FIN.BIL.01`,
+   `FIN.SUB.01`, `FIN.INV.01`).
+2. Card payments renew automatically. Failed payments are retried and the student or
+   guardian is notified (`FIN.SUB.01`, `FIN.RUL.06`).
+3. Overdue fees appear in ageing, and reminders go out (`FIN.REC.01`, `FIN.RUL.01`).
+4. A withdrawal calculates the refund per policy (`EDU.REF.01`). The refund is approved and
+   paid (`FIN.ACL.04`, `PLT.APR.01`, `FIN.PAY.01`).
+5. Corporate cohorts are quoted and invoiced to the company (`FIN.QUO.01`, `FIN.INV.01`).
+6. Cash and cheques taken at the desk are handed over per counsellor per day and counted by
+   another user (`FIN.CSH.01`).
+
+**When it goes wrong:**
+
+| Situation | What happens |
+|---|---|
+| A student withdraws | `withdraw` calculates the refund per the accepted policy. A credit note covers the paid amount not used; scheduled instalments are cancelled; a membership is `cancel`led; a package is `refund`ed. If the sessions used plus fees exceed what was paid, an invoice for the amount owed is issued instead. The refund is approved by another user (`FIN.ACL.04`) |
+| The refund fails | `FIN.RUL.21` retries once, then the accountant pays by another method; the credit note balance is restored meanwhile |
+| A card payment is charged back | The payment is reversed and the invoice reopened (`InvoiceReopened`); a membership goes `past_due`; for a course fee the counsellor gets a task. Evidence is collected under `FIN.RUL.20` |
+| The membership is paused | Pausing the subscription freezes the enrolment and the other way round (`EDU.RUL.14`); the pause allowance applies |
+| The desk cash is short | Recovered from the counsellor or written off with approval (`FIN.ACL.06`, AED 0); salary recovery is off by default |
+| A corporate invoice is disputed or the e-invoice is rejected | Invoice `dispute` (corporate contacts may raise it in the portal: off until the corporate portal ships); e-invoice rejection by `FIN.RUL.16`. Write-off needs approval (`FIN.ACL.15`, AED 0) |
+
+### 4.4 Learning and certification
+
+1. The tutor publishes materials per course or session: files, links, videos
+   (`EDU.LMS.01`).
+2. Assignments are set with due dates. Students submit in the portal, and the tutor grades
+   and comments (`EDU.LMS.02`).
+3. Assessments and exams are recorded in the gradebook. Results are published
+   (`EDU.ASM.01`).
+4. Progress reports go to students, guardians or corporate clients at set intervals
+   (`EDU.PRG.01`).
+5. When the completion criteria are met, a certificate is generated in EN/AR with a
+   verification code and QR. Anyone can verify it on a public page (`EDU.CRT.01`,
+   `DOC.GEN.01`).
+
+**When it goes wrong:**
+
+| Situation | What happens |
+|---|---|
+| A name or date is wrong, or a result changed | Certificate `reissue`: the old one becomes `superseded` (the public page points to the new number) and a new draft is issued |
+| A copy is lost | A copy of the same certificate is generated; nothing changes in its state |
+| The certificate was issued in error or by misconduct | `revoke` |
+
+### 4.5 Tutor time to pay
+
+1. Sessions taught are collected per tutor and period (`HRM.TMS.01`).
+2. Employed tutors' hours go to payroll (`HRM.PAY.01`, Later). Freelance tutors submit a bill
+   for their sessions (`FIN.PAB.01`).
+3. Tutor documents (permit, police clearance, qualification) are tracked for expiry and
+   guard assignments (`HRM.EMP.01`, `HRM.QUA.01`, `DOC.EXP.01`, `EDU.ACL.14`).
+4. Sessions corrected after the timesheet is locked reach the tutor's pay through an
+   adjustment timesheet (`HRM.ACL.08`).
+
+## 5. Capabilities
+
+| ID | Capability | Shared or specific | Proposed module | Scope |
+|---|---|---|---|---|
+| `PLT.ORG.01` | Branded deployment | shared | wl-kernel | MVP |
+| `PLT.USR.01` | Staff users, roles, permissions scoped per campus | shared | Renox Permissions | MVP |
+| `PLT.AUD.01` | Audit trail | shared | Renox Audit | MVP |
+| `PLT.APR.01` | Approval requests (discounts, refunds, grade changes) | shared | wl-kernel | MVP |
+| `PLT.WFL.01` | State machines with history | shared | Renox (R12) + wl-kernel | MVP |
+| `PLT.ATM.01` | Default automation rules | shared | wl-kernel | MVP |
+| `PLT.HOK.01` | Outbound webhooks | shared | Renox (R11) | Later |
+| `PTY.PTY.01` | Parties: students, guardians, corporate clients, freelance tutors | shared | wl-parties | MVP |
+| `PTY.CNS.01` | Consent records: guardian consent for minors' data and photos, marketing opt-in | shared | wl-parties | MVP |
+| `PTY.KYC.01` | Identity fields: Emirates ID, passport, trade licence, TRN | shared | wl-parties | MVP |
+| `PTY.REL.01` | Guardian–dependant relationships with delegated access and billing | shared | wl-parties | MVP |
+| `DOC.FIL.01` | Attach documents to any record | shared | wl-documents | MVP |
+| `DOC.EXP.01` | Expiry reminders (centre permit, course approvals, tutor permits, police clearance) and blocks on expiry | shared | wl-documents | MVP |
+| `DOC.GEN.01` | Generate documents (enrolment form, receipt, progress report, certificate) | shared | wl-documents | MVP |
+| `DOC.SIG.01` | E-signature / consent capture (terms, refund policy, guardian consent) | shared | wl-documents | MVP |
+| `FIN.BIL.01` | Instalment schedule from an enrolment | shared | wl-invoicing | MVP |
+| `FIN.INV.01` | Tax invoices with VAT | shared | wl-invoicing | MVP |
+| `FIN.PAY.01` | Record and allocate payments (card terminal, cash, transfer) | shared | wl-payments | MVP |
+| `FIN.PAY.02` | Online payment by link or card from the portal | shared | wl-payments | MVP |
+| `FIN.CSH.01` | Cash custody: desk cash and cheques per counsellor per day, handover, shortages | shared | wl-payments | MVP |
+| `FIN.SUB.01` | Monthly memberships billed automatically | shared | wl-invoicing (+ renox-billing via wl-payments) | MVP |
+| `SAL.DSC.01` | Discounts: sibling, early-bird, corporate, scholarship, promo codes | shared | wl-sales | MVP |
+| `FIN.REC.01` | Receivables ageing and reminders | shared | wl-invoicing | MVP |
+| `FIN.QUO.01` | Quotations for corporate cohorts | shared | wl-invoicing | Later |
+| `FIN.PAB.01` | Bills from freelance tutors | shared | wl-invoicing | MVP |
+| `FIN.EXT.01` | Export to accounting software | shared | wl-invoicing | Later |
+| `SAL.CRM.01` | Leads and enquiries pipeline | shared | wl-sales | MVP |
+| `SAL.CAT.01` | Catalogue of courses, packages and memberships with price lists | shared | wl-sales | MVP |
+| `SCH.RES.01` | Resources and availability (tutors, rooms) | shared | wl-scheduling | MVP |
+| `SCH.BKG.01` | Bookings from the desk (trial classes, placement tests, 1:1 sessions) | shared | wl-scheduling | MVP |
+| `SCH.SLF.01` | Online self-booking from the portal (trials, make-ups) | shared | wl-scheduling | Later |
+| `SCH.RMD.01` | Booking reminders and no-show handling | shared | wl-scheduling | MVP |
+| `HRM.EMP.01` | Tutor records with documents, qualifications and permits | shared | wl-hr | MVP |
+| `HRM.QUA.01` | Tutor qualifications (police clearance, teaching permit) with a validity guard on assignments | shared | wl-hr | MVP |
+| `HRM.TMS.01` | Tutor timesheets from sessions taught | shared | wl-attendance | MVP |
+| `HRM.LEV.01` | Tutor leave and substitute cover | shared | wl-hr | Later |
+| `HRM.PAY.01` | Payroll calculation for employed tutors | shared | wl-hr | Later |
+| `POR.SLF.01` | Student and guardian portal | shared | wl-portal | MVP |
+| `POR.SLF.02` | Corporate client portal | shared | wl-portal | Later |
+| `NTF.MSG.01` | Email notifications | shared | wl-notify | MVP |
+| `NTF.MSG.02` | WhatsApp notifications (main channel for guardians; email as fallback) | shared | wl-notify | MVP |
+| `NTF.MSG.03` | SMS notifications | shared | wl-notify | Later |
+| `RPT.DSH.01` | Role-based dashboards | shared | Renox charts + wl-kernel | MVP |
+| `PLT.ENT.01` | Legal entities: several trade licences and TRNs in one deployment; issuer on every document | shared | wl-kernel | MVP |
+| `PLT.IMP.01` | Data import and migration: Excel templates per entity, validation, dry run, rollback | shared | wl-kernel | MVP |
+| `PLT.SRC.01` | Global search across records, including Arabic names | shared | wl-kernel + Renox search | MVP |
+| `PLT.NOT.01` | Notes, comments and @mentions on any record, with an activity timeline | shared | wl-kernel | MVP |
+| `PLT.SSO.01` | Staff single sign-on with Microsoft 365 or Google Workspace | shared | Renox OAuth (renox-oauth) | Later |
+| `RPT.LIB.01` | Report library: filtered reports with export to Excel, CSV and PDF | shared | wl-kernel | MVP |
+| `RPT.SCH.01` | Scheduled reports sent by email | shared | wl-kernel | Later |
+| `FIN.VAT.01` | VAT summary per period and entity: output and input VAT, for the accountant | shared | wl-invoicing | MVP |
+| `FIN.EXP.01` | Expense claims and petty cash: submit with receipt, approve, reimburse, top up | shared | wl-payments | Later |
+| `FIN.BNK.01` | Bank statement import and matching of receipts to open invoices | shared | wl-payments | Later |
+| `WRK.FBK.01` | Customer feedback and ratings after a completed service; low ratings open a ticket | shared | wl-ticketing | Later |
+| `WRK.TKT.01` | Tickets opened from low ratings and complaints | shared | wl-ticketing | Later |
+| `EDU.CRS.01` | Course structure: programme, levels, modules, hours, prerequisites, delivery mode | specific | apps/edtech | MVP |
+| `EDU.CRS.02` | Regulator approvals for courses and trainers (permit numbers, expiry) | specific | apps/edtech | MVP |
+| `EDU.BAT.01` | Batches with capacity, weekly pattern, tutor, room; sessions generated around holidays | specific | apps/edtech | MVP |
+| `EDU.ENR.01` | Enrolments in batches, packages or memberships, with completion criteria | specific | apps/edtech | MVP |
+| `SAL.PKG.01` | Prepaid session packages: credits, consumption per attended session, expiry (formerly `EDU.PKG.01`) | shared | wl-sales | MVP |
+| `EDU.ATT.01` | Student attendance per session | specific | apps/edtech | MVP |
+| `EDU.MKP.01` | Make-up sessions and transfers between batches | specific | apps/edtech | MVP |
+| `EDU.TRL.01` | Trial classes and placement tests (required per catalogue item; score or level entered by the tutor, suggested batch) with conversion tracking | specific | apps/edtech | MVP |
+| `EDU.REF.01` | Withdrawal and refund calculation per policy (tiered default template, editable per catalogue item) | specific | apps/edtech | MVP |
+| `EDU.LMS.01` | Learning materials per course and session | specific | apps/edtech | MVP |
+| `EDU.LMS.02` | Assignments, submissions, grading and feedback | specific | apps/edtech | Later |
+| `EDU.ASM.01` | Assessments, exams and gradebook | specific | apps/edtech | MVP |
+| `EDU.CRT.01` | Certificates with verification code, QR and public verification page | specific | apps/edtech | MVP |
+| `EDU.PRG.01` | Progress reports for students, guardians and corporate clients | specific | apps/edtech | Later |
+| `EDU.ONL.01` | Online class links per session (Zoom, Teams, Meet) | specific | apps/edtech | Later |
+| `EDU.RPT.01` | Reports: enrolments, conversion, utilisation, attendance, retention, revenue per course | specific | apps/edtech | MVP |
+
+*New* = a shared capability first needed by this vertical among verticals 03–10 (to be
+reconciled in [CAPABILITY-MAP.md](../CAPABILITY-MAP.md)).
+
+## 6. Key entities
+
+| Entity | Description | Important fields | Owned by |
+|---|---|---|---|
+| Party | Student, guardian, corporate client, freelance tutor | type, names EN/AR, date of birth, Emirates ID, contacts, guardian links | wl-parties |
+| Lead | An enquiry | source, course of interest, level, preferred times, owner, status | wl-sales |
+| Catalogue item | A sellable course, package or membership | type, course, sessions, validity, price, VAT category, refund policy, absence policy (unexcused absence consumes a credit: yes; notice for an excused absence: 24 h) | wl-sales |
+| Course | What is taught | programme, level, modules, hours, prerequisites, delivery mode, approval no. | apps/edtech |
+| Batch | One run of a course | course, campus, capacity, start/end, weekly pattern, tutor, room, termination reason, status | apps/edtech |
+| Session | One class meeting | batch, date, time, room, tutor, online link, status | apps/edtech |
+| Booking | A trial, placement test or 1:1 slot | resource(s), party, time, type, status | wl-scheduling |
+| Enrolment | A student in a batch, package or membership | student, payer, batch or package, price, discount, completion criteria, seat hold until, withdrawal refund or amount owed, status | apps/edtech |
+| Package balance | Credits of a session package (the *Package* in `wl-sales`) | enrolment, credits total/used, expiry | wl-sales |
+| Attendance | Presence at a session | session, student, present/absent/late/excused, make-up link | apps/edtech |
+| Material | Learning resource | course or session, file or link, visibility | apps/edtech |
+| Assignment / submission | Work set and handed in | assignment, student, files, grade, feedback, status | apps/edtech |
+| Assessment result | Score in a test or exam | assessment, student, score, pass/fail, published | apps/edtech |
+| Certificate | Proof of completion | enrolment, number, verification code, issued date, supersedes / superseded by, status | apps/edtech |
+| Subscription | Monthly membership | party, plan, billing day, payment method, status | wl-invoicing (+ wl-payments for card payments) |
+| Tutor | Teaching staff | party, employment type (employed or freelance), rate, qualifications, permit, police clearance | wl-hr |
+| Invoice, payment | Fees | see 01-property | wl-invoicing, wl-payments |
+
+## 7. Workflow
+
+Follows [WORKFLOW.md](../WORKFLOW.md). **Invoice** reuses the state machine in
+[01-property.md](01-property.md#71-state-machines) unchanged. **Quotation** (corporate
+cohorts) and **Timesheet** (tutor time) reuse [02-construction.md](02-construction.md#71-state-machines).
+
+### 7.1 State machines
+
+#### Lead *(shared — wl-sales)*
+
+> **Canonical definition:** *Lead* in [`wl-sales` §4](../modules/wl-sales.md#4-lifecycles). This section is this vertical's original requirement; where it differs, the module definition wins and its vertical mapping table records the difference.
+
+| State | Tone | Terminal | Meaning |
+|---|---|---|---|
+| `new` | neutral | no | Recorded, not yet contacted |
+| `contacted` | info | no | First contact made |
+| `qualified` | info | no | Need, level and schedule known; trial or offer next |
+| `won` | success | yes | Converted (here: enrolled) |
+| `lost` | neutral | yes | Not converting; reason recorded |
+
+| Transition | From | To | By | Guards | Effects |
+|---|---|---|---|---|---|
+| `contact` | new | contacted | `leads.manage` | contact note recorded | — |
+| `qualify` | contacted | qualified | `leads.manage` | course of interest and level set | — |
+| `win` | contacted, qualified | won | system (enrolment `activate`) | — | conversion recorded with source |
+| `lose` | new, contacted, qualified | lost | `leads.manage` | reason chosen | — |
+| `reopen` | lost | contacted | `leads.manage` | — | — |
+
+```mermaid
+stateDiagram-v2
+  [*] --> new
+  new --> contacted: contact
+  contacted --> qualified: qualify
+  contacted --> won: win
+  qualified --> won: win
+  new --> lost: lose
+  contacted --> lost: lose
+  qualified --> lost: lose
+  lost --> contacted: reopen
+  won --> [*]
+```
+
+#### Booking *(shared — wl-scheduling)*
+
+> **Canonical definition:** *Booking* in [`wl-scheduling` §4](../modules/wl-scheduling.md#4-lifecycles). `confirmed` here is the canonical `booked`. This section is this vertical's original requirement; where it differs, the module definition wins and its vertical mapping table records the difference.
+
+| State | Tone | Terminal | Meaning |
+|---|---|---|---|
+| `requested` | neutral | no | Requested from the portal; waiting for confirmation |
+| `confirmed` | info | no | Slot and resource reserved |
+| `completed` | success | yes | Took place |
+| `no_show` | error | yes | The party did not attend |
+| `cancelled` | neutral | yes | Cancelled by either side |
+
+| Transition | From | To | By | Guards | Effects |
+|---|---|---|---|---|---|
+| `confirm` | requested | confirmed | `bookings.manage` or system (auto-confirm setting) | resource free at that time; tutor eligible (`EDU.ACL.14`) | confirmation sent; reminders scheduled |
+| `book` | — (new) | confirmed | `bookings.manage` | resource free at that time; tutor eligible (`EDU.ACL.14`) | confirmation sent; reminders scheduled |
+| `reschedule` | confirmed | confirmed | `bookings.manage` or the party | new slot free; before the cut-off; tutor eligible on the new date | updated confirmation |
+| `reassign` | requested, confirmed | same state | `bookings.manage` | same time; new tutor free and eligible | party told the new tutor with accept, reschedule and cancel links (no reason given); conflict cleared |
+| `complete` | confirmed | completed | `bookings.manage` or the resource (tutor) | start time passed; tutor eligible today | event `BookingCompleted` |
+| `mark_no_show` | confirmed | no_show | `bookings.manage` or the resource | start time passed; no open conflict | event `BookingNoShow` |
+| `cancel` | requested, confirmed | cancelled | `bookings.manage` or the party | party: before the cut-off; reason code and *initiated by* recorded | resource released; party notified; business-initiated (tutor sick, tutor ineligible): any deposit refunded in full (`SCH.ACL.05`); a package credit is not consumed |
+
+```mermaid
+stateDiagram-v2
+  [*] --> requested
+  [*] --> confirmed: book
+  requested --> confirmed: confirm
+  confirmed --> confirmed: reschedule
+  requested --> requested: reassign
+  confirmed --> confirmed: reassign
+  confirmed --> completed: complete
+  confirmed --> no_show: mark_no_show
+  requested --> cancelled: cancel
+  confirmed --> cancelled: cancel
+  completed --> [*]
+  no_show --> [*]
+  cancelled --> [*]
+```
+
+Check-in is not used in 10, so cancel after check-in does not arise. One-to-one service
+types list the tutor kinds they require (police clearance when the student is a minor;
+private tutor permit or freelance visa for freelance tutors); `SCH.RUL.05` checks bookings
+D = 30 days ahead and raises `BookingConflict` (cause `eligibility`); `SCH.RUL.06` escalates
+an open conflict H = 2 hours before the start. No booking deposit by default; where a service
+type takes one, `SCH.ACL.05` applies.
+
+#### Subscription *(shared — wl-invoicing)*
+
+> **Canonical definition:** *Subscription* in [`wl-invoicing` §4](../modules/wl-invoicing.md#4-lifecycles). It belongs to `wl-invoicing`; automatic card charging goes through `wl-payments`. This section is this vertical's original requirement; where it differs, the module definition wins and its vertical mapping table records the difference.
+
+| State | Tone | Terminal | Meaning |
+|---|---|---|---|
+| `active` | success | no | Billed each period |
+| `past_due` | warning | no | A payment failed; retries running |
+| `paused` | neutral | no | Frozen for a period (travel, illness) |
+| `suspended` | error | no | Retries exhausted; access to sessions blocked |
+| `cancelled` | neutral | yes | Ended |
+
+| Transition | From | To | By | Guards | Effects |
+|---|---|---|---|---|---|
+| `fail_payment` | active | past_due | system (gateway; also a paid cycle invoice reopened by a chargeback) | — | party notified; retry schedule starts |
+| `recover` | past_due, suspended | active | system (payment succeeded) | — | access restored |
+| `suspend` | past_due | suspended | system | retries exhausted | enrolment access blocked; counsellor notified |
+| `pause` | active, past_due | paused | `subscriptions.manage`, or system (enrolment `freeze`, `PartyBlocked`) | pause within the allowed days per year (not for a block) | billing stops; end date extended; enrolment `freeze` (`EDU.RUL.14`) |
+| `resume` | paused | active | `subscriptions.manage` or system (pause end, enrolment `unfreeze`, `PartyUnblocked`) | — | billing resumes; enrolment `unfreeze` |
+| `cancel` | active, past_due, paused, suspended | cancelled | `subscriptions.manage`, the party, or system (enrolment `withdraw`) | notice period respected (not on withdrawal) | ends at period end, or at once on withdrawal with a pro rata credit; enrolment `complete` or `withdraw` |
+
+```mermaid
+stateDiagram-v2
+  [*] --> active
+  active --> past_due: fail_payment
+  past_due --> active: recover
+  suspended --> active: recover
+  past_due --> suspended: suspend
+  active --> paused: pause
+  past_due --> paused: pause
+  paused --> active: resume
+  active --> cancelled: cancel
+  past_due --> cancelled: cancel
+  paused --> cancelled: cancel
+  suspended --> cancelled: cancel
+  cancelled --> [*]
+```
+
+#### Batch
+
+| State | Tone | Terminal | Meaning |
+|---|---|---|---|
+| `planned` | neutral | no | Being scheduled; not visible to students |
+| `open` | info | no | Open for enrolment |
+| `running` | success | no | Sessions in progress |
+| `completed` | success | yes | Last session held; results being finalised |
+| `cancelled` | neutral | yes | Did not run |
+| `terminated` | error | yes | Stopped after it started; remaining sessions cancelled |
+
+| Transition | From | To | By | Guards | Effects |
+|---|---|---|---|---|---|
+| `open` | planned | open | `batches.manage` | tutor and room available for every session; `document_valid` for the centre permit and the course approval where required (§9); tutor passes `EDU.ACL.14` on every session date | sessions generated; listed in the catalogue |
+| `change_tutor` | open, running | same state | `batches.manage` | from a date; the new tutor is free and passes `EDU.ACL.14` on every remaining session date | remaining sessions reassigned; students and guardians told; conflicts on the old tutor cleared |
+| `start` | open | running | system (first session date) | — | — |
+| `complete` | running | completed | system (last session held) or `batches.manage` | all session attendance submitted | completion criteria evaluated per enrolment |
+| `cancel` | planned, open | cancelled | `batches.manage` | reason given | enrolments transferred, or withdrawn with a full refund including the registration fee (business-initiated); parties notified |
+| `terminate` | running | terminated | `batches.manage`, approved by the centre manager (`EDU.ACL.15`) | reason (tutor unavailable, approval expired or revoked, venue, too few students) | remaining sessions cancelled; each `active` or `frozen` enrolment transferred (seat in the target batch) or withdrawn with the unused sessions refunded pro rata without admin fee; tutor paid only for sessions taught; students and guardians told; centre manager and owner told when the reason is regulatory |
+
+```mermaid
+stateDiagram-v2
+  [*] --> planned
+  planned --> open: open
+  open --> open: change_tutor
+  running --> running: change_tutor
+  open --> running: start
+  running --> completed: complete
+  planned --> cancelled: cancel
+  open --> cancelled: cancel
+  running --> terminated: terminate
+  completed --> [*]
+  cancelled --> [*]
+  terminated --> [*]
+```
+
+#### Enrolment
+
+| State | Tone | Terminal | Meaning |
+|---|---|---|---|
+| `pending_payment` | warning | no | Seat held; first payment or approval outstanding |
+| `active` | success | no | Attending |
+| `frozen` | neutral | no | Paused at the student's request, with a membership pause, or while the payer is blocked; package expiry extended |
+| `completed` | success | yes | Course ended or package used up |
+| `withdrawn` | neutral | yes | Left early; refund or amount owed settled |
+| `transferred` | neutral | yes | Moved to another batch (a new enrolment exists) |
+| `lapsed` | neutral | yes | Seat hold expired without payment |
+
+| Transition | From | To | By | Guards | Effects |
+|---|---|---|---|---|---|
+| `activate` | pending_payment | active | system (first payment) or `enrolments.manage` | terms accepted (`DOC.SIG.01`); discount approved if above limit | portal access; lead `win`; seat confirmed |
+| `lapse` | pending_payment | lapsed | system (`EDU.RUL.11`) | no payment N hours after the hold | seat released; open payment link cancelled; guardian told; a later payment is refunded automatically |
+| `freeze` | active | frozen | `enrolments.manage`, or system (subscription `pause`, `PartyBlocked`) | within the allowed freeze days (not for a block) | package `extend`; membership `pause` (`EDU.RUL.14`) |
+| `unfreeze` | frozen | active | `enrolments.manage` or system (freeze end, subscription `resume`, `PartyUnblocked`) | — | membership `resume` |
+| `complete` | active | completed | system (batch `complete` or credits used up) | — | certificate evaluated (`EDU.ACL.06`) |
+| `withdraw` | pending_payment, active, frozen | withdrawn | `enrolments.manage`, or system (batch `terminate` when no transfer is chosen) | refund calculated per policy (`EDU.REF.01`), or per batch `terminate`; approval per `FIN.ACL.04`; party not blocked, or a compliance exception (`PTY.ACL.03`) | credit note for the paid amount not used; future instalments cancelled; membership `cancel`led at once; package `refund`ed; refund paid (`wl-payments`); if used sessions and fees exceed what was paid, an invoice for the amount owed; seat released |
+| `transfer` | active, frozen | transferred | `enrolments.manage`, or system (batch `terminate`) | target batch has a seat (`EDU.ACL.17`) | new `active` enrolment with remaining credits or balance |
+
+```mermaid
+stateDiagram-v2
+  [*] --> pending_payment
+  pending_payment --> active: activate
+  pending_payment --> lapsed: lapse
+  active --> frozen: freeze
+  frozen --> active: unfreeze
+  active --> completed: complete
+  pending_payment --> withdrawn: withdraw
+  active --> withdrawn: withdraw
+  frozen --> withdrawn: withdraw
+  active --> transferred: transfer
+  frozen --> transferred: transfer
+  completed --> [*]
+  withdrawn --> [*]
+  transferred --> [*]
+  lapsed --> [*]
+```
+
+A paid course fee reopened by a chargeback (`InvoiceReopened`) does not change the
+enrolment by itself; the counsellor gets a task to collect or `withdraw`. A refund that
+fails (`RefundFailed`) leaves the enrolment `withdrawn` and restores the credit note balance.
+
+#### Session
+
+| State | Tone | Terminal | Meaning |
+|---|---|---|---|
+| `scheduled` | info | no | Planned with tutor, room and time |
+| `held` | success | no | Took place; attendance submitted; can be corrected |
+| `cancelled` | neutral | yes | Did not take place; a make-up may be added |
+
+| Transition | From | To | By | Guards | Effects |
+|---|---|---|---|---|---|
+| `reschedule` | scheduled | scheduled | `batches.manage` | tutor and room free at the new time; tutor passes `EDU.ACL.14` on the new date | students and guardians notified |
+| `change_tutor` | scheduled | scheduled | `batches.manage`, or system (batch `change_tutor`) | new tutor free and passes `EDU.ACL.14` on the date | students and guardians told; conflict cleared |
+| `submit_attendance` | scheduled | held | `sessions.teach` (`EDU.ACL.03`, `EDU.ACL.04`) | start time passed; every enrolled student marked | package credits consumed per the absence policy; absences evaluated (`EDU.RUL.02`); session flagged for the centre manager if the tutor failed `EDU.ACL.14` that day |
+| `correct_attendance` | held | held | `sessions.teach` within 24 hours, then the coordinator (`EDU.ACL.16`) | reason given | credits `reverse`d or consumed; completion re-evaluated; guardian told when an absence alert was sent; tutor timesheet adjusted (adjustment when locked) |
+| `cancel` | scheduled | cancelled | `batches.manage` | reason given | students notified; no credits consumed; optional make-up session added to the batch |
+
+```mermaid
+stateDiagram-v2
+  [*] --> scheduled
+  scheduled --> scheduled: reschedule
+  scheduled --> scheduled: change_tutor
+  scheduled --> held: submit_attendance
+  held --> held: correct_attendance
+  scheduled --> cancelled: cancel
+  cancelled --> [*]
+```
+
+#### Submission
+
+| State | Tone | Terminal | Meaning |
+|---|---|---|---|
+| `assigned` | neutral | no | Set for the student, not handed in |
+| `submitted` | info | no | Handed in |
+| `returned` | warning | no | Sent back for resubmission |
+| `graded` | success | yes | Grade and feedback published |
+| `missed` | error | yes | Due date passed without submission (after grace) |
+
+| Transition | From | To | By | Guards | Effects |
+|---|---|---|---|---|---|
+| `submit` | assigned, returned | submitted | the student | before the due date plus grace | tutor notified |
+| `return` | submitted | returned | `sessions.teach` | feedback given | student notified |
+| `grade` | submitted | graded | `sessions.teach` | grade within the scale | grade added to the gradebook |
+| `miss` | assigned | missed | system | due date plus grace passed | student and guardian notified |
+
+```mermaid
+stateDiagram-v2
+  [*] --> assigned
+  assigned --> submitted: submit
+  returned --> submitted: submit
+  submitted --> returned: return
+  submitted --> graded: grade
+  assigned --> missed: miss
+  graded --> [*]
+  missed --> [*]
+```
+
+#### Certificate
+
+| State | Tone | Terminal | Meaning |
+|---|---|---|---|
+| `draft` | neutral | no | Generated for review |
+| `issued` | success | no | Published; verifiable on the public page |
+| `superseded` | neutral | yes | Replaced by a reissued certificate; the public page points to the new one |
+| `revoked` | error | yes | Withdrawn (error or misconduct); the public page says so |
+
+| Transition | From | To | By | Guards | Effects |
+|---|---|---|---|---|---|
+| `issue` | draft | issued | `certificates.issue` | `EDU.ACL.06` criteria met; `document_valid` for the course approval when the certificate states it (§9) | number and verification code assigned; PDF in the portal |
+| `reissue` | issued | superseded | `certificates.issue` | reason (name or date correction, changed result); the corrected data saved | new draft created with a new number, linked to the old one; student notified when the new one is issued |
+| `revoke` | issued | revoked | `certificates.revoke` (company admin) | reason given | public verification shows *revoked*; student notified |
+
+```mermaid
+stateDiagram-v2
+  [*] --> draft
+  draft --> issued: issue
+  issued --> superseded: reissue
+  issued --> revoked: revoke
+  superseded --> [*]
+  revoked --> [*]
+```
+
+### 7.2 Automations
+
+Reused unchanged: `FIN.RUL.01`–`02` (fee reminders, overdue) from
+[01-property.md](01-property.md#72-automations), `DOC.RUL.01` (centre permit, course
+approvals, tutor permits, police clearance). Also used from the modules with their defaults:
+`DOC.RUL.02`–`03` (look-ahead 30 days, expiry), `SCH.RUL.05` (D = 30) and `SCH.RUL.06`
+(H = 2 h) for one-to-one bookings, `FIN.RUL.15`–`16` (corporate invoices), `FIN.RUL.19`–`21`
+(pending payments, chargebacks, failed refunds), `NTF.RUL.01` (guardian messages:
+`alternative_recipient`, then a task to the counsellor), `PLT.RUL.04`–`06`.
+
+**Compliance-critical** (`PLT.RUL.04`: a failure alerts the company owner and the admin at
+once): `DOC.RUL.03`, `EDU.RUL.12`, `EDU.RUL.13`.
+
+| ID | When | If | Then | Parameters (default) | Default | Scope |
+|---|---|---|---|---|---|---|
+| `EDU.RUL.01` | N hours before a session | session `scheduled` | remind enrolled students (and guardians of minors) | N = 24 | on | MVP |
+| `EDU.RUL.02` | session → `held` | a student has been absent N sessions in a row | notify coordinator and guardian | N = 2 | on | MVP |
+| `SAL.RUL.03` *(shared, formerly `EDU.RUL.03`)* | package credit used | credits remaining ≤ N | notify student or guardian with a renewal link | N = 2 | on | MVP |
+| `SAL.RUL.02` *(shared, formerly `EDU.RUL.04`)* | N days before package expiry | unused credits > 0 | notify student or guardian | N = 14 | on | MVP |
+| `EDU.RUL.05` | N days before batch start | batch `open`, enrolments below the minimum | notify coordinator to decide: run, merge or cancel | N = 7; minimum = 5 | on | MVP |
+| `EDU.RUL.06` | enrolment → `completed` | completion criteria met | generate a certificate draft; notify coordinator | auto-issue = off | on | MVP |
+| `EDU.RUL.07` | N days before an assignment due date | submission `assigned` | remind the student | N = 1 | on | Later |
+| `EDU.RUL.08` | N hours after a session's end | session still `scheduled` | notify the tutor, then the coordinator | N = 2 | on | MVP |
+| `EDU.RUL.09` | booking (trial) → `completed` | no enrolment within N days | create a follow-up task for the counsellor | N = 3 | on | MVP |
+| `EDU.RUL.10` | schedule: monthly on day D | — | collect sessions taught per tutor into timesheets; notify accountant | D = 1 | on | MVP |
+| `SCH.RUL.01` *(shared)* | N hours before a booking | booking `confirmed` | remind the party | N = 24, 2 | on | MVP |
+| `FIN.RUL.06` *(shared)* | subscription → `past_due` | — | retry the payment on a schedule; notify the party each time; `suspend` after the last retry | retries at 1, 3, 7 days | on | MVP |
+| `EDU.RUL.11` | N hours after an enrolment is created | still `pending_payment`; no payment `pending` at the gateway | `lapse` the enrolment; release the seat; cancel the payment link; tell the student or guardian and the counsellor | N = 48 | on | MVP |
+| `EDU.RUL.12` | `DocumentExpiring`, `DocumentExpired`, `QualificationExpired`, `LeaveApproved` or `EmployeeNoticeGiven` for a tutor; daily | the tutor is assigned to sessions or one-to-one bookings within D days on or after the date | flag the sessions; task to the coordinator to `change_tutor` or reschedule; if still unresolved H hours before a session, notify the centre manager | D = 30; H = 24 | on | MVP |
+| `EDU.RUL.13` | `DocumentExpiring` or `DocumentExpired` for the centre permit or a course approval | — | list the batches of that course (or campus): `open` ones can take no new `open` and issue no certificate; tell the coordinator, the centre manager and the owner; renewal task | look-ahead 60 days | on | MVP |
+| `EDU.RUL.14` | subscription `pause` or `resume`; enrolment `freeze` or `unfreeze` | the membership and the enrolment belong together and the other side is not already in that state | run the matching transition on the other side | — | on | MVP |
+
+## 8. Integrations
+
+| System | Purpose | Required for MVP | Access / notes |
+|---|---|---|---|
+| Payment gateway (Stripe, N-Genius, Telr) | Online fees, recurring card payments | Yes | renox-billing has Stripe/Xendit; a UAE gateway needs the gateway trait. N-Genius and Telr both support recurring payments (Telr with a token vault) ✔ [S9] |
+| Email | Notifications, receipts, certificates | Yes | Renox mail |
+| WhatsApp Business (via a BSP) | Reminders, absence alerts, invoices and announcements to guardians | Yes | Template approval through the BSP; email fallback |
+| Video meetings (Zoom, Teams, Google Meet) | Online and hybrid classes | No (Later): links pasted per session in the MVP | APIs to create meetings automatically |
+| Regulator e-services (KHDA, ACTVET, SPEA) | Permits, course and trainer approvals | No: recorded manually | No integration API; KHDA open data on Dubai Pulse only ✔ [S10] |
+| Calendar (ICS feed) | Timetable in students' and tutors' calendars | No (Later) | — |
+| Accounting software | Ledger | No (Later): CSV export first | — |
+| E-invoicing service provider (ASP) | Corporate (B2B) invoices | Yes, per legal entity from its go-live date | Rejections and outages follow wl-invoicing §5.12 (`FIN.RUL.16`) |
+
+When an integration is down (`PLT.RUL.05`), the manual fallbacks are: the desk card
+terminal or cash with a receipt instead of the gateway (payment links resent on recovery);
+email instead of WhatsApp; attendance on paper, entered later by the tutor or the
+coordinator (`EDU.ACL.04`, `EDU.ACL.16`).
+
+## 9. Compliance and data
+
+- **Licensing:** the centre permit, approved courses and approved trainers are recorded
+  with expiry dates and shown on certificates only where allowed; KHDA attestation is
+  recorded on the certificate when obtained ✔ [S5].
+- **Refund policy:** no regulator sets refund rules for training institutes ✔ [S5]. The
+  calculation follows the centre's published policy (default template below); the policy
+  accepted at enrolment is stored with the enrolment.
+- **VAT:** 5% on training courses, test preparation and tutoring ✔ [S8]; the rare
+  zero-rated course type is configured per catalogue item with the accountant.
+- **E-invoicing:** corporate (B2B) invoices fall under the mandate: go-live 1 January 2027
+  for revenue of AED 50m or more, 1 July 2027 for others (see
+  [04-accounting.md](04-accounting.md) [S7]); B2C fees to guardians are out of scope.
+- **PDPL and minors:** guardian consent is captured for minors' data and photos
+  (`DOC.SIG.01`). Minors' data is sensitive (`EDU.ACL.09`). Tutors do not see minors'
+  contact details (`EDU.ACL.03`).
+- **Child protection:** staff working with minors have a valid good-conduct (police
+  clearance) certificate on file, tracked for expiry. No training-centre rule requires it;
+  it is the platform default as best practice [S7].
+- **Documents that block work:** set per document kind (wl-documents §5.6). Override mode
+  `never` below is the platform default; which kinds are legal blocks is `⚠ open: lawyer (L-19)`.
+
+  | Document kind (subject) | `blocks` (mode) | Override |
+  |---|---|---|
+  | Centre permit (legal entity, campus) | `batch.open`, `certificate.issue` (block) | never |
+  | Course approval (course, where required) | `batch.open`, `certificate.issue` (block) | never |
+  | Police clearance (tutor; required for courses with minors) | `batch.open`, `batch.change_tutor`, `session.change_tutor`, `session.reschedule`, `booking.book`, `booking.reassign` (block); `session.submit_attendance` (flag) | never by default (best practice, not a legal block; the client may switch it to approval by the owner) |
+  | MoHRE private tutor permit or freelance visa (freelance tutor) | as police clearance (block) | never |
+
+  The batch and session records register `BlockSubjects` (batch → course, campus, tutor;
+  session → tutor) and `FutureWork` (sessions and one-to-one bookings after the expiry
+  date). A running batch whose course approval expires is not stopped by the system; the
+  centre manager decides (`EDU.RUL.13`) `⚠ open: authority (AU-25)`.
+- **Recordings:** online sessions are recorded only with consent, and recordings are
+  retained for a limited period.
+- **Academic records:** KHDA requires learner registers, contracts and training records to
+  be kept for the period it determines, with fines for not keeping them; no fixed period is
+  published ✔ [S1], [S5]. Default: attendance and results kept at least 5 years after the
+  student leaves; certificates kept for as long as public verification is offered.
+
+## 10. Reports and KPIs
+
+- New leads by source; trial-to-enrolment conversion
+- Active students and enrolments by course and campus
+- Batch fill rate; batches at risk of not running
+- Room and tutor utilisation (hours booked vs available)
+- Attendance % by batch and tutor; students at risk (consecutive absences)
+- Membership churn and retention; failed payments
+- Revenue by course and campus; outstanding fees and ageing
+- Unused package credits and upcoming expiries (deferred revenue)
+- Certificates issued; pass rates by course
+
+## 11. Platform fit
+
+- **Renox provides:** users and per-campus roles, renox-billing (recurring billing with a
+  gateway trait), month calendar and availability blocks, wizard (enrolment), live
+  components (attendance sheet), grids, uploads and editors (materials), mail, queue and
+  scheduler, charts, audit.
+- **Shared modules provide:** parties with guardians, documents and expiry, e-signature,
+  invoicing, payments and memberships, discounts, leads and catalogue, resources and
+  bookings, tutor records and timesheets, portal, notifications, approvals and state
+  machines.
+- **Specific to this vertical:** courses and approvals, batches and sessions, enrolments,
+  student attendance, make-ups and transfers, trials, refunds, light LMS,
+  assessments, certificates with verification, progress reports.
+- **Estimated reuse:** 56 of 71 capabilities (79%) come from shared modules or Renox.
+- **Gaps in Renox:** a week/resource calendar (R5 `rx-week-calendar`) for timetables; no
+  video-meeting integration.
+
+## 12. MVP scope
+
+**Included:** leads, trial classes and placement tests (manual score or level), catalogue and price lists, courses with regulator
+approvals, batches with tutor and room allocation, sessions around holidays, enrolments in
+batches, packages and memberships, e-signed terms and guardian consent, instalments,
+memberships and online payment, discounts with approval, attendance by tutor, make-ups and
+transfers, withdrawal and refund calculation with a tiered default policy, materials, assessments and gradebook,
+certificates with public verification, freelance tutor bills and timesheets, student and
+guardian portal, WhatsApp and email notifications, dashboards and reports. Negative paths
+in the MVP: seat hold lapse and last-seat lock, withdrawal with credit note and cancelled
+future charges, batch termination with transfers or refunds, document blocks on batches,
+sessions, bookings and certificates, tutor change, attendance correction, absence policy per
+catalogue item, certificate reissue, membership pause linked to freeze, failed refunds and
+chargebacks, desk cash handover.
+
+**Excluded from the MVP:** online self-booking, assignments and submissions, progress
+reports, corporate portal and quotations, SMS, video-meeting integration, ICS
+calendar feeds, tutor leave and payroll, a full LMS (SCORM, quizzes, video hosting),
+accounting export, multi-currency.
+
+## 13. Open questions
+
+1. ~~Is WhatsApp a must-have for the MVP?~~ Decided (2026-10-15): yes. WhatsApp through a
+   BSP is the main channel to guardians for absence alerts, schedules, invoices and package
+   reminders, with email as fallback (`NTF.MSG.02`, MVP). *(client)*
+2. ~~Which pricing models do target clients use?~~ Answered (2026-10-15): all of them, per
+   catalogue item: course batches (upfront or instalments), session packages, monthly
+   memberships and corporate cohorts. A centre usually runs two or three at once. *(client)*
+3. ~~How are tutors engaged and paid?~~ Answered (2026-10-15): both. Employed tutors are on
+   salary (payroll outside the MVP). Freelance tutors are paid per session or per hour from
+   recorded attendance, with a monthly tutor bill; the app keeps each freelancer's permit or
+   freelance visa status with its expiry ([S6]). Rates are set per tutor. *(client)*
+4. ~~What must a certificate show, and which courses need approval?~~ Answered by
+   verification: in Dubai every programme needs KHDA approval; the law sets no certificate
+   wording, and KHDA attests certificates of authorised courses ([S5]). The app prints the
+   approval or attestation only when recorded. Abu Dhabi (ACTVET) and Sharjah (SPEA, with
+   National Qualifications Center certification) rules are checked per client. *(regulator)*
+5. ~~What are the refund rules for withdrawal?~~ Answered (2026-10-15): no regulator rule
+   exists ([S5]), so the platform ships a tiered default, editable per catalogue item:
+   before the start, 100% minus the registration fee; after the start, the unused sessions
+   pro rata minus an admin fee; after N% of the course (default 50%), no refund. For
+   packages, unused sessions are valued at the single-session price, without the package
+   discount. The policy is accepted at enrolment and stored with it. *(regulator)*
+6. ~~Placement test or trial class?~~ Answered (2026-10-15): both, optional per catalogue
+   item. In the MVP the tutor enters a score or level (for example A1–C2) and the app
+   suggests a matching batch. Online auto-scored tests come later with quizzes. *(client)*
+7. ~~Full LMS or materials and assignments?~~ Answered (2026-10-15): a light LMS. MVP:
+   materials per batch (files and links), assessments and a gradebook. Assignment
+   submissions and auto-scored quizzes are Later. SCORM and video hosting are out of scope;
+   videos are unlisted links. *(client)*
+8. ~~Which VAT treatment applies to each course type?~~ Answered by verification: 5% for
+   training, test preparation and tutoring; zero-rating only for a qualifying institution
+   with a recognised curriculum ([S8]). *(accountant)*
+
+## Sources
+
+Checked 2026-10-15. *Official* = government or legislation; others are secondary.
+
+| # | Source | Kind |
+|---|---|---|
+| S1 | [Dubai Executive Council Resolution 50 of 2015 (training institutes)](https://dlp.dubai.gov.ae/Legislation%20Reference/2015/Executive%20Council%20Resolution%20No.%20(50)%20of%202015.html) | official |
+| S2 | [Abu Dhabi Media Office — ACTVET](https://www.mediaoffice.abudhabi/en/education/abu-dhabi-centre-for-technical-and-vocational-education-and-training-partners-with-abu-dhabi-early-childhood-authority/) · [Al Tamimi — Education in MENA 2022](https://turtl.tamimi.com/story/law-update-education-in-mena-2022/page/6) | official media / law firm |
+| S3 | [SPEA — Training centres](https://spea.shj.ae/en/educational-institutions/training-centers/c2022021) | official |
+| S4 | [Gulf Today — Unlicensed training centre shut down (October 2025)](https://www.gulftoday.ae/news/2025/10/15/training-centre-shut-down-for-unlicensed-educational-operations-and-safety-violations-in-uae) | media |
+| S5 | [Dubai Administrative Resolution 2 of 2018](https://dlp.dubai.gov.ae/Legislation%20Reference/2018/Administrative%20Resolution%20No.%20(2)%20of%202018.html) · [KHDA — Certificate attestation](https://web.khda.gov.ae/en/Services/Training-Institute-Permit-Services/Attestation-of-Training-Institute-Certificate) | official |
+| S6 | [MoHRE — Private tutor licensing](https://www.mohre.gov.ae/en/services/private-tutor-licensing) | official |
+| S7 | Child protection: National Child Protection Policy in Educational Institutions (2022), Wadeema Law 3 of 2016; no training-centre clearance rule found (Khaleej Times on KHDA staff deregistration) | media |
+| S8 | FTA VAT guide for the education sector VATGED1 (June 2026), via [PwC](https://www.pwc.com/m1/en/services/tax/middle-east-tax-news-alerts/2026/uae-fta-publishes-vat-guide-for-the-education-sector.html) and Alvarez & Marsal | advisory |
+| S9 | [N-Genius — Recurring payments](https://docs.ngenius-payments.com/reference/recurring-payments) · [Telr — Repeat billing](https://docs.telr.com/reference/repeat-billing-for-remote) | vendor |
+| S10 | [KHDA — Data and statistics](https://web.khda.gov.ae/en/Resources/KHDA-data-statistics) (open data on Dubai Pulse) | official |
+| S11 | [MoHESR — Framework for compliance inspection of vocational education institutions (2024)](https://www.mohesr.gov.ae/En/ImportantLinks/Documents/Framework%20for%20Compliance%20Inspection%20of%20Vocational%20Education%20Institutions%20-%202024.pdf) · [u.ae — Licensing private educational institutes](https://u.ae/en/information-and-services/education/licensing-private-educational-institutes) | official |
+| S12 | [RAK Department of Knowledge — Investor guide (May 2026)](https://dok.rak.ae/wp-content/uploads/2026/05/Investor-Guide-to-Establishing-a-Private-School-in-Ras-Al-Khaimah_May-2026-English.pdf) · [RAKEZ — Training regulations](https://rakez.com/Upload/ManageDocument/training_regulations_20211122101303.pdf) | official |

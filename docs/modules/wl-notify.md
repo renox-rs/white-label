@@ -1,0 +1,402 @@
+# wl-notify
+
+> Status: draft · Last updated: 2026-10-15
+
+## 1. Purpose
+
+Every module needs to tell someone that something happened or is due: an invoice is overdue,
+a visa expires, a booking is tomorrow, a shipment is out for delivery. In the UAE a message
+only works if it reaches people on the channel they read. That is often WhatsApp or SMS, not
+only email, and it must arrive in English or Arabic, at a sensible hour, from the client's
+brand, and respect consent.
+
+`wl-notify` turns events and automation actions into messages:
+
+- it resolves who should receive them;
+- it chooses the channel and language;
+- it renders the client's templates;
+- it sends through the configured providers;
+- it logs every delivery.
+
+Modules never call an email or SMS provider directly.
+
+## 2. Capabilities covered
+
+| ID | Capability | Used by verticals | Scope |
+|---|---|---|---|
+| `NTF.MSG.01` | Email notifications from templates | 01–10 | MVP everywhere |
+| `NTF.MSG.02` | WhatsApp notifications | 05, 10 (MVP); 01, 02, 03, 04, 06, 07, 08, 09 (Later) | MVP for clinics and EdTech, Later elsewhere |
+| `NTF.MSG.03` | SMS notifications | 03, 05, 06, 08, 09 (MVP); 10 (Later) | MVP |
+
+The in-app notification bell (Renox `rx-notification-bell`, database notifications) is part of
+every message flow for staff users and is not a separate capability.
+
+What the verticals send:
+
+| Vertical | Main messages | Channels |
+|---|---|---|
+| 01 Property | invoice reminders, overdue notices, cheque due/bounced, renewal notices, ticket updates, document expiry | email; WhatsApp Later |
+| 02 Construction | approvals, missing attendance/daily report, IPA follow-ups, guarantee/permit expiry | email, in-app |
+| 03 Logistics | tracking link and delivery updates to recipients, COD remittance to clients, driver documents | SMS (recipients, from the client's own sender ID), email (clients) |
+| 04 Accounting | document requests, deadlines, approvals, invoices | email; WhatsApp Later |
+| 05 Clinics | booking confirmations and reminders, no-show follow-up, balances, recalls | WhatsApp and SMS (MVP), email |
+| 06 F&B | order OTP login, order status, receipts; marketing to opted-in customers | SMS (`AD-` sender ID for promotions), email; WhatsApp Later |
+| 07 Manufacturing | order confirmations, dispatch notes, approvals, certificates expiry | email |
+| 08 Auto | booking reminders, estimate approval links, vehicle ready, credit hold | SMS, email |
+| 09 Manpower | timesheet approval links to clients, visa steps, payroll, document expiry; worker PWA login codes, shift, payslip and expiry notices | email (clients), SMS (workers); WhatsApp Later |
+| 10 EdTech | enrolment, class reminders, absence alerts, schedules, invoices and package reminders to guardians | WhatsApp (main channel), email fallback; SMS Later |
+
+## 3. Concepts and entities
+
+| Entity | Description | Important fields |
+|---|---|---|
+| Notification type | A kind of message a module can send | key (e.g. `invoice.overdue`), module, category (`transactional`, `reminder`, `security`, `marketing`), urgency (`normal`, `urgent`), statutory (yes/no: the message is a notice with legal or contractual effect, e.g. a deadline notice or a notice of changed terms), give-up reaction ([§5.4](#54-when-a-message-gives-up)), staff role told on give-up, default channels in order, default recipients, template per channel |
+| Template | The text of one notification type for one channel and language | type, channel, language (`en`/`ar`), subject (email), body with placeholders, provider template name and category (WhatsApp), approval status (WhatsApp), version, active |
+| Contact point | A way to reach a person | owner (user or party contact), channel, address (email or E.164 mobile), verified, primary, last bounce, status (`valid` / `invalid`), invalid since, invalid reason |
+| Preference | What a person wants to receive | owner, category or type, channels allowed, language, quiet-hours opt-in |
+| Suppression | A block on an address | address, channel, reason (`opt_out`, `hard_bounce`, `complaint`, `invalid`), source, date |
+| Message | One message to one recipient on one channel | type, subject (`Subject` it is about), recipient, channel, language, rendered content, provider, provider message id, cost (if reported), status, scheduled for, attempts |
+| Delivery event | A status update from a provider | message, status, provider code, timestamp, raw payload reference |
+| In-app notification | A bell entry for a staff or portal user | user, type, title, link, read at (Renox database notifications) |
+
+Rules that apply to all entities:
+
+- **Consent:** marketing messages need a recorded consent for the purpose and channel
+  (`PTY.CNS.01`, `wl-parties`). Transactional, reminder and security messages need no
+  marketing consent, but they still respect an opt-out where the law allows it.
+- **Content:** a message contains no sensitive data beyond what the channel's risk allows.
+  Health details, identity numbers and amounts above a threshold go into the portal behind a
+  login, and the message carries only a link.
+
+## 4. Lifecycles
+
+### 4.1 Message
+
+| State | Tone | Terminal | Meaning |
+|---|---|---|---|
+| `queued` | neutral | no | Rendered and waiting to be sent |
+| `deferred` | neutral | no | Held until quiet hours end or a scheduled time |
+| `sent` | info | no | Accepted by the provider |
+| `delivered` | success | no | Delivered to the device or mailbox |
+| `read` | success | yes | Read receipt (WhatsApp) or open tracked (email, if enabled) |
+| `failed` | error | no | Provider rejected it or delivery failed; may be retried or fall back |
+| `suppressed` | neutral | yes | Not sent: no consent, opted out, suppressed address, or no contact point |
+| `abandoned` | error | yes | Failed after all retries and fallbacks |
+
+| Transition | From | To | By | Guards | Effects |
+|---|---|---|---|---|---|
+| `defer` | queued | deferred | system | normal urgency, external recipient, inside quiet hours | scheduled for the end of quiet hours |
+| `release` | deferred | queued | system | scheduled time reached | — |
+| `send` | queued | sent | system | contact point valid; not suppressed; consent present when required; provider rate limit allows | provider message id stored |
+| `suppress` | queued | suppressed | system | a send guard fails permanently | reason recorded; event `MessageSuppressed` |
+| `deliver` | sent | delivered | system (provider receipt) | — | event `MessageDelivered` |
+| `mark_read` | sent, delivered | read | system (provider receipt) | — | — |
+| `fail` | sent, queued | failed | system | provider error or failed receipt | event `MessageFailed`; hard bounce or invalid number → suppression |
+| `retry` | failed | queued | system | transient error; attempts < max | backoff |
+| `fall_back` | failed | (new message on next channel) → abandoned | system | next channel in the type's order is allowed for the recipient | a new message is queued on the next channel; this one ends `abandoned` |
+| `give_up` | failed | abandoned | system | no retries or fallbacks left | event `MessageGaveUp`; the type's give-up reaction runs (`NTF.RUL.01`, [§5.4](#54-when-a-message-gives-up)) |
+
+```mermaid
+stateDiagram-v2
+  [*] --> queued
+  queued --> deferred: defer
+  deferred --> queued: release
+  queued --> sent: send
+  queued --> suppressed: suppress
+  queued --> failed: fail
+  sent --> delivered: deliver
+  sent --> read: mark_read
+  delivered --> read: mark_read
+  sent --> failed: fail
+  failed --> queued: retry
+  failed --> abandoned: fall_back
+  failed --> abandoned: give_up
+  delivered --> [*]
+  read --> [*]
+  suppressed --> [*]
+  abandoned --> [*]
+```
+
+`delivered` is the normal end for channels without read receipts. It is not marked terminal
+only because a later read receipt can still arrive.
+
+### 4.2 WhatsApp template
+
+Business-initiated WhatsApp messages need templates approved by Meta through the BSP.
+
+| State | Tone | Terminal | Meaning |
+|---|---|---|---|
+| `draft` | neutral | no | Being written |
+| `submitted` | info | no | Sent to the BSP for approval |
+| `approved` | success | no | Usable |
+| `rejected` | error | no | Rejected, with the reason |
+| `paused` | warning | no | Paused by the provider (quality) |
+| `disabled` | neutral | yes | Retired |
+
+| Transition | From | To | By | Guards | Effects |
+|---|---|---|---|---|---|
+| `submit` | draft, rejected | submitted | `notifications.templates.manage` | placeholders match the type's variables; category chosen | submitted through the BSP API |
+| `approve` | submitted | approved | system (BSP callback) | — | event `TemplateApproved` |
+| `reject` | submitted | rejected | system (BSP callback) | — | reason stored; event `TemplateRejected` |
+| `pause` | approved | paused | system (BSP callback) | — | messages of this type fall back to SMS or email |
+| `resume` | paused | approved | system (BSP callback) | — | — |
+| `disable` | any except disabled | disabled | `notifications.templates.manage` | — | — |
+
+```mermaid
+stateDiagram-v2
+  [*] --> draft
+  draft --> submitted: submit
+  rejected --> submitted: submit
+  submitted --> approved: approve
+  submitted --> rejected: reject
+  approved --> paused: pause
+  paused --> approved: resume
+  draft --> disabled: disable
+  submitted --> disabled: disable
+  approved --> disabled: disable
+  rejected --> disabled: disable
+  paused --> disabled: disable
+  disabled --> [*]
+```
+
+**Vertical mapping:** no vertical defines its own message or template machine. Verticals add
+notification types and templates (e.g. `booking.reminder` in 05/08/10, `shipment.out_for_delivery`
+in 03, `job_card.ready` in 08) and choose default channels per type.
+
+## 5. Workflows
+
+### 5.1 From event to message
+
+1. A transition effect or an automation action (`Notify`, [WORKFLOW.md](../WORKFLOW.md) §4.2)
+   calls `Notifier::notify(type, subject, recipients, data)`.
+2. **Recipients are resolved:**
+   - *role in scope*: users who hold a role in the subject's scope, e.g. property manager of
+     the lease's building;
+   - *party*: the subject's party contacts, optionally by portal role, e.g. the tenant's
+     finance contact or a student's guardian (`PTY.REL.01`);
+   - *assignee*, *requester*, or *explicit users*.
+3. **Channel and language are chosen per recipient:**
+   - channel: the type's channel order, filtered by the recipient's preferences, consent,
+     suppressions and available contact points;
+   - language: the recipient's preference, then the party's language, then the client
+     default.
+4. Staff users always also get an in-app notification.
+5. The template is rendered. Emails use the client's branded mail layout, in RTL for Arabic.
+   Links point to the portal or back office, never contain sensitive data, and expire when
+   they grant access.
+6. Messages are queued. Quiet hours defer non-urgent messages to external recipients.
+7. The queue sends through the provider, retries transient failures, and falls back to the
+   next channel when one fails permanently.
+8. Delivery receipts arrive through Renox inbound webhooks and update the message.
+
+### 5.2 Opt-out
+
+1. A recipient clicks the unsubscribe link (email) or replies STOP (SMS/WhatsApp).
+2. The provider webhook or the link creates a suppression, or a preference change, for that
+   category and channel.
+3. Marketing consent in `wl-parties` is withdrawn when the opt-out concerns marketing.
+
+### 5.3 Manual and bulk messages (Later)
+
+Staff with `notifications.broadcast.send` choose a template, a filtered list of parties (e.g.
+all tenants of a building, all guardians of a batch) and a channel. The same consent,
+suppression and quiet-hour rules apply. Marketing broadcasts need
+`notifications.marketing.send`.
+
+### 5.4 When a message gives up
+
+A message that ends `abandoned` through `give_up` was not delivered on any allowed channel.
+The requester must not assume it was. `wl-notify` emits `MessageGaveUp` and runs the
+notification type's **give-up reaction** (`NTF.RUL.01`). A requester module can listen to the
+event for its own follow-up (e.g. pause a reminder sequence), but the default reaction always
+runs, so no module is left without one.
+
+| Reaction | What happens |
+|---|---|
+| `staff_task` | A task (`wl-ticketing`) for the type's staff role in the subject's scope: "Could not reach {recipient} about {subject}", with the channels tried and the errors. Due in 1 working day |
+| `alternative_recipient` | The same message is queued to another contact of the same party with the same purpose (e.g. the second guardian, the company's other finance contact), then `staff_task` if there is none |
+| `mark_contact_invalid` | On a hard bounce, invalid number or unknown WhatsApp account, the contact point is marked `invalid` and the party's record shows "contact needs updating"; staff who open the party are asked to fix it. Always combined with another reaction for non-marketing types |
+| `statutory_notice` | For statutory types: `staff_task` to the responsible staff, due in 1 working day, to deliver the notice by another means (courier, registered mail, hand delivery, a call with a note) and record the proof on the subject. Until proof is recorded, the subject shows "notice not delivered", and any deadline that depends on the notice being given is not treated as started |
+| `none` | Only the delivery log records it (marketing, tracking links) |
+
+| Type group (requester) | Default reaction |
+|---|---|
+| Statutory notices (04 deadline and document-request notices to clients; 01 notices of changed terms, a landlord's notice to end a lease, formal payment demands, the formal notice on a bounced cheque; other final demands) | `mark_contact_invalid` + `statutory_notice` |
+| Invoices, statements, payment reminders (`wl-invoicing`, `wl-payments`) | `mark_contact_invalid` + `alternative_recipient`; then `staff_task` to the collector role |
+| Booking confirmations and reminders (`wl-scheduling`) | `mark_contact_invalid`; the booking shows "reminder not delivered" to the front desk; `staff_task` only for urgent types |
+| Portal invitations, document requests, signature requests (`wl-portal`, `wl-documents`) | `mark_contact_invalid` + `staff_task` to the request's owner |
+| Guardian messages (10, 05 dependants) | `alternative_recipient` (other guardian), then `staff_task` |
+| Urgent types of any module | `staff_task` + in-app alert to the role |
+| Security notices to an employee (`wl-hr` pay account change SMS, §5.7 there) | `mark_contact_invalid` + `staff_task` to HR (`employees.manage` in the employee's scope) to reach the worker by another way; no `alternative_recipient` (only the number on record before the change may be used). wl-hr keeps the change in cooling until HR records the worker reached ([wl-hr](wl-hr.md) §4 *Pay account*) |
+| OTP and one-time security codes | `none` to staff; the user sees the error on screen at once and may choose another channel |
+| Marketing, delivery tracking | `mark_contact_invalid` (marketing) or `none` |
+
+The verticals mark their statutory types and may change a type's reaction. Which notices are
+statutory, and what proof of delivery counts for them, is set by the vertical.
+
+## 6. Interfaces to other modules
+
+**Provides**
+
+| Service | Purpose |
+|---|---|
+| `Notifier::notify(type, subject, recipients, data)` | Send a notification of a registered type |
+| `Notifier::register_type(definition)` | Modules register their notification types, variables and default templates |
+| `Notifier::send_otp(contact_point, purpose)` / `verify_otp` | One-time codes for portal login (06 F&B customers, 09 workers), signature confirmation (`wl-documents`), proof of delivery (`wl-delivery`), contact verification |
+| `Recipients` resolvers | Role in scope, party contacts by portal role, assignee; extensible |
+| Delivery log queries | "Was the overdue notice delivered?" for disputes and reports |
+
+**Consumes**
+
+- `wl-kernel`: settings (providers, sender identity, quiet hours), branding, automation rules.
+- `wl-parties`: party contacts, languages, relationships (`PTY.REL.01`), consents
+  (`PTY.CNS.01`).
+- Renox: mail, notifications (mail, database, custom channels via `App::channel`),
+  notification bell, queue, scheduler, inbound webhooks, i18n.
+
+**Events emitted**
+
+| Event | When | Payload |
+|---|---|---|
+| `MessageDelivered` | provider confirms delivery | message id, type, subject, recipient, channel |
+| `MessageFailed` | a send or delivery fails | message id, type, subject, channel, reason, final (yes/no) |
+| `MessageSuppressed` | a message is not sent by rule | message id, type, recipient, reason |
+| `MessageGaveUp` | a message ends `abandoned` after all retries and fallbacks | message id, type, subject, recipient, channels tried, last error per channel, statutory (yes/no), reaction applied |
+| `ContactPointInvalidated` | a contact point is marked `invalid` | contact point, party, channel, reason |
+| `OptOutReceived` | a recipient opts out | address, channel, category |
+| `TemplateApproved` / `TemplateRejected` | WhatsApp template decision | template id, type, language, reason |
+
+**Attaches to:** every message references the `Subject` it is about, so a record's page can
+show its communication history (e.g. reminders sent for an invoice).
+
+**Permissions**
+
+| Permission | Allows |
+|---|---|
+| `notifications.log.view` | See the delivery log for records in scope |
+| `notifications.resend` | Resend a message (same or another channel) |
+| `notifications.templates.manage` | Edit templates and submit WhatsApp templates |
+| `notifications.channels.manage` | Configure providers, sender identity, quiet hours |
+| `notifications.preferences.manage` | Change a party's preferences on their request |
+| `notifications.broadcast.send` | Send a manual or bulk message (Later) |
+| `notifications.marketing.send` | Send marketing messages (Later) |
+
+**Access rules**
+
+| ID | Rule | Pattern | Parameter (default) |
+|---|---|---|---|
+| `NTF.ACL.01` | Marketing messages go only to recipients with marketing consent for that channel; exporting recipient lists needs a sensitive-export permission and is audited. Generalises `FNB.ACL.10` and `CLN.ACL.11` | `SEN` | — |
+| `NTF.ACL.02` | No health or identity data in message bodies; message content shown in the delivery log follows the subject's access rules | `FLD` | — |
+
+**Automations:** `wl-notify` is the target of every rule's *Notify* action. It owns one rule:
+
+| ID | Rule | When | Then | Parameter (default) |
+|---|---|---|---|---|
+| `NTF.RUL.01` | Give-up reaction | a message ends `abandoned` through `give_up` | run the notification type's give-up reaction ([§5.4](#54-when-a-message-gives-up)): staff task, alternative recipient, mark the contact point invalid, or the statutory-notice task | task due 1 working day; on |
+
+## 7. Configuration per client
+
+| Setting | Default |
+|---|---|
+| Email provider and sender (`From`, reply-to) | client SMTP/SES; sender on the client's domain (SPF/DKIM set up at onboarding) |
+| WhatsApp BSP, business number, display name | none (Later for most verticals); clinics and EdTech at onboarding |
+| SMS provider and sender ID | none; logistics, clinics, F&B, auto, manpower at onboarding. One alphanumeric sender ID per client brand, registered by the client through the provider; the provider's default ID until it is approved; a separate `AD-` sender ID for promotions |
+| Channel order per notification type | the vertical's defaults (e.g. booking reminder: WhatsApp → SMS → email) |
+| Templates per type and language | the vertical's EN/AR templates |
+| Quiet hours for external recipients | 21:00–08:00 Asia/Dubai, normal urgency only |
+| Default language | EN; AR for parties whose language is Arabic |
+| Retry policy | 3 attempts with backoff; then fall back |
+| Delivery log retention | 24 months |
+| Read and open tracking | off for email, provider default for WhatsApp |
+| Give-up reaction per type, statutory flag | the module's and vertical's defaults ([§5.4](#54-when-a-message-gives-up)) |
+| Give-up task due (`NTF.RUL.01`) | 1 working day |
+
+## 8. Extension points
+
+- **Notification types** registered by modules and apps, with variables and default
+  templates.
+- **Strategy traits:**
+  - `ChannelProvider`: add a provider (another SMS gateway, push notifications later).
+  - `RecipientResolver`: add a resolution rule, e.g. "the client's site supervisor of this
+    deployment".
+  - `ChannelPolicy`: change the per-recipient channel choice, e.g. "workers without
+    smartphones: SMS only".
+- **Events** in §6, e.g. a vertical raises a task when an urgent notice could not be delivered.
+- **Overridable views:** email layout, unsubscribe page, preference centre in the portal,
+  delivery log panel on a record.
+
+## 9. Renox fit
+
+| Need | Renox provides | Gap |
+|---|---|---|
+| Email with templates and attachments | mail, `rx-mail-*` tags | Arabic RTL email layout → R1 |
+| In-app notifications and bell | database notifications, `rx-notification-bell` | — |
+| WhatsApp and SMS channels | `App::channel` custom channels | Provider adapters live in `wl-notify` |
+| Queued sending with retries | queue with attempts and backoff | Per-provider rate limiting (throughput caps) in the queue → R19 |
+| Delivery receipts and opt-out replies | inbound webhooks with verification | — |
+| Deferred sending (quiet hours) | scheduler, delayed jobs | — |
+| Templates per language | i18n | Editable templates stored in the database (not files) → `wl-notify`, using R2 settings for defaults |
+| Phone numbers in E.164 | — | Phone normalisation and validation → `wl-parties` (**new gap** if it belongs in Renox validation rules) |
+| OTP generation and verification | 2FA codes in `renox-2fa` (for staff) | OTP for external contacts → `wl-notify` |
+
+## 10. Compliance
+
+- **PDPL:** messages are processing of personal data. Purpose limitation applies, marketing
+  needs consent (Art. 4), and a data subject may object to direct marketing at any time
+  (Art. 17) ✔ [S1]. The executive regulations are not confirmed as published on the
+  official legislation portal `⚠ open: lawyer (L-01)`.
+- **TDRA SMS rules:** sender IDs must be registered through a licensed provider. Promotional
+  SMS carry the `AD-` prefix in the sender ID, may only be sent 07:00–21:00, need consent
+  and must offer an opt-out. Transactional SMS (OTP, reminders, receipts) need no prefix.
+  Registration with e& and du takes about 5–25 working days ✔ [S2] (vendor sources).
+- **WhatsApp:** business-initiated messages outside the 24-hour service window must use
+  approved templates. Meta's categories (utility, authentication, marketing) affect pricing
+  and approval. Since 1 July 2025 Meta charges per delivered template message by category
+  and recipient country; replies and utility templates inside an open 24-hour service window
+  are free; AED billing exists since 1 April 2026 ✔ [S3]. Current UAE rates are taken from
+  the BSP's rate card at contract time.
+- **Health data:** clinic messages carry no diagnosis or treatment details, only time, place
+  and a portal link (05 scope decision, `CLN.ACL.01`).
+- **Consumer protection:** Federal Law 15 of 2020 (Art. 4(5)) bars suppliers from using
+  consumer data for promotion or marketing; market practice reads this as requiring consent
+  before direct marketing ✔ [S4]. Marketing messages identify the sender and include an
+  opt-out. Any further message rules in Cabinet Resolution 66 of 2023 `⚠ open: lawyer (L-06)`.
+
+## 11. Out of scope
+
+| Not here | Where instead |
+|---|---|
+| Two-way chat inbox (WhatsApp or SMS conversations with staff) | Client's own WhatsApp Business tools or a helpdesk; Later as a separate module if several clients ask |
+| Marketing campaign builder (segments, A/B tests, journeys) | Client's marketing tool; bulk messages here are simple and consent-checked |
+| Voice calls and IVR | — |
+| Native push notifications | Not applicable (web + PWA); web push Later through a `ChannelProvider` |
+| Deciding *when* to notify | Automation rules and transition effects (`wl-kernel`, modules) |
+| Consent records | `wl-parties` (`PTY.CNS.01`) |
+
+## 12. Open questions
+
+1. Are messaging costs (WhatsApp, SMS) included in the subscription or re-billed to the client
+   per message? This decides whether cost tracking per message is MVP. *(us)*
+2. One shared BSP and SMS provider account for all clients (sub-accounts), or the client's own
+   accounts? *(us, provider)*
+3. ~~Are sender IDs registered per client brand, and how long does registration take?~~
+   Answered (2026-10-15, review of 03): yes, one per brand, registered with e& and du by the
+   client through the SMS provider during onboarding, in about 5–25 working days. The
+   provider's default ID is used until approval. Merchants' names are not used as sender
+   IDs. *(TDRA / SMS provider)*
+4. Should quiet hours apply to reminders with a near deadline (e.g. booking in two hours)?
+   *(client)*
+5. Do workers need SMS in Hindi, Urdu or other languages, beyond EN/AR? 09 decided
+   (2026-10-15) that most workers have a smartphone but no email, so worker notices go by
+   SMS; the language question stays open. *(client)*
+
+## Sources
+
+Checked 2026-10-15. *Official* = government or legislation; others are secondary.
+
+| # | Source | Type | Used for |
+|---|---|---|---|
+| S1 | DLA Piper, "Data protection laws in UAE", https://www.dlapiperdataprotection.com/countries/uae-general/law.html | Secondary | PDPL consent, objection to direct marketing, executive regulations status |
+| S2 | Telerivet, "UAE SMS compliance: TDRA and the AD- prefix", https://www.telerivet.com/blog/uae-sms-compliance-tdra-ad-prefix; D7 Networks, https://d7networks.com/sms/uae/sms-regulations/ | Secondary | SMS sender ID, `AD-` prefix, 07:00–21:00 hours, opt-out |
+| S3 | Meta, "Pricing on the WhatsApp Business Platform", https://developers.facebook.com/docs/whatsapp/pricing | Secondary (vendor) | WhatsApp categories, per-message pricing, free service window, AED billing |
+| S4 | Norton Rose Fulbright, "Enhanced UAE consumer protection", https://www.nortonrosefulbright.com/en/knowledge/publications/21255b99/enhanced-uae-consumer-protection-in-a-time-of-accelerated-digital-transformation; Mondaq, "Communications with customers", https://www.mondaq.com/compliance/1229090/compliance-%7c%7c-communications-with-customers | Secondary | Consumer data and marketing (Art. 4(5)) |
