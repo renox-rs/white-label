@@ -45,7 +45,7 @@ Review items: D-11, X-11, X-12, X-13, X-18, X-19, 03-N3-a, 03-N5-a, 03-N6-c, 03-
 
 ### BL-LOG-01 — 03 Logistics: void a duplicate booking and refuse a reused client reference
 
-**Labels:** `vertical:03-logistics` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 03 · **Size:** s
+**Labels:** `vertical:03-logistics` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:field-pwa` `surface:portal` `surface:system` · **Milestone:** Launch 03 · **Size:** s
 **Depends on:** Base: 03 Shipment lifecycle (booking from the portal and CSV) · BL-KRN-03 (void pattern) · **Blocks:** None.
 **Review items:** X-19, 03 MEDIUM "duplicate bookings"
 
@@ -54,6 +54,17 @@ Clients book by portal and CSV, and the same file is often uploaded twice. A shi
 client reference is already used by the same client is refused at booking. A duplicate or a
 booking entered in error that is found later is voided while it is still `created`: the label is
 invalidated, the number is kept and the shipment is never billed.
+
+#### Surfaces
+- **Back office:** staff with `shipments.manage` void a `created` shipment with reason
+  *duplicate* or *entered in error*; once a parcel is scanned `void` is not offered and
+  `cancel_return` is.
+- **Field PWA:** a pickup or hub scan of a voided label is refused with "label invalid".
+- **Portal:** the client's CSV dry run lists each refused row with "client reference already
+  used (shipment number)"; the client user who booked a `created` shipment may void it.
+- **System:** a unique index on (client, client reference) refuses duplicates across all
+  states; `void` invalidates the label, keeps the number, cancels the delivery, emits
+  `RecordVoided` and keeps the shipment off every invoice.
 
 #### Files to read
 - `docs/verticals/03-logistics.md` §4.1 "When it goes wrong" (row *Duplicate booking*), §6 *Shipment* (client reference unique per client), §7.1 *Shipment* (state `voided`, row `void`, checklist row *Shipment*)
@@ -118,7 +129,7 @@ kernel void mechanics and digest (BL-KRN-03, BL-KRN-09).
 
 ### BL-LOG-02 — 03 Logistics: cancel a shipment after pickup and send it back (`cancel_return`, `LOG.ACL.09`)
 
-**Labels:** `vertical:03-logistics` `area:negative-flow` `priority:medium` `size:m` · **Milestone:** Launch 03 · **Size:** m
+**Labels:** `vertical:03-logistics` `area:negative-flow` `priority:medium` `size:m` `surface:back-office` `surface:field-pwa` `surface:portal` `surface:system` · **Milestone:** Launch 03 · **Size:** m
 **Depends on:** Base: 03 Shipment lifecycle · BL-LOG-26 (failure reason *cancelled by client*) · **Blocks:** None.
 **Review items:** D-11, 03 MEDIUM "cancel after pickup"
 
@@ -128,6 +139,19 @@ A client may change its mind after the parcel was collected. Before pickup the c
 recorded instruction: the shipment goes back to the client (`returning`) with the return charge
 from the rate card. A shipment already out for delivery is first stopped by a failed attempt with
 the reason *cancelled by client*.
+
+#### Surfaces
+- **Back office:** the dispatcher records the client's instruction (or uses the *client
+  instruction* ticket) and runs `cancel_return`; it is not offered from `out_for_delivery`
+  or `returning`.
+- **Field PWA:** the driver fails an out-for-delivery stop with *cancelled by client*, which
+  does not count as an attempt, and later captures the client's e-POD for
+  `return_delivered`.
+- **Portal:** the client user cancels a `created` shipment; past `created` the shipment
+  offers "ask us to return it", which opens a request to the depot's dispatchers.
+- **System:** `cancel_return` records one return charge, cancels the open delivery and
+  notifies the client; `cancel` records a cancellation fee line only when the rate card has
+  one.
 
 #### Files to read
 - `docs/verticals/03-logistics.md` §3.3 `LOG.ACL.09`, §4.1 "When it goes wrong" (row *Client cancels*), §7.1 *Shipment* (rows `cancel`, `cancel_return`, `fail_attempt`, `return_delivered`)
@@ -186,7 +210,7 @@ Return after the maximum attempts (`WRK.RUL.08`, unchanged). Monthly billing of 
 
 ### BL-LOG-03 — 03 Logistics: pick up fewer parcels than booked
 
-**Labels:** `vertical:03-logistics` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 03 · **Size:** s
+**Labels:** `vertical:03-logistics` `area:negative-flow` `priority:medium` `size:s` `surface:field-pwa` `surface:system` · **Milestone:** Launch 03 · **Size:** s
 **Depends on:** Base: 03 Shipment lifecycle (`pick_up`) · **Blocks:** None.
 **Review items:** 03 MEDIUM "partial pickup"
 
@@ -195,6 +219,14 @@ The client sometimes hands over fewer parcels than booked. The driver scans the 
 and marks the rest *not received*; the shipment goes ahead with what was received, its weight and
 price are recalculated, and the client is told. When nothing is handed over, the pickup fails and
 the shipment stays `created`.
+
+#### Surfaces
+- **Field PWA:** at pickup (or drop-off at the hub) the driver or hub staff scan the parcels
+  handed over and mark the rest *not received*; with no parcel scanned, pickup is refused
+  and a *pickup failed* event is recorded with a reason; a *not received* parcel cannot be
+  scanned in later.
+- **System:** `pick_up` recalculates weight and price from the parcels received and the
+  client is told which parcels were missing; the COD amount is unchanged.
 
 #### Files to read
 - `docs/verticals/03-logistics.md` §4.1 "When it goes wrong" (row *Fewer parcels handed over than booked*), §6 *Shipment* and *Parcel*, §7.1 *Shipment* (row `pick_up`)
@@ -241,7 +273,7 @@ Re-weigh at the hub (BL-LOG-04). Monthly billing (BL-LOG-20).
 
 ### BL-LOG-04 — 03 Logistics: record a re-weigh at the hub and price on the measured values
 
-**Labels:** `vertical:03-logistics` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 03 · **Size:** s
+**Labels:** `vertical:03-logistics` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:field-pwa` `surface:portal` `surface:system` · **Milestone:** Launch 03 · **Size:** s
 **Depends on:** Base: 03 Shipment lifecycle (`LOG.HUB.01` scanning) · Base: wl-invoicing rate cards (`FIN.RAT.01`) · **Blocks:** BL-LOG-20
 **Review items:** 03 MEDIUM "re-weigh surcharge"
 
@@ -250,6 +282,17 @@ Clients often declare a lower weight than the parcel has. Hub staff record the m
 dimensions with a photo of the scale. When the difference is above the client's tolerance, the
 shipment is priced on the measured values, the re-weigh surcharge goes on the monthly invoice, and
 the client is told. The client may dispute it through a ticket before the invoice is issued.
+
+#### Surfaces
+- **Back office:** customer service resolves the client's re-weigh ticket, which removes or
+  confirms the surcharge.
+- **Field PWA:** hub staff record the measured weight and dimensions; a photo of the scale
+  is required to save a value above the tolerance.
+- **Portal:** the client raises a *billing* ticket from the shipment to dispute the re-weigh
+  before the invoice is issued.
+- **System:** the shipment is repriced on the latest chargeable weight above the tolerance,
+  the surcharge goes on the monthly draft (or the next one after invoicing) and is held out
+  while the ticket is open; the client is told.
 
 #### Files to read
 - `docs/verticals/03-logistics.md` §4.1 "When it goes wrong" (row *Weight or size differs at the hub*), §6 *Shipment* (booked and measured weight), §7.2 `LOG.RUL.07`
@@ -311,7 +354,7 @@ The monthly invoice rule itself (BL-LOG-20). Invoice disputes after issue (BL-IN
 
 ### BL-LOG-05 — 03 Logistics: hold a shipment for an exception and release it
 
-**Labels:** `vertical:03-logistics` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 03 · **Size:** s
+**Labels:** `vertical:03-logistics` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:field-pwa` `surface:portal` `surface:system` · **Milestone:** Launch 03 · **Size:** s
 **Depends on:** Base: 03 Shipment lifecycle · **Blocks:** BL-LOG-06
 **Review items:** 03 MEDIUM "address correction", 03 MEDIUM "damaged parcel outcome"
 
@@ -320,6 +363,17 @@ A shipment with an exception (wrong address, damaged parcel, client instruction,
 is put `on_hold` with a reason so that nobody dispatches it. Hub staff may hold it from a scan. It
 is released back to `at_hub` only when the address is confirmed or the client's instruction is
 recorded. For a damaged parcel the client chooses: deliver as is (`release`), return, or dispose.
+
+#### Surfaces
+- **Back office:** customer service corrects the address before dispatch (audited); staff
+  release a held shipment after recording the confirmed address or the client's instruction,
+  run `return`, and tick "company liable" on a damaged hold.
+- **Field PWA:** hub staff hold a shipment from a scan with an exception reason, and photos
+  when it is damaged.
+- **Portal:** the client is asked to confirm the address of a shipment on hold for *address
+  issue*, and may edit the address until it is out for delivery.
+- **System:** a failed attempt with *wrong address* holds the shipment automatically; a zone
+  change reprices it at once; "company liable" opens a linked claim ticket.
 
 #### Files to read
 - `docs/verticals/03-logistics.md` §4.1 "When it goes wrong" (rows *Wrong or incomplete address*, *Parcel damaged at the hub*), §7.1 *Shipment* (state `on_hold`, rows `hold`, `release`, `return`)
@@ -380,7 +434,7 @@ Disposal (BL-LOG-06). Lost shipments (BL-LOG-11, BL-LOG-12).
 
 ### BL-LOG-06 — 03 Logistics: dispose of goods on the client's written instruction
 
-**Labels:** `vertical:03-logistics` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 03 · **Size:** s
+**Labels:** `vertical:03-logistics` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 03 · **Size:** s
 **Depends on:** BL-LOG-05 · BL-LOG-12 (approval policy `LOG.ACL.14`) · **Blocks:** None.
 **Review items:** 03 MEDIUM "damaged parcel outcome"
 
@@ -389,6 +443,14 @@ A damaged or dangerous shipment on hold may be destroyed instead of delivered or
 disposal needs a reason and a photo, the client's written instruction (unless the goods are
 dangerous), and an operations manager's approval by someone other than the requester. A claim
 ticket opens when the company is liable; the disposal is charged only when the client caused it.
+
+#### Surfaces
+- **Back office:** a user requests `dispose` on a held shipment with reason, photo, the
+  client's written instruction (or *dangerous* ticked) and liability; another operations
+  manager approves or rejects it under "Needs your action".
+- **System:** on approval the shipment is `disposed`, a claim ticket opens for liability
+  *business*, a disposal charge (or AED 0 and a note to the accountant) is added for
+  *client*, and the client is notified.
 
 #### Files to read
 - `docs/verticals/03-logistics.md` §3.3 `LOG.ACL.14`, §4.1 (row *Parcel damaged at the hub*), §4.4 step 3, §7.1 *Shipment* (state `disposed`, row `dispose`), §7.2 `LOG.RUL.07`
@@ -441,7 +503,7 @@ The approval policy and lost marking off a delivery (BL-LOG-12). Claim valuation
 
 ### BL-LOG-07 — 03 Logistics: deliver part of a multi-parcel shipment and return the refused parcels
 
-**Labels:** `vertical:03-logistics` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Launch 03 · **Size:** s
+**Labels:** `vertical:03-logistics` `area:negative-flow` `priority:high` `size:s` `surface:field-pwa` `surface:system` · **Milestone:** Launch 03 · **Size:** s
 **Depends on:** BL-DLV-02 (partial acceptance per line) · BL-DLV-11 (run close with refused goods) · **Blocks:** None.
 **Review items:** X-11
 
@@ -450,6 +512,14 @@ A recipient may accept some parcels of a multi-parcel shipment and refuse the ot
 becomes `delivered` for the accepted parcels; each refused parcel has a reason, comes back with the
 driver and goes back to the client on a linked return shipment that carries the return charge.
 Single-parcel shipments have no partial acceptance: refusing means a failed attempt.
+
+#### Surfaces
+- **Field PWA:** at the stop the driver enters the accepted and refused parcels of a
+  multi-parcel shipment, each refused parcel with a reason; a single-parcel shipment offers
+  only `fail_attempt`; the client signs the e-POD when the return arrives.
+- **System:** `deliver` with refused parcels runs `create_return`, a linked return shipment
+  in `returning` with the parcels, COD 0 and the return charge; `ShipmentDelivered` is
+  emitted and the expected COD stays the full amount.
 
 #### Files to read
 - `docs/verticals/03-logistics.md` §4.1 "When it goes wrong" (row *Recipient refuses some parcels of a multi-parcel shipment*), §6 *Shipment* (return shipment link), §7.1 *Shipment* (row `deliver`, row `return_delivered`)
@@ -504,7 +574,7 @@ Proof of delivery per line (BL-DLV-02). Run close (BL-DLV-11). COD differences (
 
 ### BL-LOG-08 — 03 Logistics: post a COD difference according to who absorbs it
 
-**Labels:** `vertical:03-logistics` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Launch 03 · **Size:** s
+**Labels:** `vertical:03-logistics` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:field-pwa` `surface:portal` `surface:system` · **Milestone:** Launch 03 · **Size:** s
 **Depends on:** BL-DLV-03 (COD collected short, `WRK.ACL.09`) · BL-INV-22 (COD difference in billing) · BL-LOG-14 (remittance draft) · **Blocks:** None.
 **Review items:** 03-N3-a
 
@@ -515,6 +585,18 @@ the phone and chooses who absorbs it (wl-delivery). In 03 the choice has three o
 shown on the statement), the *business* (a COD loss; the client still gets the full amount) or
 the *driver* (the full amount stays expected in the driver's cash handover). The client is never
 short-paid because of a driver or a business decision.
+
+#### Surfaces
+- **Back office:** the operations manager sees the COD difference request and must choose
+  *client* (with the client's instruction), *business* or *driver*; *customer* is not
+  offered; the report "COD differences by who absorbed them" lists the outcomes.
+- **Field PWA:** the driver enters the cash collected and a difference reason at the stop
+  and asks for approval.
+- **Portal:** for *client*, the remittance statement line shows the reduced amount and the
+  reason.
+- **System:** the shipment stores the difference and absorber; *business* creates a COD loss
+  for the depot, *driver* leaves the full amount expected in the handover, and the draft
+  remittance uses these values.
 
 #### Files to read
 - `docs/verticals/03-logistics.md` §4.1 steps 10–11, "When it goes wrong" (row *Recipient pays less than the COD amount or refuses to pay*), §6 *Shipment* (COD collected and difference) and *COD remittance* (COD differences absorbed by the client), §7.2 `LOG.RUL.06`, §9 "COD and the client's money"
@@ -574,7 +656,7 @@ The approval on the phone and the forced failed attempt (BL-DLV-03). The draft r
 
 ### BL-LOG-09 — 03 Logistics: hold COD and billing while a delivery is under review
 
-**Labels:** `vertical:03-logistics` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Launch 03 · **Size:** s
+**Labels:** `vertical:03-logistics` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 03 · **Size:** s
 **Depends on:** BL-DLV-04 (delivery review) · BL-INV-06 (invoice flag from a disputed delivery) · **Blocks:** BL-LOG-10
 **Review items:** 03-N11-a
 
@@ -584,6 +666,13 @@ delivery goes `under_review` in wl-delivery. The shipment follows into `under_re
 held out of remittances and its billing is held (or the issued invoice is flagged disputed), and
 the client is told. If the review upholds the delivery, the shipment goes back to `delivered` and
 COD and billing are released.
+
+#### Surfaces
+- **Back office:** customer service raises a *delivery dispute* ticket from the shipment;
+  the accountant is told when an approved remittance holding it goes back to `draft`.
+- **System:** `open_review` and `close_review` run only on the wl-delivery events: COD is
+  left out of drafts and billing is held while `under_review`, then released on *upheld*;
+  the client is notified once per review.
 
 #### Files to read
 - `docs/verticals/03-logistics.md` §3.3 `WRK.ACL.06`, §4.1 "When it goes wrong" (row *Recipient denies the delivery, or it was marked by mistake*), §7.1 *Shipment* (states `delivered`, `under_review`; rows `open_review`, `close_review`), §7.1 *COD remittance* (paragraph after the diagram)
@@ -642,7 +731,7 @@ The delivery review itself (BL-DLV-04). The invoice flag (BL-INV-06). Reversal f
 
 ### BL-LOG-10 — 03 Logistics: reverse a delivered shipment and settle COD, billing and liability
 
-**Labels:** `vertical:03-logistics` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 03 · **Size:** m
+**Labels:** `vertical:03-logistics` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 03 · **Size:** m
 **Depends on:** BL-DLV-05 (delivery reversal, `WRK.ACL.10`) · BL-LOG-09 · BL-LOG-15 (adjustment lines) · BL-PAY-17 (cash shortage) · BL-PAY-23 (later cash shortage, `raise_shortage`) · **Blocks:** None.
 **Review items:** 03-N11-a, X-11
 
@@ -652,6 +741,15 @@ operations manager's approval and a liability decision. The shipment follows bac
 `out_for_delivery` or `attempted`: it leaves billing until it is delivered again (credited if
 already invoiced), its COD is kept for the next attempt or refunded to the payer (a negative
 adjustment line when already remitted), the liability is recorded, and the client is told.
+
+#### Surfaces
+- **Back office:** the operations manager gets a task naming the amount and the driver, with
+  *raise shortage* or *open HR case*, when liability is *driver*; the invoice owner's task
+  shows the credit due for an invoiced shipment.
+- **System:** on `DeliveryReversed` the shipment returns to `out_for_delivery` or
+  `attempted`, its proof is marked reversed, it leaves billing, its COD is kept or refunded
+  (a negative adjustment line when already remitted), a claim ticket opens for *driver* or
+  *business*, and the client is notified.
 
 #### Files to read
 - `docs/verticals/03-logistics.md` §3.3 `WRK.ACL.10`, `LOG.ACL.12`, §4.1 "When it goes wrong" (row *Recipient denies the delivery, or it was marked by mistake*), §4.4 step 3, §6 *Shipment* (liability, claim ticket), §7.1 *Shipment* (row `reverse_delivery`)
@@ -716,7 +814,7 @@ The reversal request, approval and cash treatment choice (BL-DLV-05). The adjust
 
 ### BL-LOG-11 — 03 Logistics: mark a shipment lost on a delivery, open the claim and handle found goods
 
-**Labels:** `vertical:03-logistics` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 03 · **Size:** m
+**Labels:** `vertical:03-logistics` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:field-pwa` `surface:system` · **Milestone:** Launch 03 · **Size:** m
 **Depends on:** BL-DLV-06 (delivery lost and found, `WRK.RUL.17`) · BL-LOG-20 · **Blocks:** BL-LOG-12
 **Review items:** 03-N10-a
 
@@ -726,6 +824,15 @@ follows. The client is told, a claim ticket is linked, the shipment leaves billi
 already invoiced) and no COD is expected. If the goods turn up, the shipment goes back to `at_hub`
 and the claim ticket is updated, or reopened if it was already settled; the client then chooses
 delivery (the claim credit is reversed by an invoice) or keeping the settlement.
+
+#### Surfaces
+- **Back office:** the invoice owner gets a task to credit a lost shipment that was
+  invoiced; the claim owner sees "goods found at <depot>" on the claim ticket, and the
+  client's choice (delivery or keep the settlement) is recorded after a settled claim.
+- **Field PWA:** hub staff scan a lost shipment at a depot, which runs `found`.
+- **System:** on `DeliveryLost` the shipment is `lost`, linked to the claim ticket, left out
+  of billing, no COD expected, `ShipmentLost` emitted; after a settled claim `found` is
+  followed by a system `hold` and, on delivery, a draft invoice for the claim credit.
 
 #### Files to read
 - `docs/verticals/03-logistics.md` §4.1 "When it goes wrong" (row *Shipment cannot be found*), §4.4 steps 3–4, §6 *Shipment* (liability, claim ticket) and *Claim*, §7.1 *Shipment* (state `lost`, rows `mark_lost`, `found`), §7.2 `WRK.RUL.17`
@@ -789,7 +896,7 @@ from liability limits (Later, `LOG.CLM.01`).
 
 ### BL-LOG-12 — 03 Logistics: trace a shipment off a delivery and mark it lost with approval (`LOG.RUL.12`, `LOG.ACL.14`)
 
-**Labels:** `vertical:03-logistics` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 03 · **Size:** m
+**Labels:** `vertical:03-logistics` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 03 · **Size:** m
 **Depends on:** BL-LOG-11 (effects of `mark_lost` and `found`) · BL-KRN-01 (approval returned) · **Blocks:** BL-LOG-06
 **Review items:** 03-N10-a
 
@@ -798,6 +905,15 @@ A shipment that is not on a delivery (picked up, at the hub, on hold, being retu
 missing. A daily rule opens a trace task after 3 days without a scan and asks for `mark_lost` after
 7. Marking lost (and disposing, BL-LOG-06) off a delivery needs an operations manager's approval by
 someone other than the requester.
+
+#### Surfaces
+- **Back office:** the operations manager of the last depot gets a trace task after 3 days
+  without a scan, escalated after 7 days as "request `mark_lost` now"; a user requests
+  `mark_lost` with reason and liability and another operations manager or the company admin
+  approves.
+- **System:** the daily `LOG.RUL.12` run at 02:00 keeps one open task per shipment, a scan
+  or note closes it and restarts the clock, and the "no scan since the request" guard is
+  checked at final approval.
 
 #### Files to read
 - `docs/verticals/03-logistics.md` §3.3 `LOG.ACL.14`, §4.1 (row *Shipment cannot be found*), §7.1 *Shipment* (row `mark_lost`), §7.2 `LOG.RUL.12`
@@ -858,7 +974,7 @@ Effects of `mark_lost` and `found` (BL-LOG-11). Disposal (BL-LOG-06).
 
 ### BL-LOG-13 — 03 Logistics: escalate a driver who does not hand over cash (`LOG.RUL.13`)
 
-**Labels:** `vertical:03-logistics` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` · **Milestone:** Launch 03 · **Size:** m
+**Labels:** `vertical:03-logistics` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Launch 03 · **Size:** m
 **Depends on:** BL-PAY-17 (count, recover, write off) · BL-PAY-21 (handover escalation, `FIN.RUL.22`) · BL-DLV-08 (run abort) · BL-HRM-07 (absconding) · **Blocks:** None.
 **Review items:** 03-N9-a
 
@@ -869,6 +985,15 @@ the operations manager gets a task to call the driver and abort the run; after 4
 admin is told, the operations manager counts the handover at what was received (often zero), and
 the driver's HR record gets an absence note for the absconding path. The client's remittance is not
 reduced.
+
+#### Surfaces
+- **Back office:** the operations manager gets a task to call the driver and abort the run
+  12 hours after the start; at 48 hours the company admin is notified and the operations
+  manager counts the handover at what was received, then recovers in cash or writes off with
+  approval.
+- **System:** `LOG.RUL.13` replaces `FIN.RUL.22` for driver handovers, writes the absence
+  note on the driver's HR record when no wl-attendance check-in (`HRM.ATT.01`, recorded by
+  the driver outside this issue) followed, and never reduces the client's remittance.
 
 #### Files to read
 - `docs/verticals/03-logistics.md` §3.3 `FIN.ACL.06`, `FIN.ACL.19`, §4.1 "When it goes wrong" (row *Driver does not hand over the cash, or disappears*), §7.1 *Cash handover* (rows `count`, `recover`, `write_off`), §7.2 `LOG.RUL.13`, §13 question 13
@@ -932,7 +1057,7 @@ Count, recount, recover and write-off mechanics (BL-PAY-17). Run abort (BL-DLV-0
 
 ### BL-LOG-14 — 03 Logistics: build the draft COD remittance from recorded COD, without held shipments (`LOG.RUL.06`)
 
-**Labels:** `vertical:03-logistics` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 03 · **Size:** m
+**Labels:** `vertical:03-logistics` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 03 · **Size:** m
 **Depends on:** Base: 03 COD remittance lifecycle (`draft`, `approve`, `pay`) · **Blocks:** BL-LOG-08, BL-LOG-15, BL-LOG-16, BL-LOG-17, BL-LOG-19
 **Review items:** 03-N9-a, 03-N6-c, 03-N11-a, 03-N10-a
 
@@ -942,6 +1067,14 @@ after collection: the COD recorded on delivered shipments, less fees and differe
 agreed to absorb, plus approved adjustment lines and, where allowed, offsets of open invoices.
 Shipments under review or lost are left out until their outcome is known. A driver's shortage never
 reduces the client's money.
+
+#### Surfaces
+- **Back office:** the accountant is notified of the weekly draft remittance and sees its
+  lines: COD per shipment, fees, client-absorbed differences with their reason, adjustment
+  lines and any amount carried forward.
+- **System:** `LOG.RUL.06` builds or rebuilds one draft per client each Monday from
+  delivered shipments not yet remitted, leaving out `under_review`, `lost` and *already
+  remitted* shipments and never reading cash handovers.
 
 #### Files to read
 - `docs/verticals/03-logistics.md` §4.1 step 11, §6 *COD remittance*, §7.1 *COD remittance* (state `draft`, paragraph after the diagram), §7.2 `LOG.RUL.06`, §9 "COD money is the client's money" and "COD and the client's money"
@@ -1004,7 +1137,7 @@ Blocked clients (BL-LOG-19).
 
 ### BL-LOG-15 — 03 Logistics: add approved adjustment lines to a COD remittance (`LOG.ACL.12`)
 
-**Labels:** `vertical:03-logistics` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Launch 03 · **Size:** s
+**Labels:** `vertical:03-logistics` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Launch 03 · **Size:** s
 **Depends on:** BL-LOG-14 · BL-KRN-01 (approval returned) · **Blocks:** BL-LOG-10, BL-LOG-18
 **Review items:** 03-N6-c
 
@@ -1014,6 +1147,15 @@ disputed delivery, a statement dispute outcome, a COD difference the client agre
 the statement) is an adjustment line, positive or negative, with a reason, on the client's next
 draft. One user prepares it, another with `remittances.approve` approves it, and the client sees the
 line and its reason on the next statement.
+
+#### Surfaces
+- **Back office:** an accountant adds a positive or negative adjustment line with a reason;
+  another user with `remittances.approve` approves or rejects it; the remittance `approve`
+  is refused while a line on it is unapproved.
+- **Portal:** the client sees each adjustment line with date, amount, reason and what it
+  corrects on the next statement.
+- **System:** a line with no draft yet stays open and is attached by the next weekly
+  `LOG.RUL.06` run; a rebuild keeps attached lines and their approval.
 
 #### Files to read
 - `docs/verticals/03-logistics.md` §3.3 `LOG.ACL.12`, §4.1 "When it goes wrong" (row *Remittance wrong after payment*), §6 *COD remittance* (adjustment lines), §7.1 *COD remittance* (row `approve`, paragraph after the diagram)
@@ -1063,7 +1205,7 @@ Drafting the reversal line (BL-LOG-10). Dispute outcome (BL-LOG-18). Draft rule 
 
 ### BL-LOG-16 — 03 Logistics: net open invoices against COD in the remittance
 
-**Labels:** `vertical:03-logistics` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 03 · **Size:** s
+**Labels:** `vertical:03-logistics` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Launch 03 · **Size:** s
 **Depends on:** BL-LOG-14 · Base: wl-payments Payment lifecycle (record and allocate, `FIN.PAY.01`) · **Blocks:** None.
 **Review items:** 03 MEDIUM "COD netting against invoices"
 
@@ -1072,6 +1214,14 @@ Many clients owe delivery invoices while the courier holds their COD. When the c
 allows netting, the draft remittance deducts open, undisputed delivery invoices; when the remittance
 is paid, each offset is recorded as a payment allocated to its invoice. A disputed invoice is never
 netted.
+
+#### Surfaces
+- **Back office:** the accountant sees the invoice offsets on the draft remittance; when an
+  offset invoice changed before `pay`, the remittance returns to `draft` with the message
+  "offset INV-n removed: invoice disputed" and must be approved again.
+- **Portal:** the published statement lists each offset invoice with its number and amount.
+- **System:** offsets are taken oldest due date first and capped so the net is not negative;
+  on `pay` each becomes a payment of method *COD netting* allocated to its invoice.
 
 #### Files to read
 - `docs/verticals/03-logistics.md` §4.1 "When it goes wrong" (row *Client owes invoices*), §6 *COD remittance* (invoice offsets), §7.1 *COD remittance* (rows `pay`, `return_payment`), §7.2 `LOG.RUL.06`
@@ -1118,7 +1268,7 @@ Payment allocation mechanics (wl-payments). Returned transfers (BL-LOG-17).
 
 ### BL-LOG-17 — 03 Logistics: handle a returned remittance transfer and control bank account changes (`LOG.ACL.13`)
 
-**Labels:** `vertical:03-logistics` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 03 · **Size:** m
+**Labels:** `vertical:03-logistics` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:portal` `surface:public` `surface:system` · **Milestone:** Launch 03 · **Size:** m
 **Depends on:** BL-LOG-14 · BL-KRN-01 (approval returned) · **Blocks:** None.
 **Review items:** 03-N6-c
 
@@ -1128,6 +1278,16 @@ remittance moves to `payment_returned`: the amount is owed to the client again a
 asked to confirm its bank account. A change to a client's remittance bank account takes effect only
 after a second user approves it and the client confirms it from its known contact, so a fraudulent
 change cannot divert the client's money. The remittance is then repaid.
+
+#### Surfaces
+- **Back office:** the accountant attaches the bank return advice and runs `return_payment`,
+  enters a new IBAN (pending until approved and confirmed), and runs `repay`; a second staff
+  user approves the change; a second pending change is refused.
+- **Portal:** a client user may request the remittance bank account change in the portal.
+- **Public page:** the client's known contact confirms the new account through a link
+  (screen not specified yet).
+- **System:** the account becomes active when both approval and confirmation exist; a
+  pending change lapses after 14 days, the link stops working and the requester is told.
 
 #### Files to read
 - `docs/verticals/03-logistics.md` §3.3 `LOG.ACL.13`, §4.1 "When it goes wrong" (row *Bank returns the remittance transfer*), §7.1 *COD remittance* (states `paid`, `payment_returned`; rows `pay`, `return_payment`, `repay`)
@@ -1185,7 +1345,7 @@ Blocked clients (BL-LOG-19). Netting (BL-LOG-16).
 
 ### BL-LOG-18 — 03 Logistics: flag and resolve a COD statement dispute
 
-**Labels:** `vertical:03-logistics` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 03 · **Size:** s
+**Labels:** `vertical:03-logistics` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Launch 03 · **Size:** s
 **Depends on:** BL-LOG-15 · Base: wl-ticketing Ticket lifecycle · **Blocks:** None.
 **Review items:** 03-N6-c
 
@@ -1193,6 +1353,15 @@ Blocked clients (BL-LOG-19). Netting (BL-LOG-16).
 A client may contest a COD statement. The remittance gets a `disputed` flag and a ticket for the
 accountant; nothing pauses, because the next remittance is due anyway. The outcome is *upheld* (the
 statement stands) or *adjusted* (an adjustment line on the next draft), and the client is told.
+
+#### Surfaces
+- **Back office:** customer service may flag an `approved` remittance on the client's call;
+  the accountant gets the ticket and resolves it *upheld* or *adjusted* with an amount and
+  reason.
+- **Portal:** the client user disputes a `paid` remittance statement with a reason; it is
+  not offered while the transfer is returned.
+- **System:** *adjusted* creates an adjustment line on the next draft that needs a second
+  approver; nothing pauses and the client is told the outcome.
 
 #### Files to read
 - `docs/verticals/03-logistics.md` §4.1 "When it goes wrong" (row *Client disputes a COD statement*), §6 *COD remittance* (dispute flag and ticket), §7.1 *COD remittance* (paragraph on the `disputed` flag; rows `dispute`, `resolve_dispute`)
@@ -1236,7 +1405,7 @@ Adjustment line approval (BL-LOG-15). Invoice disputes (BL-INV-04).
 
 ### BL-LOG-19 — 03 Logistics: refuse new bookings and hold remittance payment for a blocked client
 
-**Labels:** `vertical:03-logistics` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Launch 03 · **Size:** s
+**Labels:** `vertical:03-logistics` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Launch 03 · **Size:** s
 **Depends on:** BL-PTY-01 (block) · BL-PTY-04 (no new agreements, no money out) · BL-POR-01 (neutral portal text) · BL-LOG-14 · **Blocks:** None.
 **Review items:** X-18
 
@@ -1245,6 +1414,15 @@ When a client is blocked (for example non-payment or a legal dispute), it cannot
 or open new freight jobs, and the message it sees is neutral. Shipments already picked up are
 delivered or returned as normal, and open freight jobs continue. COD remittances are drafted but not
 paid until the client is unblocked or an exception is approved. Invoices and receipts continue.
+
+#### Surfaces
+- **Back office:** staff booking and new freight jobs for a blocked client are refused; the
+  dispatcher sees "client on hold" on the pickup list; `pay` is refused with "client on
+  hold" until the company admin approves an exception requested by another user.
+- **Portal:** portal bookings and CSV uploads of a blocked client are refused with the
+  neutral text, never the reason.
+- **System:** `BlockGuard` runs on booking, freight job creation, rate card renewal, `pay`
+  and `repay`; drafts and approvals of remittances still run.
 
 #### Files to read
 - `docs/verticals/03-logistics.md` §3.3 `PTY.ACL.03`, §4.1 "When it goes wrong" (row *Client blocked*), §7.1 *COD remittance* (row `pay`), checklist rows *Shipment*, *COD remittance*, *Freight job* (column *Party blocked*)
@@ -1297,7 +1475,7 @@ Block and unblock (BL-PTY-01, BL-PTY-02). Portal text (BL-POR-01). Screening (of
 
 ### BL-LOG-20 — 03 Logistics: leave held and lost shipments out of the monthly invoice and add surcharges (`LOG.RUL.07`)
 
-**Labels:** `vertical:03-logistics` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Launch 03 · **Size:** s
+**Labels:** `vertical:03-logistics` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 03 · **Size:** s
 **Depends on:** Base: wl-invoicing usage billing (`FIN.USG.01`) and rate cards (`FIN.RAT.01`) · BL-LOG-04 (re-weigh surcharges and their hold) · **Blocks:** BL-LOG-11
 **Review items:** 03-N10-a, 03-N11-a, 03 MEDIUM "re-weigh surcharge"
 
@@ -1305,6 +1483,14 @@ Block and unblock (BL-PTY-01, BL-PTY-02). Portal text (BL-POR-01). Screening (of
 The monthly invoice must bill only what the client owes: delivered shipments with their re-weigh
 surcharges and return charges, and never shipments that are under review, lost, voided, or
 disposed unless the client caused the disposal.
+
+#### Surfaces
+- **Back office:** the accountant receives the monthly draft invoice with delivery lines,
+  re-weigh surcharges and return charges, and without held, lost, voided or
+  non-client-caused disposed shipments.
+- **System:** `LOG.RUL.07` runs on day 1 for the previous month, picks unbilled shipments
+  and surcharges cumulatively, bills return charges in the month of `return_delivered`, and
+  keeps one draft per client.
 
 #### Files to read
 - `docs/verticals/03-logistics.md` §4.1 step 12, §4.4 step 4, §7.2 `LOG.RUL.07`
@@ -1350,7 +1536,7 @@ recording (BL-LOG-04).
 
 ### BL-LOG-21 — 03 Logistics: hold and release a freight job, keeping the state before the hold
 
-**Labels:** `vertical:03-logistics` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 03 · **Size:** m
+**Labels:** `vertical:03-logistics` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Launch 03 · **Size:** m
 **Depends on:** Base: 03 Freight job lifecycle · **Blocks:** None.
 **Review items:** 03-N7-c
 
@@ -1360,6 +1546,15 @@ rejected declaration, unpaid duty, missing documents, the customs platform down,
 instruction. The documentation officer puts the job `on_hold` with a reason; the job remembers where
 it was, its milestone clock stops, the client and the documentation officer are told and the reason
 shows in the portal. `release` returns the job to exactly where it was.
+
+#### Surfaces
+- **Back office:** the documentation officer holds a freight job with a reason and note, and
+  releases it with a note on how the reason was resolved; `release` returns the job to the
+  stored state.
+- **Portal:** the client sees the hold reason label (for example "Customs hold or
+  inspection") and the note on the job.
+- **System:** the state before the hold is stored in the same transaction, `LOG.RUL.09` does
+  not alert while on hold, and hold periods are left out of on-time measures.
 
 #### Files to read
 - `docs/verticals/03-logistics.md` §4.2 "When it goes wrong" (rows *Customs hold…*, *Mirsal or ATLP down*), §6 *Freight job* (hold reason), §7.1 *Freight job* (state `on_hold`, rows `hold`, `release`), §7.2 `LOG.RUL.09`, §8 *Integration down* paragraph
@@ -1421,7 +1616,7 @@ Container free time (BL-LOG-24). Customs system integration (Later).
 
 ### BL-LOG-22 — 03 Logistics: reopen a closed freight job for a late cost
 
-**Labels:** `vertical:03-logistics` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 03 · **Size:** s
+**Labels:** `vertical:03-logistics` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 03 · **Size:** s
 **Depends on:** Base: 03 Freight job lifecycle (`close`) · Base: wl-invoicing job costing (`FIN.CST.01`), supplier bills (`FIN.PAB.01`) and disbursements (`FIN.DSB.01`) · **Blocks:** BL-LOG-24
 **Review items:** 03 MEDIUM "late costs on closed jobs"
 
@@ -1429,6 +1624,13 @@ Container free time (BL-LOG-24). Customs system integration (Later).
 Shipping lines and ports often bill weeks after a job closed. The closed job is reopened with a
 reason, the late cost is allocated, a supplementary invoice is issued when the cost is rechargeable,
 and the job is closed again with the new margin.
+
+#### Surfaces
+- **Back office:** the documentation officer reopens a closed job with a reason, allocates
+  the late cost with its liability, issues the supplementary invoice when rechargeable and
+  closes the job again; the margin history keeps each close.
+- **System:** the supplementary invoice takes its VAT from the disbursement conditions or
+  the job's main service, and the margin is recalculated at the next `close`.
 
 #### Files to read
 - `docs/verticals/03-logistics.md` §4.2 "When it goes wrong" (row *Supplier bill arrives after the job is closed*), §7.1 *Freight job* (state `closed`, rows `close`, `reopen`), §9 (VAT, disbursements)
@@ -1486,7 +1688,7 @@ Free-time alerts and the liability decision (BL-LOG-24).
 
 ### BL-LOG-23 — 03 Logistics: cancel a freight job before departure with charges and incurred costs
 
-**Labels:** `vertical:03-logistics` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 03 · **Size:** s
+**Labels:** `vertical:03-logistics` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 03 · **Size:** s
 **Depends on:** Base: 03 Freight job lifecycle · Base: wl-invoicing quotations (`FIN.QUO.01`) · **Blocks:** None.
 **Review items:** 03 freight job checklist (WORKFLOW §8 "cancel after work started")
 
@@ -1495,6 +1697,13 @@ A client may cancel a freight move before it departs. The job is cancelled with 
 cancellation charges in the quotation are invoiced, and costs already incurred (booking fees,
 documents) are recharged per the quotation's terms. After departure a job cannot be cancelled; it is
 held or completed.
+
+#### Surfaces
+- **Back office:** the user cancels a `booked` or `documents_pending` job with a reason;
+  without cancellation terms the documentation officer gets a task to decide the incurred
+  costs; the accountant decides on costs billed after `cancel`.
+- **System:** `cancel` drafts one invoice with the cancellation charges (5% VAT) and
+  rechargeable incurred costs; `cancel` is not offered after departure.
 
 #### Files to read
 - `docs/verticals/03-logistics.md` §4.2 "When it goes wrong" (row *Client cancels before departure*), §7.1 *Freight job* (row `cancel`), checklist row *Freight job*
@@ -1546,7 +1755,7 @@ Holds (BL-LOG-21). Late costs on closed jobs (BL-LOG-22).
 
 ### BL-LOG-24 — 03 Logistics: alert on container free time and allocate demurrage by liability (`LOG.RUL.14`)
 
-**Labels:** `vertical:03-logistics` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 03 · **Size:** m
+**Labels:** `vertical:03-logistics` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 03 · **Size:** m
 **Depends on:** Base: 03 Freight job lifecycle (containers) · Base: wl-invoicing supplier bills (`FIN.PAB.01`) and disbursements (`FIN.DSB.01`) · BL-LOG-22 (supplementary invoice after close) · **Blocks:** None.
 **Review items:** 03-N5-a
 
@@ -1557,6 +1766,15 @@ documentation officer and the client 2 days before and on the day, and after the
 line to the job's free-time log so the later supplier bill can be checked. When the bill comes, the
 daily charges are allocated to the job with a liability: the client (recharged per the quotation)
 or the company (absorbed in the margin).
+
+#### Surfaces
+- **Back office:** the documentation officer is notified 2 days before and on each free-time
+  end date, edits an extended end date, records collection or empty return, and on the
+  supplier bill sets a liability per charge line while the bill screen shows logged days
+  next to billed days.
+- **System:** `LOG.RUL.14` runs daily at 06:00, sends the notices once per container, charge
+  type and end date, and adds a daily free-time log line after the end date until collection
+  or return.
 
 #### Files to read
 - `docs/verticals/03-logistics.md` §4.2 "When it goes wrong" (row *Container free time running out*), §6 *Freight job* (containers with free-time end dates), §7.2 `LOG.RUL.14`, §9 *Disbursements*
@@ -1612,7 +1830,7 @@ Reopening a closed job (BL-LOG-22). Holds (BL-LOG-21).
 
 ### BL-LOG-25 — 03 Logistics: configure shared negative-flow settings — documents, rules and integrations
 
-**Labels:** `vertical:03-logistics` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` · **Milestone:** Launch 03 · **Size:** m
+**Labels:** `vertical:03-logistics` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` `surface:back-office` `surface:field-pwa` `surface:system` · **Milestone:** Launch 03 · **Size:** m
 **Depends on:** BL-DOC-01 · BL-DOC-04 · BL-DOC-05 · BL-HRM-01 · BL-DLV-01 · BL-KRN-04 · BL-KRN-05 · BL-KRN-08 · BL-KRN-09 · BL-INV-09 · BL-INV-10 · BL-NTF-06 · BL-SAL-19 · BL-SAL-20 · BL-SAL-21 · BL-HRM-26 · BL-HRM-27 · BL-HRM-28 · BL-DOC-08 · BL-DOC-09 · BL-DOC-10 · **Blocks:** None.
 **Review items:** X-13, X-19, 03-N8-a
 
@@ -1625,6 +1843,16 @@ late-entry limits, and the e-invoicing scope. No new behaviour: each value confi
 It also seeds the 03 values for lead sources and campaigns (`SAL.CRM.02`), onboarding and SOPs
 (`HRM.ONB.01`) and registration kinds (`DOC.EXP.01`), added on 2026-10-16: `SAL.ACL.07`,
 `HRM.RUL.16`, `HRM.RUL.17`, `HRM.ACL.10`, `DOC.RUL.04` and `DOC.RUL.01`.
+
+#### Surfaces
+- **Back office:** dispatch refusals for expired driver or vehicle documents show no
+  override; staff get the seeded expiry reminders, renewal tasks, the SMS-down call list,
+  late-entry approvals, lead sources, campaigns, onboarding tasks and SOP acknowledgements.
+- **Field PWA:** the driver's e-POD entered after the stop keeps the stop time and is
+  flagged with a reason; beyond 24 hours it needs an operations manager's approval.
+- **System:** the 03 seed loads the document kinds, responsible roles, notification groups,
+  compliance-critical rules, integration fallbacks and `EInvoiceScope`; a failed
+  `LOG.RUL.10` run alerts the company admin.
 
 #### Files to read
 - `docs/verticals/03-logistics.md` §4.1 (row *Driver without signal at a stop*), §5 `HRM.QUA.01`, §7.1 checklist, §7.2 (reused rules and the compliance-critical paragraph), §8 (E-invoicing ASP row, *Integration down*), §9 (*E-invoicing*, *Document blocks*, *Notification types*), §13 question 12
@@ -1748,7 +1976,7 @@ BL-DLV-01, BL-KRN-08). Delivery, cash and money settings (BL-LOG-26).
 
 ### BL-LOG-26 — 03 Logistics: configure shared negative-flow settings — delivery, cash, money and access
 
-**Labels:** `vertical:03-logistics` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` · **Milestone:** Launch 03 · **Size:** m
+**Labels:** `vertical:03-logistics` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` `surface:back-office` `surface:field-pwa` `surface:portal` `surface:system` · **Milestone:** Launch 03 · **Size:** m
 **Depends on:** BL-DLV-02 · BL-DLV-03 · BL-DLV-05 · BL-DLV-06 · BL-DLV-08 · BL-DLV-09 · BL-PAY-17 · BL-PAY-21 · BL-INV-01 · BL-INV-02 · BL-INV-04 · BL-INV-05 · BL-PAY-09 · BL-PTY-04 · BL-INV-25 · BL-INV-26 · BL-INV-27 · BL-INV-28 · BL-INV-29 · BL-INV-30 · BL-PAY-25 · BL-PAY-26 · **Blocks:** BL-LOG-02
 **Review items:** X-01, X-02, X-05, X-11, X-12, X-18, 03-N3-a, 03-N9-a
 
@@ -1760,6 +1988,19 @@ bounced-cheque fee, blocked-client exceptions and portal closure.
 It also seeds the 03 values for the cash-flow forecast alert (`FIN.CFL.01`) and the
 company budget with owner drawings (`FIN.BUD.01`), added on 2026-10-16: `FIN.RUL.23`,
 `FIN.RUL.24` and `FIN.ACL.21`.
+
+#### Surfaces
+- **Back office:** the operations manager approves COD differences, reversals and manual
+  lost marking; the cashier writes off shortages up to AED 50; invoice write-offs and
+  blocked-client exceptions are approved by someone other than the requester; staff see the
+  cash-flow alert and budget approval.
+- **Field PWA:** the driver sees the seeded failure reasons, a refused quantity only on
+  multi-parcel shipments, and only the failed attempt after 10 minutes without an approval
+  answer.
+- **Portal:** the client user can dispute an invoice; after the contract ends the portal is
+  read-only for 90 days, then closed.
+- **System:** the 03 seed loads every value as configuration; `WRK.RUL.17`, `LOG.RUL.13`,
+  `FIN.RUL.14`, `FIN.RUL.15`, `FIN.RUL.23` and `FIN.RUL.24` run with these defaults.
 
 #### Files to read
 - `docs/verticals/03-logistics.md` §3.3 (`WRK.ACL.09`, `WRK.ACL.10`, `FIN.ACL.05`, `FIN.ACL.06`, `FIN.ACL.19`, `PTY.ACL.03`, `FIN.ACL.15`, `POR.ACL.01`), §4.1 "When it goes wrong", §4.4 step 5, §7.1 *Shipment* (`fail_attempt` reasons), *Run* (`abort` reasons, `hand_over`), §7.2 (reused rules), §9 *Bad debts*, §13 question 13

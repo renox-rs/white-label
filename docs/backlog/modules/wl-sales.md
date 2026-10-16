@@ -51,7 +51,7 @@ template. BL-SAL-26 and the negative paths in BL-SAL-19 to BL-SAL-25 come from t
 
 ### BL-SAL-01 — wl-sales: refuse a duplicate external order number per channel
 
-**Labels:** `module:wl-sales` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Launch 06 · **Size:** s
+**Labels:** `module:wl-sales` `area:negative-flow` `priority:high` `size:s` `surface:system` · **Milestone:** Launch 06 · **Size:** s
 **Depends on:** Base: wl-sales Sales order lifecycle · **Blocks:** BL-FNB-16, BL-FNB-17
 **Review items:** X-14 (06 MEDIUM: duplicate external orders)
 
@@ -59,6 +59,11 @@ template. BL-SAL-26 and the negative paths in BL-SAL-19 to BL-SAL-25 come from t
 An aggregator or website may send the same order twice. The order's external order number
 must be unique per channel, so a second import is refused and points to the existing order
 instead of cooking and charging twice.
+
+#### Surfaces
+- **System:** an import whose external order number (trimmed, case-insensitive) is already
+  used on the channel is refused by a unique key, and the response returns the existing
+  order's number and id; no second order, reservation or kitchen ticket is created.
 
 #### Files to read
 - `docs/modules/wl-sales.md` §3 *Sales order* (external order number), §4.2 row `submit`, §7 setting "Unique external order number per channel"
@@ -100,7 +105,7 @@ Aggregator integration and payout lines (Epic 06 F&B).
 
 ### BL-SAL-02 — wl-sales: hold an online-paid order in `awaiting_payment` until the gateway confirms
 
-**Labels:** `module:wl-sales` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 06 · **Size:** m
+**Labels:** `module:wl-sales` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 06 · **Size:** m
 **Depends on:** Base: wl-sales Sales order lifecycle · Epic wl-payments: `PaymentReceived` · **Blocks:** BL-SAL-03, BL-SAL-04
 **Review items:** X-14, 06-N3-a
 
@@ -109,6 +114,13 @@ An order paid online must not reach the kitchen or warehouse before the gateway 
 payment. The order waits in `awaiting_payment`, invisible to fulfilment. When the payment is
 confirmed for the full amount, the order continues to acceptance or confirmation; prepaid
 orders skip the credit check.
+
+#### Surfaces
+- **Back office:** an `awaiting_payment` order does not appear in the outlet, kitchen,
+  dispatch or acceptance lists; it shows up there only after the payment is confirmed.
+- **System:** `PaymentReceived` for the full order total runs `confirm_payment` (idempotent
+  per payment id) and moves the order to `pending_acceptance` or `confirmed` without a
+  credit check.
 
 #### Files to read
 - `docs/modules/wl-sales.md` §3 *Sales order* (payment, payment status), §4.2 (states, rows `submit`, `confirm_payment`, paragraph "Online payment"), §5.3 steps 1–3, §6 consumed events
@@ -160,7 +172,7 @@ Failure and timeout (BL-SAL-03); late payment refund (BL-SAL-04); gateway integr
 
 ### BL-SAL-03 — wl-sales: cancel an order whose online payment failed or timed out
 
-**Labels:** `module:wl-sales` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Launch 06 · **Size:** s
+**Labels:** `module:wl-sales` `area:negative-flow` `priority:high` `size:s` `surface:public` `surface:system` · **Milestone:** Launch 06 · **Size:** s
 **Depends on:** BL-SAL-02 · Epic wl-payments: `PaymentFailed` · **Blocks:** BL-SAL-04
 **Review items:** X-14, 06-N3-a
 
@@ -168,6 +180,12 @@ Failure and timeout (BL-SAL-03); late payment refund (BL-SAL-04); gateway integr
 If the online payment fails, or no confirmation arrives within the payment window (15
 minutes), the order is cancelled with reason *payment failed*. The promo code use is released
 and the customer is told they can place a new order. Nothing reaches fulfilment.
+
+#### Surfaces
+- **Public:** on the website order the customer is told "payment failed, please try again"
+  and can place a new order (the failed order cannot be retried).
+- **System:** `PaymentFailed`, or a job 15 minutes after `submit`, runs `payment_failed`
+  (whichever comes first), releases the promo code use and emits `SalesOrderCancelled`.
 
 #### Files to read
 - `docs/modules/wl-sales.md` §4.2 (state `cancelled`, row `payment_failed`, paragraph "Online payment"), §5.3 step 2, §7 setting "Online payment window"
@@ -212,7 +230,7 @@ Late payment refund (BL-SAL-04).
 
 ### BL-SAL-04 — wl-sales: refund a payment confirmed after cancel or reject (`SAL.RUL.06`)
 
-**Labels:** `module:wl-sales` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Launch 06 · **Size:** s
+**Labels:** `module:wl-sales` `area:negative-flow` `priority:high` `size:s` `surface:system` · **Milestone:** Launch 06 · **Size:** s
 **Depends on:** BL-SAL-02 · BL-SAL-03 · Epic wl-payments: refunds (system request of a late payment) · **Blocks:** None.
 **Review items:** X-14, X-06, 06-N3-a
 
@@ -220,6 +238,12 @@ Late payment refund (BL-SAL-04).
 A payment can be confirmed after the order was cancelled, rejected or already paid. That
 money must go back to the customer in full, without staff action, and the order must not
 come back to life.
+
+#### Surfaces
+- **System:** `SAL.RUL.06` requests a full refund (reason *late payment*) of a payment
+  confirmed for a `cancelled`, `rejected` or already paid order, or of an amount that does
+  not match an `awaiting_payment` order, once per payment id; the order state never changes,
+  and the customer and the outlet or sales manager are notified.
 
 #### Files to read
 - `docs/modules/wl-sales.md` §4.2 rows `confirm_payment`, `reject`, paragraph "Online payment", §6 `SAL.RUL.06`
@@ -264,7 +288,7 @@ Refund processing (Epic wl-payments).
 
 ### BL-SAL-05 — wl-sales: amend an order as a new revision
 
-**Labels:** `module:wl-sales` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 06 · **Size:** m
+**Labels:** `module:wl-sales` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 06 · **Size:** m
 **Depends on:** Base: wl-sales Sales order lifecycle · Epic wl-kernel: approval request lifecycle · **Blocks:** BL-SAL-06, BL-FNB-05, BL-MFG-03, BL-SAL-18
 **Review items:** X-14 (07 MEDIUM: order amendment)
 
@@ -273,6 +297,15 @@ Customers change quantities, prices or lines after an order is placed. Staff ame
 a new revision is created, the previous one is kept read-only, reservations and vertical
 fulfilment follow, and the credit check runs again when the value rises. After fulfilment
 started, a manager must approve. Aggregator orders cannot be amended here.
+
+#### Surfaces
+- **Back office:** a user with `sales_orders.amend` amends the order with a reason; the new
+  revision is shown and the earlier one stays read-only. After fulfilment started a manager
+  approves under "Needs your action" (never the requester); `amend` is not offered on
+  aggregator orders, and reducing a started line sends the user to `cancel_line`.
+- **System:** reservations and vertical fulfilment are adjusted, the credit check re-runs
+  when the value rises (fails → `credit_hold`), guards are re-checked at final approval, and
+  `SalesOrderAmended` is emitted.
 
 #### Files to read
 - `docs/modules/wl-sales.md` §3 *Sales order* (revision), §4.2 row `amend`, paragraph "Cancelling after fulfilment started" (definition of started), §5.7 steps 1–2, §6 (`SAL.ACL.02`, `SAL.ACL.05`, event `SalesOrderAmended`), §7 setting "Amendments allowed per channel", §10 "Audit"
@@ -326,7 +359,7 @@ Payment link, refund and invoice correction (BL-SAL-06).
 
 ### BL-SAL-06 — wl-sales: settle the money of an amendment (prepaid difference, invoice correction)
 
-**Labels:** `module:wl-sales` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 06 · **Size:** m
+**Labels:** `module:wl-sales` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:public` `surface:system` · **Milestone:** Launch 06 · **Size:** m
 **Depends on:** BL-SAL-05 · Epic wl-payments: payment links and refunds · Epic wl-invoicing: credit note and extra invoice · **Blocks:** BL-FNB-05
 **Review items:** X-14
 
@@ -334,6 +367,16 @@ Payment link, refund and invoice correction (BL-SAL-06).
 An amendment changes the money already taken or billed. For a prepaid order, an increase
 sends the customer a payment link and a decrease is refunded. A draft invoice is updated; an
 issued invoice is never edited: it is corrected by a credit note or an extra invoice.
+
+#### Surfaces
+- **Back office:** when the payment link for an increase expires unpaid, the order owner
+  (sales rep, or outlet manager for website and portal orders) gets a "payment link expired"
+  task with *resend link* or *amend back*.
+- **Public:** the customer pays the difference of an increase on the payment link
+  (`FIN.PAY.02`).
+- **System:** a decrease is refunded through wl-payments (reason *order amended*), a draft
+  invoice is updated, an issued one gets a credit note or an extra invoice, and the added
+  quantity is not released to fulfilment until the link is paid.
 
 #### Files to read
 - `docs/modules/wl-sales.md` §4.2 row `amend` (effects), paragraph "Amendment of a prepaid order", §5.7 step 1, §10 "Amended and cancelled orders"
@@ -385,7 +428,7 @@ The revision itself (BL-SAL-05).
 
 ### BL-SAL-07 — wl-sales: cancel an order after fulfilment started, with an outcome per line
 
-**Labels:** `module:wl-sales` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` · **Milestone:** Launch 06 · **Size:** m
+**Labels:** `module:wl-sales` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Launch 06 · **Size:** m
 **Depends on:** Base: wl-sales Sales order lifecycle · Epic wl-kernel: approval request lifecycle · **Blocks:** BL-SAL-08, BL-SAL-09, BL-STK-26, BL-AUT-18, BL-FNB-02, BL-FNB-04, BL-MFG-03, BL-MFG-14
 **Review items:** X-14, 07-N2-a
 
@@ -394,6 +437,14 @@ When the customer or business cancels an order whose kitchen, work order or pick
 started, each started line needs an outcome (return to stock, finish to stock, scrap), with or
 without a cancellation fee, and a manager's approval. The event carries the outcomes so stock
 and the vertical act on them; any prepayment is refunded less the fee.
+
+#### Surfaces
+- **Back office:** the user cancelling (for example cashier A) picks an outcome and fee for
+  each started line; a manager approves the whole cancellation under "Needs your action" and
+  may waive the fee; the requester cannot approve, and `cancel` is not offered once anything
+  is fulfilled.
+- **System:** guards are re-checked at final approval, one refund less fees is requested,
+  and `SalesOrderCancelled` carries the outcome and fee per line.
 
 #### Files to read
 - `docs/modules/wl-sales.md` §3 *Sales order* (line cancellation fields), §4.2 row `cancel`, paragraph "Cancelling after fulfilment started", §5.7 step 2, §6 (`SAL.ACL.01`, `SAL.ACL.05`, event `SalesOrderCancelled`), §7 settings, §10 "Amended and cancelled orders"
@@ -457,7 +508,7 @@ amount): 0. §10: whether a fee kept from a prepayment carries 5% VAT is `⚠ op
 
 ### BL-SAL-08 — wl-sales: cancel one line of an order (`cancel_line`)
 
-**Labels:** `module:wl-sales` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 06 · **Size:** m
+**Labels:** `module:wl-sales` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 06 · **Size:** m
 **Depends on:** BL-SAL-07 · **Blocks:** BL-SAL-13, BL-STK-26, BL-AUT-15, BL-FNB-05, BL-MFG-03, BL-MFG-07, BL-SAL-17
 **Review items:** X-14 (06 MEDIUM: item runs out after acceptance)
 
@@ -465,6 +516,14 @@ amount): 0. §10: whether a fee kept from a prepayment carries 5% VAT is `⚠ op
 An item runs out, or the customer drops one line. Staff cancel the open quantity of that line
 only, with a reason; the order continues. If the line's fulfilment started, an outcome and a
 manager's approval are needed. The prepaid share is refunded less any fee.
+
+#### Surfaces
+- **Back office:** staff cancel the open quantity of one line with a reason; when its
+  fulfilment started they also pick an outcome and a manager approves under "Needs your
+  action" (not the requester).
+- **System:** the reservation is released, the prepaid share is refunded less any fee, an
+  issued invoice gets a credit note, the order becomes `fulfilled` when nothing is open, and
+  `SalesOrderLineCancelled` is emitted.
 
 #### Files to read
 - `docs/modules/wl-sales.md` §4.2 row `cancel_line`, paragraph "Cancelling after fulfilment started", §6 event `SalesOrderLineCancelled`
@@ -507,7 +566,7 @@ Stock effects of the outcome (BL-STK-26).
 
 ### BL-SAL-09 — wl-sales: cancel the remaining lines with outcomes (`cancel_remaining`)
 
-**Labels:** `module:wl-sales` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 06 · **Size:** s
+**Labels:** `module:wl-sales` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 06 · **Size:** s
 **Depends on:** BL-SAL-07 · **Blocks:** BL-STK-26, BL-AUT-15, BL-FNB-16, BL-MFG-03, BL-SAL-17
 **Review items:** X-14
 
@@ -515,6 +574,12 @@ Stock effects of the outcome (BL-STK-26).
 A partially fulfilled order whose rest will never be delivered is closed off with
 `cancel_remaining`. Since the change, lines whose fulfilment started need an outcome and an
 approval, like `cancel`.
+
+#### Surfaces
+- **Back office:** staff run `cancel_remaining` with a reason on a `partially_fulfilled`
+  order; started lines need an outcome and a manager's approval.
+- **System:** reservations are released, prepaid shares are refunded less fees, and one
+  `SalesOrderLineCancelled` is emitted per cancelled line.
 
 #### Files to read
 - `docs/modules/wl-sales.md` §4.2 row `cancel_remaining`, paragraph "Cancelling after fulfilment started"
@@ -547,7 +612,7 @@ Stock effects (BL-STK-26).
 
 ### BL-SAL-10 — wl-sales: re-check credit at dispatch and hold the order
 
-**Labels:** `module:wl-sales` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 07 · **Size:** m
+**Labels:** `module:wl-sales` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 07 · **Size:** m
 **Depends on:** Base: wl-sales Sales order lifecycle and credit check · **Blocks:** BL-SAL-11, BL-SAL-12, BL-STK-21, BL-AUT-18
 **Review items:** X-14, 07-N3-b
 
@@ -555,6 +620,13 @@ Stock effects (BL-STK-26).
 A customer's credit can worsen between order confirmation and dispatch. Before goods on
 account leave, the dispatch calls `credit_recheck(order)`. If it fails, the order goes to
 `credit_hold`, the goods stay reserved, and the accountant and sales rep are told.
+
+#### Surfaces
+- **Back office:** the held order shows `credit_hold` with its reason and appears for the
+  accountant and the sales rep ("orders on credit hold"); the goods stay reserved.
+- **System:** each dispatch of an order on account calls `credit_recheck`, which counts the
+  exposure without the order plus its undelivered value and runs `hold` on failure, storing
+  the state before the hold and emitting `SalesOrderCreditHeld`.
 
 #### Files to read
 - `docs/modules/wl-sales.md` §3 (*Customer account*, *Credit check*), §4.2 (state `credit_hold`, rows `hold`, `fulfil`, paragraph "Credit re-check at dispatch"), §5.2 steps 2 and 4, §6 (`CreditChecker`, `SAL.ACL.03`, `SAL.RUL.01`, event `SalesOrderCreditHeld`), §7 settings
@@ -634,13 +706,20 @@ delivery), cause (reversed, lost).
 
 ### BL-SAL-11 — wl-sales: release a held order back to the state before the hold
 
-**Labels:** `module:wl-sales` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Launch 07 · **Size:** s
+**Labels:** `module:wl-sales` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 07 · **Size:** s
 **Depends on:** BL-SAL-10 · Epic wl-kernel: approval request lifecycle · **Blocks:** BL-SAL-12, BL-SAL-17
 **Review items:** X-14, X-05
 
 #### Goal
 A held order goes back to exactly where it was (`confirmed` or `partially_fulfilled`) when a
 credit releaser approves. The releaser cannot be the order's creator.
+
+#### Surfaces
+- **Back office:** a holder of `credit.release` (never the order's creator) releases the
+  held order with approval; the release screen warns "account on hold" and offers to request
+  *Clear account hold* in the same action.
+- **System:** the order returns to the stored state before the hold, and
+  `SalesOrderConfirmed` is emitted only when the order was never confirmed before.
 
 #### Files to read
 - `docs/modules/wl-sales.md` §4.2 row `release`, §6 `SAL.ACL.03`
@@ -679,7 +758,7 @@ Account hold (BL-SAL-12); reserving the order's back-orders on `release` (BL-SAL
 
 ### BL-SAL-12 — wl-sales: put the customer account and its orders on hold after a bounced cheque (`SAL.RUL.05`)
 
-**Labels:** `module:wl-sales` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 07 · **Size:** m
+**Labels:** `module:wl-sales` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 07 · **Size:** m
 **Depends on:** BL-SAL-10 · BL-SAL-11 · Epic wl-payments: `ChequeBounced` · **Blocks:** BL-AUT-18, BL-MFG-14
 **Review items:** X-05, 08-N3-a
 
@@ -688,6 +767,15 @@ When a customer's cheque bounces, the business must stop giving them more credit
 The customer account (and its credit group when configured) goes on hold, every open order on
 account not yet dispatched is held, and new orders and counter sales on account are refused
 until a credit releaser clears the account.
+
+#### Surfaces
+- **Back office:** submitting a new order on account, or a counter sale on account, is
+  refused with "account on hold" (cash or card still allowed); a holder of `credit.release`
+  requests *Clear account hold* on the customer account with a reason and another holder
+  approves; roles without `credit.view` do not see the flag reason.
+- **System:** `SAL.RUL.05` on `ChequeBounced` sets the account (and the credit group) on
+  hold with the cheque as a source, runs `hold` on open orders on account not yet
+  dispatched, and notifies the accountant and the sales rep.
 
 #### Files to read
 - `docs/modules/wl-sales.md` §3 *Customer account* (on-hold flag), *Credit group*, §4.2 rows `submit`, `hold` and paragraph *Account hold*, §5.7 step 4, §6 `SAL.RUL.05`, `SAL.ACL.03`, §7 setting "Bounced cheque hold"
@@ -756,7 +844,7 @@ Cheque re-presentation and write-off (Epic wl-payments).
 
 ### BL-SAL-13 — wl-sales: fulfil only accepted quantities, handle a returned delivery and reverse fulfilment
 
-**Labels:** `module:wl-sales` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 07 · **Size:** m
+**Labels:** `module:wl-sales` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 07 · **Size:** m
 **Depends on:** Base: wl-sales Sales order lifecycle · BL-SAL-08 · BL-DLV-02 · BL-STK-22 · BL-STK-24 · BL-STK-25 · **Blocks:** BL-MFG-07
 **Review items:** X-11, X-14, 07-N4-a (07 and 08 MEDIUM: returned delivery outcome)
 
@@ -766,6 +854,15 @@ are re-delivered or cancelled with `cancel_line`. A delivery returned in full mo
 fulfilment progress back to *not dispatched*, keeps the lines' reservation request and tells
 the sales rep and the customer. A delivery reversed, or lost while under review, takes back
 the fulfilled quantities (`reverse_fulfilment`); a lost delivery gives the sales rep a task.
+
+#### Surfaces
+- **Back office:** the order's fulfilment progress shows returned lines as *not dispatched*
+  and lost lines as *lost*; the sales rep gets a task for a lost delivery, and the
+  accountant and the sales rep get a task when a closed order's delivery is reversed or an
+  issued invoice is affected.
+- **System:** `fulfil` counts only accepted quantities once per source (dispatch note
+  first), `reverse_fulfilment` runs on reversal or loss from review, a draft invoice is
+  updated, and `SalesOrderFulfilmentReversed` is emitted.
 
 #### Files to read
 - `docs/modules/wl-sales.md` §4.2 rows `fulfil` and `reverse_fulfilment`, paragraph *Fulfilment from deliveries*, vertical mapping rows 08 `return_delivery` and `deliver`, §5.2 step 4, §6 (`OrderFulfilment`, consumed `Dispatch*` and `Delivery*` events, event `SalesOrderFulfilmentReversed`)
@@ -822,7 +919,7 @@ Dispatch side (BL-STK-22, BL-STK-24, BL-STK-25). Credit notes (Epic wl-invoicing
 
 ### BL-SAL-14 — wl-sales: refund after completion with nothing returned (`SAL.ACL.06`)
 
-**Labels:** `module:wl-sales` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 06 · **Size:** m
+**Labels:** `module:wl-sales` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 06 · **Size:** m
 **Depends on:** Base: wl-sales Sales return lifecycle · Epic wl-ticketing: complaint tickets · Epic wl-payments: refunds · Epic wl-invoicing: credit note · **Blocks:** BL-FNB-07, BL-FNB-08, BL-FNB-09, BL-FNB-10, BL-FNB-16
 **Review items:** X-14, 06-N4-b
 
@@ -833,6 +930,16 @@ complaint ticket, with a complaint category and a responsible party, and resolve
 with a credit note or refund. Above AED 50 a manager approves, never the person who recorded it.
 When an aggregator refunded its customer itself, the vertical resolves the return *refunded by
 the channel* (no money leaves), and reverses it when the aggregator takes the refund back.
+
+#### Surfaces
+- **Back office:** staff (for example cashier A) raise a *no goods* return from the
+  completed order or a complaint ticket with a complaint category, responsible party and
+  refund per line; above AED 50 a manager approves under "Needs your action" (not the
+  recorder); `returns.handle` can `reverse` a return resolved *refunded by the channel* with
+  a reason.
+- **System:** the 06 payout statement `match` resolves a return *refunded by the channel*
+  and `void` reverses it; the refund cap per order and line is enforced and `ReturnResolved`
+  or `ReturnReversed` is emitted.
 
 #### Files to read
 - `docs/modules/wl-sales.md` §3 *Sales return*, §4.5 (states `resolved` and `reversed`, rows `resolve` and `reverse`, paragraphs "Refund after completion (kind *no goods*)" and "Refunded by the channel"), §5.3 step 5, §5.6 step 4, §6 (`SAL.ACL.06`, events `ReturnResolved` and `ReturnReversed`), §7 setting "Refund after completion"
@@ -912,7 +1019,7 @@ Supplier claim and rider record follow-up (verticals); creating and reversing th
 
 ### BL-SAL-15 — wl-sales: accept returns of recalled goods into the recall's hold
 
-**Labels:** `module:wl-sales` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Launch 08 · **Size:** s
+**Labels:** `module:wl-sales` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 08 · **Size:** s
 **Depends on:** Base: wl-sales Sales return lifecycle · BL-STK-14 · BL-STK-17 · **Blocks:** None.
 **Review items:** X-09
 
@@ -920,6 +1027,13 @@ Supplier claim and rider record follow-up (verticals); creating and reversing th
 When customers bring back goods from a recalled lot, the return is accepted even outside the
 return window, linked to the recall, and the quantity joins the recall's stock hold. The
 recall, not the return, decides what happens to the goods.
+
+#### Surfaces
+- **Back office:** staff `receive` a return of recalled goods outside the return window
+  without approval; the return shows its link to the recall and the goods go to quarantine
+  on the recall's hold.
+- **System:** `LotTrace` decides whether the lot, or a non-lot item by received date range
+  and sale date, is in an open recall, and resolving the return skips the stock part.
 
 #### Files to read
 - `docs/modules/wl-sales.md` §3 *Sales return* (recall), §4.5 row `receive`, §5.6 step 2, §6 consumed (`LotTrace`)
@@ -958,7 +1072,7 @@ Recall decisions (BL-STK-16).
 
 ### BL-SAL-16 — wl-sales: keep a package active when its payment is reversed
 
-**Labels:** `module:wl-sales` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 05 · **Size:** m
+**Labels:** `module:wl-sales` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 05 · **Size:** m
 **Depends on:** Base: wl-sales Package lifecycle · Epic wl-invoicing: `InvoiceReopened` · **Blocks:** BL-CLN-16
 **Review items:** X-03, X-06
 
@@ -967,6 +1081,13 @@ When the payment for a package is reversed or charged back, its invoice reopens.
 stays `active` and used credits stay used. The staff who sold it get a task to collect, the
 holder is told the balance is due, and an optional setting stops further consumption until
 the balance is paid.
+
+#### Surfaces
+- **Back office:** the seller (05 front desk, 10 counsellor) gets a "collect before next
+  use" task, which also lists consumptions refused while suspended.
+- **System:** on `InvoiceReopened` the package stays as it is and the holder is told the
+  balance is due; with *suspend consumption while unpaid* on, `consume` is refused until the
+  invoice is paid.
 
 #### Files to read
 - `docs/modules/wl-sales.md` §4.4 (row `consume`, paragraph "Payment reversed after activation"), §6 consumed (`InvoiceReopened`), §7 setting "Package: suspend consumption…"
@@ -1011,7 +1132,7 @@ Payment reversal and invoice reopening (Epic wl-payments, Epic wl-invoicing).
 
 ### BL-SAL-17 — wl-sales: back-order lines without stock and serve them oldest first
 
-**Labels:** `module:wl-sales` `area:negative-flow` `priority:medium` `size:m` · **Milestone:** Launch 08 · **Size:** m
+**Labels:** `module:wl-sales` `area:negative-flow` `priority:medium` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 08 · **Size:** m
 **Depends on:** Base: wl-sales Sales order lifecycle · BL-SAL-08 (`cancel_line`) · BL-SAL-09 (`cancel_remaining`) · BL-SAL-11 (`release`) · Base: wl-inventory reorder suggestions (`STK.RUL.04`) and goods receipt · **Blocks:** BL-AUT-15
 **Review items:** 08 MEDIUM "back-orders"
 
@@ -1021,6 +1142,14 @@ part is reserved, the rest of the order is picked and fulfilled, the open quanti
 reorder suggestions, and arriving stock is reserved for the oldest back-orders first, with the
 customer told. The customer may cancel a back-order. This is the module behaviour; 08 turns it
 on (BL-AUT-15).
+
+#### Surfaces
+- **Back office:** staff can cancel a back-order with `cancel_line` (no outcome needed) or
+  `cancel_remaining`; the order line shows its quantity back-ordered (the 08 settings and
+  screens are BL-AUT-15).
+- **System:** on `confirmed` the missing quantity is back-ordered, added to the `STK.RUL.04`
+  suggestion, and reserved oldest first when stock arrives at the branch or the order is
+  released; the customer gets one message per order.
 
 #### Files to read
 - `docs/modules/wl-sales.md` §3 *Sales order* (quantity back-ordered), §4.2 (row `submit`,
@@ -1116,7 +1245,7 @@ The 08 settings and screens (BL-AUT-15); the reorder suggestion engine (base `ST
 
 ### BL-SAL-18 — wl-sales: refuse a second order with the same customer PO number for a customer
 
-**Labels:** `module:wl-sales` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 07 · **Size:** s
+**Labels:** `module:wl-sales` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Launch 07 · **Size:** s
 **Depends on:** Base: wl-sales Sales order lifecycle (`submit`) · BL-SAL-05 (`amend`) · **Blocks:** BL-MFG-06
 **Review items:** X-14, 07 MEDIUM "duplicate PO upload"
 
@@ -1125,6 +1254,15 @@ B2B customers email a PO and sometimes also upload it in the portal. When the se
 the same customer PO number must not create two orders for the same customer: `submit` and
 `amend` refuse it and point to the existing order. Call-offs against a blanket PO are told
 apart by a call-off number. 07 turns the setting on (BL-MFG-06).
+
+#### Surfaces
+- **Back office:** `submit` or `amend` with a customer PO reference (and call-off number)
+  already used by the same customer is refused and names the existing order, cancelled
+  orders included.
+- **Portal:** a buyer's PO upload refused for a duplicate shows only the existing order's
+  number and status.
+- **System:** a unique key on customer, PO reference and call-off number lets only one of
+  two concurrent submits pass.
 
 #### Files to read
 - `docs/modules/wl-sales.md` §3 *Sales order* (customer PO reference, call-off number), §4.2
@@ -1189,7 +1327,7 @@ Duplicate external numbers per channel (BL-SAL-01); 07 settings and portal uploa
 
 ### BL-SAL-19 — wl-sales: run campaigns with a budget and cost entries
 
-**Labels:** `module:wl-sales` `area:sme-gap` `priority:medium` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-sales` `area:sme-gap` `priority:medium` `size:m` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** Base: wl-kernel state machines and approvals · Base: wl-invoicing supplier bills · **Blocks:** BL-SAL-20, BL-SAL-21, BL-SAL-25, BL-NTF-07, BL-ACC-23, BL-AUT-18, BL-CLN-15, BL-CON-18, BL-EDU-17, BL-FNB-17, BL-LOG-25, BL-MFG-14, BL-MPW-20, BL-PRP-27
 **Review items:** G1 (SME problem map 1, 2, 4)
 
@@ -1199,6 +1337,14 @@ channel, period, budget and a code, and enter what it cost, or link the agency's
 platform's supplier bill line. The campaign moves through `draft`, `active` and `ended`, on
 its dates or by hand. Without costs per campaign the business cannot see what a customer
 costs to win (`SAL.CRM.02`).
+
+#### Surfaces
+- **Back office:** marketing staff create a campaign (channel, period, budget, code), add
+  cost entries or link supplier bill lines, and `activate`, `end` or `reopen` it; an entry
+  over budget waits for a manager under "Needs your action" (not the requester); the owner
+  gets the 80% and 100% alerts.
+- **System:** `activate` and `end` run daily at 00:05 Asia/Dubai, and on
+  `SupplierBillApproved` the linked entries enter the budget check under the campaign lock.
 
 #### Files to read
 - `docs/modules/wl-sales.md` §3 *Campaign*, *Campaign cost entry*; §4.6 and the text after
@@ -1344,7 +1490,7 @@ Attribution of leads and parties (BL-SAL-20); reports (BL-SAL-21); retention sen
 
 ### BL-SAL-20 — wl-sales: record the source and campaign of leads and parties and link the first sale
 
-**Labels:** `module:wl-sales` `area:sme-gap` `priority:medium` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-sales` `area:sme-gap` `priority:medium` `size:m` `surface:back-office` `surface:public` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** BL-SAL-19 · Base: wl-sales Lead lifecycle · Base: wl-invoicing Invoice lifecycle (`InvoiceIssued`) · Base: wl-parties merge (`PartiesMerged`) · Base: wl-kernel `void` (§5.12) · **Blocks:** BL-SAL-21, BL-ACC-23, BL-AUT-18, BL-CLN-15, BL-CON-18, BL-EDU-17, BL-FNB-17, BL-LOG-25, BL-MFG-14, BL-MPW-20, BL-PRP-27
 **Review items:** G1 (SME problem map 1, 2, 4)
 
@@ -1353,6 +1499,17 @@ Every lead and every new customer gets a source (referral, walk-in, website…) 
 known, a campaign. The party's first sale is linked with its value, so the business can say
 which source and campaign brought which customers and how much they bought. This works with
 or without leads (a counter business has no pipeline).
+
+#### Surfaces
+- **Back office:** staff must pick a source (and a campaign where required) before a counter
+  sale for a new walk-in party completes; staff change an acquisition with a reason, and
+  after the first sale another `campaigns.manage` holder approves; sales without a source
+  appear on an exceptions report.
+- **Public:** a lead sent through a web form link with a campaign code (`?c=SPRING26`) gets
+  its source and campaign (screen not specified yet).
+- **System:** `record_first_sale` links the first sale and emits `CustomerAcquired` once;
+  the nightly run replaces a cancelled or credited first sale and emits
+  `CustomerAcquisitionChanged`.
 
 #### Files to read
 - `docs/modules/wl-sales.md` §3 *Lead*, *Lead source*, *Party acquisition* and the
@@ -1498,7 +1655,7 @@ epics); 01 enquiry fields (`PRP.LEA.01`, 01 epic).
 
 ### BL-SAL-21 — wl-sales: report leads, conversion, cost per lead, CAC and ROAS
 
-**Labels:** `module:wl-sales` `area:sme-gap` `priority:medium` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-sales` `area:sme-gap` `priority:medium` `size:m` `surface:back-office` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** BL-SAL-19 · BL-SAL-20 · **Blocks:** BL-SAL-25, BL-ACC-23, BL-AUT-18, BL-CLN-15, BL-CON-18, BL-EDU-17, BL-FNB-17, BL-LOG-25, BL-MFG-14, BL-MPW-20, BL-PRP-27
 **Review items:** G1 (SME problem map 1, 2, 4)
 
@@ -1506,6 +1663,12 @@ epics); 01 enquiry fields (`PRP.LEA.01`, 01 epic).
 The owner sees, per source, campaign, marketing channel, brand, branch and period, how many
 leads came, how many converted, what they cost, what a new customer cost (CAC) and how much
 revenue each dirham of spend brought (ROAS), and exports it.
+
+#### Surfaces
+- **Back office:** the owner opens the acquisition report under Reports, filters it by
+  source, campaign, marketing channel, brand, branch and month, sees leads, conversion, cost
+  per lead, CAC and ROAS ("—" when undefined, costs split *linked to bills* and *manual*)
+  within their scope, and exports it to CSV.
 
 #### Files to read
 - `docs/modules/wl-sales.md` §5.8 step 5; §3 *Party acquisition*, *Campaign cost entry*
@@ -1586,7 +1749,7 @@ Retention campaign results (BL-SAL-25); charts (shared report work).
 
 ### BL-SAL-22 — wl-sales: enrol members and earn points or visits on qualifying sales (`SAL.RUL.07`)
 
-**Labels:** `module:wl-sales` `area:sme-gap` `priority:medium` `size:m` · **Milestone:** Launch 05 · **Size:** m
+**Labels:** `module:wl-sales` `area:sme-gap` `priority:medium` `size:m` `surface:back-office` `surface:portal` `surface:public` `surface:system` · **Milestone:** Launch 05 · **Size:** m
 **Depends on:** Base: wl-sales Counter sale, Sales order and Sales return lifecycles · Base: wl-invoicing `InvoicePaid`, `CreditNoteIssued`, `InvoiceReopened`, `InvoiceWrittenOff` · Base: wl-payments `PaymentReversed` · **Blocks:** BL-SAL-23, BL-SAL-24, BL-SAL-25, BL-SAL-26, BL-AUT-18, BL-CLN-15, BL-EDU-17, BL-FNB-17
 **Review items:** G4 (SME problem map 32, 35)
 
@@ -1596,6 +1759,17 @@ visit per sale. A return or credit note, a reversed payment, a write-off or a re
 fulfilment takes the points back in proportion, and staff cannot collect other customers'
 points on their own account. This replaces
 the F&B-only `FNB.LOY.01` with a shared capability used by 05, 06, 08 and 10.
+
+#### Surfaces
+- **Back office:** at the counter the cashier enrols a member (terms version recorded) and
+  attaches the member to a sale before it completes by code or mobile number; attaching to
+  the cashier's own party or to a completed sale is refused; the manager sees accounts over
+  the daily sales limit listed for review.
+- **Portal:** a customer, or a guardian for a minor, enrols in the portal and is attached to
+  a sale by portal login (screen not specified yet).
+- **Public:** a customer enrols on the ordering site (screen not specified yet).
+- **System:** `SAL.RUL.07` earns points or visits once per sale, `SAL.RUL.09` and returns
+  reverse them in proportion, and the member is told when a reward becomes available.
 
 #### Files to read
 - `docs/modules/wl-sales.md` §3 *Loyalty programme*, *Loyalty account*, *Points movement*;
@@ -1745,7 +1919,7 @@ and campaigns (BL-SAL-25); closure, merge, block and programme changes (BL-SAL-2
 
 ### BL-SAL-23 — wl-sales: redeem points as a discount line, confirmed by the member
 
-**Labels:** `module:wl-sales` `area:sme-gap` `priority:medium` `size:m` · **Milestone:** Launch 05 · **Size:** m
+**Labels:** `module:wl-sales` `area:sme-gap` `priority:medium` `size:m` `surface:back-office` `surface:portal` `surface:public` `surface:system` · **Milestone:** Launch 05 · **Size:** m
 **Depends on:** BL-SAL-22 · Base: wl-sales `DiscountEngine` (`SAL.DSC.01`) · Base: wl-sales Sales order lifecycle (`cancel`, `reject`, `cancel_line`, `payment_failed`) · Base: wl-notify `send_otp` (validity and tries, wl-notify §7) · **Blocks:** BL-SAL-24, BL-AUT-18, BL-CLN-15, BL-EDU-17, BL-FNB-17
 **Review items:** G4 (SME problem map 35)
 
@@ -1754,6 +1928,18 @@ At the counter, on the ordering site or in the portal, a member pays part of a s
 points or a visit reward. The redemption is a discount line on the sale, confirmed by a code
 to the member's phone so staff cannot spend other people's points. A return gives the points
 back.
+
+#### Surfaces
+- **Back office:** at the counter the cashier adds the *Loyalty redemption* line, the member
+  reads out the code sent to their mobile, and staff see at once when the code cannot be
+  sent or is blocked after 3 wrong tries; the sale goes on without the line.
+- **Portal:** a member logged in to the portal redeems points or a visit reward on a sale
+  (screen not specified yet).
+- **Public:** on the ordering site the member redeems points, confirmed by the code (screen
+  not specified yet).
+- **System:** points are held for 30 minutes and checked again at completion; the `redeem`
+  is written on completion or `confirmed`, and `cancel`, `reject`, `cancel_line` or a return
+  give the points back and tell the member.
 
 #### Files to read
 - `docs/modules/wl-sales.md` §5.9 steps 3–4; §10 *Loyalty points*; §6 `DiscountEngine`;
@@ -1859,7 +2045,7 @@ Expiry and adjustments (BL-SAL-24); the accountant's answer on VAT (open item).
 
 ### BL-SAL-24 — wl-sales: expire points, adjust by hand with approval and report the points liability (`SAL.RUL.08`, `SAL.ACL.07`)
 
-**Labels:** `module:wl-sales` `area:sme-gap` `priority:medium` `size:m` · **Milestone:** Launch 05 · **Size:** m
+**Labels:** `module:wl-sales` `area:sme-gap` `priority:medium` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 05 · **Size:** m
 **Depends on:** BL-SAL-22 · BL-SAL-23 · Base: wl-kernel approvals (`PLT.APR.01`) · Base: wl-notify `notify` (expiry reminder and its give-up) · **Blocks:** BL-SAL-26, BL-AUT-18, BL-CLN-15, BL-EDU-17, BL-FNB-17
 **Review items:** G4 (SME problem map 35)
 
@@ -1867,6 +2053,14 @@ Expiry and adjustments (BL-SAL-24); the accountant's answer on VAT (open item).
 Points expire per earn lot after their validity, with a reminder to the member before. Staff
 can correct a balance by hand, but large corrections and closing an account with points need
 a manager. The accountant sees the outstanding points and their value.
+
+#### Surfaces
+- **Back office:** staff with `loyalty.adjust` adjust a balance with a reason; above 500
+  points, and for a staff closure with points, a manager approves under "Needs your action"
+  (not the requester); the account shows *reminder not delivered*; the accountant opens the
+  points liability report.
+- **System:** `SAL.RUL.08` runs daily at 02:00 Asia/Dubai, sends one reminder per member N
+  days before expiry and expires the rest of each lot after its date with `PointsExpired`.
 
 #### Files to read
 - `docs/modules/wl-sales.md` §4.7; §5.9 steps 5–6; §6 `SAL.RUL.08`, `SAL.ACL.07`; §7 loyalty rows
@@ -1939,7 +2133,7 @@ How the liability is booked in the accounts (`⚠ open: accountant (A-15)`).
 
 ### BL-SAL-25 — wl-sales: define customer segments and send retention campaigns through wl-notify
 
-**Labels:** `module:wl-sales` `area:sme-gap` `priority:medium` `size:m` · **Milestone:** Launch 05 · **Size:** m
+**Labels:** `module:wl-sales` `area:sme-gap` `priority:medium` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 05 · **Size:** m
 **Depends on:** BL-SAL-19 · BL-SAL-21 · BL-SAL-22 · BL-NTF-07 · BL-NTF-08 · BL-NTF-09 · **Blocks:** BL-AUT-18, BL-CLN-15, BL-EDU-17, BL-FNB-17
 **Review items:** G4 (SME problem map 32, 35)
 
@@ -1948,6 +2142,15 @@ Staff pick customers by rules (for example no visit for 60 days and spend over A
 year) and send them a retention campaign. The send goes through wl-notify, so only customers
 with marketing consent and no opt-out get it. The campaign report shows who came back and
 what they spent.
+
+#### Surfaces
+- **Back office:** staff define a segment in the segment editor (05 hides clinical items by
+  default) with a preview count, set a retention campaign's segment, template, channel and
+  send time, and see recipients, exclusions by reason, *not sent* with its reason, and
+  returned members with their spend; exporting members needs the sensitive export
+  permission.
+- **System:** activating the campaign requests one `Notifier::broadcast`, which evaluates
+  the segment at send time; ending the campaign cancels a pending or scheduled broadcast.
 
 #### Files to read
 - `docs/modules/wl-sales.md` §3 *Customer segment*, *Campaign*; §4.6 rows `activate`, `end`;
@@ -2057,7 +2260,7 @@ Broadcast approval, send window and frequency cap (BL-NTF-07, BL-NTF-08); 05 per
 
 ### BL-SAL-26 — wl-sales: keep loyalty points through account closure, party merge and block, and programme changes
 
-**Labels:** `module:wl-sales` `area:sme-gap` `priority:medium` `size:m` `blocked:open-item` · **Milestone:** Launch 05 · **Size:** m
+**Labels:** `module:wl-sales` `area:sme-gap` `priority:medium` `size:m` `blocked:open-item` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Launch 05 · **Size:** m
 **Depends on:** BL-SAL-22 · BL-SAL-24 · Base: wl-parties merge and block (`PartiesMerged`, `PartyBlocked`, `PartyUnblocked`, `BlockEffects`) · Base: wl-notify `notify` · **Blocks:** BL-AUT-18, BL-CLN-15, BL-EDU-17, BL-FNB-17
 **Review items:** GR-G4-05, GR-G4-06, GR-G4-07, GR-G4-08 (gap review of G4)
 
@@ -2066,6 +2269,18 @@ A member's points are not lost by accident: a merge of duplicate parties moves t
 the surviving party, a blocked party's account is paused rather than closed, and a member who
 asks to leave or to be erased is never refused. When the client changes or ends its
 programme, points already earned keep their value and expiry, and members are told in time.
+
+#### Surfaces
+- **Back office:** at the counter earning and redemption for a blocked member are refused
+  with the neutral text *on hold*; staff record a member's request to leave (never refused);
+  a staff closure with points needs approval; a programme change with an effective date less
+  than 30 days ahead is refused on save.
+- **Portal:** a member who asks to leave is shown the points that will be forfeited and
+  confirms; the request is never refused and needs no approval.
+- **System:** `PartiesMerged` moves lots or the account to the survivor, `PartyBlocked` and
+  `PartyUnblocked` pause and resume the account, members are told of programme changes, and
+  turning the programme off sets a closing date 90 days ahead after which every open lot
+  expires.
 
 #### Files to read
 - `docs/modules/wl-sales.md` §3 *Loyalty programme*, *Loyalty account*, *Points movement*;

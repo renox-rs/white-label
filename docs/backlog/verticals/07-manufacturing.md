@@ -36,7 +36,7 @@ items of review §6, and the 07 parts of X-02, X-05, X-08, X-09, X-11, X-13, X-1
 
 ### BL-MFG-01 — 07 Manufacturing: abort a work order after materials were issued (`MFG.ACL.12`)
 
-**Labels:** `vertical:07-manufacturing` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 07 · **Size:** m
+**Labels:** `vertical:07-manufacturing` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:field-pwa` `surface:system` · **Milestone:** Launch 07 · **Size:** m
 **Depends on:** Base: 07 Work order lifecycle (`release`, `start`, `hold`, `complete`) · Base: wl-inventory stock movements (`return`, `wastage`) and lots · BL-KRN-01 (approval ends without a yes) · **Blocks:** BL-MFG-03
 **Review items:** 07-N2-a, X-14, 07 MEDIUM "work order aborted after issue"
 
@@ -46,6 +46,17 @@ The planner or supervisor asks to `abort` it with a reason and an outcome for ev
 unused materials go back to the store, the work in progress is scrapped, and good output already
 made becomes a lot in quarantine. The production manager (never the requester) approves. The
 actual cost is closed and the loss reported, so the business sees what the stop cost.
+
+#### Surfaces
+- **Back office:** the planner or supervisor asks to Abort with a reason and outcome lines
+  (return, scrap, quarantine); the production manager approves from "Needs your action",
+  with a second `STK.ACL.02` step when the scrap value is above AED 2,000; the loss shows on
+  the work order and in the aborted work orders report.
+- **Field PWA:** while the request waits, material issues and production reports on the work
+  order are refused with "abort pending".
+- **System:** at final approval the return and wastage movements post in one transaction,
+  the output lot stays in quarantine with a final inspection requested, the cost is closed
+  and `WorkOrderAborted` is emitted; changed quantities fail the request.
 
 #### Files to read
 - `docs/verticals/07-manufacturing.md` §3.3 (`MFG.ACL.12`, `STK.ACL.02`), §4.2 "When it goes wrong" (first row), §7.1 *Work order* (states, transitions, diagram), §5 `MFG.CST.01`
@@ -152,7 +163,7 @@ How a sales order cancellation asks for the abort (BL-MFG-03); final inspection 
 
 ### BL-MFG-02 — 07 Manufacturing: unlink a work order from its sales order to stock
 
-**Labels:** `vertical:07-manufacturing` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Launch 07 · **Size:** s
+**Labels:** `vertical:07-manufacturing` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 07 · **Size:** s
 **Depends on:** Base: 07 Work order lifecycle · **Blocks:** BL-MFG-03
 **Review items:** 07-N2-a, X-14
 
@@ -160,6 +171,12 @@ How a sales order cancellation asks for the abort (BL-MFG-03); final inspection 
 When the customer cancels but the goods are worth finishing (standard items), the work order
 keeps running but no longer belongs to the sales order. `unlink` changes its source to stock, so
 its output goes to free stock instead of being reserved for the cancelled order.
+
+#### Surfaces
+- **Back office:** the planner runs Unlink on the work order with a reason; it is not
+  offered when the source is already stock; the history row shows the reason.
+- **System:** the source changes to stock, output lots reserved for a cancelled line are
+  released to free stock, and a system call on an unlinked work order does nothing.
 
 #### Files to read
 - `docs/verticals/07-manufacturing.md` §4.2 "When it goes wrong" (second row), §7.1 *Work order* (row `unlink`), §7.2 `MFG.RUL.09`
@@ -202,7 +219,7 @@ The automatic call from `MFG.RUL.09` (BL-MFG-03).
 
 ### BL-MFG-03 — 07 Manufacturing: adjust work orders when a sales order is amended or cancelled (`MFG.RUL.09`)
 
-**Labels:** `vertical:07-manufacturing` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` · **Milestone:** Launch 07 · **Size:** m
+**Labels:** `vertical:07-manufacturing` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Launch 07 · **Size:** m
 **Depends on:** BL-MFG-01 · BL-MFG-02 · BL-SAL-05 (amend) · BL-SAL-07 (cancel with outcome) · BL-SAL-08 (`cancel_line`) · BL-SAL-09 (`cancel_remaining`) · **Blocks:** None
 **Review items:** 07-N2-a, X-14, 07 MEDIUM "order amendment"
 
@@ -212,6 +229,14 @@ not-started work orders take the new quantity or are cancelled; started ones kee
 the line or, unlinked, for stock), or, for outcome *scrap*, the production manager gets a task
 to request the `abort` (the rule never aborts by itself), all after the approval under
 `SAL.ACL.05`. The planner is always told.
+
+#### Surfaces
+- **Back office:** the production manager gets a task to request Abort with the work order
+  prefilled when the outcome is *scrap*; the planner sees the new planned work order for an
+  increase and the *quantity for stock* on a decrease.
+- **System:** `MFG.RUL.09` consumes the sales order events after the approval, changes or
+  cancels work orders not started, creates a planned work order for an increase, runs
+  `unlink` or `cancel`, and ignores replays.
 
 #### Files to read
 - `docs/verticals/07-manufacturing.md` §4.1 "When it goes wrong" (rows 1–2), §7.1 *Sales order* (rows `amend`, `cancel_line`, `cancel_remaining`, `cancel`, paragraph "Cancellation outcomes"), §7.1 *Work order* (rows `cancel`, `unlink`, `abort`), §7.2 `MFG.RUL.09`
@@ -279,7 +304,7 @@ The sales order transitions and their approvals (BL-SAL-05, BL-SAL-07–09); sto
 
 ### BL-MFG-04 — 07 Manufacturing: void a production report entered on the wrong work order
 
-**Labels:** `vertical:07-manufacturing` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 07 · **Size:** s
+**Labels:** `vertical:07-manufacturing` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:field-pwa` `surface:system` · **Milestone:** Launch 07 · **Size:** s
 **Depends on:** Base: 07 Production reporting (`MFG.PRD.02`) · BL-KRN-03 (void) · **Blocks:** None
 **Review items:** X-19 (void)
 
@@ -287,6 +312,16 @@ The sales order transitions and their approvals (BL-SAL-05, BL-SAL-07–09); sto
 Operators on a shared tablet sometimes report output on the wrong work order. Before that work
 order is completed, the report can be voided with a reason and its stock movements reversed.
 After completion the work order is locked and corrections use reversing movements instead.
+
+#### Surfaces
+- **Back office:** the line supervisor or production manager, never the requester, approves
+  the void; Void is not offered on reports of a completed work order and is refused with
+  "output already used".
+- **Field PWA:** the operator voids the wrong production report on the line tablet with a
+  reason and enters a new one on the right work order; the voided report stays visible
+  struck through.
+- **System:** the report's `produce` and `wastage` movements are reversed in one transaction
+  and `RecordVoided` is emitted; completion while the approval waits fails it.
 
 #### Files to read
 - `docs/verticals/07-manufacturing.md` §7.1 *Work order* (paragraph under the transitions table), §7.1 "Negative-flow settings" row *Void*, §3.3 `MFG.ACL.10`
@@ -346,7 +381,7 @@ Late entry of paper job cards (BL-MFG-14 setting, BL-KRN-04).
 
 ### BL-MFG-05 — 07 Manufacturing: hold a work order for material when an issue is pending
 
-**Labels:** `vertical:07-manufacturing` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 07 · **Size:** s
+**Labels:** `vertical:07-manufacturing` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:field-pwa` `surface:system` · **Milestone:** Launch 07 · **Size:** s
 **Depends on:** Base: 07 Work order lifecycle (`hold`, `resume`) · BL-STK-18 (pending issues) · BL-STK-20 (`STK.RUL.06`) · **Blocks:** None
 **Review items:** X-10
 
@@ -356,6 +391,14 @@ order that is not on hand, the short quantity waits as a pending issue. The line
 is then asked (by a task; the system never holds by itself) to put the work order on hold with
 reason *material*, so the schedule board shows why the line is idle, and is asked to resume it
 when the material arrives.
+
+#### Surfaces
+- **Back office:** the schedule board shows the pending issue on a `released` work order.
+- **Field PWA:** the storekeeper's issue of short material creates a pending issue; the line
+  supervisor gets a task "hold WO for material" with the reason prefilled, runs Hold, and
+  later gets a task to Resume.
+- **System:** one task per work order; the hold task closes when the work order goes on hold
+  or when its last pending issue posts or is cleared; a transfer below zero is refused.
 
 #### Files to read
 - `docs/verticals/07-manufacturing.md` §4.2 "When it goes wrong" (last row), §7.1 *Work order* (rows `hold`, `resume`)
@@ -412,7 +455,7 @@ Pending issue posting and `STK.RUL.06` alerts (BL-STK-18, BL-STK-20).
 
 ### BL-MFG-06 — 07 Manufacturing: refuse a second sales order with the same customer PO number
 
-**Labels:** `vertical:07-manufacturing` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 07 · **Size:** s
+**Labels:** `vertical:07-manufacturing` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Launch 07 · **Size:** s
 **Depends on:** BL-SAL-18 (customer PO uniqueness check in `submit` and `amend`) · Base: wl-portal reorder and PO upload (`POR.SLF.01`) · **Blocks:** None
 **Review items:** X-14, 07 MEDIUM "duplicate PO upload"
 
@@ -424,6 +467,14 @@ apart by a call-off number. The check itself is built in wl-sales (BL-SAL-18, se
 customer PO number per customer*, off by default); this issue turns the setting on in the 07
 deployment template, adds the call-off number to the 07 order entry and portal upload screens,
 and shows the refusal in the portal upload.
+
+#### Surfaces
+- **Back office:** sales enter the customer PO and call-off number on the order entry
+  screen; Submit refuses a duplicate and names the existing order, also a cancelled one.
+- **Portal:** the buyer's PO upload takes a call-off number and is refused for a duplicate,
+  showing only the existing order's number and status.
+- **System:** the setting is on in the 07 template; a unique key on customer, PO number and
+  call-off number stops concurrent duplicates.
 
 #### Files to read
 - `docs/verticals/07-manufacturing.md` §4.1 "When it goes wrong" (row "The same customer PO…"), §4.5 step 2, §7.1 *Sales order* (row `submit`)
@@ -481,7 +532,7 @@ for aggregators (BL-SAL-01).
 
 ### BL-MFG-07 — 07 Manufacturing: inspect returned or refused goods and ask sales to re-deliver or cancel (`MFG.RUL.10`)
 
-**Labels:** `vertical:07-manufacturing` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Launch 07 · **Size:** s
+**Labels:** `vertical:07-manufacturing` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:field-pwa` `surface:system` · **Milestone:** Launch 07 · **Size:** s
 **Depends on:** BL-STK-22 (refused goods to quarantine) · BL-SAL-13 (accepted quantities only, returned delivery) · BL-SAL-08 (`cancel_line`) · Base: wl-ticketing checklists (`WRK.CHK.01`) · **Blocks:** None
 **Review items:** 07-N4-a, X-11, 07 MEDIUM "returned delivery outcome"
 
@@ -490,6 +541,15 @@ When a customer refuses part of a delivery or the whole dispatch comes back, the
 in quarantine. QC must inspect them before they are released or rejected, and sales must decide
 whether to deliver the open quantity again or cancel it. Without this rule, refused goods sit in
 quarantine and the order stays open forever.
+
+#### Surfaces
+- **Back office:** the account's sales person (or the sales role) gets a task with the
+  order, lines, refused quantities and reasons and the actions "new dispatch" or Cancel
+  line; a partial re-dispatch lowers its open quantity and it closes when all is handled.
+- **Field PWA:** the QC inspector gets one inspection checklist per returned lot in
+  quarantine.
+- **System:** `MFG.RUL.10` runs when the goods are booked into quarantine at run close,
+  links the inspection to the complaint ticket of a returned dispatch, and ignores replays.
 
 #### Files to read
 - `docs/verticals/07-manufacturing.md` §4.1 "When it goes wrong" (rows "accepts only part", "whole delivery is refused"), §7.1 *Dispatch* (rows `confirm_delivery`, `return`, paragraph under the table), §7.2 `MFG.RUL.10`
@@ -540,7 +600,7 @@ Per-line proof of delivery and quarantine booking (BL-DLV-02, BL-STK-22); order 
 
 ### BL-MFG-08 — 07 Manufacturing: disposition an NCR as return to supplier or scrap, and close it
 
-**Labels:** `vertical:07-manufacturing` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 07 · **Size:** m
+**Labels:** `vertical:07-manufacturing` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 07 · **Size:** m
 **Depends on:** Base: 07 NCR lifecycle · BL-STK-03 (dispatch a return to supplier) · BL-STK-05 (credit a return) · BL-INV-13 (supplier debit note) · BL-STK-12 (stock hold line decided) · **Blocks:** None
 **Review items:** 07-N10-a, X-08
 
@@ -549,6 +609,15 @@ A raw material lot that fails incoming inspection gets an NCR. QC decides what h
 scrap, use as is, or return to the supplier. Return to supplier must create a real Return to
 supplier in wl-inventory (the old "supplier return note" did not exist), scrap must post a real
 write-off, and the NCR closes only when that action is done.
+
+#### Surfaces
+- **Back office:** QC dispositions the NCR (rework, scrap, use as is, return to supplier
+  with *credit* or *replace*); *return to supplier* is refused without a supplier lot and
+  not offered for own production; QC gets a task to Close, refused while the Return to
+  supplier is `draft`, and a task to choose a new disposition after a reopen.
+- **System:** the disposition creates the draft Return to supplier from quarantine or the
+  scrap movement (approval above AED 2,000); a cancelled Return to supplier or rework work
+  order reopens the NCR; a partial NCR keeps the lot from release until its movement posts.
 
 #### Files to read
 - `docs/verticals/07-manufacturing.md` §4.3 "When it goes wrong" (row "A lot fails incoming inspection"), §4.4 steps 3–4, §7.1 *Lot* (rows `reject`, `discard`), §7.1 *NCR* (states, transitions)
@@ -620,7 +689,7 @@ RTS dispatch, credit, debit note and chase (BL-STK-03, BL-STK-05, BL-STK-07, BL-
 
 ### BL-MFG-09 — 07 Manufacturing: record the lot on every issue of a lot-tracked material to a work order
 
-**Labels:** `vertical:07-manufacturing` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Launch 07 · **Size:** s
+**Labels:** `vertical:07-manufacturing` `area:negative-flow` `priority:high` `size:s` `surface:field-pwa` `surface:system` · **Milestone:** Launch 07 · **Size:** s
 **Depends on:** Base: wl-inventory Lot tracking and stock movements (`STK.LOT.01`, `STK.MOV.01`) · **Blocks:** BL-MFG-10
 **Review items:** 07-N4-c, X-09
 
@@ -628,6 +697,13 @@ RTS dispatch, credit, debit note and chase (BL-STK-03, BL-STK-05, BL-STK-07, BL-
 A recall can only name the affected customers if the lot genealogy is complete. Every issue of a
 lot-tracked raw material to a work order must therefore record its lot; an issue without a lot
 is refused.
+
+#### Surfaces
+- **Field PWA:** the storekeeper names a lot, one movement per lot, on each issue of a
+  lot-tracked material to a work order; an issue without a lot is refused while stock is
+  available.
+- **System:** the same check applies to scanner and import entries; only the short quantity
+  that becomes a pending issue has no lot.
 
 #### Files to read
 - `docs/verticals/07-manufacturing.md` §4.2 step 5, §9 "Traceability and recall", §13 question 2
@@ -669,7 +745,7 @@ The recall trace (BL-STK-15, BL-MFG-10).
 
 ### BL-MFG-10 — 07 Manufacturing: resolve recall trace lines to customers (`TracePartyResolver` for 07)
 
-**Labels:** `vertical:07-manufacturing` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` · **Milestone:** Launch 07 · **Size:** m
+**Labels:** `vertical:07-manufacturing` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` `surface:back-office` `surface:field-pwa` `surface:system` · **Milestone:** Launch 07 · **Size:** m
 **Depends on:** BL-STK-14 (open a recall) · BL-STK-15 (forward trace) · BL-MFG-09 · **Blocks:** None
 **Review items:** 07-N4-c, X-09
 
@@ -679,6 +755,14 @@ subject it finds. A dispatch belongs to its sales order's customer. A work order
 yet delivered belongs to that order's customer, marked *not shipped*; its dispatches that have
 not left (`draft`, `picked`) are flagged for re-pick so the goods do not leave, and one that
 has already left (`dispatched`) is listed for the recall owner to bring back.
+
+#### Surfaces
+- **Back office:** the recall owner sees trace lines per customer marked *shipped* or *not
+  shipped*, and the `dispatched` dispatches to bring back.
+- **Field PWA:** the storekeeper gets a task to re-pick each flagged `draft` or `picked`
+  dispatch.
+- **System:** the `TracePartyResolver` maps dispatch → its sales order's customer and work
+  order → the undelivered order's customer; a work order for stock has no party.
 
 #### Files to read
 - `docs/verticals/07-manufacturing.md` §4.4 step 8, §9 "Traceability and recall"
@@ -733,7 +817,7 @@ Opening, holding, notices and close (BL-STK-14–BL-STK-16); authority notificat
 
 ### BL-MFG-11 — 07 Manufacturing: block picking of regulated items without a valid conformity certificate (`MFG.ACL.11`)
 
-**Labels:** `vertical:07-manufacturing` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` · **Milestone:** Launch 07 · **Size:** m
+**Labels:** `vertical:07-manufacturing` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` `surface:back-office` `surface:field-pwa` `surface:system` · **Milestone:** Launch 07 · **Size:** m
 **Depends on:** BL-DOC-01 (`document_valid` guard) · BL-DOC-04 (look-ahead list) · BL-DOC-05 (`DocumentExpired`, lift on renewal) · Base: wl-inventory Dispatch lifecycle · **Blocks:** None
 **Review items:** X-13
 
@@ -743,6 +827,15 @@ only leave the plant while a valid ECAS, EQM or food-contact certificate is on f
 an item is refused without one, with no override. Items under the single-use plastics ban are
 *export only* and cannot be sold for domestic delivery. Orders planned to ship after a
 certificate expires are listed 30 days ahead so it can be renewed in time.
+
+#### Surfaces
+- **Back office:** sales Submit or Amend refuses a domestic line for an *export only* item.
+- **Field PWA:** the storekeeper's Pick and Dispatch of a regulated item without a valid
+  accepted certificate are refused with the certificate and expiry (and "renewal pending
+  review since <date>"); no override is shown; a refused dispatch can be cancelled.
+- **System:** `DOC.RUL.02` runs nightly at 01:00 and sends sales and the planner one
+  look-ahead list of order lines promised after the expiry, with only new lines on later
+  runs.
 
 #### Files to read
 - `docs/verticals/07-manufacturing.md` §2 (product conformity, single-use plastics), §3.3 `MFG.ACL.11`, `DOC.ACL.02`, §7.1 *Dispatch* (row `pick`), §7.1 "Negative-flow settings" row *Document blocks*, §9 "Product conformity"
@@ -815,7 +908,7 @@ The guard engine and override (BL-DOC-01, BL-DOC-06); which products are regulat
 
 ### BL-MFG-12 — 07 Manufacturing: alert on missing export evidence and open the VAT correction (`MFG.RUL.08`)
 
-**Labels:** `vertical:07-manufacturing` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` · **Milestone:** Launch 07 · **Size:** m
+**Labels:** `vertical:07-manufacturing` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Launch 07 · **Size:** m
 **Depends on:** BL-KRN-08 (owner alert for compliance-critical rules) · Base: wl-invoicing Invoice and Credit note lifecycle · Base: wl-documents attachments · **Blocks:** None
 **Review items:** 07 MEDIUM "export 90-day alert"
 
@@ -824,6 +917,13 @@ An export is zero-rated only if the goods leave the UAE within 90 days with evid
 tracks evidence per dispatch: at 60 days the accountant is warned; at 90 days without evidence
 the dispatch is flagged "5% VAT due" and the accountant gets a task to correct the invoice. The
 rule is compliance-critical: if it fails, the owner is alerted.
+
+#### Surfaces
+- **Back office:** on day 90 the dispatch shows "5% VAT due" and the accountant gets a task
+  naming the zero-rated invoices, their amounts and the customer's contract note.
+- **System:** `MFG.RUL.08` runs daily at 08:00, fires day 60 and day 90 once per dispatch,
+  stops when evidence is attached, and alerts the owner role and the company admin on a
+  failed or missed run.
 
 #### Files to read
 - `docs/verticals/07-manufacturing.md` §2 (VAT), §4.1 "When it goes wrong" (last row), §7.2 `MFG.RUL.08`, §9 VAT
@@ -873,7 +973,7 @@ Restoring the zero rate (A-12); the correction documents themselves (base invoic
 
 ### BL-MFG-13 — 07 Manufacturing: link a quality dispute on an invoice to an NCR
 
-**Labels:** `vertical:07-manufacturing` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 07 · **Size:** s
+**Labels:** `vertical:07-manufacturing` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Launch 07 · **Size:** s
 **Depends on:** BL-INV-04 (invoice dispute) · BL-INV-05 (`FIN.RUL.15`) · Base: 07 NCR lifecycle · **Blocks:** None
 **Review items:** X-02
 
@@ -881,6 +981,15 @@ Restoring the zero rate (A-12); the correction documents themselves (base invoic
 Customers dispute invoices for quantity, price or quality. In this vertical the customer buyer
 may flag the dispute in the portal; a quality dispute must link an NCR on the delivered lot, so
 QC investigates the product and not only the accountant the money.
+
+#### Surfaces
+- **Back office:** sales and the accountant see the dispute on the linked ticket; QC sees
+  the new or linked NCR on each invoiced lot.
+- **Portal:** the customer buyer disputes an invoice with a reason (quantity, price,
+  quality, other) and, for *quality*, ticks the affected lines; the buyer then sees only the
+  ticket status, never the NCR.
+- **System:** a quality dispute creates or links one `open` NCR per lot of the disputed
+  lines (on the item and dispatch when it is not lot-tracked) and notifies QC.
 
 #### Files to read
 - `docs/verticals/07-manufacturing.md` §4.1 "When it goes wrong" (row "An invoice is disputed"), §4.5 step 5, §7.1 "Negative-flow settings" row *Disputes*
@@ -929,7 +1038,7 @@ Dispute flag, reminders pause and escalation (BL-INV-04, BL-INV-05).
 
 ### BL-MFG-14 — 07 Manufacturing: configure shared negative-flow settings
 
-**Labels:** `vertical:07-manufacturing` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` · **Milestone:** Launch 07 · **Size:** m
+**Labels:** `vertical:07-manufacturing` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` `surface:back-office` `surface:field-pwa` `surface:portal` `surface:system` · **Milestone:** Launch 07 · **Size:** m
 **Depends on:** BL-KRN-03 · BL-KRN-04 · BL-KRN-05 · BL-KRN-08 · BL-DOC-01 · BL-PTY-03 · BL-INV-01 · BL-INV-02 · BL-INV-04 · BL-PAY-09 · BL-PAY-10 · BL-PAY-14 · BL-SAL-07 · BL-SAL-12 · BL-STK-03 · BL-STK-11 · BL-STK-18 · BL-DLV-02 · BL-INV-25 · BL-INV-26 · BL-INV-27 · BL-INV-28 · BL-INV-29 · BL-INV-30 · BL-PAY-25 · BL-PAY-26 · BL-SAL-19 · BL-SAL-20 · BL-SAL-21 · BL-STK-28 · BL-STK-29 · BL-STK-30 · BL-STK-31 · BL-HRM-26 · BL-HRM-27 · BL-HRM-28 · BL-DOC-08 · BL-DOC-09 · BL-DOC-10 · **Blocks:** None
 **Review items:** X-01, X-02, X-05, X-08, X-09, X-10, X-11, X-13, X-14, X-18, X-19
 
@@ -943,6 +1052,18 @@ owner drawings (`FIN.BUD.01`), lead sources and campaigns (`SAL.CRM.02`), the su
 on 2026-10-16: `FIN.RUL.23`, `FIN.RUL.24`, `FIN.ACL.21`, `SAL.ACL.07`, `STK.RUL.09`,
 `STK.ACL.07`, `HRM.RUL.16`, `HRM.RUL.17`, `HRM.ACL.10`, `DOC.RUL.04` and `DOC.RUL.01`.
 Onboarding runs on the minimal employee record (`HRM.EMP.01`, MVP since 2026-10-16).
+
+#### Surfaces
+- **Back office:** Void is offered on a production report of an `in_progress` work order and
+  not on an issued invoice; the proposed cancellation outcome follows the item's
+  *customer-specific* flag; late entries over 24 hours and write-offs wait for approval; the
+  company admin may change the values except the conformity override `never`.
+- **Field PWA:** when the line tablets are down, the supervisor enters the paper job cards
+  at the end of the shift with the late-entry flag.
+- **Portal:** the customer buyer sees "Dispute this invoice".
+- **System:** values are seeded from the 07 deployment template; a failed `MFG.RUL.08` or
+  `DOC.RUL.03` run alerts the owner role; `FIN.RUL.23`, `FIN.RUL.24` and `STK.RUL.09` run
+  with the 07 values.
 
 #### Files to read
 - `docs/verticals/07-manufacturing.md` §3.3, §4 "When it goes wrong" tables, §7.1 "Negative-flow settings", §7.2 (reused rules)
@@ -1065,7 +1186,7 @@ The mechanisms themselves (module epics listed in Depends on).
 
 ### BL-MFG-15 — 07 Manufacturing: report supplier-caused NCRs to the supplier scorecard
 
-**Labels:** `vertical:07-manufacturing` `area:sme-gap` `priority:medium` · **Milestone:** Launch 07 · **Size:** s
+**Labels:** `vertical:07-manufacturing` `area:sme-gap` `priority:medium` `surface:system` · **Milestone:** Launch 07 · **Size:** s
 **Depends on:** BL-STK-29 · Base: 07 NCR lifecycle · **Blocks:** None
 **Review items:** G3 (SME problem map 27, 49)
 
@@ -1073,6 +1194,11 @@ The mechanisms themselves (module epics listed in Depends on).
 The supplier scorecard counts quality incidents per supplier. In 07 these are NCRs on incoming
 lots. Implement the `SupplierIncidentSource` adapter so that NCRs whose cause is the supplier
 reach the score, and so that a cancelled NCR or a changed cause drops out again.
+
+#### Surfaces
+- **System:** the `SupplierIncidentSource` adapter returns NCRs with cause *supplier* that
+  are not cancelled, dated when raised, and reports later cause changes and cancellations;
+  stored monthly snapshots are not edited.
 
 #### Files to read
 - `docs/verticals/07-manufacturing.md` §7.1 *NCR* (states, transitions, the cause paragraph)

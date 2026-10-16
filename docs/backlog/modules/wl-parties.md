@@ -27,7 +27,7 @@ identifier needed by X-04.
 
 ### BL-PTY-01 — wl-parties: block a party with a reason code and hide restricted reasons
 
-**Labels:** `module:wl-parties` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-parties` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** Base: wl-parties Party lifecycle · **Blocks:** BL-PTY-02, BL-PTY-03, BL-PTY-04, BL-PTY-05, BL-PTY-06, BL-POR-01, BL-ACC-07, BL-ACC-23, BL-EDU-04, BL-LOG-19, BL-MPW-15, BL-STK-30
 **Review items:** X-18, 04-N11-a
 
@@ -37,6 +37,15 @@ reason code and a note. Every block keeps a Block record. Reason codes marked *r
 (`sanctions`, `aml_concern`) are visible only to users with `parties.block_reason.view`;
 everyone else, every event and every agreement sees only the neutral code `on_hold`, shown as
 **On hold**. No automatic message tells the party. This prevents tipping off.
+
+#### Surfaces
+- **Back office:** a user with `parties.block` blocks the party from its page with a reason
+  code and a note; restricted codes appear in the block dialog only for holders of
+  `parties.block_reason.view`; everyone else sees "On hold" on the party card, lists, search
+  and exports.
+- **System:** a Block record is kept, the history row and `PartyBlocked` carry `on_hold` for
+  a restricted code, and no automatic message is queued to the party. What the party's
+  portal users see while blocked is BL-POR-01.
 
 #### Files to read
 - `docs/modules/wl-parties.md` §3 (*Block record*), §4 *Party* (states, `block`), §5.6 steps 1
@@ -136,7 +145,7 @@ Effects on agreements (BL-PTY-03); money out and new agreements (BL-PTY-04); unb
 
 ### BL-PTY-02 — wl-parties: unblock a party and release what the block paused
 
-**Labels:** `module:wl-parties` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-parties` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** BL-PTY-01, BL-PTY-03 · **Blocks:** BL-ACC-05
 **Review items:** X-18
 
@@ -145,6 +154,14 @@ A second user unblocks a party. A restricted block (sanctions, AML) can only be 
 who may see restricted reasons, and a sanctions block only when the party is no longer listed or
 the match was found false, with evidence. On unblock, agreements paused by the block resume and
 agreements under review go back to their deciders.
+
+#### Surfaces
+- **Back office:** a second user unblocks the party with a reason; for a restricted block
+  only a holder of `parties.block_reason.view` can, and for `sanctions` only with a note and
+  an attached file; open under-review tasks are updated with "party unblocked" and returned
+  to the decider.
+- **System:** every open Block record closes and `PartyUnblocked` makes owning modules
+  resume the agreements paused by the block.
 
 #### Files to read
 - `docs/modules/wl-parties.md` §4 *Party* (`unblock`), §5.6 steps 2 and 4, §6 (event
@@ -204,7 +221,7 @@ resume after unblock`).
 
 ### BL-PTY-03 — wl-parties: apply the block effect to each kind of active agreement
 
-**Labels:** `module:wl-parties` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-parties` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** BL-PTY-01 · **Blocks:** BL-PTY-02, BL-TKT-08, BL-ACC-03, BL-ACC-23, BL-AUT-17, BL-CON-03, BL-CON-17, BL-EDU-04, BL-EDU-17, BL-MFG-14, BL-MPW-15, BL-MPW-20, BL-PRP-26
 **Review items:** X-18, 04-N8-a
 
@@ -215,6 +232,15 @@ exposes it through the `BlockEffects` service (the `PartyBlocked` payload is unc
 *review* gives the decider a task. Modules that own the
 agreements apply the effect. Any ending is a decision of the decider through the agreement's own
 transition.
+
+#### Surfaces
+- **Back office:** the settings list each agreement kind with its block effect and decider;
+  for a *review* effect the decider gets one task per kind listing the open agreements with
+  pause / continue / end ("On hold" only for a restricted reason) and may send the neutral
+  template `party.on_hold.neutral`.
+- **System:** `BlockEffects::effect_for(kind, scope)` returns the effect and decider after
+  the vertical override (unknown kinds: *review*); messages that announce a pause are
+  suppressed.
 
 #### Files to read
 - `docs/modules/wl-parties.md` §5.6 (steps 2–3 and the table), §6 (service `BlockEffects`), §7
@@ -310,7 +336,7 @@ service contracts (BL-TKT-08); money out (BL-PTY-04).
 
 ### BL-PTY-04 — wl-parties: refuse new agreements and money out to a blocked party unless an exception is approved
 
-**Labels:** `module:wl-parties` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-parties` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** BL-PTY-01, BL-KRN-01 · Base: wl-kernel Approval request lifecycle · **Blocks:** BL-PTY-06, BL-POR-01, BL-TKT-08, BL-ACC-01, BL-ACC-06, BL-ACC-23, BL-CON-03, BL-EDU-04, BL-LOG-19, BL-LOG-26, BL-PAY-24, BL-PRP-15, BL-PRP-20, BL-PRP-26, BL-STK-27
 **Review items:** X-18, 04-N8-a
 
@@ -319,6 +345,14 @@ While a party is blocked, no module starts, renews or extends an agreement with 
 goes out to it (refund, payout, deposit return, supplier payment). wl-parties provides one guard
 that every module calls, and an exception path: the compliance role (or the finance manager when
 screening is off) approves one specific action.
+
+#### Surfaces
+- **Back office:** a start, renewal, extension or money-out action for a blocked party is
+  refused with "on hold" (the real code and a link to the Block record for holders of
+  `parties.block_reason.view`) and an option to request an exception, which the compliance
+  role (or the finance manager) approves.
+- **System:** `BlockGuard::check(party, action_kind)` runs inside every module's transition;
+  an approved exception runs the action once; receipts are never refused.
 
 #### Files to read
 - `docs/modules/wl-parties.md` §4 *Party* (`block` effects), §5.6, §6 (`PTY.ACL.03`, permission
@@ -395,7 +429,7 @@ Each module's call to the guard (module epics); what happens to money in for res
 
 ### BL-PTY-05 — wl-parties: send a possible sanctions match to the compliance role only
 
-**Labels:** `module:wl-parties` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Launch 04 · **Size:** s
+**Labels:** `module:wl-parties` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 04 · **Size:** s
 **Depends on:** BL-PTY-01 · Base: wl-parties Screening lifecycle · **Blocks:** BL-PTY-06
 **Review items:** 04-N8-a, 04-N11-a
 
@@ -403,6 +437,13 @@ Each module's call to the guard (module epics); what happens to money in for res
 When screening finds a candidate at or above the match threshold, the compliance role gets a
 review task visible only under `PTY.ACL.02`, due 24 hours after the flag. Until it is decided,
 nothing visible changes for other staff, so a possible match is never revealed.
+
+#### Surfaces
+- **Back office:** holders of `parties.block_reason.view` (MLRO and deputy) get a
+  compliance-only review task due 24 hours after the flag, with an in-app alert; other staff
+  see no task, badge, count or status change on the party.
+- **System:** `flag` links a re-screen to the open task instead of opening a second one, and
+  `ScreeningCompleted` for `possible_match` reaches compliance listeners only.
 
 #### Files to read
 - `docs/modules/wl-parties.md` §4 *Screening* (`flag`), §5.4 step 5, §6 (`PTY.RUL.01`)
@@ -462,7 +503,7 @@ Cabinet Decision 74 of 2020).
 
 ### BL-PTY-06 — wl-parties: block, freeze and report on a confirmed sanctions match
 
-**Labels:** `module:wl-parties` `area:negative-flow` `priority:high` `blocked:open-item` `size:m` · **Milestone:** Launch 04 · **Size:** m
+**Labels:** `module:wl-parties` `area:negative-flow` `priority:high` `blocked:open-item` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 04 · **Size:** m
 **Depends on:** BL-PTY-01, BL-PTY-04, BL-PTY-05 · **Blocks:** BL-ACC-10, BL-ACC-23
 **Review items:** 04-N8-a, X-18
 
@@ -472,6 +513,15 @@ When two reviewers confirm a sanctions match, the party is blocked with the rest
 compliance role gets a freeze task and a report task, both restricted. The law requires freezing
 within 24 hours and notifying the supervisor; the exact start of the 24 hours and the report form
 are open (L-30), so the tasks use the safest default.
+
+#### Surfaces
+- **Back office:** a reviewer confirms the match with a note and a second reviewer approves;
+  the compliance role gets a freeze task (funds and assets pre-filled from open balances,
+  confirmed by hand, freeze time recorded) and a report task (reference and date); other
+  staff see "On hold" only.
+- **System:** `confirm_match` blocks the party and related companies with `sanctions`, adds
+  a Block record without a transition when already blocked or archived, and emits
+  `ScreeningMatchConfirmed` to compliance listeners only.
 
 #### Files to read
 - `docs/modules/wl-parties.md` §4 *Screening* (`confirm_match`), §4 *Party* (`restore`), §5.4
@@ -572,7 +622,7 @@ The vertical's AML case (`Epic 04 Accounting: ACC.RUL.12`); goAML filing itself.
 
 ### BL-PTY-07 — wl-parties: alert compliance and re-run screenings when a sanctions list is stale
 
-**Labels:** `module:wl-parties` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 04 · **Size:** m
+**Labels:** `module:wl-parties` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 04 · **Size:** m
 **Depends on:** Base: wl-parties Screening lifecycle; BL-KRN-08 · **Blocks:** BL-PTY-08, BL-PTY-09, BL-ACC-08, BL-ACC-23
 **Review items:** 04-N7-b
 
@@ -581,6 +631,13 @@ Screening is only as good as its lists. Each sanctions list records its last suc
 and version. If a download fails, or a list has not been updated for 24 hours, the compliance
 officer is alerted at once, the download is retried hourly, screenings run meanwhile are marked
 as made on a stale list, and they are re-run after the next successful update.
+
+#### Surfaces
+- **Back office:** the compliance role gets an in-app alert when a list goes stale; the
+  screening page and every Screening record show each list's last successful update and
+  version, and a Screening run on a stale list carries the stale list flag.
+- **System:** `PTY.RUL.02` checks freshness hourly, retries the download hourly, alerts once
+  per stale period, and re-runs flagged screenings after `SanctionsListUpdated`.
 
 #### Files to read
 - `docs/modules/wl-parties.md` §3 (*Sanctions list*, *Screening* stale list flag), §5.4 step 7,
@@ -660,7 +717,7 @@ Manual upload (BL-PTY-09); onboarding guard (BL-PTY-08); `PTY.RUL.01` itself (ba
 
 ### BL-PTY-08 — wl-parties: warn or block onboarding while a sanctions list is stale
 
-**Labels:** `module:wl-parties` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 04 · **Size:** s
+**Labels:** `module:wl-parties` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 04 · **Size:** s
 **Depends on:** BL-PTY-07 · **Blocks:** BL-ACC-01, BL-ACC-23
 **Review items:** 04-N7-b
 
@@ -668,6 +725,13 @@ Manual upload (BL-PTY-09); onboarding guard (BL-PTY-08); `PTY.RUL.01` itself (ba
 When a new client is onboarded while a list is stale, the user is warned by default. A vertical
 may make the stale list block the guarded transition (e.g. engagement `activate`) until the list
 is current.
+
+#### Surfaces
+- **Back office:** in warn mode the guarded transition (e.g. engagement `activate`) runs and
+  the record shows "screened on a stale list (<list> of <date>)"; in block mode it is
+  refused naming the list and its date.
+- **System:** the `Screening` guard checks the party's latest stale flag and the current
+  list status inside the transition.
 
 #### Files to read
 - `docs/modules/wl-parties.md` §5.4 step 7 (last sentence), §6 (service `Screening` as a guard),
@@ -714,7 +778,7 @@ The 04 engagement transition itself (`Epic 04 Accounting`).
 
 ### BL-PTY-09 — wl-parties: upload an official sanctions list by hand when the download fails
 
-**Labels:** `module:wl-parties` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Launch 04 · **Size:** s
+**Labels:** `module:wl-parties` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 04 · **Size:** s
 **Depends on:** BL-PTY-07 · **Blocks:** BL-ACC-23
 **Review items:** 04-N7-b
 
@@ -723,6 +787,15 @@ While a download fails, the compliance role can upload the official list file do
 hand from the issuing authority. It becomes the current version, clears the stale status and
 triggers re-screening exactly like a download. A list published only as PDF is checked by hand
 and the check is recorded on the Screening as *manual*.
+
+#### Surfaces
+- **Back office:** while a list is `stale`, a holder of `screening.review` uploads the
+  official file with source URL and list date from the sanctions list page, or uses *Record
+  manual check* on a party for a PDF-only list; users without the permission do not see
+  either action.
+- **System:** an accepted upload makes the list `current` with source *manual upload*, emits
+  `SanctionsListUpdated` and triggers the re-screening; an unparsable or older file changes
+  nothing.
 
 #### Files to read
 - `docs/modules/wl-parties.md` §5.4 step 8, §7 (setting "Manual upload")
@@ -783,7 +856,7 @@ Freshness and alerts (BL-PTY-07).
 
 ### BL-PTY-10 — wl-parties: record a company's e-invoicing recipient identifier
 
-**Labels:** `module:wl-parties` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-parties` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** BL-KRN-05 · Base: wl-parties Party lifecycle · **Blocks:** None.
 **Review items:** X-04, 09-N7-a
 
@@ -791,6 +864,14 @@ Freshness and alerts (BL-PTY-07).
 A company party carries its e-invoicing recipient identifier (Peppol participant ID). wl-invoicing
 needs it before issuing an invoice to a recipient in e-invoicing scope, and a change emits
 `PartyUpdated`, so an e-invoice rejected for a wrong identifier can be resubmitted after the fix.
+
+#### Surfaces
+- **Back office:** the company party form has the e-invoicing recipient identifier field and
+  a *Look up* button by TRN that fills the ID for the user to confirm; on "not found" a
+  message asks for entry by hand, and while the ASP connection is not `up` the button is
+  disabled with the banner.
+- **System:** `PartyDirectory` exposes the identifier, and a change emits `PartyUpdated`
+  with the field name only.
 
 #### Files to read
 - `docs/modules/wl-parties.md` §3 (*Company details*), §6 (`PartyDirectory`, `PartyUpdated`)

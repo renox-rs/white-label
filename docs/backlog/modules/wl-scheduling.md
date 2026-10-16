@@ -27,7 +27,7 @@ booking consumers of `PaymentFailed` and pending timeouts from X-06.
 
 ### BL-SCH-01 — wl-scheduling: record cancellation reason codes and who initiated
 
-**Labels:** `module:wl-scheduling` `area:negative-flow` `priority:medium` · **Milestone:** Launch 05 · **Size:** s
+**Labels:** `module:wl-scheduling` `area:negative-flow` `priority:medium` `surface:back-office` `surface:portal` `surface:public` `surface:system` · **Milestone:** Launch 05 · **Size:** s
 **Depends on:** Base: wl-scheduling Booking lifecycle (`cancel`, `decline`) · **Blocks:** BL-SCH-02, BL-SCH-03, BL-SCH-04, BL-SCH-05, BL-SCH-10, BL-CLN-01, BL-CLN-15
 **Review items:** X-17
 
@@ -35,6 +35,19 @@ booking consumers of `PaymentFailed` and pending timeouts from X-06.
 Every cancellation records a reason code and whether the party or the business initiated it.
 That one field drives the deposit outcome (BL-SCH-02) and the reports. Each code has a default
 *initiated by*; staff may override with a note. `BookingCancelled` carries the full picture.
+
+#### Surfaces
+- **Back office:** staff pick a reason code when they cancel (a `decline` records `other`
+  with their reason text); the code's default *initiated by* can be overridden only with a
+  note; `walked_out` is offered only from `checked_in` or `in_progress`.
+- **Portal:** a party who cancels in the portal picks no code; the cancel records
+  `party_request`, initiated by `party`.
+- **Public:** a party who cancels from the confirmation or reminder link gets
+  `party_request`; one who cancels from a change message link (reassign, conflict,
+  escalation) is recorded as initiated by `business` with the change's code, also after the
+  cut-off.
+- **System:** *late* is computed from the forfeit window or the cut-off, and
+  `BookingCancelled` carries reason code, initiated by, stage and late.
 
 #### Files to read
 - `docs/modules/wl-scheduling.md` §3 (Booking: cancellation), §4.1 *Booking* (`cancel`),
@@ -119,7 +132,7 @@ Deposit outcome (BL-SCH-02); cancel after check-in (BL-SCH-03).
 
 ### BL-SCH-02 — wl-scheduling: settle the booking deposit by who cancelled (`SCH.ACL.05`)
 
-**Labels:** `module:wl-scheduling` `area:negative-flow` `priority:high` `blocked:open-item` · **Milestone:** Launch 05 · **Size:** m
+**Labels:** `module:wl-scheduling` `area:negative-flow` `priority:high` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Launch 05 · **Size:** m
 **Depends on:** BL-SCH-01 · Epic wl-payments: deposit refund through Refund `request` · **Blocks:** BL-SCH-03, BL-SCH-05, BL-CLN-01, BL-CLN-05, BL-CLN-06, BL-EDU-17
 **Review items:** X-17, 05 MEDIUM "clinic-side cancellation and deposit refund"
 
@@ -128,6 +141,14 @@ A booking deposit is kept only when the party is at fault: a party-initiated can
 the forfeit window, a no-show, or a walk-out where the setting forfeits the remainder. When the
 business cancels or reschedules, the deposit is refunded in full (or carried to the new booking).
 Waiving a forfeiture needs `bookings.waive_deposit`.
+
+#### Surfaces
+- **Back office:** a user with `bookings.waive_deposit` waives a forfeited deposit
+  (party-initiated late cancel, walk-out or no-show) with a reason on the booking; users
+  without the permission are refused.
+- **System:** the deposit outcome follows `SCH.ACL.05` from *initiated by* and *late*:
+  refunded in full through a Refund `request`, forfeited, or carried to the new booking on
+  reschedule.
 
 #### Files to read
 - `docs/modules/wl-scheduling.md` §3 (Service type: booking deposit), §4.1 `cancel`,
@@ -209,7 +230,7 @@ Work done after check-in and walk-outs (BL-SCH-03); unpaid holds (BL-SCH-10); th
 
 ### BL-SCH-03 — wl-scheduling: cancel a booking after check-in (`SCH.ACL.06`)
 
-**Labels:** `module:wl-scheduling` `area:negative-flow` `priority:high` · **Milestone:** Launch 05 · **Size:** m
+**Labels:** `module:wl-scheduling` `area:negative-flow` `priority:high` `surface:back-office` `surface:portal` `surface:public` `surface:system` · **Milestone:** Launch 05 · **Size:** m
 **Depends on:** BL-SCH-01 · BL-SCH-02 · **Blocks:** BL-AUT-01, BL-AUT-02, BL-AUT-18, BL-CLN-05
 **Review items:** X-17, 05 MEDIUM "walk-out after check-in"
 
@@ -221,6 +242,16 @@ party-initiated cancel (`walked_out`, or `party_request` when the party asks sta
 held deposit is applied to the work done first and the rest follows the walk-out setting. A
 business cancel never applies the deposit: it refunds it in full and charges nothing unless
 the party accepts the work done, which the vertical bills separately.
+
+#### Surfaces
+- **Back office:** staff cancel a `checked_in` or `in_progress` booking on the staff cancel
+  screen with `walked_out`, `party_request` or a business code; it is refused while the
+  vertical record's work done is still pending.
+- **Portal:** the party has no cancel action on a booking after check-in.
+- **Public:** the cancel link in the party's confirmation or reminder is refused once the
+  booking is checked in.
+- **System:** the slot is released for the remaining time and the deposit is applied to work
+  done first for party-initiated cancels; a business cancel refunds it in full.
 
 #### Files to read
 - `docs/modules/wl-scheduling.md` §4.1 `cancel`, "Cancel after check-in", §6 *Access rules*
@@ -301,7 +332,7 @@ Vertical billing of work done (verticals 05, 08); deposit rules before check-in 
 
 ### BL-SCH-04 — wl-scheduling: reassign a booking to another resource at the same time
 
-**Labels:** `module:wl-scheduling` `area:negative-flow` `priority:medium` · **Milestone:** Launch 05 · **Size:** s
+**Labels:** `module:wl-scheduling` `area:negative-flow` `priority:medium` `surface:back-office` `surface:public` `surface:system` · **Milestone:** Launch 05 · **Size:** s
 **Depends on:** Base: wl-scheduling Booking lifecycle · BL-SCH-01 · BL-SCH-09 (slot lock) · **Blocks:** BL-SCH-05, BL-SCH-08
 **Review items:** X-17, 10 MEDIUM "tutor reassignment"
 
@@ -310,6 +341,15 @@ Staff move a booking to another eligible resource at the same time, keeping its 
 is told the new resource (not why) and can accept, pick another time or cancel; cancelling from
 that message counts as a business-initiated cancel (BL-SCH-01), so the deposit comes back. Any
 open conflict on the booking clears.
+
+#### Surfaces
+- **Back office:** staff reassign a booking to another free, eligible resource at the same
+  time with a reason code; a busy or ineligible resource is refused.
+- **Public:** the party's message names the new resource (not the reason) with *accept*,
+  *pick another time* (opens the slot picker) and *cancel* links; cancelling there counts as
+  business-initiated.
+- **System:** the new slot is taken under the slot lock, the old slot is released, the
+  conflict is cleared and `BookingReassigned` is emitted.
 
 #### Files to read
 - `docs/modules/wl-scheduling.md` §4.1 `reassign`, vertical mapping (10 row), §6 *Events
@@ -368,7 +408,7 @@ Bulk actions (BL-SCH-05).
 
 ### BL-SCH-05 — wl-scheduling: raise booking conflicts and resolve them in bulk
 
-**Labels:** `module:wl-scheduling` `area:negative-flow` `priority:high` · **Milestone:** Launch 05 · **Size:** m
+**Labels:** `module:wl-scheduling` `area:negative-flow` `priority:high` `surface:back-office` `surface:public` `surface:system` · **Milestone:** Launch 05 · **Size:** m
 **Depends on:** BL-SCH-01 (reason codes, change-message cancel) · BL-SCH-02 (deposit refund) · BL-SCH-04 · BL-HRM-02 (`record_sick` → `LeaveApproved`) · **Blocks:** BL-SCH-06, BL-SCH-07, BL-EDU-10, BL-EDU-17
 **Review items:** X-17, 05 MEDIUM "practitioner sick on the day"
 
@@ -379,6 +419,17 @@ bookings, the bookings are not cancelled: each gets a conflict flag with cause `
 (as business-initiated) the selected bookings, or send their parties a reschedule offer (the
 bookings stay conflicted until each party picks a slot). Each party gets one message with
 *accept*, *pick another time* and *cancel* links.
+
+#### Surfaces
+- **Back office:** staff open the conflict list, select bookings and in one action reassign,
+  cancel (business-initiated) or send a reschedule offer; the result lists successes and
+  failures.
+- **Public:** each party gets one message per day with *accept*, *pick another time* (up to
+  3 next free slots of the same resource) and *cancel* links; picking a slot reschedules and
+  clears the conflict, cancelling refunds the deposit in full.
+- **System:** a new block (sick leave, manual *sick* block, roster, holiday) flags the
+  overlapping bookings with cause `block` and emits one `BookingConflict`; removing the
+  block clears those conflicts.
 
 #### Files to read
 - `docs/modules/wl-scheduling.md` §3 (Availability block, Booking: conflict), §5.4 step 3, §5.5,
@@ -469,7 +520,7 @@ Escalation and reminder suppression (BL-SCH-06); eligibility cause (BL-SCH-07).
 
 ### BL-SCH-06 — wl-scheduling: escalate open conflicts and stop reminders and no-shows (`SCH.RUL.06`)
 
-**Labels:** `module:wl-scheduling` `area:negative-flow` `priority:medium` · **Milestone:** Launch 05 · **Size:** s
+**Labels:** `module:wl-scheduling` `area:negative-flow` `priority:medium` `surface:back-office` `surface:system` · **Milestone:** Launch 05 · **Size:** s
 **Depends on:** BL-SCH-05 · **Blocks:** None
 **Review items:** X-17
 
@@ -477,6 +528,12 @@ Escalation and reminder suppression (BL-SCH-06); eligibility cause (BL-SCH-07).
 A conflicted booking must not get a normal reminder ("see you with Dr A") nor be marked no-show.
 If the conflict is still open H hours before the start (default 2 h), the branch manager is told
 and the party is asked to choose from the change message.
+
+#### Surfaces
+- **Back office:** staff `mark_no_show` on a conflicted booking is refused.
+- **System:** `SCH.RUL.06` H hours before the start (at once inside H) notifies the branch
+  manager (or the `bookings.manage` users) and sends the party the change message;
+  `SCH.RUL.01` reminders and `SCH.RUL.02` no-shows skip conflicted bookings.
 
 #### Files to read
 - `docs/modules/wl-scheduling.md` §4.1 `mark_no_show`, §5.5 step 4, §6 *Automations*
@@ -533,7 +590,7 @@ Raising conflicts (BL-SCH-05, BL-SCH-07).
 
 ### BL-SCH-07 — wl-scheduling: flag bookings whose resource will not be eligible (`SCH.RUL.05`)
 
-**Labels:** `module:wl-scheduling` `area:negative-flow` `priority:high` · **Milestone:** Launch 05 · **Size:** m
+**Labels:** `module:wl-scheduling` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Launch 05 · **Size:** m
 **Depends on:** BL-SCH-05 · BL-HRM-01 (`qualification_valid`, `QualificationExpiring`/`Expired`) · Epic wl-documents: `document_valid`, `DocumentExpiring` with `affected` from the `FutureWork` provider · **Blocks:** BL-CLN-12, BL-EDU-17
 **Review items:** X-17, X-13, 05-N8-a
 
@@ -543,6 +600,13 @@ November. Every day, and at once on expiry events, the module checks future book
 days ahead (default 30) against the resource's required qualifications and documents *at the
 booking's start*. Failing bookings get a conflict with cause `eligibility` and the front desk a
 task. A renewal before the start clears the conflict.
+
+#### Surfaces
+- **Back office:** the front desk gets a task to reassign or reschedule each booking flagged
+  with cause `eligibility`; the booking shows the conflict.
+- **System:** `SCH.RUL.05` runs daily at 02:00 and at once on the expiry events, checks
+  bookings up to 30 days ahead at their start, flags each once and clears the conflict when
+  the item is renewed.
 
 #### Files to read
 - `docs/modules/wl-scheduling.md` §3 (Service type: required qualifications and documents),
@@ -621,7 +685,7 @@ Re-check at check-in and start (BL-SCH-08); the expiry events (BL-HRM-01; Epic w
 
 ### BL-SCH-08 — wl-scheduling: re-check eligibility at check-in and start
 
-**Labels:** `module:wl-scheduling` `area:negative-flow` `priority:high` · **Milestone:** Launch 05 · **Size:** s
+**Labels:** `module:wl-scheduling` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Launch 05 · **Size:** s
 **Depends on:** Base: wl-scheduling Booking lifecycle · BL-HRM-01 · BL-SCH-04 (`reassign`) · **Blocks:** BL-CLN-01
 **Review items:** X-17, 05-N8-a
 
@@ -632,6 +696,14 @@ first (the booking is still `booked`/`confirmed`). If `start` refuses, reassign 
 possible (`checked_in`): staff cancel with `resource_ineligible` and rebook, or the vertical
 changes the practitioner on its own record. `book`, `accept`, `reschedule` and `reassign` ask it
 for the booking's start and refuse a time when the resource will be ineligible (`SCH.ACL.04`).
+
+#### Surfaces
+- **Back office:** `check_in` with an ineligible resource is refused with "licence expired
+  on <date>; reassign first"; `start` is refused with the hint "cancel with
+  resource_ineligible and rebook"; `book`, `accept`, `reschedule` and `reassign` name the
+  expiry to staff only.
+- **System:** `ResourceEligibility` is asked for now at `check_in` and `start`, and for the
+  booking's start on the other transitions; there is no override.
 
 #### Files to read
 - `docs/modules/wl-scheduling.md` §4.1 `book`, `accept`, `reschedule`, `check_in`, `start`, §5.6
@@ -684,7 +756,7 @@ Look-ahead (BL-SCH-07).
 
 ### BL-SCH-09 — wl-scheduling: give the last seat to exactly one booker
 
-**Labels:** `module:wl-scheduling` `area:negative-flow` `priority:high` · **Milestone:** Launch 05 · **Size:** m
+**Labels:** `module:wl-scheduling` `area:negative-flow` `priority:high` `surface:back-office` `surface:portal` `surface:public` `surface:system` · **Milestone:** Launch 05 · **Size:** m
 **Depends on:** Base: wl-scheduling Booking lifecycle · **Blocks:** BL-SCH-04, BL-SCH-10
 **Review items:** X-17, 10 MEDIUM "capacity under concurrency"
 
@@ -693,6 +765,16 @@ Two people booking the last seat of a group slot (or the only slot of a practiti
 same moment must not both win. The capacity check and the insert happen in one transaction that
 locks the resource's slot. Holds count towards capacity while they last. The loser is told the
 slot was just taken and shown the nearest free slots, or offered the waiting list.
+
+#### Surfaces
+- **Back office:** a staff `book` on a slot held by a request, an unpaid hold or a
+  waiting-list offer is refused until the hold lapses.
+- **Portal:** on self-booking in the portal the losing party is told the slot was just taken
+  and shown up to 3 nearest free slots, or the waiting list.
+- **Public:** the same "just taken" message with nearest slots or the waiting list on the
+  self-booking page.
+- **System:** the capacity check and insert run in one transaction that locks every required
+  resource's slot; holds count until their expiry time.
 
 #### Files to read
 - `docs/modules/wl-scheduling.md` §3 "No double-booking", §4.1 `request`, `book`, `accept`,
@@ -772,7 +854,7 @@ Payment after an expired hold (BL-SCH-10).
 
 ### BL-SCH-10 — wl-scheduling: cancel unpaid holds and refund late payments
 
-**Labels:** `module:wl-scheduling` `area:negative-flow` `priority:high` · **Milestone:** Launch 05 · **Size:** m
+**Labels:** `module:wl-scheduling` `area:negative-flow` `priority:high` `surface:public` `surface:system` · **Milestone:** Launch 05 · **Size:** m
 **Depends on:** BL-SCH-01 · BL-SCH-09 · Epic wl-payments: events `PaymentLinkExpired`, `PaymentFailed`, `PaymentReceived`; Refund `request` · **Blocks:** BL-CLN-15
 **Review items:** X-17, X-06
 
@@ -784,6 +866,14 @@ does not end it, the party may retry on the same link. At expiry the system canc
 `unpaid` (party-initiated; nothing to forfeit or refund), releases the slot to the waiting list
 and tells the party. A payment confirmed after that is refunded in full automatically, even if
 the slot is still free.
+
+#### Surfaces
+- **Public page:** the party pays the self-booking's prepayment through the payment link
+  and, after a failed payment, may retry on the same link until it expires.
+- **System:** `PaymentLinkExpired` or `SCH.RUL.04` (whichever comes first) cancels the
+  unpaid booking with `unpaid`, releases the slot to the waiting list and tells the party; a
+  `PaymentFailed` keeps the hold; a payment confirmed after the cancel is refunded in full
+  once (reason *slot not available*) and the booking stays `cancelled`.
 
 #### Files to read
 - `docs/modules/wl-scheduling.md` §3 "No double-booking" (last sentence), §5.2 steps 2–3, §6

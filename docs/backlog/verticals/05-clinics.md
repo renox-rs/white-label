@@ -37,7 +37,7 @@ X-13, X-17, X-19 and X-20.
 
 ### BL-CLN-01 — 05 Clinics: record a coverage outcome at check-in (`CLN.ACL.15`)
 
-**Labels:** `vertical:05-clinics` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 05 · **Size:** m
+**Labels:** `vertical:05-clinics` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 05 · **Size:** m
 **Depends on:** Base: 05 Visit and Insurance policy (eligibility result) · Base: wl-documents signatures (`DOC.SIG.01`) · BL-SCH-01 (reason codes; vertical codes) · BL-SCH-02 (deposit carried on reschedule, refunded on business cancel) · BL-SCH-08 (licence re-check at `check_in`) · **Blocks:** BL-CLN-02
 **Review items:** 05-N5-c, X-17
 
@@ -49,6 +49,15 @@ estimated price, or reschedule. A patient who refuses self-pay and does not resc
 cancelled with the 05 reason `coverage_not_confirmed`, which refunds the deposit in full. This
 stops a clinic from treating a patient and then finding nobody will pay, and stops a patient
 being billed a price they never saw.
+
+#### Surfaces
+- **Back office:** on the pre-check-in screen the receptionist records the eligibility
+  result and one coverage outcome (re-split to another policy, self-pay, reschedule) or
+  cancels with `coverage_not_confirmed`; the patient signs the self-pay consent with the
+  estimated price in person on the front-desk tablet (`DOC.SIG.01`, not in the portal); Check in is refused with "coverage outcome required" until
+  both are set, and charge capture refuses a service not on the consent.
+- **System:** the pending check-in data moves to the visit at Check in and is discarded at
+  the end of the appointment day; `coverage_not_confirmed` refunds the deposit in full.
 
 #### Files to read
 - `docs/verticals/05-clinics.md` §3.3 (`CLN.ACL.15`), §4.2 "When it goes wrong" (row
@@ -168,7 +177,7 @@ licence check at check-in (BL-SCH-08); deposit mechanics (BL-SCH-02).
 
 ### BL-CLN-02 — 05 Clinics: require a valid prior authorisation with units left at check-in
 
-**Labels:** `vertical:05-clinics` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Launch 05 · **Size:** s
+**Labels:** `vertical:05-clinics` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 05 · **Size:** s
 **Depends on:** BL-CLN-01 · Base: 05 Prior authorisation lifecycle · **Blocks:** None.
 **Review items:** 05-N5-b
 
@@ -177,6 +186,14 @@ A service that needs prior authorisation must not start on an insured visit unle
 authorisation is valid on the visit date and still has units left. Otherwise that service goes
 self-pay with consent, or the appointment is rescheduled while the billing coordinator requests
 a new authorisation. This prevents claims that are certain to be denied.
+
+#### Surfaces
+- **Back office:** at check-in the receptionist enters the units needed (default 1); Check
+  in is refused with "prior authorisation required: self-pay with consent or reschedule";
+  the self-pay consent lists only the unauthorised service; on reschedule the billing
+  coordinator gets a task to request a new authorisation.
+- **System:** units left are approved − consumed − units held by other checked-in visits;
+  nothing is consumed at check-in.
 
 #### Files to read
 - `docs/verticals/05-clinics.md` §3.3 (`CLN.ACL.15`), §4.2 "When it goes wrong" (row "Prior
@@ -253,7 +270,7 @@ Look-ahead flags (BL-CLN-03); the coverage outcome mechanics and consent (BL-CLN
 
 ### BL-CLN-03 — 05 Clinics: flag appointments when a prior authorisation is denied, used up or ends (`CLN.RUL.09`)
 
-**Labels:** `vertical:05-clinics` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 05 · **Size:** m
+**Labels:** `vertical:05-clinics` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 05 · **Size:** m
 **Depends on:** Base: 05 Prior authorisation lifecycle · Base: 05 `CLN.RUL.07` (appointment flag) · **Blocks:** None.
 **Review items:** 05-N5-b
 
@@ -262,6 +279,15 @@ Future appointments that rely on a prior authorisation must be flagged as soon a
 covering them: when it is denied, used up or expires, and 3 days before its validity ends. The
 billing coordinator gets a task to request a new one, and the front desk sees the flag at
 check-in. This gives the clinic time to get cover before the patient arrives.
+
+#### Surfaces
+- **Back office:** the billing coordinator gets one task per authorisation and trigger
+  listing the flagged appointments; the front desk sees the "needs authorisation" flag on
+  the appointment at check-in.
+- **System:** `CLN.RUL.09` runs on `deny`, `used` and `expire` and daily at 02:00 for the
+  3-day look-ahead, flags only appointments with no other valid authorisation, and does
+  nothing new on a re-run; a new approval, reschedule or cancel clears or re-evaluates the
+  flag.
 
 #### Files to read
 - `docs/verticals/05-clinics.md` §7.1 *Prior authorisation* (rows `approve`, `deny`, `consume`,
@@ -325,7 +351,7 @@ check-in. This gives the clinic time to get cover before the patient arrives.
 
 ### BL-CLN-04 — 05 Clinics: ask for a new insurance card before an insured appointment (`CLN.RUL.10`)
 
-**Labels:** `vertical:05-clinics` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 05 · **Size:** s
+**Labels:** `vertical:05-clinics` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Launch 05 · **Size:** s
 **Depends on:** Base: 05 Insurance policy · Base: wl-portal document upload · Base: wl-notify messages · **Blocks:** None.
 **Review items:** 05-N5-c
 
@@ -334,6 +360,15 @@ Two days before an insured appointment, if the policy on the appointment ends be
 date or the card on file has expired, the patient gets a message with a portal link to upload
 the new card, and the appointment is flagged for the front desk. Fewer patients arrive with an
 expired card.
+
+#### Surfaces
+- **Back office:** the front desk sees the `insurance_card` flag on the day list and accepts
+  an uploaded card valid on the appointment date, which clears the flag; card images need
+  `patients.sensitive.view`.
+- **Portal:** the patient (or guardian) follows the link in the message and uploads the new
+  insurance card.
+- **System:** `CLN.RUL.10` runs daily at 02:00 for appointments in 2 days (at booking for
+  later bookings inside 2 days); the message waits for the end of quiet hours.
 
 #### Files to read
 - `docs/verticals/05-clinics.md` §7.2 (`CLN.RUL.10`), §9 (Patient messages after a change),
@@ -384,7 +419,7 @@ What happens at the desk if the card is still expired (BL-CLN-01).
 
 ### BL-CLN-05 — 05 Clinics: bill work done when a visit is cancelled after check-in
 
-**Labels:** `vertical:05-clinics` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 05 · **Size:** m
+**Labels:** `vertical:05-clinics` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 05 · **Size:** m
 **Depends on:** BL-SCH-02 · BL-SCH-03 (staff cancel after check-in, work done captured or *none*) · Base: 05 charge capture (`CLN.ENC.01`) · **Blocks:** None.
 **Review items:** X-17, 05 MEDIUM "walk-out after check-in", "clinic-side cancellation and deposit refund"
 
@@ -395,6 +430,15 @@ service the practitioner records as delivered, or *none*), price it, settle a he
 against it, and bill the rest. A walk-out (`walked_out`) is billed as a normal visit and the
 deposit remainder is refunded; when the clinic stops the visit, nothing is charged unless the
 patient accepts the work done, and the deposit is refunded in full.
+
+#### Surfaces
+- **Back office:** before a checked-in appointment is cancelled, the practitioner marks
+  services delivered and the receptionist or nurse records consumables issued, or sets
+  *none*; the receptionist cancels with `walked_out` or a clinic reason and records the
+  patient's acceptance of the work done on a clinic stop.
+- **System:** the work done is priced and billed through charge capture; a held deposit
+  settles it (walk-out) or is refunded in full (clinic stop); a draft claim is created for a
+  payer share.
 
 #### Files to read
 - `docs/verticals/05-clinics.md` §3.3 (`SCH.ACL.05`, `SCH.ACL.06`), §4.2 "When it goes wrong"
@@ -484,7 +528,7 @@ suitable (BL-CLN-06).
 
 ### BL-CLN-06 — 05 Clinics: charge only the consultation when the planned procedure is not suitable
 
-**Labels:** `vertical:05-clinics` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 05 · **Size:** s
+**Labels:** `vertical:05-clinics` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 05 · **Size:** s
 **Depends on:** BL-SCH-02 · Base: 05 charge capture · **Blocks:** None.
 **Review items:** X-17 (05 §4.2 row "procedure is not suitable")
 
@@ -492,6 +536,14 @@ suitable (BL-CLN-06).
 When the practitioner sees the patient and decides the booked procedure is not suitable, the
 appointment completes normally with only the consultation in charge capture. The procedure is
 not charged, and a deposit taken for the procedure is applied to the consultation or refunded.
+
+#### Surfaces
+- **Back office:** in charge capture the practitioner ticks "procedure not performed: not
+  suitable" and must pick the consultation service given; the receptionist may refund the
+  deposit in full instead of applying it.
+- **System:** the procedure is not charged, no authorisation unit or package session is
+  consumed, and the deposit is applied to the consultation's patient share with the rest
+  refunded.
 
 #### Files to read
 - `docs/verticals/05-clinics.md` §4.2 "When it goes wrong" (row "Practitioner sees the patient
@@ -546,7 +598,7 @@ Cancellation after check-in (BL-CLN-05).
 
 ### BL-CLN-07 — 05 Clinics: return a claim to draft after a technical rejection (`reject_submission`)
 
-**Labels:** `vertical:05-clinics` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 05 · **Size:** m
+**Labels:** `vertical:05-clinics` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 05 · **Size:** m
 **Depends on:** Base: 05 Claim lifecycle (`validate`, `submit`, `resubmit`) · BL-INV-16 (payer bill `submission_rejected`) · **Blocks:** BL-CLN-10
 **Review items:** 05-N7-a
 
@@ -557,6 +609,15 @@ rejection, the claim goes back to `draft` with the channel's error codes, is fix
 and submitted again with the same number. This is not a resubmission and does not use one of
 the payer's limited resubmissions. In the MVP the coordinator records it by hand; integration
 is Later.
+
+#### Surfaces
+- **Back office:** the billing coordinator records the channel's rejection on a `submitted`
+  or `resubmitted` claim with at least one error code and message, gets a task with the
+  errors and the submission deadline, fixes the claim and runs Validate and Submit again
+  with the same number.
+- **System:** the claim returns to `draft` with the attempt's errors stored, the
+  resubmission count unchanged and the payer bill `submission_rejected`; Validate checks the
+  window of the rejected attempt.
 
 #### Files to read
 - `docs/verticals/05-clinics.md` §4.3 "When it goes wrong" (row "The channel rejects the
@@ -633,7 +694,7 @@ Integrated channel responses (`CLN.CLM.02`, Later); payer bill effects (BL-INV-1
 
 ### BL-CLN-08 — 05 Clinics: hold a remittance overpayment and record a payer recoupment on a claim
 
-**Labels:** `vertical:05-clinics` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 05 · **Size:** m
+**Labels:** `vertical:05-clinics` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 05 · **Size:** m
 **Depends on:** Base: 05 Claim lifecycle (`record_remittance`) · BL-INV-17 (payer credit balance, payer bill `record_recoupment`) · BL-KRN-01 (approval ends without a yes) · **Blocks:** None.
 **Review items:** 05-N3-c, X-03
 
@@ -644,6 +705,15 @@ moving the excess to the payer credit balance. A payer that takes back money pai
 the claim can be resubmitted, moved to the patient or written off. `paid` and `written_off`
 claims are no longer final: only `record_recoupment` leaves them. The denial task
 (`CLN.RUL.05`) also fires after a recoupment.
+
+#### Surfaces
+- **Back office:** the billing coordinator records a remittance or a recoupment and a second
+  user approves it from "Needs your action"; the recorder cannot approve; the claim shows
+  the recouped lines as denied with the payer's code, and the coordinator gets the denial
+  task with the resubmission deadline.
+- **System:** a held remittance records nothing until approval; a `PaymentReversed` from
+  wl-payments runs `record_recoupment` without approval; the recoupment is set off from the
+  payer credit balance first and `CLN.RUL.05` creates the task.
 
 #### Files to read
 - `docs/verticals/05-clinics.md` §3.3 (`FIN.ACL.16`), §4.3 "When it goes wrong" (rows
@@ -722,7 +792,7 @@ Payer credit balance mechanics and refunds to the payer (BL-INV-17, BL-PAY-08).
 
 ### BL-CLN-09 — 05 Clinics: close a claim that missed the first-submission window (`CLN.ACL.16`)
 
-**Labels:** `vertical:05-clinics` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` · **Milestone:** Launch 05 · **Size:** m
+**Labels:** `vertical:05-clinics` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Launch 05 · **Size:** m
 **Depends on:** Base: 05 Claim lifecycle · BL-INV-18 (payer bill `write_off` and `transfer_to_customer` from draft) · BL-KRN-01 · **Blocks:** None.
 **Review items:** 05-N5-a
 
@@ -732,6 +802,15 @@ A claim still in `draft` or `ready` after the payer's first-submission window is
 patient only when the payer contract allows it, never by default. A payer that accepts late
 claims gets the claim with a late reason instead, through `validate`. The amount is reported as
 *not submitted in time*.
+
+#### Surfaces
+- **Back office:** the clinic manager runs Write off on a `draft` or `ready` claim with a
+  reason after the window passed; above AED 1,000 the owner / medical director approves; for
+  a payer that accepts late claims Validate asks for a late reason instead; the owner sets
+  the payer contract flag "missed-window share may be billed to the patient"; the denial KPI
+  and the payer receivables report show *not submitted in time*.
+- **System:** the write-off runs payer bill `write_off`, or `transfer_to_customer` only with
+  the contract flag on; an amount change while the approval waits fails the request.
 
 #### Files to read
 - `docs/verticals/05-clinics.md` §3.3 (`FIN.ACL.14`, `CLN.ACL.16`), §4.3 "When it goes wrong"
@@ -807,7 +886,7 @@ Alerts before the window ends (BL-CLN-11); payer bill mechanics (BL-INV-18).
 
 ### BL-CLN-10 — 05 Clinics: void a claim created in error (`CLN.ACL.14`)
 
-**Labels:** `vertical:05-clinics` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 05 · **Size:** s
+**Labels:** `vertical:05-clinics` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 05 · **Size:** s
 **Depends on:** Base: 05 Claim lifecycle · BL-INV-18 (payer bill `void`) · BL-KRN-03 (void pattern) · BL-CLN-07 · **Blocks:** None.
 **Review items:** 05 MEDIUM "void a claim", X-19
 
@@ -817,6 +896,15 @@ A claim created by mistake (duplicate visit, wrong payer or policy) is voided fr
 too (number kept), the visit's payer split is removed, and the visit is re-split to the right
 policy, which creates a new claim (or, with no right policy, is flagged *coverage to resolve*).
 A claim that was ever submitted is never voided.
+
+#### Surfaces
+- **Back office:** the billing coordinator runs Void on a `draft` or `ready` claim with a
+  reason code; *duplicate* asks for the duplicated claim from a list of the same patient's
+  other claims; the voided claim stays in lists marked void; with no right policy the
+  coordinator gets a "coverage to resolve" task.
+- **System:** Void is refused for a claim with any stored submission attempt; the payer bill
+  is voided, the payer split removed and the visit re-split to the right policy with a new
+  claim.
 
 #### Files to read
 - `docs/verticals/05-clinics.md` §3.3 (`CLN.ACL.14`), §4.3 "When it goes wrong" (row "Claim
@@ -876,7 +964,7 @@ Voiding payments, receipts and appointments (their modules).
 
 ### BL-CLN-11 — 05 Clinics: warn before the first-submission window ends (`CLN.RUL.03`)
 
-**Labels:** `vertical:05-clinics` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Launch 05 · **Size:** s
+**Labels:** `vertical:05-clinics` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 05 · **Size:** s
 **Depends on:** Base: 05 Claim lifecycle · BL-KRN-08 (owner alert for compliance-critical rules) · **Blocks:** None.
 **Review items:** 05-N5-a
 
@@ -884,6 +972,13 @@ Voiding payments, receipts and appointments (their modules).
 Claims left in `draft` or `ready` are chased twice: the billing coordinator is told 7 days after
 the visit, and the clinic manager gets a task 2 days before the payer's window ends. The rule is
 compliance-critical: if it fails or misses its run, the owner / medical director is alerted.
+
+#### Surfaces
+- **Back office:** the clinic manager gets a task 2 days before the payer's window ends;
+  saving a payer contract with N not below its window is refused.
+- **System:** `CLN.RUL.03` runs daily at 02:00, notifies the billing coordinator at N days
+  and fires once per claim and step; a failed or missed run alerts the owner / medical
+  director, and the client cannot switch it off.
 
 #### Files to read
 - `docs/verticals/05-clinics.md` §4.3 "When it goes wrong" (row "First-submission window about to
@@ -939,7 +1034,7 @@ Closing after the window (BL-CLN-09).
 
 ### BL-CLN-12 — 05 Clinics: block bookings and alert the owner when a practitioner licence expires (`CLN.RUL.01`)
 
-**Labels:** `vertical:05-clinics` `area:negative-flow` `priority:high` `size:s` `blocked:open-item` · **Milestone:** Launch 05 · **Size:** s
+**Labels:** `vertical:05-clinics` `area:negative-flow` `priority:high` `size:s` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Launch 05 · **Size:** s
 **Depends on:** BL-HRM-01 (`qualification_valid`, `QualificationExpired`) · BL-DOC-05 (`DocumentExpired`) · BL-SCH-07 (`SCH.RUL.05`) · BL-KRN-08 · **Blocks:** None.
 **Review items:** 05-N8-a, X-13
 
@@ -947,6 +1042,13 @@ Closing after the window (BL-CLN-09).
 On the day after a practitioner's licence expires, new bookings for that practitioner and
 branch are refused, the clinic manager and the owner / medical director are told, and every
 appointment already booked is in conflict through `SCH.RUL.05`. The rule is compliance-critical.
+
+#### Surfaces
+- **Back office:** a new booking for the practitioner at that branch is refused with no
+  override; the appointments already booked show a conflict.
+- **System:** 05 reacts to `QualificationExpired` with one combined message per recipient
+  (clinic manager of the branch, owner / medical director) naming the number of affected
+  appointments, and `SCH.RUL.05` raises the conflicts; a failed run raises the owner alert.
 
 #### Files to read
 - `docs/verticals/05-clinics.md` §4.5 (paragraph on blocking document kinds), §7.2 (`CLN.RUL.01`,
@@ -1003,7 +1105,7 @@ Look-ahead 30 days before expiry (BL-SCH-07); check-in re-check (BL-SCH-08).
 
 ### BL-CLN-13 — 05 Clinics: record the lot of every consumable issued to a visit
 
-**Labels:** `vertical:05-clinics` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Launch 05 · **Size:** s
+**Labels:** `vertical:05-clinics` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 05 · **Size:** s
 **Depends on:** Base: wl-inventory Lot and stock movements (`STK.MOV.01`, `STK.LOT.01`) · BL-STK-11 (held stock cannot be issued) · BL-STK-18 (pending issues) · **Blocks:** BL-CLN-14
 **Review items:** 05-N10-a, X-09
 
@@ -1012,6 +1114,14 @@ A recall can only find patients if every lot-tracked consumable issued to a visi
 lot. The issue screen proposes the lot with the earliest expiry, the user scans or picks it, and
 the visit cannot be checked out with a lot-tracked line that has no lot, except a pending issue
 whose lot is assigned when stock arrives.
+
+#### Surfaces
+- **Back office:** the issue screen proposes the lot with the earliest expiry and the user
+  scans or picks it; check-out is refused with "lot required" for a lot-tracked line without
+  a lot; a pending issue shows "lot uncertain"; a wrong lot is edited before check-out.
+- **System:** a quantity larger than one lot is split per lot, earliest expiry first, and
+  only the remaining short quantity becomes a pending issue; held or expired lots are
+  refused.
 
 #### Files to read
 - `docs/verticals/05-clinics.md` §4.6 (step 2 and "When it goes wrong" row "Not enough stock"),
@@ -1069,7 +1179,7 @@ Pending-issue mechanics and alerts (BL-STK-18, BL-STK-20); recalls (BL-CLN-14).
 
 ### BL-CLN-14 — 05 Clinics: trace a recalled lot to patients and send neutral notices
 
-**Labels:** `vertical:05-clinics` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` · **Milestone:** Launch 05 · **Size:** m
+**Labels:** `vertical:05-clinics` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Launch 05 · **Size:** m
 **Depends on:** BL-CLN-13 · BL-STK-14 · BL-STK-15 (`TracePartyResolver`) · BL-STK-16 (notices, close) · BL-NTF-02 (give-up task) · **Blocks:** None.
 **Review items:** 05-N10-a, X-09, X-20
 
@@ -1079,6 +1189,14 @@ the clinic must find every patient who received it. 05 provides the recall trace
 resolver (visit → patient), the patient notice that names the clinic and asks the patient to
 call without clinical detail, and the call task for the front desk when a notice cannot be
 delivered. Whether the health authority must be told is open (AU-20).
+
+#### Surfaces
+- **Back office:** the clinic manager or medical director sees the recall trace with patient
+  name, visit date and branch only (each view audited), including *possible* lines marked
+  "lot uncertain"; the clinic manager sends the notices; the front desk of the visit's
+  branch gets a call task when a notice gives up and records the call outcome.
+- **System:** the `TracePartyResolver` maps visit → patient (the guardian for a dependant);
+  one notice per patient per recall, with no product name or clinical detail.
 
 #### Files to read
 - `docs/verticals/05-clinics.md` §4.6 "When it goes wrong" (row "Supplier, manufacturer or
@@ -1146,7 +1264,7 @@ Recall opening, holds and decisions (BL-STK-14, BL-STK-12, BL-STK-16); authority
 
 ### BL-CLN-15 — 05 Clinics: configure shared negative-flow settings (bookings, licences, alerts, connections, messages)
 
-**Labels:** `vertical:05-clinics` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` · **Milestone:** Launch 05 · **Size:** m
+**Labels:** `vertical:05-clinics` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Launch 05 · **Size:** m
 **Depends on:** BL-SCH-01 to BL-SCH-10 · BL-DOC-01 · BL-DOC-06 · BL-KRN-05 · BL-KRN-08 · BL-NTF-01 · BL-NTF-02 · BL-SAL-19 · BL-SAL-20 · BL-SAL-21 · BL-SAL-22 · BL-SAL-23 · BL-SAL-24 · BL-SAL-25 · BL-SAL-26 · BL-NTF-07 · BL-NTF-08 · BL-NTF-09 · BL-HRM-26 · BL-HRM-27 · BL-HRM-28 · BL-DOC-08 · BL-DOC-09 · BL-DOC-10 · **Blocks:** None.
 **Review items:** X-13, X-17, X-19, X-20, 05-N8-a, 05 MEDIUM "practitioner sick on the day", "clinic-side cancellation and deposit refund"
 
@@ -1161,6 +1279,16 @@ It also seeds the 05 values for lead sources and campaigns (`SAL.CRM.02`), loyal
 on 2026-10-16: `SAL.RUL.07`, `SAL.RUL.08`, `SAL.ACL.07`, `NTF.RUL.02`, `NTF.ACL.03`,
 `HRM.RUL.16`, `HRM.RUL.17`, `HRM.ACL.10`, `DOC.RUL.04` and `DOC.RUL.01`. Campaigns that promote
 services keep the advertising permit guard (`CLN.ACL.13`).
+
+#### Surfaces
+- **Back office:** in the 05 deployment the licence kinds show no override action; with SMS
+  `down` the front desk sees the 24-hour call list per branch with a *called* tick; with the
+  claims channel `down` the claim screen shows "submit through the payer portal and record
+  the reference"; check-in, check-out, cash payments and consumables accept a business time
+  with the late-entry flag.
+- **System:** values are seeded from the 05 deployment template, with the override mode
+  `never` and the compliance-critical rules locked; give-up reactions, `SCH.RUL.05`,
+  `SCH.RUL.06` and the loyalty and marketing rules run with the 05 values.
 
 #### Files to read
 - `docs/verticals/05-clinics.md` §3.3 (`SCH.ACL.04`, `SCH.ACL.05`, `SCH.ACL.06`), §4.1 "When it
@@ -1287,7 +1415,7 @@ Module mechanisms (their epics); money and stock settings (BL-CLN-16).
 
 ### BL-CLN-16 — 05 Clinics: configure shared negative-flow settings (money and stock)
 
-**Labels:** `vertical:05-clinics` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` · **Milestone:** Launch 05 · **Size:** m
+**Labels:** `vertical:05-clinics` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Launch 05 · **Size:** m
 **Depends on:** BL-INV-04 · BL-INV-05 · BL-INV-18 · BL-PAY-02 to BL-PAY-07 · BL-PAY-17 · BL-SAL-16 · BL-STK-11 to BL-STK-20 · BL-INV-25 · BL-INV-26 · BL-INV-27 · BL-INV-28 · BL-INV-29 · BL-INV-30 · BL-PAY-25 · BL-PAY-26 · **Blocks:** None.
 **Review items:** X-02, X-03, X-06, X-07, X-09, X-10, 05-N11-a, 05 MEDIUM "billing disputes", "negative stock"
 
@@ -1299,6 +1427,16 @@ payment reversal, negative stock, stock holds and recalls.
 It also seeds the 05 values for the cash-flow forecast alert (`FIN.CFL.01`) and the
 company budget with owner drawings (`FIN.BUD.01`), added on 2026-10-16: `FIN.RUL.23`,
 `FIN.RUL.24` and `FIN.ACL.21`.
+
+#### Surfaces
+- **Back office:** patient invoice write-offs, cash shortage write-offs and owner drawings
+  wait for approval; the front desk gets a collect task for a package bought with a reversed
+  payment; a receptionist's handover is counted by someone else and salary recovery is not
+  offered.
+- **Portal:** the patient raises a billing dispute through the complaint form, category
+  *billing*, picking one of their open invoices.
+- **System:** values are seeded from the 05 deployment template; `FIN.RUL.19`, `FIN.RUL.21`,
+  `STK.RUL.06`, `FIN.RUL.23` and `FIN.RUL.24` run with the 05 values.
 
 #### Files to read
 - `docs/verticals/05-clinics.md` §3.3 (`FIN.ACL.14`, `FIN.ACL.16`, `FIN.ACL.05`, `FIN.ACL.06`,

@@ -25,7 +25,7 @@ every N1 item in the verticals relies on.
 
 ### BL-KRN-01 — wl-kernel: send the subject back to its stored state when an approval ends without a yes
 
-**Labels:** `module:wl-kernel` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-kernel` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** Base: wl-kernel Approval request lifecycle (`submit`, `approve_step`, `approve`, `reject`, `withdraw`, `expire`, `fail`) · **Blocks:** BL-KRN-02, BL-KRN-03, BL-PTY-04, BL-DOC-06, every module with a waiting state (e.g. `pending_approval`), BL-ACC-14, BL-ACC-19, BL-AUT-01, BL-AUT-12, BL-CLN-08, BL-CLN-09, BL-CON-01, BL-CON-05, BL-CON-11, BL-CON-16, BL-CON-17, BL-EDU-12, BL-LOG-12, BL-LOG-15, BL-LOG-17, BL-MFG-01, BL-MPW-03, BL-MPW-04, BL-MPW-07, BL-PRP-01, BL-PRP-12, BL-PRP-19
 **Review items:** X-19 (approval returned), N1 in every vertical
 
@@ -34,6 +34,14 @@ When an approval request ends with `reject`, `withdraw`, `expire` or `fail`, the
 request was about (the subject) goes back to the state it had before the request, anything the
 module reserved at submit time is released, and the requester is told why. Nothing of the
 blocked action has run. This makes "approval rejected" behave the same in every module.
+
+#### Surfaces
+- **Back office:** the approver rejects with a required comment, or the requester withdraws,
+  from the approval card; the requester sees the subject back in its stored state, the
+  pending-approval badge gone and the request and decision in the record's Activity tab.
+- **System:** on `reject`, `withdraw`, `expire` or `fail` the kernel runs the module's
+  `system` back transition and release handlers, records "subject already moved" when needed
+  and emits `ApprovalDecided`; the back transition is never offered to a user.
 
 #### Files to read
 - `docs/modules/wl-kernel.md` §3 (entity *Approval request*), §4.1 *Approval request* (states,
@@ -156,7 +164,7 @@ each module's declaration of its own back transition and release handlers (modul
 
 ### BL-KRN-02 — wl-kernel: return an approval request for changes and link the resubmission
 
-**Labels:** `module:wl-kernel` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-kernel` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** BL-KRN-01 · Base: wl-kernel Approval request lifecycle · **Blocks:** None.
 **Review items:** X-19 (approval returned)
 
@@ -165,6 +173,15 @@ An approver can send a request back for changes instead of rejecting it. The sub
 to its stored state (as in BL-KRN-01), the requester gets a "fix and resubmit" task, and a
 resubmission is a new request linked to the old one that starts again at step 1. A new request
 after a `rejected` one shows the earlier rejection, so a "no" is not silently retried.
+
+#### Surfaces
+- **Back office:** the approver of the current step chooses Return with a required comment;
+  the requester gets a "fix and resubmit" task in "Needs your action" (closed by a
+  resubmission or "not resubmitting"); the approver's card of a resubmission shows the
+  earlier rejection or return (date, approver, comment).
+- **System:** a resubmission is a new request linked by `resubmission of` that starts again
+  at step 1; the subject goes back as in BL-KRN-01 and `ApprovalDecided { returned }` is
+  emitted.
 
 #### Files to read
 - `docs/modules/wl-kernel.md` §3 (*Approval request*: "resubmission of"), §4.1 (states,
@@ -243,7 +260,7 @@ The back transition and release (BL-KRN-01); approval policies per vertical.
 
 ### BL-KRN-03 — wl-kernel: void a record entered in error
 
-**Labels:** `module:wl-kernel` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-kernel` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** BL-KRN-01 · Base: wl-kernel State machine engine (`PLT.WFL.01`), Sequences, Approval request lifecycle · **Blocks:** BL-KRN-09; `void` in every module that opts in, BL-AUT-02, BL-AUT-10, BL-AUT-18, BL-CLN-10, BL-FNB-09, BL-FNB-17, BL-LOG-01, BL-MFG-04, BL-MFG-14, BL-PRP-26
 **Review items:** X-19 (void)
 
@@ -252,6 +269,15 @@ Give every module one way to remove a record that should never have existed (a d
 receipt, a wrong-party booking): `void` with a reason, which reverses its effects in one
 transaction, keeps its number, and needs another user's approval when money or stock was
 posted. Documents already given to a third party or an authority are never voided.
+
+#### Surfaces
+- **Back office:** a user runs Void with a reason under More on the record page (not offered
+  from states the module does not allow or for documents given to a third party); when money
+  or stock was posted another user approves it; voided records show struck through in lists
+  and reports and the gapless series shows the number as void.
+- **System:** in one transaction the kernel runs the module's reverse handlers, moves the
+  record to `voided`, writes the Void record and emits `RecordVoided`; a failing handler or
+  a locked period rolls everything back.
 
 #### Files to read
 - `docs/modules/wl-kernel.md` §3 (*Void record*), §5.12, §6 (service `Voids`, event
@@ -350,7 +376,7 @@ Each module's `void` declaration and reverse handlers (module epics); the daily 
 
 ### BL-KRN-04 — wl-kernel: flag and approve late entries
 
-**Labels:** `module:wl-kernel` `area:negative-flow` `priority:medium` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-kernel` `area:negative-flow` `priority:medium` `size:m` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** Base: wl-kernel Approval request lifecycle, Rule run lifecycle · **Blocks:** BL-KRN-06, BL-KRN-09, BL-ACC-24, BL-AUT-18, BL-CON-18, BL-FNB-10, BL-FNB-14, BL-FNB-15, BL-LOG-25, BL-MFG-14, BL-PRP-27
 **Review items:** X-19 (late entry), 06-N7-c
 
@@ -359,6 +385,15 @@ When work done on paper during an outage is entered later, the record keeps its 
 and carries a late-entry flag with a reason. Entries more than N hours late, or in a closed
 period that the module allows to reopen, need a manager's approval. Automations use the business
 time, so late records do not cause false no-shows or overdue flags.
+
+#### Surfaces
+- **Back office:** saving a record whose business time is more than M minutes old asks for a
+  late reason and an optional outage reference; beyond N hours or in a closed period the
+  save becomes an approval request for a holder of `late_entries.approve`; the late entry
+  lists the rule runs "already fired, review".
+- **System:** automations evaluate the business time in their conditions, the kernel finds
+  the runs already fired between business time and entry time, and `LateEntryRecorded` is
+  emitted.
 
 #### Files to read
 - `docs/modules/wl-kernel.md` §3 (*Entry timing*), §5.13, §6 (service `LateEntry`, event
@@ -467,7 +502,7 @@ records that automations already changed (owning module); the digest (BL-KRN-09)
 
 ### BL-KRN-05 — wl-kernel: track integration health and switch to the manual fallback when a connection is down
 
-**Labels:** `module:wl-kernel` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-kernel` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** Base: wl-kernel Rule run lifecycle, Renox queue · **Blocks:** BL-KRN-06, BL-KRN-07, BL-PTY-10, BL-ACC-23, BL-AUT-18, BL-CLN-15, BL-EDU-17, BL-LOG-25, BL-MFG-14, BL-MPW-20
 **Review items:** X-19 (integration down), 09-N7-a, 06-N7-c
 
@@ -477,6 +512,15 @@ regulator portal, messaging provider) is registered as a connection with a healt
 calls are queued and retried; after N minutes without success the connection goes `down`, the
 affected screens show a banner with the manual fallback, and the admin and the connection's
 owner role are alerted. Outbound work is never lost.
+
+#### Surfaces
+- **Back office:** while a connection is `down`, the screens it registered show a banner
+  with the manual fallback text; holders of `integrations.view` open the connection page
+  (status, last error, queued items) and holders of `integrations.manage` disable it with a
+  reason or enable it.
+- **System:** failed calls are queued and retried with backoff without limit; `PLT.RUL.05`
+  runs `go_down` after N minutes, alerts the admin and the owner role once and emits
+  `IntegrationStatusChanged`.
 
 #### Files to read
 - `docs/modules/wl-kernel.md` §3 (*Integration connection*), §4.5 (states, transitions,
@@ -570,7 +614,7 @@ fallback text and screen list (module epics).
 
 ### BL-KRN-06 — wl-kernel: drain the queue and reconcile manual work when a connection recovers
 
-**Labels:** `module:wl-kernel` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-kernel` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** BL-KRN-05, BL-KRN-04 · **Blocks:** BL-KRN-07, BL-FNB-14
 **Review items:** X-19 (integration down)
 
@@ -579,6 +623,14 @@ When a degraded or down connection answers again, the queued outbound work is se
 (late sync), the banner disappears, and work done by hand while it was down is matched against
 the late sync results. Mismatches open a reconciliation task for the owner role. Inbound data
 that arrives late is processed with its own business time.
+
+#### Surfaces
+- **Back office:** the banner disappears from the affected screens on recovery; the owner
+  role gets one reconciliation task in "Needs your action" listing manual-versus-late-sync
+  mismatches and obsolete queued items.
+- **System:** `recover` commits `up`, then the queue drains oldest first, the natural key
+  prevents duplicates, a failure during the drain runs `degrade`, and late inbound data
+  follows the late-entry rules.
 
 #### Files to read
 - `docs/modules/wl-kernel.md` §4.5 (`recover`, `enable`), §5.14 steps 4–5, §5.13 (late entry)
@@ -656,7 +708,7 @@ Health states and `go_down` (BL-KRN-05); each module's matching rules and natura
 
 ### BL-KRN-07 — wl-kernel: monitor site devices by heartbeat
 
-**Labels:** `module:wl-kernel` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 06 · **Size:** s
+**Labels:** `module:wl-kernel` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 06 · **Size:** s
 **Depends on:** BL-KRN-05, BL-KRN-06 · **Blocks:** BL-FNB-14
 **Review items:** X-19, 06-N7-c
 
@@ -666,6 +718,13 @@ whose health signal is its heartbeat. Missed heartbeats count as failed calls, s
 `degrade`, `go_down` and `recover` apply. Silence outside the device's active window is ignored,
 and devices of one scope can be grouped into one connection. 06 F&B is the first user (its rule
 `FNB.RUL.15` pauses an outlet's brands when its kitchen devices go silent).
+
+#### Surfaces
+- **Back office:** the company admin sets a device connection's heartbeat interval, active
+  window and grouping per scope in the connection settings.
+- **System:** missed heartbeats count as failed calls for `degrade`, `go_down` and
+  `recover`; silence outside the active window is ignored and a group is `down` only when no
+  device answers.
 
 #### Files to read
 - `docs/modules/wl-kernel.md` §4.5 (paragraph "Connection kinds"), §7 (setting *Device
@@ -731,7 +790,7 @@ answers). Consumers react to `IntegrationStatusChanged`."
 
 ### BL-KRN-08 — wl-kernel: alert the business owner when a compliance-critical rule fails or misses its schedule
 
-**Labels:** `module:wl-kernel` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-kernel` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** Base: wl-kernel Rule run lifecycle, `PLT.RUL.03` digest · **Blocks:** BL-DOC-05, BL-TKT-03, BL-TKT-04, BL-PTY-07, BL-ACC-23, BL-AUT-04, BL-AUT-14, BL-AUT-18, BL-CLN-11, BL-CLN-12, BL-CLN-15, BL-CON-18, BL-EDU-07, BL-EDU-10, BL-EDU-17, BL-FNB-17, BL-LOG-25, BL-MFG-12, BL-MFG-14, BL-MPW-17, BL-MPW-20, BL-PRP-03, BL-PRP-25, BL-PRP-27
 **Review items:** X-19 (owner alert)
 
@@ -741,6 +800,15 @@ date, document expiry blocks, fire-safety visit checks). When one of them fails,
 does not run on schedule, the business owner role and the company admin are alerted at once, not
 only in the next morning's digest, and the owner gets a task that stays open until the duty is
 met.
+
+#### Surfaces
+- **Back office:** the business owner role and the company admin get an in-app alert at
+  once; the owner role gets a task in "Needs your action" that closes on a successful rerun
+  or when the owner records a required note (and optional attachment) of how the duty was
+  met.
+- **System:** `PLT.RUL.04` reacts to a failed or stopped compliance-critical run and to a
+  missed occurrence found by the 15-minute scheduler check, once per occurrence, and
+  `AutomationFailed` is emitted.
 
 #### Files to read
 - `docs/modules/wl-kernel.md` §3 (*Compliance-critical flag*), §4.2 *Rule run*, §5.15, §6
@@ -826,7 +894,7 @@ Marking each rule compliance-critical (module and vertical epics); the daily fai
 
 ### BL-KRN-09 — wl-kernel: send managers a daily digest of voids and late entries
 
-**Labels:** `module:wl-kernel` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-kernel` `area:negative-flow` `priority:medium` `size:s` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** BL-KRN-03, BL-KRN-04 · **Blocks:** BL-LOG-25
 **Review items:** X-19
 
@@ -835,6 +903,12 @@ Every morning, each manager receives one message listing the records voided and 
 entries made in their scope during the previous day, with the user and the reason, and under
 each late entry the rule runs it lists as "already fired, review" (BL-KRN-04), so misuse of
 void and late entry is visible and the fired automations get checked.
+
+#### Surfaces
+- **System:** `PLT.RUL.06` runs daily at 07:00 and sends each holder of
+  `late_entries.approve` one digest per scope of the previous day's voids and late entries
+  with the runs "already fired, review"; nothing is sent when empty, and a rerun sends
+  nothing new.
 
 #### Files to read
 - `docs/modules/wl-kernel.md` §5.13 steps 5–6, §6 (`PLT.RUL.06`)

@@ -40,7 +40,7 @@ and X-19.
 
 ### BL-AUT-01 — 08 Auto: cancel a job card after work started and bill the work done (`AUT.ACL.21`)
 
-**Labels:** `vertical:08-auto` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 08 · **Size:** m
+**Labels:** `vertical:08-auto` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:field-pwa` `surface:system` · **Milestone:** Launch 08 · **Size:** m
 **Depends on:** Base: 08 Job card lifecycle · Base: wl-invoicing Invoice lifecycle · Base: wl-inventory stock movements · BL-SCH-03 (booking cancel after check-in, `SCH.ACL.06`) · BL-KRN-01 (approval ends without a yes) · **Blocks:** BL-AUT-05, BL-AUT-08, BL-AUT-09
 **Review items:** 08-N2-a, X-17
 
@@ -50,6 +50,17 @@ reason, records the work done per line, and gets the customer's acknowledgement.
 billed only for work done (labour done, parts fitted, agreed special-order parts); parts issued
 but not fitted go back to stock; the booking is closed; the vehicle is released safe or "as is"
 with a signature. Billing less than the work done needs the branch manager.
+
+#### Surfaces
+- **Back office:** the service advisor runs *cancel* on the job card with a reason, records
+  the work done per line and takes the customer's signature (or *refused to sign* with a
+  witness); the branch manager sees a lowered or waived bill, or a refused signature, under
+  "Needs your action" and approves; the advisor records *release vehicle* as safe or as is.
+- **Field PWA:** while the cancel waits for approval, the technician's job card refuses new
+  labour and part issues.
+- **System:** the work-done invoice is issued, unfitted parts go back to stock, parts
+  requests and the booking are cancelled, the purchaser gets a task to revise an open
+  special-order PO, and `JobCardCancelled` is emitted.
 
 #### Files to read
 - `docs/verticals/08-auto.md` §3.3 `AUT.ACL.17`, `AUT.ACL.21`, §4.4 "When it goes wrong" (row "The customer stops the job…"), §6 *Job card* fields, §7.1 *Job card* (states, row `cancel`), §7.1 *Booking* (second `cancel` row), §9 Consumer protection
@@ -128,13 +139,20 @@ Booking cancel guard (BL-SCH-03); claim-driven cancels (BL-AUT-08, BL-AUT-09); u
 
 ### BL-AUT-02 — 08 Auto: void a job card opened in error
 
-**Labels:** `vertical:08-auto` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 08 · **Size:** s
+**Labels:** `vertical:08-auto` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 08 · **Size:** s
 **Depends on:** Base: 08 Job card lifecycle · BL-KRN-03 (void) · BL-SCH-03 · **Blocks:** None
 **Review items:** X-19 (void)
 
 #### Goal
 A duplicate check-in creates a second job card. Before any labour or part is recorded, the advisor
 voids it with a reason, and its booking is cancelled with work done *none*.
+
+#### Surfaces
+- **Back office:** the service advisor runs *void* on a `checked_in` job card with a reason;
+  it is refused when a labour or part line exists or a claim is linked, and no "unlink
+  claim" action is offered.
+- **System:** the booking is cancelled with work done *none*, the number is kept and
+  `RecordVoided` is emitted.
 
 #### Files to read
 - `docs/verticals/08-auto.md` §4.4 "When it goes wrong" (last row), §7.1 *Job card* (row `void`), §7.1 *Insurance repair claim* (rows `void`, `cancel`), §7.1 settings *Void*
@@ -184,7 +202,7 @@ Claim void (BL-AUT-10).
 
 ### BL-AUT-03 — 08 Auto: expire an unanswered estimate and decline the job card (`AUT.RUL.17`)
 
-**Labels:** `vertical:08-auto` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 08 · **Size:** s
+**Labels:** `vertical:08-auto` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 08 · **Size:** s
 **Depends on:** Base: 08 Job card lifecycle (`send_estimate`, `decline`) · Base: wl-scheduling Booking lifecycle · **Blocks:** BL-AUT-05, BL-AUT-08
 **Review items:** 08 MEDIUM "estimate expiry"
 
@@ -192,6 +210,14 @@ Claim void (BL-AUT-10).
 A customer who never answers an estimate leaves a vehicle in a bay. After 7 days with nothing
 approved, the system declines the job card, asks the customer to collect the vehicle, and
 invoices the inspection fee when one was agreed at check-in.
+
+#### Surfaces
+- **Back office:** the service advisor runs *decline* on a job card when the customer leaves
+  before any work, and sees "message not delivered" on the job card when the collect SMS
+  gives up.
+- **System:** the hourly `AUT.RUL.17` check declines a job card 7 days after
+  `awaiting_approval` with nothing approved, cancels the booking, issues an agreed
+  inspection fee invoice and sends the `auto.collect_vehicle` SMS.
 
 #### Files to read
 - `docs/verticals/08-auto.md` §4.4 "When it goes wrong" (row 1), §7.1 *Job card* (state `declined`, row `decline`), §7.2 `AUT.RUL.03`, `AUT.RUL.17`
@@ -243,7 +269,7 @@ Collection reminders (BL-AUT-05).
 
 ### BL-AUT-04 — 08 Auto: track the legal parts supply period and the substitute vehicle (`AUT.RUL.16`)
 
-**Labels:** `vertical:08-auto` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` · **Milestone:** Launch 08 · **Size:** m
+**Labels:** `vertical:08-auto` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Launch 08 · **Size:** m
 **Depends on:** Base: 08 Job card lifecycle (`wait_parts`, `parts_arrived`) · Base: wl-notify SMS · BL-KRN-08 (owner alert) · **Blocks:** None
 **Review items:** 08-N5-a
 
@@ -253,6 +279,16 @@ source, and a substitute vehicle when a warranted repair takes longer than 7 day
 records when it started waiting for parts and the legal supply date; a daily rule warns the
 advisor and the customer before the date, the branch manager on the date, and asks for a
 substitute vehicle on warranty jobs after 7 days. The rule is compliance-critical.
+
+#### Surfaces
+- **Back office:** the job card shows the parts wait start and the legal supply date, not
+  editable; the service advisor gets the date notices, a call task when the customer has no
+  mobile, and a substitute vehicle task closed by recording plate, from and to (or the
+  customer's refusal with a reason); the branch manager is told on the legal date; `deliver`
+  is refused while a substitute is open.
+- **System:** `AUT.RUL.16` runs daily at 08:00, fires each missed step once in order,
+  notifies the customer by SMS, and alerts the Owner / GM and the company admin with an
+  owner task when a run fails or is missing.
 
 #### Files to read
 - `docs/verticals/08-auto.md` §2 (consumer protection), §4.4 "When it goes wrong" (row "Parts do not arrive"), §6 *Job card* fields, §7.1 *Job card* (row `wait_parts`), §7.2 `AUT.RUL.16`, §9 Consumer protection
@@ -310,7 +346,7 @@ Which period applies to which part (L-35, onboarding).
 
 ### BL-AUT-05 — 08 Auto: remind and escalate vehicles that are not collected (`AUT.RUL.18`)
 
-**Labels:** `vertical:08-auto` `area:negative-flow` `priority:medium` `size:s` `blocked:open-item` · **Milestone:** Launch 08 · **Size:** s
+**Labels:** `vertical:08-auto` `area:negative-flow` `priority:medium` `size:s` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Launch 08 · **Size:** s
 **Depends on:** BL-AUT-01 · BL-AUT-03 · Base: 08 Job card lifecycle (`pass_qc`, `deliver`) · **Blocks:** None
 **Review items:** 08 MEDIUM "abandoned vehicles"
 
@@ -319,6 +355,15 @@ Vehicles that are ready, declined or cancelled but not taken away block bays. Th
 reminded after 3 and 7 days, and the branch manager gets a task after 30 days. A storage fee is
 charged only when the client turned it on and the customer agreed at check-in. What the workshop
 may finally do with an abandoned vehicle is a legal open item.
+
+#### Surfaces
+- **Back office:** the service advisor records *release vehicle* on a `declined` or
+  `cancelled` job card (time, recipient, safe or as is, signature), refused while unpaid on
+  cash terms; the branch manager gets a task at day 30 saying "legal next steps open
+  (L-36)".
+- **System:** `AUT.RUL.18` sends the `auto.collect_vehicle` SMS at 3 and 7 days (a call task
+  to the advisor when there is no mobile) and invoices the agreed storage fee at release,
+  never after a total loss.
 
 #### Files to read
 - `docs/verticals/08-auto.md` §4.4 "When it goes wrong" (row "The vehicle is not collected"), §6 *Job card* (vehicle released at), §7.2 `AUT.RUL.18`, §9 Consumer protection
@@ -374,7 +419,7 @@ Abandoned vehicle disposal (L-36).
 
 ### BL-AUT-06 — 08 Auto: record test drives and decide liability for a vehicle incident (`AUT.ACL.22`)
 
-**Labels:** `vertical:08-auto` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 08 · **Size:** m
+**Labels:** `vertical:08-auto` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:field-pwa` `surface:system` · **Milestone:** Launch 08 · **Size:** m
 **Depends on:** Base: wl-ticketing Ticket lifecycle · BL-TKT-11 (ticket categories) · BL-AUT-07 (police report guard) · **Blocks:** None
 **Review items:** 08-N10-a
 
@@ -383,6 +428,17 @@ A customer's vehicle can be damaged in the bay or on a test drive. Test drives a
 job card. Damage is recorded as a *vehicle incident* ticket linked to the job card, with photos
 compared to the check-in photos. Only the branch manager, not the people involved, decides
 liability. Damage the workshop caused is repaired at no charge on an internal job card.
+
+#### Surfaces
+- **Back office:** the job card lists test drives (driver, times, mileage out and in); the
+  branch manager opens the *vehicle incident* ticket, sees the check-in photos next to the
+  incident photos and resolves it with *workshop* or *not workshop* and a reason; involved
+  people are refused.
+- **Field PWA:** the technician records a test drive on the job card and raises the incident
+  ticket with photos and the road accident field (screen not specified yet).
+- **System:** liability *workshop* creates an internal job card (payer = workshop) with the
+  accident damage flag from the ticket; `pass_qc` is refused while a test drive has no
+  mileage in.
 
 #### Files to read
 - `docs/verticals/08-auto.md` §3.3 `AUT.ACL.20`, `AUT.ACL.22`, §4.4 "When it goes wrong" (row "The vehicle is damaged…"), §6 *Job card* (test drives)
@@ -438,7 +494,7 @@ Police report guard (BL-AUT-07).
 
 ### BL-AUT-07 — 08 Auto: refuse accident repair without a police report (`AUT.ACL.20`, D-08)
 
-**Labels:** `vertical:08-auto` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 08 · **Size:** m
+**Labels:** `vertical:08-auto` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 08 · **Size:** m
 **Depends on:** BL-DOC-01 (`document_valid` guard) · Base: 08 Job card and Insurance claim lifecycles · **Blocks:** BL-AUT-06
 **Review items:** 08-N8-a, D-08, X-13
 
@@ -447,6 +503,14 @@ The law forbids a garage to repair accident damage without a repair permit, whic
 accident report. The report must be attached before the insurer estimate is submitted or the
 claim approved, and before any accident repair is approved on the job card, also for private
 repairs and rejected claims. There is no override. Earlier only `book_survey` checked it (D-08).
+
+#### Surfaces
+- **Back office:** the service advisor or insurance coordinator attaches the police accident
+  report and a second user accepts it; job card `approve`, `book_survey`, `submit_estimate`
+  and claim `approve` are refused with "police report required" until then; clearing the
+  accident flag goes to the workshop manager for approval.
+- **System:** the `document_valid` guard is a legal block with no override for any role or
+  client setting, and a report on the claim counts for its job card and the other way round.
 
 #### Files to read
 - `docs/verticals/08-auto.md` §2 (insurance accident repairs), §3.3 `AUT.ACL.20`, §4.7 "When it goes wrong" (row "No police report"), §7.1 *Job card* (row `approve`), §7.1 *Insurance repair claim* (rows `book_survey`, `submit_estimate`, `approve`), §7.1 settings *Document blocks*, §9 Insurance repairs
@@ -506,7 +570,7 @@ Generic guard engine (BL-DOC-01).
 
 ### BL-AUT-08 — 08 Auto: withdraw an insurance claim, also after approval
 
-**Labels:** `vertical:08-auto` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 08 · **Size:** m
+**Labels:** `vertical:08-auto` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:field-pwa` `surface:system` · **Milestone:** Launch 08 · **Size:** m
 **Depends on:** BL-AUT-01 · BL-AUT-03 (`AUT.RUL.17` clock, extended here) · Base: 08 Insurance claim lifecycle · **Blocks:** None
 **Review items:** 08-N2-b
 
@@ -515,6 +579,17 @@ A customer may withdraw the insurance claim, even after the insurer approved it.
 cancels the claim with the customer's written withdrawal and tells the insurer in writing. The
 job card then follows: declined if no work started; otherwise the customer either continues
 privately on a new private estimate or stops, and the work done is billed to the customer.
+
+#### Surfaces
+- **Back office:** the insurance coordinator cancels the claim with a reason, the customer's
+  written withdrawal (from `approved` or `supplementary_pending`) and the choice *continue
+  privately* or *stop*; with *continue privately* the advisor sends the private estimate.
+- **Field PWA:** until the private estimate is signed, the technician's job card refuses
+  labour and part entries.
+- **System:** the withdrawal letter PDF is emailed to the insurer (a coordinator task when
+  email gives up); the job card is declined or cancelled with the work done and fees
+  invoiced to the customer; `AUT.RUL.17` cancels it when the private estimate is unsigned
+  after 7 days.
 
 #### Files to read
 - `docs/verticals/08-auto.md` §3.3 `AUT.ACL.15`, §4.7 "When it goes wrong" (row "The customer withdraws the claim…"), §7.1 *Insurance repair claim* (state `cancelled`, row `cancel`), §7.1 *Job card* (rows `decline`, `cancel`)
@@ -575,7 +650,7 @@ Total loss (BL-AUT-09); job card billing (BL-AUT-01).
 
 ### BL-AUT-09 — 08 Auto: declare a total loss and bill strip-down, labour and storage
 
-**Labels:** `vertical:08-auto` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 08 · **Size:** m
+**Labels:** `vertical:08-auto` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 08 · **Size:** m
 **Depends on:** BL-AUT-01 · Base: 08 Insurance claim lifecycle · Base: wl-invoicing Payer bill lifecycle (`FIN.TPP.01`) · **Blocks:** None
 **Review items:** 08-N12-a
 
@@ -584,6 +659,15 @@ The insurer may declare the vehicle a total loss after survey, approval or strip
 stops, the job card is cancelled with reason *total loss*, and the strip-down, labour done and
 storage are billed to the insurer as far as it approves them, the rest to the customer. The
 vehicle leaves only on the insurer's written instruction, with a signature.
+
+#### Surfaces
+- **Back office:** the insurance coordinator declares the total loss with the insurer's
+  notice, records the insurer's approval of the strip-down, labour and storage lines, and
+  runs `invoice`; the advisor records *release vehicle* with the insurer's written
+  instruction and a signature.
+- **System:** the job card is cancelled (or declined) with no invoice of its own, the charge
+  lines are listed on the claim, the customer is notified, the insurer and customer invoices
+  are split by the approval, and `settle` runs when every invoice is paid.
 
 #### Files to read
 - `docs/verticals/08-auto.md` §2 (total loss), §4.7 "When it goes wrong" (row "total loss"), §7.1 *Insurance repair claim* (state `total_loss`, rows `declare_total_loss`, `invoice`), §7.1 *Job card* row `cancel`, §9 Insurance repairs
@@ -639,13 +723,19 @@ Salvage handling (excluded from the MVP); insurer short payment (`FIN.TPP.01`, b
 
 ### BL-AUT-10 — 08 Auto: void an insurance claim registered in error
 
-**Labels:** `vertical:08-auto` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 08 · **Size:** s
+**Labels:** `vertical:08-auto` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 08 · **Size:** s
 **Depends on:** Base: 08 Insurance claim lifecycle · BL-KRN-03 · **Blocks:** None
 **Review items:** X-19 (void)
 
 #### Goal
 A claim registered for the wrong vehicle or twice can be voided while nothing was sent to the
 insurer; its job card is unlinked and carries on as a private job or is voided separately.
+
+#### Surfaces
+- **Back office:** the insurance coordinator runs *void* on a `registered` claim with a
+  reason; it is refused once anything was sent to the insurer.
+- **System:** the job card is unlinked, its estimate lines become private (payer = customer,
+  not approved) and `RecordVoided` is emitted.
 
 #### Files to read
 - `docs/verticals/08-auto.md` §4.7 "When it goes wrong" (last row), §7.1 *Insurance repair claim* (state `voided`, row `void`)
@@ -685,7 +775,7 @@ Job card void (BL-AUT-02).
 
 ### BL-AUT-11 — 08 Auto: raise and recover a supplier warranty claim (D-06, D-07)
 
-**Labels:** `vertical:08-auto` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 08 · **Size:** m
+**Labels:** `vertical:08-auto` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 08 · **Size:** m
 **Depends on:** Base: wl-ticketing Ticket lifecycle (category *warranty*) · BL-STK-03 (dispatch a return to supplier) · BL-STK-05 (credit a return) · BL-STK-06 (free replacement) · BL-INV-14 (settle a supplier debit note) · **Blocks:** None
 **Review items:** D-06, D-07, X-08
 
@@ -695,6 +785,15 @@ purchaser raises a claim to the supplier and sends the failed part back on a Ret
 The claim is recovered when the supplier's credit or a replacement arrives, chased after 60
 days, or written off with approval. The rules used the wrong trigger (`resolved` instead of
 `closed`, D-07) and a state that does not exist (`supplier_claimed`, D-06).
+
+#### Surfaces
+- **Back office:** the purchaser gets a task when a warranty ticket closes as accepted,
+  raises the supplier claim (refused with the term that failed when out of terms), and
+  requests a write-off that the branch manager approves; purchaser and branch manager are
+  told at 60 days.
+- **System:** `AUT.RUL.07` creates the task on ticket `closed` (never on `resolved`),
+  `raise` emails the claim PDF and drafts the Return to supplier, `SupplierReturnCredited`
+  with a settled debit note recovers the claim, and `AUT.RUL.08` fires once at 60 days.
 
 #### Files to read
 - `docs/verticals/08-auto.md` §4.6, §7.1 *Warranty claim* mapping table, §7.1 *Supplier warranty claim* (states, transitions), §7.2 `AUT.RUL.07`, `AUT.RUL.08`
@@ -763,7 +862,7 @@ RTS dispatch, credit and replacement receipt (BL-STK-03, BL-STK-05, BL-STK-06).
 
 ### BL-AUT-12 — 08 Auto: terminate a fleet contract early
 
-**Labels:** `vertical:08-auto` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 08 · **Size:** m
+**Labels:** `vertical:08-auto` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 08 · **Size:** m
 **Depends on:** Base: 08 Fleet contract lifecycle · Base: wl-invoicing usage billing (`FIN.USG.01`) · BL-KRN-01 · BL-AUT-13 · **Blocks:** BL-AUT-17
 **Review items:** 08 MEDIUM "fleet contract early end"
 
@@ -773,6 +872,14 @@ contract is terminated with a reason, a notice date and an effective date, appro
 owner. The effective date is the contract's last day of service; after it future services stop, open job cards are finished and billed at
 contract rates, a final consolidated invoice covers the period to the effective date, and the
 early termination fee is invoiced when the contract has one.
+
+#### Surfaces
+- **Back office:** the fleet manager requests termination with reason, notice date and
+  effective date; the owner approves it under "Needs your action" (and any fee waiver); the
+  contract shows "termination scheduled" until the effective date.
+- **System:** the 00:30 daily job ends the contract after the effective date: later bookings
+  cancelled, open job cards finished at contract rates, final consolidated invoice drafted,
+  fee invoiced, fleet contact notified and `FleetContractTerminated` emitted.
 
 #### Files to read
 - `docs/verticals/08-auto.md` §4.5 step 6, §6 *Fleet contract* fields, §7.1 *Fleet contract* (row `terminate`), §7.2 `AUT.RUL.04`, `AUT.RUL.05`
@@ -816,7 +923,7 @@ Suspend and natural end (BL-AUT-13); party block review (BL-AUT-17).
 
 ### BL-AUT-13 — 08 Auto: suspend and end a fleet contract with its bookings and invoice
 
-**Labels:** `vertical:08-auto` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 08 · **Size:** s
+**Labels:** `vertical:08-auto` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 08 · **Size:** s
 **Depends on:** Base: 08 Fleet contract lifecycle · **Blocks:** BL-AUT-12, BL-AUT-17
 **Review items:** 08 MEDIUM "fleet contract early end"
 
@@ -824,6 +931,14 @@ Suspend and natural end (BL-AUT-13); party block review (BL-AUT-17).
 A suspended contract (e.g. unpaid invoices) blocks new bookings while open job cards finish. A
 contract that reaches its end date ends by itself: future schedules and bookings are cancelled,
 the last consolidated invoice is drafted and the fleet contact told.
+
+#### Surfaces
+- **Back office:** the fleet manager suspends a contract with a reason and resumes it; new
+  bookings for its vehicles are refused, and the advisor sees the bookings already made
+  listed to confirm or cancel; `end` is not offered to users.
+- **System:** `AUT.RUL.04` creates no booking requests while suspended; the 00:30 daily job
+  ends a contract after its end date, cancels future bookings, drafts the last invoice and
+  notifies the fleet contact.
 
 #### Files to read
 - `docs/verticals/08-auto.md` §7.1 *Fleet contract* (rows `suspend`, `resume`, `end`)
@@ -862,7 +977,7 @@ Termination (BL-AUT-12).
 
 ### BL-AUT-14 — 08 Auto: alert on missing export evidence and open the VAT correction (`AUT.RUL.15`)
 
-**Labels:** `vertical:08-auto` `area:negative-flow` `priority:high` `size:s` `blocked:open-item` · **Milestone:** Launch 08 · **Size:** s
+**Labels:** `vertical:08-auto` `area:negative-flow` `priority:high` `size:s` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Launch 08 · **Size:** s
 **Depends on:** BL-KRN-08 · Base: wl-invoicing Invoice and Credit note lifecycle · **Blocks:** None
 **Review items:** 08-N5-c
 
@@ -871,6 +986,13 @@ Re-exported parts are zero-rated only if they leave within 90 days with an exit 
 bill of lading or an airway bill. At 60 days without evidence the accountant is warned; at 90 days the sale is
 flagged "5% VAT due" and the accountant gets a task to issue a credit note and a new 5% invoice,
 recharging the VAT where the sale terms allow. The rule is compliance-critical.
+
+#### Surfaces
+- **Back office:** the accountant is told at 60 days, sees the invoice flagged "5% VAT due"
+  at 90 days with a task linking it, and issues the credit note and new invoice by hand;
+  attaching an exit certificate, bill of lading or airway bill stops the rule.
+- **System:** `AUT.RUL.15` runs daily at 08:00, fires missed steps late, and alerts the
+  Owner / GM and the company admin with an owner task when a run fails or is missing.
 
 #### Files to read
 - `docs/verticals/08-auto.md` §2 (re-export), §4.1 "When it goes wrong" (last row), §7.2 `AUT.RUL.15`, §9 "Exports not leaving in time"
@@ -911,7 +1033,7 @@ Restoring the zero rate (A-12).
 
 ### BL-AUT-15 — 08 Auto: back-order lines without stock and serve them first come, first served
 
-**Labels:** `vertical:08-auto` `area:negative-flow` `priority:medium` `size:m` · **Milestone:** Launch 08 · **Size:** m
+**Labels:** `vertical:08-auto` `area:negative-flow` `priority:medium` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 08 · **Size:** m
 **Depends on:** BL-SAL-17 (back-orders in wl-sales) · BL-SAL-08 (`cancel_line`) · BL-SAL-09 (`cancel_remaining`) · Base: wl-inventory reorder suggestions (`STK.RUL.04`) and goods receipt · **Blocks:** None
 **Review items:** 08 MEDIUM "back-orders"
 
@@ -923,6 +1045,15 @@ may cancel the open line. The mechanism is built in wl-sales (BL-SAL-17, setting
 allowed* per channel, off by default); this issue turns the setting on in the 08 deployment
 template for the counter, phone and sales rep channels and checks the 08 order flow (`pack`
 with back-ordered lines, branch, credit hold) end to end.
+
+#### Surfaces
+- **Back office:** counter, phone and sales rep staff confirm orders with back-ordered
+  lines, `pack` with back-ordered lines open and run `cancel_line` on a back-order; the
+  reorder suggestion shows the back-ordered quantity.
+- **System:** the 08 template turns *Back-orders allowed* on for those channels; a goods
+  receipt reserves for the oldest back-orders first (skipping `credit_hold` until
+  `release`), the customer is told once per order, and a reversed receipt back-orders the
+  lines again.
 
 #### Files to read
 - `docs/verticals/08-auto.md` §4.1 "When it goes wrong" (row "A part is not in stock"), §4.3 step 1, §7.1 *Sales order* (rows `confirm`, `pack`, `release`, `cancel_line`, `cancel_remaining`, paragraph "Back-orders"), §7.2 `STK.RUL.04`
@@ -984,7 +1115,7 @@ The back-order mechanism in wl-sales (BL-SAL-17); reorder suggestion engine (bas
 
 ### BL-AUT-16 — 08 Auto: resolve recall trace lines to vehicle owners, fleets and customers (`TracePartyResolver` for 08)
 
-**Labels:** `vertical:08-auto` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 08 · **Size:** m
+**Labels:** `vertical:08-auto` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 08 · **Size:** m
 **Depends on:** BL-STK-14 · BL-STK-15 · BL-STK-17 (items not tracked by lot) · **Blocks:** None
 **Review items:** X-09
 
@@ -994,6 +1125,13 @@ the MVP, so the client gives the received date range from the supplier's notice 
 covers parts sold or fitted on or after the first receipt of the part in that range. This vertical
 resolves each subject to a party: job card → vehicle owner or fleet; sales order and account sale
 → customer; walk-in counter sales → a count per branch and day.
+
+#### Surfaces
+- **Back office:** the Owner / GM or a branch manager with `recalls.manage` opens a recall
+  with the received date range and sees trace lines per vehicle owner, fleet or customer,
+  all *possible*, plus one count line per branch and day for walk-in sales.
+- **System:** the 08 `TracePartyResolver` maps job card → vehicle owner or fleet (the owner
+  when the contract has ended) and sales → customer.
 
 #### Files to read
 - `docs/verticals/08-auto.md` §7.1 settings *Recall*
@@ -1044,7 +1182,7 @@ Recall open, hold, notices and close (BL-STK-14–BL-STK-17).
 
 ### BL-AUT-17 — 08 Auto: react to a blocked party: fleet contracts, vehicles in the workshop, insurers
 
-**Labels:** `vertical:08-auto` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Launch 08 · **Size:** s
+**Labels:** `vertical:08-auto` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 08 · **Size:** s
 **Depends on:** BL-PTY-03 (block effect per agreement kind) · BL-AUT-12 · BL-AUT-13 · **Blocks:** None
 **Review items:** X-18
 
@@ -1053,6 +1191,15 @@ When a party is blocked, each agreement reacts by its kind. In this vertical the
 fleet contracts (suspend or terminate), vehicles already in the workshop get their safety work
 finished and are then released, and insurance claims with a blocked insurer continue because
 money comes in.
+
+#### Surfaces
+- **Back office:** the owner gets one review task per blocked fleet with *suspend*,
+  *terminate* or *continue*; the branch manager gets a review task listing the party's open
+  job cards with *finish safety lines only* or *continue*; new estimate approvals on those
+  job cards are refused.
+- **System:** the agreement kinds are registered with their block effect; removed lines get
+  reason *party blocked* and are not billed; claims with a blocked insurer keep their state
+  and remittances are still recorded; texts use the neutral `on_hold` reason.
 
 #### Files to read
 - `docs/verticals/08-auto.md` §7.1 settings *Party blocked*
@@ -1098,7 +1245,7 @@ Sales order hold (Epic wl-sales: order hold on block).
 
 ### BL-AUT-18 — 08 Auto: configure shared negative-flow settings
 
-**Labels:** `vertical:08-auto` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` · **Milestone:** Launch 08 · **Size:** m
+**Labels:** `vertical:08-auto` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` `surface:back-office` `surface:field-pwa` `surface:portal` `surface:system` · **Milestone:** Launch 08 · **Size:** m
 **Depends on:** BL-KRN-03 · BL-KRN-04 · BL-KRN-05 · BL-KRN-08 · BL-DOC-01 · BL-INV-01 · BL-INV-02 · BL-INV-04 · BL-PAY-09 · BL-PAY-10 · BL-PAY-14 · BL-PAY-18 · BL-SAL-07 · BL-SAL-10 · BL-SAL-12 · BL-STK-03 · BL-STK-09 · BL-DLV-02 · BL-SCH-03 · BL-INV-25 · BL-INV-26 · BL-INV-27 · BL-INV-28 · BL-INV-29 · BL-INV-30 · BL-PAY-25 · BL-PAY-26 · BL-SAL-19 · BL-SAL-20 · BL-SAL-21 · BL-STK-28 · BL-STK-29 · BL-STK-30 · BL-STK-31 · BL-SAL-22 · BL-SAL-23 · BL-SAL-24 · BL-SAL-25 · BL-SAL-26 · BL-NTF-07 · BL-NTF-08 · BL-NTF-09 · BL-HRM-26 · BL-HRM-27 · BL-HRM-28 · BL-DOC-08 · BL-DOC-09 · BL-DOC-10 · **Blocks:** None
 **Review items:** X-01, X-02, X-05, X-07, X-08, X-10, X-11, X-13, X-14, X-17, X-19
 
@@ -1113,6 +1260,19 @@ kinds (`DOC.EXP.01`), added on 2026-10-16: `FIN.RUL.23`, `FIN.RUL.24`, `FIN.ACL.
 `SAL.ACL.07`, `STK.RUL.09`, `STK.ACL.07`, `SAL.RUL.07`, `SAL.RUL.08`, `NTF.RUL.02`, `NTF.ACL.03`,
 `HRM.RUL.16`, `HRM.RUL.17`, `HRM.ACL.10`, `DOC.RUL.04` and `DOC.RUL.01`. Onboarding runs on the
 minimal staff records (`HRM.EMP.01`, MVP since 2026-10-16).
+
+#### Surfaces
+- **Back office:** a new 08 client starts with these values in Settings, and staff see their
+  effects: void offered only where allowed, approvals for discounts, write-offs, stock
+  adjustments, late entries and drawings, tasks to the responsible roles, and the forecast
+  and budget alerts.
+- **Field PWA:** drivers get partial acceptance at proof of delivery for parts deliveries,
+  and a driver's collected cheques reach the deposit list only after another person counts
+  the handover.
+- **Portal:** the B2B buyer can flag an invoice as disputed.
+- **System:** compliance-critical rules, notification give-up reactions, owner alerts,
+  loyalty, campaign, onboarding and SOP rules run with the 08 values; the police report
+  override stays `never`.
 
 #### Files to read
 - `docs/verticals/08-auto.md` §3.3, §4 "When it goes wrong" tables, §7.1 *Booking* paragraph, §7.1 "Negative-flow settings", §7.2 (reused rules)
@@ -1232,6 +1392,9 @@ minimal staff records (`HRM.EMP.01`, MVP since 2026-10-16).
 - [ ] **Registrations:** a fresh 08 deployment lists *Trademark registration* and *Other
       certification* with responsible role Owner / GM; a trademark registration expiring in 90
       days notifies the Owner / GM.
+- [ ] Given a parts delivery with 3 lines, when the driver records 1 line refused with a reason at
+      proof of delivery on the field PWA, then the delivery is accepted for 2 lines only and the
+      refused line goes back to quarantine at run close.
 
 #### Out of scope
 The mechanisms themselves (module epics listed in Depends on).

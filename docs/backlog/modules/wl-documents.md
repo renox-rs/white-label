@@ -29,7 +29,7 @@ registration and certification kinds (`DOC.EXP.01`, gap G7) of the
 
 ### BL-DOC-01 — wl-documents: refuse a guarded transition while a required document is expired or missing
 
-**Labels:** `module:wl-documents` `area:negative-flow` `priority:high` `blocked:open-item` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-documents` `area:negative-flow` `priority:high` `blocked:open-item` `size:m` `surface:back-office` `surface:field-pwa` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** Base: wl-documents Document lifecycle · **Blocks:** BL-DOC-02, BL-DOC-03, BL-DOC-04, BL-DOC-05, BL-DOC-06, BL-TKT-06, BL-ACC-01, BL-ACC-19, BL-ACC-23, BL-AUT-07, BL-AUT-18, BL-CLN-15, BL-EDU-07, BL-EDU-08, BL-EDU-17, BL-LOG-25, BL-MFG-11, BL-MFG-14, BL-MPW-08, BL-MPW-09, BL-MPW-20, BL-PRP-27
 **Review items:** X-13, 01-N8-b, 09-N8-b
 
@@ -39,6 +39,15 @@ transition calls one standard guard, `document_valid(subject, kind, on_date)`. I
 the transition is refused while the document is expired or missing, and the user sees which
 document, since when, and who can renew it or approve an override. 09 (residence visa and work
 permit block `deployment.activate`) and 01 (vendor Civil Defence approval) need it first.
+
+#### Surfaces
+- **Back office:** a guarded transition (e.g. the coordinator's `deployment.activate`) is
+  refused with the document, the expiry date, who can renew and whether an override is
+  allowed; a pending renewal is named and moves to the top of the review queue; a client
+  admin cannot remove a legal-block entry from a kind's `blocks`.
+- **Field PWA:** a technician who taps Resolve on a fire-safety ticket of a vendor whose
+  Civil Defence approval expired sees the same refusal message; a plumbing ticket of the
+  same vendor resolves (the entry's condition does not match).
 
 #### Files to read
 - `docs/modules/wl-documents.md` §3 (*Document kind*: `blocks`, legal block), §5.6 (intro, "The
@@ -149,7 +158,7 @@ sites (module epics); `qualification_valid` (`Epic wl-hr`).
 
 ### BL-DOC-02 — wl-documents: flag a record instead of refusing it for kinds in flag mode
 
-**Labels:** `module:wl-documents` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-documents` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** BL-DOC-01 · **Blocks:** BL-ACC-19, BL-ACC-23, BL-CON-18, BL-EDU-11, BL-EDU-17, BL-FNB-17, BL-MPW-20
 **Review items:** X-13, 09-N8-b, 02-N5-d
 
@@ -157,6 +166,12 @@ sites (module epics); `qualification_valid` (`Epic wl-hr`).
 Some facts cannot be refused: a worker who did turn up is marked present. For `blocks` entries
 in `flag` mode the guarded transition runs, but the record is flagged for review with the
 document that was invalid.
+
+#### Surfaces
+- **Back office:** a record accepted in flag mode shows "document invalid: <kind>, expired
+  <date>" on the record and in lists; a reviewer marks the flag reviewed with a note.
+- **System:** the guard runs with the record's business date and lets the transition run; a
+  failing block-mode kind on the same transition still refuses it.
 
 #### Files to read
 - `docs/modules/wl-documents.md` §5.6 (modes), example table (09, 02, 10 flag entries)
@@ -196,7 +211,7 @@ What the attendance module does with flagged records (`Epic wl-attendance: HRM.R
 
 ### BL-DOC-03 — wl-documents: warn when future work is planned past a document's expiry
 
-**Labels:** `module:wl-documents` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-documents` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** BL-DOC-01 · **Blocks:** None.
 **Review items:** X-13, 05-N8-a, 09-N8-b
 
@@ -205,6 +220,11 @@ When a user creates or reschedules a dated item (session, run, deployment, plann
 guard is called with the planned date. A *no* is a warning, not a refusal, because the document
 may be renewed in time. Bookings are different: the booking module refuses a slot whose resource
 will not be eligible on its date (`SCH.ACL.04`, `Epic wl-scheduling`).
+
+#### Surfaces
+- **Back office:** creating or rescheduling a run, deployment, batch of sessions or planned
+  visit saves the item and shows one warning with the kind, subject, expiry date and the
+  affected planned dates.
 
 #### Files to read
 - `docs/modules/wl-documents.md` §5.6 "When it is checked" step 2
@@ -256,7 +276,7 @@ SCH.ACL.04`).
 
 ### BL-DOC-04 — wl-documents: list planned work affected by a blocking document before it expires
 
-**Labels:** `module:wl-documents` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-documents` `area:negative-flow` `priority:high` `size:m` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** BL-DOC-01 · **Blocks:** BL-DOC-05, BL-ACC-23, BL-CON-18, BL-EDU-07, BL-EDU-08, BL-LOG-25, BL-MFG-11, BL-MPW-09, BL-PRP-27
 **Review items:** X-13, 05-N8-a, 01-N8-b
 
@@ -265,6 +285,11 @@ Every night, for documents of blocking kinds that expire within the look-ahead w
 30 days), each guarded module lists its planned items dated after the expiry date. The
 list is added to `DocumentExpiring` as `affected`, the responsible staff get one message with it,
 and modules flag the items (e.g. scheduling raises `BookingConflict`).
+
+#### Surfaces
+- **System:** `DOC.RUL.02` runs nightly at 01:00, asks the guarded modules' `FutureWork`
+  providers for items dated after the expiry, emits `DocumentExpiring` with `affected` and
+  notifies the responsible staff once (again only for new items).
 
 #### Files to read
 - `docs/modules/wl-documents.md` §5.2 step 3, §5.6 "When it is checked" step 3, §6 (`FutureWork`
@@ -337,7 +362,7 @@ Module reactions to `affected` (`Epic wl-scheduling: SCH.RUL.05`, BL-TKT-07, ver
 
 ### BL-DOC-05 — wl-documents: emit the blocked records on expiry and lift the block on renewal
 
-**Labels:** `module:wl-documents` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-documents` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** BL-DOC-01, BL-DOC-04, BL-KRN-08 · **Blocks:** BL-TKT-07, BL-ACC-12, BL-CLN-12, BL-EDU-07, BL-LOG-25, BL-MFG-11, BL-MPW-11, BL-PRP-27
 **Review items:** X-13, 01-N8-b, 09-N8-b
 
@@ -347,6 +372,13 @@ records it now blocks, the responsible staff are told (and the business owner fo
 compliance-critical kinds), and a renewal task is opened. When a renewed document is accepted,
 the guard answers yes again and consumers re-check what they suspended or flagged; nothing
 resumes without that event.
+
+#### Surfaces
+- **Back office:** the responsible role gets a renewal task in "Needs your action" that
+  closes when a renewal is accepted.
+- **System:** `DOC.RUL.03` emits `DocumentExpired` once with the blocked records and
+  notifies the responsible staff (and the business owner for compliance-critical kinds);
+  `DocumentAccepted` lets consumers re-check what they suspended or flagged.
 
 #### Files to read
 - `docs/modules/wl-documents.md` §5.6 "When it is checked" step 4, "Lifting the block", table
@@ -411,7 +443,7 @@ deployment suspend`, BL-TKT-07).
 
 ### BL-DOC-06 — wl-documents: approve a one-use override of a document block
 
-**Labels:** `module:wl-documents` `area:negative-flow` `priority:high` `blocked:open-item` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-documents` `area:negative-flow` `priority:high` `blocked:open-item` `size:m` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** BL-DOC-01, BL-KRN-01 · Base: wl-kernel Approval request lifecycle · **Blocks:** BL-ACC-01, BL-ACC-23, BL-CLN-15, BL-EDU-08, BL-EDU-17, BL-MPW-08, BL-MPW-20
 **Review items:** X-13, 09-N8-b
 
@@ -420,6 +452,13 @@ For kinds whose override mode is `with_approval`, a user can ask to run one bloc
 one record once, with a reason. A second user with `documents.block.override` in the scope
 approves it; it is valid for one use within 72 hours and audited. Kinds marked legal block are
 never overridable, whatever the client configures.
+
+#### Surfaces
+- **Back office:** on a refused transition of a `with_approval` kind the user requests an
+  override with a reason; a second holder of `documents.block.override` approves it from
+  "Needs your action"; no override action is offered for a `never` kind.
+- **System:** the approved override is valid once, for 72 hours, only for the requester; its
+  use stamps `used at` and emits `DocumentBlockOverridden`.
 
 #### Files to read
 - `docs/modules/wl-documents.md` §3 (*Block override*), §5.6 "Override", §6
@@ -505,7 +544,7 @@ The guard (BL-DOC-01).
 
 ### BL-DOC-07 — wl-documents: correct a blocking document only through a new version accepted by another user
 
-**Labels:** `module:wl-documents` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-documents` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** Base: wl-documents Document lifecycle · **Blocks:** None.
 **Review items:** X-13
 
@@ -514,6 +553,13 @@ The expiry date and number of an accepted document of a blocking kind decide whe
 on, so nobody may edit them in place (for example to push an expiry date forward), and nobody
 may bring one in alone: every document of a blocking kind, new, renewed or corrected, is
 reviewed by someone other than the uploader, and audited.
+
+#### Surfaces
+- **Back office:** on an accepted document of a blocking kind the edit form shows expiry and
+  number read-only; the user submits a correction, which another holder of
+  `documents.review` accepts from the review queue.
+- **System:** `record` is refused for blocking kinds, the uploader cannot accept, accepting
+  supersedes the old document, and old and new values are audited.
 
 #### Files to read
 - `docs/modules/wl-documents.md` §3 (rules for all entities), §4.1 *Document*, §6 (`DOC.ACL.03`)
@@ -569,7 +615,7 @@ Ordinary renewals (base).
 
 ### BL-DOC-08 — wl-documents: keep SOPs with versions, owner role and required readers
 
-**Labels:** `module:wl-documents` `area:sme-gap` `priority:medium` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-documents` `area:sme-gap` `priority:medium` `size:m` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** Base: wl-documents Document lifecycle · Base: wl-documents Document kinds and expiry reminders (`DOC.RUL.01`, for the review reminder and *review due*) · BL-HRM-26 (wl-hr `Workforce::employees_in`, to resolve required readers) · **Blocks:** BL-DOC-09, BL-HRM-27, BL-ACC-23, BL-AUT-18, BL-CLN-15, BL-CON-18, BL-EDU-17, BL-FNB-17, BL-LOG-25, BL-MFG-14, BL-MPW-20, BL-PRP-27
 **Review items:** G6 (SME problem map 7, 18)
 
@@ -578,6 +624,15 @@ The company keeps its standard operating procedures in one library. Each SOP has
 role, the roles and scopes that must read it, and a review interval. A version is uploaded and
 accepted by the owner role; a newer accepted version supersedes the old one. Staff always read
 the current version, and the owner is reminded when a review is due.
+
+#### Surfaces
+- **Back office:** the SOP library lists SOPs with owner role, readers and *review due* /
+  *review overdue*; the owner role uploads and accepts versions and translations, edits the
+  required readers, and a holder of `sops.manage` archives the current version to withdraw
+  the SOP.
+- **System:** accepting a version supersedes the previous one and emits `SopPublished`;
+  `DOC.RUL.01` reminds the owner role 30 days before the review date; reader changes emit
+  `SopReadersChanged`.
 
 #### Files to read
 - `docs/modules/wl-documents.md` §2 (paragraph *Related capability owned elsewhere*), §3
@@ -663,7 +718,7 @@ Acknowledgements (BL-DOC-09); onboarding steps (BL-HRM-27).
 
 ### BL-DOC-09 — wl-documents: request, remind and record SOP acknowledgements (`DOC.RUL.04`)
 
-**Labels:** `module:wl-documents` `area:sme-gap` `priority:medium` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-documents` `area:sme-gap` `priority:medium` `size:m` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** BL-DOC-08 · BL-HRM-26 · **Blocks:** BL-HRM-27, BL-ACC-23, BL-AUT-18, BL-CLN-15, BL-CON-18, BL-EDU-17, BL-FNB-17, BL-LOG-25, BL-MFG-14, BL-MPW-20, BL-PRP-27
 **Review items:** G6 (SME problem map 7, 18)
 
@@ -672,6 +727,17 @@ Every required reader acknowledges the current version of each SOP that applies 
 a version is published, when they join, and when they take a new role. Overdue readers are
 reminded, then their manager and the SOP owner are told. The acknowledgement is the reader's
 own act, with the same evidence as a signature.
+
+#### Surfaces
+- **Back office:** a staff reader acknowledges the current version from the staff inbox; a
+  manager records an acknowledgement in person from the *to acknowledge in person* list with
+  a drawn signature as witness; the SOP page lists acknowledged, pending and overdue readers
+  per version and in-person records per witness.
+- **Portal:** a worker opens the current version (or an accepted translation) in the
+  employee portal and confirms; a confirmation on a superseded version is refused and the
+  worker is shown the current one.
+- **System:** `DOC.RUL.04` requests acknowledgements on publication and on reader changes,
+  reminds daily at 08:00, escalates once after E days, and cancels or replaces pending ones.
 
 #### Files to read
 - `docs/modules/wl-documents.md` §3 (*Acknowledgement*), §4.3, §5.7 steps 3–8, §6 (*Consumes*
@@ -761,7 +827,7 @@ Onboarding steps that read the acknowledgements (BL-HRM-27).
 
 ### BL-DOC-10 — wl-documents: seed document kinds for registrations and certifications
 
-**Labels:** `module:wl-documents` `area:sme-gap` `priority:medium` `size:s` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-documents` `area:sme-gap` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** Base: wl-documents Document kinds and expiry reminders (`DOC.RUL.01`) · **Blocks:** BL-STK-28, BL-ACC-23, BL-AUT-18, BL-CLN-15, BL-CON-18, BL-EDU-17, BL-FNB-17, BL-LOG-25, BL-MFG-14, BL-MPW-20, BL-PRP-27
 **Review items:** G7 (SME problem map 37, 40)
 
@@ -769,6 +835,13 @@ Onboarding steps that read the acknowledgements (BL-HRM-27).
 Clients forget to renew trademarks, Halal and ISO certificates and product registrations.
 Every client gets seeded document kinds for them, enabled per vertical, with expiry and
 reminders to a responsible role. They block nothing by default; a vertical may add blocks.
+
+#### Surfaces
+- **Back office:** the seeded kinds appear in the document kinds settings with EN/AR names,
+  enabled per vertical; a `documents.manage` holder corrects a wrong number or expiry date
+  in place.
+- **System:** the kinds are seeded with no `blocks`, and `DOC.RUL.01` reminds the
+  responsible role at each offset, rescheduled after a correction.
 
 #### Files to read
 - `docs/modules/wl-documents.md` §2 (`DOC.EXP.01` row), §3 paragraph *Seeded kinds for

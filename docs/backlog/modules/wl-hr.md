@@ -48,7 +48,7 @@ supports 05-N8-a, 10-N8-c and 04-N8-d. BL-HRM-26 to 29 add staff onboarding chec
 
 ### BL-HRM-01 — wl-hr: answer `qualification_valid` and emit `QualificationExpired` (`HRM.RUL.10`)
 
-**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** Base: wl-hr Qualification records · Epic wl-documents: `document_valid`, `DocumentExpired`, `DocumentExpiring` (with `affected`), `DocumentAccepted` · **Blocks:** BL-ATT-04, BL-SCH-07, BL-SCH-08, BL-ACC-19, BL-ACC-23, BL-CLN-12, BL-CON-18, BL-EDU-08, BL-EDU-10, BL-LOG-25, BL-MPW-08, BL-MPW-11
 **Review items:** X-13, 05-N8-a, 09-N8-b, 10-N8-c, 04-N8-d
 
@@ -60,6 +60,11 @@ expiry date of a blocking kind, `HRM.RUL.10` makes the guard answer *no*, emits
 `DocumentExpired` carries), and tells the employee's manager and HR.
 Bookings (05), deployments (09), tutor assignments (10), run dispatch (03) and return filing
 (04) all rely on it.
+
+#### Surfaces
+- **System:** `qualification_valid(employee, kind, on_date[, role, scope])` answers other
+  modules' guards; on the day after a blocking kind expires `HRM.RUL.10` emits
+  `QualificationExpired` with the blocked work and notifies the manager and HR.
 
 #### Files to read
 - `docs/modules/wl-hr.md` §2 (`HRM.QUA.01`, *Standard guard (X-13)*), §3 (Qualification), §5.5,
@@ -150,7 +155,7 @@ dispatch).
 
 ### BL-HRM-02 — wl-hr: record same-day sick leave as approved (`record_sick`)
 
-**Labels:** `module:wl-hr` `area:negative-flow` `priority:medium` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-hr` `area:negative-flow` `priority:medium` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** Base: wl-hr Leave request lifecycle · **Blocks:** BL-SCH-05
 **Review items:** X-17 (05 MEDIUM "practitioner sick on the day")
 
@@ -158,6 +163,13 @@ dispatch).
 An employee who calls in sick today is recorded directly as approved sick leave, so
 `LeaveApproved` goes out at once and today's bookings and rosters are moved. The sick note may
 follow within N working days (default 2); if it does not, HR gets a task.
+
+#### Surfaces
+- **Back office:** the employee's manager (or a `leave.approve` user) runs **Record sick
+  leave** for today on the employee; it is approved at once, and the HR task for a missing
+  sick note appears in HR's inbox.
+- **System:** at 00:00 Asia/Dubai after the Nth working day without a sick note the HR task
+  is raised; attaching the note closes it.
 
 #### Files to read
 - `docs/modules/wl-hr.md` §4 *Leave request*, §5.2 step 3, §7 (sick note due)
@@ -210,7 +222,7 @@ Booking conflicts (BL-SCH-05).
 
 ### BL-HRM-03 — wl-hr: reject a visa case with follow-up tasks
 
-**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `blocked:open-item` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** Base: wl-hr Visa case lifecycle · Epic wl-documents: `DocumentExpiring` (`DOC.RUL.02`) · **Blocks:** BL-HRM-05, BL-MPW-13
 **Review items:** X-15, 09-N8-c, 09-N12-b
 
@@ -220,6 +232,13 @@ When the authority refuses a visa, the case moves to `rejected` (no longer hidde
 *renewal*, HR gets a task due 30 days before the current residence visa expires, to try another
 route or give notice; active deployments are told (through `VisaCaseRejected`, then
 `DocumentExpiring`) and the MD is notified.
+
+#### Surfaces
+- **Back office:** the PRO runs **Reject** on the visa case with the authority reference and
+  reason; HR sees the follow-up task (cancel onboarding or open another case, or the renewal
+  deadline) under "Needs your action".
+- **System:** `VisaCaseRejected` carries the deadline and the current visa expiry so the
+  vertical can tell active deployments; the MD is notified.
 
 #### Files to read
 - `docs/modules/wl-hr.md` §3 (Visa case: rejection), §4 *Visa case*, §5.4 "Renewal refused",
@@ -282,7 +301,7 @@ current visa expires."
 
 ### BL-HRM-04 — wl-hr: approve non-standard exits by a second user (`HRM.ACL.07`)
 
-**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** Base: wl-hr Employee lifecycle · Epic wl-kernel: approval requests (approval returned or rejected sends the record back) · **Blocks:** BL-HRM-05, BL-HRM-06, BL-HRM-07, BL-HRM-08, BL-HRM-09, BL-CON-18, BL-MPW-21
 **Review items:** X-15
 
@@ -291,6 +310,13 @@ Five transitions change an employee's status outside the normal path: `cancel_on
 `withdraw_notice`, `report_absconding`, `reinstate`, `record_death`. HR requests them with a
 reason and documents; another user with `employees.exit.approve` (default the MD) approves; only
 then the transition runs. Everything is audited.
+
+#### Surfaces
+- **Back office:** HR requests a non-standard exit with reason and documents; the employee
+  keeps its state with a badge showing the request; the MD (`employees.exit.approve`)
+  approves or rejects it under "Needs your action".
+- **System:** guards run again at final approval; a failed check ends the request `failed`;
+  request, decisions and transition are audited.
 
 #### Files to read
 - `docs/modules/wl-hr.md` §4 *Employee* (transitions), §6 *Permissions*, §6 *Access rules*
@@ -357,7 +383,7 @@ Each transition's guards and effects (BL-HRM-05 to BL-HRM-09).
 
 ### BL-HRM-05 — wl-hr: cancel onboarding (`cancel_onboarding`)
 
-**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** BL-HRM-04 · BL-HRM-03 · BL-HRM-24 (settlement `cancel`/paid) · **Blocks:** BL-MPW-13, BL-HRM-26
 **Review items:** X-15, 09-N12-b
 
@@ -367,6 +393,13 @@ unfit) had no way out. `cancel_onboarding` ends the record in `onboarding_cancel
 visa work is closed, a cancellation case runs if a permit was issued, any days worked are
 paid by a final settlement that HR drafts beforehand, planned deployments are cancelled
 through an event, and visa costs stay with the employer.
+
+#### Surfaces
+- **Back office:** HR drafts the *onboarding cancelled* settlement when needed and requests
+  **Cancel onboarding** on the employee; the PRO records *cancellation not needed* on the
+  *new* visa case.
+- **System:** after approval the record moves to `onboarding_cancelled`, the portal account
+  is closed and `EmployeeOnboardingCancelled` lets the apps cancel planned deployments.
 
 #### Files to read
 - `docs/modules/wl-hr.md` §3 (Employee: exit route), §4 *Employee*, §5.4 "Onboarding cancelled",
@@ -435,7 +468,7 @@ Approval mechanics (BL-HRM-04); 09 deployment reaction (vertical 09).
 
 ### BL-HRM-06 — wl-hr: withdraw a notice by agreement (`withdraw_notice`)
 
-**Labels:** `module:wl-hr` `area:negative-flow` `priority:medium` `blocked:open-item` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-hr` `area:negative-flow` `priority:medium` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** BL-HRM-04 · BL-HRM-24 · **Blocks:** BL-MPW-13
 **Review items:** X-15, 09 MEDIUM "notice withdrawal"
 
@@ -443,6 +476,12 @@ Approval mechanics (BL-HRM-04); 09 deployment reaction (vertical 09).
 An employee in `notice` can return to `active` when both sides agree in writing and the visa is
 not yet cancelled. The draft or approved settlement and the cancellation case are cancelled and
 the last working day is cleared.
+
+#### Surfaces
+- **Back office:** HR attaches the other party's written agreement and requests **Withdraw
+  notice**; the refusal names why (settlement paid, disputed or a payment recorded).
+- **System:** after approval the settlement and the cancellation case are cancelled, the
+  last working day is cleared and `EmployeeNoticeWithdrawn` is emitted.
 
 #### Files to read
 - `docs/modules/wl-hr.md` §4 *Employee*, §4 *Final settlement* (`cancel`), §5.4 "Notice
@@ -493,7 +532,7 @@ Approval mechanics (BL-HRM-04).
 
 ### BL-HRM-07 — wl-hr: report an employee as absconded (`report_absconding`)
 
-**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `blocked:open-item` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** BL-HRM-04 · Epic wl-attendance: attendance records (last attended day) · Vertical 09: absence case (`MPW.RUL.09`) · **Blocks:** BL-HRM-08, BL-HRM-10, BL-CON-15, BL-CON-18, BL-LOG-13, BL-MPW-13, BL-MPW-17
 **Review items:** X-15, 09-N12-c
 
@@ -503,6 +542,13 @@ report filed, HR moves the employee to `absconded`. Pay not yet sent is held out
 deployments end,
 portal and attendance are disabled, the final settlement is drafted and a cancellation case
 opens.
+
+#### Surfaces
+- **Back office:** HR records contact attempts and the MoHRE report number and date on the
+  employee and requests **Report absconding**; the MD approves it.
+- **System:** on approval open payroll lines are held with *absence report*, portal and
+  attendance are disabled, a settlement is drafted, a cancellation case opens and
+  `EmployeeAbsconded` is emitted.
 
 #### Files to read
 - `docs/modules/wl-hr.md` §3 (Employee: MoHRE absence report), §4 *Employee*, §5.4
@@ -577,7 +623,7 @@ Setting: Absence days before `report_absconding` is allowed = 7 consecutive days
 
 ### BL-HRM-08 — wl-hr: reinstate an absconded employee (`reinstate`)
 
-**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `blocked:open-item` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** BL-HRM-04 · BL-HRM-07 · BL-HRM-18 · BL-HRM-24 · **Blocks:** BL-MPW-13
 **Review items:** X-15, 09-N12-c
 
@@ -585,6 +631,13 @@ Setting: Absence days before `report_absconding` is allowed = 7 consecutive days
 When a reported worker returns and the absence report is withdrawn or cancelled, HR reinstates
 them to `active`. Held lines are released for payment, and the draft settlement and cancellation
 case are cancelled.
+
+#### Surfaces
+- **Back office:** HR enters the return date and the withdrawal reference and requests
+  **Reinstate**; the payroll officer then sees the proposed off-cycle run for the held
+  lines.
+- **System:** after approval the settlement and cancellation case are cancelled,
+  `HRM.RUL.12` proposes the off-cycle run and `EmployeeReinstated` is emitted.
 
 #### Files to read
 - `docs/modules/wl-hr.md` §4 *Employee*, §4 *Final settlement* (`cancel`), §6 *Automations*
@@ -638,7 +691,7 @@ Off-cycle run (BL-HRM-18).
 
 ### BL-HRM-09 — wl-hr: record an employee's death (`record_death`)
 
-**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `blocked:open-item` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** BL-HRM-04 · **Blocks:** BL-HRM-10, BL-MPW-13
 **Review items:** X-15
 
@@ -647,6 +700,14 @@ When an employee dies in service, HR records it with the death certificate. Ever
 employee stops, open payroll lines are held and the salary owed up to the date of death moves
 into the final settlement (so it is paid once), deployments end, the final settlement is
 drafted with the estate as payee, a cancellation case opens and an HR task list starts.
+
+#### Surfaces
+- **Back office:** HR attaches the death certificate and requests **Record death**; HR then
+  sees the three tasks (visa cancellation, insurance claim, repatriation) and records the
+  estate's representative on the settlement.
+- **System:** after approval lines are held and moved into the settlement, unstarted leave
+  is cancelled, every pending message to the employee is cancelled and `EmployeeDeceased` is
+  emitted.
 
 #### Files to read
 - `docs/modules/wl-hr.md` §3 (Employee: date of death, estate's representative; Final
@@ -707,7 +768,7 @@ Exit (BL-HRM-10).
 
 ### BL-HRM-10 — wl-hr: exit an absconded or deceased employee
 
-**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `blocked:open-item` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `blocked:open-item` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** BL-HRM-07 · BL-HRM-09 · **Blocks:** None
 **Review items:** X-15, 09-N12-c
 
@@ -715,6 +776,13 @@ Exit (BL-HRM-10).
 An absconded worker never signs, and a deceased one cannot. They exit without the standard
 guards: with the cancellation done (or the authority's reference), and the settlement `approved`
 (absconded) or `paid` to the estate (deceased).
+
+#### Surfaces
+- **Back office:** HR runs **Exit** on an absconded or deceased employee once the
+  cancellation (or the authority's reference) and the settlement allow it.
+- **Portal:** the employee portal turns read-only with the exit banner, then closes after 60
+  days.
+- **System:** the portal closes 60 days after exit; `EmployeeExited` carries the exit route.
 
 #### Files to read
 - `docs/modules/wl-hr.md` §4 *Employee* (both `exit` rows), §5.4, §6 *Events emitted*
@@ -767,13 +835,18 @@ Standard exit (base).
 
 ### BL-HRM-11 — wl-hr: return a payroll run to draft (`return`)
 
-**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:back-office` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** Base: wl-hr Payroll run lifecycle · **Blocks:** None
 **Review items:** X-15
 
 #### Goal
 The approver can send a `calculated` or `approved` run back to `draft` with a reason and comments
 on the lines to fix. The approval is cleared and the preparer is notified.
+
+#### Surfaces
+- **Back office:** the approver opens the run, comments on the lines to fix and runs
+  **Return** with a reason; the preparer sees the run back in `draft` with the comments on
+  the lines.
 
 #### Files to read
 - `docs/modules/wl-hr.md` §3 (Payroll run: return reason; Payroll line: approver comment), §4
@@ -817,7 +890,7 @@ None.
 
 ### BL-HRM-12 — wl-hr: record a rejected WPS file and resubmit
 
-**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** Base: wl-hr Payroll run lifecycle (`submit`) · **Blocks:** BL-HRM-13, BL-HRM-14
 **Review items:** X-15, 09-N7-b
 
@@ -825,6 +898,12 @@ None.
 When the bank or exchange house rejects the whole SIF, the run moves to `rejected`, every line is
 marked `failed`, and the preparer fixes the cause and resubmits a new SIF version for the same
 lines. WPS deadline alerts keep running.
+
+#### Surfaces
+- **Back office:** the preparer runs **Record rejection** on the submitted run with the
+  bank's notice and reason, then **Resubmit** with a note on the fix; earlier SIF versions
+  stay listed on the run.
+- **System:** the WPS deadline alerts (`HRM.RUL.03`) keep running for the rejected run.
 
 #### Files to read
 - `docs/modules/wl-hr.md` §3 (Payroll run: SIF files; Payroll line: WPS result), §4 *Payroll
@@ -886,7 +965,7 @@ Partial failure (BL-HRM-13); escalation (BL-HRM-14).
 
 ### BL-HRM-13 — wl-hr: record a partly failed WPS file and regenerate
 
-**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:back-office` `surface:portal` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** BL-HRM-12 · BL-HRM-18 (held lines, off-cycle) · BL-HRM-20 (account `active` at submit) · BL-HRM-21 (`waive_cooling`) · **Blocks:** BL-HRM-14
 **Review items:** X-15, 09-N7-b
 
@@ -895,6 +974,12 @@ When some lines are paid and others fail, paid lines are confirmed and their pay
 each failed line gets a task. Each failed line is then fixed (usually the pay account) or moved
 out (held, or paid another approved way), and a SIF with only the fixed lines is generated. The
 run reaches `paid` when no line is left `failed`.
+
+#### Surfaces
+- **Back office:** the preparer attaches the bank's result file and marks failed lines with
+  reasons, fixes or holds each failed line, runs **Regenerate**, and the approver runs
+  **Confirm paid**.
+- **Portal:** employees whose lines were paid see their payslips in the employee portal.
 
 #### Files to read
 - `docs/modules/wl-hr.md` §4 *Payroll run*, §4 *Pay account* (last paragraph), §5.3 steps 6–7
@@ -953,13 +1038,18 @@ Pay account change (BL-HRM-19 to BL-HRM-21); off-cycle (BL-HRM-18).
 
 ### BL-HRM-14 — wl-hr: escalate WPS rejections before the due date (`HRM.RUL.11`)
 
-**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** BL-HRM-12 · BL-HRM-13 · **Blocks:** BL-MPW-21
 **Review items:** X-15, 09-N7-b
 
 #### Goal
 A rejected or partly rejected run gives a task per failed line and tells the approver. If it is
 still not resubmitted N days (default 1) before the WPS due date, the MD and accountant are told.
+
+#### Surfaces
+- **Back office:** the preparer sees one task per failed line under "Needs your action".
+- **System:** at 00:00 Asia/Dubai N days before the WPS due date a run still `rejected` or
+  `partially_rejected` is escalated once to the MD and accountant.
 
 #### Files to read
 - `docs/modules/wl-hr.md` §6 *Automations* (`HRM.RUL.03`, `HRM.RUL.11`), §6 `PayrollCalendar`,
@@ -1001,7 +1091,7 @@ still not resubmitted N days (default 1) before the WPS due date, the MD and acc
 
 ### BL-HRM-15 — wl-hr: keep salary recoveries within the Art. 25 caps (`HRM.ACL.06`)
 
-**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** Base: wl-hr Adjustments and payroll calculation · **Blocks:** BL-HRM-16, BL-HRM-17, BL-HRM-23, BL-MPW-21
 **Review items:** X-15, 09-N6-b
 
@@ -1009,6 +1099,12 @@ still not resubmitted N days (default 1) before the WPS due date, the MD and acc
 Any recovery from salary (overpayment, advance, damage, settlement offset, negative timesheet
 difference) stays within the legal caps per type and 50% in total per payroll line. A line above
 the caps is refused, not trimmed silently, and no approval can exceed the caps.
+
+#### Surfaces
+- **Back office:** the preparer sees a line above the Art. 25 caps flagged as an exception
+  on the run; **Approve** stays disabled while any line exceeds the caps, for every
+  approver.
+- **System:** the cap check runs on every recovery per type and in total, with no trimming.
 
 #### Files to read
 - `docs/modules/wl-hr.md` §3 (Adjustment), §5.3 step 3, §6 *Access rules* (`HRM.ACL.06`), §7
@@ -1060,7 +1156,7 @@ Settlement offsets beyond caps (BL-HRM-23, L-23).
 
 ### BL-HRM-16 — wl-hr: calculate payroll with provisional hours and timesheet corrections
 
-**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** BL-ATT-08 · BL-ATT-12 · BL-ATT-13 · BL-HRM-15 · **Blocks:** None
 **Review items:** X-15, X-16, 09-N5-c, 09-N4-a
 
@@ -1069,6 +1165,13 @@ Settlement offsets beyond caps (BL-HRM-23, L-23).
 timesheets not yet approved), shows provisional hours as such, and adds lines for approved
 adjustment timesheets that affect payroll and for reconciliation differences. + hours are paid;
 − hours are recovered within the Art. 25 caps. `submit` marks provisional timesheets.
+
+#### Surfaces
+- **Back office:** the preparer sees provisional hours marked on each line, *missing
+  timesheet* exceptions and the difference lines from adjustments and reconciliations on the
+  run.
+- **System:** `submit` locks the timesheets used and sets `paid_provisionally_by`; each
+  difference is linked to the run that used it.
 
 #### Files to read
 - `docs/modules/wl-hr.md` §4 *Payroll run* (`calculate`, `submit`), §5.3 step 2, §6 *Consumes*
@@ -1137,7 +1240,7 @@ Supplementary runs (BL-HRM-17).
 
 ### BL-HRM-17 — wl-hr: correct a paid run with a supplementary run
 
-**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** BL-HRM-15 · BL-HRM-18 · **Blocks:** None
 **Review items:** X-15, 09-N6-b
 
@@ -1147,6 +1250,14 @@ which is never edited. It holds only the affected employees and the difference p
 component. Positive differences are paid in this run; negative ones become overpayment
 recovery adjustments over the next regular runs, within 20% a month and 50% total. Corrected
 payslips are published and the cost difference posted.
+
+#### Surfaces
+- **Back office:** the preparer creates a supplementary run from the paid run with a reason;
+  it lists only the affected employees and differences; another user approves it.
+- **Portal:** employees with a corrected line see the corrected payslip in the employee
+  portal.
+- **System:** at **Confirm paid** recovery adjustments, settlement recoveries or receivables
+  are created and the cost differences posted.
 
 #### Files to read
 - `docs/modules/wl-hr.md` §3 (Payroll run: type, corrects; Adjustment), §4 "Run types", §5.6
@@ -1215,7 +1326,7 @@ Off-cycle mechanics (BL-HRM-18).
 
 ### BL-HRM-18 — wl-hr: release held lines through an off-cycle run (`HRM.RUL.12`)
 
-**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** Base: wl-hr Payroll run lifecycle · Vertical 09: absence case closed (`MPW.RUL.09`) · **Blocks:** BL-HRM-08, BL-HRM-13, BL-HRM-17, BL-HRM-20, BL-MPW-17
 **Review items:** X-15, 09-N3-d
 
@@ -1224,6 +1335,13 @@ Held lines were never released. When a hold reason clears (absence case closed, 
 withdrawn, line fixed), `HRM.RUL.12` proposes an off-cycle run, paid before the WPS due date
 where possible. Carrying a line into the next regular run needs a reason and warns when it pays
 late; lines held for a valid absence report carry no warning.
+
+#### Surfaces
+- **Back office:** the payroll officer finds a draft off-cycle run with the released lines;
+  carrying a line into the next regular run asks for a reason and shows the late-payment
+  warning.
+- **System:** `HRM.RUL.12` watches cleared hold reasons and each cut-off and proposes the
+  off-cycle run.
 
 #### Files to read
 - `docs/modules/wl-hr.md` §3 (Payroll line: hold, released into), §4 "Run types", §5.6 step 2,
@@ -1278,7 +1396,7 @@ Supplementary positive differences (BL-HRM-17).
 
 ### BL-HRM-19 — wl-hr: request and approve a new pay account with SMS notice
 
-**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:back-office` `surface:portal` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** Base: wl-hr Employee records · Epic wl-notify: SMS · **Blocks:** BL-HRM-20, BL-HRM-21, BL-MPW-21
 **Review items:** X-15, 09-N11-b
 
@@ -1287,6 +1405,12 @@ A change of pay account is the classic payroll fraud. A new account is requested
 employee, checked for format and holder name, approved by a different user, and the worker is told
 by SMS on the number on record before the request, naming the last 4 digits and the date it takes
 effect.
+
+#### Surfaces
+- **Back office:** HR enters a new IBAN or card on the employee (with a name mismatch
+  explanation when needed); another user sees the request with the explanation and approves
+  or rejects it.
+- **Portal:** the employee requests a new pay account in the employee portal.
 
 #### Files to read
 - `docs/modules/wl-hr.md` §3 (Pay account), §4 *Pay account*, §5.7, §6 *Access rules*
@@ -1361,7 +1485,7 @@ Activation (BL-HRM-20); stop and waive (BL-HRM-21).
 
 ### BL-HRM-20 — wl-hr: activate a pay account after cooling and use it at submit
 
-**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** BL-HRM-19 · BL-HRM-18 · **Blocks:** BL-HRM-13, BL-HRM-21
 **Review items:** X-15, 09-N11-b
 
@@ -1369,6 +1493,12 @@ Activation (BL-HRM-20); stop and waive (BL-HRM-21).
 When cooling ends, the new account becomes `active` and the previous one `retired`. A payroll run
 uses the account that is active when the run is submitted. If that account is closed and the new
 one is still cooling, the line is held and paid off-cycle.
+
+#### Surfaces
+- **Back office:** the payroll officer sees a line held with reason "account closed" when
+  the active account is closed and the new one is still cooling.
+- **System:** the account activates at 00:00 on the cooling end date unless the notice was
+  undelivered; `submit` reads the account active at that moment.
 
 #### Files to read
 - `docs/modules/wl-hr.md` §4 *Pay account* (and last paragraph), §6 *Events emitted*
@@ -1426,7 +1556,7 @@ Stop and waive (BL-HRM-21).
 
 ### BL-HRM-21 — wl-hr: stop a pay account change, waive cooling, handle undelivered notice
 
-**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:back-office` `surface:portal` `surface:public` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** BL-HRM-19 · BL-HRM-20 (`activate`) · Epic wl-ticketing: security tickets · Epic wl-notify: `MessageGaveUp` · Epic wl-kernel: approval requests · **Blocks:** BL-HRM-13
 **Review items:** X-15, 09-N11-b
 
@@ -1435,6 +1565,16 @@ The worker can stop a change during cooling from the SMS link or portal: the old
 a security ticket opens and the MD is told. Payroll can waive cooling only with MD approval and a
 reason (e.g. a failed WPS line, worker verified in person). If the SMS could not be delivered,
 the change stays in cooling and HR gets a task to reach the worker.
+
+#### Surfaces
+- **Back office:** the payroll user runs **Waive cooling** with a reason and an MD approves
+  it under "Needs your action"; HR sees the task to reach the worker and records *worker
+  reached* (by whom, method, date).
+- **Portal:** the worker stops the change from the employee portal during cooling.
+- **Public page:** the worker opens the signed stop link from the SMS, without login, and
+  stops the change; the link works once and expires with the cooling period.
+- **System:** `MessageGaveUp` keeps the account in cooling and raises the HR task; a stop
+  opens a security ticket.
 
 #### Files to read
 - `docs/modules/wl-hr.md` §4 *Pay account*, §5.7 step 3, §6 *Consumes* (wl-notify, wl-ticketing)
@@ -1503,7 +1643,7 @@ Ticket handling (Epic wl-ticketing).
 
 ### BL-HRM-22 — wl-hr: dispute and resolve a final settlement
 
-**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:back-office` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** Base: wl-hr Final settlement lifecycle · Epic wl-ticketing: labour-case tickets · **Blocks:** BL-HRM-25
 **Review items:** X-15, 09-N4-b
 
@@ -1513,6 +1653,11 @@ moves to `disputed` and a labour-case ticket tracks it. The undisputed amount ca
 time. Resolution is `upheld` (closed when the net is already paid in full, otherwise back to
 `approved` to pay the rest) or `revised` (recalculated by the preparer, resolved by another
 user to `approved`, the difference paid).
+
+#### Surfaces
+- **Back office:** HR runs **Dispute** with source, reference and undisputed amount;
+  payments are recorded while `disputed`; the preparer enters revised amounts and another
+  user runs **Resolve** with the decision attached.
 
 #### Files to read
 - `docs/modules/wl-hr.md` §3 (Final settlement: dispute), §4 *Final settlement*, §5.4 step 6
@@ -1569,7 +1714,7 @@ user to `approved`, the difference paid).
 
 ### BL-HRM-23 — wl-hr: handle a negative final settlement
 
-**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `blocked:open-item` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `blocked:open-item` `surface:back-office` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** Base: wl-hr Final settlement lifecycle · BL-HRM-15 · **Blocks:** None
 **Review items:** X-15
 
@@ -1580,6 +1725,10 @@ caps (until a lawyer confirms otherwise, L-23). The recoveries above the caps ar
 due from the employee: `pay` creates a receivable for it on the employee's party with a
 recovery task for the accountant. The net after the capped offset may still be positive and
 is then paid; a net of 0 is settled with no payment.
+
+#### Surfaces
+- **Back office:** the settlement shows the capped offset and the net; on **Pay** the
+  accountant gets the recovery task for the receivable on the employee's party.
 
 #### Files to read
 - `docs/modules/wl-hr.md` §4 *Final settlement* (`pay`, "Negative net"), §10
@@ -1644,7 +1793,7 @@ Recovery collection (Epic wl-payments).
 
 ### BL-HRM-24 — wl-hr: close or cancel a final settlement
 
-**Labels:** `module:wl-hr` `area:negative-flow` `priority:medium` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-hr` `area:negative-flow` `priority:medium` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** Base: wl-hr Final settlement lifecycle · **Blocks:** BL-HRM-05, BL-HRM-06, BL-HRM-08
 **Review items:** X-15
 
@@ -1653,6 +1802,12 @@ Recovery collection (Epic wl-payments).
 paid settlement closes 30 days after payment with no dispute, or as soon as the acknowledgement
 is signed. A settlement that is no
 longer needed (notice withdrawn, worker reinstated) is cancelled while nothing was paid.
+
+#### Surfaces
+- **Back office:** HR runs **Cancel** on a draft or approved settlement with nothing paid
+  against it.
+- **System:** a paid settlement closes 30 days after `pay`, or at once when the
+  acknowledgement is signed.
 
 #### Files to read
 - `docs/modules/wl-hr.md` §4 *Final settlement*, §7 (settlement closes after)
@@ -1696,7 +1851,7 @@ Dispute (BL-HRM-22).
 
 ### BL-HRM-25 — wl-hr: alert on the 14-day settlement deadline (`HRM.RUL.09`)
 
-**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** Base: wl-hr Final settlement lifecycle · BL-HRM-22 · **Blocks:** BL-MPW-21
 **Review items:** X-15, 09-N5-d
 
@@ -1704,6 +1859,10 @@ Dispute (BL-HRM-22).
 The final settlement is due within 14 days of the end of the contract (Art. 53). HR and the
 accountant are told 10 days after the last working day; on the deadline the MD is told it is
 overdue. For a disputed settlement the reminder is to pay the undisputed amount.
+
+#### Surfaces
+- **System:** `HRM.RUL.09` runs at 08:00 Asia/Dubai and notifies HR and the accountant on
+  day N and the MD on the deadline.
 
 #### Files to read
 - `docs/modules/wl-hr.md` §5.4 step 4, §6 *Automations* (`HRM.RUL.09`), §7, §10 *Final settlement*
@@ -1741,7 +1900,7 @@ None.
 
 ### BL-HRM-26 — wl-hr: start an onboarding from the role's templates when an employee is hired (`HRM.RUL.16`)
 
-**Labels:** `module:wl-hr` `area:sme-gap` `priority:medium` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-hr` `area:sme-gap` `priority:medium` `size:m` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** Base: wl-hr Employee lifecycle · BL-HRM-05 (`cancel_onboarding`, for the cancel check) · **Blocks:** BL-HRM-27, BL-HRM-28, BL-HRM-29, BL-DOC-08, BL-DOC-09, BL-ACC-23, BL-AUT-18, BL-CLN-15, BL-CON-18, BL-EDU-17, BL-FNB-17, BL-LOG-25, BL-MFG-14, BL-MPW-20, BL-PRP-27
 **Review items:** G6 (SME problem map 7, 18)
 
@@ -1751,6 +1910,14 @@ employee in `onboarding`, the system starts an onboarding: one step per template
 assigned to HR, the manager or the employee, with a due date counted from the hire date. HR can
 also start a template by hand, e.g. for a role change. New staff then get the same induction
 every time instead of what the person on duty remembers.
+
+#### Surfaces
+- **Back office:** HR keeps onboarding templates per job role and starts a template by hand
+  on the employee; the onboarding with its steps, assignees and due dates appears on the
+  employee record.
+- **System:** `HRM.RUL.16` starts the onboarding when an employee is created in
+  `onboarding`; open steps are re-assigned on assignment changes and cancelled on exit,
+  death or cancelled onboarding.
 
 #### Files to read
 - `docs/modules/wl-hr.md` §2 (`HRM.ONB.01` row, paragraphs on the *minimal* record and
@@ -1876,7 +2043,7 @@ Completing and waiving steps (BL-HRM-27); reminders (BL-HRM-28); the activation 
 
 ### BL-HRM-27 — wl-hr: complete and waive onboarding steps (`HRM.ACL.10`)
 
-**Labels:** `module:wl-hr` `area:sme-gap` `priority:medium` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-hr` `area:sme-gap` `priority:medium` `size:m` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** BL-HRM-26 · BL-DOC-08 · BL-DOC-09 · Epic wl-ticketing: checklist runs (`WRK.CHK.01`) · **Blocks:** BL-HRM-29, BL-ACC-23, BL-AUT-18, BL-CLN-15, BL-CON-18, BL-EDU-17, BL-FNB-17, BL-LOG-25, BL-MFG-14, BL-MPW-20, BL-PRP-27
 **Review items:** G6 (SME problem map 7, 18)
 
@@ -1886,6 +2053,16 @@ an accepted document, or every required SOP acknowledged. Steps owned by the emp
 only by the employee, in their own session or in person with a signature and a witness. A step
 that does not apply is waived by HR with a reason. The onboarding completes when every required
 step is done or waived.
+
+#### Surfaces
+- **Back office:** assignees mark `task` steps done (with evidence when required); HR
+  records an employee step in person with the drawn signature on a staff device as witness,
+  and waives or reopens steps with a reason.
+- **Portal:** the employee marks their own steps and acknowledges SOPs in their own session
+  (screen not specified yet).
+- **System:** `checklist`, `document` and `sop_acknowledgement` steps are marked done from
+  `ChecklistCompleted`, `DocumentAccepted` and SOP events; the onboarding completes after
+  the last required step.
 
 #### Files to read
 - `docs/modules/wl-hr.md` §3 paragraph *Onboarding*, §4 *Onboarding* (row `complete`) and
@@ -1981,13 +2158,19 @@ Acknowledgement requests and reminders (BL-DOC-09); overdue reminders (BL-HRM-28
 
 ### BL-HRM-28 — wl-hr: remind and escalate overdue onboarding steps (`HRM.RUL.17`)
 
-**Labels:** `module:wl-hr` `area:sme-gap` `priority:medium` `size:s` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-hr` `area:sme-gap` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** BL-HRM-26 · **Blocks:** BL-ACC-23, BL-AUT-18, BL-CLN-15, BL-CON-18, BL-EDU-17, BL-FNB-17, BL-LOG-25, BL-MFG-14, BL-MPW-20, BL-PRP-27
 **Review items:** G6 (SME problem map 7, 18)
 
 #### Goal
 A step left open after its due date is reminded to its assignees, and after a few more days
 HR and the employee's manager are told, so that onboarding does not stall silently.
+
+#### Surfaces
+- **Back office:** HR and assignees see open steps marked *overdue* from the day after the
+  due date.
+- **System:** `HRM.RUL.17` runs daily at 08:00 Asia/Dubai, reminds every R days, escalates
+  once after E days, and pauses for leave or absconding.
 
 #### Files to read
 - `docs/modules/wl-hr.md` §4 *Onboarding step* (state `open`, *overdue*), §5.8 step 5, §6
@@ -2045,7 +2228,7 @@ SOP acknowledgement reminders (`DOC.RUL.04`, BL-DOC-09).
 
 ### BL-HRM-29 — wl-hr: block employee activation until a blocking onboarding is complete
 
-**Labels:** `module:wl-hr` `area:sme-gap` `priority:medium` `size:s` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-hr` `area:sme-gap` `priority:medium` `size:s` `surface:back-office` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** BL-HRM-26 · BL-HRM-27 · **Blocks:** None.
 **Review items:** G6 (SME problem map 7, 18)
 
@@ -2054,6 +2237,10 @@ Onboarding blocks nothing by default. A client may set *blocks activation* on a 
 example, a safety induction for site workers); Employee `activate` is then refused until every
 required step from that template is done or waived. The statutory items of `activate` stay as
 they are.
+
+#### Surfaces
+- **Back office:** HR's **Activate** is refused while a blocking template has open required
+  steps; the message lists those steps and their assignees.
 
 #### Files to read
 - `docs/modules/wl-hr.md` §2 (paragraph on the *minimal* record), §3 paragraph *Onboarding*

@@ -37,7 +37,7 @@ absconding, write-off, cheques). Review items: D-04, D-05, 02-N1-a, 02-N2-a, 02-
 
 ### BL-CON-01 — 02 Construction: terminate a project mid-way (`terminate`, `CON.ACL.15`)
 
-**Labels:** `vertical:02-construction` `area:negative-flow` `priority:high` `blocked:open-item` `size:m` · **Milestone:** Launch 02 · **Size:** m
+**Labels:** `vertical:02-construction` `area:negative-flow` `priority:high` `blocked:open-item` `size:m` `surface:back-office` `surface:field-pwa` `surface:system` · **Milestone:** Launch 02 · **Size:** m
 **Depends on:** Base: 02 Project lifecycle · BL-KRN-01 · BL-CON-07 · BL-CON-09 · Base: wl-inventory Stock count (`STK.CNT.01`), Purchase request and Purchase order lifecycle · **Blocks:** BL-CON-02
 **Review items:** 02-N2-a, 02 MEDIUM "site stock counts" (review §6)
 
@@ -48,6 +48,18 @@ and the MD approves. The project moves to `terminated` (not an end): attendance 
 effective date, crews are released, purchasing is wound down, the site store is counted, a final
 account IPA is drafted, retention becomes due, guarantees are followed up, open snags are cancelled
 and the client is told.
+
+#### Surfaces
+- **Back office:** the project manager requests `terminate` with reason, termination notice
+  and effective date; the MD approves under "Needs your action"; afterwards the project
+  manager has the reassign task and reviews attendance flagged after the effective date,
+  procurement has one task listing the open POs and the accountant one task per active
+  guarantee.
+- **Field PWA:** the supervisor's attendance marking for the project is refused from the day
+  after the effective date.
+- **System:** on approval the requests are cancelled, the site store count opened, the final
+  account IPA drafted, both retention parts made due, open snags cancelled, the client
+  contacts e-mailed and `ProjectTerminated` emitted.
 
 #### Files to read
 - `docs/verticals/02-construction.md` §4.8, §3.3 `CON.ACL.15`, §7.1 *Project* (states,
@@ -140,7 +152,7 @@ transitions (BL-CON-09, BL-CON-10); returns to suppliers (Epic wl-inventory: BL-
 
 ### BL-CON-02 — 02 Construction: settle the final account of a terminated project; cancel only before work
 
-**Labels:** `vertical:02-construction` `area:negative-flow` `priority:high` `blocked:open-item` `size:s` · **Milestone:** Launch 02 · **Size:** s
+**Labels:** `vertical:02-construction` `area:negative-flow` `priority:high` `blocked:open-item` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 02 · **Size:** s
 **Depends on:** BL-CON-01 · BL-INV-01 · **Blocks:** BL-CON-19
 **Review items:** 02-N2-a
 
@@ -149,6 +161,15 @@ A terminated project closes when its final account is certified (or decided by a
 arbitration) and the final account IPA is invoiced or its balance written off. `cancel` is now
 only possible from `setup`, before any attendance, goods receipt or IPA, so a project with work
 done always ends through `terminate`.
+
+#### Surfaces
+- **Back office:** the project manager runs `settle_final_account` on the terminated
+  project; the closing screen warns about open retention parts, guarantees and an open site
+  store count; the MD cancels a `setup` project with a reason, and `cancel` is not offered
+  once work exists.
+- **System:** the guards check the final account IPA (invoiced or written off) and that no
+  attendance, goods receipt or IPA exists before `cancel`; open POs are flagged for
+  cancellation.
 
 #### Files to read
 - `docs/verticals/02-construction.md` §4.8 steps 6–7, §7.1 *Project* (`settle_final_account`,
@@ -211,7 +232,7 @@ The termination (BL-CON-01); write-off mechanics (BL-INV-01); the portal (BL-CON
 
 ### BL-CON-03 — 02 Construction: keep a blocked client's project running and refuse new projects for it
 
-**Labels:** `vertical:02-construction` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Launch 02 · **Size:** s
+**Labels:** `vertical:02-construction` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 02 · **Size:** s
 **Depends on:** BL-PTY-03 · BL-PTY-04 · BL-CON-06 (supplier bill from the client and its set-off) · BL-PAY-24 (`set_off` with `BlockGuard`) · **Blocks:** BL-CON-17
 **Review items:** X-18
 
@@ -219,6 +240,13 @@ The termination (BL-CON-01); write-off mechanics (BL-INV-01); the portal (BL-CON
 While a client is blocked, its running projects continue (block effect `continue`, decided by the
 MD): work, IPAs and variations go on. No new project is started for it, and no money goes out to
 it unless an exception is approved. Stopping a project is the MD's decision through `terminate`.
+
+#### Surfaces
+- **Back office:** for a blocked client, quotation `accept` is refused with the neutral
+  text, and a set-off of a supplier bill from the client waits for an exception approved by
+  the compliance role; the MD is notified once per block.
+- **System:** `BlockGuard` runs on quotation `accept` (`start`) and on the set-off payment
+  (`money_out`); the running project keeps accepting attendance, IPAs and variations.
 
 #### Files to read
 - `docs/verticals/02-construction.md` §7.2 "Negative-flow settings" (row Project), §7.1
@@ -275,7 +303,7 @@ The guard and exceptions (BL-PTY-04); the effect registration (BL-PTY-03).
 
 ### BL-CON-04 — 02 Construction: handle an IPA still waiting for its certificate at the next cut-off (`CON.RUL.03`, `supersede`)
 
-**Labels:** `vertical:02-construction` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 02 · **Size:** m
+**Labels:** `vertical:02-construction` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 02 · **Size:** m
 **Depends on:** Base: 02 IPA lifecycle · **Blocks:** None.
 **Review items:** D-05, 02-N13-a
 
@@ -285,6 +313,14 @@ Clients often certify late. At the next cut-off the monthly draft IPA is still c
 `invoiced`. The new IPA can be submitted only as a replacement of the pending one, which becomes
 `superseded` (the client is told); a certificate that arrives later for the superseded IPA is
 recorded on the one that replaced it.
+
+#### Surfaces
+- **Back office:** the QS and project manager see the monthly draft IPA marked *previous
+  pending*; the submit screen requires choosing "replaces IPA n"; a late certificate for a
+  superseded IPA is recorded on the replacing IPA, which shows the claim gap.
+- **System:** `CON.RUL.03` creates one draft per project per cut-off at 02:00, recomputes
+  "previous certified" when an earlier IPA is certified, and `supersede` runs on the
+  replacing `submit`.
 
 #### Files to read
 - `docs/verticals/02-construction.md` §4.4 step 3 and row "The previous IPA is not certified at
@@ -360,7 +396,7 @@ Certificate deductions (BL-CON-05); invoicing (BL-CON-06).
 
 ### BL-CON-05 — 02 Construction: record typed deductions on a certificate and accept or contest each (`CON.ACL.14`)
 
-**Labels:** `vertical:02-construction` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 02 · **Size:** m
+**Labels:** `vertical:02-construction` `area:negative-flow` `priority:high` `size:m` `surface:back-office` · **Milestone:** Launch 02 · **Size:** m
 **Depends on:** Base: 02 IPA lifecycle · BL-KRN-01 · **Blocks:** BL-CON-06, BL-CON-08
 **Review items:** 02-N4-a
 
@@ -370,6 +406,12 @@ certificate is recorded, each deduction is a typed line with its reference. The 
 lines; the project manager accepts or contests each one, and accepting one above AED 25,000 needs
 the MD. The IPA is certified only when every line is typed and accepted or contested; contested
 lines are listed for the final account.
+
+#### Surfaces
+- **Back office:** the QS records the certificate with typed deduction lines and references;
+  the project manager accepts or contests each line, and accepting one above AED 25,000
+  sends an approval request to the MD; `certify` is refused while a line is undecided;
+  contested lines appear in the project's final account items.
 
 #### Files to read
 - `docs/verticals/02-construction.md` §4.4 step 5 and row "The client deducts back-charges,
@@ -431,7 +473,7 @@ What invoicing does with the lines (BL-CON-06); retention deductions (BL-CON-08)
 
 ### BL-CON-06 — 02 Construction: invoice a certificate with accepted and contested deductions
 
-**Labels:** `vertical:02-construction` `area:negative-flow` `priority:high` `blocked:open-item` `size:m` · **Milestone:** Launch 02 · **Size:** m
+**Labels:** `vertical:02-construction` `area:negative-flow` `priority:high` `blocked:open-item` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 02 · **Size:** m
 **Depends on:** BL-CON-05 · BL-INV-04 · BL-PAY-24 (payment method `set_off`) · Base: wl-invoicing Credit note, Supplier bill · **Blocks:** BL-CON-03
 **Review items:** 02-N4-a
 
@@ -441,6 +483,14 @@ contra-charges become a supplier bill from the client, set off against the invoi
 liquidated damages and price reductions become a credit note against the invoice; the unpaid part
 for contested deductions is flagged `disputed`. Retention and advance recovery are booked as
 before.
+
+#### Surfaces
+- **Back office:** the accountant gets a task to approve the supplier bill from the client,
+  then records the set-off from it (and may `reverse` it with reason *entered in error*);
+  the invoice shows as `disputed` for the contested amount.
+- **System:** IPA `invoice` issues the tax invoice, the credit note for accepted LD and
+  price reductions, the dispute flag and the supplier bill in one transaction; reminders
+  pause on the disputed invoice.
 
 #### Files to read
 - `docs/verticals/02-construction.md` §4.4 steps 5–6 and row "The client deducts…", §7.1 *IPA*
@@ -514,7 +564,7 @@ Recording the lines (BL-CON-05); dispute resolution (BL-INV-04); retention (BL-C
 
 ### BL-CON-07 — 02 Construction: make a retention part due and invoice it (`make_due`, `invoice`, `settle`, `CON.RUL.07`)
 
-**Labels:** `vertical:02-construction` `area:negative-flow` `priority:high` `blocked:open-item` `size:m` · **Milestone:** Launch 02 · **Size:** m
+**Labels:** `vertical:02-construction` `area:negative-flow` `priority:high` `blocked:open-item` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 02 · **Size:** m
 **Depends on:** Base: 02 IPA `invoice` · Base: wl-invoicing Invoice lifecycle · BL-CON-09 · **Blocks:** BL-CON-01, BL-CON-08
 **Review items:** D-04, 02-N4-b
 
@@ -523,6 +573,14 @@ Retention withheld from certified IPAs is not invoiced on the IPA invoice. Each 
 (first, final) is a record that is `held` until its release condition is met, then `due`, then
 invoiced on its own 5% tax invoice, and `settled` when that invoice is paid, credited or written
 off. The accountant is warned before VAT on retention becomes due at the one-year limit.
+
+#### Surfaces
+- **Back office:** the accountant is notified when a retention part becomes due or the cap
+  is reached, invoices a `due` part, links a retention bond to a part (with a warning when
+  it is lower), and may dismiss the `CON.RUL.07` VAT notice with a reason.
+- **System:** project `complete`, `close` and `terminate` make the parts due, each IPA
+  invoice adds retention up to the cap, `settle` follows the retention invoice, and
+  `CON.RUL.07` runs daily at 02:00.
 
 #### Files to read
 - `docs/verticals/02-construction.md` §4.6 steps 3–6 and rows "The client disputes or delays the
@@ -617,7 +675,7 @@ Retention deductions (BL-CON-08); the bond's own lifecycle (BL-CON-09); terminat
 
 ### BL-CON-08 — 02 Construction: deduct retention the client keeps (`deduct`)
 
-**Labels:** `vertical:02-construction` `area:negative-flow` `priority:high` `blocked:open-item` `size:s` · **Milestone:** Launch 02 · **Size:** s
+**Labels:** `vertical:02-construction` `area:negative-flow` `priority:high` `blocked:open-item` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 02 · **Size:** s
 **Depends on:** BL-CON-07 · BL-CON-05 · BL-INV-04 · **Blocks:** None.
 **Review items:** D-04, 02-N4-b
 
@@ -627,6 +685,13 @@ the part is invoiced, `deduct` reduces it with the client's notice, books the am
 project's back-charge cost code and issues no tax document; when nothing remains the part is
 `kept`. After invoicing, the reduction is a dispute on the retention invoice ending in a credit
 note.
+
+#### Surfaces
+- **Back office:** the QS records `deduct` on a held or due retention part with the client's
+  notice; the project manager accepts or contests it (the MD above AED 25,000); on an
+  invoiced part `deduct` is not offered and the user opens invoice `dispute` instead.
+- **System:** an accepted deduction reduces the part, books the amount to the back-charge
+  cost code with no tax document, and sets `kept` when nothing remains.
 
 #### Files to read
 - `docs/verticals/02-construction.md` §4.6 row "The client keeps part or all of the retention",
@@ -681,7 +746,7 @@ Due and invoicing (BL-CON-07); invoice disputes (BL-INV-04).
 
 ### BL-CON-09 — 02 Construction: register, reduce, extend, release and expire a guarantee (`CON.RUL.11`)
 
-**Labels:** `vertical:02-construction` `area:negative-flow` `priority:medium` `size:m` · **Milestone:** Launch 02 · **Size:** m
+**Labels:** `vertical:02-construction` `area:negative-flow` `priority:medium` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 02 · **Size:** m
 **Depends on:** Base: wl-documents Document expiry (`DOC.RUL.01`) · **Blocks:** BL-CON-01, BL-CON-07, BL-CON-10
 **Review items:** 02 MEDIUM "guarantee lifecycle" (review §6), 02-N12-b
 
@@ -691,6 +756,14 @@ documents. A guarantee is issued, reduced (the advance guarantee never below the
 advance), extended, released, or expires. 60 days before expiry, if the project has not reached the
 guarantee's release point, the accountant gets a task to ask the bank for an extension, because the
 client may call a guarantee that is not extended.
+
+#### Surfaces
+- **Back office:** the accountant registers the guarantee with its bank document and runs
+  `issue`, `reduce`, `extend` and `release`; a reduction below the unrecovered advance is
+  refused with the amount shown; the accountant gets the extension task 60 days before
+  expiry and the project manager is notified.
+- **System:** `CON.RUL.11` creates the task, and `expire` runs the day after the expiry date
+  at 02:00 and notifies the accountant and project manager.
 
 #### Files to read
 - `docs/verticals/02-construction.md` §2 (advance payments, performance bond), §4.6 rows "A
@@ -761,7 +834,7 @@ Calls (BL-CON-10); retention bond use (BL-CON-07).
 
 ### BL-CON-10 — 02 Construction: record a guarantee call and its settlement
 
-**Labels:** `vertical:02-construction` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Launch 02 · **Size:** s
+**Labels:** `vertical:02-construction` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 02 · **Size:** s
 **Depends on:** BL-CON-09 · **Blocks:** None.
 **Review items:** 02-N12-b
 
@@ -770,6 +843,15 @@ When the beneficiary demands payment under a guarantee, the call is recorded wit
 notice and amount; the MD, project manager and accountant are told at once and a task to respond
 is created. When the bank pays, the amount is booked to the project; a disputed call is carried as
 a claim in the final account; a partial call leaves the guarantee `active` for the rest.
+
+#### Surfaces
+- **Back office:** the accountant records the `call` with the demand notice and amount; the
+  MD, project manager and accountant are told at once with a task to respond; `settle_call`
+  takes the debit advice or the withdrawal letter, and the project manager may mark it
+  disputed so it appears in the final account claims.
+- **System:** the paid amount is booked to the called-guarantees cost code; a `called`
+  guarantee never expires, and one back to `active` after its expiry date expires on the
+  next daily run.
 
 #### Files to read
 - `docs/verticals/02-construction.md` §4.6 row "The client calls a guarantee", §7.1 *Guarantee*
@@ -841,7 +923,7 @@ The other guarantee transitions (BL-CON-09).
 
 ### BL-CON-11 — 02 Construction: resubmit, claim, settle or abandon a rejected variation (`CON.ACL.16`)
 
-**Labels:** `vertical:02-construction` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 02 · **Size:** m
+**Labels:** `vertical:02-construction` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 02 · **Size:** m
 **Depends on:** Base: 02 Variation lifecycle · BL-KRN-01 · **Blocks:** None.
 **Review items:** 02-N1-a
 
@@ -850,6 +932,15 @@ A client may reject a variation whose work was already executed on a site instru
 is no longer an end: the cost stays on the variation's own cost code marked unrecovered, and the
 project manager resubmits it with more evidence or a new price, or turns it into a claim for the
 final account. A claim can be settled at an agreed amount. Giving up (abandon) needs the MD.
+
+#### Surfaces
+- **Back office:** the QS records `reject` with a reason; the project manager runs
+  `resubmit`, `claim` or `abandon` (abandon creates an MD approval request), and the QS
+  records `settle_claim` with the agreed amount; the rejected revision shows "resubmitted as
+  rev n+1".
+- **System:** the cost on the variation's cost code is marked unrecovered and shows in the
+  unrecovered variations report; a settled claim flows into the next IPA or the final
+  account IPA.
 
 #### Files to read
 - `docs/verticals/02-construction.md` §4.5 step 1 and row "The client rejects a variation already
@@ -921,7 +1012,7 @@ Omission and time variations (BL-CON-12); reminders (BL-CON-13, BL-CON-14).
 
 ### BL-CON-12 — 02 Construction: price omission and time variations
 
-**Labels:** `vertical:02-construction` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 02 · **Size:** s
+**Labels:** `vertical:02-construction` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 02 · **Size:** s
 **Depends on:** Base: 02 Variation lifecycle · **Blocks:** BL-CON-14
 **Review items:** 02 MEDIUM "omission variations", "extension-of-time notices" (review §6)
 
@@ -930,6 +1021,14 @@ A variation has a kind: `addition`, `omission` or `time` (extension of time). An
 omit more than the work not yet done and reduces the contract value when approved. A time variation
 states the days asked and the delay event; when approved with days granted it moves the completion
 date.
+
+#### Surfaces
+- **Back office:** the project manager picks the variation kind and, for a time variation,
+  enters the days asked and the delay event; an omission above the quantity not yet done is
+  refused at `submit`; on `approve` the QS is warned when progress has since overtaken the
+  omission; the gap shows in the variation report.
+- **System:** `approve` updates the contract value, budget and next IPA (negative for an
+  omission) and moves the completion date by the days granted.
 
 #### Files to read
 - `docs/verticals/02-construction.md` §4.5 steps 1–4 and rows "The client approves less than
@@ -983,13 +1082,19 @@ Notice deadlines for delay events (BL-CON-14); rejected variations (BL-CON-11).
 
 ### BL-CON-13 — 02 Construction: chase an unanswered variation (`CON.RUL.09`)
 
-**Labels:** `vertical:02-construction` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 02 · **Size:** s
+**Labels:** `vertical:02-construction` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 02 · **Size:** s
 **Depends on:** Base: 02 Variation lifecycle · **Blocks:** None.
 **Review items:** 02 MEDIUM "variation response reminder" (review §6)
 
 #### Goal
 A submitted variation the client does not answer is chased: after 14 days the project manager is
 reminded to chase the client, after 30 days the MD is notified.
+
+#### Surfaces
+- **Back office:** the project manager is reminded to chase the client 14 days after
+  `submit`, and the MD is notified at 30 days.
+- **System:** `CON.RUL.09` runs daily at 02:00 from the latest entry into `submitted`, once
+  per submission.
 
 #### Files to read
 - `docs/verticals/02-construction.md` §4.5 row "The client does not answer", §7.2 `CON.RUL.09`
@@ -1025,7 +1130,7 @@ Notice deadlines (BL-CON-14).
 
 ### BL-CON-14 — 02 Construction: warn before a contract notice deadline for a delay event (`CON.RUL.10`)
 
-**Labels:** `vertical:02-construction` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 02 · **Size:** s
+**Labels:** `vertical:02-construction` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 02 · **Size:** s
 **Depends on:** BL-CON-12 · **Blocks:** None.
 **Review items:** 02 MEDIUM "extension-of-time notices" (review §6)
 
@@ -1034,6 +1139,13 @@ Many contracts require notice of a delay event or variation within a period, or 
 is lost. When a project sets that period, the project manager and QS are warned 7 and 2 days before
 the deadline while the variation for the event is still a draft; a notice sent late is recorded
 with its date.
+
+#### Surfaces
+- **Back office:** the project manager and QS are warned 7 and 2 days before the contract's
+  notice deadline while the variation is a draft; a variation submitted after it shows
+  "notice late" with the notice date.
+- **System:** `CON.RUL.10` runs daily at 02:00 and does nothing when the project has no
+  notice period or the variation no event date.
 
 #### Files to read
 - `docs/verticals/02-construction.md` §4.5 step 3 and row "The notice period for an extension of
@@ -1077,7 +1189,7 @@ Variation kinds (BL-CON-12).
 
 ### BL-CON-15 — 02 Construction: open an absence case for a worker who stops coming (`CON.RUL.08`)
 
-**Labels:** `vertical:02-construction` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 02 · **Size:** s
+**Labels:** `vertical:02-construction` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 02 · **Size:** s
 **Depends on:** Base: wl-attendance Attendance record lifecycle · BL-HRM-07 · BL-TKT-11 · **Blocks:** None.
 **Review items:** 02 MEDIUM "worker absconding" (review §6)
 
@@ -1085,6 +1197,13 @@ Variation kinds (BL-CON-12).
 A crew worker with no attendance and no approved leave for 3 consecutive working days gets an
 absence case ticket for HR, and the supervisor is told. At 7 days HR is reminded that an absconding
 report may be requested (approved by the MD in wl-hr).
+
+#### Surfaces
+- **Back office:** HR gets an *absence* case ticket after 3 working days with no attendance
+  and no leave, and a reminder at 7 days that `report_absconding` may be requested; the
+  supervisor is notified.
+- **System:** `CON.RUL.08` runs daily at 02:00, counts only working days of the crew's site
+  while the project runs, and stops counting when attendance is recorded again.
 
 #### Files to read
 - `docs/verticals/02-construction.md` §4.2 row "A worker stops coming", §7.2 `CON.RUL.08`, §3.3
@@ -1133,7 +1252,7 @@ in wl-hr".
 
 ### BL-CON-16 — 02 Construction: hold a PO to an unregistered subcontractor on a Dubai project (`CON.ACL.13`)
 
-**Labels:** `vertical:02-construction` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 02 · **Size:** s
+**Labels:** `vertical:02-construction` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 02 · **Size:** s
 **Depends on:** Base: wl-inventory Purchase order lifecycle · BL-KRN-01 · **Blocks:** None.
 **Review items:** X-13 (02 values)
 
@@ -1141,6 +1260,13 @@ in wl-hr".
 Under Dubai Law 7/2025 a contractor must check that its subcontractors are registered with Dubai
 Municipality. A PO to a subcontractor on a Dubai project, when the subcontractor has no valid
 registration on file, needs approval before it is issued.
+
+#### Surfaces
+- **Back office:** procurement issues a PO to a subcontractor on a Dubai project; without a
+  valid registration on file the PO stays `draft` and an approval request goes to the
+  project manager of the project.
+- **System:** the `CON.ACL.13` check runs on `issue` and on each `revise`, only for
+  suppliers with the role `subcontractor` on Dubai projects.
 
 #### Files to read
 - `docs/verticals/02-construction.md` §2 "Contractor registration", §3.3 `CON.ACL.13`, §7.1
@@ -1191,7 +1317,7 @@ PO SoD and revision (Epic wl-inventory: BL-STK-08).
 
 ### BL-CON-17 — 02 Construction: configure shared negative-flow settings — money and procurement
 
-**Labels:** `vertical:02-construction` `area:negative-flow` `priority:high` `blocked:open-item` `size:m` · **Milestone:** Launch 02 · **Size:** m
+**Labels:** `vertical:02-construction` `area:negative-flow` `priority:high` `blocked:open-item` `size:m` `surface:back-office` `surface:field-pwa` `surface:system` · **Milestone:** Launch 02 · **Size:** m
 **Depends on:** BL-INV-01 · BL-INV-04 · BL-INV-05 · BL-INV-10 · BL-INV-13 · BL-PAY-09 · BL-PAY-10 · BL-PAY-14 · BL-PAY-24 · BL-STK-01 · BL-STK-03 · BL-STK-04 · BL-STK-05 · BL-STK-07 · BL-STK-08 · BL-STK-27 · BL-PTY-03 · BL-KRN-01 · BL-CON-03 · BL-INV-25 · BL-INV-26 · BL-INV-27 · BL-INV-28 · BL-INV-29 · BL-INV-30 · BL-PAY-25 · BL-PAY-26 · BL-STK-28 · BL-STK-29 · BL-STK-30 · BL-STK-31 · **Blocks:** None.
 **Review items:** X-01, X-02, X-04, X-05, X-08, X-18, 02-N10-a, 02 MEDIUM "PO revision", "site stock counts" (review §6)
 
@@ -1205,6 +1331,18 @@ It also seeds the 02 values for the cash-flow forecast alert (`FIN.CFL.01`), the
 budget with owner drawings (`FIN.BUD.01`) and the supplier scorecard (`STK.SUP.01`), added on
 2026-10-16: `FIN.RUL.23`, `FIN.RUL.24`, `FIN.ACL.21`, `STK.RUL.09` and `STK.ACL.07`. The
 supplier scorecard moved here from BL-CON-18 on 2026-10-16, with the procurement settings.
+
+#### Surfaces
+- **Back office:** the seeded values show up in staff screens: MD approval of write-offs,
+  the accountant's e-invoice and bounce tasks, return-to-supplier and PO revision approvals,
+  count variances, the set-off method, the cash-flow alert, the budget approval and the
+  supplier scorecard review task.
+- **Field PWA:** the storekeeper splits a receipt line into accepted and rejected quantity
+  with reason and photos, and a delivery refused at the door creates a return dispatched at
+  once.
+- **System:** the 02 seed loads every value as configuration; `FIN.RUL.15`, `FIN.RUL.16`,
+  `FIN.RUL.18`, `STK.RUL.08`, `STK.RUL.09`, `FIN.RUL.23` and `FIN.RUL.24` run with these
+  defaults.
 
 #### Files to read
 - `docs/verticals/02-construction.md` §3.3, §4.3, §4.4 (tables "When it goes wrong"), §7
@@ -1328,7 +1466,7 @@ The mechanisms themselves (module epics in Depends on); labour and compliance (B
 
 ### BL-CON-18 — 02 Construction: configure shared negative-flow settings — labour and compliance
 
-**Labels:** `vertical:02-construction` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 02 · **Size:** m
+**Labels:** `vertical:02-construction` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:field-pwa` `surface:system` · **Milestone:** Launch 02 · **Size:** m
 **Depends on:** BL-ATT-01 · BL-ATT-02 · BL-ATT-03 · BL-ATT-04 · BL-ATT-05 · BL-ATT-06 · BL-ATT-07 · BL-ATT-08 · BL-HRM-01 · BL-HRM-04 · BL-HRM-07 · BL-DOC-02 · BL-DOC-04 · BL-KRN-04 · BL-KRN-08 · BL-SAL-19 · BL-SAL-20 · BL-SAL-21 · BL-HRM-26 · BL-HRM-27 · BL-HRM-28 · BL-DOC-08 · BL-DOC-09 · BL-DOC-10 · **Blocks:** None.
 **Review items:** X-13, X-15, X-16, X-19, 02-N5-d, 02-N8-a
 
@@ -1340,6 +1478,17 @@ It also seeds the 02 values for lead sources and campaigns (`SAL.CRM.02`), onboa
 (`HRM.ONB.01`) and registration kinds (`DOC.EXP.01`), added on 2026-10-16: `SAL.ACL.07`,
 `HRM.RUL.16`, `HRM.RUL.17`, `HRM.ACL.10`, `DOC.RUL.04` and `DOC.RUL.01`. The supplier
 scorecard (`STK.SUP.01`) is seeded in BL-CON-17.
+
+#### Surfaces
+- **Back office:** the project manager and HR review flagged attendance with a reason,
+  approve adjustment timesheets, and the MD approves absconding reports; the project manager
+  enters late attendance with a reason; staff see the seeded lead sources, campaigns,
+  onboarding tasks and SOP acknowledgements.
+- **Field PWA:** the supervisor marks attendance with the midday break pre-filled, cannot
+  enter it more than 1 day back, and cannot accept a flag on attendance they marked.
+- **System:** the 02 seed loads the owner role, compliance-critical rules, caps, break
+  window, permit kinds and reviewers; `HRM.RUL.13` and `HRM.RUL.14` raise the flags and a
+  failed critical run alerts the MD and the company admin.
 
 #### Files to read
 - `docs/verticals/02-construction.md` §2 "Labour", §3.3 (`HRM.ACL.01`, `HRM.ACL.07`–`09`), §4.2
@@ -1445,7 +1594,7 @@ scorecard (BL-CON-17).
 
 ### BL-CON-19 — 02 Construction: make the client portal read-only after the final account
 
-**Labels:** `vertical:02-construction` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Later · **Size:** s
+**Labels:** `vertical:02-construction` `area:negative-flow` `priority:medium` `size:s` `surface:portal` `surface:system` · **Milestone:** Later · **Size:** s
 **Depends on:** BL-CON-02 · Base: wl-portal client portal (`POR.SLF.01`, Later in 02) · **Blocks:** None.
 **Review items:** 02-N2-a
 
@@ -1453,6 +1602,12 @@ scorecard (BL-CON-17).
 When the client portal exists for 02 (Later), client contacts keep read-only access to a project's
 documents after its final account is closed (by `close` or `settle_final_account`), then the portal
 closes after 90 days.
+
+#### Surfaces
+- **Portal:** the client contact can read the project's documents but not upload once the
+  project is `closed`; after 90 days the project is no longer visible.
+- **System:** the access window is counted from the date the project became `closed`; other
+  projects of the same client are unaffected.
 
 #### Files to read
 - `docs/verticals/02-construction.md` §3.3 `POR.ACL.01`, `CON.ACL.12`, §4.8 step 6, §7.1

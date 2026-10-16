@@ -28,7 +28,7 @@ reassignment", and the 04 task changes (D-09 area, 04-N8-a).
 
 ### BL-TKT-01 — wl-ticketing: reassign a ticket with a recorded reason without restarting the SLA
 
-**Labels:** `module:wl-ticketing` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-ticketing` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** Base: wl-ticketing Ticket lifecycle · **Blocks:** BL-TKT-04, BL-TKT-05, BL-TKT-07, BL-TKT-08, BL-PRP-27
 **Review items:** D-13, 01 MEDIUM (vendor no-show reassignment)
 
@@ -37,6 +37,13 @@ When a ticket already assigned is assigned to someone else (the vendor did not t
 contract ended, the vendor's approval lapsed), the reassignment records a reason, the previous
 assignee is told the job was withdrawn, and the SLA clocks keep running from the first
 assignment.
+
+#### Surfaces
+- **Back office:** the coordinator reassigns an assigned ticket choosing a reason
+  (`vendor_no_show`, `contract_ended`, `vendor_document_expired`, `workload`, `other` +
+  text); the ticket shows the reassignment history.
+- **System:** the SLA due times are not restarted or recomputed, and the previous assignee
+  is told the job was withdrawn.
 
 #### Files to read
 - `docs/modules/wl-ticketing.md` §3 (*Ticket*: reassignment history, visit scheduled at), §4.1
@@ -88,7 +95,7 @@ No-show detection (BL-TKT-05); contract-end reassignment task (BL-TKT-04).
 
 ### BL-TKT-02 — wl-ticketing: invoice a chargeable ticket on resolve or on close per category
 
-**Labels:** `module:wl-ticketing` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-ticketing` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:field-pwa` `surface:portal` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** Base: wl-ticketing Ticket lifecycle · Epic wl-invoicing: `Invoicer` invoice draft · **Blocks:** BL-PRP-24, BL-PRP-26
 **Review items:** D-14
 
@@ -96,6 +103,16 @@ No-show detection (BL-TKT-05); contract-end reassignment task (BL-TKT-04).
 A chargeable job must not be invoiced before the requester had the chance to dispute the work.
 Each category says whether its invoice draft is made on `resolve` or on close (`confirm` or
 `close`). 01 Property invoices tenants on close: at `resolve` the tenant only sees the amount.
+
+#### Surfaces
+- **Back office:** the coordinator may change the charge lines after resolve; the invoice
+  draft appears for finance at `resolve` or at close, per category.
+- **Field PWA:** the assignee enters the charge lines before Resolve; resolving a chargeable
+  ticket without one is refused with "add the charge before resolving".
+- **Portal:** for a category that invoices on close, the tenant sees the total with VAT when
+  asked to confirm, and no invoice yet.
+- **System:** one draft per ticket is made through `Invoicer` at `resolve` or at `confirm`,
+  `close` or the `WRK.RUL.02` auto-close.
 
 #### Files to read
 - `docs/modules/wl-ticketing.md` §4.1 (`resolve`, `confirm`, `close`; 01 row of the vertical
@@ -162,7 +179,7 @@ Issuing and disputing the invoice (`Epic wl-invoicing`).
 
 ### BL-TKT-03 — wl-ticketing: raise and clear compliance flags, including missed planned visits
 
-**Labels:** `module:wl-ticketing` `area:negative-flow` `priority:high` `blocked:open-item` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-ticketing` `area:negative-flow` `priority:high` `blocked:open-item` `size:m` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** Base: wl-ticketing Service contract lifecycle, Maintenance plan lifecycle; BL-KRN-08 · **Blocks:** BL-TKT-04, BL-TKT-07, BL-PRP-25, BL-PRP-27
 **Review items:** D-13, 01-N8-b
 
@@ -172,6 +189,14 @@ Compliance flag on a covered subject whenever it is not compliant: no contract, 
 missed, or the vendor's approval expired. Flags show on the subject, the dashboard and the
 compliance report, and clear when the cause is fixed. This issue builds the flag and its
 `visit_missed` cause (`WRK.RUL.14`).
+
+#### Surfaces
+- **Back office:** open compliance flags show on the subject, on the dashboard and in the
+  compliance report (by subject, reason and age); the coordinator, and the manager for
+  compliance-critical categories, are notified.
+- **System:** `WRK.RUL.14` runs daily, raises `visit_missed` N days after the planned due
+  date, clears it when the visit is resolved, and emits `ComplianceFlagRaised` /
+  `ComplianceFlagCleared`.
 
 #### Files to read
 - `docs/modules/wl-ticketing.md` §3 (*Compliance flag*, *Service contract* compliance contract),
@@ -252,7 +277,7 @@ vertical (01: fire and life safety, lifts).
 
 ### BL-TKT-04 — wl-ticketing: handle open visits and compliance when a service contract ends
 
-**Labels:** `module:wl-ticketing` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-ticketing` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** BL-TKT-01, BL-TKT-03, BL-KRN-08 · Base: wl-ticketing Service contract lifecycle · **Blocks:** BL-TKT-07, BL-INV-24, BL-PRP-24, BL-PRP-25, BL-PRP-27
 **Review items:** D-13
 
@@ -261,6 +286,14 @@ When a service contract expires or is terminated, `WRK.RUL.18` cancels the plann
 after the end date, leaves visits already in progress to finish, gives the coordinator one task to
 reassign or cancel the remaining open visits, and for a compliance contract without a replacement
 raises `no_contract` on each covered subject. Activating a replacement contract clears it.
+
+#### Surfaces
+- **Back office:** the coordinator gets one task listing the open visits due on or before
+  the end date, with reassign or cancel per visit (reassign only where the category says
+  so); covered subjects show the `no_contract` flag.
+- **System:** `WRK.RUL.18` runs on expiry or the termination date, cancels visits due after
+  it, raises `no_contract` without a replacement and emits `ServiceContractEnded`;
+  `activate` of a replacement clears the flag.
 
 #### Files to read
 - `docs/modules/wl-ticketing.md` §4.1 (`cancel`, "Service contract coverage"), §4.6
@@ -362,7 +395,7 @@ Vendor bill matching after the end date (BL-INV-24).
 
 ### BL-TKT-05 — wl-ticketing: record a vendor no-show and offer reassignment
 
-**Labels:** `module:wl-ticketing` `area:negative-flow` `priority:medium` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-ticketing` `area:negative-flow` `priority:medium` `size:m` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** BL-TKT-01 · **Blocks:** BL-PRP-27
 **Review items:** 01 MEDIUM (vendor no-show reassignment)
 
@@ -372,6 +405,12 @@ appointment, by its response due time), the system records a no-show against the
 contract, and offers the coordinator to reassign it or set a new time. The requester is told the
 new time; for compliance-critical categories the manager is told too. No-shows are counted on
 the contract page.
+
+#### Surfaces
+- **Back office:** the coordinator gets the no-show with "Reassign" and "New time" actions;
+  the contract page counts no-shows per vendor and contract.
+- **System:** `WRK.RUL.19` records a no-show M hours after the visit time (or at response
+  due) when a vendor has not started, and emits `VendorNoShow`.
 
 #### Files to read
 - `docs/modules/wl-ticketing.md` §4.1 (paragraph "Vendor no-show"), §6 (`VendorNoShow`,
@@ -434,7 +473,7 @@ Vendor performance reports beyond the count.
 
 ### BL-TKT-06 — wl-ticketing: refuse contract activation and visit completion without a valid vendor document
 
-**Labels:** `module:wl-ticketing` `area:negative-flow` `priority:high` `blocked:open-item` `size:s` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-ticketing` `area:negative-flow` `priority:high` `blocked:open-item` `size:s` `surface:back-office` `surface:field-pwa` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** BL-DOC-01 · **Blocks:** BL-TKT-07, BL-PRP-27
 **Review items:** X-13, 01-N8-b
 
@@ -446,6 +485,13 @@ expired or missing. In 01 the Civil Defence approval kind is seeded as a legal b
 mode `never`, locked). Whether the law really forbids the work without it is still open
 (`⚠ open: lawyer (L-19)`); until it is answered the seeded `never` stays, so this issue builds no
 override for it.
+
+#### Surfaces
+- **Back office:** activating a contract covering a guarded category is refused while the
+  vendor's document is not valid on the start date; no override action is offered in 01.
+- **Field PWA:** the technician's Resolve on a fire-safety visit of a vendor with an expired
+  Civil Defence approval is refused naming the document and date; a plumbing ticket resolves
+  normally.
 
 #### Files to read
 - `docs/modules/wl-ticketing.md` §4.1 (`resolve` guard), §4.6 (`activate` guard), §6
@@ -502,7 +548,7 @@ Flags while the document is expired (BL-TKT-07).
 
 ### BL-TKT-07 — wl-ticketing: flag a contract and its subjects while the vendor's document is expired
 
-**Labels:** `module:wl-ticketing` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-ticketing` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** BL-TKT-03, BL-TKT-04, BL-TKT-06, BL-DOC-05, BL-TKT-01 · **Blocks:** BL-PRP-25, BL-PRP-27
 **Review items:** X-13, 01-N8-b, D-13
 
@@ -512,6 +558,14 @@ document flag, its open planned visits are flagged, the covered subjects get a c
 `vendor_document_expired`, and the coordinator and manager are told. Everything clears when a
 renewed document is accepted; otherwise the coordinator reassigns the visits or terminates the
 contract. The vendor may still attend, but a visit it completes does not count.
+
+#### Surfaces
+- **Back office:** the contract shows the vendor document flag, its open planned visits are
+  flagged and the covered subjects show `vendor_document_expired`; the coordinator reassigns
+  visits with that reason or terminates the contract.
+- **System:** on `DocumentExpired` the flags are raised once, and they clear on
+  `DocumentAccepted`, on a replacement contract becoming `active`, or at contract end
+  (`WRK.RUL.18`).
 
 #### Files to read
 - `docs/modules/wl-ticketing.md` §3 (*Service contract*: vendor document flag; *Compliance
@@ -584,7 +638,7 @@ The guards (BL-TKT-06); contract end (BL-TKT-04).
 
 ### BL-TKT-08 — wl-ticketing: put a blocked vendor's service contracts under review
 
-**Labels:** `module:wl-ticketing` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-ticketing` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** BL-PTY-03, BL-PTY-04, BL-TKT-01 · **Blocks:** BL-PRP-27
 **Review items:** X-18
 
@@ -592,6 +646,13 @@ The guards (BL-TKT-06); contract end (BL-TKT-04).
 When a vendor party is blocked, its service contracts are under review: no new visits are
 assigned to it, and its planned visits are listed for the facility manager (the decider) to
 reassign. Nothing ends automatically; ending is the manager's `terminate`.
+
+#### Surfaces
+- **Back office:** the facility manager's review task lists the blocked vendor's planned
+  visits with "Reassign" and "Terminate contract" ("On hold" only); assigning a ticket to
+  the blocked vendor is refused.
+- **System:** `assign` to a vendor calls `BlockGuard::check(vendor, start)`, and new planned
+  visits of its contracts are created unassigned.
 
 #### Files to read
 - `docs/modules/wl-parties.md` §5.6 (row "Service contracts (party as vendor)")
@@ -646,7 +707,7 @@ The block and the generic review task (BL-PTY-01, BL-PTY-03).
 
 ### BL-TKT-09 — wl-ticketing: waive a task when its agreement ends or a started task no longer applies
 
-**Labels:** `module:wl-ticketing` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 04 · **Size:** s
+**Labels:** `module:wl-ticketing` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 04 · **Size:** s
 **Depends on:** Base: wl-ticketing Task lifecycle · **Blocks:** BL-ACC-06, BL-ACC-15, BL-ACC-17, BL-ACC-24
 **Review items:** 04-N8-b, 04 MEDIUM (ending mid-period)
 
@@ -655,6 +716,13 @@ Recurring tasks must stop when their source agreement ends (e.g. a 04 engagement
 system waives them and no next occurrence is generated. A setting decides whether a started
 task (in progress or waiting) may also be waived; 04 keeps it off, so its started tasks are
 listed for the manager instead.
+
+#### Surfaces
+- **Back office:** a `tasks.manage` holder waives a task with a reason; with *waive a
+  started task* off (04) the manager gets one task listing the started tasks of the ended
+  agreement.
+- **System:** when the source agreement ends, `upcoming` tasks are waived with "source
+  agreement ended" and no next occurrence is generated.
 
 #### Files to read
 - `docs/modules/wl-ticketing.md` §4.4 (`waive`, diagram, vertical mapping), §7 (setting "waive a
@@ -710,7 +778,7 @@ Held tasks (BL-TKT-10); 04's `ACC.RUL.10` regeneration (`Epic 04 Accounting`).
 
 ### BL-TKT-10 — wl-ticketing: hold tasks while their source agreement is paused
 
-**Labels:** `module:wl-ticketing` `area:negative-flow` `priority:medium` `size:m` · **Milestone:** Launch 04 · **Size:** m
+**Labels:** `module:wl-ticketing` `area:negative-flow` `priority:medium` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 04 · **Size:** m
 **Depends on:** Base: wl-ticketing Task lifecycle · **Blocks:** BL-ACC-03, BL-ACC-24
 **Review items:** 04-N8-a, 04 MEDIUM (suspension and retainer)
 
@@ -720,6 +788,12 @@ with effect pause), its tasks carry a *held* flag. They keep their state and due
 reminders and new request lists stop; overdue marking still runs because the due date is a fact.
 When the agreement resumes, the flag clears and the manager gets the list of what went overdue
 meanwhile.
+
+#### Surfaces
+- **Back office:** held tasks show the held flag (no reason for a restricted block); on
+  release the manager gets the list of tasks that went overdue while held.
+- **System:** `Tasks::hold(source)` and `Tasks::release(source)` set the flag; client
+  reminders and new request lists stop while `mark_overdue` keeps running.
 
 #### Files to read
 - `docs/modules/wl-ticketing.md` §4.4 (paragraph "Held tasks", vertical mapping)
@@ -772,7 +846,7 @@ The 04 engagement transitions (`Epic 04 Accounting`); request list reminders the
 
 ### BL-TKT-11 — wl-ticketing: seed the ticket categories that other modules open for negative flows
 
-**Labels:** `module:wl-ticketing` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-ticketing` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** Base: wl-ticketing Ticket lifecycle · **Blocks:** BL-MPW-20, BL-AUT-06, BL-CON-15, BL-PRP-13, BL-PRP-21, BL-PRP-27
 **Review items:** X-02, X-11, X-15
 
@@ -781,6 +855,13 @@ Other modules open tickets for their negative flows: invoice disputes, labour ca
 settlement dispute, delivery claims. These platform categories are seeded whenever the opening
 module is enabled, with fixed properties, so the opening module can rely on them. The vertical
 may rename them but not remove them.
+
+#### Surfaces
+- **Back office:** the platform categories appear in the ticket category settings; renaming
+  works and deleting is refused; *labour case* tickets are visible only with
+  `tickets.confidential.view`.
+- **System:** the categories are seeded with fixed keys when the opening module is enabled,
+  and *billing dispute* resolves its assignee from the invoice owner.
 
 #### Files to read
 - `docs/modules/wl-ticketing.md` §3 (*Ticket category*), §7 (setting "Platform categories opened

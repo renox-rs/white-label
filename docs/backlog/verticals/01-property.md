@@ -48,7 +48,7 @@ items of review §6.
 
 ### BL-PRP-01 — 01 Property: cancel a lease after money or cheques were received
 
-**Labels:** `vertical:01-property` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `vertical:01-property` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** Base: 01 Lease lifecycle · Base: wl-invoicing Credit note · Base: wl-payments Refund lifecycle · BL-KRN-01 · BL-PAY-06 · **Blocks:** BL-PRP-02, BL-PRP-28
 **Review items:** 01-N2-a
 
@@ -58,6 +58,16 @@ before the lease is active. The leasing agent or accountant requests the cancell
 reason; a property manager approves it. On approval the lease is `cancelled`, undeposited
 cheques are returned against a receipt, issued invoices are credited, rent paid is refunded and
 the deposit is refunded or partly forfeited only where the signed terms allow it.
+
+#### Surfaces
+- **Back office:** when the prospect backs out, the leasing agent or accountant runs `cancel`
+  on the lease record with a reason and, where the signed terms allow, a forfeit amount and clause reference; a
+  property manager approves or rejects it under "Needs your action", and the accountant gets
+  a task listing any cheque already deposited.
+- **Portal:** the tenant sees the published deposit settlement, with any forfeit as a
+  deduction line with its clause reference, and may dispute it within the 14-day window.
+- **System:** at final approval the lease is cancelled and the cheque returns, credit notes,
+  refund requests and deposit settlement run on the money received by then.
 
 #### Files to read
 - `docs/verticals/01-property.md` §4.1 (table "When it goes wrong", row "The prospect backs out
@@ -186,7 +196,7 @@ the pending-signature chase (BL-PRP-02).
 
 ### BL-PRP-02 — 01 Property: chase a lease waiting for signature (`PRP.RUL.12`)
 
-**Labels:** `vertical:01-property` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `vertical:01-property` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** Base: 01 Lease lifecycle · BL-PRP-01 · **Blocks:** None.
 **Review items:** 01 MEDIUM "pending-signature timeout" (review §6)
 
@@ -194,6 +204,13 @@ the pending-signature chase (BL-PRP-02).
 A contract that was generated but not signed, or whose deposit was not paid, must not wait
 forever. After 14 days in `pending_signature` the leasing agent and property manager are reminded;
 after 30 days the property manager gets a task to extend the date or cancel the lease.
+
+#### Surfaces
+- **Back office:** the leasing agent and property manager are reminded after 14 days; after
+  30 days the property manager has an "extend or cancel" task with "extend to date" and
+  "cancel".
+- **System:** the daily `PRP.RUL.12` run at 02:00 creates the reminder and the task, and a
+  new task when an extended date passes; it never cancels.
 
 #### Files to read
 - `docs/verticals/01-property.md` §4.1 (row "The contract is generated but not signed, or the
@@ -239,7 +256,7 @@ The cancellation itself (BL-PRP-01).
 
 ### BL-PRP-03 — 01 Property: open the renewal window at 120 days and guard the notice deadline (`PRP.RUL.01`, `PRP.RUL.09`)
 
-**Labels:** `vertical:01-property` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `vertical:01-property` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** Base: 01 Lease lifecycle · BL-NTF-05 · BL-KRN-08 · **Blocks:** BL-PRP-04, BL-PRP-06
 **Review items:** D-03, 01-N5-b
 
@@ -249,6 +266,13 @@ expiry. The lease enters the renewal window 120 days before its end so the prope
 month to decide. The lease shows the notice deadline; a compliance-critical rule warns 14 and 3
 days before it, and at the deadline records that only the current terms can be renewed unless the
 tenant signs the new ones.
+
+#### Surfaces
+- **Back office:** the property manager sets the renewal decision on the lease, which shows
+  "notice deadline" and, once it has passed, "current terms only"; warnings arrive 14 and 3
+  days before the deadline.
+- **System:** the daily runs of `PRP.RUL.01` and `PRP.RUL.09` flag the lease `renewal_due`
+  and set the marker; a failed `PRP.RUL.09` run alerts the company admin.
 
 #### Files to read
 - `docs/verticals/01-property.md` §2 (90-day notice, Art. 13–14), §4.3 steps 1–2 and row "The
@@ -343,7 +367,7 @@ statutory notice delivery mechanics (BL-NTF-05).
 
 ### BL-PRP-04 — 01 Property: refuse a version with changed terms without timely notice or the tenant's acceptance (`PRP.ACL.17`)
 
-**Labels:** `vertical:01-property` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `vertical:01-property` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** BL-PRP-03 · BL-PRP-05 · **Blocks:** BL-PRP-08
 **Review items:** D-03, 01-N5-b
 
@@ -353,6 +377,14 @@ can be submitted only when the notice of changed terms was delivered, with proof
 notice period before the current end date; otherwise only with the tenant's signed acceptance
 attached. An amendment version (mid-term) against the tenant always needs the acceptance. This
 keeps the client inside the 90-day rule.
+
+#### Surfaces
+- **Back office:** the leasing agent or property manager submits a renewal or amendment
+  version; `submit` is refused with the deadline, the proof status and the two ways forward,
+  or asks "changes terms against the tenant?" with a reason for *no*; the tenant's signed
+  acceptance is attached to the draft.
+- **System:** the `submit` guard compares rent, deposit and number of cheques with the
+  current version.
 
 #### Files to read
 - `docs/verticals/01-property.md` §3.3 `PRP.ACL.17`, §4.3 row "The notice of changed terms was
@@ -419,7 +451,7 @@ The deadline warnings (BL-PRP-03); the rest of `submit` (BL-PRP-05).
 
 ### BL-PRP-05 — 01 Property: submit and activate renewal and amendment versions for the sitting tenant
 
-**Labels:** `vertical:01-property` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `vertical:01-property` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** Base: 01 Lease lifecycle · **Blocks:** BL-PRP-04, BL-PRP-07, BL-PRP-08, BL-PRP-15
 **Review items:** D-02
 
@@ -428,6 +460,13 @@ A renewal or amendment version for the tenant already in the unit could not be s
 because `submit` required the unit to be available or reserved. The guard now exempts such
 versions, and `activate` acts per version kind: a new lease occupies the unit; a renewal or
 amendment replaces the previous version and leaves the unit's state unchanged.
+
+#### Surfaces
+- **Back office:** the leasing agent submits and activates a renewal or amendment version
+  for the sitting tenant from the lease record; a refused `submit` or `activate` shows its
+  reason ("unit not available").
+- **System:** `activate` ends the previous version as `renewed` or `amended` in one
+  transaction, creates the charge schedule and the Ejari task and emits `LeaseActivated`.
 
 #### Files to read
 - `docs/verticals/01-property.md` §7.1 *Lease* (intro, `submit`, `activate`), *Unit* (`occupy`
@@ -497,7 +536,7 @@ the blocked-tenant guard (BL-PRP-15).
 
 ### BL-PRP-06 — 01 Property: hold over after the end date (`expire`, `PRP.RUL.03`, `PRP.RUL.14`)
 
-**Labels:** `vertical:01-property` `area:negative-flow` `priority:high` `blocked:open-item` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `vertical:01-property` `area:negative-flow` `priority:high` `blocked:open-item` `size:m` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** Base: 01 Lease lifecycle · Base: wl-invoicing Charge schedule (`FIN.BIL.01`) · BL-PRP-03 · **Blocks:** BL-PRP-07, BL-PRP-09
 **Review items:** D-01, 01-N13-a
 
@@ -507,6 +546,13 @@ which is not an end: in Dubai the tenant who stays is renewed on the same terms 
 Art. 6). Billing continues for the statutory renewal period and the property manager gets a task
 to issue the renewal version and renew Ejari, or record a notice. If the tenant still holds over
 when that period ends, billing is extended again and the task repeats.
+
+#### Surfaces
+- **Back office:** the property manager is notified when the lease becomes `expired` and
+  gets a holding-over task to issue the renewal version or record a notice; the lease shows
+  "holding over until" and offers `record_notice`, `renew`, `amend` and `force_terminate`.
+- **System:** `PRP.RUL.03` expires the lease the day after its end date and extends the
+  charge schedule per statutory period; `PRP.RUL.14` creates the task.
 
 #### Files to read
 - `docs/verticals/01-property.md` §2 (Art. 6), §4.3 row "The tenant stays after the end date
@@ -589,7 +635,7 @@ deadline (BL-PRP-03).
 
 ### BL-PRP-07 — 01 Property: renew from `renewal_due` or `expired` without billing twice
 
-**Labels:** `vertical:01-property` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `vertical:01-property` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** BL-PRP-05 · BL-PRP-06 · **Blocks:** None.
 **Review items:** D-01, D-02, 01-N13-a
 
@@ -597,6 +643,13 @@ deadline (BL-PRP-03).
 When a renewal version is activated, the previous version ends as `renewed`, also from `expired`.
 Scheduled charges of the old version that the new version covers are cancelled; invoices already
 issued for a holding-over period stay, and the new version does not bill those periods again.
+
+#### Surfaces
+- **Back office:** on activation the property manager is shown the rent difference per
+  period already invoiced and may add a charge or credit by hand; the accountant gets a task
+  to relink cheques.
+- **System:** `renew` links the versions and cancels the old version's scheduled charges
+  that the new one covers, without billing any period twice.
 
 #### Files to read
 - `docs/verticals/01-property.md` §7.1 *Lease* (`renew`, `activate`), §4.3 row "holding over"
@@ -647,7 +700,7 @@ Version submission and activation (BL-PRP-05); holding over (BL-PRP-06).
 
 ### BL-PRP-08 — 01 Property: amend an active lease mid-term (`amend`)
 
-**Labels:** `vertical:01-property` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `vertical:01-property` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** BL-PRP-04 · BL-PRP-05 · BL-PRP-13 · BL-INV-07 · BL-PAY-22 · Base: wl-invoicing Credit note · Base: wl-payments Cheque lifecycle · **Blocks:** None.
 **Review items:** 01-N6-a
 
@@ -658,6 +711,15 @@ charges after the effective date are recreated from the new plan; invoices alrea
 those periods are credited and reissued; cheques are relinked, or returned and replaced where the
 amounts change; the deposit is carried over with a top-up charge or a part refund; Ejari is
 updated.
+
+#### Surfaces
+- **Back office:** the leasing agent drafts an amendment version with an effective date on
+  the lease and activates it; `submit` and `activate` are refused with "legal case open" or
+  an effective date in a past month; the accountant gets a task to collect replacement
+  cheques.
+- **System:** `amend` recreates the charges, credits and reissues invoices pro rata, relinks
+  or returns cheques, runs deposit `adjust`, emits `LeaseAmended`; `PRP.RUL.02` chases the
+  Ejari number after 14 days.
 
 #### Files to read
 - `docs/verticals/01-property.md` §4.3 row "Mid-term change", §7.1 *Lease* (`amend`, `activate`),
@@ -762,7 +824,7 @@ charge for the difference on the effective date; decrease: refund `request` for 
 
 ### BL-PRP-09 — 01 Property: record a notice from any running state, with the landlord's statutory notice and the early termination penalty
 
-**Labels:** `vertical:01-property` `area:negative-flow` `priority:high` `blocked:open-item` `size:s` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `vertical:01-property` `area:negative-flow` `priority:high` `blocked:open-item` `size:s` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** Base: 01 Lease lifecycle · BL-PRP-06 · BL-NTF-05 · **Blocks:** BL-PRP-10, BL-PRP-11
 **Review items:** 01-N12-a, D-01
 
@@ -771,6 +833,14 @@ A notice to end the lease can now be recorded from `active`, `renewal_due` and `
 records the date, the party and the reason. A landlord's notice is a statutory notice that needs
 proof of delivery. When the tenant terminates early, the penalty set by the contract is added as
 a charge from the catalogue.
+
+#### Surfaces
+- **Back office:** the property manager records a notice on the lease with date, party,
+  reason, the planned move-out date and an early termination penalty; a landlord's notice
+  shows "notice not delivered" until its proof is recorded.
+- **System:** the unit moves to `notice_given`, the move-out inspection ticket and the
+  penalty charge are created, and the penalty's due date follows the planned move-out date
+  while it is not invoiced.
 
 #### Files to read
 - `docs/verticals/01-property.md` §4.3 rows "Early termination by the tenant" and "holding over",
@@ -844,7 +914,7 @@ Withdrawing a notice (BL-PRP-10); termination (BL-PRP-11).
 
 ### BL-PRP-10 — 01 Property: withdraw a tenant's notice (`withdraw_notice`, `PRP.ACL.20`)
 
-**Labels:** `vertical:01-property` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `vertical:01-property` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** BL-PRP-09 · **Blocks:** None.
 **Review items:** 01 MEDIUM "tenant withdraws notice" (review §6)
 
@@ -853,6 +923,14 @@ A tenant who gave notice may change their mind. With the landlord side's written
 property manager withdraws the notice: the lease goes back to the state its dates give, the unit
 back to `occupied`, the move-out inspection is cancelled and an uninvoiced penalty is cancelled.
 It is refused once a lease for another tenant on the unit was submitted.
+
+#### Surfaces
+- **Back office:** the property manager runs `withdraw_notice` on the lease with the written
+  agreement attached; it is refused without it, after the move-out inspection, or once
+  another tenant's lease was submitted.
+- **System:** the lease returns to the state its dates give, the unit to `occupied`, the
+  inspection ticket and an uninvoiced penalty are cancelled, and `LeaseNoticeWithdrawn` is
+  emitted.
 
 #### Files to read
 - `docs/verticals/01-property.md` §3.3 `PRP.ACL.20`, §4.3 row "The tenant withdraws the notice",
@@ -908,7 +986,7 @@ Recording the notice (BL-PRP-09).
 
 ### BL-PRP-11 — 01 Property: terminate a lease and settle charges, cheques and Ejari after move-out
 
-**Labels:** `vertical:01-property` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `vertical:01-property` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** BL-PRP-09 · Base: wl-payments Cheque lifecycle · Base: wl-invoicing Credit note · **Blocks:** BL-PRP-12, BL-PRP-17
 **Review items:** 01-N12-a, 01 MEDIUM "Ejari cancellation at move-out" (review §6)
 
@@ -918,6 +996,15 @@ scheduled charges after the move-out date are cancelled, invoices for periods af
 credited pro rata unless the contract keeps rent due, unused paid amounts are refunded or kept as
 credit, later cheques are returned, the tenant portal turns read-only, and the property manager is
 chased if the Ejari or Tawtheeq registration is not cancelled within 7 days.
+
+#### Surfaces
+- **Back office:** the property manager runs `terminate` with the move-out date and chooses
+  whether the tenant's credit is refunded or kept; 7 days later the property manager is
+  chased for the Ejari or Tawtheeq cancellation.
+- **Portal:** the tenant's portal turns read-only after move-out.
+- **System:** in one transaction, later charges are cancelled, invoices are credited pro
+  rata, later cheques are returned and the deposit settlement starts; `PRP.RUL.13` runs 7
+  days later.
 
 #### Files to read
 - `docs/verticals/01-property.md` §4.3 step 4 and row "Early termination by the tenant", §7.1
@@ -998,7 +1085,7 @@ BL-PRP-17); the early termination penalty (BL-PRP-09).
 
 ### BL-PRP-12 — 01 Property: force-terminate a lease for an abandoned unit or an executed eviction (`PRP.ACL.19`)
 
-**Labels:** `vertical:01-property` `area:negative-flow` `priority:high` `blocked:open-item` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `vertical:01-property` `area:negative-flow` `priority:high` `blocked:open-item` `size:m` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** BL-PRP-11 · BL-PRP-13 · BL-KRN-01 · BL-PAY-15 · **Blocks:** None.
 **Review items:** 01-N9-a, 01-N3-b
 
@@ -1008,6 +1095,15 @@ notice and key return. The property manager requests a forced termination with e
 user with `leases.force_terminate` (default company admin) approves. The lease ends as
 `terminated` from any running state, the unit is vacated, the deposit is applied to arrears and
 damages, and the legal case flag is closed with the outcome.
+
+#### Surfaces
+- **Back office:** the property manager requests `force_terminate` with reason *abandoned*
+  or *eviction executed*, the required attachments and a "keep as evidence" or return choice
+  per later cheque; the company admin approves under "Needs your action"; a missing
+  attachment is named in the refusal.
+- **System:** on approval the lease is `terminated` as in `terminate`, the unit vacated, the
+  deposit sent to settlement, the legal case flag closed with its outcome and
+  `LeaseForceTerminated` emitted.
 
 #### Files to read
 - `docs/verticals/01-property.md` §3.3 `PRP.ACL.19`, §4.3 row "The tenant abandons the unit or is
@@ -1082,7 +1178,7 @@ arrears escalation (BL-PRP-14).
 
 ### BL-PRP-13 — 01 Property: set and clear the legal case flag on a lease
 
-**Labels:** `vertical:01-property` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `vertical:01-property` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** Base: 01 Lease lifecycle · BL-INV-04 · BL-PAY-12 · BL-PAY-15 · BL-TKT-11 · **Blocks:** BL-PRP-08, BL-PRP-12, BL-PRP-14
 **Review items:** 01-N3-b, 01-N4-c
 
@@ -1091,6 +1187,14 @@ When a tenant does not pay after the formal demand, or a bounced cheque or a dep
 to the Rental Dispute Centre or a court, the lease carries a legal case flag. While set, reminders
 on its invoices pause, renewal and amendment versions are refused and the tenant gets no
 automatic messages about the case. It is cleared with an outcome.
+
+#### Surfaces
+- **Back office:** the property manager sets a legal case flag on the lease (type,
+  reference, new or picked *legal case* ticket) and clears it with an outcome; renewal and
+  amendment `submit` show "legal case open".
+- **System:** while a flag is open, invoice reminders, `PRP.RUL.10` tasks and automatic
+  tenant messages are suppressed; cheque `refer_to_legal` sets a flag and clearing a flag
+  resolves its ticket.
 
 #### Files to read
 - `docs/verticals/01-property.md` §7.1 *Lease* (paragraph "Legal case flag"), *Cheque*
@@ -1178,7 +1282,7 @@ Cheque legal case state (BL-PAY-12); the deposit dispute flag (BL-PAY-15); arrea
 
 ### BL-PRP-14 — 01 Property: escalate arrears to a formal demand and a legal case (`PRP.RUL.10`)
 
-**Labels:** `vertical:01-property` `area:negative-flow` `priority:high` `blocked:open-item` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `vertical:01-property` `area:negative-flow` `priority:high` `blocked:open-item` `size:m` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** BL-PRP-13 · BL-NTF-05 · BL-INV-04 · **Blocks:** None.
 **Review items:** 01-N3-b
 
@@ -1187,6 +1291,13 @@ Arrears that grow after the last reminder are escalated: 30 days after the due d
 manager gets a task to send a formal payment demand (a statutory notice with proof of delivery).
 When the demand period lapses unpaid, a second task asks to open a legal case on the lease or to
 agree a payment plan.
+
+#### Surfaces
+- **Back office:** the property manager gets one "send formal payment demand" task per lease
+  listing the overdue invoices and sends the statutory notice from it; when the demand
+  period lapses unpaid, a task "open a legal case or agree a payment plan".
+- **System:** the daily `PRP.RUL.10` run builds and updates the demand list and starts the
+  M-day clock only at the proof-of-delivery date.
 
 #### Files to read
 - `docs/verticals/01-property.md` §4.1 row "Arrears grow after the last reminder", §7.2
@@ -1263,7 +1374,7 @@ The legal case flag (BL-PRP-13); the statutory notice mechanics (BL-NTF-05); rem
 
 ### BL-PRP-15 — 01 Property: refuse new lease versions and hold money out for a blocked tenant
 
-**Labels:** `vertical:01-property` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `vertical:01-property` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** BL-PTY-04 · BL-PRP-05 · **Blocks:** None.
 **Review items:** X-18
 
@@ -1272,6 +1383,13 @@ While a tenant is blocked, its active lease continues (block effect `continue`, 
 property manager), but no new lease, renewal or amendment is submitted or activated for it, and
 deposit refunds wait for unblock or an approved exception. 01 calls the shared guard in its own
 transitions.
+
+#### Surfaces
+- **Back office:** for a blocked tenant, `submit` and `activate` of a new lease, renewal or
+  amendment are refused with the neutral text "party on hold", and a deposit `refund`
+  becomes an exception request to the compliance role.
+- **System:** the lease transitions and the deposit `refund` call `BlockGuard` with the
+  matching action kind; the active lease keeps billing and accepting payments.
 
 #### Files to read
 - `docs/verticals/01-property.md` §3.3 `PTY.ACL.03`, §7.1 *Lease* (`submit`, `activate`, paragraph
@@ -1323,7 +1441,7 @@ The guard and exception (BL-PTY-04); owner payouts (BL-PRP-20).
 
 ### BL-PRP-16 — 01 Property: escalate an unanswered deposit deductions dispute (`PRP.RUL.11`)
 
-**Labels:** `vertical:01-property` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `vertical:01-property` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** BL-PAY-15 · **Blocks:** None.
 **Review items:** 01-N4-c
 
@@ -1331,6 +1449,13 @@ The guard and exception (BL-PTY-04); owner payouts (BL-PRP-20).
 After deposit deductions are published, the tenant has 14 days to dispute. When the window ends
 with no dispute, the accountant is told the settlement may proceed. A dispute left 14 days without
 an answer or agreement is escalated to the property manager's manager.
+
+#### Surfaces
+- **Back office:** the accountant is told that the deposit settlement may proceed once the
+  window ends with no dispute; the property manager's manager is told about a dispute left
+  unanswered for 14 days.
+- **System:** the daily `PRP.RUL.11` run counts the window from the latest published version
+  and the escalation from the day the dispute was opened.
 
 #### Files to read
 - `docs/verticals/01-property.md` §4.3 step 4 and row "The tenant disputes the deductions", §7.2
@@ -1379,7 +1504,7 @@ The dispute flag, revise and uphold (BL-PAY-15).
 
 ### BL-PRP-17 — 01 Property: apply the deposit in full and invoice deductions that exceed it
 
-**Labels:** `vertical:01-property` `area:negative-flow` `priority:high` `blocked:open-item` `size:s` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `vertical:01-property` `area:negative-flow` `priority:high` `blocked:open-item` `size:s` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** BL-PAY-15 · BL-PRP-11 · Base: wl-invoicing Invoice lifecycle · **Blocks:** None.
 **Review items:** 01-N3-e
 
@@ -1387,6 +1512,13 @@ The dispute flag, revise and uphold (BL-PAY-15).
 When the approved deductions (damages, unpaid rent) exceed the deposit, the deposit is applied in
 full (`forfeit` with reason *applied to deductions*) and the excess is invoiced to the tenant as a
 damages charge, which then follows the normal arrears flow.
+
+#### Surfaces
+- **Back office:** the accountant runs deposit `forfeit` with reason *applied to
+  deductions*; a property manager approves, plus finance or the owner above AED 5,000; the
+  settlement statement shows deposit, deductions and the excess invoice number.
+- **System:** on approval the deposit is applied to unpaid rent oldest first, then to
+  damages, and the rest of the damages is issued as one damages invoice.
 
 #### Files to read
 - `docs/verticals/01-property.md` §4.3 row "Deductions exceed the deposit", §7.1 *Deposit*
@@ -1474,7 +1606,7 @@ Deductions dispute (BL-PAY-15); escalation (BL-PRP-16).
 
 ### BL-PRP-18 — 01 Property: record the owner's consent to a write-off and show write-offs and recoveries on the owner statement
 
-**Labels:** `vertical:01-property` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `vertical:01-property` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** BL-INV-01 · BL-INV-03 · BL-PRP-19 · **Blocks:** None.
 **Review items:** X-01 (01 values)
 
@@ -1483,6 +1615,13 @@ In a managed building the loss from an unpaid rent invoice is the owner's. A wri
 always approved by a property manager who did not request it, and for a managed building the
 owner's consent is recorded on the request. The written-off amount appears on the owner's
 statement, and a later recovery is credited there.
+
+#### Surfaces
+- **Back office:** the accountant attaches the owner's consent to a write-off request for a
+  managed building; a property manager other than the requester approves it; the owner
+  statement shows "rent written off" and later "recovered after write-off".
+- **System:** the lines go to the statement of the approval or recovery period, or to the
+  next statement when that one is already published.
 
 #### Files to read
 - `docs/verticals/01-property.md` §3.3 `FIN.ACL.15`, §4.1 row "A debt is uncollectable", §7.1
@@ -1538,7 +1677,7 @@ Write-off and recovery mechanics (BL-INV-01, BL-INV-03); bad-debt relief (BL-INV
 
 ### BL-PRP-19 — 01 Property: approve, return, publish and revise an owner statement
 
-**Labels:** `vertical:01-property` `area:negative-flow` `priority:medium` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `vertical:01-property` `area:negative-flow` `priority:medium` `size:m` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** Base: 01 Owner statement generation (`PRP.RUL.05`) · BL-KRN-01 · **Blocks:** BL-PRP-18, BL-PRP-20, BL-PRP-21, BL-PRP-22
 **Review items:** 01 MEDIUM "owner statement lifecycle and disputes" (review §6)
 
@@ -1547,6 +1686,13 @@ Owner statements get a lifecycle: the accountant prepares a draft, a property ma
 (not the preparer) or returns it, the accountant publishes it to the owner as a PDF, and a
 published statement with no payout can be revised into a new draft revision, the old one becoming
 `superseded`.
+
+#### Surfaces
+- **Back office:** the accountant prepares the draft owner statement; a property manager who
+  is not the preparer approves it or returns it with a reason; the accountant publishes it
+  and may revise a published one with no payout.
+- **System:** `publish` generates the PDF and e-mails it to the owner; `revise` creates the
+  new draft revision and supersedes the old one.
 
 #### Files to read
 - `docs/verticals/01-property.md` §4.4 steps 1–3, §3.3 `PRP.ACL.08`, `PRP.ACL.21`, §6 *Owner
@@ -1612,7 +1758,7 @@ Payout, carry forward and owner invoice (BL-PRP-20); disputes (BL-PRP-21).
 
 ### BL-PRP-20 — 01 Property: pay out only a positive, undisputed balance; carry forward or invoice a negative one (`PRP.ACL.21`)
 
-**Labels:** `vertical:01-property` `area:negative-flow` `priority:high` `blocked:open-item` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `vertical:01-property` `area:negative-flow` `priority:high` `blocked:open-item` `size:m` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** BL-PRP-19 · BL-PRP-21 · BL-PTY-04 · Base: wl-payments Payment lifecycle · **Blocks:** None.
 **Review items:** 01-N3-g
 
@@ -1622,6 +1768,13 @@ the statement is not disputed, the owner is not blocked and a second user approv
 balance of zero or less is carried forward to the next statement. When the agreement allows it, or
 the balance has stayed negative for 3 statements, the property manager may invoice the negative
 balance to the owner from the management company's entity.
+
+#### Surfaces
+- **Back office:** on a published statement the accountant runs `pay_out`, `carry_forward`
+  or `invoice_owner`; the payout or owner invoice is approved by another user under "Needs
+  your action"; disputed or blocked cases are refused with their reason.
+- **System:** final approval checks the guards again; the payout is recorded, or the
+  negative balance is brought forward or invoiced from the management company's entity.
 
 #### Files to read
 - `docs/verticals/01-property.md` §3.3 `PRP.ACL.08`, `PRP.ACL.21`, `PTY.ACL.03`, §4.4 step 3 and
@@ -1691,7 +1844,7 @@ Statement approval and revision (BL-PRP-19); disputes (BL-PRP-21).
 
 ### BL-PRP-21 — 01 Property: dispute an owner statement line and correct it by revision or adjustment lines
 
-**Labels:** `vertical:01-property` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `vertical:01-property` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** BL-PRP-19 · BL-TKT-11 · **Blocks:** BL-PRP-20, BL-PRP-29
 **Review items:** 01 MEDIUM "owner statement lifecycle and disputes" (review §6)
 
@@ -1700,6 +1853,14 @@ An owner may dispute a line of a published statement. The statement gets a dispu
 ticket; the payout waits. The flag is cleared by a revision before payout, or with an outcome:
 upheld, or an adjustment line on the next statement. A cost allocated to the wrong owner is
 corrected by adjustment lines on the next statements of both owners.
+
+#### Surfaces
+- **Back office:** staff flag a disputed line on a published or settled statement on the
+  owner's behalf and clear the flag by `revise` or with outcome *upheld* or *adjustment
+  line*; `pay_out` is blocked while the flag is set.
+- **System:** setting the flag opens an *owner statement dispute* ticket; an adjustment
+  outcome creates the lines picked up by the next draft statements, for both owners when the
+  cost was allocated to the wrong one.
 
 #### Files to read
 - `docs/verticals/01-property.md` §4.4 rows "The owner disputes a statement line" and "A cost was
@@ -1755,7 +1916,7 @@ Owner portal disputes (BL-PRP-29); payout (BL-PRP-20).
 
 ### BL-PRP-22 — 01 Property: activate a management agreement, give notice and end it with a handover pack
 
-**Labels:** `vertical:01-property` `area:negative-flow` `priority:high` `blocked:open-item` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `vertical:01-property` `area:negative-flow` `priority:high` `blocked:open-item` `size:m` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** BL-PRP-19 · BL-PAY-16 · Base: wl-payments Cheque lifecycle · **Blocks:** BL-PRP-23, BL-PRP-29
 **Review items:** 01-N12-c
 
@@ -1766,6 +1927,15 @@ deposited are handed over against a receipt, open charges and arrears are listed
 details are given. On `end`, charges after the handover date are cancelled, cheques are returned
 as *handed over*, deposits are transferred, tenants are told the new payee and a final owner
 statement is approved.
+
+#### Surfaces
+- **Back office:** the property manager activates the management agreement, records
+  `give_notice` with the handover date, completes the handover pack with a receipt per
+  deposit and cheque, and runs `end`; a missing receipt or an unapproved final statement
+  refuses `end`.
+- **System:** on `end` later charges are cancelled, cheques returned as *handed over*,
+  deposits transferred, tenants told the new payee and the leases marked "handed over on
+  <date>".
 
 #### Files to read
 - `docs/verticals/01-property.md` §4.4 row "The management agreement ends, or a unit is sold
@@ -1844,7 +2014,7 @@ One unit leaving the agreement (BL-PRP-23); deposit transfer mechanics (BL-PAY-1
 
 ### BL-PRP-23 — 01 Property: transfer a unit out of a management agreement when it is sold or no longer managed (`transfer_unit`)
 
-**Labels:** `vertical:01-property` `area:negative-flow` `priority:high` `blocked:open-item` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `vertical:01-property` `area:negative-flow` `priority:high` `blocked:open-item` `size:m` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** BL-PRP-22 · BL-PAY-16 · **Blocks:** None.
 **Review items:** 01-N12-c
 
@@ -1853,6 +2023,14 @@ A unit can leave an agreement mid-lease: sold to a new owner, or no longer manag
 manager approves the transfer; from the transfer date the unit's charges are issued by the new
 landlord of record (when the client still manages it for the buyer) or stop being managed here,
 with the same handover as `end` for that unit only.
+
+#### Surfaces
+- **Back office:** the property manager requests `transfer_unit` with the transfer date and
+  the new owner or "no longer managed"; another property manager approves; a managed sale is
+  refused with "new owner's agreement not active" until it is activated.
+- **System:** on approval the unit's charges from the transfer date are recreated with the
+  new issuer or the handover runs for that unit; a task suggests `give_notice` when the last
+  unit leaves.
 
 #### Files to read
 - `docs/verticals/01-property.md` §4.4 row "The management agreement ends, or a unit is sold
@@ -1915,7 +2093,7 @@ Ending the whole agreement (BL-PRP-22).
 
 ### BL-PRP-24 — 01 Property: cancel a maintenance job after work started and guard compliance visits (`PRP.ACL.15`)
 
-**Labels:** `vertical:01-property` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `vertical:01-property` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:field-pwa` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** Base: wl-ticketing Ticket lifecycle · BL-TKT-02 · BL-TKT-04 · **Blocks:** None.
 **Review items:** D-14, 01-N8-b
 
@@ -1927,6 +2105,16 @@ safety, lifts) can be resolved only with the vendor's service report attached, a
 skipped by a user: only rescheduled with a reason. The only cancel is the system's when the
 contract ends (`WRK.RUL.18`), for visits due after the end date; that is not a skip, because
 the visit is no longer owed under the ended contract and the building shows `no_contract`.
+
+#### Surfaces
+- **Back office:** the maintenance coordinator cancels a job from `on_hold` with a reason,
+  optionally ticking "charge tenant for work done" with charge lines; a compliance-critical
+  visit can only be rescheduled with a reason, and the `WRK.RUL.18` task offers only
+  "reassign" for open visits due before the contract end.
+- **Field PWA:** the technician cannot resolve a compliance-critical visit until the
+  vendor's service report is attached, or a chargeable job until it has a charge line.
+- **System:** when the contract ends, `WRK.RUL.18` cancels only the visits due after the end
+  date and the building shows `no_contract`.
 
 #### Files to read
 - `docs/verticals/01-property.md` §4.2 rows "The job is cancelled after work started" and "The
@@ -1993,7 +2181,7 @@ Invoice on confirm or close (BL-TKT-02; 01 value in BL-PRP-26); Civil Defence ap
 
 ### BL-PRP-25 — 01 Property: show building compliance flags and expiring certificates without blocking leasing
 
-**Labels:** `vertical:01-property` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `vertical:01-property` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** BL-TKT-03 · BL-TKT-04 · BL-TKT-07 · BL-KRN-08 · Base: wl-documents Document expiry (`DOC.RUL.01`) · **Blocks:** None.
 **Review items:** 01-N8-b, D-13
 
@@ -2002,6 +2190,12 @@ The property manager and company admin must see which buildings are non-complian
 flags (`visit_missed`, `no_contract`, `vendor_document_expired`) and expired compliance
 certificates (building safety certificate, lift certificate). On certificate expiry the building is
 flagged non-compliant on the dashboard and the company admin is told; leasing is not blocked.
+
+#### Surfaces
+- **Back office:** the property manager, maintenance coordinator and company admin see the
+  "Buildings non-compliant" dashboard tile with count and a list (building, cause, since).
+- **System:** `DOC.RUL.01` warns at 90, 30 and 7 days, raises `certificate_expired` the day
+  after expiry and tells the company admin; no lease transition checks the flags.
 
 #### Files to read
 - `docs/verticals/01-property.md` §4.5 rows "A planned visit is missed", "The contract expires or
@@ -2054,7 +2248,7 @@ Raising and clearing the ticketing flags (BL-TKT-03, BL-TKT-04, BL-TKT-07).
 
 ### BL-PRP-26 — 01 Property: configure shared negative-flow settings — money
 
-**Labels:** `vertical:01-property` `area:negative-flow` `priority:high` `blocked:open-item` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `vertical:01-property` `area:negative-flow` `priority:high` `blocked:open-item` `size:m` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** BL-INV-01 · BL-INV-04 · BL-INV-05 · BL-INV-09 · BL-INV-11 · BL-INV-24 · BL-PAY-09 · BL-PAY-10 · BL-PAY-14 · BL-PAY-15 · BL-PTY-03 · BL-PTY-04 · BL-KRN-03 · BL-TKT-02 · BL-INV-25 · BL-INV-26 · BL-INV-27 · BL-INV-28 · BL-INV-29 · BL-INV-30 · BL-PAY-25 · BL-PAY-26 · **Blocks:** None.
 **Review items:** X-01, X-02, X-03, X-04, X-05, X-18, X-19, D-14, 01-N3-a, 01 MEDIUM "duplicate vendor bills" (review §6)
 
@@ -2066,6 +2260,16 @@ each value is configured in the 01 seed and checked by a test.
 It also seeds the 01 values for the cash-flow forecast alert (`FIN.CFL.01`) and the
 company budget with owner drawings (`FIN.BUD.01`), added on 2026-10-16: `FIN.RUL.23`,
 `FIN.RUL.24` and `FIN.ACL.21`.
+
+#### Surfaces
+- **Back office:** the seeded money values show up in staff screens: write-off and payment
+  void approvals, held duplicate bills, bounce tasks, the bank match reversal limited to a
+  property manager, the cash-flow alert and the budget approval.
+- **Portal:** the tenant sees "dispute" on an issued invoice and a dispute button on
+  published deposit deductions for 14 days.
+- **System:** the 01 seed loads every value as configuration; the rules (`FIN.RUL.15`,
+  `FIN.RUL.18`, `FIN.RUL.23`, `FIN.RUL.24`, e-invoicing transmission) run with these
+  defaults.
 
 #### Files to read
 - `docs/verticals/01-property.md` §3.3, §4.1, §4.2, §4.4 (tables "When it goes wrong"), §7.1
@@ -2189,7 +2393,7 @@ The mechanisms themselves (module epics named in Depends on); compliance, docume
 
 ### BL-PRP-27 — 01 Property: configure shared negative-flow settings — compliance, documents and notices
 
-**Labels:** `vertical:01-property` `area:negative-flow` `priority:high` `blocked:open-item` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `vertical:01-property` `area:negative-flow` `priority:high` `blocked:open-item` `size:m` `surface:back-office` `surface:field-pwa` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** BL-DOC-01 · BL-DOC-04 · BL-DOC-05 · BL-TKT-01 · BL-TKT-03 · BL-TKT-04 · BL-TKT-05 · BL-TKT-06 · BL-TKT-07 · BL-TKT-08 · BL-TKT-11 · BL-NTF-05 · BL-KRN-04 · BL-KRN-08 · BL-SAL-19 · BL-SAL-20 · BL-SAL-21 · BL-HRM-26 · BL-HRM-27 · BL-HRM-28 · BL-DOC-08 · BL-DOC-09 · BL-DOC-10 · Base: 01 Enquiries and viewings (`PRP.LEA.01`) · **Blocks:** None.
 **Review items:** X-13, X-19, X-20, D-13, 01-N8-b, 01 MEDIUM "vendor no-show reassignment" (review §6)
 
@@ -2202,6 +2406,17 @@ It also seeds the 01 values for lead sources and campaigns (`SAL.CRM.02`), onboa
 (`HRM.ONB.01`) and registration kinds (`DOC.EXP.01`), added on 2026-10-16: `SAL.ACL.07`,
 `HRM.RUL.16`, `HRM.RUL.17`, `HRM.ACL.10`, `DOC.RUL.04` and `DOC.RUL.01`. Lead sources are
 recorded on the enquiry (`PRP.LEA.01`, MVP since 2026-10-16).
+
+#### Surfaces
+- **Back office:** the coordinator sees the list of a vendor's visits after the approval
+  expiry; staff get the seeded tasks (statutory-notice delivery, onboarding steps, SOP
+  acknowledgements), the lead sources on the enquiry and the campaign figures.
+- **Field PWA:** the technician's resolve of a fire and life safety ticket is refused with
+  no override when the vendor's Civil Defence approval has expired; a ticket update entered
+  late keeps the work time with a late-entry flag.
+- **System:** the 01 seed loads the owner role, compliance-critical rules, document kinds,
+  categories, notice types and notification groups; `PLT.RUL.04` alerts the owner role when
+  a critical rule fails.
 
 #### Files to read
 - `docs/verticals/01-property.md` §4.5 (table "When it goes wrong"), §7.2 (rules marked shared and
@@ -2316,7 +2531,7 @@ dashboard tile (BL-PRP-25).
 
 ### BL-PRP-28 — 01 Property: release a reserved unit and settle its booking deposit
 
-**Labels:** `vertical:01-property` `area:negative-flow` `priority:medium` `blocked:open-item` `size:s` · **Milestone:** Later · **Size:** s
+**Labels:** `vertical:01-property` `area:negative-flow` `priority:medium` `blocked:open-item` `size:s` `surface:back-office` `surface:system` · **Milestone:** Later · **Size:** s
 **Depends on:** Base: 01 Unit reservation (`PRP.LEA.02`, Later) · BL-PRP-01 · **Blocks:** None.
 **Review items:** 01-N2-a
 
@@ -2324,6 +2539,13 @@ dashboard tile (BL-PRP-25).
 When reservations exist (Later), a reserved unit is released when the prospect backs out or the
 lease is cancelled. The booking deposit is refunded, or forfeited only with the property manager's
 approval where the signed reservation allows it.
+
+#### Surfaces
+- **Back office:** the leasing agent or accountant cancels the lease or releases the
+  reserved unit, entering any forfeit with a clause reference; a property manager approves
+  under "Needs your action".
+- **System:** on approval the unit becomes `available` and the booking deposit refund (or
+  the rest after the forfeit) is requested.
 
 #### Files to read
 - `docs/verticals/01-property.md` §7.1 *Unit* (`reserve`, `release`), §3.3 `PRP.ACL.18`, §5
@@ -2373,7 +2595,7 @@ Reservations themselves (`PRP.LEA.02`, Later).
 
 ### BL-PRP-29 — 01 Property: owner portal — dispute a statement line and keep read-only access after the agreement ends
 
-**Labels:** `vertical:01-property` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Later · **Size:** s
+**Labels:** `vertical:01-property` `area:negative-flow` `priority:medium` `size:s` `surface:portal` `surface:system` · **Milestone:** Later · **Size:** s
 **Depends on:** BL-PRP-21 · BL-PRP-22 · Base: wl-portal owner portal (`POR.SLF.02`, Later) · **Blocks:** None.
 **Review items:** 01 MEDIUM "owner statement lifecycle and disputes" (review §6), 01-N12-c
 
@@ -2381,6 +2603,12 @@ Reservations themselves (`PRP.LEA.02`, Later).
 When the owner portal exists (Later), an owner disputes a statement line from the portal instead
 of through staff, and after the management agreement ends the owner keeps read-only access for 90
 days.
+
+#### Surfaces
+- **Portal:** the owner disputes a line of a published statement from the owner portal;
+  after the agreement ends the owner can only read statements and documents for 90 days.
+- **System:** the dispute sets the flag and opens the ticket as in BL-PRP-21; access closes
+  at 23:59 of day 90 after `end`.
 
 #### Files to read
 - `docs/verticals/01-property.md` §7.1 *Management agreement* (`end`), *Owner statement*

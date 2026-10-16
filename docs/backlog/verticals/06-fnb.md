@@ -39,7 +39,7 @@ X-08, X-09, X-10, X-11, X-12, X-14 and X-19.
 
 ### BL-FNB-01 — 06 F&B: move an order to `delivery_failed` when its own-rider delivery fails
 
-**Labels:** `vertical:06-fnb` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 06 · **Size:** m
+**Labels:** `vertical:06-fnb` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:field-pwa` `surface:system` · **Milestone:** Launch 06 · **Size:** m
 **Depends on:** Base: 06 Order fulfilment lifecycle (`dispatch`, `complete`) · BL-DLV-07 (perishable policy) · BL-DLV-08 (run `abort`) · BL-DLV-10 (perishable hand-over window) · **Blocks:** BL-FNB-02, BL-FNB-03
 **Review items:** 06-N9-b, X-12
 
@@ -49,6 +49,15 @@ unreachable, wrong address, refused, no cash, rider issue, run aborted), the ord
 `dispatched` to `delivery_failed` with the failure reason. Nothing is collected on cash on
 delivery, the customer is told, and the food comes back to the outlet. The refund decision is
 made when the order is closed (BL-FNB-02).
+
+#### Surfaces
+- **Back office:** the order shows `delivery_failed` with the order failure reason and the
+  original wl-delivery reason; no reattempt and no manual Fail delivery action are offered.
+- **Field PWA:** the rider records the failure in the driver PWA, including *rider issue*,
+  and picks the customer's stated cause (*late*, *wrong item*, *other*) for *refused*; a
+  failed cash order is left out of the rider's expected cash.
+- **System:** `fail_delivery` runs on `DeliveryAttemptFailed` or a run abort without
+  hand-over, maps the reason, ignores duplicate or late events, and the customer is told.
 
 #### Files to read
 - `docs/verticals/06-fnb.md` §4.2 "When it goes wrong" (rows "Own-rider delivery fails", "Rider's
@@ -134,7 +143,7 @@ The refund decision and closing (BL-FNB-02); `FNB.RUL.14` (BL-FNB-03); delivery 
 
 ### BL-FNB-02 — 06 F&B: close a failed delivery with the refund decision (`close_failed`, `FNB.ACL.17`)
 
-**Labels:** `vertical:06-fnb` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` · **Milestone:** Launch 06 · **Size:** m
+**Labels:** `vertical:06-fnb` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Launch 06 · **Size:** m
 **Depends on:** BL-FNB-01 · BL-SAL-07 (cancel with outcome per line) · BL-STK-26 (outcome *scrap* to wastage) · BL-PAY-06 · BL-PAY-07 (failed refunds) · **Blocks:** BL-FNB-08
 **Review items:** 06-N9-b, X-12
 
@@ -144,6 +153,14 @@ closed as `cancelled` with a refund decision and a responsible party. A prepaid 
 in full at once when the reason is on the outlet's side; for a customer-side reason no refund is
 made unless the kitchen manager approves one. The returned food is never sold again and is
 logged as wastage.
+
+#### Surfaces
+- **Back office:** the kitchen manager may change the proposed responsible party with a
+  note; the cashier requests a manager-approved refund from the cancelled order within 7
+  days and the kitchen manager, never the requester, approves it.
+- **System:** `close_failed` runs on `DeliveryReturned` or `DeliveryDiscarded` with the
+  proposed decision, refunds an outlet-side failure in full at once, and posts the wastage
+  once.
 
 #### Files to read
 - `docs/verticals/06-fnb.md` §3.3 (`FNB.ACL.16`, `FNB.ACL.17`), §4.2 "When it goes wrong" (row
@@ -229,7 +246,7 @@ logged as wastage.
 
 ### BL-FNB-03 — 06 F&B: turn cash on delivery off after repeated failures (`FNB.RUL.14`)
 
-**Labels:** `vertical:06-fnb` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 06 · **Size:** s
+**Labels:** `vertical:06-fnb` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:public` `surface:system` · **Milestone:** Launch 06 · **Size:** s
 **Depends on:** BL-FNB-01 · **Blocks:** None.
 **Review items:** 06-N9-b
 
@@ -237,6 +254,14 @@ logged as wastage.
 A customer whose cash-on-delivery orders keep failing for customer-side reasons costs the
 outlet food each time. After 2 such failures within 90 days, cash on delivery is turned off for
 that customer (online payment only) and the kitchen manager is told and can turn it back on.
+
+#### Surfaces
+- **Back office:** the kitchen manager turns cash on delivery back on for the customer
+  (screen not specified yet).
+- **Public page:** with cash on delivery off, the brand's ordering site checkout offers only
+  online payment, with the line "Online payment only for this order".
+- **System:** `FNB.RUL.14` counts customer-side failures on cash orders per customer party
+  over a rolling 90 days and turns cash on delivery off at 2.
 
 #### Files to read
 - `docs/verticals/06-fnb.md` §4.2 "When it goes wrong" (row "Own-rider delivery fails"), §7.2
@@ -286,7 +311,7 @@ The failure itself (BL-FNB-01).
 
 ### BL-FNB-04 — 06 F&B: cancel an order before acceptance by the customer, and after acceptance with outcomes
 
-**Labels:** `vertical:06-fnb` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 06 · **Size:** m
+**Labels:** `vertical:06-fnb` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:field-pwa` `surface:public` `surface:system` · **Milestone:** Launch 06 · **Size:** m
 **Depends on:** Base: 06 Order fulfilment lifecycle · BL-SAL-07 (cancel with outcome per line) · BL-STK-26 · Base: 06 Kitchen ticket lifecycle · **Blocks:** BL-FNB-06
 **Review items:** 06 MEDIUM "customer cancel before acceptance", X-14
 
@@ -298,6 +323,17 @@ kitchen is *business*); a paid order above AED 50 or after
 preparation started needs a manager, and once the kitchen started, each started line needs an
 outcome (*return to stock* or *scrap*). An order entered by mistake is cancelled with reason
 *entered in error* and responsible party *business*; orders are never voided.
+
+#### Surfaces
+- **Back office:** the cashier cancels an accepted order with a reason and a responsible
+  party; above AED 50 or after preparation started a manager approves; once the kitchen
+  started, each started line needs *return to stock* or *scrap*; an aggregator order
+  cancelled with party *aggregator* shows "compensation expected".
+- **Field PWA:** the kitchen tickets of the cancelled order are voided on the KDS stations.
+- **Public page:** the customer cancels a `placed` direct order from the order page; once it
+  is accepted the cancel is refused ("order already accepted") and the page refreshes.
+- **System:** a customer cancel stops the `FNB.RUL.01` auto-reject timer; the refund follows
+  the cancel and started food is posted as wastage.
 
 #### Files to read
 - `docs/verticals/06-fnb.md` §3.3 (`SAL.ACL.01`, `SAL.ACL.05`), §4.2 "When it goes wrong" (row
@@ -367,7 +403,7 @@ posting (BL-STK-26).
 
 ### BL-FNB-05 — 06 F&B: amend a direct order and cancel a line when an item runs out
 
-**Labels:** `vertical:06-fnb` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 06 · **Size:** m
+**Labels:** `vertical:06-fnb` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:field-pwa` `surface:system` · **Milestone:** Launch 06 · **Size:** m
 **Depends on:** BL-SAL-05 (amend as revision) · BL-SAL-06 (money of an amendment) · BL-SAL-08 (`cancel_line`) · BL-STK-26 · **Blocks:** None.
 **Review items:** 06 MEDIUM "item runs out after acceptance", X-14
 
@@ -379,6 +415,15 @@ tablet and only the result is recorded here: a line cancel or an order cancel wi
 party *business*. Kitchen tickets follow. The cashier holds `orders.manage` (amend) and
 `orders.cancel` (line cancel) for the outlet (§3.1); `SAL.ACL.05` still asks the manager for a
 started line.
+
+#### Surfaces
+- **Back office:** the cashier amends a direct order with the "customer agreed" tick and
+  call time, or runs Cancel line; Amend is not offered on aggregator orders, where only the
+  line cancel result is recorded; a started line needs the manager under `SAL.ACL.05`.
+- **Field PWA:** the station ticket on the KDS updates at once: an amended or cancelled line
+  disappears, added lines appear, and a ticket left empty is voided.
+- **System:** the amendment refunds the price difference or sends a payment link; an
+  aggregator line cancel is flagged for payout reconciliation.
 
 #### Files to read
 - `docs/verticals/06-fnb.md` §4.1 "When it goes wrong" (row "An item runs out after the order was
@@ -439,7 +484,7 @@ Order cancel (BL-FNB-04); `FNB.RUL.06` (base).
 
 ### BL-FNB-06 — 06 F&B: chase an aggregator rider who does not arrive (`FNB.RUL.16`)
 
-**Labels:** `vertical:06-fnb` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 06 · **Size:** s
+**Labels:** `vertical:06-fnb` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 06 · **Size:** s
 **Depends on:** Base: 06 Order fulfilment lifecycle · BL-FNB-04 · **Blocks:** None.
 **Review items:** 06 MEDIUM "aggregator rider never arrives"
 
@@ -448,6 +493,13 @@ An aggregator order that is `ready` but not picked up 15 minutes later alerts th
 to chase the aggregator on its tablet. At 45 minutes, a task asks the manager to record what
 happened: picked up late, or cancelled by the aggregator (order cancelled with responsible party
 *aggregator*, food wasted, payout line flagged for compensation).
+
+#### Surfaces
+- **Back office:** at 45 minutes the kitchen manager gets a task to record *picked up late*
+  or *cancelled by aggregator*; the second cancels the order with party *aggregator*, posts
+  the food as wastage and sets "compensation expected".
+- **System:** `FNB.RUL.16` notifies the kitchen manager 15 minutes after `ready`, creates no
+  task when the order was picked up earlier, and closes an open one.
 
 #### Files to read
 - `docs/verticals/06-fnb.md` §4.1 "When it goes wrong" (row "The aggregator's rider does not
@@ -495,7 +547,7 @@ Payout reconciliation (BL-FNB-10).
 
 ### BL-FNB-07 — 06 F&B: refund a completed order when its delivery is reversed
 
-**Labels:** `vertical:06-fnb` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Launch 06 · **Size:** s
+**Labels:** `vertical:06-fnb` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 06 · **Size:** s
 **Depends on:** BL-DLV-04 (delivery under review) · BL-DLV-05 (`reverse_delivery`, `WRK.ACL.10`) · BL-SAL-14 (sales return *no goods*) · **Blocks:** BL-FNB-08
 **Review items:** 06-N4-b, X-11
 
@@ -505,6 +557,14 @@ stays `completed`. If the kitchen manager finds the rider was wrong and reverses
 the customer gets a full refund through a sales return of kind *no goods*, with the rider as the
 responsible party. On cash on delivery with no cash handed over, nothing is refunded: the same
 return is resolved by credit note only. If the review is upheld, nothing changes.
+
+#### Surfaces
+- **Back office:** the kitchen manager checks the proof and reverses the delivery (the rider
+  can neither request nor approve it); the order stays `completed` with the amount refunded;
+  for a cash refund the cashier records the method.
+- **System:** on `DeliveryReversed` a *no goods* return for every line, party *rider*, is
+  created and resolved at once by refund or, for cash on delivery with no cash handed over,
+  by credit note, and the order's cash leaves the rider's expected cash.
 
 #### Files to read
 - `docs/verticals/06-fnb.md` §4.2 "When it goes wrong" (row "Customer says the order never
@@ -565,7 +625,7 @@ Review and reversal mechanics (BL-DLV-04, BL-DLV-05); rider record (BL-FNB-08).
 
 ### BL-FNB-08 — 06 F&B: record rider faults and report refunds and failures by responsible party
 
-**Labels:** `vertical:06-fnb` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 06 · **Size:** s
+**Labels:** `vertical:06-fnb` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 06 · **Size:** s
 **Depends on:** BL-SAL-14 · BL-FNB-02 · BL-FNB-07 · **Blocks:** None.
 **Review items:** 06-N4-b
 
@@ -575,6 +635,14 @@ of kind *no goods* with a category and a responsible party. 06 adds two things: 
 rider is written to the rider's record, and the reports show failed own-rider deliveries by reason
 and refunds after completion by category and responsible party, including aggregator refunds
 deducted from payouts.
+
+#### Surfaces
+- **Back office:** the kitchen manager and HR see a *rider fault* entry on the timeline of
+  the rider's employee record (other riders do not); the failed deliveries report shows
+  failures by reason and the refunds report shows refunds by category and responsible party,
+  including aggregator refunds, filtered by brand, outlet and channel.
+- **System:** the rider fault entry is written on `ReturnResolved` and `close_failed` with
+  party *rider*, for the rider of the delivery's last run, with no pay effect.
 
 #### Files to read
 - `docs/verticals/06-fnb.md` §4.2 "When it goes wrong" (row "Complaint after delivery"), §10
@@ -622,7 +690,7 @@ The refund itself (BL-SAL-14); payout refund lines (BL-FNB-10).
 
 ### BL-FNB-09 — 06 F&B: refuse a duplicate payout statement and void a wrong one
 
-**Labels:** `vertical:06-fnb` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 06 · **Size:** m
+**Labels:** `vertical:06-fnb` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 06 · **Size:** m
 **Depends on:** Base: 06 Payout statement lifecycle · BL-KRN-03 (void pattern, `PLT.ACL.09`) · BL-SAL-14 (sales return `reverse`) · **Blocks:** BL-FNB-10
 **Review items:** 06 MEDIUM "payout file revert", X-19
 
@@ -631,6 +699,13 @@ The accountant imports aggregator payout statements by file. A statement with th
 and reference as one already imported is refused. A wrong file imported by mistake is voided
 before it is settled: matching, the sales returns created from its refund lines, and the expected
 receivable are reversed, and the right file is imported. The number is kept.
+
+#### Surfaces
+- **Back office:** the accountant's import of a duplicate statement is refused and points to
+  the existing one; Void on a wrong statement asks for a reason and, when `matched` or
+  `disputed`, an approval; Void is refused on a `settled` statement.
+- **System:** the void reverses matching and the receivable, runs `reverse` on the sales
+  returns from refund lines and frees the reference for a new import; the number is kept.
 
 #### Files to read
 - `docs/verticals/06-fnb.md` §4.3 "When it goes wrong" (row "Wrong file imported, or a file
@@ -687,7 +762,7 @@ Refund lines on `match` (BL-FNB-10).
 
 ### BL-FNB-10 — 06 F&B: turn aggregator refund lines into sales returns on payout match
 
-**Labels:** `vertical:06-fnb` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 06 · **Size:** m
+**Labels:** `vertical:06-fnb` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 06 · **Size:** m
 **Depends on:** Base: 06 Payout statement lifecycle · BL-SAL-14 (sales return *no goods*, resolution *refunded by the channel*, `reverse`) · BL-KRN-04 (late entry) · BL-FNB-09 · **Blocks:** None.
 **Review items:** 06-N4-a
 
@@ -697,6 +772,14 @@ a sales return of kind *no goods* on its order, resolved as *refunded by the cha
 money leaves the outlet), with the aggregator's reason as category and a responsible party, so
 the order's amount refunded and the refund KPI are true. A refund the kitchen did not cause is
 disputed. An order on the statement that was never recorded is entered as a late entry.
+
+#### Surfaces
+- **Back office:** the accountant sets the responsible party (*business* or *aggregator*)
+  for an unmapped refund reason before Match is allowed, and disputes a refund the kitchen
+  did not cause; the cashier enters a missing order as a late entry with the aggregator
+  order number.
+- **System:** Match creates one *no goods* return per refund line, resolved *refunded by the
+  channel* with no payment; a refund the aggregator takes back runs `reverse`.
 
 #### Files to read
 - `docs/verticals/06-fnb.md` §4.3 "When it goes wrong" (rows "Aggregator refunds a customer",
@@ -763,7 +846,7 @@ Void and duplicates (BL-FNB-09); reports (BL-FNB-08).
 
 ### BL-FNB-11 — 06 F&B: hold, release and discard production batches with their lot
 
-**Labels:** `vertical:06-fnb` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 06 · **Size:** m
+**Labels:** `vertical:06-fnb` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 06 · **Size:** m
 **Depends on:** Base: 06 Production batch lifecycle · BL-STK-11 · BL-STK-12 · BL-STK-14 · **Blocks:** BL-FNB-13
 **Review items:** 06-N10-c, X-09
 
@@ -773,6 +856,14 @@ ingredient lot must not be used. The batch records the ingredient lots it used (
 it starts, cannot start with an ingredient lot on hold, goes `on_hold` when its own lot is held,
 back to `produced` when the lot is released, and to `discarded` with wastage when the lot is
 discarded.
+
+#### Surfaces
+- **Back office:** the chef starting a batch picks ingredient lots (earliest expiry
+  proposed; held and expired lots refused) and enters the output lot expiry at Finish; a
+  held batch is discarded through the stock hold line decision *discard*.
+- **System:** `LotHeld`, `LotReleased` and `LotDiscarded` move the batch to `on_hold`,
+  `produced` or `discarded`, block its stock at every outlet and post the wastage once; the
+  chef is notified.
 
 #### Files to read
 - `docs/verticals/06-fnb.md` §7.1 *Production batch* (states, rows `start`, `hold`, `release`,
@@ -837,7 +928,7 @@ Recall trace (BL-FNB-13); hold mechanics (BL-STK-11, BL-STK-12).
 
 ### BL-FNB-12 — 06 F&B: hold a cold unit's stock on an out-of-range reading (`FNB.RUL.05`)
 
-**Labels:** `vertical:06-fnb` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 06 · **Size:** m
+**Labels:** `vertical:06-fnb` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 06 · **Size:** m
 **Depends on:** BL-STK-11 (`StockHoldService`) · BL-STK-12 (line decisions) · BL-STK-13 (`STK.RUL.07`) · Base: wl-ticketing tickets and checklists · **Blocks:** None.
 **Review items:** 06-N10-e
 
@@ -847,6 +938,15 @@ the chef decides. `FNB.RUL.05` opens an equipment ticket and places a stock hold
 `temperature`, the reading as reference). The chef decides per line: release, discard (wastage)
 or return to supplier, recording the reading and how long the food was out of range. Food that is
 not released is never sold.
+
+#### Surfaces
+- **Back office:** the chef decides each hold line (release, discard, return to supplier)
+  entering the reading and the minutes out of range; a discard above AED 200 waits for the
+  kitchen manager; the receiving and transfer screens warn "Fridge 2 is on temperature
+  hold".
+- **System:** `FNB.RUL.05` opens one equipment ticket and one stock hold per unit on an
+  out-of-range reading and adds later readings and stock moved in to them; `STK.RUL.07`
+  reminds after 2 hours and escalates after 4; a failed run sends the owner alert.
 
 #### Files to read
 - `docs/verticals/06-fnb.md` §4.6 "When it goes wrong" (row "A fridge or freezer reads out of
@@ -918,7 +1018,7 @@ Hold mechanics (BL-STK-11 to BL-STK-13); receiving rejections (settings BL-FNB-1
 
 ### BL-FNB-13 — 06 F&B: trace a recalled ingredient lot to orders and customers
 
-**Labels:** `vertical:06-fnb` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` · **Milestone:** Launch 06 · **Size:** m
+**Labels:** `vertical:06-fnb` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Launch 06 · **Size:** m
 **Depends on:** BL-FNB-11 · BL-STK-14 · BL-STK-15 (`TracePartyResolver`) · BL-STK-16 · **Blocks:** None.
 **Review items:** 06-N10-c, X-09
 
@@ -927,6 +1027,14 @@ When a supplier or authority recalls an ingredient lot, the trace must follow tr
 production batches to orders. 06 provides the resolver: direct orders → their customer; aggregator
 and counter sales without a known customer are listed per outlet and day. The owner decides on a
 public notice and tells the aggregators. Authority notification is open (AU-20).
+
+#### Surfaces
+- **Back office:** the head chef or owner sees the recall trace with one line per
+  direct-order customer (with their *possible* orders) and unknown-customer groups per
+  outlet and day; the owner gets the task "decide public notice and tell aggregators" and
+  records the decision; the recall report can be exported.
+- **System:** the `TracePartyResolver` maps order → customer and links orders as *possible*
+  from the lot's on-hand window; one notice per customer by SMS or e-mail.
 
 #### Files to read
 - `docs/verticals/06-fnb.md` §4.4 "When it goes wrong" (recall row), §7.2 settings (recall
@@ -981,7 +1089,7 @@ Recall opening, holds, notices engine (BL-STK-14 to BL-STK-16); batch holds (BL-
 
 ### BL-FNB-14 — 06 F&B: pause an outlet's channels during an outage and resume (`FNB.RUL.15`)
 
-**Labels:** `vertical:06-fnb` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 06 · **Size:** m
+**Labels:** `vertical:06-fnb` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:public` `surface:system` · **Milestone:** Launch 06 · **Size:** m
 **Depends on:** BL-KRN-07 (device heartbeat connections) · BL-KRN-04 (late entry) · BL-KRN-06 (recovery) · **Blocks:** None.
 **Review items:** 06-N7-c, X-19
 
@@ -991,6 +1099,16 @@ hours, `FNB.RUL.15` shows the outlet's brands as "temporarily closed" on the D2C
 kitchen manager and area manager to pause aggregators on their tablets. The kitchen works on
 paper. When the devices answer again, the kitchen manager is asked to resume the channels and to
 enter the paper orders as late entries.
+
+#### Surfaces
+- **Back office:** the kitchen manager (or area manager) resumes the channels by hand
+  (screen not specified yet) and enters the paper orders as late entries with their business
+  time.
+- **Public page:** the brand's ordering site shows the outlet's brands as "temporarily
+  closed" in its delivery areas and takes no orders there.
+- **System:** `FNB.RUL.15` pauses when the kitchen devices connection goes `down` in opening
+  hours, ignores silence outside them, never resumes by itself and repeats the resume prompt
+  every 15 minutes.
 
 #### Files to read
 - `docs/verticals/06-fnb.md` §4.6 "When it goes wrong" (row "Internet or power outage at the
@@ -1045,7 +1163,7 @@ Heartbeat connections (BL-KRN-07); late-entry approval mechanics (BL-KRN-04).
 
 ### BL-FNB-15 — 06 F&B: assign orders to a business day by the cut-off and reopen a closing for late entries
 
-**Labels:** `vertical:06-fnb` `area:negative-flow` `priority:medium` `size:m` · **Milestone:** Launch 06 · **Size:** m
+**Labels:** `vertical:06-fnb` `area:negative-flow` `priority:medium` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 06 · **Size:** m
 **Depends on:** Base: wl-sales Till session (daily closing) · BL-KRN-04 · BL-PAY-19 (till handover from a closed session) · **Blocks:** None.
 **Review items:** 06 MEDIUM "business-day cut-off", 06-N7-c, D-12
 
@@ -1055,6 +1173,14 @@ the outlet's cut-off (default 04:00): orders before it belong to the previous da
 closing can be submitted only after the cut-off. When late entries after an outage land in a
 submitted closing, the area manager reopens it. A cash shortage at closing goes to the till's
 cash handover.
+
+#### Surfaces
+- **Back office:** Submit of the daily closing is refused before the cut-off with the time
+  it opens; a late entry into a submitted closing creates an approval for the area manager,
+  who reopens it; a late entry into an `approved` closing is refused and the area manager
+  gets a task to record it in the next day's closing.
+- **System:** each order gets its business date from its creation time and the outlet's
+  cut-off; a closing shortage goes to the till's cash handover.
 
 #### Files to read
 - `docs/verticals/06-fnb.md` §4.6 step 4, §4.6 "When it goes wrong" (rows "Till cash is short at
@@ -1122,7 +1248,7 @@ Till session mechanics (Epic wl-sales); handover recovery and write-off (BL-PAY-
 
 ### BL-FNB-16 — 06 F&B: configure shared negative-flow settings (delivery, sales, payments, cash)
 
-**Labels:** `vertical:06-fnb` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` · **Milestone:** Launch 06 · **Size:** m
+**Labels:** `vertical:06-fnb` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` `surface:back-office` `surface:field-pwa` `surface:system` · **Milestone:** Launch 06 · **Size:** m
 **Depends on:** BL-DLV-02 · BL-DLV-03 · BL-DLV-05 to BL-DLV-10 · BL-SAL-01 to BL-SAL-09 · BL-SAL-14 · BL-PAY-02 to BL-PAY-07 · BL-PAY-17 · BL-PAY-19 · BL-INV-25 · BL-INV-26 · BL-INV-27 · BL-INV-28 · BL-INV-29 · BL-INV-30 · BL-PAY-25 · BL-PAY-26 · **Blocks:** None.
 **Review items:** X-06, X-07, X-11, X-12, X-14, D-12, 06-N3-a, 06-N9-b
 
@@ -1134,6 +1260,17 @@ for riders (MVP, D-12) and tills.
 It also seeds the 06 values for the cash-flow forecast alert (`FIN.CFL.01`) and the
 company budget with owner drawings (`FIN.BUD.01`), added on 2026-10-16: `FIN.RUL.23`,
 `FIN.RUL.24` and `FIN.ACL.21`.
+
+#### Surfaces
+- **Back office:** cash-on-delivery differences above AED 5, *no goods* refunds above AED 50
+  and shortages above AED 20 wait for their approvers; a rider's handover is counted by
+  someone else and salary recovery is not offered.
+- **Field PWA:** the rider's failure reasons include *rider issue* and *refused* asks for
+  the cause; at proof of delivery the customer may refuse one line, and on cash on delivery
+  only the accepted lines are collected.
+- **System:** values are seeded from the 06 deployment template; failed F&B deliveries are
+  never queued for reattempt; `FIN.RUL.19`, `FIN.RUL.21`, `FIN.RUL.23` and `FIN.RUL.24` run
+  with the 06 values.
 
 #### Files to read
 - `docs/verticals/06-fnb.md` §3.3 (shared rules), §4.2 "When it goes wrong", §4.6 (till), §7.2
@@ -1239,7 +1376,7 @@ Module mechanisms (their epics); stock, compliance and connections (BL-FNB-17).
 
 ### BL-FNB-17 — 06 F&B: configure shared negative-flow settings (stock, compliance, connections)
 
-**Labels:** `vertical:06-fnb` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` · **Milestone:** Launch 06 · **Size:** m
+**Labels:** `vertical:06-fnb` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` `surface:back-office` `surface:public` `surface:system` · **Milestone:** Launch 06 · **Size:** m
 **Depends on:** BL-STK-01 · BL-STK-03 · BL-STK-07 · BL-STK-11 to BL-STK-19 · BL-DOC-02 · BL-KRN-03 to BL-KRN-08 · BL-SAL-01 · BL-SAL-19 · BL-SAL-20 · BL-SAL-21 · BL-SAL-22 · BL-SAL-23 · BL-SAL-24 · BL-SAL-25 · BL-SAL-26 · BL-NTF-07 · BL-NTF-08 · BL-NTF-09 · BL-STK-28 · BL-STK-29 · BL-STK-30 · BL-STK-31 · BL-HRM-26 · BL-HRM-27 · BL-HRM-28 · BL-DOC-08 · BL-DOC-09 · BL-DOC-10 · **Blocks:** None.
 **Review items:** X-08, X-09, X-10, X-13, X-19, 06-N10-b, 06 MEDIUM "duplicate external orders"
 
@@ -1253,6 +1390,18 @@ scorecard (`STK.SUP.01`), loyalty (`SAL.LOY.01`), onboarding and SOPs (`HRM.ONB.
 registration kinds (`DOC.EXP.01`), added on 2026-10-16: `SAL.ACL.07`, `STK.RUL.09`,
 `STK.ACL.07`, `SAL.RUL.07`, `SAL.RUL.08`, `NTF.RUL.02`, `NTF.ACL.03`, `HRM.RUL.16`, `HRM.RUL.17`,
 `HRM.ACL.10`, `DOC.RUL.04` and `DOC.RUL.01`.
+
+#### Surfaces
+- **Back office:** the head chef decides hold lines at their own outlet, with the kitchen
+  manager as deputy; a receipt line rejected for `temperature` needs the reading; Void is
+  offered on payout statements, not on orders; with Deliverect `down` quick entry is offered
+  and the kitchen manager gets the duplicate list on recovery.
+- **Public page:** with the gateway `down` the ordering site checkout hides online payment
+  and offers cash on delivery; with SMS `down` the login screen shows "Login unavailable,
+  please call <outlet phone>".
+- **System:** values are seeded from the 06 deployment template; a failed `FNB.RUL.03`,
+  `FNB.RUL.04`, `FNB.RUL.05` or `DOC.RUL.03` run alerts the owner; an expired health card
+  blocks nothing.
 
 #### Files to read
 - `docs/verticals/06-fnb.md` §4.1 "When it goes wrong" (row "Deliverect is down"), §4.4 "When it

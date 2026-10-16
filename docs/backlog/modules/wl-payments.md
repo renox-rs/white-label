@@ -48,7 +48,7 @@ payment (G5, `FIN.BUD.01`: BL-PAY-26).
 
 ### BL-PAY-01 — wl-payments: reverse a payment and remove its allocations
 
-**Labels:** `module:wl-payments` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-payments` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** Base: wl-payments Payment lifecycle (`record`, allocation) · **Blocks:** BL-INV-07, BL-INV-12, BL-INV-17, BL-PAY-04, BL-PAY-06, BL-PAY-24
 **Review items:** X-03
 
@@ -56,6 +56,13 @@ payment (G5, `FIN.BUD.01`: BL-PAY-26).
 A payment recorded in error or returned by the bank is reversed. Every allocation is removed and
 `PaymentReversed` carries them, so wl-invoicing reopens each target (`unallocate`). The party is
 told about a bank return. A gateway payment with an open dispute cannot be reversed this way.
+
+#### Surfaces
+- **Back office:** a user with `payments.reverse` reverses a received payment with a reason;
+  the accountant gets a task "raise a charge for AED X" when the party's credit was already
+  refunded.
+- **System:** `PaymentReversed` carries the removed allocations so wl-invoicing reopens each
+  target; a payment from a bank statement import puts its line back to unmatched.
 
 #### Files to read
 - `docs/modules/wl-payments.md` §3 (Payment, Allocation), §4 *Payment* (`reversed` state,
@@ -125,7 +132,7 @@ supplier bills (BL-INV-12).
 
 ### BL-PAY-02 — wl-payments: fail an online payment and time out a pending one (`FIN.RUL.19`)
 
-**Labels:** `module:wl-payments` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 05 · **Size:** m
+**Labels:** `module:wl-payments` `area:negative-flow` `priority:high` `size:m` `surface:public` `surface:system` · **Milestone:** Launch 05 · **Size:** m
 **Depends on:** Base: wl-payments Payment and Payment link lifecycle (`start_online`, `confirm`) · Epic wl-kernel: integration down · **Blocks:** BL-PAY-03, BL-CLN-16, BL-EDU-01, BL-EDU-18, BL-FNB-16
 **Review items:** X-06, 06-N3-a
 
@@ -134,6 +141,12 @@ An online payment that the gateway declines, that the payer abandons, or that ge
 within the timeout ends in `failed`. The link stays open so the party can retry, and consumers
 (subscriptions, bookings, orders) get `PaymentFailed`. When the link expires, `PaymentLinkExpired`
 lets wl-scheduling release an unpaid hold.
+
+#### Surfaces
+- **Public:** on the payment link page the party sees the failure reason and a retry button;
+  the link stays open until its expiry.
+- **System:** gateway webhooks and `FIN.RUL.19` (after 30 minutes) run `fail` or `confirm`;
+  the link's expiry emits `PaymentLinkExpired` so an unpaid booking hold is released.
 
 #### Files to read
 - `docs/modules/wl-payments.md` §4 *Payment* (`pending`, `failed` states; `start_online`, `fail`;
@@ -212,7 +225,7 @@ reactions inside wl-scheduling and wl-sales (Epic wl-scheduling, Epic wl-sales).
 
 ### BL-PAY-03 — wl-payments: accept a late gateway confirmation and refund it automatically
 
-**Labels:** `module:wl-payments` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 05 · **Size:** m
+**Labels:** `module:wl-payments` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 05 · **Size:** m
 **Depends on:** BL-PAY-02 · Base: wl-payments Refund lifecycle · **Blocks:** BL-EDU-01
 **Review items:** X-06, 06-N3-a
 
@@ -221,6 +234,13 @@ A gateway may confirm a payment after it was marked failed. The money is then re
 if the targets are still open and the prepaid subject is still active, otherwise kept as the
 party's credit and refunded automatically. System refunds for late payments go straight to
 `approved` without a second person when they meet the strict conditions.
+
+#### Surfaces
+- **Back office:** the accountant is notified of the late payment; a refund that does not
+  meet the auto-approval conditions waits for approval as usual, and an amount mismatch
+  gives the accountant a task.
+- **System:** a verified late webhook runs `late_confirm`: the money is allocated, or kept
+  as credit with a refund requested, approved at once when the strict conditions hold.
 
 #### Files to read
 - `docs/modules/wl-payments.md` §4 *Payment* (`late_confirm`, "Who reacts" row "Late confirmation …"),
@@ -277,7 +297,7 @@ Failure and timeout (BL-PAY-02); refund failures (BL-PAY-06).
 
 ### BL-PAY-04 — wl-payments: record a chargeback and open the evidence task (`FIN.RUL.20`)
 
-**Labels:** `module:wl-payments` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 05 · **Size:** m
+**Labels:** `module:wl-payments` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 05 · **Size:** m
 **Depends on:** BL-PAY-01 · BL-INV-07 · **Blocks:** BL-PAY-05, BL-EDU-06, BL-EDU-18
 **Review items:** X-06
 
@@ -285,6 +305,12 @@ Failure and timeout (BL-PAY-02); refund failures (BL-PAY-06).
 When the card holder disputes a gateway payment and the gateway takes the funds back, the payment
 goes to `charged_back`. Its allocations are removed (invoices reopen), the gateway's dispute fee is
 recorded, and the accountant gets an evidence task with the gateway's deadline.
+
+#### Surfaces
+- **Back office:** the accountant gets an evidence task with the gateway's deadline and
+  links to the evidence records.
+- **System:** a verified dispute webhook runs `charge_back`, removes the allocations and
+  records the gateway's dispute fee; `FIN.RUL.20` reminds 2 days before the deadline.
 
 #### Files to read
 - `docs/modules/wl-payments.md` §3 (Payment field chargeback), §4 *Payment* (`charged_back`,
@@ -340,7 +366,7 @@ Outcomes (BL-PAY-05); invoice reopening (BL-INV-07).
 
 ### BL-PAY-05 — wl-payments: close a chargeback: won, lost or accepted (`FIN.ACL.18`)
 
-**Labels:** `module:wl-payments` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 05 · **Size:** m
+**Labels:** `module:wl-payments` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 05 · **Size:** m
 **Depends on:** BL-PAY-04 · **Blocks:** None.
 **Review items:** X-06
 
@@ -349,6 +375,12 @@ A chargeback ends in one of three ways. Won: the funds come back and the allocat
 re-applied where possible. Lost (or deadline passed without evidence): the payment is reversed and
 the invoices stay open. Accepted: the accountant decides not to contest, which needs another
 person's approval.
+
+#### Surfaces
+- **Back office:** a user with `payments.chargeback` requests `accept_chargeback` with a
+  reason, and another user approves it from "Needs your action".
+- **System:** a gateway outcome runs `win_chargeback` or `lose_chargeback`; an evidence
+  deadline passed without a submission also runs `lose_chargeback`.
 
 #### Files to read
 - `docs/modules/wl-payments.md` §4 *Payment* (`win_chargeback`, `lose_chargeback`,
@@ -398,7 +430,7 @@ Recording the chargeback (BL-PAY-04); invoice write-off (BL-INV-01).
 
 ### BL-PAY-06 — wl-payments: fail a refund and restore its source
 
-**Labels:** `module:wl-payments` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-payments` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** Base: wl-payments Refund lifecycle · BL-PAY-01 · **Blocks:** BL-PAY-07, BL-INV-08, BL-EDU-03, BL-FNB-02, BL-PAY-22, BL-PRP-01
 **Review items:** X-06
 
@@ -407,6 +439,12 @@ A refund can fail: the gateway refuses it, the card cannot receive it, or the ba
 transfer after it was paid. The refund goes to `failed`, the outgoing payment (if any) is
 reversed, the source balance is restored, people are told and `RefundFailed` lets the source owner
 restore its side (credit note reopens, payer credit balance, order or booking shows "not yet refunded").
+
+#### Surfaces
+- **Back office:** a user with `refunds.pay` runs `fail` with a reason when the bank returns
+  a paid transfer; a deposit shows "refund failed" with a link to the refund.
+- **System:** a declined gateway refund runs `fail`; the source balance is restored and
+  `RefundFailed` lets the source owner restore its side.
 
 #### Files to read
 - `docs/modules/wl-payments.md` §3 (Refund: attempts), §4 *Refund* (`paid`, `failed` states,
@@ -467,7 +505,7 @@ Retry, change of method, cancel (BL-PAY-07); credit note reopen (BL-INV-08).
 
 ### BL-PAY-07 — wl-payments: retry, change the method of, or cancel a failed refund (`FIN.RUL.21`)
 
-**Labels:** `module:wl-payments` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-payments` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** BL-PAY-06 · **Blocks:** BL-CLN-16, BL-EDU-03, BL-EDU-18, BL-FNB-02, BL-FNB-16
 **Review items:** X-06
 
@@ -475,6 +513,11 @@ Retry, change of method, cancel (BL-PAY-07); credit note reopen (BL-INV-08).
 A failed gateway refund is retried once after 24 hours. Otherwise the accountant pays by another
 method (new bank details need a new approval) or, if the party cannot be reached or wants to keep
 the credit, cancels the refund and leaves the amount on the party's credit balance.
+
+#### Surfaces
+- **Back office:** the accountant gets a "change method" task and runs `change_method` (new
+  bank details go to approval) or `cancel` with a reason.
+- **System:** `FIN.RUL.21` retries a failed gateway refund once after 24 hours.
 
 #### Files to read
 - `docs/modules/wl-payments.md` §4 *Refund* (`cancelled` state, `retry`, `change_method`,
@@ -526,7 +569,7 @@ Failure (BL-PAY-06).
 
 ### BL-PAY-08 — wl-payments: refund a payer credit balance
 
-**Labels:** `module:wl-payments` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 05 · **Size:** s
+**Labels:** `module:wl-payments` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` · **Milestone:** Launch 05 · **Size:** s
 **Depends on:** BL-INV-17 · Base: wl-payments Refund lifecycle · **Blocks:** None.
 **Review items:** 05-N3-c
 
@@ -534,6 +577,10 @@ Failure (BL-PAY-06).
 Money an insurer or payer paid in excess and that was not set off against recoupments is paid back
 with a refund whose source is the payer credit balance. Its approval is the movement's approval
 (`FIN.ACL.16`), and `FIN.ACL.04` also applies.
+
+#### Surfaces
+- **Back office:** user A requests a refund with the payer credit balance as its source and
+  user B approves it; the payer credit balance shows a "refund" movement with the approval.
 
 #### Files to read
 - `docs/modules/wl-payments.md` §3 (Refund source), §5.5a paragraph "Balances owed between the
@@ -573,7 +620,7 @@ Overpayment and recoupment (BL-INV-17).
 
 ### BL-PAY-09 — wl-payments: record a bounced cheque with partial honour, return certificate and bounce fee
 
-**Labels:** `module:wl-payments` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-payments` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** Base: wl-payments Cheque lifecycle · Epic wl-sales: credit hold (`SAL.RUL.05`) · **Blocks:** BL-PAY-10, BL-PAY-11, BL-PAY-12, BL-PAY-13, BL-PAY-14, BL-ACC-24, BL-AUT-18, BL-CON-17, BL-LOG-26, BL-MFG-14, BL-MPW-01, BL-MPW-21, BL-PRP-26
 **Review items:** X-05, 01-N3-a, 08-N3-a
 
@@ -583,6 +630,13 @@ bank's return certificate and enters any part the bank paid from the available b
 honoured part becomes a payment; the rest is the open amount still owed. A bounce fee charge is
 added when configured, and `ChequeBounced` lets wl-sales put the customer (and its credit group) on
 credit hold.
+
+#### Surfaces
+- **Back office:** the accountant records the bounce with the bank return reason, the return
+  certificate and any honoured amount; for an issued cheque the accountant gets a task to
+  replace it.
+- **System:** the honoured part is recorded as a payment, a bounce fee charge is added when
+  configured, and `ChequeBounced` lets wl-sales put the customer on credit hold.
 
 #### Files to read
 - `docs/modules/wl-payments.md` §3 (Cheque fields), §4 *Cheque* (intro, `bounced` state,
@@ -663,7 +717,7 @@ Follow-up outcomes (BL-PAY-10 to BL-PAY-13); reminders (BL-PAY-14); credit hold 
 
 ### BL-PAY-10 — wl-payments: re-present a bounced cheque
 
-**Labels:** `module:wl-payments` `area:negative-flow` `priority:high` `size:s` `blocked:open-item` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-payments` `area:negative-flow` `priority:high` `size:s` `blocked:open-item` `surface:back-office` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** BL-PAY-09 · **Blocks:** BL-AUT-18, BL-CON-17, BL-MFG-14, BL-MPW-03, BL-PRP-26
 **Review items:** X-05
 
@@ -671,6 +725,10 @@ Follow-up outcomes (BL-PAY-10 to BL-PAY-13); reminders (BL-PAY-14); credit hold 
 When the party confirms there are funds, a bounced received cheque can be deposited again, at most
 the configured number of presentations, and only if the bank honoured nothing before. A cheque that
 clears after a re-presentation emits `ChequeBounceResolved` (cleared).
+
+#### Surfaces
+- **Back office:** a user with `cheques.deposit` runs `represent` with the new deposit date
+  and the party's confirmation of funds or a note, then `clear` when the bank pays.
 
 #### Files to read
 - `docs/modules/wl-payments.md` §4 *Cheque* (`represent`, `clear`), §5.3 step 4, §6
@@ -717,7 +775,7 @@ Recording the bounce (BL-PAY-09).
 
 ### BL-PAY-11 — wl-payments: settle part of a bounced cheque and replace it
 
-**Labels:** `module:wl-payments` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-payments` `area:negative-flow` `priority:high` `size:s` `surface:back-office` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** BL-PAY-09 · **Blocks:** BL-MPW-03
 **Review items:** X-05
 
@@ -726,6 +784,11 @@ The party may pay part of a bounced cheque's open amount in cash, by transfer or
 amount goes down and the cheque stays where it is. When replacement cheques or payments cover the
 open amount, the cheque is `replaced`, any legal case task is closed, and the original is handed
 back once the replacement clears.
+
+#### Surfaces
+- **Back office:** a user with `cheques.manage` records a part payment with `settle_part`,
+  links replacement cheques or payments and runs `replace`; a hand-back task with a receipt
+  follows when the replacement clears.
 
 #### Files to read
 - `docs/modules/wl-payments.md` §4 *Cheque* (`settle_part`, `replace`), §4 *Payment* (`record`
@@ -782,7 +845,7 @@ Legal case (BL-PAY-12); write-off (BL-PAY-13).
 
 ### BL-PAY-12 — wl-payments: refer a bounced cheque to a legal case
 
-**Labels:** `module:wl-payments` `area:negative-flow` `priority:high` `size:s` `blocked:open-item` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-payments` `area:negative-flow` `priority:high` `size:s` `blocked:open-item` `surface:back-office` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** BL-PAY-09 · **Blocks:** BL-PRP-13
 **Review items:** X-05, 01-N3-b (cheque side)
 
@@ -792,6 +855,10 @@ accountant hands the open amount to a legal case: civil execution by default,
 or a criminal complaint only for return reasons on the configured criminal-grounds list. The case
 owner gets a task with an evidence pack; the party gets a formal notice. The platform records the
 case; it files nothing.
+
+#### Surfaces
+- **Back office:** a user with `cheques.legal` runs `refer_to_legal` with the case type and
+  the case owner; the case owner gets a follow-up task with the evidence pack.
 
 #### Files to read
 - `docs/modules/wl-payments.md` §3 (Cheque: legal case), §4 *Cheque* (`legal_case` state,
@@ -851,7 +918,7 @@ Settlement or write-off from `legal_case` (BL-PAY-11, BL-PAY-13).
 
 ### BL-PAY-13 — wl-payments: write off a bounced cheque through the invoice write-off
 
-**Labels:** `module:wl-payments` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-payments` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** BL-PAY-09 · BL-INV-01 · **Blocks:** BL-MPW-03
 **Review items:** X-05
 
@@ -859,6 +926,13 @@ Settlement or write-off from `legal_case` (BL-PAY-11, BL-PAY-13).
 When the open amount cannot be collected, the cheque is written off by writing off the linked
 invoices through wl-invoicing `write_off` (with its approval). The cheque moves to `written_off` when
 `InvoiceWrittenOff` arrives; records are kept as evidence and the credit hold stays until wl-sales releases it.
+
+#### Surfaces
+- **Back office:** a user with `cheques.manage` runs `write_off` with a reason, which
+  creates one invoice write-off request per linked invoice; when the balances do not match,
+  a message says to write off the invoices directly.
+- **System:** the cheque moves to `written_off` once `InvoiceWrittenOff` has arrived for
+  every linked invoice.
 
 #### Files to read
 - `docs/modules/wl-payments.md` §4 *Cheque* (`written_off` state, `write_off`), §5.3 step 4, §6
@@ -917,7 +991,7 @@ The invoice write-off (BL-INV-01).
 
 ### BL-PAY-14 — wl-payments: chase a bounced cheque (`FIN.RUL.18`)
 
-**Labels:** `module:wl-payments` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-payments` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** BL-PAY-09 · **Blocks:** BL-ACC-24, BL-AUT-18, BL-CON-17, BL-MFG-14, BL-PRP-26
 **Review items:** X-05, 01-N3-a
 
@@ -925,6 +999,12 @@ The invoice write-off (BL-INV-01).
 A bounced cheque must not be forgotten. After N days the party (with the open amount and bounce
 fee) and the responsible staff are reminded; after M days the accountant and manager get a task to
 re-present, refer to legal or write off.
+
+#### Surfaces
+- **Back office:** 14 days after the bounce, the accountant and the manager get a task to
+  re-present, refer to legal or write off the cheque.
+- **System:** `FIN.RUL.18` reminds the party and the responsible staff 3 days after the
+  bounce, and stops once the cheque leaves `bounced`.
 
 #### Files to read
 - `docs/modules/wl-payments.md` §6 (`FIN.RUL.18`, `FIN.RUL.04`), §7
@@ -962,7 +1042,7 @@ Setting (§7): *Bounced cheque reminders (`FIN.RUL.18`)* — party and staff at 
 
 ### BL-PAY-15 — wl-payments: dispute deposit deductions before the refund
 
-**Labels:** `module:wl-payments` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-payments` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:portal` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** Base: wl-payments Deposit lifecycle · Epic wl-portal: deductions shown to the party · **Blocks:** BL-PRP-12, BL-PRP-13, BL-PRP-16, BL-PRP-17, BL-PRP-26
 **Review items:** 01-N4-c
 
@@ -971,6 +1051,13 @@ After deposit deductions are published in the portal, the party may dispute line
 dispute window (setting per vertical, off by default, on for 01). While disputed, `refund` and
 `forfeit` wait. Staff answer with evidence and either revise the deductions (new version, window
 restarts) or uphold them.
+
+#### Surfaces
+- **Back office:** staff answer a disputed line with evidence and revise the deductions (a
+  new published version) or uphold them; `refund` and `forfeit` are refused while the flag
+  is set or the window is open.
+- **Portal:** within the dispute window the party disputes one or more deduction lines; the
+  dispute button is not shown after the window or when the setting is off.
 
 #### Files to read
 - `docs/modules/wl-payments.md` §4 *Deposit* (`refund`, `forfeit`, "Deductions dispute flag"),
@@ -1041,7 +1128,7 @@ Escalation of unanswered disputes (`PRP.RUL.11`, Epic 01 Property); deposit tran
 
 ### BL-PAY-16 — wl-payments: transfer a deposit to a new holder
 
-**Labels:** `module:wl-payments` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-payments` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** Base: wl-payments Deposit lifecycle · **Blocks:** BL-PRP-22, BL-PRP-23
 **Review items:** 01-N12-c
 
@@ -1049,6 +1136,10 @@ Escalation of unanswered disputes (`PRP.RUL.11`, Epic 01 Property); deposit tran
 When the source agreement passes to another holder before it ends (01 management agreement `end`
 or `transfer_unit`), the deposit is handed over against a receipt from the new holder; the liability
 leaves the client and the party is told who now holds it.
+
+#### Surfaces
+- **Back office:** a user with `deposits.manage` runs `transfer` with the new holder's
+  receipt attached, and the deposit shows `transferred`.
 
 #### Files to read
 - `docs/modules/wl-payments.md` §4 *Deposit* (`transferred` state, `transfer`), §5.4 step 5, §6 (`DepositSettled`)
@@ -1088,7 +1179,7 @@ Management agreement lifecycle (Epic 01 Property).
 
 ### BL-PAY-17 — wl-payments: count, recount, recover and write off a cash shortage (`FIN.ACL.19`)
 
-**Labels:** `module:wl-payments` `area:negative-flow` `priority:medium` `size:m` `blocked:open-item` · **Milestone:** Launch 03 · **Size:** m
+**Labels:** `module:wl-payments` `area:negative-flow` `priority:medium` `size:m` `blocked:open-item` `surface:back-office` · **Milestone:** Launch 03 · **Size:** m
 **Depends on:** Base: wl-payments Cash handover lifecycle · Epic wl-hr: cash shortage recovery adjustment · **Blocks:** BL-PAY-18, BL-PAY-19, BL-PAY-20, BL-PAY-21, BL-CLN-16, BL-EDU-18, BL-FNB-16, BL-LOG-10, BL-LOG-13, BL-LOG-26, BL-PAY-23
 **Review items:** X-07, D-12, 03-N9-a, 05-N11-a
 
@@ -1097,6 +1188,12 @@ Cash custody now covers any holder in per-person mode (driver, rider, receptioni
 sales rep) with a handover per run, shift or day. Another user counts. A short count can be
 recounted by a third user, then recovered from the holder (cash, or salary deduction only with
 `FIN.ACL.19`, off by default) or written off with approval as a loss of the holder's branch.
+
+#### Surfaces
+- **Back office:** a counter other than the holder counts the handover; a third user
+  recounts a short one; part recoveries, `recover` and `write_off` (approval above the
+  limit) are recorded on it. A salary deduction, when turned on, needs approval and the
+  holder's acknowledgement (screen not specified yet).
 
 #### Files to read
 - `docs/modules/wl-payments.md` §2 (`FIN.CSH.01`), §3 (Cash holder, Cash handover), §4 *Cash
@@ -1196,7 +1293,7 @@ Cheques in handovers (BL-PAY-18); till sessions (BL-PAY-19); run hand-over (BL-P
 
 ### BL-PAY-18 — wl-payments: confirm cheques collected in the field in a handover (`FIN.ACL.20`)
 
-**Labels:** `module:wl-payments` `area:negative-flow` `priority:medium` `size:m` · **Milestone:** Launch 08 · **Size:** m
+**Labels:** `module:wl-payments` `area:negative-flow` `priority:medium` `size:m` `surface:back-office` · **Milestone:** Launch 08 · **Size:** m
 **Depends on:** BL-PAY-17 · **Blocks:** BL-AUT-18
 **Review items:** X-07, 08 MEDIUM "cheques in the field handover"
 
@@ -1205,6 +1302,11 @@ Cheques collected by drivers, sales reps or desk staff are expected in the holde
 counter ticks each present or missing; present cheques get custody confirmed and only then can be
 deposited. A missing cheque is never written off as cash: it is searched for, or returned as lost
 and the party asked for a replacement.
+
+#### Surfaces
+- **Back office:** the counter ticks each expected cheque present or missing in the holder's
+  handover; only confirmed field cheques can be deposited, and a missing one is returned
+  with reason "lost".
 
 #### Files to read
 - `docs/modules/wl-payments.md` §3 (Cheque: collected by, custody confirmed), §4 *Cheque*
@@ -1257,7 +1359,7 @@ Cash counting (BL-PAY-17); cheque bounce (BL-PAY-09).
 
 ### BL-PAY-19 — wl-payments: create a till's handover from a closed till session
 
-**Labels:** `module:wl-payments` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 06 · **Size:** s
+**Labels:** `module:wl-payments` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 06 · **Size:** s
 **Depends on:** BL-PAY-17 · Epic wl-sales: till session `close` (`SAL.POS.01`) · **Blocks:** BL-FNB-15, BL-FNB-16
 **Review items:** X-07, D-12
 
@@ -1265,6 +1367,12 @@ Cash counting (BL-PAY-17); cheque bounce (BL-PAY-09).
 A till's cash is counted in the wl-sales till session. When the session closes, the system creates
 the till's handover with the session's expected and counted cash and the session's cashier as the
 responsible person, and runs `count`. A shortage is then recovered or written off here.
+
+#### Surfaces
+- **Back office:** a short till handover is recovered from the cashier or written off, as in
+  BL-PAY-17.
+- **System:** `TillSessionClosed` creates the till's handover with the session's expected
+  and counted cash and the cashier as responsible person, and runs `count`.
 
 #### Files to read
 - `docs/modules/wl-payments.md` §2 (paragraph under the capability table), §4 *Cash handover*
@@ -1319,7 +1427,7 @@ Till session in wl-sales (Epic wl-sales).
 
 ### BL-PAY-20 — wl-payments: move cash between drivers on a run hand-over
 
-**Labels:** `module:wl-payments` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 03 · **Size:** s
+**Labels:** `module:wl-payments` `area:negative-flow` `priority:medium` `size:s` `surface:field-pwa` `surface:system` · **Milestone:** Launch 03 · **Size:** s
 **Depends on:** BL-PAY-17 · Epic wl-delivery: run `hand_over` (`RunHandedOver`) · **Blocks:** None.
 **Review items:** X-12, X-07
 
@@ -1327,6 +1435,12 @@ Till session in wl-sales (Epic wl-sales).
 When a run is handed over mid-route, the receiving driver confirms in the app the cash counted and
 each cheque received. That cash and those cheques leave the giver's expected amount and join the
 receiver's open handover; any difference stays on the giver's handover and shows as a shortage at its count.
+
+#### Surfaces
+- **Field PWA:** at a mid-route hand-over, the receiving driver confirms in the driver app
+  the cash counted and each cheque received.
+- **System:** `RunHandedOver` runs `hand_over`: the confirmed cash and cheques move to the
+  receiver's open handover and any difference stays on the giver's.
 
 #### Files to read
 - `docs/modules/wl-payments.md` §4 *Cash handover* (`hand_over`), §6 (Events consumed `RunHandedOver`)
@@ -1368,7 +1482,7 @@ Run abort and hand-over in wl-delivery.
 
 ### BL-PAY-21 — wl-payments: escalate a handover that is not handed over (`FIN.RUL.22`)
 
-**Labels:** `module:wl-payments` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 03 · **Size:** s
+**Labels:** `module:wl-payments` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 03 · **Size:** s
 **Depends on:** BL-PAY-17 · **Blocks:** BL-LOG-13, BL-LOG-26
 **Review items:** 03-N9-a, X-07
 
@@ -1377,6 +1491,12 @@ A holder who does not come back at the end of the run, shift or day must not lea
 for. After N hours the manager gets a task to reach the holder; after M hours the company admin is
 notified and the manager counts the handover at what was actually received, so the full difference
 becomes a shortage. Money owed to third parties (03 COD remittances) is not reduced.
+
+#### Surfaces
+- **Back office:** the holder's manager gets a task to reach the holder, and after 48 hours
+  counts the handover at what was received, recorded as "holder absent".
+- **System:** `FIN.RUL.22` runs 12 hours after the end of the holder's period and notifies
+  the company admin after 48 hours (not for 03 drivers).
 
 #### Files to read
 - `docs/modules/wl-payments.md` §5.5 step 4, §6 (`FIN.RUL.22`), §7 (escalation setting)
@@ -1435,7 +1555,7 @@ Absconding in wl-hr; COD remittance (apps/logistics).
 
 ### BL-PAY-22 — wl-payments: top up or part-refund a held deposit when its agreement changes
 
-**Labels:** `module:wl-payments` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-payments` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** Base: wl-payments Deposit and Refund lifecycle · BL-PAY-06 (refund `fail`) · **Blocks:** BL-PRP-08
 **Review items:** 01 MEDIUM (lease amendment)
 
@@ -1444,6 +1564,12 @@ A lease amendment or renewal can change the deposit while it is held. The deposi
 `held`: an increase raises a top-up charge, and a decrease becomes a part refund through the
 normal Refund flow with its approval. The held amount follows the money actually received or
 paid back, so the final settlement starts from the right figure.
+
+#### Surfaces
+- **Back office:** a user with `deposits.manage` can run `adjust`; the part refund waits for
+  approval by another user, and the deposit shows its held amount.
+- **System:** a change of the source agreement (01 lease amendment or renewal) runs
+  `adjust`, creating a top-up charge or a part refund request.
 
 #### Files to read
 - `docs/modules/wl-payments.md` §3 *Deposit* (amount, held amount, adjustments), §4 *Deposit*
@@ -1501,7 +1627,7 @@ The lease amendment itself (BL-PRP-08); refund failure handling (BL-PAY-06, BL-P
 
 ### BL-PAY-23 — wl-payments: raise a later cash shortage against a holder
 
-**Labels:** `module:wl-payments` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 03 · **Size:** s
+**Labels:** `module:wl-payments` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` · **Milestone:** Launch 03 · **Size:** s
 **Depends on:** BL-PAY-17 (shortage recovery and write-off) · **Blocks:** BL-LOG-10
 **Review items:** X-07, 03-N9-a
 
@@ -1511,6 +1637,11 @@ reversed days later with liability *driver*, so the COD the driver handed over w
 collected. The operations manager raises the amount as a later shortage against the driver: a
 new handover, `short` from the start and linked to its source, that is recovered or written off
 through the normal shortage flow.
+
+#### Surfaces
+- **Back office:** the operations manager runs `raise_shortage` with holder, amount, reason
+  and source (e.g. from the 03 task after a reversed delivery); the new handover is
+  recovered or written off as usual.
 
 #### Files to read
 - `docs/modules/wl-payments.md` §3 *Cash handover* (kind), §4 *Cash handover* (rows
@@ -1572,7 +1703,7 @@ The 03 reversal and its task (BL-LOG-10); salary deductions (Epic wl-hr).
 
 ### BL-PAY-24 — wl-payments: set off a party's invoice against its supplier bill
 
-**Labels:** `module:wl-payments` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 02 · **Size:** s
+**Labels:** `module:wl-payments` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` · **Milestone:** Launch 02 · **Size:** s
 **Depends on:** Base: wl-payments Payment lifecycle · BL-PAY-01 (`reverse`) · BL-PTY-04 (`BlockGuard`) · **Blocks:** BL-CON-03, BL-CON-06, BL-CON-17
 **Review items:** 02 MEDIUM (certificate deductions)
 
@@ -1581,6 +1712,11 @@ When a party is both our customer and our supplier and the two sides agree to se
 each other (02: the client's back- and contra-charges recorded as a supplier bill from the client
 against our IPA invoice), the accountant records a set-off: one payment of method `set_off`
 that moves no money and is allocated at once to the invoice and to the supplier bill.
+
+#### Surfaces
+- **Back office:** the accountant records a payment of method `set_off`, allocated at once
+  to the party's open invoice and its approved supplier bill; it shows in receipts and
+  payments with method *set-off*.
 
 #### Files to read
 - `docs/modules/wl-payments.md` §3 *Payment* (method), §4 *Payment* (rows `record`, `reverse`,
@@ -1643,7 +1779,7 @@ Creating the supplier bill from the certificate (BL-CON-06).
 
 ### BL-PAY-25 — wl-payments: expose open cheques, bank balances and payments for the cash-flow forecast
 
-**Labels:** `module:wl-payments` `area:sme-gap` `priority:high` `size:s` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-payments` `area:sme-gap` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** Base: wl-payments Payment, Cheque and Bank statement import lifecycles · **Blocks:** BL-INV-28, BL-PAY-26, BL-ACC-24, BL-AUT-18, BL-CLN-16, BL-CON-17, BL-EDU-18, BL-FNB-16, BL-LOG-26, BL-MFG-14, BL-MPW-21, BL-PRP-26
 **Review items:** G2 (SME problem map 12, 14)
 
@@ -1655,6 +1791,12 @@ but not yet paid. This issue adds the closing balance to a bank statement import
 four reads; it changes no state machine. The read of payments with purpose *owner drawings*
 (budget vs actual, `FIN.BUD.01`) comes with that purpose in BL-PAY-26, and the read of
 statement lines marked as drawings with BL-PAY-26 too.
+
+#### Surfaces
+- **Back office:** at bank statement upload, the accountant enters the closing balance when
+  the file carries none.
+- **System:** read-only answers for open cheques, the latest closing balance per bank
+  account, payments after a date and unpaid refunds feed the cash-flow forecast.
 
 #### Files to read
 - `docs/modules/wl-payments.md` §3 *Payment*, *Cheque*, *Bank statement import* (closing
@@ -1732,7 +1874,7 @@ The forecast itself (BL-INV-28); the owner drawings purpose and its reads (BL-PA
 
 ### BL-PAY-26 — wl-payments: record an owner-drawings payment only after approval (`FIN.ACL.21`)
 
-**Labels:** `module:wl-payments` `area:sme-gap` `priority:high` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-payments` `area:sme-gap` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** Base: wl-payments Payment and Bank statement import lifecycles · BL-INV-27 (`FIN.ACL.21`, `CompanyBudgets`) · BL-PAY-25 (the reads this issue extends with drawings) · Epic wl-kernel: approval returned/failed (`PLT.APR.01`) · **Blocks:** BL-ACC-24, BL-AUT-18, BL-CLN-16, BL-CON-17, BL-EDU-18, BL-FNB-16, BL-LOG-26, BL-MFG-14, BL-MPW-21, BL-PRP-26
 **Review items:** G5 (SME problem map 11, 14)
 
@@ -1745,6 +1887,14 @@ own drawing is recorded at once, flagged, `FIN.ACL.23`). The payment goes to the
 category's owner party, is allocated to no document and counts as a drawing in budget vs
 actual. Money the owner pays back is an incoming payment with the same purpose. This issue also
 seeds the *Owner drawings* expense category.
+
+#### Surfaces
+- **Back office:** the accountant saves an outgoing payment with purpose *owner drawings* or
+  marks a statement line as a drawing; another holder of `drawings.approve` approves it from
+  "Needs your action".
+- **System:** only the final approval records the payment (a sole owner's at once, flagged
+  *self-approved*); a rejection, withdrawal or expiry records nothing and puts a statement
+  line back to `unmatched`.
 
 #### Files to read
 - `docs/modules/wl-payments.md` §3 *Payment* (purpose), *Expense category*, *Statement line*,

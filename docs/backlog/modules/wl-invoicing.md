@@ -53,7 +53,7 @@ forecast (G2, `FIN.CFL.01`: BL-INV-28 to 30).
 
 ### BL-INV-01 — wl-invoicing: write off an invoice balance as a bad debt
 
-**Labels:** `module:wl-invoicing` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-invoicing` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** Base: wl-invoicing Invoice lifecycle (`issue`, `allocate`, `mark_overdue`) · Epic wl-kernel: approval returned/failed (`PLT.APR.01`, request `fail`) · **Blocks:** BL-INV-02, BL-INV-03, BL-PAY-13, BL-ACC-24, BL-AUT-18, BL-CON-02, BL-CON-17, BL-EDU-18, BL-LOG-26, BL-MFG-14, BL-MPW-21, BL-PRP-18, BL-PRP-26
 **Review items:** X-01
 
@@ -62,6 +62,14 @@ A receivables user can write off the open balance of an unpaid invoice as a bad 
 write-off (default limit AED 0) goes to an approval by someone other than the requester. The tax
 invoice stays valid: no credit note, no change to lines or VAT. A pending VAT adjustment for
 bad-debt relief is created so that `FIN.RUL.14` (BL-INV-02) can propose it later.
+
+#### Surfaces
+- **Back office:** a receivables user runs `write_off` on the invoice with a reason code;
+  the approval request appears under "Needs your action" for another approver, and the
+  invoice then shows `written_off` with the write-off amount.
+- **System:** at final approval the balance and the "not `disputed`" guard are checked again
+  and the request fails if they changed; `FIN.RUL.01` sends no more reminders for the
+  invoice.
 
 #### Files to read
 - `docs/modules/wl-invoicing.md` §3 (Invoice fields: write-off; VAT adjustment), §4 *Invoice*
@@ -183,7 +191,7 @@ BL-INV-07); cheque write-off that calls this transition (BL-PAY-13); export to a
 
 ### BL-INV-02 — wl-invoicing: propose bad-debt VAT relief (`FIN.RUL.14`)
 
-**Labels:** `module:wl-invoicing` `area:negative-flow` `priority:high` `size:s` `blocked:open-item` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-invoicing` `area:negative-flow` `priority:high` `size:s` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** BL-INV-01 · Base: wl-invoicing VAT summary lifecycle · **Blocks:** BL-INV-03, BL-ACC-24, BL-AUT-18, BL-LOG-26, BL-MFG-14
 **Review items:** X-01
 
@@ -191,6 +199,12 @@ BL-INV-07); cheque write-off that calls this transition (BL-PAY-13); export to a
 A daily automation checks every written-off invoice with a pending bad-debt relief adjustment.
 When the legal conditions are recorded, it proposes the adjustment on the entity's next open VAT
 summary and tells the accountant, who includes or excludes it while preparing the summary.
+
+#### Surfaces
+- **Back office:** the accountant sees the proposed `bad_debt_relief` adjustment on the open
+  VAT summary while preparing it, and includes or excludes it with a reason.
+- **System:** `FIN.RUL.14` runs daily at 02:00 (Asia/Dubai) and proposes each eligible
+  pending adjustment on the entity's `open` VAT summary, then notifies the accountant.
 
 #### Files to read
 - `docs/modules/wl-invoicing.md` §3 (VAT adjustment), §4 *VAT summary*, §5.7 step 3, §5.9 step 3,
@@ -263,7 +277,7 @@ Writing off (BL-INV-01); recovery adjustments (BL-INV-03); preparing and locking
 
 ### BL-INV-03 — wl-invoicing: recover a written-off invoice
 
-**Labels:** `module:wl-invoicing` `area:negative-flow` `priority:high` `size:s` `blocked:open-item` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-invoicing` `area:negative-flow` `priority:high` `size:s` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** BL-INV-01, BL-INV-02 · **Blocks:** BL-PRP-18
 **Review items:** X-01
 
@@ -271,6 +285,13 @@ Writing off (BL-INV-01); recovery adjustments (BL-INV-03); preparing and locking
 When a party pays an invoice after it was written off, the payment is allocated to it through
 `recover`. The recovered amount is recorded; if relief was already claimed, a bad-debt recovery
 VAT adjustment adds the VAT back; when the whole write-off is recovered the invoice becomes `paid`.
+
+#### Surfaces
+- **Back office:** the invoice shows the recovered amount and becomes `paid` when the whole
+  write-off is recovered; the accountant sees a `bad_debt_recovery` adjustment on the open
+  VAT summary when relief was claimed.
+- **System:** a payment allocated to a written-off invoice runs `recover`, which reduces a
+  pending or proposed relief or creates the recovery adjustment.
 
 #### Files to read
 - `docs/modules/wl-invoicing.md` §4 *Invoice* (`recover`), §5.9 step 4, §6 (events
@@ -327,7 +348,7 @@ Write-off (BL-INV-01); relief proposal (BL-INV-02); payment reversal (BL-INV-07)
 
 ### BL-INV-04 — wl-invoicing: flag and resolve an invoice dispute
 
-**Labels:** `module:wl-invoicing` `area:negative-flow` `priority:medium` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-invoicing` `area:negative-flow` `priority:medium` `size:m` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** Base: wl-invoicing Invoice lifecycle · Epic wl-ticketing: billing dispute ticket (`WRK.TKT.01`) · **Blocks:** BL-INV-05, BL-INV-06, BL-INV-19, BL-ACC-22, BL-ACC-24, BL-AUT-18, BL-CLN-16, BL-CON-06, BL-CON-08, BL-CON-17, BL-EDU-18, BL-INV-23, BL-LOG-26, BL-MFG-13, BL-MFG-14, BL-MPW-01, BL-MPW-21, BL-PRP-13, BL-PRP-14, BL-PRP-26
 **Review items:** X-02, 09-N4-a, 01-N4-c (invoice side)
 
@@ -336,6 +357,16 @@ Staff, or the party in the portal when allowed, can flag an issued invoice as di
 is not a state: it pauses reminders and escalation, opens or links a ticket, and is cleared by
 `resolve_dispute` with outcome `upheld` (the invoice stands) or `credited` (a credit note for the
 agreed amount). This keeps the business from chasing money that is honestly contested.
+
+#### Surfaces
+- **Back office:** a user with `invoices.dispute` flags an issued invoice as disputed
+  (reason, amount, optional lines) and later resolves it `upheld` or `credited`; ageing
+  shows disputed amounts in their own column.
+- **Portal:** when the client turns it on (off by default), the party flags its own invoice
+  as disputed (screen not specified yet: wl-portal lists no dispute action).
+- **System:** a billing-dispute ticket is opened or linked and assigned to the invoice
+  owner; reminders and overdue escalation pause, and resume after the grace period when the
+  outcome is `upheld`.
 
 #### Files to read
 - `docs/modules/wl-invoicing.md` §3 (Invoice field `dispute`), §4 *Invoice* ("Dispute flag"),
@@ -421,13 +452,18 @@ deposit deductions dispute (BL-PAY-15).
 
 ### BL-INV-05 — wl-invoicing: escalate an open dispute (`FIN.RUL.15`)
 
-**Labels:** `module:wl-invoicing` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-invoicing` `area:negative-flow` `priority:medium` `size:s` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** BL-INV-04 · **Blocks:** BL-ACC-24, BL-CLN-16, BL-CON-17, BL-LOG-26, BL-MFG-13, BL-PRP-26
 **Review items:** X-02
 
 #### Goal
 An open dispute must not sit forever. Every N days while the invoice stays disputed, the invoice
 owner is reminded; from the second reminder on, the finance manager is told too.
+
+#### Surfaces
+- **System:** every 14 days while the invoice stays disputed, `FIN.RUL.15` notifies the
+  invoice owner, and from the second time also the finance manager; nothing changes on any
+  screen.
 
 #### Files to read
 - `docs/modules/wl-invoicing.md` §5.10 step 3, §6 (`FIN.RUL.15`), §7
@@ -467,7 +503,7 @@ Flagging and resolving (BL-INV-04).
 
 ### BL-INV-06 — wl-invoicing: flag and resolve a dispute from a disputed delivery
 
-**Labels:** `module:wl-invoicing` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 03 · **Size:** s
+**Labels:** `module:wl-invoicing` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 03 · **Size:** s
 **Depends on:** BL-INV-04 · Epic wl-delivery: delivery `under_review`, `reverse_delivery`, `lost` · **Blocks:** BL-LOG-09
 **Review items:** X-11, 03-N11-a
 
@@ -476,6 +512,14 @@ When a recipient denies a delivery, wl-delivery puts it under review. wl-invoici
 each issued invoice that bills the delivery's lines as disputed by the system, close the flag
 when the review upholds the delivery, and give the invoice owner a task when the delivery is
 reversed or lost (usually resolved `credited` for the undelivered lines).
+
+#### Surfaces
+- **Back office:** the invoice owner gets a task when the delivery is reversed or lost; for
+  a draft that bills the delivery, the receivables role gets a task *delivery disputed
+  before issue*.
+- **System:** `DeliveryDisputed` flags each issued invoice that bills the delivery's lines,
+  with the delivery's ticket; `DeliveryDisputeClosed` (*upheld*) resolves the disputes it
+  raised.
 
 #### Files to read
 - `docs/modules/wl-invoicing.md` §4 *Invoice* ("Dispute flag"), §5.10 step 5, §6 (Consumes:
@@ -552,7 +596,7 @@ Manual dispute and resolution (BL-INV-04); the delivery review itself (Epic wl-d
 
 ### BL-INV-07 — wl-invoicing: reopen an invoice when a payment is reversed (`unallocate`)
 
-**Labels:** `module:wl-invoicing` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-invoicing` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** Base: wl-invoicing Invoice lifecycle · BL-PAY-01 · **Blocks:** BL-INV-19, BL-PAY-04, BL-EDU-06, BL-PRP-08
 **Review items:** X-03
 
@@ -561,6 +605,13 @@ Manual dispute and resolution (BL-INV-04); the delivery review itself (Epic wl-d
 chargeback) or an allocation is moved to another document, each removed allocation runs
 `unallocate` on the invoice: the balance goes back up, the state is set by balance and due date,
 reminders resume and people are told why. The issued document and its VAT never change.
+
+#### Surfaces
+- **Back office:** the invoice shows its new balance and state; the accountant gets a task
+  when a payment made before a write-off is reversed, or when a reversal amount is refused.
+- **System:** each allocation removed by `PaymentReversed` runs `unallocate`; the state is
+  set by balance and due date (a reversed recovery goes back to `written_off`), and
+  reminders resume at the matching step.
 
 #### Files to read
 - `docs/modules/wl-invoicing.md` §4 *Invoice* (intro, `unallocate`, diagram, paragraph after the
@@ -651,7 +702,7 @@ vertical reactions to `InvoiceReopened`.
 
 ### BL-INV-08 — wl-invoicing: reopen a credit note when its refund fails
 
-**Labels:** `module:wl-invoicing` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-invoicing` `area:negative-flow` `priority:high` `size:s` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** Base: wl-invoicing Credit note lifecycle · BL-PAY-06 · **Blocks:** BL-EDU-03
 **Review items:** X-03, X-06
 
@@ -659,6 +710,11 @@ vertical reactions to `InvoiceReopened`.
 When a refund paid from a credit note fails, the party's credit must come back so it can be
 refunded again or used on an invoice. `applied` is no longer terminal: `reopen` returns the
 failed amount to the credit note.
+
+#### Surfaces
+- **System:** `RefundFailed` for a refund from the credit note runs `reopen`; the failed
+  amount returns to the credit note's remaining balance and so to the party's available
+  credit.
 
 #### Files to read
 - `docs/modules/wl-invoicing.md` §4 *Credit note* (states, `reopen`, paragraph after the table),
@@ -709,7 +765,7 @@ Refund failure handling in wl-payments (BL-PAY-06, BL-PAY-07).
 
 ### BL-INV-09 — wl-invoicing: queue and send e-invoice transmissions
 
-**Labels:** `module:wl-invoicing` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-invoicing` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** Base: wl-invoicing Invoice and Credit note lifecycle · Epic wl-kernel: integration down (connections, banner) · **Blocks:** BL-INV-10, BL-ACC-23, BL-LOG-25, BL-PRP-26
 **Review items:** X-04, 09-N7-a
 
@@ -718,6 +774,13 @@ From an entity's e-invoicing go-live date, every invoice and credit note to a B2
 gets an e-invoice transmission to the entity's accredited service provider (ASP). The transmission
 is sent at once and retried while the ASP is unreachable. Issuing must also refuse simplified tax
 invoices and missing recipient identifiers once e-invoicing applies.
+
+#### Surfaces
+- **Back office:** `issue` refuses a simplified tax invoice after go-live and an in-scope
+  recipient without an identifier, with a clear message; a banner shows the queued
+  transmissions while the ASP is unreachable.
+- **System:** issuing an in-scope invoice or credit note queues a transmission, sends it to
+  the ASP at once and retries on the schedule until it is sent.
 
 #### Files to read
 - `docs/modules/wl-invoicing.md` §3 (E-invoice transmission entity; "E-invoicing" paragraph),
@@ -822,7 +885,7 @@ Rejections, resubmission, supersede and `FIN.RUL.16` (BL-INV-10); ASP-specific a
 
 ### BL-INV-10 — wl-invoicing: handle an e-invoice rejection or a stuck transmission
 
-**Labels:** `module:wl-invoicing` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-invoicing` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** BL-INV-09 · **Blocks:** BL-CON-17, BL-EDU-18, BL-LOG-25, BL-MPW-21
 **Review items:** X-04, 09-N7-a
 
@@ -832,6 +895,14 @@ error codes; the invoice, its balance and its reminders do not change. If the ca
 the document they fix it and resubmit; if it is in the document, the invoice is credited with
 reason `e-invoice correction` and reissued, and the old transmission becomes `superseded`.
 Transmissions stuck for H hours also raise a task.
+
+#### Surfaces
+- **Back office:** the invoice owner and the accountant get a task with the ASP error codes;
+  a user with `einvoices.manage` runs `resubmit` after fixing a cause outside the document,
+  or a credit note with reason `e-invoice correction` is issued.
+- **System:** ASP responses run `reject`; a correction credit note runs `supersede`;
+  `FIN.RUL.16` raises a task for a transmission not sent 24 hours after `issue` and notifies
+  the company admin once per outage.
 
 #### Files to read
 - `docs/modules/wl-invoicing.md` §4 *E-invoice transmission* (all), §5.12 steps 3–5, §6
@@ -915,7 +986,7 @@ Queueing and sending (BL-INV-09); A-10 answer (whether the document is valid bef
 
 ### BL-INV-11 — wl-invoicing: hold a possible duplicate supplier bill
 
-**Labels:** `module:wl-invoicing` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-invoicing` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** Base: wl-invoicing Supplier bill lifecycle · **Blocks:** BL-INV-24, BL-PRP-26
 **Review items:** 01 MEDIUM "duplicate vendor bills" (§6 of the review)
 
@@ -925,6 +996,13 @@ that is not void (or matches on another key set the client turns on), it goes to
 a possible duplicate. It stays there until another user than its creator approves it with a
 reason, or a user with `supplier_bills.approve` voids it with a reason; nothing voids it
 automatically.
+
+#### Surfaces
+- **Back office:** the held bill shows the reason *possible duplicate* and a link to the
+  earlier bill; a user other than the creator approves it with a reason, or a user with
+  `supplier_bills.approve` voids it.
+- **System:** at `submit` the duplicate check puts a bill matching a non-void bill of the
+  same supplier in `exception` and notifies the accountant.
 
 #### Files to read
 - `docs/modules/wl-invoicing.md` §4 *Supplier bill* (`exception` state, `submit`, `approve`,
@@ -996,7 +1074,7 @@ The 3-way match itself (base).
 
 ### BL-INV-12 — wl-invoicing: reopen a supplier bill when an outgoing payment is reversed
 
-**Labels:** `module:wl-invoicing` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-invoicing` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** Base: wl-invoicing Supplier bill lifecycle · BL-PAY-01 · **Blocks:** BL-INV-14
 **Review items:** X-03
 
@@ -1006,6 +1084,13 @@ error or returned by the bank), the supplier bill's open balance comes back, the
 `approved` or `partially_paid`, and the accountant is told to pay again or fix the bank details.
 An issued cheque is not a source: its payment is recorded only at `clear` (wl-payments §4
 *Cheque*), so a cheque cancelled (`returned`) or bounced before that never reduced the bill.
+
+#### Surfaces
+- **Back office:** the supplier bill shows `approved` or `partially_paid` again with its
+  restored balance; the accountant gets a task when a reversed amount is above what was
+  applied to the bill.
+- **System:** `PaymentReversed` on an outgoing payment, or `SupplierDebitNoteCancelled`,
+  runs `unallocate` on the bill.
 
 #### Files to read
 - `docs/modules/wl-invoicing.md` §4 *Supplier bill* (`paid` state, `pay`, `unallocate`, diagram)
@@ -1057,7 +1142,7 @@ The payment reversal (BL-PAY-01); the debit note cancellation itself (BL-INV-14)
 
 ### BL-INV-13 — wl-invoicing: draft and issue a supplier debit note
 
-**Labels:** `module:wl-invoicing` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` · **Milestone:** Launch 02 · **Size:** m
+**Labels:** `module:wl-invoicing` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Launch 02 · **Size:** m
 **Depends on:** Base: wl-invoicing Supplier bill lifecycle · Epic wl-inventory: return to supplier (`SupplierReturnDispatched`) · **Blocks:** BL-INV-14, BL-CON-17, BL-MFG-08
 **Review items:** X-08, 02-N10-a, 06-N10-b, 07-N10-a
 
@@ -1066,6 +1151,13 @@ When goods are returned to a supplier, or a price difference or short delivery i
 billing, the business issues its own supplier debit note against the bill. It reduces what is owed
 (or opens a supplier debit balance if the bill is paid), reverses the cost on the cost objects and
 reduces input VAT. Return-based drafts are automatic (`FIN.RUL.17`); manual ones need a second person.
+
+#### Surfaces
+- **Back office:** the accountant drafts a manual debit note with a reason code, and a user
+  with `supplier_bills.approve` issues it (another person than the creator for a manual
+  one); the bill shows its reduced balance or the supplier's debit balance.
+- **System:** `FIN.RUL.17` drafts a debit note from `SupplierReturnDispatched`, at the
+  bill's prices or at the PO price until the bill is approved and linked.
 
 #### Files to read
 - `docs/modules/wl-invoicing.md` §3 (Supplier debit note entity; "Supplier debit notes"
@@ -1147,7 +1239,7 @@ Settle and cancel (BL-INV-14); return to supplier in wl-inventory; receiving the
 
 ### BL-INV-14 — wl-invoicing: settle or cancel a supplier debit note
 
-**Labels:** `module:wl-invoicing` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 02 · **Size:** m
+**Labels:** `module:wl-invoicing` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 02 · **Size:** m
 **Depends on:** BL-INV-13 · BL-INV-12 · **Blocks:** BL-AUT-11
 **Review items:** X-08
 
@@ -1155,6 +1247,14 @@ Settle and cancel (BL-INV-14); return to supplier in wl-inventory; receiving the
 An issued debit note is settled when the supplier's tax credit note is recorded and the amount is
 set off against a bill or refunded by the supplier. If the supplier refuses the claim or the return
 is cancelled, the debit note is cancelled and every effect is reversed.
+
+#### Surfaces
+- **Back office:** a user with `supplier_bills.approve` records the supplier's tax credit
+  note, sets off the debit balance on a later bill of the same supplier, or cancels the
+  debit note with a reason; the accountant gets a task "record the supplier's tax credit
+  note".
+- **System:** a supplier refund received or the last set off settles the debit note once the
+  tax credit note is recorded; `cancel` runs supplier bill `unallocate`.
 
 #### Files to read
 - `docs/modules/wl-invoicing.md` §4 *Supplier debit note* (`settle`, `cancel`, diagram), §5.13 steps 4–5
@@ -1241,7 +1341,7 @@ Drafting and issuing (BL-INV-13); return cancellation in wl-inventory.
 
 ### BL-INV-15 — wl-invoicing: approve supplier bill lines coded to a landed cost
 
-**Labels:** `module:wl-invoicing` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 02 · **Size:** s
+**Labels:** `module:wl-invoicing` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 02 · **Size:** s
 **Depends on:** Base: wl-invoicing Supplier bill lifecycle · Epic wl-inventory: landed cost allocation and `adjust` · **Blocks:** None.
 **Review items:** X-10, 08 MEDIUM "landed cost adjustment"
 
@@ -1250,6 +1350,12 @@ A freight, duty or clearing line on a supplier bill can be coded to a wl-invento
 On approval those lines post no cost to cost objects; the amount goes to wl-inventory with
 `SupplierBillApproved`, which allocates it or, if the landed cost is already allocated, drafts an
 adjustment. This prevents double counting cost.
+
+#### Surfaces
+- **Back office:** on a supplier bill, a freight, duty or clearing line is coded to a landed
+  cost, and the bill is approved as usual.
+- **System:** on approval those lines post no cost to cost objects, and
+  `SupplierBillApproved` carries the landed cost reference for wl-inventory.
 
 #### Files to read
 - `docs/modules/wl-invoicing.md` §3 (Supplier bill field "landed cost"), §4 *Supplier bill*
@@ -1289,7 +1395,7 @@ Allocation and adjustment of landed cost (Epic wl-inventory).
 
 ### BL-INV-16 — wl-invoicing: return a payer bill to draft after a technical rejection
 
-**Labels:** `module:wl-invoicing` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Launch 05 · **Size:** s
+**Labels:** `module:wl-invoicing` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 05 · **Size:** s
 **Depends on:** Base: wl-invoicing Payer bill lifecycle · **Blocks:** BL-CLN-07
 **Review items:** 05-N7-a
 
@@ -1297,6 +1403,12 @@ Allocation and adjustment of landed cost (Epic wl-inventory).
 When the submission channel rejects a payer bill for technical or format reasons before
 adjudication, the bill goes back to `draft` with the error codes, keeps its number, and is fixed
 and issued again. It does not count as a resubmission.
+
+#### Surfaces
+- **Back office:** the billing coordinator gets a task with the error codes and the
+  submission deadline, fixes the payer bill and issues it again under the same number.
+- **System:** a technical rejection from the submission channel runs `submission_rejected`:
+  the payer bill goes back to `draft` with the errors and leaves ageing.
 
 #### Files to read
 - `docs/modules/wl-invoicing.md` §3 (Payer bill: submission errors), §4 *Payer bill* (`issue`,
@@ -1356,7 +1468,7 @@ Coding and validation in apps/clinics (`CLN.CLM.01`–`03`); late submission wri
 
 ### BL-INV-17 — wl-invoicing: record a payer overpayment and a recoupment
 
-**Labels:** `module:wl-invoicing` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 05 · **Size:** m
+**Labels:** `module:wl-invoicing` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 05 · **Size:** m
 **Depends on:** Base: wl-invoicing Payer bill lifecycle · BL-PAY-01 · **Blocks:** BL-PAY-08, BL-CLN-08
 **Review items:** 05-N3-c
 
@@ -1365,6 +1477,13 @@ A payer may pay more than is open on a line, or take back money it paid earlier 
 later remittance or through a reversed payment. Overpayments move to the payer credit balance only
 with a second person's approval. A recoupment reopens the earlier bill's lines as denied, so they
 are resubmitted, moved to the customer or written off.
+
+#### Surfaces
+- **Back office:** the reconciler records a remittance; an overpayment or a recoupment waits
+  under "Needs your action" for a second person, and the bill then shows the recouped lines
+  as denied with the payer's code.
+- **System:** a remittance import, or `PaymentReversed` for a payment allocated to the bill,
+  runs `record_recoupment` (without approval for a reversal).
 
 #### Files to read
 - `docs/modules/wl-invoicing.md` §3 (Payer bill, Remittance advice, Payer credit balance), §4
@@ -1436,7 +1555,7 @@ Refunding the payer credit balance (BL-PAY-08); resubmit, transfer and write-off
 
 ### BL-INV-18 — wl-invoicing: close a payer bill from draft (late submission) and void it
 
-**Labels:** `module:wl-invoicing` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 05 · **Size:** m
+**Labels:** `module:wl-invoicing` `area:negative-flow` `priority:high` `size:m` `surface:back-office` · **Milestone:** Launch 05 · **Size:** m
 **Depends on:** Base: wl-invoicing Payer bill lifecycle · Epic wl-kernel: void (`PLT.ACL.09`) · **Blocks:** BL-CLN-09, BL-CLN-10, BL-CLN-16
 **Review items:** 05-N5-a, 05 MEDIUM "void a claim"
 
@@ -1445,6 +1564,12 @@ A draft payer bill that missed the payer's first-submission window can be writte
 approval above the limit) or moved to the customer where the agreement allows. A draft created in
 error (duplicate, wrong payer or policy) is voided: the number is kept, the split is removed and
 the source can be split again.
+
+#### Surfaces
+- **Back office:** a user with `payer_bills.write_off` writes off a late draft payer bill
+  (approval above the limit) or moves it to the customer, flagged *not submitted in time*; a
+  user with `payer_bills.issue` voids a draft created in error, which stays listed as void
+  with its number.
 
 #### Files to read
 - `docs/modules/wl-invoicing.md` §4 *Payer bill* (`voided` state, `transfer_to_customer`,
@@ -1518,7 +1643,7 @@ Technical rejection (BL-INV-16); recoupments (BL-INV-17).
 
 ### BL-INV-19 — wl-invoicing: subscription goes past due on a reopened invoice, not on a disputed one
 
-**Labels:** `module:wl-invoicing` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 04 · **Size:** s
+**Labels:** `module:wl-invoicing` `area:negative-flow` `priority:medium` `size:s` `surface:system` · **Milestone:** Launch 04 · **Size:** s
 **Depends on:** Base: wl-invoicing Subscription lifecycle · BL-INV-04 · BL-INV-07 · **Blocks:** BL-ACC-24, BL-EDU-06
 **Review items:** X-02, X-03
 
@@ -1526,6 +1651,11 @@ Technical rejection (BL-INV-16); recoupments (BL-INV-17).
 A subscription must not be marked past due (and later suspended) because of a disputed cycle
 invoice. It must be marked past due when a paid cycle invoice is reopened by a reversed payment,
 such as a chargeback.
+
+#### Surfaces
+- **System:** `mark_past_due` skips a subscription whose overdue cycle invoices are disputed
+  and runs on `InvoiceReopened` for a paid cycle invoice; `FIN.RUL.06` does not suspend
+  while only disputed invoices are overdue.
 
 #### Files to read
 - `docs/modules/wl-invoicing.md` §4 *Subscription* (`mark_past_due`, `suspend`), §5.10 step 2,
@@ -1575,7 +1705,7 @@ Pause and resume (BL-INV-20); chargebacks (BL-PAY-04).
 
 ### BL-INV-20 — wl-invoicing: pause and resume a subscription with its agreement or a party block
 
-**Labels:** `module:wl-invoicing` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 04 · **Size:** m
+**Labels:** `module:wl-invoicing` `area:negative-flow` `priority:high` `size:m` `surface:system` · **Milestone:** Launch 04 · **Size:** m
 **Depends on:** Base: wl-invoicing Subscription lifecycle · Epic wl-parties: block effects (`PartyBlocked`, `PartyUnblocked`) · **Blocks:** BL-INV-21, BL-ACC-03, BL-ACC-23, BL-EDU-05, BL-EDU-18
 **Review items:** X-18, 04-N8-a, 04 MEDIUM "suspension and retainer", 10 MEDIUM "freeze linked to membership pause"
 
@@ -1584,6 +1714,11 @@ When the vertical's agreement is paused (10 enrolment `freeze`, 04 engagement `s
 party is blocked with block effect *pause*, the system pauses the subscription without counting
 the pause allowance. When the agreement resumes or the party is unblocked, it resumes, back to
 `past_due` if cycle invoices from before the pause are still overdue.
+
+#### Surfaces
+- **System:** an agreement pause (10 enrolment `freeze`, 04 engagement `suspend`) or
+  `PartyBlocked` with effect pause runs `pause` and stores its cause; the agreement resuming
+  or `PartyUnblocked` removes that cause and resumes when none remains.
 
 #### Files to read
 - `docs/modules/wl-invoicing.md` §4 *Subscription* (`pause`, `resume`, vertical mapping), §6
@@ -1646,7 +1781,7 @@ Cancel on agreement end (BL-INV-21); the block itself (Epic wl-parties).
 
 ### BL-INV-21 — wl-invoicing: cancel a subscription when its agreement ends
 
-**Labels:** `module:wl-invoicing` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Launch 04 · **Size:** s
+**Labels:** `module:wl-invoicing` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Launch 04 · **Size:** s
 **Depends on:** Base: wl-invoicing Subscription lifecycle · BL-INV-20 · **Blocks:** BL-ACC-06, BL-ACC-24, BL-EDU-03
 **Review items:** 10-N3-f, 04-N8-b, X-18
 
@@ -1656,6 +1791,15 @@ cancels the subscription at once, without a notice period, with a pro rata credi
 unused part of a paid cycle (or a final pro rata invoice) unless the vertical's settlement already
 did it. Refunds to a blocked party wait. A user or party cancel prorates only when the setting
 *pro rata on cancel* is on (default off).
+
+#### Surfaces
+- **Back office:** a user with `subscriptions.manage` who cancels gets a final pro rata
+  invoice or credit only when *pro rata on cancel* is on (default off).
+- **Portal:** a party who cancels in the portal (if allowed) follows the same proration rule
+  (screen not specified yet: wl-portal lists no subscription cancel).
+- **System:** the vertical's agreement ending (10 enrolment `withdraw`, 04 engagement `end`)
+  cancels the subscription at once with a pro rata credit note, unless the vertical already
+  settled.
 
 #### Files to read
 - `docs/modules/wl-invoicing.md` §4 *Subscription* (`cancel`, vertical mapping), §7 (subscription settings)
@@ -1706,7 +1850,7 @@ User cancel with notice (base); refunds (wl-payments).
 
 ### BL-INV-22 — wl-invoicing: bill only the delivered quantity and handle a COD difference
 
-**Labels:** `module:wl-invoicing` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Launch 03 · **Size:** s
+**Labels:** `module:wl-invoicing` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 03 · **Size:** s
 **Depends on:** Base: wl-invoicing billing run · Epic wl-delivery: proof of delivery per line, COD difference · **Blocks:** BL-LOG-08
 **Review items:** X-11, 07-N4-a, 03-N3-a
 
@@ -1714,6 +1858,13 @@ User cancel with notice (base); refunds (wl-payments).
 Goods billed on delivery are billed for the quantity the customer accepted per line, never the
 refused quantity. A cash-on-delivery shortfall is handled by who absorbs it: the customer (stays
 open on the invoice), the client (03: goes to the remittance line), or the business or driver (not billed).
+
+#### Surfaces
+- **Back office:** a COD difference absorbed by the business or the driver shows on the
+  draft as a negative line *COD difference absorbed* (a credit note once issued); one
+  absorbed by the client (03) shows on its remittance line.
+- **System:** `DeliveryDelivered` makes the draft bill the delivered quantity per line,
+  never the refused quantity.
 
 #### Files to read
 - `docs/modules/wl-invoicing.md` §5.2 step 4, §6 (Consumes: wl-delivery `DeliveryDelivered`)
@@ -1764,7 +1915,7 @@ Proof of delivery per line (Epic wl-delivery); COD remittance (apps/logistics `L
 
 ### BL-INV-23 — wl-invoicing: bill or credit hours from an adjustment timesheet
 
-**Labels:** `module:wl-invoicing` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-invoicing` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** Base: wl-invoicing usage billing · Epic wl-attendance: adjustment timesheets · BL-INV-04 · **Blocks:** None.
 **Review items:** X-16, 09-N4-a
 
@@ -1773,6 +1924,14 @@ Hours corrected after billing arrive as an approved adjustment timesheet. If the
 yet invoiced, the change is billed with it. If it is invoiced, fewer hours give a credit note
 against the original invoice and extra hours give an extra usage line (or a separate invoice). The
 credit note or line names the adjustment, and a dispute resolved `credited` links to it.
+
+#### Surfaces
+- **Back office:** the coordinator gets a task when a credit is above the original invoice's
+  remaining credit; a disputed invoice resolved `credited` shows the link to the credit
+  note.
+- **System:** an approved adjustment timesheet that affects billing gives a credit note
+  against the original invoice, an extra usage line or a separate draft invoice, each naming
+  the adjustment.
 
 #### Files to read
 - `docs/modules/wl-invoicing.md` §5.2 step 5, §5.10 step 4, §6 (Consumes: wl-attendance)
@@ -1829,7 +1988,7 @@ Creating adjustment timesheets (Epic wl-attendance); payroll effects (Epic wl-hr
 
 ### BL-INV-24 — wl-invoicing: match a vendor contract bill only for work done before the contract end
 
-**Labels:** `module:wl-invoicing` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-invoicing` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** Base: wl-invoicing Supplier bill lifecycle · BL-INV-11 (`exception` hold) · BL-TKT-04 (contract end) · **Blocks:** BL-PRP-26
 **Review items:** D-13
 
@@ -1839,6 +1998,13 @@ The bill match against the contract checks each line's service date: work up to 
 end date (or termination date) is matched; a line for work after it sends the bill to
 `exception` with reason *work after contract end*, so it is not paid without a reasoned
 approval.
+
+#### Surfaces
+- **Back office:** a contract bill needs a service date on every line at `submit`; the
+  accountant (not the creator) approves a bill in `exception` for *work after contract end*
+  with a reason, or voids it.
+- **System:** the match checks each line's service date against the contract's end or
+  termination date through `ServiceContracts::coverage`.
 
 #### Files to read
 - `docs/modules/wl-invoicing.md` §3 *Supplier bill* (lines with service date), §4 *Supplier
@@ -1902,7 +2068,7 @@ Duplicate holds (BL-INV-11); closing open visits at contract end (BL-TKT-04).
 
 ### BL-INV-25 — wl-invoicing: keep a company budget per entity, category and month
 
-**Labels:** `module:wl-invoicing` `area:sme-gap` `priority:medium` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-invoicing` `area:sme-gap` `priority:medium` `size:m` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** Base: wl-kernel approvals (`PLT.APR.01`), state machines, automations, Excel import (`PLT.IMP.01`) · **Blocks:** BL-INV-26, BL-INV-27, BL-INV-29, BL-ACC-24, BL-AUT-18, BL-CLN-16, BL-CON-17, BL-EDU-18, BL-FNB-16, BL-LOG-26, BL-MFG-14, BL-MPW-21, BL-PRP-26
 **Review items:** G5 (SME problem map 11, 14)
 
@@ -1913,6 +2079,14 @@ One approved version per entity and year is in force; a change is a new version 
 the old one only when approved. A draft nobody will finish can be discarded, and the
 accountant is reminded before a fiscal year starts without an approved budget (`FIN.RUL.26`).
 Budget vs actual (BL-INV-26) and the cash-flow forecast (BL-INV-29) read the approved version.
+
+#### Surfaces
+- **Back office:** the accountant creates a budget version (empty, a copy of last year's
+  budget or actual, or filled by Excel import), enters amounts per category and month and
+  submits it; a holder of `budgets.approve` approves or returns it from "Needs your action".
+- **System:** an approval request that ends without a yes returns the version to `draft`;
+  `FIN.RUL.26` notifies the accountant and the finance manager before a fiscal year with no
+  approved budget.
 
 #### Files to read
 - `docs/modules/wl-invoicing.md` §2 (`FIN.BUD.01`), §3 *Budget category*, *Company budget*,
@@ -2055,7 +2229,7 @@ the cash-flow forecast (BL-INV-29).
 
 ### BL-INV-26 — wl-invoicing: report budget vs actual and warn on overspending (`FIN.RUL.24`)
 
-**Labels:** `module:wl-invoicing` `area:sme-gap` `priority:medium` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-invoicing` `area:sme-gap` `priority:medium` `size:m` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** BL-INV-25 · Base: wl-invoicing Invoice, Credit note and Supplier bill lifecycles · Base: wl-payments Expense claim lifecycle · Base: wl-hr Payroll run lifecycle · **Blocks:** BL-INV-27, BL-INV-29, BL-ACC-24, BL-AUT-18, BL-CLN-16, BL-CON-17, BL-EDU-18, BL-FNB-16, BL-LOG-26, BL-MFG-14, BL-MPW-21, BL-PRP-26
 **Review items:** G5 (SME problem map 11, 14)
 
@@ -2065,6 +2239,13 @@ the variance, with the operating result and owner drawings on their own line bel
 month's actual expense or drawings reach the budget (a category of kind `expense` or
 `owner_drawings`), the category's owner role and the finance manager are told, so overspending is noticed in the month and not at year end. Users without
 `drawings.approve` see the drawings total only (`FIN.ACL.22`).
+
+#### Surfaces
+- **Back office:** the owner opens the budget vs actual report per entity, category and
+  month (or year to date) with variance, *Uncategorised*, the operating result and the owner
+  drawings line; without `drawings.approve` only the drawings total shows.
+- **System:** `FIN.RUL.24` notifies the category's owner role and the finance manager once
+  per entity, category and month when the actual reaches the budget.
 
 #### Files to read
 - `docs/modules/wl-invoicing.md` §3 *Budget category*, §5.15 steps 2–4, §6 `CompanyBudgets`,
@@ -2179,7 +2360,7 @@ accounting (`FIN.EXT.01`, Later).
 
 ### BL-INV-27 — wl-invoicing: approve owner drawings and keep them out of operating cost (`FIN.ACL.21`)
 
-**Labels:** `module:wl-invoicing` `area:sme-gap` `priority:high` `size:m` `blocked:open-item` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-invoicing` `area:sme-gap` `priority:high` `size:m` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** BL-INV-25, BL-INV-26 · Base: wl-invoicing Supplier bill lifecycle · Base: wl-payments Expense claim lifecycle · Base: wl-invoicing `CostPoster` (job costing, `FIN.CST.01`) · **Blocks:** BL-PAY-26, BL-ACC-24, BL-AUT-18, BL-CLN-16, BL-CON-17, BL-EDU-18, BL-FNB-16, BL-LOG-26, BL-MFG-14, BL-MPW-21, BL-PRP-26
 **Review items:** G5 (SME problem map 11, 14)
 
@@ -2190,6 +2371,13 @@ drawings category (this issue), or a payment with purpose *owner drawings* (BL-P
 drawing needs approval by someone other than the requester (a sole owner records their own,
 flagged, `FIN.ACL.23`), drawings never reach operating cost, cost objects or margin reports,
 and their details are shown only to holders of `drawings.approve` (`FIN.ACL.22`).
+
+#### Surfaces
+- **Back office:** the accountant codes a supplier bill or expense line to *Owner drawings*;
+  another holder of `drawings.approve` approves the drawing before the bill or claim can be
+  approved, and a rejection and any recoding are shown to the bill's approver.
+- **System:** `CostPoster` refuses drawings lines; a sole owner's drawing is recorded at
+  once, flagged *self-approved*, and the accountant is notified.
 
 #### Files to read
 - `docs/modules/wl-invoicing.md` §3 paragraph *Owner drawings*, §3 *Budget category* (owner
@@ -2328,7 +2516,7 @@ answer (§12 question 14).
 
 ### BL-INV-28 — wl-invoicing: project the cash position by week from open documents
 
-**Labels:** `module:wl-invoicing` `area:sme-gap` `priority:high` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-invoicing` `area:sme-gap` `priority:high` `size:m` `surface:back-office` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** BL-PAY-25 · Base: wl-invoicing Invoice, Charge, Subscription, Supplier bill, Payer bill and VAT summary lifecycles · Base: wl-hr `PayrollCalendar`, Payroll run and Final settlement lifecycles · Base: wl-parties block effects · **Blocks:** BL-INV-29, BL-INV-30, BL-ACC-24, BL-AUT-18, BL-CLN-16, BL-CON-17, BL-EDU-18, BL-FNB-16, BL-LOG-26, BL-MFG-14, BL-MPW-21, BL-PRP-26
 **Review items:** G2 (SME problem map 12, 14)
 
@@ -2340,6 +2528,12 @@ verticals add through `CashForecastSource`, and the projected balance week by we
 is doubtful (disputed, bounced, owed by a blocked party, possible duplicate bills) is shown on
 memo lines, not counted. Each cell opens the documents behind it, as far as the user may see
 them. Budget fill and days-late adjustment come in BL-INV-29.
+
+#### Surfaces
+- **Back office:** the owner or the accountant opens a read-only 13-week grid per entity or
+  for all entities, with opening balance, expected receipts and payments, memo lines and
+  warnings; each cell opens its documents, and a user with `cashflow.manage` enters or voids
+  an opening cash balance.
 
 #### Files to read
 - `docs/modules/wl-invoicing.md` §3 *Opening cash balance*, *Cash-flow forecast*, §5.14 steps
@@ -2528,7 +2722,7 @@ Budget fill and the days-late adjustment (BL-INV-29); the low-balance alert `FIN
 
 ### BL-INV-29 — wl-invoicing: add budget fill and days-late adjustment to the cash-flow forecast
 
-**Labels:** `module:wl-invoicing` `area:sme-gap` `priority:medium` `size:s` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-invoicing` `area:sme-gap` `priority:medium` `size:s` `surface:back-office` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** BL-INV-28, BL-INV-25, BL-INV-26 · **Blocks:** BL-INV-30, BL-ACC-24, BL-AUT-18, BL-CLN-16, BL-CON-17, BL-EDU-18, BL-FNB-16, BL-LOG-26, BL-MFG-14, BL-MPW-21, BL-PRP-26
 **Review items:** G2 (SME problem map 12, 14)
 
@@ -2537,6 +2731,11 @@ The forecast also shows what is planned but not yet a document: for each approve
 in the horizon, the part not covered by actual or by open documents is spread over the
 remaining days of its month. Optionally, receipts are shifted by each customer's average
 lateness, so a customer who always pays 20 days late is projected that way.
+
+#### Surfaces
+- **Back office:** the forecast grid shows a budget fill line per category, and with *adjust
+  by days late* on, receipts moved by the party's average lateness (listed as "after week
+  13" when beyond the horizon).
 
 #### Files to read
 - `docs/modules/wl-invoicing.md` §5.14 steps 6 and 7, §5.15 step 2 (actual), §7 (cash-flow
@@ -2624,7 +2823,7 @@ The base projection (BL-INV-28); the low-balance alert (BL-INV-30).
 
 ### BL-INV-30 — wl-invoicing: warn when the projected balance falls below the threshold (`FIN.RUL.23`)
 
-**Labels:** `module:wl-invoicing` `area:sme-gap` `priority:high` `size:s` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-invoicing` `area:sme-gap` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** BL-INV-28, BL-INV-29 (income fill left out) · Base: wl-kernel automations · **Blocks:** BL-ACC-24, BL-AUT-18, BL-CLN-16, BL-CON-17, BL-EDU-18, BL-FNB-16, BL-LOG-26, BL-MFG-14, BL-MPW-21, BL-PRP-26
 **Review items:** G2 (SME problem map 12, 14)
 
@@ -2637,6 +2836,13 @@ budget fill); contracted amounts not yet invoiced (scheduled charges, subscripti
 are part of the projection and do count. A daily check also
 asks the accountant for a statement when a bank account's balance is missing or stale
 (`FIN.RUL.25`), because a stale balance makes the alert wrong.
+
+#### Surfaces
+- **Back office:** `FIN.RUL.25` gives the accountant a task to import a statement or enter a
+  balance for a bank account whose balance is missing or older than 7 days.
+- **System:** `FIN.RUL.23` runs daily at 06:00 and notifies the finance manager and the
+  company admin when a week falls below the entity's threshold, once until the first week
+  below changes.
 
 #### Files to read
 - `docs/modules/wl-invoicing.md` §5.14 steps 2 and 8, §6 `CashForecast`, `FIN.RUL.23`,

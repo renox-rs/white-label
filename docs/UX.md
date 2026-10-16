@@ -1,6 +1,6 @@
 # UX Specification
 
-> Status: draft · Last updated: 2026-10-14
+> Status: draft · Last updated: 2026-10-16
 
 How people use the platform, screen by screen. [DESIGN-SYSTEM.md](DESIGN-SYSTEM.md) defines
 the look, and this document defines the layouts, navigation and behaviour. Screens are built
@@ -489,3 +489,26 @@ key wireframes are in §2.2 (record page), §2.9 (technician PWA) and §2.10 (te
 - [ ] Works at 360 px (field roles) and in RTL
 - [ ] Keyboard path for every action; visible focus
 - [ ] Every list exports (`RPT.LIB.01`) without hidden columns
+
+## 7. Screens still to specify
+
+Found while classifying the backlog by surface (2026-10-16). The behaviour is specified; the
+screen is not yet described in §2 or §4. Each is designed before its backlog issue is built.
+
+| Surface | Screen | Needed by |
+|---|---|---|
+| Portal | Raise an invoice dispute (party side); needs a `wl-portal` action and permission | BL-INV-04 |
+| Portal | Cancel a subscription or membership, where the client allows it | BL-INV-21 |
+| Portal | Employee: own onboarding steps and SOP acknowledgements | BL-HRM-27 |
+| Portal | 09 client: sign a contract renewal or a new rate card version | 09 §4.9 (BL-MPW-05, BL-MPW-07) |
+| Portal | 10 guardian or student: enrol (full batch, alternatives, waiting list) | BL-EDU-02 |
+| Portal | 10 membership pause and resume | BL-EDU-05 |
+| Portal | 10 notice of an absence | BL-EDU-15 |
+| Portal, public | Loyalty: join, see balance, redeem points with a one-time code | BL-SAL-22, BL-SAL-23 |
+| Public | Lead form opened from a campaign link | BL-SAL-20 |
+| Public | A payment link that was cancelled after an enrolment lapsed | BL-EDU-01 |
+| Public | Client confirms a change of its remittance bank account (signed link) | BL-LOG-17 |
+| Field PWA | 08 technician: record a test drive and raise a vehicle incident with photos | BL-AUT-06 |
+| Field PWA or back office | Cash holder acknowledges a salary deduction for a shortage | BL-PAY-17 |
+| Back office | 06 turn cash on delivery back on for a customer; resume an outlet's channels after an outage | BL-FNB-03, BL-FNB-14 |
+| Back office | Log of refused portal actions for blocked parties, visible to compliance only | BL-POR-01 |

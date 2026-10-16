@@ -29,7 +29,7 @@ attendance at the cut-off with later reconciliation. It closes X-16, 02-N5-d, 02
 
 ### BL-ATT-01 — wl-attendance: detect overlapping attendance across locations and projects
 
-**Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` `surface:back-office` `surface:field-pwa` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** Base: wl-attendance Attendance record lifecycle (`record`, `flag`, `accept`) · **Blocks:** BL-ATT-05, BL-ATT-06, BL-CON-18
 **Review items:** X-16, 09 MEDIUM "overlap guards"
 
@@ -39,6 +39,17 @@ location is refused until the employee checks out of the first. Supervisor marki
 that overlaps another record of the same employee (any location or project) still saves, but
 flags both records `overlap` so a reviewer sorts it out. The supervisor sees the clash before
 submitting. This stops the same hours being paid or billed twice.
+
+#### Surfaces
+- **Field PWA:** a worker's self check-in at a second location is refused with a message
+  naming the open location (and "already checked in here" for a duplicate); in the crew list
+  the supervisor sees a worker already marked elsewhere for the same hours before
+  submitting.
+- **Back office:** the reviewer sees both records flagged `overlap` (only the new one when
+  the other is `locked`).
+- **System:** supervisor marking, imports and corrections that overlap are saved and flagged
+  through the `flag` transition, in one transaction per employee and day;
+  `AttendanceFlagged` is emitted per record.
 
 #### Files to read
 - `docs/modules/wl-attendance.md` §3 (Attendance record, Attendance flag), §4 *Attendance record*
@@ -142,7 +153,7 @@ Accepting an `overlap` record (BL-ATT-05); the timesheet `submit` check on summe
 
 ### BL-ATT-02 — wl-attendance: flag hours above the overtime cap (`HRM.RUL.13`)
 
-**Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` `blocked:open-item` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** Base: wl-attendance Attendance record lifecycle · Base: wl-kernel business calendar (normal hours, Ramadan hours) · **Blocks:** BL-ATT-03, BL-ATT-05, BL-CON-18, BL-MPW-21
 **Review items:** X-16, 02-N8-a, 09 MEDIUM "overtime cap flags"
 
@@ -151,6 +162,13 @@ The UAE labour law allows at most 2 overtime hours a day and 144 overtime hours 
 weeks. When an employee's hours across all locations and timesheets go above that, the record is
 flagged `overtime_cap` for review. The flag does not block: the law has exceptions, and the
 employer records which one applies in the reviewer's reason.
+
+#### Surfaces
+- **Back office:** the reviewer sees every open record of the day flagged `overtime_cap` and
+  accepts it with the exception in the reason (BL-ATT-05).
+- **System:** `HRM.RUL.13` sums the day's hours across locations and timesheets against the
+  calendar's normal hours plus 2 h, and the rolling 21-day overtime against 144 h, flags
+  once per record and notifies the supervisor.
 
 #### Files to read
 - `docs/modules/wl-attendance.md` §5.5 point 1, §6 *Automations* (`HRM.RUL.13`), §7 (overtime
@@ -229,7 +247,7 @@ rates (wl-hr payroll).
 
 ### BL-ATT-03 — wl-attendance: flag marked hours that cross the midday break (`HRM.RUL.13`)
 
-**Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` `surface:field-pwa` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** Base: wl-attendance Attendance record lifecycle · BL-ATT-02 (same rule) · **Blocks:** BL-CON-18
 **Review items:** X-16, 02-N8-a
 
@@ -239,6 +257,12 @@ a check-in inside the window. Crews marked as a block by a supervisor (07:00–1
 it, so `HRM.RUL.13` also checks the worked span minus breaks. The crew marking page pre-fills the
 break with the window in the season; removing it, or times that cross the window, flag the
 record `midday_break` and notify the supervisor and the HSE officer.
+
+#### Surfaces
+- **Field PWA:** in the season at an outdoor location the crew marking page pre-fills the
+  break with the midday window (12:30–15:00); the supervisor can keep or remove it.
+- **System:** `HRM.RUL.13` flags records whose worked span minus breaks crosses the window
+  `midday_break` (not twice) and notifies the supervisor and the HSE officer.
 
 #### Files to read
 - `docs/modules/wl-attendance.md` §3 (Attendance record: breaks taken; Work location: outdoor
@@ -301,7 +325,7 @@ Overtime-cap part of the rule (BL-ATT-02); the check-in-time check `HRM.RUL.01` 
 
 ### BL-ATT-04 — wl-attendance: flag attendance without a valid permit, visa or qualification (`HRM.RUL.14`)
 
-**Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` `blocked:open-item` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** Epic wl-documents: `document_valid(subject, kind, on_date)` · BL-HRM-01 (`qualification_valid`) · **Blocks:** BL-ATT-05, BL-CON-18, BL-MPW-21
 **Review items:** X-16, X-13, 02-N5-d
 
@@ -311,6 +335,13 @@ qualification the context needs (e.g. a SIRA licence) is not valid, the record i
 `permit_invalid` the same day. HR and the supervisor are told. While flagged, the record proposes
 no hours and holds the timesheet's `submit`. HR's review is the reviewer's `accept`
 (`HRM.ACL.09`, BL-ATT-05); the hours are then proposed non-billable and count for payroll.
+
+#### Surfaces
+- **Back office:** HR and the reviewer see the record flagged `permit_invalid`; the
+  timesheet `submit` is refused naming the flagged record; after `accept` the proposed entry
+  is non-billable and the submitter may set it billable before `submit`.
+- **System:** `HRM.RUL.14` checks the work permit, residence visa and the context's
+  qualifications on the attendance date and notifies HR and the supervisor.
 
 #### Files to read
 - `docs/modules/wl-attendance.md` §5.5 point 3, §6 *Automations* (`HRM.RUL.14`), §6 *Consumes*
@@ -390,7 +421,7 @@ Accepting the flag (BL-ATT-05); deployment `suspend` on `DocumentExpired` (verti
 
 ### BL-ATT-05 — wl-attendance: accept held flags only by a separate reviewer (`HRM.ACL.09`)
 
-**Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** BL-ATT-01 · BL-ATT-02 · BL-ATT-04 · **Blocks:** BL-CON-18
 **Review items:** X-16
 
@@ -399,6 +430,12 @@ A record flagged `overtime_cap`, `permit_invalid` or `overlap` is accepted only 
 `attendance.review`, with a reason, and never by the supervisor who marked it. An `overlap` can
 only be accepted once the hours no longer overlap (one record corrected or rejected). This keeps
 a supervisor from waving through their own questionable marking.
+
+#### Surfaces
+- **Back office:** a user with `attendance.review` accepts or corrects a record with a held
+  flag only with a reason; the supervisor who marked it is refused, and an `overlap` is
+  refused with the other record's location and times while the hours still overlap.
+- **System:** a record with a held flag is never accepted automatically at check-out.
 
 #### Files to read
 - `docs/modules/wl-attendance.md` §3 (Attendance flag), §4 *Attendance record*, §6 *Access
@@ -462,7 +499,7 @@ How the flags are raised (BL-ATT-01, BL-ATT-02, BL-ATT-04).
 
 ### BL-ATT-06 — wl-attendance: refuse timesheet submit when allocated hours exceed attended hours
 
-**Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** Base: wl-attendance Timesheet lifecycle (`submit`) · BL-ATT-01 · **Blocks:** BL-CON-18
 **Review items:** X-16, 09 MEDIUM "overlap guards"
 
@@ -470,6 +507,12 @@ How the flags are raised (BL-ATT-01, BL-ATT-02, BL-ATT-04).
 The same hours must not be allocated twice across projects or timesheets. On `submit`, entries
 whose hours for an employee and day, summed across all timesheets and projects, exceed the
 attended hours are refused.
+
+#### Surfaces
+- **Back office:** timesheet `submit` is refused naming the day and the excess hours when
+  allocated hours exceed attended hours.
+- **System:** a period-end system submit that fails leaves the timesheet `open` and gives
+  the submitter a task listing the days; submits lock per employee and day.
 
 #### Files to read
 - `docs/modules/wl-attendance.md` §4 *Timesheet* (`submit`), §5.5 point 4
@@ -524,7 +567,7 @@ Attendance overlap flags (BL-ATT-01).
 
 ### BL-ATT-07 — wl-attendance: open an adjustment timesheet on a locked timesheet (`HRM.ACL.08`)
 
-**Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` `surface:back-office` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** Base: wl-attendance Timesheet lifecycle (`lock`) · **Blocks:** BL-ATT-08, BL-ATT-09, BL-ATT-13, BL-CON-18, BL-EDU-14
 **Review items:** X-16, 09-N4-a
 
@@ -533,6 +576,11 @@ A `locked` timesheet (used by payroll, an invoice or an export) is never edited 
 correction is a new timesheet of kind `adjustment` that holds only the signed difference (+ or −
 hours per day, cost object and category), with a reason, an origin and where it flows (`affects`).
 The original stays as it is and points to its adjustments.
+
+#### Surfaces
+- **Back office:** on a `locked` timesheet a user with `timesheets.adjust` opens an
+  adjustment with reason, origin, `affects` and signed entries per day, cost object and
+  category; `reopen` is refused, and the original shows its adjustments in `adjusted_by`.
 
 #### Files to read
 - `docs/modules/wl-attendance.md` §3 (Timesheet, Adjustment timesheet, Timesheet entry), §4
@@ -616,7 +664,7 @@ credit note or extra line from an adjustment timesheet).
 
 ### BL-ATT-08 — wl-attendance: approve an adjustment timesheet with segregation of duties
 
-**Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` `surface:back-office` `surface:portal` `surface:public` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** BL-ATT-07 · **Blocks:** BL-HRM-16, BL-CON-18, BL-EDU-14
 **Review items:** X-16, 09-N4-a
 
@@ -626,6 +674,17 @@ the original, the client approves the adjustment, or staff with `approve_on_beha
 signed agreed outcome), and never by the user who created it. On approval the signed delta is
 posted as labour cost where the context posts cost from hours, and `TimesheetApproved` (kind
 `adjustment`) tells payroll and billing.
+
+#### Surfaces
+- **Back office:** an internal approver (not the creator) approves or rejects the adjustment
+  with a reason; for an externally approved original, staff use `approve_on_behalf` with the
+  signed sheet attached.
+- **Portal:** when the client approved the original, the client approver approves the
+  adjustment in the portal.
+- **Public:** the client approver may instead approve through the signed emailed approval
+  link.
+- **System:** approval posts the signed delta as labour cost where the context posts cost
+  from hours and emits `TimesheetApproved` with kind `adjustment`.
 
 #### Files to read
 - `docs/modules/wl-attendance.md` §4 *Timesheet* (`approve`, `approve_on_behalf`), "Correcting
@@ -683,7 +742,7 @@ Payroll and billing reactions (BL-HRM-16; Epic wl-invoicing); reconciliation (BL
 
 ### BL-ATT-09 — wl-attendance: link a credited invoice dispute to a `client_dispute` adjustment
 
-**Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** BL-ATT-07 · Epic wl-invoicing: invoice `disputed` flag and `resolve_dispute` outcome `credited` · **Blocks:** None
 **Review items:** X-16, 09-N4-a
 
@@ -694,6 +753,14 @@ business and the client agree to cut hours, a user opens an adjustment timesheet
 dispute is then resolved `credited`, naming the adjustment. By default it affects `billing`
 only: the worker's pay is not cut because a client disputed an invoice, unless the attendance
 itself was wrong.
+
+#### Surfaces
+- **Back office:** a user with `timesheets.adjust` opens a `client_dispute` adjustment
+  linked to the open invoice dispute or ticket; `affects` defaults to `billing`, and `both`
+  needs attendance evidence attached; `submit` is refused once the dispute is resolved
+  `upheld`.
+- **System:** the credit note and the adjustment link to each other, and the creator is
+  notified when the dispute ends `upheld`.
 
 #### Files to read
 - `docs/modules/wl-attendance.md` "Correcting a locked timesheet" (last paragraph), §5.7 point
@@ -769,7 +836,7 @@ The invoice dispute and credit note (Epic wl-invoicing); approval (BL-ATT-08).
 
 ### BL-ATT-10 — wl-attendance: escalate an unanswered external timesheet (`HRM.RUL.15` at E days)
 
-**Labels:** `module:wl-attendance` `area:negative-flow` `priority:medium` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-attendance` `area:negative-flow` `priority:medium` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** Base: wl-attendance `HRM.RUL.08` (submit and reminders) · **Blocks:** BL-ATT-11, BL-MPW-19, BL-MPW-21
 **Review items:** X-16, 09-N5-b
 
@@ -778,6 +845,13 @@ When a client does not approve a submitted timesheet, the reminder ladder of `HR
 continues: at E days after submit (default 6) the client's escalation contact and the account
 manager's manager are told, and the account manager gets a task to collect a signed sheet so
 staff can `approve_on_behalf`.
+
+#### Surfaces
+- **Back office:** the account manager gets one task under "Needs your action" to collect a
+  signed sheet; it closes by itself when the timesheet is approved.
+- **System:** `HRM.RUL.15` runs daily at 08:00 Asia/Dubai and, E days (6) after submit,
+  notifies the client's escalation contact and the account manager's manager once (or the
+  `approve_on_behalf` users when no manager is set).
 
 #### Files to read
 - `docs/modules/wl-attendance.md` §5.6, §6 *Automations* (`HRM.RUL.08`, `HRM.RUL.15`), §7
@@ -832,7 +906,7 @@ Deemed approval at N (BL-ATT-11).
 
 ### BL-ATT-11 — wl-attendance: deem an external timesheet approved per contract (`deem_approve`)
 
-**Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` `blocked:open-item` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** BL-ATT-10 · BL-ATT-13 (reconciliation on deemed approval) · **Blocks:** BL-MPW-19
 **Review items:** X-16, 09-N5-b
 
@@ -841,6 +915,12 @@ If the client contract has a deemed-approval clause (N days), the system approve
 timesheet that has had no answer for N days after `submit`. The client and the account manager
 are told the hours, that they were deemed approved, and the dispute route. Without a clause
 nothing happens and the timesheet stays `submitted`.
+
+#### Surfaces
+- **Back office:** the timesheet shows approval basis *deemed*, also on the invoice support.
+- **System:** `HRM.RUL.15` runs `deem_approve` N days after submit when the contract has the
+  clause, tells the client approver and the account manager the hours and the dispute route,
+  and emits `TimesheetApproved` with basis `deemed`.
 
 #### Files to read
 - `docs/modules/wl-attendance.md` §4 *Timesheet* (`deem_approve`), §5.6, §6 *Automations*
@@ -902,7 +982,7 @@ Escalation at E (BL-ATT-10); later disputes (BL-ATT-07, BL-ATT-09).
 
 ### BL-ATT-12 — wl-attendance: give payroll provisional hours at the cut-off (`hours_for_payroll`)
 
-**Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** Base: wl-attendance Timesheet lifecycle · Base: wl-hr `PayrollCalendar` · **Blocks:** BL-ATT-13, BL-HRM-16, BL-MPW-21
 **Review items:** X-16, 09-N5-c
 
@@ -912,6 +992,12 @@ returns approved hours, plus, for timesheets still `open` or `submitted`, the ac
 attendance hours marked *provisional*. The payroll run records itself as `paid_provisionally_by`
 on those timesheets; from then on they count as consumed and cannot be reopened without an
 adjustment.
+
+#### Surfaces
+- **Back office:** `reopen` of a timesheet with `paid_provisionally_by` is refused; choosing
+  the payroll basis `wait` for an external approver context is refused in settings.
+- **System:** `Timesheets::hours_for_payroll` returns approved hours plus accepted
+  attendance marked *provisional*, and payroll run `submit` writes `paid_provisionally_by`.
 
 #### Files to read
 - `docs/modules/wl-attendance.md` §3 (Timesheet: consumers), §4 *Timesheet* (`reopen`), §5.7,
@@ -991,7 +1077,7 @@ Reconciliation on approval (BL-ATT-13); how payroll shows provisional hours (BL-
 
 ### BL-ATT-13 — wl-attendance: reconcile provisional hours when the timesheet is approved
 
-**Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** BL-ATT-07 · BL-ATT-12 · **Blocks:** BL-HRM-16, BL-ATT-11
 **Review items:** X-16, 09-N5-c
 
@@ -1000,6 +1086,11 @@ When a timesheet that payroll used provisionally is approved (or deemed approved
 hours are compared with the provisional hours. A difference creates an adjustment timesheet with
 origin `provisional_reconciliation`, affecting `payroll`, and emits
 `TimesheetReconciliationNeeded`, so wl-hr puts the difference in the next run.
+
+#### Surfaces
+- **System:** on approval of a provisionally paid timesheet the system opens, submits and
+  approves a `provisional_reconciliation` adjustment with the per-category delta (copying
+  approver and basis, no new request) and emits `TimesheetReconciliationNeeded` only.
 
 #### Files to read
 - `docs/modules/wl-attendance.md` §4 *Timesheet* (`approve` effects, `open_adjustment`), §5.7

@@ -51,7 +51,7 @@ supplier scorecard and alternative suppliers (`STK.SUP.01`, gap G3 of the
 
 ### BL-STK-01 — wl-inventory: post a goods receipt with accepted and rejected quantity per line
 
-**Labels:** `module:wl-inventory` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 02 · **Size:** m
+**Labels:** `module:wl-inventory` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:field-pwa` `surface:system` · **Milestone:** Launch 02 · **Size:** m
 **Depends on:** Base: wl-inventory Purchase order and Goods receipt lifecycle · **Blocks:** BL-STK-02, BL-STK-03, BL-STK-29, BL-CON-17, BL-FNB-17
 **Review items:** X-08, 02-N10-a, 06-N10-b, 07-N10-a
 
@@ -60,6 +60,15 @@ At receiving, the storekeeper records per line how much was accepted and how muc
 (damaged, wrong, warm, short-dated). Only accepted quantity enters stock, updates the PO and
 reaches the supplier bill match. Rejected goods never enter stock: they go on a Return to
 supplier, dispatched at once when refused at the door, or a draft when kept for collection.
+
+#### Surfaces
+- **Back office:** a procurement user with `purchase_orders.issue` sees an over-receipt
+  receipt under "Needs your action" and approves or rejects it.
+- **Field PWA:** the storekeeper records received, accepted and rejected quantity per line
+  with a reason (and a reading or photo when the vertical requires it), and marks rejected
+  goods *refused at the door* or *kept for collection*.
+- **System:** `post` creates the Return to supplier for rejected lines and emits
+  `GoodsReceived` with accepted and rejected quantity.
 
 #### Files to read
 - `docs/modules/wl-inventory.md` §3 (*Goods receipt*, *Purchase order*, *Return to supplier*), §4 *Goods receipt* (row `post`, rejection reasons and over-receipt paragraphs), §4 *Purchase order* (row `receive`), §5.1 step 4, §5.6 steps 1–2, §6 event `GoodsReceived`, §7 setting "Goods receipt rejection reasons"
@@ -123,7 +132,7 @@ Return `dispatch`, including the system dispatch of door-refused goods, and cred
 
 ### BL-STK-02 — wl-inventory: refuse to reverse a goods receipt once its return left
 
-**Labels:** `module:wl-inventory` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Launch 02 · **Size:** s
+**Labels:** `module:wl-inventory` `area:negative-flow` `priority:high` `size:s` `surface:back-office` · **Milestone:** Launch 02 · **Size:** s
 **Depends on:** BL-STK-01 · BL-STK-03 · **Blocks:** None.
 **Review items:** X-08
 
@@ -131,6 +140,10 @@ Return `dispatch`, including the system dispatch of door-refused goods, and cred
 A goods receipt entered by mistake can be reversed, but not after a Return to supplier
 created from it has left with the supplier. Draft returns from it are cancelled with the
 reversal.
+
+#### Surfaces
+- **Back office:** a user runs **Reverse** on a posted goods receipt; the refusal names the
+  line and the missing quantity, or says that a return from it has left.
 
 #### Files to read
 - `docs/modules/wl-inventory.md` §4 *Goods receipt* row `reverse`
@@ -165,7 +178,7 @@ None.
 
 ### BL-STK-03 — wl-inventory: dispatch a return to supplier
 
-**Labels:** `module:wl-inventory` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 02 · **Size:** m
+**Labels:** `module:wl-inventory` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 02 · **Size:** m
 **Depends on:** BL-STK-01 · Epic wl-kernel: approval request lifecycle · **Blocks:** BL-STK-02, BL-STK-04, BL-STK-05, BL-STK-06, BL-STK-07, BL-STK-12, BL-STK-29, BL-AUT-11, BL-AUT-18, BL-CON-17, BL-FNB-17, BL-MFG-08, BL-MFG-14
 **Review items:** X-08, 02-N10-a, 07-N10-a
 
@@ -174,6 +187,13 @@ Goods go back to the supplier for a credit or a replacement, from a receipt reje
 stock hold, a recall or an NCR. Dispatching the return moves stock out (for lines that were
 in stock), restores PO quantity for replacements, and makes wl-invoicing draft a supplier
 debit note for credit lines. Above AED 5,000 a second person approves.
+
+#### Surfaces
+- **Back office:** procurement runs **Dispatch** on a draft return with the collection proof
+  (supplier driver signature, courier number or the goods receipt) and gets the return note
+  PDF; a return above AED 5,000 goes to a second person under "Needs your action".
+- **System:** a door-refused return is dispatched when the receipt posts;
+  `SupplierReturnDispatched` lets wl-invoicing draft the debit note.
 
 #### Files to read
 - `docs/modules/wl-inventory.md` §3 *Return to supplier*, §4 *Return to supplier* (states, row `dispatch`, paragraph below), §4 *Lot* row `reject`, §5.6 steps 2–4, §6 (`STK.ACL.06`, event `SupplierReturnDispatched`), §7
@@ -238,13 +258,17 @@ PO `reopen` itself (BL-STK-04); credit and cancel (BL-STK-05); debit note (Epic 
 
 ### BL-STK-04 — wl-inventory: reopen a received PO when goods go back for replacement
 
-**Labels:** `module:wl-inventory` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Launch 02 · **Size:** s
+**Labels:** `module:wl-inventory` `area:negative-flow` `priority:high` `size:s` `surface:system` · **Milestone:** Launch 02 · **Size:** s
 **Depends on:** BL-STK-03 · **Blocks:** BL-CON-17
 **Review items:** X-08
 
 #### Goal
 When goods from a fully received PO are returned for replacement, the PO must expect them
 again so the replacement can be received on it and committed cost is restored.
+
+#### Surfaces
+- **System:** a `replace` return from a received PO reopens it to `partially_received` with
+  the returned quantity outstanding; users are not offered the action.
 
 #### Files to read
 - `docs/modules/wl-inventory.md` §4 *Purchase order* (state `received` not terminal, row `reopen`, sentence below the table)
@@ -281,7 +305,7 @@ None.
 
 ### BL-STK-05 — wl-inventory: credit or cancel a return to supplier
 
-**Labels:** `module:wl-inventory` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 02 · **Size:** m
+**Labels:** `module:wl-inventory` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 02 · **Size:** m
 **Depends on:** BL-STK-03 · Epic wl-invoicing: supplier debit note (`SupplierDebitNoteIssued`, `SupplierDebitNoteCancelled`) · **Blocks:** BL-STK-06, BL-STK-29, BL-AUT-11, BL-CON-17, BL-MFG-08
 **Review items:** X-08
 
@@ -290,6 +314,12 @@ A dispatched return ends `credited` when the supplier's debit note covers every 
 and replacements cover every replace line, or when a manager settles it otherwise with a
 reason. A supplier that refuses the credit is a loss. A draft return that will not be sent is
 cancelled and its goods stay.
+
+#### Surfaces
+- **Back office:** procurement marks a dispatched return credited with a reason (refund
+  received, supplier refused), cancels a draft return with a reason, and gets the task when
+  a debit note is cancelled.
+- **System:** `SupplierDebitNoteIssued` covering every line marks the return `credited`.
 
 #### Files to read
 - `docs/modules/wl-inventory.md` §4 *Return to supplier* (state `credited`, `cancelled`, rows `credit`, `cancel`), §6 *Consumes* wl-invoicing row, `STK.ACL.02`
@@ -334,7 +364,7 @@ Replacement receipt (BL-STK-06); debit note (Epic wl-invoicing).
 
 ### BL-STK-06 — wl-inventory: receive a free replacement against a return to supplier
 
-**Labels:** `module:wl-inventory` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Launch 02 · **Size:** s
+**Labels:** `module:wl-inventory` `area:negative-flow` `priority:high` `size:s` `surface:field-pwa` `surface:system` · **Milestone:** Launch 02 · **Size:** s
 **Depends on:** BL-STK-03 · BL-STK-05 · **Blocks:** BL-AUT-11
 **Review items:** X-08
 
@@ -342,6 +372,12 @@ Replacement receipt (BL-STK-06); debit note (Epic wl-invoicing).
 A supplier may replace returned goods free of charge with no PO (warranty, or long after the
 PO closed). The storekeeper receives them on a goods receipt against the dispatched return, at
 zero cost, outside the 3-way match.
+
+#### Surfaces
+- **Field PWA:** the storekeeper receives a free replacement on a goods receipt against the
+  dispatched return, up to the returned quantity.
+- **System:** the receipt posts at zero cost and marks the return `credited` when every line
+  is covered.
 
 #### Files to read
 - `docs/modules/wl-inventory.md` §3 *Goods receipt*, §4 *Goods receipt* row `post`, §5.6 step 6
@@ -377,13 +413,19 @@ None.
 
 ### BL-STK-07 — wl-inventory: chase returns to supplier not credited (`STK.RUL.08`)
 
-**Labels:** `module:wl-inventory` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 02 · **Size:** s
+**Labels:** `module:wl-inventory` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 02 · **Size:** s
 **Depends on:** BL-STK-03 · **Blocks:** BL-CON-17, BL-FNB-17
 **Review items:** X-08
 
 #### Goal
 Money waits on returns that stay `dispatched`. After 30 days the rule tells procurement and
 finance and gives procurement a task to chase the supplier.
+
+#### Surfaces
+- **Back office:** procurement gets one task to chase the supplier for a return still
+  `dispatched` after 30 days.
+- **System:** `STK.RUL.08` runs daily at 07:00 and repeats the notice every N days while the
+  return stays `dispatched`.
 
 #### Files to read
 - `docs/modules/wl-inventory.md` §6 `STK.RUL.08`, §7
@@ -415,7 +457,7 @@ None.
 
 ### BL-STK-08 — wl-inventory: revise an issued purchase order
 
-**Labels:** `module:wl-inventory` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 02 · **Size:** m
+**Labels:** `module:wl-inventory` `area:negative-flow` `priority:high` `size:m` `surface:back-office` · **Milestone:** Launch 02 · **Size:** m
 **Depends on:** Base: wl-inventory Purchase order lifecycle · Epic wl-kernel: approval request lifecycle · **Blocks:** BL-CON-17, BL-STK-27
 **Review items:** X-08 (02 MEDIUM: PO revision)
 
@@ -424,6 +466,11 @@ Quantities, prices or dates change after a PO was sent. Procurement revises it: 
 revision number, the earlier one kept read-only, the supplier gets the revised PDF and
 committed cost follows. A higher total goes through the approval limits again, and the
 current revision stays valid until then.
+
+#### Surfaces
+- **Back office:** procurement runs **Revise** on an issued PO with a reason; earlier
+  revisions stay read-only on the PO; a higher total above a limit goes to the approvers
+  under "Needs your action".
 
 #### Files to read
 - `docs/modules/wl-inventory.md` §3 *Purchase order* (revision fields), §4 *Purchase order* row `revise`, §5.1 step 7, §6 (`STK.ACL.01`, `STK.ACL.03`, event `PurchaseOrderRevised`)
@@ -467,7 +514,7 @@ None.
 
 ### BL-STK-09 — wl-inventory: adjust an allocated landed cost
 
-**Labels:** `module:wl-inventory` `area:negative-flow` `priority:medium` `size:m` · **Milestone:** Launch 02 · **Size:** m
+**Labels:** `module:wl-inventory` `area:negative-flow` `priority:medium` `size:m` `surface:back-office` · **Milestone:** Launch 02 · **Size:** m
 **Depends on:** Base: wl-inventory Landed cost lifecycle · Epic wl-kernel: approval request lifecycle · **Blocks:** BL-STK-10, BL-AUT-18
 **Review items:** X-10 (08 MEDIUM: landed cost adjustment)
 
@@ -477,6 +524,11 @@ duty refund comes later. The purchaser posts a landed cost adjustment: the amoun
 the original basis; the share on stock still on hand re-values it, the share on stock already
 consumed goes to the landed cost variance (or to the cost object charged on receipt). Nothing
 already posted changes.
+
+#### Surfaces
+- **Back office:** the purchaser enters a landed cost adjustment (cost lines, bill
+  reference, posting date) on the allocated landed cost and sees the on-hand and consumed
+  split; above AED 5,000 a second person approves.
 
 #### Files to read
 - `docs/modules/wl-inventory.md` §3 (*Landed cost*, *Landed cost adjustment*, paragraph "Landed cost after allocation"), §4 *Landed cost* (states, row `adjust`, paragraph below), §5.8 steps 1–2, §6 (`STK.ACL.06`, event `LandedCostAdjusted`), §7 settings
@@ -531,13 +583,19 @@ Draft adjustment from a supplier bill (BL-STK-10).
 
 ### BL-STK-10 — wl-inventory: draft a landed cost adjustment from a late supplier bill
 
-**Labels:** `module:wl-inventory` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 02 · **Size:** s
+**Labels:** `module:wl-inventory` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 02 · **Size:** s
 **Depends on:** BL-STK-09 · Epic wl-invoicing: `SupplierBillApproved` with a landed cost reference · **Blocks:** None.
 **Review items:** X-10
 
 #### Goal
 When a supplier bill coded to an already allocated landed cost is approved in wl-invoicing,
 the module drafts the adjustment and tells the purchaser, so late costs are never forgotten.
+
+#### Surfaces
+- **Back office:** the purchaser finds the draft adjustment created from the approved bill
+  on the landed cost and posts it.
+- **System:** `SupplierBillApproved` with a landed cost reference creates one draft
+  adjustment per bill.
 
 #### Files to read
 - `docs/modules/wl-inventory.md` §4 *Landed cost* (paragraph below the table), §5.8 step 1, §6 *Consumes* (wl-invoicing row)
@@ -572,7 +630,7 @@ Posting (BL-STK-09).
 
 ### BL-STK-11 — wl-inventory: place a stock hold and block held quantity
 
-**Labels:** `module:wl-inventory` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 05 · **Size:** m
+**Labels:** `module:wl-inventory` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:field-pwa` `surface:system` · **Milestone:** Launch 05 · **Size:** m
 **Depends on:** Base: wl-inventory Lot lifecycle and stock movements · **Blocks:** BL-STK-12, BL-STK-13, BL-STK-14, BL-STK-19, BL-STK-21, BL-CLN-13, BL-CLN-16, BL-FNB-11, BL-FNB-12, BL-FNB-17, BL-MFG-14
 **Review items:** X-09, 06-N10-e
 
@@ -580,6 +638,14 @@ Posting (BL-STK-09).
 Staff (or an automation such as a fridge alarm) block stock without moving it: whole lots
 everywhere, or the stock at one location. Held quantity cannot be picked, issued, consumed,
 transferred or dispatched until someone decides.
+
+#### Surfaces
+- **Back office:** a user with `stock.hold` places a hold with reason, reference and scope
+  (whole lot or a location); held quantity shows as on hold and is not available.
+- **Field PWA:** the storekeeper receiving goods or a transfer into a held location sees the
+  warning ("Fridge 2 is on temperature hold") before going on.
+- **System:** a vertical automation can place the hold; quantity moved in is added by
+  `add_lines`; picks, issues, transfers and consumption of held quantity are refused.
 
 #### Files to read
 - `docs/modules/wl-inventory.md` §3 (*Stock balance* on hold, *Lot* open holds, *Stock hold*), paragraph "Holds", "Picking order", §4 *Stock hold* (rows `place` and `add_lines`, paragraph on stock moved into a held location), §4 *Lot* (state `on_hold`, row `hold`), §4 *Transfer* row `send`, §6 (`StockHoldService`, events)
@@ -647,7 +713,7 @@ Decisions and closing (BL-STK-12); dispatch guard (BL-STK-21); recall placement 
 
 ### BL-STK-12 — wl-inventory: decide stock hold lines, close or cancel the hold
 
-**Labels:** `module:wl-inventory` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 05 · **Size:** m
+**Labels:** `module:wl-inventory` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 05 · **Size:** m
 **Depends on:** BL-STK-11 · BL-STK-03 · Epic wl-kernel: approval request lifecycle · **Blocks:** BL-STK-16, BL-FNB-11, BL-FNB-12, BL-MFG-08
 **Review items:** X-09, 06-N10-e
 
@@ -656,6 +722,13 @@ Each held line is decided by a holder of `lots.release`: `release` (available ag
 `discard` (wastage) or `return_to_supplier` (to quarantine and onto a draft return). The
 effect posts once the decision is final (after its approval when one is needed). Recall lines
 need a second person to release. When the last line is decided, the hold closes. A hold placed in error can be cancelled before any decision.
+
+#### Surfaces
+- **Back office:** a holder of `lots.release` decides each hold line (release, discard or
+  return to supplier) or cancels a hold placed in error; recall releases and discards above
+  the value go to a second person under "Needs your action".
+- **System:** the hold closes when the last line is decided; lots are released, discarded or
+  un-held.
 
 #### Files to read
 - `docs/modules/wl-inventory.md` §4 *Stock hold* (states, rows `close`, `cancel`, line decisions), §4 *Lot* (rows `release`, `expire`, `reject`, `discard`, `unhold`), §6 (`STK.ACL.02`, `STK.ACL.05`), §7 settings
@@ -729,13 +802,17 @@ Reminders (BL-STK-13); recall close (BL-STK-16).
 
 ### BL-STK-13 — wl-inventory: remind and escalate open stock holds (`STK.RUL.07`)
 
-**Labels:** `module:wl-inventory` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 05 · **Size:** s
+**Labels:** `module:wl-inventory` `area:negative-flow` `priority:medium` `size:s` `surface:system` · **Milestone:** Launch 05 · **Size:** s
 **Depends on:** BL-STK-11 · **Blocks:** BL-FNB-12
 **Review items:** X-09, 06-N10-e
 
 #### Goal
 Held food and medicines cannot wait forever. While a hold has undecided lines, the deciders
 are reminded every H hours, and after 2 × H the escalation role is told.
+
+#### Surfaces
+- **System:** `STK.RUL.07` reminds the deciders every H hours and notifies the escalation
+  role every 2 × H while lines stay undecided.
 
 #### Files to read
 - `docs/modules/wl-inventory.md` §6 `STK.RUL.07`, §7 settings
@@ -769,7 +846,7 @@ None.
 
 ### BL-STK-14 — wl-inventory: open a recall and hold every lot in scope
 
-**Labels:** `module:wl-inventory` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 05 · **Size:** m
+**Labels:** `module:wl-inventory` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 05 · **Size:** m
 **Depends on:** BL-STK-11 · **Blocks:** BL-STK-15, BL-SAL-15, BL-AUT-16, BL-CLN-14, BL-FNB-11, BL-FNB-13, BL-MFG-10
 **Review items:** X-09, 05-N10-a, 06-N10-c, 07-N4-c
 
@@ -777,6 +854,12 @@ None.
 When a supplier, authority or internal check says lots may be unsafe, a recall is opened. In
 the same step every lot in scope is held at every location, including in transit, picked
 dispatches with those lots are blocked, and owner, storekeepers and procurement are told.
+
+#### Surfaces
+- **Back office:** a user with `recalls.manage` opens a recall with source, reason and
+  scope; picked dispatches with lots in scope show *lot on hold*.
+- **System:** opening places one recall hold on every lot in scope at every location and
+  emits `RecallOpened`.
 
 #### Files to read
 - `docs/modules/wl-inventory.md` §3 *Recall*, §4 *Recall* (state `open`, row `open`), §4 *Stock hold*, §5.7 step 3, §6 event `RecallOpened`
@@ -821,7 +904,7 @@ Trace (BL-STK-15); items not tracked by lot (BL-STK-17).
 
 ### BL-STK-15 — wl-inventory: trace a recall forward to subjects and parties
 
-**Labels:** `module:wl-inventory` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 05 · **Size:** m
+**Labels:** `module:wl-inventory` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 05 · **Size:** m
 **Depends on:** BL-STK-14 · BL-STK-18 · **Blocks:** BL-STK-16, BL-STK-17, BL-AUT-16, BL-CLN-14, BL-FNB-13, BL-MFG-10
 **Review items:** X-09, 05-N10-a, 06-N10-c, 07-N4-c
 
@@ -829,6 +912,13 @@ Trace (BL-STK-15); items not tracked by lot (BL-STK-17).
 The recall must find who got the goods. The trace follows the immutable movements of every
 lot in scope: transfers, production (adding output lots to the scope and holding them),
 issues to visits, jobs and work orders, and dispatches, and lists each subject with its party.
+
+#### Surfaces
+- **Back office:** the recall owner sees the affected lines (subject, party, lot, qty,
+  notice status), lines marked *lot uncertain* or *possible*, walk-in sales as a count per
+  outlet and day, and can re-run the trace.
+- **System:** `trace` runs right after `open`, follows the movements and adds output lots to
+  the scope and the hold.
 
 #### Files to read
 - `docs/modules/wl-inventory.md` §3 (*Lot* genealogy, *Pending issue*), paragraph "Picking order", "Negative stock" (lot assigned on arrival), §4 *Recall* (row `trace`, forward trace table, paragraph about the party), §6 (`LotTrace`, `TracePartyResolver`, event `RecallTraced`), §4 vertical mapping row *Recall*
@@ -892,7 +982,7 @@ Notices and close (BL-STK-16); items not tracked by lot (BL-STK-17); resolvers (
 
 ### BL-STK-16 — wl-inventory: send recall notices and close the recall
 
-**Labels:** `module:wl-inventory` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` · **Milestone:** Launch 05 · **Size:** m
+**Labels:** `module:wl-inventory` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Launch 05 · **Size:** m
 **Depends on:** BL-STK-12 · BL-STK-15 · Epic wl-notify: `MessageGaveUp` · **Blocks:** BL-CLN-14, BL-FNB-13
 **Review items:** X-09, 05-N10-a, 06-N10-c, 07-N4-c
 
@@ -900,6 +990,12 @@ Notices and close (BL-STK-16); items not tracked by lot (BL-STK-17); resolvers (
 The recall owner sends notices to the affected parties in English and Arabic, follows up
 notices that could not be delivered, decides every held line, and closes the recall with a
 report kept as evidence.
+
+#### Surfaces
+- **Back office:** the recall owner selects affected lines and a notice template and sends
+  notices, waives lines with a reason, gets a task for undelivered notices, and closes the
+  recall with the report PDF.
+- **System:** `MessageGaveUp` returns a line to `pending`.
 
 #### Files to read
 - `docs/modules/wl-inventory.md` §4 *Recall* (state `closed`, rows `send_notices`, `close`), §5.7 steps 5–6, §6 event `RecallClosed`, §7 recall templates, §10 "Recalls"
@@ -945,7 +1041,7 @@ Authority notification (AU-20).
 
 ### BL-STK-17 — wl-inventory: recall items not tracked by lot
 
-**Labels:** `module:wl-inventory` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 08 · **Size:** m
+**Labels:** `module:wl-inventory` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 08 · **Size:** m
 **Depends on:** BL-STK-15 · **Blocks:** BL-SAL-15, BL-AUT-16
 **Review items:** X-09
 
@@ -953,6 +1049,13 @@ Authority notification (AU-20).
 Some items have no lots (08 parts in the MVP). They are recalled by item, supplier and received
 date range. The whole on-hand quantity is held because units cannot be told apart, and every
 later issue or sale of the item is listed as *possible*, with a softer notice.
+
+#### Surfaces
+- **Back office:** the recall owner opens a recall by item, supplier and received date range
+  (optional trace end date); traced lines are marked *possible* and default to the softer
+  template.
+- **System:** the whole on-hand quantity of the item is held and every later movement of the
+  item in the window is traced.
 
 #### Files to read
 - `docs/modules/wl-inventory.md` §4 *Recall* (row `open`, last row of the trace table, paragraph "Items not tracked by lot"), §4 vertical mapping row *Recall*
@@ -995,7 +1098,7 @@ None.
 
 ### BL-STK-18 — wl-inventory: record pending issues where negative stock is blocked
 
-**Labels:** `module:wl-inventory` `area:negative-flow` `priority:medium` `size:m` · **Milestone:** Launch 05 · **Size:** m
+**Labels:** `module:wl-inventory` `area:negative-flow` `priority:medium` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 05 · **Size:** m
 **Depends on:** Base: wl-inventory stock movements · **Blocks:** BL-STK-15, BL-STK-19, BL-STK-20, BL-CLN-13, BL-MFG-05, BL-MFG-14
 **Review items:** X-10 (05 MEDIUM: negative stock)
 
@@ -1004,6 +1107,12 @@ A clinic visit or an F&B sale must not fail because the stock count is behind. W
 blocks negative stock, manual movements stop at zero, but consumption posted automatically by
 another module becomes a pending issue for the short quantity. It posts by itself when stock
 arrives, or the storekeeper clears it.
+
+#### Surfaces
+- **Back office:** the storekeeper sees open pending issues and clears one with a reason; a
+  clear above the `STK.ACL.02` value goes to another user for approval.
+- **System:** short automatic consumption becomes a pending issue instead of blocking the
+  visit, sale or work order; pending issues post oldest first when stock arrives.
 
 #### Files to read
 - `docs/modules/wl-inventory.md` §3 (*Location* policy, *Pending issue*), paragraph "Negative stock (decided 2026-10-15)", §5.8 step 3, §6 (`StockService`, event `StockNegative`), §7 setting
@@ -1061,7 +1170,7 @@ Event `StockNegative`: a balance goes below zero or a pending issue is recorded.
 
 ### BL-STK-19 — wl-inventory: allow automatic consumption below zero (`allow_consumption`)
 
-**Labels:** `module:wl-inventory` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 06 · **Size:** s
+**Labels:** `module:wl-inventory` `area:negative-flow` `priority:medium` `size:s` `surface:system` · **Milestone:** Launch 06 · **Size:** s
 **Depends on:** BL-STK-18 · BL-STK-11 · **Blocks:** BL-FNB-17
 **Review items:** X-10
 
@@ -1069,6 +1178,11 @@ Event `StockNegative`: a balance goes below zero or a pending issue is recorded.
 F&B outlet kitchens sell before deliveries are posted. At a location set to
 `allow_consumption`, automatic consumption of items that are not lot-tracked may take the
 balance below zero; the next receipt covers it first.
+
+#### Surfaces
+- **System:** at a location set to `allow_consumption`, automatic consumption of items not
+  tracked by lot may go below zero; the next receipt covers it and the difference goes to
+  the price variance.
 
 #### Files to read
 - `docs/modules/wl-inventory.md` paragraph "Negative stock", §7
@@ -1107,12 +1221,18 @@ None.
 
 ### BL-STK-20 — wl-inventory: alert on pending issues and negative balances (`STK.RUL.06`)
 
-**Labels:** `module:wl-inventory` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 05 · **Size:** s
+**Labels:** `module:wl-inventory` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 05 · **Size:** s
 **Depends on:** BL-STK-18 · **Blocks:** BL-CLN-16, BL-MFG-05
 **Review items:** X-10
 
 #### Goal
 The storekeeper must know at once when stock runs short, and the manager when it stays short.
+
+#### Surfaces
+- **Back office:** the storekeeper gets a task (count or clear) when a pending issue or
+  negative balance is still open after H hours.
+- **System:** `STK.RUL.06` notifies the storekeeper at most once per item and location per
+  hour and the manager after H hours.
 
 #### Files to read
 - `docs/modules/wl-inventory.md` §6 `STK.RUL.06`, §7
@@ -1144,7 +1264,7 @@ None.
 
 ### BL-STK-21 — wl-inventory: block dispatch on a failed credit re-check or a held lot
 
-**Labels:** `module:wl-inventory` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 07 · **Size:** m
+**Labels:** `module:wl-inventory` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 07 · **Size:** m
 **Depends on:** Base: wl-inventory Dispatch lifecycle · BL-STK-11 · BL-SAL-10 · **Blocks:** None.
 **Review items:** X-14, X-09, 07-N3-b
 
@@ -1152,6 +1272,12 @@ None.
 Goods must not leave when the customer's credit failed since confirmation, or when a picked
 lot was put on hold after picking. The dispatch stays `picked` and reserved; held lots are
 re-picked.
+
+#### Surfaces
+- **Back office:** the user running **Dispatch** is refused with "re-pick" for a held lot,
+  or by a failed credit re-check; the dispatch stays `picked`.
+- **System:** the credit re-check puts the order on `credit_hold`; `pick` refuses held
+  quantity.
 
 #### Files to read
 - `docs/modules/wl-inventory.md` §4 *Dispatch* rows `pick`, `dispatch`, §5.4 step 3
@@ -1187,7 +1313,7 @@ The credit check itself (BL-SAL-10).
 
 ### BL-STK-22 — wl-inventory: confirm delivery per line and take refused goods to quarantine
 
-**Labels:** `module:wl-inventory` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Launch 07 · **Size:** s
+**Labels:** `module:wl-inventory` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 07 · **Size:** s
 **Depends on:** Base: wl-inventory Dispatch lifecycle · BL-DLV-02 · BL-DLV-11 · **Blocks:** BL-SAL-13, BL-MFG-07
 **Review items:** X-11, 07-N4-a
 
@@ -1197,6 +1323,13 @@ Refused goods stay *in return* until the driver brings them back; at run close e
 quantity received back, whatever its refusal reason (damaged, wrong item, not ordered,
 short-dated, temperature, other), is received into quarantine with that reason. The source only fulfils and bills the delivered
 quantity.
+
+#### Surfaces
+- **Back office:** for a courier hand-over a `dispatch.manage` user enters delivered and
+  refused quantity per line and records refused goods received back; the dispatcher gets a
+  task for a missing quantity.
+- **System:** `DeliveryDelivered` confirms the dispatch per line; `DeliveryRefusedReceived`
+  posts the refused goods into quarantine at run close.
 
 #### Files to read
 - `docs/modules/wl-inventory.md` §4 *Dispatch* (state `delivered`, row `confirm_delivery`, paragraph *Refused goods coming back*), §5.4 step 4, §6 (consumed `DeliveryRefusedReceived`, event `DispatchDelivered`)
@@ -1245,7 +1378,7 @@ Sales order fulfilment (BL-SAL-13).
 
 ### BL-STK-23 — wl-inventory: record a dispatch discarded by wl-delivery
 
-**Labels:** `module:wl-inventory` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Launch 07 · **Size:** s
+**Labels:** `module:wl-inventory` `area:negative-flow` `priority:high` `size:s` `surface:system` · **Milestone:** Launch 07 · **Size:** s
 **Depends on:** Base: wl-inventory Dispatch lifecycle · BL-DLV-07 · **Blocks:** None.
 **Review items:** X-12
 
@@ -1253,6 +1386,10 @@ Sales order fulfilment (BL-SAL-13).
 When wl-delivery destroys perishable goods after a failed attempt, the dispatch ends
 `discarded` and its value goes to wastage. No stock movement is needed because the goods
 already left.
+
+#### Surfaces
+- **System:** `DeliveryDiscarded` moves the dispatch to `discarded` and posts its value as
+  wastage with the reason and photo.
 
 #### Files to read
 - `docs/modules/wl-inventory.md` §4 *Dispatch* (state `discarded`, row `discard`)
@@ -1287,13 +1424,17 @@ None.
 
 ### BL-STK-24 — wl-inventory: hold a lost dispatch as a loss and reverse it when found
 
-**Labels:** `module:wl-inventory` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Launch 07 · **Size:** s
+**Labels:** `module:wl-inventory` `area:negative-flow` `priority:high` `size:s` `surface:system` · **Milestone:** Launch 07 · **Size:** s
 **Depends on:** Base: wl-inventory Dispatch lifecycle · BL-DLV-06 · **Blocks:** BL-SAL-13
 **Review items:** X-11
 
 #### Goal
 When wl-delivery marks a delivery lost, its dispatch goes `lost` and its value is posted as a
 loss pending the claim, also when the dispatch was already `delivered` (delivery under review). If the goods are found, the loss is reversed and the dispatch continues.
+
+#### Surfaces
+- **System:** `DeliveryLost` moves the dispatch to `lost` and holds its value as a loss;
+  `DeliveryFound` reverses it.
 
 #### Files to read
 - `docs/modules/wl-inventory.md` §4 *Dispatch* (states `delivered`, `lost`, rows `mark_lost`, `found`)
@@ -1331,7 +1472,7 @@ Claim handling (Epic wl-ticketing).
 
 ### BL-STK-25 — wl-inventory: reopen a delivered dispatch on a delivery reversal
 
-**Labels:** `module:wl-inventory` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Launch 07 · **Size:** s
+**Labels:** `module:wl-inventory` `area:negative-flow` `priority:high` `size:s` `surface:system` · **Milestone:** Launch 07 · **Size:** s
 **Depends on:** Base: wl-inventory Dispatch lifecycle · BL-DLV-05 · **Blocks:** BL-SAL-13
 **Review items:** X-11
 
@@ -1339,6 +1480,10 @@ Claim handling (Epic wl-ticketing).
 When an approved delivery reversal says the goods were not really delivered, the dispatch goes
 back to `dispatched` with delivered quantity zero, so the source can reverse its fulfilment and
 the goods follow the delivery again.
+
+#### Surfaces
+- **System:** `DeliveryReversed` moves the dispatch back to `dispatched` with delivered
+  quantity zero.
 
 #### Files to read
 - `docs/modules/wl-inventory.md` §4 *Dispatch* row `reverse`
@@ -1369,7 +1514,7 @@ Sales order fulfilment reversal (BL-SAL-13).
 
 ### BL-STK-26 — wl-inventory: apply sales cancellation outcomes to stock
 
-**Labels:** `module:wl-inventory` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 06 · **Size:** m
+**Labels:** `module:wl-inventory` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 06 · **Size:** m
 **Depends on:** BL-SAL-07 · BL-SAL-08 · BL-SAL-09 · **Blocks:** BL-FNB-02, BL-FNB-04, BL-FNB-05
 **Review items:** X-14, 07-N2-a
 
@@ -1377,6 +1522,12 @@ Sales order fulfilment reversal (BL-SAL-13).
 When a sales order or line is cancelled after fulfilment started, wl-inventory acts on the
 outcome in the event: *return to stock* puts picked goods back and cancels the dispatch;
 *scrap* posts the work in progress or prepared goods as wastage with reason *cancelled order*.
+
+#### Surfaces
+- **Back office:** the dispatcher gets a task when a cancellation arrives for a dispatch
+  already `dispatched`.
+- **System:** `SalesOrderLineCancelled` with *return to stock* cancels the dispatch or
+  removes the lines; *scrap* posts wastage with reason *cancelled order*.
 
 #### Files to read
 - `docs/modules/wl-inventory.md` §4 *Dispatch* row `cancel`, §5.2 step 3, §6 *Consumes* (wl-sales row)
@@ -1422,7 +1573,7 @@ The cancellation (BL-SAL-07 to 09); finish to stock (Epic 07 Manufacturing).
 
 ### BL-STK-27 — wl-inventory: refuse a new or extended purchase order to a blocked supplier
 
-**Labels:** `module:wl-inventory` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Launch 02 · **Size:** s
+**Labels:** `module:wl-inventory` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 02 · **Size:** s
 **Depends on:** Base: wl-inventory Purchase order lifecycle · BL-PTY-04 (`BlockGuard`, exception) · BL-STK-08 (`revise`) · **Blocks:** BL-CON-17
 **Review items:** X-18
 
@@ -1432,6 +1583,12 @@ business with it. PO `issue` calls the shared `BlockGuard` and is refused unless
 role approves an exception; a revision that raises the total or moves the delivery date later
 counts as extending the agreement. POs already issued may still be received; paying the
 supplier is stopped in wl-payments.
+
+#### Surfaces
+- **Back office:** procurement's **Issue** or **Revise** for a blocked supplier is refused
+  with *on hold* and an option to request an exception; the compliance role approves the
+  exception; users allowed to see it see the block reason.
+- **System:** `BlockGuard` runs before the SoD and value checks and again at final approval.
 
 #### Files to read
 - `docs/modules/wl-inventory.md` §4 *Purchase order* (rows `issue`, `revise`), §6 *Consumes*
@@ -1492,7 +1649,7 @@ the block effect review for open POs (BL-PTY-03).
 
 ### BL-STK-28 — wl-inventory: keep preferred and alternative suppliers per item and use them in reorder suggestions
 
-**Labels:** `module:wl-inventory` `area:sme-gap` `priority:medium` `size:m` · **Milestone:** Launch 02 · **Size:** m
+**Labels:** `module:wl-inventory` `area:sme-gap` `priority:medium` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 02 · **Size:** m
 **Depends on:** Base: wl-inventory Item catalogue and reorder suggestions (`STK.RUL.04`) · Epic wl-parties: `BlockGuard` · BL-DOC-10 (supplier certificates) · **Blocks:** BL-STK-29, BL-STK-31, BL-AUT-18, BL-CON-17, BL-FNB-17, BL-MFG-14
 **Review items:** G3 (SME problem map 27, 49)
 
@@ -1501,6 +1658,13 @@ Procurement lists, per item, one preferred supplier and ranked alternatives with
 supplier item code. The last price per item and supplier fills in from receipts. Reorder
 suggestions go to the preferred supplier, or to the first usable alternative when the preferred
 one is inactive or blocked, so that one supplier failing does not stop replenishment.
+
+#### Surfaces
+- **Back office:** procurement keeps the preferred and ranked alternative suppliers on the
+  item, with last price and certificate warnings; the purchaser sees reorder suggestions
+  marked *alternative* with the reason and switches one with a reason.
+- **System:** `STK.RUL.04` picks the preferred or first usable alternative supplier; last
+  prices come from receipts; merged or archived suppliers update the rows.
 
 #### Files to read
 - `docs/modules/wl-inventory.md` §3 (*Item*, *Item supplier*, *Reorder suggestion*, paragraph
@@ -1605,7 +1769,7 @@ The supplier score (BL-STK-29); preferred supplier change approval (BL-STK-31).
 
 ### BL-STK-29 — wl-inventory: compute the supplier score and keep monthly snapshots
 
-**Labels:** `module:wl-inventory` `area:sme-gap` `priority:medium` `size:m` · **Milestone:** Launch 02 · **Size:** m
+**Labels:** `module:wl-inventory` `area:sme-gap` `priority:medium` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 02 · **Size:** m
 **Depends on:** BL-STK-01 · BL-STK-03 · BL-STK-05 · BL-STK-28 · the `SupplierIncidentSource` extension point is defined in this issue (wl-inventory §8); its 07 implementation (NCRs on incoming lots, apps/manufacturing) is a vertical task, so the checks below use a test source · **Blocks:** BL-STK-30, BL-STK-31, BL-AUT-18, BL-CON-17, BL-FNB-17, BL-MFG-14, BL-MFG-15
 **Review items:** G3 (SME problem map 27, 49)
 
@@ -1614,6 +1778,13 @@ Procurement sees, per supplier, how reliable it is: deliveries on time, value re
 quality incidents, debit notes and price increases, combined into a score from 0 to 100. A
 live view covers the last 3 months; on day 1 of each month a snapshot is kept so that trends
 and the low-score review (BL-STK-30) use fixed numbers.
+
+#### Surfaces
+- **Back office:** procurement sees each supplier's live score and monthly snapshots with
+  their components and adds a review note to a snapshot (dashboard layout in base
+  reporting).
+- **System:** on day 1 at 06:00 Asia/Dubai a snapshot is built per supplier and month, with
+  missed months caught up.
 
 #### Files to read
 - `docs/modules/wl-inventory.md` §3 (*Supplier score*, paragraph *Supplier scorecard and
@@ -1738,7 +1909,7 @@ The review task (BL-STK-30); the scorecard dashboard layout (base reporting).
 
 ### BL-STK-30 — wl-inventory: ask procurement to review a supplier below the threshold (`STK.RUL.09`)
 
-**Labels:** `module:wl-inventory` `area:sme-gap` `priority:medium` `size:s` · **Milestone:** Launch 02 · **Size:** s
+**Labels:** `module:wl-inventory` `area:sme-gap` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 02 · **Size:** s
 **Depends on:** BL-STK-29 · BL-PTY-01 (block, for *request block*) · **Blocks:** BL-AUT-18, BL-CON-17, BL-FNB-17, BL-MFG-14
 **Review items:** G3 (SME problem map 27, 49)
 
@@ -1746,6 +1917,12 @@ The review task (BL-STK-30); the scorecard dashboard layout (base reporting).
 When a supplier's monthly snapshot falls below the threshold, procurement gets one review
 task with the score breakdown, the items where the supplier is preferred and their
 alternatives, and closes it with a decision.
+
+#### Surfaces
+- **Back office:** procurement gets one review task with the score breakdown and the items
+  where the supplier is preferred, and closes it with *keep*, *watch*, *change preferred* or
+  *request block*; a watched supplier shows *watched*.
+- **System:** `STK.RUL.09` runs after the monthly snapshot and creates or updates the task.
 
 #### Files to read
 - `docs/modules/wl-inventory.md` §5.9 steps 4–5, §6 *Shared automations* (`STK.RUL.09`),
@@ -1812,7 +1989,7 @@ The `block` transition and its effects (BL-PTY-01).
 
 ### BL-STK-31 — wl-inventory: approve a change of an item's preferred supplier (`STK.ACL.07`)
 
-**Labels:** `module:wl-inventory` `area:sme-gap` `priority:medium` `size:s` · **Milestone:** Launch 02 · **Size:** s
+**Labels:** `module:wl-inventory` `area:sme-gap` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 02 · **Size:** s
 **Depends on:** BL-STK-28 · BL-STK-29 (scores shown on the request) · Epic wl-kernel: approval returned · **Blocks:** BL-AUT-18, BL-CON-17, BL-FNB-17, BL-MFG-14
 **Review items:** G3 (SME problem map 27, 49)
 
@@ -1820,6 +1997,12 @@ The `block` transition and its effects (BL-PTY-01).
 Moving an item's regular business to another supplier is a common way to favour a related
 supplier. Making another supplier preferred therefore needs a second person, who sees both
 suppliers' scores, lead times and last prices.
+
+#### Surfaces
+- **Back office:** the purchaser requests a new preferred supplier on the item; the approver
+  sees both suppliers' scores, lead times and last prices under "Needs your action".
+- **System:** on approval `BlockGuard` is checked again; pending requests are cancelled when
+  the item is archived, a row is deactivated or another request is approved.
 
 #### Files to read
 - `docs/modules/wl-inventory.md` §3 paragraph *Supplier scorecard and alternative suppliers*

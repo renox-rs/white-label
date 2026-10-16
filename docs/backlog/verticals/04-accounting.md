@@ -44,7 +44,7 @@ Review items: D-09, D-10, X-13, X-18, X-20, 04-N5-c, 04-N6-a, 04-N7-b, 04-N8-a, 
 
 ### BL-ACC-01 — 04 Accounting: refuse engagement activation on an expired KYC document, a stale screening, an open match or a blocked client
 
-**Labels:** `vertical:04-accounting` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 04 · **Size:** m
+**Labels:** `vertical:04-accounting` `area:negative-flow` `priority:high` `size:m` `surface:back-office` · **Milestone:** Launch 04 · **Size:** m
 **Depends on:** Base: 04 Engagement lifecycle (`activate`) · BL-DOC-01 (document guard) · BL-DOC-06 (one-use override) · BL-PTY-08 (stale list guard, block mode) · BL-PTY-04 (no new agreements for a blocked party) · **Blocks:** None.
 **Review items:** X-13, X-18, 04-N7-b
 
@@ -53,6 +53,14 @@ A firm must not start serving a client whose identity documents have expired, wh
 screening ran on an out-of-date list, who has an undecided possible match, or who is blocked.
 `activate` checks all four. The MLRO may approve a one-use override for an expired KYC document,
 valid 72 hours; there is no override for the screening or the block.
+
+#### Surfaces
+- **Back office:** the manager runs Activate on the engagement page and gets one refusal
+  listing every failing guard with what to do (renew document X, wait for the list update,
+  MLRO to decide the match); staff without `parties.block_reason.view` see only "On hold" or
+  "screening pending". The manager requests a one-use override for an expired KYC document
+  with a reason, and the MLRO approves it from "Needs your action"; the approved override is
+  valid for one Activate within 72 hours.
 
 #### Files to read
 - `docs/verticals/04-accounting.md` §3.3 `ACC.ACL.07`, `DOC.ACL.02`, `PTY.ACL.03`, §4.1 "When it goes wrong" (rows *A KYC document expires before activation*, *Sanctions lists are stale or a possible match is open*), §7.1 *Engagement* (row `activate`), §7.2 `PTY.RUL.02`, §9 *Document blocks*
@@ -116,7 +124,7 @@ document kind settings (BL-ACC-23).
 
 ### BL-ACC-02 — 04 Accounting: chase an unsigned engagement letter and decline it (`ACC.RUL.11`)
 
-**Labels:** `vertical:04-accounting` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 04 · **Size:** s
+**Labels:** `vertical:04-accounting` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Launch 04 · **Size:** s
 **Depends on:** Base: 04 Engagement lifecycle · Base: wl-documents e-signature (`DOC.SIG.01`) · **Blocks:** None.
 **Review items:** 04 MEDIUM "engagement letter never signed"
 
@@ -125,6 +133,16 @@ A proposal is accepted but the engagement letter is never signed. The client app
 at 7 and 14 days; at 30 days the manager gets a task to chase or decline with the reason *letter
 not signed*. A declined engagement disables the client's portal users and tells the client with a
 neutral template.
+
+#### Surfaces
+- **Back office:** on day 30 the manager gets a task to chase or Decline; Decline asks for a
+  reason and a neutral template; for *CDD rejected* staff without the MLRO permission see
+  only "Declined".
+- **Portal:** after a decline, the client company's portal users lose their grants for that
+  company.
+- **System:** `ACC.RUL.11` reminds the client approver at 09:00 on days 7 and 14 after the
+  sent date, restarts on a re-sent version and closes the open task when the letter is
+  signed.
 
 #### Files to read
 - `docs/verticals/04-accounting.md` §4.1 "When it goes wrong" (rows *Engagement letter never signed*, *CDD rejected*), §7.1 *Engagement* (state `declined`, row `decline`), §7.2 `ACC.RUL.11`
@@ -176,7 +194,7 @@ CDD `reject` itself (base). Engagement activation guards (BL-ACC-01).
 
 ### BL-ACC-03 — 04 Accounting: suspend an engagement and hold its tasks, requests and retainer
 
-**Labels:** `vertical:04-accounting` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 04 · **Size:** m
+**Labels:** `vertical:04-accounting` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 04 · **Size:** m
 **Depends on:** BL-TKT-10 (held tasks) · BL-INV-20 (retainer pause and resume) · BL-PTY-03 (block effect *pause*) · BL-ACC-04 (deadline notice) · BL-ACC-07 (neutral reasons) · **Blocks:** BL-ACC-05, BL-ACC-06, BL-ACC-10, BL-ACC-22
 **Review items:** 04-N8-a, 04 MEDIUM "suspension and retainer"
 
@@ -185,6 +203,15 @@ An engagement is paused for non-payment, at the client's request, or because the
 blocked. On `suspend` its tasks are held, no new request lists are created, open requests stop
 reminding the client, the retainer pauses, and the client gets the statutory deadline notice unless
 the reason is restricted. A client block suspends it automatically with the neutral reason *on hold*.
+
+#### Surfaces
+- **Back office:** the manager runs Suspend on the engagement page with a reason
+  (*non-payment*, *client request*, *other*); the engagement shows `suspended`, its tasks
+  show the held flag, and time can still be logged. For a block with a reason that is not
+  restricted, the partner gets a task with the deadline list and the neutral template.
+- **System:** `PartyBlocked` suspends the engagement with *on hold* and pauses the retainer;
+  `ACC.RUL.02` creates no request lists and `POR.RUL.01` sends no client reminders while
+  suspended; `mark_overdue` still runs on held tasks.
 
 #### Files to read
 - `docs/verticals/04-accounting.md` §4.2 "When it goes wrong" (row *Engagement suspended*), §4.5 (row *Engagement suspended*), §7.1 *Engagement* (state `suspended`, row `suspend`, paragraph *Block effect*), §7.1 *Task* (paragraph after the diagram), §7.1 *Subscription* (paragraph after the diagram), §7.2 `ACC.RUL.02`, `POR.RUL.01`
@@ -250,7 +277,7 @@ held flag and retainer pause mechanics (BL-TKT-10, BL-INV-20).
 
 ### BL-ACC-04 — 04 Accounting: send the client the statutory deadlines on suspend or end (`ACC.RUL.09`)
 
-**Labels:** `vertical:04-accounting` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 04 · **Size:** m
+**Labels:** `vertical:04-accounting` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Launch 04 · **Size:** m
 **Depends on:** BL-NTF-05 (statutory notice deadline held until proof) · Base: wl-portal acknowledgements · **Blocks:** BL-ACC-03, BL-ACC-06
 **Review items:** 04-N5-c
 
@@ -260,6 +287,16 @@ that the firm will not act on them. On `suspend` or `end` for a reason that is n
 client approver receives the statutory deadlines due in the next 90 days and is asked to acknowledge
 in the portal; a reminder follows after 3 days and the partner gets a task after 7 days without an
 acknowledgement. The notice is statutory: if it cannot be delivered, staff deliver it another way.
+
+#### Surfaces
+- **Back office:** the partner gets a task after 7 days without acknowledgement; for a
+  non-restricted block the partner, and for a restricted end the MLRO, gets a task with the
+  pre-filled deadline list and the neutral template and sends it; staff get a delivery task
+  when the notice cannot be delivered.
+- **Portal:** the client approver sees the deadline notice listing the statutory deadlines
+  due in the next 90 days with an Acknowledge button; one acknowledgement is enough.
+- **System:** `ACC.RUL.09` runs on `suspend` and `end`, reminds after 3 days and starts the
+  3-day and 7-day clocks only after delivery or proof; a failed run sends the owner alert.
 
 #### Files to read
 - `docs/verticals/04-accounting.md` §4.3 "When it goes wrong" (rows *Deadlines fall inside a suspension*, *Deadline notice not delivered*), §6 *Engagement* (deadline notice and client acknowledgement), §7.2 `ACC.RUL.09` and the compliance-critical paragraph, §9 *Notices*
@@ -319,7 +356,7 @@ BL-ACC-06).
 
 ### BL-ACC-05 — 04 Accounting: resume a suspended engagement
 
-**Labels:** `vertical:04-accounting` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 04 · **Size:** s
+**Labels:** `vertical:04-accounting` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 04 · **Size:** s
 **Depends on:** BL-ACC-03 · BL-PTY-02 (unblock) · **Blocks:** None.
 **Review items:** 04-N8-a, 04 MEDIUM "suspension and retainer"
 
@@ -329,6 +366,15 @@ When the reason for the suspension is gone, a manager resumes the engagement: ta
 while suspended are created. Whether the reason is gone is the manager's decision; the system only
 checks that the client is not blocked. After a block, it resumes only once the party is unblocked
 and the MLRO agrees.
+
+#### Surfaces
+- **Back office:** the manager runs Resume with a required note; for *non-payment* the
+  resume screen shows the client's overdue invoices and their total; after a block, Resume
+  creates an approval request that the MLRO or deputy decides; the manager gets the list of
+  tasks that went overdue while held.
+- **System:** on resume, held tasks are released, the retainer resumes, request lists for
+  the skipped periods are created with one client notice, and pending deadline-notice
+  reminders are cancelled.
 
 #### Files to read
 - `docs/verticals/04-accounting.md` §7.1 *Engagement* (row `resume`, paragraph *Block effect*), §7.1 *Task* (paragraph after the diagram)
@@ -367,7 +413,7 @@ Unblock (BL-PTY-02). Held task release mechanics (BL-TKT-10).
 
 ### BL-ACC-06 — 04 Accounting: end an engagement mid-period
 
-**Labels:** `vertical:04-accounting` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 04 · **Size:** m
+**Labels:** `vertical:04-accounting` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Launch 04 · **Size:** m
 **Depends on:** BL-ACC-03 · BL-ACC-04 · BL-ACC-17 (cancel returns) · BL-INV-21 (retainer cancel) · BL-TKT-09 (waive tasks on end) · BL-PTY-04 (money out to a blocked party) · **Blocks:** BL-ACC-09
 **Review items:** 04-N8-b, 04 MEDIUM "ending mid-period"
 
@@ -377,6 +423,17 @@ An engagement can end at any point in a period, by agreement or on the MLRO's de
 invoice or credit is issued. On `end` the retainer is cancelled with a pro-rata final invoice or
 credit, upcoming tasks are waived, the client receives the statutory deadlines due in the next 90
 days, and any refund to a blocked client waits.
+
+#### Surfaces
+- **Back office:** the partner runs End with an end date; the End checklist (open returns,
+  WIP, final invoice) refuses the end while any item is open; a WIP write-off above 10% by
+  the manager waits for a partner; started tasks are listed for the manager; a failed
+  scheduled end gives the partner a task listing the open items.
+- **Portal:** after the end, client users see their filed returns and documents read-only
+  for 90 days, then the portal closes.
+- **System:** a future end date runs as a scheduled End, tried again daily until its guards
+  pass; the retainer is cancelled with a pro-rata invoice or credit, upcoming tasks are
+  waived, and a refund to a blocked client waits for the MLRO's exception.
 
 #### Files to read
 - `docs/verticals/04-accounting.md` §3.3 `ACC.ACL.09`, `POR.ACL.01`, §4.5 "When it goes wrong" (row *Engagement ends mid-period*), §4.6 step 5, §7.1 *Engagement* (state `ended`, row `end`), §7.1 *Task* (row `waive`, paragraph after the diagram), §7.1 *Subscription* (paragraph after the diagram)
@@ -438,7 +495,7 @@ exit (BL-ACC-09).
 
 ### BL-ACC-07 — 04 Accounting: show only neutral reasons for a restricted suspension or end (`ACC.ACL.14`)
 
-**Labels:** `vertical:04-accounting` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Launch 04 · **Size:** s
+**Labels:** `vertical:04-accounting` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Launch 04 · **Size:** s
 **Depends on:** BL-PTY-01 (restricted reasons, `parties.block_reason.view`) · **Blocks:** BL-ACC-03, BL-ACC-09
 **Review items:** 04-N11-a, X-18
 
@@ -448,6 +505,17 @@ the law forbids. When an engagement is suspended or ended for a restricted reaso
 the MLRO and deputy sees only "On hold" or "Ended", the portal shows nothing about a block, no
 automatic message goes to the client, and the MLRO decides what the client is told with a neutral
 template.
+
+#### Surfaces
+- **Back office:** staff without `parties.block_reason.view` see only "On hold" or "Ended"
+  on the engagement page, in lists, history, audit views, exports, reports and search; the
+  MLRO and deputy see the real reason on the block record and choose the neutral template to
+  send, which is recorded on the engagement.
+- **Portal:** client users see "On hold" or "Ended" on the engagement with no reason line,
+  and no block, count or badge.
+- **System:** the API returns only the neutral code; automatic client messages (deadline
+  notice, decline and end notices, retainer pause notices, request reminders) are suppressed
+  for a restricted reason.
 
 #### Files to read
 - `docs/verticals/04-accounting.md` §3.3 `ACC.ACL.14`, `PTY.ACL.02`, `ACC.ACL.05`, §4.6 step 7, §6 *Engagement* (suspension or end reason), §9 *Block effects and no tipping off*
@@ -494,7 +562,7 @@ Block and restricted reasons in wl-parties (BL-PTY-01). AML case visibility (`AC
 
 ### BL-ACC-08 — 04 Accounting: refuse CDD submit and approve on a stale list or an open possible match
 
-**Labels:** `vertical:04-accounting` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Launch 04 · **Size:** s
+**Labels:** `vertical:04-accounting` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 04 · **Size:** s
 **Depends on:** Base: 04 CDD file lifecycle · BL-PTY-07 (stale list flag and re-run) · **Blocks:** None.
 **Review items:** 04-N7-b
 
@@ -502,6 +570,13 @@ Block and restricted reasons in wl-parties (BL-PTY-01). AML case visibility (`AC
 Due diligence must rest on a current screening. A CDD file cannot be submitted for approval if its
 screening ran on a stale sanctions list, and the MLRO cannot approve it while a list is stale or a
 possible match on the client or a UBO is undecided.
+
+#### Surfaces
+- **Back office:** the preparer's Submit and the MLRO's Approve on the CDD file are refused
+  naming the stale list and its last update; for an open possible match the preparer sees
+  only "screening pending" and the MLRO sees the match.
+- **System:** the guards read the latest screening of the client company and each UBO,
+  director and signatory, and pass again after the list update and a `clear` re-run.
 
 #### Files to read
 - `docs/verticals/04-accounting.md` §4.6 step 6, §7.1 *CDD file* (rows `submit`, `approve`), checklist row *CDD file*, §7.2 `PTY.RUL.02`
@@ -546,7 +621,7 @@ List freshness, alerts and re-runs (BL-PTY-07, BL-PTY-09). Engagement activation
 
 ### BL-ACC-09 — 04 Accounting: exit a client through CDD and hand the end to the partner
 
-**Labels:** `vertical:04-accounting` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 04 · **Size:** m
+**Labels:** `vertical:04-accounting` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 04 · **Size:** m
 **Depends on:** Base: 04 CDD file lifecycle · BL-ACC-06 (end) · BL-ACC-07 (neutral reasons) · **Blocks:** BL-ACC-11
 **Review items:** 04-N8-b
 
@@ -556,6 +631,14 @@ a report, or at any time. `exit` closes the CDD file with a reason only the MLRO
 partner a task to end the engagement with the neutral reason *relationship ended*, stops new work,
 and the client is told only what the MLRO chooses, with a neutral template. A file rejected at a
 review of an existing client is treated the same way.
+
+#### Surfaces
+- **Back office:** the MLRO runs Exit on the CDD file with a reason only the MLRO and deputy
+  see (others see "Exited"); the partner gets one task "End engagement — relationship
+  ended", due in 5 working days, listing each engagement; a new proposal or engagement for
+  the client is refused with "On hold".
+- **System:** a file rejected at the review of an existing client runs the same effects; no
+  client message is sent automatically from the exit, the return cancellations or the end.
 
 #### Files to read
 - `docs/verticals/04-accounting.md` §4.6 step 5, §6 *CDD file* (exit reason, MLRO only), §7.1 *CDD file* (states `rejected`, `exited`; rows `reject`, `exit`), §7.1 *Engagement* (row `end`, By)
@@ -616,7 +699,7 @@ list and chooses the neutral template that tells the client which deadlines it m
 
 ### BL-ACC-10 — 04 Accounting: open an AML case on a confirmed sanctions match (`ACC.RUL.12`) and close it
 
-**Labels:** `vertical:04-accounting` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` · **Milestone:** Launch 04 · **Size:** m
+**Labels:** `vertical:04-accounting` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Launch 04 · **Size:** m
 **Depends on:** BL-PTY-06 (confirmed match: block, freeze and report tasks) · BL-ACC-03 (suspend on block) · **Blocks:** None.
 **Review items:** 04-N8-a
 
@@ -626,6 +709,16 @@ hours to freeze and must report. The system checks that the client company is bl
 restricted reason `sanctions`, opens an AML case linked to the screening and to the freeze and
 report tasks, and notifies the MLRO; the block suspends the engagement and pauses the retainer, and
 no message goes to the client. The case can close only once the freeze and report tasks are done.
+
+#### Surfaces
+- **Back office:** the MLRO sees the AML case with pre-filled facts and the linked
+  screening, freeze task and report task, runs Review and then Close with a reason; Close is
+  refused while a linked task is open; staff without the MLRO permission cannot see the
+  case.
+- **System:** `ACC.RUL.12` consumes `ScreeningMatchConfirmed`, blocks the client company
+  with `sanctions` when it is not blocked yet, opens the case or adds to the company's open
+  one; the block suspends the engagement and pauses the retainer; a failed run sends the
+  owner alert.
 
 #### Files to read
 - `docs/verticals/04-accounting.md` §2 (*Targeted financial sanctions*), §4.6 step 4, §7.1 *AML case* (state `open`, rows `open`, `close`), §7.2 `ACC.RUL.12` and the compliance-critical paragraph
@@ -692,7 +785,7 @@ Block, freeze and report tasks (BL-PTY-06). Report effects (BL-ACC-11). goAML fi
 
 ### BL-ACC-11 — 04 Accounting: apply a goAML report to the CDD file and the engagement
 
-**Labels:** `vertical:04-accounting` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Launch 04 · **Size:** s
+**Labels:** `vertical:04-accounting` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 04 · **Size:** s
 **Depends on:** Base: 04 AML case lifecycle (`review`, `report`) · BL-ACC-09 (exit) · **Blocks:** None.
 **Review items:** 04-N8-a, 04-N8-b
 
@@ -702,6 +795,14 @@ When the MLRO files a suspicious transaction report on goAML and records the ref
 officer gets a "review CDD after report" task), the partner is informed without client-facing
 staff, and the MLRO decides what happens to the engagement: continue, suspend with a neutral
 reason, or exit.
+
+#### Surfaces
+- **Back office:** the MLRO runs Report on a case `under_review`, entering the goAML
+  reference and date, then records the engagement decision (continue, suspend, exit) from a
+  task due in 1 working day; the compliance officer gets a "review CDD after report" task
+  when the file is not `approved`.
+- **System:** Report moves an `approved` CDD file to `review_due`; the decision *suspend*
+  runs engagement `suspend` with *on hold*, and *exit* runs CDD `exit`.
 
 #### Files to read
 - `docs/verticals/04-accounting.md` §3.3 `ACC.ACL.05`, §4.6 step 3, §7.1 *AML case* (row `report`), §7.1 *CDD file* (row `flag_review`)
@@ -750,7 +851,7 @@ Opening and closing cases (BL-ACC-10). Exit (BL-ACC-09).
 
 ### BL-ACC-12 — 04 Accounting: open a CDD update task when an active client's KYC document expires
 
-**Labels:** `vertical:04-accounting` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 04 · **Size:** s
+**Labels:** `vertical:04-accounting` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 04 · **Size:** s
 **Depends on:** BL-DOC-05 (`DocumentExpired` with blocked records; lifting on renewal) · Base: 04 CDD file lifecycle · **Blocks:** None.
 **Review items:** X-13
 
@@ -758,6 +859,12 @@ Opening and closing cases (BL-ACC-10). Exit (BL-ACC-09).
 An expired trade licence or UBO passport of a client that is already being served does not suspend
 the engagement. Instead the CDD file gets an update task, and the client's returns are flagged at
 filing (BL-ACC-19). When the renewed document is accepted, the task closes.
+
+#### Surfaces
+- **Back office:** the compliance officer gets a CDD update task due 14 days after the
+  expiry, with the engagement's manager as watcher; the engagement stays `active`.
+- **System:** a `DocumentExpired` consumer creates one task per document and client, and
+  `DocumentAccepted` for the renewal completes it.
 
 #### Files to read
 - `docs/verticals/04-accounting.md` §9 *Document blocks* (last paragraph)
@@ -797,7 +904,7 @@ Return flag at filing (BL-ACC-19). Activation block (BL-ACC-01).
 
 ### BL-ACC-13 — 04 Accounting: mark deadline tasks overdue, complete them late or close them missed (`ACC.RUL.04`)
 
-**Labels:** `vertical:04-accounting` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Launch 04 · **Size:** s
+**Labels:** `vertical:04-accounting` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 04 · **Size:** s
 **Depends on:** Base: wl-ticketing Task lifecycle (`mark_overdue`, `close_missed`) · **Blocks:** BL-ACC-19
 **Review items:** D-09, 04 MEDIUM
 
@@ -806,6 +913,13 @@ A missed filing date is a fact, not the end of the work: the return can still be
 deadline task's due date passes, `ACC.RUL.04` marks it `overdue` and tells the assignee, manager and
 partner; it can still be completed and is then flagged *late*. A manager closes it as `missed` only
 with a reason.
+
+#### Surfaces
+- **Back office:** the assignee starts and completes an `overdue` task, which then shows as
+  "completed late" in reports; the manager runs Close as missed with a reason from the list.
+- **System:** `ACC.RUL.04` runs at 00:30 Asia/Dubai on the day after the due date, marks the
+  task `overdue` and notifies the assignee, manager and partner; a failed run sends the
+  owner alert.
 
 #### Files to read
 - `docs/verticals/04-accounting.md` §4.2 (row *The client never uploads*), §4.3 "When it goes wrong" (row *Due date passes*), §7.1 *Task* (states `overdue`, `completed`, `missed`; rows `start`, `mark_overdue`, `close_missed`), §7.2 `ACC.RUL.04` and the compliance-critical paragraph
@@ -858,7 +972,7 @@ Held tasks (BL-TKT-10). Owner alert mechanics (BL-KRN-08).
 
 ### BL-ACC-14 — 04 Accounting: approve tax profile changes with an effective date (`ACC.ACL.13`)
 
-**Labels:** `vertical:04-accounting` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Launch 04 · **Size:** s
+**Labels:** `vertical:04-accounting` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 04 · **Size:** s
 **Depends on:** Base: 04 Tax profile (`ACC.TAX.01`) · BL-KRN-01 (approval returned) · **Blocks:** BL-ACC-15
 **Review items:** 04-N6-a
 
@@ -866,6 +980,14 @@ Held tasks (BL-TKT-10). Owner alert mechanics (BL-KRN-08).
 The tax profile drives the whole compliance calendar; a wrong stagger or year end means missed
 deadlines. A change to any calendar-driving field takes effect only after a manager other than the
 requester approves it, with an effective date. The profile keeps every version.
+
+#### Surfaces
+- **Back office:** the accountant changes a calendar-driving field with an effective date
+  and the profile shows the change "pending approval"; a manager other than the requester
+  approves it from "Needs your action", with a past effective date highlighted; a second
+  request is refused while one is pending.
+- **System:** the calendar keeps using the current version until approval; approval stores a
+  new version and starts `ACC.RUL.10`.
 
 #### Files to read
 - `docs/verticals/04-accounting.md` §3.3 `ACC.ACL.13`, §4.3 "When it goes wrong" (row *Tax profile changes*), §6 *Tax profile* (versioned by effective date)
@@ -909,7 +1031,7 @@ Calendar regeneration (BL-ACC-15).
 
 ### BL-ACC-15 — 04 Accounting: regenerate the compliance calendar after a tax profile change (`ACC.RUL.10`)
 
-**Labels:** `vertical:04-accounting` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 04 · **Size:** m
+**Labels:** `vertical:04-accounting` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 04 · **Size:** m
 **Depends on:** BL-ACC-14 · BL-TKT-09 (waive with reason; started tasks listed) · **Blocks:** None.
 **Review items:** 04-N6-a
 
@@ -919,6 +1041,13 @@ periods that end before the effective date are left as they are; for the rest, u
 no longer apply are waived with the reason *tax profile changed*, the new tasks are
 created, and anything already started or overdue that no longer matches, plus returns in progress
 for affected periods, is listed for the manager to decide.
+
+#### Surfaces
+- **Back office:** the engagement manager gets a task listing the started or overdue tasks
+  that no longer match and the returns in progress for affected periods, to decide each.
+- **System:** `ACC.RUL.10` rebuilds the calendar from the effective date: it waives upcoming
+  tasks that no longer apply, gives matching ones their new due date (audited), creates the
+  new tasks, and changes nothing on a second run.
 
 #### Files to read
 - `docs/verticals/04-accounting.md` §4.3 "When it goes wrong" (row *Tax profile changes*), §7.1 *Task* (row `waive`, paragraph after the diagram), §7.2 `ACC.RUL.10`
@@ -966,7 +1095,7 @@ Profile approval (BL-ACC-14). Waive mechanics and the "waive a started task" set
 
 ### BL-ACC-16 — 04 Accounting: withdraw a client's return approval before filing
 
-**Labels:** `vertical:04-accounting` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 04 · **Size:** s
+**Labels:** `vertical:04-accounting` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Launch 04 · **Size:** s
 **Depends on:** Base: 04 Return lifecycle (`approve`, `DOC.SIG.01`) · **Blocks:** None.
 **Review items:** 04 MEDIUM "withdraw approval before filing"
 
@@ -976,6 +1105,16 @@ a reviewer on the client's written instruction) withdraws the approval with a re
 goes back to `preparing`, the signature is kept and marked withdrawn, the preparer and the
 reviewer are notified, and the preparer gets a task to rework the return and bring the linked task
 back to work.
+
+#### Surfaces
+- **Back office:** a reviewer can withdraw on the client's written instruction and must
+  attach it; the preparer gets a task "client withdrew approval", due the next working day,
+  naming the linked task and its state; the withdrawn signature stays in the history.
+- **Portal:** the client approver runs Withdraw approval on an `approved` return with a
+  reason; it is not offered once the return is `filed`.
+- **System:** the return goes back to `preparing` with the signature marked withdrawn; the
+  linked task is not moved, and the preparer's task closes when the return is submitted
+  again.
 
 #### Files to read
 - `docs/verticals/04-accounting.md` §4.4 "When it goes wrong" (row *Client withdraws its approval before filing*), §7.1 *Return* (row `withdraw_approval`), §7.1 *Task* (rows `start`, `send_back`)
@@ -1017,7 +1156,7 @@ the preparer gets a task to rework the return and bring the linked task back to 
 
 ### BL-ACC-17 — 04 Accounting: cancel a return the firm will not file
 
-**Labels:** `vertical:04-accounting` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 04 · **Size:** s
+**Labels:** `vertical:04-accounting` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Launch 04 · **Size:** s
 **Depends on:** Base: 04 Return lifecycle · BL-TKT-09 (waive or hand over) · **Blocks:** BL-ACC-06
 **Review items:** 04-N8-b, 04 MEDIUM "ending mid-period"
 
@@ -1025,6 +1164,16 @@ the preparer gets a task to rework the return and bring the linked task back to 
 A return in progress may no longer be the firm's to file: the engagement ends, the client decides to
 file itself, or the return is not required. A manager cancels it with a reason; the linked task is
 waived or handed over, and the client is told who files it now.
+
+#### Surfaces
+- **Back office:** the manager runs Cancel on the return with a reason (*engagement ended*,
+  *client files itself*, *not required*); for *not required* a started linked task is listed
+  for the manager.
+- **Portal:** for *client files itself* or *engagement ended* the portal shows the deadline
+  as the client's.
+- **System:** the linked task is waived or handed over (completed with the evidence "handed
+  over to client"); the client is told who files it and the due date, except for a
+  restricted end reason.
 
 #### Files to read
 - `docs/verticals/04-accounting.md` §4.4 "When it goes wrong" (row *Return no longer needed*), §7.1 *Return* (state `cancelled`, row `cancel`)
@@ -1064,7 +1213,7 @@ Engagement end (BL-ACC-06). Task waive mechanics (BL-TKT-09).
 
 ### BL-ACC-18 — 04 Accounting: correct a filed return by voluntary disclosure or in the next return (`ACC.ACL.04`)
 
-**Labels:** `vertical:04-accounting` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` · **Milestone:** Launch 04 · **Size:** m
+**Labels:** `vertical:04-accounting` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Launch 04 · **Size:** m
 **Depends on:** Base: 04 Return lifecycle · Base: wl-kernel business calendar · **Blocks:** None.
 **Review items:** D-10
 
@@ -1073,6 +1222,16 @@ A filed return is locked; a correction is a new version. For VAT, an error above
 needs a voluntary disclosure within 20 business days of finding it; an error of AED 10,000 or less is
 corrected in the next period's return, which the new version names. Corporate tax corrections always
 need a voluntary disclosure until an accountant confirms otherwise (A-14).
+
+#### Surfaces
+- **Back office:** the preparer runs Correct on a filed return, entering reason, error
+  amount, found date and route; only *voluntary disclosure* is offered above AED 10,000 and
+  for corporate tax; for *next return* the user names a later VAT return or its period; the
+  disclosure task takes the reference and cannot be completed without it; the superseded
+  version is read-only.
+- **System:** the disclosure task is due 20 business days after the found date; the
+  adjustment attaches to the named return when it is opened, and the new version is
+  cancelled with *not required* once that return is filed.
 
 #### Files to read
 - `docs/verticals/04-accounting.md` §3.3 `ACC.ACL.04`, §4.4 step 7, §6 *Return* (correction route), §7.1 *Return* (state `filed`, `superseded`; row `correct`; paragraph after the diagram), §9 *Corrections of filed returns*
@@ -1129,7 +1288,7 @@ Filing guards (BL-ACC-19).
 
 ### BL-ACC-19 — 04 Accounting: file a return only through a valid tax agent, flag expired KYC, ask the MLRO for a blocked client (`ACC.ACL.15`)
 
-**Labels:** `vertical:04-accounting` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` · **Milestone:** Launch 04 · **Size:** m
+**Labels:** `vertical:04-accounting` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Launch 04 · **Size:** m
 **Depends on:** BL-HRM-01 (`qualification_valid`) · BL-DOC-01 (document guard) · BL-DOC-02 (flag mode) · BL-KRN-01 (approval returned) · BL-ACC-13 (*late* flag on tasks completed from `overdue`) · **Blocks:** None.
 **Review items:** 04-N8-d, X-13, 04-N8-a
 
@@ -1139,6 +1298,15 @@ tax agent registration is valid on the filing date and linked to the firm's tax 
 itself through its own EmaraTax user. If a client KYC document has expired, filing still runs but the
 return is flagged for the MLRO. If the client is blocked, filing needs the MLRO's approval until a
 lawyer answers L-31.
+
+#### Surfaces
+- **Back office:** the filer runs File, choosing *filed by tax agent* or "filed by the
+  client's own staff" (with the client's EmaraTax user) and entering the acknowledgement
+  date; an invalid registration is refused naming it; for a blocked client the filer sees
+  "On hold — MLRO approval needed" and the MLRO approves from "Needs your action"; the MLRO
+  sees the "KYC document expired" flag on the return.
+- **System:** the tax agent check runs on the filing date with no override; on filing the
+  linked task completes (with *late* if it was `overdue`) and the payment reminder goes out.
 
 #### Files to read
 - `docs/verticals/04-accounting.md` §2 (*Tax agents*), §3.3 `ACC.ACL.15`, §4.4 "When it goes wrong" (rows *Filer is not a registered tax agent*, *A client KYC document has expired*), §5 `HRM.QUA.01`, §6 *Return* (filed by), §7.1 *Return* (row `file`), §9 *Tax agent status*, *Document blocks*, *Block effects and no tipping off*
@@ -1196,7 +1364,7 @@ agent or by the client's own staff."
 
 ### BL-ACC-20 — 04 Accounting: version a KPI pack on re-import and supersede the published one
 
-**Labels:** `vertical:04-accounting` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 04 · **Size:** s
+**Labels:** `vertical:04-accounting` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Launch 04 · **Size:** s
 **Depends on:** Base: 04 KPI pack (`ACC.KPI.01`, import and calculation) · **Blocks:** BL-ACC-21
 **Review items:** 04 MEDIUM "KPI pack lifecycle"
 
@@ -1205,6 +1373,15 @@ A client's trial balance is often re-exported after late entries. Importing it a
 that already has a published pack creates a new draft version; the published one shows "being
 revised" until the new version is published, which supersedes the old one. The client always sees
 one current pack per period.
+
+#### Surfaces
+- **Back office:** after a re-import the manager sees a new `draft` version with the
+  previous commentary and publishes it; Publish is refused naming unmapped accounts; staff
+  see every version, the old one marked superseded.
+- **Portal:** client users see the published pack with "being revised" while a newer draft
+  exists, and only the latest published version after the supersede.
+- **System:** `ACC.RUL.06` creates the new draft version, or recalculates an existing draft
+  in place; publishing it supersedes the old version.
 
 #### Files to read
 - `docs/verticals/04-accounting.md` §4.2 "When it goes wrong" (row *Trial balance re-imported after publication*), §6 *KPI pack* (version), §7.1 *KPI pack* (states, rows `publish`, `supersede`, paragraph after the diagram), §7.2 `ACC.RUL.06`
@@ -1258,7 +1435,7 @@ Withdrawal (BL-ACC-21). Live ledger connectors (Later).
 
 ### BL-ACC-21 — 04 Accounting: withdraw a published KPI pack
 
-**Labels:** `vertical:04-accounting` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 04 · **Size:** s
+**Labels:** `vertical:04-accounting` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:portal` · **Milestone:** Launch 04 · **Size:** s
 **Depends on:** BL-ACC-20 · **Blocks:** None.
 **Review items:** 04 MEDIUM "KPI pack lifecycle"
 
@@ -1266,6 +1443,13 @@ Withdrawal (BL-ACC-21). Live ledger connectors (Later).
 A pack published to the wrong client or with wrong figures is withdrawn from the portal at once.
 The client users are told it was withdrawn; for a wrong-client release, a privacy incident task is
 opened for the company admin, because another company's financial data was exposed.
+
+#### Surfaces
+- **Back office:** a user with `kpi.publish` runs Withdraw with a reason (*wrong client*,
+  *wrong figures*); for *wrong client* the company admin gets a privacy incident task with
+  the pack's portal view log; the manager uses Copy to create a new draft for the right
+  client.
+- **Portal:** the pack disappears from the receiving company's portal at once.
 
 #### Files to read
 - `docs/verticals/04-accounting.md` §4.2 "When it goes wrong" (row *Pack published to the wrong client or with wrong figures*), §7.1 *KPI pack* (state `withdrawn`, row `withdraw`), §9 *PDPL*, *Professional confidentiality*
@@ -1307,13 +1491,18 @@ Versions and supersede (BL-ACC-20).
 
 ### BL-ACC-22 — 04 Accounting: suspend an engagement for overdue invoices, never for disputed ones (`ACC.RUL.07`)
 
-**Labels:** `vertical:04-accounting` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Later · **Size:** s
+**Labels:** `vertical:04-accounting` `area:negative-flow` `priority:medium` `size:s` `surface:system` · **Milestone:** Later · **Size:** s
 **Depends on:** BL-ACC-03 · BL-INV-04 (invoice dispute flag) · **Blocks:** None.
 **Review items:** X-02, 04 MEDIUM "suspension and retainer"
 
 #### Goal
 When the firm turns it on, an invoice overdue by 60 days suspends the engagement and tells the
 partner. A disputed invoice never does: the dispute pauses the rule, as it pauses reminders.
+
+#### Surfaces
+- **System:** when the firm turns `ACC.RUL.07` on, the daily run suspends an `active`
+  engagement with *non-payment* for an invoice 60 days overdue that is not `disputed`, and
+  notifies the partner.
 
 #### Files to read
 - `docs/verticals/04-accounting.md` §4.5 step 4 and "When it goes wrong" (row *Client disputes an invoice*), §7.2 `ACC.RUL.07`
@@ -1352,7 +1541,7 @@ Invoice disputes (BL-INV-04). Suspend effects (BL-ACC-03).
 
 ### BL-ACC-23 — 04 Accounting: configure shared negative-flow settings — compliance, documents, blocks and integrations
 
-**Labels:** `vertical:04-accounting` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` · **Milestone:** Launch 04 · **Size:** m
+**Labels:** `vertical:04-accounting` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Launch 04 · **Size:** m
 **Depends on:** BL-DOC-01 · BL-DOC-02 · BL-DOC-04 · BL-DOC-06 · BL-HRM-01 · BL-PTY-01 · BL-PTY-03 · BL-PTY-04 · BL-PTY-06 · BL-PTY-07 · BL-PTY-08 · BL-PTY-09 · BL-INV-09 · BL-INV-20 · BL-KRN-05 · BL-KRN-08 · BL-SAL-19 · BL-SAL-20 · BL-SAL-21 · BL-HRM-26 · BL-HRM-27 · BL-HRM-28 · BL-DOC-08 · BL-DOC-09 · BL-DOC-10 · **Blocks:** None.
 **Review items:** X-13, X-18, X-19, 04-N7-b, 04-N8-a, 04-N11-a
 
@@ -1363,6 +1552,16 @@ configures a module mechanism.
 It also seeds the 04 values for lead sources and campaigns (`SAL.CRM.02`), onboarding and SOPs
 (`HRM.ONB.01`) and registration kinds (`DOC.EXP.01`), added on 2026-10-16: `SAL.ACL.07`,
 `HRM.RUL.16`, `HRM.RUL.17`, `HRM.ACL.10`, `DOC.RUL.04` and `DOC.RUL.01`.
+
+#### Surfaces
+- **Back office:** the seeded values show on module screens of the 04 deployment: activation
+  refused with an MLRO override offered (expired UBO passport) or filing refused with none
+  (tax agent registration), the MLRO's manual list upload, "On hold" for partners, the MLRO
+  exception for refunds to a blocked client, and staff delivery tasks for statutory notices
+  while e-mail is `down`.
+- **Portal:** with the e-mail connection `down`, notices stay visible in the portal.
+- **System:** values are seeded from the 04 deployment template; the owner alert for
+  compliance-critical rules goes once each to the partner role and the company admin.
 
 #### Files to read
 - `docs/verticals/04-accounting.md` §3.3 (`PTY.ACL.02`, `PTY.ACL.03`, `DOC.ACL.02`), §4.6, §5 `HRM.QUA.01`, §7.1 *Engagement* (paragraph *Block effect*), §7.1 checklist, §7.2 (compliance-critical paragraph), §8 (*Integration down*), §9 *Document blocks*, *Block effects and no tipping off*
@@ -1478,7 +1677,7 @@ The mechanisms (module epics listed in Depends on). Notices, receivables, tasks 
 
 ### BL-ACC-24 — 04 Accounting: configure shared negative-flow settings — notices, receivables, tasks and portal
 
-**Labels:** `vertical:04-accounting` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 04 · **Size:** m
+**Labels:** `vertical:04-accounting` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Launch 04 · **Size:** m
 **Depends on:** BL-NTF-01 · BL-NTF-02 · BL-NTF-03 · BL-NTF-04 · BL-NTF-05 · BL-NTF-06 · BL-INV-01 · BL-INV-02 · BL-INV-04 · BL-INV-05 · BL-INV-19 · BL-INV-21 · BL-PAY-09 · BL-PAY-14 · BL-TKT-09 · BL-TKT-10 · BL-KRN-04 · BL-INV-25 · BL-INV-26 · BL-INV-27 · BL-INV-28 · BL-INV-29 · BL-INV-30 · BL-PAY-25 · BL-PAY-26 · **Blocks:** None.
 **Review items:** X-01, X-02, X-05, X-20, 04 MEDIUM "e-mail bounces"
 
@@ -1489,6 +1688,16 @@ time entries.
 It also seeds the 04 values for the cash-flow forecast alert (`FIN.CFL.01`) and the
 company budget with owner drawings (`FIN.BUD.01`), added on 2026-10-16: `FIN.RUL.23`,
 `FIN.RUL.24` and `FIN.ACL.21`.
+
+#### Surfaces
+- **Back office:** the company admin can edit the seeded values within the module ranges;
+  billing staff and partners see the *credit hold* badge after a bounced cheque; a write-off
+  waits for a partner other than the requester; a request whose notice gave up shows "notice
+  not delivered" and staff get a delivery task.
+- **Portal:** a client approver disputes an invoice in the portal; after an engagement ends,
+  client users keep read-only access for 90 days.
+- **System:** values are seeded from the 04 deployment template; give-up reactions per
+  notification group, `FIN.RUL.23` (daily at 06:00) and `FIN.RUL.24` run with the 04 values.
 
 #### Files to read
 - `docs/verticals/04-accounting.md` §3.3 (`FIN.ACL.15`, `POR.ACL.01`), §4.2 "When it goes wrong" (row *Request e-mail bounces*), §4.5 "When it goes wrong", §7.1 *Task* (paragraph about `waiting_on_client`), §7.1 *Subscription* (paragraph after the diagram), §7.1 checklist (row *Time entry*), §7.2 (reused rules), §9 *Notices*, *Bad debts*

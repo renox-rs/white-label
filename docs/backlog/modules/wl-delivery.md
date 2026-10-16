@@ -27,7 +27,7 @@ review items X-11, X-12 and the delivery part of X-13, and the HIGH items 03-N3-
 
 ### BL-DLV-01 — wl-delivery: block assign and run dispatch on an invalid driver or vehicle document
 
-**Labels:** `module:wl-delivery` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 03 · **Size:** m
+**Labels:** `module:wl-delivery` `area:negative-flow` `priority:high` `size:m` `surface:back-office` · **Milestone:** Launch 03 · **Size:** m
 **Depends on:** Base: wl-delivery Delivery and Run lifecycle · Epic wl-documents: `document_valid` guard and kind `blocks` · Epic wl-hr: `qualification_valid` · **Blocks:** BL-DLV-09, BL-LOG-25
 **Review items:** X-13, 03-N8-a
 
@@ -37,6 +37,12 @@ driver has an expired licence or rider permit, or its vehicle has an expired reg
 (Mulkiya) or insurance. Which document kinds block is configured in wl-documents per kind
 (`blocks` lists `delivery.assign` and `run.dispatch`). For 03 Logistics these are legal blocks
 with no override.
+
+#### Surfaces
+- **Back office:** the dispatcher's `assign` on the dispatch board and the run `dispatch`
+  are refused with a message naming the document, its expiry date and who can renew it
+  (driver and vehicle checked on the run date for `assign`, today for `dispatch`,
+  Asia/Dubai); no override request is offered for a kind with override mode `never`.
 
 #### Files to read
 - `docs/modules/wl-delivery.md` §4.1 *Delivery* (row `assign`), §4.2 *Run* (row `dispatch`), §6 *Consumes*
@@ -104,7 +110,7 @@ Receiving driver checks on `hand_over` (BL-DLV-09). Document expiry reminders an
 
 ### BL-DLV-02 — wl-delivery: record partial acceptance per line at proof of delivery
 
-**Labels:** `module:wl-delivery` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 03 · **Size:** m
+**Labels:** `module:wl-delivery` `area:negative-flow` `priority:high` `size:m` `surface:field-pwa` `surface:system` · **Milestone:** Launch 03 · **Size:** m
 **Depends on:** Base: wl-delivery Delivery lifecycle · **Blocks:** BL-DLV-03, BL-DLV-11, BL-STK-22, BL-SAL-13, BL-AUT-18, BL-FNB-16, BL-LOG-07, BL-LOG-26, BL-MFG-14
 **Review items:** X-11, 07-N4-a
 
@@ -113,6 +119,14 @@ At the stop, the recipient may accept some lines, or part of a line, and refuse 
 The driver records per line the delivered and refused quantity with a refusal reason. The
 delivery becomes `delivered` with those quantities, and every source bills and fulfils only
 the delivered quantity. Refusing everything is a failed attempt.
+
+#### Surfaces
+- **Field PWA:** at the stop the driver captures the required proof and enters per line the
+  delivered and refused quantity with a refusal reason (photo for *damaged*); the refused
+  fields are hidden when partial acceptance is off, and only `fail` with *refused* is
+  offered when every line is refused.
+- **System:** the guards check quantities and proof, a second submit is refused with the
+  saved proof shown, and `DeliveryDelivered` carries the per-line quantities.
 
 #### Files to read
 - `docs/modules/wl-delivery.md` §3 (entities *Delivery* (POD methods required), *Delivery line*, *Proof of delivery*, *Refusal reason*), §4.1 (row `deliver`, paragraph "Partial acceptance"), §5.2 steps 2–3 and 5, §6 event `DeliveryDelivered`, §7 settings ("Required proof per source type", partial acceptance, refusal reasons)
@@ -190,7 +204,7 @@ COD short payment approval (BL-DLV-03). Receiving refused goods at run close (BL
 
 ### BL-DLV-03 — wl-delivery: handle cash on delivery collected short (`WRK.ACL.09`)
 
-**Labels:** `module:wl-delivery` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 03 · **Size:** m
+**Labels:** `module:wl-delivery` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:field-pwa` `surface:system` · **Milestone:** Launch 03 · **Size:** m
 **Depends on:** BL-DLV-02 · Epic wl-kernel: approval request lifecycle (rejected or returned sends the record back) · Epic wl-payments: cash custody (`FIN.CSH.01`) and shortage (`FIN.ACL.06`) · **Blocks:** BL-FNB-16, BL-LOG-08, BL-LOG-26
 **Review items:** X-11, 03-N3-a
 
@@ -199,6 +213,16 @@ When the recipient pays less cash than the amount to collect, the driver either 
 difference with a reason and gets a second person's approval from the phone, or fails the
 attempt. The approver decides who absorbs the difference (customer, client, business or
 driver). The driver can never approve their own difference.
+
+#### Surfaces
+- **Field PWA:** the driver enters the cash collected and a difference reason, asks for
+  approval from the phone, and can choose *no answer: fail attempt* at any time; with the
+  setting "always a failed attempt" only `fail` is offered.
+- **Back office:** the approver with `deliveries.approve_cod_difference` sees the request
+  under "Needs your action" and approves or rejects it, choosing who absorbs the difference;
+  the driver of the stop cannot approve.
+- **System:** without an answer within 10 minutes the request lapses and the phone offers
+  only the forced failed attempt; a late approval is refused.
 
 #### Files to read
 - `docs/modules/wl-delivery.md` §3 (*Proof of delivery*, *COD difference reason*), §4.1 (row `deliver`, paragraph "Cash on delivery short-paid or refused"), §5.2 step 4, §6 (`WRK.ACL.09`, permissions), §7 settings
@@ -285,7 +309,7 @@ How the difference is posted: 03 remittance line (Epic 03 Logistics), COD loss a
 
 ### BL-DLV-04 — wl-delivery: put a disputed delivery under review and close the review
 
-**Labels:** `module:wl-delivery` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 03 · **Size:** m
+**Labels:** `module:wl-delivery` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 03 · **Size:** m
 **Depends on:** Base: wl-delivery Delivery lifecycle · Epic wl-invoicing: invoice dispute flag (`DeliveryDisputed` → `dispute`) · Epic wl-ticketing: tickets · **Blocks:** BL-DLV-05, BL-DLV-06, BL-FNB-07, BL-LOG-09
 **Review items:** X-11, 03-N11-a
 
@@ -294,6 +318,14 @@ When a recipient or client denies a delivery, or the driver reports a wrong tap,
 goes to `under_review`. Its cash is held out of remittances and settlements and its billing
 is held while the dispatcher checks the proof. If the delivery stands, the review closes
 and everything is released.
+
+#### Surfaces
+- **Back office:** the dispatcher runs `open_review` with a reason on the delivery record (a
+  new ticket is linked), checks the proof, and runs `close_review` with outcome *upheld* and
+  a required note.
+- **System:** a dispute ticket from the recipient or the client runs `open_review`; the
+  frozen flag keeps the COD out of remittances and settlements and the source from billing;
+  `DeliveryDisputed` and `DeliveryDisputeClosed` drive the invoice flag.
 
 #### Files to read
 - `docs/modules/wl-delivery.md` §3 (*Delivery* frozen flag), §4.1 (states, rows `open_review` and `close_review`, paragraph "Lost and reversed deliveries"), §5.5, §6 events
@@ -349,7 +381,7 @@ Reversal (BL-DLV-05); lost (BL-DLV-06); the invoice flag itself (Epic wl-invoici
 
 ### BL-DLV-05 — wl-delivery: reverse a delivery marked by mistake (`WRK.ACL.10`)
 
-**Labels:** `module:wl-delivery` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 03 · **Size:** m
+**Labels:** `module:wl-delivery` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Launch 03 · **Size:** m
 **Depends on:** BL-DLV-04 · Epic wl-kernel: approval request lifecycle · Epic wl-payments: cash custody and refunds · **Blocks:** BL-STK-25, BL-FNB-07, BL-FNB-16, BL-LOG-10, BL-LOG-26
 **Review items:** X-11, 03-N11-a
 
@@ -358,6 +390,15 @@ A delivery wrongly marked delivered (wrong tap, wrong recipient, recipient denie
 corrected by `reverse_delivery`, never by editing the proof. A manager requests it with a
 reason and liability; another manager approves. The original proof is kept and marked
 reversed; the cash already recorded is handled; the source reverses its fulfilment.
+
+#### Surfaces
+- **Back office:** manager A requests `reverse_delivery` on the delivery record with a
+  reason and liability (the button is hidden for the run's driver); manager B approves under
+  "Needs your action" and, when the cash was already handed over, chooses *refund to payer*
+  or *keep for next attempt*.
+- **System:** at final approval the target state is computed, the original proof is marked
+  reversed, a non-counting *reversed* attempt is added, custody is adjusted and
+  `DeliveryReversed` is emitted.
 
 #### Files to read
 - `docs/modules/wl-delivery.md` §4.1 (row `reverse_delivery`, paragraph "Lost and reversed deliveries"), §5.5 step 3, §6 (`WRK.ACL.06`, `WRK.ACL.10`, permissions, event `DeliveryReversed`), §7 failure reasons, §10 "Proof as evidence"
@@ -412,7 +453,7 @@ How sources reverse fulfilment: dispatch (BL-STK-25), sales order (BL-SAL-13), 0
 
 ### BL-DLV-06 — wl-delivery: mark a delivery lost and found again (`WRK.RUL.17`)
 
-**Labels:** `module:wl-delivery` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 03 · **Size:** m
+**Labels:** `module:wl-delivery` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:field-pwa` `surface:system` · **Milestone:** Launch 03 · **Size:** m
 **Depends on:** BL-DLV-04 · Epic wl-kernel: approval request lifecycle · Epic wl-ticketing: tickets · **Blocks:** BL-DLV-11, BL-STK-24, BL-LOG-11, BL-LOG-26
 **Review items:** X-11, 03-N10-a
 
@@ -421,6 +462,16 @@ A delivery whose goods are neither delivered nor received back is `lost`. The sy
 after 7 days untraced; a manager can mark it earlier with a second manager's approval. A claim
 ticket opens and the source stops expecting cash and billing. If the goods turn up at a depot,
 `found` puts the delivery back to `attempted`.
+
+#### Surfaces
+- **Back office:** manager A requests `mark_lost` with a reason and liability and manager B
+  approves under "Needs your action"; a user with `deliveries.manage` runs `found` when the
+  goods are confirmed at a depot.
+- **Field PWA:** at the depot, a user with `deliveries.manage` who scans or confirms the
+  goods of a `lost` delivery runs `found` from the phone.
+- **System:** `WRK.RUL.17` runs daily at 02:00 and marks deliveries untraced for 7 days
+  `lost`, opens the claim ticket and notifies the dispatcher and the source; a manual
+  request fails at final approval if the goods were traced after it.
 
 #### Files to read
 - `docs/modules/wl-delivery.md` §4.1 (states, rows `mark_lost` and `found`), §5.4 step 2, §5.5 step 4, §6 (`WRK.ACL.10`, `WRK.RUL.17`, events `DeliveryLost`, `DeliveryFound`), §7 settings
@@ -484,7 +535,7 @@ Dispatch reaction (BL-STK-24); 03 shipment lost and client credit note (Epic 03 
 
 ### BL-DLV-07 — wl-delivery: apply the perishable policy after a failed attempt (`WRK.RUL.16`)
 
-**Labels:** `module:wl-delivery` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 06 · **Size:** m
+**Labels:** `module:wl-delivery` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:field-pwa` `surface:system` · **Milestone:** Launch 06 · **Size:** m
 **Depends on:** Base: wl-delivery Delivery lifecycle · Base: wl-inventory stock movements (`wastage`) · BL-DLV-08 · **Blocks:** BL-DLV-10, BL-STK-23, BL-FNB-01
 **Review items:** X-12, 06-N9-b
 
@@ -493,6 +544,17 @@ Food cannot be redelivered tomorrow. A delivery flagged `perishable` gets one at
 After a failed attempt it is returned to the origin or discarded with a photo, according to
 the policy of its source type, and the wastage is recorded. The money decision belongs to the
 source.
+
+#### Surfaces
+- **Field PWA:** after a failed perishable attempt `reattempt` is not offered; under the
+  *discard* policy the driver gets a "discard with photo" task on the stop screen and
+  submits the photo and reason.
+- **Back office:** wastage above the limit waits for approval by someone other than the
+  driver under "Needs your action"; after a rejection the dispatcher can run `return` by
+  hand.
+- **System:** `WRK.RUL.16` returns or discards per the source type's policy, records the
+  wastage, notifies the source and the origin's manager and emits `DeliveryDiscarded` or
+  `DeliveryReturned`.
 
 #### Files to read
 - `docs/modules/wl-delivery.md` §3 (*Delivery* perishable flag), §4.1 (states, rows `reattempt`, `return`, `discard`, paragraph "Perishable deliveries"), §5.2 step 5, §6 (`WRK.RUL.08`, `WRK.RUL.16`, event `DeliveryDiscarded`), §7 settings, §10 "Food waste"
@@ -577,7 +639,7 @@ The abort itself (BL-DLV-08) and the hand-over window (BL-DLV-10). F&B order ref
 
 ### BL-DLV-08 — wl-delivery: abort a run mid-route
 
-**Labels:** `module:wl-delivery` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 03 · **Size:** m
+**Labels:** `module:wl-delivery` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:field-pwa` `surface:system` · **Milestone:** Launch 03 · **Size:** m
 **Depends on:** Base: wl-delivery Run lifecycle · BL-DLV-09 · Epic wl-payments: cash custody · Epic wl-ticketing: tickets · **Blocks:** BL-DLV-07, BL-FNB-01, BL-LOG-13, BL-LOG-26
 **Review items:** X-12
 
@@ -586,6 +648,14 @@ When a run cannot continue (breakdown, accident, driver unwell, weather), the di
 the driver aborts it. Open stops fail with a reason that does not count, recipients are told
 of the delay, perishables follow their policy, and the cash is handed over at the depot as
 usual.
+
+#### Surfaces
+- **Back office:** the dispatcher aborts a `dispatched` run with a reason (text for *other*)
+  and can tick to open a breakdown or accident ticket for the vehicle.
+- **Field PWA:** the driver can abort the run from the phone, only with a reason.
+- **System:** open stops fail with *run aborted* (not counted), recipients are messaged
+  about the delay, a cash handover opens when cash was collected, and `RunAborted` is
+  emitted.
 
 #### Files to read
 - `docs/modules/wl-delivery.md` §4.2 *Run* (states, row `abort`, paragraph after the diagram), §5.3 step 2, §6 event `RunAborted`, §7 failure reasons
@@ -637,7 +707,7 @@ Event `RunAborted`: run, driver, reason, open deliveries.
 
 ### BL-DLV-09 — wl-delivery: hand open stops over to another driver's run
 
-**Labels:** `module:wl-delivery` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Launch 03 · **Size:** m
+**Labels:** `module:wl-delivery` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:field-pwa` `surface:system` · **Milestone:** Launch 03 · **Size:** m
 **Depends on:** BL-DLV-01 · Epic wl-payments: cash custody (driver-to-driver handover) · **Blocks:** BL-DLV-08, BL-DLV-10, BL-LOG-26
 **Review items:** X-12
 
@@ -646,6 +716,16 @@ After a breakdown, accident or for load balancing, the dispatcher moves chosen o
 from one run to another driver's run. The receiving driver confirms each parcel and counts
 the cash, and the cash custody moves with them, so that every parcel and every dirham is
 always with one named driver.
+
+#### Surfaces
+- **Back office:** the dispatcher chooses the open stops, the receiving run and a reason;
+  the hand-over is refused when the receiving driver or vehicle fails the document check.
+- **Field PWA:** the receiving driver scans or ticks each parcel and enters the counted
+  cash; both drivers see the custody record, and the giving driver can `return_to_depot`
+  once every stop is done or handed over.
+- **System:** the deliveries move to the receiving run, custody moves with the counted
+  amount (any difference stays a shortage on the giving driver), and `RunHandedOver` is
+  emitted.
 
 #### Files to read
 - `docs/modules/wl-delivery.md` §3 *Run* (hand-overs), §4.2 (rows `hand_over`, `return_to_depot`), §5.3 step 1, §6 event `RunHandedOver`, §7 settings
@@ -690,7 +770,7 @@ The perishable window check (BL-DLV-10). Shortage handling (Epic wl-payments).
 
 ### BL-DLV-10 — wl-delivery: limit perishable hand-overs to the hand-over window
 
-**Labels:** `module:wl-delivery` `area:negative-flow` `priority:high` `size:s` · **Milestone:** Launch 06 · **Size:** s
+**Labels:** `module:wl-delivery` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 06 · **Size:** s
 **Depends on:** BL-DLV-07 · BL-DLV-09 · **Blocks:** BL-FNB-01, BL-FNB-16
 **Review items:** X-12, 06-N9-b
 
@@ -699,6 +779,12 @@ Cooked food handed to another rider must still arrive within the brand's deliver
 A perishable stop may be handed over only when the receiving run can still deliver it within
 the hand-over window; otherwise it fails with *run aborted* at once and the perishable policy
 applies.
+
+#### Surfaces
+- **Back office:** at the hand-over the dispatcher enters the expected arrival of each
+  perishable stop; a stop after the window end is refused and stays on the giving run.
+- **System:** the window end is the source's placed time plus the delivery promise, in
+  Asia/Dubai time.
 
 #### Files to read
 - `docs/modules/wl-delivery.md` §4.2 row `hand_over`, §5.3 step 2, §7 setting "Perishable hand-over window"
@@ -742,7 +828,7 @@ The hand-over itself (BL-DLV-09); the perishable policy (BL-DLV-07).
 
 ### BL-DLV-11 — wl-delivery: close a run with refused and missing goods accounted for
 
-**Labels:** `module:wl-delivery` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Launch 03 · **Size:** s
+**Labels:** `module:wl-delivery` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:field-pwa` `surface:system` · **Milestone:** Launch 03 · **Size:** s
 **Depends on:** BL-DLV-02 · BL-DLV-06 · **Blocks:** BL-STK-22, BL-LOG-07
 **Review items:** X-11
 
@@ -750,6 +836,15 @@ The hand-over itself (BL-DLV-09); the perishable policy (BL-DLV-07).
 A run closes only when its cash is counted and every undelivered or refused item is received
 back at the depot, or reported missing. A missing item creates a task for the dispatcher and
 is then traced by `WRK.RUL.17` until it is found or marked lost.
+
+#### Surfaces
+- **Field PWA:** at the depot the depot user gets the list of every undelivered delivery and
+  refused line on the run and ticks or scans each *received* or *missing* (part received
+  allowed).
+- **Back office:** the dispatcher gets a task for each item reported missing.
+- **System:** `close` runs only when the cash handover is counted and every item is
+  accounted for, records the quantities on the lines and emits `DeliveryRefusedReceived` and
+  `RunClosed`.
 
 #### Files to read
 - `docs/modules/wl-delivery.md` §3 *Delivery line*, §4.1 paragraph "Partial acceptance", §4.2 (states, row `close`), §5.4, §6 event `DeliveryRefusedReceived`

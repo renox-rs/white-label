@@ -15,7 +15,7 @@ X-18 and 04-N11-a.
 
 ### BL-POR-01 — wl-portal: refuse new business and money out in the portal with a neutral text while the party is blocked
 
-**Labels:** `module:wl-portal` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-portal` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:portal` `surface:public` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** BL-PTY-01, BL-PTY-04 · Base: wl-portal Access grant lifecycle · **Blocks:** BL-LOG-19
 **Review items:** X-18, 04-N11-a
 
@@ -25,6 +25,19 @@ are, with no suspension and no message. They can still see history, documents an
 and pay open invoices. Actions that start new business or move money out are refused with the
 same neutral text for every reason. The refusal is logged for compliance staff only. On unblock
 the actions work again.
+
+#### Surfaces
+- **Back office:** staff with `parties.block_reason.view` (the MLRO) see one refusal-log
+  entry per refused portal action (portal user, party, action, time) (screen not specified
+  yet).
+- **Portal:** a user acting for a blocked party still sees history, documents and statements
+  and pays open invoices; new booking, order, refund or deposit-release request and new
+  signature stay visible and are refused on submit with the neutral text in EN or AR; no "On
+  hold", badge or reason appears.
+- **Public page:** a signed payment link keeps working; a signed link whose action is new
+  business shows the same neutral text.
+- **System:** on `PartyBlocked` the grants stay as they are and no message is sent; on
+  `PartyUnblocked` the refused actions work again.
 
 #### Files to read
 - `docs/modules/wl-portal.md` §6 ("Reacts to" and the paragraph on `PartyBlocked`), §7 (setting
@@ -115,6 +128,9 @@ agreements (signature requests), refund and deposit-release requests (vertical p
       usual.
 - [ ] A refund request she submitted before the block still shows *In review*, with no "On hold"
       text or badge.
+- [ ] Given a blocked party with an issued invoice, when its portal user opens the signed payment
+      link, then the payment page works; when the user opens a signed link for new business
+      (e.g. a booking), then the page shows only the neutral text and nothing is created.
 
 #### Out of scope
 The block itself and the guard (BL-PTY-01, BL-PTY-04); back-office handling of blocked parties'

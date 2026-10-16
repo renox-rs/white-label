@@ -41,7 +41,7 @@ invoice and cheque behaviour lives in the module epics and is only configured he
 
 ### BL-MPW-01 — 09 Manpower: put a client contract on credit hold (`hold`, `MPW.RUL.10`)
 
-**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** Base: 09 Client contract lifecycle (`activate`) · BL-INV-04 (invoice `disputed` flag) · BL-PAY-09 (`ChequeBounced`) · **Blocks:** BL-MPW-02, BL-MPW-03
 **Review items:** 09-N3-a, X-05
 
@@ -51,6 +51,14 @@ exposure. A daily rule puts the client contract `on_hold` when an invoice is ove
 30 days or a client cheque bounces; account managers can also hold a contract by hand. The
 contract remembers its state before the hold, the account manager and the MD are told with the
 amount and the workers on site, and the client only gets the normal overdue reminders.
+
+#### Surfaces
+- **Back office:** a user with `contracts.manage` holds a contract by hand with a reason
+  (`overdue`, `bounced_cheque` or *other* with text); the contract shows its hold reasons,
+  the state before and who held it; the account manager and the MD get one message with the
+  overdue amount and the workers on site.
+- **System:** `MPW.RUL.10` runs daily at 02:00 and on `ChequeBounced`, holds the contract or
+  adds a reason, and sends the client only the normal `FIN.RUL.01` reminders.
 
 #### Files to read
 - `docs/verticals/09-manpower.md` §3.3 (`MPW.ACL.14`), §4.1 "When it goes wrong" row "The client
@@ -147,7 +155,7 @@ write-off (BL-PAY-10 to BL-PAY-14); invoice write-off (BL-INV-01).
 
 ### BL-MPW-02 — 09 Manpower: refuse requests, activations and extensions while a contract is on hold (`MPW.ACL.14`)
 
-**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** BL-MPW-01 · Base: 09 Manpower request lifecycle · Base: 09 Deployment lifecycle · **Blocks:** None
 **Review items:** 09-N3-a
 
@@ -155,6 +163,15 @@ write-off (BL-PAY-10 to BL-PAY-14); invoice write-off (BL-INV-01).
 While a client contract is `on_hold`, no new exposure may start: a manpower request cannot be
 submitted, and no deployment of that client can be activated or extended. Workers already on
 site keep working. The guard must apply to staff and to the client approver in the portal.
+
+#### Surfaces
+- **Back office:** staff `activate` and `extend` of the client's deployments, and request
+  `submit`, are refused with "Contract on credit hold since <date>: <reason>"; drafts can
+  still be saved and `resume` stays allowed.
+- **Portal:** the client approver's request `submit` is refused with "This request cannot be
+  submitted now. Please contact your account manager.", with no mention of the hold.
+- **System:** the guard reads the contract state in the same transaction as the transition,
+  so a `hold` committed first wins.
 
 #### Files to read
 - `docs/verticals/09-manpower.md` §3.3 (`MPW.ACL.14`), §7.1 *Manpower request* (`submit`),
@@ -214,7 +231,7 @@ BL-MPW-15).
 
 ### BL-MPW-03 — 09 Manpower: release a credit hold (`release`)
 
-**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** BL-MPW-01 · BL-KRN-01 (approval ends without a yes) · BL-PAY-10, BL-PAY-11, BL-PAY-13 (`ChequeBounceResolved`) · **Blocks:** None
 **Review items:** 09-N3-a
 
@@ -223,6 +240,14 @@ A hold ends when the client pays or the bounced cheque is resolved; the system t
 the contract back to the state it had before. An account manager may also release earlier
 (for example after a payment plan), but releasing before the overdue amount is paid needs the
 MD's approval, and the requester cannot approve.
+
+#### Surfaces
+- **Back office:** the account manager or accountant requests *release*; while a hold
+  condition remains it goes to the MD under "Needs your action" and the requester cannot
+  approve; the account manager is told of the release or the rejection.
+- **System:** payment allocations, `ChequeBounceResolved` and the 02:00 run release the
+  contract to its state before once no hold condition remains, withdraw a pending manual
+  request, and do not hold again for invoices or cheques covered by an MD-approved release.
 
 #### Files to read
 - `docs/verticals/09-manpower.md` §3.3 (`MPW.ACL.14`), §7.1 *Client contract* (`release`),
@@ -297,7 +322,7 @@ Putting on hold (BL-MPW-01); cheque resolution itself (BL-PAY-10 to BL-PAY-13).
 
 ### BL-MPW-04 — 09 Manpower: terminate a client contract early (`terminate`, `MPW.ACL.17`)
 
-**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** Base: 09 Client contract lifecycle · Base: 09 Deployment lifecycle · BL-KRN-01 · **Blocks:** BL-MPW-06
 **Review items:** 09-N12-a
 
@@ -307,6 +332,15 @@ initiated it, the reason, the notice date and the new end date; the MD approves.
 becomes `terminating`, deployments are cut to the new end date, deployments that would start
 after it are cancelled, and the client receives a confirmation. The contract then ends on its
 end date through `end` (BL-MPW-06).
+
+#### Surfaces
+- **Back office:** the account manager requests *terminate* with initiated by, reason,
+  notice date, end date and a waiver file when the notice is short; the MD approves under
+  "Needs your action"; the requester cannot approve.
+- **System:** on approval the contract becomes `terminating`, any hold is cleared,
+  deployment end dates are capped, later planned deployments and requests are cancelled, and
+  the confirmation letter is emailed to the client; an `end` or `renew` meanwhile withdraws
+  the request.
 
 #### Files to read
 - `docs/verticals/09-manpower.md` §3.3 (`MPW.ACL.17`), §4.1 row "The contract expires, or ends
@@ -382,7 +416,7 @@ The contract `end` on the end date (BL-MPW-06); `renew` (BL-MPW-05).
 
 ### BL-MPW-05 — 09 Manpower: warn before a contract ends and renew it (`MPW.RUL.11`, `renew`)
 
-**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** Base: 09 Client contract lifecycle · BL-MPW-07 (new rate card versions) · **Blocks:** BL-MPW-06
 **Review items:** 09-N12-a
 
@@ -391,6 +425,14 @@ A contract must not run out unnoticed with workers on site. 60 and 30 days befor
 date the account manager is told which deployments will end. The account manager renews the
 contract with a new end date and a signed renewal; changed rates come as a new rate card
 version. After renewal, deployment end dates may be extended and the warnings restart.
+
+#### Surfaces
+- **Back office:** the account manager gets notices 60 and 30 days before the end date
+  listing the deployments that will end, and runs *renew* with a new end date, the signed
+  renewal and a new rate card version for changed rates.
+- **Portal:** the client signs the renewal document (`DOC.SIG.01`).
+- **System:** `MPW.RUL.11` runs daily at 02:00, sends each notice once per end date (a
+  missed one at the next run) and restarts from the new end date.
 
 #### Files to read
 - `docs/verticals/09-manpower.md` §4.1 row "The contract expires, or ends early", §7.1 *Client
@@ -444,7 +486,7 @@ The `end` itself (BL-MPW-06); rate card versions (BL-MPW-07).
 
 ### BL-MPW-06 — 09 Manpower: end a contract with its deployments, requests and last timesheets (`end`)
 
-**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** BL-MPW-04 · BL-MPW-05 · Base: 09 Deployment lifecycle (`end`, `cancel`) · Base: wl-attendance Timesheet lifecycle · Base: 09 billing (`MPW.RUL.05`) · **Blocks:** None
 **Review items:** 09-N12-a
 
@@ -453,6 +495,15 @@ On the contract end date (normal expiry or after early termination), the contrac
 everything under it closes cleanly: active and suspended deployments end, planned ones and open
 requests are cancelled, the last timesheets are submitted and still billed, and the workers go
 back to the bench.
+
+#### Surfaces
+- **Back office:** the account manager gets one message when the contract ends, and the
+  workers still `active` appear on the bench.
+- **Portal:** the client approver receives each deployment's last timesheet, closed at the
+  end date, at once for approval.
+- **System:** the 00:05 run after the end date ends the contract, ends or cancels its
+  deployments and requests, closes the hold reasons, notifies the client per deployment, and
+  `MPW.RUL.05` still bills the approved last timesheets.
 
 #### Files to read
 - `docs/verticals/09-manpower.md` §4.1 row "The contract expires, or ends early", §7.1 *Client
@@ -514,7 +565,7 @@ Early termination (BL-MPW-04); renewal and warnings (BL-MPW-05).
 
 ### BL-MPW-07 — 09 Manpower: price hours by rate card version (`MPW.ACL.16`)
 
-**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** Base: wl-invoicing Rate cards and usage billing (`FIN.RAT.01`, `FIN.USG.01`) · BL-KRN-01 · **Blocks:** BL-MPW-05
 **Review items:** 09 MEDIUM "rate card versions"
 
@@ -523,6 +574,14 @@ Rates change over a contract's life. A change is never an edit: it is a new rate
 with an effective date, accepted by the client. Hours are priced by the version in force on the
 work date, and nothing already invoiced or in a locked timesheet is repriced. A version dated in
 the past needs the MD's approval.
+
+#### Surfaces
+- **Back office:** the account manager creates a new rate card version with an effective
+  date (editing an accepted line is refused and offers "new version"); a past-dated version
+  goes to the MD for approval after the client accepts it.
+- **Portal:** the client accepts the rate card version (`DOC.SIG.01`).
+- **System:** usage billing prices each work date by the accepted version in force, never
+  reprices invoiced or `locked` hours, and pro-rates monthly rates per version.
 
 #### Files to read
 - `docs/verticals/09-manpower.md` §3.3 (`MPW.ACL.16`), §4.3 row "The rate card changes", §6
@@ -595,7 +654,7 @@ Contract `renew` (BL-MPW-05); usage billing itself (base).
 
 ### BL-MPW-08 — 09 Manpower: guard deployment `activate`, `resume` and `extend` on worker documents and site licences (`MPW.ACL.07`)
 
-**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `blocked:open-item` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** BL-DOC-01 (`document_valid` and `blocks`) · BL-DOC-06 (override) · BL-HRM-01 (`qualification_valid`) · BL-MPW-09 · **Blocks:** BL-MPW-12
 **Review items:** X-13, 09-N8-b
 
@@ -605,6 +664,14 @@ work permit, Emirates ID and health insurance, and the licences the site require
 card, health card, site pass). The guard also looks ahead 30 days so a worker is not deployed
 on a visa that expires next week. Overrides are possible only for kinds that allow them, with
 the MD's approval.
+
+#### Surfaces
+- **Back office:** the account manager's `activate`, `resume` or `extend` is refused with
+  each failing kind, its expiry date and whether an override is possible; an override for
+  Emirates ID, health insurance, health card or site pass goes to the MD; creating a planned
+  deployment with a document expiring only warns.
+- **System:** the guard checks each kind on min(transition date + 30 days, end date) and
+  reads every override mode from the wl-documents kind setting, never from code.
 
 #### Files to read
 - `docs/verticals/09-manpower.md` §3.3 (`MPW.ACL.07`), §4.1 step 4, §7.1 *Deployment*
@@ -694,7 +761,7 @@ Providers and look-ahead flags (BL-MPW-09); suspension on expiry (BL-MPW-11); at
 
 ### BL-MPW-09 — 09 Manpower: register the deployment `BlockSubjects` and `FutureWork` providers and flag deployments ahead
 
-**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** BL-DOC-01 · BL-DOC-04 (`DOC.RUL.02` look-ahead with `affected`) · **Blocks:** BL-MPW-08, BL-MPW-11
 **Review items:** X-13, 09-N8-b
 
@@ -702,6 +769,13 @@ Providers and look-ahead flags (BL-MPW-09); suspension on expiry (BL-MPW-11); at
 wl-documents needs to know which documents a deployment depends on and which deployments an
 expiring document affects. The deployment module registers both providers, so the guard works
 and so the account manager sees, 30 days ahead, the deployments that a document will stop.
+
+#### Surfaces
+- **Back office:** deployments show "document expiring <kind> <date>" in lists until the
+  renewal is accepted, and the account manager gets one message per document per night
+  listing them.
+- **System:** the deployment module registers `BlockSubjects` and `FutureWork`, and the
+  nightly `DOC.RUL.02` run adds the affected deployments to `DocumentExpiring`.
 
 #### Files to read
 - `docs/verticals/09-manpower.md` §4.5 step 3, §9 (last paragraph of "Documents that block work")
@@ -760,7 +834,7 @@ The guard (BL-MPW-08); suspension (BL-MPW-11).
 
 ### BL-MPW-10 — 09 Manpower: refuse overlapping deployments of one worker (`MPW.ACL.15`)
 
-**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:medium` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:medium` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** Base: 09 Deployment lifecycle · **Blocks:** None
 **Review items:** 09 MEDIUM "overlap guards", X-16
 
@@ -768,6 +842,12 @@ The guard (BL-MPW-08); suspension (BL-MPW-11).
 A worker cannot be at two client sites at the same time. Activating or extending a deployment
 is refused when the worker already has an active or suspended deployment whose shift times
 overlap it. (Overlapping attendance is flagged separately by wl-attendance.)
+
+#### Surfaces
+- **Back office:** `activate` or `extend` is refused naming the worker's active or suspended
+  deployment whose shift times overlap.
+- **System:** the check and the state change run under a lock on the employee, so the second
+  of two parallel activations is refused.
 
 #### Files to read
 - `docs/verticals/09-manpower.md` §3.3 (`MPW.ACL.15`), §4.1 row "The worker is already deployed
@@ -818,7 +898,7 @@ The attendance `overlap` flag (BL-ATT-01).
 
 ### BL-MPW-11 — 09 Manpower: suspend a deployment when a needed document or licence expires (`suspend`)
 
-**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `surface:back-office` `surface:field-pwa` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** BL-MPW-09 · BL-DOC-05 (`DocumentExpired` with blocked records) · BL-HRM-01 (`QualificationExpired`) · Base: 09 Replacements (`MPW.DEP.02`) · **Blocks:** BL-MPW-12
 **Review items:** X-13, 09-N8-b
 
@@ -828,6 +908,16 @@ during a deployment, the worker must stop working at the site and the agency mus
 The deployment is suspended: attendance is disabled, suspended days are not billed, the client
 and the account manager are told with a neutral reason, and cover is requested when the
 contract requires it. Staff can also suspend by hand (site access withdrawn, investigation).
+
+#### Surfaces
+- **Back office:** the account manager suspends a deployment by hand with a reason (refused
+  without one), is told of each suspension, and sees the days suspended in the deployment
+  list.
+- **Field PWA:** the worker's check-in at the site is refused while the deployment is
+  suspended.
+- **System:** `MPW.RUL.12` suspends on `DocumentExpired` or `QualificationExpired` the day
+  after expiry, adds further kinds as reasons, stops billing, sends the client a neutral
+  message and opens a cover request; a failed run alerts the MD and the admin.
 
 #### Files to read
 - `docs/verticals/09-manpower.md` §4.5 "When it goes wrong" row 1, §7.1 *Deployment* (states,
@@ -909,7 +999,7 @@ Resume (BL-MPW-12); the `permit_invalid` attendance flag (BL-ATT-04); HR reactio
 
 ### BL-MPW-12 — 09 Manpower: resume a suspended deployment (`resume`)
 
-**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `surface:back-office` `surface:field-pwa` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** BL-MPW-11 · BL-MPW-08 · **Blocks:** None
 **Review items:** X-13, 09-N8-b
 
@@ -917,6 +1007,15 @@ Resume (BL-MPW-12); the `permit_invalid` attendance flag (BL-ATT-04); HR reactio
 When the renewed document is accepted, the deployment resumes on its own if every document and
 licence check passes again; staff can also resume by hand (e.g. site access restored). The
 client is told, attendance is enabled again, and any cover deployment runs to its own end date.
+
+#### Surfaces
+- **Back office:** the account manager resumes a deployment by hand (the only way for site
+  access or investigation reasons) and is told which kind still fails when the checks do not
+  pass.
+- **Field PWA:** the worker can check in at the site again.
+- **System:** `DocumentAccepted` for the expired kind resumes the deployment when every
+  check passes, the client is told, an `open` or `partially_filled` cover request is
+  cancelled and an active cover runs to its end date.
 
 #### Files to read
 - `docs/verticals/09-manpower.md` §4.5 row 1, §7.1 *Deployment* (`resume`), §7.2 (`MPW.RUL.12`)
@@ -971,7 +1070,7 @@ The guard itself (BL-MPW-08).
 
 ### BL-MPW-13 — 09 Manpower: end or cancel deployments on non-standard employee exits (`MPW.RUL.12`)
 
-**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** BL-HRM-03 (`VisaCaseRejected`) · BL-HRM-05 (`EmployeeOnboardingCancelled`) · BL-HRM-06 (`EmployeeNoticeWithdrawn`) · BL-HRM-07 (`EmployeeAbsconded`) · BL-HRM-08 (`EmployeeReinstated`, only for the Must not) · BL-HRM-09 (`EmployeeDeceased`) · **Blocks:** None
 **Review items:** X-15, 09-N12-b, 09-N12-c, 09 MEDIUM "notice withdrawal"
 
@@ -982,6 +1081,15 @@ requests stay unfilled; when a notice is withdrawn, the end date set by `give_no
 to the one it replaced. The
 client and the account manager are told each time. When a renewal visa is rejected, the
 account managers and the MD are told which deployments run past the current visa's expiry.
+
+#### Surfaces
+- **Back office:** the account manager is told of each ended or cancelled deployment and of
+  requests left unfilled, and the account managers and the MD get one message listing
+  deployments that run past the current visa's expiry when a renewal visa is rejected.
+- **System:** `MPW.RUL.12` ends or cancels deployments on `EmployeeAbsconded`,
+  `EmployeeDeceased` and `EmployeeOnboardingCancelled`, restores the end date on
+  `EmployeeNoticeWithdrawn`, sends the client only "no longer available", and ignores
+  repeated events.
 
 #### Files to read
 - `docs/verticals/09-manpower.md` §4.2 row "The *new* visa case is rejected or cancelled", §4.7
@@ -1056,7 +1164,7 @@ BL-MPW-12).
 
 ### BL-MPW-14 — 09 Manpower: end a deployment rejected by the client and open the replacement
 
-**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:medium` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:medium` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** Base: 09 Deployment lifecycle · Base: 09 Replacements (`MPW.DEP.02`) · Base: wl-ticketing Ticket lifecycle (`WRK.TKT.01`) · **Blocks:** None
 **Review items:** 09 MEDIUM "client rejects a deployed worker", 09-N3-a (withdrawal for non-payment)
 
@@ -1066,6 +1174,14 @@ worker, the deployment ends with the client's note, a replacement request opens 
 contract requires cover, the worker returns to the bench, and a complaint ticket records conduct
 issues. The same transition covers withdrawal for client non-payment (MD's decision) and a
 deployment entered in error.
+
+#### Surfaces
+- **Back office:** the account manager ends a deployment with a reason; *client rejected*
+  asks for the client's note and a "conduct involved" checkbox; only the MD may choose
+  *client non-payment*, with the notice period or a waiver.
+- **System:** a replacement request opens when the contract requires cover, a conduct
+  complaint ticket opens when ticked, *entered in error* rejects the deployment's
+  attendance, the worker returns to the bench and the client is notified.
 
 #### Files to read
 - `docs/verticals/09-manpower.md` §4.1 rows "The client stops paying", "The client rejects a
@@ -1124,7 +1240,7 @@ System ends (BL-MPW-06, BL-MPW-13); `MPW.RUL.13` (BL-MPW-16).
 
 ### BL-MPW-15 — 09 Manpower: apply a client block to deployments and the contract (`continue`)
 
-**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** BL-PTY-01 · BL-PTY-03 (block effect per agreement kind) · **Blocks:** None
 **Review items:** X-18
 
@@ -1132,6 +1248,14 @@ System ends (BL-MPW-06, BL-MPW-13); `MPW.RUL.13` (BL-MPW-16).
 When a client company is blocked as a party, workers already on site continue (the agency's
 obligations do not stop), but no new deployment starts and nothing is extended or renewed. The
 MD decides any termination. Staff without the permission see only *On hold* as the reason.
+
+#### Surfaces
+- **Back office:** deployment `activate` and `extend`, contract `renew` and request `submit`
+  are refused for the blocked client, with reason *On hold* for staff without
+  `parties.block_reason.view`; the MD and the account manager get a task listing the
+  client's deployments.
+- **System:** `PartyBlocked` changes no contract or deployment state; `PartyUnblocked`
+  simply lets the guards pass again.
 
 #### Files to read
 - `docs/verticals/09-manpower.md` §4.1 row "The client is blocked as a party", §7.1 *Client
@@ -1183,7 +1307,7 @@ Block and unblock (BL-PTY-01, BL-PTY-02); the MD's `terminate` (BL-MPW-04).
 
 ### BL-MPW-16 — 09 Manpower: warn when cover is not found in time (`MPW.RUL.13`)
 
-**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:medium` `blocked:open-item` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:medium` `blocked:open-item` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** Base: 09 Replacements (`MPW.DEP.02`, `MPW.RUL.06`) · **Blocks:** None
 **Review items:** 09 MEDIUM "no cover available"
 
@@ -1191,6 +1315,11 @@ Block and unblock (BL-PTY-01, BL-PTY-02); the MD's `terminate` (BL-MPW-04).
 When the contract requires cover (leave, suspension, rejection) and nobody has been found 24
 hours before the cover period starts, the client and the account manager are told. Uncovered
 days are not billed. Contract penalties for missing cover are not calculated (open item).
+
+#### Surfaces
+- **System:** `MPW.RUL.13` tells the client and the account manager once, 24 hours before
+  the cover start (at once for a late request), that cover is not yet found, and creates no
+  penalty line.
 
 #### Files to read
 - `docs/verticals/09-manpower.md` §4.1 row "No replacement can be found", §4.6, §7.2
@@ -1237,7 +1366,7 @@ Creating replacement requests (base `MPW.RUL.06`; BL-MPW-11; BL-MPW-14).
 
 ### BL-MPW-17 — 09 Manpower: open and close an absence case (`MPW.RUL.09`)
 
-**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** Base: wl-ticketing Ticket lifecycle · BL-HRM-07 (`report_absconding`) · BL-HRM-18 (`HRM.RUL.12` releases held lines) · BL-KRN-08 (compliance-critical alert) · **Blocks:** None
 **Review items:** 09-N12-c, X-15
 
@@ -1247,6 +1376,15 @@ HR must act: the rule opens an absence case, asks for cover and tells the client
 salary payment, and reminds HR to record contact attempts and to file the MoHRE absence report
 and record its number. Once both are recorded HR may report the worker as absconded. If the worker returns, the case
 closes with a reason and the held pay is released.
+
+#### Surfaces
+- **Back office:** HR sees the *absence* case, gets a daily reminder, records the contact
+  attempts and the MoHRE report number, and can run `report_absconding` only once both are
+  recorded; when the worker returns HR closes the case with a reason and the proposed
+  off-cycle run waits for approval.
+- **System:** `MPW.RUL.09` runs daily at 02:00, opens the case after 7 days, requests cover,
+  tells the client the worker is absent, holds the next salary line, and alerts the MD and
+  the admin when a run fails.
 
 #### Files to read
 - `docs/verticals/09-manpower.md` §4.7 row "The worker absconds", §7.2 (`MPW.RUL.09`, compliance-
@@ -1315,7 +1453,7 @@ Compliance-critical (`PLT.RUL.04`): `MPW.RUL.09` — a failure alerts the MD and
 
 ### BL-MPW-18 — 09 Manpower: escalate late visa case steps (`MPW.RUL.14`)
 
-**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:medium` `blocked:open-item` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:medium` `blocked:open-item` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** Base: wl-hr Visa case lifecycle (step templates with target days) · **Blocks:** None
 **Review items:** 09 MEDIUM "visa step deadlines"
 
@@ -1323,6 +1461,10 @@ Compliance-critical (`PLT.RUL.04`): `MPW.RUL.09` — a failure alerts the MD and
 Each visa step has a target number of days. When a step passes its target, the PRO is told;
 seven days later HR and the MD are told. Statutory time limits per step are not yet verified,
 so only the configured targets are used.
+
+#### Surfaces
+- **System:** `MPW.RUL.14` runs daily at 02:00 and notifies the PRO once when a visa step
+  passes its target, then HR and the MD once 7 days later.
 
 #### Files to read
 - `docs/verticals/09-manpower.md` §4.2 row "A visa step is late", §7.1 *Visa case* (intro),
@@ -1368,7 +1510,7 @@ Visa case transitions (wl-hr; BL-HRM-03).
 
 ### BL-MPW-19 — 09 Manpower: give wl-attendance the client approver, escalation contact and deemed-approval days
 
-**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:medium` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:medium` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** BL-ATT-10 · BL-ATT-11 · **Blocks:** None
 **Review items:** 09-N5-b
 
@@ -1376,6 +1518,12 @@ Visa case transitions (wl-hr; BL-HRM-03).
 wl-attendance escalates and may deem timesheets approved, but it reads who the approver is, who
 to escalate to and after how many days from the client contract. The contract gets these fields
 and the vertical implements the `ApproverResolver` provider for deployment timesheets.
+
+#### Surfaces
+- **Back office:** the account manager fills the client contract's new fields
+  *deemed-approval days* (empty by default) and *escalation contact*.
+- **System:** the `ApproverResolver` returns the approver kind, escalation contact and
+  deemed-approval days in force when the timesheet was submitted.
 
 #### Files to read
 - `docs/verticals/09-manpower.md` §4.3 row "The client does not approve the timesheet", §6
@@ -1436,7 +1584,7 @@ Escalation and deemed approval themselves (BL-ATT-10, BL-ATT-11).
 
 ### BL-MPW-20 — 09 Manpower: configure shared negative-flow settings (documents, parties, notifications, alerts, integrations)
 
-**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `blocked:open-item` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `blocked:open-item` `surface:back-office` `surface:field-pwa` `surface:portal` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** BL-DOC-01 · BL-DOC-02 · BL-DOC-06 · BL-PTY-03 · BL-NTF-06 · BL-KRN-05 · BL-KRN-08 · BL-TKT-11 (*labour case* category) · BL-SAL-19 · BL-SAL-20 · BL-SAL-21 · BL-HRM-26 · BL-HRM-27 · BL-HRM-28 · BL-DOC-08 · BL-DOC-09 · BL-DOC-10 · **Blocks:** None
 **Review items:** X-13, X-18, X-19, X-20
 
@@ -1450,6 +1598,18 @@ It also seeds the 09 values for lead sources and campaigns (`SAL.CRM.02`), onboa
 (`HRM.ONB.01`) and registration kinds (`DOC.EXP.01`), added on 2026-10-16: `SAL.ACL.07`,
 `HRM.RUL.16`, `HRM.RUL.17`, `HRM.ACL.10`, `DOC.RUL.04` and `DOC.RUL.01`. Onboarding
 checklist steps use `WRK.CHK.01` (MVP in 09 since 2026-10-16).
+
+#### Surfaces
+- **Back office:** a new 09 client starts with these values in Settings (locked kinds cannot
+  be switched to `with_approval`); staff see the tasks from message give-ups, labour case
+  tickets only for HR, the accountant and the MD, and SIF download and bank result upload on
+  a payroll run.
+- **Field PWA:** the site supervisor enters yesterday's paper attendance with the late-entry
+  flag (two days back is refused).
+- **Portal:** the worker records their own onboarding steps and acknowledges SOPs in the
+  worker portal.
+- **System:** document blocks and override modes, the block effect, give-up reactions,
+  notification groups, compliance-critical rules and owner alerts run with the 09 values.
 
 #### Files to read
 - `docs/verticals/09-manpower.md` §3.2 (ticket visibility paragraph), §3.3 (`MPW.ACL.07`),
@@ -1564,7 +1724,7 @@ Finance, attendance and payroll values (BL-MPW-21); the mechanisms (module epics
 
 ### BL-MPW-21 — 09 Manpower: configure shared negative-flow settings (finance, attendance, payroll and HR)
 
-**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `blocked:open-item` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `blocked:open-item` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** BL-INV-01 · BL-INV-04 · BL-INV-10 · BL-PAY-09 · BL-ATT-02 · BL-ATT-04 · BL-ATT-10 · BL-ATT-12 · BL-HRM-04 · BL-HRM-14 · BL-HRM-15 · BL-HRM-19 · BL-HRM-25 · BL-INV-25 · BL-INV-26 · BL-INV-27 · BL-INV-28 · BL-INV-29 · BL-INV-30 · BL-PAY-25 · BL-PAY-26 · **Blocks:** None
 **Review items:** X-01, X-02, X-04, X-05, X-15, X-16, 09-N4-a, 09-N5-b, 09-N5-c, 09-N5-d, 09-N7-a, 09-N7-b, 09-N11-b
 
@@ -1576,6 +1736,17 @@ pay account change control, exit approvals and the settlement deadline.
 It also seeds the 09 values for the cash-flow forecast alert (`FIN.CFL.01`) and the
 company budget with owner drawings (`FIN.BUD.01`), added on 2026-10-16: `FIN.RUL.23`,
 `FIN.RUL.24` and `FIN.ACL.21`.
+
+#### Surfaces
+- **Back office:** staff see the 09 values at work: every invoice write-off needs approval,
+  a bounced cheque offers re-present, legal case and write-off, flags are reviewed by
+  someone other than the marking supervisor, payroll basis `wait` is refused, and forecast,
+  budget and drawings approvals go to the MD.
+- **Portal:** the client approver can flag an invoice `disputed`, and the worker can request
+  a pay account change (portal audience *worker*, PWA with SMS one-time code, wl-portal).
+- **System:** WPS, settlement, dispute and timesheet escalation alerts, overtime and midday
+  break flags, recovery caps, pay account cooling and the day-25 cut-off run with the 09
+  values.
 
 #### Files to read
 - `docs/verticals/09-manpower.md` §3.3 (`HRM.ACL.05`–`09`), §4.3, §4.4, §4.7 "When it goes wrong"

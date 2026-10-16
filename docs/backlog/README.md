@@ -77,6 +77,11 @@ issues are created on GitHub, the IDs stay in the title prefix so links can be r
 | `priority:high` / `priority:medium` | From the review's impact: money, legal or data loss = high |
 | `blocked:open-item` | Waits for an answer in [OPEN-ITEMS.md](../OPEN-ITEMS.md); the default in the issue may be built, the open part is flagged |
 | `size:s` / `size:m` | s = one transition or rule; m = a small state machine or several linked transitions. Nothing larger: split it |
+| `surface:back-office` | Screens or actions for staff on desktop ([UX.md](../UX.md) §1, surface 1) |
+| `surface:field-pwa` | Phone screens for field roles: technician, driver, supervisor, storekeeper, line operator, cook (surface 2) |
+| `surface:portal` | What a logged-in external user sees or does: tenant, client, patient, guardian, student, buyer (surface 3) |
+| `surface:public` | Pages without login: self-booking, direct ordering, tracking link, payment link (surface 4) |
+| `surface:system` | No screen: automation rules, event consumers, scheduled jobs, and guards or effects that run without a user (e.g. a system transition). A guard that refuses a user's own action belongs to that user's surface, not to `system` |
 
 **Milestones.**
 
@@ -97,7 +102,7 @@ answered before the issue is coded.
 
 ## 4. Issue template
 
-Every issue uses exactly these headings, in this order. Sections with nothing to say keep the
+Every issue uses exactly these headings, in this order (**Surfaces** added 2026-10-16). Sections with nothing to say keep the
 heading and write "None."
 
 ````markdown
@@ -109,6 +114,11 @@ heading and write "None."
 
 #### Goal
 Two to four sentences: who does what, what must happen, why it matters.
+
+#### Surfaces
+One line per surface the issue touches, naming the role and what appears or is done there
+(back office, field PWA, portal, public page, system). Every surface named here has its
+`surface:*` label. Notifications are effects, not surfaces: name the channel in the effect.
 
 #### Files to read
 Paths with sections (`docs/modules/wl-invoicing.md` §4 Invoice). Only what is needed.

@@ -38,7 +38,7 @@ booking and document mechanics live in the module epics.
 
 ### BL-EDU-01 — 10 EdTech: lapse an unpaid seat hold (`lapse`, `EDU.RUL.11`)
 
-**Labels:** `vertical:10-edtech` `area:negative-flow` `priority:high` · **Milestone:** Launch 10 · **Size:** m
+**Labels:** `vertical:10-edtech` `area:negative-flow` `priority:high` `surface:back-office` `surface:public` `surface:system` · **Milestone:** Launch 10 · **Size:** m
 **Depends on:** Base: 10 Enrolment lifecycle (`activate`) · BL-EDU-02 (seat count) · BL-PAY-02 (`FIN.RUL.19` pending timeout, `PaymentFailed`) · BL-PAY-03 (`late_confirm` refund) · **Blocks:** None
 **Review items:** X-06, 10 MEDIUM "enrolment payment timeout"
 
@@ -48,6 +48,15 @@ the enrolment lapses: the seat is released for others, the payment link is cance
 student or guardian and the counsellor are told. A failed online payment does not end the hold
 early. A payment that arrives after the lapse is refunded automatically, also when the counsellor
 has already re-enrolled the student.
+
+#### Surfaces
+- **Back office:** the counsellor sees the enrolment `lapsed`, the freed seat on the batch,
+  the balance of a partial payment, and the automatic refund of a late payment on the party.
+- **Public page:** after a failed payment the guardian gets a new payment link; after the
+  lapse the old link no longer takes payment (screen not specified yet).
+- **System:** `EDU.RUL.11` lapses the enrolment 48 hours after creation, or at once when a
+  pending gateway payment fails after that time, tells the student or guardian and the
+  counsellor, and `late_confirm` refunds any later payment.
 
 #### Files to read
 - `docs/verticals/10-edtech.md` §4.1 "When it goes wrong" rows 1–2, §6 (Enrolment: seat hold
@@ -135,7 +144,7 @@ Seat counting (BL-EDU-02); pending timeout and `late_confirm` (BL-PAY-02, BL-PAY
 
 ### BL-EDU-02 — 10 EdTech: take batch seats atomically (`EDU.ACL.17`)
 
-**Labels:** `vertical:10-edtech` `area:negative-flow` `priority:medium` · **Milestone:** Launch 10 · **Size:** m
+**Labels:** `vertical:10-edtech` `area:negative-flow` `priority:medium` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Launch 10 · **Size:** m
 **Depends on:** Base: 10 Batch and Enrolment lifecycle · **Blocks:** BL-EDU-01, BL-EDU-12, BL-EDU-13
 **Review items:** X-17, 10 MEDIUM "capacity under concurrency"
 
@@ -144,6 +153,15 @@ Two counsellors, or a counsellor and a parent in the portal, must never sell the
 twice. A seat is taken in one atomic step that counts active, frozen and held enrolments
 against the batch capacity; the second attempt is refused and offered another batch or the
 waiting list. Only the centre manager may go over capacity, and never beyond the room's limit.
+
+#### Surfaces
+- **Back office:** a counsellor's enrolment or `transfer` into a full batch is refused with
+  other open batches of the same course and level and the waiting list option; the centre
+  manager may go over capacity up to the room limit; counsellors see the waiting list.
+- **Portal:** a guardian enrolling into a full batch is refused with the same alternatives
+  and waiting list option (screen not specified yet).
+- **System:** the seat count and the insert run in one transaction with a lock on the batch
+  row.
 
 #### Files to read
 - `docs/verticals/10-edtech.md` §3.3 (`EDU.ACL.17`), §4.1 row "Two people take the last seat",
@@ -198,7 +216,7 @@ Lapse (BL-EDU-01); batch termination transfers (BL-EDU-12).
 
 ### BL-EDU-03 — 10 EdTech: withdraw an enrolment with credit note, cancelled charges or amount owed (`withdraw`)
 
-**Labels:** `vertical:10-edtech` `area:negative-flow` `priority:high` · **Milestone:** Launch 10 · **Size:** m
+**Labels:** `vertical:10-edtech` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Launch 10 · **Size:** m
 **Depends on:** Base: 10 Enrolment lifecycle and refund calculation (`EDU.REF.01`) · BL-INV-21 (subscription cancel on withdrawal) · BL-INV-08 (credit note reopened on failed refund) · BL-PAY-06, BL-PAY-07 (failed refund) · Base: wl-sales Package `refund` · **Blocks:** BL-EDU-04, BL-EDU-12, BL-EDU-13
 **Review items:** 10-N3-f
 
@@ -208,6 +226,14 @@ for the paid amount not used (per the refund policy accepted at enrolment), canc
 future instalments, an immediate cancellation of a membership, a refund of a package, and, if the
 student used more than was paid, an invoice for the amount owed. The refund is approved by a
 different user. If the refund later fails, the enrolment stays withdrawn.
+
+#### Surfaces
+- **Back office:** the counsellor runs *withdraw*, sees the refund or amount owed calculated
+  by the stored policy, and the refund waits under "Needs your action" for another user's
+  approval.
+- **System:** on approval the credit note, cancelled instalments, membership `cancel`,
+  package `refund`, invoice for an amount owed and refund request are created in one
+  transaction; a `RefundFailed` leaves the enrolment `withdrawn`.
 
 #### Files to read
 - `docs/verticals/10-edtech.md` §4.3 "When it goes wrong" rows 1–2, §6 (Enrolment: withdrawal
@@ -301,7 +327,7 @@ Blocked payer (BL-EDU-04); withdrawal from batch `terminate` (BL-EDU-12) or `can
 
 ### BL-EDU-04 — 10 EdTech: freeze the enrolments of a blocked party and hold their withdrawal refunds
 
-**Labels:** `vertical:10-edtech` `area:negative-flow` `priority:high` · **Milestone:** Launch 10 · **Size:** s
+**Labels:** `vertical:10-edtech` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Launch 10 · **Size:** s
 **Depends on:** BL-PTY-01 · BL-PTY-03 (block effect per agreement kind) · BL-PTY-04 (money out exception) · BL-EDU-03 · **Blocks:** None
 **Review items:** X-18
 
@@ -312,6 +338,14 @@ ones are left to lapse)
 without the usual freeze-day limit, the seat is kept, and the centre manager decides any
 withdrawal. A withdrawal refund to a blocked party waits unless a compliance exception is
 approved. On unblock, enrolments frozen by the block are unfrozen.
+
+#### Surfaces
+- **Back office:** the blocked party's enrolments show `frozen` with reason *On hold* to
+  staff without `parties.block_reason.view`; only the centre manager may withdraw them, and
+  the refund stays waiting.
+- **System:** `PartyBlocked` freezes the `active` enrolments without the freeze-day limit
+  (or adds a cause), extends packages, sends nothing to the party, and `PartyUnblocked`
+  removes only the block's cause.
 
 #### Files to read
 - `docs/verticals/10-edtech.md` §4.1 row "The payer is blocked", §7.1 *Enrolment* (`freeze`,
@@ -376,7 +410,7 @@ Membership pause on the block (BL-INV-20); block and unblock (BL-PTY-01, BL-PTY-
 
 ### BL-EDU-05 — 10 EdTech: keep membership pause and enrolment freeze in step (`EDU.RUL.14`)
 
-**Labels:** `vertical:10-edtech` `area:negative-flow` `priority:medium` · **Milestone:** Launch 10 · **Size:** s
+**Labels:** `vertical:10-edtech` `area:negative-flow` `priority:medium` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Launch 10 · **Size:** s
 **Depends on:** BL-INV-20 (subscription pause causes) · Base: 10 Enrolment lifecycle (`freeze`, `unfreeze`) · **Blocks:** None
 **Review items:** 10 MEDIUM "freeze linked to membership pause"
 
@@ -384,6 +418,13 @@ Membership pause on the block (BL-INV-20); block and unblock (BL-PTY-01, BL-PTY-
 A membership and its enrolment must not drift apart: pausing the subscription freezes the
 enrolment and freezing the enrolment pauses the subscription, and the same for resume and
 unfreeze, without loops and without running a transition that is already done.
+
+#### Surfaces
+- **Back office:** staff freeze or unfreeze an enrolment and the linked membership follows;
+  the allowance is counted once.
+- **Portal:** the guardian pauses or resumes the membership (screen not specified yet).
+- **System:** `EDU.RUL.14` runs the matching transition on the other side with cause
+  *linked*, skips when the other side is already there, and never loops.
 
 #### Files to read
 - `docs/verticals/10-edtech.md` §4.3 row "The membership is paused", §7.1 *Subscription*
@@ -435,7 +476,7 @@ Pause causes and billing (BL-INV-20); blocked parties (BL-EDU-04).
 
 ### BL-EDU-06 — 10 EdTech: give the counsellor a task when a course fee is charged back
 
-**Labels:** `vertical:10-edtech` `area:negative-flow` `priority:high` · **Milestone:** Launch 10 · **Size:** s
+**Labels:** `vertical:10-edtech` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Launch 10 · **Size:** s
 **Depends on:** BL-PAY-04 (chargeback) · BL-INV-07 (`InvoiceReopened`) · BL-INV-19 (membership goes `past_due`) · **Blocks:** None
 **Review items:** X-06
 
@@ -443,6 +484,14 @@ Pause causes and billing (BL-INV-20); blocked parties (BL-EDU-04).
 When a card payment for a course fee is charged back, the invoice reopens. The enrolment does
 not change by itself; the counsellor gets a task to collect the money again or withdraw the
 student. (A membership goes `past_due` in the subscription module.)
+
+#### Surfaces
+- **Back office:** the enrolment's counsellor (or the campus counsellors when that user is
+  inactive) gets one task with the amount, the payer and the links "send payment link" and
+  "withdraw".
+- **System:** `InvoiceReopened` for a course fee, instalment or package invoice creates or
+  updates the task, leaves the enrolment unchanged, and closes the task when the invoice is
+  paid again.
 
 #### Files to read
 - `docs/verticals/10-edtech.md` §4.3 row "A card payment is charged back", §7.1 *Enrolment*
@@ -494,7 +543,7 @@ Chargeback lifecycle (BL-PAY-04, BL-PAY-05); membership `past_due` (BL-INV-19).
 
 ### BL-EDU-07 — 10 EdTech: block batch `open` and certificate `issue` on an expired centre permit or course approval (`EDU.RUL.13`)
 
-**Labels:** `vertical:10-edtech` `area:negative-flow` `priority:high` `blocked:open-item` · **Milestone:** Launch 10 · **Size:** m
+**Labels:** `vertical:10-edtech` `area:negative-flow` `priority:high` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Launch 10 · **Size:** m
 **Depends on:** BL-DOC-01 · BL-DOC-04 · BL-DOC-05 · BL-KRN-08 · **Blocks:** BL-EDU-16
 **Review items:** X-13, 10-N8-a
 
@@ -504,6 +553,14 @@ approval. Both transitions are blocked with no override. Sixty days before expir
 expiry, the coordinator, the centre manager and the owner are told which batches are affected,
 and a renewal task goes to the kind's responsible role. Running batches are not stopped by the system; whether they may
 finish is an open question.
+
+#### Surfaces
+- **Back office:** batch `open` and certificate `issue` are refused naming the expired or
+  expiring permit or approval, with no override; the coordinator, the centre manager and the
+  owner get one message listing open and running batches, and the responsible role gets a
+  renewal task due on the expiry date.
+- **System:** `EDU.RUL.13` runs on `DocumentExpiring` (60 days ahead) and `DocumentExpired`,
+  stops no running batch, and alerts the owner and the admin when a run fails.
 
 #### Files to read
 - `docs/verticals/10-edtech.md` §2 (KHDA, ACTVET, SPEA), §4.2 row "The course approval or centre
@@ -577,7 +634,7 @@ Tutor eligibility (BL-EDU-08); batch termination (BL-EDU-12).
 
 ### BL-EDU-08 — 10 EdTech: guard tutor assignment on every session date (`EDU.ACL.14`)
 
-**Labels:** `vertical:10-edtech` `area:negative-flow` `priority:high` `blocked:open-item` · **Milestone:** Launch 10 · **Size:** m
+**Labels:** `vertical:10-edtech` `area:negative-flow` `priority:high` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Launch 10 · **Size:** m
 **Depends on:** BL-HRM-01 (`qualification_valid`) · BL-DOC-01 · BL-DOC-04 · BL-DOC-06 · **Blocks:** BL-EDU-09, BL-EDU-10, BL-EDU-11
 **Review items:** X-13, 10-N8-c
 
@@ -590,6 +647,13 @@ wl-scheduling (`ResourceEligibility`, `booking.book` and `booking.reassign`) wit
 BL-EDU-17 sets on the service types; here bookings appear only in the `FutureWork` provider. The
 batch and session records register the providers that let wl-documents find what an expiring
 document affects.
+
+#### Surfaces
+- **Back office:** the coordinator's batch `open` or session `reschedule` is refused naming
+  the tutor's missing kind and the first failing date, with no minors' data.
+- **System:** the guard checks `qualification_valid` on every remaining session date, and
+  the batch and session records register `BlockSubjects` and `FutureWork` (sessions and
+  one-to-one bookings after the expiry date).
 
 #### Files to read
 - `docs/verticals/10-edtech.md` §2 (private tutors, minors), §3.3 (`EDU.ACL.14`), §7.1 *Batch*
@@ -658,7 +722,7 @@ session → tutor) and `FutureWork` (sessions and one-to-one bookings after the 
 
 ### BL-EDU-09 — 10 EdTech: change the tutor of a batch or a session (`change_tutor`)
 
-**Labels:** `vertical:10-edtech` `area:negative-flow` `priority:medium` · **Milestone:** Launch 10 · **Size:** m
+**Labels:** `vertical:10-edtech` `area:negative-flow` `priority:medium` `surface:back-office` `surface:system` · **Milestone:** Launch 10 · **Size:** m
 **Depends on:** BL-EDU-08 · **Blocks:** BL-EDU-10
 **Review items:** 10 MEDIUM "tutor reassignment", 10-N8-c
 
@@ -666,6 +730,14 @@ session → tutor) and `FutureWork` (sessions and one-to-one bookings after the 
 When a tutor becomes unavailable or ineligible, the coordinator moves the remaining sessions of a
 batch, or a single session, to another tutor who is free and eligible on every date. Students and
 guardians are told and the conflicts on the old tutor are cleared.
+
+#### Surfaces
+- **Back office:** the coordinator changes the tutor of a batch from a date, or of one
+  session; when the new tutor fails on any date nothing changes and the failing dates are
+  shown.
+- **System:** the remaining sessions of the current tutor are reassigned under a lock on the
+  new tutor's calendar, each student or guardian gets one message with no reason, and the
+  old tutor's conflicts are cleared.
 
 #### Files to read
 - `docs/verticals/10-edtech.md` §4.2 row "A tutor is sick or leaves", §7.1 *Batch*
@@ -713,7 +785,7 @@ Eligibility guard (BL-EDU-08); flags and tasks (BL-EDU-10).
 
 ### BL-EDU-10 — 10 EdTech: flag sessions of a tutor who will not be eligible or available (`EDU.RUL.12`)
 
-**Labels:** `vertical:10-edtech` `area:negative-flow` `priority:high` · **Milestone:** Launch 10 · **Size:** m
+**Labels:** `vertical:10-edtech` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Launch 10 · **Size:** m
 **Depends on:** BL-EDU-08 · BL-EDU-09 · BL-HRM-01 · BL-SCH-05 (booking conflicts) · BL-KRN-08 · **Blocks:** None
 **Review items:** X-13, X-17, 10-N8-c, 10 MEDIUM "tutor reassignment"
 
@@ -723,6 +795,13 @@ manual availability block in the MVP; tutor leave is Later for 10), or when the 
 notice, the coordinator must see which sessions are affected and change the tutor in time. The
 rule flags those sessions, gives the coordinator a task, and tells the centre manager if a flagged
 session is still unresolved 24 hours before it starts. It is compliance-critical.
+
+#### Surfaces
+- **Back office:** affected sessions show "tutor not available or not eligible"; the
+  coordinator gets one task per tutor and trigger (one-to-one bookings listed too); the
+  centre manager is told when a flagged session is still unresolved 24 hours before it.
+- **System:** `EDU.RUL.12` runs on document, notice and availability block events and daily
+  with a moving 30-day window; a failed run alerts the owner and the admin.
 
 #### Files to read
 - `docs/verticals/10-edtech.md` §4.2 rows "A tutor's police clearance or permit will expire", "A
@@ -790,13 +869,19 @@ The guard (BL-EDU-08); booking conflicts (BL-SCH-05 to BL-SCH-07).
 
 ### BL-EDU-11 — 10 EdTech: flag a session taught by an ineligible tutor (`submit_attendance`)
 
-**Labels:** `vertical:10-edtech` `area:negative-flow` `priority:high` · **Milestone:** Launch 10 · **Size:** s
+**Labels:** `vertical:10-edtech` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Launch 10 · **Size:** s
 **Depends on:** BL-EDU-08 · BL-DOC-02 (flag mode) · **Blocks:** None
 **Review items:** X-13, 10-N8-c
 
 #### Goal
 A session that took place cannot be undone, so attendance is always accepted. If the tutor did
 not pass `EDU.ACL.14` that day, the session is flagged for the centre manager to review.
+
+#### Surfaces
+- **Back office:** the tutor's (or coordinator's) attendance submission is always accepted;
+  the centre manager sees a flag on the session when the tutor failed `EDU.ACL.14` that day
+  and closes it with a note.
+- **System:** the flag changes neither credits nor tutor pay.
 
 #### Files to read
 - `docs/verticals/10-edtech.md` §7.1 *Session* (`submit_attendance`), §9 table
@@ -836,7 +921,7 @@ Credit consumption rules (BL-EDU-15).
 
 ### BL-EDU-12 — 10 EdTech: terminate a running batch (`terminate`, `EDU.ACL.15`)
 
-**Labels:** `vertical:10-edtech` `area:negative-flow` `priority:high` · **Milestone:** Launch 10 · **Size:** m
+**Labels:** `vertical:10-edtech` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Launch 10 · **Size:** m
 **Depends on:** BL-EDU-02 · BL-EDU-03 · BL-KRN-01 · **Blocks:** None
 **Review items:** 10-N12-b
 
@@ -846,6 +931,16 @@ too few students). The coordinator requests termination and the centre manager a
 remaining sessions are cancelled; each student is either moved to another batch or withdrawn
 with the unused sessions refunded pro rata and no admin fee; the tutor is paid only for sessions
 taught; students and guardians are told; for a regulatory reason the owner is told too.
+
+#### Surfaces
+- **Back office:** the coordinator requests *terminate* with a reason and, per enrolment,
+  *transfer to batch X* or *withdraw*; the centre manager approves under "Needs your
+  action"; each refund then waits for its own approval; the coordinator is told when a
+  transfer falls back to withdraw.
+- **System:** on approval the remaining sessions are cancelled, enrolments are transferred
+  or withdrawn with the pro rata refund and no admin fee, the tutor is paid only for
+  sessions taught, students and guardians are told, and the owner is told for a regulatory
+  reason.
 
 #### Files to read
 - `docs/verticals/10-edtech.md` §2 (fees and refunds: learners settled if an authorisation is
@@ -907,7 +1002,7 @@ Withdrawal money documents (BL-EDU-03); batch `cancel` (BL-EDU-13).
 
 ### BL-EDU-13 — 10 EdTech: cancel a batch before it runs with a full refund (`cancel`)
 
-**Labels:** `vertical:10-edtech` `area:negative-flow` `priority:high` · **Milestone:** Launch 10 · **Size:** s
+**Labels:** `vertical:10-edtech` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Launch 10 · **Size:** s
 **Depends on:** BL-EDU-03 · BL-EDU-02 (seat check for transfers, `EDU.ACL.17`) · **Blocks:** None
 **Review items:** 10-N3-f, 10-N12-b
 
@@ -915,6 +1010,14 @@ Withdrawal money documents (BL-EDU-03); batch `cancel` (BL-EDU-13).
 When the centre cancels a batch before its first session, the cancellation is business-initiated:
 each student is moved to another batch or withdrawn with everything refunded, including the
 registration fee.
+
+#### Surfaces
+- **Back office:** the coordinator cancels a `planned` or `open` batch with a reason and,
+  per enrolment, *transfer to batch X* or *withdraw*; the full refund waits for approval;
+  the coordinator is told when a transfer falls back to withdraw.
+- **System:** withdrawals get a credit note for everything paid, including the registration
+  fee, scheduled instalments are cancelled, payment links of `pending_payment` enrolments
+  are cancelled, and the parties are notified.
 
 #### Files to read
 - `docs/verticals/10-edtech.md` §7.1 *Batch* (`cancel`), §7.2 (`EDU.RUL.05`)
@@ -959,7 +1062,7 @@ registration fee.
 
 ### BL-EDU-14 — 10 EdTech: correct attendance of a held session (`correct_attendance`, `EDU.ACL.16`)
 
-**Labels:** `vertical:10-edtech` `area:negative-flow` `priority:medium` · **Milestone:** Launch 10 · **Size:** m
+**Labels:** `vertical:10-edtech` `area:negative-flow` `priority:medium` `surface:back-office` `surface:system` · **Milestone:** Launch 10 · **Size:** m
 **Depends on:** BL-EDU-15 · BL-ATT-07, BL-ATT-08 (adjustment timesheets) · Base: wl-sales Package `reverse` and `consume` · **Blocks:** None
 **Review items:** 10 MEDIUM "attendance correction after a session"
 
@@ -969,6 +1072,14 @@ tutor may correct within 24 hours after the session ends; later only the coordin
 reason. Credits are reversed or consumed, completion is re-evaluated, the guardian is told when an
 absence alert had been sent, and a locked tutor timesheet is corrected by an adjustment. If an
 issued certificate is affected, it goes through reissue or revoke.
+
+#### Surfaces
+- **Back office:** the tutor corrects attendance with a reason within 24 hours of the
+  session end, later only the coordinator; the counsellor gets a task to sell credits when
+  none is left, and the coordinator a task to `reissue` or `revoke` an affected certificate.
+- **System:** credits are reversed or consumed by the stored absence policy, completion is
+  re-evaluated (a failing draft certificate is discarded), the guardian is told when an
+  absence alert had been sent, and a `locked` tutor timesheet gets an adjustment.
 
 #### Files to read
 - `docs/verticals/10-edtech.md` §3.3 (`EDU.ACL.04`, `EDU.ACL.16`), §4.2 row "Attendance was marked
@@ -1042,7 +1153,7 @@ BL-ATT-08).
 
 ### BL-EDU-15 — 10 EdTech: consume package credits by the absence policy
 
-**Labels:** `vertical:10-edtech` `area:negative-flow` `priority:medium` · **Milestone:** Launch 10 · **Size:** m
+**Labels:** `vertical:10-edtech` `area:negative-flow` `priority:medium` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Launch 10 · **Size:** m
 **Depends on:** Base: wl-sales Package `consume` · Base: 10 Session lifecycle (`submit_attendance`, `cancel`) · **Blocks:** BL-EDU-14
 **Review items:** 10 MEDIUM "absence consumption policy"
 
@@ -1051,6 +1162,15 @@ Whether a missed session costs a credit must follow the catalogue item's absence
 fixed rule. By default an unexcused absence consumes a credit, an absence notified at least 24
 hours before is excused (no credit, and a make-up right), memberships consume nothing, and
 nothing is consumed when the centre cancels a session or a one-to-one booking.
+
+#### Surfaces
+- **Back office:** the counsellor records an absence notice with its time; the tutor sees
+  the student pre-marked *excused* when the notice came 24 hours or more before; the
+  coordinator may mark a late notice excused with a reason.
+- **Portal:** the guardian or student notifies an absence (screen not specified yet).
+- **System:** `submit_attendance` consumes credits by the catalogue item's absence policy,
+  gives one make-up right per excused absence, and consumes nothing for memberships or
+  centre-cancelled sessions and bookings.
 
 #### Files to read
 - `docs/verticals/10-edtech.md` §4.2 row "A student is absent", §6 (Catalogue item: absence
@@ -1104,7 +1224,7 @@ Corrections after the session (BL-EDU-14); make-up booking itself (base `EDU.MKP
 
 ### BL-EDU-16 — 10 EdTech: reissue a certificate (`reissue`) and print a copy
 
-**Labels:** `vertical:10-edtech` `area:negative-flow` `priority:medium` · **Milestone:** Launch 10 · **Size:** m
+**Labels:** `vertical:10-edtech` `area:negative-flow` `priority:medium` `surface:back-office` `surface:portal` `surface:public` · **Milestone:** Launch 10 · **Size:** m
 **Depends on:** Base: 10 Certificate lifecycle (`issue`, `revoke`, public verification page) · BL-EDU-07 · **Blocks:** None
 **Review items:** 10 MEDIUM "certificate reissue"
 
@@ -1113,6 +1233,14 @@ A certificate with a wrong name or date, or whose result changed, is never edite
 the old one becomes `superseded`, the public verification page points to the new number, and a
 new draft with a new number is created and then issued. A lost copy is simply printed again
 without any change.
+
+#### Surfaces
+- **Back office:** the coordinator reissues an issued certificate with a reason and the
+  corrected data, confirms whether a KHDA attestation is copied, issues the new draft, and
+  can print a copy without any change.
+- **Portal:** the student sees the new certificate once it is issued.
+- **Public page:** the verification page of the old certificate shows "superseded,
+  replacement pending", then links the new number once it is issued.
 
 #### Files to read
 - `docs/verticals/10-edtech.md` §4.4 "When it goes wrong", §6 (Certificate: supersedes /
@@ -1166,7 +1294,7 @@ without any change.
 
 ### BL-EDU-17 — 10 EdTech: configure shared negative-flow settings (documents, scheduling, notifications, alerts, integrations)
 
-**Labels:** `vertical:10-edtech` `area:negative-flow` `priority:high` `blocked:open-item` · **Milestone:** Launch 10 · **Size:** m
+**Labels:** `vertical:10-edtech` `area:negative-flow` `priority:high` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Launch 10 · **Size:** m
 **Depends on:** BL-DOC-01 · BL-DOC-02 · BL-DOC-06 · BL-SCH-02 · BL-SCH-05 · BL-SCH-07 · BL-PTY-03 · BL-NTF-06 · BL-KRN-05 · BL-KRN-08 · BL-SAL-19 · BL-SAL-20 · BL-SAL-21 · BL-SAL-22 · BL-SAL-23 · BL-SAL-24 · BL-SAL-25 · BL-SAL-26 · BL-NTF-07 · BL-NTF-08 · BL-NTF-09 · BL-HRM-26 · BL-HRM-27 · BL-HRM-28 · BL-DOC-08 · BL-DOC-09 · BL-DOC-10 · **Blocks:** None
 **Review items:** X-13, X-17, X-18, X-19, X-20
 
@@ -1179,6 +1307,16 @@ It also seeds the 10 values for lead sources and campaigns (`SAL.CRM.02`), loyal
 (`SAL.LOY.01`), onboarding and SOPs (`HRM.ONB.01`) and registration kinds (`DOC.EXP.01`), added
 on 2026-10-16: `SAL.RUL.07`, `SAL.RUL.08`, `SAL.ACL.07`, `NTF.RUL.02`, `NTF.ACL.03`,
 `HRM.RUL.16`, `HRM.RUL.17`, `HRM.ACL.10`, `DOC.RUL.04` and `DOC.RUL.01`.
+
+#### Surfaces
+- **Back office:** a new 10 client starts with these values in Settings (only police
+  clearance may switch to `with_approval`, owner as approver); staff see the counsellor and
+  accountant tasks from message give-ups, the card-terminal fallback at the desk, and the
+  reason asked for paper attendance after the tutor's window.
+- **System:** document blocks and look-ahead windows, booking eligibility and conflict
+  escalation, the enrolment block effect, guardian give-up reactions, notification groups,
+  compliance-critical rules, owner alerts, loyalty, campaign, onboarding and SOP rules run
+  with the 10 values.
 
 #### Files to read
 - `docs/verticals/10-edtech.md` §4.1 rows "The payer is blocked", "A message to a guardian cannot
@@ -1303,7 +1441,7 @@ Fees and payments (BL-EDU-18).
 
 ### BL-EDU-18 — 10 EdTech: configure shared negative-flow settings (fees, refunds, payments, cash)
 
-**Labels:** `vertical:10-edtech` `area:negative-flow` `priority:high` · **Milestone:** Launch 10 · **Size:** m
+**Labels:** `vertical:10-edtech` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Launch 10 · **Size:** m
 **Depends on:** BL-INV-01 · BL-INV-04 · BL-INV-10 · BL-INV-20 · BL-PAY-02 · BL-PAY-04 · BL-PAY-07 · BL-PAY-17 · BL-INV-25 · BL-INV-26 · BL-INV-27 · BL-INV-28 · BL-INV-29 · BL-INV-30 · BL-PAY-25 · BL-PAY-26 · **Blocks:** None
 **Review items:** X-01, X-02, X-04, X-06, X-07, 10-N3-f
 
@@ -1315,6 +1453,16 @@ absence policies.
 It also seeds the 10 values for the cash-flow forecast alert (`FIN.CFL.01`) and the
 company budget with owner drawings (`FIN.BUD.01`), added on 2026-10-16: `FIN.RUL.23`,
 `FIN.RUL.24` and `FIN.ACL.21`.
+
+#### Surfaces
+- **Back office:** staff see the 10 values at work: refunds and write-offs need a second
+  user, the accountant gets a task when a refund retry fails, desk cash is counted by
+  another user with no salary recovery offered, and new catalogue items start with the
+  refund and absence policies; *Corporate invoice dispute from the portal* starts off in
+  Settings, since the corporate portal is not in the MVP.
+- **System:** refund retries, pending payment timeouts, late-payment refunds, membership
+  retries and the shared 30-day pause allowance, forecast and budget alerts run with the 10
+  values.
 
 #### Files to read
 - `docs/verticals/10-edtech.md` §3.3 (`FIN.ACL.04`, `FIN.ACL.06`), §4.3 "When it goes wrong",

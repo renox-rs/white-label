@@ -30,7 +30,7 @@ the gap review (GR-G4).
 
 ### BL-NTF-01 — wl-notify: run the notification type's give-up reaction when a message gives up
 
-**Labels:** `module:wl-notify` `area:negative-flow` `priority:medium` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-notify` `area:negative-flow` `priority:medium` `size:m` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** Base: wl-notify Message lifecycle (`send`, `fail`, `retry`, `fall_back`) · **Blocks:** BL-NTF-02, BL-NTF-03, BL-NTF-04, BL-NTF-05, BL-NTF-06, BL-ACC-24, BL-CLN-15
 **Review items:** X-20
 
@@ -39,6 +39,12 @@ Each notification type declares whether it is statutory, which give-up reaction 
 staff role is told. When the last message of a send ends `abandoned` through `give_up`,
 `MessageGaveUp` is emitted with the channels tried and errors, and `NTF.RUL.01` runs the type's
 reaction. Requester modules may also listen, but the default reaction always runs.
+
+#### Surfaces
+- **Back office:** the notification type admin shows the statutory flag, the give-up
+  reaction and the staff role told for each type.
+- **System:** `give_up` emits `MessageGaveUp` with the channels tried and errors, and
+  `NTF.RUL.01` runs the type's reaction once per message.
 
 #### Files to read
 - `docs/modules/wl-notify.md` §3 (*Notification type*), §4.1 *Message* (`give_up`, `fall_back`),
@@ -113,7 +119,7 @@ Each reaction (BL-NTF-02 to BL-NTF-05); default table (BL-NTF-06).
 
 ### BL-NTF-02 — wl-notify: open a staff task when a message could not be delivered
 
-**Labels:** `module:wl-notify` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-notify` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** BL-NTF-01 · Base: wl-ticketing Ticket lifecycle (`TaskCreator`), wl-kernel business calendar · **Blocks:** BL-NTF-03, BL-NTF-05, BL-ACC-24, BL-CLN-14, BL-CLN-15, BL-NTF-06
 **Review items:** X-20
 
@@ -121,6 +127,13 @@ Each reaction (BL-NTF-02 to BL-NTF-05); default table (BL-NTF-06).
 The `staff_task` reaction gives the type's staff role in the subject's scope a task "Could not
 reach {recipient} about {subject}", with the channels tried and the errors, due in 1 working day.
 For urgent types the role also gets an in-app alert.
+
+#### Surfaces
+- **Back office:** the type's staff role in the subject's scope (else the company admin)
+  gets a task "Could not reach {recipient} about {subject}" with masked address, channels
+  and errors, due in 1 working day, and an in-app alert for urgent types.
+- **System:** a second give-up for the same subject and recipient is added as a comment to
+  the open task.
 
 #### Files to read
 - `docs/modules/wl-notify.md` §5.4 (reaction `staff_task`; row "Urgent types of any module")
@@ -188,7 +201,7 @@ Other reactions (BL-NTF-03 to BL-NTF-05).
 
 ### BL-NTF-03 — wl-notify: send the message to another contact of the same party
 
-**Labels:** `module:wl-notify` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-notify` `area:negative-flow` `priority:medium` `size:s` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** BL-NTF-01, BL-NTF-02 · **Blocks:** BL-ACC-24, BL-NTF-06
 **Review items:** X-20
 
@@ -196,6 +209,11 @@ Other reactions (BL-NTF-03 to BL-NTF-05).
 The `alternative_recipient` reaction queues the same message to another contact of the same party
 with the same purpose (the company's other finance contact, the second guardian). If there is
 none, it falls back to `staff_task`.
+
+#### Surfaces
+- **System:** the recipient rule is re-run without the contacts already tried, the same
+  message is queued once to the primary of the rest, and `staff_task` runs once for the
+  chain when there is none or it also gives up.
 
 #### Files to read
 - `docs/modules/wl-notify.md` §5.1 step 2 (recipient resolution), §5.4 (`alternative_recipient`,
@@ -243,7 +261,7 @@ Marking the first contact invalid (BL-NTF-04).
 
 ### BL-NTF-04 — wl-notify: mark a contact point invalid after a hard failure
 
-**Labels:** `module:wl-notify` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-notify` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** BL-NTF-01 · **Blocks:** BL-ACC-24, BL-NTF-06
 **Review items:** X-20
 
@@ -251,6 +269,13 @@ Marking the first contact invalid (BL-NTF-04).
 On a hard bounce, an invalid number or an unknown WhatsApp account, the contact point is marked
 `invalid`, the party's record shows "contact needs updating", and staff who open the party are
 asked to fix it. This reaction is always combined with another one for non-marketing types.
+
+#### Surfaces
+- **Back office:** the party page shows "contact needs updating" and staff who open the
+  party are asked to fix it; editing or verifying the address sets it valid; saving a
+  non-marketing type with only `mark_contact_invalid` is refused.
+- **System:** a hard failure marks the contact point `invalid` and emits
+  `ContactPointInvalidated`; soft failures leave it `valid`.
 
 #### Files to read
 - `docs/modules/wl-notify.md` §3 (*Contact point* status fields), §5.4 (`mark_contact_invalid`),
@@ -300,7 +325,7 @@ Opt-outs (base §5.2).
 
 ### BL-NTF-05 — wl-notify: hold the deadline of a statutory notice until proof of delivery
 
-**Labels:** `module:wl-notify` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-notify` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
 **Depends on:** BL-NTF-01, BL-NTF-02 · **Blocks:** BL-ACC-04, BL-ACC-24, BL-NTF-06, BL-PRP-03, BL-PRP-09, BL-PRP-14, BL-PRP-27
 **Review items:** X-20, 01-N5-b, 01-N3-b, 04-N5-c
 
@@ -310,6 +335,13 @@ that could not be delivered must not count as given. The `statutory_notice` reac
 responsible staff a task to deliver it by another means and record the proof. Until proof is
 recorded, the subject shows "notice not delivered" and any deadline that depends on the notice is
 not started.
+
+#### Surfaces
+- **Back office:** the responsible staff get a task to deliver the notice by another means;
+  the subject (e.g. the lease) shows "notice not delivered" until they record proof (method,
+  delivery date, note, attachment) in a form offering only the vertical's methods.
+- **System:** `Notifier::notice_status(subject, type)` returns `delivered`, `proof_recorded`
+  or `not_delivered`, so requesters start deadlines only from a real delivery date.
 
 #### Files to read
 - `docs/modules/wl-notify.md` §3 (statutory flag), §5.4 (`statutory_notice`, row "Statutory
@@ -373,7 +405,7 @@ Which types are statutory and how each vertical computes its deadline (vertical 
 
 ### BL-NTF-06 — wl-notify: seed the default give-up reaction per type group
 
-**Labels:** `module:wl-notify` `area:negative-flow` `priority:medium` `size:s` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-notify` `area:negative-flow` `priority:medium` `size:s` `surface:portal` `surface:system` · **Milestone:** Build 1 · **Size:** s
 **Depends on:** BL-NTF-01, BL-NTF-02, BL-NTF-03, BL-NTF-04, BL-NTF-05 · **Blocks:** BL-ACC-24, BL-EDU-17, BL-LOG-25, BL-MPW-20
 **Review items:** X-20
 
@@ -381,6 +413,13 @@ Which types are statutory and how each vertical computes its deadline (vertical 
 Every notification type registered by a module gets a default give-up reaction from its group,
 so no type is left with none. Verticals may change a type's reaction and mark statutory types.
 OTP codes never create staff work: the user sees the error at once and may pick another channel.
+
+#### Surfaces
+- **Portal:** a user whose OTP SMS gives up sees "code could not be sent; try email" on the
+  login screen at once and may choose another channel.
+- **System:** every registered type gets its default reaction from one row of the table
+  (statutory first, then OTP, then its group, urgency adding `staff_task` and an alert); OTP
+  never creates a task.
 
 #### Files to read
 - `docs/modules/wl-notify.md` §5.4 (default table and last paragraph), §6 (`register_type`)
@@ -452,7 +491,7 @@ How the booking page shows "reminder not delivered" (`Epic wl-scheduling`).
 
 ### BL-NTF-07 — wl-notify: send a marketing broadcast to a segment, with approval above a size (`NTF.ACL.03`)
 
-**Labels:** `module:wl-notify` `area:sme-gap` `priority:medium` `size:m` · **Milestone:** Launch 05 · **Size:** m
+**Labels:** `module:wl-notify` `area:sme-gap` `priority:medium` `size:m` `surface:back-office` `surface:public` `surface:system` · **Milestone:** Launch 05 · **Size:** m
 **Depends on:** BL-SAL-19 (the campaign record that requests the broadcast) · Base: wl-notify Message lifecycle · Base: wl-parties consents (`PTY.CNS.01`) · Base: wl-kernel approvals · **Blocks:** BL-NTF-08, BL-NTF-09, BL-SAL-25, BL-AUT-18, BL-CLN-15, BL-EDU-17, BL-FNB-17
 **Review items:** G4 (SME problem map 32, 35)
 
@@ -463,6 +502,17 @@ the MVP nobody can start a marketing broadcast outside a campaign, so the campai
 send time, keeps only those with marketing consent for the channel and no opt-out or
 suppression, adds the opt-out, and records what was excluded and why. A large broadcast needs
 a second person's approval.
+
+#### Surfaces
+- **Back office:** the campaign requester sees the estimated recipients; above 200 a second
+  holder of `notifications.marketing.send` approves or rejects with a reason, seeing
+  template, channel, estimate and segment rules but no names; the broadcast shows excluded
+  counts by reason and the results.
+- **Public page:** each marketing email carries an unsubscribe link to the unsubscribe page,
+  which withdraws the email marketing consent.
+- **System:** at send time `start` resolves the segment again, keeps only consented,
+  reachable, unblocked recipients (guardians for minors), adds the opt-out, handles `STOP`
+  replies and emits `BroadcastCompleted` once.
 
 #### Files to read
 - `docs/modules/wl-notify.md` §2 (paragraph *Marketing broadcasts*), §3 *Broadcast*, §4.3,
@@ -627,7 +677,7 @@ of other types and broadcasts started by staff (Later).
 
 ### BL-NTF-08 — wl-notify: apply the marketing send window and frequency cap (`NTF.RUL.02`)
 
-**Labels:** `module:wl-notify` `area:sme-gap` `priority:medium` `size:s` · **Milestone:** Launch 05 · **Size:** s
+**Labels:** `module:wl-notify` `area:sme-gap` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 05 · **Size:** s
 **Depends on:** BL-NTF-07 · Base: wl-notify Message lifecycle (`defer`, `suppress`) · **Blocks:** BL-NTF-09, BL-SAL-25, BL-AUT-18, BL-CLN-15, BL-EDU-17, BL-FNB-17
 **Review items:** G4 (SME problem map 32)
 
@@ -635,6 +685,12 @@ of other types and broadcasts started by staff (Later).
 Marketing messages go out only between 07:00 and 21:00 Asia/Dubai (the TDRA hours for
 promotional SMS, applied to every channel), and no customer gets more than the cap of
 marketing messages in 7 days, however many campaigns run.
+
+#### Surfaces
+- **Back office:** the admin sets the marketing send window per channel; widening the SMS
+  window past 07:00-21:00 is refused on save.
+- **System:** `NTF.RUL.02` defers marketing messages outside the window and suppresses those
+  over the cap of 2 per 7 days, checked at `send` under a lock per recipient party.
 
 #### Files to read
 - `docs/modules/wl-notify.md` §4.1 rows `defer` and `suppress`, §6 `NTF.RUL.02`, §7 row on
@@ -703,7 +759,7 @@ Quiet hours for other categories (existing); the broadcast itself (BL-NTF-07).
 
 ### BL-NTF-09 — wl-notify: expire unapproved broadcasts, drop stale marketing messages and stop a broadcast (`NTF.RUL.03`)
 
-**Labels:** `module:wl-notify` `area:sme-gap` `priority:medium` `size:s` · **Milestone:** Launch 05 · **Size:** s
+**Labels:** `module:wl-notify` `area:sme-gap` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 05 · **Size:** s
 **Depends on:** BL-NTF-07 · BL-NTF-08 · **Blocks:** BL-SAL-25, BL-AUT-18, BL-CLN-15, BL-EDU-17, BL-FNB-17
 **Review items:** GR-G4-17, GR-G4-18, GR-G4-19 (gap review of G4)
 
@@ -712,6 +768,14 @@ A promotion goes out on time or not at all. A broadcast nobody approved is cance
 after its send time instead of going out days later; messages stuck behind a provider outage
 are dropped after 48 hours; and a marketer who sees a wrong segment or text can stop the
 messages not yet sent.
+
+#### Surfaces
+- **Back office:** a holder of `notifications.marketing.send` stops a `sending` broadcast,
+  or a `completed` one with messages still queued or deferred (otherwise "nothing left to
+  stop").
+- **System:** `NTF.RUL.03` checks every 15 minutes, cancels broadcasts not approved 24 hours
+  after send at, suppresses marketing messages still unsent 48 hours after start, and emits
+  `BroadcastCancelled` or `BroadcastStopped` to the requester.
 
 #### Files to read
 - `docs/modules/wl-notify.md` §3 *Broadcast*; §4.1 row `suppress`; §4.3 rows `expire`,
