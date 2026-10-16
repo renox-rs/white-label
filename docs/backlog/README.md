@@ -149,13 +149,9 @@ What a reader might expect here but belongs to another issue (with its ID).
 3. Each question was answered in the specification (and the spec version updated) or in the
    issue's **Edge cases decided**. Questions that need an adviser point to OPEN-ITEMS.
 
-## 6. Creating the issues on GitHub (later)
+## 6. Issues on GitHub
 
-Only after the owner approves:
-
-1. Create the labels and milestones above.
-2. Create one epic issue per file (title `Epic: <module or vertical> negative flows`) with a
-   task list of its issues.
-3. Create each issue with the title `BL-XXX-NN <module or vertical>: <title>`, its labels and
-   milestone, and add it as a sub-issue of its epic.
-4. Rewrite `BL-…` references in bodies to GitHub issue links.
+Created on 2026-10-16: 24 epics (#1–#24) and 429 issues (#25–#453), each issue a sub-issue of
+its epic, with the labels and milestones of §3. Links between issues use the GitHub numbers.
+The mapping from backlog ID to issue is in [github-issues.md](github-issues.md). When a backlog
+file changes, update the matching GitHub issue too.
