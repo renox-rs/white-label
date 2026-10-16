@@ -30,6 +30,7 @@ items of review §6, and the 07 parts of X-02, X-05, X-08, X-09, X-11, X-13, X-1
 | BL-MFG-12 | Alert on missing export evidence and open the VAT correction (`MFG.RUL.08`) | high | m | Launch 07 | BL-KRN-08; Base: wl-invoicing Invoice and Credit note lifecycle |
 | BL-MFG-13 | Link a quality dispute on an invoice to an NCR | medium | s | Launch 07 | BL-INV-04; BL-INV-05 |
 | BL-MFG-14 | 07 Manufacturing: configure shared negative-flow settings | high | m | Launch 07 | BL-KRN-03; BL-KRN-04; BL-KRN-05; BL-KRN-08; BL-DOC-01; BL-PTY-03; BL-INV-01; BL-INV-02; BL-INV-04; BL-PAY-09; BL-PAY-10; BL-PAY-14; BL-SAL-07; BL-SAL-12; BL-STK-03; BL-STK-11; BL-STK-18; BL-DLV-02; BL-INV-25; BL-INV-26; BL-INV-27; BL-INV-28; BL-INV-29; BL-INV-30; BL-PAY-25; BL-PAY-26; BL-SAL-19; BL-SAL-20; BL-SAL-21; BL-STK-28; BL-STK-29; BL-STK-30; BL-STK-31; BL-HRM-26; BL-HRM-27; BL-HRM-28; BL-DOC-08; BL-DOC-09; BL-DOC-10 |
+| BL-MFG-15 | Report supplier-caused NCRs to the supplier scorecard | medium | s | Launch 07 | BL-STK-29 |
 
 ---
 
@@ -998,14 +999,14 @@ Onboarding runs on the minimal employee record (`HRM.EMP.01`, MVP since 2026-10-
 | Responsible role per document kind (wl-documents §5.2) | conformity certificates (ECAS, EQM, food-contact) → QC inspectors of each plant that holds stock of the item or has an open work order for it (every plant when none does); calibration certificates → QC inspector of the plant; industrial licence, Industrial Registry, ICV certificate → general manager / owner; export exit evidence → accountant | §7.1 settings |
 | Notification types (wl-notify §5.4 group) | `mfg.recall_notice`: no group, urgency `urgent` (task to the recall owner with an in-app alert); no statutory types; staff-only alerts (`MFG.RUL.01`–`10`, WO `unlink` and `abort` notices): no group, give-up `none` | §7.1 *Notification types registered by 07* |
 | Cash-flow forecast alert (`FIN.CFL.01`, `FIN.RUL.23`) | projected balance below AED 200,000 in any of the next 13 weeks (weeks start Monday): `FIN.RUL.23` alerts the general manager / owner and the accountant, checked daily at 06:00; foreign-currency supplier bills at the latest rate; due dates adjusted by each customer's average days late: on; disputed amounts counted: off | §5; §7.1 settings |
-| Budget categories and approval (`FIN.BUD.01`, `FIN.RUL.24`) | categories owned by the accountant and mapped to the export accounts; one budget per legal entity and month, approved by the general manager / owner; `FIN.RUL.24` warns the category's owner role and the accountant when a month's actual reaches 100% of its line | §5; §7.1 settings |
-| Owner drawings (`FIN.BUD.01`, `FIN.ACL.21`) | expense category and payment purpose *owner drawings*, kept out of operating cost, product cost and profit; every drawing (AED 0) approved by the general manager / owner, never by the requester (`FIN.ACL.21`) | §5; §7.1 settings |
+| Budget categories and approval (`FIN.BUD.01`, `FIN.RUL.24`) | categories owned by the accountant and mapped to the export accounts; one budget per legal entity and fiscal year, by month, approved by the general manager / owner; `FIN.RUL.24` warns the category's owner role and the accountant when a month's actual reaches 100% of its line | §5; §7.1 settings |
+| Owner drawings (`FIN.BUD.01`, `FIN.ACL.21`) | expense category and payment purpose *owner drawings*, kept out of operating cost, product cost and profit; every drawing approved, whatever its amount (`FIN.ACL.21` limit AED 0), by the general manager / owner, never by the requester (`FIN.ACL.21`) | §5; §7.1 settings |
 | Lead sources used (`SAL.CRM.02`) | referral, website, event, partner (distributors, agents), paid ads, other; enquiries and RFQs are leads (`SAL.CRM.01`); no source requires a campaign | §5; §7.1 settings |
 | Campaign channels (`SAL.CRM.02`, `SAL.ACL.07`) | trade exhibitions, LinkedIn, search ads, email; converted value: the customer's first sales order; a cost entry that takes a campaign over its budget needs a manager (`SAL.ACL.07`: on) | §5; §7.1 settings |
 | Supplier scorecard review (`STK.SUP.01`, `STK.RUL.09`, `STK.ACL.07`) | score on a 0–100 scale over a 3-month window (monthly snapshots, at least 3 receipts); below 70: `STK.RUL.09` opens a review task to the procurement officer, the QC inspector told; preferred and alternative suppliers per raw material offered on purchase requests; changing an item's preferred supplier needs a second person (`STK.ACL.07`: on) | §5; §7.1 settings |
-| Onboarding checklists (`HRM.ONB.01`, `HRM.RUL.16`, `HRM.RUL.17`, `HRM.ACL.10`) | templates for operator, line supervisor, QC inspector, storekeeper and maintenance technician, started by `HRM.RUL.16` when an employee record (`HRM.EMP.01`) is created; checklist steps use `WRK.CHK.01`; tasks to the production manager, the line supervisor and the employee; the employee's own steps recorded only by them (`HRM.ACL.10`); `HRM.RUL.17` reminds overdue steps every 2 days and tells the production manager and the line supervisor after 5 days; completion blocks nothing (role activation not blocked) | §5; §7.1 settings |
-| SOP library (`HRM.ONB.01`, `DOC.RUL.04`, `HRM.ACL.10`) | SOP owners: production manager (work instructions per line) and QC inspector (inspection and quality SOPs); required readers by role per plant; `DOC.RUL.04` asks each reader to acknowledge within 7 days, reminds every 3 days and tells the manager and the owner role after 7 days; acknowledged only by the reader (`HRM.ACL.10`); a new version asks for a new acknowledgement | §5; §7.1 settings |
-| Registration and certification kinds (`DOC.EXP.01`, `DOC.RUL.01`) | *Halal certificate* (subject: item or legal entity), *ISO certificate* and *Other certification* (legal entity or plant): responsible role QC inspector; *Trademark registration* (legal entity): general manager / owner; product conformity stays on the conformity kinds; `DOC.RUL.01` at 90, 30 and 7 days; no `blocks` | §5; §7.1 settings |
+| Onboarding checklists (`HRM.ONB.01`, `HRM.RUL.16`, `HRM.RUL.17`, `HRM.ACL.10`) | templates for operator, line supervisor, QC inspector, storekeeper and maintenance technician, started by `HRM.RUL.16` when the employee record (`HRM.EMP.01`) is created in `onboarding` (none for a record created directly `active`, e.g. by a data import); checklist steps use `WRK.CHK.01`; tasks to the production manager, the line supervisor and the employee; the employee's own steps recorded only by them (`HRM.ACL.10`); `HRM.RUL.17` reminds the assignees of an overdue step on the first run after its due date, then every 2 days, and tells the production manager and the line supervisor after 5 days; completion blocks nothing (role activation not blocked) | §5; §7.1 settings |
+| SOP library (`HRM.ONB.01`, `DOC.RUL.04`, `HRM.ACL.10`) | SOP owners: production manager (work instructions per line) and QC inspector (inspection and quality SOPs); required readers by role per plant; `DOC.RUL.04` asks each reader to acknowledge within 7 days, reminds every 3 days and tells the reader's manager and the SOP's owner role (the SOP owner named above) after 7 days overdue; acknowledged only by the reader (`HRM.ACL.10`); a new version asks for a new acknowledgement | §5; §7.1 settings |
+| Registration and certification kinds (`DOC.EXP.01`, `DOC.RUL.01`) | *Halal certificate* (subject: item or legal entity), *ISO certificate* and *Other certification* (legal entity; the plants covered in the certificate's scope): responsible role QC inspector; *Trademark registration* (legal entity): general manager / owner; product conformity stays on the 07 conformity kinds (ECAS, EQM, food-contact) and the ICV certificate on its own 07 kind, not on these seeded kinds; `DOC.RUL.01` at 180, 90 and 30 days for trademarks and 90, 30 and 7 days for the others; no `blocks` | §5; §7.1 settings |
 
 #### Edge cases decided
 - **Client changes:** every value except the override mode `never` for conformity kinds and `PLT.ACL.09` may be changed per client by the company admin; the template is only the seed.
@@ -1023,7 +1024,7 @@ Onboarding runs on the minimal employee record (`HRM.EMP.01`, MVP since 2026-10-
 - [ ] **Cancellation:** cancelling a line of a standard item after its WO started proposes *finish to stock*; for a customer-specific item *scrap*; fee 0%.
 - [ ] **Credit and cheques:** a customer with an invoice 31 days overdue gets the next order on hold; a bounced cheque puts all open orders on account on hold; no bounce fee is invoiced; a third presentation is refused.
 - [ ] **Documents:** `Documents::blocks_for("dispatch", "pick")` and `blocks_for("dispatch", "dispatch")` return the three conformity kinds with mode `block` and override `never`; the industrial licence has no `blocks`.
-- [ ] **Responsible roles:** given plants P1 (stock of item X) and P2 (no stock, no work order for X), an expiring ECAS certificate of X notifies the QC inspectors of P1 only; given item Y with no stock or work order anywhere, its expiring certificate notifies the QC inspectors of P1 and P2; an expiring ICV certificate notifies the general manager / owner.
+- [ ] **Responsible roles:** given plants P1 (stock of item X) and P2 (no stock, no work order for X), an expiring ECAS certificate of X (a 07 conformity kind, row *Document kinds ECAS, EQM, food-contact*, not a BL-DOC-10 kind) notifies the QC inspectors of P1 only; given item Y with no stock or work order anywhere, its expiring certificate notifies the QC inspectors of P1 and P2; an expiring ICV certificate (07 kind, row *Industrial licence, Industrial Registry, ICV certificate*) notifies the general manager / owner.
 - [ ] **Notifications:** `mfg.recall_notice` is registered with no group and urgency `urgent`; when it gives up, the recall owner gets a task and an in-app alert; `MFG.RUL.02` is registered with no group and give-up `none`.
 - [ ] **Party block:** blocking customer C holds its undelivered sales orders; its WOs stay `in_progress`.
 - [ ] **Integrations and late entry:** a production report entered 30 hours late creates an approval request to the production manager; one entered 5 hours late gets only the flag.
@@ -1048,12 +1049,12 @@ Onboarding runs on the minimal employee record (`HRM.EMP.01`, MVP since 2026-10-
       review task for the procurement officer (`STK.RUL.09`); 70 creates none; an item's
       alternative supplier is offered on a purchase request for the item; making it the preferred
       supplier waits for a second person (`STK.ACL.07`).
-- [ ] **Onboarding and SOPs:** creating an operator's employee record creates the operator
-      checklist with tasks to the production manager, the line supervisor and the employee
-      (`HRM.RUL.16`), and the role is active before it is complete; a step open 2 days past its
-      due date reminds its assignee (`HRM.RUL.17`); a new version of an SOP owned by the
-      production manager asks every required reader to acknowledge again within 7 days
-      (`DOC.RUL.04`), and no one else can acknowledge for them (`HRM.ACL.10`).
+- [ ] **Onboarding and SOPs:** creating an operator's employee record in `onboarding` creates the
+      operator checklist with tasks to the production manager, the line supervisor and the employee
+      (`HRM.RUL.16`), and the role is active before it is complete; a step still open on the first
+      run after its due date reminds its assignees, and again 2 days later (`HRM.RUL.17`); a new
+      version of an SOP owned by the production manager asks every required reader to acknowledge
+      again within 7 days (`DOC.RUL.04`), and no one else can acknowledge for them (`HRM.ACL.10`).
 - [ ] **Registrations:** a fresh 07 deployment lists *Halal certificate*, *ISO certificate*,
       *Other certification* and *Trademark registration* with responsible role QC inspector, and
       general manager / owner for the trademark; a trademark registration expiring in 90 days
@@ -1061,3 +1062,61 @@ Onboarding runs on the minimal employee record (`HRM.EMP.01`, MVP since 2026-10-
 
 #### Out of scope
 The mechanisms themselves (module epics listed in Depends on).
+
+### BL-MFG-15 — 07 Manufacturing: report supplier-caused NCRs to the supplier scorecard
+
+**Labels:** `vertical:07-manufacturing` `area:sme-gap` `priority:medium` · **Milestone:** Launch 07 · **Size:** s
+**Depends on:** BL-STK-29 · Base: 07 NCR lifecycle · **Blocks:** None
+**Review items:** G3 (SME problem map 27, 49)
+
+#### Goal
+The supplier scorecard counts quality incidents per supplier. In 07 these are NCRs on incoming
+lots. Implement the `SupplierIncidentSource` adapter so that NCRs whose cause is the supplier
+reach the score, and so that a cancelled NCR or a changed cause drops out again.
+
+#### Files to read
+- `docs/verticals/07-manufacturing.md` §7.1 *NCR* (states, transitions, the cause paragraph)
+- `docs/modules/wl-inventory.md` §3 *Supplier score* (quality incidents), §8 `SupplierIncidentSource`
+
+#### Terms
+- **NCR:** non-conformance report on a lot (`MFG.QCL.02`).
+- **Cause:** NCR field *supplier*, *internal process* or *unknown*.
+- **`SupplierIncidentSource`:** the wl-inventory extension point that lists quality incidents
+  per supplier and date for the scorecard, and reports later voids or cause changes.
+
+#### Spec excerpt (authoritative for this issue)
+From 07 §7.1: "Every NCR records a cause: supplier, internal process or unknown. An NCR raised at
+incoming inspection defaults to supplier with the lot's supplier; QC may change it until close,
+with a reason. Only NCRs with cause supplier that are not cancelled are reported to the supplier
+scorecard (`STK.SUP.01`) through `SupplierIncidentSource`; a later change of cause or a
+cancellation is reported too, so the live score drops the incident."
+
+From wl-inventory §8: `SupplierIncidentSource` — "Quality incidents per supplier and date for the
+scorecard: only incidents whose cause is the supplier and that are not voided; a later void or
+change of cause is reported too. 07: NCRs on incoming lots (apps/manufacturing)."
+
+#### Edge cases decided
+- **Incident date:** the date the NCR was raised (Asia/Dubai), not the disposition date.
+- **Supplier:** the lot's supplier at the time of the NCR; an NCR on a lot with no supplier (own
+  production) is never reported.
+- **Cause changed after the monthly snapshot:** the snapshot stays as it was (snapshots are never
+  edited); the live view and the next snapshot use the new cause.
+- **Reopened NCR:** stays one incident; reopening does not count it twice.
+
+#### Must not
+- Must not report NCRs with cause *internal process* or *unknown*.
+- Must not edit a stored monthly snapshot.
+
+#### Done when
+- [ ] Given an incoming-inspection NCR on lot L-77 from supplier S raised on 2027-02-10, when the
+      adapter is read for S and February, then it returns one incident dated 2027-02-10.
+- [ ] Given QC changes that NCR's cause to *internal process* with a reason, then the adapter
+      no longer returns it and reports the change.
+- [ ] Given an NCR that is `cancelled`, then it is not returned.
+- [ ] Given an NCR on a lot from own production, then nothing is returned.
+- [ ] Given the March snapshot was stored before a cause change on a March NCR, then the stored
+      snapshot is unchanged and the live view drops the incident.
+
+#### Out of scope
+The score itself and its weights (BL-STK-29); supplier recalls (wl-inventory).
+

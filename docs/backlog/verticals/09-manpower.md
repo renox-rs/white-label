@@ -1492,9 +1492,9 @@ checklist steps use `WRK.CHK.01` (MVP in 09 since 2026-10-16).
 | Integration fallback — ASP (e-invoicing) | invoices still issued and sent as PDF while the ASP is down (`FIN.RUL.16`) | §8 |
 | Lead sources used (`SAL.CRM.02`) | referral, website, paid ads, partner, event, other; on prospective client leads (`SAL.CRM.01`); no source requires a campaign | §5; §7.2 settings |
 | Campaign channels (`SAL.CRM.02`, `SAL.ACL.07`) | LinkedIn, search ads, email, industry events; converted value: the first client contract's first invoice; a cost entry that takes a campaign over its budget needs a manager (`SAL.ACL.07`: on) | §5; §7.2 settings |
-| Onboarding checklists (`HRM.ONB.01`, `HRM.RUL.16`, `HRM.RUL.17`, `HRM.ACL.10`) | templates for worker (deployment induction, PPE, site pass), recruiter, site supervisor and account manager, started by `HRM.RUL.16` when an employee is created in `onboarding` (`HRM.EMP.01`); induction and PPE steps use `WRK.CHK.01` checklists with photos and the worker's signature; tasks to the HR / payroll officer, the account manager and the employee; the employee's own steps recorded only by them, in the worker portal or in person with a drawn signature and a staff witness (`HRM.ACL.10`); `HRM.RUL.17` reminds overdue steps every 2 days and tells the HR / payroll officer and the line manager after 5 days; visa steps stay in visa cases; completion blocks nothing (deployment stays guarded by documents) | §5; §7.2 settings |
-| SOP library (`HRM.ONB.01`, `DOC.RUL.04`, `HRM.ACL.10`) | SOP owners: HR / payroll officer (HR and payroll SOPs) and account manager (client-site rules per contract); required readers by role; `DOC.RUL.04` asks each reader to acknowledge within 7 days, reminds every 3 days and tells the manager and the owner role after 7 days; workers acknowledge in the worker portal or in person with a drawn signature and a staff witness, never by someone else (`HRM.ACL.10`); a new version asks for a new acknowledgement | §5; §7.2 settings |
-| Registration and certification kinds (`DOC.EXP.01`, `DOC.RUL.01`) | *Trademark registration* and *Other certification* (subject: legal entity); responsible role MD; `DOC.RUL.01` at 90, 30 and 7 days; no `blocks` | §5; §7.2 settings |
+| Onboarding checklists (`HRM.ONB.01`, `HRM.RUL.16`, `HRM.RUL.17`, `HRM.ACL.10`) | templates for worker (deployment induction, PPE, site pass), recruiter, site supervisor and account manager, started by `HRM.RUL.16` when an employee is created in `onboarding` (`HRM.EMP.01`); induction and PPE steps use `WRK.CHK.01` checklists with photos and the worker's signature; tasks to the HR / payroll officer, the account manager and the employee; the employee's own steps recorded only by them, in the worker portal or in person with a drawn signature and a staff witness (`HRM.ACL.10`); `HRM.RUL.17` reminds the assignees of an overdue step on the first run after its due date, then every 2 days, and tells the HR / payroll officer and the line manager after 5 days; visa steps stay in visa cases; completion blocks nothing (deployment stays guarded by documents) | §5; §7.2 settings |
+| SOP library (`HRM.ONB.01`, `DOC.RUL.04`, `HRM.ACL.10`) | SOP owners: HR / payroll officer (HR and payroll SOPs) and account manager (client-site rules per contract); required readers by role; `DOC.RUL.04` asks each reader to acknowledge within 7 days, reminds every 3 days and tells the reader's manager and the SOP's owner role (the SOP owner named above) after 7 days overdue; workers acknowledge in the worker portal or in person with a drawn signature and a staff witness, never by someone else (`HRM.ACL.10`); a new version asks for a new acknowledgement | §5; §7.2 settings |
+| Registration and certification kinds (`DOC.EXP.01`, `DOC.RUL.01`) | *Trademark registration* and *Other certification* (subject: legal entity); responsible role MD; `DOC.RUL.01` at 180, 90 and 30 days for trademarks and 90, 30 and 7 days for the others; no `blocks` | §5; §7.2 settings |
 
 #### Edge cases decided
 - **Legal blocks (L-19):** `never` is seeded and locked; when L-19 is answered the seed changes,
@@ -1548,11 +1548,11 @@ checklist steps use `WRK.CHK.01` (MVP in 09 since 2026-10-16).
       for a manager (`SAL.ACL.07`).
 - [ ] **Onboarding and SOPs:** hiring a worker creates the worker checklist with tasks to the HR /
       payroll officer, the account manager and the employee (`HRM.RUL.16`), its PPE step is a
-      `WRK.CHK.01` checklist signed by the worker, and the role is active before it is complete;
-      a step open 2 days past its due date reminds its assignee (`HRM.RUL.17`); an HR user
-      cannot mark the worker's own step done without the worker's signature and a witness
-      (`HRM.ACL.10`); a new version of an SOP owned by the HR / payroll officer asks every
-      required reader to acknowledge again within 7 days (`DOC.RUL.04`).
+      `WRK.CHK.01` checklist signed by the worker, and the role is active before it is complete; a
+      step still open on the first run after its due date reminds its assignees, and again 2 days
+      later (`HRM.RUL.17`); an HR user cannot mark the worker's own step done without the worker's
+      signature and a witness (`HRM.ACL.10`); a new version of an SOP owned by the HR / payroll
+      officer asks every required reader to acknowledge again within 7 days (`DOC.RUL.04`).
 - [ ] **Registrations:** a fresh 09 deployment lists *Trademark registration* and *Other
       certification* with responsible role MD; a trademark registration expiring in 90 days
       notifies the MD.
@@ -1618,9 +1618,9 @@ company budget with owner drawings (`FIN.BUD.01`), added on 2026-10-16: `FIN.RUL
 | Visa step templates | per emirate, with the *cancellation* variants *standard*, *absconding* (starts from the MoHRE absence report, no worker signature) and *death* (starts from the death certificate) | §7.1 *Visa case* |
 | Payroll and settlement SoD (`HRM.ACL.04`) | on | §3.3 |
 | Salary change approval (`MPW.ACL.06`) | above 10%, MD | §3.3 |
-| Cash-flow forecast alert (`FIN.CFL.01`, `FIN.RUL.23`) | projected balance below AED 250,000 in any of the next 13 weeks (weeks start Monday): `FIN.RUL.23` alerts the MD and the accountant, checked daily at 06:00; payroll by the WPS due date; visa and insurance costs by their schedule; due dates adjusted by each client's average days late: on; disputed amounts counted: off | §5; §7.2 settings |
+| Cash-flow forecast alert (`FIN.CFL.01`, `FIN.RUL.23`) | projected balance below AED 250,000 in any of the next 13 weeks (weeks start Monday): `FIN.RUL.23` alerts the MD and the accountant, checked daily at 06:00; payroll by the WPS due date; visa and insurance costs by their schedule (a `CashForecastSource` of 09); due dates adjusted by each client's average days late: on; disputed amounts counted: off | §5; §7.2 settings |
 | Budget categories and approval (`FIN.BUD.01`, `FIN.RUL.24`) | categories (payroll, visa and insurance costs, accommodation, transport, office) owned by the accountant and mapped to the export accounts; approved by the MD; `FIN.RUL.24` warns the category's owner role and the accountant when a month's actual reaches 100% of its line | §5; §7.2 settings |
-| Owner drawings (`FIN.BUD.01`, `FIN.ACL.21`) | expense category and payment purpose *owner drawings*, kept out of operating cost, margin and profit; every drawing (AED 0) approved by the MD, never by the requester (`FIN.ACL.21`) | §5; §7.2 settings |
+| Owner drawings (`FIN.BUD.01`, `FIN.ACL.21`) | expense category and payment purpose *owner drawings*, kept out of operating cost, margin and profit; every drawing approved, whatever its amount (`FIN.ACL.21` limit AED 0), by the MD, never by the requester (`FIN.ACL.21`) | §5; §7.2 settings |
 
 #### Edge cases decided
 - **Open legal items:** negative settlement offset (L-23), withholding from absconded workers

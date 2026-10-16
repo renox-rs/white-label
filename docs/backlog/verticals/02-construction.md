@@ -1254,9 +1254,9 @@ supplier scorecard moved here from BL-CON-18 on 2026-10-16, with the procurement
 | **Payments** | | | |
 | 22 | Payment method *set-off* (BL-PAY-24) | on (back- and contra-charges set off against an IPA invoice, BL-CON-06) | §7 intro; §7.1 *IPA* `invoice` |
 | **Cash-flow forecast and budget** | | | |
-| 23 | Cash-flow forecast alert (`FIN.CFL.01`, `FIN.RUL.23`) | projected balance below AED 200,000 in any of the next 13 weeks (weeks start Monday): `FIN.RUL.23` alerts the MD and the accountant, checked daily at 06:00; certified IPAs by due date; retention releases on their expected release date; payroll by the WPS due date; due dates adjusted by each client's average days late: on; disputed amounts counted: off | §5; §7.2 settings |
-| 24 | Budget categories and approval (`FIN.BUD.01`, `FIN.RUL.24`) | company budget (overheads: office, yard, plant, staff) per legal entity and month; categories owned by the accountant and mapped to cost codes; approved by the MD; project budgets stay in job costing; `FIN.RUL.24` warns the category's owner role and the accountant when a month's actual reaches 100% of its line | §5; §7.2 settings |
-| 25 | Owner drawings (`FIN.BUD.01`, `FIN.ACL.21`) | expense category and payment purpose *owner drawings*, kept out of operating cost, project cost and profit; every drawing (AED 0) approved by the MD, never by the requester (`FIN.ACL.21`) | §5; §7.2 settings |
+| 23 | Cash-flow forecast alert (`FIN.CFL.01`, `FIN.RUL.23`) | projected balance below AED 200,000 in any of the next 13 weeks (weeks start Monday): `FIN.RUL.23` alerts the MD and the accountant, checked daily at 06:00; certified IPAs by due date; retention releases on their expected release date (a `CashForecastSource` of 02); payroll by the WPS due date; due dates adjusted by each client's average days late: on; disputed amounts counted: off | §5; §7.2 settings |
+| 24 | Budget categories and approval (`FIN.BUD.01`, `FIN.RUL.24`) | company budget (overheads: office, yard, plant, staff) per legal entity and fiscal year, by month; categories owned by the accountant and mapped to cost codes; approved by the MD; project budgets stay in job costing; `FIN.RUL.24` warns the category's owner role and the accountant when a month's actual reaches 100% of its line | §5; §7.2 settings |
+| 25 | Owner drawings (`FIN.BUD.01`, `FIN.ACL.21`) | expense category and payment purpose *owner drawings*, kept out of operating cost, project cost and profit; every drawing approved, whatever its amount (`FIN.ACL.21` limit AED 0), by the MD, never by the requester (`FIN.ACL.21`) | §5; §7.2 settings |
 | **Supplier scorecard** | | | |
 | 26 | Supplier scorecard review (`STK.SUP.01`, `STK.RUL.09`, `STK.ACL.07`) | score on a 0–100 scale over a 3-month window (grace 1 day, at least 3 receipts, module weights); below 70 `STK.RUL.09` gives the procurement officer a review task and tells the project manager; preferred and alternative suppliers per item offered on purchase requests and reorder suggestions; making another supplier an item's preferred one needs a second person (`STK.ACL.07`: on) | §5; §7.2 settings |
 
@@ -1382,9 +1382,9 @@ scorecard (`STK.SUP.01`) is seeded in BL-CON-17.
 | **Sales, finance, staff and registrations** | | | |
 | 15 | Lead sources used (`SAL.CRM.02`) | referral, website, event, partner (consultants and main contractors), other; tenders and enquiries from main contractors are leads (`SAL.CRM.01`); no source requires a campaign | §5; §7.2 settings |
 | 16 | Campaign channels (`SAL.CRM.02`, `SAL.ACL.07`) | tender invitations, exhibitions, LinkedIn, email, company profile mailings; converted value: the first accepted quotation; a cost entry that takes a campaign over its budget needs a manager (`SAL.ACL.07`: on) | §5; §7.2 settings |
-| 17 | Onboarding checklists (`HRM.ONB.01`, `HRM.RUL.16`, `HRM.RUL.17`, `HRM.ACL.10`) | templates for worker (site induction, PPE issue, visa and ID documents), supervisor, storekeeper, procurement officer and QS, started by `HRM.RUL.16` when the employee record (`HRM.EMP.01`) is created; checklist steps use `WRK.CHK.01`; tasks to HR / PRO, the project manager and the employee; the employee's own steps recorded only by them (`HRM.ACL.10`); `HRM.RUL.17` reminds overdue steps every 2 days and tells HR / PRO and the line manager after 5 days; completion blocks nothing (role activation not blocked) | §5; §7.2 settings |
-| 18 | SOP library (`HRM.ONB.01`, `DOC.RUL.04`, `HRM.ACL.10`) | SOP owners: HSE officer (safety SOPs, method statements) and project manager (site SOPs); required readers: supervisors and the workers of the project's crews; `DOC.RUL.04` asks each reader to acknowledge within 7 days, reminds every 3 days and tells the manager and the owner role (MD) after 7 days; acknowledged only by the reader, in person with a drawn signature and a staff witness for workers without a session (`HRM.ACL.10`); a new version asks for a new acknowledgement | §5; §7.2 settings |
-| 19 | Registration and certification kinds (`DOC.EXP.01`, `DOC.RUL.01`) | *ISO certificate* (subject: legal entity; responsible role HSE officer); *Trademark registration* and *Other certification* (legal entity; MD); `DOC.RUL.01` at 90, 30 and 7 days; no `blocks` | §5; §7.2 settings |
+| 17 | Onboarding checklists (`HRM.ONB.01`, `HRM.RUL.16`, `HRM.RUL.17`, `HRM.ACL.10`) | templates for worker (site induction, PPE issue, visa and ID documents), supervisor, storekeeper, procurement officer and QS, started by `HRM.RUL.16` when the employee record (`HRM.EMP.01`) is created in `onboarding` (none for a record created directly `active`, e.g. by a data import); checklist steps use `WRK.CHK.01`; tasks to HR / PRO, the project manager and the employee; the employee's own steps recorded only by them (`HRM.ACL.10`); `HRM.RUL.17` reminds the assignees of an overdue step on the first run after its due date, then every 2 days, and tells HR / PRO and the line manager after 5 days; completion blocks nothing (role activation not blocked) | §5; §7.2 settings |
+| 18 | SOP library (`HRM.ONB.01`, `DOC.RUL.04`, `HRM.ACL.10`) | SOP owners: HSE officer (safety SOPs, method statements) and project manager (site SOPs); required readers: supervisors and the workers of the project's crews; `DOC.RUL.04` asks each reader to acknowledge within 7 days, reminds every 3 days and tells the reader's manager and the SOP's owner role (the SOP owner named above) after 7 days overdue; acknowledged only by the reader, in person with a drawn signature and a staff witness for workers without a session (`HRM.ACL.10`); a new version asks for a new acknowledgement | §5; §7.2 settings |
+| 19 | Registration and certification kinds (`DOC.EXP.01`, `DOC.RUL.01`) | *ISO certificate* (subject: legal entity; responsible role HSE officer); *Trademark registration* and *Other certification* (legal entity; MD); `DOC.RUL.01` at 180, 90 and 30 days for trademarks and 90, 30 and 7 days for the others; no `blocks` | §5; §7.2 settings |
 
 #### Edge cases decided
 - **`midday_break` reviewer:** `HRM.ACL.09` covers `midday_break` too; it is reviewed by the
@@ -1426,12 +1426,13 @@ scorecard (`STK.SUP.01`) is seeded in BL-CON-17.
       and other; a campaign with channel *tender invitations*, a budget and cost entries reports
       leads, conversion, cost per lead, CAC and ROAS; a cost entry over the budget waits for a
       manager (`SAL.ACL.07`).
-- [ ] **Onboarding and SOPs:** hiring a worker creates the worker checklist with tasks to HR /
-      PRO, the line manager and the employee, and the role is active before it is complete; a step
-      open 2 days past its due date reminds its assignee (`HRM.RUL.17`); a new version of an SOP
-      owned by the HSE officer asks every required reader to acknowledge again within 7 days
-      (`DOC.RUL.04`); a worker without a session acknowledges in person with a drawn signature and
-      a staff witness, and no one else can acknowledge for them (`HRM.ACL.10`).
+- [ ] **Onboarding and SOPs:** hiring a worker creates the worker checklist with tasks to HR / PRO,
+      the project manager and the employee, and the role is active before it is complete; a step
+      still open on the first run after its due date reminds its assignees, and again 2 days later
+      (`HRM.RUL.17`); a new version of an SOP owned by the HSE officer asks every required reader to
+      acknowledge again within 7 days (`DOC.RUL.04`); a worker without a session acknowledges in
+      person with a drawn signature and a staff witness, and no one else can acknowledge for them
+      (`HRM.ACL.10`).
 - [ ] **Registrations:** a fresh 02 deployment lists *ISO certificate*, *Trademark registration*
       and *Other certification* with responsible role HSE officer for ISO, MD for the others; a
       trademark registration expiring in 90 days notifies the MD.

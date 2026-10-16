@@ -163,7 +163,41 @@ New rules: `SAL.RUL.07`–`08`, `NTF.RUL.02`, `FIN.RUL.23`–`24`, `STK.RUL.09`,
 `DOC.RUL.04`. New access rules: `SAL.ACL.07`, `NTF.ACL.03`, `FIN.ACL.21`, `STK.ACL.07`,
 `HRM.ACL.10`. Open questions: L-38, A-15, A-16. Backlog issues carry the label `area:sme-gap`.
 
-## 5. Where it is written
+## 5. Negative-flow and completeness review of G1–G7 (2026-10-16)
+
+Before the gaps went to the backlog they were reviewed with the taxonomy of the
+[negative-flow review](2026-10-15-negative-flows.md) (N1–N13) and the checklist in
+[WORKFLOW.md](../WORKFLOW.md) §8: who is told, effects on money, stock, documents and reports,
+access rules, consent, portal, and consistency with existing machines.
+
+| Gaps | Findings | HIGH | MEDIUM | LOW | Open after the fixes |
+|---|---|---|---|---|---|
+| G1, G4 | 42 | 6 | 22 | 14 | 2 LOW invalid, 1 LOW deferred (message costs in campaign cost) |
+| G2, G5 | 39 | 5 | 18 | 16 | 4 LOW deferred |
+| G3, G6, G7 | 40 | 1 | 19 | 20 | 1 invalid, 2 LOW deferred |
+| **Total** | **121** | **12** | **59** | **50** | |
+
+Every HIGH and MEDIUM finding is fixed in the module specifications, the vertical settings and
+the backlog. The HIGH findings were:
+
+- **Loyalty (G4):** points kept after a chargeback, bounced cheque or write-off (now taken
+  back, `SAL.RUL.09`); points lost on a cancelled online order; a cashier collecting walk-in
+  points on their own account (`SAL.ACL.08`); points lost when duplicate parties are merged;
+  broadcasts sent straight from a segment, bypassing the campaign checks (`NTF.ACL.04`).
+- **Campaigns (G1):** a 05 campaign running after its advertising permit expired.
+- **Cash-flow forecast (G2):** WPS salaries missing from the opening balance; the VAT return
+  payment missing from the forecast.
+- **Owner drawings (G5):** the drawings category not defined in wl-payments; card or ATM
+  drawings visible only as bank lines; any payment could be labelled a drawing (each drawings
+  category now has its owner party).
+- **Supplier scorecard (G3):** the second-person approval for changing a preferred supplier
+  could be bypassed by deactivating or deleting the preferred row.
+
+New rules from the review: `FIN.RUL.25`–`26`, `SAL.RUL.09`–`10`, `NTF.RUL.03`; access rules
+`FIN.ACL.22`–`23`, `SAL.ACL.08`–`09`, `NTF.ACL.04`. New open question: L-39 (changing or ending
+a loyalty programme).
+
+## 6. Where it is written
 
 Each gap has its capability row in [CAPABILITY-MAP.md](../CAPABILITY-MAP.md), its module
 specification, the vertical settings, and backlog issues

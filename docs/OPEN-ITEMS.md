@@ -24,17 +24,17 @@ here as `~~question~~ Answered (date): ...`.
 | Owner | Items | Build 1 | Client 1 | Outreach | Launch | Onboarding | Later |
 |---|---|---|---|---|---|---|---|
 | Owner decision (`D`) | 5 (all decided) | — | 0 | — | — | — | — |
-| Lawyer (`L`) | 38 | 2 | 5 | 1 | 28 | 1 | 1 |
+| Lawyer (`L`) | 39 | 2 | 5 | 1 | 29 | 1 | 1 |
 | Accountant (`A`) | 16 | — | — | — | 15 | 1 | — |
 | Authority (`AU`) | 25 | — | — | — | 21 | 2 | 2 |
 | Client (`C`) | 3 | — | — | — | 1 | 2 | — |
 | Onboarding (`O`) | 4 | — | 2 | — | — | 2 | — |
-| **Total open** | **86** | **2** | **7** | **1** | **65** | **8** | **3** |
+| **Total open** | **87** | **2** | **7** | **1** | **66** | **8** | **3** |
 
 **Before Build 1:** L-05 and L-10. **Before outreach at scale:** L-18. **Before Client 1:**
 L-01, L-02, L-03, L-11, L-13, O-01, O-02. The owner decisions D-01 to D-05 were taken on 2026-10-15.
 The items added from the negative-flow pass (L-19 to L-37, A-04 to A-14, AU-20 to AU-25, C-03)
-and from the SME gaps (L-38, A-15, A-16)
+and from the SME gaps (L-38, L-39, A-15, A-16)
 are not needed before Build 1: each has a safe default in its document (the stricter
 choice, off by default, or a configurable parameter).
 
@@ -92,6 +92,7 @@ The prices themselves are filled in [PRICING.md](PRICING.md) by the owner.
 | L-36 | What may a workshop do with a vehicle the customer never collects, and does a storage fee need more than the customer's agreement at check-in? | [08-auto.md](verticals/08-auto.md) §4, §9 | 08 | Launch 08 |
 | L-37 | Construction: does retention become due when a contract is terminated (unless the contract says otherwise)? May a subcontractor suspend work for non-payment? How does a subcontractor claim against an insolvent main contractor? | [02-construction.md](verticals/02-construction.md) §4, §9 | 02 | Launch 02 |
 | L-38 | Clinics: do health regulators limit loyalty rewards or discounts on medical services, and does campaign content for a clinic need their approval? | [05-clinics.md](verticals/05-clinics.md) §7.2 | 05 | Launch 05 |
+| L-39 | Loyalty programmes: may a business shorten the validity of points already earned, devalue them or end the programme, and with how much notice to members? | [wl-sales](modules/wl-sales.md) §10 | 05, 06, 08, 10 | Launch 05 |
 
 ## 4. Accountant
 
@@ -221,7 +222,9 @@ data hosted in the UAE). Our clients are the data controllers; we are their proc
     parts supply period applies to which part; vehicles never collected and storage fees.
 16. **Construction** (L-37): Retention on termination; a subcontractor's right to suspend
     work for non-payment; claims against an insolvent main contractor.
-17. **Clinic marketing** (L-38): Limits on loyalty rewards or discounts for medical services,
+17. **Loyalty changes** (L-39): Can earned points be shortened, devalued or ended, and with
+    what notice?
+18. **Clinic marketing** (L-38): Limits on loyalty rewards or discounts for medical services,
     and whether a regulator must approve campaign content.
 
 ### 8.2 For a UAE tax accountant

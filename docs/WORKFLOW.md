@@ -180,6 +180,7 @@ Every shared automation, with its owner and the vertical rules it generalises. S
 | `DOC.RUL.04` | Request, remind and escalate SOP acknowledgements for each new version | wl-documents | — | module |
 | `NTF.RUL.01` | On give-up, run the notification type's give-up reaction | wl-notify | — | module |
 | `NTF.RUL.02` | Send marketing only 07:00–21:00 and at most twice per recipient per 7 days | wl-notify | — | module |
+| `NTF.RUL.03` | Expire unapproved broadcasts and drop marketing messages stuck more than 48 hours | wl-notify | — | module |
 | `FIN.RUL.01` | Invoice reminders before and after the due date | wl-invoicing | — | in use |
 | `FIN.RUL.02` | Mark invoices overdue | wl-invoicing | — | in use |
 | `FIN.RUL.03` | Put cheques on the deposit list before their date | wl-payments | — | in use |
@@ -204,6 +205,8 @@ Every shared automation, with its owner and the vertical rules it generalises. S
 | `FIN.RUL.22` | Escalate a cash handover still open N hours after the holder's period ends; the manager counts what was received after M hours | wl-payments | `LOG.RUL.13` (values) | in use |
 | `FIN.RUL.23` | Warn when a projected weekly cash balance falls below the entity's threshold | wl-invoicing | — | module |
 | `FIN.RUL.24` | Warn when a month's actual expense or drawings reach the budget line | wl-invoicing | — | module |
+| `FIN.RUL.25` | Task for the accountant when a bank balance for the forecast is missing or older than 7 days | wl-invoicing | — | module |
+| `FIN.RUL.26` | Remind 30 days before a fiscal year that has no approved budget | wl-invoicing | — | module |
 | `SAL.RUL.01` | Notify accountant and sales rep when an order goes on credit hold | wl-sales | — | in use |
 | `SAL.RUL.02` | Remind the party before a package expires | wl-sales | `CLN.RUL.06`, `EDU.RUL.04` | in use |
 | `SAL.RUL.03` | Notify the party when package credits run low | wl-sales | `EDU.RUL.03` | in use |
@@ -212,6 +215,8 @@ Every shared automation, with its owner and the vertical rules it generalises. S
 | `SAL.RUL.06` | Refund a payment that arrives for a cancelled, rejected or fully paid order | wl-sales | — | module |
 | `SAL.RUL.07` | Earn loyalty points or visits on a qualifying sale; reverse them on a return or credit note | wl-sales | `FNB.LOY.01` (06) | module |
 | `SAL.RUL.08` | Remind members before points expire, then expire them | wl-sales | — | module |
+| `SAL.RUL.09` | Take back loyalty points when the payment is reversed, the invoice written off or the fulfilment reversed | wl-sales | — | module |
+| `SAL.RUL.10` | Tell the campaign owner when costs reach 80% and 100% of the budget | wl-sales | — | module |
 | `WRK.RUL.01` | SLA warning and breach notifications | wl-ticketing | — | in use |
 | `WRK.RUL.02` | Auto-close resolved tickets not confirmed in N days | wl-ticketing | — | in use |
 | `WRK.RUL.03` | Create a planned maintenance ticket when a meter reading reaches the threshold | wl-ticketing | — | in use |

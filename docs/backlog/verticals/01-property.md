@@ -2119,9 +2119,9 @@ company budget with owner drawings (`FIN.BUD.01`), added on 2026-10-16: `FIN.RUL
 | 23 | Money out stopped for a blocked party | deposit refund, owner payout, vendor payment; exception through `PTY.ACL.03` | §3.3 `PTY.ACL.03`; §4.4 row "The owner is blocked" |
 | 24 | Money in from a blocked party | continues | §7.2 settings table rows Invoice, Payment |
 | **Cash-flow forecast and budget** | | | |
-| 25 | Cash-flow forecast alert (`FIN.CFL.01`, `FIN.RUL.23`) | projected balance below AED 50,000 in any of the next 13 weeks (weeks start Monday): `FIN.RUL.23` alerts the company admin and the accountant, checked daily at 06:00; post-dated rent cheques by cheque date; owner payouts (`PRP.OWN.01`) counted as payments; due dates adjusted by each tenant's average days late: on; disputed amounts counted: off | §5; §7.2 settings |
-| 26 | Budget categories and approval (`FIN.BUD.01`, `FIN.RUL.24`) | categories owned by the accountant and mapped to the export accounts; one budget per legal entity and month, approved by the company admin; `FIN.RUL.24` warns the category's owner role and the accountant when a month's actual reaches 100% of its line | §5; §7.2 settings |
-| 27 | Owner drawings (`FIN.BUD.01`, `FIN.ACL.21`) | expense category and payment purpose *owner drawings*, kept out of operating cost and profit; every drawing (AED 0) approved by the company admin, never by the requester (`FIN.ACL.21`); payouts to landlords (`PRP.OWN.01`) are not drawings | §5; §7.2 settings |
+| 25 | Cash-flow forecast alert (`FIN.CFL.01`, `FIN.RUL.23`) | projected balance below AED 50,000 in any of the next 13 weeks (weeks start Monday): `FIN.RUL.23` alerts the company admin and the accountant, checked daily at 06:00; post-dated rent cheques by cheque date; owner payouts (`PRP.OWN.01`) counted as payments (a `CashForecastSource` of 01); due dates adjusted by each tenant's average days late: on; disputed amounts counted: off | §5; §7.2 settings |
+| 26 | Budget categories and approval (`FIN.BUD.01`, `FIN.RUL.24`) | categories owned by the accountant and mapped to the export accounts; one budget per legal entity and fiscal year, by month, approved by the company admin; `FIN.RUL.24` warns the category's owner role and the accountant when a month's actual reaches 100% of its line | §5; §7.2 settings |
+| 27 | Owner drawings (`FIN.BUD.01`, `FIN.ACL.21`) | expense category and payment purpose *owner drawings*, kept out of operating cost and profit; every drawing approved, whatever its amount (`FIN.ACL.21` limit AED 0), by the company admin, never by the requester (`FIN.ACL.21`); payouts to landlords (`PRP.OWN.01`) are not drawings | §5; §7.2 settings |
 
 #### Edge cases decided
 - **Bounce fee unset:** no fee charge is created and the `FIN.RUL.18` reminder shows only the open
@@ -2252,9 +2252,9 @@ recorded on the enquiry (`PRP.LEA.01`, MVP since 2026-10-16).
 | **Sales, finance, staff and registrations** | | | |
 | 18 | Lead sources used (`SAL.CRM.02`) | referral, walk-in, website, social, paid ads, partner (brokers), event, other; recorded on the enquiry (`PRP.LEA.01`) and carried to the tenant party when the enquiry converts; a tenant without an enquiry gets the source on its party; no source requires a campaign | §5; §7.2 settings |
 | 19 | Campaign channels (`SAL.CRM.02`, `SAL.ACL.07`) | listing portals, social media, search ads, email, signboards, brokers; converted value: the first lease's contract value; a cost entry that takes a campaign over its budget needs a manager (`SAL.ACL.07`: on) | §5; §7.2 settings |
-| 20 | Onboarding checklists (`HRM.ONB.01`, `HRM.RUL.16`, `HRM.RUL.17`, `HRM.ACL.10`) | templates for property manager, leasing agent, accountant, maintenance coordinator and technician, started by `HRM.RUL.16` when an employee record (`HRM.EMP.01`) is created; checklist steps use `WRK.CHK.01`; tasks to the company admin, the line manager and the new staff member; the new staff member's own steps recorded only by them (`HRM.ACL.10`); `HRM.RUL.17` reminds overdue steps every 2 days and tells the company admin and the line manager after 5 days; completion blocks nothing (role activation not blocked) | §5; §7.2 settings |
-| 21 | SOP library (`HRM.ONB.01`, `DOC.RUL.04`, `HRM.ACL.10`) | SOP owners: property manager (leasing, move-in, move-out, maintenance) and accountant (cheques, deposits, owner statements); required readers by role; `DOC.RUL.04` asks each reader to acknowledge within 7 days, reminds every 3 days and tells the manager and the owner role after 7 days; acknowledged only by the reader (`HRM.ACL.10`); a new version asks for a new acknowledgement | §5; §7.2 settings |
-| 22 | Registration and certification kinds (`DOC.EXP.01`, `DOC.RUL.01`) | *Trademark registration* and *Other certification* (subject: legal entity); responsible role company admin; `DOC.RUL.01` at 90, 30 and 7 days; no `blocks` | §5; §7.2 settings |
+| 20 | Onboarding checklists (`HRM.ONB.01`, `HRM.RUL.16`, `HRM.RUL.17`, `HRM.ACL.10`) | templates for property manager, leasing agent, accountant, maintenance coordinator and technician, started by `HRM.RUL.16` when the employee record (`HRM.EMP.01`) is created in `onboarding` (none for a record created directly `active`, e.g. by a data import); checklist steps use `WRK.CHK.01`; tasks to the company admin, the line manager and the new staff member; the new staff member's own steps recorded only by them (`HRM.ACL.10`); `HRM.RUL.17` reminds the assignees of an overdue step on the first run after its due date, then every 2 days, and tells the company admin and the line manager after 5 days; completion blocks nothing (role activation not blocked) | §5; §7.2 settings |
+| 21 | SOP library (`HRM.ONB.01`, `DOC.RUL.04`, `HRM.ACL.10`) | SOP owners: property manager (leasing, move-in, move-out, maintenance) and accountant (cheques, deposits, owner statements); required readers by role; `DOC.RUL.04` asks each reader to acknowledge within 7 days, reminds every 3 days and tells the reader's manager and the SOP's owner role (the SOP owner named above) after 7 days overdue; acknowledged only by the reader (`HRM.ACL.10`); a new version asks for a new acknowledgement | §5; §7.2 settings |
+| 22 | Registration and certification kinds (`DOC.EXP.01`, `DOC.RUL.01`) | *Trademark registration* and *Other certification* (subject: legal entity); responsible role company admin; `DOC.RUL.01` at 180, 90 and 30 days for trademarks and 90, 30 and 7 days for the others; no `blocks` | §5; §7.2 settings |
 
 #### Edge cases decided
 - **Legal block:** whether the law forbids the work outright is `⚠ open: lawyer (L-19)`; the seed
@@ -2298,12 +2298,12 @@ recorded on the enquiry (`PRP.LEA.01`, MVP since 2026-10-16).
       converts; a campaign with channel *listing portals*, a budget and cost entries reports
       enquiries, conversion, cost per lead, CAC and ROAS; a cost entry over the budget waits for a
       manager (`SAL.ACL.07`).
-- [ ] **Onboarding and SOPs:** hiring a leasing agent creates the leasing agent checklist with
-      tasks to the company admin, the line manager and the employee, and the role is active before
-      it is complete; a step open 2 days past its due date reminds its assignee (`HRM.RUL.17`); a
-      new version of an SOP owned by the property manager asks every required reader to
-      acknowledge again within 7 days (`DOC.RUL.04`), and no one else can acknowledge for them
-      (`HRM.ACL.10`).
+- [ ] **Onboarding and SOPs:** hiring a leasing agent creates the leasing agent checklist with tasks
+      to the company admin, the line manager and the employee, and the role is active before it is
+      complete; a step still open on the first run after its due date reminds its assignees, and
+      again 2 days later (`HRM.RUL.17`); a new version of an SOP owned by the property manager asks
+      every required reader to acknowledge again within 7 days (`DOC.RUL.04`), and no one else can
+      acknowledge for them (`HRM.ACL.10`).
 - [ ] **Registrations:** a fresh 01 deployment lists *Trademark registration* and *Other
       certification* with responsible role company admin; a trademark registration expiring in 90
       days notifies the company admin.

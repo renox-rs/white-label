@@ -72,7 +72,7 @@ Related capabilities owned elsewhere and used here:
 | Stock count | A counting session | locations, scope (full / partial / items list), blind or not, lines (expected, counted, variance qty and value), status |
 | Transfer | Movement of stock between locations in two steps | from, to, lines, sent at, received at, discrepancies, status |
 | Purchase request | An internal need | requester, location, cost object, needed by, lines, status |
-| Purchase order | An order to a supplier | supplier (`Party`), delivery location, lines (item, qty, unit, price, VAT, accepted qty, outstanding qty), currency (`FIN.CUR.01`), expected date, terms, revision number, previous revisions (read-only), status |
+| Purchase order | An order to a supplier | supplier (`Party`), delivery location, lines (item, qty, unit, price, VAT, accepted qty, outstanding qty), currency (`FIN.CUR.01`), expected date (per revision, with who asked for a change: *requested by us* or *by the supplier*), terms, revision number, previous revisions (read-only), status |
 | Goods receipt | A delivery recorded against a PO, or a free replacement against a Return to supplier (e.g. a supplier warranty claim) | PO or Return to supplier, supplier delivery note no., lines (received qty, `accepted_qty`, `rejected_qty`, rejection reason, refused at the door or kept for collection, lot, expiry, photo), location, status. Only accepted qty enters stock and the 3-way match |
 | Return to supplier | Goods sent back to a supplier for credit or replacement | number, supplier (`Party`), source (goods receipt, stock hold, recall, or a vertical record such as an NCR), lines (item, lot, qty, unit cost, reason, wanted outcome `credit` or `replace`, PO line, from stock or rejected at receipt), collection proof, status |
 | Landed cost | Import costs spread over receipts | receipts, cost lines (freight, duty, clearing, insurance), allocation basis (`value`, `quantity`, `weight`, `volume`), adjustments, status |
@@ -86,7 +86,7 @@ Related capabilities owned elsewhere and used here:
 | Meter reading | A recorded asset meter value | asset, meter, value, time, source |
 | Reorder suggestion | Proposed purchase from stock levels | item, location, supplier, supplier role (`preferred` or `alternative`, with the reason the preferred one was skipped), alternatives shown (supplier, lead time, last price, score), suggested qty, reason, status (`open`, `converted`, `dismissed`) |
 | Item supplier | A supplier that can deliver an item (`STK.SUP.01`) | item, supplier (`Party`), role (`preferred` or `alternative`), rank among alternatives, supplier item code, purchase unit, lead time (days), minimum order qty, last price (derived), active flag, notes. At most one preferred per item |
-| Supplier score | A monthly snapshot of one supplier's performance (`STK.SUP.01`) | supplier, window (the 3 months ending with the snapshot month), receipts counted, on-time %, rejected value %, quality incidents (NCRs, supplier recalls), debit notes (count, value), price variance %, score 0–100, band (`good`, `watch`, `below_threshold`, `not_enough_data`), computed at. Derived and never edited |
+| Supplier score | A monthly snapshot of one supplier's performance (`STK.SUP.01`) | supplier, window (the W calendar months ending with the month before the snapshot date; W = 3 by default), receipts counted, on-time %, rejected value %, quality incidents (NCRs, supplier recalls), debit notes (count, value), price variance %, score 0–100, band (`good`, `watch`, `below_threshold`, `not_enough_data`), computed at, review notes (text, by, at). Derived and never edited; notes are added, never changed |
 
 **Costing (decision).** Stock is valued at **moving weighted average cost per item**, across
 the client's deployment. Manufacturing may also keep a **standard cost**, rolled up from the
@@ -153,27 +153,41 @@ object that was charged on receipt (site stores, 02). Nothing already posted is 
 
 **Supplier scorecard and alternative suppliers (`STK.SUP.01`, decided 2026-10-16).** Every
 supplier the client buys from gets a score from what the module already records. The live
-view covers the last 3 months up to today; on day 1 of each month a *Supplier score* snapshot
-is kept for the window that just ended. Inputs per supplier in the window:
+view covers the last W months up to today; on day 1 of each month a *Supplier score*
+snapshot is kept for the W calendar months ending with the month before (W = 3, a setting;
+06: 1). There is one score per supplier across the deployment; the report filters by the
+legal entity of the PO. Scores are internal: no portal shows them to the supplier, and a
+blocked supplier is listed as *on hold* without the reason (`PTY.ACL.02`). Inputs per
+supplier in the window:
 
-- **On time:** each goods receipt against a PO is on time when it is posted on or before the
-  PO's expected date plus the grace days (default 1, Asia/Dubai dates). A PO delivered in
-  three receipts counts three times. Free replacements against a Return to supplier have no
-  PO date and are not counted.
+- **On time:** each goods receipt against a PO is on time when its business date (the day
+  the goods arrived: the posting date, or the business time of a late entry, wl-kernel
+  §5.13) is on or before the expected date plus the grace days (default 1, Asia/Dubai
+  dates). The expected date is the one of the first issued revision; a later date set by
+  `revise` counts only when the revision records that the client asked for it (*requested
+  by us*), so a delay agreed after the fact still shows as late. A receipt that waited for
+  over-receipt approval, or replaces a reversed one, keeps the day the goods arrived. A PO
+  delivered in three receipts counts three times. Free replacements against a Return to
+  supplier have no PO date and are not counted.
 - **Rejected value:** rejected qty at receipt (reason `excess` excluded: an over-delivery is
   not a quality failure) at the PO price, plus Return to supplier lines from stock (from a
-  stock hold, recall or NCR) at their unit cost, divided by the value received at PO price.
-- **Quality incidents:** NCRs that name the supplier, reported by verticals through
-  `SupplierIncidentSource` (07: NCRs on incoming lots), plus recalls with source `supplier`
-  whose lots came from the supplier.
-- **Debit notes:** count and value of supplier debit notes (`SupplierDebitNoteIssued`). They
-  are shown but not scored, because they follow from rejected and returned goods that are
-  already counted.
+  stock hold, recall or NCR) at their unit cost, counted when the return is `dispatched`
+  (a `cancelled` draft never counts), divided by the value received at PO price.
+- **Quality incidents:** NCRs reported by verticals through `SupplierIncidentSource` (07:
+  NCRs on incoming lots) whose cause is the supplier and that are not voided, plus recalls
+  with source `supplier` whose lots came from the supplier. An NCR voided or closed as *not
+  the supplier's cause* drops out of the live view.
+- **Debit notes:** count and value of supplier debit notes (`SupplierDebitNoteIssued`; a
+  `SupplierDebitNoteCancelled` removes it). They are shown but not scored, because they
+  follow from rejected and returned goods that are already counted.
 - **Price variance:** for PO lines issued in the window that have a last price, Σ (PO price −
-  last price) × qty ÷ Σ last price × qty. Only an increase lowers the score. *Last price* is
-  the unit price per base unit, excl. VAT and in AED at the PO's rate, of the latest posted
-  receipt line from that supplier for the item before the PO; without one, the latest issued
-  PO line price; without either, none.
+  last price) × qty ÷ Σ last price × qty, with the PO price of the revision in force. Only
+  an increase lowers the score. *Last price* is the unit price per base unit, excl. VAT, of
+  the latest receipt line from that supplier for the item posted before the PO line's
+  revision in force was issued (receipts against that same PO are not used); without one,
+  the latest PO line price issued before it; without either, none. It is compared in the PO's
+  currency when both are in the same currency, so exchange-rate moves are not counted as
+  price increases; otherwise both are converted to AED, each at its own document's rate.
 
 Score = W1 × on-time % + W2 × (1 − min(1, rejected % ÷ R)) + W3 × max(0, 1 − incidents ÷ I)
 \+ W4 × (1 − min(1, max(0, price variance %) ÷ P)), rounded to a whole number. Defaults:
@@ -184,15 +198,49 @@ score is shown. Bands: `good` at 85 or more, `watch` from the threshold to 84,
 `below_threshold` under the threshold T (70). `STK.RUL.09` asks procurement to review a
 supplier below the threshold.
 
+A snapshot is never recomputed. A record changed after it (a voided NCR, a cancelled debit
+note, a reversed receipt) changes the live view only; procurement may add a review note to
+a snapshot (text, by, at), shown on the scorecard and in the `STK.RUL.09` task. When the
+day-1 run did not happen (scheduler down), the next run builds every missing month, once
+per supplier and month, and `STK.RUL.09` fires once per new snapshot.
+
 Each item lists its suppliers: one `preferred` and ranked `alternative`s, each with lead
-time, last price and the supplier's current score. Reorder suggestions (`STK.RUL.04`) use
-the preferred supplier. When it is inactive for the item or blocked
+time, last price and the supplier's current score, and a warning when a certificate kept
+on the supplier for the item (e.g. a *Halal certificate*, wl-documents §3) has expired; the
+warning blocks nothing unless a vertical adds `blocks`. Reorder suggestions (`STK.RUL.04`)
+use the preferred supplier. When it is inactive for the item or blocked
 (`BlockGuard::check(supplier, start)` fails, `PTY.ACL.03`), the suggestion goes to the first
 active alternative that passes the check, marked *alternative* with the reason; with none
-left, the suggestion has no supplier and the purchaser picks one. Lead time comes from the
-chosen item supplier (08 reorder point + lead time). The purchaser can switch a suggestion to
-another listed supplier; that changes nothing on the item. Making another supplier the
-item's preferred one needs a second person (`STK.ACL.07`).
+left, the suggestion has no supplier and the purchaser picks one. Where the item's
+`ReorderPolicy` adds a lead time (policy *reorder point + lead time*, used by 08 Auto), the
+lead time is the chosen item supplier's; the suggested qty is rounded up to its
+minimum order qty in its purchase unit (an item supplier whose purchase unit has no
+conversion for the item is refused on save). Converting a purchase request line into a PO
+proposes the supplier the same way and lists the alternatives. The purchaser can switch a
+suggestion to another listed supplier with a reason; that changes nothing on the item, is
+audited, and the scorecard lists the switches away from the preferred supplier per
+purchaser and month.
+
+Changing who is preferred needs a second person (`STK.ACL.07`): making another supplier
+preferred, deactivating or removing the preferred row, and setting a preferred supplier on
+an item that had one before. Only an item that never had a preferred supplier gets its
+first one without approval; adding, ranking and deactivating alternatives is audited and
+needs no approval. One request per item may be pending. A rejected or withdrawn request
+changes nothing and the requester is told; a returned one is edited and resubmitted; the
+system cancels a pending request when the item is archived, either row is deactivated or
+another request for the item is approved. On approval `BlockGuard` is checked again for the
+new supplier, the new supplier becomes `preferred` and the old one `alternative` rank 1
+(when the request removes the preferred row without a successor, the item has no preferred
+supplier and `STK.RUL.04` uses the alternatives). When the client turns the §7 setting
+*Second person for a preferred supplier change* off, a change applies at once without a
+request, audited, and `PreferredSupplierChanged` names the user as requester and approver.
+
+When two supplier parties are merged (`PartiesMerged`), their item supplier rows move to the
+survivor; where both are on one item, the row with the stronger role stays (preferred, else
+the better rank). Snapshots of the merged party stay under it, and the survivor's live view
+includes the merged party's records. When a supplier party is archived, its rows are
+deactivated; an item left without an active preferred supplier gets a task to procurement,
+and nothing is promoted automatically.
 
 **Item flags (decided at the 07 review).** Each item carries three flags:
 
@@ -274,7 +322,7 @@ generalised and extended with `short_close`, `revise` and `reopen`.
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
 | `issue` | draft | issued | `purchase_orders.issue` | supplier, prices, delivery location set; supplier not blocked: `BlockGuard::check(supplier, start)` passes (`PTY.ACL.03`; refused with the neutral *on hold* reason unless an exception is approved); `STK.ACL.01` (SoD) and vertical value limits → approval request when not met | number assigned; PDF sent to supplier; event `PurchaseOrderIssued` (committed cost) |
-| `revise` | issued, partially_received | same state | `purchase_orders.issue` | reason given; currency unchanged (a currency change needs `cancel` and a new PO); no line reduced below its accepted qty; `STK.ACL.01`; a higher total or a later delivery date needs `BlockGuard::check(supplier, extend)` (`PTY.ACL.03`); a higher total re-checks `STK.ACL.03` on the new total: when the new total is above a limit, an approval request for the steps the new total needs, and the current revision stays valid until it is approved; a higher total that stays below the first limit, or a total not higher, applies at once | revision number + 1; previous revision kept read-only; PDF marked "Revision N" re-sent to the supplier; committed cost adjusted; open receipts use the new lines; event `PurchaseOrderRevised` |
+| `revise` | issued, partially_received | same state | `purchase_orders.issue` | reason given; a later expected date records who asked for it (*requested by us* or *by the supplier*, for the supplier score, §3); currency unchanged (a currency change needs `cancel` and a new PO); no line reduced below its accepted qty; `STK.ACL.01`; a higher total or a later delivery date needs `BlockGuard::check(supplier, extend)` (`PTY.ACL.03`); a higher total re-checks `STK.ACL.03` on the new total: when the new total is above a limit, an approval request for the steps the new total needs, and the current revision stays valid until it is approved; a higher total that stays below the first limit, or a total not higher, applies at once | revision number + 1; previous revision kept read-only; PDF marked "Revision N" re-sent to the supplier; committed cost adjusted; open receipts use the new lines; event `PurchaseOrderRevised` |
 | `receive` | issued, partially_received | partially_received, received | system (goods receipt `post`) | over-receipt tolerance on accepted qty | only accepted qty counts; rejected qty stays outstanding; `received` when every line is fully accepted |
 | `reopen` | received | partially_received | system (Return to supplier `dispatch` with outcome `replace`) | PO not `closed` | returned qty outstanding again; committed cost restored |
 | `short_close` | partially_received | received | `purchase_orders.issue` | reason given | remaining quantities released from committed cost; supplier informed |
@@ -881,13 +929,19 @@ stateDiagram-v2
 2. Every receipt, rejection, return, debit note, NCR and PO price updates the supplier's
    live score (§3). On day 1 of each month a snapshot is kept per supplier.
 3. `STK.RUL.04` sends each reorder suggestion to the preferred supplier, or to the first
-   active, unblocked alternative. The purchaser compares the alternatives (lead time, last
-   price, score) and may switch the suggestion.
+   active, unblocked alternative; a purchase request line converted into a PO is proposed
+   the same way. The purchaser compares the alternatives (lead time, last price, score,
+   certificate warnings) and may switch the suggestion, with a reason (audited).
 4. When a supplier's snapshot is below the threshold, `STK.RUL.09` gives procurement one
    review task with the score breakdown and the items where the supplier is preferred.
 5. Procurement closes the task with a decision: *keep*, *watch*, *change preferred* (a
-   request per item, approved by a second person, `STK.ACL.07`) or *request block* (a block
-   request in wl-parties).
+   request per item, approved by a second person, `STK.ACL.07`) or *request block* (a task
+   to the holders of `parties.block` to decide on wl-parties `block`; nothing is blocked
+   automatically). Every decision closes the task and is kept on the snapshot; *keep*
+   changes nothing; *watch* shows the supplier as *watched* on the scorecard and on item
+   supplier rows until a later snapshot is at or above the threshold. A later snapshot under
+   the threshold opens a new task once the previous one is closed. A review note may be
+   added to the snapshot, e.g. when the supplier contests a late delivery or an NCR.
 
 ## 6. Interfaces to other modules
 
@@ -912,8 +966,8 @@ stateDiagram-v2
 | From | What |
 |---|---|
 | wl-kernel | `Subject` references, document numbering, approvals, state machines, custom fields, settings, automations |
-| wl-parties | Suppliers and recipients (`Party`); `BlockGuard::check` on PO `issue` and `revise` (`PTY.ACL.03`); block effect for open POs (§5.6 of wl-parties) |
-| wl-documents | Delivery notes, PO and GRN PDFs, asset documents and their expiry |
+| wl-parties | Suppliers and recipients (`Party`); `BlockGuard::check` on PO `issue` and `revise` (`PTY.ACL.03`); block effect for open POs (§5.6 of wl-parties); `PartiesMerged` and party archive for item supplier rows (§3) |
+| wl-documents | Delivery notes, PO and GRN PDFs, asset documents and their expiry; certificates kept on a supplier for an item (e.g. *Halal certificate*) for the item supplier warning (§3) |
 | wl-invoicing | `CostPoster` for committed and actual cost per cost object, wastage and the price and landed cost variances; events `SupplierBillMatched`, `SupplierDebitNoteIssued` (credits a Return to supplier), `SupplierDebitNoteCancelled` (the return stays `dispatched`; task to procurement), `SupplierBillApproved` with a landed cost reference per line (drafts a landed cost adjustment when the landed cost is already allocated); debit notes are also counted on the supplier scorecard |
 | wl-sales | `CreditChecker.credit_recheck(order)` as the dispatch guard for orders on account; customer returns of recalled goods into quarantine, linked to the recall; events `SalesOrderCancelled` and `SalesOrderLineCancelled` with outcome per line (*return to stock* cancels the dispatch, *scrap* posts wastage) |
 | wl-delivery | `DeliveryRequester` to create a delivery from a dispatch; events `DeliveryDelivered` (per-line delivered and refused qty), `DeliveryRefusedReceived` (refused goods received back or missing at run close), `DeliveryReturned`, `DeliveryDiscarded`, `DeliveryLost`, `DeliveryFound`, `DeliveryReversed` |
@@ -973,7 +1027,7 @@ checked in the scope of the location.
 | `STK.ACL.04` | Stock is received and moved only at the user's own locations; stock levels may be visible in all locations; over-receipt beyond a tolerance needs approval | scope, `LIM`, `FLD` | 5% | `CON.ACL.04`, `AUT.ACL.11` |
 | `STK.ACL.05` | Releasing held stock for a listed hold reason (a hold line decided `release`, including the lines of a recall's hold) needs approval by a second holder of `lots.release`, not the one who decides; other holds are released by one holder of `lots.release` | `SOD` | on; listed reasons = `recall` | — |
 | `STK.ACL.06` | A landed cost adjustment or a Return to supplier above a value needs approval; the creator cannot approve | `LIM`, `SOD` | AED 5,000 | — |
-| `STK.ACL.07` | Making another supplier the preferred supplier of an item needs approval by a holder of `item_suppliers.approve` who is not the requester; the request shows both suppliers' scores, lead times and last prices. The first preferred supplier of an item, alternatives, and switching a single reorder suggestion need no approval | `SOD` | on | — |
+| `STK.ACL.07` | Changing who is the preferred supplier of an item (making another supplier preferred, deactivating or removing the preferred row, or setting a preferred supplier on an item that had one before) needs approval by a holder of `item_suppliers.approve` who is not the requester; the request shows both suppliers' scores, lead times and last prices. Only the first preferred supplier of an item that never had one, alternatives (add, rank, deactivate; audited) and switching a single reorder suggestion (reason required; audited) need no approval | `SOD` | on | — |
 
 Cost and margin fields are hidden by `FIN.ACL.08` (wl-invoicing, `costs.view`), applied here
 through `stock.cost.view`.
@@ -1055,7 +1109,7 @@ at 07:00. Both are a mode and a time of the same rule. `STK.RUL.05` generalises 
 | `ConsumptionSource` | Turns a business event into ingredient or component consumption | F&B sale explodes a recipe; work order issues components (07: every material issue to a work order, so a short one becomes a pending issue) |
 | `AssetMeterPolicy` | When a meter reading means a service is due | every N km (vehicles), every N hours (machines) |
 | `TracePartyResolver` | The party behind a subject in a recall trace | 05: visit → patient; 06: order → customer; 08: job card → vehicle owner or fleet |
-| `SupplierIncidentSource` | Quality incidents per supplier and date for the scorecard | 07: NCRs on incoming lots (apps/manufacturing) |
+| `SupplierIncidentSource` | Quality incidents per supplier and date for the scorecard: only incidents whose cause is the supplier and that are not voided; a later void or change of cause is reported too | 07: NCRs on incoming lots (apps/manufacturing) |
 | Events | §6 | apps/fnb marks menu items unavailable on `ItemOutOfStock` (`FNB.RUL.06`) |
 | Overridable views | PO PDF, GRN, delivery note, pick list, labels | client logo and Arabic layout |
 | Custom fields | Item, location, lot, asset | Auto: fitment and OEM numbers (in apps/auto); Clinics: storage temperature |
@@ -1109,7 +1163,11 @@ at 07:00. Both are a mode and a time of the same rule. `STK.RUL.05` generalises 
 - **Vehicles:** registration (Mulkiya) and insurance must be valid to operate; expiry is
   tracked through wl-documents.
 - **Audit:** every movement, approval and cost change is in the audit trail; movements are
-  never edited or deleted.
+  never edited or deleted. Item supplier changes, switched suggestions and review notes on
+  supplier scores are audited too.
+- **Supplier scores:** a score is an internal assessment of a business. For a sole trader
+  it is treated as personal data (PDPL): shown only with `supplier_scores.view`, never in
+  a portal, and kept with the purchase records (default 7 years).
 
 ## 11. Out of scope
 

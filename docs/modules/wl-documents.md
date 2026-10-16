@@ -60,8 +60,8 @@ What the verticals use them for:
 | Access log | Each view or download of a sensitive document | document, version, user, action (`view`/`download`), timestamp, reason (optional) |
 | Retention hold | Prevents deletion after the retention period | subject or document, reason, placed by, until |
 | Block override | A one-off permission to run one guarded transition on one record although a required document is expired or missing (`DOC.ACL.02`) | document kind, subject, guarded entry (`<entity>.<transition>`), record, reason, requested by, approved by, valid until, used at |
-| SOP | A standard operating procedure the staff must follow (`HRM.ONB.01`). Its versions are documents of kind *SOP* attached to it | code, title EN/AR, category, legal entity, owner role, required readers (job roles or trades with scopes, or *all staff*), review interval (months), acknowledgement due days, current version (the accepted document), status (derived: `draft` before the first accepted version, `active`, `withdrawn` when the current version is archived) |
-| Acknowledgement | One reader's confirmation that they read one SOP version | SOP, document version, reader (employee), requested at, due date, acknowledged at, evidence (method `click-to-accept` in the reader's session or `drawn` in person; timestamp, IP, user agent, document checksum, witness for in person; as a Signature), reminders sent, status (§4.3) |
+| SOP | A standard operating procedure the staff must follow (`HRM.ONB.01`). Its versions are documents of kind *SOP* attached to it; translations are documents of kind *SOP translation* linked to a version | code, title EN/AR, category, legal entity (readers are employees of that entity; empty = every entity), owner role, required readers (job roles or trades with scopes, or *all staff*), review interval (months), acknowledgement due days, current version (the accepted document), status (derived: `draft` before the first accepted version, `active`, `withdrawn` when the current version is archived) |
+| Acknowledgement | One reader's confirmation that they read one SOP version | SOP, document version, reader (employee), requested at, due date, acknowledged at, language and checksum of the file the reader opened (the version or a translation), evidence (method `click-to-accept` in the reader's session or `drawn` in person; timestamp, IP, user agent, document checksum, witness for in person; as a Signature), in-person notice sent (to the reader's own channel), reminders sent, status (§4.3) |
 
 Rules that apply to all entities:
 
@@ -78,28 +78,55 @@ Rules that apply to all entities:
 **SOP versions (decided 2026-10-16).** A new version of an SOP is a new document of kind
 *SOP* on the SOP, submitted to `pending_review` and accepted by a holder of `sops.manage`
 with the SOP's owner role; accepting it supersedes the previous version as for any kind.
-Every accepted version needs a new acknowledgement from every required reader, also when an
-earlier version was acknowledged (`DOC.RUL.04`). The kind *SOP* uses the expiry date as the
-next review date (accepted date + review interval): `DOC.RUL.01` reminds the owner role to
-review it, and an SOP past its review date stays in force. The kind has no `blocks`.
+For the kinds *SOP* and *SOP translation*, `accept` and `reject` need `sops.manage` and the
+owner role (instead of `documents.review`), and `archive` needs `sops.manage` (instead of
+`documents.manage`). Every accepted version needs a new acknowledgement from every required
+reader, also when an earlier version was acknowledged (`DOC.RUL.04`). The kind *SOP* uses
+the expiry date as the next review date (accepted date + review interval): `DOC.RUL.01`
+reminds the owner role 30 days before, the expiry status reads *review due* and then *review
+overdue* (not *expired*), and an SOP past its review date stays in force. The kind has no
+`blocks`, and `DocumentExpired` of kind *SOP* guards nothing.
+
+A *translation* (kind *SOP translation*: language, linked version) carries the same text in
+Arabic or another staff language. It is accepted like a version; a reader may open the
+version or any accepted translation of it, and the acknowledgement records which. A
+translation accepted later does not ask for new acknowledgements; a new version supersedes
+its translations. Archiving the current version withdraws the SOP (`SopWithdrawn`): pending
+acknowledgements are cancelled, acknowledged ones stay as history. A withdrawn SOP becomes
+`active` again only through a new accepted version, which asks every required reader again.
+Changing the required readers emits `SopReadersChanged`: new readers are asked, and pending
+acknowledgements of readers no longer required are cancelled.
 
 **Seeded kinds for registrations and certifications (`DOC.EXP.01`, decided 2026-10-16).**
-Every client gets these kinds, enabled per vertical setting. They have expiry and reminders
+Every client gets these kinds, with names in English and Arabic, enabled per vertical
+setting (a kind not enabled is available and off). They have expiry and reminders
 (`DOC.RUL.01`) and no `blocks` by default; a vertical may add `blocks` entries (e.g. 07
-dispatch of regulated items, `MFG.ACL.11`). The platform does not decide which registration
-or certificate the law requires.
+dispatch of regulated items, `MFG.ACL.11`). Their sensitivity class is `normal`, they are
+not *visible in portal* (a client may turn it on, `DOC.ACL.01`), and they follow the
+client's retention rule for company documents. The platform does not decide which
+registration or certificate the law requires.
 
-| Kind | Subjects | Fields | Reminders (days) | Responsible role (seed) | Enabled in (proposed) |
+| Kind | Subjects | Fields | Reminders (days) | Responsible role (seed) | Enabled in |
 |---|---|---|---|---|---|
 | Trademark registration | legal entity (`PLT.ENT.01`) | registration number, mark (text or image), classes, registry, filing date, expiry date | 180, 90, 30 | owner | all verticals |
-| Halal certificate | legal entity, item (`STK.ITM.01`) | certificate number, certification body, products or sites covered, expiry date | 90, 30, 7 | quality role, else owner | 06, 07 |
-| ISO certificate | legal entity | standard (e.g. ISO 9001, 14001, 22000, 45001), certification body, scope, expiry date | 90, 30, 7 | quality role, else owner | 02, 03, 07, 08 |
-| Product registration / conformity | item, legal entity | registration or certificate number, authority or body, products covered, expiry date | 90, 30, 7 | quality role, else owner | 05, 07, 08 (07: the conformity certificates of regulated items) |
-| Other certification | legal entity, item | name, number, issuer, expiry date (optional) | 90, 30, 7 | owner | all verticals |
+| Halal certificate | legal entity, item (`STK.ITM.01`), supplier party (`wl-parties`) | certificate number, certification body, products or sites covered, expiry date | 90, 30, 7 | quality role, else owner | 06, 07 |
+| ISO certificate | legal entity | standard (e.g. ISO 9001, 14001, 22000, 45001), certification body, scope (sites or plants covered), expiry date | 90, 30, 7 | quality role, else owner | 02, 07 |
+| Product registration / conformity | item, legal entity | registration or certificate number, authority or body, products covered, expiry date | 90, 30, 7 | quality role, else owner | none by default (07 keeps the conformity kinds of regulated items, §2) |
+| Other certification | legal entity, item, supplier party | name, number, issuer, expiry date (optional) | 90, 30, 7 | owner | all verticals |
 
-The *quality role* is the vertical's role for quality or compliance (07: QA manager); where
-the vertical has none, the owner. For an item subject the reminder scope follows §5.2 step 3.
-Verticals without items use the legal entity subject only.
+The *quality role* is the vertical's role for quality or compliance (07: QC inspector);
+where the vertical has none, the owner. *Owner* is the business owner role of the
+deployment (wl-kernel; e.g. the MD, the company admin or the partners, as each vertical
+names it). The column *Responsible role (seed)* is the platform default: a vertical seeds
+its own responsible role per kind in its settings (e.g. 06: storekeeper / purchaser for the
+*Halal certificate*), and the client may change it later. A trademark's subject is always
+the legal entity; the brand is the registered *mark*. For an item or supplier party subject the reminder
+scope follows §5.2 step 3. A certificate on a supplier party names the items it covers;
+wl-inventory shows an expired one as a warning on the supplier's item supplier rows and
+reorder suggestions (wl-inventory §3). Verticals without items use the legal entity subject
+only. A wrong number or expiry date on these kinds (no `blocks`) is corrected in place by
+`documents.manage`, audited, and the reminders are rescheduled; once a vertical adds
+`blocks`, `DOC.ACL.03` applies instead.
 
 ## 4. Lifecycles
 
@@ -208,14 +235,14 @@ Single-signer *click-to-accept* is the same machine with one signer and method
 | `pending` | warning (error when overdue) | no | The reader must read and acknowledge this version |
 | `acknowledged` | success | yes | Read and confirmed, with evidence |
 | `replaced` | neutral | yes | A newer version was accepted before this one was acknowledged |
-| `cancelled` | neutral | yes | The reader is no longer required (role or scope ended, employee exited or onboarding cancelled, SOP withdrawn) |
+| `cancelled` | neutral | yes | The reader is no longer required (role or scope ended, readers changed, employee exited, died or onboarding cancelled, SOP withdrawn) |
 
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
-| `request` | — | pending | system (`DOC.RUL.04`) | the reader is a required reader of the SOP; no `pending` or `acknowledged` acknowledgement of this version for the reader | due date = today + the SOP's acknowledgement due days; reader notified (staff inbox or employee portal, through `wl-notify`) |
-| `acknowledge` | pending | acknowledged | the reader (`HRM.ACL.10`) | the reader opened this version; document checksum unchanged; in person: drawn signature and the staff user as witness | evidence stored; event `SopAcknowledged` (wl-hr marks `sop_acknowledgement` steps) |
+| `request` | — | pending | system (`DOC.RUL.04`) | the reader is a required reader of the SOP; no `pending` or `acknowledged` acknowledgement of this version for the reader | due date = today + the SOP's acknowledgement due days (for a reader `on_leave`: from the return date); reader notified (staff inbox or employee portal, through `wl-notify`); a reader without an account is put on their manager's *to acknowledge in person* list and told by SMS where a number is on record |
+| `acknowledge` | pending | acknowledged | the reader (`HRM.ACL.10`) | the version is still the SOP's current one (otherwise refused and the reader is sent to the current version); the reader opened this version or an accepted translation of it; that file's checksum unchanged; in person: drawn signature and the staff user as witness | evidence, language and file stored; event `SopAcknowledged` (wl-hr marks `sop_acknowledgement` steps); in person: the reader told on their own channel (SMS to the number on record, or the portal inbox when it opens) what was recorded and by which witness |
 | `replace` | pending | replaced | system (a newer version of the SOP accepted) | — | a new `request` for the new version |
-| `cancel` | pending | cancelled | system (`EmployeeAssignmentChanged` removing the role or scope, `EmployeeExited`, `EmployeeOnboardingCancelled`, SOP withdrawn) | — | — |
+| `cancel` | pending | cancelled | system (`EmployeeAssignmentChanged` removing the role or scope, `SopReadersChanged` removing the reader, `EmployeeExited`, `EmployeeDeceased`, `EmployeeOnboardingCancelled`, `SopWithdrawn`) | — | no further reminders |
 
 An `acknowledged` acknowledgement stays as history when a newer version arrives; the reader
 gets a new `pending` one for the new version.
@@ -413,14 +440,23 @@ confirmed `⚠ open: lawyer (L-19)` (§10).
 3. `DOC.RUL.04` asks every required reader to acknowledge it: the employees with those roles
    in those scopes (`Workforce::employees_in` from wl-hr), and later every new employee or
    new role holder (`OnboardingStarted`, `EmployeeAssignmentChanged`).
-4. The reader opens the version and confirms, in their own session or in person with a
-   drawn signature and a staff witness (`HRM.ACL.10`). wl-hr marks the onboarding step.
-5. `DOC.RUL.04` reminds readers whose acknowledgement is overdue, then tells their manager
-   and the owner role. The SOP page shows who acknowledged, who is pending and who is overdue.
+4. The reader opens the version (or an accepted translation) and confirms, in their own
+   session or in person with a drawn signature and a staff witness (`HRM.ACL.10`); after an
+   in-person record the reader is told on their own channel. Readers without an account
+   appear on their manager's *to acknowledge in person* list. wl-hr marks the onboarding
+   step.
+5. `DOC.RUL.04` reminds readers whose acknowledgement is overdue (paused while on leave or
+   absconded; the manager for readers without an account), then tells their manager and
+   the owner role.
 6. A new version is uploaded and accepted like the first. Pending acknowledgements of the old
    version are `replaced`, and every required reader is asked again.
-7. On the review date `DOC.RUL.01` reminds the owner role. Archiving the current version
-   withdraws the SOP and cancels its pending acknowledgements.
+7. 30 days before the review date `DOC.RUL.01` reminds the owner role; past it the SOP
+   shows *review overdue* and stays in force. Archiving the current version (`sops.manage`)
+   withdraws the SOP and cancels its pending acknowledgements (`SopWithdrawn`); only a new
+   accepted version makes it `active` again. Changing the required readers asks the new
+   readers and cancels the pending acknowledgements of those removed (`SopReadersChanged`).
+8. The SOP page shows, per version, who acknowledged (with the language and the method),
+   who is pending and who is overdue, and lists in-person records per witness.
 
 ## 6. Interfaces to other modules
 
@@ -445,9 +481,12 @@ confirmed `⚠ open: lawyer (L-19)` (§10).
   languages), approvals (deletion batches), automation rules.
 - `wl-notify`: delivery of reminders, review requests and signature links.
 - `wl-parties`: signers and notified parties; party consents for notifications.
-- `wl-hr`: `Workforce::employees_in(role, scope)` for SOP required readers; events
-  `OnboardingStarted`, `EmployeeAssignmentChanged`, `EmployeeExited` and
-  `EmployeeOnboardingCancelled` for acknowledgements (§4.3).
+- `wl-hr`: `Workforce::employees_in(role, scope)` for SOP required readers (employees in
+  `onboarding`, `active`, `on_leave` or `notice`; reminders go only to readers it lists
+  and not `on_leave`); events `OnboardingStarted`, `EmployeeAssignmentChanged`,
+  `EmployeeExited`, `EmployeeDeceased` and `EmployeeOnboardingCancelled` for
+  acknowledgements (§4.3); the employee's manager (wl-hr §3) for escalations and the
+  in-person list.
 - Renox: storage disks, uploads, queue, scheduler, audit, PDF rendering (R3).
 - Guarded modules: `BlockSubjects` (record → document subjects) and `FutureWork` (planned
   items of a subject from a date) providers, registered per guarded transition (§5.6).
@@ -469,7 +508,9 @@ confirmed `⚠ open: lawyer (L-19)` (§10).
 | `SignatureDeclined` | a signer declines | request id, signer, reason |
 | `SensitiveDocumentViewed` | a sensitive document is viewed or downloaded | document id, user, action |
 | `SopPublished` | a version of an SOP is accepted | SOP, document id, version, required readers |
-| `SopAcknowledged` | acknowledgement `acknowledge` | SOP, version, reader, method, at |
+| `SopAcknowledged` | acknowledgement `acknowledge` | SOP, version, reader, method, language, at |
+| `SopWithdrawn` | the current version of an SOP is archived | SOP, last version, cancelled acknowledgements |
+| `SopReadersChanged` | the required readers of an `active` SOP change | SOP, readers added, readers removed |
 
 **Attaches to:** any `Subject`. Typical subjects: party, legal entity, lease, project, IPA, shipment, vehicle,
 engagement, return, patient visit, employee, visa case, deployment, enrolment, job card, lot,
@@ -491,7 +532,7 @@ sales order, invoice, ticket, item (certificates), SOP.
 | `signatures.cancel` | Cancel signature requests |
 | `documents.retention.approve` | Approve deletion batches |
 | `documents.block.override` | Approve a one-use override of a document block (`DOC.ACL.02`) |
-| `sops.manage` | Create SOPs, set owner role and required readers, upload, accept (with the owner role) and withdraw versions, see the acknowledgement report |
+| `sops.manage` | Create SOPs, set owner role and required readers, upload, accept or reject (with the owner role) and withdraw versions and translations, see the acknowledgement report |
 
 **Access rules**
 
@@ -501,7 +542,7 @@ sales order, invoice, ticket, item (certificates), SOP.
 | `PLT.ACL.07` (platform) | Documents that are evidence of money, tax or legal acts are archived, not deleted, until retention ends | `STA` | — |
 | `DOC.ACL.01` | External users see only documents of subjects they own, and only kinds marked *visible in portal* | `OWN`, `FLD` | — |
 | `DOC.ACL.02` | A transition blocked by an expired or missing document runs only with a one-use override: reason given, approved by another user with `documents.block.override`, within a time limit, audited. Never for kinds marked *legal block* | `SOD`, `TIM`, `STA` | valid 72 hours |
-| `HRM.ACL.10` (wl-hr) | An SOP acknowledgement is recorded only by the reader: in their own session, or in person with a drawn signature, a staff user recorded as witness | `OWN` | on |
+| `HRM.ACL.10` (wl-hr) | An SOP acknowledgement is recorded only by the reader: in their own session, or in person with a drawn signature, a staff user recorded as witness; after an in-person record the reader is told on their own channel | `OWN` | on |
 | `DOC.ACL.03` | Documents of a blocking kind (a kind with `blocks`) always go through review: they are submitted (never `record`ed) and accepted by a user other than the uploader. Their expiry date and number are not edited in place: a correction is a new document of the same kind and subject, with the file as its version, submitted to `pending_review` and accepted by a user other than the one who submitted it; accepting it supersedes the old one. Audited | `STA`, `SOD` | — |
 
 **Automations**
@@ -511,7 +552,7 @@ sales order, invoice, ticket, item (certificates), SOP.
 | `DOC.RUL.01` | N days before `document.expires_on` | document `accepted` | notify the record's responsible staff and, for kinds marked *notify party*, the party | N = 90, 30, 7 (per kind) |
 | `DOC.RUL.02` | nightly (01:00 Asia/Dubai) | document of a kind with `blocks` expires within N days, and guarded modules report planned items dated after the expiry date | emit `DocumentExpiring` with `affected`; notify the responsible staff once with the list (again only for new items, listing only those); modules flag the items (e.g. `BookingConflict`) | N = 30 (look-ahead, per kind) |
 | `DOC.RUL.03` | nightly (01:00 Asia/Dubai), on the first run after the expiry date (the document is valid through that date) | document of a kind with `blocks` | emit `DocumentExpired` with the blocked records; notify the responsible staff; for *compliance-critical* kinds also the business owner; open a renewal task for the responsible role | — |
-| `DOC.RUL.04` | an SOP version is accepted (`SopPublished`); an employee becomes a required reader (`OnboardingStarted`, `EmployeeAssignmentChanged`); and daily at 08:00 Asia/Dubai | the reader has no `pending` or `acknowledged` acknowledgement of the current version | `request` an acknowledgement (due in the SOP's due days); daily: remind readers whose due date has passed, on the first run after it and then every R days; after E days overdue notify the reader's manager and the SOP's owner role once | due days = 7 (per SOP); R = 3; E = 7 |
+| `DOC.RUL.04` | an SOP version is accepted (`SopPublished`); an employee becomes a required reader (`OnboardingStarted`, `EmployeeAssignmentChanged`, `SopReadersChanged`); and daily at 08:00 Asia/Dubai | the reader has no `pending` or `acknowledged` acknowledgement of the current version | `request` an acknowledgement (due in the SOP's due days, counted from the return date for a reader `on_leave`); daily: remind readers whose due date has passed, on the first run after it and then every R days (a reader without an account: remind their manager instead; paused while the reader is `on_leave` or not listed by `Workforce::employees_in`, e.g. `absconded`); after E days overdue notify the reader's manager and the SOP's owner role once | due days = 7 (per SOP); R = 3; E = 7 |
 
 ## 7. Configuration per client
 
@@ -533,9 +574,9 @@ sales order, invoice, ticket, item (certificates), SOP.
 | Override validity | one use, within 72 hours |
 | Look-ahead window for blocking kinds | 30 days |
 | Compliance-critical kinds (owner also told on expiry) | legal blocks |
-| Seeded registration and certification kinds enabled (§3) | per vertical (proposed in §3); reminders 180, 90, 30 for trademarks, 90, 30, 7 for the others; no `blocks` |
+| Seeded registration and certification kinds enabled (§3) | per vertical (§3 table and the vertical's settings); reminders 180, 90, 30 for trademarks, 90, 30, 7 for the others; no `blocks` |
 | SOP acknowledgement due days, reminder and escalation days (`DOC.RUL.04`) | 7 per SOP; every 3 days; manager and owner role after 7 days |
-| SOP review interval | 12 months per SOP |
+| SOP review interval | 12 months per SOP; review reminder 30 days before (kind *SOP*) |
 
 ## 8. Extension points
 
@@ -605,6 +646,11 @@ sales order, invoice, ticket, item (certificates), SOP.
   kinds are legal blocks in each vertical, and whether any override is lawful for the
   others, is `⚠ open: lawyer (L-19)`. Until confirmed, the seeded kinds in §5.6 marked *never*
   stay locked.
+- **SOP acknowledgements:** an acknowledgement holds personal data (IP address, device,
+  drawn signature). It is part of the employee's worker file and kept as long as wl-hr
+  keeps it (wl-hr §10: at least two years after the end of service), then deleted or
+  anonymised; drawn signatures are class `personal`. Acknowledgement messages are service
+  messages to staff, not marketing (`NTF.ACL.01` consent does not apply).
 - **Data residency:** files stay on UAE hosts ([ARCHITECTURE.md](../ARCHITECTURE.md) §8).
 
 ## 11. Out of scope

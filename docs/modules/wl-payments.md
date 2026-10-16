@@ -39,7 +39,7 @@ recovered or written off here (§4 Cash handover, till session mode).
 
 | Entity | Description | Important fields |
 |---|---|---|
-| Payment | Money received from or paid to a party | direction (in / out), entity, bank account (for transfers, cards and cheques), party, method (cash, card, transfer, cheque, gateway, direct debit, wallet, set-off), amount, currency, date, reference, gateway transaction, collected by (staff), prepayment for (`Subject`: booking, reservation, order; optional), purpose (outgoing only: none or *owner drawings*, `FIN.BUD.01`; a drawing is paid to the owner's party and allocated to no document), chargeback (gateway dispute reference, reason, evidence due date, evidence submitted), status |
+| Payment | Money received from or paid to a party | direction (in / out), entity, bank account (for transfers, cards and cheques), party, method (cash, card, transfer, cheque, gateway, direct debit, wallet, set-off), amount, currency, date, reference, gateway transaction, collected by (staff), prepayment for (`Subject`: booking, reservation, order; optional), purpose (none or *owner drawings*, `FIN.BUD.01`, with its drawings category; an outgoing drawing is paid to the category's owner party, an incoming one is a repayment from that party; either is allocated to no document), chargeback (gateway dispute reference, reason, evidence due date, evidence submitted), status |
 | Allocation | Part of a payment applied to a document | payment, target (invoice, supplier bill, credit note, deposit, supplier debit note for a supplier debit balance, payer credit balance), amount |
 | Refund | Money returned to a party | party, source (payment, credit note, deposit, party credit balance, payer credit balance, `Subject`: order, booking), amount, method, reason, requested by, approved by, attempts (method, date, failure reason), status |
 | Payment link | A request to pay online | party, target invoice(s) or amount, currency, expiry, gateway, URL token, status |
@@ -51,10 +51,10 @@ recovered or written off here (§4 Cash handover, till session mode).
 | Cash handover | Cash and cheques a holder hands over at the end of a period | kind (period, or *later shortage* with its source `Subject`), holder, responsible person (the holder, or the cashier of a till session), period (run, shift, day, till session), till session (till mode), expected amount (from collected payments or the till session), counted amount, counted by, difference, expected cheques (ticked present or missing), recovery (cash or wl-hr adjustment), status |
 | Expense claim | A staff request to be reimbursed for business spending, or a record of petty cash spent | claimant, entity, cost object (`Subject`, optional), lines, total, VAT total, reimbursement method (payment, payroll, petty cash float), status |
 | Expense line | One receipt | date, merchant, merchant TRN (if shown), category, amount, VAT amount, VAT recoverable (from the category and a valid tax invoice), receipt photo (wl-documents), cost code |
-| Expense category | A kind of spending | name, default VAT treatment (recoverable / blocked / none), receipt required above, account mapping for export |
+| Expense category | A kind of spending | name, default VAT treatment (recoverable / blocked / none), receipt required above, account mapping for export, budget category (wl-invoicing `FIN.BUD.01`; the seeded *Owner drawings* category maps to a category of kind `owner_drawings`: VAT blocked, no cost object, every line approved under `FIN.ACL.21`) |
 | Petty cash float | Cash advanced to a holder for small expenses (imprest) | holder (cash holder), entity, float amount, current balance, low threshold, status |
-| Bank statement import | One uploaded statement file for one bank account | entity, bank account, file, format (CSV, Excel, MT940), period, closing balance (from the file when it carries one, otherwise entered at upload; optional), number of lines, imported by, status |
-| Statement line | One bank transaction | import, date, amount (in / out), description, reference, counterparty, match (payment, cheque, invoice, supplier bill, expense claim, refund), line status (unmatched, suggested, matched, ignored) |
+| Bank statement import | One uploaded statement file for one bank account | entity, bank account, file, format (CSV, Excel, MT940), period, closing balance (from the file when it carries one, otherwise entered at upload; optional; as of the last day of the period), number of lines, imported by, status |
+| Statement line | One bank transaction | import, date, amount (in / out), description, reference, counterparty, match (payment, cheque, invoice, supplier bill, expense claim, refund, owner drawing), line status (unmatched, suggested, matched, ignored) |
 | Match rule | A saved rule that suggests matches | text pattern, amount tolerance, party, target type, created by |
 
 **Bank accounts** belong to the legal entity in [wl-kernel](wl-kernel.md) (`PLT.ENT.01`).
@@ -83,7 +83,7 @@ that are returned at the end of an agreement.
 
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
-| `record` | — | received | `payments.record` | method details complete (cheque payments are created by the cheque `clear` and `settle_part` transitions); purpose *owner drawings*: an approved request (`FIN.ACL.21`, wl-invoicing) | event `PaymentReceived` |
+| `record` | — | received | `payments.record` | method details complete (cheque payments are created by the cheque `clear` and `settle_part` transitions); purpose *owner drawings*: party = the drawings category's owner party, no allocation; outgoing: an approved request (`FIN.ACL.21`, or `FIN.ACL.23` for a sole owner; wl-invoicing), incoming (repayment): no approval | event `PaymentReceived`; reversing a drawing (`reverse`) notifies the holders of `drawings.approve` |
 | `start_online` | — | pending | party (portal, payment link) or system (automatic charge) | gateway account enabled | redirect to the gateway's hosted page |
 | `confirm` | pending | received | system (verified gateway webhook, or the gateway's status query in `FIN.RUL.19`) | webhook signature and amount match | allocation to the link's targets; receipt sent; event `PaymentReceived` |
 | `fail` | pending | failed | system (gateway webhook: declined, reason from the gateway; or the hosted session cancelled or expired by the payer, reason *abandoned*; or `FIN.RUL.19` when the gateway gives no final answer before the timeout, reason timeout, which also covers a payer who leaves without the gateway telling the platform) | — | payment link stays `open` until its expiry; the party sees the reason and a retry button; event `PaymentFailed` (consumers below) |
@@ -552,7 +552,10 @@ stateDiagram-v2
      balances equal the cheque's open amount; otherwise the invoices are written off directly.
    Each outcome emits `ChequeBounceResolved`, which lets wl-sales lift the credit hold.
 5. Issued cheques to suppliers are recorded when handed over and cleared from the bank
-   statement.
+   statement. An issued cheque for an approved owner drawing (wl-invoicing §5.16) is
+   registered to the drawings category's owner party for the approved amount: another payee
+   or amount is refused and needs a new drawings request; the cheque date is free, and its
+   `clear` records the payment with purpose *owner drawings* on the clear date.
 6. Cheques collected in the field (drivers, sales reps) are recorded with the collector and
    can be deposited only after a cash handover confirms them (`FIN.ACL.20`).
 
@@ -644,7 +647,13 @@ incoming payment allocated to the debit note, which then runs `settle`.
    outgoing lines with supplier bills, refunds, issued cheques and reimbursements. Match
    rules and the party's past payments improve suggestions.
 3. The accountant confirms suggestions, matches manually (including one line to several
-   invoices), or ignores a line with a reason (bank charges, internal transfers).
+   invoices), or ignores a line with a reason (bank charges, internal transfers). An outgoing
+   line the owner spent for personal use (company card, ATM) is marked *owner drawing* with
+   its drawings category: this creates the drawings approval request (`FIN.ACL.21`,
+   wl-invoicing §5.16) and the line stays `suggested`; the approval records the payment and
+   matches the line; a rejection, withdrawal or expiry puts the line back to `unmatched`
+   with the reason and tells the accountant. The import cannot `complete` while such a
+   request is open.
 4. Confirmed incoming lines without a payment create the payment and allocate it; matched
    cheques are cleared.
 5. Lines still unmatched after N days become a task for the accountant
@@ -656,7 +665,7 @@ incoming payment allocated to the debit note, which then runs `settle`.
 
 | Service | Purpose |
 |---|---|
-| `PaymentRecorder` | Record, allocate, reverse payments; party credit balance (the capability trait named in wl-kernel); payments per bank account after a date, payments with purpose owner drawings, and approved refunds not yet paid (wl-invoicing cash-flow forecast `FIN.CFL.01` and budget vs actual `FIN.BUD.01`) |
+| `PaymentRecorder` | Record, allocate, reverse payments; party credit balance (the capability trait named in wl-kernel); payments per bank account with a payment date strictly after a given date (`received` only; by the payment's date, not when it was recorded, since a balance is as of the end of its date), payments with purpose owner drawings (outgoing and repayments), and refunds `approved` or `failed` not yet paid (wl-invoicing cash-flow forecast `FIN.CFL.01` and budget vs actual `FIN.BUD.01`) |
 | `PaymentLinks` | Create a link for invoices or an amount; return its URL |
 | `Gateway` | Charge a saved method, refund through the gateway, verify webhooks; adapters per provider |
 | `Cheques` | Register, deposit, clear, bounce, re-present, settle and refer cheques; open bounced amount per party (for the credit check in wl-sales); cheques not yet cleared (`received`, `due_for_deposit`, `deposited`) by direction, entity and cheque date, with open amount and linked documents (`FIN.CFL.01`) |
@@ -665,7 +674,7 @@ incoming payment allocated to the debit note, which then runs `settle`.
 | `CashCustody` | Open, count and close handovers per holder; create a handover from a closed till session |
 | `Expenses` | Create, approve and reimburse expense claims; claims per cost object |
 | `PettyCash` | Issue, top up and close floats; current balance per holder |
-| `BankStatements` | Import a statement file, suggest and confirm matches; latest closing balance per bank account with its date, from the latest completed import (`FIN.CFL.01`) |
+| `BankStatements` | Import a statement file, suggest and confirm matches; latest closing balance per bank account with its date, from the completed import with a closing balance whose period ends last (not the one imported last; on the same period end, the import completed last wins; `FIN.CFL.01`); outgoing lines marked as owner drawings (`FIN.BUD.01`) |
 | `InputVatSource` (implementation) | Recoverable VAT from approved expense claims, for the VAT summary in wl-invoicing |
 
 **Consumes:** `wl-invoicing` (targets and allocation transitions), `wl-parties`,
@@ -791,7 +800,7 @@ belongs to wl-invoicing and calls `Gateway`.
 | Shortage recovery by salary deduction (`FIN.ACL.19`) | off (recovery in cash only) `⚠ open: lawyer (L-20)` |
 | Write-off limit for cash shortages | AED 0 (always approval) |
 | Receiving bank account per entity and method | the entity's first account |
-| Expense categories and their VAT treatment | travel, fuel, meals, tools and materials, parking and tolls, other; recoverable unless blocked: entertainment of non-employees (e.g. customer meals), vehicles available for personal use, employee personal benefits ✔ [S1] |
+| Expense categories and their VAT treatment | travel, fuel, meals, tools and materials, parking and tolls, other, owner drawings (blocked, mapped to the *Owner drawings* budget category, wl-invoicing); recoverable unless blocked: entertainment of non-employees (e.g. customer meals), vehicles available for personal use, employee personal benefits ✔ [S1] |
 | Receipt photo required above | AED 0 (always) |
 | Claim window (days after the expense date) | 30 |
 | Expense approval limits per role | line manager: AED 2,000; above: finance manager |

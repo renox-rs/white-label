@@ -30,7 +30,7 @@ X-13, X-17, X-19 and X-20.
 | BL-CLN-12 | Block bookings and alert the owner when a practitioner licence expires (`CLN.RUL.01`) | high | s | Launch 05 | BL-HRM-01; BL-DOC-05; BL-SCH-07; BL-KRN-08 |
 | BL-CLN-13 | Record the lot of every consumable issued to a visit | high | s | Launch 05 | Base: wl-inventory Lot and stock movements; BL-STK-11; BL-STK-18 |
 | BL-CLN-14 | Trace a recalled lot to patients and send neutral notices | high | m | Launch 05 | BL-CLN-13; BL-STK-14; BL-STK-15; BL-STK-16; BL-NTF-02 |
-| BL-CLN-15 | 05: configure shared negative-flow settings (bookings, licences, alerts, connections, messages) | high | m | Launch 05 | BL-SCH-01 to BL-SCH-10; BL-DOC-01; BL-DOC-06; BL-KRN-05; BL-KRN-08; BL-NTF-01; BL-SAL-19; BL-SAL-20; BL-SAL-21; BL-SAL-22; BL-SAL-23; BL-SAL-24; BL-SAL-25; BL-NTF-07; BL-NTF-08; BL-HRM-26; BL-HRM-27; BL-HRM-28; BL-DOC-08; BL-DOC-09; BL-DOC-10 |
+| BL-CLN-15 | 05: configure shared negative-flow settings (bookings, licences, alerts, connections, messages) | high | m | Launch 05 | BL-SCH-01 to BL-SCH-10; BL-DOC-01; BL-DOC-06; BL-KRN-05; BL-KRN-08; BL-NTF-01; BL-SAL-19; BL-SAL-20; BL-SAL-21; BL-SAL-22; BL-SAL-23; BL-SAL-24; BL-SAL-25; BL-SAL-26; BL-NTF-07; BL-NTF-08; BL-NTF-09; BL-HRM-26; BL-HRM-27; BL-HRM-28; BL-DOC-08; BL-DOC-09; BL-DOC-10 |
 | BL-CLN-16 | 05: configure shared negative-flow settings (money and stock) | high | m | Launch 05 | BL-INV-04; BL-INV-05; BL-INV-18; BL-PAY-02 to BL-PAY-07; BL-PAY-17; BL-SAL-16; BL-STK-11 to BL-STK-20; BL-INV-25; BL-INV-26; BL-INV-27; BL-INV-28; BL-INV-29; BL-INV-30; BL-PAY-25; BL-PAY-26 |
 
 ---
@@ -1147,7 +1147,7 @@ Recall opening, holds and decisions (BL-STK-14, BL-STK-12, BL-STK-16); authority
 ### BL-CLN-15 — 05 Clinics: configure shared negative-flow settings (bookings, licences, alerts, connections, messages)
 
 **Labels:** `vertical:05-clinics` `area:negative-flow` `priority:high` `size:m` `blocked:open-item` · **Milestone:** Launch 05 · **Size:** m
-**Depends on:** BL-SCH-01 to BL-SCH-10 · BL-DOC-01 · BL-DOC-06 · BL-KRN-05 · BL-KRN-08 · BL-NTF-01 · BL-NTF-02 · BL-SAL-19 · BL-SAL-20 · BL-SAL-21 · BL-SAL-22 · BL-SAL-23 · BL-SAL-24 · BL-SAL-25 · BL-NTF-07 · BL-NTF-08 · BL-HRM-26 · BL-HRM-27 · BL-HRM-28 · BL-DOC-08 · BL-DOC-09 · BL-DOC-10 · **Blocks:** None.
+**Depends on:** BL-SCH-01 to BL-SCH-10 · BL-DOC-01 · BL-DOC-06 · BL-KRN-05 · BL-KRN-08 · BL-NTF-01 · BL-NTF-02 · BL-SAL-19 · BL-SAL-20 · BL-SAL-21 · BL-SAL-22 · BL-SAL-23 · BL-SAL-24 · BL-SAL-25 · BL-SAL-26 · BL-NTF-07 · BL-NTF-08 · BL-NTF-09 · BL-HRM-26 · BL-HRM-27 · BL-HRM-28 · BL-DOC-08 · BL-DOC-09 · BL-DOC-10 · **Blocks:** None.
 **Review items:** X-13, X-17, X-19, X-20, 05-N8-a, 05 MEDIUM "practitioner sick on the day", "clinic-side cancellation and deposit refund"
 
 #### Goal
@@ -1203,12 +1203,12 @@ services keep the advertising permit guard (`CLN.ACL.13`).
 | Responsible role per document kind (wl-documents §5.2) | practitioner licence and branch privileges: clinic manager of the branch; facility licence: owner / medical director; patient Emirates ID and insurance card: receptionist, with the patient (or guardian) notified as the party | §7.2 settings |
 | Notification types and groups (wl-notify §5.4) | `clinic.card_upload_request`: *Portal invitations, document requests*, task to the receptionist; `clinic.recall_invite` and `clinic.prior_auth_denied`: *Booking confirmations and reminders*; `clinic.product_recall_notice`: no group, urgent (call task for the front desk); dependants: other guardian first | §7.2 |
 | Lead sources used (`SAL.CRM.02`) | referral, walk-in, website, social, paid ads, aggregator (booking platforms), partner (insurers, corporates), event, other; on leads and patients; a source is required, and a campaign is required for *paid ads* and *social* | §5; §7.2 settings |
-| Campaign channels (`SAL.CRM.02`, `SAL.ACL.07`, `CLN.ACL.13`) | Instagram, TikTok, search ads, SMS, WhatsApp, email; converted value: the patient's first paid visit; a cost entry that takes a campaign over its budget needs a manager (`SAL.ACL.07`: on); a campaign that promotes services needs the advertising permit before it is activated (`CLN.ACL.13`); whether campaign content needs health authority approval beyond the permit is outside the platform (`⚠ open: lawyer (L-38)`) | §5; §7.2 settings |
+| Campaign channels (`SAL.CRM.02`, `SAL.ACL.07`, `CLN.ACL.13`) | Instagram, TikTok, search ads, SMS, WhatsApp, email; converted value: the patient's first paid visit; a cost entry that takes a campaign over its budget needs a manager (`SAL.ACL.07`: on); a campaign that promotes services needs the advertising permit before it is activated and before a retention broadcast starts (`CLN.ACL.13`, `NTF.ACL.04`), and is ended by the system on the day the permit's validity ends; whether campaign content needs health authority approval beyond the permit is outside the platform (`⚠ open: lawyer (L-38)`) | §5; §7.2 settings |
 | Loyalty earn and redeem (`SAL.LOY.01`, `SAL.RUL.07`) | `SAL.RUL.07` earns 1 point per AED 10 paid by the patient for self-pay services and products; none on the insurer's share or on package sessions; 100 points = an AED 10 discount line on a later self-pay invoice, confirmed by a one-time code to the patient (whether health authority rules limit rewards on medical services: `⚠ open: lawyer (L-38)`; VAT on the discounted supply: `⚠ open: accountant (A-15)`) | §5; §7.2 settings |
 | Loyalty expiry, segments and retention campaigns (`SAL.LOY.01`, `SAL.RUL.08`, `SAL.ACL.07`, `NTF.RUL.02`, `NTF.ACL.03`) | points expire 12 months after they are earned, reminder 30 days before (`SAL.RUL.08`); a manual adjustment above 500 points needs a manager (`SAL.ACL.07`); segments: no visit in 6 months, package with sessions left and no booking in 30 days, birthday month (segment rules on clinical services off: visit dates, spend and non-clinical items only); campaigns only to patients with marketing consent (`NTF.ACL.01`), with opt-out and the advertising permit (`CLN.ACL.13`); sent 07:00–21:00, at most 2 marketing messages per patient in 7 days (`NTF.RUL.02`); a broadcast to more than 200 patients needs a second approver (`NTF.ACL.03`) | §5; §7.2 settings |
-| Onboarding checklists (`HRM.ONB.01`, `HRM.RUL.16`, `HRM.RUL.17`, `HRM.ACL.10`) | templates for receptionist, call-centre agent, nurse / assistant, practitioner, billing coordinator and storekeeper, started by `HRM.RUL.16` when an employee record (`HRM.EMP.01`) is created; checklist steps use `WRK.CHK.01` (photos and signature); tasks to the clinic manager, the line manager and the employee; the employee's own steps recorded only by them (`HRM.ACL.10`); `HRM.RUL.17` reminds overdue steps every 2 days and tells the clinic manager and the line manager after 5 days; completion blocks nothing (bookings stay guarded by licences, `SCH.ACL.04`) | §5; §7.2 settings |
-| SOP library (`HRM.ONB.01`, `DOC.RUL.04`, `HRM.ACL.10`) | SOP owners: clinic manager (front desk, billing, complaints) and owner / medical director (infection control and clinical SOPs); required readers by role per branch; `DOC.RUL.04` asks each reader to acknowledge within 7 days, reminds every 3 days and tells the manager and the owner role after 7 days; acknowledged only by the reader (`HRM.ACL.10`); a new version asks for a new acknowledgement | §5; §7.2 settings |
-| Registration and certification kinds (`DOC.EXP.01`, `DOC.RUL.01`) | *Trademark registration* and *Other certification* (subject: legal entity); responsible role owner / medical director; `DOC.RUL.01` at 90, 30 and 7 days; no `blocks` | §5; §7.2 settings |
+| Onboarding checklists (`HRM.ONB.01`, `HRM.RUL.16`, `HRM.RUL.17`, `HRM.ACL.10`) | templates for receptionist, call-centre agent, nurse / assistant, practitioner, billing coordinator and storekeeper, started by `HRM.RUL.16` when the employee record (`HRM.EMP.01`) is created in `onboarding` (none for a record created directly `active`, e.g. by a data import); checklist steps use `WRK.CHK.01` (photos and signature); tasks to the clinic manager, the line manager and the employee; the employee's own steps recorded only by them (`HRM.ACL.10`); `HRM.RUL.17` reminds the assignees of an overdue step on the first run after its due date, then every 2 days, and tells the clinic manager and the line manager after 5 days; completion blocks nothing (bookings stay guarded by licences, `SCH.ACL.04`) | §5; §7.2 settings |
+| SOP library (`HRM.ONB.01`, `DOC.RUL.04`, `HRM.ACL.10`) | SOP owners: clinic manager (front desk, billing, complaints) and owner / medical director (infection control and clinical SOPs); required readers by role per branch; `DOC.RUL.04` asks each reader to acknowledge within 7 days, reminds every 3 days and tells the reader's manager and the SOP's owner role (the SOP owner named above) after 7 days overdue; acknowledged only by the reader (`HRM.ACL.10`); a new version asks for a new acknowledgement | §5; §7.2 settings |
+| Registration and certification kinds (`DOC.EXP.01`, `DOC.RUL.01`) | *Trademark registration* and *Other certification* (subject: legal entity); responsible role owner / medical director; `DOC.RUL.01` at 180, 90 and 30 days for trademarks and 90, 30 and 7 days for the others; no `blocks` | §5; §7.2 settings |
 
 #### Edge cases decided
 - **Loyalty VAT:** a redeemed points discount reduces the VAT of the discounted supply only
@@ -1261,7 +1261,8 @@ services keep the advertising permit guard (`CLN.ACL.13`).
         cost entries reports leads, conversion, cost per lead, CAC and ROAS; a lead with source
         *paid ads* and no campaign is refused; a cost entry over the budget waits for a manager
         (`SAL.ACL.07`); a campaign promoting services without a permit number cannot be
-        activated (`CLN.ACL.13`).
+        activated (`CLN.ACL.13`); one whose permit is valid to 2026-12-31 is ended on that day,
+        and its retention broadcast scheduled for 2027-01-02 is cancelled (`NTF.ACL.04`).
   - [ ] a self-pay invoice of AED 200 paid by the patient earns 20 points and the insurer's share
         earns none; redeeming 100 points adds an AED 10 discount line; points earned on 2026-11-01
         expire on 2027-11-01 with a reminder on 2027-10-02 (`SAL.RUL.08`); an adjustment of 600
@@ -1271,9 +1272,10 @@ services keep the advertising permit guard (`CLN.ACL.13`).
         approver (`NTF.ACL.03`); a segment cannot use a clinical service as a rule.
   - [ ] hiring a receptionist creates the receptionist checklist with tasks to the clinic manager,
         the line manager and the employee, and the role is active before it is complete; a step
-        open 2 days past its due date reminds its assignee (`HRM.RUL.17`); a new version of an
-        SOP owned by the clinic manager asks every required reader to acknowledge again within 7
-        days (`DOC.RUL.04`), and no one else can acknowledge for them (`HRM.ACL.10`).
+        still open on the first run after its due date reminds its assignees, and again 2 days later
+        (`HRM.RUL.17`); a new version of an SOP owned by the clinic manager asks every required
+        reader to acknowledge again within 7 days (`DOC.RUL.04`), and no one else can acknowledge
+        for them (`HRM.ACL.10`).
   - [ ] a fresh 05 deployment lists *Trademark registration* and *Other certification* with
         responsible role owner / medical director; a trademark registration expiring in 90 days
         notifies the owner / medical director.
@@ -1338,8 +1340,8 @@ company budget with owner drawings (`FIN.BUD.01`), added on 2026-10-16: `FIN.RUL
 | Recall owner | owner / medical director; notices sent by the clinic manager | §7.2 settings |
 | Recall notice template | *patient* (BL-CLN-14) | §4.6 |
 | Cash-flow forecast alert (`FIN.CFL.01`, `FIN.RUL.23`) | projected balance below AED 50,000 in any of the next 13 weeks (weeks start Monday): `FIN.RUL.23` alerts the owner / medical director and the accountant, checked daily at 06:00; insurer remittances by claim due date, adjusted by each payer's average days late: on; disputed amounts counted: off | §5; §7.2 settings |
-| Budget categories and approval (`FIN.BUD.01`, `FIN.RUL.24`) | categories owned by the accountant and mapped to the export accounts; one budget per legal entity and month, branches as categories where wanted; approved by the owner / medical director; `FIN.RUL.24` warns the category's owner role and the accountant when a month's actual reaches 100% of its line | §5; §7.2 settings |
-| Owner drawings (`FIN.BUD.01`, `FIN.ACL.21`) | expense category and payment purpose *owner drawings*, kept out of operating cost and profit; every drawing (AED 0) approved by the owner / medical director, never by the requester (`FIN.ACL.21`) | §5; §7.2 settings |
+| Budget categories and approval (`FIN.BUD.01`, `FIN.RUL.24`) | categories owned by the accountant and mapped to the export accounts; one budget per legal entity and fiscal year, by month (budget lines have no branch; the seed has no branch categories, and a client who wants branch lines has the accountant map branch-specific export accounts to categories of their own); approved by the owner / medical director; `FIN.RUL.24` warns the category's owner role and the accountant when a month's actual reaches 100% of its line | §5; §7.2 settings |
+| Owner drawings (`FIN.BUD.01`, `FIN.ACL.21`) | expense category and payment purpose *owner drawings*, kept out of operating cost and profit; every drawing approved, whatever its amount (`FIN.ACL.21` limit AED 0), by the owner / medical director, never by the requester (`FIN.ACL.21`) | §5; §7.2 settings |
 
 #### Edge cases decided
 - **Handover unit:** one handover per receptionist, branch and day (Asia/Dubai); a receptionist

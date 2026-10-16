@@ -79,11 +79,11 @@ the budget lines of a cost object in `FIN.CST.01` (job costing).
 | Payer bill | What one payer is asked to pay for one source | number, issuing entity, payer, payer agreement, source (`Subject`: clinic claim, insurance claim), payer split, customer, VAT recipient, tax document (the payer's tax invoice when the payer is the recipient; otherwise the customer's tax invoice that carries the payer share), lines (claimed, paid, denied, recouped, written off, transferred), resubmission count, submission errors (codes, messages, date; kept per attempt), balance, status |
 | Remittance advice | A payer's statement of what it paid per line | payer, date, reference (unique per payer; an import with a reference already recorded is refused), total, payment (wl-payments), file (when imported), lines (payer bill line, paid, denied, adjustment, recoupment of an earlier bill's line, overpayment, denial or recoupment code and reason) |
 | Payer credit balance | Money a payer has paid beyond what it owes; the amount sits in the payer's party credit balance in wl-payments, and the movements are recorded here | payer, entity, amount, movements (overpayment in, recoupment set off, refund to the payer through wl-payments), approval per movement |
-| Budget category | A line of the company budget and of the budget vs actual report (`FIN.BUD.01`) | code, names EN/AR, kind (`income`, `expense`, `owner_drawings`), parent (optional, for subtotals), mapping (charge types and catalogue item groups for income; cost codes, wl-payments expense categories and payroll for expense; ledger export accounts of `FIN.EXT.01`), owner role (receives `FIN.RUL.24`), active |
-| Company budget | One version of the budget of one legal entity for one fiscal year (`FIN.BUD.01`) | entity, fiscal year (12 months from the start month in §7), version, name, prepared by, submitted at, approved by and at (`PLT.APR.01`), supersedes (the earlier approved version), revision reason, lines, status |
+| Budget category | A line of the company budget and of the budget vs actual report (`FIN.BUD.01`) | code, names EN/AR, kind (`income`, `expense`, `owner_drawings`), parent (optional, for subtotals), mapping (charge types and catalogue item groups for income; cost codes, wl-payments expense categories and payroll for expense; ledger export accounts of `FIN.EXT.01`; each mapping key belongs to at most one category, checked on save), owner role (receives `FIN.RUL.24`; none: the finance manager only), owner party (kind `owner_drawings` only, required: the owner or partner whose drawings it records), active. The kind cannot be changed once the category has a budget line or an actual; a new category is created instead |
+| Company budget | One version of the budget of one legal entity for one fiscal year (`FIN.BUD.01`) | entity, fiscal year (12 months from the start month in §7), version, name, prepared by, submitted at, approved by and at (`PLT.APR.01`), supersedes (the earlier approved version), revision reason, return or discard reason, lines, status |
 | Company budget line | Budgeted amount for one category and month | budget, category, month, amount (AED, without VAT), note, locked (a month that had ended when the version was created) |
-| Opening cash balance | A balance entered by hand for a bank account, used by the cash-flow forecast when no newer statement balance exists (`FIN.CFL.01`) | entity, bank account (wl-payments), amount, as of date, entered by, note |
-| Cash-flow forecast | A read-only projection, computed when opened and by `FIN.RUL.23`; not stored | entity (or all entities), as of date, weeks (13 weekly buckets), opening balance per bank account with its source and date, lines (source, document, party, category, expected date, amount in or out), projected closing balance per week, warnings (bank account without a balance, unpriced currency) |
+| Opening cash balance | A balance entered by hand for a bank account, used by the cash-flow forecast when no newer statement balance exists (`FIN.CFL.01`) | entity, bank account (wl-payments), amount, as of date (today or earlier, never in the future), entered by and at, note, voided (by, at, reason). Never edited: a wrong balance is voided with a reason, or replaced by a newer one; voided balances stay in the history and are never used |
+| Cash-flow forecast | A read-only projection, computed when opened and by `FIN.RUL.23`; not stored | entity (or all entities), as of date, weeks (13 weekly buckets), opening balance per bank account with its source and date, lines (source, document, party, category, expected date, amount in or out), projected closing balance per week, memo lines (disputed amounts, bounced or legal-case cheques, receivables of blocked parties, supplier bills held as possible duplicates; shown, not counted), warnings (bank account without a balance, balance older than the stale limit in §7, unpriced currency, no payroll history, months of the horizon without an approved budget) |
 
 **Invoice owner.** The user who ran the invoice's `issue` is its owner and receives the
 tasks and notices this module addresses to "the invoice owner" (disputes, e-invoice
@@ -129,15 +129,23 @@ Each line may add a minimum charge and surcharges. A COD fee is a surcharge as a
 collected amount with a minimum. A usage record without a matching line is flagged
 (`UsageUnpriced`). A vertical can add a model through `UsagePricer`.
 
-**Owner drawings** (`FIN.BUD.01`): money or goods the owner takes out of the business for
-personal use. They are recorded in the budget category of kind `owner_drawings` (seeded as
-*Owner drawings*, one per client; more may be added, e.g. per partner): an outgoing payment
-in wl-payments with purpose *owner drawings*, or a supplier bill line or expense line coded to
-that category (a personal bill paid by the company). Every drawing needs approval
-(`FIN.ACL.21`). Drawings are never operating cost: they post no cost to cost objects
-(`CostPoster` refuses them), are left out of operating cost and profit in every report (budget
-vs actual, job costing, vertical margin reports), and are shown on their own line below the
-operating result. Their tax treatment is the accountant's (§10).
+**Owner drawings** (`FIN.BUD.01`): money the owner takes out of the business for personal
+use. They are recorded in a budget category of kind `owner_drawings` (seeded as *Owner
+drawings*, one per client; more may be added, e.g. one per partner, each with its owner
+party): an outgoing payment in wl-payments with purpose *owner drawings* and that category,
+paid to the category's owner party (also from an outgoing bank statement line, wl-payments
+§5.7); or a supplier bill line coded to that category, or an expense line in the wl-payments
+expense category mapped to it (a personal bill paid by the company). Every drawing needs
+approval (`FIN.ACL.21`, with the sole-owner case in `FIN.ACL.23`). An incoming payment from
+the owner party with purpose *owner drawings* is a repayment: it reduces the drawings of its
+month and needs no approval. Drawings are never operating cost: they post no cost to cost
+objects (`CostPoster` refuses them), are left out of operating cost and profit in every
+report (budget vs actual, job costing, vertical margin reports), and are shown on their own
+line below the operating result. Only the totals are shown to users without
+`drawings.approve`; the lines, payees and notes are hidden (`FIN.ACL.22`). Goods or services
+of the business taken by the owner (stock, a service done for the owner) are not recorded as
+drawings in the MVP; the accountant records them in the accounting software (A-16). Their tax
+treatment is the accountant's (§10).
 
 **Third-party payer billing** (`FIN.TPP.01`): one billable source (a clinic visit, an
 insurance repair) is split between the customer and a payer. The vertical computes the
@@ -606,13 +614,15 @@ approved one stays in force until the new one is approved.
 | `submitted` | info | no | Waiting for approval; not editable |
 | `approved` | success | no | The budget in force for the entity and year; used by budget vs actual and the cash-flow forecast |
 | `superseded` | neutral | yes | Replaced by a newer approved version; kept for comparison |
+| `discarded` | neutral | yes | A draft given up; kept for the history, used by nothing |
 
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
-| `create` | — | draft | `budgets.manage` | entity and fiscal year set; for a revision, an `approved` version of the same entity and year exists and no other version is `draft` or `submitted` | a revision copies the approved version's lines, version + 1, and locks the lines of months already ended (editable only when §7 allows revising past months, with a revision reason); a first version may copy last year's actual or budget as a start |
+| `create` | — | draft | `budgets.manage` | entity and fiscal year set; for a revision, an `approved` version of the same entity and year exists and no other version is `draft` or `submitted` | a revision copies the approved version's lines, version + 1, and locks the lines of months already ended (editable only when §7 allows revising past months, with a revision reason); a first version starts, as the creating user chooses once at `create`, empty or as a copy of last year's approved budget or of last year's actual per category and month |
 | `submit` | draft | submitted | `budgets.manage` | at least one line; every line has an active category and a month in the fiscal year; revision reason given for a revision | approval request (`PLT.APR.01`) to the holders of `budgets.approve` |
-| `return` | submitted | draft | `budgets.approve` | reason given | preparer notified with the reason |
-| `approve` | submitted | approved | `budgets.approve` (final step of the approval request) | — | the earlier `approved` version of the entity and year runs `supersede`; budget vs actual and the cash-flow forecast use this version from now; event `CompanyBudgetApproved` |
+| `return` | submitted | draft | `budgets.approve`, or system (the approval request is `rejected`, `returned`, `withdrawn`, `expired` or `failed`, wl-kernel §4.1) | reason given (the approver's comment, or the kernel's fixed reason) | preparer notified with the reason |
+| `discard` | draft | discarded | `budgets.manage` | reason given | the entity and year are free for a new version; an `approved` version stays in force |
+| `approve` | submitted | approved | `budgets.approve` (final step of the approval request) | approver ≠ the user who submitted the version (`SOD`, wl-kernel approval request) | the earlier `approved` version of the entity and year runs `supersede`; budget vs actual and the cash-flow forecast use this version from now; event `CompanyBudgetApproved` |
 | `supersede` | approved | superseded | system (`approve` of a newer version) | — | — |
 
 ```mermaid
@@ -621,8 +631,10 @@ stateDiagram-v2
   draft --> submitted: submit
   submitted --> draft: return
   submitted --> approved: approve
+  draft --> discarded: discard
   approved --> superseded: supersede
   superseded --> [*]
+  discarded --> [*]
 ```
 
 Usage records, disbursements and cost entries have no state machine: they are either unbilled
@@ -904,40 +916,80 @@ computed, not stored.
 
 1. The owner or the accountant opens the forecast for one entity or for all entities. It is
    computed on opening (read-only) for 13 weeks ahead: week 1 is the current week, weeks run
-   Monday to Sunday, dates in Asia/Dubai, amounts in AED (foreign amounts at the latest rate
-   from `ExchangeRates`).
+   seven days from the week start day (§7; default Monday, so Monday to Sunday), dates in
+   Asia/Dubai, amounts in AED (foreign amounts at the latest rate from `ExchangeRates`).
 2. **Opening balance**, per bank account of the entity (wl-payments): the closing balance of
    the latest completed statement import (`FIN.BNK.01`) or the latest opening cash balance
-   entered by hand, whichever has the later date; then the payments recorded in that account
-   after that date are added (in) and subtracted (out). An account with neither is shown with
-   a warning and counts as zero.
+   entered by hand (not voided), whichever has the later date (a balance is as of the end of
+   its date); then the payments in that account with a payment date after that date (not on
+   it; by payment date, whenever they were recorded) are added (in) and subtracted (out),
+   and so are the payroll runs and WPS-paid final settlements confirmed paid after that date
+   (wl-hr; WPS salary payments are not wl-payments payments), from the entity's payroll
+   account (§7). An account with neither is shown with a warning and counts as zero; a
+   balance older than the stale limit (§7) is used but warned, and `FIN.RUL.25` asks the
+   accountant for a statement.
 3. **Expected receipts:** issued invoices by due date, for their balance less the disputed
    amount (shown on a memo line, not counted); payer bills by due date for their open amount
    (`FIN.TPP.01`); scheduled charges not yet invoiced by due date; active subscription cycles
    not yet invoiced by their cycle date; received post-dated cheques not yet cleared
-   (`received`, `due_for_deposit`, `deposited`) by cheque date for their open amount.
+   (`received`, `due_for_deposit`, `deposited`) by cheque date for their open amount. The
+   balance of an invoice or payer bill whose party is blocked (wl-parties §5.6) goes to a
+   memo line, not counted.
 4. **Expected payments:** approved and partially paid supplier bills by due date for their
-   balance; issued cheques not yet cleared by cheque date; approved refunds not yet paid in
-   week 1; payroll per entity and period at the WPS due date (`PayrollCalendar`, wl-hr), for
-   the net total of the period's run, or of the entity's last paid regular run while the
-   period has none.
+   balance; supplier bills `matched` or in `exception` (not yet approved) by due date, marked
+   *not yet approved*, except a bill held as a possible duplicate, which goes to a memo line;
+   issued cheques not yet cleared by cheque date; approved refunds not yet paid, and failed
+   refunds not cancelled, in week 1; payroll per entity and period at the WPS due date
+   (`PayrollCalendar`, wl-hr), for the net total of the period's regular run, or of the
+   entity's last paid regular run while the period has none, plus approved `off_cycle` and
+   `supplementary` runs not yet paid at their WPS due date and the failed lines of a
+   `partially_rejected` run in week 1; approved final settlements not yet paid (wl-hr) for
+   their unpaid net at their legal deadline (14 days after the end of the contract, wl-hr
+   `HRM.RUL.09`), or in week 1 when it has passed; VAT per entity and tax period at the
+   return due date (28th day after the period end ✔ [S1], `FIN.RUL.09`): the net payable of the
+   period's VAT summary once `prepared`, otherwise an estimate from the documents of the period
+   so far (output VAT less recoverable input VAT), marked *estimate*; a net refundable is not
+   counted as a receipt. An outgoing payment recorded with the VAT summary as its reference
+   removes the line; once the due date has passed without one, the line is dropped with the
+   warning *VAT for the period past due: check that it is paid*. **Vertical and module
+   sources:** receipts and payments contributed through `CashForecastSource` (§8), each with
+   its source, party, category, date, amount and direction, and the documents it stands for so
+   they are not counted twice (e.g. 01 owner payouts, 02 retention releases, 03 COD remittances
+   to clients, 06 aggregator payouts, 09 visa and insurance costs).
 5. **No double counting:** a charge already invoiced counts through its invoice; the part of
    an invoice or supplier bill covered by a linked cheque counts through the cheque, by cheque
-   date; a bounced cheque is not counted (its invoice's balance counts by due date).
+   date; a bounced or `legal_case` received cheque is not counted, and the balance of the
+   invoices it covered goes to the memo line *bounced cheques* until the cheque is
+   re-presented (`deposited` again), replaced or written off; for an issued cheque that
+   bounced, the supplier bill's balance counts by due date (week 1 when past).
 6. **Past dates:** an item whose expected date has passed (an overdue invoice, a late bill)
    counts in week 1. With *adjust by days late* on (§7), each party's expected receipt date is
-   its due date plus the party's average days late: the average, over its invoices paid in the
-   last 12 months, of the days from due date to full payment (at least 3 invoices, never below
-   0, whole days).
+   its due date plus the party's average days late: the average, over its invoices (for a
+   payer, its payer bills) fully paid in the last 12 months, of the days from due date to full
+   payment (at least 3 documents, never below 0, whole days).
 7. **Budget fill:** for each line of the approved company budget (`FIN.BUD.01`) in a month of
-   the horizon, the part not yet covered (budget less actual already posted in the month less
-   the items above dated in the month for the same category) is spread evenly over the
-   month's remaining days within the horizon and counted in their weeks; never below zero.
-   Each fill line names its category, so the owner sees what is planned but not yet a
-   document. Without an approved budget there is no fill, and the forecast says so.
+   the horizon, the part not yet covered is spread evenly over the month's remaining days
+   within the horizon and counted in their weeks; never below zero. Covered = actual already
+   posted in the month (§5.15 step 2) plus the items above for the same category that are not
+   yet in actual and whose actual date falls in the month: the date by which they will count
+   in actual once posted (the bill date of a bill not yet approved, the due date of a
+   scheduled charge, the cycle date of a subscription, the period of a payroll not yet paid,
+   the expected date of a `CashForecastSource` line), never the due date or the days-late
+   date of step 6; amounts without recoverable VAT, as actual. A document already in actual
+   is not subtracted again. Each fill line names its category, so the owner sees what is
+   planned but not yet a document. Fill amounts are without VAT, as budgeted. Without an
+   approved budget there is no fill, and the forecast says so; when the horizon runs into a
+   fiscal year with no approved budget yet, the months of that year have no fill and a
+   warning (`FIN.RUL.26` asks for the budget before the year starts).
 8. **Projected balance:** opening balance plus receipts less payments, week after week. Every
-   cell opens the documents behind it; the grid exports to Excel. `FIN.RUL.23` warns when a
-   week's projected balance falls below the entity's threshold.
+   cell opens the documents behind it, as far as the user may see them: payroll and final
+   settlements show one total per entity and period (the runs open only with the wl-hr payroll
+   permissions), and drawings show their total only (`FIN.ACL.22`). A user sees the entities of
+   their scope; *all entities* covers only those. The grid exports to Excel as a report export
+   marked sensitive (wl-kernel). `FIN.RUL.23` warns when a week's projected balance falls below
+   the entity's threshold; by default it leaves out the income budget fill (budgeted sales with
+   no document or contract behind them, §7), so the warning does not rest on hoped-for sales;
+   scheduled charges and subscription cycles not yet invoiced are contracted and do count.
 
 ### 5.15 Company budget and budget vs actual (`FIN.BUD.01`)
 
@@ -950,26 +1002,43 @@ computed, not stored.
    the line's charge type or catalogue item group; expense from approved supplier bill lines
    by bill date (cost code or account mapping), approved expense claim lines by expense date
    (expense category, wl-payments) and paid payroll runs by period (employer cost, wl-hr);
-   owner drawings as in §3. A line whose mapping finds no category goes to *Uncategorised*,
-   so the totals always agree with the documents.
+   owner drawings as in §3, less repayments by the owner. A line whose mapping finds no
+   category goes to *Uncategorised*, so the totals always agree with the documents; a mapping
+   key used by two categories is refused on save, so nothing is counted twice.
 3. The **budget vs actual** report shows per category and month (or year to date): budget,
    actual, variance in AED and %, marked unfavourable when income is below or expense above
-   the budget. The operating result is income less expense; owner drawings follow on their own
-   line, then the result after drawings. The report can be shown for all entities together
-   (sums only; no intercompany elimination, §11).
+   the budget; with a budget of 0 the variance % shows "—", never 0 or infinity. The
+   operating result is income less expense; owner drawings follow on their own line, then
+   the result after drawings. The report can be shown for all entities together (sums only;
+   no intercompany elimination, §11), and only for the entities of the user's scope. Without
+   `drawings.approve` the drawings line shows its total only (`FIN.ACL.22`).
 4. `FIN.RUL.24` warns the category's owner role and the finance manager when a month's actual
-   expense or drawings reach P% of the budget line.
+   expense or drawings reach P% of the budget line. It does not run for an entity and year
+   with no approved budget (the report already says so).
 
 ### 5.16 Owner drawings (`FIN.BUD.01`)
 
-1. The accountant records the drawing: an outgoing payment to the owner (a party) with purpose
-   *owner drawings* in wl-payments, or a supplier bill or expense line coded to the owner
-   drawings category.
+1. The accountant records the drawing: an outgoing payment with purpose *owner drawings* in
+   wl-payments, with the drawings category, to the category's owner party; an outgoing bank
+   statement line marked as a drawing (the owner paid with the company card or took cash at
+   an ATM, wl-payments §5.7); or a supplier bill line coded to a drawings category, or an
+   expense line in the *Owner drawings* expense category.
 2. An approval request (`PLT.APR.01`) goes to a holder of `drawings.approve` other than the
-   requester (`FIN.ACL.21`). For a payment, saving it creates the request instead of the
-   payment, and the final approval records it with the details entered (a rejection records
-   nothing); a bill or claim with a drawings line is approved only after the request.
-3. The drawing appears in the owner drawings line of budget vs actual and in the cash-flow
+   requester (`FIN.ACL.21`). For a payment or a statement line, saving it creates the request
+   instead of the payment, and the final approval records it with the details entered; a
+   rejection, withdrawal or expiry records nothing (a statement line goes back to
+   `unmatched` with the reason, and the accountant is told). A bill or claim with a drawings
+   line is approved only after the request. When the request is rejected, the bill or claim
+   stays in its state with the rejection shown; it is approved only after the drawings line
+   is removed or recoded, and the recoding and the rejection are shown to whoever approves
+   the bill or claim; a recoded line that stays a drawing needs a new request.
+3. When the requester is the entity's only active holder of `drawings.approve` (a sole owner),
+   `FIN.ACL.23` applies: the drawing is recorded without a second approver, flagged
+   *self-approved*, and the accountant role is notified.
+4. A drawing recorded in error is corrected with the payment's `reverse` (reason *entered in
+   error*) or the bill's or claim's own correction; the holders of `drawings.approve` are
+   notified. A repayment by the owner is an incoming payment with purpose *owner drawings*.
+5. The drawing appears in the owner drawings line of budget vs actual and in the cash-flow
    forecast (as a payment, or as budget fill for planned drawings), never in operating cost
    or in a cost object.
 
@@ -991,7 +1060,7 @@ computed, not stored.
 | `CostPoster` | Post or reverse committed, actual or amortised cost on a cost object (called by wl-attendance, wl-hr, wl-inventory, wl-payments and verticals); wl-inventory also posts wastage (with its reason: expired, damaged, cancelled order, discarded delivery, lost in delivery), the purchase price variance and the landed cost variance, to the cost object or to the variance account set in §7 |
 | `CostLedger` | Read budget vs committed vs actual per cost object and cost code |
 | `CompanyBudgets` | Approved company budget per entity, category and month; actual and variance (`FIN.BUD.01`); whether a budget category is owner drawings (used by wl-payments for the payment purpose and by reports that leave drawings out) |
-| `CashForecast` | Projected receipts, payments and balance per week for an entity (`FIN.CFL.01`); used by `FIN.RUL.23` and dashboards |
+| `CashForecast` | Projected receipts, payments and balance per week for an entity (`FIN.CFL.01`); used by `FIN.RUL.23` and dashboards; other modules and verticals add lines through `CashForecastSource` (§8) |
 | `Receivables` | Balance, ageing and statement per party (used by credit limits in wl-sales) |
 | `ExchangeRates` | Rate for a currency and date |
 | `VatSummary` | Output and input VAT per entity and period; locked-period check for other modules; export for the accountant |
@@ -1012,8 +1081,11 @@ for billing on delivery; `DeliveryDisputed` → system `dispute`; `DeliveryDispu
 §5.10), `wl-payments` for the cash-flow forecast and budgets (`Cheques`: open cheques by date
 and direction; `BankStatements`: latest closing balance per bank account; `PaymentRecorder`:
 payments per bank account after a date, payments with purpose owner drawings, approved refunds
-not yet paid; `Expenses`: approved claim lines by category), `wl-hr` (`PayrollCalendar`: WPS due
-date per entity and period; payroll run totals and employer cost per period, for
+not yet paid; `Expenses`: approved claim lines by category; `BankStatements`: outgoing lines
+marked as owner drawings), `wl-hr` (`PayrollCalendar`: WPS due date per entity and period;
+payroll run totals and employer cost per period, by run type, with the date each run was
+confirmed paid and the failed lines of a partly rejected run; approved final settlements not
+yet paid, with their deadline, and WPS-paid settlements with their paid date; for
 `FIN.CFL.01` and `FIN.BUD.01`),
 `wl-attendance` (`Timesheets` and `TimesheetApproved` for adjustment timesheets →
 credit note or extra usage line, §5.2), `wl-ticketing` (`ServiceContracts::coverage` for
@@ -1066,7 +1138,7 @@ claim, insurance claim).
 `einvoices.view`, `einvoices.manage`, `receivables.view`, `supplier_bills.view`,
 `supplier_bills.create`, `supplier_bills.approve`, `budgets.view`, `budgets.manage`,
 `budgets.approve`, `budget_categories.manage`, `drawings.approve`, `cashflow.view`,
-`cashflow.manage` (opening cash balances, thresholds),
+`cashflow.manage` (enter and void opening cash balances; thresholds),
 `costs.view` (subject to `FLD` rules such as `CON.ACL.07`), `exchange_rates.manage`,
 `vat.view`, `vat.prepare`, `vat.review`, `vat.lock`, `accounting.export`.
 
@@ -1083,6 +1155,8 @@ claim, insurance claim).
 | `FIN.ACL.16` | Moving a payer overpayment to the payer credit balance, or recording a payer recoupment, needs approval by a second person (a reversal from wl-payments is exempt) | `SOD`, `LIM` | any amount |
 | `FIN.ACL.17` | A supplier debit note not drafted from a dispatched return to supplier needs approval, and its creator cannot approve it | `SOD` | on |
 | `FIN.ACL.21` | An owner drawing (a wl-payments payment with purpose *owner drawings*, or a supplier bill or expense line coded to a budget category of kind `owner_drawings`) needs approval by a holder of `drawings.approve` other than the requester before the payment is recorded or the bill or claim approved | `SOD`, `LIM` | AED 0 (every drawing approved) |
+| `FIN.ACL.22` | The lines, payees and notes of owner drawings (in budget vs actual, the cash-flow forecast, payment and bill lists) are shown only to holders of `drawings.approve`; other users see the drawings totals | `FLD` | on |
+| `FIN.ACL.23` | When the requester of a drawing is the entity's only active holder of `drawings.approve`, the drawing is recorded without a second approver, flagged *self-approved* in its history and in budget vs actual, and the accountant role is notified; with the setting off, such a drawing waits until a second holder exists | `SOD` | on (sole-owner companies) |
 
 Shared rules registered from verticals ([ACCESS-CONTROL.md](../ACCESS-CONTROL.md) §9), all
 `in use`: `FIN.ACL.01` (also used by 01, 07, 08), `FIN.ACL.03` (generalises `CON.ACL.10`),
@@ -1091,7 +1165,7 @@ Shared rules registered from verticals ([ACCESS-CONTROL.md](../ACCESS-CONTROL.md
 through `costs.view`; generalises `CON.ACL.07`, `FNB.ACL.02`, `AUT.ACL.07`, `MFG.ACL.07`).
 `FIN.ACL.14` (payer write-off limit; generalises the 05 claim `write_off` guard) is `in use`.
 `FIN.ACL.09` and `FIN.ACL.10` have status `module`. `FIN.ACL.15`–`17` (added 2026-10-15)
-have status `module`. `FIN.ACL.21` (added 2026-10-16) has status `module`.
+have status `module`. `FIN.ACL.21`–`23` (added 2026-10-16) have status `module`.
 
 **Automations owned**
 
@@ -1109,13 +1183,15 @@ have status `module`. `FIN.ACL.21` (added 2026-10-16) has status `module`.
 | `FIN.RUL.15` | N days after an invoice is flagged `disputed`, then every N days | still `disputed` | notify the invoice owner; from the second time, also the finance manager | N = 14 |
 | `FIN.RUL.16` | e-invoice transmission `rejected`, or still `queued` or `submitted` H hours after `issue` | — | create a task for the invoice owner and the accountant with the error codes or the waiting time; notify the company admin, once per outage, when the ASP has been unreachable for all of the entity's transmissions (every transmission of the entity sent in the last H hours is still `queued`) | H = 24; retries at 5 min, 30 min, 2 h, 6 h after `issue`, then every 6 h until sent |
 | `FIN.RUL.17` | wl-inventory `SupplierReturnDispatched` | — | draft a supplier debit note for the returned lines at the bill's prices; when the bill has not arrived, at the PO price from the event, re-priced at the bill's prices when the bill is approved and linked; notify the accountant | on |
-| `FIN.RUL.23` | daily at T | the entity's projected closing balance (§5.14) is below its threshold in a week within the horizon | notify the finance manager and the company admin with the first week below, its balance and the largest payments of that week; event `CashForecastBelowThreshold`. Once per entity: again only when the first week below moves earlier, or after a run with no week below | T = 06:00; threshold per entity AED 0; horizon 13 weeks |
-| `FIN.RUL.24` | an actual is posted to a budget category of kind `expense` or `owner_drawings` (§5.15) | the month's actual reaches P% of the approved budget line for the entity, category and month (a category with no line counts as budget 0) | notify the category's owner role and the finance manager; event `CompanyBudgetVarianceReached`. Once per entity, category and month | P = 100 |
+| `FIN.RUL.23` | daily at T | the entity's projected closing balance (§5.14; without the income budget fill unless §7 counts it) is below its threshold in a week within the horizon | notify the recipients with the first week below, its balance, the largest payments of that week and the forecast's warnings (e.g. a stale or missing bank balance); event `CashForecastBelowThreshold`. Once per entity: again only when the first week below moves earlier, or after a run with no week below | T = 06:00; threshold per entity AED 0; horizon 13 weeks; recipients: finance manager and company admin (verticals name their roles) |
+| `FIN.RUL.24` | an actual is posted to a budget category of kind `expense` or `owner_drawings` (§5.15) | the entity has an approved budget for the year; the month's actual reaches P% of the approved budget line for the entity, category and month (a category with no line counts as budget 0) | notify the category's owner role and the finance manager; event `CompanyBudgetVarianceReached`. Once per entity, category and month | P = 100 |
+| `FIN.RUL.25` | daily at T | a bank account of the entity has no statement balance or opening cash balance, or its latest one is older than D days | task for the accountant to import a statement or enter a balance; once per account until a newer balance exists | T = 06:00; D = 7 |
+| `FIN.RUL.26` | N days before an entity's fiscal year starts | no version of the company budget for that entity and year is `approved` | notify the accountant and the finance manager; again on the first day of the year if still none | N = 30 |
 
 `FIN.RUL.03`, `FIN.RUL.04` (cheques) and `FIN.RUL.10`–`12` belong to
 [wl-payments](wl-payments.md). Registered statuses ([WORKFLOW.md](../WORKFLOW.md) §7):
 `FIN.RUL.01`, `02`, `05`, `06`, `07`, `13` are `in use`; `FIN.RUL.08` and `09` are `module`;
-`FIN.RUL.14`–`17` (added 2026-10-15) are `module`; `FIN.RUL.23` and `24` (added 2026-10-16)
+`FIN.RUL.14`–`17` (added 2026-10-15) are `module`; `FIN.RUL.23`–`26` (added 2026-10-16)
 are `module`.
 
 ## 7. Configuration per client
@@ -1156,13 +1232,16 @@ are `module`.
 | Input VAT categories blocked from recovery | entertainment for non-employees (customers, officials, owners); motor vehicles (up to 10 seats) available for personal use; goods and services given free to employees for their personal benefit, unless required by law, contract or documented policy. Fully blocked, no 50% rule ✔ [S1] |
 | Input VAT recovery rate for a partially exempt entity | 100% (no apportionment) |
 | VAT summary reviewed by a second person (`FIN.ACL.10`) | on |
-| Fiscal year start month (company budget) | January |
+| Fiscal year start month (company budget) | January; a change applies from the next fiscal year that has no budget version yet |
 | Budget categories (`FIN.BUD.01`) and their mapping | seeded: income (sales and services; other income), expense (cost of sales, salaries and staff costs, rent and utilities, marketing, transport and fuel, professional fees, bank charges, other), owner drawings; mapped from the vertical's starter charge types, cost codes and expense categories |
 | Revising past months in a new budget version | off (lines of ended months locked) |
 | Budget variance warning (`FIN.RUL.24`) | 100% of the month's line |
-| Owner drawings approval (`FIN.ACL.21`) | every drawing (AED 0) |
+| Owner drawings approval (`FIN.ACL.21`); sole owner records own drawings (`FIN.ACL.23`) | every drawing (AED 0); on |
 | Cash-flow forecast (`FIN.CFL.01`): horizon; week start; adjust receipts by each party's average days late; disputed amounts counted | 13 weeks; Monday; off; off |
-| Projected balance threshold and alert time (`FIN.RUL.23`) | AED 0 per entity; daily at 06:00 |
+| Cash-flow forecast: VAT payable counted; supplier bills not yet approved counted; payroll account per entity | on; on; the entity's default account for outgoing payments (wl-payments) |
+| Projected balance threshold, alert time, recipients and income budget fill counted (`FIN.RUL.23`) | AED 0 per entity; daily at 06:00; finance manager and company admin; off |
+| Stale bank balance limit (forecast warning and `FIN.RUL.25`) | 7 days |
+| Budget reminder before the fiscal year (`FIN.RUL.26`) | 30 days before |
 
 ## 8. Extension points
 
@@ -1179,7 +1258,10 @@ are `module`.
   `InputVatSource` (other modules contributing input VAT, implemented by wl-payments),
   `EInvoiceAdapter` (one per ASP: send, poll or receive the response, map error codes),
   `EInvoiceScope` (which documents and recipients are in the e-invoicing mandate, e.g. the
-  03 air waybill exclusion).
+  03 air waybill exclusion), `CashForecastSource` (expected receipts or payments a module or
+  vertical adds to the cash-flow forecast, with the documents each line stands for, so the
+  forecast does not count them twice; e.g. 01 owner payouts, 02 retention releases, 03 COD
+  remittances to clients, 06 aggregator payouts, 09 visa and insurance costs).
 - **Events:** all events in §6. Verticals react to `InvoicePaid` (release a hold),
   `InvoiceReopened` (re-apply it), `SubscriptionSuspended` (block a service),
   `QuotationAccepted` (create a project or order).
@@ -1305,7 +1387,11 @@ are `module`.
   corporate tax is `⚠ open: accountant (A-16)`; the platform only records and approves them and keeps
   them out of operating cost (§12 question 14). Until it is answered, input VAT on a supplier
   bill or expense line coded to owner drawings is not recovered: it is reported as blocked in
-  the VAT summary (the cautious default).
+  the VAT summary (the cautious default). Drawings records are accounting records and are kept
+  as long as the other financial records of the entity (*Retention* above); the owner's
+  personal details in them are personal data under PDPL and are shown only as `FIN.ACL.22` allows.
+- **VAT in the cash-flow forecast:** the VAT line is a projection for cash planning, not a
+  return; the return is still prepared and filed from the VAT summary (`FIN.VAT.01`).
 
 ## 11. Out of scope
 

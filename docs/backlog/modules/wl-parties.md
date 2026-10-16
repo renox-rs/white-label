@@ -28,7 +28,7 @@ identifier needed by X-04.
 ### BL-PTY-01 — wl-parties: block a party with a reason code and hide restricted reasons
 
 **Labels:** `module:wl-parties` `area:negative-flow` `priority:high` `size:m` · **Milestone:** Build 1 · **Size:** m
-**Depends on:** Base: wl-parties Party lifecycle · **Blocks:** BL-PTY-02, BL-PTY-03, BL-PTY-04, BL-PTY-05, BL-PTY-06, BL-POR-01, BL-ACC-07, BL-ACC-23, BL-EDU-04, BL-LOG-19, BL-MPW-15
+**Depends on:** Base: wl-parties Party lifecycle · **Blocks:** BL-PTY-02, BL-PTY-03, BL-PTY-04, BL-PTY-05, BL-PTY-06, BL-POR-01, BL-ACC-07, BL-ACC-23, BL-EDU-04, BL-LOG-19, BL-MPW-15, BL-STK-30
 **Review items:** X-18, 04-N11-a
 
 #### Goal

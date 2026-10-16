@@ -11,10 +11,12 @@ recalled goods, a package whose payment is reversed, back-orders for lines witho
 duplicate customer PO numbers. It closes X-14 and the sales parts of X-03, X-05 and X-09,
 and the HIGH items 06-N3-a, 06-N4-b, 07-N2-a, 07-N3-b and 08-N3-a.
 
-BL-SAL-19 to BL-SAL-25 (label `area:sme-gap`, added 2026-10-16) build two capabilities from the
-[SME problem map](../../reviews/2026-10-16-sme-problem-map.md) §3: lead sources and campaigns
-with acquisition reports (`SAL.CRM.02`, gap G1) and loyalty with segments and retention
-campaigns (`SAL.LOY.01`, gap G4). They are not negative flows; they follow the same template.
+BL-SAL-19 to BL-SAL-26 (label `area:sme-gap`, added 2026-10-16) build two capabilities from
+the [SME problem map](../../reviews/2026-10-16-sme-problem-map.md) §3: lead sources and
+campaigns with acquisition reports (`SAL.CRM.02`, gap G1) and loyalty with segments and
+retention campaigns (`SAL.LOY.01`, gap G4). They are not negative flows; they follow the same
+template. BL-SAL-26 and the negative paths in BL-SAL-19 to BL-SAL-25 come from the gap review
+(GR-G1, GR-G4).
 
 | ID | Title | Priority | Size | Milestone | Depends on |
 |---|---|---|---|---|---|
@@ -37,12 +39,13 @@ campaigns (`SAL.LOY.01`, gap G4). They are not negative flows; they follow the s
 | BL-SAL-17 | Back-order lines without stock and serve them oldest first | medium | m | Launch 08 | Base: wl-sales Sales order lifecycle; BL-SAL-08; BL-SAL-09; BL-SAL-11; Base: wl-inventory `STK.RUL.04` and goods receipt |
 | BL-SAL-18 | Refuse a second order with the same customer PO number for a customer | medium | s | Launch 07 | Base: wl-sales Sales order lifecycle; BL-SAL-05 |
 | BL-SAL-19 | Run campaigns with a budget and cost entries | medium | m | Build 1 | Base: wl-kernel state machines and approvals; Base: wl-invoicing supplier bills |
-| BL-SAL-20 | Record the source and campaign of leads and parties and link the first sale | medium | m | Build 1 | BL-SAL-19; Base: wl-sales Lead lifecycle; Base: wl-invoicing `InvoiceIssued` |
+| BL-SAL-20 | Record the source and campaign of leads and parties and link the first sale | medium | m | Build 1 | BL-SAL-19; Base: wl-sales Lead lifecycle; Base: wl-invoicing `InvoiceIssued`; Base: wl-kernel `void` |
 | BL-SAL-21 | Report leads, conversion, cost per lead, CAC and ROAS | medium | m | Build 1 | BL-SAL-19; BL-SAL-20 |
 | BL-SAL-22 | Enrol members and earn points or visits on qualifying sales (`SAL.RUL.07`) | medium | m | Launch 05 | Base: wl-sales Counter sale, Sales order and Sales return lifecycles; Base: wl-invoicing `InvoicePaid`, `CreditNoteIssued` |
 | BL-SAL-23 | Redeem points as a discount line, confirmed by the member | medium | m | Launch 05 | BL-SAL-22; Base: `DiscountEngine`; Base: wl-notify `send_otp` |
-| BL-SAL-24 | Expire points, adjust by hand with approval and report the points liability (`SAL.RUL.08`, `SAL.ACL.07`) | medium | m | Launch 05 | BL-SAL-22; BL-SAL-23; Base: wl-kernel approvals |
-| BL-SAL-25 | Define customer segments and send retention campaigns through wl-notify | medium | m | Launch 05 | BL-SAL-19; BL-SAL-21; BL-SAL-22; BL-NTF-07; BL-NTF-08 |
+| BL-SAL-24 | Expire points, adjust by hand with approval and report the points liability (`SAL.RUL.08`, `SAL.ACL.07`) | medium | m | Launch 05 | BL-SAL-22; BL-SAL-23; Base: wl-kernel approvals; Base: wl-notify `notify` |
+| BL-SAL-25 | Define customer segments and send retention campaigns through wl-notify | medium | m | Launch 05 | BL-SAL-19; BL-SAL-21; BL-SAL-22; BL-NTF-07; BL-NTF-08; BL-NTF-09 |
+| BL-SAL-26 | Keep loyalty points through account closure, party merge and block, and programme changes | medium | m | Launch 05 | BL-SAL-22; BL-SAL-24; Base: wl-parties `PartiesMerged`, `PartyBlocked`, `BlockEffects` |
 
 ---
 
@@ -1187,7 +1190,7 @@ Duplicate external numbers per channel (BL-SAL-01); 07 settings and portal uploa
 ### BL-SAL-19 — wl-sales: run campaigns with a budget and cost entries
 
 **Labels:** `module:wl-sales` `area:sme-gap` `priority:medium` `size:m` · **Milestone:** Build 1 · **Size:** m
-**Depends on:** Base: wl-kernel state machines and approvals · Base: wl-invoicing supplier bills · **Blocks:** BL-SAL-20, BL-SAL-21, BL-SAL-25, BL-ACC-23, BL-AUT-18, BL-CLN-15, BL-CON-18, BL-EDU-17, BL-FNB-17, BL-LOG-25, BL-MFG-14, BL-MPW-20, BL-PRP-27
+**Depends on:** Base: wl-kernel state machines and approvals · Base: wl-invoicing supplier bills · **Blocks:** BL-SAL-20, BL-SAL-21, BL-SAL-25, BL-NTF-07, BL-ACC-23, BL-AUT-18, BL-CLN-15, BL-CON-18, BL-EDU-17, BL-FNB-17, BL-LOG-25, BL-MFG-14, BL-MPW-20, BL-PRP-27
 **Review items:** G1 (SME problem map 1, 2, 4)
 
 #### Goal
@@ -1198,8 +1201,9 @@ its dates or by hand. Without costs per campaign the business cannot see what a 
 costs to win (`SAL.CRM.02`).
 
 #### Files to read
-- `docs/modules/wl-sales.md` §3 *Campaign*, *Campaign cost entry*; §4.6; §5.8 steps 1–2;
-  §6 `SAL.ACL.07`; §7 rows on campaigns
+- `docs/modules/wl-sales.md` §3 *Campaign*, *Campaign cost entry*; §4.6 and the text after
+  it; §5.8 steps 1–2; §6 `SAL.ACL.07`, `SAL.RUL.10`, consumed `SupplierBillApproved`; §7 rows
+  on campaigns
 - `docs/modules/wl-invoicing.md` §3 supplier bill (only the line fields)
 
 #### Terms
@@ -1210,13 +1214,14 @@ costs to win (`SAL.CRM.02`).
 - **Purpose:** `acquisition` (win new customers) or `retention` (message existing ones,
   BL-SAL-25).
 - `SAL.ACL.07`: shared access rule; here only its budget part.
+- `SAL.RUL.10`: budget alert to the campaign owner.
 
 #### Spec excerpt (authoritative for this issue)
 
 | Entity | Description | Important fields |
 |---|---|---|
-| Campaign | A paid or unpaid marketing action with a period (`SAL.CRM.02`), or a message to a segment (`SAL.LOY.01`) | name, code (unique; used in web form links and linked promo codes), purpose (`acquisition`, `retention`), marketing channel (Google, Meta, TikTok, other online, print, radio or outdoor, event, email, SMS, WhatsApp, partner, other; not the order *Channel*), lead source it implies (e.g. *paid ads*), brand, branch (optional), start, end, budget (AED), promo code (optional, `SAL.DSC.01`), retention only: segment, notification template, message channel, send time, status |
-| Campaign cost entry | Money spent on a campaign | campaign, date, amount excluding VAT, description, supplier bill line (optional, `wl-invoicing`), entered by; an entry linked to a bill takes its amount from the bill line |
+| Campaign | A paid or unpaid marketing action with a period (`SAL.CRM.02`), or a message to a segment (`SAL.LOY.01`) | name, code (unique; used in web form links and linked promo codes), purpose (`acquisition`, `retention`), marketing channel (Google, Meta, TikTok, other online, print, radio or outdoor, event, email, SMS, WhatsApp, partner, other; not the order *Channel*), lead source it implies (e.g. *paid ads*), brand, entity (default: the brand's entity), branch (optional), owner (staff; told of costs, approvals and the end), start, end, budget (AED), promo code (optional, `SAL.DSC.01`), retention only: segment, notification template, message channel, send time (between start and end), retention fields set by (the requester of the broadcast, `NTF.ACL.04`), broadcast and its status, status |
+| Campaign cost entry | Money spent on a campaign | campaign, date, amount in AED excluding recoverable VAT (a bill in another currency at the bill's exchange rate), description, supplier bill line (optional, `wl-invoicing`), entered by, approved by, status (`pending_approval`, `approved`, `rejected`, `voided`), reason (rejection or void); an entry linked to a bill takes its amount from the bill line and counts only once the bill is `approved` |
 
 | State | Tone | Terminal | Meaning |
 |---|---|---|---|
@@ -1226,21 +1231,42 @@ costs to win (`SAL.CRM.02`).
 
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
-| `activate` | draft | active | `campaigns.manage`, or system (start date reached) | name, code, purpose, marketing channel, start set; retention: segment, approved template and message channel set (`SAL.LOY.01`); the vertical's guards pass (05: `CLN.ACL.13` when the campaign promotes services) | code usable in links and the linked promo code; retention: the send is requested from `wl-notify` for the send time (§5.10); event `CampaignActivated` |
-| `end` | active | ended | `campaigns.manage`, or system (end date passed) | — | new leads stop taking the campaign after the late-response days (§7); the linked promo code expires with it; event `CampaignEnded` |
-| `reopen` | ended | active | `campaigns.manage` | new end date in the future; retention: no second send (a new campaign is created for that) | — |
+| `activate` | draft | active | `campaigns.manage`, or system (start date reached) | name, code, purpose, marketing channel, owner, start set; retention: segment, approved template, message channel and a send time between start and end set (`SAL.LOY.01`; a send time already past sends at once); the vertical's guards pass (05: `CLN.ACL.13` when the campaign promotes services) | code usable in links and the linked promo code; retention: the broadcast is requested from `wl-notify` for the send time, with the user who set the retention fields as requester (§5.10, `NTF.ACL.04`); event `CampaignActivated` |
+| `end` | active | ended | `campaigns.manage`, or system (end date passed, or a vertical guard of `activate` stops passing, e.g. 05: the advertising permit's validity ends) | — | new leads stop taking the campaign after the late-response days (§7); the linked promo code expires with it; retention: a broadcast still `pending_approval` or `scheduled` is cancelled; owner told; event `CampaignEnded` |
+| `reopen` | ended | active | `campaigns.manage` | new end date in the future; the vertical's guards of `activate` pass; retention: no second send once a broadcast completed (a new campaign is created for that) | the linked promo code is valid again to the new end date, unless its uses are used up |
 
 A draft campaign is deleted, not cancelled. Cost entries may be added in any state, because
-bills often arrive after the end; one above the remaining budget needs a manager
-(`SAL.ACL.07`). A campaign with leads, acquisitions or cost entries is never deleted.
+bills often arrive after the end. A campaign with leads, acquisitions or cost entries is never
+deleted.
+
+**Cost entries** are `approved` on save, except one that takes the approved costs over the
+budget, which is `pending_approval` until a manager other than the requester decides
+(`SAL.ACL.07`). A rejected entry becomes `rejected` with the reason, is never counted, and
+the requester and the owner are told; a returned entry goes back to the requester to edit
+and submit again (wl-kernel §4.1). Only a pending entry is edited. An entry entered in error
+is voided with a reason by `campaigns.costs.manage` (audited) and a new one entered; reports
+drop it from the period of its date. An entry linked to a supplier bill line counts only
+once the bill is `approved` (`SupplierBillApproved`); when the bill is voided, its linked
+entries are voided automatically and the owner is told; a debit note on the bill is matched
+by a negative entry entered by the accountant. While its bill is not `approved` (for example
+`matched` or `exception`), a linked entry is left out of the budget check, the alerts and every
+report; on `SupplierBillApproved` it is checked against the budget as a new entry would be
+(over budget: `pending_approval`, the user who linked it as requester). A negative entry is
+`approved` on save without a budget check and never resets an alert already sent.
+`SAL.RUL.10` tells the owner when approved costs reach 80% and 100% of the budget.
+
+| ID | When | If | Then | Parameters (default) | Generalises |
+|---|---|---|---|---|---|
+| `SAL.RUL.10` | a cost entry of a campaign is approved | approved costs reach a threshold share of the budget for the first time | notify the campaign owner | 80% and 100% | — |
 
 | ID | Rule | Pattern | Parameter (default) | Generalises |
 |---|---|---|---|---|
-| `SAL.ACL.07` | A manual points adjustment above a number of points, or closing a loyalty account that still has points, needs a manager, and the requester cannot approve; a campaign cost entry that takes the campaign over its budget needs a manager | `LIM`, `SOD` | 500 points; any budget overrun | — |
+| `SAL.ACL.07` | A manual points adjustment above a number of points, or closing a loyalty account that still has points at staff's initiative (not at the member's request or on erasure, §4.7), needs a manager, and the requester cannot approve; a campaign cost entry that takes the campaign over its budget needs a manager other than the requester | `LIM`, `SOD` | 500 points; any budget overrun | — |
 
 | Setting | Default |
 |---|---|
 | Campaign cost over budget needs a manager (`SAL.ACL.07`) | on |
+| Budget alerts to the campaign owner (`SAL.RUL.10`) | 80% and 100% |
 | Late-response days after a campaign ends (leads still attributed) | 30 |
 
 #### Edge cases decided
@@ -1248,12 +1274,29 @@ bills often arrive after the end; one above the remaining budget needs a manager
   start date stays as entered for reports.
 - **System `activate` and `end`:** run daily at 00:05 Asia/Dubai; idempotent per campaign
   and date. An end date earlier than the start date is refused on save.
-- **Cost linked to a supplier bill line:** amount taken from the line excluding VAT; one bill
-  line may be split over several campaigns, but the sum may not exceed the line. A bill line
-  later credited by a debit note does not change the entry: the accountant adjusts it by a
-  negative entry.
-- **Budget empty:** no over-budget check. **Over budget:** the entry is saved as *pending
-  approval* and counts in reports only after approval; the requester cannot approve.
+- **Cost linked to a supplier bill line:** amount taken from the line excluding recoverable
+  VAT, in AED at the bill's exchange rate; one bill line may be split over several campaigns,
+  but the sum may not exceed the line. The entry counts only once the bill is `approved`:
+  while the bill is `matched`, `exception` or any state before `approved`, the entry is in no
+  budget check, alert or total. On `SupplierBillApproved` the budget check and the alerts run
+  for it then, under the campaign lock; over budget, it becomes `pending_approval` with the
+  user who linked it as requester. A voided bill voids its linked entries (owner told).
+- **Debit note on a linked bill:** the entry does not change; the accountant enters a negative
+  entry (manual, not linked). It is `approved` on save, needs no budget check (it only lowers
+  costs), and lowering costs below 80% or 100% does not reset an alert already sent.
+- **Budget empty:** no over-budget check and no alerts. **Over budget:** the entry is saved as
+  `pending_approval` and counts in reports only after approval; the requester cannot approve.
+  Rejected: `rejected`, never counted, requester and owner told. Returned: editable, then
+  submitted again.
+- **Correction:** an `approved` entry is never edited; it is voided with a reason (audited) and
+  a new one entered. A pending entry may be edited by its requester.
+- **Concurrency:** the budget check and the alert thresholds are evaluated under a lock per
+  campaign, so two entries saved at once cannot both pass under the budget.
+- **Alerts:** each threshold once per campaign; a void that takes costs back below it does not
+  reset it.
+- **Vertical guard stops passing** (05: permit validity ends): the system runs `end` that day;
+  `reopen` needs the guard to pass again.
+- **`reopen`:** the linked promo code is valid again to the new end date unless used up.
 - **Retention guards** (segment, template) are checked here as fields only; sending is
   BL-SAL-25.
 - **Code reuse:** codes are unique for the client for ever, ended campaigns included.
@@ -1262,6 +1305,8 @@ bills often arrive after the end; one above the remaining budget needs a manager
 - Must not delete a campaign that has leads, acquisitions or cost entries.
 - Must not count a cost entry pending approval in any report.
 - Must not reuse a code of an ended campaign.
+- Must not count a cost entry linked to a bill that is not `approved`, or one that is
+  `rejected` or `voided`.
 
 #### Done when
 - [ ] Given draft campaign C1 (code `SPRING26`, Meta, 1–31 Mar 2026, budget AED 5,000), on
@@ -1274,6 +1319,22 @@ bills often arrive after the end; one above the remaining budget needs a manager
       accepted and a third of AED 1 is refused.
 - [ ] A second campaign with code `spring26` is refused.
 - [ ] Deleting C1 after a cost entry is refused; deleting a draft with nothing linked works.
+- [ ] B rejects A's pending AED 400 entry: it is `rejected`, not in any total, and A and the
+      owner are told.
+- [ ] An approved AED 1,000 entry voided with a reason disappears from the report; the void is
+      in the audit log.
+- [ ] An entry linked to a bill in `exception` is not counted; it counts when the bill is
+      approved; voiding the bill voids the entry and tells the owner.
+- [ ] Given C1 with AED 4,000 approved and an AED 2,000 entry linked to a bill in `matched`: no
+      alert and no approval yet; when the bill is approved the entry becomes `pending_approval`
+      (AED 6,000 > AED 5,000) and, once approved by B, the owner gets the 100% alert.
+- [ ] A negative entry of −AED 300 for a debit note is `approved` on save and lowers C1's
+      costs; an alert already sent is not sent again when costs rise past it once more.
+- [ ] Approved costs reaching AED 4,000 of AED 5,000 tell the owner once (80%); reaching AED
+      5,000 tells the owner again (100%).
+- [ ] Two entries of AED 300 saved at the same time on C1 with AED 4,500 of costs: one is
+      approved, the other waits for approval.
+- [ ] `reopen` of C1 to 15 Apr makes its linked promo code valid to 15 Apr again.
 
 #### Out of scope
 Attribution of leads and parties (BL-SAL-20); reports (BL-SAL-21); retention sending
@@ -1284,7 +1345,7 @@ Attribution of leads and parties (BL-SAL-20); reports (BL-SAL-21); retention sen
 ### BL-SAL-20 — wl-sales: record the source and campaign of leads and parties and link the first sale
 
 **Labels:** `module:wl-sales` `area:sme-gap` `priority:medium` `size:m` · **Milestone:** Build 1 · **Size:** m
-**Depends on:** BL-SAL-19 · Base: wl-sales Lead lifecycle · Base: wl-invoicing Invoice lifecycle (`InvoiceIssued`) · **Blocks:** BL-SAL-21, BL-ACC-23, BL-AUT-18, BL-CLN-15, BL-CON-18, BL-EDU-17, BL-FNB-17, BL-LOG-25, BL-MFG-14, BL-MPW-20, BL-PRP-27
+**Depends on:** BL-SAL-19 · Base: wl-sales Lead lifecycle · Base: wl-invoicing Invoice lifecycle (`InvoiceIssued`) · Base: wl-parties merge (`PartiesMerged`) · Base: wl-kernel `void` (§5.12) · **Blocks:** BL-SAL-21, BL-ACC-23, BL-AUT-18, BL-CLN-15, BL-CON-18, BL-EDU-17, BL-FNB-17, BL-LOG-25, BL-MFG-14, BL-MPW-20, BL-PRP-27
 **Review items:** G1 (SME problem map 1, 2, 4)
 
 #### Goal
@@ -1295,8 +1356,10 @@ or without leads (a counter business has no pipeline).
 
 #### Files to read
 - `docs/modules/wl-sales.md` §3 *Lead*, *Lead source*, *Party acquisition* and the
-  paragraph after the entity table; §4.1 row `win` and *Vertical mapping*; §5.1; §5.8
-  steps 3–4; §6 `CampaignAttribution`, `CustomerAcquired`; §7 rows on campaigns
+  paragraph after the entity table; §4.1 rows `win`, `revert_win`, the text after the
+  diagram and *Vertical mapping*; §5.1; §5.8 steps 3–4; §6 `CampaignAttribution`,
+  `CustomerAcquired`, `CustomerAcquisitionChanged`, `LeadWinReverted`, `SAL.ACL.09`,
+  consumed `PartiesMerged`; §7 rows on campaigns; §10 *Erasure*
 
 #### Terms
 - **Party acquisition:** one record per party saying how it became a customer.
@@ -1311,19 +1374,26 @@ or without leads (a counter business has no pipeline).
 
 | Entity | Description | Important fields |
 |---|---|---|
-| Lead | An enquiry not yet converted | party (may be a new, unverified party), source (from the lead source list), campaign (optional; set from the campaign code of a web form link or promo code, or by staff), interest (catalogue items or free text), owner (staff), next action date, lost reason, converted subject, status |
+| Lead | An enquiry not yet converted | party (may be a new, unverified party), source (from the lead source list), campaign (optional; set from the campaign code of a web form link or promo code, or by staff), branch (the campaign's branch, else the web form's branch, else the owner's branch; its entity is the lead's entity in reports), interest (catalogue items or free text), owner (staff), next action date, lost reason, converted subject, status |
 | Lead source | Where a lead or a customer came from (`SAL.CRM.02`) | code, name EN/AR, active. Seeded: referral, walk-in, website, social, paid ads, aggregator, event, partner, other; the client may add more but not delete a source in use |
-| Party acquisition | How a party became a customer, kept per party (`SAL.CRM.02`) | party, source, campaign (optional), set from (lead, staff, web form, promo code), first sale (`Subject`: the first confirmed sales order, completed counter sale, issued invoice, or the vertical's conversion record such as a lease, enrolment or engagement), first sale date, first sale value (excluding VAT), acquired at |
+| Party acquisition | How a party became a customer, kept per party (`SAL.CRM.02`) | party, source, campaign (optional), set from (lead, staff, web form, promo code), first sale (`Subject`: the first confirmed sales order, completed counter sale, issued invoice, or the vertical's conversion record such as a lease, enrolment or engagement), first sale date, first sale value (excluding VAT, net of credit notes), branch (of the first sale, else of the converting lead; its entity is the acquisition's entity in reports), acquired at, change history (source or campaign changed, with reason and approver, `SAL.ACL.09`), superseded by (after a party merge) |
 
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
 | `win` | contacted, qualified | won | system (conversion event) | — | converted `Subject` and source recorded; the party acquisition takes the lead's source and campaign when the party has none yet; event `LeadWon` |
+| `revert_win` | won | qualified | system (the converted `Subject` is voided as entered in error) | — | converted `Subject` cleared; a party acquisition set from this lead with no other first sale is cleared (`CustomerAcquisitionChanged`); owner told; event `LeadWinReverted` |
+
+A conversion record that is cancelled for a business reason after the lead was won (the
+customer backs out of an accepted quotation, a lease ends early) leaves the lead `won`: it
+did convert. Only a `void` (entered in error, wl-kernel §5.12) runs `revert_win`.
 
 The source and campaign of a party live in its *party acquisition* record here, not on the
 `wl-parties` record, so that a party bought by several brands of the client keeps one record
 per client and the attribution stays in the module that reports on it. Source is required
 when a party gets its first sale (staff pick it; a web form or a promo code sets it); a party
-created before `SAL.CRM.02` was turned on is shown as *unknown*.
+created before `SAL.CRM.02` was turned on is shown as *unknown*. When two parties are merged
+(`PartiesMerged`), the survivor keeps the acquisition acquired first; the other is kept as
+history (*superseded by*), so the customer is counted once.
 
 §5.8 steps 3–4:
 
@@ -1331,34 +1401,66 @@ created before `SAL.CRM.02` was turned on is shown as *unknown*.
    single and first-touch: the campaign of the lead that converted the party, otherwise the
    campaign set on the party acquisition (by staff, a form or the promo code of the first
    sale). A lead that arrives with the code after the campaign ended is still attributed
-   during the late-response days (§7), then gets the source only.
+   during the late-response days (§7), then gets the source only. A web form lead for a party
+   that already has an open lead on the same campaign is added to that lead as a note, not
+   counted again; leads closed as `lost` with the reason *duplicate* or *spam or invalid* are
+   left out of every lead count. Changing the source or campaign of an acquisition that has
+   a first sale, or of a won lead, needs a reason and a second person (`SAL.ACL.09`).
 4. The first sale of the party is linked when it happens (first confirmed sales order,
    completed counter sale, issued invoice, or the vertical's conversion record). Its value
-   excluding VAT is the *converted value*; with the setting *attribution window*, the value
-   is the party's sales in the first N months instead.
+   excluding VAT and net of credit notes on it is the *converted value*; with the setting
+   *attribution window*, the value is the party's sales in the first N months instead, net of
+   credit notes. When the first sale is voided, cancelled or credited in full, the nightly run
+   links the party's next sale as the first sale (the acquired date stays); with none, the
+   first sale is cleared and the party is not a new customer until it buys.
+   `CustomerAcquisitionChanged` is emitted; reports are recomputed, never stored.
+
+| ID | Rule | Pattern | Parameter (default) | Generalises |
+|---|---|---|---|---|
+| `SAL.ACL.09` | Changing the source or campaign of a party acquisition that has a first sale, or of a won lead, needs a reason and approval by another holder of `campaigns.manage`; the change is audited and shown on the exceptions report | `STA`, `SOD` | on | — |
 
 | Setting | Default |
 |---|---|
-| Lead sources, lost reasons, qualification fields | seeded sources (§3 *Lead source*); lost reasons and qualification fields per vertical starter list |
+| Lead sources, lost reasons, qualification fields | seeded sources (§3 *Lead source*); lost reasons and qualification fields per vertical starter list, always with *duplicate* and *spam or invalid* (left out of lead counts, §5.8) |
 | Campaign required for sources (`SAL.CRM.02`) | none (05: *paid ads*, *social*) |
 | Late-response days after a campaign ends (leads still attributed) | 30 |
 | Attribution window for the converted value | first sale only (alternative: sales in the first N months, N = 12) |
+| Changing the attribution of an acquired party or a won lead needs a second person (`SAL.ACL.09`) | on |
 
 #### Edge cases decided
 - **Order of the first sale:** the earliest by document date; on a tie, the one recorded
-  first. A first sale later cancelled or credited in full is replaced by the next one at the
-  next nightly run; the acquisition date stays the first.
+  first. A first sale later voided, cancelled or credited in full is replaced by the next one
+  at the next nightly run; the acquisition date stays the first; with no other sale the first
+  sale is cleared. A partial credit note lowers the converted value. Each change emits
+  `CustomerAcquisitionChanged`; `CustomerAcquired` is never emitted twice for a party.
+- **Conversion record voided:** `revert_win` takes the lead back to `qualified`; a business
+  cancellation (customer backs out) keeps it `won`.
 - **Party with no source at first sale:** staff must pick one before the sale completes; an
   import or an API sale without one is set *other* and listed on an exceptions report.
 - **Party created before the capability was on:** source *unknown*; not counted as a new
   customer.
 - **Lead and party disagree:** the converting lead wins only when the party has no
-  acquisition yet; an existing acquisition is never overwritten automatically (staff may
-  edit it, audited).
+  acquisition yet; an existing acquisition is never overwritten automatically. Staff change
+  it with a reason; once it has a first sale, another `campaigns.manage` holder approves
+  (`SAL.ACL.09`); the requester cannot approve; the change is audited.
+- **Duplicates and spam:** a form lead for a party with an open lead on the same campaign is
+  a note on that lead; leads `lost` as *duplicate* or *spam or invalid* are not counted.
+- **Party merge:** the survivor keeps the acquisition with the earlier acquired date; the
+  other is marked *superseded by*; leads move with the party (wl-parties).
+- **Erasure:** the party reference is removed from leads and the acquisition; source,
+  campaign, dates and values stay.
 - **Campaign code of a draft campaign:** ignored (source only). Of an ended campaign: attributed
   within the late-response days, else source only.
 - **Several brands:** one acquisition per party per client.
 - **Idempotency:** `record_first_sale` called twice for the same party keeps the first.
+- **Campaign required (05):** with the setting on for *paid ads* and *social*, a first sale or
+  a lead with either source and no campaign is refused until staff pick one.
+- **Branch:** a lead takes the campaign's branch, else the web form's, else its owner's; an
+  acquisition takes the branch of its first sale, else of the converting lead (BL-SAL-21
+  uses it for entity and scope).
+- **Conversion records in tests:** verticals call `record_first_sale` and `win` for their own
+  records (vertical epics); this issue tests `win` and `revert_win` with a test conversion
+  record that supports the kernel `void` (§5.12), standing in for 01's lease.
 
 #### Must not
 - Must not overwrite an existing party acquisition from a later lead or promo code.
@@ -1374,9 +1476,19 @@ created before `SAL.CRM.02` was turned on is shown as *unknown*.
       5 May gets the source only.
 - [ ] Given P already acquired through *referral*, a later lead L2 with C1 won for P leaves P's
       acquisition unchanged.
-- [ ] A counter sale for a new walk-in party cannot complete until a source is picked (05 also
-      needs a campaign for *paid ads*).
+- [ ] A counter sale for a new walk-in party cannot complete until a source is picked; with
+      05's setting (*paid ads*, *social*), picking *social* also needs a campaign.
 - [ ] Given P's first sale SO-1 cancelled, the nightly run links P's next sale SO-2.
+- [ ] Given P's first invoice of AED 2,000 excl. VAT credited by AED 500, the converted value is
+      AED 1,500.
+- [ ] Given test conversion record X-1 that won lead L3, voided as entered in error, L3 is
+      `qualified` again and `LeadWinReverted` is emitted.
+- [ ] Staff A changes P's campaign from C1 to C2 after P's first sale: the change waits for B;
+      A cannot approve; after B approves, `CustomerAcquisitionChanged` is emitted and audited.
+- [ ] A second web form submission for P on C1 while L1 is open adds a note to L1 and creates
+      no lead.
+- [ ] Merging P2 (acquired 1 May) into P (acquired 1 Mar) keeps P's acquisition; P2's is
+      superseded and the report counts one new customer.
 
 #### Out of scope
 Reports (BL-SAL-21); verticals calling `record_first_sale` for their records (vertical
@@ -1412,16 +1524,38 @@ revenue each dirham of spend brought (ROAS), and exports it.
    customer acquisition cost (cost ÷ new customers) and return on ad spend (converted value
    ÷ cost). Sources without campaigns show leads and conversion with no cost. Costs are
    counted in the period of the entry date; leads and customers in the period they were
-   created or won. A ratio with a zero divisor shows "—", never zero.
+   created or won. A ratio with a zero divisor shows "—", never zero. Only `approved` cost
+   entries count; cost is shown split into *linked to bills* and *manual*, so the accountant
+   can reconcile it with the marketing expense in the accounts. The report filters by entity
+   as well: a campaign's leads, customers and costs take the campaign's entity; a lead or
+   acquisition without a campaign takes the entity of its branch (§3). Branch scope: a
+   campaign with a branch belongs to that branch; a campaign without one is entity-wide, so
+   its cost is shown only to users whose scope covers every branch of its entity, and a user
+   scoped to some branches sees its leads and customers of those branches with cost, cost per
+   lead, CAC and ROAS shown as "—".
 
 #### Edge cases decided
 - **Periods:** months in Asia/Dubai; costs by entry date; leads by created date; leads won and
   new customers by win or first sale date. So a campaign's cost and its customers can fall in
   different months; the per-campaign view (all time) shows them together.
-- **Pending cost entries** (BL-SAL-19) are excluded.
+- **Cost entries counted:** `approved` only; pending, rejected and voided entries, and entries
+  linked to a bill not yet approved, are excluded (BL-SAL-19).
+- **Leads counted:** leads `lost` as *duplicate* or *spam or invalid* are left out of leads,
+  conversion and cost per lead.
+- **Converted value:** net of credit notes; a cleared or replaced first sale (BL-SAL-20)
+  moves the customer to the month of the new first sale or out of the report.
+- **Reconciliation:** cost is shown as *linked to bills* and *manual*; the bill-linked part
+  equals the approved bill lines coded to the campaigns.
+- **Entity:** filter by the campaign's entity; a lead or party acquisition without a campaign
+  takes the entity of its branch field (BL-SAL-20: lead from the campaign, web form or owner;
+  acquisition from the first sale or the converting lead).
 - **Zero divisor:** "—", never 0 or infinity.
 - **Rounding:** AED to 2 decimals, rates to 1 decimal %, ROAS to 2 decimals.
-- **Scope:** a user sees branches in their scope only; totals are of what they can see.
+- **Scope:** a user sees branches in their scope only; totals are of what they can see. A
+  campaign with a branch belongs to it. A campaign without a branch is entity-wide: its costs
+  are shown only to users whose scope covers every branch of the entity; a user scoped to
+  some branches sees that campaign's leads and customers of their branches, with cost, cost
+  per lead, CAC and ROAS "—".
 - **Attribution window setting changed:** the report recomputes; values are not stored.
 
 #### Must not
@@ -1434,10 +1568,16 @@ revenue each dirham of spend brought (ROAS), and exports it.
       AED 625.00 and ROAS 4.00.
 - [ ] Source *referral* with 12 leads and no campaign shows leads and conversion and "—" for
       cost per lead, CAC and ROAS.
-- [ ] With the attribution window set to 12 months, ROAS uses those 8 customers' sales in their
-      first 12 months.
-- [ ] A user scoped to branch B1 does not see B2's leads or costs.
+- [ ] With the attribution window set to 12 months and those 8 customers' sales in their first
+      12 months totalling AED 45,000 excl. VAT, ROAS is 9.00 (AED 45,000 ÷ AED 5,000).
+- [ ] A user scoped to branch B1 does not see B2's leads or costs; for campaign C9 with no
+      branch (AED 1,000), the B1 user sees C9's B1 leads with cost "—", and a user scoped to
+      every branch of the entity sees AED 1,000.
 - [ ] The report exports to CSV with the same numbers.
+- [ ] Of C1's 50 leads, 5 are `lost` as *spam or invalid*: the report shows 45 leads and cost
+      per lead AED 111.11.
+- [ ] C1's AED 5,000 shows as AED 3,000 linked to bills and AED 2,000 manual.
+- [ ] A first sale of AED 2,000 credited by AED 500 adds AED 1,500 to converted value.
 
 #### Out of scope
 Retention campaign results (BL-SAL-25); charts (shared report work).
@@ -1447,68 +1587,99 @@ Retention campaign results (BL-SAL-25); charts (shared report work).
 ### BL-SAL-22 — wl-sales: enrol members and earn points or visits on qualifying sales (`SAL.RUL.07`)
 
 **Labels:** `module:wl-sales` `area:sme-gap` `priority:medium` `size:m` · **Milestone:** Launch 05 · **Size:** m
-**Depends on:** Base: wl-sales Counter sale, Sales order and Sales return lifecycles · Base: wl-invoicing `InvoicePaid`, `CreditNoteIssued` · **Blocks:** BL-SAL-23, BL-SAL-24, BL-SAL-25, BL-AUT-18, BL-CLN-15, BL-EDU-17, BL-FNB-17
+**Depends on:** Base: wl-sales Counter sale, Sales order and Sales return lifecycles · Base: wl-invoicing `InvoicePaid`, `CreditNoteIssued`, `InvoiceReopened`, `InvoiceWrittenOff` · Base: wl-payments `PaymentReversed` · **Blocks:** BL-SAL-23, BL-SAL-24, BL-SAL-25, BL-SAL-26, BL-AUT-18, BL-CLN-15, BL-EDU-17, BL-FNB-17
 **Review items:** G4 (SME problem map 32, 35)
 
 #### Goal
 A client turns on a loyalty programme; customers enrol and earn points per AED spent or a
-visit per sale. A return or credit note takes the points back in proportion. This replaces
+visit per sale. A return or credit note, a reversed payment, a write-off or a reversed
+fulfilment takes the points back in proportion, and staff cannot collect other customers'
+points on their own account. This replaces
 the F&B-only `FNB.LOY.01` with a shared capability used by 05, 06, 08 and 10.
 
 #### Files to read
 - `docs/modules/wl-sales.md` §3 *Loyalty programme*, *Loyalty account*, *Points movement*;
-  §4.7; §5.9 steps 1, 2 and 4; §6 `LoyaltyLedger`, `SAL.RUL.07`, `Points*` events; §7 loyalty rows
+  §4.7 first paragraph; §5.9 steps 1, 2, 4 and 7; §6 `LoyaltyLedger`, `SAL.RUL.07`,
+  `SAL.RUL.09`, `SAL.ACL.08`, `Points*` events; §7 loyalty rows
 
 #### Terms
 - **Qualifying sale:** a completed counter sale, a sales order reaching `fulfilled`, or a paid
   invoice not made from an order or counter sale.
 - **Earn lot:** the points of one `earn` movement with their own expiry date.
-- **Eligible amount:** paid by the member, excluding VAT, fees, tips, excluded items, the
-  redeemed value, insurer share (`FIN.TPP.01`) and package credits.
+- **Eligible amount:** paid or owed by the member, excluding VAT, fees, tips, excluded items,
+  the redeemed value, insurer share (`FIN.TPP.01`) and package credits; the member's share is
+  taken excluding its VAT.
 
 #### Spec excerpt (authoritative for this issue)
 
 | Entity | Description | Important fields |
 |---|---|---|
-| Loyalty programme | The earn and redeem terms of the client (`SAL.LOY.01`) | name, brand (one programme per brand at most), earn kind (`per_aed`: points per AED spent; `per_visit`: one visit per qualifying sale), earn rate (points per AED, or visits per reward), minimum qualifying amount, excluded items or categories, point value (AED per point), minimum points to redeem, maximum share of a sale paid with points, visit reward (fixed discount or a free catalogue item), points validity (months after earning), terms version, active |
-| Loyalty account | A party's membership | programme, party, enrolled at, enrolled by (staff, portal, counter), terms version accepted, points balance, visits since the last reward, status (`active`, `closed`) |
-| Points movement | A change to a loyalty account | account, kind (`earn`, `redeem`, `reverse_earn`, `reverse_redeem`, `expire`, `adjust`), points (or visits), AED value, source `Subject` (counter sale, sales order, invoice, sales return, credit note), earn lot expiry date (earn), lot consumed (redeem, expire), reason and approval (adjust), user, time |
+| Loyalty programme | The earn and redeem terms of the client (`SAL.LOY.01`) | name, brand (one programme per brand at most), earn kind (`per_aed`: points per AED spent; `per_visit`: one visit per qualifying sale), earn rate (points per AED, or visits per reward), minimum qualifying amount, excluded items or categories, point value (AED per point), minimum points to redeem, maximum share of a sale paid with points, visit reward (fixed discount or a free catalogue item), points validity (months after earning), terms version and terms text (EN/AR, `wl-documents`), change effective date, closing date (when turned off), active |
+| Loyalty account | A party's membership; one per programme and party, and one per programme and mobile number | programme, party, accepted by (the party, or a guardian for a minor, `PTY.REL.01`), mobile number for codes, enrolled at, enrolled by (staff, portal, counter), terms version accepted, points balance, points held (redemption in progress), visits since the last reward, reward available until, paused (party blocked), status (`active`, `closed`), closed reason (member request, staff, merged into, erased) |
+| Points movement | A change to a loyalty account | account, kind (`earn`, `redeem`, `reverse_earn`, `reverse_redeem`, `expire`, `adjust`, `transfer` (party merge)), points (or visits), AED value, entity of the sale, source `Subject` (counter sale, sales order, invoice, sales return, credit note, payment reversal, write-off), earn lot expiry date (earn), lot consumed (redeem, expire), reason and approval (adjust), user, time |
 
 ### 4.7 Loyalty account
 
-Two states, no diagram: `active` (earns and redeems) and `closed` (terminal; the party asked
-to leave, or the party was merged or erased under `wl-parties`). Closing an account with
-points forfeits them with an `adjust` movement (`SAL.ACL.07`); a closed account is never
-reopened, the party enrols again with a zero balance. Earn lots are consumed oldest expiry
-first by `redeem` and `expire`.
+Two states, no diagram: `active` (earns and redeems) and `closed` (terminal; the member asked
+to leave, staff closed it, the party was merged, or the party's data was erased under
+`wl-parties`). A closed account is never reopened; the party enrols again with a zero balance.
+Earn lots are consumed oldest expiry first by `redeem` and `expire`. (Closure, merge, block
+and programme changes: BL-SAL-26.)
 
-§5.9 steps 1, 2 and 4:
+§5.9 steps 1, 2, 4 and 7:
 
 1. A customer enrols at the counter, in the portal or on the ordering site; the terms
    version is recorded. Enrolment is not marketing consent: that is asked for separately
-   (`PTY.CNS.01`).
+   (`PTY.CNS.01`). A minor (05 dependants, 10 students) is enrolled by a guardian
+   (`PTY.REL.01`), who accepts the terms and receives the codes. A mobile number already on
+   another account of the programme is refused.
 2. A qualifying sale earns points or a visit (`SAL.RUL.07`): a completed counter sale, a
    sales order reaching `fulfilled`, or a paid invoice for a sale not made through an order
    or a counter sale (05 treatments, 10 courses). Points are computed on the amount the
-   member paid, excluding VAT, fees, tips, excluded items and the redeemed value; the share
-   paid by an insurer (`FIN.TPP.01`) or with package credits earns nothing. Each sale earns
-   once.
+   member paid or owes for the sale, excluding VAT, fees, tips, excluded items and the
+   redeemed value; the share paid by an insurer (`FIN.TPP.01`) or with package credits earns
+   nothing (the member's share is taken excluding its VAT). A sales order on account or cash
+   on delivery earns on `fulfilled` on the member's share of its value; a later write-off or
+   reversed payment takes the points back (`SAL.RUL.09`). Each sale earns once. The member
+   is attached to the sale before it completes, by their code, a portal login or their
+   mobile number; never afterwards, and never by a cashier to their own party
+   (`SAL.ACL.08`). An account that earns on more than the daily sales limit (§7) is listed
+   for the manager's review. When the payment of an earning sale is reversed, its invoice
+   written off, or its fulfilment reversed, the points are reversed in proportion and earned
+   again if it is paid or fulfilled again (`SAL.RUL.09`).
 4. A sales return or credit note on an earning sale reverses the earned points in proportion
    (`reverse_earn`); the balance may go below zero and later earnings offset it, with no cash
    recovery. A return of a sale that redeemed points gives the points back (`reverse_redeem`)
-   with their original expiry, or 30 days when that date has passed.
+   with their original expiry, or 30 days when that date has passed. In a per-visit programme
+   a returned counted sale takes one visit off; a reward made available by it and not used is
+   withdrawn. A reward is available for the points validity.
+7. The member sees, in the portal and on each receipt, the balance, the points earned and
+   redeemed on the sale, and the next expiry date with its points; the terms in English and
+   Arabic are linked.
 
 | ID | When | If | Then | Parameters (default) | Generalises |
 |---|---|---|---|---|---|
-| `SAL.RUL.07` | a qualifying sale completes (`CounterSaleCompleted`; sales order → `fulfilled`; `InvoicePaid` for an invoice not made from an order or a counter sale), or a sales return or credit note on such a sale is issued | the party has an `active` loyalty account; eligible amount ≥ the minimum; not yet earned (or reversed) for this source | `earn` points or a visit with the lot's expiry date, or `reverse_earn` in proportion; when visits reach the reward, the reward is made available and the member told | 1 point per AED 1; minimum AED 0; validity 12 months | — |
+| `SAL.RUL.07` | a qualifying sale completes (`CounterSaleCompleted`; sales order → `fulfilled`; `InvoicePaid` for an invoice not made from an order or a counter sale), or a sales return or credit note on such a sale is issued | the party has an `active` loyalty account that is not paused (party blocked); the member was attached before completion (`SAL.ACL.08`); eligible amount ≥ the minimum; not yet earned (or reversed) for this source | `earn` points or a visit with the lot's expiry date, or `reverse_earn` in proportion; when visits reach the reward, the reward is made available and the member told | 1 point per AED 1; minimum AED 0; validity 12 months | — |
+| `SAL.RUL.09` | `PaymentReversed` on a payment of an earning counter sale; `InvoiceReopened` with reason *payment reversed*, or `InvoiceWrittenOff`, for an earning invoice or the invoice of an earning order or counter sale; `SalesOrderFulfilmentReversed` for an earning order | the source earned points or a visit not yet reversed for this cause | `reverse_earn` in proportion to the amount reversed, written off or no longer fulfilled (the balance may go below zero); notify the member; when the sale is paid or fulfilled again (`InvoicePaid`, `PaymentReceived`, `fulfil`), earn again for that amount | — | — |
+
+| ID | Rule | Pattern | Parameter (default) | Generalises |
+|---|---|---|---|---|
+| `SAL.ACL.08` | A member is attached to a sale only before the sale completes, by the member's one-time code, portal login or mobile number; a cashier cannot attach a sale they process to a loyalty account of their own party; a mobile number belongs to one account per programme | `STA`, `SOD` | — | — |
 
 | Setting | Default |
 |---|---|
 | Loyalty programme (`SAL.LOY.01`): earn kind, rate, minimum, exclusions, point value, minimum to redeem, maximum share of a sale | off; when on: per AED, 1 point per AED 1, AED 0, none, AED 0.01 per point, 500 points, 100% (06: 50%) |
 | Points validity; expiry reminder (`SAL.RUL.08`) | 12 months; 30 days before |
+| Sales per member per day before the account is listed for review (`SAL.ACL.08`) | 5 |
 
 #### Edge cases decided
 - **Rounding:** points are whole numbers, rounded down per sale (AED 99.90 → 99 points).
+- **Insurer share and VAT:** the eligible amount is the member's share excluding VAT, so the
+  insurer's share is taken off excluding VAT too (on a AED 1,000 excl. VAT invoice with an
+  insurer share of AED 800 excl. VAT, the member's AED 200 excl. VAT earns).
+- **Order not yet paid:** a sales order on account or cash on delivery earns on `fulfilled` on
+  its eligible value, unpaid or not; a write-off of its invoice or a reversed payment reverses
+  it (`SAL.RUL.09`).
 - **One earn per source:** the source `Subject` is the key; an invoice made from an order or a
   counter sale never earns again.
 - **Per visit:** one visit per sale at or above the minimum; a reward becomes available when
@@ -1518,34 +1689,64 @@ first by `redeem` and `expire`.
 - **Negative balance:** allowed after a reversal; next earnings offset it; no cash recovery.
 - **Enrolment after the sale:** earns nothing for past sales.
 - **Closed account:** earns nothing; a return on a sale earned before closing reverses nothing.
-- **Programme off:** no earning; balances stay.
+- **Programme off:** no earning; balances stay (closing date and expiry: BL-SAL-26).
+- **Payment reversed or written off** (`SAL.RUL.09`): reversed points = earned points ×
+  reversed (or written-off) amount ÷ the sale's paid amount, rounded up; once per cause; when
+  the sale is paid again, the same share is earned again with a new lot. A chargeback that
+  the business wins (`PaymentReceived`) earns again.
+- **Fulfilment reversed:** `SalesOrderFulfilmentReversed` reverses in proportion to the
+  reversed quantity value; a later `fulfil` earns again.
+- **Attaching a member** (`SAL.ACL.08`): only before completion, by the member's code, portal
+  login or mobile number; the cashier's own party (the party of the staff user's employee
+  record) is refused; a mobile number already on another account of the programme is refused
+  at enrolment.
+- **Daily sales limit:** the 6th earning sale of an account in a day (default 5) still earns,
+  and the account is listed for the manager's review.
+- **Minor:** enrolled by a guardian (`PTY.REL.01`), who accepts the terms; codes go to the
+  guardian's mobile.
+- **Per visit reversal:** a returned counted sale takes one visit off; a reward made available
+  by it and not yet used is withdrawn; a reward is available for the points validity.
+- **Paused (party blocked):** earns nothing; nothing is earned later for sales while paused.
 
 #### Must not
 - Must not earn on VAT, on the insurer's share or on the redeemed value.
 - Must not earn twice for one sale.
 - Must not treat enrolment as marketing consent.
+- Must not let points stay earned on a sale whose payment was reversed or written off.
 
 #### Done when
 - [ ] Given programme 1 point per AED 1 and member M, a counter sale of AED 105 incl. 5% VAT
       earns 100 points expiring 12 months later.
-- [ ] Given an invoice of AED 1,000 excl. VAT with AED 800 paid by an insurer, M earns 200.
+- [ ] Given an invoice of AED 1,000 excl. VAT (AED 1,050 incl. 5% VAT) with an insurer share of
+      AED 800 excl. VAT (AED 840 incl.), M pays AED 210 and earns 200 points.
+- [ ] An on-account sales order of AED 300 excl. VAT for M earns 300 points on `fulfilled`,
+      before its invoice is paid; writing the invoice off reverses the 300.
 - [ ] A sales order invoiced on fulfilment earns once (on `fulfilled`), not again on `InvoicePaid`.
 - [ ] Returning half of the AED 100 eligible amount reverses 50 points; with a balance of 20 the
       balance becomes −30.
 - [ ] Given per-visit with 10 visits per reward, the 10th sale makes the reward available and
       M is told; visits restart at 0.
 - [ ] Enrolment records the terms version and does not create a marketing consent.
+- [ ] M earns 100 points on a card counter sale of AED 105; a chargeback of the full payment
+      reverses 100 points and M is told; winning the chargeback earns 100 again.
+- [ ] An invoice of AED 1,000 that earned 1,000 points is reopened after its cheque bounced:
+      1,000 points are reversed; paid again, 1,000 are earned with a new lot.
+- [ ] A cashier attaching a sale they ring up to their own loyalty account is refused;
+      attaching M to a sale completed yesterday is refused.
+- [ ] Enrolling a second account with M's mobile number is refused.
+- [ ] Given per-visit, 10 visits per reward, returning the 10th sale before the reward is used
+      withdraws the reward and leaves 9 visits.
 
 #### Out of scope
 Redemption (BL-SAL-23); expiry, adjustments and the liability report (BL-SAL-24); segments
-and campaigns (BL-SAL-25).
+and campaigns (BL-SAL-25); closure, merge, block and programme changes (BL-SAL-26).
 
 ---
 
 ### BL-SAL-23 — wl-sales: redeem points as a discount line, confirmed by the member
 
 **Labels:** `module:wl-sales` `area:sme-gap` `priority:medium` `size:m` · **Milestone:** Launch 05 · **Size:** m
-**Depends on:** BL-SAL-22 · Base: wl-sales `DiscountEngine` (`SAL.DSC.01`) · Base: wl-notify `send_otp` · **Blocks:** BL-SAL-24, BL-AUT-18, BL-CLN-15, BL-EDU-17, BL-FNB-17
+**Depends on:** BL-SAL-22 · Base: wl-sales `DiscountEngine` (`SAL.DSC.01`) · Base: wl-sales Sales order lifecycle (`cancel`, `reject`, `cancel_line`, `payment_failed`) · Base: wl-notify `send_otp` (validity and tries, wl-notify §7) · **Blocks:** BL-SAL-24, BL-AUT-18, BL-CLN-15, BL-EDU-17, BL-FNB-17
 **Review items:** G4 (SME problem map 35)
 
 #### Goal
@@ -1556,7 +1757,7 @@ back.
 
 #### Files to read
 - `docs/modules/wl-sales.md` §5.9 steps 3–4; §10 *Loyalty points*; §6 `DiscountEngine`;
-  §7 loyalty rows; `docs/modules/wl-notify.md` §6 `send_otp`
+  §7 loyalty rows; `docs/modules/wl-notify.md` §6 `send_otp`, §7 row on one-time codes
 
 #### Terms
 - **Loyalty redemption line:** a discount line on the sale worth points × point value.
@@ -1567,13 +1768,24 @@ back.
 3. At the next sale the member redeems points as a discount line *Loyalty redemption*
    (`DiscountEngine`), within the minimum points and the maximum share of the sale. When
    *confirm redemption by code* is on, the member confirms with a one-time code to their
-   mobile (`Notifier::send_otp`) or is logged in to the portal. A visit reward is redeemed
-   the same way. The redemption is applied after the other discounts and is not limited by
-   *Discount stacking*.
+   mobile (`Notifier::send_otp`; validity and wrong tries are the `wl-notify` defaults, 5
+   minutes and 3: after 3 wrong tries the code is voided and redemption is refused for that
+   sale, which goes on without it; an expired code may be sent again) or is logged in to the
+   portal. A visit reward is redeemed the same way. The redemption is applied after the
+   other discounts and is not limited by *Discount stacking*. The points are held for the
+   open sale when confirmed (at most the hold minutes, §7; held points do not expire
+   meanwhile) and the balance is checked again at completion, so the same points cannot be
+   spent twice. A counter sale writes the `redeem` on completion; a sales order writes it on
+   `confirmed` (online-paid: when the payment is confirmed). An order whose payment fails or
+   times out releases the held points; one that is cancelled or rejected after the `redeem`
+   gives the points back (`reverse_redeem`), and `cancel_line` gives back the share of the
+   cancelled lines; the member is told.
 4. A sales return or credit note on an earning sale reverses the earned points in proportion
    (`reverse_earn`); the balance may go below zero and later earnings offset it, with no cash
    recovery. A return of a sale that redeemed points gives the points back (`reverse_redeem`)
-   with their original expiry, or 30 days when that date has passed.
+   with their original expiry, or 30 days when that date has passed. In a per-visit programme
+   a returned counted sale takes one visit off; a reward made available by it and not used is
+   withdrawn. A reward is available for the points validity.
 
 - **Loyalty points:** a redemption is shown as a discount line on the sale. Whether points
   redeemed reduce the taxable value of the discounted supply only (5% VAT on the price after
@@ -1586,6 +1798,8 @@ back.
 |---|---|
 | Loyalty programme (`SAL.LOY.01`): earn kind, rate, minimum, exclusions, point value, minimum to redeem, maximum share of a sale | off; when on: per AED, 1 point per AED 1, AED 0, none, AED 0.01 per point, 500 points, 100% (06: 50%) |
 | Confirm redemption by a one-time code to the member | on |
+| One-time code (`send_otp`, wl-notify §7): validity; wrong tries before the code is voided | 5 minutes; 3 |
+| Points held for an open sale before completion | 30 minutes |
 | Points given back on a return after their expiry | 30 days |
 
 #### Edge cases decided
@@ -1596,10 +1810,21 @@ back.
   share; with *Discount stacking* off, a promo code and points can still be combined (the
   redemption is not limited by *Discount stacking*, §5.9).
 - **Lots:** points are taken from the lots with the earliest expiry first.
-- **Code:** wl-notify OTP defaults (validity, tries); when the code cannot be sent, staff
-  see it at once and the sale goes on without redemption.
+- **Code:** the wl-notify one-time code defaults (wl-notify §7): valid 5 minutes, 3 wrong
+  tries. After the 3rd wrong code the code is voided and redemption is refused for that sale
+  (no new code for it); the sale goes on without redemption. A code that expired unused may
+  be sent again. When the code cannot be sent, staff see it at once and the sale goes on
+  without redemption.
 - **Sale cancelled before completion:** nothing is redeemed (the movement is written on
-  completion).
+  completion); held points are released.
+- **Hold:** points are held when the member confirms, for at most 30 minutes; held points
+  cannot be redeemed elsewhere and do not expire while held; the balance is checked again at
+  completion and a shortfall removes the line before the sale completes.
+- **Sales order:** the `redeem` is written on `confirmed` (online-paid: when the payment is
+  confirmed); `payment_failed` releases the hold; `cancel` or `reject` after the `redeem`
+  writes `reverse_redeem` for all of it; `cancel_line` writes it for the share of the
+  cancelled lines (redemption × cancelled line value ÷ order value after other discounts,
+  rounded down to whole points); the member is told.
 - **Return:** points given back with their original lot expiry; a lot already past it gets the
   setting's days.
 
@@ -1612,9 +1837,18 @@ back.
 - [ ] Given M with 800 points, value AED 0.01, minimum 500, a sale of AED 40 redeems 800 points as
       an AED 8.00 discount line after M enters the code.
 - [ ] With 06's maximum share 50%, a sale of AED 10 accepts at most AED 5.00 (500 points).
-- [ ] A wrong code, past the OTP tries, blocks redemption for that sale.
+- [ ] Three wrong codes block redemption for that sale and no new code can be sent for it; the
+      sale completes without the redemption line. A code entered 6 minutes after sending is
+      refused as expired, and a new code can be sent.
 - [ ] M with 400 points cannot redeem (minimum 500).
 - [ ] Returning the sale gives the 800 points back; a lot that expired gets 30 days.
+- [ ] M confirms 800 points on till 1; redeeming the same points on till 2 within 30 minutes is
+      refused; after the sale on till 1 is abandoned, the hold lapses and they can be used.
+- [ ] A lot expiring at midnight while held is not expired until the hold ends.
+- [ ] An online order paid with 500 points and rejected by the outlet gives the 500 points back
+      and M is told; one whose payment fails releases the hold and writes no movement.
+- [ ] Cancelling one of two equal lines of a confirmed order that redeemed 500 points gives back
+      250.
 - [ ] With the default treatment, the AED 8.00 redemption on a VAT-inclusive AED 40 sale lowers
       the VAT of the sale from AED 1.90 to AED 1.52.
 
@@ -1626,7 +1860,7 @@ Expiry and adjustments (BL-SAL-24); the accountant's answer on VAT (open item).
 ### BL-SAL-24 — wl-sales: expire points, adjust by hand with approval and report the points liability (`SAL.RUL.08`, `SAL.ACL.07`)
 
 **Labels:** `module:wl-sales` `area:sme-gap` `priority:medium` `size:m` · **Milestone:** Launch 05 · **Size:** m
-**Depends on:** BL-SAL-22 · BL-SAL-23 · Base: wl-kernel approvals (`PLT.APR.01`) · **Blocks:** BL-AUT-18, BL-CLN-15, BL-EDU-17, BL-FNB-17
+**Depends on:** BL-SAL-22 · BL-SAL-23 · Base: wl-kernel approvals (`PLT.APR.01`) · Base: wl-notify `notify` (expiry reminder and its give-up) · **Blocks:** BL-SAL-26, BL-AUT-18, BL-CLN-15, BL-EDU-17, BL-FNB-17
 **Review items:** G4 (SME problem map 35)
 
 #### Goal
@@ -1643,18 +1877,22 @@ a manager. The accountant sees the outstanding points and their value.
 
 #### Spec excerpt (authoritative for this issue)
 
-5. Points expire per earn lot (`SAL.RUL.08`), with a reminder before. Manual adjustments
-   need a manager (`SAL.ACL.07`).
+5. Points expire per earn lot (`SAL.RUL.08`), with a reminder before; they expire even when
+   the reminder could not be delivered (the account shows it). Manual adjustments above the
+   limit need a manager (`SAL.ACL.07`); a rejected adjustment writes nothing and the requester
+   is told, a returned one is edited and submitted again.
 6. The points liability report shows outstanding points and their AED value by age and
-   expiry month, per brand and entity, for the accountant.
+   expiry month, per brand and entity, for the accountant. Each movement records the entity
+   of its sale, so points earned in one entity and redeemed in another are visible; how that
+   is booked follows `⚠ open: accountant (A-15)`.
 
 | ID | When | If | Then | Parameters (default) | Generalises |
 |---|---|---|---|---|---|
-| `SAL.RUL.08` | N days before an earn lot expires; and on its expiry date | points of the lot remain | notify the member (category *reminder*, opt-out respected); on the date, `expire` the rest of the lot | N = 30 | — |
+| `SAL.RUL.08` | N days before an earn lot expires; and when its expiry date has ended (a lot can be redeemed through its expiry date) | points of the lot remain | notify the member (category *reminder*, opt-out respected); after the date, `expire` the rest of the lot in the daily run of the next morning (02:00 Asia/Dubai) | N = 30 | — |
 
 | ID | Rule | Pattern | Parameter (default) | Generalises |
 |---|---|---|---|---|
-| `SAL.ACL.07` | A manual points adjustment above a number of points, or closing a loyalty account that still has points, needs a manager, and the requester cannot approve; a campaign cost entry that takes the campaign over its budget needs a manager | `LIM`, `SOD` | 500 points; any budget overrun | — |
+| `SAL.ACL.07` | A manual points adjustment above a number of points, or closing a loyalty account that still has points at staff's initiative (not at the member's request or on erasure, §4.7), needs a manager, and the requester cannot approve; a campaign cost entry that takes the campaign over its budget needs a manager other than the requester | `LIM`, `SOD` | 500 points; any budget overrun | — |
 
 | Setting | Default |
 |---|---|
@@ -1662,12 +1900,19 @@ a manager. The accountant sees the outstanding points and their value.
 | Manual points adjustment needing a manager (`SAL.ACL.07`) | above 500 points |
 
 #### Edge cases decided
-- **Schedule:** daily at 02:00 Asia/Dubai; a lot expires at the end of its expiry date.
+- **Schedule:** daily at 02:00 Asia/Dubai. A lot can be redeemed through its expiry date; the
+  run at 02:00 the next morning expires what is left (lot expiring 30 Nov: usable all of 30
+  Nov, expired at 02:00 on 1 Dec). The reminder goes in the run N days before the expiry
+  date.
 - **Reminder:** one message per member per day, summing all lots expiring in N days; skipped
   for a member who opted out of reminders.
 - **Partly used lot:** only the rest expires. **Negative balance:** nothing to expire.
 - **Adjustment at or below 500 points:** `loyalty.adjust` with a reason, no approval; above:
-  approval, requester cannot approve. Closing an account with any points needs approval.
+  approval, requester cannot approve. Rejected: no movement, requester told; returned: the
+  requester edits and submits again. Closing an account with any points at staff's initiative
+  needs approval; closure at the member's request, erasure and merge are BL-SAL-26.
+- **Reminder not delivered:** the lot still expires on its date; the account shows that the
+  reminder was not delivered (give-up reaction `none`).
 - **Liability report:** as at a date, by brand, entity, earn age and expiry month; negative
   balances count as zero.
 
@@ -1681,7 +1926,10 @@ a manager. The accountant sees the outstanding points and their value.
 - [ ] Re-running the job on 1 Dec expires nothing more.
 - [ ] A +400 adjustment by A is saved; a −900 adjustment by A waits for B's approval; A cannot
       approve.
-- [ ] Closing M's account with 50 points needs approval and writes an `adjust` of −50.
+- [ ] Staff closing M's account with 50 points needs approval and writes an `adjust` of −50.
+- [ ] B rejects A's −900 adjustment: no movement is written and A is told.
+- [ ] A reminder that gave up does not stop the lot expiring; the account shows *reminder not
+      delivered*.
 - [ ] The liability report on 31 Dec with 120,000 points at AED 0.01 shows AED 1,200.00.
 
 #### Out of scope
@@ -1692,7 +1940,7 @@ How the liability is booked in the accounts (`⚠ open: accountant (A-15)`).
 ### BL-SAL-25 — wl-sales: define customer segments and send retention campaigns through wl-notify
 
 **Labels:** `module:wl-sales` `area:sme-gap` `priority:medium` `size:m` · **Milestone:** Launch 05 · **Size:** m
-**Depends on:** BL-SAL-19 · BL-SAL-21 · BL-SAL-22 · BL-NTF-07 · BL-NTF-08 · **Blocks:** BL-AUT-18, BL-CLN-15, BL-EDU-17, BL-FNB-17
+**Depends on:** BL-SAL-19 · BL-SAL-21 · BL-SAL-22 · BL-NTF-07 · BL-NTF-08 · BL-NTF-09 · **Blocks:** BL-AUT-18, BL-CLN-15, BL-EDU-17, BL-FNB-17
 **Review items:** G4 (SME problem map 32, 35)
 
 #### Goal
@@ -1702,9 +1950,9 @@ with marketing consent and no opt-out get it. The campaign report shows who came
 what they spent.
 
 #### Files to read
-- `docs/modules/wl-sales.md` §3 *Customer segment*, *Campaign*; §4.6 row `activate`; §5.10;
-  §6 `Segments`; §7 rows on retention and 05 segment rules
-- `docs/modules/wl-notify.md` §4.3, §5.3
+- `docs/modules/wl-sales.md` §3 *Customer segment*, *Campaign*; §4.6 rows `activate`, `end`;
+  §5.10; §6 `Segments`; §7 rows on retention and 05 segment rules; §8 `SegmentRule`
+- `docs/modules/wl-notify.md` §4.3, §5.3, §6 `NTF.ACL.04`
 
 #### Terms
 - **Segment:** saved rules, evaluated each time they are used (not a stored list).
@@ -1716,11 +1964,12 @@ what they spent.
 
 | Entity | Description | Important fields |
 |---|---|---|
-| Customer segment | A saved set of rules that selects parties (`SAL.LOY.01`) | name, rules (days since last sale, spend in a period, number of sales, items or categories bought, loyalty balance, branch, party group, enrolled in loyalty), combined with *all* or *any*, evaluated when used, last member count |
+| Customer segment | A saved set of rules that selects parties (`SAL.LOY.01`) | name, rules (days since last sale, spend in a period, number of sales, items or categories bought, loyalty balance, package credits remaining, birthday month (parties with a date of birth), branch, party group, enrolled in loyalty, and the vertical's `SegmentRule` kinds, §8), combined with *all* or *any*, evaluated when used, last member count; blocked, archived and merged parties are never members |
 
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
-| `activate` | draft | active | `campaigns.manage`, or system (start date reached) | name, code, purpose, marketing channel, start set; retention: segment, approved template and message channel set (`SAL.LOY.01`); the vertical's guards pass (05: `CLN.ACL.13` when the campaign promotes services) | code usable in links and the linked promo code; retention: the send is requested from `wl-notify` for the send time (§5.10); event `CampaignActivated` |
+| `activate` | draft | active | `campaigns.manage`, or system (start date reached) | name, code, purpose, marketing channel, owner, start set; retention: segment, approved template, message channel and a send time between start and end set (`SAL.LOY.01`; a send time already past sends at once); the vertical's guards pass (05: `CLN.ACL.13` when the campaign promotes services) | code usable in links and the linked promo code; retention: the broadcast is requested from `wl-notify` for the send time, with the user who set the retention fields as requester (§5.10, `NTF.ACL.04`); event `CampaignActivated` |
+| `end` | active | ended | `campaigns.manage`, or system (end date passed, or a vertical guard of `activate` stops passing, e.g. 05: the advertising permit's validity ends) | — | new leads stop taking the campaign after the late-response days (§7); the linked promo code expires with it; retention: a broadcast still `pending_approval` or `scheduled` is cancelled; owner told; event `CampaignEnded` |
 
 ### 5.10 Segments and retention campaigns (`SAL.LOY.01`)
 
@@ -1730,9 +1979,17 @@ what they spent.
    with a send time. On `activate` it asks `wl-notify` for a marketing broadcast
    (`wl-notify` §5.3): the segment is evaluated at send time, and only members with marketing
    consent for the channel and no opt-out receive it (`NTF.ACL.01`); send window, frequency
-   cap and approval follow `NTF.RUL.02` and `NTF.ACL.03`.
-3. The campaign report shows recipients, delivered, opted out, members who bought within the
-   response days after the send (§7) and their sales value, against the campaign's cost.
+   cap and approval follow `NTF.RUL.02` and `NTF.ACL.03`. Marketing broadcasts come only from
+   campaigns (`NTF.ACL.04`); the requester is the user who last set the segment, template,
+   channel or send time, so that person cannot approve it. The vertical's guards of
+   `activate` are checked again when the broadcast starts.
+3. When the broadcast is rejected, cancelled or expires without sending (`BroadcastCancelled`),
+   the campaign stays `active` and shows *not sent* with the reason; staff fix it and request
+   the broadcast again. Ending the campaign cancels a broadcast not yet sending. A campaign has
+   at most one completed broadcast.
+4. The campaign report shows recipients, delivered, opted out, recipients (messages `sent` or
+   later) who bought within the response days after the send (§7) and their sales value,
+   against the campaign's cost; excluded counts are shown by reason.
 
 | Setting | Default |
 |---|---|
@@ -1742,14 +1999,32 @@ what they spent.
 #### Edge cases decided
 - **Evaluation time:** the preview count is an estimate; wl-notify evaluates the segment again at
   send time (`members(segment, at)`).
+- **Approval size:** the broadcast's estimate at `request` counts only members who would pass
+  consent, opt-out, suppression, contact point and blocked-party checks for the channel
+  (wl-notify §4.3 `request`), not the raw segment count; above 200 it needs approval
+  (`NTF.ACL.03`, BL-NTF-07).
 - **Send once:** `reopen` never sends again; a new campaign is needed.
 - **Returned member:** any qualifying sale (BL-SAL-22 definition) within the response days;
   value excluding VAT. A member in two campaigns counts in both.
 - **05:** rules on clinical items are hidden unless the setting is on; no clinical data in the
   message (`NTF.ACL.02`); `CLN.ACL.13` is a 05 guard on `activate`.
 - **Export of segment members:** follows `NTF.ACL.01` (sensitive export permission, audited).
-- **Broadcast cancelled or rejected** (`BroadcastCancelled`): the campaign stays `active` and
-  shows "not sent"; staff may end it.
+- **Broadcast cancelled, rejected or expired** (`BroadcastCancelled`): the campaign stays
+  `active` and shows *not sent* with the reason; staff fix it and request the broadcast again
+  (a new broadcast), or end the campaign. At most one completed broadcast per campaign.
+- **Requester** (`NTF.ACL.04`): the user who last set the segment, template, channel or send
+  time; also when the campaign activates by itself on its start date. That user cannot
+  approve the broadcast.
+- **Campaign ended before the send:** a broadcast still `pending_approval` or `scheduled` is
+  cancelled.
+- **Send time:** must be between start and end; one already past at `activate` sends at once.
+- **Members:** blocked, archived and merged parties are never members; loyalty accounts that
+  are paused count as not enrolled.
+- **Rule kinds:** shared kinds plus birthday month (only parties with a date of birth) and
+  package credits remaining; verticals add theirs through `SegmentRule` (05 no booking in N
+  days, 08 vehicle make and service due, 10 course completed, trial attended, guardians with N
+  students).
+- **Returned members:** only recipients whose message reached `sent` or later count.
 
 #### Must not
 - Must not send messages directly; only through `Notifier::broadcast`.
@@ -1758,13 +2033,152 @@ what they spent.
 #### Done when
 - [ ] Given segment S (no sale for 60 days, spend > AED 500 in 12 months) matching 300 parties of
       which 180 have SMS marketing consent, activating retention campaign R requests one
-      broadcast; the result shows 180 recipients and 120 excluded *no consent*.
+      broadcast with an estimate of 180, which is `scheduled` without approval (limit 200); the
+      result shows 180 recipients and 120 excluded *no consent*.
 - [ ] Two members of R buy for AED 150 and AED 250 excl. VAT within 30 days: the report shows 2
       returned and AED 400 against R's cost.
 - [ ] `reopen` of R after `end` sends nothing.
 - [ ] In 05, the segment editor does not offer clinical service items by default.
 - [ ] Exporting S's members without the sensitive export permission is refused.
+- [ ] User A sets R's segment and template and R activates on its start date: the broadcast
+      names A as requester, and A cannot approve it.
+- [ ] B rejects R's broadcast: R shows *not sent*; after A changes the template, R requests a
+      new broadcast, which completes; a third request is refused.
+- [ ] Ending R before its send time cancels its scheduled broadcast.
+- [ ] A blocked party matching S is not in S's members.
+- [ ] Of 180 recipients, 20 had messages suppressed by the frequency cap; a buyer among those 20
+      is not counted as returned.
 
 #### Out of scope
 Broadcast approval, send window and frequency cap (BL-NTF-07, BL-NTF-08); 05 permit guard
 (05 epic).
+
+---
+
+### BL-SAL-26 — wl-sales: keep loyalty points through account closure, party merge and block, and programme changes
+
+**Labels:** `module:wl-sales` `area:sme-gap` `priority:medium` `size:m` `blocked:open-item` · **Milestone:** Launch 05 · **Size:** m
+**Depends on:** BL-SAL-22 · BL-SAL-24 · Base: wl-parties merge and block (`PartiesMerged`, `PartyBlocked`, `PartyUnblocked`, `BlockEffects`) · Base: wl-notify `notify` · **Blocks:** BL-AUT-18, BL-CLN-15, BL-EDU-17, BL-FNB-17
+**Review items:** GR-G4-05, GR-G4-06, GR-G4-07, GR-G4-08 (gap review of G4)
+
+#### Goal
+A member's points are not lost by accident: a merge of duplicate parties moves the points to
+the surviving party, a blocked party's account is paused rather than closed, and a member who
+asks to leave or to be erased is never refused. When the client changes or ends its
+programme, points already earned keep their value and expiry, and members are told in time.
+
+#### Files to read
+- `docs/modules/wl-sales.md` §3 *Loyalty programme*, *Loyalty account*, *Points movement*;
+  §4.7; §6 consumed `PartiesMerged`, `PartyBlocked`, `PartyUnblocked`, `SAL.ACL.07`,
+  `PointsTransferred`; §7 row on programme notice and closing; §10 *Loyalty terms changes*,
+  *Erasure*
+- `docs/modules/wl-parties.md` §5.6 (block effects), §4 `merge`
+
+#### Terms
+- **Transfer movement:** moves an earn lot from the merged party's account to the survivor's,
+  keeping its expiry date.
+- **Block effect *pause*:** the agreement stays; service stops until `unblock`
+  (wl-parties §5.6).
+- **Closing date:** the last day points can be redeemed after the programme is turned off.
+
+#### Spec excerpt (authoritative for this issue)
+
+### 4.7 Loyalty account
+
+Two states, no diagram: `active` (earns and redeems) and `closed` (terminal; the member asked
+to leave, staff closed it, the party was merged, or the party's data was erased under
+`wl-parties`). A closed account is never reopened; the party enrols again with a zero balance.
+Earn lots are consumed oldest expiry first by `redeem` and `expire`.
+
+- **Member asks to leave, or erasure:** never refused. The member is told how many points will
+  be forfeited and confirms (staff record the confirmation for a request at the counter); the
+  points go with an `adjust` movement without approval. The movements stay for the liability
+  history, without the party after an erasure (§10).
+- **Staff close it** (for example abuse of the programme): with points left, a manager other
+  than the requester approves (`SAL.ACL.07`); the member is told.
+- **Party merge** (`PartiesMerged`): the merged party's lots move to the survivor's account in
+  the same programme with their expiry dates (`transfer` movements); when the survivor has no
+  account, the account itself moves to the survivor. The merged account closes with reason
+  *merged into*; no points are forfeited. A blocked party cannot be merged (wl-parties
+  `merge` guard), so a pause never moves; when the survivor is blocked, the moved lots and
+  the moved account are paused with the survivor's account.
+- **Party blocked** (`PartyBlocked`, wl-parties §5.6): the account is registered as agreement
+  kind *loyalty account* with block effect *pause*: no earning, no redemption, out of every
+  segment, no loyalty messages; lots keep expiring. `PartyUnblocked` clears the pause; points
+  not earned while paused are not earned later.
+- **Programme changed or turned off:** a change of earn rate, point value, validity or
+  exclusions is a new terms version with an effective date at least the notice days ahead
+  (§7); members are told then (category *transactional*). New rates apply to sales from that
+  date; lots already earned keep their value and expiry. Turning the programme off stops
+  earning at once; members are told and may redeem through the closing date (§7); the rest
+  of every lot expires in the expiry run after it (`SAL.RUL.08`). Whether a client may
+  shorten validity or devalue points already earned is `⚠ open: lawyer (L-39)`; until
+  answered, existing lots are never changed (§10).
+
+| `SAL.ACL.07` | A manual points adjustment above a number of points, or closing a loyalty account that still has points at staff's initiative (not at the member's request or on erasure, §4.7), needs a manager, and the requester cannot approve; a campaign cost entry that takes the campaign over its budget needs a manager other than the requester | `LIM`, `SOD` | 500 points; any budget overrun | — |
+
+| Setting | Default |
+|---|---|
+| Notice before a programme change takes effect; redemption period after the programme is turned off (§4.7) | 30 days; 90 days |
+
+- **Loyalty terms changes:** whether a client may shorten the validity of points already
+  earned, devalue them, or end a programme with a closing date under consumer protection law
+  is `⚠ open: lawyer (L-39)`; until answered, a change applies only to points earned from
+  its effective date and a programme that ends keeps a redemption period (§4.7).
+- **Erasure (PDPL):** when a party's data is erased (`wl-parties` §10), its leads, party
+  acquisition and points movements keep source, campaign, dates, values and points without
+  the party, so acquisition and liability reports do not change; the loyalty account closes
+  with reason *erased*.
+
+#### Edge cases decided
+- **Merge, both have accounts:** every open lot of the merged account moves with its expiry
+  (`transfer` out and in, same points); a negative balance moves too; visits add up; the
+  merged account closes *merged into*; no approval needed.
+- **Merge, survivor has none:** the account itself is re-pointed to the survivor; no movement.
+- **Merge, different programmes** (two brands): accounts stay separate on the survivor, one per
+  programme.
+- **Merge and block:** the merged party cannot be `blocked` (wl-parties allows `merge` only
+  from `active` or `archived`), so no pause moves with it. When the survivor is blocked, its
+  account stays paused and the moved lots, or the moved account, are paused with it until
+  `PartyUnblocked`; when the survivor is not blocked, nothing is paused.
+- **Member asks to leave:** never refused, no approval; the forfeit `adjust` records *member
+  request* and who recorded the confirmation.
+- **Erasure:** account closed *erased*; movements keep points, values, dates and entity, without
+  the party; the liability report is unchanged until the forfeit is written.
+- **Staff closure with points:** `SAL.ACL.07` approval; rejected keeps the account `active`.
+- **Blocked:** paused; earn and redeem refused at the counter with the neutral text *on hold*;
+  out of segments; lots keep expiring; expiry reminders not sent while paused; `unblock` resumes;
+  no back-dated earning.
+- **Programme change:** saved with an effective date at least 30 days ahead (shorter refused);
+  members with an active account are told on save; a sale before the date uses the old rate.
+- **Programme off:** earning stops at once; closing date = today + 90 days; members told;
+  redemption works through the closing date, and the expiry run at 02:00 the next morning
+  expires every open lot with `PointsExpired`.
+- **Open legal question:** whether existing points may be shortened or devalued is
+  `⚠ open: lawyer (L-39)`; build so that changes never touch existing lots.
+
+#### Must not
+- Must not forfeit points on a party merge.
+- Must not refuse or delay closure requested by the member.
+- Must not change the value or expiry of lots already earned when the programme changes.
+- Must not show the real block reason to counter staff.
+
+#### Done when
+- [ ] Given P2 (300 points, lot expiring 2027-03-01) merged into P (200 points), P has 500 points
+      and the moved lot keeps 2027-03-01; P2's account is closed *merged into*; no `adjust`.
+- [ ] Given P2 with an account and P without one, after the merge the account belongs to P.
+- [ ] M asks to leave with 450 points: after M confirms, the account closes with an `adjust` of
+      −450 and no approval.
+- [ ] M's party is blocked: a counter sale earns nothing and redemption is refused with *on
+      hold*; after `unblock`, the next sale earns.
+- [ ] Changing the earn rate on 1 Nov with effect 15 Nov is refused; with effect 1 Dec, members
+      are told on 1 Nov; a sale on 30 Nov earns at the old rate and one on 1 Dec at the new rate.
+- [ ] Turning the programme off on 1 Dec sets the closing date to 1 Mar; redemptions on 1 Mar
+      still work; at 02:00 on 2 Mar every open lot expires.
+- [ ] Given survivor P blocked, merging P2 (300 points) into P moves the 300 points paused:
+      redemption is refused *on hold* until P is unblocked.
+
+#### Out of scope
+Accounting treatment of forfeited and expired points (`⚠ open: accountant (A-15)`); the
+lawyer's answer on terms changes (open question); party merge and block themselves
+(wl-parties).

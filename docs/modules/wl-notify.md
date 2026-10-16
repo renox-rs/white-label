@@ -32,8 +32,9 @@ The in-app notification bell (Renox `rx-notification-bell`, database notificatio
 every message flow for staff users and is not a separate capability.
 
 **Marketing broadcasts** (§5.3) are the sending side of retention campaigns (`SAL.LOY.01`,
-[wl-sales](wl-sales.md) §5.10) and are MVP where that capability is: 05, 06, 08 and 10. Other
-manual bulk messages stay Later.
+[wl-sales](wl-sales.md) §5.10) and are MVP where that capability is: 05, 06, 08 and 10. In the
+MVP a marketing broadcast is requested only by a campaign (`NTF.ACL.04`); broadcasts started
+by staff from a segment and other manual bulk messages stay Later.
 
 What the verticals send:
 
@@ -61,7 +62,7 @@ What the verticals send:
 | Suppression | A block on an address | address, channel, reason (`opt_out`, `hard_bounce`, `complaint`, `invalid`), source, date |
 | Message | One message to one recipient on one channel | type, subject (`Subject` it is about), recipient, channel, language, rendered content, provider, provider message id, cost (if reported), status, scheduled for, attempts |
 | Delivery event | A status update from a provider | message, status, provider code, timestamp, raw payload reference |
-| Broadcast | One message of one marketing or manual type to a list of recipients | requester `Subject` (e.g. a wl-sales campaign), notification type, template, channel, recipient source (a wl-sales segment, or a filtered party list), send at, recipients resolved, excluded counts by reason (no consent, opted out, suppressed, no contact point, frequency cap), requested by, approved by, results (sent, delivered, failed, opted out), status |
+| Broadcast | One message of one marketing or manual type to a list of recipients | requester `Subject` (a wl-sales campaign in the MVP), notification type, template, channel, recipient source (a wl-sales segment; a filtered party list, Later), send at, recipients resolved, excluded counts by reason (no consent, opted out, suppressed, no contact point, frequency cap, blocked party, expired, broadcast stopped), requested by (a user, never the system: for a campaign, the user who last set its retention fields), approved by, cancel reason (rejected, cancelled, approval expired, requester guard failed), stopped by and at, results (sent, delivered, failed, opted out), status |
 | In-app notification | A bell entry for a staff or portal user | user, type, title, link, read at (Renox database notifications) |
 
 Rules that apply to all entities:
@@ -93,7 +94,7 @@ Rules that apply to all entities:
 | `defer` | queued | deferred | system | normal urgency, external recipient, inside quiet hours; or category `marketing` outside the marketing send window (`NTF.RUL.02`) | scheduled for the end of quiet hours or the next opening of the window |
 | `release` | deferred | queued | system | scheduled time reached | — |
 | `send` | queued | sent | system | contact point valid; not suppressed; consent present when required; provider rate limit allows | provider message id stored |
-| `suppress` | queued | suppressed | system | a send guard fails permanently, or the recipient is over the marketing frequency cap (`NTF.RUL.02`) | reason recorded; event `MessageSuppressed` |
+| `suppress` | queued, deferred | suppressed | system | a send guard fails permanently; the recipient is over the marketing frequency cap (`NTF.RUL.02`); a marketing message of a broadcast not sent within the stale limit, or of a stopped broadcast (`NTF.RUL.03`, §4.3) | reason recorded; event `MessageSuppressed` |
 | `deliver` | sent | delivered | system (provider receipt) | — | event `MessageDelivered` |
 | `mark_read` | sent, delivered | read | system (provider receipt) | — | — |
 | `fail` | sent, queued | failed | system | provider error or failed receipt | event `MessageFailed`; hard bounce or invalid number → suppression |
@@ -108,6 +109,7 @@ stateDiagram-v2
   deferred --> queued: release
   queued --> sent: send
   queued --> suppressed: suppress
+  deferred --> suppressed: suppress
   queued --> failed: fail
   sent --> delivered: deliver
   sent --> read: mark_read
@@ -168,20 +170,21 @@ stateDiagram-v2
 
 | State | Tone | Terminal | Meaning |
 |---|---|---|---|
-| `pending_approval` | warning | no | Waiting for a second person (`NTF.ACL.03`) |
+| `pending_approval` | warning | no | Waiting for a second person (`NTF.ACL.03`); expires 24 h after send at (`NTF.RUL.03`) |
 | `scheduled` | info | no | Approved or below the limit; waits for its send time |
 | `sending` | info | no | Recipients resolved; messages being queued |
 | `completed` | success | yes | Every message queued; results keep updating from delivery events |
-| `cancelled` | neutral | yes | Rejected, or cancelled before sending |
+| `cancelled` | neutral | yes | Rejected, cancelled or expired before sending, or its requester's guards failed at start |
 
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
-| `request` | — | pending_approval, scheduled | `notifications.marketing.send` (marketing types), `notifications.broadcast.send` (other types, Later), or the requester module | type of category `marketing` or a manual type; template active (WhatsApp: `approved`) in every language used; SMS: an `AD-` sender ID configured | estimated recipients shown; `pending_approval` when the estimate is above the limit of `NTF.ACL.03`, otherwise `scheduled` |
+| `request` | — | pending_approval, scheduled | the requester module on behalf of a user (marketing types: an `active` wl-sales campaign, `NTF.ACL.04`); `notifications.broadcast.send` (other types, Later) | type of category `marketing` or a manual type; template active (WhatsApp: `approved`) in every language used; SMS: an `AD-` sender ID configured; the requesting user named | estimated recipients shown (the members of the recipient source now who would pass consent, opt-out, suppression, contact point and blocked-party checks for the channel; the frequency cap is not estimated); `pending_approval` when the estimate is above the limit of `NTF.ACL.03`, otherwise `scheduled` |
 | `approve` | pending_approval | scheduled | `notifications.marketing.send` | approver ≠ requester (`NTF.ACL.03`) | — |
 | `reject` | pending_approval | cancelled | `notifications.marketing.send` | reason; rejecter ≠ requester | requester told; event `BroadcastCancelled` |
-| `start` | scheduled | sending | system (send at reached) | — | recipients resolved now; consent, opt-out, suppression and `NTF.RUL.02` applied per recipient; excluded counts recorded |
+| `start` | scheduled | sending | system (send at reached) | the requester `Subject` still allows the send (`NTF.ACL.04`: campaign `active`, the vertical's guards pass), otherwise `cancel` with reason *requester guard failed* | recipients resolved now; blocked, archived and merged parties left out; consent, opt-out, suppression and `NTF.RUL.02` applied per recipient; excluded counts recorded |
 | `complete` | sending | completed | system | every recipient has a message or an exclusion | event `BroadcastCompleted` |
-| `cancel` | pending_approval, scheduled | cancelled | requester, or `notifications.marketing.send` | — | event `BroadcastCancelled` |
+| `cancel` | pending_approval, scheduled | cancelled | requester, `notifications.marketing.send`, or system (the requester `Subject` ended, e.g. the campaign `end`) | — | event `BroadcastCancelled` |
+| `expire` | pending_approval | cancelled | system (`NTF.RUL.03`) | not approved N hours after send at | reason *approval expired*; requester told; event `BroadcastCancelled` |
 
 ```mermaid
 stateDiagram-v2
@@ -190,6 +193,7 @@ stateDiagram-v2
   pending_approval --> scheduled: approve
   pending_approval --> cancelled: reject
   pending_approval --> cancelled: cancel
+  pending_approval --> cancelled: expire
   scheduled --> sending: start
   scheduled --> cancelled: cancel
   sending --> completed: complete
@@ -197,9 +201,15 @@ stateDiagram-v2
   cancelled --> [*]
 ```
 
-Messages already queued by a broadcast are not recalled; a message deferred by the send
-window is still sent when the window opens. A broadcast is sent once: running it again is a
-new broadcast, and a recipient gets at most one message per broadcast.
+Messages already sent by a broadcast are not recalled; a message deferred by the send window
+is still sent when the window opens, unless the broadcast was stopped or the message went
+stale (`NTF.RUL.03`). A broadcast is sent once: running it again is a new broadcast, and a
+recipient gets at most one message per broadcast.
+
+**Stop:** a holder of `notifications.marketing.send` may stop a broadcast that is `sending`, or
+`completed` with messages still `queued` or `deferred` (wrong segment, wrong text). It is an
+action, not a transition: those messages are suppressed with reason *broadcast stopped*, the
+state stays, stopped by and at are recorded, and `BroadcastStopped` tells the requester.
 
 **Vertical mapping:** no vertical defines its own message or template machine. Verticals add
 notification types and templates (e.g. `booking.reminder` in 05/08/10, `shipment.out_for_delivery`
@@ -233,28 +243,37 @@ in 03, `job_card.ready` in 08) and choose default channels per type.
 
 ### 5.2 Opt-out
 
-1. A recipient clicks the unsubscribe link (email) or replies STOP (SMS/WhatsApp).
+1. A recipient clicks the unsubscribe link (email) or replies `STOP` in any letter case
+   (SMS/WhatsApp).
 2. The provider webhook or the link creates a suppression, or a preference change, for that
    category and channel.
 3. Marketing consent in `wl-parties` is withdrawn when the opt-out concerns marketing.
 
 ### 5.3 Marketing broadcasts (MVP for 05, 06, 08, 10) and manual bulk messages (Later)
 
-1. A retention campaign in wl-sales is activated (`SAL.LOY.01`), or staff with
-   `notifications.marketing.send` start a broadcast from a segment. The broadcast names a
-   marketing template, the channel and the send time.
+1. A retention campaign in wl-sales is activated (`SAL.LOY.01`) and requests the broadcast
+   for the user who set its retention fields (`NTF.ACL.04`). The broadcast names a marketing
+   template, the channel and the send time. Staff cannot start a marketing broadcast directly
+   from a segment in the MVP.
 2. Above the recipient limit, a second holder of `notifications.marketing.send` approves it
-   (`NTF.ACL.03`).
+   (`NTF.ACL.03`). Not approved within 24 hours after the send time, it expires
+   (`NTF.RUL.03`) and the campaign shows *not sent*.
 3. At the send time the segment is evaluated again. Only recipients with marketing consent
    for that channel (`PTY.CNS.01`, `NTF.ACL.01`), no opt-out or suppression and a valid
    contact point get a message; `NTF.RUL.02` defers messages outside the marketing send
-   window and skips recipients over the frequency cap. The excluded counts are kept by
-   reason; the names of excluded recipients are not listed to the requester.
+   window and skips recipients over the frequency cap. Blocked, archived and merged parties
+   are left out. For a minor (`PTY.REL.01`), the message goes to the guardian, with the
+   guardian's consent. The excluded counts are kept by reason; the names of excluded
+   recipients are not listed to the requester. A marketing message not sent within 48 hours
+   of the start (provider down, long deferral) is suppressed as *expired* (`NTF.RUL.03`), so no
+   stale promotion goes out.
 4. Every marketing message identifies the client's brand and carries an opt-out: an
-   unsubscribe link in email, a reply keyword (e.g. STOP) in SMS and WhatsApp. An opt-out
-   withdraws the marketing consent for that channel (§5.2).
+   unsubscribe link in email, the reply keyword `STOP` in SMS and WhatsApp (the same keyword
+   in Arabic messages; any letter case is accepted). An opt-out withdraws the marketing
+   consent for that channel (§5.2).
 5. Results (sent, delivered, failed, opted out) are kept on the broadcast and returned to
-   the requester through `BroadcastCompleted` and the delivery log.
+   the requester through `BroadcastCompleted` and the delivery log. A broadcast can be
+   stopped while messages remain unsent (§4.3 *Stop*).
 
 Manual bulk messages of other types (e.g. all tenants of a building, all guardians of a
 batch) use the same broadcast with `notifications.broadcast.send` and stay Later. The same
@@ -313,7 +332,7 @@ statutory, and what proof of delivery counts for them, is set by the vertical.
 |---|---|
 | `Notifier::notify(type, subject, recipients, data)` | Send a notification of a registered type |
 | `Notifier::register_type(definition)` | Modules register their notification types, variables and default templates |
-| `Notifier::send_otp(contact_point, purpose)` / `verify_otp` | One-time codes for portal login (06 F&B customers, 09 workers), signature confirmation (`wl-documents`), proof of delivery (`wl-delivery`), contact verification |
+| `Notifier::send_otp(contact_point, purpose)` / `verify_otp` | One-time codes for portal login (06 F&B customers, 09 workers), signature confirmation (`wl-documents`), proof of delivery (`wl-delivery`), contact verification, loyalty redemption (`wl-sales`); a code is valid for the OTP validity and voided after the wrong tries (§7); `verify_otp` returns `valid`, `wrong` (tries left), `expired` or `locked` |
 | `Notifier::broadcast(type, requester subject, recipient source, channel, send at)` | Request a broadcast (§4.3); returns the broadcast with its estimate |
 | `Recipients` resolvers | Role in scope, party contacts by portal role, assignee; extensible |
 | Delivery log queries | "Was the overdue notice delivered?" for disputes and reports; `Notifier::notice_status(subject, type)` returns `delivered` (with the provider delivery time), `proof_recorded` (with the delivery date entered in the proof) or `not_delivered`. Requesters start a deadline from the delivery time or the proof's delivery date, never from the time the proof was typed |
@@ -338,7 +357,8 @@ statutory, and what proof of delivery counts for them, is set by the vertical.
 | `ContactPointInvalidated` | a contact point is marked `invalid` | contact point, party, channel, reason |
 | `OptOutReceived` | a recipient opts out | address, channel, category |
 | `TemplateApproved` / `TemplateRejected` | WhatsApp template decision | template id, type, language, reason |
-| `BroadcastCompleted` / `BroadcastCancelled` | a broadcast has queued all messages, or is cancelled | broadcast id, requester subject, recipients, excluded counts by reason, reason (cancelled) |
+| `BroadcastCompleted` / `BroadcastCancelled` | a broadcast has queued all messages, or is cancelled, rejected or expired | broadcast id, requester subject, recipients, excluded counts by reason, reason (cancelled: rejected, cancelled, approval expired, requester guard failed) |
+| `BroadcastStopped` | a broadcast is stopped (§4.3) | broadcast id, requester subject, stopped by, messages suppressed |
 
 **Attaches to:** every message references the `Subject` it is about, so a record's page can
 show its communication history (e.g. reminders sent for an invoice).
@@ -353,7 +373,7 @@ show its communication history (e.g. reminders sent for an invoice).
 | `notifications.channels.manage` | Configure providers, sender identity, quiet hours |
 | `notifications.preferences.manage` | Change a party's preferences on their request |
 | `notifications.broadcast.send` | Send a manual or bulk message (Later) |
-| `notifications.marketing.send` | Request and approve marketing broadcasts (MVP for 05, 06, 08, 10; Later elsewhere) |
+| `notifications.marketing.send` | Approve, cancel and stop marketing broadcasts; in the MVP they are requested only by campaigns (`NTF.ACL.04`) (MVP for 05, 06, 08, 10; Later elsewhere) |
 
 **Access rules**
 
@@ -362,13 +382,15 @@ show its communication history (e.g. reminders sent for an invoice).
 | `NTF.ACL.01` | Marketing messages go only to recipients with marketing consent for that channel; exporting recipient lists needs a sensitive-export permission and is audited. Generalises `FNB.ACL.10` and `CLN.ACL.11` | `SEN` | — |
 | `NTF.ACL.02` | No health or identity data in message bodies; message content shown in the delivery log follows the subject's access rules | `FLD` | — |
 | `NTF.ACL.03` | A marketing broadcast to more than N recipients needs approval by a second holder of `notifications.marketing.send`; the requester cannot approve it | `LIM`, `SOD` | N = 200 |
+| `NTF.ACL.04` | A marketing broadcast is requested only by an `active` wl-sales campaign, on behalf of the user who last set its segment, template, channel or send time (that user is the requester for `NTF.ACL.03`, also when the campaign activates on its start date); the campaign's guards, including the vertical's (05: `CLN.ACL.13`), are checked at `request` and again at `start` | `STA`, `SOD` | — |
 
-**Automations:** `wl-notify` is the target of every rule's *Notify* action. It owns one rule:
+**Automations:** `wl-notify` is the target of every rule's *Notify* action. It owns these rules:
 
 | ID | Rule | When | Then | Parameter (default) |
 |---|---|---|---|---|
 | `NTF.RUL.01` | Give-up reaction | a message ends `abandoned` through `give_up` | run the notification type's give-up reaction ([§5.4](#54-when-a-message-gives-up)): staff task, alternative recipient, mark the contact point invalid, or the statutory-notice task | task due 1 working day; on |
-| `NTF.RUL.02` | Marketing send window and frequency cap | a message of category `marketing` is queued | outside the send window (Asia/Dubai) → `defer` to the next opening; when the recipient already got the cap of marketing messages in the last 7 days (across all broadcasts of the client) → `suppress` with reason *frequency cap* | window 07:00–21:00, every channel; cap 2 per 7 days; on |
+| `NTF.RUL.02` | Marketing send window and frequency cap | a message of category `marketing` is queued | outside the send window (Asia/Dubai) → `defer` to the next opening; when the recipient already got the cap of marketing messages in the last 7 days (across all broadcasts of the client) → `suppress` with reason *frequency cap*. The cap is checked at `send` under a lock per recipient party, and the message is `sent` under the same lock, so two broadcasts cannot both pass it | window 07:00–21:00, every channel; cap 2 per 7 days; on |
+| `NTF.RUL.03` | Stale broadcasts | a broadcast is `pending_approval` N hours after its send at; or a marketing message of a broadcast is still `queued` or `deferred` M hours after the broadcast's `start` | `expire` the broadcast (reason *approval expired*; requester told); `suppress` the message with reason *expired* (counted in the broadcast's excluded counts) | N = 24 h; M = 48 h; on |
 
 ## 7. Configuration per client
 
@@ -386,8 +408,10 @@ show its communication history (e.g. reminders sent for an invoice).
 | Read and open tracking | off for email, provider default for WhatsApp |
 | Give-up reaction per type, statutory flag | the module's and vertical's defaults ([§5.4](#54-when-a-message-gives-up)) |
 | Give-up task due (`NTF.RUL.01`) | 1 working day |
-| Marketing send window; frequency cap (`NTF.RUL.02`) | 07:00–21:00 on every channel (SMS may not be widened, §10); 2 messages per 7 days |
+| Marketing send window; frequency cap (`NTF.RUL.02`) | 07:00–21:00 on every channel, set per channel: SMS may be narrowed but not widened (§10); email and WhatsApp may be narrowed or widened; 2 messages per 7 days |
+| One-time code (`send_otp`): validity; wrong tries before the code is voided | 5 minutes; 3 |
 | Broadcast approval above (`NTF.ACL.03`) | 200 recipients |
+| Broadcast approval expiry; stale marketing messages (`NTF.RUL.03`) | 24 hours after send at; 48 hours after start |
 
 ## 8. Extension points
 

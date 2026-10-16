@@ -180,6 +180,7 @@ reviewed (the vertical row keeps the old ID as *formerly*).
 | `NTF.ACL.01` | Marketing messages go only to recipients with recorded consent; list exports are audited | wl-notify | `CLN.ACL.11`, `FNB.ACL.10` | in use |
 | `NTF.ACL.02` | No health or identity data in message bodies | wl-notify | — | module |
 | `NTF.ACL.03` | A marketing broadcast above a recipient count needs a second approver | wl-notify | — | module |
+| `NTF.ACL.04` | Marketing broadcasts come only from an active campaign; the user who last set its audience, template, channel or time is the requester | wl-notify | — | module |
 | `FIN.ACL.01` | An issued invoice is never edited; it is corrected by a credit note | wl-invoicing | — | in use |
 | `FIN.ACL.02` | A bounced cheque is marked replaced only by linking the replacement | wl-payments | — | in use |
 | `FIN.ACL.03` | A supplier bill is approved only after a 3-way match within tolerance, otherwise by approval; a possible duplicate is held for a second user | wl-invoicing | `CON.ACL.10` (merged) | in use |
@@ -201,6 +202,8 @@ reviewed (the vertical row keeps the old ID as *formerly*).
 | `FIN.ACL.19` | Recovering a cash shortage from salary needs another person's approval and the holder's acknowledgement | wl-payments | — | module |
 | `FIN.ACL.20` | A cheque collected in the field is deposited only after a handover counted by someone other than the collector | wl-payments | — | module |
 | `FIN.ACL.21` | Every owner drawing needs approval by someone other than the requester | wl-invoicing | — | module |
+| `FIN.ACL.22` | Only holders of `drawings.approve` see drawings lines, payees and notes; others see totals | wl-invoicing | — | module |
+| `FIN.ACL.23` | In a one-owner company the owner's own drawing is recorded without a second approver, flagged self-approved, and the accountant is told | wl-invoicing | — | module |
 | `SAL.ACL.01` | Cancelling or refunding a paid order above a value, or after fulfilment started, needs a manager | wl-sales | `FNB.ACL.11` (void after fire, proposed) | in use |
 | `SAL.ACL.02` | A manual discount or a price below list beyond a limit needs a manager | wl-sales | `CLN.ACL.07`, `EDU.ACL.07`, `AUT.ACL.03`, `MFG.ACL.05` | in use |
 | `SAL.ACL.03` | A credit hold is released, and an account hold cleared, only by a role with `credit.release`, not by the order's creator or the requester | wl-sales | `MFG.ACL.04`, `AUT.ACL.04`, `AUT.ACL.05` | in use |
@@ -208,6 +211,8 @@ reviewed (the vertical row keeps the old ID as *formerly*).
 | `SAL.ACL.05` | Amending or cancelling after fulfilment started, finishing to stock, scrapping or waiving the fee needs a manager | wl-sales | — | module |
 | `SAL.ACL.06` | A refund or credit after completion with nothing returned needs a complaint category and responsible party; a manager above a limit | wl-sales | — | module |
 | `SAL.ACL.07` | Large manual points adjustments, closing an account with points, and campaign cost over budget need a manager other than the requester | wl-sales | — | module |
+| `SAL.ACL.08` | A member is attached to a sale only before it completes, never by the cashier to their own account; one account per mobile number | wl-sales | — | module |
+| `SAL.ACL.09` | Changing the source or campaign of an acquired customer or won lead needs a reason and a second person | wl-sales | — | module |
 | `WRK.ACL.01` | An external requester sees only their tickets and the comments marked visible | wl-ticketing | — | module |
 | `WRK.ACL.02` | A field user or vendor sees only assigned tickets; requester contact only while open | wl-ticketing | `PRP.ACL.03` | in use |
 | `WRK.ACL.03` | Confidential ticket categories are visible only with `tickets.confidential.view` | wl-ticketing | — | module |

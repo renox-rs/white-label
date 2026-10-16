@@ -42,7 +42,7 @@ payment (G5, `FIN.BUD.01`: BL-PAY-26).
 | BL-PAY-23 | Raise a later cash shortage against a holder | medium | s | Launch 03 | BL-PAY-17 |
 | BL-PAY-24 | Set off a party's invoice against its supplier bill | medium | s | Launch 02 | Base: wl-payments Payment lifecycle; BL-PAY-01; BL-PTY-04 |
 | BL-PAY-25 | Expose open cheques, bank balances and payments for the cash-flow forecast | high | s | Build 1 | Base: wl-payments Payment, Cheque, Bank statement import lifecycles |
-| BL-PAY-26 | Record an owner-drawings payment only after approval (`FIN.ACL.21`) | high | s | Build 1 | Base: wl-payments Payment lifecycle; BL-INV-27 |
+| BL-PAY-26 | Record an owner-drawings payment only after approval (`FIN.ACL.21`) | high | m | Build 1 | Base: wl-payments Payment, Bank statement import lifecycles; BL-INV-27; BL-PAY-25 |
 
 ---
 
@@ -1644,14 +1644,17 @@ Creating the supplier bill from the certificate (BL-CON-06).
 ### BL-PAY-25 — wl-payments: expose open cheques, bank balances and payments for the cash-flow forecast
 
 **Labels:** `module:wl-payments` `area:sme-gap` `priority:high` `size:s` · **Milestone:** Build 1 · **Size:** s
-**Depends on:** Base: wl-payments Payment, Cheque and Bank statement import lifecycles · **Blocks:** BL-INV-28, BL-ACC-24, BL-AUT-18, BL-CLN-16, BL-CON-17, BL-EDU-18, BL-FNB-16, BL-LOG-26, BL-MFG-14, BL-MPW-21, BL-PRP-26
+**Depends on:** Base: wl-payments Payment, Cheque and Bank statement import lifecycles · **Blocks:** BL-INV-28, BL-PAY-26, BL-ACC-24, BL-AUT-18, BL-CLN-16, BL-CON-17, BL-EDU-18, BL-FNB-16, BL-LOG-26, BL-MFG-14, BL-MPW-21, BL-PRP-26
 **Review items:** G2 (SME problem map 12, 14)
 
 #### Goal
-The cash-flow forecast in wl-invoicing (`FIN.CFL.01`) needs three read-only answers from this
+The cash-flow forecast in wl-invoicing (`FIN.CFL.01`) needs four read-only answers from this
 module: the cheques not yet cleared with their dates, the latest known balance of each bank
-account, and the payments recorded in an account after a date. This issue adds the closing
-balance to a bank statement import and the three reads; it changes no state machine.
+account, the payments in an account dated after a date, and the refunds approved or failed
+but not yet paid. This issue adds the closing balance to a bank statement import and these
+four reads; it changes no state machine. The read of payments with purpose *owner drawings*
+(budget vs actual, `FIN.BUD.01`) comes with that purpose in BL-PAY-26, and the read of
+statement lines marked as drawings with BL-PAY-26 too.
 
 #### Files to read
 - `docs/modules/wl-payments.md` §3 *Payment*, *Cheque*, *Bank statement import* (closing
@@ -1667,19 +1670,34 @@ balance to a bank statement import and the three reads; it changes no state mach
 
 | Entity | Description | Important fields |
 |---|---|---|
-| Bank statement import | One uploaded statement file for one bank account | entity, bank account, file, format (CSV, Excel, MT940), period, closing balance (from the file when it carries one, otherwise entered at upload; optional), number of lines, imported by, status |
+| Bank statement import | One uploaded statement file for one bank account | entity, bank account, file, format (CSV, Excel, MT940), period, closing balance (from the file when it carries one, otherwise entered at upload; optional; as of the last day of the period), number of lines, imported by, status |
 
 | Service | Purpose |
 |---|---|
-| `PaymentRecorder` | Record, allocate, reverse payments; party credit balance (the capability trait named in wl-kernel); payments per bank account after a date, payments with purpose owner drawings, and approved refunds not yet paid (wl-invoicing cash-flow forecast `FIN.CFL.01` and budget vs actual `FIN.BUD.01`) |
+| `PaymentRecorder` | Record, allocate, reverse payments; party credit balance (the capability trait named in wl-kernel); payments per bank account with a payment date strictly after a given date (`received` only; by the payment's date, not when it was recorded, since a balance is as of the end of its date), payments with purpose owner drawings (outgoing and repayments), and refunds `approved` or `failed` not yet paid (wl-invoicing cash-flow forecast `FIN.CFL.01` and budget vs actual `FIN.BUD.01`) |
 | `Cheques` | Register, deposit, clear, bounce, re-present, settle and refer cheques; open bounced amount per party (for the credit check in wl-sales); cheques not yet cleared (`received`, `due_for_deposit`, `deposited`) by direction, entity and cheque date, with open amount and linked documents (`FIN.CFL.01`) |
-| `BankStatements` | Import a statement file, suggest and confirm matches; latest closing balance per bank account with its date, from the latest completed import (`FIN.CFL.01`) |
+| `BankStatements` | Import a statement file, suggest and confirm matches; latest closing balance per bank account with its date, from the completed import with a closing balance whose period ends last (not the one imported last; on the same period end, the import completed last wins; `FIN.CFL.01`); outgoing lines marked as owner drawings (`FIN.BUD.01`) |
+
+In this issue: the cheque read, the balance read, the payments-after-a-date read and the
+refunds read. The owner drawings parts of `PaymentRecorder` and `BankStatements` are built in
+BL-PAY-26 with the purpose field.
 
 #### Edge cases decided
 - **Date of a closing balance:** the last day of the import's period.
 - **Import without a closing balance:** not used as a balance; the read returns the latest
   completed import that has one (or none).
 - **Reverted import:** never returned as a balance.
+- **Older period imported later:** a completed import for 2026-12-01 to 2026-12-31 uploaded
+  after the January import does not replace the January balance; "latest" is the period end.
+- **Same period end:** of two completed imports with a closing balance and the same period end
+  (a corrected re-import, or overlapping periods ending the same day), the one completed last
+  is returned.
+- **"After a date":** strictly after, by the payment's date (not the recording time): a payment
+  dated on the balance date is already in that balance and is not returned.
+- **Refunds:** `approved` and `failed` (not `cancelled`) refunds are returned as not yet paid;
+  `requested` ones are not (not yet decided).
+- **VAT payments:** an outgoing payment's reference may name a VAT summary; the read returns
+  the reference so wl-invoicing can drop that period's VAT line.
 - **Payments in the read:** `received` payments only (reversed ones excluded); `set_off`
   payments have no bank account and are never returned.
 - **Bounced and later re-presented cheque:** returned as open again once it is `deposited`
@@ -1696,31 +1714,44 @@ balance to a bank statement import and the three reads; it changes no state mach
       2027-01-10, the completed import returns AED 50,000 as of 2027-01-10.
 - [ ] A CSV import with a closing balance entered at upload (AED 48,000) returns that amount.
 - [ ] A reverted import's balance is not returned.
+- [ ] After the January import (balance as of 2027-01-31), completing a December import does
+      not change the returned balance.
+- [ ] A `failed` refund of AED 500 is returned as not yet paid; a `cancelled` one is not.
 - [ ] `Cheques` returns received cheque CHQ-7 (AED 8,000, dated 2027-02-01, `received`) with its
       linked charge, and not a `cleared` or `bounced` cheque.
-- [ ] `PaymentRecorder` returns the AED 5,000 transfer recorded on 2027-01-12 in BA1 for "after
-      2027-01-10", and not a reversed payment.
+- [ ] `PaymentRecorder` returns the AED 5,000 transfer dated 2027-01-12 in BA1 for "after
+      2027-01-10", and not a reversed payment, nor a transfer dated 2027-01-10 that was
+      recorded on 2027-01-12.
+- [ ] Two completed imports for BA1 both ending 2027-01-31, closing AED 40,000 (completed
+      2027-02-02) and AED 41,500 (completed 2027-02-03): the read returns AED 41,500.
 
 #### Out of scope
-The forecast itself (BL-INV-28); the owner drawings purpose (BL-PAY-26).
+The forecast itself (BL-INV-28); the owner drawings purpose and its reads (BL-PAY-26).
 
 ---
 
 ### BL-PAY-26 — wl-payments: record an owner-drawings payment only after approval (`FIN.ACL.21`)
 
-**Labels:** `module:wl-payments` `area:sme-gap` `priority:high` `size:s` · **Milestone:** Build 1 · **Size:** s
-**Depends on:** Base: wl-payments Payment lifecycle · BL-INV-27 (`FIN.ACL.21`, `CompanyBudgets`) · Epic wl-kernel: approval returned/failed (`PLT.APR.01`) · **Blocks:** BL-ACC-24, BL-AUT-18, BL-CLN-16, BL-CON-17, BL-EDU-18, BL-FNB-16, BL-LOG-26, BL-MFG-14, BL-MPW-21, BL-PRP-26
+**Labels:** `module:wl-payments` `area:sme-gap` `priority:high` `size:m` · **Milestone:** Build 1 · **Size:** m
+**Depends on:** Base: wl-payments Payment and Bank statement import lifecycles · BL-INV-27 (`FIN.ACL.21`, `CompanyBudgets`) · BL-PAY-25 (the reads this issue extends with drawings) · Epic wl-kernel: approval returned/failed (`PLT.APR.01`) · **Blocks:** BL-ACC-24, BL-AUT-18, BL-CLN-16, BL-CON-17, BL-EDU-18, BL-FNB-16, BL-LOG-26, BL-MFG-14, BL-MPW-21, BL-PRP-26
 **Review items:** G5 (SME problem map 11, 14)
 
 #### Goal
 When the owner takes money out of the business, the accountant enters an outgoing payment to
-the owner with purpose *owner drawings*. Saving it creates an approval request instead of the
-payment; only the final approval by a holder of `drawings.approve` other than the requester
-records it. The payment is allocated to no document and counts as a drawing in budget vs actual.
+the owner with purpose *owner drawings*, or marks an outgoing bank statement line (company card,
+ATM) as a drawing. Saving it creates an approval request instead of the payment; only the final
+approval by a holder of `drawings.approve` other than the requester records it (a sole owner's
+own drawing is recorded at once, flagged, `FIN.ACL.23`). The payment goes to the drawings
+category's owner party, is allocated to no document and counts as a drawing in budget vs
+actual. Money the owner pays back is an incoming payment with the same purpose. This issue also
+seeds the *Owner drawings* expense category.
 
 #### Files to read
-- `docs/modules/wl-payments.md` §3 *Payment* (purpose), §4 *Payment* (row `record`)
-- `docs/modules/wl-invoicing.md` §3 paragraph *Owner drawings*, §5.16, `FIN.ACL.21`
+- `docs/modules/wl-payments.md` §3 *Payment* (purpose), *Expense category*, *Statement line*,
+  §4 *Payment* (rows `record`, `reverse`), §5.3 step 5, §5.7 step 3, §6 `PaymentRecorder`,
+  `BankStatements`, §7 (expense categories)
+- `docs/modules/wl-invoicing.md` §3 paragraph *Owner drawings*, *Budget category* (owner
+  party), §5.16, `FIN.ACL.21`–`23`
 
 #### Terms
 - **Purpose:** an outgoing payment's field; none or *owner drawings*.
@@ -1729,35 +1760,76 @@ records it. The payment is allocated to no document and counts as a drawing in b
 
 #### Spec excerpt (authoritative for this issue)
 
-Payment field: purpose (outgoing only: none or *owner drawings*, `FIN.BUD.01`; a drawing is
-paid to the owner's party and allocated to no document).
+Payment field: purpose (none or *owner drawings*, `FIN.BUD.01`, with its drawings category; an
+outgoing drawing is paid to the category's owner party, an incoming one is a repayment from
+that party; either is allocated to no document).
+
+Expense category field: budget category (wl-invoicing `FIN.BUD.01`; the seeded *Owner
+drawings* category maps to a category of kind `owner_drawings`: VAT blocked, no cost object,
+every line approved under `FIN.ACL.21`).
 
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
-| `record` | — | received | `payments.record` | method details complete (cheque payments are created by the cheque `clear` and `settle_part` transitions); purpose *owner drawings*: an approved request (`FIN.ACL.21`, wl-invoicing) | event `PaymentReceived` |
+| `record` | — | received | `payments.record` | method details complete (cheque payments are created by the cheque `clear` and `settle_part` transitions); purpose *owner drawings*: party = the drawings category's owner party, no allocation; outgoing: an approved request (`FIN.ACL.21`, or `FIN.ACL.23` for a sole owner; wl-invoicing), incoming (repayment): no approval | event `PaymentReceived`; reversing a drawing (`reverse`) notifies the holders of `drawings.approve` |
+
+§5.7 step 3 (added): An outgoing line the owner spent for personal use (company card, ATM) is
+marked *owner drawing* with its drawings category: this creates the drawings approval request
+(`FIN.ACL.21`, wl-invoicing §5.16) and the line stays `suggested`; the approval records the
+payment and matches the line; a rejection, withdrawal or expiry puts the line back to
+`unmatched` with the reason and tells the accountant. The import cannot `complete` while such a
+request is open.
+
+§5.3 step 5 (added): An issued cheque for an approved owner drawing (wl-invoicing §5.16) is
+registered to the drawings category's owner party for the approved amount: another payee or
+amount is refused and needs a new drawings request; the cheque date is free, and its `clear`
+records the payment with purpose *owner drawings* on the clear date.
 
 | ID | Rule | Pattern | Parameter (default) |
 |---|---|---|---|
 | `FIN.ACL.21` | An owner drawing (a wl-payments payment with purpose *owner drawings*, or a supplier bill or expense line coded to a budget category of kind `owner_drawings`) needs approval by a holder of `drawings.approve` other than the requester before the payment is recorded or the bill or claim approved | `SOD`, `LIM` | AED 0 (every drawing approved) |
+| `FIN.ACL.23` | When the requester of a drawing is the entity's only active holder of `drawings.approve`, the drawing is recorded without a second approver, flagged *self-approved* in its history and in budget vs actual, and the accountant role is notified; with the setting off, such a drawing waits until a second holder exists | `SOD` | on (sole-owner companies) |
 
-wl-invoicing §5.16 step 2: for a payment, saving it creates the request instead of the payment,
-and the final approval records it with the details entered (a rejection records nothing).
+| Setting | Default |
+|---|---|
+| Expense categories and their VAT treatment | travel, fuel, meals, tools and materials, parking and tolls, other, owner drawings (blocked, mapped to the *Owner drawings* budget category, wl-invoicing); recoverable unless blocked: entertainment of non-employees (e.g. customer meals), vehicles available for personal use, employee personal benefits ✔ [S1] |
+
+wl-invoicing §5.16 step 2: for a payment or a statement line, saving it creates the request
+instead of the payment, and the final approval records it with the details entered; a
+rejection, withdrawal or expiry records nothing (a statement line goes back to `unmatched` with
+the reason, and the accountant is told).
 
 #### Edge cases decided
-- **Incoming payment with purpose drawings:** refused; purpose applies to outgoing payments only.
+- **Incoming payment with purpose drawings:** a repayment by the owner; allowed only from the
+  category's owner party; needs no approval; reduces the drawings of its month.
+- **Payee other than the owner party:** a drawings payment to any other party is refused, so
+  ordinary payments cannot be hidden as drawings.
+- **Several drawings categories (partners):** the category is chosen on the payment and fixes
+  the payee; the seeded *Owner drawings* is the default.
+- **Statement line marked as a drawing:** the line stays `suggested` while the request is
+  open, so the import cannot complete; on approval the payment is recorded with the line's
+  date and amount and matched; on rejection the line is `unmatched` again with the reason.
+- **Sole owner** (`FIN.ACL.23`): the payment is recorded at once, flagged *self-approved*; the
+  accountant role is notified.
 - **Allocation:** a drawings payment cannot be allocated to an invoice or bill.
-- **Cheque issued for a drawing:** the issued cheque is registered after the approval; its
-  `clear` records the payment with purpose *owner drawings* without a second request.
+- **Cheque issued for a drawing:** the issued cheque is registered after the approval, to the
+  category's owner party for the approved amount; another payee or amount is refused and
+  needs a new drawings request. The cheque date is free (the forecast counts it by cheque
+  date); its `clear` records the payment with purpose *owner drawings* on the clear date,
+  without a second request.
+- **Reads for budget vs actual:** `PaymentRecorder` returns payments with purpose *owner
+  drawings* (outgoing and repayments) by entity, category and payment date, and
+  `BankStatements` the lines marked as drawings; BL-INV-26 shows them on the drawings line.
 - **Details changed while the request waits:** the request `fail`s and the accountant submits
   again (wl-kernel approval pattern).
 - **Correction:** a recorded drawing is corrected with `reverse` (reason *entered in error*);
-  the reversal needs no drawings approval.
+  the reversal needs no drawings approval, and the holders of `drawings.approve` are notified.
 - **Block check:** money out to the owner's party runs `BlockGuard::check(party, money_out)`
   like any payment.
 
 #### Must not
 - Must not record a drawings payment before the final approval.
-- Must not let the requester approve it.
+- Must not let the requester approve it while another holder of `drawings.approve` exists.
+- Must not pay a drawing to a party other than the category's owner party.
 - Must not post the payment to a cost object or an expense category.
 
 #### Done when
@@ -1767,10 +1839,21 @@ and the final approval records it with the details entered (a rejection records 
 - [ ] A cannot approve it; owner B approves it and the payment is recorded `received` with the
       details A entered; event `PaymentReceived`.
 - [ ] B rejects another request; no payment is recorded.
-- [ ] An incoming payment with purpose *owner drawings* is refused.
+- [ ] Given the AED 15,000 drawing above recorded with payment date 2027-03-10, an incoming
+      payment of AED 5,000 from O dated 2027-03-20 with purpose *owner drawings* is recorded
+      without approval and reduces the March 2027 drawings to AED 10,000; from another party
+      it is refused.
+- [ ] After B approves a drawing of AED 4,000 paid by cheque, registering the issued cheque for
+      AED 4,500 or to another payee is refused; a cheque of AED 4,000 dated 2027-04-15 is
+      accepted, and its `clear` records the payment with purpose *owner drawings*.
+- [ ] An outgoing drawing to supplier party S (not the category's owner party) is refused.
+- [ ] Statement line AED 1,200 (ATM) marked as a drawing stays `suggested`; the import cannot
+      complete; after B approves, the payment is recorded and the line `matched`; after a
+      rejection the line is `unmatched` with the reason.
+- [ ] The *Owner drawings* expense category is seeded with VAT blocked and no cost object.
 - [ ] The recorded AED 15,000 appears on the owner drawings line of budget vs actual for its
       month (BL-INV-26) and as a payment in the cash-flow forecast if dated ahead.
 
 #### Out of scope
-Drawings as supplier bill or expense lines (BL-INV-27); VAT and corporate tax treatment
-(wl-invoicing §12 question 14).
+Drawings as supplier bill or expense lines and `FIN.ACL.22`, `FIN.ACL.23` themselves
+(BL-INV-27); VAT and corporate tax treatment (wl-invoicing §12 question 14, A-16).

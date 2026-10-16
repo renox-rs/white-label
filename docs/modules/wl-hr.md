@@ -37,9 +37,14 @@ keep the general ledger.
 
 All ten verticals are accepted (2026-10-15); the table lists only what their §5 tables name.
 A *minimal* employee record (person, scope, cost rate, optional documents; no payroll or
-visas) serves verticals that only record staff time: 04 (MVP), 07 and 08 (Later), decided
-2026-10-15. `wl-attendance` therefore always records time against an employee. 02 and 06
-use payroll and the WPS file Later.
+visas) serves verticals that only record staff time (04, decided 2026-10-15) and, since
+2026-10-16, the onboarding of 01, 07 and 08 (`HRM.ONB.01`). `wl-attendance` therefore
+always records time against an employee. 02 and 06 use payroll and the WPS file Later. A
+minimal record is created in `onboarding` when an onboarding template applies to it, else
+directly `active`. Its `activate` does not check the statutory items (visa case, labour
+contract, mandatory documents), which the client keeps outside the platform: only the
+document kinds the client marks as required for it (none by default) and a blocking
+onboarding (§3 *Onboarding*).
 
 **Onboarding and SOPs (`HRM.ONB.01`, decided 2026-10-16).** Every vertical uses onboarding
 checklists in the MVP. They run on the employee record, including the *minimal* record, so
@@ -93,7 +98,7 @@ transitions it guards. Verticals that use it:
 | Final settlement | Amounts due at exit | employee, last working day, reason (resignation, termination, contract end, onboarding cancelled, absconding, death, visa not renewed), payee (employee, or the estate's representative), unpaid salary, leave encashment, gratuity, notice pay, other dues, recoveries, recoveries offset (within the caps), net (dues minus the recoveries offset), amount due from the employee (recoveries above the caps), payments made, dispute (source, MoHRE complaint or court reference, undisputed amount, labour-case ticket, outcome), status |
 
 | Onboarding template | The steps every new employee in a role goes through (`HRM.ONB.01`) | name EN/AR, applies to (job roles or trades, or *all staff*; employment types), steps, blocks activation (off by default), version, active |
-| Onboarding template step | One step of a template | title EN/AR, owner (`hr`, `manager`, `employee`, or a named role), due (days after the hire date), required, kind (`task`, `checklist`, `document`, `sop_acknowledgement`), checklist template (`WRK.CHK.01`, for `checklist`), document kind (for `document`), evidence required (for `task`), help text |
+| Onboarding template step | One step of a template | title EN/AR, owner (`hr`, `manager`, `employee`, or a named role), due (days after the hire date), required (default yes), kind (`task`, `checklist`, `document`, `sop_acknowledgement`), checklist template (`WRK.CHK.01`, for `checklist`), document kind (for `document`), evidence required (for `task`; default no), help text |
 | Onboarding | One employee's onboarding | employee, trigger (`hire` or `manual`, e.g. a role change), templates applied (versions frozen), started at, steps, progress (required steps done or waived of total), blocks activation (from the templates), status (§4) |
 | Onboarding step | One step for one employee | onboarding, template step, assignees (resolved at start), due date, status (§4), done by, done at, evidence (checklist run, document, note, file), witness (for an employee step recorded in person), waived by, waive reason |
 
@@ -102,8 +107,14 @@ starts an onboarding from every active template that applies to the employee's j
 trade) and employment type, plus the *all staff* templates. HR may also start a template
 manually, e.g. when an active employee moves to a new role; a manual onboarding never blocks
 anything. Each step goes to its owner: `hr` = holders of `onboarding.manage` in the
-employee's scope; `manager` = the employee's manager (§3 *The employee's manager*);
-`employee` = the employee; a named role = its holders in the scope. A step is done:
+employee's scope, other than users who hold it only through the owner role (the owner role
+holds it by default as the second person for `waive` and `reopen`, and gets `hr` steps only
+when nobody else holds it); `manager` = the employee's manager (§3 *The employee's
+manager*); `employee` = the employee; a named role = its holders in the scope. A step with
+several assignees is one step: any one of them marks it done, and all of them are reminded.
+A template step is required unless HR marks it optional, and a `task` step needs an
+evidence file or note only when its template step says so (seeded steps: all required,
+none needs evidence). A step is done:
 
 - `task`: when the assignee marks it done, with the evidence file or note when required;
 - `checklist`: when its `WRK.CHK.01` run, started on the onboarding step, completes with
@@ -117,13 +128,34 @@ Steps owned by the employee are done in the employee's own session (staff accoun
 employee portal), or in person with a drawn signature on a staff device, the HR user being
 recorded as witness; nobody else marks them done (`HRM.ACL.10`). Before the employee has an
 account (workers whose portal account opens at `activate`), the in-person way is the only
-one. A step that does not apply is waived by HR with a reason (`HRM.ACL.10`).
+one. After an in-person record the employee is told on their own channel (SMS to the
+number on record, or the portal inbox when the account opens) what was recorded, when and
+with which witness, so a record made without them comes to light. A step that does not
+apply is waived by HR with a reason (`HRM.ACL.10`). A step ticked or waived by mistake is
+reopened by another `onboarding.manage` holder (`reopen`, §4). Evidence files on steps (an
+ID copy, a photo of handed-over PPE) are stored as documents of an employee kind and take
+that kind's sensitivity class.
+
+Assignees follow the people, not the start date. Open steps are re-resolved when the
+employee's scope assignment or job role changes, when an assignee's own assignment changes
+or ends (`EmployeeAssignmentChanged`), and when an assignee's user account is deactivated;
+with nobody left the step goes to HR. A corrected hire date recomputes the due dates of open
+steps. A role change does not remove steps of the old role's template: HR waives those that
+no longer apply and starts a manual onboarding for the new role. While the employee is
+`on_leave`, due dates of open steps move by the days of leave and reminders pause; the move
+always equals the calendar days of the approved leave as currently recorded, so a leave
+shortened, extended or cancelled moves the due dates again. While `absconded`, reminders
+and escalations pause and due dates do not move; after `reinstate`, an overdue step is
+reminded on the first run and then every R days, and HR and the manager are told on that
+run when E days have passed and they were not told before. Death (`EmployeeDeceased`),
+exit and a cancelled onboarding cancel the onboarding.
 
 Onboarding blocks nothing by default. A template may set *blocks activation*: Employee
-`activate` then also needs every required step of that onboarding `done` or `waived`. This
+`activate` then also needs every required step that comes from that template `done` or
+`waived`; steps of other templates in the same onboarding do not block. This
 does not replace the statutory items in the `activate` guard (visa case, labour contract,
-mandatory documents), which always apply. `HRM.RUL.17` reminds the assignees of overdue
-steps and then tells HR and the manager.
+mandatory documents), which always apply (a minimal record has none, §2). `HRM.RUL.17`
+reminds the assignees of overdue steps and then tells HR and the manager.
 
 **Employed and freelance (decided in 10 EdTech, 2026-10-15).** An employee with employment
 type `freelance` (for example a freelance tutor) has a record, documents, qualifications and
@@ -167,7 +199,7 @@ machines' events.
 
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
-| `activate` | onboarding | active | `employees.manage` | statutory onboarding items complete: when visa cases are enabled, a *new* visa case `completed`; labour contract signed; mandatory documents (Emirates ID, passport, health insurance) attached with expiry; ILOE is not a blocker, the worker has four months from the work permit to subscribe ✔ [S6]. For `freelance`: permit or freelance visa and the freelance agreement attached instead; when the employee's onboarding has *blocks activation* (§3 *Onboarding*), every required step `done` or `waived` | portal account created (where the vertical has an employee portal); event `EmployeeActivated` |
+| `activate` | onboarding | active | `employees.manage` | statutory onboarding items complete: when visa cases are enabled, a *new* visa case `completed`; labour contract signed; mandatory documents (Emirates ID, passport, health insurance) attached with expiry; ILOE is not a blocker, the worker has four months from the work permit to subscribe ✔ [S6]. For `freelance`: permit or freelance visa and the freelance agreement attached instead. For a *minimal* record (§2): no statutory items, only the document kinds the client marks required (none by default). For every record: when the employee's onboarding includes a template with *blocks activation* (§3 *Onboarding*), every required step from such a template `done` or `waived` | portal account created (where the vertical has an employee portal); event `EmployeeActivated` |
 | `start_leave` | active | on_leave | system (leave start) | approved leave request | event `LeaveStarted` |
 | `return` | on_leave | active | system (leave end) or `employees.manage` | — | — |
 | `give_notice` | active, on_leave | notice | `employees.manage` | notice date, last working day and reason recorded | final settlement drafted; *cancellation* visa case opened when sponsored; event `EmployeeNoticeGiven` |
@@ -216,7 +248,7 @@ stateDiagram-v2
 |---|---|---|---|---|---|
 | `start` | — | in_progress | system (`HRM.RUL.16`, employee created in `onboarding`) or `onboarding.manage` (trigger `manual`) | at least one active template applies (or is chosen); no other `in_progress` onboarding with the same template for the employee | template versions frozen; one step per template step, assignees resolved, due date = hire date (manual: start date) + due days; assignees notified; event `OnboardingStarted` |
 | `complete` | in_progress | completed | system (last required step `done` or `waived`) | every required step `done` or `waived` | optional steps still `open` are left open; HR and the manager notified; event `OnboardingCompleted` |
-| `cancel` | in_progress | cancelled | system (`EmployeeOnboardingCancelled`, `EmployeeExited`) or `onboarding.manage` (manual onboarding) | reason given (manual) | open steps `cancelled`; checklist runs in progress voided by the system with that reason |
+| `cancel` | in_progress | cancelled | system (`EmployeeOnboardingCancelled`, `EmployeeExited`, `EmployeeDeceased`) or `onboarding.manage` (manual onboarding) | reason given (manual) | open steps `cancelled`; checklist runs in progress voided by the system with that reason; no further reminders |
 
 ```mermaid
 stateDiagram-v2
@@ -232,21 +264,28 @@ stateDiagram-v2
 | State | Tone | Terminal | Meaning |
 |---|---|---|---|
 | `open` | neutral (error when overdue) | no | To do; *overdue* is shown from the day after the due date |
-| `done` | success | yes | Done, with its evidence |
-| `waived` | neutral | yes | Does not apply to this employee |
+| `done` | success | no | Done, with its evidence (reopened only by `reopen`) |
+| `waived` | neutral | no | Does not apply to this employee (reopened only by `reopen`) |
 | `cancelled` | neutral | yes | The onboarding was cancelled |
 
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
 | `mark_done` | open | done | an assignee (kind `task`), or system (`ChecklistCompleted` passed, `DocumentAccepted`, last required SOP acknowledged) | evidence attached when required; for an `employee` step, recorded by the employee (own session, or in person with signature and witness, `HRM.ACL.10`) | done by and at recorded; onboarding progress updated; `complete` when it was the last required step |
 | `waive` | open | waived | `onboarding.manage` | reason given; the user is not an assignee of the step (`HRM.ACL.10`) | audited; progress updated |
+| `reopen` | done, waived | open | `onboarding.manage` | onboarding `in_progress`; reason given; the user is not the one who marked the step done or waived it (`HRM.ACL.10`); a `done` step only of kind `task` (steps done by the system follow their evidence: a new checklist run, document or acknowledgement); a `waived` step of any kind (a reopened `document` or `sop_acknowledgement` step is re-evaluated at once and is `done` again when its evidence is already there) | done or waive record kept in the history; assignees notified; due date unchanged (overdue shown at once when passed); audited |
 | `cancel` | open | cancelled | system (onboarding `cancel`) | — | — |
+
+Steps are created `open` by the onboarding's `start`. `done` and `waived` are final for the
+onboarding's progress except through `reopen`; a `completed` onboarding is not reopened (HR
+starts a manual one).
 
 ```mermaid
 stateDiagram-v2
-  [*] --> open
+  [*] --> open: start
   open --> done: mark_done
   open --> waived: waive
+  done --> open: reopen
+  waived --> open: reopen
   open --> cancelled: cancel
   done --> [*]
   waived --> [*]
@@ -508,7 +547,7 @@ reached* is recorded after the cooling end.
 | 06 F&B | kitchen and outlet staff | not listed (excluded from the MVP) | Health cards and PIC certificate as documents with expiry |
 | 10 EdTech | employed and `freelance` tutors | Later, employed tutors only | Freelance tutors paid by monthly bill (`FIN.PAB.01`); permits and police clearance as documents with expiry; `qualification_valid` (`HRM.QUA.01`) guards tutor assignment (`EDU.ACL.14`) |
 | 02 Construction | workers and staff (`HRM.EMP.01`, MVP) | payroll and WPS file Later | Approved timesheets exported for payroll in the MVP; trade cost rates in apps/construction |
-| 04, 07, 08 | staff, technicians (minimal records, §2) | not listed | Only for timesheets in `wl-attendance`; 04 also records FTA tax agent registrations (`HRM.QUA.01`) that guard return filing |
+| 01, 04, 07, 08 | staff, technicians (minimal records, §2) | not listed | For onboarding and SOP acknowledgements (`HRM.ONB.01`, all four) and timesheets in `wl-attendance` (04, 07, 08); 04 also records FTA tax agent registrations (`HRM.QUA.01`) that guard return filing |
 
 ## 5. Workflows
 
@@ -647,11 +686,14 @@ Other exits:
 2. HR creates the employee in `onboarding`. `HRM.RUL.16` starts the onboarding: steps go to
    HR, the manager and the employee, with due dates from the hire date.
 3. wl-documents asks the new employee to acknowledge the SOPs of the role (`DOC.RUL.04`).
-   The `sop_acknowledgement` step is done when the last one is acknowledged.
+   The `sop_acknowledgement` step is done when nothing is pending any more: the last one is
+   acknowledged, or the remaining SOPs are withdrawn or no longer list the role.
 4. Checklist steps (workplace induction, uniform or PPE handed over with the employee's
    signature) run as `WRK.CHK.01` checklists; document steps are done when the document is
    accepted.
-5. `HRM.RUL.17` reminds the assignees of overdue steps, then HR and the manager.
+5. `HRM.RUL.17` reminds the assignees of overdue steps, then HR and the manager. A step
+   ticked or waived by mistake is reopened by another HR user with a reason; a new manager
+   or a departed assignee moves open steps to the new holder (§3).
 6. The onboarding completes when every required step is done or waived. When a template
    *blocks activation*, HR can activate the employee only then.
 7. When an SOP gets a new version later, every required reader acknowledges it again
@@ -668,7 +710,7 @@ Other exits:
 | `LeaveCalendar` | Approved leave per employee and period | wl-scheduling, wl-attendance (rosters) |
 | `CostRates` | Hourly cost rate per employee on a date (set on the salary structure, derived from it, or a freelance rate); answers "none" when the vertical's own rate applies (e.g. 02 trade rate) | wl-attendance (labour cost on approval, via its `CostRateResolver`), wl-invoicing (job costing) |
 | `SalaryFile` | Build a SIF file from a list of payments (payroll run or final settlement) | payroll, settlements |
-| `PayrollCalendar` | Payroll cut-off date and WPS due date per legal entity and period (cut-off day D of `HRM.RUL.02`) | wl-attendance (provisional hours at the cut-off, `HRM.RUL.15` timing); wl-invoicing (`FIN.CFL.01`: payroll payments on the WPS due date, with the run's net total and employer cost per period, from approved or estimated runs) |
+| `PayrollCalendar` | Payroll cut-off date and WPS due date per legal entity and period (cut-off day D of `HRM.RUL.02`) | wl-attendance (provisional hours at the cut-off, `HRM.RUL.15` timing); wl-invoicing (`FIN.CFL.01`: payroll payments on the WPS due date, with the run's net total and employer cost per period, from approved or estimated runs; each run's paid date; failed lines of a partly rejected run; unpaid final settlements with their legal deadline) |
 | `Workforce::employees_in(role, scope)` | Employees (`onboarding`, `active`, `on_leave`, `notice`) with a job role or trade in a scope | wl-documents (SOP required readers, `DOC.RUL.04`) |
 
 **Consumes**
@@ -686,7 +728,7 @@ Other exits:
 | wl-documents | `DocumentExpiring` (with `affected`), `DocumentExpired`, `DocumentAccepted` for employee kinds → qualification events |
 | wl-notify | SMS of a pay account change to the worker's known number; `MessageGaveUp` on that SMS → the change stays in cooling (no `activate`) and HR gets a task to reach the worker; recording the worker reached lets `activate` run |
 | wl-ticketing | labour-case tickets (settlement `dispute`); security tickets (pay account `stop`); `Checklists::start` and `ChecklistCompleted` for `checklist` onboarding steps (`WRK.CHK.01`) |
-| wl-documents | SOP acknowledgements: `SopAcknowledged` and `Sops::pending_for(employee)` for `sop_acknowledgement` steps; `DocumentAccepted` for `document` steps |
+| wl-documents | SOP acknowledgements: `Sops::pending_for(employee)` for `sop_acknowledgement` steps, re-evaluated on `SopPublished`, `SopAcknowledged`, `SopWithdrawn` and `SopReadersChanged` (done when nothing is pending); `DocumentAccepted` for `document` steps |
 
 **Events emitted**
 
@@ -734,7 +776,7 @@ posting. Visa cases attach to an employee, or to a candidate party before hire.
 | `payroll.view` / `payroll.prepare` / `payroll.approve` | see / prepare and submit / approve and confirm payroll runs |
 | `adjustments.manage` | add advances, recoveries, bonuses |
 | `settlements.prepare` / `settlements.approve` / `settlements.pay` | final settlements |
-| `onboarding.view` / `onboarding.manage` | see onboardings in scope / manage templates, start a manual onboarding, waive steps; holders are the `hr` owner of steps |
+| `onboarding.view` / `onboarding.manage` | see onboardings in scope / manage templates, start a manual onboarding, waive and reopen steps; holders are the `hr` owner of steps (default: the HR role and the owner role; a user who holds it only through the owner role is an `hr` owner only when nobody else holds it, §3 *Onboarding*) |
 
 **Access rules.** Shared rules owned here ([ACCESS-CONTROL.md](../ACCESS-CONTROL.md) §9,
 status *in use*):
@@ -745,7 +787,7 @@ status *in use*):
 | `HRM.ACL.04` | A payroll run or a final settlement is prepared by one user and approved by another | `MPW.ACL.05`, `MPW.ACL.12` | `SOD` | on |
 | `HRM.ACL.05` | A new pay account is approved by a user other than the requester, the worker is told by SMS on the number on record, and payroll uses it only after the cooling period; waiving the cooling needs MD approval and a reason | new (X-15) | `SOD`, `TIM` | 5 days |
 | `HRM.ACL.06` | A salary recovery (overpayment from a supplementary run, advance, damage, settlement offset) stays within the Art. 25 caps per type and 50% in total per payroll line, computed on the line's gross fixed wage for the period (a settlement offset: on the settlement's dues); a line above the caps is refused, not trimmed silently, and no approval can exceed the legal caps | new (X-15) | `LIM` | caps per §7 |
-| `HRM.ACL.10` | An onboarding step owned by the employee, and an SOP acknowledgement (wl-documents), is recorded only by the employee: in their own session, or in person with a drawn signature on a staff device, the staff user recorded as witness; no one records it for them otherwise. Waiving a step needs `onboarding.manage`, a reason, and a user who is not an assignee of the step; audited | new (G6) | `OWN`, `SOD` | on |
+| `HRM.ACL.10` | An onboarding step owned by the employee, and an SOP acknowledgement (wl-documents), is recorded only by the employee: in their own session, or in person with a drawn signature on a staff device, the staff user recorded as witness; no one records it for them otherwise. After an in-person record the employee is told on their own channel (SMS to the number on record, or the portal inbox when it opens). Waiving a step needs `onboarding.manage`, a reason, and a user who is not an assignee of the step; reopening a done or waived step needs `onboarding.manage`, a reason, and a user other than the one who marked it; audited | new (G6) | `OWN`, `SOD` | on |
 | `HRM.ACL.07` | A non-standard exit or reversal (`cancel_onboarding`, `withdraw_notice`, `report_absconding`, `reinstate`, `record_death`) is requested by HR and approved by another user with `employees.exit.approve`, with reason and documents; one pending request per employee (a second is refused until the first ends); audited | new (X-15) | `SOD` | approver: MD |
 
 Rules used here but owned elsewhere, and remaining promotion candidates:
@@ -773,7 +815,7 @@ Rules used here but owned elsewhere, and remaining promotion candidates:
 | `HRM.RUL.10` (from `CLN.RUL.01`) | qualification or employee document of a blocking kind reaches its expiry date (`DocumentExpired`) | — | `qualification_valid` answers *no* for that role and scope; emit `QualificationExpired` with the employee's open and planned work (the blocked records carried by `DocumentExpired`); notify the employee's manager (§3) and HR | — |
 | `HRM.RUL.11` | run `rejected` or `partially_rejected` | — | task per failed line for the preparer; notify the approver; if the run is still `rejected` (not resubmitted) or `partially_rejected` (not regenerated or confirmed paid) at 00:00 Asia/Dubai N days before the WPS due date, notify the MD and accountant (at once when the rejection is recorded after that point) | N = 1 |
 | `HRM.RUL.16` | an employee is created in `onboarding` | at least one active onboarding template applies to the job role (or trade) and employment type, or an *all staff* template exists | `start` an onboarding (trigger `hire`); notify the assignees of the first steps | — (on) |
-| `HRM.RUL.17` | daily at 08:00 Asia/Dubai | onboarding step `open` and its due date has passed | remind the assignees on the first run after the due date, then every R days; after E days overdue notify HR and the employee's manager once | R = 2; E = 5 |
+| `HRM.RUL.17` | daily at 08:00 Asia/Dubai | onboarding step `open` and its due date has passed; the employee is not `on_leave` or `absconded` (paused; on leave the due date moves by the days of leave) | remind the assignees on the first run after the due date, then every R days; after E days overdue notify HR and the employee's manager once | R = 2; E = 5 |
 | `HRM.RUL.12` | hold reason cleared (absence case closed, report withdrawn, line fixed), and at each cut-off for lines still held | payroll line held in a `paid` run | propose an off-cycle run for the released lines; when carried into the next regular run, require a reason and warn if payment falls after the WPS due date of its period | — |
 
 ## 7. Configuration per client
@@ -807,7 +849,7 @@ Rules used here but owned elsewhere, and remaining promotion candidates:
 | WPS rejection escalation (`HRM.RUL.11`) | 1 day before the WPS due date |
 | Settlement closes without dispute after | 30 days from `pay` |
 | Settlement alert (`HRM.RUL.09`) | 10 days after the last working day; legal deadline 14 days |
-| Onboarding templates per role (`HRM.ONB.01`) | one *all staff* induction template per vertical: welcome and introductions (manager, day 1), system account and access (HR, day 1), workplace and safety induction (manager, checklist, day 3), uniform or PPE handed over (HR, checklist with the employee's signature, day 3), SOPs acknowledged (employee, day 7); role templates are added by the vertical or the client |
+| Onboarding templates per role (`HRM.ONB.01`) | one *all staff* induction template per vertical: welcome and introductions (manager, day 1), system account and access (HR, day 1), workplace and safety induction (manager, checklist, day 3), uniform or PPE handed over (HR, checklist with the employee's signature, day 3), SOPs acknowledged (employee, day 7); every step required, none needs evidence; role templates are added by the vertical or the client |
 | Onboarding blocks activation | off for every template |
 | Onboarding step reminders (`HRM.RUL.17`) | every 2 days after the due date; HR and the manager told after 5 days |
 
@@ -906,6 +948,9 @@ No new Renox gap beyond R1–R5, R12, R15 and R23.
 - **Retention:** employment and payroll records kept for the statutory period after exit
   (worker files at least two years after the end of service, Art. 13(1); payroll and
   accounting records follow the longer tax period), then deleted or anonymised.
+  Onboarding records, their evidence and SOP acknowledgements (wl-documents) are part of
+  the worker file and follow the same period; drawn signatures and the IP address and
+  device of an acknowledgement are personal data (class `personal`).
 
 ## 11. Out of scope
 

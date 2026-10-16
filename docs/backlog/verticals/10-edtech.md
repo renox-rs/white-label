@@ -31,7 +31,7 @@ booking and document mechanics live in the module epics.
 | BL-EDU-14 | Correct attendance of a held session (`correct_attendance`, `EDU.ACL.16`) | medium | m | Launch 10 | BL-EDU-15; BL-ATT-07; BL-ATT-08; Base: wl-sales Package `reverse` |
 | BL-EDU-15 | Consume package credits by the absence policy | medium | m | Launch 10 | Base: wl-sales Package `consume`; Base: 10 Session lifecycle |
 | BL-EDU-16 | Reissue a certificate (`reissue`) and print a copy | medium | m | Launch 10 | Base: 10 Certificate lifecycle; BL-EDU-07 |
-| BL-EDU-17 | 10: configure shared negative-flow settings (documents, scheduling, notifications, alerts, integrations) | high | m | Launch 10 | BL-DOC-01; BL-DOC-02; BL-DOC-06; BL-SCH-02; BL-SCH-05; BL-SCH-07; BL-PTY-03; BL-NTF-06; BL-KRN-05; BL-KRN-08; BL-SAL-19; BL-SAL-20; BL-SAL-21; BL-SAL-22; BL-SAL-23; BL-SAL-24; BL-SAL-25; BL-NTF-07; BL-NTF-08; BL-HRM-26; BL-HRM-27; BL-HRM-28; BL-DOC-08; BL-DOC-09; BL-DOC-10 |
+| BL-EDU-17 | 10: configure shared negative-flow settings (documents, scheduling, notifications, alerts, integrations) | high | m | Launch 10 | BL-DOC-01; BL-DOC-02; BL-DOC-06; BL-SCH-02; BL-SCH-05; BL-SCH-07; BL-PTY-03; BL-NTF-06; BL-KRN-05; BL-KRN-08; BL-SAL-19; BL-SAL-20; BL-SAL-21; BL-SAL-22; BL-SAL-23; BL-SAL-24; BL-SAL-25; BL-SAL-26; BL-NTF-07; BL-NTF-08; BL-NTF-09; BL-HRM-26; BL-HRM-27; BL-HRM-28; BL-DOC-08; BL-DOC-09; BL-DOC-10 |
 | BL-EDU-18 | 10: configure shared negative-flow settings (fees, refunds, payments, cash) | high | m | Launch 10 | BL-INV-01; BL-INV-04; BL-INV-10; BL-INV-20; BL-PAY-02; BL-PAY-04; BL-PAY-07; BL-PAY-17; BL-INV-25; BL-INV-26; BL-INV-27; BL-INV-28; BL-INV-29; BL-INV-30; BL-PAY-25; BL-PAY-26 |
 
 ---
@@ -1167,7 +1167,7 @@ without any change.
 ### BL-EDU-17 — 10 EdTech: configure shared negative-flow settings (documents, scheduling, notifications, alerts, integrations)
 
 **Labels:** `vertical:10-edtech` `area:negative-flow` `priority:high` `blocked:open-item` · **Milestone:** Launch 10 · **Size:** m
-**Depends on:** BL-DOC-01 · BL-DOC-02 · BL-DOC-06 · BL-SCH-02 · BL-SCH-05 · BL-SCH-07 · BL-PTY-03 · BL-NTF-06 · BL-KRN-05 · BL-KRN-08 · BL-SAL-19 · BL-SAL-20 · BL-SAL-21 · BL-SAL-22 · BL-SAL-23 · BL-SAL-24 · BL-SAL-25 · BL-NTF-07 · BL-NTF-08 · BL-HRM-26 · BL-HRM-27 · BL-HRM-28 · BL-DOC-08 · BL-DOC-09 · BL-DOC-10 · **Blocks:** None
+**Depends on:** BL-DOC-01 · BL-DOC-02 · BL-DOC-06 · BL-SCH-02 · BL-SCH-05 · BL-SCH-07 · BL-PTY-03 · BL-NTF-06 · BL-KRN-05 · BL-KRN-08 · BL-SAL-19 · BL-SAL-20 · BL-SAL-21 · BL-SAL-22 · BL-SAL-23 · BL-SAL-24 · BL-SAL-25 · BL-SAL-26 · BL-NTF-07 · BL-NTF-08 · BL-NTF-09 · BL-HRM-26 · BL-HRM-27 · BL-HRM-28 · BL-DOC-08 · BL-DOC-09 · BL-DOC-10 · **Blocks:** None
 **Review items:** X-13, X-17, X-18, X-19, X-20
 
 #### Goal
@@ -1227,10 +1227,10 @@ on 2026-10-16: `SAL.RUL.07`, `SAL.RUL.08`, `SAL.ACL.07`, `NTF.RUL.02`, `NTF.ACL.
 | Lead sources used (`SAL.CRM.02`) | referral, walk-in, website, social, paid ads, event (school fairs), partner (schools, corporates), other; recorded on the lead (`SAL.CRM.01`) and on the student or guardian party; no source requires a campaign | §5; §7.2 settings |
 | Campaign channels (`SAL.CRM.02`, `SAL.ACL.07`) | Instagram, TikTok, search ads, WhatsApp, email, school and community events; converted value: the first enrolment invoice; a cost entry that takes a campaign over its budget needs a manager (`SAL.ACL.07`: on) | §5; §7.2 settings |
 | Loyalty earn and redeem (`SAL.LOY.01`, `SAL.RUL.07`) | `SAL.RUL.07` earns 1 point per AED 10 of fees paid by the student or guardian (none on corporate-paid fees) and reverses in proportion on a refund or credit note; 100 points = an AED 10 discount line on a later enrolment or package, at most 10% of its fee, confirmed by a one-time code to the member (VAT on the discounted supply: `⚠ open: accountant (A-15)`) | §5; §7.2 settings |
-| Loyalty expiry, adjustments and segments (`SAL.LOY.01`, `SAL.RUL.08`, `SAL.ACL.07`, `NTF.RUL.02`, `NTF.ACL.03`) | points expire 12 months after they are earned, with a reminder 30 days before (`SAL.RUL.08`); a manual adjustment above 500 points, or closing an account with points, needs a manager (`SAL.ACL.07`); segments: package with 2 credits or fewer, course completed without re-enrolment in 30 days, trial attended and not enrolled, guardians with two or more students; campaigns only with marketing consent (`NTF.ACL.01`), the guardian's for a minor, with opt-out; sent 07:00–21:00 and at most 2 marketing messages per recipient in 7 days (`NTF.RUL.02`); a broadcast to more than 200 recipients needs a second approver (`NTF.ACL.03`) | §5; §7.2 settings |
-| Onboarding checklists (`HRM.ONB.01`, `HRM.RUL.16`, `HRM.RUL.17`, `HRM.ACL.10`) | templates for tutor / trainer, admissions counsellor and academic coordinator, started by `HRM.RUL.16` when the employee record (`HRM.EMP.01`) is created; checklist steps use `WRK.CHK.01`; tasks to the centre manager, the academic coordinator and the employee; the employee's own steps recorded only by them (`HRM.ACL.10`); `HRM.RUL.17` reminds overdue steps every 2 days and tells the centre manager (HR) and the line manager after 5 days; completion blocks nothing (sessions stay guarded by tutor permits and police clearance) | §5; §7.2 settings |
-| SOP library (`HRM.ONB.01`, `DOC.RUL.04`, `HRM.ACL.10`) | SOP owners: academic coordinator (teaching, assessment, safeguarding) and centre manager (front desk, refunds); required readers by role per campus; `DOC.RUL.04` asks each reader to acknowledge within 7 days, reminds every 3 days and tells the manager and the owner role after 7 days; acknowledged only by the reader (`HRM.ACL.10`); a new version asks for a new acknowledgement | §5; §7.2 settings |
-| Registration and certification kinds (`DOC.EXP.01`, `DOC.RUL.01`) | *Trademark registration* and *Other certification* (subject: legal entity); responsible role company owner; `DOC.RUL.01` at 90, 30 and 7 days; no `blocks` | §5; §7.2 settings |
+| Loyalty expiry, adjustments and segments (`SAL.LOY.01`, `SAL.RUL.08`, `SAL.ACL.07`, `NTF.RUL.02`, `NTF.ACL.03`) | points expire 12 months after they are earned, with a reminder 30 days before (`SAL.RUL.08`); a manual adjustment above 500 points, or closing an account with points at staff's initiative (never at the member's request), needs a manager (`SAL.ACL.07`); segments: package with 2 credits or fewer, course completed without re-enrolment in 30 days, trial attended and not enrolled, guardians with two or more students; campaigns only with marketing consent (`NTF.ACL.01`), the guardian's for a minor, with opt-out; sent 07:00–21:00 and at most 2 marketing messages per recipient in 7 days (`NTF.RUL.02`); a broadcast to more than 200 recipients needs a second approver (`NTF.ACL.03`) | §5; §7.2 settings |
+| Onboarding checklists (`HRM.ONB.01`, `HRM.RUL.16`, `HRM.RUL.17`, `HRM.ACL.10`) | templates for tutor / trainer, admissions counsellor and academic coordinator, started by `HRM.RUL.16` when the employee record (`HRM.EMP.01`) is created in `onboarding` (none for a record created directly `active`, e.g. by a data import); checklist steps use `WRK.CHK.01`; tasks to the centre manager, the academic coordinator and the employee; the employee's own steps recorded only by them (`HRM.ACL.10`); `HRM.RUL.17` reminds the assignees of an overdue step on the first run after its due date, then every 2 days, and tells the centre manager (HR) and the line manager after 5 days; completion blocks nothing (sessions stay guarded by tutor permits and police clearance) | §5; §7.2 settings |
+| SOP library (`HRM.ONB.01`, `DOC.RUL.04`, `HRM.ACL.10`) | SOP owners: academic coordinator (teaching, assessment, safeguarding) and centre manager (front desk, refunds); required readers by role per campus; `DOC.RUL.04` asks each reader to acknowledge within 7 days, reminds every 3 days and tells the reader's manager and the SOP's owner role (the SOP owner named above) after 7 days overdue; acknowledged only by the reader (`HRM.ACL.10`); a new version asks for a new acknowledgement | §5; §7.2 settings |
+| Registration and certification kinds (`DOC.EXP.01`, `DOC.RUL.01`) | *Trademark registration* and *Other certification* (subject: legal entity); responsible role company owner; `DOC.RUL.01` at 180, 90 and 30 days for trademarks and 90, 30 and 7 days for the others; no `blocks` | §5; §7.2 settings |
 
 #### Edge cases decided
 - **Loyalty VAT:** a redeemed points discount reduces the VAT of the discounted supply only
@@ -1287,11 +1287,11 @@ on 2026-10-16: `SAL.RUL.07`, `SAL.RUL.08`, `SAL.ACL.07`, `NTF.RUL.02`, `NTF.ACL.
       days is suppressed (`NTF.RUL.02`), and a campaign to 201 guardians needs a second
       approver (`NTF.ACL.03`).
 - [ ] **Onboarding and SOPs:** hiring a tutor / trainer creates the tutor / trainer checklist with
-      tasks to the centre manager, the line manager and the employee, and the role is active
-      before it is complete; a step open 2 days past its due date reminds its assignee
-      (`HRM.RUL.17`); a new version of an SOP owned by the academic coordinator asks every
-      required reader to acknowledge again within 7 days (`DOC.RUL.04`), and no one else can
-      acknowledge for them (`HRM.ACL.10`).
+      tasks to the centre manager, the academic coordinator and the employee, and the role is active
+      before it is complete; a step still open on the first run after its due date reminds its
+      assignees, and again 2 days later (`HRM.RUL.17`); a new version of an SOP owned by the
+      academic coordinator asks every required reader to acknowledge again within 7 days
+      (`DOC.RUL.04`), and no one else can acknowledge for them (`HRM.ACL.10`).
 - [ ] **Registrations:** a fresh 10 deployment lists *Trademark registration* and *Other
       certification* with responsible role company owner; a trademark registration expiring in 90
       days notifies the company owner.
@@ -1354,8 +1354,8 @@ company budget with owner drawings (`FIN.BUD.01`), added on 2026-10-16: `FIN.RUL
 | Refund policy template (catalogue default) | before the start 100% minus the registration fee; after the start unused sessions pro rata minus an admin fee; after 50% no refund | §9, §13 q5 |
 | Absence policy (catalogue default) | unexcused absence consumes a credit: yes; notice for an excused absence: 24 h | §6 |
 | Cash-flow forecast alert (`FIN.CFL.01`, `FIN.RUL.23`) | projected balance below AED 25,000 in any of the next 13 weeks (weeks start Monday): `FIN.RUL.23` alerts the company owner and the accountant, checked daily at 06:00; instalments by due date; due dates adjusted by each payer's average days late: on; disputed amounts counted: off | §5; §7.2 settings |
-| Budget categories and approval (`FIN.BUD.01`, `FIN.RUL.24`) | categories (tutor costs, rent, marketing, materials, staff) owned by the accountant and mapped to the export accounts; one budget per legal entity and month, approved by the company owner; `FIN.RUL.24` warns the category's owner role and the accountant when a month's actual reaches 100% of its line | §5; §7.2 settings |
-| Owner drawings (`FIN.BUD.01`, `FIN.ACL.21`) | expense category and payment purpose *owner drawings*, kept out of operating cost and profit; every drawing (AED 0) approved by the company owner, never by the requester (`FIN.ACL.21`) | §5; §7.2 settings |
+| Budget categories and approval (`FIN.BUD.01`, `FIN.RUL.24`) | categories (tutor costs, rent, marketing, materials, staff) owned by the accountant and mapped to the export accounts; one budget per legal entity and fiscal year, by month, approved by the company owner; `FIN.RUL.24` warns the category's owner role and the accountant when a month's actual reaches 100% of its line | §5; §7.2 settings |
+| Owner drawings (`FIN.BUD.01`, `FIN.ACL.21`) | expense category and payment purpose *owner drawings*, kept out of operating cost and profit; every drawing approved, whatever its amount (`FIN.ACL.21` limit AED 0), by the company owner, never by the requester (`FIN.ACL.21`) | §5; §7.2 settings |
 
 #### Edge cases decided
 - **Pause and freeze allowance:** 30 days per year, one shared value per catalogue item for

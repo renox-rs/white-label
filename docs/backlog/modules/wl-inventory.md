@@ -42,10 +42,10 @@ supplier scorecard and alternative suppliers (`STK.SUP.01`, gap G3 of the
 | BL-STK-25 | Reopen a delivered dispatch on a delivery reversal | high | s | Launch 07 | Base: wl-inventory Dispatch lifecycle; BL-DLV-05 |
 | BL-STK-26 | Apply sales cancellation outcomes to stock | high | m | Launch 06 | BL-SAL-07; BL-SAL-08; BL-SAL-09 |
 | BL-STK-27 | Refuse a new or extended purchase order to a blocked supplier | high | s | Launch 02 | Base: wl-inventory Purchase order lifecycle; BL-PTY-04; BL-STK-08 |
-| BL-STK-28 | Keep preferred and alternative suppliers per item and use them in reorder suggestions | medium | m | Launch 02 | Base: wl-inventory Item catalogue and reorder suggestions; Epic wl-parties: `BlockGuard` |
-| BL-STK-29 | Compute the supplier score and keep monthly snapshots | medium | m | Launch 02 | BL-STK-01; BL-STK-03; BL-STK-05; BL-STK-28 |
-| BL-STK-30 | Ask procurement to review a supplier below the threshold (`STK.RUL.09`) | medium | s | Launch 02 | BL-STK-29 |
-| BL-STK-31 | Approve a change of an item's preferred supplier (`STK.ACL.07`) | medium | s | Launch 02 | BL-STK-28; Epic wl-kernel: approval returned |
+| BL-STK-28 | Keep preferred and alternative suppliers per item and use them in reorder suggestions | medium | m | Launch 02 | Base: wl-inventory Item catalogue and reorder suggestions; Epic wl-parties: `BlockGuard`; BL-DOC-10 |
+| BL-STK-29 | Compute the supplier score and keep monthly snapshots | medium | m | Launch 02 | BL-STK-01; BL-STK-03; BL-STK-05; BL-STK-28 (`SupplierIncidentSource` defined here) |
+| BL-STK-30 | Ask procurement to review a supplier below the threshold (`STK.RUL.09`) | medium | s | Launch 02 | BL-STK-29; BL-PTY-01 |
+| BL-STK-31 | Approve a change of an item's preferred supplier (`STK.ACL.07`) | medium | s | Launch 02 | BL-STK-28; BL-STK-29; Epic wl-kernel: approval returned |
 
 ---
 
@@ -1493,7 +1493,7 @@ the block effect review for open POs (BL-PTY-03).
 ### BL-STK-28 — wl-inventory: keep preferred and alternative suppliers per item and use them in reorder suggestions
 
 **Labels:** `module:wl-inventory` `area:sme-gap` `priority:medium` `size:m` · **Milestone:** Launch 02 · **Size:** m
-**Depends on:** Base: wl-inventory Item catalogue and reorder suggestions (`STK.RUL.04`) · Epic wl-parties: `BlockGuard` · **Blocks:** BL-STK-29, BL-STK-31, BL-AUT-18, BL-CON-17, BL-FNB-17, BL-MFG-14
+**Depends on:** Base: wl-inventory Item catalogue and reorder suggestions (`STK.RUL.04`) · Epic wl-parties: `BlockGuard` · BL-DOC-10 (supplier certificates) · **Blocks:** BL-STK-29, BL-STK-31, BL-AUT-18, BL-CON-17, BL-FNB-17, BL-MFG-14
 **Review items:** G3 (SME problem map 27, 49)
 
 #### Goal
@@ -1505,14 +1505,18 @@ one is inactive or blocked, so that one supplier failing does not stop replenish
 #### Files to read
 - `docs/modules/wl-inventory.md` §3 (*Item*, *Item supplier*, *Reorder suggestion*, paragraph
   *Supplier scorecard and alternative suppliers*), §5.9 steps 1 and 3, §6 *Shared automations*
-  (`STK.RUL.04` and the paragraph after the table)
-- `docs/modules/wl-parties.md` §6 (`BlockGuard`)
+  (`STK.RUL.04` and the paragraph after the table), *Consumes* (wl-parties, wl-documents rows)
+- `docs/modules/wl-parties.md` §4 (`merge`), §6 (`BlockGuard`, `PartiesMerged`)
 
 #### Terms
 - **Item supplier:** a row linking an item to a supplier party, role `preferred` or `alternative`.
-- **Last price:** the unit price per base unit, excl. VAT, in AED at the PO's rate, of the latest
-  posted receipt line from that supplier for the item; else the latest issued PO line price.
+- **Last price:** the unit price per base unit, excl. VAT, of the latest posted receipt line from
+  that supplier for the item; else the latest issued PO line price. Kept in the document's
+  currency (compared in AED only across currencies, BL-STK-29).
 - **`BlockGuard::check(party, start)`:** wl-parties guard; fails while the party is blocked.
+- **`ReorderPolicy`:** the base reorder rule of an item (capability `STK.ROP.01`, reorder points
+  and par levels): min/max, par, or *reorder point + lead time* (08 Auto). Only the last one
+  uses a lead time, and it takes the lead time of the item supplier the suggestion goes to.
 
 #### Spec excerpt (authoritative for this issue)
 
@@ -1525,25 +1529,52 @@ one is inactive or blocked, so that one supplier failing does not stop replenish
 |---|---|---|---|---|---|
 | `STK.RUL.04` | daily at time T | items at or below reorder point / par with a preferred supplier | create reorder suggestions per supplier, or draft POs when the client opts in; notify purchaser | T = 07:00; mode = suggestions | on |
 
-§3: Reorder suggestions (`STK.RUL.04`) use the preferred supplier. When it is inactive for the
-item or blocked (`BlockGuard::check(supplier, start)` fails, `PTY.ACL.03`), the suggestion goes
-to the first active alternative that passes the check, marked *alternative* with the reason;
-with none left, the suggestion has no supplier and the purchaser picks one. Lead time comes
-from the chosen item supplier (08 reorder point + lead time). The purchaser can switch a
-suggestion to another listed supplier; that changes nothing on the item. Making another
-supplier the item's preferred one needs a second person (`STK.ACL.07`).
+§3: Each item lists its suppliers: one `preferred` and ranked `alternative`s, each with lead
+time, last price and the supplier's current score, and a warning when a certificate kept on
+the supplier for the item (e.g. a *Halal certificate*, wl-documents §3) has expired; the
+warning blocks nothing unless a vertical adds `blocks`. Reorder suggestions (`STK.RUL.04`)
+use the preferred supplier. When it is inactive for the item or blocked
+(`BlockGuard::check(supplier, start)` fails, `PTY.ACL.03`), the suggestion goes to the first
+active alternative that passes the check, marked *alternative* with the reason; with none
+left, the suggestion has no supplier and the purchaser picks one. Where the item's
+`ReorderPolicy` adds a lead time (policy *reorder point + lead time*, used by 08 Auto), the
+lead time is the chosen item supplier's; the suggested qty is rounded up to its
+minimum order qty in its purchase unit (an item supplier whose purchase unit has no
+conversion for the item is refused on save). Converting a purchase request line into a PO
+proposes the supplier the same way and lists the alternatives. The purchaser can switch a
+suggestion to another listed supplier with a reason; that changes nothing on the item, is
+audited, and the scorecard lists the switches away from the preferred supplier per
+purchaser and month. A blocked supplier is listed as *on hold* without the reason
+(`PTY.ACL.02`).
+
+§3: When two supplier parties are merged (`PartiesMerged`), their item supplier rows move to
+the survivor; where both are on one item, the row with the stronger role stays (preferred,
+else the better rank). When a supplier party is archived, its rows are deactivated; an item
+left without an active preferred supplier gets a task to procurement, and nothing is
+promoted automatically.
 
 #### Edge cases decided
-- **First preferred supplier:** set directly by `item_suppliers.manage`; a change of preferred
-  supplier is BL-STK-31.
+- **First preferred supplier:** set directly by `item_suppliers.manage` only when the item never
+  had one; deactivating or removing the preferred row, or any later preferred supplier, is a
+  request under BL-STK-31.
 - **Same supplier twice on an item:** refused; one row per item and supplier.
 - **Rank gaps:** ranks are renumbered 1..n on save; a deactivated row keeps its rank but is skipped.
 - **Last price in another unit:** converted to the base unit with the item's fixed conversion.
 - **Draft PO mode (06):** the draft PO goes to the chosen supplier, preferred or alternative.
 - **Idempotency:** one open suggestion per item, location and run; a re-run updates it.
+- **Minimum order qty:** suggested 130 m with a minimum of 500 m per roll order → 500 m, the
+  rounding shown on the suggestion.
+- **Switching a suggestion:** a reason is required; the switch is audited and counted on the
+  scorecard per purchaser and month.
+- **Party merge:** rows move to the survivor; a duplicate on the same item keeps the stronger
+  role. **Party archived:** rows deactivated, task to procurement for items left without a
+  preferred supplier.
+- **Purchase request conversion (02, 07):** the PO line proposes the supplier as a suggestion
+  would.
 
 #### Must not
 - Must not send a suggestion or draft PO to a blocked supplier.
+- Must not show a block reason among the alternatives (only *on hold*).
 - Must not change the item's preferred supplier when the purchaser switches a suggestion.
 - Must not show last price to users without `stock.cost.view`.
 
@@ -1552,11 +1583,20 @@ supplier the item's preferred one needs a second person (`STK.ACL.07`).
       (rank 1), when Al Noor is blocked and the item is below reorder point, the 07:00 run
       suggests Gulf Build, marked *alternative*, reason *preferred supplier on hold*.
 - [ ] Given both suppliers blocked, the suggestion has no supplier.
+- [ ] Given an 08 item with policy *reorder point + lead time*, Al Noor's lead time 5 days and
+      Gulf Build's 10 days, when Al Noor is blocked the suggestion to Gulf Build uses 10 days.
 - [ ] Given a receipt of 100 bags at AED 18.50 from Gulf Build, Gulf Build's last price for
       the item is AED 18.50.
 - [ ] Given purchaser A switches an open suggestion from Al Noor to Gulf Build, the item's
       preferred supplier stays Al Noor.
 - [ ] A second row for the same item and supplier is refused.
+- [ ] Deactivating Al Noor's preferred row by purchaser A opens a BL-STK-31 request; until it
+      is approved, suggestions still go to Al Noor.
+- [ ] Switching a suggestion without a reason is refused; with a reason it is audited.
+- [ ] Given Gulf Build's Halal certificate for the item expired yesterday, its row and the
+      suggestion show a warning and the suggestion can still be converted.
+- [ ] Given "Gulf Build LLC" merged into "Gulf Build", both rows on "Cement 50 kg" become one
+      row for "Gulf Build" with the stronger role.
 
 #### Out of scope
 The supplier score (BL-STK-29); preferred supplier change approval (BL-STK-31).
@@ -1566,7 +1606,7 @@ The supplier score (BL-STK-29); preferred supplier change approval (BL-STK-31).
 ### BL-STK-29 — wl-inventory: compute the supplier score and keep monthly snapshots
 
 **Labels:** `module:wl-inventory` `area:sme-gap` `priority:medium` `size:m` · **Milestone:** Launch 02 · **Size:** m
-**Depends on:** BL-STK-01 · BL-STK-03 · BL-STK-05 · BL-STK-28 · **Blocks:** BL-STK-30, BL-AUT-18, BL-CON-17, BL-FNB-17, BL-MFG-14
+**Depends on:** BL-STK-01 · BL-STK-03 · BL-STK-05 · BL-STK-28 · the `SupplierIncidentSource` extension point is defined in this issue (wl-inventory §8); its 07 implementation (NCRs on incoming lots, apps/manufacturing) is a vertical task, so the checks below use a test source · **Blocks:** BL-STK-30, BL-STK-31, BL-AUT-18, BL-CON-17, BL-FNB-17, BL-MFG-14, BL-MFG-15
 **Review items:** G3 (SME problem map 27, 49)
 
 #### Goal
@@ -1579,33 +1619,58 @@ and the low-score review (BL-STK-30) use fixed numbers.
 - `docs/modules/wl-inventory.md` §3 (*Supplier score*, paragraph *Supplier scorecard and
   alternative suppliers*), §4 *Vertical mapping* (rows *Supplier score*), §5.9 step 2, §6
   (`SupplierScorecard`, *Consumes* wl-invoicing and Verticals rows), §7 (supplier score rows),
-  §8 (`SupplierIncidentSource`)
+  §8 (`SupplierIncidentSource`), §4 *Purchase order* (row `revise`: who asked for a date change)
+- `docs/modules/wl-kernel.md` §5.13 (late entry and business time)
 
 #### Terms
-- **Window:** the 3 months ending with the snapshot month (live view: up to today).
+- **Window:** a snapshot dated day 1 of a month covers the W = 3 calendar months ending with
+  the month before (the snapshot of 2026-12-01 covers 2026-09-01 to 2026-11-30, Asia/Dubai
+  dates); the live view covers the 3 months up to today. A snapshot is named by its date.
+- **Last price (for price variance):** the unit price per base unit, excl. VAT, of the latest
+  receipt line from the supplier for the item posted before the PO line's revision in force
+  was issued (receipts against that same PO not used); else the latest PO line price issued
+  before it; else none (the line has no last price and drops out).
 - **Receipt:** a posted goods receipt against a PO (free replacements excluded).
-- **`SupplierIncidentSource`:** extension through which a vertical reports NCRs per supplier
-  and date (07 apps/manufacturing).
+- **`SupplierIncidentSource`:** extension point (built here) through which a vertical reports
+  quality incidents per supplier and date, with later voids and changes of cause; 07
+  apps/manufacturing will report NCRs on incoming lots through it. Until a vertical provides
+  one, incidents are supplier recalls only.
 
 #### Spec excerpt (authoritative for this issue)
 
 | Entity | Description | Important fields |
 |---|---|---|
-| Supplier score | A monthly snapshot of one supplier's performance (`STK.SUP.01`) | supplier, window (the 3 months ending with the snapshot month), receipts counted, on-time %, rejected value %, quality incidents (NCRs, supplier recalls), debit notes (count, value), price variance %, score 0–100, band (`good`, `watch`, `below_threshold`, `not_enough_data`), computed at. Derived and never edited |
+| Supplier score | A monthly snapshot of one supplier's performance (`STK.SUP.01`) | supplier, window (the W calendar months ending with the month before the snapshot date; W = 3 by default), receipts counted, on-time %, rejected value %, quality incidents (NCRs, supplier recalls), debit notes (count, value), price variance %, score 0–100, band (`good`, `watch`, `below_threshold`, `not_enough_data`), computed at. Derived and never edited |
 
-Inputs per supplier in the window (§3):
+Inputs per supplier in the window (§3; window = the W calendar months ending with the month
+before the snapshot date, W = 3; one score per supplier across the deployment, filtered by
+the PO's legal entity in the report):
 
-1. **On time:** each goods receipt against a PO is on time when posted on or before the PO's
-   expected date plus the grace days (default 1, Asia/Dubai dates). A PO delivered in three
-   receipts counts three times. Free replacements are not counted.
+1. **On time:** each goods receipt against a PO is on time when its business date (the day
+   the goods arrived: the posting date, or the business time of a late entry, wl-kernel
+   §5.13) is on or before the expected date plus the grace days (default 1, Asia/Dubai
+   dates). The expected date is the one of the first issued revision; a later date set by
+   `revise` counts only when the revision records *requested by us*. A receipt that waited
+   for over-receipt approval, or replaces a reversed one, keeps the day the goods arrived. A
+   PO delivered in three receipts counts three times. Free replacements are not counted.
 2. **Rejected value:** rejected qty at receipt (reason `excess` excluded) at the PO price, plus
    Return to supplier lines from stock (from a stock hold, recall or NCR) at their unit cost,
-   divided by the value received at PO price.
-3. **Quality incidents:** NCRs naming the supplier (`SupplierIncidentSource`), plus recalls with
-   source `supplier` whose lots came from the supplier.
-4. **Debit notes:** count and value (`SupplierDebitNoteIssued`); shown, not scored.
+   counted when the return is `dispatched` (a `cancelled` draft never counts), divided by the
+   value received at PO price.
+3. **Quality incidents:** NCRs from `SupplierIncidentSource` whose cause is the supplier and
+   that are not voided, plus recalls with source `supplier` whose lots came from the
+   supplier. An NCR voided or closed as *not the supplier's cause* drops out of the live view.
+4. **Debit notes:** count and value (`SupplierDebitNoteIssued`; `SupplierDebitNoteCancelled`
+   removes it); shown, not scored.
 5. **Price variance:** for PO lines issued in the window that have a last price,
-   Σ (PO price − last price) × qty ÷ Σ last price × qty; only an increase lowers the score.
+   Σ (PO price − last price) × qty ÷ Σ last price × qty, with the PO price of the revision in
+   force; only an increase lowers the score. Compared in the PO's currency when both are in
+   the same currency; otherwise both in AED, each at its own document's rate.
+
+§3: A snapshot is never recomputed. A record changed after it changes the live view only;
+procurement may add a review note to a snapshot (text, by, at), shown on the scorecard and
+in the `STK.RUL.09` task. When the day-1 run did not happen, the next run builds every
+missing month, once per supplier and month, and `STK.RUL.09` fires once per new snapshot.
 
 Score = W1 × on-time % + W2 × (1 − min(1, rejected % ÷ R)) + W3 × max(0, 1 − incidents ÷ I)
 \+ W4 × (1 − min(1, max(0, price variance %) ÷ P)), rounded to a whole number. Defaults:
@@ -1626,8 +1691,14 @@ more, `watch` from the threshold to 84, `below_threshold` under the threshold T 
   snapshot is never recomputed.
 - **Reversed receipt:** not counted (live view); already in a snapshot, it stays there.
 - **02, 06, 08 (no NCR source):** incidents are supplier recalls only.
-- **Foreign currency:** values in AED at the PO's rate.
-- **Snapshot run:** day 1 at 06:00 Asia/Dubai; one snapshot per supplier and month (idempotent).
+- **Foreign currency:** values in AED at each document's rate for totals; price variance in
+  the PO's currency when the last price is in the same currency (a USD price unchanged at
+  USD 10 while the rate moves is 0% variance).
+- **Snapshot run:** day 1 at 06:00 Asia/Dubai; one snapshot per supplier and month (idempotent);
+  a missed month is built by the next run.
+- **Date pushed by the supplier:** a revision moving the date from 2026-11-10 to 2026-11-20
+  recorded *by the supplier* leaves 2026-11-10 as the expected date for the score.
+- **Review note:** added to a snapshot, never changes its numbers.
 
 #### Must not
 - Must not edit a snapshot.
@@ -1641,8 +1712,24 @@ more, `watch` from the threshold to 84, `below_threshold` under the threshold T 
 - [ ] Given a receipt posted on 2026-11-11 for a PO expected 2026-11-10, it is on time (grace 1).
 - [ ] Given rejected qty with reason `excess` only, rejected value is 0%.
 - [ ] Given 2 receipts in the window, the band is `not_enough_data`.
-- [ ] Given a 07 NCR on a lot from the supplier, incidents = 1.
+- [ ] Given an incident reported through a test `SupplierIncidentSource` (standing in for a 07
+      NCR on a lot from the supplier, cause *supplier*), incidents = 1.
 - [ ] Running the snapshot twice on 2026-12-01 keeps one snapshot per supplier.
+- [ ] Given goods that arrived on 2026-11-10 entered late on 2026-11-13 with the late-entry
+      flag (business time 2026-11-10), the receipt is on time for a PO expected 2026-11-10.
+- [ ] Given a PO revised from 2026-11-10 to 2026-11-20 *by the supplier* and received on
+      2026-11-18, the receipt is late; *requested by us*, it is on time.
+- [ ] Given that incident later reported voided by the source, incidents in the live view go
+      back to 0.
+- [ ] Given a USD supplier at USD 10 on both the last receipt and the new PO, price variance is
+      0% although the AED rate changed.
+- [ ] Given no run on 2026-12-01 (scheduler down), the run on 2026-12-02 builds the snapshots
+      dated 2026-12-01 (window 2026-09-01 to 2026-11-30) once.
+- [ ] Given a receipt posted on 2026-12-01, it is not in the snapshot of 2026-12-01 and counts
+      in the snapshot of 2027-01-01.
+- [ ] Given receipts from the supplier at AED 10 on 2026-10-05 and AED 11 on 2026-10-20 and a PO
+      line issued on 2026-10-15 at AED 12, its last price is AED 10 (the receipt before the
+      issue) and its variance is +20%.
 
 #### Out of scope
 The review task (BL-STK-30); the scorecard dashboard layout (base reporting).
@@ -1652,7 +1739,7 @@ The review task (BL-STK-30); the scorecard dashboard layout (base reporting).
 ### BL-STK-30 — wl-inventory: ask procurement to review a supplier below the threshold (`STK.RUL.09`)
 
 **Labels:** `module:wl-inventory` `area:sme-gap` `priority:medium` `size:s` · **Milestone:** Launch 02 · **Size:** s
-**Depends on:** BL-STK-29 · **Blocks:** BL-AUT-18, BL-CON-17, BL-FNB-17, BL-MFG-14
+**Depends on:** BL-STK-29 · BL-PTY-01 (block, for *request block*) · **Blocks:** BL-AUT-18, BL-CON-17, BL-FNB-17, BL-MFG-14
 **Review items:** G3 (SME problem map 27, 49)
 
 #### Goal
@@ -1665,8 +1752,13 @@ alternatives, and closes it with a decision.
   *Events emitted* (`SupplierScoreBelowThreshold`)
 
 #### Terms
-- **Review decision:** *keep*, *watch*, *change preferred* (a request per item, BL-STK-31) or
-  *request block* (a block request in wl-parties).
+- **Review decision** (each one closes the task and is kept on the snapshot):
+  - *keep*: nothing else changes;
+  - *watch*: the supplier shows *watched* on the scorecard and its item supplier rows until a
+    later snapshot is at or above the threshold;
+  - *change preferred*: one BL-STK-31 request per item selected;
+  - *request block*: a task to the holders of `parties.block` (wl-parties §4 `block`,
+    BL-PTY-01) with the review attached; nothing is blocked automatically.
 
 #### Spec excerpt (authoritative for this issue)
 
@@ -1678,14 +1770,26 @@ alternatives, and closes it with a decision.
 |---|---|---|
 | `SupplierScoreBelowThreshold` | Monthly snapshot under the threshold (`STK.RUL.09`) | supplier, window, score, components |
 
+§5.9 step 5: Procurement closes the task with a decision: *keep*, *watch*, *change preferred*
+(a request per item, approved by a second person, `STK.ACL.07`) or *request block* (a task
+to the holders of `parties.block` to decide on wl-parties `block`; nothing is blocked
+automatically). Every decision closes the task and is kept on the snapshot; *keep* changes
+nothing; *watch* shows the supplier as *watched* on the scorecard and on item supplier rows
+until a later snapshot is at or above the threshold. A later snapshot under the threshold
+opens a new task once the previous one is closed.
+
 #### Edge cases decided
 - **Order:** the rule runs after the snapshot run of the same day.
 - **Closing:** a decision is required; *change preferred* opens one request per item selected.
 - **Supplier back above the threshold** while the task is open: the task stays; the new score is added to it.
 - **Blocked supplier:** the rule still fires (the review may confirm the block).
+- **Review notes:** notes on the snapshot (e.g. the supplier contests an NCR) are shown in the
+  task; adding one does not close it.
+- **Missed run:** a snapshot built late by the catch-up run fires the rule once.
 
 #### Must not
 - Must not create a second open review task for the same supplier.
+- Must not block a supplier by itself (*request block* only asks).
 - Must not change any item supplier by itself.
 
 #### Done when
@@ -1694,16 +1798,22 @@ alternatives, and closes it with a decision.
 - [ ] Given the task still open and a snapshot of 60 on 2027-01-01, the same task is updated.
 - [ ] Given `not_enough_data`, nothing is created.
 - [ ] Closing with *change preferred* for two items creates two BL-STK-31 requests.
+- [ ] Closing with *keep* closes the task and changes nothing; given a snapshot of 62 on
+      2027-02-01, a new review task is created.
+- [ ] Closing with *watch* shows the supplier *watched*; given a snapshot of 75 on 2027-02-01,
+      the mark is removed and no task is created.
+- [ ] Closing with *request block* creates a task for the `parties.block` holders; the
+      supplier stays `active` until one of them runs `block`.
 
 #### Out of scope
-Block requests (Epic wl-parties).
+The `block` transition and its effects (BL-PTY-01).
 
 ---
 
 ### BL-STK-31 — wl-inventory: approve a change of an item's preferred supplier (`STK.ACL.07`)
 
 **Labels:** `module:wl-inventory` `area:sme-gap` `priority:medium` `size:s` · **Milestone:** Launch 02 · **Size:** s
-**Depends on:** BL-STK-28 · Epic wl-kernel: approval returned · **Blocks:** BL-AUT-18, BL-CON-17, BL-FNB-17, BL-MFG-14
+**Depends on:** BL-STK-28 · BL-STK-29 (scores shown on the request) · Epic wl-kernel: approval returned · **Blocks:** BL-AUT-18, BL-CON-17, BL-FNB-17, BL-MFG-14
 **Review items:** G3 (SME problem map 27, 49)
 
 #### Goal
@@ -1713,8 +1823,9 @@ suppliers' scores, lead times and last prices.
 
 #### Files to read
 - `docs/modules/wl-inventory.md` §3 paragraph *Supplier scorecard and alternative suppliers*
-  (last sentence), §6 *Shared access rules* (`STK.ACL.07`), *Events emitted*
-  (`PreferredSupplierChanged`), *Permissions*
+  (paragraph *Changing who is preferred*), §6 *Shared access rules* (`STK.ACL.07`), *Events emitted*
+  (`PreferredSupplierChanged`), *Permissions*, §7 (*Second person for a preferred supplier
+  change*)
 
 #### Terms
 - **`item_suppliers.approve`:** permission to approve the change.
@@ -1723,7 +1834,15 @@ suppliers' scores, lead times and last prices.
 
 | ID | Rule | Pattern | Parameter (default) | Generalises |
 |---|---|---|---|---|
-| `STK.ACL.07` | Making another supplier the preferred supplier of an item needs approval by a holder of `item_suppliers.approve` who is not the requester; the request shows both suppliers' scores, lead times and last prices. The first preferred supplier of an item, alternatives, and switching a single reorder suggestion need no approval | `SOD` | on | — |
+| `STK.ACL.07` | Changing who is the preferred supplier of an item (making another supplier preferred, deactivating or removing the preferred row, or setting a preferred supplier on an item that had one before) needs approval by a holder of `item_suppliers.approve` who is not the requester; the request shows both suppliers' scores, lead times and last prices. Only the first preferred supplier of an item that never had one, alternatives (add, rank, deactivate; audited) and switching a single reorder suggestion (reason required; audited) need no approval | `SOD` | on | — |
+
+§3: One request per item may be pending. A rejected or withdrawn request changes nothing and
+the requester is told; a returned one is edited and resubmitted; the system cancels a pending
+request when the item is archived, either row is deactivated or another request for the item
+is approved. On approval `BlockGuard` is checked again for the new supplier, the new supplier
+becomes `preferred` and the old one `alternative` rank 1 (when the request removes the
+preferred row without a successor, the item has no preferred supplier and `STK.RUL.04` uses
+the alternatives).
 
 | Event | When | Payload |
 |---|---|---|
@@ -1733,17 +1852,38 @@ suppliers' scores, lead times and last prices.
 - **On approval:** the new supplier becomes `preferred`; the old one becomes `alternative` rank 1.
 - **Pending request:** one per item; a second is refused until the first ends.
 - **New supplier blocked at approval time:** approval fails (`BlockGuard`), the request is returned.
-- **Setting off:** the change applies at once, audited.
+- **Setting off:** when the client turns off the §7 setting *Second person for a preferred
+  supplier change (`STK.ACL.07`)* (default on), a change of preferred supplier applies at
+  once without a request, audited with the user, and `PreferredSupplierChanged` is emitted
+  with the requester as approver; pending requests stay pending until decided.
+- **Removing or deactivating the preferred row:** a request like any other; until approved the
+  row stays preferred and active.
+- **Delete and re-add:** an item that ever had a preferred supplier never gets a "first" one
+  without approval.
+- **Rejected / withdrawn / returned:** nothing changes, requester told; returned requests are
+  edited and resubmitted (Epic wl-kernel: approval returned).
+- **Pending request cancelled by the system:** item archived, either row deactivated, or another
+  request for the item approved.
 
 #### Must not
 - Must not let the requester approve their own request.
-- Must not require approval for the first preferred supplier or for alternatives.
+- Must not require approval for the first preferred supplier of an item that never had one, or for
+  alternatives.
 
 #### Done when
 - [ ] Given purchaser A requests Gulf Build as preferred for "Cement 50 kg", A cannot approve it;
       manager B approves and Gulf Build is preferred, Al Noor alternative rank 1, event emitted.
 - [ ] The request screen shows both scores, lead times and last prices.
 - [ ] Adding a new alternative needs no approval.
+- [ ] Purchaser A deactivates the preferred row of "Cement 50 kg": a request is created, the row
+      stays preferred until manager B approves.
+- [ ] Given A removed the preferred row (approved) and later adds Gulf Build as preferred, a
+      request is needed (the item had a preferred supplier before).
+- [ ] Given B rejects A's request, the item is unchanged and A is told.
+- [ ] Given the setting *Second person for a preferred supplier change* off, A makes Gulf
+      Build preferred directly; the change is audited and no request is created.
+- [ ] Given Gulf Build with no snapshot yet (`not_enough_data`), the request screen shows
+      *not enough data* for its score.
 
 #### Out of scope
 The approval engine (Epic wl-kernel).
