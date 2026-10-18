@@ -12,6 +12,8 @@ mod credit_note_machine;
 pub mod credit_note_movement;
 pub mod credit_notes;
 pub mod dispute;
+pub mod dispute_credit;
+pub mod dispute_resolve;
 mod events;
 pub mod invoice;
 pub mod invoicer;
@@ -323,6 +325,10 @@ impl Module for WlInvoicing {
         bad_debt_relief::schedule(app, &self.config);
         // `invoicing.dispute_acknowledged` and `invoicing.dispute_unassigned`.
         dispute::register_types();
+        // `invoicing.dispute_resolved`, and the listener that resolves the
+        // ticket and tells the party after `InvoiceDisputeResolved`.
+        dispute_resolve::register_types();
+        dispute_resolve::register(app);
         // `invoicing.credit_note_restored`: the credit is available again.
         restore::register_types();
         // Other modules draft and read invoices through the kernel (§6).

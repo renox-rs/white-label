@@ -25,13 +25,16 @@ use wl_kernel::Subject;
 use wl_kernel::documents::today;
 use wl_kernel::invoicing::{
     CreditNoteIssued, CreditNoteReopened, InvoiceCredited, InvoiceIssued, InvoiceOverdue,
-    InvoicePaid,
+    InvoicePaid, InvoiceStatus,
 };
 
 use crate::allocate::ALLOCATE_IN_FULL;
 use crate::credit::{CREDIT, CREDIT_SYSTEM, credit_note_of, releases_origins};
-use crate::credit_note::CreditNote;
-use crate::credit_note_machine::{ISSUE as ISSUE_NOTE, ISSUE_SYSTEM as ISSUE_NOTE_SYSTEM, REOPEN};
+use crate::credit_note::{CreditNote, CreditNoteKind};
+use crate::credit_note_machine::{
+    ISSUE as ISSUE_NOTE, ISSUE_APPROVED, ISSUE_SYSTEM as ISSUE_NOTE_SYSTEM, REOPEN,
+};
+use crate::dispute::Dispute;
 use crate::invoice::Invoice;
 use crate::invoicer::lines_of;
 use crate::issue::ISSUE;
@@ -128,12 +131,43 @@ fn invoice_credited(
     }
 }
 
+/// What follows the final approval of a dispute credit (`issue_approved`).
+/// Its effect ran the allocation, the application and the invoice's `credit`
+/// inside the kernel's transaction, where their own events cannot be
+/// collected, so they are emitted here from the committed rows:
+/// `InvoiceCredited` for a full note, `InvoicePaid` when a partial note
+/// settled the balance; then `InvoiceDisputeResolved`.
+async fn after_approved(state: &AppState, note: &CreditNote) -> Result {
+    let invoice = Invoice::find_or_404(&state.db, note.invoice_id).await?;
+    if note.kind == CreditNoteKind::Full {
+        let lines = lines_of(&state.db, invoice.id).await?;
+        let credited = invoice_credited(&invoice, note, None, &lines, false);
+        state.emit(credited).await?;
+    } else if invoice.status == InvoiceStatus::Paid {
+        state
+            .emit(InvoicePaid {
+                invoice: invoice.invoice_id(),
+                party: invoice.party(),
+                source: invoice.source(),
+            })
+            .await?;
+    }
+    let dispute = Dispute::query()
+        .where_(Dispute::CREDIT_NOTE_ID.eq(note.id))
+        .first(&state.db)
+        .await?;
+    match dispute {
+        Some(dispute) => crate::dispute_resolve::announce(state, dispute.id).await,
+        None => Ok(()),
+    }
+}
+
 /// Registers the listeners.
 pub(crate) fn register(app: &mut Registry) {
     app.listen(
         |event: Transitioned<CreditNote>, state: AppState| async move {
             let name = event.transition.as_str();
-            if ![ISSUE_NOTE, ISSUE_NOTE_SYSTEM, REOPEN].contains(&name) {
+            if ![ISSUE_NOTE, ISSUE_NOTE_SYSTEM, ISSUE_APPROVED, REOPEN].contains(&name) {
                 return Ok(());
             }
             let note = CreditNote::find_or_404(&state.db, event.key).await?;
@@ -143,7 +177,11 @@ pub(crate) fn register(app: &mut Registry) {
                     None => Ok(()),
                 };
             }
-            state.emit(credit_note_issued(&note)).await
+            state.emit(credit_note_issued(&note)).await?;
+            if name == ISSUE_APPROVED {
+                after_approved(&state, &note).await?;
+            }
+            Ok(())
         },
     );
     app.listen(|event: Transitioned<Invoice>, state: AppState| async move {

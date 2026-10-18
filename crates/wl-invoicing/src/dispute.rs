@@ -254,7 +254,7 @@ pub fn ticket_description(
 }
 
 /// Whether `user` holds `permission` in `scope`, outside a request.
-async fn holds(
+pub(crate) async fn holds(
     db: &Db,
     user: i64,
     permission: &str,
@@ -330,7 +330,7 @@ fn data(invoice: &Invoice, dispute: &Dispute, ticket_number: Option<&str>) -> Va
 
 /// The type `key` with its English e-mail text under `texts`
 /// (`wl_invoicing.dispute.{texts}.subject` and `.body`).
-fn dispute_type(key: &str, texts: &str, category: Category) -> NotificationTypeDef {
+pub(crate) fn dispute_type(key: &str, texts: &str, category: Category) -> NotificationTypeDef {
     NotificationTypeDef::new(key, MODULE)
         .group(GROUP)
         .category(category)

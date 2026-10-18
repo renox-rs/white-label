@@ -288,6 +288,18 @@ impl PolicyDefault {
         self
     }
 
+    /// Adds a step, decided by any holder of one of `roles` or of
+    /// `permission` in the subject's scope.
+    pub fn step_or_permission<S: Into<String>>(
+        mut self,
+        roles: impl IntoIterator<Item = S>,
+        permission: impl Into<String>,
+    ) -> Self {
+        self.steps
+            .push(Step::one_of(roles).or_permission(permission));
+        self
+    }
+
     /// Turns segregation of duties off (it is on by default).
     pub fn without_sod(mut self) -> Self {
         self.sod = false;

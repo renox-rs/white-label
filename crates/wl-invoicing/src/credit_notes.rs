@@ -404,7 +404,7 @@ impl Outcomes {
 
 /// What the issue guards need for `invoice`, whose issuing entity is
 /// looked up in `db`.
-async fn issue_input(
+pub(crate) async fn issue_input(
     db: &Db,
     invoice: &Invoice,
     lines: usize,
@@ -555,7 +555,7 @@ async fn use_in(
 /// note the source), and applies the credit note when nothing is left. The
 /// part above the balance, or everything for a `paid` invoice, stays as the
 /// party's credit.
-async fn allocate_step(
+pub(crate) async fn allocate_step(
     tx: &mut renox::db::Transaction,
     note: CreditNote,
     by: &By<'_>,

@@ -42,6 +42,9 @@ use crate::restore::{self, RestoreInput};
 pub const ISSUE: &str = "issue";
 /// The system twin of [`ISSUE`], for callers with no signed-in user.
 pub const ISSUE_SYSTEM: &str = "issue_system";
+/// The system transition the kernel runs when a dispute credit is approved
+/// (`FIN.ACL.07`).
+pub const ISSUE_APPROVED: &str = "issue_approved";
 /// The transition that applies a fully used credit note.
 pub const APPLY: &str = "apply";
 /// The transition that reopens an applied credit note when a use of it is
@@ -156,50 +159,99 @@ fn issue_rules(transition: Transition<CreditNote>) -> Transition<CreditNote> {
             })
         })
         .effect(|note: &CreditNote, _ctx, tx| {
-            let (id, invoice_id, entity_id, gross) = (
-                note.id,
-                note.invoice_id,
-                note.legal_entity_id,
-                note.gross_total,
-            );
+            let note = note.clone();
+            Box::pin(async move { write_issue_in(tx, &note).await })
+        })
+}
+
+/// What `issue` writes besides the status, in the run's transaction: the
+/// number from the `credit_note` series (so a rolled-back issue leaves no
+/// gap), the issuer and party snapshots, the issue date, and the remaining
+/// set to the gross.
+pub(crate) async fn write_issue_in(tx: &mut renox::db::Transaction, note: &CreditNote) -> Result {
+    let (id, invoice_id, entity_id, gross) = (
+        note.id,
+        note.invoice_id,
+        note.legal_entity_id,
+        note.gross_total,
+    );
+    let invoice = Invoice::find_or_404(&mut *tx, invoice_id).await?;
+    let entity_id = entity_id.ok_or_else(|| {
+        Error::from(renox::anyhow::anyhow!(
+            "credit note {id} has no issuing legal entity"
+        ))
+    })?;
+    let entity = LegalEntity::find_or_404(&mut *tx, entity_id).await?;
+    let active = LegalEntity::query()
+        .where_(LegalEntity::STATUS.eq("active"))
+        .count(&mut *tx)
+        .await?;
+    let issue_date = today();
+    // Inside the issue transaction only: a rollback gives the number back,
+    // so the series stays gapless.
+    let number = credit_note_series(usize::try_from(active).unwrap_or(usize::MAX))
+        .next(&mut *tx, None, Some(&entity), issue_date)
+        .await?;
+    let issuer = renox::db::Json(entity.snapshot());
+    // The invoice's billing identity, as it was at its issue.
+    let party = invoice.party_snapshot.clone();
+    // Not the status column, so outside the machine's guard.
+    CreditNote::query()
+        .where_(CreditNote::ID.eq(id))
+        .update(
+            &mut *tx,
+            &[
+                ("number", &number),
+                ("issuer_snapshot", &issuer),
+                ("party_snapshot", &party),
+                ("issue_date", &issue_date),
+                ("remaining", &gross),
+                ("updated_at", &renox::db::now()),
+            ],
+        )
+        .await?;
+    Ok(())
+}
+
+/// The `issue_approved` transition, for the machine: the kernel runs it at
+/// the final approval of a dispute credit (`FIN.ACL.07`), with the request's
+/// payload as input and the approval in `meta`. The guards read the note and
+/// the payload; the stored invoice, lines and dispute are checked again in
+/// the effect, which then issues, allocates and settles the dispute
+/// ([`crate::dispute_credit::approved_in`]).
+pub(crate) fn approved_transition() -> Transition<CreditNote> {
+    Transition::new(ISSUE_APPROVED)
+        .label("Issue (approved)")
+        .system()
+        .from([CreditNoteStatus::Draft])
+        .to(CreditNoteStatus::Issued)
+        .guard("reason_given", |note: &CreditNote, _ctx| {
+            let given = !note.reason.trim().is_empty();
             Box::pin(async move {
-                let invoice = Invoice::find_or_404(&mut *tx, invoice_id).await?;
-                let entity_id = entity_id.ok_or_else(|| {
-                    Error::from(renox::anyhow::anyhow!(
-                        "credit note {id} has no issuing legal entity"
-                    ))
-                })?;
-                let entity = LegalEntity::find_or_404(&mut *tx, entity_id).await?;
-                let active = LegalEntity::query()
-                    .where_(LegalEntity::STATUS.eq("active"))
-                    .count(&mut *tx)
-                    .await?;
-                let issue_date = today();
-                // Inside the issue transaction only: a rollback gives the
-                // number back, so the series stays gapless.
-                let number = credit_note_series(usize::try_from(active).unwrap_or(usize::MAX))
-                    .next(&mut *tx, None, Some(&entity), issue_date)
-                    .await?;
-                let issuer = renox::db::Json(entity.snapshot());
-                // The invoice's billing identity, as it was at its issue.
-                let party = invoice.party_snapshot.clone();
-                // Not the status column, so outside the machine's guard.
-                CreditNote::query()
-                    .where_(CreditNote::ID.eq(id))
-                    .update(
-                        &mut *tx,
-                        &[
-                            ("number", &number),
-                            ("issuer_snapshot", &issuer),
-                            ("party_snapshot", &party),
-                            ("issue_date", &issue_date),
-                            ("remaining", &gross),
-                            ("updated_at", &renox::db::now()),
-                        ],
-                    )
-                    .await?;
-                Ok(())
+                if given {
+                    Ok(())
+                } else {
+                    Err("Give a reason for the credit note.".to_owned())
+                }
             })
+        })
+        .guard("amount_unchanged", |note: &CreditNote, ctx| {
+            let gross = note.gross_total;
+            let amount = ctx.input().get("amount").and_then(|v| v.as_i64());
+            Box::pin(async move {
+                if amount == Some(gross) {
+                    Ok(())
+                } else {
+                    Err("The credit note changed since it was submitted.".to_owned())
+                }
+            })
+        })
+        .effect(|note: &CreditNote, ctx, tx| {
+            let note = note.clone();
+            let (input, meta) = (ctx.input().clone(), ctx.meta().clone());
+            Box::pin(
+                async move { crate::dispute_credit::approved_in(tx, &note, &input, &meta).await },
+            )
         })
 }
 
@@ -266,7 +318,8 @@ impl StateMachine for CreditNote {
             .state(Applied)
             .tone("success")
             .transition(apply_transition())
-            .transition(reopen_transition());
+            .transition(reopen_transition())
+            .transition(approved_transition());
         issue_transitions()
             .into_iter()
             .fold(machine, Machine::transition)
@@ -334,6 +387,36 @@ mod tests {
         assert_eq!(reopen.to_state(), Some("issued"));
         assert!(reopen.is_system());
         assert_eq!(reopen.guard_names(), ["use_undone"]);
+    }
+
+    #[renox::test]
+    async fn issue_approved_is_the_systems_and_checks_the_payload_amount() {
+        let machine = CreditNote::machine();
+        let approved = machine.find(ISSUE_APPROVED).expect("issue_approved");
+        assert_eq!(approved.from_states(), ["draft"]);
+        assert_eq!(approved.to_state(), Some("issued"));
+        assert!(approved.is_system());
+        assert_eq!(approved.guard_names(), ["reason_given", "amount_unchanged"]);
+        assert_eq!(
+            wl_kernel::machines::approved(ISSUE),
+            ISSUE_APPROVED,
+            "the kernel runs it by this name"
+        );
+        let note = CreditNote {
+            gross_total: 120_000,
+            ..draft()
+        };
+        let with = |amount: i64| {
+            TransitionCtx::new(None).with_input(renox::serde_json::json!({ "amount": amount }))
+        };
+        assert!(approved.check_guards(&note, &with(120_000)).await.is_ok());
+        assert!(approved.check_guards(&note, &with(119_999)).await.is_err());
+        assert!(
+            approved
+                .check_guards(&note, &TransitionCtx::new(None))
+                .await
+                .is_err()
+        );
     }
 
     #[renox::test]

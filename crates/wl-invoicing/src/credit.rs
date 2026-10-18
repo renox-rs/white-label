@@ -169,8 +169,36 @@ pub async fn credit_in_full(
     let mut tx = state.db.begin().await?;
     let (note, _) = insert_in(&mut tx, prepared).await?;
     let issued = issue_in(&mut tx, &note, &input, &by, &mut outcomes).await?;
+    let applied = cancel_in(
+        &mut tx,
+        &issued,
+        &current,
+        reason,
+        release_origins,
+        &by,
+        &mut outcomes,
+    )
+    .await?;
+    tx.commit().await?;
+    outcomes.emit(state).await?;
+    Ok(CreditNote::find_or_404(&state.db, applied.id).await?)
+}
+
+/// Cancels `current` with issued credit note `issued` in `tx`: all of the
+/// note's remaining is used on cancelling the invoice (not an allocation:
+/// the balance goes to 0 and no payment is involved), the note is applied
+/// and `credit` runs on the invoice with `reason`. Returns the applied note.
+pub(crate) async fn cancel_in(
+    tx: &mut renox::db::Transaction,
+    issued: &CreditNote,
+    current: &Invoice,
+    reason: &str,
+    release_origins: bool,
+    by: &By<'_>,
+    outcomes: &mut Outcomes,
+) -> std::result::Result<CreditNote, TransitionError> {
     // All of it is used on cancelling the invoice, not on an allocation.
-    lower_remaining_in(&mut tx, &issued, issued.remaining).await?;
+    lower_remaining_in(tx, issued, issued.remaining).await?;
     CreditNoteMovement::new(
         issued.id,
         MovementKind::InvoiceCredited,
@@ -179,20 +207,18 @@ pub async fn credit_in_full(
         None,
         by.id(),
     )
-    .insert(&mut tx)
+    .insert(&mut *tx)
     .await?;
-    let used = CreditNote::find_or_404(&mut tx, note.id).await?;
-    let applied = apply_in(&mut tx, &used, &by, &mut outcomes).await?;
+    let used = CreditNote::find_or_404(&mut *tx, issued.id).await?;
+    let applied = apply_in(tx, &used, by, outcomes).await?;
 
     let meta = json!({ "credit_note": applied.id, "release_origins": release_origins });
-    let credited = run_of(&current, &by, CREDIT, CREDIT_SYSTEM, meta)
+    let credited = run_of(current, by, CREDIT, CREDIT_SYSTEM, meta)
         .reason(reason)
-        .run_in(&mut tx)
+        .run_in(&mut *tx)
         .await?;
     outcomes.invoices.push(credited);
-    tx.commit().await?;
-    outcomes.emit(state).await?;
-    Ok(CreditNote::find_or_404(&state.db, applied.id).await?)
+    Ok(applied)
 }
 
 #[cfg(test)]

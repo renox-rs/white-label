@@ -379,6 +379,22 @@ const TEXTS: &[(&str, &str)] = &[
         "{{ party_name }} disputed invoice {{ number }} for {{ amount }} (reason: {{ reason }}). The invoice owner is not available, so the ticket is unassigned. Please take it: {{ link }}",
     ),
     (
+        "wl_invoicing.dispute.resolved.subject",
+        "Your dispute of invoice {{ number }} is resolved",
+    ),
+    (
+        "wl_invoicing.dispute.resolved.body",
+        "Dear {{ party_name }}, we resolved your dispute of invoice {{ number }}. {{ result }} Note: {{ note }}",
+    ),
+    (
+        "wl_invoicing.dispute.result_upheld",
+        "The invoice stands. Payment reminders resume after {{ grace_until }}.",
+    ),
+    (
+        "wl_invoicing.dispute.result_credited",
+        "We issued credit note {{ credit_note }} for {{ amount }}.",
+    ),
+    (
         "wl_invoicing.dispute.no_ticket",
         "No ticket (ticketing is off).",
     ),
