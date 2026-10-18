@@ -177,6 +177,21 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_documents.guard.renewal_pending",
         "renewal pending review since :date",
     ),
+    ("wl_documents.flag.expired", ":kind expired :date"),
+    ("wl_documents.flag.missing", ":kind missing"),
+    ("wl_documents.flag.rejected", ":kind rejected"),
+    (
+        "wl_documents.flag.pending_review",
+        ":kind renewal pending review",
+    ),
+    (
+        "wl_documents.flag.note_required",
+        "Say why the flag is reviewed.",
+    ),
+    (
+        "wl_documents.flag.already_reviewed",
+        "This flag was already reviewed.",
+    ),
     (
         "wl_documents.guard.no_provider",
         "No module maps :guarded to its document subjects",

@@ -2,6 +2,7 @@
 #![warn(missing_docs)]
 
 pub mod documents;
+pub mod flags;
 pub mod guard;
 pub mod kinds;
 pub mod machine;
@@ -16,6 +17,7 @@ pub use documents::{
     Attach, AttachReason, AttachRefused, Document, DocumentSource, DocumentStatus, DocumentVersion,
     Documents, NewDocument,
 };
+pub use flags::DocumentFlag;
 pub use guard::DocumentsGuard;
 pub use kinds::{
     BlockChangeRefused, BlockSeed, DocumentKind, KindBlock, KindSeed, RefusalReason, Sensitivity,
@@ -75,6 +77,7 @@ impl Module for WlDocuments {
             .model::<KindBlock>()
             .model::<Document>()
             .model::<DocumentVersion>()
+            .model::<DocumentFlag>()
             .view_data::<pages::ReviewQueuePage>()
             .view_data::<pages::KindsPage>()
             .view_data::<pages::KindPage>();
