@@ -19,6 +19,7 @@ pub mod dispute_credit;
 mod dispute_pages;
 pub mod dispute_resolve;
 pub mod escalation;
+pub mod escalation_log;
 mod events;
 pub mod invoice;
 pub mod invoicer;
@@ -26,6 +27,7 @@ pub mod issue;
 pub mod line;
 mod machine;
 pub mod overdue;
+pub mod owner;
 pub mod pages;
 pub mod policy;
 pub mod recover;
@@ -55,6 +57,7 @@ pub use credit_note::{CreditNote, CreditNoteKind};
 pub use credit_note_line::CreditNoteLine;
 pub use credit_note_movement::{CreditNoteMovement, MovementKind};
 pub use dispute::{Dispute, DisputeVia};
+pub use escalation_log::EscalationLog;
 pub use invoice::{Invoice, InvoiceKind, PartySnapshot};
 pub use invoicer::Invoices;
 pub use line::InvoiceLine;
@@ -321,6 +324,7 @@ impl Module for WlInvoicing {
             .model::<Allocation>()
             .model::<Recovery>()
             .model::<Dispute>()
+            .model::<EscalationLog>()
             .model::<ReminderLog>()
             .model::<VatAdjustment>()
             .model::<VatSummary>()

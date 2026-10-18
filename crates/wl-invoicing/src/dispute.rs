@@ -45,6 +45,7 @@ use crate::config_of;
 use crate::invoice::Invoice;
 use crate::invoicer::lines_of;
 use crate::line::InvoiceLine;
+use crate::owner::{self, OwnerRole};
 use crate::permissions;
 use crate::texts::english;
 
@@ -288,21 +289,6 @@ async fn authorize(state: &AppState, invoice: &Invoice, by: DisputeBy) -> Result
     }
 }
 
-/// The owner to assign the ticket to: `owner_id` when that user still exists
-/// and still holds `invoices.issue` in the invoice's scope (A5).
-async fn owner_of(state: &AppState, invoice: &Invoice) -> Result<Option<i64>> {
-    let Some(owner) = invoice.owner_id else {
-        return Ok(None);
-    };
-    if User::find(&state.db, owner).await?.is_none() {
-        return Ok(None);
-    }
-    let scope = scopes::scope_of(&state.db, &invoice.subject()).await?;
-    Ok(holds(&state.db, owner, permissions::ISSUE, &scope)
-        .await?
-        .then_some(owner))
-}
-
 /// The template variables of the dispute notices.
 fn data(invoice: &Invoice, dispute: &Dispute, ticket_number: Option<&str>) -> Value {
     let party_name = invoice
@@ -442,7 +428,11 @@ async fn after_commit(
         .map(|line| (*line, line.gross_amount))
         .collect();
     let number = invoice.number.clone().unwrap_or_default();
-    let owner = owner_of(state, invoice).await?;
+    let (owner_role, owners) = owner::recipients(&state.db, invoice).await?;
+    let owner = match (owner_role, owners.first()) {
+        (OwnerRole::Owner, Some(user)) => Some(user.id),
+        _ => None,
+    };
     let mut open = OpenTicket::new(
         invoice.subject(),
         TICKET_CATEGORY,
@@ -471,14 +461,7 @@ async fn after_commit(
 
     let notifier = notify::notifier(state);
     if owner.is_none() {
-        let scope = scopes::scope_of(&state.db, &invoice.subject()).await?;
-        let mut ids: Vec<i64> = users_with_permission_in(&state.db, permissions::ISSUE, &scope)
-            .await?
-            .iter()
-            .map(|user| user.id)
-            .collect();
-        ids.sort_unstable();
-        ids.dedup();
+        let ids: Vec<i64> = owners.iter().map(|user| user.id).collect();
         if !ids.is_empty() {
             let mut notice = NotifyRequest::new(UNASSIGNED, invoice.subject()).data(data(
                 invoice,
