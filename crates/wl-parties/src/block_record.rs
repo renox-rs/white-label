@@ -31,6 +31,9 @@ pub struct BlockRecord {
     /// The user who blocked, or whose action (e.g. `confirm_match`) caused
     /// a system block; `None` for a pure system run.
     pub blocked_by: Option<i64>,
+    /// The screening whose confirmed match made this record; `None` for a
+    /// record of a user's `block`.
+    pub screening_id: Option<i64>,
     /// When the party was blocked.
     pub blocked_at: DateTime,
     /// The user who closed the record by unblocking.
@@ -64,6 +67,22 @@ impl BlockRecord {
             blocked_by,
             blocked_at: renox::db::now(),
             ..BlockRecord::default()
+        }
+    }
+
+    /// A new, open record for `party_id` made by the confirmed match of
+    /// screening `screening_id`, blocked now.
+    pub fn open_for_screening(
+        party_id: i64,
+        screening_id: i64,
+        reason_code: &str,
+        restricted: bool,
+        note: &str,
+        blocked_by: Option<i64>,
+    ) -> BlockRecord {
+        BlockRecord {
+            screening_id: Some(screening_id),
+            ..BlockRecord::open(party_id, reason_code, restricted, note, blocked_by)
         }
     }
 
@@ -119,9 +138,115 @@ impl BlockRecord {
     }
 }
 
+/// Adds an open Block record for the confirmed match of `screening_id` to a
+/// party that is already `blocked` or `archived`: no transition, no history
+/// row, no event, and the party's `hold_reason` is left as it is. Idempotent:
+/// when the screening already has a record for the party, nothing is added
+/// and `None` is returned.
+///
+/// # Errors
+///
+/// A database error.
+pub async fn add_record_without_transition(
+    db: &Db,
+    party_id: i64,
+    screening_id: i64,
+    reason_code: &str,
+    restricted: bool,
+    note: &str,
+    blocked_by: Option<i64>,
+) -> Result<Option<BlockRecord>> {
+    let mut tx = db.begin_immediate().await?;
+    let existing = BlockRecord::query()
+        .where_(BlockRecord::PARTY_ID.eq(party_id))
+        .where_(BlockRecord::SCREENING_ID.eq(screening_id))
+        .count(&mut tx)
+        .await?;
+    if existing > 0 {
+        return Ok(None);
+    }
+    let mut record = BlockRecord::open_for_screening(
+        party_id,
+        screening_id,
+        reason_code,
+        restricted,
+        note,
+        blocked_by,
+    );
+    record.insert(&mut tx).await?;
+    tx.commit().await?;
+    Ok(Some(record))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::create::{NewParty, create};
+    use crate::party::Party;
+
+    #[test]
+    fn a_record_for_a_screening_keeps_its_id() {
+        let record = BlockRecord::open_for_screening(7, 9, "sanctions", true, "match", Some(3));
+        assert_eq!(record.screening_id, Some(9));
+        assert!(record.is_open());
+        assert_eq!(
+            BlockRecord::open(7, "sanctions", true, "m", None).screening_id,
+            None
+        );
+    }
+
+    #[renox::test]
+    async fn a_record_is_added_without_a_transition_once_per_screening() {
+        let (app, _party, _views) = crate::block_effects::tests::boot().await;
+        let state = app.state();
+        let party = create(
+            state,
+            NewParty {
+                legal_name_en: "Falcon Holdings LLC".into(),
+                kind: wl_kernel::PartyKind::Company,
+                source: "test".into(),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        let first = add_record_without_transition(
+            &state.db,
+            party.id,
+            1,
+            "sanctions",
+            true,
+            "match",
+            Some(3),
+        )
+        .await
+        .unwrap()
+        .expect("added");
+        assert_eq!(first.screening_id, Some(1));
+        assert!(
+            add_record_without_transition(
+                &state.db,
+                party.id,
+                1,
+                "sanctions",
+                true,
+                "match",
+                Some(3)
+            )
+            .await
+            .unwrap()
+            .is_none()
+        );
+        add_record_without_transition(&state.db, party.id, 2, "sanctions", true, "again", None)
+            .await
+            .unwrap()
+            .expect("another screening adds another");
+        let records = BlockRecord::open_for(&state.db, party.id).await.unwrap();
+        assert_eq!(records.len(), 2);
+        let after = Party::find(&state.db, party.id).await.unwrap().unwrap();
+        assert_eq!(after.status, wl_kernel::PartyStatus::Active);
+        assert_eq!(after.hold_reason, None);
+    }
 
     #[test]
     fn a_new_record_is_open_and_keeps_the_real_code() {

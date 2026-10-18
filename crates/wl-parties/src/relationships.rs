@@ -33,6 +33,12 @@ pub enum RelationshipType {
     FamilyMemberOf,
     /// A member of a group.
     MemberOfGroup,
+    /// A person who is an ultimate beneficial owner of a company.
+    UboOf,
+    /// A person who is a director of a company.
+    DirectorOf,
+    /// A person who is an authorised signatory of a company.
+    SignatoryOf,
 }
 
 impl RelationshipType {
@@ -114,6 +120,47 @@ pub fn related_contacts(
             primary: l.is_primary,
         })
         .collect()
+}
+
+/// The links that reach a company when its owner, director or signatory is
+/// a confirmed sanctions match. A shareholder link is not one.
+pub const OWNERSHIP_LINKS: [RelationshipType; 3] = [
+    RelationshipType::UboOf,
+    RelationshipType::DirectorOf,
+    RelationshipType::SignatoryOf,
+];
+
+/// The companies `party` is a UBO, director or signatory of on `today`
+/// (`valid_from <= today < valid_until`), each once, by id. A `merged`
+/// company is skipped. When ownership records land (`PTY.UBO.01`), their UBO
+/// rows are added here.
+///
+/// # Errors
+///
+/// A database error.
+pub async fn related_companies(db: &Db, party: i64, today: NaiveDate) -> Result<Vec<Party>> {
+    let links = Relationship::query()
+        .where_(Relationship::FROM_PARTY_ID.eq(party))
+        .order_by(Relationship::TO_PARTY_ID)
+        .order_by(Relationship::ID)
+        .get(db)
+        .await?;
+    let mut companies: Vec<Party> = Vec::new();
+    for link in links {
+        if !OWNERSHIP_LINKS.contains(&link.relation_type)
+            || !link.is_active_on(today)
+            || companies.iter().any(|c| c.id == link.to_party_id)
+        {
+            continue;
+        }
+        if let Some(company) = Party::find(db, link.to_party_id).await?
+            && company.kind == PartyKind::Company
+            && company.status != wl_kernel::PartyStatus::Merged
+        {
+            companies.push(company);
+        }
+    }
+    Ok(companies)
 }
 
 /// What a new relationship is made of. Id and timestamps are set by the
@@ -312,6 +359,58 @@ mod tests {
             primary,
             ..Default::default()
         }
+    }
+
+    #[renox::test]
+    async fn related_companies_are_the_active_ubo_director_and_signatory_links() {
+        let (app, _party, _views) = crate::block_effects::tests::boot().await;
+        let state = app.state();
+        let omar = party(state, PartyKind::Person, "Omar K.").await;
+        let falcon = party(state, PartyKind::Company, "Falcon Holdings LLC").await;
+        let dune = party(state, PartyKind::Company, "Dune Logistics").await;
+        let sign = party(state, PartyKind::Company, "Signet LLC").await;
+        let share = party(state, PartyKind::Company, "Shares LLC").await;
+        let old = party(state, PartyKind::Company, "Old LLC").await;
+        let merged = party(state, PartyKind::Company, "Merged LLC").await;
+        let today = wl_kernel::documents::today();
+        let new = |to: &Party, relation_type| NewRelationship {
+            from: omar.id,
+            to: to.id,
+            relation_type,
+            ..Default::default()
+        };
+        for (to, kind) in [
+            (&falcon, RelationshipType::UboOf),
+            (&dune, RelationshipType::DirectorOf),
+            (&dune, RelationshipType::SignatoryOf),
+            (&sign, RelationshipType::SignatoryOf),
+            (&share, RelationshipType::ShareholderOf),
+            (&merged, RelationshipType::UboOf),
+        ] {
+            relate(state, new(to, kind)).await.unwrap();
+        }
+        let mut ended = new(&old, RelationshipType::UboOf);
+        ended.valid_from = Some(today - renox::chrono::Duration::days(30));
+        ended.valid_until = Some(today - renox::chrono::Duration::days(1));
+        relate(state, ended).await.unwrap();
+        renox::db::sql("UPDATE wl_parties_parties SET status = 'merged' WHERE id = ?")
+            .bind(merged.id)
+            .execute(&state.db)
+            .await
+            .unwrap();
+
+        let got = related_companies(&state.db, omar.id, today).await.unwrap();
+        let names: Vec<_> = got.iter().map(|c| c.legal_name_en.as_str()).collect();
+        assert_eq!(
+            names,
+            ["Falcon Holdings LLC", "Dune Logistics", "Signet LLC"]
+        );
+        assert!(
+            related_companies(&state.db, falcon.id, today)
+                .await
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[renox::test]

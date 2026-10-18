@@ -17,12 +17,14 @@ pub mod pages;
 pub mod party;
 pub mod reasons;
 pub mod relationships;
+pub mod restore;
 pub mod review_tasks;
 pub mod roles;
 pub mod sanctions_lists;
 pub mod screening;
 pub mod screening_task;
 pub mod seed;
+pub mod settings;
 mod texts;
 pub mod unblock;
 pub mod visibility;
@@ -41,7 +43,10 @@ pub use evidence::{UnblockBasis, UnblockEvidence};
 pub use feed::{FeedError, ListFeed, ListVersion, NoListFeed};
 pub use party::{Channel, Language, Party};
 pub use reasons::{BlockReason, BlockReasons};
-pub use relationships::{NewRelationship, Relationship, RelationshipType, relate};
+pub use relationships::{
+    NewRelationship, Relationship, RelationshipType, relate, related_companies,
+};
+pub use restore::restore;
 pub use review_tasks::{
     ItemDecision, ReviewTask, ReviewTaskItem, ReviewTaskNote, ReviewTaskStatus,
 };
@@ -52,6 +57,7 @@ pub use screening::{
     record_run,
 };
 pub use screening_task::{ScreeningTask, ScreeningTaskStatus};
+pub use settings::ConfirmedMatchSettings;
 pub use unblock::{UnblockRequest, unblock};
 
 /// The module's permissions (wl-parties §6).
@@ -78,6 +84,8 @@ pub mod permissions {
     /// Run a screening and see the sanctions lists and their freshness
     /// (wl-parties §6).
     pub const SCREENING_RUN: &str = "screening.run";
+    /// Archive and restore parties.
+    pub const ARCHIVE: &str = "parties.archive";
 }
 
 /// The templates, compiled in. An app replaces one with a file of the same
@@ -155,6 +163,8 @@ pub struct WlParties {
     /// Downloads the sanctions lists; `None` means [`NoListFeed`], which
     /// always fails.
     list_feed: Option<std::sync::Arc<dyn ListFeed>>,
+    /// What a confirmed sanctions match does (wl-parties §7).
+    confirmed: ConfirmedMatchSettings,
 }
 
 /// The module with the default block reason codes, so the host can write
@@ -167,6 +177,7 @@ pub const WlParties: WlParties = WlParties {
     approver: None,
     freshness_hours: None,
     list_feed: None,
+    confirmed: ConfirmedMatchSettings::DEFAULT,
 };
 
 impl WlParties {
@@ -261,6 +272,36 @@ impl WlParties {
         }
     }
 
+    /// Whether a confirmed sanctions match also blocks the companies the
+    /// person is a UBO, director or signatory of (default on).
+    pub fn related_company_block(mut self, on: bool) -> Self {
+        self.confirmed.related_company_block = on;
+        self
+    }
+
+    /// Hours after the flag until the freeze task is due (default 24).
+    ///
+    /// # Panics
+    ///
+    /// When `hours` is negative.
+    pub fn freeze_task_due_hours(mut self, hours: i64) -> Self {
+        assert!(hours >= 0, "the freeze task due hours are not negative");
+        self.confirmed.freeze_task_due_hours = hours;
+        self
+    }
+
+    /// Hours after the flag until the report task is due (default 24, the
+    /// open L-30 parameter).
+    ///
+    /// # Panics
+    ///
+    /// When `hours` is negative.
+    pub fn report_task_due_hours(mut self, hours: i64) -> Self {
+        assert!(hours >= 0, "the report task due hours are not negative");
+        self.confirmed.report_task_due_hours = hours;
+        self
+    }
+
     /// The block reason codes this module is set up with.
     pub fn reasons(&self) -> BlockReasons {
         self.reasons.clone().unwrap_or_default()
@@ -320,6 +361,8 @@ impl Module for WlParties {
             .clone()
             .unwrap_or_else(|| std::sync::Arc::new(NoListFeed));
         app.provide(feed);
+        // What a confirmed sanctions match does.
+        app.provide(self.confirmed);
         // The block reason codes; `on_hold` must be there and not restricted.
         let reasons = self.reasons();
         reasons.check();
@@ -411,6 +454,21 @@ mod tests {
         assert_eq!(WlParties::new().screening(true).approver(), "compliance");
         let set = WlParties::new().screening(true).exception_approver("cfo");
         assert_eq!(set.approver(), "cfo");
+    }
+
+    #[test]
+    fn the_confirmed_match_settings_default_and_can_be_set() {
+        let defaults = WlParties::new().confirmed;
+        assert!(defaults.related_company_block);
+        assert_eq!(defaults.freeze_task_due_hours, 24);
+        assert_eq!(defaults.report_task_due_hours, 24);
+        let module = WlParties::new()
+            .related_company_block(false)
+            .freeze_task_due_hours(12)
+            .report_task_due_hours(48);
+        assert!(!module.confirmed.related_company_block);
+        assert_eq!(module.confirmed.freeze_task_due_hours, 12);
+        assert_eq!(module.confirmed.report_task_due_hours, 48);
     }
 
     #[test]
