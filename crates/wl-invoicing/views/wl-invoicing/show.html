@@ -42,6 +42,7 @@
         <rx-entry :label="tx['write_off.notice_on']" :value="write_off.notice_on" format="date" :placeholder="write_off.notice_note"/>
         <rx-entry :label="tx['write_off.relief']" :value="write_off.relief"/>
         <rx-entry :label="tx['write_off.relief_status']" :value="write_off.relief_status"/>
+        <rx-entry rx-if="write_off.relief_detail" :label="tx['write_off.relief_detail']" :value="write_off.relief_detail"/>
       </rx-infolist>
     </rx-card>
     <rx-card rx-if="issuer" :title="tx['sections.issuer']">

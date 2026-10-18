@@ -6,7 +6,8 @@
 //! who issues), so a back-office user issues them from the invoice page.
 //! The list is fixed; each demo invoice has its own source
 //! (`invoicing.demo:N`), and one whose source has an invoice is skipped, so
-//! seeding twice changes nothing. Without the demo parties (parties off, or
+//! seeding twice changes nothing. It also opens the running period's VAT
+//! summary of each VAT-registered entity. Without the demo parties (parties off, or
 //! not seeded) nothing is created.
 
 use renox::prelude::*;
@@ -97,6 +98,9 @@ pub async fn run(state: &AppState) -> Result<usize> {
         create_draft(&state.db, draft).await?;
         created += 1;
     }
+    // The running period's open VAT summary of each VAT-registered demo
+    // entity; a period that has one (in any state) gets no second.
+    crate::vat_summary::run(state, wl_kernel::documents::today()).await?;
     Ok(created)
 }
 

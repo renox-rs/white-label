@@ -39,6 +39,8 @@ use crate::line::InvoiceLine;
 use crate::permissions;
 use crate::texts::{self, english};
 use crate::vat_adjustment::VatAdjustment;
+use crate::vat_pages::relief_detail;
+use crate::vat_summary::VatSummary;
 use crate::write_off::{offered, write_off};
 use crate::write_off_notice::recipient;
 
@@ -217,6 +219,8 @@ pub(crate) struct WriteOffRow {
     notice_note: Option<String>,
     relief: Option<String>,
     relief_status: Option<String>,
+    /// The summary the relief is on, and the reason of its decision.
+    relief_detail: Option<String>,
 }
 
 /// A quantity in thousandths as `2.5`.
@@ -281,6 +285,7 @@ fn write_off_row(
     t: Text<'_>,
     invoice: &Invoice,
     relief: Option<&VatAdjustment>,
+    summary: Option<&VatSummary>,
 ) -> Option<WriteOffRow> {
     let amount = invoice.write_off_amount?;
     let notice_note = match invoice.write_off_notice_on {
@@ -303,6 +308,7 @@ fn write_off_row(
         notice_note,
         relief: relief.map(|r| amount_text("AED", r.amount)),
         relief_status: relief.map(|r| t(&format!("adjustment_status.{}", r.status.as_str()))),
+        relief_detail: relief.and_then(|r| relief_detail(t, r, summary)),
     })
 }
 
@@ -396,7 +402,17 @@ async fn show(
         &json!({ "balance": money(invoice.balance) }),
     );
     let relief = VatAdjustment::relief_of(&db, &invoice).await?;
-    let write_off = write_off_row(&config, &t, &invoice, relief.as_ref());
+    let relief_summary = match relief.as_ref().and_then(|r| r.summary_id) {
+        Some(id) => VatSummary::find(&db, id).await?,
+        None => None,
+    };
+    let write_off = write_off_row(
+        &config,
+        &t,
+        &invoice,
+        relief.as_ref(),
+        relief_summary.as_ref(),
+    );
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
         title: invoice.number.clone().unwrap_or_else(|| t("draft_number")),

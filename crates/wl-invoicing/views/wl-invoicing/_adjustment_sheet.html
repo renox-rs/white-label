@@ -1,0 +1,15 @@
+{#- wl-invoicing: the include and exclude actions of a proposed VAT adjustment
+    on a summary's page: two sheets that each ask for a reason (required).
+    Replace it with resources/views/wl-invoicing/_adjustment_sheet.html in the app. -#}
+<rx-action-sheet :id="'include-adjustment-' ~ adjustment.id" :label="tx['vat.adjustments.include']"
+                 :action="route('wl_invoicing.vat_include', summary.id, adjustment.id)"
+                 :title="tx['vat.adjustments.include_title']" :description="tx['vat.adjustments.description']" :submit-label="tx['vat.adjustments.include']"
+                 icon="check">
+  <rx-textarea name="reason" :label="tx['vat.adjustments.reason_label']" :id="'include-reason-' ~ adjustment.id" required/>
+</rx-action-sheet>
+<rx-action-sheet :id="'exclude-adjustment-' ~ adjustment.id" :label="tx['vat.adjustments.exclude']"
+                 :action="route('wl_invoicing.vat_exclude', summary.id, adjustment.id)"
+                 :title="tx['vat.adjustments.exclude_title']" :description="tx['vat.adjustments.description']" :submit-label="tx['vat.adjustments.exclude']"
+                 icon="ban" variant="danger" danger>
+  <rx-textarea name="reason" :label="tx['vat.adjustments.reason_label']" :id="'exclude-reason-' ~ adjustment.id" required/>
+</rx-action-sheet>

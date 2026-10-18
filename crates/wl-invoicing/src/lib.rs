@@ -19,6 +19,7 @@ pub mod seed;
 mod texts;
 pub mod vat;
 pub mod vat_adjustment;
+pub mod vat_pages;
 pub mod vat_period;
 pub mod vat_summary;
 pub mod write_off;
@@ -60,6 +61,18 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "wl-invoicing/_write_off_sheet.html",
         include_str!("../views/wl-invoicing/_write_off_sheet.html"),
+    ),
+    (
+        "wl-invoicing/vat_summaries.html",
+        include_str!("../views/wl-invoicing/vat_summaries.html"),
+    ),
+    (
+        "wl-invoicing/vat_summary.html",
+        include_str!("../views/wl-invoicing/vat_summary.html"),
+    ),
+    (
+        "wl-invoicing/_adjustment_sheet.html",
+        include_str!("../views/wl-invoicing/_adjustment_sheet.html"),
     ),
 ];
 
@@ -200,7 +213,7 @@ impl Module for WlInvoicing {
     }
 
     fn routes(&self) -> Routes {
-        pages::routes()
+        pages::routes().merge(vat_pages::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -215,7 +228,9 @@ impl Module for WlInvoicing {
             .model::<VatAdjustment>()
             .model::<VatSummary>()
             .view_data::<pages::IndexPage>()
-            .view_data::<pages::ShowPage>();
+            .view_data::<pages::ShowPage>()
+            .view_data::<vat_pages::IndexPage>()
+            .view_data::<vat_pages::ShowPage>();
         // The customer write-off notice (§10), sent from the queue.
         app.job::<SendWriteOffNotice>();
         app.templates(|env| {
@@ -249,6 +264,15 @@ impl Module for WlInvoicing {
                 .group("nav.app")
                 .order(40)
                 .permission(permissions::VIEW),
+        );
+        // The VAT summaries, next to the invoices (`nav.vat_summaries`).
+        app.nav(
+            "app",
+            NavLink::route("wl_invoicing.vat_summaries", "nav.vat_summaries")
+                .icon("landmark")
+                .group("nav.app")
+                .order(41)
+                .permission(permissions::VAT_VIEW),
         );
         // `FIN.RUL.02`: the daily `invoicing:mark-overdue` task.
         overdue::schedule(app);
