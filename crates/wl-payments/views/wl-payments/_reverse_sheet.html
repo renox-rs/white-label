@@ -1,0 +1,9 @@
+{#- wl-payments: the reverse action on the payment page, a sheet with the
+    reason (required) and a note. Replace it with
+    resources/views/wl-payments/_reverse_sheet.html in the app. -#}
+<rx-action-sheet :id="'reverse-payment-' ~ payment.id" :label="tx['reverse.action']" :action="route('wl_payments.reverse', payment.id)"
+                 :title="tx['reverse.title']" :description="tx['reverse.description']" :submit-label="tx['reverse.submit']"
+                 icon="undo-2" variant="danger" danger>
+  <rx-select name="reason" :label="tx['reverse.reason']" :options="reasons" :id="'reverse-reason-' ~ payment.id" required/>
+  <rx-textarea name="note" :label="tx['reverse.note']" :id="'reverse-note-' ~ payment.id"/>
+</rx-action-sheet>

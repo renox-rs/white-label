@@ -1,0 +1,10 @@
+{#- wl-payments: the payments list, a renox::grid (search on the number and
+    the party, filters by status, method and entity). Replace it with
+    resources/views/wl-payments/index.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['title']">
+  <rx-page-header :title="tx['title']">
+    <rx-link-button rx-if="can_record" route="wl_payments.create" :label="tx['new']" icon="plus"/>
+    <rx-link-button route="wl_payments.tasks" :label="tx['tasks.link']" variant="plain" icon="list-checks"/>
+  </rx-page-header>
+  <rx-grid :page="payments"/>
+</rx-page>

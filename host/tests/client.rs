@@ -494,3 +494,64 @@ async fn a_give_up_sends_the_message_to_another_finance_contact() {
         [(MONA.to_owned(), "الفاتورة INV-0007 متأخرة.".to_owned())]
     );
 }
+
+/// #94 part 7: the payments pages render for the accountant: the list, the
+/// record form, the tasks and a payment's page (with a removed allocation
+/// shown and the reverse sheet offered).
+#[renox::test]
+async fn the_payment_pages_render_for_the_accountant() {
+    use wl_kernel::payments::PaymentStatus;
+    use wl_payments::{Allocation, Payment};
+
+    let app = TestApp::new(host::app()).await;
+    app.kernel().seed().await.unwrap();
+    host::roles::define(app.db()).await.unwrap();
+    let mut user = User::register(app.db(), "Amal", "amal@example.com", "secret123")
+        .await
+        .unwrap();
+    user.email_verified_at = Some(renox::db::now());
+    user.save(app.db()).await.unwrap();
+    user.assign_role(app.db(), host::roles::ACCOUNTANT)
+        .await
+        .unwrap();
+    app.acting_as(&user);
+    let entity = LegalEntity::default_entity(app.db()).await.unwrap();
+    let mut payment = Payment {
+        number: Some("RCT-TEST-0001".to_owned()),
+        legal_entity_id: entity.id,
+        party_id: 1,
+        amount: 300_000,
+        currency: "AED".to_owned(),
+        status: PaymentStatus::Received,
+        ..Default::default()
+    };
+    payment.insert(app.db()).await.unwrap();
+    let mut allocation = Allocation::new(
+        payment.id,
+        &wl_kernel::Subject::new("invoicing.invoice", 7),
+        100_000,
+        None,
+    );
+    allocation.removed_at = Some(renox::db::now());
+    allocation.removed_reason = Some("bank_return".to_owned());
+    allocation.insert(app.db()).await.unwrap();
+
+    app.get("/payments")
+        .await
+        .assert_ok()
+        .assert_see("Payments");
+    app.get("/payments/new")
+        .await
+        .assert_ok()
+        .assert_see("Party code");
+    app.get("/payments/tasks")
+        .await
+        .assert_ok()
+        .assert_see("No open tasks");
+    app.get(&format!("/payments/{}", payment.id))
+        .await
+        .assert_ok()
+        .assert_see("RCT-TEST-0001")
+        .assert_see("Returned by the bank")
+        .assert_see("Reverse payment");
+}

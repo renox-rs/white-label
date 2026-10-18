@@ -1,0 +1,21 @@
+{#- wl-payments: the open follow-up tasks of the accountant role (a charge
+    to raise after a reversal), with "Mark done". Replace it with
+    resources/views/wl-payments/tasks.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['tasks.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['tasks.title']" :back="route('wl_payments.index')" :back-label="tx['title']"/>
+    <rx-table :rows="tasks" as="task" :key="task.id" card>
+      <rx-column :label="tx['tasks.task']">{{ task.text }}</rx-column>
+      <rx-column :label="tx['fields.party']" hide-narrow>{{ task.party }}</rx-column>
+      <rx-column :label="tx['fields.amount']" hide-narrow>{{ task.amount }}</rx-column>
+      <rx-column :label="tx['fields.status']" hide-narrow>{{ task.status }}</rx-column>
+      <rx-column label="">
+        <template rx-if="can_mark">
+          <rx-confirm :id="'task-done-' ~ task.id" :label="tx['tasks.done_action']" :action="route('wl_payments.tasks.done', task.id)" method="POST"
+                      :title="tx['tasks.done_title']" :message="tx['tasks.done_message']" :confirm-label="tx['tasks.done_action']" icon="check"/>
+        </template>
+      </rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['tasks.empty']" :message="tx['tasks.empty_hint']" icon="list-checks"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

@@ -10,17 +10,20 @@ pub mod followup;
 pub mod gateway;
 mod machine;
 pub mod notices;
+pub mod pages;
 pub mod payment;
 pub mod record;
 pub mod recorder;
 pub mod refund;
 mod refund_machine;
 pub mod reverse;
+pub mod seed;
 mod texts;
 
 use std::sync::Arc;
 
 use renox::db::Migration;
+use renox::nav::NavLink;
 use renox::prelude::*;
 
 pub use allocation::Allocation;
@@ -29,6 +32,35 @@ pub use followup::FollowupTask;
 pub use gateway::{Gateway, NoGateway};
 pub use payment::Payment;
 pub use refund::Refund;
+
+/// The templates, compiled in. An app replaces one with a file of the same
+/// name under its views directory.
+const VIEWS: &[(&str, &str)] = &[
+    (
+        "wl-payments/index.html",
+        include_str!("../views/wl-payments/index.html"),
+    ),
+    (
+        "wl-payments/new.html",
+        include_str!("../views/wl-payments/new.html"),
+    ),
+    (
+        "wl-payments/show.html",
+        include_str!("../views/wl-payments/show.html"),
+    ),
+    (
+        "wl-payments/_allocate_sheet.html",
+        include_str!("../views/wl-payments/_allocate_sheet.html"),
+    ),
+    (
+        "wl-payments/_reverse_sheet.html",
+        include_str!("../views/wl-payments/_reverse_sheet.html"),
+    ),
+    (
+        "wl-payments/tasks.html",
+        include_str!("../views/wl-payments/tasks.html"),
+    ),
+];
 
 /// The module's settings in `state`: those `register` provided, else the
 /// §7 defaults.
@@ -106,11 +138,40 @@ impl Module for WlPayments {
         renox::migrations!()
     }
 
+    fn routes(&self) -> Routes {
+        pages::routes()
+    }
+
     fn register(&self, app: &mut Registry) {
         app.model::<Payment>();
         app.model::<Allocation>();
         app.model::<Refund>();
         app.model::<FollowupTask>();
+        app.view_data::<pages::IndexPage>()
+            .view_data::<pages::NewPage>()
+            .view_data::<pages::ShowPage>()
+            .view_data::<pages::TasksPage>();
+        app.templates(|env| {
+            for (name, source) in VIEWS {
+                // The app's own file of that name wins.
+                if env.get_template(name).is_err() {
+                    renox::view::add_template(env, *name, *source)
+                        .expect("a built-in template compiles");
+                }
+            }
+        });
+        // `db:seed`: the demo receipts.
+        app.seeder(|state: AppState| async move { seed::run(&state).await.map(|_| ()) });
+        // In the app group of the staff sidebar; the label is the app's
+        // `nav.payments` text.
+        app.nav(
+            "app",
+            NavLink::route("wl_payments.index", "nav.payments")
+                .icon("wallet")
+                .group("nav.app")
+                .order(42)
+                .permission(permissions::VIEW),
+        );
         // `rnx state:diagram Payment` and the admin panel find the machine.
         renox::state_machine::register::<Payment>();
         renox::state_machine::register::<Refund>();
