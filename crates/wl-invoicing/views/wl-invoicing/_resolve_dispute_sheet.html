@@ -1,0 +1,11 @@
+{#- wl-invoicing: the "Resolve dispute" action on the invoice page, a sheet
+    with the outcome (credited only with invoices.credit), the agreed amount
+    and the note. Replace it with
+    resources/views/wl-invoicing/_resolve_dispute_sheet.html in the app. -#}
+<rx-action-sheet :id="'resolve-dispute-' ~ invoice.id" :label="tx['dispute.resolve.action']" :action="route('wl_invoicing.resolve_dispute', invoice.id)"
+                 :title="tx['dispute.resolve.title']" :description="tx['dispute.resolve.description']" :submit-label="tx['dispute.resolve.submit']"
+                 icon="check-check">
+  <rx-select name="outcome" :label="tx['dispute.resolve.outcome']" :options="dispute.outcomes" :id="'resolve-dispute-outcome-' ~ invoice.id" required/>
+  <rx-input name="agreed_amount" :label="tx['dispute.resolve.agreed_amount']" :id="'resolve-dispute-amount-' ~ invoice.id"/>
+  <rx-textarea name="note" :label="tx['dispute.resolve.note']" :id="'resolve-dispute-note-' ~ invoice.id" required/>
+</rx-action-sheet>

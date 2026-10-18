@@ -16,6 +16,8 @@
       <template rx-if="can_write_off"><rx-include template="wl-invoicing/_write_off_sheet.html"/></template>
       <template rx-if="credit.can_new"><rx-include template="wl-invoicing/_credit_note_form.html"/></template>
       <template rx-if="credit.can_credit"><rx-include template="wl-invoicing/_credit_sheet.html"/></template>
+      <template rx-if="dispute.can_dispute"><rx-include template="wl-invoicing/_dispute_sheet.html"/></template>
+      <template rx-if="dispute.can_resolve"><rx-include template="wl-invoicing/_resolve_dispute_sheet.html"/></template>
       <template rx-if="actions">
         <rx-transition-actions :actions="actions" action="/invoices/{{ invoice.id }}/transitions"/>
       </template>
@@ -34,6 +36,27 @@
         <rx-entry :label="tx['fields.allocated_total']" :value="amounts['allocated_total']"/>
         <rx-entry :label="tx['fields.balance']" :value="amounts['balance']"/>
       </rx-infolist>
+    </rx-card>
+    <rx-card rx-if="dispute.panel" :title="tx['dispute.sections.panel']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['dispute.fields.reason']" :value="dispute.panel.reason"/>
+        <rx-entry :label="tx['fields.amount']" :value="dispute.panel.amount"/>
+        <rx-entry :label="tx['dispute.panel.raised_by']" :value="dispute.panel.raised_by"/>
+        <rx-entry :label="tx['dispute.panel.raised_at']" :value="dispute.panel.raised_at" format="datetime"/>
+      </rx-infolist>
+      <rx-row rx-if="dispute.panel.ticket">
+        <span>{{ tx['dispute.panel.ticket'] }}</span>
+        <a href="{{ dispute.panel.ticket.link }}">{{ dispute.panel.ticket.label }}</a>
+      </rx-row>
+      <p rx-if="dispute.panel.ticket_note">{{ dispute.panel.ticket_note }}</p>
+      <rx-row rx-if="dispute.panel.pending_credit">
+        <rx-badge kind="warning" :text="tx['dispute.panel.pending_credit']"/>
+        <a href="{{ dispute.panel.pending_credit.link }}">{{ dispute.panel.pending_credit.label }}</a>
+      </rx-row>
+      <rx-stack rx-if="dispute.panel.lines">
+        <p>{{ tx['dispute.panel.lines'] }}</p>
+        <ul><li rx-for="item in dispute.panel.lines">{{ item }}</li></ul>
+      </rx-stack>
     </rx-card>
     <rx-card rx-if="write_off" :title="tx['sections.write_off']">
       <rx-infolist columns="2">
@@ -73,7 +96,7 @@
       </rx-infolist>
     </rx-card>
     <rx-table :rows="lines" as="line" :key="line.id" :caption="tx['sections.lines']" card>
-      <rx-column :label="tx['fields.description']">{{ line.description }}</rx-column>
+      <rx-column :label="tx['fields.description']">{{ line.description }} <rx-badge rx-if="line.disputed" kind="warning" :text="tx['dispute.tag']"/></rx-column>
       <rx-column :label="tx['fields.quantity']">{{ line.quantity }}</rx-column>
       <rx-column :label="tx['fields.unit_price']" hide-narrow>{{ line.unit_price }}</rx-column>
       <rx-column :label="tx['fields.discount']" hide-narrow>{{ line.discount }}</rx-column>

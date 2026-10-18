@@ -6,6 +6,7 @@
 //! | `GET /invoices/{id}` | `wl_invoicing.show` | `invoices.view` |
 //! | `POST /invoices/{id}/issue` | `wl_invoicing.issue` | `invoices.issue` |
 //! | `POST /invoices/{id}/write-off` | `wl_invoicing.write_off` | `invoices.write_off` |
+//! | `POST /invoices/{id}/dispute` and `…/dispute/resolve` | `wl_invoicing.dispute`, `wl_invoicing.resolve_dispute` | `invoices.dispute` (see [`crate::dispute_pages`]) |
 //! | `POST /invoices/{id}/transitions/{name}` | `wl_invoicing.transitions.*` | `invoices.view` and the transition's permission |
 //!
 //! `issue` and `write_off` have their own routes because their guards read
@@ -33,6 +34,7 @@ use crate::allocation::Allocation;
 use crate::config::{InvoicingConfig, ReasonProblem};
 use crate::config_of;
 use crate::credit_note_pages::{InvoiceCredit, invoice_credit};
+use crate::dispute_pages::{InvoiceDispute, invoice_dispute};
 use crate::invoice::{Invoice, PartySnapshot};
 use crate::invoicer::{lines_of, totals_of};
 use crate::issue::issue;
@@ -154,6 +156,19 @@ fn grid_with(t: Text<'_>) -> Grid {
                 ])
                 .mobile(),
         )
+        .column(
+            // A badge on the invoices an open dispute flags; filterable.
+            Column::select(
+                "dispute",
+                &t("dispute.grid.column"),
+                [
+                    ("disputed", t("dispute.tag")),
+                    ("clear", t("dispute.grid.clear")),
+                ],
+            )
+            .computed("CASE WHEN {T}.\"disputed\" = 1 THEN 'disputed' ELSE 'clear' END")
+            .badges(&[("disputed", "warning"), ("clear", "neutral")]),
+        )
         .column(Column::datetime("created_at", &t("fields.created_at")).hidden())
         .sort_by("-created_at")
         .row_url("/invoices/{id}")
@@ -182,6 +197,8 @@ async fn index(lang: Lang, request: GridRequest) -> Result<View> {
 #[derive(Serialize, Debug, Clone)]
 pub(crate) struct LineRow {
     id: i64,
+    /// Whether the open dispute names this line (the "Disputed" tag).
+    disputed: bool,
     description: String,
     quantity: String,
     unit_price: String,
@@ -326,6 +343,8 @@ pub(crate) struct ShowPage {
     can_write_off: bool,
     /// The credit notes of the invoice and the credit actions offered.
     credit: InvoiceCredit,
+    /// The dispute panel and the dispute sheets.
+    dispute: InvoiceDispute,
     /// The write-off reasons, `(code, label)`.
     reasons: Vec<(String, String)>,
     /// The sheet's description, with the balance.
@@ -383,11 +402,13 @@ async fn show(
     let db = state.db.clone();
     let currency = invoice.currency.clone();
     let money = |fils: i64| amount_text(&currency, fils);
+    let (dispute, dispute_cards) = invoice_dispute(&db, &lang, &user, &invoice).await?;
     let lines = lines_of(&db, invoice.id)
         .await?
         .iter()
         .map(|line: &InvoiceLine| LineRow {
             id: line.id,
+            disputed: dispute.positions.contains(&line.position),
             description: line.description.clone(),
             quantity: quantity_text(line.quantity_milli),
             unit_price: money(line.unit_price),
@@ -430,7 +451,8 @@ async fn show(
     ]);
     let subject = invoice.subject();
     let pending = !approvals::pending_for(&db, &subject).await?.is_empty();
-    let approval_cards = approvals::cards_for(&db, &subject, &user, &lang).await?;
+    let mut approval_cards = approvals::cards_for(&db, &subject, &user, &lang).await?;
+    approval_cards.extend(dispute_cards);
     let history = state_machine::history(&db, Invoice::TABLE, invoice.id).await?;
     let mut timeline =
         state_machine::timeline(&history, Some(&state_machine::info_of::<Invoice>()));
@@ -502,6 +524,7 @@ async fn show(
         can_issue,
         can_write_off,
         credit,
+        dispute,
         reasons,
         write_off_description,
         invoice,
@@ -608,6 +631,7 @@ mod tests {
                 "gross_total",
                 "balance",
                 "status",
+                "dispute",
                 "created_at"
             ]
         );

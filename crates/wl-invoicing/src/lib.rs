@@ -16,6 +16,7 @@ mod credit_note_pages;
 pub mod credit_notes;
 pub mod dispute;
 pub mod dispute_credit;
+mod dispute_pages;
 pub mod dispute_resolve;
 mod events;
 pub mod invoice;
@@ -98,6 +99,14 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "wl-invoicing/_credit_note_form.html",
         include_str!("../views/wl-invoicing/_credit_note_form.html"),
+    ),
+    (
+        "wl-invoicing/_dispute_sheet.html",
+        include_str!("../views/wl-invoicing/_dispute_sheet.html"),
+    ),
+    (
+        "wl-invoicing/_resolve_dispute_sheet.html",
+        include_str!("../views/wl-invoicing/_resolve_dispute_sheet.html"),
     ),
     (
         "wl-invoicing/ageing.html",
@@ -281,6 +290,7 @@ impl Module for WlInvoicing {
             .merge(vat_pages::routes())
             .merge(credit_note_pages::routes())
             .merge(ageing_pages::routes())
+            .merge(dispute_pages::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {

@@ -67,7 +67,7 @@ const MODULE: &str = "invoicing";
 const GROUP: &str = "invoices";
 
 /// The states an invoice can be disputed in.
-const DISPUTABLE: [InvoiceStatus; 3] = [
+pub(crate) const DISPUTABLE: [InvoiceStatus; 3] = [
     InvoiceStatus::Issued,
     InvoiceStatus::PartiallyPaid,
     InvoiceStatus::Overdue,
