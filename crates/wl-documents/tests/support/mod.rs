@@ -118,10 +118,19 @@ pub fn civil_defence() -> KindSeed {
 }
 
 /// `deployment.activate`: the deployment's worker (deployment `n` is worker
-/// `n`).
+/// `n`), labelled "Ravi S." for Ravi.
 struct Deployments;
 
 impl BlockSubjects for Deployments {
+    fn label<'a>(
+        &'a self,
+        _state: &'a AppState,
+        subject: &'a Subject,
+    ) -> DocumentFuture<'a, Option<String>> {
+        let label = (subject.subject_id == RAVI).then(|| "Ravi S.".to_owned());
+        Box::pin(async move { Ok(label) })
+    }
+
     fn subjects<'a>(
         &'a self,
         _state: &'a AppState,
@@ -172,6 +181,61 @@ impl BlockSubjects for Tickets {
                 Vec::new()
             })
         })
+    }
+}
+
+/// The practitioner whose visits are booked.
+pub const PRACTITIONER: i64 = 5;
+/// The tutor whose sessions are planned.
+pub const TUTOR: i64 = 3;
+
+/// The practitioner licence, blocking `booking.book`.
+pub fn practitioner_licence() -> KindSeed {
+    KindSeed::new("practitioner_licence", "Practitioner licence")
+        .subject_type("hr.employee")
+        .expires()
+        .responsible_role("HR")
+        .blocks("booking.book", BlockMode::Block)
+}
+
+/// The tutor's clearance, blocking `session.start`.
+pub fn tutor_clearance() -> KindSeed {
+    KindSeed::new("tutor_clearance", "Tutor clearance")
+        .subject_type("hr.employee")
+        .expires()
+        .responsible_role("HR")
+        .blocks("session.start", BlockMode::Block)
+}
+
+/// `booking.book`: the practitioner of the visit; a bookable slot.
+struct Visits;
+
+impl BlockSubjects for Visits {
+    fn subjects<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _entry: &'a BlockEntry,
+        _record_id: i64,
+    ) -> DocumentFuture<'a, Vec<Subject>> {
+        Box::pin(async move { Ok(vec![Subject::new("hr.employee", PRACTITIONER)]) })
+    }
+
+    fn bookable(&self) -> bool {
+        true
+    }
+}
+
+/// `session.start`: the tutor of every session.
+struct Sessions;
+
+impl BlockSubjects for Sessions {
+    fn subjects<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _entry: &'a BlockEntry,
+        _record_id: i64,
+    ) -> DocumentFuture<'a, Vec<Subject>> {
+        Box::pin(async move { Ok(vec![Subject::new("hr.employee", TUTOR)]) })
     }
 }
 
@@ -417,6 +481,8 @@ pub async fn boot() -> Booted {
     register_block_subjects("run.dispatch", Runs);
     register_block_subjects("ticket.resolve", Tickets);
     register_block_subjects("attendance_record.accept", Attendance);
+    register_block_subjects("booking.book", Visits);
+    register_block_subjects("session.start", Sessions);
 
     let app = App::new()
         .module(Auth::new())
