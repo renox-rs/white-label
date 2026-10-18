@@ -42,6 +42,7 @@ What is here so far:
 | The notice contract: `Notifier` (`NoNotifier` when `notify` is off), `register_type`, `NotifyRequest`, message events | ARCHITECTURE §5, wl-notify §6 | `notify` |
 | The document guard contract: `DocumentGuard` (`NoDocuments` when `documents` is off), `BlockEntry`, `BlockSubjects` by transition, `BlockRefusal`, `today()` in Asia/Dubai, document events | ARCHITECTURE §5, wl-documents §5.6, §6 | `documents` |
 | `AutomationFailed`, the event of a failed rule run | §4 | `automation` |
+| The business calendar: `BusinessCalendar` (Asia/Dubai, Sat–Sun weekend, 09:00–18:00, `[calendar]` holidays) | §6 | `calendar` |
 
 After `rnx migrate`, `rnx wl:install` creates the legal entities `client.toml` lists and
 the database lacks; it never overwrites an entity changed in the admin. `rnx db:seed`
@@ -95,6 +96,23 @@ mode and condition. `today()` is the Asia/Dubai date of `renox::db::now()`, so t
 travel move it; a document is valid through its expiry date. `wl-documents` provides the guard
 and emits `DocumentUploaded`, `DocumentAccepted`, `DocumentRejected` and
 `DocumentSuperseded`; when `documents` is off, `NoDocuments` guards nothing and answers valid.
+
+Working time comes from one calendar: `wl_kernel::calendar::calendar(&state)` gives the
+client's `BusinessCalendar` (the default one with no holidays when the kernel is not
+mounted). Asia/Dubai is UTC+04:00 all year; the weekend is Saturday and Sunday, a working
+day runs 09:00–18:00, and the public holidays are listed in `client.toml`:
+
+```toml
+[calendar]
+holidays = ["2026-12-02", "2026-12-03"]
+```
+
+`add_working(from, minutes)` gives the instant that many working minutes later: a start
+outside working hours counts from the next opening, and a result exactly on the closing time
+stays there (Tue 09:00 + 27 h = Thu 18:00). `working_minutes_between(a, b)` is its inverse.
+`is_working_day(date)` and `next_working_day(date)` step whole days, `local(at)` shows an
+instant on the Dubai clock, `from_local(naive)` reads one, and `today()` is the same date as
+`documents::today()`.
 
 Migrations are SQLite only: each client runs one SQLite database
 ([ARCHITECTURE.md](../../docs/ARCHITECTURE.md) §1).

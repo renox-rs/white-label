@@ -4,6 +4,7 @@
 pub mod approvals;
 pub mod automation;
 pub mod branding;
+pub mod calendar;
 pub mod config;
 pub mod documents;
 pub mod entities;
@@ -28,6 +29,7 @@ pub use approvals::{
     ApprovalRequest, ApprovalRequested, ApprovalStatus, PolicyDefault, Require, Required,
 };
 pub use automation::AutomationFailed;
+pub use calendar::BusinessCalendar;
 pub use config::{ClientConfig, ConfigError};
 pub use documents::{
     BlockCondition, BlockEntry, BlockFailure, BlockMode, BlockRefusal, BlockSubjects, CheckOutcome,
@@ -82,6 +84,7 @@ const VIEWS: &[(&str, &str)] = &[
 pub struct WlKernel {
     config: Arc<ClientConfig>,
     manifest: Arc<Manifest>,
+    calendar: Arc<BusinessCalendar>,
 }
 
 impl WlKernel {
@@ -89,7 +92,9 @@ impl WlKernel {
     /// whose dependencies are not enabled.
     pub fn new(config: ClientConfig) -> Result<Self, ConfigError> {
         let manifest = config.manifest()?;
+        let calendar = Arc::new(config.business_calendar());
         Ok(WlKernel {
+            calendar,
             config: Arc::new(config),
             manifest: Arc::new(manifest),
         })
@@ -134,6 +139,7 @@ impl Module for WlKernel {
     fn register(&self, app: &mut Registry) {
         app.provide(Arc::clone(&self.config))
             .provide(Arc::clone(&self.manifest))
+            .provide(Arc::clone(&self.calendar))
             .model::<LegalEntity>()
             .model::<ScopeEntity>()
             .view_data::<LegalEntitiesPage>();

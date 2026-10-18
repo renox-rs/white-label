@@ -8,8 +8,10 @@
 use std::collections::BTreeSet;
 use std::path::Path;
 
+use renox::chrono::NaiveDate;
 use serde::Deserialize;
 
+use crate::calendar::BusinessCalendar;
 use crate::manifest::Manifest;
 
 /// The whole file. Unknown top-level tables are module sections; unknown
@@ -31,6 +33,10 @@ pub struct ClientConfig {
     /// [decision 0003]: https://github.com/renox-rs/white-label/blob/main/docs/decisions/0003-legal-entities.md
     #[serde(default)]
     pub legal_entities: Vec<LegalEntityConfig>,
+    /// `[calendar]`: the client's public holidays (wl-kernel §6
+    /// `BusinessCalendar`).
+    #[serde(default)]
+    pub calendar: CalendarConfig,
     /// The modules' own sections (`[invoicing]`, `[ticketing]`, …), read by
     /// each module.
     #[serde(flatten)]
@@ -94,6 +100,16 @@ pub struct Modules {
     /// The kernel is always on and is not listed.
     #[serde(default)]
     pub enabled: Vec<String>,
+}
+
+/// `[calendar]`.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CalendarConfig {
+    /// Public holidays as `YYYY-MM-DD` strings, e.g. `["2026-12-02"]`:
+    /// not working days.
+    #[serde(default)]
+    pub holidays: Vec<NaiveDate>,
 }
 
 /// One `[[legal_entities]]` entry.
@@ -194,6 +210,12 @@ impl ClientConfig {
     /// The enabled modules with their dependencies checked.
     pub fn manifest(&self) -> Result<Manifest, ConfigError> {
         Manifest::new(&self.modules.enabled)
+    }
+
+    /// The business calendar: the kernel's working days and hours with the
+    /// `[calendar]` holidays.
+    pub fn business_calendar(&self) -> BusinessCalendar {
+        BusinessCalendar::new(self.calendar.holidays.iter().copied())
     }
 
     /// A module's own section, e.g. `section("invoicing")` for `[invoicing]`.
@@ -316,6 +338,27 @@ mod tests {
             .unwrap();
         assert_eq!(statuses.len(), 2);
         assert!(config.section("invoicing").is_none());
+    }
+
+    #[test]
+    fn calendar_holidays_are_read_and_not_a_module_section() {
+        let text = format!("{MINIMAL}\n[calendar]\nholidays = [\"2026-12-02\", \"2026-12-03\"]\n");
+        let config = ClientConfig::parse(&text).unwrap();
+        assert!(config.section("calendar").is_none());
+        let calendar = config.business_calendar();
+        let holidays: Vec<String> = calendar.holidays().map(|d| d.to_string()).collect();
+        assert_eq!(holidays, ["2026-12-02", "2026-12-03"]);
+        assert!(!calendar.is_working_day("2026-12-02".parse().unwrap()));
+        let none = ClientConfig::parse(MINIMAL).unwrap().business_calendar();
+        assert_eq!(none.holidays().count(), 0);
+    }
+
+    #[test]
+    fn a_bad_holiday_or_calendar_key_is_refused() {
+        let bad_date = format!("{MINIMAL}\n[calendar]\nholidays = [\"2026-13-02\"]\n");
+        assert!(ClientConfig::parse(&bad_date).is_err());
+        let bad_key = format!("{MINIMAL}\n[calendar]\nweekend = [\"fri\"]\n");
+        assert!(ClientConfig::parse(&bad_key).is_err());
     }
 
     #[test]
