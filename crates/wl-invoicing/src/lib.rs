@@ -14,6 +14,7 @@ mod machine;
 pub mod overdue;
 pub mod pages;
 pub mod policy;
+pub mod recover;
 pub mod recovery;
 pub mod reminders;
 pub mod seed;
@@ -287,6 +288,8 @@ impl Module for WlInvoicing {
         // `FIN.RUL.14`: the relief notification type and the daily
         // `invoicing:bad-debt-relief` (when the setting is on).
         bad_debt_relief::register_types();
+        // `invoicing.bad_debt_recovered`: the accountant notice of a recovery.
+        recover::register_types();
         bad_debt_relief::schedule(app, &self.config);
         // Other modules draft and read invoices through the kernel (§6).
         wl_kernel::invoicing::provide_invoicer(app, Invoices);

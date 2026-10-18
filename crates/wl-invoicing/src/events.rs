@@ -4,6 +4,8 @@
 //!
 //! - `issue` → [`InvoiceIssued`];
 //! - `allocate_in_full` (the balance reached 0) → [`InvoicePaid`];
+//! - `recover` / `recover_in_full` → `BadDebtRecovered` and the accountant
+//!   notice ([`crate::recover`]); `recover_in_full` also → [`InvoicePaid`];
 //! - `mark_overdue` → [`InvoiceOverdue`].
 
 use renox::chrono::NaiveDate;
@@ -16,6 +18,7 @@ use crate::allocate::ALLOCATE_IN_FULL;
 use crate::invoice::Invoice;
 use crate::issue::ISSUE;
 use crate::overdue::MARK_OVERDUE;
+use crate::recover::{RECOVER, RECOVER_IN_FULL};
 
 /// The event a committed transition of `invoice` (as it is now) gives, if
 /// any.
@@ -41,7 +44,7 @@ fn event_for(transition: &str, invoice: &Invoice, on: NaiveDate) -> Option<Invoi
             // `issue` always sets it; the issue date is the fallback.
             due_date: invoice.due_date.or(invoice.issue_date).unwrap_or(on),
         })),
-        ALLOCATE_IN_FULL => Some(InvoiceEvent::Paid(InvoicePaid {
+        ALLOCATE_IN_FULL | RECOVER_IN_FULL => Some(InvoiceEvent::Paid(InvoicePaid {
             invoice: invoice.invoice_id(),
             party: invoice.party(),
             source: invoice.source(),
@@ -59,11 +62,21 @@ fn event_for(transition: &str, invoice: &Invoice, on: NaiveDate) -> Option<Invoi
 /// Registers the listener.
 pub(crate) fn register(app: &mut Registry) {
     app.listen(|event: Transitioned<Invoice>, state: AppState| async move {
-        if ![ISSUE, ALLOCATE_IN_FULL, MARK_OVERDUE].contains(&event.transition.as_str()) {
+        let known = [
+            ISSUE,
+            ALLOCATE_IN_FULL,
+            MARK_OVERDUE,
+            RECOVER,
+            RECOVER_IN_FULL,
+        ];
+        if !known.contains(&event.transition.as_str()) {
             return Ok(());
         }
         // The committed row: the number, dates and balance the run wrote.
         let invoice = Invoice::find_or_404(&state.db, event.key).await?;
+        if [RECOVER, RECOVER_IN_FULL].contains(&event.transition.as_str()) {
+            crate::recover::after_commit(&state, &invoice, &event.meta).await?;
+        }
         match event_for(&event.transition, &invoice, today()) {
             Some(InvoiceEvent::Issued(issued)) => state.emit(issued).await,
             Some(InvoiceEvent::Paid(paid)) => state.emit(paid).await,
@@ -118,6 +131,15 @@ mod tests {
         };
         assert_eq!((paid.invoice, paid.party), (InvoiceId(4), PartyId(7)));
         assert!(event_for(crate::allocate::ALLOCATE, &invoice(), date(2)).is_none());
+    }
+
+    #[test]
+    fn recovering_in_full_gives_invoice_paid_and_a_part_does_not() {
+        let Some(InvoiceEvent::Paid(paid)) = event_for(RECOVER_IN_FULL, &invoice(), date(2)) else {
+            panic!("no InvoicePaid");
+        };
+        assert_eq!(paid.invoice, InvoiceId(4));
+        assert!(event_for(RECOVER, &invoice(), date(2)).is_none());
     }
 
     #[test]

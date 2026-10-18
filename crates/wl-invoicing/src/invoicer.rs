@@ -39,9 +39,13 @@ impl Invoicer for Invoices {
     ) -> InvoiceFuture<'a, ()> {
         Box::pin(async move {
             let invoice = Invoice::find_or_404(&state.db, id.0).await?;
-            crate::allocate::allocate(state, &invoice, &source, amount, None)
-                .await
-                .map_err(TransitionError::into_error)
+            // A written-off invoice is recovered, an open one allocated.
+            let result = if invoice.status == InvoiceStatus::WrittenOff {
+                crate::recover::recover(state, &invoice, &source, amount, None).await
+            } else {
+                crate::allocate::allocate(state, &invoice, &source, amount, None).await
+            };
+            result.map_err(TransitionError::into_error)
         })
     }
 }

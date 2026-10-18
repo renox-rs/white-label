@@ -314,6 +314,18 @@ const TEXTS: &[(&str, &str)] = &[
         "Dear {{ party_name }},\n\nInvoice {{ number }} of {{ issue_date }} was due on {{ due_date }}, {{ days }} day(s) ago. The balance of {{ balance }} is still open. Please pay it as soon as possible.\n\nIf you have already paid, please ignore this message.",
     ),
     (
+        "wl_invoicing.adjustment.recovery_reason",
+        "recovery of a written-off invoice",
+    ),
+    (
+        "wl_invoicing.recovered.subject",
+        "Bad debt recovered on invoice {{ number }}",
+    ),
+    (
+        "wl_invoicing.recovered.body",
+        "{{ amount }} was recovered on the written-off invoice {{ number }} ({{ party_name }}); {{ recovered_total }} of {{ written_off }} is now recovered. VAT relief claimed: {{ relief_claimed }}. {{ adjustment }} See the invoice: {{ link }}",
+    ),
+    (
         "wl_invoicing.relief.proposed.subject",
         "Bad-debt VAT relief proposed for invoice {{ number }}",
     ),
