@@ -143,6 +143,19 @@ redirect. A `BlockSubjects` provider can override `label` (the subject's name, e
 because a booking is refused through `is_valid` (`SCH.ACL.04`). Without `wl-documents` it returns
 `Ok(Ok(None))`.
 
+Look-ahead: a module that owns planned work behind a guarded transition can also register a
+`FutureWork` provider with `documents::register_future_work("ticket.resolve", provider)`
+(optional: an entry without one is skipped). `planned_from(state, entry, subject, from)` returns
+the `PlannedRecord`s (`record`, `date`, `label`, optional `scope`) planned on or after `from`.
+`wl-documents` passes `from` = **expiry date + 1 day**: a document is valid through its expiry
+date, so a record planned on that date is never listed. It groups the records by guarded
+transition as `AffectedGroup`s in the `DocumentExpiring` event (document, subject, kind,
+`expires_on`, `days_left`, `offset`, `affected`); the event changes no planned item. A vertical
+registers a `ReminderSchedule` per document kind with
+`documents::register_reminder_schedule(kind, schedule)`: `scopes(state, subject)` names the
+scopes whose staff get the reminder when neither the subject nor the affected records have one;
+`None` means every scope. Without `wl-documents` neither registry is read.
+
 Working time comes from one calendar: `wl_kernel::calendar::calendar(&state)` gives the
 client's `BusinessCalendar` (the default one with no holidays when the kernel is not
 mounted). Asia/Dubai is UTC+04:00 all year; the weekend is Saturday and Sunday, a working

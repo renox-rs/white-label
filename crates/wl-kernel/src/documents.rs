@@ -21,6 +21,17 @@
 //! Dates are calendar dates in Asia/Dubai ([`today`]); a document is valid
 //! through its expiry date.
 //!
+//! Look-ahead: before a blocking document expires, `wl-documents` asks the
+//! [`FutureWork`] provider of each guarded transition (registered with
+//! [`register_future_work`]) for the planned records that fall after the
+//! document stops being valid. The `from` date it passes is **expiry + 1
+//! day**: a document is valid through its expiry date, so a record planned
+//! on that date is fine and is never listed. The result is emitted as
+//! [`DocumentExpiring`], grouped by guarded transition ([`AffectedGroup`]).
+//! The staff to tell come from the subject's scope, else the scopes of the
+//! affected records, else the kind's [`ReminderSchedule`] (registered with
+//! [`register_reminder_schedule`]), else every scope.
+//!
 //! [ARCHITECTURE.md]: https://github.com/renox-rs/white-label/blob/main/docs/ARCHITECTURE.md
 
 use std::collections::BTreeMap;
@@ -29,6 +40,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, PoisonError, RwLock};
 
+use renox::auth::permissions::Scope;
 use renox::chrono::{FixedOffset, NaiveDate};
 use renox::db::DateTime;
 use renox::prelude::*;
@@ -857,6 +869,132 @@ pub struct DocumentSuperseded {
 
 impl Event for DocumentSuperseded {}
 
+/// A planned record a blocking document would not cover: it is dated after
+/// the document's expiry date.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct PlannedRecord {
+    /// The planned record, e.g. `ticketing.ticket #12`.
+    pub record: Subject,
+    /// The date it is planned for (Asia/Dubai calendar date).
+    pub date: NaiveDate,
+    /// What to show to the staff, e.g. "Fire-safety visit".
+    pub label: String,
+    /// The scope the record lives in; `None` when it has none.
+    pub scope: Option<Scope>,
+}
+
+/// The planned records found for one guarded transition.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct AffectedGroup {
+    /// The guarded transition, `<entity>.<transition>`.
+    pub guarded: String,
+    /// Its planned records, in provider order.
+    pub records: Vec<PlannedRecord>,
+}
+
+/// Lists the planned work of a guarded transition that a document would
+/// not cover. The guarded module registers one per
+/// `<entity>.<transition>` with [`register_future_work`]. Unlike
+/// [`BlockSubjects`] it is optional: an entry without a provider is
+/// skipped.
+pub trait FutureWork: Send + Sync + 'static {
+    /// The records planned on or after `from` whose guarded transition
+    /// needs `subject`'s document of `entry.kind`. `entry` is the `blocks`
+    /// entry (`block` or `flag`) with its condition.
+    ///
+    /// The caller passes `from` = the document's expiry date + 1 day: the
+    /// document is valid through its expiry date, so records planned on
+    /// that date are never listed. A record that does not match
+    /// `entry.condition` is left out, as [`BlockSubjects::subjects`] does.
+    fn planned_from<'a>(
+        &'a self,
+        state: &'a AppState,
+        entry: &'a BlockEntry,
+        subject: &'a Subject,
+        from: NaiveDate,
+    ) -> DocumentFuture<'a, Vec<PlannedRecord>>;
+}
+
+static FUTURE_WORK: RwLock<BTreeMap<String, Arc<dyn FutureWork>>> = RwLock::new(BTreeMap::new());
+
+/// Adds `provider` for `guarded` (`<entity>.<transition>`) to the
+/// process-wide registry; registering the same transition again replaces
+/// it.
+pub fn register_future_work(guarded: &str, provider: impl FutureWork) {
+    FUTURE_WORK
+        .write()
+        .unwrap_or_else(PoisonError::into_inner)
+        .insert(guarded.to_owned(), Arc::new(provider));
+}
+
+/// The [`FutureWork`] provider of `guarded`, if registered.
+pub fn future_work(guarded: &str) -> Option<Arc<dyn FutureWork>> {
+    FUTURE_WORK
+        .read()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get(guarded)
+        .cloned()
+}
+
+/// Names the scopes whose staff get a document kind's reminders when the
+/// subject and the affected records have no scope. The vertical registers
+/// one per document kind key with [`register_reminder_schedule`].
+pub trait ReminderSchedule: Send + Sync + 'static {
+    /// The scopes for `subject`'s document. `None` means "no answer": the
+    /// reminder goes to every scope.
+    fn scopes<'a>(
+        &'a self,
+        state: &'a AppState,
+        subject: &'a Subject,
+    ) -> DocumentFuture<'a, Option<Vec<Scope>>>;
+}
+
+static REMINDER_SCHEDULES: RwLock<BTreeMap<String, Arc<dyn ReminderSchedule>>> =
+    RwLock::new(BTreeMap::new());
+
+/// Adds `schedule` for the document kind `kind` to the process-wide
+/// registry; registering the same kind again replaces it.
+pub fn register_reminder_schedule(kind: &str, schedule: impl ReminderSchedule) {
+    REMINDER_SCHEDULES
+        .write()
+        .unwrap_or_else(PoisonError::into_inner)
+        .insert(kind.to_owned(), Arc::new(schedule));
+}
+
+/// The [`ReminderSchedule`] of the document kind `kind`, if registered.
+pub fn reminder_schedule(kind: &str) -> Option<Arc<dyn ReminderSchedule>> {
+    REMINDER_SCHEDULES
+        .read()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get(kind)
+        .cloned()
+}
+
+/// An accepted document is about to expire: a reminder offset was reached,
+/// or planned work now falls after its expiry date. Emitted at most once
+/// per document and night. It changes no planned item.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct DocumentExpiring {
+    /// The document.
+    pub document_id: DocumentId,
+    /// What it is attached to.
+    pub subject: Subject,
+    /// The kind's key.
+    pub kind: String,
+    /// The expiry date; the document is valid through it.
+    pub expires_on: NaiveDate,
+    /// Expiry date minus today.
+    pub days_left: i64,
+    /// The reminder offset reached tonight, in days; `None` when only
+    /// planned work triggered the event.
+    pub offset: Option<u32>,
+    /// The full current list of planned records dated after the expiry
+    /// date, grouped by guarded transition (not only the new ones).
+    pub affected: Vec<AffectedGroup>,
+}
+
+impl Event for DocumentExpiring {}
+
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
@@ -1235,6 +1373,107 @@ mod tests {
         assert!(block_subjects("test_unit.guarded").is_some());
         assert!(block_subjects("test_unit.unknown").is_none());
         assert!(guarded_transitions().contains(&"test_unit.guarded".to_owned()));
+    }
+
+    struct OneVisit;
+
+    impl FutureWork for OneVisit {
+        fn planned_from<'a>(
+            &'a self,
+            _state: &'a AppState,
+            _entry: &'a BlockEntry,
+            subject: &'a Subject,
+            from: NaiveDate,
+        ) -> DocumentFuture<'a, Vec<PlannedRecord>> {
+            let record = PlannedRecord {
+                record: Subject::new("test.visit", 1),
+                date: from,
+                label: format!("visit for {}", subject.subject_id),
+                scope: None,
+            };
+            Box::pin(async move { Ok(vec![record]) })
+        }
+    }
+
+    struct AnyScope;
+
+    impl ReminderSchedule for AnyScope {
+        fn scopes<'a>(
+            &'a self,
+            _state: &'a AppState,
+            _subject: &'a Subject,
+        ) -> DocumentFuture<'a, Option<Vec<Scope>>> {
+            Box::pin(async { Ok(None) })
+        }
+    }
+
+    #[test]
+    fn future_work_is_registered_by_transition() {
+        register_future_work("test_unit.planned", OneVisit);
+        assert!(future_work("test_unit.planned").is_some());
+        assert!(future_work("test_unit.unknown").is_none());
+        // Independent of the block-subjects registry.
+        assert!(block_subjects("test_unit.planned").is_none());
+    }
+
+    #[test]
+    fn reminder_schedules_are_registered_by_kind() {
+        register_reminder_schedule("test_unit_kind", AnyScope);
+        assert!(reminder_schedule("test_unit_kind").is_some());
+        assert!(reminder_schedule("test_unit_other").is_none());
+    }
+
+    #[renox::test]
+    async fn a_provider_gets_the_day_after_expiry() {
+        let app = TestApp::new(App::new()).await;
+        let entry = BlockEntry {
+            kind: "civil_defence".into(),
+            guarded: "ticket.resolve".into(),
+            mode: BlockMode::Block,
+            override_mode: OverrideMode::Never,
+            condition: None,
+            locked: false,
+        };
+        let from = date("2026-12-15").succ_opt().unwrap();
+        let subject = Subject::new("parties.vendor", 4);
+        let found = OneVisit
+            .planned_from(app.state(), &entry, &subject, from)
+            .await
+            .expect("no failure");
+        assert_eq!(found[0].date, date("2026-12-16"));
+        assert_eq!(found[0].label, "visit for 4");
+        assert_eq!(
+            AnyScope
+                .scopes(app.state(), &subject)
+                .await
+                .expect("no failure"),
+            None
+        );
+    }
+
+    #[test]
+    fn expiring_events_serialize_with_plain_ids() {
+        let expiring = DocumentExpiring {
+            document_id: DocumentId(5),
+            subject: Subject::new("parties.vendor", 4),
+            kind: "civil_defence".into(),
+            expires_on: date("2026-12-15"),
+            days_left: 30,
+            offset: None,
+            affected: vec![AffectedGroup {
+                guarded: "ticket.resolve".into(),
+                records: vec![PlannedRecord {
+                    record: Subject::new("test.visit", 1),
+                    date: date("2026-12-20"),
+                    label: "Fire-safety visit".into(),
+                    scope: None,
+                }],
+            }],
+        };
+        let json = renox::serde_json::to_value(&expiring).unwrap();
+        assert_eq!(json["document_id"], 5);
+        assert_eq!(json["days_left"], 30);
+        assert_eq!(json["affected"][0]["records"][0]["date"], "2026-12-20");
     }
 
     #[test]
