@@ -16,18 +16,20 @@
 //! The record also needs a [`crate::SubjectMachine`] entry, which is how the
 //! kernel runs `void_approved` by name.
 
+use std::any::Any;
 use std::collections::BTreeMap;
 use std::fmt;
 use std::marker::PhantomData;
 use std::sync::{Arc, PoisonError, RwLock};
 
-use renox::Result;
 use renox::auth::permissions::Scope;
 use renox::db::Transaction;
-use renox::state_machine::{MachineInfo, StateMachine, info_of};
+use renox::state_machine::{MachineInfo, StateMachine, TransitionError, info_of};
+use renox::{AppState, AuthUser, Result};
 
-use super::record::{Effect, EffectKind, ReverseError};
-use super::{VOID, VOID_APPROVED, VOIDED_STATE};
+use super::record::{Effect, EffectKind, ReverseError, VoidRecord};
+use super::run::VoidOutcome;
+use super::{RecordVoided, VOID, VOID_APPROVED, VOIDED_STATE};
 use crate::machines::{BoxFuture, load};
 use crate::permissions::RECORDS_VOID;
 use crate::subject::Subject;
@@ -47,6 +49,17 @@ type NumberFn = Arc<
 >;
 type ThirdPartyFn =
     Arc<dyn for<'a> Fn(&'a mut Transaction, i64) -> BoxFuture<'a, Result<bool>> + Send + Sync>;
+
+type RunFn = Arc<
+    dyn for<'a> Fn(
+            &'a AppState,
+            &'a AuthUser,
+            i64,
+            &'a str,
+        ) -> BoxFuture<'a, std::result::Result<VoidOutcome, TransitionError>>
+        + Send
+        + Sync,
+>;
 
 /// A function of a loaded record.
 type RecordFn<M, T> = Arc<dyn Fn(&M) -> T + Send + Sync>;
@@ -92,6 +105,11 @@ pub struct Voidable {
     scope: ScopeFn,
     number: Option<NumberFn>,
     third_party: Option<ThirdPartyFn>,
+    /// The typed `Fn(&M) -> Scope`, for the transition's permission guard.
+    record_scope: Option<Arc<dyn Any + Send + Sync>>,
+    /// The typed `Fn(&M) -> bool`, for the transition's third-party guard.
+    record_third_party: Option<Arc<dyn Any + Send + Sync>>,
+    run: RunFn,
     handlers: Vec<(EffectKind, Reverse)>,
 }
 
@@ -165,6 +183,36 @@ impl Voidable {
     /// Whether the entry gives a scope; without one the global scope is used.
     pub fn has_scope(&self) -> bool {
         self.has_scope
+    }
+
+    /// The scope of an already loaded `record` (the global scope when the
+    /// entry gives none, or when `M` is not the entry's model).
+    pub fn scope_of<M: 'static>(&self, record: &M) -> Scope {
+        self.record_scope
+            .as_ref()
+            .and_then(|scope| scope.downcast_ref::<RecordFn<M, Scope>>())
+            .map_or_else(Scope::global, |scope| scope(record))
+    }
+
+    /// Whether an already loaded `record` was given to a third party;
+    /// `false` when the entry does not say.
+    pub fn given_to_third_party_of<M: 'static>(&self, record: &M) -> bool {
+        self.record_third_party
+            .as_ref()
+            .and_then(|given| given.downcast_ref::<RecordFn<M, bool>>())
+            .is_some_and(|given| given(record))
+    }
+
+    /// Runs the typed `void` transition on record `id` as `user`, in its own
+    /// transaction, with `reason`. See [`super::void`].
+    pub(super) async fn run_as(
+        &self,
+        state: &AppState,
+        user: &AuthUser,
+        id: i64,
+        reason: &str,
+    ) -> std::result::Result<VoidOutcome, TransitionError> {
+        (self.run)(state, user, id, reason).await
     }
 
     /// The kinds of effect the entry reverses, in registration order.
@@ -248,7 +296,7 @@ pub struct VoidableBuilder<M: StateMachine<Key = i64>> {
     _model: PhantomData<fn() -> M>,
 }
 
-impl<M: StateMachine<Key = i64>> VoidableBuilder<M> {
+impl<M: StateMachine<Key = i64> + 'static> VoidableBuilder<M> {
     /// The module's alias of the void permission, e.g. `receipts.void`
     /// (default: `records.void`).
     pub fn permission(mut self, permission: impl Into<String>) -> Self {
@@ -302,6 +350,14 @@ impl<M: StateMachine<Key = i64>> VoidableBuilder<M> {
     /// The entry, without registering it.
     pub fn build(self) -> Voidable {
         let has_scope = self.scope.is_some();
+        let record_scope = self
+            .scope
+            .clone()
+            .map(|scope| -> Arc<dyn Any + Send + Sync> { Arc::new(scope) });
+        let record_third_party = self
+            .third_party
+            .clone()
+            .map(|given| -> Arc<dyn Any + Send + Sync> { Arc::new(given) });
         let scope = self.scope;
         let scope: ScopeFn = Arc::new(move |tx: &mut Transaction, id: i64| {
             let scope = scope.clone();
@@ -324,6 +380,13 @@ impl<M: StateMachine<Key = i64>> VoidableBuilder<M> {
                 Box::pin(async move { Ok(given(&load::<M>(tx, id).await?)) })
             })
         });
+        let subject = self.subject_type.clone();
+        let run: RunFn = Arc::new(
+            move |state: &AppState, user: &AuthUser, id: i64, reason: &str| {
+                let subject = crate::subject::Subject::new(&subject, id);
+                Box::pin(run_as::<M>(state, user, subject, reason))
+            },
+        );
         Voidable {
             subject_type: self.subject_type,
             table: M::TABLE,
@@ -333,6 +396,9 @@ impl<M: StateMachine<Key = i64>> VoidableBuilder<M> {
             scope,
             number,
             third_party,
+            record_scope,
+            record_third_party,
+            run,
             handlers: self.handlers,
         }
     }
@@ -341,6 +407,52 @@ impl<M: StateMachine<Key = i64>> VoidableBuilder<M> {
     /// one of the same subject type.
     pub fn register(self) {
         self.build().register();
+    }
+}
+
+/// Runs `void` on `subject` as `user`: one transaction, then `Transitioned`
+/// and `RecordVoided` once it has committed.
+async fn run_as<M: StateMachine<Key = i64>>(
+    state: &AppState,
+    user: &AuthUser,
+    subject: Subject,
+    reason: &str,
+) -> std::result::Result<VoidOutcome, TransitionError> {
+    use renox::state_machine::Outcome;
+
+    let mut tx = state.db.begin().await?;
+    let record = load::<M>(&mut tx, subject.subject_id).await?;
+    let outcome = record
+        .transition(VOID)
+        .by(user)
+        .reason(reason.trim())
+        .run_in(&mut tx)
+        .await?;
+    match outcome {
+        Outcome::Done(done) => {
+            let void = VoidRecord::of_subject(&mut tx, &subject)
+                .await?
+                .ok_or_else(|| {
+                    renox::Error::Internal(renox::anyhow::anyhow!(
+                        "{subject}: voided without a Void record"
+                    ))
+                })?;
+            tx.commit().await?;
+            done.emit(state).await?;
+            let event = RecordVoided {
+                subject,
+                state_before: void.state_before,
+                reason: void.reason,
+                user_id: void.voided_by,
+                approval_request_id: void.approval_request_id,
+            };
+            state.emit(event.clone()).await?;
+            Ok(VoidOutcome::Voided(event))
+        }
+        Outcome::Pending(pending) => {
+            tx.commit().await?;
+            Ok(VoidOutcome::Pending(pending.data))
+        }
     }
 }
 

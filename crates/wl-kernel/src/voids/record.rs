@@ -124,6 +124,12 @@ impl From<renox::Error> for ReverseError {
     }
 }
 
+impl From<renox::db::DbError> for ReverseError {
+    fn from(error: renox::db::DbError) -> Self {
+        ReverseError::Failed(error.to_string())
+    }
+}
+
 /// The proof that a record was voided: one per subject.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
 #[model(

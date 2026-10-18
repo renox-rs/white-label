@@ -223,6 +223,30 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_kernel.approvals.toast.not_resubmitting",
         "Task closed: not resubmitting.",
     ),
+    (
+        "wl_kernel.voids.not_voidable",
+        "This record cannot be voided.",
+    ),
+    (
+        "wl_kernel.voids.no_permission",
+        "You may not void this record.",
+    ),
+    (
+        "wl_kernel.voids.given_to_third_party",
+        "This record was given to a third party, so it cannot be voided.",
+    ),
+    (
+        "wl_kernel.voids.locked_period",
+        "The accounting period is locked, so this record cannot be voided.",
+    ),
+    (
+        "wl_kernel.voids.reverse_failed",
+        "What this record did could not be reversed.",
+    ),
+    (
+        "wl_kernel.voids.cannot_change",
+        "A voided record cannot be changed.",
+    ),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.

@@ -5,11 +5,13 @@
 //! to a third party, and one reverse handler per kind of effect. This part is
 //! the base: the [`VoidRecord`] (table `wl_voids`, one per subject), the
 //! [`RecordVoided`] event, the [`Effect`] a handler reverses, and the
-//! registry with its boot checks. The run itself comes in the next parts.
+//! registry with its boot checks. [`run`] is the void itself: the two
+//! transitions, [`void`] and the helpers modules use.
 
 pub mod events;
 pub mod record;
 pub mod register;
+pub mod run;
 
 use renox::prelude::*;
 
@@ -17,6 +19,9 @@ pub use events::RecordVoided;
 pub use record::{Effect, EffectKind, ReverseError, VoidRecord};
 pub use register::{
     Reverse, Voidable, VoidableBuilder, check_machine, get, register, subject_types,
+};
+pub use run::{
+    VoidOutcome, ensure_editable, exclude_voided, is_voided, transitions, void, void_numbers,
 };
 
 /// The state a voided record is in.
