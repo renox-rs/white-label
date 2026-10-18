@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
+pub mod block_record;
 pub mod contacts;
 pub mod create;
 pub mod details;
@@ -8,19 +9,23 @@ pub mod directory;
 mod machine;
 pub mod pages;
 pub mod party;
+pub mod reasons;
 pub mod roles;
 pub mod seed;
 mod texts;
+pub mod visibility;
 
 use renox::db::Migration;
 use renox::nav::NavLink;
 use renox::prelude::*;
 
+pub use block_record::BlockRecord;
 pub use contacts::{ContactPoint, ContactType};
 pub use create::{NewParty, create};
 pub use details::{CompanyDetails, PersonDetails};
 pub use directory::Directory;
 pub use party::{Channel, Language, Party};
+pub use reasons::{BlockReason, BlockReasons};
 pub use roles::PartyRole;
 
 /// The module's permissions (wl-parties §6).
@@ -62,8 +67,47 @@ const VIEWS: &[(&str, &str)] = &[
 ];
 
 /// The parties module. The host adds it with `.module(wl_parties::WlParties)`
-/// when `client.toml` enables `parties`.
-pub struct WlParties;
+/// when `client.toml` enables `parties`; a vertical that adds block reason
+/// codes uses `WlParties::new().block_reason("tax_evasion", true)`.
+#[derive(Debug, Clone, Default)]
+pub struct WlParties {
+    /// The block reason codes (wl-parties §7): the defaults plus the
+    /// vertical's; `None` until one is added, meaning the defaults.
+    reasons: Option<BlockReasons>,
+}
+
+/// The module with the default block reason codes, so the host can write
+/// `.module(wl_parties::WlParties)`.
+#[allow(non_upper_case_globals)]
+pub const WlParties: WlParties = WlParties { reasons: None };
+
+impl WlParties {
+    /// The module with the default block reason codes.
+    pub fn new() -> Self {
+        WlParties::default()
+    }
+
+    /// Adds the block reason `code`, restricted or not (wl-parties §7). A
+    /// restricted code is seen and used only under
+    /// `parties.block_reason.view`; everyone else sees `on_hold`.
+    ///
+    /// # Panics
+    ///
+    /// When `code` is `on_hold` (always present, never restricted), is not
+    /// a `snake_case` key, or would un-restrict a restricted code; see
+    /// [`BlockReasons::add`].
+    pub fn block_reason(mut self, code: &str, restricted: bool) -> Self {
+        self.reasons
+            .get_or_insert_with(BlockReasons::default)
+            .add(code, restricted);
+        self
+    }
+
+    /// The block reason codes this module is set up with.
+    pub fn reasons(&self) -> BlockReasons {
+        self.reasons.clone().unwrap_or_default()
+    }
+}
 
 impl Module for WlParties {
     fn name(&self) -> &'static str {
@@ -84,11 +128,16 @@ impl Module for WlParties {
             .model::<CompanyDetails>()
             .model::<PartyRole>()
             .model::<ContactPoint>()
+            .model::<BlockRecord>()
             .view_data::<pages::IndexPage>()
             .view_data::<pages::NewPage>()
             .view_data::<pages::ShowPage>();
         // `rnx state:diagram Party` and the admin panel find the machine.
         renox::state_machine::register::<Party>();
+        // The block reason codes; `on_hold` must be there and not restricted.
+        let reasons = self.reasons();
+        reasons.check();
+        app.provide(reasons);
         // Other modules read parties through the kernel (wl-parties §6).
         wl_kernel::parties::provide_directory(app, Directory);
         // `db:seed`: the demo parties (DEMO-DATA.md).
@@ -112,5 +161,27 @@ impl Module for WlParties {
                 }
             }
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_module_has_the_default_reasons_unless_a_vertical_adds_one() {
+        assert_eq!(WlParties.reasons(), BlockReasons::default());
+        assert_eq!(WlParties::new().reasons(), BlockReasons::default());
+        let module = WlParties::new().block_reason("tax_evasion", true);
+        let reasons = module.reasons();
+        assert!(reasons.is_restricted("tax_evasion"));
+        assert_eq!(reasons.all().len(), 8);
+        reasons.check();
+    }
+
+    #[test]
+    #[should_panic(expected = "on_hold")]
+    fn a_vertical_cannot_restrict_on_hold() {
+        let _ = WlParties::new().block_reason("on_hold", true);
     }
 }
