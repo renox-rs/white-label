@@ -1,12 +1,24 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
+mod machine;
+pub mod message;
+pub mod notifier;
+pub mod recipients;
+pub mod render;
+pub mod suppressions;
 mod texts;
 pub mod types;
 
 use renox::db::Migration;
 use renox::prelude::*;
 
+pub use machine::{
+    DEFER, DELIVER, FAIL, FALL_BACK, GIVE_UP, MARK_READ, RELEASE, RETRY, SEND, SUPPRESS,
+};
+pub use message::{Message, MessageStatus, RecipientKind};
+pub use notifier::Messages;
+pub use suppressions::{Suppression, SuppressionReason};
 pub use types::NotificationType;
 
 /// The module's permissions (wl-notify §6).
@@ -50,7 +62,15 @@ impl Module for WlNotify {
     }
 
     fn register(&self, app: &mut Registry) {
-        app.model::<NotificationType>();
+        app.model::<NotificationType>()
+            .model::<Message>()
+            .model::<Suppression>();
+        // `rnx state:diagram Message` and the admin panel find the machine.
+        renox::state_machine::register::<Message>();
+        // `MessageSuppressed` after a `suppress` commits.
+        machine::register(app);
+        // Other modules send through the kernel (wl-notify §6).
+        wl_kernel::notify::provide_notifier(app, Messages);
         // The kernel's `wl:install` knows only kernel data, so the types the
         // modules register are installed by this module's own command and
         // seeder; both keep the client's changes.
