@@ -97,6 +97,8 @@ impl Module for WlDocuments {
         // (01:00 Asia/Dubai) and its command.
         expiry::run::register_type();
         expiry::run::schedule(app);
+        // Lifting the block: an accepted renewal closes the renewal task.
+        expiry::renewal::register(app);
         // `rnx state:diagram Document` and the admin panel find the machine.
         renox::state_machine::register::<Document>();
         // The standard guard `document_valid` other modules call through

@@ -15,8 +15,8 @@ use renox::auth::permissions::Scope;
 use renox::chrono::{FixedOffset, NaiveDate};
 use renox::db::DateTime;
 use renox::prelude::*;
-use wl_kernel::documents::{AffectedGroup, DUBAI_OFFSET_SECONDS};
-use wl_kernel::tickets::{self, Assignee, OpenTicket, TASK_CATEGORY};
+use wl_kernel::documents::{AffectedGroup, DUBAI_OFFSET_SECONDS, DocumentAccepted, Validity};
+use wl_kernel::tickets::{self, Assignee, OpenTicket, TASK_CATEGORY, TicketId};
 use wl_kernel::{COMPANY_ADMIN_ROLE, Subject, scopes};
 
 use super::logs::RenewalTask;
@@ -143,9 +143,84 @@ pub async fn open(
     Ok(())
 }
 
+/// Lifts the block of an accepted renewal (#49 A9): when the guard answers
+/// *yes* for the subject and kind on `today`, closes every open
+/// [`RenewalTask`] in one transaction, recording the accepted document, and
+/// after the commit completes the task tickets with "Renewed: <kind name>,
+/// valid until <date>". Returns the number of rows closed. A renewal that is
+/// already past its expiry date, a kind this module does not know and a
+/// subject without an open task close nothing. Nothing is resumed here.
+pub async fn lift(
+    state: &AppState,
+    accepted: &DocumentAccepted,
+    today: NaiveDate,
+) -> Result<usize> {
+    let db = &state.db;
+    let Some(kind) = DocumentKind::by_key(db, &accepted.kind).await? else {
+        return Ok(0);
+    };
+    let subject = &accepted.subject;
+    let validity = wl_kernel::documents::guard(state)
+        .is_valid(db, subject, &accepted.kind, today)
+        .await?;
+    let Validity::Valid { expires_on, .. } = validity else {
+        return Ok(0);
+    };
+    let open: Vec<RenewalTask> =
+        RenewalTask::for_subject(db, &subject.subject_type, subject.subject_id, kind.id)
+            .await?
+            .into_iter()
+            .filter(|row| row.closed_at.is_none())
+            .collect();
+    let mut tx = db.begin().await?;
+    let mut closed = Vec::new();
+    for mut row in open {
+        row.close(&mut tx, accepted.document.0).await?;
+        closed.push(row);
+    }
+    tx.commit().await?;
+
+    // After the commit: the tickets.
+    let note = note(kind.name("en"), expires_on.or(accepted.expires_on));
+    let creator = tickets::task_creator(state);
+    for row in &closed {
+        if let Some(ticket) = row.ticket_id {
+            creator.complete(state, TicketId(ticket), &note).await?;
+        }
+    }
+    Ok(closed.len())
+}
+
+/// "Renewed: <kind name>, valid until <date>"; without an expiry date,
+/// "Renewed: <kind name>, no expiry date".
+fn note(kind_name: &str, expires_on: Option<NaiveDate>) -> String {
+    match expires_on {
+        Some(date) => english(
+            "wl_documents.renewal.done",
+            &[
+                ("kind", &kind_name),
+                ("expires", &date.format("%-d %b %Y").to_string()),
+            ],
+        ),
+        None => english("wl_documents.renewal.done_open", &[("kind", &kind_name)]),
+    }
+}
+
+/// Registers the `DocumentAccepted` listener that calls [`lift`].
+pub(crate) fn register(app: &mut Registry) {
+    app.listen(|event: DocumentAccepted, state: AppState| async move {
+        lift(&state, &event, wl_kernel::documents::today())
+            .await
+            .map(|_| ())
+    });
+}
+
 #[cfg(test)]
 mod tests {
+    use renox::testing::TestApp;
+
     use super::*;
+    use crate::DocumentStatus;
 
     #[test]
     fn the_source_key_names_the_subject_and_the_kind() {
@@ -168,6 +243,111 @@ mod tests {
         assert_eq!(
             document_subject(3),
             Subject::new("wl_documents.document", 3)
+        );
+    }
+
+    fn date(text: &str) -> NaiveDate {
+        text.parse().expect("a date")
+    }
+
+    #[test]
+    fn the_note_names_the_kind_and_the_new_expiry() {
+        assert_eq!(
+            note("Work permit", Some(date("2028-11-30"))),
+            "Renewed: Work permit, valid until 30 Nov 2028"
+        );
+        assert_eq!(
+            note("Work permit", None),
+            "Renewed: Work permit, no expiry date"
+        );
+    }
+
+    /// A subject with an open renewal task and an accepted renewal that
+    /// expires on `expiry`; the event for the renewal.
+    async fn renewal_case(app: &TestApp, expiry: &str) -> (DocumentAccepted, i64, i64) {
+        use crate::kinds::{KindSeed, install_seeds};
+        let db = app.db();
+        install_seeds(
+            db,
+            [&KindSeed::new("renewal_permit", "Work permit").expires()],
+        )
+        .await
+        .expect("a kind");
+        let kind = DocumentKind::by_key(db, "renewal_permit")
+            .await
+            .unwrap()
+            .unwrap();
+        let at: DateTime = "2026-12-05T08:00:00Z".parse().unwrap();
+        let mut old = Document {
+            kind_id: kind.id,
+            subject_type: "hr.employee".into(),
+            subject_id: 7,
+            status: DocumentStatus::Accepted,
+            accepted_at: Some("2025-12-01T08:00:00Z".parse().unwrap()),
+            submitted_at: Some("2025-12-01T08:00:00Z".parse().unwrap()),
+            expiry_date: Some(date("2026-11-30")),
+            ..Document::default()
+        };
+        old.save(db).await.unwrap();
+        let mut renewal = Document {
+            expiry_date: Some(date(expiry)),
+            status: DocumentStatus::Accepted,
+            accepted_at: Some(at),
+            submitted_at: Some(at),
+            ..old.clone()
+        };
+        renewal.id = 0;
+        renewal.save(db).await.unwrap();
+        let row = RenewalTask {
+            subject_type: "hr.employee".into(),
+            subject_id: 7,
+            kind_id: kind.id,
+            expired_document_id: old.id,
+            ticket_id: Some(11),
+            opened_at: at,
+            ..RenewalTask::default()
+        };
+        assert!(row.insert_new(db).await.unwrap());
+        let event = DocumentAccepted {
+            document: wl_kernel::documents::DocumentId(renewal.id),
+            subject: Subject::new("hr.employee", 7),
+            kind: "renewal_permit".into(),
+            expires_on: Some(date(expiry)),
+        };
+        (event, kind.id, renewal.id)
+    }
+
+    #[renox::test]
+    async fn an_accepted_renewal_closes_the_open_task() {
+        let app = TestApp::new(App::new().module(crate::WlDocuments)).await;
+        let (event, kind_id, renewal) = renewal_case(&app, "2028-11-30").await;
+
+        let closed = lift(app.state(), &event, date("2026-12-05")).await.unwrap();
+        assert_eq!(closed, 1);
+        let rows = RenewalTask::for_subject(app.db(), "hr.employee", 7, kind_id)
+            .await
+            .unwrap();
+        assert!(rows[0].closed_at.is_some());
+        assert_eq!(rows[0].renewal_document_id, Some(renewal));
+        // Run again: nothing is open any more.
+        assert_eq!(
+            lift(app.state(), &event, date("2026-12-05")).await.unwrap(),
+            0
+        );
+    }
+
+    #[renox::test]
+    async fn a_renewal_already_past_its_expiry_closes_nothing() {
+        let app = TestApp::new(App::new().module(crate::WlDocuments)).await;
+        let (event, kind_id, _) = renewal_case(&app, "2026-12-03").await;
+
+        let closed = lift(app.state(), &event, date("2026-12-05")).await.unwrap();
+        assert_eq!(closed, 0);
+        assert!(
+            RenewalTask::find_open(app.db(), "hr.employee", 7, kind_id)
+                .await
+                .unwrap()
+                .is_some()
         );
     }
 }

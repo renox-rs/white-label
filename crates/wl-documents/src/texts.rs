@@ -270,6 +270,14 @@ const TEXTS: &[(&str, &str)] = &[
         "The :kind of :subject expired on :expires. Upload the renewed document for review.",
     ),
     (
+        "wl_documents.renewal.done",
+        "Renewed: :kind, valid until :expires",
+    ),
+    (
+        "wl_documents.renewal.done_open",
+        "Renewed: :kind, no expiry date",
+    ),
+    (
         "wl_documents.guard.no_provider",
         "No module maps :guarded to its document subjects",
     ),
