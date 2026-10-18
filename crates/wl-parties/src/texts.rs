@@ -369,6 +369,30 @@ const TEXTS: &[(&str, &str)] = &[
         "An evidence file is larger than 20 MB.",
     ),
     (
+        "wl_parties.errors.screening_off",
+        "Screening is not turned on.",
+    ),
+    (
+        "wl_parties.errors.screening_clear",
+        "A candidate is at or above the match threshold.",
+    ),
+    (
+        "wl_parties.errors.screening_match",
+        "No candidate is at or above the match threshold.",
+    ),
+    (
+        "wl_parties.errors.screening_reviewer",
+        "A manual check needs a reviewer who may review screenings.",
+    ),
+    (
+        "wl_parties.errors.screening_entry",
+        "A manual match needs the list entry of every candidate.",
+    ),
+    (
+        "wl_parties.errors.screening_score",
+        "A candidate needs a name, a list and a score from 0 to 1.",
+    ),
+    (
         "wl_parties.errors.unblock_file_type",
         "Evidence files must be PDF, JPG, PNG, HEIC, DOCX or XLSX.",
     ),

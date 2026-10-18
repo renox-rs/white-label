@@ -18,6 +18,7 @@ pub mod reasons;
 pub mod relationships;
 pub mod review_tasks;
 pub mod roles;
+pub mod screening;
 pub mod seed;
 mod texts;
 pub mod unblock;
@@ -41,6 +42,10 @@ pub use review_tasks::{
     ItemDecision, ReviewTask, ReviewTaskItem, ReviewTaskNote, ReviewTaskStatus,
 };
 pub use roles::PartyRole;
+pub use screening::{
+    NewCandidate, Screening, ScreeningCandidate, ScreeningMethod, ScreeningRun, ScreeningTrigger,
+    record_run,
+};
 pub use unblock::{UnblockRequest, unblock};
 
 /// The module's permissions (wl-parties §6).
@@ -61,6 +66,9 @@ pub mod permissions {
     /// Approve an exception that lets a guarded action go ahead for a
     /// blocked party (wl-parties §6; compliance and the finance manager).
     pub const BLOCK_EXCEPTION: &str = "parties.block_exception";
+    /// Record a manual sanctions check and decide on screening matches
+    /// (compliance role).
+    pub const SCREENING_REVIEW: &str = "screening.review";
 }
 
 /// The templates, compiled in. An app replaces one with a file of the same
@@ -119,6 +127,9 @@ pub struct WlParties {
     /// Whether the app screens parties; the exception is then approved by
     /// `compliance` instead of `finance_manager`.
     screening: bool,
+    /// The score at or above which a screening candidate is a possible
+    /// match; `None` means the default (0.85).
+    threshold: Option<f64>,
     /// The role that approves a block exception, when the app sets one.
     approver: Option<String>,
 }
@@ -129,6 +140,7 @@ pub struct WlParties {
 pub const WlParties: WlParties = WlParties {
     reasons: None,
     screening: false,
+    threshold: None,
     approver: None,
 };
 
@@ -160,6 +172,27 @@ impl WlParties {
     pub fn screening(mut self, on: bool) -> Self {
         self.screening = on;
         self
+    }
+
+    /// Sets the match threshold (wl-parties §7): a candidate scoring at or
+    /// above it (`>=`) makes a screening a possible match. The default is
+    /// 0.85.
+    ///
+    /// # Panics
+    ///
+    /// When `threshold` is not between 0 and 1.
+    pub fn match_threshold(mut self, threshold: f64) -> Self {
+        assert!(
+            (0.0..=1.0).contains(&threshold),
+            "the match threshold is between 0 and 1"
+        );
+        self.threshold = Some(threshold);
+        self
+    }
+
+    /// The score at or above which a candidate is a possible match.
+    pub fn threshold(&self) -> f64 {
+        self.threshold.unwrap_or(screening::DEFAULT_MATCH_THRESHOLD)
     }
 
     /// The role that approves a block exception, whatever the screening
@@ -209,6 +242,8 @@ impl Module for WlParties {
             .model::<ReviewTask>()
             .model::<ReviewTaskItem>()
             .model::<ReviewTaskNote>()
+            .model::<Screening>()
+            .model::<ScreeningCandidate>()
             .view_data::<pages::IndexPage>()
             .view_data::<pages::NewPage>()
             .view_data::<pages::ShowPage>()
@@ -218,6 +253,12 @@ impl Module for WlParties {
         // `rnx state:diagram Party` and the admin panel find the machine.
         renox::state_machine::register::<Party>();
         renox::state_machine::register::<ReviewTask>();
+        renox::state_machine::register::<Screening>();
+        // Whether screening is on, and its match threshold.
+        app.provide(screening::ScreeningSettings {
+            on: self.screening,
+            threshold: self.threshold(),
+        });
         // The block reason codes; `on_hold` must be there and not restricted.
         let reasons = self.reasons();
         reasons.check();
@@ -297,6 +338,18 @@ mod tests {
         assert_eq!(WlParties::new().screening(true).approver(), "compliance");
         let set = WlParties::new().screening(true).exception_approver("cfo");
         assert_eq!(set.approver(), "cfo");
+    }
+
+    #[test]
+    fn the_match_threshold_defaults_to_085_unless_set() {
+        assert_eq!(WlParties::new().threshold(), 0.85);
+        assert_eq!(WlParties::new().match_threshold(0.9).threshold(), 0.9);
+    }
+
+    #[test]
+    #[should_panic(expected = "between 0 and 1")]
+    fn the_match_threshold_must_be_a_score() {
+        let _ = WlParties::new().match_threshold(1.5);
     }
 
     #[test]
