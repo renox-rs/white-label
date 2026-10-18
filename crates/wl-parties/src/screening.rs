@@ -22,7 +22,11 @@
 //! (clear) or `ScreeningFlagged` (possible match). A new task is alerted to
 //! the compliance role by [`crate::notify::alert_possible_match`].
 
-use renox::db::DateTime;
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::Arc;
+
+use renox::db::{DateTime, Json};
 use renox::prelude::*;
 use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx, TransitionError};
 use serde::{Deserialize, Serialize};
@@ -30,6 +34,7 @@ use wl_kernel::{PartyId, ScreeningCompleted, ScreeningFlagged, ScreeningId, Scre
 
 use crate::party::Party;
 use crate::permissions;
+use crate::sanctions_lists::{ListStatus, SanctionsList};
 use crate::screening_task::ScreeningTask;
 use crate::texts;
 
@@ -94,10 +99,44 @@ pub struct Screening {
     pub review_note: Option<String>,
     /// The compliance task it is listed on, once flagged.
     pub task_id: Option<i64>,
+    /// The lists the run used, with their version and state at the run.
+    pub lists_used: Json<Vec<ListUsed>>,
+    /// The screening this one re-runs.
+    pub rerun_of: Option<i64>,
+    /// The screening that re-ran this one; `None` while it stands.
+    pub superseded_by: Option<i64>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
     pub updated_at: Option<DateTime>,
+}
+
+/// One list as a screening used it.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct ListUsed {
+    /// The list's id.
+    pub list_id: i64,
+    /// The list's name.
+    pub name: String,
+    /// The version held at the run; `None` if it was never downloaded.
+    pub version: Option<String>,
+    /// When a download last succeeded, as of the run.
+    pub last_updated_at: Option<DateTime>,
+    /// Whether the list was stale at the run.
+    pub stale: bool,
+}
+
+impl ListUsed {
+    /// `list` as it stands at `now` under `limit_hours`.
+    pub fn of(list: &SanctionsList, now: DateTime, limit_hours: i64) -> ListUsed {
+        ListUsed {
+            list_id: list.id,
+            name: list.name.clone(),
+            version: list.version.clone(),
+            last_updated_at: list.last_updated_at,
+            stale: list.status == ListStatus::Stale || list.is_stale_at(now, limit_hours),
+        }
+    }
 }
 
 /// A possible match of a screening.
@@ -148,6 +187,10 @@ pub struct ScreeningRun {
     pub run_at: Option<DateTime>,
     /// The possible matches, with their scores.
     pub candidates: Vec<NewCandidate>,
+    /// The lists the run used.
+    pub lists_used: Vec<ListUsed>,
+    /// The screening this run re-runs.
+    pub rerun_of: Option<i64>,
 }
 
 impl ScreeningRun {
@@ -159,6 +202,8 @@ impl ScreeningRun {
             lists_stale: false,
             run_at: None,
             candidates,
+            lists_used: Vec::new(),
+            rerun_of: None,
         }
     }
 
@@ -403,6 +448,8 @@ pub async fn record_run(
         run_at: run.run_at.unwrap_or_else(renox::db::now),
         reviewer_user: if manual { by.map(|user| user.id) } else { None },
         lists_stale: run.lists_stale,
+        lists_used: Json(run.lists_used.clone()),
+        rerun_of: run.rerun_of,
         ..Screening::default()
     };
     if transition == FLAG {
@@ -464,9 +511,128 @@ pub async fn record_run(
     Ok(stored)
 }
 
+/// The future of a provider check.
+pub type CheckFuture<'a> = Pin<
+    Box<dyn Future<Output = std::result::Result<Vec<NewCandidate>, ProviderError>> + Send + 'a>,
+>;
+
+/// A check that failed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProviderError(pub String);
+
+impl std::fmt::Display for ProviderError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for ProviderError {}
+
+/// Matches a party against the lists; an app provides one with
+/// `WlParties::new().screening_provider(..)`. Without one a run from
+/// [`run`] stays `pending`.
+pub trait ScreeningProvider: Send + Sync + 'static {
+    /// The possible matches of `party` on `lists`.
+    fn check<'a>(&'a self, party: &'a Party, lists: &'a [ListUsed]) -> CheckFuture<'a>;
+}
+
+impl std::fmt::Debug for dyn ScreeningProvider {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("ScreeningProvider")
+    }
+}
+
+/// Runs a screening of `party` for `trigger` against the lists as they
+/// stand now. The run records the lists it used (name, version, last
+/// successful update, stale or not) and `lists_stale` when any was stale, so
+/// a run on a stale list is never made without the flag; such a run is
+/// re-run after the list updates ([`crate::rescreen`]).
+///
+/// With a [`ScreeningProvider`] the run ends like [`record_run`]; without
+/// one it stays `pending`.
+///
+/// # Errors
+///
+/// `Guard` when screening is off or the provider's check fails (nothing is
+/// stored then), else as [`record_run`].
+pub async fn run(
+    state: &AppState,
+    party: &Party,
+    trigger: ScreeningTrigger,
+) -> std::result::Result<Screening, TransitionError> {
+    run_rerun(state, party, trigger, None).await
+}
+
+/// [`run`], linked to the screening it re-runs.
+pub(crate) async fn run_rerun(
+    state: &AppState,
+    party: &Party,
+    trigger: ScreeningTrigger,
+    rerun_of: Option<i64>,
+) -> std::result::Result<Screening, TransitionError> {
+    let settings = ScreeningSettings::of(state);
+    if !settings.on {
+        return Err(refused("screening_off"));
+    }
+    let now = renox::db::now();
+    let used: Vec<ListUsed> = SanctionsList::all(&state.db)
+        .await?
+        .iter()
+        .map(|list| ListUsed::of(list, now, settings.freshness_hours))
+        .collect();
+    let stale = used.iter().any(|list| list.stale);
+    let Some(provider) = state.provided::<Arc<dyn ScreeningProvider>>() else {
+        let mut screening = Screening {
+            party_id: party.id,
+            run_trigger: trigger,
+            run_at: now,
+            lists_stale: stale,
+            lists_used: Json(used),
+            rerun_of,
+            ..Screening::default()
+        };
+        screening.insert(&state.db).await?;
+        return Ok(screening);
+    };
+    let candidates = provider
+        .check(party, &used)
+        .await
+        .map_err(|error| TransitionError::Guard(error.to_string()))?;
+    let mut run = ScreeningRun::automatic(trigger, candidates);
+    run.lists_stale = stale;
+    run.lists_used = used;
+    run.rerun_of = rerun_of;
+    record_run(state, party, run, None).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_list_used_is_stale_when_the_list_is() {
+        let at = |h: i64| {
+            renox::chrono::DateTime::from_timestamp(1_800_000_000, 0).unwrap()
+                + renox::chrono::Duration::hours(h)
+        };
+        let list = SanctionsList {
+            id: 3,
+            name: "UN".into(),
+            version: Some("v1".into()),
+            last_updated_at: Some(at(0)),
+            status: ListStatus::Current,
+            ..SanctionsList::default()
+        };
+        assert!(!ListUsed::of(&list, at(23), 24).stale);
+        assert!(ListUsed::of(&list, at(24), 24).stale);
+        let marked = SanctionsList {
+            status: ListStatus::Stale,
+            ..list
+        };
+        let used = ListUsed::of(&marked, at(1), 24);
+        assert!(used.stale);
+        assert_eq!((used.list_id, used.version.as_deref()), (3, Some("v1")));
+    }
 
     fn run_ctx(input: RunInput) -> TransitionCtx {
         TransitionCtx::new(None).with_input(renox::serde_json::to_value(input).expect("json"))

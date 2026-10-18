@@ -21,6 +21,7 @@ pub mod pages;
 pub mod party;
 pub mod reasons;
 pub mod relationships;
+pub mod rescreen;
 pub mod restore;
 pub mod review_tasks;
 pub mod roles;
@@ -62,8 +63,8 @@ pub use review_tasks::{
 pub use roles::PartyRole;
 pub use sanctions_lists::{ListStatus, SanctionsList, UpdateSource, is_stale};
 pub use screening::{
-    NewCandidate, Screening, ScreeningCandidate, ScreeningMethod, ScreeningRun, ScreeningTrigger,
-    record_run,
+    ListUsed, NewCandidate, ProviderError, Screening, ScreeningCandidate, ScreeningMethod,
+    ScreeningProvider, ScreeningRun, ScreeningTrigger, record_run,
 };
 pub use screening_task::{ScreeningTask, ScreeningTaskStatus};
 pub use settings::ConfirmedMatchSettings;
@@ -172,6 +173,8 @@ pub struct WlParties {
     /// Downloads the sanctions lists; `None` means [`NoListFeed`], which
     /// always fails.
     list_feed: Option<std::sync::Arc<dyn ListFeed>>,
+    /// Matches a party against the lists; `None` leaves a run `pending`.
+    screening_provider: Option<std::sync::Arc<dyn ScreeningProvider>>,
     /// What a confirmed sanctions match does (wl-parties §7).
     confirmed: ConfirmedMatchSettings,
 }
@@ -186,6 +189,7 @@ pub const WlParties: WlParties = WlParties {
     approver: None,
     freshness_hours: None,
     list_feed: None,
+    screening_provider: None,
     confirmed: ConfirmedMatchSettings::DEFAULT,
 };
 
@@ -257,6 +261,13 @@ impl WlParties {
     /// download fails and the lists show as stale.
     pub fn list_feed(mut self, feed: impl ListFeed) -> Self {
         self.list_feed = Some(std::sync::Arc::new(feed));
+        self
+    }
+
+    /// Sets the provider that matches a party against the lists in
+    /// [`screening::run`]. Without one a run stays `pending`.
+    pub fn screening_provider(mut self, provider: impl ScreeningProvider) -> Self {
+        self.screening_provider = Some(std::sync::Arc::new(provider));
         self
     }
 
@@ -378,6 +389,11 @@ impl Module for WlParties {
         app.provide(self.confirmed);
         // `PTY.RUL.02`: the hourly list check and its command.
         freshness::schedule(app);
+        // Screenings made on a stale list are re-run after the list updates.
+        rescreen::register(app);
+        if let Some(provider) = &self.screening_provider {
+            app.provide(std::sync::Arc::clone(provider));
+        }
         // The compliance alert of a stale list.
         freshness_alert::register(app);
         // The block reason codes; `on_hold` must be there and not restricted.
