@@ -898,17 +898,22 @@ async fn run_fail(
     if !reason.is_empty() {
         run = run.reason(reason.to_owned());
     }
+    // The outgoing payment is read before the transaction opens: a second
+    // connection taken while it is open can wait for one that never frees.
+    let outgoing = match (refund.status, refund.payment_id) {
+        (RefundStatus::Paid, Some(payment_id)) => Some(
+            Payment::find(&state.db, payment_id)
+                .await?
+                .ok_or_else(|| guard("The outgoing payment was not found."))?,
+        ),
+        _ => None,
+    };
     let mut tx = state.db.begin().await?;
     let failed = run.input(&input).run_in(&mut tx).await?;
     // From `paid`, the outgoing payment goes back: reversed today, its date
     // kept. An outgoing payment has no bank-return notice or deficit task.
     let mut reversed = None;
-    if refund.status == RefundStatus::Paid
-        && let Some(payment_id) = refund.payment_id
-    {
-        let payment = Payment::find(&state.db, payment_id)
-            .await?
-            .ok_or_else(|| guard("The outgoing payment was not found."))?;
+    if let Some(payment) = outgoing {
         reversed = Some(
             reverse::reverse_in(
                 &mut tx,

@@ -354,6 +354,60 @@ async fn without_notify_the_notifier_queues_nothing() {
     );
 }
 
+/// AC8 of #99: with payments off (the kernel alone), `RefundFailed` and
+/// `RefundSource` still compile and serialise, so the listeners of other
+/// modules (credit note, order, booking) build and can read the event.
+#[renox::test]
+async fn without_payments_the_refund_failed_event_still_serialises() {
+    use wl_kernel::Subject;
+    use wl_kernel::payments::{
+        PaymentId, PaymentMethod, RefundAttemptRef, RefundFailed, RefundFailedFrom,
+        RefundFailureKind, RefundId, RefundSource,
+    };
+
+    // The kernel boots without the payments module; the contract is data.
+    let dir = views(&[]);
+    let _app = boot(dir.path()).await;
+    let source = RefundSource::CreditNote(Subject::new("invoicing.credit_note", 7));
+    assert_eq!(source.kind(), "credit_note");
+    assert_eq!(source.subject().to_string(), "invoicing.credit_note:7");
+    let event = RefundFailed {
+        refund: RefundId(5),
+        party: PartyId(2),
+        amount: 50_000,
+        currency: "AED".to_owned(),
+        source: source.clone(),
+        method: PaymentMethod::Gateway,
+        kind: RefundFailureKind::GatewayDeclined,
+        reason: "card expired".to_owned(),
+        attempt: RefundAttemptRef { id: 1, number: 1 },
+        from: RefundFailedFrom::Approved,
+        outgoing_payment: Some(PaymentId(9)),
+    };
+    let json = renox::serde_json::to_value(&event).expect("the event serialises");
+    assert_eq!(json["source"]["kind"], "credit_note");
+    assert_eq!(json["kind"], "gateway_declined");
+    assert_eq!(json["outgoing_payment"], 9);
+    let back: RefundFailed = renox::serde_json::from_value(json).expect("and reads back");
+    assert_eq!(back, event);
+    for kind in [
+        "payment",
+        "credit_note",
+        "deposit",
+        "party_credit",
+        "payer_credit",
+        "order",
+        "booking",
+    ] {
+        let subject = Subject::new("x.y", 3);
+        let source = RefundSource::from_kind(kind, &subject).expect(kind);
+        assert_eq!(source.kind(), kind);
+        let json = renox::serde_json::to_value(&source).expect("serialises");
+        let back: RefundSource = renox::serde_json::from_value(json).expect("reads back");
+        assert_eq!(back, source);
+    }
+}
+
 #[renox::test]
 async fn the_models_match_the_schema() {
     let dir = views(&[]);

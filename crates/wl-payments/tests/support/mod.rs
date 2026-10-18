@@ -24,12 +24,15 @@ use wl_kernel::notify::{MessageId, Notifier, NotifyFuture, NotifyRecipient, Noti
 use wl_kernel::parties::{PartyDirectory, PartyFuture, PartyKind, PartyStatus, PartySummary};
 use wl_kernel::payments::{
     AllocationTarget, PaymentId, PaymentMethod, PaymentReceived, PaymentReversed, PaymentSummary,
-    RecordPayment, RefundPaid, payment_recorder,
+    RecordPayment, RefundFailed, RefundFailureKind, RefundPaid, payment_recorder,
 };
 use wl_kernel::{ClientConfig, LegalEntity, PartyId, Subject};
+use wl_payments::deposit::HoldDeposit;
 use wl_payments::gateway::FakeGateway;
-use wl_payments::refund::{RefundSource, RequestRefund};
-use wl_payments::{Allocation, FollowupTask, Payment, Refund, WlPayments, permissions as perm};
+use wl_payments::refund::{RefundRequest, RefundSource, RequestRefund};
+use wl_payments::{
+    Allocation, Deposit, FollowupTask, Payment, Refund, WlPayments, permissions as perm,
+};
 
 /// The pages extend the app's layout; a package test has no app, so it
 /// brings the smallest one.
@@ -66,6 +69,10 @@ pub const BLUE_DUNES_CODE: &str = "P-00001";
 pub const QUIET_SANDS: PartyId = PartyId(2);
 /// The code of Quiet Sands.
 pub const QUIET_SANDS_CODE: &str = "P-00002";
+/// Dusk Holdings LLC (blocked): automatic messages to it are suppressed.
+pub const DUSK_HOLDINGS: PartyId = PartyId(3);
+/// The code of Dusk Holdings.
+pub const DUSK_HOLDINGS_CODE: &str = "P-00003";
 
 /// The parties that pay.
 #[derive(Debug, Clone, Copy, Default)]
@@ -75,14 +82,20 @@ fn summary(party: PartyId) -> Option<PartySummary> {
     let (code, name) = match party {
         BLUE_DUNES => (BLUE_DUNES_CODE, "Blue Dunes LLC"),
         QUIET_SANDS => (QUIET_SANDS_CODE, "Quiet Sands LLC"),
+        DUSK_HOLDINGS => (DUSK_HOLDINGS_CODE, "Dusk Holdings LLC"),
         _ => return None,
+    };
+    let status = if party == DUSK_HOLDINGS {
+        PartyStatus::Blocked
+    } else {
+        PartyStatus::Active
     };
     Some(PartySummary {
         id: party,
         code: code.to_owned(),
         kind: PartyKind::Company,
         display_name: name.to_owned(),
-        status: PartyStatus::Active,
+        status,
         display_block_reason: None,
     })
 }
@@ -98,7 +111,7 @@ impl PartyDirectory for TestDirectory {
         code: &'a str,
     ) -> PartyFuture<'a, Option<PartySummary>> {
         Box::pin(async move {
-            Ok([BLUE_DUNES, QUIET_SANDS]
+            Ok([BLUE_DUNES, QUIET_SANDS, DUSK_HOLDINGS]
                 .into_iter()
                 .filter_map(summary)
                 .find(|party| party.code == code))
@@ -306,6 +319,120 @@ struct RefundForm {
     method: Option<String>,
     #[serde(default)]
     reference: Option<String>,
+    #[serde(default)]
+    kind: Option<String>,
+    #[serde(default)]
+    source_kind: Option<String>,
+    #[serde(default)]
+    source_type: Option<String>,
+    #[serde(default)]
+    source_id: Option<i64>,
+    #[serde(default)]
+    gateway_txn: Option<String>,
+}
+
+/// What the deposit routes take.
+#[derive(Deserialize)]
+struct DepositForm {
+    #[serde(default)]
+    party: Option<i64>,
+    #[serde(default)]
+    entity: Option<i64>,
+    #[serde(default)]
+    source_type: Option<String>,
+    #[serde(default)]
+    source_id: Option<i64>,
+    #[serde(default)]
+    amount: Option<i64>,
+    #[serde(default)]
+    payment: Option<i64>,
+    #[serde(default)]
+    method: Option<String>,
+}
+
+fn method_of(code: Option<&str>) -> Result<Option<PaymentMethod>> {
+    match code.filter(|c| !c.is_empty()) {
+        None => Ok(None),
+        Some(code) => PaymentMethod::ALL
+            .iter()
+            .copied()
+            .find(|m| m.as_str() == code)
+            .map(Some)
+            .ok_or(Error::NotFound),
+    }
+}
+
+async fn refund_request_for_source(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Form(form): Form<RefundForm>,
+) -> Result<String> {
+    let subject = Subject::new(
+        form.source_type.as_deref().unwrap_or_default(),
+        form.source_id.ok_or(Error::NotFound)?,
+    );
+    let source = wl_kernel::payments::RefundSource::from_kind(
+        form.source_kind.as_deref().unwrap_or_default(),
+        &subject,
+    )
+    .ok_or(Error::NotFound)?;
+    let request = RefundRequest {
+        source,
+        party: PartyId(form.party.ok_or(Error::NotFound)?),
+        legal_entity_id: form.entity.ok_or(Error::NotFound)?,
+        amount: form.amount.unwrap_or_default(),
+        currency: "AED".to_owned(),
+        method: method_of(form.method.as_deref())?,
+        gateway_txn: form.gateway_txn,
+        reason: form.reason.unwrap_or_default(),
+    };
+    let refund = wl_payments::refund::request_for_source(&state, &request, &user)
+        .await
+        .map_err(TransitionError::into_error)?;
+    Ok(refund.id.to_string())
+}
+
+async fn deposit_hold(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Form(form): Form<DepositForm>,
+) -> Result<String> {
+    let request = HoldDeposit {
+        party: PartyId(form.party.ok_or(Error::NotFound)?),
+        legal_entity_id: form.entity.ok_or(Error::NotFound)?,
+        source: Subject::new(
+            form.source_type.as_deref().unwrap_or_default(),
+            form.source_id.ok_or(Error::NotFound)?,
+        ),
+        amount: form.amount.unwrap_or_default(),
+        currency: "AED".to_owned(),
+        received_payment: form.payment.map(PaymentId),
+    };
+    let deposit = wl_payments::deposit::hold(&state, &user, &request)
+        .await
+        .map_err(TransitionError::into_error)?;
+    Ok(deposit.id.to_string())
+}
+
+async fn deposit_act(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path((id, action)): Path<(i64, String)>,
+    Form(form): Form<DepositForm>,
+) -> Result<String> {
+    let deposit = Deposit::find_or_404(&state.db, id).await?;
+    let done = match action.as_str() {
+        "start_settlement" => {
+            wl_payments::deposit::start_settlement(&state, Some(&user), &deposit).await
+        }
+        "refund" => {
+            let method = method_of(form.method.as_deref())?;
+            wl_payments::deposit::refund(&state, &user, &deposit, method).await
+        }
+        _ => return Err(Error::NotFound),
+    };
+    done.map(|d| format!("{:?}", d.status))
+        .map_err(TransitionError::into_error)
 }
 
 async fn refund_request(
@@ -355,6 +482,22 @@ async fn refund_act(
             let reference = form.reference.unwrap_or_default();
             wl_payments::refund::pay(&state, &user, &refund, method, &reference).await
         }
+        "send" => {
+            return wl_payments::refund::send_to_gateway(&state, &user, &refund)
+                .await
+                .map(|attempt| format!("attempt {}", attempt.number))
+                .map_err(TransitionError::into_error);
+        }
+        "fail" => {
+            let code = form.kind.unwrap_or_default();
+            let kind = RefundFailureKind::ALL
+                .iter()
+                .copied()
+                .find(|k| k.as_str() == code)
+                .ok_or(Error::NotFound)?;
+            let reason = form.reason.unwrap_or_default();
+            wl_payments::refund::fail(&state, &user, &refund, kind, &reason).await
+        }
         _ => return Err(Error::NotFound),
     };
     done.map(|r| format!("{:?}", r.status))
@@ -372,6 +515,9 @@ impl Module for Harness {
     fn routes(&self) -> Routes {
         Routes::new()
             .post("/test/refunds", refund_request)
+            .post("/test/refunds/source", refund_request_for_source)
+            .post("/test/deposits", deposit_hold)
+            .post("/test/deposits/{id}/{action}", deposit_act)
             .post("/test/refunds/{id}/{action}", refund_act)
     }
 }
@@ -394,6 +540,8 @@ pub struct Booted {
     pub reversed: Recorded<PaymentReversed>,
     /// `RefundPaid`.
     pub refund_paid: Recorded<RefundPaid>,
+    /// `RefundFailed`.
+    pub refund_failed: Recorded<RefundFailed>,
 }
 
 impl Booted {
@@ -432,6 +580,9 @@ impl Booted {
                 perm::REFUNDS_REQUEST,
                 perm::REFUNDS_APPROVE,
                 perm::REFUNDS_PAY,
+                perm::DEPOSITS_VIEW,
+                perm::DEPOSITS_MANAGE,
+                perm::DEPOSITS_REFUND,
             ],
         )
         .await
@@ -595,6 +746,122 @@ impl Booted {
             .await
     }
 
+    /// `by` asks, for the owner of a source outside this module, to refund
+    /// `amount` fils of PGP to `party` out of `source_kind` `source`
+    /// (`method` and `gateway_txn` as given); the refund.
+    pub async fn request_for_source(
+        &self,
+        by: &User,
+        party: PartyId,
+        source: &wl_kernel::payments::RefundSource,
+        amount: i64,
+        method: &str,
+        gateway_txn: &str,
+    ) -> Refund {
+        let entity = self.entity("PGP").await;
+        self.app.acting_as(by);
+        let party = party.0.to_string();
+        let entity = entity.id.to_string();
+        let subject = source.subject();
+        let source_id = subject.subject_id.to_string();
+        let amount = amount.to_string();
+        let response = self
+            .app
+            .htmx()
+            .post(
+                "/test/refunds/source",
+                &[
+                    ("source_kind", source.kind()),
+                    ("source_type", subject.subject_type.as_str()),
+                    ("source_id", source_id.as_str()),
+                    ("party", party.as_str()),
+                    ("entity", entity.as_str()),
+                    ("amount", amount.as_str()),
+                    ("method", method),
+                    ("gateway_txn", gateway_txn),
+                    ("reason", "Order cancelled"),
+                ],
+            )
+            .await;
+        response.assert_ok();
+        let id: i64 = response.text().trim().parse().expect("a refund id");
+        self.refund(id).await
+    }
+
+    /// `by` fails `refund` with the kind code `kind` and `reason`.
+    pub async fn fail_refund(
+        &self,
+        by: &User,
+        refund: &Refund,
+        kind: &str,
+        reason: &str,
+    ) -> TestResponse {
+        self.refund_action(by, refund, "fail", &[("kind", kind), ("reason", reason)])
+            .await
+    }
+
+    /// `by` holds a deposit of `amount` fils of `party` for the lease 9,
+    /// funded by `payment` when given; the deposit.
+    pub async fn hold_deposit(
+        &self,
+        by: &User,
+        party: PartyId,
+        amount: i64,
+        payment: Option<&Payment>,
+    ) -> Deposit {
+        let response = self.hold_deposit_response(by, party, amount, payment).await;
+        response.assert_ok();
+        let id: i64 = response.text().trim().parse().expect("a deposit id");
+        self.deposit(id).await
+    }
+
+    /// The answer of the hold route for the same request.
+    pub async fn hold_deposit_response(
+        &self,
+        by: &User,
+        party: PartyId,
+        amount: i64,
+        payment: Option<&Payment>,
+    ) -> TestResponse {
+        let entity = self.entity("PGP").await;
+        self.app.acting_as(by);
+        let party = party.0.to_string();
+        let entity = entity.id.to_string();
+        let amount = amount.to_string();
+        let payment = payment.map(|p| p.id.to_string());
+        let mut pairs = vec![
+            ("party", party.as_str()),
+            ("entity", entity.as_str()),
+            ("source_type", "property.lease"),
+            ("source_id", "9"),
+            ("amount", amount.as_str()),
+        ];
+        if let Some(payment) = payment.as_deref() {
+            pairs.push(("payment", payment));
+        }
+        self.app.htmx().post("/test/deposits", &pairs).await
+    }
+
+    /// `by` runs `action` (`start_settlement` or `refund`) on `deposit`.
+    pub async fn deposit_action(
+        &self,
+        by: &User,
+        deposit: &Deposit,
+        action: &str,
+        pairs: &[(&str, &str)],
+    ) -> TestResponse {
+        self.app.acting_as(by);
+        self.app
+            .htmx()
+            .post(&format!("/test/deposits/{}/{action}", deposit.id), pairs)
+            .await
+    }
+
+    /// The deposit `id`, as stored now.
+    pub async fn deposit(&self, id: i64) -> Deposit {
+        Deposit::find_or_404(self.db(), id).await.unwrap()
+    }
+
     /// The refund `id`, as stored now.
     pub async fn refund(&self, id: i64) -> Refund {
         Refund::find_or_404(self.db(), id).await.unwrap()
@@ -608,6 +875,9 @@ impl Booted {
             .and_hms_opt(hour, minute, 0)
             .expect("a time")
             .and_utc();
+        // `now()` outside `at_travelled_time` is the real clock, so a second
+        // trip starts from the present again instead of adding to the first.
+        self.app.travel_back();
         let seconds = (target - renox::db::now()).num_seconds();
         assert!(seconds > 0, "the target {target} is in the past");
         self.app.travel(Duration::from_secs(seconds as u64));
@@ -640,6 +910,7 @@ pub async fn boot_with(module: WlPayments, gateway: FakeGateway) -> Booted {
     let received = Recorded::new();
     let reversed = Recorded::new();
     let refund_paid = Recorded::new();
+    let refund_failed = Recorded::new();
     let notices = Recording::default();
     let invoices = RecordingInvoicer::default();
     let directory: Arc<dyn PartyDirectory> = Arc::new(TestDirectory);
@@ -656,6 +927,7 @@ pub async fn boot_with(module: WlPayments, gateway: FakeGateway) -> Booted {
     let app = record(app, &received);
     let app = record(app, &reversed);
     let app = record(app, &refund_paid);
+    let app = record(app, &refund_failed);
     let config = ClientConfig::parse(CLIENT).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     let dir = views.path().to_path_buf();
@@ -673,7 +945,7 @@ pub async fn boot_with(module: WlPayments, gateway: FakeGateway) -> Booted {
     .execute(app.db())
     .await
     .expect("the stand-in table");
-    sql(r#"INSERT INTO "wl_parties_parties" (id, display_name) VALUES (1, 'Blue Dunes LLC'), (2, 'Quiet Sands LLC')"#)
+    sql(r#"INSERT INTO "wl_parties_parties" (id, display_name) VALUES (1, 'Blue Dunes LLC'), (2, 'Quiet Sands LLC'), (3, 'Dusk Holdings LLC')"#)
         .execute(app.db())
         .await
         .expect("the stand-in rows");
@@ -686,5 +958,6 @@ pub async fn boot_with(module: WlPayments, gateway: FakeGateway) -> Booted {
         received,
         reversed,
         refund_paid,
+        refund_failed,
     }
 }

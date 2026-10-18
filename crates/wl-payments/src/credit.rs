@@ -96,9 +96,23 @@ pub async fn credit_balance(db: &Db, party: PartyId, currency: &str) -> Result<i
         .iter()
         .map(|p| p.summary(sums.get(&p.id).copied().unwrap_or(0)).unallocated)
         .sum();
-    let paid = refund_sum(db, party, currency, &[RefundStatus::Paid], None).await?;
+    let paid = paid_from_credit(db, party, currency).await?;
     let returned = deposit_returned(db, party, currency).await?;
     Ok(unallocated - paid + returned)
+}
+
+/// The `paid` refunds of `party` in `currency` out of its payments or its
+/// credit, in fils. A refund of a deposit (or of a source another module
+/// owns) never counted in the party's credit, so paying it takes nothing
+/// from it.
+async fn paid_from_credit(db: &Db, party: PartyId, currency: &str) -> Result<i64> {
+    Refund::query()
+        .where_(Refund::PARTY_ID.eq(party.0))
+        .where_(Refund::CURRENCY.eq(currency.trim().to_ascii_uppercase()))
+        .where_(Refund::SOURCE_KIND.is_in(["payment", "party_credit"]))
+        .where_(Refund::STATUS.eq(RefundStatus::Paid))
+        .sum::<i64, _>(db, "amount")
+        .await
 }
 
 /// The deposit-sourced refunds of `party` in `currency` that `failed` or
@@ -153,9 +167,14 @@ pub async fn refundable_payment(db: &Db, payment: &Payment) -> Result<i64> {
 /// after the refunds already paid out of it, and the party's credit balance
 /// (which already counts the paid refunds) must reach the amount.
 pub async fn covers(db: &Db, refund: &Refund) -> Result<bool> {
-    let balance = credit_balance(db, refund.party(), &refund.currency).await?;
-    if refund.amount > balance {
-        return Ok(false);
+    // Only a refund out of the party's own money is bounded by its credit;
+    // a deposit (held apart) or a source another module owns is vouched for
+    // by its owner when requested, and never counted in the credit.
+    if matches!(refund.source_kind.as_str(), "payment" | "party_credit") {
+        let balance = credit_balance(db, refund.party(), &refund.currency).await?;
+        if refund.amount > balance {
+            return Ok(false);
+        }
     }
     let Some(payment_id) = refund.source_payment() else {
         return Ok(true);
