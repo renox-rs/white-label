@@ -39,6 +39,9 @@ use crate::tickets::TicketId;
 /// The subject type of an invoice, for [`Subject`] references.
 pub const INVOICE_SUBJECT_TYPE: &str = "invoicing.invoice";
 
+/// The subject type of a credit note, for [`Subject`] references.
+pub const CREDIT_NOTE_SUBJECT_TYPE: &str = "invoicing.credit_note";
+
 /// The currency of a draft that names none.
 pub const DEFAULT_CURRENCY: &str = "AED";
 
@@ -76,6 +79,40 @@ pub fn invoice_series(active_entities: usize) -> &'static Series {
     }
 }
 
+/// Credit note numbers when the client has more than one active legal
+/// entity: `CN-ACME-2026-0001`; gapless, per entity, reset yearly (take them
+/// with [`Series::next`] inside the `issue` transaction).
+pub const CREDIT_NOTE_SERIES: Series = Series {
+    key: "credit_note",
+    pattern: "{prefix}-{entity}-{yyyy}-{0000}",
+    prefix: "CN",
+    reset: Reset::Yearly,
+    gapless: true,
+    per_entity: true,
+};
+
+/// Credit note numbers when the client has exactly one active legal entity:
+/// `CN-2026-0001`. Same key and count as [`CREDIT_NOTE_SERIES`].
+pub const CREDIT_NOTE_SERIES_SINGLE: Series = Series {
+    key: "credit_note",
+    pattern: "{prefix}-{yyyy}-{0000}",
+    prefix: "CN",
+    reset: Reset::Yearly,
+    gapless: true,
+    per_entity: true,
+};
+
+/// The credit note series for a client with `active_entities` active legal
+/// entities: [`CREDIT_NOTE_SERIES_SINGLE`] for exactly one, else
+/// [`CREDIT_NOTE_SERIES`].
+pub fn credit_note_series(active_entities: usize) -> &'static Series {
+    if active_entities == 1 {
+        &CREDIT_NOTE_SERIES_SINGLE
+    } else {
+        &CREDIT_NOTE_SERIES
+    }
+}
+
 /// The id of an invoice.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default, Serialize, Deserialize,
@@ -100,6 +137,83 @@ impl From<i64> for InvoiceId {
     fn from(id: i64) -> Self {
         InvoiceId(id)
     }
+}
+
+/// The id of a credit note.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default, Serialize, Deserialize,
+)]
+#[serde(transparent)]
+pub struct CreditNoteId(pub i64);
+
+impl CreditNoteId {
+    /// The credit note as a [`Subject`]: `invoicing.credit_note:7`.
+    pub fn subject(self) -> Subject {
+        Subject::new(CREDIT_NOTE_SUBJECT_TYPE, self.0)
+    }
+}
+
+impl fmt::Display for CreditNoteId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl From<i64> for CreditNoteId {
+    fn from(id: i64) -> Self {
+        CreditNoteId(id)
+    }
+}
+
+/// The lifecycle state of a credit note (wl-invoicing §4).
+#[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum CreditNoteStatus {
+    /// Being prepared: no number, no effect on any balance.
+    #[default]
+    Draft,
+    /// Issued with a number; its remaining balance can be used.
+    Issued,
+    /// Fully used; `reopen` returns it to `issued` when a use is undone.
+    Applied,
+}
+
+/// The net to credit on one invoice line, in fils of the invoice's currency.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CreditLine {
+    /// The position of the invoice line.
+    pub invoice_line: i64,
+    /// The net amount to credit on that line, in fils.
+    pub net: i64,
+}
+
+impl CreditLine {
+    /// Credits `net` fils on the invoice line at `invoice_line`.
+    pub fn new(invoice_line: i64, net: i64) -> Self {
+        Self { invoice_line, net }
+    }
+}
+
+/// What other modules see of a credit note.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CreditNoteSummary {
+    /// The id.
+    pub id: CreditNoteId,
+    /// The number, e.g. `CN-ACME-2026-0001`; `None` while a draft.
+    pub number: Option<String>,
+    /// The lifecycle state.
+    pub status: CreditNoteStatus,
+    /// The invoice it credits.
+    pub invoice: InvoiceId,
+    /// Who is credited.
+    pub party: PartyId,
+    /// The issuing legal entity (always the invoice's).
+    pub legal_entity_id: Option<i64>,
+    /// The ISO currency code.
+    pub currency: String,
+    /// The total with VAT, in fils.
+    pub gross_total: i64,
+    /// What is still unused, in fils.
+    pub remaining: i64,
 }
 
 /// The UAE VAT treatment of an invoice line. Only `standard` carries VAT.
@@ -472,6 +586,93 @@ pub trait Invoicer: Send + Sync + 'static {
             ))
         })
     }
+
+    /// Credits an invoice in full: drafts and issues a credit note for every
+    /// line, applies it and makes the invoice `credited`. Refused while
+    /// anything is allocated to the invoice, or for a blank `reason`. `by` is
+    /// the user, `None` for the system. The default refuses (422): invoicing
+    /// is not enabled.
+    fn credit_in_full<'a>(
+        &'a self,
+        _state: &'a AppState,
+        invoice: InvoiceId,
+        _reason: String,
+        _by: Option<i64>,
+    ) -> InvoiceFuture<'a, CreditNoteId> {
+        Box::pin(async move { Err(crediting_off(invoice)) })
+    }
+
+    /// Drafts and issues, in one call, a credit note for `lines` of an
+    /// invoice (each within the line's remaining credit). The default refuses
+    /// (422): invoicing is not enabled.
+    fn credit_partly<'a>(
+        &'a self,
+        _state: &'a AppState,
+        invoice: InvoiceId,
+        _lines: Vec<CreditLine>,
+        _reason: String,
+        _by: Option<i64>,
+    ) -> InvoiceFuture<'a, CreditNoteId> {
+        Box::pin(async move { Err(crediting_off(invoice)) })
+    }
+
+    /// The credit note with this id; the default knows none.
+    fn find_credit_note<'a>(
+        &'a self,
+        _db: &'a Db,
+        _id: CreditNoteId,
+    ) -> InvoiceFuture<'a, Option<CreditNoteSummary>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    /// The credit notes of an invoice, oldest first; the default has none.
+    fn credit_notes_for<'a>(
+        &'a self,
+        _db: &'a Db,
+        _invoice: InvoiceId,
+    ) -> InvoiceFuture<'a, Vec<CreditNoteSummary>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
+    /// The sum of the remaining balances of the party's `issued` credit notes
+    /// in `currency`, in fils: the credit-note part of the party's available
+    /// credit. The default is 0.
+    fn open_credit<'a>(
+        &'a self,
+        _db: &'a Db,
+        _party: PartyId,
+        _currency: &'a str,
+    ) -> InvoiceFuture<'a, i64> {
+        Box::pin(async { Ok(0) })
+    }
+
+    /// Takes `amount` fils of a credit note's remaining balance for `refund`
+    /// (a refund subject) on its numbered `attempt`. Idempotent per refund
+    /// and attempt; refused when the remaining is too low. The default
+    /// refuses (422): invoicing is not enabled.
+    fn take_credit_for_refund<'a>(
+        &'a self,
+        _state: &'a AppState,
+        credit_note: CreditNoteId,
+        _refund: Subject,
+        _attempt: i64,
+        _amount: i64,
+    ) -> InvoiceFuture<'a, ()> {
+        Box::pin(async move {
+            Err(Error::Status(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                format!("credit note {credit_note} cannot be used: invoicing is not enabled"),
+            ))
+        })
+    }
+}
+
+/// The 422 of crediting an invoice while invoicing is off.
+fn crediting_off(id: InvoiceId) -> Error {
+    Error::Status(
+        StatusCode::UNPROCESSABLE_ENTITY,
+        format!("invoice {id} cannot be credited: invoicing is not enabled"),
+    )
 }
 
 /// The invoicer when the `invoicing` module is off: nothing is drafted or
@@ -635,6 +836,58 @@ pub struct InvoiceDisputeResolved {
 }
 
 impl Event for InvoiceDisputeResolved {}
+
+/// A credit note was issued (`issue`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CreditNoteIssued {
+    /// The credit note.
+    pub credit_note: CreditNoteId,
+    /// The invoice it credits.
+    pub invoice: InvoiceId,
+    /// Who is credited.
+    pub party: PartyId,
+    /// The total with VAT, in fils of the invoice's currency.
+    pub amount: i64,
+    /// Why it was issued.
+    pub reason: String,
+}
+
+impl Event for CreditNoteIssued {}
+
+/// An invoice was credited in full (`credit`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InvoiceCredited {
+    /// The invoice.
+    pub invoice: InvoiceId,
+    /// The credit note that cancelled it.
+    pub credit_note: CreditNoteId,
+    /// The amount credited, in fils.
+    pub amount: i64,
+    /// Why it was credited.
+    pub reason: String,
+    /// The origins of the invoice's lines when the caller chose to release
+    /// them for re-billing; empty otherwise.
+    pub released_origins: Vec<Subject>,
+}
+
+impl Event for InvoiceCredited {}
+
+/// An `applied` credit note became `issued` again (`reopen`) because a use of
+/// it was undone.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CreditNoteReopened {
+    /// The credit note.
+    pub credit_note: CreditNoteId,
+    /// Who is credited.
+    pub party: PartyId,
+    /// The amount given back to the remaining balance, in fils.
+    pub amount_restored: i64,
+    /// What undid the use: the failed refund (`payments.refund:<id>`) or the
+    /// removed allocation.
+    pub cause: Subject,
+}
+
+impl Event for CreditNoteReopened {}
 
 /// Money was recovered on a written-off invoice (`recover`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -902,6 +1155,95 @@ mod tests {
             }
             other => panic!("unexpected error {other:?}"),
         }
+    }
+
+    #[test]
+    fn a_credit_note_id_is_a_subject() {
+        let note = CreditNoteId(7);
+        assert_eq!(note.subject().to_string(), "invoicing.credit_note:7");
+        assert_eq!(note.to_string(), "7");
+        assert_eq!(CreditNoteId::from(3), CreditNoteId(3));
+        assert_eq!(
+            CreditLine::new(2, 500),
+            CreditLine {
+                invoice_line: 2,
+                net: 500
+            }
+        );
+    }
+
+    #[test]
+    fn credit_note_series_are_gapless_per_entity_and_yearly() {
+        for series in [&CREDIT_NOTE_SERIES, &CREDIT_NOTE_SERIES_SINGLE] {
+            assert_eq!(series.key, "credit_note");
+            assert_eq!(series.prefix, "CN");
+            assert_eq!(series.reset, Reset::Yearly);
+            assert!(series.gapless && series.per_entity);
+        }
+        assert_eq!(
+            CREDIT_NOTE_SERIES.pattern,
+            "{prefix}-{entity}-{yyyy}-{0000}"
+        );
+        assert_eq!(CREDIT_NOTE_SERIES_SINGLE.pattern, "{prefix}-{yyyy}-{0000}");
+        assert_eq!(credit_note_series(1), &CREDIT_NOTE_SERIES_SINGLE);
+        assert_eq!(credit_note_series(2), &CREDIT_NOTE_SERIES);
+        assert_eq!(credit_note_series(0), &CREDIT_NOTE_SERIES);
+        assert_ne!(CREDIT_NOTE_SERIES.key, INVOICE_SERIES.key);
+    }
+
+    #[test]
+    fn a_credit_note_starts_as_a_draft() {
+        assert_eq!(CreditNoteStatus::default(), CreditNoteStatus::Draft);
+    }
+
+    #[test]
+    fn the_fallback_refuses_crediting_with_422() {
+        match crediting_off(InvoiceId(5)) {
+            Error::Status(code, message) => {
+                assert_eq!(code, StatusCode::UNPROCESSABLE_ENTITY);
+                assert!(message.contains("invoice 5"), "{message}");
+            }
+            other => panic!("unexpected error {other:?}"),
+        }
+    }
+
+    #[test]
+    fn credit_note_events_serialize_with_plain_ids() {
+        let issued = CreditNoteIssued {
+            credit_note: CreditNoteId(7),
+            invoice: InvoiceId(1),
+            party: PartyId(2),
+            amount: 21_000,
+            reason: "price error".into(),
+        };
+        let json = renox::serde_json::to_value(&issued).unwrap();
+        assert_eq!(json["credit_note"], 7);
+        assert_eq!(json["invoice"], 1);
+        assert_eq!(json["party"], 2);
+        assert_eq!(json["amount"], 21_000);
+
+        let credited = InvoiceCredited {
+            invoice: InvoiceId(1),
+            credit_note: CreditNoteId(7),
+            amount: 105_000,
+            reason: "cancelled".into(),
+            released_origins: vec![Subject::new("property.charge", 4)],
+        };
+        let json = renox::serde_json::to_value(&credited).unwrap();
+        assert_eq!(json["invoice"], 1);
+        assert_eq!(json["credit_note"], 7);
+        assert_eq!(json["released_origins"].as_array().unwrap().len(), 1);
+
+        let reopened = CreditNoteReopened {
+            credit_note: CreditNoteId(7),
+            party: PartyId(2),
+            amount_restored: 50_000,
+            cause: Subject::new("payments.refund", 9),
+        };
+        let json = renox::serde_json::to_value(&reopened).unwrap();
+        assert_eq!(json["credit_note"], 7);
+        assert_eq!(json["party"], 2);
+        assert_eq!(json["amount_restored"], 50_000);
     }
 
     #[test]

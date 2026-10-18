@@ -73,6 +73,16 @@ drafts and finds nothing, so callers hide the feature, and refuses an allocation
 flags an invoice as disputed (a flag, not a state) and gives the dispute id; the default refuses
 (422). `wl-invoicing` emits `InvoiceDisputed` and `InvoiceDisputeResolved` (`DisputeOutcome`
 `upheld` or `credited`, `DisputedLine`).
+Credit notes: `CreditNoteId` (`subject()` is `invoicing.credit_note:<id>`,
+`CREDIT_NOTE_SUBJECT_TYPE`), `CreditNoteStatus` (`draft`, `issued`, `applied`), `CreditLine`
+(net fils per invoice line) and `CreditNoteSummary`. `credit_in_full(state, invoice, reason, by)` and
+`credit_partly(state, invoice, lines, reason, by)` give the credit note's id,
+`find_credit_note`, `credit_notes_for` and `open_credit(db, party, currency)` read them, and
+`take_credit_for_refund(state, credit_note, refund, attempt, amount)` takes credit for a refund. The defaults
+(and `NoInvoicer`) refuse (422) or find nothing (`None`, an empty list, 0). `wl-invoicing` emits
+`CreditNoteIssued`, `InvoiceCredited` and `CreditNoteReopened`. Credit note numbers come from
+`credit_note_series(active_entities)` (`CN-ACME-2026-0001`, or `CN-2026-0001` with one entity): gapless,
+per entity, reset yearly.
 Modules listen to `InvoiceIssued`, `InvoiceOverdue`, `InvoicePaid`, `InvoiceWrittenOff` and `BadDebtRecovered`.
 Tax invoice numbers come from `INVOICE_SERIES` (`INV-ACME-2026-0001`) or, with exactly one
 active legal entity, `INVOICE_SERIES_SINGLE` (`INV-2026-0001`): gapless, per entity, reset

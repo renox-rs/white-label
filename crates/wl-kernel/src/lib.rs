@@ -48,8 +48,10 @@ pub use documents::{
 };
 pub use entities::{IssuerSnapshot, LegalEntity, ScopeEntity};
 pub use invoicing::{
-    DraftLine, InvoiceDraft, InvoiceId, InvoiceIssued, InvoiceOverdue, InvoicePaid, InvoiceStatus,
-    InvoiceSummary, InvoiceWrittenOff, Invoicer, NoInvoicer, VatCategory,
+    CreditLine, CreditNoteId, CreditNoteIssued, CreditNoteReopened, CreditNoteStatus,
+    CreditNoteSummary, DraftLine, InvoiceCredited, InvoiceDraft, InvoiceId, InvoiceIssued,
+    InvoiceOverdue, InvoicePaid, InvoiceStatus, InvoiceSummary, InvoiceWrittenOff, Invoicer,
+    NoInvoicer, VatCategory,
 };
 pub use machines::SubjectMachine;
 pub use manifest::Manifest;
