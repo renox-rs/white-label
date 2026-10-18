@@ -4,6 +4,7 @@
 pub mod branding;
 pub mod config;
 pub mod entities;
+pub mod machines;
 pub mod manifest;
 pub mod numbering;
 pub mod parties;
@@ -19,6 +20,7 @@ use serde::Serialize;
 
 pub use config::{ClientConfig, ConfigError};
 pub use entities::{IssuerSnapshot, LegalEntity, ScopeEntity};
+pub use machines::SubjectMachine;
 pub use manifest::Manifest;
 pub use numbering::{Reset, Series};
 pub use parties::{

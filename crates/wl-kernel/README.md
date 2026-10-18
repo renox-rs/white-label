@@ -36,6 +36,7 @@ What is here so far:
 | `Subject` references | §2 | `subject` |
 | Legal entities, scope links, issuer snapshots (`PLT.ENT.01`) | §5.6, decision 0003 | `entities` |
 | Document numbering on Renox `Sequence` | §5.5 | `numbering` |
+| State machines by name: `SubjectMachine`, `back_to_<state>` and `<action>_approved` (always `system`) | §4.1, WORKFLOW §3.4 | `machines` |
 | The party contract: `PartyDirectory` (`NoParties` when `parties` is off), `PartyStatus`, party events, the `party` series | ARCHITECTURE §5, wl-parties §6 | `parties` |
 
 After `rnx migrate`, `rnx wl:install` creates the legal entities `client.toml` lists and
