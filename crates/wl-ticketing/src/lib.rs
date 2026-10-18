@@ -1,8 +1,10 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
+pub mod assign;
 pub mod config;
 mod machine;
+mod notices;
 pub mod open;
 pub mod priority;
 pub mod reasons;
@@ -15,6 +17,7 @@ pub mod work;
 use renox::db::Migration;
 use renox::prelude::*;
 
+pub use assign::{AssignKind, AssignRequest, Assignment, assign};
 pub use config::{Category, HoldReason, SlaPolicy, SlaTarget};
 pub use open::Tickets;
 pub use priority::Priority;
@@ -84,11 +87,14 @@ impl Module for WlTicketing {
             .model::<SlaTarget>()
             .model::<HoldReason>()
             .model::<Category>()
-            .model::<Ticket>();
+            .model::<Ticket>()
+            .model::<Assignment>();
         // `rnx state:diagram Ticket` and the admin panel find the machine.
         renox::state_machine::register::<Ticket>();
         // `TicketClosed` after a `confirm` or `close` commits.
         work::register_events(app);
+        // `TicketAssigned` and the notices after an `assign` commits.
+        notices::register(app);
         // Other modules open tickets through the kernel's `TaskCreator`.
         wl_kernel::tickets::provide_task_creator(app, Tickets);
         // The reassignment reasons: the defaults and the vertical's own.

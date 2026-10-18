@@ -9,8 +9,8 @@
 //! ```
 //!
 //! Every state is declared here with its tone, and a new ticket is inserted
-//! only as `open`. The transitions are in [`crate::work`]; `assign` joins
-//! them with the reassignment. `Ticket` is `#[model(state_machine)]`, so
+//! only as `open`. `assign` is in [`crate::assign`], the others in
+//! [`crate::work`]. `Ticket` is `#[model(state_machine)]`, so
 //! `save` refuses a changed status.
 
 use renox::state_machine::{Machine, StateMachine};
@@ -41,8 +41,8 @@ impl StateMachine for Ticket {
             .state(Cancelled)
             .tone("neutral")
             .terminal();
-        crate::work::transitions()
-            .into_iter()
+        std::iter::once(crate::assign::transition())
+            .chain(crate::work::transitions())
             .fold(machine, Machine::transition)
     }
 }
@@ -75,9 +75,10 @@ mod tests {
     }
 
     #[test]
-    fn every_transition_but_assign_exists() {
+    fn every_transition_exists() {
         let machine = Ticket::machine();
         let expected = [
+            ("assign", vec!["open", "assigned"], "assigned", false),
             ("start", vec!["assigned"], "in_progress", false),
             ("hold", vec!["in_progress"], "on_hold", false),
             ("resume", vec!["on_hold"], "in_progress", false),
@@ -106,8 +107,6 @@ mod tests {
             assert_eq!(transition.to_state(), Some(to), "{name}");
             assert_eq!(transition.is_system(), system, "{name}");
         }
-        // `assign` is the next part's.
-        assert!(machine.find("assign").is_err());
     }
 
     #[test]
@@ -131,6 +130,7 @@ mod tests {
                 .map(str::to_owned)
                 .collect::<Vec<_>>()
         };
+        assert_eq!(guards("assign"), ["input", "triage", "change", "reason"]);
         assert_eq!(guards("start"), ["input", "by_assignee"]);
         assert_eq!(guards("hold"), ["input", "by_assignee", "hold_reason"]);
         assert_eq!(guards("resume"), ["input", "by_assignee"]);
