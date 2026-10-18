@@ -1,0 +1,7 @@
+{#- wl-invoicing: the invoices list, a renox::grid (search, filters by
+    status and issuing entity). Replace it with
+    resources/views/wl-invoicing/index.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['title']">
+  <rx-page-header :title="tx['title']"/>
+  <rx-grid :page="invoices"/>
+</rx-page>

@@ -11,15 +11,20 @@ pub mod issue;
 pub mod line;
 mod machine;
 pub mod overdue;
+pub mod pages;
+pub mod policy;
 pub mod reminders;
+pub mod seed;
 mod texts;
 pub mod vat;
 pub mod vat_adjustment;
+pub mod write_off;
 pub mod write_off_notice;
 
 use std::sync::Arc;
 
 use renox::db::Migration;
+use renox::nav::NavLink;
 use renox::prelude::*;
 
 pub use allocation::Allocation;
@@ -34,10 +39,24 @@ pub use write_off_notice::SendWriteOffNotice;
 
 /// The templates, compiled in. An app replaces one with a file of the same
 /// name under its views directory.
-const VIEWS: &[(&str, &str)] = &[(
-    write_off_notice::TEMPLATE,
-    include_str!("../views/wl-invoicing/write_off_notice.html"),
-)];
+const VIEWS: &[(&str, &str)] = &[
+    (
+        write_off_notice::TEMPLATE,
+        include_str!("../views/wl-invoicing/write_off_notice.html"),
+    ),
+    (
+        "wl-invoicing/index.html",
+        include_str!("../views/wl-invoicing/index.html"),
+    ),
+    (
+        "wl-invoicing/show.html",
+        include_str!("../views/wl-invoicing/show.html"),
+    ),
+    (
+        "wl-invoicing/_write_off_sheet.html",
+        include_str!("../views/wl-invoicing/_write_off_sheet.html"),
+    ),
+];
 
 /// The module's settings in `state`: those `register` provided, else the
 /// §7 defaults.
@@ -129,6 +148,10 @@ impl Module for WlInvoicing {
         "wl-invoicing"
     }
 
+    fn routes(&self) -> Routes {
+        pages::routes()
+    }
+
     fn migrations(&self) -> &'static [Migration] {
         renox::migrations!()
     }
@@ -138,7 +161,9 @@ impl Module for WlInvoicing {
             .model::<InvoiceLine>()
             .model::<Allocation>()
             .model::<ReminderLog>()
-            .model::<VatAdjustment>();
+            .model::<VatAdjustment>()
+            .view_data::<pages::IndexPage>()
+            .view_data::<pages::ShowPage>();
         // The customer write-off notice (§10), sent from the queue.
         app.job::<SendWriteOffNotice>();
         app.templates(|env| {
@@ -152,10 +177,26 @@ impl Module for WlInvoicing {
         });
         // `rnx state:diagram Invoice` and the admin panel find the machine.
         renox::state_machine::register::<Invoice>();
+        // The kernel runs `write_off_approved` by name; `FIN.ACL.15`.
+        policy::register(&self.config);
         // The settings the services read (`config_of`).
         app.provide(self.config.clone());
         // `InvoiceIssued`, `InvoicePaid` and `InvoiceOverdue` after a commit.
         events::register(app);
+        // The customer notice and `InvoiceWrittenOff` after a write-off.
+        write_off::register(app);
+        // `db:seed`: the demo invoices, as drafts.
+        app.seeder(|state: AppState| async move { seed::run(&state).await.map(|_| ()) });
+        // In the app group of the staff sidebar; the label is the app's
+        // `nav.invoices` text.
+        app.nav(
+            "app",
+            NavLink::route("wl_invoicing.index", "nav.invoices")
+                .icon("receipt")
+                .group("nav.app")
+                .order(40)
+                .permission(permissions::VIEW),
+        );
         // `FIN.RUL.02`: the daily `invoicing:mark-overdue` task.
         overdue::schedule(app);
         // `FIN.RUL.01`: the reminder types and the daily `invoicing:reminders`.

@@ -11,7 +11,8 @@
 //! inserted only as `draft`. The transitions are added by the issues that
 //! build them, all in this `machine()`: `issue` ([`crate::issue`]),
 //! `allocate` / `allocate_in_full` ([`crate::allocate`]) and `mark_overdue`
-//! ([`crate::overdue`]); `write_off` and the others later. `Invoice` is
+//! ([`crate::overdue`]), `write_off` / `write_off_approved`
+//! ([`crate::write_off`]); the others later. `Invoice` is
 //! `#[model(state_machine)]`, so `save` refuses a changed status.
 
 use renox::state_machine::{Machine, StateMachine};
@@ -46,6 +47,7 @@ impl StateMachine for Invoice {
             .transition(crate::overdue::transition());
         crate::allocate::transitions()
             .into_iter()
+            .chain(crate::write_off::transitions())
             .fold(machine, Machine::transition)
     }
 }

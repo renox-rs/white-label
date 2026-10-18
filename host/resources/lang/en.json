@@ -8,6 +8,7 @@
     "activity": "Activity",
     "legal_entities": "Legal entities",
     "parties": "Parties",
+    "invoices": "Invoices",
     "notification_types": "Notification types",
     "notification_log": "Message log",
     "documents_review": "Document review",

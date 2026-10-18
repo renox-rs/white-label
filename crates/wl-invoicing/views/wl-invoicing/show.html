@@ -1,0 +1,90 @@
+{#- wl-invoicing: an invoice's page: its status (and the pending-approval
+    badge), the issue and write-off actions, the approval card, the issuer
+    and party snapshots, totals, lines, VAT by category, payments and
+    credits, the write-off (amount, reason, date, notice date or why there
+    is none, the bad-debt relief) and the history. Replace it with
+    resources/views/wl-invoicing/show.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="title">
+  <rx-stack>
+    <rx-page-header :title="title" :subtitle="party.legal_name_en if party else ''" :back="route('wl_invoicing.index')" :back-label="tx['title']"
+                    :badge="status_label" :badge-kind="status_kind">
+      <rx-badge rx-if="pending" kind="warning" :text="tx['pending_approval']"/>
+      <template rx-if="can_issue">
+        <rx-confirm :id="'issue-invoice-' ~ invoice.id" :label="tx['issue.action']" :action="route('wl_invoicing.issue', invoice.id)" method="POST"
+                    :title="tx['issue.confirm_title']" :message="tx['issue.confirm_message']" :confirm-label="tx['issue.action']" icon="send"/>
+      </template>
+      <template rx-if="can_write_off"><rx-include template="wl-invoicing/_write_off_sheet.html"/></template>
+      <template rx-if="actions">
+        <rx-transition-actions :actions="actions" action="/invoices/{{ invoice.id }}/transitions"/>
+      </template>
+    </rx-page-header>
+    <rx-include template="wl-kernel/approval_card.html"/>
+    <rx-card :title="tx['sections.totals']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['fields.number']" :value="invoice.number" copyable :placeholder="tx['draft_number']"/>
+        <rx-entry :label="tx['fields.currency']" :value="invoice.currency"/>
+        <rx-entry :label="tx['fields.issue_date']" :value="invoice.issue_date" format="date"/>
+        <rx-entry :label="tx['fields.due_date']" :value="invoice.due_date" format="date"/>
+        <rx-entry :label="tx['fields.date_of_supply']" :value="invoice.date_of_supply or invoice.issue_date" format="date"/>
+        <rx-entry :label="tx['fields.net_total']" :value="amounts['net_total']"/>
+        <rx-entry :label="tx['fields.vat_total']" :value="amounts['vat_total']"/>
+        <rx-entry :label="tx['fields.gross_total']" :value="amounts['gross_total']"/>
+        <rx-entry :label="tx['fields.allocated_total']" :value="amounts['allocated_total']"/>
+        <rx-entry :label="tx['fields.balance']" :value="amounts['balance']"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-card rx-if="write_off" :title="tx['sections.write_off']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['write_off.amount']" :value="write_off.amount"/>
+        <rx-entry :label="tx['write_off.reason']" :value="write_off.reason"/>
+        <rx-entry rx-if="write_off.reason_text" :label="tx['write_off.reason_text']" :value="write_off.reason_text"/>
+        <rx-entry :label="tx['write_off.date']" :value="write_off.date" format="date"/>
+        <rx-entry :label="tx['write_off.notice_on']" :value="write_off.notice_on" format="date" :placeholder="write_off.notice_note"/>
+        <rx-entry :label="tx['write_off.relief']" :value="write_off.relief"/>
+        <rx-entry :label="tx['write_off.relief_status']" :value="write_off.relief_status"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-card rx-if="issuer" :title="tx['sections.issuer']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['fields.name']" :value="issuer.name_en"/>
+        <rx-entry :label="tx['fields.trn']" :value="issuer.trn" copyable/>
+        <rx-entry :label="tx['fields.address']" :value="issuer.address_en"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-card rx-if="party" :title="tx['sections.party']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['fields.name']" :value="party.legal_name_en"/>
+        <rx-entry :label="tx['fields.trn']" :value="party.trn" copyable/>
+        <rx-entry :label="tx['fields.address']" :value="party.billing_address"/>
+        <rx-entry :label="tx['fields.billing_email']" :value="party.billing_email" copyable/>
+      </rx-infolist>
+    </rx-card>
+    <rx-table :rows="lines" as="line" :key="line.id" :caption="tx['sections.lines']" card>
+      <rx-column :label="tx['fields.description']">{{ line.description }}</rx-column>
+      <rx-column :label="tx['fields.quantity']">{{ line.quantity }}</rx-column>
+      <rx-column :label="tx['fields.unit_price']" hide-narrow>{{ line.unit_price }}</rx-column>
+      <rx-column :label="tx['fields.discount']" hide-narrow>{{ line.discount }}</rx-column>
+      <rx-column :label="tx['fields.vat_category']" hide-narrow>{{ line.category }}</rx-column>
+      <rx-column :label="tx['fields.vat_amount']" hide-narrow>{{ line.vat }}</rx-column>
+      <rx-column :label="tx['fields.gross_amount']">{{ line.gross }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['no_lines']" icon="list"/></rx-slot>
+    </rx-table>
+    <rx-table :rows="vat" as="row" :key="row.category" :caption="tx['sections.vat']" card>
+      <rx-column :label="tx['fields.vat_category']">{{ row.category }}</rx-column>
+      <rx-column :label="tx['fields.net_amount']">{{ row.net }}</rx-column>
+      <rx-column :label="tx['fields.vat_amount']">{{ row.vat }}</rx-column>
+    </rx-table>
+    <rx-table :rows="allocations" as="allocation" :key="allocation.id" :caption="tx['sections.allocations']" card>
+      <rx-column :label="tx['fields.source']">{{ allocation.source }}</rx-column>
+      <rx-column :label="tx['fields.amount']">{{ allocation.amount }}</rx-column>
+      <rx-column :label="tx['history.at']" hide-narrow>{{ allocation.allocated_at | date('%Y-%m-%d %H:%M') }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['no_allocations']" icon="wallet"/></rx-slot>
+    </rx-table>
+    <rx-table :rows="timeline" as="item" :key="item.time" :caption="tx['sections.history']" card>
+      <rx-column :label="tx['history.change']">{{ item.title }}</rx-column>
+      <rx-column :label="tx['history.at']">{{ item.time | date('%Y-%m-%d %H:%M') }}</rx-column>
+      <rx-column :label="tx['history.reason']" hide-narrow>{{ item.body or "" }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['no_history']" icon="history"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>
