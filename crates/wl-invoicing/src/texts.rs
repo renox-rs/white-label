@@ -18,6 +18,68 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("wl_invoicing.write_off_reason.other", "Other"),
     (
+        "wl_invoicing.write_off.unknown_reason",
+        "Choose one of the write-off reasons.",
+    ),
+    (
+        "wl_invoicing.write_off.reason_text_required",
+        "This reason needs a text.",
+    ),
+    (
+        "wl_invoicing.write_off_notice.subject",
+        "Invoice {{ number }} written off as a bad debt",
+    ),
+    (
+        "wl_invoicing.write_off_notice.greeting",
+        "Dear {{ party_name }},",
+    ),
+    (
+        "wl_invoicing.write_off_notice.intro",
+        "We write to you about invoice {{ number }}, issued to you on {{ issue_date }}.",
+    ),
+    (
+        "wl_invoicing.write_off_notice.statement",
+        "The amount of {{ written_off }} still open on this invoice was written off as a bad debt on {{ write_off_date }}. This is not a credit note: the tax invoice stands as issued.",
+    ),
+    (
+        "wl_invoicing.write_off_notice.closing",
+        "If you have any questions about this notice, please reply to this message.",
+    ),
+    ("wl_invoicing.write_off_notice.number", "Invoice number"),
+    ("wl_invoicing.write_off_notice.issue_date", "Issue date"),
+    (
+        "wl_invoicing.write_off_notice.date_of_supply",
+        "Date of supply",
+    ),
+    (
+        "wl_invoicing.write_off_notice.gross_total",
+        "Total including VAT",
+    ),
+    (
+        "wl_invoicing.write_off_notice.written_off",
+        "Amount written off",
+    ),
+    (
+        "wl_invoicing.write_off_notice.vat_share",
+        "VAT in the amount written off",
+    ),
+    (
+        "wl_invoicing.write_off_notice.write_off_date",
+        "Write-off date",
+    ),
+    (
+        "wl_invoicing.write_off_notice.off",
+        "The customer write-off notice is turned off, so none was sent.",
+    ),
+    (
+        "wl_invoicing.write_off_notice.no_email",
+        "The party has no billing e-mail address, so no notice was sent.",
+    ),
+    (
+        "wl_invoicing.write_off_notice.waiting",
+        "The notice is being sent.",
+    ),
+    (
         "wl_invoicing.reminder.before_due.subject",
         "Invoice {{ number }} is due on {{ due_date }}",
     ),
@@ -46,7 +108,6 @@ pub(crate) fn english(key: &str) -> &str {
 }
 
 /// The text for `key`: the app's translation when it has one, else the English one.
-#[expect(dead_code, reason = "the back-office pages (#64 part 7) use it")]
 pub(crate) fn t(lang: &Lang, key: &str) -> String {
     let found = lang.t(key, &[]);
     if found != key {

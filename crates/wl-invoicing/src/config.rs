@@ -64,10 +64,47 @@ impl Default for InvoicingConfig {
     }
 }
 
+/// Why a write-off reason is refused.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReasonProblem {
+    /// The code is not one of the configured reasons.
+    Unknown,
+    /// The reason needs a text and none (or only blanks) was given.
+    TextRequired,
+}
+
+impl ReasonProblem {
+    /// The key of its message in the texts.
+    pub fn text_key(self) -> &'static str {
+        match self {
+            ReasonProblem::Unknown => "wl_invoicing.write_off.unknown_reason",
+            ReasonProblem::TextRequired => "wl_invoicing.write_off.reason_text_required",
+        }
+    }
+}
+
 impl InvoicingConfig {
     /// The configured reason with this code, if any.
     pub fn write_off_reason(&self, code: &str) -> Option<&WriteOffReason> {
         self.write_off_reasons.iter().find(|r| r.code == code)
+    }
+
+    /// Checks a write-off's reason (`write_off` guards): `code` is one of
+    /// the configured reasons, and a reason that needs a text (`other`)
+    /// has a non-blank one.
+    pub fn check_write_off_reason(
+        &self,
+        code: &str,
+        text: Option<&str>,
+    ) -> Result<&WriteOffReason, ReasonProblem> {
+        let reason = self
+            .write_off_reason(code.trim())
+            .ok_or(ReasonProblem::Unknown)?;
+        let blank = text.is_none_or(|text| text.trim().is_empty());
+        if reason.text_required && blank {
+            return Err(ReasonProblem::TextRequired);
+        }
+        Ok(reason)
     }
 }
 
@@ -85,5 +122,40 @@ mod tests {
         assert!(config.write_off_reason("other").unwrap().text_required);
         assert!(!config.write_off_reason("insolvent").unwrap().text_required);
         assert!(config.write_off_reason("bored").is_none());
+    }
+
+    #[test]
+    fn a_reason_must_be_configured_and_other_needs_a_text() {
+        let config = InvoicingConfig::default();
+        assert_eq!(
+            config
+                .check_write_off_reason("insolvent", None)
+                .unwrap()
+                .code,
+            "insolvent"
+        );
+        assert_eq!(
+            config.check_write_off_reason("bored", None).unwrap_err(),
+            ReasonProblem::Unknown
+        );
+        assert_eq!(
+            config.check_write_off_reason("", Some("x")).unwrap_err(),
+            ReasonProblem::Unknown
+        );
+        assert_eq!(
+            config.check_write_off_reason("other", None).unwrap_err(),
+            ReasonProblem::TextRequired
+        );
+        assert_eq!(
+            config
+                .check_write_off_reason("other", Some("  "))
+                .unwrap_err(),
+            ReasonProblem::TextRequired
+        );
+        assert!(
+            config
+                .check_write_off_reason("other", Some("Moved abroad"))
+                .is_ok()
+        );
     }
 }

@@ -14,6 +14,8 @@ pub mod overdue;
 pub mod reminders;
 mod texts;
 pub mod vat;
+pub mod vat_adjustment;
+pub mod write_off_notice;
 
 use std::sync::Arc;
 
@@ -21,12 +23,21 @@ use renox::db::Migration;
 use renox::prelude::*;
 
 pub use allocation::Allocation;
-pub use config::{InvoicingConfig, WriteOffReason};
+pub use config::{InvoicingConfig, ReasonProblem, WriteOffReason};
 pub use invoice::{Invoice, InvoiceKind, PartySnapshot};
 pub use invoicer::Invoices;
 pub use line::InvoiceLine;
 pub use reminders::ReminderLog;
 pub use vat::{CategoryTotal, LineAmounts, VatTotals};
+pub use vat_adjustment::{AdjustmentKind, AdjustmentStatus, VatAdjustment};
+pub use write_off_notice::SendWriteOffNotice;
+
+/// The templates, compiled in. An app replaces one with a file of the same
+/// name under its views directory.
+const VIEWS: &[(&str, &str)] = &[(
+    write_off_notice::TEMPLATE,
+    include_str!("../views/wl-invoicing/write_off_notice.html"),
+)];
 
 /// The module's settings in `state`: those `register` provided, else the
 /// §7 defaults.
@@ -126,7 +137,19 @@ impl Module for WlInvoicing {
         app.model::<Invoice>()
             .model::<InvoiceLine>()
             .model::<Allocation>()
-            .model::<ReminderLog>();
+            .model::<ReminderLog>()
+            .model::<VatAdjustment>();
+        // The customer write-off notice (§10), sent from the queue.
+        app.job::<SendWriteOffNotice>();
+        app.templates(|env| {
+            for (name, source) in VIEWS {
+                // The app's own file of that name wins.
+                if env.get_template(name).is_err() {
+                    renox::view::add_template(env, *name, *source)
+                        .expect("a built-in template compiles");
+                }
+            }
+        });
         // `rnx state:diagram Invoice` and the admin panel find the machine.
         renox::state_machine::register::<Invoice>();
         // The settings the services read (`config_of`).

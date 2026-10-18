@@ -1,0 +1,13 @@
+{#- wl-invoicing: the customer write-off notice (wl-invoicing §10), mailed to
+    the party's billing e-mail when an invoice is written off. Its date is
+    evidence for VAT bad-debt relief. The texts come filled from
+    `write_off_notice::NoticeContent`; `rows` are [label, value] pairs.
+    Replace it with resources/views/wl-invoicing/write_off_notice.html in
+    the app. -#}
+<rx-mail subject="{{ subject }}">
+  <p>{{ greeting }}</p>
+  <p>{{ intro }}</p>
+  <rx-mail-table :rows="rows"/>
+  <rx-mail-panel>{{ statement }}</rx-mail-panel>
+  <p>{{ closing }}</p>
+</rx-mail>
