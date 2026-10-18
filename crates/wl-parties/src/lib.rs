@@ -12,6 +12,7 @@ mod machine;
 pub mod pages;
 pub mod party;
 pub mod reasons;
+pub mod review_tasks;
 pub mod roles;
 pub mod seed;
 mod texts;
@@ -31,6 +32,9 @@ pub use directory::Directory;
 pub use evidence::{UnblockBasis, UnblockEvidence};
 pub use party::{Channel, Language, Party};
 pub use reasons::{BlockReason, BlockReasons};
+pub use review_tasks::{
+    ItemDecision, ReviewTask, ReviewTaskItem, ReviewTaskNote, ReviewTaskStatus,
+};
 pub use roles::PartyRole;
 pub use unblock::{UnblockRequest, unblock};
 
@@ -144,11 +148,15 @@ impl Module for WlParties {
             .model::<ContactPoint>()
             .model::<BlockRecord>()
             .model::<UnblockEvidence>()
+            .model::<ReviewTask>()
+            .model::<ReviewTaskItem>()
+            .model::<ReviewTaskNote>()
             .view_data::<pages::IndexPage>()
             .view_data::<pages::NewPage>()
             .view_data::<pages::ShowPage>();
         // `rnx state:diagram Party` and the admin panel find the machine.
         renox::state_machine::register::<Party>();
+        renox::state_machine::register::<ReviewTask>();
         // The block reason codes; `on_hold` must be there and not restricted.
         let reasons = self.reasons();
         reasons.check();
