@@ -257,6 +257,52 @@ async fn without_parties_the_directory_finds_nobody() {
     assert_eq!(NoParties.find(db, PartyId(1)).await.unwrap(), None);
 }
 
+/// #57 AC7: without the parties module nobody is related to anybody, for
+/// the kernel's directory as for `NoParties`; the chooser skips the parties
+/// it is told to and takes the first (primary) one.
+#[renox::test]
+async fn without_parties_nobody_is_a_related_contact() {
+    use wl_kernel::notify::ContactPurpose;
+    use wl_kernel::parties::{RelatedContact, choose_contact};
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let parties = wl_kernel::parties::directory(app.state());
+    let db = app.db();
+    for purpose in [
+        ContactPurpose::contact_of("finance"),
+        ContactPurpose::guardian_of(),
+    ] {
+        assert!(
+            parties
+                .related_contacts(db, PartyId(1), &purpose)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            NoParties
+                .related_contacts(db, PartyId(1), &purpose)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+    }
+    let related = |party: i64, primary: bool| RelatedContact {
+        party: PartyId(party),
+        position: Some("finance".into()),
+        primary,
+    };
+    let candidates = [related(11, true), related(12, false), related(13, false)];
+    assert_eq!(choose_contact(&candidates, &[]).unwrap().party, PartyId(11));
+    let tried = [PartyId(11), PartyId(12)];
+    assert_eq!(
+        choose_contact(&candidates, &tried).unwrap().party,
+        PartyId(13)
+    );
+    assert!(choose_contact(&candidates, &[PartyId(11), PartyId(12), PartyId(13)]).is_none());
+}
+
 /// #55 AC10: without the notify module, the kernel's notifier is
 /// `NoNotifier`: it queues nothing and returns no message id; a staff user
 /// still gets a bell entry.

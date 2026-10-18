@@ -91,7 +91,8 @@ pub struct Message {
     pub contact_relation: Option<String>,
     /// The rule's position, e.g. `finance`; none for any.
     pub contact_position: Option<String>,
-    /// The first message of the chain this is the alternative recipient of.
+    /// The first message of the chain this chain is the alternative
+    /// recipient of (every message of the alternative's chain carries it).
     pub alternative_of: Option<i64>,
     /// The user, for a user recipient.
     pub user_id: Option<i64>,

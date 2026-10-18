@@ -347,3 +347,150 @@ async fn a_give_up_opens_a_real_ticket_for_the_staff_role() {
     assert_eq!(comments.len(), 1);
     assert!(!comments[0].text.contains("Secret"));
 }
+
+/// #57 AC1 and AC5 in the demo: with `notify` and `parties` on, a reminder
+/// sent to the finance contacts of Blue Dunes LLC goes to Ali; when his
+/// number is refused for good, the same reminder goes once to Mona, in
+/// Arabic, on her mobile.
+#[renox::test]
+async fn a_give_up_sends_the_message_to_another_finance_contact() {
+    use std::sync::{Arc, Mutex};
+
+    use wl_kernel::notify::{
+        self, ContactPurpose, GiveUpReaction, NotificationTypeDef, NotifyChannel, NotifyRequest,
+    };
+    use wl_kernel::{PartyKind, Subject};
+    use wl_notify::channels::{ProviderFuture, SmsGateway, SmsGatewayHandle};
+    use wl_notify::{Message, MessageStatus};
+    use wl_parties::{
+        CompanyDetails, ContactPoint, ContactType, Language, NewParty, NewRelationship,
+        PersonDetails, RelationshipType, create, relate,
+    };
+
+    const ALI: &str = "+971500000311";
+    const MONA: &str = "+971500000312";
+
+    /// A gateway that refuses Ali's number for good and records the rest.
+    struct Gateway(Arc<Mutex<Vec<(String, String)>>>);
+    impl SmsGateway for Gateway {
+        fn send<'a>(
+            &'a self,
+            _state: &'a AppState,
+            to: &'a str,
+            text: &'a str,
+        ) -> ProviderFuture<'a, renox::Result> {
+            let refused = to == ALI;
+            if !refused {
+                self.0
+                    .lock()
+                    .unwrap()
+                    .push((to.to_owned(), text.to_owned()));
+            }
+            Box::pin(async move {
+                if refused {
+                    Err(renox::Error::permanent_message("number refused"))
+                } else {
+                    Ok(())
+                }
+            })
+        }
+    }
+
+    const TYPE: &str = "host_test.reminder";
+    let sent = Arc::new(Mutex::new(Vec::new()));
+    let app =
+        TestApp::new(host::app().provide(SmsGatewayHandle(Arc::new(Gateway(sent.clone()))))).await;
+    notify::register_type(
+        NotificationTypeDef::new(TYPE, "invoicing")
+            .channels(&[NotifyChannel::Sms])
+            .give_up(&[GiveUpReaction::AlternativeRecipient])
+            .template(
+                NotifyChannel::Sms,
+                "en",
+                None,
+                "Invoice {{ number }} is overdue.",
+            )
+            .template(
+                NotifyChannel::Sms,
+                "ar",
+                None,
+                "الفاتورة {{ number }} متأخرة.",
+            ),
+    );
+    app.kernel().seed().await.unwrap();
+
+    let state = app.state();
+    let contact = |name: &str, mobile: &str, language| NewParty {
+        kind: PartyKind::Person,
+        legal_name_en: name.into(),
+        default_language: language,
+        person: Some(PersonDetails::default()),
+        contacts: vec![ContactPoint {
+            contact_type: ContactType::Mobile,
+            value: mobile.into(),
+            is_primary: true,
+            ..Default::default()
+        }],
+        source: "back_office".into(),
+        ..Default::default()
+    };
+    let blue_dunes = create(
+        state,
+        NewParty {
+            kind: PartyKind::Company,
+            legal_name_en: "Blue Dunes LLC".into(),
+            company: Some(CompanyDetails::default()),
+            source: "back_office".into(),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let ali = create(state, contact("Ali", ALI, Language::En))
+        .await
+        .unwrap();
+    let mona = create(state, contact("Mona", MONA, Language::Ar))
+        .await
+        .unwrap();
+    for (person, primary) in [(&mona, false), (&ali, true)] {
+        relate(
+            state,
+            NewRelationship {
+                from: person.id,
+                to: blue_dunes.id,
+                relation_type: RelationshipType::ContactOf,
+                position: Some("finance".into()),
+                primary,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    }
+
+    let request = NotifyRequest::new(TYPE, Subject::new("invoicing.invoice", 7))
+        .to_contact(blue_dunes.party_id(), ContactPurpose::contact_of("finance"))
+        .data(renox::serde_json::json!({ "number": "INV-0007" }));
+    let ids = app
+        .at_travelled_time(notify::notifier(state).notify(state, request))
+        .await
+        .unwrap();
+    assert_eq!(ids.len(), 1);
+    app.run_all_jobs().await;
+
+    let messages = Message::query()
+        .order_by(Message::ID)
+        .get(app.db())
+        .await
+        .unwrap();
+    assert_eq!(messages.len(), 2, "Ali's and Mona's");
+    assert_eq!(messages[0].party_id, Some(ali.id));
+    assert_eq!(messages[0].status, MessageStatus::Abandoned);
+    assert_eq!(messages[1].party_id, Some(mona.id));
+    assert_eq!(messages[1].alternative_of, Some(ids[0].0));
+    assert_eq!(messages[1].status, MessageStatus::Sent);
+    assert_eq!(
+        *sent.lock().unwrap(),
+        [(MONA.to_owned(), "الفاتورة INV-0007 متأخرة.".to_owned())]
+    );
+}

@@ -16,11 +16,11 @@ use renox::prelude::*;
 use renox::testing::TestApp;
 use wl_kernel::automation::AutomationFailed;
 use wl_kernel::notify::{
-    self, Category, ContactKind, GiveUpReaction, MessageFailed, MessageGaveUp, MessageId,
-    MessageSuppressed, NotificationTypeDef, NotifyChannel, NotifyRecipient, NotifyRequest,
-    PartyContactPoint, PartyContacts, Urgency,
+    self, Category, ContactKind, ContactPurpose, ContactRelation, GiveUpReaction, MessageFailed,
+    MessageGaveUp, MessageId, MessageSuppressed, NotificationTypeDef, NotifyChannel,
+    NotifyRecipient, NotifyRequest, PartyContactPoint, PartyContacts, Urgency,
 };
-use wl_kernel::parties::{PartyDirectory, PartyFuture, PartyStatus, PartySummary};
+use wl_kernel::parties::{PartyDirectory, PartyFuture, PartyStatus, PartySummary, RelatedContact};
 use wl_kernel::tickets::{OpenTicket, TaskComment, TaskCreator, TicketFuture, TicketId, TicketRef};
 use wl_kernel::{ClientConfig, PartyId, Subject};
 use wl_notify::channels::ProviderFuture;
@@ -110,6 +110,139 @@ pub fn tower_b() -> Scope {
     Scope::new("buildings", 2)
 }
 
+/// Sami: a finance contact whose only address (e-mail) a test puts on the
+/// suppression list.
+pub const SAMI: PartyId = PartyId(10);
+/// Sami's e-mail.
+pub const SAMI_EMAIL: &str = "sami@lonesome.example";
+/// Ali: the primary finance contact of Blue Dunes (e-mail and mobile).
+pub const ALI: PartyId = PartyId(11);
+/// Ali's e-mail.
+pub const ALI_EMAIL: &str = "ali@bluedunes.example";
+/// Ali's mobile.
+pub const ALI_MOBILE: &str = "+971500000311";
+/// Mona: the second finance contact of Blue Dunes; Arabic, a mobile only.
+pub const MONA: PartyId = PartyId(12);
+/// Mona's mobile.
+pub const MONA_MOBILE: &str = "+971500000312";
+/// Omar: the operations contact of Blue Dunes (never a finance contact).
+pub const OMAR: PartyId = PartyId(13);
+/// Zaid: a finance contact of Red Rock, another company.
+pub const ZAID: PartyId = PartyId(14);
+/// Lone Star LLC: finance contacts Rashid (primary) and Sami.
+pub const LONE_STAR: PartyId = PartyId(40);
+/// Rashid, the primary finance contact of Lone Star.
+pub const RASHID: PartyId = PartyId(43);
+/// Mixed Bag LLC: finance contacts Tala (primary), Sami and Nadia.
+pub const MIXED_BAG: PartyId = PartyId(50);
+/// Tala, the primary finance contact of Mixed Bag.
+pub const TALA: PartyId = PartyId(41);
+/// Nadia, the last finance contact of Mixed Bag.
+pub const NADIA: PartyId = PartyId(42);
+/// A student with one guardian.
+pub const SOLO_STUDENT: PartyId = PartyId(20);
+/// The only guardian of [`SOLO_STUDENT`].
+pub const SOLO_GUARDIAN: PartyId = PartyId(21);
+/// A student with two guardians.
+pub const PAIR_STUDENT: PartyId = PartyId(22);
+/// The primary guardian of [`PAIR_STUDENT`].
+pub const FIRST_GUARDIAN: PartyId = PartyId(23);
+/// The second guardian of [`PAIR_STUDENT`], not primary.
+pub const SECOND_GUARDIAN: PartyId = PartyId(24);
+/// A type for the guardians: `alternative_recipient` alone, staff role
+/// `coordinator`.
+pub const ABSENCE: &str = "student.absence";
+
+/// The relationships of the test directory: to-party, relation, position,
+/// from-party (a person), primary. (The real directory also drops ended
+/// ones; that is tested in wl-parties.)
+const RELATIONS: &[(PartyId, ContactRelation, Option<&str>, PartyId, bool)] = &[
+    (
+        BLUE_DUNES,
+        ContactRelation::ContactOf,
+        Some("finance"),
+        MONA,
+        false,
+    ),
+    (
+        BLUE_DUNES,
+        ContactRelation::ContactOf,
+        Some("finance"),
+        ALI,
+        true,
+    ),
+    (
+        BLUE_DUNES,
+        ContactRelation::ContactOf,
+        Some("operations"),
+        OMAR,
+        true,
+    ),
+    (
+        RED_ROCK,
+        ContactRelation::ContactOf,
+        Some("finance"),
+        ZAID,
+        true,
+    ),
+    (
+        LONE_STAR,
+        ContactRelation::ContactOf,
+        Some("finance"),
+        RASHID,
+        true,
+    ),
+    (
+        LONE_STAR,
+        ContactRelation::ContactOf,
+        Some("finance"),
+        SAMI,
+        false,
+    ),
+    (
+        MIXED_BAG,
+        ContactRelation::ContactOf,
+        Some("finance"),
+        SAMI,
+        false,
+    ),
+    (
+        MIXED_BAG,
+        ContactRelation::ContactOf,
+        Some("finance"),
+        NADIA,
+        false,
+    ),
+    (
+        MIXED_BAG,
+        ContactRelation::ContactOf,
+        Some("finance"),
+        TALA,
+        true,
+    ),
+    (
+        SOLO_STUDENT,
+        ContactRelation::GuardianOf,
+        None,
+        SOLO_GUARDIAN,
+        true,
+    ),
+    (
+        PAIR_STUDENT,
+        ContactRelation::GuardianOf,
+        None,
+        SECOND_GUARDIAN,
+        false,
+    ),
+    (
+        PAIR_STUDENT,
+        ContactRelation::GuardianOf,
+        None,
+        FIRST_GUARDIAN,
+        true,
+    ),
+];
+
 /// Blue Dunes' e-mail and its contact point.
 pub const BLUE_DUNES_EMAIL: (&str, i64) = ("accounts@bluedunes.example", 11);
 /// Blue Dunes' mobile and its contact point.
@@ -128,6 +261,19 @@ pub fn register_types() {
             Some("Your subscription is paused"),
             "Your subscription is paused.",
         ),
+    );
+    notify::register_type(
+        NotificationTypeDef::new(ABSENCE, "school")
+            .channels(&[NotifyChannel::Email, NotifyChannel::Sms])
+            .give_up(&[GiveUpReaction::AlternativeRecipient])
+            .staff_role(COORDINATOR)
+            .template(
+                NotifyChannel::Email,
+                "en",
+                Some("Absence"),
+                "Your child is absent.",
+            )
+            .template(NotifyChannel::Sms, "en", None, "Your child is absent."),
     );
     use GiveUpReaction::{AlternativeRecipient, MarkContactInvalid, StaffTask, StatutoryNotice};
     notify::register_type(
@@ -148,6 +294,12 @@ pub fn register_types() {
                 "en",
                 None,
                 "Invoice {{ number }} is overdue.",
+            )
+            .template(
+                NotifyChannel::Sms,
+                "ar",
+                None,
+                "الفاتورة {{ number }} متأخرة.",
             ),
     );
     notify::register_type(
@@ -240,7 +392,12 @@ impl PartyDirectory for TestDirectory {
         party: PartyId,
         _lang: &'a str,
     ) -> PartyFuture<'a, Option<String>> {
-        let name = (party == SARA).then(|| "Sara M.".to_owned());
+        let name = match party {
+            SARA => Some("Sara M.".to_owned()),
+            ALI => Some("Ali".to_owned()),
+            MONA => Some("Mona".to_owned()),
+            _ => None,
+        };
         Box::pin(async move { Ok(name) })
     }
 
@@ -258,7 +415,25 @@ impl PartyDirectory for TestDirectory {
         _db: &'a Db,
         party: PartyId,
     ) -> PartyFuture<'a, Option<PartyContacts>> {
+        let both = |email: &str, mobile: &str, id: i64| {
+            vec![
+                point(id, ContactKind::Email, email),
+                point(id + 1, ContactKind::Mobile, mobile),
+            ]
+        };
+        let language = if party == MONA { "ar" } else { "en" };
         let points = match party {
+            ALI => both(ALI_EMAIL, ALI_MOBILE, 111),
+            MONA => vec![point(121, ContactKind::Mobile, MONA_MOBILE)],
+            OMAR => both("omar@bluedunes.example", "+971500000313", 131),
+            ZAID => both("zaid@redrock.example", "+971500000314", 141),
+            SAMI => vec![point(101, ContactKind::Email, SAMI_EMAIL)],
+            RASHID => both("rashid@lonestar.example", "+971500000343", 431),
+            TALA => both("tala@mixedbag.example", "+971500000341", 411),
+            NADIA => both("nadia@mixedbag.example", "+971500000342", 421),
+            SOLO_GUARDIAN => both("solo@family.example", "+971500000321", 211),
+            FIRST_GUARDIAN => both("first@family.example", "+971500000323", 231),
+            SECOND_GUARDIAN => both("second@family.example", "+971500000324", 241),
             BLUE_DUNES => vec![
                 point(BLUE_DUNES_EMAIL.1, ContactKind::Email, BLUE_DUNES_EMAIL.0),
                 point(
@@ -279,11 +454,34 @@ impl PartyDirectory for TestDirectory {
         Box::pin(async move {
             Ok(Some(PartyContacts {
                 party,
-                language: "en".into(),
+                language: language.into(),
                 preferred_channel: None,
                 points,
             }))
         })
+    }
+
+    fn related_contacts<'a>(
+        &'a self,
+        _db: &'a Db,
+        of: PartyId,
+        purpose: &'a ContactPurpose,
+    ) -> PartyFuture<'a, Vec<RelatedContact>> {
+        let mut found: Vec<RelatedContact> = RELATIONS
+            .iter()
+            .filter(|(to, relation, position, ..)| {
+                *to == of
+                    && *relation == purpose.relation
+                    && (purpose.position.is_none() || *position == purpose.position.as_deref())
+            })
+            .map(|(_, _, position, from, primary)| RelatedContact {
+                party: *from,
+                position: position.map(str::to_owned),
+                primary: *primary,
+            })
+            .collect();
+        found.sort_by_key(|c| (!c.primary, c.party));
+        Box::pin(async move { Ok(found) })
     }
 }
 
@@ -670,21 +868,33 @@ impl Booted {
 /// wl-notify with scripted providers and counting handlers, booted and
 /// seeded (the registered types installed).
 pub async fn boot() -> Booted {
-    boot_with(false, true).await
+    boot_with(&[], true).await
 }
 
 /// As [`boot`], but the `staff_task` reaction is the module's own, with the
 /// recording task creator behind it: what the end-to-end tests run.
 pub async fn boot_staff() -> Booted {
-    boot_with(true, true).await
+    boot_with(&[GiveUpReaction::StaffTask], true).await
+}
+
+/// As [`boot_staff`], with the module's own `alternative_recipient` too.
+pub async fn boot_alternative() -> Booted {
+    boot_with(
+        &[
+            GiveUpReaction::StaffTask,
+            GiveUpReaction::AlternativeRecipient,
+        ],
+        true,
+    )
+    .await
 }
 
 /// As [`boot_staff`], with the `ticketing` module off: no task creator.
 pub async fn boot_without_tickets() -> Booted {
-    boot_with(true, false).await
+    boot_with(&[GiveUpReaction::StaffTask], false).await
 }
 
-async fn boot_with(real_staff_task: bool, ticketing: bool) -> Booted {
+async fn boot_with(real: &[GiveUpReaction], ticketing: bool) -> Booted {
     register_types();
     let tasks = Tasks::default();
     let views = tempfile::tempdir().expect("a temporary views directory");
@@ -711,7 +921,7 @@ async fn boot_with(real_staff_task: bool, ticketing: bool) -> Booted {
         GiveUpReaction::MarkContactInvalid,
         GiveUpReaction::StatutoryNotice,
     ] {
-        if real_staff_task && reaction == GiveUpReaction::StaffTask {
+        if real.contains(&reaction) {
             continue;
         }
         module = module.reaction(Counting {

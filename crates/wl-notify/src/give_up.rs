@@ -136,6 +136,9 @@ pub async fn apply_in(
             next.subject_label.clone_from(&failed.subject_label);
             next.chain_id = Some(failed.chain());
             next.fallback_of = Some(failed.id);
+            // Every message of an alternative's chain says so, so its give-up
+            // is known to be the alternative's, not the original's.
+            next.alternative_of = failed.alternative_of;
             next.insert(&mut *tx).await?;
             state
                 .queue
