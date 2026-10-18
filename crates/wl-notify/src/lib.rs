@@ -2,8 +2,12 @@
 #![warn(missing_docs)]
 
 mod texts;
+pub mod types;
 
+use renox::db::Migration;
 use renox::prelude::*;
+
+pub use types::NotificationType;
 
 /// The module's permissions (wl-notify §6).
 pub mod permissions {
@@ -39,5 +43,26 @@ impl WlNotify {
 impl Module for WlNotify {
     fn name(&self) -> &'static str {
         "wl-notify"
+    }
+
+    fn migrations(&self) -> &'static [Migration] {
+        renox::migrations!()
+    }
+
+    fn register(&self, app: &mut Registry) {
+        app.model::<NotificationType>();
+        // The kernel's `wl:install` knows only kernel data, so the types the
+        // modules register are installed by this module's own command and
+        // seeder; both keep the client's changes.
+        app.command(
+            "notify:install",
+            "Store the notification types the modules register, where the database lacks them",
+            |_args, state: AppState| async move {
+                let created = types::install(&state.db).await?;
+                println!("{created} notification types created.");
+                Ok(())
+            },
+        );
+        app.seeder(|state: AppState| async move { types::install(&state.db).await.map(|_| ()) });
     }
 }

@@ -10,3 +10,4 @@ publish.workspace = true
 [dependencies]
 renox.workspace = true
 serde.workspace = true
+wl-kernel = { path = "../wl-kernel" }
