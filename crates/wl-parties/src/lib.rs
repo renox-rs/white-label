@@ -2,6 +2,7 @@
 #![warn(missing_docs)]
 
 pub mod block;
+pub mod block_effects;
 pub mod block_record;
 pub mod contacts;
 pub mod create;
@@ -163,6 +164,8 @@ impl Module for WlParties {
         app.provide(reasons);
         // `PartyBlocked` after a block commits.
         block::register(app);
+        // Review tasks for the agreements of a blocked party.
+        block_effects::register(app);
         // Other modules read parties through the kernel (wl-parties §6).
         wl_kernel::parties::provide_directory(app, Directory);
         // `db:seed`: the demo parties (DEMO-DATA.md).

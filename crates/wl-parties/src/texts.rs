@@ -125,6 +125,23 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_parties.fields.unblocked_by", "Lifted by"),
     ("wl_parties.fields.unblock_note", "Lifted because"),
     ("wl_parties.fields.evidence", "Evidence"),
+    ("wl_parties.review.on_hold", "On hold"),
+    (
+        "wl_parties.review.on_hold_reason",
+        "On hold \u{2014} :reason",
+    ),
+    (
+        "wl_parties.review.notice_title",
+        "A party is on hold: :count agreements to review",
+    ),
+    (
+        "wl_parties.review.notice_title_one",
+        "A party is on hold: 1 agreement to review",
+    ),
+    (
+        "wl_parties.review.notice_body",
+        "Open the review task to pause, continue or end each agreement.",
+    ),
     (
         "wl_parties.errors.legal_name_required",
         "Enter the legal name in English.",
@@ -182,6 +199,17 @@ pub(crate) fn t(lang: &Lang, key: &str) -> String {
         return found;
     }
     english(key)
+}
+
+/// Like [`t`], filling the `:name` placeholders with `params`.
+pub(crate) fn t_with(lang: &Lang, key: &str, params: &[(&str, &dyn std::fmt::Display)]) -> String {
+    let found = lang.t(key, params);
+    if found != key {
+        return found;
+    }
+    let text = english(key);
+    let params: Vec<(&str, String)> = params.iter().map(|(k, v)| (*k, v.to_string())).collect();
+    renox::i18n::format(&text, &params, None)
 }
 
 /// The package's English text for `key`, or the key when it has none.
