@@ -24,12 +24,13 @@ use renox::state_machine::{StateMachine, TransitionError};
 use serde::{Deserialize, Serialize};
 use wl_kernel::documents::today;
 use wl_kernel::payments::{
-    Direction, PAYMENT_SUBJECT_TYPE, PaymentId, PaymentMethod, PaymentSource, RecordPayment,
-    RefundFailureKind, RefundId, RefundSource as KernelRefundSource, ReversalReason,
+    DepositId, Direction, PAYMENT_SUBJECT_TYPE, PaymentId, PaymentMethod, PaymentSource,
+    RecordPayment, RefundFailureKind, RefundId, RefundSource as KernelRefundSource, ReversalReason,
 };
 use wl_kernel::{LegalEntity, PartyId, Subject};
 
 use crate::credit;
+use crate::deposit::Deposit;
 use crate::gateway::{RefundOutcome, gateway_of};
 use crate::payment::Payment;
 use crate::permissions;
@@ -354,7 +355,8 @@ pub async fn request(
     .await
 }
 
-/// Inserts the refund `requested`, with its history row.
+/// Inserts the refund `requested`, with its history row, in its own
+/// transaction.
 #[allow(clippy::too_many_arguments)]
 async fn insert_requested(
     state: &AppState,
@@ -366,6 +368,34 @@ async fn insert_requested(
     gateway_txn: Option<String>,
     reason: &str,
 ) -> std::result::Result<Refund, TransitionError> {
+    let mut tx = state.db.begin().await?;
+    let refund = insert_requested_in(
+        &mut tx,
+        Some(user.id),
+        resolved,
+        source,
+        amount,
+        method,
+        gateway_txn,
+        reason,
+    )
+    .await?;
+    tx.commit().await?;
+    Ok(refund)
+}
+
+/// Inserts the refund `requested` in `tx`, with its history row.
+#[allow(clippy::too_many_arguments)]
+async fn insert_requested_in(
+    tx: &mut renox::db::Transaction,
+    requested_by: Option<i64>,
+    resolved: &Resolved,
+    source: &KernelRefundSource,
+    amount: i64,
+    method: Option<PaymentMethod>,
+    gateway_txn: Option<String>,
+    reason: &str,
+) -> Result<Refund> {
     let subject = source.subject();
     let mut refund = Refund {
         party_id: resolved.party.0,
@@ -378,18 +408,45 @@ async fn insert_requested(
         reason: reason.trim().to_owned(),
         method,
         gateway_txn,
-        requested_by: Some(user.id),
+        requested_by,
         status: RefundStatus::Requested,
         ..Default::default()
     };
-    let mut tx = state.db.begin().await?;
     // Born `requested`, with a history row for it.
     let reason = refund.reason.clone();
     refund
-        .insert_in_state(&mut tx, RefundStatus::Requested, &reason)
+        .insert_in_state(&mut *tx, RefundStatus::Requested, &reason)
         .await?;
-    tx.commit().await?;
     Ok(refund)
+}
+
+/// The refund of the held amount of `deposit` by `method`, requested by
+/// user `by` in `tx`: the effect of the deposit's `refund`. The deposit
+/// transition checked the user's permission, so none is asked here; the
+/// refund still waits for an approval by another user (`FIN.ACL.04`).
+pub(crate) async fn request_for_deposit_in(
+    tx: &mut renox::db::Transaction,
+    deposit: &Deposit,
+    method: PaymentMethod,
+    by: Option<i64>,
+) -> Result<Refund> {
+    let resolved = Resolved {
+        party: deposit.party(),
+        legal_entity_id: deposit.legal_entity_id,
+        currency: deposit.currency.clone(),
+        refundable: deposit.held_amount,
+    };
+    insert_requested_in(
+        tx,
+        by,
+        &resolved,
+        &KernelRefundSource::Deposit(deposit.deposit_id()),
+        deposit.held_amount,
+        Some(method),
+        None,
+        &format!("Refund of deposit {}", deposit.id),
+    )
+    .await
 }
 
 /// Why a gateway refund cannot be asked with `method` and `gateway_txn`,
@@ -405,9 +462,9 @@ pub(crate) fn gateway_problem(
 
 /// `user` asks to refund `request.amount` fils of a source, for the
 /// module that owns it. A payment or party-credit source keeps the balance
-/// check of [`request`]; any other source (credit note, deposit, payer
-/// credit, order, booking) is vouched for by the caller, as this module
-/// cannot read its balance. The refund still goes through [`approve`]
+/// check of [`request`]; a deposit is read here and refused above what it
+/// holds; any other source (credit note, payer credit, order, booking) is
+/// vouched for by the caller, as this module cannot read its balance. The refund still goes through [`approve`]
 /// (`FIN.ACL.04`).
 ///
 /// # Errors
@@ -447,6 +504,11 @@ pub async fn request_for_source(
             let balance = resolved.refundable;
             (resolved, balance)
         }
+        KernelRefundSource::Deposit(id) => {
+            let resolved = resolve_deposit(state, *id, request).await?;
+            let balance = resolved.refundable;
+            (resolved, balance)
+        }
         _ => (resolve_vouched(state, request).await?, i64::MAX),
     };
     if resolved.party != request.party {
@@ -472,6 +534,41 @@ pub async fn request_for_source(
         &request.reason,
     )
     .await
+}
+
+/// The deposit a refund goes back to, checked against the request: it must
+/// exist, belong to the party and legal entity, be in the request's
+/// currency and still be held (not forfeited or transferred); no more than
+/// what it holds, less the refunds that already claim it, is refundable.
+async fn resolve_deposit(
+    state: &AppState,
+    id: DepositId,
+    request: &RefundRequest,
+) -> std::result::Result<Resolved, TransitionError> {
+    let deposit = Deposit::find(&state.db, id.0)
+        .await?
+        .ok_or_else(|| guard("The deposit was not found."))?;
+    if deposit.party() != request.party {
+        return Err(guard("The party does not match the source."));
+    }
+    if deposit.legal_entity_id != request.legal_entity_id {
+        return Err(guard("The legal entity does not match the deposit."));
+    }
+    if !deposit
+        .currency
+        .eq_ignore_ascii_case(request.currency.trim())
+    {
+        return Err(guard("The currency does not match the deposit."));
+    }
+    if !deposit.status.is_refundable() {
+        return Err(guard("The deposit is no longer held."));
+    }
+    Ok(Resolved {
+        party: deposit.party(),
+        legal_entity_id: deposit.legal_entity_id,
+        currency: deposit.currency.clone(),
+        refundable: deposit.refundable(&state.db).await?,
+    })
 }
 
 /// The party and legal entity of a source another module vouches for.

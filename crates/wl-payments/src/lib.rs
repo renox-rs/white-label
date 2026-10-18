@@ -5,6 +5,8 @@ pub mod allocate;
 pub mod allocation;
 pub mod config;
 pub mod credit;
+pub mod deposit;
+mod deposit_machine;
 mod events;
 pub mod followup;
 pub mod gateway;
@@ -30,6 +32,7 @@ use renox::prelude::*;
 
 pub use allocation::Allocation;
 pub use config::PaymentsConfig;
+pub use deposit::Deposit;
 pub use followup::FollowupTask;
 pub use gateway::{Gateway, NoGateway};
 pub use payment::Payment;
@@ -89,6 +92,12 @@ pub mod permissions {
     pub const REFUNDS_APPROVE: &str = "refunds.approve";
     /// Pay an approved refund.
     pub const REFUNDS_PAY: &str = "refunds.pay";
+    /// See deposits.
+    pub const DEPOSITS_VIEW: &str = "deposits.view";
+    /// Hold a deposit and start its settlement.
+    pub const DEPOSITS_MANAGE: &str = "deposits.manage";
+    /// Refund a deposit.
+    pub const DEPOSITS_REFUND: &str = "deposits.refund";
 }
 
 /// The payments module. The host adds it with
@@ -150,6 +159,7 @@ impl Module for WlPayments {
         app.model::<Allocation>();
         app.model::<Refund>();
         app.model::<RefundAttempt>();
+        app.model::<Deposit>();
         app.model::<FollowupTask>();
         app.view_data::<pages::IndexPage>()
             .view_data::<pages::NewPage>()
@@ -179,6 +189,7 @@ impl Module for WlPayments {
         // `rnx state:diagram Payment` and the admin panel find the machine.
         renox::state_machine::register::<Payment>();
         renox::state_machine::register::<Refund>();
+        renox::state_machine::register::<Deposit>();
         // The settings the services read (`config_of`).
         app.provide(self.config.clone());
         // The gateway the services ask about disputes (`gateway::gateway_of`).

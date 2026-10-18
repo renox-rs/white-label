@@ -390,13 +390,16 @@ impl RefundFailureKind {
     }
 }
 
-/// What a payment is allocated to. Credit notes, supplier bills, deposits
-/// and the payer's credit balance come with their issues; each is stored as
-/// a [`Subject`].
+/// What a payment is allocated to. Credit notes, supplier bills and the
+/// payer's credit balance come with their issues; each is stored as a
+/// [`Subject`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AllocationTarget {
     /// An invoice.
     Invoice(InvoiceId),
+    /// A deposit held for a source agreement; the money leaves the party's
+    /// credit.
+    Deposit(DepositId),
 }
 
 impl AllocationTarget {
@@ -404,6 +407,7 @@ impl AllocationTarget {
     pub fn subject(self) -> Subject {
         match self {
             AllocationTarget::Invoice(id) => id.subject(),
+            AllocationTarget::Deposit(id) => id.subject(),
         }
     }
 
@@ -411,6 +415,8 @@ impl AllocationTarget {
     pub fn from_subject(subject: &Subject) -> Option<Self> {
         if subject.subject_type == INVOICE_SUBJECT_TYPE {
             Some(AllocationTarget::Invoice(InvoiceId(subject.subject_id)))
+        } else if subject.subject_type == DEPOSIT_SUBJECT_TYPE {
+            Some(AllocationTarget::Deposit(DepositId(subject.subject_id)))
         } else {
             None
         }
@@ -937,6 +943,14 @@ mod tests {
             AllocationTarget::from_subject(&Subject::new("payments.refund", 1)),
             None
         );
+    }
+
+    #[test]
+    fn a_deposit_allocation_target_round_trips_through_its_subject() {
+        let target = AllocationTarget::Deposit(DepositId(7));
+        let subject = target.subject();
+        assert_eq!(subject.to_string(), "payments.deposit:7");
+        assert_eq!(AllocationTarget::from_subject(&subject), Some(target));
     }
 
     #[test]

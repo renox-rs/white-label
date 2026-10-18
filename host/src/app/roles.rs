@@ -88,6 +88,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             payments::REFUNDS_REQUEST,
             payments::REFUNDS_APPROVE,
             payments::REFUNDS_PAY,
+            payments::DEPOSITS_VIEW,
+            payments::DEPOSITS_MANAGE,
+            payments::DEPOSITS_REFUND,
         ],
     ),
     (
@@ -122,6 +125,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             payments::REFUNDS_REQUEST,
             payments::REFUNDS_APPROVE,
             payments::REFUNDS_PAY,
+            payments::DEPOSITS_VIEW,
+            payments::DEPOSITS_MANAGE,
+            payments::DEPOSITS_REFUND,
         ],
     ),
     (

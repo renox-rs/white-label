@@ -5,6 +5,10 @@
 //! (`Invoicer::allocate`, which runs the invoice's `allocate` transition)
 //! and, only when that succeeds, writes the [`Allocation`] row. When the
 //! invoice refuses, nothing is written and its message is returned.
+//!
+//! A deposit target is this module's own: no `Invoicer` is called. The
+//! allocation row is written, and the deposit's held amount rises, in one
+//! transaction ([`allocate_to_deposit_in`]).
 
 use renox::prelude::*;
 use wl_kernel::invoicing::{InvoiceSummary, invoicer};
@@ -12,6 +16,7 @@ use wl_kernel::payments::{AllocationTarget, Direction, PaymentId};
 
 use crate::allocation::Allocation;
 use crate::credit;
+use crate::deposit::{Deposit, DepositStatus};
 use crate::payment::Payment;
 
 /// A 422 with `message`.
@@ -54,15 +59,76 @@ pub(crate) fn invoice_problem(payment: &Payment, invoice: &InvoiceSummary) -> Op
     None
 }
 
+/// Why `payment` cannot put `amount` fils into `deposit` when `unallocated`
+/// is free on the payment, if it cannot: the payment checks of
+/// [`payment_problem`], another party or currency, a deposit that is no
+/// longer `held`, or more than the deposit still lacks.
+pub(crate) fn deposit_problem(
+    payment: &Payment,
+    deposit: &Deposit,
+    unallocated: i64,
+    amount: i64,
+) -> Option<String> {
+    if let Some(problem) = payment_problem(payment, unallocated, amount) {
+        return Some(problem);
+    }
+    if deposit.party_id != payment.party_id {
+        return Some("The deposit belongs to another party.".to_owned());
+    }
+    if !deposit.currency.eq_ignore_ascii_case(&payment.currency) {
+        return Some(format!(
+            "The deposit is in {}, the payment in {}.",
+            deposit.currency, payment.currency
+        ));
+    }
+    if deposit.status != DepositStatus::Held {
+        return Some("Only a held deposit takes money.".to_owned());
+    }
+    let lacking = deposit.amount - deposit.held_amount;
+    if amount > lacking {
+        return Some(format!(
+            "The amount is above what the deposit still lacks ({lacking} fils)."
+        ));
+    }
+    None
+}
+
+/// Allocates `amount` fils of `payment` to `deposit` in `tx` and raises the
+/// deposit's held amount (also on `deposit`). The caller checked
+/// [`deposit_problem`].
+pub(crate) async fn allocate_to_deposit_in(
+    tx: &mut renox::db::Transaction,
+    payment: &Payment,
+    deposit: &mut Deposit,
+    amount: i64,
+    by: Option<i64>,
+) -> Result<Allocation> {
+    let mut allocation = Allocation::new(payment.id, &deposit.subject(), amount, by);
+    allocation.insert(&mut *tx).await?;
+    let held = deposit.held_amount + amount;
+    // Not the status column, so outside the machine's guard.
+    Deposit::query()
+        .where_(Deposit::ID.eq(deposit.id))
+        .update(
+            &mut *tx,
+            &[("held_amount", &held), ("updated_at", &renox::db::now())],
+        )
+        .await?;
+    deposit.held_amount = held;
+    Ok(allocation)
+}
+
 /// Allocates `amount` fils of payment `payment` to `target`, by user `by`
 /// (`None` = the system or unknown), and returns the new row.
 ///
 /// # Errors
 ///
-/// 404 for an unknown payment or invoice. 422 for a payment that is not
+/// 404 for an unknown payment, invoice or deposit. 422 for a payment that is not
 /// `received` or not incoming, an amount of 0 or less or above the
 /// unallocated amount, an invoice of another party or currency, or an
-/// invoice that refuses the allocation (nothing is written then).
+/// invoice that refuses the allocation, or a deposit of another party or
+/// currency, no longer `held`, or lacking less than the amount (nothing is
+/// written then).
 pub async fn allocate(
     state: &AppState,
     payment: PaymentId,
@@ -86,6 +152,19 @@ pub async fn allocate(
             invoicer
                 .allocate(state, id, payment.subject(), amount)
                 .await?;
+        }
+        AllocationTarget::Deposit(id) => {
+            let mut deposit = Deposit::find(&state.db, id.0)
+                .await?
+                .ok_or(Error::NotFound)?;
+            if let Some(problem) = deposit_problem(&payment, &deposit, unallocated, amount) {
+                return Err(refused(problem));
+            }
+            let mut tx = state.db.begin().await?;
+            let allocation =
+                allocate_to_deposit_in(&mut tx, &payment, &mut deposit, amount, by).await?;
+            tx.commit().await?;
+            return Ok(allocation);
         }
     }
     let mut allocation = Allocation::new(payment.id, &target.subject(), amount, by);
@@ -162,6 +241,56 @@ mod tests {
         let mut p = payment();
         p.direction = Direction::Out;
         assert!(payment_problem(&p, 300_000, 100).is_some());
+    }
+
+    fn deposit(party: i64, currency: &str, held: i64) -> Deposit {
+        Deposit {
+            id: 2,
+            party_id: party,
+            amount: 800_000,
+            held_amount: held,
+            currency: currency.into(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn a_deposit_takes_money_of_its_party_and_currency_up_to_what_it_lacks() {
+        let p = payment();
+        assert_eq!(
+            deposit_problem(&p, &deposit(7, "AED", 0), 300_000, 300_000),
+            None
+        );
+        assert_eq!(
+            deposit_problem(&p, &deposit(7, "aed", 500_000), 300_000, 300_000),
+            None
+        );
+        let above =
+            deposit_problem(&p, &deposit(7, "AED", 600_000), 300_000, 300_000).expect("refused");
+        assert!(above.contains("200000"), "{above}");
+        let party = deposit_problem(&p, &deposit(8, "AED", 0), 300_000, 100).expect("refused");
+        assert!(party.contains("another party"), "{party}");
+        let currency = deposit_problem(&p, &deposit(7, "USD", 0), 300_000, 100).expect("refused");
+        assert!(currency.contains("USD"), "{currency}");
+    }
+
+    #[test]
+    fn only_a_held_deposit_takes_money() {
+        let p = payment();
+        let mut d = deposit(7, "AED", 0);
+        d.status = DepositStatus::SettlementPending;
+        let message = deposit_problem(&p, &d, 300_000, 100).expect("refused");
+        assert!(message.contains("held"), "{message}");
+    }
+
+    #[test]
+    fn a_deposit_allocation_keeps_the_deposit_as_its_target() {
+        let d = deposit(7, "AED", 0);
+        let allocation = Allocation::new(1, &d.subject(), 100, None);
+        assert_eq!(
+            allocation.allocation_target(),
+            Some(AllocationTarget::Deposit(d.deposit_id()))
+        );
     }
 
     #[test]
