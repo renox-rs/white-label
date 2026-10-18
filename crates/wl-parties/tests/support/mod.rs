@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 use renox::auth::{Permissions, permissions};
 use renox::prelude::*;
 use renox::testing::TestApp;
-use wl_kernel::{ClientConfig, PartyBlocked, PartyCreated};
+use wl_kernel::{ClientConfig, PartyBlocked, PartyCreated, PartyUnblocked};
 use wl_parties::{Party, WlParties, permissions as perm};
 
 /// The pages extend the app's layout; a package test has no app, so it
@@ -40,6 +40,7 @@ pub struct Booted {
     _views: tempfile::TempDir,
     created: Arc<Mutex<Vec<PartyCreated>>>,
     blocked: Arc<Mutex<Vec<PartyBlocked>>>,
+    unblocked: Arc<Mutex<Vec<PartyUnblocked>>>,
 }
 
 impl Booted {
@@ -51,6 +52,11 @@ impl Booted {
     /// Every `PartyBlocked` so far.
     pub fn blocked(&self) -> Vec<PartyBlocked> {
         self.blocked.lock().unwrap().clone()
+    }
+
+    /// Every `PartyUnblocked` so far.
+    pub fn unblocked(&self) -> Vec<PartyUnblocked> {
+        self.unblocked.lock().unwrap().clone()
     }
 
     /// The database.
@@ -121,6 +127,16 @@ pub async fn boot_unseeded() -> Booted {
 /// `module` booted in an app with auth and the kernel, with the demo
 /// parties when `seed`.
 pub async fn boot_with(module: WlParties, seed: bool) -> Booted {
+    boot_custom(module, seed, |app| app).await
+}
+
+/// [`boot_with`], with `customize` adding to the app (a test-only listener)
+/// before the kernel applies.
+pub async fn boot_custom(
+    module: WlParties,
+    seed: bool,
+    customize: impl FnOnce(App) -> App,
+) -> Booted {
     let views = tempfile::tempdir().expect("a temporary views directory");
     let path = views.path().join("layouts/app.html");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -128,7 +144,12 @@ pub async fn boot_with(module: WlParties, seed: bool) -> Booted {
 
     let created = Arc::new(Mutex::new(Vec::new()));
     let blocked = Arc::new(Mutex::new(Vec::new()));
-    let (c, b) = (Arc::clone(&created), Arc::clone(&blocked));
+    let unblocked = Arc::new(Mutex::new(Vec::new()));
+    let (c, b, u) = (
+        Arc::clone(&created),
+        Arc::clone(&blocked),
+        Arc::clone(&unblocked),
+    );
     let config = ClientConfig::parse(CLIENT).expect("a valid client.toml");
     let app = App::new()
         .module(Auth::new())
@@ -147,10 +168,24 @@ pub async fn boot_with(module: WlParties, seed: bool) -> Booted {
                 b.lock().unwrap().push(event);
                 Ok(())
             }
+        })
+        .listen(move |event: PartyUnblocked, _state: AppState| {
+            let u = Arc::clone(&u);
+            async move {
+                u.lock().unwrap().push(event);
+                Ok(())
+            }
         });
+    let app = customize(app);
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     let dir = views.path().to_path_buf();
-    let app = TestApp::with_config(app, |c| c.views_path = dir).await;
+    let app = TestApp::with_config(app, |c| {
+        c.views_path = dir;
+        // Above the module's own 20 MB limit on evidence files, so that
+        // limit is the one a test meets.
+        c.upload_max_size = 32 * 1024 * 1024;
+    })
+    .await;
     app.kernel()
         .call("wl:install", Vec::<String>::new())
         .await
@@ -166,5 +201,6 @@ pub async fn boot_with(module: WlParties, seed: bool) -> Booted {
         _views: views,
         created,
         blocked,
+        unblocked,
     }
 }
