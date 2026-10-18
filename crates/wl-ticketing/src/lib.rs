@@ -2,19 +2,25 @@
 #![warn(missing_docs)]
 
 pub mod config;
+mod machine;
+pub mod open;
 pub mod priority;
 pub mod reasons;
 pub mod seed;
 pub mod sla;
 mod texts;
+pub mod ticket;
+pub mod work;
 
 use renox::db::Migration;
 use renox::prelude::*;
 
 pub use config::{Category, HoldReason, SlaPolicy, SlaTarget};
+pub use open::Tickets;
 pub use priority::Priority;
 pub use reasons::{ReasonRefused, ReassignReason, ReassignReasons};
 pub use sla::{SlaCalendar, provide_sla_calendar, sla_calendar};
+pub use ticket::{Ticket, TicketStatus};
 
 /// The module's permissions (wl-ticketing §6).
 pub mod permissions {
@@ -77,7 +83,14 @@ impl Module for WlTicketing {
         app.model::<SlaPolicy>()
             .model::<SlaTarget>()
             .model::<HoldReason>()
-            .model::<Category>();
+            .model::<Category>()
+            .model::<Ticket>();
+        // `rnx state:diagram Ticket` and the admin panel find the machine.
+        renox::state_machine::register::<Ticket>();
+        // `TicketClosed` after a `confirm` or `close` commits.
+        work::register_events(app);
+        // Other modules open tickets through the kernel's `TaskCreator`.
+        wl_kernel::tickets::provide_task_creator(app, Tickets);
         // The reassignment reasons: the defaults and the vertical's own.
         app.provide(self.reasons.clone());
         // The seeded defaults keep the client's changes.
