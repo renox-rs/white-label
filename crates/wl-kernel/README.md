@@ -158,6 +158,19 @@ the record's business date. `flags_for(db, record_type, id)` lists a record's `R
 marks one reviewed (a note is required, once only; a flag is never removed). Without
 `wl-documents` the closure just runs, nothing is flagged and the lists are empty.
 
+A refused `with_approval` kind that is not a legal block can be overridden once with a second
+user's approval. `BlockFailure::override_allowed()` says so, `BlockRefusal::override_links()`
+gives the `/documents/overrides/new?kind=..&guarded=..&record=..` links to offer (none for a
+`never` kind), and `BlockSubjects::scope(state, entry, id)` (default `None`, global) names the
+record's scope for the approvers. `check_as(.., actor)` is `check` for a user: a failing `block`
+entry that an approved, unused, valid override requested by `actor` covers is listed in
+`CheckOutcome.overrides` (`CoveredBlock`, with its `OverrideId`) instead of refusing; `check` is
+`check_as(.., None)` and covers nothing. A module runs `documents::guarded_transition_as(&state,
+guarded, id, on_date, Some(user), || async { .. })`: it claims the covered overrides
+(`claim_overrides`), runs the closure, then gives them back (`unclaim_overrides`) if it failed or
+emits `DocumentBlockOverridden` (`overrides_used`) if it succeeded. A lost claim is refused with
+the block message and the closure does not run. Without `wl-documents` all of this is a no-op.
+
 Planned work is warned about, never refused: after a module saved a run, a deployment or a
 batch of sessions it calls
 `documents::guard(&state).check_planned(&state, "deployment.activate", &items)` with one

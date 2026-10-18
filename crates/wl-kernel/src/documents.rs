@@ -82,6 +82,24 @@ impl From<i64> for DocumentId {
     }
 }
 
+/// The id of a block override (a one-use approval to pass a document
+/// block), as stored by `wl-documents`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct OverrideId(pub i64);
+
+impl fmt::Display for OverrideId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl From<i64> for OverrideId {
+    fn from(id: i64) -> Self {
+        OverrideId(id)
+    }
+}
+
 /// What a failing document does to the transition it guards.
 #[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum BlockMode {
@@ -246,6 +264,15 @@ pub struct BlockFailure {
     pub message: String,
 }
 
+impl BlockFailure {
+    /// Whether the failure may be overridden with a second user's approval:
+    /// the kind's override mode is `with_approval` and it is not a legal
+    /// block.
+    pub fn override_allowed(&self) -> bool {
+        self.entry.override_mode == OverrideMode::WithApproval && !self.entry.locked
+    }
+}
+
 /// A guarded transition refused because documents are expired or missing:
 /// one [`BlockFailure`] per failing subject and kind.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -268,11 +295,44 @@ impl BlockRefusal {
             .join("\n")
     }
 
+    /// The links that request an override, one per kind whose failure
+    /// [may be overridden](BlockFailure::override_allowed):
+    /// `/documents/overrides/new?kind=..&guarded=..&record=..`. A `never`
+    /// kind and a legal block give none.
+    pub fn override_links(&self) -> Vec<String> {
+        let mut links = Vec::new();
+        for failure in self.failures.iter().filter(|f| f.override_allowed()) {
+            let link = format!(
+                "/documents/overrides/new?kind={}&guarded={}&record={}",
+                query_encode(&failure.entry.kind),
+                query_encode(&self.guarded),
+                self.record_id
+            );
+            if !links.contains(&link) {
+                links.push(link);
+            }
+        }
+        links
+    }
+
     /// The refusal as a 422 with [`message`](Self::message), like a Renox
     /// `TransitionError::Guard`.
     pub fn into_error(self) -> Error {
         Error::Status(StatusCode::UNPROCESSABLE_ENTITY, self.message())
     }
+}
+
+/// Percent-encodes everything but the RFC 3986 unreserved characters.
+fn query_encode(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for byte in text.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {
+            out.push(char::from(byte));
+        } else {
+            out.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    out
 }
 
 impl fmt::Display for BlockRefusal {
@@ -337,6 +397,21 @@ pub struct FlagFailure {
 pub struct CheckOutcome {
     /// One per failing flag-mode document; empty when nothing fails.
     pub flags: Vec<FlagFailure>,
+    /// The failing `block` entries that approved overrides cover (see
+    /// [`DocumentGuard::check_as`]); empty when nothing is overridden.
+    pub overrides: Vec<CoveredBlock>,
+}
+
+/// A failing `block` entry that an approved override covers: the guard let
+/// the transition through for it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CoveredBlock {
+    /// The override that covers the failure.
+    pub override_id: OverrideId,
+    /// The entry that failed.
+    pub entry: BlockEntry,
+    /// The document subject that failed.
+    pub subject: Subject,
 }
 
 /// One planned item to check with [`DocumentGuard::check_planned`]: a saved
@@ -550,7 +625,59 @@ pub trait DocumentGuard: Send + Sync + 'static {
         guarded: &'a str,
         record_id: i64,
         on_date: NaiveDate,
+    ) -> DocumentFuture<'a, std::result::Result<CheckOutcome, BlockRefusal>> {
+        self.check_as(state, guarded, record_id, on_date, None)
+    }
+
+    /// [`check`](Self::check) for the user `actor` who runs the
+    /// transition. A failing `block` entry is covered, and listed in
+    /// [`CheckOutcome::overrides`], only when an approved, unused, valid
+    /// override of that kind, subject, transition and record was requested
+    /// by `actor`. `None` (no actor) covers nothing.
+    fn check_as<'a>(
+        &'a self,
+        state: &'a AppState,
+        guarded: &'a str,
+        record_id: i64,
+        on_date: NaiveDate,
+        actor: Option<i64>,
     ) -> DocumentFuture<'a, std::result::Result<CheckOutcome, BlockRefusal>>;
+
+    /// Claims the overrides `covered` for one use, all or none: each must
+    /// still be unused and valid, and is stamped used. `false` when any
+    /// cannot be claimed (e.g. a concurrent attempt got it first); then
+    /// none stays claimed. The default is the no-op fallback (`true`).
+    fn claim_overrides<'a>(
+        &'a self,
+        _db: &'a Db,
+        _covered: &'a [CoveredBlock],
+        _actor: i64,
+    ) -> DocumentFuture<'a, bool> {
+        Box::pin(async { Ok(true) })
+    }
+
+    /// Gives the claimed overrides `covered` back (used at empty, approved
+    /// again) after the transition failed. The default does nothing.
+    fn unclaim_overrides<'a>(
+        &'a self,
+        _db: &'a Db,
+        _covered: &'a [CoveredBlock],
+    ) -> DocumentFuture<'a, ()> {
+        Box::pin(async { Ok(()) })
+    }
+
+    /// Reports that the transition `guarded` ran on record `record_id`
+    /// under the claimed overrides `covered`: emits one
+    /// [`DocumentBlockOverridden`] each. The default does nothing.
+    fn overrides_used<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _guarded: &'a str,
+        _record_id: i64,
+        _covered: &'a [CoveredBlock],
+    ) -> DocumentFuture<'a, ()> {
+        Box::pin(async { Ok(()) })
+    }
 
     /// Warns about planned work: after the module saved `items` (a run, a
     /// deployment, a batch of sessions), checks each item's start date
@@ -636,12 +763,74 @@ where
     F: FnOnce() -> Fut,
     Fut: Future<Output = Result<T>>,
 {
+    guarded_transition_as(state, guarded, record_id, on_date, None, run).await
+}
+
+/// [`guarded_transition`] for the user `actor`, who may hold approved
+/// block overrides ([`DocumentGuard::check_as`]).
+///
+/// The overrides the check covers are claimed for one use before `run`
+/// ([`DocumentGuard::claim_overrides`]); if a claim fails (a concurrent
+/// attempt won), the transition is refused with the block message and `run`
+/// does not run. If `run` fails the claims are given back
+/// ([`DocumentGuard::unclaim_overrides`]); if it succeeds,
+/// [`DocumentGuard::overrides_used`] emits [`DocumentBlockOverridden`].
+/// Without `wl-documents` it just runs `run`.
+pub async fn guarded_transition_as<T, F, Fut>(
+    state: &AppState,
+    guarded: &str,
+    record_id: i64,
+    on_date: NaiveDate,
+    actor: Option<i64>,
+    run: F,
+) -> Result<T>
+where
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = Result<T>>,
+{
     let guard = guard(state);
     let outcome = guard
-        .check(state, guarded, record_id, on_date)
+        .check_as(state, guarded, record_id, on_date, actor)
         .await?
         .map_err(BlockRefusal::into_error)?;
-    let done = run().await?;
+    let claimed = match actor {
+        Some(actor) if !outcome.overrides.is_empty() => {
+            if !guard
+                .claim_overrides(&state.db, &outcome.overrides, actor)
+                .await?
+            {
+                // Lost the claim: the check now sees the override as used.
+                return Err(
+                    match guard
+                        .check_as(state, guarded, record_id, on_date, Some(actor))
+                        .await?
+                    {
+                        Err(refusal) => refusal.into_error(),
+                        Ok(_) => Error::Status(
+                            StatusCode::UNPROCESSABLE_ENTITY,
+                            "The override could not be used".to_owned(),
+                        ),
+                    },
+                );
+            }
+            &outcome.overrides[..]
+        }
+        _ => &[],
+    };
+    let done = match run().await {
+        Ok(done) => done,
+        Err(err) => {
+            if !claimed.is_empty() {
+                guard.unclaim_overrides(&state.db, claimed).await?;
+            }
+            return Err(err);
+        }
+    };
+    if !claimed.is_empty() {
+        guard
+            .overrides_used(state, guarded, record_id, claimed)
+            .await?;
+    }
     if !outcome.flags.is_empty() {
         guard
             .record_flags(&state.db, guarded, record_id, &outcome.flags)
@@ -679,12 +868,13 @@ impl DocumentGuard for NoDocuments {
         })
     }
 
-    fn check<'a>(
+    fn check_as<'a>(
         &'a self,
         _state: &'a AppState,
         _guarded: &'a str,
         _record_id: i64,
         _on_date: NaiveDate,
+        _actor: Option<i64>,
     ) -> DocumentFuture<'a, std::result::Result<CheckOutcome, BlockRefusal>> {
         Box::pin(async { Ok(Ok(CheckOutcome::default())) })
     }
@@ -777,6 +967,17 @@ pub trait BlockSubjects: Send + Sync + 'static {
     ) -> DocumentFuture<'a, Option<String>> {
         Box::pin(async { Ok(None) })
     }
+
+    /// The scope of record `record_id`, e.g. the deployment's site: who may
+    /// approve an override of its block. Default: `None` (global).
+    fn scope<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _entry: &'a BlockEntry,
+        _record_id: i64,
+    ) -> DocumentFuture<'a, Option<Scope>> {
+        Box::pin(async { Ok(None) })
+    }
 }
 
 static PROVIDERS: RwLock<BTreeMap<String, Arc<dyn BlockSubjects>>> = RwLock::new(BTreeMap::new());
@@ -809,6 +1010,30 @@ pub fn guarded_transitions() -> Vec<String> {
         .cloned()
         .collect()
 }
+
+/// A guarded transition ran under an approved block override (emitted once,
+/// after the transition committed).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DocumentBlockOverridden {
+    /// The override that was used.
+    pub override_id: OverrideId,
+    /// The overridden kind's key.
+    pub kind: String,
+    /// The document subject that failed.
+    pub subject: Subject,
+    /// The guarded transition, `<entity>.<transition>`.
+    pub guarded: String,
+    /// The guarded record.
+    pub record_id: i64,
+    /// The reason given with the request.
+    pub reason: String,
+    /// The user who requested the override and ran the transition.
+    pub requested_by: i64,
+    /// The user who approved it.
+    pub approved_by: i64,
+}
+
+impl Event for DocumentBlockOverridden {}
 
 /// A file was submitted for review (`submit`, `resubmit`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1583,5 +1808,122 @@ mod tests {
         };
         let json = renox::serde_json::to_string(&superseded).unwrap();
         assert_eq!(json, r#"{"document":5,"replaced_by":8}"#);
+    }
+
+    fn failure(kind: &str, override_mode: OverrideMode, locked: bool) -> BlockFailure {
+        BlockFailure {
+            entry: BlockEntry {
+                kind: kind.into(),
+                guarded: "deployment.activate".into(),
+                mode: BlockMode::Block,
+                override_mode,
+                condition: None,
+                locked,
+            },
+            subject: Subject::new("hr.employee", 1),
+            validity: Validity::Invalid {
+                reason: InvalidReason::Missing,
+                document: None,
+                expired_on: None,
+                pending: None,
+            },
+            message: format!("{kind} missing"),
+        }
+    }
+
+    #[test]
+    fn only_a_with_approval_kind_that_is_not_a_legal_block_offers_an_override() {
+        let health = failure("health_card", OverrideMode::WithApproval, false);
+        let never = failure("noc", OverrideMode::Never, false);
+        let legal = failure("sira_licence", OverrideMode::WithApproval, true);
+        assert!(health.override_allowed());
+        assert!(!never.override_allowed());
+        assert!(!legal.override_allowed());
+        let refusal = BlockRefusal {
+            guarded: "deployment.activate".into(),
+            record_id: 7,
+            failures: vec![health, never, legal],
+        };
+        assert_eq!(
+            refusal.override_links(),
+            vec!["/documents/overrides/new?kind=health_card&guarded=deployment.activate&record=7"]
+        );
+    }
+
+    #[renox::test]
+    async fn without_documents_nothing_is_covered_or_claimed() {
+        let app = TestApp::new(App::new()).await;
+        let guard = guard(app.state());
+        let outcome = guard
+            .check_as(
+                app.state(),
+                "deployment.activate",
+                7,
+                date("2026-12-01"),
+                Some(3),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(outcome.overrides.is_empty());
+        let covered = [CoveredBlock {
+            override_id: OverrideId(4),
+            entry: failure("health_card", OverrideMode::WithApproval, false).entry,
+            subject: Subject::new("hr.employee", 1),
+        }];
+        assert!(guard.claim_overrides(app.db(), &covered, 3).await.unwrap());
+        guard.unclaim_overrides(app.db(), &covered).await.unwrap();
+        guard
+            .overrides_used(app.state(), "deployment.activate", 7, &covered)
+            .await
+            .unwrap();
+    }
+
+    #[renox::test]
+    async fn without_documents_a_guarded_transition_as_just_runs() {
+        let app = TestApp::new(App::new()).await;
+        let value = guarded_transition_as(
+            app.state(),
+            "deployment.activate",
+            7,
+            date("2026-12-02"),
+            Some(3),
+            || async { Ok(9) },
+        )
+        .await
+        .unwrap();
+        assert_eq!(value, 9);
+        let failed: Result<()> = guarded_transition_as(
+            app.state(),
+            "deployment.activate",
+            7,
+            date("2026-12-02"),
+            Some(3),
+            || async { Err(Error::NotFound) },
+        )
+        .await;
+        assert!(matches!(failed, Err(Error::NotFound)));
+    }
+
+    #[test]
+    fn the_override_event_serializes_with_plain_ids() {
+        let event = DocumentBlockOverridden {
+            override_id: OverrideId(4),
+            kind: "health_card".into(),
+            subject: Subject::new("hr.employee", 1),
+            guarded: "deployment.activate".into(),
+            record_id: 7,
+            reason: "renewal booked".into(),
+            requested_by: 2,
+            approved_by: 3,
+        };
+        let json = renox::serde_json::to_value(&event).unwrap();
+        assert_eq!(json["override_id"], 4);
+        assert_eq!(json["kind"], "health_card");
+        assert_eq!(json["guarded"], "deployment.activate");
+        assert_eq!(json["record_id"], 7);
+        assert_eq!(json["requested_by"], 2);
+        assert_eq!(json["approved_by"], 3);
+        assert_eq!(json["reason"], "renewal booked");
     }
 }

@@ -65,13 +65,15 @@ impl DocumentGuard for DocumentsGuard {
         Box::pin(is_valid(db, subject, kind, on_date))
     }
 
-    fn check<'a>(
+    fn check_as<'a>(
         &'a self,
         state: &'a AppState,
         guarded: &'a str,
         record_id: i64,
         on_date: NaiveDate,
+        _actor: Option<i64>,
     ) -> DocumentFuture<'a, std::result::Result<CheckOutcome, BlockRefusal>> {
+        // Overrides are not stored yet: nothing is covered.
         Box::pin(check(state, guarded, record_id, on_date))
     }
 
