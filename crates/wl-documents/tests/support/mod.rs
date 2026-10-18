@@ -17,15 +17,18 @@ use serde::Deserialize;
 use wl_documents::{
     Document, DocumentKind, Documents, KindSeed, NewDocument, WlDocuments, permissions as perm,
 };
-use wl_kernel::Subject;
 use wl_kernel::documents::{
-    BlockCondition, BlockEntry, BlockMode, BlockSubjects, DocumentFuture, FutureWork,
-    PlannedRecord, ReminderSchedule, register_block_subjects, register_future_work,
+    BlockCondition, BlockEntry, BlockMode, BlockSubjects, DocumentAccepted, DocumentFuture,
+    FutureWork, PlannedRecord, ReminderSchedule, register_block_subjects, register_future_work,
     register_reminder_schedule, today,
 };
 use wl_kernel::notify::{
     MessageId, Notifier, NotifyFuture, NotifyRecipient, NotifyRequest, provide_notifier,
 };
+use wl_kernel::tickets::{
+    OpenTicket, TaskCreator, TicketFuture, TicketId, TicketRef, provide_task_creator,
+};
+use wl_kernel::{ClientConfig, Subject};
 
 /// The pages extend the app's layout; a package test has no app, so it
 /// brings the smallest one.
@@ -339,6 +342,32 @@ pub fn ecas_certificate() -> KindSeed {
         .responsible_role("qc_inspector")
 }
 
+/// The work permit of the expiry rule (#49): a legal block, hence
+/// compliance-critical, on `deployment.activate` and `deployment.resume`;
+/// PRO renews it and HR is told as well.
+pub fn permit() -> KindSeed {
+    KindSeed::new("work_permit", "Work permit")
+        .subject_type("hr.employee")
+        .expires()
+        .responsible_role("pro")
+        .also_notify(&["hr"])
+        .legal_block()
+        .blocks("deployment.activate", BlockMode::Block)
+        .blocks("deployment.resume", BlockMode::Block)
+}
+
+/// A kind that blocks `deployment.activate` but is not compliance-critical.
+pub fn site_card() -> KindSeed {
+    KindSeed::new("site_card", "Site card")
+        .subject_type("hr.employee")
+        .expires()
+        .responsible_role("pro")
+        .blocks("deployment.activate", BlockMode::Block)
+}
+
+/// The owner role of the `client.toml` of the expiry run.
+pub const OWNER: &str = "md";
+
 /// A planned fire-safety visit of a vendor.
 #[derive(Debug, Clone)]
 pub struct Visit {
@@ -363,9 +392,55 @@ pub struct Visit {
 pub struct Plan {
     visits: Arc<Mutex<Vec<Visit>>>,
     schedule: Arc<Mutex<Option<Vec<Scope>>>>,
+    deployments: Arc<Mutex<Vec<Deployment>>>,
+    failing: Arc<Mutex<Vec<i64>>>,
+}
+
+/// A deployment of a worker: running now (`date` is when it started) or
+/// planned for `date`.
+#[derive(Debug, Clone)]
+pub struct Deployment {
+    /// The record's id.
+    pub id: i64,
+    /// The worker's id (an `hr.employee`).
+    pub worker: i64,
+    /// Running now, else planned.
+    pub active: bool,
+    /// The start date.
+    pub date: NaiveDate,
 }
 
 impl Plan {
+    /// Ravi's deployment `id` is running since `date`.
+    pub fn active_deployment(&self, worker: i64, id: i64, date: NaiveDate) {
+        self.push_deployment(worker, id, true, date);
+    }
+
+    /// The deployment `id` of `worker` is planned for `date`.
+    pub fn planned_deployment(&self, worker: i64, id: i64, date: NaiveDate) {
+        self.push_deployment(worker, id, false, date);
+    }
+
+    fn push_deployment(&self, worker: i64, id: i64, active: bool, date: NaiveDate) {
+        self.deployments
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(Deployment {
+                id,
+                worker,
+                active,
+                date,
+            });
+    }
+
+    /// Makes the `FutureWork` of the deployments fail for `worker`'s
+    /// documents; `None` lets it answer again.
+    pub fn fail_for(&self, worker: Option<i64>) {
+        let mut failing = self.failing.lock().unwrap_or_else(PoisonError::into_inner);
+        failing.clear();
+        failing.extend(worker);
+    }
+
     /// Plans a fire-alarm visit of SafeFire in `scope` on `date`; returns
     /// the visit's id (1, 2, ... in the order planned).
     pub fn visit(&self, scope: Scope, date: NaiveDate) -> i64 {
@@ -441,6 +516,70 @@ impl FutureWork for PlannedVisits {
     }
 }
 
+/// The test `FutureWork` of `deployment.activate` and `deployment.resume`:
+/// the [`Plan`]'s running deployments of the worker (`open_for`) and those
+/// planned from a date (`planned_from`). It fails for the workers the plan
+/// names.
+struct PlannedDeployments;
+
+impl PlannedDeployments {
+    fn records(
+        state: &AppState,
+        subject: &Subject,
+        active: bool,
+        from: Option<NaiveDate>,
+    ) -> Result<Vec<PlannedRecord>> {
+        let Some(plan) = state.provided::<Plan>() else {
+            return Ok(Vec::new());
+        };
+        let failing = plan.failing.lock().unwrap_or_else(PoisonError::into_inner);
+        if failing.contains(&subject.subject_id) {
+            return Err(Error::Status(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "the deployments are not available".into(),
+            ));
+        }
+        drop(failing);
+        let deployments = plan
+            .deployments
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone();
+        Ok(deployments
+            .into_iter()
+            .filter(|d| d.worker == subject.subject_id && d.active == active)
+            .filter(|d| from.is_none_or(|from| d.date >= from))
+            .map(|d| PlannedRecord {
+                record: Subject::new("ops.deployment", d.id),
+                date: d.date,
+                label: format!("Deployment {}", d.id),
+                scope: None,
+            })
+            .collect())
+    }
+}
+
+impl FutureWork for PlannedDeployments {
+    fn planned_from<'a>(
+        &'a self,
+        state: &'a AppState,
+        _entry: &'a BlockEntry,
+        subject: &'a Subject,
+        from: NaiveDate,
+    ) -> DocumentFuture<'a, Vec<PlannedRecord>> {
+        Box::pin(async move { Self::records(state, subject, false, Some(from)) })
+    }
+
+    fn open_for<'a>(
+        &'a self,
+        state: &'a AppState,
+        _entry: &'a BlockEntry,
+        subject: &'a Subject,
+    ) -> DocumentFuture<'a, Vec<PlannedRecord>> {
+        Box::pin(async move { Self::records(state, subject, true, None) })
+    }
+}
+
 /// The test `ReminderSchedule` of the ECAS certificate: what the [`Plan`]
 /// names, else no answer.
 struct PlanSchedule;
@@ -511,10 +650,125 @@ impl Notifier for Recording {
     }
 }
 
+/// A [`TaskCreator`] that records the tasks opened and completed instead of
+/// opening tickets. A task is found by its source key until it is
+/// completed.
+#[derive(Clone, Default)]
+pub struct Tasks(Arc<Mutex<TaskLog>>);
+
+#[derive(Default)]
+struct TaskLog {
+    opened: Vec<OpenTicket>,
+    completed: Vec<(TicketId, String)>,
+}
+
+impl Tasks {
+    /// Every task opened so far, oldest first; task `n` has the ticket id
+    /// `n` (from 1).
+    pub fn opened(&self) -> Vec<OpenTicket> {
+        self.log().opened.clone()
+    }
+
+    /// Every `complete` call that closed a task, with its note.
+    pub fn completed(&self) -> Vec<(TicketId, String)> {
+        self.log().completed.clone()
+    }
+
+    fn log(&self) -> std::sync::MutexGuard<'_, TaskLog> {
+        self.0.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+}
+
+impl TaskCreator for Tasks {
+    fn open<'a>(
+        &'a self,
+        _state: &'a AppState,
+        ticket: OpenTicket,
+    ) -> TicketFuture<'a, Option<TicketRef>> {
+        Box::pin(async move {
+            let mut log = self.log();
+            log.opened.push(ticket);
+            let n = log.opened.len();
+            Ok(Some(TicketRef {
+                id: TicketId(n as i64),
+                number: format!("TKT-2026-{n:04}"),
+            }))
+        })
+    }
+
+    fn find_open<'a>(
+        &'a self,
+        _state: &'a AppState,
+        source_key: &'a str,
+    ) -> TicketFuture<'a, Option<TicketRef>> {
+        Box::pin(async move {
+            let log = self.log();
+            Ok(log
+                .opened
+                .iter()
+                .position(|t| t.source_key.as_deref() == Some(source_key))
+                .filter(|n| !log.completed.iter().any(|(id, _)| id.0 == *n as i64 + 1))
+                .map(|n| TicketRef {
+                    id: TicketId(n as i64 + 1),
+                    number: format!("TKT-2026-{:04}", n + 1),
+                }))
+        })
+    }
+
+    fn complete<'a>(
+        &'a self,
+        _state: &'a AppState,
+        ticket: TicketId,
+        note: &'a str,
+    ) -> TicketFuture<'a, bool> {
+        Box::pin(async move {
+            let mut log = self.log();
+            let known = ticket.0 >= 1 && ticket.0 as usize <= log.opened.len();
+            let done = log.completed.iter().any(|(id, _)| *id == ticket);
+            if !known || done {
+                return Ok(false);
+            }
+            log.completed.push((ticket, note.to_owned()));
+            Ok(true)
+        })
+    }
+}
+
+/// What the app under test boots with.
+#[derive(Clone)]
+pub struct Options {
+    /// wl-notify is on (a recording notifier), else the kernel's.
+    pub notify: bool,
+    /// wl-ticketing is on (the recording [`Tasks`]), else the kernel's
+    /// `NoTickets`.
+    pub tickets: bool,
+    /// `[roles] owner` of the `client.toml`; without it no config is
+    /// provided and the owner is the company admin.
+    pub owner: Option<&'static str>,
+    /// Events are recorded, not delivered; off, the listeners run and
+    /// [`Booted::accepted_events`] lists the `DocumentAccepted` seen.
+    pub fake_events: bool,
+}
+
+impl Default for Options {
+    fn default() -> Self {
+        Options {
+            notify: true,
+            tickets: true,
+            owner: None,
+            fake_events: true,
+        }
+    }
+}
+
 /// The app under test.
 pub struct Booted {
     /// The app.
     pub app: TestApp,
+    /// What the app's task creator recorded.
+    pub tasks: Tasks,
+    /// The `DocumentAccepted` seen by the live listener.
+    accepted_seen: Arc<Mutex<Vec<DocumentAccepted>>>,
     /// What the app's notifier recorded.
     pub notices: Recording,
     /// The planned work and the reminder schedule of the app.
@@ -524,6 +778,14 @@ pub struct Booted {
 }
 
 impl Booted {
+    /// The `DocumentAccepted` events the live listener saw, oldest first.
+    pub fn accepted_events(&self) -> Vec<DocumentAccepted> {
+        self.accepted_seen
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+
     /// The database.
     pub fn db(&self) -> &Db {
         self.app.db()
@@ -651,7 +913,8 @@ impl Booted {
 struct Harness {
     notices: Recording,
     plan: Plan,
-    notify: bool,
+    tasks: Tasks,
+    options: Options,
 }
 
 #[derive(Deserialize)]
@@ -729,8 +992,18 @@ impl Module for Harness {
     }
 
     fn register(&self, app: &mut Registry) {
-        if self.notify {
+        if self.options.notify {
             provide_notifier(app, self.notices.clone());
+        }
+        if self.options.tickets {
+            provide_task_creator(app, self.tasks.clone());
+        }
+        if let Some(owner) = self.options.owner {
+            let text = format!(
+                "[client]\nname = \"Acme Staffing LLC\"\napp = \"staffing\"\n\n[roles]\nowner = \"{owner}\"\n"
+            );
+            let config = ClientConfig::parse(&text).expect("a valid client.toml");
+            app.provide(Arc::new(config));
         }
         app.provide(self.plan.clone());
     }
@@ -752,6 +1025,15 @@ pub async fn boot() -> Booted {
 /// [`boot`], with the recording notifier only when `notify` (wl-notify on);
 /// without it the kernel's `NoNotifier` is the app's notifier.
 pub async fn boot_with(notify: bool) -> Booted {
+    boot_options(Options {
+        notify,
+        ..Options::default()
+    })
+    .await
+}
+
+/// [`boot`], as `options` say.
+pub async fn boot_options(options: Options) -> Booted {
     let views = tempfile::tempdir().expect("a temporary views directory");
     let path = views.path().join("layouts/app.html");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -763,12 +1045,19 @@ pub async fn boot_with(notify: bool) -> Booted {
     register_block_subjects("attendance_record.accept", Attendance);
     register_block_subjects("booking.book", Visits);
     register_block_subjects("session.start", Sessions);
+    register_block_subjects("deployment.resume", Deployments);
 
     register_future_work("ticket.resolve", PlannedVisits);
+    register_future_work("deployment.activate", PlannedDeployments);
+    register_future_work("deployment.resume", PlannedDeployments);
     register_reminder_schedule("ecas_certificate", PlanSchedule);
 
     let notices = Recording::default();
     let plan = Plan::default();
+    let tasks = Tasks::default();
+    let accepted_seen: Arc<Mutex<Vec<DocumentAccepted>>> = Arc::default();
+    let seen = accepted_seen.clone();
+    let fake_events = options.fake_events;
     let app = App::new()
         .module(Auth::new())
         .module(Permissions)
@@ -776,14 +1065,28 @@ pub async fn boot_with(notify: bool) -> Booted {
         .module(Harness {
             notices: notices.clone(),
             plan: plan.clone(),
-            notify,
+            tasks: tasks.clone(),
+            options,
+        })
+        .listen(move |event: DocumentAccepted, _state: AppState| {
+            let seen = seen.clone();
+            async move {
+                seen.lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .push(event);
+                Ok(())
+            }
         });
     let dir = views.path().to_path_buf();
     let app = TestApp::with_config(app, |c| c.views_path = dir).await;
-    // Events are recorded for `assert_emitted`; nothing here listens.
-    app.fake_events();
+    if fake_events {
+        // Events are recorded for `assert_emitted`; no listener runs.
+        app.fake_events();
+    }
     Booted {
         app,
+        tasks,
+        accepted_seen,
         notices,
         plan,
         _views: views,

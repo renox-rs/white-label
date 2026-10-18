@@ -4,7 +4,9 @@
 mod support;
 
 use wl_kernel::Subject;
-use wl_kernel::tickets::{Assignee, OpenTicket, TASK_CATEGORY, TaskComment, task_creator};
+use wl_kernel::tickets::{
+    Assignee, OpenTicket, TASK_CATEGORY, TaskComment, TicketId, task_creator,
+};
 use wl_ticketing::{Comment, CommentVisibility, Priority, TicketStatus, permissions as perm};
 
 use support::{boot, dubai};
@@ -101,6 +103,58 @@ async fn a_task_is_opened_found_commented_and_shown() {
     .await
     .assert_ok();
     assert_eq!(creator.find_open(t.state(), KEY).await.unwrap(), None);
+}
+
+/// AC6 of #49: `complete` closes an assigned task ticket with the note and
+/// emits `TicketClosed`; a ticket that is closed already, or unknown, is
+/// left alone and answers `false`; a blank note is refused.
+#[renox::test]
+async fn a_task_is_completed_by_its_source() {
+    let t = boot().await;
+    let holder = t.coordinator().await;
+    let creator = task_creator(t.state());
+    let key = "documents.renewal:hr.employee:7:work_permit";
+    let opened = creator
+        .open(
+            t.state(),
+            OpenTicket::new(
+                Subject::new("hr.employee", 7),
+                TASK_CATEGORY,
+                "Renew Work permit of Ravi S.",
+            )
+            .assign_to(Assignee::user(holder.id))
+            .source_key(key),
+        )
+        .await
+        .unwrap()
+        .expect("ticketing is on");
+    assert_eq!(t.ticket(opened.id.0).await.status, TicketStatus::Assigned);
+
+    let refused = creator.complete(t.state(), opened.id, "  ").await;
+    assert!(refused.is_err(), "a blank note is refused");
+    assert_eq!(t.ticket(opened.id.0).await.status, TicketStatus::Assigned);
+    assert!(t.closed.all().is_empty());
+
+    let note = "Renewed: Work permit, valid until 5 Dec 2027";
+    assert!(creator.complete(t.state(), opened.id, note).await.unwrap());
+
+    let ticket = t.ticket(opened.id.0).await;
+    assert_eq!(ticket.status, TicketStatus::Closed);
+    let closed = t.closed.all();
+    assert_eq!(closed.len(), 1);
+    assert_eq!(closed[0].ticket, opened.id);
+    assert_eq!(creator.find_open(t.state(), key).await.unwrap(), None);
+
+    // Closed already: nothing happens again.
+    assert!(!creator.complete(t.state(), opened.id, note).await.unwrap());
+    assert_eq!(t.closed.all().len(), 1);
+    // An unknown ticket.
+    assert!(
+        !creator
+            .complete(t.state(), TicketId(9999), note)
+            .await
+            .unwrap()
+    );
 }
 
 /// A task without an assignee stays `open`; a blank source key is no key.
