@@ -2,6 +2,7 @@
 #![warn(missing_docs)]
 
 pub mod documents;
+pub mod expiry;
 pub mod flags;
 pub mod guard;
 pub mod kinds;
@@ -17,6 +18,7 @@ pub use documents::{
     Attach, AttachReason, AttachRefused, Document, DocumentSource, DocumentStatus, DocumentVersion,
     Documents, NewDocument,
 };
+pub use expiry::{AffectedItem, ReminderLog};
 pub use flags::DocumentFlag;
 pub use guard::DocumentsGuard;
 pub use kinds::{
@@ -82,6 +84,8 @@ impl Module for WlDocuments {
             .model::<Document>()
             .model::<DocumentVersion>()
             .model::<DocumentFlag>()
+            .model::<AffectedItem>()
+            .model::<ReminderLog>()
             .view_data::<pages::ReviewQueuePage>()
             .view_data::<pages::FlagsPage>()
             .view_data::<pages::KindsPage>()
