@@ -77,7 +77,10 @@ async fn a_refund_is_approved_by_another_user_and_paid_with_a_voucher() {
     assert_eq!(events[0].refund, paid.refund_id());
     assert_eq!(events[0].party, BLUE_DUNES);
     assert_eq!(events[0].amount, 100_000);
-    assert_eq!(events[0].source, payment.subject());
+    assert_eq!(
+        Some(events[0].source.clone()),
+        wl_kernel::payments::RefundSource::from_subject(&payment.subject())
+    );
     // Money out is not a payment received.
     assert_eq!(t.received.all().len(), 1);
     assert_eq!(credit(&t).await, 200_000);

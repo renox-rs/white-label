@@ -20,7 +20,7 @@
 use renox::prelude::*;
 use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx};
 use serde::{Deserialize, Serialize};
-use wl_kernel::payments::{PaymentMethod, RefundPaid};
+use wl_kernel::payments::{PaymentMethod, RefundPaid, RefundSource as KernelRefundSource};
 
 use crate::permissions;
 use crate::refund::{Refund, RefundStatus};
@@ -218,7 +218,15 @@ pub(crate) fn register(app: &mut Registry) {
                     refund: refund.refund_id(),
                     party: refund.party(),
                     amount: refund.amount,
-                    source: refund.source_subject(),
+                    source: KernelRefundSource::from_subject(&refund.source_subject()).ok_or_else(
+                        || {
+                            Error::Internal(renox::anyhow::anyhow!(
+                                "refund {} has an unknown source {}",
+                                refund.id,
+                                refund.source_subject()
+                            ))
+                        },
+                    )?,
                 })
                 .await
         },

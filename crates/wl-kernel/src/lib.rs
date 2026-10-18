@@ -65,9 +65,10 @@ pub use parties::{
     PartyId, PartyKind, PartyStatus, PartySummary, PartyUnblocked,
 };
 pub use payments::{
-    AllocationTarget, Direction, NoPayments, PaymentId, PaymentMethod, PaymentReceived,
-    PaymentRecorder, PaymentReversed, PaymentSource, PaymentStatus, PaymentSummary, RecordPayment,
-    RefundId, RefundPaid, ReversalReason,
+    AllocationTarget, DEPOSIT_SUBJECT_TYPE, DepositId, Direction, NoPayments, PaymentId,
+    PaymentMethod, PaymentReceived, PaymentRecorder, PaymentReversed, PaymentSource, PaymentStatus,
+    PaymentSummary, RecordPayment, RefundAttemptRef, RefundFailed, RefundFailedFrom,
+    RefundFailureKind, RefundId, RefundPaid, RefundSource, ReversalReason,
 };
 pub use scopes::COMPANY_ADMIN_ROLE;
 pub use subject::Subject;

@@ -4,7 +4,7 @@
 //!
 //! `wl-payments` provides a [`PaymentRecorder`] with
 //! [`provide_payment_recorder`] and emits [`PaymentReceived`],
-//! [`PaymentReversed`] and [`RefundPaid`]. Other modules record payments,
+//! [`PaymentReversed`], [`RefundPaid`] and [`RefundFailed`]. Other modules record payments,
 //! read a party's credit and reverse payments through [`payment_recorder`],
 //! which falls back to [`NoPayments`] when the `payments` module is off:
 //!
@@ -30,9 +30,9 @@ use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::invoicing::{INVOICE_SUBJECT_TYPE, InvoiceId};
+use crate::invoicing::{CREDIT_NOTE_SUBJECT_TYPE, INVOICE_SUBJECT_TYPE, InvoiceId};
 use crate::numbering::{Reset, Series};
-use crate::parties::PartyId;
+use crate::parties::{PARTY_SUBJECT_TYPE, PartyId};
 use crate::subject::Subject;
 
 /// The subject type of a payment, for [`Subject`] references.
@@ -40,6 +40,9 @@ pub const PAYMENT_SUBJECT_TYPE: &str = "payments.payment";
 
 /// The subject type of a refund, for [`Subject`] references.
 pub const REFUND_SUBJECT_TYPE: &str = "payments.refund";
+
+/// The subject type of a deposit, for [`Subject`] references.
+pub const DEPOSIT_SUBJECT_TYPE: &str = "payments.deposit";
 
 /// The currency of a payment that names none.
 pub const DEFAULT_CURRENCY: &str = "AED";
@@ -166,6 +169,113 @@ impl From<i64> for RefundId {
     }
 }
 
+/// The id of a deposit.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default, Serialize, Deserialize,
+)]
+#[serde(transparent)]
+pub struct DepositId(pub i64);
+
+impl DepositId {
+    /// The deposit as a [`Subject`]: `payments.deposit:3`.
+    pub fn subject(self) -> Subject {
+        Subject::new(DEPOSIT_SUBJECT_TYPE, self.0)
+    }
+}
+
+impl fmt::Display for DepositId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl From<i64> for DepositId {
+    fn from(id: i64) -> Self {
+        DepositId(id)
+    }
+}
+
+/// What a refund is paid back from (wl-payments §3). All sources are
+/// listed, so later features add no variant. A refund stores it as a
+/// [`Subject`] (type and id); [`kind`](RefundSource::kind) tells the
+/// sources apart when their subject types belong to other modules.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(tag = "kind", content = "subject", rename_all = "snake_case")]
+pub enum RefundSource {
+    /// The unallocated amount of an incoming payment.
+    Payment(PaymentId),
+    /// A credit note (`invoicing.credit_note`).
+    CreditNote(Subject),
+    /// A deposit held for the party.
+    Deposit(DepositId),
+    /// The party's credit balance.
+    PartyCredit(PartyId),
+    /// A payer's credit balance, owned by another module.
+    PayerCredit(Subject),
+    /// A cancelled or reduced order, owned by another module.
+    Order(Subject),
+    /// A cancelled booking, owned by another module.
+    Booking(Subject),
+}
+
+impl RefundSource {
+    /// The source as a [`Subject`], e.g. `payments.payment:42`.
+    pub fn subject(&self) -> Subject {
+        match self {
+            RefundSource::Payment(id) => id.subject(),
+            RefundSource::Deposit(id) => id.subject(),
+            RefundSource::PartyCredit(id) => id.subject(),
+            RefundSource::CreditNote(s)
+            | RefundSource::PayerCredit(s)
+            | RefundSource::Order(s)
+            | RefundSource::Booking(s) => s.clone(),
+        }
+    }
+
+    /// The stored name of the kind: `payment`, `credit_note`, `deposit`,
+    /// `party_credit`, `payer_credit`, `order` or `booking`.
+    pub fn kind(&self) -> &'static str {
+        match self {
+            RefundSource::Payment(_) => "payment",
+            RefundSource::CreditNote(_) => "credit_note",
+            RefundSource::Deposit(_) => "deposit",
+            RefundSource::PartyCredit(_) => "party_credit",
+            RefundSource::PayerCredit(_) => "payer_credit",
+            RefundSource::Order(_) => "order",
+            RefundSource::Booking(_) => "booking",
+        }
+    }
+
+    /// The source a stored [`Subject`] names, for the subject types this
+    /// module knows (payment, credit note, deposit, party); `None` for
+    /// another type, whose owner gives the kind through
+    /// [`RefundSource::from_kind`].
+    pub fn from_subject(subject: &Subject) -> Option<Self> {
+        match subject.subject_type.as_str() {
+            PAYMENT_SUBJECT_TYPE => Some(RefundSource::Payment(PaymentId(subject.subject_id))),
+            CREDIT_NOTE_SUBJECT_TYPE => Some(RefundSource::CreditNote(subject.clone())),
+            DEPOSIT_SUBJECT_TYPE => Some(RefundSource::Deposit(DepositId(subject.subject_id))),
+            PARTY_SUBJECT_TYPE => Some(RefundSource::PartyCredit(PartyId(subject.subject_id))),
+            _ => None,
+        }
+    }
+
+    /// The source of this [`kind`](RefundSource::kind) for `subject`;
+    /// `None` for an unknown kind.
+    pub fn from_kind(kind: &str, subject: &Subject) -> Option<Self> {
+        match kind {
+            "payment" => Some(RefundSource::Payment(PaymentId(subject.subject_id))),
+            "credit_note" => Some(RefundSource::CreditNote(subject.clone())),
+            "deposit" => Some(RefundSource::Deposit(DepositId(subject.subject_id))),
+            "party_credit" => Some(RefundSource::PartyCredit(PartyId(subject.subject_id))),
+            "payer_credit" => Some(RefundSource::PayerCredit(subject.clone())),
+            "order" => Some(RefundSource::Order(subject.clone())),
+            "booking" => Some(RefundSource::Booking(subject.clone())),
+            _ => None,
+        }
+    }
+}
+
 /// Whether money comes in or goes out.
 #[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum Direction {
@@ -257,6 +367,26 @@ impl ReversalReason {
     /// Whether a user may give it to `reverse`: not `chargeback`.
     pub fn is_manual(self) -> bool {
         self != ReversalReason::Chargeback
+    }
+}
+
+/// Why a refund failed. A user gives `bank_return` or `card_unavailable`;
+/// `gateway_declined` only comes from the system.
+#[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum RefundFailureKind {
+    /// The payment gateway declined the refund.
+    #[default]
+    GatewayDeclined,
+    /// The card cannot take the refund (closed, expired).
+    CardUnavailable,
+    /// The bank returned the transfer or cheque.
+    BankReturn,
+}
+
+impl RefundFailureKind {
+    /// Whether a user may give it to `fail`: not `gateway_declined`.
+    pub fn is_manual(self) -> bool {
+        self != RefundFailureKind::GatewayDeclined
     }
 }
 
@@ -661,12 +791,61 @@ pub struct RefundPaid {
     pub party: PartyId,
     /// The amount, in fils.
     pub amount: i64,
-    /// The record the refund was paid out of (a payment) or the party's
-    /// credit.
-    pub source: Subject,
+    /// What the refund was paid out of.
+    pub source: RefundSource,
 }
 
 impl Event for RefundPaid {}
+
+/// The state a refund failed from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RefundFailedFrom {
+    /// Approved and not yet paid (a gateway decline).
+    Approved,
+    /// Paid out and then returned.
+    Paid,
+}
+
+/// The attempt to pay a refund that failed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RefundAttemptRef {
+    /// The attempt row.
+    pub id: i64,
+    /// Its number: 1, 2, ...
+    pub number: i32,
+}
+
+/// A refund failed (`fail`): the money is back on its source. The owner of
+/// a source outside `wl-payments` (credit note, payer credit, order,
+/// booking) restores its side.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RefundFailed {
+    /// The refund.
+    pub refund: RefundId,
+    /// Who was to be paid.
+    pub party: PartyId,
+    /// The amount, in fils.
+    pub amount: i64,
+    /// The ISO currency code.
+    pub currency: String,
+    /// What the refund was to be paid out of.
+    pub source: RefundSource,
+    /// How it was to be paid.
+    pub method: PaymentMethod,
+    /// Why it failed.
+    pub kind: RefundFailureKind,
+    /// The reason given.
+    pub reason: String,
+    /// The attempt that failed.
+    pub attempt: RefundAttemptRef,
+    /// The state it failed from.
+    pub from: RefundFailedFrom,
+    /// The outgoing payment that was reversed, if the refund was paid.
+    pub outgoing_payment: Option<PaymentId>,
+}
+
+impl Event for RefundFailed {}
 
 #[cfg(test)]
 mod tests {
@@ -839,10 +1018,107 @@ mod tests {
             refund: RefundId(7),
             party: PartyId(2),
             amount: 50_000,
-            source: PaymentId(1).subject(),
+            source: RefundSource::Payment(PaymentId(1)),
         };
         let json = renox::serde_json::to_value(&paid).unwrap();
         assert_eq!(json["refund"], 7);
         assert_eq!(json["amount"], 50_000);
+        assert_eq!(json["source"]["kind"], "payment");
+        assert_eq!(json["source"]["subject"], 1);
+    }
+
+    #[test]
+    fn deposit_ids_are_subjects() {
+        assert_eq!(DepositId(3).subject().to_string(), "payments.deposit:3");
+        assert_eq!(DepositId(3).to_string(), "3");
+        assert_eq!(DepositId::from(5), DepositId(5));
+    }
+
+    #[test]
+    fn every_refund_source_has_a_subject_and_round_trips() {
+        let note = Subject::new(CREDIT_NOTE_SUBJECT_TYPE, 7);
+        let sources = [
+            (RefundSource::Payment(PaymentId(1)), "payments.payment:1"),
+            (
+                RefundSource::CreditNote(note.clone()),
+                "invoicing.credit_note:7",
+            ),
+            (RefundSource::Deposit(DepositId(2)), "payments.deposit:2"),
+            (RefundSource::PartyCredit(PartyId(3)), "parties.party:3"),
+            (
+                RefundSource::PayerCredit(Subject::new("invoicing.payer_credit", 4)),
+                "invoicing.payer_credit:4",
+            ),
+            (
+                RefundSource::Order(Subject::new("sales.order", 5)),
+                "sales.order:5",
+            ),
+            (
+                RefundSource::Booking(Subject::new("booking.booking", 6)),
+                "booking.booking:6",
+            ),
+        ];
+        for (source, subject) in sources {
+            assert_eq!(source.subject().to_string(), subject);
+            let json = renox::serde_json::to_string(&source).unwrap();
+            let back: RefundSource = renox::serde_json::from_str(&json).unwrap();
+            assert_eq!(back, source);
+            assert_eq!(
+                RefundSource::from_kind(source.kind(), &source.subject()),
+                Some(source.clone())
+            );
+        }
+        assert_eq!(
+            RefundSource::from_subject(&note),
+            Some(RefundSource::CreditNote(note.clone()))
+        );
+        assert_eq!(
+            RefundSource::from_subject(&PaymentId(9).subject()),
+            Some(RefundSource::Payment(PaymentId(9)))
+        );
+        assert_eq!(
+            RefundSource::from_subject(&Subject::new("sales.order", 1)),
+            None
+        );
+        assert_eq!(RefundSource::from_kind("nope", &note), None);
+    }
+
+    #[test]
+    fn failure_kinds_are_stored_in_snake_case_and_the_system_owns_a_decline() {
+        let kinds: Vec<_> = RefundFailureKind::ALL.iter().map(|k| k.as_str()).collect();
+        assert_eq!(
+            kinds,
+            ["gateway_declined", "card_unavailable", "bank_return"]
+        );
+        assert!(!RefundFailureKind::GatewayDeclined.is_manual());
+        assert!(RefundFailureKind::CardUnavailable.is_manual());
+        assert!(RefundFailureKind::BankReturn.is_manual());
+    }
+
+    #[test]
+    fn the_refund_failed_event_serializes_with_plain_ids() {
+        let e = RefundFailed {
+            refund: RefundId(7),
+            party: PartyId(2),
+            amount: 50_000,
+            currency: "AED".into(),
+            source: RefundSource::CreditNote(Subject::new(CREDIT_NOTE_SUBJECT_TYPE, 7)),
+            method: PaymentMethod::Gateway,
+            kind: RefundFailureKind::GatewayDeclined,
+            reason: "card expired".into(),
+            attempt: RefundAttemptRef { id: 11, number: 1 },
+            from: RefundFailedFrom::Approved,
+            outgoing_payment: None,
+        };
+        let json = renox::serde_json::to_value(&e).unwrap();
+        assert_eq!(json["refund"], 7);
+        assert_eq!(json["amount"], 50_000);
+        assert_eq!(json["source"]["kind"], "credit_note");
+        assert_eq!(json["source"]["subject"]["subject_id"], 7);
+        assert_eq!(json["attempt"]["number"], 1);
+        assert_eq!(json["from"], "approved");
+        assert_eq!(json["outgoing_payment"], renox::serde_json::Value::Null);
+        let back: RefundFailed = renox::serde_json::from_value(json).unwrap();
+        assert_eq!(back, e);
     }
 }
