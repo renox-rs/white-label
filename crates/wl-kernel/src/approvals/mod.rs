@@ -7,6 +7,7 @@
 //! `wl_approval_decisions`. A request's status moves only through its
 //! machine ([`ApprovalRequest`]), whose transitions are all `system`.
 
+pub mod decide;
 pub mod end;
 pub mod events;
 pub mod intercept;
@@ -17,6 +18,7 @@ pub mod submit;
 
 use renox::prelude::*;
 
+pub use decide::{Approval, approve, approve_in, ensure_approver};
 pub use end::{End, Ended, SubjectEnd, end_in, expire, reject, withdraw};
 pub use events::{ApprovalDecided, ApprovalEnd, ApprovalRequested};
 pub use intercept::ApprovalInterceptor;

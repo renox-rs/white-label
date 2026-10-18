@@ -8,6 +8,7 @@
 //!     .amount_above(500_000) // AED 5,000.00, in fils
 //!     .step(["property_manager"])
 //!     .step(["finance", "owner"]) // one of several roles
+//!     .step_permission("payments.approve_refund") // any holder of it
 //!     .register();
 //! ```
 //!
@@ -108,12 +109,19 @@ impl Condition {
     }
 }
 
-/// One step of a policy: any one user holding one of these roles (in the
-/// subject's scope) may decide it.
+/// One step of a policy: any one user holding one of these roles, or the
+/// step's permission, in the subject's scope may decide it.
+///
+/// Steps are stored as JSON (in the policy and, copied, in each request), so
+/// a step written before `permission` existed reads as one without it.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct Step {
     /// The roles, any one of which may decide the step.
     pub roles: Vec<String>,
+    /// A permission whose holders (in the subject's scope) may decide the
+    /// step, instead of or besides the roles.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub permission: Option<String>,
 }
 
 impl Step {
@@ -121,12 +129,32 @@ impl Step {
     pub fn one_of<S: Into<String>>(roles: impl IntoIterator<Item = S>) -> Self {
         Step {
             roles: roles.into_iter().map(Into::into).collect(),
+            permission: None,
         }
+    }
+
+    /// A step decided by any holder of `permission`, whatever their role.
+    pub fn holders_of(permission: impl Into<String>) -> Self {
+        Step {
+            roles: Vec::new(),
+            permission: Some(permission.into()),
+        }
+    }
+
+    /// The step, also decided by any holder of `permission`.
+    pub fn or_permission(mut self, permission: impl Into<String>) -> Self {
+        self.permission = Some(permission.into());
+        self
     }
 
     /// Whether `role` may decide this step.
     pub fn allows(&self, role: &str) -> bool {
         self.roles.iter().any(|r| r == role)
+    }
+
+    /// Whether the step names nobody: no role and no permission.
+    pub fn is_empty(&self) -> bool {
+        self.roles.is_empty() && self.permission.is_none()
     }
 }
 
@@ -253,6 +281,13 @@ impl PolicyDefault {
         self
     }
 
+    /// Adds a step, decided by any holder of `permission` in the subject's
+    /// scope.
+    pub fn step_permission(mut self, permission: impl Into<String>) -> Self {
+        self.steps.push(Step::holders_of(permission));
+        self
+    }
+
     /// Turns segregation of duties off (it is on by default).
     pub fn without_sod(mut self) -> Self {
         self.sod = false;
@@ -286,11 +321,17 @@ impl PolicyDefault {
     ///
     /// # Panics
     ///
-    /// When the policy has no step: a programming error, found at boot.
+    /// When the policy has no step, or a step names no role and no
+    /// permission: a programming error, found at boot.
     pub fn register(self) {
         assert!(
             !self.steps.is_empty(),
             "the approval policy of `{}` has no step",
+            self.action
+        );
+        assert!(
+            !self.steps.iter().any(Step::is_empty),
+            "the approval policy of `{}` has a step nobody may decide",
             self.action
         );
         let mut defaults = DEFAULTS.write().unwrap_or_else(PoisonError::into_inner);
@@ -425,5 +466,42 @@ mod tests {
         assert_eq!(row.steps.len(), 2);
         assert!(row.steps[1].allows("owner"));
         assert!(!row.steps[0].allows("owner"));
+    }
+
+    #[test]
+    fn a_step_may_name_a_permission() {
+        let row = PolicyDefault::new("payments.refund")
+            .step(["property_manager"])
+            .step_permission("payments.approve_refund")
+            .to_policy();
+        assert_eq!(row.steps[0].permission, None);
+        assert_eq!(row.steps[1], Step::holders_of("payments.approve_refund"));
+        assert!(row.steps[1].roles.is_empty() && !row.steps[1].is_empty());
+        let both = Step::one_of(["finance"]).or_permission("payments.approve_refund");
+        assert!(both.allows("finance"));
+        assert_eq!(both.permission.as_deref(), Some("payments.approve_refund"));
+        assert!(Step::one_of(Vec::<String>::new()).is_empty());
+    }
+
+    #[test]
+    fn steps_stored_without_a_permission_still_read() {
+        let step: Step = renox::serde_json::from_value(json!({ "roles": ["finance"] })).unwrap();
+        assert_eq!(step, Step::one_of(["finance"]));
+        assert_eq!(
+            renox::serde_json::to_value(Step::one_of(["finance"])).unwrap(),
+            json!({ "roles": ["finance"] })
+        );
+        assert_eq!(
+            renox::serde_json::to_value(Step::holders_of("p")).unwrap(),
+            json!({ "roles": [], "permission": "p" })
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "has a step nobody may decide")]
+    fn a_step_naming_nobody_is_refused_at_boot() {
+        PolicyDefault::new("tests.nobody")
+            .step(Vec::<String>::new())
+            .register();
     }
 }

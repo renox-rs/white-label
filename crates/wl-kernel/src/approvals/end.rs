@@ -21,7 +21,7 @@
 //! If any step fails the whole end rolls back. Once the transaction has
 //! committed, [`Ended::announce`] emits the engine's `Transitioned` events,
 //! `ApprovalDecided`, and the notices. [`reject`], [`withdraw`] and
-//! [`expire`] do all of it; `fail` (#25 part 5) and `return` (#26) call
+//! [`expire`] do all of it; `fail` ([`super::decide`]) and `return` (#26) call
 //! [`end_in`] from their own transaction.
 
 use renox::db::Transaction;
@@ -221,7 +221,7 @@ impl Ended {
 }
 
 /// The 422 for a request that is no longer pending.
-fn already_decided() -> Error {
+pub(super) fn already_decided() -> Error {
     Error::Status(
         StatusCode::UNPROCESSABLE_ENTITY,
         texts::en("wl_kernel.approvals.already_decided"),
@@ -229,7 +229,7 @@ fn already_decided() -> Error {
 }
 
 /// The engine's refusal of the request's own transition, as an error.
-fn refused(error: TransitionError) -> Error {
+pub(super) fn refused(error: TransitionError) -> Error {
     match error {
         TransitionError::NotFrom(_) | TransitionError::Conflict => already_decided(),
         TransitionError::ReasonRequired => comment_required(),
@@ -245,7 +245,7 @@ fn comment_required() -> Error {
 }
 
 /// Request `id`, loaded in `tx` and locked (PostgreSQL) until it ends.
-async fn lock(tx: &mut Transaction, id: i64) -> Result<ApprovalRequest> {
+pub(super) async fn lock(tx: &mut Transaction, id: i64) -> Result<ApprovalRequest> {
     ApprovalRequest::query()
         .where_eq("id", id)
         .lock_for_update()
@@ -368,7 +368,7 @@ async fn end_now(state: &AppState, id: i64, end: End) -> Result<ApprovalDecided>
 }
 
 /// The pending request `id`; 422 when it already ended.
-async fn pending(db: &Db, id: i64) -> Result<ApprovalRequest> {
+pub(super) async fn pending(db: &Db, id: i64) -> Result<ApprovalRequest> {
     let request = ApprovalRequest::find(db, id)
         .await?
         .ok_or(Error::NotFound)?;

@@ -3,13 +3,13 @@
 //!
 //! wl-notify is not built yet, so the kernel sends Renox notifications to
 //! users directly, on the database channel (the in-app bell), after the
-//! commit. Approvers are the holders of one of the current step's roles in
-//! the subject's scope (from its registered machine), or globally when the
-//! machine gives no scope.
+//! commit. Approvers are the holders of one of the current step's roles, or
+//! of its permission, in the subject's scope (from its registered machine),
+//! or globally when the machine gives no scope.
 
 use std::collections::BTreeSet;
 
-use renox::auth::permissions::{Scope, users_with_role_in};
+use renox::auth::permissions::{Scope, users_with_permission_in, users_with_role_in};
 use renox::auth::{Channel, DatabaseMessage, Notification, Recipient};
 use renox::prelude::*;
 use renox::serde_json::Value;
@@ -39,7 +39,7 @@ pub async fn scope_of(db: &Db, request: &ApprovalRequest) -> Result<Scope> {
 }
 
 /// The users who may decide the request's current step: holders of one of
-/// its roles in the subject's scope, ordered by id. With SoD on, the
+/// its roles, or of its permission, in the subject's scope, ordered by id. With SoD on, the
 /// requester and whoever decided another step of the request are left out.
 pub async fn step_approvers(db: &Db, request: &ApprovalRequest) -> Result<Vec<User>> {
     let Some(step) = request.step() else {
@@ -55,13 +55,18 @@ pub async fn step_approvers(db: &Db, request: &ApprovalRequest) -> Result<Vec<Us
             }
         }
     }
+    let mut holders = Vec::new();
+    for role in &step.roles {
+        holders.extend(users_with_role_in(db, role, &scope).await?);
+    }
+    if let Some(permission) = &step.permission {
+        holders.extend(users_with_permission_in(db, permission, &scope).await?);
+    }
     let mut seen = BTreeSet::new();
     let mut approvers = Vec::new();
-    for role in &step.roles {
-        for user in users_with_role_in(db, role, &scope).await? {
-            if !excluded.contains(&user.id) && seen.insert(user.id) {
-                approvers.push(user);
-            }
+    for user in holders {
+        if !excluded.contains(&user.id) && seen.insert(user.id) {
+            approvers.push(user);
         }
     }
     approvers.sort_by_key(|user| user.id);
@@ -185,7 +190,18 @@ pub async fn decided(
     Ok(())
 }
 
-/// The notice that a request ended without a yes.
+/// Tells the requester that `request` was approved and its action ran.
+/// Call it after the commit.
+pub async fn approved(state: &AppState, request: &ApprovalRequest) -> Result {
+    let notice = Decided::approved(request);
+    if let Some(user) = User::find(&state.db, request.requester_id).await? {
+        state.notify(&user, &notice).await?;
+    }
+    Ok(())
+}
+
+/// The notice that a request ended: without a yes, or approved
+/// ([`Decided::approved`]).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Decided {
     /// The request's id.
@@ -215,6 +231,18 @@ impl Decided {
         }
     }
 
+    /// The notice that `request` was approved.
+    pub fn approved(request: &ApprovalRequest) -> Self {
+        Decided {
+            request: request.id,
+            action: request.action.clone(),
+            subject: request.subject(),
+            decision: ApprovalEnd::Approved,
+            reason: String::new(),
+            moved_to: None,
+        }
+    }
+
     /// The key of the notice's title.
     fn title_key(&self) -> &'static str {
         match self.decision {
@@ -230,6 +258,14 @@ impl Decided {
     /// The notice's title and body in `lang`.
     fn texts(&self, lang: &Lang) -> (String, String) {
         let title = texts::t_with(lang, self.title_key(), &[("action", &self.action)]);
+        if self.decision == ApprovalEnd::Approved {
+            let body = texts::t_with(
+                lang,
+                "wl_kernel.approvals.approved_body",
+                &[("request", &self.request), ("subject", &self.subject)],
+            );
+            return (title, body);
+        }
         let mut body = texts::t_with(
             lang,
             "wl_kernel.approvals.decided_body",
@@ -365,6 +401,27 @@ mod tests {
                 &[("state", &"cancelled")]
             ),
             "Subject already moved to `cancelled`."
+        );
+    }
+
+    #[test]
+    fn the_approved_notice_says_the_request_was_approved() {
+        let notice = Decided::approved(&requested_by(1));
+        assert_eq!(notice.decision, ApprovalEnd::Approved);
+        assert!(notice.reason.is_empty() && notice.moved_to.is_none());
+        assert_eq!(
+            texts::en_with(notice.title_key(), &[("action", &notice.action)]),
+            "Approval granted: payments.refund"
+        );
+        assert_eq!(
+            texts::en_with(
+                "wl_kernel.approvals.approved_body",
+                &[
+                    ("request", &notice.request),
+                    ("subject", &"payments.refund #9")
+                ]
+            ),
+            "Request #5 about payments.refund #9 was approved."
         );
     }
 }

@@ -70,6 +70,10 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_kernel.approvals.decided_body",
         "Request #:request about :subject: :reason",
     ),
+    (
+        "wl_kernel.approvals.approved_body",
+        "Request #:request about :subject was approved.",
+    ),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.
