@@ -38,13 +38,13 @@ pub use block_effects::{
     BlockEffectRule, Decision, RuleSource,
 };
 pub use calendar::BusinessCalendar;
-pub use config::{ClientConfig, ConfigError};
+pub use config::{ClientConfig, ConfigError, RolesConfig, owner_role};
 pub use documents::{
-    BlockCondition, BlockEntry, BlockFailure, BlockMode, BlockRefusal, BlockSubjects, CheckOutcome,
-    DocumentAccepted, DocumentGuard, DocumentId, DocumentRejected, DocumentSuperseded,
-    DocumentUploaded, FlagFailure, FlagReason, InvalidReason, NoDocuments, OverrideMode,
-    PendingRenewal, PlannedError, PlannedItem, PlannedWarning, PlannedWarningLine, RecordFlag,
-    Validity,
+    BlockCondition, BlockEntry, BlockFailure, BlockMode, BlockRefusal, BlockSubjects, BlockedGroup,
+    CheckOutcome, DocumentAccepted, DocumentExpired, DocumentGuard, DocumentId, DocumentRejected,
+    DocumentSuperseded, DocumentUploaded, FlagFailure, FlagReason, InvalidReason, NoDocuments,
+    OverrideMode, PendingRenewal, PlannedError, PlannedItem, PlannedWarning, PlannedWarningLine,
+    RecordFlag, Validity,
 };
 pub use entities::{IssuerSnapshot, LegalEntity, ScopeEntity};
 pub use invoicing::{

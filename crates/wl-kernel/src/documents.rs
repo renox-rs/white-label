@@ -913,6 +913,19 @@ pub trait FutureWork: Send + Sync + 'static {
         subject: &'a Subject,
         from: NaiveDate,
     ) -> DocumentFuture<'a, Vec<PlannedRecord>>;
+
+    /// The records already running that need `subject`'s document of
+    /// `entry.kind`, e.g. an active deployment. Used when the document has
+    /// expired. The default lists none. A record that does not match
+    /// `entry.condition` is left out.
+    fn open_for<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _entry: &'a BlockEntry,
+        _subject: &'a Subject,
+    ) -> DocumentFuture<'a, Vec<PlannedRecord>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
 }
 
 static FUTURE_WORK: RwLock<BTreeMap<String, Arc<dyn FutureWork>>> = RwLock::new(BTreeMap::new());
@@ -994,6 +1007,41 @@ pub struct DocumentExpiring {
 }
 
 impl Event for DocumentExpiring {}
+
+/// The records a guarded transition has with an expired document: those
+/// already running and those planned after the expiry date.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct BlockedGroup {
+    /// The guarded transition, `<entity>.<transition>`.
+    pub guarded: String,
+    /// How the document's entry for this transition acts.
+    pub mode: BlockMode,
+    /// The records already running (from [`FutureWork::open_for`]).
+    pub open: Vec<PlannedRecord>,
+    /// The records planned after the expiry date (from
+    /// [`FutureWork::planned_from`]).
+    pub planned: Vec<PlannedRecord>,
+}
+
+/// A blocking document has expired: emitted once, on the first nightly run
+/// after its expiry date. It changes no record; consumers react to it.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct DocumentExpired {
+    /// The document.
+    pub document: DocumentId,
+    /// What it is attached to.
+    pub subject: Subject,
+    /// The kind's key.
+    pub kind: String,
+    /// The expiry date; the document was valid through it.
+    pub expires_on: NaiveDate,
+    /// Every `blocks` entry of the kind, `block` and `flag` alike.
+    pub blocks: Vec<BlockEntry>,
+    /// The records found per guarded transition, in entry order.
+    pub blocked: Vec<BlockedGroup>,
+}
+
+impl Event for DocumentExpired {}
 
 #[cfg(test)]
 mod tests {
@@ -1474,6 +1522,48 @@ mod tests {
         assert_eq!(json["document_id"], 5);
         assert_eq!(json["days_left"], 30);
         assert_eq!(json["affected"][0]["records"][0]["date"], "2026-12-20");
+    }
+
+    #[test]
+    fn expired_events_serialize_with_plain_ids() {
+        let record = PlannedRecord {
+            record: Subject::new("test.deployment", 3),
+            date: date("2026-12-10"),
+            label: "Deployment".into(),
+            scope: None,
+        };
+        let expired = DocumentExpired {
+            document: DocumentId(5),
+            subject: Subject::new("hr.employee", 1),
+            kind: "work_permit".into(),
+            expires_on: date("2026-11-30"),
+            blocks: vec![visa_entry()],
+            blocked: vec![BlockedGroup {
+                guarded: "deployment.resume".into(),
+                mode: BlockMode::Block,
+                open: Vec::new(),
+                planned: vec![record],
+            }],
+        };
+        let json = renox::serde_json::to_value(&expired).unwrap();
+        assert_eq!(json["document"], 5);
+        assert_eq!(json["expires_on"], "2026-11-30");
+        assert_eq!(json["blocks"].as_array().unwrap().len(), 1);
+        assert_eq!(json["blocked"][0]["guarded"], "deployment.resume");
+        assert_eq!(json["blocked"][0]["open"].as_array().unwrap().len(), 0);
+        assert_eq!(json["blocked"][0]["planned"][0]["date"], "2026-12-10");
+    }
+
+    #[renox::test]
+    async fn open_for_lists_nothing_by_default() {
+        let app = TestApp::new(App::new()).await;
+        let entry = visa_entry();
+        let subject = Subject::new("hr.employee", 1);
+        let open = OneVisit
+            .open_for(app.state(), &entry, &subject)
+            .await
+            .expect("no failure");
+        assert!(open.is_empty());
     }
 
     #[test]

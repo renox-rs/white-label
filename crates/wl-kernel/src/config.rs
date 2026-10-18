@@ -13,6 +13,7 @@ use serde::Deserialize;
 
 use crate::calendar::BusinessCalendar;
 use crate::manifest::Manifest;
+use crate::scopes::COMPANY_ADMIN_ROLE;
 
 /// The whole file. Unknown top-level tables are module sections; unknown
 /// keys inside the kernel's own tables are refused.
@@ -37,6 +38,9 @@ pub struct ClientConfig {
     /// `BusinessCalendar`).
     #[serde(default)]
     pub calendar: CalendarConfig,
+    /// `[roles]`: which role plays which part in the deployment.
+    #[serde(default)]
+    pub roles: RolesConfig,
     /// The modules' own sections (`[invoicing]`, `[ticketing]`, …), read by
     /// each module.
     #[serde(flatten)]
@@ -100,6 +104,22 @@ pub struct Modules {
     /// The kernel is always on and is not listed.
     #[serde(default)]
     pub enabled: Vec<String>,
+}
+
+/// `[roles]`.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RolesConfig {
+    /// The key of the business owner's role, told about compliance-critical
+    /// events. Defaults to [`COMPANY_ADMIN_ROLE`].
+    #[serde(default)]
+    pub owner: Option<String>,
+}
+
+/// The business owner role key of this deployment: `[roles] owner`, else
+/// [`COMPANY_ADMIN_ROLE`].
+pub fn owner_role(config: &ClientConfig) -> &str {
+    config.owner_role()
 }
 
 /// `[calendar]`.
@@ -223,6 +243,16 @@ impl ClientConfig {
         self.sections.get(name).and_then(toml::Value::as_table)
     }
 
+    /// The business owner role key: `[roles] owner`, else
+    /// [`COMPANY_ADMIN_ROLE`].
+    pub fn owner_role(&self) -> &str {
+        self.roles
+            .owner
+            .as_deref()
+            .filter(|role| !role.trim().is_empty())
+            .unwrap_or(COMPANY_ADMIN_ROLE)
+    }
+
     /// The default language.
     pub fn default_locale(&self) -> &str {
         self.client.locales.first().map_or("en", String::as_str)
@@ -316,6 +346,18 @@ mod tests {
         name = "Acme Properties LLC"
         app = "property"
     "#;
+
+    #[test]
+    fn the_owner_role_defaults_to_the_company_admin() {
+        let config = ClientConfig::parse(MINIMAL).unwrap();
+        assert_eq!(config.owner_role(), "admin");
+        assert_eq!(owner_role(&config), "admin");
+        let text = format!("{MINIMAL}\n[roles]\nowner = \"md\"\n");
+        let config = ClientConfig::parse(&text).unwrap();
+        assert_eq!(owner_role(&config), "md");
+        let text = format!("{MINIMAL}\n[roles]\nboss = \"md\"\n");
+        assert!(ClientConfig::parse(&text).is_err());
+    }
 
     #[test]
     fn a_minimal_file_gets_the_defaults() {

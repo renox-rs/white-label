@@ -175,6 +175,14 @@ registers a `ReminderSchedule` per document kind with
 scopes whose staff get the reminder when neither the subject nor the affected records have one;
 `None` means every scope. Without `wl-documents` neither registry is read.
 
+`FutureWork` also has `open_for(state, entry, subject)`, default empty: the records already
+running (an active deployment). When a blocking document has expired, `wl-documents` emits
+`DocumentExpired` once (document, subject, kind, `expires_on`, every `blocks` entry, and
+`blocked`: per guarded transition a `BlockedGroup` with `mode`, `open` and `planned` records).
+`TaskCreator::complete(state, ticket, note)` closes a task when its work is done; the default
+returns `false`. `[roles] owner = "<role key>"` in `client.toml` names the business owner role,
+read with `wl_kernel::owner_role(&config)`; it defaults to `COMPANY_ADMIN_ROLE`.
+
 Working time comes from one calendar: `wl_kernel::calendar::calendar(&state)` gives the
 client's `BusinessCalendar` (the default one with no holidays when the kernel is not
 mounted). Asia/Dubai is UTC+04:00 all year; the weekend is Saturday and Sunday, a working
