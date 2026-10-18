@@ -9,11 +9,13 @@ mod events;
 pub mod followup;
 pub mod gateway;
 mod machine;
+pub mod notices;
 pub mod payment;
 pub mod record;
 pub mod recorder;
 pub mod refund;
 mod refund_machine;
+pub mod reverse;
 mod texts;
 
 use std::sync::Arc;
@@ -120,7 +122,9 @@ impl Module for WlPayments {
         }
         // How other modules record, allocate and read payments.
         wl_kernel::payments::provide_payment_recorder(app, recorder::Payments);
-        // `PaymentReceived` after a commit.
+        // The notification types of a bank return and a follow-up task.
+        notices::register_types();
+        // `PaymentReceived` and `PaymentReversed` after a commit.
         events::register(app);
         // `RefundPaid` after a commit.
         refund_machine::register(app);

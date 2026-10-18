@@ -17,7 +17,7 @@ use wl_kernel::payments::{
 };
 
 use crate::payment::Payment;
-use crate::{allocate, credit, record};
+use crate::{allocate, credit, record, reverse};
 
 /// Records, allocates and reads `wl_payments_payments` for the kernel
 /// contract.
@@ -56,18 +56,19 @@ impl PaymentRecorder for Payments {
 
     fn reverse<'a>(
         &'a self,
-        _state: &'a AppState,
-        _payment: PaymentId,
-        _reason: ReversalReason,
-        _note: Option<String>,
-        _by: Option<i64>,
+        state: &'a AppState,
+        payment: PaymentId,
+        reason: ReversalReason,
+        note: Option<String>,
+        by: Option<i64>,
     ) -> PaymentFuture<'a, ()> {
-        // The `reverse` transitions come with part 6 of the module.
-        Box::pin(async {
-            Err(Error::Status(
-                StatusCode::NOT_IMPLEMENTED,
-                "payment reversal is not available yet".to_owned(),
-            ))
+        // The contract names a user id, not an `AuthUser`: it runs
+        // `reverse_by_system` and stores the id in `reversed_by`.
+        Box::pin(async move {
+            reverse::reverse_by_id(state, payment, reason, note, by)
+                .await
+                .map(|_| ())
+                .map_err(|e| e.into_error())
         })
     }
 

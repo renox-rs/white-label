@@ -9,7 +9,8 @@
 //! Every state is declared here with its tone, and a new payment is
 //! inserted only as `received` or `pending`. The transitions are added by
 //! the issues that build them, all in this `machine()`: `record` and
-//! `record_by_system` ([`crate::record`]); `reverse`, the gateway
+//! `record_by_system` ([`crate::record`]); `reverse` and
+//! `reverse_by_system` ([`crate::reverse`]), the gateway
 //! transitions and the chargeback ones later. `Payment` is
 //! `#[model(state_machine)]`, so `save` refuses a changed status.
 
@@ -39,6 +40,7 @@ impl StateMachine for Payment {
             .terminal();
         crate::record::transitions()
             .into_iter()
+            .chain(crate::reverse::transitions())
             .fold(machine, Machine::transition)
     }
 }

@@ -12,9 +12,13 @@ use renox::db::Json;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 use wl_kernel::PartyId;
+use wl_kernel::payments::PAYMENT_SUBJECT_TYPE;
 
+use crate::credit;
+use crate::notices;
 use crate::payment::Payment;
 use crate::permissions;
+use crate::refund::{Refund, RefundStatus};
 
 /// The role that gets the `raise_charge` task.
 pub const ACCOUNTANT_ROLE: &str = "accountant";
@@ -158,6 +162,59 @@ impl FollowupTask {
     }
 }
 
+/// The refunds a deficit of `deficit` fils links: the `own` refunds (paid
+/// out of the reversed payment), then the `others` (the party's other paid
+/// credit refunds), newest first, taking others only until the deficit is
+/// covered. Each is `(id, amount)`.
+pub(crate) fn linked_refunds(deficit: i64, own: &[(i64, i64)], others: &[(i64, i64)]) -> Vec<i64> {
+    let mut ids: Vec<i64> = own.iter().map(|(id, _)| *id).collect();
+    let mut covered: i64 = own.iter().map(|(_, amount)| amount).sum();
+    for (id, amount) in others {
+        if covered >= deficit {
+            break;
+        }
+        ids.push(*id);
+        covered += amount;
+    }
+    ids
+}
+
+/// After a reversal of `payment`: when the party's credit balance in the
+/// payment's currency is below 0, the credit was already refunded, and one
+/// `raise_charge` task for the deficit is created for the accountant role
+/// (unique per payment), who is then told. No invoice, charge or draft is
+/// ever created.
+pub(crate) async fn check_deficit(state: &AppState, payment: &Payment) -> Result {
+    let balance = credit::credit_balance(&state.db, payment.party(), &payment.currency).await?;
+    if balance >= 0 {
+        return Ok(());
+    }
+    let refunds = Refund::query()
+        .where_(Refund::PARTY_ID.eq(payment.party_id))
+        .where_(Refund::CURRENCY.eq(payment.currency.as_str()))
+        .where_(Refund::STATUS.eq(RefundStatus::Paid))
+        .order_by_desc(Refund::ID)
+        .get(&state.db)
+        .await?;
+    let source = payment.subject();
+    let own: Vec<(i64, i64)> = refunds
+        .iter()
+        .filter(|r| r.source_subject() == source)
+        .map(|r| (r.id, r.amount))
+        .collect();
+    let others: Vec<(i64, i64)> = refunds
+        .iter()
+        .filter(|r| r.source_type != PAYMENT_SUBJECT_TYPE)
+        .map(|r| (r.id, r.amount))
+        .collect();
+    let ids = linked_refunds(-balance, &own, &others);
+    let task = FollowupTask::raise_charge(payment, -balance, ids);
+    if let Some(task) = FollowupTask::create_once(&state.db, task).await? {
+        notices::followup_created(state, payment, &task).await?;
+    }
+    Ok(())
+}
+
 /// Why `user` cannot mark `task` done, if so: a user needs
 /// `payments.record` (the accountant has it) and the task must be open.
 pub(crate) fn done_problem(task: &FollowupTask, may: bool) -> Option<Error> {
@@ -225,6 +282,22 @@ mod tests {
         assert_eq!(task.amount, 50_000);
         assert_eq!(task.refund_ids.0, [9, 11]);
         assert!(task.is_open());
+    }
+
+    #[test]
+    fn the_deficit_links_the_own_refunds_then_others_until_covered() {
+        // The own refund covers it: no others.
+        assert_eq!(linked_refunds(500, &[(9, 500)], &[(5, 100)]), [9]);
+        // It does not: others, newest first, until covered.
+        assert_eq!(
+            linked_refunds(500, &[(9, 200)], &[(8, 200), (7, 300), (6, 900)]),
+            [9, 8, 7]
+        );
+        assert_eq!(
+            linked_refunds(100, &[], &[(4, 60), (3, 60), (2, 60)]),
+            [4, 3]
+        );
+        assert!(linked_refunds(100, &[], &[]).is_empty());
     }
 
     #[test]
