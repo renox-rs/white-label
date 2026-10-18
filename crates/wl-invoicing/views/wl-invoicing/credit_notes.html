@@ -1,0 +1,7 @@
+{#- wl-invoicing: the credit notes list, a renox::grid (search, filters by
+    status and issuing entity). Replace it with
+    resources/views/wl-invoicing/credit_notes.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['credit_note.title']">
+  <rx-page-header :title="tx['credit_note.title']"/>
+  <rx-grid :page="credit_notes"/>
+</rx-page>

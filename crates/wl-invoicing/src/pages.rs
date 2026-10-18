@@ -32,6 +32,7 @@ use crate::allocate::amount_text;
 use crate::allocation::Allocation;
 use crate::config::{InvoicingConfig, ReasonProblem};
 use crate::config_of;
+use crate::credit_note_pages::{InvoiceCredit, invoice_credit};
 use crate::invoice::{Invoice, PartySnapshot};
 use crate::invoicer::{lines_of, totals_of};
 use crate::issue::issue;
@@ -323,6 +324,8 @@ pub(crate) struct ShowPage {
     actions: Vec<Available>,
     can_issue: bool,
     can_write_off: bool,
+    /// The credit notes of the invoice and the credit actions offered.
+    credit: InvoiceCredit,
     /// The write-off reasons, `(code, label)`.
     reasons: Vec<(String, String)>,
     /// The sheet's description, with the balance.
@@ -433,13 +436,18 @@ async fn show(
         state_machine::timeline(&history, Some(&state_machine::info_of::<Invoice>()));
     timeline.extend(approvals::timeline_for(&db, &subject, &lang).await?);
     timeline.sort_by(|a, b| a["time"].as_str().cmp(&b["time"].as_str()));
-    // `issue` and `write_off` have their own buttons.
+    // `issue`, `write_off` and `credit` have their own buttons.
     let actions = invoice
         .available(&user, &db)
         .await?
         .into_iter()
-        .filter(|a| a.name != crate::issue::ISSUE && a.name != crate::write_off::WRITE_OFF)
+        .filter(|a| {
+            a.name != crate::issue::ISSUE
+                && a.name != crate::write_off::WRITE_OFF
+                && a.name != crate::credit::CREDIT
+        })
         .collect();
+    let credit = invoice_credit(&db, &lang, &user, &invoice).await?;
     let config = config_of(&state);
     let can_issue =
         invoice.status == InvoiceStatus::Draft && user.has_permission(permissions::ISSUE);
@@ -493,6 +501,7 @@ async fn show(
         actions,
         can_issue,
         can_write_off,
+        credit,
         reasons,
         write_off_description,
         invoice,

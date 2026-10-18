@@ -14,6 +14,8 @@
                     :title="tx['issue.confirm_title']" :message="tx['issue.confirm_message']" :confirm-label="tx['issue.action']" icon="send"/>
       </template>
       <template rx-if="can_write_off"><rx-include template="wl-invoicing/_write_off_sheet.html"/></template>
+      <template rx-if="credit.can_new"><rx-include template="wl-invoicing/_credit_note_form.html"/></template>
+      <template rx-if="credit.can_credit"><rx-include template="wl-invoicing/_credit_sheet.html"/></template>
       <template rx-if="actions">
         <rx-transition-actions :actions="actions" action="/invoices/{{ invoice.id }}/transitions"/>
       </template>
@@ -90,6 +92,13 @@
       <rx-column :label="tx['fields.amount']">{{ allocation.amount }}</rx-column>
       <rx-column :label="tx['history.at']" hide-narrow>{{ allocation.allocated_at | date('%Y-%m-%d %H:%M') }}</rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['no_allocations']" icon="wallet"/></rx-slot>
+    </rx-table>
+    <rx-table rx-if="credit.notes" :rows="credit.notes" as="note" :key="note.id" :caption="tx['credit_note.sections.list']" card>
+      <rx-column :label="tx['fields.number']"><a href="{{ route('wl_invoicing.credit_note', note.id) }}">{{ note.number }}</a></rx-column>
+      <rx-column :label="tx['fields.status']"><rx-badge :kind="note.status_kind" :text="note.status"/></rx-column>
+      <rx-column :label="tx['fields.issue_date']" hide-narrow>{{ note.issue_date or "" }}</rx-column>
+      <rx-column :label="tx['fields.gross_total']">{{ note.gross }}</rx-column>
+      <rx-column :label="tx['credit_note.fields.remaining']" hide-narrow>{{ note.remaining }}</rx-column>
     </rx-table>
     <rx-table :rows="timeline" as="item" :key="item.time" :caption="tx['sections.history']" card>
       <rx-column :label="tx['history.change']">{{ item.title }}</rx-column>

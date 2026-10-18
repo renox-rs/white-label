@@ -68,6 +68,145 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_invoicing.credit_note.status.applied", "Applied"),
     ("wl_invoicing.credit_note.kind.partial", "Partial"),
     ("wl_invoicing.credit_note.kind.full", "Full"),
+    ("wl_invoicing.credit_note.sections.list", "Credit notes"),
+    (
+        "wl_invoicing.credit_note.sections.movements",
+        "Where it went",
+    ),
+    ("wl_invoicing.credit_note.no_movements", "Nothing used yet"),
+    (
+        "wl_invoicing.credit_note.no_credit_notes",
+        "No credit notes",
+    ),
+    ("wl_invoicing.credit_note.fields.target", "To"),
+    ("wl_invoicing.credit_note.fields.kind", "Type"),
+    (
+        "wl_invoicing.credit_note.amount_hint",
+        "In dirhams, like 150.00.",
+    ),
+    ("wl_invoicing.credit_note.fields.attempt", "Attempt"),
+    (
+        "wl_invoicing.credit_note.movement.invoice_allocated",
+        "Used on an invoice",
+    ),
+    (
+        "wl_invoicing.credit_note.movement.invoice_credited",
+        "Invoice cancelled",
+    ),
+    (
+        "wl_invoicing.credit_note.movement.refund_taken",
+        "Taken by a refund",
+    ),
+    (
+        "wl_invoicing.credit_note.movement.refund_restored",
+        "Given back, refund failed",
+    ),
+    (
+        "wl_invoicing.credit_note.movement.allocation_restored",
+        "Given back, use removed",
+    ),
+    ("wl_invoicing.credit_note.issue.action", "Issue"),
+    (
+        "wl_invoicing.credit_note.issue.confirm_title",
+        "Issue the credit note?",
+    ),
+    (
+        "wl_invoicing.credit_note.issue.confirm_message",
+        "It gets its number and is used on the invoice. This cannot be undone.",
+    ),
+    (
+        "wl_invoicing.credit_note.issue.done",
+        "The credit note is issued.",
+    ),
+    ("wl_invoicing.credit_note.use.action", "Use on an invoice"),
+    ("wl_invoicing.credit_note.use.title", "Use on an invoice"),
+    (
+        "wl_invoicing.credit_note.use.description",
+        "Takes an amount of the remaining credit, {{ remaining }}, off another open invoice of the party.",
+    ),
+    ("wl_invoicing.credit_note.use.submit", "Use the credit"),
+    ("wl_invoicing.credit_note.use.invoice", "Invoice"),
+    ("wl_invoicing.credit_note.use.done", "The credit is used."),
+    ("wl_invoicing.credit_note.refund.action", "Request a refund"),
+    ("wl_invoicing.credit_note.refund.title", "Refund the credit"),
+    (
+        "wl_invoicing.credit_note.refund.description",
+        "Sends an amount of the remaining credit, {{ remaining }}, back to the party. Payments approves it.",
+    ),
+    (
+        "wl_invoicing.credit_note.refund.submit",
+        "Request the refund",
+    ),
+    ("wl_invoicing.credit_note.refund.method", "Method"),
+    ("wl_invoicing.credit_note.refund.reason", "Reason"),
+    (
+        "wl_invoicing.credit_note.refund.done",
+        "The refund is requested.",
+    ),
+    (
+        "wl_invoicing.credit_note.method.default",
+        "Payments' default",
+    ),
+    ("wl_invoicing.credit_note.method.cash", "Cash"),
+    ("wl_invoicing.credit_note.method.card", "Card"),
+    ("wl_invoicing.credit_note.method.transfer", "Bank transfer"),
+    ("wl_invoicing.credit_note.method.cheque", "Cheque"),
+    ("wl_invoicing.credit_note.method.gateway", "Online payment"),
+    (
+        "wl_invoicing.credit_note.method.direct_debit",
+        "Direct debit",
+    ),
+    ("wl_invoicing.credit_note.method.wallet", "Wallet"),
+    ("wl_invoicing.credit_note.method.set_off", "Set-off"),
+    ("wl_invoicing.credit_note.credit.action", "Credit in full"),
+    (
+        "wl_invoicing.credit_note.credit.title",
+        "Credit the invoice in full",
+    ),
+    (
+        "wl_invoicing.credit_note.credit.description",
+        "Cancels the invoice with a credit note for all its lines. Only an invoice with nothing paid or credited can be credited in full.",
+    ),
+    (
+        "wl_invoicing.credit_note.credit.submit",
+        "Credit the invoice",
+    ),
+    (
+        "wl_invoicing.credit_note.credit.done",
+        "The invoice is credited.",
+    ),
+    ("wl_invoicing.credit_note.new.title", "New credit note"),
+    (
+        "wl_invoicing.credit_note.new.description",
+        "Type the net amount to credit on each line, like 150.00. Leave a line empty to credit nothing on it.",
+    ),
+    ("wl_invoicing.credit_note.new.action", "New credit note"),
+    (
+        "wl_invoicing.credit_note.new.submit",
+        "Issue the credit note",
+    ),
+    ("wl_invoicing.credit_note.new.line", "Net to credit"),
+    ("wl_invoicing.credit_note.new.up_to", "Up to"),
+    (
+        "wl_invoicing.credit_note.new.done",
+        "The credit note is issued.",
+    ),
+    (
+        "wl_invoicing.credit_note.errors.amount",
+        "Enter an amount like 150.00.",
+    ),
+    (
+        "wl_invoicing.credit_note.errors.invoice",
+        "Choose an invoice.",
+    ),
+    (
+        "wl_invoicing.credit_note.errors.method",
+        "Choose one of the methods.",
+    ),
+    (
+        "wl_invoicing.credit_note.errors.reason",
+        "Give a reason for the credit note.",
+    ),
     ("wl_invoicing.vat_category.standard", "Standard (5%)"),
     ("wl_invoicing.vat_category.zero_rated", "Zero-rated"),
     ("wl_invoicing.vat_category.exempt", "Exempt"),

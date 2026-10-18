@@ -1,0 +1,9 @@
+{#- wl-invoicing: the "Credit in full" action on the invoice page, a sheet
+    with the reason and whether the lines' origins are billed again. Replace
+    it with resources/views/wl-invoicing/_credit_sheet.html in the app. -#}
+<rx-action-sheet :id="'credit-invoice-' ~ invoice.id" :label="tx['credit_note.credit.action']" :action="route('wl_invoicing.invoice_credit', invoice.id)"
+                 :title="tx['credit_note.credit.title']" :description="tx['credit_note.credit.description']" :submit-label="tx['credit_note.credit.submit']"
+                 icon="undo-2" variant="danger" danger>
+  <rx-textarea name="reason" :label="tx['credit_note.fields.reason']" :id="'credit-invoice-reason-' ~ invoice.id" required/>
+  <rx-checkbox name="release_origins" :label="tx['credit_note.fields.release_origins']" :id="'credit-invoice-release-' ~ invoice.id"/>
+</rx-action-sheet>

@@ -12,6 +12,7 @@ pub mod credit_note;
 pub mod credit_note_line;
 mod credit_note_machine;
 pub mod credit_note_movement;
+mod credit_note_pages;
 pub mod credit_notes;
 pub mod dispute;
 pub mod dispute_credit;
@@ -81,6 +82,22 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "wl-invoicing/_write_off_sheet.html",
         include_str!("../views/wl-invoicing/_write_off_sheet.html"),
+    ),
+    (
+        "wl-invoicing/credit_notes.html",
+        include_str!("../views/wl-invoicing/credit_notes.html"),
+    ),
+    (
+        "wl-invoicing/credit_note.html",
+        include_str!("../views/wl-invoicing/credit_note.html"),
+    ),
+    (
+        "wl-invoicing/_credit_sheet.html",
+        include_str!("../views/wl-invoicing/_credit_sheet.html"),
+    ),
+    (
+        "wl-invoicing/_credit_note_form.html",
+        include_str!("../views/wl-invoicing/_credit_note_form.html"),
     ),
     (
         "wl-invoicing/ageing.html",
@@ -262,6 +279,7 @@ impl Module for WlInvoicing {
     fn routes(&self) -> Routes {
         pages::routes()
             .merge(vat_pages::routes())
+            .merge(credit_note_pages::routes())
             .merge(ageing_pages::routes())
     }
 
@@ -285,6 +303,8 @@ impl Module for WlInvoicing {
             .view_data::<pages::ShowPage>()
             .view_data::<vat_pages::IndexPage>()
             .view_data::<vat_pages::ShowPage>()
+            .view_data::<credit_note_pages::IndexPage>()
+            .view_data::<credit_note_pages::ShowPage>()
             .view_data::<ageing_pages::IndexPage>();
         // The customer write-off notice (§10), sent from the queue.
         app.job::<SendWriteOffNotice>();
@@ -317,6 +337,15 @@ impl Module for WlInvoicing {
             "app",
             NavLink::route("wl_invoicing.index", "nav.invoices")
                 .icon("receipt")
+                .group("nav.app")
+                .order(40)
+                .permission(permissions::VIEW),
+        );
+        // The credit notes, next to the invoices (`nav.credit_notes`).
+        app.nav(
+            "app",
+            NavLink::route("wl_invoicing.credit_notes", "nav.credit_notes")
+                .icon("receipt-text")
                 .group("nav.app")
                 .order(40)
                 .permission(permissions::VIEW),
