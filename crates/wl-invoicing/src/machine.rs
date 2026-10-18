@@ -15,7 +15,8 @@
 //! `allocate` / `allocate_in_full` ([`crate::allocate`]) and `mark_overdue`
 //! ([`crate::overdue`]), `write_off` / `write_off_approved`
 //! ([`crate::write_off`]), `recover` / `recover_in_full`
-//! ([`crate::recover`]); the others later. `Invoice` is
+//! ([`crate::recover`]), `credit` ([`crate::credit`]); the others later.
+//! `Invoice` is
 //! `#[model(state_machine)]`, so `save` refuses a changed status.
 
 use renox::state_machine::{Machine, StateMachine};
@@ -52,6 +53,7 @@ impl StateMachine for Invoice {
             .into_iter()
             .chain(crate::write_off::transitions())
             .chain(crate::recover::transitions())
+            .chain(crate::credit::transitions())
             .fold(machine, Machine::transition)
     }
 }

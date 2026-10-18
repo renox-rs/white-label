@@ -99,6 +99,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             invoices::VIEW,
             invoices::CREATE,
             invoices::ISSUE,
+            invoices::CREDIT,
             invoices::WRITE_OFF,
             invoices::DISPUTE,
             invoices::RECEIVABLES_VIEW,

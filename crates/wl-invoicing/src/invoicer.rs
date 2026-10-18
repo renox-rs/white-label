@@ -4,12 +4,14 @@
 
 use renox::prelude::*;
 use renox::state_machine::TransitionError;
-use wl_kernel::LegalEntity;
 use wl_kernel::invoicing::{
-    DisputeRequest, DraftLine, InvoiceDraft, InvoiceFuture, InvoiceId, InvoiceStatus,
-    InvoiceSummary, Invoicer,
+    CreditLine, CreditNoteId, CreditNoteSummary, DisputeRequest, DraftLine, InvoiceDraft,
+    InvoiceFuture, InvoiceId, InvoiceStatus, InvoiceSummary, Invoicer,
 };
+use wl_kernel::{LegalEntity, PartyId};
 
+use crate::credit_note::CreditNote;
+use crate::credit_notes::By;
 use crate::invoice::Invoice;
 use crate::line::InvoiceLine;
 use crate::vat::{self, VatTotals};
@@ -56,6 +58,67 @@ impl Invoicer for Invoices {
         request: DisputeRequest,
     ) -> InvoiceFuture<'a, i64> {
         Box::pin(async move { crate::dispute::raise(state, request).await })
+    }
+
+    fn credit_in_full<'a>(
+        &'a self,
+        state: &'a AppState,
+        invoice: InvoiceId,
+        reason: String,
+        by: Option<i64>,
+    ) -> InvoiceFuture<'a, CreditNoteId> {
+        Box::pin(async move {
+            let invoice = Invoice::find_or_404(&state.db, invoice.0).await?;
+            // The origins are released only by the back office's sheet.
+            crate::credit::credit_in_full(state, &invoice, &reason, false, By::System(by))
+                .await
+                .map(|note| note.credit_note_id())
+                .map_err(TransitionError::into_error)
+        })
+    }
+
+    fn credit_partly<'a>(
+        &'a self,
+        state: &'a AppState,
+        invoice: InvoiceId,
+        lines: Vec<CreditLine>,
+        reason: String,
+        by: Option<i64>,
+    ) -> InvoiceFuture<'a, CreditNoteId> {
+        Box::pin(async move {
+            crate::credit_notes::credit_partly(state, invoice.0, &lines, &reason, By::System(by))
+                .await
+                .map(|note| note.credit_note_id())
+                .map_err(TransitionError::into_error)
+        })
+    }
+
+    fn find_credit_note<'a>(
+        &'a self,
+        db: &'a Db,
+        id: CreditNoteId,
+    ) -> InvoiceFuture<'a, Option<CreditNoteSummary>> {
+        Box::pin(async move { Ok(CreditNote::find(db, id.0).await?.map(|n| n.summary())) })
+    }
+
+    fn credit_notes_for<'a>(
+        &'a self,
+        db: &'a Db,
+        invoice: InvoiceId,
+    ) -> InvoiceFuture<'a, Vec<CreditNoteSummary>> {
+        Box::pin(async move {
+            let notes = crate::credit_notes::for_invoice(db, invoice.0).await?;
+            Ok(notes.iter().map(CreditNote::summary).collect())
+        })
+    }
+
+    fn open_credit<'a>(
+        &'a self,
+        db: &'a Db,
+        party: PartyId,
+        currency: &'a str,
+    ) -> InvoiceFuture<'a, i64> {
+        Box::pin(async move { crate::credit_notes::open_credit(db, party.0, currency).await })
     }
 }
 

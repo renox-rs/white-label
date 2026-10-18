@@ -6,7 +6,11 @@
 //! - `allocate_in_full` (the balance reached 0) → [`InvoicePaid`];
 //! - `recover` / `recover_in_full` → `BadDebtRecovered` and the accountant
 //!   notice ([`crate::recover`]); `recover_in_full` also → [`InvoicePaid`];
-//! - `mark_overdue` → [`InvoiceOverdue`].
+//! - `mark_overdue` → [`InvoiceOverdue`];
+//! - `credit` / `credit_system` → [`InvoiceCredited`] (the credit note and
+//!   the release of origins come from the run's `meta`, [`crate::credit`]);
+//! - a credit note's `issue` / `issue_system` (a listener on
+//!   [`Transitioned<CreditNote>`]) → [`CreditNoteIssued`].
 //!
 //! `InvoiceDisputed` is not a transition: [`crate::dispute::raise`] emits it
 //! itself after its commit.
@@ -15,11 +19,18 @@ use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use renox::state_machine::Transitioned;
 use wl_kernel::documents::today;
-use wl_kernel::invoicing::{InvoiceIssued, InvoiceOverdue, InvoicePaid};
+use wl_kernel::invoicing::{
+    CreditNoteIssued, InvoiceCredited, InvoiceIssued, InvoiceOverdue, InvoicePaid,
+};
 
 use crate::allocate::ALLOCATE_IN_FULL;
+use crate::credit::{CREDIT, CREDIT_SYSTEM, credit_note_of, releases_origins};
+use crate::credit_note::CreditNote;
+use crate::credit_note_machine::{ISSUE as ISSUE_NOTE, ISSUE_SYSTEM as ISSUE_NOTE_SYSTEM};
 use crate::invoice::Invoice;
+use crate::invoicer::lines_of;
 use crate::issue::ISSUE;
+use crate::line::InvoiceLine;
 use crate::overdue::MARK_OVERDUE;
 use crate::recover::{RECOVER, RECOVER_IN_FULL};
 
@@ -62,8 +73,50 @@ fn event_for(transition: &str, invoice: &Invoice, on: NaiveDate) -> Option<Invoi
     }
 }
 
-/// Registers the listener.
+/// `CreditNoteIssued` for `note`, as it is after the issue commit.
+fn credit_note_issued(note: &CreditNote) -> CreditNoteIssued {
+    CreditNoteIssued {
+        credit_note: note.credit_note_id(),
+        invoice: note.invoice(),
+        party: note.party(),
+        amount: note.gross_total,
+        reason: note.reason.clone(),
+    }
+}
+
+/// `InvoiceCredited` for `invoice` credited by `note`, with the origins of
+/// `lines` when the run released them.
+fn invoice_credited(
+    invoice: &Invoice,
+    note: &CreditNote,
+    reason: Option<String>,
+    lines: &[InvoiceLine],
+    release: bool,
+) -> InvoiceCredited {
+    InvoiceCredited {
+        invoice: invoice.invoice_id(),
+        credit_note: note.credit_note_id(),
+        amount: note.gross_total,
+        reason: reason.unwrap_or_else(|| note.reason.clone()),
+        released_origins: if release {
+            lines.iter().filter_map(InvoiceLine::origin).collect()
+        } else {
+            Vec::new()
+        },
+    }
+}
+
+/// Registers the listeners.
 pub(crate) fn register(app: &mut Registry) {
+    app.listen(
+        |event: Transitioned<CreditNote>, state: AppState| async move {
+            if ![ISSUE_NOTE, ISSUE_NOTE_SYSTEM].contains(&event.transition.as_str()) {
+                return Ok(());
+            }
+            let note = CreditNote::find_or_404(&state.db, event.key).await?;
+            state.emit(credit_note_issued(&note)).await
+        },
+    );
     app.listen(|event: Transitioned<Invoice>, state: AppState| async move {
         let known = [
             ISSUE,
@@ -71,12 +124,29 @@ pub(crate) fn register(app: &mut Registry) {
             MARK_OVERDUE,
             RECOVER,
             RECOVER_IN_FULL,
+            CREDIT,
+            CREDIT_SYSTEM,
         ];
         if !known.contains(&event.transition.as_str()) {
             return Ok(());
         }
         // The committed row: the number, dates and balance the run wrote.
         let invoice = Invoice::find_or_404(&state.db, event.key).await?;
+        if [CREDIT, CREDIT_SYSTEM].contains(&event.transition.as_str()) {
+            let Some(note_id) = credit_note_of(&event.meta) else {
+                return Ok(());
+            };
+            let note = CreditNote::find_or_404(&state.db, note_id).await?;
+            let lines = lines_of(&state.db, invoice.id).await?;
+            let credited = invoice_credited(
+                &invoice,
+                &note,
+                event.reason.clone(),
+                &lines,
+                releases_origins(&event.meta),
+            );
+            return state.emit(credited).await;
+        }
         if [RECOVER, RECOVER_IN_FULL].contains(&event.transition.as_str()) {
             crate::recover::after_commit(&state, &invoice, &event.meta).await?;
         }
@@ -153,5 +223,50 @@ mod tests {
         };
         assert_eq!(overdue.balance, 63_000);
         assert_eq!(overdue.days_overdue, 7);
+    }
+
+    #[test]
+    fn issuing_a_credit_note_gives_credit_note_issued() {
+        let note = CreditNote {
+            id: 7,
+            invoice_id: 4,
+            party_id: 7,
+            gross_total: 21_000,
+            reason: "Damaged".into(),
+            ..Default::default()
+        };
+        let issued = credit_note_issued(&note);
+        assert_eq!(issued.credit_note.0, 7);
+        assert_eq!((issued.invoice, issued.party), (InvoiceId(4), PartyId(7)));
+        assert_eq!((issued.amount, issued.reason.as_str()), (21_000, "Damaged"));
+    }
+
+    #[test]
+    fn crediting_gives_invoice_credited_with_released_origins_on_request() {
+        let note = CreditNote {
+            id: 7,
+            gross_total: 105_000,
+            reason: "Billed twice".into(),
+            ..Default::default()
+        };
+        let lines = [
+            InvoiceLine {
+                origin_type: Some("property.charge".into()),
+                origin_id: Some(4),
+                ..Default::default()
+            },
+            InvoiceLine::default(),
+        ];
+        let kept = invoice_credited(&invoice(), &note, None, &lines, false);
+        assert_eq!(kept.invoice, InvoiceId(4));
+        assert_eq!((kept.credit_note.0, kept.amount), (7, 105_000));
+        assert_eq!(kept.reason, "Billed twice");
+        assert!(kept.released_origins.is_empty());
+        let released = invoice_credited(&invoice(), &note, Some("Why".into()), &lines, true);
+        assert_eq!(released.reason, "Why");
+        assert_eq!(
+            released.released_origins,
+            [Subject::new("property.charge", 4)]
+        );
     }
 }

@@ -5,6 +5,7 @@ pub mod allocate;
 pub mod allocation;
 pub mod bad_debt_relief;
 pub mod config;
+pub mod credit;
 pub mod credit_note;
 pub mod credit_note_line;
 mod credit_note_machine;

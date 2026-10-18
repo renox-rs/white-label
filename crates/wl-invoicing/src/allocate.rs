@@ -16,7 +16,7 @@
 //! commit of `allocate_in_full` ([`crate::events`]).
 
 use renox::prelude::*;
-use renox::state_machine::{StateMachine, Transition, TransitionCtx, TransitionError};
+use renox::state_machine::{Outcome, StateMachine, Transition, TransitionCtx, TransitionError};
 use serde::{Deserialize, Serialize};
 use wl_kernel::Subject;
 use wl_kernel::invoicing::InvoiceStatus;
@@ -187,6 +187,28 @@ pub async fn allocate(
     amount: i64,
     ran_by: Option<i64>,
 ) -> std::result::Result<(), TransitionError> {
+    let mut tx = state.db.begin().await?;
+    let outcome = allocate_in(&mut tx, invoice, source, amount, ran_by).await?;
+    tx.commit().await?;
+    // After the commit; `InvoicePaid` follows from `allocate_in_full`.
+    outcome.emit(state).await.map_err(TransitionError::Failed)
+}
+
+/// [`allocate`] inside `tx`, which the caller commits: the same guards and
+/// effect, with `invoice` as the caller loaded it in `tx` (its balance is
+/// checked and updated only from that value). Emit the returned outcome
+/// after the commit.
+///
+/// # Errors
+///
+/// The errors of [`allocate`]; the caller rolls `tx` back.
+pub async fn allocate_in(
+    tx: &mut renox::db::Transaction,
+    invoice: &Invoice,
+    source: &Subject,
+    amount: i64,
+    ran_by: Option<i64>,
+) -> std::result::Result<Outcome<Invoice>, TransitionError> {
     let input = AllocateInput {
         source: source.clone(),
         amount,
@@ -196,16 +218,13 @@ pub async fn allocate(
         Some(user) => renox::serde_json::json!({ "ran_by": user, "source": source.to_string() }),
         None => renox::serde_json::json!({ "source": source.to_string() }),
     };
-    // `run` emits a done outcome after the commit; `InvoicePaid` follows
-    // from `allocate_in_full`.
-    let _outcome = invoice
+    invoice
         .transition(transition_for(amount, invoice.balance))
         .by_system()
         .input(&input)
         .meta(meta)
-        .run(state)
-        .await?;
-    Ok(())
+        .run_in(tx)
+        .await
 }
 
 #[cfg(test)]

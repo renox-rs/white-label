@@ -11,10 +11,15 @@
 use std::collections::HashMap;
 
 use renox::prelude::*;
+use renox::serde_json::{Value, json};
+use renox::state_machine::{Outcome, StateMachine, TransitionBuilder, TransitionError};
+use wl_kernel::LegalEntity;
 use wl_kernel::invoicing::{CreditLine, CreditNoteStatus, InvoiceStatus};
 
+use crate::allocate::allocate_in;
 use crate::credit_note::{CreditNote, CreditNoteKind};
 use crate::credit_note_line::CreditNoteLine;
+use crate::credit_note_machine::{APPLY, ISSUE, ISSUE_SYSTEM, IssueInput};
 use crate::invoice::Invoice;
 use crate::line::InvoiceLine;
 use crate::vat::{self, VatTotals};
@@ -56,6 +61,16 @@ pub fn plan<'a>(
     if requested.is_empty() {
         return Err("a credit note needs at least one line".to_owned());
     }
+    plan_lines(requested, invoice_lines, credited)
+}
+
+/// The lines of [`plan`] alone: each one known, once, above 0 and within
+/// the line's remaining credit.
+pub fn plan_lines<'a>(
+    requested: &[CreditLine],
+    invoice_lines: &'a [InvoiceLine],
+    credited: &HashMap<i64, i64>,
+) -> std::result::Result<Vec<(&'a InvoiceLine, i64)>, String> {
     let mut planned: Vec<(&InvoiceLine, i64)> = Vec::with_capacity(requested.len());
     for credit in requested {
         let position = credit.invoice_line;
@@ -175,6 +190,69 @@ fn resolve<'a>(
         .collect()
 }
 
+/// A credit note and its lines, built but not yet stored.
+pub(crate) struct Prepared {
+    /// The invoice as it is now.
+    pub invoice: Invoice,
+    /// The credit note, a `draft` with its totals set.
+    pub note: CreditNote,
+    /// Its lines, to be given the note's id on insert.
+    pub lines: Vec<CreditNoteLine>,
+}
+
+/// Plans `lines` on invoice `invoice_id` as it is now and builds the draft
+/// credit note of `kind` with its lines. The legal entity, currency and
+/// rate are the invoice's. Refusals are those of [`draft`].
+pub(crate) async fn prepare(
+    db: &Db,
+    invoice_id: i64,
+    lines: &[CreditLine],
+    reason: &str,
+    kind: CreditNoteKind,
+    created_by: Option<i64>,
+) -> Result<Prepared> {
+    // The invoice as it is now, not as the caller loaded it.
+    let invoice = Invoice::find_or_404(db, invoice_id).await?;
+    let (invoice_lines, planned) = plan_for(db, &invoice, lines, reason).await?;
+    let mut note = CreditNote {
+        invoice_id: invoice.id,
+        legal_entity_id: invoice.legal_entity_id,
+        party_id: invoice.party_id,
+        currency: invoice.currency.clone(),
+        exchange_rate_micro: invoice.exchange_rate_micro,
+        reason: reason.trim().to_owned(),
+        kind,
+        created_by,
+        status: CreditNoteStatus::Draft,
+        ..Default::default()
+    };
+    let (new_lines, totals) = build(0, &resolve(&invoice_lines, &planned), note.aed_rate());
+    note.set_totals(&totals);
+    Ok(Prepared {
+        invoice,
+        note,
+        lines: new_lines,
+    })
+}
+
+/// Inserts `prepared` in `tx`: the credit note, then its lines.
+pub(crate) async fn insert_in(
+    tx: &mut renox::db::Transaction,
+    prepared: Prepared,
+) -> Result<(CreditNote, usize)> {
+    let Prepared {
+        mut note,
+        mut lines,
+        ..
+    } = prepared;
+    note.insert(&mut *tx).await?;
+    for line in &mut lines {
+        line.credit_note_id = note.id;
+        line.insert(&mut *tx).await?;
+    }
+    Ok((note, lines.len()))
+}
+
 /// Drafts a credit note against `invoice` for `lines` (the net on each
 /// invoice line, by position) with its lines and totals in one
 /// transaction. It is a `draft`: no number, no remaining balance, and the
@@ -191,30 +269,17 @@ pub async fn draft(
     reason: &str,
     created_by: Option<i64>,
 ) -> Result<CreditNote> {
-    // The invoice as it is now, not as the caller loaded it.
-    let invoice = Invoice::find_or_404(db, invoice.id).await?;
-    let (invoice_lines, planned) = plan_for(db, &invoice, lines, reason).await?;
-    let mut note = CreditNote {
-        invoice_id: invoice.id,
-        legal_entity_id: invoice.legal_entity_id,
-        party_id: invoice.party_id,
-        currency: invoice.currency.clone(),
-        exchange_rate_micro: invoice.exchange_rate_micro,
-        reason: reason.trim().to_owned(),
-        kind: CreditNoteKind::Partial,
+    let prepared = prepare(
+        db,
+        invoice.id,
+        lines,
+        reason,
+        CreditNoteKind::Partial,
         created_by,
-        status: CreditNoteStatus::Draft,
-        ..Default::default()
-    };
-    let (_, totals) = build(0, &resolve(&invoice_lines, &planned), note.aed_rate());
-    note.set_totals(&totals);
-
+    )
+    .await?;
     let mut tx = db.begin().await?;
-    note.insert(&mut tx).await?;
-    let (mut new_lines, _) = build(note.id, &resolve(&invoice_lines, &planned), note.aed_rate());
-    for line in &mut new_lines {
-        line.insert(&mut tx).await?;
-    }
+    let (note, _) = insert_in(&mut tx, prepared).await?;
     tx.commit().await?;
     Ok(note)
 }
@@ -273,6 +338,293 @@ pub async fn discard(db: &Db, credit_note: &CreditNote) -> Result<()> {
     note.delete(&mut tx).await?;
     tx.commit().await?;
     Ok(())
+}
+
+/// Who runs a transition: a signed-in user (their permission is checked) or
+/// the system, optionally on behalf of a user id (kept in the history
+/// row's `meta` as `ran_by`).
+#[derive(Clone, Copy)]
+pub enum By<'a> {
+    /// A signed-in user.
+    User(&'a AuthUser),
+    /// The system, for a caller that has only a user id, or none.
+    System(Option<i64>),
+}
+
+impl By<'_> {
+    /// The user's id, if any.
+    pub fn id(&self) -> Option<i64> {
+        match self {
+            By::User(user) => Some(user.id),
+            By::System(id) => *id,
+        }
+    }
+}
+
+/// `record`'s transition `user_name` for a user, or `system_name` for the
+/// system, with `meta` (an object) and `ran_by` added to it.
+pub(crate) fn run_of<'r, M: StateMachine>(
+    record: &'r M,
+    by: &By<'_>,
+    user_name: &str,
+    system_name: &str,
+    mut meta: Value,
+) -> TransitionBuilder<'r, M> {
+    if let Some(id) = by.id() {
+        meta["ran_by"] = json!(id);
+    }
+    match by {
+        By::User(user) => record.transition(user_name).by(user).meta(meta),
+        By::System(_) => record.transition(system_name).by_system().meta(meta),
+    }
+}
+
+/// The outcomes of one service call, to emit after its commit.
+#[derive(Default)]
+pub(crate) struct Outcomes {
+    pub notes: Vec<Outcome<CreditNote>>,
+    pub invoices: Vec<Outcome<Invoice>>,
+}
+
+impl Outcomes {
+    /// Emits them all (after the commit).
+    pub async fn emit(self, state: &AppState) -> std::result::Result<(), TransitionError> {
+        for outcome in self.notes {
+            outcome.emit(state).await.map_err(TransitionError::Failed)?;
+        }
+        for outcome in self.invoices {
+            outcome.emit(state).await.map_err(TransitionError::Failed)?;
+        }
+        Ok(())
+    }
+}
+
+/// What the issue guards need for `invoice`, whose issuing entity is
+/// looked up in `db`.
+async fn issue_input(
+    db: &Db,
+    invoice: &Invoice,
+    lines: usize,
+    line_problem: Option<String>,
+) -> Result<IssueInput> {
+    let entity = match invoice.legal_entity_id {
+        Some(id) => LegalEntity::find(db, id).await?,
+        None => None,
+    };
+    Ok(IssueInput {
+        invoice_status: Some(invoice.status),
+        invoice_entity: invoice.legal_entity_id,
+        entity_active: entity.as_ref().is_some_and(LegalEntity::is_active),
+        lines,
+        line_problem,
+    })
+}
+
+/// What the guards of issuing draft `note` need, from the stored invoice,
+/// lines and credit already issued.
+async fn gather(db: &Db, note: &CreditNote) -> Result<IssueInput> {
+    let invoice = Invoice::find_or_404(db, note.invoice_id).await?;
+    let invoice_lines = crate::invoicer::lines_of(db, invoice.id).await?;
+    let credited = credited_by_line(db, invoice.id).await?;
+    let stored = lines_of(db, note.id).await?;
+    let requested: Vec<CreditLine> = stored
+        .iter()
+        .filter_map(|line| {
+            invoice_lines
+                .iter()
+                .find(|l| l.id == line.invoice_line_id)
+                .map(|l| CreditLine::new(l.position, line.net_amount))
+        })
+        .collect();
+    let problem = if requested.len() == stored.len() {
+        plan_lines(&requested, &invoice_lines, &credited).err()
+    } else {
+        Some("a line of the credit note is no longer on the invoice".to_owned())
+    };
+    issue_input(db, &invoice, stored.len(), problem).await
+}
+
+/// Lowers the remaining of credit note `note` (as loaded) by `amount`, only
+/// from the remaining that was loaded, so two uses at once never both pass.
+/// 422 when it moved or is too low.
+pub(crate) async fn lower_remaining_in(
+    tx: &mut renox::db::Transaction,
+    note: &CreditNote,
+    amount: i64,
+) -> Result<()> {
+    if amount <= 0 || amount > note.remaining {
+        return Err(refused(
+            "the amount is above the credit note's remaining balance",
+        ));
+    }
+    let moved = renox::db::sql(format!(
+        "UPDATE {} SET remaining = remaining - ?, updated_at = ? WHERE id = ? AND remaining = ?",
+        CreditNote::TABLE
+    ))
+    .bind(amount)
+    .bind(renox::db::now())
+    .bind(note.id)
+    .bind(note.remaining)
+    .execute(&mut *tx)
+    .await?;
+    if moved == 0 {
+        return Err(refused("The credit note changed; try again."));
+    }
+    Ok(())
+}
+
+/// Runs `issue` on draft `note` in `tx`, then reloads it.
+pub(crate) async fn issue_in(
+    tx: &mut renox::db::Transaction,
+    note: &CreditNote,
+    input: &IssueInput,
+    by: &By<'_>,
+    outcomes: &mut Outcomes,
+) -> std::result::Result<CreditNote, TransitionError> {
+    let outcome = run_of(note, by, ISSUE, ISSUE_SYSTEM, json!({}))
+        .input(input)
+        .run_in(&mut *tx)
+        .await?;
+    outcomes.notes.push(outcome);
+    Ok(CreditNote::find_or_404(&mut *tx, note.id).await?)
+}
+
+/// Runs `apply` on `note` (its remaining is 0) in `tx`, then reloads it.
+pub(crate) async fn apply_in(
+    tx: &mut renox::db::Transaction,
+    note: &CreditNote,
+    by: &By<'_>,
+    outcomes: &mut Outcomes,
+) -> std::result::Result<CreditNote, TransitionError> {
+    // Always the system: a user does not apply a credit note.
+    let mut meta = json!({});
+    if let Some(id) = by.id() {
+        meta["ran_by"] = json!(id);
+    }
+    let outcome = note
+        .transition(APPLY)
+        .by_system()
+        .meta(meta)
+        .run_in(&mut *tx)
+        .await?;
+    outcomes.notes.push(outcome);
+    Ok(CreditNote::find_or_404(&mut *tx, note.id).await?)
+}
+
+/// After `issue`: allocates the lower of the credit note's remaining and the
+/// invoice's balance to the invoice (through [`allocate_in`], the credit
+/// note the source), and applies the credit note when nothing is left. The
+/// part above the balance, or everything for a `paid` invoice, stays as the
+/// party's credit.
+async fn allocate_step(
+    tx: &mut renox::db::Transaction,
+    note: CreditNote,
+    by: &By<'_>,
+    outcomes: &mut Outcomes,
+) -> std::result::Result<CreditNote, TransitionError> {
+    let invoice = Invoice::find_or_404(&mut *tx, note.invoice_id).await?;
+    let open = [
+        InvoiceStatus::Issued,
+        InvoiceStatus::PartiallyPaid,
+        InvoiceStatus::Overdue,
+    ]
+    .contains(&invoice.status);
+    let amount = if open {
+        note.remaining.min(invoice.balance)
+    } else {
+        0
+    };
+    let mut note = note;
+    if amount > 0 {
+        lower_remaining_in(tx, &note, amount).await?;
+        let moved = allocate_in(tx, &invoice, &note.subject(), amount, by.id()).await?;
+        outcomes.invoices.push(moved);
+        note = CreditNote::find_or_404(&mut *tx, note.id).await?;
+    }
+    if note.remaining == 0 {
+        note = apply_in(tx, &note, by, outcomes).await?;
+    }
+    Ok(note)
+}
+
+/// Issues draft credit note `note` as `by`, in one transaction: `issue`
+/// (the number, the snapshots, the issue date), then the allocation to its
+/// invoice and `apply` when the whole gross was allocated. The events are
+/// emitted after the commit.
+///
+/// # Errors
+///
+/// `Forbidden` without `invoices.credit`, `NotFrom` when it is not a draft,
+/// `Guard` (422) for an invoice that cannot be credited, a blank reason, no
+/// lines, a line above its remaining credit or an entity that differs or is
+/// not active. Nothing is written then and no number is used.
+pub async fn issue(
+    state: &AppState,
+    by: By<'_>,
+    note: &CreditNote,
+) -> std::result::Result<CreditNote, TransitionError> {
+    let note = CreditNote::find_or_404(&state.db, note.id).await?;
+    let input = gather(&state.db, &note).await?;
+    let mut outcomes = Outcomes::default();
+    let mut tx = state.db.begin().await?;
+    let issued = issue_in(&mut tx, &note, &input, &by, &mut outcomes).await?;
+    allocate_step(&mut tx, issued, &by, &mut outcomes).await?;
+    tx.commit().await?;
+    outcomes.emit(state).await?;
+    Ok(CreditNote::find_or_404(&state.db, note.id).await?)
+}
+
+/// Drafts and issues, in one transaction, a credit note for `lines` of
+/// invoice `invoice_id` (the Invoicer's `credit_partly`), then allocates it
+/// as [`issue`] does. Refusals are those of [`draft`] and [`issue`]; a
+/// refused issue leaves no draft behind.
+pub async fn credit_partly(
+    state: &AppState,
+    invoice_id: i64,
+    lines: &[CreditLine],
+    reason: &str,
+    by: By<'_>,
+) -> std::result::Result<CreditNote, TransitionError> {
+    let prepared = prepare(
+        &state.db,
+        invoice_id,
+        lines,
+        reason,
+        CreditNoteKind::Partial,
+        by.id(),
+    )
+    .await?;
+    let input = issue_input(&state.db, &prepared.invoice, prepared.lines.len(), None).await?;
+    let mut outcomes = Outcomes::default();
+    let mut tx = state.db.begin().await?;
+    let (note, _) = insert_in(&mut tx, prepared).await?;
+    let issued = issue_in(&mut tx, &note, &input, &by, &mut outcomes).await?;
+    let done = allocate_step(&mut tx, issued, &by, &mut outcomes).await?;
+    tx.commit().await?;
+    outcomes.emit(state).await?;
+    Ok(done)
+}
+
+/// What other modules see of the credit notes of invoice `invoice_id`,
+/// oldest first.
+pub async fn for_invoice(db: &Db, invoice_id: i64) -> Result<Vec<CreditNote>> {
+    CreditNote::query()
+        .where_(CreditNote::INVOICE_ID.eq(invoice_id))
+        .order_by(CreditNote::ID)
+        .get(db)
+        .await
+}
+
+/// The sum of the remaining balances of `party_id`'s `issued` credit notes
+/// in `currency`.
+pub async fn open_credit(db: &Db, party_id: i64, currency: &str) -> Result<i64> {
+    let notes = CreditNote::query()
+        .where_(CreditNote::PARTY_ID.eq(party_id))
+        .where_(CreditNote::CURRENCY.eq(currency))
+        .where_(CreditNote::STATUS.eq(CreditNoteStatus::Issued))
+        .get(db)
+        .await?;
+    Ok(notes.iter().map(|n| n.remaining).sum())
 }
 
 #[cfg(test)]
