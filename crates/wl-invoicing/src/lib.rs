@@ -418,6 +418,7 @@ impl Module for WlInvoicing {
         dispute_resolve::register(app);
         // `invoicing.dispute_escalation`: the notice of `FIN.RUL.15`.
         escalation::register_types();
+        escalation::schedule(app);
         // `invoicing.credit_note_restored`: the credit is available again.
         restore::register_types();
         // A failed refund paid out of a credit note gives its amount back.
