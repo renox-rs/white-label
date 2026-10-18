@@ -21,8 +21,9 @@ use wl_kernel::LegalEntity;
 use wl_kernel::approvals::{self, ApprovalRequest};
 use wl_kernel::documents::today;
 use wl_kernel::invoicing::{
-    BadDebtRecovered, CreditNoteReopened, DraftLine, InvoiceDisputeResolved, InvoiceDraft,
-    InvoiceId, InvoiceIssued, InvoiceOverdue, InvoicePaid, InvoiceWrittenOff, VatCategory,
+    BadDebtRecovered, CreditNoteReopened, DraftLine, InvoiceDisputeResolved, InvoiceDisputed,
+    InvoiceDraft, InvoiceId, InvoiceIssued, InvoiceOverdue, InvoicePaid, InvoiceWrittenOff,
+    VatCategory,
 };
 use wl_kernel::notify::{MessageId, Notifier, NotifyFuture, NotifyRequest};
 use wl_kernel::parties::{BillingIdentity, PartyDirectory, PartyFuture, PartyStatus, PartySummary};
@@ -30,6 +31,7 @@ use wl_kernel::payments::{
     AllocationTarget, PaymentFuture, PaymentId, PaymentRecorder, PaymentSummary, RecordPayment,
     RefundId, RefundRequest, ReversalReason,
 };
+use wl_kernel::tickets::{OpenTicket, TaskCreator, TicketFuture, TicketId, TicketRef};
 use wl_kernel::{ClientConfig, PartyId, Subject};
 
 /// The pages extend the app's layout; a package test has no app, so it
@@ -294,6 +296,69 @@ impl PaymentRecorder for RefundDesk {
     }
 }
 
+/// A `TaskCreator` that records the tickets it is asked to open and to
+/// resolve, and answers `TKT-n`; switched off, it opens nothing (as without
+/// the ticketing module).
+#[derive(Clone, Default)]
+pub struct TicketDesk {
+    opened: Arc<Mutex<Vec<OpenTicket>>>,
+    resolved: Arc<Mutex<Vec<(TicketId, String)>>>,
+    off: Arc<AtomicBool>,
+}
+
+impl TicketDesk {
+    /// The tickets opened, oldest first (ticket `n` is the n-th).
+    pub fn opened(&self) -> Vec<OpenTicket> {
+        self.opened.lock().unwrap().clone()
+    }
+
+    /// The tickets resolved by their source, with the note.
+    pub fn resolved(&self) -> Vec<(TicketId, String)> {
+        self.resolved.lock().unwrap().clone()
+    }
+
+    /// Switches ticketing off (`true`) or on again.
+    pub fn off(&self, off: bool) {
+        self.off.store(off, Ordering::SeqCst);
+    }
+}
+
+impl TaskCreator for TicketDesk {
+    fn open<'a>(
+        &'a self,
+        _state: &'a AppState,
+        ticket: OpenTicket,
+    ) -> TicketFuture<'a, Option<TicketRef>> {
+        Box::pin(async move {
+            if self.off.load(Ordering::SeqCst) {
+                return Ok(None);
+            }
+            let mut opened = self.opened.lock().unwrap();
+            opened.push(ticket);
+            let n = opened.len() as i64;
+            Ok(Some(TicketRef {
+                id: TicketId(n),
+                number: format!("TKT-{n}"),
+            }))
+        })
+    }
+
+    fn resolve_from_source<'a>(
+        &'a self,
+        _state: &'a AppState,
+        ticket: TicketId,
+        note: &'a str,
+    ) -> TicketFuture<'a, bool> {
+        Box::pin(async move {
+            self.resolved
+                .lock()
+                .unwrap()
+                .push((ticket, note.to_owned()));
+            Ok(true)
+        })
+    }
+}
+
 /// Everything of one type `E` emitted so far.
 #[derive(Clone)]
 pub struct Recorded<E>(Arc<Mutex<Vec<E>>>);
@@ -344,6 +409,10 @@ pub struct Booted {
     pub recovered: Recorded<BadDebtRecovered>,
     /// `InvoiceDisputeResolved`.
     pub resolved: Recorded<InvoiceDisputeResolved>,
+    /// `InvoiceDisputed`.
+    pub disputed: Recorded<InvoiceDisputed>,
+    /// The tickets asked of ticketing.
+    pub tickets: TicketDesk,
 }
 
 impl Booted {
@@ -816,6 +885,9 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
     let reopened = Recorded::new();
     let recovered = Recorded::new();
     let resolved = Recorded::new();
+    let disputed = Recorded::new();
+    let tickets = TicketDesk::default();
+    let creator: Arc<dyn TaskCreator> = Arc::new(tickets.clone());
     let notices = Recording::default();
     let refunds = RefundDesk::default();
     let recorder: Arc<dyn PaymentRecorder> = Arc::new(refunds.clone());
@@ -828,6 +900,7 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
         .module(Probe)
         .provide(directory)
         .provide(recorder)
+        .provide(creator)
         .provide(notifier);
     let app = record(app, &issued);
     let app = record(app, &overdue);
@@ -836,6 +909,7 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
     let app = record(app, &reopened);
     let app = record(app, &recovered);
     let app = record(app, &resolved);
+    let app = record(app, &disputed);
     let config = ClientConfig::parse(CLIENT).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     let dir = views.path().to_path_buf();
@@ -900,5 +974,7 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
         refunds,
         recovered,
         resolved,
+        disputed,
+        tickets,
     }
 }
