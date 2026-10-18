@@ -915,6 +915,7 @@ dependencies = [
  "serde",
  "wl-documents",
  "wl-kernel",
+ "wl-notify",
  "wl-parties",
 ]
 
@@ -3444,6 +3445,14 @@ dependencies = [
  "serde",
  "tempfile",
  "toml",
+]
+
+[[package]]
+name = "wl-notify"
+version = "0.1.0"
+dependencies = [
+ "renox",
+ "serde",
 ]
 
 [[package]]

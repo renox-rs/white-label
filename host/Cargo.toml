@@ -12,3 +12,4 @@ wl-kernel = { path = "../crates/wl-kernel" }
 property = { path = "../apps/property" }
 wl-parties = { path = "../crates/wl-parties" }
 wl-documents = { path = "../crates/wl-documents" }
+wl-notify = { path = "../crates/wl-notify" }

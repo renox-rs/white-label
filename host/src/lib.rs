@@ -89,6 +89,7 @@ fn enable(app: renox::App, module: &str) -> Result<renox::App, ConfigError> {
     match module {
         "parties" => Ok(app.module(wl_parties::WlParties)),
         "documents" => Ok(app.module(wl_documents::WlDocuments)),
+        "notify" => Ok(app.module(wl_notify::WlNotify::new())),
         other => Err(ConfigError(format!(
             "[modules] `{other}` is not built yet; remove it from client.toml for now"
         ))),

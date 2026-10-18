@@ -8,6 +8,7 @@ use renox::auth::permissions;
 use renox::command::Args;
 use renox::prelude::*;
 use wl_documents::permissions as documents;
+use wl_notify::permissions as notify;
 use wl_parties::permissions as parties;
 
 /// Manages users and their roles.
@@ -43,6 +44,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             documents::REVIEW,
             documents::MANAGE,
             documents::KINDS_MANAGE,
+            notify::LOG_VIEW,
+            notify::TEMPLATES_MANAGE,
+            notify::CHANNELS_MANAGE,
         ],
     ),
     (
