@@ -35,6 +35,8 @@ use renox::state_machine::{Outcome, StateMachine, TransitionError, TransitionInf
 use renox::{AppState, Result};
 use serde::Serialize;
 
+use crate::block_guard::ActionKind;
+use crate::parties::PartyId;
 use crate::subject::Subject;
 
 /// A boxed future, as the handlers return.
@@ -128,6 +130,12 @@ type RunFn = Arc<
 >;
 /// The scope of a loaded record.
 type RecordScopeFn<M> = Arc<dyn Fn(&M) -> Scope + Send + Sync>;
+/// The party a guarded transition acts on, read from the stored record.
+type PartyFn = Arc<
+    dyn for<'a> Fn(&'a mut Transaction, i64) -> BoxFuture<'a, Result<Option<PartyId>>>
+        + Send
+        + Sync,
+>;
 type EmitFn = Box<dyn for<'s> FnOnce(&'s AppState) -> BoxFuture<'s, Result> + Send>;
 
 /// What a run by name carries: the history reason, the input for guards and
@@ -229,6 +237,14 @@ fn ran<M: StateMachine>(outcome: Outcome<M>) -> Ran {
     }
 }
 
+/// A transition that must pass the block guard: what it does and whose
+/// party it acts on.
+#[derive(Clone)]
+struct Guarded {
+    kind: ActionKind,
+    party: PartyFn,
+}
+
 /// A subject's state machine without its model type: what the kernel needs
 /// to run its transitions by name. Built with [`SubjectMachine::of`].
 pub struct SubjectMachine {
@@ -242,6 +258,7 @@ pub struct SubjectMachine {
     scope: ScopeFn,
     reserve: Option<HandlerFn>,
     release: Option<HandlerFn>,
+    guarded: BTreeMap<String, Guarded>,
     run: RunFn,
 }
 
@@ -289,6 +306,7 @@ impl SubjectMachine {
             scope: None,
             reserve: None,
             release: None,
+            guarded: BTreeMap::new(),
             _model: std::marker::PhantomData,
         }
     }
@@ -317,6 +335,27 @@ impl SubjectMachine {
             .get(transition)
             .cloned()
             .unwrap_or_else(|| default_action_key(&self.subject_type, transition))
+    }
+
+    /// The block-guard kind of `transition`, if it was declared with
+    /// [`SubjectMachineBuilder::block_guarded`].
+    pub fn guarded_kind(&self, transition: &str) -> Option<ActionKind> {
+        self.guarded.get(transition).map(|g| g.kind)
+    }
+
+    /// The party record `id` acts on in the guarded transition `transition`,
+    /// read in `tx`. `None` when the transition is not guarded, the record is
+    /// missing, or the record has no party.
+    pub async fn guarded_party_in(
+        &self,
+        tx: &mut Transaction,
+        id: i64,
+        transition: &str,
+    ) -> Result<Option<PartyId>> {
+        match self.guarded.get(transition) {
+            Some(guarded) => (guarded.party)(tx, id).await,
+            None => Ok(None),
+        }
     }
 
     /// The transition called `name`, if the machine has one.
@@ -437,6 +476,7 @@ pub struct SubjectMachineBuilder<M: StateMachine<Key = i64>> {
     scope: Option<RecordScopeFn<M>>,
     reserve: Option<HandlerFn>,
     release: Option<HandlerFn>,
+    guarded: BTreeMap<String, Guarded>,
     _model: std::marker::PhantomData<fn() -> M>,
 }
 
@@ -508,6 +548,56 @@ impl<M: StateMachine<Key = i64>> SubjectMachineBuilder<M> {
         self
     }
 
+    /// Declares that `transition` is a guarded action of kind `kind`
+    /// (see [`crate::block_guard`]): [`crate::block_guard::run_guarded`]
+    /// refuses it when the party `party_of` returns for the record is
+    /// blocked, an exception can be requested for it, and the guard is
+    /// checked again at the final approval of a request for it. A record
+    /// without a party (`None`) is not guarded.
+    ///
+    /// Registering a machine with a guarded transition also registers the
+    /// subject type's final re-check hook
+    /// ([`crate::approvals::register_final_check`]), replacing one the module
+    /// registered for the same type.
+    ///
+    /// # Panics
+    ///
+    /// When the machine has no such transition, when it is a system one, or
+    /// when `kind` is [`ActionKind::MoneyIn`], which is never refused.
+    pub fn block_guarded(
+        mut self,
+        transition: &str,
+        kind: ActionKind,
+        party_of: impl Fn(&M) -> Option<PartyId> + Send + Sync + 'static,
+    ) -> Self {
+        let info = self.transitions.iter().find(|t| t.name == transition);
+        assert!(
+            info.is_some_and(|t| !t.system),
+            "{}: `{transition}` is not a user transition of the machine",
+            self.subject_type
+        );
+        assert!(
+            kind.is_guarded(),
+            "{}: `{transition}` cannot be guarded as `{kind}`: money in is never refused",
+            self.subject_type
+        );
+        let party_of = Arc::new(party_of);
+        let party: PartyFn = Arc::new(move |tx: &mut Transaction, id: i64| {
+            let party_of = Arc::clone(&party_of);
+            Box::pin(async move {
+                let record = M::query()
+                    .where_eq("id", id)
+                    .first(&mut *tx)
+                    .await?
+                    .ok_or(renox::Error::NotFound)?;
+                Ok(party_of(&record))
+            })
+        });
+        self.guarded
+            .insert(transition.to_owned(), Guarded { kind, party });
+        self
+    }
+
     /// The entry, without registering it.
     pub fn build(self) -> SubjectMachine {
         let has_scope = self.scope.is_some();
@@ -547,6 +637,7 @@ impl<M: StateMachine<Key = i64>> SubjectMachineBuilder<M> {
             scope,
             reserve: self.reserve,
             release: self.release,
+            guarded: self.guarded,
             run,
         }
     }
@@ -573,6 +664,11 @@ static REGISTRY: RwLock<BTreeMap<String, Arc<SubjectMachine>>> = RwLock::new(BTr
 /// Adds `machine` to the process-wide registry; registering the same subject
 /// type again replaces the entry.
 pub fn register(machine: SubjectMachine) {
+    if !machine.guarded.is_empty() {
+        crate::approvals::register_final_check(machine.subject_type.clone(), |tx, request| {
+            Box::pin(crate::block_guard::recheck(tx, request))
+        });
+    }
     REGISTRY
         .write()
         .unwrap_or_else(PoisonError::into_inner)

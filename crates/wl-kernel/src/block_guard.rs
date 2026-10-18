@@ -37,18 +37,45 @@
 //! [`BLOCK_EXCEPTION_ACTION`], decided by the role
 //! [`BlockGuard::exception_step`] names.
 //!
+//!
+//! # Guarded transitions
+//!
+//! A module declares each guarded transition on its machine with
+//! [`SubjectMachineBuilder::block_guarded`](crate::machines::SubjectMachineBuilder::block_guarded)
+//! and runs it with [`run_guarded`], which checks the guard and runs the
+//! transition in one transaction. A refusal is [`GuardedError::Blocked`]; the
+//! page includes the partial `wl-kernel/block_refusal.html` (built with
+//! [`BlockRefusal::view`]) whose "Request exception" form posts the same
+//! action again with `block_exception=1`, and the handler then calls
+//! [`request_exception_in`]. The request has the guarded action's own policy
+//! steps first, if it has a policy, then the exception step. On the last
+//! approval the kernel runs `<transition>_approved` once, with the stored
+//! payload. The final approval of any other request for a guarded transition
+//! checks the guard again as the system and fails the request when the party
+//! has been blocked meanwhile ([`recheck`]).
+//!
+//! That re-check hook has no [`AppState`], so [`provide_block_guard`] also
+//! keeps the guard in a process-wide slot for it. [`guard`] and
+//! [`run_guarded`] still use the app's own guard.
+//!
 //! [ARCHITECTURE.md]: https://github.com/renox-rs/white-label/blob/main/docs/ARCHITECTURE.md
 
 use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{Arc, PoisonError, RwLock};
 
+use renox::AuthUser;
 use renox::db::Transaction;
 use renox::prelude::*;
+use renox::serde_json::Value;
+use renox::state_machine::{Outcome, StateMachine, TransitionError};
 use serde::{Deserialize, Serialize};
 
+use crate::approvals::{ApprovalPolicy, ApprovalRequest, Require, Required, Step};
+use crate::machines;
 use crate::parties::{NEUTRAL_BLOCK_REASON, PartyId};
+use crate::subject::Subject;
 use crate::texts;
 
 /// The approval action of a block exception: a request to let one blocked
@@ -225,6 +252,33 @@ impl BlockRefusal {
         )
     }
 
+    /// What the partial `wl-kernel/block_refusal.html` shows: the message,
+    /// the record links, and the "Request exception" form that posts to
+    /// `action` with `fields` (the original action's fields) plus
+    /// `block_exception=1`.
+    pub fn view(&self, lang: &Lang, action: &str, fields: &[(&str, &str)]) -> BlockRefusalView {
+        let mut fields: Vec<FormField> = fields
+            .iter()
+            .filter(|(name, _)| *name != EXCEPTION_FIELD)
+            .map(|(name, value)| FormField {
+                name: (*name).to_owned(),
+                value: (*value).to_owned(),
+            })
+            .collect();
+        fields.push(FormField {
+            name: EXCEPTION_FIELD.to_owned(),
+            value: "1".to_owned(),
+        });
+        BlockRefusalView {
+            code: self.code().to_owned(),
+            message: self.message(lang),
+            lines: self.reasons.clone(),
+            offer: self.exception_offer(lang),
+            action: action.to_owned(),
+            fields,
+        }
+    }
+
     /// The English message, for places without a request language.
     pub fn message_en(&self) -> String {
         if self.reasons.is_empty() {
@@ -254,6 +308,41 @@ impl fmt::Display for BlockRefusal {
 }
 
 impl std::error::Error for BlockRefusal {}
+
+/// The template of the refusal partial.
+pub const REFUSAL_TEMPLATE: &str = "wl-kernel/block_refusal.html";
+
+/// The form field that asks for an exception: a guarded action posted again
+/// with `block_exception=1` becomes [`request_exception_in`].
+pub const EXCEPTION_FIELD: &str = "block_exception";
+
+/// One hidden field of the "Request exception" form.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct FormField {
+    /// The field's name.
+    pub name: String,
+    /// The field's value.
+    pub value: String,
+}
+
+/// The data of the partial `wl-kernel/block_refusal.html`; a page gives it
+/// as `refusal` (see [`BlockRefusal::view`]).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct BlockRefusalView {
+    /// `on_hold`.
+    pub code: String,
+    /// The message: "This party is on hold", or one "Blocked: <reason>" line
+    /// per record (joined by newlines).
+    pub message: String,
+    /// The record lines, empty for the neutral refusal.
+    pub lines: Vec<BlockReasonLine>,
+    /// The offer, naming the approver role: the form's button label.
+    pub offer: String,
+    /// Where the form posts.
+    pub action: String,
+    /// The hidden fields: the original action's, then `block_exception=1`.
+    pub fields: Vec<FormField>,
+}
 
 /// Who approves an exception: the role, and the permission an approver must
 /// hold ([`BLOCK_EXCEPTION_ACTION`]).
@@ -317,10 +406,17 @@ impl BlockGuard for NoBlockGuard {
     }
 }
 
+/// The guard the final re-check hook uses: the hook has no [`AppState`].
+static RECHECK_GUARD: RwLock<Option<Arc<dyn BlockGuard>>> = RwLock::new(None);
+
 /// Makes `guard` the app's [`BlockGuard`]; `wl-parties` calls it in
-/// `register`.
+/// `register`. The last guard provided also serves the final re-check of
+/// approval requests (see [`recheck`]).
 pub fn provide_block_guard(app: &mut Registry, guard: impl BlockGuard) {
     let guard: Arc<dyn BlockGuard> = Arc::new(guard);
+    *RECHECK_GUARD
+        .write()
+        .unwrap_or_else(PoisonError::into_inner) = Some(Arc::clone(&guard));
     app.provide(guard);
 }
 
@@ -329,6 +425,206 @@ pub fn guard(state: &AppState) -> Arc<dyn BlockGuard> {
     match state.provided::<Arc<dyn BlockGuard>>() {
         Some(guard) => Arc::clone(&guard),
         None => Arc::new(NoBlockGuard),
+    }
+}
+
+/// A guarded run that did not happen.
+#[derive(Debug)]
+pub enum GuardedError {
+    /// The party is blocked; nothing ran.
+    Blocked(BlockRefusal),
+    /// The transition itself failed or was refused.
+    Transition(TransitionError),
+}
+
+impl GuardedError {
+    /// The refusal, if the party is blocked.
+    pub fn refusal(&self) -> Option<&BlockRefusal> {
+        match self {
+            GuardedError::Blocked(refusal) => Some(refusal),
+            GuardedError::Transition(_) => None,
+        }
+    }
+
+    /// The HTTP error: a 422 with the neutral text for a refusal, else the
+    /// transition's own.
+    pub fn into_error(self) -> Error {
+        match self {
+            GuardedError::Blocked(refusal) => refusal.into_error(),
+            GuardedError::Transition(error) => error.into_error(),
+        }
+    }
+}
+
+impl From<TransitionError> for GuardedError {
+    fn from(error: TransitionError) -> Self {
+        GuardedError::Transition(error)
+    }
+}
+
+impl From<renox::db::DbError> for GuardedError {
+    fn from(error: renox::db::DbError) -> Self {
+        GuardedError::Transition(error.into())
+    }
+}
+
+impl From<Error> for GuardedError {
+    fn from(error: Error) -> Self {
+        GuardedError::Transition(TransitionError::Failed(error))
+    }
+}
+
+/// Runs `transition` on `record` as `user`, after checking the block guard
+/// in the same transaction. A transition not declared with
+/// [`block_guarded`](crate::machines::SubjectMachineBuilder::block_guarded)
+/// runs as it is. A blocked party refuses the run with
+/// [`GuardedError::Blocked`] before anything is written. Like
+/// `TransitionBuilder::run`, it commits, emits the `Transitioned` event, and
+/// also announces the approval request a run created.
+pub async fn run_guarded<M>(
+    state: &AppState,
+    user: &AuthUser,
+    record: &M,
+    transition: &str,
+    input: Value,
+) -> std::result::Result<Outcome<M>, GuardedError>
+where
+    M: StateMachine<Key = i64> + Send + Sync,
+{
+    let mut tx = state.db.begin().await?;
+    if let Some(machine) = machines::by_table(M::TABLE)
+        && let Some(kind) = machine.guarded_kind(transition)
+        && let Some(party) = machine
+            .guarded_party_in(&mut tx, record.id(), transition)
+            .await?
+    {
+        let outcome = guard(state)
+            .check_in(&mut tx, Some(user), party, kind)
+            .await?;
+        if let GuardOutcome::Blocked(refusal) = outcome {
+            return Err(GuardedError::Blocked(refusal));
+        }
+    }
+    let outcome = record
+        .transition(transition)
+        .by(user)
+        .input(&input)
+        .run_in(&mut tx)
+        .await?;
+    tx.commit().await?;
+    if let Outcome::Done(done) = &outcome {
+        state.emit(done.clone()).await?;
+    }
+    crate::approvals::announce(state, &outcome).await?;
+    Ok(outcome)
+}
+
+/// Creates the exception request for the guarded `transition` on `subject`
+/// with `input` as its payload, inside `tx`, without committing; announce it
+/// with [`crate::approvals::announce_request`] after the commit.
+///
+/// The steps are the guarded action's own matching policy steps, if any,
+/// then the guard's [`exception_step`](BlockGuard::exception_step). Refused
+/// with 422 when the party is not blocked, or when an exception for the
+/// subject is already pending. Fails when `parties.block_exception` has no
+/// approval policy (the guard's module registers it).
+pub async fn request_exception_in(
+    state: &AppState,
+    tx: &mut Transaction,
+    user: &User,
+    subject: &Subject,
+    transition: &str,
+    input: Value,
+) -> Result<ApprovalRequest> {
+    let machine = machines::get(&subject.subject_type).ok_or(Error::NotFound)?;
+    let kind = machine.guarded_kind(transition).ok_or_else(|| {
+        renox::anyhow::anyhow!(
+            "{}: `{transition}` is not declared with `block_guarded`",
+            subject.subject_type
+        )
+    })?;
+    let party = machine
+        .guarded_party_in(tx, subject.subject_id, transition)
+        .await?;
+    let blocked = match party {
+        Some(party) => {
+            let outcome = guard(state).check_in(tx, None, party, kind).await?;
+            !outcome.is_allowed()
+        }
+        None => false,
+    };
+    if !blocked {
+        return Err(Error::Status(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            texts::en("wl_kernel.block_guard.not_blocked"),
+        ));
+    }
+    let state_before = machine
+        .current_state(&mut *tx, subject.subject_id)
+        .await?
+        .ok_or(Error::NotFound)?;
+    let own = ApprovalPolicy::for_action(&mut *tx, &machine.action_key(transition), &input)
+        .await?
+        .map(|policy| policy.steps.0)
+        .unwrap_or_default();
+    let exception = guard(state).exception_step();
+    let mut steps = own;
+    steps.push(Step::one_of([exception.role]).requiring(exception.permission));
+    let require = Require::new(
+        BLOCK_EXCEPTION_ACTION,
+        subject.clone(),
+        transition,
+        user.id,
+        state_before,
+    )
+    .payload(input)
+    .steps(steps);
+    match crate::approvals::require_in(tx, &require).await? {
+        Required::Pending(request) => Ok(*request),
+        Required::Allowed => Err(renox::anyhow::anyhow!(
+            "no approval policy for `{BLOCK_EXCEPTION_ACTION}`: the parties module registers it"
+        )
+        .into()),
+    }
+}
+
+/// The final re-check of a request for a guarded transition (registered by
+/// [`machines::register`]): `Some(message)` when the party is blocked now,
+/// as the system sees it (always neutral). Exception requests are skipped.
+pub async fn recheck(tx: &mut Transaction, request: &ApprovalRequest) -> Result<Option<String>> {
+    if request.action == BLOCK_EXCEPTION_ACTION {
+        return Ok(None);
+    }
+    let Some(machine) = machines::get(&request.subject_type) else {
+        return Ok(None);
+    };
+    let Some(kind) = machine.guarded_kind(&request.transition) else {
+        return Ok(None);
+    };
+    let Some(party) = machine
+        .guarded_party_in(tx, request.subject_id, &request.transition)
+        .await?
+    else {
+        return Ok(None);
+    };
+    let guard = RECHECK_GUARD
+        .read()
+        .unwrap_or_else(PoisonError::into_inner)
+        .clone();
+    let Some(guard) = guard else {
+        return Ok(None);
+    };
+    match guard.check_in(tx, None, party, kind).await? {
+        GuardOutcome::Allowed => Ok(None),
+        GuardOutcome::Blocked(refusal) => Ok(Some(lowercase_first(&refusal.message_en()))),
+    }
+}
+
+fn lowercase_first(text: &str) -> String {
+    let mut chars = text.chars();
+    match chars.next() {
+        Some(first) => first.to_lowercase().chain(chars).collect(),
+        None => String::new(),
     }
 }
 
@@ -394,6 +690,67 @@ mod tests {
             }
             other => panic!("expected a 422, got {other:?}"),
         }
+    }
+
+    #[renox::test]
+    async fn the_view_posts_the_original_fields_and_asks_for_an_exception() {
+        let app = TestApp::new(App::new()).await;
+        let lang = app.state().lang("en");
+        let refusal = BlockRefusal::neutral(PartyId(7), ActionKind::MoneyOut, "Finance manager");
+        let view = refusal.view(
+            &lang,
+            "/payments/3/transitions/pay",
+            &[("amount", "840000"), ("block_exception", "0")],
+        );
+        assert_eq!(view.code, "on_hold");
+        assert_eq!(view.message, "This party is on hold");
+        assert_eq!(
+            view.offer,
+            "Request exception (approved by Finance manager)"
+        );
+        assert!(view.lines.is_empty());
+        let fields: Vec<_> = view
+            .fields
+            .iter()
+            .map(|f| (f.name.as_str(), f.value.as_str()))
+            .collect();
+        assert_eq!(fields, [("amount", "840000"), ("block_exception", "1")]);
+    }
+
+    #[test]
+    fn the_recheck_message_starts_lowercase() {
+        assert_eq!(
+            lowercase_first("This party is on hold"),
+            "this party is on hold"
+        );
+        assert_eq!(lowercase_first(""), "");
+    }
+
+    #[test]
+    fn a_guarded_error_is_neutral_for_a_refusal() {
+        let refusal = BlockRefusal::detailed(
+            PartyId(1),
+            ActionKind::Start,
+            vec![BlockReasonLine {
+                label: "Sanctions".into(),
+                link: "/x".into(),
+            }],
+            "Compliance",
+        );
+        let error = GuardedError::Blocked(refusal);
+        assert!(error.refusal().is_some());
+        match error.into_error() {
+            Error::Status(status, message) => {
+                assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+                assert_eq!(message, "This party is on hold");
+            }
+            other => panic!("expected a 422, got {other:?}"),
+        }
+        assert!(
+            GuardedError::from(TransitionError::Conflict)
+                .refusal()
+                .is_none()
+        );
     }
 
     #[test]

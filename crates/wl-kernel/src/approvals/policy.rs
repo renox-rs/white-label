@@ -297,6 +297,12 @@ impl PolicyDefault {
         self
     }
 
+    /// Adds a ready-made step, e.g. one built with [`Step::requiring`].
+    pub fn with_step(mut self, step: Step) -> Self {
+        self.steps.push(step);
+        self
+    }
+
     /// Adds a step, decided by any holder of `permission` in the subject's
     /// scope.
     pub fn step_permission(mut self, permission: impl Into<String>) -> Self {

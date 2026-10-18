@@ -14,7 +14,7 @@
 
 use renox::db::Transaction;
 use renox::prelude::*;
-use wl_kernel::approvals::PolicyDefault;
+use wl_kernel::approvals::{PolicyDefault, Step};
 use wl_kernel::block_guard::{
     ActionKind, BLOCK_EXCEPTION_ACTION, BlockFuture, BlockGuard, BlockReasonLine, BlockRefusal,
     ExceptionStep, GuardOutcome,
@@ -56,11 +56,12 @@ impl PartiesBlockGuard {
     /// every run needs one step by the approver role, with segregation of
     /// duties on and the kernel's default expiry.
     ///
-    /// The step does not yet carry the permission
-    /// [`crate::permissions::BLOCK_EXCEPTION`]: the kernel `Step` gets it in
-    /// the approvals extension of #37 part 2.
+    /// The step also needs the permission
+    /// [`crate::permissions::BLOCK_EXCEPTION`] in the subject's scope.
     pub fn policy(&self) -> PolicyDefault {
-        PolicyDefault::new(BLOCK_EXCEPTION_ACTION).step([self.approver.clone()])
+        PolicyDefault::new(BLOCK_EXCEPTION_ACTION).with_step(
+            Step::one_of([self.approver.clone()]).requiring(crate::permissions::BLOCK_EXCEPTION),
+        )
     }
 }
 
@@ -127,7 +128,8 @@ mod tests {
 
     #[test]
     fn the_policy_has_one_step_by_the_approver() {
-        let expected = PolicyDefault::new("parties.block_exception").step(["compliance"]);
+        let expected = PolicyDefault::new("parties.block_exception")
+            .with_step(Step::one_of(["compliance"]).requiring("parties.block_exception"));
         assert_eq!(PartiesBlockGuard::new("compliance").policy(), expected);
     }
 

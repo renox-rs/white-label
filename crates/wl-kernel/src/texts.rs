@@ -11,6 +11,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_kernel.block_guard.on_hold", "This party is on hold"),
     ("wl_kernel.block_guard.blocked", "Blocked: :reason"),
     (
+        "wl_kernel.block_guard.not_blocked",
+        "This party is not on hold, so no exception is needed.",
+    ),
+    (
         "wl_kernel.block_guard.request_exception",
         "Request exception (approved by :approver)",
     ),

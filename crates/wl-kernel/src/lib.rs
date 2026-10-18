@@ -104,6 +104,10 @@ const VIEWS: &[(&str, &str)] = &[
         include_str!("../views/wl-kernel/legal_entities.html"),
     ),
     (
+        block_guard::REFUSAL_TEMPLATE,
+        include_str!("../views/wl-kernel/block_refusal.html"),
+    ),
+    (
         approvals::web::CARD_TEMPLATE,
         include_str!("../views/wl-kernel/approval_card.html"),
     ),
