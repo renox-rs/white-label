@@ -7,6 +7,7 @@ pub mod contacts;
 pub mod create;
 pub mod details;
 pub mod directory;
+pub mod evidence;
 mod machine;
 pub mod pages;
 pub mod party;
@@ -14,6 +15,7 @@ pub mod reasons;
 pub mod roles;
 pub mod seed;
 mod texts;
+pub mod unblock;
 pub mod visibility;
 
 use renox::db::Migration;
@@ -26,6 +28,7 @@ pub use contacts::{ContactPoint, ContactType};
 pub use create::{NewParty, create};
 pub use details::{CompanyDetails, PersonDetails};
 pub use directory::Directory;
+pub use evidence::{UnblockBasis, UnblockEvidence};
 pub use party::{Channel, Language, Party};
 pub use reasons::{BlockReason, BlockReasons};
 pub use roles::PartyRole;
@@ -135,6 +138,7 @@ impl Module for WlParties {
             .model::<PartyRole>()
             .model::<ContactPoint>()
             .model::<BlockRecord>()
+            .model::<UnblockEvidence>()
             .view_data::<pages::IndexPage>()
             .view_data::<pages::NewPage>()
             .view_data::<pages::ShowPage>();

@@ -12,6 +12,8 @@ use renox::db::Executor;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::evidence::UnblockBasis;
+
 /// One block of a party.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
 #[model(table = "wl_parties_block_records", index(party_id))]
@@ -37,6 +39,8 @@ pub struct BlockRecord {
     pub unblocked_at: Option<DateTime>,
     /// Why it was closed.
     pub unblock_note: Option<String>,
+    /// The statement a `sanctions` block was lifted on.
+    pub unblock_basis: Option<UnblockBasis>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
@@ -86,6 +90,20 @@ impl BlockRecord {
             .await
     }
 
+    /// Closes the record: unblocked by `user` now, with `note` and the
+    /// `basis`, if any. Call `save` to store it.
+    pub fn close(&mut self, user: Option<i64>, note: &str, basis: Option<UnblockBasis>) {
+        self.unblocked_by = user;
+        self.unblocked_at = Some(renox::db::now());
+        self.unblock_note = Some(note.trim().to_owned());
+        self.unblock_basis = basis;
+    }
+
+    /// The party's open records, oldest first.
+    pub async fn open_for<'c>(db: impl Executor<'c>, party_id: i64) -> Result<Vec<BlockRecord>> {
+        BlockRecord::open_for_party(db, party_id).await
+    }
+
     /// The party's open records, oldest first.
     pub async fn open_for_party<'c>(
         db: impl Executor<'c>,
@@ -115,6 +133,21 @@ mod tests {
         assert_eq!(record.blocked_by, None);
         assert!(record.is_open());
         assert_eq!(record.display_reason(), "on_hold");
+    }
+
+    #[test]
+    fn closing_a_record_stores_who_when_and_why() {
+        let mut record = BlockRecord::open(7, "sanctions", true, "match", Some(3));
+        record.close(
+            Some(5),
+            "  match found false ",
+            Some(UnblockBasis::FalseMatch),
+        );
+        assert!(!record.is_open());
+        assert_eq!(record.unblocked_by, Some(5));
+        assert_eq!(record.unblock_note.as_deref(), Some("match found false"));
+        assert_eq!(record.unblock_basis, Some(UnblockBasis::FalseMatch));
+        assert_eq!(record.blocked_by, Some(3));
     }
 
     #[test]

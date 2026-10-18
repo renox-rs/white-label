@@ -265,7 +265,16 @@ pub struct PartyBlocked {
 
 impl Event for PartyBlocked {}
 
-/// A party was unblocked.
+/// A party was unblocked: every open Block record is closed and the party is
+/// `active` again.
+///
+/// Releasing is split by owner. `wl-parties` releases only what it owns
+/// (its open review tasks go back to their deciders). A module that paused
+/// agreements because of `PartyBlocked` resumes them in its own listener on
+/// this event, and only the agreements it paused that are still paused: an
+/// agreement that its decider ended while the party was blocked stays ended.
+/// The payload carries the display reason only, never the unblock note, the
+/// basis or a restricted code.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PartyUnblocked {
     /// The party.

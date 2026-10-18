@@ -36,8 +36,11 @@ impl StateMachine for Party {
             .terminal();
         // `block` (a user with `parties.block`) and `block_by_system`
         // (screening's `confirm_match`): active → blocked; see `crate::block`.
-        crate::block::transitions()
+        let machine = crate::block::transitions()
             .into_iter()
-            .fold(machine, Machine::transition)
+            .fold(machine, Machine::transition);
+        // `unblock` (a user with `parties.block`): blocked → active; see
+        // `crate::unblock`.
+        machine.transition(crate::unblock::transition())
     }
 }
