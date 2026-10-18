@@ -84,11 +84,14 @@ fn vertical(name: &str) -> Result<property::Property, ConfigError> {
 }
 
 /// Mounts one enabled `wl-*` module.
-fn enable(_app: renox::App, module: &str) -> Result<renox::App, ConfigError> {
+fn enable(app: renox::App, module: &str) -> Result<renox::App, ConfigError> {
     // Each F1 module gets its arm here as it is built (decision 0004).
-    Err(ConfigError(format!(
-        "[modules] `{module}` is not built yet; remove it from client.toml for now"
-    )))
+    match module {
+        "parties" => Ok(app.module(wl_parties::WlParties)),
+        other => Err(ConfigError(format!(
+            "[modules] `{other}` is not built yet; remove it from client.toml for now"
+        ))),
+    }
 }
 
 /// What every client runs, whatever their modules: auth, roles, the audit

@@ -10,3 +10,4 @@ renox.workspace = true
 serde.workspace = true
 wl-kernel = { path = "../crates/wl-kernel" }
 property = { path = "../apps/property" }
+wl-parties = { path = "../crates/wl-parties" }

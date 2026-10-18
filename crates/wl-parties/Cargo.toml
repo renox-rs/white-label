@@ -1,0 +1,12 @@
+[package]
+name = "wl-parties"
+description = "Parties: the people and companies a client deals with, their roles, contacts and blocks."
+readme = "README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+renox.workspace = true
+serde.workspace = true

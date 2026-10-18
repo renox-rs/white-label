@@ -7,14 +7,18 @@ use renox::anyhow::anyhow;
 use renox::auth::permissions;
 use renox::command::Args;
 use renox::prelude::*;
+use wl_parties::permissions as parties;
 
 /// Manages users and their roles.
 pub const USERS: &str = "users.manage";
 /// Reads the activity log.
 pub const ACTIVITY: &str = "activity.view";
 
-/// Everything.
+/// Everything, except the restricted block reasons (`PTY.ACL.02`).
 pub const ADMIN: &str = "admin";
+/// The MLRO and their deputy: see parties, block them, and see and use the
+/// restricted block reasons (wl-parties §6).
+pub const COMPLIANCE: &str = "compliance";
 /// Everyone who signs up.
 pub const MEMBER: &str = "member";
 
@@ -27,7 +31,16 @@ pub const ROLES: &[(&str, &[&str])] = &[
             ACTIVITY,
             wl_kernel::permissions::LEGAL_ENTITIES_VIEW,
             wl_kernel::permissions::LEGAL_ENTITIES_MANAGE,
+            parties::VIEW,
+            parties::CREATE,
+            parties::UPDATE,
+            parties::BLOCK,
+            parties::EXPORT,
         ],
+    ),
+    (
+        COMPLIANCE,
+        &[parties::VIEW, parties::BLOCK, parties::BLOCK_REASON_VIEW],
     ),
     (MEMBER, &[]),
 ];

@@ -914,6 +914,7 @@ dependencies = [
  "renox",
  "serde",
  "wl-kernel",
+ "wl-parties",
 ]
 
 [[package]]
@@ -3434,6 +3435,14 @@ dependencies = [
  "serde",
  "tempfile",
  "toml",
+]
+
+[[package]]
+name = "wl-parties"
+version = "0.1.0"
+dependencies = [
+ "renox",
+ "serde",
 ]
 
 [[package]]
