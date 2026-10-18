@@ -83,6 +83,18 @@ const VIEWS: &[(&str, &str)] = &[
         "wl-parties/_unblock_sheet.html",
         include_str!("../views/wl-parties/_unblock_sheet.html"),
     ),
+    (
+        "wl-parties/block_effects.html",
+        include_str!("../views/wl-parties/block_effects.html"),
+    ),
+    (
+        "wl-parties/review_tasks.html",
+        include_str!("../views/wl-parties/review_tasks.html"),
+    ),
+    (
+        "wl-parties/review_task.html",
+        include_str!("../views/wl-parties/review_task.html"),
+    ),
 ];
 
 /// The parties module. The host adds it with `.module(wl_parties::WlParties)`
@@ -154,7 +166,10 @@ impl Module for WlParties {
             .model::<ReviewTaskNote>()
             .view_data::<pages::IndexPage>()
             .view_data::<pages::NewPage>()
-            .view_data::<pages::ShowPage>();
+            .view_data::<pages::ShowPage>()
+            .view_data::<pages::BlockEffectsPage>()
+            .view_data::<pages::ReviewTasksPage>()
+            .view_data::<pages::ReviewTaskPage>();
         // `rnx state:diagram Party` and the admin panel find the machine.
         renox::state_machine::register::<Party>();
         renox::state_machine::register::<ReviewTask>();
@@ -179,6 +194,23 @@ impl Module for WlParties {
                 .group("nav.app")
                 .order(30)
                 .permission(permissions::VIEW),
+        );
+        // What a block does to each kind of agreement (read-only), and the
+        // review tasks the user decides on.
+        app.nav(
+            "app",
+            NavLink::route("wl_parties.block_effects", "nav.block_effects")
+                .icon("shield")
+                .group("nav.app")
+                .order(31)
+                .permission(permissions::BLOCK),
+        );
+        app.nav(
+            "app",
+            NavLink::route("wl_parties.review_tasks", "nav.review_tasks")
+                .icon("list-checks")
+                .group("nav.app")
+                .order(32),
         );
         app.templates(|env| {
             for (name, source) in VIEWS {

@@ -10,6 +10,8 @@
     "parties": "Parties",
     "invoices": "Invoices",
     "tickets": "Tickets",
+    "block_effects": "Block effects",
+    "review_tasks": "Review tasks",
     "notification_types": "Notification types",
     "notification_log": "Message log",
     "documents_review": "Document review",

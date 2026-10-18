@@ -1,0 +1,39 @@
+{#- wl-parties: a review task: the header, its agreements with the pause,
+    continue or end decision, and the notes. Replace it with
+    resources/views/wl-parties/review_task.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="header">
+  <rx-stack>
+    <rx-page-header :title="header" :subtitle="agreement" :back="route('wl_parties.review_tasks')" :back-label="tx['review.title']"
+                    :badge="status_label" :badge-kind="status_tone"/>
+    <rx-alert rx-if="no_decider" kind="warning" :message="tx['review.no_decider']"/>
+    <rx-alert rx-if="open and not can_decide" kind="warning" :message="tx['review.no_source']"/>
+    <rx-card :title="tx['review.task']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['review.fields.party']" :value="party"/>
+        <rx-entry :label="tx['review.fields.agreement']" :value="agreement"/>
+        <rx-entry :label="tx['review.fields.scope']" :value="scope"/>
+        <rx-entry :label="tx['review.fields.opened']" :value="task.created_at" format="datetime"/>
+        <rx-entry rx-if="task.closed_at" :label="tx['review.fields.closed']" :value="task.closed_at" format="datetime"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-table :rows="items" as="item" :key="item.id" :caption="tx['review.sections.items']" card>
+      <rx-column :label="tx['review.fields.agreement']">{{ item.label }}</rx-column>
+      <rx-column :label="tx['review.fields.decision']"><rx-badge :kind="item.decision_tone" :text="item.decision_label"/></rx-column>
+      <rx-column :label="tx['review.fields.decided_by']" hide-narrow>{{ item.decided_by or "—" }}</rx-column>
+      <rx-column :label="tx['review.fields.decided_at']" hide-narrow>{{ item.decided_at | date('%Y-%m-%d %H:%M') if item.decided_at else "—" }}</rx-column>
+      <rx-row-actions>
+        <rx-action-sheet rx-if="can_decide and item.pending" :id="'decide-item-' ~ item.id" :label="tx['review.decide']" :action="route('wl_parties.review_decide', task.id, item.id)"
+                         :title="tx['review.decide_title']" :description="tx['review.decide_description']" :submit-label="tx['review.decide_submit']" icon="check" variant="primary">
+          <rx-select name="decision" :label="tx['review.fields.decision']" :options="decisions" :id="'decide-decision-' ~ item.id" required/>
+        </rx-action-sheet>
+      </rx-row-actions>
+      <rx-slot name="empty"><rx-empty :title="tx['review.no_items']" icon="inbox"/></rx-slot>
+    </rx-table>
+    <rx-table :rows="notes" as="note" :key="note.noted_at" :caption="tx['review.sections.notes']" card>
+      <rx-column :label="tx['review.fields.note']">{{ note.body }}</rx-column>
+      <rx-column :label="tx['review.fields.by']" hide-narrow>{{ note.by }}</rx-column>
+      <rx-column :label="tx['review.fields.at']">{{ note.noted_at | date('%Y-%m-%d %H:%M') }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['review.no_notes']" icon="message-square"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

@@ -1,0 +1,16 @@
+{#- wl-parties: what a block does to each kind of agreement (read-only; the
+    vertical sets the values). Replace it with
+    resources/views/wl-parties/block_effects.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['block_effects.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['block_effects.title']" :subtitle="tx['block_effects.subtitle']" :back="route('wl_parties.index')" :back-label="tx['title']"/>
+    <rx-table :rows="kinds" as="kind" :key="kind.key" :caption="tx['block_effects.title']" card>
+      <rx-column :label="tx['block_effects.agreement']">{{ kind.label }}</rx-column>
+      <rx-column :label="tx['block_effects.owner']" hide-narrow>{{ kind.owner }}</rx-column>
+      <rx-column :label="tx['block_effects.effect']"><rx-badge :kind="kind.effect_tone" :text="kind.effect_label"/></rx-column>
+      <rx-column :label="tx['block_effects.decider']">{{ kind.decider_role or tx['block_effects.no_decider'] }}</rx-column>
+      <rx-column :label="tx['block_effects.source']" hide-narrow>{{ kind.source_label }}</rx-column>
+      <rx-column :label="tx['block_effects.has_source']" hide-narrow><rx-badge rx-if="kind.has_source" kind="success" :text="tx['block_effects.has_source']"/></rx-column>
+    </rx-table>
+  </rx-stack>
+</rx-page>

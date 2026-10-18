@@ -9,6 +9,7 @@
 //! The task keeps only the display reason (`on_hold` for a restricted code),
 //! so nothing on it can tip the party off (`PTY.ACL.02`).
 
+use renox::auth::permissions::Scope;
 use renox::db::Executor;
 use renox::prelude::*;
 use renox::state_machine::{Machine, StateMachine, Transition};
@@ -205,6 +206,37 @@ impl ReviewTask {
             .order_by(ReviewTask::ID)
             .get(db)
             .await
+    }
+
+    /// The scope the task's agreements live in; global when it has none.
+    pub fn scope(&self) -> Scope {
+        match (&self.scope_kind, self.scope_id) {
+            (Some(kind), Some(id)) => Scope::new(kind, id),
+            _ => Scope::global(),
+        }
+    }
+
+    /// Whether `user` may decide on this task: holds the decider role in its
+    /// scope (or globally). A task with no configured decider role is open
+    /// to holders of `parties.block`.
+    pub fn can_decide(&self, user: &AuthUser) -> bool {
+        match self.decider_role.as_deref() {
+            Some(role) => user.has_role_in(role, &self.scope()),
+            None => user.has_permission(crate::permissions::BLOCK),
+        }
+    }
+
+    /// The open tasks `user` may decide on, oldest first.
+    pub async fn open_for_user<'c>(
+        db: impl Executor<'c>,
+        user: &AuthUser,
+    ) -> Result<Vec<ReviewTask>> {
+        let open = ReviewTask::query()
+            .where_(ReviewTask::STATUS.eq(ReviewTaskStatus::Open))
+            .order_by(ReviewTask::ID)
+            .get(db)
+            .await?;
+        Ok(open.into_iter().filter(|t| t.can_decide(user)).collect())
     }
 
     /// The task's items, in the order they were added.
