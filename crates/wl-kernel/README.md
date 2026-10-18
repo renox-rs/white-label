@@ -42,6 +42,7 @@ What is here so far:
 | The notice contract: `Notifier` (`NoNotifier` when `notify` is off), `register_type`, `NotifyRequest`, message events | ARCHITECTURE §5, wl-notify §6 | `notify` |
 | The document guard contract: `DocumentGuard` (`NoDocuments` when `documents` is off), `BlockEntry`, `BlockSubjects` by transition, `BlockRefusal`, `today()` in Asia/Dubai, document events | ARCHITECTURE §5, wl-documents §5.6, §6 | `documents` |
 | The ticket contract: `TaskCreator` (`NoTickets` when `ticketing` is off), `OpenTicket`, `TicketRef`, `Assignee`, ticket events, the `ticket` series | §8, wl-ticketing §6 | `tickets` |
+| The block-effect contract: `BlockEffect` (pause / continue / review) per agreement kind, the 12 built-in kinds, `AgreementKind` + `AgreementSource`, `BlockEffectOverride`, `effect_for`, `announces_pause` and `suppressed_while_blocked` | ARCHITECTURE §5, wl-parties §5.6, §7 | `block_effects` |
 | `AutomationFailed`, the event of a failed rule run | §4 | `automation` |
 | The business calendar: `BusinessCalendar` (Asia/Dubai, Sat–Sun weekend, 09:00–18:00, `[calendar]` holidays) | §6 | `calendar` |
 

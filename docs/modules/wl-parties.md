@@ -432,6 +432,8 @@ event happens.
 | Second reviewer for confirmed match | on |
 | Block reason codes (restricted flag) | `on_hold` (neutral, always present), `non_payment`, `legal_dispute`, `fraud_suspected`, `other`; restricted: `sanctions`, `aml_concern`. A vertical can add codes and mark them restricted |
 | Block effect and decider per agreement kind | as in [§5.6](#56-block-a-party); set by each vertical |
+| Agreement kind keys, default effect and default decider role (`wl_kernel::block_effects`) | `engagement` pause, `compliance`; `subscription` pause, `subscriptions_manager`; `enrolment` pause, `centre_manager`; `lease` continue, `property_manager`; `deployment` continue, `managing_director`; `project` continue, `managing_director`; `sales_order` pause, `sales_manager`; `booking` review, `branch_manager`; `purchase_order` continue, `procurement`; `service_contract` review, `facility_manager`; `money_out` pause, `compliance`; `money_in` continue, `compliance`. A decider is a role key; the host or the vertical defines the role. A module registers a kind with `AgreementKind`, the vertical overrides it with `BlockEffectOverride`; an unregistered kind is `review` with no decider |
+| Money out to a blocked party in the effect registry | stored as `pause`: "stop until unblock" (`PTY.ACL.03`) stops and resumes on unblock; only an approved exception releases it earlier |
 | Exception approver for money out to a blocked party (`PTY.ACL.03`) | compliance role; finance manager when screening is off |
 | Sanctions list freshness limit (`PTY.RUL.02`) | 24 hours |
 | Manual upload of an official list file when the download fails | allowed, compliance role (`screening.review`) |
