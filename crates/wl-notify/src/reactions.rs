@@ -4,7 +4,8 @@
 //! `staff_task` opens a task for staff ([`crate::staff_task`]). The other
 //! built-in handlers only record what they were given (status `recorded`);
 //! the real reactions replace them through [`crate::WlNotify::reaction`]:
-//! `alternative_recipient` (#57), `mark_contact_invalid` (#58) and
+//! `alternative_recipient` is built in ([`crate::alternative`]);
+//! `mark_contact_invalid` (#58) and
 //! `statutory_notice` (#59). `none` has no handler: it runs nothing.
 
 use std::future::Future;
@@ -78,6 +79,45 @@ impl StepOutcome {
     }
 }
 
+/// The status of a step the run wrote instead of running its reaction.
+pub const DEFERRED: &str = "deferred";
+
+/// What a reaction did, and which later reactions of the run it took over.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReactionOutcome {
+    /// The reaction's own step.
+    pub step: StepOutcome,
+    /// Later reactions of the run that must not run: each gets a
+    /// `deferred` step carrying `defer_detail`.
+    pub defer: Vec<GiveUpReaction>,
+    /// The detail of the `deferred` steps.
+    pub defer_detail: Value,
+}
+
+impl ReactionOutcome {
+    /// An outcome that defers nothing.
+    pub fn of(step: StepOutcome) -> Self {
+        ReactionOutcome {
+            step,
+            defer: Vec::new(),
+            defer_detail: Value::Null,
+        }
+    }
+
+    /// Defers `reactions`, recording `detail` in their steps.
+    pub fn deferring(mut self, reactions: &[GiveUpReaction], detail: Value) -> Self {
+        self.defer = reactions.to_vec();
+        self.defer_detail = detail;
+        self
+    }
+}
+
+impl From<StepOutcome> for ReactionOutcome {
+    fn from(step: StepOutcome) -> Self {
+        ReactionOutcome::of(step)
+    }
+}
+
 /// Runs one give-up reaction for a message that gave up.
 ///
 /// A failure fails the rule run's attempt; the run is retried with backoff
@@ -92,6 +132,17 @@ pub trait GiveUpHandler: Send + Sync + 'static {
         state: &'a AppState,
         ctx: &'a GiveUpContext,
     ) -> HandlerFuture<'a, StepOutcome>;
+
+    /// Like [`GiveUpHandler::run`], and tells the run which later reactions
+    /// to defer. The run calls this; by default it defers nothing.
+    fn run_outcome<'a>(
+        &'a self,
+        state: &'a AppState,
+        ctx: &'a GiveUpContext,
+    ) -> HandlerFuture<'a, ReactionOutcome> {
+        let step = self.run(state, ctx);
+        Box::pin(async move { step.await.map(ReactionOutcome::of) })
+    }
 }
 
 /// The built-in handler of `reaction`: records the step and does nothing
@@ -120,7 +171,8 @@ pub struct Reactions {
 }
 
 impl Default for Reactions {
-    /// The staff-task handler and the recording handlers of the others.
+    /// The staff-task and alternative-recipient handlers, and the recording
+    /// handlers of the others.
     fn default() -> Self {
         use GiveUpReaction::{
             AlternativeRecipient, MarkContactInvalid, StaffTask, StatutoryNotice,
@@ -137,6 +189,7 @@ impl Default for Reactions {
                 StaffTask => {
                     Arc::new(crate::staff_task::StaffTaskHandler) as Arc<dyn GiveUpHandler>
                 }
+                AlternativeRecipient => Arc::new(crate::alternative::AlternativeRecipientHandler),
                 other => Arc::new(RecordingHandler(other)),
             })
             .collect(),
@@ -206,6 +259,16 @@ mod tests {
         assert_eq!(reactions.list.len(), 4);
         let handler = reactions.for_reaction(GiveUpReaction::StaffTask).unwrap();
         assert_eq!(handler.reaction(), GiveUpReaction::StaffTask);
+    }
+
+    #[test]
+    fn an_outcome_defers_the_reactions_it_names() {
+        let outcome = ReactionOutcome::of(StepOutcome::new("queued", Value::Null))
+            .deferring(&[GiveUpReaction::StaffTask], serde_json::json!({ "to": 4 }));
+        assert_eq!(outcome.defer, [GiveUpReaction::StaffTask]);
+        assert_eq!(outcome.defer_detail["to"], 4);
+        let plain = ReactionOutcome::from(StepOutcome::new("recorded", Value::Null));
+        assert!(plain.defer.is_empty());
     }
 
     #[test]

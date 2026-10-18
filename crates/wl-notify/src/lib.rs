@@ -2,6 +2,7 @@
 #![warn(missing_docs)]
 
 pub mod alert;
+pub mod alternative;
 pub mod channels;
 pub mod give_up;
 mod machine;
@@ -24,6 +25,7 @@ use renox::db::Migration;
 use renox::nav::NavLink;
 use renox::prelude::*;
 
+pub use alternative::AlternativeRecipientHandler;
 pub use channels::{
     ChannelProvider, EmailProvider, HardError, Outgoing, Providers, SendError, SendErrorKind,
     SmsGateway, SmsProvider,
@@ -34,7 +36,9 @@ pub use machine::{
 };
 pub use message::{Message, MessageStatus, RecipientKind};
 pub use notifier::Messages;
-pub use reactions::{GiveUpContext, GiveUpHandler, Reactions, RecordingHandler, StepOutcome};
+pub use reactions::{
+    GiveUpContext, GiveUpHandler, ReactionOutcome, Reactions, RecordingHandler, StepOutcome,
+};
 pub use send::SendMessage;
 pub use staff_task::{StaffTask, StaffTaskHandler, open_give_up_task};
 pub use suppressions::{Suppression, SuppressionReason};
@@ -94,7 +98,8 @@ impl WlNotify {
     }
 
     /// Runs `handler`'s give-up reaction through `handler`, in place of the
-    /// built-in one (`staff_task` opens a task, the others only record
+    /// built-in one (`staff_task` opens a task, `alternative_recipient`
+    /// queues the message to another contact, the others only record
     /// their step) in the `NTF.RUL.01` run.
     pub fn reaction(mut self, handler: impl GiveUpHandler) -> Self {
         self.reactions.replace(Arc::new(handler));

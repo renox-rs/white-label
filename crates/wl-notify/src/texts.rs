@@ -78,6 +78,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_notify.task.type", "Notification type: :type"),
     ("wl_notify.task.channels", "Channels tried:"),
     ("wl_notify.task.channel_line", "- :channel :address: :error"),
+    (
+        "wl_notify.task.channel_line_for",
+        "- :who, :channel :address: :error",
+    ),
     ("wl_notify.task.no_address", "no address"),
     ("wl_notify.task.no_error", "no error recorded"),
     ("wl_notify.task.gave_up_at", "Gave up at :time (Asia/Dubai)"),

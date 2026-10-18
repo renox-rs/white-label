@@ -33,14 +33,14 @@ use renox::state_machine::Outcome;
 use serde::{Deserialize, Serialize};
 use wl_kernel::automation::AutomationFailed;
 use wl_kernel::notify::{
-    ChannelTried, GiveUpReaction, MessageGaveUp, NotificationTypeDef, reaction_order,
+    ChannelTried, GiveUpReaction, MessageGaveUp, MessageId, NotificationTypeDef, reaction_order,
 };
 use wl_kernel::{PartyId, Subject};
 
 use crate::machine::{FALL_BACK, GIVE_UP};
 use crate::message::{Message, MessageStatus, RecipientKind};
 use crate::notifier::{compose, open_channels, type_def};
-use crate::reactions::{self, GiveUpContext};
+use crate::reactions::{self, GiveUpContext, StepOutcome};
 use crate::recipients::{self, Resolved};
 use crate::send::{self, SendMessage};
 
@@ -199,8 +199,9 @@ pub fn gave_up_event(
         channels_tried: channels_tried(chain, message),
         statutory: def.statutory,
         reactions: reaction_order(&def.give_up),
-        alternative_of: None,
-        contact_of: None,
+        alternative_of: message.alternative_of.map(MessageId),
+        contact_of: (message.recipient_kind == RecipientKind::Contact)
+            .then(|| PartyId(message.contact_of_party_id.unwrap_or_default())),
     }
 }
 
@@ -456,6 +457,23 @@ async fn claim(state: &AppState, id: i64, attempt: Attempt) -> Result<Claim> {
     Ok(Claim::Run(run))
 }
 
+/// The step row of `reaction`, the `index`th of the run, with `outcome`.
+fn step(
+    run: &ReactionRun,
+    index: usize,
+    reaction: GiveUpReaction,
+    outcome: StepOutcome,
+) -> ReactionStep {
+    ReactionStep {
+        run_id: run.id,
+        reaction,
+        position: i64::try_from(index + 1).unwrap_or(i64::MAX),
+        status: outcome.status,
+        detail: Json(outcome.detail),
+        ..Default::default()
+    }
+}
+
 /// Whether message `id` ended `abandoned` through `give_up`: abandoned,
 /// and no message falls back from it.
 async fn gave_up(tx: &mut renox::db::Transaction, id: i64) -> Result<bool> {
@@ -499,8 +517,12 @@ async fn apply_reactions(state: &AppState, run: &ReactionRun, message: &Message)
         .map(|s| s.reaction)
         .collect();
     let handlers = reactions::reactions(state);
+    let mut deferred: Vec<GiveUpReaction> = Vec::new();
     for (index, &reaction) in run.reactions.0.iter().enumerate() {
         if done.contains(&reaction) {
+            continue;
+        }
+        if deferred.contains(&reaction) {
             continue;
         }
         let handler = handlers.for_reaction(reaction).ok_or_else(|| {
@@ -509,17 +531,19 @@ async fn apply_reactions(state: &AppState, run: &ReactionRun, message: &Message)
                 reaction.as_str()
             ))
         })?;
-        let outcome = handler.run(state, &ctx).await?;
-        ReactionStep {
-            run_id: run.id,
-            reaction,
-            position: i64::try_from(index + 1).unwrap_or(i64::MAX),
-            status: outcome.status,
-            detail: Json(outcome.detail),
-            ..Default::default()
+        let outcome = handler.run_outcome(state, &ctx).await?;
+        step(run, index, reaction, outcome.step)
+            .insert(&state.db)
+            .await?;
+        // Later reactions the handler took over get a `deferred` step.
+        for (later, &other) in run.reactions.0.iter().enumerate().skip(index + 1) {
+            if outcome.defer.contains(&other) && !done.contains(&other) {
+                let detail = outcome.defer_detail.clone();
+                let skipped = StepOutcome::new(reactions::DEFERRED, detail);
+                step(run, later, other, skipped).insert(&state.db).await?;
+                deferred.push(other);
+            }
         }
-        .insert(&state.db)
-        .await?;
     }
     Ok(())
 }

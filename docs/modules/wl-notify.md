@@ -297,6 +297,18 @@ with backoff like any automation and shows as `AutomationFailed`.
 | `statutory_notice` | For statutory types: `staff_task` to the responsible staff, due in 1 working day, to deliver the notice by another means (courier, registered mail, hand delivery, a call with a note) and record the proof on the subject. Until proof is recorded, the subject shows "notice not delivered", and any deadline that depends on the notice being given is not treated as started |
 | `none` | Only the delivery log records it (marketing, tracking links) |
 
+The `alternative_recipient` step ends with one outcome, recorded in the run: `queued` (the new
+message and person; the later `staff_task` step is recorded `deferred` and opens nothing),
+`none_left` (every other contact was tried or has no usable address), `no_rule` (the recipient
+is not a recipient rule, e.g. a plain party) or `alternative_already_tried` (the message is
+itself an alternative). The reaction only applies to a recipient rule. A contact with no address
+on an open channel of the type, with every address on the suppression list, or on hold, is
+skipped. A retried run finds the alternative it already queued and queues nothing new. In every
+outcome except `queued`, `staff_task` runs once for the chain: through the type's own
+`staff_task` step when it comes later, otherwise by the reaction itself. Its task lists the
+channels and errors of both recipients, with masked addresses and no message body, and names
+the last recipient tried.
+
 | Type group (requester) | Default reaction |
 |---|---|
 | Statutory notices (04 deadline and document-request notices to clients; 01 notices of changed terms, a landlord's notice to end a lease, formal payment demands, the formal notice on a bounced cheque; other final demands) | `mark_contact_invalid` + `statutory_notice` |

@@ -24,7 +24,7 @@ use renox::prelude::*;
 use renox::serde_json::json;
 use wl_kernel::notify::{ChannelTried, GiveUpReaction, NotifyRecipient};
 use wl_kernel::tickets::{self, Assignee, OpenTicket, TASK_CATEGORY, TaskComment, TicketRef};
-use wl_kernel::{COMPANY_ADMIN_ROLE, Subject, calendar, parties, scopes};
+use wl_kernel::{COMPANY_ADMIN_ROLE, PartyId, Subject, calendar, parties, scopes};
 
 use crate::alert::{self, GiveUpAlert};
 use crate::mask;
@@ -169,6 +169,8 @@ pub struct ChannelLine {
     pub address: String,
     /// The error code and text, or "no error recorded".
     pub error: String,
+    /// Whom it went to, when the task covers more than one recipient.
+    pub who: Option<String>,
 }
 
 impl ChannelLine {
@@ -196,18 +198,31 @@ impl ChannelLine {
             } else {
                 error
             },
+            who: None,
         }
     }
 
+    /// The line marked with the recipient it went to.
+    #[must_use]
+    pub fn for_who(mut self, who: &str) -> Self {
+        self.who = Some(who.to_owned());
+        self
+    }
+
     fn text(&self) -> String {
-        english_with(
-            "wl_notify.task.channel_line",
-            &[
-                ("channel", &self.channel),
-                ("address", &self.address),
-                ("error", &self.error),
-            ],
-        )
+        let params = [
+            ("channel", self.channel.as_str()),
+            ("address", self.address.as_str()),
+            ("error", self.error.as_str()),
+        ];
+        match &self.who {
+            Some(who) => {
+                let mut all = vec![("who", who.as_str())];
+                all.extend(params);
+                english_with("wl_notify.task.channel_line_for", &all)
+            }
+            None => english_with("wl_notify.task.channel_line", &params),
+        }
     }
 }
 
@@ -239,18 +254,31 @@ pub fn description(
     out.join("\n")
 }
 
+/// A party's name in `language`, else "Party {id}".
+async fn party_name(state: &AppState, id: PartyId, language: &str) -> Result<String> {
+    let name = parties::directory(state)
+        .display_name(&state.db, id, language)
+        .await?;
+    Ok(name
+        .filter(|n| !n.trim().is_empty())
+        .unwrap_or_else(|| english_with("wl_notify.task.party", &[("id", &id.0.to_string())])))
+}
+
 /// Who the message was for, as staff read it: a party's name in the
-/// message language, a user's name, else the masked address.
-async fn recipient_name(state: &AppState, ctx: &GiveUpContext, language: &str) -> Result<String> {
+/// message language, a user's name, else the masked address. For a
+/// recipient rule it is the person the last message went to.
+async fn recipient_name(
+    state: &AppState,
+    ctx: &GiveUpContext,
+    last: Option<&Message>,
+    language: &str,
+) -> Result<String> {
     Ok(match &ctx.recipient {
-        NotifyRecipient::Party { id } | NotifyRecipient::Contact { of: id, .. } => {
-            let name = parties::directory(state)
-                .display_name(&state.db, *id, language)
-                .await?;
-            name.filter(|n| !n.trim().is_empty()).unwrap_or_else(|| {
-                english_with("wl_notify.task.party", &[("id", &id.0.to_string())])
-            })
+        NotifyRecipient::Contact { of, .. } => {
+            let person = last.and_then(|m| m.party_id).map(PartyId);
+            party_name(state, person.unwrap_or(*of), language).await?
         }
+        NotifyRecipient::Party { id } => party_name(state, *id, language).await?,
         NotifyRecipient::User { id } => match User::find(&state.db, *id).await? {
             Some(user) if !user.name.trim().is_empty() => user.name,
             _ => english_with("wl_notify.task.user", &[("id", &id.to_string())]),
@@ -259,15 +287,49 @@ async fn recipient_name(state: &AppState, ctx: &GiveUpContext, language: &str) -
     })
 }
 
-/// The channel lines of `ctx`, with each message's address masked.
-async fn channel_lines(state: &AppState, ctx: &GiveUpContext) -> Result<Vec<ChannelLine>> {
-    let mut lines = Vec::with_capacity(ctx.channels_tried.len());
+/// The channel lines of `ctx`, with each message's address masked. When
+/// the last message is the alternative of an earlier chain, the lines of
+/// that chain come first and every line names its recipient.
+async fn channel_lines(
+    state: &AppState,
+    ctx: &GiveUpContext,
+    last: Option<&Message>,
+    language: &str,
+) -> Result<Vec<ChannelLine>> {
+    let mut earlier = Vec::new();
+    if let Some(root) = last.and_then(|m| m.alternative_of) {
+        earlier = Message::of_chain(&state.db, root).await?;
+    }
+    let named = !earlier.is_empty();
+    let mut lines = Vec::with_capacity(earlier.len() + ctx.channels_tried.len());
+    for message in &earlier {
+        let tried = ChannelTried {
+            message: message.message_id(),
+            channel: message.channel,
+            last_error_code: message.last_error_code.clone(),
+            last_error: message.last_error.clone(),
+        };
+        let line = ChannelLine::of(&tried, message.address.as_deref());
+        lines.push(line.for_who(&who(state, message, language).await?));
+    }
     for tried in &ctx.channels_tried {
         let message = Message::find(&state.db, tried.message.0).await?;
         let address = message.as_ref().and_then(|m| m.address.as_deref());
-        lines.push(ChannelLine::of(tried, address));
+        let line = ChannelLine::of(tried, address);
+        lines.push(match &message {
+            Some(m) if named => line.for_who(&who(state, m, language).await?),
+            _ => line,
+        });
     }
     Ok(lines)
+}
+
+/// The person `message` went to, as a line names them.
+async fn who(state: &AppState, message: &Message, language: &str) -> Result<String> {
+    match message.party_id {
+        Some(id) => party_name(state, PartyId(id), language).await,
+        None => Ok(english("wl_notify.task.no_address")),
+    }
 }
 
 /// Opens the staff task for the give-up `ctx`, or comments on the one that
@@ -282,8 +344,9 @@ pub async fn open_give_up_task(
     let creator = tickets::task_creator(state);
     let key = source_key(&ctx.subject, &ctx.recipient);
     let language = default_language(state);
-    let lines = channel_lines(state, ctx).await?;
-    let recipient = recipient_name(state, ctx, &language).await?;
+    let last = Message::find(&state.db, ctx.message.0).await?;
+    let lines = channel_lines(state, ctx, last.as_ref(), &language).await?;
+    let recipient = recipient_name(state, ctx, last.as_ref(), &language).await?;
     let subject = subject_text(&ctx.subject, ctx.subject_label.as_deref());
     let calendar = calendar::calendar(state);
 
@@ -460,6 +523,16 @@ mod tests {
     fn a_channel_without_address_or_error_says_so() {
         let line = ChannelLine::of(&tried(NotifyChannel::Whatsapp, None, None), None);
         assert_eq!(line.text(), "- WhatsApp no address: no error recorded");
+    }
+
+    #[test]
+    fn a_line_of_a_longer_chain_names_its_recipient() {
+        let line = ChannelLine::of(
+            &tried(NotifyChannel::Sms, None, Some("timeout")),
+            Some("+971501234567"),
+        )
+        .for_who("Mona");
+        assert_eq!(line.text(), "- Mona, SMS ****4567: timeout");
     }
 
     #[test]
