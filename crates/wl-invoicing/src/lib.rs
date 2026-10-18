@@ -34,8 +34,11 @@ pub mod recover;
 pub mod recovery;
 pub mod refund;
 pub mod reminders;
+pub mod reopen_notices;
 pub mod restore;
+pub mod reversal;
 pub mod seed;
+pub mod task;
 mod texts;
 pub mod unallocate;
 pub mod unallocation;
@@ -65,6 +68,7 @@ pub use invoicer::Invoices;
 pub use line::InvoiceLine;
 pub use recovery::Recovery;
 pub use reminders::ReminderLog;
+pub use task::{InvoicingTask, TaskKind, TaskStatus};
 pub use unallocation::{Unallocation, UnallocationOutcome};
 pub use vat::{CategoryTotal, LineAmounts, VatTotals};
 pub use vat_adjustment::{AdjustmentKind, AdjustmentStatus, VatAdjustment};
@@ -327,6 +331,7 @@ impl Module for WlInvoicing {
             .model::<Allocation>()
             .model::<Recovery>()
             .model::<Unallocation>()
+            .model::<InvoicingTask>()
             .model::<Dispute>()
             .model::<EscalationLog>()
             .model::<ReminderLog>()
@@ -427,6 +432,12 @@ impl Module for WlInvoicing {
         restore::register_types();
         // A failed refund paid out of a credit note gives its amount back.
         restore::register(app);
+        // `invoicing.invoice_reopened`: the owner and `receivables` notice.
+        reopen_notices::register_types();
+        // `invoicing.reversal_task`: the accountant notice of a refused reversal.
+        task::register_types();
+        // A reversed payment reopens its invoices (`unallocate`).
+        reversal::register(app);
         // Other modules draft and read invoices through the kernel (§6).
         wl_kernel::invoicing::provide_invoicer(app, Invoices);
     }

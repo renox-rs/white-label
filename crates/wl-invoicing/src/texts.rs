@@ -643,6 +643,48 @@ const TEXTS: &[(&str, &str)] = &[
         "the allocation was removed",
     ),
     (
+        "wl_invoicing.reopened.subject",
+        "Invoice {{ number }} is open again",
+    ),
+    (
+        "wl_invoicing.reopened.body",
+        "Invoice {{ number }} ({{ party_name }}) was reopened by {{ amount }}: {{ reason }}. New balance: {{ balance }}. New state: {{ new_status }}. See the invoice: {{ link }}",
+    ),
+    (
+        "wl_invoicing.reopen.reason.payment_reversed",
+        "payment reversed",
+    ),
+    (
+        "wl_invoicing.reopen.reason.allocation_moved",
+        "allocation moved",
+    ),
+    (
+        "wl_invoicing.reopen.reason.recovery_reversed",
+        "recovery reversed",
+    ),
+    ("wl_invoicing.reopen.reason.bank_return", "bank return"),
+    (
+        "wl_invoicing.reopen.reason.entered_in_error",
+        "entered in error",
+    ),
+    ("wl_invoicing.reopen.reason.chargeback", "chargeback"),
+    (
+        "wl_invoicing.task.subject",
+        "Reversal on invoice {{ number }} needs follow-up",
+    ),
+    (
+        "wl_invoicing.task.body",
+        "Invoice {{ number }} ({{ party_name }}): {{ message }} See the invoice: {{ link }}",
+    ),
+    (
+        "wl_invoicing.task.reversal_after_write_off",
+        "Payment {{ source }} of {{ amount }} allocated before the write-off was reversed: write off more or pursue the party.",
+    ),
+    (
+        "wl_invoicing.task.reversal_refused",
+        "Reversal of {{ amount }} from {{ source }} refused: {{ reason }}",
+    ),
+    (
         "wl_invoicing.relief.proposed.subject",
         "Bad-debt VAT relief proposed for invoice {{ number }}",
     ),

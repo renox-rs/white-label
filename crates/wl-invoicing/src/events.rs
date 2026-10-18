@@ -11,7 +11,8 @@
 //!   the release of origins come from the run's `meta`, [`crate::credit`]);
 //! - `unallocate` / `unallocate_partially` / `unallocate_overdue` →
 //!   [`InvoiceReopened`] (the money source, amount and reason come from the
-//!   run's `meta`, [`crate::unallocate`]);
+//!   run's `meta`, [`crate::unallocate`]), then the notice to the owner and
+//!   the `receivables` role ([`crate::reopen_notices`]);
 //! - a credit note's `issue` / `issue_system` (a listener on
 //!   [`Transitioned<CreditNote>`]) → [`CreditNoteIssued`];
 //! - a credit note's `reopen` → [`CreditNoteReopened`] (the amount and the
@@ -237,10 +238,11 @@ pub(crate) fn register(app: &mut Registry) {
         // The committed row: the number, dates and balance the run wrote.
         let invoice = Invoice::find_or_404(&state.db, event.key).await?;
         if reopens {
-            return match invoice_reopened(&invoice, &event.meta) {
-                Some(reopened) => state.emit(reopened).await,
-                None => Ok(()),
+            let Some(reopened) = invoice_reopened(&invoice, &event.meta) else {
+                return Ok(());
             };
+            state.emit(reopened.clone()).await?;
+            return crate::reopen_notices::notify(&state, &invoice, &reopened).await;
         }
         if [CREDIT, CREDIT_SYSTEM].contains(&event.transition.as_str()) {
             let Some(note_id) = credit_note_of(&event.meta) else {
