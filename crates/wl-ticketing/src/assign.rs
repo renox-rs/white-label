@@ -82,7 +82,7 @@ pub struct Assignment {
     /// The user who assigned.
     pub by_user_id: Option<i64>,
     /// When it happened.
-    pub at: Option<DateTime>,
+    pub at: DateTime,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
@@ -338,7 +338,7 @@ pub(crate) async fn apply(
         reason_text: reassigned.then(|| input.reason_text.clone()).flatten(),
         visit_at: input.visit_at,
         by_user_id: by,
-        at: Some(input.at),
+        at: input.at,
         ..Assignment::default()
     };
     row.insert(&mut *tx).await?;
@@ -748,7 +748,7 @@ mod tests {
         assert_eq!(row.assignee(), Some(IMRAN));
         assert_eq!(row.reason_code.as_deref(), Some("vendor_no_show"));
         assert_eq!(row.reason_text.as_deref(), Some("No show"));
-        assert_eq!(row.at, Some(dubai("2026-11-03", 13)));
+        assert_eq!(row.at, dubai("2026-11-03", 13));
     }
 
     #[renox::test]
