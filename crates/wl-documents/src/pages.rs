@@ -6,6 +6,8 @@
 //! | `GET /documents/{id}/file` | `wl_documents.file` | `documents.review` |
 //! | `POST /documents/{id}/accept` | `wl_documents.accept` | `documents.review` |
 //! | `POST /documents/{id}/reject` | `wl_documents.reject` | `documents.review` (`reason` required) |
+//! | `GET /documents/flags` | `wl_documents.flags` | `documents.view` |
+//! | `POST /documents/flags/{id}/review` | `wl_documents.flags.review` | `documents.review` |
 //! | `GET /document-kinds` | `wl_documents.kinds` | `document_kinds.manage` |
 //! | `GET /document-kinds/{key}` | `wl_documents.kind` | `document_kinds.manage` |
 //! | `POST /document-kinds/{key}/blocks` | `wl_documents.blocks.store` | `document_kinds.manage` |
@@ -25,6 +27,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use renox::Download;
 use renox::chrono::NaiveDate;
+use renox::grid::{Action, Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
 use renox::state_machine::TransitionError;
 use renox::validation::{Errors, ValidationError};
@@ -32,6 +35,7 @@ use serde::{Deserialize, Serialize};
 use wl_kernel::documents::{BlockCondition, BlockMode, OverrideMode};
 
 use crate::documents::{Document, DocumentStatus, DocumentVersion, Documents};
+use crate::flags::{self, DocumentFlag};
 use crate::kinds::{self, BlockChangeRefused, DocumentKind, KindBlock};
 use crate::permissions;
 use crate::texts;
@@ -54,7 +58,15 @@ pub fn routes() -> Routes {
         .name("wl_documents.accept")
         .post("/documents/{id}/reject", reject)
         .name("wl_documents.reject")
+        .post("/documents/flags/{id}/review", review_flag)
+        .name("wl_documents.flags.review")
         .require_permission(permissions::REVIEW)
+        .merge(
+            Routes::new()
+                .get("/documents/flags", flags_index)
+                .name("wl_documents.flags")
+                .require_permission(permissions::VIEW),
+        )
         .merge(
             Routes::new()
                 .get("/document-kinds", kinds_index)
@@ -285,6 +297,134 @@ async fn reject(
         ) => Err(invalid("reason", error.to_string(), &form)),
         Err(other) => Err(other.into_error()),
     }
+}
+
+/// The flags grid: search on the label, guarded entry and note, filters by
+/// state and record type, unreviewed flags first, then the newest.
+/// `can_review` adds the "Mark reviewed" row action, which opens the sheet
+/// `review-flag`.
+pub fn flags_grid(lang: &Lang, record_types: Vec<String>, can_review: bool) -> Grid {
+    let state_options = vec![
+        ("open".to_owned(), text(lang, "flags.state.open")),
+        ("reviewed".to_owned(), text(lang, "flags.state.reviewed")),
+    ];
+    let types: Vec<(String, String)> = record_types.into_iter().map(|t| (t.clone(), t)).collect();
+    let grid = Grid::new("wl-documents-flags")
+        .title(&text(lang, "flags.title"))
+        .column(
+            Column::text("label", &text(lang, "flags.label"))
+                .frozen()
+                .mobile()
+                .searchable(),
+        )
+        .column(
+            Column::select("state", &text(lang, "flags.state"), state_options)
+                .computed("CASE WHEN {T}.\"reviewed_at\" IS NULL THEN 'open' ELSE 'reviewed' END")
+                .badges(&[("open", "warning"), ("reviewed", "success")])
+                .mobile(),
+        )
+        .column(Column::select(
+            "record_type",
+            &text(lang, "flags.record_type"),
+            types,
+        ))
+        .column(
+            Column::text("record", &text(lang, "fields.subject"))
+                .computed("{T}.\"record_type\" || ' #' || {T}.\"record_id\"")
+                .mobile(),
+        )
+        .column(Column::text("guarded", &text(lang, "flags.guarded")).searchable())
+        .column(Column::date("on_date", &text(lang, "flags.on_date")))
+        .column(
+            Column::text("reviewer", &text(lang, "flags.reviewed_by"))
+                .computed("(SELECT \"name\" FROM \"users\" WHERE \"id\" = {T}.\"reviewed_by\")"),
+        )
+        .column(Column::datetime("reviewed_at", &text(lang, "flags.reviewed_at")).hidden())
+        .column(Column::text("review_note", &text(lang, "flags.note")).searchable())
+        // "open" sorts before "reviewed": unreviewed flags first.
+        .sort_by("state,-created_at")
+        .cards_on_mobile()
+        .empty_state(
+            &text(lang, "flags.empty"),
+            Some(&text(lang, "flags.empty_hint")),
+        );
+    if can_review {
+        grid.row_action(
+            Action::new(&text(lang, "flags.review"), "/documents/flags/{id}/review")
+                .sheet("review-flag"),
+        )
+    } else {
+        grid
+    }
+}
+
+/// What the flags page needs.
+#[derive(Serialize, ViewData)]
+#[view(template = "wl-documents/flags.html")]
+pub(crate) struct FlagsPage {
+    tx: Texts,
+    flags: GridPage<DocumentFlag>,
+    can_review: bool,
+}
+
+/// `GET /documents/flags`: every flag, unreviewed first, filterable by state
+/// and record type; with `documents.review`, each row can be marked reviewed.
+async fn flags_index(
+    State(db): State<Db>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<View> {
+    let mut record_types: Vec<String> = DocumentFlag::query()
+        .get(&db)
+        .await?
+        .into_iter()
+        .map(|flag| flag.record_type)
+        .collect();
+    record_types.sort();
+    record_types.dedup();
+    let can_review = user.has_permission(permissions::REVIEW);
+    let grid = flags_grid(&lang, record_types, can_review);
+    let flags = grid.page(DocumentFlag::query(), &request).await?;
+    Ok(View::typed(FlagsPage {
+        tx: texts::all(&lang),
+        flags,
+        can_review,
+    }))
+}
+
+/// The form of the mark-reviewed action.
+#[derive(Deserialize, Serialize, Validate, Debug, Default)]
+pub struct FlagReviewForm {
+    /// Why the flag is reviewed (required).
+    #[validate(max = 2000)]
+    #[serde(default)]
+    pub note: Option<String>,
+}
+
+/// `POST /documents/flags/{id}/review`: marks the flag reviewed by the user
+/// with the note and reloads the page; a blank note or a flag already
+/// reviewed is a 422 under the field.
+async fn review_flag(
+    State(db): State<Db>,
+    user: AuthUser,
+    lang: Lang,
+    Found(flag): Found<DocumentFlag>,
+    Valid(form): Valid<FlagReviewForm>,
+) -> Result<Response> {
+    let note = form.note.as_deref().map_or("", str::trim);
+    if note.is_empty() {
+        return Err(invalid("note", text(&lang, "flag.note_required"), &form));
+    }
+    if flag.is_reviewed() {
+        return Err(invalid("note", text(&lang, "flag.already_reviewed"), &form));
+    }
+    flags::review(&db, flag.id, user.id, note).await?;
+    Ok((
+        Toast::success(text(&lang, "flags.reviewed")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// One kind as the kinds list shows it.

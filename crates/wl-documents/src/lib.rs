@@ -46,6 +46,10 @@ const VIEWS: &[(&str, &str)] = &[
         include_str!("../views/wl-documents/review_queue.html"),
     ),
     (
+        "wl-documents/flags.html",
+        include_str!("../views/wl-documents/flags.html"),
+    ),
+    (
         "wl-documents/kinds.html",
         include_str!("../views/wl-documents/kinds.html"),
     ),
@@ -79,6 +83,7 @@ impl Module for WlDocuments {
             .model::<DocumentVersion>()
             .model::<DocumentFlag>()
             .view_data::<pages::ReviewQueuePage>()
+            .view_data::<pages::FlagsPage>()
             .view_data::<pages::KindsPage>()
             .view_data::<pages::KindPage>();
         // `rnx state:diagram Document` and the admin panel find the machine.
@@ -109,6 +114,14 @@ impl Module for WlDocuments {
                 .group("nav.app")
                 .order(35)
                 .permission(permissions::REVIEW),
+        );
+        app.nav(
+            "app",
+            NavLink::route("wl_documents.flags", "nav.document_flags")
+                .icon("flag")
+                .group("nav.app")
+                .order(36)
+                .permission(permissions::VIEW),
         );
         app.nav(
             "app",
