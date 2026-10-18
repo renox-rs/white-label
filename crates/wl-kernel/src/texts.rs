@@ -21,6 +21,55 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_kernel.approvals.requested_body",
         "Request #:request about :subject waits for your decision.",
     ),
+    (
+        "wl_kernel.approvals.already_decided",
+        "This request was already decided.",
+    ),
+    (
+        "wl_kernel.approvals.comment_required",
+        "A comment is required to reject.",
+    ),
+    (
+        "wl_kernel.approvals.reason_withdrawn",
+        "approval withdrawn by requester",
+    ),
+    ("wl_kernel.approvals.reason_expired", "approval expired"),
+    (
+        "wl_kernel.approvals.reason_failed",
+        "approval failed: :message",
+    ),
+    (
+        "wl_kernel.approvals.subject_moved",
+        "Subject already moved to `:state`.",
+    ),
+    (
+        "wl_kernel.approvals.approved_title",
+        "Approval granted: :action",
+    ),
+    (
+        "wl_kernel.approvals.rejected_title",
+        "Approval rejected: :action",
+    ),
+    (
+        "wl_kernel.approvals.returned_title",
+        "Approval returned: :action",
+    ),
+    (
+        "wl_kernel.approvals.withdrawn_title",
+        "Approval withdrawn: :action",
+    ),
+    (
+        "wl_kernel.approvals.expired_title",
+        "Approval expired: :action",
+    ),
+    (
+        "wl_kernel.approvals.failed_title",
+        "Approval failed: :action",
+    ),
+    (
+        "wl_kernel.approvals.decided_body",
+        "Request #:request about :subject: :reason",
+    ),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.
