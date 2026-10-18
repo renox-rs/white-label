@@ -14,7 +14,7 @@ use wl_parties::{Party, WlParties, permissions as perm};
 /// The pages extend the app's layout; a package test has no app, so it
 /// brings the smallest one.
 const LAYOUT: &str = r#"<!doctype html>
-<html><body><rx-outlet name="content"/></body></html>
+<html><body>{% for group in nav("app") %}{% for link in group.items %}<a class="nav" href="{{ link.url }}">{{ link.label }}</a>{% endfor %}{% endfor %}<rx-outlet name="content"/></body></html>
 "#;
 
 /// A client with the parties module on.

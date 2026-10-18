@@ -124,7 +124,9 @@ impl Notification for PossibleMatchNotice {
 
 /// Tells every holder of `parties.block_reason.view` (global scope) that
 /// `task` of `party` needs a review: one bell entry each, and one e-mail each
-/// when the `notify` module is on. Staff only; nothing goes to the party.
+/// when the `notify` module is on (its notifier then adds the bell entry of
+/// the e-mail, so the module adds none of its own). Staff only; nothing goes
+/// to the party.
 /// Returns the holders told, ordered by id.
 pub async fn alert_possible_match(
     state: &AppState,
@@ -147,7 +149,11 @@ pub async fn alert_possible_match(
     };
     let mail = available(state);
     for user in &holders {
-        state.notify(user, &notice).await?;
+        // With the `notify` module on, its notifier puts the bell entry of
+        // the e-mail in the bell itself; a second one would be a duplicate.
+        if !mail {
+            state.notify(user, &notice).await?;
+        }
         if mail {
             let request = NotifyRequest::new(
                 POSSIBLE_MATCH_TYPE,

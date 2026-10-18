@@ -408,6 +408,41 @@ async fn without_payments_the_refund_failed_event_still_serialises() {
     }
 }
 
+/// AC6 of #38: the screening events are plain data other modules can listen
+/// to, and the compliance-only one carries no candidate: party, screening and
+/// status only.
+#[renox::test]
+async fn the_screening_events_serialise_without_any_candidate() {
+    use wl_kernel::{ScreeningCompleted, ScreeningFlagged, ScreeningId, ScreeningStatus};
+
+    let dir = views(&[]);
+    let _app = boot(dir.path()).await;
+    let flagged = ScreeningFlagged {
+        party: PartyId(2),
+        screening: ScreeningId(9),
+        status: ScreeningStatus::PossibleMatch,
+    };
+    let json = renox::serde_json::to_value(&flagged).expect("the event serialises");
+    let mut keys: Vec<&str> = json
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
+    keys.sort_unstable();
+    assert_eq!(keys, ["party", "screening", "status"]);
+    let back: ScreeningFlagged = renox::serde_json::from_value(json).expect("and reads back");
+    assert_eq!(back, flagged);
+    let done = ScreeningCompleted {
+        party: PartyId(2),
+        screening: ScreeningId(10),
+        status: ScreeningStatus::Clear,
+    };
+    let json = renox::serde_json::to_value(&done).expect("the event serialises");
+    let back: ScreeningCompleted = renox::serde_json::from_value(json).expect("and reads back");
+    assert_eq!(back, done);
+}
+
 #[renox::test]
 async fn the_models_match_the_schema() {
     let dir = views(&[]);

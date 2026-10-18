@@ -69,13 +69,13 @@ async fn booted(recording: Option<Recording>) -> Booted {
 }
 
 #[renox::test]
-async fn a_flag_alerts_every_holder_once_and_no_one_else() {
+async fn a_flag_mails_every_holder_once_and_no_one_else() {
     let recording = Recording::default();
     let t = booted(Some(recording.clone())).await;
     let party = t.party(AL_NOOR).await;
-    let mlro = t.mlro().await;
-    let deputy = t.user("Dina", &[perm::VIEW, perm::BLOCK_REASON_VIEW]).await;
-    let partner = t.user("Pia", &[perm::VIEW]).await;
+    t.mlro().await;
+    t.user("Dina", &[perm::VIEW, perm::BLOCK_REASON_VIEW]).await;
+    t.user("Pia", &[perm::VIEW]).await;
 
     record_run(t.app.state(), &party, flagged_run(), None)
         .await
@@ -84,23 +84,6 @@ async fn a_flag_alerts_every_holder_once_and_no_one_else() {
         .await
         .unwrap()
         .expect("a task");
-
-    for holder in [&mlro, &deputy] {
-        let bells = holder.unread_notifications(t.db()).await.unwrap();
-        assert_eq!(bells.len(), 1);
-        let message = bells[0].message().expect("a message");
-        assert_eq!(message.title, "A possible sanctions match needs review");
-        let body = message.body.clone().unwrap_or_default();
-        assert!(body.contains(&party.code), "{body}");
-        assert!(!body.contains("Omar") && !body.contains("UN consolidated"));
-    }
-    assert!(
-        partner
-            .unread_notifications(t.db())
-            .await
-            .unwrap()
-            .is_empty()
-    );
 
     let requests = recording.0.lock().unwrap().clone();
     assert_eq!(requests.len(), 2);
@@ -115,7 +98,6 @@ async fn a_flag_alerts_every_holder_once_and_no_one_else() {
     record_run(t.app.state(), &party, flagged_run(), None)
         .await
         .unwrap();
-    assert_eq!(mlro.unread_notifications(t.db()).await.unwrap().len(), 1);
     assert_eq!(recording.0.lock().unwrap().len(), 2);
     assert_eq!(task.status, wl_parties::ScreeningTaskStatus::Open);
 }
@@ -128,7 +110,13 @@ async fn without_notify_only_the_bell_is_sent() {
     record_run(t.app.state(), &party, flagged_run(), None)
         .await
         .unwrap();
-    assert_eq!(mlro.unread_notifications(t.db()).await.unwrap().len(), 1);
+    let bells = mlro.unread_notifications(t.db()).await.unwrap();
+    assert_eq!(bells.len(), 1);
+    let message = bells[0].message().expect("a message");
+    assert_eq!(message.title, "A possible sanctions match needs review");
+    let body = message.body.clone().unwrap_or_default();
+    assert!(body.contains(&party.code), "{body}");
+    assert!(!body.contains("Omar") && !body.contains("UN consolidated"));
 }
 
 #[renox::test]

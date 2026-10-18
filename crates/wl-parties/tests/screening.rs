@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex};
 
 use renox::chrono::Duration;
 use renox::prelude::*;
-use renox::state_machine::TransitionError;
+use renox::state_machine::{StateMachine, TransitionError};
 use wl_kernel::{ScreeningCompleted, ScreeningFlagged, ScreeningStatus};
 use wl_parties::{
     NewCandidate, Party, Screening, ScreeningRun, ScreeningTask, ScreeningTaskStatus,
@@ -171,6 +171,14 @@ async fn a_status_changed_outside_a_transition_is_refused() {
         .unwrap()
         .unwrap();
     assert_eq!(stored.status, ScreeningStatus::Clear);
+    // `flag` from `clear` is refused as well.
+    let again = stored
+        .transition(wl_parties::screening::FLAG)
+        .by_system()
+        .run(t.app.state())
+        .await;
+    assert!(matches!(again, Err(TransitionError::NotFrom(_))));
+    assert!(tasks(&t, &party).await.is_empty());
 }
 
 #[renox::test]
@@ -310,6 +318,11 @@ async fn a_clear_run_emits_completed_and_a_flag_emits_flagged_only() {
         assert_eq!(flagged[0].party.0, party.id);
         assert_eq!(flagged[0].screening.0, possible.id);
         assert_eq!(flagged[0].status, ScreeningStatus::PossibleMatch);
+        // The payload is the three ids and the status, no candidate.
+        let json = renox::serde_json::to_string(&flagged[0]).unwrap();
+        assert!(!json.contains("Omar") && !json.contains("UN consolidated"));
+        let keys = renox::serde_json::to_value(&flagged[0]).unwrap();
+        assert_eq!(keys.as_object().unwrap().len(), 3, "{json}");
     }
     let clear = record_run(t.app.state(), &party, automatic(&[0.1]), None)
         .await
