@@ -26,6 +26,9 @@ pub const COMPLIANCE: &str = "compliance";
 /// The receivables role: drafts, issues and follows up invoices, requests
 /// write-offs and handles disputes (wl-invoicing §3, §6).
 pub const RECEIVABLES: &str = "receivables";
+/// The accountant: sees invoices, and prepares, reviews and locks the VAT
+/// summaries (wl-invoicing §6; `FIN.ACL.10` wants two of them).
+pub const ACCOUNTANT: &str = "accountant";
 /// The maintenance coordinator: raises, triages and assigns tickets, and
 /// works them (wl-ticketing §6, 01 roles).
 pub const COORDINATOR: &str = "coordinator";
@@ -65,6 +68,10 @@ pub const ROLES: &[(&str, &[&str])] = &[
             invoices::WRITE_OFF,
             invoices::DISPUTE,
             invoices::RECEIVABLES_VIEW,
+            invoices::VAT_VIEW,
+            invoices::VAT_PREPARE,
+            invoices::VAT_REVIEW,
+            invoices::VAT_LOCK,
             tickets::VIEW,
             tickets::CREATE,
             tickets::ASSIGN,
@@ -86,6 +93,16 @@ pub const ROLES: &[(&str, &[&str])] = &[
             invoices::WRITE_OFF,
             invoices::DISPUTE,
             invoices::RECEIVABLES_VIEW,
+        ],
+    ),
+    (
+        ACCOUNTANT,
+        &[
+            invoices::VIEW,
+            invoices::VAT_VIEW,
+            invoices::VAT_PREPARE,
+            invoices::VAT_REVIEW,
+            invoices::VAT_LOCK,
         ],
     ),
     (

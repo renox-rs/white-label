@@ -18,6 +18,8 @@ pub mod seed;
 mod texts;
 pub mod vat;
 pub mod vat_adjustment;
+pub mod vat_period;
+pub mod vat_summary;
 pub mod write_off;
 pub mod write_off_notice;
 
@@ -35,6 +37,8 @@ pub use line::InvoiceLine;
 pub use reminders::ReminderLog;
 pub use vat::{CategoryTotal, LineAmounts, VatTotals};
 pub use vat_adjustment::{AdjustmentKind, AdjustmentStatus, VatAdjustment};
+pub use vat_period::TaxPeriod;
+pub use vat_summary::{VatSummary, VatSummaryStatus};
 pub use write_off_notice::SendWriteOffNotice;
 
 /// The templates, compiled in. An app replaces one with a file of the same
@@ -82,6 +86,14 @@ pub mod permissions {
     pub const DISPUTE: &str = "invoices.dispute";
     /// See receivables: balances, ageing and reminders.
     pub const RECEIVABLES_VIEW: &str = "receivables.view";
+    /// See VAT summaries and their adjustments.
+    pub const VAT_VIEW: &str = "vat.view";
+    /// Prepare a VAT summary and decide its adjustments.
+    pub const VAT_PREPARE: &str = "vat.prepare";
+    /// Review a VAT summary, or send it back (`FIN.ACL.10`).
+    pub const VAT_REVIEW: &str = "vat.review";
+    /// Lock a reviewed VAT summary.
+    pub const VAT_LOCK: &str = "vat.lock";
 }
 
 /// The invoicing module. The host adds it with
@@ -137,6 +149,17 @@ impl WlInvoicing {
         self
     }
 
+    /// The tax period (the FTA stagger) of the legal entity with this code.
+    /// Entities without one are quarterly on calendar quarters.
+    pub fn tax_period(mut self, entity_code: &str, period: TaxPeriod) -> Self {
+        let periods = &mut self.config.tax_periods;
+        match periods.iter_mut().find(|(code, _)| code == entity_code) {
+            Some(entry) => entry.1 = period,
+            None => periods.push((entity_code.to_owned(), period)),
+        }
+        self
+    }
+
     /// The module's settings.
     pub fn config(&self) -> &InvoicingConfig {
         &self.config
@@ -162,6 +185,7 @@ impl Module for WlInvoicing {
             .model::<Allocation>()
             .model::<ReminderLog>()
             .model::<VatAdjustment>()
+            .model::<VatSummary>()
             .view_data::<pages::IndexPage>()
             .view_data::<pages::ShowPage>();
         // The customer write-off notice (§10), sent from the queue.
@@ -177,6 +201,7 @@ impl Module for WlInvoicing {
         });
         // `rnx state:diagram Invoice` and the admin panel find the machine.
         renox::state_machine::register::<Invoice>();
+        renox::state_machine::register::<VatSummary>();
         // The kernel runs `write_off_approved` by name; `FIN.ACL.15`.
         policy::register(&self.config);
         // The settings the services read (`config_of`).
@@ -202,6 +227,8 @@ impl Module for WlInvoicing {
         // `FIN.RUL.01`: the reminder types and the daily `invoicing:reminders`.
         reminders::register_types();
         reminders::schedule(app);
+        // The daily `invoicing:vat-periods`: each running period's summary.
+        vat_summary::schedule(app);
         // Other modules draft and read invoices through the kernel (§6).
         wl_kernel::invoicing::provide_invoicer(app, Invoices);
     }
@@ -219,7 +246,9 @@ mod tests {
             .write_off_reason("deceased", false)
             .write_off_reason("other", false)
             .write_off_notice(false)
-            .write_off_approvers(&["admin"]);
+            .write_off_approvers(&["admin"])
+            .tax_period("PGR", TaxPeriod::Monthly)
+            .tax_period("PGR", TaxPeriod::Quarterly { first_month: 2 });
         let config = module.config();
         assert_eq!(config.payment_terms_days, 14);
         assert_eq!(config.reminder_steps, [-3, 7]);
@@ -227,5 +256,10 @@ mod tests {
         assert!(!config.write_off_reason("other").unwrap().text_required);
         assert!(!config.write_off_notice);
         assert_eq!(config.write_off_approvers, ["admin"]);
+        assert_eq!(
+            config.tax_period_of("PGR"),
+            TaxPeriod::Quarterly { first_month: 2 }
+        );
+        assert_eq!(config.tax_period_of("PGP"), TaxPeriod::default());
     }
 }

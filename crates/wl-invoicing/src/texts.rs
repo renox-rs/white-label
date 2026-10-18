@@ -55,6 +55,27 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_invoicing.vat_category.exempt", "Exempt"),
     ("wl_invoicing.vat_category.out_of_scope", "Out of scope"),
     ("wl_invoicing.vat_category.reverse_charge", "Reverse charge"),
+    ("wl_invoicing.vat.title", "VAT summaries"),
+    ("wl_invoicing.vat.status.open", "Open"),
+    ("wl_invoicing.vat.status.prepared", "Prepared"),
+    ("wl_invoicing.vat.status.reviewed", "Reviewed"),
+    ("wl_invoicing.vat.status.locked", "Locked"),
+    (
+        "wl_invoicing.vat.period_running",
+        "The tax period has not ended yet.",
+    ),
+    (
+        "wl_invoicing.vat.same_person",
+        "A VAT summary is reviewed by someone other than its preparer.",
+    ),
+    (
+        "wl_invoicing.vat.reviewer_unknown",
+        "The summary has no preparer, or the reviewer is unknown.",
+    ),
+    (
+        "wl_invoicing.vat.reason_required",
+        "Give a reason for sending the summary back.",
+    ),
     ("wl_invoicing.sections.issuer", "Issued by"),
     ("wl_invoicing.sections.party", "Billed to"),
     ("wl_invoicing.sections.totals", "Totals"),

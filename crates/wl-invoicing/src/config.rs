@@ -2,6 +2,8 @@
 //! code, set on [`WlInvoicing`](crate::WlInvoicing) with builder calls; a
 //! settings page comes later.
 
+use crate::vat_period::TaxPeriod;
+
 /// A write-off reason code (`FIN.ACL.15`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WriteOffReason {
@@ -40,6 +42,11 @@ pub struct InvoicingConfig {
     pub write_off_notice: bool,
     /// The roles whose holders approve a write-off by default (`FIN.ACL.15`).
     pub write_off_approvers: Vec<String>,
+    /// The tax period of entities that have none of their own: quarterly
+    /// on calendar quarters.
+    pub default_tax_period: TaxPeriod,
+    /// The tax period (the FTA stagger) of single entities, by entity code.
+    pub tax_periods: Vec<(String, TaxPeriod)>,
 }
 
 impl Default for InvoicingConfig {
@@ -60,6 +67,8 @@ impl Default for InvoicingConfig {
             ],
             write_off_notice: true,
             write_off_approvers: vec!["receivables".to_owned(), "admin".to_owned()],
+            default_tax_period: TaxPeriod::default(),
+            tax_periods: Vec::new(),
         }
     }
 }
@@ -84,6 +93,14 @@ impl ReasonProblem {
 }
 
 impl InvoicingConfig {
+    /// The tax period of the entity with this code.
+    pub fn tax_period_of(&self, entity_code: &str) -> TaxPeriod {
+        self.tax_periods
+            .iter()
+            .find(|(code, _)| code == entity_code)
+            .map_or(self.default_tax_period, |(_, period)| *period)
+    }
+
     /// The configured reason with this code, if any.
     pub fn write_off_reason(&self, code: &str) -> Option<&WriteOffReason> {
         self.write_off_reasons.iter().find(|r| r.code == code)
@@ -122,6 +139,10 @@ mod tests {
         assert!(config.write_off_reason("other").unwrap().text_required);
         assert!(!config.write_off_reason("insolvent").unwrap().text_required);
         assert!(config.write_off_reason("bored").is_none());
+        assert_eq!(
+            config.tax_period_of("PGP"),
+            TaxPeriod::Quarterly { first_month: 1 }
+        );
     }
 
     #[test]
