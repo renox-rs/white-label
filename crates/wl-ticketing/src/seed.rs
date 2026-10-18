@@ -1,6 +1,7 @@
 //! The idempotent seeder with the §7 defaults (#146 A4, A6): the SLA policy
 //! `standard`, the hold reasons Parts, Access, Waiting on requester and
-//! Approval, and the category `general`.
+//! Approval, and the categories `general` and `task`
+//! (the kernel's [`TASK_CATEGORY`], for staff tasks other modules open).
 //!
 //! [`install`] adds the rows the database lacks and keeps every row that is
 //! there, so a client's edits survive a re-run. The targets of a policy are
@@ -16,6 +17,12 @@ pub const STANDARD_POLICY: &str = "standard";
 
 /// The key of the default category.
 pub const GENERAL_CATEGORY: &str = "general";
+
+/// The key of the category of staff tasks other modules open.
+pub const TASK_CATEGORY: &str = wl_kernel::tickets::TASK_CATEGORY;
+
+/// The seeded categories as (key, English name).
+pub const CATEGORIES: [(&str, &str); 2] = [(GENERAL_CATEGORY, "General"), (TASK_CATEGORY, "Task")];
 
 /// One SLA working hour, in minutes.
 const HOUR: i64 = 60;
@@ -110,20 +117,23 @@ pub async fn install(db: &Db) -> Result<Installed> {
         }
     }
 
-    if Category::by_key(&mut tx, GENERAL_CATEGORY).await?.is_none() {
-        Category::create(
-            &mut tx,
-            Category {
-                key: GENERAL_CATEGORY.to_owned(),
-                name_en: "General".to_owned(),
-                default_priority: Priority::Normal,
-                sla_policy_id: Some(policy.id),
-                active: true,
-                ..Category::default()
-            },
-        )
-        .await?;
-        installed.categories += 1;
+    for (key, name) in CATEGORIES {
+        if Category::by_key(&mut tx, key).await?.is_none() {
+            Category::create(
+                &mut tx,
+                Category {
+                    key: key.to_owned(),
+                    name_en: name.to_owned(),
+                    default_priority: Priority::Normal,
+                    sla_policy_id: Some(policy.id),
+                    requires_signoff: false,
+                    active: true,
+                    ..Category::default()
+                },
+            )
+            .await?;
+            installed.categories += 1;
+        }
     }
 
     tx.commit().await?;
@@ -175,7 +185,7 @@ mod tests {
             Installed {
                 policies: 1,
                 hold_reasons: 4,
-                categories: 1
+                categories: 2
             }
         );
 
@@ -201,7 +211,10 @@ mod tests {
         assert_eq!(SlaPolicy::query().count(db).await.unwrap(), 1);
         assert_eq!(policy.targets(db).await.unwrap().len(), 4);
         assert_eq!(HoldReason::ordered(db).await.unwrap().len(), 4);
-        assert_eq!(Category::query().count(db).await.unwrap(), 1);
+        assert_eq!(Category::query().count(db).await.unwrap(), 2);
+        let task = Category::by_key(db, TASK_CATEGORY).await.unwrap().unwrap();
+        assert_eq!(task.default_priority, Priority::Normal);
+        assert!(task.active && !task.requires_signoff);
         let urgent = policy.target(db, Priority::Urgent).await.unwrap().unwrap();
         assert_eq!(urgent.response_minutes, 30);
         let approval = HoldReason::by_key(db, "approval").await.unwrap().unwrap();

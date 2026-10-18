@@ -1,0 +1,11 @@
+{#- wl-ticketing: the comments on a ticket, oldest first: who wrote them
+    (the system for a task another module commented), who sees them, and
+    when. Replace it with resources/views/wl-ticketing/_comments.html in the
+    app. -#}
+<rx-table :rows="comments" as="comment" :key="comment.id" :caption="tx['sections.comments']" card>
+  <rx-column :label="tx['comments.author']">{{ comment.author }}</rx-column>
+  <rx-column :label="tx['comments.text']">{{ comment.text }}</rx-column>
+  <rx-column :label="tx['comments.visibility']" hide-narrow>{{ comment.visibility }}</rx-column>
+  <rx-column :label="tx['history.at']">{{ comment.at or "" }}</rx-column>
+  <rx-slot name="empty"><rx-empty :title="tx['no_comments']" icon="message-square"/></rx-slot>
+</rx-table>

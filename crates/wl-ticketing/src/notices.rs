@@ -20,7 +20,7 @@ use wl_kernel::notify::{self, NotificationTypeDef, NotifyChannel, NotifyRequest}
 use wl_kernel::parties::directory;
 use wl_kernel::tickets::{Assignee, TicketAssigned};
 
-use crate::assign::{ASSIGN, AssignKind, AssignMeta, reasons_of};
+use crate::assign::{ASSIGN, AUTO_ASSIGN, AssignKind, AssignMeta, reasons_of};
 use crate::texts::english;
 use crate::ticket::Ticket;
 
@@ -166,7 +166,7 @@ pub(crate) fn register(app: &mut Registry) {
         notify::register_type(def);
     }
     app.listen(|event: Transitioned<Ticket>, state: AppState| async move {
-        if event.transition != ASSIGN {
+        if event.transition != ASSIGN && event.transition != AUTO_ASSIGN {
             return Ok(());
         }
         let Ok(meta) = serde_json::from_value::<AssignMeta>(event.meta.clone()) else {

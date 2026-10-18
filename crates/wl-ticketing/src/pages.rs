@@ -35,6 +35,7 @@ use wl_kernel::parties::directory;
 use wl_kernel::tickets::{Assignee, OpenTicket, Requester, TicketChannel};
 
 use crate::assign::{AssignKind, AssignRequest, Assignment, assign, reasons_of};
+use crate::comments::{Comment, CommentVisibility};
 use crate::config::{Category, HoldReason};
 use crate::open::Tickets;
 use crate::permissions;
@@ -316,6 +317,18 @@ pub(crate) struct AssignmentRow {
     at: Option<String>,
 }
 
+/// One comment on the ticket.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct CommentRow {
+    id: i64,
+    /// The author's name, or "System".
+    author: String,
+    /// Who sees it.
+    visibility: String,
+    text: String,
+    at: Option<String>,
+}
+
 /// The ticket as the card shows it.
 #[derive(Serialize, Debug, Clone, Default)]
 pub(crate) struct Card {
@@ -326,6 +339,7 @@ pub(crate) struct Card {
     requester: Option<String>,
     assignee: Option<String>,
     visit: Option<String>,
+    due: Option<String>,
     sla_started: Option<String>,
     response_due: Option<String>,
     resolution_due: Option<String>,
@@ -373,6 +387,7 @@ pub(crate) struct ShowPage {
     /// The priority the assign sheet starts on.
     priority_selected: &'static str,
     assignments: Vec<AssignmentRow>,
+    comments: Vec<CommentRow>,
     timeline: Vec<Value>,
 }
 
@@ -524,6 +539,45 @@ async fn assignment_rows(
     Ok(rows)
 }
 
+/// The comments of `ticket_id`, oldest first. Internal ones are for staff
+/// (`tickets.work` or `tickets.assign`), so the requester sees only theirs.
+async fn comment_rows(
+    state: &AppState,
+    lang: &Lang,
+    user: &AuthUser,
+    ticket_id: i64,
+) -> Result<Vec<CommentRow>> {
+    let t = texts_in(lang);
+    let staff = user.has_permission(permissions::WORK) || user.has_permission(permissions::ASSIGN);
+    let mut names: HashMap<i64, String> = HashMap::new();
+    let mut rows = Vec::new();
+    for comment in Comment::of_ticket(&state.db, ticket_id).await? {
+        if comment.visibility == CommentVisibility::Internal && !staff {
+            continue;
+        }
+        let author = match comment.author_user_id {
+            Some(id) => {
+                if let std::collections::hash_map::Entry::Vacant(slot) = names.entry(id) {
+                    let name = User::find(&state.db, id)
+                        .await?
+                        .map_or_else(|| format!("#{id}"), |u| u.name);
+                    slot.insert(name);
+                }
+                names.get(&id).cloned().unwrap_or_default()
+            }
+            None => t("comments.system"),
+        };
+        rows.push(CommentRow {
+            id: comment.id,
+            author,
+            visibility: t(&format!("comments.{}", comment.visibility.as_str())),
+            text: comment.text,
+            at: when(state, comment.created_at),
+        });
+    }
+    Ok(rows)
+}
+
 /// `GET /tickets/{id}`: the card with its service level times, the actions
 /// for its state, the assign sheet, the reassignment history and the
 /// timeline.
@@ -558,6 +612,7 @@ async fn show(
         requester,
         assignee,
         visit: when(&state, ticket.visit_at),
+        due: when(&state, ticket.due_at),
         sla_started: when(&state, ticket.sla_started_at),
         response_due: when(&state, ticket.response_due),
         resolution_due: when(&state, ticket.resolution_due),
@@ -613,6 +668,7 @@ async fn show(
         hold_reasons,
         priority_selected: ticket.priority.as_str(),
         assignments: assignment_rows(&state, &lang, ticket.id).await?,
+        comments: comment_rows(&state, &lang, &user, ticket.id).await?,
         timeline,
         ticket,
     }))

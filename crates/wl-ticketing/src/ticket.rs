@@ -41,7 +41,8 @@ pub enum TicketStatus {
     unique(number),
     index(status),
     index(subject_type, subject_id),
-    index(assignee_user_id)
+    index(assignee_user_id),
+    index(source_key)
 )]
 pub struct Ticket {
     /// The primary key.
@@ -106,6 +107,12 @@ pub struct Ticket {
     pub chargeable: bool,
     /// The lifecycle state; changed only by a transition.
     pub status: TicketStatus,
+    /// When it is due, if its opener gave it a due time of its own (a staff
+    /// task); apart from the SLA due times.
+    pub due_at: Option<DateTime>,
+    /// The key its opener finds it by while it is open, e.g.
+    /// `notify.give_up:…`.
+    pub source_key: Option<String>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
@@ -113,6 +120,15 @@ pub struct Ticket {
 }
 
 impl Ticket {
+    /// Whether the ticket is still open for work: any state except
+    /// `resolved`, `closed` and `cancelled`.
+    pub fn is_open(&self) -> bool {
+        !matches!(
+            self.status,
+            TicketStatus::Resolved | TicketStatus::Closed | TicketStatus::Cancelled
+        )
+    }
+
     /// The id as the kernel's [`TicketId`].
     pub fn ticket_id(&self) -> TicketId {
         TicketId(self.id)
@@ -151,6 +167,19 @@ impl Ticket {
             (None, None) => None,
         }
     }
+}
+
+/// Registers how to find the scope of a ticket (#56 A2): its subject's
+/// scope, or global when the ticket is unknown.
+pub(crate) fn register_scope() {
+    wl_kernel::scopes::register(wl_kernel::tickets::TICKET_SUBJECT_TYPE, |db, id| {
+        Box::pin(async move {
+            match Ticket::find(db, id).await? {
+                Some(ticket) => wl_kernel::scopes::scope_of(db, &ticket.subject()).await,
+                None => Ok(renox::auth::permissions::Scope::global()),
+            }
+        })
+    });
 }
 
 #[cfg(test)]

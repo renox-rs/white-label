@@ -1,7 +1,7 @@
 {#- wl-ticketing: a ticket's page: its status, the actions for its state
     (assign or reassign, hold, cancel, start, resume, resolve, confirm,
-    close, reopen), the card with its service level due times in Asia/Dubai,
-    the reassignment history and the timeline. Replace it with
+    close, reopen), the card with its due time and service level due times in Asia/Dubai,
+    the reassignment history, the comments and the timeline. Replace it with
     resources/views/wl-ticketing/show.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="title">
   <rx-stack>
@@ -32,6 +32,7 @@
         <rx-entry :label="tx['fields.requester']" :value="card.requester" :placeholder="tx['none']"/>
         <rx-entry :label="tx['fields.assignee']" :value="card.assignee" :placeholder="tx['none']"/>
         <rx-entry :label="tx['fields.visit_at']" :value="card.visit" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['fields.due_at']" rx-if="card.due" :value="card.due"/>
         <rx-entry :label="tx['fields.hold_reason']" rx-if="card.hold_reason" :value="card.hold_reason"/>
         <rx-entry :label="tx['fields.cancel_reason']" rx-if="card.cancel_reason" :value="card.cancel_reason"/>
         <rx-entry :label="tx['fields.description']" :value="ticket.description" span="full" :placeholder="tx['none']"/>
@@ -48,6 +49,7 @@
       </rx-infolist>
     </rx-card>
     <rx-include template="wl-ticketing/_assignments.html"/>
+    <rx-include template="wl-ticketing/_comments.html"/>
     <rx-table :rows="timeline" as="item" :key="item.time" :caption="tx['sections.history']" card>
       <rx-column :label="tx['history.change']">{{ item.title }}</rx-column>
       <rx-column :label="tx['history.at']">{{ item.time | date('%Y-%m-%d %H:%M') }}</rx-column>

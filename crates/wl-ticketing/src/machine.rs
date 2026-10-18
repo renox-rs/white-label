@@ -41,9 +41,13 @@ impl StateMachine for Ticket {
             .state(Cancelled)
             .tone("neutral")
             .terminal();
-        std::iter::once(crate::assign::transition())
-            .chain(crate::work::transitions())
-            .fold(machine, Machine::transition)
+        [
+            crate::assign::transition(),
+            crate::assign::auto_transition(),
+        ]
+        .into_iter()
+        .chain(crate::work::transitions())
+        .fold(machine, Machine::transition)
     }
 }
 
@@ -79,6 +83,7 @@ mod tests {
         let machine = Ticket::machine();
         let expected = [
             ("assign", vec!["open", "assigned"], "assigned", false),
+            ("auto_assign", vec!["open", "assigned"], "assigned", true),
             ("start", vec!["assigned"], "in_progress", false),
             ("hold", vec!["in_progress"], "on_hold", false),
             ("resume", vec!["on_hold"], "in_progress", false),
@@ -131,6 +136,10 @@ mod tests {
                 .collect::<Vec<_>>()
         };
         assert_eq!(guards("assign"), ["input", "triage", "change", "reason"]);
+        assert_eq!(
+            guards("auto_assign"),
+            ["input", "triage", "change", "reason"]
+        );
         assert_eq!(guards("start"), ["input", "by_assignee"]);
         assert_eq!(guards("hold"), ["input", "by_assignee", "hold_reason"]);
         assert_eq!(guards("resume"), ["input", "by_assignee"]);

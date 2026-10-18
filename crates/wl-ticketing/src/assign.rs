@@ -41,6 +41,10 @@ use crate::ticket::{Ticket, TicketStatus};
 /// The transition's name.
 pub const ASSIGN: &str = "assign";
 
+/// The first `assign`, run by the system when a ticket is opened with an
+/// assignee ([`assign_as_system`]).
+pub const AUTO_ASSIGN: &str = "auto_assign";
+
 /// What an `assign` did.
 #[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum AssignKind {
@@ -231,10 +235,27 @@ pub(crate) fn classify(
 /// `assign` for the machine: open or assigned → assigned, by
 /// `tickets.assign`, only through [`assign`].
 pub(crate) fn transition() -> Transition<Ticket> {
-    Transition::new(ASSIGN)
-        .label("Assign")
-        .tone("primary")
-        .permission(permissions::ASSIGN)
+    assigning(
+        Transition::new(ASSIGN)
+            .label("Assign")
+            .tone("primary")
+            .permission(permissions::ASSIGN),
+    )
+}
+
+/// `auto_assign` for the machine: the same as `assign`, run by the system
+/// (#56 A6).
+pub(crate) fn auto_transition() -> Transition<Ticket> {
+    assigning(
+        Transition::new(AUTO_ASSIGN)
+            .label("Assign (system)")
+            .system(),
+    )
+}
+
+/// The states, guards and effect that `assign` and `auto_assign` share.
+fn assigning(transition: Transition<Ticket>) -> Transition<Ticket> {
+    transition
         .from([TicketStatus::Open, TicketStatus::Assigned])
         .to(TicketStatus::Assigned)
         .guard("input", |_ticket: &Ticket, ctx| {
@@ -352,7 +373,7 @@ fn refused(message: impl Into<String>) -> TransitionError {
 /// Checks the assignee: a staff user that exists, or a vendor party that
 /// the party directory finds and that is `active` (a blocked one is refused
 /// until #37 brings `BlockGuard`).
-async fn check_assignee(
+pub(crate) async fn check_assignee(
     state: &AppState,
     assignee: Assignee,
 ) -> std::result::Result<(), TransitionError> {
@@ -493,6 +514,54 @@ pub async fn assign(
     };
     let _outcome = run.run(state).await?;
     Ok(kind)
+}
+
+/// The system assigns the `open` `ticket` to `assignee` at `at`, as the
+/// first assignment of [`assign`] does (no reason, the SLA starts), with
+/// `priority`. After the commit, the notices and `TicketAssigned` follow.
+///
+/// # Errors
+///
+/// `NotFrom` unless it is `open`; `Guard` (422) for an unknown user or an
+/// unknown or blocked vendor.
+pub async fn assign_as_system(
+    state: &AppState,
+    ticket: &Ticket,
+    assignee: Assignee,
+    priority: Priority,
+    at: DateTime,
+) -> std::result::Result<(), TransitionError> {
+    if ticket.status != TicketStatus::Open {
+        return Err(TransitionError::NotFrom(ticket.status.to_string()));
+    }
+    check_assignee(state, assignee).await?;
+    let (response_due, resolution_due) = due_times(state, ticket, priority, at).await?;
+    let input = AssignInput {
+        at,
+        assignee,
+        priority,
+        visit_at: None,
+        reason_code: None,
+        reason_text: None,
+        response_due,
+        resolution_due,
+    };
+    let meta = AssignMeta {
+        kind: AssignKind::First.as_str().to_owned(),
+        previous_assignee: None,
+        assignee,
+        reason_code: None,
+        reason_text: None,
+        visit_at: None,
+    };
+    let _outcome = ticket
+        .transition(AUTO_ASSIGN)
+        .by_system()
+        .input(&input)
+        .meta(serde_json::to_value(&meta).unwrap_or(Value::Null))
+        .run(state)
+        .await?;
+    Ok(())
 }
 
 #[cfg(test)]

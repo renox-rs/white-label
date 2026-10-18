@@ -2,6 +2,7 @@
 #![warn(missing_docs)]
 
 pub mod assign;
+pub mod comments;
 pub mod config;
 mod machine;
 mod notices;
@@ -19,7 +20,8 @@ use renox::db::Migration;
 use renox::nav::NavLink;
 use renox::prelude::*;
 
-pub use assign::{AssignKind, AssignRequest, Assignment, assign};
+pub use assign::{AssignKind, AssignRequest, Assignment, assign, assign_as_system};
+pub use comments::{Comment, CommentVisibility};
 pub use config::{Category, HoldReason, SlaPolicy, SlaTarget};
 pub use open::Tickets;
 pub use priority::Priority;
@@ -49,6 +51,10 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "wl-ticketing/_assignments.html",
         include_str!("../views/wl-ticketing/_assignments.html"),
+    ),
+    (
+        "wl-ticketing/_comments.html",
+        include_str!("../views/wl-ticketing/_comments.html"),
     ),
 ];
 
@@ -141,13 +147,17 @@ impl Module for WlTicketing {
             .model::<HoldReason>()
             .model::<Category>()
             .model::<Ticket>()
-            .model::<Assignment>();
+            .model::<Assignment>()
+            .model::<Comment>();
         // `rnx state:diagram Ticket` and the admin panel find the machine.
         renox::state_machine::register::<Ticket>();
         // `TicketClosed` after a `confirm` or `close` commits.
         work::register_events(app);
         // `TicketAssigned` and the notices after an `assign` commits.
         notices::register(app);
+        // A ticket's scope is its subject's (the approvals and wl-notify find
+        // the people responsible through it).
+        ticket::register_scope();
         // Other modules open tickets through the kernel's `TaskCreator`.
         wl_kernel::tickets::provide_task_creator(app, Tickets);
         // The reassignment reasons: the defaults and the vertical's own.
