@@ -203,3 +203,49 @@ async fn the_demo_client_lists_invoices_for_those_who_may_see_them() {
         }
     }
 }
+
+/// #146 AC1: the demo boots with `ticketing`; `/tickets` answers 200 with
+/// `tickets.view` and 403 without it, and the kernel's task creator is the
+/// module's (a ticket opened through it is numbered).
+#[renox::test]
+async fn the_demo_client_lists_tickets_for_those_who_may_see_them() {
+    use wl_kernel::tickets::{OpenTicket, task_creator};
+
+    let app = TestApp::new(host::app()).await;
+    app.kernel().seed().await.unwrap();
+    host::roles::define(app.db()).await.unwrap();
+    let opened = task_creator(app.state())
+        .open(
+            app.state(),
+            OpenTicket::new(
+                wl_kernel::Subject::new("property.unit", 12),
+                "general",
+                "Leaking tap",
+            ),
+        )
+        .await
+        .unwrap()
+        .expect("ticketing is on in the demo");
+    assert!(opened.number.starts_with("TKT-"), "{}", opened.number);
+
+    for (name, role, allowed) in [
+        ("Carla", host::roles::COORDINATOR, true),
+        ("Tariq", host::roles::TECHNICIAN, true),
+        ("Mona", host::roles::MEMBER, false),
+    ] {
+        let email = format!("{}@example.com", name.to_lowercase());
+        let mut user = User::register(app.db(), name, &email, "secret123")
+            .await
+            .unwrap();
+        user.email_verified_at = Some(renox::db::now());
+        user.save(app.db()).await.unwrap();
+        user.assign_role(app.db(), role).await.unwrap();
+        app.acting_as(&user);
+        let page = app.get("/tickets").await;
+        if allowed {
+            page.assert_ok().assert_see(&opened.number);
+        } else {
+            page.assert_forbidden();
+        }
+    }
+}

@@ -366,3 +366,73 @@ async fn without_invoicing_the_invoicer_drafts_nothing() {
         ));
     }
 }
+
+/// #146 AC1: without the ticketing module, the kernel's task creator is
+/// `NoTickets`: no ticket is opened and the caller carries on.
+#[renox::test]
+async fn without_ticketing_the_task_creator_opens_nothing() {
+    use wl_kernel::Subject;
+    use wl_kernel::tickets::{NoTickets, OpenTicket, TaskCreator, task_creator};
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let state = app.state();
+    let request = OpenTicket::new(Subject::new("property.unit", 12), "general", "Leaking tap");
+    let provided = task_creator(state);
+    let fallback: &dyn TaskCreator = &NoTickets;
+    for creator in [&*provided, fallback] {
+        assert_eq!(creator.open(state, request.clone()).await.unwrap(), None);
+    }
+}
+
+/// #146 AC2: the business calendar (Asia/Dubai, Monday to Friday, 09:00 to
+/// 18:00) counts SLA time in working minutes; the client's holidays are
+/// skipped, and `working_minutes_between` is the inverse of `add_working`.
+#[test]
+fn the_business_calendar_counts_working_time() {
+    use renox::chrono::NaiveDateTime;
+    use wl_kernel::BusinessCalendar;
+
+    let text = format!("{GROUP}\n[calendar]\nholidays = [\"2026-11-04\"]\n");
+    let config = ClientConfig::parse(&text).expect("a valid client.toml");
+    let holiday = config.business_calendar();
+    let plain = BusinessCalendar::default();
+    let at = |date: &str, time: &str| {
+        let local: NaiveDateTime = format!("{date}T{time}:00").parse().expect("a time");
+        plain.from_local(local)
+    };
+
+    // Tuesday 09:00 plus 8 working hours is 17:00.
+    assert_eq!(
+        plain.add_working(at("2026-11-03", "09:00"), 8 * 60),
+        at("2026-11-03", "17:00")
+    );
+    // Friday 16:00 plus 8 hours is Monday 15:00 (the weekend is skipped).
+    assert_eq!(
+        plain.add_working(at("2026-11-06", "16:00"), 8 * 60),
+        at("2026-11-09", "15:00")
+    );
+    // A start after closing counts from the next opening.
+    assert_eq!(
+        plain.add_working(at("2026-11-03", "20:00"), 60),
+        at("2026-11-04", "10:00")
+    );
+    // A listed holiday is skipped: Tuesday 16:00 plus 3 hours is Thursday 10:00.
+    assert_eq!(
+        holiday.add_working(at("2026-11-03", "16:00"), 3 * 60),
+        at("2026-11-05", "10:00")
+    );
+    assert!(!holiday.is_working_day("2026-11-04".parse().unwrap()));
+
+    for calendar in [&plain, &holiday] {
+        for (from, minutes) in [
+            (at("2026-11-03", "09:00"), 8 * 60),
+            (at("2026-11-06", "16:00"), 8 * 60),
+            (at("2026-11-03", "10:30"), 27 * 60),
+            (at("2026-11-02", "09:00"), 126 * 60),
+        ] {
+            let due = calendar.add_working(from, minutes);
+            assert_eq!(calendar.working_minutes_between(from, due), minutes);
+        }
+    }
+}
