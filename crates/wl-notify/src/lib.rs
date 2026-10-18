@@ -4,6 +4,7 @@
 pub mod alert;
 pub mod alternative;
 pub mod channels;
+pub mod contact_invalid;
 pub mod give_up;
 mod machine;
 pub mod mask;
@@ -30,6 +31,7 @@ pub use channels::{
     ChannelProvider, EmailProvider, HardError, Outgoing, Providers, SendError, SendErrorKind,
     SmsGateway, SmsProvider,
 };
+pub use contact_invalid::MarkContactInvalidHandler;
 pub use give_up::{ReactionRun, ReactionStep, RunGiveUpReaction, RunStatus};
 pub use machine::{
     DEFER, DELIVER, FAIL, FALL_BACK, GIVE_UP, MARK_READ, RELEASE, RETRY, SEND, SUPPRESS,
@@ -99,7 +101,8 @@ impl WlNotify {
 
     /// Runs `handler`'s give-up reaction through `handler`, in place of the
     /// built-in one (`staff_task` opens a task, `alternative_recipient`
-    /// queues the message to another contact, the others only record
+    /// queues the message to another contact, `mark_contact_invalid` marks
+    /// the contact point invalid, the other only records
     /// their step) in the `NTF.RUL.01` run.
     pub fn reaction(mut self, handler: impl GiveUpHandler) -> Self {
         self.reactions.replace(Arc::new(handler));

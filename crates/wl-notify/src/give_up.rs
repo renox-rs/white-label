@@ -535,9 +535,10 @@ async fn apply_reactions(state: &AppState, run: &ReactionRun, message: &Message)
             ))
         })?;
         let outcome = handler.run_outcome(state, &ctx).await?;
-        step(run, index, reaction, outcome.step)
+        step(run, index, reaction, outcome.step.clone())
             .insert(&state.db)
             .await?;
+        handler.after_step(state, &ctx, &outcome.step).await?;
         // Later reactions the handler took over get a `deferred` step.
         for (later, &other) in run.reactions.0.iter().enumerate().skip(index + 1) {
             if outcome.defer.contains(&other) && !done.contains(&other) {

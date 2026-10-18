@@ -309,6 +309,26 @@ outcome except `queued`, `staff_task` runs once for the chain: through the type'
 channels and errors of both recipients, with masked addresses and no message body, and names
 the last recipient tried.
 
+The `mark_contact_invalid` step looks at every message of the chain, not only the last. Only
+the hard kinds count: `hard_bounce`, `invalid_number` and `unknown_account`. For each message
+with such an error and a party contact point, the point is marked `invalid` with the error kind
+as reason and the give-up time (`gave_up_at`) as since, through the party directory; a point
+that is invalid already keeps its first since and reason. So an email that hard-bounced before
+an SMS that timed out marks only the email point. Timeouts and other permanent errors (for
+example `550 mailbox unknown` stored as `permanent`) mark nothing, and a hard error followed by
+a sent fallback is no give-up. The step ends with one outcome: `marked` (the points and
+reasons are in the detail), `already_invalid` (no point changed, including when parties are
+off), `no_contact_point` (the hard errors went to a user or a bare address, which have no
+status) or `no_hard_failure`. `ContactPointInvalidated` is emitted once per marked point after
+the step is stored; a repeated run is skipped by its occurrence key. The point is never
+deleted and stays primary, but `point_for` never chooses it: a channel with only invalid
+points is skipped as if it had none. The address stays on the suppression list; editing or
+verifying the contact point makes it `valid` again but does not remove the suppression.
+
+The `send` job checks the contact point once more: a queued party message whose point became
+invalid before it was sent is `suppressed` with reason `invalid_contact_point` and the provider
+is not called.
+
 | Type group (requester) | Default reaction |
 |---|---|
 | Statutory notices (04 deadline and document-request notices to clients; 01 notices of changed terms, a landlord's notice to end a lease, formal payment demands, the formal notice on a bounced cheque; other final demands) | `mark_contact_invalid` + `statutory_notice` |

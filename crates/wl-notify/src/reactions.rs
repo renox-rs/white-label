@@ -4,9 +4,9 @@
 //! `staff_task` opens a task for staff ([`crate::staff_task`]). The other
 //! built-in handlers only record what they were given (status `recorded`);
 //! the real reactions replace them through [`crate::WlNotify::reaction`]:
-//! `alternative_recipient` is built in ([`crate::alternative`]);
-//! `mark_contact_invalid` (#58) and
-//! `statutory_notice` (#59). `none` has no handler: it runs nothing.
+//! `alternative_recipient` is built in ([`crate::alternative`]), and so is
+//! `mark_contact_invalid` ([`crate::contact_invalid`]); `statutory_notice`
+//! (#59) is not yet. `none` has no handler: it runs nothing.
 
 use std::future::Future;
 use std::pin::Pin;
@@ -143,6 +143,19 @@ pub trait GiveUpHandler: Send + Sync + 'static {
         let step = self.run(state, ctx);
         Box::pin(async move { step.await.map(ReactionOutcome::of) })
     }
+
+    /// Called by the run after the step of this reaction is stored: where
+    /// a handler emits its events, so a retried run never emits for a step
+    /// it has to run again. By default it does nothing.
+    fn after_step<'a>(
+        &'a self,
+        state: &'a AppState,
+        ctx: &'a GiveUpContext,
+        step: &'a StepOutcome,
+    ) -> HandlerFuture<'a, ()> {
+        let _ = (state, ctx, step);
+        Box::pin(async { Ok(()) })
+    }
 }
 
 /// The built-in handler of `reaction`: records the step and does nothing
@@ -171,8 +184,8 @@ pub struct Reactions {
 }
 
 impl Default for Reactions {
-    /// The staff-task and alternative-recipient handlers, and the recording
-    /// handlers of the others.
+    /// The staff-task, alternative-recipient and mark-contact-invalid
+    /// handlers, and the recording handler of the other.
     fn default() -> Self {
         use GiveUpReaction::{
             AlternativeRecipient, MarkContactInvalid, StaffTask, StatutoryNotice,
@@ -190,6 +203,7 @@ impl Default for Reactions {
                     Arc::new(crate::staff_task::StaffTaskHandler) as Arc<dyn GiveUpHandler>
                 }
                 AlternativeRecipient => Arc::new(crate::alternative::AlternativeRecipientHandler),
+                MarkContactInvalid => Arc::new(crate::contact_invalid::MarkContactInvalidHandler),
                 other => Arc::new(RecordingHandler(other)),
             })
             .collect(),

@@ -48,6 +48,9 @@ pub enum RecipientKind {
 
 /// Why a message was `suppressed` because nothing can reach the recipient.
 pub const NO_CONTACT_POINT: &str = "no_contact_point";
+/// Why a message was `suppressed` because its contact point became invalid
+/// after it was queued (#58 A2).
+pub const INVALID_CONTACT_POINT: &str = "invalid_contact_point";
 /// Why a message was `suppressed` because its recipient rule found nobody.
 pub const NO_CONTACT: &str = "no_contact";
 /// Why a message was `suppressed` because its address is on the list.

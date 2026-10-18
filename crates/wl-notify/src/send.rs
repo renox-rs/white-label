@@ -25,8 +25,8 @@ use wl_kernel::notify::MessageFailed;
 
 use crate::channels::{self, Outgoing, SendError, SendErrorKind};
 use crate::give_up::{self, Applied};
-use crate::machine::{FAIL, RETRY, SEND};
-use crate::message::{Message, MessageStatus};
+use crate::machine::{FAIL, RETRY, SEND, SUPPRESS};
+use crate::message::{INVALID_CONTACT_POINT, Message, MessageStatus};
 use crate::suppressions;
 
 /// Sends on one channel before the message is given up on that channel
@@ -102,6 +102,10 @@ pub async fn send(state: &AppState, id: i64) -> Result<SendOutcome> {
     if message.status != MessageStatus::Queued {
         return Ok(SendOutcome::Skipped);
     }
+    if let Some(outcome) = invalid_point_guard(state, &message).await? {
+        outcome.emit(state).await?;
+        return Ok(SendOutcome::Skipped);
+    }
     let provider = channels::providers(state)
         .for_channel(message.channel)
         .filter(|p| p.available(state));
@@ -129,6 +133,40 @@ pub async fn send(state: &AppState, id: i64) -> Result<SendOutcome> {
         Ok(provider_message_id) => sent(state, message, name, provider_message_id).await,
         Err(error) => failed(state, message, name, error).await,
     }
+}
+
+/// The `send` guard "contact point valid" (§4.1): a party message whose
+/// contact point became invalid after it was queued is `suppressed` with
+/// `invalid_contact_point` and not sent. Users, bare addresses and points the
+/// directory does not know pass.
+async fn invalid_point_guard(
+    state: &AppState,
+    message: &Message,
+) -> Result<Option<Outcome<Message>>> {
+    let (Some(party), Some(point)) = (message.party_id, message.contact_point_id) else {
+        return Ok(None);
+    };
+    let contacts = wl_kernel::parties::directory(state)
+        .contacts(&state.db, wl_kernel::PartyId(party))
+        .await?;
+    if !point_is_invalid(contacts.as_ref(), point) {
+        return Ok(None);
+    }
+    let mut tx = state.db.begin().await?;
+    let outcome = run(
+        message,
+        SUPPRESS,
+        Some(INVALID_CONTACT_POINT.to_owned()),
+        &mut tx,
+    )
+    .await?;
+    tx.commit().await?;
+    Ok(Some(outcome))
+}
+
+/// Whether `contacts` knows contact point `point` and it is not valid.
+pub fn point_is_invalid(contacts: Option<&wl_kernel::notify::PartyContacts>, point: i64) -> bool {
+    contacts.is_some_and(|c| c.points.iter().any(|p| p.id == point && !p.valid))
 }
 
 /// `send`: stores who sent it and when.
@@ -249,7 +287,39 @@ pub(crate) async fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use wl_kernel::PartyId;
+    use wl_kernel::notify::{ContactKind, PartyContactPoint, PartyContacts};
+
     use crate::channels::HardError;
+
+    fn contacts(valid: bool) -> PartyContacts {
+        PartyContacts {
+            party: PartyId(3),
+            language: "en".into(),
+            preferred_channel: None,
+            points: vec![PartyContactPoint {
+                id: 11,
+                kind: ContactKind::Email,
+                address: "ali@bluedunes.ae".into(),
+                primary: true,
+                verified: false,
+                valid,
+            }],
+        }
+    }
+
+    #[test]
+    fn the_guard_stops_only_a_known_invalid_point() {
+        assert!(point_is_invalid(Some(&contacts(false)), 11));
+        assert!(!point_is_invalid(Some(&contacts(true)), 11));
+        assert!(!point_is_invalid(Some(&contacts(false)), 12));
+        assert!(!point_is_invalid(None, 11));
+    }
+
+    #[test]
+    fn the_guard_reason_is_stable() {
+        assert_eq!(INVALID_CONTACT_POINT, "invalid_contact_point");
+    }
 
     #[test]
     fn the_backoff_is_one_then_five_minutes() {
