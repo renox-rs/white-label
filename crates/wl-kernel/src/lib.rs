@@ -21,6 +21,7 @@ pub mod scopes;
 pub mod subject;
 mod texts;
 pub mod tickets;
+pub mod voids;
 
 use std::sync::Arc;
 
@@ -81,6 +82,9 @@ pub use tickets::{
     Assignee, NoTickets, OpenTicket, Requester, TASK_CATEGORY, TaskComment, TaskCreator,
     TicketAssigned, TicketChannel, TicketClosed, TicketId, TicketRef, ticket_path,
 };
+pub use voids::{
+    Effect, EffectKind, RecordVoided, Reverse, ReverseError, VoidRecord, Voidable, VoidableBuilder,
+};
 
 /// The kernel's permissions (wl-kernel §6).
 pub mod permissions {
@@ -94,6 +98,8 @@ pub mod permissions {
     pub const APPROVALS_VIEW: &str = "approvals.view";
     /// Run a failed rule run again.
     pub const AUTOMATIONS_RETRY: &str = "automations.retry";
+    /// Void a record entered in error (a module may declare its own alias).
+    pub const RECORDS_VOID: &str = "records.void";
 }
 
 /// The templates, compiled in. An app replaces one with a file of the same
@@ -179,6 +185,7 @@ impl Module for WlKernel {
             .view_data::<LegalEntitiesPage>();
         approvals::register(app);
         automation::register(app);
+        voids::register_models(app);
         // In the admin group of the staff sidebar; the label is the app's
         // `nav.legal_entities` text.
         app.nav(

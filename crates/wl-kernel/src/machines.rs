@@ -650,7 +650,7 @@ impl<M: StateMachine<Key = i64>> SubjectMachineBuilder<M> {
 }
 
 /// Record `id` of `M`, loaded in `tx` and locked (PostgreSQL) until it ends.
-async fn load<M: StateMachine<Key = i64>>(tx: &mut Transaction, id: i64) -> Result<M> {
+pub(crate) async fn load<M: StateMachine<Key = i64>>(tx: &mut Transaction, id: i64) -> Result<M> {
     M::query()
         .where_eq("id", id)
         .lock_for_update()
