@@ -167,12 +167,18 @@ async fn probe_offered(
 
 /// A notifier that records every request and queues nothing.
 #[derive(Clone, Default)]
-pub struct Recording(Arc<Mutex<Vec<NotifyRequest>>>);
+pub struct Recording(Arc<Mutex<Vec<NotifyRequest>>>, Arc<Mutex<Vec<i64>>>);
 
 impl Recording {
     /// Every request so far, oldest first.
     pub fn all(&self) -> Vec<NotifyRequest> {
         self.0.lock().unwrap().clone()
+    }
+
+    /// From now on the notifier fails (and records nothing) for a request
+    /// to any of the users `ids`; an empty list makes it work again.
+    pub fn fail_for(&self, ids: &[i64]) {
+        *self.1.lock().unwrap() = ids.to_vec();
     }
 
     /// The requests of one notification type, oldest first.
@@ -190,6 +196,18 @@ impl Notifier for Recording {
         _state: &'a AppState,
         request: NotifyRequest,
     ) -> NotifyFuture<'a, Vec<MessageId>> {
+        let failing = self.1.lock().unwrap().clone();
+        let hit = request.recipients.iter().any(|r| {
+            matches!(r, wl_kernel::notify::NotifyRecipient::User { id } if failing.contains(id))
+        });
+        if hit {
+            return Box::pin(async {
+                Err(Error::Status(
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    "The notifier is down.".into(),
+                ))
+            });
+        }
         self.0.lock().unwrap().push(request);
         Box::pin(async { Ok(Vec::new()) })
     }
