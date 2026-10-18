@@ -1,12 +1,24 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
+pub mod allocation;
 pub mod config;
+pub mod invoice;
+pub mod invoicer;
+pub mod line;
+mod machine;
 mod texts;
+pub mod vat;
 
+use renox::db::Migration;
 use renox::prelude::*;
 
+pub use allocation::Allocation;
 pub use config::{InvoicingConfig, WriteOffReason};
+pub use invoice::{Invoice, InvoiceKind, PartySnapshot};
+pub use invoicer::Invoices;
+pub use line::InvoiceLine;
+pub use vat::{CategoryTotal, LineAmounts, VatTotals};
 
 /// The module's permissions (wl-invoicing §6).
 pub mod permissions {
@@ -88,6 +100,20 @@ impl WlInvoicing {
 impl Module for WlInvoicing {
     fn name(&self) -> &'static str {
         "wl-invoicing"
+    }
+
+    fn migrations(&self) -> &'static [Migration] {
+        renox::migrations!()
+    }
+
+    fn register(&self, app: &mut Registry) {
+        app.model::<Invoice>()
+            .model::<InvoiceLine>()
+            .model::<Allocation>();
+        // `rnx state:diagram Invoice` and the admin panel find the machine.
+        renox::state_machine::register::<Invoice>();
+        // Other modules draft and read invoices through the kernel (§6).
+        wl_kernel::invoicing::provide_invoicer(app, Invoices);
     }
 }
 
