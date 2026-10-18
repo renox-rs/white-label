@@ -3,8 +3,9 @@
 //! with) without depending on the `wl-parties` crate.
 //!
 //! `wl-parties` provides a [`PartyDirectory`] with [`provide_directory`] and
-//! emits [`PartyCreated`], [`PartyBlocked`], [`PartyUnblocked`], [`ScreeningCompleted`]
-//! and [`ScreeningFlagged`] (compliance listeners only). Other
+//! emits [`PartyCreated`], [`PartyBlocked`], [`PartyUnblocked`], [`PartyRestored`],
+//! [`ScreeningCompleted`], [`ScreeningFlagged`] and [`ScreeningMatchConfirmed`]
+//! (the last two for compliance listeners only). Other
 //! modules read parties through [`directory`], which falls back to
 //! [`NoParties`] when the `parties` module is off.
 //!
@@ -419,6 +420,36 @@ pub struct ScreeningFlagged {
 
 impl Event for ScreeningFlagged {}
 
+/// A possible match was confirmed, with a second reviewer's approval.
+/// **Compliance listeners only**, exactly like [`ScreeningFlagged`].
+///
+/// A listener may act on it only after it checks that the user it acts for
+/// holds `parties.block_reason.view` (`PTY.ACL.02`), and it must never show
+/// it to a portal user or client-facing staff, nor tell the party or its
+/// contacts (no tipping off). The payload has no candidate names, lists or
+/// block reason. It replaces [`ScreeningCompleted`] for a confirmed match:
+/// that event is not emitted, so no generic listener hears of it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ScreeningMatchConfirmed {
+    /// The screened party.
+    pub party: PartyId,
+    /// The screening run.
+    pub screening: ScreeningId,
+}
+
+impl Event for ScreeningMatchConfirmed {}
+
+/// An archived party became usable again (wl-parties §6). A party with an
+/// open Block record is restored to `blocked`, not `active`; that case is
+/// announced by [`PartyBlocked`] as well.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PartyRestored {
+    /// The restored party.
+    pub party: PartyId,
+}
+
+impl Event for PartyRestored {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -445,6 +476,22 @@ mod tests {
         assert_eq!(PartyStatus::default(), PartyStatus::Active);
         assert_eq!(PartyKind::Company.as_str(), "company");
         assert_eq!("person".parse::<PartyKind>().unwrap(), PartyKind::Person);
+    }
+
+    #[test]
+    fn the_new_events_carry_only_ids() {
+        let confirmed = ScreeningMatchConfirmed {
+            party: PartyId(3),
+            screening: ScreeningId(9),
+        };
+        assert_eq!(
+            format!("{confirmed:?}"),
+            "ScreeningMatchConfirmed { party: PartyId(3), screening: ScreeningId(9) }"
+        );
+        assert_eq!(
+            format!("{:?}", PartyRestored { party: PartyId(3) }),
+            "PartyRestored { party: PartyId(3) }"
+        );
     }
 
     #[test]

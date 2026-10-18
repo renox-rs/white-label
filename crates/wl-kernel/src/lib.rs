@@ -10,6 +10,7 @@ pub mod calendar;
 pub mod config;
 pub mod documents;
 pub mod entities;
+pub mod held_funds;
 pub mod invoicing;
 pub mod machines;
 pub mod manifest;
@@ -53,6 +54,7 @@ pub use documents::{
     RecordFlag, SopId, SopPublished, SopReaderRef, SopReadersChanged, SopWithdrawn, Validity,
 };
 pub use entities::{IssuerSnapshot, LegalEntity, ScopeEntity};
+pub use held_funds::{FundsSource, HeldFund, HeldFundsSource, held_for_all};
 pub use invoicing::{
     CreditLine, CreditNoteId, CreditNoteIssued, CreditNoteReopened, CreditNoteStatus,
     CreditNoteSummary, DraftLine, InvoiceCredited, InvoiceDraft, InvoiceId, InvoiceIssued,
@@ -68,8 +70,8 @@ pub use notify::{
 pub use numbering::{Reset, Series};
 pub use parties::{
     BillingIdentity, NEUTRAL_BLOCK_REASON, NoParties, PartyBlocked, PartyCreated, PartyDirectory,
-    PartyId, PartyKind, PartyStatus, PartySummary, PartyUnblocked, ScreeningCompleted,
-    ScreeningFlagged, ScreeningId, ScreeningStatus,
+    PartyId, PartyKind, PartyRestored, PartyStatus, PartySummary, PartyUnblocked,
+    ScreeningCompleted, ScreeningFlagged, ScreeningId, ScreeningMatchConfirmed, ScreeningStatus,
 };
 pub use payments::{
     AllocationTarget, DEPOSIT_SUBJECT_TYPE, DepositId, Direction, NoPayments, PaymentId,

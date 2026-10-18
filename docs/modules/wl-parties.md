@@ -440,8 +440,10 @@ event happens.
 | Manual upload of an official list file when the download fails | allowed, compliance role (`screening.review`) |
 | Confirmed match on a UBO, director or signatory also blocks the company party | on |
 | Stale list at onboarding | warn (option: block the guarded transition) |
-| Freeze task due | 24 hours after the possible match was flagged |
-| Report task due | 24 hours after the possible match was flagged (`⚠ open: lawyer (L-30)` on the real deadline) |
+| Freeze task due | 24 hours after the possible match was flagged. A `WlParties` builder, `freeze_task_due_hours(i64)`; a change affects only tasks created afterwards |
+| Report task due | 24 hours after the possible match was flagged (`⚠ open: lawyer (L-30)` on the real deadline). A `WlParties` builder, `report_task_due_hours(i64)`; the L-30 default is the earlier start (the flag), and nothing about the form or deadline is hard-coded |
+| Confirmed-match settings in code | three parameters on `WlParties`: `related_company_block(bool)` (default on), `freeze_task_due_hours(i64)` (default 24) and `report_task_due_hours(i64)` (default 24), read together as `ConfirmedMatchSettings` |
+| Held funds for the freeze task (`wl_kernel::held_funds`) | A module that holds a party's money registers a `HeldFundsSource` with a `FundsSource` in its `register()`, as agreement kinds are registered. `held_for(state, party)` is read only and returns `HeldFund` lines (label, kind, amount in fils, currency); wl-parties calls every source for each party named and writes the lines as unconfirmed, and the compliance role confirms or edits them. No source registered: an empty list. A source error is returned, not swallowed |
 
 ## 8. Extension points
 
