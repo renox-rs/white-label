@@ -1,0 +1,31 @@
+{#- wl-parties: a possible-match task: the party, each screening run and the
+    candidates. Compliance only. Replace it with resources/views/wl-parties/screening_task.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['screening.task']">
+  <rx-stack>
+    <rx-page-header :title="tx['screening.task']" :subtitle="party" :back="route('wl_parties.screening_tasks')" :back-label="tx['screening.title']"
+                    :badge="status_label" :badge-kind="status_tone"/>
+    <rx-card :title="tx['screening.task']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['screening.fields.party']" :value="party"/>
+        <rx-entry :label="tx['screening.fields.code']" :value="code"/>
+        <rx-entry :label="tx['screening.fields.flagged']" :value="flagged"/>
+        <rx-entry :label="tx['screening.fields.due']" :value="due"/>
+        <rx-entry rx-if="closed" :label="tx['screening.fields.closed']" :value="closed"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-table :rows="runs" as="run" :key="run.run_at" :caption="tx['screening.sections.runs']" card>
+      <rx-column :label="tx['screening.fields.run_at']">{{ run.run_at }}</rx-column>
+      <rx-column :label="tx['screening.fields.trigger']">{{ run.trigger }}</rx-column>
+      <rx-column :label="tx['screening.fields.method']" hide-narrow>{{ run.method }}</rx-column>
+      <rx-column :label="tx['screening.fields.stale']" hide-narrow>{{ run.stale }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['screening.no_runs']" icon="inbox"/></rx-slot>
+    </rx-table>
+    <rx-table :rows="candidates" as="candidate" :key="candidate.name ~ candidate.list ~ candidate.entry" :caption="tx['screening.sections.candidates']" card>
+      <rx-column :label="tx['screening.fields.name']">{{ candidate.name }}</rx-column>
+      <rx-column :label="tx['screening.fields.list']">{{ candidate.list }}</rx-column>
+      <rx-column :label="tx['screening.fields.score']" align="num">{{ candidate.score }}</rx-column>
+      <rx-column :label="tx['screening.fields.entry']" hide-narrow>{{ candidate.entry }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['screening.no_candidates']" icon="inbox"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

@@ -116,6 +116,14 @@ const VIEWS: &[(&str, &str)] = &[
         "wl-parties/review_task.html",
         include_str!("../views/wl-parties/review_task.html"),
     ),
+    (
+        "wl-parties/screening_tasks.html",
+        include_str!("../views/wl-parties/screening_tasks.html"),
+    ),
+    (
+        "wl-parties/screening_task.html",
+        include_str!("../views/wl-parties/screening_task.html"),
+    ),
 ];
 
 /// The parties module. The host adds it with `.module(wl_parties::WlParties)`
@@ -252,7 +260,9 @@ impl Module for WlParties {
             .view_data::<pages::ShowPage>()
             .view_data::<pages::BlockEffectsPage>()
             .view_data::<pages::ReviewTasksPage>()
-            .view_data::<pages::ReviewTaskPage>();
+            .view_data::<pages::ReviewTaskPage>()
+            .view_data::<pages::ScreeningTasksPage>()
+            .view_data::<pages::ScreeningTaskPage>();
         // `rnx state:diagram Party` and the admin panel find the machine.
         renox::state_machine::register::<Party>();
         renox::state_machine::register::<ReviewTask>();
@@ -307,6 +317,15 @@ impl Module for WlParties {
                 .icon("list-checks")
                 .group("nav.app")
                 .order(32),
+        );
+        // The possible-match tasks, for the compliance role only (#38 A10).
+        app.nav(
+            "app",
+            NavLink::route("wl_parties.screening_tasks", "nav.screening_tasks")
+                .icon("shield-alert")
+                .group("nav.app")
+                .order(33)
+                .permission(permissions::BLOCK_REASON_VIEW),
         );
         app.templates(|env| {
             for (name, source) in VIEWS {

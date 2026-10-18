@@ -19,7 +19,8 @@
 //! screening is on, stores the run, picks the transition and runs it. The
 //! `flag` also opens or joins the compliance task
 //! ([`ScreeningTask`]); after the commit the run emits `ScreeningCompleted`
-//! (clear) or `ScreeningFlagged` (possible match). The alerts come later.
+//! (clear) or `ScreeningFlagged` (possible match). A new task is alerted to
+//! the compliance role by [`crate::notify::alert_possible_match`].
 
 use renox::db::DateTime;
 use renox::prelude::*;
@@ -390,6 +391,7 @@ pub async fn record_run(
     } else {
         COMPLETE_CLEAR
     };
+    let mut alert: Option<ScreeningTask> = None;
     let mut tx = state.db.begin_immediate().await?;
     let mut screening = Screening {
         party_id: party.id,
@@ -401,8 +403,9 @@ pub async fn record_run(
         ..Screening::default()
     };
     if transition == FLAG {
-        let (task, _opened) = ScreeningTask::for_flag(&mut tx, party.id, renox::db::now()).await?;
+        let (task, opened) = ScreeningTask::for_flag(&mut tx, party.id, renox::db::now()).await?;
         screening.task_id = Some(task.id);
+        alert = opened.then_some(task);
     }
     screening.insert(&mut tx).await?;
     for candidate in &run.candidates {
@@ -432,6 +435,11 @@ pub async fn record_run(
     let stored = Screening::find(&state.db, screening.id)
         .await?
         .ok_or(renox::Error::NotFound)?;
+    // The compliance role hears of a new task at once; a re-screen linked to
+    // an open task sends nothing more.
+    if let Some(task) = &alert {
+        crate::notify::alert_possible_match(state, party, task).await?;
+    }
     let (party, screening, status) = (PartyId(party.id), ScreeningId(stored.id), stored.status);
     if status == ScreeningStatus::PossibleMatch {
         state

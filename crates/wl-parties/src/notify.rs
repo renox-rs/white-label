@@ -6,13 +6,19 @@
 //! neutral message" action, and the task gets a note. The type is never
 //! marked `announces_pause`, so it still reaches a blocked party.
 
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
+use renox::auth::permissions::{Scope, users_with_permission_in};
+use renox::auth::{Channel, DatabaseMessage, Notification, Recipient};
 use renox::prelude::*;
+use renox::serde_json::{Value, json};
 use wl_kernel::notify::{self, NotificationTypeDef, Notifier, NotifyChannel, NotifyRequest};
 use wl_kernel::{PartyId, Subject};
 
+use crate::party::Party;
 use crate::review_tasks::ReviewTask;
+use crate::screening_task::{ScreeningTask, dubai_label};
 
 /// The notification type key of the neutral message.
 pub const NEUTRAL_TYPE: &str = "party.on_hold.neutral";
@@ -48,9 +54,114 @@ pub fn neutral_type() -> NotificationTypeDef {
         )
 }
 
-/// Registers the type with the kernel (`wl_kernel::notify::register_type`).
+/// The notification type key of the possible-match e-mail to compliance.
+pub const POSSIBLE_MATCH_TYPE: &str = "party.screening.possible_match";
+
+/// The kind of the in-app notice of a possible match.
+pub const POSSIBLE_MATCH_KIND: &str = "party-possible-match";
+
+/// The possible-match type (#38 A7): a statutory e-mail to staff, English and
+/// Arabic. It names the party code and the due time, never a candidate or a
+/// list, and it is never sent to the party.
+pub fn possible_match_type() -> NotificationTypeDef {
+    NotificationTypeDef::new(POSSIBLE_MATCH_TYPE, "wl-parties")
+        .group("party")
+        .statutory(true)
+        .channels(&[NotifyChannel::Email])
+        .template(
+            NotifyChannel::Email,
+            "en",
+            Some("A possible sanctions match needs review"),
+            "Party {{ party_code }} needs a compliance review by {{ due }} (Asia/Dubai).",
+        )
+        .template(
+            NotifyChannel::Email,
+            "ar",
+            Some("تطابق محتمل في فحص العقوبات يحتاج إلى مراجعة"),
+            "الطرف {{ party_code }} يحتاج إلى مراجعة من الامتثال قبل {{ due }} (توقيت دبي).",
+        )
+}
+
+/// Registers the types with the kernel (`wl_kernel::notify::register_type`).
 pub(crate) fn register() {
     notify::register_type(neutral_type());
+    notify::register_type(possible_match_type());
+}
+
+/// The in-app bell entry of a possible match: the party code and the due
+/// time, no candidate and no list.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PossibleMatchNotice {
+    task: i64,
+    code: String,
+    due: String,
+}
+
+impl Notification for PossibleMatchNotice {
+    fn kind(&self) -> &'static str {
+        POSSIBLE_MATCH_KIND
+    }
+
+    fn channels(&self, _to: &Recipient) -> Vec<Channel> {
+        vec![Channel::Database]
+    }
+
+    fn to_database(&self, _to: &Recipient, state: &AppState) -> Result<Value> {
+        let lang = state.current_lang();
+        let body = crate::texts::t_with(
+            &lang,
+            "wl_parties.screening.notice_body",
+            &[("code", &self.code), ("due", &self.due)],
+        );
+        Ok(
+            DatabaseMessage::info(crate::texts::t(&lang, "wl_parties.screening.notice_title"))
+                .body(body)
+                .with("screening_task", self.task)
+                .into(),
+        )
+    }
+}
+
+/// Tells every holder of `parties.block_reason.view` (global scope) that
+/// `task` of `party` needs a review: one bell entry each, and one e-mail each
+/// when the `notify` module is on. Staff only; nothing goes to the party.
+/// Returns the holders told, ordered by id.
+pub async fn alert_possible_match(
+    state: &AppState,
+    party: &Party,
+    task: &ScreeningTask,
+) -> Result<Vec<i64>> {
+    let holders = users_with_permission_in(
+        &state.db,
+        crate::permissions::BLOCK_REASON_VIEW,
+        &Scope::global(),
+    )
+    .await?;
+    let mut seen = BTreeSet::new();
+    let holders: Vec<User> = holders.into_iter().filter(|u| seen.insert(u.id)).collect();
+    let due = dubai_label(task.due_at);
+    let notice = PossibleMatchNotice {
+        task: task.id,
+        code: party.code.clone(),
+        due: due.clone(),
+    };
+    let mail = available(state);
+    for user in &holders {
+        state.notify(user, &notice).await?;
+        if mail {
+            let request = NotifyRequest::new(
+                POSSIBLE_MATCH_TYPE,
+                Subject::new("wl_parties.party", party.id),
+            )
+            .to_user(user.id)
+            .subject_label(&party.code)
+            .data(json!({ "party_code": party.code, "due": due }));
+            notify::notifier(state).notify(state, request).await?;
+        }
+    }
+    let mut ids: Vec<i64> = holders.iter().map(|u| u.id).collect();
+    ids.sort_unstable();
+    Ok(ids)
 }
 
 /// Whether the `notify` module is on, so the action can be offered.

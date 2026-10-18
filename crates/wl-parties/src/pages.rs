@@ -15,6 +15,8 @@
 //! | `GET /parties/block-effects` | `wl_parties.block_effects` | `parties.block` (read-only: the vertical sets the values) |
 //! | `GET /parties/review-tasks` | `wl_parties.review_tasks` | signed in; lists the open tasks whose decider role the user holds |
 //! | `GET /parties/review-tasks/{id}` | `wl_parties.review_task` | the task's decider role in its scope, else 403 |
+//! | `GET /parties/screening-tasks` | `wl_parties.screening_tasks` | `parties.view` and `parties.block_reason.view`, else 404 |
+//! | `GET /parties/screening-tasks/{id}` | `wl_parties.screening_task` | the same |
 //! | `POST /parties/review-tasks/{id}/items/{item}` | `wl_parties.review_decide` | the same; form field `decision` is `pause`, `continue` or `end` |
 //!
 //! Lists, search, filters and exports read the party's `hold_reason`, which
@@ -44,6 +46,8 @@ use crate::permissions;
 use crate::reasons::BlockReasons;
 use crate::review_tasks::{self, ReviewTask, ReviewTaskStatus};
 use crate::roles::PartyRole;
+use crate::screening::{Screening, ScreeningMethod, ScreeningTrigger};
+use crate::screening_task::{ScreeningTask, ScreeningTaskStatus, dubai_label};
 use crate::texts;
 use crate::unblock::{UnblockRequest, unblock};
 use crate::visibility;
@@ -75,6 +79,10 @@ pub fn routes() -> Routes {
                 .name("wl_parties.show")
                 .get("/parties/{id}/block-records/{record}", block_record)
                 .name("wl_parties.block_record")
+                .get("/parties/screening-tasks", screening_tasks_page)
+                .name("wl_parties.screening_tasks")
+                .get("/parties/screening-tasks/{id}", screening_task_page)
+                .name("wl_parties.screening_task")
                 .get(
                     "/parties/{id}/block-records/{record}/evidence/{file}",
                     block_evidence,
@@ -1143,6 +1151,176 @@ async fn review_task_page(
                 )
             })
             .collect(),
+        task,
+    }))
+}
+
+/// One open screening task in the list.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct ScreeningTaskRow {
+    id: i64,
+    party: String,
+    code: String,
+    due: String,
+    candidates: usize,
+}
+
+/// What the screening task list needs.
+#[derive(Serialize, ViewData)]
+#[view(template = "wl-parties/screening_tasks.html")]
+pub(crate) struct ScreeningTasksPage {
+    tx: Texts,
+    tasks: Vec<ScreeningTaskRow>,
+}
+
+/// The party's code and display name, or `#id` when it is gone.
+async fn party_code_and_name(db: &Db, id: i64) -> Result<(String, String)> {
+    Ok(Party::find(db, id).await?.map_or_else(
+        || (format!("#{id}"), format!("#{id}")),
+        |party| (party.code, party.display_name),
+    ))
+}
+
+/// `GET /parties/screening-tasks`: the open possible-match tasks, earliest
+/// due first. Compliance only (`parties.block_reason.view`): 404 for anyone
+/// else, so the page is not even known to exist (`PTY.ACL.02`).
+async fn screening_tasks_page(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+) -> Result<View> {
+    if !user.has_permission(permissions::BLOCK_REASON_VIEW) {
+        return Err(Error::NotFound);
+    }
+    let mut tasks = Vec::new();
+    for task in ScreeningTask::open_tasks(&state.db).await? {
+        let (code, party) = party_code_and_name(&state.db, task.party_id).await?;
+        tasks.push(ScreeningTaskRow {
+            id: task.id,
+            party,
+            code,
+            due: dubai_label(task.due_at),
+            candidates: task.candidates(&state.db).await?.len(),
+        });
+    }
+    Ok(View::typed(ScreeningTasksPage {
+        tx: texts::all(&lang),
+        tasks,
+    }))
+}
+
+/// One screening run on the task page.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct ScreeningRunRow {
+    run_at: String,
+    trigger: String,
+    method: String,
+    stale: String,
+}
+
+/// One candidate on the task page.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct CandidateRow {
+    name: String,
+    list: String,
+    score: String,
+    entry: String,
+}
+
+/// What the screening task page needs.
+#[derive(Serialize, ViewData)]
+#[view(template = "wl-parties/screening_task.html")]
+pub(crate) struct ScreeningTaskPage {
+    tx: Texts,
+    task: ScreeningTask,
+    party_id: i64,
+    party: String,
+    code: String,
+    due: String,
+    flagged: String,
+    closed: Option<String>,
+    status_label: String,
+    status_tone: &'static str,
+    runs: Vec<ScreeningRunRow>,
+    candidates: Vec<CandidateRow>,
+}
+
+/// `GET /parties/screening-tasks/{id}`: the party code, each screening run
+/// and the candidates. 404 without `parties.block_reason.view`, whether or
+/// not the task exists.
+async fn screening_task_page(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<View> {
+    if !user.has_permission(permissions::BLOCK_REASON_VIEW) {
+        return Err(Error::NotFound);
+    }
+    let db = &state.db;
+    let task = ScreeningTask::find(db, id).await?.ok_or(Error::NotFound)?;
+    let t = texts_in(&lang);
+    let yes_no = |flag: bool| {
+        t(if flag {
+            "screening.yes"
+        } else {
+            "screening.no"
+        })
+    };
+    let runs = task
+        .screenings(db)
+        .await?
+        .iter()
+        .map(|run: &Screening| ScreeningRunRow {
+            run_at: dubai_label(run.run_at),
+            trigger: t(&format!(
+                "screening.trigger.{}",
+                match run.run_trigger {
+                    ScreeningTrigger::Onboarding => "onboarding",
+                    ScreeningTrigger::ListUpdate => "list_update",
+                    ScreeningTrigger::Review => "review",
+                    ScreeningTrigger::Manual => "manual",
+                }
+            )),
+            method: t(&format!(
+                "screening.method.{}",
+                match run.method {
+                    ScreeningMethod::Automatic => "automatic",
+                    ScreeningMethod::Manual => "manual",
+                }
+            )),
+            stale: yes_no(run.lists_stale),
+        })
+        .collect();
+    let candidates = task
+        .candidates(db)
+        .await?
+        .into_iter()
+        .map(|c| CandidateRow {
+            name: c.name,
+            list: c.list_name,
+            score: format!("{:.2}", c.score),
+            entry: c.list_entry.unwrap_or_else(|| "\u{2014}".to_owned()),
+        })
+        .collect();
+    let open = task.status == ScreeningTaskStatus::Open;
+    let (code, party) = party_code_and_name(db, task.party_id).await?;
+    Ok(View::typed(ScreeningTaskPage {
+        tx: texts::all(&lang),
+        party_id: task.party_id,
+        party,
+        code,
+        due: dubai_label(task.due_at),
+        flagged: dubai_label(task.flagged_at),
+        closed: task.closed_at.map(dubai_label),
+        status_label: t(if open {
+            "screening.status.open"
+        } else {
+            "screening.status.closed"
+        }),
+        status_tone: if open { "warning" } else { "success" },
+        runs,
+        candidates,
         task,
     }))
 }

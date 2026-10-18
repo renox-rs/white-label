@@ -18,6 +18,14 @@ use crate::screening::{Screening, ScreeningCandidate};
 /// Hours between the flag and the task's due time (elapsed, not working).
 pub const DUE_HOURS: i64 = 24;
 
+/// A time as the back office and the alerts show it: Asia/Dubai, to the
+/// minute (stored UTC, wl-parties §4).
+pub fn dubai_label(at: DateTime) -> String {
+    at.with_timezone(&wl_kernel::BusinessCalendar::offset())
+        .format("%Y-%m-%d %H:%M")
+        .to_string()
+}
+
 /// Where a task stands.
 #[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum ScreeningTaskStatus {
@@ -98,6 +106,16 @@ impl ScreeningTask {
         task.closed_at = Some(renox::db::now());
         task.save(&mut *tx).await?;
         Ok(true)
+    }
+
+    /// The open tasks, the earliest due first.
+    pub async fn open_tasks<'c>(db: impl Executor<'c>) -> Result<Vec<ScreeningTask>> {
+        ScreeningTask::query()
+            .where_(ScreeningTask::STATUS.eq(ScreeningTaskStatus::Open))
+            .order_by(ScreeningTask::DUE_AT)
+            .order_by(ScreeningTask::ID)
+            .get(db)
+            .await
     }
 
     /// The screening runs listed on the task, oldest first.
