@@ -63,6 +63,12 @@ pub fn aed_rate(currency: &str, exchange_rate_micro: Option<i64>) -> Option<i64>
     }
 }
 
+/// What can still be credited on an invoice line of net `line_net` after
+/// `credited` fils were credited by issued credit notes (never below 0).
+pub fn remaining_credit(line_net: i64, credited: i64) -> i64 {
+    (line_net - credited).max(0)
+}
+
 /// The computed amounts of one line.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct LineAmounts {
@@ -88,6 +94,20 @@ impl LineAmounts {
         rate_micro: Option<i64>,
     ) -> Self {
         let net = line_net(quantity_milli, unit_price, discount);
+        let vat = line_vat(net, category);
+        LineAmounts {
+            category,
+            rate_bp: category.rate_bp(),
+            net,
+            vat,
+            vat_aed: rate_micro.map(|rate| to_aed(vat, rate)),
+        }
+    }
+
+    /// The amounts of a credit line of `net` fils in `category`: the VAT is
+    /// that net × the category rate, rounded half-up, so crediting a whole
+    /// invoice line gives exactly the line's VAT.
+    pub fn for_net(net: i64, category: VatCategory, rate_micro: Option<i64>) -> Self {
         let vat = line_vat(net, category);
         LineAmounts {
             category,
@@ -215,6 +235,27 @@ pub fn recovery_share(recovered_before: i64, amount: i64, totals: &VatTotals) ->
 mod tests {
     use super::*;
     use VatCategory::{Exempt, ReverseCharge, Standard, ZeroRated};
+
+    #[test]
+    fn a_credit_line_has_vat_from_its_own_net() {
+        let part = LineAmounts::for_net(20_000, Standard, Some(RATE_SCALE));
+        assert_eq!((part.net, part.vat, part.gross()), (20_000, 1_000, 21_000));
+        assert_eq!(part.vat_aed, Some(1_000));
+        let zero = LineAmounts::for_net(50_000, ZeroRated, None);
+        assert_eq!((zero.vat, zero.vat_aed), (0, None));
+        // A whole line credited gives the line's VAT.
+        let line = aed(3_000, 33_333, Standard);
+        let whole = LineAmounts::for_net(line.net, Standard, Some(RATE_SCALE));
+        assert_eq!(whole, line);
+    }
+
+    #[test]
+    fn remaining_credit_is_the_net_not_yet_credited() {
+        assert_eq!(remaining_credit(100_000, 0), 100_000);
+        assert_eq!(remaining_credit(100_000, 20_000), 80_000);
+        assert_eq!(remaining_credit(100_000, 100_000), 0);
+        assert_eq!(remaining_credit(100_000, 120_000), 0);
+    }
 
     fn aed(quantity_milli: i64, unit_price: i64, category: VatCategory) -> LineAmounts {
         LineAmounts::compute(

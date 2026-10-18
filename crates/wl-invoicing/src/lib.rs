@@ -5,6 +5,10 @@ pub mod allocate;
 pub mod allocation;
 pub mod bad_debt_relief;
 pub mod config;
+pub mod credit_note;
+pub mod credit_note_line;
+mod credit_note_machine;
+pub mod credit_notes;
 pub mod dispute;
 mod events;
 pub mod invoice;
@@ -36,6 +40,8 @@ use renox::prelude::*;
 
 pub use allocation::Allocation;
 pub use config::{InvoicingConfig, ReasonProblem, ReliefMonths, SettingError, WriteOffReason};
+pub use credit_note::{CreditNote, CreditNoteKind};
+pub use credit_note_line::CreditNoteLine;
 pub use dispute::{Dispute, DisputeVia};
 pub use invoice::{Invoice, InvoiceKind, PartySnapshot};
 pub use invoicer::Invoices;
@@ -241,6 +247,8 @@ impl Module for WlInvoicing {
     fn register(&self, app: &mut Registry) {
         app.model::<Invoice>()
             .model::<InvoiceLine>()
+            .model::<CreditNote>()
+            .model::<CreditNoteLine>()
             .model::<Allocation>()
             .model::<Recovery>()
             .model::<Dispute>()
@@ -264,6 +272,7 @@ impl Module for WlInvoicing {
         });
         // `rnx state:diagram Invoice` and the admin panel find the machine.
         renox::state_machine::register::<Invoice>();
+        renox::state_machine::register::<CreditNote>();
         renox::state_machine::register::<VatSummary>();
         // The kernel runs `write_off_approved` by name; `FIN.ACL.15`.
         policy::register(&self.config);
