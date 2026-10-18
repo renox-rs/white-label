@@ -200,6 +200,17 @@ pub fn bad_debt_vat_share(written_off: i64, totals: &VatTotals) -> Option<i64> {
         .sum()
 }
 
+/// The VAT share of one recovery on a written-off invoice, in AED fils
+/// (#66 A5): the share of everything recovered after it less the share of
+/// what was recovered before, both by [`bad_debt_vat_share`]. The shares of
+/// several part recoveries add up to the relief exactly. `None` while a
+/// category's AED VAT is unknown.
+pub fn recovery_share(recovered_before: i64, amount: i64, totals: &VatTotals) -> Option<i64> {
+    let after = bad_debt_vat_share(recovered_before + amount, totals)?;
+    let before = bad_debt_vat_share(recovered_before, totals)?;
+    Some(after - before)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -302,6 +313,22 @@ mod tests {
         let mixed = VatTotals::of(&[aed(1_000, 100_000, Standard), aed(1_000, 50_000, ZeroRated)]);
         assert_eq!(mixed.gross, 155_000);
         assert_eq!(bad_debt_vat_share(77_500, &mixed), Some(2_500));
+    }
+
+    #[test]
+    fn recovery_shares_add_up_to_the_relief() {
+        let totals = VatTotals::of(&[aed(1_000, 100_000, Standard)]);
+        // 525.00 then 525.00 → 25.00 and 25.00.
+        assert_eq!(recovery_share(0, 52_500, &totals), Some(2_500));
+        assert_eq!(recovery_share(52_500, 52_500, &totals), Some(2_500));
+        // 333.33 then 716.67 → 15.87 and 34.13 (50.00 in all).
+        assert_eq!(recovery_share(0, 33_333, &totals), Some(1_587));
+        assert_eq!(recovery_share(33_333, 71_667, &totals), Some(3_413));
+        // No VAT, or an unknown rate.
+        let exempt = VatTotals::of(&[aed(1_000, 100_000, Exempt)]);
+        assert_eq!(recovery_share(0, 50_000, &exempt), Some(0));
+        let unknown = VatTotals::of(&[LineAmounts::compute(1_000, 100_000, 0, Standard, None)]);
+        assert_eq!(recovery_share(0, 50_000, &unknown), None);
     }
 
     #[test]

@@ -14,6 +14,10 @@
 //!                                       \--exclude--> excluded
 //! ```
 //!
+//! `exclude_recovered` is the system's too: a `pending` or `proposed`
+//! relief whose written-off invoice was recovered in full is excluded with
+//! the reason "recovered before claim" (#66).
+//!
 //! `propose` is the system's (`FIN.RUL.14`): it puts the adjustment on a
 //! VAT summary. `include` and `exclude` are the preparer's (`vat.prepare`),
 //! each with a reason, and only while the adjustment's summary is `open` or
@@ -37,6 +41,8 @@ pub const PROPOSE: &str = "propose";
 pub const INCLUDE: &str = "include";
 /// See [`PROPOSE`].
 pub const EXCLUDE: &str = "exclude";
+/// The system's exclusion of a relief recovered before it was claimed.
+pub const EXCLUDE_RECOVERED: &str = "exclude_recovered";
 
 /// What an adjustment corrects (§3).
 #[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -292,6 +298,33 @@ fn decision(
         })
 }
 
+/// `pending | proposed --> excluded`, by the system, when the written-off
+/// invoice is recovered in full before its relief was claimed. It records
+/// the reason; the relief amount is written by the recover service.
+fn exclude_recovered_transition() -> Transition<VatAdjustment> {
+    Transition::new(EXCLUDE_RECOVERED)
+        .label("Exclude, recovered")
+        .tone("warning")
+        .system()
+        .from([AdjustmentStatus::Pending, AdjustmentStatus::Proposed])
+        .to(AdjustmentStatus::Excluded)
+        .effect(|adjustment: &VatAdjustment, _ctx, tx| {
+            let id = adjustment.id;
+            Box::pin(async move {
+                let reason = english("wl_invoicing.adjustment.recovered_before_claim");
+                record(
+                    tx,
+                    id,
+                    &[
+                        ("reason", &Some(reason.to_owned())),
+                        ("updated_at", &renox::db::now()),
+                    ],
+                )
+                .await
+            })
+        })
+}
+
 fn include_transition() -> Transition<VatAdjustment> {
     decision(
         Transition::new(INCLUDE).label("Include").tone("success"),
@@ -325,6 +358,7 @@ impl StateMachine for VatAdjustment {
             .tone("warning")
             .terminal()
             .transition(propose())
+            .transition(exclude_recovered_transition())
             .transition(include_transition())
             .transition(exclude_transition())
     }
@@ -462,6 +496,16 @@ mod tests {
             assert!(find(name).needs_reason());
             assert!(!find(name).is_system());
         }
+    }
+
+    #[test]
+    fn exclude_recovered_is_the_systems_from_pending_or_proposed() {
+        let machine = VatAdjustment::machine();
+        let transition = machine.find(EXCLUDE_RECOVERED).expect("transition");
+        assert_eq!(transition.from_states(), ["pending", "proposed"]);
+        assert_eq!(transition.to_state(), Some("excluded"));
+        assert!(transition.is_system());
+        assert!(!transition.needs_reason());
     }
 
     #[renox::test]

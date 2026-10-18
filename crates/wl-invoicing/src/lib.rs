@@ -14,6 +14,7 @@ mod machine;
 pub mod overdue;
 pub mod pages;
 pub mod policy;
+pub mod recovery;
 pub mod reminders;
 pub mod seed;
 mod texts;
@@ -36,6 +37,7 @@ pub use config::{InvoicingConfig, ReasonProblem, ReliefMonths, SettingError, Wri
 pub use invoice::{Invoice, InvoiceKind, PartySnapshot};
 pub use invoicer::Invoices;
 pub use line::InvoiceLine;
+pub use recovery::Recovery;
 pub use reminders::ReminderLog;
 pub use vat::{CategoryTotal, LineAmounts, VatTotals};
 pub use vat_adjustment::{AdjustmentKind, AdjustmentStatus, VatAdjustment};
@@ -224,6 +226,7 @@ impl Module for WlInvoicing {
         app.model::<Invoice>()
             .model::<InvoiceLine>()
             .model::<Allocation>()
+            .model::<Recovery>()
             .model::<ReminderLog>()
             .model::<VatAdjustment>()
             .model::<VatSummary>()

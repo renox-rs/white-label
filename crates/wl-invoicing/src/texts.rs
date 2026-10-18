@@ -206,6 +206,10 @@ const TEXTS: &[(&str, &str)] = &[
         "Give a reason for including or excluding the adjustment.",
     ),
     (
+        "wl_invoicing.adjustment.recovered_before_claim",
+        "recovered before claim",
+    ),
+    (
         "wl_invoicing.adjustment.summary_closed",
         "The adjustment can only be decided while its VAT summary is open or prepared.",
     ),
