@@ -118,6 +118,42 @@ pub fn reaction_order(reactions: &[GiveUpReaction]) -> Vec<GiveUpReaction> {
     ordered
 }
 
+/// A give-up definition the rules refuse.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GiveUpConfigError {
+    /// `mark_contact_invalid` is the only reaction of a non-marketing type:
+    /// staff would never hear that the contact needs fixing.
+    MarkContactInvalidAlone,
+}
+
+impl std::fmt::Display for GiveUpConfigError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            GiveUpConfigError::MarkContactInvalidAlone => f.write_str(
+                "Mark contact invalid must be combined with another reaction for this type; add Staff task.",
+            ),
+        }
+    }
+}
+
+impl std::error::Error for GiveUpConfigError {}
+
+/// Checks the give-up `reactions` of a type of `category`: without `none`,
+/// `mark_contact_invalid` alone is refused unless the category is
+/// `marketing` (wl-notify §5.4). Any other combination passes.
+pub fn check_give_up(
+    category: Category,
+    reactions: &[GiveUpReaction],
+) -> Result<(), GiveUpConfigError> {
+    let mut real = reactions.iter().filter(|r| **r != GiveUpReaction::None);
+    let only_invalid =
+        real.clone().next().is_some() && real.all(|r| *r == GiveUpReaction::MarkContactInvalid);
+    if only_invalid && category != Category::Marketing {
+        return Err(GiveUpConfigError::MarkContactInvalidAlone);
+    }
+    Ok(())
+}
+
 /// The default text of a notification type for one channel and language.
 /// `{{ name }}` in the subject or body is replaced with the request data's
 /// field `name` ([`fill`]).
@@ -276,7 +312,15 @@ static TYPES: RwLock<BTreeMap<String, Arc<NotificationTypeDef>>> = RwLock::new(B
 
 /// Adds `def` to the process-wide registry of notification types; modules
 /// call it in `register`. Registering the same key again replaces it.
+///
+/// # Panics
+///
+/// When [`check_give_up`] refuses the definition, so a module's mistake
+/// fails at boot.
 pub fn register_type(def: NotificationTypeDef) {
+    if let Err(error) = check_give_up(def.category, &def.give_up) {
+        panic!("notification type `{}`: {error}", def.key);
+    }
     TYPES
         .write()
         .unwrap_or_else(PoisonError::into_inner)
@@ -614,6 +658,9 @@ pub struct PartyContactPoint {
     pub primary: bool,
     /// Whether it was verified.
     pub verified: bool,
+    /// Whether it can be used; `false` after a hard failure until the
+    /// address is edited or verified.
+    pub valid: bool,
 }
 
 /// How to reach a party: [`crate::parties::PartyDirectory::contacts`].
@@ -631,10 +678,10 @@ pub struct PartyContacts {
 
 impl PartyContacts {
     /// The point `channel` goes to: the primary one of its kind, else the
-    /// first.
+    /// first; invalid points are never chosen.
     pub fn point_for(&self, channel: NotifyChannel) -> Option<&PartyContactPoint> {
         let kind = channel.contact_kind();
-        let mut of_kind = self.points.iter().filter(|p| p.kind == kind);
+        let mut of_kind = self.points.iter().filter(|p| p.kind == kind && p.valid);
         let first = of_kind.clone().next();
         of_kind.find(|p| p.primary).or(first)
     }
@@ -727,6 +774,22 @@ pub struct MessageGaveUp {
 }
 
 impl Event for MessageGaveUp {}
+
+/// A party's contact point was marked invalid after a hard failure
+/// (`mark_contact_invalid`); emitted once per point that changed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ContactPointInvalidated {
+    /// The contact point's id in `wl-parties`.
+    pub contact_point: i64,
+    /// The party it belongs to.
+    pub party: PartyId,
+    /// The channel the failed message used.
+    pub channel: NotifyChannel,
+    /// The hard failure kind, e.g. `hard_bounce`.
+    pub reason: String,
+}
+
+impl Event for ContactPointInvalidated {}
 
 #[cfg(test)]
 mod tests {
@@ -894,6 +957,7 @@ mod tests {
             address: format!("address-{id}"),
             primary,
             verified: false,
+            valid: true,
         };
         let contacts = PartyContacts {
             party: PartyId(1),
@@ -913,6 +977,70 @@ mod tests {
             ..contacts
         };
         assert!(none.point_for(NotifyChannel::Email).is_none());
+    }
+
+    #[test]
+    fn an_invalid_point_is_never_chosen() {
+        let point = |id, primary, valid| PartyContactPoint {
+            id,
+            kind: ContactKind::Email,
+            address: format!("address-{id}"),
+            primary,
+            verified: false,
+            valid,
+        };
+        let mut contacts = PartyContacts {
+            party: PartyId(1),
+            language: "en".into(),
+            preferred_channel: None,
+            points: vec![point(1, false, true), point(2, true, false)],
+        };
+        assert_eq!(contacts.point_for(NotifyChannel::Email).unwrap().id, 1);
+        assert!(contacts.point_for(NotifyChannel::Sms).is_none());
+        contacts.points.remove(0);
+        assert!(contacts.point_for(NotifyChannel::Email).is_none());
+    }
+
+    #[test]
+    fn mark_contact_invalid_alone_needs_marketing() {
+        let alone = [MarkContactInvalid];
+        let refused = Err(GiveUpConfigError::MarkContactInvalidAlone);
+        for category in [
+            Category::Transactional,
+            Category::Reminder,
+            Category::Security,
+        ] {
+            assert_eq!(check_give_up(category, &alone), refused);
+            assert_eq!(
+                check_give_up(category, &[MarkContactInvalid, GiveUpReaction::None]),
+                refused
+            );
+            assert_eq!(
+                check_give_up(category, &[MarkContactInvalid, MarkContactInvalid]),
+                refused
+            );
+            assert_eq!(
+                check_give_up(category, &[MarkContactInvalid, StaffTask]),
+                Ok(())
+            );
+            assert_eq!(check_give_up(category, &[StaffTask]), Ok(()));
+            assert_eq!(check_give_up(category, &[]), Ok(()));
+            assert_eq!(check_give_up(category, &[GiveUpReaction::None]), Ok(()));
+        }
+        assert_eq!(check_give_up(Category::Marketing, &alone), Ok(()));
+        assert!(
+            GiveUpConfigError::MarkContactInvalidAlone
+                .to_string()
+                .contains("add Staff task.")
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "Mark contact invalid must be combined")]
+    fn register_type_panics_on_a_refused_definition() {
+        register_type(
+            NotificationTypeDef::new("refused.alone", "tests").give_up(&[MarkContactInvalid]),
+        );
     }
 
     #[test]

@@ -370,6 +370,7 @@ fn point(id: i64, kind: ContactKind, address: &str) -> PartyContactPoint {
         address: address.to_owned(),
         primary: true,
         verified: true,
+        valid: true,
     }
 }
 

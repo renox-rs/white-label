@@ -328,6 +328,7 @@ mod tests {
                 address: "+971501234567".into(),
                 primary: true,
                 verified: false,
+                valid: true,
             }],
         };
         let party = NotifyRecipient::Party { id: PartyId(1) };

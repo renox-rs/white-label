@@ -222,6 +222,9 @@ impl Party {
                         address: point.value.clone(),
                         primary: point.is_primary,
                         verified: point.verified_at.is_some(),
+                        // The status column arrives with the contact point
+                        // status (#58 part 2); until then every point is usable.
+                        valid: true,
                     })
                 })
                 .collect(),

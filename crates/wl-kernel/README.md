@@ -110,7 +110,7 @@ placeholders), then sends with
 A recipient is a staff user (by user id), a party (by `PartyId`, reached through
 `PartyDirectory::contacts`) a rule (`.to_contact(of, ContactPurpose::contact_of("finance"))`, resolved through `PartyDirectory::related_contacts`) or a bare address. `.subject_label("TKT-2026-0042")` names the
 subject in staff-facing text; `MessageGaveUp` carries it with `gave_up_at`. `wl-notify` provides the real notifier and
-emits `MessageFailed`, `MessageSuppressed` and `MessageGaveUp`. When `notify` is off,
+emits `MessageFailed`, `MessageSuppressed`, `MessageGaveUp` and `ContactPointInvalidated`. A party contact point carries `valid`; `PartyContacts::point_for` never chooses an invalid one, and `PartyDirectory::invalidate_contact` (default `None`) marks one invalid. `check_give_up` refuses `mark_contact_invalid` alone on a non-marketing type, and `register_type` panics on it. When `notify` is off,
 `NoNotifier` still gives each user recipient a Renox database notification (the bell) with
 the type's text, skips party and address recipients, and returns no message ids.
 

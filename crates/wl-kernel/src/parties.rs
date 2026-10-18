@@ -21,7 +21,7 @@ use std::sync::Arc;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::notify::{ContactPurpose, PartyContacts};
+use crate::notify::{ContactKind, ContactPurpose, PartyContacts};
 use crate::numbering::{Reset, Series};
 use crate::subject::Subject;
 
@@ -161,6 +161,15 @@ pub fn display_block_reason(code: &str, restricted: bool) -> &str {
     }
 }
 
+/// The contact point [`PartyDirectory::invalidate_contact`] marked invalid.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InvalidatedContact {
+    /// The party the point belongs to.
+    pub party: PartyId,
+    /// E-mail or mobile.
+    pub kind: ContactKind,
+}
+
 /// The future a [`PartyDirectory`] method returns.
 pub type PartyFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 
@@ -197,6 +206,22 @@ pub trait PartyDirectory: Send + Sync + 'static {
         party: PartyId,
     ) -> PartyFuture<'a, Option<PartyContacts>> {
         let _ = (db, party);
+        Box::pin(async { Ok(None) })
+    }
+
+    /// Marks the contact point `point` invalid since `since` for `reason`
+    /// (a hard failure kind such as `hard_bounce`). Returns `Some` only when
+    /// the point went from valid to invalid; an unknown or already invalid
+    /// point gives `None` and keeps its first since and reason. The point is
+    /// never deleted and keeps its primary flag. The default knows none.
+    fn invalidate_contact<'a>(
+        &'a self,
+        db: &'a Db,
+        point: i64,
+        since: DateTime,
+        reason: &'a str,
+    ) -> PartyFuture<'a, Option<InvalidatedContact>> {
+        let _ = (db, point, since, reason);
         Box::pin(async { Ok(None) })
     }
 
