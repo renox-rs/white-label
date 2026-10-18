@@ -1,14 +1,20 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
+pub mod allocate;
 pub mod allocation;
 pub mod config;
+mod events;
 pub mod invoice;
 pub mod invoicer;
+pub mod issue;
 pub mod line;
 mod machine;
+pub mod overdue;
 mod texts;
 pub mod vat;
+
+use std::sync::Arc;
 
 use renox::db::Migration;
 use renox::prelude::*;
@@ -19,6 +25,14 @@ pub use invoice::{Invoice, InvoiceKind, PartySnapshot};
 pub use invoicer::Invoices;
 pub use line::InvoiceLine;
 pub use vat::{CategoryTotal, LineAmounts, VatTotals};
+
+/// The module's settings in `state`: those `register` provided, else the
+/// §7 defaults.
+pub(crate) fn config_of(state: &AppState) -> Arc<InvoicingConfig> {
+    state
+        .provided::<InvoicingConfig>()
+        .unwrap_or_else(|| Arc::new(InvoicingConfig::default()))
+}
 
 /// The module's permissions (wl-invoicing §6).
 pub mod permissions {
@@ -112,6 +126,12 @@ impl Module for WlInvoicing {
             .model::<Allocation>();
         // `rnx state:diagram Invoice` and the admin panel find the machine.
         renox::state_machine::register::<Invoice>();
+        // The settings the services read (`config_of`).
+        app.provide(self.config.clone());
+        // `InvoiceIssued`, `InvoicePaid` and `InvoiceOverdue` after a commit.
+        events::register(app);
+        // `FIN.RUL.02`: the daily `invoicing:mark-overdue` task.
+        overdue::schedule(app);
         // Other modules draft and read invoices through the kernel (§6).
         wl_kernel::invoicing::provide_invoicer(app, Invoices);
     }

@@ -3,6 +3,7 @@
 //! with [`wl_kernel::invoicing::provide_invoicer`].
 
 use renox::prelude::*;
+use renox::state_machine::TransitionError;
 use wl_kernel::LegalEntity;
 use wl_kernel::invoicing::{
     DraftLine, InvoiceDraft, InvoiceFuture, InvoiceId, InvoiceStatus, InvoiceSummary, Invoicer,
@@ -31,13 +32,17 @@ impl Invoicer for Invoices {
 
     fn allocate<'a>(
         &'a self,
-        _state: &'a AppState,
+        state: &'a AppState,
         id: InvoiceId,
-        _source: wl_kernel::Subject,
-        _amount: i64,
+        source: wl_kernel::Subject,
+        amount: i64,
     ) -> InvoiceFuture<'a, ()> {
-        // The `allocate` transition and service come with #64 part 4.
-        Box::pin(async move { Err(refused(format!("invoice {id} cannot be allocated yet"))) })
+        Box::pin(async move {
+            let invoice = Invoice::find_or_404(&state.db, id.0).await?;
+            crate::allocate::allocate(state, &invoice, &source, amount, None)
+                .await
+                .map_err(TransitionError::into_error)
+        })
     }
 }
 

@@ -9,8 +9,9 @@
 //!
 //! Every state is declared here with its tone, and a new invoice is
 //! inserted only as `draft`. The transitions are added by the issues that
-//! build them (`issue`, `allocate`, `mark_overdue` and `write_off` #64,
-//! the others later), all in this `machine()`. `Invoice` is
+//! build them, all in this `machine()`: `issue` ([`crate::issue`]),
+//! `allocate` / `allocate_in_full` ([`crate::allocate`]) and `mark_overdue`
+//! ([`crate::overdue`]); `write_off` and the others later. `Invoice` is
 //! `#[model(state_machine)]`, so `save` refuses a changed status.
 
 use renox::state_machine::{Machine, StateMachine};
@@ -24,7 +25,7 @@ impl StateMachine for Invoice {
 
     fn machine() -> Machine<Self> {
         use InvoiceStatus::{Credited, Draft, Issued, Overdue, Paid, PartiallyPaid, WrittenOff};
-        Machine::new()
+        let machine = Machine::new()
             .initial([Draft])
             .state(Draft)
             .tone("neutral")
@@ -41,5 +42,10 @@ impl StateMachine for Invoice {
             .state(Credited)
             .tone("neutral")
             .terminal()
+            .transition(crate::issue::transition())
+            .transition(crate::overdue::transition());
+        crate::allocate::transitions()
+            .into_iter()
+            .fold(machine, Machine::transition)
     }
 }

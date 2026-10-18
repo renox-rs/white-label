@@ -9,13 +9,18 @@
 //! Contacts give `wl-notify` the party's language, preferred channel and its
 //! e-mail and mobile contact points (landlines and postal addresses carry no
 //! message channel).
+//!
+//! The billing identity gives `wl-invoicing` what an invoice is addressed
+//! to: the legal names, the company's TRN when it is VAT registered, and the
+//! primary (else the first) address and e-mail contact points.
 
 use renox::prelude::*;
 use wl_kernel::notify::{ContactKind, NotifyChannel, PartyContactPoint, PartyContacts};
-use wl_kernel::parties::{PartyDirectory, PartyFuture};
-use wl_kernel::{PartyId, PartyStatus, PartySummary};
+use wl_kernel::parties::{BillingIdentity, PartyDirectory, PartyFuture};
+use wl_kernel::{PartyId, PartyKind, PartyStatus, PartySummary};
 
 use crate::contacts::{ContactPoint, ContactType};
+use crate::details::CompanyDetails;
 use crate::party::{Channel, Party};
 
 /// Reads the `wl_parties_parties` table for the kernel contract.
@@ -95,6 +100,71 @@ impl PartyDirectory for Directory {
                 .await?;
             Ok(Some(party.contacts(&points)))
         })
+    }
+
+    fn billing_identity<'a>(
+        &'a self,
+        db: &'a Db,
+        party: PartyId,
+    ) -> PartyFuture<'a, Option<BillingIdentity>> {
+        Box::pin(async move {
+            let Some(party) = Party::find(db, party.0).await? else {
+                return Ok(None);
+            };
+            let company = match party.kind {
+                PartyKind::Company => {
+                    CompanyDetails::query()
+                        .where_(CompanyDetails::PARTY_ID.eq(party.id))
+                        .first(db)
+                        .await?
+                }
+                PartyKind::Person => None,
+            };
+            let points = ContactPoint::query()
+                .where_(ContactPoint::PARTY_ID.eq(party.id))
+                .order_by_desc(ContactPoint::IS_PRIMARY)
+                .order_by(ContactPoint::ID)
+                .get(db)
+                .await?;
+            Ok(Some(party.billing_identity(company.as_ref(), &points)))
+        })
+    }
+}
+
+impl Party {
+    /// Who an invoice to this party is addressed to: its legal names, the
+    /// TRN of `company` when it is VAT registered, and the first address and
+    /// e-mail of `points` (ordered primary first).
+    pub fn billing_identity(
+        &self,
+        company: Option<&CompanyDetails>,
+        points: &[ContactPoint],
+    ) -> BillingIdentity {
+        let first = |contact_type: ContactType| {
+            points
+                .iter()
+                .find(|p| p.contact_type == contact_type && !p.value.trim().is_empty())
+                .map(|p| p.value.trim().to_owned())
+        };
+        let legal_name_en = if self.legal_name_en.trim().is_empty() {
+            self.display_name.clone()
+        } else {
+            self.legal_name_en.clone()
+        };
+        BillingIdentity {
+            party: self.party_id(),
+            legal_name_en,
+            legal_name_ar: self
+                .legal_name_ar
+                .clone()
+                .filter(|name| !name.trim().is_empty()),
+            trn: company
+                .filter(|c| c.vat_registered)
+                .and_then(|c| c.trn.clone())
+                .filter(|trn| !trn.trim().is_empty()),
+            billing_address: first(ContactType::Address),
+            billing_email: first(ContactType::Email),
+        }
     }
 }
 
@@ -204,6 +274,48 @@ mod tests {
         );
         let sms = contacts.point_for(NotifyChannel::Sms).unwrap();
         assert_eq!(sms.address, "+971501234567");
+    }
+
+    #[test]
+    fn the_billing_identity_takes_the_primary_points_and_a_registered_trn() {
+        let point = |id, contact_type, value: &str, is_primary| ContactPoint {
+            id,
+            party_id: 7,
+            contact_type,
+            value: value.into(),
+            is_primary,
+            ..Default::default()
+        };
+        let company = CompanyDetails {
+            party_id: 7,
+            vat_registered: true,
+            trn: Some("100000000000003".into()),
+            ..Default::default()
+        };
+        let points = [
+            point(2, ContactType::Email, "ap@alnoor.ae", true),
+            point(4, ContactType::Address, "Office 12, Deira, Dubai", true),
+            point(1, ContactType::Email, "info@alnoor.ae", false),
+        ];
+        let identity = party(PartyStatus::Active, None).billing_identity(Some(&company), &points);
+        assert_eq!(identity.party, PartyId(7));
+        assert_eq!(identity.legal_name_en, "Al Noor Trading LLC");
+        assert_eq!(identity.legal_name_ar, None);
+        assert_eq!(identity.trn.as_deref(), Some("100000000000003"));
+        assert_eq!(
+            identity.billing_address.as_deref(),
+            Some("Office 12, Deira, Dubai")
+        );
+        assert_eq!(identity.billing_email.as_deref(), Some("ap@alnoor.ae"));
+
+        let unregistered = CompanyDetails {
+            vat_registered: false,
+            ..company
+        };
+        let identity = party(PartyStatus::Active, None).billing_identity(Some(&unregistered), &[]);
+        assert_eq!(identity.trn, None);
+        assert_eq!(identity.billing_email, None);
+        assert_eq!(identity.billing_address, None);
     }
 
     #[test]
