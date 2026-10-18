@@ -2,11 +2,27 @@
 #![warn(missing_docs)]
 
 pub mod config;
+mod events;
+mod machine;
+pub mod payment;
+pub mod record;
 mod texts;
 
+use std::sync::Arc;
+
+use renox::db::Migration;
 use renox::prelude::*;
 
 pub use config::PaymentsConfig;
+pub use payment::Payment;
+
+/// The module's settings in `state`: those `register` provided, else the
+/// §7 defaults.
+pub(crate) fn config_of(state: &AppState) -> Arc<PaymentsConfig> {
+    state
+        .provided::<PaymentsConfig>()
+        .unwrap_or_else(|| Arc::new(PaymentsConfig::default()))
+}
 
 /// The module's permissions (wl-payments §6).
 pub mod permissions {
@@ -62,6 +78,20 @@ impl WlPayments {
 impl Module for WlPayments {
     fn name(&self) -> &'static str {
         "wl-payments"
+    }
+
+    fn migrations(&self) -> &'static [Migration] {
+        renox::migrations!()
+    }
+
+    fn register(&self, app: &mut Registry) {
+        app.model::<Payment>();
+        // `rnx state:diagram Payment` and the admin panel find the machine.
+        renox::state_machine::register::<Payment>();
+        // The settings the services read (`config_of`).
+        app.provide(self.config.clone());
+        // `PaymentReceived` after a commit.
+        events::register(app);
     }
 }
 
