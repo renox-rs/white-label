@@ -175,6 +175,43 @@ impl BlockSubjects for Tickets {
     }
 }
 
+/// Ravi's attendance of 2026-12-02 (the attendance `n` of worker `n`).
+pub const RAVI_ATTENDANCE: i64 = 7;
+/// Another worker's attendance, whose documents are in order.
+pub const MONA_ATTENDANCE: i64 = 8;
+
+/// `attendance_record.accept`: the worker (attendance `n` is worker `n`).
+struct Attendance;
+
+impl BlockSubjects for Attendance {
+    fn subjects<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _entry: &'a BlockEntry,
+        record_id: i64,
+    ) -> DocumentFuture<'a, Vec<Subject>> {
+        Box::pin(async move { Ok(vec![Subject::new("hr.employee", record_id)]) })
+    }
+}
+
+/// The work permit in flag mode on `attendance_record.accept`.
+pub fn flagged_work_permit() -> KindSeed {
+    KindSeed::new("work_permit", "Work permit")
+        .subject_type("hr.employee")
+        .expires()
+        .responsible_role("PRO")
+        .blocks("attendance_record.accept", BlockMode::Flag)
+}
+
+/// A medical certificate in block mode on `attendance_record.accept`.
+pub fn medical_certificate() -> KindSeed {
+    KindSeed::new("medical_certificate", "Medical certificate")
+        .subject_type("hr.employee")
+        .expires()
+        .responsible_role("HR")
+        .blocks("attendance_record.accept", BlockMode::Block)
+}
+
 /// The app under test.
 pub struct Booted {
     /// The app.
@@ -379,6 +416,7 @@ pub async fn boot() -> Booted {
     register_block_subjects("deployment.activate", Deployments);
     register_block_subjects("run.dispatch", Runs);
     register_block_subjects("ticket.resolve", Tickets);
+    register_block_subjects("attendance_record.accept", Attendance);
 
     let app = App::new()
         .module(Auth::new())
