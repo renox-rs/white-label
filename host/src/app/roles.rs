@@ -11,6 +11,7 @@ use wl_documents::permissions as documents;
 use wl_invoicing::permissions as invoices;
 use wl_notify::permissions as notify;
 use wl_parties::permissions as parties;
+use wl_ticketing::permissions as tickets;
 
 /// Manages users and their roles.
 pub const USERS: &str = "users.manage";
@@ -25,6 +26,12 @@ pub const COMPLIANCE: &str = "compliance";
 /// The receivables role: drafts, issues and follows up invoices, requests
 /// write-offs and handles disputes (wl-invoicing §3, §6).
 pub const RECEIVABLES: &str = "receivables";
+/// The maintenance coordinator: raises, triages and assigns tickets, and
+/// works them (wl-ticketing §6, 01 roles).
+pub const COORDINATOR: &str = "coordinator";
+/// A technician: sees and works the tickets assigned to them
+/// (wl-ticketing §6, 01 roles).
+pub const TECHNICIAN: &str = "technician";
 /// Everyone who signs up.
 pub const MEMBER: &str = "member";
 
@@ -58,6 +65,12 @@ pub const ROLES: &[(&str, &[&str])] = &[
             invoices::WRITE_OFF,
             invoices::DISPUTE,
             invoices::RECEIVABLES_VIEW,
+            tickets::VIEW,
+            tickets::CREATE,
+            tickets::ASSIGN,
+            tickets::WORK,
+            tickets::CONFIDENTIAL_VIEW,
+            tickets::MANAGE,
         ],
     ),
     (
@@ -75,6 +88,16 @@ pub const ROLES: &[(&str, &[&str])] = &[
             invoices::RECEIVABLES_VIEW,
         ],
     ),
+    (
+        COORDINATOR,
+        &[
+            tickets::VIEW,
+            tickets::CREATE,
+            tickets::ASSIGN,
+            tickets::WORK,
+        ],
+    ),
+    (TECHNICIAN, &[tickets::VIEW, tickets::WORK]),
     (MEMBER, &[]),
 ];
 

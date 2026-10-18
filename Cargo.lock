@@ -918,6 +918,7 @@ dependencies = [
  "wl-kernel",
  "wl-notify",
  "wl-parties",
+ "wl-ticketing",
 ]
 
 [[package]]
@@ -3472,6 +3473,16 @@ dependencies = [
 
 [[package]]
 name = "wl-parties"
+version = "0.1.0"
+dependencies = [
+ "renox",
+ "serde",
+ "tempfile",
+ "wl-kernel",
+]
+
+[[package]]
+name = "wl-ticketing"
 version = "0.1.0"
 dependencies = [
  "renox",

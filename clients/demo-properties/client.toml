@@ -13,9 +13,8 @@ second       = "#B8532E"
 display_font = "Poppins"
 
 [modules]
-# F1 modules are added here as they are built: portal, payments, ticketing,
-# sales, hr.
-enabled = ["parties", "documents", "notify", "invoicing"]
+# F1 modules are added here as they are built: portal, payments, sales, hr.
+enabled = ["parties", "documents", "notify", "invoicing", "ticketing"]
 
 [[legal_entities]]
 code      = "PGP"

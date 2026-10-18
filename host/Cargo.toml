@@ -14,3 +14,4 @@ wl-parties = { path = "../crates/wl-parties" }
 wl-documents = { path = "../crates/wl-documents" }
 wl-notify = { path = "../crates/wl-notify" }
 wl-invoicing = { path = "../crates/wl-invoicing" }
+wl-ticketing = { path = "../crates/wl-ticketing" }
