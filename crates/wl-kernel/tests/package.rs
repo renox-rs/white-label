@@ -332,3 +332,37 @@ fn a_missing_module_dependency_stops_the_kernel() {
         "client.toml: [modules] `invoicing` needs `parties`; enable it too"
     );
 }
+
+/// #64 AC1: without the invoicing module, the kernel's invoicer is
+/// `NoInvoicer`: nothing is drafted or found, and an allocation is refused.
+#[renox::test]
+async fn without_invoicing_the_invoicer_drafts_nothing() {
+    use wl_kernel::Subject;
+    use wl_kernel::invoicing::{
+        DraftLine, InvoiceDraft, InvoiceId, Invoicer, NoInvoicer, VatCategory, invoicer,
+    };
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let state = app.state();
+    let draft = InvoiceDraft::new(PartyId(1), Subject::new("property.lease", 1))
+        .line(DraftLine::new("Rent", 100_000, VatCategory::Standard));
+    let provided = invoicer(state);
+    let fallback: &dyn Invoicer = &NoInvoicer;
+    for invoicer in [&*provided, fallback] {
+        assert_eq!(invoicer.draft(app.db(), draft.clone()).await.unwrap(), None);
+        assert_eq!(invoicer.find(app.db(), InvoiceId(1)).await.unwrap(), None);
+        let refused = invoicer
+            .allocate(
+                state,
+                InvoiceId(1),
+                Subject::new("payments.payment", 1),
+                100,
+            )
+            .await;
+        assert!(matches!(
+            refused,
+            Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
+        ));
+    }
+}

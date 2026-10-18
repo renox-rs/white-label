@@ -175,3 +175,31 @@ async fn the_demo_client_boots_with_documents_enabled() {
     app.get("/documents/review").await.assert_ok();
     app.get("/document-kinds").await.assert_ok();
 }
+
+/// #64 AC1: the demo boots with `invoicing`; `/invoices` answers 200 with
+/// `invoices.view` and 403 without it.
+#[renox::test]
+async fn the_demo_client_lists_invoices_for_those_who_may_see_them() {
+    let app = TestApp::new(host::app()).await;
+    app.kernel().seed().await.unwrap();
+    host::roles::define(app.db()).await.unwrap();
+    for (name, role, allowed) in [
+        ("Rima", host::roles::RECEIVABLES, true),
+        ("Mona", host::roles::MEMBER, false),
+    ] {
+        let email = format!("{}@example.com", name.to_lowercase());
+        let mut user = User::register(app.db(), name, &email, "secret123")
+            .await
+            .unwrap();
+        user.email_verified_at = Some(renox::db::now());
+        user.save(app.db()).await.unwrap();
+        user.assign_role(app.db(), role).await.unwrap();
+        app.acting_as(&user);
+        let page = app.get("/invoices").await;
+        if allowed {
+            page.assert_ok();
+        } else {
+            page.assert_forbidden();
+        }
+    }
+}

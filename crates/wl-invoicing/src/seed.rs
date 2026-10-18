@@ -68,6 +68,11 @@ impl DemoInvoice {
 
 /// Drafts the demo invoices the database lacks; returns how many.
 pub async fn run(state: &AppState) -> Result<usize> {
+    // The kernel's own seeder runs after the modules', and an invoice needs
+    // its issuing entity; installing is idempotent.
+    if let Some(config) = state.provided::<std::sync::Arc<wl_kernel::ClientConfig>>() {
+        wl_kernel::entities::install(&state.db, &config).await?;
+    }
     let directory = wl_kernel::parties::directory(state);
     let mut created = 0;
     for demo in DEMO_INVOICES {
