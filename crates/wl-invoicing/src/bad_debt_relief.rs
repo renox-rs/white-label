@@ -21,6 +21,10 @@
 //! a recovery (#66) left without an `open` summary. They have no other
 //! condition: the relief was claimed already, so only an `open` summary of
 //! the day is needed. The accountants were told at the recovery.
+//! The same goes for the `pending` bad-debt reliefs that a reversed recovery
+//! raised (`reverses_recovery_id`, #70 A10): the VAT was claimed before, so
+//! they are proposed on the next `open` summary without the other
+//! conditions (`⚠ open: accountant (A-09)`).
 //! The daily task [`TASK`] calls [`run`] for today in Asia/Dubai.
 
 use renox::auth::permissions::{Scope, users_with_role_in};
@@ -176,6 +180,14 @@ pub async fn run(state: &AppState, on: NaiveDate) -> Result<ReliefRun> {
         .await?;
     let mut result = ReliefRun::default();
     for adjustment in pending {
+        if reversal_waits(&adjustment) {
+            match propose_recovery(state, &config, &adjustment, on).await? {
+                Outcome::Proposed => result.proposed += 1,
+                Outcome::NoOpenSummary => result.waiting_for_open_summary += 1,
+                Outcome::Skipped => {}
+            }
+            continue;
+        }
         match propose_one(state, &config, &adjustment, on).await? {
             Outcome::Proposed => result.proposed += 1,
             Outcome::NoOpenSummary => result.waiting_for_open_summary += 1,
@@ -206,7 +218,17 @@ pub fn recovery_waits(adjustment: &VatAdjustment) -> bool {
         && adjustment.amount > 0
 }
 
-/// Proposes one pending recovery adjustment on the `open` summary of `on`.
+/// Whether `adjustment` is a relief raised by a reversed recovery that
+/// waits to be proposed. A pure check; the `open` summary is looked up apart.
+pub fn reversal_waits(adjustment: &VatAdjustment) -> bool {
+    adjustment.kind == AdjustmentKind::BadDebtRelief
+        && adjustment.status == AdjustmentStatus::Pending
+        && adjustment.amount > 0
+        && adjustment.reverses_recovery_id.is_some()
+}
+
+/// Proposes one pending recovery adjustment, or relief raised by a reversed
+/// recovery, on the `open` summary of `on`.
 async fn propose_recovery(
     state: &AppState,
     config: &InvoicingConfig,
@@ -216,7 +238,7 @@ async fn propose_recovery(
     let Some(entity_id) = adjustment.legal_entity_id else {
         return Ok(Outcome::Skipped);
     };
-    if !recovery_waits(adjustment) {
+    if !recovery_waits(adjustment) && !reversal_waits(adjustment) {
         return Ok(Outcome::Skipped);
     }
     let Some(entity) = LegalEntity::find(&state.db, entity_id).await? else {
@@ -515,6 +537,41 @@ mod tests {
         )));
         // A pending relief is not a recovery: it needs its own conditions.
         assert!(!recovery_waits(&pending(2_500)));
+    }
+
+    #[test]
+    fn only_a_pending_relief_of_a_reversed_recovery_waits_without_conditions() {
+        let raised = |status, amount, reverses| VatAdjustment {
+            status,
+            amount,
+            reverses_recovery_id: reverses,
+            ..Default::default()
+        };
+        assert!(reversal_waits(&raised(
+            AdjustmentStatus::Pending,
+            5_000,
+            Some(3)
+        )));
+        assert!(!reversal_waits(&raised(
+            AdjustmentStatus::Pending,
+            5_000,
+            None
+        )));
+        assert!(!reversal_waits(&raised(
+            AdjustmentStatus::Pending,
+            0,
+            Some(3)
+        )));
+        assert!(!reversal_waits(&raised(
+            AdjustmentStatus::Proposed,
+            5_000,
+            Some(3)
+        )));
+        let recovery = VatAdjustment {
+            kind: AdjustmentKind::BadDebtRecovery,
+            ..raised(AdjustmentStatus::Pending, 5_000, Some(3))
+        };
+        assert!(!reversal_waits(&recovery));
     }
 
     #[test]

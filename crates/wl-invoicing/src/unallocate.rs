@@ -29,6 +29,19 @@
 //! are never deleted, and lines, totals, VAT, number, snapshots and
 //! write-off columns are never written.
 //!
+//! A fourth transition, `unallocate_recovery` (`paid`, `written_off` →
+//! `written_off`, #70 part 4, A10), undoes a recovery whose payment was
+//! reversed. [`run`] picks it when the money is a recovery's
+//! ([`Recovery::matching`]: same source, exactly the amount, not reversed).
+//! Guards: the amount is more than 0; it is exactly the recovery's; it is
+//! at most what is recovered. Effect, in the transaction: the balance goes
+//! up, the allocated total and `write_off_recovered_amount` down, as one
+//! compare-and-set; the recovery's allocation is marked removed and the
+//! recovery row gets `reversed_at` / `reversed_key`; then the relief side
+//! ([`reverse_relief_in`], planned by [`plan_reversal`]). The write-off
+//! amount, reason and dates are never written, and the invoice is never
+//! `overdue`. A payment from before the write-off still gets a refusal.
+//!
 //! [`run`] is the service: it looks the idempotency key up in the log (a key
 //! that is there gives `skipped`), runs the transition, and logs a refusal
 //! as `failed` in its own transaction. `InvoiceReopened` is emitted after
@@ -46,7 +59,15 @@ use wl_kernel::invoicing::{InvoiceId, InvoiceStatus, ReopenReason, Reopened, Una
 use crate::allocate::amount_text;
 use crate::allocation::Allocation;
 use crate::invoice::Invoice;
+use crate::recover::open_summary_of;
+use crate::recovery::{Recovery, ReliefReversal, ReversalEffect, Seen, plan_reversal};
+use crate::texts::english;
 use crate::unallocation::{Unallocation, UnallocationOutcome};
+use crate::vat_adjustment::{
+    AdjustmentKind, AdjustmentStatus, EXCLUDE_REVERSED, PROPOSE, ProposeInput, REINSTATE_RECOVERED,
+    VatAdjustment,
+};
+use crate::vat_summary::VatSummary;
 
 /// Reopens to `issued`.
 pub const UNALLOCATE: &str = "unallocate";
@@ -54,6 +75,9 @@ pub const UNALLOCATE: &str = "unallocate";
 pub const UNALLOCATE_PARTIALLY: &str = "unallocate_partially";
 /// Reopens to `overdue`.
 pub const UNALLOCATE_OVERDUE: &str = "unallocate_overdue";
+
+/// Reverses a recovery: back to `written_off`.
+pub const UNALLOCATE_RECOVERY: &str = "unallocate_recovery";
 
 /// The three transitions, with the state each one leaves the invoice in.
 pub const OPEN_TARGETS: [(&str, InvoiceStatus); 3] = [
@@ -79,6 +103,15 @@ pub(crate) struct UnallocateInput {
     pub reversal_reason: Option<String>,
     /// The user whose action caused it; `None` for the system.
     pub ran_by: Option<i64>,
+    /// For `unallocate_recovery`: the recovery being reversed.
+    #[serde(default)]
+    pub recovery_id: Option<i64>,
+    /// For `unallocate_recovery`: the allocation the recovery wrote.
+    #[serde(default)]
+    pub recovery_allocation_id: Option<i64>,
+    /// For `unallocate_recovery`: the amount the recovery took.
+    #[serde(default)]
+    pub recovery_amount: Option<i64>,
 }
 
 /// The state an invoice reopens to (#70 A2): `written_off` for a recovery;
@@ -167,12 +200,142 @@ pub fn plan_removal(rows: &[(i64, i64)], amount: i64) -> Option<Removal> {
     (left == 0).then_some(removal)
 }
 
-/// The three transitions, for the machine.
+/// The four transitions, for the machine.
 pub(crate) fn transitions() -> Vec<Transition<Invoice>> {
-    OPEN_TARGETS
+    let mut all: Vec<Transition<Invoice>> = OPEN_TARGETS
         .iter()
         .map(|&(name, to)| rules(Transition::new(name).label(label(name)).to(to), name, to))
-        .collect()
+        .collect();
+    all.push(recovery_rules());
+    all
+}
+
+/// `unallocate_recovery`: system only, from `paid` (a recovery in full) and
+/// `written_off`, back to `written_off`.
+fn recovery_rules() -> Transition<Invoice> {
+    Transition::new(UNALLOCATE_RECOVERY)
+        .label("Unallocate (recovery)")
+        .to(InvoiceStatus::WrittenOff)
+        .system()
+        .from([InvoiceStatus::Paid, InvoiceStatus::WrittenOff])
+        .guard("positive_amount", |_invoice: &Invoice, ctx| {
+            Box::pin(async move {
+                match input(ctx) {
+                    Some(input) if input.amount > 0 => Ok(()),
+                    _ => Err("The amount must be more than 0.".to_owned()),
+                }
+            })
+        })
+        .guard("matches_a_recovery", |_invoice: &Invoice, ctx| {
+            Box::pin(async move {
+                match input(ctx) {
+                    Some(input)
+                        if input.recovery_id.is_some()
+                            && input.recovery_amount == Some(input.amount) =>
+                    {
+                        Ok(())
+                    }
+                    _ => Err("The money is not an unreversed recovery of this amount.".to_owned()),
+                }
+            })
+        })
+        .guard("within_recovered", |invoice: &Invoice, ctx| {
+            let written_off = invoice.write_off_amount.is_some();
+            let recovered = invoice.write_off_recovered_amount;
+            let currency = invoice.currency.clone();
+            Box::pin(async move {
+                match input(ctx) {
+                    Some(input) if written_off && input.amount <= recovered => Ok(()),
+                    Some(_) if written_off => Err(format!(
+                        "Only {} is recovered on this invoice.",
+                        amount_text(&currency, recovered)
+                    )),
+                    _ => Err("The invoice was not written off.".to_owned()),
+                }
+            })
+        })
+        .effect(|invoice: &Invoice, ctx, tx| {
+            let (id, balance, recovered) = (
+                invoice.id,
+                invoice.balance,
+                invoice.write_off_recovered_amount,
+            );
+            Box::pin(async move {
+                let input = input(ctx).ok_or_else(|| {
+                    Error::from(renox::anyhow::anyhow!(
+                        "an unallocation run without its input"
+                    ))
+                })?;
+                let (Some(recovery_id), Some(allocation_id)) =
+                    (input.recovery_id, input.recovery_allocation_id)
+                else {
+                    return Err(refused("The money is not a recovery."));
+                };
+                // Only from the balance and the recovered amount this run
+                // checked, like `recover`. Lines, totals, VAT and the
+                // write-off fields stay as they are.
+                let moved = renox::db::sql(format!(
+                    "UPDATE {} SET allocated_total = allocated_total - ?, balance = balance + ?, \
+                     write_off_recovered_amount = write_off_recovered_amount - ?, updated_at = ? \
+                     WHERE id = ? AND balance = ? AND write_off_recovered_amount = ?",
+                    Invoice::TABLE
+                ))
+                .bind(input.amount)
+                .bind(input.amount)
+                .bind(input.amount)
+                .bind(renox::db::now())
+                .bind(id)
+                .bind(balance)
+                .bind(recovered)
+                .execute(&mut *tx)
+                .await?;
+                if moved == 0 {
+                    return Err(refused("The invoice's balance changed; try again."));
+                }
+                let marked = renox::db::sql(format!(
+                    "UPDATE {} SET removed_at = ?, removed_reason = ?, removed_key = ?, \
+                     updated_at = ? WHERE id = ? AND removed_at IS NULL",
+                    Allocation::TABLE
+                ))
+                .bind(renox::db::now())
+                .bind(reason_key(input.reason))
+                .bind(input.key.clone())
+                .bind(renox::db::now())
+                .bind(allocation_id)
+                .execute(&mut *tx)
+                .await?;
+                let reversed = renox::db::sql(format!(
+                    "UPDATE {} SET reversed_at = ?, reversed_key = ?, updated_at = ? \
+                     WHERE id = ? AND reversed_at IS NULL",
+                    Recovery::TABLE
+                ))
+                .bind(renox::db::now())
+                .bind(input.key.clone())
+                .bind(renox::db::now())
+                .bind(recovery_id)
+                .execute(&mut *tx)
+                .await?;
+                if marked == 0 || reversed == 0 {
+                    return Err(refused("The recovery changed; try again."));
+                }
+                let mut log = Unallocation {
+                    invoice_id: id,
+                    source_type: input.source.subject_type.clone(),
+                    source_id: input.source.subject_id,
+                    amount: input.amount,
+                    key: input.key.clone(),
+                    reason: input.reason,
+                    reversal_reason: input.reversal_reason.clone(),
+                    outcome: UnallocationOutcome::Done,
+                    transition: Some(UNALLOCATE_RECOVERY.to_owned()),
+                    balance_after: Some(balance + input.amount),
+                    ran_by: input.ran_by,
+                    ..Default::default()
+                };
+                log.insert(&mut *tx).await?;
+                Ok(())
+            })
+        })
 }
 
 /// The label of transition `name`.
@@ -380,6 +543,7 @@ fn meta_of(input: &UnallocateInput) -> Value {
         "reason": reason_key(input.reason),
         "reversal_reason": input.reversal_reason,
         "ran_by": input.ran_by,
+        "recovery_id": input.recovery_id,
     })
 }
 
@@ -410,6 +574,9 @@ pub async fn unallocate_in(
         reason: request.reason,
         reversal_reason: request.reversal_reason.clone(),
         ran_by: request.ran_by,
+        recovery_id: None,
+        recovery_allocation_id: None,
+        recovery_amount: None,
     };
     invoice
         .transition(transition_for(invoice, request.amount, today()))
@@ -418,6 +585,179 @@ pub async fn unallocate_in(
         .meta(meta_of(&input))
         .run_in(tx)
         .await
+}
+
+/// The adjustment `id`, read inside the transaction.
+async fn adjustment_in(
+    tx: &mut renox::db::Transaction,
+    id: Option<i64>,
+) -> Result<Option<VatAdjustment>> {
+    match id {
+        Some(id) => {
+            VatAdjustment::query()
+                .where_(VatAdjustment::ID.eq(id))
+                .first(&mut *tx)
+                .await
+        }
+        None => Ok(None),
+    }
+}
+
+/// What the reversal sees of `adjustment`.
+fn seen(adjustment: &VatAdjustment) -> Seen {
+    Seen {
+        id: adjustment.id,
+        status: adjustment.status,
+        amount: adjustment.amount,
+        recovered_before_claim: adjustment.excluded_by_recovery(),
+    }
+}
+
+/// Writes `amount` on adjustment `id`, outside the machine (the status is
+/// not touched).
+async fn set_amount(tx: &mut renox::db::Transaction, id: i64, amount: i64) -> Result {
+    VatAdjustment::query()
+        .where_(VatAdjustment::ID.eq(id))
+        .update(
+            &mut *tx,
+            &[("amount", &amount), ("updated_at", &renox::db::now())],
+        )
+        .await?;
+    Ok(())
+}
+
+/// The relief side of reversing `recovery` (A10), in the reversal's
+/// transaction: [`plan_reversal`] from the adjustments as they are now,
+/// then the writes. A new relief is proposed on `open_summary` when there
+/// is one, else it stays `pending` for `FIN.RUL.14`. Returns the effect
+/// (also stored on the recovery row) and the outcomes to emit after the
+/// commit.
+///
+/// # Errors
+///
+/// A database error or a refused transition; the caller rolls back.
+pub(crate) async fn reverse_relief_in(
+    tx: &mut renox::db::Transaction,
+    invoice: &Invoice,
+    recovery: &Recovery,
+    open_summary: Option<&VatSummary>,
+) -> std::result::Result<(ReversalEffect, Vec<Outcome<VatAdjustment>>), TransitionError> {
+    let relief = adjustment_in(tx, recovery.relief_adjustment_id).await?;
+    let paid_back = adjustment_in(tx, recovery.recovery_adjustment_id).await?;
+    let plan = plan_reversal(
+        recovery,
+        relief.as_ref().map(seen),
+        paid_back.as_ref().map(seen),
+    );
+    let mut outcomes = Vec::new();
+    match (plan, &relief, &paid_back) {
+        (ReliefReversal::Restore { id, amount }, _, _) => set_amount(tx, id, amount).await?,
+        (ReliefReversal::Reinstate { id, amount }, Some(relief), _) => {
+            outcomes.push(
+                relief
+                    .transition(REINSTATE_RECOVERED)
+                    .by_system()
+                    .run_in(tx)
+                    .await?,
+            );
+            set_amount(tx, id, amount).await?;
+        }
+        (ReliefReversal::Reduce { id, amount }, _, Some(adjustment)) => {
+            set_amount(tx, id, amount).await?;
+            if amount == 0 {
+                outcomes.push(
+                    adjustment
+                        .transition(EXCLUDE_REVERSED)
+                        .by_system()
+                        .run_in(tx)
+                        .await?,
+                );
+            }
+        }
+        (ReliefReversal::NewRelief { share }, _, _) => {
+            let source = invoice.subject();
+            let mut raised = VatAdjustment {
+                legal_entity_id: invoice.legal_entity_id,
+                kind: AdjustmentKind::BadDebtRelief,
+                source_type: source.subject_type,
+                source_id: source.subject_id,
+                amount: share,
+                reason: Some(
+                    english("wl_invoicing.adjustment.recovery_reversed_relief").to_owned(),
+                ),
+                status: AdjustmentStatus::Pending,
+                reverses_recovery_id: Some(recovery.id),
+                ..Default::default()
+            };
+            raised.insert(&mut *tx).await?;
+            if let Some(summary) = open_summary {
+                outcomes.push(
+                    raised
+                        .transition(PROPOSE)
+                        .by_system()
+                        .input(&ProposeInput {
+                            summary_id: summary.id,
+                        })
+                        .run_in(tx)
+                        .await?,
+                );
+            }
+        }
+        _ => {}
+    }
+    let effect = plan.effect();
+    Recovery::query()
+        .where_(Recovery::ID.eq(recovery.id))
+        .update(
+            &mut *tx,
+            &[
+                ("reversed_effect", &Some(effect.as_str().to_owned())),
+                ("updated_at", &renox::db::now()),
+            ],
+        )
+        .await?;
+    Ok((effect, outcomes))
+}
+
+/// Runs the reversal of `recovery` (#70 A10) inside `tx`, which the caller
+/// commits: the `unallocate_recovery` transition, then the relief side.
+/// Emit the outcomes after the commit: the VAT adjustments' first, then the
+/// invoice's.
+///
+/// # Errors
+///
+/// `NotFrom` (422) unless the invoice is `paid` or `written_off`; `Guard`
+/// (422) when the amount is not the recovery's or is above what is
+/// recovered; a 422 when another change moved the balance first. The
+/// caller rolls `tx` back.
+pub(crate) async fn unallocate_recovery_in(
+    tx: &mut renox::db::Transaction,
+    invoice: &Invoice,
+    request: &Unallocate,
+    recovery: &Recovery,
+    open_summary: Option<&VatSummary>,
+) -> std::result::Result<(Outcome<Invoice>, Vec<Outcome<VatAdjustment>>), TransitionError> {
+    let input = UnallocateInput {
+        source: request.source.clone(),
+        amount: request.amount,
+        allocated_from_source: recovery.amount,
+        key: request.key.clone(),
+        reason: ReopenReason::RecoveryReversed,
+        reversal_reason: request.reversal_reason.clone(),
+        ran_by: request.ran_by,
+        recovery_id: Some(recovery.id),
+        recovery_allocation_id: Some(recovery.allocation_id),
+        recovery_amount: Some(recovery.amount),
+    };
+    let outcome = invoice
+        .transition(UNALLOCATE_RECOVERY)
+        .by_system()
+        .input(&input)
+        .meta(meta_of(&input))
+        .run_in(tx)
+        .await?;
+    let (_, outcomes) = reverse_relief_in(tx, invoice, recovery, open_summary).await?;
+    Ok((outcome, outcomes))
 }
 
 /// A 422 with `message`.
@@ -468,7 +808,8 @@ async fn log_failed(state: &AppState, request: &Unallocate, message: String) -> 
 /// 404 for an unknown invoice; 422 for an amount ≤ 0 or above what is
 /// allocated from the source, an invoice in a state that cannot be reopened
 /// here (`written_off`, `credited`, `issued`, `draft`) or with a write-off
-/// on record, a `recovery_reversed` reason (not handled yet), or a balance
+/// on record (a payment from before the write-off), a `recovery_reversed`
+/// reason with no recovery of that source and amount to reverse, or a balance
 /// that changed under the run. Nothing is written then, apart from the
 /// `failed` row of a refusal.
 pub async fn run(state: &AppState, request: Unallocate) -> Result<Reopened> {
@@ -478,17 +819,48 @@ pub async fn run(state: &AppState, request: Unallocate) -> Result<Reopened> {
     {
         return skipped(state, request.invoice.0).await;
     }
-    if request.reason == ReopenReason::RecoveryReversed {
-        return Err(refused(
-            "Reopening a written-off invoice for a reversed recovery is not supported here.",
-        ));
-    }
     let Some(invoice) = Invoice::find(&state.db, request.invoice.0).await? else {
         log_failed(state, &request, "The invoice does not exist.".to_owned()).await?;
         return Err(Error::NotFound);
     };
+    // The money of a recovery of a written-off invoice reverses that
+    // recovery, whatever reason the caller gave (A10).
+    let recovery = if invoice.write_off_amount.is_some() {
+        Recovery::matching(&state.db, invoice.id, &request.source, request.amount).await?
+    } else {
+        None
+    };
+    if request.reason == ReopenReason::RecoveryReversed && recovery.is_none() {
+        let message = format!(
+            "No recovery of {} from {} is left to reverse.",
+            amount_text(&invoice.currency, request.amount),
+            request.source
+        );
+        log_failed(state, &request, message.clone()).await?;
+        return Err(refused(&message));
+    }
+    let open_summary = match &recovery {
+        Some(_) => open_summary_of(state, &invoice, today()).await?,
+        None => None,
+    };
     let mut tx = state.db.begin().await?;
-    let outcome = match unallocate_in(&mut tx, &invoice, &request).await {
+    let mut vat_outcomes = Vec::new();
+    let result = match &recovery {
+        Some(recovery) => {
+            let request = Unallocate {
+                reason: ReopenReason::RecoveryReversed,
+                ..request.clone()
+            };
+            unallocate_recovery_in(&mut tx, &invoice, &request, recovery, open_summary.as_ref())
+                .await
+                .map(|(outcome, outcomes)| {
+                    vat_outcomes = outcomes;
+                    outcome
+                })
+        }
+        None => unallocate_in(&mut tx, &invoice, &request).await,
+    };
+    let outcome = match result {
         Ok(outcome) => outcome,
         Err(error) => {
             drop(tx);
@@ -505,7 +877,11 @@ pub async fn run(state: &AppState, request: Unallocate) -> Result<Reopened> {
         }
     };
     tx.commit().await?;
-    // After the commit: `InvoiceReopened` follows from the listener.
+    // After the commit: the VAT side, then `InvoiceReopened` (and the
+    // notices) from the listener.
+    for done in vat_outcomes {
+        done.emit(state).await?;
+    }
     outcome.emit(state).await?;
     let invoice = Invoice::find_or_404(&state.db, invoice.id).await?;
     Ok(Reopened {
@@ -586,8 +962,100 @@ mod tests {
             reason: ReopenReason::PaymentReversed,
             reversal_reason: Some("bank_return".into()),
             ran_by: None,
+            recovery_id: None,
+            recovery_allocation_id: None,
+            recovery_amount: None,
         };
         TransitionCtx::new(None).with_input(renox::serde_json::to_value(input).expect("json"))
+    }
+
+    fn recovery_run(amount: i64, recovery_amount: Option<i64>) -> TransitionCtx {
+        let input = UnallocateInput {
+            source: Subject::new("payments.payment", 3),
+            amount,
+            allocated_from_source: amount,
+            key: "payments.allocation:1".into(),
+            reason: ReopenReason::RecoveryReversed,
+            reversal_reason: None,
+            ran_by: None,
+            recovery_id: recovery_amount.map(|_| 5),
+            recovery_allocation_id: recovery_amount.map(|_| 8),
+            recovery_amount,
+        };
+        TransitionCtx::new(None).with_input(renox::serde_json::to_value(input).expect("json"))
+    }
+
+    fn recovered_invoice(status: InvoiceStatus, recovered: i64) -> Invoice {
+        Invoice {
+            id: 1,
+            currency: "AED".into(),
+            gross_total: 105_000,
+            write_off_amount: Some(105_000),
+            write_off_recovered_amount: recovered,
+            allocated_total: recovered,
+            balance: 105_000 - recovered,
+            status,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn the_recovery_transition_goes_from_paid_and_written_off_and_is_system_only() {
+        let machine = Invoice::machine();
+        let transition = machine.find(UNALLOCATE_RECOVERY).expect("transition");
+        assert_eq!(transition.from_states(), ["paid", "written_off"]);
+        assert_eq!(transition.to_state(), Some("written_off"));
+        assert!(transition.is_system());
+        for status in ["draft", "issued", "partially_paid", "overdue", "credited"] {
+            assert!(transition.check_from(status).is_err());
+        }
+    }
+
+    #[renox::test]
+    async fn the_recovery_guards_need_the_recoverys_own_amount() {
+        let machine = Invoice::machine();
+        let transition = machine.find(UNALLOCATE_RECOVERY).expect("transition");
+        let invoice = recovered_invoice(InvoiceStatus::WrittenOff, 52_500);
+        assert!(
+            transition
+                .check_guards(&invoice, &recovery_run(52_500, Some(52_500)))
+                .await
+                .is_ok()
+        );
+        // Not a recovery's money, a different amount, nothing.
+        for ctx in [
+            recovery_run(52_500, None),
+            recovery_run(10_000, Some(52_500)),
+            recovery_run(0, Some(0)),
+            TransitionCtx::new(None),
+        ] {
+            assert!(matches!(
+                transition.check_guards(&invoice, &ctx).await,
+                Err(TransitionError::Guard(_))
+            ));
+        }
+        // More than is recovered.
+        let less = recovered_invoice(InvoiceStatus::WrittenOff, 10_000);
+        match transition
+            .check_guards(&less, &recovery_run(52_500, Some(52_500)))
+            .await
+        {
+            Err(TransitionError::Guard(message)) => {
+                assert_eq!(message, "Only AED 100.00 is recovered on this invoice.");
+            }
+            other => panic!("expected a guard refusal, got {other:?}"),
+        }
+        // An invoice that was not written off.
+        let open = Invoice {
+            write_off_amount: None,
+            ..invoice
+        };
+        assert!(
+            transition
+                .check_guards(&open, &recovery_run(52_500, Some(52_500)))
+                .await
+                .is_err()
+        );
     }
 
     #[test]

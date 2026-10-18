@@ -22,8 +22,8 @@ use wl_kernel::approvals::{self, ApprovalRequest};
 use wl_kernel::documents::today;
 use wl_kernel::invoicing::{
     BadDebtRecovered, CreditNoteReopened, DraftLine, InvoiceDisputeResolved, InvoiceDisputed,
-    InvoiceDraft, InvoiceId, InvoiceIssued, InvoiceOverdue, InvoicePaid, InvoiceWrittenOff,
-    VatCategory,
+    InvoiceDraft, InvoiceId, InvoiceIssued, InvoiceOverdue, InvoicePaid, InvoiceReopened,
+    InvoiceWrittenOff, VatCategory,
 };
 use wl_kernel::notify::{MessageId, Notifier, NotifyFuture, NotifyRequest};
 use wl_kernel::parties::{BillingIdentity, PartyDirectory, PartyFuture, PartyStatus, PartySummary};
@@ -421,6 +421,8 @@ pub struct Booted {
     pub written_off: Recorded<InvoiceWrittenOff>,
     /// `CreditNoteReopened`.
     pub reopened: Recorded<CreditNoteReopened>,
+    /// `InvoiceReopened`.
+    pub invoice_reopened: Recorded<InvoiceReopened>,
     /// The refunds asked of payments.
     pub refunds: RefundDesk,
     /// `BadDebtRecovered`.
@@ -901,6 +903,7 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
     let paid = Recorded::new();
     let written_off = Recorded::new();
     let reopened = Recorded::new();
+    let invoice_reopened = Recorded::new();
     let recovered = Recorded::new();
     let resolved = Recorded::new();
     let disputed = Recorded::new();
@@ -925,6 +928,7 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
     let app = record(app, &paid);
     let app = record(app, &written_off);
     let app = record(app, &reopened);
+    let app = record(app, &invoice_reopened);
     let app = record(app, &recovered);
     let app = record(app, &resolved);
     let app = record(app, &disputed);
@@ -989,6 +993,7 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
         paid,
         written_off,
         reopened,
+        invoice_reopened,
         refunds,
         recovered,
         resolved,

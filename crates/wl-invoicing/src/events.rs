@@ -13,6 +13,9 @@
 //!   [`InvoiceReopened`] (the money source, amount and reason come from the
 //!   run's `meta`, [`crate::unallocate`]), then the notice to the owner and
 //!   the `receivables` role ([`crate::reopen_notices`]);
+//! - `unallocate_recovery` → [`InvoiceReopened`] (reason
+//!   `recovery_reversed`, new state `written_off`), the same notice, and the
+//!   accountant's `invoicing.recovery_reversed`;
 //! - a credit note's `issue` / `issue_system` (a listener on
 //!   [`Transitioned<CreditNote>`]) → [`CreditNoteIssued`];
 //! - a credit note's `reopen` → [`CreditNoteReopened`] (the amount and the
@@ -45,7 +48,7 @@ use crate::issue::ISSUE;
 use crate::line::InvoiceLine;
 use crate::overdue::MARK_OVERDUE;
 use crate::recover::{RECOVER, RECOVER_IN_FULL};
-use crate::unallocate::OPEN_TARGETS;
+use crate::unallocate::{OPEN_TARGETS, UNALLOCATE_RECOVERY};
 
 /// The event a committed transition of `invoice` (as it is now) gives, if
 /// any.
@@ -229,9 +232,10 @@ pub(crate) fn register(app: &mut Registry) {
             CREDIT,
             CREDIT_SYSTEM,
         ];
-        let reopens = OPEN_TARGETS
-            .iter()
-            .any(|(name, _)| *name == event.transition);
+        let reopens = event.transition == UNALLOCATE_RECOVERY
+            || OPEN_TARGETS
+                .iter()
+                .any(|(name, _)| *name == event.transition);
         if !reopens && !known.contains(&event.transition.as_str()) {
             return Ok(());
         }
@@ -242,7 +246,12 @@ pub(crate) fn register(app: &mut Registry) {
                 return Ok(());
             };
             state.emit(reopened.clone()).await?;
-            return crate::reopen_notices::notify(&state, &invoice, &reopened).await;
+            crate::reopen_notices::notify(&state, &invoice, &reopened).await?;
+            if let Some(recovery_id) = event.meta.get("recovery_id").and_then(Value::as_i64) {
+                crate::reopen_notices::notify_recovery_reversed(&state, &invoice, recovery_id)
+                    .await?;
+            }
+            return Ok(());
         }
         if [CREDIT, CREDIT_SYSTEM].contains(&event.transition.as_str()) {
             let Some(note_id) = credit_note_of(&event.meta) else {

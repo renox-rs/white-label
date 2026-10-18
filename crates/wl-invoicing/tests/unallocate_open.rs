@@ -290,7 +290,7 @@ async fn an_issued_invoice_has_nothing_to_unallocate() {
 }
 
 #[renox::test]
-async fn a_reversed_recovery_is_not_run_here() {
+async fn a_reversed_recovery_with_no_recovery_is_refused() {
     let t = boot().await;
     let invoice = paid(&t, 20).await;
     let recovery = Unallocate::new(

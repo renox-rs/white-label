@@ -643,6 +643,50 @@ const TEXTS: &[(&str, &str)] = &[
         "the allocation was removed",
     ),
     (
+        "wl_invoicing.adjustment.recovery_reversed",
+        "recovery reversed",
+    ),
+    (
+        "wl_invoicing.adjustment.recovery_reversed_relief",
+        "relief claimed again after a reversed recovery",
+    ),
+    (
+        "wl_invoicing.adjustment.not_recovered_before_claim",
+        "Only a relief excluded as recovered before claim can be reinstated.",
+    ),
+    (
+        "wl_invoicing.recovery_reversed.subject",
+        "Recovery reversed on invoice {{ number }}",
+    ),
+    (
+        "wl_invoicing.recovery_reversed.body",
+        "The recovery of {{ amount }} on the written-off invoice {{ number }} ({{ party_name }}) was reversed; {{ recovered_total }} of {{ written_off }} is now recovered. VAT: {{ vat_effect }}. See the invoice: {{ link }}",
+    ),
+    (
+        "wl_invoicing.recovery_reversed.effect.none",
+        "No VAT adjustment was needed",
+    ),
+    (
+        "wl_invoicing.recovery_reversed.effect.relief_restored",
+        "The VAT relief got the share back",
+    ),
+    (
+        "wl_invoicing.recovery_reversed.effect.relief_reinstated",
+        "The VAT relief is pending again",
+    ),
+    (
+        "wl_invoicing.recovery_reversed.effect.adjustment_reduced",
+        "The recovery adjustment was reduced",
+    ),
+    (
+        "wl_invoicing.recovery_reversed.effect.adjustment_excluded",
+        "The recovery adjustment was excluded",
+    ),
+    (
+        "wl_invoicing.recovery_reversed.effect.relief_created",
+        "New bad-debt relief raised for the share",
+    ),
+    (
         "wl_invoicing.reopened.subject",
         "Invoice {{ number }} is open again",
     ),

@@ -34,6 +34,7 @@
 //! (and `InvoicePaid` for `recover_in_full`) and tells the accountants.
 
 use renox::auth::permissions::{Scope, users_with_role_in};
+use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use renox::serde_json::{Value, json};
 use renox::state_machine::{StateMachine, Transition, TransitionCtx, TransitionError};
@@ -212,6 +213,24 @@ fn plan(
     }
 }
 
+/// The issuing entity's `open` summary that contains `on`, if there is one.
+pub(crate) async fn open_summary_of(
+    state: &AppState,
+    invoice: &Invoice,
+    on: NaiveDate,
+) -> Result<Option<VatSummary>> {
+    let config = config_of(state);
+    let Some(id) = invoice.legal_entity_id else {
+        return Ok(None);
+    };
+    Ok(match LegalEntity::find(&state.db, id).await? {
+        Some(entity) => VatSummary::containing(&state.db, &config, &entity, on)
+            .await?
+            .filter(|s| s.status == VatSummaryStatus::Open),
+        None => None,
+    })
+}
+
 /// Recovers `amount` fils from `source` (a payment) on the written-off
 /// `invoice`, as the system, in one transaction: `recover_in_full` when it
 /// recovers the rest of the write-off, else `recover`. `ran_by` is the user
@@ -230,19 +249,10 @@ pub async fn recover(
     amount: i64,
     ran_by: Option<i64>,
 ) -> std::result::Result<(), TransitionError> {
-    let config = config_of(state);
     let on = today();
     // The entity's `open` summary of the day, for a claimed relief's
     // recovery adjustment; read before the transaction.
-    let open_summary = match invoice.legal_entity_id {
-        Some(id) => match LegalEntity::find(&state.db, id).await? {
-            Some(entity) => VatSummary::containing(&state.db, &config, &entity, on)
-                .await?
-                .filter(|s| s.status == VatSummaryStatus::Open),
-            None => None,
-        },
-        None => None,
-    };
+    let open_summary = open_summary_of(state, invoice, on).await?;
 
     let input = AllocateInput {
         source: source.clone(),
@@ -270,6 +280,7 @@ pub async fn recover(
         .where_(VatAdjustment::KIND.eq(AdjustmentKind::BadDebtRelief))
         .where_(VatAdjustment::SOURCE_TYPE.eq(invoice.subject().subject_type))
         .where_(VatAdjustment::SOURCE_ID.eq(invoice.id))
+        .where_(VatAdjustment::REVERSES_RECOVERY_ID.is_null())
         .first(&mut tx)
         .await?;
     let lines = InvoiceLine::query()

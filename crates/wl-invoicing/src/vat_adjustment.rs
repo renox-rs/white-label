@@ -18,6 +18,11 @@
 //! relief whose written-off invoice was recovered in full is excluded with
 //! the reason "recovered before claim" (#66).
 //!
+//! A reversed recovery (#70 A10) gives two more system transitions:
+//! `reinstate_recovered` (`excluded` by `exclude_recovered` with no decider
+//! → `pending`, so `excluded` is not terminal) and `exclude_reversed`
+//! (`pending` or `proposed` → `excluded`, "recovery reversed").
+//!
 //! `propose` is the system's (`FIN.RUL.14`): it puts the adjustment on a
 //! VAT summary. `include` and `exclude` are the preparer's (`vat.prepare`),
 //! each with a reason, and only while the adjustment's summary is `open` or
@@ -43,6 +48,12 @@ pub const INCLUDE: &str = "include";
 pub const EXCLUDE: &str = "exclude";
 /// The system's exclusion of a relief recovered before it was claimed.
 pub const EXCLUDE_RECOVERED: &str = "exclude_recovered";
+/// The system's reinstatement of a relief excluded as "recovered before
+/// claim", when that recovery is reversed (#70 A10).
+pub const REINSTATE_RECOVERED: &str = "reinstate_recovered";
+/// The system's exclusion of a recovery adjustment reduced to 0.00 by a
+/// reversal (#70 A10).
+pub const EXCLUDE_REVERSED: &str = "exclude_reversed";
 
 /// What an adjustment corrects (§3).
 #[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -112,6 +123,9 @@ pub struct VatAdjustment {
     pub decided_at: Option<DateTime>,
     /// The reason given with the decision.
     pub decision_reason: Option<String>,
+    /// For a bad-debt relief raised again after a reversed recovery: the
+    /// recovery (#70 A10); `None` for an invoice's own relief.
+    pub reverses_recovery_id: Option<i64>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
@@ -142,6 +156,15 @@ impl VatAdjustment {
         }
     }
 
+    /// Whether the system excluded it as "recovered before claim" (no
+    /// decider, that reason), so that a reversed recovery can bring it back.
+    pub fn excluded_by_recovery(&self) -> bool {
+        self.status == AdjustmentStatus::Excluded
+            && self.decided_by.is_none()
+            && self.reason.as_deref()
+                == Some(english("wl_invoicing.adjustment.recovered_before_claim"))
+    }
+
     /// The bad-debt relief of `invoice`, if one was created.
     pub async fn relief_of(db: &Db, invoice: &Invoice) -> Result<Option<VatAdjustment>> {
         let source = invoice.subject();
@@ -149,6 +172,7 @@ impl VatAdjustment {
             .where_(VatAdjustment::KIND.eq(AdjustmentKind::BadDebtRelief))
             .where_(VatAdjustment::SOURCE_TYPE.eq(source.subject_type))
             .where_(VatAdjustment::SOURCE_ID.eq(source.subject_id))
+            .where_(VatAdjustment::REVERSES_RECOVERY_ID.is_null())
             .first(db)
             .await
     }
@@ -325,6 +349,74 @@ fn exclude_recovered_transition() -> Transition<VatAdjustment> {
         })
 }
 
+/// `excluded --> pending`, by the system, when the recovery that excluded a
+/// relief as "recovered before claim" is reversed. Only a relief the system
+/// excluded (no decider, that reason); the reversal writes its amount.
+fn reinstate_recovered_transition() -> Transition<VatAdjustment> {
+    Transition::new(REINSTATE_RECOVERED)
+        .label("Reinstate, recovery reversed")
+        .tone("info")
+        .system()
+        .from([AdjustmentStatus::Excluded])
+        .to(AdjustmentStatus::Pending)
+        .guard(
+            "excluded_by_the_system",
+            |adjustment: &VatAdjustment, _ctx| {
+                let by_recovery = adjustment.excluded_by_recovery();
+                Box::pin(async move {
+                    if by_recovery {
+                        Ok(())
+                    } else {
+                        Err(
+                            english("wl_invoicing.adjustment.not_recovered_before_claim")
+                                .to_owned(),
+                        )
+                    }
+                })
+            },
+        )
+        .effect(|adjustment: &VatAdjustment, _ctx, tx| {
+            let id = adjustment.id;
+            Box::pin(async move {
+                record(
+                    tx,
+                    id,
+                    &[
+                        ("reason", &None::<String>),
+                        ("updated_at", &renox::db::now()),
+                    ],
+                )
+                .await
+            })
+        })
+}
+
+/// `pending | proposed --> excluded`, by the system, for a recovery
+/// adjustment that a reversal reduced to 0.00. It records the reason.
+fn exclude_reversed_transition() -> Transition<VatAdjustment> {
+    Transition::new(EXCLUDE_REVERSED)
+        .label("Exclude, recovery reversed")
+        .tone("warning")
+        .system()
+        .from([AdjustmentStatus::Pending, AdjustmentStatus::Proposed])
+        .to(AdjustmentStatus::Excluded)
+        .effect(|adjustment: &VatAdjustment, _ctx, tx| {
+            let id = adjustment.id;
+            Box::pin(async move {
+                let reason = english("wl_invoicing.adjustment.recovery_reversed");
+                record(
+                    tx,
+                    id,
+                    &[
+                        ("reason", &Some(reason.to_owned())),
+                        ("updated_at", &renox::db::now()),
+                    ],
+                )
+                .await
+            })
+        })
+}
+
 fn include_transition() -> Transition<VatAdjustment> {
     decision(
         Transition::new(INCLUDE).label("Include").tone("success"),
@@ -356,9 +448,10 @@ impl StateMachine for VatAdjustment {
             .terminal()
             .state(Excluded)
             .tone("warning")
-            .terminal()
             .transition(propose())
             .transition(exclude_recovered_transition())
+            .transition(reinstate_recovered_transition())
+            .transition(exclude_reversed_transition())
             .transition(include_transition())
             .transition(exclude_transition())
     }
@@ -506,6 +599,43 @@ mod tests {
         assert_eq!(transition.to_state(), Some("excluded"));
         assert!(transition.is_system());
         assert!(!transition.needs_reason());
+    }
+
+    #[test]
+    fn the_reversal_transitions_are_the_systems() {
+        let machine = VatAdjustment::machine();
+        let reinstate = machine.find(REINSTATE_RECOVERED).expect("transition");
+        assert_eq!(reinstate.from_states(), ["excluded"]);
+        assert_eq!(reinstate.to_state(), Some("pending"));
+        assert!(reinstate.is_system());
+        let exclude = machine.find(EXCLUDE_REVERSED).expect("transition");
+        assert_eq!(exclude.from_states(), ["pending", "proposed"]);
+        assert_eq!(exclude.to_state(), Some("excluded"));
+        assert!(exclude.is_system());
+    }
+
+    #[renox::test]
+    async fn only_a_system_exclusion_is_reinstated() {
+        let machine = VatAdjustment::machine();
+        let transition = machine.find(REINSTATE_RECOVERED).expect("transition");
+        let by_system = VatAdjustment {
+            status: AdjustmentStatus::Excluded,
+            reason: Some(english("wl_invoicing.adjustment.recovered_before_claim").to_owned()),
+            ..Default::default()
+        };
+        assert!(by_system.excluded_by_recovery());
+        let ctx = TransitionCtx::new(None);
+        assert!(transition.check_guards(&by_system, &ctx).await.is_ok());
+        let decided = VatAdjustment {
+            decided_by: Some(4),
+            ..by_system.clone()
+        };
+        assert!(transition.check_guards(&decided, &ctx).await.is_err());
+        let other = VatAdjustment {
+            reason: Some("Customer paid".into()),
+            ..by_system
+        };
+        assert!(transition.check_guards(&other, &ctx).await.is_err());
     }
 
     #[renox::test]

@@ -9,6 +9,7 @@
 //!         paid | partially_paid | overdue --unallocate--> issued
 //!         paid | partially_paid | overdue --unallocate_partially--> partially_paid
 //!         paid | partially_paid | overdue --unallocate_overdue--> overdue
+//!         paid | written_off --unallocate_recovery--> written_off
 //!         … --credit--> credited (terminal)
 //! ```
 //!
@@ -19,7 +20,8 @@
 //! ([`crate::overdue`]), `write_off` / `write_off_approved`
 //! ([`crate::write_off`]), `recover` / `recover_in_full`
 //! ([`crate::recover`]), `credit` ([`crate::credit`]), `unallocate` /
-//! `unallocate_partially` / `unallocate_overdue` ([`crate::unallocate`]);
+//! `unallocate_partially` / `unallocate_overdue` / `unallocate_recovery`
+//! ([`crate::unallocate`]);
 //! the others later.
 //! `Invoice` is
 //! `#[model(state_machine)]`, so `save` refuses a changed status.
