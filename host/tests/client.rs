@@ -555,3 +555,33 @@ async fn the_payment_pages_render_for_the_accountant() {
         .assert_see("Returned by the bank")
         .assert_see("Reverse payment");
 }
+
+/// #94 AC1: with the demo `client.toml` (`payments` enabled) the host boots,
+/// and `/payments` answers 200 with `payments.view` and 403 without it.
+#[renox::test]
+async fn the_payment_list_needs_the_view_permission() {
+    let app = TestApp::new(host::app()).await;
+    app.kernel().seed().await.unwrap();
+    let mut viewer = User::register(app.db(), "Vera", "vera@example.com", "secret123")
+        .await
+        .unwrap();
+    viewer.email_verified_at = Some(renox::db::now());
+    viewer.save(app.db()).await.unwrap();
+    renox::auth::permissions::define_role(app.db(), "payments_viewer", &["payments.view"])
+        .await
+        .unwrap();
+    viewer
+        .assign_role(app.db(), "payments_viewer")
+        .await
+        .unwrap();
+    let mut nobody = User::register(app.db(), "Nora", "nora@example.com", "secret123")
+        .await
+        .unwrap();
+    nobody.email_verified_at = Some(renox::db::now());
+    nobody.save(app.db()).await.unwrap();
+
+    app.acting_as(&viewer);
+    app.get("/payments").await.assert_ok();
+    app.acting_as(&nobody);
+    app.get("/payments").await.assert_forbidden();
+}

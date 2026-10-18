@@ -674,3 +674,75 @@ fn a_due_time_is_the_next_working_day_at_the_same_clock_time() {
     // Monday the 9th is the day before the holiday: due Wednesday the 11th.
     assert_eq!(due("2026-11-09T10:00:00"), local("2026-11-11T10:00:00"));
 }
+
+/// #94 AC1: without the payments module, the kernel's payment recorder is
+/// `NoPayments`: nothing is found, the credit balance is 0, and recording,
+/// allocating and reversing are refused.
+#[renox::test]
+async fn without_payments_the_recorder_finds_nothing_and_refuses_to_record() {
+    use wl_kernel::Subject;
+    use wl_kernel::invoicing::InvoiceId;
+    use wl_kernel::payments::{
+        AllocationTarget, NoPayments, PaymentId, PaymentMethod, PaymentRecorder, RecordPayment,
+        ReversalReason, payment_recorder,
+    };
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let state = app.state();
+    let provided = payment_recorder(state);
+    let fallback: &dyn PaymentRecorder = &NoPayments;
+    for recorder in [&*provided, fallback] {
+        assert_eq!(recorder.find(app.db(), PaymentId(1)).await.unwrap(), None);
+        assert_eq!(
+            recorder
+                .credit_balance(app.db(), PartyId(1), "AED")
+                .await
+                .unwrap(),
+            0
+        );
+        assert!(
+            recorder
+                .payments_for(app.db(), &Subject::new("property.deposit", 1))
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        let record = recorder
+            .record(
+                state,
+                RecordPayment::new(PartyId(1), 1, PaymentMethod::Cash, 100),
+                None,
+            )
+            .await;
+        assert!(matches!(
+            record,
+            Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
+        ));
+        let allocate = recorder
+            .allocate(
+                state,
+                PaymentId(1),
+                AllocationTarget::Invoice(InvoiceId(1)),
+                100,
+            )
+            .await;
+        assert!(matches!(
+            allocate,
+            Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
+        ));
+        let reverse = recorder
+            .reverse(
+                state,
+                PaymentId(1),
+                ReversalReason::EnteredInError,
+                None,
+                None,
+            )
+            .await;
+        assert!(matches!(
+            reverse,
+            Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
+        ));
+    }
+}
