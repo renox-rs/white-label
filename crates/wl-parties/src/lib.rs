@@ -1,9 +1,22 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
+pub mod contacts;
+pub mod create;
+pub mod details;
+mod machine;
+pub mod party;
+pub mod roles;
 mod texts;
 
+use renox::db::Migration;
 use renox::prelude::*;
+
+pub use contacts::{ContactPoint, ContactType};
+pub use create::{NewParty, create};
+pub use details::{CompanyDetails, PersonDetails};
+pub use party::{Channel, Language, Party};
+pub use roles::PartyRole;
 
 /// The module's permissions (wl-parties §6).
 pub mod permissions {
@@ -29,5 +42,19 @@ pub struct WlParties;
 impl Module for WlParties {
     fn name(&self) -> &'static str {
         "wl-parties"
+    }
+
+    fn migrations(&self) -> &'static [Migration] {
+        renox::migrations!()
+    }
+
+    fn register(&self, app: &mut Registry) {
+        app.model::<Party>()
+            .model::<PersonDetails>()
+            .model::<CompanyDetails>()
+            .model::<PartyRole>()
+            .model::<ContactPoint>();
+        // `rnx state:diagram Party` and the admin panel find the machine.
+        renox::state_machine::register::<Party>();
     }
 }
