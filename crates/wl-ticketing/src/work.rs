@@ -22,8 +22,8 @@
 //! requester user; `close` and `cancel` need `tickets.assign`; `reopen` is
 //! for the requester user or `tickets.assign`, within seven days of
 //! `resolved_at`. A bare run without the input (the generic transition
-//! route) is refused by the guards. After a `confirm` or `close` commits,
-//! `TicketClosed` is emitted.
+//! route) is refused by the guards. After a `confirm`, `close` or
+//! system `complete` commits, `TicketClosed` is emitted.
 
 use renox::chrono::TimeDelta;
 use renox::db::DateTime;
@@ -60,6 +60,8 @@ pub const REOPEN: &str = "reopen";
 pub const CANCEL: &str = "cancel";
 /// `resolve`, run by the system for the record that opened the ticket.
 pub const RESOLVE_FROM_SOURCE: &str = "resolve_from_source";
+/// `close`, run by the system for the record that opened the ticket.
+pub const COMPLETE: &str = "complete";
 /// `cancel`, run by the system (e.g. the contract ended).
 pub const AUTO_CANCEL: &str = "auto_cancel";
 
@@ -292,6 +294,7 @@ pub(crate) fn transitions() -> Vec<Transition<Ticket>> {
         cancel_transition(),
         auto_cancel_transition(),
         resolve_from_source_transition(),
+        complete_transition(),
     ]
 }
 
@@ -425,6 +428,47 @@ fn resolve_from_source_transition() -> Transition<Ticket> {
                 TicketStatus::OnHold,
             ])
             .to(TicketStatus::Resolved)
+            .reason_required()
+            .system(),
+    )
+    .effect(|ticket: &Ticket, ctx, tx| {
+        let id = ticket.id;
+        let at = input(ctx).map(|i| i.at);
+        let note = ctx.reason().map(|r| r.trim().to_owned());
+        Box::pin(async move {
+            Ticket::query()
+                .where_(Ticket::ID.eq(id))
+                .update(&mut *tx, &[("resolved_at", &at)])
+                .await?;
+            let mut comment = Comment {
+                ticket_id: id,
+                author_user_id: None,
+                visibility: CommentVisibility::Requester,
+                text: note.unwrap_or_default(),
+                ..Comment::default()
+            };
+            comment.insert(&mut *tx).await?;
+            Ok(())
+        })
+    })
+}
+
+/// `complete`, run by the system: open, assigned, in_progress or on_hold →
+/// closed, with the note as the resolution. The work is done by the record
+/// that opened the ticket, so there is nothing to sign off; `resolved_at` is
+/// set so `TicketClosed` can report the resolution time.
+fn complete_transition() -> Transition<Ticket> {
+    with_input(
+        Transition::new(COMPLETE)
+            .label("Complete (source)")
+            .tone("success")
+            .from([
+                TicketStatus::Open,
+                TicketStatus::Assigned,
+                TicketStatus::InProgress,
+                TicketStatus::OnHold,
+            ])
+            .to(TicketStatus::Closed)
             .reason_required()
             .system(),
     )
@@ -821,11 +865,34 @@ pub async fn resolve_from_source(
     Ok(())
 }
 
-/// Registers the listener that emits [`TicketClosed`] after a `confirm` or
-/// `close` commits.
+/// The system completes `ticket` at `at` for the record that opened it, with
+/// `note` as the resolution; `TicketClosed` follows the commit.
+///
+/// # Errors
+///
+/// `ReasonRequired` without a note; `NotFrom` unless it is `open`,
+/// `assigned`, `in_progress` or `on_hold`.
+pub async fn complete(
+    state: &AppState,
+    ticket: &Ticket,
+    note: &str,
+    at: DateTime,
+) -> std::result::Result<(), TransitionError> {
+    let _outcome = ticket
+        .transition(COMPLETE)
+        .by_system()
+        .reason(note)
+        .input(&WorkInput::at(at))
+        .run(state)
+        .await?;
+    Ok(())
+}
+
+/// Registers the listener that emits [`TicketClosed`] after a `confirm`,
+/// `close` or `complete` commits.
 pub(crate) fn register_events(app: &mut Registry) {
     app.listen(|event: Transitioned<Ticket>, state: AppState| async move {
-        if ![CONFIRM, CLOSE].contains(&event.transition.as_str()) {
+        if ![CONFIRM, CLOSE, COMPLETE].contains(&event.transition.as_str()) {
             return Ok(());
         }
         // The committed row: the times the lifecycle wrote.

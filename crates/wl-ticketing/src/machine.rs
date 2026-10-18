@@ -7,6 +7,7 @@
 //!         resolved --reopen--> in_progress
 //!         open | assigned | on_hold --cancel--> cancelled (terminal)
 //!         open | assigned | in_progress | on_hold --resolve_from_source (system)--> resolved
+//!         open | assigned | in_progress | on_hold --complete (system)--> closed
 //! ```
 //!
 //! Every state is declared here with its tone, and a new ticket is inserted
@@ -111,6 +112,12 @@ mod tests {
                 "resolved",
                 true,
             ),
+            (
+                "complete",
+                vec!["open", "assigned", "in_progress", "on_hold"],
+                "closed",
+                true,
+            ),
         ];
         assert_eq!(machine.transitions().len(), expected.len());
         for (name, from, to, system) in expected {
@@ -125,8 +132,9 @@ mod tests {
     fn cancel_needs_a_reason_and_the_others_do_not() {
         let machine = Ticket::machine();
         for transition in machine.transitions() {
-            let cancels =
-                transition.name().ends_with("cancel") || transition.name() == "resolve_from_source";
+            let cancels = transition.name().ends_with("cancel")
+                || transition.name() == "resolve_from_source"
+                || transition.name() == "complete";
             assert_eq!(transition.needs_reason(), cancels, "{}", transition.name());
         }
     }
@@ -155,5 +163,6 @@ mod tests {
         assert_eq!(guards("confirm"), ["by_requester"]);
         assert_eq!(guards("close"), ["input", "signoff"]);
         assert!(guards("cancel").is_empty());
+        assert_eq!(guards("complete"), ["input"]);
     }
 }

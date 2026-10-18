@@ -22,7 +22,7 @@ use crate::assign::{assign_as_system, check_assignee};
 use crate::comments::{Comment, CommentVisibility};
 use crate::config::Category;
 use crate::ticket::{Ticket, TicketStatus};
-use crate::work::resolve_from_source;
+use crate::work::{complete, resolve_from_source};
 use renox::state_machine::TransitionError;
 
 /// The ticket service: opens tickets, and is the app's [`TaskCreator`].
@@ -178,6 +178,27 @@ impl Tickets {
             Err(error) => Err(abort(StatusCode::UNPROCESSABLE_ENTITY, error.to_string())),
         }
     }
+
+    /// Closes ticket `id` for the record that opened it, with `note`.
+    /// `false` when the ticket is unknown or already resolved, closed or
+    /// cancelled. `TicketClosed` follows the commit.
+    ///
+    /// # Errors
+    ///
+    /// 422 for a blank note.
+    pub async fn complete(state: &AppState, id: TicketId, note: &str) -> Result<bool> {
+        let Some(ticket) = Ticket::find(&state.db, id.0).await? else {
+            return Ok(false);
+        };
+        if !ticket.is_open() {
+            return Ok(false);
+        }
+        match complete(state, &ticket, note, renox::db::now()).await {
+            Ok(()) => Ok(true),
+            Err(TransitionError::NotFrom(_)) => Ok(false),
+            Err(error) => Err(abort(StatusCode::UNPROCESSABLE_ENTITY, error.to_string())),
+        }
+    }
 }
 
 impl TaskCreator for Tickets {
@@ -204,6 +225,15 @@ impl TaskCreator for Tickets {
         note: &'a str,
     ) -> TicketFuture<'a, bool> {
         Box::pin(Tickets::resolve_from_source(state, ticket, note))
+    }
+
+    fn complete<'a>(
+        &'a self,
+        state: &'a AppState,
+        ticket: TicketId,
+        note: &'a str,
+    ) -> TicketFuture<'a, bool> {
+        Box::pin(Tickets::complete(state, ticket, note))
     }
 
     fn comment<'a>(
