@@ -33,7 +33,7 @@ pub use approvals::{
     ApprovalDecided, ApprovalDecision, ApprovalEnd, ApprovalInterceptor, ApprovalPolicy,
     ApprovalRequest, ApprovalRequested, ApprovalStatus, PolicyDefault, Require, Required,
 };
-pub use automation::AutomationFailed;
+pub use automation::{AutomationFailed, RuleRun, RuleRunSpec, RuleRunStatus, RunOutcome, run_rule};
 pub use block_effects::{
     AgreementKind, AgreementRef, AgreementSource, BlockEffect, BlockEffectOverride,
     BlockEffectRule, Decision, RuleSource,
@@ -92,6 +92,8 @@ pub mod permissions {
     pub const LEGAL_ENTITIES_CHOOSE: &str = "legal_entities.choose";
     /// See all approval requests (approvers always see their own).
     pub const APPROVALS_VIEW: &str = "approvals.view";
+    /// Run a failed rule run again.
+    pub const AUTOMATIONS_RETRY: &str = "automations.retry";
 }
 
 /// The templates, compiled in. An app replaces one with a file of the same
@@ -172,6 +174,7 @@ impl Module for WlKernel {
             .model::<ScopeEntity>()
             .view_data::<LegalEntitiesPage>();
         approvals::register(app);
+        automation::register(app);
         // In the admin group of the staff sidebar; the label is the app's
         // `nav.legal_entities` text.
         app.nav(

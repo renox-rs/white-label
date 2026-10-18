@@ -1,12 +1,26 @@
-//! Automation rules (wl-kernel §4, rule runs): what modules share about a
-//! rule run that failed. The kernel's rule-run engine and its admin page come
-//! later; until then a module that runs a rule itself (e.g. wl-notify
-//! `NTF.RUL.01`) emits [`AutomationFailed`] after the last attempt.
+//! Automation rules (wl-kernel §4.2, §5.3, rule runs): the [`RuleRun`] record
+//! and its machine, [`run_rule`] which runs an action once per occurrence key
+//! with retries, and [`AutomationFailed`], which a module that runs a rule
+//! itself (e.g. wl-notify `NTF.RUL.01`) emits after the last attempt. The
+//! rule catalogue and the admin page come later.
+
+pub mod run;
+
+pub use run::{
+    MAX_ATTEMPTS, MAX_CHAIN_DEPTH, RuleRun, RuleRunSpec, RuleRunStatus, RunOutcome, backoff,
+    run_rule, transitions,
+};
 
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::subject::Subject;
+
+/// Registers the rule run model and its machine.
+pub(crate) fn register(app: &mut Registry) {
+    app.model::<RuleRun>();
+    renox::state_machine::register::<RuleRun>();
+}
 
 /// A rule run failed after its last attempt, or was stopped.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
