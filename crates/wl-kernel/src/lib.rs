@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
+pub mod approvals;
 pub mod branding;
 pub mod config;
 pub mod entities;
@@ -18,6 +19,10 @@ use renox::nav::NavLink;
 use renox::prelude::*;
 use serde::Serialize;
 
+pub use approvals::{
+    ApprovalDecided, ApprovalDecision, ApprovalEnd, ApprovalPolicy, ApprovalRequest,
+    ApprovalRequested, ApprovalStatus, PolicyDefault,
+};
 pub use config::{ClientConfig, ConfigError};
 pub use entities::{IssuerSnapshot, LegalEntity, ScopeEntity};
 pub use machines::SubjectMachine;
@@ -37,6 +42,8 @@ pub mod permissions {
     pub const LEGAL_ENTITIES_MANAGE: &str = "legal_entities.manage";
     /// Pick a non-default issuing entity on a draft document.
     pub const LEGAL_ENTITIES_CHOOSE: &str = "legal_entities.choose";
+    /// See all approval requests (approvers always see their own).
+    pub const APPROVALS_VIEW: &str = "approvals.view";
 }
 
 /// The templates, compiled in. An app replaces one with a file of the same
@@ -104,6 +111,7 @@ impl Module for WlKernel {
             .model::<LegalEntity>()
             .model::<ScopeEntity>()
             .view_data::<LegalEntitiesPage>();
+        approvals::register(app);
         // In the admin group of the staff sidebar; the label is the app's
         // `nav.legal_entities` text.
         app.nav(
@@ -117,12 +125,15 @@ impl Module for WlKernel {
         let config = Arc::clone(&self.config);
         app.command(
             "wl:install",
-            "Create the legal entities client.toml lists and the database lacks",
+            "Create the legal entities client.toml lists and the approval policies the modules \
+             declare, where the database lacks them",
             move |_args, state: AppState| {
                 let config = Arc::clone(&config);
                 async move {
                     let created = entities::install(&state.db, &config).await?;
                     println!("{created} legal entities created.");
+                    let policies = approvals::install(&state.db).await?;
+                    println!("{policies} approval policies created.");
                     Ok(())
                 }
             },
@@ -130,7 +141,10 @@ impl Module for WlKernel {
         let config = Arc::clone(&self.config);
         app.seeder(move |state: AppState| {
             let config = Arc::clone(&config);
-            async move { entities::install(&state.db, &config).await.map(|_| ()) }
+            async move {
+                entities::install(&state.db, &config).await?;
+                approvals::install(&state.db).await.map(|_| ())
+            }
         });
         app.templates(|env| {
             for (name, source) in VIEWS {

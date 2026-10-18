@@ -32,6 +32,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             ACTIVITY,
             wl_kernel::permissions::LEGAL_ENTITIES_VIEW,
             wl_kernel::permissions::LEGAL_ENTITIES_MANAGE,
+            wl_kernel::permissions::APPROVALS_VIEW,
             parties::VIEW,
             parties::CREATE,
             parties::UPDATE,
