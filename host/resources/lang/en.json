@@ -10,6 +10,8 @@
     "parties": "Parties",
     "notification_types": "Notification types",
     "notification_log": "Message log",
+    "documents_review": "Document review",
+    "document_kinds": "Document kinds",
     "admin": "Admin",
     "app": "App",
     "log_in": "Log in",

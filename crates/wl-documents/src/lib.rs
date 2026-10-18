@@ -5,9 +5,11 @@ pub mod documents;
 pub mod guard;
 pub mod kinds;
 pub mod machine;
+pub mod pages;
 mod texts;
 
 use renox::db::Migration;
+use renox::nav::NavLink;
 use renox::prelude::*;
 
 pub use documents::{
@@ -34,6 +36,23 @@ pub mod permissions {
     pub const KINDS_MANAGE: &str = "document_kinds.manage";
 }
 
+/// The templates, compiled in. An app replaces one with a file of the same
+/// name under its views directory.
+const VIEWS: &[(&str, &str)] = &[
+    (
+        "wl-documents/review_queue.html",
+        include_str!("../views/wl-documents/review_queue.html"),
+    ),
+    (
+        "wl-documents/kinds.html",
+        include_str!("../views/wl-documents/kinds.html"),
+    ),
+    (
+        "wl-documents/kind.html",
+        include_str!("../views/wl-documents/kind.html"),
+    ),
+];
+
 /// The documents module. The host adds it with
 /// `.module(wl_documents::WlDocuments)` when `client.toml` enables `documents`.
 pub struct WlDocuments;
@@ -41,6 +60,10 @@ pub struct WlDocuments;
 impl Module for WlDocuments {
     fn name(&self) -> &'static str {
         "wl-documents"
+    }
+
+    fn routes(&self) -> Routes {
+        pages::routes()
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -51,7 +74,10 @@ impl Module for WlDocuments {
         app.model::<DocumentKind>()
             .model::<KindBlock>()
             .model::<Document>()
-            .model::<DocumentVersion>();
+            .model::<DocumentVersion>()
+            .view_data::<pages::ReviewQueuePage>()
+            .view_data::<pages::KindsPage>()
+            .view_data::<pages::KindPage>();
         // `rnx state:diagram Document` and the admin panel find the machine.
         renox::state_machine::register::<Document>();
         // The standard guard `document_valid` other modules call through
@@ -70,5 +96,33 @@ impl Module for WlDocuments {
             },
         );
         app.seeder(|state: AppState| async move { kinds::install(&state.db).await.map(|_| ()) });
+        // The review queue in the app group and the kinds in the admin group
+        // of the staff sidebar; the labels are the app's `nav.documents_review`
+        // and `nav.document_kinds` texts.
+        app.nav(
+            "app",
+            NavLink::route("wl_documents.review", "nav.documents_review")
+                .icon("inbox")
+                .group("nav.app")
+                .order(35)
+                .permission(permissions::REVIEW),
+        );
+        app.nav(
+            "app",
+            NavLink::route("wl_documents.kinds", "nav.document_kinds")
+                .icon("folder")
+                .group("nav.admin")
+                .order(45)
+                .permission(permissions::KINDS_MANAGE),
+        );
+        app.templates(|env| {
+            for (name, source) in VIEWS {
+                // The app's own file of that name wins.
+                if env.get_template(name).is_err() {
+                    renox::view::add_template(env, *name, *source)
+                        .expect("a built-in template compiles");
+                }
+            }
+        });
     }
 }

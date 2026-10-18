@@ -1,0 +1,45 @@
+{#- wl-documents: a document kind and the transitions it guards (its
+    blocks), with the actions to add an entry, change an entry's mode and
+    remove one. A locked (legal-block) entry shows why it cannot be removed
+    or changed instead of the actions; the routes refuse it too. Replace it
+    with resources/views/wl-documents/kind.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="name">
+  <rx-stack>
+    <rx-page-header :title="name" :subtitle="key" :back="route('wl_documents.kinds')" :back-label="tx['kinds.title']">
+      <rx-action-sheet id="add-block" :label="tx['kinds.add']" :action="route('wl_documents.blocks.store', key)"
+                       :title="tx['kinds.add_title']" :description="tx['kinds.add_description']" :submit-label="tx['kinds.add']" variant="primary" icon="plus">
+        <rx-input name="guarded" :label="tx['fields.guarded']" :hint="tx['fields.guarded_hint']" id="add-block-guarded" required/>
+        <rx-select name="mode" :label="tx['fields.mode']" :options="modes" :selected="'block'" id="add-block-mode"/>
+        <rx-input name="condition_field" :label="tx['fields.condition_field']" :hint="tx['fields.condition_field_hint']" id="add-block-condition-field"/>
+        <rx-tags-input name="condition_values" :label="tx['fields.condition_values']" :hint="tx['fields.condition_values_hint']" id="add-block-condition-values"/>
+      </rx-action-sheet>
+    </rx-page-header>
+    <rx-card>
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['fields.subject_types']" :value="subject_types"/>
+        <rx-entry :label="tx['fields.legal_block']" :value="legal_block" format="bool"/>
+        <rx-entry :label="tx['fields.override_mode']" :value="override_label"/>
+        <rx-entry :label="tx['fields.responsible_role']" :value="responsible_role"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-table :rows="entries" as="entry" :key="entry.guarded" :caption="tx['fields.entries']" card>
+      <rx-column :label="tx['fields.guarded']">{{ entry.guarded }} <rx-badge rx-if="entry.locked" kind="warning" :text="tx['fields.locked']"/></rx-column>
+      <rx-column :label="tx['fields.mode']">{{ entry.mode_label }}</rx-column>
+      <rx-column :label="tx['fields.condition']">{{ entry.condition }}</rx-column>
+      <rx-row-actions>
+        <template rx-if="entry.locked">
+          <span>{{ entry.locked_message }}</span>
+        </template>
+        <template rx-else>
+          <rx-action-sheet :id="'block-mode-' ~ (entry.guarded | replace('.', '-'))" :label="tx['kinds.switch']" :action="route('wl_documents.blocks.mode', key, entry.guarded)"
+                           :title="tx['kinds.switch_title'] | replace(':guarded', entry.guarded)" :submit-label="tx['kinds.switch']" icon="refresh">
+            <rx-select name="mode" :label="tx['fields.mode']" :options="modes" :selected="entry.mode" :id="'block-mode-select-' ~ (entry.guarded | replace('.', '-'))"/>
+          </rx-action-sheet>
+          <rx-confirm :id="'block-remove-' ~ (entry.guarded | replace('.', '-'))" :label="tx['kinds.remove']" :action="route('wl_documents.blocks.destroy', key, entry.guarded)"
+                      :title="tx['kinds.remove_title'] | replace(':guarded', entry.guarded)" :message="tx['kinds.remove_message']" :confirm-label="tx['kinds.remove']" :cancel-label="tx['cancel']" icon="trash"/>
+        </template>
+      </rx-row-actions>
+      <rx-slot name="empty"><rx-empty :title="tx['kinds.no_entries']" icon="shield"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>
