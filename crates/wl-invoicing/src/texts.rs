@@ -228,6 +228,14 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_invoicing.reminder.after_due.body",
         "Dear {{ party_name }},\n\nInvoice {{ number }} of {{ issue_date }} was due on {{ due_date }}, {{ days }} day(s) ago. The balance of {{ balance }} is still open. Please pay it as soon as possible.\n\nIf you have already paid, please ignore this message.",
     ),
+    (
+        "wl_invoicing.relief.proposed.subject",
+        "Bad-debt VAT relief proposed for invoice {{ number }}",
+    ),
+    (
+        "wl_invoicing.relief.proposed.body",
+        "Bad-debt VAT relief of {{ amount }} for invoice {{ number }} ({{ party_name }}) was proposed on the VAT summary for {{ period }}. Include or exclude it, with a reason: {{ link }}",
+    ),
 ];
 
 /// The English text for `key`, or `key` itself when the package has none.

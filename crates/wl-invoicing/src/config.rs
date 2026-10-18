@@ -28,6 +28,50 @@ impl WriteOffReason {
     }
 }
 
+/// The least months after the date of supply before bad-debt relief may be
+/// proposed (UAE VAT rule: 6 months).
+pub const MIN_RELIEF_MONTHS: u32 = 6;
+
+/// A setting that is refused.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SettingError(pub String);
+
+impl std::fmt::Display for SettingError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for SettingError {}
+
+/// The months after the date of supply a written-off invoice waits before
+/// its bad-debt relief is proposed (`FIN.RUL.14`). Never below 6.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ReliefMonths(u32);
+
+impl ReliefMonths {
+    /// `months`, or an error below [`MIN_RELIEF_MONTHS`].
+    pub fn new(months: u32) -> Result<Self, SettingError> {
+        if months < MIN_RELIEF_MONTHS {
+            return Err(SettingError(
+                "The months after the date of supply cannot be below 6".to_owned(),
+            ));
+        }
+        Ok(Self(months))
+    }
+
+    /// The number of months.
+    pub fn get(self) -> u32 {
+        self.0
+    }
+}
+
+impl Default for ReliefMonths {
+    fn default() -> Self {
+        Self(MIN_RELIEF_MONTHS)
+    }
+}
+
 /// The settings of the invoicing module.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InvoicingConfig {
@@ -47,6 +91,14 @@ pub struct InvoicingConfig {
     pub default_tax_period: TaxPeriod,
     /// The tax period (the FTA stagger) of single entities, by entity code.
     pub tax_periods: Vec<(String, TaxPeriod)>,
+    /// Whether bad-debt relief is proposed (`FIN.RUL.14`).
+    pub bad_debt_relief: bool,
+    /// When the relief task runs, `HH:MM` in Asia/Dubai.
+    pub bad_debt_relief_run_at: String,
+    /// The months after the date of supply before relief is proposed.
+    pub bad_debt_relief_months: ReliefMonths,
+    /// The role told when relief is proposed.
+    pub relief_notify_role: String,
 }
 
 impl Default for InvoicingConfig {
@@ -69,6 +121,10 @@ impl Default for InvoicingConfig {
             write_off_approvers: vec!["receivables".to_owned(), "admin".to_owned()],
             default_tax_period: TaxPeriod::default(),
             tax_periods: Vec::new(),
+            bad_debt_relief: true,
+            bad_debt_relief_run_at: "02:00".to_owned(),
+            bad_debt_relief_months: ReliefMonths::default(),
+            relief_notify_role: "accountant".to_owned(),
         }
     }
 }
@@ -143,6 +199,21 @@ mod tests {
             config.tax_period_of("PGP"),
             TaxPeriod::Quarterly { first_month: 1 }
         );
+        assert!(config.bad_debt_relief);
+        assert_eq!(config.bad_debt_relief_run_at, "02:00");
+        assert_eq!(config.bad_debt_relief_months.get(), 6);
+        assert_eq!(config.relief_notify_role, "accountant");
+    }
+
+    #[test]
+    fn relief_months_are_never_below_six() {
+        let error = ReliefMonths::new(5).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "The months after the date of supply cannot be below 6"
+        );
+        assert_eq!(ReliefMonths::new(6).unwrap().get(), 6);
+        assert_eq!(ReliefMonths::new(12).unwrap().get(), 12);
     }
 
     #[test]

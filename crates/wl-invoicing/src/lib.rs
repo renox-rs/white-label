@@ -3,6 +3,7 @@
 
 pub mod allocate;
 pub mod allocation;
+pub mod bad_debt_relief;
 pub mod config;
 mod events;
 pub mod invoice;
@@ -30,7 +31,7 @@ use renox::nav::NavLink;
 use renox::prelude::*;
 
 pub use allocation::Allocation;
-pub use config::{InvoicingConfig, ReasonProblem, WriteOffReason};
+pub use config::{InvoicingConfig, ReasonProblem, ReliefMonths, SettingError, WriteOffReason};
 pub use invoice::{Invoice, InvoiceKind, PartySnapshot};
 pub use invoicer::Invoices;
 pub use line::InvoiceLine;
@@ -160,6 +161,33 @@ impl WlInvoicing {
         self
     }
 
+    /// The months after the date of supply before bad-debt relief is
+    /// proposed (`FIN.RUL.14`); [`ReliefMonths`] is never below 6.
+    pub fn bad_debt_relief_months(mut self, months: ReliefMonths) -> Self {
+        self.config.bad_debt_relief_months = months;
+        self
+    }
+
+    /// When the `invoicing:bad-debt-relief` task runs, `HH:MM` in
+    /// Asia/Dubai.
+    pub fn bad_debt_relief_run_at(mut self, time: &str) -> Self {
+        self.config.bad_debt_relief_run_at = time.to_owned();
+        self
+    }
+
+    /// Turns the bad-debt relief proposal on or off; off, the task is not
+    /// scheduled.
+    pub fn bad_debt_relief(mut self, on: bool) -> Self {
+        self.config.bad_debt_relief = on;
+        self
+    }
+
+    /// The role told when relief is proposed (default `accountant`).
+    pub fn relief_notify_role(mut self, role: &str) -> Self {
+        self.config.relief_notify_role = role.to_owned();
+        self
+    }
+
     /// The module's settings.
     pub fn config(&self) -> &InvoicingConfig {
         &self.config
@@ -229,6 +257,10 @@ impl Module for WlInvoicing {
         reminders::schedule(app);
         // The daily `invoicing:vat-periods`: each running period's summary.
         vat_summary::schedule(app);
+        // `FIN.RUL.14`: the relief notification type and the daily
+        // `invoicing:bad-debt-relief` (when the setting is on).
+        bad_debt_relief::register_types();
+        bad_debt_relief::schedule(app, &self.config);
         // Other modules draft and read invoices through the kernel (§6).
         wl_kernel::invoicing::provide_invoicer(app, Invoices);
     }
@@ -248,7 +280,11 @@ mod tests {
             .write_off_notice(false)
             .write_off_approvers(&["admin"])
             .tax_period("PGR", TaxPeriod::Monthly)
-            .tax_period("PGR", TaxPeriod::Quarterly { first_month: 2 });
+            .tax_period("PGR", TaxPeriod::Quarterly { first_month: 2 })
+            .bad_debt_relief_months(ReliefMonths::new(9).unwrap())
+            .bad_debt_relief_run_at("03:30")
+            .bad_debt_relief(false)
+            .relief_notify_role("finance");
         let config = module.config();
         assert_eq!(config.payment_terms_days, 14);
         assert_eq!(config.reminder_steps, [-3, 7]);
@@ -261,5 +297,9 @@ mod tests {
             TaxPeriod::Quarterly { first_month: 2 }
         );
         assert_eq!(config.tax_period_of("PGP"), TaxPeriod::default());
+        assert_eq!(config.bad_debt_relief_months.get(), 9);
+        assert_eq!(config.bad_debt_relief_run_at, "03:30");
+        assert!(!config.bad_debt_relief);
+        assert_eq!(config.relief_notify_role, "finance");
     }
 }
