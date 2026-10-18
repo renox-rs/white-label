@@ -20,8 +20,8 @@ use renox::prelude::*;
 use serde::Serialize;
 
 pub use approvals::{
-    ApprovalDecided, ApprovalDecision, ApprovalEnd, ApprovalPolicy, ApprovalRequest,
-    ApprovalRequested, ApprovalStatus, PolicyDefault,
+    ApprovalDecided, ApprovalDecision, ApprovalEnd, ApprovalInterceptor, ApprovalPolicy,
+    ApprovalRequest, ApprovalRequested, ApprovalStatus, PolicyDefault, Require, Required,
 };
 pub use config::{ClientConfig, ConfigError};
 pub use entities::{IssuerSnapshot, LegalEntity, ScopeEntity};

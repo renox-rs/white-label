@@ -56,6 +56,13 @@ pub fn approved(action: &str) -> String {
     format!("{action}{APPROVED_SUFFIX}")
 }
 
+/// The default action key of `transition` on subjects of `subject_type`:
+/// `<module>.<transition>`.
+fn default_action_key(subject_type: &str, transition: &str) -> String {
+    let module = subject_type.split('.').next().unwrap_or_default();
+    format!("{module}.{transition}")
+}
+
 /// Whether only the system may run a transition of this name, by convention.
 pub fn is_system_name(name: &str) -> bool {
     name.starts_with(BACK_TO_PREFIX) || name.ends_with(APPROVED_SUFFIX)
@@ -229,6 +236,7 @@ pub struct SubjectMachine {
     table: &'static str,
     column: &'static str,
     waiting: Option<String>,
+    actions: BTreeMap<String, String>,
     transitions: Vec<TransitionInfo>,
     has_scope: bool,
     scope: ScopeFn,
@@ -277,6 +285,7 @@ impl SubjectMachine {
             transitions: info.transitions,
             states: info.states.iter().map(|s| s.name.clone()).collect(),
             waiting: None,
+            actions: BTreeMap::new(),
             scope: None,
             reserve: None,
             release: None,
@@ -297,6 +306,17 @@ impl SubjectMachine {
     /// The state the module shows while a request is pending, if it has one.
     pub fn waiting_state(&self) -> Option<&str> {
         self.waiting.as_deref()
+    }
+
+    /// The approval policies' action key of the transition `transition`:
+    /// the one given with [`SubjectMachineBuilder::action`], else
+    /// `<module>.<transition>` (`deposits.refund` for the transition `refund`
+    /// of `deposits.deposit`).
+    pub fn action_key(&self, transition: &str) -> String {
+        self.actions
+            .get(transition)
+            .cloned()
+            .unwrap_or_else(|| default_action_key(&self.subject_type, transition))
     }
 
     /// The transition called `name`, if the machine has one.
@@ -413,6 +433,7 @@ pub struct SubjectMachineBuilder<M: StateMachine<Key = i64>> {
     transitions: Vec<TransitionInfo>,
     states: Vec<String>,
     waiting: Option<String>,
+    actions: BTreeMap<String, String>,
     scope: Option<RecordScopeFn<M>>,
     reserve: Option<HandlerFn>,
     release: Option<HandlerFn>,
@@ -434,6 +455,22 @@ impl<M: StateMachine<Key = i64>> SubjectMachineBuilder<M> {
             self.subject_type
         );
         self.waiting = Some(state);
+        self
+    }
+
+    /// The approval policies' action key of the transition `transition`,
+    /// instead of `<module>.<transition>`.
+    ///
+    /// # Panics
+    ///
+    /// When the machine has no such transition.
+    pub fn action(mut self, transition: &str, key: impl Into<String>) -> Self {
+        assert!(
+            self.transitions.iter().any(|t| t.name == transition),
+            "{}: `{transition}` is not a transition of the machine",
+            self.subject_type
+        );
+        self.actions.insert(transition.to_owned(), key.into());
         self
     }
 
@@ -504,6 +541,7 @@ impl<M: StateMachine<Key = i64>> SubjectMachineBuilder<M> {
             table: M::TABLE,
             column: M::COLUMN.name(),
             waiting: self.waiting,
+            actions: self.actions,
             transitions: self.transitions,
             has_scope,
             scope,
@@ -571,9 +609,82 @@ pub fn subject_types() -> Vec<String> {
         .collect()
 }
 
+/// The routes `<rx-transition-actions>` posts to, like Renox's
+/// [`renox::state_machine::routes`]: `POST /{id}/transitions/{name}` runs the
+/// transition `name` on record `id` of `M` as the logged-in user, with the
+/// form's optional `reason`, then goes back to the page the form was on.
+/// After the commit it announces the approval request a run created
+/// ([`crate::approvals::announce`]) and says "Sent for approval". Mount it
+/// under the model's path:
+///
+/// ```ignore
+/// Routes::new().group("/refunds", "refunds.", wl_kernel::machines::routes::<Refund>())
+/// ```
+///
+/// Refusals answer like [`TransitionError::into_error`].
+pub fn routes<M>() -> renox::Routes
+where
+    M: StateMachine<Key = i64> + Send + Sync + 'static,
+{
+    renox::Routes::new().post("/{id}/transitions/{name}", run_transition::<M>)
+}
+
+#[derive(serde::Deserialize)]
+struct ReasonForm {
+    reason: Option<String>,
+}
+
+async fn run_transition<M>(
+    renox::prelude::State(state): renox::prelude::State<AppState>,
+    user: renox::AuthUser,
+    renox::prelude::Path((id, name)): renox::prelude::Path<(i64, String)>,
+    lang: renox::Lang,
+    back: renox::Back,
+    renox::prelude::Form(form): renox::prelude::Form<ReasonForm>,
+) -> Result<renox::prelude::Response>
+where
+    M: StateMachine<Key = i64> + Send + Sync + 'static,
+{
+    use renox::prelude::IntoResponse;
+
+    let record = M::find(&state.db, id)
+        .await?
+        .ok_or(renox::Error::NotFound)?;
+    let mut run = record.transition(&name).by(&user);
+    let reason = form.reason.unwrap_or_default();
+    let reason = reason.trim();
+    if !reason.is_empty() {
+        run = run.reason(reason);
+    }
+    // `run` commits and emits `Transitioned`; the request it created (if
+    // any) is announced only now, after the commit.
+    let outcome = run.run(&state).await.map_err(TransitionError::into_error)?;
+    crate::approvals::announce(&state, &outcome).await?;
+    let sent = outcome.is_pending()
+        || matches!(&outcome, Outcome::Done(done)
+            if by_table(M::TABLE).is_some_and(|m| m.waiting_state() == Some(done.to.as_str())));
+    if sent {
+        let toast = renox::Toast::info(crate::texts::t(&lang, "wl_kernel.approvals.sent"));
+        return Ok((toast, back).into_response());
+    }
+    Ok(back.into_response())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_default_action_key_is_the_module_and_the_transition() {
+        assert_eq!(
+            default_action_key("deposits.deposit", "refund"),
+            "deposits.refund"
+        );
+        assert_eq!(
+            default_action_key("payments.refund", "refund"),
+            "payments.refund"
+        );
+    }
 
     #[test]
     fn names_follow_the_convention() {

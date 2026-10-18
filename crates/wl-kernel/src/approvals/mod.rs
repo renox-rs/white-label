@@ -8,21 +8,28 @@
 //! machine ([`ApprovalRequest`]), whose transitions are all `system`.
 
 pub mod events;
+pub mod intercept;
+pub mod notify;
 pub mod policy;
 pub mod request;
+pub mod submit;
 
 use renox::prelude::*;
 
 pub use events::{ApprovalDecided, ApprovalEnd, ApprovalRequested};
+pub use intercept::ApprovalInterceptor;
 pub use policy::{ApprovalPolicy, Condition, ConditionKind, PolicyDefault, Step};
 pub use request::{ApprovalDecision, ApprovalRequest, ApprovalStatus, DecisionKind};
+pub use submit::{Require, Required, announce, announce_request, require_in};
 
-/// Registers the approval models and the request's machine.
+/// Registers the approval models and the request's machine, and installs
+/// the interceptor that turns blocked user transitions into requests.
 pub(crate) fn register(app: &mut Registry) {
     app.model::<ApprovalPolicy>()
         .model::<ApprovalRequest>()
         .model::<ApprovalDecision>();
     renox::state_machine::register::<ApprovalRequest>();
+    renox::state_machine::set_interceptor(ApprovalInterceptor);
 }
 
 /// Stores the default policies the modules registered and the database
