@@ -50,7 +50,7 @@ pub use documents::{
     CheckOutcome, DocumentAccepted, DocumentExpired, DocumentGuard, DocumentId, DocumentRejected,
     DocumentSuperseded, DocumentUploaded, FlagFailure, FlagReason, InvalidReason, NoDocuments,
     OverrideMode, PendingRenewal, PlannedError, PlannedItem, PlannedWarning, PlannedWarningLine,
-    RecordFlag, Validity,
+    RecordFlag, SopId, SopPublished, SopReaderRef, SopReadersChanged, SopWithdrawn, Validity,
 };
 pub use entities::{IssuerSnapshot, LegalEntity, ScopeEntity};
 pub use invoicing::{

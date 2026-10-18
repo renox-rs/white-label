@@ -1094,6 +1094,84 @@ pub struct DocumentSuperseded {
 
 impl Event for DocumentSuperseded {}
 
+/// The id of an SOP, as stored by `wl-documents`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct SopId(pub i64);
+
+impl fmt::Display for SopId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl From<i64> for SopId {
+    fn from(id: i64) -> Self {
+        SopId(id)
+    }
+}
+
+/// Who must read an SOP: everyone, or a role in a scope. Plain strings so
+/// listeners need not depend on `wl-documents`.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct SopReaderRef {
+    /// Every member of staff, whatever the role.
+    pub all_staff: bool,
+    /// The role or trade key; empty for an all-staff reader.
+    pub role: String,
+    /// The scope type; empty (with `scope_id`) for every scope.
+    pub scope_type: String,
+    /// The scope id; empty for every scope.
+    pub scope_id: String,
+}
+
+/// An SOP version was accepted and is now the SOP's current version
+/// (`accept_sop`). Acknowledgements (#53) and onboarding listen to it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SopPublished {
+    /// The SOP.
+    pub sop: SopId,
+    /// The accepted version document.
+    pub document: DocumentId,
+    /// The SOP's running version number (1, 2, ...).
+    pub version: i64,
+    /// Days a reader has to acknowledge it.
+    pub ack_due_days: i64,
+    /// The required readers at the time of publication.
+    pub readers: Vec<SopReaderRef>,
+}
+
+impl Event for SopPublished {}
+
+/// An SOP was withdrawn (its current version was archived).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SopWithdrawn {
+    /// The SOP.
+    pub sop: SopId,
+    /// The version that was current.
+    pub document: DocumentId,
+    /// The running number of that version.
+    pub version: i64,
+    /// Acknowledgements cancelled by the withdrawal; empty until #53 cancels
+    /// them on this event.
+    pub cancelled_acknowledgements: Vec<i64>,
+}
+
+impl Event for SopWithdrawn {}
+
+/// The required readers of an active SOP changed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SopReadersChanged {
+    /// The SOP.
+    pub sop: SopId,
+    /// Readers that are new (a changed scope counts as added).
+    pub added: Vec<SopReaderRef>,
+    /// Readers that are gone (a changed scope counts as removed).
+    pub removed: Vec<SopReaderRef>,
+}
+
+impl Event for SopReadersChanged {}
+
 /// A planned record a blocking document would not cover: it is dated after
 /// the document's expiry date.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -1789,6 +1867,46 @@ mod tests {
             .await
             .expect("no failure");
         assert!(open.is_empty());
+    }
+
+    #[test]
+    fn sop_events_serialize_with_plain_ids() {
+        let reader = SopReaderRef {
+            all_staff: false,
+            role: "site_worker".into(),
+            scope_type: String::new(),
+            scope_id: String::new(),
+        };
+        let published = SopPublished {
+            sop: SopId(3),
+            document: DocumentId(9),
+            version: 2,
+            ack_due_days: 7,
+            readers: vec![reader.clone()],
+        };
+        let json = renox::serde_json::to_value(&published).unwrap();
+        assert_eq!(json["sop"], 3);
+        assert_eq!(json["document"], 9);
+        assert_eq!(json["readers"][0]["role"], "site_worker");
+        let back: SopPublished = renox::serde_json::from_value(json).unwrap();
+        assert_eq!(back, published);
+        let changed = SopReadersChanged {
+            sop: SopId(3),
+            added: vec![],
+            removed: vec![reader],
+        };
+        assert_eq!(renox::serde_json::to_value(&changed).unwrap()["sop"], 3);
+        let withdrawn = SopWithdrawn {
+            sop: SopId(3),
+            document: DocumentId(9),
+            version: 2,
+            cancelled_acknowledgements: vec![],
+        };
+        let json = renox::serde_json::to_value(&withdrawn).unwrap();
+        assert_eq!(
+            json["cancelled_acknowledgements"].as_array().unwrap().len(),
+            0
+        );
     }
 
     #[test]

@@ -9,6 +9,7 @@ pub mod kinds;
 pub mod machine;
 pub mod overrides;
 pub mod pages;
+pub mod sops;
 mod texts;
 
 use renox::db::Migration;
@@ -27,6 +28,7 @@ pub use kinds::{
     add_block, blocks_for, register_kind, remove_block, set_block_mode,
 };
 pub use overrides::{BlockOverride, BlockOverrideStatus};
+pub use sops::{Sop, SopReader, SopStatus, SopTranslation};
 
 /// The module's permissions (wl-documents §6).
 pub mod permissions {
@@ -42,6 +44,9 @@ pub mod permissions {
     pub const KINDS_MANAGE: &str = "document_kinds.manage";
     /// Approve a Block override in the record's scope (never one's own).
     pub const BLOCK_OVERRIDE: &str = "documents.block.override";
+    /// Manage SOPs: their readers, withdrawing, and (with the SOP's owner
+    /// role) accepting or rejecting a version.
+    pub const SOPS_MANAGE: &str = "sops.manage";
 }
 
 /// The templates, compiled in. An app replaces one with a file of the same
@@ -105,6 +110,9 @@ impl Module for WlDocuments {
             .model::<ExpiredLog>()
             .model::<RenewalTask>()
             .model::<BlockOverride>()
+            .model::<Sop>()
+            .model::<SopReader>()
+            .model::<SopTranslation>()
             .view_data::<pages::ReviewQueuePage>()
             .view_data::<pages::FlagsPage>()
             .view_data::<pages::KindsPage>()
@@ -122,6 +130,8 @@ impl Module for WlDocuments {
         // Block overrides: the machine, the approval policy and the listener
         // that refuses an override whose approval ended without a grant.
         overrides::register(app);
+        // The SOP and SOP translation kinds.
+        sops::register();
         // The dashboard's "approvals waiting for you" links to the override.
         wl_kernel::approvals::register_subject_link(overrides::SUBJECT_TYPE, |id| {
             format!("/documents/overrides/{id}")
