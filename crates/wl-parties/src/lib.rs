@@ -4,9 +4,11 @@
 pub mod contacts;
 pub mod create;
 pub mod details;
+pub mod directory;
 mod machine;
 pub mod party;
 pub mod roles;
+pub mod seed;
 mod texts;
 
 use renox::db::Migration;
@@ -15,6 +17,7 @@ use renox::prelude::*;
 pub use contacts::{ContactPoint, ContactType};
 pub use create::{NewParty, create};
 pub use details::{CompanyDetails, PersonDetails};
+pub use directory::Directory;
 pub use party::{Channel, Language, Party};
 pub use roles::PartyRole;
 
@@ -56,5 +59,9 @@ impl Module for WlParties {
             .model::<ContactPoint>();
         // `rnx state:diagram Party` and the admin panel find the machine.
         renox::state_machine::register::<Party>();
+        // Other modules read parties through the kernel (wl-parties §6).
+        wl_kernel::parties::provide_directory(app, Directory);
+        // `db:seed`: the demo parties (DEMO-DATA.md).
+        app.seeder(|state: AppState| async move { seed::run(&state).await.map(|_| ()) });
     }
 }
