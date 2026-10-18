@@ -243,7 +243,29 @@ pub async fn record(
     actor: Option<&AuthUser>,
     request: &RecordPayment,
 ) -> std::result::Result<Payment, TransitionError> {
-    let mut payment = new_payment(request, actor.map(|user| user.id));
+    run_record(state, actor, actor.map(|user| user.id), request).await
+}
+
+/// [`record`] for another module's call through the kernel's
+/// `PaymentRecorder`: there is only a user id (`None` = the system), and no
+/// `AuthUser` to run the user transition with. It runs `record_by_system`
+/// with `recorded_by` set to `by`; the calling module has authorized its
+/// user already.
+pub(crate) async fn record_for(
+    state: &AppState,
+    by: Option<i64>,
+    request: &RecordPayment,
+) -> std::result::Result<Payment, TransitionError> {
+    run_record(state, None, by, request).await
+}
+
+async fn run_record(
+    state: &AppState,
+    actor: Option<&AuthUser>,
+    recorded_by: Option<i64>,
+    request: &RecordPayment,
+) -> std::result::Result<Payment, TransitionError> {
+    let mut payment = new_payment(request, recorded_by);
     if !is_currency(&payment.currency) {
         return Err(TransitionError::Guard(format!(
             "`{}` is not a currency code like AED.",

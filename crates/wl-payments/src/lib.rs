@@ -1,11 +1,15 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
+pub mod allocate;
+pub mod allocation;
 pub mod config;
+pub mod credit;
 mod events;
 mod machine;
 pub mod payment;
 pub mod record;
+pub mod recorder;
 mod texts;
 
 use std::sync::Arc;
@@ -13,6 +17,7 @@ use std::sync::Arc;
 use renox::db::Migration;
 use renox::prelude::*;
 
+pub use allocation::Allocation;
 pub use config::PaymentsConfig;
 pub use payment::Payment;
 
@@ -86,10 +91,13 @@ impl Module for WlPayments {
 
     fn register(&self, app: &mut Registry) {
         app.model::<Payment>();
+        app.model::<Allocation>();
         // `rnx state:diagram Payment` and the admin panel find the machine.
         renox::state_machine::register::<Payment>();
         // The settings the services read (`config_of`).
         app.provide(self.config.clone());
+        // How other modules record, allocate and read payments.
+        wl_kernel::payments::provide_payment_recorder(app, recorder::Payments);
         // `PaymentReceived` after a commit.
         events::register(app);
     }
