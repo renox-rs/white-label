@@ -7,6 +7,7 @@ pub mod flags;
 pub mod guard;
 pub mod kinds;
 pub mod machine;
+pub mod overrides;
 pub mod pages;
 mod texts;
 
@@ -25,6 +26,7 @@ pub use kinds::{
     BlockChangeRefused, BlockSeed, DocumentKind, KindBlock, KindSeed, RefusalReason, Sensitivity,
     add_block, blocks_for, register_kind, remove_block, set_block_mode,
 };
+pub use overrides::{BlockOverride, BlockOverrideStatus};
 
 /// The module's permissions (wl-documents §6).
 pub mod permissions {
@@ -38,6 +40,8 @@ pub mod permissions {
     pub const MANAGE: &str = "documents.manage";
     /// Edit the client's document kinds, their blocks and reminder offsets.
     pub const KINDS_MANAGE: &str = "document_kinds.manage";
+    /// Approve a Block override in the record's scope (never one's own).
+    pub const BLOCK_OVERRIDE: &str = "documents.block.override";
 }
 
 /// The templates, compiled in. An app replaces one with a file of the same
@@ -88,6 +92,7 @@ impl Module for WlDocuments {
             .model::<ReminderLog>()
             .model::<ExpiredLog>()
             .model::<RenewalTask>()
+            .model::<BlockOverride>()
             .view_data::<pages::ReviewQueuePage>()
             .view_data::<pages::FlagsPage>()
             .view_data::<pages::KindsPage>()
@@ -99,6 +104,9 @@ impl Module for WlDocuments {
         expiry::run::schedule(app);
         // Lifting the block: an accepted renewal closes the renewal task.
         expiry::renewal::register(app);
+        // Block overrides: the machine, the approval policy and the listener
+        // that refuses an override whose approval ended without a grant.
+        overrides::register(app);
         // `rnx state:diagram Document` and the admin panel find the machine.
         renox::state_machine::register::<Document>();
         // The standard guard `document_valid` other modules call through

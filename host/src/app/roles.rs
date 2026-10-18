@@ -60,6 +60,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             documents::REVIEW,
             documents::MANAGE,
             documents::KINDS_MANAGE,
+            documents::BLOCK_OVERRIDE,
             notify::LOG_VIEW,
             notify::TEMPLATES_MANAGE,
             notify::CHANNELS_MANAGE,
