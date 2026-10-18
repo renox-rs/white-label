@@ -15,6 +15,7 @@ pub mod manifest;
 pub mod notify;
 pub mod numbering;
 pub mod parties;
+pub mod payments;
 pub mod scopes;
 pub mod subject;
 mod texts;
@@ -60,6 +61,11 @@ pub use numbering::{Reset, Series};
 pub use parties::{
     BillingIdentity, NEUTRAL_BLOCK_REASON, NoParties, PartyBlocked, PartyCreated, PartyDirectory,
     PartyId, PartyKind, PartyStatus, PartySummary, PartyUnblocked,
+};
+pub use payments::{
+    AllocationTarget, Direction, NoPayments, PaymentId, PaymentMethod, PaymentReceived,
+    PaymentRecorder, PaymentReversed, PaymentSource, PaymentStatus, PaymentSummary, RecordPayment,
+    RefundId, RefundPaid, ReversalReason,
 };
 pub use scopes::COMPANY_ADMIN_ROLE;
 pub use subject::Subject;

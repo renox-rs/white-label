@@ -39,6 +39,7 @@ What is here so far:
 | State machines by name: `SubjectMachine`, `back_to_<state>` and `<action>_approved` (always `system`) | §4.1, WORKFLOW §3.4 | `machines` |
 | The party contract: `PartyDirectory` (`NoParties` when `parties` is off), `PartyStatus`, party events, the `party` series, `contacts` (`PartyContacts`), `related_contacts` (`RelatedContact`, `choose_contact`), `billing_identity` (`BillingIdentity`) | ARCHITECTURE §5, wl-parties §6 | `parties` |
 | The invoicing contract: `Invoicer` (`NoInvoicer` when `invoicing` is off), `InvoiceDraft`, `InvoiceSummary`, `VatCategory`, invoice events, the `invoice` series | ARCHITECTURE §5, wl-invoicing §6 | `invoicing` |
+| The payment contract: `PaymentRecorder` (`NoPayments` when `payments` is off), `RecordPayment`, `PaymentSummary`, `PaymentMethod`, `ReversalReason`, `AllocationTarget`, `PaymentReceived`, `PaymentReversed`, `RefundPaid`, the `receipt` and `payment_voucher` series | ARCHITECTURE §5, wl-payments §6 | `payments` |
 | The notice contract: `Notifier` (`NoNotifier` when `notify` is off), `register_type`, `NotifyRequest`, message events | ARCHITECTURE §5, wl-notify §6 | `notify` |
 | The document guard contract: `DocumentGuard` (`NoDocuments` when `documents` is off), `BlockEntry`, `BlockSubjects` by transition, `BlockRefusal`, `today()` in Asia/Dubai, document events | ARCHITECTURE §5, wl-documents §5.6, §6 | `documents` |
 | The ticket contract: `TaskCreator` (`NoTickets` when `ticketing` is off), `OpenTicket`, `TicketRef`, `Assignee`, ticket events, the `ticket` series | §8, wl-ticketing §6 | `tickets` |
@@ -72,6 +73,18 @@ Tax invoice numbers come from `INVOICE_SERIES` (`INV-ACME-2026-0001`) or, with e
 active legal entity, `INVOICE_SERIES_SINGLE` (`INV-2026-0001`): gapless, per entity, reset
 yearly. `PartyDirectory::billing_identity` gives the legal names, TRN, billing address and
 billing e-mail an invoice copies at issue; the default (and `NoParties`) knows none.
+
+Other modules record, allocate and reverse payments and read a party's credit only through
+`wl_kernel::payments::payment_recorder(&state)`: `record(&state, RecordPayment::new(party, entity, method, amount), by)`
+gives a `PaymentSummary` (number, status, allocated and unallocated fils), `allocate(&state, payment, AllocationTarget::Invoice(id), amount)`
+goes through `Invoicer::allocate`, `reverse(&state, payment, reason, note, by)` (`by: None` = the system)
+marks every allocation removed and `credit_balance(db, party, currency)` is the party's unallocated credit.
+Money is `i64` fils. When `payments` is off, `NoPayments` finds nothing, has no credit and refuses
+record, allocate and reverse (422). Modules listen to `PaymentReceived`, `PaymentReversed` (the removed
+allocations with their ids, so the invoice module reopens each target; the bank statement line and the
+prepaid `Subject` ride along) and `RefundPaid`. Receipts come from `RECEIPT_SERIES` (`RCT-ACME-2026-0001`)
+and payment vouchers from `PAYMENT_VOUCHER_SERIES` (`PV-ACME-2026-0001`), or the `_SINGLE` forms with
+exactly one active legal entity: gapless, per entity, reset yearly.
 
 Every notice goes through one contract. A module registers its notification types in
 `register` with `wl_kernel::notify::register_type(NotificationTypeDef::new(..))` (statutory
