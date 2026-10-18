@@ -241,3 +241,82 @@ async fn members_can_log_in_with_a_link_sent_by_mail() {
     app.post(path, &[]).await.assert_redirect("/dashboard");
     app.assert_authenticated(Some(&anna));
 }
+
+/// A request returned to `requester` about an invoice, with its open
+/// "fix and resubmit" task.
+async fn returned_invoice_request(app: &TestApp, requester: &User) -> i64 {
+    use wl_kernel::approvals::{ApprovalPolicy, ApprovalRequest, ApprovalStatus, ResubmitTask};
+
+    let policy = ApprovalPolicy::create(
+        app.db(),
+        ApprovalPolicy {
+            action: "invoicing.void".into(),
+            active: true,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let request = ApprovalRequest::create(
+        app.db(),
+        ApprovalRequest {
+            policy_id: policy.id,
+            subject_type: "invoicing.invoice".into(),
+            subject_id: 42,
+            action: "invoicing.void".into(),
+            transition: "void".into(),
+            requester_id: requester.id,
+            current_step: 1,
+            subject_state_before: "issued".into(),
+            decided_at: Some(renox::db::now()),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    // A new request starts `pending`; the return is the state it ended in.
+    renox::db::sql("UPDATE wl_approval_requests SET status = ? WHERE id = ?")
+        .bind(ApprovalStatus::Returned)
+        .bind(request.id)
+        .execute(app.db())
+        .await
+        .unwrap();
+    ResubmitTask::create(
+        app.db(),
+        ResubmitTask {
+            request_id: request.id,
+            requester_id: requester.id,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    request.id
+}
+
+#[renox::test]
+async fn the_dashboard_lists_the_returned_requests_of_the_person_who_must_fix_them() {
+    let app = TestApp::new(host::app()).await;
+    let anna = person(&app, "anna@example.com", MEMBER).await;
+    let bilal = person(&app, "bilal@example.com", MEMBER).await;
+    app.acting_as(&anna);
+    app.get("/dashboard")
+        .await
+        .assert_ok()
+        .assert_dont_see("Fix and resubmit");
+
+    returned_invoice_request(&app, &anna).await;
+    app.get("/dashboard")
+        .await
+        .assert_ok()
+        .assert_see("Needs your action")
+        .assert_see("Fix and resubmit: invoicing.void")
+        .assert_see(r#"href="/invoices/42""#);
+
+    app.acting_as(&bilal);
+    app.get("/dashboard")
+        .await
+        .assert_ok()
+        .assert_dont_see("Needs your action")
+        .assert_dont_see("Fix and resubmit");
+}

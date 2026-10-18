@@ -439,6 +439,7 @@ impl Module for Subjects {
             )
             .get("/refunds/{id}", show_refund)
             .get("/refunds/{id}/actions", refund_actions)
+            .get("/approval-requests/{id}/actions", request_actions)
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -495,6 +496,25 @@ async fn refund_actions(
 ) -> Result<String> {
     let refund = Refund::find(&state.db, id).await?.ok_or(Error::NotFound)?;
     let names: Vec<String> = refund
+        .available(&user, &state.db)
+        .await?
+        .into_iter()
+        .map(|action| action.name)
+        .collect();
+    Ok(names.join(","))
+}
+
+/// The names of the transitions the viewer may run on the approval request
+/// now (none: the kernel's are all system transitions).
+async fn request_actions(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<i64>,
+) -> Result<String> {
+    let request = ApprovalRequest::find(&state.db, id)
+        .await?
+        .ok_or(Error::NotFound)?;
+    let names: Vec<String> = request
         .available(&user, &state.db)
         .await?
         .into_iter()
@@ -1607,4 +1627,403 @@ async fn a_rejection_links_only_an_equal_payload_and_not_resubmitting_closes_onc
         approvals::close_not_resubmitting(w.db(), returned.id, &w.a).await,
         "This task is already closed.",
     );
+}
+
+// ---------------------------------------------------------------------------
+// #26 part 4: the acceptance checks of returning a request for changes.
+// ---------------------------------------------------------------------------
+
+const RETURN_COMMENT: &str = "attach the inspection photos";
+
+impl World {
+    /// Aisha sends the refund for approval (again); the latest request.
+    async fn resubmit(&self, refund: &Refund) -> ApprovalRequest {
+        let res = self
+            .run(&self.a, &format!("/refunds/{}", refund.id), "refund")
+            .await;
+        assert!(
+            res.status.is_redirection(),
+            "{}: {}",
+            res.status,
+            res.text()
+        );
+        self.request_about(&Subject::new(REFUND, refund.id)).await
+    }
+
+    /// Sets the time of every decision of `request` to `at` (RFC 3339).
+    async fn decided_on(&self, request: &ApprovalRequest, at: &str) {
+        let at: DateTime = at.parse().expect("an instant");
+        sql("UPDATE wl_approval_decisions SET created_at = ? WHERE request_id = ?")
+            .bind(at)
+            .bind(request.id)
+            .execute(self.db())
+            .await
+            .unwrap();
+    }
+
+    /// A two-step deduction of AED 6,000 that Aisha sent; Bilal approved
+    /// step 1.
+    async fn deduction_at_step_two(&self) -> (Refund, ApprovalRequest) {
+        self.two_step_refunds().await;
+        let refund = self.refund(600_000, 1_000_000).await;
+        let request = self.resubmit(&refund).await;
+        approvals::approve(self.state(), request.id, &self.b, "")
+            .await
+            .unwrap();
+        (refund, request)
+    }
+
+    /// The refund's page as `user` sees it.
+    async fn card_page(&self, refund: &Refund, user: &User) -> TestResponse {
+        self.app.acting_as(user);
+        self.app.get(&format!("/refunds/{}", refund.id)).await
+    }
+
+    /// The one task of a request.
+    async fn task_of(&self, request_id: i64) -> approvals::ResubmitTask {
+        approvals::ResubmitTask::query()
+            .where_(approvals::ResubmitTask::REQUEST_ID.eq(request_id))
+            .first(self.db())
+            .await
+            .unwrap()
+            .expect("the request has a task")
+    }
+}
+
+/// AC1: returned at step 2 with a comment.
+#[renox::test]
+async fn ac1_a_return_at_step_two_sends_the_subject_back_and_gives_a_task() {
+    let w = world().await;
+    let (refund, request) = w.deduction_at_step_two().await;
+    assert_eq!(w.reload(&request).await.current_step, 2);
+
+    let decided = approvals::return_request(w.state(), request.id, &w.c, RETURN_COMMENT)
+        .await
+        .unwrap();
+
+    let request = w.reload(&request).await;
+    assert_eq!(request.status, ApprovalStatus::Returned);
+    assert_eq!(w.refund_status(refund.id).await, RefundStatus::Requested);
+    let back = w.refund_history(refund.id).await.pop().unwrap();
+    assert_eq!(back.transition, "back_to_requested");
+    assert_eq!(back.reason.as_deref(), Some(RETURN_COMMENT));
+    assert_eq!(w.releases(&request).await, 1);
+    let last = request.decisions(w.db()).await.unwrap().pop().unwrap();
+    assert_eq!(
+        (last.step, last.approver_id, last.decision.to_string()),
+        (2, w.c.id, "return".to_owned())
+    );
+    assert_eq!(last.comment.as_deref(), Some(RETURN_COMMENT));
+
+    let tasks = approvals::needs_action(w.db(), &w.a).await.unwrap();
+    assert_eq!(tasks.len(), 1);
+    assert_eq!(tasks[0].request_id, request.id);
+    assert!(tasks[0].is_open());
+    let told = w.notices(&w.a, DECIDED).await;
+    assert_eq!(told.len(), 1);
+    assert!(told[0].contains(RETURN_COMMENT), "{}", told[0]);
+    assert!(told[0].contains("Returned for changes"), "{}", told[0]);
+
+    let event = ApprovalDecided {
+        request: request.id,
+        decision: ApprovalEnd::Returned,
+        approvers: vec![w.b.id, w.c.id],
+        subject: Subject::new(REFUND, refund.id),
+        state_returned_to: Some("requested".into()),
+    };
+    assert_eq!(decided, event);
+    assert_eq!(w.decided(&request), [event]);
+}
+
+/// AC2: no comment, or a non-approver, and nothing moves.
+#[renox::test]
+async fn ac2_a_return_needs_a_comment_and_an_approver_of_the_step() {
+    let w = world().await;
+    let (refund, request) = w.deduction_at_step_two().await;
+
+    for comment in ["", "   "] {
+        assert_refused(
+            approvals::return_request(w.state(), request.id, &w.c, comment).await,
+            "A comment is required to reject or return.",
+        );
+    }
+    w.app.acting_as(&w.c);
+    w.app
+        .htmx()
+        .post(
+            &format!("/approvals/{}/return", request.id),
+            &[("comment", "  ")],
+        )
+        .await
+        .assert_invalid("comment");
+    // The requester and an admin without the role are not approvers.
+    assert_forbidden(approvals::return_request(w.state(), request.id, &w.a, RETURN_COMMENT).await);
+    assert_forbidden(
+        approvals::return_request(w.state(), request.id, &w.admin, RETURN_COMMENT).await,
+    );
+    w.app.acting_as(&w.a);
+    w.app
+        .htmx()
+        .post(
+            &format!("/approvals/{}/return", request.id),
+            &[("comment", RETURN_COMMENT)],
+        )
+        .await
+        .assert_forbidden();
+
+    let request = w.reload(&request).await;
+    assert!(request.is_pending());
+    assert_eq!(request.current_step, 2);
+    assert_eq!(
+        w.refund_status(refund.id).await,
+        RefundStatus::PendingApproval
+    );
+    assert!(
+        approvals::needs_action(w.db(), &w.a)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert!(w.decided(&request).is_empty());
+    assert_eq!(w.releases(&request).await, 0);
+}
+
+/// AC3: a resubmission is a new request at step 1; only Aisha is excluded.
+#[renox::test]
+async fn ac3_a_resubmission_is_a_fresh_request_that_closes_the_task() {
+    let w = world().await;
+    let (refund, first) = w.deduction_at_step_two().await;
+    approvals::return_request(w.state(), first.id, &w.c, RETURN_COMMENT)
+        .await
+        .unwrap();
+
+    let second = w.resubmit(&refund).await;
+    assert_ne!(second.id, first.id);
+    assert!(second.is_pending());
+    assert_eq!(second.resubmission_of, Some(first.id));
+    assert_eq!(second.current_step, 1);
+    assert!(second.decisions(w.db()).await.unwrap().is_empty());
+
+    let task = w.task_of(first.id).await;
+    assert_eq!(task.status, approvals::TaskStatus::Closed);
+    assert_eq!(task.closed_reason, Some(approvals::TaskClosed::Resubmitted));
+    assert_eq!(task.resubmission_id, Some(second.id));
+    assert_eq!(w.reload(&first).await.status, ApprovalStatus::Returned);
+
+    // Only the requester is excluded: the returning approver may decide the
+    // new request.
+    assert_forbidden(approvals::approve(w.state(), second.id, &w.a, "").await);
+    approvals::approve(w.state(), second.id, &w.c, "")
+        .await
+        .unwrap();
+    assert_eq!(w.reload(&second).await.current_step, 2);
+}
+
+/// AC4: a rejection is linked to a same-amount resubmission, not to a
+/// different amount.
+#[renox::test]
+async fn ac4_a_rejected_refund_is_linked_when_it_is_asked_for_again() {
+    let w = world().await;
+    let refund = w.refund(120_000, 500_000).await;
+    let first = w.resubmit(&refund).await;
+    approvals::reject(w.state(), first.id, &w.b, "duplicate")
+        .await
+        .unwrap();
+    w.decided_on(&first, "2026-11-02T08:00:00Z").await;
+
+    // A different reason is the same request (`reason` is not compared).
+    assert!(approvals::same_payload(
+        &json!({ "amount": 120_000, "reason": "broken lock" }),
+        &json!({ "amount": 120_000, "reason": "water damage" }),
+    ));
+    let second = w.resubmit(&refund).await;
+    assert_eq!(second.resubmission_of, Some(first.id));
+    w.card_page(&refund, &w.b)
+        .await
+        .assert_ok()
+        .assert_see("rejected on 2026-11-02 by Bilal: duplicate");
+
+    // A request for AED 1,250 instead is a new one.
+    approvals::reject(w.state(), second.id, &w.b, "no")
+        .await
+        .unwrap();
+    let mut changed = Refund::find(w.db(), refund.id).await.unwrap().unwrap();
+    changed.amount = 125_000;
+    changed.save(w.db()).await.unwrap();
+    let third = w.resubmit(&refund).await;
+    assert_eq!(third.resubmission_of, None);
+    w.card_page(&refund, &w.b)
+        .await
+        .assert_ok()
+        .assert_see("Approval: payments.refund")
+        .assert_dont_see("Earlier decisions")
+        .assert_dont_see("rejected on");
+}
+
+/// AC5: an unchanged resubmission after a return; two returns are listed
+/// newest first.
+#[renox::test]
+async fn ac5_the_card_lists_the_returns_newest_first() {
+    let w = world().await;
+    let (refund, first) = w.refund_sent().await;
+    approvals::return_request(w.state(), first.id, &w.c, RETURN_COMMENT)
+        .await
+        .unwrap();
+    w.decided_on(&first, "2026-11-02T08:00:00Z").await;
+
+    let second = w.resubmit(&refund).await;
+    assert_eq!(second.resubmission_of, Some(first.id));
+    w.card_page(&refund, &w.b)
+        .await
+        .assert_ok()
+        .assert_see("Earlier decisions")
+        .assert_see("returned on 2026-11-02 by Chen: attach the inspection photos");
+
+    approvals::return_request(w.state(), second.id, &w.b, "still blurry")
+        .await
+        .unwrap();
+    w.decided_on(&second, "2026-11-05T08:00:00Z").await;
+    let third = w.resubmit(&refund).await;
+    assert_eq!(third.resubmission_of, Some(second.id));
+    let res = w.card_page(&refund, &w.c).await;
+    res.assert_ok()
+        .assert_see("returned on 2026-11-05 by Bilal: still blurry")
+        .assert_see("returned on 2026-11-02 by Chen: attach the inspection photos");
+    let text = res.text();
+    assert!(
+        text.find("2026-11-05").unwrap() < text.find("2026-11-02").unwrap(),
+        "newest first"
+    );
+}
+
+/// AC6: a returned request is terminal for everyone.
+#[renox::test]
+async fn ac6_a_returned_request_offers_nothing_and_refuses_every_decision() {
+    let w = world().await;
+    let (refund, request) = w.refund_sent().await;
+    approvals::return_request(w.state(), request.id, &w.b, RETURN_COMMENT)
+        .await
+        .unwrap();
+    let request = w.reload(&request).await;
+
+    for user in [&w.admin, &w.a, &w.b, &w.c] {
+        w.app.acting_as(user);
+        let actions = w
+            .app
+            .get(&format!("/approval-requests/{}/actions", request.id))
+            .await;
+        actions.assert_ok();
+        assert_eq!(actions.text(), "", "user {}", user.name);
+    }
+    assert_refused(
+        approvals::approve(w.state(), request.id, &w.c, "").await,
+        ALREADY_DECIDED,
+    );
+    assert_refused(
+        approvals::reject(w.state(), request.id, &w.c, "no").await,
+        ALREADY_DECIDED,
+    );
+    assert_refused(
+        approvals::return_request(w.state(), request.id, &w.c, "again").await,
+        ALREADY_DECIDED,
+    );
+    assert_refused(
+        approvals::withdraw(w.state(), request.id, &w.a).await,
+        ALREADY_DECIDED,
+    );
+    for action in ["approve", "reject", "return"] {
+        w.app.acting_as(&w.c);
+        let res = w
+            .app
+            .htmx()
+            .post(
+                &format!("/approvals/{}/{action}", request.id),
+                &[("comment", "x")],
+            )
+            .await;
+        assert_eq!(res.status, StatusCode::UNPROCESSABLE_ENTITY, "{action}");
+    }
+    assert_eq!(w.reload(&request).await.status, ApprovalStatus::Returned);
+    assert_eq!(w.refund_status(refund.id).await, RefundStatus::Requested);
+    assert_eq!(w.releases(&request).await, 1);
+    assert_eq!(w.decided(&request).len(), 1);
+}
+
+/// AC7: "Not resubmitting" is for the requester and works once.
+#[renox::test]
+async fn ac7_not_resubmitting_closes_the_task_once_for_the_requester_only() {
+    let w = world().await;
+    let (_, request) = w.refund_sent().await;
+    approvals::return_request(w.state(), request.id, &w.b, RETURN_COMMENT)
+        .await
+        .unwrap();
+    let path = format!("/approvals/{}/not-resubmitting", request.id);
+
+    w.app.acting_as(&w.b);
+    w.app.htmx().post(&path, &[]).await.assert_forbidden();
+    assert_eq!(
+        approvals::needs_action(w.db(), &w.a).await.unwrap().len(),
+        1
+    );
+
+    w.app.acting_as(&w.a);
+    w.app.htmx().post(&path, &[]).await.assert_ok();
+    let task = w.task_of(request.id).await;
+    assert_eq!(task.status, approvals::TaskStatus::Closed);
+    assert_eq!(
+        task.closed_reason,
+        Some(approvals::TaskClosed::NotResubmitting)
+    );
+    assert_eq!(task.closed_by, Some(w.a.id));
+    assert!(
+        approvals::needs_action(w.db(), &w.a)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+
+    let again = w.app.htmx().post(&path, &[]).await;
+    assert_eq!(again.status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(again.text().contains("This task is already closed."));
+    assert_eq!(w.reload(&request).await.status, ApprovalStatus::Returned);
+}
+
+/// AC8 (card): the Return button is for an approver of the current step.
+#[renox::test]
+async fn ac8_the_card_shows_return_only_to_an_approver_of_the_step() {
+    let w = world().await;
+    let (refund, request) = w.refund_sent().await;
+    let ret = format!("/approvals/{}/return", request.id);
+
+    w.card_page(&refund, &w.b)
+        .await
+        .assert_ok()
+        .assert_see(&ret)
+        .assert_see("Return for changes");
+    w.card_page(&refund, &w.a)
+        .await
+        .assert_ok()
+        .assert_dont_see(&ret);
+    w.card_page(&refund, &w.admin)
+        .await
+        .assert_ok()
+        .assert_dont_see(&ret);
+
+    // Once returned, the card shows its task, and the button to the
+    // requester only.
+    approvals::return_request(w.state(), request.id, &w.b, RETURN_COMMENT)
+        .await
+        .unwrap();
+    let not_resubmitting = format!("/approvals/{}/not-resubmitting", request.id);
+    w.card_page(&refund, &w.a)
+        .await
+        .assert_ok()
+        .assert_see("Returned for changes: waiting")
+        .assert_see(&not_resubmitting)
+        .assert_dont_see(&ret);
+    w.card_page(&refund, &w.b)
+        .await
+        .assert_ok()
+        .assert_dont_see(&not_resubmitting)
+        .assert_dont_see(&ret);
 }
