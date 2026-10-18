@@ -8,7 +8,7 @@
 //!
 //! Every state is declared here, and a new party is inserted only as
 //! `active`. The transitions are added by the issues that build them
-//! (`block` #34, `unblock` #35, `archive` / `restore` / `merge` later), all
+//! (`block` and `block_by_system` #34, `unblock` #35, `archive` / `restore` / `merge` later), all
 //! in this `machine()`. `Party` is `#[model(state_machine)]`, so `save`
 //! refuses a changed status.
 
@@ -23,7 +23,7 @@ impl StateMachine for Party {
 
     fn machine() -> Machine<Self> {
         use PartyStatus::{Active, Archived, Blocked, Merged};
-        Machine::new()
+        let machine = Machine::new()
             .initial([Active])
             .state(Active)
             .tone("success")
@@ -33,6 +33,11 @@ impl StateMachine for Party {
             .tone("neutral")
             .state(Merged)
             .tone("neutral")
-            .terminal()
+            .terminal();
+        // `block` (a user with `parties.block`) and `block_by_system`
+        // (screening's `confirm_match`): active → blocked; see `crate::block`.
+        crate::block::transitions()
+            .into_iter()
+            .fold(machine, Machine::transition)
     }
 }

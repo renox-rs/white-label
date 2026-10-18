@@ -1,9 +1,21 @@
-{#- wl-parties: a party's page: its card, contact points, roles and
-    history. Replace it with resources/views/wl-parties/show.html in the app. -#}
+{#- wl-parties: a party's page: its card, the block action, the Block
+    records this user may read (restricted ones only with
+    parties.block_reason.view), contact points, roles and history. Replace it with resources/views/wl-parties/show.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="party.display_name">
   <rx-stack>
-    <rx-page-header :title="party.display_name" :subtitle="party.code" :back="route('wl_parties.index')" :back-label="tx['title']"/>
+    <rx-page-header :title="party.display_name" :subtitle="party.code" :back="route('wl_parties.index')" :back-label="tx['title']">
+      <template rx-if="can_block"><rx-include template="wl-parties/_block_sheet.html"/></template>
+    </rx-page-header>
     <rx-include template="wl-parties/_card.html"/>
+    <template rx-if="block_records">
+      <rx-table :rows="block_records" as="record" :key="record.id" :caption="tx['sections.block_records']" card>
+        <rx-column :label="tx['fields.reason_code']">{{ record.reason }} <rx-badge rx-if="record.restricted" kind="error" :text="tx['fields.restricted']"/></rx-column>
+        <rx-column :label="tx['fields.note']">{{ record.note }}</rx-column>
+        <rx-column :label="tx['fields.blocked_by']" hide-narrow>{{ record.blocked_by }}</rx-column>
+        <rx-column :label="tx['fields.blocked_at']">{{ record.blocked_at | date('%Y-%m-%d %H:%M') }}</rx-column>
+        <rx-column :label="tx['fields.block_state']"><rx-badge rx-if="record.is_open" kind="error" :text="tx['block.open']"/><rx-badge rx-else :text="tx['block.closed']"/></rx-column>
+      </rx-table>
+    </template>
     <rx-table :rows="contacts" as="contact" :key="contact.id" :caption="tx['sections.contacts']" card>
       <rx-column :label="tx['fields.contact_type']">{{ tx['contact_type.' ~ contact.contact_type] }}</rx-column>
       <rx-column :label="tx['fields.value']">{{ contact.value }}</rx-column>

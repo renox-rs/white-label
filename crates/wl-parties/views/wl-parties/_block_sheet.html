@@ -1,0 +1,10 @@
+{#- wl-parties: the block action on the party page, a sheet with the reason
+    and a note. `reasons` holds only the codes this user may use: restricted
+    ones only with parties.block_reason.view (PTY.ACL.02). Replace it with
+    resources/views/wl-parties/_block_sheet.html in the app. -#}
+<rx-action-sheet :id="'block-party-' ~ party.id" :label="tx['block.action']" :action="route('wl_parties.block', party.id)"
+                 :title="tx['block.title']" :description="tx['block.description']" :submit-label="tx['block.submit']"
+                 icon="ban" variant="danger" danger>
+  <rx-select name="reason_code" :label="tx['fields.reason_code']" :options="reasons" :id="'block-reason-' ~ party.id" required/>
+  <rx-textarea name="note" :label="tx['fields.note']" :id="'block-note-' ~ party.id" required/>
+</rx-action-sheet>

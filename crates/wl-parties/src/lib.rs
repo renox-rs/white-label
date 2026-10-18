@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
+pub mod block;
 pub mod block_record;
 pub mod contacts;
 pub mod create;
@@ -19,6 +20,7 @@ use renox::db::Migration;
 use renox::nav::NavLink;
 use renox::prelude::*;
 
+pub use block::{block, block_by_system};
 pub use block_record::BlockRecord;
 pub use contacts::{ContactPoint, ContactType};
 pub use create::{NewParty, create};
@@ -63,6 +65,10 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "wl-parties/_card.html",
         include_str!("../views/wl-parties/_card.html"),
+    ),
+    (
+        "wl-parties/_block_sheet.html",
+        include_str!("../views/wl-parties/_block_sheet.html"),
     ),
 ];
 
@@ -138,6 +144,8 @@ impl Module for WlParties {
         let reasons = self.reasons();
         reasons.check();
         app.provide(reasons);
+        // `PartyBlocked` after a block commits.
+        block::register(app);
         // Other modules read parties through the kernel (wl-parties §6).
         wl_kernel::parties::provide_directory(app, Directory);
         // `db:seed`: the demo parties (DEMO-DATA.md).

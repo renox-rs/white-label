@@ -1,15 +1,15 @@
 {#- wl-parties: the party card (who the party is and its status), on the
     party page. Replace it with resources/views/wl-parties/_card.html in the
-    app. The hold reason is the display code only (`on_hold` for a
-    restricted reason, PTY.ACL.02). -#}
+    app. A blocked party shows `hold_label`, "On hold — Non-payment" or
+    "On hold", made from the display code only (`on_hold` for a restricted
+    reason, PTY.ACL.02). -#}
 <rx-card :title="tx['sections.card']">
   <rx-infolist columns="2">
     <rx-entry :label="tx['fields.code']" :value="party.code" copyable/>
     <rx-entry :label="tx['fields.kind']" :value="tx['kind.' ~ party.kind]"/>
     <rx-entry :label="tx['fields.status']" :value="party.status"
               :badge="{'active': 'success', 'blocked': 'error', 'archived': 'neutral', 'merged': 'neutral'}"
-              :labels="{'active': tx['status.active'], 'blocked': tx['status.blocked'], 'archived': tx['status.archived'], 'merged': tx['status.merged']}"/>
-    <rx-entry rx-if="party.hold_reason" :label="tx['fields.hold_reason']" :value="tx['reason.' ~ party.hold_reason] or party.hold_reason"/>
+              :labels="{'active': tx['status.active'], 'blocked': hold_label or tx['status.blocked'], 'archived': tx['status.archived'], 'merged': tx['status.merged']}"/>
     <rx-entry :label="tx['fields.legal_name_en']" :value="party.legal_name_en"/>
     <rx-entry :label="tx['fields.legal_name_ar']" :value="party.legal_name_ar"/>
     <rx-entry :label="tx['fields.display_name']" :value="party.display_name"/>

@@ -85,6 +85,27 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_parties.reason.legal_dispute", "Legal dispute"),
     ("wl_parties.reason.fraud_suspected", "Fraud suspected"),
     ("wl_parties.reason.other", "Other"),
+    ("wl_parties.reason.sanctions", "Sanctions"),
+    ("wl_parties.reason.aml_concern", "AML concern"),
+    ("wl_parties.block.action", "Block"),
+    ("wl_parties.block.title", "Put the party on hold"),
+    (
+        "wl_parties.block.description",
+        "New business with the party stops. Nothing is sent to the party.",
+    ),
+    ("wl_parties.block.submit", "Block party"),
+    ("wl_parties.block.done", "The party is on hold."),
+    ("wl_parties.block.system", "System"),
+    ("wl_parties.block.open", "Open"),
+    ("wl_parties.block.closed", "Lifted"),
+    ("wl_parties.sections.block_records", "Block records"),
+    ("wl_parties.fields.reason_code", "Reason"),
+    ("wl_parties.fields.note", "Note"),
+    ("wl_parties.fields.restricted", "Restricted"),
+    ("wl_parties.fields.blocked_by", "Blocked by"),
+    ("wl_parties.fields.blocked_at", "Blocked"),
+    ("wl_parties.fields.unblocked_at", "Lifted"),
+    ("wl_parties.fields.block_state", "State"),
     (
         "wl_parties.errors.legal_name_required",
         "Enter the legal name in English.",
@@ -102,6 +123,12 @@ const TEXTS: &[(&str, &str)] = &[
     (
         "wl_parties.errors.one_primary",
         "Only one contact of each type can be primary.",
+    ),
+    ("wl_parties.errors.reason_unknown", "Choose a reason."),
+    ("wl_parties.errors.note_required", "Write a note."),
+    (
+        "wl_parties.errors.reason_restricted",
+        "You cannot use this reason.",
     ),
 ];
 

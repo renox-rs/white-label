@@ -6,6 +6,8 @@
 //! | `GET /parties/new` | `wl_parties.create` | `parties.create` |
 //! | `POST /parties` | `wl_parties.store` | `parties.create` |
 //! | `GET /parties/{id}` | `wl_parties.show` | `parties.view` |
+//! | `POST /parties/{id}/block` | `wl_parties.block` | `parties.block` (a restricted reason also `parties.block_reason.view`) |
+//! | `GET /parties/{id}/block-records/{record}` | `wl_parties.block_record` | `parties.view` (a restricted record also `parties.block_reason.view`, else 404) |
 //!
 //! Lists, search, filters and exports read the party's `hold_reason`, which
 //! is only ever the display code, so they cannot show a restricted reason
@@ -16,28 +18,30 @@ use std::collections::BTreeMap;
 
 use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
-use renox::state_machine;
+use renox::state_machine::{self, TransitionError};
+use renox::validation::{Errors, ValidationError};
 use serde::{Deserialize, Serialize};
 use wl_kernel::{PartyKind, PartyStatus};
 
+use crate::block::block;
+use crate::block_record::BlockRecord;
 use crate::contacts::{ContactPoint, ContactType};
 use crate::create::{NewParty, create};
 use crate::details::{CompanyDetails, PersonDetails};
 use crate::party::{Channel, Language, Party};
 use crate::permissions;
+use crate::reasons::BlockReasons;
 use crate::roles::PartyRole;
 use crate::texts;
+use crate::visibility;
 
-/// The hold reasons the list's filter offers: the neutral code and the
-/// non-restricted defaults (wl-parties §7). Restricted codes are never in
-/// `hold_reason`, so they are never offered (`PTY.ACL.02`).
-pub const FILTER_REASONS: [&str; 5] = [
-    wl_kernel::NEUTRAL_BLOCK_REASON,
-    "non_payment",
-    "legal_dispute",
-    "fraud_suspected",
-    "other",
-];
+/// The hold reasons the list's filter offers: the configured reasons that
+/// are not restricted, `on_hold` among them (wl-parties §7). Restricted
+/// codes are never in `hold_reason`, so they are never offered, to anyone
+/// (`PTY.ACL.02`).
+pub fn filter_reasons(reasons: &BlockReasons) -> Vec<&str> {
+    reasons.unrestricted().map(|r| r.code.as_str()).collect()
+}
 
 /// The texts a template reads as `tx['fields.code']`.
 type Texts = BTreeMap<&'static str, String>;
@@ -56,7 +60,15 @@ pub fn routes() -> Routes {
                 .name("wl_parties.index")
                 .get("/parties/{id}", show)
                 .name("wl_parties.show")
+                .get("/parties/{id}/block-records/{record}", block_record)
+                .name("wl_parties.block_record")
                 .require_permission(permissions::VIEW),
+        )
+        .merge(
+            Routes::new()
+                .post("/parties/{id}/block", store_block)
+                .name("wl_parties.block")
+                .require_permission(permissions::BLOCK),
         )
 }
 
@@ -81,13 +93,19 @@ fn options<'a>(
 }
 
 /// The parties grid: search on the code and names, filters by kind,
-/// status and hold reason, and the export menu for `can_export`.
-pub fn grid(lang: &Lang, can_export: bool) -> Grid {
-    grid_with(&texts_in(lang), can_export)
+/// status and hold reason, and the export menu for `can_export`. A blocked
+/// party shows "On hold" and its hold reason as "On hold — Non-payment" (or
+/// just "On hold"), in the list and in exports.
+pub fn grid(lang: &Lang, reasons: &BlockReasons, can_export: bool) -> Grid {
+    let holds = filter_reasons(reasons)
+        .into_iter()
+        .map(|code| (code.to_owned(), visibility::hold_label(lang, code)))
+        .collect();
+    grid_with(&texts_in(lang), holds, can_export)
 }
 
-/// [`grid`] with the texts of `t`.
-fn grid_with(t: Text<'_>, can_export: bool) -> Grid {
+/// [`grid`] with the texts of `t` and the hold reason options `holds`.
+fn grid_with(t: Text<'_>, holds: Vec<(String, String)>, can_export: bool) -> Grid {
     let grid = Grid::new("wl-parties")
         .title(&t("title"))
         .column(
@@ -132,11 +150,7 @@ fn grid_with(t: Text<'_>, can_export: bool) -> Grid {
             ])
             .mobile(),
         )
-        .column(Column::select(
-            "hold_reason",
-            &t("fields.hold_reason"),
-            options(t, "reason", FILTER_REASONS),
-        ))
+        .column(Column::select("hold_reason", &t("fields.hold_reason"), holds).mobile())
         .column(Column::datetime("created_at", &t("fields.created_at")).hidden())
         .sort_by("code")
         .row_url("/parties/{id}")
@@ -155,9 +169,14 @@ pub(crate) struct IndexPage {
 
 /// `GET /parties`: the grid, or its export (`?export=csv|xlsx|print`,
 /// with `parties.export`).
-async fn index(user: AuthUser, lang: Lang, request: GridRequest) -> Result<Response> {
+async fn index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<Response> {
     let can_export = user.has_permission(permissions::EXPORT);
-    let grid = grid(&lang, can_export);
+    let grid = grid(&lang, &BlockReasons::of(&state), can_export);
     if request.param("export").is_some() && !can_export {
         return Err(Error::Forbidden);
     }
@@ -290,10 +309,72 @@ pub(crate) struct ShowPage {
     contacts: Vec<ContactPoint>,
     roles: Vec<PartyRole>,
     timeline: Vec<renox::serde_json::Value>,
+    /// "On hold — Non-payment" / "On hold" while blocked.
+    hold_label: Option<String>,
+    /// Whether the block action is shown (`parties.block`, party `active`).
+    can_block: bool,
+    /// The reasons the block dialog offers this user, `(code, label)`.
+    reasons: Vec<(String, String)>,
+    /// The Block records this user may read, newest first.
+    block_records: Vec<BlockRecordRow>,
 }
 
-/// `GET /parties/{id}`: the card, contact points, roles and history.
-async fn show(State(db): State<Db>, lang: Lang, Found(party): Found<Party>) -> Result<View> {
+/// One Block record as the party page shows it.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct BlockRecordRow {
+    id: i64,
+    reason_code: String,
+    reason: String,
+    restricted: bool,
+    note: String,
+    blocked_by: String,
+    blocked_at: DateTime,
+    unblocked_at: Option<DateTime>,
+    is_open: bool,
+}
+
+/// The Block records a user may read, with their labels: restricted ones
+/// only with `parties.block_reason.view` (`PTY.ACL.02`).
+async fn block_rows(
+    db: &Db,
+    lang: &Lang,
+    party_id: i64,
+    sees_restricted: bool,
+) -> Result<Vec<BlockRecordRow>> {
+    let records =
+        visibility::visible_records(BlockRecord::for_party(db, party_id).await?, sees_restricted);
+    let mut rows = Vec::with_capacity(records.len());
+    for record in records {
+        let blocked_by = match record.blocked_by {
+            Some(id) => User::find(db, id)
+                .await?
+                .map_or_else(|| format!("#{id}"), |user| user.name),
+            None => texts::t(lang, "wl_parties.block.system"),
+        };
+        rows.push(BlockRecordRow {
+            id: record.id,
+            reason: visibility::reason_label(lang, &record.reason_code),
+            is_open: record.is_open(),
+            reason_code: record.reason_code,
+            restricted: record.restricted,
+            note: record.note,
+            blocked_by,
+            blocked_at: record.blocked_at,
+            unblocked_at: record.unblocked_at,
+        });
+    }
+    Ok(rows)
+}
+
+/// `GET /parties/{id}`: the card, contact points, roles, Block records,
+/// history and the block action.
+async fn show(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(party): Found<Party>,
+) -> Result<View> {
+    let db = state.db.clone();
     let person = PersonDetails::query()
         .where_(PersonDetails::PARTY_ID.eq(party.id))
         .first(&db)
@@ -316,6 +397,16 @@ async fn show(State(db): State<Db>, lang: Lang, Found(party): Found<Party>) -> R
         .await?;
     let history = state_machine::history(&db, Party::TABLE, party.id).await?;
     let timeline = state_machine::timeline(&history, Some(&state_machine::info_of::<Party>()));
+    let sees_restricted = user.has_permission(permissions::BLOCK_REASON_VIEW);
+    let hold_label = (party.status == PartyStatus::Blocked)
+        .then(|| visibility::hold_label(&lang, party.hold_reason.as_deref().unwrap_or_default()));
+    let can_block = party.status == PartyStatus::Active && user.has_permission(permissions::BLOCK);
+    let reasons = if can_block {
+        visibility::offered_reasons(&BlockReasons::of(&state), &lang, sees_restricted)
+    } else {
+        Vec::new()
+    };
+    let block_records = block_rows(&db, &lang, party.id, sees_restricted).await?;
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
         party,
@@ -324,7 +415,71 @@ async fn show(State(db): State<Db>, lang: Lang, Found(party): Found<Party>) -> R
         contacts,
         roles,
         timeline,
+        hold_label,
+        can_block,
+        reasons,
+        block_records,
     }))
+}
+
+/// The block dialog's form.
+#[derive(Deserialize, Serialize, Validate, Debug)]
+pub struct BlockForm {
+    /// The reason code.
+    #[validate(required, max = 64)]
+    pub reason_code: String,
+    /// Why, in the blocker's words.
+    #[validate(required, max = 2000)]
+    pub note: String,
+}
+
+/// `POST /parties/{id}/block`: blocks the party and reloads its page. The
+/// transition's guards refuse an unknown code, a blank note and a
+/// restricted code without `parties.block_reason.view`: a 422 with the
+/// message under the field, and nothing written.
+async fn store_block(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(party): Found<Party>,
+    Valid(form): Valid<BlockForm>,
+) -> Result<Response> {
+    match block(&state, &user, &party, &form.reason_code, &form.note).await {
+        Ok(()) => Ok((
+            Toast::success(texts::t(&lang, "wl_parties.block.done")),
+            renox::HxRefresh,
+        )
+            .into_response()),
+        Err(TransitionError::Guard(message)) => {
+            let field = if form.note.trim().is_empty() {
+                "note"
+            } else {
+                "reason_code"
+            };
+            let mut errors = Errors::new();
+            errors.add(field, message);
+            Err(Error::Validation(
+                ValidationError::new(errors).with_input(&form),
+            ))
+        }
+        Err(other) => Err(other.into_error()),
+    }
+}
+
+/// `GET /parties/{id}/block-records/{record}`: one Block record, as JSON.
+/// A restricted one answers 404 without `parties.block_reason.view`, as
+/// does a record of another party.
+async fn block_record(
+    State(db): State<Db>,
+    user: AuthUser,
+    Path((id, record)): Path<(i64, i64)>,
+) -> Result<Json<BlockRecord>> {
+    let sees_restricted = user.has_permission(permissions::BLOCK_REASON_VIEW);
+    let record = BlockRecord::find(&db, record)
+        .await?
+        .filter(|r| r.party_id == id && visibility::can_read(r, sees_restricted))
+        .ok_or(Error::NotFound)?;
+    Ok(Json(record))
 }
 
 #[cfg(test)]
@@ -368,7 +523,15 @@ mod tests {
     #[test]
     fn the_grid_offers_no_restricted_reason_and_shows_blocked_as_on_hold() {
         let english = |key: &str| texts::english(&format!("wl_parties.{key}"));
-        let grid = grid_with(&english, false);
+        let mut reasons = BlockReasons::default();
+        reasons
+            .add("tax_evasion", true)
+            .add("unpaid_deposit", false);
+        let holds = filter_reasons(&reasons)
+            .into_iter()
+            .map(|code| (code.to_owned(), english(&format!("reason.{code}"))))
+            .collect();
+        let grid = grid_with(&english, holds, false);
         let reasons = grid
             .columns()
             .iter()
@@ -381,6 +544,8 @@ mod tests {
         assert!(reasons.contains(&"on_hold"));
         assert!(!reasons.contains(&"sanctions"));
         assert!(!reasons.contains(&"aml_concern"));
+        assert!(!reasons.contains(&"tax_evasion"));
+        assert!(reasons.contains(&"unpaid_deposit"));
         let status = grid
             .columns()
             .iter()
