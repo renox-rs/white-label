@@ -11,6 +11,22 @@
     <rx-link-button rx-if="can('users.manage')" route="users.index" label="{{ t('dashboard.users') }}" icon="users"/>
   </app-hero>
 
+  <template rx-if="awaiting">
+    {#- Approvals the signed-in person may decide
+        (wl_kernel::approvals::awaiting_items). -#}
+    <app-section-head :title="t('dashboard.needs_action.title')" id="awaiting-title" :compact="true">
+      <rx-list label="{{ t('dashboard.needs_action.title') }}">
+        <li><app-icon-circle icon="stamp" :size="18"/><div class="rx-list__main">
+          <span>{{ t('dashboard.needs_action.awaiting_one') if awaiting_count == 1 else t('dashboard.needs_action.awaiting_many', count=awaiting_count) }}</span>
+        </div></li>
+        <li rx-for="item in awaiting"><app-icon-circle icon="circle-check" :size="18"/><div class="rx-list__main">
+          <template rx-if="item.url"><a href="{{ item.url }}">{{ item.title }}</a></template>
+          <span rx-else>{{ item.title }}</span>
+        </div></li>
+      </rx-list>
+    </app-section-head>
+  </template>
+
   <template rx-if="needs_action">
     {#- Returned requests the signed-in person must fix and resubmit
         (wl_kernel::approvals::needs_action_items). -#}

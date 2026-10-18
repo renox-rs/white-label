@@ -294,6 +294,66 @@ async fn returned_invoice_request(app: &TestApp, requester: &User) -> i64 {
     request.id
 }
 
+/// A pending request about an invoice that any `admin` may decide.
+async fn pending_invoice_request(app: &TestApp, requester: &User) -> i64 {
+    use renox::db::Json;
+    use wl_kernel::approvals::{ApprovalPolicy, ApprovalRequest, Step};
+
+    let policy = ApprovalPolicy::create(
+        app.db(),
+        ApprovalPolicy {
+            action: "invoicing.void".into(),
+            active: true,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    ApprovalRequest::create(
+        app.db(),
+        ApprovalRequest {
+            policy_id: policy.id,
+            subject_type: "invoicing.invoice".into(),
+            subject_id: 42,
+            action: "invoicing.void".into(),
+            transition: "void".into(),
+            requester_id: requester.id,
+            current_step: 1,
+            steps: Json(vec![Step::one_of([ADMIN])]),
+            sod: true,
+            subject_state_before: "issued".into(),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap()
+    .id
+}
+
+#[renox::test]
+async fn the_dashboard_counts_the_approvals_waiting_for_the_person_who_may_decide_them() {
+    let app = TestApp::new(host::app()).await;
+    let anna = person(&app, "anna@example.com", MEMBER).await;
+    let bilal = person(&app, "bilal@example.com", ADMIN).await;
+    pending_invoice_request(&app, &anna).await;
+
+    app.acting_as(&bilal);
+    app.get("/dashboard")
+        .await
+        .assert_ok()
+        .assert_see("Needs your action")
+        .assert_see("1 approval waiting for you")
+        .assert_see("Decide: invoicing.void")
+        .assert_see(r#"href="/invoices/42""#);
+
+    // The requester decides nothing of their own.
+    app.acting_as(&anna);
+    app.get("/dashboard")
+        .await
+        .assert_ok()
+        .assert_dont_see("waiting for you");
+}
+
 #[renox::test]
 async fn the_dashboard_lists_the_returned_requests_of_the_person_who_must_fix_them() {
     let app = TestApp::new(host::app()).await;

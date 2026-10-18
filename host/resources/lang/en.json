@@ -109,7 +109,9 @@
     "account": "Your account",
     "users": "Manage users",
     "needs_action": {
-      "title": "Needs your action"
+      "title": "Needs your action",
+      "awaiting_one": "1 approval waiting for you",
+      "awaiting_many": ":count approvals waiting for you"
     },
     "stats": {
       "signups": "New sign-ups",

@@ -20,6 +20,9 @@ impl Module for Dashboard {
     /// The sidebar link (`<rx-sidebar menu="app"/>` in the layout): the
     /// signed-in pages only.
     fn register(&self, app: &mut Registry) {
+        // The invoice's page, for the requests about it (modules register
+        // their own subjects' pages the same way).
+        approvals::register_subject_link("invoicing.invoice", |id| format!("/invoices/{id}"));
         app.nav(
             "app",
             NavLink::route("dashboard", "nav.dashboard")
@@ -34,15 +37,6 @@ impl Module for Dashboard {
             .get("/dashboard", show)
             .name("dashboard")
             .require_verified()
-    }
-}
-
-/// A page for the record a returned request is about, when the host knows
-/// one (the kernel does not know the modules' routes).
-fn subject_url(subject_type: &str, id: i64) -> Option<String> {
-    match subject_type {
-        "invoicing.invoice" => Some(format!("/invoices/{id}")),
-        _ => None,
     }
 }
 
@@ -72,10 +66,17 @@ async fn show(
         .await?
         .into_iter()
         .map(|item| {
-            let url = subject_url(&item.subject_type, item.subject_id);
+            let url = approvals::subject_url(&item.subject_type, item.subject_id);
             context! { title => item.title, comment => item.comment, url, returned_at => item.returned_at }
         })
         .collect();
+    // What this person may decide now (wl-kernel approvals).
+    let awaiting: Vec<_> = approvals::awaiting_items(&state.db, &user, &lang)
+        .await?
+        .into_iter()
+        .map(|item| context! { title => item.title, url => item.url })
+        .collect();
+    let awaiting_count = awaiting.len();
     Ok(view(
         "dashboard/show.html",
         context! {
@@ -85,6 +86,8 @@ async fn show(
             unread,
             activity,
             needs_action,
+            awaiting,
+            awaiting_count,
             signups,
             signups_total => signups.total(),
             signups_change => signups.change_from(&signups_before),

@@ -122,6 +122,10 @@ impl Module for WlDocuments {
         // Block overrides: the machine, the approval policy and the listener
         // that refuses an override whose approval ended without a grant.
         overrides::register(app);
+        // The dashboard's "approvals waiting for you" links to the override.
+        wl_kernel::approvals::register_subject_link(overrides::SUBJECT_TYPE, |id| {
+            format!("/documents/overrides/{id}")
+        });
         // `rnx state:diagram Document` and the admin panel find the machine.
         renox::state_machine::register::<Document>();
         // The standard guard `document_valid` other modules call through

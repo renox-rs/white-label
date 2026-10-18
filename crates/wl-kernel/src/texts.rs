@@ -164,6 +164,7 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_kernel.approvals.needs_action.item",
         "Fix and resubmit: :action",
     ),
+    ("wl_kernel.approvals.awaiting.item", "Decide: :action"),
     ("wl_kernel.approvals.status.pending", "Pending approval"),
     ("wl_kernel.approvals.status.approved", "Approved"),
     ("wl_kernel.approvals.status.rejected", "Rejected"),

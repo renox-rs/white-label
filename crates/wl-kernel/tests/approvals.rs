@@ -2027,3 +2027,48 @@ async fn ac8_the_card_shows_return_only_to_an_approver_of_the_step() {
         .assert_dont_see(&not_resubmitting)
         .assert_dont_see(&ret);
 }
+
+/// "Needs your action": a pending request is awaiting its current step's
+/// approvers only (not the requester, not a user without the role), and
+/// leaves the list once it is decided.
+#[renox::test]
+async fn awaiting_lists_the_pending_requests_a_user_may_decide() {
+    let w = world().await;
+    let (refund, request) = w.refund_sent().await;
+
+    let ids = |items: Vec<ApprovalRequest>| items.into_iter().map(|r| r.id).collect::<Vec<_>>();
+    assert_eq!(
+        ids(approvals::awaiting(w.db(), &w.b).await.unwrap()),
+        [request.id]
+    );
+    assert_eq!(
+        ids(approvals::awaiting(w.db(), &w.c).await.unwrap()),
+        [request.id]
+    );
+    assert!(
+        approvals::awaiting(w.db(), &w.a).await.unwrap().is_empty(),
+        "SoD: not the requester"
+    );
+    assert!(
+        approvals::awaiting(w.db(), &w.admin)
+            .await
+            .unwrap()
+            .is_empty(),
+        "not a holder of the step's role"
+    );
+
+    approvals::register_subject_link(REFUND, |id| format!("/refunds/{id}"));
+    let items = approvals::awaiting_items(w.db(), &w.b, &w.state().lang("en"))
+        .await
+        .unwrap();
+    assert_eq!(items.len(), 1);
+    assert_eq!(
+        items[0].url.as_deref(),
+        Some(format!("/refunds/{}", refund.id).as_str())
+    );
+
+    approvals::approve(w.state(), request.id, &w.b, "")
+        .await
+        .unwrap();
+    assert!(approvals::awaiting(w.db(), &w.b).await.unwrap().is_empty());
+}
