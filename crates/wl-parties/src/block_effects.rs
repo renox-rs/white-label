@@ -283,7 +283,7 @@ pub(crate) fn register(app: &mut Registry) {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use renox::state_machine::StateMachine;
     use renox::testing::TestApp;
@@ -383,7 +383,7 @@ default = true
     }
 
     /// An app with wl-parties and the demo parties.
-    async fn boot() -> (TestApp, Party, tempfile::TempDir) {
+    pub(crate) async fn boot() -> (TestApp, Party, tempfile::TempDir) {
         let views = tempfile::tempdir().expect("a temporary views directory");
         let layout = views.path().join("layouts/app.html");
         std::fs::create_dir_all(layout.parent().unwrap()).unwrap();

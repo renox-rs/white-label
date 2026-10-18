@@ -6,7 +6,9 @@
 //! party's `hold_reason`. The checks that need the database (separation of
 //! duties against every "blocked by" user, `parties.block_reason.view` for a
 //! restricted record, the sanctions basis and files) belong to the service
-//! that runs the transition, as a guard has no database.
+//! that runs the transition, as a guard has no database. In the same
+//! transaction the party's open review tasks (#36) get the note "Party
+//! unblocked" and go back to their decider role, still open.
 
 use renox::prelude::*;
 use renox::state_machine::{StateMachine, Transition, TransitionCtx, TransitionError};
@@ -17,6 +19,7 @@ use crate::block_record::BlockRecord;
 use crate::evidence::{UnblockBasis, UnblockEvidence};
 use crate::party::Party;
 use crate::permissions;
+use crate::review_tasks::return_to_deciders;
 use crate::texts;
 
 /// The transition.
@@ -234,6 +237,8 @@ pub async fn unblock(
         tx.commit().await?;
         return Ok(());
     }
+    // Open review tasks go back to their deciders, in the same transaction.
+    return_to_deciders(&mut tx, party.id).await?;
     for record in evidence_targets(&records) {
         let dir = format!("parties/{}/unblock/{}", party.id, record.id);
         for file in &request.files {

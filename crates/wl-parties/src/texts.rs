@@ -185,6 +185,7 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_parties.review.no_items", "No agreements."),
     ("wl_parties.review.global_scope", "Everywhere"),
     ("wl_parties.review.system", "System"),
+    ("wl_parties.review.party_unblocked", "Party unblocked"),
     ("wl_parties.review.status.open", "Open"),
     ("wl_parties.review.status.closed", "Closed"),
     ("wl_parties.review.decision.pending", "Waiting"),

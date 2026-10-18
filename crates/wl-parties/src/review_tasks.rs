@@ -282,6 +282,22 @@ impl ReviewTask {
     }
 }
 
+/// Returns the party's open tasks to their deciders after an unblock, in the
+/// caller's transaction: each gets the system note "Party unblocked" and goes
+/// back to its decider role in scope (no user holds it). Tasks stay open and
+/// their items are not touched, so the deciders still choose. The note is
+/// neutral: no reason, no code. Returns how many tasks were returned.
+pub async fn return_to_deciders(tx: &mut renox::db::Transaction, party_id: i64) -> Result<usize> {
+    let body = crate::texts::english("wl_parties.review.party_unblocked");
+    let tasks = ReviewTask::open_for_party(&mut *tx, party_id).await?;
+    let count = tasks.len();
+    for mut task in tasks {
+        task.add_note(&mut *tx, None, &body).await?;
+        task.assign_to_decider(&mut *tx).await?;
+    }
+    Ok(count)
+}
+
 impl ReviewTaskItem {
     /// A new pending item of `task_id` for the agreement `subject_type:subject_id`.
     pub fn pending(task_id: i64, subject_type: &str, subject_id: i64, label: &str) -> Self {
@@ -377,6 +393,68 @@ mod tests {
             (global.scope_kind, global.scope_id, global.decider_role),
             (None, None, None)
         );
+    }
+
+    #[test]
+    fn the_unblock_note_is_neutral() {
+        let note = crate::texts::english("wl_parties.review.party_unblocked");
+        assert_eq!(note, "Party unblocked");
+    }
+
+    #[renox::test]
+    async fn an_unblock_returns_open_tasks_to_their_deciders_without_closing_them() {
+        let (app, party, _views) = crate::block_effects::tests::boot().await;
+        let db = app.db();
+        let scope = Some(("clinics", 3));
+        let mut taken = ReviewTask::new(
+            party.id,
+            "booking",
+            scope,
+            Some("clinic_manager"),
+            "on_hold",
+        );
+        taken.assigned_user = Some(42);
+        taken.insert(db).await.unwrap();
+        let mut idle = ReviewTask::new(party.id, "lease", None, None, "non_payment");
+        idle.insert(db).await.unwrap();
+        let mut item = ReviewTaskItem::pending(taken.id, "scheduling.booking", 9, "Booking 9");
+        item.insert(db).await.unwrap();
+        let mut done = ReviewTask::new(party.id, "old", None, None, "on_hold");
+        done.insert(db).await.unwrap();
+        let _outcome = done
+            .transition(CLOSE)
+            .by_system()
+            .run(app.state())
+            .await
+            .unwrap();
+
+        let mut tx = app.state().db.begin_immediate().await.unwrap();
+        let returned = return_to_deciders(&mut tx, party.id).await.unwrap();
+        tx.commit().await.unwrap();
+        assert_eq!(returned, 2);
+
+        let open = ReviewTask::open_for_party(db, party.id).await.unwrap();
+        assert_eq!(open.len(), 2);
+        for task in &open {
+            assert_eq!(task.status, ReviewTaskStatus::Open);
+            assert_eq!(task.assigned_user, None);
+            let notes = task.notes(db).await.unwrap();
+            assert_eq!(notes.len(), 1);
+            assert_eq!(notes[0].body, "Party unblocked");
+            assert_eq!(notes[0].by_user, None);
+        }
+        let kept = open.iter().find(|t| t.id == taken.id).expect("task");
+        assert_eq!(kept.decider_role.as_deref(), Some("clinic_manager"));
+        assert_eq!(kept.scope_id, Some(3));
+        assert_eq!(kept.display_reason, "on_hold");
+        let items = kept.items(db).await.unwrap();
+        assert_eq!(items.len(), 1);
+        assert!(items[0].is_pending());
+
+        // The closed task is left as it was.
+        let closed = ReviewTask::find(db, done.id).await.unwrap().expect("task");
+        assert_eq!(closed.status, ReviewTaskStatus::Closed);
+        assert!(closed.notes(db).await.unwrap().is_empty());
     }
 
     #[test]
