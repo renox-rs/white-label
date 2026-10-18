@@ -1,12 +1,18 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
+pub mod documents;
 pub mod kinds;
+pub mod machine;
 mod texts;
 
 use renox::db::Migration;
 use renox::prelude::*;
 
+pub use documents::{
+    Attach, AttachReason, AttachRefused, Document, DocumentSource, DocumentStatus, DocumentVersion,
+    Documents, NewDocument,
+};
 pub use kinds::{
     BlockChangeRefused, BlockSeed, DocumentKind, KindBlock, KindSeed, RefusalReason, Sensitivity,
     add_block, blocks_for, register_kind, remove_block, set_block_mode,
@@ -40,7 +46,12 @@ impl Module for WlDocuments {
     }
 
     fn register(&self, app: &mut Registry) {
-        app.model::<DocumentKind>().model::<KindBlock>();
+        app.model::<DocumentKind>()
+            .model::<KindBlock>()
+            .model::<Document>()
+            .model::<DocumentVersion>();
+        // `rnx state:diagram Document` and the admin panel find the machine.
+        renox::state_machine::register::<Document>();
         // The kinds modules and verticals register are installed by this
         // module's command and seeder; both keep the client's changes and
         // lock legal blocks again.

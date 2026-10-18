@@ -24,6 +24,31 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_documents.kinds.invalid_transition",
         ":guarded is not an <entity>.<transition> for :kind",
     ),
+    (
+        "wl_documents.attach.subject_type",
+        ":kind cannot be attached to :subject_type",
+    ),
+    (
+        "wl_documents.attach.file_type",
+        ":kind does not accept .:extension files (allowed: :allowed)",
+    ),
+    (
+        "wl_documents.attach.too_large",
+        ":file is larger than :max MB, the most :kind allows",
+    ),
+    ("wl_documents.attach.empty", ":file is empty"),
+    (
+        "wl_documents.attach.needs_review",
+        ":kind needs review: submit it instead of recording it",
+    ),
+    (
+        "wl_documents.attach.number_missing",
+        ":kind needs its number",
+    ),
+    (
+        "wl_documents.attach.expiry_missing",
+        ":kind needs its expiry date",
+    ),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.
