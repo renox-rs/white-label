@@ -28,6 +28,7 @@ use std::pin::Pin;
 use std::sync::{Arc, PoisonError, RwLock};
 
 use renox::auth::{Channel, DatabaseMessage, Notification, Recipient};
+use renox::db::DateTime;
 use renox::prelude::*;
 use renox::serde_json::Value;
 use serde::{Deserialize, Serialize};
@@ -336,6 +337,9 @@ pub struct NotifyRequest {
     pub recipients: Vec<NotifyRecipient>,
     /// The template variables.
     pub data: Value,
+    /// A short label for the subject in staff-facing text (e.g.
+    /// `TKT-2026-0042`); `None` falls back to the subject's own text.
+    pub subject_label: Option<String>,
 }
 
 impl NotifyRequest {
@@ -346,6 +350,7 @@ impl NotifyRequest {
             subject,
             recipients: Vec::new(),
             data: Value::Object(Default::default()),
+            subject_label: None,
         }
     }
 
@@ -368,6 +373,12 @@ impl NotifyRequest {
     /// With these template variables.
     pub fn data(mut self, data: Value) -> Self {
         self.data = data;
+        self
+    }
+
+    /// With this label for the subject in staff-facing text.
+    pub fn subject_label(mut self, label: &str) -> Self {
+        self.subject_label = Some(label.to_owned());
         self
     }
 }
@@ -625,8 +636,12 @@ pub struct MessageGaveUp {
     pub type_key: String,
     /// The record it is about.
     pub subject: Subject,
+    /// The label of the subject the request carried, if any.
+    pub subject_label: Option<String>,
     /// Who it was for.
     pub recipient: NotifyRecipient,
+    /// When the message gave up; a retried reaction sees the same time.
+    pub gave_up_at: DateTime,
     /// The party contact point of the last message, if any.
     pub contact_point: Option<i64>,
     /// Every channel of the chain, in order, with its last error.

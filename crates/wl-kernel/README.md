@@ -79,7 +79,8 @@ flag, give-up reactions, staff role told, channels in order, default texts with 
 placeholders), then sends with
 `notify::notifier(&state).notify(&state, NotifyRequest::new(type, subject).to_party(p).to_user(u).data(..))`.
 A recipient is a staff user (by user id), a party (by `PartyId`, reached through
-`PartyDirectory::contacts`) or a bare address. `wl-notify` provides the real notifier and
+`PartyDirectory::contacts`) or a bare address. `.subject_label("TKT-2026-0042")` names the
+subject in staff-facing text; `MessageGaveUp` carries it with `gave_up_at`. `wl-notify` provides the real notifier and
 emits `MessageFailed`, `MessageSuppressed` and `MessageGaveUp`. When `notify` is off,
 `NoNotifier` still gives each user recipient a Renox database notification (the bell) with
 the type's text, skips party and address recipients, and returns no message ids.
@@ -89,8 +90,12 @@ Other modules open tickets (tasks) only through `wl_kernel::tickets::task_creato
 gives a `TicketRef` (id and number, e.g. `TKT-2026-0001`), and fails for an unknown category
 key. The channel is `system` unless set, and `.assign_to(Assignee::user(id))` (or
 `Assignee::party(vendor)`) has `wl-ticketing` run the first `assign` as the system, so the
-SLA starts. `OpenTicket` is built only with its builder, so new optional fields never break a
-caller. When `ticketing` is off, `NoTickets` opens nothing and returns `None`, so callers
+SLA starts. `.due_at(..)` sets a due time and `.source_key(..)` a key to find the open ticket
+by: `find_open(&state, key)` gives its `TicketRef` while it is not resolved, closed or
+cancelled, and `comment(&state, ticket, TaskComment::internal(text))` adds a comment (both
+default to nothing, as `NoTickets` does). Internal staff tasks use `TASK_CATEGORY` (`task`);
+`ticket_path(id)` is the ticket page, `/tickets/{id}`. `OpenTicket` is built only with its
+builder, so new optional fields never break a caller. When `ticketing` is off, `NoTickets` opens nothing and returns `None`, so callers
 carry on without a task. `wl-ticketing` emits `TicketAssigned` (assignee, previous assignee
 and reason on a reassignment, priority, due times) and `TicketClosed` (resolution working
 minutes, within SLA). Ticket numbers come from `TICKET_SERIES` (`TKT-2026-0001`): reset

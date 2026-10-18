@@ -186,7 +186,10 @@ pub fn gave_up_event(
         message: message.message_id(),
         type_key: message.type_key.clone(),
         subject: message.subject(),
+        // The message has no label column yet.
+        subject_label: None,
         recipient: message.recipient(),
+        gave_up_at: message.updated_at.unwrap_or_else(renox::db::now),
         contact_point: message.contact_point_id,
         channels_tried: channels_tried(chain, message),
         statutory: def.statutory,

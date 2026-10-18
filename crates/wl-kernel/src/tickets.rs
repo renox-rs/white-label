@@ -21,8 +21,7 @@
 //! ```
 //!
 //! [`OpenTicket`] is built with its builder methods only, so the contract can
-//! gain optional fields (a due time, a dedupe key, …) without breaking
-//! callers; the same holds for the [`TaskCreator`] methods, which new ones
+//! gain optional fields without breaking callers; the same holds for the [`TaskCreator`] methods, which new ones
 //! join with default bodies.
 
 use std::fmt;
@@ -41,6 +40,14 @@ use crate::subject::Subject;
 
 /// The subject type of a ticket, for [`Subject`] references.
 pub const TICKET_SUBJECT_TYPE: &str = "ticketing.ticket";
+
+/// The category key of internal staff tasks other modules open.
+pub const TASK_CATEGORY: &str = "task";
+
+/// The page of ticket `id`: `/tickets/{id}`.
+pub fn ticket_path(id: TicketId) -> String {
+    format!("/tickets/{}", id.0)
+}
 
 /// Ticket numbers: `TKT-2026-0001`, across the deployment, reset yearly;
 /// gaps allowed (take them with [`Series::next_allowing_gaps`] on the
@@ -191,6 +198,11 @@ pub struct OpenTicket {
     /// when opening, so the SLA starts as for any first assignment. `None`
     /// leaves it `open`.
     pub assignee: Option<Assignee>,
+    /// When it is due, if it has a due time of its own.
+    pub due_at: Option<DateTime>,
+    /// A key the opener can find the ticket by while it is open
+    /// ([`TaskCreator::find_open`]), e.g. `notify.give_up:…`.
+    pub source_key: Option<String>,
 }
 
 impl OpenTicket {
@@ -206,6 +218,8 @@ impl OpenTicket {
             channel: TicketChannel::System,
             source: None,
             assignee: None,
+            due_at: None,
+            source_key: None,
         }
     }
 
@@ -248,6 +262,45 @@ impl OpenTicket {
         self.assignee = Some(assignee);
         self
     }
+
+    /// Due at `due_at`.
+    pub fn due_at(mut self, due_at: DateTime) -> Self {
+        self.due_at = Some(due_at);
+        self
+    }
+
+    /// Findable by `key` while open.
+    pub fn source_key(mut self, key: &str) -> Self {
+        self.source_key = Some(key.to_owned());
+        self
+    }
+}
+
+/// A comment on a ticket: [`TaskCreator::comment`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TaskComment {
+    /// The text.
+    pub text: String,
+    /// Whether only staff see it (not the requester).
+    pub internal: bool,
+}
+
+impl TaskComment {
+    /// An internal comment with `text`.
+    pub fn internal(text: &str) -> Self {
+        TaskComment {
+            text: text.to_owned(),
+            internal: true,
+        }
+    }
+
+    /// A comment with `text` the requester sees too.
+    pub fn visible(text: &str) -> Self {
+        TaskComment {
+            text: text.to_owned(),
+            internal: false,
+        }
+    }
 }
 
 /// The future a [`TaskCreator`] method returns.
@@ -264,6 +317,27 @@ pub trait TaskCreator: Send + Sync + 'static {
         state: &'a AppState,
         ticket: OpenTicket,
     ) -> TicketFuture<'a, Option<TicketRef>>;
+
+    /// The open ticket opened with `source_key`, if any. A ticket is open in
+    /// any state except `resolved`, `closed` and `cancelled`. The default
+    /// finds nothing.
+    fn find_open<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _source_key: &'a str,
+    ) -> TicketFuture<'a, Option<TicketRef>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    /// Adds `comment` to `ticket`. The default does nothing.
+    fn comment<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _ticket: TicketId,
+        _comment: TaskComment,
+    ) -> TicketFuture<'a, ()> {
+        Box::pin(async { Ok(()) })
+    }
 }
 
 /// The task creator when the `ticketing` module is off: no ticket is ever
@@ -373,6 +447,34 @@ mod tests {
         assert_eq!(ticket.requester, None);
         assert_eq!(ticket.source, None);
         assert_eq!(ticket.assignee, None);
+        assert_eq!(ticket.due_at, None);
+        assert_eq!(ticket.source_key, None);
+    }
+
+    #[test]
+    fn the_builder_sets_the_due_time_and_the_source_key() {
+        let due = "2026-11-06T06:00:00Z".parse::<DateTime>().unwrap();
+        let ticket = OpenTicket::new(Subject::new("property.unit", 1), TASK_CATEGORY, "x")
+            .due_at(due)
+            .source_key("notify.give_up:a:1:user:2");
+        assert_eq!(ticket.category_key, "task");
+        assert_eq!(ticket.due_at, Some(due));
+        assert_eq!(
+            ticket.source_key.as_deref(),
+            Some("notify.give_up:a:1:user:2")
+        );
+    }
+
+    #[test]
+    fn a_ticket_has_a_page() {
+        assert_eq!(ticket_path(TicketId(42)), "/tickets/42");
+    }
+
+    #[test]
+    fn comments_are_internal_or_visible() {
+        assert!(TaskComment::internal("a").internal);
+        assert!(!TaskComment::visible("a").internal);
+        assert_eq!(TaskComment::visible("a").text, "a");
     }
 
     #[test]

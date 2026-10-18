@@ -372,7 +372,9 @@ async fn without_invoicing_the_invoicer_drafts_nothing() {
 #[renox::test]
 async fn without_ticketing_the_task_creator_opens_nothing() {
     use wl_kernel::Subject;
-    use wl_kernel::tickets::{NoTickets, OpenTicket, TaskCreator, task_creator};
+    use wl_kernel::tickets::{
+        NoTickets, OpenTicket, TaskComment, TaskCreator, TicketId, task_creator,
+    };
 
     let dir = views(&[]);
     let app = boot(dir.path()).await;
@@ -382,6 +384,11 @@ async fn without_ticketing_the_task_creator_opens_nothing() {
     let fallback: &dyn TaskCreator = &NoTickets;
     for creator in [&*provided, fallback] {
         assert_eq!(creator.open(state, request.clone()).await.unwrap(), None);
+        assert_eq!(creator.find_open(state, "any").await.unwrap(), None);
+        creator
+            .comment(state, TicketId(1), TaskComment::internal("x"))
+            .await
+            .unwrap();
     }
 }
 
