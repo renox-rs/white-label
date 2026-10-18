@@ -914,6 +914,7 @@ dependencies = [
  "renox",
  "serde",
  "wl-documents",
+ "wl-invoicing",
  "wl-kernel",
  "wl-notify",
  "wl-parties",
@@ -3435,6 +3436,16 @@ version = "0.1.0"
 dependencies = [
  "renox",
  "serde",
+]
+
+[[package]]
+name = "wl-invoicing"
+version = "0.1.0"
+dependencies = [
+ "renox",
+ "serde",
+ "tempfile",
+ "wl-kernel",
 ]
 
 [[package]]

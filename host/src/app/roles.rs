@@ -8,6 +8,7 @@ use renox::auth::permissions;
 use renox::command::Args;
 use renox::prelude::*;
 use wl_documents::permissions as documents;
+use wl_invoicing::permissions as invoices;
 use wl_notify::permissions as notify;
 use wl_parties::permissions as parties;
 
@@ -21,6 +22,9 @@ pub const ADMIN: &str = "admin";
 /// The MLRO and their deputy: see parties, block them, and see and use the
 /// restricted block reasons (wl-parties §6).
 pub const COMPLIANCE: &str = "compliance";
+/// The receivables role: drafts, issues and follows up invoices, requests
+/// write-offs and handles disputes (wl-invoicing §3, §6).
+pub const RECEIVABLES: &str = "receivables";
 /// Everyone who signs up.
 pub const MEMBER: &str = "member";
 
@@ -47,11 +51,29 @@ pub const ROLES: &[(&str, &[&str])] = &[
             notify::LOG_VIEW,
             notify::TEMPLATES_MANAGE,
             notify::CHANNELS_MANAGE,
+            invoices::VIEW,
+            invoices::CREATE,
+            invoices::ISSUE,
+            invoices::CREDIT,
+            invoices::WRITE_OFF,
+            invoices::DISPUTE,
+            invoices::RECEIVABLES_VIEW,
         ],
     ),
     (
         COMPLIANCE,
         &[parties::VIEW, parties::BLOCK, parties::BLOCK_REASON_VIEW],
+    ),
+    (
+        RECEIVABLES,
+        &[
+            invoices::VIEW,
+            invoices::CREATE,
+            invoices::ISSUE,
+            invoices::WRITE_OFF,
+            invoices::DISPUTE,
+            invoices::RECEIVABLES_VIEW,
+        ],
     ),
     (MEMBER, &[]),
 ];
