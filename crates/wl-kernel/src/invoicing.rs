@@ -3,8 +3,8 @@
 //! crate.
 //!
 //! `wl-invoicing` provides an [`Invoicer`] with [`provide_invoicer`] and
-//! emits [`InvoiceIssued`], [`InvoiceOverdue`], [`InvoicePaid`] and
-//! [`InvoiceWrittenOff`]. Other modules draft, read and allocate invoices
+//! emits [`InvoiceIssued`], [`InvoiceOverdue`], [`InvoicePaid`],
+//! [`InvoiceWrittenOff`] and [`BadDebtRecovered`]. Other modules draft, read and allocate invoices
 //! through [`invoicer`], which falls back to [`NoInvoicer`] when the
 //! `invoicing` module is off:
 //!
@@ -165,6 +165,12 @@ impl InvoiceStatus {
             InvoiceStatus::Issued | InvoiceStatus::PartiallyPaid | InvoiceStatus::Overdue
         )
     }
+
+    /// Whether [`Invoicer::allocate`] takes money for it: open, or
+    /// `written_off` (the money is then a recovery of the bad debt).
+    pub fn accepts_allocation(self) -> bool {
+        self.is_open() || self == InvoiceStatus::WrittenOff
+    }
 }
 
 /// One line of an [`InvoiceDraft`].
@@ -314,6 +320,17 @@ pub struct InvoiceSummary {
     pub due_date: Option<NaiveDate>,
 }
 
+/// How much of `available` fils to allocate to `invoice`: the smaller of
+/// `available` and its balance when it accepts allocation
+/// ([`InvoiceStatus::accepts_allocation`]), else 0.
+pub fn allocation_proposal(invoice: &InvoiceSummary, available: i64) -> i64 {
+    if invoice.status.accepts_allocation() {
+        available.min(invoice.balance).max(0)
+    } else {
+        0
+    }
+}
+
 /// The future an [`Invoicer`] method returns.
 pub type InvoiceFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 
@@ -330,7 +347,11 @@ pub trait Invoicer: Send + Sync + 'static {
 
     /// Allocates `amount` fils from `source` (a payment or a credit note) to
     /// invoice `id`, through its `allocate` transition. Refused for an amount
-    /// ≤ 0 or above the balance, or an invoice that is not open.
+    /// ≤ 0 or above the balance, or an invoice that does not accept
+    /// allocation ([`InvoiceStatus::accepts_allocation`]). On an open invoice
+    /// it runs `allocate`; on a `written_off` one it recovers the bad debt:
+    /// the invoice stays `written_off` until the whole write-off is
+    /// recovered, then becomes `paid`, and [`BadDebtRecovered`] is emitted.
     fn allocate<'a>(
         &'a self,
         state: &'a AppState,
@@ -460,9 +481,85 @@ pub struct InvoiceWrittenOff {
 
 impl Event for InvoiceWrittenOff {}
 
+/// Money was recovered on a written-off invoice (`recover`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BadDebtRecovered {
+    /// The invoice.
+    pub invoice: InvoiceId,
+    /// Who is billed.
+    pub party: PartyId,
+    /// The record the money came from (the payment).
+    pub source: Subject,
+    /// The amount recovered, in fils.
+    pub amount: i64,
+    /// Whether the VAT bad debt relief had been claimed (`included`).
+    pub relief_claimed: bool,
+    /// The day it was recovered (Asia/Dubai).
+    pub recovered_on: NaiveDate,
+}
+
+impl Event for BadDebtRecovered {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn summary(status: InvoiceStatus, balance: i64) -> InvoiceSummary {
+        InvoiceSummary {
+            id: InvoiceId(1),
+            number: None,
+            status,
+            party: PartyId(2),
+            legal_entity_id: None,
+            currency: "AED".into(),
+            gross_total: 105_000,
+            balance,
+            due_date: None,
+        }
+    }
+
+    #[test]
+    fn written_off_accepts_allocation_like_open() {
+        use InvoiceStatus::*;
+        for s in [Issued, PartiallyPaid, Overdue, WrittenOff] {
+            assert!(s.accepts_allocation(), "{s:?}");
+        }
+        for s in [Draft, Paid, Credited] {
+            assert!(!s.accepts_allocation(), "{s:?}");
+        }
+        assert!(!WrittenOff.is_open());
+    }
+
+    #[test]
+    fn allocation_proposal_is_capped_by_the_balance() {
+        let open = summary(InvoiceStatus::Issued, 105_000);
+        assert_eq!(allocation_proposal(&open, 200_000), 105_000);
+        assert_eq!(allocation_proposal(&open, 50_000), 50_000);
+        let off = summary(InvoiceStatus::WrittenOff, 52_500);
+        assert_eq!(allocation_proposal(&off, 200_000), 52_500);
+        assert_eq!(allocation_proposal(&summary(InvoiceStatus::Paid, 0), 9), 0);
+        assert_eq!(
+            allocation_proposal(&summary(InvoiceStatus::Credited, 0), 9),
+            0
+        );
+        assert_eq!(allocation_proposal(&open, -5), 0);
+    }
+
+    #[test]
+    fn bad_debt_recovered_serializes_with_plain_ids() {
+        let e = BadDebtRecovered {
+            invoice: InvoiceId(1),
+            party: PartyId(2),
+            source: Subject::new("payments.payment", 3),
+            amount: 52_500,
+            relief_claimed: true,
+            recovered_on: NaiveDate::from_ymd_opt(2026, 10, 18).unwrap(),
+        };
+        let json = renox::serde_json::to_value(&e).unwrap();
+        assert_eq!(json["amount"], 52_500);
+        assert_eq!(json["relief_claimed"], true);
+        assert_eq!(json["recovered_on"], "2026-10-18");
+    }
 
     #[test]
     fn only_standard_carries_vat() {

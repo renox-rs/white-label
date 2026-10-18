@@ -63,11 +63,11 @@ Other modules draft, read and pay invoices only through
 `wl_kernel::invoicing::invoicer(&state)`: `draft(db, InvoiceDraft::new(party, source).line(..))`
 gives a `draft` invoice, `find(db, id)` an `InvoiceSummary` (number, status, party, legal
 entity, currency, gross total, balance, due date), and `allocate(state, id, source, amount)`
-settles part of it from a payment or credit note. Money is `i64` fils, quantities are
+settles part of it from a payment or credit note (on a `written_off` invoice it recovers the bad debt; `InvoiceStatus::accepts_allocation` and `allocation_proposal(&summary, available)` tell whether and how much). Money is `i64` fils, quantities are
 thousandths, and each line has a `VatCategory` (`standard` 5%; `zero_rated`, `exempt`,
 `out_of_scope` and `reverse_charge` carry no VAT). When `invoicing` is off, `NoInvoicer`
 drafts and finds nothing, so callers hide the feature, and refuses an allocation (422).
-Modules listen to `InvoiceIssued`, `InvoiceOverdue`, `InvoicePaid` and `InvoiceWrittenOff`.
+Modules listen to `InvoiceIssued`, `InvoiceOverdue`, `InvoicePaid`, `InvoiceWrittenOff` and `BadDebtRecovered`.
 Tax invoice numbers come from `INVOICE_SERIES` (`INV-ACME-2026-0001`) or, with exactly one
 active legal entity, `INVOICE_SERIES_SINGLE` (`INV-2026-0001`): gapless, per entity, reset
 yearly. `PartyDirectory::billing_identity` gives the legal names, TRN, billing address and
