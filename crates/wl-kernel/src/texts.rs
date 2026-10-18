@@ -27,7 +27,7 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     (
         "wl_kernel.approvals.comment_required",
-        "A comment is required to reject.",
+        "A comment is required to reject or return.",
     ),
     (
         "wl_kernel.approvals.reason_withdrawn",
@@ -52,7 +52,7 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     (
         "wl_kernel.approvals.returned_title",
-        "Approval returned: :action",
+        "Returned for changes: fix and resubmit (:action)",
     ),
     (
         "wl_kernel.approvals.withdrawn_title",

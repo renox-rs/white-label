@@ -21,8 +21,9 @@
 //! If any step fails the whole end rolls back. Once the transaction has
 //! committed, [`Ended::announce`] emits the engine's `Transitioned` events,
 //! `ApprovalDecided`, and the notices. [`reject`], [`withdraw`] and
-//! [`expire`] do all of it; `fail` ([`super::decide`]) and `return` (#26) call
-//! [`end_in`] from their own transaction.
+//! [`expire`] do all of it; `fail` ([`super::decide`]) calls
+//! [`end_in`] from its own transaction, and [`return_request`] also opens the
+//! requester's resubmit task in it.
 
 use renox::db::Transaction;
 use renox::prelude::*;
@@ -32,11 +33,12 @@ use renox::state_machine::{Outcome, StateMachine, TransitionError};
 use super::events::{ApprovalDecided, ApprovalEnd};
 use super::notify;
 use super::request::{ApprovalDecision, ApprovalRequest, DecisionKind, transitions};
+use super::tasks::{ResubmitTask, TaskStatus};
 use crate::machines::{self, Ran, Run};
 use crate::texts;
 
 /// An end that is not a yes: how the request ends, who ended it, and the
-/// history reason. Built with [`End::reject`], [`End::withdraw`],
+/// history reason. Built with [`End::reject`], [`End::return_for_changes`], [`End::withdraw`],
 /// [`End::expire`] or [`End::fail`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct End {
@@ -54,6 +56,19 @@ impl End {
         let comment = comment.trim().to_owned();
         End {
             kind: ApprovalEnd::Rejected,
+            actor_id: Some(approver_id),
+            reason: comment.clone(),
+            comment: Some(comment),
+            at_step: Some(step),
+        }
+    }
+
+    /// An approver of step `step` sends the request back for changes, with
+    /// `comment` (required; it is the history reason).
+    pub fn return_for_changes(approver_id: i64, step: i64, comment: &str) -> Self {
+        let comment = comment.trim().to_owned();
+        End {
+            kind: ApprovalEnd::Returned,
             actor_id: Some(approver_id),
             reason: comment.clone(),
             comment: Some(comment),
@@ -120,8 +135,9 @@ impl End {
             ApprovalEnd::Withdrawn => transitions::WITHDRAW,
             ApprovalEnd::Expired => transitions::EXPIRE,
             ApprovalEnd::Failed => transitions::FAIL,
-            ApprovalEnd::Approved | ApprovalEnd::Returned => {
-                unreachable!("an `End` is only built for reject, withdraw, expire or fail")
+            ApprovalEnd::Returned => transitions::RETURN,
+            ApprovalEnd::Approved => {
+                unreachable!("an `End` is only built for reject, return, withdraw, expire or fail")
             }
         }
     }
@@ -260,7 +276,7 @@ pub(super) async fn lock(tx: &mut Transaction, id: i64) -> Result<ApprovalReques
 /// comment, or when `expire` comes before the expiry time. Any failure,
 /// the module's release handler included, leaves `tx` to be rolled back.
 pub async fn end_in(tx: &mut Transaction, id: i64, end: End) -> Result<Ended> {
-    if end.kind == ApprovalEnd::Rejected && end.reason.is_empty() {
+    if matches!(end.kind, ApprovalEnd::Rejected | ApprovalEnd::Returned) && end.reason.is_empty() {
         return Err(comment_required());
     }
     let request = lock(tx, id).await?;
@@ -277,17 +293,33 @@ pub async fn end_in(tx: &mut Transaction, id: i64, end: End) -> Result<Ended> {
     }
     let request_run = run.run_in(tx).await.map_err(refused)?;
 
-    if end.kind == ApprovalEnd::Rejected
-        && let Some(approver_id) = end.actor_id
-    {
+    let decision = match end.kind {
+        ApprovalEnd::Rejected => Some(DecisionKind::Reject),
+        ApprovalEnd::Returned => Some(DecisionKind::Return),
+        _ => None,
+    };
+    if let (Some(decision), Some(approver_id)) = (decision, end.actor_id) {
         ApprovalDecision::create(
             &mut *tx,
             ApprovalDecision {
                 request_id: request.id,
                 step: request.current_step,
                 approver_id,
-                decision: DecisionKind::Reject,
+                decision,
                 comment: end.comment.clone(),
+                ..Default::default()
+            },
+        )
+        .await?;
+    }
+
+    if end.kind == ApprovalEnd::Returned {
+        ResubmitTask::create(
+            &mut *tx,
+            ResubmitTask {
+                request_id: request.id,
+                requester_id: request.requester_id,
+                status: TaskStatus::Open,
                 ..Default::default()
             },
         )
@@ -405,6 +437,32 @@ pub async fn reject(
     .await
 }
 
+/// `approver` sends request `id` back for changes with `comment` (required,
+/// not blank): like [`reject`], and the requester also gets a "fix and
+/// resubmit" task, created in the same transaction. The same approver check
+/// as `reject` applies: 403 otherwise.
+pub async fn return_request(
+    state: &AppState,
+    id: i64,
+    approver: &User,
+    comment: &str,
+) -> Result<ApprovalDecided> {
+    if comment.trim().is_empty() {
+        return Err(comment_required());
+    }
+    let request = pending(&state.db, id).await?;
+    let approvers = notify::step_approvers(&state.db, &request).await?;
+    if !approvers.iter().any(|user| user.id == approver.id) {
+        return Err(Error::Forbidden);
+    }
+    end_now(
+        state,
+        id,
+        End::return_for_changes(approver.id, request.current_step, comment),
+    )
+    .await
+}
+
 /// The requester withdraws request `id`: the subject goes back to its state
 /// before, the reservation is released, the current step's approvers are
 /// told. Anyone else gets 403.
@@ -435,6 +493,20 @@ mod tests {
         assert_eq!(end.comment.as_deref(), Some("duplicate"));
         assert_eq!(end.at_step, Some(2));
         assert_eq!(end.transition(), transitions::REJECT);
+    }
+
+    #[test]
+    fn a_return_carries_the_trimmed_comment_and_the_return_transition() {
+        let end = End::return_for_changes(5, 2, "  attach the photos ");
+        assert_eq!(end.kind(), ApprovalEnd::Returned);
+        assert_eq!(end.reason(), "attach the photos");
+        assert_eq!(end.comment.as_deref(), Some("attach the photos"));
+        assert_eq!(end.actor_id(), Some(5));
+        assert_eq!(end.at_step, Some(2));
+        assert_eq!(end.transition(), transitions::RETURN);
+        let meta = end.meta(9);
+        assert_eq!(meta["decision"], "returned");
+        assert_eq!(meta["actor_id"], 5);
     }
 
     #[test]
@@ -516,7 +588,7 @@ mod tests {
         );
         assert_eq!(
             message(refused(TransitionError::ReasonRequired)).1,
-            "A comment is required to reject."
+            "A comment is required to reject or return."
         );
     }
 }

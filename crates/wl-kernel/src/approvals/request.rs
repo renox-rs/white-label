@@ -4,7 +4,7 @@
 //! [*] --> pending --approve_step--> pending
 //!         pending --approve--> approved
 //!         pending --reject | withdraw | expire | fail--> rejected | withdrawn | expired | failed
-//!         pending --return--> returned            (#26)
+//!         pending --return--> returned
 //! ```
 //!
 //! Every transition of a request is `.system()`: the kernel's approval
@@ -33,6 +33,8 @@ pub mod transitions {
     pub const FAIL: &str = "fail";
     /// An approver of the current step says no.
     pub const REJECT: &str = "reject";
+    /// An approver of the current step sends it back for changes.
+    pub const RETURN: &str = "return";
     /// The requester cancels it.
     pub const WITHDRAW: &str = "withdraw";
     /// No decision before the expiry time.
@@ -269,6 +271,14 @@ impl StateMachine for ApprovalRequest {
                     .reason_required(),
             )
             .transition(
+                Transition::new(transitions::RETURN)
+                    .label("Return for changes")
+                    .from([Pending])
+                    .to(Returned)
+                    .system()
+                    .reason_required(),
+            )
+            .transition(
                 Transition::new(transitions::WITHDRAW)
                     .label("Withdraw")
                     .from([Pending])
@@ -302,7 +312,7 @@ pub enum DecisionKind {
     Approve,
     /// No.
     Reject,
-    /// Sent back for changes (#26).
+    /// Sent back for changes.
     Return,
 }
 
@@ -348,15 +358,24 @@ mod tests {
     }
 
     #[test]
-    fn every_transition_is_system_and_only_reject_needs_a_reason() {
+    fn every_transition_is_system_and_only_reject_and_return_need_a_reason() {
         let info = info_of::<ApprovalRequest>();
         assert_eq!(info.states.len(), 7);
-        assert_eq!(info.transitions.len(), 6);
+        assert_eq!(info.transitions.len(), 7);
         for t in &info.transitions {
             assert!(t.system, "`{}` must be system", t.name);
-            assert_eq!(t.needs_reason, t.name == transitions::REJECT, "{}", t.name);
+            assert_eq!(
+                t.needs_reason,
+                t.name == transitions::REJECT || t.name == transitions::RETURN,
+                "{}",
+                t.name
+            );
         }
-        assert!(info.transitions.iter().all(|t| t.name != "return"));
+        assert!(
+            info.transitions
+                .iter()
+                .any(|t| t.name == transitions::RETURN)
+        );
     }
 
     #[test]
@@ -394,6 +413,7 @@ mod tests {
     fn ended_states_map_to_their_end() {
         assert_eq!(ApprovalStatus::Pending.end(), None);
         assert_eq!(ApprovalStatus::Rejected.end(), Some(ApprovalEnd::Rejected));
+        assert_eq!(ApprovalStatus::Returned.end(), Some(ApprovalEnd::Returned));
         assert_eq!(ApprovalStatus::Failed.end(), Some(ApprovalEnd::Failed));
     }
 }

@@ -1250,13 +1250,13 @@ async fn ac11_a_reject_without_a_comment_is_refused() {
     for comment in ["", "   "] {
         assert_refused(
             approvals::reject(w.state(), request.id, &w.b, comment).await,
-            "A comment is required to reject.",
+            "A comment is required to reject or return.",
         );
         let mut tx = w.db().begin().await.unwrap();
         let ended = approvals::end_in(&mut tx, request.id, End::reject(w.b.id, 1, comment)).await;
         assert_refused(
             ended.map(|e| e.request.id),
-            "A comment is required to reject.",
+            "A comment is required to reject or return.",
         );
     }
     w.app.acting_as(&w.b);

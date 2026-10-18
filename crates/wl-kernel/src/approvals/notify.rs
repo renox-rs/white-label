@@ -134,8 +134,8 @@ impl Notification for Requested {
     }
 }
 
-/// Who is told about an end that is not a yes: the requester on `reject`
-/// and `expire`; the requester and the last approver on `fail`; the current
+/// Who is told about an end that is not a yes: the requester on `reject`,
+/// `return` and `expire`; the requester and the last approver on `fail`; the current
 /// step's approvers on `withdraw` (`step_approvers`), and the requester too
 /// when the subject had already moved and someone else ended it. Sorted,
 /// without repeats.
@@ -147,7 +147,7 @@ fn decided_recipients(
 ) -> Vec<i64> {
     let mut to = BTreeSet::new();
     match end.kind() {
-        ApprovalEnd::Rejected | ApprovalEnd::Expired => {
+        ApprovalEnd::Rejected | ApprovalEnd::Returned | ApprovalEnd::Expired => {
             to.insert(request.requester_id);
         }
         ApprovalEnd::Failed => {
@@ -155,7 +155,7 @@ fn decided_recipients(
             to.extend(end.actor_id());
         }
         ApprovalEnd::Withdrawn => to.extend(step_approvers.iter().copied()),
-        ApprovalEnd::Approved | ApprovalEnd::Returned => {}
+        ApprovalEnd::Approved => {}
     }
     if moved && end.actor_id() != Some(request.requester_id) {
         to.insert(request.requester_id);
@@ -358,6 +358,20 @@ mod tests {
         assert_eq!(
             decided_recipients(&request, &End::expire(), false, &[]),
             vec![1]
+        );
+    }
+
+    #[test]
+    fn the_requester_hears_of_a_return_with_the_comment() {
+        let request = requested_by(1);
+        let end = End::return_for_changes(2, 1, "attach the photos");
+        assert_eq!(decided_recipients(&request, &end, false, &[]), vec![1]);
+        let notice = Decided::of(&request, &end, &SubjectEnd::default());
+        assert_eq!(notice.decision, ApprovalEnd::Returned);
+        assert_eq!(notice.reason, "attach the photos");
+        assert_eq!(
+            texts::en_with(notice.title_key(), &[("action", &notice.action)]),
+            "Returned for changes: fix and resubmit (payments.refund)"
         );
     }
 
