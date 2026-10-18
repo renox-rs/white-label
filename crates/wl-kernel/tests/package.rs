@@ -911,3 +911,65 @@ async fn without_payments_the_recorder_finds_nothing_and_refuses_to_record() {
         ));
     }
 }
+
+/// #58 AC7: without the parties module the directory marks no contact point
+/// invalid (`None`, for the kernel's directory as for `NoParties`), so a
+/// give-up run still succeeds.
+#[renox::test]
+async fn without_parties_no_contact_point_is_marked_invalid() {
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let parties = wl_kernel::parties::directory(app.state());
+    let since = renox::db::now();
+    assert_eq!(
+        parties
+            .invalidate_contact(app.db(), 11, since, "hard_bounce")
+            .await
+            .unwrap(),
+        None
+    );
+    assert_eq!(
+        NoParties
+            .invalidate_contact(app.db(), 11, since, "hard_bounce")
+            .await
+            .unwrap(),
+        None
+    );
+}
+
+/// #58 AC6: a module that registers a non-marketing type with
+/// `mark_contact_invalid` alone fails at boot; a marketing type, or one with
+/// another reaction beside it, registers.
+#[test]
+fn a_type_with_only_mark_contact_invalid_is_refused_unless_marketing() {
+    use wl_kernel::notify::{
+        self, Category, GiveUpReaction, NotificationTypeDef, NotifyChannel, check_give_up,
+    };
+
+    let def = |key: &str, category: Category, reactions: &[GiveUpReaction]| {
+        NotificationTypeDef::new(key, "invoicing")
+            .category(category)
+            .give_up(reactions)
+            .template(NotifyChannel::Email, "en", Some("Hello"), "Hello.")
+    };
+    let mark = GiveUpReaction::MarkContactInvalid;
+    let refused = std::panic::catch_unwind(|| {
+        notify::register_type(def("kernel_package.alone", Category::Reminder, &[mark]));
+    });
+    assert!(refused.is_err());
+    assert!(notify::notification_type("kernel_package.alone").is_none());
+    assert!(check_give_up(Category::Reminder, &[mark]).is_err());
+
+    notify::register_type(def(
+        "kernel_package.marketing",
+        Category::Marketing,
+        &[mark],
+    ));
+    notify::register_type(def(
+        "kernel_package.paired",
+        Category::Reminder,
+        &[mark, GiveUpReaction::StaffTask],
+    ));
+    assert!(notify::notification_type("kernel_package.marketing").is_some());
+    assert!(notify::notification_type("kernel_package.paired").is_some());
+}

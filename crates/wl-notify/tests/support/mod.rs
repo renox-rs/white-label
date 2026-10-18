@@ -16,11 +16,14 @@ use renox::prelude::*;
 use renox::testing::TestApp;
 use wl_kernel::automation::AutomationFailed;
 use wl_kernel::notify::{
-    self, Category, ContactKind, ContactPurpose, ContactRelation, GiveUpReaction, MessageFailed,
-    MessageGaveUp, MessageId, MessageSuppressed, NotificationTypeDef, NotifyChannel,
-    NotifyRecipient, NotifyRequest, PartyContactPoint, PartyContacts, Urgency,
+    self, Category, ContactKind, ContactPointInvalidated, ContactPurpose, ContactRelation,
+    GiveUpReaction, MessageFailed, MessageGaveUp, MessageId, MessageSuppressed,
+    NotificationTypeDef, NotifyChannel, NotifyRecipient, NotifyRequest, PartyContactPoint,
+    PartyContacts, Urgency,
 };
-use wl_kernel::parties::{PartyDirectory, PartyFuture, PartyStatus, PartySummary, RelatedContact};
+use wl_kernel::parties::{
+    InvalidatedContact, PartyDirectory, PartyFuture, PartyStatus, PartySummary, RelatedContact,
+};
 use wl_kernel::tickets::{OpenTicket, TaskComment, TaskCreator, TicketFuture, TicketId, TicketRef};
 use wl_kernel::{ClientConfig, PartyId, Subject};
 use wl_notify::channels::ProviderFuture;
@@ -58,6 +61,9 @@ holidays = ["2026-12-02"]
 pub const REMINDER: &str = "invoice.reminder";
 /// A statutory type: a notice with legal effect.
 pub const NOTICE: &str = "lease.notice";
+/// An e-mail-only type that marks the contact point invalid and tells staff
+/// (#58 AC1).
+pub const INVOICE_ISSUED: &str = "invoice.issued";
 /// An e-mail-only type with no give-up reaction.
 pub const RECEIPT: &str = "receipt.issued";
 
@@ -303,6 +309,18 @@ pub fn register_types() {
             ),
     );
     notify::register_type(
+        NotificationTypeDef::new(INVOICE_ISSUED, "invoicing")
+            .group("invoices")
+            .give_up(&[MarkContactInvalid, StaffTask])
+            .staff_role("collector")
+            .template(
+                NotifyChannel::Email,
+                "en",
+                Some("Invoice {{ number }}"),
+                "Invoice {{ number }} is issued.",
+            ),
+    );
+    notify::register_type(
         NotificationTypeDef::new(NOTICE, "property")
             .group("leases")
             .statutory(true)
@@ -359,9 +377,42 @@ pub fn register_types() {
     );
 }
 
-/// The parties the tests send to.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct TestDirectory;
+/// One call that marked a contact point invalid.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Invalidation {
+    /// The contact point.
+    pub point: i64,
+    /// The since the handler gave.
+    pub since: renox::db::DateTime,
+    /// The reason the handler gave.
+    pub reason: String,
+}
+
+/// The parties the tests send to. It records the contact points marked
+/// invalid (the real status is wl-parties', #58 A1) and then reports them
+/// `valid: false`, like the real directory.
+#[derive(Debug, Clone, Default)]
+pub struct TestDirectory {
+    invalid: Arc<Mutex<Vec<Invalidation>>>,
+}
+
+impl TestDirectory {
+    /// The points marked invalid, oldest first.
+    pub fn invalidations(&self) -> Vec<Invalidation> {
+        self.invalid.lock().unwrap().clone()
+    }
+
+    fn is_invalid(&self, point: i64) -> bool {
+        self.invalid
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|i| i.point == point)
+    }
+}
+
+/// The parties whose points can be marked invalid.
+const MARKABLE: [PartyId; 3] = [BLUE_DUNES, RED_ROCK, SARA];
 
 fn point(id: i64, kind: ContactKind, address: &str) -> PartyContactPoint {
     PartyContactPoint {
@@ -452,6 +503,13 @@ impl PartyDirectory for TestDirectory {
             DARK_MESA => vec![point(41, ContactKind::Email, DARK_MESA_EMAIL)],
             _ => return Box::pin(async { Ok(None) }),
         };
+        let points: Vec<_> = points
+            .into_iter()
+            .map(|mut p| {
+                p.valid = !self.is_invalid(p.id);
+                p
+            })
+            .collect();
         Box::pin(async move {
             Ok(Some(PartyContacts {
                 party,
@@ -459,6 +517,37 @@ impl PartyDirectory for TestDirectory {
                 preferred_channel: None,
                 points,
             }))
+        })
+    }
+
+    fn invalidate_contact<'a>(
+        &'a self,
+        db: &'a Db,
+        point: i64,
+        since: renox::db::DateTime,
+        reason: &'a str,
+    ) -> PartyFuture<'a, Option<InvalidatedContact>> {
+        Box::pin(async move {
+            if self.is_invalid(point) {
+                return Ok(None);
+            }
+            for party in MARKABLE {
+                let Some(contacts) = self.contacts(db, party).await? else {
+                    continue;
+                };
+                if let Some(found) = contacts.points.iter().find(|p| p.id == point) {
+                    self.invalid.lock().unwrap().push(Invalidation {
+                        point,
+                        since,
+                        reason: reason.to_owned(),
+                    });
+                    return Ok(Some(InvalidatedContact {
+                        party,
+                        kind: found.kind,
+                    }));
+                }
+            }
+            Ok(None)
         })
     }
 
@@ -714,6 +803,10 @@ pub struct Booted {
     pub suppressed: Recorded<MessageSuppressed>,
     /// `AutomationFailed`.
     pub automation_failed: Recorded<AutomationFailed>,
+    /// `ContactPointInvalidated`.
+    pub invalidated: Recorded<ContactPointInvalidated>,
+    /// The party directory the app uses; it records the invalidations.
+    pub directory: TestDirectory,
 }
 
 impl Booted {
@@ -878,6 +971,12 @@ pub async fn boot_staff() -> Booted {
     boot_with(&[GiveUpReaction::StaffTask], true).await
 }
 
+/// As [`boot`], but the `mark_contact_invalid` reaction is the module's own,
+/// with the test directory behind it (#58).
+pub async fn boot_invalid() -> Booted {
+    boot_with(&[GiveUpReaction::MarkContactInvalid], true).await
+}
+
 /// As [`boot_staff`], with the module's own `alternative_recipient` too.
 pub async fn boot_alternative() -> Booted {
     boot_with(
@@ -936,7 +1035,8 @@ async fn boot_with(real: &[GiveUpReaction], ticketing: bool) -> Booted {
     let failed = Recorded::new();
     let suppressed = Recorded::new();
     let automation_failed = Recorded::new();
-    let directory: Arc<dyn PartyDirectory> = Arc::new(TestDirectory);
+    let test_directory = TestDirectory::default();
+    let directory: Arc<dyn PartyDirectory> = Arc::new(test_directory.clone());
     let app = App::new()
         .module(Auth::new())
         .module(Permissions)
@@ -952,6 +1052,8 @@ async fn boot_with(real: &[GiveUpReaction], ticketing: bool) -> Booted {
     let app = record(app, &failed);
     let app = record(app, &suppressed);
     let app = record(app, &automation_failed);
+    let invalidated = Recorded::new();
+    let app = record(app, &invalidated);
     let config = ClientConfig::parse(CLIENT).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     let dir = views.path().to_path_buf();
@@ -973,5 +1075,7 @@ async fn boot_with(real: &[GiveUpReaction], ticketing: bool) -> Booted {
         failed,
         suppressed,
         automation_failed,
+        invalidated,
+        directory: test_directory,
     }
 }
