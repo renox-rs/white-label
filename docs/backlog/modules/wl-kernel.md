@@ -1,6 +1,6 @@
 # Epic: wl-kernel — negative flows
 
-> Status: draft · Last updated: 2026-10-15 · Spec version: same commit as this file
+> Status: draft · Last updated: 2026-10-16 · Spec version: same commit as this file
 
 The platform patterns every other module uses when something goes wrong
 ([WORKFLOW.md](../../WORKFLOW.md) §8, [wl-kernel](../../modules/wl-kernel.md) §4.1, §4.5,

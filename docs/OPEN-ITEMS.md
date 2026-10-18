@@ -1,6 +1,6 @@
 # Open Items Register
 
-> Status: draft · Last updated: 2026-10-15
+> Status: draft · Last updated: 2026-10-16
 
 Every fact the documents could not settle from public sources (`⚠ open: <owner>`) and every
 business decision still to take (`⚠ decide`), in one place. The marker in the source document

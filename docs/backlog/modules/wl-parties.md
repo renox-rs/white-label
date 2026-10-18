@@ -1,6 +1,6 @@
 # Epic: wl-parties — negative flows
 
-> Status: draft · Last updated: 2026-10-15 · Spec version: same commit as this file
+> Status: draft · Last updated: 2026-10-16 · Spec version: same commit as this file
 
 What happens when a party is blocked (sanctions, fraud, non-payment, legal dispute): restricted
 reason codes that only the compliance role can see, the block effect on each kind of active

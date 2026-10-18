@@ -1,6 +1,6 @@
 # Epic: wl-attendance — negative flows
 
-> Status: draft · Last updated: 2026-10-15 · Spec version: same commit as this file
+> Status: draft · Last updated: 2026-10-16 · Spec version: same commit as this file
 
 This epic builds the attendance and timesheet negative flows added by the review fix X-16:
 overlap, overtime-cap, midday-break and invalid-permit flags with a separate reviewer

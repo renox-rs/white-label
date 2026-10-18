@@ -1,6 +1,6 @@
 # Workflow
 
-> Status: draft for review · Last updated: 2026-10-15
+> Status: draft for review · Last updated: 2026-10-16
 
 How work moves through the system: statuses, approvals, automations and integrations. Each
 vertical lists only its own state machines and automations
