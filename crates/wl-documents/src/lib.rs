@@ -90,6 +90,10 @@ impl Module for WlDocuments {
             .view_data::<pages::FlagsPage>()
             .view_data::<pages::KindsPage>()
             .view_data::<pages::KindPage>();
+        // `DOC.RUL.01` and `DOC.RUL.02`: the `documents.expiring` type, the
+        // daily `documents:expiry` task (01:00 Asia/Dubai) and its command.
+        expiry::run::register_type();
+        expiry::run::schedule(app);
         // `rnx state:diagram Document` and the admin panel find the machine.
         renox::state_machine::register::<Document>();
         // The standard guard `document_valid` other modules call through

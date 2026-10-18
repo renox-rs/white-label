@@ -231,6 +231,23 @@ const TEXTS: &[(&str, &str)] = &[
         ":kind renewal pending review",
     ),
     (
+        "wl_documents.expiring.subject",
+        "{{ kind_name }} of {{ subject_label }} expires on {{ expires_on }}",
+    ),
+    (
+        "wl_documents.expiring.body",
+        "{{ summary }}\n{{ items_text }}",
+    ),
+    (
+        "wl_documents.expiring.reminder",
+        "The :kind of :subject expires on :expires (:left day(s) left).",
+    ),
+    (
+        "wl_documents.expiring.items",
+        "Planned work dated after the expiry date is not covered:",
+    ),
+    ("wl_documents.expiring.item", "- :label on :date (:guarded)"),
+    (
         "wl_documents.guard.no_provider",
         "No module maps :guarded to its document subjects",
     ),
