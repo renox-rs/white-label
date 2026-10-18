@@ -44,8 +44,8 @@ use wl_kernel::documents::{
 
 use crate::kinds::DocumentKind;
 use crate::machine::{
-    ACCEPT, ARCHIVE, AcceptInput, RECORD, REJECT, RESUBMIT, ResubmitInput, SUBMIT, SUPERSEDE,
-    SupersedeInput,
+    ACCEPT, ARCHIVE, AcceptInput, KindInput, RECORD, REJECT, RESUBMIT, ResubmitInput, SUBMIT,
+    SUPERSEDE, SupersedeInput,
 };
 use crate::{permissions, texts};
 
@@ -521,11 +521,11 @@ async fn store_version(
 
 /// A superseded document and the run that moved it, to emit after the
 /// commit.
-type Superseded = (i64, Outcome<Document>);
+pub(crate) type Superseded = (i64, Outcome<Document>);
 
 /// Supersedes, in `tx`, every other accepted document of `accepted`'s kind
 /// and subject (`supersede`, by the system).
-async fn supersede_previous(
+pub(crate) async fn supersede_previous(
     tx: &mut Transaction,
     accepted: &Document,
 ) -> std::result::Result<Vec<Superseded>, TransitionError> {
@@ -554,7 +554,7 @@ async fn supersede_previous(
 
 /// After the commit: Renox's `Transitioned` and the kernel's
 /// `DocumentSuperseded` for each superseded document.
-async fn emit_superseded(
+pub(crate) async fn emit_superseded(
     state: &AppState,
     superseded: Vec<Superseded>,
     replaced_by: i64,
@@ -575,7 +575,11 @@ async fn emit_superseded(
 }
 
 /// The kernel's `DocumentAccepted` for `document`.
-async fn emit_accepted(state: &AppState, document: &Document, kind: &DocumentKind) -> Result {
+pub(crate) async fn emit_accepted(
+    state: &AppState,
+    document: &Document,
+    kind: &DocumentKind,
+) -> Result {
     state
         .emit(DocumentAccepted {
             document: document.document_id(),
@@ -661,6 +665,7 @@ impl Documents {
         let input = AcceptInput {
             needs_number: kind.has_number,
             needs_expiry: kind.has_expiry,
+            sop_kind: crate::sops::is_sop_kind(&kind.key),
         };
         let mut tx = state.db.begin().await?;
         let outcome = document
@@ -702,6 +707,9 @@ impl Documents {
         let outcome = document
             .transition(REJECT)
             .by(by)
+            .input(&KindInput {
+                sop_kind: crate::sops::is_sop_kind(&kind.key),
+            })
             .reason(reason.trim())
             .run(state)
             .await?;
@@ -792,7 +800,10 @@ impl Documents {
         document: &Document,
         reason: Option<&str>,
     ) -> std::result::Result<Document, TransitionError> {
-        let mut run = document.transition(ARCHIVE).by(by);
+        let kind = document.kind(&state.db).await?;
+        let mut run = document.transition(ARCHIVE).by(by).input(&KindInput {
+            sop_kind: crate::sops::is_sop_kind(&kind.key),
+        });
         if let Some(reason) = reason.map(str::trim).filter(|r| !r.is_empty()) {
             run = run.reason(reason);
         }
@@ -884,6 +895,7 @@ async fn create(
         let rules = AcceptInput {
             needs_number: kind.has_number,
             needs_expiry: kind.has_expiry,
+            ..AcceptInput::default()
         };
         if rules.missing(&document).is_some() {
             let reason = if rules.needs_number && document.number.is_none() {

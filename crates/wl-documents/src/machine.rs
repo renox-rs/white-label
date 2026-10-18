@@ -43,6 +43,12 @@ pub const RECORD: &str = "record";
 pub const SUPERSEDE: &str = "supersede";
 /// A manager archives an accepted or rejected document.
 pub const ARCHIVE: &str = "archive";
+/// The owner role accepts a pending SOP version (#52).
+pub const ACCEPT_SOP: &str = "accept_sop";
+/// The owner role rejects a pending SOP version, with a reason (#52).
+pub const REJECT_SOP: &str = "reject_sop";
+/// An SOP manager archives (withdraws) an SOP version (#52).
+pub const ARCHIVE_SOP: &str = "archive_sop";
 
 /// What `accept` (and `record`) check: the fields the kind needs.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -50,6 +56,29 @@ pub(crate) struct AcceptInput {
     /// The kind has a number (e.g. passport no.).
     pub needs_number: bool,
     /// The kind has an expiry date.
+    pub needs_expiry: bool,
+    /// The kind is an SOP kind: only `accept_sop` accepts it.
+    #[serde(default)]
+    pub sop_kind: bool,
+}
+
+/// What `reject` and `archive` carry: whether the document is of an SOP
+/// kind, which only `reject_sop` and `archive_sop` handle. A run without
+/// it is not refused (the services always give it).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct KindInput {
+    /// The document is of an SOP kind.
+    pub sop_kind: bool,
+}
+
+/// What the SOP transitions carry (#52).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct SopRunInput {
+    /// The document is of the SOP version kind.
+    pub sop_kind: bool,
+    /// The actor holds the SOP's owner role.
+    pub owner_role: bool,
+    /// The kind has a review date (expiry) to fill.
     pub needs_expiry: bool,
 }
 
@@ -121,6 +150,9 @@ impl StateMachine for Document {
             .transition(resubmit())
             .transition(supersede())
             .transition(archive())
+            .transition(accept_sop())
+            .transition(reject_sop())
+            .transition(archive_sop())
     }
 }
 
@@ -129,12 +161,11 @@ impl StateMachine for Document {
 /// service supersedes the previous accepted document in the same
 /// transaction.
 fn accept() -> Transition<Document> {
-    Transition::new(ACCEPT)
-        .label("Accept")
-        .tone("success")
-        .permission(permissions::REVIEW)
-        .from([DocumentStatus::PendingReview])
-        .to(DocumentStatus::Accepted)
+    accepting(ACCEPT, permissions::REVIEW)
+        .guard("not_sop", |_: &Document, ctx| {
+            let sop = input::<AcceptInput>(ctx).is_some_and(|i| i.sop_kind);
+            Box::pin(async move { not_sop(sop) })
+        })
         .guard("fields_filled", |document: &Document, ctx| {
             let missing = input::<AcceptInput>(ctx).map(|i| i.missing(document));
             Box::pin(async move {
@@ -145,6 +176,68 @@ fn accept() -> Transition<Document> {
                 }
             })
         })
+}
+
+/// The refusal of a generic transition on a document of an SOP kind.
+fn not_sop(sop: bool) -> std::result::Result<(), String> {
+    if sop {
+        Err("An SOP version is handled through the SOP library.".to_owned())
+    } else {
+        Ok(())
+    }
+}
+
+/// The refusal of an SOP transition on any other document.
+fn is_sop(sop: bool) -> std::result::Result<(), String> {
+    if sop {
+        Ok(())
+    } else {
+        Err("Only an SOP version is handled through the SOP library.".to_owned())
+    }
+}
+
+/// `accept_sop`: as `accept`, by `sops.manage` holding the SOP's owner role,
+/// for a document of the SOP kind with its review date filled.
+fn accept_sop() -> Transition<Document> {
+    accepting(ACCEPT_SOP, permissions::SOPS_MANAGE)
+        .guard("sop_kind", |_: &Document, ctx| {
+            let sop = input::<SopRunInput>(ctx).is_some_and(|i| i.sop_kind);
+            Box::pin(async move { is_sop(sop) })
+        })
+        .guard("owner_role", |_: &Document, ctx| {
+            let owner = input::<SopRunInput>(ctx).is_some_and(|i| i.owner_role);
+            Box::pin(async move { holds_owner_role(owner) })
+        })
+        .guard("review_date", |document: &Document, ctx| {
+            let needs = input::<SopRunInput>(ctx).is_some_and(|i| i.needs_expiry);
+            let missing = needs && document.expiry_date.is_none();
+            Box::pin(async move {
+                if missing {
+                    Err("The SOP version needs its review date before it is accepted.".to_owned())
+                } else {
+                    Ok(())
+                }
+            })
+        })
+}
+
+/// Only a holder of the SOP's owner role.
+fn holds_owner_role(owner: bool) -> std::result::Result<(), String> {
+    if owner {
+        Ok(())
+    } else {
+        Err("Only a holder of the SOP's owner role can do this.".to_owned())
+    }
+}
+
+/// pending_review → accepted by `permission`; stamps the review.
+fn accepting(name: &'static str, permission: &'static str) -> Transition<Document> {
+    Transition::new(name)
+        .label("Accept")
+        .tone("success")
+        .permission(permission)
+        .from([DocumentStatus::PendingReview])
+        .to(DocumentStatus::Accepted)
         .effect(|document: &Document, ctx, tx| {
             let id = document.id;
             let by = actor_id(ctx);
@@ -170,10 +263,31 @@ fn accept() -> Transition<Document> {
 /// `reject`: pending_review → rejected, by `documents.review`, with a
 /// reason, which the document keeps for the uploader.
 fn reject() -> Transition<Document> {
-    Transition::new(REJECT)
+    rejecting(REJECT, permissions::REVIEW).guard("not_sop", |_: &Document, ctx| {
+        let sop = input::<KindInput>(ctx).is_some_and(|i| i.sop_kind);
+        Box::pin(async move { not_sop(sop) })
+    })
+}
+
+/// `reject_sop`: as `reject`, by `sops.manage` holding the SOP's owner role.
+fn reject_sop() -> Transition<Document> {
+    rejecting(REJECT_SOP, permissions::SOPS_MANAGE)
+        .guard("sop_kind", |_: &Document, ctx| {
+            let sop = input::<SopRunInput>(ctx).is_some_and(|i| i.sop_kind);
+            Box::pin(async move { is_sop(sop) })
+        })
+        .guard("owner_role", |_: &Document, ctx| {
+            let owner = input::<SopRunInput>(ctx).is_some_and(|i| i.owner_role);
+            Box::pin(async move { holds_owner_role(owner) })
+        })
+}
+
+/// pending_review → rejected by `permission`, with a reason.
+fn rejecting(name: &'static str, permission: &'static str) -> Transition<Document> {
+    Transition::new(name)
         .label("Reject")
         .tone("error")
-        .permission(permissions::REVIEW)
+        .permission(permission)
         .from([DocumentStatus::PendingReview])
         .to(DocumentStatus::Rejected)
         .reason_required()
@@ -277,10 +391,27 @@ fn supersede() -> Transition<Document> {
 
 /// `archive`: accepted or rejected → archived, by `documents.manage`.
 fn archive() -> Transition<Document> {
-    Transition::new(ARCHIVE)
+    archiving(ARCHIVE, permissions::MANAGE).guard("not_sop", |_: &Document, ctx| {
+        let sop = input::<KindInput>(ctx).is_some_and(|i| i.sop_kind);
+        Box::pin(async move { not_sop(sop) })
+    })
+}
+
+/// `archive_sop`: as `archive`, by `sops.manage` (the owner role is not
+/// needed), for a document of the SOP kind.
+fn archive_sop() -> Transition<Document> {
+    archiving(ARCHIVE_SOP, permissions::SOPS_MANAGE).guard("sop_kind", |_: &Document, ctx| {
+        let sop = input::<SopRunInput>(ctx).is_some_and(|i| i.sop_kind);
+        Box::pin(async move { is_sop(sop) })
+    })
+}
+
+/// accepted or rejected → archived by `permission`.
+fn archiving(name: &'static str, permission: &'static str) -> Transition<Document> {
+    Transition::new(name)
         .label("Archive")
         .tone("neutral")
-        .permission(permissions::MANAGE)
+        .permission(permission)
         .from([DocumentStatus::Accepted, DocumentStatus::Rejected])
         .to(DocumentStatus::Archived)
         .effect(|document: &Document, _ctx, tx| {
@@ -316,7 +447,19 @@ mod tests {
     fn the_machine_has_every_transition_of_4_1() {
         let machine = Document::machine();
         let names: Vec<_> = machine.transitions().iter().map(|t| t.name()).collect();
-        assert_eq!(names, [ACCEPT, REJECT, RESUBMIT, SUPERSEDE, ARCHIVE]);
+        assert_eq!(
+            names,
+            [
+                ACCEPT,
+                REJECT,
+                RESUBMIT,
+                SUPERSEDE,
+                ARCHIVE,
+                ACCEPT_SOP,
+                REJECT_SOP,
+                ARCHIVE_SOP
+            ]
+        );
         assert_eq!(machine.initial_states(), ["pending_review", "accepted"]);
         let accept = machine.find(ACCEPT).unwrap();
         assert_eq!(accept.from_states(), ["pending_review"]);
@@ -343,6 +486,7 @@ mod tests {
         let both = AcceptInput {
             needs_number: true,
             needs_expiry: true,
+            sop_kind: false,
         };
         let refused = accept.check_guards(&pending(), &ctx(both)).await;
         assert!(matches!(refused, Err(TransitionError::Guard(m)) if m.contains("number")));

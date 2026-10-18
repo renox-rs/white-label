@@ -116,7 +116,7 @@ async fn by_record_scope(db: &Db, role: &str, items: &[AffectedGroup]) -> Result
 }
 
 /// The users holding `role` in `scope` or globally, now.
-pub(super) async fn holders_in(db: &Db, role: &str, scope: &Scope) -> Result<BTreeSet<i64>> {
+pub(crate) async fn holders_in(db: &Db, role: &str, scope: &Scope) -> Result<BTreeSet<i64>> {
     Ok(
         renox::auth::permissions::users_with_role_in(db, role, scope)
             .await?

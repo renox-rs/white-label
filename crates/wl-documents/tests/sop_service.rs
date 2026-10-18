@@ -12,7 +12,7 @@ use wl_documents::{
 };
 use wl_kernel::documents::{SopId, SopReaderRef, SopReadersChanged};
 
-use support::{Booted, boot, day};
+use support::{Booted, boot};
 
 /// The manager of SOPs.
 async fn manager(t: &Booted) -> User {
@@ -61,14 +61,24 @@ async fn new_sop(t: &Booted, mona: &User, code: &str) -> Sop {
 }
 
 /// Makes `sop` active: a version document accepted and current.
-async fn publish(t: &Booted, rita: &User, sop: &Sop) -> Document {
+async fn publish(t: &Booted, _reviewer: &User, sop: &Sop) -> Document {
     t.install(&kind_seeds()).await;
-    let version = t.attach(sop.subject(), "sop", Some(day(365))).await;
-    let version = t.accept(rita, &version).await;
+    t.roles(&[sop.owner_role.as_str()]).await;
+    let owner = t
+        .user(&format!("Owner{}", sop.id), &[perm::SOPS_MANAGE])
+        .await;
+    owner
+        .assign_role(t.db(), sop.owner_role.as_str())
+        .await
+        .unwrap();
+    let version = t.attach(sop.subject(), "sop", None).await;
+    t.app.acting_as(&owner);
+    t.app
+        .post(&format!("/test/sop-versions/{}/accept", version.id), &[])
+        .await
+        .assert_ok();
+    let version = t.reload(&version).await;
     assert_eq!(version.status, DocumentStatus::Accepted);
-    let mut row = Sop::find_or_404(t.db(), sop.id).await.unwrap();
-    row.current_document_id = Some(version.id);
-    row.save(t.db()).await.unwrap();
     version
 }
 
@@ -171,13 +181,13 @@ async fn the_status_is_derived_from_the_current_version() {
     assert_eq!(status(&t, &sop).await, SopStatus::Draft);
 
     let rita = t.reviewer().await;
-    let version = publish(&t, &rita, &sop).await;
+    publish(&t, &rita, &sop).await;
     assert_eq!(status(&t, &sop).await, SopStatus::Active);
 
-    let omar = t.user("Omar", &[perm::MANAGE]).await;
+    let omar = mona.clone();
     t.app.acting_as(&omar);
     t.app
-        .post(&format!("/test/documents/{}/archive", version.id), &[])
+        .post(&format!("/test/sops/{}/withdraw", sop.id), &[])
         .await
         .assert_ok();
     assert_eq!(status(&t, &sop).await, SopStatus::Withdrawn);
@@ -209,7 +219,7 @@ async fn changing_readers_emits_the_difference_for_an_active_sop_only() {
     assert_eq!(SopReader::query().count(t.db()).await.unwrap(), 2);
 
     let rita = t.reviewer().await;
-    let version = publish(&t, &rita, &sop).await;
+    publish(&t, &rita, &sop).await;
 
     // The same readers (in another order, with a duplicate): nothing.
     set_readers(&t, &mona, sop.id, "driver; site_worker@sites:1;driver")
@@ -264,10 +274,10 @@ async fn changing_readers_emits_the_difference_for_an_active_sop_only() {
     assert_eq!(Sops::readers(t.db(), sop.id).await.unwrap().len(), 2);
 
     // Withdrawn: refused.
-    let omar = t.user("Omar", &[perm::MANAGE]).await;
+    let omar = mona.clone();
     t.app.acting_as(&omar);
     t.app
-        .post(&format!("/test/documents/{}/archive", version.id), &[])
+        .post(&format!("/test/sops/{}/withdraw", sop.id), &[])
         .await
         .assert_ok();
     set_readers(&t, &mona, sop.id, "driver")

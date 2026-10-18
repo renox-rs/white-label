@@ -1093,6 +1093,82 @@ async fn sop_readers(
         .to_string())
 }
 
+async fn generic_accept(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<i64>,
+) -> Result<String> {
+    let document = Document::find_or_404(&state.db, id).await?;
+    match Documents::accept(&state, &user, &document).await {
+        Ok(document) => Ok(document.status.as_str().to_owned()),
+        Err(error) => Err(error.into_error()),
+    }
+}
+
+async fn generic_reject(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<i64>,
+    Form(form): Form<FileForm>,
+) -> Result<String> {
+    let document = Document::find_or_404(&state.db, id).await?;
+    let reason = form.reason.unwrap_or_default();
+    match Documents::reject(&state, &user, &document, &reason).await {
+        Ok(document) => Ok(document.status.as_str().to_owned()),
+        Err(error) => Err(error.into_error()),
+    }
+}
+
+async fn sop_upload(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<i64>,
+    Form(form): Form<FileForm>,
+) -> Result<String> {
+    match Sops::upload_version(&state, &user, id, form.upload(), None).await? {
+        Ok(document) => Ok(document.id.to_string()),
+        Err(refused) => Err(refused.into_error()),
+    }
+}
+
+async fn sop_accept(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<i64>,
+) -> Result<String> {
+    let document = Document::find_or_404(&state.db, id).await?;
+    match Sops::accept_version(&state, &user, &document).await {
+        Ok(document) => Ok(document.status.as_str().to_owned()),
+        Err(error) => Err(error.into_error()),
+    }
+}
+
+async fn sop_reject(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<i64>,
+    Form(form): Form<FileForm>,
+) -> Result<String> {
+    let document = Document::find_or_404(&state.db, id).await?;
+    let reason = form.reason.unwrap_or_default();
+    match Sops::reject_version(&state, &user, &document, &reason).await {
+        Ok(document) => Ok(document.status.as_str().to_owned()),
+        Err(error) => Err(error.into_error()),
+    }
+}
+
+async fn sop_withdraw(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<i64>,
+    Form(form): Form<FileForm>,
+) -> Result<String> {
+    match Sops::withdraw(&state, &user, id, form.reason.as_deref()).await {
+        Ok(sop) => Ok(sop.id.to_string()),
+        Err(error) => Err(error.into_error()),
+    }
+}
+
 impl Module for Harness {
     fn name(&self) -> &'static str {
         "documents-test-harness"
@@ -1123,6 +1199,12 @@ impl Module for Harness {
             .post("/test/sops", sop_create)
             .post("/test/sops/{id}", sop_update)
             .post("/test/sops/{id}/readers", sop_readers)
+            .post("/test/documents/{id}/accept", generic_accept)
+            .post("/test/documents/{id}/reject", generic_reject)
+            .post("/test/sops/{id}/versions", sop_upload)
+            .post("/test/sops/{id}/withdraw", sop_withdraw)
+            .post("/test/sop-versions/{id}/accept", sop_accept)
+            .post("/test/sop-versions/{id}/reject", sop_reject)
     }
 }
 
