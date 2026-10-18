@@ -121,6 +121,7 @@ fn address_on(
             .filter(|_| channel == NotifyChannel::Email)
             .filter(|email| present(email))
             .map(|email| (email.trim().to_owned(), None)),
+        NotifyRecipient::Contact { .. } => None,
         NotifyRecipient::Address {
             channel: own,
             address,
@@ -164,7 +165,7 @@ pub async fn resolve(
         NotifyRecipient::User { id } => {
             user_email = User::find(&state.db, *id).await?.map(|u| u.email);
         }
-        NotifyRecipient::Address { .. } => {}
+        NotifyRecipient::Contact { .. } | NotifyRecipient::Address { .. } => {}
     }
     let mut candidates = Vec::new();
     for &channel in def.channels.iter().filter(|c| !skip.contains(c)) {

@@ -194,6 +194,8 @@ pub fn gave_up_event(
         channels_tried: channels_tried(chain, message),
         statutory: def.statutory,
         reactions: reaction_order(&def.give_up),
+        alternative_of: None,
+        contact_of: None,
     }
 }
 

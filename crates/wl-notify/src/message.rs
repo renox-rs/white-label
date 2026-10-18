@@ -175,6 +175,8 @@ impl Message {
                 self.recipient_kind = RecipientKind::Party;
                 self.party_id = Some(id.0);
             }
+            // The rule's columns arrive with the message columns of part 3.
+            NotifyRecipient::Contact { .. } => {}
             NotifyRecipient::Address { channel, address } => {
                 self.recipient_kind = RecipientKind::Address;
                 self.channel = *channel;

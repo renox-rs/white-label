@@ -302,6 +302,56 @@ pub fn notification_types() -> Vec<Arc<NotificationTypeDef>> {
         .collect()
 }
 
+/// The kind of relationship that makes a party a contact of another one
+/// (wl-parties §3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContactRelation {
+    /// A person who is a contact of a company (or of another party), in a
+    /// position such as `finance`.
+    ContactOf,
+    /// A person who is a guardian of another (a student, a minor).
+    GuardianOf,
+}
+
+impl ContactRelation {
+    /// The stored name: `contact_of` or `guardian_of`.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ContactRelation::ContactOf => "contact_of",
+            ContactRelation::GuardianOf => "guardian_of",
+        }
+    }
+}
+
+/// What makes a party the right contact: the relationship and, optionally,
+/// its position. With no position, any position matches.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct ContactPurpose {
+    /// The relationship.
+    pub relation: ContactRelation,
+    /// The position, e.g. `finance`; `None` for any.
+    pub position: Option<String>,
+}
+
+impl ContactPurpose {
+    /// A contact of the party in `position`, e.g. `finance`.
+    pub fn contact_of(position: &str) -> Self {
+        ContactPurpose {
+            relation: ContactRelation::ContactOf,
+            position: Some(position.to_owned()),
+        }
+    }
+
+    /// A guardian of the party, in any position.
+    pub fn guardian_of() -> Self {
+        ContactPurpose {
+            relation: ContactRelation::GuardianOf,
+            position: None,
+        }
+    }
+}
+
 /// Who a notification is for.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -315,6 +365,15 @@ pub enum NotifyRecipient {
     Party {
         /// The party.
         id: PartyId,
+    },
+    /// A contact of a party, chosen by a rule ("the finance contacts of
+    /// Blue Dunes LLC"); see [`ContactPurpose`]. The rule can be run again
+    /// to find another contact when a message gave up.
+    Contact {
+        /// The party whose contacts (or whose guardians) are meant.
+        of: PartyId,
+        /// Which relationship and position make a contact.
+        purpose: ContactPurpose,
     },
     /// A bare address on one channel.
     Address {
@@ -368,6 +427,12 @@ impl NotifyRequest {
     /// Also to `party`.
     pub fn to_party(self, party: PartyId) -> Self {
         self.to(NotifyRecipient::Party { id: party })
+    }
+
+    /// Also to a contact of `of` chosen by `purpose` (e.g. its finance
+    /// contacts).
+    pub fn to_contact(self, of: PartyId, purpose: ContactPurpose) -> Self {
+        self.to(NotifyRecipient::Contact { of, purpose })
     }
 
     /// With these template variables.
@@ -650,6 +715,15 @@ pub struct MessageGaveUp {
     pub statutory: bool,
     /// The reactions applied, in run order.
     pub reactions: Vec<GiveUpReaction>,
+    /// The first message of the original chain when this message is the
+    /// alternative queued to another contact; `None` otherwise. Tells a
+    /// chain's final give-up apart.
+    #[serde(default)]
+    pub alternative_of: Option<MessageId>,
+    /// The party whose contact the recipient rule chose from, when the
+    /// message was sent to a [`NotifyRecipient::Contact`].
+    #[serde(default)]
+    pub contact_of: Option<PartyId>,
 }
 
 impl Event for MessageGaveUp {}
@@ -848,5 +922,32 @@ mod tests {
         assert_eq!(json, r#"{"kind":"party","id":4}"#);
         let json = renox::serde_json::to_string(&NotifyRecipient::User { id: 2 }).unwrap();
         assert_eq!(json, r#"{"kind":"user","id":2}"#);
+        let json = renox::serde_json::to_string(&NotifyRecipient::Contact {
+            of: PartyId(5),
+            purpose: ContactPurpose::contact_of("finance"),
+        })
+        .unwrap();
+        assert_eq!(
+            json,
+            r#"{"kind":"contact","of":5,"purpose":{"relation":"contact_of","position":"finance"}}"#
+        );
+    }
+
+    #[test]
+    fn to_contact_adds_a_rule_recipient() {
+        let request = NotifyRequest::new("invoice.reminder", Subject::new("invoicing.invoice", 1))
+            .to_contact(PartyId(5), ContactPurpose::guardian_of());
+        assert_eq!(
+            request.recipients,
+            [NotifyRecipient::Contact {
+                of: PartyId(5),
+                purpose: ContactPurpose {
+                    relation: ContactRelation::GuardianOf,
+                    position: None,
+                },
+            }]
+        );
+        assert_eq!(ContactRelation::ContactOf.as_str(), "contact_of");
+        assert_eq!(ContactRelation::GuardianOf.as_str(), "guardian_of");
     }
 }

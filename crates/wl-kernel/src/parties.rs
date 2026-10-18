@@ -21,7 +21,7 @@ use std::sync::Arc;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::notify::PartyContacts;
+use crate::notify::{ContactPurpose, PartyContacts};
 use crate::numbering::{Reset, Series};
 use crate::subject::Subject;
 
@@ -130,6 +130,27 @@ pub struct BillingIdentity {
     pub billing_email: Option<String>,
 }
 
+/// A party related to another one by a [`ContactPurpose`]:
+/// [`PartyDirectory::related_contacts`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RelatedContact {
+    /// The related (from) party, a person.
+    pub party: PartyId,
+    /// The position of the relationship, e.g. `finance`.
+    pub position: Option<String>,
+    /// Whether it is the primary one for its party, relation and position.
+    pub primary: bool,
+}
+
+/// The first of `candidates` (already in preference order: primary first)
+/// whose party is not in `excluded`.
+pub fn choose_contact<'a>(
+    candidates: &'a [RelatedContact],
+    excluded: &[PartyId],
+) -> Option<&'a RelatedContact> {
+    candidates.iter().find(|c| !excluded.contains(&c.party))
+}
+
 /// The reason code others may see: the code itself, or
 /// [`NEUTRAL_BLOCK_REASON`] when it is restricted.
 pub fn display_block_reason(code: &str, restricted: bool) -> &str {
@@ -177,6 +198,20 @@ pub trait PartyDirectory: Send + Sync + 'static {
     ) -> PartyFuture<'a, Option<PartyContacts>> {
         let _ = (db, party);
         Box::pin(async { Ok(None) })
+    }
+
+    /// The parties related to `of` as `purpose` says (its finance contacts,
+    /// its guardians), active today, primary first, then by start date, then
+    /// by id. Only relationships whose to-party is `of` count, so a party
+    /// outside them is never returned. The default knows none.
+    fn related_contacts<'a>(
+        &'a self,
+        db: &'a Db,
+        of: PartyId,
+        purpose: &'a ContactPurpose,
+    ) -> PartyFuture<'a, Vec<RelatedContact>> {
+        let _ = (db, of, purpose);
+        Box::pin(async { Ok(Vec::new()) })
     }
 
     /// Who an invoice to the party is addressed to: legal names, TRN,
@@ -312,6 +347,33 @@ mod tests {
         assert_eq!(PartyStatus::default(), PartyStatus::Active);
         assert_eq!(PartyKind::Company.as_str(), "company");
         assert_eq!("person".parse::<PartyKind>().unwrap(), PartyKind::Person);
+    }
+
+    fn related(party: i64, primary: bool) -> RelatedContact {
+        RelatedContact {
+            party: PartyId(party),
+            position: Some("finance".into()),
+            primary,
+        }
+    }
+
+    #[test]
+    fn choose_contact_takes_the_first_not_excluded() {
+        let candidates = [related(1, true), related(2, false), related(3, false)];
+        assert_eq!(choose_contact(&candidates, &[]).unwrap().party, PartyId(1));
+        assert_eq!(
+            choose_contact(&candidates, &[PartyId(1)]).unwrap().party,
+            PartyId(2)
+        );
+        assert_eq!(
+            choose_contact(&candidates, &[PartyId(1), PartyId(2)])
+                .unwrap()
+                .party,
+            PartyId(3)
+        );
+        let all = [PartyId(1), PartyId(2), PartyId(3)];
+        assert!(choose_contact(&candidates, &all).is_none());
+        assert!(choose_contact(&[], &[]).is_none());
     }
 
     #[test]

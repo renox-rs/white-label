@@ -37,7 +37,7 @@ What is here so far:
 | Legal entities, scope links, issuer snapshots (`PLT.ENT.01`) | §5.6, decision 0003 | `entities` |
 | Document numbering on Renox `Sequence` | §5.5 | `numbering` |
 | State machines by name: `SubjectMachine`, `back_to_<state>` and `<action>_approved` (always `system`) | §4.1, WORKFLOW §3.4 | `machines` |
-| The party contract: `PartyDirectory` (`NoParties` when `parties` is off), `PartyStatus`, party events, the `party` series, `contacts` (`PartyContacts`), `billing_identity` (`BillingIdentity`) | ARCHITECTURE §5, wl-parties §6 | `parties` |
+| The party contract: `PartyDirectory` (`NoParties` when `parties` is off), `PartyStatus`, party events, the `party` series, `contacts` (`PartyContacts`), `related_contacts` (`RelatedContact`, `choose_contact`), `billing_identity` (`BillingIdentity`) | ARCHITECTURE §5, wl-parties §6 | `parties` |
 | The invoicing contract: `Invoicer` (`NoInvoicer` when `invoicing` is off), `InvoiceDraft`, `InvoiceSummary`, `VatCategory`, invoice events, the `invoice` series | ARCHITECTURE §5, wl-invoicing §6 | `invoicing` |
 | The notice contract: `Notifier` (`NoNotifier` when `notify` is off), `register_type`, `NotifyRequest`, message events | ARCHITECTURE §5, wl-notify §6 | `notify` |
 | The document guard contract: `DocumentGuard` (`NoDocuments` when `documents` is off), `BlockEntry`, `BlockSubjects` by transition, `BlockRefusal`, `today()` in Asia/Dubai, document events | ARCHITECTURE §5, wl-documents §5.6, §6 | `documents` |
@@ -79,7 +79,7 @@ flag, give-up reactions, staff role told, channels in order, default texts with 
 placeholders), then sends with
 `notify::notifier(&state).notify(&state, NotifyRequest::new(type, subject).to_party(p).to_user(u).data(..))`.
 A recipient is a staff user (by user id), a party (by `PartyId`, reached through
-`PartyDirectory::contacts`) or a bare address. `.subject_label("TKT-2026-0042")` names the
+`PartyDirectory::contacts`) a rule (`.to_contact(of, ContactPurpose::contact_of("finance"))`, resolved through `PartyDirectory::related_contacts`) or a bare address. `.subject_label("TKT-2026-0042")` names the
 subject in staff-facing text; `MessageGaveUp` carries it with `gave_up_at`. `wl-notify` provides the real notifier and
 emits `MessageFailed`, `MessageSuppressed` and `MessageGaveUp`. When `notify` is off,
 `NoNotifier` still gives each user recipient a Renox database notification (the bell) with

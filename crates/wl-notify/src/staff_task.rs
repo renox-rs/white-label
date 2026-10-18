@@ -134,6 +134,12 @@ pub fn source_key(subject: &Subject, recipient: &NotifyRecipient) -> String {
     let who = match recipient {
         NotifyRecipient::Party { id } => format!("party:{}", id.0),
         NotifyRecipient::User { id } => format!("user:{id}"),
+        NotifyRecipient::Contact { of, purpose } => format!(
+            "contact:{}:{}:{}",
+            of.0,
+            purpose.relation.as_str(),
+            purpose.position.as_deref().unwrap_or("")
+        ),
         NotifyRecipient::Address { channel, address } => {
             format!("address:{}:{}", channel.as_str(), address.trim())
         }
@@ -237,7 +243,7 @@ pub fn description(
 /// message language, a user's name, else the masked address.
 async fn recipient_name(state: &AppState, ctx: &GiveUpContext, language: &str) -> Result<String> {
     Ok(match &ctx.recipient {
-        NotifyRecipient::Party { id } => {
+        NotifyRecipient::Party { id } | NotifyRecipient::Contact { of: id, .. } => {
             let name = parties::directory(state)
                 .display_name(&state.db, *id, language)
                 .await?;
