@@ -6,7 +6,7 @@
     <rx-form route="wl_parties.store" live novalidate>
       <rx-card>
         <rx-form-errors/>
-        <rx-radio name="kind" :label="tx['fields.kind']" :options="kinds" selected="person" inline required/>
+        <rx-radio name="kind" :label="tx['fields.kind']" :options="kinds" :selected="'person'" inline required/>
         <rx-fieldset :legend="tx['sections.names']">
           <rx-form-grid columns="2">
             <rx-input name="legal_name_en" :label="tx['fields.legal_name_en']" required/>
@@ -18,8 +18,8 @@
           <rx-form-grid columns="2">
             <rx-input name="email" type="email" :label="tx['fields.email']" autocomplete="off"/>
             <rx-input name="mobile" type="tel" :label="tx['fields.mobile']" autocomplete="off"/>
-            <rx-select name="default_language" :label="tx['fields.default_language']" :options="languages" selected="en"/>
-            <rx-select name="preferred_channel" :label="tx['fields.preferred_channel']" :options="channels" selected="email"/>
+            <rx-select name="default_language" :label="tx['fields.default_language']" :options="languages" :selected="'en'"/>
+            <rx-select name="preferred_channel" :label="tx['fields.preferred_channel']" :options="channels" :selected="'email'"/>
           </rx-form-grid>
         </rx-fieldset>
         <rx-show-when field="kind" values="company">

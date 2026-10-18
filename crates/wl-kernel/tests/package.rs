@@ -4,7 +4,8 @@ use renox::auth::{Permissions, permissions};
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use renox::testing::TestApp;
-use wl_kernel::{ClientConfig, LegalEntity, Reset, Series};
+use wl_kernel::parties::{NoParties, PartyDirectory};
+use wl_kernel::{ClientConfig, LegalEntity, PartyId, Reset, Series};
 
 /// The pages extend the app's layout; a package test has no app, so it
 /// brings the smallest one.
@@ -236,6 +237,24 @@ async fn the_legal_entities_page_needs_the_permission() {
         .assert_view("wl-kernel/legal_entities.html")
         .assert_see("Acme FZ-LLC")
         .assert_see("100123456700003");
+}
+
+/// #34 AC1: without the parties module, the kernel's directory is
+/// `NoParties` and finds nobody.
+#[renox::test]
+async fn without_parties_the_directory_finds_nobody() {
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let parties = wl_kernel::parties::directory(app.state());
+    let db = app.db();
+    assert_eq!(parties.find(db, PartyId(1)).await.unwrap(), None);
+    assert_eq!(parties.find_by_code(db, "P-00001").await.unwrap(), None);
+    assert_eq!(parties.status(db, PartyId(1)).await.unwrap(), None);
+    assert_eq!(
+        parties.display_name(db, PartyId(1), "en").await.unwrap(),
+        None
+    );
+    assert_eq!(NoParties.find(db, PartyId(1)).await.unwrap(), None);
 }
 
 #[renox::test]

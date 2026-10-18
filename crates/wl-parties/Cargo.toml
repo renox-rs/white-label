@@ -11,3 +11,6 @@ publish.workspace = true
 renox.workspace = true
 serde.workspace = true
 wl-kernel = { path = "../wl-kernel" }
+
+[dev-dependencies]
+tempfile = "3"
