@@ -10,7 +10,8 @@
 //!   expire on or after the date, or not expire. A missing, `rejected` or
 //!   `pending_review` document answers *no*. Nothing is cached;
 //! - [`DocumentGuard::check`] runs the `block` entries of a transition
-//!   (`flag` entries come with #46), asks the transition's `BlockSubjects`
+//!   first, then (when none fails) its `flag` entries, which only collect
+//!   [`FlagFailure`]s (#46). It asks the transition's `BlockSubjects`
 //!   provider for the subjects, and refuses with one line per failing
 //!   subject and kind, e.g. "Residence visa expired on 2026-11-30; renew:
 //!   PRO; override: not allowed". A pending renewal it names is moved to the
@@ -26,11 +27,12 @@ use renox::prelude::*;
 use wl_kernel::Subject;
 use wl_kernel::documents::{
     BlockEntry, BlockFailure, BlockMode, BlockRefusal, CheckOutcome, DocumentFuture, DocumentGuard,
-    DocumentId, FlagFailure, InvalidReason, OverrideMode, PendingRenewal, RecordFlag, Validity,
-    block_subjects, dubai_date, today,
+    DocumentId, FlagFailure, FlagReason, InvalidReason, OverrideMode, PendingRenewal, RecordFlag,
+    Validity, block_subjects, dubai_date, today,
 };
 
 use crate::documents::{Document, DocumentStatus};
+use crate::flags;
 use crate::kinds::{self, DocumentKind};
 use crate::texts;
 
@@ -67,44 +69,49 @@ impl DocumentGuard for DocumentsGuard {
         Box::pin(check(state, guarded, record_id, on_date))
     }
 
-    // Flag mode (#46): the flags table and the real methods come with
-    // parts 2 and 3. Until then nothing is flagged, as in `NoDocuments`.
     fn record_flags<'a>(
         &'a self,
-        _db: &'a Db,
-        _guarded: &'a str,
-        _record_id: i64,
-        _flags: &'a [FlagFailure],
+        db: &'a Db,
+        guarded: &'a str,
+        record_id: i64,
+        flags: &'a [FlagFailure],
     ) -> DocumentFuture<'a, Vec<RecordFlag>> {
-        Box::pin(async { Ok(Vec::new()) })
+        Box::pin(async move {
+            let rows = flags::insert(db, guarded, record_id, flags).await?;
+            let mut written = Vec::with_capacity(rows.len());
+            for row in &rows {
+                written.push(flags::to_record_flag(db, row).await?);
+            }
+            Ok(written)
+        })
     }
 
     fn flags_for<'a>(
         &'a self,
-        _db: &'a Db,
-        _record_type: &'a str,
-        _record_id: i64,
+        db: &'a Db,
+        record_type: &'a str,
+        record_id: i64,
     ) -> DocumentFuture<'a, Vec<RecordFlag>> {
-        Box::pin(async { Ok(Vec::new()) })
+        Box::pin(flags::flags_for(db, record_type, record_id))
     }
 
     fn open_flag_counts<'a>(
         &'a self,
-        _db: &'a Db,
-        _record_type: &'a str,
-        _ids: &'a [i64],
+        db: &'a Db,
+        record_type: &'a str,
+        ids: &'a [i64],
     ) -> DocumentFuture<'a, BTreeMap<i64, u64>> {
-        Box::pin(async { Ok(BTreeMap::new()) })
+        Box::pin(flags::open_flag_counts(db, record_type, ids))
     }
 
     fn review_flag<'a>(
         &'a self,
-        _db: &'a Db,
-        _flag_id: i64,
-        _reviewer: i64,
-        _note: &'a str,
+        db: &'a Db,
+        flag_id: i64,
+        reviewer: i64,
+        note: &'a str,
     ) -> DocumentFuture<'a, RecordFlag> {
-        Box::pin(async { Err(Error::NotFound) })
+        Box::pin(flags::review(db, flag_id, reviewer, note))
     }
 }
 
@@ -224,29 +231,33 @@ pub(crate) fn validity_of(
     }
 }
 
-/// The checks of [`DocumentGuard::check`].
-pub async fn check(
+/// One failing document found by [`failing`].
+struct Failing {
+    entry: BlockEntry,
+    kind: DocumentKind,
+    subject: Subject,
+    validity: Validity,
+}
+
+/// The documents of `entries` that are not valid on `on_date`, and the
+/// pending renewals they name. An entry whose transition has no provider is
+/// an error, never a *yes*.
+async fn failing(
     state: &AppState,
     guarded: &str,
+    entries: Vec<BlockEntry>,
     record_id: i64,
     on_date: NaiveDate,
-) -> Result<std::result::Result<CheckOutcome, BlockRefusal>> {
-    let entries: Vec<BlockEntry> = kinds::blocks_for(&state.db, guarded)
-        .await?
-        .into_iter()
-        // Flag mode comes with #46.
-        .filter(|entry| entry.mode == BlockMode::Block)
-        .collect();
+) -> Result<(Vec<Failing>, Vec<DocumentId>)> {
+    let mut failures = Vec::new();
+    let mut prioritised: Vec<DocumentId> = Vec::new();
     if entries.is_empty() {
-        return Ok(Ok(CheckOutcome::default()));
+        return Ok((failures, prioritised));
     }
     let Some(provider) = block_subjects(guarded) else {
         let message = texts::english("wl_documents.guard.no_provider", &[("guarded", &guarded)]);
         return Err(Error::Internal(renox::anyhow::anyhow!(message)));
     };
-    let lang = state.current_lang();
-    let mut failures = Vec::new();
-    let mut prioritised: Vec<DocumentId> = Vec::new();
     for entry in entries {
         let subjects = provider.subjects(state, &entry, record_id).await?;
         if subjects.is_empty() {
@@ -265,29 +276,90 @@ pub async fn check(
             {
                 prioritised.push(renewal.document);
             }
-            let message = failure_message(&lang, &kind, &entry, &validity);
-            failures.push(BlockFailure {
+            failures.push(Failing {
                 entry: entry.clone(),
+                kind: kind.clone(),
                 subject,
                 validity,
-                message,
             });
         }
     }
-    if failures.is_empty() {
-        return Ok(Ok(CheckOutcome::default()));
-    }
-    if !prioritised.is_empty() {
+    Ok((failures, prioritised))
+}
+
+/// Moves the pending renewals `documents` to the top of the review queue.
+async fn prioritise(db: &Db, documents: &[DocumentId]) -> Result<()> {
+    if !documents.is_empty() {
         Document::query()
-            .where_(Document::ID.is_in(prioritised.iter().map(|d| d.0)))
-            .update(&state.db, &[("review_priority_at", &now())])
+            .where_(Document::ID.is_in(documents.iter().map(|d| d.0)))
+            .update(db, &[("review_priority_at", &now())])
             .await?;
     }
-    Ok(Err(BlockRefusal {
-        guarded: guarded.to_owned(),
-        record_id,
-        failures,
-    }))
+    Ok(())
+}
+
+/// The checks of [`DocumentGuard::check`]: the `block` entries first, and
+/// when any fails the transition is refused with only those failures (block
+/// wins, nothing is flagged). Otherwise the `flag` entries are judged on
+/// `on_date` and each failure becomes a [`FlagFailure`] of the outcome; a
+/// flag never refuses.
+pub async fn check(
+    state: &AppState,
+    guarded: &str,
+    record_id: i64,
+    on_date: NaiveDate,
+) -> Result<std::result::Result<CheckOutcome, BlockRefusal>> {
+    let (blocks, flags): (Vec<_>, Vec<_>) = kinds::blocks_for(&state.db, guarded)
+        .await?
+        .into_iter()
+        .partition(|entry| entry.mode == BlockMode::Block);
+    let lang = state.current_lang();
+
+    let (failures, prioritised) = failing(state, guarded, blocks, record_id, on_date).await?;
+    if !failures.is_empty() {
+        prioritise(&state.db, &prioritised).await?;
+        let failures = failures
+            .into_iter()
+            .map(|f| BlockFailure {
+                message: failure_message(&lang, &f.kind, &f.entry, &f.validity),
+                entry: f.entry,
+                subject: f.subject,
+                validity: f.validity,
+            })
+            .collect();
+        return Ok(Err(BlockRefusal {
+            guarded: guarded.to_owned(),
+            record_id,
+            failures,
+        }));
+    }
+
+    let (failures, prioritised) = failing(state, guarded, flags, record_id, on_date).await?;
+    prioritise(&state.db, &prioritised).await?;
+    let mut outcome = CheckOutcome::default();
+    for f in failures {
+        let Validity::Invalid {
+            reason,
+            document,
+            expired_on,
+            ..
+        } = f.validity
+        else {
+            continue;
+        };
+        let reason = FlagReason::from(reason);
+        let label = flags::label(&lang, reason, f.kind.name(&lang.locale), expired_on);
+        outcome.flags.push(FlagFailure {
+            entry: f.entry,
+            subject: f.subject,
+            reason,
+            document,
+            expired_on,
+            on_date,
+            label,
+        });
+    }
+    Ok(Ok(outcome))
 }
 
 /// The label of role `key`: the text `roles.<key>`, else the key itself.
@@ -622,12 +694,13 @@ mod tests {
         assert_eq!(refusal.failures.len(), 1);
         assert_eq!(refusal.failures[0].subject, Subject::new("hr.employee", 7));
 
-        // Flag entries are skipped (#46), so nothing needs a provider.
-        let outcome = guard
-            .check(state, "guard_unit.flagged", 7, date("2026-12-01"))
-            .await
-            .unwrap();
-        assert_eq!(outcome, Ok(CheckOutcome::default()));
+        // A flag entry without a provider is never a yes either.
+        assert!(
+            guard
+                .check(state, "guard_unit.flagged", 7, date("2026-12-01"))
+                .await
+                .is_err()
+        );
         // Nothing guards it.
         assert!(
             guard
@@ -643,5 +716,221 @@ mod tests {
                 .await
                 .is_err()
         );
+    }
+
+    async fn save_document(
+        db: &Db,
+        kind: &str,
+        subject_id: i64,
+        status: DocumentStatus,
+        expiry: Option<&str>,
+    ) -> Document {
+        let kind = DocumentKind::by_key(db, kind).await.unwrap().unwrap();
+        let mut document = Document {
+            subject_type: "hr.employee".into(),
+            subject_id,
+            kind_id: kind.id,
+            title: kind.name_en.clone(),
+            status,
+            accepted_at: Some(at("2025-12-01T08:00:00Z")),
+            submitted_at: Some(at("2025-12-01T08:00:00Z")),
+            expiry_date: expiry.map(date),
+            ..Document::default()
+        };
+        document.save(db).await.unwrap();
+        document
+    }
+
+    #[renox::test]
+    async fn flag_mode_collects_flags_and_never_refuses() {
+        let app = TestApp::new(App::new().module(crate::WlDocuments)).await;
+        let state = app.state();
+        let db = app.db();
+        install_seeds(
+            db,
+            [&KindSeed::new("flag_unit_permit", "Work permit")
+                .subject_type("hr.employee")
+                .expires()
+                .blocks("flag_unit.accept", BlockMode::Flag)],
+        )
+        .await
+        .unwrap();
+        register_block_subjects("flag_unit.accept", Worker);
+        save_document(
+            db,
+            "flag_unit_permit",
+            7,
+            DocumentStatus::Accepted,
+            Some("2026-11-30"),
+        )
+        .await;
+        let guard = wl_kernel::documents::guard(state);
+
+        // Valid on the expiry date: no flag.
+        let outcome = guard
+            .check(state, "flag_unit.accept", 7, date("2026-11-30"))
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(outcome.flags.is_empty());
+
+        // Expired the day after: allowed, with a flag.
+        let outcome = guard
+            .check(state, "flag_unit.accept", 7, date("2026-12-02"))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(outcome.flags.len(), 1);
+        let failure = &outcome.flags[0];
+        assert_eq!(failure.label, "Work permit expired 2026-11-30");
+        assert_eq!(failure.reason, FlagReason::Expired);
+        assert_eq!(failure.subject, Subject::new("hr.employee", 7));
+        assert_eq!(failure.expired_on, Some(date("2026-11-30")));
+        assert_eq!(failure.on_date, date("2026-12-02"));
+
+        // A worker without any document is flagged as missing.
+        let outcome = guard
+            .check(state, "flag_unit.accept", 8, date("2026-12-02"))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(outcome.flags[0].label, "Work permit missing");
+    }
+
+    #[renox::test]
+    async fn block_wins_over_flag_and_a_pending_renewal_is_bumped() {
+        let app = TestApp::new(App::new().module(crate::WlDocuments)).await;
+        let state = app.state();
+        let db = app.db();
+        install_seeds(
+            db,
+            [
+                &KindSeed::new("mix_unit_permit", "Work permit")
+                    .subject_type("hr.employee")
+                    .expires()
+                    .blocks("mix_unit.accept", BlockMode::Flag),
+                &KindSeed::new("mix_unit_visa", "Residence visa")
+                    .subject_type("hr.employee")
+                    .expires()
+                    .blocks("mix_unit.accept", BlockMode::Block),
+            ],
+        )
+        .await
+        .unwrap();
+        register_block_subjects("mix_unit.accept", Worker);
+        let renewal = save_document(
+            db,
+            "mix_unit_permit",
+            7,
+            DocumentStatus::PendingReview,
+            Some("2028-11-30"),
+        )
+        .await;
+        let guard = wl_kernel::documents::guard(state);
+
+        // Only the flag entry fails: allowed, and its renewal is bumped.
+        save_document(
+            db,
+            "mix_unit_visa",
+            7,
+            DocumentStatus::Accepted,
+            Some("2028-01-01"),
+        )
+        .await;
+        let outcome = guard
+            .check(state, "mix_unit.accept", 7, date("2026-12-02"))
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(outcome.flags.len(), 1);
+        assert_eq!(outcome.flags[0].reason, FlagReason::PendingReview);
+        assert_eq!(outcome.flags[0].label, "Work permit renewal pending review");
+        let bumped = Document::find(db, renewal.id).await.unwrap().unwrap();
+        assert!(bumped.review_priority_at.is_some());
+
+        // Worker 9 has no visa (block) and no permit (flag): refused with
+        // the block failure only.
+        let refusal = guard
+            .check(state, "mix_unit.accept", 9, date("2026-12-02"))
+            .await
+            .unwrap()
+            .unwrap_err();
+        assert_eq!(refusal.failures.len(), 1);
+        assert_eq!(refusal.failures[0].entry.kind, "mix_unit_visa");
+        assert!(!refusal.message().contains("Work permit"));
+    }
+
+    #[renox::test]
+    async fn the_guard_records_reviews_and_counts_flags() {
+        let app = TestApp::new(App::new().module(Auth::new()).module(crate::WlDocuments)).await;
+        let state = app.state();
+        let db = app.db();
+        install_seeds(
+            db,
+            [&KindSeed::new("rec_unit_permit", "Work permit")
+                .subject_type("hr.employee")
+                .expires()
+                .blocks("rec_unit.accept", BlockMode::Flag)],
+        )
+        .await
+        .unwrap();
+        register_block_subjects("rec_unit.accept", Worker);
+        save_document(
+            db,
+            "rec_unit_permit",
+            7,
+            DocumentStatus::Accepted,
+            Some("2026-11-30"),
+        )
+        .await;
+        let guard = wl_kernel::documents::guard(state);
+        let outcome = guard
+            .check(state, "rec_unit.accept", 7, date("2026-12-02"))
+            .await
+            .unwrap()
+            .unwrap();
+
+        let written = guard
+            .record_flags(db, "rec_unit.accept", 7, &outcome.flags)
+            .await
+            .unwrap();
+        assert_eq!(written.len(), 1);
+        assert_eq!(written[0].label, "Work permit expired 2026-11-30");
+        // Again while unreviewed: no second row.
+        let again = guard
+            .record_flags(db, "rec_unit.accept", 7, &outcome.flags)
+            .await
+            .unwrap();
+        assert!(again.is_empty());
+
+        assert_eq!(guard.flags_for(db, "rec_unit", 7).await.unwrap().len(), 1);
+        assert!(guard.flags_for(db, "rec_unit", 8).await.unwrap().is_empty());
+        let counts = guard
+            .open_flag_counts(db, "rec_unit", &[7, 8])
+            .await
+            .unwrap();
+        assert_eq!(counts.get(&7), Some(&1));
+        assert_eq!(counts.get(&8), Some(&0));
+
+        // A note is required; then it is reviewed, once.
+        assert!(guard.review_flag(db, written[0].id, 1, " ").await.is_err());
+        let reviewed = guard
+            .review_flag(db, written[0].id, 1, "Permit renewal in progress")
+            .await
+            .unwrap();
+        assert_eq!(reviewed.label, "Work permit expired 2026-11-30");
+        assert_eq!(reviewed.reviewed_by, Some(1));
+        assert_eq!(
+            reviewed.review_note.as_deref(),
+            Some("Permit renewal in progress")
+        );
+        assert!(
+            guard
+                .review_flag(db, written[0].id, 1, "again")
+                .await
+                .is_err()
+        );
+        let counts = guard.open_flag_counts(db, "rec_unit", &[7]).await.unwrap();
+        assert_eq!(counts.get(&7), Some(&0));
     }
 }
