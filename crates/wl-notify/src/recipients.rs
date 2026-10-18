@@ -14,6 +14,10 @@
 //! suppressed: `suppressed` when an address was there but on the list,
 //! else `no_contact_point`. The language is the party's, else the client's
 //! first locale, else `en`.
+//!
+//! A type that announces a pause (`block_effects::announces_pause`) to a
+//! party that is blocked is suppressed with the reason `party_on_hold`,
+//! whatever the channels (#36 A11).
 
 use std::sync::Arc;
 
@@ -21,7 +25,7 @@ use renox::prelude::*;
 use wl_kernel::ClientConfig;
 use wl_kernel::notify::{NotificationTypeDef, NotifyChannel, NotifyRecipient, PartyContacts};
 
-use crate::message::{NO_CONTACT_POINT, SUPPRESSED_ADDRESS};
+use crate::message::{NO_CONTACT_POINT, PARTY_ON_HOLD, SUPPRESSED_ADDRESS};
 use crate::suppressions;
 
 /// One channel a recipient could be reached on.
@@ -141,11 +145,14 @@ pub async fn resolve(
     open: &[NotifyChannel],
     skip: &[NotifyChannel],
 ) -> Result<Resolved> {
+    let mut on_hold = false;
     let mut language = None;
     let mut contacts = None;
     let mut user_email = None;
     match recipient {
         NotifyRecipient::Party { id } => {
+            on_hold =
+                wl_kernel::block_effects::suppressed_while_blocked(state, &def.key, *id).await?;
             contacts = wl_kernel::parties::directory(state)
                 .contacts(&state.db, *id)
                 .await?;
@@ -176,9 +183,13 @@ pub async fn resolve(
         });
     }
     let fallback_channel = def.channels.first().copied().unwrap_or_default();
+    let mut route = choose(&candidates, fallback_channel);
+    if on_hold {
+        route.suppress = Some(PARTY_ON_HOLD);
+    }
     Ok(Resolved {
         language: language.unwrap_or_else(|| default_language(state)),
-        route: choose(&candidates, fallback_channel),
+        route,
     })
 }
 

@@ -217,6 +217,28 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_parties.review.no_decider",
         "No decider role is set for this kind; users with the block permission decide.",
     ),
+    ("wl_parties.review.neutral", "Send neutral message"),
+    (
+        "wl_parties.review.neutral_title",
+        "Send the neutral message to the party",
+    ),
+    (
+        "wl_parties.review.neutral_description",
+        "The party is told that the account is on hold and asked to contact the business. No reason is given.",
+    ),
+    ("wl_parties.review.neutral_submit", "Send message"),
+    (
+        "wl_parties.review.neutral_sent",
+        "The neutral message is queued.",
+    ),
+    (
+        "wl_parties.review.neutral_unavailable",
+        "Notifications are not enabled, so nothing was sent.",
+    ),
+    (
+        "wl_parties.review.neutral_note",
+        "Neutral on-hold message sent to the party.",
+    ),
     ("wl_parties.review.on_hold", "On hold"),
     (
         "wl_parties.review.on_hold_reason",

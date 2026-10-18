@@ -47,6 +47,10 @@ pub const NO_CONTACT_POINT: &str = "no_contact_point";
 /// Why a message was `suppressed` because its address is on the list.
 pub const SUPPRESSED_ADDRESS: &str = "suppressed";
 
+/// Why a message was `suppressed` because it announces a pause and the party
+/// is on hold (#36 A11).
+pub const PARTY_ON_HOLD: &str = "party_on_hold";
+
 /// One message to one recipient on one channel.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
 #[model(

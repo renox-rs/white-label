@@ -63,6 +63,13 @@ pub const QUIET_SANDS: PartyId = PartyId(2);
 /// Red Rock Trading LLC: an e-mail only.
 pub const RED_ROCK: PartyId = PartyId(3);
 
+/// Dark Mesa LLC: an e-mail, and on hold (blocked).
+pub const DARK_MESA: PartyId = PartyId(4);
+/// A type that announces a pause (`block_effects::announces_pause`).
+pub const PAUSE_NOTICE: &str = "subscription.paused";
+/// Dark Mesa's e-mail.
+pub const DARK_MESA_EMAIL: &str = "ops@darkmesa.example";
+
 /// Blue Dunes' e-mail and its contact point.
 pub const BLUE_DUNES_EMAIL: (&str, i64) = ("accounts@bluedunes.example", 11);
 /// Blue Dunes' mobile and its contact point.
@@ -73,6 +80,15 @@ pub const RED_ROCK_EMAIL: &str = "ap@redrock.example";
 /// The test types, registered with the kernel before every boot (the
 /// registry is process-wide; registering a key again replaces it).
 pub fn register_types() {
+    wl_kernel::block_effects::mark_announces_pause(PAUSE_NOTICE);
+    notify::register_type(
+        NotificationTypeDef::new(PAUSE_NOTICE, "subscriptions").template(
+            NotifyChannel::Email,
+            "en",
+            Some("Your subscription is paused"),
+            "Your subscription is paused.",
+        ),
+    );
     use GiveUpReaction::{AlternativeRecipient, MarkContactInvalid, StaffTask, StatutoryNotice};
     notify::register_type(
         NotificationTypeDef::new(REMINDER, "invoicing")
@@ -155,8 +171,13 @@ impl PartyDirectory for TestDirectory {
         Box::pin(async { Ok(None) })
     }
 
-    fn status<'a>(&'a self, _db: &'a Db, _party: PartyId) -> PartyFuture<'a, Option<PartyStatus>> {
-        Box::pin(async { Ok(Some(PartyStatus::Active)) })
+    fn status<'a>(&'a self, _db: &'a Db, party: PartyId) -> PartyFuture<'a, Option<PartyStatus>> {
+        let status = if party == DARK_MESA {
+            PartyStatus::Blocked
+        } else {
+            PartyStatus::Active
+        };
+        Box::pin(async move { Ok(Some(status)) })
     }
 
     fn contacts<'a>(
@@ -175,6 +196,7 @@ impl PartyDirectory for TestDirectory {
             ],
             QUIET_SANDS => Vec::new(),
             RED_ROCK => vec![point(31, ContactKind::Email, RED_ROCK_EMAIL)],
+            DARK_MESA => vec![point(41, ContactKind::Email, DARK_MESA_EMAIL)],
             _ => return Box::pin(async { Ok(None) }),
         };
         Box::pin(async move {

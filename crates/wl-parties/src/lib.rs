@@ -10,6 +10,7 @@ pub mod details;
 pub mod directory;
 pub mod evidence;
 mod machine;
+pub mod notify;
 pub mod pages;
 pub mod party;
 pub mod reasons;
@@ -181,6 +182,8 @@ impl Module for WlParties {
         block::register(app);
         // Review tasks for the agreements of a blocked party.
         block_effects::register(app);
+        // The neutral on-hold message (the decider sends it).
+        notify::register();
         // Other modules read parties through the kernel (wl-parties §6).
         wl_kernel::parties::provide_directory(app, Directory);
         // `db:seed`: the demo parties (DEMO-DATA.md).

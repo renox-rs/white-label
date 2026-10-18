@@ -7,6 +7,12 @@
                     :badge="status_label" :badge-kind="status_tone"/>
     <rx-alert rx-if="no_decider" kind="warning" :message="tx['review.no_decider']"/>
     <rx-alert rx-if="open and not can_decide" kind="warning" :message="tx['review.no_source']"/>
+    <rx-card rx-if="can_send_neutral" :title="tx['review.neutral']">
+      <rx-action-sheet :id="'neutral-message-' ~ task.id" :label="tx['review.neutral']" :action="route('wl_parties.review_neutral', task.id)"
+                       :title="tx['review.neutral_title']" :description="tx['review.neutral_description']" :submit-label="tx['review.neutral_submit']" icon="send" variant="primary">
+        <rx-form-errors/>
+      </rx-action-sheet>
+    </rx-card>
     <rx-card :title="tx['review.task']">
       <rx-infolist columns="2">
         <rx-entry :label="tx['review.fields.party']" :value="party"/>

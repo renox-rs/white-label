@@ -151,3 +151,37 @@ async fn a_hard_bounce_suppresses_the_address() {
     t.app.run_all_jobs().await;
     assert_eq!(t.email.sent().len(), 1);
 }
+
+/// #36 A11: a type that announces a pause, sent to a blocked party, ends
+/// `suppressed` with the reason `party_on_hold`; a type that does not, and an
+/// active party, are unaffected.
+#[renox::test]
+async fn a_pause_notice_to_a_blocked_party_is_suppressed() {
+    let t = boot().await;
+    let ids = t
+        .notify_party(support::PAUSE_NOTICE, support::DARK_MESA)
+        .await;
+    let message = t.message(ids[0]).await;
+    assert_eq!(message.status, MessageStatus::Suppressed);
+    assert_eq!(message.suppress_reason.as_deref(), Some("party_on_hold"));
+    assert_eq!(t.history(ids[0]).await, ["suppress"]);
+    let suppressed = t.suppressed.all();
+    assert_eq!(suppressed.len(), 1);
+    assert_eq!(suppressed[0].reason, "party_on_hold");
+
+    // A type that does not announce a pause still reaches the blocked party.
+    let other = t.notify_party(RECEIPT, support::DARK_MESA).await;
+    assert_eq!(t.message(other[0]).await.status, MessageStatus::Queued);
+    // The same pause notice to an active party is queued.
+    let active = t.notify_party(support::PAUSE_NOTICE, RED_ROCK).await;
+    assert_eq!(t.message(active[0]).await.status, MessageStatus::Queued);
+
+    t.app.run_all_jobs().await;
+    let sent = t.email.sent();
+    assert_eq!(sent.len(), 2);
+    assert!(
+        sent.iter()
+            .all(|o| o.address != support::DARK_MESA_EMAIL
+                || o.body != "Your subscription is paused.")
+    );
+}

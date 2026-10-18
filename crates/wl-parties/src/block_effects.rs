@@ -384,6 +384,13 @@ default = true
 
     /// An app with wl-parties and the demo parties.
     pub(crate) async fn boot() -> (TestApp, Party, tempfile::TempDir) {
+        boot_with(|app| app).await
+    }
+
+    /// [`boot`], with `extra` applied to the app first (e.g. another module).
+    pub(crate) async fn boot_with(
+        extra: impl FnOnce(App) -> App,
+    ) -> (TestApp, Party, tempfile::TempDir) {
         let views = tempfile::tempdir().expect("a temporary views directory");
         let layout = views.path().join("layouts/app.html");
         std::fs::create_dir_all(layout.parent().unwrap()).unwrap();
@@ -393,7 +400,7 @@ default = true
         )
         .unwrap();
         let config = ClientConfig::parse(CLIENT).expect("a valid client.toml");
-        let app = App::new()
+        let app = extra(App::new())
             .module(renox::auth::Auth::new())
             .module(renox::auth::Permissions)
             .module(WlParties::new());

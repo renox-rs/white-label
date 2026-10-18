@@ -95,6 +95,8 @@ pub fn routes() -> Routes {
                 .name("wl_parties.review_task")
                 .post("/parties/review-tasks/{id}/items/{item}", decide_item)
                 .name("wl_parties.review_decide")
+                .post("/parties/review-tasks/{id}/neutral-message", send_neutral)
+                .name("wl_parties.review_neutral")
                 .require_auth(),
         )
         .merge(
@@ -915,6 +917,9 @@ pub(crate) struct ReviewTaskPage {
     open: bool,
     /// Whether a decision can be made: the task is open and its kind has a source.
     can_decide: bool,
+    /// Whether "Send neutral message" is offered: the task is open and the
+    /// `notify` module is on.
+    can_send_neutral: bool,
     no_decider: bool,
     items: Vec<ItemRow>,
     notes: Vec<NoteRow>,
@@ -996,6 +1001,7 @@ async fn review_task_page(
         status_tone,
         open,
         can_decide: open && kernel_effects::source_for(&task.agreement_kind).is_some(),
+        can_send_neutral: open && crate::notify::available(&state),
         no_decider: task.decider_role.is_none(),
         items,
         notes,
@@ -1081,4 +1087,38 @@ async fn decide_item(
     }
     review_tasks::record_decision(&state, &task, item.id, user.id, decision).await?;
     refresh(Toast::success(texts::t(&lang, "wl_parties.review.decided")))
+}
+
+/// `POST /parties/review-tasks/{id}/neutral-message`: queues the neutral
+/// on-hold message to the party and adds a task note. 403 without the
+/// decider role; nothing happens (and the action is hidden) without `notify`.
+async fn send_neutral(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    let task = ReviewTask::find(&state.db, id)
+        .await?
+        .ok_or(Error::NotFound)?;
+    if !task.can_decide(&user) {
+        return Err(Error::Forbidden);
+    }
+    let refresh = |toast: Toast| Ok((toast, renox::HxRefresh).into_response());
+    if task.status != ReviewTaskStatus::Open {
+        return refresh(Toast::warning(texts::t(
+            &lang,
+            "wl_parties.review.task_closed",
+        )));
+    }
+    if !crate::notify::send_neutral(&state, user.id, &task).await? {
+        return refresh(Toast::warning(texts::t(
+            &lang,
+            "wl_parties.review.neutral_unavailable",
+        )));
+    }
+    refresh(Toast::success(texts::t(
+        &lang,
+        "wl_parties.review.neutral_sent",
+    )))
 }
