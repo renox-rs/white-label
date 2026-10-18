@@ -16,6 +16,7 @@ pub mod numbering;
 pub mod parties;
 pub mod subject;
 mod texts;
+pub mod tickets;
 
 use std::sync::Arc;
 
@@ -53,6 +54,10 @@ pub use parties::{
     PartyId, PartyKind, PartyStatus, PartySummary, PartyUnblocked,
 };
 pub use subject::Subject;
+pub use tickets::{
+    Assignee, NoTickets, OpenTicket, Requester, TaskCreator, TicketAssigned, TicketChannel,
+    TicketClosed, TicketId, TicketRef,
+};
 
 /// The kernel's permissions (wl-kernel §6).
 pub mod permissions {

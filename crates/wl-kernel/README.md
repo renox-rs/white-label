@@ -41,6 +41,7 @@ What is here so far:
 | The invoicing contract: `Invoicer` (`NoInvoicer` when `invoicing` is off), `InvoiceDraft`, `InvoiceSummary`, `VatCategory`, invoice events, the `invoice` series | ARCHITECTURE §5, wl-invoicing §6 | `invoicing` |
 | The notice contract: `Notifier` (`NoNotifier` when `notify` is off), `register_type`, `NotifyRequest`, message events | ARCHITECTURE §5, wl-notify §6 | `notify` |
 | The document guard contract: `DocumentGuard` (`NoDocuments` when `documents` is off), `BlockEntry`, `BlockSubjects` by transition, `BlockRefusal`, `today()` in Asia/Dubai, document events | ARCHITECTURE §5, wl-documents §5.6, §6 | `documents` |
+| The ticket contract: `TaskCreator` (`NoTickets` when `ticketing` is off), `OpenTicket`, `TicketRef`, `Assignee`, ticket events, the `ticket` series | §8, wl-ticketing §6 | `tickets` |
 | `AutomationFailed`, the event of a failed rule run | §4 | `automation` |
 | The business calendar: `BusinessCalendar` (Asia/Dubai, Sat–Sun weekend, 09:00–18:00, `[calendar]` holidays) | §6 | `calendar` |
 
@@ -80,6 +81,18 @@ A recipient is a staff user (by user id), a party (by `PartyId`, reached through
 emits `MessageFailed`, `MessageSuppressed` and `MessageGaveUp`. When `notify` is off,
 `NoNotifier` still gives each user recipient a Renox database notification (the bell) with
 the type's text, skips party and address recipients, and returns no message ids.
+
+Other modules open tickets (tasks) only through `wl_kernel::tickets::task_creator(&state)`:
+`open(&state, OpenTicket::new(subject, "general", title).description(..).requester_party(p))`
+gives a `TicketRef` (id and number, e.g. `TKT-2026-0001`), and fails for an unknown category
+key. The channel is `system` unless set, and `.assign_to(Assignee::user(id))` (or
+`Assignee::party(vendor)`) has `wl-ticketing` run the first `assign` as the system, so the
+SLA starts. `OpenTicket` is built only with its builder, so new optional fields never break a
+caller. When `ticketing` is off, `NoTickets` opens nothing and returns `None`, so callers
+carry on without a task. `wl-ticketing` emits `TicketAssigned` (assignee, previous assignee
+and reason on a reassignment, priority, due times) and `TicketClosed` (resolution working
+minutes, within SLA). Ticket numbers come from `TICKET_SERIES` (`TKT-2026-0001`): reset
+yearly, gaps allowed.
 
 A module that owns a guarded transition (an entry of a document kind's `blocks`, e.g.
 `deployment.activate`) registers, in `register`, a `BlockSubjects` provider with
