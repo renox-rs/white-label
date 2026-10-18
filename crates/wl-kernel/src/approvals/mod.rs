@@ -15,6 +15,7 @@ pub mod notify;
 pub mod policy;
 pub mod request;
 pub mod submit;
+pub mod web;
 
 use renox::prelude::*;
 
@@ -25,6 +26,7 @@ pub use intercept::ApprovalInterceptor;
 pub use policy::{ApprovalPolicy, Condition, ConditionKind, PolicyDefault, Step};
 pub use request::{ApprovalDecision, ApprovalRequest, ApprovalStatus, DecisionKind};
 pub use submit::{Require, Required, announce, announce_request, require_in};
+pub use web::{ApprovalCard, card, cards_for, pending_for, timeline_for};
 
 /// Registers the approval models and the request's machine, and installs
 /// the interceptor that turns blocked user transitions into requests.

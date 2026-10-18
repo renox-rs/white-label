@@ -1,0 +1,48 @@
+{#- wl-kernel: the approval card (wl-kernel §4.1, PLT.APR.01), one card per
+    pending request about a record. A record's page gives `approvals`
+    (wl_kernel::approvals::cards_for) and includes it with
+    <rx-include template="wl-kernel/approval_card.html"/>. Replace it with
+    resources/views/wl-kernel/approval_card.html in the app. -#}
+<rx-stack>
+  <template rx-for="approval in approvals">
+    <rx-card :title="approval.title" :subtitle="approval.step_label">
+      <rx-row>
+        <rx-badge :text="approval.status_label" :kind="approval.status_kind"/>
+      </rx-row>
+      <rx-alert rx-if="approval.subject_moved" kind="warning" :message="approval.subject_moved"/>
+      <rx-infolist columns="2">
+        <rx-entry :label="approval.labels.requester" :value="approval.requester"/>
+        <rx-entry :label="approval.labels.requested_at" :value="approval.created_at" format="datetime"/>
+        <rx-entry :label="approval.labels.current_step" :value="approval.step_label"/>
+        <rx-entry :label="approval.labels.expires_at" :value="approval.expires_at" format="datetime"/>
+      </rx-infolist>
+      <rx-simple-table :head="[approval.labels.step, approval.labels.approvers, approval.labels.status]" :caption="approval.labels.steps">
+        <tr rx-for="step in approval.steps">
+          <td>{{ step.number }}</td>
+          <td>{{ step.approvers }}</td>
+          <td><rx-badge :text="step.state_label" :kind="step.kind"/></td>
+        </tr>
+      </rx-simple-table>
+      <rx-simple-table rx-if="approval.decisions" :head="[approval.labels.step, approval.labels.decision, approval.labels.decided_by, approval.labels.comment, approval.labels.decided_at]" :caption="approval.labels.decisions">
+        <tr rx-for="decision in approval.decisions">
+          <td>{{ decision.step }}</td>
+          <td><rx-badge :text="decision.decision_label" :kind="decision.kind"/></td>
+          <td>{{ decision.approver }}</td>
+          <td>{{ decision.comment or "—" }}</td>
+          <td>{{ decision.at | date("%Y-%m-%d %H:%M") if decision.at else "—" }}</td>
+        </tr>
+      </rx-simple-table>
+      <rx-row rx-if="approval.can_decide or approval.can_withdraw">
+        <template rx-if="approval.can_decide">
+          <rx-action-sheet :id="'approve-' ~ approval.id" :label="approval.labels.approve" :action="route('wl_kernel.approvals.approve', approval.id)" :title="approval.labels.approve_title" :submit-label="approval.labels.approve" variant="primary" icon="check">
+            <rx-textarea name="comment" :label="approval.labels.comment" :hint="approval.labels.comment_optional" :id="'approve-comment-' ~ approval.id"/>
+          </rx-action-sheet>
+          <rx-action-sheet :id="'reject-' ~ approval.id" :label="approval.labels.reject" :action="route('wl_kernel.approvals.reject', approval.id)" :title="approval.labels.reject_title" :submit-label="approval.labels.reject" icon="circle-x" danger>
+            <rx-textarea name="comment" :label="approval.labels.comment" :hint="approval.labels.comment_reject" :id="'reject-comment-' ~ approval.id" required/>
+          </rx-action-sheet>
+        </template>
+        <rx-confirm rx-if="approval.can_withdraw" :id="'withdraw-' ~ approval.id" :label="approval.labels.withdraw" :action="route('wl_kernel.approvals.withdraw', approval.id)" method="POST" :title="approval.labels.withdraw_title" :message="approval.labels.withdraw_message" :confirm-label="approval.labels.withdraw" :cancel-label="approval.labels.cancel" icon="x"/>
+      </rx-row>
+    </rx-card>
+  </template>
+</rx-stack>

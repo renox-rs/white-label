@@ -60,10 +60,16 @@ pub mod permissions {
 
 /// The templates, compiled in. An app replaces one with a file of the same
 /// name under its views directory.
-const VIEWS: &[(&str, &str)] = &[(
-    "wl-kernel/legal_entities.html",
-    include_str!("../views/wl-kernel/legal_entities.html"),
-)];
+const VIEWS: &[(&str, &str)] = &[
+    (
+        "wl-kernel/legal_entities.html",
+        include_str!("../views/wl-kernel/legal_entities.html"),
+    ),
+    (
+        approvals::web::CARD_TEMPLATE,
+        include_str!("../views/wl-kernel/approval_card.html"),
+    ),
+];
 
 /// The kernel module. The host adds it with [`apply`], which also gives the
 /// app the client's theme and languages.
@@ -111,6 +117,8 @@ impl Module for WlKernel {
             .get("/legal-entities", legal_entities)
             .name("wl_kernel.legal_entities")
             .require_permission(permissions::LEGAL_ENTITIES_VIEW)
+            // The approval card's buttons; who may decide is checked per request.
+            .merge(approvals::web::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
