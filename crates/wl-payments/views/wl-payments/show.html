@@ -51,6 +51,19 @@
       <rx-column :label="tx['removed_reason']" hide-narrow>{{ allocation.removed_reason }}</rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['no_allocations']" icon="wallet"/></rx-slot>
     </rx-table>
+    <rx-table rx-if="written_off" :rows="written_off" as="invoice" :key="invoice.id" :caption="tx['sections.written_off']" card>
+      <rx-column :label="tx['fields.invoice']"><a href="{{ invoice.link }}">{{ invoice.number }}</a></rx-column>
+      <rx-column :label="tx['written_off.left']">{{ invoice.left }}</rx-column>
+      <rx-column :label="tx['written_off.proposal']" hide-narrow>{{ invoice.proposal }}</rx-column>
+      <rx-column label="">
+        <rx-action-sheet :id="'recover-invoice-' ~ invoice.id" :label="tx['allocate.action']" :action="route('wl_payments.allocate', payment.id)"
+                         :title="tx['allocate.title']" :description="tx['written_off.description']" :submit-label="tx['allocate.submit']"
+                         icon="link">
+          <rx-select name="invoice_id" :label="tx['fields.invoice']" :options="invoice.options" :selected="invoice.options[0][0]" :id="'recover-select-' ~ invoice.id" required/>
+          <rx-input name="amount" :label="tx['fields.amount']" :hint="tx['fields.amount_hint']" :value="invoice.proposal" :id="'recover-amount-' ~ invoice.id" required/>
+        </rx-action-sheet>
+      </rx-column>
+    </rx-table>
     <rx-table :rows="tasks" as="task" :key="task.id" :caption="tx['sections.tasks']" card>
       <rx-column :label="tx['tasks.task']">{{ task.text }}</rx-column>
       <rx-column :label="tx['fields.amount']" hide-narrow>{{ task.amount }}</rx-column>

@@ -30,6 +30,7 @@ use wl_kernel::notify::fill;
 use crate::allocate::amount_text;
 use crate::invoice::Invoice;
 use crate::permissions;
+use crate::recovery::Recovery;
 use crate::texts;
 use crate::vat_adjustment::{self, AdjustmentStatus, VatAdjustment};
 use crate::vat_summary::{VatSummary, VatSummaryStatus};
@@ -119,6 +120,38 @@ pub(crate) fn relief_detail(
         parts.push(reason.to_owned());
     }
     (!parts.is_empty()).then(|| parts.join(". "))
+}
+
+/// What a recovery did on the VAT side, as the invoice page says it:
+/// a recovery adjustment on a period (or still waiting for an `open`
+/// summary), a reduced relief that was not yet claimed, or nothing.
+pub(crate) fn recovery_effect(
+    t: Text<'_>,
+    recovery: &Recovery,
+    adjustment: Option<&VatAdjustment>,
+    summary: Option<&VatSummary>,
+) -> String {
+    if let Some(adjustment) = adjustment {
+        return match (adjustment.summary_id, summary) {
+            (Some(_), Some(summary)) => fill(
+                &t("recoveries.effect.adjustment"),
+                &json!({
+                    "amount": amount_text("AED", adjustment.amount),
+                    "period": period_text(summary.period_start, summary.period_end),
+                }),
+            ),
+            _ => t("recoveries.effect.pending"),
+        };
+    }
+    let reduced = matches!(
+        recovery.relief_status,
+        Some(AdjustmentStatus::Pending | AdjustmentStatus::Proposed)
+    ) && recovery.vat_share > 0;
+    if reduced {
+        t("recoveries.effect.reduced")
+    } else {
+        t("recoveries.effect.none")
+    }
 }
 
 /// The VAT summaries grid: filters by entity and status.
@@ -437,6 +470,58 @@ mod tests {
         let start = NaiveDate::from_ymd_opt(2026, 1, 1).unwrap();
         let end = NaiveDate::from_ymd_opt(2026, 3, 31).unwrap();
         assert_eq!(period_text(start, end), "2026-01-01 to 2026-03-31");
+    }
+
+    #[test]
+    fn a_recovery_says_what_it_did_on_the_vat_side() {
+        let summary = VatSummary {
+            period_start: NaiveDate::from_ymd_opt(2026, 10, 1).unwrap(),
+            period_end: NaiveDate::from_ymd_opt(2026, 12, 31).unwrap(),
+            ..Default::default()
+        };
+        let recovery = |status, share| Recovery {
+            vat_share: share,
+            relief_status: status,
+            ..Default::default()
+        };
+        let proposed = VatAdjustment {
+            amount: 2_500,
+            summary_id: Some(1),
+            status: AdjustmentStatus::Proposed,
+            ..Default::default()
+        };
+        let text = recovery_effect(
+            &english_text,
+            &recovery(Some(AdjustmentStatus::Included), 2_500),
+            Some(&proposed),
+            Some(&summary),
+        );
+        assert_eq!(
+            text,
+            "Recovery adjustment of AED 25.00 on 2026-10-01 to 2026-12-31"
+        );
+        let waiting = VatAdjustment {
+            summary_id: None,
+            status: AdjustmentStatus::Pending,
+            ..proposed
+        };
+        let text = recovery_effect(
+            &english_text,
+            &recovery(Some(AdjustmentStatus::Included), 2_500),
+            Some(&waiting),
+            None,
+        );
+        assert_eq!(text, "Recovery adjustment waits for an open VAT summary");
+        let reduced = recovery(Some(AdjustmentStatus::Pending), 2_500);
+        assert_eq!(
+            recovery_effect(&english_text, &reduced, None, None),
+            "Relief reduced"
+        );
+        let excluded = recovery(Some(AdjustmentStatus::Excluded), 2_500);
+        assert_eq!(
+            recovery_effect(&english_text, &excluded, None, None),
+            "No VAT effect"
+        );
     }
 
     #[test]

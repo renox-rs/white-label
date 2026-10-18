@@ -36,6 +36,8 @@
     <rx-card rx-if="write_off" :title="tx['sections.write_off']">
       <rx-infolist columns="2">
         <rx-entry :label="tx['write_off.amount']" :value="write_off.amount"/>
+        <rx-entry :label="tx['write_off.recovered']" :value="write_off.recovered"/>
+        <rx-entry :label="tx['write_off.left']" :value="write_off.left"/>
         <rx-entry :label="tx['write_off.reason']" :value="write_off.reason"/>
         <rx-entry rx-if="write_off.reason_text" :label="tx['write_off.reason_text']" :value="write_off.reason_text"/>
         <rx-entry :label="tx['write_off.date']" :value="write_off.date" format="date"/>
@@ -45,6 +47,14 @@
         <rx-entry rx-if="write_off.relief_detail" :label="tx['write_off.relief_detail']" :value="write_off.relief_detail"/>
       </rx-infolist>
     </rx-card>
+    <rx-table rx-if="write_off" :rows="recoveries" as="recovery" :key="recovery.id" :caption="tx['sections.recoveries']" card>
+      <rx-column :label="tx['recoveries.date']">{{ recovery.date }}</rx-column>
+      <rx-column :label="tx['recoveries.source']">{{ recovery.source if not recovery.source_link else "" }}<a rx-if="recovery.source_link" href="{{ recovery.source_link }}">{{ recovery.source }}</a></rx-column>
+      <rx-column :label="tx['recoveries.amount']">{{ recovery.amount }}</rx-column>
+      <rx-column :label="tx['recoveries.vat_share']" hide-narrow>{{ recovery.vat_share }}</rx-column>
+      <rx-column :label="tx['recoveries.effect']" hide-narrow>{{ recovery.effect }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['recoveries.empty']" icon="wallet"/></rx-slot>
+    </rx-table>
     <rx-card rx-if="issuer" :title="tx['sections.issuer']">
       <rx-infolist columns="2">
         <rx-entry :label="tx['fields.name']" :value="issuer.name_en"/>

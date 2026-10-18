@@ -28,6 +28,7 @@ use renox::validation::{Errors, ValidationError};
 use serde::{Deserialize, Serialize};
 use wl_kernel::LegalEntity;
 use wl_kernel::PartyId;
+use wl_kernel::invoicing::{InvoiceSummary, allocation_proposal, invoicer};
 use wl_kernel::parties::directory;
 use wl_kernel::payments::{
     AllocationTarget, Direction, PaymentMethod, PaymentStatus, RecordPayment, ReversalReason,
@@ -411,6 +412,57 @@ pub(crate) struct TaskRow {
     status: String,
 }
 
+/// One written-off invoice of the payment's party that can take money.
+#[derive(Serialize, Debug, Clone, PartialEq, Eq)]
+pub(crate) struct WrittenOffRow {
+    id: i64,
+    number: String,
+    /// The invoice page in the back office.
+    link: String,
+    /// What is left to recover, formatted.
+    left: String,
+    /// What the allocate form fills in: the payment's unallocated amount or
+    /// what is left, whichever is smaller, as `525.00`.
+    proposal: String,
+    /// The single choice of the row's sheet, `(id, number)`.
+    options: Vec<(String, String)>,
+}
+
+/// `fils` as `525.00`, the way the allocate form takes it.
+fn plain_amount(fils: i64) -> String {
+    format!("{}.{:02}", fils / 100, (fils % 100).abs())
+}
+
+/// The rows for the written-off `invoices`, each with the proposal for
+/// `unallocated` fils. An invoice with nothing to propose is left out.
+fn written_off_rows(
+    currency: &str,
+    invoices: &[InvoiceSummary],
+    unallocated: i64,
+) -> Vec<WrittenOffRow> {
+    invoices
+        .iter()
+        .filter_map(|invoice| {
+            let proposal = allocation_proposal(invoice, unallocated);
+            if proposal <= 0 {
+                return None;
+            }
+            let number = invoice
+                .number
+                .clone()
+                .unwrap_or_else(|| format!("#{}", invoice.id.0));
+            Some(WrittenOffRow {
+                id: invoice.id.0,
+                link: format!("/invoices/{}", invoice.id.0),
+                left: money_text(currency, invoice.balance),
+                proposal: plain_amount(proposal),
+                options: vec![(invoice.id.0.to_string(), number.clone())],
+                number,
+            })
+        })
+        .collect()
+}
+
 /// What the payment page needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "wl-payments/show.html")]
@@ -437,6 +489,8 @@ pub(crate) struct ShowPage {
     /// The reasons a user may give, `(code, label)`.
     reasons: Vec<(String, String)>,
     allocate_description: String,
+    /// The party's written-off invoices, with the proposed amounts.
+    written_off: Vec<WrittenOffRow>,
 }
 
 /// The display name of `party`, else `#id`.
@@ -532,6 +586,14 @@ async fn show(
         Some(entity) => entity.code,
         None => format!("#{}", payment.legal_entity_id),
     };
+    let written_off = if can_allocate {
+        let invoices = invoicer(&state)
+            .written_off_of(&db, payment.party(), &payment.currency)
+            .await?;
+        written_off_rows(&payment.currency, &invoices, unallocated)
+    } else {
+        Vec::new()
+    };
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
         title: payment.number.clone().unwrap_or_else(|| t("no_number")),
@@ -546,6 +608,7 @@ async fn show(
             .reversal_reason
             .map(|r| t(&format!("reason.{}", r.as_str())))
             .unwrap_or_default(),
+        written_off,
         allocate_description: format!("{}: {}", t("allocate.description"), money(unallocated)),
         amounts,
         allocations,
@@ -682,10 +745,58 @@ async fn store_done(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use wl_kernel::invoicing::InvoiceStatus;
     use wl_kernel::payments::PaymentSource;
 
     fn english_text(key: &str) -> String {
         texts::english(&format!("wl_payments.{key}")).to_owned()
+    }
+
+    fn written_off(id: i64, status: InvoiceStatus, balance: i64) -> InvoiceSummary {
+        InvoiceSummary {
+            id: wl_kernel::invoicing::InvoiceId(id),
+            number: Some(format!("INV-{id}")),
+            status,
+            party: PartyId(1),
+            legal_entity_id: Some(2),
+            currency: "AED".into(),
+            gross_total: 105_000,
+            balance,
+            due_date: None,
+            disputed: false,
+            chasing_paused_until: None,
+        }
+    }
+
+    #[test]
+    fn the_allocate_form_proposes_the_smaller_of_credit_and_what_is_left() {
+        let invoices = [
+            written_off(1, InvoiceStatus::WrittenOff, 105_000),
+            written_off(2, InvoiceStatus::WrittenOff, 52_500),
+            written_off(3, InvoiceStatus::Paid, 0),
+        ];
+        let rows = written_off_rows("AED", &invoices, 200_000);
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].proposal, "1050.00");
+        assert_eq!(rows[1].proposal, "525.00");
+        assert_eq!(rows[1].number, "INV-2");
+        assert_eq!(rows[1].options, [("2".to_owned(), "INV-2".to_owned())]);
+        let small = written_off_rows("AED", &invoices, 10_005);
+        assert_eq!(small[0].proposal, "100.05");
+        assert!(written_off_rows("AED", &invoices, 0).is_empty());
+    }
+
+    #[test]
+    fn every_new_text_is_defined() {
+        for key in [
+            "sections.written_off",
+            "fields.invoice",
+            "written_off.left",
+            "written_off.proposal",
+            "written_off.description",
+        ] {
+            assert_ne!(english_text(key), format!("wl_payments.{key}"));
+        }
     }
 
     #[test]

@@ -37,9 +37,10 @@ use crate::invoicer::{lines_of, totals_of};
 use crate::issue::issue;
 use crate::line::InvoiceLine;
 use crate::permissions;
+use crate::recovery::Recovery;
 use crate::texts::{self, english};
 use crate::vat_adjustment::VatAdjustment;
-use crate::vat_pages::relief_detail;
+use crate::vat_pages::{recovery_effect, relief_detail};
 use crate::vat_summary::VatSummary;
 use crate::write_off::{offered, write_off};
 use crate::write_off_notice::recipient;
@@ -211,6 +212,9 @@ pub(crate) struct AllocationRow {
 #[derive(Serialize, Debug, Clone)]
 pub(crate) struct WriteOffRow {
     amount: String,
+    /// What the recoveries have brought in so far, and what is left.
+    recovered: String,
+    left: String,
     reason: String,
     reason_text: Option<String>,
     date: Option<renox::chrono::NaiveDate>,
@@ -221,6 +225,51 @@ pub(crate) struct WriteOffRow {
     relief_status: Option<String>,
     /// The summary the relief is on, and the reason of its decision.
     relief_detail: Option<String>,
+}
+
+/// One recovery of the written-off amount.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct RecoveryRow {
+    id: i64,
+    date: renox::chrono::NaiveDate,
+    source: String,
+    /// The payment's page, when the money came from a payment.
+    source_link: Option<String>,
+    amount: String,
+    vat_share: String,
+    effect: String,
+}
+
+/// The payments module's subject type.
+const PAYMENT_TYPE: &str = "payments.payment";
+
+/// The recoveries of `invoice`, with what each did on the VAT side.
+async fn recovery_rows(db: &Db, lang: &Lang, invoice: &Invoice) -> Result<Vec<RecoveryRow>> {
+    let t = texts_in(lang);
+    let mut rows = Vec::new();
+    for recovery in Recovery::of_invoice(db, invoice.id).await? {
+        let adjustment = match recovery.recovery_adjustment_id {
+            Some(id) => VatAdjustment::find(db, id).await?,
+            None => None,
+        };
+        let summary = match adjustment.as_ref().and_then(|a| a.summary_id) {
+            Some(id) => VatSummary::find(db, id).await?,
+            None => None,
+        };
+        let source = recovery.source();
+        let source_link = (source.subject_type == PAYMENT_TYPE)
+            .then(|| format!("/payments/{}", source.subject_id));
+        rows.push(RecoveryRow {
+            id: recovery.id,
+            date: recovery.recovered_on,
+            source: source.to_string(),
+            source_link,
+            amount: amount_text(&invoice.currency, recovery.amount),
+            vat_share: amount_text("AED", recovery.vat_share),
+            effect: recovery_effect(&t, &recovery, adjustment.as_ref(), summary.as_ref()),
+        });
+    }
+    Ok(rows)
 }
 
 /// A quantity in thousandths as `2.5`.
@@ -264,6 +313,8 @@ pub(crate) struct ShowPage {
     vat: Vec<VatRow>,
     allocations: Vec<AllocationRow>,
     write_off: Option<WriteOffRow>,
+    /// The recoveries of the write-off, oldest first.
+    recoveries: Vec<RecoveryRow>,
     /// The approval cards (`wl-kernel/approval_card.html`).
     approvals: Vec<ApprovalCard>,
     /// The invoice's history merged with its approval requests'.
@@ -297,6 +348,11 @@ fn write_off_row(
     };
     Some(WriteOffRow {
         amount: amount_text(&invoice.currency, amount),
+        recovered: amount_text(&invoice.currency, invoice.write_off_recovered_amount),
+        left: amount_text(
+            &invoice.currency,
+            (amount - invoice.write_off_recovered_amount).max(0),
+        ),
         reason: invoice
             .write_off_reason_code
             .as_deref()
@@ -413,6 +469,11 @@ async fn show(
         relief.as_ref(),
         relief_summary.as_ref(),
     );
+    let recoveries = if write_off.is_some() {
+        recovery_rows(&db, &lang, &invoice).await?
+    } else {
+        Vec::new()
+    };
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
         title: invoice.number.clone().unwrap_or_else(|| t("draft_number")),
@@ -426,6 +487,7 @@ async fn show(
         vat,
         allocations,
         write_off,
+        recoveries,
         approvals: approval_cards,
         timeline,
         actions,

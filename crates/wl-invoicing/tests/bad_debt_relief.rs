@@ -109,7 +109,8 @@ async fn relief_is_proposed_on_the_open_summary_and_the_accountant_told() {
         ran,
         ReliefRun {
             proposed: 1,
-            waiting_for_open_summary: 0
+            waiting_for_open_summary: 0,
+            ..Default::default()
         }
     );
 
@@ -265,7 +266,8 @@ async fn relief_waits_for_an_open_summary() {
         ran,
         ReliefRun {
             proposed: 0,
-            waiting_for_open_summary: 1
+            waiting_for_open_summary: 1,
+            ..Default::default()
         }
     );
     assert_eq!(c.relief().await.status, AdjustmentStatus::Pending);

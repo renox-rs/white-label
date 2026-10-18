@@ -16,6 +16,11 @@
 //! tries again. `propose` runs in its own transaction per adjustment, and the
 //! accountants are told after the commit. The rule never touches the
 //! invoice, never creates a credit note and never includes an adjustment.
+//!
+//! The rule also proposes the `pending` `bad_debt_recovery` adjustments that
+//! a recovery (#66) left without an `open` summary. They have no other
+//! condition: the relief was claimed already, so only an `open` summary of
+//! the day is needed. The accountants were told at the recovery.
 //! The daily task [`TASK`] calls [`run`] for today in Asia/Dubai.
 
 use renox::auth::permissions::{Scope, users_with_role_in};
@@ -61,6 +66,10 @@ pub struct ReliefRun {
     pub proposed: usize,
     /// How many were eligible but had no `open` summary to go on.
     pub waiting_for_open_summary: usize,
+    /// How many pending recovery adjustments it proposed.
+    pub recoveries_proposed: usize,
+    /// How many recovery adjustments still wait for an `open` summary.
+    pub recoveries_waiting: usize,
 }
 
 /// The first day on which relief may be proposed for a supply on `supply`:
@@ -173,7 +182,71 @@ pub async fn run(state: &AppState, on: NaiveDate) -> Result<ReliefRun> {
             Outcome::Skipped => {}
         }
     }
+    let recoveries = VatAdjustment::query()
+        .where_(VatAdjustment::KIND.eq(AdjustmentKind::BadDebtRecovery))
+        .where_(VatAdjustment::STATUS.eq(AdjustmentStatus::Pending))
+        .order_by(VatAdjustment::ID)
+        .get(&state.db)
+        .await?;
+    for adjustment in recoveries {
+        match propose_recovery(state, &config, &adjustment, on).await? {
+            Outcome::Proposed => result.recoveries_proposed += 1,
+            Outcome::NoOpenSummary => result.recoveries_waiting += 1,
+            Outcome::Skipped => {}
+        }
+    }
     Ok(result)
+}
+
+/// Whether `adjustment` is a recovery adjustment that waits to be proposed.
+/// A pure check; the `open` summary is looked up apart.
+pub fn recovery_waits(adjustment: &VatAdjustment) -> bool {
+    adjustment.kind == AdjustmentKind::BadDebtRecovery
+        && adjustment.status == AdjustmentStatus::Pending
+        && adjustment.amount > 0
+}
+
+/// Proposes one pending recovery adjustment on the `open` summary of `on`.
+async fn propose_recovery(
+    state: &AppState,
+    config: &InvoicingConfig,
+    adjustment: &VatAdjustment,
+    on: NaiveDate,
+) -> Result<Outcome> {
+    let Some(entity_id) = adjustment.legal_entity_id else {
+        return Ok(Outcome::Skipped);
+    };
+    if !recovery_waits(adjustment) {
+        return Ok(Outcome::Skipped);
+    }
+    let Some(entity) = LegalEntity::find(&state.db, entity_id).await? else {
+        return Ok(Outcome::Skipped);
+    };
+    let summary = VatSummary::containing(&state.db, config, &entity, on)
+        .await?
+        .filter(|s| s.status == VatSummaryStatus::Open);
+    let Some(summary) = summary else {
+        return Ok(Outcome::NoOpenSummary);
+    };
+    let input = ProposeInput {
+        summary_id: summary.id,
+    };
+    match adjustment
+        .transition(crate::vat_adjustment::PROPOSE)
+        .by_system()
+        .input(&input)
+        .run(state)
+        .await
+    {
+        Ok(outcome) => {
+            outcome.emit(state).await?;
+            Ok(Outcome::Proposed)
+        }
+        Err(
+            TransitionError::NotFrom(_) | TransitionError::Guard(_) | TransitionError::Conflict,
+        ) => Ok(Outcome::Skipped),
+        Err(error) => Err(error.into_error()),
+    }
 }
 
 enum Outcome {
@@ -424,6 +497,24 @@ mod tests {
             ..pending(500)
         };
         assert!(!eligible(&other, &invoice, six(), locked, on));
+    }
+
+    #[test]
+    fn only_a_pending_recovery_with_an_amount_waits() {
+        let recovery = |status, amount| VatAdjustment {
+            kind: AdjustmentKind::BadDebtRecovery,
+            status,
+            amount,
+            ..Default::default()
+        };
+        assert!(recovery_waits(&recovery(AdjustmentStatus::Pending, 2_500)));
+        assert!(!recovery_waits(&recovery(AdjustmentStatus::Pending, 0)));
+        assert!(!recovery_waits(&recovery(
+            AdjustmentStatus::Proposed,
+            2_500
+        )));
+        // A pending relief is not a recovery: it needs its own conditions.
+        assert!(!recovery_waits(&pending(2_500)));
     }
 
     #[test]

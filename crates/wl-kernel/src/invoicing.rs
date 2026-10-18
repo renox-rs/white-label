@@ -568,6 +568,18 @@ pub trait Invoicer: Send + Sync + 'static {
         amount: i64,
     ) -> InvoiceFuture<'a, ()>;
 
+    /// The `written_off` invoices of `party` in `currency` with something
+    /// left to recover, oldest first. The default has none (invoicing is not
+    /// enabled). The payment page lists them beside the allocate form.
+    fn written_off_of<'a>(
+        &'a self,
+        _db: &'a Db,
+        _party: PartyId,
+        _currency: &'a str,
+    ) -> InvoiceFuture<'a, Vec<InvoiceSummary>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
     /// Flags an issued, partly paid or overdue invoice as disputed and
     /// returns the dispute's id. The flag is not a state change. The default
     /// refuses (422): invoicing is not enabled.
