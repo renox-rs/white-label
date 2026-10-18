@@ -651,6 +651,7 @@ impl Booted {
 struct Harness {
     notices: Recording,
     plan: Plan,
+    notify: bool,
 }
 
 #[derive(Deserialize)]
@@ -728,7 +729,9 @@ impl Module for Harness {
     }
 
     fn register(&self, app: &mut Registry) {
-        provide_notifier(app, self.notices.clone());
+        if self.notify {
+            provide_notifier(app, self.notices.clone());
+        }
         app.provide(self.plan.clone());
     }
 
@@ -743,6 +746,12 @@ impl Module for Harness {
 /// wl-documents booted in an app with auth, with the providers of the
 /// guarded transitions registered and no kind installed yet.
 pub async fn boot() -> Booted {
+    boot_with(true).await
+}
+
+/// [`boot`], with the recording notifier only when `notify` (wl-notify on);
+/// without it the kernel's `NoNotifier` is the app's notifier.
+pub async fn boot_with(notify: bool) -> Booted {
     let views = tempfile::tempdir().expect("a temporary views directory");
     let path = views.path().join("layouts/app.html");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -767,6 +776,7 @@ pub async fn boot() -> Booted {
         .module(Harness {
             notices: notices.clone(),
             plan: plan.clone(),
+            notify,
         });
     let dir = views.path().to_path_buf();
     let app = TestApp::with_config(app, |c| c.views_path = dir).await;
