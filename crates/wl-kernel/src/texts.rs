@@ -243,6 +243,16 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_kernel.voids.reverse_failed",
         "What this record did could not be reversed.",
     ),
+    ("wl_kernel.voids.more", "More"),
+    ("wl_kernel.voids.action", "Void"),
+    ("wl_kernel.voids.title", "Void this record"),
+    ("wl_kernel.voids.reason", "Reason"),
+    (
+        "wl_kernel.voids.reason_hint",
+        "Why was it entered in error? The record keeps its number and is struck through.",
+    ),
+    ("wl_kernel.voids.reason_required", "Give a reason."),
+    ("wl_kernel.voids.toast.voided", "Voided"),
     (
         "wl_kernel.voids.cannot_change",
         "A voided record cannot be changed.",

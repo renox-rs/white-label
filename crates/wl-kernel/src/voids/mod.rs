@@ -13,6 +13,7 @@ pub mod events;
 pub mod record;
 pub mod register;
 pub mod run;
+pub mod web;
 
 use renox::prelude::*;
 

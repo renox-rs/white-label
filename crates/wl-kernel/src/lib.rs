@@ -118,6 +118,10 @@ const VIEWS: &[(&str, &str)] = &[
         approvals::web::CARD_TEMPLATE,
         include_str!("../views/wl-kernel/approval_card.html"),
     ),
+    (
+        voids::web::ACTION_TEMPLATE,
+        include_str!("../views/wl-kernel/void_action.html"),
+    ),
 ];
 
 /// The kernel module. The host adds it with [`apply`], which also gives the
@@ -171,6 +175,7 @@ impl Module for WlKernel {
             .require_permission(permissions::LEGAL_ENTITIES_VIEW)
             // The approval card's buttons; who may decide is checked per request.
             .merge(approvals::web::routes())
+            .merge(voids::web::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {

@@ -1,0 +1,14 @@
+{#- wl-kernel: the "Void" item under More (wl-kernel §5.12, PLT.ACL.09). A
+    voidable record's page gives `void_action`
+    (wl_kernel::voids::web::action_for) and includes it with
+    <rx-include template="wl-kernel/void_action.html"/>. It shows nothing
+    unless `void` is available to the viewer. Replace it with
+    resources/views/wl-kernel/void_action.html in the app. -#}
+<template rx-if="void_action">
+  <rx-action-group :label="void_action.labels.more">
+    <rx-menu-open :id="void_action.id" :label="void_action.labels.void" icon="ban" danger/>
+  </rx-action-group>
+  <rx-action-sheet :id="void_action.id" :label="void_action.labels.void" :action="route('wl_kernel.voids.void', void_action.subject_type, void_action.subject_id)" :title="void_action.labels.title" :submit-label="void_action.labels.void" icon="ban" danger :button="false">
+    <rx-textarea name="reason" :label="void_action.labels.reason" :hint="void_action.labels.hint" :id="void_action.id ~ '-reason'" required/>
+  </rx-action-sheet>
+</template>
