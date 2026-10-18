@@ -22,10 +22,12 @@
 use std::sync::Arc;
 
 use renox::prelude::*;
-use wl_kernel::ClientConfig;
+use wl_kernel::notify::ContactPurpose;
 use wl_kernel::notify::{NotificationTypeDef, NotifyChannel, NotifyRecipient, PartyContacts};
+use wl_kernel::parties::{RelatedContact, choose_contact};
+use wl_kernel::{ClientConfig, PartyId};
 
-use crate::message::{NO_CONTACT_POINT, PARTY_ON_HOLD, SUPPRESSED_ADDRESS};
+use crate::message::{NO_CONTACT, NO_CONTACT_POINT, PARTY_ON_HOLD, SUPPRESSED_ADDRESS};
 use crate::suppressions;
 
 /// One channel a recipient could be reached on.
@@ -65,6 +67,8 @@ pub struct Route {
 /// A recipient resolved for one message.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Resolved {
+    /// The person a recipient rule chose; none for any other recipient.
+    pub chosen: Option<PartyId>,
     /// The language to write in.
     pub language: String,
     /// Where it goes.
@@ -129,6 +133,20 @@ fn address_on(
     }
 }
 
+/// The person a rule picks: the first related contact of `of` for
+/// `purpose` that is not in `excluded` (the primary comes first).
+pub async fn choose_person(
+    state: &AppState,
+    of: PartyId,
+    purpose: &ContactPurpose,
+    excluded: &[PartyId],
+) -> Result<Option<PartyId>> {
+    let found: Vec<RelatedContact> = wl_kernel::parties::directory(state)
+        .related_contacts(&state.db, of, purpose)
+        .await?;
+    Ok(choose_contact(&found, excluded).map(|c| c.party))
+}
+
 /// The client's first locale, else `en`.
 pub fn default_language(state: &AppState) -> String {
     state
@@ -147,9 +165,39 @@ pub async fn resolve(
     skip: &[NotifyChannel],
 ) -> Result<Resolved> {
     let mut on_hold = false;
+    let mut chosen = None;
     let mut language = None;
     let mut contacts = None;
     let mut user_email = None;
+    // A rule is resolved to the person it picks, who is then reached as a party.
+    let person = match recipient {
+        NotifyRecipient::Contact { of, purpose } => {
+            chosen = choose_person(state, *of, purpose, &[]).await?;
+            chosen.map(|id| NotifyRecipient::Party { id })
+        }
+        _ => None,
+    };
+    if chosen.is_none() && matches!(recipient, NotifyRecipient::Contact { .. }) {
+        // Nobody is related: nothing to send, and not a give-up.
+        let fallback_channel = def.channels.first().copied().unwrap_or_default();
+        let channel = def
+            .channels
+            .iter()
+            .find(|c| !skip.contains(c))
+            .copied()
+            .unwrap_or(fallback_channel);
+        return Ok(Resolved {
+            chosen: None,
+            language: default_language(state),
+            route: Route {
+                channel,
+                address: None,
+                contact_point: None,
+                suppress: Some(NO_CONTACT),
+            },
+        });
+    }
+    let recipient = person.as_ref().unwrap_or(recipient);
     match recipient {
         NotifyRecipient::Party { id } => {
             on_hold =
@@ -189,6 +237,7 @@ pub async fn resolve(
         route.suppress = Some(PARTY_ON_HOLD);
     }
     Ok(Resolved {
+        chosen,
         language: language.unwrap_or_else(|| default_language(state)),
         route,
     })
@@ -250,6 +299,21 @@ mod tests {
         assert_eq!((route.channel, route.address), (NotifyChannel::Email, None));
         let route = choose(&[], NotifyChannel::Sms);
         assert_eq!(route.channel, NotifyChannel::Sms);
+    }
+
+    #[test]
+    fn a_rule_has_no_address_of_its_own() {
+        let rule = NotifyRecipient::Contact {
+            of: PartyId(1),
+            purpose: ContactPurpose::contact_of("finance"),
+        };
+        assert_eq!(address_on(&rule, NotifyChannel::Email, None, None), None);
+    }
+
+    #[test]
+    fn no_contact_is_its_own_reason() {
+        assert_eq!(NO_CONTACT, "no_contact");
+        assert_ne!(NO_CONTACT, NO_CONTACT_POINT);
     }
 
     #[test]

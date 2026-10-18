@@ -5,7 +5,9 @@ use renox::db::Json;
 use renox::prelude::*;
 use renox::serde_json::Value;
 use serde::{Deserialize, Serialize};
-use wl_kernel::notify::{MessageId, NotifyChannel, NotifyRecipient};
+use wl_kernel::notify::{
+    ContactPurpose, ContactRelation, MessageId, NotifyChannel, NotifyRecipient,
+};
 use wl_kernel::{PartyId, Subject};
 
 /// Where a message is in its lifecycle (wl-notify §4.1).
@@ -40,10 +42,14 @@ pub enum RecipientKind {
     Party,
     /// A bare address.
     Address,
+    /// A recipient rule: the contacts of a party (#57).
+    Contact,
 }
 
 /// Why a message was `suppressed` because nothing can reach the recipient.
 pub const NO_CONTACT_POINT: &str = "no_contact_point";
+/// Why a message was `suppressed` because its recipient rule found nobody.
+pub const NO_CONTACT: &str = "no_contact";
 /// Why a message was `suppressed` because its address is on the list.
 pub const SUPPRESSED_ADDRESS: &str = "suppressed";
 
@@ -77,8 +83,16 @@ pub struct Message {
     pub fallback_of: Option<i64>,
     /// User, party or address.
     pub recipient_kind: RecipientKind,
-    /// The party, for a party recipient.
+    /// The party, for a party recipient; the chosen person for a rule.
     pub party_id: Option<i64>,
+    /// The party whose contacts are meant, for a recipient rule.
+    pub contact_of_party_id: Option<i64>,
+    /// The rule's relation (`contact_of` or `guardian_of`).
+    pub contact_relation: Option<String>,
+    /// The rule's position, e.g. `finance`; none for any.
+    pub contact_position: Option<String>,
+    /// The first message of the chain this is the alternative recipient of.
+    pub alternative_of: Option<i64>,
     /// The user, for a user recipient.
     pub user_id: Option<i64>,
     /// The party contact point the address came from.
@@ -151,10 +165,29 @@ impl Message {
             RecipientKind::Party => NotifyRecipient::Party {
                 id: PartyId(self.party_id.unwrap_or_default()),
             },
+            RecipientKind::Contact => NotifyRecipient::Contact {
+                of: PartyId(self.contact_of_party_id.unwrap_or_default()),
+                purpose: ContactPurpose {
+                    relation: match self.contact_relation.as_deref() {
+                        Some("guardian_of") => ContactRelation::GuardianOf,
+                        _ => ContactRelation::ContactOf,
+                    },
+                    position: self.contact_position.clone(),
+                },
+            },
             RecipientKind::Address => NotifyRecipient::Address {
                 channel: self.channel,
                 address: self.address.clone().unwrap_or_default(),
             },
+        }
+    }
+
+    /// Who the message really goes to: the chosen person for a rule, else
+    /// [`Message::recipient`]. A fallback stays with that person.
+    pub fn person(&self) -> NotifyRecipient {
+        match (self.recipient_kind, self.party_id) {
+            (RecipientKind::Contact, Some(id)) => NotifyRecipient::Party { id: PartyId(id) },
+            _ => self.recipient(),
         }
     }
 
@@ -175,8 +208,12 @@ impl Message {
                 self.recipient_kind = RecipientKind::Party;
                 self.party_id = Some(id.0);
             }
-            // The rule's columns arrive with the message columns of part 3.
-            NotifyRecipient::Contact { .. } => {}
+            NotifyRecipient::Contact { of, purpose } => {
+                self.recipient_kind = RecipientKind::Contact;
+                self.contact_of_party_id = Some(of.0);
+                self.contact_relation = Some(purpose.relation.as_str().to_owned());
+                self.contact_position.clone_from(&purpose.position);
+            }
             NotifyRecipient::Address { channel, address } => {
                 self.recipient_kind = RecipientKind::Address;
                 self.channel = *channel;
@@ -222,6 +259,14 @@ mod tests {
         let recipients = [
             NotifyRecipient::User { id: 7 },
             NotifyRecipient::Party { id: PartyId(3) },
+            NotifyRecipient::Contact {
+                of: PartyId(5),
+                purpose: ContactPurpose::contact_of("finance"),
+            },
+            NotifyRecipient::Contact {
+                of: PartyId(6),
+                purpose: ContactPurpose::guardian_of(),
+            },
             NotifyRecipient::Address {
                 channel: NotifyChannel::Sms,
                 address: "+971501234567".into(),
@@ -232,6 +277,20 @@ mod tests {
             message.set_recipient(&recipient);
             assert_eq!(message.recipient(), recipient);
         }
+    }
+
+    #[test]
+    fn a_rule_message_goes_to_the_chosen_person() {
+        let mut message = Message::default();
+        message.set_recipient(&NotifyRecipient::Contact {
+            of: PartyId(5),
+            purpose: ContactPurpose::contact_of("finance"),
+        });
+        assert_eq!(message.person(), message.recipient());
+        message.party_id = Some(8);
+        assert_eq!(message.person(), NotifyRecipient::Party { id: PartyId(8) });
+        assert_eq!(message.contact_relation.as_deref(), Some("contact_of"));
+        assert_eq!(message.contact_position.as_deref(), Some("finance"));
     }
 
     #[test]

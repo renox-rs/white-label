@@ -98,6 +98,9 @@ pub fn compose(
     };
     message.set_subject(subject);
     message.set_recipient(recipient);
+    if let Some(chosen) = resolved.chosen {
+        message.party_id = Some(chosen.0);
+    }
     message.channel = route.channel;
     message.address = route.address.clone();
     message.contact_point_id = route.contact_point;
@@ -225,6 +228,7 @@ impl Notification for BellNotice {
 mod tests {
     use renox::serde_json::json;
     use wl_kernel::PartyId;
+    use wl_kernel::notify::ContactPurpose;
 
     use super::*;
     use crate::message::{NO_CONTACT_POINT, RecipientKind};
@@ -244,6 +248,7 @@ mod tests {
     #[test]
     fn a_message_is_composed_from_the_route_and_the_template() {
         let resolved = Resolved {
+            chosen: None,
             language: "ar".into(),
             route: Route {
                 channel: NotifyChannel::Email,
@@ -274,8 +279,37 @@ mod tests {
     }
 
     #[test]
+    fn a_rule_message_keeps_the_rule_and_the_chosen_person() {
+        let resolved = Resolved {
+            chosen: Some(PartyId(8)),
+            language: "en".into(),
+            route: Route {
+                channel: NotifyChannel::Email,
+                address: Some("mona@bluedunes.ae".into()),
+                contact_point: Some(4),
+                suppress: None,
+            },
+        };
+        let rule = NotifyRecipient::Contact {
+            of: PartyId(5),
+            purpose: ContactPurpose::contact_of("finance"),
+        };
+        let message = compose(
+            &reminder(),
+            &Subject::new("invoicing.invoice", 9),
+            &rule,
+            &resolved,
+            &json!({}),
+        );
+        assert_eq!(message.recipient_kind, RecipientKind::Contact);
+        assert_eq!(message.party_id, Some(8));
+        assert_eq!(message.recipient(), rule);
+    }
+
+    #[test]
     fn a_message_with_nowhere_to_go_has_no_address() {
         let resolved = Resolved {
+            chosen: None,
             language: "en".into(),
             route: Route {
                 channel: NotifyChannel::Email,

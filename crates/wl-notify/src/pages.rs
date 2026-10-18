@@ -231,6 +231,9 @@ pub(crate) fn log_row(
         (Some(address), _) => address.clone(),
         (None, RecipientKind::Party) => format!("party #{}", message.party_id.unwrap_or_default()),
         (None, RecipientKind::User) => format!("user #{}", message.user_id.unwrap_or_default()),
+        (None, RecipientKind::Contact) => {
+            format!("party #{}", message.party_id.unwrap_or_default())
+        }
         (None, RecipientKind::Address) => t("none"),
     };
     let last_error = [

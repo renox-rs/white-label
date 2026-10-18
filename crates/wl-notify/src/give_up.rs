@@ -31,14 +31,14 @@ use renox::prelude::*;
 use renox::serde_json::Value;
 use renox::state_machine::Outcome;
 use serde::{Deserialize, Serialize};
-use wl_kernel::Subject;
 use wl_kernel::automation::AutomationFailed;
 use wl_kernel::notify::{
     ChannelTried, GiveUpReaction, MessageGaveUp, NotificationTypeDef, reaction_order,
 };
+use wl_kernel::{PartyId, Subject};
 
 use crate::machine::{FALL_BACK, GIVE_UP};
-use crate::message::{Message, MessageStatus};
+use crate::message::{Message, MessageStatus, RecipientKind};
 use crate::notifier::{compose, open_channels, type_def};
 use crate::reactions::{self, GiveUpContext};
 use crate::recipients::{self, Resolved};
@@ -90,7 +90,12 @@ pub async fn plan(state: &AppState, message: &Message) -> Result<Plan> {
         .collect();
     used.push(message.channel);
     let open = open_channels(state);
-    let resolved = recipients::resolve(state, &def, &message.recipient(), &open, &used).await?;
+    // A message to a rule falls back to the person the rule chose.
+    let mut resolved = recipients::resolve(state, &def, &message.person(), &open, &used).await?;
+    resolved.chosen = message
+        .party_id
+        .map(PartyId)
+        .filter(|_| message.recipient_kind == RecipientKind::Contact);
     if resolved.route.suppress.is_some() {
         return Ok(Plan::GiveUp);
     }
