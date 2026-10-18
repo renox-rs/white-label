@@ -249,3 +249,101 @@ async fn the_demo_client_lists_tickets_for_those_who_may_see_them() {
         }
     }
 }
+
+/// #56 AC1, AC5 and AC6 in the demo: with `notify` and `ticketing` both on, a
+/// message that gives up opens a real ticket in the `task` category for the
+/// holder of the type's staff role, due one working day after the give-up,
+/// and a second give-up for the same recipient comments on it.
+#[renox::test]
+async fn a_give_up_opens_a_real_ticket_for_the_staff_role() {
+    use wl_kernel::notify::{self, NotificationTypeDef, NotifyChannel, NotifyRecipient};
+    use wl_kernel::notify::{GiveUpReaction, NotifyRequest};
+    use wl_kernel::{Subject, calendar};
+    use wl_notify::{Message, MessageStatus};
+    use wl_ticketing::{Category, Comment, Ticket, TicketStatus};
+
+    use std::sync::Arc;
+    use wl_notify::channels::{ProviderFuture, SmsGateway, SmsGatewayHandle};
+
+    /// A gateway that refuses every number for good.
+    struct Refusing;
+    impl SmsGateway for Refusing {
+        fn send<'a>(
+            &'a self,
+            _state: &'a AppState,
+            _to: &'a str,
+            _text: &'a str,
+        ) -> ProviderFuture<'a, renox::Result> {
+            Box::pin(async { Err(renox::Error::permanent_message("number refused")) })
+        }
+    }
+
+    const TYPE: &str = "host_test.give_up";
+    let app = TestApp::new(host::app().provide(SmsGatewayHandle(Arc::new(Refusing)))).await;
+    notify::register_type(
+        NotificationTypeDef::new(TYPE, "property")
+            .channels(&[NotifyChannel::Sms])
+            .give_up(&[GiveUpReaction::StaffTask])
+            .staff_role(host::roles::COORDINATOR)
+            .template(NotifyChannel::Sms, "en", None, "Secret body {{ number }}."),
+    );
+    app.kernel().seed().await.unwrap();
+    host::roles::define(app.db()).await.unwrap();
+    let carla = User::register(app.db(), "Carla", "carla@example.com", "secret123")
+        .await
+        .unwrap();
+    carla
+        .assign_role(app.db(), host::roles::COORDINATOR)
+        .await
+        .unwrap();
+
+    // The gateway refuses the number for good, so the only channel of the
+    // type fails and the message gives up at once.
+    async fn send(app: &TestApp) -> Vec<wl_kernel::notify::MessageId> {
+        let request = NotifyRequest::new(TYPE, Subject::new("property.unit", 12))
+            .subject_label("Unit 12")
+            .to(NotifyRecipient::Address {
+                channel: NotifyChannel::Sms,
+                address: "+971500000000".to_owned(),
+            })
+            .data(renox::serde_json::json!({ "number": "L-0001" }));
+        let state = app.state();
+        app.at_travelled_time(notify::notifier(state).notify(state, request))
+            .await
+            .unwrap()
+    }
+    let ids = send(&app).await;
+    app.run_all_jobs().await;
+    let message = Message::find(app.db(), ids[0].0).await.unwrap().unwrap();
+    assert_eq!(message.status, MessageStatus::Abandoned);
+
+    let tickets = Ticket::query().get(app.db()).await.unwrap();
+    assert_eq!(tickets.len(), 1, "one task");
+    let ticket = &tickets[0];
+    let task = Category::by_key(app.db(), "task").await.unwrap().unwrap();
+    assert_eq!(ticket.category_id, task.id);
+    assert_eq!(ticket.status, TicketStatus::Assigned);
+    assert_eq!(ticket.assignee_user_id, Some(carla.id));
+    assert_eq!(ticket.title, "Could not reach ****0000 about Unit 12");
+    assert!(ticket.description.contains("SMS ****0000: number refused"));
+    assert!(!ticket.description.contains("Secret"));
+    let gave_up_at = message.updated_at.expect("the give-up time");
+    assert_eq!(
+        ticket.due_at,
+        Some(calendar::calendar(app.state()).add_working_days(gave_up_at, 1))
+    );
+    assert!(
+        ticket
+            .source_key
+            .as_deref()
+            .is_some_and(|k| k.starts_with("notify.give_up:property.unit:12:"))
+    );
+
+    // The same recipient again, while the task is open: a comment.
+    send(&app).await;
+    app.run_all_jobs().await;
+    assert_eq!(Ticket::query().count(app.db()).await.unwrap(), 1);
+    let comments = Comment::of_ticket(app.db(), ticket.id).await.unwrap();
+    assert_eq!(comments.len(), 1);
+    assert!(!comments[0].text.contains("Secret"));
+}

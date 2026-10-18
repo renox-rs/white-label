@@ -502,3 +502,129 @@ async fn the_block_effects_registry_lists_the_twelve_kinds_and_reviews_the_unkno
     assert_eq!(unknown.scope, scope);
     assert!(block_effects::source_for("booking").is_none());
 }
+
+/// #56 AC7: `scope_of` gives the scope of a subject's machine first, then a
+/// registered resolver's, then the global scope; a machine wins over a
+/// resolver for the same type.
+#[renox::test]
+async fn the_scope_of_a_subject_is_its_machine_then_a_resolver_then_global() {
+    use renox::auth::permissions::Scope;
+    use renox::db::{Migration, sql};
+    use renox::state_machine::{Machine, StateMachine, Transition};
+    use serde::{Deserialize, Serialize};
+    use wl_kernel::{Subject, SubjectMachine, scopes};
+
+    #[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+    enum ItemStatus {
+        #[default]
+        New,
+        Done,
+    }
+
+    /// A record in a building.
+    #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
+    #[model(table = "test_scoped_items", state_machine)]
+    struct Item {
+        id: i64,
+        status: ItemStatus,
+        building_id: i64,
+    }
+
+    impl StateMachine for Item {
+        type State = ItemStatus;
+        const COLUMN: renox::db::Col<Item, ItemStatus> = Item::STATUS;
+
+        fn machine() -> Machine<Self> {
+            Machine::new()
+                .initial([ItemStatus::New])
+                .state(ItemStatus::New)
+                .state(ItemStatus::Done)
+                .terminal()
+                .transition(
+                    Transition::new("finish")
+                        .from([ItemStatus::New])
+                        .to(ItemStatus::Done),
+                )
+        }
+    }
+
+    const MIGRATIONS: &[Migration] = &[Migration::new(
+        "20261018130098_create_test_scoped_items",
+        r#"CREATE TABLE "test_scoped_items" (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            status TEXT NOT NULL DEFAULT 'new',
+            building_id INTEGER NOT NULL DEFAULT 0
+        );"#,
+        Some(r#"DROP TABLE "test_scoped_items";"#),
+    )];
+
+    struct Items;
+
+    impl Module for Items {
+        fn name(&self) -> &'static str {
+            "scoped-items"
+        }
+
+        fn migrations(&self) -> &'static [Migration] {
+            MIGRATIONS
+        }
+
+        fn register(&self, app: &mut Registry) {
+            app.model::<Item>();
+        }
+    }
+
+    let app = TestApp::new(App::new().module(Items)).await;
+    let db = app.db();
+    sql(r#"INSERT INTO "test_scoped_items" (building_id) VALUES (7)"#)
+        .execute(db)
+        .await
+        .unwrap();
+    let tower_a = Scope::new("buildings", 7);
+    let tower_b = Scope::new("buildings", 8);
+    let subject = Subject::new("scopes_it.item", 1);
+
+    // Nothing registered: global.
+    assert_eq!(
+        scopes::scope_of(db, &subject).await.unwrap(),
+        Scope::global()
+    );
+
+    // A resolver gives its scope.
+    scopes::register("scopes_it.item", |_db, _id| {
+        Box::pin(async { Ok(Scope::new("buildings", 8)) })
+    });
+    assert_eq!(scopes::scope_of(db, &subject).await.unwrap(), tower_b);
+
+    // A machine with a scope wins over the resolver.
+    SubjectMachine::of::<Item>("scopes_it.item")
+        .scope(|item: &Item| Scope::new("buildings", item.building_id))
+        .register();
+    assert_eq!(scopes::scope_of(db, &subject).await.unwrap(), tower_a);
+}
+
+/// #56 AC2: working days skip the weekend and the holidays of `client.toml`
+/// and keep the Asia/Dubai clock time: Thursday to Friday, Friday to
+/// Monday, and the day before a holiday to the day after it.
+#[test]
+fn a_due_time_is_the_next_working_day_at_the_same_clock_time() {
+    use renox::chrono::NaiveDateTime;
+
+    let text = format!("{GROUP}\n[calendar]\nholidays = [\"2026-11-10\"]\n");
+    let calendar = ClientConfig::parse(&text)
+        .expect("a valid client.toml")
+        .business_calendar();
+    let local = |text: &str| -> NaiveDateTime { text.parse().expect("a time") };
+    let due = |from: &str| {
+        let at = calendar.from_local(local(from));
+        calendar
+            .local(calendar.add_working_days(at, 1))
+            .naive_local()
+    };
+
+    assert_eq!(due("2026-11-05T10:00:00"), local("2026-11-06T10:00:00"));
+    assert_eq!(due("2026-11-06T16:00:00"), local("2026-11-09T16:00:00"));
+    assert_eq!(due("2026-11-07T10:00:00"), local("2026-11-09T10:00:00"));
+    // Monday the 9th is the day before the holiday: due Wednesday the 11th.
+    assert_eq!(due("2026-11-09T10:00:00"), local("2026-11-11T10:00:00"));
+}
