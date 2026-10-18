@@ -4,12 +4,13 @@
 //! [*] --> requested --approve--> approved --pay--> paid
 //! requested --reject--> rejected (terminal)
 //! approved --pay_by_system--> paid   (the gateway confirmed a refund)
-//! approved, paid --fail--> failed --retry--> approved
+//! approved, paid --fail, fail_by_system--> failed --retry--> approved
 //! failed --cancel--> cancelled (terminal)
 //! ```
 //!
 //! All six states are declared with their tones. This part builds
-//! `approve`, `reject`, `pay` and `pay_by_system`; `fail`, `retry`, `change_method` and
+//! `approve`, `reject`, `pay`, `pay_by_system`, and `fail` and `fail_by_system`
+//! ([`crate::refund_fail`]); `retry`, `change_method` and
 //! `cancel` come with the refund issues that follow, into this `machine()`.
 //!
 //! `approve` is the approval of `FIN.ACL.04`: it needs `refunds.approve`
@@ -26,6 +27,7 @@ use wl_kernel::payments::{PaymentMethod, RefundPaid};
 use crate::permissions;
 use crate::refund::{Refund, RefundStatus};
 use crate::refund_attempt::{AttemptOutcome, RefundAttempt};
+use crate::refund_fail;
 
 /// The `approve` transition's name.
 pub const APPROVE: &str = "approve";
@@ -102,7 +104,9 @@ impl StateMachine for Refund {
 }
 
 fn transitions() -> Vec<Transition<Refund>> {
-    vec![approve(), reject(), pay(), pay_by_system()]
+    let mut all = vec![approve(), reject(), pay(), pay_by_system()];
+    all.extend(refund_fail::transitions());
+    all
 }
 
 fn approve() -> Transition<Refund> {

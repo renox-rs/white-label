@@ -79,8 +79,10 @@ async fn refund_sum(
 }
 
 /// The party's credit in `currency`, in fils: the unallocated amounts of its
-/// incoming `received` payments less its `paid` refunds. Below 0 when the
-/// credit was refunded and the payment reversed afterwards.
+/// incoming `received` payments less its `paid` refunds, plus the
+/// deposit-sourced refunds that `failed` or were `cancelled` (the money held
+/// as a deposit is back on the party). Below 0 when the credit was refunded
+/// and the payment reversed afterwards.
 pub async fn credit_balance(db: &Db, party: PartyId, currency: &str) -> Result<i64> {
     let payments = Payment::query()
         .where_(Payment::PARTY_ID.eq(party.0))
@@ -95,8 +97,29 @@ pub async fn credit_balance(db: &Db, party: PartyId, currency: &str) -> Result<i
         .map(|p| p.summary(sums.get(&p.id).copied().unwrap_or(0)).unallocated)
         .sum();
     let paid = refund_sum(db, party, currency, &[RefundStatus::Paid], None).await?;
-    Ok(unallocated - paid)
+    let returned = deposit_returned(db, party, currency).await?;
+    Ok(unallocated - paid + returned)
 }
+
+/// The deposit-sourced refunds of `party` in `currency` that `failed` or
+/// were `cancelled`, in fils: the deposit's money sits on the party's credit
+/// until the refund is retried or paid another way, and is never lost.
+async fn deposit_returned(db: &Db, party: PartyId, currency: &str) -> Result<i64> {
+    Refund::query()
+        .where_(Refund::PARTY_ID.eq(party.0))
+        .where_(Refund::CURRENCY.eq(currency.trim().to_ascii_uppercase()))
+        .where_(Refund::SOURCE_KIND.eq(DEPOSIT_KIND))
+        .where_(Refund::STATUS.is_in(RETURNED_TO_CREDIT))
+        .sum::<i64, _>(db, "amount")
+        .await
+}
+
+/// The `source_kind` of a refund out of a deposit.
+const DEPOSIT_KIND: &str = "deposit";
+
+/// The states in which a deposit-sourced refund gives its amount back to the
+/// party's credit.
+const RETURNED_TO_CREDIT: [RefundStatus; 2] = [RefundStatus::Failed, RefundStatus::Cancelled];
 
 /// What the party can still ask to have refunded out of its credit in
 /// `currency`, in fils: the credit balance less the refunds waiting to be
@@ -188,6 +211,26 @@ mod tests {
         assert_eq!(p.summary(300_000).unallocated, 0);
         // Never below 0, even for a bad row.
         assert_eq!(p.summary(400_000).unallocated, 0);
+    }
+
+    #[test]
+    fn a_failed_or_cancelled_deposit_refund_gives_its_amount_back() {
+        assert!(RETURNED_TO_CREDIT.contains(&RefundStatus::Failed));
+        assert!(RETURNED_TO_CREDIT.contains(&RefundStatus::Cancelled));
+        for status in [
+            RefundStatus::Requested,
+            RefundStatus::Approved,
+            RefundStatus::Paid,
+            RefundStatus::Rejected,
+        ] {
+            assert!(!RETURNED_TO_CREDIT.contains(&status), "{status:?}");
+        }
+        // The kind a deposit-sourced refund is stored with.
+        let deposit = wl_kernel::payments::DepositId(3);
+        assert_eq!(
+            wl_kernel::payments::RefundSource::Deposit(deposit).kind(),
+            DEPOSIT_KIND
+        );
     }
 
     #[test]

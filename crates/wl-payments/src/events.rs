@@ -9,7 +9,9 @@
 //!   allocations the reversal removed, the source, the statement line and
 //!   the prepaid record; then the party's bank-return notice and the
 //!   credit-deficit check ([`crate::reverse::after_reversal`]). The module
-//!   never changes a target's state; each owner reacts to the event.
+//!   never changes a target's state; each owner reacts to the event. The
+//!   notice and the deficit check are for incoming payments only: a refund's
+//!   outgoing payment reversed by `fail` is told by the refund notices.
 
 use renox::prelude::*;
 use renox::state_machine::Transitioned;

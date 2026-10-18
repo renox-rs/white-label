@@ -143,6 +143,22 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_payments.returned.body",
         "Your payment {{ number }} of {{ amount }}, made on {{ payment_date }}, was returned by the bank. It no longer counts against your account.",
     ),
+    (
+        "wl_payments.refund_failed.subject",
+        "Refund {{ refund }} of {{ amount }} failed",
+    ),
+    (
+        "wl_payments.refund_failed.body",
+        "Refund {{ refund }} of {{ amount }} to {{ party }} failed: {{ kind }}. Reason: {{ reason }}. See {{ link }}.",
+    ),
+    (
+        "wl_payments.refund_delayed.subject",
+        "Your refund is delayed",
+    ),
+    (
+        "wl_payments.refund_delayed.body",
+        "Dear customer, your refund of {{ amount }} is delayed; we will contact you.",
+    ),
     ("wl_payments.followup.subject", "{{ text }}"),
     (
         "wl_payments.followup.body",

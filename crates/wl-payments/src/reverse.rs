@@ -22,7 +22,7 @@ use renox::prelude::*;
 use renox::state_machine::{StateMachine, Transition, TransitionCtx, TransitionError};
 use serde::{Deserialize, Serialize};
 use wl_kernel::documents::today;
-use wl_kernel::payments::{PaymentId, PaymentStatus, ReversalReason};
+use wl_kernel::payments::{Direction, PaymentId, PaymentStatus, ReversalReason};
 
 use crate::allocation::Allocation;
 use crate::followup;
@@ -232,9 +232,45 @@ pub(crate) async fn reverse_by_id(
     reverse(state, None, by, &payment, Some(reason), note.as_deref()).await
 }
 
+/// Reverses the `received` payment `payment` in `tx` as the system, for the
+/// failure of the refund it paid out (the reason text is `note`). `by` is
+/// the user to store. Emit the outcome after the commit.
+pub(crate) async fn reverse_in(
+    tx: &mut renox::db::Transaction,
+    payment: &Payment,
+    reason: ReversalReason,
+    note: &str,
+    by: Option<i64>,
+) -> std::result::Result<renox::state_machine::Outcome<Payment>, TransitionError> {
+    let input = ReverseInput {
+        reason: Some(reason),
+        note: Some(note.to_owned()),
+        by,
+        gateway_dispute: false,
+    };
+    payment
+        .transition(REVERSE_BY_SYSTEM)
+        .by_system()
+        .reason(reason_text(reason, Some(note)))
+        .input(&input)
+        .run_in(tx)
+        .await
+}
+
+/// Whether a committed reversal of `payment` is followed by the party's
+/// bank-return notice and the credit-deficit check: only for money in. An
+/// outgoing refund payment is told by the refund notices instead.
+pub(crate) fn has_follow_up(payment: &Payment) -> bool {
+    payment.direction == Direction::In
+}
+
 /// What follows a committed reversal of `payment`: the party's bank-return
-/// notice, then the credit-deficit check (A9, A10).
+/// notice, then the credit-deficit check (A9, A10). Nothing for an outgoing
+/// payment (a refund's voucher).
 pub(crate) async fn after_reversal(state: &AppState, payment: &Payment) -> Result {
+    if !has_follow_up(payment) {
+        return Ok(());
+    }
     if payment.reversal_reason == Some(ReversalReason::BankReturn) {
         notices::payment_returned(state, payment).await?;
     }
@@ -244,6 +280,18 @@ pub(crate) async fn after_reversal(state: &AppState, payment: &Payment) -> Resul
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_incoming_payments_have_a_return_notice_and_a_deficit_check() {
+        let incoming = Payment::default();
+        assert_eq!(incoming.direction, Direction::In);
+        assert!(has_follow_up(&incoming));
+        let outgoing = Payment {
+            direction: Direction::Out,
+            ..Default::default()
+        };
+        assert!(!has_follow_up(&outgoing));
+    }
 
     fn run_input(reason: Option<ReversalReason>, gateway_dispute: bool) -> TransitionCtx {
         let input = ReverseInput {

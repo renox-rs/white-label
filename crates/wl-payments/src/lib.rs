@@ -16,6 +16,7 @@ pub mod record;
 pub mod recorder;
 pub mod refund;
 pub mod refund_attempt;
+mod refund_fail;
 mod refund_machine;
 pub mod reverse;
 pub mod seed;
@@ -192,6 +193,8 @@ impl Module for WlPayments {
         events::register(app);
         // `RefundPaid` after a commit.
         refund_machine::register(app);
+        // `RefundFailed` and its notices after a commit.
+        refund_fail::register(app);
     }
 }
 

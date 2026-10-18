@@ -11,8 +11,9 @@
 //! another module owns (credit note, payer credit, order, booking);
 //! [`send_to_gateway`] sends an approved `gateway` refund to the gateway
 //! (attempt `pending`), and [`gateway_refund_outcome`] takes the gateway's
-//! answer, once per attempt: `Confirmed` runs `pay_by_system`. `fail`,
-//! `retry`, `change_method` and `cancel` come with the refund issues that
+//! answer, once per attempt: `Confirmed` runs `pay_by_system`. `fail`
+//! and `fail_by_system` close the attempt and, from `paid`, reverse the
+//! outgoing payment ([`fail`]); `retry`, `change_method` and `cancel` come with the refund issues that
 //! follow. The status moves only through the machine.
 //!
 //! A paid refund lowers the party's credit balance ([`crate::credit`]); a
@@ -24,7 +25,7 @@ use serde::{Deserialize, Serialize};
 use wl_kernel::documents::today;
 use wl_kernel::payments::{
     Direction, PAYMENT_SUBJECT_TYPE, PaymentId, PaymentMethod, PaymentSource, RecordPayment,
-    RefundFailureKind, RefundId, RefundSource as KernelRefundSource,
+    RefundFailureKind, RefundId, RefundSource as KernelRefundSource, ReversalReason,
 };
 use wl_kernel::{LegalEntity, PartyId, Subject};
 
@@ -34,7 +35,9 @@ use crate::payment::Payment;
 use crate::permissions;
 use crate::record;
 use crate::refund_attempt::{AttemptOutcome, RefundAttempt};
+use crate::refund_fail::{FAIL, FAIL_BY_SYSTEM, FailInput};
 use crate::refund_machine::{APPROVE, PAY, PAY_BY_SYSTEM, PayBySystemInput, PayInput, REJECT};
+use crate::reverse;
 
 /// The lifecycle state of a refund (wl-payments §4); the state of the
 /// Refund machine.
@@ -679,9 +682,9 @@ pub async fn send_to_gateway(
 ///
 /// # Errors
 ///
-/// `NotFrom` when the refund is not `approved` any more. `Guard` (422) for
-/// `Declined`, until `fail_by_system` comes with the next part of the
-/// refund-failure work.
+/// `NotFrom` when the refund is not `approved` any more. `Declined` runs the
+/// system `fail_by_system` with the kind `gateway_declined`; the reason is
+/// the gateway's text, or [`DECLINED_BY_GATEWAY`] when it gave none.
 pub async fn gateway_refund_outcome(
     state: &AppState,
     gateway_ref: &str,
@@ -707,10 +710,111 @@ pub async fn gateway_refund_outcome(
                 .await?;
             Ok(Some(reload(state, &refund).await?))
         }
-        RefundOutcome::Declined { .. } => Err(guard(
-            "A declined refund is failed by the system in the next part.",
-        )),
+        RefundOutcome::Declined { reason } => {
+            let reason = reason.trim();
+            let reason = if reason.is_empty() {
+                DECLINED_BY_GATEWAY
+            } else {
+                reason
+            };
+            let failed = run_fail(
+                state,
+                &refund,
+                None,
+                RefundFailureKind::GatewayDeclined,
+                reason,
+            )
+            .await?;
+            Ok(Some(failed))
+        }
     }
+}
+
+/// The reason stored when the gateway declines without a text.
+pub const DECLINED_BY_GATEWAY: &str = "Declined by the gateway";
+
+/// `user` fails `refund` (`approved` or `paid`): the bank returned the
+/// transfer or the card cannot take it. The latest attempt is closed with
+/// `kind` and `reason`; from `paid` the outgoing payment is reversed
+/// (`bank_return`) in the same transaction. `RefundFailed` and the notices
+/// follow after the commit.
+///
+/// # Errors
+///
+/// `Forbidden` without `refunds.pay`; `NotFrom` unless `approved` or `paid`
+/// (a second `fail`); `Guard` (422) for a blank reason, for the kind
+/// `gateway_declined` (only the system gives it) or when there is no attempt
+/// to fail. Nothing is written then.
+pub async fn fail(
+    state: &AppState,
+    user: &AuthUser,
+    refund: &Refund,
+    kind: RefundFailureKind,
+    reason: &str,
+) -> std::result::Result<Refund, TransitionError> {
+    if !user.has_permission(permissions::REFUNDS_PAY) {
+        return Err(TransitionError::Forbidden);
+    }
+    let refund = reload(state, refund).await?;
+    run_fail(state, &refund, Some(user), kind, reason).await
+}
+
+/// Runs `fail` (by `user`) or `fail_by_system` (no user) on `refund`.
+async fn run_fail(
+    state: &AppState,
+    refund: &Refund,
+    user: Option<&AuthUser>,
+    kind: RefundFailureKind,
+    reason: &str,
+) -> std::result::Result<Refund, TransitionError> {
+    let attempt = RefundAttempt::latest(&state.db, refund.id)
+        .await?
+        .filter(|attempt| attempt.outcome != AttemptOutcome::Failed);
+    let input = FailInput {
+        kind: Some(kind),
+        reason: reason.to_owned(),
+        attempt_id: attempt.as_ref().map(|attempt| attempt.id),
+    };
+    let reason = reason.trim();
+    let mut run = refund.transition(if user.is_some() { FAIL } else { FAIL_BY_SYSTEM });
+    run = match user {
+        Some(user) => run.by(user),
+        None => run.by_system(),
+    };
+    if !reason.is_empty() {
+        run = run.reason(reason.to_owned());
+    }
+    let mut tx = state.db.begin().await?;
+    let failed = run.input(&input).run_in(&mut tx).await?;
+    // From `paid`, the outgoing payment goes back: reversed today, its date
+    // kept. An outgoing payment has no bank-return notice or deficit task.
+    let mut reversed = None;
+    if refund.status == RefundStatus::Paid
+        && let Some(payment_id) = refund.payment_id
+    {
+        let payment = Payment::find(&state.db, payment_id)
+            .await?
+            .ok_or_else(|| guard("The outgoing payment was not found."))?;
+        reversed = Some(
+            reverse::reverse_in(
+                &mut tx,
+                &payment,
+                ReversalReason::BankReturn,
+                reason,
+                user.map(|user| user.id),
+            )
+            .await?,
+        );
+    }
+    tx.commit().await?;
+    if let Some(reversed) = reversed {
+        reversed
+            .emit(state)
+            .await
+            .map_err(TransitionError::Failed)?;
+    }
+    failed.emit(state).await.map_err(TransitionError::Failed)?;
+    reload(state, refund).await
 }
 
 async fn reload_id(state: &AppState, id: i64) -> std::result::Result<Refund, TransitionError> {
