@@ -6,10 +6,14 @@
 //! user with `refunds.request`), [`approve`] (`refunds.approve`, never the
 //! requester: `FIN.ACL.04`), [`reject`] (a reason is required) and [`pay`]
 //! (`refunds.pay`): it records an outgoing payment with source `system`,
-//! links it to the refund, and emits `RefundPaid`. `fail`, `retry`,
-//! `change_method`, `cancel` and the system request that goes straight to
-//! `approved` come with the refund issues that follow. The status moves
-//! only through the machine.
+//! links it to the refund, opens an attempt ([`crate::refund_attempt`]) and
+//! emits `RefundPaid`. [`request_for_source`] asks a refund of a source
+//! another module owns (credit note, payer credit, order, booking);
+//! [`send_to_gateway`] sends an approved `gateway` refund to the gateway
+//! (attempt `pending`), and [`gateway_refund_outcome`] takes the gateway's
+//! answer, once per attempt: `Confirmed` runs `pay_by_system`. `fail`,
+//! `retry`, `change_method` and `cancel` come with the refund issues that
+//! follow. The status moves only through the machine.
 //!
 //! A paid refund lowers the party's credit balance ([`crate::credit`]); a
 //! refund is refused above the refundable balance of its source.
@@ -20,15 +24,17 @@ use serde::{Deserialize, Serialize};
 use wl_kernel::documents::today;
 use wl_kernel::payments::{
     Direction, PAYMENT_SUBJECT_TYPE, PaymentId, PaymentMethod, PaymentSource, RecordPayment,
-    RefundId,
+    RefundFailureKind, RefundId, RefundSource as KernelRefundSource,
 };
 use wl_kernel::{LegalEntity, PartyId, Subject};
 
 use crate::credit;
+use crate::gateway::{RefundOutcome, gateway_of};
 use crate::payment::Payment;
 use crate::permissions;
 use crate::record;
-use crate::refund_machine::{APPROVE, PAY, PayInput, REJECT};
+use crate::refund_attempt::{AttemptOutcome, RefundAttempt};
+use crate::refund_machine::{APPROVE, PAY, PAY_BY_SYSTEM, PayBySystemInput, PayInput, REJECT};
 
 /// The lifecycle state of a refund (wl-payments §4); the state of the
 /// Refund machine.
@@ -90,6 +96,29 @@ pub struct RequestRefund {
     pub reason: String,
 }
 
+/// A refund another module asks for, out of a source it owns
+/// ([`request_for_source`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RefundRequest {
+    /// What it comes from.
+    pub source: KernelRefundSource,
+    /// Who is paid back.
+    pub party: PartyId,
+    /// The legal entity paying.
+    pub legal_entity_id: i64,
+    /// The amount, in fils; above 0.
+    pub amount: i64,
+    /// The ISO currency code, e.g. `AED`.
+    pub currency: String,
+    /// How it is to be paid, if already known; a `gateway` refund needs
+    /// [`gateway_txn`](RefundRequest::gateway_txn).
+    pub method: Option<PaymentMethod>,
+    /// The gateway transaction a `gateway` refund goes back to.
+    pub gateway_txn: Option<String>,
+    /// Why.
+    pub reason: String,
+}
+
 /// A refund. Money is `i64` fils of [`Refund::currency`].
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
 #[model(
@@ -110,14 +139,20 @@ pub struct Refund {
     pub source_type: String,
     /// The id of the source.
     pub source_id: i64,
+    /// The kind of the source (`payment`, `credit_note`, `deposit`,
+    /// `party_credit`, `payer_credit`, `order` or `booking`).
+    pub source_kind: String,
     /// The amount, in fils; always > 0.
     pub amount: i64,
     /// The ISO currency code, e.g. `AED`.
     pub currency: String,
     /// Why it is refunded.
     pub reason: String,
-    /// How it was paid; set by `pay`.
+    /// How it is or was paid; set by `pay`, or at the request for a
+    /// gateway refund.
     pub method: Option<PaymentMethod>,
+    /// The gateway transaction a `gateway` refund goes back to.
+    pub gateway_txn: Option<String>,
     /// The payment reference; set by `pay`.
     pub reference: Option<String>,
     /// The user who requested it; `None` for the system.
@@ -132,6 +167,10 @@ pub struct Refund {
     pub payment_id: Option<i64>,
     /// When it was paid.
     pub paid_at: Option<DateTime>,
+    /// Why the latest attempt failed.
+    pub failure_kind: Option<RefundFailureKind>,
+    /// The reason given for it.
+    pub failure_reason: Option<String>,
     /// The lifecycle state; changed only by a transition.
     pub status: RefundStatus,
     /// When the row was created.
@@ -157,6 +196,12 @@ impl Refund {
             subject_type: self.source_type.clone(),
             subject_id: self.source_id,
         }
+    }
+
+    /// What it comes from, in the kernel contract; `None` for a kind not
+    /// known (a corrupt row).
+    pub fn source(&self) -> Option<KernelRefundSource> {
+        KernelRefundSource::from_kind(&self.source_kind, &self.source_subject())
     }
 
     /// Whether it comes from a payment.
@@ -289,15 +334,47 @@ pub async fn request(
     if let Some(problem) = amount_problem(request.amount, resolved.refundable) {
         return Err(guard(problem));
     }
-    let source = request.source.subject();
+    let source = match &request.source {
+        RefundSource::Payment(id) => KernelRefundSource::Payment(*id),
+        RefundSource::PartyCredit { party, .. } => KernelRefundSource::PartyCredit(*party),
+    };
+    insert_requested(
+        state,
+        user,
+        &resolved,
+        &source,
+        request.amount,
+        None,
+        None,
+        &request.reason,
+    )
+    .await
+}
+
+/// Inserts the refund `requested`, with its history row.
+#[allow(clippy::too_many_arguments)]
+async fn insert_requested(
+    state: &AppState,
+    user: &AuthUser,
+    resolved: &Resolved,
+    source: &KernelRefundSource,
+    amount: i64,
+    method: Option<PaymentMethod>,
+    gateway_txn: Option<String>,
+    reason: &str,
+) -> std::result::Result<Refund, TransitionError> {
+    let subject = source.subject();
     let mut refund = Refund {
         party_id: resolved.party.0,
         legal_entity_id: resolved.legal_entity_id,
-        source_type: source.subject_type,
-        source_id: source.subject_id,
-        amount: request.amount,
-        currency: resolved.currency,
-        reason: request.reason.trim().to_owned(),
+        source_type: subject.subject_type,
+        source_id: subject.subject_id,
+        source_kind: source.kind().to_owned(),
+        amount,
+        currency: resolved.currency.clone(),
+        reason: reason.trim().to_owned(),
+        method,
+        gateway_txn,
         requested_by: Some(user.id),
         status: RefundStatus::Requested,
         ..Default::default()
@@ -310,6 +387,111 @@ pub async fn request(
         .await?;
     tx.commit().await?;
     Ok(refund)
+}
+
+/// Why a gateway refund cannot be asked with `method` and `gateway_txn`,
+/// if it cannot: a `gateway` refund needs the transaction it goes back to.
+pub(crate) fn gateway_problem(
+    method: Option<PaymentMethod>,
+    gateway_txn: Option<&str>,
+) -> Option<&'static str> {
+    let given = gateway_txn.is_some_and(|txn| !txn.trim().is_empty());
+    (method == Some(PaymentMethod::Gateway) && !given)
+        .then_some("A gateway refund needs the gateway transaction.")
+}
+
+/// `user` asks to refund `request.amount` fils of a source, for the
+/// module that owns it. A payment or party-credit source keeps the balance
+/// check of [`request`]; any other source (credit note, deposit, payer
+/// credit, order, booking) is vouched for by the caller, as this module
+/// cannot read its balance. The refund still goes through [`approve`]
+/// (`FIN.ACL.04`).
+///
+/// # Errors
+///
+/// `Forbidden` without `refunds.request`. `Guard` (422) for an empty
+/// reason, an amount of 0 or less (or above the balance of a payment or
+/// party credit), a party that does not match the source or is unknown, an
+/// inactive legal entity, or a `gateway` method without its transaction.
+/// Nothing is written then.
+pub async fn request_for_source(
+    state: &AppState,
+    request: &RefundRequest,
+    by: &AuthUser,
+) -> std::result::Result<Refund, TransitionError> {
+    if !by.has_permission(permissions::REFUNDS_REQUEST) {
+        return Err(TransitionError::Forbidden);
+    }
+    if let Some(problem) = reason_problem(&request.reason) {
+        return Err(guard(problem));
+    }
+    if let Some(problem) = gateway_problem(request.method, request.gateway_txn.as_deref()) {
+        return Err(guard(problem));
+    }
+    let (resolved, balance) = match &request.source {
+        KernelRefundSource::Payment(id) => {
+            let resolved = resolve(state, &RefundSource::Payment(*id)).await?;
+            let balance = resolved.refundable;
+            (resolved, balance)
+        }
+        KernelRefundSource::PartyCredit(party) => {
+            let local = RefundSource::PartyCredit {
+                party: *party,
+                legal_entity_id: request.legal_entity_id,
+                currency: request.currency.clone(),
+            };
+            let resolved = resolve(state, &local).await?;
+            let balance = resolved.refundable;
+            (resolved, balance)
+        }
+        _ => (resolve_vouched(state, request).await?, i64::MAX),
+    };
+    if resolved.party != request.party {
+        return Err(guard("The party does not match the source."));
+    }
+    if let Some(problem) = amount_problem(request.amount, balance) {
+        return Err(guard(problem));
+    }
+    let gateway_txn = request
+        .gateway_txn
+        .as_deref()
+        .map(str::trim)
+        .filter(|txn| !txn.is_empty())
+        .map(str::to_owned);
+    insert_requested(
+        state,
+        by,
+        &resolved,
+        &request.source,
+        request.amount,
+        request.method,
+        gateway_txn,
+        &request.reason,
+    )
+    .await
+}
+
+/// The party and legal entity of a source another module vouches for.
+async fn resolve_vouched(
+    state: &AppState,
+    request: &RefundRequest,
+) -> std::result::Result<Resolved, TransitionError> {
+    let found = wl_kernel::parties::directory(state)
+        .find(&state.db, request.party)
+        .await?;
+    if found.is_none() {
+        return Err(guard("The party was not found."));
+    }
+    let entity = LegalEntity::find(&state.db, request.legal_entity_id).await?;
+    if !entity.as_ref().is_some_and(LegalEntity::is_active) {
+        return Err(guard("The legal entity is not active."));
+    }
+    Ok(Resolved {
+        party: request.party,
+        legal_entity_id: request.legal_entity_id,
+        currency: request.currency.trim().to_ascii_uppercase(),
+        refundable: i64::MAX,
+    })
 }
 
 /// `user` approves `refund`.
@@ -369,6 +551,9 @@ pub async fn pay(
         return Err(TransitionError::Forbidden);
     }
     let reference = reference.trim();
+    if latest_attempt_pending(state, refund).await? {
+        return Err(guard("A gateway refund is waiting for the gateway."));
+    }
     let mut request = RecordPayment::new(
         refund.party(),
         refund.legal_entity_id,
@@ -385,6 +570,16 @@ pub async fn pay(
     let (payment, input) = record::prepare(state, &request, Some(user.id)).await?;
     let mut tx = state.db.begin().await?;
     let (payment, recorded) = record::record_in(&mut tx, None, payment, &input).await?;
+    RefundAttempt::open_in(
+        &mut tx,
+        refund.id,
+        method,
+        (!reference.is_empty()).then(|| reference.to_owned()),
+        None,
+        Some(payment.id),
+        AttemptOutcome::Paid,
+    )
+    .await?;
     let pay_input = PayInput {
         method,
         reference: reference.to_owned(),
@@ -406,6 +601,122 @@ pub async fn pay(
         .map_err(TransitionError::Failed)?;
     paid.emit(state).await.map_err(TransitionError::Failed)?;
     reload(state, refund).await
+}
+
+async fn latest_attempt_pending(
+    state: &AppState,
+    refund: &Refund,
+) -> std::result::Result<bool, TransitionError> {
+    Ok(RefundAttempt::latest(&state.db, refund.id)
+        .await?
+        .is_some_and(|attempt| attempt.outcome == AttemptOutcome::Pending))
+}
+
+/// `user` sends the approved gateway `refund` to the gateway, which opens
+/// the next attempt `pending` with the gateway's refund reference. The
+/// gateway answers later through [`gateway_refund_outcome`].
+///
+/// # Errors
+///
+/// `Forbidden` without `refunds.pay`; `NotFrom` unless `approved`; `Guard`
+/// (422) unless the method is `gateway` with its transaction, or while an
+/// attempt is already `pending`; `Failed` when the gateway refuses the
+/// call. Nothing is written then.
+pub async fn send_to_gateway(
+    state: &AppState,
+    user: &AuthUser,
+    refund: &Refund,
+) -> std::result::Result<RefundAttempt, TransitionError> {
+    if !user.has_permission(permissions::REFUNDS_PAY) {
+        return Err(TransitionError::Forbidden);
+    }
+    let refund = reload(state, refund).await?;
+    if refund.status != RefundStatus::Approved {
+        return Err(TransitionError::NotFrom(refund.status.as_str().to_owned()));
+    }
+    if refund.method != Some(PaymentMethod::Gateway) {
+        return Err(guard("Only a gateway refund goes to the gateway."));
+    }
+    let Some(txn) = refund
+        .gateway_txn
+        .as_deref()
+        .filter(|txn| !txn.trim().is_empty())
+    else {
+        return Err(guard("A gateway refund needs the gateway transaction."));
+    };
+    if latest_attempt_pending(state, &refund).await? {
+        return Err(guard("The refund is already with the gateway."));
+    }
+    let sent = gateway_of(state)
+        .refund(txn, refund.amount)
+        .await
+        .map_err(TransitionError::Failed)?;
+    let mut tx = state.db.begin().await?;
+    let attempt = RefundAttempt::open_in(
+        &mut tx,
+        refund.id,
+        PaymentMethod::Gateway,
+        None,
+        Some(sent.reference),
+        None,
+        AttemptOutcome::Pending,
+    )
+    .await?;
+    tx.commit().await?;
+    Ok(attempt)
+}
+
+/// What the gateway says about the refund it holds under `gateway_ref`
+/// (the webhook of a later gateway adapter; tests call it directly).
+/// `Confirmed` runs the system `pay_by_system`: the refund is `paid` and
+/// its attempt closed `paid`, with no outgoing payment. `RefundPaid`
+/// follows after the commit.
+///
+/// An outcome for an attempt that is no longer `pending`, or for a
+/// reference nobody holds, is ignored: nothing is changed or sent, and
+/// `None` is returned (the duplicate webhook of an attempt). Otherwise the
+/// refund is returned as it is now.
+///
+/// # Errors
+///
+/// `NotFrom` when the refund is not `approved` any more. `Guard` (422) for
+/// `Declined`, until `fail_by_system` comes with the next part of the
+/// refund-failure work.
+pub async fn gateway_refund_outcome(
+    state: &AppState,
+    gateway_ref: &str,
+    outcome: RefundOutcome,
+) -> std::result::Result<Option<Refund>, TransitionError> {
+    let Some(attempt) = RefundAttempt::find_by_gateway_ref(&state.db, gateway_ref).await? else {
+        return Ok(None);
+    };
+    if attempt.outcome != AttemptOutcome::Pending {
+        return Ok(None);
+    }
+    let refund = reload_id(state, attempt.refund_id).await?;
+    match outcome {
+        RefundOutcome::Confirmed => {
+            let input = PayBySystemInput {
+                attempt_id: attempt.id,
+            };
+            let _outcome = refund
+                .transition(PAY_BY_SYSTEM)
+                .by_system()
+                .input(&input)
+                .run(state)
+                .await?;
+            Ok(Some(reload(state, &refund).await?))
+        }
+        RefundOutcome::Declined { .. } => Err(guard(
+            "A declined refund is failed by the system in the next part.",
+        )),
+    }
+}
+
+async fn reload_id(state: &AppState, id: i64) -> std::result::Result<Refund, TransitionError> {
+    Refund::find_or_404(&state.db, id)
+        .await
+        .map_err(TransitionError::Failed)
 }
 
 async fn reload(state: &AppState, refund: &Refund) -> std::result::Result<Refund, TransitionError> {
@@ -439,6 +750,36 @@ mod tests {
         assert!(amount_problem(-5, 100).is_some());
         assert!(amount_problem(101, 100).is_some());
         assert!(amount_problem(100, 100).is_none());
+    }
+
+    #[test]
+    fn a_gateway_refund_needs_its_transaction() {
+        let gateway = Some(PaymentMethod::Gateway);
+        assert!(gateway_problem(gateway, None).is_some());
+        assert!(gateway_problem(gateway, Some("  ")).is_some());
+        assert!(gateway_problem(gateway, Some("txn_1")).is_none());
+        assert!(gateway_problem(Some(PaymentMethod::Transfer), None).is_none());
+        assert!(gateway_problem(None, None).is_none());
+    }
+
+    #[test]
+    fn a_refund_names_its_source_by_kind() {
+        let note = Subject::new("invoicing.credit_note", 7);
+        let refund = Refund {
+            source_type: note.subject_type.clone(),
+            source_id: 7,
+            source_kind: "order".into(),
+            ..Default::default()
+        };
+        assert_eq!(
+            refund.source(),
+            Some(KernelRefundSource::Order(note.clone()))
+        );
+        let unknown = Refund {
+            source_kind: "nothing".into(),
+            ..refund
+        };
+        assert_eq!(unknown.source(), None);
     }
 
     #[test]

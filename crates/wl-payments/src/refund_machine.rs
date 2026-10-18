@@ -3,12 +3,13 @@
 //! ```text
 //! [*] --> requested --approve--> approved --pay--> paid
 //! requested --reject--> rejected (terminal)
+//! approved --pay_by_system--> paid   (the gateway confirmed a refund)
 //! approved, paid --fail--> failed --retry--> approved
 //! failed --cancel--> cancelled (terminal)
 //! ```
 //!
 //! All six states are declared with their tones. This part builds
-//! `approve`, `reject` and `pay`; `fail`, `retry`, `change_method` and
+//! `approve`, `reject`, `pay` and `pay_by_system`; `fail`, `retry`, `change_method` and
 //! `cancel` come with the refund issues that follow, into this `machine()`.
 //!
 //! `approve` is the approval of `FIN.ACL.04`: it needs `refunds.approve`
@@ -20,10 +21,11 @@
 use renox::prelude::*;
 use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx};
 use serde::{Deserialize, Serialize};
-use wl_kernel::payments::{PaymentMethod, RefundPaid, RefundSource as KernelRefundSource};
+use wl_kernel::payments::{PaymentMethod, RefundPaid};
 
 use crate::permissions;
 use crate::refund::{Refund, RefundStatus};
+use crate::refund_attempt::{AttemptOutcome, RefundAttempt};
 
 /// The `approve` transition's name.
 pub const APPROVE: &str = "approve";
@@ -31,6 +33,16 @@ pub const APPROVE: &str = "approve";
 pub const REJECT: &str = "reject";
 /// The `pay` transition's name.
 pub const PAY: &str = "pay";
+
+/// The `pay_by_system` transition's name: the gateway confirmed a refund.
+pub const PAY_BY_SYSTEM: &str = "pay_by_system";
+
+/// What a `pay_by_system` run carries: the `pending` attempt it closes.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct PayBySystemInput {
+    /// The attempt the gateway answered for.
+    pub attempt_id: i64,
+}
 
 /// What a `pay` run carries to its guards and effect, gathered by
 /// [`crate::refund::pay`].
@@ -90,7 +102,7 @@ impl StateMachine for Refund {
 }
 
 fn transitions() -> Vec<Transition<Refund>> {
-    vec![approve(), reject(), pay()]
+    vec![approve(), reject(), pay(), pay_by_system()]
 }
 
 fn approve() -> Transition<Refund> {
@@ -204,11 +216,65 @@ fn pay() -> Transition<Refund> {
         })
 }
 
-/// Registers the listener: after a `pay` commits, `RefundPaid` is emitted.
+fn pay_by_system() -> Transition<Refund> {
+    Transition::new(PAY_BY_SYSTEM)
+        .label("Gateway refund confirmed")
+        .tone("primary")
+        .system()
+        .from([RefundStatus::Approved])
+        .to(RefundStatus::Paid)
+        .guard("attempt_given", |_refund: &Refund, ctx| {
+            let given = ctx.input_as::<PayBySystemInput>().is_ok();
+            Box::pin(async move {
+                if given {
+                    Ok(())
+                } else {
+                    Err("The gateway refund attempt is required.".to_owned())
+                }
+            })
+        })
+        .effect(|refund: &Refund, ctx, tx| {
+            let id = refund.id;
+            let input = ctx.input_as::<PayBySystemInput>().ok();
+            Box::pin(async move {
+                let input = input.ok_or_else(|| {
+                    Error::from(renox::anyhow::anyhow!(
+                        "a gateway payment without its attempt"
+                    ))
+                })?;
+                // No outgoing payment: the gateway moved the money.
+                Refund::query()
+                    .where_(Refund::ID.eq(id))
+                    .update(
+                        &mut *tx,
+                        &[
+                            ("paid_at", &Some(renox::db::now())),
+                            ("updated_at", &renox::db::now()),
+                        ],
+                    )
+                    .await?;
+                RefundAttempt::query()
+                    .where_(RefundAttempt::ID.eq(input.attempt_id))
+                    .where_(RefundAttempt::OUTCOME.eq(AttemptOutcome::Pending))
+                    .update(
+                        &mut *tx,
+                        &[
+                            ("outcome", &AttemptOutcome::Paid.as_str().to_owned()),
+                            ("updated_at", &renox::db::now()),
+                        ],
+                    )
+                    .await?;
+                Ok(())
+            })
+        })
+}
+
+/// Registers the listener: after a `pay` or `pay_by_system` commits,
+/// `RefundPaid` is emitted.
 pub(crate) fn register(app: &mut Registry) {
     app.listen(
         |event: renox::state_machine::Transitioned<Refund>, state: AppState| async move {
-            if event.transition != PAY {
+            if event.transition != PAY && event.transition != PAY_BY_SYSTEM {
                 return Ok(());
             }
             // The committed row.
@@ -218,15 +284,14 @@ pub(crate) fn register(app: &mut Registry) {
                     refund: refund.refund_id(),
                     party: refund.party(),
                     amount: refund.amount,
-                    source: KernelRefundSource::from_subject(&refund.source_subject()).ok_or_else(
-                        || {
-                            Error::Internal(renox::anyhow::anyhow!(
-                                "refund {} has an unknown source {}",
-                                refund.id,
-                                refund.source_subject()
-                            ))
-                        },
-                    )?,
+                    source: refund.source().ok_or_else(|| {
+                        Error::Internal(renox::anyhow::anyhow!(
+                            "refund {} has an unknown source {} ({})",
+                            refund.id,
+                            refund.source_subject(),
+                            refund.source_kind
+                        ))
+                    })?,
                 })
                 .await
         },
@@ -297,6 +362,31 @@ mod tests {
         assert!(from(PAY, RefundStatus::Approved));
         assert!(!from(PAY, RefundStatus::Requested));
         assert!(!from(PAY, RefundStatus::Paid));
+    }
+
+    #[test]
+    fn pay_by_system_leaves_only_approved() {
+        let machine = Refund::machine();
+        let found = machine.find(PAY_BY_SYSTEM).expect("transition");
+        assert!(found.check_from(RefundStatus::Approved).is_ok());
+        assert!(found.check_from(RefundStatus::Requested).is_err());
+        assert!(found.check_from(RefundStatus::Paid).is_err());
+        assert!(found.check_from(RefundStatus::Failed).is_err());
+    }
+
+    #[renox::test]
+    async fn pay_by_system_needs_its_attempt() {
+        let machine = Refund::machine();
+        let found = machine.find(PAY_BY_SYSTEM).expect("transition");
+        let refund = Refund::default();
+        let with = TransitionCtx::new(None).with_input(
+            renox::serde_json::to_value(PayBySystemInput { attempt_id: 1 }).expect("json"),
+        );
+        assert!(found.check_guards(&refund, &with).await.is_ok());
+        assert!(matches!(
+            found.check_guards(&refund, &TransitionCtx::new(None)).await,
+            Err(TransitionError::Guard(_))
+        ));
     }
 
     #[renox::test]

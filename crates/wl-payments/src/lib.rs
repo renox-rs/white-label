@@ -15,6 +15,7 @@ pub mod payment;
 pub mod record;
 pub mod recorder;
 pub mod refund;
+pub mod refund_attempt;
 mod refund_machine;
 pub mod reverse;
 pub mod seed;
@@ -32,6 +33,7 @@ pub use followup::FollowupTask;
 pub use gateway::{Gateway, NoGateway};
 pub use payment::Payment;
 pub use refund::Refund;
+pub use refund_attempt::RefundAttempt;
 
 /// The templates, compiled in. An app replaces one with a file of the same
 /// name under its views directory.
@@ -146,6 +148,7 @@ impl Module for WlPayments {
         app.model::<Payment>();
         app.model::<Allocation>();
         app.model::<Refund>();
+        app.model::<RefundAttempt>();
         app.model::<FollowupTask>();
         app.view_data::<pages::IndexPage>()
             .view_data::<pages::NewPage>()
