@@ -1,0 +1,8 @@
+{#- wl-parties: the parties list, a renox::grid (search, filters, export).
+    Replace it with resources/views/wl-parties/index.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['title']">
+  <rx-page-header :title="tx['title']">
+    <rx-link-button rx-if="can('parties.create')" route="wl_parties.create" :label="tx['new']" variant="primary" icon="plus"/>
+  </rx-page-header>
+  <rx-grid :page="parties"/>
+</rx-page>

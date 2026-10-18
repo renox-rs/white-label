@@ -1,0 +1,29 @@
+{#- wl-parties: a party's page: its card, contact points, roles and
+    history. Replace it with resources/views/wl-parties/show.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="party.display_name">
+  <rx-stack>
+    <rx-page-header :title="party.display_name" :subtitle="party.code" :back="route('wl_parties.index')" :back-label="tx['title']"/>
+    <rx-include template="wl-parties/_card.html"/>
+    <rx-table :rows="contacts" as="contact" :key="contact.id" :caption="tx['sections.contacts']" card>
+      <rx-column :label="tx['fields.contact_type']">{{ tx['contact_type.' ~ contact.contact_type] }}</rx-column>
+      <rx-column :label="tx['fields.value']">{{ contact.value }}</rx-column>
+      <rx-column :label="tx['fields.label']" hide-narrow>{{ contact.label or "—" }}</rx-column>
+      <rx-column :label="tx['fields.is_primary']"><rx-badge rx-if="contact.is_primary" kind="success" :text="tx['fields.is_primary']"/></rx-column>
+      <rx-column :label="tx['fields.verified_at']" hide-narrow>{{ contact.verified_at | date if contact.verified_at else "—" }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['no_contacts']" icon="phone"/></rx-slot>
+    </rx-table>
+    <rx-table :rows="roles" as="role" :key="role.id" :caption="tx['sections.roles']" card>
+      <rx-column :label="tx['fields.role']">{{ role.role_key }}</rx-column>
+      <rx-column :label="tx['fields.since']">{{ role.since | date if role.since else "—" }}</rx-column>
+      <rx-column :label="tx['fields.until']">{{ role.until | date if role.until else "—" }}</rx-column>
+      <rx-column :label="tx['fields.external_reference']" hide-narrow>{{ role.external_reference or "—" }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['no_roles']" icon="tag"/></rx-slot>
+    </rx-table>
+    <rx-table :rows="timeline" as="item" :key="item.time" :caption="tx['sections.history']" card>
+      <rx-column :label="tx['history.change']">{{ item.title }}</rx-column>
+      <rx-column :label="tx['history.at']">{{ item.time | date('%Y-%m-%d %H:%M') }}</rx-column>
+      <rx-column :label="tx['history.reason']" hide-narrow>{{ item.body or "" }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['no_history']" icon="history"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>
