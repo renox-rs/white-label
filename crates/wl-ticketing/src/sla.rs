@@ -72,8 +72,8 @@ mod tests {
     #[test]
     fn working_time_skips_the_weekend() {
         let calendar: Arc<dyn SlaCalendar> = Arc::new(BusinessCalendar::default());
-        // Thursday 2026-11-05 17:00 + 2 h: 1 h that day, 1 h on Monday.
-        let due = calendar.add_working(dubai("2026-11-05", 17), 120);
+        // Friday 2026-11-06 17:00 + 2 h: 1 h that day, 1 h on Monday (Sat and Sun are the weekend).
+        let due = calendar.add_working(dubai("2026-11-06", 17), 120);
         assert_eq!(due, dubai("2026-11-09", 10));
     }
 }
