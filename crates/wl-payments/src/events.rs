@@ -9,7 +9,7 @@
 
 use renox::prelude::*;
 use renox::state_machine::Transitioned;
-use wl_kernel::payments::PaymentReceived;
+use wl_kernel::payments::{Direction, PaymentReceived};
 
 use crate::payment::Payment;
 use crate::record::{RECORD, RECORD_BY_SYSTEM};
@@ -17,15 +17,16 @@ use crate::record::{RECORD, RECORD_BY_SYSTEM};
 /// The event a committed transition of `payment` (as it is now) gives, if
 /// any.
 fn received_event(transition: &str, payment: &Payment) -> Option<PaymentReceived> {
-    [RECORD, RECORD_BY_SYSTEM]
-        .contains(&transition)
-        .then(|| PaymentReceived {
+    // Money out (a refund's voucher) is not a payment received.
+    ([RECORD, RECORD_BY_SYSTEM].contains(&transition) && payment.direction == Direction::In).then(
+        || PaymentReceived {
             payment: payment.payment_id(),
             party: payment.party(),
             amount: payment.amount,
             method: payment.method,
             allocations: Vec::new(),
-        })
+        },
+    )
 }
 
 /// Registers the listener.
@@ -70,5 +71,14 @@ mod tests {
             assert!(received.allocations.is_empty());
         }
         assert!(received_event("reverse", &payment()).is_none());
+    }
+
+    #[test]
+    fn money_out_is_not_a_payment_received() {
+        let out = Payment {
+            direction: Direction::Out,
+            ..payment()
+        };
+        assert!(received_event(RECORD_BY_SYSTEM, &out).is_none());
     }
 }

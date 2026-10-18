@@ -4,8 +4,10 @@
 //! A payment's unallocated amount is its amount less its active
 //! allocations, and counts only while it is `received`. A party's credit is
 //! the sum of those amounts over its incoming `received` payments in a
-//! currency. Paid refunds are subtracted from it once the Refund base
-//! exists (part 5 of the module).
+//! currency, less the party's `paid` refunds, so it is below 0 when the
+//! credit was refunded and the payment was reversed afterwards. A refund
+//! claims its source's balance from `requested` on, so what is
+//! *refundable* is what is left after the pending ones.
 
 use std::collections::HashMap;
 
@@ -15,6 +17,7 @@ use wl_kernel::{PartyId, Subject};
 
 use crate::allocation::Allocation;
 use crate::payment::Payment;
+use crate::refund::{Refund, RefundStatus};
 
 /// The sum of the active allocations of payment `payment_id`, in fils.
 pub async fn allocated(db: &Db, payment_id: i64) -> Result<i64> {
@@ -54,8 +57,30 @@ pub async fn summary(db: &Db, payment: &Payment) -> Result<PaymentSummary> {
     Ok(payment.summary(allocated(db, payment.id).await?))
 }
 
+/// The sum of the refunds of `party` in `currency` in `statuses`, in fils;
+/// only those of `source` when given.
+async fn refund_sum(
+    db: &Db,
+    party: PartyId,
+    currency: &str,
+    statuses: &[RefundStatus],
+    source: Option<&Subject>,
+) -> Result<i64> {
+    let mut query = Refund::query()
+        .where_(Refund::PARTY_ID.eq(party.0))
+        .where_(Refund::CURRENCY.eq(currency.trim().to_ascii_uppercase()))
+        .where_(Refund::STATUS.is_in(statuses.iter().copied()));
+    if let Some(source) = source {
+        query = query
+            .where_(Refund::SOURCE_TYPE.eq(source.subject_type.as_str()))
+            .where_(Refund::SOURCE_ID.eq(source.subject_id));
+    }
+    query.sum::<i64, _>(db, "amount").await
+}
+
 /// The party's credit in `currency`, in fils: the unallocated amounts of its
-/// incoming `received` payments.
+/// incoming `received` payments less its `paid` refunds. Below 0 when the
+/// credit was refunded and the payment reversed afterwards.
 pub async fn credit_balance(db: &Db, party: PartyId, currency: &str) -> Result<i64> {
     let payments = Payment::query()
         .where_(Payment::PARTY_ID.eq(party.0))
@@ -65,10 +90,65 @@ pub async fn credit_balance(db: &Db, party: PartyId, currency: &str) -> Result<i
         .get(db)
         .await?;
     let sums = allocated_by_payment(db, &payments).await?;
-    Ok(payments
+    let unallocated: i64 = payments
         .iter()
         .map(|p| p.summary(sums.get(&p.id).copied().unwrap_or(0)).unallocated)
-        .sum())
+        .sum();
+    let paid = refund_sum(db, party, currency, &[RefundStatus::Paid], None).await?;
+    Ok(unallocated - paid)
+}
+
+/// What the party can still ask to have refunded out of its credit in
+/// `currency`, in fils: the credit balance less the refunds waiting to be
+/// paid; never below 0.
+pub async fn refundable_credit(db: &Db, party: PartyId, currency: &str) -> Result<i64> {
+    let balance = credit_balance(db, party, currency).await?;
+    let pending = refund_sum(db, party, currency, &RefundStatus::PENDING, None).await?;
+    Ok((balance - pending).max(0))
+}
+
+/// What can still be refunded out of `payment`, in fils: its unallocated
+/// amount less the refunds that claim it, and no more than the party's
+/// refundable credit; never below 0.
+pub async fn refundable_payment(db: &Db, payment: &Payment) -> Result<i64> {
+    let source = payment.subject();
+    let claimed = refund_sum(
+        db,
+        payment.party(),
+        &payment.currency,
+        &RefundStatus::ACTIVE,
+        Some(&source),
+    )
+    .await?;
+    let own = unallocated(db, payment).await? - claimed;
+    let pool = refundable_credit(db, payment.party(), &payment.currency).await?;
+    Ok(own.min(pool).max(0))
+}
+
+/// Whether the source of `refund` still covers its amount when it is paid:
+/// a payment must still be `received` with enough unallocated money left
+/// after the refunds already paid out of it, and the party's credit balance
+/// (which already counts the paid refunds) must reach the amount.
+pub async fn covers(db: &Db, refund: &Refund) -> Result<bool> {
+    let balance = credit_balance(db, refund.party(), &refund.currency).await?;
+    if refund.amount > balance {
+        return Ok(false);
+    }
+    let Some(payment_id) = refund.source_payment() else {
+        return Ok(true);
+    };
+    let Some(payment) = Payment::find(db, payment_id.0).await? else {
+        return Ok(false);
+    };
+    let paid = refund_sum(
+        db,
+        refund.party(),
+        &refund.currency,
+        &[RefundStatus::Paid],
+        Some(&payment.subject()),
+    )
+    .await?;
+    Ok(refund.amount <= unallocated(db, &payment).await? - paid)
 }
 
 /// The payments made in advance for `prepaid`, oldest first.

@@ -25,7 +25,7 @@
 
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
-use renox::state_machine::{StateMachine, Transition, TransitionCtx, TransitionError};
+use renox::state_machine::{Outcome, StateMachine, Transition, TransitionCtx, TransitionError};
 use serde::{Deserialize, Serialize};
 use wl_kernel::LegalEntity;
 use wl_kernel::documents::today;
@@ -265,7 +265,29 @@ async fn run_record(
     recorded_by: Option<i64>,
     request: &RecordPayment,
 ) -> std::result::Result<Payment, TransitionError> {
-    let mut payment = new_payment(request, recorded_by);
+    let (payment, input) = prepare(state, request, recorded_by).await?;
+    let mut tx = state.db.begin().await?;
+    let (payment, outcome) = record_in(&mut tx, actor, payment, &input).await?;
+    tx.commit().await?;
+    // `Transitioned<Payment>` -> `PaymentReceived` (crate::events).
+    outcome.emit(state).await.map_err(TransitionError::Failed)?;
+    Payment::find_or_404(&state.db, payment.id)
+        .await
+        .map_err(TransitionError::Failed)
+}
+
+/// The unsaved `pending` payment for `request` and what its guards need,
+/// read before any transaction opens.
+///
+/// # Errors
+///
+/// `Guard` for a currency that is not an ISO code.
+pub(crate) async fn prepare(
+    state: &AppState,
+    request: &RecordPayment,
+    recorded_by: Option<i64>,
+) -> std::result::Result<(Payment, RecordInput), TransitionError> {
+    let payment = new_payment(request, recorded_by);
     if !is_currency(&payment.currency) {
         return Err(TransitionError::Guard(format!(
             "`{}` is not a currency code like AED.",
@@ -273,8 +295,18 @@ async fn run_record(
         )));
     }
     let input = gather(state, &payment).await?;
-    let mut tx = state.db.begin().await?;
-    payment.insert(&mut tx).await?;
+    Ok((payment, input))
+}
+
+/// Inserts `payment` and runs `record` (a user) or `record_by_system` in
+/// `tx`, which the caller commits before it emits the outcome.
+pub(crate) async fn record_in(
+    tx: &mut renox::db::Transaction,
+    actor: Option<&AuthUser>,
+    mut payment: Payment,
+    input: &RecordInput,
+) -> std::result::Result<(Payment, Outcome<Payment>), TransitionError> {
+    payment.insert(&mut *tx).await?;
     let builder = payment.transition(if actor.is_some() {
         RECORD
     } else {
@@ -284,13 +316,8 @@ async fn run_record(
         Some(user) => builder.by(user),
         None => builder.by_system(),
     };
-    let outcome = builder.input(&input).run_in(&mut tx).await?;
-    tx.commit().await?;
-    // `Transitioned<Payment>` -> `PaymentReceived` (crate::events).
-    outcome.emit(state).await.map_err(TransitionError::Failed)?;
-    Payment::find_or_404(&state.db, payment.id)
-        .await
-        .map_err(TransitionError::Failed)
+    let outcome = builder.input(input).run_in(&mut *tx).await?;
+    Ok((payment, outcome))
 }
 
 #[cfg(test)]

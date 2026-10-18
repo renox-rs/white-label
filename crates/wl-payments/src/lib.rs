@@ -6,10 +6,14 @@ pub mod allocation;
 pub mod config;
 pub mod credit;
 mod events;
+pub mod followup;
+pub mod gateway;
 mod machine;
 pub mod payment;
 pub mod record;
 pub mod recorder;
+pub mod refund;
+mod refund_machine;
 mod texts;
 
 use std::sync::Arc;
@@ -19,7 +23,10 @@ use renox::prelude::*;
 
 pub use allocation::Allocation;
 pub use config::PaymentsConfig;
+pub use followup::FollowupTask;
+pub use gateway::{Gateway, NoGateway};
 pub use payment::Payment;
+pub use refund::Refund;
 
 /// The module's settings in `state`: those `register` provided, else the
 /// §7 defaults.
@@ -53,6 +60,7 @@ pub mod permissions {
 #[derive(Default)]
 pub struct WlPayments {
     config: PaymentsConfig,
+    gateway: Option<Arc<dyn Gateway>>,
 }
 
 impl WlPayments {
@@ -74,6 +82,13 @@ impl WlPayments {
         self
     }
 
+    /// Installs the payment gateway; without one, [`NoGateway`] knows no
+    /// disputes.
+    pub fn gateway(mut self, gateway: impl Gateway) -> Self {
+        self.gateway = Some(Arc::new(gateway));
+        self
+    }
+
     /// The module's settings.
     pub fn config(&self) -> &PaymentsConfig {
         &self.config
@@ -92,14 +107,23 @@ impl Module for WlPayments {
     fn register(&self, app: &mut Registry) {
         app.model::<Payment>();
         app.model::<Allocation>();
+        app.model::<Refund>();
+        app.model::<FollowupTask>();
         // `rnx state:diagram Payment` and the admin panel find the machine.
         renox::state_machine::register::<Payment>();
+        renox::state_machine::register::<Refund>();
         // The settings the services read (`config_of`).
         app.provide(self.config.clone());
+        // The gateway the services ask about disputes (`gateway::gateway_of`).
+        if let Some(gateway) = &self.gateway {
+            app.provide(gateway::Installed(gateway.clone()));
+        }
         // How other modules record, allocate and read payments.
         wl_kernel::payments::provide_payment_recorder(app, recorder::Payments);
         // `PaymentReceived` after a commit.
         events::register(app);
+        // `RefundPaid` after a commit.
+        refund_machine::register(app);
     }
 }
 
@@ -122,5 +146,12 @@ mod tests {
         let module = WlPayments::new().methods(&["cash", "set_off", "cash"]);
         assert_eq!(module.config().methods, ["cash", "set_off"]);
         assert!(!module.config().method_enabled("card"));
+    }
+
+    #[test]
+    fn a_gateway_is_installed_with_the_builder() {
+        assert!(WlPayments::new().gateway.is_none());
+        let module = WlPayments::new().gateway(gateway::FakeGateway::new());
+        assert_eq!(module.gateway.as_ref().map(|g| g.provider()), Some("fake"));
     }
 }
