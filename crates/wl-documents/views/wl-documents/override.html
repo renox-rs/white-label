@@ -1,0 +1,34 @@
+{#- wl-documents: one block override: the kind, document subject, guarded
+    transition and record, the reason, who asked and who approved, the times
+    (Asia/Dubai), its status ("Expired" once an approved override passed its
+    valid until), the approval card with the approvers' buttons, and the
+    history. Replace it with resources/views/wl-documents/override.html in
+    the app. -#}
+<rx-page layout="layouts/app.html" :title="title">
+  <rx-stack>
+    <rx-page-header :title="title" :subtitle="kind" :back="route('wl_documents.overrides')" :back-label="tx['overrides.title']"
+                    :badge="status_label" :badge-kind="status_kind"/>
+    <rx-include template="wl-kernel/approval_card.html"/>
+    <rx-card :title="tx['overrides.details']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['fields.kind']" :value="kind"/>
+        <rx-entry :label="tx['fields.subject']" :value="subject"/>
+        <rx-entry :label="tx['fields.guarded']" :value="guarded"/>
+        <rx-entry :label="tx['overrides.fields.record']" :value="record"/>
+        <rx-entry :label="tx['overrides.fields.reason']" :value="reason"/>
+        <rx-entry :label="tx['overrides.fields.status']" :value="status_label"/>
+        <rx-entry :label="tx['overrides.fields.requested_by']" :value="requested_by"/>
+        <rx-entry :label="tx['overrides.fields.approved_by']" :value="approved_by" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['overrides.fields.approved_at']" :value="approved_at" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['overrides.fields.valid_until']" :value="valid_until" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['overrides.fields.used_at']" :value="used_at" :placeholder="tx['none']"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-table :rows="timeline" as="item" :key="item.time" :caption="tx['overrides.history']" card>
+      <rx-column :label="tx['overrides.history_change']">{{ item.title }}</rx-column>
+      <rx-column :label="tx['overrides.history_at']">{{ item.time }}</rx-column>
+      <rx-column :label="tx['overrides.history_reason']" hide-narrow>{{ item.body or "" }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['overrides.no_history']" icon="history"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

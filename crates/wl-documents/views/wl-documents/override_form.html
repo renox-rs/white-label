@@ -1,0 +1,25 @@
+{#- wl-documents: the form that asks for a block override of one kind on one
+    guarded transition and record. A refusal's link prefills the kind, the
+    transition and the record. Replace it with
+    resources/views/wl-documents/override_form.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['overrides.request_title']">
+  <rx-stack>
+    <rx-page-header :title="tx['overrides.request_title']" :subtitle="tx['overrides.request_description']"
+                    :back="route('wl_documents.overrides')" :back-label="tx['overrides.title']"/>
+    <rx-form route="wl_documents.overrides.store" novalidate>
+      <rx-card>
+        <rx-form-errors/>
+        <rx-form-grid columns="2">
+          <rx-select name="kind" :label="tx['fields.kind']" :options="kinds" :selected="kind" required/>
+          <rx-input name="guarded" :label="tx['fields.guarded']" :hint="tx['overrides.fields.guarded_hint']" :value="guarded" required/>
+          <rx-input name="record" type="number" :label="tx['overrides.fields.record']" :value="record" required/>
+          <rx-textarea name="reason" :label="tx['overrides.fields.reason']" :hint="tx['overrides.fields.reason_hint']" span="full" required/>
+        </rx-form-grid>
+        <div class="rx-card__footer">
+          <rx-link-button route="wl_documents.overrides" :label="tx['cancel']" variant="plain"/>
+          <rx-button :label="tx['overrides.request_submit']"/>
+        </div>
+      </rx-card>
+    </rx-form>
+  </rx-stack>
+</rx-page>

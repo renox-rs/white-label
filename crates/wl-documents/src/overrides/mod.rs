@@ -9,6 +9,7 @@ pub(crate) mod consume;
 pub mod machine;
 pub mod model;
 mod request;
+pub mod web;
 
 use renox::prelude::*;
 use wl_kernel::approvals::{ApprovalDecided, ApprovalEnd, PolicyDefault};

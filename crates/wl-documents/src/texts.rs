@@ -315,6 +315,72 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_documents.guard.no_provider",
         "No module maps :guarded to its document subjects",
     ),
+    ("wl_documents.overrides.title", "Block overrides"),
+    (
+        "wl_documents.overrides.subtitle",
+        "One-use permissions, approved by a second person, to run a blocked transition.",
+    ),
+    ("wl_documents.overrides.new", "Request an override"),
+    (
+        "wl_documents.overrides.waiting",
+        "Waiting for your approval",
+    ),
+    (
+        "wl_documents.overrides.waiting_empty",
+        "Nothing waits for your approval",
+    ),
+    ("wl_documents.overrides.mine", "Your requests"),
+    (
+        "wl_documents.overrides.mine_empty",
+        "You have not asked for an override",
+    ),
+    ("wl_documents.overrides.open", "Open"),
+    ("wl_documents.overrides.details", "Override"),
+    ("wl_documents.overrides.history", "History"),
+    ("wl_documents.overrides.no_history", "No history yet"),
+    ("wl_documents.overrides.history_change", "Change"),
+    ("wl_documents.overrides.history_at", "When (Asia/Dubai)"),
+    ("wl_documents.overrides.history_reason", "Note"),
+    ("wl_documents.overrides.fields.record", "Record id"),
+    ("wl_documents.overrides.fields.requested_by", "Requested by"),
+    ("wl_documents.overrides.fields.approved_by", "Approved by"),
+    (
+        "wl_documents.overrides.fields.approved_at",
+        "Approved (Asia/Dubai)",
+    ),
+    (
+        "wl_documents.overrides.fields.valid_until",
+        "Valid until (Asia/Dubai)",
+    ),
+    ("wl_documents.overrides.fields.used_at", "Used (Asia/Dubai)"),
+    ("wl_documents.overrides.fields.status", "Status"),
+    ("wl_documents.overrides.fields.reason", "Reason"),
+    (
+        "wl_documents.overrides.fields.reason_hint",
+        "Why the blocked transition must run anyway.",
+    ),
+    (
+        "wl_documents.overrides.fields.guarded_hint",
+        "The guarded transition, e.g. deployment.activate.",
+    ),
+    (
+        "wl_documents.overrides.request_title",
+        "Request an override",
+    ),
+    (
+        "wl_documents.overrides.request_description",
+        "A second person with the permission must approve it. Once approved it is valid for 72 hours and you can use it once.",
+    ),
+    ("wl_documents.overrides.request_submit", "Send request"),
+    ("wl_documents.overrides.requested", "Override requested."),
+    (
+        "wl_documents.overrides.status.requested",
+        "Waiting for approval",
+    ),
+    ("wl_documents.overrides.status.approved", "Approved"),
+    ("wl_documents.overrides.status.refused", "Refused"),
+    ("wl_documents.overrides.status.used", "Used"),
+    ("wl_documents.overrides.status.expired", "Expired"),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.

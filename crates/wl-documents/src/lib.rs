@@ -63,6 +63,18 @@ const VIEWS: &[(&str, &str)] = &[
         "wl-documents/kind.html",
         include_str!("../views/wl-documents/kind.html"),
     ),
+    (
+        "wl-documents/overrides.html",
+        include_str!("../views/wl-documents/overrides.html"),
+    ),
+    (
+        "wl-documents/override.html",
+        include_str!("../views/wl-documents/override.html"),
+    ),
+    (
+        "wl-documents/override_form.html",
+        include_str!("../views/wl-documents/override_form.html"),
+    ),
 ];
 
 /// The documents module. The host adds it with
@@ -75,7 +87,7 @@ impl Module for WlDocuments {
     }
 
     fn routes(&self) -> Routes {
-        pages::routes()
+        pages::routes().merge(overrides::web::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -96,7 +108,10 @@ impl Module for WlDocuments {
             .view_data::<pages::ReviewQueuePage>()
             .view_data::<pages::FlagsPage>()
             .view_data::<pages::KindsPage>()
-            .view_data::<pages::KindPage>();
+            .view_data::<pages::KindPage>()
+            .view_data::<overrides::web::OverridesPage>()
+            .view_data::<overrides::web::OverrideFormPage>()
+            .view_data::<overrides::web::OverridePage>();
         // `DOC.RUL.01` to `DOC.RUL.03`: the `documents.expiring` and
         // `documents.expired` types, the daily `documents:expiry` task
         // (01:00 Asia/Dubai) and its command.
@@ -143,6 +158,13 @@ impl Module for WlDocuments {
                 .group("nav.app")
                 .order(36)
                 .permission(permissions::VIEW),
+        );
+        app.nav(
+            "app",
+            NavLink::route("wl_documents.overrides", "nav.document_overrides")
+                .icon("shield")
+                .group("nav.app")
+                .order(37),
         );
         app.nav(
             "app",
