@@ -749,6 +749,9 @@ pub struct Options {
     /// Events are recorded, not delivered; off, the listeners run and
     /// [`Booted::accepted_events`] lists the `DocumentAccepted` seen.
     pub fake_events: bool,
+    /// The kernel module is on (approvals, their tables and policies), and
+    /// the default approval policies are installed.
+    pub kernel: bool,
 }
 
 impl Default for Options {
@@ -758,6 +761,7 @@ impl Default for Options {
             tickets: true,
             owner: None,
             fake_events: true,
+            kernel: false,
         }
     }
 }
@@ -1059,6 +1063,7 @@ pub async fn boot_options(options: Options) -> Booted {
     let accepted_seen: Arc<Mutex<Vec<DocumentAccepted>>> = Arc::default();
     let seen = accepted_seen.clone();
     let fake_events = options.fake_events;
+    let options_kernel = options.kernel;
     let app = App::new()
         .module(Auth::new())
         .module(Permissions)
@@ -1078,8 +1083,21 @@ pub async fn boot_options(options: Options) -> Booted {
                 Ok(())
             }
         });
+    let kernel = options_kernel;
+    let app = if kernel {
+        let text = "[client]\nname = \"Acme Staffing LLC\"\napp = \"staffing\"\n";
+        let config = ClientConfig::parse(text).expect("a valid client.toml");
+        wl_kernel::apply(app, config).expect("the kernel applies")
+    } else {
+        app
+    };
     let dir = views.path().to_path_buf();
     let app = TestApp::with_config(app, |c| c.views_path = dir).await;
+    if kernel {
+        wl_kernel::approvals::install(app.db())
+            .await
+            .expect("the approval policies install");
+    }
     if fake_events {
         // Events are recorded for `assert_emitted`; no listener runs.
         app.fake_events();

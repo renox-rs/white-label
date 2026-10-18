@@ -5,8 +5,10 @@
 //! blocks it. Its status moves only through its machine ([`machine`]); the
 //! approval is the `documents.block_override` default policy ([`policy`]).
 
+pub(crate) mod consume;
 pub mod machine;
 pub mod model;
+mod request;
 
 use renox::prelude::*;
 use wl_kernel::approvals::{ApprovalDecided, ApprovalEnd, PolicyDefault};

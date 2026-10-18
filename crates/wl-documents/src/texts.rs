@@ -292,6 +292,26 @@ const TEXTS: &[(&str, &str)] = &[
         "Renewed: :kind, no expiry date",
     ),
     (
+        "wl_documents.override.blank_reason",
+        "Say why the override is needed.",
+    ),
+    (
+        "wl_documents.override.not_overridable",
+        ":kind cannot be overridden",
+    ),
+    (
+        "wl_documents.override.nothing_to_override",
+        ":kind does not block :guarded for this record: there is nothing to override",
+    ),
+    (
+        "wl_documents.override.already_open",
+        "An override of :kind for this record is already open",
+    ),
+    (
+        "wl_documents.override.no_approval",
+        "Overrides need their approval policy: it is turned off, so no override can be requested",
+    ),
+    (
         "wl_documents.guard.no_provider",
         "No module maps :guarded to its document subjects",
     ),

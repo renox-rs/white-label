@@ -17,6 +17,10 @@
 //!   PRO; override: not allowed". A pending renewal it names is moved to the
 //!   top of the review queue (`review_priority_at`). An entry whose
 //!   transition has no provider is an error, never a *yes*;
+//! - [`DocumentGuard::check_as`] also lets a failing `block` entry through
+//!   when the acting user holds an approved, unused, valid override of it
+//!   (#50); `claim_overrides`, `unclaim_overrides` and `overrides_used`
+//!   stamp, give back and report the use;
 //! - [`DocumentGuard::check_planned`] warns, after planned work was saved,
 //!   about each document that will not be valid on a planned start date
 //!   (#47). It looks at the `block` entries only, never refuses and never
@@ -31,15 +35,16 @@ use renox::db::now;
 use renox::prelude::*;
 use wl_kernel::Subject;
 use wl_kernel::documents::{
-    BlockEntry, BlockFailure, BlockMode, BlockRefusal, CheckOutcome, DocumentFuture, DocumentGuard,
-    DocumentId, FlagFailure, FlagReason, InvalidReason, OverrideMode, PendingRenewal, PlannedError,
-    PlannedItem, PlannedWarning, PlannedWarningLine, RecordFlag, Validity, block_subjects,
-    default_subject_label, dubai_date, today,
+    BlockEntry, BlockFailure, BlockMode, BlockRefusal, CheckOutcome, CoveredBlock, DocumentFuture,
+    DocumentGuard, DocumentId, FlagFailure, FlagReason, InvalidReason, OverrideMode,
+    PendingRenewal, PlannedError, PlannedItem, PlannedWarning, PlannedWarningLine, RecordFlag,
+    Validity, block_subjects, default_subject_label, dubai_date, today,
 };
 
 use crate::documents::{Document, DocumentStatus};
 use crate::flags;
 use crate::kinds::{self, DocumentKind};
+use crate::overrides::consume;
 use crate::texts;
 
 /// The guard of the documents module.
@@ -71,10 +76,36 @@ impl DocumentGuard for DocumentsGuard {
         guarded: &'a str,
         record_id: i64,
         on_date: NaiveDate,
-        _actor: Option<i64>,
+        actor: Option<i64>,
     ) -> DocumentFuture<'a, std::result::Result<CheckOutcome, BlockRefusal>> {
-        // Overrides are not stored yet: nothing is covered.
-        Box::pin(check(state, guarded, record_id, on_date))
+        Box::pin(check_as(state, guarded, record_id, on_date, actor))
+    }
+
+    fn claim_overrides<'a>(
+        &'a self,
+        db: &'a Db,
+        covered: &'a [CoveredBlock],
+        actor: i64,
+    ) -> DocumentFuture<'a, bool> {
+        Box::pin(consume::claim(db, covered, actor))
+    }
+
+    fn unclaim_overrides<'a>(
+        &'a self,
+        db: &'a Db,
+        covered: &'a [CoveredBlock],
+    ) -> DocumentFuture<'a, ()> {
+        Box::pin(consume::unclaim(db, covered))
+    }
+
+    fn overrides_used<'a>(
+        &'a self,
+        state: &'a AppState,
+        guarded: &'a str,
+        record_id: i64,
+        covered: &'a [CoveredBlock],
+    ) -> DocumentFuture<'a, ()> {
+        Box::pin(consume::report(state, guarded, record_id, covered))
     }
 
     fn check_planned<'a>(
@@ -249,17 +280,17 @@ pub(crate) fn validity_of(
 }
 
 /// One failing document found by [`failing`].
-struct Failing {
-    entry: BlockEntry,
-    kind: DocumentKind,
-    subject: Subject,
-    validity: Validity,
+pub(crate) struct Failing {
+    pub(crate) entry: BlockEntry,
+    pub(crate) kind: DocumentKind,
+    pub(crate) subject: Subject,
+    pub(crate) validity: Validity,
 }
 
 /// The documents of `entries` that are not valid on `on_date`, and the
 /// pending renewals they name. An entry whose transition has no provider is
 /// an error, never a *yes*.
-async fn failing(
+pub(crate) async fn failing(
     state: &AppState,
     guarded: &str,
     entries: Vec<BlockEntry>,
@@ -315,16 +346,30 @@ async fn prioritise(db: &Db, documents: &[DocumentId]) -> Result<()> {
     Ok(())
 }
 
-/// The checks of [`DocumentGuard::check`]: the `block` entries first, and
-/// when any fails the transition is refused with only those failures (block
-/// wins, nothing is flagged). Otherwise the `flag` entries are judged on
-/// `on_date` and each failure becomes a [`FlagFailure`] of the outcome; a
-/// flag never refuses.
+/// [`check_as`] without an actor: no override covers anything.
 pub async fn check(
     state: &AppState,
     guarded: &str,
     record_id: i64,
     on_date: NaiveDate,
+) -> Result<std::result::Result<CheckOutcome, BlockRefusal>> {
+    check_as(state, guarded, record_id, on_date, None).await
+}
+
+/// The checks of [`DocumentGuard::check_as`]: the `block` entries first.
+/// A failing block is covered (#50 A6) when its kind is `with_approval` and
+/// not a legal block and `actor` holds an approved, unused, valid override
+/// of that kind, subject, transition and record; covered failures go into
+/// [`CheckOutcome::overrides`]. When any failure is left uncovered the
+/// transition is refused with only those failures (block wins, nothing is
+/// flagged). Otherwise the `flag` entries are judged on `on_date` and each
+/// failure becomes a [`FlagFailure`] of the outcome; a flag never refuses.
+pub async fn check_as(
+    state: &AppState,
+    guarded: &str,
+    record_id: i64,
+    on_date: NaiveDate,
+    actor: Option<i64>,
 ) -> Result<std::result::Result<CheckOutcome, BlockRefusal>> {
     let (blocks, flags): (Vec<_>, Vec<_>) = kinds::blocks_for(&state.db, guarded)
         .await?
@@ -333,27 +378,60 @@ pub async fn check(
     let lang = state.current_lang();
 
     let (failures, prioritised) = failing(state, guarded, blocks, record_id, on_date).await?;
+    let mut covered = Vec::new();
     if !failures.is_empty() {
-        prioritise(&state.db, &prioritised).await?;
-        let failures = failures
-            .into_iter()
-            .map(|f| BlockFailure {
-                message: failure_message(&lang, &f.kind, &f.entry, &f.validity),
-                entry: f.entry,
-                subject: f.subject,
-                validity: f.validity,
-            })
-            .collect();
-        return Ok(Err(BlockRefusal {
-            guarded: guarded.to_owned(),
-            record_id,
-            failures,
-        }));
+        let mut uncovered = Vec::with_capacity(failures.len());
+        for f in failures {
+            let coverable = f.entry.override_mode == OverrideMode::WithApproval
+                && !f.entry.locked
+                && !f.kind.legal_block;
+            let found = match actor {
+                Some(actor) if coverable => {
+                    consume::covering(
+                        &state.db,
+                        f.kind.id,
+                        &f.subject,
+                        guarded,
+                        record_id,
+                        actor,
+                        now(),
+                    )
+                    .await?
+                }
+                _ => None,
+            };
+            match found {
+                Some(record) => covered.push(CoveredBlock {
+                    override_id: record.id.into(),
+                    entry: f.entry,
+                    subject: f.subject,
+                }),
+                None => uncovered.push(f),
+            }
+        }
+        if !uncovered.is_empty() {
+            prioritise(&state.db, &prioritised).await?;
+            let failures = uncovered
+                .into_iter()
+                .map(|f| BlockFailure {
+                    message: failure_message(&lang, &f.kind, &f.entry, &f.validity),
+                    entry: f.entry,
+                    subject: f.subject,
+                    validity: f.validity,
+                })
+                .collect();
+            return Ok(Err(BlockRefusal {
+                guarded: guarded.to_owned(),
+                record_id,
+                failures,
+            }));
+        }
     }
 
     let (failures, prioritised) = failing(state, guarded, flags, record_id, on_date).await?;
     prioritise(&state.db, &prioritised).await?;
     let mut outcome = CheckOutcome::default();
+    outcome.overrides.extend(covered);
     for f in failures {
         let Validity::Invalid {
             reason,
