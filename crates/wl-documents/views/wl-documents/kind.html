@@ -1,7 +1,9 @@
 {#- wl-documents: a document kind and the transitions it guards (its
     blocks), with the actions to add an entry, change an entry's mode and
     remove one. A locked (legal-block) entry shows why it cannot be removed
-    or changed instead of the actions; the routes refuse it too. Replace it
+    or changed instead of the actions; the routes refuse it too. The
+    override mode has its own form, hidden for a legal block (which shows
+    why the mode is locked to never). Replace it
     with resources/views/wl-documents/kind.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="name">
   <rx-stack>
@@ -21,6 +23,11 @@
         <rx-entry :label="tx['fields.override_mode']" :value="override_label"/>
         <rx-entry :label="tx['fields.responsible_role']" :value="responsible_role"/>
       </rx-infolist>
+      <rx-action-sheet rx-if="not legal_block" id="override-mode" :label="tx['kinds.override_change']" :action="route('wl_documents.kinds.override_mode', key)"
+                       :title="tx['kinds.override_title']" :description="tx['kinds.override_description']" :submit-label="tx['kinds.override_change']" icon="refresh">
+        <rx-select name="mode" :label="tx['fields.override_mode']" :options="override_modes" :selected="override_mode" id="override-mode-select"/>
+      </rx-action-sheet>
+      <span rx-if="override_locked">{{ override_locked }}</span>
     </rx-card>
     <rx-table :rows="entries" as="entry" :key="entry.guarded" :caption="tx['fields.entries']" card>
       <rx-column :label="tx['fields.guarded']">{{ entry.guarded }} <rx-badge rx-if="entry.locked" kind="warning" :text="tx['fields.locked']"/></rx-column>

@@ -147,6 +147,7 @@ async fn the_demo_client_boots_with_documents_enabled() {
     documents::register_block_subjects("host_test.activate", Anyone);
     let permit = wl_documents::KindSeed::new("host_test_permit", "Host test permit")
         .subject_type("hr.employee")
+        .override_mode(documents::OverrideMode::Never)
         .blocks("host_test.activate", BlockMode::Block);
     wl_documents::kinds::install_seeds(app.db(), [&permit])
         .await

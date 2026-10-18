@@ -19,8 +19,8 @@ use wl_documents::{
 };
 use wl_kernel::documents::{
     BlockCondition, BlockEntry, BlockMode, BlockSubjects, DocumentAccepted, DocumentFuture,
-    FutureWork, PlannedRecord, ReminderSchedule, register_block_subjects, register_future_work,
-    register_reminder_schedule, today,
+    FutureWork, OverrideMode, PlannedRecord, ReminderSchedule, register_block_subjects,
+    register_future_work, register_reminder_schedule, today,
 };
 use wl_kernel::notify::{
     MessageId, Notifier, NotifyFuture, NotifyRecipient, NotifyRequest, provide_notifier,
@@ -110,6 +110,7 @@ pub fn vehicle_insurance() -> KindSeed {
         .subject_type("fleet.vehicle")
         .expires()
         .responsible_role("fleet_manager")
+        .override_mode(OverrideMode::Never)
         .blocks("run.dispatch", BlockMode::Block)
 }
 

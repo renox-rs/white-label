@@ -108,6 +108,20 @@ const TEXTS: &[(&str, &str)] = &[
         "Change the mode of :guarded",
     ),
     ("wl_documents.kinds.switched", "Mode changed."),
+    ("wl_documents.kinds.override_title", "Override mode"),
+    (
+        "wl_documents.kinds.override_description",
+        "Whether a refusal for this kind can be overridden once, with a second person's approval.",
+    ),
+    ("wl_documents.kinds.override_change", "Change override"),
+    (
+        "wl_documents.kinds.override_changed",
+        "Override mode changed.",
+    ),
+    (
+        "wl_documents.kinds.override_locked",
+        ":kind is a legal block: its override mode is locked to never",
+    ),
     ("wl_documents.kinds.remove", "Remove"),
     ("wl_documents.kinds.remove_title", "Stop guarding :guarded?"),
     (

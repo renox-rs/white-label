@@ -12,6 +12,7 @@
 //! | `GET /document-kinds/{key}` | `wl_documents.kind` | `document_kinds.manage` |
 //! | `POST /document-kinds/{key}/blocks` | `wl_documents.blocks.store` | `document_kinds.manage` |
 //! | `POST /document-kinds/{key}/blocks/{guarded}/mode` | `wl_documents.blocks.mode` | `document_kinds.manage` |
+//! | `POST /document-kinds/{key}/override-mode` | `wl_documents.kinds.override_mode` | `document_kinds.manage` |
 //! | `DELETE /document-kinds/{key}/blocks/{guarded}` | `wl_documents.blocks.destroy` | `document_kinds.manage` |
 //!
 //! The review queue lists the documents in `pending_review`: first those a
@@ -77,6 +78,8 @@ pub fn routes() -> Routes {
                 .name("wl_documents.blocks.store")
                 .post("/document-kinds/{key}/blocks/{guarded}/mode", update_mode)
                 .name("wl_documents.blocks.mode")
+                .post("/document-kinds/{key}/override-mode", update_override_mode)
+                .name("wl_documents.kinds.override_mode")
                 .delete("/document-kinds/{key}/blocks/{guarded}", destroy_block)
                 .name("wl_documents.blocks.destroy")
                 .require_permission(permissions::KINDS_MANAGE),
@@ -517,6 +520,12 @@ pub(crate) struct KindPage {
     subject_types: String,
     legal_block: bool,
     override_label: String,
+    /// The kind's override mode, selected in the mode form.
+    override_mode: String,
+    /// `(value, label)` pairs for the override select.
+    override_modes: Vec<(String, String)>,
+    /// Why a legal block's override mode cannot change.
+    override_locked: Option<String>,
     responsible_role: String,
     entries: Vec<EntryRow>,
     /// `(value, label)` pairs for the mode select.
@@ -547,6 +556,14 @@ fn mode_options(lang: &Lang) -> Vec<(String, String)> {
         .collect()
 }
 
+/// The form value of an override mode.
+fn override_value(mode: OverrideMode) -> &'static str {
+    match mode {
+        OverrideMode::Never => "never",
+        OverrideMode::WithApproval => "with_approval",
+    }
+}
+
 /// `GET /document-kinds/{key}`: the kind and its `blocks`, with the actions
 /// to add an entry, switch an entry's mode and remove an entry. A locked
 /// entry shows why it cannot be changed instead.
@@ -573,6 +590,17 @@ async fn kind_page(State(db): State<Db>, lang: Lang, Path(key): Path<String>) ->
         subject_types: kind.subject_types.0.join(", "),
         legal_block: kind.legal_block,
         override_label: text(&lang, override_key),
+        override_mode: override_value(kind.override_mode).to_owned(),
+        override_modes: [OverrideMode::Never, OverrideMode::WithApproval]
+            .into_iter()
+            .map(|mode| {
+                let value = override_value(mode);
+                (value.to_owned(), text(&lang, &format!("override.{value}")))
+            })
+            .collect(),
+        override_locked: kind
+            .legal_block
+            .then(|| t("kinds.override_locked", &[("kind", &name)])),
         responsible_role: kind
             .responsible_role
             .as_deref()
@@ -679,6 +707,33 @@ async fn update_mode(
     match kinds::set_block_mode(&db, &key, &guarded, form.mode).await? {
         Ok(_) => Ok((
             Toast::success(text(&lang, "kinds.switched")),
+            renox::HxRefresh,
+        )
+            .into_response()),
+        Err(refusal) => Err(refused(&lang, "mode", &refusal, &form)),
+    }
+}
+
+/// The override-mode form.
+#[derive(Deserialize, Serialize, Validate, Debug, Default)]
+pub struct OverrideModeForm {
+    /// The new override mode.
+    #[serde(default)]
+    pub mode: OverrideMode,
+}
+
+/// `POST /document-kinds/{key}/override-mode`: sets the kind's override mode
+/// and reloads the page; a legal block is refused (422 with its message,
+/// the kind unchanged).
+async fn update_override_mode(
+    State(db): State<Db>,
+    lang: Lang,
+    Path(key): Path<String>,
+    Valid(form): Valid<OverrideModeForm>,
+) -> Result<Response> {
+    match kinds::set_override_mode(&db, &key, form.mode).await? {
+        Ok(_) => Ok((
+            Toast::success(text(&lang, "kinds.override_changed")),
             renox::HxRefresh,
         )
             .into_response()),

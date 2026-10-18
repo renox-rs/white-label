@@ -181,6 +181,71 @@ async fn the_kind_page_refuses_a_locked_entry_and_adds_a_new_one() {
         .assert_forbidden();
 }
 
+/// The override mode through the kind page: an ordinary kind shows the
+/// form and switches; a legal block shows no form and refuses with the
+/// reason, also when the client posts it anyway.
+#[renox::test]
+async fn the_kind_page_sets_the_override_mode_except_for_a_legal_block() {
+    let t = boot().await;
+    t.install(&[driving_licence(), work_permit()]).await;
+    let admin = t.kind_admin().await;
+    t.app.acting_as(&admin);
+    let locked = "Work permit is a legal block: its override mode is locked to never";
+
+    assert_eq!(
+        t.kind("driving_licence").await.override_mode,
+        OverrideMode::WithApproval
+    );
+    t.app
+        .get("/document-kinds/driving_licence")
+        .await
+        .assert_ok()
+        .assert_see("/document-kinds/driving_licence/override-mode");
+    t.app
+        .htmx()
+        .post(
+            "/document-kinds/driving_licence/override-mode",
+            &[("mode", "never")],
+        )
+        .await
+        .assert_ok();
+    assert_eq!(
+        t.kind("driving_licence").await.override_mode,
+        OverrideMode::Never
+    );
+
+    t.app
+        .get("/document-kinds/work_permit")
+        .await
+        .assert_ok()
+        .assert_see(locked)
+        .assert_dont_see("/document-kinds/work_permit/override-mode");
+    t.app
+        .htmx()
+        .post(
+            "/document-kinds/work_permit/override-mode",
+            &[("mode", "with_approval")],
+        )
+        .await
+        .assert_status(422)
+        .assert_see(locked);
+    assert_eq!(
+        t.kind("work_permit").await.override_mode,
+        OverrideMode::Never
+    );
+
+    let reviewer = t.reviewer().await;
+    t.app.acting_as(&reviewer);
+    t.app
+        .htmx()
+        .post(
+            "/document-kinds/driving_licence/override-mode",
+            &[("mode", "with_approval")],
+        )
+        .await
+        .assert_forbidden();
+}
+
 /// A condition on an entry is stored and read back with its values, and a
 /// seeded legal-block entry is put back when a client tampered with it.
 #[renox::test]

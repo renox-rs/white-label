@@ -321,7 +321,7 @@ pub struct KindSeed {
 }
 
 impl KindSeed {
-    /// A kind `key` named `name_en`, with review on, override `never`, the
+    /// A kind `key` named `name_en`, with review on, override `with_approval`, the
     /// default file types and size, and nothing else.
     pub fn new(key: &str, name_en: &str) -> Self {
         KindSeed {
@@ -338,7 +338,7 @@ impl KindSeed {
             max_size_bytes: DEFAULT_MAX_SIZE_BYTES,
             portal_upload: false,
             needs_review: true,
-            override_mode: OverrideMode::Never,
+            override_mode: OverrideMode::WithApproval,
             legal_block: false,
             look_ahead_days: 0,
             compliance_critical: false,
@@ -417,7 +417,8 @@ impl KindSeed {
         self
     }
 
-    /// The override mode (ignored for a legal block).
+    /// The override mode (default `with_approval`; ignored for a legal
+    /// block, which is always `never`).
     pub fn override_mode(mut self, mode: OverrideMode) -> Self {
         self.override_mode = mode;
         self
@@ -619,6 +620,8 @@ pub enum RefusalReason {
     AlreadyGuarded,
     /// The text is not `<entity>.<transition>`.
     InvalidTransition,
+    /// The kind is a legal block: its override mode is locked to `never`.
+    LegalBlock,
 }
 
 impl RefusalReason {
@@ -629,6 +632,7 @@ impl RefusalReason {
             RefusalReason::NoProvider => "wl_documents.kinds.no_provider",
             RefusalReason::AlreadyGuarded => "wl_documents.kinds.already_guarded",
             RefusalReason::InvalidTransition => "wl_documents.kinds.invalid_transition",
+            RefusalReason::LegalBlock => "wl_documents.kinds.override_locked",
         }
     }
 }
@@ -796,6 +800,29 @@ pub async fn set_block_mode(
     Ok(Ok(row))
 }
 
+/// Sets the override mode of kind `kind` to `mode`. A legal-block kind is
+/// locked to `never`: any other mode is refused with
+/// [`RefusalReason::LegalBlock`] and the kind is left as it was.
+pub async fn set_override_mode(
+    db: &Db,
+    kind: &str,
+    mode: OverrideMode,
+) -> BlockChange<DocumentKind> {
+    let mut kind = kind_or_404(db, kind).await?;
+    if kind.legal_block && mode != OverrideMode::Never {
+        return Ok(Err(BlockChangeRefused::new(
+            RefusalReason::LegalBlock,
+            &kind,
+            "",
+        )));
+    }
+    if kind.override_mode != mode {
+        kind.override_mode = mode;
+        kind.save(db).await?;
+    }
+    Ok(Ok(kind))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -821,6 +848,27 @@ mod tests {
         assert!(kind.needs_review);
         assert!(kind.allows_subject_type("hr.employee"));
         assert!(!kind.allows_subject_type("fleet.vehicle"));
+    }
+
+    #[test]
+    fn a_seed_allows_an_override_with_approval_unless_it_is_a_legal_block() {
+        let plain = DocumentKind::from_seed(&KindSeed::new("x", "X"));
+        assert_eq!(plain.override_mode, OverrideMode::WithApproval);
+        let never =
+            DocumentKind::from_seed(&KindSeed::new("x", "X").override_mode(OverrideMode::Never));
+        assert_eq!(never.override_mode, OverrideMode::Never);
+        let legal = DocumentKind::from_seed(&KindSeed::new("x", "X").legal_block());
+        assert_eq!(legal.override_mode, OverrideMode::Never);
+    }
+
+    #[test]
+    fn the_legal_block_refusal_names_the_kind() {
+        let kind = DocumentKind::from_seed(&work_permit());
+        let refused = BlockChangeRefused::new(RefusalReason::LegalBlock, &kind, "");
+        assert_eq!(
+            refused.to_string(),
+            "Work permit is a legal block: its override mode is locked to never"
+        );
     }
 
     #[test]
@@ -992,6 +1040,57 @@ mod tests {
         let activate = &blocks[1];
         assert_eq!(activate.mode, BlockMode::Block);
         assert!(activate.locked);
+    }
+
+    #[renox::test]
+    async fn the_override_mode_changes_except_for_a_legal_block() {
+        use renox::testing::TestApp;
+
+        let app = TestApp::new(App::new().module(crate::WlDocuments)).await;
+        let db = app.db();
+        let health = KindSeed::new("kinds_unit_health", "Health card");
+        let legal = KindSeed::new("kinds_unit_legal", "SIRA licence").legal_block();
+        install_seeds(db, [&health, &legal]).await.unwrap();
+
+        let kind = set_override_mode(db, "kinds_unit_health", OverrideMode::Never)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(kind.override_mode, OverrideMode::Never);
+        let kind = DocumentKind::by_key(db, "kinds_unit_health")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(kind.override_mode, OverrideMode::Never);
+        set_override_mode(db, "kinds_unit_health", OverrideMode::WithApproval)
+            .await
+            .unwrap()
+            .unwrap();
+
+        let refused = set_override_mode(db, "kinds_unit_legal", OverrideMode::WithApproval)
+            .await
+            .unwrap()
+            .unwrap_err();
+        assert_eq!(refused.reason, RefusalReason::LegalBlock);
+        assert_eq!(
+            refused.to_string(),
+            "SIRA licence is a legal block: its override mode is locked to never"
+        );
+        // Setting never on a legal block is no change.
+        set_override_mode(db, "kinds_unit_legal", OverrideMode::Never)
+            .await
+            .unwrap()
+            .unwrap();
+        install_seeds(db, [&health, &legal]).await.unwrap();
+        let kind = DocumentKind::by_key(db, "kinds_unit_legal")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(kind.override_mode, OverrideMode::Never);
+        assert!(matches!(
+            set_override_mode(db, "kinds_unit_missing", OverrideMode::Never).await,
+            Err(Error::NotFound)
+        ));
     }
 
     #[test]
