@@ -1,6 +1,6 @@
 # Open Items Register
 
-> Status: draft · Last updated: 2026-10-16
+> Status: draft · Last updated: 2026-10-18
 
 Every fact the documents could not settle from public sources (`⚠ open: <owner>`) and every
 business decision still to take (`⚠ decide`), in one place. The marker in the source document
@@ -161,6 +161,21 @@ The prices themselves are filled in [PRICING.md](PRICING.md) by the owner.
 | O-02 | Bank statement formats (MT940, CSV, Excel) of the first clients' banks | [01-property.md](verticals/01-property.md) §8; [wl-payments](modules/wl-payments.md) §12; [GLOSSARY.md](GLOSSARY.md) | 01, all | Client 1 |
 | O-03 | Exact visa step names per emirate and channel (Work Bundle, typing centre) | [wl-hr](modules/wl-hr.md) §7 | 09 | Onboarding |
 | O-04 | Invoice wording each insurer requires (approval reference, excess line, claim number) | [08-auto.md](verticals/08-auto.md) §9 | 08 | Onboarding |
+
+## 7a. Renox follow-ups
+
+Not owner, lawyer or authority questions: what Renox 1.2.0 left to us
+([ARCHITECTURE.md](ARCHITECTURE.md) §4a-1). Updated 2026-10-18.
+
+| ID | Item | Where | Gate |
+|---|---|---|---|
+| T-01 | HEIC/AVIF are not decoded by `Images`; write an `UploadStep` that calls a converter (R16) | [wl-documents](modules/wl-documents.md) | Launch 01 |
+| T-02 | Rule for two devices editing one record offline (R25 gives order and clock skew only) | [wl-delivery](modules/wl-delivery.md), [wl-attendance](modules/wl-attendance.md), [wl-sales](modules/wl-sales.md) | Later |
+| T-03 | Telr and Checkout.com gateways through the `Gateway` trait (R17) | [wl-payments](modules/wl-payments.md) | on demand |
+| T-04 | Choose a map tile provider and licence; set `BLOCKS_MAP_TILES` and `BLOCKS_MAP_ATTRIBUTION` (R20) | apps | Launch 09 |
+| T-05 | Allow camera and geolocation with `App::permissions_policy` (R5) | apps | Build 1 |
+| T-06 | Record N-Genius chargebacks and dispute fees by hand (no disputes API in renox-billing) | [wl-payments](modules/wl-payments.md) §5.2a | Launch 05 |
+| T-07 | Kernel registry of transitions by name and the `back_to_<state>` convention (Renox engine has fixed targets) | [wl-kernel](modules/wl-kernel.md) §4.1 | Build 1 |
 
 ## 8. Question packs
 

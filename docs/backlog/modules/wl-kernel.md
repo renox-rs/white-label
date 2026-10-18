@@ -56,7 +56,10 @@ blocked action has run. This makes "approval rejected" behave the same in every 
 - **Waiting state:** a state some modules show while a request is pending (e.g. `submitted`,
   `pending_approval`). Modules without one only show a pending-approval badge.
 - **Back transition:** a `system` transition the module declares from its waiting state to
-  "any state"; the kernel runs it with target = the stored state.
+  each state the wait can start from, one per state, named `back_to_<state>` and guarded by
+  `subject_state_before`. The Renox 1.2 engine has a fixed `to` per transition and no run by
+  name, so the kernel keeps a registry of transitions by name and runs the one that matches
+  ([wl-kernel](../../modules/wl-kernel.md) §4.1).
 - **`subject_state_before`:** the subject's state at `submit`, stored on the request.
 - **Reservation:** an effect a module ran at submit time (stock hold, reserved slot, reserved
   number) that must be undone if the answer is not yes.
@@ -91,7 +94,8 @@ Entity field added to *Approval request*: "state of the subject before the reque
    to `<state>`" on the request, still releases what the module reserved at submit, and tells
    the requester.
 3. No money, stock or document effect runs before final approval. Effects a module ran at submit
-   time (a hold on stock, a reserved slot, a reserved number) are undone by the module's release
+   time (a hold on stock, a reserved slot, a reserved number that is not a document number:
+   gapless `Sequence` numbers are taken only at final approval) are undone by the module's release
    handler, which the kernel runs on every end that is not `approve`, whether or not the module
    has a waiting state: in the same transaction as the back transition when there is one,
    otherwise in the same transaction as the request's own end.

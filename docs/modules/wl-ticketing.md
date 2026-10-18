@@ -644,7 +644,7 @@ and `WRK.RUL.10` are on when the client enables feedback. `WRK.RUL.07`–`08` be
 | Task calendar | `month-calendar` block | — |
 | SLA timers, daily plan and task generation | queue, scheduler | — |
 | Business hours and public holidays for SLA | — | Business calendar (working days, hours, UAE public holidays, Ramadan hours) in `wl-kernel`, shared with scheduling and payroll (decided 2026-10-14) |
-| Field use on phones and tablets | — | R6 PWA. Online only in the MVP; a checklist needs a connection to complete. The offline queue is a shared Renox gap (R25, Later) |
+| Field use on phones and tablets | — | R6 PWA. Online only in the MVP; a checklist needs a connection to complete. The offline queue exists since Renox 1.2.0 (R25, `Routes::offline()`); adopting it is Later |
 | Raising tickets by email | Inbound mail is not in Renox | **New gap (Later):** email-to-ticket |
 | Feedback page opened without a login | signed, expiring URLs (`state.signed_url`, `ValidSignature`) | — |
 | Star rating input | `radio` input | `rx-rating` component (R5) |

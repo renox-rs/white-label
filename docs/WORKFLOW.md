@@ -75,9 +75,21 @@ One small engine runs every state machine, so every entity behaves the same way:
 
 ### 3.4 Where it lives
 
-The engine is generic, so it is proposed for **Renox** as **R12** (state machines for
-models). Bike shop orders, rentals and work orders would use it too. Modules only declare
-their machines.
+The engine is generic, so it was proposed for **Renox** as **R12** and ships in Renox 1.2.0
+(`StateMachine`, `Machine`, `Transition`, `state_transitions`, `rnx state:diagram`). Modules
+only declare their machines.
+
+Two limits of the Renox engine shape how our tables are built (checked in the source,
+2026-10-18):
+
+- **One fixed target per transition.** A row whose "To" lists several states and means "back
+  to the stored state" (a release after a hold, a back transition after an approval) is
+  declared as one transition per target, `<verb>_to_<state>` or `back_to_<state>`, each
+  guarded by the stored state. The UI still shows one button, since only the matching one is
+  available.
+- **No run by name and no replay.** Running a transition chosen at run time (by the approval
+  kernel, by an automation rule) goes through the kernel's registry of transitions by name
+  ([wl-kernel](modules/wl-kernel.md) §4.1).
 
 ### 3.5 How a state machine is documented
 

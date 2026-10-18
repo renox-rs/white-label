@@ -154,7 +154,7 @@ lets wl-scheduling release an unpaid hold.
   (`FIN.RUL.19`, events `PaymentFailed`, `PaymentLinkExpired`), §7 (pending timeout, link expiry)
 
 #### Terms
-- **Gateway:** Stripe or Network International N-Genius, through `GatewayAdapter`.
+- **Gateway:** Stripe or Network International N-Genius, through `renox-billing` (`Gateway`).
 - **Status query:** a call to the gateway asking the payment's final state.
 - **Payment link:** a request to pay online with an expiry.
 
@@ -309,7 +309,8 @@ recorded, and the accountant gets an evidence task with the gateway's deadline.
 #### Surfaces
 - **Back office:** the accountant gets an evidence task with the gateway's deadline and
   links to the evidence records.
-- **System:** a verified dispute webhook runs `charge_back`, removes the allocations and
+- **System:** `renox-billing`'s `DisputeOpened` (Stripe) runs `charge_back`, or the accountant
+  records it by hand for N-Genius (no disputes API); it removes the allocations and
   records the gateway's dispute fee; `FIN.RUL.20` reminds 2 days before the deadline.
 
 #### Files to read
@@ -328,7 +329,7 @@ recorded, and the accountant gets an evidence task with the gateway's deadline.
 
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
-| `charge_back` | received | charged_back | system (verified gateway dispute webhook) | — | every allocation removed; event `PaymentReversed` with reason `chargeback` and the allocations (wl-invoicing `unallocate`); gateway dispute fee recorded as an outgoing payment to the gateway provider (a supplier party; category bank charges; allocated to no document); evidence task created (`FIN.RUL.20`); the staff who took the payment and the accountant notified |
+| `charge_back` | received | charged_back | system (`DisputeOpened`, Stripe), or `payments.chargeback` by hand for N-Genius (no disputes API) | — | every allocation removed; event `PaymentReversed` with reason `chargeback` and the allocations (wl-invoicing `unallocate`); gateway dispute fee recorded as an outgoing payment to the gateway provider (a supplier party; category bank charges; allocated to no document); evidence task created (`FIN.RUL.20`); the staff who took the payment and the accountant notified |
 
 | ID | When | If | Then | Parameters (default) |
 |---|---|---|---|---|
@@ -341,7 +342,12 @@ or order is not undone, the loss is decided through `accept_chargeback` or `lose
 - **Dispute fee party:** outgoing payment to the gateway provider as a
   supplier party, category bank charges, no document allocation.
 - **Fee in another currency:** recorded in the settlement currency with the rate of the day.
-- **Deadline:** stored as the gateway gives it; reminder at deadline − 2 days, 09:00 Asia/Dubai.
+- **Deadline:** stored as the gateway gives it (`DisputeOpened.evidence_due_by`, or entered by hand
+  for N-Genius); reminder at deadline − 2 days, 09:00 Asia/Dubai.
+- **Fee:** `renox-billing` does not carry the dispute fee; the accountant enters it from the
+  gateway's notice, and the evidence task asks for it when it is missing.
+- **N-Genius (no disputes API):** a user with `payments.chargeback` records the chargeback with
+  the acquirer's reference, deadline and fee; the same effects run.
 - **Webhook replayed:** idempotent by gateway dispute reference.
 - **Evidence list:** links only to records the accountant may already see (same access rules).
 
@@ -357,6 +363,9 @@ or order is not undone, the loss is decided through `accept_chargeback` or `lose
       staff member who took it is notified.
 - [ ] With that deadline (2027-02-10) and K = 2, the reminder is sent on 2027-02-08 at 09:00
       Asia/Dubai, once, and not when evidence was already submitted.
+- [ ] Given a `received` AED 500.00 N-Genius payment, when the accountant records a chargeback
+      by hand with reference NG-778, deadline 2027-03-05 and fee AED 50.00, the effects are the
+      same as for a webhook; recording NG-778 a second time is refused.
 - [ ] A replayed webhook does nothing.
 
 #### Out of scope
@@ -394,8 +403,8 @@ person's approval.
 | Transition | From | To | By | Guards | Effects |
 |---|---|---|---|---|---|
 | `win_chargeback` | charged_back | received | system (gateway dispute won) | — | funds back; the same allocations re-applied where the targets are still open (a target written off meanwhile counts as not open), the rest kept as the party's credit, and the accountant notified (allocating it to a written-off invoice runs its `recover`); event `PaymentReceived` |
-| `lose_chargeback` | charged_back | reversed | system (gateway dispute lost, or evidence deadline passed without a submission) | — | the reopened invoices stay open: collect from the party again, or write off through invoice `write_off` (wl-invoicing); accountant notified; event `ChargebackClosed` (outcome lost) |
-| `accept_chargeback` | charged_back | reversed | `payments.chargeback` | reason; approval (`FIN.ACL.18`); accepting is sent to the gateway, and when the gateway rejects the call the approval request `fail`s, the payment stays `charged_back` and the accountant is notified | as `lose_chargeback`; event `ChargebackClosed` (outcome accepted) |
+| `lose_chargeback` | charged_back | reversed | system (`DisputeLost`, or evidence deadline passed without a submission), or `payments.chargeback` for N-Genius | — | the reopened invoices stay open: collect from the party again, or write off through invoice `write_off` (wl-invoicing); accountant notified; event `ChargebackClosed` (outcome lost) |
+| `accept_chargeback` | charged_back | reversed | `payments.chargeback` | reason; approval (`FIN.ACL.18`); accepting is sent to the gateway when it supports it (Stripe `accept_dispute`; N-Genius: accepted in its portal and confirmed here), and when the gateway rejects the call the approval request `fail`s, the payment stays `charged_back` and the accountant is notified | as `lose_chargeback`; event `ChargebackClosed` (outcome accepted) |
 
 | ID | Rule | Pattern | Parameter (default) |
 |---|---|---|---|

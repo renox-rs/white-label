@@ -27,8 +27,8 @@ stay in the client's bank and accounting software.
 | `FIN.BNK.01` | Bank statement import and matching of receipts to open invoices | 01, 04, 09 MVP; 02, 03, 05, 06, 07, 08, 10 Later | MVP |
 
 **Gateways** (decided 2026-10-15 for all verticals, 06 §13 question 8): Stripe and Network
-International N-Genius in the MVP, through the `GatewayAdapter` trait; Telr and Checkout.com
-when a client asks. Each client uses its own merchant account.
+International N-Genius in the MVP, both in `renox-billing` 1.2 (`Gateway` trait); Telr and
+Checkout.com when a client asks, as our own `Gateway` implementations. Each client uses its own merchant account.
 
 `FIN.CSH.01` is used by 06 for cash on delivery collected by the outlet's own riders
 (06 §4.2). Till cash at a counter (06, 08) is counted in the till session of
@@ -89,10 +89,10 @@ that are returned at the end of an agreement.
 | `fail` | pending | failed | system (gateway webhook: declined, reason from the gateway; or the hosted session cancelled or expired by the payer, reason *abandoned*; or `FIN.RUL.19` when the gateway gives no final answer before the timeout, reason timeout, which also covers a payer who leaves without the gateway telling the platform) | — | payment link stays `open` until its expiry; the party sees the reason and a retry button; event `PaymentFailed` (consumers below) |
 | `late_confirm` | failed | received | system (verified gateway webhook after `fail`) | webhook signature and amount match | if the targets are still open and the prepaid `Subject` is still active: allocated as in `confirm` (targets only partly open: allocated up to their open balances, the rest kept as credit with a refund requested for it, `requested` because it does not equal the payment); otherwise the amount stays as the party's credit and a refund is requested automatically with reason "late confirmation" (approved without a second person when the `request` guard below holds: it equals the payment, goes back to the same card or account, and the subject is no longer active, i.e. cancelled, rejected, already paid by another payment, or its slot gone; setting); accountant notified; event `PaymentReceived` |
 | `reverse` | received | reversed | `payments.reverse` | reason (entered in error, bank return); the payment is not a gateway payment with an open dispute | every allocation removed; event `PaymentReversed` with the allocations, so wl-invoicing runs `unallocate` on each target (the invoice goes back to `partially_paid`, `issued` or `overdue` by balance and due date); party notified for a bank return |
-| `charge_back` | received | charged_back | system (verified gateway dispute webhook) | — | every allocation removed; event `PaymentReversed` with reason `chargeback` and the allocations (wl-invoicing `unallocate`); gateway dispute fee recorded as an outgoing payment to the gateway provider (a supplier party; category bank charges; allocated to no document); evidence task created (`FIN.RUL.20`); the staff who took the payment and the accountant notified |
-| `win_chargeback` | charged_back | received | system (gateway dispute won) | — | funds back; the same allocations re-applied where the targets are still open (a target written off meanwhile counts as not open), the rest kept as the party's credit, and the accountant notified (allocating it to a written-off invoice runs its `recover`); event `PaymentReceived` |
-| `lose_chargeback` | charged_back | reversed | system (gateway dispute lost, or evidence deadline passed without a submission) | — | the reopened invoices stay open: collect from the party again, or write off through invoice `write_off` (wl-invoicing); accountant notified; event `ChargebackClosed` (outcome lost) |
-| `accept_chargeback` | charged_back | reversed | `payments.chargeback` | reason; approval (`FIN.ACL.18`); accepting is sent to the gateway, and when the gateway rejects the call the approval request `fail`s, the payment stays `charged_back` and the accountant is notified | as `lose_chargeback`; event `ChargebackClosed` (outcome accepted) |
+| `charge_back` | received | charged_back | system (`renox-billing` `DisputeOpened`, Stripe), or `payments.chargeback` (recorded by hand from the gateway's dispute notice, for a gateway without a disputes API: N-Genius) | — | every allocation removed; event `PaymentReversed` with reason `chargeback` and the allocations (wl-invoicing `unallocate`); gateway dispute fee, entered by the accountant from the gateway's notice (`DisputeOpened` carries the evidence deadline, not the fee), recorded as an outgoing payment to the gateway provider (a supplier party; category bank charges; allocated to no document); evidence task created (`FIN.RUL.20`); the staff who took the payment and the accountant notified |
+| `win_chargeback` | charged_back | received | system (`DisputeWon`), or `payments.chargeback` for a gateway without a disputes API | — | funds back; the same allocations re-applied where the targets are still open (a target written off meanwhile counts as not open), the rest kept as the party's credit, and the accountant notified (allocating it to a written-off invoice runs its `recover`); event `PaymentReceived` |
+| `lose_chargeback` | charged_back | reversed | system (`DisputeLost`, or evidence deadline passed without a submission), or `payments.chargeback` for a gateway without a disputes API | — | the reopened invoices stay open: collect from the party again, or write off through invoice `write_off` (wl-invoicing); accountant notified; event `ChargebackClosed` (outcome lost) |
+| `accept_chargeback` | charged_back | reversed | `payments.chargeback` | reason; approval (`FIN.ACL.18`); accepting is sent to the gateway when it supports it (`Billing` `accept_dispute`: Stripe); for a gateway that answers `Unsupported` (N-Genius) the accountant accepts in the gateway's portal and confirms it here; when the gateway rejects the call the approval request `fail`s, the payment stays `charged_back` and the accountant is notified | as `lose_chargeback`; event `ChargebackClosed` (outcome accepted) |
 
 ```mermaid
 stateDiagram-v2
@@ -503,8 +503,8 @@ stateDiagram-v2
 
 1. The party opens an invoice in the portal, or a payment link sent by SMS, email or
    WhatsApp, and pays on the gateway's hosted page. Card data never touches the platform.
-2. The gateway's webhook is verified (Renox inbound webhooks) and the payment is
-   confirmed and allocated.
+2. The gateway's webhook is verified by `renox-billing` (`/billing/webhooks/<gateway>`), which
+   emits `PaymentSucceeded`; wl-payments confirms and allocates the payment.
 3. For subscriptions with automatic payment, the gateway charges the saved payment method
    on the cycle date; a failure triggers `FIN.RUL.06`.
 4. A payment still `pending` after the timeout is checked with the gateway (`FIN.RUL.19`)
@@ -515,8 +515,11 @@ stateDiagram-v2
 
 ### 5.2a Chargeback
 
-1. The gateway reports a dispute. The payment goes to `charged_back`, its allocations are
-   removed (`PaymentReversed`, wl-invoicing `unallocate`) and the dispute fee is recorded.
+1. The gateway reports a dispute: Stripe through `renox-billing` (`DisputeOpened`, with the
+   evidence deadline); N-Genius has no disputes API, so the accountant records the chargeback
+   by hand from the acquirer's notice. The payment goes to `charged_back`, its allocations
+   are removed (`PaymentReversed`, wl-invoicing `unallocate`) and the dispute fee is recorded
+   from the notice.
 2. `FIN.RUL.20` creates an evidence task for the accountant with the gateway's deadline and
    the evidence the platform holds: receipt, invoice, proof of delivery or attendance, signed
    documents, messages sent.
@@ -693,7 +696,7 @@ gateways.
 | `TillSessionClosed` | wl-sales | create the till's cash handover (till session mode) and run `count` with the session's expected and counted cash |
 | `InvoiceWrittenOff` | wl-invoicing | completes a cheque `write_off` waiting for the invoice write-off approvals, once every linked invoice is written off |
 | `RunHandedOver` | wl-delivery | cash handover `hand_over`: the counted cash and cheques move from the giving driver's open handover to the receiving driver's |
-| gateway webhooks (payment, refund, dispute) | Renox inbound webhooks | `confirm`, `fail`, `late_confirm`, `charge_back`, `win_chargeback`, `lose_chargeback`; refund `pay` or `fail` |
+| `PaymentSucceeded`, `PaymentFailed`, `PaymentLinkExpired`, `RefundSucceeded`, `RefundFailed`, `DisputeOpened`, `DisputeWon`, `DisputeLost` | `renox-billing` (from the gateway webhooks) | `confirm` or `late_confirm` (a failed payment that later succeeds), `fail`, link `expire`, refund `pay` or `fail`, `charge_back`, `win_chargeback`, `lose_chargeback` (dispute events: Stripe only) |
 
 **Events emitted**
 
@@ -811,8 +814,8 @@ belongs to wl-invoicing and calls `Gateway`.
 
 ## 8. Extension points
 
-- **Strategy traits:** `GatewayAdapter` (one per provider: create hosted payment, charge a
-  saved method, refund, verify webhook), `AllocationPolicy`, `DeductionPolicy` (which
+- **Strategy traits:** gateways are `renox-billing` `Gateway` implementations (Stripe and
+  N-Genius ship with renox-billing 1.2; Telr and Checkout.com are ours, on demand), `AllocationPolicy`, `DeductionPolicy` (which
   deposit deductions are billable and their VAT), `CashExpectation` (how the expected cash
   is computed for a holder and period), `StatementParser` (one per format or bank),
   `MatchSuggester` (how lines are matched to documents), `ExpensePolicy` (limits, receipt
@@ -829,15 +832,15 @@ belongs to wl-invoicing and calls `Gateway`.
 
 | Need | Renox provides | Gap (→ ARCHITECTURE §4a ID) |
 |---|---|---|
-| Gateway integration | `renox-billing`: Stripe, Xendit, custom gateway trait; subscriptions | R17 (one-off payments, payment links and refunds outside subscriptions). ✔ No N-Genius adapter: renox-billing ships only Stripe and Xendit (checked in the Renox source, 2026-10-15, see [wl-operator](wl-operator.md) §9), so the **N-Genius adapter is a gap** for the MVP: built behind the gateway trait here, or contributed to renox-billing with R17. Telr and Checkout.com adapters on demand |
-| Per-client merchant accounts | `.env` keys per app | R17 (gateway credentials per deployment owner), stored encrypted in the settings store (R2) |
-| Calls to gateways within provider limits | HTTP rate limits for incoming requests | R19 (outbound limits per provider in the queue) |
+| Gateway integration | `renox-billing` 1.2: Stripe, Xendit, N-Genius; `Customer::charge`, `payment_link`, `refund`, `payment_status`, `expire_links`; payment, refund and dispute events | R17, delivered in Renox 1.2.0 (#44). Checked in the source 2026-10-18: **N-Genius has no disputes API** (chargebacks recorded by hand, §5.2a) and its pages do not expire on their own (`expire_links` runs hourly, so a link can expire up to an hour late); `accept_dispute` exists for Stripe only. Telr and Checkout.com on demand, behind `Gateway` |
+| Per-client merchant accounts | gateway keys per installation, several accounts per gateway (`Charge::account`) | R17, delivered in 1.2.0 |
+| Calls to gateways within provider limits | HTTP rate limits; `App::channel_rate_limit`, `App::mailer_rate_limit` | R19, delivered in 1.2.0 (notifications and mail; gateway calls are not queued sends) |
 | Payment link URLs | ✔ signed, expiring URLs (`state.signed_url`, `ValidSignature`) | — |
 | Gateway webhooks | `impl Webhook`, verification helpers, idempotent `webhook_calls`, queued processing | — |
 | Encrypted secrets and tokens | `Encrypted<String>` | — |
-| Lifecycles | — | R12 |
-| Receipts and statements | — | R3 (PDF), R1 (Arabic) |
-| Amounts in other currencies | one `APP_CURRENCY` | R18 (currency per record) |
+| Lifecycles | `StateMachine` (1.2.0) | R12, delivered |
+| Receipts and statements | `renox-pdf`, RTL and Arabic, `receipt` block (1.2.0) | R3, R1, R21, delivered |
+| Amounts in other currencies | `renox::money::Money`, `#[model(money)]` (1.2.0) | R18, delivered |
 | Deposit lists, counts | grids, forms, queue, scheduler | — |
 | Receipt photos from the phone | file upload | R5 (`rx-camera-capture`), R16 (image processing, HEIC → JPG) |
 | Statement files | import (CSV, row validation, templates) | R23 (Excel files, dry run, rollback window); MT940 parser (in module) |
@@ -927,8 +930,9 @@ belongs to wl-invoicing and calls `Gateway`.
    Network International N-Genius in the MVP; Telr and Checkout.com on demand. *(us, clients)*
 2. ~~Should `renox-billing` gain one-off payments, links and refunds (Renox contribution), or
    should wl-payments call gateways directly?~~ Decided (2026-10-15): extend renox-billing
-   ([ARCHITECTURE.md](../ARCHITECTURE.md) §4a R17). Still open: whether the N-Genius adapter
-   is contributed to renox-billing or kept in wl-payments. *(us)*
+   ([ARCHITECTURE.md](../ARCHITECTURE.md) §4a R17). ~~Still open: whether the N-Genius adapter
+   is contributed to renox-billing or kept in wl-payments.~~ Answered (2026-10-18): it ships in
+   renox-billing 1.2 (`Billing::ngenius()`). *(us)*
 3. Do clients need direct debit (UAE DDS) for rent and memberships? *(clients)* ✔ Provider
    access: the client itself becomes a UAEDDS originator with a Central Bank originator code
    and a sponsoring bank, and payers sign a direct debit authority; the platform could only

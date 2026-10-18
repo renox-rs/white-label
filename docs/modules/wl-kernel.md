@@ -18,12 +18,12 @@ turns one Renox binary into one client's branded product, with:
 
 It holds no business domain of its own. Renox already provides users, roles, audit, queue,
 scheduler and charts. `wl-kernel` wires these together for the platform, and adds what Renox
-does not have. Generic gaps are proposed to Renox and listed in [§9](#9-renox-fit).
+does not have. Generic gaps were proposed to Renox (all delivered in 1.2.0) and are listed in [§9](#9-renox-fit).
 
 **Ownership.** Each part below is marked as one of:
 
 - **Renox**: exists today;
-- **Renox R*n***: proposed to Renox ([ARCHITECTURE.md](../ARCHITECTURE.md) §4a);
+- **Renox R*n***: delivered by Renox 1.2.0 ([ARCHITECTURE.md](../ARCHITECTURE.md) §4a);
 - **kernel**: built in `wl-kernel`.
 
 ## 2. Capabilities covered
@@ -52,7 +52,7 @@ does not have. Generic gaps are proposed to Renox and listed in [§9](#9-renox-f
 `PLT.API.01` and `PLT.SCN.01` are listed only by 03. Manufacturing (07) and Auto (08) scan
 lots and parts with keyboard-wedge scanners, which type into any field and need no
 capability. The platform is responsive web + PWA and online only in the MVP; an offline
-queue is a shared Renox gap (R25) for later ([§9](#9-renox-fit)).
+queue is delivered by Renox 1.2.0 (R25) and adopted later ([§9](#9-renox-fit)).
 
 Kernel services that are not capabilities of their own, but are used by every module:
 
@@ -167,13 +167,23 @@ stateDiagram-v2
   back to that stored state. The kernel runs it on `reject`, `return`, `withdraw`, `expire`
   and `fail`, with the comment as the history reason. A module that does not use such a state
   only clears the pending-approval badge: the action never ran.
+- **On the Renox 1.2 engine** (checked in the source 2026-10-18): a transition has one fixed
+  `to`, and the engine has no run-time target, no run by name and no replay of an approved
+  request. So a module declares **one back transition per state the wait can start from**,
+  named `back_to_<state>` (e.g. `back_to_draft`, `back_to_active`), each guarded by
+  "`subject_state_before` is `<state>`"; the kernel keeps a registry of the module's
+  transitions by name and runs the one that matches. A request without a waiting state uses
+  the engine's `TransitionInterceptor`: `Defer` stores the request and the status does not
+  move; on `approve` the kernel runs the deferred transition through the same registry. The
+  same rule applies to every "back to the state before the hold" release in the verticals.
 - If the subject is no longer in its waiting state when the request ends (it was changed
   by another path, e.g. cancelled), the kernel does not move it: it records "subject
   already moved to `<state>`" on the request, still releases what the module reserved at
   submit, and tells the requester.
 - Nothing the action would have done is half-done: no money, stock or document effect runs
   before final approval ([WORKFLOW.md](../WORKFLOW.md) §3.2, atomic). Effects a module ran
-  at submit time (a hold on stock, a reserved slot, a reserved number) are undone by the
+  at submit time (a hold on stock, a reserved slot, a reserved number that is not a document
+  number) are undone by the
   module's release handler, which the kernel runs on every end that is not `approve`,
   whether or not the module has a waiting state: in the same transaction as the back
   transition when there is one, otherwise in the same transaction as the request's own end.
@@ -778,31 +788,31 @@ import row results reference any `Subject`.
 | Need | Renox provides | Gap |
 |---|---|---|
 | Module registration (routes, migrations, views, jobs, components) | `Module` trait, `Registry` | — |
-| Admin pages from a module | `renox-admin` (app-level only) | R4 |
-| Sidebar links from a module | — | R10 |
-| Settings editable at runtime | `.env` config only | R2 |
-| Per-client brand tokens with contrast guard | CSS tokens, themes | R9 |
-| Arabic and RTL | one RTL rule, Latin fonts | R1 |
+| Admin pages from a module | `Registry::contribute`, `renox_admin::contribute` (1.2.0) | R4, delivered |
+| Sidebar links from a module | `NavLink`, `App::nav` / `Registry::nav` (1.2.0) | R10, delivered |
+| Settings editable at runtime | opt-in `Settings` module, `SettingsGroup` (1.2.0) | R2, delivered; the enabled-module manifest stays in the kernel |
+| Per-client brand tokens with contrast guard | `Theme::from_brand`, `App::theme_for` (1.2.0) | R9, delivered |
+| Arabic and RTL | `app.dir`, `rtl_locales`, Noto Sans Arabic (1.2.0) | R1, delivered |
 | Users, roles, scoped and dated assignments | `Permissions`, `assign_role_in`, `scopes_with` | — |
 | Audit of changes | `Audit` module | Logging views of sensitive fields → kernel |
-| State machines, history, available actions | — | R12 (kernel adds the approval hook and status tones) |
+| State machines, history, available actions | `StateMachine`, `state_transitions`, `TransitionInterceptor` (1.2.0) | R12, delivered. Kernel adds the approval requests, the by-name registry and the `back_to_<state>` convention (§4.1), and status tones |
 | Approvals | — | kernel |
 | Automation engine | queue, scheduler, events | Rule catalogue, idempotency and chain limit → kernel |
-| Outbound webhooks | inbound webhooks only | R11 |
+| Outbound webhooks | `Endpoint`, `emit_in`, `SignedRequest` (1.2.0) | R11, delivered |
 | API for external parties | API tokens with abilities, device tokens | Party-bound API clients → kernel. ✔ Renox has rate limits per route keyed by user, device token or IP (`rate_limit.rs`), so API tokens need no gap; R19 covers only outbound limits per provider |
-| Camera barcode/QR scanning | — | R5 (`rx-barcode-scan`: camera or keyboard-wedge scanner) |
-| Gapless document numbering | — | R13 (Renox #40); the kernel uses it, no interim copy |
-| Custom fields | — | R14 (Renox #41); the kernel uses it, no interim copy |
+| Camera barcode/QR scanning | `barcode_scan` block (1.2.0) | R5, delivered; camera allowed per app with `App::permissions_policy` |
+| Gapless document numbering | `Sequence` | R13 (Renox #40, delivered in 1.2.0: `Sequence`); the kernel uses it, no interim copy |
+| Custom fields | `CustomField` | R14 (Renox #41, delivered in 1.2.0: `CustomField`, plus `sensitive()` from #71); the kernel uses it, no interim copy |
 | Dashboards and KPI tiles | charts, grid | Tile registry and per-role layouts → kernel |
 | Masked display of sensitive values | `Encrypted<String>` (bike shop) | Masking component and reveal flow → kernel |
 | Legal entities and issuer snapshots | — | kernel (business concept, not generic) |
-| Data import | Import (CSV/Excel into models) | Templates with natural keys, dry run, rollback window, error report file → kernel. ✔ Renox import reads CSV only: row validation with the form's rules, one transaction with a savepoint per row, `all_or_nothing`, `max_rows`, template download (`import.rs`). Gaps: Excel files, a dry run without writing, a rollback window after commit → R23 |
-| Global search | Full-text search (`docs/search.md`) | Cross-type index with permission filtering → kernel; Arabic normalisation and transliteration → R22 |
+| Data import | Import: CSV and Excel (`Import::xlsx`, `from_upload`), `.dry_run()`, `.undoable(window)`, `template_xlsx` (1.2.0) | R23, delivered. Templates with natural keys and the error report file → kernel |
+| Global search | Full-text search, `normalize = "arabic"`, `renox::text` (1.2.0) | Cross-type index with permission filtering → kernel; R22 delivered |
 | Notes, mentions, activity timeline | `history` block (renox-blocks), notification bell | Notes panel, mentions and merged timeline → kernel |
 | Report export | Grid export (CSV) | Excel and PDF formats → kernel on R3; report registry → kernel |
 | Scheduled reports | scheduler, mail | Subscriptions → kernel |
-| Staff SSO | renox-oauth (social login) | ✔ renox-oauth ships Google and GitHub; another provider is one `Provider` impl. Gaps: a Microsoft Entra ID provider and restricting Google sign-in to the client's Workspace domain → R24 |
-| Offline work (attendance, POD, POS, line tablets) | — | Later. MVP is online only ([UX.md](../UX.md)); one shared offline queue is a Renox gap, not yet numbered in [ARCHITECTURE.md](../ARCHITECTURE.md) §4a |
+| Staff SSO | renox-oauth: Google, GitHub, `Microsoft`, `Google::hosted_domain`, `allow_domains` (1.2.0) | R24, delivered |
+| Offline work (attendance, POD, POS, line tablets) | — | Later. MVP is online only ([UX.md](../UX.md)); the shared offline queue is R25, delivered in Renox 1.2.0 ([ARCHITECTURE.md](../ARCHITECTURE.md) §4a); conflict rules stay per module |
 
 ## 10. Compliance
 
@@ -856,7 +866,7 @@ import row results reference any `Subject`.
    kernel until a second Renox app needs them?~~ Answered by
    [ARCHITECTURE.md](../ARCHITECTURE.md) §4a: both are proposed as R13 and R14. Decided
    2026-10-16: the kernel waits for Renox #40 and #41 instead of building interim copies,
-   so the work is not done twice. *(us, Renox maintainers)*
+   so the work is not done twice. Both shipped in Renox 1.2.0 on 2026-10-18. *(us, Renox maintainers)*
 3. Can approval thresholds be set per scope (per building, per branch), or only globally per
    client? *(client)*
 4. Is a delegate approver needed when an approver is on leave (links to `HRM.LEV.01`)?

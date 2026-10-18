@@ -987,7 +987,7 @@ them.
 | Acquisition and loyalty reports (by source, campaign, period) | grid with grouping, export | Charts on report pages: as for other module reports |
 | Approvals, settings, state machines | — | wl-kernel; R2; R12 |
 | Online payment for direct orders | renox-billing gateways (Stripe, Xendit) | Stripe and N-Genius through `wl-payments` (R17; N-Genius adapter is a gap) |
-| POS during a network outage | — | Offline queue: one shared Renox gap (R25), Later. The MVP is online only ([ARCHITECTURE.md](../ARCHITECTURE.md) §1 decision 4) |
+| POS during a network outage | — | Offline queue: R25, delivered in Renox 1.2.0 (no conflict merge); adoption Later. The MVP is online only ([ARCHITECTURE.md](../ARCHITECTURE.md) §1 decision 4) |
 
 ## 10. Compliance
 
@@ -1067,7 +1067,7 @@ them.
    package activates on the first instalment (05 §7.1).
 4. ~~Should POS work offline for short outages, or is a mobile-data fallback enough?~~ Decided
    (2026-10-15): online only in the MVP, as on the rest of the platform; the offline queue is
-   a shared Renox gap (R25, Later). *(clients 06, 08)*
+   delivered in Renox 1.2.0 (R25); adoption Later. *(clients 06, 08)*
 5. Are sales rep commissions needed in any vertical? *(clients 07, 08)*
 6. Thermal receipt printers: browser printing only, or a local print bridge? *(us)*
 

@@ -146,13 +146,13 @@ grids spaced with `--rx-space-*`.
 
 ## 8. Gaps
 
-These need work in Renox (added to [ARCHITECTURE.md §4a](ARCHITECTURE.md#4a-contributions-to-renox-oss-useful-to-everyone)):
+These needed work in Renox. **All three are delivered in Renox 1.2.0** (added to [ARCHITECTURE.md §4a](ARCHITECTURE.md#4a-contributions-to-renox-oss-useful-to-everyone)):
 
 | # | Gap | Notes |
 |---|---|---|
-| R1 | RTL + Arabic fonts | Today the kit has one `[dir="rtl"]` rule and Latin-only font subsets |
-| R9 | **Brand-token generator** in Renox: `Theme::from_brand(accent, accent_2)` → light and dark tokens with the contrast guard | Generic: any Renox app benefits, not only ours |
-| R10 | **Sidebar contributions from modules** (`Registry::sidebar_link(section, link, permission)`) | So `wl-*` modules add their own navigation, like R4 does for admin resources |
+| R1 | RTL + Arabic fonts | Delivered (#28): `app.dir`, Noto Sans Arabic, logical CSS across the kit. Layouts write `<html dir="{{ app.dir }}">` |
+| R9 | **Brand-token generator** in Renox: `Theme::from_brand(accent, accent_2)` → light and dark tokens with the contrast guard | Delivered (#36): `Theme::from_brand(&Brand::new(…).second(…))`, `App::theme_for` per host, `ContrastError` |
+| R10 | **Sidebar contributions from modules** | Delivered (#37) as `NavLink` + `App::nav` / `Registry::nav` and `menu="staff"` on `<rx-sidebar>`; there is no `sidebar_link` |
 
 ## 9. Imagery and icons
 
