@@ -12,7 +12,11 @@ use renox::chrono::{Days, NaiveDate};
 use renox::prelude::*;
 use renox::state_machine::StateMachine;
 use renox::testing::TestApp;
-use wl_invoicing::{Invoice, WlInvoicing, permissions as perm};
+use wl_invoicing::vat_summary::{self, VatSummary, VatSummaryStatus};
+use wl_invoicing::{
+    AdjustmentKind, Invoice, InvoicingConfig, VatAdjustment, WlInvoicing, permissions as perm,
+};
+use wl_kernel::LegalEntity;
 use wl_kernel::approvals::{self, ApprovalRequest};
 use wl_kernel::documents::today;
 use wl_kernel::invoicing::{
@@ -291,6 +295,214 @@ impl Booted {
         self.user("Vera", &[perm::VIEW]).await
     }
 
+    /// A user of the host's `accountant` role (the ones the relief notice
+    /// goes to).
+    pub async fn accountant(&self, name: &str) -> User {
+        let user = User::register(
+            self.db(),
+            name,
+            &format!("{}@example.com", name.to_lowercase()),
+            "password123",
+        )
+        .await
+        .unwrap();
+        user.assign_role(self.db(), "accountant").await.unwrap();
+        user
+    }
+
+    /// The user `name` with `grants` (through a role of their own), made
+    /// once: asked again, the same user.
+    pub async fn helper(&self, name: &str, grants: &[&str]) -> User {
+        let email = format!("{}@example.com", name.to_lowercase());
+        match User::find_by_email(self.db(), &email).await.unwrap() {
+            Some(user) => user,
+            None => self.user(name, grants).await,
+        }
+    }
+
+    /// A receivables clerk `name`, made once: asked again, the same user.
+    pub async fn clerk(&self, name: &str) -> User {
+        let email = format!("{}@example.com", name.to_lowercase());
+        match User::find_by_email(self.db(), &email).await.unwrap() {
+            Some(user) => user,
+            None => self.staff(name, false).await,
+        }
+    }
+
+    /// The module's settings, as the app has them.
+    pub fn config(&self) -> std::sync::Arc<InvoicingConfig> {
+        self.state()
+            .provided::<InvoicingConfig>()
+            .expect("the module provides its settings")
+    }
+
+    /// The legal entity `code`.
+    pub async fn entity(&self, code: &str) -> LegalEntity {
+        LegalEntity::query()
+            .where_(LegalEntity::CODE.eq(code))
+            .first(self.db())
+            .await
+            .unwrap()
+            .unwrap_or_else(|| panic!("no legal entity {code}"))
+    }
+
+    /// A new active, VAT-registered legal entity.
+    pub async fn new_entity(&self, code: &str) -> LegalEntity {
+        let mut entity = LegalEntity {
+            code: code.to_owned(),
+            name_en: format!("{code} LLC"),
+            trn: Some("100000000000029".to_owned()),
+            vat_registered: true,
+            status: "active".to_owned(),
+            ..Default::default()
+        };
+        entity.insert(self.db()).await.unwrap();
+        entity
+    }
+
+    /// The summary of `entity` for the period that contains `date`, taken
+    /// to `status` through its transitions (so the period must be over for
+    /// anything past `open`).
+    pub async fn summary(
+        &self,
+        entity: &LegalEntity,
+        date: NaiveDate,
+        status: VatSummaryStatus,
+    ) -> VatSummary {
+        let config = self.config();
+        vat_summary::ensure_open(self.db(), &config, entity, date)
+            .await
+            .unwrap();
+        let summary = VatSummary::containing(self.db(), &config, entity, date)
+            .await
+            .unwrap()
+            .expect("the summary exists");
+        let preparer = self
+            .helper("Prep", &[perm::VAT_VIEW, perm::VAT_PREPARE])
+            .await;
+        let reviewer = self
+            .helper("Rev", &[perm::VAT_VIEW, perm::VAT_REVIEW, perm::VAT_LOCK])
+            .await;
+        let steps = [
+            ("prepare", VatSummaryStatus::Prepared, &preparer),
+            ("review", VatSummaryStatus::Reviewed, &reviewer),
+            ("lock", VatSummaryStatus::Locked, &reviewer),
+        ];
+        for (name, reaches, by) in steps {
+            if summary_rank(reaches) > summary_rank(status) {
+                break;
+            }
+            self.post_transition(&summary, name, by, "")
+                .await
+                .assert_status(303);
+        }
+        self.summary_now(summary.id).await
+    }
+
+    /// Summary `id`, as stored now.
+    pub async fn summary_now(&self, id: i64) -> VatSummary {
+        VatSummary::find(self.db(), id).await.unwrap().unwrap()
+    }
+
+    /// `POST /vat-summaries/{id}/transitions/{name}` as `by`, as the page's
+    /// actions send it.
+    pub async fn post_transition(
+        &self,
+        summary: &VatSummary,
+        name: &str,
+        by: &User,
+        reason: &str,
+    ) -> renox::testing::TestResponse {
+        self.app.acting_as(by);
+        self.app
+            .htmx()
+            .post(
+                &format!("/vat-summaries/{}/transitions/{name}", summary.id),
+                &[("reason", reason)],
+            )
+            .await
+    }
+
+    /// An invoice of `entity` (the default one when `None`) for AED
+    /// 1,000.00 plus 5% VAT, written off for its whole balance through the
+    /// approval, with the date of supply `supply` and the write-off notice
+    /// date `notice_on`. Returns it with its pending bad-debt relief of
+    /// AED 50.00.
+    pub async fn written_off(
+        &self,
+        entity: Option<&LegalEntity>,
+        supply: NaiveDate,
+        notice_on: Option<NaiveDate>,
+    ) -> (Invoice, VatAdjustment) {
+        let clerk = self.clerk("Wendy").await;
+        let approver = self.clerk("Wade").await;
+        let mut draft = InvoiceDraft::new(BLUE_DUNES, Subject::new("property.lease", 9))
+            .line(DraftLine::new("Line 1", 100_000, VatCategory::Standard))
+            .due_date(self.day(-5));
+        if let Some(entity) = entity {
+            draft = draft.legal_entity(entity.id);
+        }
+        let draft = self.draft_of(draft).await;
+        self.issue(&draft, &clerk).await;
+        wl_invoicing::overdue::run(self.state())
+            .await
+            .expect("the overdue run");
+        let invoice = self.reload(&draft).await;
+        self.post_write_off(&invoice, &clerk, "insolvent", "")
+            .await
+            .assert_ok();
+        let request = self.pending(&invoice).await.remove(0);
+        approvals::approve(self.state(), request.id, &approver, "")
+            .await
+            .unwrap()
+            .expect("the approval runs");
+        Invoice::query()
+            .where_(Invoice::ID.eq(invoice.id))
+            .update(
+                self.db(),
+                &[
+                    ("date_of_supply", &Some(supply)),
+                    ("write_off_notice_on", &notice_on),
+                ],
+            )
+            .await
+            .unwrap();
+        let invoice = self.reload(&invoice).await;
+        let relief = VatAdjustment::relief_of(self.db(), &invoice)
+            .await
+            .unwrap()
+            .expect("the write-off made the relief");
+        assert_eq!(relief.kind, AdjustmentKind::BadDebtRelief);
+        (invoice, relief)
+    }
+
+    /// The adjustment `id`, as stored now.
+    pub async fn adjustment(&self, id: i64) -> VatAdjustment {
+        VatAdjustment::find(self.db(), id).await.unwrap().unwrap()
+    }
+
+    /// `POST` of the include or exclude sheet (`action`) of `adjustment`.
+    pub async fn post_decision(
+        &self,
+        summary: &VatSummary,
+        adjustment: &VatAdjustment,
+        action: &str,
+        by: &User,
+        reason: &str,
+    ) -> renox::testing::TestResponse {
+        self.app.acting_as(by);
+        self.app
+            .htmx()
+            .post(
+                &format!(
+                    "/vat-summaries/{}/adjustments/{}/{action}",
+                    summary.id, adjustment.id
+                ),
+                &[("reason", reason)],
+            )
+            .await
+    }
+
     /// `n` days from today (negative: before).
     pub fn day(&self, n: i64) -> NaiveDate {
         let days = Days::new(n.unsigned_abs());
@@ -460,6 +672,16 @@ impl Booted {
     }
 }
 
+/// The position of a summary status in its lifecycle.
+fn summary_rank(status: VatSummaryStatus) -> usize {
+    match status {
+        VatSummaryStatus::Open => 0,
+        VatSummaryStatus::Prepared => 1,
+        VatSummaryStatus::Reviewed => 2,
+        VatSummaryStatus::Locked => 3,
+    }
+}
+
 /// wl-invoicing with the §7 defaults, booted.
 pub async fn boot() -> Booted {
     boot_with(WlInvoicing::new()).await
@@ -507,10 +729,28 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
         perm::WRITE_OFF,
         perm::DISPUTE,
         perm::RECEIVABLES_VIEW,
+        perm::VAT_VIEW,
+        perm::VAT_PREPARE,
+        perm::VAT_REVIEW,
+        perm::VAT_LOCK,
     ];
     permissions::define_role(app.db(), "admin", &all)
         .await
         .unwrap();
+    // The host's `accountant` role: the VAT permissions and the invoices.
+    permissions::define_role(
+        app.db(),
+        "accountant",
+        &[
+            perm::VIEW,
+            perm::VAT_VIEW,
+            perm::VAT_PREPARE,
+            perm::VAT_REVIEW,
+            perm::VAT_LOCK,
+        ],
+    )
+    .await
+    .unwrap();
     permissions::define_role(
         app.db(),
         "receivables",

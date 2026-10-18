@@ -281,18 +281,12 @@ fn send_back() -> Transition<VatSummary> {
         .label("Send back")
         .tone("warning")
         .permission(permissions::VAT_REVIEW)
+        // `reason_required` makes the run refuse (422) without a reason. A
+        // guard on the reason would hide the action from `available`, which
+        // checks guards before the reason is asked for.
         .reason_required()
         .from([VatSummaryStatus::Reviewed])
         .to(VatSummaryStatus::Prepared)
-        .guard("reason_given", |_summary: &VatSummary, ctx| {
-            Box::pin(async move {
-                if ctx.reason().is_some_and(|r| !r.trim().is_empty()) {
-                    Ok(())
-                } else {
-                    Err(english("wl_invoicing.vat.reason_required").to_owned())
-                }
-            })
-        })
         .effect(|summary: &VatSummary, ctx, tx| {
             let id = summary.id;
             let reason = ctx.reason().map(|r| r.trim().to_owned());
@@ -435,16 +429,5 @@ mod tests {
                 .await,
             Err(TransitionError::Guard(_))
         ));
-    }
-
-    #[renox::test]
-    async fn send_back_needs_a_reason() {
-        let machine = VatSummary::machine();
-        let transition = machine.find(SEND_BACK).expect("transition");
-        let blank = TransitionCtx::new(None).with_reason("  ");
-        let given = TransitionCtx::new(None).with_reason("Wrong figure");
-        let s = summary(today(), Some(1));
-        assert!(transition.check_guards(&s, &blank).await.is_err());
-        assert!(transition.check_guards(&s, &given).await.is_ok());
     }
 }
