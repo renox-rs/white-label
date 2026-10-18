@@ -130,6 +130,30 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_parties.errors.reason_restricted",
         "You cannot use this reason.",
     ),
+    (
+        "wl_parties.errors.unblock_other_user",
+        "This hold must be lifted by another authorised user",
+    ),
+    (
+        "wl_parties.errors.unblock_basis_required",
+        "Choose why the hold is lifted.",
+    ),
+    (
+        "wl_parties.errors.unblock_evidence_required",
+        "Attach at least one evidence file.",
+    ),
+    (
+        "wl_parties.errors.unblock_file_empty",
+        "An evidence file is empty.",
+    ),
+    (
+        "wl_parties.errors.unblock_file_large",
+        "An evidence file is larger than 20 MB.",
+    ),
+    (
+        "wl_parties.errors.unblock_file_type",
+        "Evidence files must be PDF, JPG, PNG, HEIC, DOCX or XLSX.",
+    ),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.

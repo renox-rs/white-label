@@ -32,6 +32,7 @@ pub use evidence::{UnblockBasis, UnblockEvidence};
 pub use party::{Channel, Language, Party};
 pub use reasons::{BlockReason, BlockReasons};
 pub use roles::PartyRole;
+pub use unblock::{UnblockRequest, unblock};
 
 /// The module's permissions (wl-parties §6).
 pub mod permissions {
