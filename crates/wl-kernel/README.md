@@ -133,6 +133,20 @@ and reason on a reassignment, priority, due times) and `TicketClosed` (resolutio
 minutes, within SLA). Ticket numbers come from `TICKET_SERIES` (`TKT-2026-0001`): reset
 yearly, gaps allowed.
 
+Before a module starts, renews or extends an agreement with a party, or releases money to
+it, it asks `wl_kernel::block_guard::guard(&state).check_in(&mut tx, Some(&user), party, kind)`
+in its own transaction, with `ActionKind::Start`, `Renew`, `Extend` or `MoneyOut` (guard the
+step that releases money, not the drafting; money already sent or scheduled is not the
+guard's concern). Receipts call it with `MoneyIn`, which is never refused.
+`GuardOutcome::Blocked(refusal)` refuses: everyone without `parties.block_reason.view` (and the
+system, `viewer = None`) sees "This party is on hold" with code `on_hold`; holders see
+"Blocked: <reason>" with a link to each Block record. `refusal.into_error()` is a 422 with the
+neutral text. A blocked action can go ahead through an approved exception (approval action
+`BLOCK_EXCEPTION_ACTION`, `parties.block_exception`), whose approver `exception_step()` names.
+`wl-parties` provides the guard with `provide_block_guard`; when `parties` is off,
+`NoBlockGuard` allows everything. The refusal type is `wl_kernel::block_guard::BlockRefusal`,
+not re-exported at the root because `documents::BlockRefusal` owns that name there.
+
 A module that owns a guarded transition (an entry of a document kind's `blocks`, e.g.
 `deployment.activate`) registers, in `register`, a `BlockSubjects` provider with
 `wl_kernel::documents::register_block_subjects("deployment.activate", provider)`: it maps a

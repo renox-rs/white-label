@@ -8,6 +8,12 @@ use renox::prelude::*;
 /// Every key the package uses, with its English text.
 const TEXTS: &[(&str, &str)] = &[
     ("wl_kernel.legal_entities", "Legal entities"),
+    ("wl_kernel.block_guard.on_hold", "This party is on hold"),
+    ("wl_kernel.block_guard.blocked", "Blocked: :reason"),
+    (
+        "wl_kernel.block_guard.request_exception",
+        "Request exception (approved by :approver)",
+    ),
     (
         "wl_kernel.approvals.already_pending",
         "This is already waiting for approval.",

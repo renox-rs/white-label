@@ -4,6 +4,7 @@
 pub mod approvals;
 pub mod automation;
 pub mod block_effects;
+pub mod block_guard;
 pub mod branding;
 pub mod calendar;
 pub mod config;
@@ -36,6 +37,10 @@ pub use automation::AutomationFailed;
 pub use block_effects::{
     AgreementKind, AgreementRef, AgreementSource, BlockEffect, BlockEffectOverride,
     BlockEffectRule, Decision, RuleSource,
+};
+pub use block_guard::{
+    ActionKind, BLOCK_EXCEPTION_ACTION, BlockGuard, BlockReasonLine, ExceptionStep, GuardOutcome,
+    NoBlockGuard,
 };
 pub use calendar::BusinessCalendar;
 pub use config::{ClientConfig, ConfigError, RolesConfig, owner_role};
