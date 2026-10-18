@@ -3,7 +3,8 @@
 //! with) without depending on the `wl-parties` crate.
 //!
 //! `wl-parties` provides a [`PartyDirectory`] with [`provide_directory`] and
-//! emits [`PartyCreated`], [`PartyBlocked`] and [`PartyUnblocked`]. Other
+//! emits [`PartyCreated`], [`PartyBlocked`], [`PartyUnblocked`], [`ScreeningCompleted`]
+//! and [`ScreeningFlagged`] (compliance listeners only). Other
 //! modules read parties through [`directory`], which falls back to
 //! [`NoParties`] when the `parties` module is off.
 //!
@@ -93,6 +94,42 @@ pub enum PartyStatus {
     Archived,
     /// Merged into another party (terminal).
     Merged,
+}
+
+/// The id of a sanctions screening run (wl-parties §4, `PTY.SCR.01`).
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default, Serialize, Deserialize,
+)]
+#[serde(transparent)]
+pub struct ScreeningId(pub i64);
+
+impl fmt::Display for ScreeningId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl From<i64> for ScreeningId {
+    fn from(id: i64) -> Self {
+        ScreeningId(id)
+    }
+}
+
+/// The lifecycle state of a screening (wl-parties §4); the state of the
+/// screening machine.
+#[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum ScreeningStatus {
+    /// Started, no result yet.
+    #[default]
+    Pending,
+    /// No candidate at or above the threshold.
+    Clear,
+    /// A candidate at or above the threshold; a compliance reviewer decides.
+    PossibleMatch,
+    /// The reviewer decided the candidate is not the party.
+    FalsePositive,
+    /// The reviewer confirmed the match.
+    ConfirmedMatch,
 }
 
 /// What other modules see of a party.
@@ -346,6 +383,42 @@ pub struct PartyUnblocked {
 
 impl Event for PartyUnblocked {}
 
+/// A screening finished without a possible match, or a reviewer decided it
+/// (wl-parties §6). Never emitted for a `possible_match`: that run is announced
+/// by [`ScreeningFlagged`] and the other listeners hear nothing until the
+/// decision.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ScreeningCompleted {
+    /// The screened party.
+    pub party: PartyId,
+    /// The screening run.
+    pub screening: ScreeningId,
+    /// The result.
+    pub status: ScreeningStatus,
+}
+
+impl Event for ScreeningCompleted {}
+
+/// A screening found a possible match. **Compliance listeners only.**
+///
+/// Renox events are not delivered per listener, so this is the separate event
+/// for `possible_match` (the delivery rule of `ScreeningCompleted` in
+/// wl-parties §6). A listener may act on it only after it checks that the
+/// user it acts for holds `parties.block_reason.view` (`PTY.ACL.02`), and it
+/// must never show it to a portal user or client-facing staff, nor tell the
+/// party (no tipping off). The payload has no candidate names or lists.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ScreeningFlagged {
+    /// The screened party.
+    pub party: PartyId,
+    /// The screening run.
+    pub screening: ScreeningId,
+    /// Always [`ScreeningStatus::PossibleMatch`].
+    pub status: ScreeningStatus,
+}
+
+impl Event for ScreeningFlagged {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -372,6 +445,23 @@ mod tests {
         assert_eq!(PartyStatus::default(), PartyStatus::Active);
         assert_eq!(PartyKind::Company.as_str(), "company");
         assert_eq!("person".parse::<PartyKind>().unwrap(), PartyKind::Person);
+    }
+
+    #[test]
+    fn screening_statuses_are_stored_in_snake_case() {
+        let names: Vec<_> = ScreeningStatus::ALL.iter().map(|s| s.as_str()).collect();
+        assert_eq!(
+            names,
+            [
+                "pending",
+                "clear",
+                "possible_match",
+                "false_positive",
+                "confirmed_match"
+            ]
+        );
+        assert_eq!(ScreeningStatus::default(), ScreeningStatus::Pending);
+        assert_eq!(ScreeningId::from(7).to_string(), "7");
     }
 
     fn related(party: i64, primary: bool) -> RelatedContact {

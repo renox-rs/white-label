@@ -355,7 +355,8 @@ tasks for possible matches).
 | `RelationshipStarted` / `RelationshipEnded` | link starts or ends | from, to, type, reason |
 | `ConsentGiven` / `ConsentWithdrawn` | consent changes | party, purpose, channel, given by |
 | `OwnershipChanged` | ownership records change | company, UBO list changed flag |
-| `ScreeningCompleted` | a run finishes | party, screening, status (a `possible_match` is delivered only to compliance listeners) |
+| `ScreeningCompleted` | a run finishes | party, screening, status (emitted for `clear` and for the decisions; a `possible_match` run emits `ScreeningFlagged` instead, so other listeners get nothing until the decision) |
+| `ScreeningFlagged` | a run ends `possible_match` | party, screening, status (no candidate names). Kernel event for compliance listeners only: Renox events are not delivered per listener, so a listener acts on it only after checking `parties.block_reason.view` |
 | `ScreeningMatchConfirmed` | a match is confirmed | party, screening (delivered only to compliance listeners) |
 | `SanctionsListStale` | a list download failed, or a list is older than the freshness limit (`PTY.RUL.02`) | list, last successful update, last error (delivered only to compliance listeners) |
 | `SanctionsListUpdated` | a list downloaded successfully, or uploaded by hand, with a new version | list, version; triggers `PTY.RUL.01` |
@@ -428,7 +429,7 @@ event happens.
 | Beneficial ownership | off (on in accounting) |
 | UBO threshold | 25% (Decree-Law 10 of 2025 Art. 10; Cabinet Resolution 109 of 2023) ✔ [S5], [S7] |
 | Screening | off (on in accounting); lists: UN consolidated list, UAE Local Terrorist List |
-| Screening match threshold | 0.85 similarity |
+| Screening match threshold | 0.85 similarity; a candidate scoring at or above it flags (`WlParties::match_threshold`) |
 | Second reviewer for confirmed match | on |
 | Block reason codes (restricted flag) | `on_hold` (neutral, always present), `non_payment`, `legal_dispute`, `fraud_suspected`, `other`; restricted: `sanctions`, `aml_concern`. A vertical can add codes and mark them restricted |
 | Block effect and decider per agreement kind | as in [§5.6](#56-block-a-party); set by each vertical |
