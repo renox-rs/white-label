@@ -1,0 +1,24 @@
+{#- wl-ticketing: the form that raises a ticket as staff. Replace it with
+    resources/views/wl-ticketing/new.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['new']">
+  <rx-stack>
+    <rx-page-header :title="tx['new']" :back="route('wl_ticketing.index')" :back-label="tx['title']"/>
+    <rx-form route="wl_ticketing.store" novalidate>
+      <rx-card>
+        <rx-form-errors/>
+        <rx-form-grid columns="2">
+          <rx-input name="subject_type" :label="tx['fields.subject_type']" :hint="tx['fields.subject_type_hint']" required/>
+          <rx-input name="subject_id" type="number" :label="tx['fields.subject_id']" required/>
+          <rx-select name="category" :label="tx['fields.category']" :options="categories" :selected="'general'" required/>
+          <rx-input name="requester_code" :label="tx['fields.requester_code']" :hint="tx['fields.requester_code_hint']"/>
+          <rx-input name="title" :label="tx['fields.title']" span="full" required/>
+          <rx-textarea name="description" :label="tx['fields.description']" span="full"/>
+        </rx-form-grid>
+        <div class="rx-card__footer">
+          <rx-link-button route="wl_ticketing.index" :label="tx['cancel']" variant="plain"/>
+          <rx-button :label="tx['create']"/>
+        </div>
+      </rx-card>
+    </rx-form>
+  </rx-stack>
+</rx-page>

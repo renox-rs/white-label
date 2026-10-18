@@ -1,6 +1,8 @@
 //! The package's texts, in English. An app changes or translates one by
 //! putting the key in its `resources/lang/{locale}.json`.
 
+use std::collections::BTreeMap;
+
 use renox::prelude::*;
 
 /// Every key the package uses, with its English text.
@@ -31,6 +33,140 @@ const TEXTS: &[(&str, &str)] = &[
         "{{ title }}: the visit is now {{ visit }}.",
     ),
     ("wl_ticketing.notice.not_scheduled", "not scheduled"),
+    ("wl_ticketing.empty", "No tickets yet"),
+    (
+        "wl_ticketing.empty_hint",
+        "Tickets raised for units, contracts and requests show here.",
+    ),
+    ("wl_ticketing.new", "New ticket"),
+    ("wl_ticketing.create", "Create ticket"),
+    ("wl_ticketing.cancel", "Cancel"),
+    ("wl_ticketing.created", "Ticket created."),
+    ("wl_ticketing.none", "None"),
+    ("wl_ticketing.fields.number", "Number"),
+    ("wl_ticketing.fields.title", "Title"),
+    ("wl_ticketing.fields.description", "Description"),
+    ("wl_ticketing.fields.subject", "About"),
+    ("wl_ticketing.fields.subject_type", "Subject type"),
+    (
+        "wl_ticketing.fields.subject_type_hint",
+        "For example property.unit.",
+    ),
+    ("wl_ticketing.fields.subject_id", "Subject id"),
+    ("wl_ticketing.fields.category", "Category"),
+    ("wl_ticketing.fields.priority", "Priority"),
+    ("wl_ticketing.fields.status", "Status"),
+    ("wl_ticketing.fields.assignee", "Assignee"),
+    ("wl_ticketing.fields.requester", "Requester"),
+    ("wl_ticketing.fields.requester_code", "Requester party code"),
+    (
+        "wl_ticketing.fields.requester_code_hint",
+        "For example P-00001. Leave empty for an internal task.",
+    ),
+    ("wl_ticketing.fields.channel", "Channel"),
+    ("wl_ticketing.fields.visit_at", "Visit"),
+    ("wl_ticketing.fields.created_at", "Created"),
+    (
+        "wl_ticketing.fields.sla_started_at",
+        "Service level started",
+    ),
+    ("wl_ticketing.fields.response_due", "Response due"),
+    ("wl_ticketing.fields.resolution_due", "Resolution due"),
+    ("wl_ticketing.fields.responded_at", "Responded"),
+    ("wl_ticketing.fields.resolved_at", "Resolved"),
+    ("wl_ticketing.fields.hold_reason", "On hold for"),
+    ("wl_ticketing.fields.cancel_reason", "Cancelled because"),
+    ("wl_ticketing.fields.confidential", "Confidential"),
+    ("wl_ticketing.status.open", "Open"),
+    ("wl_ticketing.status.assigned", "Assigned"),
+    ("wl_ticketing.status.in_progress", "In progress"),
+    ("wl_ticketing.status.on_hold", "On hold"),
+    ("wl_ticketing.status.resolved", "Resolved"),
+    ("wl_ticketing.status.closed", "Closed"),
+    ("wl_ticketing.status.cancelled", "Cancelled"),
+    ("wl_ticketing.priority.urgent", "Urgent"),
+    ("wl_ticketing.priority.high", "High"),
+    ("wl_ticketing.priority.normal", "Normal"),
+    ("wl_ticketing.priority.low", "Low"),
+    ("wl_ticketing.channel.portal", "Portal"),
+    ("wl_ticketing.channel.staff", "Staff"),
+    ("wl_ticketing.channel.email", "E-mail"),
+    ("wl_ticketing.channel.phone", "Phone"),
+    ("wl_ticketing.channel.system", "System"),
+    ("wl_ticketing.sections.details", "Ticket"),
+    ("wl_ticketing.sections.sla", "Service level"),
+    ("wl_ticketing.sections.assignments", "Reassignment history"),
+    ("wl_ticketing.sections.history", "History"),
+    ("wl_ticketing.no_assignments", "Not assigned yet"),
+    ("wl_ticketing.no_history", "No history yet"),
+    ("wl_ticketing.history.change", "Change"),
+    ("wl_ticketing.history.at", "When"),
+    ("wl_ticketing.history.reason", "Reason"),
+    ("wl_ticketing.history.by", "By"),
+    ("wl_ticketing.history.visit", "Visit"),
+    ("wl_ticketing.assignment.first", "Assigned to {{ to }}"),
+    ("wl_ticketing.assignment.reassign", "{{ from }} to {{ to }}"),
+    (
+        "wl_ticketing.assignment.visit_change",
+        "Visit of {{ to }} rescheduled",
+    ),
+    ("wl_ticketing.assign.action", "Assign"),
+    ("wl_ticketing.assign.reassign_action", "Reassign"),
+    ("wl_ticketing.assign.title", "Assign ticket"),
+    ("wl_ticketing.assign.reassign_title", "Reassign ticket"),
+    (
+        "wl_ticketing.assign.description",
+        "Choose a staff member or a vendor. The service level starts with the first assignment and is never restarted.",
+    ),
+    ("wl_ticketing.assign.submit", "Assign"),
+    ("wl_ticketing.assign.user", "Staff member"),
+    ("wl_ticketing.assign.party_code", "Vendor party code"),
+    (
+        "wl_ticketing.assign.party_code_hint",
+        "For example P-00007. Use this or a staff member.",
+    ),
+    ("wl_ticketing.assign.reason_code", "Reason for reassigning"),
+    ("wl_ticketing.assign.reason_text", "Explanation"),
+    ("wl_ticketing.assign.done", "Ticket assigned."),
+    ("wl_ticketing.assign.choose", "Choose who gets the ticket."),
+    (
+        "wl_ticketing.assign.both",
+        "Choose a staff member or a vendor, not both.",
+    ),
+    (
+        "wl_ticketing.assign.unknown_party",
+        "No party has this code.",
+    ),
+    ("wl_ticketing.hold.action", "Put on hold"),
+    ("wl_ticketing.hold.title", "Put ticket on hold"),
+    (
+        "wl_ticketing.hold.description",
+        "Some reasons pause the service level clock.",
+    ),
+    ("wl_ticketing.hold.reason", "Hold reason"),
+    ("wl_ticketing.hold.submit", "Put on hold"),
+    ("wl_ticketing.hold.done", "Ticket put on hold."),
+    ("wl_ticketing.cancel_ticket.action", "Cancel ticket"),
+    ("wl_ticketing.cancel_ticket.title", "Cancel ticket"),
+    (
+        "wl_ticketing.cancel_ticket.description",
+        "The ticket will not be worked. The reason is kept in its history.",
+    ),
+    ("wl_ticketing.cancel_ticket.reason", "Reason"),
+    ("wl_ticketing.cancel_ticket.submit", "Cancel ticket"),
+    ("wl_ticketing.cancel_ticket.done", "Ticket cancelled."),
+    (
+        "wl_ticketing.cancel_ticket.required",
+        "Give a reason for cancelling.",
+    ),
+    ("wl_ticketing.action.start", "Start work"),
+    ("wl_ticketing.action.resume", "Resume"),
+    ("wl_ticketing.action.resolve", "Mark resolved"),
+    ("wl_ticketing.action.confirm", "Confirm the work"),
+    ("wl_ticketing.action.close", "Close"),
+    ("wl_ticketing.action.reopen", "Reopen"),
+    ("wl_ticketing.action.confirm_title", "Are you sure?"),
+    ("wl_ticketing.action.done", "Done."),
 ];
 
 /// The English text for `key`, or `key` itself when the package has none.
@@ -44,11 +180,34 @@ pub(crate) fn english(key: &str) -> &str {
 }
 
 /// The text for `key`: the app's translation when it has one, else the English one.
-#[expect(dead_code, reason = "the back-office pages (#146 part 7) use it")]
 pub(crate) fn t(lang: &Lang, key: &str) -> String {
     let found = lang.t(key, &[]);
     if found != key {
         return found;
     }
     english(key).to_owned()
+}
+
+/// Every text of the package in `lang`, keyed without the `wl_ticketing.`
+/// prefix (`fields.number`), for the templates: `tx['fields.number']`.
+pub(crate) fn all(lang: &Lang) -> BTreeMap<&'static str, String> {
+    TEXTS
+        .iter()
+        .map(|(key, _)| (key.trim_start_matches("wl_ticketing."), t(lang, key)))
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TEXTS;
+
+    #[test]
+    fn keys_are_unique_and_prefixed() {
+        let mut keys: Vec<&str> = TEXTS.iter().map(|(key, _)| *key).collect();
+        assert!(keys.iter().all(|key| key.starts_with("wl_ticketing.")));
+        let count = keys.len();
+        keys.sort_unstable();
+        keys.dedup();
+        assert_eq!(keys.len(), count);
+    }
 }

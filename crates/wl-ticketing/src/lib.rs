@@ -6,6 +6,7 @@ pub mod config;
 mod machine;
 mod notices;
 pub mod open;
+pub mod pages;
 pub mod priority;
 pub mod reasons;
 pub mod seed;
@@ -15,6 +16,7 @@ pub mod ticket;
 pub mod work;
 
 use renox::db::Migration;
+use renox::nav::NavLink;
 use renox::prelude::*;
 
 pub use assign::{AssignKind, AssignRequest, Assignment, assign};
@@ -24,6 +26,31 @@ pub use priority::Priority;
 pub use reasons::{ReasonRefused, ReassignReason, ReassignReasons};
 pub use sla::{SlaCalendar, provide_sla_calendar, sla_calendar};
 pub use ticket::{Ticket, TicketStatus};
+
+/// The templates, compiled in. An app replaces one with a file of the same
+/// name under its views directory.
+const VIEWS: &[(&str, &str)] = &[
+    (
+        "wl-ticketing/index.html",
+        include_str!("../views/wl-ticketing/index.html"),
+    ),
+    (
+        "wl-ticketing/new.html",
+        include_str!("../views/wl-ticketing/new.html"),
+    ),
+    (
+        "wl-ticketing/show.html",
+        include_str!("../views/wl-ticketing/show.html"),
+    ),
+    (
+        "wl-ticketing/_assign_sheet.html",
+        include_str!("../views/wl-ticketing/_assign_sheet.html"),
+    ),
+    (
+        "wl-ticketing/_assignments.html",
+        include_str!("../views/wl-ticketing/_assignments.html"),
+    ),
+];
 
 /// The module's permissions (wl-ticketing §6).
 pub mod permissions {
@@ -78,11 +105,37 @@ impl Module for WlTicketing {
         "wl-ticketing"
     }
 
+    fn routes(&self) -> Routes {
+        pages::routes()
+    }
+
     fn migrations(&self) -> &'static [Migration] {
         renox::migrations!()
     }
 
     fn register(&self, app: &mut Registry) {
+        app.view_data::<pages::IndexPage>()
+            .view_data::<pages::NewPage>()
+            .view_data::<pages::ShowPage>();
+        app.templates(|env| {
+            for (name, source) in VIEWS {
+                // The app's own file of that name wins.
+                if env.get_template(name).is_err() {
+                    renox::view::add_template(env, *name, *source)
+                        .expect("a built-in template compiles");
+                }
+            }
+        });
+        // In the app group of the staff sidebar; the label is the app's
+        // `nav.tickets` text.
+        app.nav(
+            "app",
+            NavLink::route("wl_ticketing.index", "nav.tickets")
+                .icon("ticket")
+                .group("nav.app")
+                .order(50)
+                .permission(permissions::VIEW),
+        );
         app.model::<SlaPolicy>()
             .model::<SlaTarget>()
             .model::<HoldReason>()

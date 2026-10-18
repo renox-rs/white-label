@@ -1,0 +1,18 @@
+{#- wl-ticketing: the assign action on the ticket page, a sheet with the
+    assignee (a staff member or a vendor party code), the priority and the
+    visit time. On an assigned ticket it is a reassignment and also asks for
+    the reason (and its text, required for "other"). Replace it with
+    resources/views/wl-ticketing/_assign_sheet.html in the app. -#}
+<rx-action-sheet :id="'assign-ticket-' ~ ticket.id" :label="tx['assign.reassign_action'] if reassigning else tx['assign.action']"
+                 :action="route('wl_ticketing.assign', ticket.id)"
+                 :title="tx['assign.reassign_title'] if reassigning else tx['assign.title']" :description="tx['assign.description']"
+                 :submit-label="tx['assign.submit']" icon="user-plus">
+  <rx-select name="assignee_user_id" :label="tx['assign.user']" :options="users" :id="'assign-user-' ~ ticket.id" :placeholder="tx['none']"/>
+  <rx-input name="party_code" :label="tx['assign.party_code']" :hint="tx['assign.party_code_hint']" :id="'assign-party-' ~ ticket.id"/>
+  <rx-select name="priority" :label="tx['fields.priority']" :options="priorities" :selected="priority_selected" :id="'assign-priority-' ~ ticket.id" required/>
+  <rx-input name="visit_at" type="datetime-local" :label="tx['fields.visit_at']" :id="'assign-visit-' ~ ticket.id"/>
+  <template rx-if="reassigning">
+    <rx-select name="reason_code" :label="tx['assign.reason_code']" :options="reasons" :id="'assign-reason-' ~ ticket.id" :placeholder="tx['none']" required/>
+    <rx-textarea name="reason_text" :label="tx['assign.reason_text']" :id="'assign-reason-text-' ~ ticket.id"/>
+  </template>
+</rx-action-sheet>

@@ -1,0 +1,11 @@
+{#- wl-ticketing: the reassignment history of a ticket, one row per assign:
+    who had it, who has it now, why (a reassignment), the visit and when.
+    Replace it with resources/views/wl-ticketing/_assignments.html in the app. -#}
+<rx-table :rows="assignments" as="assignment" :key="assignment.id" :caption="tx['sections.assignments']" card>
+  <rx-column :label="tx['history.change']">{{ assignment.summary }}</rx-column>
+  <rx-column :label="tx['history.reason']">{{ assignment.reason or "" }}{{ (": " ~ assignment.reason_text) if assignment.reason_text else "" }}</rx-column>
+  <rx-column :label="tx['history.visit']" hide-narrow>{{ assignment.visit or "" }}</rx-column>
+  <rx-column :label="tx['history.by']" hide-narrow>{{ assignment.by or "" }}</rx-column>
+  <rx-column :label="tx['history.at']">{{ assignment.at or "" }}</rx-column>
+  <rx-slot name="empty"><rx-empty :title="tx['no_assignments']" icon="user-plus"/></rx-slot>
+</rx-table>
