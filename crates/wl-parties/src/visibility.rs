@@ -55,6 +55,15 @@ pub fn reason_label(lang: &Lang, code: &str) -> String {
     reason_label_with(&texts_in(lang), code)
 }
 
+/// [`reason_label`] in English, for places without a request language (the
+/// block guard).
+pub(crate) fn reason_label_en(code: &str) -> String {
+    reason_label_with(
+        &|key: &str| texts::english(&format!("wl_parties.{key}")),
+        code,
+    )
+}
+
 /// What a blocked party shows for its display code in `lang`: **On hold**
 /// for `on_hold`, else "On hold — <reason>" (e.g. "On hold — Non-payment").
 /// Give it only a display code (the party's `hold_reason`, or

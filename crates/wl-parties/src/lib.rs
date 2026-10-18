@@ -3,6 +3,7 @@
 
 pub mod block;
 pub mod block_effects;
+pub mod block_guard;
 pub mod block_record;
 pub mod contacts;
 pub mod create;
@@ -57,6 +58,9 @@ pub mod permissions {
     pub const BLOCK_REASON_VIEW: &str = "parties.block_reason.view";
     /// Export the parties list.
     pub const EXPORT: &str = "parties.export";
+    /// Approve an exception that lets a guarded action go ahead for a
+    /// blocked party (wl-parties §6; compliance and the finance manager).
+    pub const BLOCK_EXCEPTION: &str = "parties.block_exception";
 }
 
 /// The templates, compiled in. An app replaces one with a file of the same
@@ -112,12 +116,21 @@ pub struct WlParties {
     /// The block reason codes (wl-parties §7): the defaults plus the
     /// vertical's; `None` until one is added, meaning the defaults.
     reasons: Option<BlockReasons>,
+    /// Whether the app screens parties; the exception is then approved by
+    /// `compliance` instead of `finance_manager`.
+    screening: bool,
+    /// The role that approves a block exception, when the app sets one.
+    approver: Option<String>,
 }
 
 /// The module with the default block reason codes, so the host can write
 /// `.module(wl_parties::WlParties)`.
 #[allow(non_upper_case_globals)]
-pub const WlParties: WlParties = WlParties { reasons: None };
+pub const WlParties: WlParties = WlParties {
+    reasons: None,
+    screening: false,
+    approver: None,
+};
 
 impl WlParties {
     /// The module with the default block reason codes.
@@ -139,6 +152,30 @@ impl WlParties {
             .get_or_insert_with(BlockReasons::default)
             .add(code, restricted);
         self
+    }
+
+    /// Turns screening on or off (off by default). With screening on, a
+    /// block exception is approved by `compliance`, else by
+    /// `finance_manager`; [`WlParties::exception_approver`] overrides both.
+    pub fn screening(mut self, on: bool) -> Self {
+        self.screening = on;
+        self
+    }
+
+    /// The role that approves a block exception, whatever the screening
+    /// setting.
+    pub fn exception_approver(mut self, role: &str) -> Self {
+        self.approver = Some(role.to_owned());
+        self
+    }
+
+    /// The role that approves a block exception in this setup.
+    pub fn approver(&self) -> String {
+        match (&self.approver, self.screening) {
+            (Some(role), _) => role.clone(),
+            (None, true) => block_guard::SCREENING_APPROVER.to_owned(),
+            (None, false) => block_guard::DEFAULT_APPROVER.to_owned(),
+        }
     }
 
     /// The block reason codes this module is set up with.
@@ -191,6 +228,11 @@ impl Module for WlParties {
         block_effects::register(app);
         // The neutral on-hold message (the decider sends it).
         notify::register();
+        // Other modules refuse a blocked party through the kernel guard, and
+        // an exception is an approval of the action `parties.block_exception`.
+        let guard = block_guard::PartiesBlockGuard::new(self.approver());
+        guard.policy().register();
+        wl_kernel::block_guard::provide_block_guard(app, guard);
         // Other modules read parties through the kernel (wl-parties §6).
         wl_kernel::parties::provide_directory(app, Directory);
         // `db:seed`: the demo parties (DEMO-DATA.md).
@@ -247,6 +289,14 @@ mod tests {
         assert!(reasons.is_restricted("tax_evasion"));
         assert_eq!(reasons.all().len(), 8);
         reasons.check();
+    }
+
+    #[test]
+    fn the_exception_approver_follows_screening_unless_set() {
+        assert_eq!(WlParties::new().approver(), "finance_manager");
+        assert_eq!(WlParties::new().screening(true).approver(), "compliance");
+        let set = WlParties::new().screening(true).exception_approver("cfo");
+        assert_eq!(set.approver(), "cfo");
     }
 
     #[test]

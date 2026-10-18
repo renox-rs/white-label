@@ -8,6 +8,8 @@ use renox::prelude::*;
 /// Every key the package uses, with its English text.
 const TEXTS: &[(&str, &str)] = &[
     ("wl_parties.title", "Parties"),
+    ("wl_parties.approver.finance_manager", "Finance manager"),
+    ("wl_parties.approver.compliance", "Compliance"),
     ("wl_parties.new", "New party"),
     ("wl_parties.create", "Create party"),
     ("wl_parties.cancel", "Cancel"),
