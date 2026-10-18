@@ -179,6 +179,8 @@ pub(crate) struct ScreeningSettings {
     pub on: bool,
     /// The score at or above which a candidate is a possible match.
     pub threshold: f64,
+    /// The hours after which a sanctions list is stale.
+    pub freshness_hours: i64,
 }
 
 impl ScreeningSettings {
@@ -190,6 +192,7 @@ impl ScreeningSettings {
             .unwrap_or(ScreeningSettings {
                 on: false,
                 threshold: DEFAULT_MATCH_THRESHOLD,
+                freshness_hours: crate::sanctions_lists::DEFAULT_FRESHNESS_HOURS,
             })
     }
 }

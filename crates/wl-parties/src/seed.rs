@@ -17,6 +17,8 @@ use crate::create::{NewParty, create};
 use crate::details::{CompanyDetails, PersonDetails};
 use crate::party::{Channel, Language, Party};
 use crate::roles::PartyRole;
+use crate::sanctions_lists::SanctionsList;
+use crate::screening::ScreeningSettings;
 
 /// One demo party.
 #[derive(Debug, Clone, Copy)]
@@ -265,6 +267,42 @@ pub async fn run(state: &AppState) -> Result<usize> {
             .await?;
         if !exists {
             create(state, demo.new_party()).await?;
+            created += 1;
+        }
+    }
+    Ok(created)
+}
+
+/// The sanctions lists seeded when screening is on (wl-parties §7): name and
+/// source.
+pub const DEFAULT_LISTS: &[(&str, &str)] = &[
+    ("UN Consolidated List", "United Nations Security Council"),
+    (
+        "UAE Local Terrorist List",
+        "UAE Executive Office for Control and Non-Proliferation",
+    ),
+];
+
+/// Creates the [`DEFAULT_LISTS`] that do not exist yet, stale and never
+/// updated until the first download; returns how many it created. Does
+/// nothing when screening is off.
+pub async fn lists(state: &AppState) -> Result<usize> {
+    if !ScreeningSettings::of(state).on {
+        return Ok(0);
+    }
+    let mut created = 0;
+    for (name, source) in DEFAULT_LISTS {
+        let exists = SanctionsList::query()
+            .where_(SanctionsList::NAME.eq(*name))
+            .exists(&state.db)
+            .await?;
+        if !exists {
+            let mut list = SanctionsList {
+                name: (*name).to_owned(),
+                source: (*source).to_owned(),
+                ..SanctionsList::default()
+            };
+            list.insert(&state.db).await?;
             created += 1;
         }
     }

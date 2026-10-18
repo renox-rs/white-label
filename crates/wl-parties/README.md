@@ -19,6 +19,7 @@ What is here so far:
 | Part | Spec | Module |
 |---|---|---|
 | Permissions (`parties.*`) | §6 | `permissions` |
+| Sanctions lists (`SanctionsList`), `ListFeed`, `is_stale`, `WlParties::sanctions_freshness_hours` | §3, §7 | `sanctions_lists`, `feed` |
 | Relationships (`contact_of`, `guardian_of`, …), `relate`, `Directory::related_contacts` | §3 | `relationships`, `directory` |
 
 The module owns `src/texts.rs`, the English texts (`wl_parties.*`). The app changes or

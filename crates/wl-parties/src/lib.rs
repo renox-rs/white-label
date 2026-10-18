@@ -10,6 +10,7 @@ pub mod create;
 pub mod details;
 pub mod directory;
 pub mod evidence;
+pub mod feed;
 mod machine;
 pub mod notify;
 pub mod pages;
@@ -18,6 +19,7 @@ pub mod reasons;
 pub mod relationships;
 pub mod review_tasks;
 pub mod roles;
+pub mod sanctions_lists;
 pub mod screening;
 pub mod screening_task;
 pub mod seed;
@@ -36,6 +38,7 @@ pub use create::{NewParty, create};
 pub use details::{CompanyDetails, PersonDetails};
 pub use directory::Directory;
 pub use evidence::{UnblockBasis, UnblockEvidence};
+pub use feed::{FeedError, ListFeed, ListVersion, NoListFeed};
 pub use party::{Channel, Language, Party};
 pub use reasons::{BlockReason, BlockReasons};
 pub use relationships::{NewRelationship, Relationship, RelationshipType, relate};
@@ -43,6 +46,7 @@ pub use review_tasks::{
     ItemDecision, ReviewTask, ReviewTaskItem, ReviewTaskNote, ReviewTaskStatus,
 };
 pub use roles::PartyRole;
+pub use sanctions_lists::{ListStatus, SanctionsList, UpdateSource, is_stale};
 pub use screening::{
     NewCandidate, Screening, ScreeningCandidate, ScreeningMethod, ScreeningRun, ScreeningTrigger,
     record_run,
@@ -71,6 +75,9 @@ pub mod permissions {
     /// Record a manual sanctions check and decide on screening matches
     /// (compliance role).
     pub const SCREENING_REVIEW: &str = "screening.review";
+    /// Run a screening and see the sanctions lists and their freshness
+    /// (wl-parties §6).
+    pub const SCREENING_RUN: &str = "screening.run";
 }
 
 /// The templates, compiled in. An app replaces one with a file of the same
@@ -142,6 +149,12 @@ pub struct WlParties {
     threshold: Option<f64>,
     /// The role that approves a block exception, when the app sets one.
     approver: Option<String>,
+    /// The hours after which a sanctions list without a successful update is
+    /// stale; `None` means the default (24).
+    freshness_hours: Option<i64>,
+    /// Downloads the sanctions lists; `None` means [`NoListFeed`], which
+    /// always fails.
+    list_feed: Option<std::sync::Arc<dyn ListFeed>>,
 }
 
 /// The module with the default block reason codes, so the host can write
@@ -152,6 +165,8 @@ pub const WlParties: WlParties = WlParties {
     screening: false,
     threshold: None,
     approver: None,
+    freshness_hours: None,
+    list_feed: None,
 };
 
 impl WlParties {
@@ -197,6 +212,31 @@ impl WlParties {
             "the match threshold is between 0 and 1"
         );
         self.threshold = Some(threshold);
+        self
+    }
+
+    /// Sets the hours after which a sanctions list without a successful
+    /// update is stale (wl-parties §7; default 24).
+    ///
+    /// # Panics
+    ///
+    /// When `hours` is not positive.
+    pub fn sanctions_freshness_hours(mut self, hours: i64) -> Self {
+        assert!(hours > 0, "the freshness limit is at least one hour");
+        self.freshness_hours = Some(hours);
+        self
+    }
+
+    /// The hours after which a sanctions list is stale.
+    pub fn freshness_hours(&self) -> i64 {
+        self.freshness_hours
+            .unwrap_or(sanctions_lists::DEFAULT_FRESHNESS_HOURS)
+    }
+
+    /// Sets the feed that downloads the sanctions lists. Without one every
+    /// download fails and the lists show as stale.
+    pub fn list_feed(mut self, feed: impl ListFeed) -> Self {
+        self.list_feed = Some(std::sync::Arc::new(feed));
         self
     }
 
@@ -255,6 +295,7 @@ impl Module for WlParties {
             .model::<Screening>()
             .model::<ScreeningCandidate>()
             .model::<ScreeningTask>()
+            .model::<SanctionsList>()
             .view_data::<pages::IndexPage>()
             .view_data::<pages::NewPage>()
             .view_data::<pages::ShowPage>()
@@ -271,7 +312,14 @@ impl Module for WlParties {
         app.provide(screening::ScreeningSettings {
             on: self.screening,
             threshold: self.threshold(),
+            freshness_hours: self.freshness_hours(),
         });
+        // The list feed; the default fails, so lists show as stale.
+        let feed: std::sync::Arc<dyn ListFeed> = self
+            .list_feed
+            .clone()
+            .unwrap_or_else(|| std::sync::Arc::new(NoListFeed));
+        app.provide(feed);
         // The block reason codes; `on_hold` must be there and not restricted.
         let reasons = self.reasons();
         reasons.check();
@@ -290,7 +338,10 @@ impl Module for WlParties {
         // Other modules read parties through the kernel (wl-parties §6).
         wl_kernel::parties::provide_directory(app, Directory);
         // `db:seed`: the demo parties (DEMO-DATA.md).
-        app.seeder(|state: AppState| async move { seed::run(&state).await.map(|_| ()) });
+        app.seeder(|state: AppState| async move {
+            seed::run(&state).await?;
+            seed::lists(&state).await.map(|_| ())
+        });
         // In the app group of the staff sidebar; the label is the app's
         // `nav.parties` text.
         app.nav(
@@ -366,6 +417,19 @@ mod tests {
     fn the_match_threshold_defaults_to_085_unless_set() {
         assert_eq!(WlParties::new().threshold(), 0.85);
         assert_eq!(WlParties::new().match_threshold(0.9).threshold(), 0.9);
+    }
+
+    #[test]
+    fn the_freshness_limit_defaults_to_24_hours_unless_set() {
+        assert_eq!(WlParties::new().freshness_hours(), 24);
+        let module = WlParties::new().sanctions_freshness_hours(12);
+        assert_eq!(module.freshness_hours(), 12);
+    }
+
+    #[test]
+    #[should_panic(expected = "at least one hour")]
+    fn the_freshness_limit_must_be_positive() {
+        let _ = WlParties::new().sanctions_freshness_hours(0);
     }
 
     #[test]
