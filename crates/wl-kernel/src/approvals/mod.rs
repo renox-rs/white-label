@@ -30,7 +30,9 @@ pub use request::{ApprovalDecision, ApprovalRequest, ApprovalStatus, DecisionKin
 pub use resubmit::{EarlierDecision, earlier_decisions, same_payload};
 pub use submit::{Require, Required, announce, announce_request, require_in};
 pub use tasks::{ResubmitTask, TaskClosed, TaskStatus, close_not_resubmitting, needs_action};
-pub use web::{ApprovalCard, card, cards_for, pending_for, timeline_for};
+pub use web::{
+    ApprovalCard, NeedsActionItem, card, cards_for, needs_action_items, pending_for, timeline_for,
+};
 
 /// Registers the approval models and the request's machine, and installs
 /// the interceptor that turns blocked user transitions into requests.

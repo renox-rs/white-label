@@ -31,6 +31,9 @@ use super::end;
 use super::events::ApprovalEnd;
 use super::policy::Step;
 use super::request::{ApprovalDecision, ApprovalRequest, ApprovalStatus, DecisionKind};
+use super::resubmit::{self, EarlierDecision};
+use super::tasks::{self, ResubmitTask};
+use crate::calendar::BusinessCalendar;
 use crate::subject::Subject;
 use crate::texts;
 
@@ -45,6 +48,10 @@ pub mod route_names {
     pub const REJECT: &str = "wl_kernel.approvals.reject";
     /// `POST /approvals/{id}/withdraw`.
     pub const WITHDRAW: &str = "wl_kernel.approvals.withdraw";
+    /// `POST /approvals/{id}/return`.
+    pub const RETURN: &str = "wl_kernel.approvals.return";
+    /// `POST /approvals/{id}/not-resubmitting`.
+    pub const NOT_RESUBMITTING: &str = "wl_kernel.approvals.not_resubmitting";
 }
 
 /// The pending requests about `subject`, oldest first: the pending-approval
@@ -87,6 +94,32 @@ pub struct CardDecision {
     pub at: Option<DateTime>,
 }
 
+/// One earlier return or rejection in the chain before a request, as the
+/// card shows it: "rejected on 2026-11-02 by Bilal: duplicate".
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct CardEarlier {
+    /// `returned` or `rejected`.
+    pub status: String,
+    /// The badge's colour.
+    pub kind: &'static str,
+    /// The whole line, in the viewer's language.
+    pub text: String,
+}
+
+/// What the viewer may do on a card.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct CardRights {
+    /// Approve, reject or return the current step.
+    decide: bool,
+    /// Withdraw the request (the requester).
+    withdraw: bool,
+    /// Say "not resubmitting" (the requester of a returned request whose
+    /// task is open).
+    close_task: bool,
+    /// The returned request's task is still open.
+    task_open: bool,
+}
+
 /// What the approval card shows about one request, for one viewer.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ApprovalCard {
@@ -120,6 +153,16 @@ pub struct ApprovalCard {
     pub can_decide: bool,
     /// Whether the viewer may withdraw the request (the requester).
     pub can_withdraw: bool,
+    /// Whether the viewer may return the request for changes (an approver of
+    /// the current step, like `can_decide`).
+    pub can_return: bool,
+    /// Whether the request is returned and its "fix and resubmit" task is
+    /// still open.
+    pub task_open: bool,
+    /// Whether the viewer may say "not resubmitting" (the requester).
+    pub can_close_task: bool,
+    /// The returns and rejections before this request, newest first.
+    pub earlier: Vec<CardEarlier>,
     /// The card's texts, in the viewer's language, by name.
     pub labels: BTreeMap<&'static str, String>,
 }
@@ -173,6 +216,23 @@ const LABELS: &[(&str, &str)] = &[
         "wl_kernel.approvals.card.withdraw_message",
     ),
     ("cancel", "wl_kernel.approvals.card.cancel"),
+    ("earlier", "wl_kernel.approvals.card.earlier"),
+    ("return", "wl_kernel.approvals.card.return"),
+    ("return_title", "wl_kernel.approvals.card.return_title"),
+    ("comment_return", "wl_kernel.approvals.card.comment_return"),
+    ("task_open", "wl_kernel.approvals.card.task_open"),
+    (
+        "not_resubmitting",
+        "wl_kernel.approvals.card.not_resubmitting",
+    ),
+    (
+        "not_resubmitting_title",
+        "wl_kernel.approvals.card.not_resubmitting_title",
+    ),
+    (
+        "not_resubmitting_message",
+        "wl_kernel.approvals.card.not_resubmitting_message",
+    ),
 ];
 
 fn labels(tr: Tr<'_>) -> BTreeMap<&'static str, String> {
@@ -270,31 +330,68 @@ pub async fn card(
     lang: &Lang,
 ) -> Result<ApprovalCard> {
     let decisions = request.decisions(db).await?;
+    let earlier = resubmit::earlier_decisions(db, request).await?;
     let people = names(
         db,
-        std::iter::once(request.requester_id).chain(decisions.iter().map(|d| d.approver_id)),
+        std::iter::once(request.requester_id)
+            .chain(decisions.iter().map(|d| d.approver_id))
+            .chain(earlier.iter().map(|e| e.approver)),
     )
     .await?;
     let pending = request.is_pending();
-    let can_decide = pending && decide::ensure_approver(db, request, viewer).await.is_ok();
-    let can_withdraw = pending && request.requester_id == viewer.id;
+    let task_open = request.status == ApprovalStatus::Returned
+        && ResubmitTask::open_for(db, request.id).await?.is_some();
+    let rights = CardRights {
+        decide: pending && decide::ensure_approver(db, request, viewer).await.is_ok(),
+        withdraw: pending && request.requester_id == viewer.id,
+        close_task: task_open && request.requester_id == viewer.id,
+        task_open,
+    };
     Ok(build_card(
         request,
         &decisions,
+        &earlier,
         &people,
-        can_decide,
-        can_withdraw,
+        rights,
         Tr(Some(lang)),
     ))
+}
+
+/// The line of one earlier decision: "rejected on 2026-11-02 by Bilal:
+/// duplicate". The date is the Asia/Dubai day.
+fn earlier_line(tr: Tr<'_>, earlier: &EarlierDecision, people: &BTreeMap<i64, String>) -> String {
+    let key = match earlier.status {
+        ApprovalStatus::Returned => "wl_kernel.approvals.card.earlier_returned",
+        _ => "wl_kernel.approvals.card.earlier_rejected",
+    };
+    let date = earlier.at.map_or_else(
+        || "—".to_owned(),
+        |at| {
+            at.with_timezone(&BusinessCalendar::offset())
+                .format("%Y-%m-%d")
+                .to_string()
+        },
+    );
+    let line = tr.t_with(
+        key,
+        &[
+            ("date", &date),
+            ("name", &name_of(tr, people, earlier.approver)),
+        ],
+    );
+    match earlier.comment.trim() {
+        "" => line,
+        comment => format!("{line}: {comment}"),
+    }
 }
 
 /// The card, from what [`card`] loaded.
 fn build_card(
     request: &ApprovalRequest,
     decisions: &[ApprovalDecision],
+    earlier: &[EarlierDecision],
     people: &BTreeMap<i64, String>,
-    can_decide: bool,
-    can_withdraw: bool,
+    rights: CardRights,
     tr: Tr<'_>,
 ) -> ApprovalCard {
     let steps = request
@@ -350,14 +447,27 @@ fn build_card(
             .subject_moved_to
             .as_ref()
             .map(|state| tr.t_with("wl_kernel.approvals.subject_moved", &[("state", state)])),
-        can_decide,
-        can_withdraw,
+        can_decide: rights.decide,
+        can_withdraw: rights.withdraw,
+        can_return: rights.decide,
+        task_open: rights.task_open,
+        can_close_task: rights.close_task,
+        earlier: earlier
+            .iter()
+            .map(|e| CardEarlier {
+                status: e.status.to_string(),
+                kind: status_kind(e.status),
+                text: earlier_line(tr, e, people),
+            })
+            .collect(),
         labels: labels(tr),
     }
 }
 
-/// The cards of the pending requests about `subject`, for `viewer`: what a
-/// record's page gives the card template as `approvals`.
+/// The cards of the pending requests about `subject`, and of the returned
+/// ones still waiting for their requester (an open "fix and resubmit"
+/// task), for `viewer`: what a record's page gives the card template as
+/// `approvals`.
 pub async fn cards_for(
     db: &Db,
     subject: &Subject,
@@ -368,7 +478,68 @@ pub async fn cards_for(
     for request in pending_for(db, subject).await? {
         cards.push(card(db, &request, viewer, lang).await?);
     }
+    let returned = ApprovalRequest::query()
+        .where_(ApprovalRequest::SUBJECT_TYPE.eq(subject.subject_type.as_str()))
+        .where_(ApprovalRequest::SUBJECT_ID.eq(subject.subject_id))
+        .where_(ApprovalRequest::STATUS.eq(ApprovalStatus::Returned))
+        .order_by(ApprovalRequest::ID)
+        .get(db)
+        .await?;
+    for request in returned {
+        if ResubmitTask::open_for(db, request.id).await?.is_some() {
+            cards.push(card(db, &request, viewer, lang).await?);
+        }
+    }
     Ok(cards)
+}
+
+/// One thing the user must do: fix a returned request and resubmit it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct NeedsActionItem {
+    /// The returned request.
+    pub request_id: i64,
+    /// What to do, in the viewer's language.
+    pub title: String,
+    /// The approver's comment on the return.
+    pub comment: Option<String>,
+    /// The record the request is about: its type (e.g. `invoicing.invoice`).
+    pub subject_type: String,
+    /// The record's id.
+    pub subject_id: i64,
+    /// When it was returned.
+    pub returned_at: Option<DateTime>,
+}
+
+/// The dashboard's "Needs your action" items for `user`, newest first: one
+/// per open "fix and resubmit" task ([`tasks::needs_action`]).
+pub async fn needs_action_items(db: &Db, user: &User, lang: &Lang) -> Result<Vec<NeedsActionItem>> {
+    let mut items = Vec::new();
+    for task in tasks::needs_action(db, user).await? {
+        let Some(request) = ApprovalRequest::find(db, task.request_id).await? else {
+            continue;
+        };
+        let comment = ApprovalDecision::query()
+            .where_(ApprovalDecision::REQUEST_ID.eq(request.id))
+            .where_(ApprovalDecision::DECISION.eq(DecisionKind::Return))
+            .order_by_desc(ApprovalDecision::ID)
+            .first(db)
+            .await?
+            .and_then(|d| d.comment)
+            .filter(|c| !c.trim().is_empty());
+        items.push(NeedsActionItem {
+            request_id: request.id,
+            title: texts::t_with(
+                lang,
+                "wl_kernel.approvals.needs_action.item",
+                &[("action", &request.action)],
+            ),
+            comment,
+            subject_type: request.subject_type.clone(),
+            subject_id: request.subject_id,
+            returned_at: request.decided_at.or(task.created_at),
+        });
+    }
+    Ok(items)
 }
 
 /// The timeline items of every request about `subject` (pending or ended),
@@ -485,7 +656,11 @@ fn end_title_key(end: ApprovalEnd) -> &'static str {
 ///   the current step;
 /// - `POST /approvals/{id}/reject` (`comment` required, not blank), the
 ///   same;
-/// - `POST /approvals/{id}/withdraw`, the requester.
+/// - `POST /approvals/{id}/return` (`comment` required, not blank), the
+///   same: sends the request back for changes;
+/// - `POST /approvals/{id}/withdraw`, the requester;
+/// - `POST /approvals/{id}/not-resubmitting`, the requester of a returned
+///   request: closes its "fix and resubmit" task (422 when already closed).
 pub fn routes() -> Routes {
     Routes::new()
         .post("/approvals/{id}/approve", approve)
@@ -494,6 +669,10 @@ pub fn routes() -> Routes {
         .name(route_names::REJECT)
         .post("/approvals/{id}/withdraw", withdraw)
         .name(route_names::WITHDRAW)
+        .post("/approvals/{id}/return", return_for_changes)
+        .name(route_names::RETURN)
+        .post("/approvals/{id}/not-resubmitting", not_resubmitting)
+        .name(route_names::NOT_RESUBMITTING)
         .require_auth()
 }
 
@@ -558,6 +737,39 @@ async fn reject(
     end::reject(&state, id, &user, form.comment()).await?;
     Ok((
         Toast::success(texts::t(&lang, "wl_kernel.approvals.toast.rejected")),
+        HxRefresh,
+    ))
+}
+
+async fn return_for_changes(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<i64>,
+    lang: Lang,
+    Valid(form): Valid<DecisionForm>,
+) -> Result<(Toast, HxRefresh)> {
+    if form.comment().is_empty() {
+        return Err(comment_required(Tr(Some(&lang)), &form));
+    }
+    end::return_request(&state, id, &user, form.comment()).await?;
+    Ok((
+        Toast::success(texts::t(&lang, "wl_kernel.approvals.toast.returned")),
+        HxRefresh,
+    ))
+}
+
+async fn not_resubmitting(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<i64>,
+    lang: Lang,
+) -> Result<(Toast, HxRefresh)> {
+    tasks::close_not_resubmitting(&state.db, id, &user).await?;
+    Ok((
+        Toast::success(texts::t(
+            &lang,
+            "wl_kernel.approvals.toast.not_resubmitting",
+        )),
         HxRefresh,
     ))
 }
@@ -629,9 +841,12 @@ mod tests {
         let card = build_card(
             &request,
             &[approved_step_one()],
+            &[],
             &people(),
-            true,
-            false,
+            CardRights {
+                decide: true,
+                ..Default::default()
+            },
             Tr(None),
         );
         assert_eq!(card.title, "Approval: payments.refund");
@@ -671,7 +886,14 @@ mod tests {
         let mut request = request(ApprovalStatus::Rejected, 1);
         request.requester_id = 9;
         request.subject_moved_to = Some("cancelled".into());
-        let card = build_card(&request, &[], &people(), false, false, Tr(None));
+        let card = build_card(
+            &request,
+            &[],
+            &[],
+            &people(),
+            CardRights::default(),
+            Tr(None),
+        );
         assert_eq!(card.requester, "User #9");
         assert_eq!(
             card.subject_moved.as_deref(),

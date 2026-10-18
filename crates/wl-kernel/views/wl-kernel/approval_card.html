@@ -32,7 +32,14 @@
           <td>{{ decision.at | date("%Y-%m-%d %H:%M") if decision.at else "—" }}</td>
         </tr>
       </rx-simple-table>
-      <rx-row rx-if="approval.can_decide or approval.can_withdraw">
+      <rx-alert rx-if="approval.task_open" kind="warning" :message="approval.labels.task_open"/>
+      <section rx-if="approval.earlier" :aria-label="approval.labels.earlier">
+        <h3>{{ approval.labels.earlier }}</h3>
+        <rx-list :label="approval.labels.earlier">
+          <li rx-for="item in approval.earlier"><rx-badge :text="item.status" :kind="item.kind"/> <span>{{ item.text }}</span></li>
+        </rx-list>
+      </section>
+      <rx-row rx-if="approval.can_decide or approval.can_withdraw or approval.can_close_task">
         <template rx-if="approval.can_decide">
           <rx-action-sheet :id="'approve-' ~ approval.id" :label="approval.labels.approve" :action="route('wl_kernel.approvals.approve', approval.id)" :title="approval.labels.approve_title" :submit-label="approval.labels.approve" variant="primary" icon="check">
             <rx-textarea name="comment" :label="approval.labels.comment" :hint="approval.labels.comment_optional" :id="'approve-comment-' ~ approval.id"/>
@@ -40,7 +47,11 @@
           <rx-action-sheet :id="'reject-' ~ approval.id" :label="approval.labels.reject" :action="route('wl_kernel.approvals.reject', approval.id)" :title="approval.labels.reject_title" :submit-label="approval.labels.reject" icon="circle-x" danger>
             <rx-textarea name="comment" :label="approval.labels.comment" :hint="approval.labels.comment_reject" :id="'reject-comment-' ~ approval.id" required/>
           </rx-action-sheet>
+          <rx-action-sheet :id="'return-' ~ approval.id" :label="approval.labels.return" :action="route('wl_kernel.approvals.return', approval.id)" :title="approval.labels.return_title" :submit-label="approval.labels.return" icon="undo-2">
+            <rx-textarea name="comment" :label="approval.labels.comment" :hint="approval.labels.comment_return" :id="'return-comment-' ~ approval.id" required/>
+          </rx-action-sheet>
         </template>
+        <rx-confirm rx-if="approval.can_close_task" :id="'not-resubmitting-' ~ approval.id" :label="approval.labels.not_resubmitting" :action="route('wl_kernel.approvals.not_resubmitting', approval.id)" method="POST" :title="approval.labels.not_resubmitting_title" :message="approval.labels.not_resubmitting_message" :confirm-label="approval.labels.not_resubmitting" :cancel-label="approval.labels.cancel" icon="x"/>
         <rx-confirm rx-if="approval.can_withdraw" :id="'withdraw-' ~ approval.id" :label="approval.labels.withdraw" :action="route('wl_kernel.approvals.withdraw', approval.id)" method="POST" :title="approval.labels.withdraw_title" :message="approval.labels.withdraw_message" :confirm-label="approval.labels.withdraw" :cancel-label="approval.labels.cancel" icon="x"/>
       </rx-row>
     </rx-card>

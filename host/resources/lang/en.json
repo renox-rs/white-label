@@ -99,6 +99,9 @@
     "lead": "What happened in your app, and what you did lately.",
     "account": "Your account",
     "users": "Manage users",
+    "needs_action": {
+      "title": "Needs your action"
+    },
     "stats": {
       "signups": "New sign-ups",
       "users": "Users",

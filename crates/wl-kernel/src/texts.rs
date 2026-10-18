@@ -126,6 +126,44 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("wl_kernel.approvals.card.cancel", "Cancel"),
     ("wl_kernel.approvals.card.unknown_user", "User #:id"),
+    ("wl_kernel.approvals.card.earlier", "Earlier decisions"),
+    (
+        "wl_kernel.approvals.card.earlier_rejected",
+        "rejected on :date by :name",
+    ),
+    (
+        "wl_kernel.approvals.card.earlier_returned",
+        "returned on :date by :name",
+    ),
+    ("wl_kernel.approvals.card.return", "Return for changes"),
+    (
+        "wl_kernel.approvals.card.return_title",
+        "Return this request for changes",
+    ),
+    (
+        "wl_kernel.approvals.card.comment_return",
+        "Required. Say what the requester must fix; they get a task to fix and resubmit.",
+    ),
+    (
+        "wl_kernel.approvals.card.task_open",
+        "Returned for changes: waiting for the requester to fix and resubmit.",
+    ),
+    (
+        "wl_kernel.approvals.card.not_resubmitting",
+        "Not resubmitting",
+    ),
+    (
+        "wl_kernel.approvals.card.not_resubmitting_title",
+        "Not resubmitting this request?",
+    ),
+    (
+        "wl_kernel.approvals.card.not_resubmitting_message",
+        "The task to fix and resubmit closes. You can still submit the action again later.",
+    ),
+    (
+        "wl_kernel.approvals.needs_action.item",
+        "Fix and resubmit: :action",
+    ),
     ("wl_kernel.approvals.status.pending", "Pending approval"),
     ("wl_kernel.approvals.status.approved", "Approved"),
     ("wl_kernel.approvals.status.rejected", "Rejected"),
@@ -166,6 +204,14 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("wl_kernel.approvals.toast.rejected", "Request rejected."),
     ("wl_kernel.approvals.toast.withdrawn", "Request withdrawn."),
+    (
+        "wl_kernel.approvals.toast.returned",
+        "Request returned for changes.",
+    ),
+    (
+        "wl_kernel.approvals.toast.not_resubmitting",
+        "Task closed: not resubmitting.",
+    ),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.

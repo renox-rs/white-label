@@ -8,6 +8,7 @@ use renox::audit;
 use renox::chart::{Period, Trend};
 use renox::nav::NavLink;
 use renox::prelude::*;
+use wl_kernel::approvals;
 
 pub struct Dashboard;
 
@@ -36,7 +37,21 @@ impl Module for Dashboard {
     }
 }
 
-async fn show(State(state): State<AppState>, user: AuthUser, period: Period) -> Result<View> {
+/// A page for the record a returned request is about, when the host knows
+/// one (the kernel does not know the modules' routes).
+fn subject_url(subject_type: &str, id: i64) -> Option<String> {
+    match subject_type {
+        "invoicing.invoice" => Some(format!("/invoices/{id}")),
+        _ => None,
+    }
+}
+
+async fn show(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    period: Period,
+) -> Result<View> {
     let signups = Trend::of(User::query(), "created_at")
         .over(period)
         .count(&state)
@@ -52,6 +67,15 @@ async fn show(State(state): State<AppState>, user: AuthUser, period: Period) -> 
         .await?;
     let unread = user.unread_notification_count(&state.db).await?;
     let activity = audit::for_user(&state.db, user.id, 8).await?;
+    // What this person must fix and resubmit (wl-kernel approvals).
+    let needs_action: Vec<_> = approvals::needs_action_items(&state.db, &user, &lang)
+        .await?
+        .into_iter()
+        .map(|item| {
+            let url = subject_url(&item.subject_type, item.subject_id);
+            context! { title => item.title, comment => item.comment, url, returned_at => item.returned_at }
+        })
+        .collect();
     Ok(view(
         "dashboard/show.html",
         context! {
@@ -60,6 +84,7 @@ async fn show(State(state): State<AppState>, user: AuthUser, period: Period) -> 
             verified,
             unread,
             activity,
+            needs_action,
             signups,
             signups_total => signups.total(),
             signups_change => signups.change_from(&signups_before),
