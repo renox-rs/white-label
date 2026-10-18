@@ -3,6 +3,7 @@
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use super::record::VoidRecord;
 use crate::subject::Subject;
 
 /// A record was voided.
@@ -21,6 +22,19 @@ pub struct RecordVoided {
 }
 
 impl Event for RecordVoided {}
+
+impl RecordVoided {
+    /// The event of a stored Void record.
+    pub fn of(void: &VoidRecord) -> Self {
+        RecordVoided {
+            subject: Subject::new(&void.subject_type, void.subject_id),
+            state_before: void.state_before.clone(),
+            reason: void.reason.clone(),
+            user_id: void.voided_by,
+            approval_request_id: void.approval_request_id,
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {

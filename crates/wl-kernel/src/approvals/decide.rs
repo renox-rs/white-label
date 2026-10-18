@@ -43,6 +43,7 @@ use super::events::{ApprovalDecided, ApprovalEnd};
 use super::notify;
 use super::request::{ApprovalDecision, ApprovalRequest, DecisionKind, transitions};
 use crate::machines::{self, Ran, Run, SubjectMachine};
+use crate::voids;
 
 /// A hook that checks, at the final approval of a request and before
 /// `<transition>_approved` runs, whether the action may still go ahead: the
@@ -215,6 +216,8 @@ impl Approval {
                 request_run.emit(state).await?;
                 if let Some(run) = subject_run {
                     run.emit(state).await?;
+                    // A `void` that ran also emits `RecordVoided`.
+                    voids::approval::announce_approved(state, &self.request).await?;
                 }
                 state.emit(decided.clone()).await?;
                 notify::approved(state, &self.request).await?;
@@ -236,7 +239,11 @@ async fn run_approved(
 ) -> Result<std::result::Result<Ran, String>> {
     let subject_id = request.subject_id;
     let name = machines::approved(&request.transition);
-    let run = Run::new().input(request.payload.0.clone()).meta(meta);
+    let mut run = Run::new().input(request.payload.0.clone()).meta(meta);
+    // A reason kept in the payload snapshot (a void's) is the run's reason.
+    if let Some(reason) = request.payload.0.get("reason").and_then(Value::as_str) {
+        run = run.reason(reason);
+    }
     let attempt = tx
         .savepoint(move |tx| {
             Box::pin(async move {

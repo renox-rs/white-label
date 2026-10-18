@@ -8,6 +8,7 @@
 //! registry with its boot checks. [`run`] is the void itself: the two
 //! transitions, [`void`] and the helpers modules use.
 
+pub mod approval;
 pub mod events;
 pub mod record;
 pub mod register;
@@ -28,6 +29,9 @@ pub use run::{
 pub const VOIDED_STATE: &str = "voided";
 /// The transition a user runs to void a record.
 pub const VOID: &str = "void";
+/// The input key the interceptor writes the posted count to; the default
+/// void policy's condition reads it.
+pub const POSTED_KEY: &str = "posted";
 /// The transition the kernel runs as the system once a void is approved.
 pub const VOID_APPROVED: &str = "void_approved";
 

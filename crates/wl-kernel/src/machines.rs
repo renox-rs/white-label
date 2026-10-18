@@ -60,7 +60,7 @@ pub fn approved(action: &str) -> String {
 
 /// The default action key of `transition` on subjects of `subject_type`:
 /// `<module>.<transition>`.
-fn default_action_key(subject_type: &str, transition: &str) -> String {
+pub(crate) fn default_action_key(subject_type: &str, transition: &str) -> String {
     let module = subject_type.split('.').next().unwrap_or_default();
     format!("{module}.{transition}")
 }

@@ -428,32 +428,29 @@ async fn run_as<M: StateMachine<Key = i64>>(
         .reason(reason.trim())
         .run_in(&mut tx)
         .await?;
-    match outcome {
-        Outcome::Done(done) => {
-            let void = VoidRecord::of_subject(&mut tx, &subject)
-                .await?
-                .ok_or_else(|| {
-                    renox::Error::Internal(renox::anyhow::anyhow!(
-                        "{subject}: voided without a Void record"
-                    ))
-                })?;
-            tx.commit().await?;
-            done.emit(state).await?;
-            let event = RecordVoided {
-                subject,
-                state_before: void.state_before,
-                reason: void.reason,
-                user_id: void.voided_by,
-                approval_request_id: void.approval_request_id,
-            };
-            state.emit(event.clone()).await?;
-            Ok(VoidOutcome::Voided(event))
-        }
-        Outcome::Pending(pending) => {
-            tx.commit().await?;
-            Ok(VoidOutcome::Pending(pending.data))
-        }
+    if let Outcome::Pending(pending) = &outcome {
+        let data = pending.data.clone();
+        tx.commit().await?;
+        // The approval request the interceptor created is announced only
+        // now, after the commit.
+        crate::approvals::announce(state, &outcome).await?;
+        return Ok(VoidOutcome::Pending(data));
     }
+    let Outcome::Done(done) = outcome else {
+        unreachable!("an outcome is done or pending");
+    };
+    let void = VoidRecord::of_subject(&mut tx, &subject)
+        .await?
+        .ok_or_else(|| {
+            renox::Error::Internal(renox::anyhow::anyhow!(
+                "{subject}: voided without a Void record"
+            ))
+        })?;
+    tx.commit().await?;
+    done.emit(state).await?;
+    let event = RecordVoided::of(&void);
+    state.emit(event.clone()).await?;
+    Ok(VoidOutcome::Voided(event))
 }
 
 /// What the void rules look at in a machine.
@@ -533,6 +530,7 @@ static REGISTRY: RwLock<BTreeMap<String, Arc<Voidable>>> = RwLock::new(BTreeMap:
 /// Adds `voidable` to the process-wide registry; registering the same
 /// subject type again replaces the entry.
 pub fn register(voidable: Voidable) {
+    super::approval::register_default_policy(&voidable);
     REGISTRY
         .write()
         .unwrap_or_else(PoisonError::into_inner)

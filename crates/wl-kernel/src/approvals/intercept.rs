@@ -20,6 +20,7 @@ use super::policy::ApprovalPolicy;
 use super::submit::{REQUEST_KEY, Require, Required, pending_for_action, require_in};
 use crate::machines::{self, BoxFuture, SubjectMachine};
 use crate::subject::Subject;
+use crate::voids;
 
 /// Defers users' transitions that an approval policy blocks. Installed by
 /// the kernel module at boot.
@@ -68,6 +69,16 @@ impl TransitionInterceptor for ApprovalInterceptor {
             let Some(gated) = gate(request) else {
                 return Ok(Decision::Proceed);
             };
+            // A `void` of a voidable type carries the count of money or stock
+            // postings the kernel found, which its policy's condition reads.
+            let input = voids::approval::with_posted(
+                tx,
+                &gated.subject,
+                &request.transition,
+                request.reason.as_deref(),
+                &request.input,
+            )
+            .await?;
             let require = Require::new(
                 gated.action,
                 gated.subject,
@@ -75,7 +86,7 @@ impl TransitionInterceptor for ApprovalInterceptor {
                 gated.user_id,
                 request.from.clone(),
             )
-            .payload(request.input.clone());
+            .payload(input);
             match require_in(tx, &require).await? {
                 Required::Allowed => Ok(Decision::Proceed),
                 Required::Pending(created) => {
@@ -100,7 +111,17 @@ impl TransitionInterceptor for ApprovalInterceptor {
             {
                 return Ok(Preview::Pending);
             }
-            let policy = ApprovalPolicy::for_action(db, &gated.action, &request.input).await?;
+            let mut tx = db.begin().await?;
+            let input = voids::approval::with_posted(
+                &mut tx,
+                &gated.subject,
+                &request.transition,
+                request.reason.as_deref(),
+                &request.input,
+            )
+            .await?;
+            drop(tx);
+            let policy = ApprovalPolicy::for_action(db, &gated.action, &input).await?;
             Ok(if policy.is_some() {
                 Preview::RequiresApproval
             } else {

@@ -231,6 +231,12 @@ async fn world() -> World {
     app.fake_events();
 
     let db = app.db();
+    // These checks are of the void run itself; the approval a void with
+    // posted money needs is checked in `voids_approval.rs`.
+    sql("UPDATE wl_approval_policies SET active = 0")
+        .execute(db)
+        .await
+        .unwrap();
     permissions::define_role(db, "voider", &[VOID_PERMISSION])
         .await
         .unwrap();
