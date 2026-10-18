@@ -34,6 +34,7 @@ use renox::state_machine::{
 use serde::{Deserialize, Serialize};
 use wl_kernel::tickets::{Assignee, TicketClosed};
 
+use crate::comments::{Comment, CommentVisibility};
 use crate::config::{Category, HoldReason};
 use crate::permissions;
 use crate::sla::{SlaCalendar, sla_calendar};
@@ -57,6 +58,8 @@ pub const CLOSE: &str = "close";
 pub const REOPEN: &str = "reopen";
 /// `cancel`: the ticket is not needed.
 pub const CANCEL: &str = "cancel";
+/// `resolve`, run by the system for the record that opened the ticket.
+pub const RESOLVE_FROM_SOURCE: &str = "resolve_from_source";
 /// `cancel`, run by the system (e.g. the contract ended).
 pub const AUTO_CANCEL: &str = "auto_cancel";
 
@@ -288,6 +291,7 @@ pub(crate) fn transitions() -> Vec<Transition<Ticket>> {
         reopen_transition(),
         cancel_transition(),
         auto_cancel_transition(),
+        resolve_from_source_transition(),
     ]
 }
 
@@ -401,6 +405,46 @@ fn resolve_transition() -> Transition<Ticket> {
                 .where_(Ticket::ID.eq(id))
                 .update(&mut *tx, &[("resolved_at", &at)])
                 .await?;
+            Ok(())
+        })
+    })
+}
+
+/// `resolve_from_source`, run by the system: open, assigned, in_progress or
+/// on_hold → resolved, with the note as the resolution (#67 A8). The note is
+/// kept as a comment the requester sees. Closing follows `close`/`confirm`.
+fn resolve_from_source_transition() -> Transition<Ticket> {
+    with_input(
+        Transition::new(RESOLVE_FROM_SOURCE)
+            .label("Resolve (source)")
+            .tone("success")
+            .from([
+                TicketStatus::Open,
+                TicketStatus::Assigned,
+                TicketStatus::InProgress,
+                TicketStatus::OnHold,
+            ])
+            .to(TicketStatus::Resolved)
+            .reason_required()
+            .system(),
+    )
+    .effect(|ticket: &Ticket, ctx, tx| {
+        let id = ticket.id;
+        let at = input(ctx).map(|i| i.at);
+        let note = ctx.reason().map(|r| r.trim().to_owned());
+        Box::pin(async move {
+            Ticket::query()
+                .where_(Ticket::ID.eq(id))
+                .update(&mut *tx, &[("resolved_at", &at)])
+                .await?;
+            let mut comment = Comment {
+                ticket_id: id,
+                author_user_id: None,
+                visibility: CommentVisibility::Requester,
+                text: note.unwrap_or_default(),
+                ..Comment::default()
+            };
+            comment.insert(&mut *tx).await?;
             Ok(())
         })
     })
@@ -749,6 +793,29 @@ pub async fn auto_cancel(
         .transition(AUTO_CANCEL)
         .by_system()
         .reason(reason)
+        .run(state)
+        .await?;
+    Ok(())
+}
+
+/// The system resolves `ticket` at `at` for the record that opened it, with
+/// `note` as the resolution.
+///
+/// # Errors
+///
+/// `ReasonRequired` without a note; `NotFrom` unless it is `open`,
+/// `assigned`, `in_progress` or `on_hold`.
+pub async fn resolve_from_source(
+    state: &AppState,
+    ticket: &Ticket,
+    note: &str,
+    at: DateTime,
+) -> std::result::Result<(), TransitionError> {
+    let _outcome = ticket
+        .transition(RESOLVE_FROM_SOURCE)
+        .by_system()
+        .reason(note)
+        .input(&WorkInput::at(at))
         .run(state)
         .await?;
     Ok(())
@@ -1146,6 +1213,36 @@ mod system_tests {
         assert!(matches!(refused, Err(TransitionError::NotFrom(_))));
         let again = auto_cancel(app.state(), &ticket, "Again").await;
         assert!(matches!(again, Err(TransitionError::NotFrom(_))));
+    }
+
+    #[renox::test]
+    async fn the_system_resolves_from_the_source_with_the_note() {
+        let app = app().await;
+        let at = dubai("2026-11-04", 10);
+        for (number, status) in [
+            ("TKT-2026-9010", TicketStatus::Open),
+            ("TKT-2026-9011", TicketStatus::Assigned),
+            ("TKT-2026-9012", TicketStatus::InProgress),
+            ("TKT-2026-9013", TicketStatus::OnHold),
+        ] {
+            let born = born_in(&app, number, status, None).await;
+            let blank = resolve_from_source(app.state(), &born, " ", at).await;
+            assert!(matches!(blank, Err(TransitionError::ReasonRequired)));
+            resolve_from_source(app.state(), &born, " Credited AED 12 ", at)
+                .await
+                .unwrap();
+            let ticket = Ticket::find_or_404(app.db(), born.id).await.unwrap();
+            assert_eq!(ticket.status, TicketStatus::Resolved, "{number}");
+            assert_eq!(ticket.resolved_at, Some(at));
+            let comments = Comment::of_ticket(app.db(), born.id).await.unwrap();
+            assert_eq!(comments.len(), 1);
+            assert_eq!(comments[0].text, "Credited AED 12");
+            assert_eq!(comments[0].author_user_id, None);
+            assert_eq!(comments[0].visibility, CommentVisibility::Requester);
+            // Not twice.
+            let again = resolve_from_source(app.state(), &ticket, "x", at).await;
+            assert!(matches!(again, Err(TransitionError::NotFrom(_))));
+        }
     }
 
     #[renox::test]

@@ -106,6 +106,14 @@ impl WlTicketing {
     }
 }
 
+/// Whether the manifest enables `invoicing` (false when the kernel module is
+/// not part of the app).
+fn invoicing_on(state: &AppState) -> bool {
+    state
+        .provided::<std::sync::Arc<wl_kernel::Manifest>>()
+        .is_some_and(|manifest| manifest.is_enabled("invoicing"))
+}
+
 impl Module for WlTicketing {
     fn name(&self) -> &'static str {
         "wl-ticketing"
@@ -165,13 +173,17 @@ impl Module for WlTicketing {
         // The seeded defaults keep the client's changes.
         app.command(
             "ticketing:install",
-            "Store the default SLA policy, hold reasons and category, where the database lacks them",
+            "Store the default SLA policy, hold reasons and categories, where the database lacks them",
             |_args, state: AppState| async move {
-                let installed = seed::install(&state.db).await?;
+                let installed = seed::install_with(&state.db, invoicing_on(&state)).await?;
                 println!("{} ticketing defaults created.", installed.total());
                 Ok(())
             },
         );
-        app.seeder(|state: AppState| async move { seed::install(&state.db).await.map(|_| ()) });
+        app.seeder(|state: AppState| async move {
+            seed::install_with(&state.db, invoicing_on(&state))
+                .await
+                .map(|_| ())
+        });
     }
 }

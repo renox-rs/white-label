@@ -1,7 +1,8 @@
 //! The idempotent seeder with the §7 defaults (#146 A4, A6): the SLA policy
 //! `standard`, the hold reasons Parts, Access, Waiting on requester and
 //! Approval, and the categories `general` and `task`
-//! (the kernel's [`TASK_CATEGORY`], for staff tasks other modules open).
+//! (the kernel's [`TASK_CATEGORY`], for staff tasks other modules open). With
+//! `invoicing` enabled, [`install_with`] adds `billing_dispute` too (#67 A6).
 //!
 //! [`install`] adds the rows the database lacks and keeps every row that is
 //! there, so a client's edits survive a re-run. The targets of a policy are
@@ -23,6 +24,12 @@ pub const TASK_CATEGORY: &str = wl_kernel::tickets::TASK_CATEGORY;
 
 /// The seeded categories as (key, English name).
 pub const CATEGORIES: [(&str, &str); 2] = [(GENERAL_CATEGORY, "General"), (TASK_CATEGORY, "Task")];
+
+/// The key of the category of invoice disputes, seeded when invoicing is on.
+pub const BILLING_DISPUTE_CATEGORY: &str = "billing_dispute";
+
+/// The categories seeded when `invoicing` is enabled, as (key, English name).
+pub const INVOICING_CATEGORIES: [(&str, &str); 1] = [(BILLING_DISPUTE_CATEGORY, "Billing dispute")];
 
 /// One SLA working hour, in minutes.
 const HOUR: i64 = 60;
@@ -66,8 +73,15 @@ impl Installed {
     }
 }
 
-/// Stores the defaults the database lacks, in one transaction.
+/// Stores the defaults the database lacks, in one transaction, for an app
+/// without invoicing.
 pub async fn install(db: &Db) -> Result<Installed> {
+    install_with(db, false).await
+}
+
+/// Like [`install`]; with `invoicing` the categories of invoicing are added
+/// too. A category stays when invoicing is turned off later.
+pub async fn install_with(db: &Db, invoicing: bool) -> Result<Installed> {
     let mut tx = db.begin().await?;
     let mut installed = Installed::default();
 
@@ -117,7 +131,12 @@ pub async fn install(db: &Db) -> Result<Installed> {
         }
     }
 
-    for (key, name) in CATEGORIES {
+    let invoicing_categories: &[(&str, &str)] = if invoicing {
+        &INVOICING_CATEGORIES
+    } else {
+        &[]
+    };
+    for &(key, name) in CATEGORIES.iter().chain(invoicing_categories) {
         if Category::by_key(&mut tx, key).await?.is_none() {
             Category::create(
                 &mut tx,
@@ -171,6 +190,46 @@ mod tests {
         for (key, _, pauses) in HOLD_REASONS {
             assert_eq!(pauses, key != "approval", "{key}");
         }
+    }
+
+    #[renox::test]
+    async fn the_billing_dispute_category_is_seeded_only_with_invoicing_and_keeps_its_label() {
+        use renox::testing::TestApp;
+
+        let app = TestApp::new(App::new().module(crate::WlTicketing::new())).await;
+        let db = app.db();
+        install(db).await.unwrap();
+        assert!(
+            Category::by_key(db, BILLING_DISPUTE_CATEGORY)
+                .await
+                .unwrap()
+                .is_none()
+        );
+
+        let added = install_with(db, true).await.unwrap();
+        assert_eq!(added.categories, 1);
+        let mut dispute = Category::by_key(db, BILLING_DISPUTE_CATEGORY)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(dispute.name_en, "Billing dispute");
+        assert_eq!(dispute.default_priority, Priority::Normal);
+        assert!(dispute.active && !dispute.requires_signoff && !dispute.chargeable);
+        let policy = SlaPolicy::by_key(db, STANDARD_POLICY)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(dispute.sla_policy_id, Some(policy.id));
+
+        dispute.name_en = "Invoice query".to_owned();
+        dispute.save(db).await.unwrap();
+        assert_eq!(install_with(db, true).await.unwrap(), Installed::default());
+        let renamed = Category::by_key(db, BILLING_DISPUTE_CATEGORY)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(renamed.name_en, "Invoice query");
+        assert_eq!(Category::query().count(db).await.unwrap(), 3);
     }
 
     #[renox::test]

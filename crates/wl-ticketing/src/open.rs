@@ -22,6 +22,8 @@ use crate::assign::{assign_as_system, check_assignee};
 use crate::comments::{Comment, CommentVisibility};
 use crate::config::Category;
 use crate::ticket::{Ticket, TicketStatus};
+use crate::work::resolve_from_source;
+use renox::state_machine::TransitionError;
 
 /// The ticket service: opens tickets, and is the app's [`TaskCreator`].
 #[derive(Debug, Clone, Copy, Default)]
@@ -155,6 +157,29 @@ impl Tickets {
     }
 }
 
+impl Tickets {
+    /// Resolves ticket `id` for the record that opened it, with `note` as the
+    /// resolution. `false` when the ticket is unknown or already resolved,
+    /// closed or cancelled.
+    ///
+    /// # Errors
+    ///
+    /// 422 for a blank note.
+    pub async fn resolve_from_source(state: &AppState, id: TicketId, note: &str) -> Result<bool> {
+        let Some(ticket) = Ticket::find(&state.db, id.0).await? else {
+            return Ok(false);
+        };
+        if !ticket.is_open() {
+            return Ok(false);
+        }
+        match resolve_from_source(state, &ticket, note, renox::db::now()).await {
+            Ok(()) => Ok(true),
+            Err(TransitionError::NotFrom(_)) => Ok(false),
+            Err(error) => Err(abort(StatusCode::UNPROCESSABLE_ENTITY, error.to_string())),
+        }
+    }
+}
+
 impl TaskCreator for Tickets {
     fn open<'a>(
         &'a self,
@@ -170,6 +195,15 @@ impl TaskCreator for Tickets {
         source_key: &'a str,
     ) -> TicketFuture<'a, Option<TicketRef>> {
         Box::pin(Tickets::find_open(state, source_key))
+    }
+
+    fn resolve_from_source<'a>(
+        &'a self,
+        state: &'a AppState,
+        ticket: TicketId,
+        note: &'a str,
+    ) -> TicketFuture<'a, bool> {
+        Box::pin(Tickets::resolve_from_source(state, ticket, note))
     }
 
     fn comment<'a>(
@@ -315,6 +349,50 @@ mod tests {
             .unwrap()
             .expect("ticketing is on");
         assert_eq!(opened.number, "TKT-2026-0001");
+    }
+
+    #[renox::test]
+    async fn the_task_creator_resolves_from_the_source_once() {
+        let app = app().await;
+        let opened = Tickets::open(
+            app.state(),
+            OpenTicket::new(Subject::new("property.unit", 12), "general", "Leaking tap"),
+        )
+        .await
+        .unwrap();
+        let creator = task_creator(app.state());
+        let state = app.state();
+        assert!(
+            creator
+                .resolve_from_source(state, opened.id, "Done")
+                .await
+                .unwrap()
+        );
+        let ticket = Ticket::find_or_404(app.db(), opened.id.0).await.unwrap();
+        assert_eq!(ticket.status, TicketStatus::Resolved);
+        assert!(ticket.resolved_at.is_some());
+        // Already resolved, or unknown: nothing happens.
+        assert!(
+            !creator
+                .resolve_from_source(state, opened.id, "Again")
+                .await
+                .unwrap()
+        );
+        assert!(
+            !creator
+                .resolve_from_source(state, TicketId(999), "x")
+                .await
+                .unwrap()
+        );
+        // A blank note is refused and leaves the ticket as it is.
+        let other = Tickets::open(
+            state,
+            OpenTicket::new(Subject::new("property.unit", 12), "general", "Door"),
+        )
+        .await
+        .unwrap();
+        let blank = creator.resolve_from_source(state, other.id, "  ").await;
+        assert!(refused(&blank.unwrap_err()));
     }
 
     #[renox::test]
