@@ -20,8 +20,8 @@ use wl_kernel::LegalEntity;
 use wl_kernel::approvals::{self, ApprovalRequest};
 use wl_kernel::documents::today;
 use wl_kernel::invoicing::{
-    CreditNoteReopened, DraftLine, InvoiceDraft, InvoiceId, InvoiceIssued, InvoiceOverdue,
-    InvoicePaid, InvoiceWrittenOff, VatCategory,
+    BadDebtRecovered, CreditNoteReopened, DraftLine, InvoiceDraft, InvoiceId, InvoiceIssued,
+    InvoiceOverdue, InvoicePaid, InvoiceWrittenOff, VatCategory,
 };
 use wl_kernel::notify::{MessageId, Notifier, NotifyFuture, NotifyRequest};
 use wl_kernel::parties::{BillingIdentity, PartyDirectory, PartyFuture, PartyStatus, PartySummary};
@@ -232,6 +232,8 @@ pub struct Booted {
     pub written_off: Recorded<InvoiceWrittenOff>,
     /// `CreditNoteReopened`.
     pub reopened: Recorded<CreditNoteReopened>,
+    /// `BadDebtRecovered`.
+    pub recovered: Recorded<BadDebtRecovered>,
 }
 
 impl Booted {
@@ -702,6 +704,7 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
     let paid = Recorded::new();
     let written_off = Recorded::new();
     let reopened = Recorded::new();
+    let recovered = Recorded::new();
     let notices = Recording::default();
     let directory: Arc<dyn PartyDirectory> = Arc::new(TestDirectory);
     let notifier: Arc<dyn Notifier> = Arc::new(notices.clone());
@@ -717,6 +720,7 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
     let app = record(app, &paid);
     let app = record(app, &written_off);
     let app = record(app, &reopened);
+    let app = record(app, &recovered);
     let config = ClientConfig::parse(CLIENT).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     let dir = views.path().to_path_buf();
@@ -778,5 +782,6 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
         paid,
         written_off,
         reopened,
+        recovered,
     }
 }
