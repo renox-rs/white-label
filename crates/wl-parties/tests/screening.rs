@@ -3,12 +3,15 @@
 
 mod support;
 
+use std::sync::{Arc, Mutex};
+
+use renox::chrono::Duration;
 use renox::prelude::*;
 use renox::state_machine::TransitionError;
-use wl_kernel::ScreeningStatus;
+use wl_kernel::{ScreeningCompleted, ScreeningFlagged, ScreeningStatus};
 use wl_parties::{
-    NewCandidate, Party, Screening, ScreeningRun, ScreeningTrigger, WlParties, permissions as perm,
-    record_run,
+    NewCandidate, Party, Screening, ScreeningRun, ScreeningTask, ScreeningTaskStatus,
+    ScreeningTrigger, WlParties, permissions as perm, record_run,
 };
 
 use support::{Booted, boot, boot_custom, boot_with};
@@ -177,4 +180,143 @@ async fn a_bad_candidate_score_is_refused() {
     let refused = record_run(t.app.state(), &party, automatic(&[1.5]), None).await;
     assert!(matches!(refused, Err(TransitionError::Guard(_))));
     assert!(screenings(&t, &party).await.is_empty());
+}
+
+async fn tasks(t: &Booted, party: &Party) -> Vec<ScreeningTask> {
+    ScreeningTask::query()
+        .where_(ScreeningTask::PARTY_ID.eq(party.id))
+        .order_by(ScreeningTask::ID)
+        .get(t.db())
+        .await
+        .unwrap()
+}
+
+#[renox::test]
+async fn a_flag_opens_one_task_due_24_hours_later() {
+    let t = boot_with(WlParties::new().screening(true), true).await;
+    let party = t.party(AL_NOOR).await;
+    let clear = record_run(t.app.state(), &party, automatic(&[0.3]), None)
+        .await
+        .unwrap();
+    assert_eq!(clear.task_id, None);
+    assert!(tasks(&t, &party).await.is_empty());
+
+    let flagged = record_run(t.app.state(), &party, automatic(&[0.91]), None)
+        .await
+        .unwrap();
+    let open = tasks(&t, &party).await;
+    assert_eq!(open.len(), 1);
+    assert_eq!(open[0].status, ScreeningTaskStatus::Open);
+    assert_eq!(open[0].due_at, open[0].flagged_at + Duration::hours(24));
+    assert_eq!(flagged.task_id, Some(open[0].id));
+    assert_eq!(open[0].candidates(t.db()).await.unwrap().len(), 1);
+}
+
+#[renox::test]
+async fn a_rescreen_joins_the_open_task_and_keeps_its_due_time() {
+    let t = boot_with(WlParties::new().screening(true), true).await;
+    let party = t.party(AL_NOOR).await;
+    let first = record_run(t.app.state(), &party, automatic(&[0.91, 0.88]), None)
+        .await
+        .unwrap();
+    let before = tasks(&t, &party).await;
+    t.app.travel(std::time::Duration::from_secs(4 * 3600));
+    let second = record_run(t.app.state(), &party, automatic(&[0.95]), None)
+        .await
+        .unwrap();
+    let after = tasks(&t, &party).await;
+    assert_eq!(after.len(), 1);
+    assert_eq!(after[0].due_at, before[0].due_at);
+    assert_eq!(first.task_id, second.task_id);
+    // One task lists the candidates of both runs.
+    assert_eq!(after[0].candidates(t.db()).await.unwrap().len(), 3);
+    assert_eq!(after[0].screenings(t.db()).await.unwrap().len(), 2);
+}
+
+#[renox::test]
+async fn closing_the_task_is_idempotent_and_the_next_flag_opens_a_new_one() {
+    let t = boot_with(WlParties::new().screening(true), true).await;
+    let party = t.party(AL_NOOR).await;
+    record_run(t.app.state(), &party, automatic(&[0.9]), None)
+        .await
+        .unwrap();
+    let mut tx = t.db().begin_immediate().await.unwrap();
+    assert!(
+        ScreeningTask::close_for_party(&mut tx, party.id)
+            .await
+            .unwrap()
+    );
+    assert!(
+        !ScreeningTask::close_for_party(&mut tx, party.id)
+            .await
+            .unwrap()
+    );
+    tx.commit().await.unwrap();
+    let closed = tasks(&t, &party).await;
+    assert_eq!(closed[0].status, ScreeningTaskStatus::Closed);
+    assert!(closed[0].closed_at.is_some());
+    record_run(t.app.state(), &party, automatic(&[0.9]), None)
+        .await
+        .unwrap();
+    let all = tasks(&t, &party).await;
+    assert_eq!(all.len(), 2);
+    assert_eq!(all[1].status, ScreeningTaskStatus::Open);
+}
+
+#[renox::test]
+async fn a_refused_flag_leaves_no_task() {
+    let t = boot_with(WlParties::new().screening(true), true).await;
+    let party = t.party(AL_NOOR).await;
+    let run = ScreeningRun::manual(vec![candidate(0.95)]);
+    let refused = record_run(t.app.state(), &party, run, None).await;
+    assert!(matches!(refused, Err(TransitionError::Guard(_))));
+    assert!(tasks(&t, &party).await.is_empty());
+}
+
+type Seen = (
+    Arc<Mutex<Vec<ScreeningCompleted>>>,
+    Arc<Mutex<Vec<ScreeningFlagged>>>,
+);
+
+#[renox::test]
+async fn a_clear_run_emits_completed_and_a_flag_emits_flagged_only() {
+    let seen: Seen = Default::default();
+    let (done, flagged) = (Arc::clone(&seen.0), Arc::clone(&seen.1));
+    let t = boot_custom(WlParties::new().screening(true), true, move |app| {
+        app.listen(move |event: ScreeningCompleted, _state: AppState| {
+            let done = Arc::clone(&done);
+            async move {
+                done.lock().unwrap().push(event);
+                Ok(())
+            }
+        })
+        .listen(move |event: ScreeningFlagged, _state: AppState| {
+            let flagged = Arc::clone(&flagged);
+            async move {
+                flagged.lock().unwrap().push(event);
+                Ok(())
+            }
+        })
+    })
+    .await;
+    let party = t.party(AL_NOOR).await;
+    let possible = record_run(t.app.state(), &party, automatic(&[0.9]), None)
+        .await
+        .unwrap();
+    assert!(seen.0.lock().unwrap().is_empty());
+    {
+        let flagged = seen.1.lock().unwrap();
+        assert_eq!(flagged.len(), 1);
+        assert_eq!(flagged[0].party.0, party.id);
+        assert_eq!(flagged[0].screening.0, possible.id);
+        assert_eq!(flagged[0].status, ScreeningStatus::PossibleMatch);
+    }
+    let clear = record_run(t.app.state(), &party, automatic(&[0.1]), None)
+        .await
+        .unwrap();
+    let done = seen.0.lock().unwrap();
+    assert_eq!(done.len(), 1);
+    assert_eq!(done[0].screening.0, clear.id);
+    assert_eq!(done[0].status, ScreeningStatus::Clear);
+    assert_eq!(seen.1.lock().unwrap().len(), 1);
 }

@@ -17,16 +17,19 @@
 //! run also needs a reviewer holding `screening.review` and the list entry
 //! of every candidate. [`record_run`] is the service entry: it checks that
 //! screening is on, stores the run, picks the transition and runs it. The
-//! compliance task, the alerts and the events come with the `flag` effect.
+//! `flag` also opens or joins the compliance task
+//! ([`ScreeningTask`]); after the commit the run emits `ScreeningCompleted`
+//! (clear) or `ScreeningFlagged` (possible match). The alerts come later.
 
 use renox::db::DateTime;
 use renox::prelude::*;
 use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx, TransitionError};
 use serde::{Deserialize, Serialize};
-use wl_kernel::ScreeningStatus;
+use wl_kernel::{PartyId, ScreeningCompleted, ScreeningFlagged, ScreeningId, ScreeningStatus};
 
 use crate::party::Party;
 use crate::permissions;
+use crate::screening_task::ScreeningTask;
 use crate::texts;
 
 /// The system transition for a run with no candidate at the threshold.
@@ -339,7 +342,12 @@ impl Screening {
 /// threshold ([`crate::WlParties::match_threshold`], compared with `>=`),
 /// else `complete_clear`. `by` is the reviewer of a manual run (it needs
 /// `screening.review`). It all happens in one transaction. Returns the
-/// screening as stored after the transition. No task, alert or event yet.
+/// screening as stored after the transition.
+///
+/// A `flag` also opens the party's compliance task, due 24 hours later, or
+/// links the screening to the open one (the due time stays). After the
+/// commit a `clear` run emits `ScreeningCompleted` and a `possible_match`
+/// emits `ScreeningFlagged` (compliance listeners only, no candidate data).
 ///
 /// # Errors
 ///
@@ -392,6 +400,10 @@ pub async fn record_run(
         lists_stale: run.lists_stale,
         ..Screening::default()
     };
+    if transition == FLAG {
+        let (task, _opened) = ScreeningTask::for_flag(&mut tx, party.id, renox::db::now()).await?;
+        screening.task_id = Some(task.id);
+    }
     screening.insert(&mut tx).await?;
     for candidate in &run.candidates {
         let mut row = ScreeningCandidate {
@@ -420,6 +432,24 @@ pub async fn record_run(
     let stored = Screening::find(&state.db, screening.id)
         .await?
         .ok_or(renox::Error::NotFound)?;
+    let (party, screening, status) = (PartyId(party.id), ScreeningId(stored.id), stored.status);
+    if status == ScreeningStatus::PossibleMatch {
+        state
+            .emit(ScreeningFlagged {
+                party,
+                screening,
+                status,
+            })
+            .await?;
+    } else {
+        state
+            .emit(ScreeningCompleted {
+                party,
+                screening,
+                status,
+            })
+            .await?;
+    }
     Ok(stored)
 }
 

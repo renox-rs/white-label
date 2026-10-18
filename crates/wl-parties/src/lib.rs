@@ -19,6 +19,7 @@ pub mod relationships;
 pub mod review_tasks;
 pub mod roles;
 pub mod screening;
+pub mod screening_task;
 pub mod seed;
 mod texts;
 pub mod unblock;
@@ -46,6 +47,7 @@ pub use screening::{
     NewCandidate, Screening, ScreeningCandidate, ScreeningMethod, ScreeningRun, ScreeningTrigger,
     record_run,
 };
+pub use screening_task::{ScreeningTask, ScreeningTaskStatus};
 pub use unblock::{UnblockRequest, unblock};
 
 /// The module's permissions (wl-parties §6).
@@ -244,6 +246,7 @@ impl Module for WlParties {
             .model::<ReviewTaskNote>()
             .model::<Screening>()
             .model::<ScreeningCandidate>()
+            .model::<ScreeningTask>()
             .view_data::<pages::IndexPage>()
             .view_data::<pages::NewPage>()
             .view_data::<pages::ShowPage>()
