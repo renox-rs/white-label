@@ -4,10 +4,7 @@
 use renox::prelude::*;
 
 /// Every key the package uses, with its English text.
-const TEXTS: &[(&str, &str)] = &[
-    ("wl_kernel.title", "Wl Kernel"),
-    ("wl_kernel.empty", "Nothing here yet."),
-];
+const TEXTS: &[(&str, &str)] = &[("wl_kernel.legal_entities", "Legal entities")];
 
 /// The text for `key`: the app's translation when it has one, else the English one.
 pub(crate) fn t(lang: &Lang, key: &str) -> String {

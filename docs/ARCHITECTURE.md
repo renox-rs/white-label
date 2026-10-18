@@ -252,15 +252,27 @@ accent = "#0F766E"
 theme  = "classic"
 
 [modules]
-enabled = ["portal", "documents", "invoicing", "payments", "ticketing", "notify"]
+# Without the `wl-` prefix. A module whose dependency is missing stops the boot
+# (`payments` needs `invoicing`; `portal` needs `parties` and `notify`).
+enabled = ["parties", "portal", "documents", "invoicing", "payments", "ticketing", "notify"]
+
+# The issuing companies (decision 0003); exactly one is the default.
+[[legal_entities]]
+code    = "ACME"
+name_en = "Acme Properties LLC"
+trn     = "100123456700003"
+default = true
 
 [invoicing]
-trn    = "100123456700003"
 prefix = "ACM-INV"
 
 [ticketing]
 statuses = ["open", "assigned", "in_progress", "awaiting_parts", "done"]
 ```
+
+The host reads the file named by `CLIENT_CONFIG` (outside production, the demo client in
+`clients/demo-properties/`). `wl_kernel::ClientConfig` parses it, and `rnx wl:install` creates
+the listed legal entities after `migrate`.
 
 The values in `client.toml` seed the **settings store** (R2) on first run. After that, the
 client can change some of them through the admin.

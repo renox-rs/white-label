@@ -19,7 +19,18 @@ pub const ADMIN: &str = "admin";
 pub const MEMBER: &str = "member";
 
 /// Each role and its permissions.
-pub const ROLES: &[(&str, &[&str])] = &[(ADMIN, &[USERS, ACTIVITY]), (MEMBER, &[])];
+pub const ROLES: &[(&str, &[&str])] = &[
+    (
+        ADMIN,
+        &[
+            USERS,
+            ACTIVITY,
+            wl_kernel::permissions::LEGAL_ENTITIES_VIEW,
+            wl_kernel::permissions::LEGAL_ENTITIES_MANAGE,
+        ],
+    ),
+    (MEMBER, &[]),
+];
 
 /// Creates the roles, or brings their permissions up to date.
 pub async fn define(db: &Db) -> Result {

@@ -1,32 +1,78 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
-mod model;
+pub mod branding;
+pub mod config;
+pub mod entities;
+pub mod manifest;
+pub mod numbering;
+pub mod subject;
 mod texts;
 
+use std::sync::Arc;
+
 use renox::db::Migration;
+use renox::nav::NavLink;
 use renox::prelude::*;
 use serde::Serialize;
 
-pub use model::Entry;
+pub use config::{ClientConfig, ConfigError};
+pub use entities::{IssuerSnapshot, LegalEntity, ScopeEntity};
+pub use manifest::Manifest;
+pub use numbering::{Reset, Series};
+pub use subject::Subject;
+
+/// The kernel's permissions (wl-kernel §6).
+pub mod permissions {
+    /// See legal entities and scope–entity links.
+    pub const LEGAL_ENTITIES_VIEW: &str = "legal_entities.view";
+    /// Maintain legal entities and scope–entity links.
+    pub const LEGAL_ENTITIES_MANAGE: &str = "legal_entities.manage";
+    /// Pick a non-default issuing entity on a draft document.
+    pub const LEGAL_ENTITIES_CHOOSE: &str = "legal_entities.choose";
+}
 
 /// The templates, compiled in. An app replaces one with a file of the same
-/// name under its views directory (`resources/views/wl-kernel/index.html`).
+/// name under its views directory.
 const VIEWS: &[(&str, &str)] = &[(
-    "wl-kernel/index.html",
-    include_str!("../views/wl-kernel/index.html"),
+    "wl-kernel/legal_entities.html",
+    include_str!("../views/wl-kernel/legal_entities.html"),
 )];
 
-/// The Wl Kernel module. Add it to the app with `.module(wl_kernel::WlKernel)`.
-pub struct WlKernel;
+/// The kernel module. The host adds it with [`apply`], which also gives the
+/// app the client's theme and languages.
+pub struct WlKernel {
+    config: Arc<ClientConfig>,
+    manifest: Arc<Manifest>,
+}
 
-/// What the page needs; `view:check` compares it with the template.
+impl WlKernel {
+    /// The kernel for this client. Fails when `client.toml` lists modules
+    /// whose dependencies are not enabled.
+    pub fn new(config: ClientConfig) -> Result<Self, ConfigError> {
+        let manifest = config.manifest()?;
+        Ok(WlKernel {
+            config: Arc::new(config),
+            manifest: Arc::new(manifest),
+        })
+    }
+}
+
+/// Gives `app` this client's kernel, theme and languages.
+pub fn apply(app: App, config: ClientConfig) -> Result<App, ConfigError> {
+    let theme = branding::theme(&config.branding)?;
+    let kernel = WlKernel::new(config)?;
+    // Arabic pages are right-to-left already: Renox sets `app.dir` to `rtl` for `ar`.
+    Ok(app.theme(theme).module(kernel))
+}
+
+/// What the legal entities page needs; `view:check` compares it with the
+/// template.
 #[derive(Serialize, ViewData)]
-#[view(template = "wl-kernel/index.html")]
-struct IndexPage {
+#[view(template = "wl-kernel/legal_entities.html")]
+struct LegalEntitiesPage {
     heading: String,
-    empty: String,
-    entries: Vec<Entry>,
+    entities: Vec<LegalEntity>,
 }
 
 impl Module for WlKernel {
@@ -34,9 +80,11 @@ impl Module for WlKernel {
         "wl-kernel"
     }
 
-    // Public on purpose: add `.require_auth()` to protect the page.
     fn routes(&self) -> Routes {
-        Routes::new().get("/wl-kernel", index).name("wl_kernel.index")
+        Routes::new()
+            .get("/legal-entities", legal_entities)
+            .name("wl_kernel.legal_entities")
+            .require_permission(permissions::LEGAL_ENTITIES_VIEW)
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -44,7 +92,39 @@ impl Module for WlKernel {
     }
 
     fn register(&self, app: &mut Registry) {
-        app.model::<Entry>().view_data::<IndexPage>();
+        app.provide(Arc::clone(&self.config))
+            .provide(Arc::clone(&self.manifest))
+            .model::<LegalEntity>()
+            .model::<ScopeEntity>()
+            .view_data::<LegalEntitiesPage>();
+        // In the admin group of the staff sidebar; the label is the app's
+        // `nav.legal_entities` text.
+        app.nav(
+            "app",
+            NavLink::route("wl_kernel.legal_entities", "nav.legal_entities")
+                .icon("landmark")
+                .group("nav.admin")
+                .order(30)
+                .permission(permissions::LEGAL_ENTITIES_VIEW),
+        );
+        let config = Arc::clone(&self.config);
+        app.command(
+            "wl:install",
+            "Create the legal entities client.toml lists and the database lacks",
+            move |_args, state: AppState| {
+                let config = Arc::clone(&config);
+                async move {
+                    let created = entities::install(&state.db, &config).await?;
+                    println!("{created} legal entities created.");
+                    Ok(())
+                }
+            },
+        );
+        let config = Arc::clone(&self.config);
+        app.seeder(move |state: AppState| {
+            let config = Arc::clone(&config);
+            async move { entities::install(&state.db, &config).await.map(|_| ()) }
+        });
         app.templates(|env| {
             for (name, source) in VIEWS {
                 // The app's own file of that name wins.
@@ -57,11 +137,14 @@ impl Module for WlKernel {
     }
 }
 
-async fn index(State(db): State<Db>, lang: Lang) -> Result<View> {
-    let entries = Entry::query().latest().get(&db).await?;
-    Ok(View::typed(IndexPage {
-        heading: texts::t(&lang, "wl_kernel.title"),
-        empty: texts::t(&lang, "wl_kernel.empty"),
-        entries,
+async fn legal_entities(State(db): State<Db>, lang: Lang) -> Result<View> {
+    let entities = LegalEntity::query()
+        .order_by_desc(LegalEntity::IS_DEFAULT)
+        .order_by(LegalEntity::CODE)
+        .get(&db)
+        .await?;
+    Ok(View::typed(LegalEntitiesPage {
+        heading: texts::t(&lang, "wl_kernel.legal_entities"),
+        entities,
     }))
 }

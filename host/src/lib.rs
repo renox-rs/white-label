@@ -1,4 +1,9 @@
-//! Host: a Renox app made from the starter kit (`rnx new --starter`).
+//! Host: the one binary every client runs. It reads the client's
+//! `client.toml` (the path in `CLIENT_CONFIG`), applies the kernel (branding,
+//! legal entities, the module manifest) and mounts the vertical app and the
+//! enabled `wl-*` modules (ARCHITECTURE.md §7).
+//!
+//! It started from Renox's starter kit (`rnx new --starter`):
 //!
 //! - sign-up, login, password reset, email verification and the account
 //!   pages (`Auth`), with the notification bell;
@@ -21,9 +26,74 @@ use renox::nav::NavLink;
 
 pub use app::roles;
 
-/// The application: its modules, migrations, seeders and commands.
-/// `main.rs` runs it, and tests boot it with `renox::testing::TestApp`.
+use wl_kernel::{ClientConfig, ConfigError};
+
+/// The variable naming the client's `client.toml`.
+pub const CLIENT_CONFIG: &str = "CLIENT_CONFIG";
+
+/// The demo client, used when `CLIENT_CONFIG` is unset outside production.
+pub const DEMO_CLIENT: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../clients/demo-properties/client.toml"
+);
+
+/// The application for the client `CLIENT_CONFIG` names (`.env` is read
+/// first), or the demo client outside production. `main.rs` runs it.
+pub fn try_app() -> Result<renox::App, ConfigError> {
+    let _ = renox::Config::load();
+    let path = match std::env::var(CLIENT_CONFIG) {
+        Ok(path) if !path.is_empty() => path,
+        _ if std::env::var("APP_ENV").is_ok_and(|env| env.starts_with("prod")) => {
+            return Err(ConfigError(format!(
+                "{CLIENT_CONFIG} is not set: name the client's client.toml"
+            )));
+        }
+        _ => DEMO_CLIENT.to_owned(),
+    };
+    app_for(ClientConfig::load(path)?)
+}
+
+/// [`try_app`], for tests: the demo client unless `CLIENT_CONFIG` says
+/// otherwise.
+///
+/// # Panics
+///
+/// When the client's file is refused; the message says why.
 pub fn app() -> renox::App {
+    try_app().unwrap_or_else(|err| panic!("{err}"))
+}
+
+/// The application for one client.
+pub fn app_for(config: ClientConfig) -> Result<renox::App, ConfigError> {
+    let vertical = vertical(&config.client.app)?;
+    let mut app = base();
+    for module in config.manifest()?.enabled() {
+        app = enable(app, module)?;
+    }
+    Ok(wl_kernel::apply(app, config)?.module(vertical))
+}
+
+/// The vertical app named in `[client] app`.
+fn vertical(name: &str) -> Result<property::Property, ConfigError> {
+    match name {
+        "property" => Ok(property::Property),
+        other => Err(ConfigError(format!(
+            "[client] app `{other}` is not built yet; F1 has `property`"
+        ))),
+    }
+}
+
+/// Mounts one enabled `wl-*` module.
+fn enable(_app: renox::App, module: &str) -> Result<renox::App, ConfigError> {
+    // Each F1 module gets its arm here as it is built (decision 0004).
+    Err(ConfigError(format!(
+        "[modules] `{module}` is not built yet; remove it from client.toml for now"
+    )))
+}
+
+/// What every client runs, whatever their modules: auth, roles, the audit
+/// log and the signed-in shell.
+fn base() -> renox::App {
     renox::App::new()
         .embed(renox::embedded!())
         .migrations(renox::migrations!())
@@ -46,8 +116,6 @@ pub fn app() -> renox::App {
         .module(app::dashboard::Dashboard)
         .module(app::users::Users)
         .module(app::activity::Activity)
-        .module(wl_kernel::WlKernel)
-        .module(property::Property)
         .command(
             "users:admin",
             "Give the user with this email the admin role",

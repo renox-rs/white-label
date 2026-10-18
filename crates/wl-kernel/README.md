@@ -1,23 +1,49 @@
 # wl-kernel
 
-Wl Kernel: a reusable Renox module, made with `rnx make:package wl-kernel`.
+The base every `wl-*` module and vertical app stands on
+([spec](../../docs/modules/wl-kernel.md)). It turns one Renox binary into one client's
+branded product.
 
-Add it to an app (`Cargo.toml`: `wl-kernel = { path = "…" }`, or its version once
-published) and register the module:
+The host reads the client's `client.toml` and applies the kernel to the app:
 
 ```
 use renox::prelude::*;
+use wl_kernel::ClientConfig;
 
-# let _ =
-App::new().module(wl_kernel::WlKernel)
-# ;
+let config = ClientConfig::parse(r#"
+    [client]
+    name = "Acme Properties LLC"
+    app = "property"
+
+    [modules]
+    enabled = ["parties", "invoicing"]
+"#)?;
+let app = wl_kernel::apply(App::new(), config)?;
+# let _ = app;
+# Ok::<(), wl_kernel::ConfigError>(())
 ```
 
-The page is at `/wl-kernel`. The module owns:
+`apply` fails, and the boot stops, when a module needs one that is not enabled, when a
+brand colour is not readable (the message names the nearest colour that is), or when the
+file is malformed.
 
-- `migrations/`, run with the app's (`rnx migrate`); their names carry the package
-  name, so two packages can't clash.
-- `views/wl-kernel/`, compiled in. The app overrides a page by putting a file of the
-  same name under its views directory (`resources/views/wl-kernel/index.html`).
-- `src/texts.rs`, the English texts (`wl_kernel.*`). The app changes or translates them
-  in `resources/lang/{locale}.json`.
+What is here so far:
+
+| Part | Spec | Module |
+|---|---|---|
+| `client.toml` and the module manifest | §3, §5.1 | `config`, `manifest` |
+| Branding on Renox `Theme::from_brand` | §2 `PLT.ORG.01` | `branding` |
+| `Subject` references | §2 | `subject` |
+| Legal entities, scope links, issuer snapshots (`PLT.ENT.01`) | §5.6, decision 0003 | `entities` |
+| Document numbering on Renox `Sequence` | §5.5 | `numbering` |
+
+After `rnx migrate`, `rnx wl:install` creates the legal entities `client.toml` lists and
+the database lacks; it never overwrites an entity changed in the admin. `rnx db:seed`
+runs it too.
+
+The page `/legal-entities` needs `legal_entities.view`. The app overrides it with
+`resources/views/wl-kernel/legal_entities.html`, and translates the texts (`wl_kernel.*`)
+in `resources/lang/{locale}.json`.
+
+Migrations are SQLite only: each client runs one SQLite database
+([ARCHITECTURE.md](../../docs/ARCHITECTURE.md) §1).

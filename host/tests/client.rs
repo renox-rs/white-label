@@ -1,0 +1,61 @@
+//! The host reads the client's `client.toml` (wl-kernel §5.1).
+
+use renox::prelude::*;
+use renox::testing::TestApp;
+use wl_kernel::{ClientConfig, LegalEntity};
+
+#[renox::test]
+async fn the_demo_client_boots_with_its_legal_entities() {
+    let app = TestApp::new(host::app()).await;
+    app.kernel().seed().await.unwrap();
+    let default = LegalEntity::default_entity(app.db()).await.unwrap();
+    assert_eq!(default.code, "PGP");
+    assert_eq!(LegalEntity::query().count(app.db()).await.unwrap(), 2);
+    // The client's brand colour is the theme every page links.
+    app.get("/").await.assert_ok().assert_see("/_renox/theme/");
+}
+
+#[test]
+fn a_client_of_an_unbuilt_app_or_module_is_refused() {
+    let demo = std::fs::read_to_string(host::DEMO_CLIENT).unwrap();
+    let manpower =
+        ClientConfig::parse(&demo.replace(r#"app     = "property""#, r#"app = "manpower""#))
+            .unwrap();
+    let err = host::app_for(manpower).err().unwrap();
+    assert!(err.0.contains("app `manpower` is not built yet"), "{err}");
+
+    let with_inventory =
+        ClientConfig::parse(&demo.replace("enabled = []", r#"enabled = ["inventory"]"#)).unwrap();
+    let err = host::app_for(with_inventory).err().unwrap();
+    assert!(err.0.contains("`inventory` is not built yet"), "{err}");
+}
+
+#[test]
+fn an_unreadable_brand_colour_stops_the_boot() {
+    let demo = std::fs::read_to_string(host::DEMO_CLIENT).unwrap();
+    let pale = ClientConfig::parse(&demo.replace("#0F766E", "#FFF59D")).unwrap();
+    let err = host::app_for(pale).err().unwrap();
+    assert!(err.0.contains("the nearest colour that is"), "{err}");
+}
+
+#[renox::test]
+async fn admins_find_the_legal_entities_in_the_sidebar() {
+    let app = TestApp::new(host::app()).await;
+    app.kernel().seed().await.unwrap();
+    let mut admin = User::register(app.db(), "Rana", "rana@example.com", "secret123")
+        .await
+        .unwrap();
+    admin.email_verified_at = Some(renox::db::now());
+    admin.save(app.db()).await.unwrap();
+    host::roles::define(app.db()).await.unwrap();
+    admin
+        .assign_role(app.db(), host::roles::ADMIN)
+        .await
+        .unwrap();
+    app.acting_as(&admin);
+    app.get("/legal-entities")
+        .await
+        .assert_ok()
+        .assert_see("Palm Grove Facilities FZ-LLC")
+        .assert_see(r#"class="rx-sidebar__link" href="/legal-entities" aria-current="page""#);
+}
