@@ -122,6 +122,7 @@ pub async fn queue(state: &AppState, request: NotifyRequest) -> Result<Vec<Messa
     let mut bells = Vec::new();
     for (recipient, resolved) in &planned {
         let mut message = compose(&def, &request.subject, recipient, resolved, &request.data);
+        message.subject_label.clone_from(&request.subject_label);
         message.insert(&mut tx).await?;
         // The first message of its chain; a fallback keeps this id.
         message.chain_id = Some(message.id);

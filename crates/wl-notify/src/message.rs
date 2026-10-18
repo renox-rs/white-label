@@ -69,6 +69,8 @@ pub struct Message {
     pub subject_type: String,
     /// The id of the record it is about.
     pub subject_id: i64,
+    /// The request's short label for the subject (e.g. `TKT-2026-0042`).
+    pub subject_label: Option<String>,
     /// The first message of its fallback chain (its own id for the first).
     pub chain_id: Option<i64>,
     /// The message this one falls back from.

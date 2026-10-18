@@ -128,6 +128,7 @@ pub async fn apply_in(
                 resolved,
                 &failed.data.0,
             );
+            next.subject_label.clone_from(&failed.subject_label);
             next.chain_id = Some(failed.chain());
             next.fallback_of = Some(failed.id);
             next.insert(&mut *tx).await?;
@@ -186,8 +187,7 @@ pub fn gave_up_event(
         message: message.message_id(),
         type_key: message.type_key.clone(),
         subject: message.subject(),
-        // The message has no label column yet.
-        subject_label: None,
+        subject_label: message.subject_label.clone(),
         recipient: message.recipient(),
         gave_up_at: message.updated_at.unwrap_or_else(renox::db::now),
         contact_point: message.contact_point_id,
@@ -475,7 +475,9 @@ async fn apply_reactions(state: &AppState, run: &ReactionRun, message: &Message)
         message: message.message_id(),
         type_key: message.type_key.clone(),
         subject: message.subject(),
+        subject_label: message.subject_label.clone(),
         recipient: message.recipient(),
+        gave_up_at: message.updated_at.unwrap_or_else(renox::db::now),
         contact_point: message.contact_point_id,
         channels_tried: channels_tried(&chain, message),
         statutory: def.statutory,

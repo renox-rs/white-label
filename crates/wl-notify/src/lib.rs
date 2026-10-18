@@ -4,6 +4,7 @@
 pub mod channels;
 pub mod give_up;
 mod machine;
+pub mod mask;
 pub mod message;
 pub mod notifier;
 pub mod pages;
@@ -11,6 +12,7 @@ pub mod reactions;
 pub mod recipients;
 pub mod render;
 pub mod send;
+pub mod staff_task;
 pub mod suppressions;
 mod texts;
 pub mod types;
@@ -33,6 +35,7 @@ pub use message::{Message, MessageStatus, RecipientKind};
 pub use notifier::Messages;
 pub use reactions::{GiveUpContext, GiveUpHandler, Reactions, RecordingHandler, StepOutcome};
 pub use send::SendMessage;
+pub use staff_task::{StaffTask, StaffTaskHandler, open_give_up_task};
 pub use suppressions::{Suppression, SuppressionReason};
 pub use types::NotificationType;
 
@@ -90,7 +93,8 @@ impl WlNotify {
     }
 
     /// Runs `handler`'s give-up reaction through `handler`, in place of the
-    /// built-in one, which only records its step (`NTF.RUL.01`).
+    /// built-in one (`staff_task` opens a task, the others only record
+    /// their step) in the `NTF.RUL.01` run.
     pub fn reaction(mut self, handler: impl GiveUpHandler) -> Self {
         self.reactions.replace(Arc::new(handler));
         self

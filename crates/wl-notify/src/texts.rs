@@ -70,6 +70,19 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("wl_notify.reaction.statutory_notice", "Statutory notice"),
     ("wl_notify.reaction.none", "None"),
+    (
+        "wl_notify.task.title",
+        "Could not reach :recipient about :subject",
+    ),
+    ("wl_notify.task.recipient", "Recipient: :recipient"),
+    ("wl_notify.task.type", "Notification type: :type"),
+    ("wl_notify.task.channels", "Channels tried:"),
+    ("wl_notify.task.channel_line", "- :channel :address: :error"),
+    ("wl_notify.task.no_address", "no address"),
+    ("wl_notify.task.no_error", "no error recorded"),
+    ("wl_notify.task.gave_up_at", "Gave up at :time (Asia/Dubai)"),
+    ("wl_notify.task.party", "Party :id"),
+    ("wl_notify.task.user", "User :id"),
     ("wl_notify.status.queued", "Queued"),
     ("wl_notify.status.deferred", "Held"),
     ("wl_notify.status.sent", "Sent"),
@@ -101,6 +114,30 @@ pub(crate) fn english(key: &str) -> String {
         .map_or_else(|| key.to_owned(), |(_, text)| (*text).to_owned())
 }
 
+/// The English text for `key` with each `:name` placeholder replaced by its
+/// value in one pass, so a value is never read as a placeholder.
+pub(crate) fn english_with(key: &str, params: &[(&str, &str)]) -> String {
+    let text = english(key);
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text.as_str();
+    while let Some(at) = rest.find(':') {
+        out.push_str(&rest[..at]);
+        let after = &rest[at + 1..];
+        match params.iter().find(|(name, _)| after.starts_with(name)) {
+            Some((name, value)) => {
+                out.push_str(value);
+                rest = &after[name.len()..];
+            }
+            None => {
+                out.push(':');
+                rest = after;
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
 /// Every text of the package in `lang`, keyed without the `wl_notify.`
 /// prefix (`fields.key`), for the templates: `tx['fields.key']`.
 pub(crate) fn all(lang: &Lang) -> BTreeMap<&'static str, String> {
@@ -112,7 +149,16 @@ pub(crate) fn all(lang: &Lang) -> BTreeMap<&'static str, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::TEXTS;
+    use super::{TEXTS, english_with};
+
+    #[test]
+    fn a_value_is_never_read_as_a_placeholder() {
+        let text = english_with(
+            "wl_notify.task.title",
+            &[("recipient", "A :subject"), ("subject", "TKT-1")],
+        );
+        assert_eq!(text, "Could not reach A :subject about TKT-1");
+    }
 
     #[test]
     fn keys_are_unique_and_prefixed() {

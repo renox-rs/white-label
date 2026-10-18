@@ -1,11 +1,11 @@
 //! The give-up reactions (wl-notify §5.4): one handler per reaction key,
 //! run by `NTF.RUL.01` ([`crate::give_up`]).
 //!
-//! The built-in handlers only record what they were given (status
-//! `recorded`); the real reactions replace them through
-//! [`crate::WlNotify::reaction`]: `staff_task` (#56), `alternative_recipient`
-//! (#57), `mark_contact_invalid` (#58) and `statutory_notice` (#59). `none`
-//! has no handler: it runs nothing.
+//! `staff_task` opens a task for staff ([`crate::staff_task`]). The other
+//! built-in handlers only record what they were given (status `recorded`);
+//! the real reactions replace them through [`crate::WlNotify::reaction`]:
+//! `alternative_recipient` (#57), `mark_contact_invalid` (#58) and
+//! `statutory_notice` (#59). `none` has no handler: it runs nothing.
 
 use std::future::Future;
 use std::pin::Pin;
@@ -31,8 +31,12 @@ pub struct GiveUpContext {
     pub type_key: String,
     /// The record it is about.
     pub subject: Subject,
+    /// The request's label for the subject, if any.
+    pub subject_label: Option<String>,
     /// Who it was for.
     pub recipient: NotifyRecipient,
+    /// When the message gave up; a retried run sees the same time.
+    pub gave_up_at: DateTime,
     /// The party contact point of the last message, if any.
     pub contact_point: Option<i64>,
     /// Every channel of the chain, in order, with its last error.
@@ -114,7 +118,7 @@ pub struct Reactions {
 }
 
 impl Default for Reactions {
-    /// The built-in recording handlers of the four reactions.
+    /// The staff-task handler and the recording handlers of the others.
     fn default() -> Self {
         use GiveUpReaction::{
             AlternativeRecipient, MarkContactInvalid, StaffTask, StatutoryNotice,
@@ -127,7 +131,12 @@ impl Default for Reactions {
                 StatutoryNotice,
             ]
             .into_iter()
-            .map(|r| Arc::new(RecordingHandler(r)) as Arc<dyn GiveUpHandler>)
+            .map(|r| match r {
+                StaffTask => {
+                    Arc::new(crate::staff_task::StaffTaskHandler) as Arc<dyn GiveUpHandler>
+                }
+                other => Arc::new(RecordingHandler(other)),
+            })
             .collect(),
         }
     }
@@ -204,6 +213,8 @@ mod tests {
             message: MessageId(5),
             type_key: "invoice.reminder".into(),
             subject: Subject::new("invoicing.invoice", 9),
+            subject_label: None,
+            gave_up_at: renox::db::now(),
             recipient: NotifyRecipient::User { id: 2 },
             contact_point: None,
             channels_tried: Vec::new(),
