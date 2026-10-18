@@ -5,6 +5,7 @@ pub mod block;
 pub mod block_effects;
 pub mod block_guard;
 pub mod block_record;
+pub mod compliance_tasks;
 pub mod contacts;
 pub mod create;
 pub mod details;
@@ -38,6 +39,10 @@ use renox::prelude::*;
 
 pub use block::{block, block_by_system};
 pub use block_record::BlockRecord;
+pub use compliance_tasks::{
+    ComplianceTask, ComplianceTaskFund, ComplianceTaskKind, ComplianceTaskParty,
+    ComplianceTaskStatus, PartyStanding,
+};
 pub use contacts::{ContactPoint, ContactStatus, ContactType, update_contact, verify_contact};
 pub use create::{NewParty, create};
 pub use details::{CompanyDetails, PersonDetails};
@@ -340,6 +345,9 @@ impl Module for WlParties {
             .model::<Screening>()
             .model::<ScreeningCandidate>()
             .model::<ScreeningTask>()
+            .model::<ComplianceTask>()
+            .model::<ComplianceTaskParty>()
+            .model::<ComplianceTaskFund>()
             .model::<SanctionsList>()
             .view_data::<pages::IndexPage>()
             .view_data::<pages::NewPage>()
@@ -353,6 +361,7 @@ impl Module for WlParties {
         renox::state_machine::register::<Party>();
         renox::state_machine::register::<ReviewTask>();
         renox::state_machine::register::<Screening>();
+        renox::state_machine::register::<ComplianceTask>();
         // Whether screening is on, and its match threshold.
         app.provide(screening::ScreeningSettings {
             on: self.screening,

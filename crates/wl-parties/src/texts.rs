@@ -345,6 +345,22 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_parties.errors.reason_unknown", "Choose a reason."),
     ("wl_parties.errors.note_required", "Write a note."),
     (
+        "wl_parties.errors.compliance_only",
+        "Only the compliance role can do this.",
+    ),
+    (
+        "wl_parties.errors.freeze_time_required",
+        "Enter when the funds were frozen.",
+    ),
+    (
+        "wl_parties.errors.freeze_not_ready",
+        "Every named party must be blocked or archived with an open sanctions record.",
+    ),
+    (
+        "wl_parties.errors.report_details_required",
+        "Enter the reference and the date reported.",
+    ),
+    (
         "wl_parties.errors.reason_restricted",
         "You cannot use this reason.",
     ),
