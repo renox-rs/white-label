@@ -121,6 +121,18 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_invoicing.write_off.reason", "Reason"),
     ("wl_invoicing.write_off.date", "Write-off date"),
     ("wl_invoicing.write_off.notice_on", "Notice sent on"),
+    (
+        "wl_invoicing.adjustment.summary_required",
+        "A proposal needs the VAT summary to put the adjustment on.",
+    ),
+    (
+        "wl_invoicing.adjustment.reason_required",
+        "Give a reason for including or excluding the adjustment.",
+    ),
+    (
+        "wl_invoicing.adjustment.summary_closed",
+        "The adjustment can only be decided while its VAT summary is open or prepared.",
+    ),
     ("wl_invoicing.write_off.relief", "VAT bad-debt relief"),
     ("wl_invoicing.write_off.relief_status", "Relief status"),
     ("wl_invoicing.adjustment_status.pending", "Pending"),
