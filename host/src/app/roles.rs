@@ -19,7 +19,7 @@ pub const USERS: &str = "users.manage";
 pub const ACTIVITY: &str = "activity.view";
 
 /// Everything, except the restricted block reasons (`PTY.ACL.02`).
-pub const ADMIN: &str = "admin";
+pub const ADMIN: &str = wl_kernel::COMPANY_ADMIN_ROLE;
 /// The MLRO and their deputy: see parties, block them, and see and use the
 /// restricted block reasons (wl-parties §6).
 pub const COMPLIANCE: &str = "compliance";

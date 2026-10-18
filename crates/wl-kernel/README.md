@@ -44,7 +44,8 @@ What is here so far:
 | The ticket contract: `TaskCreator` (`NoTickets` when `ticketing` is off), `OpenTicket`, `TicketRef`, `Assignee`, ticket events, the `ticket` series | §8, wl-ticketing §6 | `tickets` |
 | The block-effect contract: `BlockEffect` (pause / continue / review) per agreement kind, the 12 built-in kinds, `AgreementKind` + `AgreementSource`, `BlockEffectOverride`, `effect_for`, `announces_pause` and `suppressed_while_blocked` | ARCHITECTURE §5, wl-parties §5.6, §7 | `block_effects` |
 | `AutomationFailed`, the event of a failed rule run | §4 | `automation` |
-| The business calendar: `BusinessCalendar` (Asia/Dubai, Sat–Sun weekend, 09:00–18:00, `[calendar]` holidays) | §6 | `calendar` |
+| The business calendar: `BusinessCalendar` (Asia/Dubai, Sat–Sun weekend, 09:00–18:00, `[calendar]` holidays), `add_working` and `add_working_days` (same clock time, no working hours) | §6 | `calendar` |
+| Scope of a subject: `scopes::scope_of` (its machine, then a resolver from `scopes::register`, then global) and `COMPANY_ADMIN_ROLE` (`"admin"`, the fallback holder of a task) | §4.1 | `scopes` |
 
 After `rnx migrate`, `rnx wl:install` creates the legal entities `client.toml` lists and
 the database lacks; it never overwrites an entity changed in the admin. `rnx db:seed`

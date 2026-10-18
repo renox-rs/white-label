@@ -89,6 +89,20 @@ impl BusinessCalendar {
         }
     }
 
+    /// The instant `days` working days after `at`, at the same Asia/Dubai
+    /// clock time. Working days skip the weekend and the listed holidays;
+    /// working hours do not apply, so Thursday 10:00 plus one is Friday
+    /// 10:00, Friday 16:00 plus one is Monday 16:00 and Saturday 10:00 plus
+    /// one is Monday 10:00. Zero days give `at` itself.
+    pub fn add_working_days(&self, at: DateTime, days: u32) -> DateTime {
+        let local = self.local(at).naive_local();
+        let mut date = local.date();
+        for _ in 0..days {
+            date = self.next_working_day(date);
+        }
+        self.from_local(date.and_time(local.time()))
+    }
+
     /// The instant `minutes` working minutes after `from`. A start outside
     /// working hours counts from the next opening; a result that falls
     /// exactly on a closing time stays there (it does not move to the next
@@ -233,6 +247,40 @@ mod tests {
         assert_eq!(
             calendar.next_working_day(date("2026-12-04")),
             date("2026-12-07")
+        );
+    }
+
+    #[test]
+    fn working_days_keep_the_clock_time() {
+        let calendar = BusinessCalendar::default();
+        let due = |from: &str, days| {
+            shown(
+                &calendar,
+                calendar.add_working_days(dubai(&calendar, from), days),
+            )
+        };
+        assert_eq!(due("2026-11-05 10:00", 1), "2026-11-06 10:00");
+        assert_eq!(due("2026-11-06 16:00", 1), "2026-11-09 16:00");
+        assert_eq!(due("2026-11-07 10:00", 1), "2026-11-09 10:00");
+        assert_eq!(due("2026-11-05 10:00", 2), "2026-11-09 10:00");
+        assert_eq!(due("2026-11-05 10:00", 0), "2026-11-05 10:00");
+    }
+
+    #[test]
+    fn working_days_use_the_dubai_date_and_skip_holidays() {
+        let calendar = BusinessCalendar::new([date("2026-12-02"), date("2026-12-03")]);
+        let due = |from: &str, days| {
+            shown(
+                &calendar,
+                calendar.add_working_days(dubai(&calendar, from), days),
+            )
+        };
+        assert_eq!(due("2026-12-01 09:30", 1), "2026-12-04 09:30");
+        // 23:30 UTC on Thursday is already Friday 03:30 in Dubai.
+        let at: DateTime = "2026-11-05T23:30:00Z".parse().unwrap();
+        assert_eq!(
+            shown(&calendar, calendar.add_working_days(at, 1)),
+            "2026-11-09 03:30"
         );
     }
 

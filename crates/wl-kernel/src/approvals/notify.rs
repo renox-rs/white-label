@@ -5,7 +5,8 @@
 //! users directly, on the database channel (the in-app bell), after the
 //! commit. Approvers are the holders of one of the current step's roles, or
 //! of its permission, in the subject's scope (from its registered machine),
-//! or globally when the machine gives no scope.
+//! or globally when neither a machine nor a resolver gives a scope
+//! ([`crate::scopes`]).
 
 use std::collections::BTreeSet;
 
@@ -17,7 +18,7 @@ use renox::serde_json::Value;
 use super::end::{End, SubjectEnd};
 use super::events::ApprovalEnd;
 use super::request::ApprovalRequest;
-use crate::machines;
+use crate::scopes;
 use crate::subject::Subject;
 use crate::texts;
 
@@ -27,15 +28,10 @@ pub const REQUESTED_KIND: &str = "approval-requested";
 pub const DECIDED_KIND: &str = "approval-decided";
 
 /// The scope approvers of `request` are looked for in: the subject's, from
-/// its registered machine; global when it has none.
+/// [`scopes::scope_of`] (its machine, then a registered resolver); global
+/// when it has neither.
 pub async fn scope_of(db: &Db, request: &ApprovalRequest) -> Result<Scope> {
-    let Some(machine) = machines::get(&request.subject_type).filter(|m| m.has_scope()) else {
-        return Ok(Scope::global());
-    };
-    let mut tx = db.begin().await?;
-    let scope = machine.scope_in(&mut tx, request.subject_id).await?;
-    tx.commit().await?;
-    Ok(scope)
+    scopes::scope_of(db, &request.subject()).await
 }
 
 /// The users who may decide the request's current step: holders of one of

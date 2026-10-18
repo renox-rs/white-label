@@ -15,6 +15,7 @@ pub mod manifest;
 pub mod notify;
 pub mod numbering;
 pub mod parties;
+pub mod scopes;
 pub mod subject;
 mod texts;
 pub mod tickets;
@@ -59,6 +60,7 @@ pub use parties::{
     BillingIdentity, NEUTRAL_BLOCK_REASON, NoParties, PartyBlocked, PartyCreated, PartyDirectory,
     PartyId, PartyKind, PartyStatus, PartySummary, PartyUnblocked,
 };
+pub use scopes::COMPANY_ADMIN_ROLE;
 pub use subject::Subject;
 pub use tickets::{
     Assignee, NoTickets, OpenTicket, Requester, TaskCreator, TicketAssigned, TicketChannel,
