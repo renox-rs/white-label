@@ -37,7 +37,8 @@ What is here so far:
 | Legal entities, scope links, issuer snapshots (`PLT.ENT.01`) | §5.6, decision 0003 | `entities` |
 | Document numbering on Renox `Sequence` | §5.5 | `numbering` |
 | State machines by name: `SubjectMachine`, `back_to_<state>` and `<action>_approved` (always `system`) | §4.1, WORKFLOW §3.4 | `machines` |
-| The party contract: `PartyDirectory` (`NoParties` when `parties` is off), `PartyStatus`, party events, the `party` series, `contacts` (`PartyContacts`) | ARCHITECTURE §5, wl-parties §6 | `parties` |
+| The party contract: `PartyDirectory` (`NoParties` when `parties` is off), `PartyStatus`, party events, the `party` series, `contacts` (`PartyContacts`), `billing_identity` (`BillingIdentity`) | ARCHITECTURE §5, wl-parties §6 | `parties` |
+| The invoicing contract: `Invoicer` (`NoInvoicer` when `invoicing` is off), `InvoiceDraft`, `InvoiceSummary`, `VatCategory`, invoice events, the `invoice` series | ARCHITECTURE §5, wl-invoicing §6 | `invoicing` |
 | The notice contract: `Notifier` (`NoNotifier` when `notify` is off), `register_type`, `NotifyRequest`, message events | ARCHITECTURE §5, wl-notify §6 | `notify` |
 | `AutomationFailed`, the event of a failed rule run | §4 | `automation` |
 
@@ -52,6 +53,20 @@ in `resources/lang/{locale}.json`.
 Other modules read parties only through `wl_kernel::parties::directory(&state)` and listen
 to `PartyCreated`, `PartyBlocked` and `PartyUnblocked`. Summaries and events carry the
 display block reason: `on_hold` (`NEUTRAL_BLOCK_REASON`) when the real one is restricted.
+
+Other modules draft, read and pay invoices only through
+`wl_kernel::invoicing::invoicer(&state)`: `draft(db, InvoiceDraft::new(party, source).line(..))`
+gives a `draft` invoice, `find(db, id)` an `InvoiceSummary` (number, status, party, legal
+entity, currency, gross total, balance, due date), and `allocate(state, id, source, amount)`
+settles part of it from a payment or credit note. Money is `i64` fils, quantities are
+thousandths, and each line has a `VatCategory` (`standard` 5%; `zero_rated`, `exempt`,
+`out_of_scope` and `reverse_charge` carry no VAT). When `invoicing` is off, `NoInvoicer`
+drafts and finds nothing, so callers hide the feature, and refuses an allocation (422).
+Modules listen to `InvoiceIssued`, `InvoiceOverdue`, `InvoicePaid` and `InvoiceWrittenOff`.
+Tax invoice numbers come from `INVOICE_SERIES` (`INV-ACME-2026-0001`) or, with exactly one
+active legal entity, `INVOICE_SERIES_SINGLE` (`INV-2026-0001`): gapless, per entity, reset
+yearly. `PartyDirectory::billing_identity` gives the legal names, TRN, billing address and
+billing e-mail an invoice copies at issue; the default (and `NoParties`) knows none.
 
 Every notice goes through one contract. A module registers its notification types in
 `register` with `wl_kernel::notify::register_type(NotificationTypeDef::new(..))` (statutory

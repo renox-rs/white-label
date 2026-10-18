@@ -6,6 +6,7 @@ pub mod automation;
 pub mod branding;
 pub mod config;
 pub mod entities;
+pub mod invoicing;
 pub mod machines;
 pub mod manifest;
 pub mod notify;
@@ -28,6 +29,10 @@ pub use approvals::{
 pub use automation::AutomationFailed;
 pub use config::{ClientConfig, ConfigError};
 pub use entities::{IssuerSnapshot, LegalEntity, ScopeEntity};
+pub use invoicing::{
+    DraftLine, InvoiceDraft, InvoiceId, InvoiceIssued, InvoiceOverdue, InvoicePaid, InvoiceStatus,
+    InvoiceSummary, InvoiceWrittenOff, Invoicer, NoInvoicer, VatCategory,
+};
 pub use machines::SubjectMachine;
 pub use manifest::Manifest;
 pub use notify::{
@@ -36,8 +41,8 @@ pub use notify::{
 };
 pub use numbering::{Reset, Series};
 pub use parties::{
-    NEUTRAL_BLOCK_REASON, NoParties, PartyBlocked, PartyCreated, PartyDirectory, PartyId,
-    PartyKind, PartyStatus, PartySummary, PartyUnblocked,
+    BillingIdentity, NEUTRAL_BLOCK_REASON, NoParties, PartyBlocked, PartyCreated, PartyDirectory,
+    PartyId, PartyKind, PartyStatus, PartySummary, PartyUnblocked,
 };
 pub use subject::Subject;
 

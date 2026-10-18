@@ -113,6 +113,23 @@ pub struct PartySummary {
     pub display_block_reason: Option<String>,
 }
 
+/// Who an invoice is addressed to: [`PartyDirectory::billing_identity`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BillingIdentity {
+    /// The party.
+    pub party: PartyId,
+    /// The legal name in English.
+    pub legal_name_en: String,
+    /// The legal name in Arabic, if known.
+    pub legal_name_ar: Option<String>,
+    /// The tax registration number (15 digits), when VAT registered.
+    pub trn: Option<String>,
+    /// The billing address, one text.
+    pub billing_address: Option<String>,
+    /// The e-mail address invoices and notices go to.
+    pub billing_email: Option<String>,
+}
+
 /// The reason code others may see: the code itself, or
 /// [`NEUTRAL_BLOCK_REASON`] when it is restricted.
 pub fn display_block_reason(code: &str, restricted: bool) -> &str {
@@ -158,6 +175,18 @@ pub trait PartyDirectory: Send + Sync + 'static {
         db: &'a Db,
         party: PartyId,
     ) -> PartyFuture<'a, Option<PartyContacts>> {
+        let _ = (db, party);
+        Box::pin(async { Ok(None) })
+    }
+
+    /// Who an invoice to the party is addressed to: legal names, TRN,
+    /// billing address and e-mail, copied into the invoice's party snapshot
+    /// at issue. The default knows none.
+    fn billing_identity<'a>(
+        &'a self,
+        db: &'a Db,
+        party: PartyId,
+    ) -> PartyFuture<'a, Option<BillingIdentity>> {
         let _ = (db, party);
         Box::pin(async { Ok(None) })
     }
@@ -293,6 +322,23 @@ mod tests {
             (PARTY_SERIES.gapless, PARTY_SERIES.per_entity),
             (false, false)
         );
+    }
+
+    #[test]
+    fn a_billing_identity_serializes_with_a_plain_party_id() {
+        let identity = BillingIdentity {
+            party: PartyId(3),
+            legal_name_en: "Gulf Trading LLC".into(),
+            legal_name_ar: None,
+            trn: Some("100000000000003".into()),
+            billing_address: None,
+            billing_email: Some("billing@gulf.example".into()),
+        };
+        let json = renox::serde_json::to_value(&identity).unwrap();
+        assert_eq!(json["party"], 3);
+        assert_eq!(json["trn"], "100000000000003");
+        assert_eq!(json["billing_email"], "billing@gulf.example");
+        assert!(json["legal_name_ar"].is_null());
     }
 
     #[test]
