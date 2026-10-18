@@ -83,7 +83,12 @@ Credit notes: `CreditNoteId` (`subject()` is `invoicing.credit_note:<id>`,
 `CreditNoteIssued`, `InvoiceCredited` and `CreditNoteReopened`. Credit note numbers come from
 `credit_note_series(active_entities)` (`CN-ACME-2026-0001`, or `CN-2026-0001` with one entity): gapless,
 per entity, reset yearly.
-Modules listen to `InvoiceIssued`, `InvoiceOverdue`, `InvoicePaid`, `InvoiceWrittenOff` and `BadDebtRecovered`.
+`unallocate(state, Unallocate::new(invoice, source, amount, key, ReopenReason::PaymentReversed))`
+undoes an allocation and reopens the invoice (`Reopened { new_status, balance, skipped }`; a repeated
+`key`, e.g. `payments.allocation:<id>`, is `skipped`), and `unallocate_all(state, id, reason)` removes every
+active allocation and returns each source with its amount (the caller releases its own side of the money).
+Both refuse (422) by default and in `NoInvoicer`. `wl-invoicing` emits `InvoiceReopened`.
+Modules listen to `InvoiceIssued`, `InvoiceOverdue`, `InvoicePaid`, `InvoiceWrittenOff` , `InvoiceReopened` and `BadDebtRecovered`.
 Tax invoice numbers come from `INVOICE_SERIES` (`INV-ACME-2026-0001`) or, with exactly one
 active legal entity, `INVOICE_SERIES_SINGLE` (`INV-2026-0001`): gapless, per entity, reset
 yearly. `PartyDirectory::billing_identity` gives the legal names, TRN, billing address and

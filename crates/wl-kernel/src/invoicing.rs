@@ -542,6 +542,84 @@ pub fn allocation_proposal(invoice: &InvoiceSummary, available: i64) -> i64 {
 /// The future an [`Invoicer`] method returns.
 pub type InvoiceFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 
+/// Why an invoice is reopened (`unallocate`).
+#[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum ReopenReason {
+    /// The payment was reversed (`PaymentReversed`).
+    #[default]
+    PaymentReversed,
+    /// The allocation was moved to another target.
+    AllocationMoved,
+    /// A recovery of a written-off invoice was reversed.
+    RecoveryReversed,
+}
+
+/// A request to undo an allocation to an invoice (`Invoicer::unallocate`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Unallocate {
+    /// The invoice to reopen.
+    pub invoice: InvoiceId,
+    /// The money's source: the payment or credit note allocated from.
+    pub source: Subject,
+    /// The amount to give back to the balance, in fils.
+    pub amount: i64,
+    /// The idempotency key, e.g. `payments.allocation:<id>`. A key that was
+    /// already used gives `skipped` and changes nothing.
+    pub key: String,
+    /// Why it is reopened.
+    pub reason: ReopenReason,
+    /// The payment's reversal reason key (`bank_return`, `entered_in_error`,
+    /// `chargeback`), as text.
+    pub reversal_reason: Option<String>,
+    /// The user who ran it; `None` for the system.
+    pub ran_by: Option<i64>,
+}
+
+impl Unallocate {
+    /// An unallocation of `amount` fils from `source` on `invoice`, under
+    /// the idempotency `key`.
+    pub fn new(
+        invoice: InvoiceId,
+        source: Subject,
+        amount: i64,
+        key: impl Into<String>,
+        reason: ReopenReason,
+    ) -> Self {
+        Self {
+            invoice,
+            source,
+            amount,
+            key: key.into(),
+            reason,
+            reversal_reason: None,
+            ran_by: None,
+        }
+    }
+
+    /// Sets the payment's reversal reason key.
+    pub fn reversal_reason(mut self, reason: impl Into<String>) -> Self {
+        self.reversal_reason = Some(reason.into());
+        self
+    }
+
+    /// Sets the user who ran it.
+    pub fn ran_by(mut self, user: i64) -> Self {
+        self.ran_by = Some(user);
+        self
+    }
+}
+
+/// The outcome of [`Invoicer::unallocate`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Reopened {
+    /// The invoice's state after the call.
+    pub new_status: InvoiceStatus,
+    /// The invoice's balance after the call, in fils.
+    pub balance: i64,
+    /// Whether the key had been used before: nothing was changed.
+    pub skipped: bool,
+}
+
 /// Drafts, reads and allocates invoices for other modules. `wl-invoicing`
 /// provides it; without that module, [`invoicer`] gives [`NoInvoicer`].
 pub trait Invoicer: Send + Sync + 'static {
@@ -567,6 +645,36 @@ pub trait Invoicer: Send + Sync + 'static {
         source: Subject,
         amount: i64,
     ) -> InvoiceFuture<'a, ()>;
+
+    /// Undoes `request.amount` fils of an allocation from `request.source`
+    /// to invoice `request.invoice` and reopens it: the balance goes back up
+    /// and the state is set from the balance and the due date. Idempotent
+    /// per `request.key` (`skipped`). Refused for an amount <= 0, an amount
+    /// above what is allocated from that source, or a state that cannot be
+    /// reopened (`credited`; `written_off` too, unless the reason is
+    /// `recovery_reversed`). Lines, totals and VAT are never written;
+    /// [`InvoiceReopened`] is emitted. The default refuses (422): invoicing
+    /// is not enabled.
+    fn unallocate<'a>(
+        &'a self,
+        _state: &'a AppState,
+        request: Unallocate,
+    ) -> InvoiceFuture<'a, Reopened> {
+        Box::pin(async move { Err(unallocating_off(request.invoice)) })
+    }
+
+    /// Removes every active allocation of invoice `id` (reopening it as
+    /// [`Invoicer::unallocate`] does, with `reason`) and returns each source
+    /// with the amount removed. The caller releases its own side of the
+    /// money. The default refuses (422): invoicing is not enabled.
+    fn unallocate_all<'a>(
+        &'a self,
+        _state: &'a AppState,
+        id: InvoiceId,
+        _reason: ReopenReason,
+    ) -> InvoiceFuture<'a, Vec<(Subject, i64)>> {
+        Box::pin(async move { Err(unallocating_off(id)) })
+    }
 
     /// The `written_off` invoices of `party` in `currency` with something
     /// left to recover, oldest first. The default has none (invoicing is not
@@ -718,6 +826,14 @@ impl Invoicer for NoInvoicer {
     ) -> InvoiceFuture<'a, ()> {
         Box::pin(async move { Err(invoicing_off(id)) })
     }
+}
+
+/// The 422 of unallocating an invoice while invoicing is off.
+fn unallocating_off(id: InvoiceId) -> Error {
+    Error::Status(
+        StatusCode::UNPROCESSABLE_ENTITY,
+        format!("invoice {id} cannot be reopened: invoicing is not enabled"),
+    )
 }
 
 /// The 422 of an allocation while invoicing is off.
@@ -900,6 +1016,32 @@ pub struct CreditNoteReopened {
 }
 
 impl Event for CreditNoteReopened {}
+
+/// An invoice was reopened because an allocation was undone (`unallocate`).
+/// Lines, totals and VAT are untouched.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InvoiceReopened {
+    /// The invoice.
+    pub invoice: InvoiceId,
+    /// Who is billed.
+    pub party: PartyId,
+    /// The record it bills for.
+    pub source: Subject,
+    /// The record the money came from (the payment).
+    pub money_source: Subject,
+    /// The amount given back to the balance, in fils.
+    pub amount: i64,
+    /// The balance after, in fils.
+    pub balance: i64,
+    /// The state after.
+    pub new_status: InvoiceStatus,
+    /// Why it was reopened.
+    pub reason: ReopenReason,
+    /// The payment's reversal reason key, when there is one.
+    pub reversal_reason: Option<String>,
+}
+
+impl Event for InvoiceReopened {}
 
 /// Money was recovered on a written-off invoice (`recover`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1156,6 +1298,70 @@ mod tests {
             (usd.currency.as_str(), usd.legal_entity_id),
             ("USD", Some(2))
         );
+    }
+
+    #[test]
+    fn the_unallocate_fallback_is_a_422() {
+        match unallocating_off(InvoiceId(5)) {
+            Error::Status(code, message) => {
+                assert_eq!(code, StatusCode::UNPROCESSABLE_ENTITY);
+                assert!(message.contains("invoice 5"), "{message}");
+            }
+            other => panic!("unexpected error {other:?}"),
+        }
+    }
+
+    #[test]
+    fn an_unallocation_is_built_with_its_builder() {
+        let request = Unallocate::new(
+            InvoiceId(3),
+            Subject::new("payments.payment", 9),
+            200_000,
+            "payments.allocation:4",
+            ReopenReason::PaymentReversed,
+        );
+        assert_eq!(request.reversal_reason, None);
+        assert_eq!(request.ran_by, None);
+        let request = request.reversal_reason("bank_return").ran_by(7);
+        assert_eq!(request.reversal_reason.as_deref(), Some("bank_return"));
+        assert_eq!(request.ran_by, Some(7));
+        assert_eq!(request.key, "payments.allocation:4");
+    }
+
+    #[test]
+    fn reopen_reasons_are_stored_in_snake_case() {
+        for (reason, text) in [
+            (ReopenReason::PaymentReversed, "payment_reversed"),
+            (ReopenReason::AllocationMoved, "allocation_moved"),
+            (ReopenReason::RecoveryReversed, "recovery_reversed"),
+        ] {
+            assert_eq!(
+                renox::serde_json::to_value(reason).unwrap(),
+                renox::serde_json::json!(text)
+            );
+        }
+    }
+
+    #[test]
+    fn invoice_reopened_serializes_with_plain_ids() {
+        let reopened = InvoiceReopened {
+            invoice: InvoiceId(1),
+            party: PartyId(2),
+            source: Subject::new("property.lease", 3),
+            money_source: Subject::new("payments.payment", 4),
+            amount: 200_000,
+            balance: 200_000,
+            new_status: InvoiceStatus::Issued,
+            reason: ReopenReason::PaymentReversed,
+            reversal_reason: Some("bank_return".into()),
+        };
+        let json = renox::serde_json::to_value(&reopened).unwrap();
+        assert_eq!(json["invoice"], 1);
+        assert_eq!(json["party"], 2);
+        assert_eq!(json["amount"], 200_000);
+        assert_eq!(json["new_status"], "issued");
+        assert_eq!(json["reason"], "payment_reversed");
+        assert_eq!(json["reversal_reason"], "bank_return");
     }
 
     #[test]

@@ -467,6 +467,41 @@ async fn without_invoicing_the_invoicer_drafts_nothing() {
     }
 }
 
+/// #70 AC10: without the invoicing module, `unallocate` and
+/// `unallocate_all` are refused (422).
+#[renox::test]
+async fn without_invoicing_nothing_can_be_unallocated() {
+    use wl_kernel::Subject;
+    use wl_kernel::invoicing::{
+        InvoiceId, Invoicer, NoInvoicer, ReopenReason, Unallocate, invoicer,
+    };
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let state = app.state();
+    let provided = invoicer(state);
+    let fallback: &dyn Invoicer = &NoInvoicer;
+    for invoicer in [&*provided, fallback] {
+        let request = Unallocate::new(
+            InvoiceId(1),
+            Subject::new("payments.payment", 1),
+            100,
+            "payments.allocation:1",
+            ReopenReason::PaymentReversed,
+        );
+        assert!(matches!(
+            invoicer.unallocate(state, request).await,
+            Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
+        ));
+        assert!(matches!(
+            invoicer
+                .unallocate_all(state, InvoiceId(1), ReopenReason::AllocationMoved)
+                .await,
+            Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
+        ));
+    }
+}
+
 /// #71 AC1: without the invoicing module, crediting is refused (422), no
 /// credit note is found, an invoice has none, the party has no open credit,
 /// and a refund cannot take one. A credit note's subject is
