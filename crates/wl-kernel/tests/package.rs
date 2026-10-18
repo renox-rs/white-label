@@ -443,3 +443,62 @@ fn the_business_calendar_counts_working_time() {
         }
     }
 }
+
+/// #36 AC1 and AC7 (kernel side): with no module registered, the registry
+/// lists the 12 kinds of wl-parties §5.6 with their defaults, and a kind
+/// nobody registered is reviewed with no decider. This binary registers
+/// nothing, so the defaults are what is read.
+#[renox::test]
+async fn the_block_effects_registry_lists_the_twelve_kinds_and_reviews_the_unknown() {
+    use wl_kernel::block_effects::{self, BlockEffect, RuleSource};
+
+    let dir = views(&[]);
+    let _app = boot(dir.path()).await;
+    let kinds = block_effects::kinds();
+    let listed: Vec<(&str, BlockEffect, Option<&str>)> = kinds
+        .iter()
+        .map(|k| (k.key.as_str(), k.effect, k.decider_role.as_deref()))
+        .collect();
+    assert_eq!(
+        listed,
+        [
+            ("engagement", BlockEffect::Pause, Some("compliance")),
+            (
+                "subscription",
+                BlockEffect::Pause,
+                Some("subscriptions_manager")
+            ),
+            ("enrolment", BlockEffect::Pause, Some("centre_manager")),
+            ("lease", BlockEffect::Continue, Some("property_manager")),
+            (
+                "deployment",
+                BlockEffect::Continue,
+                Some("managing_director")
+            ),
+            ("project", BlockEffect::Continue, Some("managing_director")),
+            ("sales_order", BlockEffect::Pause, Some("sales_manager")),
+            ("booking", BlockEffect::Review, Some("branch_manager")),
+            ("purchase_order", BlockEffect::Continue, Some("procurement")),
+            (
+                "service_contract",
+                BlockEffect::Review,
+                Some("facility_manager")
+            ),
+            ("money_out", BlockEffect::Pause, Some("compliance")),
+            ("money_in", BlockEffect::Continue, Some("compliance")),
+        ]
+    );
+    assert!(
+        kinds
+            .iter()
+            .all(|k| k.source == RuleSource::Default && !k.has_source)
+    );
+
+    let scope = renox::auth::permissions::Scope::new("branches", 1);
+    let unknown = block_effects::effect_for("unregistered_kind", &scope);
+    assert_eq!(unknown.effect, BlockEffect::Review);
+    assert_eq!(unknown.decider_role, None);
+    assert_eq!(unknown.source, RuleSource::Default);
+    assert_eq!(unknown.scope, scope);
+    assert!(block_effects::source_for("booking").is_none());
+}

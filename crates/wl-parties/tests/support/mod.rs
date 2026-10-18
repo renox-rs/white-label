@@ -114,6 +114,37 @@ impl Booted {
     }
 }
 
+/// A user holding `role` in `scope` only (the role grants `parties.view`).
+pub async fn staff_in(
+    t: &Booted,
+    name: &str,
+    role: &str,
+    scope: &renox::auth::permissions::Scope,
+) -> User {
+    let email = format!("{}@example.com", name.to_lowercase());
+    let user = User::register(t.db(), name, &email, "password123")
+        .await
+        .unwrap();
+    permissions::define_role(t.db(), role, &[perm::VIEW])
+        .await
+        .unwrap();
+    user.assign_role_in(t.db(), role, scope).await.unwrap();
+    user
+}
+
+/// `user` blocks `party` through the real route.
+pub async fn block_party(t: &Booted, user: &User, party: &Party, code: &str, note: &str) {
+    t.app.acting_as(user);
+    t.app
+        .htmx()
+        .post(
+            &format!("/parties/{}/block", party.id),
+            &[("reason_code", code), ("note", note)],
+        )
+        .await
+        .assert_ok();
+}
+
 /// wl-parties with the default block reasons, booted and seeded.
 pub async fn boot() -> Booted {
     boot_with(WlParties::new(), true).await
