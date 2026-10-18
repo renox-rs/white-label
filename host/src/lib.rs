@@ -66,11 +66,14 @@ pub fn app() -> renox::App {
 /// The application for one client.
 pub fn app_for(config: ClientConfig) -> Result<renox::App, ConfigError> {
     let vertical = vertical(&config.client.app)?;
-    let mut app = base();
-    for module in config.manifest()?.enabled() {
+    let manifest = config.manifest()?;
+    // The kernel goes first: its seeder creates the legal entities the other
+    // modules' demo data needs, and seeders run in the order modules mount.
+    let mut app = wl_kernel::apply(base(), config)?;
+    for module in manifest.enabled() {
         app = enable(app, module)?;
     }
-    Ok(wl_kernel::apply(app, config)?.module(vertical))
+    Ok(app.module(vertical))
 }
 
 /// The vertical app named in `[client] app`.

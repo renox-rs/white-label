@@ -117,3 +117,61 @@ async fn admins_find_the_legal_entities_in_the_sidebar() {
         .assert_see("Palm Grove Facilities FZ-LLC")
         .assert_see(r#"class="rx-sidebar__link" href="/legal-entities" aria-current="page""#);
 }
+
+/// #45 AC10: the demo boots with `documents` enabled, so the kernel guard is
+/// the documents module's (a kind that guards a transition is enforced), and
+/// the admin role reaches the module's pages.
+#[renox::test]
+async fn the_demo_client_boots_with_documents_enabled() {
+    use wl_kernel::documents::{self, BlockMode};
+
+    struct Anyone;
+    impl documents::BlockSubjects for Anyone {
+        fn subjects<'a>(
+            &'a self,
+            _state: &'a AppState,
+            _entry: &'a documents::BlockEntry,
+            record_id: i64,
+        ) -> documents::DocumentFuture<'a, Vec<wl_kernel::Subject>> {
+            Box::pin(async move { Ok(vec![wl_kernel::Subject::new("hr.employee", record_id)]) })
+        }
+    }
+
+    let app = TestApp::new(host::app()).await;
+    // `wl:install` first, as the entity-scoped demo seeders expect.
+    app.kernel()
+        .call("wl:install", Vec::<String>::new())
+        .await
+        .unwrap();
+    app.kernel().seed().await.unwrap();
+    documents::register_block_subjects("host_test.activate", Anyone);
+    let permit = wl_documents::KindSeed::new("host_test_permit", "Host test permit")
+        .subject_type("hr.employee")
+        .blocks("host_test.activate", BlockMode::Block);
+    wl_documents::kinds::install_seeds(app.db(), [&permit])
+        .await
+        .unwrap();
+    let refused = documents::guard(app.state())
+        .check(app.state(), "host_test.activate", 1, documents::today())
+        .await
+        .unwrap()
+        .unwrap_err();
+    assert_eq!(
+        refused.message(),
+        "Host test permit missing; override: not allowed"
+    );
+
+    let mut admin = User::register(app.db(), "Rana", "rana@example.com", "secret123")
+        .await
+        .unwrap();
+    admin.email_verified_at = Some(renox::db::now());
+    admin.save(app.db()).await.unwrap();
+    host::roles::define(app.db()).await.unwrap();
+    admin
+        .assign_role(app.db(), host::roles::ADMIN)
+        .await
+        .unwrap();
+    app.acting_as(&admin);
+    app.get("/documents/review").await.assert_ok();
+    app.get("/document-kinds").await.assert_ok();
+}
