@@ -1,7 +1,7 @@
 # White-Label UAE SME Platform — Architecture
 
-> Status: **concept draft for review**. No code yet. Once approved, each phase in the
-> [Roadmap](#9-roadmap) is split into GitHub issues.
+> Status: **approved; F1 in progress** ([decision 0004](decisions/0004-start-f1-build.md)). The
+> code follows the layout in [§7](#7-repository-layout).
 
 ## 1. Agreed decisions
 
