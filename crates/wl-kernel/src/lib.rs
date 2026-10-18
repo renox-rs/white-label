@@ -5,6 +5,7 @@ pub mod approvals;
 pub mod automation;
 pub mod branding;
 pub mod config;
+pub mod documents;
 pub mod entities;
 pub mod invoicing;
 pub mod machines;
@@ -28,6 +29,11 @@ pub use approvals::{
 };
 pub use automation::AutomationFailed;
 pub use config::{ClientConfig, ConfigError};
+pub use documents::{
+    BlockCondition, BlockEntry, BlockFailure, BlockMode, BlockRefusal, BlockSubjects, CheckOutcome,
+    DocumentAccepted, DocumentGuard, DocumentId, DocumentRejected, DocumentSuperseded,
+    DocumentUploaded, InvalidReason, NoDocuments, OverrideMode, PendingRenewal, Validity,
+};
 pub use entities::{IssuerSnapshot, LegalEntity, ScopeEntity};
 pub use invoicing::{
     DraftLine, InvoiceDraft, InvoiceId, InvoiceIssued, InvoiceOverdue, InvoicePaid, InvoiceStatus,
