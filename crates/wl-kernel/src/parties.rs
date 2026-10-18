@@ -21,6 +21,7 @@ use std::sync::Arc;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::notify::PartyContacts;
 use crate::numbering::{Reset, Series};
 use crate::subject::Subject;
 
@@ -149,6 +150,17 @@ pub trait PartyDirectory: Send + Sync + 'static {
 
     /// The party's lifecycle state.
     fn status<'a>(&'a self, db: &'a Db, party: PartyId) -> PartyFuture<'a, Option<PartyStatus>>;
+
+    /// How to reach the party: its language, preferred channel and e-mail
+    /// and mobile contact points, for `wl-notify`. The default knows none.
+    fn contacts<'a>(
+        &'a self,
+        db: &'a Db,
+        party: PartyId,
+    ) -> PartyFuture<'a, Option<PartyContacts>> {
+        let _ = (db, party);
+        Box::pin(async { Ok(None) })
+    }
 }
 
 /// The directory when the `parties` module is off: no party is ever found.

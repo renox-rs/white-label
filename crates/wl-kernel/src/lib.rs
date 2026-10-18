@@ -2,11 +2,13 @@
 #![warn(missing_docs)]
 
 pub mod approvals;
+pub mod automation;
 pub mod branding;
 pub mod config;
 pub mod entities;
 pub mod machines;
 pub mod manifest;
+pub mod notify;
 pub mod numbering;
 pub mod parties;
 pub mod subject;
@@ -23,10 +25,15 @@ pub use approvals::{
     ApprovalDecided, ApprovalDecision, ApprovalEnd, ApprovalInterceptor, ApprovalPolicy,
     ApprovalRequest, ApprovalRequested, ApprovalStatus, PolicyDefault, Require, Required,
 };
+pub use automation::AutomationFailed;
 pub use config::{ClientConfig, ConfigError};
 pub use entities::{IssuerSnapshot, LegalEntity, ScopeEntity};
 pub use machines::SubjectMachine;
 pub use manifest::Manifest;
+pub use notify::{
+    GiveUpReaction, MessageFailed, MessageGaveUp, MessageId, MessageSuppressed, NoNotifier,
+    NotificationTypeDef, Notifier, NotifyChannel, NotifyRecipient, NotifyRequest, PartyContacts,
+};
 pub use numbering::{Reset, Series};
 pub use parties::{
     NEUTRAL_BLOCK_REASON, NoParties, PartyBlocked, PartyCreated, PartyDirectory, PartyId,

@@ -37,7 +37,9 @@ What is here so far:
 | Legal entities, scope links, issuer snapshots (`PLT.ENT.01`) | §5.6, decision 0003 | `entities` |
 | Document numbering on Renox `Sequence` | §5.5 | `numbering` |
 | State machines by name: `SubjectMachine`, `back_to_<state>` and `<action>_approved` (always `system`) | §4.1, WORKFLOW §3.4 | `machines` |
-| The party contract: `PartyDirectory` (`NoParties` when `parties` is off), `PartyStatus`, party events, the `party` series | ARCHITECTURE §5, wl-parties §6 | `parties` |
+| The party contract: `PartyDirectory` (`NoParties` when `parties` is off), `PartyStatus`, party events, the `party` series, `contacts` (`PartyContacts`) | ARCHITECTURE §5, wl-parties §6 | `parties` |
+| The notice contract: `Notifier` (`NoNotifier` when `notify` is off), `register_type`, `NotifyRequest`, message events | ARCHITECTURE §5, wl-notify §6 | `notify` |
+| `AutomationFailed`, the event of a failed rule run | §4 | `automation` |
 
 After `rnx migrate`, `rnx wl:install` creates the legal entities `client.toml` lists and
 the database lacks; it never overwrites an entity changed in the admin. `rnx db:seed`
@@ -50,6 +52,17 @@ in `resources/lang/{locale}.json`.
 Other modules read parties only through `wl_kernel::parties::directory(&state)` and listen
 to `PartyCreated`, `PartyBlocked` and `PartyUnblocked`. Summaries and events carry the
 display block reason: `on_hold` (`NEUTRAL_BLOCK_REASON`) when the real one is restricted.
+
+Every notice goes through one contract. A module registers its notification types in
+`register` with `wl_kernel::notify::register_type(NotificationTypeDef::new(..))` (statutory
+flag, give-up reactions, staff role told, channels in order, default texts with `{{ name }}`
+placeholders), then sends with
+`notify::notifier(&state).notify(&state, NotifyRequest::new(type, subject).to_party(p).to_user(u).data(..))`.
+A recipient is a staff user (by user id), a party (by `PartyId`, reached through
+`PartyDirectory::contacts`) or a bare address. `wl-notify` provides the real notifier and
+emits `MessageFailed`, `MessageSuppressed` and `MessageGaveUp`. When `notify` is off,
+`NoNotifier` still gives each user recipient a Renox database notification (the bell) with
+the type's text, skips party and address recipients, and returns no message ids.
 
 Migrations are SQLite only: each client runs one SQLite database
 ([ARCHITECTURE.md](../../docs/ARCHITECTURE.md) §1).
