@@ -5,6 +5,9 @@
 
 #![allow(dead_code)]
 
+use std::sync::{Arc, Mutex, PoisonError};
+
+use renox::auth::permissions::Scope;
 use renox::auth::{Permissions, permissions};
 use renox::axum::extract::Form;
 use renox::chrono::{Days, NaiveDate};
@@ -16,8 +19,12 @@ use wl_documents::{
 };
 use wl_kernel::Subject;
 use wl_kernel::documents::{
-    BlockCondition, BlockEntry, BlockMode, BlockSubjects, DocumentFuture, register_block_subjects,
-    today,
+    BlockCondition, BlockEntry, BlockMode, BlockSubjects, DocumentFuture, FutureWork,
+    PlannedRecord, ReminderSchedule, register_block_subjects, register_future_work,
+    register_reminder_schedule, today,
+};
+use wl_kernel::notify::{
+    MessageId, Notifier, NotifyFuture, NotifyRecipient, NotifyRequest, provide_notifier,
 };
 
 /// The pages extend the app's layout; a package test has no app, so it
@@ -276,10 +283,242 @@ pub fn medical_certificate() -> KindSeed {
         .blocks("attendance_record.accept", BlockMode::Block)
 }
 
+// ---- The expiry run (#48): kinds, planned visits, schedule, notifier, roles.
+
+/// The valve "Valve V1" an ECAS certificate belongs to (no scope).
+pub const VALVE: i64 = 21;
+
+/// Tower A, a building (scope type `buildings`).
+pub fn tower_a() -> Scope {
+    Scope::new("buildings", 1)
+}
+
+/// Tower B, a building.
+pub fn tower_b() -> Scope {
+    Scope::new("buildings", 2)
+}
+
+/// Plant 1.
+pub fn plant1() -> Scope {
+    Scope::new("plants", 1)
+}
+
+/// Plant 2.
+pub fn plant2() -> Scope {
+    Scope::new("plants", 2)
+}
+
+/// "Valve V1": an item with no scope.
+pub fn valve() -> Subject {
+    Subject::new("inventory.item", VALVE)
+}
+
+/// The Civil Defence approval of the expiry run: it blocks `ticket.resolve`
+/// for fire alarm and sprinkler tickets; the `coordinator`s are told.
+pub fn civil_defence_approval() -> KindSeed {
+    KindSeed::new("civil_defence_approval", "Civil Defence approval")
+        .subject_type("party.vendor")
+        .expires()
+        .responsible_role("coordinator")
+        .look_ahead(30)
+        .legal_block()
+        .blocks_when(
+            "ticket.resolve",
+            BlockMode::Block,
+            BlockCondition::new("category", ["fire_alarm", "sprinkler"]),
+        )
+}
+
+/// The ECAS certificate: no `blocks`, reminders at 90, 30 and 7 days, the
+/// `qc_inspector`s are told.
+pub fn ecas_certificate() -> KindSeed {
+    KindSeed::new("ecas_certificate", "ECAS certificate")
+        .subject_type("inventory.item")
+        .expires()
+        .reminders(&[90, 30, 7])
+        .responsible_role("qc_inspector")
+}
+
+/// A planned fire-safety visit of a vendor.
+#[derive(Debug, Clone)]
+pub struct Visit {
+    /// The record's id (a `ticketing.ticket`).
+    pub id: i64,
+    /// The vendor who does it.
+    pub vendor: Subject,
+    /// The day it is planned for.
+    pub date: NaiveDate,
+    /// The building it is in.
+    pub scope: Option<Scope>,
+    /// The ticket category the condition of the `blocks` entry looks at.
+    pub category: String,
+}
+
+/// What the app under test plans and whom it asks: the work the test
+/// `FutureWork` of `ticket.resolve` lists and the scopes the test
+/// `ReminderSchedule` of the ECAS certificate names. They live in the app
+/// (provided to it), because the provider registries are process-wide and
+/// the tests run side by side.
+#[derive(Clone, Default)]
+pub struct Plan {
+    visits: Arc<Mutex<Vec<Visit>>>,
+    schedule: Arc<Mutex<Option<Vec<Scope>>>>,
+}
+
+impl Plan {
+    /// Plans a fire-alarm visit of SafeFire in `scope` on `date`; returns
+    /// the visit's id (1, 2, ... in the order planned).
+    pub fn visit(&self, scope: Scope, date: NaiveDate) -> i64 {
+        let mut visits = self.visits.lock().unwrap_or_else(PoisonError::into_inner);
+        let id = visits.len() as i64 + 1;
+        visits.push(Visit {
+            id,
+            vendor: safefire(),
+            date,
+            scope: Some(scope),
+            category: "fire_alarm".to_owned(),
+        });
+        id
+    }
+
+    /// Moves visit `id` to `date`.
+    pub fn move_visit(&self, id: i64, date: NaiveDate) {
+        let mut visits = self.visits.lock().unwrap_or_else(PoisonError::into_inner);
+        visits
+            .iter_mut()
+            .find(|visit| visit.id == id)
+            .unwrap_or_else(|| panic!("no visit {id}"))
+            .date = date;
+    }
+
+    /// The planned visits.
+    pub fn visits(&self) -> Vec<Visit> {
+        self.visits
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+
+    /// Has the schedule of the ECAS certificate name `scopes`; without a
+    /// call it gives no answer (every scope).
+    pub fn schedule(&self, scopes: Vec<Scope>) {
+        *self.schedule.lock().unwrap_or_else(PoisonError::into_inner) = Some(scopes);
+    }
+}
+
+/// The test `FutureWork` of `ticket.resolve`: the [`Plan`]'s visits of the
+/// vendor, dated on or after `from`, that match the entry's condition.
+struct PlannedVisits;
+
+impl FutureWork for PlannedVisits {
+    fn planned_from<'a>(
+        &'a self,
+        state: &'a AppState,
+        entry: &'a BlockEntry,
+        subject: &'a Subject,
+        from: NaiveDate,
+    ) -> DocumentFuture<'a, Vec<PlannedRecord>> {
+        Box::pin(async move {
+            let visits = state
+                .provided::<Plan>()
+                .map(|plan| plan.visits())
+                .unwrap_or_default();
+            Ok(visits
+                .into_iter()
+                .filter(|visit| {
+                    visit.vendor == *subject
+                        && visit.date >= from
+                        && entry.applies_to(Some(&visit.category))
+                })
+                .map(|visit| PlannedRecord {
+                    record: Subject::new("ticketing.ticket", visit.id),
+                    date: visit.date,
+                    label: format!("Fire-safety visit {}", visit.id),
+                    scope: visit.scope,
+                })
+                .collect())
+        })
+    }
+}
+
+/// The test `ReminderSchedule` of the ECAS certificate: what the [`Plan`]
+/// names, else no answer.
+struct PlanSchedule;
+
+impl ReminderSchedule for PlanSchedule {
+    fn scopes<'a>(
+        &'a self,
+        state: &'a AppState,
+        _subject: &'a Subject,
+    ) -> DocumentFuture<'a, Option<Vec<Scope>>> {
+        Box::pin(async move {
+            Ok(state.provided::<Plan>().and_then(|plan| {
+                plan.schedule
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .clone()
+            }))
+        })
+    }
+}
+
+/// A [`Notifier`] that records each request instead of sending it.
+#[derive(Clone, Default)]
+pub struct Recording(Arc<Mutex<Vec<NotifyRequest>>>);
+
+impl Recording {
+    /// Every request so far, oldest first.
+    pub fn sent(&self) -> Vec<NotifyRequest> {
+        self.0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+
+    /// The requests addressed to the user `id`.
+    pub fn to_user(&self, id: i64) -> Vec<NotifyRequest> {
+        self.sent()
+            .into_iter()
+            .filter(|request| {
+                request
+                    .recipients
+                    .iter()
+                    .any(|r| matches!(r, NotifyRecipient::User { id: to } if *to == id))
+            })
+            .collect()
+    }
+
+    /// Forgets what was recorded.
+    pub fn clear(&self) {
+        self.0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clear();
+    }
+}
+
+impl Notifier for Recording {
+    fn notify<'a>(
+        &'a self,
+        _state: &'a AppState,
+        request: NotifyRequest,
+    ) -> NotifyFuture<'a, Vec<MessageId>> {
+        Box::pin(async move {
+            let mut sent = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+            sent.push(request);
+            Ok(vec![MessageId(sent.len() as i64)])
+        })
+    }
+}
+
 /// The app under test.
 pub struct Booted {
     /// The app.
     pub app: TestApp,
+    /// What the app's notifier recorded.
+    pub notices: Recording,
+    /// The planned work and the reminder schedule of the app.
+    pub plan: Plan,
     /// Keeps the views directory alive.
     _views: tempfile::TempDir,
 }
@@ -313,6 +552,30 @@ impl Booted {
             .await
             .unwrap();
         user.assign_role(self.db(), &role).await.unwrap();
+        user
+    }
+
+    /// Defines the roles `names` (no grants).
+    pub async fn roles(&self, names: &[&str]) {
+        for name in names {
+            permissions::define_role(self.db(), name, &[])
+                .await
+                .unwrap();
+        }
+    }
+
+    /// A user named `name` holding `role` in `scope` (globally for `None`).
+    /// The role must be defined ([`Booted::roles`]).
+    pub async fn staff(&self, name: &str, role: &str, scope: Option<&Scope>) -> User {
+        let email = format!("{}@example.com", name.to_lowercase());
+        let user = User::register(self.db(), name, &email, "password123")
+            .await
+            .unwrap();
+        match scope {
+            Some(scope) => user.assign_role_in(self.db(), role, scope).await,
+            None => user.assign_role(self.db(), role).await,
+        }
+        .unwrap();
         user
     }
 
@@ -385,7 +648,10 @@ impl Booted {
 
 /// `record`, `resubmit` and `archive` take the logged-in user, and only a
 /// request has one; these routes run them for the tests.
-struct Harness;
+struct Harness {
+    notices: Recording,
+    plan: Plan,
+}
 
 #[derive(Deserialize)]
 struct FileForm {
@@ -461,6 +727,11 @@ impl Module for Harness {
         "documents-test-harness"
     }
 
+    fn register(&self, app: &mut Registry) {
+        provide_notifier(app, self.notices.clone());
+        app.provide(self.plan.clone());
+    }
+
     fn routes(&self) -> Routes {
         Routes::new()
             .post("/test/documents/record", record)
@@ -484,14 +755,27 @@ pub async fn boot() -> Booted {
     register_block_subjects("booking.book", Visits);
     register_block_subjects("session.start", Sessions);
 
+    register_future_work("ticket.resolve", PlannedVisits);
+    register_reminder_schedule("ecas_certificate", PlanSchedule);
+
+    let notices = Recording::default();
+    let plan = Plan::default();
     let app = App::new()
         .module(Auth::new())
         .module(Permissions)
         .module(WlDocuments)
-        .module(Harness);
+        .module(Harness {
+            notices: notices.clone(),
+            plan: plan.clone(),
+        });
     let dir = views.path().to_path_buf();
     let app = TestApp::with_config(app, |c| c.views_path = dir).await;
     // Events are recorded for `assert_emitted`; nothing here listens.
     app.fake_events();
-    Booted { app, _views: views }
+    Booted {
+        app,
+        notices,
+        plan,
+        _views: views,
+    }
 }
