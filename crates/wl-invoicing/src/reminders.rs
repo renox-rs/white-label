@@ -5,7 +5,8 @@
 //! ([`InvoicingConfig::reminder_steps`](crate::InvoicingConfig), default
 //! 3 days before and 1, 7 and 14 days after). [`run`] looks at every
 //! `issued`, `partially_paid` or `overdue` invoice with a balance that is
-//! not `disputed`, and sends it the latest step whose day has come, unless
+//! not `disputed` (nor inside the grace period after an upheld dispute,
+//! [`Invoice::chasing_paused`]), and sends it the latest step whose day has come, unless
 //! that step (or a later one) is already in its [`ReminderLog`]: at most one
 //! reminder per invoice per run (§5.3 step 2). `draft`, `paid`,
 //! `written_off` and `credited` invoices are never picked.
@@ -209,6 +210,11 @@ pub async fn run(state: &AppState, on: NaiveDate) -> Result<usize> {
         let Some(due) = invoice.due_date else {
             continue;
         };
+        // After an upheld dispute, chasing waits out the grace period; the
+        // latest step due then goes out once (`due_step`).
+        if invoice.chasing_paused(on) {
+            continue;
+        }
         let logged: Vec<i32> = ReminderLog::query()
             .where_(ReminderLog::INVOICE_ID.eq(invoice.id))
             .get(&state.db)

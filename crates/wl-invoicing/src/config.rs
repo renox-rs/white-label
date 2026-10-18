@@ -99,6 +99,10 @@ pub struct InvoicingConfig {
     pub bad_debt_relief_months: ReliefMonths,
     /// The role told when relief is proposed.
     pub relief_notify_role: String,
+    /// Whether the party may dispute an invoice from the portal.
+    pub portal_disputes: bool,
+    /// Days chasing stays paused after an upheld dispute.
+    pub dispute_grace_days: u32,
 }
 
 impl Default for InvoicingConfig {
@@ -125,6 +129,8 @@ impl Default for InvoicingConfig {
             bad_debt_relief_run_at: "02:00".to_owned(),
             bad_debt_relief_months: ReliefMonths::default(),
             relief_notify_role: "accountant".to_owned(),
+            portal_disputes: false,
+            dispute_grace_days: 7,
         }
     }
 }
@@ -203,6 +209,8 @@ mod tests {
         assert_eq!(config.bad_debt_relief_run_at, "02:00");
         assert_eq!(config.bad_debt_relief_months.get(), 6);
         assert_eq!(config.relief_notify_role, "accountant");
+        assert!(!config.portal_disputes);
+        assert_eq!(config.dispute_grace_days, 7);
     }
 
     #[test]

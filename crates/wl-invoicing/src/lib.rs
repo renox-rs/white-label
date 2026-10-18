@@ -5,6 +5,7 @@ pub mod allocate;
 pub mod allocation;
 pub mod bad_debt_relief;
 pub mod config;
+pub mod dispute;
 mod events;
 pub mod invoice;
 pub mod invoicer;
@@ -35,6 +36,7 @@ use renox::prelude::*;
 
 pub use allocation::Allocation;
 pub use config::{InvoicingConfig, ReasonProblem, ReliefMonths, SettingError, WriteOffReason};
+pub use dispute::{Dispute, DisputeVia};
 pub use invoice::{Invoice, InvoiceKind, PartySnapshot};
 pub use invoicer::Invoices;
 pub use line::InvoiceLine;
@@ -204,6 +206,19 @@ impl WlInvoicing {
         self
     }
 
+    /// Whether the party may dispute an invoice from the portal (default
+    /// off).
+    pub fn portal_disputes(mut self, on: bool) -> Self {
+        self.config.portal_disputes = on;
+        self
+    }
+
+    /// Days chasing stays paused after an upheld dispute (default 7).
+    pub fn dispute_grace_days(mut self, days: u32) -> Self {
+        self.config.dispute_grace_days = days;
+        self
+    }
+
     /// The module's settings.
     pub fn config(&self) -> &InvoicingConfig {
         &self.config
@@ -228,6 +243,7 @@ impl Module for WlInvoicing {
             .model::<InvoiceLine>()
             .model::<Allocation>()
             .model::<Recovery>()
+            .model::<Dispute>()
             .model::<ReminderLog>()
             .model::<VatAdjustment>()
             .model::<VatSummary>()
@@ -291,6 +307,8 @@ impl Module for WlInvoicing {
         // `invoicing.bad_debt_recovered`: the accountant notice of a recovery.
         recover::register_types();
         bad_debt_relief::schedule(app, &self.config);
+        // `invoicing.dispute_acknowledged` and `invoicing.dispute_unassigned`.
+        dispute::register_types();
         // Other modules draft and read invoices through the kernel (§6).
         wl_kernel::invoicing::provide_invoicer(app, Invoices);
     }
@@ -314,7 +332,9 @@ mod tests {
             .bad_debt_relief_months(ReliefMonths::new(9).unwrap())
             .bad_debt_relief_run_at("03:30")
             .bad_debt_relief(false)
-            .relief_notify_role("finance");
+            .relief_notify_role("finance")
+            .portal_disputes(true)
+            .dispute_grace_days(10);
         let config = module.config();
         assert_eq!(config.payment_terms_days, 14);
         assert_eq!(config.reminder_steps, [-3, 7]);
@@ -331,5 +351,7 @@ mod tests {
         assert_eq!(config.bad_debt_relief_run_at, "03:30");
         assert!(!config.bad_debt_relief);
         assert_eq!(config.relief_notify_role, "finance");
+        assert!(config.portal_disputes);
+        assert_eq!(config.dispute_grace_days, 10);
     }
 }

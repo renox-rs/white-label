@@ -7,6 +7,9 @@
 //! - `recover` / `recover_in_full` → `BadDebtRecovered` and the accountant
 //!   notice ([`crate::recover`]); `recover_in_full` also → [`InvoicePaid`];
 //! - `mark_overdue` → [`InvoiceOverdue`].
+//!
+//! `InvoiceDisputed` is not a transition: [`crate::dispute::raise`] emits it
+//! itself after its commit.
 
 use renox::chrono::NaiveDate;
 use renox::prelude::*;

@@ -326,6 +326,34 @@ const TEXTS: &[(&str, &str)] = &[
         "{{ amount }} was recovered on the written-off invoice {{ number }} ({{ party_name }}); {{ recovered_total }} of {{ written_off }} is now recovered. VAT relief claimed: {{ relief_claimed }}. {{ adjustment }} See the invoice: {{ link }}",
     ),
     (
+        "wl_invoicing.dispute.acknowledged.subject",
+        "We received your dispute of invoice {{ number }}",
+    ),
+    (
+        "wl_invoicing.dispute.acknowledged.body",
+        "Dear {{ party_name }}, we received your dispute of invoice {{ number }} for {{ amount }} (reason: {{ reason }}). {{ ticket }} We will come back to you. Until it is resolved, no payment reminders are sent for this invoice.",
+    ),
+    (
+        "wl_invoicing.dispute.unassigned.subject",
+        "Dispute on invoice {{ number }} has no owner",
+    ),
+    (
+        "wl_invoicing.dispute.unassigned.body",
+        "{{ party_name }} disputed invoice {{ number }} for {{ amount }} (reason: {{ reason }}). The invoice owner is not available, so the ticket is unassigned. Please take it: {{ link }}",
+    ),
+    (
+        "wl_invoicing.dispute.no_ticket",
+        "No ticket (ticketing is off).",
+    ),
+    (
+        "wl_invoicing.dispute.ticket_text",
+        "Your reference is {{ ticket }}.",
+    ),
+    (
+        "wl_invoicing.dispute.ticket_title",
+        "Dispute on {{ number }}",
+    ),
+    (
         "wl_invoicing.relief.proposed.subject",
         "Bad-debt VAT relief proposed for invoice {{ number }}",
     ),

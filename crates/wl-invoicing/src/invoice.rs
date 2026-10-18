@@ -121,6 +121,10 @@ pub struct Invoice {
     pub status: InvoiceStatus,
     /// Whether the party disputes it.
     pub disputed: bool,
+    /// The open dispute (`disputed` is set exactly while there is one).
+    pub dispute_id: Option<i64>,
+    /// The last day chasing stays paused after an upheld dispute.
+    pub dispute_grace_until: Option<NaiveDate>,
     /// The open balance written off as a bad debt.
     pub write_off_amount: Option<i64>,
     /// The write-off reason code, e.g. `insolvent`.
@@ -193,6 +197,13 @@ impl Invoice {
         self.balance = totals.gross - self.allocated_total;
     }
 
+    /// Whether chasing is paused on `today` (`FIN.RUL.01`, escalation,
+    /// write-off): the invoice is disputed, or `today` is before the end of
+    /// the grace period after an upheld dispute.
+    pub fn chasing_paused(&self, today: NaiveDate) -> bool {
+        self.disputed || self.dispute_grace_until.is_some_and(|until| today < until)
+    }
+
     /// What other modules see of it.
     pub fn summary(&self) -> InvoiceSummary {
         InvoiceSummary {
@@ -206,8 +217,7 @@ impl Invoice {
             balance: self.balance,
             due_date: self.due_date,
             disputed: self.disputed,
-            // The grace period is stored from part 3/7 of #67 on.
-            chasing_paused_until: None,
+            chasing_paused_until: self.dispute_grace_until,
         }
     }
 }
@@ -259,6 +269,24 @@ mod tests {
         assert_eq!(invoice.source(), Subject::new("property.lease", 9));
         assert_eq!(invoice.subject().to_string(), "invoicing.invoice:4");
         assert_eq!(invoice.scope(), None);
+    }
+
+    #[test]
+    fn chasing_is_paused_while_disputed_and_through_the_grace_period() {
+        let day = |d| NaiveDate::from_ymd_opt(2026, 11, d).unwrap();
+        let mut invoice = Invoice {
+            disputed: true,
+            dispute_id: Some(1),
+            ..Default::default()
+        };
+        assert!(invoice.chasing_paused(day(20)));
+        invoice.disputed = false;
+        invoice.dispute_id = None;
+        assert!(!invoice.chasing_paused(day(20)));
+        invoice.dispute_grace_until = Some(day(27));
+        assert!(invoice.chasing_paused(day(26)));
+        assert!(!invoice.chasing_paused(day(27)));
+        assert_eq!(invoice.summary().chasing_paused_until, Some(day(27)));
     }
 
     #[test]

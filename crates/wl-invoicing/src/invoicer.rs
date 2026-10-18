@@ -6,7 +6,8 @@ use renox::prelude::*;
 use renox::state_machine::TransitionError;
 use wl_kernel::LegalEntity;
 use wl_kernel::invoicing::{
-    DraftLine, InvoiceDraft, InvoiceFuture, InvoiceId, InvoiceStatus, InvoiceSummary, Invoicer,
+    DisputeRequest, DraftLine, InvoiceDraft, InvoiceFuture, InvoiceId, InvoiceStatus,
+    InvoiceSummary, Invoicer,
 };
 
 use crate::invoice::Invoice;
@@ -47,6 +48,14 @@ impl Invoicer for Invoices {
             };
             result.map_err(TransitionError::into_error)
         })
+    }
+
+    fn dispute<'a>(
+        &'a self,
+        state: &'a AppState,
+        request: DisputeRequest,
+    ) -> InvoiceFuture<'a, i64> {
+        Box::pin(async move { crate::dispute::raise(state, request).await })
     }
 }
 
