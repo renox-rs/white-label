@@ -7,6 +7,7 @@ pub mod config;
 pub mod credit;
 pub mod deposit;
 mod deposit_machine;
+pub mod deposit_pages;
 mod events;
 pub mod followup;
 pub mod gateway;
@@ -20,6 +21,7 @@ pub mod refund;
 pub mod refund_attempt;
 mod refund_fail;
 mod refund_machine;
+pub mod refund_pages;
 pub mod reverse;
 pub mod seed;
 mod texts;
@@ -65,6 +67,26 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "wl-payments/tasks.html",
         include_str!("../views/wl-payments/tasks.html"),
+    ),
+    (
+        "wl-payments/refunds.html",
+        include_str!("../views/wl-payments/refunds.html"),
+    ),
+    (
+        "wl-payments/refund.html",
+        include_str!("../views/wl-payments/refund.html"),
+    ),
+    (
+        "wl-payments/_fail_sheet.html",
+        include_str!("../views/wl-payments/_fail_sheet.html"),
+    ),
+    (
+        "wl-payments/deposits.html",
+        include_str!("../views/wl-payments/deposits.html"),
+    ),
+    (
+        "wl-payments/deposit.html",
+        include_str!("../views/wl-payments/deposit.html"),
     ),
 ];
 
@@ -152,6 +174,8 @@ impl Module for WlPayments {
 
     fn routes(&self) -> Routes {
         pages::routes()
+            .merge(refund_pages::routes())
+            .merge(deposit_pages::routes())
     }
 
     fn register(&self, app: &mut Registry) {
@@ -164,7 +188,11 @@ impl Module for WlPayments {
         app.view_data::<pages::IndexPage>()
             .view_data::<pages::NewPage>()
             .view_data::<pages::ShowPage>()
-            .view_data::<pages::TasksPage>();
+            .view_data::<pages::TasksPage>()
+            .view_data::<refund_pages::IndexPage>()
+            .view_data::<refund_pages::ShowPage>()
+            .view_data::<deposit_pages::IndexPage>()
+            .view_data::<deposit_pages::ShowPage>();
         app.templates(|env| {
             for (name, source) in VIEWS {
                 // The app's own file of that name wins.
@@ -185,6 +213,22 @@ impl Module for WlPayments {
                 .group("nav.app")
                 .order(42)
                 .permission(permissions::VIEW),
+        );
+        app.nav(
+            "app",
+            NavLink::route("wl_payments.refunds.index", "nav.refunds")
+                .icon("undo-2")
+                .group("nav.app")
+                .order(43)
+                .permission(permissions::VIEW),
+        );
+        app.nav(
+            "app",
+            NavLink::route("wl_payments.deposits.index", "nav.deposits")
+                .icon("piggy-bank")
+                .group("nav.app")
+                .order(44)
+                .permission(permissions::DEPOSITS_VIEW),
         );
         // `rnx state:diagram Payment` and the admin panel find the machine.
         renox::state_machine::register::<Payment>();

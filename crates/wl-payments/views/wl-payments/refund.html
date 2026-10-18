@@ -1,0 +1,44 @@
+{#- wl-payments: a refund's page: its status, the fail sheet, the card with
+    the link to its source, the attempts (with their failure kind and
+    reason) and the history. Replace it with
+    resources/views/wl-payments/refund.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="title">
+  <rx-stack>
+    <rx-page-header :title="title" :subtitle="party_name" :back="route('wl_payments.refunds.index')" :back-label="tx['refunds.title']"
+                    :badge="status_label" :badge-kind="status_kind">
+      <template rx-if="can_fail"><rx-include template="wl-payments/_fail_sheet.html"/></template>
+      <template rx-if="actions">
+        <rx-transition-actions :actions="actions" action="/refunds/{{ refund.id }}/transitions"/>
+      </template>
+    </rx-page-header>
+    <rx-card :title="tx['refunds.sections.details']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['fields.party']" :value="party_name"/>
+        <rx-entry :label="tx['fields.amount']" :value="amount"/>
+        <rx-entry :label="tx['fields.method']" :value="method_label" :placeholder="tx['refunds.no_method']"/>
+        <rx-entry :label="tx['refunds.source']" :value="source_label" :url="source_link"/>
+        <rx-entry :label="tx['fields.reference']" :value="refund.reference" copyable/>
+        <rx-entry :label="tx['refunds.gateway_txn']" :value="refund.gateway_txn" copyable/>
+        <rx-entry :label="tx['refunds.reason']" :value="refund.reason" span="2"/>
+        <rx-entry :label="tx['refunds.paid_at']" :value="refund.paid_at" format="datetime"/>
+        <rx-entry :label="tx['fields.created_at']" :value="refund.created_at" format="datetime"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-table :rows="attempts" as="attempt" :key="attempt.id" :caption="tx['refunds.sections.attempts']" card>
+      <rx-column :label="tx['refunds.attempt']">{{ attempt.number }}</rx-column>
+      <rx-column :label="tx['fields.method']" hide-narrow>{{ attempt.method }}</rx-column>
+      <rx-column :label="tx['fields.reference']" hide-narrow>{{ attempt.reference or attempt.gateway_ref or "" }}</rx-column>
+      <rx-column :label="tx['fields.status']"><rx-badge :kind="attempt.outcome_kind" :text="attempt.outcome"/></rx-column>
+      <rx-column :label="tx['refunds.failure_kind']">{{ attempt.failure_kind }}</rx-column>
+      <rx-column :label="tx['refunds.fail.reason']">{{ attempt.failure_reason }}</rx-column>
+      <rx-column :label="tx['refunds.failed_on']" hide-narrow>{{ attempt.failed_on }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['refunds.no_attempts']" icon="history"/></rx-slot>
+    </rx-table>
+    <rx-table :rows="timeline" as="item" :key="item.time" :caption="tx['sections.history']" card>
+      <rx-column :label="tx['history.change']">{{ item.title }}</rx-column>
+      <rx-column :label="tx['history.at']">{{ item.time | date('%Y-%m-%d %H:%M') }}</rx-column>
+      <rx-column :label="tx['history.reason']" hide-narrow>{{ item.body or "" }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['no_history']" icon="history"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

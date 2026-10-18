@@ -11,6 +11,8 @@
     "invoices": "Invoices",
     "vat_summaries": "VAT summaries",
     "payments": "Payments",
+    "refunds": "Refunds",
+    "deposits": "Deposits",
     "tickets": "Tickets",
     "block_effects": "Block effects",
     "review_tasks": "Review tasks",

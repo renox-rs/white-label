@@ -46,13 +46,13 @@ use crate::reverse::reverse;
 use crate::texts;
 
 /// The texts a template reads as `tx['fields.number']`.
-type Texts = BTreeMap<&'static str, String>;
+pub(crate) type Texts = BTreeMap<&'static str, String>;
 
 /// The package text `key` (without the `wl_payments.` prefix) in a language.
-type Text<'a> = &'a (dyn Fn(&str) -> String + Sync);
+pub(crate) type Text<'a> = &'a (dyn Fn(&str) -> String + Sync);
 
 /// The package texts in `lang`.
-fn texts_in(lang: &Lang) -> impl Fn(&str) -> String + '_ {
+pub(crate) fn texts_in(lang: &Lang) -> impl Fn(&str) -> String + '_ {
     move |key: &str| texts::t(lang, &format!("wl_payments.{key}"))
 }
 
@@ -112,7 +112,7 @@ pub fn grid(lang: &Lang) -> Grid {
 }
 
 /// The labels of the codes in `codes`, as `(code, label)` under `group`.
-fn options(t: Text<'_>, group: &str, codes: &[&str]) -> Vec<(String, String)> {
+pub(crate) fn options(t: Text<'_>, group: &str, codes: &[&str]) -> Vec<(String, String)> {
     codes
         .iter()
         .map(|code| ((*code).to_owned(), t(&format!("{group}.{code}"))))
@@ -290,7 +290,7 @@ pub struct PaymentForm {
 }
 
 /// A validation error on `field`, with the form's input filled in again.
-fn invalid<F: Serialize>(field: &str, message: String, form: &F) -> Error {
+pub(crate) fn invalid<F: Serialize>(field: &str, message: String, form: &F) -> Error {
     let mut errors = Errors::new();
     errors.add(field, message);
     Error::Validation(ValidationError::new(errors).with_input(form))
@@ -330,7 +330,7 @@ fn method_of(code: &str) -> Option<PaymentMethod> {
 }
 
 /// The text of `value` when it has any.
-fn filled(value: &Option<String>) -> Option<&str> {
+pub(crate) fn filled(value: &Option<String>) -> Option<&str> {
     value.as_deref().map(str::trim).filter(|s| !s.is_empty())
 }
 
@@ -494,7 +494,7 @@ pub(crate) struct ShowPage {
 }
 
 /// The display name of `party`, else `#id`.
-async fn party_name(state: &AppState, party: PartyId) -> Result<String> {
+pub(crate) async fn party_name(state: &AppState, party: PartyId) -> Result<String> {
     Ok(directory(state)
         .display_name(&state.db, party, "en")
         .await?

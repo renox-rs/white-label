@@ -557,6 +557,98 @@ async fn the_payment_pages_render_for_the_accountant() {
         .assert_see("Reverse payment");
 }
 
+/// #99 part 5: the refund and deposit pages render for the accountant: the
+/// lists, a failed refund with its attempt and reason, and the deposit's
+/// "Refund failed" badge with its link.
+#[renox::test]
+async fn the_refund_and_deposit_pages_render_for_the_accountant() {
+    use renox::state_machine::StateMachine;
+    use wl_kernel::payments::{PaymentMethod, RefundFailureKind};
+    use wl_payments::deposit::DepositStatus;
+    use wl_payments::refund::RefundStatus;
+    use wl_payments::refund_attempt::AttemptOutcome;
+    use wl_payments::{Deposit, Refund, RefundAttempt};
+
+    let app = TestApp::new(host::app()).await;
+    app.kernel().seed().await.unwrap();
+    host::roles::define(app.db()).await.unwrap();
+    let mut user = User::register(app.db(), "Amal", "amal@example.com", "secret123")
+        .await
+        .unwrap();
+    user.email_verified_at = Some(renox::db::now());
+    user.save(app.db()).await.unwrap();
+    user.assign_role(app.db(), host::roles::ACCOUNTANT)
+        .await
+        .unwrap();
+    app.acting_as(&user);
+    let entity = LegalEntity::default_entity(app.db()).await.unwrap();
+    let mut deposit = Deposit {
+        party_id: 1,
+        legal_entity_id: entity.id,
+        source_type: "ticketing.ticket".to_owned(),
+        source_id: 5,
+        amount: 800_000,
+        held_amount: 800_000,
+        currency: "AED".to_owned(),
+        refund_method: Some(PaymentMethod::Transfer),
+        status: wl_payments::deposit::DepositStatus::Refunded,
+        ..Default::default()
+    };
+    let mut tx = app.db().begin().await.unwrap();
+    deposit
+        .insert_in_state(&mut tx, DepositStatus::Refunded, "fixture")
+        .await
+        .unwrap();
+    let mut refund = Refund {
+        party_id: 1,
+        legal_entity_id: entity.id,
+        source_type: "payments.deposit".to_owned(),
+        source_id: deposit.id,
+        source_kind: "deposit".to_owned(),
+        amount: 800_000,
+        currency: "AED".to_owned(),
+        reason: "Lease ended".to_owned(),
+        method: Some(PaymentMethod::Transfer),
+        status: RefundStatus::Failed,
+        ..Default::default()
+    };
+    refund
+        .insert_in_state(&mut tx, RefundStatus::Failed, "fixture")
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    deposit.refund_id = Some(refund.id);
+    deposit.save(app.db()).await.unwrap();
+    let mut attempt = RefundAttempt {
+        refund_id: refund.id,
+        number: 1,
+        method: PaymentMethod::Transfer,
+        started_on: renox::chrono::NaiveDate::from_ymd_opt(2026, 11, 3).unwrap(),
+        outcome: AttemptOutcome::Failed,
+        failure_kind: Some(RefundFailureKind::BankReturn),
+        failure_reason: Some("account closed".to_owned()),
+        ..Default::default()
+    };
+    attempt.insert(app.db()).await.unwrap();
+
+    app.get("/refunds").await.assert_ok().assert_see("Refunds");
+    app.get(&format!("/refunds/{}", refund.id))
+        .await
+        .assert_ok()
+        .assert_see("account closed")
+        .assert_see("Returned by the bank")
+        .assert_see(&format!("/deposits/{}", deposit.id));
+    app.get("/deposits")
+        .await
+        .assert_ok()
+        .assert_see("Deposits");
+    app.get(&format!("/deposits/{}", deposit.id))
+        .await
+        .assert_ok()
+        .assert_see("Refund failed")
+        .assert_see(&format!("/refunds/{}", refund.id));
+}
+
 /// #94 AC1: with the demo `client.toml` (`payments` enabled) the host boots,
 /// and `/payments` answers 200 with `payments.view` and 403 without it.
 #[renox::test]
