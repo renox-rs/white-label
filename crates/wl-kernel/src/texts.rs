@@ -26,6 +26,10 @@ const TEXTS: &[(&str, &str)] = &[
         "This request was already decided.",
     ),
     (
+        "wl_kernel.approvals.task_closed",
+        "This task is already closed.",
+    ),
+    (
         "wl_kernel.approvals.comment_required",
         "A comment is required to reject or return.",
     ),

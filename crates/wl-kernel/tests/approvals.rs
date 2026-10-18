@@ -1485,3 +1485,126 @@ async fn the_approval_card_shows_each_viewer_their_buttons() {
         .assert_ok()
         .assert_dont_see("Approval: payments.refund");
 }
+
+// ---------------------------------------------------------------------------
+// #26 part 2: resubmission links.
+// ---------------------------------------------------------------------------
+
+/// A resubmission after a return links to it, restarts at step 1 and closes
+/// the task; a second return is followed by `earlier_decisions` newest
+/// first.
+#[renox::test]
+async fn a_resubmission_links_to_the_returned_request_and_closes_its_task() {
+    let w = world().await;
+    let (refund, first) = w.refund_sent().await;
+    assert!(first.resubmission_of.is_none());
+
+    approvals::return_request(w.state(), first.id, &w.b, "attach the photos")
+        .await
+        .unwrap();
+    let tasks = approvals::needs_action(w.db(), &w.a).await.unwrap();
+    assert_eq!(tasks.len(), 1);
+    assert_eq!(tasks[0].request_id, first.id);
+    assert!(
+        approvals::needs_action(w.db(), &w.b)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+
+    let path = format!("/refunds/{}", refund.id);
+    let res = w.run(&w.a, &path, "refund").await;
+    assert!(res.status.is_redirection(), "{}", res.text());
+    let second = w.request_about(&Subject::new(REFUND, refund.id)).await;
+    assert_eq!(second.resubmission_of, Some(first.id));
+    assert_eq!(second.current_step, 1);
+    assert!(second.is_pending());
+    assert!(second.decisions(w.db()).await.unwrap().is_empty());
+    assert_eq!(w.reload(&first).await.status, ApprovalStatus::Returned);
+    assert!(
+        approvals::needs_action(w.db(), &w.a)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    let closed = approvals::close_not_resubmitting(w.db(), first.id, &w.a).await;
+    assert!(closed.is_err(), "the resubmission already closed the task");
+
+    let earlier = approvals::earlier_decisions(w.db(), &second).await.unwrap();
+    assert_eq!(earlier.len(), 1);
+    assert_eq!(earlier[0].status, ApprovalStatus::Returned);
+    assert_eq!(earlier[0].approver, w.b.id);
+    assert_eq!(earlier[0].comment, "attach the photos");
+
+    approvals::return_request(w.state(), second.id, &w.b, "still missing")
+        .await
+        .unwrap();
+    let res = w.run(&w.a, &path, "refund").await;
+    assert!(res.status.is_redirection(), "{}", res.text());
+    let third = w.request_about(&Subject::new(REFUND, refund.id)).await;
+    assert_eq!(third.resubmission_of, Some(second.id));
+    let comments: Vec<_> = approvals::earlier_decisions(w.db(), &third)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|e| e.comment)
+        .collect();
+    assert_eq!(comments, ["still missing", "attach the photos"]);
+}
+
+/// A rejection is linked only when the payload is the same; "not
+/// resubmitting" is for the requester and works once.
+#[renox::test]
+async fn a_rejection_links_only_an_equal_payload_and_not_resubmitting_closes_once() {
+    let w = world().await;
+    let (refund, first) = w.refund_sent().await;
+    approvals::reject(w.state(), first.id, &w.b, "no")
+        .await
+        .unwrap();
+    let path = format!("/refunds/{}", refund.id);
+    let res = w.run(&w.a, &path, "refund").await;
+    assert!(res.status.is_redirection(), "{}", res.text());
+    let second = w.request_about(&Subject::new(REFUND, refund.id)).await;
+    assert_eq!(second.resubmission_of, Some(first.id));
+
+    approvals::reject(w.state(), second.id, &w.b, "no again")
+        .await
+        .unwrap();
+    let mut changed = Refund::find(w.db(), refund.id).await.unwrap().unwrap();
+    changed.amount = 60_000;
+    changed.save(w.db()).await.unwrap();
+    let res = w.run(&w.a, &path, "refund").await;
+    assert!(res.status.is_redirection(), "{}", res.text());
+    let third = w.request_about(&Subject::new(REFUND, refund.id)).await;
+    assert_eq!(third.resubmission_of, None, "a different amount");
+    assert!(
+        approvals::earlier_decisions(w.db(), &third)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+
+    let (_, returned) = w.refund_sent().await;
+    approvals::return_request(w.state(), returned.id, &w.b, "fix it")
+        .await
+        .unwrap();
+    let denied = approvals::close_not_resubmitting(w.db(), returned.id, &w.b).await;
+    assert!(matches!(denied, Err(Error::Forbidden)));
+    let task = approvals::close_not_resubmitting(w.db(), returned.id, &w.a)
+        .await
+        .unwrap();
+    assert_eq!(
+        task.closed_reason,
+        Some(approvals::TaskClosed::NotResubmitting)
+    );
+    assert!(
+        approvals::needs_action(w.db(), &w.a)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert_refused(
+        approvals::close_not_resubmitting(w.db(), returned.id, &w.a).await,
+        "This task is already closed.",
+    );
+}

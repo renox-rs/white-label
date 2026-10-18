@@ -14,6 +14,7 @@ pub mod intercept;
 pub mod notify;
 pub mod policy;
 pub mod request;
+pub mod resubmit;
 pub mod submit;
 pub mod tasks;
 pub mod web;
@@ -26,8 +27,9 @@ pub use events::{ApprovalDecided, ApprovalEnd, ApprovalRequested};
 pub use intercept::ApprovalInterceptor;
 pub use policy::{ApprovalPolicy, Condition, ConditionKind, PolicyDefault, Step};
 pub use request::{ApprovalDecision, ApprovalRequest, ApprovalStatus, DecisionKind};
+pub use resubmit::{EarlierDecision, earlier_decisions, same_payload};
 pub use submit::{Require, Required, announce, announce_request, require_in};
-pub use tasks::{ResubmitTask, TaskClosed, TaskStatus};
+pub use tasks::{ResubmitTask, TaskClosed, TaskStatus, close_not_resubmitting, needs_action};
 pub use web::{ApprovalCard, card, cards_for, pending_for, timeline_for};
 
 /// Registers the approval models and the request's machine, and installs

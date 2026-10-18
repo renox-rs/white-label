@@ -26,6 +26,7 @@ use super::events::ApprovalRequested;
 use super::notify;
 use super::policy::ApprovalPolicy;
 use super::request::{ApprovalRequest, ApprovalStatus};
+use super::{resubmit, tasks};
 use crate::machines;
 use crate::subject::Subject;
 use crate::texts;
@@ -106,6 +107,12 @@ impl Required {
 /// handler, without committing. Announce it with [`announce_request`] after
 /// the commit.
 ///
+/// A new request links to the one before it (`resubmission_of`) when that
+/// was returned, or rejected with an equal payload ([`resubmit`]); it
+/// always starts at step 1 with no decisions, so segregation of duties
+/// excludes only the requester. A returned request's open task closes with
+/// `resubmitted`.
+///
 /// Refused with 422 when a request for the same subject and action is
 /// already pending. Fails when the subject's registered machine has no
 /// `<transition>_approved` transition to run on approval.
@@ -137,7 +144,14 @@ pub async fn require_in(tx: &mut Transaction, require: &Require) -> Result<Requi
         }
     }
     let now = renox::db::now();
-    let request = ApprovalRequest::create(&mut *tx, new_request(&policy, require, now)).await?;
+    let previous =
+        resubmit::predecessor(tx, &require.subject, &require.action, &require.payload).await?;
+    let mut row = new_request(&policy, require, now);
+    row.resubmission_of = previous.as_ref().map(|previous| previous.id);
+    let request = ApprovalRequest::create(&mut *tx, row).await?;
+    if let Some(previous) = previous.filter(|p| p.status == ApprovalStatus::Returned) {
+        tasks::close_resubmitted_in(tx, previous.id, request.id, require.requester_id).await?;
+    }
     if let Some(machine) = &machine {
         machine.reserve_in(tx, &request.hold()).await?;
     }
