@@ -6,10 +6,13 @@
 //! ([`SopStatus`]).
 
 pub mod model;
+pub mod readers;
+pub mod service;
 
 use crate::kinds::{KindSeed, register_kind};
 
 pub use model::{Sop, SopReader, SopStatus, SopTranslation};
+pub use service::{SopInput, Sops};
 
 /// The SOP's subject type for documents.
 pub const SUBJECT_TYPE: &str = "documents.sop";

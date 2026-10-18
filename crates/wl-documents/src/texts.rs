@@ -381,6 +381,42 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_documents.overrides.status.refused", "Refused"),
     ("wl_documents.overrides.status.used", "Used"),
     ("wl_documents.overrides.status.expired", "Expired"),
+    (
+        "wl_documents.sops.refused.blank_code",
+        "Give the SOP a code.",
+    ),
+    (
+        "wl_documents.sops.refused.blank_title",
+        "Give the SOP an English title.",
+    ),
+    (
+        "wl_documents.sops.refused.blank_owner_role",
+        "Choose the role that owns the SOP.",
+    ),
+    (
+        "wl_documents.sops.refused.bad_interval",
+        "The review interval and the days to acknowledge must be at least 1.",
+    ),
+    (
+        "wl_documents.sops.refused.bad_entity",
+        "Give the legal entity as both a type and an id, or leave both empty.",
+    ),
+    (
+        "wl_documents.sops.refused.code_taken",
+        "An SOP with the code :code already exists for this legal entity.",
+    ),
+    (
+        "wl_documents.sops.refused.withdrawn",
+        ":code is withdrawn; accept a new version before changing its readers.",
+    ),
+    (
+        "wl_documents.sops.refused.blank_reader_role",
+        "Give each reader a role.",
+    ),
+    (
+        "wl_documents.sops.refused.bad_reader_scope",
+        "Give a reader's scope as both a type and an id, or leave both empty.",
+    ),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.

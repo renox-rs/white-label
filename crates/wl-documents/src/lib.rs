@@ -28,7 +28,7 @@ pub use kinds::{
     add_block, blocks_for, register_kind, remove_block, set_block_mode,
 };
 pub use overrides::{BlockOverride, BlockOverrideStatus};
-pub use sops::{Sop, SopReader, SopStatus, SopTranslation};
+pub use sops::{Sop, SopInput, SopReader, SopStatus, SopTranslation, Sops};
 
 /// The module's permissions (wl-documents §6).
 pub mod permissions {

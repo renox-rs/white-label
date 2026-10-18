@@ -15,12 +15,13 @@ use renox::prelude::*;
 use renox::testing::TestApp;
 use serde::Deserialize;
 use wl_documents::{
-    Document, DocumentKind, Documents, KindSeed, NewDocument, WlDocuments, permissions as perm,
+    Document, DocumentKind, Documents, KindSeed, NewDocument, SopInput, Sops, WlDocuments,
+    permissions as perm,
 };
 use wl_kernel::documents::{
     BlockCondition, BlockEntry, BlockMode, BlockSubjects, DocumentAccepted, DocumentFuture,
-    FutureWork, OverrideMode, PlannedRecord, ReminderSchedule, register_block_subjects,
-    register_future_work, register_reminder_schedule, today,
+    FutureWork, OverrideMode, PlannedRecord, ReminderSchedule, SopReaderRef,
+    register_block_subjects, register_future_work, register_reminder_schedule, today,
 };
 use wl_kernel::notify::{
     MessageId, Notifier, NotifyFuture, NotifyRecipient, NotifyRequest, provide_notifier,
@@ -1006,6 +1007,92 @@ async fn archive(
     }
 }
 
+/// A form for the SOP routes.
+#[derive(Deserialize)]
+struct SopForm {
+    #[serde(default)]
+    code: String,
+    #[serde(default)]
+    title: String,
+    #[serde(default)]
+    owner_role: String,
+    #[serde(default)]
+    entity_id: i64,
+    /// `all`, `role` or `role@type:id`, separated by `;`.
+    #[serde(default)]
+    readers: String,
+}
+
+/// Parses the `readers` of a [`SopForm`].
+fn sop_reader_refs(text: &str) -> Vec<SopReaderRef> {
+    text.split(';')
+        .filter(|part| !part.trim().is_empty())
+        .map(|part| {
+            let part = part.trim();
+            if part == "all" {
+                return SopReaderRef {
+                    all_staff: true,
+                    role: String::new(),
+                    scope_type: String::new(),
+                    scope_id: String::new(),
+                };
+            }
+            let (role, scope) = part.split_once('@').unwrap_or((part, ""));
+            let (scope_type, scope_id) = scope.split_once(':').unwrap_or((scope, ""));
+            SopReaderRef {
+                all_staff: false,
+                role: role.to_owned(),
+                scope_type: scope_type.to_owned(),
+                scope_id: scope_id.to_owned(),
+            }
+        })
+        .collect()
+}
+
+fn sop_input(form: &SopForm) -> SopInput {
+    let input = SopInput::new(&form.code, &form.title, &form.owner_role);
+    if form.entity_id != 0 {
+        input.legal_entity("legal_entity", form.entity_id)
+    } else {
+        input
+    }
+}
+
+async fn sop_create(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Form(form): Form<SopForm>,
+) -> Result<String> {
+    Ok(Sops::create(&state, &user, sop_input(&form))
+        .await?
+        .id
+        .to_string())
+}
+
+async fn sop_update(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<i64>,
+    Form(form): Form<SopForm>,
+) -> Result<String> {
+    Ok(Sops::update(&state, &user, id, sop_input(&form))
+        .await?
+        .code)
+}
+
+async fn sop_readers(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<i64>,
+    Form(form): Form<SopForm>,
+) -> Result<String> {
+    let readers = sop_reader_refs(&form.readers);
+    Ok(Sops::set_readers(&state, &user, id, &readers)
+        .await?
+        .len()
+        .to_string())
+}
+
 impl Module for Harness {
     fn name(&self) -> &'static str {
         "documents-test-harness"
@@ -1033,6 +1120,9 @@ impl Module for Harness {
             .post("/test/documents/record", record)
             .post("/test/documents/{id}/resubmit", resubmit)
             .post("/test/documents/{id}/archive", archive)
+            .post("/test/sops", sop_create)
+            .post("/test/sops/{id}", sop_update)
+            .post("/test/sops/{id}/readers", sop_readers)
     }
 }
 
