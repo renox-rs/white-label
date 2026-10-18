@@ -1131,6 +1131,58 @@ async fn sop_upload(
     }
 }
 
+#[derive(Deserialize)]
+struct TranslationForm {
+    #[serde(default)]
+    language: String,
+    #[serde(default)]
+    reason: Option<String>,
+}
+
+async fn sop_translate(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<i64>,
+    Form(form): Form<TranslationForm>,
+) -> Result<String> {
+    let version = Document::find_or_404(&state.db, id).await?;
+    let upload = Upload::new(
+        "sop-translation.pdf",
+        "application/pdf",
+        b"%PDF-1.7 ar".to_vec(),
+    );
+    match Sops::upload_translation(&state, &user, &version, &form.language, upload, None).await? {
+        Ok(document) => Ok(document.id.to_string()),
+        Err(refused) => Err(refused.into_error()),
+    }
+}
+
+async fn sop_accept_translation(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<i64>,
+) -> Result<String> {
+    let document = Document::find_or_404(&state.db, id).await?;
+    match Sops::accept_translation(&state, &user, &document).await {
+        Ok(document) => Ok(document.status.as_str().to_owned()),
+        Err(error) => Err(error.into_error()),
+    }
+}
+
+async fn sop_reject_translation(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<i64>,
+    Form(form): Form<TranslationForm>,
+) -> Result<String> {
+    let document = Document::find_or_404(&state.db, id).await?;
+    let reason = form.reason.unwrap_or_default();
+    match Sops::reject_translation(&state, &user, &document, &reason).await {
+        Ok(document) => Ok(document.status.as_str().to_owned()),
+        Err(error) => Err(error.into_error()),
+    }
+}
+
 async fn sop_accept(
     State(state): State<AppState>,
     user: AuthUser,
@@ -1203,6 +1255,9 @@ impl Module for Harness {
             .post("/test/documents/{id}/reject", generic_reject)
             .post("/test/sops/{id}/versions", sop_upload)
             .post("/test/sops/{id}/withdraw", sop_withdraw)
+            .post("/test/sop-versions/{id}/translations", sop_translate)
+            .post("/test/sop-translations/{id}/accept", sop_accept_translation)
+            .post("/test/sop-translations/{id}/reject", sop_reject_translation)
             .post("/test/sop-versions/{id}/accept", sop_accept)
             .post("/test/sop-versions/{id}/reject", sop_reject)
     }

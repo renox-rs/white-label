@@ -7,7 +7,9 @@
 
 pub mod model;
 pub mod readers;
+pub mod review;
 pub mod service;
+pub mod translations;
 pub mod versions;
 
 use crate::kinds::{KindSeed, register_kind};

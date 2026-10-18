@@ -417,6 +417,18 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_documents.sops.refused.bad_reader_scope",
         "Give a reader's scope as both a type and an id, or leave both empty.",
     ),
+    (
+        "wl_documents.sops.refused.blank_language",
+        "Give the language of the translation, e.g. ar.",
+    ),
+    (
+        "wl_documents.sops.refused.translation_target",
+        "A translation belongs to a pending or accepted SOP version.",
+    ),
+    (
+        "wl_documents.sops.refused.translated_not_current",
+        "Only a translation of the current published version can be accepted.",
+    ),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.

@@ -31,7 +31,7 @@ pub fn review_date(accepted_on: NaiveDate, months: i64) -> NaiveDate {
 }
 
 /// A refusal as a transition error.
-fn guard(message: &str) -> TransitionError {
+pub(super) fn guard(message: &str) -> TransitionError {
     TransitionError::Guard(message.to_owned())
 }
 
@@ -139,7 +139,12 @@ impl Sops {
                     ],
                 )
                 .await?;
-            supersede_previous(&mut tx, &fresh).await?
+            let mut superseded = supersede_previous(&mut tx, &fresh).await?;
+            // The translations of the replaced versions go with them.
+            let replaced: Vec<i64> = superseded.iter().map(|(id, _)| *id).collect();
+            superseded
+                .extend(super::translations::supersede_translations(&mut tx, &replaced).await?);
+            superseded
         } else {
             Vec::new()
         };
@@ -260,7 +265,10 @@ impl Sops {
 }
 
 /// The SOP that the version `document` belongs to.
-async fn sop_of(db: &Db, document: &Document) -> std::result::Result<Sop, TransitionError> {
+pub(super) async fn sop_of(
+    db: &Db,
+    document: &Document,
+) -> std::result::Result<Sop, TransitionError> {
     let kind = document.kind(db).await?;
     if kind.key != KIND_SOP || document.subject_type != SUBJECT_TYPE {
         return Err(guard("The document is not an SOP version."));
@@ -270,7 +278,7 @@ async fn sop_of(db: &Db, document: &Document) -> std::result::Result<Sop, Transi
 
 /// Whether `by` holds the SOP's owner role in the SOP's scope: its legal
 /// entity, else global (global holders count everywhere).
-async fn holds_owner_role(db: &Db, by: &AuthUser, sop: &Sop) -> Result<bool> {
+pub(super) async fn holds_owner_role(db: &Db, by: &AuthUser, sop: &Sop) -> Result<bool> {
     let scope = if sop.legal_entity().is_some() {
         Scope::new(sop.legal_entity_type.as_str(), sop.legal_entity_id)
     } else {

@@ -38,6 +38,26 @@ pub fn role_for(responsible_role: Option<&str>) -> &str {
     responsible_role.unwrap_or(COMPANY_ADMIN_ROLE)
 }
 
+/// The role to remind about `document` of `kind`: for an SOP version the
+/// SOP's owner role (#52 A11), else [`role_for`] the kind's.
+///
+/// # Errors
+///
+/// The database's errors.
+pub async fn role_of(
+    db: &Db,
+    kind: &crate::DocumentKind,
+    document: &crate::Document,
+) -> Result<String> {
+    if kind.key == crate::sops::KIND_SOP
+        && document.subject_type == crate::sops::SUBJECT_TYPE
+        && let Some(sop) = crate::Sop::find(db, document.subject_id).await?
+    {
+        return Ok(sop.owner_role);
+    }
+    Ok(role_for(kind.responsible_role.as_deref()).to_owned())
+}
+
 /// The recipients for the document of kind `kind` on `subject`, with the
 /// `items` (the new affected records; empty for a plain reminder) each one
 /// may see.

@@ -309,14 +309,8 @@ async fn handle(
         .await?;
 
     // One message per recipient, listing only the new items.
-    let recipients = responsible::resolve(
-        state,
-        responsible::role_for(kind.responsible_role.as_deref()),
-        &kind.key,
-        &subject,
-        &new_groups,
-    )
-    .await?;
+    let role = responsible::role_of(db, kind, document).await?;
+    let recipients = responsible::resolve(state, &role, &kind.key, &subject, &new_groups).await?;
     let label = subject_label(state, &blocks, &subject).await;
     let mut done = Done {
         event: true,
