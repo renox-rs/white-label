@@ -122,6 +122,12 @@ pub struct Step {
     /// step, instead of or besides the roles.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub permission: Option<String>,
+    /// A permission every approver of the step must also hold (in the
+    /// subject's scope), besides having one of the roles (or the
+    /// `permission`). Unlike `permission` it narrows, never widens, who may
+    /// decide.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub required_permission: Option<String>,
 }
 
 impl Step {
@@ -130,6 +136,7 @@ impl Step {
         Step {
             roles: roles.into_iter().map(Into::into).collect(),
             permission: None,
+            required_permission: None,
         }
     }
 
@@ -138,12 +145,21 @@ impl Step {
         Step {
             roles: Vec::new(),
             permission: Some(permission.into()),
+            required_permission: None,
         }
     }
 
     /// The step, also decided by any holder of `permission`.
     pub fn or_permission(mut self, permission: impl Into<String>) -> Self {
         self.permission = Some(permission.into());
+        self
+    }
+
+    /// The step, decided only by approvers who also hold `permission` in the
+    /// subject's scope (e.g. `Step::one_of(["finance_manager"])
+    /// .requiring("parties.block_exception")`).
+    pub fn requiring(mut self, permission: impl Into<String>) -> Self {
+        self.required_permission = Some(permission.into());
         self
     }
 
@@ -499,6 +515,12 @@ mod tests {
     fn steps_stored_without_a_permission_still_read() {
         let step: Step = renox::serde_json::from_value(json!({ "roles": ["finance"] })).unwrap();
         assert_eq!(step, Step::one_of(["finance"]));
+        assert_eq!(step.required_permission, None);
+        let strict = Step::one_of(["finance"]).requiring("parties.block_exception");
+        let back: Step =
+            renox::serde_json::from_value(renox::serde_json::to_value(&strict).unwrap()).unwrap();
+        assert_eq!(back, strict);
+        assert!(!strict.is_empty());
         assert_eq!(
             renox::serde_json::to_value(Step::one_of(["finance"])).unwrap(),
             json!({ "roles": ["finance"] })

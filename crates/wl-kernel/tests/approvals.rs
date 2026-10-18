@@ -467,6 +467,16 @@ impl Module for Subjects {
         PolicyDefault::new(REFUND_ACTION)
             .step(["finance"])
             .register();
+        approvals::register_final_check(REFUND, |tx, request| {
+            Box::pin(async move {
+                let name = format!("hold_refund_{}", request.subject_id);
+                let held = sql("SELECT COUNT(*) FROM test_flags WHERE name = ?")
+                    .bind(name)
+                    .scalar::<i64>(&mut *tx)
+                    .await?;
+                Ok((held > 0).then(|| "this party is on hold".to_owned()))
+            })
+        });
         PolicyDefault::new("bookings.confirm")
             .step(["manager"])
             .register();
@@ -2071,4 +2081,113 @@ async fn awaiting_lists_the_pending_requests_a_user_may_decide() {
         .await
         .unwrap();
     assert!(approvals::awaiting(w.db(), &w.b).await.unwrap().is_empty());
+}
+
+/// A step that requires a permission narrows the approvers to the holders of
+/// a role of the step who also hold it; SoD stays on.
+#[renox::test]
+async fn a_step_requiring_a_permission_refuses_a_role_holder_without_it() {
+    let w = world().await;
+    let db = w.db();
+    let view = wl_kernel::permissions::APPROVALS_VIEW;
+    permissions::define_role(db, "finance_lead", &[view, "refunds.special"])
+        .await
+        .unwrap();
+    let eve = User::register(db, "Eve", "eve@example.com", "password123")
+        .await
+        .unwrap();
+    eve.assign_role(db, "finance_lead").await.unwrap();
+    let mut policy = ApprovalPolicy::query()
+        .where_(ApprovalPolicy::ACTION.eq(REFUND_ACTION))
+        .first(db)
+        .await
+        .unwrap()
+        .unwrap();
+    policy.steps = Json(vec![
+        Step::one_of(["finance", "finance_lead"]).requiring("refunds.special"),
+    ]);
+    policy.save(db).await.unwrap();
+    let (refund, request) = w.refund_sent().await;
+
+    // Bilal holds `finance` but not the permission; Aisha asked.
+    assert_forbidden(approvals::approve(w.state(), request.id, &w.b, "").await);
+    assert_forbidden(approvals::approve(w.state(), request.id, &w.a, "").await);
+    assert_eq!(w.reload(&request).await.status, ApprovalStatus::Pending);
+    assert!(w.notices(&w.b, REQUESTED).await.is_empty());
+    assert_eq!(w.notices(&eve, REQUESTED).await.len(), 1);
+
+    approvals::approve(w.state(), request.id, &eve, "")
+        .await
+        .unwrap()
+        .expect("the request ended");
+    assert_eq!(w.reload(&request).await.status, ApprovalStatus::Approved);
+    assert_eq!(w.refund_status(refund.id).await, RefundStatus::Refunded);
+}
+
+/// A steps override replaces the policy's steps in the stored request.
+#[renox::test]
+async fn a_steps_override_is_stored_instead_of_the_policys_steps() {
+    let w = world().await;
+    let refund = w.refund(50_000, 100_000).await;
+    let require = || {
+        Require::new(
+            REFUND_ACTION,
+            Subject::new(REFUND, refund.id),
+            "refund",
+            w.a.id,
+            "requested",
+        )
+        .payload(json!({ "amount": 50_000 }))
+    };
+    let empty =
+        approvals::require_in(&mut w.db().begin().await.unwrap(), &require().steps(vec![])).await;
+    assert!(empty.is_err(), "an empty override is refused");
+
+    let own = vec![
+        Step::one_of(["owner"]),
+        Step::one_of(["finance"]).requiring("refunds.special"),
+    ];
+    let mut tx = w.db().begin().await.unwrap();
+    let required = approvals::require_in(&mut tx, &require().steps(own.clone()))
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    let request = required.request().expect("a request").clone();
+    assert_eq!(request.steps.0, own);
+    assert_eq!(w.reload(&request).await.steps.0, own);
+}
+
+/// The final re-check hook reads the database in the decision's transaction
+/// and, when it refuses, fails the request before `<transition>_approved`.
+#[renox::test]
+async fn a_final_check_that_refuses_fails_the_request_and_nothing_runs() {
+    let w = world().await;
+    let (refund, request) = w.refund_sent().await;
+    sql("INSERT INTO test_flags (name) VALUES (?)")
+        .bind(format!("hold_refund_{}", refund.id))
+        .execute(w.db())
+        .await
+        .unwrap();
+
+    let decided = approvals::approve(w.state(), request.id, &w.b, "")
+        .await
+        .unwrap()
+        .expect("the request ended");
+    assert_eq!(decided.decision, ApprovalEnd::Failed);
+    assert_eq!(decided.state_returned_to.as_deref(), Some("requested"));
+    assert_eq!(w.reload(&request).await.status, ApprovalStatus::Failed);
+    assert_eq!(w.refund_status(refund.id).await, RefundStatus::Requested);
+    assert_eq!(w.effects().await, 0, "nothing was paid out");
+    let history = w.refund_history(refund.id).await;
+    let back = history.last().unwrap();
+    assert_eq!(back.transition, "back_to_requested");
+    assert_eq!(
+        back.reason.as_deref(),
+        Some("approval failed: this party is on hold")
+    );
+    assert!(
+        history
+            .iter()
+            .all(|row| row.transition != "refund_approved")
+    );
 }

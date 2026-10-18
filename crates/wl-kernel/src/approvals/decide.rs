@@ -20,11 +20,18 @@
 //!    path ([`super::end::end_in`]), with the reason "approval failed:
 //!    <guard message>": the subject goes back like on `reject`.
 //!
+//! Before step 4 the final re-check hooks of the subject's type run
+//! ([`register_final_check`]): a hook that answers with a message ends the
+//! request with `fail` the same way, and `<transition>_approved` does not run.
+//!
 //! Any other failure rolls the whole decision back. Once the transaction has
 //! committed, [`Approval::announce`] emits the events and the notices.
 
+use std::collections::BTreeMap;
 use std::fmt;
-use std::sync::Arc;
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::{Arc, PoisonError, RwLock};
 
 use renox::db::Transaction;
 use renox::prelude::*;
@@ -36,6 +43,50 @@ use super::events::{ApprovalDecided, ApprovalEnd};
 use super::notify;
 use super::request::{ApprovalDecision, ApprovalRequest, DecisionKind, transitions};
 use crate::machines::{self, Ran, Run, SubjectMachine};
+
+/// A hook that checks, at the final approval of a request and before
+/// `<transition>_approved` runs, whether the action may still go ahead: the
+/// general mechanism for rules the transition's own guards cannot read
+/// (they have no database). It runs inside the decision's transaction and
+/// answers `Ok(None)` to let the action run, or `Ok(Some(message))` to fail
+/// the request with the reason "approval failed: <message>" (the subject
+/// goes back like on `reject`). An `Err` rolls the whole decision back.
+pub type FinalCheck = Arc<
+    dyn for<'a> Fn(
+            &'a mut Transaction,
+            &'a ApprovalRequest,
+        ) -> Pin<Box<dyn Future<Output = Result<Option<String>>> + Send + 'a>>
+        + Send
+        + Sync,
+>;
+
+static FINAL_CHECKS: RwLock<BTreeMap<String, FinalCheck>> = RwLock::new(BTreeMap::new());
+
+/// Registers the final re-check of requests about `subject_type`, replacing
+/// the one registered before. Process-wide, like the default policies.
+pub fn register_final_check<F>(subject_type: impl Into<String>, check: F)
+where
+    F: for<'a> Fn(
+            &'a mut Transaction,
+            &'a ApprovalRequest,
+        ) -> Pin<Box<dyn Future<Output = Result<Option<String>>> + Send + 'a>>
+        + Send
+        + Sync
+        + 'static,
+{
+    FINAL_CHECKS
+        .write()
+        .unwrap_or_else(PoisonError::into_inner)
+        .insert(subject_type.into(), Arc::new(check));
+}
+
+fn final_check(subject_type: &str) -> Option<FinalCheck> {
+    FINAL_CHECKS
+        .read()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get(subject_type)
+        .cloned()
+}
 
 /// The action's refusal at final approval, carried out of the savepoint.
 #[derive(Debug)]
@@ -266,6 +317,16 @@ pub async fn approve_in(
         });
     }
 
+    if let Some(check) = final_check(&request.subject_type)
+        && let Some(message) = check(&mut *tx, &request).await?
+    {
+        let ended = end::end_in(tx, request.id, End::fail(Some(approver_id), &message)).await?;
+        return Ok(Approval {
+            request: ended.request.clone(),
+            approvers: ended.approvers.clone(),
+            kind: Kind::Failed(Box::new(ended)),
+        });
+    }
     let mut subject_run = None;
     if let Some(machine) = machines::get(&request.subject_type) {
         match run_approved(tx, machine, &request, meta.clone()).await? {

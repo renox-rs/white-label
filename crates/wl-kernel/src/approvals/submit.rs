@@ -24,7 +24,7 @@ use renox::state_machine::{Outcome, StateMachine};
 
 use super::events::ApprovalRequested;
 use super::notify;
-use super::policy::ApprovalPolicy;
+use super::policy::{ApprovalPolicy, Step};
 use super::request::{ApprovalRequest, ApprovalStatus};
 use super::{resubmit, tasks};
 use crate::machines;
@@ -53,6 +53,9 @@ pub struct Require {
     pub requester_id: i64,
     /// The subject's state now (the `from` state of the run).
     pub state_before: String,
+    /// Steps to use instead of the matching policy's (the policy still has
+    /// to match); `None` copies the policy's.
+    pub steps: Option<Vec<Step>>,
 }
 
 impl Require {
@@ -72,7 +75,16 @@ impl Require {
             payload: Value::Null,
             requester_id,
             state_before: state_before.into(),
+            steps: None,
         }
+    }
+
+    /// Decide the request with `steps` instead of the policy's, e.g. the
+    /// action's own steps followed by one more. Needs at least one step,
+    /// none of them empty.
+    pub fn steps(mut self, steps: Vec<Step>) -> Self {
+        self.steps = Some(steps);
+        self
     }
 
     /// The transition's input, stored as the payload snapshot.
@@ -143,6 +155,15 @@ pub async fn require_in(tx: &mut Transaction, require: &Require) -> Result<Requi
             .into());
         }
     }
+    if let Some(steps) = &require.steps
+        && (steps.is_empty() || steps.iter().any(Step::is_empty))
+    {
+        return Err(renox::anyhow::anyhow!(
+                "the steps override of `{}` needs at least one step, each naming a role or a permission",
+                require.action
+            )
+            .into());
+    }
     let now = renox::db::now();
     let previous =
         resubmit::predecessor(tx, &require.subject, &require.action, &require.payload).await?;
@@ -169,7 +190,12 @@ fn new_request(policy: &ApprovalPolicy, require: &Require, now: DateTime) -> App
         payload: Json(require.payload.clone()),
         requester_id: require.requester_id,
         current_step: 1,
-        steps: Json(policy.steps.0.clone()),
+        steps: Json(
+            require
+                .steps
+                .clone()
+                .unwrap_or_else(|| policy.steps.0.clone()),
+        ),
         sod: policy.sod,
         status: ApprovalStatus::Pending,
         expires_at: policy
@@ -308,6 +334,22 @@ mod tests {
         let mut off = policy(None);
         off.sod = false;
         assert!(!new_request(&off, &require(), renox::db::now()).sod);
+    }
+
+    #[test]
+    fn a_steps_override_replaces_the_policys_steps() {
+        let own = require().steps(vec![
+            Step::one_of(["property_manager"]),
+            Step::one_of(["finance_manager"]).requiring("parties.block_exception"),
+        ]);
+        let row = new_request(&policy(None), &own, renox::db::now());
+        assert_eq!(row.steps.len(), 2);
+        assert!(row.steps[0].allows("property_manager"));
+        assert_eq!(
+            row.steps[1].required_permission.as_deref(),
+            Some("parties.block_exception")
+        );
+        assert!(row.sod);
     }
 
     #[test]

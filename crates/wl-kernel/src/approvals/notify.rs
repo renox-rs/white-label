@@ -35,7 +35,8 @@ pub async fn scope_of(db: &Db, request: &ApprovalRequest) -> Result<Scope> {
 }
 
 /// The users who may decide the request's current step: holders of one of
-/// its roles, or of its permission, in the subject's scope, ordered by id. With SoD on, the
+/// its roles, or of its permission, in the subject's scope (and, when the step
+/// requires one, also of that permission), ordered by id. With SoD on, the
 /// requester and whoever decided another step of the request are left out.
 pub async fn step_approvers(db: &Db, request: &ApprovalRequest) -> Result<Vec<User>> {
     let Some(step) = request.step() else {
@@ -58,9 +59,22 @@ pub async fn step_approvers(db: &Db, request: &ApprovalRequest) -> Result<Vec<Us
     if let Some(permission) = &step.permission {
         holders.extend(users_with_permission_in(db, permission, &scope).await?);
     }
+    let required: Option<BTreeSet<i64>> = match &step.required_permission {
+        Some(permission) => Some(
+            users_with_permission_in(db, permission, &scope)
+                .await?
+                .into_iter()
+                .map(|user| user.id)
+                .collect(),
+        ),
+        None => None,
+    };
     let mut seen = BTreeSet::new();
     let mut approvers = Vec::new();
     for user in holders {
+        if required.as_ref().is_some_and(|ids| !ids.contains(&user.id)) {
+            continue;
+        }
         if !excluded.contains(&user.id) && seen.insert(user.id) {
             approvers.push(user);
         }

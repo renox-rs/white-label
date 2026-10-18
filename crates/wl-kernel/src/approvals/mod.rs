@@ -25,7 +25,9 @@ use renox::prelude::*;
 pub use awaiting::{
     AwaitingItem, SubjectLink, awaiting, awaiting_items, register_subject_link, subject_url,
 };
-pub use decide::{Approval, approve, approve_in, ensure_approver};
+pub use decide::{
+    Approval, FinalCheck, approve, approve_in, ensure_approver, register_final_check,
+};
 pub use end::{End, Ended, SubjectEnd, end_in, expire, reject, return_request, withdraw};
 pub use events::{ApprovalDecided, ApprovalEnd, ApprovalRequested};
 pub use intercept::ApprovalInterceptor;
