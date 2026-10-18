@@ -2,6 +2,7 @@
 #![warn(missing_docs)]
 
 pub mod documents;
+pub mod guard;
 pub mod kinds;
 pub mod machine;
 mod texts;
@@ -13,6 +14,7 @@ pub use documents::{
     Attach, AttachReason, AttachRefused, Document, DocumentSource, DocumentStatus, DocumentVersion,
     Documents, NewDocument,
 };
+pub use guard::DocumentsGuard;
 pub use kinds::{
     BlockChangeRefused, BlockSeed, DocumentKind, KindBlock, KindSeed, RefusalReason, Sensitivity,
     add_block, blocks_for, register_kind, remove_block, set_block_mode,
@@ -52,6 +54,9 @@ impl Module for WlDocuments {
             .model::<DocumentVersion>();
         // `rnx state:diagram Document` and the admin panel find the machine.
         renox::state_machine::register::<Document>();
+        // The standard guard `document_valid` other modules call through
+        // `wl_kernel::documents::guard`.
+        wl_kernel::documents::provide_guard(app, DocumentsGuard);
         // The kinds modules and verticals register are installed by this
         // module's command and seeder; both keep the client's changes and
         // lock legal blocks again.

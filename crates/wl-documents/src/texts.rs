@@ -49,13 +49,30 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_documents.attach.expiry_missing",
         ":kind needs its expiry date",
     ),
+    ("wl_documents.guard.expired", ":kind expired on :date"),
+    ("wl_documents.guard.missing", ":kind missing"),
+    ("wl_documents.guard.rejected", ":kind rejected"),
+    (
+        "wl_documents.guard.pending_review",
+        ":kind not accepted yet",
+    ),
+    ("wl_documents.guard.renew", "renew: :role"),
+    ("wl_documents.guard.override_never", "override: not allowed"),
+    (
+        "wl_documents.guard.override_with_approval",
+        "override: with approval",
+    ),
+    (
+        "wl_documents.guard.renewal_pending",
+        "renewal pending review since :date",
+    ),
+    (
+        "wl_documents.guard.no_provider",
+        "No module maps :guarded to its document subjects",
+    ),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.
-#[expect(
-    dead_code,
-    reason = "the guard (#45 part 5) and pages (#45 part 6) use it"
-)]
 pub(crate) fn t(lang: &Lang, key: &str) -> String {
     t_with(lang, key, &[])
 }
