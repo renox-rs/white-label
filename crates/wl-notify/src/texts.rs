@@ -18,6 +18,24 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_notify.types.empty_hint",
         "Types show up here once the modules that send them are installed.",
     ),
+    ("wl_notify.types.saved", "Give-up reactions saved"),
+    ("wl_notify.types.edit", "Edit"),
+    ("wl_notify.types.edit_title", "Give-up reactions"),
+    (
+        "wl_notify.types.edit_subtitle",
+        "What happens when a message of this type cannot be delivered. Reactions run in the order shown.",
+    ),
+    ("wl_notify.types.reactions", "Reactions"),
+    (
+        "wl_notify.types.reactions_hint",
+        "Mark contact invalid runs first; combine it with Staff task so staff hear about it.",
+    ),
+    (
+        "wl_notify.types.staff_role_hint",
+        "The role that gets the staff task, e.g. collector. Leave blank for none.",
+    ),
+    ("wl_notify.types.save", "Save"),
+    ("wl_notify.types.cancel", "Cancel"),
     ("wl_notify.log.title", "Message log"),
     (
         "wl_notify.log.subtitle",

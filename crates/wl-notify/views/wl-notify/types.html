@@ -5,7 +5,7 @@
   <rx-stack>
     <rx-page-header :title="tx['types.title']" :subtitle="tx['types.subtitle']"/>
     <rx-table :rows="types" as="kind" :key="kind.key" :caption="tx['types.title']" card>
-      <rx-column :label="tx['fields.key']">{{ kind.key }}</rx-column>
+      <rx-column :label="tx['fields.key']"><a href="{{ route('wl_notify.type_edit', kind.key) }}">{{ kind.key }}</a></rx-column>
       <rx-column :label="tx['fields.module']" hide-narrow>{{ kind.module }}</rx-column>
       <rx-column :label="tx['fields.category']" hide-narrow>{{ kind.category }}</rx-column>
       <rx-column :label="tx['fields.urgency']" hide-narrow>{{ kind.urgency }}</rx-column>

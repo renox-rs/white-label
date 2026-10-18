@@ -3,6 +3,8 @@
 //! | Route | Name | Needs |
 //! |---|---|---|
 //! | `GET /notification-types` | `wl_notify.types` | `notifications.templates.manage` |
+//! | `GET /notification-types/{key}` | `wl_notify.type_edit` | `notifications.templates.manage` (an unknown key is 404) |
+//! | `POST /notification-types/{key}` | `wl_notify.type_update` | the same; a refused give-up combination is a 422 and nothing is saved |
 //! | `GET /notification-log` | `wl_notify.log` | `notifications.log.view` |
 //!
 //! (`/notifications` is the Renox bell's page.) The log never shows a
@@ -15,8 +17,9 @@
 use std::collections::{BTreeMap, HashMap};
 
 use renox::prelude::*;
-use serde::Serialize;
-use wl_kernel::notify::{GiveUpReaction, NotifyChannel};
+use renox::validation::{Errors, ValidationError};
+use serde::{Deserialize, Serialize};
+use wl_kernel::notify::{self, GiveUpReaction, NotifyChannel};
 
 use crate::message::{Message, MessageStatus, RecipientKind};
 use crate::permissions;
@@ -38,6 +41,14 @@ pub fn routes() -> Routes {
         .get("/notification-types", types_index)
         .name("wl_notify.types")
         .require_permission(permissions::TEMPLATES_MANAGE)
+        .merge(
+            Routes::new()
+                .get("/notification-types/{key}", type_edit)
+                .name("wl_notify.type_edit")
+                .post("/notification-types/{key}", type_update)
+                .name("wl_notify.type_update")
+                .require_permission(permissions::TEMPLATES_MANAGE),
+        )
         .merge(
             Routes::new()
                 .get("/notification-log", log_index)
@@ -155,6 +166,147 @@ async fn types_index(State(db): State<Db>, lang: Lang) -> Result<View> {
         tx: texts::all(&lang),
         types,
     }))
+}
+
+/// The reactions the edit form offers, in run order. `statutory_notice` is
+/// left to the statutory-notice work (#59): a stored one is kept as it is.
+const EDITABLE: [GiveUpReaction; 3] = [
+    GiveUpReaction::MarkContactInvalid,
+    GiveUpReaction::AlternativeRecipient,
+    GiveUpReaction::StaffTask,
+];
+
+/// One reaction checkbox of the edit form.
+#[derive(Serialize, Debug, Clone, PartialEq, Eq)]
+pub struct ReactionBox {
+    /// The form field and reaction key, e.g. `staff_task`.
+    pub name: &'static str,
+    /// "Staff task".
+    pub label: String,
+    /// Whether the type has it.
+    pub checked: bool,
+}
+
+/// What the edit page needs.
+#[derive(Serialize, ViewData)]
+#[view(template = "wl-notify/type_edit.html")]
+pub(crate) struct TypeEditPage {
+    tx: Texts,
+    kind: TypeRow,
+    reactions: Vec<ReactionBox>,
+    staff_role: String,
+}
+
+/// The type `key`; 404 when there is none.
+async fn stored_type(db: &Db, key: &str) -> Result<NotificationType> {
+    NotificationType::by_key(db, key)
+        .await?
+        .ok_or(Error::NotFound)
+}
+
+/// The checkboxes of `kind`, in run order.
+pub(crate) fn reaction_boxes(t: Text<'_>, kind: &NotificationType) -> Vec<ReactionBox> {
+    let reactions = kind.reactions();
+    EDITABLE
+        .iter()
+        .map(|reaction| ReactionBox {
+            name: reaction.as_str(),
+            label: t(&format!("reaction.{}", reaction.as_str())),
+            checked: reactions.contains(reaction),
+        })
+        .collect()
+}
+
+/// `GET /notification-types/{key}`: the form for the type's give-up
+/// reactions and the staff role told.
+async fn type_edit(State(db): State<Db>, lang: Lang, Path(key): Path<String>) -> Result<View> {
+    let t = texts_in(&lang);
+    let kind = stored_type(&db, &key).await?;
+    Ok(View::typed(TypeEditPage {
+        tx: texts::all(&lang),
+        kind: type_row(&t, &kind),
+        reactions: reaction_boxes(&t, &kind),
+        staff_role: kind.staff_role.clone().unwrap_or_default(),
+    }))
+}
+
+/// The edit form: one checkbox per reaction, and the staff role.
+#[derive(Deserialize, Serialize, Validate, Debug, Default)]
+pub struct TypeForm {
+    /// Mark the contact point invalid after a hard failure.
+    #[serde(default)]
+    pub mark_contact_invalid: bool,
+    /// Try another contact of the party.
+    #[serde(default)]
+    pub alternative_recipient: bool,
+    /// Open a task for staff.
+    #[serde(default)]
+    pub staff_task: bool,
+    /// The role told, e.g. `collector`; blank for none.
+    #[validate(max = 64)]
+    pub staff_role: Option<String>,
+}
+
+impl TypeForm {
+    /// The reactions of the form, in run order, with the reactions the form
+    /// does not offer (`statutory_notice`) kept from `current`. `none` when
+    /// nothing is left.
+    pub(crate) fn reactions(&self, current: &[GiveUpReaction]) -> Vec<GiveUpReaction> {
+        let ticked = |reaction: GiveUpReaction| match reaction {
+            GiveUpReaction::MarkContactInvalid => self.mark_contact_invalid,
+            GiveUpReaction::AlternativeRecipient => self.alternative_recipient,
+            GiveUpReaction::StaffTask => self.staff_task,
+            _ => false,
+        };
+        let mut reactions: Vec<GiveUpReaction> =
+            EDITABLE.into_iter().filter(|r| ticked(*r)).collect();
+        reactions.extend(
+            current
+                .iter()
+                .copied()
+                .filter(|r| *r != GiveUpReaction::None && !EDITABLE.contains(r)),
+        );
+        if reactions.is_empty() {
+            reactions.push(GiveUpReaction::None);
+        }
+        reactions
+    }
+}
+
+/// `POST /notification-types/{key}`: saves the reactions and the staff role.
+/// A combination `check_give_up` refuses (`mark_contact_invalid` alone on a
+/// non-marketing type) is a 422 under the checkbox, and nothing is saved.
+async fn type_update(
+    State(db): State<Db>,
+    lang: Lang,
+    Path(key): Path<String>,
+    Valid(form): Valid<TypeForm>,
+) -> Result<Response> {
+    let mut kind = stored_type(&db, &key).await?;
+    let reactions = form.reactions(&kind.give_up.0);
+    if let Err(error) = notify::check_give_up(kind.category, &reactions) {
+        let mut errors = Errors::new();
+        errors.add(
+            GiveUpReaction::MarkContactInvalid.as_str(),
+            error.to_string(),
+        );
+        return Err(Error::Validation(
+            ValidationError::new(errors).with_input(&form),
+        ));
+    }
+    kind.give_up = renox::db::Json(reactions);
+    kind.staff_role = form
+        .staff_role
+        .as_deref()
+        .map(str::trim)
+        .filter(|role| !role.is_empty())
+        .map(str::to_owned);
+    kind.save(&db).await?;
+    Ok((
+        Toast::success(texts::t(&lang, "wl_notify.types.saved")),
+        Redirect::route("wl_notify.types", &[])?,
+    )
+        .into_response())
 }
 
 /// Whether a message in `status` counts as sent: `sent`, `delivered` or
@@ -395,6 +547,38 @@ mod tests {
             ..reminder()
         };
         assert_eq!(type_row(&english, &quiet).give_up, "None");
+    }
+
+    #[test]
+    fn the_form_keeps_run_order_and_the_reactions_it_does_not_offer() {
+        let form = TypeForm {
+            staff_task: true,
+            mark_contact_invalid: true,
+            ..Default::default()
+        };
+        assert_eq!(
+            form.reactions(&[StatutoryNotice, MarkContactInvalid]),
+            [MarkContactInvalid, StaffTask, StatutoryNotice]
+        );
+        assert_eq!(
+            TypeForm::default().reactions(&[StaffTask]),
+            [GiveUpReaction::None]
+        );
+    }
+
+    #[test]
+    fn the_edit_boxes_tick_the_stored_reactions_in_run_order() {
+        let boxes = reaction_boxes(&english, &reminder());
+        let names: Vec<_> = boxes.iter().map(|b| (b.name, b.checked)).collect();
+        assert_eq!(
+            names,
+            [
+                ("mark_contact_invalid", true),
+                ("alternative_recipient", true),
+                ("staff_task", true)
+            ]
+        );
+        assert_eq!(boxes[2].label, "Staff task");
     }
 
     #[test]

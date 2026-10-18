@@ -72,6 +72,10 @@ const VIEWS: &[(&str, &str)] = &[
         include_str!("../views/wl-notify/types.html"),
     ),
     (
+        "wl-notify/type_edit.html",
+        include_str!("../views/wl-notify/type_edit.html"),
+    ),
+    (
         "wl-notify/log.html",
         include_str!("../views/wl-notify/log.html"),
     ),
@@ -130,6 +134,7 @@ impl Module for WlNotify {
             .model::<ReactionRun>()
             .model::<ReactionStep>()
             .view_data::<pages::TypesPage>()
+            .view_data::<pages::TypeEditPage>()
             .view_data::<pages::LogPage>();
         // `rnx state:diagram Message` and the admin panel find the machine.
         renox::state_machine::register::<Message>();

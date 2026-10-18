@@ -3,8 +3,10 @@
 
 mod support;
 
+use renox::prelude::Model;
+use wl_kernel::notify::{Category, GiveUpReaction};
 use wl_notify::permissions as perm;
-use wl_notify::{MessageStatus, SendError};
+use wl_notify::{MessageStatus, NotificationType, SendError};
 
 use support::{BLUE_DUNES, REMINDER, boot};
 
@@ -103,6 +105,98 @@ async fn the_log_never_shows_a_given_up_message_as_sent() {
         .collect();
     assert_eq!(number.trim(), "0", "{after}");
     assert_eq!(html.matches(">Sent<").count(), 1, "{html}");
+}
+
+async fn stored(t: &support::Booted, key: &str) -> NotificationType {
+    NotificationType::by_key(t.db(), key)
+        .await
+        .unwrap()
+        .unwrap()
+}
+
+/// The edit form of a type renders with its reactions ticked, and saving
+/// writes them (and the staff role) to `wl_notify_types`.
+#[renox::test]
+async fn the_edit_form_saves_the_reactions_and_the_staff_role() {
+    let t = boot().await;
+    let path = format!("/notification-types/{REMINDER}");
+    let nobody = t.user("Nadia", &[perm::LOG_VIEW]).await;
+    t.app.acting_as(&nobody);
+    t.app.get(&path).await.assert_forbidden();
+    t.app.htmx().post(&path, &[]).await.assert_status(403);
+
+    let admin = t.user("Amal", &[perm::TEMPLATES_MANAGE]).await;
+    t.app.acting_as(&admin);
+    t.app
+        .get(&path)
+        .await
+        .assert_ok()
+        .assert_view("wl-notify/type_edit.html")
+        .assert_see("Mark contact invalid")
+        .assert_see("Alternative recipient")
+        .assert_see("Staff task")
+        .assert_see("Staff role told")
+        .assert_see("collector");
+    t.app
+        .get("/notification-types/no.such.type")
+        .await
+        .assert_status(404);
+
+    t.app
+        .htmx()
+        .post(
+            &path,
+            &[
+                ("mark_contact_invalid", "on"),
+                ("staff_task", "on"),
+                ("staff_role", " finance "),
+            ],
+        )
+        .await
+        .assert_status(303);
+    let kind = stored(&t, REMINDER).await;
+    assert_eq!(
+        kind.give_up.0,
+        [
+            GiveUpReaction::MarkContactInvalid,
+            GiveUpReaction::StaffTask
+        ]
+    );
+    assert_eq!(kind.staff_role.as_deref(), Some("finance"));
+}
+
+/// `mark_contact_invalid` alone is a 422 for a non-marketing type and
+/// changes nothing; a marketing type may have it alone.
+#[renox::test]
+async fn the_edit_form_refuses_mark_contact_invalid_alone() {
+    let t = boot().await;
+    let admin = t.user("Amal", &[perm::TEMPLATES_MANAGE]).await;
+    t.app.acting_as(&admin);
+    let path = format!("/notification-types/{REMINDER}");
+    let before = stored(&t, REMINDER).await;
+
+    let refused = t
+        .app
+        .htmx()
+        .post(&path, &[("mark_contact_invalid", "on")])
+        .await;
+    refused.assert_status(422).assert_see("add Staff task.");
+    let after = stored(&t, REMINDER).await;
+    assert_eq!(after.give_up.0, before.give_up.0);
+    assert_eq!(after.staff_role, before.staff_role);
+
+    let mut marketing = stored(&t, REMINDER).await;
+    marketing.category = Category::Marketing;
+    marketing.save(t.db()).await.unwrap();
+    t.app
+        .htmx()
+        .post(&path, &[("mark_contact_invalid", "on")])
+        .await
+        .assert_status(303);
+    assert_eq!(
+        stored(&t, REMINDER).await.give_up.0,
+        [GiveUpReaction::MarkContactInvalid]
+    );
 }
 
 #[renox::test]
