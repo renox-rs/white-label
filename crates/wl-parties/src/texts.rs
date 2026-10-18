@@ -432,6 +432,16 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_parties.screening.method.manual", "Manual"),
     ("wl_parties.screening.yes", "Yes"),
     ("wl_parties.screening.no", "No"),
+    ("wl_parties.freshness.never", "never"),
+    ("wl_parties.freshness.reason_old", "The update is too old"),
+    (
+        "wl_parties.freshness.notice_title",
+        "Sanctions list out of date: :list",
+    ),
+    (
+        "wl_parties.freshness.notice_body",
+        "Last successful update: :updated (Asia/Dubai). Reason: :reason.",
+    ),
     (
         "wl_parties.screening.notice_title",
         "A possible sanctions match needs review",

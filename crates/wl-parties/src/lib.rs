@@ -13,6 +13,7 @@ pub mod events;
 pub mod evidence;
 pub mod feed;
 pub mod freshness;
+pub mod freshness_alert;
 mod machine;
 pub mod notify;
 pub mod pages;
@@ -368,6 +369,8 @@ impl Module for WlParties {
         app.provide(self.confirmed);
         // `PTY.RUL.02`: the hourly list check and its command.
         freshness::schedule(app);
+        // The compliance alert of a stale list.
+        freshness_alert::register(app);
         // The block reason codes; `on_hold` must be there and not restricted.
         let reasons = self.reasons();
         reasons.check();
