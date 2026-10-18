@@ -257,6 +257,57 @@ async fn without_parties_the_directory_finds_nobody() {
     assert_eq!(NoParties.find(db, PartyId(1)).await.unwrap(), None);
 }
 
+/// #55 AC10: without the notify module, the kernel's notifier is
+/// `NoNotifier`: it queues nothing and returns no message id; a staff user
+/// still gets a bell entry.
+#[renox::test]
+async fn without_notify_the_notifier_queues_nothing() {
+    use wl_kernel::Subject;
+    use wl_kernel::notify::{self, NotificationTypeDef, NotifyChannel, NotifyRequest};
+
+    notify::register_type(
+        NotificationTypeDef::new("kernel_package.reminder", "invoicing").template(
+            NotifyChannel::Email,
+            "en",
+            Some("Invoice {{ number }} is overdue"),
+            "Please pay.",
+        ),
+    );
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let user = User::register(app.db(), "Mona", "mona@example.com", "password123")
+        .await
+        .unwrap();
+    app.fake_notifications();
+    let request = NotifyRequest::new(
+        "kernel_package.reminder",
+        Subject::new("invoicing.invoice", 7),
+    )
+    .to_party(PartyId(1))
+    .to_user(user.id)
+    .data(renox::serde_json::json!({ "number": "INV-0007" }));
+    let state = app.state();
+    let ids = notify::notifier(state)
+        .notify(state, request)
+        .await
+        .unwrap();
+    assert!(ids.is_empty());
+    app.assert_notified(&user, notify::FALLBACK_KIND);
+    assert_eq!(app.notifications().len(), 1);
+
+    // An unregistered type is refused.
+    let unknown = NotifyRequest::new(
+        "kernel_package.missing",
+        Subject::new("invoicing.invoice", 1),
+    );
+    assert!(
+        notify::notifier(state)
+            .notify(state, unknown)
+            .await
+            .is_err()
+    );
+}
+
 #[renox::test]
 async fn the_models_match_the_schema() {
     let dir = views(&[]);

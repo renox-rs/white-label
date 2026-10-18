@@ -139,6 +139,8 @@ async fn sent(
     provider_message_id: String,
 ) -> Result<SendOutcome> {
     let mut tx = state.db.begin().await?;
+    // The accepted send is an attempt too.
+    message.attempts += 1;
     message.provider = provider.map(str::to_owned);
     message.provider_message_id = Some(provider_message_id);
     message.sent_at = Some(renox::db::now());

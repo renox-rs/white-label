@@ -15,6 +15,61 @@ async fn the_demo_client_boots_with_its_legal_entities() {
     app.get("/").await.assert_ok().assert_see("/_renox/theme/");
 }
 
+/// #55 AC10: the demo boots with `notify`; wl-parties answers `contacts`
+/// for the notifier, and a message to a seeded party goes out by Renox mail.
+#[renox::test]
+async fn the_demo_client_sends_notifications_to_its_parties() {
+    use wl_kernel::notify::{self, MessageId, NotificationTypeDef, NotifyChannel, NotifyRequest};
+    use wl_kernel::parties::directory;
+
+    let app = TestApp::new(host::app()).await;
+    app.kernel().seed().await.unwrap();
+    let al_noor = wl_parties::Party::query()
+        .where_(wl_parties::Party::LEGAL_NAME_EN.eq("Al Noor Trading LLC"))
+        .first(app.db())
+        .await
+        .unwrap()
+        .expect("the seeded party");
+    let contacts = directory(app.state())
+        .contacts(app.db(), al_noor.party_id())
+        .await
+        .unwrap()
+        .expect("wl-parties answers");
+    let email = contacts.point_for(NotifyChannel::Email).expect("an e-mail");
+    assert_eq!(email.address, "accounts@alnoortrading.example");
+    assert!(email.primary);
+
+    notify::register_type(
+        NotificationTypeDef::new("host_test.notice", "property").template(
+            NotifyChannel::Email,
+            "en",
+            Some("Notice {{ number }}"),
+            "Your lease {{ number }} is renewed.",
+        ),
+    );
+    let request = NotifyRequest::new(
+        "host_test.notice",
+        wl_kernel::Subject::new("property.lease", 1),
+    )
+    .to_party(al_noor.party_id())
+    .data(renox::serde_json::json!({ "number": "L-0001" }));
+    let state = app.state();
+    let ids = notify::notifier(state)
+        .notify(state, request)
+        .await
+        .unwrap();
+    let [MessageId(id)] = ids[..] else {
+        panic!("one message: {ids:?}")
+    };
+    app.run_jobs().await;
+    let message = wl_notify::Message::find(app.db(), id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(message.status, wl_notify::MessageStatus::Sent);
+    app.assert_mail_sent("accounts@alnoortrading.example", "Notice L-0001");
+}
+
 #[test]
 fn a_client_of_an_unbuilt_app_or_module_is_refused() {
     let demo = std::fs::read_to_string(host::DEMO_CLIENT).unwrap();
