@@ -83,6 +83,14 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_notify.task.gave_up_at", "Gave up at :time (Asia/Dubai)"),
     ("wl_notify.task.party", "Party :id"),
     ("wl_notify.task.user", "User :id"),
+    (
+        "wl_notify.alert.title",
+        "Urgent: could not reach :recipient about :subject",
+    ),
+    (
+        "wl_notify.alert.body",
+        "Notification type: :type\nTask: :ticket",
+    ),
     ("wl_notify.status.queued", "Queued"),
     ("wl_notify.status.deferred", "Held"),
     ("wl_notify.status.sent", "Sent"),

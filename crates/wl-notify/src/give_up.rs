@@ -482,6 +482,7 @@ async fn apply_reactions(state: &AppState, run: &ReactionRun, message: &Message)
         channels_tried: channels_tried(&chain, message),
         statutory: def.statutory,
         staff_role: def.staff_role.clone(),
+        urgency: def.urgency,
         reactions: run.reactions.0.clone(),
     };
     let done: Vec<GiveUpReaction> = run

@@ -15,7 +15,7 @@ use renox::prelude::*;
 use renox::serde_json::{self, Value};
 use serde::{Deserialize, Serialize};
 use wl_kernel::Subject;
-use wl_kernel::notify::{ChannelTried, GiveUpReaction, MessageId, NotifyRecipient};
+use wl_kernel::notify::{ChannelTried, GiveUpReaction, MessageId, NotifyRecipient, Urgency};
 
 /// A boxed future returned by a [`GiveUpHandler`].
 pub type HandlerFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
@@ -45,6 +45,8 @@ pub struct GiveUpContext {
     pub statutory: bool,
     /// The staff role told on give-up, e.g. `collector`.
     pub staff_role: Option<String>,
+    /// The type's urgency; `urgent` also sends the in-app alert.
+    pub urgency: Urgency,
     /// The run's reactions, in run order.
     pub reactions: Vec<GiveUpReaction>,
 }
@@ -220,6 +222,7 @@ mod tests {
             channels_tried: Vec::new(),
             statutory: false,
             staff_role: Some("collector".into()),
+            urgency: Urgency::Normal,
             reactions: vec![GiveUpReaction::StaffTask],
         };
         let step = StepOutcome::recorded(&ctx);

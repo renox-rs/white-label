@@ -26,6 +26,7 @@ use wl_kernel::notify::{ChannelTried, GiveUpReaction, NotifyRecipient};
 use wl_kernel::tickets::{self, Assignee, OpenTicket, TASK_CATEGORY, TaskComment, TicketRef};
 use wl_kernel::{COMPANY_ADMIN_ROLE, Subject, calendar, parties, scopes};
 
+use crate::alert::{self, GiveUpAlert};
 use crate::mask;
 use crate::message::Message;
 use crate::reactions::{GiveUpContext, GiveUpHandler, HandlerFuture, StepOutcome};
@@ -280,6 +281,14 @@ pub async fn open_give_up_task(
     let subject = subject_text(&ctx.subject, ctx.subject_label.as_deref());
     let calendar = calendar::calendar(state);
 
+    let (holders, source) = holders(&state.db, task.role.as_deref(), &ctx.subject).await?;
+    let alert_for = |ticket: &TicketRef| GiveUpAlert {
+        recipient: recipient.clone(),
+        subject: subject.clone(),
+        type_key: ctx.type_key.clone(),
+        ticket: ticket.clone(),
+    };
+
     if let Some(open) = creator.find_open(state, &key).await? {
         let time = calendar
             .local(ctx.gave_up_at)
@@ -289,13 +298,14 @@ pub async fn open_give_up_task(
         creator
             .comment(state, open.id, TaskComment::internal(&text))
             .await?;
+        // Every urgent give-up alerts, also when it only became a comment.
+        let alerted = alert_if_urgent(state, ctx, &holders, alert_for(&open)).await?;
         return Ok(StepOutcome::new(
             TASK_COMMENTED,
-            step_detail(&open, "commented", None, None, false),
+            step_detail(&open, "commented", None, None, alerted),
         ));
     }
 
-    let (holders, source) = holders(&state.db, task.role.as_deref(), &ctx.subject).await?;
     let assignee = pick_assignee(&holders);
     let mut ticket = OpenTicket::new(
         ctx.subject.clone(),
@@ -309,15 +319,32 @@ pub async fn open_give_up_task(
         ticket = ticket.assign_to(assignee);
     }
     match creator.open(state, ticket).await? {
-        Some(opened) => Ok(StepOutcome::new(
-            TASK_CREATED,
-            step_detail(&opened, "opened", assignee, Some(source), false),
-        )),
+        Some(opened) => {
+            let alerted = alert_if_urgent(state, ctx, &holders, alert_for(&opened)).await?;
+            Ok(StepOutcome::new(
+                TASK_CREATED,
+                step_detail(&opened, "opened", assignee, Some(source), alerted),
+            ))
+        }
         None => Ok(StepOutcome::new(
             NO_TASK_CREATOR,
             json!({ "source_key": key }),
         )),
     }
+}
+
+/// Sends the in-app alert to `holders` when the type is urgent; returns
+/// whether anyone got it.
+async fn alert_if_urgent(
+    state: &AppState,
+    ctx: &GiveUpContext,
+    holders: &[i64],
+    alert: GiveUpAlert,
+) -> Result<bool> {
+    if !alert::is_urgent(ctx.urgency) {
+        return Ok(false);
+    }
+    Ok(alert::send(state, holders, &alert).await? > 0)
 }
 
 fn step_detail(
