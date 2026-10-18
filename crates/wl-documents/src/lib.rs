@@ -18,7 +18,7 @@ pub use documents::{
     Attach, AttachReason, AttachRefused, Document, DocumentSource, DocumentStatus, DocumentVersion,
     Documents, NewDocument,
 };
-pub use expiry::{AffectedItem, ReminderLog};
+pub use expiry::{AffectedItem, ExpiredLog, ReminderLog, RenewalTask};
 pub use flags::DocumentFlag;
 pub use guard::DocumentsGuard;
 pub use kinds::{
@@ -86,6 +86,8 @@ impl Module for WlDocuments {
             .model::<DocumentFlag>()
             .model::<AffectedItem>()
             .model::<ReminderLog>()
+            .model::<ExpiredLog>()
+            .model::<RenewalTask>()
             .view_data::<pages::ReviewQueuePage>()
             .view_data::<pages::FlagsPage>()
             .view_data::<pages::KindsPage>()

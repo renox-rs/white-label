@@ -1,8 +1,9 @@
 //! The expiry logs: [`AffectedItem`] rows for planned records already
-//! reported as affected by a blocking document, and [`ReminderLog`] rows for
-//! reminder offsets already sent.
+//! reported as affected by a blocking document, [`ReminderLog`] rows for
+//! reminder offsets already sent, [`ExpiredLog`] rows for documents whose
+//! expiry was reported, and [`RenewalTask`] rows for the renewal tasks opened.
 //!
-//! Both tables are unique per key, so the inserts ignore a duplicate and
+//! The tables are unique per key, so the inserts ignore a duplicate and
 //! report whether a row was written: a repeat run adds nothing.
 
 use renox::chrono::NaiveDate;
@@ -148,6 +149,160 @@ impl ReminderLog {
     }
 }
 
+/// A document whose expiry the run has reported (`DOC.RUL.03`).
+#[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
+#[model(table = "wl_documents_expired_logs", unique(document_id))]
+pub struct ExpiredLog {
+    /// The primary key.
+    pub id: i64,
+    /// The expired document.
+    #[model(references = "wl_documents_documents")]
+    pub document_id: i64,
+    /// The business date of the run that reported it.
+    pub run_date: NaiveDate,
+    /// When the row was created.
+    pub created_at: Option<DateTime>,
+    /// When the row was last changed.
+    pub updated_at: Option<DateTime>,
+}
+
+impl ExpiredLog {
+    /// Records that the expiry of `document_id` was reported on `run_date`.
+    /// Returns `false` when it was already logged: the event is not emitted
+    /// twice.
+    pub async fn insert_new<'c>(
+        db: impl Executor<'c>,
+        document_id: i64,
+        run_date: NaiveDate,
+    ) -> Result<bool> {
+        let at = now();
+        let written = sql(format!(
+            "INSERT INTO {} (document_id, run_date, created_at, updated_at) \
+             VALUES (?, ?, ?, ?) ON CONFLICT (document_id) DO NOTHING",
+            Self::TABLE
+        ))
+        .bind(document_id)
+        .bind(run_date)
+        .bind(at)
+        .bind(at)
+        .execute(db)
+        .await?;
+        Ok(written > 0)
+    }
+
+    /// Whether the expiry of `document_id` was already reported.
+    pub async fn is_logged(db: &Db, document_id: i64) -> Result<bool> {
+        Ok(Self::query()
+            .where_(Self::DOCUMENT_ID.eq(document_id))
+            .first(db)
+            .await?
+            .is_some())
+    }
+}
+
+/// A renewal task opened for an expired document.
+#[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
+#[model(table = "wl_documents_renewal_tasks")]
+pub struct RenewalTask {
+    /// The primary key.
+    pub id: i64,
+    /// The subject's type, e.g. `hr.employee`.
+    pub subject_type: String,
+    /// The subject's id.
+    pub subject_id: i64,
+    /// The document kind to renew.
+    #[model(references = "wl_documents_kinds")]
+    pub kind_id: i64,
+    /// The expired document that caused the task.
+    #[model(references = "wl_documents_documents")]
+    pub expired_document_id: i64,
+    /// The ticket's id; `None` when ticketing is off.
+    pub ticket_id: Option<i64>,
+    /// The ticket's number; `None` when ticketing is off.
+    pub ticket_number: Option<String>,
+    /// When the task was opened.
+    pub opened_at: DateTime,
+    /// When the task was closed; `None` while it is open.
+    pub closed_at: Option<DateTime>,
+    /// The accepted document that closed it.
+    #[model(references = "wl_documents_documents")]
+    pub renewal_document_id: Option<i64>,
+    /// When the row was created.
+    pub created_at: Option<DateTime>,
+    /// When the row was last changed.
+    pub updated_at: Option<DateTime>,
+}
+
+impl RenewalTask {
+    /// Records an open task. Returns `false` when the subject already has an
+    /// open task for the kind: nothing is written.
+    pub async fn insert_new<'c>(&self, db: impl Executor<'c>) -> Result<bool> {
+        let at = now();
+        let written = sql(format!(
+            "INSERT INTO {} (subject_type, subject_id, kind_id, expired_document_id, \
+             ticket_id, ticket_number, opened_at, created_at, updated_at) \
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) \
+             ON CONFLICT (subject_type, subject_id, kind_id) WHERE closed_at IS NULL DO NOTHING",
+            Self::TABLE
+        ))
+        .bind(self.subject_type.clone())
+        .bind(self.subject_id)
+        .bind(self.kind_id)
+        .bind(self.expired_document_id)
+        .bind(self.ticket_id)
+        .bind(self.ticket_number.clone())
+        .bind(self.opened_at)
+        .bind(at)
+        .bind(at)
+        .execute(db)
+        .await?;
+        Ok(written > 0)
+    }
+
+    /// The open task for the subject and kind, if any.
+    pub async fn find_open(
+        db: &Db,
+        subject_type: &str,
+        subject_id: i64,
+        kind_id: i64,
+    ) -> Result<Option<RenewalTask>> {
+        Self::query()
+            .where_(Self::SUBJECT_TYPE.eq(subject_type))
+            .where_(Self::SUBJECT_ID.eq(subject_id))
+            .where_(Self::KIND_ID.eq(kind_id))
+            .where_(Self::CLOSED_AT.is_null())
+            .first(db)
+            .await
+    }
+
+    /// Every task for the subject and kind, oldest first.
+    pub async fn for_subject(
+        db: &Db,
+        subject_type: &str,
+        subject_id: i64,
+        kind_id: i64,
+    ) -> Result<Vec<RenewalTask>> {
+        Self::query()
+            .where_(Self::SUBJECT_TYPE.eq(subject_type))
+            .where_(Self::SUBJECT_ID.eq(subject_id))
+            .where_(Self::KIND_ID.eq(kind_id))
+            .order_by(Self::ID)
+            .get(db)
+            .await
+    }
+
+    /// Closes the task, recording the accepted `renewal_document_id`.
+    pub async fn close<'c>(
+        &mut self,
+        db: impl Executor<'c>,
+        renewal_document_id: i64,
+    ) -> Result<()> {
+        self.closed_at = Some(now());
+        self.renewal_document_id = Some(renewal_document_id);
+        self.save(db).await
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use renox::testing::TestApp;
@@ -239,5 +394,77 @@ mod tests {
                 .unwrap()
                 .is_empty()
         );
+    }
+
+    #[renox::test]
+    async fn an_expiry_is_logged_once_per_document() {
+        let app = TestApp::new(App::new().module(WlDocuments)).await;
+        let db = app.db();
+        let id = document(db).await;
+        let other = document(db).await;
+
+        assert!(!ExpiredLog::is_logged(db, id).await.unwrap());
+        assert!(
+            ExpiredLog::insert_new(db, id, date("2026-11-15"))
+                .await
+                .unwrap()
+        );
+        assert!(
+            !ExpiredLog::insert_new(db, id, date("2026-11-16"))
+                .await
+                .unwrap()
+        );
+        assert!(ExpiredLog::is_logged(db, id).await.unwrap());
+        assert!(!ExpiredLog::is_logged(db, other).await.unwrap());
+        let row = ExpiredLog::query().first(db).await.unwrap().unwrap();
+        assert_eq!(row.run_date, date("2026-11-15"));
+        assert!(row.created_at.is_some());
+    }
+
+    fn task(document_id: i64, kind_id: i64, subject_id: i64) -> RenewalTask {
+        RenewalTask {
+            subject_type: "hr.employee".to_owned(),
+            subject_id,
+            kind_id,
+            expired_document_id: document_id,
+            opened_at: now(),
+            ..RenewalTask::default()
+        }
+    }
+
+    #[renox::test]
+    async fn one_renewal_task_is_open_per_subject_and_kind() {
+        let app = TestApp::new(App::new().module(WlDocuments)).await;
+        let db = app.db();
+        let id = document(db).await;
+        let kind_id = Document::find(db, id).await.unwrap().unwrap().kind_id;
+
+        assert!(task(id, kind_id, 7).insert_new(db).await.unwrap());
+        // A second open task for the same subject and kind adds nothing.
+        assert!(!task(id, kind_id, 7).insert_new(db).await.unwrap());
+        // Another subject is independent.
+        assert!(task(id, kind_id, 8).insert_new(db).await.unwrap());
+
+        let mut open = RenewalTask::find_open(db, "hr.employee", 7, kind_id)
+            .await
+            .unwrap()
+            .expect("an open task");
+        assert!(open.ticket_id.is_none() && open.closed_at.is_none());
+
+        open.close(db, id).await.unwrap();
+        assert!(
+            RenewalTask::find_open(db, "hr.employee", 7, kind_id)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        // Once closed, a new expiry may open another task.
+        assert!(task(id, kind_id, 7).insert_new(db).await.unwrap());
+        let all = RenewalTask::for_subject(db, "hr.employee", 7, kind_id)
+            .await
+            .unwrap();
+        assert_eq!(all.len(), 2);
+        assert_eq!(all[0].renewal_document_id, Some(id));
+        assert!(all[1].closed_at.is_none());
     }
 }

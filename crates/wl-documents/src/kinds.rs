@@ -91,6 +91,8 @@ pub struct DocumentKind {
     pub compliance_critical: bool,
     /// The role whose holders renew it, e.g. `pro`.
     pub responsible_role: Option<String>,
+    /// The roles told on expiry as well as the responsible role, e.g. `hr`.
+    pub also_notify: Json<Vec<String>>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
@@ -164,6 +166,7 @@ impl DocumentKind {
             look_ahead_days: seed.look_ahead_days,
             compliance_critical: seed.compliance_critical,
             responsible_role: seed.responsible_role.clone(),
+            also_notify: Json(seed.also_notify.clone()),
             ..DocumentKind::default()
         };
         if seed.legal_block {
@@ -311,6 +314,8 @@ pub struct KindSeed {
     pub compliance_critical: bool,
     /// The role whose holders renew it.
     pub responsible_role: Option<String>,
+    /// The roles told on expiry as well as the responsible role.
+    pub also_notify: Vec<String>,
     /// The seeded `blocks`.
     pub blocks: Vec<BlockSeed>,
 }
@@ -338,6 +343,7 @@ impl KindSeed {
             look_ahead_days: 0,
             compliance_critical: false,
             responsible_role: None,
+            also_notify: Vec::new(),
             blocks: Vec::new(),
         }
     }
@@ -441,6 +447,13 @@ impl KindSeed {
     /// The role whose holders renew it, e.g. `pro`.
     pub fn responsible_role(mut self, role: &str) -> Self {
         self.responsible_role = Some(role.to_owned());
+        self
+    }
+
+    /// The roles told on expiry as well as the responsible role, e.g. `hr`
+    /// for a work permit whose responsible role is `pro`.
+    pub fn also_notify(mut self, roles: &[&str]) -> Self {
+        self.also_notify = roles.iter().map(|r| (*r).to_owned()).collect();
         self
     }
 
@@ -792,6 +805,7 @@ mod tests {
             .subject_type("hr.employee")
             .expires()
             .responsible_role("pro")
+            .also_notify(&["hr"])
             .legal_block()
             .blocks("deployment.activate", BlockMode::Block)
             .blocks("attendance_record.accept", BlockMode::Flag)
@@ -807,6 +821,18 @@ mod tests {
         assert!(kind.needs_review);
         assert!(kind.allows_subject_type("hr.employee"));
         assert!(!kind.allows_subject_type("fleet.vehicle"));
+    }
+
+    #[test]
+    fn a_seed_carries_the_roles_to_notify_as_well() {
+        let kind = DocumentKind::from_seed(&work_permit());
+        assert_eq!(kind.also_notify.0, ["hr"]);
+        assert!(
+            DocumentKind::from_seed(&KindSeed::new("x", "X"))
+                .also_notify
+                .0
+                .is_empty()
+        );
     }
 
     #[test]
