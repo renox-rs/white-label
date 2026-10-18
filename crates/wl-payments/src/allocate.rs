@@ -122,6 +122,8 @@ mod tests {
             gross_total: 200_000,
             balance: 200_000,
             due_date: None,
+            disputed: false,
+            chasing_paused_until: None,
         }
     }
 
