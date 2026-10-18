@@ -22,6 +22,10 @@
 //! either, nothing is emitted or sent, so a second run on the same night
 //! does nothing.
 //!
+//! `DOC.RUL.03` follows in the same run ([`expired`](super::expired)): the
+//! documents that expired before `today` emit `DocumentExpired`, tell the
+//! responsible staff and the owner, and open the renewal task.
+//!
 //! A failure on one document is printed to stderr and counted in
 //! [`Report::failed`]; the run moves on (A10). A message that cannot be
 //! queued is also counted there: its log rows stay, so it is not retried.
@@ -68,6 +72,12 @@ pub struct Report {
     pub messages: usize,
     /// Documents or messages that failed.
     pub failed: usize,
+    /// Expired documents picked up by `DOC.RUL.03`.
+    pub expired: usize,
+    /// `DocumentExpired` events emitted.
+    pub expired_events: usize,
+    /// Renewal tasks opened.
+    pub tasks: usize,
 }
 
 /// The offsets to handle for a document with `days_left` days to go:
@@ -107,6 +117,7 @@ pub fn notification_type() -> NotificationTypeDef {
 /// Registers the notification type with the kernel registry.
 pub(crate) fn register_type() {
     notify::register_type(notification_type());
+    super::expired::register_type();
 }
 
 /// The template variables of the message to one recipient.
@@ -197,6 +208,13 @@ pub async fn run(state: &AppState, today: NaiveDate) -> Result<Report> {
             }
         }
     }
+    // DOC.RUL.03: the documents that expired.
+    let expired = super::expired::run_rule(state, &kinds, today).await?;
+    report.expired += expired.scanned;
+    report.expired_events += expired.events;
+    report.messages += expired.messages;
+    report.tasks += expired.tasks;
+    report.failed += expired.failed;
     Ok(report)
 }
 
@@ -313,7 +331,7 @@ async fn handle(
             offset,
             &recipient.groups,
         );
-        match send_message(state, &subject, &label, &recipient, data).await {
+        match send_message(state, NOTIFICATION_TYPE, &subject, &label, &recipient, data).await {
             Ok(count) => done.messages += count,
             Err(error) => {
                 eprintln!(
@@ -368,7 +386,11 @@ async fn affected_records(
 
 /// The subject's label: the first `BlockSubjects::label` among the kind's
 /// guarded transitions, else `<subject_type> #<id>`.
-async fn subject_label(state: &AppState, blocks: &[KindBlock], subject: &Subject) -> String {
+pub(super) async fn subject_label(
+    state: &AppState,
+    blocks: &[KindBlock],
+    subject: &Subject,
+) -> String {
     for block in blocks {
         if let Some(provider) = block_subjects(&block.guarded)
             && let Ok(Some(label)) = provider.label(state, subject).await
@@ -380,14 +402,15 @@ async fn subject_label(state: &AppState, blocks: &[KindBlock], subject: &Subject
 }
 
 /// Queues the message to one recipient; returns how many messages went.
-async fn send_message(
+pub(super) async fn send_message(
     state: &AppState,
+    type_key: &str,
     subject: &Subject,
     label: &str,
     recipient: &Recipient,
     data: Value,
 ) -> Result<usize> {
-    let request = NotifyRequest::new(NOTIFICATION_TYPE, subject.clone())
+    let request = NotifyRequest::new(type_key, subject.clone())
         .to_user(recipient.user_id)
         .subject_label(label)
         .data(data);
@@ -424,8 +447,13 @@ pub(crate) fn schedule(app: &mut Registry) {
             let on = date_arg(args.value("--date"), wl_kernel::documents::today())?;
             let report = run(&state, on).await?;
             println!(
-                "{} documents scanned, {} expiring, {} messages, {} failed.",
-                report.scanned, report.events, report.messages, report.failed
+                "{} documents scanned, {} expiring, {} expired, {} tasks, {} messages, {} failed.",
+                report.scanned,
+                report.events,
+                report.expired_events,
+                report.tasks,
+                report.messages,
+                report.failed
             );
             Ok(())
         },

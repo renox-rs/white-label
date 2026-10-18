@@ -248,6 +248,28 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("wl_documents.expiring.item", "- :label on :date (:guarded)"),
     (
+        "wl_documents.expired.subject",
+        "{{ kind_name }} of {{ subject_label }} expired on {{ expires_on }}",
+    ),
+    (
+        "wl_documents.expired.body",
+        "{{ summary }}\n{{ items_text }}",
+    ),
+    (
+        "wl_documents.expired.message",
+        "The :kind of :subject expired on :expires. Renew it before the work below goes on.",
+    ),
+    (
+        "wl_documents.expired.items",
+        "These records need a valid document:",
+    ),
+    ("wl_documents.expired.item", "- :label on :date (:guarded)"),
+    ("wl_documents.renewal.title", "Renew :kind of :subject"),
+    (
+        "wl_documents.renewal.description",
+        "The :kind of :subject expired on :expires. Upload the renewed document for review.",
+    ),
+    (
         "wl_documents.guard.no_provider",
         "No module maps :guarded to its document subjects",
     ),

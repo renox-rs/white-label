@@ -76,7 +76,7 @@ pub async fn resolve(
     Ok(everyone(holders_anywhere(db, role).await?, items))
 }
 
-fn everyone(users: BTreeSet<i64>, items: &[AffectedGroup]) -> Vec<Recipient> {
+pub(super) fn everyone(users: BTreeSet<i64>, items: &[AffectedGroup]) -> Vec<Recipient> {
     users
         .into_iter()
         .map(|user_id| Recipient {
@@ -116,7 +116,7 @@ async fn by_record_scope(db: &Db, role: &str, items: &[AffectedGroup]) -> Result
 }
 
 /// The users holding `role` in `scope` or globally, now.
-async fn holders_in(db: &Db, role: &str, scope: &Scope) -> Result<BTreeSet<i64>> {
+pub(super) async fn holders_in(db: &Db, role: &str, scope: &Scope) -> Result<BTreeSet<i64>> {
     Ok(
         renox::auth::permissions::users_with_role_in(db, role, scope)
             .await?
