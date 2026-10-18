@@ -391,6 +391,22 @@ const TEXTS: &[(&str, &str)] = &[
         "Dispute on {{ number }}",
     ),
     (
+        "wl_invoicing.restored.subject",
+        "Credit note {{ number }} is available again",
+    ),
+    (
+        "wl_invoicing.restored.body",
+        "{{ amount }} of credit note {{ number }} ({{ party_name }}) is available again because {{ cause }}: {{ reason }}. Remaining credit: {{ remaining }}. See the credit note: {{ link }}",
+    ),
+    (
+        "wl_invoicing.restored.cause.refund_failed",
+        "the refund failed",
+    ),
+    (
+        "wl_invoicing.restored.cause.allocation_removed",
+        "the allocation was removed",
+    ),
+    (
         "wl_invoicing.relief.proposed.subject",
         "Bad-debt VAT relief proposed for invoice {{ number }}",
     ),

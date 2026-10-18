@@ -9,6 +9,7 @@ pub mod credit;
 pub mod credit_note;
 pub mod credit_note_line;
 mod credit_note_machine;
+pub mod credit_note_movement;
 pub mod credit_notes;
 pub mod dispute;
 mod events;
@@ -23,6 +24,7 @@ pub mod policy;
 pub mod recover;
 pub mod recovery;
 pub mod reminders;
+pub mod restore;
 pub mod seed;
 mod texts;
 pub mod vat;
@@ -43,6 +45,7 @@ pub use allocation::Allocation;
 pub use config::{InvoicingConfig, ReasonProblem, ReliefMonths, SettingError, WriteOffReason};
 pub use credit_note::{CreditNote, CreditNoteKind};
 pub use credit_note_line::CreditNoteLine;
+pub use credit_note_movement::{CreditNoteMovement, MovementKind};
 pub use dispute::{Dispute, DisputeVia};
 pub use invoice::{Invoice, InvoiceKind, PartySnapshot};
 pub use invoicer::Invoices;
@@ -250,6 +253,7 @@ impl Module for WlInvoicing {
             .model::<InvoiceLine>()
             .model::<CreditNote>()
             .model::<CreditNoteLine>()
+            .model::<CreditNoteMovement>()
             .model::<Allocation>()
             .model::<Recovery>()
             .model::<Dispute>()
@@ -319,6 +323,8 @@ impl Module for WlInvoicing {
         bad_debt_relief::schedule(app, &self.config);
         // `invoicing.dispute_acknowledged` and `invoicing.dispute_unassigned`.
         dispute::register_types();
+        // `invoicing.credit_note_restored`: the credit is available again.
+        restore::register_types();
         // Other modules draft and read invoices through the kernel (§6).
         wl_kernel::invoicing::provide_invoicer(app, Invoices);
     }

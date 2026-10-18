@@ -13,15 +13,18 @@ use std::collections::HashMap;
 use renox::prelude::*;
 use renox::serde_json::{Value, json};
 use renox::state_machine::{Outcome, StateMachine, TransitionBuilder, TransitionError};
-use wl_kernel::LegalEntity;
 use wl_kernel::invoicing::{CreditLine, CreditNoteStatus, InvoiceStatus};
+use wl_kernel::{LegalEntity, Subject};
 
 use crate::allocate::allocate_in;
+use crate::allocation::Allocation;
 use crate::credit_note::{CreditNote, CreditNoteKind};
 use crate::credit_note_line::CreditNoteLine;
 use crate::credit_note_machine::{APPLY, ISSUE, ISSUE_SYSTEM, IssueInput};
+use crate::credit_note_movement::{CreditNoteMovement, MovementKind};
 use crate::invoice::Invoice;
 use crate::line::InvoiceLine;
+use crate::restore::ALLOCATION_SUBJECT_TYPE;
 use crate::vat::{self, VatTotals};
 
 /// The invoice states a credit note can be drafted against.
@@ -511,6 +514,42 @@ pub(crate) async fn apply_in(
     Ok(CreditNote::find_or_404(&mut *tx, note.id).await?)
 }
 
+/// Uses `amount` of `note` (as loaded) on `invoice` in `tx`: lowers the
+/// remaining, allocates to the invoice with the credit note as the source,
+/// and writes the `invoice_allocated` movement (its target the allocation).
+async fn use_in(
+    tx: &mut renox::db::Transaction,
+    note: &CreditNote,
+    invoice: &Invoice,
+    amount: i64,
+    by: &By<'_>,
+    outcomes: &mut Outcomes,
+) -> std::result::Result<(), TransitionError> {
+    lower_remaining_in(tx, note, amount).await?;
+    let source = note.subject();
+    let moved = allocate_in(tx, invoice, &source, amount, by.id()).await?;
+    outcomes.invoices.push(moved);
+    let allocation = Allocation::query()
+        .where_(Allocation::INVOICE_ID.eq(invoice.id))
+        .where_(Allocation::SOURCE_TYPE.eq(source.subject_type.clone()))
+        .where_(Allocation::SOURCE_ID.eq(source.subject_id))
+        .order_by_desc(Allocation::ID)
+        .first(&mut *tx)
+        .await?
+        .ok_or_else(|| Error::from(renox::anyhow::anyhow!("the allocation was not written")))?;
+    CreditNoteMovement::new(
+        note.id,
+        MovementKind::InvoiceAllocated,
+        Some(&Subject::new(ALLOCATION_SUBJECT_TYPE, allocation.id)),
+        amount,
+        None,
+        by.id(),
+    )
+    .insert(&mut *tx)
+    .await?;
+    Ok(())
+}
+
 /// After `issue`: allocates the lower of the credit note's remaining and the
 /// invoice's balance to the invoice (through [`allocate_in`], the credit
 /// note the source), and applies the credit note when nothing is left. The
@@ -536,9 +575,7 @@ async fn allocate_step(
     };
     let mut note = note;
     if amount > 0 {
-        lower_remaining_in(tx, &note, amount).await?;
-        let moved = allocate_in(tx, &invoice, &note.subject(), amount, by.id()).await?;
-        outcomes.invoices.push(moved);
+        use_in(tx, &note, &invoice, amount, by, outcomes).await?;
         note = CreditNote::find_or_404(&mut *tx, note.id).await?;
     }
     if note.remaining == 0 {
@@ -603,6 +640,65 @@ pub async fn credit_partly(
     tx.commit().await?;
     outcomes.emit(state).await?;
     Ok(done)
+}
+
+/// Uses `amount` of the remaining balance of issued credit note `note` on
+/// `invoice`, another open invoice of the same party and currency, as `by`
+/// (a user needs `invoices.credit`), through the invoice's `allocate`. The
+/// credit note is `applied` when nothing is left. In one transaction; the
+/// events are emitted after the commit.
+///
+/// # Errors
+///
+/// `Forbidden` without `invoices.credit`; a 422 when the credit note is not
+/// `issued`, the invoice is not `issued`, `partially_paid` or `overdue`, the
+/// party or currency differ, or the amount is not above 0, or is above the
+/// remaining balance or the invoice's balance. Nothing is written then.
+pub async fn use_on_invoice(
+    state: &AppState,
+    by: By<'_>,
+    note: &CreditNote,
+    invoice: &Invoice,
+    amount: i64,
+) -> std::result::Result<CreditNote, TransitionError> {
+    if let By::User(user) = &by
+        && !user.has_permission_anywhere(crate::permissions::CREDIT)
+    {
+        return Err(Error::Forbidden.into());
+    }
+    let note = CreditNote::find_or_404(&state.db, note.id).await?;
+    let invoice = Invoice::find_or_404(&state.db, invoice.id).await?;
+    if note.status != CreditNoteStatus::Issued {
+        return Err(refused("only an issued credit note can be used").into());
+    }
+    let open = [
+        InvoiceStatus::Issued,
+        InvoiceStatus::PartiallyPaid,
+        InvoiceStatus::Overdue,
+    ]
+    .contains(&invoice.status);
+    if !open {
+        return Err(refused("the invoice is not open for payment").into());
+    }
+    if invoice.party_id != note.party_id || invoice.currency != note.currency {
+        return Err(refused("the invoice is of another party or currency").into());
+    }
+    if amount <= 0 || amount > note.remaining || amount > invoice.balance {
+        return Err(refused(
+            "the amount must be above 0 and within the credit note's remaining balance and the invoice's balance",
+        )
+        .into());
+    }
+    let mut outcomes = Outcomes::default();
+    let mut tx = state.db.begin().await?;
+    use_in(&mut tx, &note, &invoice, amount, &by, &mut outcomes).await?;
+    let used = CreditNote::find_or_404(&mut tx, note.id).await?;
+    if used.remaining == 0 {
+        apply_in(&mut tx, &used, &by, &mut outcomes).await?;
+    }
+    tx.commit().await?;
+    outcomes.emit(state).await?;
+    Ok(CreditNote::find_or_404(&state.db, note.id).await?)
 }
 
 /// What other modules see of the credit notes of invoice `invoice_id`,

@@ -8,7 +8,7 @@
 //! The three states are declared here with their tones, and a new credit
 //! note is inserted only as `draft`. There is no terminal state: `applied`
 //! is left by `reopen`. The transitions are added by the issues that build
-//! them, all in this `machine()`: `issue` and `apply` here, `reopen` later.
+//! them, all in this `machine()`: `issue`, `apply` and `reopen`.
 //! `CreditNote` is `#[model(state_machine)]`, so `save` refuses a changed
 //! status.
 //!
@@ -21,7 +21,10 @@
 //! leaves no gap), the issuer and party snapshots and the issue date, and
 //! sets the remaining to the gross. `apply` (issued to applied, system)
 //! needs the remaining to be 0. `CreditNoteIssued` is emitted after the
-//! commit ([`crate::events`]).
+//! commit ([`crate::events`]). `reopen` (applied to issued, system) gives
+//! back what a failed refund or a removed allocation had used
+//! ([`crate::restore`]): its effect writes the ledger row and raises the
+//! remaining, and `CreditNoteReopened` follows the commit.
 
 use renox::prelude::*;
 use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx};
@@ -33,6 +36,7 @@ use wl_kernel::invoicing::{CreditNoteStatus, InvoiceStatus, credit_note_series};
 use crate::credit_note::CreditNote;
 use crate::invoice::Invoice;
 use crate::permissions;
+use crate::restore::{self, RestoreInput};
 
 /// The user transition that issues a draft.
 pub const ISSUE: &str = "issue";
@@ -40,6 +44,9 @@ pub const ISSUE: &str = "issue";
 pub const ISSUE_SYSTEM: &str = "issue_system";
 /// The transition that applies a fully used credit note.
 pub const APPLY: &str = "apply";
+/// The transition that reopens an applied credit note when a use of it is
+/// undone.
+pub const REOPEN: &str = "reopen";
 
 /// The invoice states a credit note can be issued against.
 const CREDITABLE: [InvoiceStatus; 4] = [
@@ -215,6 +222,35 @@ pub(crate) fn apply_transition() -> Transition<CreditNote> {
         })
 }
 
+/// The `reopen` transition, for the machine.
+pub(crate) fn reopen_transition() -> Transition<CreditNote> {
+    Transition::new(REOPEN)
+        .label("Reopen")
+        .system()
+        .from([CreditNoteStatus::Applied])
+        .to(CreditNoteStatus::Issued)
+        .guard("use_undone", |note: &CreditNote, ctx| {
+            let room = note.gross_total - note.remaining;
+            Box::pin(async move {
+                match ctx.input_as::<RestoreInput>() {
+                    Ok(input) if input.amount > 0 && input.amount <= room => Ok(()),
+                    _ => Err("There is nothing to give back to the credit note.".to_owned()),
+                }
+            })
+        })
+        .effect(|note: &CreditNote, ctx, tx| {
+            let note = note.clone();
+            let input = ctx.input_as::<RestoreInput>().ok();
+            Box::pin(async move {
+                // The guard passed, so the input is there.
+                let input = input.ok_or_else(|| {
+                    Error::from(renox::anyhow::anyhow!("a reopen run without its input"))
+                })?;
+                restore::write_in(tx, &note, &input).await
+            })
+        })
+}
+
 impl StateMachine for CreditNote {
     type State = CreditNoteStatus;
     const COLUMN: renox::db::Col<CreditNote, CreditNoteStatus> = CreditNote::STATUS;
@@ -229,7 +265,8 @@ impl StateMachine for CreditNote {
             .tone("info")
             .state(Applied)
             .tone("success")
-            .transition(apply_transition());
+            .transition(apply_transition())
+            .transition(reopen_transition());
         issue_transitions()
             .into_iter()
             .fold(machine, Machine::transition)
@@ -292,6 +329,11 @@ mod tests {
         assert_eq!(apply.from_states(), ["issued"]);
         assert_eq!(apply.to_state(), Some("applied"));
         assert!(apply.is_system());
+        let reopen = machine.find(REOPEN).expect("reopen");
+        assert_eq!(reopen.from_states(), ["applied"]);
+        assert_eq!(reopen.to_state(), Some("issued"));
+        assert!(reopen.is_system());
+        assert_eq!(reopen.guard_names(), ["use_undone"]);
     }
 
     #[renox::test]
@@ -388,5 +430,33 @@ mod tests {
             ..used
         };
         assert!(apply.check_guards(&open, &ctx).await.is_err());
+    }
+
+    #[renox::test]
+    async fn reopen_needs_an_amount_that_fits_in_the_gross() {
+        let machine = CreditNote::machine();
+        let reopen = machine.find(REOPEN).expect("reopen");
+        let applied = CreditNote {
+            gross_total: 50_000,
+            remaining: 0,
+            status: CreditNoteStatus::Applied,
+            ..Default::default()
+        };
+        let with = |amount: i64| {
+            let input = RestoreInput {
+                cause: restore::Cause::RefundFailed,
+                target: wl_kernel::Subject::new("payments.refund", 9),
+                attempt: Some(1),
+                amount,
+                ran_by: None,
+            };
+            TransitionCtx::new(None).with_input(renox::serde_json::to_value(input).expect("json"))
+        };
+        assert!(reopen.check_guards(&applied, &with(50_000)).await.is_ok());
+        for amount in [0, -1, 50_001] {
+            assert!(reopen.check_guards(&applied, &with(amount)).await.is_err());
+        }
+        let bare = TransitionCtx::new(None);
+        assert!(reopen.check_guards(&applied, &bare).await.is_err());
     }
 }

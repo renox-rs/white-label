@@ -10,23 +10,28 @@
 //! - `credit` / `credit_system` → [`InvoiceCredited`] (the credit note and
 //!   the release of origins come from the run's `meta`, [`crate::credit`]);
 //! - a credit note's `issue` / `issue_system` (a listener on
-//!   [`Transitioned<CreditNote>`]) → [`CreditNoteIssued`].
+//!   [`Transitioned<CreditNote>`]) → [`CreditNoteIssued`];
+//! - a credit note's `reopen` → [`CreditNoteReopened`] (the amount and the
+//!   cause come from the run's `meta`, [`crate::restore`]).
 //!
 //! `InvoiceDisputed` is not a transition: [`crate::dispute::raise`] emits it
 //! itself after its commit.
 
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
+use renox::serde_json::Value;
 use renox::state_machine::Transitioned;
+use wl_kernel::Subject;
 use wl_kernel::documents::today;
 use wl_kernel::invoicing::{
-    CreditNoteIssued, InvoiceCredited, InvoiceIssued, InvoiceOverdue, InvoicePaid,
+    CreditNoteIssued, CreditNoteReopened, InvoiceCredited, InvoiceIssued, InvoiceOverdue,
+    InvoicePaid,
 };
 
 use crate::allocate::ALLOCATE_IN_FULL;
 use crate::credit::{CREDIT, CREDIT_SYSTEM, credit_note_of, releases_origins};
 use crate::credit_note::CreditNote;
-use crate::credit_note_machine::{ISSUE as ISSUE_NOTE, ISSUE_SYSTEM as ISSUE_NOTE_SYSTEM};
+use crate::credit_note_machine::{ISSUE as ISSUE_NOTE, ISSUE_SYSTEM as ISSUE_NOTE_SYSTEM, REOPEN};
 use crate::invoice::Invoice;
 use crate::invoicer::lines_of;
 use crate::issue::ISSUE;
@@ -84,6 +89,23 @@ fn credit_note_issued(note: &CreditNote) -> CreditNoteIssued {
     }
 }
 
+/// `CreditNoteReopened` for `note` after a `reopen` run with `meta`: the
+/// amount given back and the cause (a subject such as `payments.refund:9`).
+/// `None` when the run's `meta` does not carry them.
+fn credit_note_reopened(note: &CreditNote, meta: &Value) -> Option<CreditNoteReopened> {
+    let amount_restored = meta.get("amount").and_then(Value::as_i64)?;
+    let cause = meta
+        .get("cause")
+        .and_then(Value::as_str)
+        .and_then(|text| text.parse::<Subject>().ok())?;
+    Some(CreditNoteReopened {
+        credit_note: note.credit_note_id(),
+        party: note.party(),
+        amount_restored,
+        cause,
+    })
+}
+
 /// `InvoiceCredited` for `invoice` credited by `note`, with the origins of
 /// `lines` when the run released them.
 fn invoice_credited(
@@ -110,10 +132,17 @@ fn invoice_credited(
 pub(crate) fn register(app: &mut Registry) {
     app.listen(
         |event: Transitioned<CreditNote>, state: AppState| async move {
-            if ![ISSUE_NOTE, ISSUE_NOTE_SYSTEM].contains(&event.transition.as_str()) {
+            let name = event.transition.as_str();
+            if ![ISSUE_NOTE, ISSUE_NOTE_SYSTEM, REOPEN].contains(&name) {
                 return Ok(());
             }
             let note = CreditNote::find_or_404(&state.db, event.key).await?;
+            if name == REOPEN {
+                return match credit_note_reopened(&note, &event.meta) {
+                    Some(reopened) => state.emit(reopened).await,
+                    None => Ok(()),
+                };
+            }
             state.emit(credit_note_issued(&note)).await
         },
     );
@@ -239,6 +268,22 @@ mod tests {
         assert_eq!(issued.credit_note.0, 7);
         assert_eq!((issued.invoice, issued.party), (InvoiceId(4), PartyId(7)));
         assert_eq!((issued.amount, issued.reason.as_str()), (21_000, "Damaged"));
+    }
+
+    #[test]
+    fn reopening_gives_credit_note_reopened_with_the_cause() {
+        let note = CreditNote {
+            id: 7,
+            party_id: 2,
+            ..Default::default()
+        };
+        let meta = renox::serde_json::json!({ "cause": "payments.refund:9", "amount": 50_000 });
+        let reopened = credit_note_reopened(&note, &meta).expect("an event");
+        assert_eq!(reopened.credit_note.0, 7);
+        assert_eq!(reopened.party, PartyId(2));
+        assert_eq!(reopened.amount_restored, 50_000);
+        assert_eq!(reopened.cause, Subject::new("payments.refund", 9));
+        assert!(credit_note_reopened(&note, &Value::Null).is_none());
     }
 
     #[test]

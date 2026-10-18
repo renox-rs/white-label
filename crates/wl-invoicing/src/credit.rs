@@ -25,6 +25,7 @@ use wl_kernel::invoicing::{CreditLine, InvoiceStatus};
 
 use crate::credit_note::{CreditNote, CreditNoteKind};
 use crate::credit_note_machine::IssueInput;
+use crate::credit_note_movement::{CreditNoteMovement, MovementKind};
 use crate::credit_notes::{
     By, Outcomes, apply_in, insert_in, issue_in, lower_remaining_in, prepare, run_of,
 };
@@ -170,6 +171,16 @@ pub async fn credit_in_full(
     let issued = issue_in(&mut tx, &note, &input, &by, &mut outcomes).await?;
     // All of it is used on cancelling the invoice, not on an allocation.
     lower_remaining_in(&mut tx, &issued, issued.remaining).await?;
+    CreditNoteMovement::new(
+        issued.id,
+        MovementKind::InvoiceCredited,
+        Some(&current.subject()),
+        issued.remaining,
+        None,
+        by.id(),
+    )
+    .insert(&mut tx)
+    .await?;
     let used = CreditNote::find_or_404(&mut tx, note.id).await?;
     let applied = apply_in(&mut tx, &used, &by, &mut outcomes).await?;
 
