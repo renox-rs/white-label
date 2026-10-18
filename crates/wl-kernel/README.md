@@ -129,6 +129,20 @@ the record's business date. `flags_for(db, record_type, id)` lists a record's `R
 marks one reviewed (a note is required, once only; a flag is never removed). Without
 `wl-documents` the closure just runs, nothing is flagged and the lists are empty.
 
+Planned work is warned about, never refused: after a module saved a run, a deployment or a
+batch of sessions it calls
+`documents::guard(&state).check_planned(&state, "deployment.activate", &items)` with one
+`PlannedItem { record_id, on_date }` per item. An item that spans several days passes only its
+start date; the guard does not know about end dates. Only `block` entries of `guarded` count.
+`Ok(Ok(Some(PlannedWarning)))` has one `PlannedWarningLine` per subject and kind with the sorted
+dates it fails on; `message()` is "Ravi S.: Residence visa expires 2026-12-15; planned:
+2026-12-20" per line and `toast()` is a persistent warning toast the module returns with its
+redirect. A `BlockSubjects` provider can override `label` (the subject's name, else
+`<type> #<id>`) and `bookable` (default false): for a bookable slot (`booking.book`,
+`booking.reschedule`, `booking.reassign`) `check_planned` gives `Ok(Err(PlannedError::BookableSlot))`,
+because a booking is refused through `is_valid` (`SCH.ACL.04`). Without `wl-documents` it returns
+`Ok(Ok(None))`.
+
 Working time comes from one calendar: `wl_kernel::calendar::calendar(&state)` gives the
 client's `BusinessCalendar` (the default one with no holidays when the kernel is not
 mounted). Asia/Dubai is UTC+04:00 all year; the weekend is Saturday and Sunday, a working

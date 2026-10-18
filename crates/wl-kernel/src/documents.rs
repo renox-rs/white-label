@@ -327,6 +327,136 @@ pub struct CheckOutcome {
     pub flags: Vec<FlagFailure>,
 }
 
+/// One planned item to check with [`DocumentGuard::check_planned`]: a saved
+/// record and the date its guarded transition will run.
+///
+/// An item that spans several days passes only its start date as
+/// `on_date` (a deployment its first day, a visit its day); the guard does
+/// not know about end dates.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct PlannedItem {
+    /// The saved record.
+    pub record_id: i64,
+    /// Its start date (Asia/Dubai calendar date).
+    pub on_date: NaiveDate,
+}
+
+impl PlannedItem {
+    /// The planned item `record_id` starting on `on_date`.
+    pub fn new(record_id: i64, on_date: NaiveDate) -> Self {
+        PlannedItem { record_id, on_date }
+    }
+}
+
+/// The label of a subject without a [`BlockSubjects::label`]:
+/// `<subject_type> #<id>`.
+pub fn default_subject_label(subject: &Subject) -> String {
+    format!("{} #{}", subject.subject_type, subject.subject_id)
+}
+
+/// One subject and document kind that will not be valid on some planned
+/// dates.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PlannedWarningLine {
+    /// The document subject, e.g. the worker.
+    pub subject: Subject,
+    /// Its label, e.g. "Ravi S."
+    pub label: String,
+    /// The document kind's key, e.g. `residence_visa`.
+    pub kind: String,
+    /// The kind's name, e.g. "Residence visa".
+    pub kind_name: String,
+    /// Why it will not be valid.
+    pub reason: InvalidReason,
+    /// The expiry date of the expired document; `None` when missing,
+    /// rejected or pending.
+    pub expires_on: Option<NaiveDate>,
+    /// The line text, e.g. "Residence visa expires 2026-12-15".
+    pub text: String,
+    /// The planned dates it fails on, sorted, each once.
+    pub dates: Vec<NaiveDate>,
+}
+
+impl PlannedWarningLine {
+    /// `<subject label>: <text>; planned: <date>, <date>, ...`
+    pub fn message(&self) -> String {
+        let dates = self
+            .dates
+            .iter()
+            .map(|d| d.format("%Y-%m-%d").to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!("{}: {}; planned: {}", self.label, self.text, dates)
+    }
+}
+
+/// The documents that will not be valid on the dates of planned work: one
+/// [`PlannedWarningLine`] per subject and kind, ordered by subject, then
+/// kind. It never refuses anything; the module shows it after saving.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PlannedWarning {
+    /// The guarded transition the items will pass, `<entity>.<transition>`.
+    pub guarded: String,
+    /// The lines, never empty.
+    pub lines: Vec<PlannedWarningLine>,
+}
+
+impl PlannedWarning {
+    /// The message: one line per subject and kind.
+    pub fn message(&self) -> String {
+        self.lines
+            .iter()
+            .map(PlannedWarningLine::message)
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    /// A persistent warning toast: the first line is the text, the other
+    /// lines its body. The module returns it with its redirect after
+    /// saving.
+    pub fn toast(&self) -> Toast {
+        let mut lines = self.lines.iter().map(PlannedWarningLine::message);
+        let first = lines.next().unwrap_or_default();
+        let rest = lines.collect::<Vec<_>>().join("\n");
+        let toast = Toast::warning(first).persistent();
+        if rest.is_empty() {
+            toast
+        } else {
+            toast.body(rest)
+        }
+    }
+}
+
+impl fmt::Display for PlannedWarning {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.message())
+    }
+}
+
+/// Why [`DocumentGuard::check_planned`] gives no answer.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PlannedError {
+    /// The transition is a bookable slot: it is refused through
+    /// `is_valid` (`SCH.ACL.04`), never turned into a warning.
+    BookableSlot {
+        /// The guarded transition, `<entity>.<transition>`.
+        guarded: String,
+    },
+}
+
+impl fmt::Display for PlannedError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PlannedError::BookableSlot { guarded } => write!(
+                f,
+                "{guarded} is a bookable slot: it is refused, not warned about"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for PlannedError {}
+
 /// A flag on a record: permanent, it is reviewed but never removed.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RecordFlag {
@@ -409,6 +539,30 @@ pub trait DocumentGuard: Send + Sync + 'static {
         record_id: i64,
         on_date: NaiveDate,
     ) -> DocumentFuture<'a, std::result::Result<CheckOutcome, BlockRefusal>>;
+
+    /// Warns about planned work: after the module saved `items` (a run, a
+    /// deployment, a batch of sessions), checks each item's start date
+    /// `on_date` against the `block` entries of `guarded` (the
+    /// `<entity>.<transition>` the items will pass later). A flag-mode
+    /// entry gives no warning, and an entry whose condition does not match
+    /// a record gives none for it. Every subject and kind that is not
+    /// valid on a date adds that date to its [`PlannedWarningLine`];
+    /// `Ok(None)` when all are valid. It never refuses, so a warning never
+    /// stops the save.
+    ///
+    /// A provider that is [`bookable`](BlockSubjects::bookable) gives
+    /// [`PlannedError::BookableSlot`] and no warning.
+    ///
+    /// The default is the no-op fallback (`Ok(None)`), as without
+    /// `wl-documents`.
+    fn check_planned<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _guarded: &'a str,
+        _items: &'a [PlannedItem],
+    ) -> DocumentFuture<'a, std::result::Result<Option<PlannedWarning>, PlannedError>> {
+        Box::pin(async { Ok(Ok(None)) })
+    }
 
     /// Writes `flags` on record `record_id` of the transition `guarded`,
     /// after the transition ran. A flag that repeats an unreviewed one
@@ -592,6 +746,25 @@ pub trait BlockSubjects: Send + Sync + 'static {
         entry: &'a BlockEntry,
         record_id: i64,
     ) -> DocumentFuture<'a, Vec<Subject>>;
+
+    /// Whether the transition books a slot (`booking.book`,
+    /// `booking.reschedule`, `booking.reassign`). A bookable transition is
+    /// refused through [`DocumentGuard::is_valid`] (`SCH.ACL.04`), and
+    /// [`DocumentGuard::check_planned`] gives
+    /// [`PlannedError::BookableSlot`] for it. Default: `false`.
+    fn bookable(&self) -> bool {
+        false
+    }
+
+    /// The label of `subject` in a [`PlannedWarning`], e.g. "Ravi S.".
+    /// Default: `None`, which gives [`default_subject_label`].
+    fn label<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _subject: &'a Subject,
+    ) -> DocumentFuture<'a, Option<String>> {
+        Box::pin(async { Ok(None) })
+    }
 }
 
 static PROVIDERS: RwLock<BTreeMap<String, Arc<dyn BlockSubjects>>> = RwLock::new(BTreeMap::new());
@@ -941,6 +1114,119 @@ mod tests {
         ) -> DocumentFuture<'a, Vec<Subject>> {
             Box::pin(async { Ok(Vec::new()) })
         }
+    }
+
+    fn planned_line(label: &str, text: &str, dates: &[&str]) -> PlannedWarningLine {
+        PlannedWarningLine {
+            subject: Subject::new("hr.employee", 7),
+            label: label.into(),
+            kind: "residence_visa".into(),
+            kind_name: "Residence visa".into(),
+            reason: InvalidReason::Expired,
+            expires_on: Some(date("2026-12-15")),
+            text: text.into(),
+            dates: dates.iter().map(|d| date(d)).collect(),
+        }
+    }
+
+    #[renox::test]
+    async fn without_documents_nothing_is_warned_about() {
+        let app = TestApp::new(App::new()).await;
+        let items = [PlannedItem::new(3, date("2026-12-20"))];
+        assert_eq!(
+            guard(app.state())
+                .check_planned(app.state(), "deployment.activate", &items)
+                .await
+                .expect("no failure"),
+            Ok(None)
+        );
+        assert_eq!(
+            NoDocuments
+                .check_planned(app.state(), "booking.book", &[])
+                .await
+                .expect("no failure"),
+            Ok(None)
+        );
+    }
+
+    #[renox::test]
+    async fn a_provider_is_not_bookable_and_has_no_label_by_default() {
+        let app = TestApp::new(App::new()).await;
+        assert!(!Nobody.bookable());
+        assert_eq!(
+            Nobody
+                .label(app.state(), &Subject::new("hr.employee", 7))
+                .await
+                .expect("no failure"),
+            None
+        );
+        assert_eq!(
+            default_subject_label(&Subject::new("hr.employee", 7)),
+            "hr.employee #7"
+        );
+    }
+
+    #[test]
+    fn a_planned_warning_gives_one_line_per_subject_and_kind() {
+        let warning = PlannedWarning {
+            guarded: "deployment.activate".into(),
+            lines: vec![
+                planned_line(
+                    "Ravi S.",
+                    "Residence visa expires 2026-12-15",
+                    &["2027-01-04", "2027-01-11"],
+                ),
+                planned_line("worker #8", "Residence visa missing", &["2027-01-04"]),
+            ],
+        };
+        assert_eq!(
+            warning.message(),
+            "Ravi S.: Residence visa expires 2026-12-15; planned: 2027-01-04, 2027-01-11\n\
+             worker #8: Residence visa missing; planned: 2027-01-04"
+        );
+        assert_eq!(warning.to_string(), warning.message());
+    }
+
+    #[test]
+    fn a_planned_warning_is_a_persistent_warning_toast() {
+        let one = PlannedWarning {
+            guarded: "deployment.activate".into(),
+            lines: vec![planned_line(
+                "Ravi S.",
+                "Residence visa expires 2026-12-15",
+                &["2026-12-20"],
+            )],
+        };
+        let toast = one.toast();
+        assert_eq!(toast.kind, renox::ToastKind::Warning);
+        assert_eq!(
+            toast.message,
+            "Ravi S.: Residence visa expires 2026-12-15; planned: 2026-12-20"
+        );
+        assert_eq!(toast.body, None);
+        assert_eq!(toast.duration, Some(0));
+
+        let two = PlannedWarning {
+            guarded: one.guarded.clone(),
+            lines: vec![
+                one.lines[0].clone(),
+                planned_line("Mia T.", "Residence visa missing", &["2026-12-21"]),
+            ],
+        };
+        let toast = two.toast();
+        assert_eq!(toast.message, one.lines[0].message());
+        assert_eq!(
+            toast.body.as_deref(),
+            Some("Mia T.: Residence visa missing; planned: 2026-12-21")
+        );
+    }
+
+    #[test]
+    fn a_bookable_slot_error_names_the_transition() {
+        let error = PlannedError::BookableSlot {
+            guarded: "booking.book".into(),
+        };
+        assert!(error.to_string().contains("booking.book"));
     }
 
     #[test]

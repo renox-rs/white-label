@@ -42,7 +42,8 @@ pub use documents::{
     BlockCondition, BlockEntry, BlockFailure, BlockMode, BlockRefusal, BlockSubjects, CheckOutcome,
     DocumentAccepted, DocumentGuard, DocumentId, DocumentRejected, DocumentSuperseded,
     DocumentUploaded, FlagFailure, FlagReason, InvalidReason, NoDocuments, OverrideMode,
-    PendingRenewal, RecordFlag, Validity,
+    PendingRenewal, PlannedError, PlannedItem, PlannedWarning, PlannedWarningLine, RecordFlag,
+    Validity,
 };
 pub use entities::{IssuerSnapshot, LegalEntity, ScopeEntity};
 pub use invoicing::{
