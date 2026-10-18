@@ -9,8 +9,10 @@ pub mod contacts;
 pub mod create;
 pub mod details;
 pub mod directory;
+pub mod events;
 pub mod evidence;
 pub mod feed;
+pub mod freshness;
 mod machine;
 pub mod notify;
 pub mod pages;
@@ -39,6 +41,7 @@ pub use contacts::{ContactPoint, ContactStatus, ContactType, update_contact, ver
 pub use create::{NewParty, create};
 pub use details::{CompanyDetails, PersonDetails};
 pub use directory::Directory;
+pub use events::{SanctionsListStale, SanctionsListUpdated};
 pub use evidence::{UnblockBasis, UnblockEvidence};
 pub use feed::{FeedError, ListFeed, ListVersion, NoListFeed};
 pub use party::{Channel, Language, Party};
@@ -363,6 +366,8 @@ impl Module for WlParties {
         app.provide(feed);
         // What a confirmed sanctions match does.
         app.provide(self.confirmed);
+        // `PTY.RUL.02`: the hourly list check and its command.
+        freshness::schedule(app);
         // The block reason codes; `on_hold` must be there and not restricted.
         let reasons = self.reasons();
         reasons.check();
