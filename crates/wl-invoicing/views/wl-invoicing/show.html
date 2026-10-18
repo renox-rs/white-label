@@ -112,10 +112,24 @@
     </rx-table>
     <rx-table :rows="allocations" as="allocation" :key="allocation.id" :caption="tx['sections.allocations']" card>
       <rx-column :label="tx['fields.source']">{{ allocation.source }}</rx-column>
-      <rx-column :label="tx['fields.amount']">{{ allocation.amount }}</rx-column>
+      <rx-column :label="tx['fields.amount']"><s rx-if="allocation.removed">{{ allocation.amount }}</s><span rx-if="not allocation.removed">{{ allocation.amount }}</span></rx-column>
       <rx-column :label="tx['history.at']" hide-narrow>{{ allocation.allocated_at | date('%Y-%m-%d %H:%M') }}</rx-column>
+      <rx-column :label="tx['allocations.removed']"><rx-badge rx-if="allocation.removed" kind="warning" :text="tx['allocations.removed']"/></rx-column>
+      <rx-column :label="tx['allocations.removed_reason']" hide-narrow>{{ allocation.removed_reason or "" }}</rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['no_allocations']" icon="wallet"/></rx-slot>
     </rx-table>
+    <rx-table rx-if="reopened" :rows="reopened" as="item" :key="item.id" :caption="tx['sections.reopened']" card>
+      <rx-column :label="tx['reopened.date']">{{ item.date | date('%Y-%m-%d %H:%M') }}</rx-column>
+      <rx-column :label="tx['reopened.amount']">{{ item.amount }}</rx-column>
+      <rx-column :label="tx['reopened.reason']">{{ item.reason }}</rx-column>
+      <rx-column :label="tx['reopened.outcome']"><rx-badge :kind="item.outcome_kind" :text="item.outcome"/></rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['reopened.empty']" icon="history"/></rx-slot>
+    </rx-table>
+    <rx-table rx-if="tasks" :rows="tasks" as="task" :key="task.id" :caption="tx['sections.tasks']" card>
+      <rx-column :label="tx['tasks.kind']"><rx-badge kind="warning" :text="task.kind"/></rx-column>
+      <rx-column :label="tx['tasks.message']">{{ task.message }}</rx-column>
+    </rx-table>
+    <rx-link-button rx-if="tasks and can_tasks" :href="route('wl_invoicing.tasks')" :label="tx['tasks.title']"/>
     <rx-table rx-if="credit.notes" :rows="credit.notes" as="note" :key="note.id" :caption="tx['credit_note.sections.list']" card>
       <rx-column :label="tx['fields.number']"><a href="{{ route('wl_invoicing.credit_note', note.id) }}">{{ note.number }}</a></rx-column>
       <rx-column :label="tx['fields.status']"><rx-badge :kind="note.status_kind" :text="note.status"/></rx-column>

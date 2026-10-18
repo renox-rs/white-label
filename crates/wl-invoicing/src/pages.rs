@@ -41,7 +41,9 @@ use crate::issue::issue;
 use crate::line::InvoiceLine;
 use crate::permissions;
 use crate::recovery::Recovery;
+use crate::task;
 use crate::texts::{self, english};
+use crate::unallocation::{Unallocation, UnallocationOutcome};
 use crate::vat_adjustment::VatAdjustment;
 use crate::vat_pages::{recovery_effect, relief_detail};
 use crate::vat_summary::VatSummary;
@@ -224,6 +226,31 @@ pub(crate) struct AllocationRow {
     source: String,
     amount: String,
     allocated_at: DateTime,
+    /// Whether it was removed (`unallocate`); the page strikes it through.
+    removed: bool,
+    removed_at: Option<DateTime>,
+    /// Why it was removed, in words.
+    removed_reason: Option<String>,
+}
+
+/// One row of the "Reopened" table: an `unallocate` run, done or refused.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct ReopenedRow {
+    id: i64,
+    date: Option<DateTime>,
+    amount: String,
+    /// The reason, with the payment's reason when there is one.
+    reason: String,
+    outcome: String,
+    outcome_kind: &'static str,
+}
+
+/// One open task of the invoice.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct TaskRow {
+    id: i64,
+    kind: String,
+    message: String,
 }
 
 /// The write-off section of a written-off invoice.
@@ -311,6 +338,17 @@ fn reason_label(t: Text<'_>, code: &str) -> String {
     t(&format!("write_off_reason.{code}"))
 }
 
+/// The text of a reopen reason or a payment's reversal reason key
+/// (`payment_reversed`, `bank_return`...); an unknown key shows as it is.
+fn reopen_reason_text(t: Text<'_>, key: &str) -> String {
+    let text = t(&format!("reopen.reason.{key}"));
+    if text.ends_with(key) && text.contains("reopen.reason") {
+        key.to_owned()
+    } else {
+        text
+    }
+}
+
 /// What the invoice page needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "wl-invoicing/show.html")]
@@ -330,6 +368,12 @@ pub(crate) struct ShowPage {
     lines: Vec<LineRow>,
     vat: Vec<VatRow>,
     allocations: Vec<AllocationRow>,
+    /// The `unallocate` runs on the invoice, oldest first.
+    reopened: Vec<ReopenedRow>,
+    /// The invoice's open reversal tasks.
+    tasks: Vec<TaskRow>,
+    /// Whether the user may see the task list (`receivables.view`).
+    can_tasks: bool,
     write_off: Option<WriteOffRow>,
     /// The recoveries of the write-off, oldest first.
     recoveries: Vec<RecoveryRow>,
@@ -440,6 +484,46 @@ async fn show(
             source: a.source().to_string(),
             amount: money(a.amount),
             allocated_at: a.allocated_at,
+            removed: a.removed_at.is_some(),
+            removed_at: a.removed_at,
+            removed_reason: a
+                .removed_at
+                .map(|_| reopen_reason_text(&t, a.removed_reason.as_deref().unwrap_or(""))),
+        })
+        .collect();
+    let reopened = Unallocation::query()
+        .where_(Unallocation::INVOICE_ID.eq(invoice.id))
+        .order_by(Unallocation::ID)
+        .get(&db)
+        .await?
+        .into_iter()
+        .map(|u| {
+            let mut reason = reopen_reason_text(&t, &crate::unallocate::reason_key(u.reason));
+            if let Some(why) = u.reversal_reason.as_deref().filter(|r| !r.is_empty()) {
+                reason = format!("{reason} ({})", reopen_reason_text(&t, why));
+            }
+            let done = u.outcome == UnallocationOutcome::Done;
+            ReopenedRow {
+                id: u.id,
+                date: u.created_at,
+                amount: money(u.amount),
+                reason,
+                outcome: t(if done {
+                    "reopened.outcome.done"
+                } else {
+                    "reopened.outcome.failed"
+                }),
+                outcome_kind: if done { "success" } else { "danger" },
+            }
+        })
+        .collect();
+    let tasks = task::open_of(&db, invoice.id)
+        .await?
+        .into_iter()
+        .map(|task| TaskRow {
+            id: task.id,
+            kind: t(&format!("tasks.kind.{}", task.kind.as_str())),
+            message: task.message,
         })
         .collect();
     let amounts = BTreeMap::from([
@@ -516,6 +600,9 @@ async fn show(
         lines,
         vat,
         allocations,
+        reopened,
+        tasks,
+        can_tasks: user.has_permission(permissions::RECEIVABLES_VIEW),
         write_off,
         recoveries,
         approvals: approval_cards,

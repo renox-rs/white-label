@@ -39,6 +39,7 @@ pub mod restore;
 pub mod reversal;
 pub mod seed;
 pub mod task;
+mod task_pages;
 mod texts;
 pub mod unallocate;
 pub mod unallocation;
@@ -130,6 +131,10 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "wl-invoicing/vat_summary.html",
         include_str!("../views/wl-invoicing/vat_summary.html"),
+    ),
+    (
+        "wl-invoicing/tasks.html",
+        include_str!("../views/wl-invoicing/tasks.html"),
     ),
     (
         "wl-invoicing/_adjustment_sheet.html",
@@ -316,6 +321,7 @@ impl Module for WlInvoicing {
             .merge(credit_note_pages::routes())
             .merge(ageing_pages::routes())
             .merge(dispute_pages::routes())
+            .merge(task_pages::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -343,7 +349,8 @@ impl Module for WlInvoicing {
             .view_data::<vat_pages::ShowPage>()
             .view_data::<credit_note_pages::IndexPage>()
             .view_data::<credit_note_pages::ShowPage>()
-            .view_data::<ageing_pages::IndexPage>();
+            .view_data::<ageing_pages::IndexPage>()
+            .view_data::<task_pages::IndexPage>();
         // The customer write-off notice (§10), sent from the queue.
         app.job::<SendWriteOffNotice>();
         app.templates(|env| {
@@ -404,6 +411,15 @@ impl Module for WlInvoicing {
                 .icon("clock")
                 .group("nav.app")
                 .order(42)
+                .permission(permissions::RECEIVABLES_VIEW),
+        );
+        // The open reversal tasks (`nav.reversal_tasks`).
+        app.nav(
+            "app",
+            NavLink::route("wl_invoicing.tasks", "nav.reversal_tasks")
+                .icon("list-checks")
+                .group("nav.app")
+                .order(43)
                 .permission(permissions::RECEIVABLES_VIEW),
         );
         // `FIN.RUL.02`: the daily `invoicing:mark-overdue` task.
