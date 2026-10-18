@@ -14,6 +14,7 @@ pub mod notify;
 pub mod pages;
 pub mod party;
 pub mod reasons;
+pub mod relationships;
 pub mod review_tasks;
 pub mod roles;
 pub mod seed;
@@ -34,6 +35,7 @@ pub use directory::Directory;
 pub use evidence::{UnblockBasis, UnblockEvidence};
 pub use party::{Channel, Language, Party};
 pub use reasons::{BlockReason, BlockReasons};
+pub use relationships::{NewRelationship, Relationship, RelationshipType, relate};
 pub use review_tasks::{
     ItemDecision, ReviewTask, ReviewTaskItem, ReviewTaskNote, ReviewTaskStatus,
 };
@@ -160,6 +162,7 @@ impl Module for WlParties {
             .model::<CompanyDetails>()
             .model::<PartyRole>()
             .model::<ContactPoint>()
+            .model::<Relationship>()
             .model::<BlockRecord>()
             .model::<UnblockEvidence>()
             .model::<ReviewTask>()

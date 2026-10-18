@@ -267,6 +267,22 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_parties.errors.trn_invalid", "A TRN has 15 digits."),
     ("wl_parties.errors.role_required", "Choose a role."),
     (
+        "wl_parties.errors.relationship_party_missing",
+        "Choose an existing party.",
+    ),
+    (
+        "wl_parties.errors.relationship_person",
+        "A contact or guardian must be a person.",
+    ),
+    (
+        "wl_parties.errors.relationship_self",
+        "A party cannot be related to itself.",
+    ),
+    (
+        "wl_parties.errors.relationship_dates",
+        "The end must be after the start.",
+    ),
+    (
         "wl_parties.errors.contact_required",
         "Enter the contact's address or number.",
     ),

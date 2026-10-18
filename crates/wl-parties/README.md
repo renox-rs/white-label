@@ -19,6 +19,7 @@ What is here so far:
 | Part | Spec | Module |
 |---|---|---|
 | Permissions (`parties.*`) | §6 | `permissions` |
+| Relationships (`contact_of`, `guardian_of`, …), `relate`, `Directory::related_contacts` | §3 | `relationships`, `directory` |
 
 The module owns `src/texts.rs`, the English texts (`wl_parties.*`). The app changes or
 translates them in `resources/lang/{locale}.json`.

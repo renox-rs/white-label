@@ -15,13 +15,16 @@
 //! primary (else the first) address and e-mail contact points.
 
 use renox::prelude::*;
-use wl_kernel::notify::{ContactKind, NotifyChannel, PartyContactPoint, PartyContacts};
-use wl_kernel::parties::{BillingIdentity, PartyDirectory, PartyFuture};
+use wl_kernel::notify::{
+    ContactKind, ContactPurpose, ContactRelation, NotifyChannel, PartyContactPoint, PartyContacts,
+};
+use wl_kernel::parties::{BillingIdentity, PartyDirectory, PartyFuture, RelatedContact};
 use wl_kernel::{PartyId, PartyKind, PartyStatus, PartySummary};
 
 use crate::contacts::{ContactPoint, ContactType};
 use crate::details::CompanyDetails;
 use crate::party::{Channel, Party};
+use crate::relationships::{self, Relationship, RelationshipType};
 
 /// Reads the `wl_parties_parties` table for the kernel contract.
 #[derive(Debug, Clone, Copy, Default)]
@@ -99,6 +102,31 @@ impl PartyDirectory for Directory {
                 .get(db)
                 .await?;
             Ok(Some(party.contacts(&points)))
+        })
+    }
+
+    fn related_contacts<'a>(
+        &'a self,
+        db: &'a Db,
+        of: PartyId,
+        purpose: &'a ContactPurpose,
+    ) -> PartyFuture<'a, Vec<RelatedContact>> {
+        Box::pin(async move {
+            let relation = match purpose.relation {
+                ContactRelation::ContactOf => RelationshipType::ContactOf,
+                ContactRelation::GuardianOf => RelationshipType::GuardianOf,
+            };
+            let links = Relationship::query()
+                .where_(Relationship::TO_PARTY_ID.eq(of.0))
+                .where_(Relationship::RELATION_TYPE.eq(relation))
+                .get(db)
+                .await?;
+            Ok(relationships::related_contacts(
+                &links,
+                relation,
+                purpose.position.as_deref(),
+                wl_kernel::documents::today(),
+            ))
         })
     }
 
