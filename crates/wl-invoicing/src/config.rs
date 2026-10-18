@@ -106,6 +106,11 @@ pub struct InvoicingConfig {
     /// The upper day edges of the ageing buckets, ascending: `[30, 60, 90]`
     /// gives 0-30, 31-60, 61-90 and 90+.
     pub ageing_buckets: Vec<u32>,
+    /// Whole days between two escalation steps of an open dispute
+    /// (`FIN.RUL.15`). Never below 1.
+    pub dispute_escalation_days: u32,
+    /// The role told from the second escalation step on.
+    pub dispute_escalation_role: String,
 }
 
 impl Default for InvoicingConfig {
@@ -135,6 +140,8 @@ impl Default for InvoicingConfig {
             portal_disputes: false,
             dispute_grace_days: 7,
             ageing_buckets: vec![30, 60, 90],
+            dispute_escalation_days: 14,
+            dispute_escalation_role: "finance_manager".to_owned(),
         }
     }
 }
@@ -216,6 +223,8 @@ mod tests {
         assert!(!config.portal_disputes);
         assert_eq!(config.dispute_grace_days, 7);
         assert_eq!(config.ageing_buckets, [30, 60, 90]);
+        assert_eq!(config.dispute_escalation_days, 14);
+        assert_eq!(config.dispute_escalation_role, "finance_manager");
     }
 
     #[test]

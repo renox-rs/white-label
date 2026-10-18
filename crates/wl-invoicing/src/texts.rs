@@ -650,6 +650,14 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_invoicing.relief.proposed.body",
         "Bad-debt VAT relief of {{ amount }} for invoice {{ number }} ({{ party_name }}) was proposed on the VAT summary for {{ period }}. Include or exclude it, with a reason: {{ link }}",
     ),
+    (
+        "wl_invoicing.escalation.subject",
+        "Dispute of invoice {{ number }} open for {{ days }} days",
+    ),
+    (
+        "wl_invoicing.escalation.body",
+        "The dispute of invoice {{ number }} ({{ party_name }}) is still open after {{ days }} days (escalation step {{ step }}). Disputed amount: {{ amount }}. Reason: {{ reason }}. Raised on {{ raised_on }}. Ticket: {{ ticket }}. Owner: {{ owner }}. See the invoice: {{ link }}",
+    ),
 ];
 
 /// The English text for `key`, or `key` itself when the package has none.

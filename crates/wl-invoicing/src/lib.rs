@@ -18,6 +18,7 @@ pub mod dispute;
 pub mod dispute_credit;
 mod dispute_pages;
 pub mod dispute_resolve;
+pub mod escalation;
 mod events;
 pub mod invoice;
 pub mod invoicer;
@@ -264,6 +265,20 @@ impl WlInvoicing {
         self
     }
 
+    /// Whole days between two escalation steps of an open dispute
+    /// (`FIN.RUL.15`, default 14). 0 is stored as 1.
+    pub fn dispute_escalation_days(mut self, days: u32) -> Self {
+        self.config.dispute_escalation_days = days.max(1);
+        self
+    }
+
+    /// The role told from the second escalation step on (default
+    /// `finance_manager`).
+    pub fn dispute_escalation_role(mut self, role: &str) -> Self {
+        self.config.dispute_escalation_role = role.to_owned();
+        self
+    }
+
     /// The upper day edges of the ageing buckets (default `[30, 60, 90]`:
     /// 0-30, 31-60, 61-90, 90+). Sorted; zero and repeats are dropped.
     pub fn ageing_buckets(mut self, edges: &[u32]) -> Self {
@@ -397,6 +412,8 @@ impl Module for WlInvoicing {
         // ticket and tells the party after `InvoiceDisputeResolved`.
         dispute_resolve::register_types();
         dispute_resolve::register(app);
+        // `invoicing.dispute_escalation`: the notice of `FIN.RUL.15`.
+        escalation::register_types();
         // `invoicing.credit_note_restored`: the credit is available again.
         restore::register_types();
         // A failed refund paid out of a credit note gives its amount back.
@@ -426,7 +443,9 @@ mod tests {
             .bad_debt_relief(false)
             .relief_notify_role("finance")
             .portal_disputes(true)
-            .dispute_grace_days(10);
+            .dispute_grace_days(10)
+            .dispute_escalation_days(0)
+            .dispute_escalation_role("cfo");
         let config = module.config();
         assert_eq!(config.payment_terms_days, 14);
         assert_eq!(config.reminder_steps, [-3, 7]);
@@ -445,5 +464,7 @@ mod tests {
         assert_eq!(config.relief_notify_role, "finance");
         assert!(config.portal_disputes);
         assert_eq!(config.dispute_grace_days, 10);
+        assert_eq!(config.dispute_escalation_days, 1);
+        assert_eq!(config.dispute_escalation_role, "cfo");
     }
 }

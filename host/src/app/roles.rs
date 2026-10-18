@@ -31,6 +31,9 @@ pub const RECEIVABLES: &str = "receivables";
 /// summaries (wl-invoicing §6; `FIN.ACL.10` wants two of them), and records,
 /// reverses and refunds payments (wl-payments §6).
 pub const ACCOUNTANT: &str = "accountant";
+/// The finance manager: told when a dispute stays open (`FIN.RUL.15`), and
+/// sees the invoices and receivables to follow it up (wl-invoicing §7).
+pub const FINANCE_MANAGER: &str = "finance_manager";
 /// The maintenance coordinator: raises, triages and assigns tickets, and
 /// works them (wl-ticketing §6, 01 roles).
 pub const COORDINATOR: &str = "coordinator";
@@ -130,6 +133,10 @@ pub const ROLES: &[(&str, &[&str])] = &[
             payments::DEPOSITS_MANAGE,
             payments::DEPOSITS_REFUND,
         ],
+    ),
+    (
+        FINANCE_MANAGER,
+        &[invoices::VIEW, invoices::RECEIVABLES_VIEW],
     ),
     (
         COORDINATOR,
