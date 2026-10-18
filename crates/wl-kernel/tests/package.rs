@@ -467,6 +467,117 @@ async fn without_invoicing_the_invoicer_drafts_nothing() {
     }
 }
 
+/// #71 AC1: without the invoicing module, crediting is refused (422), no
+/// credit note is found, an invoice has none, the party has no open credit,
+/// and a refund cannot take one. A credit note's subject is
+/// `invoicing.credit_note:<id>`, and the three events serialise with plain
+/// ids.
+#[renox::test]
+async fn without_invoicing_no_credit_note_can_be_made() {
+    use wl_kernel::Subject;
+    use wl_kernel::invoicing::{
+        CreditLine, CreditNoteId, CreditNoteIssued, CreditNoteReopened, InvoiceCredited, InvoiceId,
+        Invoicer, NoInvoicer, invoicer,
+    };
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let state = app.state();
+    let provided = invoicer(state);
+    let fallback: &dyn Invoicer = &NoInvoicer;
+    for invoicer in [&*provided, fallback] {
+        let full = invoicer
+            .credit_in_full(state, InvoiceId(1), "Billed twice".into(), None)
+            .await;
+        assert!(matches!(
+            full,
+            Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
+        ));
+        let partly = invoicer
+            .credit_partly(
+                state,
+                InvoiceId(1),
+                vec![CreditLine::new(1, 100)],
+                "Short".into(),
+                None,
+            )
+            .await;
+        assert!(matches!(
+            partly,
+            Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
+        ));
+        assert_eq!(
+            invoicer
+                .find_credit_note(app.db(), CreditNoteId(1))
+                .await
+                .unwrap(),
+            None
+        );
+        assert!(
+            invoicer
+                .credit_notes_for(app.db(), InvoiceId(1))
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            invoicer
+                .open_credit(app.db(), PartyId(1), "AED")
+                .await
+                .unwrap(),
+            0
+        );
+        let taken = invoicer
+            .take_credit_for_refund(
+                state,
+                CreditNoteId(1),
+                Subject::new("payments.refund", 1),
+                2,
+                100,
+            )
+            .await;
+        assert!(matches!(
+            taken,
+            Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
+        ));
+    }
+
+    assert_eq!(
+        CreditNoteId(7).subject().to_string(),
+        "invoicing.credit_note:7"
+    );
+    let issued = renox::serde_json::to_value(CreditNoteIssued {
+        credit_note: CreditNoteId(7),
+        invoice: InvoiceId(3),
+        party: PartyId(2),
+        amount: 21_000,
+        reason: "Damaged".into(),
+    })
+    .unwrap();
+    assert_eq!(issued["credit_note"], 7);
+    assert_eq!(issued["invoice"], 3);
+    assert_eq!(issued["party"], 2);
+    let credited = renox::serde_json::to_value(InvoiceCredited {
+        invoice: InvoiceId(3),
+        credit_note: CreditNoteId(7),
+        amount: 105_000,
+        reason: "Billed twice".into(),
+        released_origins: vec![Subject::new("property.lease", 4)],
+    })
+    .unwrap();
+    assert_eq!(credited["invoice"], 3);
+    assert_eq!(credited["credit_note"], 7);
+    let reopened = renox::serde_json::to_value(CreditNoteReopened {
+        credit_note: CreditNoteId(7),
+        party: PartyId(2),
+        amount_restored: 50_000,
+        cause: Subject::new("payments.refund", 9),
+    })
+    .unwrap();
+    assert_eq!(reopened["credit_note"], 7);
+    assert_eq!(reopened["amount_restored"], 50_000);
+}
+
 /// #146 AC1: without the ticketing module, the kernel's task creator is
 /// `NoTickets`: no ticket is opened and the caller carries on.
 #[renox::test]
