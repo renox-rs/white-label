@@ -116,7 +116,7 @@ async fn a_request_is_stored_with_a_pending_approval_and_refuses_the_open_duplic
     assert_eq!(row.subject(), ravi());
     assert_eq!(row.guarded, ACTIVATE);
     assert_eq!(row.record_id, RAVI);
-    assert!(row.scope().is_global());
+    assert_eq!(row.scope(), support::site());
     let request = approvals::ApprovalRequest::find(w.t.db(), row.approval_request_id.unwrap())
         .await
         .unwrap()

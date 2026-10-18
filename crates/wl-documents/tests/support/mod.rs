@@ -150,6 +150,21 @@ impl BlockSubjects for Deployments {
     ) -> DocumentFuture<'a, Vec<Subject>> {
         Box::pin(async move { Ok(vec![Subject::new("hr.employee", record_id)]) })
     }
+
+    fn scope<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _entry: &'a BlockEntry,
+        _record_id: i64,
+    ) -> DocumentFuture<'a, Option<Scope>> {
+        Box::pin(async { Ok(Some(site())) })
+    }
+}
+
+/// The site of every deployment (#50): who may approve an override of its
+/// block is decided here.
+pub fn site() -> Scope {
+    Scope::new("sites", 1)
 }
 
 /// `run.dispatch`: the driver for a licence, the vehicle for insurance.

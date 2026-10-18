@@ -380,3 +380,80 @@ async fn the_dashboard_lists_the_returned_requests_of_the_person_who_must_fix_th
         .assert_dont_see("Needs your action")
         .assert_dont_see("Fix and resubmit");
 }
+
+/// `deployment.activate` of the override acceptance check (#50 AC1): the
+/// deployment's worker.
+struct Deployments;
+
+impl wl_kernel::documents::BlockSubjects for Deployments {
+    fn subjects<'a>(
+        &'a self,
+        _state: &'a renox::AppState,
+        _entry: &'a wl_kernel::documents::BlockEntry,
+        record_id: i64,
+    ) -> wl_kernel::documents::DocumentFuture<'a, Vec<wl_kernel::Subject>> {
+        Box::pin(async move { Ok(vec![wl_kernel::Subject::new("hr.employee", record_id)]) })
+    }
+}
+
+#[renox::test]
+async fn the_dashboard_lists_an_override_request_for_the_admin_who_may_approve_it() {
+    use wl_documents::{Document, DocumentKind, DocumentStatus, Documents, KindSeed};
+    use wl_kernel::documents::{BlockMode, register_block_subjects};
+
+    register_block_subjects("deployment.activate", Deployments);
+    let app = TestApp::new(host::app()).await;
+    app.kernel().seed().await.unwrap();
+    let anna = person(&app, "anna@example.com", MEMBER).await;
+    let bilal = person(&app, "bilal@example.com", ADMIN).await;
+    let seed = KindSeed::new("health_card", "Health card")
+        .subject_type("hr.employee")
+        .expires()
+        .blocks("deployment.activate", BlockMode::Block);
+    wl_documents::kinds::install_seeds(app.db(), [&seed])
+        .await
+        .unwrap();
+    let kind = DocumentKind::by_key(app.db(), "health_card")
+        .await
+        .unwrap()
+        .unwrap();
+    Document::create(
+        app.db(),
+        Document {
+            subject_type: "hr.employee".into(),
+            subject_id: 7,
+            kind_id: kind.id,
+            title: "Health card".into(),
+            expiry_date: Some(wl_kernel::documents::today() - renox::chrono::Days::new(3)),
+            current_version: 1,
+            status: DocumentStatus::Accepted,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let rows = Documents::request_override(
+        app.state(),
+        &anna,
+        "health_card",
+        "deployment.activate",
+        7,
+        "renewal booked 2026-12-03",
+    )
+    .await
+    .unwrap();
+
+    app.acting_as(&bilal);
+    app.get("/dashboard")
+        .await
+        .assert_ok()
+        .assert_see("Needs your action")
+        .assert_see("1 approval waiting for you")
+        .assert_see(&format!(r#"href="/documents/overrides/{}""#, rows[0].id));
+
+    app.acting_as(&anna);
+    app.get("/dashboard")
+        .await
+        .assert_ok()
+        .assert_dont_see("waiting for you");
+}
