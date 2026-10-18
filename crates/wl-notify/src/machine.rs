@@ -12,10 +12,11 @@
 //! a new message is inserted only as `queued`. `Message` is
 //! `#[model(state_machine)]`, so `save` refuses a changed status. `suppress`
 //! records its reason and, after the commit, emits the kernel's
-//! [`MessageSuppressed`] ([`register`]). The sending effects of `send`,
-//! `fail` and `retry` come with #55 part 5, those of `fall_back` and
-//! `give_up` with part 6; `defer`, `release`, `deliver` and `mark_read`
-//! have no caller yet.
+//! [`MessageSuppressed`] ([`register`]). `send`, `fail` and `retry` are
+//! run by the send job in [`crate::send`], which stores the provider's id,
+//! the attempts and the error with them; `fall_back` and `give_up` come
+//! with #55 part 6; `defer`, `release`, `deliver` and `mark_read` have no
+//! caller yet.
 
 use renox::prelude::*;
 use renox::state_machine::{Machine, StateMachine, Transition, Transitioned};

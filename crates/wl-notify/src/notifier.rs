@@ -7,8 +7,8 @@
 //! [`crate::render`]), in one transaction. A recipient nothing can reach
 //! gets a message moved straight to `suppressed`, and `MessageSuppressed`
 //! follows the commit. A staff user also gets a bell entry (a Renox
-//! database notification) with the type's text. Sending the queued
-//! messages comes with #55 part 5.
+//! database notification) with the type's text. Each queued message gets
+//! its [`SendMessage`] job in the same transaction ([`crate::send`]).
 
 use renox::auth::{Channel, DatabaseMessage, Notification, Recipient};
 use renox::db::Json;
@@ -25,6 +25,7 @@ use crate::machine::SUPPRESS;
 use crate::message::{Message, MessageStatus};
 use crate::recipients::{self, Resolved};
 use crate::render::{Rendered, render};
+use crate::send::SendMessage;
 use crate::types::NotificationType;
 
 /// Queues messages in `wl_notify_messages` for the kernel contract.
@@ -41,10 +42,10 @@ impl Notifier for Messages {
     }
 }
 
-/// The channels a provider can send on now. E-mail goes through Renox
-/// mail; the other channels' providers come with #55 part 5.
-pub fn open_channels(_state: &AppState) -> Vec<NotifyChannel> {
-    vec![NotifyChannel::Email]
+/// The channels a provider can send on now ([`crate::channels`]): e-mail
+/// through Renox mail, SMS once an SMS gateway is provided.
+pub fn open_channels(state: &AppState) -> Vec<NotifyChannel> {
+    crate::channels::open_channels(state)
 }
 
 /// The type `key` as the client has it: the stored row, else the
@@ -134,6 +135,16 @@ pub async fn queue(state: &AppState, request: NotifyRequest) -> Result<Vec<Messa
                 .await
                 .map_err(TransitionError::into_error)?;
             outcomes.push(outcome);
+        } else {
+            state
+                .queue
+                .dispatch_in(
+                    &mut tx,
+                    SendMessage {
+                        message_id: message.id,
+                    },
+                )
+                .await?;
         }
         if let NotifyRecipient::User { id } = recipient {
             bells.push((*id, BellNotice::of(&def, &message)));

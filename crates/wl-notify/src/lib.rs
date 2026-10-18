@@ -1,23 +1,32 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
+pub mod channels;
 mod machine;
 pub mod message;
 pub mod notifier;
 pub mod recipients;
 pub mod render;
+pub mod send;
 pub mod suppressions;
 mod texts;
 pub mod types;
 
+use std::sync::Arc;
+
 use renox::db::Migration;
 use renox::prelude::*;
 
+pub use channels::{
+    ChannelProvider, EmailProvider, HardError, Outgoing, Providers, SendError, SendErrorKind,
+    SmsGateway, SmsProvider,
+};
 pub use machine::{
     DEFER, DELIVER, FAIL, FALL_BACK, GIVE_UP, MARK_READ, RELEASE, RETRY, SEND, SUPPRESS,
 };
 pub use message::{Message, MessageStatus, RecipientKind};
 pub use notifier::Messages;
+pub use send::SendMessage;
 pub use suppressions::{Suppression, SuppressionReason};
 pub use types::NotificationType;
 
@@ -43,12 +52,21 @@ pub mod permissions {
 /// `.module(wl_notify::WlNotify::new())` when `client.toml` enables `notify`.
 #[derive(Default)]
 #[non_exhaustive]
-pub struct WlNotify {}
+pub struct WlNotify {
+    providers: Providers,
+}
 
 impl WlNotify {
     /// The module with its built-in channel providers and give-up reactions.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Sends `provider`'s channel through `provider`, in place of the
+    /// built-in one (another SMS gateway, a scripted one in tests).
+    pub fn provider(mut self, provider: impl ChannelProvider) -> Self {
+        self.providers.replace(Arc::new(provider));
+        self
     }
 }
 
@@ -69,6 +87,10 @@ impl Module for WlNotify {
         renox::state_machine::register::<Message>();
         // `MessageSuppressed` after a `suppress` commits.
         machine::register(app);
+        // Sending: the providers, the `sms` channel and the send job.
+        app.provide(self.providers.clone());
+        channels::register(app);
+        app.job::<SendMessage>();
         // Other modules send through the kernel (wl-notify §6).
         wl_kernel::notify::provide_notifier(app, Messages);
         // The kernel's `wl:install` knows only kernel data, so the types the
