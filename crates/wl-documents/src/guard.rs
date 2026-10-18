@@ -16,9 +16,14 @@
 //!   subject and kind, e.g. "Residence visa expired on 2026-11-30; renew:
 //!   PRO; override: not allowed". A pending renewal it names is moved to the
 //!   top of the review queue (`review_priority_at`). An entry whose
-//!   transition has no provider is an error, never a *yes*.
+//!   transition has no provider is an error, never a *yes*;
+//! - [`DocumentGuard::check_planned`] warns, after planned work was saved,
+//!   about each document that will not be valid on a planned start date
+//!   (#47). It looks at the `block` entries only, never refuses and never
+//!   bumps a review; a bookable slot is not warned about but refused with
+//!   [`PlannedError::BookableSlot`].
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Display;
 
 use renox::chrono::NaiveDate;
@@ -27,8 +32,9 @@ use renox::prelude::*;
 use wl_kernel::Subject;
 use wl_kernel::documents::{
     BlockEntry, BlockFailure, BlockMode, BlockRefusal, CheckOutcome, DocumentFuture, DocumentGuard,
-    DocumentId, FlagFailure, FlagReason, InvalidReason, OverrideMode, PendingRenewal, RecordFlag,
-    Validity, block_subjects, dubai_date, today,
+    DocumentId, FlagFailure, FlagReason, InvalidReason, OverrideMode, PendingRenewal, PlannedError,
+    PlannedItem, PlannedWarning, PlannedWarningLine, RecordFlag, Validity, block_subjects,
+    default_subject_label, dubai_date, today,
 };
 
 use crate::documents::{Document, DocumentStatus};
@@ -67,6 +73,15 @@ impl DocumentGuard for DocumentsGuard {
         on_date: NaiveDate,
     ) -> DocumentFuture<'a, std::result::Result<CheckOutcome, BlockRefusal>> {
         Box::pin(check(state, guarded, record_id, on_date))
+    }
+
+    fn check_planned<'a>(
+        &'a self,
+        state: &'a AppState,
+        guarded: &'a str,
+        items: &'a [PlannedItem],
+    ) -> DocumentFuture<'a, std::result::Result<Option<PlannedWarning>, PlannedError>> {
+        Box::pin(check_planned(state, guarded, items))
     }
 
     fn record_flags<'a>(
@@ -360,6 +375,153 @@ pub async fn check(
         });
     }
     Ok(Ok(outcome))
+}
+
+/// The line text of a document that will not be valid on a planned date
+/// (A6): "Residence visa expires 2026-12-15" while the expiry date is not
+/// past, "Residence visa expired on 2026-11-30" once it is.
+pub(crate) fn planned_text(
+    lang: &Lang,
+    kind_name: &str,
+    reason: InvalidReason,
+    expires_on: Option<NaiveDate>,
+    today: NaiveDate,
+) -> String {
+    let (key, date) = match (reason, expires_on) {
+        (InvalidReason::Expired, Some(date)) if date >= today => {
+            ("wl_documents.planned.expires", Some(date))
+        }
+        (InvalidReason::Expired, Some(date)) => ("wl_documents.planned.expired", Some(date)),
+        (InvalidReason::Expired | InvalidReason::Missing, _) => {
+            ("wl_documents.planned.missing", None)
+        }
+        (InvalidReason::Rejected, _) => ("wl_documents.planned.rejected", None),
+        (InvalidReason::PendingReview, _) => ("wl_documents.planned.pending_review", None),
+    };
+    let date = date.map(|d| d.to_string()).unwrap_or_default();
+    texts::t_with(lang, key, &[("kind", &kind_name), ("date", &date)])
+}
+
+/// What one subject and kind fails on, while the items are checked.
+struct PlannedFailure {
+    kind_name: String,
+    reason: InvalidReason,
+    expires_on: Option<NaiveDate>,
+    dates: BTreeSet<NaiveDate>,
+}
+
+/// The checks of [`DocumentGuard::check_planned`]: a bookable provider is
+/// refused; otherwise `is_valid` runs for every item, subject and kind of
+/// the `block` entries of `guarded`, and the failures are grouped by
+/// subject and kind (ordered by both) with their sorted dates. Flag
+/// entries, entries whose condition does not match, and valid documents
+/// add nothing. Nothing is written.
+pub async fn check_planned(
+    state: &AppState,
+    guarded: &str,
+    items: &[PlannedItem],
+) -> Result<std::result::Result<Option<PlannedWarning>, PlannedError>> {
+    let provider = block_subjects(guarded);
+    if provider.as_ref().is_some_and(|p| p.bookable()) {
+        return Ok(Err(PlannedError::BookableSlot {
+            guarded: guarded.to_owned(),
+        }));
+    }
+    let blocks: Vec<BlockEntry> = kinds::blocks_for(&state.db, guarded)
+        .await?
+        .into_iter()
+        .filter(|entry| entry.mode == BlockMode::Block)
+        .collect();
+    if blocks.is_empty() || items.is_empty() {
+        return Ok(Ok(None));
+    }
+    let Some(provider) = provider else {
+        let message = texts::english("wl_documents.guard.no_provider", &[("guarded", &guarded)]);
+        return Err(Error::Internal(renox::anyhow::anyhow!(message)));
+    };
+    let lang = state.current_lang();
+    let today = today();
+
+    // Keyed by subject, then kind, so the lines come out in that order.
+    let mut failures: BTreeMap<(String, i64, String), PlannedFailure> = BTreeMap::new();
+    for entry in &blocks {
+        let kind = DocumentKind::by_key(&state.db, &entry.kind)
+            .await?
+            .ok_or(Error::NotFound)?;
+        let kind_name = kind.name(&lang.locale);
+        for item in items {
+            for subject in provider.subjects(state, entry, item.record_id).await? {
+                let validity = is_valid(&state.db, &subject, &entry.kind, item.on_date).await?;
+                let Validity::Invalid {
+                    reason, expired_on, ..
+                } = validity
+                else {
+                    continue;
+                };
+                let key = (
+                    subject.subject_type.clone(),
+                    subject.subject_id,
+                    entry.kind.clone(),
+                );
+                let failure = failures.entry(key).or_insert_with(|| PlannedFailure {
+                    kind_name: kind_name.to_owned(),
+                    reason,
+                    expires_on: expired_on,
+                    dates: BTreeSet::new(),
+                });
+                // The reason of the earliest failing date describes the line.
+                if failure
+                    .dates
+                    .first()
+                    .is_none_or(|first| item.on_date < *first)
+                {
+                    failure.reason = reason;
+                    failure.expires_on = expired_on;
+                }
+                failure.dates.insert(item.on_date);
+            }
+        }
+    }
+    if failures.is_empty() {
+        return Ok(Ok(None));
+    }
+
+    let mut labels: BTreeMap<(String, i64), String> = BTreeMap::new();
+    let mut lines = Vec::with_capacity(failures.len());
+    for ((subject_type, subject_id, kind), failure) in failures {
+        let subject = Subject::new(&subject_type, subject_id);
+        let label = match labels.get(&(subject_type.clone(), subject_id)) {
+            Some(label) => label.clone(),
+            None => {
+                let label = provider
+                    .label(state, &subject)
+                    .await?
+                    .unwrap_or_else(|| default_subject_label(&subject));
+                labels.insert((subject_type, subject_id), label.clone());
+                label
+            }
+        };
+        lines.push(PlannedWarningLine {
+            subject,
+            label,
+            kind,
+            text: planned_text(
+                &lang,
+                &failure.kind_name,
+                failure.reason,
+                failure.expires_on,
+                today,
+            ),
+            kind_name: failure.kind_name,
+            reason: failure.reason,
+            expires_on: failure.expires_on,
+            dates: failure.dates.into_iter().collect(),
+        });
+    }
+    Ok(Ok(Some(PlannedWarning {
+        guarded: guarded.to_owned(),
+        lines,
+    })))
 }
 
 /// The label of role `key`: the text `roles.<key>`, else the key itself.
@@ -932,5 +1094,211 @@ mod tests {
         );
         let counts = guard.open_flag_counts(db, "rec_unit", &[7]).await.unwrap();
         assert_eq!(counts.get(&7), Some(&0));
+    }
+
+    struct Crew;
+
+    impl BlockSubjects for Crew {
+        fn subjects<'a>(
+            &'a self,
+            _state: &'a AppState,
+            _entry: &'a BlockEntry,
+            record_id: i64,
+        ) -> DocumentFuture<'a, Vec<Subject>> {
+            Box::pin(async move {
+                // Record 99 does not match the entry's condition.
+                Ok(if record_id == 99 {
+                    Vec::new()
+                } else {
+                    vec![Subject::new("hr.employee", 7)]
+                })
+            })
+        }
+
+        fn label<'a>(
+            &'a self,
+            _state: &'a AppState,
+            subject: &'a Subject,
+        ) -> DocumentFuture<'a, Option<String>> {
+            Box::pin(async move { Ok((subject.subject_id == 7).then(|| "Ravi S.".to_owned())) })
+        }
+    }
+
+    struct Bookable;
+
+    impl BlockSubjects for Bookable {
+        fn subjects<'a>(
+            &'a self,
+            _state: &'a AppState,
+            _entry: &'a BlockEntry,
+            record_id: i64,
+        ) -> DocumentFuture<'a, Vec<Subject>> {
+            Box::pin(async move { Ok(vec![Subject::new("hr.employee", record_id)]) })
+        }
+
+        fn bookable(&self) -> bool {
+            true
+        }
+    }
+
+    #[renox::test]
+    async fn the_planned_text_follows_the_reason_and_the_expiry_date() {
+        let app = TestApp::new(App::new().module(crate::WlDocuments)).await;
+        let lang = app.state().lang("en");
+        let today = date("2026-11-01");
+        let text = |reason, expires| planned_text(&lang, "Residence visa", reason, expires, today);
+        assert_eq!(
+            text(InvalidReason::Expired, Some(date("2026-12-15"))),
+            "Residence visa expires 2026-12-15"
+        );
+        assert_eq!(
+            text(InvalidReason::Expired, Some(date("2026-10-31"))),
+            "Residence visa expired on 2026-10-31"
+        );
+        assert_eq!(text(InvalidReason::Missing, None), "Residence visa missing");
+        assert_eq!(
+            text(InvalidReason::Rejected, None),
+            "Residence visa rejected"
+        );
+        assert_eq!(
+            text(InvalidReason::PendingReview, None),
+            "Residence visa renewal pending review"
+        );
+    }
+
+    #[renox::test]
+    async fn planned_work_past_the_expiry_gives_one_grouped_warning() {
+        let app = TestApp::new(App::new().module(crate::WlDocuments)).await;
+        let state = app.state();
+        let db = app.db();
+        install_seeds(
+            db,
+            [
+                &KindSeed::new("plan_unit_visa", "Residence visa")
+                    .subject_type("hr.employee")
+                    .expires()
+                    .blocks("plan_unit.activate", BlockMode::Block),
+                &KindSeed::new("plan_unit_permit", "Work permit")
+                    .subject_type("hr.employee")
+                    .expires()
+                    .blocks("plan_unit.activate", BlockMode::Block),
+                &KindSeed::new("plan_unit_flag", "Medical card")
+                    .subject_type("hr.employee")
+                    .blocks("plan_unit.activate", BlockMode::Flag),
+            ],
+        )
+        .await
+        .unwrap();
+        register_block_subjects("plan_unit.activate", Crew);
+        save_document(
+            db,
+            "plan_unit_visa",
+            7,
+            DocumentStatus::Accepted,
+            Some("2099-12-15"),
+        )
+        .await;
+        let guard = wl_kernel::documents::guard(state);
+        let item = |id, on| PlannedItem::new(id, date(on));
+
+        // Valid through the expiry date; only the missing permit warns (the
+        // flag-mode medical card never counts).
+        let warning = guard
+            .check_planned(state, "plan_unit.activate", &[item(1, "2099-12-15")])
+            .await
+            .unwrap()
+            .unwrap()
+            .expect("a warning");
+        assert_eq!(warning.guarded, "plan_unit.activate");
+        assert_eq!(warning.lines.len(), 1);
+        assert_eq!(warning.lines[0].text, "Work permit missing");
+        assert_eq!(warning.lines[0].label, "Ravi S.");
+
+        // Past the expiry the visa joins, grouped with sorted, unique dates.
+        let items = [
+            item(3, "2100-01-18"),
+            item(1, "2099-12-15"),
+            item(2, "2100-01-04"),
+            item(4, "2100-01-04"),
+            item(99, "2100-02-01"),
+        ];
+        let warning = guard
+            .check_planned(state, "plan_unit.activate", &items)
+            .await
+            .unwrap()
+            .unwrap()
+            .expect("a warning");
+        assert_eq!(warning.lines.len(), 2);
+        let (permit, visa) = (&warning.lines[0], &warning.lines[1]);
+        assert_eq!(permit.kind, "plan_unit_permit");
+        assert_eq!(visa.kind, "plan_unit_visa");
+        assert_eq!(visa.text, "Residence visa expires 2099-12-15");
+        assert_eq!(visa.expires_on, Some(date("2099-12-15")));
+        assert_eq!(visa.dates, [date("2100-01-04"), date("2100-01-18")]);
+        assert_eq!(permit.dates.len(), 3);
+        assert!(warning.message().contains(
+            "Ravi S.: Residence visa expires 2099-12-15; planned: 2100-01-04, 2100-01-18"
+        ));
+
+        // Nothing planned, nothing guarded, or a record the entry does not
+        // match: no warning.
+        for (guarded, items) in [
+            ("plan_unit.activate", vec![]),
+            ("plan_unit.unguarded", vec![item(1, "2100-01-04")]),
+            ("plan_unit.activate", vec![item(99, "2100-01-04")]),
+        ] {
+            assert!(
+                guard
+                    .check_planned(state, guarded, &items)
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .is_none()
+            );
+        }
+    }
+
+    #[renox::test]
+    async fn a_bookable_slot_is_refused_never_warned_about() {
+        let app = TestApp::new(App::new().module(crate::WlDocuments)).await;
+        let state = app.state();
+        install_seeds(
+            app.db(),
+            [&KindSeed::new("plan_book_licence", "Licence")
+                .subject_type("hr.employee")
+                .expires()
+                .blocks("plan_book.book", BlockMode::Block)],
+        )
+        .await
+        .unwrap();
+        register_block_subjects("plan_book.book", Bookable);
+        let guard = wl_kernel::documents::guard(state);
+        let error = guard
+            .check_planned(
+                state,
+                "plan_book.book",
+                &[PlannedItem::new(5, date("2100-01-04"))],
+            )
+            .await
+            .unwrap()
+            .unwrap_err();
+        assert_eq!(
+            error,
+            PlannedError::BookableSlot {
+                guarded: "plan_book.book".into()
+            }
+        );
+        // The answer the booking refusal rests on is still a no.
+        assert!(
+            !is_valid(
+                &state.db,
+                &Subject::new("hr.employee", 5),
+                "plan_book_licence",
+                date("2100-01-04")
+            )
+            .await
+            .unwrap()
+            .is_valid()
+        );
     }
 }

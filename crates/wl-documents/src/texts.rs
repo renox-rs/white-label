@@ -222,6 +222,14 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_documents.flag.already_reviewed",
         "This flag was already reviewed.",
     ),
+    ("wl_documents.planned.expires", ":kind expires :date"),
+    ("wl_documents.planned.expired", ":kind expired on :date"),
+    ("wl_documents.planned.missing", ":kind missing"),
+    ("wl_documents.planned.rejected", ":kind rejected"),
+    (
+        "wl_documents.planned.pending_review",
+        ":kind renewal pending review",
+    ),
     (
         "wl_documents.guard.no_provider",
         "No module maps :guarded to its document subjects",
