@@ -7,6 +7,7 @@ use renox::anyhow::anyhow;
 use renox::auth::permissions;
 use renox::command::Args;
 use renox::prelude::*;
+use wl_documents::permissions as documents;
 use wl_parties::permissions as parties;
 
 /// Manages users and their roles.
@@ -36,6 +37,11 @@ pub const ROLES: &[(&str, &[&str])] = &[
             parties::UPDATE,
             parties::BLOCK,
             parties::EXPORT,
+            documents::VIEW,
+            documents::UPLOAD,
+            documents::REVIEW,
+            documents::MANAGE,
+            documents::KINDS_MANAGE,
         ],
     ),
     (

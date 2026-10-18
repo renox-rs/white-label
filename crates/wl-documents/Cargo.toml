@@ -1,0 +1,12 @@
+[package]
+name = "wl-documents"
+description = "Documents: files attached to records, with kinds, versions, review, expiry and the document guard."
+readme = "README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+renox.workspace = true
+serde.workspace = true

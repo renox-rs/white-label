@@ -88,6 +88,7 @@ fn enable(app: renox::App, module: &str) -> Result<renox::App, ConfigError> {
     // Each F1 module gets its arm here as it is built (decision 0004).
     match module {
         "parties" => Ok(app.module(wl_parties::WlParties)),
+        "documents" => Ok(app.module(wl_documents::WlDocuments)),
         other => Err(ConfigError(format!(
             "[modules] `{other}` is not built yet; remove it from client.toml for now"
         ))),
