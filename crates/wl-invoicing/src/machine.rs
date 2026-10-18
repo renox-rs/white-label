@@ -6,6 +6,9 @@
 //!         issued | partially_paid | overdue --write_off--> written_off
 //!         written_off --recover--> written_off
 //!         written_off --recover_in_full--> paid
+//!         paid | partially_paid | overdue --unallocate--> issued
+//!         paid | partially_paid | overdue --unallocate_partially--> partially_paid
+//!         paid | partially_paid | overdue --unallocate_overdue--> overdue
 //!         … --credit--> credited (terminal)
 //! ```
 //!
@@ -15,7 +18,9 @@
 //! `allocate` / `allocate_in_full` ([`crate::allocate`]) and `mark_overdue`
 //! ([`crate::overdue`]), `write_off` / `write_off_approved`
 //! ([`crate::write_off`]), `recover` / `recover_in_full`
-//! ([`crate::recover`]), `credit` ([`crate::credit`]); the others later.
+//! ([`crate::recover`]), `credit` ([`crate::credit`]), `unallocate` /
+//! `unallocate_partially` / `unallocate_overdue` ([`crate::unallocate`]);
+//! the others later.
 //! `Invoice` is
 //! `#[model(state_machine)]`, so `save` refuses a changed status.
 
@@ -54,6 +59,7 @@ impl StateMachine for Invoice {
             .chain(crate::write_off::transitions())
             .chain(crate::recover::transitions())
             .chain(crate::credit::transitions())
+            .chain(crate::unallocate::transitions())
             .fold(machine, Machine::transition)
     }
 }

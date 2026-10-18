@@ -9,6 +9,9 @@
 //! - `mark_overdue` → [`InvoiceOverdue`];
 //! - `credit` / `credit_system` → [`InvoiceCredited`] (the credit note and
 //!   the release of origins come from the run's `meta`, [`crate::credit`]);
+//! - `unallocate` / `unallocate_partially` / `unallocate_overdue` →
+//!   [`InvoiceReopened`] (the money source, amount and reason come from the
+//!   run's `meta`, [`crate::unallocate`]);
 //! - a credit note's `issue` / `issue_system` (a listener on
 //!   [`Transitioned<CreditNote>`]) → [`CreditNoteIssued`];
 //! - a credit note's `reopen` → [`CreditNoteReopened`] (the amount and the
@@ -25,7 +28,7 @@ use wl_kernel::Subject;
 use wl_kernel::documents::today;
 use wl_kernel::invoicing::{
     CreditNoteIssued, CreditNoteReopened, InvoiceCredited, InvoiceIssued, InvoiceOverdue,
-    InvoicePaid, InvoiceStatus,
+    InvoicePaid, InvoiceReopened, InvoiceStatus, ReopenReason,
 };
 
 use crate::allocate::ALLOCATE_IN_FULL;
@@ -41,6 +44,7 @@ use crate::issue::ISSUE;
 use crate::line::InvoiceLine;
 use crate::overdue::MARK_OVERDUE;
 use crate::recover::{RECOVER, RECOVER_IN_FULL};
+use crate::unallocate::OPEN_TARGETS;
 
 /// The event a committed transition of `invoice` (as it is now) gives, if
 /// any.
@@ -106,6 +110,36 @@ fn credit_note_reopened(note: &CreditNote, meta: &Value) -> Option<CreditNoteReo
         party: note.party(),
         amount_restored,
         cause,
+    })
+}
+
+/// `InvoiceReopened` for `invoice` after an unallocation run with `meta`:
+/// the money source, amount, reason and the payment's reason. `None` when
+/// the run's `meta` does not carry them. The balance and state are the
+/// committed ones.
+fn invoice_reopened(invoice: &Invoice, meta: &Value) -> Option<InvoiceReopened> {
+    let money_source = meta
+        .get("source")
+        .and_then(Value::as_str)
+        .and_then(|text| text.parse::<Subject>().ok())?;
+    let amount = meta.get("amount").and_then(Value::as_i64)?;
+    let reason = meta
+        .get("reason")
+        .cloned()
+        .and_then(|value| renox::serde_json::from_value::<ReopenReason>(value).ok())?;
+    Some(InvoiceReopened {
+        invoice: invoice.invoice_id(),
+        party: invoice.party(),
+        source: invoice.source(),
+        money_source,
+        amount,
+        balance: invoice.balance,
+        new_status: invoice.status,
+        reason,
+        reversal_reason: meta
+            .get("reversal_reason")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
     })
 }
 
@@ -194,11 +228,20 @@ pub(crate) fn register(app: &mut Registry) {
             CREDIT,
             CREDIT_SYSTEM,
         ];
-        if !known.contains(&event.transition.as_str()) {
+        let reopens = OPEN_TARGETS
+            .iter()
+            .any(|(name, _)| *name == event.transition);
+        if !reopens && !known.contains(&event.transition.as_str()) {
             return Ok(());
         }
         // The committed row: the number, dates and balance the run wrote.
         let invoice = Invoice::find_or_404(&state.db, event.key).await?;
+        if reopens {
+            return match invoice_reopened(&invoice, &event.meta) {
+                Some(reopened) => state.emit(reopened).await,
+                None => Ok(()),
+            };
+        }
         if [CREDIT, CREDIT_SYSTEM].contains(&event.transition.as_str()) {
             let Some(note_id) = credit_note_of(&event.meta) else {
                 return Ok(());
@@ -351,5 +394,29 @@ mod tests {
             released.released_origins,
             [Subject::new("property.charge", 4)]
         );
+    }
+
+    #[test]
+    fn a_reopening_gives_invoice_reopened_from_the_run_meta() {
+        let reopened_invoice = Invoice {
+            balance: 200_000,
+            status: InvoiceStatus::Issued,
+            ..invoice()
+        };
+        let meta = renox::serde_json::json!({
+            "source": "payments.payment:3",
+            "amount": 200_000,
+            "reason": "payment_reversed",
+            "reversal_reason": "bank_return",
+        });
+        let event = invoice_reopened(&reopened_invoice, &meta).expect("an event");
+        assert_eq!(event.invoice, InvoiceId(4));
+        assert_eq!(event.party, PartyId(7));
+        assert_eq!(event.money_source, Subject::new("payments.payment", 3));
+        assert_eq!((event.amount, event.balance), (200_000, 200_000));
+        assert_eq!(event.new_status, InvoiceStatus::Issued);
+        assert_eq!(event.reason, ReopenReason::PaymentReversed);
+        assert_eq!(event.reversal_reason.as_deref(), Some("bank_return"));
+        assert!(invoice_reopened(&reopened_invoice, &Value::Null).is_none());
     }
 }

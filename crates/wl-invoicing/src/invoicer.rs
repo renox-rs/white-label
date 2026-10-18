@@ -6,7 +6,8 @@ use renox::prelude::*;
 use renox::state_machine::TransitionError;
 use wl_kernel::invoicing::{
     CreditLine, CreditNoteId, CreditNoteSummary, DisputeRequest, DraftLine, InvoiceDraft,
-    InvoiceFuture, InvoiceId, InvoiceStatus, InvoiceSummary, Invoicer,
+    InvoiceFuture, InvoiceId, InvoiceStatus, InvoiceSummary, Invoicer, ReopenReason, Reopened,
+    Unallocate,
 };
 use wl_kernel::{LegalEntity, PartyId};
 
@@ -50,6 +51,23 @@ impl Invoicer for Invoices {
             };
             result.map_err(TransitionError::into_error)
         })
+    }
+
+    fn unallocate<'a>(
+        &'a self,
+        state: &'a AppState,
+        request: Unallocate,
+    ) -> InvoiceFuture<'a, Reopened> {
+        Box::pin(async move { crate::unallocate::run(state, request).await })
+    }
+
+    fn unallocate_all<'a>(
+        &'a self,
+        state: &'a AppState,
+        id: InvoiceId,
+        reason: ReopenReason,
+    ) -> InvoiceFuture<'a, Vec<(wl_kernel::Subject, i64)>> {
+        Box::pin(async move { crate::unallocate::unallocate_all(state, id, reason).await })
     }
 
     fn written_off_of<'a>(

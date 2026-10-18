@@ -37,6 +37,8 @@ pub mod reminders;
 pub mod restore;
 pub mod seed;
 mod texts;
+pub mod unallocate;
+pub mod unallocation;
 pub mod vat;
 pub mod vat_adjustment;
 pub mod vat_pages;
@@ -63,6 +65,7 @@ pub use invoicer::Invoices;
 pub use line::InvoiceLine;
 pub use recovery::Recovery;
 pub use reminders::ReminderLog;
+pub use unallocation::{Unallocation, UnallocationOutcome};
 pub use vat::{CategoryTotal, LineAmounts, VatTotals};
 pub use vat_adjustment::{AdjustmentKind, AdjustmentStatus, VatAdjustment};
 pub use vat_period::TaxPeriod;
@@ -323,6 +326,7 @@ impl Module for WlInvoicing {
             .model::<CreditNoteMovement>()
             .model::<Allocation>()
             .model::<Recovery>()
+            .model::<Unallocation>()
             .model::<Dispute>()
             .model::<EscalationLog>()
             .model::<ReminderLog>()

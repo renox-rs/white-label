@@ -29,6 +29,13 @@ pub struct Allocation {
     pub allocated_at: DateTime,
     /// The user who allocated it; `None` for the system.
     pub created_by: Option<i64>,
+    /// When it was undone (`unallocate`); `None` while it is active. A
+    /// removed row is never deleted.
+    pub removed_at: Option<DateTime>,
+    /// Why it was removed (`payment_reversed`, ...).
+    pub removed_reason: Option<String>,
+    /// The idempotency key of the unallocation that removed it.
+    pub removed_key: Option<String>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
@@ -48,6 +55,11 @@ impl Allocation {
             created_by,
             ..Default::default()
         }
+    }
+
+    /// Whether it still counts (it was not removed).
+    pub fn is_active(&self) -> bool {
+        self.removed_at.is_none()
     }
 
     /// Where the money came from.
