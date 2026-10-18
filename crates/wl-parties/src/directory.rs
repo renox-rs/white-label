@@ -18,10 +18,12 @@ use renox::prelude::*;
 use wl_kernel::notify::{
     ContactKind, ContactPurpose, ContactRelation, NotifyChannel, PartyContactPoint, PartyContacts,
 };
-use wl_kernel::parties::{BillingIdentity, PartyDirectory, PartyFuture, RelatedContact};
+use wl_kernel::parties::{
+    BillingIdentity, InvalidatedContact, PartyDirectory, PartyFuture, RelatedContact,
+};
 use wl_kernel::{PartyId, PartyKind, PartyStatus, PartySummary};
 
-use crate::contacts::{ContactPoint, ContactType};
+use crate::contacts::{ContactPoint, ContactStatus, ContactType};
 use crate::details::CompanyDetails;
 use crate::party::{Channel, Party};
 use crate::relationships::{self, Relationship, RelationshipType};
@@ -102,6 +104,41 @@ impl PartyDirectory for Directory {
                 .get(db)
                 .await?;
             Ok(Some(party.contacts(&points)))
+        })
+    }
+
+    fn invalidate_contact<'a>(
+        &'a self,
+        db: &'a Db,
+        point: i64,
+        since: DateTime,
+        reason: &'a str,
+    ) -> PartyFuture<'a, Option<InvalidatedContact>> {
+        Box::pin(async move {
+            let Some(found) = ContactPoint::find(db, point).await? else {
+                return Ok(None);
+            };
+            // Landlines and postal addresses carry no message channel.
+            let Some(kind) = message_kind(found.contact_type) else {
+                return Ok(None);
+            };
+            // Only valid -> invalid: the guard in the statement keeps the
+            // first since and reason, also when two runs race.
+            let changed = renox::db::sql(format!(
+                "UPDATE {} SET status = 'invalid', invalid_since = ?, invalid_reason = ?, \
+                 updated_at = ? WHERE id = ? AND status = 'valid'",
+                ContactPoint::TABLE
+            ))
+            .bind(since)
+            .bind(reason.to_owned())
+            .bind(renox::db::now())
+            .bind(point)
+            .execute(db)
+            .await?;
+            Ok((changed > 0).then_some(InvalidatedContact {
+                party: PartyId(found.party_id),
+                kind,
+            }))
         })
     }
 
@@ -196,6 +233,15 @@ impl Party {
     }
 }
 
+/// The message kind of a contact type; `None` for landlines and addresses.
+fn message_kind(contact_type: ContactType) -> Option<ContactKind> {
+    match contact_type {
+        ContactType::Email => Some(ContactKind::Email),
+        ContactType::Mobile => Some(ContactKind::Mobile),
+        ContactType::Landline | ContactType::Address => None,
+    }
+}
+
 impl Party {
     /// How to reach this party through `points`, its contact points: the
     /// e-mail and mobile ones, in the given order.
@@ -211,20 +257,14 @@ impl Party {
             points: points
                 .iter()
                 .filter_map(|point| {
-                    let kind = match point.contact_type {
-                        ContactType::Email => ContactKind::Email,
-                        ContactType::Mobile => ContactKind::Mobile,
-                        ContactType::Landline | ContactType::Address => return None,
-                    };
+                    let kind = message_kind(point.contact_type)?;
                     Some(PartyContactPoint {
                         id: point.id,
                         kind,
                         address: point.value.clone(),
                         primary: point.is_primary,
                         verified: point.verified_at.is_some(),
-                        // The status column arrives with the contact point
-                        // status (#58 part 2); until then every point is usable.
-                        valid: true,
+                        valid: point.status == ContactStatus::Valid,
                     })
                 })
                 .collect(),
@@ -305,6 +345,46 @@ mod tests {
         );
         let sms = contacts.point_for(NotifyChannel::Sms).unwrap();
         assert_eq!(sms.address, "+971501234567");
+    }
+
+    #[test]
+    fn an_invalid_point_is_listed_but_not_valid_and_stays_primary() {
+        let mut email = ContactPoint {
+            id: 1,
+            party_id: 7,
+            contact_type: ContactType::Email,
+            value: "ali@bluedunes.ae".into(),
+            is_primary: true,
+            ..Default::default()
+        };
+        let sms = ContactPoint {
+            id: 2,
+            party_id: 7,
+            contact_type: ContactType::Mobile,
+            value: "+971501234567".into(),
+            ..Default::default()
+        };
+        email.status = ContactStatus::Invalid;
+        let contacts = party(PartyStatus::Active, None).contacts(&[email, sms]);
+        let flags: Vec<_> = contacts
+            .points
+            .iter()
+            .map(|p| (p.id, p.valid, p.primary))
+            .collect();
+        assert_eq!(flags, [(1, false, true), (2, true, false)]);
+        assert_eq!(contacts.point_for(NotifyChannel::Email).map(|p| p.id), None);
+        assert_eq!(
+            contacts.point_for(NotifyChannel::Sms).map(|p| p.id),
+            Some(2)
+        );
+    }
+
+    #[test]
+    fn only_email_and_mobile_have_a_message_kind() {
+        assert_eq!(message_kind(ContactType::Email), Some(ContactKind::Email));
+        assert_eq!(message_kind(ContactType::Mobile), Some(ContactKind::Mobile));
+        assert_eq!(message_kind(ContactType::Landline), None);
+        assert_eq!(message_kind(ContactType::Address), None);
     }
 
     #[test]

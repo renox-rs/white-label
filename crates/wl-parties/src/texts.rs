@@ -287,6 +287,14 @@ const TEXTS: &[(&str, &str)] = &[
         "Enter the contact's address or number.",
     ),
     (
+        "wl_parties.errors.contact_email_invalid",
+        "Enter a valid e-mail address.",
+    ),
+    (
+        "wl_parties.errors.contact_mobile_invalid",
+        "Enter the number in international format, e.g. +971501234567.",
+    ),
+    (
         "wl_parties.errors.one_primary",
         "Only one contact of each type can be primary.",
     ),

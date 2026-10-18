@@ -28,7 +28,7 @@ use renox::prelude::*;
 
 pub use block::{block, block_by_system};
 pub use block_record::BlockRecord;
-pub use contacts::{ContactPoint, ContactType};
+pub use contacts::{ContactPoint, ContactStatus, ContactType, update_contact, verify_contact};
 pub use create::{NewParty, create};
 pub use details::{CompanyDetails, PersonDetails};
 pub use directory::Directory;
