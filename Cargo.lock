@@ -918,6 +918,7 @@ dependencies = [
  "wl-kernel",
  "wl-notify",
  "wl-parties",
+ "wl-payments",
  "wl-ticketing",
 ]
 
@@ -3481,6 +3482,16 @@ dependencies = [
  "tempfile",
  "wl-kernel",
  "wl-notify",
+]
+
+[[package]]
+name = "wl-payments"
+version = "0.1.0"
+dependencies = [
+ "renox",
+ "serde",
+ "tempfile",
+ "wl-kernel",
 ]
 
 [[package]]

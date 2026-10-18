@@ -11,6 +11,7 @@ use wl_documents::permissions as documents;
 use wl_invoicing::permissions as invoices;
 use wl_notify::permissions as notify;
 use wl_parties::permissions as parties;
+use wl_payments::permissions as payments;
 use wl_ticketing::permissions as tickets;
 
 /// Manages users and their roles.
@@ -27,7 +28,8 @@ pub const COMPLIANCE: &str = "compliance";
 /// write-offs and handles disputes (wl-invoicing §3, §6).
 pub const RECEIVABLES: &str = "receivables";
 /// The accountant: sees invoices, and prepares, reviews and locks the VAT
-/// summaries (wl-invoicing §6; `FIN.ACL.10` wants two of them).
+/// summaries (wl-invoicing §6; `FIN.ACL.10` wants two of them), and records,
+/// reverses and refunds payments (wl-payments §6).
 pub const ACCOUNTANT: &str = "accountant";
 /// The maintenance coordinator: raises, triages and assigns tickets, and
 /// works them (wl-ticketing §6, 01 roles).
@@ -78,6 +80,13 @@ pub const ROLES: &[(&str, &[&str])] = &[
             tickets::WORK,
             tickets::CONFIDENTIAL_VIEW,
             tickets::MANAGE,
+            payments::VIEW,
+            payments::RECORD,
+            payments::REVERSE,
+            payments::CHARGEBACK,
+            payments::REFUNDS_REQUEST,
+            payments::REFUNDS_APPROVE,
+            payments::REFUNDS_PAY,
         ],
     ),
     (
@@ -103,6 +112,14 @@ pub const ROLES: &[(&str, &[&str])] = &[
             invoices::VAT_PREPARE,
             invoices::VAT_REVIEW,
             invoices::VAT_LOCK,
+            invoices::RECEIVABLES_VIEW,
+            payments::VIEW,
+            payments::RECORD,
+            payments::REVERSE,
+            payments::CHARGEBACK,
+            payments::REFUNDS_REQUEST,
+            payments::REFUNDS_APPROVE,
+            payments::REFUNDS_PAY,
         ],
     ),
     (
