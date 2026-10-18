@@ -27,6 +27,7 @@ pub mod pages;
 pub mod policy;
 pub mod recover;
 pub mod recovery;
+pub mod refund;
 pub mod reminders;
 pub mod restore;
 pub mod seed;
@@ -359,6 +360,8 @@ impl Module for WlInvoicing {
         dispute_resolve::register(app);
         // `invoicing.credit_note_restored`: the credit is available again.
         restore::register_types();
+        // A failed refund paid out of a credit note gives its amount back.
+        restore::register(app);
         // Other modules draft and read invoices through the kernel (§6).
         wl_kernel::invoicing::provide_invoicer(app, Invoices);
     }

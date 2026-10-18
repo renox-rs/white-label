@@ -5,6 +5,7 @@
 
 #![allow(dead_code)]
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use renox::auth::{Permissions, permissions};
@@ -25,6 +26,10 @@ use wl_kernel::invoicing::{
 };
 use wl_kernel::notify::{MessageId, Notifier, NotifyFuture, NotifyRequest};
 use wl_kernel::parties::{BillingIdentity, PartyDirectory, PartyFuture, PartyStatus, PartySummary};
+use wl_kernel::payments::{
+    AllocationTarget, PaymentFuture, PaymentId, PaymentRecorder, PaymentSummary, RecordPayment,
+    RefundId, RefundRequest, ReversalReason,
+};
 use wl_kernel::{ClientConfig, PartyId, Subject};
 
 /// The pages extend the app's layout; a package test has no app, so it
@@ -188,6 +193,107 @@ impl Notifier for Recording {
     }
 }
 
+/// A refund asked of the desk, with the user who asked.
+pub type Asked = (RefundRequest, Option<i64>);
+
+/// A `PaymentRecorder` for the refunds a credit note asks for: it records
+/// each request with its user and answers a new refund id, or refuses (422)
+/// while `refuse` is set. It records and allocates nothing.
+#[derive(Clone, Default)]
+pub struct RefundDesk {
+    asked: Arc<Mutex<Vec<Asked>>>,
+    refuse: Arc<AtomicBool>,
+}
+
+impl RefundDesk {
+    /// The requests so far, oldest first, each with its user.
+    pub fn asked(&self) -> Vec<Asked> {
+        self.asked.lock().unwrap().clone()
+    }
+
+    /// Whether the next requests are refused.
+    pub fn refuse(&self, refuse: bool) {
+        self.refuse.store(refuse, Ordering::SeqCst);
+    }
+}
+
+fn desk_off(what: &str) -> Error {
+    Error::Status(StatusCode::UNPROCESSABLE_ENTITY, what.to_owned())
+}
+
+impl PaymentRecorder for RefundDesk {
+    fn record<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _payment: RecordPayment,
+        _by: Option<i64>,
+    ) -> PaymentFuture<'a, PaymentSummary> {
+        Box::pin(async { Err(desk_off("not recorded")) })
+    }
+
+    fn allocate<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _payment: PaymentId,
+        _target: AllocationTarget,
+        _amount: i64,
+    ) -> PaymentFuture<'a, ()> {
+        Box::pin(async { Err(desk_off("not allocated")) })
+    }
+
+    fn reverse<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _payment: PaymentId,
+        _reason: ReversalReason,
+        _note: Option<String>,
+        _by: Option<i64>,
+    ) -> PaymentFuture<'a, ()> {
+        Box::pin(async { Err(desk_off("not reversed")) })
+    }
+
+    fn find<'a>(
+        &'a self,
+        _db: &'a Db,
+        _id: PaymentId,
+    ) -> PaymentFuture<'a, Option<PaymentSummary>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    fn credit_balance<'a>(
+        &'a self,
+        _db: &'a Db,
+        _party: PartyId,
+        _currency: &'a str,
+    ) -> PaymentFuture<'a, i64> {
+        Box::pin(async { Ok(0) })
+    }
+
+    fn payments_for<'a>(
+        &'a self,
+        _db: &'a Db,
+        _prepaid: &'a Subject,
+    ) -> PaymentFuture<'a, Vec<PaymentSummary>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
+    fn request_refund<'a>(
+        &'a self,
+        _state: &'a AppState,
+        request: RefundRequest,
+        by: Option<i64>,
+    ) -> PaymentFuture<'a, RefundId> {
+        Box::pin(async move {
+            if self.refuse.load(Ordering::SeqCst) {
+                return Err(desk_off("the refund is refused"));
+            }
+            let mut asked = self.asked.lock().unwrap();
+            asked.push((request, by));
+            Ok(RefundId(asked.len() as i64))
+        })
+    }
+}
+
 /// Everything of one type `E` emitted so far.
 #[derive(Clone)]
 pub struct Recorded<E>(Arc<Mutex<Vec<E>>>);
@@ -232,6 +338,8 @@ pub struct Booted {
     pub written_off: Recorded<InvoiceWrittenOff>,
     /// `CreditNoteReopened`.
     pub reopened: Recorded<CreditNoteReopened>,
+    /// The refunds asked of payments.
+    pub refunds: RefundDesk,
     /// `BadDebtRecovered`.
     pub recovered: Recorded<BadDebtRecovered>,
     /// `InvoiceDisputeResolved`.
@@ -709,6 +817,8 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
     let recovered = Recorded::new();
     let resolved = Recorded::new();
     let notices = Recording::default();
+    let refunds = RefundDesk::default();
+    let recorder: Arc<dyn PaymentRecorder> = Arc::new(refunds.clone());
     let directory: Arc<dyn PartyDirectory> = Arc::new(TestDirectory);
     let notifier: Arc<dyn Notifier> = Arc::new(notices.clone());
     let app = App::new()
@@ -717,6 +827,7 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
         .module(module)
         .module(Probe)
         .provide(directory)
+        .provide(recorder)
         .provide(notifier);
     let app = record(app, &issued);
     let app = record(app, &overdue);
@@ -786,6 +897,7 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
         paid,
         written_off,
         reopened,
+        refunds,
         recovered,
         resolved,
     }

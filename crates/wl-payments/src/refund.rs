@@ -344,7 +344,7 @@ pub async fn request(
     };
     insert_requested(
         state,
-        user,
+        Some(user.id),
         &resolved,
         &source,
         request.amount,
@@ -360,7 +360,7 @@ pub async fn request(
 #[allow(clippy::too_many_arguments)]
 async fn insert_requested(
     state: &AppState,
-    user: &AuthUser,
+    requested_by: Option<i64>,
     resolved: &Resolved,
     source: &KernelRefundSource,
     amount: i64,
@@ -371,7 +371,7 @@ async fn insert_requested(
     let mut tx = state.db.begin().await?;
     let refund = insert_requested_in(
         &mut tx,
-        Some(user.id),
+        requested_by,
         resolved,
         source,
         amount,
@@ -482,6 +482,23 @@ pub async fn request_for_source(
     if !by.has_permission(permissions::REFUNDS_REQUEST) {
         return Err(TransitionError::Forbidden);
     }
+    request_for_source_as(state, request, Some(by.id)).await
+}
+
+/// [`request_for_source`] for the kernel contract
+/// ([`wl_kernel::payments::PaymentRecorder::request_refund`]), which names
+/// a user id (`None` = the system), not an `AuthUser`: the calling module
+/// has authorized its user already, so `refunds.request` is not asked here.
+/// The refund still waits for another user's approval (`FIN.ACL.04`).
+///
+/// # Errors
+///
+/// The `Guard` errors of [`request_for_source`].
+pub async fn request_for_source_as(
+    state: &AppState,
+    request: &RefundRequest,
+    by: Option<i64>,
+) -> std::result::Result<Refund, TransitionError> {
     if let Some(problem) = reason_problem(&request.reason) {
         return Err(guard(problem));
     }

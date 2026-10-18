@@ -139,6 +139,21 @@ impl Invoicer for Invoices {
     ) -> InvoiceFuture<'a, i64> {
         Box::pin(async move { crate::credit_notes::open_credit(db, party.0, currency).await })
     }
+
+    fn take_credit_for_refund<'a>(
+        &'a self,
+        state: &'a AppState,
+        credit_note: CreditNoteId,
+        refund: wl_kernel::Subject,
+        attempt: i64,
+        amount: i64,
+    ) -> InvoiceFuture<'a, ()> {
+        Box::pin(async move {
+            crate::refund::take_for_refund(state, credit_note.0, &refund, attempt, amount)
+                .await
+                .map_err(TransitionError::into_error)
+        })
+    }
 }
 
 /// A 422 with `message`.

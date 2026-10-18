@@ -27,6 +27,7 @@ use serde::{Deserialize, Serialize};
 use wl_kernel::Subject;
 use wl_kernel::invoicing::{CREDIT_NOTE_SUBJECT_TYPE, CreditNoteStatus};
 use wl_kernel::notify::{self, Category, NotificationTypeDef, NotifyChannel, NotifyRequest};
+use wl_kernel::payments::{RefundFailed, RefundSource};
 
 use crate::allocate::amount_text;
 use crate::allocation::Allocation;
@@ -354,6 +355,39 @@ pub(crate) fn register_types() {
     notify::register_type(notification_type());
 }
 
+/// The restore a failed refund asks for: `Some` only when the refund was
+/// paid out of a credit note (`invoicing.credit_note`).
+pub(crate) fn restore_for(event: &RefundFailed) -> Option<Restore> {
+    let RefundSource::CreditNote(note) = &event.source else {
+        return None;
+    };
+    if note.subject_type != CREDIT_NOTE_SUBJECT_TYPE {
+        return None;
+    }
+    Some(Restore {
+        credit_note: note.subject_id,
+        cause: Cause::RefundFailed,
+        target: event.refund.subject(),
+        attempt: Some(i64::from(event.attempt.number)),
+        amount: event.amount,
+        reason: Some(event.reason.clone()),
+    })
+}
+
+/// Registers the listener on `RefundFailed`: a refund paid out of a credit
+/// note gives back what it took. The same attempt delivered twice, or an
+/// attempt the retry never took again, changes nothing.
+pub(crate) fn register(app: &mut Registry) {
+    app.listen(|event: RefundFailed, state: AppState| async move {
+        if let Some(request) = restore_for(&event) {
+            restore(&state, request)
+                .await
+                .map_err(TransitionError::into_error)?;
+        }
+        Ok(())
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -393,6 +427,42 @@ mod tests {
         assert_eq!(filled["link"], "/credit-notes/7");
         let none = data(&note, Cause::AllocationRemoved, 100, Some("  "));
         assert_eq!(none["reason"], "no reason given");
+    }
+
+    fn failed(source: RefundSource) -> RefundFailed {
+        use wl_kernel::PartyId;
+        use wl_kernel::payments::{
+            PaymentMethod, RefundAttemptRef, RefundFailedFrom, RefundFailureKind, RefundId,
+        };
+        RefundFailed {
+            refund: RefundId(9),
+            party: PartyId(1),
+            amount: 50_000,
+            currency: "AED".into(),
+            source,
+            method: PaymentMethod::Transfer,
+            kind: RefundFailureKind::default(),
+            reason: "card expired".into(),
+            attempt: RefundAttemptRef { id: 4, number: 2 },
+            from: RefundFailedFrom::Approved,
+            outgoing_payment: None,
+        }
+    }
+
+    #[test]
+    fn only_a_credit_note_source_is_restored() {
+        let note = Subject::new(CREDIT_NOTE_SUBJECT_TYPE, 7);
+        let restore = restore_for(&failed(RefundSource::CreditNote(note))).unwrap();
+        assert_eq!(restore.credit_note, 7);
+        assert_eq!(restore.cause, Cause::RefundFailed);
+        assert_eq!(restore.target, Subject::new("payments.refund", 9));
+        assert_eq!(restore.attempt, Some(2));
+        assert_eq!(restore.amount, 50_000);
+        assert_eq!(restore.reason.as_deref(), Some("card expired"));
+        let other = RefundSource::CreditNote(Subject::new("sales.voucher", 7));
+        assert!(restore_for(&failed(other)).is_none());
+        let payment = RefundSource::Payment(wl_kernel::payments::PaymentId(7));
+        assert!(restore_for(&failed(payment)).is_none());
     }
 
     #[test]

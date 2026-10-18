@@ -68,7 +68,7 @@ pub use payments::{
     AllocationTarget, DEPOSIT_SUBJECT_TYPE, DepositId, Direction, NoPayments, PaymentId,
     PaymentMethod, PaymentReceived, PaymentRecorder, PaymentReversed, PaymentSource, PaymentStatus,
     PaymentSummary, RecordPayment, RefundAttemptRef, RefundFailed, RefundFailedFrom,
-    RefundFailureKind, RefundId, RefundPaid, RefundSource, ReversalReason,
+    RefundFailureKind, RefundId, RefundPaid, RefundRequest, RefundSource, ReversalReason,
 };
 pub use scopes::COMPANY_ADMIN_ROLE;
 pub use subject::Subject;

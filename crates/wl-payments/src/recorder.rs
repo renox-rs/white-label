@@ -13,10 +13,11 @@ use wl_kernel::PartyId;
 use wl_kernel::Subject;
 use wl_kernel::payments::{
     AllocationTarget, PaymentFuture, PaymentId, PaymentRecorder, PaymentSummary, RecordPayment,
-    ReversalReason,
+    RefundId, RefundRequest as KernelRefundRequest, ReversalReason,
 };
 
 use crate::payment::Payment;
+use crate::refund::{self, RefundRequest};
 use crate::{allocate, credit, record, reverse};
 
 /// Records, allocates and reads `wl_payments_payments` for the kernel
@@ -96,6 +97,32 @@ impl PaymentRecorder for Payments {
         prepaid: &'a Subject,
     ) -> PaymentFuture<'a, Vec<PaymentSummary>> {
         Box::pin(credit::payments_for(db, prepaid))
+    }
+
+    fn request_refund<'a>(
+        &'a self,
+        state: &'a AppState,
+        request: KernelRefundRequest,
+        by: Option<i64>,
+    ) -> PaymentFuture<'a, RefundId> {
+        // The caller authorized its user; the refund still needs an
+        // approval by another user (`FIN.ACL.04`).
+        Box::pin(async move {
+            let request = RefundRequest {
+                source: request.source,
+                party: request.party,
+                legal_entity_id: request.legal_entity_id,
+                amount: request.amount,
+                currency: request.currency,
+                method: request.method,
+                gateway_txn: request.gateway_txn,
+                reason: request.reason,
+            };
+            refund::request_for_source_as(state, &request, by)
+                .await
+                .map(|refund| RefundId(refund.id))
+                .map_err(|e| e.into_error())
+        })
     }
 }
 

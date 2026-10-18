@@ -626,6 +626,42 @@ pub trait PaymentRecorder: Send + Sync + 'static {
         db: &'a Db,
         prepaid: &'a Subject,
     ) -> PaymentFuture<'a, Vec<PaymentSummary>>;
+
+    /// Asks a refund of a source the caller owns (a credit note, payer
+    /// credit, order or booking), by user `by` (`None` = the system), and
+    /// returns its id. The refund starts `requested` and still waits for an
+    /// approval by another user (`FIN.ACL.04`); the caller has authorized
+    /// its user and vouches for the source's balance. The default refuses
+    /// (422): payments is not enabled.
+    fn request_refund<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _request: RefundRequest,
+        _by: Option<i64>,
+    ) -> PaymentFuture<'a, RefundId> {
+        Box::pin(async { Err(payments_off("a refund cannot be requested")) })
+    }
+}
+
+/// A refund another module asks for: [`PaymentRecorder::request_refund`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RefundRequest {
+    /// What it is paid out of.
+    pub source: RefundSource,
+    /// Who is paid back.
+    pub party: PartyId,
+    /// The legal entity paying.
+    pub legal_entity_id: i64,
+    /// The amount, in fils; above 0.
+    pub amount: i64,
+    /// The ISO currency code, e.g. `AED`.
+    pub currency: String,
+    /// How it is to be paid, if already known.
+    pub method: Option<PaymentMethod>,
+    /// The gateway transaction a `gateway` refund goes back to.
+    pub gateway_txn: Option<String>,
+    /// Why.
+    pub reason: String,
 }
 
 /// The recorder when the `payments` module is off: nothing is found and

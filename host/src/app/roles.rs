@@ -113,6 +113,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
         ACCOUNTANT,
         &[
             invoices::VIEW,
+            invoices::CREDIT,
             invoices::VAT_VIEW,
             invoices::VAT_PREPARE,
             invoices::VAT_REVIEW,

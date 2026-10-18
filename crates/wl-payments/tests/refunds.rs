@@ -128,3 +128,63 @@ async fn a_refund_above_the_refundable_balance_is_refused() {
         .assert_status(422);
     assert_eq!(Refund::query().count(t.db()).await.unwrap(), 1);
 }
+
+/// The kernel's `request_refund` asks a refund of a credit note: it starts
+/// `requested` for the user, still needs another user's approval, and is
+/// refused for a blank reason, an amount of 0 or an unknown party.
+#[renox::test]
+async fn a_credit_note_refund_is_requested_through_the_kernel() {
+    use wl_kernel::payments::{PaymentMethod, RefundRequest, RefundSource};
+    use wl_kernel::{PartyId, Subject};
+
+    let t = boot().await;
+    let payment = t.receive(BLUE_DUNES, 300_000).await;
+    let a = t.user_a().await;
+    let note = Subject::new("invoicing.credit_note", 7);
+    let request = |amount: i64, reason: &str, party: PartyId| RefundRequest {
+        source: RefundSource::CreditNote(note.clone()),
+        party,
+        legal_entity_id: payment.legal_entity_id,
+        amount,
+        currency: "AED".into(),
+        method: Some(PaymentMethod::Transfer),
+        gateway_txn: None,
+        reason: reason.into(),
+    };
+    let recorder = payment_recorder(t.state());
+    for bad in [
+        request(50_000, "  ", BLUE_DUNES),
+        request(0, "Credit note", BLUE_DUNES),
+        request(50_000, "Credit note", PartyId(999)),
+    ] {
+        assert!(
+            recorder
+                .request_refund(t.state(), bad, Some(a.id))
+                .await
+                .is_err()
+        );
+    }
+    assert_eq!(Refund::query().count(t.db()).await.unwrap(), 0);
+
+    let id = recorder
+        .request_refund(
+            t.state(),
+            request(50_000, "Credit note CN-1", BLUE_DUNES),
+            Some(a.id),
+        )
+        .await
+        .unwrap();
+    let refund = t.refund(id.0).await;
+    assert_eq!(refund.status, RefundStatus::Requested);
+    assert_eq!(refund.requested_by, Some(a.id));
+    assert_eq!(refund.amount, 50_000);
+    assert_eq!(
+        (refund.source_type.as_str(), refund.source_id),
+        ("invoicing.credit_note", 7)
+    );
+    // The requester still cannot approve it (`FIN.ACL.04`).
+    t.refund_action(&a, &refund, "approve", &[])
+        .await
+        .assert_status(422)
+        .assert_see("FIN.ACL.04");
+}
