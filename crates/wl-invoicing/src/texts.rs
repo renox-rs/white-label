@@ -17,7 +17,33 @@ const TEXTS: &[(&str, &str)] = &[
         "Settlement agreed",
     ),
     ("wl_invoicing.write_off_reason.other", "Other"),
+    (
+        "wl_invoicing.reminder.before_due.subject",
+        "Invoice {{ number }} is due on {{ due_date }}",
+    ),
+    (
+        "wl_invoicing.reminder.before_due.body",
+        "Dear {{ party_name }},\n\nThis is a reminder that invoice {{ number }} of {{ issue_date }} is due on {{ due_date }}. The balance of {{ balance }} is still open.\n\nIf you have already paid, please ignore this message.",
+    ),
+    (
+        "wl_invoicing.reminder.after_due.subject",
+        "Invoice {{ number }} is overdue",
+    ),
+    (
+        "wl_invoicing.reminder.after_due.body",
+        "Dear {{ party_name }},\n\nInvoice {{ number }} of {{ issue_date }} was due on {{ due_date }}, {{ days }} day(s) ago. The balance of {{ balance }} is still open. Please pay it as soon as possible.\n\nIf you have already paid, please ignore this message.",
+    ),
 ];
+
+/// The English text for `key`, or `key` itself when the package has none.
+/// Notification templates are registered with it: the client changes them
+/// on the stored notification type, not in the language files.
+pub(crate) fn english(key: &str) -> &str {
+    TEXTS
+        .iter()
+        .find(|(k, _)| *k == key)
+        .map_or(key, |(_, text)| text)
+}
 
 /// The text for `key`: the app's translation when it has one, else the English one.
 #[expect(dead_code, reason = "the back-office pages (#64 part 7) use it")]
@@ -26,8 +52,5 @@ pub(crate) fn t(lang: &Lang, key: &str) -> String {
     if found != key {
         return found;
     }
-    TEXTS
-        .iter()
-        .find(|(k, _)| *k == key)
-        .map_or_else(|| key.to_owned(), |(_, text)| (*text).to_owned())
+    english(key).to_owned()
 }

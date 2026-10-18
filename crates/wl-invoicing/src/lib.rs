@@ -11,6 +11,7 @@ pub mod issue;
 pub mod line;
 mod machine;
 pub mod overdue;
+pub mod reminders;
 mod texts;
 pub mod vat;
 
@@ -24,6 +25,7 @@ pub use config::{InvoicingConfig, WriteOffReason};
 pub use invoice::{Invoice, InvoiceKind, PartySnapshot};
 pub use invoicer::Invoices;
 pub use line::InvoiceLine;
+pub use reminders::ReminderLog;
 pub use vat::{CategoryTotal, LineAmounts, VatTotals};
 
 /// The module's settings in `state`: those `register` provided, else the
@@ -123,7 +125,8 @@ impl Module for WlInvoicing {
     fn register(&self, app: &mut Registry) {
         app.model::<Invoice>()
             .model::<InvoiceLine>()
-            .model::<Allocation>();
+            .model::<Allocation>()
+            .model::<ReminderLog>();
         // `rnx state:diagram Invoice` and the admin panel find the machine.
         renox::state_machine::register::<Invoice>();
         // The settings the services read (`config_of`).
@@ -132,6 +135,9 @@ impl Module for WlInvoicing {
         events::register(app);
         // `FIN.RUL.02`: the daily `invoicing:mark-overdue` task.
         overdue::schedule(app);
+        // `FIN.RUL.01`: the reminder types and the daily `invoicing:reminders`.
+        reminders::register_types();
+        reminders::schedule(app);
         // Other modules draft and read invoices through the kernel (§6).
         wl_kernel::invoicing::provide_invoicer(app, Invoices);
     }
