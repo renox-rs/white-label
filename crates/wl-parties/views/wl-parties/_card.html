@@ -10,6 +10,8 @@
     <rx-entry :label="tx['fields.status']" :value="party.status"
               :badge="{'active': 'success', 'blocked': 'error', 'archived': 'neutral', 'merged': 'neutral'}"
               :labels="{'active': tx['status.active'], 'blocked': hold_label or tx['status.blocked'], 'archived': tx['status.archived'], 'merged': tx['status.merged']}"/>
+    <rx-entry rx-if="invalid_contacts" :label="tx['sections.contacts']" :value="'invalid'"
+              :badge="{'invalid': 'error'}" :labels="{'invalid': tx['contact.needs_updating']}"/>
     <rx-entry :label="tx['fields.legal_name_en']" :value="party.legal_name_en"/>
     <rx-entry :label="tx['fields.legal_name_ar']" :value="party.legal_name_ar"/>
     <rx-entry :label="tx['fields.display_name']" :value="party.display_name"/>

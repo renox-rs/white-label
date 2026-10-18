@@ -10,6 +10,8 @@
 //! | `POST /parties/{id}/unblock` | `wl_parties.unblock` | `parties.block` (multipart: note, basis and evidence files; the service checks the rest) |
 //! | `GET /parties/{id}/block-records/{record}` | `wl_parties.block_record` | `parties.view` (a restricted record also `parties.block_reason.view`, else 404) |
 //! | `GET /parties/{id}/block-records/{record}/evidence/{file}` | `wl_parties.block_evidence` | `parties.view` (same visibility as the record) |
+//! | `POST /parties/{id}/contact-points/{point}` | `wl_parties.contact_update` | `parties.update` (a point of another party is 404; a bad value is a 422) |
+//! | `POST /parties/{id}/contact-points/{point}/verify` | `wl_parties.contact_verify` | `parties.update` (the same 404) |
 //! | `GET /parties/block-effects` | `wl_parties.block_effects` | `parties.block` (read-only: the vertical sets the values) |
 //! | `GET /parties/review-tasks` | `wl_parties.review_tasks` | signed in; lists the open tasks whose decider role the user holds |
 //! | `GET /parties/review-tasks/{id}` | `wl_parties.review_task` | the task's decider role in its scope, else 403 |
@@ -33,7 +35,7 @@ use wl_kernel::{PartyKind, PartyStatus, Subject};
 
 use crate::block::block;
 use crate::block_record::BlockRecord;
-use crate::contacts::{ContactPoint, ContactType};
+use crate::contacts::{ContactPoint, ContactStatus, ContactType, update_contact, verify_contact};
 use crate::create::{NewParty, create};
 use crate::details::{CompanyDetails, PersonDetails};
 use crate::evidence::{UnblockBasis, UnblockEvidence};
@@ -98,6 +100,17 @@ pub fn routes() -> Routes {
                 .post("/parties/review-tasks/{id}/neutral-message", send_neutral)
                 .name("wl_parties.review_neutral")
                 .require_auth(),
+        )
+        .merge(
+            Routes::new()
+                .post("/parties/{id}/contact-points/{point}", store_contact)
+                .name("wl_parties.contact_update")
+                .post(
+                    "/parties/{id}/contact-points/{point}/verify",
+                    verify_contact_point,
+                )
+                .name("wl_parties.contact_verify")
+                .require_permission(permissions::UPDATE),
         )
         .merge(
             Routes::new()
@@ -343,7 +356,11 @@ pub(crate) struct ShowPage {
     party: Party,
     person: Option<PersonDetails>,
     company: Option<CompanyDetails>,
-    contacts: Vec<ContactPoint>,
+    contacts: Vec<ContactRow>,
+    /// The contact points that need updating, for the banner.
+    invalid_contacts: Vec<ContactRow>,
+    /// Whether the edit and verify actions show (`parties.update`).
+    can_update: bool,
     roles: Vec<PartyRole>,
     timeline: Vec<renox::serde_json::Value>,
     /// "On hold — Non-payment" / "On hold" while blocked.
@@ -361,6 +378,54 @@ pub(crate) struct ShowPage {
     bases: Vec<(String, String)>,
     /// The Block records this user may read, newest first.
     block_records: Vec<BlockRecordRow>,
+}
+
+/// One contact point as the party page shows it.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct ContactRow {
+    id: i64,
+    contact_type: ContactType,
+    value: String,
+    label: Option<String>,
+    is_primary: bool,
+    verified_at: Option<DateTime>,
+    invalid: bool,
+    /// "Valid" or "Invalid: Hard bounce".
+    status_label: String,
+    /// The reason's label while invalid.
+    reason: Option<String>,
+    invalid_since: Option<DateTime>,
+}
+
+impl ContactRow {
+    fn of(point: ContactPoint, lang: &Lang) -> Self {
+        let invalid = point.status == ContactStatus::Invalid;
+        let reason = invalid.then(|| {
+            let code = point.invalid_reason.as_deref().unwrap_or_default();
+            let key = format!("wl_parties.invalid_reason.{code}");
+            let label = texts::t(lang, &key);
+            if label == key { code.to_owned() } else { label }
+        });
+        let status_label = match &reason {
+            Some(reason) => format!(
+                "{}: {reason}",
+                texts::t(lang, "wl_parties.contact_status.invalid")
+            ),
+            None => texts::t(lang, "wl_parties.contact_status.valid"),
+        };
+        Self {
+            id: point.id,
+            contact_type: point.contact_type,
+            value: point.value,
+            label: point.label,
+            is_primary: point.is_primary,
+            verified_at: point.verified_at,
+            invalid,
+            status_label,
+            reason,
+            invalid_since: point.invalid_since,
+        }
+    }
 }
 
 /// One evidence file of a closed Block record.
@@ -467,6 +532,12 @@ async fn show(
         .order_by(ContactPoint::ID)
         .get(&db)
         .await?;
+    let contacts: Vec<ContactRow> = contacts
+        .into_iter()
+        .map(|point| ContactRow::of(point, &lang))
+        .collect();
+    let invalid_contacts = contacts.iter().filter(|c| c.invalid).cloned().collect();
+    let can_update = user.has_permission(permissions::UPDATE);
     let roles = PartyRole::query()
         .where_(PartyRole::PARTY_ID.eq(party.id))
         .order_by(PartyRole::ROLE_KEY)
@@ -503,6 +574,8 @@ async fn show(
         person,
         company,
         contacts,
+        invalid_contacts,
+        can_update,
         roles,
         timeline,
         hold_label,
@@ -635,6 +708,62 @@ async fn store_unblock(
         }
         Err(other) => Err(other.into_error()),
     }
+}
+
+/// The contact edit sheet's form.
+#[derive(Deserialize, Serialize, Validate, Debug)]
+pub struct ContactForm {
+    /// The address or number.
+    #[validate(required, max = 200)]
+    pub value: String,
+    /// A label, e.g. `work`.
+    #[validate(max = 60)]
+    pub label: Option<String>,
+}
+
+/// The contact point `point` of party `id`; 404 for one of another party.
+async fn party_point(state: &AppState, id: i64, point: i64) -> Result<ContactPoint> {
+    ContactPoint::find(&state.db, point)
+        .await?
+        .filter(|p| p.party_id == id)
+        .ok_or(Error::NotFound)
+}
+
+/// `POST /parties/{id}/contact-points/{point}`: changes the value and label
+/// and reloads the page. A new value makes an invalid point valid again. A
+/// bad value is a 422 under the field; a point of another party is a 404.
+async fn store_contact(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path((id, point)): Path<(i64, i64)>,
+    Valid(form): Valid<ContactForm>,
+) -> Result<Response> {
+    party_point(&state, id, point).await?;
+    let value = form.value.clone();
+    update_contact(&state, &user, point, &value, form.label.as_deref()).await?;
+    Ok((
+        Toast::success(texts::t(&lang, "wl_parties.contact.updated")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// `POST /parties/{id}/contact-points/{point}/verify`: marks the point
+/// verified and valid and reloads the page; a point of another party is 404.
+async fn verify_contact_point(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path((id, point)): Path<(i64, i64)>,
+) -> Result<Response> {
+    party_point(&state, id, point).await?;
+    verify_contact(&state, &user, point).await?;
+    Ok((
+        Toast::success(texts::t(&lang, "wl_parties.contact.verified")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// `GET /parties/{id}/block-records/{record}/evidence/{file}`: an evidence

@@ -106,6 +106,48 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_parties.fields.blocked_at", "Blocked"),
     ("wl_parties.fields.unblocked_at", "Lifted"),
     ("wl_parties.fields.block_state", "State"),
+    ("wl_parties.contact_status.valid", "Valid"),
+    ("wl_parties.contact_status.invalid", "Invalid"),
+    ("wl_parties.invalid_reason.hard_bounce", "Hard bounce"),
+    ("wl_parties.invalid_reason.invalid_number", "Invalid number"),
+    (
+        "wl_parties.invalid_reason.unknown_account",
+        "Unknown account",
+    ),
+    (
+        "wl_parties.contact.needs_updating",
+        "Contact needs updating",
+    ),
+    (
+        "wl_parties.contact.needs_updating_hint",
+        "Messages cannot reach this party at the contact points below. Update them or verify that they work.",
+    ),
+    ("wl_parties.contact.since", "since"),
+    ("wl_parties.contact.update", "Update contact"),
+    ("wl_parties.contact.actions", "Actions"),
+    ("wl_parties.contact.edit", "Edit"),
+    ("wl_parties.contact.edit_title", "Edit contact point"),
+    (
+        "wl_parties.contact.edit_description",
+        "A new address or number makes the contact point valid again. Changing only the label keeps its status.",
+    ),
+    ("wl_parties.contact.save", "Save contact"),
+    (
+        "wl_parties.contact.updated",
+        "The contact point is updated.",
+    ),
+    ("wl_parties.contact.verify", "Verify"),
+    ("wl_parties.contact.verify_title", "Verify contact point"),
+    (
+        "wl_parties.contact.verify_description",
+        "Confirm that this address or number works. The contact point becomes valid again.",
+    ),
+    (
+        "wl_parties.contact.verified",
+        "The contact point is verified.",
+    ),
+    ("wl_parties.fields.contact_status", "Status"),
+    ("wl_parties.fields.value_edit", "Address or number"),
     ("wl_parties.unblock.action", "Unblock"),
     ("wl_parties.unblock.title", "Lift the hold"),
     (

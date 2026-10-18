@@ -87,6 +87,10 @@ const VIEWS: &[(&str, &str)] = &[
         include_str!("../views/wl-parties/_unblock_sheet.html"),
     ),
     (
+        "wl-parties/_contact_sheet.html",
+        include_str!("../views/wl-parties/_contact_sheet.html"),
+    ),
+    (
         "wl-parties/block_effects.html",
         include_str!("../views/wl-parties/block_effects.html"),
     ),

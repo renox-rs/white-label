@@ -7,6 +7,13 @@
       <template rx-if="can_block"><rx-include template="wl-parties/_block_sheet.html"/></template>
       <template rx-if="can_unblock"><rx-include template="wl-parties/_unblock_sheet.html"/></template>
     </rx-page-header>
+    <rx-alert rx-if="invalid_contacts" kind="warning" :title="tx['contact.needs_updating']" :message="tx['contact.needs_updating_hint']"/>
+    <rx-stack rx-for="contact in invalid_contacts" :key="contact.id">
+      <rx-row>
+        <span>{{ tx['contact_type.' ~ contact.contact_type] }}: {{ contact.value }} ({{ contact.reason }}, {{ tx['contact.since'] }} {{ contact.invalid_since | date('%Y-%m-%d %H:%M') if contact.invalid_since else "—" }})</span>
+        <rx-open-button rx-if="can_update" :id="'edit-contact-' ~ contact.id" :label="tx['contact.update']" icon="pencil"/>
+      </rx-row>
+    </rx-stack>
     <rx-include template="wl-parties/_card.html"/>
     <template rx-if="block_records">
       <rx-table :rows="block_records" as="record" :key="record.id" :caption="tx['sections.block_records']" card>
@@ -27,6 +34,14 @@
       <rx-column :label="tx['fields.label']" hide-narrow>{{ contact.label or "—" }}</rx-column>
       <rx-column :label="tx['fields.is_primary']"><rx-badge rx-if="contact.is_primary" kind="success" :text="tx['fields.is_primary']"/></rx-column>
       <rx-column :label="tx['fields.verified_at']" hide-narrow>{{ contact.verified_at | date if contact.verified_at else "—" }}</rx-column>
+      <rx-column :label="tx['fields.contact_status']"><rx-badge rx-if="contact.invalid" kind="error" :text="contact.status_label"/><rx-badge rx-else kind="success" :text="contact.status_label"/></rx-column>
+      <rx-column :label="tx['contact.actions']">
+        <rx-row rx-if="can_update">
+          <rx-include template="wl-parties/_contact_sheet.html"/>
+          <rx-action-sheet :id="'verify-contact-' ~ contact.id" :label="tx['contact.verify']" :action="route('wl_parties.contact_verify', party.id, contact.id)"
+                           :title="tx['contact.verify_title']" :description="tx['contact.verify_description']" :submit-label="tx['contact.verify']" icon="check"/>
+        </rx-row>
+      </rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['no_contacts']" icon="phone"/></rx-slot>
     </rx-table>
     <rx-table :rows="roles" as="role" :key="role.id" :caption="tx['sections.roles']" card>
