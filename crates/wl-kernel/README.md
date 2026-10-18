@@ -68,6 +68,11 @@ settles part of it from a payment or credit note (on a `written_off` invoice it 
 thousandths, and each line has a `VatCategory` (`standard` 5%; `zero_rated`, `exempt`,
 `out_of_scope` and `reverse_charge` carry no VAT). When `invoicing` is off, `NoInvoicer`
 drafts and finds nothing, so callers hide the feature, and refuses an allocation (422).
+`InvoiceSummary` also carries `disputed` and `chasing_paused_until` (`chasing_paused(today)`).
+`dispute(state, DisputeRequest::new(invoice, reason, DisputeBy::User { id }).amount(..).lines([..]))`
+flags an invoice as disputed (a flag, not a state) and gives the dispute id; the default refuses
+(422). `wl-invoicing` emits `InvoiceDisputed` and `InvoiceDisputeResolved` (`DisputeOutcome`
+`upheld` or `credited`, `DisputedLine`).
 Modules listen to `InvoiceIssued`, `InvoiceOverdue`, `InvoicePaid`, `InvoiceWrittenOff` and `BadDebtRecovered`.
 Tax invoice numbers come from `INVOICE_SERIES` (`INV-ACME-2026-0001`) or, with exactly one
 active legal entity, `INVOICE_SERIES_SINGLE` (`INV-2026-0001`): gapless, per entity, reset
@@ -105,8 +110,9 @@ key. The channel is `system` unless set, and `.assign_to(Assignee::user(id))` (o
 `Assignee::party(vendor)`) has `wl-ticketing` run the first `assign` as the system, so the
 SLA starts. `.due_at(..)` sets a due time and `.source_key(..)` a key to find the open ticket
 by: `find_open(&state, key)` gives its `TicketRef` while it is not resolved, closed or
-cancelled, and `comment(&state, ticket, TaskComment::internal(text))` adds a comment (both
-default to nothing, as `NoTickets` does). Internal staff tasks use `TASK_CATEGORY` (`task`);
+cancelled, `resolve_from_source(&state, ticket, note)` resolves a ticket for the record that
+opened it (`false` when it did nothing), and `comment(&state, ticket, TaskComment::internal(text))`
+adds a comment (all default to nothing or `false`, as `NoTickets` does). Internal staff tasks use `TASK_CATEGORY` (`task`);
 `ticket_path(id)` is the ticket page, `/tickets/{id}`. `OpenTicket` is built only with its
 builder, so new optional fields never break a caller. When `ticketing` is off, `NoTickets` opens nothing and returns `None`, so callers
 carry on without a task. `wl-ticketing` emits `TicketAssigned` (assignee, previous assignee

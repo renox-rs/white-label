@@ -34,6 +34,7 @@ use serde::{Deserialize, Serialize};
 use crate::numbering::{Reset, Series};
 use crate::parties::PartyId;
 use crate::subject::Subject;
+use crate::tickets::TicketId;
 
 /// The subject type of an invoice, for [`Subject`] references.
 pub const INVOICE_SUBJECT_TYPE: &str = "invoicing.invoice";
@@ -318,6 +319,99 @@ pub struct InvoiceSummary {
     pub balance: i64,
     /// The due date, once known.
     pub due_date: Option<NaiveDate>,
+    /// Whether the invoice has an open dispute. A flag, not a state.
+    pub disputed: bool,
+    /// Chasing (reminders, escalation, write-off) is paused until this day
+    /// after a dispute was upheld; `None` when there is no grace period.
+    pub chasing_paused_until: Option<NaiveDate>,
+}
+
+impl InvoiceSummary {
+    /// Whether chasing the invoice is paused on `today`: it is disputed, or
+    /// `today` is before the end of the grace period after an upheld dispute.
+    pub fn chasing_paused(&self, today: NaiveDate) -> bool {
+        self.disputed || self.chasing_paused_until.is_some_and(|until| today < until)
+    }
+}
+
+/// How a dispute was settled.
+#[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum DisputeOutcome {
+    /// The invoice stands; reminders resume after the grace period.
+    #[default]
+    Upheld,
+    /// A full or partial credit note was issued for the agreed amount.
+    Credited,
+}
+
+/// A disputed invoice line, as an event carries it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DisputedLine {
+    /// The line's position on the invoice (1-based).
+    pub position: i32,
+    /// The line's gross amount (net + VAT), in fils.
+    pub amount: i64,
+    /// The record the line bills for, when it has one.
+    pub origin: Option<Subject>,
+}
+
+/// Who raises a dispute.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum DisputeBy {
+    /// A staff user, by user id (needs `invoices.dispute`).
+    User {
+        /// The user's id.
+        id: i64,
+    },
+    /// The billed party, from the portal (when the client allows it).
+    Party {
+        /// The party.
+        id: PartyId,
+    },
+    /// The system (e.g. a delivery source); no permission check.
+    System,
+}
+
+/// A request to flag an invoice as disputed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DisputeRequest {
+    /// The invoice.
+    pub invoice: InvoiceId,
+    /// Why it is disputed; must not be blank.
+    pub reason: String,
+    /// The disputed amount in fils; `None` means the gross sum of `lines`.
+    pub amount: Option<i64>,
+    /// Positions of the disputed lines; empty when not tied to lines.
+    pub lines: Vec<i32>,
+    /// Who raises it.
+    pub by: DisputeBy,
+}
+
+impl DisputeRequest {
+    /// A dispute of `invoice` for `reason` by `by`, with no amount and no
+    /// lines.
+    pub fn new(invoice: InvoiceId, reason: impl Into<String>, by: DisputeBy) -> Self {
+        DisputeRequest {
+            invoice,
+            reason: reason.into(),
+            amount: None,
+            lines: Vec::new(),
+            by,
+        }
+    }
+
+    /// With the disputed `amount` in fils.
+    pub fn amount(mut self, amount: i64) -> Self {
+        self.amount = Some(amount);
+        self
+    }
+
+    /// With the disputed line `positions`.
+    pub fn lines(mut self, positions: impl IntoIterator<Item = i32>) -> Self {
+        self.lines = positions.into_iter().collect();
+        self
+    }
 }
 
 /// How much of `available` fils to allocate to `invoice`: the smaller of
@@ -359,6 +453,25 @@ pub trait Invoicer: Send + Sync + 'static {
         source: Subject,
         amount: i64,
     ) -> InvoiceFuture<'a, ()>;
+
+    /// Flags an issued, partly paid or overdue invoice as disputed and
+    /// returns the dispute's id. The flag is not a state change. The default
+    /// refuses (422): invoicing is not enabled.
+    fn dispute<'a>(
+        &'a self,
+        _state: &'a AppState,
+        request: DisputeRequest,
+    ) -> InvoiceFuture<'a, i64> {
+        Box::pin(async move {
+            Err(Error::Status(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                format!(
+                    "invoice {} cannot be disputed: invoicing is not enabled",
+                    request.invoice
+                ),
+            ))
+        })
+    }
 }
 
 /// The invoicer when the `invoicing` module is off: nothing is drafted or
@@ -481,6 +594,48 @@ pub struct InvoiceWrittenOff {
 
 impl Event for InvoiceWrittenOff {}
 
+/// An invoice was flagged as disputed (`wl-invoicing` `dispute`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InvoiceDisputed {
+    /// The invoice.
+    pub invoice: InvoiceId,
+    /// Who is billed.
+    pub party: PartyId,
+    /// The record it bills for.
+    pub source: Subject,
+    /// The dispute's id.
+    pub dispute: i64,
+    /// The disputed amount, in fils.
+    pub amount: i64,
+    /// The disputed lines; empty when not tied to lines.
+    pub lines: Vec<DisputedLine>,
+    /// The billing dispute ticket; `None` when ticketing is off.
+    pub ticket: Option<TicketId>,
+    /// Who raised it.
+    pub raised_by: DisputeBy,
+}
+
+impl Event for InvoiceDisputed {}
+
+/// A dispute was resolved (`wl-invoicing` `resolve_dispute`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InvoiceDisputeResolved {
+    /// The invoice.
+    pub invoice: InvoiceId,
+    /// Who is billed.
+    pub party: PartyId,
+    /// The dispute's id.
+    pub dispute: i64,
+    /// How it was settled.
+    pub outcome: DisputeOutcome,
+    /// The amount credited, in fils; `None` for `upheld`.
+    pub credited_amount: Option<i64>,
+    /// The credit note, for `credited`.
+    pub credit_note: Option<Subject>,
+}
+
+impl Event for InvoiceDisputeResolved {}
+
 /// Money was recovered on a written-off invoice (`recover`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BadDebtRecovered {
@@ -515,6 +670,8 @@ mod tests {
             gross_total: 105_000,
             balance,
             due_date: None,
+            disputed: false,
+            chasing_paused_until: None,
         }
     }
 
@@ -528,6 +685,61 @@ mod tests {
             assert!(!s.accepts_allocation(), "{s:?}");
         }
         assert!(!WrittenOff.is_open());
+    }
+
+    #[test]
+    fn chasing_is_paused_while_disputed_and_through_the_grace_period() {
+        let day = |d| NaiveDate::from_ymd_opt(2026, 11, d).unwrap();
+        let mut s = summary(InvoiceStatus::Overdue, 1_000);
+        assert!(!s.chasing_paused(day(20)));
+        s.disputed = true;
+        assert!(s.chasing_paused(day(20)));
+        s.disputed = false;
+        s.chasing_paused_until = Some(day(27));
+        assert!(s.chasing_paused(day(26)));
+        assert!(!s.chasing_paused(day(27)));
+    }
+
+    #[test]
+    fn a_dispute_request_is_built_with_its_builder() {
+        let req = DisputeRequest::new(InvoiceId(3), "wrong hours", DisputeBy::User { id: 9 })
+            .amount(120_000)
+            .lines([2, 3]);
+        assert_eq!(req.amount, Some(120_000));
+        assert_eq!(req.lines, vec![2, 3]);
+        let bare = DisputeRequest::new(InvoiceId(3), "x", DisputeBy::System);
+        assert_eq!((bare.amount, bare.lines.len()), (None, 0));
+        assert_eq!(DisputeOutcome::default(), DisputeOutcome::Upheld);
+    }
+
+    #[test]
+    fn dispute_by_and_events_serialize_tagged() {
+        use renox::serde_json::{json, to_value};
+        assert_eq!(
+            to_value(DisputeBy::User { id: 4 }).unwrap(),
+            json!({ "kind": "user", "id": 4 })
+        );
+        assert_eq!(
+            to_value(DisputeBy::System).unwrap(),
+            json!({ "kind": "system" })
+        );
+        let event = InvoiceDisputed {
+            invoice: InvoiceId(1),
+            party: PartyId(2),
+            source: Subject::new("leasing.lease", 5),
+            dispute: 7,
+            amount: 120_000,
+            lines: vec![DisputedLine {
+                position: 2,
+                amount: 80_000,
+                origin: None,
+            }],
+            ticket: Some(TicketId(11)),
+            raised_by: DisputeBy::Party { id: PartyId(2) },
+        };
+        let json = to_value(&event).unwrap();
+        assert_eq!(json["lines"][0]["position"], 2);
+        assert_eq!(json["raised_by"], json!({ "kind": "party", "id": 2 }));
     }
 
     #[test]

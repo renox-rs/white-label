@@ -329,6 +329,19 @@ pub trait TaskCreator: Send + Sync + 'static {
         Box::pin(async { Ok(None) })
     }
 
+    /// Resolves `ticket` on behalf of the record that opened it, with `note`
+    /// as the resolution. Returns `false` when it did nothing, e.g. the
+    /// ticket is already resolved, closed or cancelled. The default does
+    /// nothing and returns `false`.
+    fn resolve_from_source<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _ticket: TicketId,
+        _note: &'a str,
+    ) -> TicketFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
+
     /// Adds `comment` to `ticket`. The default does nothing.
     fn comment<'a>(
         &'a self,

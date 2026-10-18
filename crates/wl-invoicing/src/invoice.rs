@@ -205,6 +205,9 @@ impl Invoice {
             gross_total: self.gross_total,
             balance: self.balance,
             due_date: self.due_date,
+            disputed: self.disputed,
+            // The grace period is stored from part 3/7 of #67 on.
+            chasing_paused_until: None,
         }
     }
 }
