@@ -6,6 +6,7 @@ pub mod give_up;
 mod machine;
 pub mod message;
 pub mod notifier;
+pub mod pages;
 pub mod reactions;
 pub mod recipients;
 pub mod render;
@@ -17,6 +18,7 @@ pub mod types;
 use std::sync::Arc;
 
 use renox::db::Migration;
+use renox::nav::NavLink;
 use renox::prelude::*;
 
 pub use channels::{
@@ -51,6 +53,19 @@ pub mod permissions {
     /// Approve, cancel and stop marketing broadcasts.
     pub const MARKETING_SEND: &str = "notifications.marketing.send";
 }
+
+/// The templates, compiled in. An app replaces one with a file of the same
+/// name under its views directory.
+const VIEWS: &[(&str, &str)] = &[
+    (
+        "wl-notify/types.html",
+        include_str!("../views/wl-notify/types.html"),
+    ),
+    (
+        "wl-notify/log.html",
+        include_str!("../views/wl-notify/log.html"),
+    ),
+];
 
 /// The notifications module. The host adds it with
 /// `.module(wl_notify::WlNotify::new())` when `client.toml` enables `notify`.
@@ -87,6 +102,10 @@ impl Module for WlNotify {
         "wl-notify"
     }
 
+    fn routes(&self) -> Routes {
+        pages::routes()
+    }
+
     fn migrations(&self) -> &'static [Migration] {
         renox::migrations!()
     }
@@ -96,7 +115,9 @@ impl Module for WlNotify {
             .model::<Message>()
             .model::<Suppression>()
             .model::<ReactionRun>()
-            .model::<ReactionStep>();
+            .model::<ReactionStep>()
+            .view_data::<pages::TypesPage>()
+            .view_data::<pages::LogPage>();
         // `rnx state:diagram Message` and the admin panel find the machine.
         renox::state_machine::register::<Message>();
         // `MessageSuppressed` after a `suppress` commits.
@@ -123,5 +144,32 @@ impl Module for WlNotify {
             },
         );
         app.seeder(|state: AppState| async move { types::install(&state.db).await.map(|_| ()) });
+        // In the admin group of the staff sidebar; the labels are the app's
+        // `nav.notification_types` and `nav.notification_log` texts.
+        app.nav(
+            "app",
+            NavLink::route("wl_notify.types", "nav.notification_types")
+                .icon("bell")
+                .group("nav.admin")
+                .order(40)
+                .permission(permissions::TEMPLATES_MANAGE),
+        );
+        app.nav(
+            "app",
+            NavLink::route("wl_notify.log", "nav.notification_log")
+                .icon("mail")
+                .group("nav.admin")
+                .order(41)
+                .permission(permissions::LOG_VIEW),
+        );
+        app.templates(|env| {
+            for (name, source) in VIEWS {
+                // The app's own file of that name wins.
+                if env.get_template(name).is_err() {
+                    renox::view::add_template(env, *name, *source)
+                        .expect("a built-in template compiles");
+                }
+            }
+        });
     }
 }

@@ -8,6 +8,8 @@
     "activity": "Activity",
     "legal_entities": "Legal entities",
     "parties": "Parties",
+    "notification_types": "Notification types",
+    "notification_log": "Message log",
     "admin": "Admin",
     "app": "App",
     "log_in": "Log in",
