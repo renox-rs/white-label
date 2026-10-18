@@ -5,6 +5,7 @@
   <rx-stack>
     <rx-page-header :title="party.display_name" :subtitle="party.code" :back="route('wl_parties.index')" :back-label="tx['title']">
       <template rx-if="can_block"><rx-include template="wl-parties/_block_sheet.html"/></template>
+      <template rx-if="can_unblock"><rx-include template="wl-parties/_unblock_sheet.html"/></template>
     </rx-page-header>
     <rx-include template="wl-parties/_card.html"/>
     <template rx-if="block_records">
@@ -13,6 +14,10 @@
         <rx-column :label="tx['fields.note']">{{ record.note }}</rx-column>
         <rx-column :label="tx['fields.blocked_by']" hide-narrow>{{ record.blocked_by }}</rx-column>
         <rx-column :label="tx['fields.blocked_at']">{{ record.blocked_at | date('%Y-%m-%d %H:%M') }}</rx-column>
+        <rx-column :label="tx['fields.unblocked_by']" hide-narrow>{{ record.unblocked_by or "—" }}</rx-column>
+        <rx-column :label="tx['fields.unblocked_at']" hide-narrow>{{ record.unblocked_at | date('%Y-%m-%d %H:%M') if record.unblocked_at else "—" }}</rx-column>
+        <rx-column :label="tx['fields.unblock_note']" hide-narrow>{{ record.unblock_note or "—" }}{{ " (" ~ record.unblock_basis ~ ")" if record.unblock_basis else "" }}</rx-column>
+        <rx-column :label="tx['fields.evidence']" hide-narrow>{{ "—" if not record.evidence else "" }}<a rx-for="file in record.evidence" href="{{ route('wl_parties.block_evidence', party.id, record.id, file.id) }}">{{ file.file_name }}</a></rx-column>
         <rx-column :label="tx['fields.block_state']"><rx-badge rx-if="record.is_open" kind="error" :text="tx['block.open']"/><rx-badge rx-else :text="tx['block.closed']"/></rx-column>
       </rx-table>
     </template>

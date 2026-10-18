@@ -1,0 +1,14 @@
+{#- wl-parties: the unblock action on the party page, a sheet with a note.
+    For a sanctions hold, and only when this user holds
+    parties.block_reason.view (unblock_evidence), it also asks for the basis
+    and the evidence files, and posts as multipart. Replace it with
+    resources/views/wl-parties/_unblock_sheet.html in the app. -#}
+<rx-action-sheet :id="'unblock-party-' ~ party.id" :label="tx['unblock.action']" :action="route('wl_parties.unblock', party.id)"
+                 :title="tx['unblock.title']" :description="tx['unblock.description']" :submit-label="tx['unblock.submit']"
+                 icon="check" variant="primary" enctype="multipart/form-data">
+  <rx-textarea name="note" :label="tx['fields.note']" :id="'unblock-note-' ~ party.id" required/>
+  <template rx-if="unblock_evidence">
+    <rx-select name="basis" :label="tx['fields.unblock_basis']" :options="bases" :id="'unblock-basis-' ~ party.id" required/>
+    <rx-file name="files" :label="tx['fields.unblock_files']" :hint="tx['fields.unblock_files_hint']" accept=".pdf,.jpg,.jpeg,.png,.heic,.docx,.xlsx" multiple required/>
+  </template>
+</rx-action-sheet>

@@ -7,7 +7,9 @@
 //! | `POST /parties` | `wl_parties.store` | `parties.create` |
 //! | `GET /parties/{id}` | `wl_parties.show` | `parties.view` |
 //! | `POST /parties/{id}/block` | `wl_parties.block` | `parties.block` (a restricted reason also `parties.block_reason.view`) |
+//! | `POST /parties/{id}/unblock` | `wl_parties.unblock` | `parties.block` (multipart: note, basis and evidence files; the service checks the rest) |
 //! | `GET /parties/{id}/block-records/{record}` | `wl_parties.block_record` | `parties.view` (a restricted record also `parties.block_reason.view`, else 404) |
+//! | `GET /parties/{id}/block-records/{record}/evidence/{file}` | `wl_parties.block_evidence` | `parties.view` (same visibility as the record) |
 //!
 //! Lists, search, filters and exports read the party's `hold_reason`, which
 //! is only ever the display code, so they cannot show a restricted reason
@@ -16,6 +18,7 @@
 
 use std::collections::BTreeMap;
 
+use renox::Download;
 use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
 use renox::state_machine::{self, TransitionError};
@@ -28,11 +31,13 @@ use crate::block_record::BlockRecord;
 use crate::contacts::{ContactPoint, ContactType};
 use crate::create::{NewParty, create};
 use crate::details::{CompanyDetails, PersonDetails};
+use crate::evidence::{UnblockBasis, UnblockEvidence};
 use crate::party::{Channel, Language, Party};
 use crate::permissions;
 use crate::reasons::BlockReasons;
 use crate::roles::PartyRole;
 use crate::texts;
+use crate::unblock::{UnblockRequest, unblock};
 use crate::visibility;
 
 /// The hold reasons the list's filter offers: the configured reasons that
@@ -62,12 +67,19 @@ pub fn routes() -> Routes {
                 .name("wl_parties.show")
                 .get("/parties/{id}/block-records/{record}", block_record)
                 .name("wl_parties.block_record")
+                .get(
+                    "/parties/{id}/block-records/{record}/evidence/{file}",
+                    block_evidence,
+                )
+                .name("wl_parties.block_evidence")
                 .require_permission(permissions::VIEW),
         )
         .merge(
             Routes::new()
                 .post("/parties/{id}/block", store_block)
                 .name("wl_parties.block")
+                .post("/parties/{id}/unblock", store_unblock)
+                .name("wl_parties.unblock")
                 .require_permission(permissions::BLOCK),
         )
 }
@@ -315,8 +327,22 @@ pub(crate) struct ShowPage {
     can_block: bool,
     /// The reasons the block dialog offers this user, `(code, label)`.
     reasons: Vec<(String, String)>,
+    /// Whether the unblock action is shown (`parties.block`, party `blocked`).
+    can_unblock: bool,
+    /// Whether the unblock sheet asks for a basis and files: the viewer
+    /// holds `parties.block_reason.view` and an open record is `sanctions`.
+    unblock_evidence: bool,
+    /// The bases the unblock sheet offers, `(value, label)`.
+    bases: Vec<(String, String)>,
     /// The Block records this user may read, newest first.
     block_records: Vec<BlockRecordRow>,
+}
+
+/// One evidence file of a closed Block record.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct EvidenceRow {
+    id: i64,
+    file_name: String,
 }
 
 /// One Block record as the party page shows it.
@@ -330,6 +356,10 @@ pub(crate) struct BlockRecordRow {
     blocked_by: String,
     blocked_at: DateTime,
     unblocked_at: Option<DateTime>,
+    unblocked_by: Option<String>,
+    unblock_note: Option<String>,
+    unblock_basis: Option<String>,
+    evidence: Vec<EvidenceRow>,
     is_open: bool,
 }
 
@@ -351,6 +381,22 @@ async fn block_rows(
                 .map_or_else(|| format!("#{id}"), |user| user.name),
             None => texts::t(lang, "wl_parties.block.system"),
         };
+        let unblocked_by = match record.unblocked_by {
+            Some(id) => Some(
+                User::find(db, id)
+                    .await?
+                    .map_or_else(|| format!("#{id}"), |user| user.name),
+            ),
+            None => None,
+        };
+        let evidence = UnblockEvidence::for_record(db, record.id)
+            .await?
+            .into_iter()
+            .map(|file| EvidenceRow {
+                id: file.id,
+                file_name: file.file_name,
+            })
+            .collect();
         rows.push(BlockRecordRow {
             id: record.id,
             reason: visibility::reason_label(lang, &record.reason_code),
@@ -361,6 +407,12 @@ async fn block_rows(
             blocked_by,
             blocked_at: record.blocked_at,
             unblocked_at: record.unblocked_at,
+            unblocked_by,
+            unblock_note: record.unblock_note,
+            unblock_basis: record
+                .unblock_basis
+                .map(|basis| texts::t(lang, &format!("wl_parties.unblock_basis.{basis}"))),
+            evidence,
         });
     }
     Ok(rows)
@@ -406,6 +458,19 @@ async fn show(
     } else {
         Vec::new()
     };
+    let can_unblock =
+        party.status == PartyStatus::Blocked && user.has_permission(permissions::BLOCK);
+    let unblock_evidence = can_unblock
+        && sees_restricted
+        && BlockRecord::open_for(&db, party.id)
+            .await?
+            .iter()
+            .any(|record| record.reason_code == "sanctions");
+    let bases = options(
+        &texts_in(&lang),
+        "unblock_basis",
+        ["delisted", "false_match"],
+    );
     let block_records = block_rows(&db, &lang, party.id, sees_restricted).await?;
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
@@ -418,6 +483,9 @@ async fn show(
         hold_label,
         can_block,
         reasons,
+        can_unblock,
+        unblock_evidence,
+        bases,
         block_records,
     }))
 }
@@ -482,9 +550,105 @@ async fn block_record(
     Ok(Json(record))
 }
 
+/// The unblock sheet's multipart form.
+#[derive(Deserialize, Serialize, Validate, Debug)]
+pub struct UnblockForm {
+    /// Why the block is lifted.
+    #[validate(required, max = 2000)]
+    pub note: String,
+    /// The statement behind lifting a `sanctions` block.
+    pub basis: Option<UnblockBasis>,
+    /// The evidence files.
+    #[serde(default)]
+    pub files: Vec<Upload>,
+}
+
+/// The sheet field a refusal belongs under.
+fn refusal_field(message: &str) -> &'static str {
+    let is = |key: &str| message == texts::english(&format!("wl_parties.errors.{key}"));
+    if is("unblock_basis_required") {
+        "basis"
+    } else if is("unblock_evidence_required")
+        || is("unblock_file_empty")
+        || is("unblock_file_large")
+        || is("unblock_file_type")
+    {
+        "files"
+    } else {
+        "note"
+    }
+}
+
+/// `POST /parties/{id}/unblock`: lifts the hold and reloads the page. The
+/// service refuses a blank note, a conflict of duties or a missing
+/// permission (one neutral message), a missing basis or file, and a bad
+/// file: a 422 with the message in the sheet, and nothing written.
+async fn store_unblock(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Valid(form): Valid<UnblockForm>,
+) -> Result<Response> {
+    let request = UnblockRequest {
+        note: form.note.clone(),
+        basis: form.basis,
+        files: form.files.clone(),
+    };
+    match unblock(&state, &user, id, request).await {
+        Ok(()) => Ok((
+            Toast::success(texts::t(&lang, "wl_parties.unblock.done")),
+            renox::HxRefresh,
+        )
+            .into_response()),
+        Err(TransitionError::Guard(message)) => {
+            let mut errors = Errors::new();
+            errors.add(refusal_field(&message), message);
+            Err(Error::Validation(
+                ValidationError::new(errors).with_input(&form),
+            ))
+        }
+        Err(other) => Err(other.into_error()),
+    }
+}
+
+/// `GET /parties/{id}/block-records/{record}/evidence/{file}`: an evidence
+/// file of a closed Block record, as a download. It has the record's
+/// visibility: a restricted record answers 404 without
+/// `parties.block_reason.view`, as does a file of another record.
+async fn block_evidence(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path((id, record, file)): Path<(i64, i64, i64)>,
+) -> Result<Download> {
+    let sees_restricted = user.has_permission(permissions::BLOCK_REASON_VIEW);
+    let record = BlockRecord::find(&state.db, record)
+        .await?
+        .filter(|r| r.party_id == id && visibility::can_read(r, sees_restricted))
+        .ok_or(Error::NotFound)?;
+    let file = UnblockEvidence::find(&state.db, file)
+        .await?
+        .filter(|f| f.block_record_id == record.id)
+        .ok_or(Error::NotFound)?;
+    Download::from_storage(&state.storage, &file.storage_key, file.file_name).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_refusal_shows_under_its_own_field() {
+        let message = |key: &str| texts::english(&format!("wl_parties.errors.{key}"));
+        assert_eq!(refusal_field(&message("unblock_basis_required")), "basis");
+        assert_eq!(refusal_field(&message("unblock_file_type")), "files");
+        assert_eq!(
+            refusal_field(&message("unblock_evidence_required")),
+            "files"
+        );
+        assert_eq!(refusal_field(&message("unblock_other_user")), "note");
+        assert_eq!(refusal_field(&message("note_required")), "note");
+    }
 
     fn form(kind: PartyKind) -> PartyForm {
         PartyForm {

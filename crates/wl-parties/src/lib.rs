@@ -74,6 +74,10 @@ const VIEWS: &[(&str, &str)] = &[
         "wl-parties/_block_sheet.html",
         include_str!("../views/wl-parties/_block_sheet.html"),
     ),
+    (
+        "wl-parties/_unblock_sheet.html",
+        include_str!("../views/wl-parties/_unblock_sheet.html"),
+    ),
 ];
 
 /// The parties module. The host adds it with `.module(wl_parties::WlParties)`
