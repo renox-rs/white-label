@@ -1,4 +1,4 @@
-//! Sending a message (wl-notify §4.1 `send`, `fail`, `retry`; #55 A7).
+//! Sending a message (wl-notify §4.1 `send`, `fail`, `retry`; #55 A7, A8).
 //!
 //! The [`SendMessage`] job hands a `queued` message to its channel's
 //! provider ([`crate::channels`]). The message row is the truth about
@@ -11,8 +11,10 @@
 //!   the commit, `MessageFailed` is emitted.
 //! - a transient error with attempts left ([`MAX_SEND_ATTEMPTS`]) runs
 //!   `retry` in the same transaction and queues the next send after
-//!   [`retry_backoff`] (1 minute, then 5 minutes). Any other error leaves
-//!   the message `failed`, for the fallback or give-up of #55 part 6.
+//!   [`retry_backoff`] (1 minute, then 5 minutes). Any other error is final
+//!   on the channel: in the same transaction the message falls back to the
+//!   next allowed channel, or gives up and queues `NTF.RUL.01`
+//!   ([`crate::give_up`]); `MessageGaveUp` follows the commit.
 
 use std::time::Duration;
 
@@ -22,6 +24,7 @@ use serde::{Deserialize, Serialize};
 use wl_kernel::notify::MessageFailed;
 
 use crate::channels::{self, Outgoing, SendError, SendErrorKind};
+use crate::give_up::{self, Applied};
 use crate::machine::{FAIL, RETRY, SEND};
 use crate::message::{Message, MessageStatus};
 use crate::suppressions;
@@ -70,8 +73,10 @@ pub enum SendOutcome {
     Sent,
     /// It failed and is queued again for a send after the wait.
     Retrying(Duration),
-    /// It failed and stays `failed`.
-    Failed,
+    /// It failed for good on its channel and fell back: the new message's id.
+    FellBack(i64),
+    /// It failed for good and no channel is left: `abandoned` by `give_up`.
+    GaveUp,
 }
 
 /// The job that sends one queued message.
@@ -144,13 +149,20 @@ async fn sent(
     Ok(SendOutcome::Sent)
 }
 
-/// `fail`, then `retry` while a transient error has attempts left.
+/// `fail`, then `retry` while a transient error has attempts left, else
+/// `fall_back` or `give_up`.
 async fn failed(
     state: &AppState,
     mut message: Message,
     provider: Option<&str>,
     error: SendError,
 ) -> Result<SendOutcome> {
+    let next = after_failure(error.kind, message.attempts + 1);
+    // Read before the transaction: the next channel of the chain, if any.
+    let plan = match next {
+        AfterFailure::Retry(_) => None,
+        AfterFailure::Final => Some(give_up::plan(state, &message).await?),
+    };
     let mut tx = state.db.begin().await?;
     message.provider = provider.map(str::to_owned);
     message.attempts += 1;
@@ -163,13 +175,20 @@ async fn failed(
         let source = format!("message:{}", message.id);
         suppressions::add(&mut tx, message.channel, address, reason, Some(&source)).await?;
     }
-    let next = after_failure(error.kind, message.attempts);
-    if let AfterFailure::Retry(_) = next {
-        let failed = Message::find(&mut tx, message.id)
-            .await?
-            .ok_or(renox::Error::NotFound)?;
-        outcomes.push(run(&failed, RETRY, None, &mut tx).await?);
-    }
+    let failed = Message::find(&mut tx, message.id)
+        .await?
+        .ok_or(renox::Error::NotFound)?;
+    let applied = match &plan {
+        None => {
+            outcomes.push(run(&failed, RETRY, None, &mut tx).await?);
+            None
+        }
+        Some(plan) => {
+            let (outcome, applied) = give_up::apply_in(state, &mut tx, &failed, plan).await?;
+            outcomes.push(outcome);
+            Some(applied)
+        }
+    };
     tx.commit().await?;
 
     for outcome in outcomes {
@@ -186,8 +205,9 @@ async fn failed(
             is_final: next == AfterFailure::Final,
         })
         .await?;
-    match next {
-        AfterFailure::Retry(wait) => {
+    match applied {
+        None => {
+            let wait = retry_backoff(message.attempts);
             state
                 .queue
                 .dispatch_after(
@@ -199,12 +219,16 @@ async fn failed(
                 .await?;
             Ok(SendOutcome::Retrying(wait))
         }
-        AfterFailure::Final => Ok(SendOutcome::Failed),
+        Some(Applied::FellBack(id)) => Ok(SendOutcome::FellBack(id)),
+        Some(Applied::GaveUp) => {
+            give_up::emit_gave_up(state, message.id).await?;
+            Ok(SendOutcome::GaveUp)
+        }
     }
 }
 
 /// Runs the system transition `name` on `message` inside `tx`.
-async fn run(
+pub(crate) async fn run(
     message: &Message,
     name: &str,
     reason: Option<String>,

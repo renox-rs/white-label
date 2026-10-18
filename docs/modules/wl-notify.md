@@ -403,11 +403,12 @@ show its communication history (e.g. reminders sent for an invoice).
 | Templates per type and language | the vertical's EN/AR templates |
 | Quiet hours for external recipients | 21:00–08:00 Asia/Dubai, normal urgency only |
 | Default language | EN; AR for parties whose language is Arabic |
-| Retry policy | 3 attempts with backoff; then fall back |
+| Retry policy | 3 attempts per channel, the next one 1 minute, then 5 minutes after a transient error (a permanent or hard error is not retried); then fall back to the next allowed channel of the type, else give up |
 | Delivery log retention | 24 months |
 | Read and open tracking | off for email, provider default for WhatsApp |
 | Give-up reaction per type, statutory flag | the module's and vertical's defaults ([§5.4](#54-when-a-message-gives-up)) |
 | Give-up task due (`NTF.RUL.01`) | 1 working day |
+| Give-up rule run (`NTF.RUL.01`) | one run per message (occurrence key: the message id; a second run is recorded as skipped); 5 attempts, 1, 5, 15 and 60 minutes apart; then the run is failed and `AutomationFailed` is raised (not compliance-critical) |
 | Marketing send window; frequency cap (`NTF.RUL.02`) | 07:00–21:00 on every channel, set per channel: SMS may be narrowed but not widened (§10); email and WhatsApp may be narrowed or widened; 2 messages per 7 days |
 | One-time code (`send_otp`): validity; wrong tries before the code is voided | 5 minutes; 3 |
 | Broadcast approval above (`NTF.ACL.03`) | 200 recipients |

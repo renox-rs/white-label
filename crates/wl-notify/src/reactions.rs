@@ -1,0 +1,219 @@
+//! The give-up reactions (wl-notify §5.4): one handler per reaction key,
+//! run by `NTF.RUL.01` ([`crate::give_up`]).
+//!
+//! The built-in handlers only record what they were given (status
+//! `recorded`); the real reactions replace them through
+//! [`crate::WlNotify::reaction`]: `staff_task` (#56), `alternative_recipient`
+//! (#57), `mark_contact_invalid` (#58) and `statutory_notice` (#59). `none`
+//! has no handler: it runs nothing.
+
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::Arc;
+
+use renox::prelude::*;
+use renox::serde_json::{self, Value};
+use serde::{Deserialize, Serialize};
+use wl_kernel::Subject;
+use wl_kernel::notify::{ChannelTried, GiveUpReaction, MessageId, NotifyRecipient};
+
+/// A boxed future returned by a [`GiveUpHandler`].
+pub type HandlerFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
+
+/// What a give-up reaction is told about the message that gave up.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GiveUpContext {
+    /// The `NTF.RUL.01` run.
+    pub run_id: i64,
+    /// The last message of the chain (the one that gave up).
+    pub message: MessageId,
+    /// The type key.
+    pub type_key: String,
+    /// The record it is about.
+    pub subject: Subject,
+    /// Who it was for.
+    pub recipient: NotifyRecipient,
+    /// The party contact point of the last message, if any.
+    pub contact_point: Option<i64>,
+    /// Every channel of the chain, in order, with its last error.
+    pub channels_tried: Vec<ChannelTried>,
+    /// Whether the type is statutory.
+    pub statutory: bool,
+    /// The staff role told on give-up, e.g. `collector`.
+    pub staff_role: Option<String>,
+    /// The run's reactions, in run order.
+    pub reactions: Vec<GiveUpReaction>,
+}
+
+/// What one reaction did, stored as the run's step.
+#[derive(Debug, Clone, PartialEq)]
+pub struct StepOutcome {
+    /// A short status, e.g. `recorded`, `task_created`.
+    pub status: String,
+    /// Details for the run record.
+    pub detail: Value,
+}
+
+/// The status of a step a built-in handler wrote.
+pub const RECORDED: &str = "recorded";
+
+impl StepOutcome {
+    /// A step with `status` and `detail`.
+    pub fn new(status: &str, detail: Value) -> Self {
+        StepOutcome {
+            status: status.to_owned(),
+            detail,
+        }
+    }
+
+    /// The step of a recording handler: `recorded`, with the context.
+    pub fn recorded(ctx: &GiveUpContext) -> Self {
+        StepOutcome::new(RECORDED, serde_json::to_value(ctx).unwrap_or(Value::Null))
+    }
+}
+
+/// Runs one give-up reaction for a message that gave up.
+///
+/// A failure fails the rule run's attempt; the run is retried with backoff
+/// and the reactions that already have a step are not run again.
+pub trait GiveUpHandler: Send + Sync + 'static {
+    /// The reaction it runs (not `none`).
+    fn reaction(&self) -> GiveUpReaction;
+
+    /// Applies the reaction for `ctx`.
+    fn run<'a>(
+        &'a self,
+        state: &'a AppState,
+        ctx: &'a GiveUpContext,
+    ) -> HandlerFuture<'a, StepOutcome>;
+}
+
+/// The built-in handler of `reaction`: records the step and does nothing
+/// else, until the reaction's own issue replaces it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RecordingHandler(pub GiveUpReaction);
+
+impl GiveUpHandler for RecordingHandler {
+    fn reaction(&self) -> GiveUpReaction {
+        self.0
+    }
+
+    fn run<'a>(
+        &'a self,
+        _state: &'a AppState,
+        ctx: &'a GiveUpContext,
+    ) -> HandlerFuture<'a, StepOutcome> {
+        Box::pin(async move { Ok(StepOutcome::recorded(ctx)) })
+    }
+}
+
+/// The module's give-up handlers, one per reaction, as the app holds them.
+#[derive(Clone)]
+pub struct Reactions {
+    list: Vec<Arc<dyn GiveUpHandler>>,
+}
+
+impl Default for Reactions {
+    /// The built-in recording handlers of the four reactions.
+    fn default() -> Self {
+        use GiveUpReaction::{
+            AlternativeRecipient, MarkContactInvalid, StaffTask, StatutoryNotice,
+        };
+        Reactions {
+            list: [
+                StaffTask,
+                AlternativeRecipient,
+                MarkContactInvalid,
+                StatutoryNotice,
+            ]
+            .into_iter()
+            .map(|r| Arc::new(RecordingHandler(r)) as Arc<dyn GiveUpHandler>)
+            .collect(),
+        }
+    }
+}
+
+impl Reactions {
+    /// Uses `handler` for its reaction, in place of the one there.
+    pub fn replace(&mut self, handler: Arc<dyn GiveUpHandler>) {
+        let reaction = handler.reaction();
+        match self.list.iter_mut().find(|h| h.reaction() == reaction) {
+            Some(slot) => *slot = handler,
+            None => self.list.push(handler),
+        }
+    }
+
+    /// The handler of `reaction`.
+    pub fn for_reaction(&self, reaction: GiveUpReaction) -> Option<Arc<dyn GiveUpHandler>> {
+        self.list.iter().find(|h| h.reaction() == reaction).cloned()
+    }
+}
+
+/// The app's give-up handlers; the built-in ones when the module did not
+/// provide any.
+pub fn reactions(state: &AppState) -> Arc<Reactions> {
+    state.provided::<Reactions>().unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct Custom;
+
+    impl GiveUpHandler for Custom {
+        fn reaction(&self) -> GiveUpReaction {
+            GiveUpReaction::StaffTask
+        }
+
+        fn run<'a>(
+            &'a self,
+            _state: &'a AppState,
+            _ctx: &'a GiveUpContext,
+        ) -> HandlerFuture<'a, StepOutcome> {
+            Box::pin(async { Ok(StepOutcome::new("task_created", Value::Null)) })
+        }
+    }
+
+    #[test]
+    fn every_reaction_but_none_has_a_built_in_handler() {
+        let reactions = Reactions::default();
+        for reaction in GiveUpReaction::ALL.iter() {
+            let found = reactions.for_reaction(*reaction).map(|h| h.reaction());
+            if *reaction == GiveUpReaction::None {
+                assert_eq!(found, None);
+            } else {
+                assert_eq!(found, Some(*reaction));
+            }
+        }
+    }
+
+    #[test]
+    fn a_handler_replaces_the_one_of_its_reaction() {
+        let mut reactions = Reactions::default();
+        reactions.replace(Arc::new(Custom));
+        assert_eq!(reactions.list.len(), 4);
+        let handler = reactions.for_reaction(GiveUpReaction::StaffTask).unwrap();
+        assert_eq!(handler.reaction(), GiveUpReaction::StaffTask);
+    }
+
+    #[test]
+    fn a_recorded_step_keeps_the_context() {
+        let ctx = GiveUpContext {
+            run_id: 1,
+            message: MessageId(5),
+            type_key: "invoice.reminder".into(),
+            subject: Subject::new("invoicing.invoice", 9),
+            recipient: NotifyRecipient::User { id: 2 },
+            contact_point: None,
+            channels_tried: Vec::new(),
+            statutory: false,
+            staff_role: Some("collector".into()),
+            reactions: vec![GiveUpReaction::StaffTask],
+        };
+        let step = StepOutcome::recorded(&ctx);
+        assert_eq!(step.status, RECORDED);
+        assert_eq!(step.detail["type_key"], "invoice.reminder");
+        assert_eq!(step.detail["staff_role"], "collector");
+    }
+}

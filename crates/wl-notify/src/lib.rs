@@ -2,9 +2,11 @@
 #![warn(missing_docs)]
 
 pub mod channels;
+pub mod give_up;
 mod machine;
 pub mod message;
 pub mod notifier;
+pub mod reactions;
 pub mod recipients;
 pub mod render;
 pub mod send;
@@ -21,11 +23,13 @@ pub use channels::{
     ChannelProvider, EmailProvider, HardError, Outgoing, Providers, SendError, SendErrorKind,
     SmsGateway, SmsProvider,
 };
+pub use give_up::{ReactionRun, ReactionStep, RunGiveUpReaction, RunStatus};
 pub use machine::{
     DEFER, DELIVER, FAIL, FALL_BACK, GIVE_UP, MARK_READ, RELEASE, RETRY, SEND, SUPPRESS,
 };
 pub use message::{Message, MessageStatus, RecipientKind};
 pub use notifier::Messages;
+pub use reactions::{GiveUpContext, GiveUpHandler, Reactions, RecordingHandler, StepOutcome};
 pub use send::SendMessage;
 pub use suppressions::{Suppression, SuppressionReason};
 pub use types::NotificationType;
@@ -54,6 +58,7 @@ pub mod permissions {
 #[non_exhaustive]
 pub struct WlNotify {
     providers: Providers,
+    reactions: Reactions,
 }
 
 impl WlNotify {
@@ -66,6 +71,13 @@ impl WlNotify {
     /// built-in one (another SMS gateway, a scripted one in tests).
     pub fn provider(mut self, provider: impl ChannelProvider) -> Self {
         self.providers.replace(Arc::new(provider));
+        self
+    }
+
+    /// Runs `handler`'s give-up reaction through `handler`, in place of the
+    /// built-in one, which only records its step (`NTF.RUL.01`).
+    pub fn reaction(mut self, handler: impl GiveUpHandler) -> Self {
+        self.reactions.replace(Arc::new(handler));
         self
     }
 }
@@ -82,7 +94,9 @@ impl Module for WlNotify {
     fn register(&self, app: &mut Registry) {
         app.model::<NotificationType>()
             .model::<Message>()
-            .model::<Suppression>();
+            .model::<Suppression>()
+            .model::<ReactionRun>()
+            .model::<ReactionStep>();
         // `rnx state:diagram Message` and the admin panel find the machine.
         renox::state_machine::register::<Message>();
         // `MessageSuppressed` after a `suppress` commits.
@@ -91,6 +105,9 @@ impl Module for WlNotify {
         app.provide(self.providers.clone());
         channels::register(app);
         app.job::<SendMessage>();
+        // Fallback and give-up: `NTF.RUL.01` runs the type's reactions.
+        app.provide(self.reactions.clone());
+        app.job::<RunGiveUpReaction>();
         // Other modules send through the kernel (wl-notify §6).
         wl_kernel::notify::provide_notifier(app, Messages);
         // The kernel's `wl:install` knows only kernel data, so the types the

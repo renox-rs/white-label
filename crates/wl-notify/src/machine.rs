@@ -14,9 +14,10 @@
 //! records its reason and, after the commit, emits the kernel's
 //! [`MessageSuppressed`] ([`register`]). `send`, `fail` and `retry` are
 //! run by the send job in [`crate::send`], which stores the provider's id,
-//! the attempts and the error with them; `fall_back` and `give_up` come
-//! with #55 part 6; `defer`, `release`, `deliver` and `mark_read` have no
-//! caller yet.
+//! the attempts and the error with them; `fall_back` and `give_up` are run
+//! in the same transaction as the last `fail` by [`crate::give_up`] (the
+//! "next channel is allowed" guard is its channel choice); `defer`,
+//! `release`, `deliver` and `mark_read` have no caller yet.
 
 use renox::prelude::*;
 use renox::state_machine::{Machine, StateMachine, Transition, Transitioned};
