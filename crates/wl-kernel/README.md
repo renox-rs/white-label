@@ -36,6 +36,7 @@ What is here so far:
 | `Subject` references | §2 | `subject` |
 | Legal entities, scope links, issuer snapshots (`PLT.ENT.01`) | §5.6, decision 0003 | `entities` |
 | Document numbering on Renox `Sequence` | §5.5 | `numbering` |
+| The party contract: `PartyDirectory` (`NoParties` when `parties` is off), `PartyStatus`, party events, the `party` series | ARCHITECTURE §5, wl-parties §6 | `parties` |
 
 After `rnx migrate`, `rnx wl:install` creates the legal entities `client.toml` lists and
 the database lacks; it never overwrites an entity changed in the admin. `rnx db:seed`
@@ -44,6 +45,10 @@ runs it too.
 The page `/legal-entities` needs `legal_entities.view`. The app overrides it with
 `resources/views/wl-kernel/legal_entities.html`, and translates the texts (`wl_kernel.*`)
 in `resources/lang/{locale}.json`.
+
+Other modules read parties only through `wl_kernel::parties::directory(&state)` and listen
+to `PartyCreated`, `PartyBlocked` and `PartyUnblocked`. Summaries and events carry the
+display block reason: `on_hold` (`NEUTRAL_BLOCK_REASON`) when the real one is restricted.
 
 Migrations are SQLite only: each client runs one SQLite database
 ([ARCHITECTURE.md](../../docs/ARCHITECTURE.md) §1).

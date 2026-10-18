@@ -6,6 +6,7 @@ pub mod config;
 pub mod entities;
 pub mod manifest;
 pub mod numbering;
+pub mod parties;
 pub mod subject;
 mod texts;
 
@@ -20,6 +21,10 @@ pub use config::{ClientConfig, ConfigError};
 pub use entities::{IssuerSnapshot, LegalEntity, ScopeEntity};
 pub use manifest::Manifest;
 pub use numbering::{Reset, Series};
+pub use parties::{
+    NEUTRAL_BLOCK_REASON, NoParties, PartyBlocked, PartyCreated, PartyDirectory, PartyId,
+    PartyKind, PartyStatus, PartySummary, PartyUnblocked,
+};
 pub use subject::Subject;
 
 /// The kernel's permissions (wl-kernel §6).
