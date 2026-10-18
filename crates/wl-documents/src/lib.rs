@@ -1,9 +1,16 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
+pub mod kinds;
 mod texts;
 
+use renox::db::Migration;
 use renox::prelude::*;
+
+pub use kinds::{
+    BlockChangeRefused, BlockSeed, DocumentKind, KindBlock, KindSeed, RefusalReason, Sensitivity,
+    add_block, blocks_for, register_kind, remove_block, set_block_mode,
+};
 
 /// The module's permissions (wl-documents §6).
 pub mod permissions {
@@ -26,5 +33,26 @@ pub struct WlDocuments;
 impl Module for WlDocuments {
     fn name(&self) -> &'static str {
         "wl-documents"
+    }
+
+    fn migrations(&self) -> &'static [Migration] {
+        renox::migrations!()
+    }
+
+    fn register(&self, app: &mut Registry) {
+        app.model::<DocumentKind>().model::<KindBlock>();
+        // The kinds modules and verticals register are installed by this
+        // module's command and seeder; both keep the client's changes and
+        // lock legal blocks again.
+        app.command(
+            "documents:install",
+            "Store the document kinds the modules register, and lock legal blocks again",
+            |_args, state: AppState| async move {
+                let created = kinds::install(&state.db).await?;
+                println!("{created} document kinds created.");
+                Ok(())
+            },
+        );
+        app.seeder(|state: AppState| async move { kinds::install(&state.db).await.map(|_| ()) });
     }
 }
