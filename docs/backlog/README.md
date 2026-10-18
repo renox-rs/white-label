@@ -1,10 +1,11 @@
 # Backlog — Negative Flows
 
-> Status: draft · Last updated: 2026-10-16 · Spec version: same commit as this file
+> Status: draft · Last updated: 2026-10-18 · Spec version: same commit as this file
 
-Draft GitHub issues for building the negative flows fixed in the
-[negative-flow review](../reviews/2026-10-15-negative-flows.md). They are **not created on
-GitHub yet**. Each file is one epic (a module or a vertical) with its issues.
+GitHub issues for building the negative flows fixed in the
+[negative-flow review](../reviews/2026-10-15-negative-flows.md). They were **created on GitHub
+on 2026-10-16** (§6, [github-issues.md](github-issues.md)). Each file is one epic (a module or a
+vertical) with its issues.
 
 The issues are written so that a small coding model or a new developer can
 implement one without reading the whole specification. A format test on 2026-10-15 gave two

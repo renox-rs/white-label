@@ -1,6 +1,6 @@
 # Access Control
 
-> Status: draft for review · Last updated: 2026-10-14
+> Status: draft for review · Last updated: 2026-10-16
 
 Every business actor in every vertical is controlled by the same model: **RBAC for what a
 person may do, ABAC for where, when, and on which records**. This document defines the model

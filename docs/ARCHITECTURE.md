@@ -113,18 +113,18 @@ issue covers only Renox's own notification and mail sends.
 |---|---|---|
 | `wl-kernel` | Enabled-module manifest, business calendar (working days, UAE public holidays, Ramadan hours), branding from settings, sequential document numbers (`INV-2026-0001`), custom fields (JSON values + a definitions table, Renox #41), cross-module traits, polymorphic `Subject` reference; legal entities and per-entity numbering, data import, global search, notes and mentions, report library, signed admin API and entitlements | all |
 | `wl-parties` | Parties: companies and people (tenants, clients, employees, patients, students), contacts, addresses, TRN, Emirates ID | all |
-| `wl-portal` | External-user login (magic link/OTP), branded portal layout, data scoped to the user's `Party` | property, accounting, logistics, clinics |
-| `wl-documents` | Documents attached to a `Subject`, document types, **expiry dates + tiered reminders** (90/30/7 days), versions, access control | property, manpower, accounting |
-| `wl-invoicing` | Invoices, credit notes, **UAE VAT 5%** (standard/zero-rated/exempt), recurring invoices, PDF, receivables ageing; FTA e-invoicing adapter in a later phase | property, manpower, … |
+| `wl-portal` | External-user login (magic link/OTP), branded portal layout, data scoped to the user's `Party` | all |
+| `wl-documents` | Documents attached to a `Subject`, document types, **expiry dates + tiered reminders** (90/30/7 days), versions, access control, SOP library with acknowledgements | all |
+| `wl-invoicing` | Invoices, credit notes, **UAE VAT 5%** (standard/zero-rated/exempt), recurring invoices, PDF, receivables ageing, supplier bills, company budget, cash-flow forecast; FTA e-invoicing adapter in a later phase | all |
 | `wl-payments` | One-off payments + payment links, reconciliation against invoices, gateway trait (Stripe and Network International N-Genius in the MVP; Telr and Checkout.com on demand), post-dated cheques (PDC) | property |
 | `wl-ticketing` | Tickets/work orders per `Subject`, **configurable status workflow**, priority, SLA, assignment, photos, comments | property (maintenance), manufacturing (QC), auto (warranty) |
-| `wl-notify` | WhatsApp Business and SMS channels (via `App::channel`), per-language templates, recipient preferences | all |
+| `wl-notify` | WhatsApp Business and SMS channels (via `App::channel`), per-language templates, recipient preferences, marketing broadcasts with consent | all |
 | `wl-attendance` | GPS + geofence check-in/out, timesheets, approval, rosters | construction, manpower |
-| `wl-hr` | Employee records and licences, visa cases, leave, payroll, WPS SIF export, final settlement | manpower, clinics, EdTech |
-| `wl-sales` | Leads, catalogue and price lists, sales orders, POS, prepaid packages, discounts, returns, credit limits | manufacturing, auto, F&B, clinics, EdTech |
+| `wl-hr` | Employee records and licences, visa cases, leave, payroll, WPS SIF export, final settlement, staff onboarding checklists | all |
+| `wl-sales` | Leads, lead sources and campaigns (cost per lead, CAC, ROAS), catalogue and price lists, sales orders, POS, prepaid packages, discounts, loyalty, returns, credit limits | all (leads and campaigns); orders and POS: manufacturing, auto, F&B, clinics, EdTech |
 | `wl-delivery` | Dispatch to drivers and runs, proof of delivery | logistics, auto, manufacturing, F&B |
 | `wl-scheduling` | Resources (doctors, tutors, service bays), slots, bookings, reminders | clinics, EdTech, auto |
-| `wl-inventory` | Items, stock per location, movements, counts, purchasing, lots, BOMs and recipes, pick-pack-dispatch, assets | construction, F&B, manufacturing, auto |
+| `wl-inventory` | Items, stock per location, movements, counts, purchasing, lots, BOMs and recipes, pick-pack-dispatch, assets, supplier scorecards | construction, F&B, manufacturing, auto |
 
 ## 5. Module contract
 
@@ -187,9 +187,9 @@ behaviour without changing the module.
 
 ## 6. Module × app matrix
 
-Replaced by [CAPABILITY-MAP.md](CAPABILITY-MAP.md): 87 shared capabilities across 14 modules,
-mapped to the ten verticals, with 139 vertical-specific capabilities. Each module is
-specified in [modules/](modules/).
+Replaced by [CAPABILITY-MAP.md](CAPABILITY-MAP.md): 106 shared capabilities across 14 client-side
+modules, mapped to the ten verticals, with 148 vertical-specific capabilities (254 distinct).
+Each module is specified in [modules/](modules/).
 
 ## 7. Repository layout
 

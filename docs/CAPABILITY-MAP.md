@@ -1,6 +1,6 @@
 # Capability Map
 
-> Status: draft · Last updated: 2026-10-15 · Built from the capability tables (§5) of the
+> Status: draft · Last updated: 2026-10-18 · Built from the capability tables (§5) of the
 > [vertical documents](verticals/). Change a vertical first, then update this map to match.
 
 The helicopter view: every capability the ten verticals need, which module provides it, and
@@ -32,17 +32,17 @@ modules once covers 106 capabilities; each vertical then adds 9–24 of its own.
 | `wl-kernel + Renox` | 18 | 10 verticals | Branding, legal entities, approvals, automations, import, search, notes, reports, API. With Renox: users, SSO, audit, state machines, webhooks, dashboards, scanning |
 | `wl-parties` | 6 | 10 verticals | Companies and people in any role, identity, relationships, consents, UBO, screening |
 | `wl-portal` | 3 | 10 verticals | External users' self-service and document exchange |
-| `wl-documents` | 4 | 10 verticals | Files, expiry reminders, generated PDFs, e-signature |
-| `wl-notify` | 3 | 10 verticals | Email, WhatsApp, SMS |
-| `wl-invoicing` | 16 | 10 verticals | Quotations, invoices, subscriptions, rate cards, usage billing, costing, receivables, supplier bills, VAT summary |
+| `wl-documents` | 4 | 10 verticals | Files, expiry reminders, generated PDFs, e-signature, SOP library with acknowledgements |
+| `wl-notify` | 3 | 10 verticals | Email, WhatsApp, SMS, marketing broadcasts with consent |
+| `wl-invoicing` | 16 | 10 verticals | Quotations, invoices, subscriptions, rate cards, usage billing, costing, receivables, supplier bills, VAT summary, company budget, cash-flow forecast |
 | `wl-payments` | 7 | 10 verticals | Payments, online payment, cheques, deposits, cash custody, expenses, bank statement matching |
-| `wl-sales` | 10 | 10 verticals | **New.** Leads, catalogue, orders, POS, packages, discounts, returns, credit limits |
+| `wl-sales` | 10 | 10 verticals | **New.** Leads, campaigns and acquisition cost, catalogue, orders, POS, packages, discounts, loyalty, returns, credit limits |
 | `wl-ticketing` | 8 | 10 verticals | Tickets, checklists, planned maintenance, recurring tasks, feedback, service contracts |
 | `wl-delivery` | 2 | 4 verticals | **New** ([§5](#5-resolved-overlaps)). Dispatch and proof of delivery |
 | `wl-scheduling` | 4 | 4 verticals | Resources, bookings, self-booking, reminders |
 | `wl-attendance` | 3 | 9 verticals | Attendance, timesheets, rosters |
-| `wl-hr` | 8 | 10 verticals | **New.** Employees, visas, leave, payroll, WPS, final settlement |
-| `wl-inventory` | 14 | 6 verticals | Items, stock, purchasing, lots, BOMs, dispatch notes, assets |
+| `wl-hr` | 8 | 10 verticals | **New.** Employees, onboarding, visas, leave, payroll, WPS, final settlement |
+| `wl-inventory` | 14 | 6 verticals | Items, stock, purchasing, supplier scorecards, lots, BOMs, dispatch notes, assets |
 
 Not in this table: [`wl-operator`](modules/wl-operator.md), our own control plane (domain `OPS`). Its capabilities serve us, not the clients.
 

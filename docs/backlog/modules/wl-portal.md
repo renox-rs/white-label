@@ -1,6 +1,6 @@
 # Epic: wl-portal — negative flows
 
-> Status: draft · Last updated: 2026-10-15 · Spec version: same commit as this file
+> Status: draft · Last updated: 2026-10-16 · Spec version: same commit as this file
 
 How the portal behaves while the party behind a portal user is blocked: it never shows a block, a
 status or a reason (no tipping off), keeps history and payments working, and refuses actions that

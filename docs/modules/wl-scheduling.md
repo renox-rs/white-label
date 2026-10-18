@@ -1,6 +1,6 @@
 # wl-scheduling
 
-> Status: draft · Last updated: 2026-10-15
+> Status: draft · Last updated: 2026-10-16
 
 ## 1. Purpose
 

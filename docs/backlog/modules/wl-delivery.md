@@ -1,6 +1,6 @@
 # Epic: wl-delivery — negative flows
 
-> Status: draft · Last updated: 2026-10-15 · Spec version: same commit as this file
+> Status: draft · Last updated: 2026-10-16 · Spec version: same commit as this file
 
 This epic builds the negative flows of the Delivery and Run machines in
 [wl-delivery](../../modules/wl-delivery.md): partial acceptance per line at proof of delivery,

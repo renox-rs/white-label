@@ -1,6 +1,6 @@
 # Epic: wl-scheduling — negative flows
 
-> Status: draft · Last updated: 2026-10-15 · Spec version: same commit as this file
+> Status: draft · Last updated: 2026-10-16 · Spec version: same commit as this file
 
 This epic builds the booking negative flows added by the review fix X-17: cancelling after
 check-in with work done, business-initiated cancellations that refund the deposit, reason codes,
