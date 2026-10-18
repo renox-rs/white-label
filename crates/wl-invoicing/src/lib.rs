@@ -1,6 +1,8 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
+pub mod ageing;
+mod ageing_pages;
 pub mod allocate;
 pub mod allocation;
 pub mod bad_debt_relief;
@@ -78,6 +80,10 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "wl-invoicing/_write_off_sheet.html",
         include_str!("../views/wl-invoicing/_write_off_sheet.html"),
+    ),
+    (
+        "wl-invoicing/ageing.html",
+        include_str!("../views/wl-invoicing/ageing.html"),
     ),
     (
         "wl-invoicing/vat_summaries.html",
@@ -231,6 +237,16 @@ impl WlInvoicing {
         self
     }
 
+    /// The upper day edges of the ageing buckets (default `[30, 60, 90]`:
+    /// 0-30, 31-60, 61-90, 90+). Sorted; zero and repeats are dropped.
+    pub fn ageing_buckets(mut self, edges: &[u32]) -> Self {
+        let mut edges: Vec<u32> = edges.iter().copied().filter(|e| *e > 0).collect();
+        edges.sort_unstable();
+        edges.dedup();
+        self.config.ageing_buckets = edges;
+        self
+    }
+
     /// The module's settings.
     pub fn config(&self) -> &InvoicingConfig {
         &self.config
@@ -243,7 +259,9 @@ impl Module for WlInvoicing {
     }
 
     fn routes(&self) -> Routes {
-        pages::routes().merge(vat_pages::routes())
+        pages::routes()
+            .merge(vat_pages::routes())
+            .merge(ageing_pages::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -265,7 +283,8 @@ impl Module for WlInvoicing {
             .view_data::<pages::IndexPage>()
             .view_data::<pages::ShowPage>()
             .view_data::<vat_pages::IndexPage>()
-            .view_data::<vat_pages::ShowPage>();
+            .view_data::<vat_pages::ShowPage>()
+            .view_data::<ageing_pages::IndexPage>();
         // The customer write-off notice (§10), sent from the queue.
         app.job::<SendWriteOffNotice>();
         app.templates(|env| {
@@ -309,6 +328,15 @@ impl Module for WlInvoicing {
                 .group("nav.app")
                 .order(41)
                 .permission(permissions::VAT_VIEW),
+        );
+        // The receivables ageing (`nav.ageing`).
+        app.nav(
+            "app",
+            NavLink::route("wl_invoicing.ageing", "nav.ageing")
+                .icon("clock")
+                .group("nav.app")
+                .order(42)
+                .permission(permissions::RECEIVABLES_VIEW),
         );
         // `FIN.RUL.02`: the daily `invoicing:mark-overdue` task.
         overdue::schedule(app);

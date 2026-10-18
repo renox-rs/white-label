@@ -103,6 +103,9 @@ pub struct InvoicingConfig {
     pub portal_disputes: bool,
     /// Days chasing stays paused after an upheld dispute.
     pub dispute_grace_days: u32,
+    /// The upper day edges of the ageing buckets, ascending: `[30, 60, 90]`
+    /// gives 0-30, 31-60, 61-90 and 90+.
+    pub ageing_buckets: Vec<u32>,
 }
 
 impl Default for InvoicingConfig {
@@ -131,6 +134,7 @@ impl Default for InvoicingConfig {
             relief_notify_role: "accountant".to_owned(),
             portal_disputes: false,
             dispute_grace_days: 7,
+            ageing_buckets: vec![30, 60, 90],
         }
     }
 }
@@ -211,6 +215,7 @@ mod tests {
         assert_eq!(config.relief_notify_role, "accountant");
         assert!(!config.portal_disputes);
         assert_eq!(config.dispute_grace_days, 7);
+        assert_eq!(config.ageing_buckets, [30, 60, 90]);
     }
 
     #[test]
