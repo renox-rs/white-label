@@ -40,7 +40,8 @@ pub use config::{ClientConfig, ConfigError};
 pub use documents::{
     BlockCondition, BlockEntry, BlockFailure, BlockMode, BlockRefusal, BlockSubjects, CheckOutcome,
     DocumentAccepted, DocumentGuard, DocumentId, DocumentRejected, DocumentSuperseded,
-    DocumentUploaded, InvalidReason, NoDocuments, OverrideMode, PendingRenewal, Validity,
+    DocumentUploaded, FlagFailure, FlagReason, InvalidReason, NoDocuments, OverrideMode,
+    PendingRenewal, RecordFlag, Validity,
 };
 pub use entities::{IssuerSnapshot, LegalEntity, ScopeEntity};
 pub use invoicing::{

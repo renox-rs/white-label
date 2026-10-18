@@ -271,12 +271,105 @@ impl fmt::Display for BlockRefusal {
 
 impl std::error::Error for BlockRefusal {}
 
-/// What an allowed check leaves to do after the transition. Flag-mode
-/// entries (#46) add the flags to write here; build it with
-/// `CheckOutcome::default()`.
+/// Why a flagged document was not valid: the reasons of
+/// [`InvalidReason`], stored on a [`RecordFlag`].
+#[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum FlagReason {
+    /// Its expiry date was before the date.
+    #[default]
+    Expired,
+    /// There was no document of the kind.
+    Missing,
+    /// The only document was rejected.
+    Rejected,
+    /// The only document still waited for review.
+    PendingReview,
+}
+
+impl From<InvalidReason> for FlagReason {
+    fn from(reason: InvalidReason) -> Self {
+        match reason {
+            InvalidReason::Expired => FlagReason::Expired,
+            InvalidReason::Missing => FlagReason::Missing,
+            InvalidReason::Rejected => FlagReason::Rejected,
+            InvalidReason::PendingReview => FlagReason::PendingReview,
+        }
+    }
+}
+
+/// One failing document of an entry in flag mode: the transition still
+/// runs and the record gets a flag.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FlagFailure {
+    /// The `flag` mode entry that guards the transition.
+    pub entry: BlockEntry,
+    /// The document subject that fails, e.g. the worker.
+    pub subject: Subject,
+    /// Why it fails.
+    pub reason: FlagReason,
+    /// The expired, rejected or pending document; `None` when missing.
+    pub document: Option<DocumentId>,
+    /// The expiry date of an expired document.
+    pub expired_on: Option<NaiveDate>,
+    /// The business date the document was judged on.
+    pub on_date: NaiveDate,
+    /// The flag's label, e.g. "Work permit expired 2026-11-30".
+    pub label: String,
+}
+
+/// What an allowed check leaves to do after the transition: the flags to
+/// write with [`DocumentGuard::record_flags`] once it ran (see
+/// [`guarded_transition`]). Build it with `CheckOutcome::default()`.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[non_exhaustive]
-pub struct CheckOutcome {}
+pub struct CheckOutcome {
+    /// One per failing flag-mode document; empty when nothing fails.
+    pub flags: Vec<FlagFailure>,
+}
+
+/// A flag on a record: permanent, it is reviewed but never removed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RecordFlag {
+    /// The flag's id.
+    pub id: i64,
+    /// The flagged record's type: the entity part of `guarded`.
+    pub record_type: String,
+    /// The flagged record's id.
+    pub record_id: i64,
+    /// The guarded transition, `<entity>.<transition>`.
+    pub guarded: String,
+    /// The document kind's key.
+    pub kind: String,
+    /// The document subject that failed.
+    pub subject: Subject,
+    /// The expired, rejected or pending document; `None` when missing.
+    pub document: Option<DocumentId>,
+    /// Why the document was not valid.
+    pub reason: FlagReason,
+    /// The expiry date of an expired document.
+    pub expires_on: Option<NaiveDate>,
+    /// The business date it was judged on.
+    pub on_date: NaiveDate,
+    /// The label, e.g. "Work permit expired 2026-11-30".
+    pub label: String,
+    /// When the flag was written.
+    pub created_at: DateTime,
+    /// When it was reviewed; `None` while open.
+    pub reviewed_at: Option<DateTime>,
+    /// The reviewer's user id.
+    pub reviewed_by: Option<i64>,
+    /// The reviewer's name.
+    pub reviewer_name: Option<String>,
+    /// The reviewer's note.
+    pub review_note: Option<String>,
+}
+
+impl RecordFlag {
+    /// Whether a reviewer has marked it reviewed.
+    pub fn is_reviewed(&self) -> bool {
+        self.reviewed_at.is_some()
+    }
+}
 
 /// The future a [`DocumentGuard`] or [`BlockSubjects`] method returns.
 pub type DocumentFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
@@ -316,6 +409,79 @@ pub trait DocumentGuard: Send + Sync + 'static {
         record_id: i64,
         on_date: NaiveDate,
     ) -> DocumentFuture<'a, std::result::Result<CheckOutcome, BlockRefusal>>;
+
+    /// Writes `flags` on record `record_id` of the transition `guarded`,
+    /// after the transition ran. A flag that repeats an unreviewed one
+    /// (same entry, kind, subject and reason) adds no row. Returns the
+    /// rows written.
+    fn record_flags<'a>(
+        &'a self,
+        db: &'a Db,
+        guarded: &'a str,
+        record_id: i64,
+        flags: &'a [FlagFailure],
+    ) -> DocumentFuture<'a, Vec<RecordFlag>>;
+
+    /// Every flag of a record, reviewed or not, oldest first.
+    fn flags_for<'a>(
+        &'a self,
+        db: &'a Db,
+        record_type: &'a str,
+        record_id: i64,
+    ) -> DocumentFuture<'a, Vec<RecordFlag>>;
+
+    /// The number of unreviewed flags per record id, for list badges. A
+    /// provided guard has an entry for every id in `ids`; an id missing
+    /// from the map has none.
+    fn open_flag_counts<'a>(
+        &'a self,
+        db: &'a Db,
+        record_type: &'a str,
+        ids: &'a [i64],
+    ) -> DocumentFuture<'a, BTreeMap<i64, u64>>;
+
+    /// Marks flag `flag_id` reviewed by user `reviewer` with a required
+    /// `note`. A reviewed flag cannot be reviewed again, and the flag is
+    /// never removed.
+    fn review_flag<'a>(
+        &'a self,
+        db: &'a Db,
+        flag_id: i64,
+        reviewer: i64,
+        note: &'a str,
+    ) -> DocumentFuture<'a, RecordFlag>;
+}
+
+/// Runs a guarded transition: [`DocumentGuard::check`], then `run` (the
+/// module's `record.transition(..)` call), then
+/// [`DocumentGuard::record_flags`] for the flag-mode failures.
+///
+/// A [`BlockRefusal`] is answered with [`BlockRefusal::into_error`] (422)
+/// and `run` does not run; if `run` fails, no flag is written. Without
+/// `wl-documents` it just runs `run`.
+pub async fn guarded_transition<T, F, Fut>(
+    state: &AppState,
+    guarded: &str,
+    record_id: i64,
+    on_date: NaiveDate,
+    run: F,
+) -> Result<T>
+where
+    F: FnOnce() -> Fut,
+    Fut: Future<Output = Result<T>>,
+{
+    let guard = guard(state);
+    let outcome = guard
+        .check(state, guarded, record_id, on_date)
+        .await?
+        .map_err(BlockRefusal::into_error)?;
+    let done = run().await?;
+    if !outcome.flags.is_empty() {
+        guard
+            .record_flags(&state.db, guarded, record_id, &outcome.flags)
+            .await?;
+    }
+    Ok(done)
 }
 
 /// The guard when the `documents` module is off: nothing is guarded and
@@ -355,6 +521,45 @@ impl DocumentGuard for NoDocuments {
         _on_date: NaiveDate,
     ) -> DocumentFuture<'a, std::result::Result<CheckOutcome, BlockRefusal>> {
         Box::pin(async { Ok(Ok(CheckOutcome::default())) })
+    }
+
+    fn record_flags<'a>(
+        &'a self,
+        _db: &'a Db,
+        _guarded: &'a str,
+        _record_id: i64,
+        _flags: &'a [FlagFailure],
+    ) -> DocumentFuture<'a, Vec<RecordFlag>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
+    fn flags_for<'a>(
+        &'a self,
+        _db: &'a Db,
+        _record_type: &'a str,
+        _record_id: i64,
+    ) -> DocumentFuture<'a, Vec<RecordFlag>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
+    fn open_flag_counts<'a>(
+        &'a self,
+        _db: &'a Db,
+        _record_type: &'a str,
+        _ids: &'a [i64],
+    ) -> DocumentFuture<'a, BTreeMap<i64, u64>> {
+        Box::pin(async { Ok(BTreeMap::new()) })
+    }
+
+    fn review_flag<'a>(
+        &'a self,
+        _db: &'a Db,
+        _flag_id: i64,
+        _reviewer: i64,
+        _note: &'a str,
+    ) -> DocumentFuture<'a, RecordFlag> {
+        // Nothing is ever flagged without the module.
+        Box::pin(async { Err(Error::NotFound) })
     }
 }
 
@@ -558,6 +763,96 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(outcome, Ok(CheckOutcome::default()));
+        assert!(outcome.unwrap().flags.is_empty());
+    }
+
+    fn flag_failure() -> FlagFailure {
+        FlagFailure {
+            entry: BlockEntry {
+                guarded: "attendance_record.accept".into(),
+                mode: BlockMode::Flag,
+                ..visa_entry()
+            },
+            subject: Subject::new("hr.employee", 1),
+            reason: FlagReason::Expired,
+            document: Some(DocumentId(3)),
+            expired_on: Some(date("2026-11-30")),
+            on_date: date("2026-12-02"),
+            label: "Work permit expired 2026-11-30".into(),
+        }
+    }
+
+    #[renox::test]
+    async fn without_documents_nothing_is_flagged() {
+        let app = TestApp::new(App::new()).await;
+        let guard = guard(app.state());
+        let written = guard
+            .record_flags(app.db(), "attendance_record.accept", 5, &[flag_failure()])
+            .await
+            .unwrap();
+        assert!(written.is_empty());
+        assert!(
+            guard
+                .flags_for(app.db(), "attendance_record", 5)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            guard
+                .open_flag_counts(app.db(), "attendance_record", &[5, 6])
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        assert!(matches!(
+            guard.review_flag(app.db(), 1, 2, "Seen").await,
+            Err(Error::NotFound)
+        ));
+    }
+
+    #[renox::test]
+    async fn without_documents_a_guarded_transition_just_runs() {
+        let app = TestApp::new(App::new()).await;
+        let ran = std::sync::atomic::AtomicBool::new(false);
+        let value = guarded_transition(
+            app.state(),
+            "attendance_record.accept",
+            5,
+            date("2026-12-02"),
+            || async {
+                ran.store(true, std::sync::atomic::Ordering::SeqCst);
+                Ok(42)
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(value, 42);
+        assert!(ran.load(std::sync::atomic::Ordering::SeqCst));
+
+        // The closure's error comes back as it is.
+        let failed: Result<()> = guarded_transition(
+            app.state(),
+            "attendance_record.accept",
+            5,
+            date("2026-12-02"),
+            || async { Err(Error::NotFound) },
+        )
+        .await;
+        assert!(matches!(failed, Err(Error::NotFound)));
+    }
+
+    #[test]
+    fn a_flag_reason_follows_the_invalid_reason() {
+        assert_eq!(
+            FlagReason::from(InvalidReason::PendingReview),
+            FlagReason::PendingReview
+        );
+        assert_eq!(FlagReason::PendingReview.as_str(), "pending_review");
+        assert_eq!(
+            FlagReason::from(InvalidReason::Missing),
+            FlagReason::Missing
+        );
     }
 
     #[test]

@@ -17,6 +17,7 @@
 //!   top of the review queue (`review_priority_at`). An entry whose
 //!   transition has no provider is an error, never a *yes*.
 
+use std::collections::BTreeMap;
 use std::fmt::Display;
 
 use renox::chrono::NaiveDate;
@@ -25,8 +26,8 @@ use renox::prelude::*;
 use wl_kernel::Subject;
 use wl_kernel::documents::{
     BlockEntry, BlockFailure, BlockMode, BlockRefusal, CheckOutcome, DocumentFuture, DocumentGuard,
-    DocumentId, InvalidReason, OverrideMode, PendingRenewal, Validity, block_subjects, dubai_date,
-    today,
+    DocumentId, FlagFailure, InvalidReason, OverrideMode, PendingRenewal, RecordFlag, Validity,
+    block_subjects, dubai_date, today,
 };
 
 use crate::documents::{Document, DocumentStatus};
@@ -64,6 +65,46 @@ impl DocumentGuard for DocumentsGuard {
         on_date: NaiveDate,
     ) -> DocumentFuture<'a, std::result::Result<CheckOutcome, BlockRefusal>> {
         Box::pin(check(state, guarded, record_id, on_date))
+    }
+
+    // Flag mode (#46): the flags table and the real methods come with
+    // parts 2 and 3. Until then nothing is flagged, as in `NoDocuments`.
+    fn record_flags<'a>(
+        &'a self,
+        _db: &'a Db,
+        _guarded: &'a str,
+        _record_id: i64,
+        _flags: &'a [FlagFailure],
+    ) -> DocumentFuture<'a, Vec<RecordFlag>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
+    fn flags_for<'a>(
+        &'a self,
+        _db: &'a Db,
+        _record_type: &'a str,
+        _record_id: i64,
+    ) -> DocumentFuture<'a, Vec<RecordFlag>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
+    fn open_flag_counts<'a>(
+        &'a self,
+        _db: &'a Db,
+        _record_type: &'a str,
+        _ids: &'a [i64],
+    ) -> DocumentFuture<'a, BTreeMap<i64, u64>> {
+        Box::pin(async { Ok(BTreeMap::new()) })
+    }
+
+    fn review_flag<'a>(
+        &'a self,
+        _db: &'a Db,
+        _flag_id: i64,
+        _reviewer: i64,
+        _note: &'a str,
+    ) -> DocumentFuture<'a, RecordFlag> {
+        Box::pin(async { Err(Error::NotFound) })
     }
 }
 

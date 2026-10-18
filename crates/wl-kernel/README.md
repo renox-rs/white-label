@@ -111,6 +111,18 @@ travel move it; a document is valid through its expiry date. `wl-documents` prov
 and emits `DocumentUploaded`, `DocumentAccepted`, `DocumentRejected` and
 `DocumentSuperseded`; when `documents` is off, `NoDocuments` guards nothing and answers valid.
 
+An entry in `flag` mode does not refuse: `check` checks the `block` entries first (a failing
+one refuses and wins), then returns `CheckOutcome { flags }` with one `FlagFailure` per
+failing flag-mode document. A module calls
+`documents::guarded_transition(&state, "attendance_record.accept", id, on_date, || async { .. })`
+instead of `check`: it runs `check`, the closure (the `record.transition(..)` call) and then
+`record_flags`, so a refusal runs nothing and a failing closure writes no flag. `on_date` is
+the record's business date. `flags_for(db, record_type, id)` lists a record's `RecordFlag`s
+(label, reason, dates, review state, reviewer and note), `open_flag_counts(db, record_type,
+&ids)` counts the unreviewed ones for list badges, and `review_flag(db, id, reviewer, note)`
+marks one reviewed (a note is required, once only; a flag is never removed). Without
+`wl-documents` the closure just runs, nothing is flagged and the lists are empty.
+
 Working time comes from one calendar: `wl_kernel::calendar::calendar(&state)` gives the
 client's `BusinessCalendar` (the default one with no holidays when the kernel is not
 mounted). Asia/Dubai is UTC+04:00 all year; the weekend is Saturday and Sunday, a working
