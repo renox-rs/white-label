@@ -16,6 +16,9 @@
 //! `superseded`. What follows the commit (the e-mail to the owner, telling
 //! the preparer of a return) is in [`crate::statement_events`].
 //!
+//! A revision also clears the dispute flag: the open disputes of the old
+//! statement are cleared as *revised* ([`crate::statement_dispute`]).
+//!
 //! The states `settled` and the settling transitions come with BL-PRP-20.
 
 use renox::db::Transaction;
@@ -25,6 +28,7 @@ use wl_kernel::documents::today;
 
 use crate::permissions;
 use crate::statement::{OwnerStatement, StatementLine, StatementStatus};
+use crate::statement_dispute::{DisputeOutcome, DisputeStatus, StatementDispute};
 use crate::texts::english;
 
 /// `approve`: a property manager other than the preparer.
@@ -100,12 +104,28 @@ async fn revise_effects(
         };
         copy.insert(&mut *tx).await?;
     }
+    // A revision clears the dispute flag: the disputes are answered by it.
+    StatementDispute::query()
+        .where_(StatementDispute::STATEMENT_ID.eq(statement.id))
+        .where_(StatementDispute::STATUS.eq(DisputeStatus::Open))
+        .update(
+            &mut *tx,
+            &[
+                ("status", &DisputeStatus::Cleared),
+                ("outcome", &Some(DisputeOutcome::Revised)),
+                ("cleared_by", &by),
+                ("cleared_on", &Some(today())),
+                ("updated_at", &renox::db::now()),
+            ],
+        )
+        .await?;
     OwnerStatement::query()
         .where_(OwnerStatement::ID.eq(statement.id))
         .update(
             &mut *tx,
             &[
                 ("revise_reason", &Some(reason.to_owned())),
+                ("disputed", &false),
                 ("updated_at", &renox::db::now()),
             ],
         )

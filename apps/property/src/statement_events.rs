@@ -59,7 +59,10 @@ pub async fn after(state: &AppState, event: &Transitioned<OwnerStatement>) -> Re
             let text = lines_text(&state.db, &found).await?;
             notices::statement_published(state, &found, &text).await
         }
-        REVISE => notices::statement_revised(state, &found, found.revision + 1).await,
+        REVISE => {
+            notices::statement_revised(state, &found, found.revision + 1).await?;
+            crate::statement_dispute::after_revise(state, &found).await
+        }
         _ => Ok(()),
     }
 }

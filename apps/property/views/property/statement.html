@@ -6,6 +6,7 @@
   <rx-stack>
     <rx-page-header :title="statement.number" :subtitle="statement.owner ~ ' · ' ~ statement.period" :back="route('property.statements')" :back-label="tx['statements.title']"
                     :badge="status" :badge-kind="status_kind">
+      <rx-badge rx-if="disputed" kind="error" :text="tx['disputes.flag']"/>
       <rx-confirm rx-for="action in plain_actions" :id="'statement-' ~ statement.id ~ '-' ~ action.name" :label="action.label"
                   :action="'/property/statements/' ~ statement.id ~ '/transitions/' ~ action.name" method="POST"
                   :title="action.label" :message="statement.number" :confirm-label="action.label" :cancel-label="tx['button_cancel']"/>
@@ -14,6 +15,24 @@
                        :title="action.label" :description="statement.number" :submit-label="action.label">
         <rx-textarea name="reason" :label="tx['statements.reason']" :id="'statement-reason-' ~ statement.id ~ '-' ~ action.name" required/>
       </rx-action-sheet>
+      <template rx-if="can_dispute">
+        <rx-action-sheet :id="'dispute-' ~ statement.id" :label="tx['disputes.open']" :action="route('property.statement_dispute_open', statement.id)"
+                         :title="tx['disputes.open']" :description="tx['disputes.open_description']" :submit-label="tx['disputes.open']" icon="flag">
+          <rx-select name="line" :label="tx['disputes.line']" :options="dispute_lines" :selected="''" :id="'dispute-line-' ~ statement.id"/>
+          <rx-textarea name="comment" :label="tx['disputes.comment']" :id="'dispute-comment-' ~ statement.id" required/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_clear">
+        <rx-action-sheet :id="'dispute-clear-' ~ statement.id" :label="tx['disputes.clear']" :action="route('property.statement_dispute_clear', statement.id)"
+                         :title="tx['disputes.clear']" :description="tx['disputes.clear_description']" :submit-label="tx['disputes.clear']" icon="flag-off">
+          <rx-select name="dispute" :label="tx['disputes.dispute']" :options="open_disputes" :id="'dispute-clear-dispute-' ~ statement.id"/>
+          <rx-select name="outcome" :label="tx['disputes.outcome']" :options="[['upheld', tx['disputes.outcome_upheld']], ['adjustment', tx['disputes.outcome_adjusted']], ['reallocation', tx['disputes.outcome_reallocated']]]" :selected="'upheld'" :id="'dispute-clear-outcome-' ~ statement.id"/>
+          <rx-input name="amount" :label="tx['disputes.amount']" :id="'dispute-clear-amount-' ~ statement.id"/>
+          <rx-select name="direction" :label="tx['disputes.direction']" :options="[['credit', tx['disputes.credit']], ['debit', tx['disputes.debit']]]" :selected="'credit'" :id="'dispute-clear-direction-' ~ statement.id"/>
+          <rx-input name="other_agreement" :label="tx['disputes.other_agreement']" :id="'dispute-clear-other-' ~ statement.id"/>
+          <rx-textarea name="note" :label="tx['disputes.note']" :id="'dispute-clear-note-' ~ statement.id"/>
+        </rx-action-sheet>
+      </template>
       <template rx-if="can_edit">
         <rx-action-sheet :id="'add-line-' ~ statement.id" :label="tx['statements.add_line']" :action="route('property.statement_line_add', statement.id)"
                          :title="tx['statements.add_line']" :description="tx['statements.add_line_description']" :submit-label="tx['statements.add_line']" icon="plus">
@@ -46,6 +65,15 @@
         <rx-entry :label="tx['statements.revise_reason']" :value="statement.revise_reason" :placeholder="tx['none']"/>
       </rx-infolist>
     </rx-card>
+    <template rx-if="disputes">
+      <rx-table :rows="disputes" as="dispute" :key="dispute.opened_on ~ dispute.description" :caption="tx['disputes.title']" card>
+        <rx-column :label="tx['disputes.dispute']">{{ dispute.description }}</rx-column>
+        <rx-column :label="tx['disputes.comment']" hide-narrow>{{ dispute.comment }}</rx-column>
+        <rx-column :label="tx['disputes.status']"><rx-badge :kind="dispute.status_kind" :text="dispute.status"/></rx-column>
+        <rx-column :label="tx['legal.ticket']" hide-narrow>{{ dispute.ticket }}</rx-column>
+        <rx-column :label="tx['legal.opened_on']" hide-narrow>{{ dispute.opened_on }}</rx-column>
+      </rx-table>
+    </template>
     <rx-table :rows="lines" as="line" :key="line.description ~ line.amount ~ line.source" :caption="tx['statements.lines']" card>
       <rx-column :label="tx['statements.line_kind']">{{ line.kind }}</rx-column>
       <rx-column :label="tx['statements.line_description']">{{ line.description }}</rx-column>

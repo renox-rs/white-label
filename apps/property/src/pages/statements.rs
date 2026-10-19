@@ -7,6 +7,8 @@
 //! | `GET /property/statements/{id}` | `property.statement` | `owner_statements.prepare` or `.approve` |
 //! | `POST /property/statements/{id}/lines` | `property.statement_line_add` | `owner_statements.prepare` |
 //! | `POST /property/statements/{id}/lines/remove` | `property.statement_line_remove` | `owner_statements.prepare` |
+//! | `POST /property/statements/{id}/disputes` | `property.statement_dispute_open` | `owner_statements.prepare` |
+//! | `POST /property/statements/{id}/disputes/clear` | `property.statement_dispute_clear` | `owner_statements.prepare` |
 //! | `POST /property/statements/{id}/transitions/{name}` | `property.statement_transitions.*` | the transition's permission |
 //!
 //! The transitions are the machine's ([`crate::statement_machine`]): `approve`,
@@ -24,6 +26,7 @@ use crate::money_text;
 use crate::parse::parse_aed;
 use crate::permissions;
 use crate::statement::{self, LineKind, OwnerStatement, StatementLine, StatementStatus};
+use crate::statement_dispute::{self, Clearing, StatementDispute};
 use crate::texts;
 
 /// The routes of the pages.
@@ -37,6 +40,10 @@ pub fn routes() -> Routes {
         .name("property.statement_line_add")
         .post("/property/statements/{id}/lines/remove", remove_line)
         .name("property.statement_line_remove")
+        .post("/property/statements/{id}/disputes", open_dispute)
+        .name("property.statement_dispute_open")
+        .post("/property/statements/{id}/disputes/clear", clear_dispute)
+        .name("property.statement_dispute_clear")
         .group(
             "/property/statements",
             "property.statement_transitions.",
@@ -147,6 +154,23 @@ pub struct LineRow {
     pub source: String,
 }
 
+/// A dispute of the statement.
+#[derive(Serialize, Debug, Clone)]
+pub struct DisputeRow {
+    /// What is disputed.
+    pub description: String,
+    /// The owner's words.
+    pub comment: String,
+    /// Open, or the outcome.
+    pub status: String,
+    /// The badge kind of the status.
+    pub status_kind: &'static str,
+    /// The ticket.
+    pub ticket: String,
+    /// The day it was recorded.
+    pub opened_on: String,
+}
+
 /// A transition offered on the statement.
 #[derive(Serialize, Debug, Clone)]
 pub struct ActionView {
@@ -206,6 +230,12 @@ pub(crate) struct ShowPage {
     plain_actions: Vec<ActionView>,
     reason_actions: Vec<ActionView>,
     can_edit: bool,
+    disputed: bool,
+    disputes: Vec<DisputeRow>,
+    can_dispute: bool,
+    can_clear: bool,
+    dispute_lines: Vec<[String; 2]>,
+    open_disputes: Vec<[String; 2]>,
 }
 
 /// `GET /property/statements/{id}`.
@@ -252,6 +282,34 @@ async fn show(
             plain_actions.push(view);
         }
     }
+    let disputes: Vec<StatementDispute> = StatementDispute::of_statement(&state.db, found.id).await?;
+    let dispute_rows = disputes
+        .iter()
+        .map(|d| DisputeRow {
+            description: d.description.clone(),
+            comment: d.comment.clone(),
+            status: match d.outcome {
+                Some(outcome) if !d.is_open() => {
+                    text(&lang, &format!("disputes.outcome_{}", outcome.as_str()))
+                }
+                _ => text(&lang, "disputes.status_open"),
+            },
+            status_kind: if d.is_open() { "warning" } else { "info" },
+            ticket: d.ticket_number.clone().unwrap_or_default(),
+            opened_on: d.opened_on.to_string(),
+        })
+        .collect();
+    let open_disputes = disputes
+        .iter()
+        .filter(|d| d.is_open())
+        .map(|d| [d.id.to_string(), d.description.clone()])
+        .collect();
+    let mut dispute_lines = vec![[String::new(), text(&lang, "disputes.whole")]];
+    dispute_lines.extend(
+        lines
+            .iter()
+            .map(|l| [l.id.to_string(), format!("{} {}", l.description, signed(l.amount))]),
+    );
     let prepared_by = match found.prepared_by {
         Some(id) => user_name(&state.db, id).await,
         None => text(&lang, "statements.system"),
@@ -289,6 +347,13 @@ async fn show(
         reason_actions,
         can_edit: found.status == StatementStatus::Draft
             && user.has_permission(permissions::OWNER_STATEMENTS_PREPARE),
+        disputed: found.disputed,
+        can_dispute: statement_dispute::disputable(found.status)
+            && user.has_permission(permissions::OWNER_STATEMENTS_PREPARE),
+        can_clear: user.has_permission(permissions::OWNER_STATEMENTS_PREPARE) && found.disputed,
+        disputes: dispute_rows,
+        dispute_lines,
+        open_disputes,
     }))
 }
 
@@ -355,4 +420,101 @@ async fn remove_line(
     })?;
     statement::remove_line(&state, &user, id, line).await?;
     Ok((Toast::success(text(&lang, "statements.line_removed")), renox::HxRefresh).into_response())
+}
+
+/// The form that records a dispute.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct DisputeForm {
+    /// The line, blank for the statement as a whole.
+    #[serde(default)]
+    pub line: String,
+    /// The owner's words.
+    #[serde(default)]
+    pub comment: String,
+}
+
+/// `POST /property/statements/{id}/disputes`.
+async fn open_dispute(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<DisputeForm>,
+) -> Result<Response> {
+    let line = if form.line.trim().is_empty() {
+        None
+    } else {
+        Some(form.line.trim().parse::<i64>().map_err(|_| {
+            Error::Status(StatusCode::UNPROCESSABLE_ENTITY, "line: 1, 2, 3 ...".to_owned())
+        })?)
+    };
+    statement_dispute::open(&state, &user, id, line, &form.comment).await?;
+    Ok((Toast::success(text(&lang, "disputes.opened")), renox::HxRefresh).into_response())
+}
+
+/// The form that clears a dispute.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct ClearDisputeForm {
+    /// The dispute.
+    #[serde(default)]
+    pub dispute: String,
+    /// `upheld`, `adjustment` or `reallocation`.
+    #[serde(default)]
+    pub outcome: String,
+    /// The amount of the adjustment, in dirhams.
+    #[serde(default)]
+    pub amount: String,
+    /// `credit` or `debit`.
+    #[serde(default)]
+    pub direction: String,
+    /// The other owner's agreement.
+    #[serde(default)]
+    pub other_agreement: String,
+    /// A note on the outcome.
+    #[serde(default)]
+    pub note: String,
+}
+
+/// `POST /property/statements/{id}/disputes/clear`.
+async fn clear_dispute(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<ClearDisputeForm>,
+) -> Result<Response> {
+    let number = |value: &str, field: &str| -> Result<i64> {
+        value.trim().parse::<i64>().map_err(|_| {
+            Error::Status(StatusCode::UNPROCESSABLE_ENTITY, format!("{field}: 1, 2, 3 ..."))
+        })
+    };
+    let dispute_id = number(&form.dispute, "dispute")?;
+    let found = StatementDispute::find(&state.db, dispute_id)
+        .await?
+        .filter(|d| d.statement_id == id)
+        .ok_or(Error::NotFound)?;
+    let signed_amount = || -> Result<i64> {
+        let amount = parse_aed(&form.amount).ok_or_else(|| {
+            Error::Status(StatusCode::UNPROCESSABLE_ENTITY, "amount: AED 0.00".to_owned())
+        })?;
+        Ok(if form.direction.trim() == "debit" {
+            -amount
+        } else {
+            amount
+        })
+    };
+    let clearing = match form.outcome.trim() {
+        "upheld" => Clearing::Upheld,
+        "adjustment" => Clearing::Adjustment {
+            amount: signed_amount()?,
+        },
+        "reallocation" => Clearing::Reallocation {
+            amount: signed_amount()?,
+            other_agreement: number(&form.other_agreement, "other_agreement")?,
+        },
+        _ => return Err(Error::BadRequest("outcome".to_owned())),
+    };
+    let note = Some(form.note.clone()).filter(|n| !n.trim().is_empty());
+    statement_dispute::clear(&state, &user, found.id, clearing, note).await?;
+    Ok((Toast::success(text(&lang, "disputes.cleared")), renox::HxRefresh).into_response())
 }

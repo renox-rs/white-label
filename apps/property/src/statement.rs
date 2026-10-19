@@ -178,6 +178,9 @@ pub struct OwnerStatement {
     pub published_by: Option<i64>,
     /// Why it was revised.
     pub revise_reason: Option<String>,
+    /// The dispute flag (not a state): an owner disputes a line of a published
+    /// or settled statement (BL-PRP-21). While it is set no payout is made.
+    pub disputed: bool,
     /// The payout recorded for it, in fils (BL-PRP-20).
     pub payout_amount: Option<i64>,
     /// The outgoing payment of the payout.
@@ -213,7 +216,8 @@ pub struct StatementLine {
     pub amount: i64,
     /// What it comes from (`invoicing.invoice:7`), so it is made once.
     pub source: Option<String>,
-    /// The line of the other owner's statement a reallocation is linked to.
+    /// The line this one is linked to: the line an adjustment corrects, or the
+    /// line of the other owner's statement a reallocation is linked to.
     pub linked_to: Option<i64>,
     /// The day it happened.
     pub line_on: NaiveDate,
@@ -461,6 +465,8 @@ pub struct PostLine {
     pub source: Option<String>,
     /// The day it happened.
     pub line_on: NaiveDate,
+    /// The line it corrects or is linked to.
+    pub linked_to: Option<i64>,
     /// The user who made it, if any.
     pub by: Option<i64>,
 }
@@ -474,8 +480,15 @@ impl PostLine {
             amount,
             source: None,
             line_on,
+            linked_to: None,
             by: None,
         }
+    }
+
+    /// Linked to the line `id`: the line an adjustment corrects.
+    pub fn linked_to(mut self, id: Option<i64>) -> Self {
+        self.linked_to = id;
+        self
     }
 
     /// Made once for `source`.
@@ -527,6 +540,7 @@ pub async fn post_line(db: &Db, agreement_id: i64, line: PostLine) -> Result<Sta
             description: line.description,
             amount: line.amount,
             source: line.source,
+            linked_to: line.linked_to,
             line_on: line.line_on,
             created_by: line.by,
             ..Default::default()

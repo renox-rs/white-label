@@ -32,6 +32,7 @@ pub mod permissions;
 pub mod renew;
 pub mod renewal;
 pub mod statement;
+pub mod statement_dispute;
 pub mod statement_events;
 pub mod statement_machine;
 mod tasks;
@@ -153,6 +154,7 @@ impl Module for Property {
             .model::<agreement::AgreementUnit>()
             .model::<statement::OwnerStatement>()
             .model::<statement::StatementLine>()
+            .model::<statement_dispute::StatementDispute>()
             .model::<write_off::WriteOffConsent>();
         unit_machine::register();
         lease_machine::register();

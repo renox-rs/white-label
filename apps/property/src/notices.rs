@@ -86,6 +86,9 @@ pub const OWNER_STATEMENT: &str = "property.owner_statement";
 /// The owner is told that a corrected statement follows a revision.
 pub const OWNER_STATEMENT_REVISED: &str = "property.owner_statement_revised";
 
+/// The owner is told how the dispute of a statement line was answered.
+pub const OWNER_STATEMENT_DISPUTE_OUTCOME: &str = "property.owner_statement_dispute_outcome";
+
 /// An e-mail reminder type of the vertical with English texts.
 fn english_reminder(key: &str, texts: &str) -> NotificationTypeDef {
     let subject = english(&format!("property.notices.{texts}_subject"), &[]);
@@ -146,6 +149,11 @@ pub(crate) fn register_types() {
     notify::register_type(tenant_message(
         OWNER_STATEMENT_REVISED,
         "owner_statement_revised",
+        false,
+    ));
+    notify::register_type(tenant_message(
+        OWNER_STATEMENT_DISPUTE_OUTCOME,
+        "owner_statement_dispute_outcome",
         false,
     ));
 }
@@ -507,6 +515,25 @@ pub async fn statement_revised(
             "statement": statement.number(),
             "period": statement_period(statement),
             "revision": revision,
+        }));
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// Tells the owner of `statement` how the dispute of one of its lines was
+/// answered: `outcome` in words.
+pub async fn dispute_outcome(
+    state: &AppState,
+    statement: &crate::statement::OwnerStatement,
+    outcome: &str,
+) -> Result {
+    let request = NotifyRequest::new(OWNER_STATEMENT_DISPUTE_OUTCOME, statement.subject())
+        .subject_label(&statement.number())
+        .to_party(wl_kernel::PartyId(statement.owner_party_id))
+        .data(json!({
+            "statement": statement.number(),
+            "period": statement_period(statement),
+            "outcome": outcome,
         }));
     notify::notifier(state).notify(state, request).await?;
     Ok(())
