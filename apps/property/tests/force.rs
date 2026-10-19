@@ -52,9 +52,9 @@ impl Scene {
         let lease = property::leases::create_draft(self.t.state(), None, new)
             .await
             .unwrap();
+        self.t.deposits.hold(&lease.agreement(), TENANT, aed(8_000));
         self.t.submit(&self.agent, &lease).await.assert_ok();
         self.t.activate(&self.manager, &lease).await.assert_ok();
-        self.t.deposits.hold(&lease.agreement(), TENANT, aed(8_000));
         property::invoicing::run(self.t.state(), d(3, 31)).await.unwrap();
         for invoice in self.t.invoices.all() {
             self.t.invoices.issue(invoice.summary.id.0);
