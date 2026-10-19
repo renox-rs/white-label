@@ -6,6 +6,8 @@
 //! | `GET /notification-types/{key}` | `wl_notify.type_edit` | `notifications.templates.manage` (an unknown key is 404) |
 //! | `POST /notification-types/{key}` | `wl_notify.type_update` | the same; a refused give-up combination is a 422 and nothing is saved |
 //! | `GET /notification-log` | `wl_notify.log` | `notifications.log.view` |
+//! | `GET /notify/send-windows` | `wl_notify.send_windows` | `notifications.channels.manage` |
+//! | `POST /notify/send-windows` | `wl_notify.send_windows_update` | the same (one channel per save; a refused window is a 422 and nothing is saved) |
 //! | `GET /statutory-notices/{id}/proof` | `wl_notify.notice_proof` | `notifications.notices.record_proof` (an unknown notice is 404) |
 //! | `POST /statutory-notices/{id}/proof` | `wl_notify.notice_proof_store` | the same (multipart; a refused proof is a 422, a second one a 409) |
 //! | `GET /statutory-notices/{id}/proof/file` | `wl_notify.notice_proof_file` | the same (the attachment) |
@@ -30,8 +32,10 @@ use crate::message::{Message, MessageStatus, RecipientKind};
 use crate::notices::{self, ProofError, ProofFile, ProofInput, ProofRefusal, StatutoryNotice};
 use crate::notifier::type_def;
 use crate::permissions;
+use crate::send_window::SendWindow;
 use crate::texts;
 use crate::types::NotificationType;
+use crate::window::Window;
 
 /// The texts a template reads as `tx['fields.key']`.
 type Texts = BTreeMap<&'static str, String>;
@@ -61,6 +65,14 @@ pub fn routes() -> Routes {
                 .get("/notification-log", log_index)
                 .name("wl_notify.log")
                 .require_permission(permissions::LOG_VIEW),
+        )
+        .merge(
+            Routes::new()
+                .get("/notify/send-windows", send_windows_index)
+                .name("wl_notify.send_windows")
+                .post("/notify/send-windows", send_windows_update)
+                .name("wl_notify.send_windows_update")
+                .require_permission(permissions::CHANNELS_MANAGE),
         )
         .merge(
             Routes::new()
@@ -758,6 +770,107 @@ async fn proof_file(
         return Err(Error::NotFound);
     };
     Download::from_storage(&state.storage, &key, name).await
+}
+
+/// One channel's row on the send-windows page.
+#[derive(Serialize, Debug, Clone, PartialEq, Eq)]
+pub struct WindowRow {
+    /// The channel key, e.g. `sms`.
+    pub channel: &'static str,
+    /// "SMS".
+    pub label: String,
+    /// The opening time as `HH:MM`.
+    pub start: String,
+    /// The closing time as `HH:MM`.
+    pub end: String,
+    /// The hint under the times: the SMS limit, or the general rule.
+    pub hint: String,
+}
+
+/// What the send-windows page needs.
+#[derive(Serialize, ViewData)]
+#[view(template = "wl-notify/send_windows.html")]
+pub(crate) struct SendWindowsPage {
+    tx: Texts,
+    windows: Vec<WindowRow>,
+}
+
+/// Minutes after midnight as `HH:MM`.
+fn clock_text(minute: u32) -> String {
+    format!("{:02}:{:02}", minute / 60, minute % 60)
+}
+
+/// `HH:MM` as minutes after midnight; `24:00` is the end of the day.
+fn parse_clock(text: &str) -> Option<u32> {
+    let (hours, minutes) = text.trim().split_once(':')?;
+    let (hours, minutes): (u32, u32) = (hours.parse().ok()?, minutes.parse().ok()?);
+    (minutes < 60 && (hours < 24 || (hours == 24 && minutes == 0))).then_some(hours * 60 + minutes)
+}
+
+/// `GET /notify/send-windows`: each channel's window, the default where none
+/// is stored.
+async fn send_windows_index(State(db): State<Db>, lang: Lang) -> Result<View> {
+    let t = texts_in(&lang);
+    let mut windows = Vec::new();
+    for channel in NotifyChannel::ALL {
+        let current = SendWindow::for_channel(&db, *channel).await?;
+        windows.push(WindowRow {
+            channel: channel.as_str(),
+            label: channel_label(&t, *channel),
+            start: clock_text(current.start),
+            end: clock_text(current.end),
+            hint: t(if *channel == NotifyChannel::Sms {
+                "send_windows.sms_hint"
+            } else {
+                "send_windows.hint"
+            }),
+        });
+    }
+    Ok(View::typed(SendWindowsPage {
+        tx: texts::all(&lang),
+        windows,
+    }))
+}
+
+/// The send-window form: one channel, its opening and closing time.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct SendWindowForm {
+    /// `email`, `sms` or `whatsapp`.
+    pub channel: String,
+    /// The opening time, `HH:MM`.
+    pub start: String,
+    /// The closing time, `HH:MM`.
+    pub end: String,
+}
+
+/// `POST /notify/send-windows`: saves one channel's window. A window the
+/// rules refuse (start not before end, an SMS window outside 07:00-21:00) is
+/// a 422 with the message, and the stored window is unchanged.
+async fn send_windows_update(
+    State(db): State<Db>,
+    lang: Lang,
+    Form(form): Form<SendWindowForm>,
+) -> Result<Response> {
+    let channel = NotifyChannel::ALL
+        .iter()
+        .copied()
+        .find(|c| c.as_str() == form.channel)
+        .ok_or(Error::NotFound)?;
+    let (Some(start), Some(end)) = (parse_clock(&form.start), parse_clock(&form.end)) else {
+        return Err(invalid(
+            "end",
+            texts::t(&lang, "wl_notify.send_windows.bad_time"),
+            &form,
+        ));
+    };
+    match SendWindow::save_checked(&db, channel, Window { start, end }).await? {
+        Ok(_) => Ok((
+            Toast::success(texts::t(&lang, "wl_notify.send_windows.saved")),
+            Redirect::route("wl_notify.send_windows", &[])?,
+        )
+            .into_response()),
+        Err(refusal) => Err(invalid("end", refusal.message().to_owned(), &form)),
+    }
 }
 
 #[cfg(test)]

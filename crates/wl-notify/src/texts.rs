@@ -217,6 +217,27 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_notify.status.fell_back",
         "Not delivered (fell back to :channel)",
     ),
+    ("wl_notify.send_windows.title", "Marketing send windows"),
+    (
+        "wl_notify.send_windows.subtitle",
+        "Marketing is sent only inside the window of its channel (Asia/Dubai time). A message outside it waits for the next opening.",
+    ),
+    ("wl_notify.send_windows.start", "Opens"),
+    ("wl_notify.send_windows.end", "Closes"),
+    ("wl_notify.send_windows.save", "Save"),
+    ("wl_notify.send_windows.saved", "Send window saved"),
+    (
+        "wl_notify.send_windows.sms_hint",
+        "SMS marketing may only be sent 07:00-21:00.",
+    ),
+    (
+        "wl_notify.send_windows.hint",
+        "Any window within the day; it must open before it closes.",
+    ),
+    (
+        "wl_notify.send_windows.bad_time",
+        "Enter a time as hours and minutes, e.g. 07:00.",
+    ),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.

@@ -1,0 +1,21 @@
+{#- wl-notify: the marketing send window of each channel (Asia/Dubai), one
+    form per channel. Replace it with resources/views/wl-notify/send_windows.html
+    in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['send_windows.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['send_windows.title']" :subtitle="tx['send_windows.subtitle']"/>
+    <rx-form rx-for="window in windows" action="{{ route('wl_notify.send_windows_update') }}" novalidate>
+      <rx-card :title="window.label">
+        <input type="hidden" name="channel" value="{{ window.channel }}">
+        <rx-form-errors/>
+        <rx-row>
+          <rx-input name="start" type="time" :label="tx['send_windows.start']" :value="window.start" :id="'window-start-' ~ window.channel"/>
+          <rx-input name="end" type="time" :label="tx['send_windows.end']" :value="window.end" :hint="window.hint" :id="'window-end-' ~ window.channel"/>
+        </rx-row>
+        <div class="rx-card__footer">
+          <rx-button :label="tx['send_windows.save']"/>
+        </div>
+      </rx-card>
+    </rx-form>
+  </rx-stack>
+</rx-page>

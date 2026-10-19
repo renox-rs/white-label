@@ -19,6 +19,7 @@ pub mod reactions;
 pub mod recipients;
 pub mod render;
 pub mod send;
+pub mod send_window;
 pub mod staff_task;
 pub mod statutory_notice;
 pub mod suppressions;
@@ -54,6 +55,7 @@ pub use reactions::{
     GiveUpContext, GiveUpHandler, ReactionOutcome, Reactions, RecordingHandler, StepOutcome,
 };
 pub use send::SendMessage;
+pub use send_window::SendWindow;
 pub use staff_task::{StaffTask, StaffTaskHandler, open_give_up_task};
 pub use statutory_notice::StatutoryNoticeHandler;
 pub use suppressions::{Suppression, SuppressionReason};
@@ -101,6 +103,10 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "wl-notify/_notice_banner.html",
         include_str!("../views/wl-notify/_notice_banner.html"),
+    ),
+    (
+        "wl-notify/send_windows.html",
+        include_str!("../views/wl-notify/send_windows.html"),
     ),
 ];
 
@@ -156,10 +162,12 @@ impl Module for WlNotify {
             .model::<ReactionRun>()
             .model::<ReactionStep>()
             .model::<StatutoryNotice>()
+            .model::<SendWindow>()
             .view_data::<pages::TypesPage>()
             .view_data::<pages::TypeEditPage>()
             .view_data::<pages::LogPage>()
-            .view_data::<pages::NoticeProofPage>();
+            .view_data::<pages::NoticeProofPage>()
+            .view_data::<pages::SendWindowsPage>();
         // `rnx state:diagram Message` and the admin panel find the machine.
         renox::state_machine::register::<Message>();
         // `MessageSuppressed` after a `suppress` commits.
@@ -205,6 +213,14 @@ impl Module for WlNotify {
                 .group("nav.admin")
                 .order(41)
                 .permission(permissions::LOG_VIEW),
+        );
+        app.nav(
+            "app",
+            NavLink::route("wl_notify.send_windows", "nav.send_windows")
+                .icon("clock")
+                .group("nav.admin")
+                .order(42)
+                .permission(permissions::CHANNELS_MANAGE),
         );
         app.templates(|env| {
             for (name, source) in VIEWS {

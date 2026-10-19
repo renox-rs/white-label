@@ -24,6 +24,7 @@
     "screening": "Screening",
     "notification_types": "Notification types",
     "notification_log": "Message log",
+    "send_windows": "Send windows",
     "documents_review": "Document review",
     "document_flags": "Document flags",
     "document_overrides": "Block overrides",
