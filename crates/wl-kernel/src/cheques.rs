@@ -402,6 +402,19 @@ pub trait Cheques: Send + Sync + 'static {
     ) -> ChequeFuture<'a, Vec<OpenCheque>> {
         Box::pin(async { Ok(Vec::new()) })
     }
+
+    /// The received cheques of `legal_entity_id` that bounced and are still
+    /// owed (`bounced` or `legal_case`), oldest cheque date first, each with
+    /// its open amount and the documents it pays: the forecast shows what
+    /// they cover on a memo line, not as a receipt. Read only. The default
+    /// finds none.
+    fn bounced<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _legal_entity_id: i64,
+    ) -> ChequeFuture<'a, Vec<OpenCheque>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
 }
 
 /// The 422 of a write while payments is off.

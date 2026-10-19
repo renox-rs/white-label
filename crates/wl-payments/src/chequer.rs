@@ -264,6 +264,25 @@ pub(crate) async fn not_cleared(
         .order_by(Cheque::ID)
         .get(&state.db)
         .await?;
+    open_with_documents(state, cheques).await
+}
+
+/// The received cheques of `legal_entity_id` that bounced and are still owed,
+/// oldest cheque date first, each with the documents it pays.
+pub(crate) async fn bounced(state: &AppState, legal_entity_id: i64) -> Result<Vec<OpenCheque>> {
+    let cheques = Cheque::query()
+        .where_(Cheque::LEGAL_ENTITY_ID.eq(legal_entity_id))
+        .where_(Cheque::DIRECTION.eq(Direction::In))
+        .where_(Cheque::STATUS.is_in([ChequeStatus::Bounced, ChequeStatus::LegalCase]))
+        .order_by(Cheque::CHEQUE_DATE)
+        .order_by(Cheque::ID)
+        .get(&state.db)
+        .await?;
+    open_with_documents(state, cheques).await
+}
+
+/// `cheques` with the documents each pays and the part applied to it.
+async fn open_with_documents(state: &AppState, cheques: Vec<Cheque>) -> Result<Vec<OpenCheque>> {
     let mut open = Vec::new();
     for cheque in cheques {
         let linked = cheque.linked(&state.db).await?;
@@ -361,6 +380,14 @@ impl Cheques for ChequeBook {
         direction: Direction,
     ) -> ChequeFuture<'a, Vec<OpenCheque>> {
         Box::pin(not_cleared(state, legal_entity_id, direction))
+    }
+
+    fn bounced<'a>(
+        &'a self,
+        state: &'a AppState,
+        legal_entity_id: i64,
+    ) -> ChequeFuture<'a, Vec<OpenCheque>> {
+        Box::pin(bounced(state, legal_entity_id))
     }
 }
 
