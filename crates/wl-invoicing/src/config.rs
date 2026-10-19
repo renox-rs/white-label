@@ -142,6 +142,11 @@ pub struct InvoicingConfig {
     pub budget_reminder_days: u32,
     /// The roles told by `FIN.RUL.26`.
     pub budget_reminder_roles: Vec<String>,
+    /// The share of a month's budget line at which `FIN.RUL.24` warns, in
+    /// percent.
+    pub budget_variance_percent: u32,
+    /// The role `FIN.RUL.24` always tells besides the category's owner role.
+    pub budget_variance_role: String,
 }
 
 impl Default for InvoicingConfig {
@@ -180,6 +185,8 @@ impl Default for InvoicingConfig {
             budget_revise_past_months: false,
             budget_reminder_days: 30,
             budget_reminder_roles: vec!["accountant".to_owned(), "finance_manager".to_owned()],
+            budget_variance_percent: 100,
+            budget_variance_role: "finance_manager".to_owned(),
         }
     }
 }
@@ -270,6 +277,8 @@ mod tests {
         assert!(!config.budget_revise_past_months);
         assert_eq!(config.budget_reminder_days, 30);
         assert_eq!(config.budget_reminder_roles, ["accountant", "finance_manager"]);
+        assert_eq!(config.budget_variance_percent, 100);
+        assert_eq!(config.budget_variance_role, "finance_manager");
     }
 
     #[test]

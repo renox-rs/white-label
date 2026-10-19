@@ -212,6 +212,7 @@ pub(crate) struct LineRow {
     vat: String,
     gross: String,
     service_date: Option<NaiveDate>,
+    cost_code: Option<String>,
 }
 
 /// One VAT category's totals.
@@ -366,6 +367,7 @@ async fn show(
             vat: money(line.vat_amount),
             gross: money(line.gross_amount),
             service_date: line.service_date,
+            cost_code: line.cost_code.clone(),
         })
         .collect();
     let vat = supplier_bill::totals_of(&db, bill.id)
@@ -503,6 +505,7 @@ pub(crate) struct LineSlot {
     unit_price: String,
     vat: String,
     service_date: String,
+    cost_code: String,
 }
 
 /// What the form page needs.
@@ -622,6 +625,7 @@ fn lines_of_form(
                 line = line.service_date(parse_date(date).ok_or((name("service_date"), "date"))?);
             }
         }
+        line = line.cost_code(get(n, "cost_code"));
         lines.push(line);
     }
     Ok(lines)
@@ -789,6 +793,7 @@ async fn form_page(state: &AppState, lang: &Lang, bill: Option<&SupplierBill>) -
                 unit_price: decimal_text(line.unit_price, 2, 2),
                 vat: line.vat_category.as_str().to_owned(),
                 service_date: date(line.service_date),
+                cost_code: line.cost_code.clone().unwrap_or_default(),
             });
         }
     } else {

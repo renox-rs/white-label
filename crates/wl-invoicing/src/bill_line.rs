@@ -28,6 +28,9 @@ pub struct BillLineDraft {
     pub cost_object: Option<Subject>,
     /// The purchase order line the goods were ordered on, if any.
     pub po_line: Option<Subject>,
+    /// The cost code, which budget vs actual maps to a budget category
+    /// (`FIN.BUD.01`).
+    pub cost_code: Option<String>,
 }
 
 impl BillLineDraft {
@@ -41,7 +44,14 @@ impl BillLineDraft {
             service_date: None,
             cost_object: None,
             po_line: None,
+            cost_code: None,
         }
+    }
+
+    /// Coded to a cost code (`FIN.BUD.01`); blank clears it.
+    pub fn cost_code(mut self, code: &str) -> Self {
+        self.cost_code = Some(code.trim().to_lowercase()).filter(|c| !c.is_empty());
+        self
     }
 
     /// With a quantity in thousandths.
@@ -125,6 +135,8 @@ pub struct BillLine {
     pub po_line_type: Option<String>,
     /// The id of the purchase order line the goods were ordered on.
     pub po_line_id: Option<i64>,
+    /// The cost code, which budget vs actual maps to a budget category.
+    pub cost_code: Option<String>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
@@ -152,6 +164,7 @@ impl BillLine {
             cost_id: draft.cost_object.as_ref().map(|c| c.subject_id),
             po_line_type: draft.po_line.as_ref().map(|c| c.subject_type.clone()),
             po_line_id: draft.po_line.as_ref().map(|c| c.subject_id),
+            cost_code: draft.cost_code.clone(),
             ..Default::default()
         };
         let amounts = line.compute(rate_micro);

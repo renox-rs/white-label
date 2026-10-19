@@ -50,6 +50,7 @@
       <rx-column :label="tx['fields.quantity']" hide-narrow>{{ line.quantity }}</rx-column>
       <rx-column :label="tx['fields.unit_price']" hide-narrow>{{ line.unit_price }}</rx-column>
       <rx-column :label="tx['fields.vat_category']" hide-narrow>{{ line.category }}</rx-column>
+      <rx-column :label="tx['supplier_bill.fields.cost_code']" hide-narrow>{{ line.cost_code or "" }}</rx-column>
       <rx-column :label="tx['fields.net_amount']" hide-narrow>{{ line.net }}</rx-column>
       <rx-column :label="tx['fields.vat_amount']" hide-narrow>{{ line.vat }}</rx-column>
       <rx-column :label="tx['fields.gross_amount']">{{ line.gross }}</rx-column>

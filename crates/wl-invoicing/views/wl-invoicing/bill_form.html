@@ -34,6 +34,7 @@
           <rx-input :name="'line_' ~ line.n ~ '_unit_price'" :label="tx['fields.unit_price']" :hint="tx['credit_note.amount_hint']" :value="line.unit_price"/>
           <rx-select :name="'line_' ~ line.n ~ '_vat'" :label="tx['fields.vat_category']" :options="categories" :selected="line.vat"/>
           <rx-input :name="'line_' ~ line.n ~ '_service_date'" type="date" :label="tx['supplier_bill.fields.service_date']" :value="line.service_date"/>
+          <rx-input :name="'line_' ~ line.n ~ '_cost_code'" :label="tx['supplier_bill.fields.cost_code']" :hint="tx['supplier_bill.form.cost_code_hint']" :value="line.cost_code"/>
         </rx-form-grid>
         <div class="rx-card__footer">
           <rx-link-button :href="cancel" :label="tx['supplier_bill.form.cancel']" variant="plain"/>
