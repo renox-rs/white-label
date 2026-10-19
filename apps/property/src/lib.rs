@@ -21,6 +21,7 @@ pub mod parse;
 pub mod permissions;
 pub mod renewal;
 mod tasks;
+pub mod terms;
 mod texts;
 pub mod unit;
 pub mod unit_machine;

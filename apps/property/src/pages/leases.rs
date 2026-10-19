@@ -11,6 +11,7 @@
 //! | `POST /property/leases/{id}/activate` | `property.lease_activate` | `leases.activate` in the building |
 //! | `POST /property/leases/{id}/cancel` | `property.lease_cancel` | `leases.cancel` in the building |
 //! | `POST /property/leases/{id}/extend` | `property.lease_extend` | `leases.manage` in the building |
+//! | `POST /property/leases/{id}/terms-answer` | `property.lease_terms_answer` | `leases.create` in the building |
 //! | `POST /property/leases/{id}/renewal-decision` | `property.lease_renewal_decision` | `leases.manage` in the building |
 //! | `POST /property/leases/{id}/changed-terms-notice` | `property.lease_changed_terms_notice` | `leases.manage` in the building |
 //! | `POST /property/leases/{id}/waive-deposit` | `property.lease_waive_deposit` | `leases.activate` in the building |
@@ -41,6 +42,7 @@ use crate::leases::{self, EjariInput, NewLease, NewVersion};
 use crate::parse::{parse_aed, parse_date};
 use crate::permissions;
 use crate::renewal;
+use crate::terms;
 use crate::texts;
 use crate::unit::Unit;
 
@@ -63,6 +65,8 @@ pub fn routes() -> Routes {
         .name("property.lease_cancel")
         .post("/property/leases/{id}/extend", extend)
         .name("property.lease_extend")
+        .post("/property/leases/{id}/terms-answer", terms_answer)
+        .name("property.lease_terms_answer")
         .post("/property/leases/{id}/renewal-decision", renewal_decision)
         .name("property.lease_renewal_decision")
         .post("/property/leases/{id}/changed-terms-notice", changed_terms_notice)
@@ -267,6 +271,15 @@ pub struct LeaseView {
     pub notice_of_changes: String,
     /// "Current terms only" once the marker is set, else empty.
     pub current_terms_only: String,
+    /// Whether a draft renewal or amendment changes terms against the
+    /// tenant (`PRP.ACL.17`); empty for other versions.
+    pub terms_change: String,
+    /// Whether the tenant's signed acceptance is attached, when one is
+    /// needed; else empty.
+    pub acceptance: String,
+    /// Why the submitter answered that the changes are not against the
+    /// tenant.
+    pub terms_answer_reason: String,
 }
 
 /// What a lease page needs.
@@ -289,6 +302,7 @@ pub(crate) struct ShowPage {
     can_extend: bool,
     can_decide: bool,
     can_send_notice: bool,
+    can_answer_terms: bool,
     can_waive: bool,
     can_ejari: bool,
     can_version: bool,
@@ -381,6 +395,26 @@ async fn show(
         (None, Some(sent)) => texts::t_with(&lang, "property.renewal.notice_undelivered", &[("sent", &sent)]),
         (None, None) => text(&lang, "renewal.notice_not_sent"),
     };
+    let assessment = if lease.status == LeaseStatus::Draft {
+        terms::assess(&state, &lease).await?
+    } else {
+        None
+    };
+    let terms_change = match &assessment {
+        None => String::new(),
+        Some(a) if !a.against_tenant => text(&lang, "terms.not_against"),
+        Some(a) if a.changes.automatic() => text(&lang, "terms.against_found"),
+        Some(_) => text(&lang, "terms.against_asked"),
+    };
+    let acceptance = match &assessment {
+        Some(a) if a.against_tenant && a.accepted => text(&lang, "terms.acceptance_attached"),
+        Some(a) if a.against_tenant => text(&lang, "terms.acceptance_missing"),
+        _ => String::new(),
+    };
+    let can_answer_terms = user.has_permission_in(permissions::LEASES_CREATE, &scope)
+        && assessment
+            .as_ref()
+            .is_some_and(|a| a.changes.other && !a.changes.automatic());
     let manages = user.has_permission_in(permissions::LEASES_MANAGE, &scope);
     let in_window = matches!(lease.status, LeaseStatus::Active | LeaseStatus::RenewalDue);
     let creates = user.has_permission_in(permissions::LEASES_CREATE, &scope);
@@ -437,6 +471,13 @@ async fn show(
         } else {
             String::new()
         },
+        terms_change,
+        acceptance,
+        terms_answer_reason: if lease.terms_answered_no {
+            lease.terms_answer_reason.clone().unwrap_or_default()
+        } else {
+            String::new()
+        },
     };
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
@@ -454,6 +495,7 @@ async fn show(
         can_cancel: offers(&actions, CANCEL) && !pending,
         can_extend: lease.status == LeaseStatus::PendingSignature
             && user.has_permission_in(permissions::LEASES_MANAGE, &scope),
+        can_answer_terms,
         can_decide: manages && in_window,
         can_send_notice: manages
             && in_window
@@ -739,6 +781,34 @@ async fn extend(
     let until = required_date(&form.until, "until")?;
     chase::extend(&state, &user, id, until).await?;
     Ok((Toast::success(text(&lang, "chase.extended_done")), renox::HxRefresh).into_response())
+}
+
+/// The form of the answer to "changes terms against the tenant?".
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct TermsAnswerForm {
+    /// `yes` or `no`.
+    #[serde(default)]
+    pub against: String,
+    /// Why not, for a no.
+    #[serde(default)]
+    pub reason: String,
+}
+
+/// `POST /property/leases/{id}/terms-answer` (`PRP.ACL.17`).
+async fn terms_answer(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<TermsAnswerForm>,
+) -> Result<Response> {
+    let against = match form.against.trim() {
+        "yes" => true,
+        "no" => false,
+        _ => return Err(Error::BadRequest("against".to_owned())),
+    };
+    terms::answer(&state, &user, id, against, Some(form.reason)).await?;
+    Ok((Toast::success(text(&lang, "terms.answered")), renox::HxRefresh).into_response())
 }
 
 /// The form of the renewal decision.

@@ -398,6 +398,38 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("property.renewal.proof_receipt", "Provider receipt"),
     ("property.renewal.proof_recorded", "Proof recorded by staff"),
+    // Changed terms against the tenant (PRP.ACL.17).
+    (
+        "property.terms.notice_late",
+        "Changed terms against the tenant: notice not timely (deadline :deadline), it was delivered on :delivered. Renew on the current terms, or attach the tenant's signed acceptance of the changed terms.",
+    ),
+    (
+        "property.terms.notice_missing",
+        "Changed terms against the tenant: notice not delivered (deadline :deadline), no proof of delivery is recorded. Renew on the current terms, or attach the tenant's signed acceptance of the changed terms.",
+    ),
+    (
+        "property.terms.amendment_needs_acceptance",
+        "Changed terms against the tenant in an amendment need the tenant's signed acceptance attached to the draft, whatever notice was given.",
+    ),
+    ("property.terms.answer", "Answer: against the tenant?"),
+    (
+        "property.terms.answer_description",
+        "Other terms differ from the current version. Say whether they are against the tenant; a no needs a reason, which is kept in the history.",
+    ),
+    ("property.terms.against_question", "Changes terms against the tenant?"),
+    ("property.terms.yes", "Yes"),
+    ("property.terms.no", "No"),
+    ("property.terms.reason", "Reason for no"),
+    ("property.terms.reason_hint", "For example a typo fix."),
+    ("property.terms.answered", "Answer saved."),
+    ("property.terms.answer_draft_only", "Only a draft renewal or amendment has this answer."),
+    ("property.terms.reason_required", "A no needs a reason."),
+    ("property.terms.not_against", "No"),
+    ("property.terms.against_found", "Yes, found in the rent, the deposit or the cheques"),
+    ("property.terms.against_asked", "Yes, until answered no with a reason"),
+    ("property.terms.acceptance", "Tenant's signed acceptance"),
+    ("property.terms.acceptance_attached", "Attached"),
+    ("property.terms.acceptance_missing", "Not attached"),
     ("property.renewal.problem_undecided", "No renewal decision is recorded."),
     (
         "property.renewal.problem_undelivered",

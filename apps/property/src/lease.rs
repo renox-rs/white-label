@@ -199,6 +199,11 @@ pub struct Lease {
     pub deadline_warned_first_on: Option<NaiveDate>,
     /// The day the second deadline warning (3 days before) was sent.
     pub deadline_warned_second_on: Option<NaiveDate>,
+    /// The submitter answered no to "changes terms against the tenant?" on a
+    /// renewal or amendment draft (`PRP.ACL.17`); not answered counts as yes.
+    pub terms_answered_no: bool,
+    /// Why the answer is no; kept in the history at `submit`.
+    pub terms_answer_reason: Option<String>,
     /// The end of the statutory renewal period the tenant holds over for.
     pub holding_over_until: Option<NaiveDate>,
     /// The day notice was given.

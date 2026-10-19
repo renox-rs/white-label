@@ -60,6 +60,8 @@ async fn bl_prp_05_a_renewal_passes_the_unit_guard_and_a_new_lease_does_not() {
     assert_eq!(v2.previous_id, Some(s.v1.id));
     assert_eq!(v2.tenant_party_id, s.v1.tenant_party_id);
     assert_eq!(v2.unit_id, s.unit.id);
+    // The rent goes up: the tenant's signed acceptance is attached (`PRP.ACL.17`).
+    t.accept(&v2);
     t.submit(&s.agent, &v2).await.assert_ok();
     assert_eq!(t.status(&v2).await, LeaseStatus::PendingSignature);
 
@@ -80,6 +82,7 @@ async fn bl_prp_05_activating_a_renewal_replaces_the_previous_version() {
     let v2 = property::leases::create_version(t.state(), Some(s.agent.id), s.v1.id, renewal(aed(110_000), aed(5_000)))
         .await
         .unwrap();
+    t.accept(&v2);
     t.submit(&s.agent, &v2).await.assert_ok();
     t.activate(&s.manager, &v2).await.assert_ok();
 
@@ -126,6 +129,8 @@ async fn bl_prp_05_activating_an_amendment_ends_the_previous_version_as_amended(
     .unwrap();
     assert_eq!(v2.version_kind, VersionKind::Amendment);
     assert_eq!(v2.effective_date, Some(day(0)));
+    // An amendment against the tenant always needs the tenant's acceptance.
+    t.accept(&v2);
     t.submit(&agent, &v2).await.assert_ok();
     t.activate(&manager, &v2).await.assert_ok();
 
@@ -208,6 +213,7 @@ async fn bl_prp_05_only_one_renewal_or_amendment_is_in_progress_per_lease() {
         draft_twice,
         Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
     ));
+    t.accept(&first);
     t.submit(&s.agent, &first).await.assert_ok();
     let while_pending = property::leases::create_version(
         t.state(),
@@ -235,6 +241,7 @@ async fn bl_prp_05_a_previous_version_that_moved_refuses_the_activation() {
     let v2 = property::leases::create_version(t.state(), None, s.v1.id, renewal(aed(110_000), aed(5_000)))
         .await
         .unwrap();
+    t.accept(&v2);
     t.submit(&s.agent, &v2).await.assert_ok();
     // The previous version ended meanwhile (a bulk update is the fixture).
     t.set(&s.v1, &[("status", &LeaseStatus::Terminated)]).await;
@@ -258,6 +265,7 @@ async fn bl_prp_05_a_changed_deposit_asks_the_deposit_to_adjust() {
     let v2 = property::leases::create_version(t.state(), None, s.v1.id, renewal(aed(110_000), aed(6_000)))
         .await
         .unwrap();
+    t.accept(&v2);
     t.submit(&s.agent, &v2).await.assert_ok();
     t.activate(&s.manager, &v2).await.assert_ok();
     assert_eq!(t.status(&v2).await, LeaseStatus::Active);

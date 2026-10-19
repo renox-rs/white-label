@@ -1252,6 +1252,13 @@ impl Booted {
         self.reload(lease).await.status
     }
 
+    /// The tenant's signed acceptance of changed terms is attached to the
+    /// draft version `lease` (`PRP.ACL.17`).
+    pub fn accept(&self, lease: &Lease) {
+        self.docs
+            .accept(&lease.subject(), property::terms::TENANT_ACCEPTANCE_KIND);
+    }
+
     /// Writes columns of `lease` directly: a fixture's date.
     pub async fn set(
         &self,

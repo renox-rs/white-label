@@ -20,8 +20,9 @@ use crate::building::{clean, refused};
 use crate::charge::{ChargeStatus, LeaseCharge, RENT, rent_description, rent_plan};
 use crate::documents::{self, ACTIVATE as GUARD_ACTIVATE, SUBMIT as GUARD_SUBMIT};
 use crate::lease::{Lease, LeaseStatus, VersionKind};
-use crate::lease_machine::{ACTIVATE, SUBMIT};
+use crate::lease_machine::{ACTIVATE, SUBMIT, SubmitInput};
 use crate::permissions;
+use crate::terms;
 use crate::texts::english;
 use crate::unit::Unit;
 
@@ -463,12 +464,17 @@ async fn load(state: &AppState, id: i64) -> std::result::Result<Lease, Transitio
 /// `user` submits the draft `id` for signature. The tenant's documents are
 /// checked first by the document guard (`lease.submit`); the unit, the
 /// previous version, the amendment's date and the payment plan by the
-/// transition ([`crate::lease_checks`]).
+/// transition ([`crate::lease_checks`]); changed terms against the tenant by
+/// `PRP.ACL.17` ([`crate::terms`]), last. The reason of a *no* to "changes
+/// terms against the tenant?" is the reason of the run, so it is in the
+/// history.
 ///
 /// # Errors
 ///
 /// `Forbidden` without `leases.create` in the lease's building, `NotFrom`
-/// unless `draft`, 422 with the reason when a document or a check refuses.
+/// unless `draft`, 422 with the reason when a document or a check refuses,
+/// among them the deadline, the proof status and the two ways forward of a
+/// renewal with changed terms.
 pub async fn submit(
     state: &AppState,
     user: &AuthUser,
@@ -478,8 +484,23 @@ pub async fn submit(
     if !user.has_permission_in(permissions::LEASES_CREATE, &lease.scope()) {
         return Err(TransitionError::Forbidden);
     }
+    // A draft only: a version already submitted is refused by the machine.
+    let input = SubmitInput {
+        terms_refusal: if lease.status == LeaseStatus::Draft {
+            terms::refusal(state, &lease)
+                .await
+                .map_err(TransitionError::Failed)?
+        } else {
+            None
+        },
+    };
+    let reason = terms::history_reason(&lease);
     let outcome = documents::guarded(state, GUARD_SUBMIT, id, Some(user.id), || async {
-        lease.transition(SUBMIT).by(user).run(state).await
+        let mut run = lease.transition(SUBMIT).by(user).input(&input);
+        if let Some(reason) = reason {
+            run = run.reason(reason);
+        }
+        run.run(state).await
     })
     .await?;
     wl_kernel::approvals::announce(state, &outcome)

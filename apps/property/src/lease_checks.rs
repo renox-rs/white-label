@@ -35,7 +35,7 @@ async fn previous_in(tx: &mut Transaction, lease: &Lease) -> Result<Lease> {
 
 /// Whether the previous version is in a state its `renew` or `amend`
 /// accepts, for the follow-up `lease`.
-fn previous_accepts(lease: &Lease, previous: &Lease) -> bool {
+pub(crate) fn previous_accepts(lease: &Lease, previous: &Lease) -> bool {
     match lease.version_kind {
         VersionKind::Renewal => LeaseStatus::RENEWABLE.contains(&previous.status),
         VersionKind::Amendment => LeaseStatus::AMENDABLE.contains(&previous.status),
@@ -59,8 +59,11 @@ fn previous_refusal(lease: &Lease, previous: &Lease) -> Error {
 /// amendment's date and the payment plan (§7.1 `submit`).
 ///
 /// Not checked here: the tenant's documents (the document guard, run by
-/// [`crate::leases::submit`]), changed terms against the tenant
-/// (`PRP.ACL.17`, BL-PRP-04) and a blocked tenant (`PTY.ACL.03`, BL-PRP-15).
+/// [`crate::leases::submit`]), a blocked tenant (`PTY.ACL.03`, BL-PRP-15).
+/// Changed terms against the tenant (`PRP.ACL.17`) need the notifier and the
+/// document guard, so [`crate::terms::refusal`] decides before the run and the
+/// transition refuses with its message after these checks
+/// ([`crate::lease_machine::SubmitInput`]).
 pub(crate) async fn submit_checks(tx: &mut Transaction, lease: &Lease) -> Result {
     if lease.version_kind == VersionKind::New {
         let unit = Unit::find(&mut *tx, lease.unit_id)

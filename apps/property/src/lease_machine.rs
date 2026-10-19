@@ -44,7 +44,7 @@ use wl_kernel::approvals::PolicyDefault;
 use wl_kernel::documents::today;
 
 use crate::charge::{ChargeStatus, LeaseCharge};
-use crate::db::set_lease;
+use crate::db::{refused, set_lease};
 use crate::lease::{LEASE_SUBJECT_TYPE, Lease, LeaseStatus};
 use crate::lease_checks::{activate_checks, apply_activation, submit_checks};
 use crate::permissions;
@@ -104,6 +104,16 @@ pub struct CancelInput {
     /// [`crate::cancellation::request`]) counts as money received.
     #[serde(default)]
     pub money_received: i64,
+}
+
+/// What a `submit` run carries: the refusal [`crate::terms::refusal`] found
+/// for a renewal or amendment that changes terms against the tenant
+/// (`PRP.ACL.17`), which the transition raises after its own checks.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SubmitInput {
+    /// Why the version cannot be submitted, when it cannot.
+    #[serde(default)]
+    pub terms_refusal: Option<String>,
 }
 
 /// What a `flag_renewal` run carries: the day (Asia/Dubai) the rule ran for,
@@ -254,10 +264,17 @@ impl StateMachine for Lease {
                     .tone("primary")
                     .from([Draft])
                     .to(PendingSignature)
-                    .effect(|lease: &Lease, _ctx, tx| {
+                    .effect(|lease: &Lease, ctx, tx| {
                         let lease = lease.clone();
+                        let refusal = ctx
+                            .input_as::<SubmitInput>()
+                            .ok()
+                            .and_then(|input| input.terms_refusal);
                         Box::pin(async move {
                             submit_checks(&mut *tx, &lease).await?;
+                            if let Some(message) = refusal {
+                                return Err(refused(message));
+                            }
                             set_lease(&mut *tx, lease.id, &[("submitted_on", &Some(today()))]).await
                         })
                     }),
