@@ -21,6 +21,8 @@
 //! | `POST /property/leases/{id}/legal-cases/clear` | `property.lease_legal_case_clear` | `leases.manage` in the building |
 //! | `POST /property/leases/{id}/move-out-inspection` | `property.lease_inspection` | `leases.manage` in the building |
 //! | `POST /property/leases/{id}/terminate` | `property.lease_terminate` | `leases.manage` in the building |
+//! | `POST /property/leases/{id}/arrears-demand` | `property.lease_arrears_demand` | `leases.manage` in the building |
+//! | `POST /property/leases/{id}/payment-plan` | `property.lease_payment_plan` | `leases.manage` in the building |
 //! | `POST /property/leases/{id}/force-terminate` | `property.lease_force_terminate` | `leases.manage` in the building |
 //! | `POST /property/leases/{id}/ejari-cancellation` | `property.lease_ejari_cancellation` | `leases.manage` in the building |
 //! | `POST /property/leases/{id}/waive-deposit` | `property.lease_waive_deposit` | `leases.activate` in the building |
@@ -44,6 +46,7 @@ use crate::building::Building;
 use crate::charge::{ChargeStatus, LeaseCharge, RENT};
 use crate::cheques::{ChequeEntry, of_version, register_cheques};
 use crate::lease::{Lease, LeaseStatus, RenewalDecision, VersionKind};
+use crate::arrears::{self, ArrearsDemand, NewPlan, PaymentPlan};
 use crate::cancellation::{self, CancelRequest};
 use crate::force::{self, ForceReason, ForceRequest};
 use crate::chase;
@@ -100,6 +103,10 @@ pub fn routes() -> Routes {
         .name("property.lease_inspection")
         .post("/property/leases/{id}/terminate", terminate)
         .name("property.lease_terminate")
+        .post("/property/leases/{id}/arrears-demand", send_arrears_demand)
+        .name("property.lease_arrears_demand")
+        .post("/property/leases/{id}/payment-plan", payment_plan)
+        .name("property.lease_payment_plan")
         .post("/property/leases/{id}/force-terminate", force_terminate)
         .name("property.lease_force_terminate")
         .post("/property/leases/{id}/ejari-cancellation", ejari_cancellation)
@@ -265,6 +272,21 @@ pub struct CaseRow {
     pub cleared_on: String,
 }
 
+/// A formal payment demand of the lease.
+#[derive(Serialize, Debug, Clone)]
+pub struct DemandRow {
+    /// Waiting to be sent, sent, or closed, in the page's language.
+    pub status: String,
+    /// The badge kind of the status.
+    pub status_kind: &'static str,
+    /// The day it was made.
+    pub created_on: String,
+    /// The invoices listed, with their open amounts.
+    pub invoices: String,
+    /// Whether delivery is proven and when.
+    pub delivery: String,
+}
+
 /// A version of the lease.
 #[derive(Serialize, Debug, Clone)]
 pub struct VersionRow {
@@ -393,6 +415,9 @@ pub(crate) struct ShowPage {
     differences: Vec<DifferenceRow>,
     legal_cases: Vec<CaseRow>,
     legal_open: bool,
+    demands: Vec<DemandRow>,
+    send_demands: Vec<[String; 2]>,
+    plan_until: String,
     case_tickets: Vec<[String; 2]>,
     open_cases: Vec<[String; 2]>,
     approvals: Vec<ApprovalCard>,
@@ -418,6 +443,8 @@ pub(crate) struct ShowPage {
     can_terminate: bool,
     can_ejari_cancel: bool,
     can_force: bool,
+    can_send_demand: bool,
+    can_plan: bool,
     today: String,
 }
 
@@ -550,6 +577,50 @@ async fn show(
             [case.id.to_string(), label]
         })
         .collect();
+
+    let mut demands = Vec::new();
+    let mut send_demands: Vec<[String; 2]> = Vec::new();
+    for demand in ArrearsDemand::of_root(&state.db, lease.root_id).await? {
+        let rows = demand.invoices(&state.db).await?;
+        let delivery = match arrears::delivered_on(&state, &demand).await? {
+            Some(day) => texts::t_with(&lang, "property.arrears.delivered", &[("day", &day)]),
+            None if demand.is_sent() => text(&lang, "arrears.not_delivered"),
+            None => String::new(),
+        };
+        let (status, status_kind) = if demand.is_open() {
+            send_demands.push([demand.id.to_string(), format!("#{} · {}", demand.id, demand.created_on)]);
+            (text(&lang, "arrears.demand_open"), "warning")
+        } else if let Some(sent) = demand.sent_on {
+            (
+                texts::t_with(&lang, "property.arrears.demand_sent_on", &[("day", &sent)]),
+                "info",
+            )
+        } else {
+            (text(&lang, "arrears.demand_closed"), "info")
+        };
+        demands.push(DemandRow {
+            status,
+            status_kind,
+            created_on: demand.created_on.to_string(),
+            invoices: rows
+                .iter()
+                .map(|r| {
+                    format!(
+                        "{} ({})",
+                        r.number.clone().unwrap_or_else(|| format!("#{}", r.invoice_id)),
+                        crate::money_text(r.open_amount)
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(", "),
+            delivery,
+        });
+    }
+    let send_demands_empty = send_demands.is_empty();
+    let plan_until = PaymentPlan::latest_of(&state.db, lease.root_id)
+        .await?
+        .map(|day| day.to_string())
+        .unwrap_or_default();
 
     let running = LeaseStatus::RUNNING.contains(&lease.status);
     let delivered = if running {
@@ -707,6 +778,9 @@ async fn show(
         differences,
         legal_cases,
         legal_open,
+        demands,
+        send_demands,
+        plan_until,
         case_tickets,
         open_cases,
         approvals: approval_cards,
@@ -755,6 +829,8 @@ async fn show(
             && lease.ejari_number.is_some()
             && lease.ejari_cancelled_on.is_none(),
         can_force: manages && !pending && LeaseStatus::RUNNING.contains(&lease.status),
+        can_send_demand: manages && !send_demands_empty,
+        can_plan: manages && !matches!(lease.status, LeaseStatus::Draft | LeaseStatus::PendingSignature | LeaseStatus::Cancelled),
         can_cheques: creates
             && !matches!(
                 lease.status,
@@ -1351,6 +1427,56 @@ async fn terminate(
         .await
         .map_err(TransitionError::into_error)?;
     Ok((Toast::success(text(&lang, "terminate.done")), renox::HxRefresh).into_response())
+}
+
+/// The form that sends a formal payment demand.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct DemandForm {
+    /// The demand's id.
+    #[serde(default)]
+    pub demand: String,
+}
+
+/// `POST /property/leases/{id}/arrears-demand`: sends the formal payment
+/// demand to the tenant as a statutory notice.
+async fn send_arrears_demand(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<DemandForm>,
+) -> Result<Response> {
+    let demand = whole::<i64>(&form.demand, "demand")?;
+    arrears::send_demand(&state, &user, id, demand).await?;
+    Ok((Toast::success(text(&lang, "arrears.sent_done")), renox::HxRefresh).into_response())
+}
+
+/// The form that records a payment plan.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct PlanForm {
+    /// The agreed dates.
+    #[serde(default)]
+    pub note: String,
+    /// The latest agreed date.
+    #[serde(default)]
+    pub latest: String,
+}
+
+/// `POST /property/leases/{id}/payment-plan`: records the agreed dates as a
+/// note on the lease.
+async fn payment_plan(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<PlanForm>,
+) -> Result<Response> {
+    let plan = NewPlan {
+        note: form.note,
+        latest_on: required_date(&form.latest, "latest")?,
+    };
+    arrears::record_plan(&state, &user, id, plan).await?;
+    Ok((Toast::success(text(&lang, "arrears.plan_done")), renox::HxRefresh).into_response())
 }
 
 /// The form that requests a forced termination.

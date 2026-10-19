@@ -101,6 +101,19 @@
           <rx-select name="credit" :label="tx['terminate.credit']" :options="[['refund', tx['terminate.credit_refund']], ['keep', tx['terminate.credit_keep']]]" :selected="'refund'" :id="'terminate-credit-' ~ lease.id"/>
         </rx-action-sheet>
       </template>
+      <template rx-if="can_send_demand">
+        <rx-action-sheet :id="'demand-' ~ lease.id" :label="tx['arrears.send']" :action="route('property.lease_arrears_demand', lease.id)"
+                         :title="tx['arrears.send']" :description="tx['arrears.send_description']" :submit-label="tx['arrears.send']" icon="mail-warning">
+          <rx-select name="demand" :label="tx['arrears.demand']" :options="send_demands" :id="'demand-select-' ~ lease.id"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_plan">
+        <rx-action-sheet :id="'plan-' ~ lease.id" :label="tx['arrears.plan']" :action="route('property.lease_payment_plan', lease.id)"
+                         :title="tx['arrears.plan']" :description="tx['arrears.plan_description']" :submit-label="tx['arrears.plan']" icon="calendar-check">
+          <rx-textarea name="note" :label="tx['arrears.plan_note']" :id="'plan-note-' ~ lease.id" required/>
+          <rx-input name="latest" type="date" :label="tx['arrears.plan_latest']" :id="'plan-latest-' ~ lease.id" required/>
+        </rx-action-sheet>
+      </template>
       <template rx-if="can_force">
         <rx-action-sheet :id="'force-' ~ lease.id" :label="tx['force.action']" :action="route('property.lease_force_terminate', lease.id)"
                          :title="tx['force.action']" :description="tx['force.description']" :submit-label="tx['force.submit']" icon="shield-alert" variant="danger" danger>
@@ -186,6 +199,7 @@
         <rx-entry :label="tx['terminate.rent_due_until']" :value="lease.rent_due_until" :placeholder="tx['none']"/>
         <rx-entry :label="tx['terminate.credited']" :value="lease.termination_credit" :placeholder="tx['none']"/>
         <rx-entry :label="tx['ejari.cancelled_on']" :value="lease.ejari_cancelled_on" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['arrears.plan_until']" :value="plan_until" :placeholder="tx['none']"/>
         <rx-entry :label="tx['force.reason']" :value="lease.force_reason" :placeholder="tx['none']"/>
         <rx-entry :label="tx['force.basis']" :value="lease.force_basis" :placeholder="tx['none']"/>
         <rx-entry :label="tx['cancel_reason']" :value="lease.cancel_reason" :placeholder="tx['none']"/>
@@ -201,6 +215,14 @@
         <rx-column :label="tx['legal.ticket']" hide-narrow>{{ flag.ticket }}</rx-column>
         <rx-column :label="tx['legal.opened_on']" hide-narrow>{{ flag.opened_on }}</rx-column>
         <rx-column :label="tx['legal.cleared_on']" hide-narrow>{{ flag.cleared_on }}</rx-column>
+      </rx-table>
+    </template>
+    <template rx-if="demands">
+      <rx-table :rows="demands" as="demand" :key="demand.created_on ~ demand.invoices" :caption="tx['arrears.title']" card>
+        <rx-column :label="tx['arrears.status']"><rx-badge :kind="demand.status_kind" :text="demand.status"/></rx-column>
+        <rx-column :label="tx['arrears.invoices']">{{ demand.invoices }}</rx-column>
+        <rx-column :label="tx['legal.opened_on']" hide-narrow>{{ demand.created_on }}</rx-column>
+        <rx-column :label="tx['notice.title']" hide-narrow>{{ demand.delivery }}</rx-column>
       </rx-table>
     </template>
     <template rx-if="differences">
