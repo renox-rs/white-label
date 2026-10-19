@@ -761,7 +761,7 @@ pub(crate) async fn unallocate_recovery_in(
 }
 
 /// A 422 with `message`.
-fn refused(message: &str) -> Error {
+pub(crate) fn refused(message: &str) -> Error {
     Error::Status(StatusCode::UNPROCESSABLE_ENTITY, message.to_owned())
 }
 

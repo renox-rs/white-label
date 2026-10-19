@@ -14,6 +14,7 @@ pub mod bill_notices;
 mod bill_pages;
 pub mod bill_pay;
 pub mod bill_submit;
+pub mod bill_unallocate;
 pub mod bill_unallocation;
 pub mod config;
 pub mod credit;

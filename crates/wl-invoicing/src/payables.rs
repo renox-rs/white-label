@@ -4,12 +4,15 @@
 //! `provide_supplier_bills`.
 
 use renox::prelude::*;
+use renox::state_machine::TransitionError;
 use wl_kernel::invoicing::{
-    SupplierBillFuture, SupplierBillId, SupplierBillLine, SupplierBillLineId,
-    SupplierBillStatus as KernelStatus, SupplierBills,
+    BillBalance, PayBill, SupplierBillFuture, SupplierBillId, SupplierBillLine, SupplierBillLineId,
+    SupplierBillStatus as KernelStatus, SupplierBills, UnallocateBill,
 };
 
+use crate::bill_allocation::BillAllocation;
 use crate::bill_line::BillLine;
+use crate::bill_pay::pay_keyed_in;
 use crate::supplier_bill::{SupplierBill, SupplierBillStatus};
 
 /// The kernel's name for the module's bill state; the same seven states.
@@ -74,6 +77,65 @@ impl SupplierBills for Payables {
             Ok(Some(kernel_line(&bill, &line)))
         })
     }
+
+    fn pay<'a>(
+        &'a self,
+        state: &'a AppState,
+        request: PayBill,
+    ) -> SupplierBillFuture<'a, BillBalance> {
+        Box::pin(async move { pay_keyed(state, request).await })
+    }
+
+    fn unallocate<'a>(
+        &'a self,
+        state: &'a AppState,
+        request: UnallocateBill,
+    ) -> SupplierBillFuture<'a, BillBalance> {
+        Box::pin(async move { crate::bill_unallocate::run(state, request).await })
+    }
+}
+
+/// The bill as the kernel answers a call: its state and balance.
+fn balance_of(bill: &SupplierBill, skipped: bool) -> BillBalance {
+    BillBalance {
+        new_status: kernel_status(bill.status),
+        balance: bill.balance,
+        skipped,
+    }
+}
+
+/// [`SupplierBills::pay`]: applies the money in one transaction, under the
+/// request's idempotency key. A key that was used gives `skipped`; a
+/// refusal is a 422 and writes nothing.
+async fn pay_keyed(state: &AppState, request: PayBill) -> Result<BillBalance> {
+    if let Some(done) = BillAllocation::by_key(&state.db, &request.key).await? {
+        let bill = SupplierBill::find_or_404(&state.db, done.bill_id).await?;
+        return Ok(balance_of(&bill, true));
+    }
+    let bill = SupplierBill::find_or_404(&state.db, request.bill.0).await?;
+    let mut tx = state.db.begin().await?;
+    let outcome = match pay_keyed_in(
+        &mut tx,
+        &bill,
+        &request.source,
+        request.amount,
+        None,
+        Some(request.key.clone()),
+    )
+    .await
+    {
+        Ok(outcome) => outcome,
+        Err(TransitionError::Failed(error)) if error.is_unique_violation() => {
+            drop(tx);
+            let bill = SupplierBill::find_or_404(&state.db, bill.id).await?;
+            return Ok(balance_of(&bill, true));
+        }
+        Err(error) => return Err(error.into_error()),
+    };
+    tx.commit().await?;
+    outcome.emit(state).await?;
+    let bill = SupplierBill::find_or_404(&state.db, bill.id).await?;
+    Ok(balance_of(&bill, false))
 }
 
 #[cfg(test)]

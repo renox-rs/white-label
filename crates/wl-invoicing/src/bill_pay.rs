@@ -36,6 +36,10 @@ pub(crate) struct PayInput {
     pub amount: i64,
     /// The user whose action caused it; `None` for the system.
     pub ran_by: Option<i64>,
+    /// The idempotency key stored on the allocation; `None` for a payment
+    /// made without one.
+    #[serde(default)]
+    pub key: Option<String>,
 }
 
 /// The `pay` and `pay_in_full` transitions, for the machine.
@@ -129,9 +133,9 @@ fn rules(transition: Transition<SupplierBill>) -> Transition<SupplierBill> {
                         "The bill's balance changed; try again.".to_owned(),
                     ));
                 }
-                BillAllocation::new(id, &input.source, input.amount, input.ran_by)
-                    .insert(&mut *tx)
-                    .await?;
+                let mut row = BillAllocation::new(id, &input.source, input.amount, input.ran_by);
+                row.key = input.key.clone();
+                row.insert(&mut *tx).await?;
                 Ok(())
             })
         })
@@ -185,10 +189,29 @@ pub async fn pay_in(
     amount: i64,
     ran_by: Option<i64>,
 ) -> std::result::Result<Outcome<SupplierBill>, TransitionError> {
+    pay_keyed_in(tx, bill, source, amount, ran_by, None).await
+}
+
+/// [`pay_in`] with an idempotency `key`, stored on the allocation (unique:
+/// a second payment under the same key fails with a unique violation, which
+/// the caller reads as `skipped`).
+///
+/// # Errors
+///
+/// The errors of [`pay`]; the caller rolls `tx` back.
+pub async fn pay_keyed_in(
+    tx: &mut renox::db::Transaction,
+    bill: &SupplierBill,
+    source: &Subject,
+    amount: i64,
+    ran_by: Option<i64>,
+    key: Option<String>,
+) -> std::result::Result<Outcome<SupplierBill>, TransitionError> {
     let input = PayInput {
         source: source.clone(),
         amount,
         ran_by,
+        key,
     };
     let meta = match ran_by {
         Some(user) => renox::serde_json::json!({ "ran_by": user, "source": source.to_string() }),
@@ -222,6 +245,7 @@ mod tests {
             source: Subject::new("payments.payment", 3),
             amount,
             ran_by: None,
+            key: None,
         };
         TransitionCtx::new(None).with_input(renox::serde_json::to_value(input).expect("json"))
     }

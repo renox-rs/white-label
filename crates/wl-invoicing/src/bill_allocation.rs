@@ -11,6 +11,7 @@ use wl_kernel::Subject;
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
 #[model(
     table = "wl_invoicing_supplier_bill_allocations",
+    unique(key),
     index(bill_id),
     index(source_type, source_id)
 )]
@@ -25,6 +26,8 @@ pub struct BillAllocation {
     pub source_id: i64,
     /// The amount, in fils; always > 0.
     pub amount: i64,
+    /// The idempotency key of the payment that wrote it, when it had one.
+    pub key: Option<String>,
     /// When it was applied.
     pub allocated_at: DateTime,
     /// The user who applied it; `None` for the system.
@@ -67,6 +70,30 @@ impl BillAllocation {
             subject_type: self.source_type.clone(),
             subject_id: self.source_id,
         }
+    }
+
+    /// The allocation written under `key`, if the key was used.
+    pub async fn by_key(db: &Db, key: &str) -> Result<Option<BillAllocation>> {
+        BillAllocation::query()
+            .where_(BillAllocation::KEY.eq(key.to_owned()))
+            .first(db)
+            .await
+    }
+
+    /// The active allocations of bill `bill_id` from `source`, oldest first.
+    pub async fn active_from(
+        tx: &mut renox::db::Transaction,
+        bill_id: i64,
+        source: &Subject,
+    ) -> Result<Vec<BillAllocation>> {
+        BillAllocation::query()
+            .where_(BillAllocation::BILL_ID.eq(bill_id))
+            .where_(BillAllocation::SOURCE_TYPE.eq(source.subject_type.clone()))
+            .where_(BillAllocation::SOURCE_ID.eq(source.subject_id))
+            .where_(BillAllocation::REMOVED_AT.is_null())
+            .order_by(BillAllocation::ID)
+            .get(&mut *tx)
+            .await
     }
 
     /// The allocations of bill `bill_id`, oldest first, removed ones too.
