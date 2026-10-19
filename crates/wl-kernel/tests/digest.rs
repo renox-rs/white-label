@@ -14,6 +14,7 @@ use renox::auth::{Permissions, permissions};
 use renox::chrono::{Duration, NaiveDate};
 use renox::db::{DateTime, Json, Migration, sql};
 use renox::prelude::*;
+use renox::state_machine::StateMachine;
 use renox::testing::TestApp;
 use wl_kernel::digest::{self, RecordInfo};
 use wl_kernel::machines::BoxFuture;
@@ -313,7 +314,7 @@ impl World {
             .await
             .unwrap();
         let entered_at = at(entered);
-        LateEntry::create(
+        insert_late(
             db,
             LateEntry {
                 subject_type: "bookings.check_in".into(),
@@ -329,11 +330,9 @@ impl World {
                 entered_by: self.anna.id,
                 fired_runs: Json(runs),
                 status: LateEntryStatus::Recorded,
-                ..Default::default()
-            },
+                ..Default::default()            },
         )
-        .await
-        .unwrap();
+        .await;
     }
 
     async fn run(&self) -> digest::Report {
@@ -356,6 +355,15 @@ fn no_show() -> FiredRun {
 /// AC1 and AC2: 2 voids and 3 late entries in Tower A: its manager gets one
 /// digest listing the 5 records with user and reason, and under the check-in
 /// of booking B the no-show of 09:15.
+/// Inserts a late entry in the status it carries, as a fixture: the machine
+/// starts new entries in `requested`.
+async fn insert_late(db: &Db, mut entry: LateEntry) {
+    let status = entry.status;
+    let mut tx = db.begin().await.unwrap();
+    entry.insert_in_state(&mut tx, status, "fixture").await.unwrap();
+    tx.commit().await.unwrap();
+}
+
 #[renox::test]
 async fn the_manager_gets_one_digest_with_the_five_records_and_the_runs_to_review() {
     let w = world().await;
@@ -478,7 +486,7 @@ async fn a_confidential_record_shows_only_its_type_and_number() {
 async fn an_entry_that_waits_for_approval_is_not_listed_and_an_empty_day_sends_nothing() {
     let w = world().await;
     let db = w.app.db();
-    LateEntry::create(
+    insert_late(
         db,
         LateEntry {
             subject_type: "bookings.check_in".into(),
@@ -489,11 +497,9 @@ async fn an_entry_that_waits_for_approval_is_not_listed_and_an_empty_day_sends_n
             reason: "power cut".into(),
             entered_by: w.anna.id,
             status: LateEntryStatus::AwaitingApproval,
-            ..Default::default()
-        },
+            ..Default::default()        },
     )
-    .await
-    .unwrap();
+    .await;
 
     let report = w.run().await;
     assert_eq!((report.sent, report.skipped, report.failed), (0, 0, 0));

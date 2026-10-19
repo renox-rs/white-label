@@ -1092,6 +1092,7 @@ mod tests {
             email: Some("accounts@alnoor.example".to_owned()),
             mobile: Some(" ".to_owned()),
             trn: Some("100123456700003".to_owned()),
+            einvoice_recipient_id: None,
         }
     }
 

@@ -294,8 +294,8 @@ async fn tkt03_a_failed_run_alerts_the_business_owner() {
     use renox::testing::TestApp;
     use std::time::Duration;
 
-    assert!(is_critical(RULE));
     let w = world().await;
+    assert!(is_critical(RULE));
     let admin = {
         let user = User::register(w.t.db(), "Ada", "ada@example.com", "password123")
             .await

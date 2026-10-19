@@ -6,7 +6,7 @@
   <rx-stack>
     <rx-page-header :title="tx['categories.title']" :subtitle="tx['categories.subtitle']"/>
     <rx-table :rows="categories" as="category" :key="category.key" :caption="tx['categories.title']" card>
-      <rx-column :label="tx['categories.name']">{{ category.name_en }} <rx-badge rx-if="category.platform" kind="warning" :text="tx['categories.platform']"/> <rx-badge rx-if="category.confidential" kind="error" :text="tx['fields.confidential']"/> <rx-badge rx-if="not category.active" kind="neutral" :text="tx['categories.off']"/></rx-column>
+      <rx-column :label="tx['categories.name']">{{ category.name_en }} <rx-badge rx-if="category.platform" kind="warning" :text="tx['categories.platform']"/> <rx-badge rx-if="category.confidential" kind="error" :text="tx['fields.confidential']"/> <rx-badge rx-if="not category.active" kind="info" :text="tx['categories.off']"/></rx-column>
       <rx-column :label="tx['categories.name_ar']" hide-narrow>{{ category.name_ar or "—" }}</rx-column>
       <rx-column :label="tx['categories.key']" hide-narrow>{{ category.key }}</rx-column>
       <rx-column :label="tx['categories.assignee_role']" hide-narrow>{{ category.assignee_role or "—" }}</rx-column>

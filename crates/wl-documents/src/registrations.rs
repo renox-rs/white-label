@@ -34,7 +34,7 @@
 //! is stored, so a second role the vertical wants told goes in the kind's
 //! `also_notify`, which is for the expiry notice only.
 //!
-//! **Subjects.** The legal entity (`legal_entity`) always; the item
+//! **Subjects.** The legal entity (`kernel.legal_entity`) always; the item
 //! (`inventory.item`) only in a vertical with an item catalogue
 //! ([`ITEM_VERTICALS`]); the supplier party (`parties.party`) for the Halal
 //! certificate and *Other certification*.
@@ -65,7 +65,7 @@ pub const PRODUCT: &str = "product_registration";
 pub const OTHER: &str = "other_certification";
 
 /// The subject type of a legal entity.
-pub const LEGAL_ENTITY_SUBJECT: &str = "legal_entity";
+pub const LEGAL_ENTITY_SUBJECT: &str = "kernel.legal_entity";
 /// The subject type of an item of the catalogue (`STK.ITM.01`).
 pub const ITEM_SUBJECT: &str = "inventory.item";
 
