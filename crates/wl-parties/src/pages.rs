@@ -23,6 +23,7 @@
 //! | `POST /parties/compliance-tasks/{id}/funds` | `wl_parties.compliance_fund_add` | the same; adding needs `screening.review` (403) |
 //! | `POST /parties/compliance-tasks/{id}/funds/{fund}` | `wl_parties.compliance_fund_update` | the same |
 //! | `POST /parties/compliance-tasks/{id}/complete` | `wl_parties.compliance_complete` | the same; records the freeze time, or the reference and date |
+//! | `GET /parties/screening` | `wl_parties.screening` | any of `screening.run`, `screening.review`, `parties.block_reason.view`, else 403 |
 //! | `POST /parties/review-tasks/{id}/items/{item}` | `wl_parties.review_decide` | the same; form field `decision` is `pause`, `continue` or `end` |
 //!
 //! Lists, search, filters and exports read the party's `hold_reason`, which
@@ -59,6 +60,7 @@ use crate::permissions;
 use crate::reasons::BlockReasons;
 use crate::review_tasks::{self, ReviewTask, ReviewTaskStatus};
 use crate::roles::PartyRole;
+use crate::sanctions_lists::{ListStatus, SanctionsList};
 use crate::screening::{Screening, ScreeningMethod, ScreeningTrigger};
 use crate::screening_task::{ScreeningTask, ScreeningTaskStatus, dubai_label};
 use crate::texts;
@@ -132,6 +134,8 @@ pub fn routes() -> Routes {
             Routes::new()
                 .get("/parties/review-tasks", review_tasks_page)
                 .name("wl_parties.review_tasks")
+                .get("/parties/screening", screening_page)
+                .name("wl_parties.screening")
                 .get("/parties/review-tasks/{id}", review_task_page)
                 .name("wl_parties.review_task")
                 .post("/parties/review-tasks/{id}/items/{item}", decide_item)
@@ -1969,4 +1973,139 @@ async fn complete_compliance_task(
         }
         Err(other) => Err(other.into_error()),
     }
+}
+/// How many of the latest screenings the screening page shows.
+const SCREENING_PAGE_LIMIT: u64 = 50;
+
+/// One sanctions list on the screening page.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct SanctionsListRow {
+    name: String,
+    source: String,
+    version: String,
+    updated: String,
+    status_label: String,
+    status_tone: &'static str,
+    error: String,
+}
+
+/// One screening on the screening page.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct ScreeningListRow {
+    id: i64,
+    party: String,
+    code: String,
+    run_at: String,
+    trigger: String,
+    status: String,
+    lists: String,
+    stale: bool,
+}
+
+/// What the screening page needs.
+#[derive(Serialize, ViewData)]
+#[view(template = "wl-parties/screening.html")]
+pub(crate) struct ScreeningPage {
+    tx: Texts,
+    lists: Vec<SanctionsListRow>,
+    screenings: Vec<ScreeningListRow>,
+}
+
+/// `GET /parties/screening`: each sanctions list with its version, last
+/// successful update, status and last error, and the latest screenings with
+/// the lists they used and the stale badge. 403 unless the user holds
+/// `screening.run`, `screening.review` or `parties.block_reason.view`.
+async fn screening_page(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
+    if ![
+        permissions::SCREENING_RUN,
+        permissions::SCREENING_REVIEW,
+        permissions::BLOCK_REASON_VIEW,
+    ]
+    .into_iter()
+    .any(|permission| user.has_permission(permission))
+    {
+        return Err(Error::Forbidden);
+    }
+    let db = &state.db;
+    let t = texts_in(&lang);
+    let never = t("freshness.never");
+    let dash = "\u{2014}".to_owned();
+    let lists = SanctionsList::all(db)
+        .await?
+        .into_iter()
+        .map(|list| {
+            let stale = list.status == ListStatus::Stale;
+            SanctionsListRow {
+                name: list.name,
+                source: list.source,
+                version: list.version.unwrap_or_else(|| dash.clone()),
+                updated: list
+                    .last_updated_at
+                    .map_or_else(|| never.clone(), dubai_label),
+                status_label: t(if stale {
+                    "screening.list_status.stale"
+                } else {
+                    "screening.list_status.current"
+                }),
+                status_tone: if stale { "warning" } else { "success" },
+                error: list.last_error.unwrap_or_else(|| dash.clone()),
+            }
+        })
+        .collect();
+    let latest = Screening::query()
+        .order_by_desc(Screening::ID)
+        .limit(SCREENING_PAGE_LIMIT)
+        .get(db)
+        .await?;
+    let mut screenings = Vec::new();
+    for run in latest {
+        let (code, party) = party_code_and_name(db, run.party_id).await?;
+        let used = run
+            .lists_used
+            .0
+            .iter()
+            .map(|list| {
+                format!(
+                    "{} {} ({})",
+                    list.name,
+                    list.version.as_deref().unwrap_or("\u{2014}"),
+                    list.last_updated_at
+                        .map_or_else(|| never.clone(), dubai_label),
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("; ");
+        screenings.push(ScreeningListRow {
+            id: run.id,
+            party,
+            code,
+            run_at: dubai_label(run.run_at),
+            trigger: t(&format!(
+                "screening.trigger.{}",
+                match run.run_trigger {
+                    ScreeningTrigger::Onboarding => "onboarding",
+                    ScreeningTrigger::ListUpdate => "list_update",
+                    ScreeningTrigger::Review => "review",
+                    ScreeningTrigger::Manual => "manual",
+                }
+            )),
+            status: t(&format!(
+                "screening.state.{}",
+                match run.status {
+                    ScreeningStatus::Pending => "pending",
+                    ScreeningStatus::Clear => "clear",
+                    ScreeningStatus::PossibleMatch => "possible_match",
+                    ScreeningStatus::FalsePositive => "false_positive",
+                    ScreeningStatus::ConfirmedMatch => "confirmed_match",
+                }
+            )),
+            lists: if used.is_empty() { dash.clone() } else { used },
+            stale: run.lists_stale,
+        });
+    }
+    Ok(View::typed(ScreeningPage {
+        tx: texts::all(&lang),
+        lists,
+        screenings,
+    }))
 }

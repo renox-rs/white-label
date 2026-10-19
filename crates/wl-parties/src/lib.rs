@@ -158,6 +158,8 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "wl-parties/compliance_task.html",
         include_str!("../views/wl-parties/compliance_task.html"),
+        "wl-parties/screening.html",
+        include_str!("../views/wl-parties/screening.html"),
     ),
 ];
 
@@ -476,6 +478,14 @@ impl Module for WlParties {
                 .group("nav.app")
                 .order(34)
                 .permission(permissions::BLOCK_REASON_VIEW),
+        // The sanctions lists and the latest screenings (#40 A11). The page
+        // checks its three permissions itself.
+        app.nav(
+            "app",
+            NavLink::route("wl_parties.screening", "nav.screening")
+                .icon("shield-check")
+                .group("nav.app")
+                .order(34),
         );
         app.templates(|env| {
             for (name, source) in VIEWS {
