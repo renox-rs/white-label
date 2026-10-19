@@ -40,8 +40,8 @@ use renox::prelude::*;
 use renox::state_machine::{StateMachine, Transition, TransitionCtx, TransitionError, Transitioned};
 use serde::{Deserialize, Serialize};
 use wl_kernel::deposits::{
-    AdjustDeposit, ApplyDeposit, DepositApplied, CancelSettlement, DepositAdjusted, DepositFuture, Deposits, HeldDeposit,
-    SettlementStarted, TopUpCharge, deposit_top_ups,
+    AdjustDeposit, ApplyDeposit, DepositApplied, CancelSettlement, DepositAdjusted, DepositFuture, DepositTransferred,
+    Deposits, HeldDeposit, SettlementStarted, TopUpCharge, TransferDeposit, deposit_top_ups,
 };
 use wl_kernel::payments::RefundId;
 use wl_kernel::Subject;
@@ -606,6 +606,50 @@ impl Deposits for DepositBook {
         open: bool,
     ) -> DepositFuture<'a, bool> {
         Box::pin(async move { crate::deposit_deductions::set_legal_case_of(state, source, open).await })
+    }
+
+    fn transfer<'a>(
+        &'a self,
+        state: &'a AppState,
+        by: &'a AuthUser,
+        request: TransferDeposit,
+    ) -> DepositFuture<'a, Option<DepositTransferred>> {
+        Box::pin(async move {
+            let found = Deposit::query()
+                .where_(Deposit::SOURCE_TYPE.eq(request.source.subject_type.as_str()))
+                .where_(Deposit::SOURCE_ID.eq(request.source.subject_id))
+                .where_(Deposit::STATUS.eq(DepositStatus::Held))
+                .order_by_desc(Deposit::ID)
+                .first(&state.db)
+                .await?;
+            let Some(deposit) = found else {
+                return Ok(None);
+            };
+            let held = deposit.held_amount;
+            let asked = crate::deposit::TransferRequest {
+                new_holder: request.new_holder,
+                receipt: request.receipt.clone(),
+            };
+            let done = crate::deposit::transfer(state, by, &deposit, &asked)
+                .await
+                .map_err(TransitionError::into_error)?;
+            Ok(Some(DepositTransferred {
+                deposit: done.deposit_id(),
+                held,
+                new_holder: request.new_holder,
+            }))
+        })
+    }
+
+    fn in_settlement<'a>(&'a self, db: &'a Db, source: &'a Subject) -> DepositFuture<'a, bool> {
+        Box::pin(async move {
+            Deposit::query()
+                .where_(Deposit::SOURCE_TYPE.eq(source.subject_type.as_str()))
+                .where_(Deposit::SOURCE_ID.eq(source.subject_id))
+                .where_(Deposit::STATUS.eq(DepositStatus::SettlementPending))
+                .exists(db)
+                .await
+        })
     }
 
     fn start_settlement<'a>(

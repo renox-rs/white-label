@@ -362,6 +362,40 @@ pub struct SettlementStarted {
     pub version: i32,
 }
 
+/// The handover of a held deposit to another holder: [`Deposits::transfer`]
+/// (01 Property: a management agreement ends, or a unit leaves it).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TransferDeposit {
+    /// What the deposit is held for (the lease).
+    pub source: Subject,
+    /// The new holder, a party (the owner or the new manager).
+    pub new_holder: PartyId,
+    /// The reference of the new holder's receipt; required.
+    pub receipt: String,
+}
+
+impl TransferDeposit {
+    /// Hands the deposit held for `source` to `new_holder` against `receipt`.
+    pub fn new(source: Subject, new_holder: PartyId, receipt: &str) -> Self {
+        TransferDeposit {
+            source,
+            new_holder,
+            receipt: receipt.to_owned(),
+        }
+    }
+}
+
+/// What [`Deposits::transfer`] did.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DepositTransferred {
+    /// The deposit, now `transferred`.
+    pub deposit: DepositId,
+    /// What was handed over, in fils.
+    pub held: i64,
+    /// The new holder.
+    pub new_holder: PartyId,
+}
+
 /// What other modules do with deposits. `wl-payments` provides it; without
 /// that module, [`deposits`] gives [`NoDeposits`].
 pub trait Deposits: Send + Sync + 'static {
@@ -404,6 +438,38 @@ pub trait Deposits: Send + Sync + 'static {
         _source: &'a Subject,
     ) -> DepositFuture<'a, Option<SettlementStarted>> {
         Box::pin(async { Ok(None) })
+    }
+
+    /// Hands the `held` deposit of `request.source` to another holder against
+    /// the holder's receipt, for the user `by` (who holds `deposits.manage`):
+    /// the deposit becomes `transferred` and the money passed on is recorded
+    /// as an outgoing payment to the new holder (it is not a refund).
+    /// `None` when the source holds no deposit in `held`. Refused (422)
+    /// without a receipt, for a new holder that does not exist or is the
+    /// deposit's own party, or for a deposit that holds nothing. The default
+    /// refuses (422): payments is not enabled.
+    fn transfer<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _by: &'a AuthUser,
+        request: TransferDeposit,
+    ) -> DepositFuture<'a, Option<DepositTransferred>> {
+        Box::pin(async move {
+            Err(Error::Status(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                format!(
+                    "the deposit of {} cannot be transferred: payments is not enabled",
+                    request.source
+                ),
+            ))
+        })
+    }
+
+    /// Whether the deposit of `source` is `settlement_pending`: it cannot be
+    /// transferred until it is refunded or forfeited. The default says no:
+    /// payments is not enabled.
+    fn in_settlement<'a>(&'a self, _db: &'a Db, _source: &'a Subject) -> DepositFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
     }
 
     /// Records that a legal case on the agreement `source` is open (`open`)

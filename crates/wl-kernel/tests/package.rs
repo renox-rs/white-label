@@ -2190,3 +2190,22 @@ async fn the_legal_case_contracts_fall_back_when_the_modules_are_off() {
     assert_eq!(json["cheque"], 4);
     assert_eq!(json["agreement"]["subject_type"], "property.lease");
 }
+
+/// #272: without the `payments` module no deposit is in settlement, and a
+/// handover request names the deposit's source, the new holder and the receipt.
+#[renox::test]
+async fn the_deposit_handover_falls_back_when_payments_is_off() {
+    use wl_kernel::Subject;
+    use wl_kernel::deposits::{TransferDeposit, deposits};
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let state = app.state();
+    let lease = Subject::new("property.lease", 9);
+
+    assert!(!deposits(state).in_settlement(app.db(), &lease).await.unwrap());
+    let request = TransferDeposit::new(lease.clone(), PartyId(31), "RCPT-1");
+    assert_eq!(request.source, lease);
+    assert_eq!(request.new_holder, PartyId(31));
+    assert_eq!(request.receipt, "RCPT-1");
+}
