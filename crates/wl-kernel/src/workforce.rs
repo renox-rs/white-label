@@ -9,7 +9,10 @@
 //! [`EmployeeOnboardingCancelled`], [`EmployeeExited`] and
 //! [`EmployeeDeceased`] are part of the contract already, because the
 //! onboarding cancels itself on them. Without the `hr` module,
-//! [`workforce`] gives [`NoWorkforce`]: nobody works anywhere.
+//! [`workforce`] gives [`NoWorkforce`]: nobody works anywhere. The SOP
+//! acknowledgements (wl-documents `DOC.RUL.04`) also ask it for every employee
+//! ([`Workforce::all_staff`]), the [`StaffProfile`] of one (role, scopes,
+//! account, manager, leave) and the employee of a user.
 //!
 //! An employee is referred to by [`EmployeeId`] or as a [`Subject`] of type
 //! [`EMPLOYEE_SUBJECT_TYPE`]; a scope is a [`Subject`] too (a branch).
@@ -23,6 +26,7 @@ use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::parties::PartyId;
 use crate::subject::Subject;
 
 /// The subject type of an employee, for [`Subject`] references.
@@ -206,6 +210,63 @@ pub trait Workforce: Send + Sync + 'static {
     ) -> WorkforceFuture<'a, Vec<EmployeeId>> {
         Box::pin(async { Ok(Vec::new()) })
     }
+
+    /// Every employee [`employees_in`](Workforce::employees_in) would list,
+    /// whatever the role. The default has none.
+    fn all_staff<'a>(&'a self, _db: &'a Db) -> WorkforceFuture<'a, Vec<EmployeeId>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
+    /// The profile of `employee`, or `None` for an unknown employee. The
+    /// default knows nobody.
+    fn staff<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _employee: EmployeeId,
+    ) -> WorkforceFuture<'a, Option<StaffProfile>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    /// The employee whose account is the user `user_id`, if any. The default
+    /// knows nobody.
+    fn employee_of_user<'a>(
+        &'a self,
+        _db: &'a Db,
+        _user_id: i64,
+    ) -> WorkforceFuture<'a, Option<EmployeeId>> {
+        Box::pin(async { Ok(None) })
+    }
+}
+
+/// What the SOP acknowledgements (wl-documents `DOC.RUL.04`) need to know
+/// about a member of staff, without depending on the `wl-hr` crate.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StaffProfile {
+    /// The employee.
+    pub employee: EmployeeId,
+    /// The person (a party): the contact points of an SMS are theirs.
+    pub party: PartyId,
+    /// The account the employee signs in with; `None` when they have none
+    /// and everything is done in person.
+    pub user_id: Option<i64>,
+    /// The job role or trade key.
+    pub role: String,
+    /// The scopes the employee works in.
+    pub scopes: Vec<Subject>,
+    /// The employing legal entity, if recorded.
+    pub legal_entity_id: Option<i64>,
+    /// Whether [`Workforce::employees_in`] lists the employee: `onboarding`,
+    /// `active`, `on_leave` or `notice`, not `absconded` or gone.
+    pub listed: bool,
+    /// Whether the employee is `on_leave` now.
+    pub on_leave: bool,
+    /// The day the employee is back at work, when `on_leave` and the leave
+    /// is recorded: the day after the last day of the approved leave.
+    pub returns_on: Option<NaiveDate>,
+    /// The users who are the employee's manager (wl-hr §3 *The employee's
+    /// manager*): the holders of the manager role in the employee's scopes,
+    /// HR when there are none.
+    pub managers: Vec<i64>,
 }
 
 /// The workforce when the `hr` module is off: nobody works anywhere.
@@ -239,6 +300,30 @@ mod tests {
         assert_eq!(id.subject(), Subject::new("hr.employee", 7));
         assert_eq!(renox::serde_json::to_string(&id).unwrap(), "7");
         assert_eq!(OnboardingId(3).subject(), Subject::new("hr.onboarding", 3));
+    }
+
+    #[test]
+    fn a_staff_profile_round_trips_through_json() {
+        let profile = StaffProfile {
+            employee: EmployeeId(7),
+            party: PartyId(50),
+            user_id: None,
+            role: "site_worker".into(),
+            scopes: vec![Subject::new("property.site", 2)],
+            legal_entity_id: Some(1),
+            listed: true,
+            on_leave: true,
+            returns_on: NaiveDate::from_ymd_opt(2026, 12, 1),
+            managers: vec![4, 5],
+        };
+        let json = renox::serde_json::to_value(&profile).unwrap();
+        assert_eq!(json["employee"], 7);
+        assert_eq!(json["party"], 50);
+        assert!(json["user_id"].is_null());
+        assert_eq!(
+            renox::serde_json::from_value::<StaffProfile>(json).unwrap(),
+            profile
+        );
     }
 
     #[test]

@@ -2047,6 +2047,22 @@ async fn without_hr_the_workforce_checklists_and_sop_acknowledgements_are_empty(
         .await
         .unwrap()
         .is_empty());
+    // #53: nobody is on the staff list, no profile and no account either.
+    assert!(workforce(app.state()).all_staff(app.db()).await.unwrap().is_empty());
+    assert_eq!(
+        workforce(app.state())
+            .staff(app.state(), EmployeeId(7))
+            .await
+            .unwrap(),
+        None
+    );
+    assert_eq!(
+        workforce(app.state())
+            .employee_of_user(app.db(), 3)
+            .await
+            .unwrap(),
+        None
+    );
     let employee = EmployeeId(7).subject();
     assert_eq!(
         checklists(app.state())
