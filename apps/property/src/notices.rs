@@ -157,7 +157,7 @@ fn tenant_message(key: &str, texts: &str, statutory: bool) -> NotificationTypeDe
 
 /// Registers the vertical's notification types with the kernel registry.
 pub(crate) fn register_types() {
-    notify::register_type(english_reminder(LEASE_UNSIGNED, "lease_unsigned"));
+    notify::register_type(staff_reminder(LEASE_UNSIGNED, "lease_unsigned"));
     notify::register_type(staff_reminder(RENEWAL_DUE, "renewal_due"));
     notify::register_type(staff_reminder(RENEWAL_DEADLINE, "renewal_deadline"));
     notify::register_type(staff_reminder(CURRENT_TERMS_ONLY, "current_terms_only"));
