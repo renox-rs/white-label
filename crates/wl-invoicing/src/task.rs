@@ -51,6 +51,9 @@ pub enum TaskKind {
     ReversalRefused,
     /// The reversal of a payment on a supplier bill was refused.
     BillReversalRefused,
+    /// A bank account has no balance, or only an old one, for the cash-flow
+    /// forecast (`FIN.RUL.25`): import a statement or enter a balance.
+    StatementBalanceStale,
 }
 
 impl TaskKind {
@@ -69,6 +72,7 @@ impl TaskKind {
             TaskKind::ReversalAfterWriteOff => "wl_invoicing.task.reversal_after_write_off",
             TaskKind::ReversalRefused => "wl_invoicing.task.reversal_refused",
             TaskKind::BillReversalRefused => "wl_invoicing.task.bill_reversal_refused",
+            TaskKind::StatementBalanceStale => "wl_invoicing.task.statement_balance_stale",
         }
     }
 }

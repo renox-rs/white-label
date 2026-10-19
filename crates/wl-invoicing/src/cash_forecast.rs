@@ -520,6 +520,28 @@ impl Forecast {
                 .sum::<i64>()
     }
 
+    /// The projected balance at the end of week `week` (from 0) as `FIN.RUL.23`
+    /// reads it: without the income budget fill (budgeted sales with no
+    /// document behind them) unless `income_fill` counts it. Scheduled charges
+    /// and subscription cycles are contracted and count either way.
+    pub fn balance_for_alert(&self, week: usize, income_fill: bool) -> i64 {
+        let counted = |l: &&Line| {
+            income_fill || !(l.kind == LineKind::BudgetFill && l.direction == Direction::In)
+        };
+        let sum = |w: usize, direction: Direction| -> i64 {
+            self.lines
+                .iter()
+                .filter(counted)
+                .filter(|l| l.week == w && l.direction == direction)
+                .map(|l| l.amount)
+                .sum()
+        };
+        self.opening_total()
+            + (0..=week)
+                .map(|w| sum(w, Direction::In) - sum(w, Direction::Out))
+                .sum::<i64>()
+    }
+
     /// The memo total of `kind` in week `week` (from 0).
     pub fn memo(&self, kind: MemoKind, week: usize) -> i64 {
         self.memos

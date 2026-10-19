@@ -167,6 +167,18 @@ pub struct InvoicingConfig {
     /// Whether receipts move by each party's average days late
     /// (`adjust by days late`, §5.14 step 6).
     pub cash_days_late: bool,
+    /// The projected balance each legal entity (by code) wants to keep, in
+    /// AED fils; an entity not listed has 0 (`FIN.RUL.23`).
+    pub cash_thresholds: Vec<(String, i64)>,
+    /// When the daily cash check (`FIN.RUL.23`, `FIN.RUL.25`) runs, `HH:MM`
+    /// in Asia/Dubai.
+    pub cash_alert_time: String,
+    /// The roles `FIN.RUL.23` tells; a role nobody holds falls back to the
+    /// company admin.
+    pub cash_alert_roles: Vec<String>,
+    /// Whether the income budget fill counts in the balance `FIN.RUL.23`
+    /// checks.
+    pub cash_income_fill_counted: bool,
     /// The bank accounts of each legal entity (by code) the forecast shows
     /// even before they have a balance.
     pub cash_accounts: Vec<(String, String)>,
@@ -219,6 +231,10 @@ impl Default for InvoicingConfig {
             cash_disputed_counted: false,
             cash_stale_days: 7,
             cash_days_late: false,
+            cash_thresholds: Vec::new(),
+            cash_alert_time: "06:00".to_owned(),
+            cash_alert_roles: vec!["finance_manager".to_owned(), "admin".to_owned()],
+            cash_income_fill_counted: false,
             cash_accounts: Vec::new(),
         }
     }
@@ -244,6 +260,15 @@ impl ReasonProblem {
 }
 
 impl InvoicingConfig {
+    /// The projected balance the entity with this code wants to keep, in AED
+    /// fils (default 0).
+    pub fn cash_threshold_of(&self, entity_code: &str) -> i64 {
+        self.cash_thresholds
+            .iter()
+            .find(|(code, _)| code == entity_code)
+            .map_or(0, |(_, threshold)| *threshold)
+    }
+
     /// The tax period of the entity with this code.
     pub fn tax_period_of(&self, entity_code: &str) -> TaxPeriod {
         self.tax_periods
@@ -318,6 +343,10 @@ mod tests {
         assert!(!config.cash_disputed_counted);
         assert_eq!(config.cash_stale_days, 7);
         assert!(!config.cash_days_late);
+        assert_eq!(config.cash_threshold_of("PGP"), 0);
+        assert_eq!(config.cash_alert_time, "06:00");
+        assert_eq!(config.cash_alert_roles, ["finance_manager", "admin"]);
+        assert!(!config.cash_income_fill_counted);
         assert!(config.drawings_self_approve);
         assert_eq!(config.drawings_notify_role, "accountant");
     }

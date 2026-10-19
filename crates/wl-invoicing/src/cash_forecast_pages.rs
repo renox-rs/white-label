@@ -203,7 +203,7 @@ fn kind_text(t: &dyn Fn(&str) -> String, kind: MemoKind) -> String {
 }
 
 /// The text of a warning.
-fn warning_text(
+pub(crate) fn warning_text(
     t: &dyn Fn(&str) -> String,
     codes: &BTreeMap<i64, String>,
     warning: &Warning,

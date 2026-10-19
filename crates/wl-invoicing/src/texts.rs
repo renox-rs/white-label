@@ -843,6 +843,10 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_invoicing.task.bill_reversal_refused",
         "Reversal of {{ amount }} refused: {{ reason }}",
     ),
+    (
+        "wl_invoicing.task.statement_balance_stale",
+        "The balance of bank account {{ account }} of {{ entity }} is missing or old (latest: {{ as_of }}, limit {{ days }} days). Import a statement or enter a balance.",
+    ),
     ("wl_invoicing.allocations.removed", "Removed"),
     ("wl_invoicing.allocations.removed_at", "Removed on"),
     ("wl_invoicing.allocations.removed_reason", "Removed because"),
@@ -1723,6 +1727,18 @@ const TEXTS: &[(&str, &str)] = &[
     (
         "wl_invoicing.vat.blocked_drawings_note",
         "Not recovered until the accountant answers the open item on drawings (A-16).",
+    ),
+    (
+        "wl_invoicing.cash_alert.subject",
+        "Cash forecast: {{ entity }} falls below {{ threshold }} in week {{ week }}",
+    ),
+    (
+        "wl_invoicing.cash_alert.body",
+        "The projected balance of {{ entity }} is {{ balance }} at the end of week {{ week }} ({{ from }} to {{ to }}), below the threshold of {{ threshold }}. Largest payments that week: {{ payments }}. {{ warnings }} See the forecast: {{ link }}",
+    ),
+    (
+        "wl_invoicing.tasks.kind.statement_balance_stale",
+        "Bank balance needed",
     ),
     (
         "wl_invoicing.budget_variance.subject",

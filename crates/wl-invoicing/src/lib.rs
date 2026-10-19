@@ -29,6 +29,7 @@ mod budget_notices;
 mod budget_pages;
 pub mod budget_reminder;
 pub mod budget_report;
+pub mod cash_alert;
 pub mod cash_balance;
 pub mod cash_forecast;
 pub mod cash_forecast_load;
@@ -547,6 +548,37 @@ impl WlInvoicing {
         self
     }
 
+    /// The projected balance the legal entity with `entity_code` wants to
+    /// keep, in AED fils (default 0): `FIN.RUL.23` warns below it.
+    pub fn cash_threshold(mut self, entity_code: &str, fils: i64) -> Self {
+        let thresholds = &mut self.config.cash_thresholds;
+        match thresholds.iter_mut().find(|(code, _)| code == entity_code) {
+            Some(entry) => entry.1 = fils,
+            None => thresholds.push((entity_code.to_owned(), fils)),
+        }
+        self
+    }
+
+    /// When the daily cash check runs, `HH:MM` in Asia/Dubai (default
+    /// `06:00`).
+    pub fn cash_alert_time(mut self, time: &str) -> Self {
+        self.config.cash_alert_time = time.to_owned();
+        self
+    }
+
+    /// The roles `FIN.RUL.23` tells (default `finance_manager`, `admin`).
+    pub fn cash_alert_roles(mut self, roles: &[&str]) -> Self {
+        self.config.cash_alert_roles = roles.iter().map(|r| (*r).to_owned()).collect();
+        self
+    }
+
+    /// Whether the income budget fill counts in the balance `FIN.RUL.23`
+    /// checks (default off).
+    pub fn cash_income_fill_counted(mut self, on: bool) -> Self {
+        self.config.cash_income_fill_counted = on;
+        self
+    }
+
     /// Names a bank account of the legal entity with `entity_code`, so the
     /// forecast shows it (with a warning) before it has a balance.
     pub fn cash_account(mut self, entity_code: &str, account: &str) -> Self {
@@ -603,6 +635,7 @@ impl Module for WlInvoicing {
 
     fn register(&self, app: &mut Registry) {
         app.model::<cash_balance::OpeningCashBalance>();
+        app.model::<cash_alert::CashAlert>();
         app.model::<Invoice>()
             .model::<InvoiceLine>()
             .model::<SupplierBill>()
@@ -828,6 +861,10 @@ impl Module for WlInvoicing {
         wl_kernel::budgets::provide_company_budgets(app, Budgets);
         budget_notices::register_types();
         budget_reminder::schedule(app);
+        // `FIN.RUL.23` and `FIN.RUL.25`: the notice type and the daily check
+        // of the projected cash balance and of the bank balances.
+        cash_alert::register_types();
+        cash_alert::schedule(app, &self.config);
         // `FIN.RUL.24`: a bill that posts an actual may reach its budget.
         budget_variance::register(app);
         // `FIN.ACL.21`: the drawing approval machine and its policy, and the
