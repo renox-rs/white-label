@@ -16,7 +16,8 @@
 //! (the user named, else the user who refers).
 //!
 //! The effect stores the case type, owner and day. After the commit
-//! ([`after_referral`]): the follow-up task of the bounce is closed (the
+//! ([`after_referral`]): `ChequeReferredToLegal` is emitted for the vertical
+//! whose agreement the cheque was received with; the follow-up task of the bounce is closed (the
 //! `FIN.RUL.18` reminders act only on `bounced` cheques, so they stop); the
 //! case owner gets a task with the evidence pack ([`evidence_pack`]) and a
 //! notice; the party gets the formal notice (the default template, `⚠ open:
@@ -36,7 +37,7 @@ use renox::prelude::*;
 use renox::serde_json::{Value, json};
 use renox::state_machine::{StateMachine, Transition, TransitionCtx, TransitionError};
 use serde::{Deserialize, Serialize};
-use wl_kernel::cheques::ChequeStatus;
+use wl_kernel::cheques::{ChequeReferredToLegal, ChequeStatus};
 use wl_kernel::documents::today;
 use wl_kernel::invoicing::INVOICE_SUBJECT_TYPE;
 
@@ -278,7 +279,19 @@ pub(crate) async fn after_referral(state: &AppState, cheque_id: i64) -> Result<(
         .iter()
         .map(|manager| manager.id)
         .collect();
-    notices::cheque_referred(state, &cheque, owner, &managers).await
+    notices::cheque_referred(state, &cheque, owner, &managers).await?;
+    // A vertical whose agreement the cheque was received with sets its own
+    // legal case flag (01 Property: a flag of type arrears on the lease).
+    state
+        .emit(ChequeReferredToLegal {
+            cheque: cheque.cheque_id(),
+            party: cheque.party(),
+            agreement: cheque.agreement(),
+            open_amount: cheque.open_amount,
+            currency: cheque.currency.clone(),
+            case_owner: owner,
+        })
+        .await
 }
 
 #[cfg(test)]

@@ -369,6 +369,19 @@ pub trait TaskCreator: Send + Sync + 'static {
         Box::pin(async { Ok(None) })
     }
 
+    /// The open tickets of the category `category_key` about `subject`
+    /// (open in any state except `resolved`, `closed` and `cancelled`),
+    /// oldest first: 01 Property lists the *legal case* tickets of a lease a
+    /// flag can be linked to. The default finds none.
+    fn open_of<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _subject: &'a Subject,
+        _category_key: &'a str,
+    ) -> TicketFuture<'a, Vec<TicketRef>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
     /// Resolves `ticket` on behalf of the record that opened it, with `note`
     /// as the resolution. Returns `false` when it did nothing, e.g. the
     /// ticket is already resolved, closed or cancelled. The default does

@@ -22,7 +22,7 @@ use serde::Deserialize;
 use wl_kernel::approvals::{ApprovalDecided, ApprovalEnd};
 use wl_kernel::cheques::{
     BounceFeeCharge, BounceFees, ChargeInvoicer, ChequeBounceResolved, ChequeBounced, ChequeFuture,
-    RegisterCheque, cheques as cheque_contract,
+    ChequeReferredToLegal, RegisterCheque, cheques as cheque_contract,
 };
 use wl_kernel::deposits::{
     DepositAdjusted, DepositFuture, DepositSettled, DepositTopUps, DisputeDeductions, TopUpCharge,
@@ -896,6 +896,8 @@ pub struct Booted {
     pub cheque_bounced: Recorded<ChequeBounced>,
     /// `ChequeBounceResolved`.
     pub cheque_resolved: Recorded<ChequeBounceResolved>,
+    /// `ChequeReferredToLegal`.
+    pub cheque_referred: Recorded<ChequeReferredToLegal>,
     /// `DepositSettled`.
     pub deposit_settled: Recorded<DepositSettled>,
     /// `DepositAdjusted`.
@@ -1672,6 +1674,7 @@ pub async fn boot_with(module: WlPayments, gateway: FakeGateway) -> Booted {
     let refund_failed = Recorded::new();
     let cheque_bounced = Recorded::new();
     let cheque_resolved = Recorded::new();
+    let cheque_referred = Recorded::new();
     let deposit_settled = Recorded::new();
     let deposit_adjusted = Recorded::new();
     let top_ups = RecordingTopUps::default();
@@ -1708,6 +1711,7 @@ pub async fn boot_with(module: WlPayments, gateway: FakeGateway) -> Booted {
     let app = record(app, &refund_failed);
     let app = record(app, &cheque_bounced);
     let app = record(app, &cheque_resolved);
+    let app = record(app, &cheque_referred);
     let app = record(app, &deposit_settled);
     let app = record(app, &deposit_adjusted);
     let config = ClientConfig::parse(CLIENT).expect("a valid client.toml");
@@ -1743,6 +1747,7 @@ pub async fn boot_with(module: WlPayments, gateway: FakeGateway) -> Booted {
         refund_failed,
         cheque_bounced,
         cheque_resolved,
+        cheque_referred,
         deposit_settled,
         deposit_adjusted,
         top_ups,

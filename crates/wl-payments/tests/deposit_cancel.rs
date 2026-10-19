@@ -91,6 +91,29 @@ async fn the_settlement_of_an_ended_agreement_starts_without_a_version() {
     assert!(deposits(t.state()).start_settlement(t.state(), &other).await.unwrap().is_none());
 }
 
+/// A legal case on the agreement keeps the deductions dispute flag of the
+/// deposit in settlement, and its decision clears it (#263).
+#[renox::test]
+async fn a_legal_case_on_the_agreement_sets_and_clears_the_dispute_flag() {
+    let t = boot().await;
+    let by = t.user_a().await;
+    let payment = t.receive(BLUE_DUNES, 500_000).await;
+    let deposit = t.hold_deposit(&by, BLUE_DUNES, 500_000, Some(&payment)).await;
+
+    // Held, not in settlement: nothing to flag.
+    let book = deposits(t.state());
+    assert!(!book.set_legal_case(t.state(), &lease(), true).await.unwrap());
+    book.start_settlement(t.state(), &lease()).await.unwrap().unwrap();
+    assert!(!t.deposit(deposit.id).await.dispute_legal_case);
+
+    assert!(book.set_legal_case(t.state(), &lease(), true).await.unwrap());
+    assert!(t.deposit(deposit.id).await.dispute_legal_case);
+    assert!(book.set_legal_case(t.state(), &lease(), false).await.unwrap());
+    assert!(!t.deposit(deposit.id).await.dispute_legal_case);
+    let other = Subject::new("property.lease", 10);
+    assert!(!book.set_legal_case(t.state(), &other, true).await.unwrap());
+}
+
 /// A forfeit is one line that names the clause, and the party sees it.
 #[renox::test]
 async fn a_forfeit_is_published_as_a_deduction_with_its_clause() {

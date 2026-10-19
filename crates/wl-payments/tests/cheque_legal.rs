@@ -125,6 +125,14 @@ async fn a_referral_gives_the_owner_a_task_the_party_a_notice_and_tells_the_mana
     }
     assert_eq!(notices[0].data["days"], 7);
 
+    // The vertical hears of the referral.
+    let heard = t.cheque_referred.all();
+    assert_eq!(heard.len(), 1);
+    assert_eq!(heard[0].cheque.0, cheque.id);
+    assert_eq!(heard[0].party, BLUE_DUNES);
+    assert_eq!(heard[0].open_amount, 1_000_000);
+    assert_eq!(heard[0].case_owner, a.id);
+
     // The manager is told.
     let referred = t.notices.of_type(CHEQUE_REFERRED);
     assert_eq!(referred.len(), 1);

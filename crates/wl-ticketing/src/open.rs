@@ -12,6 +12,7 @@
 
 use renox::db::DateTime;
 use renox::prelude::*;
+use wl_kernel::Subject;
 use wl_kernel::calendar::calendar;
 use wl_kernel::tickets::{
     Assignee, OpenTicket, Requester, TICKET_SERIES, TaskComment, TaskCreator, TicketFuture, TicketId,
@@ -187,6 +188,35 @@ impl Tickets {
 }
 
 impl Tickets {
+    /// The open tickets of the category `category_key` about `subject`,
+    /// oldest first: any state except `resolved`, `closed` and `cancelled`.
+    /// None for an unknown category.
+    ///
+    /// # Errors
+    ///
+    /// Database errors.
+    pub async fn open_of(
+        state: &AppState,
+        subject: &Subject,
+        category_key: &str,
+    ) -> Result<Vec<TicketRef>> {
+        let Some(category) = Category::by_key(&state.db, category_key).await? else {
+            return Ok(Vec::new());
+        };
+        let found = Ticket::query()
+            .where_(Ticket::SUBJECT_TYPE.eq(subject.subject_type.as_str()))
+            .where_(Ticket::SUBJECT_ID.eq(subject.subject_id))
+            .where_(Ticket::CATEGORY_ID.eq(category.id))
+            .order_by(Ticket::ID)
+            .get(&state.db)
+            .await?;
+        Ok(found
+            .into_iter()
+            .filter(|ticket| ticket.is_open())
+            .map(|ticket| ticket.reference())
+            .collect())
+    }
+
     /// Resolves ticket `id` for the record that opened it, with `note` as the
     /// resolution. `false` when the ticket is unknown or already resolved,
     /// closed or cancelled.
@@ -245,6 +275,15 @@ impl TaskCreator for Tickets {
         source_key: &'a str,
     ) -> TicketFuture<'a, Option<TicketRef>> {
         Box::pin(Tickets::find_open(state, source_key))
+    }
+
+    fn open_of<'a>(
+        &'a self,
+        state: &'a AppState,
+        subject: &'a Subject,
+        category_key: &'a str,
+    ) -> TicketFuture<'a, Vec<TicketRef>> {
+        Box::pin(Tickets::open_of(state, subject, category_key))
     }
 
     fn resolve_from_source<'a>(
@@ -408,6 +447,41 @@ mod tests {
             .unwrap()
             .expect("ticketing is on");
         assert_eq!(opened.number, "TKT-2026-0001");
+    }
+
+    #[renox::test]
+    async fn the_open_tickets_of_a_category_about_a_subject_are_listed() {
+        let app = app().await;
+        let state = app.state();
+        let lease = Subject::new("property.lease", 12);
+        let first = Tickets::open(state, OpenTicket::new(lease.clone(), "general", "Case one"))
+            .await
+            .unwrap();
+        let second = Tickets::open(state, OpenTicket::new(lease.clone(), "general", "Case two"))
+            .await
+            .unwrap();
+        let other = Subject::new("property.lease", 13);
+        Tickets::open(state, OpenTicket::new(other, "task", "Elsewhere"))
+            .await
+            .unwrap();
+        Tickets::open(state, OpenTicket::new(lease.clone(), "task", "A task"))
+            .await
+            .unwrap();
+
+        let open = task_creator(state)
+            .open_of(state, &lease, "general")
+            .await
+            .unwrap();
+        assert_eq!(open, vec![first.clone(), second.clone()]);
+        // A closed ticket is not listed; an unknown category has none.
+        assert!(
+            Tickets::resolve_from_source(state, first.id, "Done")
+                .await
+                .unwrap()
+        );
+        let open = Tickets::open_of(state, &lease, "general").await.unwrap();
+        assert_eq!(open, vec![second]);
+        assert!(Tickets::open_of(state, &lease, "nope").await.unwrap().is_empty());
     }
 
     #[renox::test]

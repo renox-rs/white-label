@@ -682,6 +682,27 @@ pub struct ChequeBounced {
 
 impl Event for ChequeBounced {}
 
+/// A bounced received cheque was referred to a legal case (`refer_to_legal`):
+/// a vertical whose agreement it was received with sets its legal case flag
+/// (01 Property: a flag of type arrears on the lease, with its ticket).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChequeReferredToLegal {
+    /// The cheque.
+    pub cheque: ChequeId,
+    /// The drawer.
+    pub party: PartyId,
+    /// The agreement the cheque was received with, if any.
+    pub agreement: Option<Subject>,
+    /// What is still owed on it, in fils.
+    pub open_amount: i64,
+    /// The ISO currency code.
+    pub currency: String,
+    /// The user who owns the case.
+    pub case_owner: i64,
+}
+
+impl Event for ChequeReferredToLegal {}
+
 /// How a bounced cheque was resolved.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

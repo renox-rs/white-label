@@ -346,6 +346,20 @@ pub trait Deposits: Send + Sync + 'static {
         Box::pin(async { Ok(None) })
     }
 
+    /// Records that a legal case on the agreement `source` is open (`open`)
+    /// or decided (`!open`): while it is open the deductions dispute flag of
+    /// the deposit being settled stays, and its refund and forfeit wait
+    /// (`dispute_legal_case`). Returns whether a deposit in settlement was
+    /// found. The default finds none: payments is not enabled.
+    fn set_legal_case<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _source: &'a Subject,
+        _open: bool,
+    ) -> DepositFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
+
     /// Adjusts the held deposit of `request.source` to `request.new_amount`
     /// for the user `by` (`None` = the system, as a lease amendment or
     /// renewal `activate` does): an increase raises a top-up charge, a

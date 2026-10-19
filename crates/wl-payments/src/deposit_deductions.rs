@@ -877,6 +877,34 @@ pub async fn set_legal_case(
     reload(state, &deposit).await
 }
 
+/// Records for the system that a legal case on the agreement `source` is open
+/// (`open`) or that its decision is recorded (`!open`): as
+/// [`set_legal_case`], for the deposit in settlement held for `source`. Returns
+/// whether there is one.
+///
+/// # Errors
+///
+/// The database's errors.
+pub(crate) async fn set_legal_case_of(
+    state: &AppState,
+    source: &wl_kernel::Subject,
+    open: bool,
+) -> Result<bool> {
+    let changed = Deposit::query()
+        .where_(Deposit::SOURCE_TYPE.eq(source.subject_type.as_str()))
+        .where_(Deposit::SOURCE_ID.eq(source.subject_id))
+        .where_(Deposit::STATUS.eq(DepositStatus::SettlementPending))
+        .update(
+            &state.db,
+            &[
+                ("dispute_legal_case", &open),
+                ("updated_at", &renox::db::now()),
+            ],
+        )
+        .await?;
+    Ok(changed > 0)
+}
+
 /// The module's [`DepositDeductions`] for the portal.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Deductions;

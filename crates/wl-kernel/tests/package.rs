@@ -2117,3 +2117,40 @@ async fn the_lease_cancellation_contracts_fall_back_when_the_modules_are_off() {
 
     assert!(!invoicer(state).discard_draft(app.db(), InvoiceId(1)).await.unwrap());
 }
+
+/// #263: without the modules a legal case needs, no chase is held, no deposit
+/// is in settlement, no ticket is found, and a cheque referral is a plain
+/// event.
+#[renox::test]
+async fn the_legal_case_contracts_fall_back_when_the_modules_are_off() {
+    use wl_kernel::Subject;
+    use wl_kernel::chase_holds::{ChaseHold, hold};
+    use wl_kernel::deposits::deposits;
+    use wl_kernel::tickets::task_creator;
+    use wl_kernel::ChequeReferredToLegal;
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let state = app.state();
+    let lease = Subject::new("property.lease", 9);
+
+    assert_eq!(hold(app.db(), &lease).await.unwrap(), ChaseHold::Free);
+    assert!(!deposits(state).set_legal_case(state, &lease, true).await.unwrap());
+    assert!(task_creator(state)
+        .open_of(state, &lease, "legal_case")
+        .await
+        .unwrap()
+        .is_empty());
+
+    let event = ChequeReferredToLegal {
+        cheque: wl_kernel::ChequeId(4),
+        party: PartyId(7),
+        agreement: Some(lease),
+        open_amount: 2_500_000,
+        currency: "AED".to_owned(),
+        case_owner: 3,
+    };
+    let json = renox::serde_json::to_value(&event).unwrap();
+    assert_eq!(json["cheque"], 4);
+    assert_eq!(json["agreement"]["subject_type"], "property.lease");
+}

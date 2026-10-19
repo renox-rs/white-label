@@ -28,6 +28,7 @@
 use renox::chrono::NaiveDate;
 use renox::auth::permissions::{Scope, users_with_role_in};
 use renox::prelude::*;
+use wl_kernel::chase_holds;
 use wl_kernel::cheques::ChequeStatus;
 use wl_kernel::documents::today;
 use wl_kernel::payments::Direction;
@@ -141,9 +142,18 @@ pub async fn run(state: &AppState, today: NaiveDate) -> Result<Report> {
     for cheque in bounced {
         let days = days_since_bounce(&cheque, today);
         if reminder_due(&cheque, today, config.cheque_reminder_days) {
-            notices::cheque_reminder(state, &cheque, days).await?;
+            // A legal case on the agreement the cheque was received with
+            // holds the automatic messages: the reminder is skipped, and not
+            // sent late when the case ends.
+            let held = match cheque.agreement() {
+                Some(agreement) => chase_holds::hold(&state.db, &agreement).await?.is_held(),
+                None => false,
+            };
+            if !held {
+                notices::cheque_reminder(state, &cheque, days).await?;
+                report.reminded += 1;
+            }
             mark(state, cheque.id, "reminded_on", today).await?;
-            report.reminded += 1;
         }
         if decision_due(&cheque, today, config.cheque_decision_days) {
             make_decision_task(state, &cheque, ACCOUNTANT_ROLE, days).await?;
