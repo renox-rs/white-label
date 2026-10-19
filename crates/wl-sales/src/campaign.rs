@@ -300,8 +300,8 @@ impl Campaign {
 }
 
 /// One thing that can stop a campaign being deleted: it returns the refusal
-/// text when the campaign (by id) is still referred to. #138 part 5 adds the
-/// cost entries and #139 the leads and acquisitions.
+/// text when the campaign (by id) is still referred to. the cost entries are checked
+/// by [`crate::costs::delete_check`] and #139 the leads and acquisitions.
 pub type DeleteCheck = for<'a> fn(
     &'a mut Transaction,
     i64,
@@ -310,7 +310,7 @@ pub type DeleteCheck = for<'a> fn(
 >;
 
 /// The checks `delete` runs, in order.
-pub const DELETE_CHECKS: &[DeleteCheck] = &[];
+pub const DELETE_CHECKS: &[DeleteCheck] = &[crate::costs::delete_check];
 
 /// Deletes the draft campaign `id` when no check in [`DELETE_CHECKS`] objects.
 /// Its code is kept in `wl_sales_campaign_codes` and its promo code goes.

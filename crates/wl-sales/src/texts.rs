@@ -96,6 +96,69 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_sales.notices.ended_body",
         "The campaign {{ name }} ({{ code }}) ended; its last day was {{ end_date }}.",
     ),
+    (
+        "wl_sales.notices.budget_alert_subject",
+        "Campaign {{ code }} reached {{ percent }}% of its budget",
+    ),
+    (
+        "wl_sales.notices.budget_alert_body",
+        "The approved costs of {{ name }} ({{ code }}) are AED {{ approved }} of AED {{ budget }}, {{ percent }}% of the budget.",
+    ),
+    (
+        "wl_sales.notices.cost_rejected_subject",
+        "A cost of campaign {{ code }} was rejected",
+    ),
+    (
+        "wl_sales.notices.cost_rejected_body",
+        "The cost of AED {{ amount }} ({{ description }}) on {{ name }} ({{ code }}) was rejected: {{ reason }}",
+    ),
+    (
+        "wl_sales.notices.cost_bill_voided_subject",
+        "A cost of campaign {{ code }} was voided",
+    ),
+    (
+        "wl_sales.notices.cost_bill_voided_body",
+        "The cost of AED {{ amount }} ({{ description }}) on {{ name }} ({{ code }}) was voided because its supplier bill was voided.",
+    ),
+    (
+        "wl_sales.costs.campaign_not_found",
+        "There is no such campaign.",
+    ),
+    ("wl_sales.costs.not_found", "There is no such cost entry."),
+    ("wl_sales.costs.no_amount", "The amount cannot be zero."),
+    (
+        "wl_sales.costs.negative_needs_manager",
+        "A negative cost needs the permission to manage campaign costs.",
+    ),
+    (
+        "wl_sales.costs.not_requester",
+        "Only the one who entered the cost can change it.",
+    ),
+    (
+        "wl_sales.costs.approved",
+        "An approved cost cannot be edited.",
+    ),
+    (
+        "wl_sales.costs.not_editable",
+        "This cost entry cannot be edited in its state.",
+    ),
+    (
+        "wl_sales.costs.in_use",
+        "This campaign has cost entries; it cannot be deleted",
+    ),
+    (
+        "wl_sales.costs.over_budget",
+        "The cost takes the approved costs over the budget.",
+    ),
+    (
+        "wl_sales.costs.within_budget",
+        "The cost is within the budget.",
+    ),
+    ("wl_sales.costs.no_check", "The budget check is missing."),
+    (
+        "wl_sales.costs.no_policy",
+        "No approval policy is set for a cost over the budget.",
+    ),
     ("wl_sales.fields.code", "Code"),
     ("wl_sales.fields.name_en", "Name (English)"),
     ("wl_sales.fields.name_ar", "Name (Arabic)"),

@@ -14,6 +14,21 @@ const LAYOUT: &str = r#"<!doctype html>
 <html><body><rx-outlet name="content"/></body></html>
 "#;
 
+/// A client with the sales module (and the parties it needs) on.
+const CLIENT: &str = r#"
+[client]
+name = "Palm Grove Properties LLC"
+app = "property"
+
+[modules]
+enabled = ["parties", "sales"]
+
+[[legal_entities]]
+code = "PGP"
+name_en = "Palm Grove Properties LLC"
+default = true
+"#;
+
 /// The app under test.
 pub struct Booted {
     /// The app.
@@ -73,6 +88,8 @@ pub async fn boot_with(extra: impl Module) -> Booted {
         .module(Permissions)
         .module(WlSales::new())
         .module(extra);
+    let config = wl_kernel::ClientConfig::parse(CLIENT).expect("a valid client.toml");
+    let app = wl_kernel::apply(app, config).expect("the kernel applies");
     let dir = views.path().to_path_buf();
     let app = TestApp::with_config(app, |c| c.views_path = dir).await;
     app.kernel()

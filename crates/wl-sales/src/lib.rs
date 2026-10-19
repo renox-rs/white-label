@@ -1,14 +1,19 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
+pub mod budget;
 pub mod campaign;
 pub mod config;
+pub mod cost_entry;
+pub mod cost_machine;
+pub mod costs;
 pub mod daily;
 mod events;
 pub mod lead_source;
 pub mod machine;
 pub mod notices;
 pub mod pages;
+pub mod policy;
 pub mod promo_code;
 pub mod seed;
 mod texts;
@@ -16,10 +21,12 @@ mod texts;
 use renox::db::Migration;
 use renox::prelude::*;
 
+pub use budget::BudgetAlert;
 pub use campaign::{
     Campaign, CampaignCode, CampaignRefused, CampaignStatus, MarketingChannel, Purpose,
 };
 pub use config::SalesConfig;
+pub use cost_entry::{CostEntry, CostRefused, CostStatus};
 pub use lead_source::{LeadSource, LeadSourceRefused};
 pub use promo_code::PromoCode;
 
@@ -119,6 +126,10 @@ impl Module for WlSales {
         app.model::<Campaign>();
         app.model::<CampaignCode>();
         app.model::<PromoCode>();
+        app.model::<CostEntry>();
+        app.model::<BudgetAlert>();
+        app.provide(self.config.clone());
+        cost_machine::register(app);
         notices::register_types();
         events::register(app);
         daily::schedule(app);
