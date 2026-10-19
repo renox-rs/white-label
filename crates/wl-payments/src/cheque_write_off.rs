@@ -240,6 +240,7 @@ fn rules(transition: Transition<Cheque>) -> Transition<Cheque> {
                     FollowupKind::FollowUpCheque,
                     FollowupKind::LegalCase,
                     FollowupKind::WriteOffFailed,
+                    FollowupKind::DecideCheque,
                 ] {
                     FollowupTask::query()
                         .where_(FollowupTask::CHEQUE_ID.eq(id))

@@ -261,7 +261,12 @@ pub(crate) async fn after_referral(state: &AppState, cheque_id: i64) -> Result<(
         return Ok(());
     };
     // The reminders and the bounce follow-up give way to the case.
-    FollowupTask::close_for_cheque(&state.db, cheque.id, &[FollowupKind::FollowUpCheque]).await?;
+    FollowupTask::close_for_cheque(
+        &state.db,
+        cheque.id,
+        &[FollowupKind::FollowUpCheque, FollowupKind::DecideCheque],
+    )
+    .await?;
     let evidence = evidence_pack(&state.db, &cheque).await?;
     let task = FollowupTask::legal_case(&cheque, owner, evidence);
     if let Some(task) = FollowupTask::create_once(&state.db, task).await? {

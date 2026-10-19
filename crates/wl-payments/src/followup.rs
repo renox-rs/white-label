@@ -54,6 +54,9 @@ pub enum FollowupKind {
     /// An invoice write-off a cheque `write_off` asked for was rejected or
     /// failed: the cheque stays where it is (`write_off`).
     WriteOffFailed,
+    /// Decide what to do with a bounced cheque that stayed unpaid M days
+    /// (`FIN.RUL.18`): re-present it, refer it to legal or write it off.
+    DecideCheque,
 }
 
 /// Whether a follow-up task is still to do.
@@ -254,6 +257,24 @@ impl FollowupTask {
         )
     }
 
+    /// The decision task of `FIN.RUL.18` for `role`: re-present, refer to
+    /// legal or write off the bounced `cheque`, which stayed unpaid `days`
+    /// days.
+    pub fn decide_cheque(cheque: &Cheque, role: &str, days: i64) -> Self {
+        let mut task = Self::for_cheque(
+            FollowupKind::DecideCheque,
+            cheque,
+            cheque.open_amount,
+            format!(
+                "Decide on bounced cheque {} ({} open for {days} days): re-present, refer to legal or write off",
+                cheque.number,
+                money_text(&cheque.currency, cheque.open_amount)
+            ),
+        );
+        task.role = role.to_owned();
+        task
+    }
+
     /// The task that a write-off request of the `cheque` was rejected or
     /// failed, with `text` saying which and why.
     pub fn write_off_failed(cheque: &Cheque, text: String) -> Self {
@@ -405,7 +426,8 @@ impl FollowupTask {
             // One open task of a kind per cheque; a hand-back only once.
             let mut same = FollowupTask::query()
                 .where_(FollowupTask::KIND.eq(task.kind))
-                .where_(FollowupTask::CHEQUE_ID.eq(cheque_id));
+                .where_(FollowupTask::CHEQUE_ID.eq(cheque_id))
+                .where_(FollowupTask::ROLE.eq(task.role.as_str()));
             if task.kind != FollowupKind::HandBack {
                 same = same.where_(FollowupTask::STATUS.eq(FollowupStatus::Open));
             }
@@ -506,7 +528,9 @@ pub(crate) fn done_problem(task: &FollowupTask, may: bool) -> Option<Error> {
 pub async fn mark_done(db: &Db, user: &AuthUser, id: i64) -> Result<FollowupTask> {
     let mut task = FollowupTask::find_or_404(db, id).await?;
     // The case owner of a legal case may close it without `payments.record`.
-    let may = user.has_permission(permissions::RECORD) || task.assignee_id == Some(user.id);
+    let may = user.has_permission(permissions::RECORD)
+        || task.assignee_id == Some(user.id)
+        || (task.role == MANAGER_ROLE && user.has_role(MANAGER_ROLE));
     if let Some(problem) = done_problem(&task, may) {
         return Err(problem);
     }

@@ -88,6 +88,12 @@ pub const CHEQUE_NOTICE: &str = "payments.cheque_notice";
 /// The type of the manager's notice that a cheque was referred to legal.
 pub const CHEQUE_REFERRED: &str = "payments.cheque_referred";
 
+/// The type of the party's reminder of its bounced cheque (`FIN.RUL.18`).
+pub const CHEQUE_REMINDER: &str = "payments.cheque_reminder";
+
+/// The type of the staff's reminder of a bounced cheque (`FIN.RUL.18`).
+pub const CHEQUE_REMINDER_STAFF: &str = "payments.cheque_reminder_staff";
+
 const MODULE: &str = "payments";
 const GROUP: &str = "payments";
 
@@ -271,8 +277,36 @@ pub fn cheque_referred_type() -> NotificationTypeDef {
         )
 }
 
+/// The notification type [`CHEQUE_REMINDER`].
+pub fn cheque_reminder_type() -> NotificationTypeDef {
+    NotificationTypeDef::new(CHEQUE_REMINDER, MODULE)
+        .group(GROUP)
+        .category(Category::Transactional)
+        .template(
+            NotifyChannel::Email,
+            "en",
+            Some(english("wl_payments.cheque_reminder.subject")),
+            english("wl_payments.cheque_reminder.body"),
+        )
+}
+
+/// The notification type [`CHEQUE_REMINDER_STAFF`].
+pub fn cheque_reminder_staff_type() -> NotificationTypeDef {
+    NotificationTypeDef::new(CHEQUE_REMINDER_STAFF, MODULE)
+        .group(GROUP)
+        .category(Category::Transactional)
+        .template(
+            NotifyChannel::Email,
+            "en",
+            Some(english("wl_payments.cheque_reminder_staff.subject")),
+            english("wl_payments.cheque_reminder_staff.body"),
+        )
+}
+
 /// Registers the types with the kernel registry.
 pub(crate) fn register_types() {
+    notify::register_type(cheque_reminder_type());
+    notify::register_type(cheque_reminder_staff_type());
     notify::register_type(cheque_bounced_type());
     notify::register_type(cheque_task_type());
     notify::register_type(cheque_presented_type());
@@ -551,6 +585,16 @@ pub(crate) async fn cheque_task(
         ids.sort_unstable();
         ids.dedup();
     }
+    cheque_task_to(state, cheque, task, &ids).await
+}
+
+/// Tells the users `ids` about the cheque `task`.
+pub(crate) async fn cheque_task_to(
+    state: &AppState,
+    cheque: &Cheque,
+    task: &FollowupTask,
+    ids: &[i64],
+) -> Result {
     if ids.is_empty() {
         return Ok(());
     }
@@ -561,7 +605,7 @@ pub(crate) async fn cheque_task(
     let mut request = NotifyRequest::new(CHEQUE_TASK, cheque.subject())
         .data(cheque_task_data(cheque, &party, task));
     for id in ids {
-        request = request.to_user(id);
+        request = request.to_user(*id);
     }
     notify::notifier(state).notify(state, request).await?;
     Ok(())
@@ -679,6 +723,81 @@ pub(crate) async fn cheque_referred(
     }
     notify::notifier(state).notify(state, request).await?;
     Ok(())
+}
+
+/// The template variables of the reminders of a bounced cheque: the open
+/// amount and the bounce fee.
+fn cheque_reminder_data(cheque: &Cheque, party: &str, days: i64) -> renox::serde_json::Value {
+    let fee = if cheque.bounce_fee_total > 0 {
+        format!(
+            ", plus a bounce fee of {}",
+            money_text(&cheque.currency, cheque.bounce_fee_total)
+        )
+    } else {
+        String::new()
+    };
+    json!({
+        "number": cheque.number,
+        "bank": cheque.bank,
+        "party": party,
+        "amount": money_text(&cheque.currency, cheque.amount),
+        "open": money_text(&cheque.currency, cheque.open_amount),
+        "fee": fee,
+        "returned_on": cheque.bounced_on.map(date_text).unwrap_or_default(),
+        "days": days,
+        "link": format!("/cheques/{}", cheque.id),
+    })
+}
+
+/// The users `FIN.RUL.18` reminds for `cheque`: the responsible staff, who
+/// collected the cheque or else registered it; the holders of the accountant
+/// role when neither is known.
+pub(crate) async fn chase_staff(state: &AppState, cheque: &Cheque) -> Result<Vec<i64>> {
+    let responsible: Vec<i64> = cheque
+        .collected_by
+        .into_iter()
+        .chain(cheque.recorded_by)
+        .collect();
+    let mut ids = staff_ids(None, &responsible);
+    if ids.is_empty() {
+        ids = users_with_role_in(&state.db, ACCOUNTANT_ROLE, &Scope::global())
+            .await?
+            .iter()
+            .map(|user| user.id)
+            .collect();
+    }
+    Ok(ids)
+}
+
+/// `FIN.RUL.18` at N days: the drawer of the bounced received `cheque` is
+/// reminded of the open amount and the bounce fee (not while it is blocked)
+/// and the responsible staff are told. `days` is how long ago it bounced.
+/// Returns whether the party was told.
+pub(crate) async fn cheque_reminder(state: &AppState, cheque: &Cheque, days: i64) -> Result<bool> {
+    let party = wl_kernel::parties::directory(state)
+        .display_name(&state.db, cheque.party(), "en")
+        .await?
+        .unwrap_or_else(|| cheque.party().to_string());
+    let data = cheque_reminder_data(cheque, &party, days);
+    let status = wl_kernel::parties::directory(state)
+        .status(&state.db, cheque.party())
+        .await?;
+    let told = tells_party(status);
+    if told {
+        let request = NotifyRequest::new(CHEQUE_REMINDER, cheque.subject())
+            .to_party(cheque.party())
+            .data(data.clone());
+        notify::notifier(state).notify(state, request).await?;
+    }
+    let staff = chase_staff(state, cheque).await?;
+    if !staff.is_empty() {
+        let mut request = NotifyRequest::new(CHEQUE_REMINDER_STAFF, cheque.subject()).data(data);
+        for id in staff {
+            request = request.to_user(id);
+        }
+        notify::notifier(state).notify(state, request).await?;
+    }
+    Ok(told)
 }
 
 #[cfg(test)]

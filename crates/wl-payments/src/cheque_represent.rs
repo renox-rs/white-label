@@ -189,7 +189,12 @@ pub async fn represent(
 /// The database's errors, or a notice that failed.
 pub(crate) async fn after_represent(state: &AppState, cheque_id: i64) -> Result<()> {
     let cheque = Cheque::find_or_404(&state.db, cheque_id).await?;
-    FollowupTask::close_for_cheque(&state.db, cheque.id, &[FollowupKind::FollowUpCheque]).await?;
+    FollowupTask::close_for_cheque(
+        &state.db,
+        cheque.id,
+        &[FollowupKind::FollowUpCheque, FollowupKind::DecideCheque],
+    )
+    .await?;
     notices::cheque_presented(state, &cheque).await
 }
 

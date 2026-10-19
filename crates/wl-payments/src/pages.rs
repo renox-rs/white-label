@@ -38,7 +38,7 @@ use crate::allocate::allocate;
 use crate::allocation::Allocation;
 use crate::config_of;
 use crate::credit;
-use crate::followup::{ACCOUNTANT_ROLE, FollowupTask, mark_done, money_text};
+use crate::followup::{ACCOUNTANT_ROLE, FollowupTask, MANAGER_ROLE, mark_done, money_text};
 use crate::payment::Payment;
 use crate::permissions;
 use crate::record::record;
@@ -727,7 +727,13 @@ pub(crate) struct TasksPage {
 /// those assigned to the user.
 async fn tasks(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
     // The accountants' tasks, and those assigned to the user (a case owner).
-    let open = FollowupTask::open_for_user(&state.db, ACCOUNTANT_ROLE, user.id).await?;
+    let mut open = FollowupTask::open_for_user(&state.db, ACCOUNTANT_ROLE, user.id).await?;
+    // A manager also sees the decisions left to the manager (`FIN.RUL.18`).
+    if user.has_role(MANAGER_ROLE) {
+        open.extend(FollowupTask::open_for(&state.db, MANAGER_ROLE).await?);
+        open.sort_by_key(|task| task.id);
+        open.dedup_by_key(|task| task.id);
+    }
     Ok(View::typed(TasksPage {
         tx: texts::all(&lang),
         tasks: task_rows(&state, &texts_in(&lang), &open).await?,

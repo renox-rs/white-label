@@ -18,6 +18,14 @@ pub const DEFAULT_REFUND_MAX_RETRIES: i64 = 1;
 /// (§7).
 pub const DEFAULT_CHEQUE_LEAD_DAYS: i64 = 1;
 
+/// Days after a cheque bounced when `FIN.RUL.18` reminds the party and the
+/// responsible staff (§7).
+pub const DEFAULT_CHEQUE_REMINDER_DAYS: i64 = 3;
+
+/// Days after a cheque bounced when `FIN.RUL.18` leaves the accountant and
+/// the manager the task to decide (§7).
+pub const DEFAULT_CHEQUE_DECISION_DAYS: i64 = 14;
+
 /// How many times one cheque may be presented, the first deposit included
 /// (§7): 2 allows one re-presentation.
 pub const DEFAULT_CHEQUE_MAX_PRESENTATIONS: i64 = 2;
@@ -59,6 +67,12 @@ pub struct PaymentsConfig {
     /// The VAT treatment of the bounce fee: standard rated by default
     /// (`⚠ open: accountant A-05`, §10).
     pub bounce_fee_vat: VatCategory,
+    /// Days after a bounce that the party and the responsible staff are
+    /// reminded (`FIN.RUL.18`, N).
+    pub cheque_reminder_days: i64,
+    /// Days after a bounce that the accountant and the manager get the task to
+    /// decide (`FIN.RUL.18`, M).
+    pub cheque_decision_days: i64,
     /// The most presentations of one cheque, the first deposit included.
     pub cheque_max_presentations: i64,
     /// Whether a cheque collected in the field is deposited only after a
@@ -94,6 +108,8 @@ impl Default for PaymentsConfig {
             cheque_lead_days: DEFAULT_CHEQUE_LEAD_DAYS,
             bounce_fee: None,
             bounce_fee_vat: VatCategory::Standard,
+            cheque_reminder_days: DEFAULT_CHEQUE_REMINDER_DAYS,
+            cheque_decision_days: DEFAULT_CHEQUE_DECISION_DAYS,
             cheque_max_presentations: DEFAULT_CHEQUE_MAX_PRESENTATIONS,
             field_cheque_handover: true,
             criminal_grounds: DEFAULT_CRIMINAL_GROUNDS

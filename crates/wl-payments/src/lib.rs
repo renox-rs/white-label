@@ -5,6 +5,7 @@ pub mod allocate;
 pub mod allocation;
 pub mod cheque;
 pub mod cheque_bounce;
+pub mod cheque_chase;
 pub mod cheque_deposit;
 mod cheque_events;
 pub mod cheque_legal;
@@ -243,6 +244,26 @@ impl WlPayments {
         self
     }
 
+    /// Sets when a bounced cheque is chased (`FIN.RUL.18`, §7: 3 and 14 days
+    /// after the bounce): `remind_days` for the reminders to the party and the
+    /// responsible staff, `decide_days` for the task to the accountant and the
+    /// manager.
+    ///
+    /// # Panics
+    ///
+    /// For fewer than one day, or a task before the reminders: a programming
+    /// error.
+    pub fn cheque_chase(mut self, remind_days: i64, decide_days: i64) -> Self {
+        assert!(remind_days >= 1, "a reminder waits at least one day");
+        assert!(
+            decide_days >= remind_days,
+            "the decision task comes with or after the reminders"
+        );
+        self.config.cheque_reminder_days = remind_days;
+        self.config.cheque_decision_days = decide_days;
+        self
+    }
+
     /// Sets how many times one cheque may be presented, the first deposit
     /// included (§7: 2, one re-presentation).
     pub fn cheque_presentations(mut self, max: i64) -> Self {
@@ -383,6 +404,8 @@ impl Module for WlPayments {
         wl_kernel::cheques::provide_cheques(app, chequer::ChequeBook);
         // `FIN.RUL.03`: the cheques whose date is close go on the deposit list.
         cheque_deposit::register(app);
+        // `FIN.RUL.18`: a bounced cheque is chased.
+        cheque_chase::register(app);
         // The bounce fee, `ChequeBounced` and the follow-ups after a commit.
         cheque_events::register(app);
         // `InvoiceWrittenOff` completes a cheque `write_off` that waits for approvals.

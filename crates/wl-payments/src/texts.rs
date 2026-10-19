@@ -547,6 +547,22 @@ const TEXTS: &[(&str, &str)] = &[
         "To {{ drawer }}. Cheque {{ number }} of {{ bank }} dated {{ cheque_date }} for {{ amount }} was returned by the bank on {{ returned_on }} (reason: {{ reason }}). The bank paid {{ honoured }}; {{ open }} is still due{{ fee }}. You are asked to pay the amount still due within {{ days }} days of this notice, failing which we will pursue it through a legal case ({{ case_type }}). Contact: {{ contact }}. (Template content pending legal review.)",
     ),
     (
+        "wl_payments.cheque_reminder.subject",
+        "Reminder: your cheque {{ number }} was returned",
+    ),
+    (
+        "wl_payments.cheque_reminder.body",
+        "Dear customer, your cheque {{ number }} of {{ bank }} for {{ amount }} was returned unpaid on {{ returned_on }} and has not been settled. {{ open }} is still due{{ fee }}. Please contact us to arrange payment.",
+    ),
+    (
+        "wl_payments.cheque_reminder_staff.subject",
+        "Bounced cheque {{ number }} of {{ party }}: {{ days }} days",
+    ),
+    (
+        "wl_payments.cheque_reminder_staff.body",
+        "Cheque {{ number }} of {{ party }} was returned {{ days }} days ago on {{ returned_on }}. {{ open }} is still due{{ fee }}. See {{ link }}.",
+    ),
+    (
         "wl_payments.cheque_referred.subject",
         "Cheque {{ number }} referred to a legal case",
     ),

@@ -94,6 +94,11 @@ pub struct Cheque {
     pub bounced_on: Option<NaiveDate>,
     /// The bounce fees added so far, before VAT, in fils.
     pub bounce_fee_total: i64,
+    /// The day `FIN.RUL.18` reminded the party and the staff of the latest
+    /// bounce.
+    pub reminded_on: Option<NaiveDate>,
+    /// The day `FIN.RUL.18` made the decision tasks of the latest bounce.
+    pub decision_task_on: Option<NaiveDate>,
     /// The legal case's type.
     pub case_type: Option<CaseType>,
     /// The legal case's reference, once the lawyer has one.

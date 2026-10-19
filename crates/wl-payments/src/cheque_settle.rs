@@ -266,6 +266,7 @@ pub(crate) fn transitions() -> Vec<Transition<Cheque>> {
                         FollowupKind::FollowUpCheque,
                         FollowupKind::ReplaceCheque,
                         FollowupKind::LegalCase,
+                        FollowupKind::DecideCheque,
                     ] {
                         FollowupTask::query()
                             .where_(FollowupTask::CHEQUE_ID.eq(id))
