@@ -100,7 +100,7 @@ pub use invoicing::{
     DraftLine, InvoiceCredited, InvoiceDraft, InvoiceId, InvoiceIssued, InvoiceOverdue,
     InvoicePaid, InvoiceStatus, InvoiceSummary, InvoiceWrittenOff, Invoicer, LandedCostLine,
     LandedCosts, NoCostPoster, NoInvoicer, NoLandedCosts, NoSupplierBills, NoSupplierDebitNotes,
-    PayBill, ReverseCost, SupplierBillApproved, SupplierBillId, SupplierBillLine,
+    PayBill, PostCost, ReverseCost, SupplierBillApproved, SupplierBillId, SupplierBillLine,
     SupplierBillLineId, SupplierBillReopened, SupplierBillStatus, SupplierBillVoided,
     SupplierBills, SupplierDebitNoteCancelled, SupplierDebitNoteId, SupplierDebitNoteIssued,
     SupplierDebitNoteSettled, SupplierDebitNoteStatus, SupplierDebitNoteSummary,

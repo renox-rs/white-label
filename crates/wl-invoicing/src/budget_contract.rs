@@ -8,7 +8,7 @@ use renox::prelude::*;
 use wl_kernel::budgets::{BudgetFuture, CompanyBudgets};
 
 use crate::budget::{CompanyBudget, CompanyBudgetLine, month_start};
-use crate::budget_category::BudgetCategory;
+use crate::budget_category::{BudgetCategory, MappingKind};
 
 /// The provider of [`CompanyBudgets`].
 #[derive(Debug, Clone, Copy, Default)]
@@ -64,6 +64,16 @@ impl CompanyBudgets for Budgets {
                 }
                 None => Ok(0),
             }
+        })
+    }
+
+    fn is_owner_drawings_code<'a>(&'a self, db: &'a Db, code: &'a str) -> BudgetFuture<'a, bool> {
+        Box::pin(async move {
+            Ok(
+                crate::budget_category::category_of(db, MappingKind::CostCode, code)
+                    .await?
+                    .is_some_and(|c| c.is_drawings()),
+            )
         })
     }
 

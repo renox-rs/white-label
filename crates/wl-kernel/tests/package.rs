@@ -1872,3 +1872,26 @@ async fn a_draft_line_names_its_charge_type_and_the_actual_falls_back() {
     };
     assert_eq!(renox::serde_json::to_value(&reached).unwrap()["percent_used"], 105);
 }
+
+/// #90: posting cost goes through `post_cost`, which a cost code that is not
+/// owner drawings passes to the poster (a no-op without one).
+#[renox::test]
+async fn posting_cost_without_a_poster_is_a_no_op() {
+    use wl_kernel::Subject;
+    use wl_kernel::invoicing::{PostCost, post_cost};
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let request = PostCost::new(
+        Subject::new("invoicing.supplier_bill", 4),
+        "invoicing.supplier_bill_line:9",
+        Subject::new("property.unit", 2),
+        105_000,
+    )
+    .cost_code(" Repairs ");
+    assert_eq!(request.cost_code.as_deref(), Some("repairs"));
+    post_cost(app.state(), request.clone()).await.expect("a no-op");
+    post_cost(app.state(), PostCost { cost_code: None, ..request })
+        .await
+        .expect("a no-op");
+}

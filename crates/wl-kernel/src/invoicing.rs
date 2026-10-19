@@ -1912,11 +1912,61 @@ impl ReverseCost {
     }
 }
 
+/// A request to post cost on a cost object (`CostPoster::post`, called
+/// through [`post_cost`]).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PostCost {
+    /// The record that causes it, e.g. the supplier bill.
+    pub source: Subject,
+    /// The idempotency key, e.g. `invoicing.supplier_bill_line:<id>`. A key
+    /// that was already used changes nothing.
+    pub key: String,
+    /// The cost object (e.g. a project or a job) that carries the cost.
+    pub cost_object: Subject,
+    /// The cost, in fils of AED.
+    pub amount_aed: i64,
+    /// The cost code the cost is coded to, if any. A code mapped to a budget
+    /// category of kind `owner_drawings` is never posted (`FIN.ACL.21`).
+    pub cost_code: Option<String>,
+}
+
+impl PostCost {
+    /// `amount_aed` fils caused by `source`, under the idempotency `key`, to
+    /// post on `cost_object`.
+    pub fn new(
+        source: Subject,
+        key: impl Into<String>,
+        cost_object: Subject,
+        amount_aed: i64,
+    ) -> Self {
+        Self {
+            source,
+            key: key.into(),
+            cost_object,
+            amount_aed,
+            cost_code: None,
+        }
+    }
+
+    /// Coded to `code`.
+    pub fn cost_code(mut self, code: &str) -> Self {
+        self.cost_code = Some(code.trim().to_lowercase()).filter(|c| !c.is_empty());
+        self
+    }
+}
+
 /// Posts and reverses cost on cost objects. The owner of the cost entries
 /// provides it with [`provide_cost_poster`]; `wl-invoicing` calls it and
 /// stores no cost entries itself. Without a provider, [`cost_poster`] gives
-/// [`NoCostPoster`].
+/// [`NoCostPoster`]. Callers post through [`post_cost`], which refuses owner
+/// drawings before the poster is asked.
 pub trait CostPoster: Send + Sync + 'static {
+    /// Posts cost on a cost object. The default does nothing and succeeds:
+    /// no module keeps cost entries.
+    fn post<'a>(&'a self, _state: &'a AppState, _request: PostCost) -> SupplierBillFuture<'a, ()> {
+        Box::pin(async { Ok(()) })
+    }
+
     /// Takes cost back from its cost objects. The default does nothing and
     /// succeeds: no module keeps cost entries.
     fn reverse<'a>(
@@ -1950,6 +2000,31 @@ impl CostPoster for NoCostPoster {}
 pub fn provide_cost_poster(app: &mut Registry, poster: impl CostPoster) {
     let poster: Arc<dyn CostPoster> = Arc::new(poster);
     app.provide(poster);
+}
+
+/// Posts `request` through the app's [`CostPoster`], after checking that its
+/// cost code is not owner drawings (`FIN.ACL.21`: drawings are never
+/// operating cost and post no cost to a cost object, from any caller).
+///
+/// # Errors
+///
+/// 422 when the cost code is mapped to a budget category of kind
+/// `owner_drawings`; whatever the poster answers otherwise.
+pub async fn post_cost(state: &AppState, request: PostCost) -> Result<()> {
+    if let Some(code) = request.cost_code.as_deref() {
+        let drawings = crate::budgets::company_budgets(state)
+            .is_owner_drawings_code(&state.db, code)
+            .await?;
+        if drawings {
+            return Err(Error::Status(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                format!(
+                    "owner drawings are never posted to a cost object: the cost code `{code}` is owner drawings"
+                ),
+            ));
+        }
+    }
+    cost_poster(state).post(state, request).await
 }
 
 /// The app's [`CostPoster`], or [`NoCostPoster`] when none is provided.
