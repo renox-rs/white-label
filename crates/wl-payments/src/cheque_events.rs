@@ -24,6 +24,7 @@ use wl_kernel::cheques::{ChequeBounceResolved, ChequeId, ChequeOutcome};
 use crate::cheque::Cheque;
 use crate::cheque_bounce::{self, BOUNCE};
 use crate::cheque_deposit::CLEAR;
+use crate::cheque_legal::{self, REFER_TO_LEGAL};
 use crate::cheque_represent::{self, REPRESENT};
 use crate::cheque_settle::{self, REPLACE};
 
@@ -57,6 +58,9 @@ pub(crate) fn register(app: &mut Registry) {
             // A replacement cheque that bounces keeps its original.
             cheque_settle::after_bounce(&state, event.key).await?;
             return cheque_bounce::after_bounce(&state, event.key).await;
+        }
+        if name == REFER_TO_LEGAL {
+            return cheque_legal::after_referral(&state, event.key).await;
         }
         if name == REPLACE {
             return cheque_settle::after_replace(&state, event.key).await;

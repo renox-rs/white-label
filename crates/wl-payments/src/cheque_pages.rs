@@ -11,6 +11,7 @@
 //! | `POST /cheques/{id}/settle` | `wl_payments.cheques.settle` | `cheques.manage` (fields `method`, `amount`, `reference`) |
 //! | `POST /cheques/{id}/replacements` | `wl_payments.cheques.replacements` | `cheques.manage` (fields `kind`, `ref_id`) |
 //! | `POST /cheques/{id}/replace` | `wl_payments.cheques.replace` | `cheques.manage` |
+//! | `POST /cheques/{id}/refer` | `wl_payments.cheques.refer` | `cheques.legal` (fields `case_type`, `case_owner`) |
 //!
 //! Every action has its own route: the transitions take input (a return
 //! reason and certificate, a date, an amount) that the kernel's transition
@@ -18,6 +19,8 @@
 
 use std::collections::BTreeMap;
 
+use renox::auth::User;
+use renox::auth::permissions::{Scope, users_with_role_in};
 use renox::chrono::NaiveDate;
 use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
@@ -31,12 +34,14 @@ use wl_kernel::payments::{Direction, PaymentMethod};
 use crate::cheque::{Cheque, ChequeReturn};
 use crate::cheque_bounce::{self, BounceRequest};
 use crate::cheque_deposit;
+use crate::cheque::CaseType;
+use crate::cheque_legal::{self, ReferRequest};
 use crate::cheque_represent::{self, RepresentRequest};
 use crate::cheque_settle::{
     self, ChequeReplacement, ReplacementKind, SETTLE_METHODS, SettleRequest,
 };
 use crate::payment::Payment;
-use crate::followup::{FollowupTask, money_text};
+use crate::followup::{ACCOUNTANT_ROLE, FollowupTask, money_text};
 use crate::pages::{
     Text, Texts, filled, invalid, options, parse_amount, party_name, texts_in,
 };
@@ -107,6 +112,12 @@ pub fn routes() -> Routes {
                 .post("/cheques/{id}/replace", store_replace)
                 .name("wl_payments.cheques.replace")
                 .require_permission(permissions::CHEQUES_MANAGE),
+        )
+        .merge(
+            Routes::new()
+                .post("/cheques/{id}/refer", store_refer)
+                .name("wl_payments.cheques.refer")
+                .require_permission(permissions::CHEQUES_LEGAL),
         )
 }
 
@@ -270,6 +281,17 @@ pub(crate) struct ShowPage {
     can_settle: bool,
     /// Whether linking a replacement and "Replace" are offered: owed.
     can_replace: bool,
+    /// Whether "Refer to legal" is offered: a bounced received cheque with
+    /// its return certificate.
+    can_refer: bool,
+    /// The kinds of legal case, `(code, label)`.
+    case_types: Vec<(String, String)>,
+    /// The users who can own the case, `(id, name)`, and the one chosen first.
+    owners: Vec<(String, String)>,
+    owner_default: String,
+    /// The legal case, as text, and its owner's name.
+    case_label: String,
+    case_owner_name: String,
     /// The methods a part payment is made by, `(code, label)`.
     settle_methods: Vec<(String, String)>,
     /// The kinds of replacement, `(code, label)`.
@@ -337,6 +359,21 @@ async fn task_rows(db: &Db, t: Text<'_>, cheque: &Cheque) -> Result<Vec<ChequeTa
             open: task.is_open(),
         })
         .collect())
+}
+
+/// The users who can own a legal case, `(id, name)`: the holders of the
+/// accountant role and `user`.
+async fn case_owners(state: &AppState, user: &AuthUser) -> Result<Vec<(String, String)>> {
+    let mut owners: Vec<(String, String)> =
+        users_with_role_in(&state.db, ACCOUNTANT_ROLE, &Scope::global())
+            .await?
+            .into_iter()
+            .map(|owner| (owner.id.to_string(), owner.name))
+            .collect();
+    if !owners.iter().any(|(id, _)| *id == user.id.to_string()) {
+        owners.insert(0, (user.id.to_string(), user.name.clone()));
+    }
+    Ok(owners)
 }
 
 /// The replacement rows of `cheque`.
@@ -415,6 +452,21 @@ async fn show(
     let manage_rights = user.has_permission(permissions::CHEQUES_MANAGE);
     let can_replace = manage_rights && cheque.status.is_owed();
     let can_settle = can_replace && cheque.is_received();
+    let can_refer = user.has_permission(permissions::CHEQUES_LEGAL)
+        && cheque.status == ChequeStatus::Bounced
+        && cheque.is_received()
+        && cheque.return_certificate.is_some();
+    let owners = if can_refer {
+        case_owners(&state, &user).await?
+    } else {
+        Vec::new()
+    };
+    let case_owner_name = match cheque.case_owner_id {
+        Some(id) => User::find(&db, id)
+            .await?
+            .map_or_else(|| format!("#{id}"), |owner| owner.name),
+        None => String::new(),
+    };
     let replacements = replacement_rows(&db, &t, &cheque).await?;
     let covered = cheque_settle::covered_by_replacements(&db, &cheque).await?;
     Ok(View::typed(ShowPage {
@@ -437,6 +489,15 @@ async fn show(
         can_clear,
         can_bounce,
         can_represent,
+        can_refer,
+        case_types: options(&t, "cheques.case", &["civil_execution", "criminal_complaint"]),
+        owners,
+        owner_default: user.id.to_string(),
+        case_label: cheque
+            .case_type
+            .map(|case| t(&format!("cheques.case.{}", case.as_str())))
+            .unwrap_or_default(),
+        case_owner_name,
         can_settle,
         can_replace,
         settle_methods: options(
@@ -739,6 +800,60 @@ async fn store_replace(
         .into_response())
 }
 
+/// The refer sheet's form.
+#[derive(Deserialize, Serialize, Validate, Debug)]
+pub struct ReferForm {
+    /// `civil_execution` (the default) or `criminal_complaint`.
+    #[validate(max = 32)]
+    pub case_type: Option<String>,
+    /// The case owner's user id; the user who refers when empty.
+    pub case_owner: Option<i64>,
+}
+
+/// The case type with code `code`.
+fn case_type_of(code: &str) -> Option<CaseType> {
+    CaseType::ALL
+        .iter()
+        .copied()
+        .find(|case| case.as_str() == code.trim())
+}
+
+/// `POST /cheques/{id}/refer`: refers the bounced cheque to a legal case and
+/// reloads the page. A refused guard (a criminal complaint for "insufficient
+/// funds", no certificate) answers 422 under its field.
+async fn store_refer(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(cheque): Found<Cheque>,
+    Valid(form): Valid<ReferForm>,
+) -> Result<Response> {
+    let t = texts_in(&lang);
+    let case_type = match filled(&form.case_type) {
+        None => CaseType::CivilExecution,
+        Some(code) => match case_type_of(code) {
+            Some(case) => case,
+            None => return Err(invalid("case_type", t("cheques.refer.case_required"), &form)),
+        },
+    };
+    let request = ReferRequest {
+        case_type,
+        case_owner: form.case_owner,
+    };
+    match cheque_legal::refer_to_legal(&state, &user, &cheque, &request).await {
+        Ok(_) => Ok((Toast::success(t("cheques.refer.done")), renox::HxRefresh).into_response()),
+        Err(TransitionError::Guard(message)) => {
+            let field = if message.contains("owner") {
+                "case_owner"
+            } else {
+                "case_type"
+            };
+            Err(invalid(field, message, &form))
+        }
+        Err(other) => Err(other.into_error()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -820,6 +935,17 @@ mod tests {
         assert_eq!(replacement_kind_of("cheque"), Some(ReplacementKind::Cheque));
         assert_eq!(replacement_kind_of("payment"), Some(ReplacementKind::Payment));
         assert_eq!(replacement_kind_of("loan"), None);
+    }
+
+    #[test]
+    fn a_case_is_a_civil_execution_or_a_criminal_complaint() {
+        assert_eq!(case_type_of("civil_execution"), Some(CaseType::CivilExecution));
+        assert_eq!(case_type_of(" criminal_complaint "), Some(CaseType::CriminalComplaint));
+        assert_eq!(case_type_of("arbitration"), None);
+        for case in CaseType::ALL {
+            let key = format!("cheques.case.{}", case.as_str());
+            assert_ne!(english_text(&key), format!("wl_payments.{key}"), "{key}");
+        }
     }
 
     #[test]

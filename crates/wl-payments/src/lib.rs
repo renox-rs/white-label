@@ -7,6 +7,7 @@ pub mod cheque;
 pub mod cheque_bounce;
 pub mod cheque_deposit;
 mod cheque_events;
+pub mod cheque_legal;
 mod cheque_machine;
 mod cheque_money;
 pub mod cheque_pages;
@@ -116,6 +117,10 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "wl-payments/_represent_sheet.html",
         include_str!("../views/wl-payments/_represent_sheet.html"),
+    ),
+    (
+        "wl-payments/_refer_sheet.html",
+        include_str!("../views/wl-payments/_refer_sheet.html"),
     ),
     (
         "wl-payments/_settle_sheet.html",

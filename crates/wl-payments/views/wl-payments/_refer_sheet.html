@@ -1,0 +1,10 @@
+{#- wl-payments: the "refer to legal" action on a bounced cheque's page, a
+    sheet with the kind of case and its owner. The platform records the case;
+    it files nothing. Replace it with
+    resources/views/wl-payments/_refer_sheet.html in the app. -#}
+<rx-action-sheet :id="'refer-cheque-' ~ cheque.id" :label="tx['cheques.refer.action']" :action="route('wl_payments.cheques.refer', cheque.id)"
+                 :title="tx['cheques.refer.title']" :description="tx['cheques.refer.description']" :submit-label="tx['cheques.refer.submit']"
+                 icon="scale" variant="danger" danger>
+  <rx-select name="case_type" :label="tx['cheques.refer.case_type']" :options="case_types" :id="'refer-case-' ~ cheque.id" required/>
+  <rx-select name="case_owner" :label="tx['cheques.refer.case_owner']" :options="owners" :selected="owner_default" :id="'refer-owner-' ~ cheque.id"/>
+</rx-action-sheet>

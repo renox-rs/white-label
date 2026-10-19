@@ -25,6 +25,9 @@ use crate::refund::{Refund, RefundStatus};
 /// The role that gets the `raise_charge` task.
 pub const ACCOUNTANT_ROLE: &str = "accountant";
 
+/// The role told when a bounced cheque is referred to a legal case.
+pub const MANAGER_ROLE: &str = "finance_manager";
+
 /// What a follow-up task asks for.
 #[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum FollowupKind {

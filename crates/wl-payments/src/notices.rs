@@ -591,6 +591,96 @@ pub(crate) async fn cheque_presented(state: &AppState, cheque: &Cheque) -> Resul
     Ok(())
 }
 
+/// The template variables of the formal notice of a legal case.
+fn cheque_notice_data(
+    cheque: &Cheque,
+    drawer: &str,
+    contact: &str,
+    bounce: &ChequeReturn,
+) -> renox::serde_json::Value {
+    let fee = if cheque.bounce_fee_total > 0 {
+        format!(
+            ", plus a bounce fee of {}",
+            money_text(&cheque.currency, cheque.bounce_fee_total)
+        )
+    } else {
+        String::new()
+    };
+    let case_type = match cheque.case_type {
+        Some(crate::cheque::CaseType::CriminalComplaint) => "criminal complaint",
+        _ => "civil execution",
+    };
+    json!({
+        "drawer": drawer,
+        "number": cheque.number,
+        "bank": cheque.bank,
+        "cheque_date": date_text(cheque.cheque_date),
+        "amount": money_text(&cheque.currency, cheque.amount),
+        "returned_on": date_text(bounce.returned_on),
+        "reason": bounce.reason,
+        "honoured": money_text(&cheque.currency, cheque.honoured_amount),
+        "open": money_text(&cheque.currency, cheque.open_amount),
+        "fee": fee,
+        "days": crate::cheque_legal::NOTICE_DAYS,
+        "case_type": case_type,
+        "contact": contact,
+    })
+}
+
+/// After a committed `refer_to_legal` of the received `cheque`: the formal
+/// notice to the drawer, the default template (`⚠ open: lawyer L-21`). It is
+/// sent even to a blocked party: it is a legal step.
+pub(crate) async fn cheque_formal_notice(state: &AppState, cheque: &Cheque) -> Result {
+    let Some(bounce) = ChequeReturn::latest(&state.db, cheque.id).await? else {
+        return Ok(());
+    };
+    let drawer = wl_kernel::parties::directory(state)
+        .display_name(&state.db, cheque.party(), "en")
+        .await?
+        .unwrap_or_else(|| cheque.party().to_string());
+    let contact = match wl_kernel::LegalEntity::find(&state.db, cheque.legal_entity_id).await? {
+        Some(entity) => entity.name_en,
+        None => String::new(),
+    };
+    let request = NotifyRequest::new(CHEQUE_NOTICE, cheque.subject())
+        .to_party(cheque.party())
+        .data(cheque_notice_data(cheque, &drawer, &contact, &bounce));
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// After a committed `refer_to_legal`: the holders of the manager role
+/// (`managers`) are told, and the case owner `owner` is named.
+pub(crate) async fn cheque_referred(
+    state: &AppState,
+    cheque: &Cheque,
+    owner: i64,
+    managers: &[i64],
+) -> Result {
+    if managers.is_empty() {
+        return Ok(());
+    }
+    let owner_name = renox::auth::User::find(&state.db, owner)
+        .await?
+        .map_or_else(|| format!("#{owner}"), |user| user.name);
+    let data = json!({
+        "number": cheque.number,
+        "text": format!(
+            "Cheque {} ({} open) was referred to a legal case",
+            cheque.number,
+            money_text(&cheque.currency, cheque.open_amount)
+        ),
+        "owner": owner_name,
+        "link": format!("/cheques/{}", cheque.id),
+    });
+    let mut request = NotifyRequest::new(CHEQUE_REFERRED, cheque.subject()).data(data);
+    for id in managers {
+        request = request.to_user(*id);
+    }
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

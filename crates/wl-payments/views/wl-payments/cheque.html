@@ -12,6 +12,7 @@
                   :title="tx['cheques.clear.title']" :message="tx['cheques.clear.message']" :confirm-label="tx['cheques.clear.action']" icon="check"/>
       <template rx-if="can_bounce"><rx-include template="wl-payments/_bounce_sheet.html"/></template>
       <template rx-if="can_represent"><rx-include template="wl-payments/_represent_sheet.html"/></template>
+      <template rx-if="can_refer"><rx-include template="wl-payments/_refer_sheet.html"/></template>
       <template rx-if="can_settle"><rx-include template="wl-payments/_settle_sheet.html"/></template>
       <template rx-if="can_replace"><rx-include template="wl-payments/_replacement_sheet.html"/></template>
       <rx-confirm rx-if="can_replace" :id="'replace-cheque-' ~ cheque.id" :label="tx['cheques.replace.action']" :action="route('wl_payments.cheques.replace', cheque.id)" method="POST"
@@ -32,6 +33,10 @@
         <rx-entry :label="tx['cheques.open']" :value="amounts['open']"/>
         <rx-entry :label="tx['cheques.fees']" :value="amounts['fees']"/>
         <rx-entry :label="tx['cheques.custody_note']" rx-if="cheque.custody_note" :value="cheque.custody_note" span="2"/>
+        <rx-entry :label="tx['cheques.case']" rx-if="case_label" :value="case_label"/>
+        <rx-entry :label="tx['cheques.case_owner']" rx-if="case_owner_name" :value="case_owner_name"/>
+        <rx-entry :label="tx['cheques.case_reference']" rx-if="cheque.case_reference" :value="cheque.case_reference" copyable/>
+        <rx-entry :label="tx['cheques.referred_on']" rx-if="cheque.referred_on" :value="cheque.referred_on" format="date"/>
         <rx-entry :label="tx['cheques.agreement']" :value="agreement_label" :placeholder="tx['cheques.none']"/>
         <rx-entry :label="tx['cheques.field']" rx-if="cheque.field_collected" :value="tx['cheques.field_yes']"/>
         <rx-entry :label="tx['fields.created_at']" :value="cheque.created_at" format="datetime"/>
