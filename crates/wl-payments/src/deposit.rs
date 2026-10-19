@@ -24,6 +24,7 @@ use wl_kernel::{LegalEntity, PartyId, Subject};
 
 use crate::allocate::{allocate_to_deposit_in, deposit_problem};
 use crate::credit;
+use crate::deposit_adjust::DepositAdjustment;
 use crate::deposit_deductions::gate_of;
 use crate::deposit_machine::{
     FORFEIT, ForfeitInput, REFUND, RefundDepositInput, START_SETTLEMENT,
@@ -330,6 +331,7 @@ pub async fn refund(
     let input = RefundDepositInput {
         method,
         gate: Some(gate_of(state, &deposit).await?),
+        part_refund_open: DepositAdjustment::part_refund_open(&state.db, deposit.id).await?,
     };
     let _outcome = deposit
         .transition(REFUND)
@@ -441,6 +443,7 @@ pub async fn transfer(
         receipt: receipt.clone(),
         new_holder: request.new_holder.0,
         holder_ok: holder_found && request.new_holder != deposit.party(),
+        part_refund_open: DepositAdjustment::part_refund_open(&state.db, deposit.id).await?,
     };
     let mut payment_request = RecordPayment::new(
         request.new_holder,

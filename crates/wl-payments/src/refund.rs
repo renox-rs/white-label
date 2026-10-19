@@ -457,6 +457,37 @@ pub(crate) async fn request_for_deposit_in(
     .await
 }
 
+/// The part refund of `amount` fils of `deposit`, requested by user `by` in
+/// `tx` (`None` = the system): the effect of the deposit's `adjust` for a
+/// decrease. The method is chosen when it is paid. The refund still waits for
+/// an approval by another user (`FIN.ACL.04`); the held amount falls when it is
+/// paid ([`crate::deposit_adjust`]).
+pub(crate) async fn request_part_for_deposit_in(
+    tx: &mut renox::db::Transaction,
+    deposit: &Deposit,
+    amount: i64,
+    by: Option<i64>,
+    reason: &str,
+) -> Result<Refund> {
+    let resolved = Resolved {
+        party: deposit.party(),
+        legal_entity_id: deposit.legal_entity_id,
+        currency: deposit.currency.clone(),
+        refundable: deposit.held_amount,
+    };
+    insert_requested_in(
+        tx,
+        by,
+        &resolved,
+        &KernelRefundSource::Deposit(deposit.deposit_id()),
+        amount,
+        None,
+        None,
+        reason,
+    )
+    .await
+}
+
 /// Why a gateway refund cannot be asked with `method` and `gateway_txn`,
 /// if it cannot: a `gateway` refund needs the transaction it goes back to.
 pub(crate) fn gateway_problem(

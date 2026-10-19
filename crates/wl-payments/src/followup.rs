@@ -57,6 +57,9 @@ pub enum FollowupKind {
     /// Decide what to do with a bounced cheque that stayed unpaid M days
     /// (`FIN.RUL.18`): re-present it, refer it to legal or write it off.
     DecideCheque,
+    /// Raise the top-up charge of a deposit whose amount grew: nothing could
+    /// schedule it (`adjust`).
+    RaiseTopUp,
 }
 
 /// Whether a follow-up task is still to do.
@@ -255,6 +258,34 @@ impl FollowupTask {
                 cheque.number
             ),
         )
+    }
+
+    /// The task to raise a top-up charge of `amount` fils for `deposit`, after
+    /// the amount grew with version `source_version` of its source, due `due`.
+    pub fn raise_top_up(
+        deposit: &crate::deposit::Deposit,
+        amount: i64,
+        source_version: i32,
+        due: renox::chrono::NaiveDate,
+    ) -> Self {
+        FollowupTask {
+            kind: FollowupKind::RaiseTopUp,
+            party_id: deposit.party_id,
+            payment_id: None,
+            amount,
+            currency: deposit.currency.clone(),
+            text: format!(
+                "Raise a top-up charge of {} for deposit {} (version {source_version} of {}), due {}",
+                money_text(&deposit.currency, amount),
+                deposit.id,
+                deposit.source(),
+                due.format("%Y-%m-%d")
+            ),
+            role: ACCOUNTANT_ROLE.to_owned(),
+            status: FollowupStatus::Open,
+            evidence: Json(serde_json::json!({})),
+            ..Default::default()
+        }
     }
 
     /// The decision task of `FIN.RUL.18` for `role`: re-present, refer to

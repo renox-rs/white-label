@@ -108,6 +108,9 @@ pub const DEPOSIT_DISPUTE_ANSWERED: &str = "payments.deposit_dispute_answered";
 /// The type of the party's notice that its deposit was handed to another holder.
 pub const DEPOSIT_TRANSFERRED: &str = "payments.deposit_transferred";
 
+/// The type of the accountants' notice of a deposit task.
+pub const DEPOSIT_TASK: &str = "payments.deposit_task";
+
 const MODULE: &str = "payments";
 const GROUP: &str = "payments";
 
@@ -369,8 +372,22 @@ pub fn deposit_transferred_type() -> NotificationTypeDef {
         )
 }
 
+/// The notification type [`DEPOSIT_TASK`].
+pub fn deposit_task_type() -> NotificationTypeDef {
+    NotificationTypeDef::new(DEPOSIT_TASK, MODULE)
+        .group(GROUP)
+        .category(Category::Transactional)
+        .template(
+            NotifyChannel::Email,
+            "en",
+            Some(english("wl_payments.deposit_task.subject")),
+            english("wl_payments.deposit_task.body"),
+        )
+}
+
 /// Registers the types with the kernel registry.
 pub(crate) fn register_types() {
+    notify::register_type(deposit_task_type());
     notify::register_type(deposit_transferred_type());
     notify::register_type(deposit_deductions_type());
     notify::register_type(deposit_disputed_type());
@@ -995,6 +1012,31 @@ pub(crate) async fn deposit_transferred(state: &AppState, deposit: &Deposit) -> 
             "amount": money_text(&deposit.currency, deposit.held_amount),
             "holder": holder_name,
         }));
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// Tells the holders of the accountant role about the `task` about `deposit`.
+pub(crate) async fn deposit_task(
+    state: &AppState,
+    deposit: &Deposit,
+    task: &FollowupTask,
+) -> Result {
+    let ids: Vec<i64> = users_with_role_in(&state.db, ACCOUNTANT_ROLE, &Scope::global())
+        .await?
+        .iter()
+        .map(|user| user.id)
+        .collect();
+    if ids.is_empty() {
+        return Ok(());
+    }
+    let mut request = NotifyRequest::new(DEPOSIT_TASK, deposit.subject()).data(json!({
+        "text": task.text,
+        "link": format!("/deposits/{}", deposit.id),
+    }));
+    for id in ids {
+        request = request.to_user(id);
+    }
     notify::notifier(state).notify(state, request).await?;
     Ok(())
 }

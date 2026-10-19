@@ -4,6 +4,7 @@
 //! [*] --> held --start_settlement--> settlement_pending --refund--> refunded
 //! settlement_pending --forfeit--> forfeited
 //! held --transfer--> transferred
+//! held --adjust--> held
 //! ```
 //!
 //! All five states are declared with their tones. This part builds
@@ -53,6 +54,9 @@ pub(crate) struct RefundDepositInput {
     /// What the deductions say about running it now; `None` (a run the
     /// deposit service did not prepare) is refused.
     pub gate: Option<DeductionGate>,
+    /// Whether a part refund of an adjustment is not settled yet: the refund
+    /// at settlement waits for it.
+    pub part_refund_open: bool,
 }
 
 /// What a `forfeit` run carries to its guards and effect, gathered by
@@ -80,6 +84,8 @@ pub(crate) struct TransferInput {
     pub new_holder: i64,
     /// Whether that party exists and is not the deposit's own party.
     pub holder_ok: bool,
+    /// Whether a part refund of an adjustment is not settled yet.
+    pub part_refund_open: bool,
 }
 
 fn transfer_input(ctx: &TransitionCtx) -> TransferInput {
@@ -96,6 +102,12 @@ pub(crate) fn transfer_problem(deposit: &Deposit, input: &TransferInput) -> Opti
     }
     if deposit.held_amount <= 0 {
         return Some("The deposit holds nothing to hand over.".to_owned());
+    }
+    if input.part_refund_open {
+        return Some(
+            "A part refund of an adjustment is not settled yet: pay or cancel it first."
+                .to_owned(),
+        );
     }
     None
 }
@@ -154,13 +166,15 @@ impl StateMachine for Deposit {
 }
 
 fn transitions() -> Vec<Transition<Deposit>> {
-    vec![
+    let mut all = vec![
         start_settlement(),
         start_settlement_by_system(),
         refund(),
         forfeit(),
         transfer(),
-    ]
+    ];
+    all.extend(crate::deposit_adjust::transitions());
+    all
 }
 
 fn start_settlement() -> Transition<Deposit> {
@@ -198,6 +212,17 @@ fn refund() -> Transition<Deposit> {
                 None => Some("The refund was not prepared by the deposit service.".to_owned()),
             };
             Box::pin(async move { problem.map_or(Ok(()), Err) })
+        })
+        .guard("no_part_refund_waiting", |_deposit: &Deposit, ctx| {
+            let open = refund_input(ctx).part_refund_open;
+            Box::pin(async move {
+                if open {
+                    Err("A part refund of an adjustment is not settled yet: pay or cancel it first."
+                        .to_owned())
+                } else {
+                    Ok(())
+                }
+            })
         })
         .guard("holds_money", |deposit: &Deposit, _ctx| {
             let held = deposit.held_amount;
@@ -350,6 +375,7 @@ mod tests {
                 renox::serde_json::to_value(RefundDepositInput {
                     method,
                     gate: Some(DeductionGate::default()),
+                    part_refund_open: false,
                 })
                 .expect("json"),
             )
@@ -383,6 +409,7 @@ mod tests {
         let input = RefundDepositInput {
             method: Some(PaymentMethod::Transfer),
             gate: None,
+            part_refund_open: false,
         };
         let ctx =
             TransitionCtx::new(None).with_input(renox::serde_json::to_value(input).expect("json"));
@@ -480,7 +507,13 @@ mod tests {
             receipt: "RCPT-77".into(),
             new_holder: 4,
             holder_ok: true,
+            part_refund_open: false,
         };
+        let waiting = TransferInput {
+            part_refund_open: true,
+            ..ok.clone()
+        };
+        assert!(transfer_problem(&deposit, &waiting).unwrap().contains("part refund"));
         assert_eq!(transfer_problem(&deposit, &ok), None);
         let blank = TransferInput {
             receipt: "  ".into(),

@@ -115,6 +115,8 @@ pub(crate) async fn allocate_to_deposit_in(
         )
         .await?;
     deposit.held_amount = held;
+    // A top-up is paid once the deposit holds its new amount.
+    crate::deposit_adjust::settle_top_ups_in(&mut *tx, deposit.id, held, deposit.amount).await?;
     Ok(allocation)
 }
 

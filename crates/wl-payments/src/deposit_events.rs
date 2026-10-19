@@ -2,6 +2,8 @@
 //! listener on [`Transitioned<Deposit>`], so only after a commit and never on a
 //! rollback:
 //!
+//! - `adjust` and `adjust_by_system` → the top-up charge and `DepositAdjusted`
+//!   ([`crate::deposit_adjust::after_adjust`]).
 //! - `refund`, `forfeit` and `transfer` → [`DepositSettled`] with the outcome,
 //!   the deductions of the latest published version, the refund amount and the
 //!   new holder of a transferred deposit; a transfer also tells the party who
@@ -14,6 +16,7 @@ use wl_kernel::deposits::{DepositOutcome, DepositSettled};
 
 use crate::deposit::Deposit;
 use crate::deposit_deductions::DepositDeduction;
+use crate::deposit_adjust::{ADJUST, ADJUST_BY_SYSTEM, after_adjust};
 use crate::deposit_machine::{FORFEIT, REFUND, TRANSFER};
 use crate::notices;
 
@@ -64,6 +67,9 @@ pub(crate) async fn settled(
 /// Registers the listener.
 pub(crate) fn register(app: &mut Registry) {
     app.listen(|event: Transitioned<Deposit>, state: AppState| async move {
+        if event.transition == ADJUST || event.transition == ADJUST_BY_SYSTEM {
+            return after_adjust(&state, event.key).await;
+        }
         match outcome_of(event.transition.as_str()) {
             Some(outcome) => settled(&state, event.key, outcome).await,
             None => Ok(()),
