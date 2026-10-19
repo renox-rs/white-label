@@ -495,6 +495,46 @@ impl TaskCreator for Tasks {
         })
     }
 
+    fn open_of<'a>(
+        &'a self,
+        _state: &'a AppState,
+        subject: &'a Subject,
+        category_key: &'a str,
+    ) -> TicketFuture<'a, Vec<TicketRef>> {
+        Box::pin(async move {
+            Ok(self
+                .0
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|t| t.open && t.subject == *subject && t.category == category_key)
+                .map(|t| TicketRef {
+                    id: TicketId(t.id),
+                    number: format!("TKT-{}", t.id),
+                })
+                .collect())
+        })
+    }
+
+    fn resolve_from_source<'a>(
+        &'a self,
+        _state: &'a AppState,
+        ticket: TicketId,
+        note: &'a str,
+    ) -> TicketFuture<'a, bool> {
+        Box::pin(async move {
+            let mut tasks = self.0.lock().unwrap();
+            match tasks.iter_mut().find(|t| t.id == ticket.0 && t.open) {
+                Some(task) => {
+                    task.open = false;
+                    task.note = note.to_owned();
+                    Ok(true)
+                }
+                None => Ok(false),
+            }
+        })
+    }
+
     fn complete<'a>(
         &'a self,
         _state: &'a AppState,
@@ -694,6 +734,7 @@ pub struct DepositBook {
     held: Arc<Mutex<BTreeMap<String, HeldDeposit>>>,
     settled: Arc<Mutex<Vec<(CancelSettlement, SettlementStarted)>>>,
     started: Arc<Mutex<Vec<Subject>>>,
+    legal: Arc<Mutex<Vec<(Subject, bool)>>>,
 }
 
 impl DepositBook {
@@ -722,6 +763,11 @@ impl DepositBook {
     pub fn started(&self) -> Vec<Subject> {
         self.started.lock().unwrap().clone()
     }
+
+    /// The legal case notes made: the source and whether a case is open.
+    pub fn legal(&self) -> Vec<(Subject, bool)> {
+        self.legal.lock().unwrap().clone()
+    }
 }
 
 impl Deposits for DepositBook {
@@ -731,6 +777,18 @@ impl Deposits for DepositBook {
         source: &'a Subject,
     ) -> DepositFuture<'a, Option<HeldDeposit>> {
         Box::pin(async move { Ok(self.held.lock().unwrap().get(&source.to_string()).cloned()) })
+    }
+
+    fn set_legal_case<'a>(
+        &'a self,
+        _state: &'a AppState,
+        source: &'a Subject,
+        open: bool,
+    ) -> DepositFuture<'a, bool> {
+        Box::pin(async move {
+            self.legal.lock().unwrap().push((source.clone(), open));
+            Ok(true)
+        })
     }
 
     fn start_settlement<'a>(
