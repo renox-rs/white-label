@@ -29,6 +29,7 @@ mod budget_notices;
 mod budget_pages;
 pub mod budget_reminder;
 pub mod budget_report;
+pub mod cash_balance;
 mod budget_report_pages;
 pub mod budget_variance;
 pub mod config;
@@ -287,6 +288,10 @@ pub mod permissions {
     /// Approve owner drawings (`FIN.ACL.21`) and see their lines, payees and
     /// notes (`FIN.ACL.22`); others see the drawings totals.
     pub const DRAWINGS_APPROVE: &str = "drawings.approve";
+    /// Open the cash-flow forecast of the user's entities (`FIN.CFL.01`).
+    pub const CASHFLOW_VIEW: &str = "cashflow.view";
+    /// Enter and void opening cash balances.
+    pub const CASHFLOW_MANAGE: &str = "cashflow.manage";
 }
 
 /// The invoicing module. The host adds it with
@@ -486,6 +491,53 @@ impl WlInvoicing {
         self
     }
 
+    /// How many weeks the cash-flow forecast looks ahead (default 13, at
+    /// least 1).
+    pub fn cash_forecast_weeks(mut self, weeks: u32) -> Self {
+        self.config.cash_forecast_weeks = weeks.max(1);
+        self
+    }
+
+    /// The day a forecast week starts on (default Monday).
+    pub fn cash_week_start(mut self, day: renox::chrono::Weekday) -> Self {
+        self.config.cash_week_start = day;
+        self
+    }
+
+    /// Whether the VAT payable is counted in the forecast (default on).
+    pub fn cash_vat_counted(mut self, on: bool) -> Self {
+        self.config.cash_vat_counted = on;
+        self
+    }
+
+    /// Whether supplier bills not yet approved are counted (default on).
+    pub fn cash_unapproved_bills_counted(mut self, on: bool) -> Self {
+        self.config.cash_unapproved_bills_counted = on;
+        self
+    }
+
+    /// Whether the disputed part of an invoice is counted as a receipt
+    /// (default off).
+    pub fn cash_disputed_counted(mut self, on: bool) -> Self {
+        self.config.cash_disputed_counted = on;
+        self
+    }
+
+    /// The days after which a bank balance is stale (default 7).
+    pub fn cash_stale_days(mut self, days: i64) -> Self {
+        self.config.cash_stale_days = days.max(1);
+        self
+    }
+
+    /// Names a bank account of the legal entity with `entity_code`, so the
+    /// forecast shows it (with a warning) before it has a balance.
+    pub fn cash_account(mut self, entity_code: &str, account: &str) -> Self {
+        self.config
+            .cash_accounts
+            .push((entity_code.to_owned(), account.to_owned()));
+        self
+    }
+
     /// Whether the sole holder of `drawings.approve` of an entity records
     /// their own drawing without a second approver (`FIN.ACL.23`, default
     /// on). Off, such a drawing waits until a second holder exists.
@@ -531,6 +583,7 @@ impl Module for WlInvoicing {
     }
 
     fn register(&self, app: &mut Registry) {
+        app.model::<cash_balance::OpeningCashBalance>();
         app.model::<Invoice>()
             .model::<InvoiceLine>()
             .model::<SupplierBill>()

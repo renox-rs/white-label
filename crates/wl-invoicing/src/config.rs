@@ -152,6 +152,21 @@ pub struct InvoicingConfig {
     pub drawings_self_approve: bool,
     /// The role told when a drawing is recorded without a second approver.
     pub drawings_notify_role: String,
+    /// How many weeks the cash-flow forecast looks ahead (`FIN.CFL.01`).
+    pub cash_forecast_weeks: u32,
+    /// The first day of a forecast week.
+    pub cash_week_start: renox::chrono::Weekday,
+    /// Whether the VAT payable is counted in the forecast.
+    pub cash_vat_counted: bool,
+    /// Whether supplier bills not yet approved are counted.
+    pub cash_unapproved_bills_counted: bool,
+    /// Whether the disputed part of an invoice is counted as a receipt.
+    pub cash_disputed_counted: bool,
+    /// The days after which a bank balance is stale (a warning).
+    pub cash_stale_days: i64,
+    /// The bank accounts of each legal entity (by code) the forecast shows
+    /// even before they have a balance.
+    pub cash_accounts: Vec<(String, String)>,
 }
 
 impl Default for InvoicingConfig {
@@ -194,6 +209,13 @@ impl Default for InvoicingConfig {
             budget_variance_role: "finance_manager".to_owned(),
             drawings_self_approve: true,
             drawings_notify_role: "accountant".to_owned(),
+            cash_forecast_weeks: 13,
+            cash_week_start: renox::chrono::Weekday::Mon,
+            cash_vat_counted: true,
+            cash_unapproved_bills_counted: true,
+            cash_disputed_counted: false,
+            cash_stale_days: 7,
+            cash_accounts: Vec::new(),
         }
     }
 }
@@ -286,6 +308,11 @@ mod tests {
         assert_eq!(config.budget_reminder_roles, ["accountant", "finance_manager"]);
         assert_eq!(config.budget_variance_percent, 100);
         assert_eq!(config.budget_variance_role, "finance_manager");
+        assert_eq!(config.cash_forecast_weeks, 13);
+        assert_eq!(config.cash_week_start, renox::chrono::Weekday::Mon);
+        assert!(config.cash_vat_counted && config.cash_unapproved_bills_counted);
+        assert!(!config.cash_disputed_counted);
+        assert_eq!(config.cash_stale_days, 7);
         assert!(config.drawings_self_approve);
         assert_eq!(config.drawings_notify_role, "accountant");
     }
