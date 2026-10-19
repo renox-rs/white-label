@@ -22,9 +22,13 @@ pub const DEFAULTS: [(&str, &str); 9] = [
 ];
 
 /// What names a lead source, as (table, column) pairs: a source with a row
-/// there is in use. Campaigns and later the leads and
-/// acquisitions of #139 are added to this list.
-const USED_BY: &[(&str, &str)] = &[("wl_sales_campaigns", "lead_source_id")];
+/// there is in use. Campaigns, leads and party
+/// acquisitions are listed.
+const USED_BY: &[(&str, &str)] = &[
+    ("wl_sales_campaigns", "lead_source_id"),
+    ("wl_sales_leads", "source_id"),
+    ("wl_sales_party_acquisitions", "source_id"),
+];
 
 /// A lead source, e.g. `referral`.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]

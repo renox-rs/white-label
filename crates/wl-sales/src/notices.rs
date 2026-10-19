@@ -22,6 +22,9 @@ pub const COST_REJECTED: &str = "sales.campaign_cost_rejected";
 /// The owner is told that a cost entry was voided with its supplier bill.
 pub const COST_BILL_VOIDED: &str = "sales.campaign_cost_bill_voided";
 
+/// The owner of a lead is told that its win was reverted.
+pub const LEAD_WIN_REVERTED: &str = "sales.lead_win_reverted";
+
 /// `date` as `18 Oct 2026`, empty when unset.
 fn date_text(date: Option<NaiveDate>) -> String {
     date.map(|d| d.format("%-d %b %Y").to_string())
@@ -52,6 +55,7 @@ pub(crate) fn register_types() {
     notify::register_type(english_type(BUDGET_ALERT, "budget_alert"));
     notify::register_type(english_type(COST_REJECTED, "cost_rejected"));
     notify::register_type(english_type(COST_BILL_VOIDED, "cost_bill_voided"));
+    notify::register_type(english_type(LEAD_WIN_REVERTED, "lead_win_reverted"));
 }
 
 /// `fils` as `4,000.00`.
@@ -151,6 +155,28 @@ pub(crate) async fn campaign_ended(state: &AppState, campaign: &Campaign) -> Res
             "name": campaign.name,
             "code": campaign.code,
             "end_date": date_text(campaign.end_date),
+        }));
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// Tells the owner of `lead` that it is `qualified` again because its
+/// conversion record `voided` was voided as entered in error. A lead without
+/// an owner tells nobody.
+pub(crate) async fn lead_win_reverted(
+    state: &AppState,
+    lead: &crate::lead::Lead,
+    voided: &wl_kernel::Subject,
+) -> Result {
+    let Some(owner) = lead.owner_id else {
+        return Ok(());
+    };
+    let request = NotifyRequest::new(LEAD_WIN_REVERTED, lead.subject())
+        .to_user(owner)
+        .subject_label(&lead.contact_name)
+        .data(json!({
+            "name": lead.contact_name,
+            "voided": voided.to_string(),
         }));
     notify::notifier(state).notify(state, request).await?;
     Ok(())

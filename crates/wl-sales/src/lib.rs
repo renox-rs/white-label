@@ -1,6 +1,10 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
+pub mod acquisition;
+pub mod acquisition_change;
+pub mod acquisition_daily;
+pub mod attribution;
 pub mod bill_links;
 pub mod budget;
 pub mod campaign;
@@ -10,6 +14,9 @@ pub mod cost_machine;
 pub mod costs;
 pub mod daily;
 mod events;
+pub mod lead;
+mod lead_events;
+pub mod lead_machine;
 pub mod lead_source;
 pub mod machine;
 pub mod notices;
@@ -24,12 +31,15 @@ use renox::db::Migration;
 use renox::nav::NavLink;
 use renox::prelude::*;
 
+pub use acquisition::{AcquisitionRefused, AcquisitionSale, PartyAcquisition};
+pub use acquisition_change::{AcquisitionChange, ChangeRefused, ChangeRequest, ChangeStatus, ChangeTarget};
 pub use budget::BudgetAlert;
 pub use campaign::{
     Campaign, CampaignCode, CampaignRefused, CampaignStatus, MarketingChannel, Purpose,
 };
 pub use config::SalesConfig;
 pub use cost_entry::{CostEntry, CostRefused, CostStatus};
+pub use lead::{Captured, Lead, LeadNote, LeadRefused, LeadStatus, NewLead};
 pub use lead_source::{LeadSource, LeadSourceRefused};
 pub use promo_code::PromoCode;
 
@@ -60,6 +70,10 @@ const VIEWS: &[(&str, &str)] = &[
         include_str!("../views/wl-sales/show.html"),
     ),
     (
+        "wl-sales/acquisition_exceptions.html",
+        include_str!("../views/wl-sales/acquisition_exceptions.html"),
+    ),
+    (
         "wl-sales/_cost_sheet.html",
         include_str!("../views/wl-sales/_cost_sheet.html"),
     ),
@@ -75,6 +89,10 @@ pub mod permissions {
     pub const CAMPAIGNS_COSTS_MANAGE: &str = "campaigns.costs.manage";
     /// See the acquisition reports.
     pub const ACQUISITION_REPORTS_VIEW: &str = "acquisition.reports.view";
+    /// See leads.
+    pub const LEADS_VIEW: &str = "leads.view";
+    /// Contact, qualify, lose and reopen leads.
+    pub const LEADS_MANAGE: &str = "leads.manage";
 }
 
 /// The sales module. The host adds it with
@@ -113,6 +131,44 @@ impl WlSales {
         self
     }
 
+    /// The lost reasons a lead can be closed with (`duplicate` and
+    /// `spam_or_invalid` are always there, §7).
+    pub fn lost_reasons(mut self, reasons: &[&str]) -> Self {
+        let mut list: Vec<String> = [config::LOST_DUPLICATE, config::LOST_SPAM]
+            .iter()
+            .map(|r| (*r).to_owned())
+            .collect();
+        for reason in reasons {
+            let reason = reason.trim().to_lowercase();
+            if !reason.is_empty() && !list.contains(&reason) {
+                list.push(reason);
+            }
+        }
+        self.config.lost_reasons = list;
+        self
+    }
+
+    /// The lead sources (by code) that need a campaign on a lead or a first
+    /// sale (`SAL.CRM.02`; 05: `paid_ads`, `social`).
+    pub fn campaign_required_for(mut self, sources: &[&str]) -> Self {
+        self.config.campaign_required_sources = sources.iter().map(|s| (*s).to_owned()).collect();
+        self
+    }
+
+    /// The months after the first sale whose sales make the converted value;
+    /// `None` for the first sale only (§7).
+    pub fn attribution_window_months(mut self, months: Option<u32>) -> Self {
+        self.config.attribution_window_months = months;
+        self
+    }
+
+    /// Whether changing the attribution of an acquired party or a won lead
+    /// needs a second person (`SAL.ACL.09`).
+    pub fn acquisition_change_approval(mut self, on: bool) -> Self {
+        self.config.acquisition_change_approval = on;
+        self
+    }
+
     /// The module's settings.
     pub fn config(&self) -> &SalesConfig {
         &self.config
@@ -134,6 +190,7 @@ impl Module for WlSales {
 
     fn register(&self, app: &mut Registry) {
         app.view_data::<pages::lead_sources::IndexPage>()
+            .view_data::<pages::acquisition::ExceptionsPage>()
             .view_data::<pages::campaigns::IndexPage>()
             .view_data::<pages::campaigns::FormPage>()
             .view_data::<pages::campaigns::ShowPage>();
@@ -147,12 +204,24 @@ impl Module for WlSales {
             }
         });
         app.model::<LeadSource>();
+        app.model::<Lead>();
+        app.model::<LeadNote>();
+        app.model::<PartyAcquisition>();
+        app.model::<AcquisitionSale>();
+        app.model::<AcquisitionChange>();
         app.model::<Campaign>();
         app.model::<CampaignCode>();
         app.model::<PromoCode>();
         app.model::<CostEntry>();
         app.model::<BudgetAlert>();
         app.provide(self.config.clone());
+        renox::state_machine::register::<Lead>();
+        lead_events::register(app);
+        acquisition_change::register(app);
+        acquisition_daily::schedule(app);
+        // Verticals report first sales and win leads through the kernel.
+        wl_kernel::sales::provide_campaign_attribution(app, attribution::Attribution);
+        wl_kernel::sales::provide_lead_conversion(app, attribution::Conversion);
         cost_machine::register(app);
         bill_links::register(app);
         voids::register(app);
@@ -198,6 +267,9 @@ mod tests {
         assert!(config.over_budget_approval);
         assert_eq!(config.budget_alerts, [8000, 10000]);
         assert_eq!(config.late_response_days, 30);
+        assert!(config.campaign_required_sources.is_empty());
+        assert_eq!(config.attribution_window_months, None);
+        assert!(config.acquisition_change_approval);
     }
 
     #[test]
@@ -205,8 +277,16 @@ mod tests {
         let module = WlSales::new()
             .over_budget_approval(false)
             .budget_alerts(&[100, 50, 100])
-            .late_response_days(14);
+            .late_response_days(14)
+            .campaign_required_for(&["paid_ads", "social"])
+            .attribution_window_months(Some(12))
+            .acquisition_change_approval(false)
+            .lost_reasons(&["Too Far", "duplicate"]);
         let config = module.config();
+        assert!(config.campaign_required_for("social"));
+        assert_eq!(config.attribution_window_months, Some(12));
+        assert!(!config.acquisition_change_approval);
+        assert_eq!(config.lost_reasons, ["duplicate", "spam_or_invalid", "too far"]);
         assert!(!config.over_budget_approval);
         assert_eq!(config.budget_alerts, [5000, 10000]);
         assert_eq!(config.late_response_days, 14);
