@@ -3,6 +3,8 @@
 
 pub mod alert;
 pub mod alternative;
+pub mod broadcast;
+pub mod broadcast_machine;
 pub mod channels;
 pub mod clock;
 pub mod contact_invalid;
@@ -34,6 +36,9 @@ use renox::nav::NavLink;
 use renox::prelude::*;
 
 pub use alternative::AlternativeRecipientHandler;
+pub use broadcast::{
+    Broadcast, BroadcastResults, BroadcastSettings, BroadcastStatus, ExcludedCounts,
+};
 pub use channels::{
     ChannelProvider, EmailProvider, HardError, Outgoing, Providers, SendError, SendErrorKind,
     SmsGateway, SmsProvider,
@@ -117,6 +122,7 @@ const VIEWS: &[(&str, &str)] = &[
 pub struct WlNotify {
     providers: Providers,
     reactions: Reactions,
+    broadcast: BroadcastSettings,
 }
 
 impl WlNotify {
@@ -129,6 +135,20 @@ impl WlNotify {
     /// built-in one (another SMS gateway, a scripted one in tests).
     pub fn provider(mut self, provider: impl ChannelProvider) -> Self {
         self.providers.replace(Arc::new(provider));
+        self
+    }
+
+    /// A broadcast whose estimate is above `n` recipients needs a second
+    /// holder of `notifications.marketing.send` to approve it (default 200).
+    pub fn broadcast_approval_above(mut self, n: i64) -> Self {
+        self.broadcast.approval_above = n;
+        self
+    }
+
+    /// The registered `AD-...` sender ID marketing SMS go out with. Without
+    /// one, a marketing SMS broadcast is refused.
+    pub fn sms_sender_id(mut self, id: &str) -> Self {
+        self.broadcast.sms_sender_id = Some(id.to_owned());
         self
     }
 
@@ -163,6 +183,7 @@ impl Module for WlNotify {
             .model::<ReactionStep>()
             .model::<StatutoryNotice>()
             .model::<SendWindow>()
+            .model::<Broadcast>()
             .view_data::<pages::TypesPage>()
             .view_data::<pages::TypeEditPage>()
             .view_data::<pages::LogPage>()
@@ -176,6 +197,9 @@ impl Module for WlNotify {
         app.provide(self.providers.clone());
         // The clock the window and quiet-hours guards read; an app's wins.
         app.provide(Clock::system());
+        // Broadcasts: the settings and the machine with its waiting state.
+        app.provide(self.broadcast.clone());
+        broadcast_machine::register();
         channels::register(app);
         app.job::<SendMessage>();
         // Fallback and give-up: `NTF.RUL.01` runs the type's reactions.

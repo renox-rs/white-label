@@ -75,7 +75,8 @@ pub const PARTY_ON_HOLD: &str = "party_on_hold";
     state_machine,
     index(status),
     index(chain_id),
-    index(subject_type, subject_id)
+    index(subject_type, subject_id),
+    unique(broadcast_id, party_id)
 )]
 pub struct Message {
     /// The primary key.
@@ -125,6 +126,9 @@ pub struct Message {
     pub provider: Option<String>,
     /// The provider's id for it.
     pub provider_message_id: Option<String>,
+    /// The broadcast it belongs to: a party gets one message per broadcast
+    /// (#61 A3).
+    pub broadcast_id: Option<i64>,
     /// The lifecycle state; changed only by a transition.
     pub status: MessageStatus,
     /// How many sends were tried.

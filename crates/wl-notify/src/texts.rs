@@ -237,6 +237,34 @@ const TEXTS: &[(&str, &str)] = &[
     (
         "wl_notify.send_windows.bad_time",
         "Enter a time as hours and minutes, e.g. 07:00.",
+    ("wl_notify.broadcast.status.draft", "Draft"),
+    (
+        "wl_notify.broadcast.status.pending_approval",
+        "Waiting for approval",
+    ),
+    ("wl_notify.broadcast.status.scheduled", "Scheduled"),
+    ("wl_notify.broadcast.status.sending", "Sending"),
+    ("wl_notify.broadcast.status.completed", "Completed"),
+    ("wl_notify.broadcast.status.cancelled", "Cancelled"),
+    (
+        "wl_notify.broadcast.problem.within_limit",
+        "This broadcast is within the size that needs no approval.",
+    ),
+    (
+        "wl_notify.broadcast.problem.over_limit",
+        "This broadcast is above the size that needs no approval.",
+    ),
+    (
+        "wl_notify.broadcast.problem.no_limit",
+        "The broadcast limit was not given.",
+    ),
+    (
+        "wl_notify.broadcast.problem.cancel_not_allowed",
+        "Only the requester or a holder of notifications.marketing.send may cancel a broadcast.",
+    ),
+    (
+        "wl_notify.broadcast.problem.no_approval_policy",
+        "A broadcast above the limit needs an approval policy.",
     ),
 ];
 
