@@ -265,6 +265,7 @@ impl Module for WlKernel {
         voids::register_models(app);
         late_entries::register_models(app);
         integrations::register_models(app);
+        compliance::register_models(app);
         // In the admin group of the staff sidebar; the label is the app's
         // `nav.legal_entities` text.
         app.nav(
@@ -289,6 +290,8 @@ impl Module for WlKernel {
                     println!("{policies} approval policies created.");
                     let connections = integrations::install(&state.db).await?;
                     println!("{connections} integration connections created.");
+                    let rules = compliance::install(&state.db).await?;
+                    println!("{rules} compliance-critical rules stored.");
                     Ok(())
                 }
             },
@@ -299,7 +302,8 @@ impl Module for WlKernel {
             async move {
                 entities::install(&state.db, &config).await?;
                 approvals::install(&state.db).await?;
-                integrations::install(&state.db).await.map(|_| ())
+                integrations::install(&state.db).await?;
+                compliance::install(&state.db).await.map(|_| ())
             }
         });
         app.templates(|env| {

@@ -12,9 +12,20 @@
 //! is missed when its planned time is 60 minutes or more in the past with no
 //! rule run ([`MISSED_AFTER_MINUTES`]).
 
+pub mod alert;
 pub mod registry;
+pub mod rules;
 
+use renox::prelude::*;
+
+pub use alert::{AlertKind, AlertStatus, ClosedHow, ComplianceAlert};
 pub use registry::{
     CriticalRule, LOOK_BACK_DAYS, MISSED_AFTER_MINUTES, Planned, PlannedFn, Schedule, all,
     is_critical, missed_before, occurrence_key, planned_daily, register, rule, schedule_subject,
 };
+pub use rules::{ComplianceRule, business_owner_role, install, owner_role};
+
+/// Registers the models.
+pub(crate) fn register_models(app: &mut Registry) {
+    app.model::<ComplianceRule>().model::<ComplianceAlert>();
+}
