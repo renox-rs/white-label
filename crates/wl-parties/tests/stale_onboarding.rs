@@ -372,8 +372,9 @@ async fn ac1_warn_activates_names_the_list_and_the_party_page_shows_the_line() {
 async fn ac2_fresh_lists_are_allowed_and_a_flagged_screening_still_warns() {
     let w = world(StaleListPolicy::Warn).await;
     w.go_stale().await;
-    // One second short of the 24 hour limit is still fresh.
-    let almost = w.now().await - renox::chrono::Duration::seconds(24 * 3600 - 1);
+    // A little short of the 24 hour limit (ten minutes, so a slow test run
+    // cannot cross it) is still fresh.
+    let almost = w.now().await - renox::chrono::Duration::seconds(24 * 3600 - 600);
     for mut list in w.lists().await {
         list.last_updated_at = Some(almost);
         list.status = ListStatus::Current;
