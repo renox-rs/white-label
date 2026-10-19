@@ -138,6 +138,7 @@ impl PartyDirectory for TestDirectory {
                 trn: Some("100000000000011".to_owned()),
                 billing_address: Some("Office 12, Business Bay, Dubai".to_owned()),
                 billing_email: email,
+                einvoice_recipient_id: None,
             }))
         })
     }

@@ -14,6 +14,7 @@ pub mod consents;
 pub mod delivery;
 pub mod digest;
 pub mod documents;
+pub mod einvoice;
 pub mod entities;
 pub mod held_funds;
 pub mod integrations;
@@ -105,7 +106,7 @@ pub use notify::{
 pub use numbering::{Reset, Series};
 pub use parties::{
     BillingIdentity, NEUTRAL_BLOCK_REASON, NoParties, PartyBlocked, PartyCreated, PartyDirectory,
-    PartyId, PartyKind, PartyRestored, PartyStatus, PartySummary, PartyUnblocked,
+    PartyId, PartyKind, PartyRestored, PartyStatus, PartySummary, PartyUnblocked, PartyUpdated,
     ScreeningCompleted, ScreeningFlagged, ScreeningId, ScreeningMatchConfirmed, ScreeningStatus,
 };
 pub use payments::{

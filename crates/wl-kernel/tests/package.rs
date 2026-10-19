@@ -1493,3 +1493,34 @@ fn the_digest_period_and_a_confidential_line() {
     assert!(!text.contains("Anna") && !text.contains("router down"), "{text}");
     assert_eq!(digest::TASK_AT, "07:00");
 }
+
+/// #43: without an ASP adapter no lookup is made and the identifier is
+/// entered by hand; a change of a party names its fields only.
+#[renox::test]
+async fn without_an_asp_adapter_the_recipient_lookup_is_unavailable() {
+    use wl_kernel::einvoice::{self, Lookup, NoRecipientLookup, RecipientLookup};
+    use wl_kernel::parties::PartyUpdated;
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let entity = LegalEntity::default_entity(app.db()).await.unwrap();
+    assert_eq!(NoRecipientLookup.connection(&entity), None);
+    assert_eq!(
+        einvoice::lookup(app.state(), &entity, "100123456700003")
+            .await
+            .unwrap(),
+        Lookup::Unavailable
+    );
+    assert!(
+        einvoice::available_connection(app.state(), &entity)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let event = PartyUpdated {
+        party: PartyId(1),
+        changed_fields: vec!["einvoice_recipient_id".into()],
+    };
+    let json = renox::serde_json::to_value(&event).unwrap();
+    assert_eq!(json["changed_fields"][0], "einvoice_recipient_id");
+}

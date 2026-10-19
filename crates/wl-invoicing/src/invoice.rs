@@ -298,6 +298,7 @@ mod tests {
             trn: Some("100000000000003".into()),
             billing_address: Some("Dubai".into()),
             billing_email: Some("ap@bluedunes.ae".into()),
+            einvoice_recipient_id: None,
         };
         let snapshot = PartySnapshot::of(&identity);
         assert_eq!(snapshot.legal_name_en, "Blue Dunes LLC");

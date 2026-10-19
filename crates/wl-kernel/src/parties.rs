@@ -166,6 +166,11 @@ pub struct BillingIdentity {
     pub billing_address: Option<String>,
     /// The e-mail address invoices and notices go to.
     pub billing_email: Option<String>,
+    /// The recipient's e-invoicing identifier (Peppol participant ID, scheme
+    /// + identifier), when a company has one; `wl-invoicing` needs it before
+    /// it issues an invoice to a recipient in e-invoicing scope.
+    #[serde(default)]
+    pub einvoice_recipient_id: Option<String>,
 }
 
 /// A party related to another one by a [`ContactPurpose`]:
@@ -360,6 +365,18 @@ pub struct PartyCreated {
 }
 
 impl Event for PartyCreated {}
+
+/// The identity or contact fields of a party changed (wl-parties §6). Carries
+/// the names of the changed fields only, never their values.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PartyUpdated {
+    /// The party.
+    pub party: PartyId,
+    /// The names of the fields that changed, e.g. `einvoice_recipient_id`.
+    pub changed_fields: Vec<String>,
+}
+
+impl Event for PartyUpdated {}
 
 /// A party was blocked.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -576,11 +593,13 @@ mod tests {
             trn: Some("100000000000003".into()),
             billing_address: None,
             billing_email: Some("billing@gulf.example".into()),
+            einvoice_recipient_id: Some("0235:100000000000003".into()),
         };
         let json = renox::serde_json::to_value(&identity).unwrap();
         assert_eq!(json["party"], 3);
         assert_eq!(json["trn"], "100000000000003");
         assert_eq!(json["billing_email"], "billing@gulf.example");
+        assert_eq!(json["einvoice_recipient_id"], "0235:100000000000003");
         assert!(json["legal_name_ar"].is_null());
     }
 
