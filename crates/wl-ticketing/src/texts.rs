@@ -17,6 +17,14 @@ const TEXTS: &[(&str, &str)] = &[
         "{{ title }} ({{ priority }} priority). Visit: {{ visit }}. Respond by {{ response_due }}; resolve by {{ resolution_due }}.",
     ),
     (
+        "wl_ticketing.notice.visit_missed.subject",
+        "Planned visit {{ number }} was missed",
+    ),
+    (
+        "wl_ticketing.notice.visit_missed.body",
+        "{{ title }} ({{ category }}) was planned for {{ planned_due }} and is still not resolved {{ days }} days later.",
+    ),
+    (
         "wl_ticketing.notice.withdrawn.subject",
         "Ticket {{ number }} was reassigned",
     ),

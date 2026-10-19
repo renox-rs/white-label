@@ -20,6 +20,7 @@ pub mod sla;
 mod texts;
 pub mod ticket;
 pub mod visibility;
+pub mod visit_check;
 pub mod work;
 
 use renox::db::Migration;
@@ -99,6 +100,7 @@ pub mod permissions {
 pub struct WlTicketing {
     reasons: ReassignReasons,
     auto_close_days: Option<i64>,
+    visit_check: visit_check::Settings,
 }
 
 impl WlTicketing {
@@ -117,6 +119,33 @@ impl WlTicketing {
     pub fn auto_close_days(mut self, days: i64) -> Self {
         assert!(days >= 1, "auto-close needs at least one day");
         self.auto_close_days = Some(days);
+        self
+    }
+
+    /// Sets the days after a planned visit's planned due date before
+    /// `WRK.RUL.14` reports it (§6: 3 unless set). At least 1.
+    ///
+    /// # Panics
+    ///
+    /// For fewer than one day: a programming error.
+    pub fn visit_missed_days(mut self, days: i64) -> Self {
+        assert!(days >= 1, "a missed visit needs at least one day");
+        self.visit_check.days = days;
+        self
+    }
+
+    /// Sets the role told of a missed planned visit (`coordinator` unless
+    /// set).
+    pub fn coordinator_role(mut self, role: &str) -> Self {
+        self.visit_check.coordinator_role = role.to_owned();
+        self
+    }
+
+    /// Sets the role of the manager in scope, told of a missed visit of a
+    /// compliance-critical category (the company administrators unless set;
+    /// 01: the property manager).
+    pub fn compliance_manager_role(mut self, role: &str) -> Self {
+        self.visit_check.manager_role = role.to_owned();
         self
     }
 
@@ -230,6 +259,10 @@ impl Module for WlTicketing {
             self.auto_close_days.unwrap_or(auto_close::DEFAULT_DAYS),
         ));
         auto_close::schedule(app);
+        // `WRK.RUL.14`: planned visits not resolved N days after their
+        // planned due date; compliance-critical (`PLT.RUL.04`).
+        app.provide(self.visit_check.clone());
+        visit_check::register(app);
         // The seeded defaults keep the client's changes.
         app.command(
             "ticketing:install",
