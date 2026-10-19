@@ -13,6 +13,21 @@ const LAYOUT: &str = r#"<!doctype html>
 <html><body><rx-outlet name="content"/></body></html>
 "#;
 
+/// The kernel's client file: the pages include its approval card.
+const CLIENT: &str = r#"
+[client]
+name = "Palm Grove Properties LLC"
+app = "property"
+
+[modules]
+enabled = []
+
+[[legal_entities]]
+code = "PGP"
+name_en = "Palm Grove Properties LLC"
+default = true
+"#;
+
 /// A views directory holding the layout and `files` (the app's own views).
 fn views(files: &[(&str, &str)]) -> tempfile::TempDir {
     let dir = tempfile::tempdir().expect("a temporary views directory");
@@ -26,15 +41,18 @@ fn views(files: &[(&str, &str)]) -> tempfile::TempDir {
 
 /// The module mounted in an app with sign-in and roles, that uses `views`.
 async fn boot(views: &Path) -> TestApp {
-    TestApp::with_config(
+    let config = wl_kernel::ClientConfig::parse(CLIENT).expect("a valid client.toml");
+    let app = wl_kernel::apply(
         App::new()
             .module(Auth::new())
             .module(Permissions)
             .module(Property),
-        |config| {
-            config.views_path = views.to_path_buf();
-        },
+        config,
     )
+    .expect("the kernel applies");
+    TestApp::with_config(app, |config| {
+        config.views_path = views.to_path_buf();
+    })
     .await
 }
 
