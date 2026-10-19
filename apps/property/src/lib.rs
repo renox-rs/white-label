@@ -35,6 +35,7 @@ pub mod statement;
 pub mod statement_dispute;
 pub mod statement_events;
 pub mod statement_machine;
+pub mod statement_payout;
 mod tasks;
 pub mod termination;
 pub mod terms;
