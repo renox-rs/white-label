@@ -76,6 +76,7 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_payments.fields.unallocated", "Unallocated"),
     ("wl_payments.fields.status", "Status"),
     ("wl_payments.fields.reference", "Reference"),
+    ("wl_payments.fields.bank_account", "Bank account"),
     ("wl_payments.fields.source", "Source"),
     ("wl_payments.fields.cheque_number", "Cheque number"),
     ("wl_payments.fields.cheque_bank", "Cheque bank"),

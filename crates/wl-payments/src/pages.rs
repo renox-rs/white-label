@@ -279,6 +279,9 @@ pub struct PaymentForm {
     /// The payer's or bank's reference.
     #[validate(max = 200)]
     pub reference: Option<String>,
+    /// The bank account the money moved through.
+    #[validate(max = 100)]
+    pub bank_account: Option<String>,
     /// A cheque's number.
     #[validate(max = 64)]
     pub cheque_number: Option<String>,
@@ -362,6 +365,9 @@ async fn store(
     }
     if let Some(reference) = filled(&form.reference) {
         request = request.reference(reference);
+    }
+    if let Some(account) = filled(&form.bank_account) {
+        request = request.bank_account(account);
     }
     let mut details = renox::serde_json::Map::new();
     if let Some(number) = filled(&form.cheque_number) {

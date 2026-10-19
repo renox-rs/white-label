@@ -56,6 +56,9 @@ pub(crate) fn payment_for(
     if let Some(user) = cheque.collected_by {
         request = request.collected_by(user);
     }
+    if let Some(account) = cheque.bank_account.as_deref() {
+        request = request.bank_account(account);
+    }
     request
 }
 

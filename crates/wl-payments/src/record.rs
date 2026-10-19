@@ -186,6 +186,12 @@ fn new_payment(request: &RecordPayment, recorded_by: Option<i64>) -> Payment {
     Payment {
         direction: request.direction,
         legal_entity_id: request.legal_entity_id,
+        bank_account: request
+            .bank_account
+            .as_deref()
+            .map(str::trim)
+            .filter(|a| !a.is_empty())
+            .map(str::to_owned),
         party_id: request.party.0,
         method: request.method,
         method_details: details_json(request.method_details.clone()),

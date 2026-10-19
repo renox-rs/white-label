@@ -471,6 +471,10 @@ pub struct RecordPayment {
     pub statement_line_id: Option<i64>,
     /// The user who collected the money, if any.
     pub collected_by: Option<i64>,
+    /// The bank account the money moved in or out of, if any (a transfer, a
+    /// card or a cheque): the cash-flow forecast reads the payments of an
+    /// account ([`PaymentRecorder::payments_after`]).
+    pub bank_account: Option<String>,
 }
 
 impl RecordPayment {
@@ -491,6 +495,7 @@ impl RecordPayment {
             source: PaymentSource::Manual,
             statement_line_id: None,
             collected_by: None,
+            bank_account: None,
         }
     }
 
@@ -545,6 +550,12 @@ impl RecordPayment {
     /// Collected by this user.
     pub fn collected_by(mut self, user: i64) -> Self {
         self.collected_by = Some(user);
+        self
+    }
+
+    /// Through this bank account.
+    pub fn bank_account(mut self, account: &str) -> Self {
+        self.bank_account = Some(account.to_owned());
         self
     }
 }
