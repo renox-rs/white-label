@@ -24,6 +24,7 @@ use wl_kernel::cheques::{
     BounceFeeCharge, BounceFees, ChargeInvoicer, ChequeBounceResolved, ChequeBounced, ChequeFuture,
     RegisterCheque, cheques as cheque_contract,
 };
+use wl_kernel::deposits::{DepositSettled, DisputeDeductions, deposit_deductions};
 use wl_kernel::documents::today;
 use wl_kernel::invoicing::{
     InvoiceFuture, InvoiceId, InvoiceStatus, InvoiceSummary, InvoiceWrittenOff, Invoicer,
@@ -772,6 +773,8 @@ pub struct Booted {
     pub cheque_bounced: Recorded<ChequeBounced>,
     /// `ChequeBounceResolved`.
     pub cheque_resolved: Recorded<ChequeBounceResolved>,
+    /// `DepositSettled`.
+    pub deposit_settled: Recorded<DepositSettled>,
     /// The bounce fee charges asked of invoicing.
     pub fees: RecordingFees,
     /// The charges that can be invoiced.
@@ -1305,6 +1308,115 @@ impl Booted {
         user
     }
 
+    /// A deposit of `amount` fils of `party`, held with a received payment
+    /// and `settlement_pending`.
+    pub async fn settling_deposit(&self, by: &User, party: PartyId, amount: i64) -> Deposit {
+        let payment = self.receive(party, amount).await;
+        let deposit = self.hold_deposit(by, party, amount, Some(&payment)).await;
+        self.deposit_action(by, &deposit, "start_settlement", &[])
+            .await
+            .assert_ok();
+        self.deposit(deposit.id).await
+    }
+
+    /// `by` posts to the page route `action` of `deposit`.
+    pub async fn deposit_page(
+        &self,
+        by: &User,
+        deposit: &Deposit,
+        action: &str,
+        pairs: &[(&str, &str)],
+    ) -> TestResponse {
+        self.app.acting_as(by);
+        self.app
+            .htmx()
+            .post(&format!("/deposits/{}/{action}", deposit.id), pairs)
+            .await
+    }
+
+    /// `by` publishes the deductions `lines` (`description | amount |
+    /// evidence` per row), or the forfeiture when `forfeiture` is not empty.
+    pub async fn publish_deductions(
+        &self,
+        by: &User,
+        deposit: &Deposit,
+        lines: &str,
+        forfeiture: &str,
+    ) -> TestResponse {
+        self.deposit_page(
+            by,
+            deposit,
+            "deductions",
+            &[("lines", lines), ("forfeiture_reason", forfeiture)],
+        )
+        .await
+    }
+
+    /// `by` answers the open disputes of `deposit`; `changes` has a
+    /// `line id | new amount` per row (empty: upheld).
+    pub async fn answer_dispute(
+        &self,
+        by: &User,
+        deposit: &Deposit,
+        changes: &str,
+    ) -> TestResponse {
+        self.deposit_page(
+            by,
+            deposit,
+            "answer",
+            &[
+                ("response", "The inspection report shows the damage."),
+                ("evidence", "inspection-2027-02"),
+                ("changes", changes),
+            ],
+        )
+        .await
+    }
+
+    /// `by` forfeits `deposit` for `reason`, approved by `approver`.
+    pub async fn forfeit_deposit(
+        &self,
+        by: &User,
+        deposit: &Deposit,
+        reason: &str,
+        approver: Option<i64>,
+    ) -> TestResponse {
+        let approver = approver.map(|id| id.to_string());
+        let mut pairs = vec![("reason", reason)];
+        if let Some(approver) = approver.as_deref() {
+            pairs.push(("approver", approver));
+        }
+        self.deposit_page(by, deposit, "forfeit", &pairs).await
+    }
+
+    /// `party` disputes the lines `lines` of version `version` of the
+    /// deductions of `deposit`, through the kernel contract the portal uses.
+    pub async fn dispute_lines(
+        &self,
+        party: PartyId,
+        deposit: &Deposit,
+        version: i32,
+        lines: Vec<i64>,
+    ) -> Result<()> {
+        let request = DisputeDeductions {
+            deposit: deposit.deposit_id(),
+            version,
+            lines,
+            comment: "The wall was already damaged when I moved in.".to_owned(),
+        };
+        deposit_deductions(self.state())
+            .dispute(self.state(), party, request)
+            .await
+    }
+
+    /// What the portal shows `party` of the deductions now.
+    pub async fn published_for(&self, party: PartyId) -> Vec<wl_kernel::deposits::PublishedDeductions> {
+        deposit_deductions(self.state())
+            .published_for(self.state(), party)
+            .await
+            .unwrap()
+    }
+
     /// `by` writes off the bounced `cheque` for `reason`.
     pub async fn write_off_cheque(&self, by: &User, cheque: &Cheque, reason: &str) -> TestResponse {
         self.cheque_action(by, cheque, "write_off", &[("reason", reason)])
@@ -1389,6 +1501,7 @@ pub async fn boot_with(module: WlPayments, gateway: FakeGateway) -> Booted {
     let refund_failed = Recorded::new();
     let cheque_bounced = Recorded::new();
     let cheque_resolved = Recorded::new();
+    let deposit_settled = Recorded::new();
     let fees = RecordingFees::default();
     let notices = Recording::default();
     let invoices = RecordingInvoicer::default();
@@ -1417,6 +1530,7 @@ pub async fn boot_with(module: WlPayments, gateway: FakeGateway) -> Booted {
     let app = record(app, &refund_failed);
     let app = record(app, &cheque_bounced);
     let app = record(app, &cheque_resolved);
+    let app = record(app, &deposit_settled);
     let config = ClientConfig::parse(CLIENT).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     let dir = views.path().to_path_buf();
@@ -1450,6 +1564,7 @@ pub async fn boot_with(module: WlPayments, gateway: FakeGateway) -> Booted {
         refund_failed,
         cheque_bounced,
         cheque_resolved,
+        deposit_settled,
         fees,
         charges,
     }
