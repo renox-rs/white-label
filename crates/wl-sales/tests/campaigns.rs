@@ -339,6 +339,47 @@ async fn a_draft_with_missing_fields_stays_a_draft_and_is_counted() {
     assert_eq!((report.activated, report.failed), (1, 0));
 }
 
+/// AC16 (the send time part): a send time outside the period, or a missing
+/// one, keeps a retention campaign a draft.
+#[renox::test]
+async fn a_send_time_outside_the_period_keeps_a_retention_campaign_a_draft() {
+    let (t, recorder, owner) = booted().await;
+    let retention = stored(
+        &t,
+        Campaign {
+            purpose: Some(Purpose::Retention),
+            promo_code: None,
+            segment_id: Some(1),
+            template_key: Some("promo".into()),
+            message_channel: Some("email".into()),
+            send_at: Some(day(4, 10).and_hms_opt(6, 0, 0).unwrap().and_utc()),
+            ..c1(owner)
+        },
+    )
+    .await;
+    let report = campaigns::run_daily(t.state(), day(3, 1)).await.unwrap();
+    assert_eq!((report.activated, report.failed), (0, 1), "after the end");
+    assert_eq!(reload(&t, retention.id).await.status, CampaignStatus::Draft);
+
+    let mut early = reload(&t, retention.id).await;
+    early.send_at = Some(day(2, 10).and_hms_opt(6, 0, 0).unwrap().and_utc());
+    stored(&t, early).await;
+    let report = campaigns::run_daily(t.state(), day(3, 1)).await.unwrap();
+    assert_eq!(
+        (report.activated, report.failed),
+        (0, 1),
+        "before the start"
+    );
+
+    let mut none = reload(&t, retention.id).await;
+    none.send_at = None;
+    stored(&t, none).await;
+    let report = campaigns::run_daily(t.state(), day(3, 1)).await.unwrap();
+    assert_eq!((report.activated, report.failed), (0, 1), "no send time");
+    assert_eq!(reload(&t, retention.id).await.status, CampaignStatus::Draft);
+    assert!(recorder.activated.lock().unwrap().is_empty());
+}
+
 fn reopen_ctx(end: NaiveDate, today: NaiveDate) -> TransitionCtx {
     TransitionCtx::new(None)
         .with_input(renox::serde_json::to_value(ReopenInput { end_date: end }).unwrap())
