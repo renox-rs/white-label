@@ -1895,3 +1895,24 @@ async fn posting_cost_without_a_poster_is_a_no_op() {
         .await
         .expect("a no-op");
 }
+
+/// #93: the event of a projected balance below the threshold carries the
+/// entity, the first week below, the balance and the threshold.
+#[test]
+fn the_below_threshold_event_names_the_first_week() {
+    use wl_kernel::cash_forecast::CashForecastBelowThreshold;
+
+    let event = CashForecastBelowThreshold {
+        legal_entity_id: 1,
+        week: 6,
+        week_start: NaiveDate::from_ymd_opt(2027, 2, 15).unwrap(),
+        projected_balance: 1_500_000,
+        threshold: 2_000_000,
+    };
+    let json = renox::serde_json::to_value(&event).unwrap();
+    assert_eq!(json["week"], 6);
+    assert_eq!(json["week_start"], "2027-02-15");
+    assert_eq!(json["projected_balance"], 1_500_000);
+    let back: CashForecastBelowThreshold = renox::serde_json::from_value(json).unwrap();
+    assert_eq!(back, event);
+}

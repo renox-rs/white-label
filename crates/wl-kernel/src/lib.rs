@@ -72,8 +72,8 @@ pub use budgets::{
 };
 pub use calendar::BusinessCalendar;
 pub use cash_forecast::{
-    CashForecastSource, ForecastFuture, ForecastLine, cash_forecast_sources,
-    register_cash_forecast_source,
+    CashForecastBelowThreshold, CashForecastSource, ForecastFuture, ForecastLine,
+    cash_forecast_sources, register_cash_forecast_source,
 };
 pub use cheques::{
     BounceFeeCharge, BounceFees, CHARGE_SUBJECT_TYPE, CHEQUE_SUBJECT_TYPE, ChargeInvoicer,

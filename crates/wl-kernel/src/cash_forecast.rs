@@ -83,6 +83,26 @@ impl ForecastLine {
     }
 }
 
+/// An entity's projected closing balance falls below its threshold in a week
+/// of the horizon (`FIN.RUL.23`). Emitted by the daily check once per entity:
+/// again only when the first week below moves earlier, or after a run with no
+/// week below. Money is AED fils.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CashForecastBelowThreshold {
+    /// The legal entity.
+    pub legal_entity_id: i64,
+    /// The first week below the threshold, from 1.
+    pub week: u32,
+    /// The first day of that week.
+    pub week_start: NaiveDate,
+    /// The projected closing balance of that week.
+    pub projected_balance: i64,
+    /// The entity's threshold.
+    pub threshold: i64,
+}
+
+impl Event for CashForecastBelowThreshold {}
+
 /// The future a [`CashForecastSource`] method returns.
 pub type ForecastFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 
