@@ -467,8 +467,8 @@ async fn relink(state: &AppState, acquisition: &PartyAcquisition) -> Result<Opti
 /// Reports a sale of a party (`record_first_sale` of the kernel contract):
 /// the sale is kept as a candidate, and linked as the party's first sale when
 /// it has none. A party with no acquisition gets one with the source *other*
-/// (`source_missing`). Returns whether this sale is now the first sale; a
-/// second report of the same sale keeps the first.
+/// (`source_missing`). Returns whether this sale is the party's first sale;
+/// a second report of the same sale, or of a later one, keeps the first.
 pub async fn record_sale(state: &AppState, sale: FirstSale) -> Result<bool> {
     let existing = AcquisitionSale::query()
         .where_(AcquisitionSale::SUBJECT_TYPE.eq(sale.subject.subject_type.clone()))
@@ -517,8 +517,9 @@ pub async fn record_sale(state: &AppState, sale: FirstSale) -> Result<bool> {
             .await?
         }
     };
-    let linked = relink(state, &acquisition).await?;
-    Ok(linked.as_ref() == Some(&sale.subject))
+    relink(state, &acquisition).await?;
+    let current = PartyAcquisition::find_or_404(&state.db, acquisition.id).await?;
+    Ok(current.first_sale().as_ref() == Some(&sale.subject))
 }
 
 /// Takes `net` fils (a credit note's net) off the reported sale `sale`

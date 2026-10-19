@@ -355,10 +355,10 @@ pub trait CampaignAttribution: Send + Sync + 'static {
     }
 
     /// Reports a sale of a party. The party's first sale is linked when it
-    /// has none yet (the earliest by date); a later call for the same party
-    /// keeps the first and only remembers the sale, in case the first is
-    /// voided, cancelled or credited in full. Returns whether `sale` became
-    /// the first sale. The default does nothing.
+    /// has none yet; a later call for the same party keeps the first and
+    /// only remembers the sale, in case the first is voided, cancelled or
+    /// credited in full. Returns whether `sale` is the party's first sale
+    /// (also when it was already). The default does nothing.
     fn record_first_sale<'a>(&'a self, _state: &'a AppState, _sale: FirstSale) -> SalesFuture<'a, bool> {
         Box::pin(async { Ok(false) })
     }
