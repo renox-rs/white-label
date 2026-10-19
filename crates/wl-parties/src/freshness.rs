@@ -144,6 +144,9 @@ async fn check(state: &AppState, id: i64, now: DateTime, hours: i64) -> Result<L
                 }
                 list.last_updated_at = Some(now);
                 list.update_source = Some(UpdateSource::Download);
+                // A download replaces a manual upload: no uploader, no URL.
+                list.updated_by = None;
+                list.source_url = None;
                 list.last_error = None;
             }
             Err(error) => {
