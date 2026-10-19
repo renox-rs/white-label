@@ -27,6 +27,7 @@ use wl_invoicing::{
 use wl_kernel::LegalEntity;
 use wl_kernel::approvals::{self, ApprovalRequest};
 use wl_kernel::budgets::{CompanyBudgetApproved, CompanyBudgetVarianceReached};
+use wl_kernel::cash_forecast::CashForecastBelowThreshold;
 use wl_kernel::documents::today;
 use wl_kernel::invoicing::{
     BadDebtRecovered, CreditNoteReopened, DraftLine, InvoiceDisputeResolved, InvoiceDisputed,
@@ -472,8 +473,13 @@ impl ForecastDesk {
         self.bounced.lock().unwrap().push((entity, cheque));
     }
 
-    /// A completed statement's closing balance.
+    /// A completed statement's closing balance; it replaces the one the
+    /// account had (the latest closing balance is read).
     pub fn statement(&self, entity: i64, account: &str, amount: i64, as_of: NaiveDate) {
+        self.balances
+            .lock()
+            .unwrap()
+            .retain(|b| !(b.legal_entity_id == entity && b.bank_account == account));
         self.balances.lock().unwrap().push(BankBalance {
             legal_entity_id: entity,
             bank_account: account.to_owned(),
@@ -751,6 +757,8 @@ pub struct Booted {
     pub budget_approved: Recorded<CompanyBudgetApproved>,
     /// `CompanyBudgetVarianceReached`.
     pub variance_reached: Recorded<CompanyBudgetVarianceReached>,
+    /// `CashForecastBelowThreshold`.
+    pub below_threshold: Recorded<CashForecastBelowThreshold>,
 }
 
 impl Booted {
@@ -1498,6 +1506,7 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
     let bill_reopened = Recorded::new();
     let budget_approved = Recorded::new();
     let variance_reached = Recorded::new();
+    let below_threshold = Recorded::new();
     let tickets = TicketDesk::default();
     let creator: Arc<dyn TaskCreator> = Arc::new(tickets.clone());
     let notices = Recording::default();
@@ -1533,6 +1542,7 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
     let app = record(app, &bill_reopened);
     let app = record(app, &budget_approved);
     let app = record(app, &variance_reached);
+    let app = record(app, &below_threshold);
     let config = ClientConfig::parse(CLIENT).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     let dir = views.path().to_path_buf();
@@ -1638,5 +1648,6 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
         bill_reopened,
         budget_approved,
         variance_reached,
+        below_threshold,
     }
 }

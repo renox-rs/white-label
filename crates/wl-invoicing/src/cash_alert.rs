@@ -24,7 +24,8 @@
 //!   accountant ([`TaskKind::StatementBalanceStale`]), keyed on the account
 //!   and the date of the balance it saw: no second task while the same balance
 //!   is the latest, and the task closes when a newer statement balance or
-//!   opening cash balance exists (a voided balance does not count).
+//!   opening cash balance exists (a voided balance does not count: the task it
+//!   had closed opens again, while one a person closed stays closed).
 //!
 //! The daily task [`TASK`] calls [`run`] for today in Asia/Dubai; a missed run
 //! is not made up. Neither rule changes a document.
@@ -387,7 +388,23 @@ async fn check_balances(
         };
         match task.insert(db).await {
             Ok(()) => opened += 1,
-            Err(error) if error.is_unique_violation() => {}
+            Err(error) if error.is_unique_violation() => {
+                // A task a newer balance closed comes back when that balance
+                // is gone (voided); one a person closed stays closed.
+                let existing = InvoicingTask::query()
+                    .where_(InvoicingTask::KIND.eq(TaskKind::StatementBalanceStale))
+                    .where_(InvoicingTask::KEY.eq(task.key.as_str()))
+                    .first(db)
+                    .await?;
+                if let Some(mut existing) = existing.filter(|t| {
+                    t.status == TaskStatus::Done && t.done_by.is_none()
+                }) {
+                    existing.status = TaskStatus::Open;
+                    existing.done_at = None;
+                    existing.save_only(db, &["status", "done_at"]).await?;
+                    opened += 1;
+                }
+            }
             Err(error) => return Err(error),
         }
     }
