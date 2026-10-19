@@ -112,6 +112,29 @@ pub async fn set_compliance_critical(
     Ok(category)
 }
 
+/// Sets what the coordinator's task offers for the open visits of the
+/// category `key` when a service contract ends (`WRK.RUL.18`): reassign or
+/// cancel (`false`), or reassign only (`true`; 01: the compliance-critical
+/// categories, whose visits cannot be cancelled).
+///
+/// # Errors
+///
+/// `Forbidden` without `tickets.manage`, `NotFound` for an unknown key.
+pub async fn set_contract_end_reassign_only(
+    db: &Db,
+    user: &AuthUser,
+    key: &str,
+    reassign_only: bool,
+) -> Result<Category> {
+    manage(user)?;
+    let mut category = category(db, key).await?;
+    if category.contract_end_reassign_only != reassign_only {
+        category.contract_end_reassign_only = reassign_only;
+        category.save(db).await?;
+    }
+    Ok(category)
+}
+
 /// Turns the category `key` on or off: an inactive category takes no new
 /// tickets, and its tickets stay.
 ///

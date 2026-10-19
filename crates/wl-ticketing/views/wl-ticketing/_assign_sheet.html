@@ -8,7 +8,7 @@
                  :title="tx['assign.reassign_title'] if reassigning else tx['assign.title']" :description="tx['assign.description']"
                  :submit-label="tx['assign.submit']" icon="user-plus">
   <rx-select name="assignee_user_id" :label="tx['assign.user']" :options="users" :id="'assign-user-' ~ ticket.id" :placeholder="tx['none']"/>
-  <rx-input name="party_code" :label="tx['assign.party_code']" :hint="tx['assign.party_code_hint']" :id="'assign-party-' ~ ticket.id"/>
+  <rx-input name="party_code" :label="tx['assign.party_code']" :hint="tx['assign.party_code_hint']" :value="proposed_party_code" :id="'assign-party-' ~ ticket.id"/>
   <rx-select name="priority" :label="tx['fields.priority']" :options="priorities" :selected="priority_selected" :id="'assign-priority-' ~ ticket.id" required/>
   <rx-input name="visit_at" type="datetime-local" :label="tx['fields.visit_at']" :id="'assign-visit-' ~ ticket.id"/>
   <template rx-if="reassigning">

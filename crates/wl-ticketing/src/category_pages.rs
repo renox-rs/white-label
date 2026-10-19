@@ -7,6 +7,7 @@
 //! | `POST /ticket-categories/{key}/active` | `wl_ticketing.category_active` | `tickets.manage` (field `active`: `1` on, else off; a platform category stays on) |
 //! | `POST /ticket-categories/{key}/charging` | `wl_ticketing.category_charging` | `tickets.manage` (fields `chargeable`: `1`/`0`, `invoice_on`: `resolve`/`close`) |
 //! | `POST /ticket-categories/{key}/compliance` | `wl_ticketing.category_compliance` | `tickets.manage` (field `compliance_critical`: `1`/`0`) |
+//! | `POST /ticket-categories/{key}/contract-end` | `wl_ticketing.category_contract_end` | `tickets.manage` (field `reassign_only`: `1`/`0`) |
 //! | `DELETE /ticket-categories/{key}` | `wl_ticketing.category_destroy` | `tickets.manage` (a platform category or one with tickets is refused, 422) |
 //!
 //! The templates are compiled in and can be replaced by the app
@@ -38,6 +39,8 @@ pub fn routes() -> Routes {
         .name("wl_ticketing.category_charging")
         .post("/ticket-categories/{key}/compliance", set_compliance)
         .name("wl_ticketing.category_compliance")
+        .post("/ticket-categories/{key}/contract-end", set_contract_end)
+        .name("wl_ticketing.category_contract_end")
         .delete("/ticket-categories/{key}", destroy)
         .name("wl_ticketing.category_destroy")
         .require_permission(permissions::MANAGE)
@@ -76,6 +79,10 @@ pub struct CategoryRow {
     pub invoice_on: String,
     /// "Chargeable, invoiced on close" or "Not chargeable".
     pub charging_label: String,
+    /// Whether the task of an ended contract offers only "reassign".
+    pub reassign_only: bool,
+    /// "Reassign or cancel" or "Reassign only".
+    pub contract_end_label: String,
 }
 
 /// What the list needs.
@@ -92,6 +99,8 @@ pub(crate) struct CategoriesPage {
     invoice_on_options: Vec<(String, String)>,
     /// `(value, label)` pairs for the compliance-critical select.
     critical_options: Vec<(String, String)>,
+    /// `(value, label)` pairs for the contract-end select.
+    contract_end_options: Vec<(String, String)>,
 }
 
 /// `GET /ticket-categories`: every category, with rename, turn off and
@@ -114,6 +123,15 @@ async fn index(State(db): State<Db>, lang: Lang) -> Result<View> {
             } else {
                 texts::t(&lang, "wl_ticketing.categories.not_chargeable")
             },
+            reassign_only: c.contract_end_reassign_only,
+            contract_end_label: texts::t(
+                &lang,
+                if c.contract_end_reassign_only {
+                    "wl_ticketing.categories.contract_end_reassign"
+                } else {
+                    "wl_ticketing.categories.contract_end_both"
+                },
+            ),
             key: c.key,
             name_en: c.name_en,
             name_ar: c.name_ar,
@@ -137,6 +155,10 @@ async fn index(State(db): State<Db>, lang: Lang) -> Result<View> {
         critical_options: vec![
             ("1".to_owned(), texts::t(&lang, "wl_ticketing.categories.critical")),
             ("0".to_owned(), texts::t(&lang, "wl_ticketing.categories.not_critical")),
+        ],
+        contract_end_options: vec![
+            ("0".to_owned(), texts::t(&lang, "wl_ticketing.categories.contract_end_both")),
+            ("1".to_owned(), texts::t(&lang, "wl_ticketing.categories.contract_end_reassign")),
         ],
         invoice_on_options: vec![
             ("resolve".to_owned(), texts::t(&lang, "wl_ticketing.categories.on_resolve")),
@@ -249,6 +271,31 @@ async fn set_compliance(
     Valid(form): Valid<ComplianceForm>,
 ) -> Result<Response> {
     categories::set_compliance_critical(&db, &user, &key, form.compliance_critical == "1").await?;
+    Ok((
+        Toast::success(texts::t(&lang, "wl_ticketing.categories.updated")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// The contract-end form.
+#[derive(Deserialize, Serialize, Validate, Debug, Default)]
+pub struct ContractEndForm {
+    /// `1` when the task of an ended contract offers only "reassign".
+    #[serde(default)]
+    pub reassign_only: String,
+}
+
+/// `POST /ticket-categories/{key}/contract-end`: sets what the task of an
+/// ended contract offers for the category's open visits.
+async fn set_contract_end(
+    State(db): State<Db>,
+    user: AuthUser,
+    lang: Lang,
+    Path(key): Path<String>,
+    Valid(form): Valid<ContractEndForm>,
+) -> Result<Response> {
+    categories::set_contract_end_reassign_only(&db, &user, &key, form.reassign_only == "1").await?;
     Ok((
         Toast::success(texts::t(&lang, "wl_ticketing.categories.updated")),
         renox::HxRefresh,

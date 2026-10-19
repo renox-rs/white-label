@@ -65,6 +65,8 @@ pub struct FlagRow {
     pub visit_id: Option<i64>,
     /// The service contract, when the flag is about one.
     pub contract: String,
+    /// The page of that contract, when there is one.
+    pub contract_id: Option<i64>,
 }
 
 /// What the report needs.
@@ -123,6 +125,7 @@ async fn index(
             visit: visit.unwrap_or_default(),
             visit_id: flag.ticket_id,
             contract: flag.contract_id.map(|c| format!("#{c}")).unwrap_or_default(),
+            contract_id: flag.contract_id,
         });
     }
     Ok(View::typed(FlagsPage {

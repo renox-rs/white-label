@@ -9,7 +9,9 @@ pub mod charge;
 pub mod comments;
 pub mod config;
 pub mod contract;
+pub mod contract_end;
 mod contract_machine;
+pub mod contract_pages;
 pub mod flag_pages;
 pub mod flags;
 mod machine;
@@ -76,6 +78,10 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "wl-ticketing/compliance_flags.html",
         include_str!("../views/wl-ticketing/compliance_flags.html"),
+    ),
+    (
+        "wl-ticketing/contract.html",
+        include_str!("../views/wl-ticketing/contract.html"),
     ),
     (
         "wl-ticketing/_charges.html",
@@ -208,6 +214,7 @@ impl Module for WlTicketing {
         pages::routes()
             .merge(category_pages::routes())
             .merge(flag_pages::routes())
+            .merge(contract_pages::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -219,7 +226,8 @@ impl Module for WlTicketing {
             .view_data::<pages::NewPage>()
             .view_data::<pages::ShowPage>()
             .view_data::<category_pages::CategoriesPage>()
-            .view_data::<flag_pages::FlagsPage>();
+            .view_data::<flag_pages::FlagsPage>()
+            .view_data::<contract_pages::ContractPage>();
         app.templates(|env| {
             for (name, source) in VIEWS {
                 // The app's own file of that name wins.
@@ -298,6 +306,9 @@ impl Module for WlTicketing {
         // planned due date; compliance-critical (`PLT.RUL.04`).
         app.provide(self.visit_check.clone());
         visit_check::register(app);
+        // `WRK.RUL.18`: what happens when a service contract ends;
+        // compliance-critical (`PLT.RUL.04`).
+        contract_end::register(app);
         // The seeded defaults keep the client's changes.
         app.command(
             "ticketing:install",

@@ -30,6 +30,7 @@
         <rx-entry :label="tx['fields.priority']" :value="card.priority"/>
         <rx-entry :label="tx['fields.channel']" :value="card.channel"/>
         <rx-entry :label="tx['fields.requester']" :value="card.requester" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['fields.contract']" rx-if="contract" :value="contract.number" :url="route('wl_ticketing.contract', contract.id)"/>
         <rx-entry :label="tx['fields.assignee']" :value="card.assignee" :placeholder="tx['none']"/>
         <rx-entry :label="tx['fields.visit_at']" :value="card.visit" :placeholder="tx['none']"/>
         <rx-entry :label="tx['fields.due_at']" rx-if="card.due" :value="card.due"/>

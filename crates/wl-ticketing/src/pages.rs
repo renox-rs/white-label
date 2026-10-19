@@ -41,6 +41,7 @@ use crate::charge::{self, ChargeInput};
 use crate::assign::{AssignKind, AssignRequest, Assignment, assign, reasons_of};
 use crate::comments::{Comment, CommentVisibility};
 use crate::config::{Category, HoldReason};
+use crate::contract::{ServiceContract, ServiceContracts};
 use crate::open::Tickets;
 use crate::permissions;
 use crate::priority::Priority;
@@ -50,13 +51,13 @@ use crate::visibility;
 use crate::work;
 
 /// The texts a template reads as `tx['fields.number']`.
-type Texts = BTreeMap<&'static str, String>;
+pub(crate) type Texts = BTreeMap<&'static str, String>;
 
 /// The package text `key` (without the `wl_ticketing.` prefix) in a language.
 type Text<'a> = &'a dyn Fn(&str) -> String;
 
 /// The package texts in `lang`.
-fn texts_in(lang: &Lang) -> impl Fn(&str) -> String + '_ {
+pub(crate) fn texts_in(lang: &Lang) -> impl Fn(&str) -> String + '_ {
     move |key: &str| texts::t(lang, &format!("wl_ticketing.{key}"))
 }
 
@@ -105,7 +106,7 @@ fn status_kind(status: TicketStatus) -> &'static str {
 }
 
 /// `(value, label)` pairs for a select, labelled with `prefix.value`.
-fn options<'a>(
+pub(crate) fn options<'a>(
     t: Text<'_>,
     prefix: &str,
     values: impl IntoIterator<Item = &'a str>,
@@ -265,14 +266,14 @@ pub struct TicketForm {
 }
 
 /// A validation error on `field`, with the form's input filled in again.
-fn invalid<F: Serialize>(field: &str, message: String, form: &F) -> Error {
+pub(crate) fn invalid<F: Serialize>(field: &str, message: String, form: &F) -> Error {
     let mut errors = Errors::new();
     errors.add(field, message);
     Error::Validation(ValidationError::new(errors).with_input(form))
 }
 
 /// The party with `code`, if the directory finds it.
-async fn party_by_code(state: &AppState, code: &str) -> Result<Option<PartyId>> {
+pub(crate) async fn party_by_code(state: &AppState, code: &str) -> Result<Option<PartyId>> {
     Ok(directory(state)
         .find_by_code(&state.db, code.trim())
         .await?
@@ -412,6 +413,18 @@ pub(crate) struct ShowPage {
     vat_options: Vec<(String, String)>,
     /// The draft invoice made for the ticket, when there is one.
     invoice_id: Option<i64>,
+    /// The code of the vendor the ticket's service contract proposes, which
+    /// the assign sheet starts with (an unassigned ticket only).
+    proposed_party_code: String,
+    /// The service contract the ticket is handled under, when it has one.
+    contract: Option<ContractLink>,
+}
+
+/// The contract a ticket is handled under, as the ticket page links to it.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct ContractLink {
+    id: i64,
+    number: String,
 }
 
 /// One charge line as the ticket page shows it.
@@ -463,7 +476,7 @@ fn parse_scaled(text: &str, decimals: usize) -> Option<i64> {
 }
 
 /// An instant as Asia/Dubai wall-clock time.
-fn when(state: &AppState, at: Option<DateTime>) -> Option<String> {
+pub(crate) fn when(state: &AppState, at: Option<DateTime>) -> Option<String> {
     at.map(|at| {
         calendar(state)
             .local(at)
@@ -473,7 +486,7 @@ fn when(state: &AppState, at: Option<DateTime>) -> Option<String> {
 }
 
 /// The name of an assignee: the user's name or the party's display name.
-async fn assignee_name(state: &AppState, assignee: Assignee) -> Result<String> {
+pub(crate) async fn assignee_name(state: &AppState, assignee: Assignee) -> Result<String> {
     Ok(match assignee {
         Assignee::User { id } => User::find(&state.db, id)
             .await?
@@ -737,6 +750,24 @@ async fn show(
             total: charge::money(line.gross()),
         })
         .collect();
+    let proposed_party_code = match (offered.assign, ticket.assignee()) {
+        (true, None) => match ServiceContracts::proposed_vendor(&state, &ticket).await? {
+            Some(vendor) => directory(&state)
+                .find(&db, vendor)
+                .await?
+                .map(|party| party.code)
+                .unwrap_or_default(),
+            None => String::new(),
+        },
+        _ => String::new(),
+    };
+    let contract = match ticket.contract_id {
+        Some(id) => ServiceContract::find(&db, id).await?.map(|c| ContractLink {
+            id: c.id,
+            number: c.number,
+        }),
+        None => None,
+    };
     let can_charge = ticket.chargeable && charge::may_change(&ticket, &user);
     let vat_options = options(&t, "vat", VatCategory::ALL.iter().map(VatCategory::as_str));
     Ok(View::typed(ShowPage {
@@ -746,6 +777,8 @@ async fn show(
         can_charge,
         vat_options,
         invoice_id: ticket.invoice_id,
+        proposed_party_code,
+        contract,
         tx: texts::all(&lang),
         title: ticket.number.clone(),
         status_label: t(&format!("status.{}", ticket.status.as_str())),

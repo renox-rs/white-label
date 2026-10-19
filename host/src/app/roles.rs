@@ -39,6 +39,10 @@ pub const FINANCE_MANAGER: &str = "finance_manager";
 /// The maintenance coordinator: raises, triages and assigns tickets, and
 /// works them (wl-ticketing §6, 01 roles).
 pub const COORDINATOR: &str = "coordinator";
+/// The facility manager: decides what happens to a blocked vendor's service
+/// contracts, and ends or reassigns their visits (wl-ticketing §6,
+/// wl-parties §5.6).
+pub const FACILITY_MANAGER: &str = "facility_manager";
 /// A technician: sees and works the tickets assigned to them
 /// (wl-ticketing §6, 01 roles).
 pub const TECHNICIAN: &str = "technician";
@@ -101,6 +105,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             tickets::WORK,
             tickets::CONFIDENTIAL_VIEW,
             tickets::MANAGE,
+            tickets::SERVICE_CONTRACTS_VIEW,
+            tickets::SERVICE_CONTRACTS_MANAGE,
+            tickets::MAINTENANCE_PLANS_MANAGE,
             payments::VIEW,
             payments::RECORD,
             payments::REVERSE,
@@ -179,6 +186,16 @@ pub const ROLES: &[(&str, &[&str])] = &[
             tickets::CREATE,
             tickets::ASSIGN,
             tickets::WORK,
+            tickets::SERVICE_CONTRACTS_VIEW,
+        ],
+    ),
+    (
+        FACILITY_MANAGER,
+        &[
+            tickets::VIEW,
+            tickets::ASSIGN,
+            tickets::SERVICE_CONTRACTS_VIEW,
+            tickets::SERVICE_CONTRACTS_MANAGE,
         ],
     ),
     (TECHNICIAN, &[tickets::VIEW, tickets::WORK]),
