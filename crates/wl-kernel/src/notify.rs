@@ -28,6 +28,7 @@ use std::pin::Pin;
 use std::sync::{Arc, PoisonError, RwLock};
 
 use renox::auth::{Channel, DatabaseMessage, Notification, Recipient};
+use renox::chrono::NaiveDate;
 use renox::db::DateTime;
 use renox::prelude::*;
 use renox::serde_json::Value;
@@ -100,6 +101,20 @@ pub enum GiveUpReaction {
     /// Nothing.
     #[default]
     None,
+}
+
+/// How staff delivered a statutory notice another way (wl-notify §5.4).
+#[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum ProofMethod {
+    /// By courier.
+    #[default]
+    Courier,
+    /// By registered mail.
+    RegisteredMail,
+    /// Handed over in person.
+    HandDelivery,
+    /// By a phone call.
+    Call,
 }
 
 /// The order `reactions` run in: `mark_contact_invalid` first, so an
@@ -192,6 +207,9 @@ pub struct NotificationTypeDef {
     pub channels: Vec<NotifyChannel>,
     /// The default texts per channel and language.
     pub templates: Vec<TemplateDef>,
+    /// How staff may prove a statutory notice of this type was delivered
+    /// another way (all four by default).
+    pub proof_methods: Vec<ProofMethod>,
 }
 
 impl NotificationTypeDef {
@@ -209,6 +227,7 @@ impl NotificationTypeDef {
             staff_role: None,
             channels: vec![NotifyChannel::Email],
             templates: Vec::new(),
+            proof_methods: ProofMethod::ALL.to_vec(),
         }
     }
 
@@ -245,6 +264,12 @@ impl NotificationTypeDef {
     /// Telling this staff role on give-up.
     pub fn staff_role(mut self, role: &str) -> Self {
         self.staff_role = Some(role.to_owned());
+        self
+    }
+
+    /// Offering these proof methods for a statutory notice of this type.
+    pub fn proof_methods(mut self, methods: &[ProofMethod]) -> Self {
+        self.proof_methods = methods.to_vec();
         self
     }
 
@@ -518,6 +543,64 @@ pub trait Notifier: Send + Sync + 'static {
         state: &'a AppState,
         request: NotifyRequest,
     ) -> NotifyFuture<'a, Vec<MessageId>>;
+
+    /// Whether the statutory notice of `type_key` about `subject` reached
+    /// its recipient. The default, and [`NoNotifier`], answer
+    /// [`NoticeStatus::NotDelivered`], so a notice is never read as
+    /// delivered without a provider receipt or a recorded proof.
+    fn notice_status<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _subject: &'a Subject,
+        _type_key: &'a str,
+    ) -> NotifyFuture<'a, NoticeStatus> {
+        Box::pin(async { Ok(NoticeStatus::NotDelivered) })
+    }
+
+    /// The statutory notices about `subject` that gave up and have no proof
+    /// yet. The default, and [`NoNotifier`], list none.
+    fn undelivered_notices<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _subject: &'a Subject,
+    ) -> NotifyFuture<'a, Vec<UndeliveredNotice>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+}
+
+/// Whether a statutory notice was delivered (wl-notify §5.4). A requester
+/// starts a deadline only from the date this gives, never from the time a
+/// proof was typed in.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum NoticeStatus {
+    /// The provider reported it delivered (or read) at this time.
+    Delivered {
+        /// The provider's delivery time.
+        at: DateTime,
+    },
+    /// It gave up and staff recorded a proof of delivery by other means.
+    ProofRecorded {
+        /// The delivery date the proof states.
+        delivered_on: NaiveDate,
+    },
+    /// Not delivered: not sent, still in flight, sent without a receipt, or
+    /// given up without a proof.
+    NotDelivered,
+}
+
+/// A statutory notice that gave up and waits for a proof of delivery.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UndeliveredNotice {
+    /// The id of the statutory-notice record.
+    pub notice: i64,
+    /// The type key.
+    pub type_key: String,
+    /// The text to show, e.g. the type's label.
+    pub label: String,
+    /// When the notice gave up.
+    pub gave_up_at: DateTime,
+    /// The path of the page where staff record the proof.
+    pub proof_path: String,
 }
 
 /// The notifier when the `notify` module is off. Each user recipient gets a
@@ -791,6 +874,25 @@ pub struct ContactPointInvalidated {
 
 impl Event for ContactPointInvalidated {}
 
+/// Staff recorded the proof of delivery of a statutory notice; emitted once
+/// per notice, after commit. Requesters start their deadline from
+/// `delivered_on`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StatutoryNoticeProofRecorded {
+    /// The id of the statutory-notice record.
+    pub notice: i64,
+    /// The record the notice is about.
+    pub subject: Subject,
+    /// The type key.
+    pub type_key: String,
+    /// How it was delivered.
+    pub method: ProofMethod,
+    /// The delivery date stated by the proof.
+    pub delivered_on: NaiveDate,
+}
+
+impl Event for StatutoryNoticeProofRecorded {}
+
 #[cfg(test)]
 mod tests {
     use renox::serde_json::json;
@@ -875,6 +977,37 @@ mod tests {
                 None,
                 "Invoice {{ number }} overdue",
             )
+    }
+
+    #[test]
+    fn proof_methods_default_to_all_and_can_be_narrowed() {
+        let def = reminder();
+        assert_eq!(def.proof_methods, ProofMethod::ALL.to_vec());
+        let names: Vec<_> = ProofMethod::ALL.iter().map(|m| m.as_str()).collect();
+        assert_eq!(
+            names,
+            ["courier", "registered_mail", "hand_delivery", "call"]
+        );
+        let narrow = def.proof_methods(&[ProofMethod::Call]);
+        assert_eq!(narrow.proof_methods, [ProofMethod::Call]);
+    }
+
+    #[test]
+    fn notice_status_and_event_round_trip_as_json() {
+        let on = NaiveDate::from_ymd_opt(2026, 9, 3).unwrap();
+        let status = NoticeStatus::ProofRecorded { delivered_on: on };
+        let back: NoticeStatus = renox::serde_json::from_value(json!(status)).unwrap();
+        assert_eq!(back, status);
+        let event = StatutoryNoticeProofRecorded {
+            notice: 4,
+            subject: Subject::new("property.lease", 7),
+            type_key: "lease.changed_terms_notice".into(),
+            method: ProofMethod::HandDelivery,
+            delivered_on: on,
+        };
+        let back: StatutoryNoticeProofRecorded =
+            renox::serde_json::from_value(json!(event)).unwrap();
+        assert_eq!(back, event);
     }
 
     #[test]

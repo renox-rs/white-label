@@ -11,7 +11,8 @@ use renox::db::Json;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 use wl_kernel::notify::{
-    self, Category, GiveUpReaction, NotificationTypeDef, NotifyChannel, TemplateDef, Urgency,
+    self, Category, GiveUpReaction, NotificationTypeDef, NotifyChannel, ProofMethod, TemplateDef,
+    Urgency,
 };
 
 /// A notification type as stored for this client.
@@ -78,6 +79,7 @@ impl NotificationType {
             staff_role: self.staff_role.clone(),
             channels: self.channels.0.clone(),
             templates: self.templates.0.clone(),
+            proof_methods: ProofMethod::ALL.to_vec(),
         }
     }
 
