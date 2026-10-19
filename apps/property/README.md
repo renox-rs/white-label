@@ -29,6 +29,7 @@ What is here so far:
 | The post-dated cheque schedule against the lease as its agreement, each cheque linked to the charge it pays | §4.1, `FIN.CHQ.01` | `cheques` |
 | The document guard hooks: the tenant's documents on `submit`, the signed contract on `activate`, the Ejari certificate when the registration is recorded | §7.1, §7.2, `PRP.LSE.02` | `documents` |
 | Ejari or Tawtheeq registration typed in, with the task that chases it after activation | §8, `PRP.RUL.02` | `leases`, `lease_events` |
+| The renewal window opens 120 days before the end date (or the contract's notice period + 30); the notice deadline (end date − 90 days, or the contract's period) is shown on the lease; the renewal decision and the statutory notice of changed terms are the property manager's; `PRP.RUL.09`, compliance-critical, warns 14 and 3 days before the deadline and sets the current-terms-only marker the day after it; the daily command `property:renewals` | §4.3, `PRP.RUL.01`, `PRP.RUL.09` | `renewal`, `notices` |
 | The events `LeaseActivated` and `LeaseCancelled` | §7.1 | `events` |
 | The portfolio, the building, the leases and the lease pages | §3, §4 | `pages` |
 

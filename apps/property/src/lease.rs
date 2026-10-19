@@ -192,6 +192,13 @@ pub struct Lease {
     /// Only the current terms can be renewed without the tenant's signed
     /// acceptance (`PRP.RUL.09`).
     pub current_terms_only: bool,
+    /// The day the lease entered the renewal window (`PRP.RUL.01`).
+    pub renewal_flagged_on: Option<NaiveDate>,
+    /// The day the first deadline warning (14 days before) was sent
+    /// (`PRP.RUL.09`).
+    pub deadline_warned_first_on: Option<NaiveDate>,
+    /// The day the second deadline warning (3 days before) was sent.
+    pub deadline_warned_second_on: Option<NaiveDate>,
     /// The end of the statutory renewal period the tenant holds over for.
     pub holding_over_until: Option<NaiveDate>,
     /// The day notice was given.

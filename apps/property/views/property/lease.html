@@ -30,6 +30,16 @@
           <rx-input name="until" type="date" :label="tx['chase.until']" :id="'extend-lease-until-' ~ lease.id" required/>
         </rx-action-sheet>
       </template>
+      <template rx-if="can_decide">
+        <rx-action-sheet :id="'decision-' ~ lease.id" :label="tx['renewal.decide']" :action="route('property.lease_renewal_decision', lease.id)"
+                         :title="tx['renewal.decide']" :description="tx['renewal.decide_description']" :submit-label="tx['renewal.decide']" icon="refresh-cw">
+          <rx-select name="decision" :label="tx['renewal.decision']" :options="[['undecided', tx['renewal.decision_undecided']], ['same_terms', tx['renewal.decision_same_terms']], ['changed_terms', tx['renewal.decision_changed_terms']], ['not_renewing', tx['renewal.decision_not_renewing']]]" selected="same_terms" :id="'decision-select-' ~ lease.id"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_send_notice">
+        <rx-confirm :id="'changed-terms-' ~ lease.id" :label="tx['renewal.send_notice']" :action="route('property.lease_changed_terms_notice', lease.id)" method="POST"
+                    :title="tx['renewal.send_notice']" :message="tx['renewal.send_notice_message']" :confirm-label="tx['renewal.send_notice']" :cancel-label="tx['button_cancel']" icon="mail"/>
+      </template>
       <template rx-if="can_waive">
         <rx-confirm :id="'waive-deposit-' ~ lease.id" :label="tx['leases.waive_deposit']" :action="route('property.lease_waive_deposit', lease.id)" method="POST"
                     :title="tx['leases.waive_deposit']" :message="tx['leases.waive_message']" :confirm-label="tx['leases.waive_deposit']" :cancel-label="tx['button_cancel']"/>
@@ -77,6 +87,10 @@
         <rx-entry :label="tx['ejari.number']" :value="lease.ejari_number" :placeholder="tx['ejari.missing']"/>
         <rx-entry :label="tx['ejari.expires_on']" :value="lease.ejari_expires_on" :placeholder="tx['none']"/>
         <rx-entry :label="tx['leases.follow_up_until']" :value="lease.follow_up_until" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['renewal.notice_deadline']" :value="lease.notice_deadline" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['renewal.decision']" :value="lease.renewal_decision"/>
+        <rx-entry :label="tx['renewal.notice']" :value="lease.notice_of_changes"/>
+        <rx-entry :label="tx['renewal.current_terms_only']" :value="lease.current_terms_only" :placeholder="tx['none']"/>
         <rx-entry :label="tx['leases.terms']" :value="lease.terms" :placeholder="tx['none']" span="full"/>
         <rx-entry :label="tx['cancel_reason']" :value="lease.cancel_reason" :placeholder="tx['none']"/>
         <rx-entry :label="tx['cancel_forfeit']" :value="lease.cancel_forfeit" :placeholder="tx['none']"/>

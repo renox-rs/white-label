@@ -11,6 +11,8 @@
 //! | `POST /property/leases/{id}/activate` | `property.lease_activate` | `leases.activate` in the building |
 //! | `POST /property/leases/{id}/cancel` | `property.lease_cancel` | `leases.cancel` in the building |
 //! | `POST /property/leases/{id}/extend` | `property.lease_extend` | `leases.manage` in the building |
+//! | `POST /property/leases/{id}/renewal-decision` | `property.lease_renewal_decision` | `leases.manage` in the building |
+//! | `POST /property/leases/{id}/changed-terms-notice` | `property.lease_changed_terms_notice` | `leases.manage` in the building |
 //! | `POST /property/leases/{id}/waive-deposit` | `property.lease_waive_deposit` | `leases.activate` in the building |
 //! | `POST /property/leases/{id}/ejari` | `property.lease_ejari` | `leases.activate` in the building |
 //! | `POST /property/leases/{id}/cheques` | `property.lease_cheques` | `leases.create` in the building |
@@ -31,13 +33,14 @@ use super::{Texts, buildings_with, lease_kind, text};
 use crate::building::Building;
 use crate::charge::{ChargeStatus, LeaseCharge, RENT};
 use crate::cheques::{ChequeEntry, of_version, register_cheques};
-use crate::lease::{Lease, LeaseStatus, VersionKind};
+use crate::lease::{Lease, LeaseStatus, RenewalDecision, VersionKind};
 use crate::cancellation::{self, CancelRequest};
 use crate::chase;
 use crate::lease_machine::{ACTIVATE, CANCEL, SUBMIT};
 use crate::leases::{self, EjariInput, NewLease, NewVersion};
 use crate::parse::{parse_aed, parse_date};
 use crate::permissions;
+use crate::renewal;
 use crate::texts;
 use crate::unit::Unit;
 
@@ -60,6 +63,10 @@ pub fn routes() -> Routes {
         .name("property.lease_cancel")
         .post("/property/leases/{id}/extend", extend)
         .name("property.lease_extend")
+        .post("/property/leases/{id}/renewal-decision", renewal_decision)
+        .name("property.lease_renewal_decision")
+        .post("/property/leases/{id}/changed-terms-notice", changed_terms_notice)
+        .name("property.lease_changed_terms_notice")
         .post("/property/leases/{id}/waive-deposit", waive_deposit)
         .name("property.lease_waive_deposit")
         .post("/property/leases/{id}/ejari", ejari)
@@ -251,6 +258,15 @@ pub struct LeaseView {
     pub cancel_forfeit_clause: String,
     /// The follow-up date the property manager extended to.
     pub follow_up_until: String,
+    /// The last day a notice of changed terms can be delivered (`PRP.RUL.09`);
+    /// empty unless the lease is in force.
+    pub notice_deadline: String,
+    /// The renewal decision in the page's language.
+    pub renewal_decision: String,
+    /// Whether the notice of changed terms was sent and delivered.
+    pub notice_of_changes: String,
+    /// "Current terms only" once the marker is set, else empty.
+    pub current_terms_only: String,
 }
 
 /// What a lease page needs.
@@ -271,6 +287,8 @@ pub(crate) struct ShowPage {
     can_activate: bool,
     can_cancel: bool,
     can_extend: bool,
+    can_decide: bool,
+    can_send_notice: bool,
     can_waive: bool,
     can_ejari: bool,
     can_version: bool,
@@ -352,6 +370,19 @@ async fn show(
         })
         .collect();
 
+    let running = LeaseStatus::RUNNING.contains(&lease.status);
+    let delivered = if running {
+        renewal::delivered_on(&state, &lease).await?
+    } else {
+        lease.notice_of_changes_delivered_on
+    };
+    let notice_of_changes = match (delivered, lease.notice_of_changes_sent_on) {
+        (Some(day), _) => texts::t_with(&lang, "property.renewal.notice_delivered", &[("delivered", &day)]),
+        (None, Some(sent)) => texts::t_with(&lang, "property.renewal.notice_undelivered", &[("sent", &sent)]),
+        (None, None) => text(&lang, "renewal.notice_not_sent"),
+    };
+    let manages = user.has_permission_in(permissions::LEASES_MANAGE, &scope);
+    let in_window = matches!(lease.status, LeaseStatus::Active | LeaseStatus::RenewalDue);
     let creates = user.has_permission_in(permissions::LEASES_CREATE, &scope);
     let activates = user.has_permission_in(permissions::LEASES_ACTIVATE, &scope);
     let in_progress = LeaseStatus::IN_PROGRESS.contains(&lease.status);
@@ -391,6 +422,21 @@ async fn show(
         },
         cancel_forfeit_clause: lease.cancel_forfeit_clause.clone().unwrap_or_default(),
         follow_up_until: lease.follow_up_until.map(|d| d.to_string()).unwrap_or_default(),
+        notice_deadline: if running {
+            renewal::notice_deadline(&lease).to_string()
+        } else {
+            String::new()
+        },
+        renewal_decision: text(
+            &lang,
+            &format!("renewal.decision_{}", lease.renewal_decision.as_str()),
+        ),
+        notice_of_changes,
+        current_terms_only: if lease.current_terms_only {
+            text(&lang, "renewal.current_terms_only_yes")
+        } else {
+            String::new()
+        },
     };
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
@@ -408,6 +454,11 @@ async fn show(
         can_cancel: offers(&actions, CANCEL) && !pending,
         can_extend: lease.status == LeaseStatus::PendingSignature
             && user.has_permission_in(permissions::LEASES_MANAGE, &scope),
+        can_decide: manages && in_window,
+        can_send_notice: manages
+            && in_window
+            && lease.renewal_decision == RenewalDecision::ChangedTerms
+            && delivered.is_none(),
         can_waive: activates
             && in_progress
             && !lease.is_follow_up()
@@ -688,6 +739,42 @@ async fn extend(
     let until = required_date(&form.until, "until")?;
     chase::extend(&state, &user, id, until).await?;
     Ok((Toast::success(text(&lang, "chase.extended_done")), renox::HxRefresh).into_response())
+}
+
+/// The form of the renewal decision.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct DecisionForm {
+    /// `undecided`, `same_terms`, `changed_terms` or `not_renewing`.
+    #[serde(default)]
+    pub decision: String,
+}
+
+/// `POST /property/leases/{id}/renewal-decision` (`PRP.RUL.01`).
+async fn renewal_decision(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<DecisionForm>,
+) -> Result<Response> {
+    let decision: RenewalDecision = form
+        .decision
+        .trim()
+        .parse()
+        .map_err(|_| Error::BadRequest("decision".to_owned()))?;
+    renewal::set_decision(&state, &user, id, decision).await?;
+    Ok((Toast::success(text(&lang, "renewal.decided")), renox::HxRefresh).into_response())
+}
+
+/// `POST /property/leases/{id}/changed-terms-notice` (`PRP.RUL.09`).
+async fn changed_terms_notice(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    renewal::send_changed_terms(&state, &user, id).await?;
+    Ok((Toast::success(text(&lang, "renewal.notice_sent")), renox::HxRefresh).into_response())
 }
 
 /// `POST /property/leases/{id}/waive-deposit`.

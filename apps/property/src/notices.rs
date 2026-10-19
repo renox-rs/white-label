@@ -9,7 +9,9 @@ use renox::auth::permissions::users_with_role_in;
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use renox::serde_json::json;
-use wl_kernel::notify::{self, Category, NotificationTypeDef, NotifyChannel, NotifyRequest};
+use wl_kernel::notify::{
+    self, Category, GROUP_PORTAL, GiveUpReaction, NotificationTypeDef, NotifyChannel, NotifyRequest,
+};
 
 use crate::lease::Lease;
 use crate::permissions::{LEASING_AGENT_ROLE, PROPERTY_MANAGER_ROLE};
@@ -18,6 +20,28 @@ use crate::texts::english;
 /// The leasing agent and the property manager are reminded that a lease is
 /// still waiting for its signature (`PRP.RUL.12`, at N days).
 pub const LEASE_UNSIGNED: &str = "property.lease_unsigned";
+
+/// The property manager is told that the lease entered its renewal window
+/// (`PRP.RUL.01`).
+pub const RENEWAL_DUE: &str = "property.renewal_due";
+
+/// The property manager is warned that the notice-of-changed-terms deadline
+/// is near and the renewal decision or the notice is missing (`PRP.RUL.09`,
+/// 14 and 3 days before).
+pub const RENEWAL_DEADLINE: &str = "property.renewal_deadline";
+
+/// The property manager is told that the deadline passed and the lease can
+/// now be renewed on the current terms only (`PRP.RUL.09`).
+pub const CURRENT_TERMS_ONLY: &str = "property.current_terms_only";
+
+/// The tenant is told that the lease entered its renewal window: a normal
+/// message, not a statutory notice (`PRP.RUL.01`).
+pub const RENEWAL_WINDOW: &str = "lease.renewal_window";
+
+/// The statutory notice of changed terms to the tenant (`PRP.RUL.09`,
+/// `PRP.ACL.17`). The property manager sends it; its delivery is the
+/// provider's receipt or the proof staff record when it gave up.
+pub const NOTICE_OF_CHANGED_TERMS: &str = "lease.notice_of_changed_terms";
 
 /// An e-mail reminder type of the vertical with English texts.
 fn english_reminder(key: &str, texts: &str) -> NotificationTypeDef {
@@ -29,9 +53,38 @@ fn english_reminder(key: &str, texts: &str) -> NotificationTypeDef {
         .template(NotifyChannel::Email, "en", Some(&subject), &body)
 }
 
+/// A type that goes only to staff: the item stays on the user's task list when
+/// a message gives up, so the reaction is `none` (§7.2 *Notification types*).
+fn staff_reminder(key: &str, texts: &str) -> NotificationTypeDef {
+    english_reminder(key, texts).give_up(&[GiveUpReaction::None])
+}
+
+/// A message to the tenant with English texts; `statutory` for a notice with
+/// legal effect, whose give-up the platform handles with the proof task.
+fn tenant_message(key: &str, texts: &str, statutory: bool) -> NotificationTypeDef {
+    let subject = english(&format!("property.notices.{texts}_subject"), &[]);
+    let body = english(&format!("property.notices.{texts}_body"), &[]);
+    let def = NotificationTypeDef::new(key, "property")
+        .template(NotifyChannel::Email, "en", Some(&subject), &body);
+    if statutory {
+        def.group("statutory").statutory(true)
+    } else {
+        def.group(GROUP_PORTAL)
+    }
+}
+
 /// Registers the vertical's notification types with the kernel registry.
 pub(crate) fn register_types() {
     notify::register_type(english_reminder(LEASE_UNSIGNED, "lease_unsigned"));
+    notify::register_type(staff_reminder(RENEWAL_DUE, "renewal_due"));
+    notify::register_type(staff_reminder(RENEWAL_DEADLINE, "renewal_deadline"));
+    notify::register_type(staff_reminder(CURRENT_TERMS_ONLY, "current_terms_only"));
+    notify::register_type(tenant_message(RENEWAL_WINDOW, "renewal_window", false));
+    notify::register_type(tenant_message(
+        NOTICE_OF_CHANGED_TERMS,
+        "changed_terms",
+        true,
+    ));
 }
 
 /// The users who hold `role` in the building of `lease`, or everywhere.
@@ -81,4 +134,98 @@ pub async fn lease_unsigned(
     }
     notify::notifier(state).notify(state, request).await?;
     Ok(users)
+}
+
+/// The users who hold the property manager role in the building of `lease`,
+/// or everywhere.
+pub async fn managers(state: &AppState, lease: &Lease) -> Result<Vec<i64>> {
+    holders(state, PROPERTY_MANAGER_ROLE, lease).await
+}
+
+/// Tells the property managers of `lease` with a message of `type_key`; no
+/// message when nobody holds the role. Returns who was told.
+async fn tell_managers(
+    state: &AppState,
+    lease: &Lease,
+    type_key: &str,
+    data: renox::serde_json::Value,
+) -> Result<Vec<i64>> {
+    let users = managers(state, lease).await?;
+    if users.is_empty() {
+        return Ok(users);
+    }
+    let mut request = NotifyRequest::new(type_key, lease.subject())
+        .subject_label(&lease.number_with_version())
+        .data(data);
+    for user in &users {
+        request = request.to_user(*user);
+    }
+    notify::notifier(state).notify(state, request).await?;
+    Ok(users)
+}
+
+/// A date as the messages show it: `2 Oct 2027`.
+fn shown(day: NaiveDate) -> String {
+    day.format("%-d %b %Y").to_string()
+}
+
+/// `lease` entered its renewal window (`PRP.RUL.01`): the property managers
+/// are told with the notice deadline, and the tenant gets a normal message.
+pub async fn renewal_due(state: &AppState, lease: &Lease, deadline: NaiveDate) -> Result {
+    let data = json!({
+        "lease": lease.number_with_version(),
+        "end_date": shown(lease.end_date),
+        "deadline": shown(deadline),
+    });
+    tell_managers(state, lease, RENEWAL_DUE, data.clone()).await?;
+    let request = NotifyRequest::new(RENEWAL_WINDOW, lease.subject())
+        .subject_label(&lease.number_with_version())
+        .to_party(lease.tenant())
+        .data(data);
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// Warns the property managers that the notice deadline of `lease` is `days`
+/// days away and `problem` is not settled (`PRP.RUL.09`).
+pub async fn renewal_deadline(
+    state: &AppState,
+    lease: &Lease,
+    days: i64,
+    deadline: NaiveDate,
+    problem: &str,
+) -> Result {
+    let data = json!({
+        "lease": lease.number_with_version(),
+        "days": days,
+        "deadline": shown(deadline),
+        "problem": problem,
+    });
+    tell_managers(state, lease, RENEWAL_DEADLINE, data).await?;
+    Ok(())
+}
+
+/// Tells the property managers that the deadline of `lease` passed without a
+/// timely notice, so only the current terms can be renewed (`PRP.RUL.09`).
+pub async fn current_terms_only(state: &AppState, lease: &Lease, deadline: NaiveDate) -> Result {
+    let data = json!({
+        "lease": lease.number_with_version(),
+        "deadline": shown(deadline),
+    });
+    tell_managers(state, lease, CURRENT_TERMS_ONLY, data).await?;
+    Ok(())
+}
+
+/// Sends the statutory notice of changed terms of `lease` to the tenant.
+pub async fn changed_terms(state: &AppState, lease: &Lease, deadline: NaiveDate) -> Result {
+    let request = NotifyRequest::new(NOTICE_OF_CHANGED_TERMS, lease.subject())
+        .subject_label(&lease.number_with_version())
+        .to_party(lease.tenant())
+        .data(json!({
+            "lease": lease.number_with_version(),
+            "end_date": shown(lease.end_date),
+            "deadline": shown(deadline),
+        }));
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
 }

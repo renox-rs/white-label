@@ -27,7 +27,10 @@
 //! - `submit` and `activate` check the rows they need as their first effect
 //!   ([`crate::lease_checks`]); `activate` also moves the unit, the previous
 //!   version and the charge schedule in the same transaction (BL-PRP-05).
-//! - `renew`, `amend`, `expire`, `flag_renewal`, `record_notice`,
+//! - `flag_renewal` stores the day of the rule run ([`FlagInput`]) as the day
+//!   the lease entered its renewal window (BL-PRP-03); the notices follow the
+//!   commit ([`crate::lease_events`]).
+//! - `renew`, `amend`, `expire`, `record_notice`,
 //!   `withdraw_notice*`, `terminate` and `force_terminate` are declared with
 //!   their states and permissions; their effects are built by BL-PRP-03 to
 //!   BL-PRP-12 and until then the pages do not offer them.
@@ -101,6 +104,16 @@ pub struct CancelInput {
     /// [`crate::cancellation::request`]) counts as money received.
     #[serde(default)]
     pub money_received: i64,
+}
+
+/// What a `flag_renewal` run carries: the day (Asia/Dubai) the rule ran for,
+/// stored as the day the lease entered its renewal window. A run without it
+/// (a test, a hand run) counts today.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FlagInput {
+    /// The day of the rule run.
+    #[serde(default)]
+    pub day: Option<renox::chrono::NaiveDate>,
 }
 
 /// The input of a cancel run: the run's input, with the history reason as the
@@ -262,7 +275,22 @@ impl StateMachine for Lease {
                         })
                     }),
             )
-            .transition(system(FLAG_RENEWAL, "Flag for renewal").from([Active]).to(RenewalDue))
+            .transition(
+                system(FLAG_RENEWAL, "Flag for renewal")
+                    .from([Active])
+                    .to(RenewalDue)
+                    .effect(|lease: &Lease, ctx, tx| {
+                        let id = lease.id;
+                        let day = ctx
+                            .input_as::<FlagInput>()
+                            .ok()
+                            .and_then(|input| input.day)
+                            .unwrap_or_else(today);
+                        Box::pin(async move {
+                            set_lease(&mut *tx, id, &[("renewal_flagged_on", &Some(day))]).await
+                        })
+                    }),
+            )
             .transition(
                 user(RECORD_NOTICE, "Record notice", permissions::LEASES_MANAGE)
                     .from([Active, RenewalDue, Expired])

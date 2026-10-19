@@ -19,6 +19,7 @@ pub mod notices;
 pub mod pages;
 pub mod parse;
 pub mod permissions;
+pub mod renewal;
 mod tasks;
 mod texts;
 pub mod unit;
@@ -116,6 +117,7 @@ impl Module for Property {
         invoicing::schedule(app);
         notices::register_types();
         chase::schedule(app);
+        renewal::schedule(app);
         // A building is the scope roles are assigned in.
         wl_kernel::scopes::register_label(Building::TABLE, |db, id| {
             let id = id.to_owned();

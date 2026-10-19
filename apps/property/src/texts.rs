@@ -320,6 +320,89 @@ const TEXTS: &[(&str, &str)] = &[
         "property.chase.date_range",
         "The follow-up date is after today and at most :max days ahead.",
     ),
+    // The renewal window and the notice deadline (PRP.RUL.01, PRP.RUL.09).
+    (
+        "property.notices.renewal_due_subject",
+        "Lease {{ lease }} is due for renewal",
+    ),
+    (
+        "property.notices.renewal_due_body",
+        "The lease {{ lease }} ends on {{ end_date }}. Record the renewal decision now: a notice of changed terms must reach the tenant by {{ deadline }}.",
+    ),
+    (
+        "property.notices.renewal_deadline_subject",
+        "Notice deadline of lease {{ lease }} in {{ days }} days",
+    ),
+    (
+        "property.notices.renewal_deadline_body",
+        "The notice of changed terms of {{ lease }} is due by {{ deadline }}, {{ days }} days from now. {{ problem }}",
+    ),
+    (
+        "property.notices.current_terms_only_subject",
+        "Lease {{ lease }} can be renewed on the current terms only",
+    ),
+    (
+        "property.notices.current_terms_only_body",
+        "The notice deadline of {{ lease }} was {{ deadline }} and no timely notice of changed terms was delivered. The lease can be renewed on its current terms only, unless the tenant signs the new ones.",
+    ),
+    (
+        "property.notices.renewal_window_subject",
+        "Your tenancy {{ lease }} is coming up for renewal",
+    ),
+    (
+        "property.notices.renewal_window_body",
+        "Your tenancy {{ lease }} ends on {{ end_date }}. Your landlord will contact you about the renewal.",
+    ),
+    (
+        "property.notices.changed_terms_subject",
+        "Notice of changed terms for tenancy {{ lease }}",
+    ),
+    (
+        "property.notices.changed_terms_body",
+        "Your landlord gives notice that the terms of tenancy {{ lease }} will change when it is renewed after {{ end_date }}. Please contact your property manager for the new terms.",
+    ),
+    ("property.renewal.title", "Renewal"),
+    ("property.renewal.notice_deadline", "Notice deadline"),
+    ("property.renewal.decision", "Renewal decision"),
+    ("property.renewal.decision_undecided", "Undecided"),
+    ("property.renewal.decision_same_terms", "Same terms"),
+    ("property.renewal.decision_changed_terms", "Changed terms"),
+    ("property.renewal.decision_not_renewing", "Not renewing"),
+    ("property.renewal.decide", "Set the renewal decision"),
+    (
+        "property.renewal.decide_description",
+        "Same terms, changed terms or not renewing. Changed terms need a notice to the tenant before the notice deadline.",
+    ),
+    ("property.renewal.decided", "Renewal decision saved."),
+    ("property.renewal.decision_refused", "Only a lease in force has a renewal decision."),
+    ("property.renewal.notice", "Notice of changed terms"),
+    ("property.renewal.notice_not_sent", "Not sent"),
+    ("property.renewal.notice_undelivered", "Sent on :sent, not delivered"),
+    ("property.renewal.notice_delivered", "Delivered on :delivered"),
+    ("property.renewal.send_notice", "Send the notice of changed terms"),
+    (
+        "property.renewal.send_notice_message",
+        "The tenant gets the notice of changed terms. It counts once its delivery is proved.",
+    ),
+    ("property.renewal.notice_sent", "Notice of changed terms sent."),
+    (
+        "property.renewal.notice_needs_decision",
+        "Record the decision changed terms before sending the notice.",
+    ),
+    ("property.renewal.notice_refused", "Only a lease in force can be sent a notice of changed terms."),
+    ("property.renewal.notice_already_delivered", "The notice was delivered already."),
+    ("property.renewal.current_terms_only", "Current terms only"),
+    (
+        "property.renewal.current_terms_only_yes",
+        "Current terms only, unless the tenant signs the new ones",
+    ),
+    ("property.renewal.proof_receipt", "Provider receipt"),
+    ("property.renewal.proof_recorded", "Proof recorded by staff"),
+    ("property.renewal.problem_undecided", "No renewal decision is recorded."),
+    (
+        "property.renewal.problem_undelivered",
+        "The notice of changed terms was not delivered (notice not delivered).",
+    ),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.

@@ -5,6 +5,9 @@
 //!   after activation), and a renewal or amendment whose deposit differs from
 //!   the held amount asks the deposit to `adjust` (system; an amendment's
 //!   effects are tested with BL-PRP-08).
+//! - **`flag_renewal`:** the property managers and the tenant are told that
+//!   the lease entered its renewal window, with the notice deadline
+//!   (`PRP.RUL.01`).
 
 use renox::chrono::Duration;
 use renox::prelude::*;
@@ -14,7 +17,7 @@ use wl_kernel::role_tasks::RoleTask;
 
 use crate::events::LeaseActivated;
 use crate::lease::{Lease, VersionKind};
-use crate::lease_machine::ACTIVATE;
+use crate::lease_machine::{ACTIVATE, FLAG_RENEWAL};
 use crate::leases::ejari_task_key;
 use crate::permissions::{ACCOUNTANT_ROLE, PROPERTY_MANAGER_ROLE};
 use crate::texts::english;
@@ -27,9 +30,16 @@ pub(crate) fn register(app: &mut Registry) {
     app.listen(|event: Transitioned<Lease>, state: AppState| async move {
         match event.transition.as_str() {
             ACTIVATE => after_activate(&state, event.key).await,
+            FLAG_RENEWAL => after_flag_renewal(&state, event.key).await,
             _ => Ok(()),
         }
     });
+}
+
+/// The effects of `flag_renewal` that need the app state: the notices.
+async fn after_flag_renewal(state: &AppState, id: i64) -> Result {
+    let lease = Lease::find(&state.db, id).await?.ok_or(Error::NotFound)?;
+    crate::notices::renewal_due(state, &lease, crate::renewal::notice_deadline(&lease)).await
 }
 
 /// The title of the Ejari task of `lease`, by the kind of version.
