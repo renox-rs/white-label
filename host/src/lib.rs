@@ -69,11 +69,17 @@ pub fn app_for(config: ClientConfig) -> Result<renox::App, ConfigError> {
     let vertical = vertical(&client_app)?;
     let manifest = config.manifest()?;
     let entities: Vec<String> = config.legal_entities.iter().map(|e| e.code.clone()).collect();
+    let owner_role = config.owner_role().to_owned();
     // The kernel goes first: its seeder creates the legal entities the other
     // modules' demo data needs, and seeders run in the order modules mount.
     let mut app = wl_kernel::apply(base(), config)?;
     for module in manifest.enabled() {
-        app = enable(app, module, &client_app, &entities)?;
+        app = enable(app, module, &client_app, &entities, &owner_role)?;
+    }
+    // The Property client's categories, checklists and SOPs go in after the
+    // modules' own seeds (BL-PRP-27).
+    if client_app == "property" {
+        app = app.module(app::property_seed::PropertySeed);
     }
     // The page that shows the shared modules' settings of this client.
     Ok(app
@@ -97,17 +103,21 @@ fn enable(
     module: &str,
     client_app: &str,
     entities: &[String],
+    owner_role: &str,
 ) -> Result<renox::App, ConfigError> {
     // Each F1 module gets its arm here as it is built (decision 0004).
     match module {
         "parties" => Ok(app.module(wl_parties::WlParties)),
-        "documents" => Ok(app.module(wl_documents::WlDocuments)),
+        "documents" => {
+            app::property_seed::register_documents(client_app);
+            Ok(app.module(wl_documents::WlDocuments))
+        }
         "notify" => Ok(app.module(wl_notify::WlNotify::new())),
         "invoicing" => Ok(app.module(app::negative_flow::invoicing_for(client_app, entities))),
-        "ticketing" => Ok(app.module(wl_ticketing::WlTicketing::new())),
+        "ticketing" => Ok(app.module(app::property_seed::ticketing_for(client_app))),
         "payments" => Ok(app.module(app::negative_flow::payments_for(client_app))),
-        "sales" => Ok(app.module(wl_sales::WlSales::new())),
-        "hr" => Ok(app.module(wl_hr::WlHr::new())),
+        "sales" => Ok(app.module(app::property_seed::sales_for(client_app))),
+        "hr" => Ok(app.module(app::property_seed::hr_for(client_app, owner_role))),
         "portal" => Ok(app.module(wl_portal::WlPortal)),
         other => Err(ConfigError(format!(
             "[modules] `{other}` is not built yet; remove it from client.toml for now"
