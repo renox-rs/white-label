@@ -6,8 +6,8 @@
 //! - **`retry`** (`refunds.pay`, or the system, `FIN.RUL.21`,
 //!   [`crate::refund_retry`]): back to `approved` with the same method and
 //!   details, and for a gateway refund sent to the gateway again at once (a
-//!   new attempt `pending`). **At most [`PaymentsConfig::refund_max_retries`]
-//!   retries** (1 unless set): the manual ones count too, so a refund retried
+//!   new attempt `pending`). **At most
+//!   [`PaymentsConfig::refund_max_retries`](crate::config::PaymentsConfig) retries** (1 unless set): the manual ones count too, so a refund retried
 //!   by the rule is refused another retry. The source must still have room
 //!   for the amount (other refunds may have claimed it meanwhile).
 //! - **`change_method`** (`refunds.pay`): pay by another method: the original

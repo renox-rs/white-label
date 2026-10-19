@@ -43,7 +43,8 @@ pub enum TicketStatus {
     index(status),
     index(subject_type, subject_id),
     index(assignee_user_id),
-    index(source_key)
+    index(source_key),
+    index(contract_id)
 )]
 pub struct Ticket {
     /// The primary key.
