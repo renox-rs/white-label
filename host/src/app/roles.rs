@@ -8,6 +8,7 @@ use renox::auth::permissions;
 use renox::command::Args;
 use renox::prelude::*;
 use wl_documents::permissions as documents;
+use wl_hr::permissions as hr;
 use wl_invoicing::permissions as invoices;
 use wl_notify::permissions as notify;
 use wl_parties::permissions as parties;
@@ -58,6 +59,9 @@ pub const MARKETING: &str = "marketing";
 /// The marketing manager: also approves costs over a campaign's budget and
 /// reads the acquisition reports (wl-sales §6, `SAL.ACL.07`).
 pub const MARKETING_MANAGER: &str = "marketing_manager";
+/// HR: keeps the employee records, starts and follows onboardings, and is the
+/// `hr` owner of onboarding steps (wl-hr §3, §6).
+pub const HR: &str = "hr";
 /// Everyone who signs up.
 pub const MEMBER: &str = "member";
 
@@ -144,6 +148,10 @@ pub const ROLES: &[(&str, &[&str])] = &[
             sales::ACQUISITION_REPORTS_VIEW,
             sales::LEADS_VIEW,
             sales::LEADS_MANAGE,
+            hr::EMPLOYEES_VIEW,
+            hr::EMPLOYEES_MANAGE,
+            hr::ONBOARDING_VIEW,
+            hr::ONBOARDING_MANAGE,
         ],
     ),
     (
@@ -226,6 +234,19 @@ pub const ROLES: &[(&str, &[&str])] = &[
             invoices::BUDGETS_APPROVE,
             invoices::CASHFLOW_VIEW,
             invoices::DRAWINGS_APPROVE,
+            // The second person for `waive` and `reopen` (`HRM.ACL.10`).
+            hr::EMPLOYEES_VIEW,
+            hr::ONBOARDING_VIEW,
+            hr::ONBOARDING_MANAGE,
+        ],
+    ),
+    (
+        HR,
+        &[
+            hr::EMPLOYEES_VIEW,
+            hr::EMPLOYEES_MANAGE,
+            hr::ONBOARDING_VIEW,
+            hr::ONBOARDING_MANAGE,
         ],
     ),
     (

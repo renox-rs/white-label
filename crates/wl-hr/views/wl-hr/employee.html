@@ -1,0 +1,89 @@
+{#- wl-hr: an employee's page: the record, and each onboarding with its steps,
+    assignees and due dates, and what the signed-in user may do on a step:
+    mark it done (with evidence when required), record it in person, waive,
+    reopen or start its checklist. Replace it with
+    resources/views/wl-hr/employee.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="employee.name">
+  <rx-stack>
+    <rx-page-header :title="employee.name" :subtitle="employee.job_role" :back="route('wl_hr.employees')" :back-label="tx['employees.title']"
+                    :badge="employee.status" :badge-kind="employee.status_kind">
+      <template rx-if="can_activate">
+        <rx-confirm :id="'activate-employee-' ~ employee.id" :label="tx['employees.activate']" :action="'/hr/employees/' ~ employee.id ~ '/transitions/activate'" method="POST"
+                    :title="tx['employees.activate']" :message="employee.name" :confirm-label="tx['employees.activate']" :cancel-label="tx['cancel']" icon="check"/>
+      </template>
+      <template rx-if="can_manage">
+        <rx-action-sheet id="start-onboarding" :label="tx['onboarding.start']" :action="route('wl_hr.onboarding_start', employee.id)"
+                         :title="tx['onboarding.start_title']" :description="tx['onboarding.start_description']" :submit-label="tx['onboarding.start']" variant="primary" icon="plus">
+          <rx-select name="template" :label="tx['onboarding.template']" :options="templates" required/>
+          <rx-input name="start_date" type="date" :label="tx['onboarding.start_date']" :value="today" id="start-onboarding-date"/>
+        </rx-action-sheet>
+      </template>
+    </rx-page-header>
+    <rx-card :title="tx['employees.title']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['employees.number']" :value="employee.number" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['employees.job_title']" :value="job_title" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['employees.employment_type']" :value="employment_type"/>
+        <rx-entry :label="tx['employees.hire_date']" :value="employee.hire_date"/>
+        <rx-entry :label="tx['employees.scopes']" :value="scopes" :placeholder="tx['none']"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-card rx-for="onboarding in onboardings" :title="tx['onboarding.title'] ~ ' · ' ~ onboarding.started_on">
+      <rx-stack>
+        <rx-infolist columns="4">
+          <rx-entry :label="tx['onboarding.trigger']" :value="onboarding.trigger"/>
+          <rx-entry :label="tx['fields.status']" :value="onboarding.status"/>
+          <rx-entry :label="tx['employees.progress']" :value="onboarding.progress"/>
+          <rx-entry :label="tx['onboarding.reason']" :value="onboarding.cancel_reason" :placeholder="tx['none']"/>
+        </rx-infolist>
+        <template rx-if="onboarding.can_cancel">
+          <rx-action-sheet :id="'cancel-onboarding-' ~ onboarding.id" :label="tx['onboarding.cancel']" :action="route('wl_hr.onboarding_cancel', onboarding.id)"
+                           :title="tx['onboarding.cancel_title']" :submit-label="tx['onboarding.cancel']" icon="x" danger>
+            <rx-textarea name="reason" :label="tx['onboarding.reason']" :id="'cancel-onboarding-reason-' ~ onboarding.id" required/>
+          </rx-action-sheet>
+        </template>
+        <rx-table :rows="onboarding.steps" as="step" :key="step.id" :caption="tx['templates.steps']">
+          <rx-column :label="tx['steps.title']">{{ step.title }}</rx-column>
+          <rx-column :label="tx['templates.kind']" hide-narrow>{{ step.detail }}</rx-column>
+          <rx-column :label="tx['steps.assignees']" hide-narrow>{{ step.owner }}: {{ step.assignees }}</rx-column>
+          <rx-column :label="tx['steps.due']">{{ step.due }}</rx-column>
+          <rx-column :label="tx['fields.status']"><rx-badge :kind="step.status_kind" :text="step.status"/></rx-column>
+          <rx-column :label="tx['steps.done_by']" hide-narrow>{{ step.done }}</rx-column>
+          <rx-row-actions>
+            <template rx-if="step.can_mark_done">
+              <rx-action-sheet :id="'done-step-' ~ step.id" :label="tx['steps.mark_done']" :action="route('wl_hr.step_done', step.id)"
+                               :title="tx['steps.mark_done_title']" :submit-label="tx['steps.mark_done']" icon="check">
+                <rx-textarea name="note" :label="tx['steps.note']" :id="'done-step-note-' ~ step.id"/>
+                <rx-input name="document" type="number" :label="tx['steps.document']" :id="'done-step-document-' ~ step.id"/>
+              </rx-action-sheet>
+            </template>
+            <template rx-if="step.can_in_person">
+              <rx-action-sheet :id="'in-person-step-' ~ step.id" :label="tx['steps.in_person']" :action="route('wl_hr.step_in_person', step.id)"
+                               :title="tx['steps.in_person_title']" :description="tx['steps.in_person_description']" :submit-label="tx['steps.in_person']" icon="pen-line">
+                <rx-textarea name="signature" :label="tx['steps.signature']" :id="'in-person-step-signature-' ~ step.id" required/>
+                <rx-textarea name="note" :label="tx['steps.note']" :id="'in-person-step-note-' ~ step.id"/>
+              </rx-action-sheet>
+            </template>
+            <template rx-if="step.can_checklist">
+              <rx-confirm :id="'checklist-step-' ~ step.id" :label="tx['steps.start_checklist']" :action="route('wl_hr.step_checklist', step.id)" method="POST"
+                          :title="tx['steps.start_checklist']" :message="step.title" :confirm-label="tx['steps.start_checklist']" :cancel-label="tx['cancel']" icon="list-checks"/>
+            </template>
+            <template rx-if="step.can_waive">
+              <rx-action-sheet :id="'waive-step-' ~ step.id" :label="tx['steps.waive']" :action="route('wl_hr.step_waive', step.id)"
+                               :title="tx['steps.waive']" :submit-label="tx['steps.waive']" icon="ban">
+                <rx-textarea name="reason" :label="tx['steps.reason']" :id="'waive-step-reason-' ~ step.id" required/>
+              </rx-action-sheet>
+            </template>
+            <template rx-if="step.can_reopen">
+              <rx-action-sheet :id="'reopen-step-' ~ step.id" :label="tx['steps.reopen']" :action="route('wl_hr.step_reopen', step.id)"
+                               :title="tx['steps.reopen']" :submit-label="tx['steps.reopen']" icon="rotate-ccw">
+                <rx-textarea name="reason" :label="tx['steps.reason']" :id="'reopen-step-reason-' ~ step.id" required/>
+              </rx-action-sheet>
+            </template>
+          </rx-row-actions>
+        </rx-table>
+      </rx-stack>
+    </rx-card>
+    <rx-empty rx-if="not onboardings" :title="tx['onboarding.empty']" icon="list-checks"/>
+  </rx-stack>
+</rx-page>

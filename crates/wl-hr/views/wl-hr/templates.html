@@ -1,0 +1,26 @@
+{#- wl-hr: the onboarding templates: the roles each applies to, its version
+    and its steps with owner, due days and kind. Replace it with
+    resources/views/wl-hr/templates.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['templates.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['templates.title']" :subtitle="tx['templates.subtitle']"/>
+    <rx-card rx-for="template in templates" :title="template.name">
+      <rx-stack>
+        <rx-infolist columns="3">
+          <rx-entry :label="tx['templates.applies_to']" :value="template.applies_to"/>
+          <rx-entry :label="tx['templates.version']" :value="template.version"/>
+          <rx-entry :label="tx['fields.status']" :value="template.status"/>
+        </rx-infolist>
+        <rx-alert rx-if="template.blocks" kind="info" :message="tx['templates.blocks']"/>
+        <rx-table :rows="template.steps" as="step" :key="step.position" :caption="tx['templates.steps']">
+          <rx-column :label="tx['templates.step']">{{ step.title }}</rx-column>
+          <rx-column :label="tx['templates.owner']">{{ step.owner }}</rx-column>
+          <rx-column :label="tx['templates.due']">{{ step.due_days }}</rx-column>
+          <rx-column :label="tx['templates.kind']" hide-narrow>{{ step.kind }}</rx-column>
+          <rx-column :label="tx['templates.required']" hide-narrow>{{ step.required }}</rx-column>
+        </rx-table>
+      </rx-stack>
+    </rx-card>
+    <rx-empty rx-if="not templates" :title="tx['templates.empty']" icon="list-checks"/>
+  </rx-stack>
+</rx-page>
