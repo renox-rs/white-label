@@ -111,9 +111,14 @@ impl PartyDirectory for TestDirectory {
 
 /// A notifier that records every request and queues nothing.
 #[derive(Clone, Default)]
-pub struct Recording(Arc<Mutex<Vec<NotifyRequest>>>);
+pub struct Recording(Arc<Mutex<Vec<NotifyRequest>>>, Arc<Mutex<Option<String>>>);
 
 impl Recording {
+    /// From now on a request of `type_key` fails (`None`: none does).
+    pub fn fail_on(&self, type_key: Option<&str>) {
+        *self.1.lock().unwrap() = type_key.map(str::to_owned);
+    }
+
     /// Every request so far, oldest first.
     pub fn all(&self) -> Vec<NotifyRequest> {
         self.0.lock().unwrap().clone()
@@ -142,6 +147,14 @@ impl Notifier for Recording {
         _state: &'a AppState,
         request: NotifyRequest,
     ) -> NotifyFuture<'a, Vec<MessageId>> {
+        if self.1.lock().unwrap().as_deref() == Some(request.type_key.as_str()) {
+            return Box::pin(async {
+                Err(Error::Status(
+                    StatusCode::BAD_GATEWAY,
+                    "the notifier is down".to_owned(),
+                ))
+            });
+        }
         self.0.lock().unwrap().push(request);
         Box::pin(async { Ok(Vec::new()) })
     }
@@ -232,7 +245,8 @@ impl Invoicer for Invoices {
 pub struct Recorded<E>(Arc<Mutex<Vec<E>>>);
 
 impl<E: Clone> Recorded<E> {
-    fn new() -> Self {
+    /// Nothing recorded yet.
+    pub fn new() -> Self {
         Recorded(Arc::new(Mutex::new(Vec::new())))
     }
 
@@ -242,7 +256,8 @@ impl<E: Clone> Recorded<E> {
     }
 }
 
-fn record<E: Event + Clone>(app: App, into: &Recorded<E>) -> App {
+/// `app` listening for `E`, recorded into `into`.
+pub fn record<E: Event + Clone>(app: App, into: &Recorded<E>) -> App {
     let into = into.clone();
     app.listen(move |event: E, _state: AppState| {
         let into = into.clone();
@@ -504,6 +519,16 @@ pub async fn boot_with(module: WlTicketing) -> Booted {
 /// `module` booted for the client `client` (its `[modules]` decide which
 /// platform categories the seeder adds), seeded as `db:seed` seeds.
 pub async fn boot_client(client: &str, module: WlTicketing) -> Booted {
+    boot_app(client, module, |app| app).await
+}
+
+/// [`boot_client`], with `customize` adding to the app (a recorder for an
+/// event) before the kernel applies.
+pub async fn boot_app(
+    client: &str,
+    module: WlTicketing,
+    customize: impl FnOnce(App) -> App,
+) -> Booted {
     let views = tempfile::tempdir().expect("a temporary views directory");
     let path = views.path().join("layouts/app.html");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -527,6 +552,7 @@ pub async fn boot_client(client: &str, module: WlTicketing) -> Booted {
         .provide(invoicer);
     let app = record(app, &assigned);
     let app = record(app, &closed);
+    let app = customize(app);
     let config = ClientConfig::parse(client).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     let dir = views.path().to_path_buf();
