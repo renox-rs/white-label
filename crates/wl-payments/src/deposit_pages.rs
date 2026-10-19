@@ -7,6 +7,7 @@
 //! | `POST /deposits/{id}/deductions` | `wl_payments.deposits.deductions` | `deposits.manage` (fields `lines`, `forfeiture_reason`) |
 //! | `POST /deposits/{id}/answer` | `wl_payments.deposits.answer` | `deposits.manage` (fields `response`, `evidence`, `changes`) |
 //! | `POST /deposits/{id}/legal_case/open` and `/close` | `wl_payments.deposits.legal_case_open` and `_close` | `deposits.manage` |
+//! | `POST /deposits/{id}/adjust` | `wl_payments.deposits.adjust` | `deposits.manage` (fields `new_amount`, `source_version`, `effective_on`) |
 //! | `POST /deposits/{id}/transfer` | `wl_payments.deposits.transfer` | `deposits.manage` (fields `new_holder`, `receipt`) |
 //! | `POST /deposits/{id}/refund` | `wl_payments.deposits.refund` | `deposits.refund` (field `method`) |
 //! | `POST /deposits/{id}/forfeit` | `wl_payments.deposits.forfeit` | `deposits.refund` (fields `reason`, `approver`) |
@@ -16,6 +17,7 @@
 //! deposit stays `refunded`.
 
 use renox::auth::permissions::users_with_permission;
+use renox::chrono::NaiveDate;
 use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
 use renox::serde_json::Value;
@@ -26,6 +28,7 @@ use wl_kernel::deposits::DeductionKind;
 use wl_kernel::payments::PaymentMethod;
 
 use crate::deposit::{Deposit, DepositStatus, ForfeitRequest, TransferRequest};
+use crate::deposit_adjust::{self, AdjustRequest, AdjustmentKind, AdjustmentStatus, DepositAdjustment};
 use crate::deposit_deductions::{
     self, AnswerRequest, DepositDeduction, DepositDispute, DisputeStatus, LineChange, NewLine,
     PublishRequest,
@@ -61,6 +64,8 @@ pub fn routes() -> Routes {
                 .name("wl_payments.deposits.deductions")
                 .post("/deposits/{id}/answer", store_answer)
                 .name("wl_payments.deposits.answer")
+                .post("/deposits/{id}/adjust", store_adjust)
+                .name("wl_payments.deposits.adjust")
                 .post("/deposits/{id}/transfer", store_transfer)
                 .name("wl_payments.deposits.transfer")
                 .post("/deposits/{id}/legal_case/open", store_legal_case_open)
@@ -203,8 +208,11 @@ pub(crate) struct ShowPage {
     can_answer: bool,
     /// Whether the legal case buttons are offered, and which one.
     can_legal_case: bool,
-    /// Whether "Transfer" is offered: a held deposit.
+    /// Whether "Adjust" and "Transfer" are offered: a held deposit.
+    can_adjust: bool,
     can_transfer: bool,
+    /// The adjustments of the amount, oldest first.
+    adjustments: Vec<AdjustmentRow>,
     /// The party the deposit was transferred to, as text.
     new_holder_name: String,
     /// Whether "Refund" and "Forfeit" are offered.
@@ -216,6 +224,56 @@ pub(crate) struct ShowPage {
     refund_methods: Vec<(String, String)>,
     /// The users who may approve a forfeiture, `(id, name)`.
     approvers: Vec<(String, String)>,
+}
+
+/// One adjustment of the amount of a held deposit.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct AdjustmentRow {
+    id: i64,
+    version: i32,
+    change: String,
+    effective_on: String,
+    kind: String,
+    difference: String,
+    status: String,
+    status_kind: &'static str,
+    link: String,
+    link_label: String,
+}
+
+/// The adjustment rows of `deposit`.
+async fn adjustment_rows(db: &Db, t: Text<'_>, deposit: &Deposit) -> Result<Vec<AdjustmentRow>> {
+    let mut rows = Vec::new();
+    for adjustment in DepositAdjustment::of_deposit(db, deposit.id).await? {
+        let (link, link_label) = match (adjustment.refund_id, adjustment.charge()) {
+            (Some(refund), _) => (
+                format!("/refunds/{refund}"),
+                format!("{} #{refund}", t("refunds.heading")),
+            ),
+            (None, Some(charge)) => (String::new(), charge.to_string()),
+            _ => (String::new(), String::new()),
+        };
+        rows.push(AdjustmentRow {
+            id: adjustment.id,
+            version: adjustment.source_version,
+            change: deposit_adjust::change_text(&deposit.currency, &adjustment),
+            effective_on: adjustment.effective_on.format("%Y-%m-%d").to_string(),
+            kind: t(match adjustment.kind {
+                AdjustmentKind::TopUp => "deposits.adjust.kind.top_up",
+                AdjustmentKind::PartRefund => "deposits.adjust.kind.part_refund",
+            }),
+            difference: money_text(&deposit.currency, adjustment.difference),
+            status: t(&format!("deposits.adjust.status.{}", adjustment.status.as_str())),
+            status_kind: match adjustment.status {
+                AdjustmentStatus::Open => "warning",
+                AdjustmentStatus::Settled => "success",
+                AdjustmentStatus::Closed => "info",
+            },
+            link,
+            link_label,
+        });
+    }
+    Ok(rows)
 }
 
 /// One line of a published version.
@@ -391,6 +449,8 @@ async fn show(
         can_publish: manage && pending && open.is_empty(),
         can_answer: manage && pending && !open.is_empty(),
         can_legal_case: manage && pending,
+        can_adjust: manage && deposit.status == DepositStatus::Held,
+        adjustments: adjustment_rows(&db, &t, &deposit).await?,
         can_transfer: manage && deposit.status == DepositStatus::Held,
         new_holder_name: match deposit.transferred_to {
             Some(holder) => party_name(&state, wl_kernel::PartyId(holder)).await?,
@@ -587,6 +647,52 @@ async fn store_legal_case_close(
     Found(deposit): Found<Deposit>,
 ) -> Result<Response> {
     legal_case(&state, &user, &lang, &deposit, false).await
+}
+
+/// The adjust sheet's form.
+#[derive(Deserialize, Serialize, Validate, Debug)]
+pub struct AdjustForm {
+    /// The new amount the source requires, in dirhams like `6000.00`.
+    #[validate(max = 32)]
+    pub new_amount: Option<String>,
+    /// The version of the source (lease amendment or renewal) that changed it.
+    pub source_version: Option<i32>,
+    /// The day the change takes effect.
+    pub effective_on: Option<NaiveDate>,
+}
+
+/// `POST /deposits/{id}/adjust`: adjusts the held deposit to the new amount
+/// its source requires: a top-up charge for an increase, a part refund for a
+/// decrease. A refused guard (an adjustment still open) answers 422 under its
+/// field.
+async fn store_adjust(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(deposit): Found<Deposit>,
+    Valid(form): Valid<AdjustForm>,
+) -> Result<Response> {
+    let t = texts_in(&lang);
+    let Some(new_amount) = filled(&form.new_amount).and_then(parse_amount) else {
+        return Err(invalid("new_amount", t("deposits.adjust.amount_required"), &form));
+    };
+    let Some(source_version) = form.source_version.filter(|v| *v > 0) else {
+        return Err(invalid("source_version", t("deposits.adjust.version_required"), &form));
+    };
+    let Some(effective_on) = form.effective_on else {
+        return Err(invalid("effective_on", t("deposits.adjust.date_required"), &form));
+    };
+    let request = AdjustRequest {
+        new_amount,
+        source_version,
+        effective_on,
+    };
+    match deposit_adjust::adjust(&state, Some(&user), None, &deposit, &request).await {
+        Ok(Some(_)) => Ok((Toast::success(t("deposits.adjust.done")), renox::HxRefresh).into_response()),
+        Ok(None) => Ok((Toast::info(t("deposits.adjust.same")), renox::HxRefresh).into_response()),
+        Err(TransitionError::Guard(message)) => Err(invalid("new_amount", message, &form)),
+        Err(other) => Err(other.into_error()),
+    }
 }
 
 /// The transfer sheet's form.

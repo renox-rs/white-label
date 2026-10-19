@@ -19,6 +19,7 @@ pub mod chequer;
 pub mod config;
 pub mod credit;
 pub mod deposit;
+pub mod deposit_adjust;
 pub mod deposit_deductions;
 mod deposit_events;
 mod deposit_machine;
@@ -149,6 +150,10 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "wl-payments/_deposit_refund_sheet.html",
         include_str!("../views/wl-payments/_deposit_refund_sheet.html"),
+    ),
+    (
+        "wl-payments/_adjust_sheet.html",
+        include_str!("../views/wl-payments/_adjust_sheet.html"),
     ),
     (
         "wl-payments/_transfer_sheet.html",
@@ -366,6 +371,7 @@ impl Module for WlPayments {
         app.model::<Refund>();
         app.model::<RefundAttempt>();
         app.model::<Deposit>();
+        app.model::<deposit_adjust::DepositAdjustment>();
         app.model::<deposit_deductions::DepositDeduction>();
         app.model::<deposit_deductions::DeductionLine>();
         app.model::<deposit_deductions::DepositDispute>();
@@ -459,6 +465,10 @@ impl Module for WlPayments {
         events::register(app);
         // `DepositSettled` after a commit.
         deposit_events::register(app);
+        // The held amount follows the part refund of an adjustment.
+        deposit_adjust::register(app);
+        // How a vertical adjusts the deposit of an agreement that changed.
+        wl_kernel::deposits::provide_deposits(app, deposit_adjust::DepositBook);
         // The published deductions the portal shows and the party's dispute.
         wl_kernel::deposits::provide_deposit_deductions(app, deposit_deductions::Deductions);
         // `RefundPaid` after a commit.
