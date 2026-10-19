@@ -318,6 +318,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_kernel.late_entries.status.recorded", "Recorded"),
     ("wl_kernel.late_entries.status.discarded", "Not recorded"),
     (
+        "wl_kernel.integrations.not_yet_down",
+        "The connection has not been without a successful call for long enough.",
+    ),
+    (
         "wl_kernel.late_entries.limits_invalid",
         "The flag limit must be above 0 minutes and not above the approval limit.",
     ),

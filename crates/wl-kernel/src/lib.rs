@@ -72,7 +72,10 @@ pub use documents::{
 };
 pub use entities::{IssuerSnapshot, LegalEntity, ScopeEntity};
 pub use held_funds::{FundsSource, HeldFund, HeldFundsSource, held_for_all};
-pub use integrations::{Delivery, IntegrationDef, IntegrationStatusChanged, Outbound};
+pub use integrations::{
+    ConnectionStatus, Delivery, IntegrationConnection, IntegrationDef, IntegrationStatusChanged,
+    Outbound, QueuedCall,
+};
 pub use invoicing::{
     BillBalance, BillReopenReason, CostObjectAmount, CostPoster, CostReversal, CreditLine,
     CreditNoteId, CreditNoteIssued, CreditNoteReopened, CreditNoteStatus, CreditNoteSummary,
@@ -243,6 +246,7 @@ impl Module for WlKernel {
         automation::register(app);
         voids::register_models(app);
         late_entries::register_models(app);
+        integrations::register_models(app);
         // In the admin group of the staff sidebar; the label is the app's
         // `nav.legal_entities` text.
         app.nav(
@@ -265,6 +269,8 @@ impl Module for WlKernel {
                     println!("{created} legal entities created.");
                     let policies = approvals::install(&state.db).await?;
                     println!("{policies} approval policies created.");
+                    let connections = integrations::install(&state.db).await?;
+                    println!("{connections} integration connections created.");
                     Ok(())
                 }
             },
@@ -274,7 +280,8 @@ impl Module for WlKernel {
             let config = Arc::clone(&config);
             async move {
                 entities::install(&state.db, &config).await?;
-                approvals::install(&state.db).await.map(|_| ())
+                approvals::install(&state.db).await?;
+                integrations::install(&state.db).await.map(|_| ())
             }
         });
         app.templates(|env| {
