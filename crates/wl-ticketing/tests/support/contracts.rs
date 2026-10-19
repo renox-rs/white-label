@@ -19,6 +19,11 @@ use wl_ticketing::{
     WlTicketing, permissions as perm,
 };
 
+use std::sync::Arc;
+
+use wl_kernel::documents::DocumentGuard;
+
+use super::documents::Documents;
 use super::{Booted, CLIENT, Recorded, boot_app, dubai, record};
 
 /// "Tower A lifts".
@@ -69,6 +74,20 @@ pub struct World {
 /// manager in scope).
 pub async fn world() -> World {
     world_with(WlTicketing::new().compliance_manager_role("property_manager")).await
+}
+
+/// The world with 01's Civil Defence approval guarding `resolve` and contract
+/// `activate` for fire and life safety, and the table of the vendors'
+/// approvals.
+pub async fn world_with_documents() -> (World, Documents) {
+    let documents = Documents::civil_defence();
+    let guard: Arc<dyn DocumentGuard> = Arc::new(documents.clone());
+    let world = world_customized(
+        WlTicketing::new().compliance_manager_role("property_manager"),
+        move |app| app.provide(guard),
+    )
+    .await;
+    (world, documents)
 }
 
 /// The world with `module`.

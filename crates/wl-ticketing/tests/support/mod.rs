@@ -67,6 +67,7 @@ pub const BLUEFIRE: PartyId = PartyId(8);
 pub const BLUEFIRE_CODE: &str = "P-00008";
 
 pub mod contracts;
+pub mod documents;
 
 /// The parties the tickets are assigned to.
 #[derive(Debug, Clone, Copy, Default)]
