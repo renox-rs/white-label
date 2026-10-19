@@ -75,7 +75,7 @@ async fn the_invoice_page_and_the_task_list_show_a_reopened_invoice() {
     log.insert(app.db()).await.unwrap();
     let mut task = InvoicingTask {
         kind: TaskKind::ReversalAfterWriteOff,
-        invoice_id: invoice.id,
+        invoice_id: Some(invoice.id),
         source_type: payment.subject_type.clone(),
         source_id: payment.subject_id,
         amount: 50_000,

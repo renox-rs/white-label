@@ -7,7 +7,7 @@
 //! | `POST /invoices/tasks/{id}/done` | `wl_invoicing.task_done` | `receivables.view` |
 //!
 //! The list is a `renox::grid` of the open [`InvoicingTask`]s, oldest first.
-//! A row opens its invoice (through `GET /invoices/tasks/{id}`, which only
+//! A row opens its invoice or supplier bill (through `GET /invoices/tasks/{id}`, which only
 //! redirects, since a grid link knows nothing but the row's id), and "Mark
 //! done" closes the task. No route unallocates anything. The template is
 //! compiled in and can be replaced by the app
@@ -45,13 +45,17 @@ pub fn routes() -> Routes {
 
 /// The open tasks grid.
 pub fn grid(lang: &Lang) -> Grid {
-    let kinds: Vec<(String, String)> = [TaskKind::ReversalAfterWriteOff, TaskKind::ReversalRefused]
-        .iter()
-        .map(|kind| {
-            let key = kind.as_str();
-            (key.to_owned(), text(lang, &format!("tasks.kind.{key}")))
-        })
-        .collect();
+    let kinds: Vec<(String, String)> = [
+        TaskKind::ReversalAfterWriteOff,
+        TaskKind::ReversalRefused,
+        TaskKind::BillReversalRefused,
+    ]
+    .iter()
+    .map(|kind| {
+        let key = kind.as_str();
+        (key.to_owned(), text(lang, &format!("tasks.kind.{key}")))
+    })
+    .collect();
     Grid::new("wl-invoicing-tasks")
         .title(&text(lang, "tasks.title"))
         .column(
@@ -66,10 +70,21 @@ pub fn grid(lang: &Lang) -> Grid {
             .mobile(),
         )
         .column(
+            Column::related(
+                "bill",
+                &text(lang, "tasks.bill"),
+                "wl_invoicing_supplier_bills",
+                "bill_id",
+                "supplier_invoice_number",
+            )
+            .mobile(),
+        )
+        .column(
             Column::select("kind", &text(lang, "tasks.kind"), kinds)
                 .badges(&[
                     ("reversal_after_write_off", "warning"),
                     ("reversal_refused", "danger"),
+                    ("bill_reversal_refused", "danger"),
                 ])
                 .mobile(),
         )
@@ -111,9 +126,13 @@ async fn index(lang: Lang, request: GridRequest) -> Result<View> {
     }))
 }
 
-/// `GET /invoices/tasks/{id}`: to the task's invoice.
+/// `GET /invoices/tasks/{id}`: to the task's invoice or supplier bill.
 async fn open(Found(task): Found<InvoicingTask>) -> Result<Response> {
-    Ok(Redirect::route("wl_invoicing.show", &[&task.invoice_id])?.into_response())
+    if let Some(bill_id) = task.bill_id {
+        return Ok(Redirect::route("wl_invoicing.supplier_bill", &[&bill_id])?.into_response());
+    }
+    let invoice_id = task.invoice_id.ok_or(Error::NotFound)?;
+    Ok(Redirect::route("wl_invoicing.show", &[&invoice_id])?.into_response())
 }
 
 /// `POST /invoices/tasks/{id}/done`: closes the task for the user and

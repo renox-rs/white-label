@@ -1,8 +1,8 @@
 {#- wl-invoicing: a supplier bill's page: its status, the change, delete and
     submit actions of a draft, the approve and void sheets, the header and
     totals, every exception reason (a possible duplicate links to the earlier
-    bill), who approved it and why or the void reason, lines, VAT by category
-    and the history. Replace it with resources/views/wl-invoicing/bill_show.html
+    bill), who approved it and why or the void reason, lines, VAT by category,
+    the applied payments, the Reopened log, open tasks and the history. Replace it with resources/views/wl-invoicing/bill_show.html
     in the app. -#}
 <rx-page layout="layouts/app.html" :title="title">
   <rx-stack>
@@ -60,6 +60,24 @@
       <rx-column :label="tx['fields.net_amount']">{{ row.net }}</rx-column>
       <rx-column :label="tx['fields.vat_amount']">{{ row.vat }}</rx-column>
     </rx-table>
+    <rx-table rx-if="allocations" :rows="allocations" as="allocation" :key="allocation.id" :caption="tx['sections.allocations']" card>
+      <rx-column :label="tx['fields.source']">{{ allocation.source }}</rx-column>
+      <rx-column :label="tx['fields.amount']"><s rx-if="allocation.removed">{{ allocation.amount }}</s><span rx-if="not allocation.removed">{{ allocation.amount }}</span></rx-column>
+      <rx-column :label="tx['history.at']" hide-narrow>{{ allocation.allocated_at | date('%Y-%m-%d %H:%M') }}</rx-column>
+      <rx-column :label="tx['allocations.removed']"><rx-badge rx-if="allocation.removed" kind="warning" :text="tx['allocations.removed']"/></rx-column>
+      <rx-column :label="tx['allocations.removed_reason']" hide-narrow>{{ allocation.removed_reason or "" }}</rx-column>
+    </rx-table>
+    <rx-table rx-if="reopened" :rows="reopened" as="item" :key="item.id" :caption="tx['sections.reopened']" card>
+      <rx-column :label="tx['reopened.date']">{{ item.date | date('%Y-%m-%d %H:%M') }}</rx-column>
+      <rx-column :label="tx['reopened.amount']">{{ item.amount }}</rx-column>
+      <rx-column :label="tx['reopened.reason']">{{ item.reason }}</rx-column>
+      <rx-column :label="tx['reopened.outcome']"><rx-badge :kind="item.outcome_kind" :text="item.outcome"/></rx-column>
+    </rx-table>
+    <rx-table rx-if="tasks" :rows="tasks" as="task" :key="task.id" :caption="tx['sections.tasks']" card>
+      <rx-column :label="tx['tasks.kind']"><rx-badge kind="warning" :text="task.kind"/></rx-column>
+      <rx-column :label="tx['tasks.message']">{{ task.message }}</rx-column>
+    </rx-table>
+    <rx-link-button rx-if="tasks and can_tasks" :href="route('wl_invoicing.tasks')" :label="tx['tasks.title']"/>
     <rx-table :rows="timeline" as="item" :key="item.time" :caption="tx['sections.history']" card>
       <rx-column :label="tx['history.change']">{{ item.title }}</rx-column>
       <rx-column :label="tx['history.at']">{{ item.time | date('%Y-%m-%d %H:%M') }}</rx-column>

@@ -17,7 +17,8 @@
 //! `P-00001`); only a `draft` can be changed or deleted. The page of one
 //! bill shows the header, the lines and totals, every exception reason (a
 //! possible duplicate links to the earlier bill), the approver and reason or
-//! the void reason, and the history. `submit` has its own route (the
+//! the void reason, the applied payments (removed ones struck through, with
+//! the reason), the "Reopened" log, its open tasks and the history. `submit` has its own route (the
 //! service picks `submit` or `submit_held`); `approve` and `void` are posted
 //! with their reason from a sheet each to the kernel's transition route.
 //! `approve` is not offered to the creator of a held duplicate. Templates are
@@ -37,13 +38,19 @@ use wl_kernel::invoicing::VatCategory;
 use wl_kernel::{LegalEntity, PartyId};
 
 use crate::allocate::amount_text;
+use crate::bill_allocation::BillAllocation;
 use crate::bill_line::{BillLine, BillLineDraft};
 use crate::bill_submit::submit;
+use crate::bill_unallocate::reason_key;
+use crate::bill_unallocation::BillUnallocation;
 use crate::credit_notes::By;
 use crate::duplicates::exceptions_of;
+use crate::pages::{AllocationRow, ReopenedRow, TaskRow, reopen_reason_text};
 use crate::permissions;
 use crate::supplier_bill::{self, BillDraft, SupplierBill, SupplierBillStatus};
+use crate::task;
 use crate::texts;
+use crate::unallocation::UnallocationOutcome;
 
 /// The texts a template reads as `tx['supplier_bill.title']`.
 type Texts = BTreeMap<&'static str, String>;
@@ -259,6 +266,14 @@ pub(crate) struct ShowPage {
     lines: Vec<LineRow>,
     vat: Vec<VatRow>,
     exceptions: Vec<ExceptionRow>,
+    /// The payments and debit notes applied, removed ones included.
+    allocations: Vec<AllocationRow>,
+    /// The `unallocate` runs, done or refused.
+    reopened: Vec<ReopenedRow>,
+    /// The bill's open reversal tasks.
+    tasks: Vec<TaskRow>,
+    /// Whether the user may open the tasks list.
+    can_tasks: bool,
     /// The bill's history.
     timeline: Vec<Value>,
     can_edit: bool,
@@ -384,6 +399,56 @@ async fn show(
                 .map(|id| format!("/supplier-bills/{id}")),
         });
     }
+    let allocations = BillAllocation::of_bill(&db, bill.id)
+        .await?
+        .into_iter()
+        .map(|a| AllocationRow {
+            id: a.id,
+            source: a.source().to_string(),
+            amount: money(a.amount),
+            allocated_at: a.allocated_at,
+            removed: a.removed_at.is_some(),
+            removed_at: a.removed_at,
+            removed_reason: a
+                .removed_at
+                .map(|_| reopen_reason_text(&t, a.removed_reason.as_deref().unwrap_or(""))),
+        })
+        .collect();
+    let reopened = BillUnallocation::query()
+        .where_(BillUnallocation::BILL_ID.eq(bill.id))
+        .order_by(BillUnallocation::ID)
+        .get(&db)
+        .await?
+        .into_iter()
+        .map(|u| {
+            let mut reason = reopen_reason_text(&t, &reason_key(u.reason));
+            if let Some(why) = u.reversal_reason.as_deref().filter(|r| !r.is_empty()) {
+                reason = format!("{reason} ({})", reopen_reason_text(&t, why));
+            }
+            let done = u.outcome == UnallocationOutcome::Done;
+            ReopenedRow {
+                id: u.id,
+                date: u.created_at,
+                amount: money(u.amount),
+                reason,
+                outcome: t(if done {
+                    "reopened.outcome.done"
+                } else {
+                    "reopened.outcome.failed"
+                }),
+                outcome_kind: if done { "success" } else { "danger" },
+            }
+        })
+        .collect();
+    let tasks = task::open_of_bill(&db, bill.id)
+        .await?
+        .into_iter()
+        .map(|task| TaskRow {
+            id: task.id,
+            kind: t(&format!("tasks.kind.{}", task.kind.as_str())),
+            message: task.message,
+        })
+        .collect();
     let mut amounts = BTreeMap::from([
         ("net_total", money(bill.net_total)),
         ("vat_total", money(bill.vat_total)),
@@ -417,6 +482,10 @@ async fn show(
         lines,
         vat,
         exceptions,
+        allocations,
+        reopened,
+        tasks,
+        can_tasks: user.has_permission(permissions::RECEIVABLES_VIEW),
         timeline,
         can_edit: draft && may_create,
         can_submit: draft && may_create,

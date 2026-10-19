@@ -222,35 +222,35 @@ pub(crate) struct VatRow {
 /// One allocation.
 #[derive(Serialize, Debug, Clone)]
 pub(crate) struct AllocationRow {
-    id: i64,
-    source: String,
-    amount: String,
-    allocated_at: DateTime,
+    pub(crate) id: i64,
+    pub(crate) source: String,
+    pub(crate) amount: String,
+    pub(crate) allocated_at: DateTime,
     /// Whether it was removed (`unallocate`); the page strikes it through.
-    removed: bool,
-    removed_at: Option<DateTime>,
+    pub(crate) removed: bool,
+    pub(crate) removed_at: Option<DateTime>,
     /// Why it was removed, in words.
-    removed_reason: Option<String>,
+    pub(crate) removed_reason: Option<String>,
 }
 
 /// One row of the "Reopened" table: an `unallocate` run, done or refused.
 #[derive(Serialize, Debug, Clone)]
 pub(crate) struct ReopenedRow {
-    id: i64,
-    date: Option<DateTime>,
-    amount: String,
+    pub(crate) id: i64,
+    pub(crate) date: Option<DateTime>,
+    pub(crate) amount: String,
     /// The reason, with the payment's reason when there is one.
-    reason: String,
-    outcome: String,
-    outcome_kind: &'static str,
+    pub(crate) reason: String,
+    pub(crate) outcome: String,
+    pub(crate) outcome_kind: &'static str,
 }
 
 /// One open task of the invoice.
 #[derive(Serialize, Debug, Clone)]
 pub(crate) struct TaskRow {
-    id: i64,
-    kind: String,
-    message: String,
+    pub(crate) id: i64,
+    pub(crate) kind: String,
+    pub(crate) message: String,
 }
 
 /// The write-off section of a written-off invoice.
@@ -340,7 +340,7 @@ fn reason_label(t: Text<'_>, code: &str) -> String {
 
 /// The text of a reopen reason or a payment's reversal reason key
 /// (`payment_reversed`, `bank_return`...); an unknown key shows as it is.
-fn reopen_reason_text(t: Text<'_>, key: &str) -> String {
+pub(crate) fn reopen_reason_text(t: Text<'_>, key: &str) -> String {
     let text = t(&format!("reopen.reason.{key}"));
     if text.ends_with(key) && text.contains("reopen.reason") {
         key.to_owned()

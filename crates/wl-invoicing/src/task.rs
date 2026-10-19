@@ -7,7 +7,9 @@
 //!   the invoice stays as it is and the accountant writes off more or
 //!   pursues the party;
 //! - `reversal_refused`: any other refusal (for example an amount above
-//!   what is allocated from the payment).
+//!   what is allocated from the payment);
+//! - `bill_reversal_refused`: the refusal of a reversal on a supplier bill
+//!   (#75 A8), for example an amount above what is applied to the bill.
 //!
 //! The record is the module's own because ticketing may be off. It is unique
 //! per (kind, unallocation key), so a repeated delivery opens none twice.
@@ -24,6 +26,7 @@ use wl_kernel::notify::{self, Category, NotificationTypeDef, NotifyChannel, Noti
 
 use crate::allocate::amount_text;
 use crate::invoice::Invoice;
+use crate::supplier_bill::SupplierBill;
 use crate::texts::english;
 
 /// The notification type of a new task.
@@ -46,6 +49,8 @@ pub enum TaskKind {
     ReversalAfterWriteOff,
     /// The reversal was refused for another reason.
     ReversalRefused,
+    /// The reversal of a payment on a supplier bill was refused.
+    BillReversalRefused,
 }
 
 impl TaskKind {
@@ -63,6 +68,7 @@ impl TaskKind {
         match self {
             TaskKind::ReversalAfterWriteOff => "wl_invoicing.task.reversal_after_write_off",
             TaskKind::ReversalRefused => "wl_invoicing.task.reversal_refused",
+            TaskKind::BillReversalRefused => "wl_invoicing.task.bill_reversal_refused",
         }
     }
 }
@@ -79,14 +85,21 @@ pub enum TaskStatus {
 
 /// A follow-up task. Amounts are fils of the invoice's currency.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
-#[model(table = "wl_invoicing_tasks", unique(kind, key), index(invoice_id))]
+#[model(
+    table = "wl_invoicing_tasks",
+    unique(kind, key),
+    index(invoice_id),
+    index(bill_id)
+)]
 pub struct InvoicingTask {
     /// The primary key.
     pub id: i64,
     /// What it is about.
     pub kind: TaskKind,
-    /// The invoice.
-    pub invoice_id: i64,
+    /// The invoice; `None` for a task of a supplier bill.
+    pub invoice_id: Option<i64>,
+    /// The supplier bill; `None` for a task of an invoice.
+    pub bill_id: Option<i64>,
     /// The type of the money's source.
     pub source_type: String,
     /// The id of the money's source.
@@ -171,7 +184,7 @@ pub async fn open(
     let kind = TaskKind::of(invoice);
     let mut task = InvoicingTask {
         kind,
-        invoice_id: invoice.id,
+        invoice_id: Some(invoice.id),
         source_type: source.subject_type.clone(),
         source_id: source.subject_id,
         amount,
@@ -186,8 +199,98 @@ pub async fn open(
         Err(error) if error.is_unique_violation() => return Ok(None),
         Err(error) => return Err(error),
     }
-    notify_accountants(state, invoice, &task).await?;
+    let data = data(invoice, &task.source(), task.amount, "");
+    notify_accountants(state, invoice.subject(), data, &task).await?;
     Ok(Some(task))
+}
+
+/// The values the supplier bill task message and notice are filled with.
+fn bill_data(
+    bill: &SupplierBill,
+    supplier: &str,
+    source: &Subject,
+    amount: i64,
+    reason: &str,
+) -> Value {
+    json!({
+        "number": bill.supplier_invoice_number,
+        "party_name": supplier,
+        "source": source.to_string(),
+        "amount": amount_text(&bill.currency, amount),
+        "reason": lower_first(reason),
+        "link": format!("/supplier-bills/{}", bill.id),
+    })
+}
+
+/// `text` with its first letter in lower case, to follow "refused: ".
+fn lower_first(text: &str) -> String {
+    let mut chars = text.chars();
+    match chars.next() {
+        Some(first) => first.to_lowercase().chain(chars).collect(),
+        None => String::new(),
+    }
+}
+
+/// The message of a task for a refused reversal on a supplier bill;
+/// `reason` is the refusal's text.
+pub fn bill_message(bill: &SupplierBill, source: &Subject, amount: i64, reason: &str) -> String {
+    fill(
+        english(TaskKind::BillReversalRefused.text_key()),
+        &bill_data(bill, "", source, amount, reason),
+    )
+}
+
+/// Opens the task for the refusal `reason` of a reversal of `amount` from
+/// `source` on supplier bill `bill`, keyed on the unallocation `key`, and
+/// tells the accountants. `None` when the task already exists for the key.
+///
+/// # Errors
+///
+/// A database or notifier error.
+pub async fn open_for_bill(
+    state: &AppState,
+    bill: &SupplierBill,
+    source: &Subject,
+    amount: i64,
+    key: &str,
+    reason: &str,
+) -> Result<Option<InvoicingTask>> {
+    let kind = TaskKind::BillReversalRefused;
+    let supplier = wl_kernel::parties::directory(state)
+        .billing_identity(&state.db, bill.supplier())
+        .await?
+        .map(|identity| identity.legal_name_en)
+        .unwrap_or_default();
+    let mut task = InvoicingTask {
+        kind,
+        bill_id: Some(bill.id),
+        source_type: source.subject_type.clone(),
+        source_id: source.subject_id,
+        amount,
+        key: key.to_owned(),
+        message: bill_message(bill, source, amount, reason),
+        role: ACCOUNTANT.to_owned(),
+        status: TaskStatus::Open,
+        ..Default::default()
+    };
+    match task.insert(&state.db).await {
+        Ok(()) => {}
+        Err(error) if error.is_unique_violation() => return Ok(None),
+        Err(error) => return Err(error),
+    }
+    let data = bill_data(bill, &supplier, source, amount, "");
+    notify_accountants(state, bill.subject(), data, &task).await?;
+    Ok(Some(task))
+}
+
+/// The open tasks of supplier bill `bill_id`, oldest first.
+pub async fn open_of_bill(db: &Db, bill_id: i64) -> Result<Vec<InvoicingTask>> {
+    InvoicingTask::query()
+        .where_(InvoicingTask::BILL_ID.eq(bill_id))
+        .where_(InvoicingTask::STATUS.eq(TaskStatus::Open))
+        .order_by(InvoicingTask::ID)
+        .get(db)
+        .await
 }
 
 /// The open tasks of `invoice_id`, oldest first.
@@ -202,7 +305,12 @@ pub async fn open_of(db: &Db, invoice_id: i64) -> Result<Vec<InvoicingTask>> {
 
 /// One notice to the holders of the `accountant` role (global scope, once
 /// each, by id).
-async fn notify_accountants(state: &AppState, invoice: &Invoice, task: &InvoicingTask) -> Result {
+async fn notify_accountants(
+    state: &AppState,
+    subject: Subject,
+    mut data: Value,
+    task: &InvoicingTask,
+) -> Result {
     let mut ids: Vec<i64> = users_with_role_in(&state.db, &task.role, &Scope::global())
         .await?
         .iter()
@@ -213,9 +321,8 @@ async fn notify_accountants(state: &AppState, invoice: &Invoice, task: &Invoicin
     if ids.is_empty() {
         return Ok(());
     }
-    let mut data = data(invoice, &task.source(), task.amount, "");
     data["message"] = Value::String(task.message.clone());
-    let mut notice = NotifyRequest::new(REVERSAL_TASK, invoice.subject()).data(data);
+    let mut notice = NotifyRequest::new(REVERSAL_TASK, subject).data(data);
     for id in ids {
         notice = notice.to_user(id);
     }

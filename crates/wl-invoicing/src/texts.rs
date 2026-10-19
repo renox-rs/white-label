@@ -799,6 +799,26 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("wl_invoicing.reopen.reason.chargeback", "chargeback"),
     (
+        "wl_invoicing.reopen.reason.debit_note_cancelled",
+        "debit note cancelled",
+    ),
+    (
+        "wl_invoicing.supplier_bill_reopened.subject",
+        "Supplier bill {{ number }} is open again",
+    ),
+    (
+        "wl_invoicing.supplier_bill_reopened.body",
+        "Supplier bill {{ number }} of {{ supplier }} was reopened by {{ amount }}: {{ reason }}. New balance: {{ balance }}. New state: {{ new_status }}. {{ hint }} See the bill: {{ link }}",
+    ),
+    (
+        "wl_invoicing.supplier_bill_reopened.hint.payment_reversed",
+        "Pay again or fix the bank details.",
+    ),
+    (
+        "wl_invoicing.supplier_bill_reopened.hint.debit_note_cancelled",
+        "",
+    ),
+    (
         "wl_invoicing.task.subject",
         "Reversal on invoice {{ number }} needs follow-up",
     ),
@@ -813,6 +833,10 @@ const TEXTS: &[(&str, &str)] = &[
     (
         "wl_invoicing.task.reversal_refused",
         "Reversal of {{ amount }} from {{ source }} refused: {{ reason }}",
+    ),
+    (
+        "wl_invoicing.task.bill_reversal_refused",
+        "Reversal of {{ amount }} refused: {{ reason }}",
     ),
     ("wl_invoicing.allocations.removed", "Removed"),
     ("wl_invoicing.allocations.removed_at", "Removed on"),
@@ -829,12 +853,12 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_invoicing.tasks.title", "Reversal tasks"),
     (
         "wl_invoicing.tasks.subtitle",
-        "Reversals that could not reopen their invoice and need the accountant.",
+        "Reversals that could not reopen their invoice or supplier bill and need the accountant.",
     ),
     ("wl_invoicing.tasks.empty", "No open tasks"),
     (
         "wl_invoicing.tasks.empty_hint",
-        "Reversals that cannot reopen an invoice show here.",
+        "Reversals that cannot reopen an invoice or supplier bill show here.",
     ),
     ("wl_invoicing.tasks.invoice", "Invoice"),
     ("wl_invoicing.tasks.kind", "Kind"),
@@ -861,6 +885,11 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_invoicing.tasks.kind.reversal_refused",
         "Reversal refused",
     ),
+    (
+        "wl_invoicing.tasks.kind.bill_reversal_refused",
+        "Bill reversal refused",
+    ),
+    ("wl_invoicing.tasks.bill", "Supplier bill"),
     (
         "wl_invoicing.relief.proposed.subject",
         "Bad-debt VAT relief proposed for invoice {{ number }}",

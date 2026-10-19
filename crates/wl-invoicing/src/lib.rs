@@ -13,6 +13,8 @@ pub mod bill_machine;
 pub mod bill_notices;
 mod bill_pages;
 pub mod bill_pay;
+pub mod bill_reopen_notices;
+pub mod bill_reversal;
 pub mod bill_submit;
 pub mod bill_unallocate;
 pub mod bill_unallocation;
@@ -552,6 +554,10 @@ impl Module for WlInvoicing {
         // the accountant notice of a held possible duplicate.
         bill_events::register(app);
         bill_notices::register_types();
+        // `invoicing.supplier_bill_reopened`: the accountant notice.
+        bill_reopen_notices::register_types();
+        // A reversed payment reopens its supplier bills (`unallocate`).
+        bill_reversal::register(app);
     }
 }
 
