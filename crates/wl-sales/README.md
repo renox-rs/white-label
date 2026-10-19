@@ -20,6 +20,7 @@ What is here so far:
 |---|---|---|
 | Permissions (`campaigns.*`, `acquisition.reports.view`) | §6 | `permissions` |
 | Over-budget approval, budget alerts, late-response days | §7 | `config` |
+| Lead sources, their nine seeds (`sales:install`, the seeder) and the `/sales/lead-sources` page | §3 | `lead_source`, `seed`, `pages` |
 
 The module owns `src/texts.rs`, the English texts (`wl_sales.*`). The app changes or
 translates them in `resources/lang/{locale}.json`.

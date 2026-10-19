@@ -2,11 +2,23 @@
 #![warn(missing_docs)]
 
 pub mod config;
+pub mod lead_source;
+pub mod pages;
+pub mod seed;
 mod texts;
 
+use renox::db::Migration;
 use renox::prelude::*;
 
 pub use config::SalesConfig;
+pub use lead_source::{LeadSource, LeadSourceRefused};
+
+/// The templates, compiled in. An app replaces one with a file of the same
+/// name under its views directory.
+const VIEWS: &[(&str, &str)] = &[(
+    "wl-sales/lead_sources.html",
+    include_str!("../views/wl-sales/lead_sources.html"),
+)];
 
 /// The module's permissions (wl-sales §6).
 pub mod permissions {
@@ -65,6 +77,39 @@ impl WlSales {
 impl Module for WlSales {
     fn name(&self) -> &'static str {
         "wl-sales"
+    }
+
+    fn routes(&self) -> Routes {
+        pages::routes()
+    }
+
+    fn migrations(&self) -> &'static [Migration] {
+        renox::migrations!()
+    }
+
+    fn register(&self, app: &mut Registry) {
+        app.view_data::<pages::lead_sources::IndexPage>();
+        app.templates(|env| {
+            for (name, source) in VIEWS {
+                // The app's own file of that name wins.
+                if env.get_template(name).is_err() {
+                    renox::view::add_template(env, *name, *source)
+                        .expect("a built-in template compiles");
+                }
+            }
+        });
+        app.model::<LeadSource>();
+        // The nine lead sources; a re-run keeps the client's changes.
+        app.command(
+            "sales:install",
+            "Store the default lead sources, where the database lacks them",
+            |_args, state: AppState| async move {
+                let installed = seed::install(&state.db).await?;
+                println!("{} sales defaults created.", installed.total());
+                Ok(())
+            },
+        );
+        app.seeder(|state: AppState| async move { seed::install(&state.db).await.map(|_| ()) });
     }
 }
 
