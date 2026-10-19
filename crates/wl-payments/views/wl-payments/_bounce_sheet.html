@@ -1,0 +1,11 @@
+{#- wl-payments: the bounce action on the cheque page, a sheet with the
+    bank's return reason, the reference of its return certificate (received
+    cheques) and the amount the bank paid. Replace it with
+    resources/views/wl-payments/_bounce_sheet.html in the app. -#}
+<rx-action-sheet :id="'bounce-cheque-' ~ cheque.id" :label="tx['cheques.bounce.action']" :action="route('wl_payments.cheques.bounce', cheque.id)"
+                 :title="tx['cheques.bounce.title']" :description="bounce_description" :submit-label="tx['cheques.bounce.submit']"
+                 icon="octagon-x" variant="danger" danger>
+  <rx-select name="reason" :label="tx['cheques.bounce.reason']" :options="reasons" :id="'bounce-reason-' ~ cheque.id" required/>
+  <rx-input rx-if="certificate_required" name="certificate" :label="tx['cheques.bounce.certificate']" :hint="tx['cheques.bounce.certificate_hint']" :id="'bounce-certificate-' ~ cheque.id" required/>
+  <rx-input name="honoured" :label="tx['cheques.bounce.honoured']" :hint="tx['cheques.bounce.honoured_hint']" :id="'bounce-honoured-' ~ cheque.id"/>
+</rx-action-sheet>

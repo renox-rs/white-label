@@ -409,6 +409,8 @@ pub(crate) struct TaskRow {
     payment_id: Option<i64>,
     /// The failed refund a `change_method` task is about.
     refund_id: Option<i64>,
+    /// The cheque a cheque task is about.
+    cheque_id: Option<i64>,
     created_at: Option<DateTime>,
     open: bool,
     status: String,
@@ -514,6 +516,7 @@ async fn task_rows(state: &AppState, t: Text<'_>, tasks: &[FollowupTask]) -> Res
             amount: money_text(&task.currency, task.amount),
             payment_id: task.payment_id,
             refund_id: task.refund_id,
+            cheque_id: task.cheque_id,
             created_at: task.created_at,
             open: task.is_open(),
             status: t(if task.is_open() {
@@ -720,9 +723,11 @@ pub(crate) struct TasksPage {
     can_mark: bool,
 }
 
-/// `GET /payments/tasks`: the open follow-up tasks of the accountant role.
+/// `GET /payments/tasks`: the open follow-up tasks of the accountant role and
+/// those assigned to the user.
 async fn tasks(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
-    let open = FollowupTask::open_for(&state.db, ACCOUNTANT_ROLE).await?;
+    // The accountants' tasks, and those assigned to the user (a case owner).
+    let open = FollowupTask::open_for_user(&state.db, ACCOUNTANT_ROLE, user.id).await?;
     Ok(View::typed(TasksPage {
         tx: texts::all(&lang),
         tasks: task_rows(&state, &texts_in(&lang), &open).await?,

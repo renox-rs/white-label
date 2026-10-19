@@ -9,6 +9,7 @@ pub mod cheque_deposit;
 mod cheque_events;
 mod cheque_machine;
 mod cheque_money;
+pub mod cheque_pages;
 pub mod chequer;
 pub mod config;
 pub mod credit;
@@ -97,6 +98,18 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "wl-payments/deposit.html",
         include_str!("../views/wl-payments/deposit.html"),
+    ),
+    (
+        "wl-payments/cheques.html",
+        include_str!("../views/wl-payments/cheques.html"),
+    ),
+    (
+        "wl-payments/cheque.html",
+        include_str!("../views/wl-payments/cheque.html"),
+    ),
+    (
+        "wl-payments/_bounce_sheet.html",
+        include_str!("../views/wl-payments/_bounce_sheet.html"),
     ),
 ];
 
@@ -259,6 +272,7 @@ impl Module for WlPayments {
         pages::routes()
             .merge(refund_pages::routes())
             .merge(deposit_pages::routes())
+            .merge(cheque_pages::routes())
     }
 
     fn register(&self, app: &mut Registry) {
@@ -278,7 +292,9 @@ impl Module for WlPayments {
             .view_data::<refund_pages::IndexPage>()
             .view_data::<refund_pages::ShowPage>()
             .view_data::<deposit_pages::IndexPage>()
-            .view_data::<deposit_pages::ShowPage>();
+            .view_data::<deposit_pages::ShowPage>()
+            .view_data::<cheque_pages::IndexPage>()
+            .view_data::<cheque_pages::ShowPage>();
         app.templates(|env| {
             for (name, source) in VIEWS {
                 // The app's own file of that name wins.
@@ -315,6 +331,14 @@ impl Module for WlPayments {
                 .group("nav.app")
                 .order(44)
                 .permission(permissions::DEPOSITS_VIEW),
+        );
+        app.nav(
+            "app",
+            NavLink::route("wl_payments.cheques.index", "nav.cheques")
+                .icon("landmark")
+                .group("nav.app")
+                .order(45)
+                .permission(permissions::CHEQUES_VIEW),
         );
         // `rnx state:diagram Payment` and the admin panel find the machine.
         renox::state_machine::register::<Payment>();
