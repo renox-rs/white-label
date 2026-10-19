@@ -20,6 +20,7 @@ pub mod mask;
 pub mod message;
 pub mod notices;
 pub mod notifier;
+pub mod opt_out;
 pub mod otp;
 pub mod pages;
 pub mod reactions;
@@ -61,6 +62,7 @@ pub use notices::{
     ProofError, ProofFile, ProofInput, ProofRefusal, StatutoryNotice, record_proof, validate_proof,
 };
 pub use notifier::Messages;
+pub use opt_out::{ReplyOutcome, handle_reply};
 pub use otp::{OtpFailure, failure_notice};
 pub use reactions::{
     GiveUpContext, GiveUpHandler, ReactionOutcome, Reactions, RecordingHandler, StepOutcome,
@@ -118,6 +120,10 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "wl-notify/send_windows.html",
         include_str!("../views/wl-notify/send_windows.html"),
+    ),
+    (
+        "wl-notify/unsubscribe.html",
+        include_str!("../views/wl-notify/unsubscribe.html"),
     ),
 ];
 
@@ -194,7 +200,8 @@ impl Module for WlNotify {
             .view_data::<pages::TypeEditPage>()
             .view_data::<pages::LogPage>()
             .view_data::<pages::NoticeProofPage>()
-            .view_data::<pages::SendWindowsPage>();
+            .view_data::<pages::SendWindowsPage>()
+            .view_data::<pages::UnsubscribePage>();
         // `rnx state:diagram Message` and the admin panel find the machine.
         renox::state_machine::register::<Message>();
         // `MessageSuppressed` after a `suppress` commits.

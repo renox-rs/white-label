@@ -48,6 +48,8 @@ pub struct Outgoing {
     pub title: String,
     /// The rendered body.
     pub body: String,
+    /// The sender ID an SMS goes out with (`AD-...` for a broadcast), if any.
+    pub sender_id: Option<String>,
 }
 
 impl Outgoing {
@@ -63,7 +65,14 @@ impl Outgoing {
                 .clone()
                 .unwrap_or_else(|| message.type_key.clone()),
             body: message.rendered_body.clone(),
+            sender_id: None,
         }
+    }
+
+    /// The same, sent with `sender_id`.
+    pub fn with_sender_id(mut self, sender_id: Option<&str>) -> Self {
+        self.sender_id = sender_id.map(str::to_owned);
+        self
     }
 }
 
@@ -287,6 +296,20 @@ pub trait SmsGateway: Send + Sync + 'static {
         to: &'a str,
         text: &'a str,
     ) -> ProviderFuture<'a, Result>;
+
+    /// As [`SmsGateway::send`], from the sender ID `sender` (the `AD-...` ID
+    /// of a marketing broadcast). A gateway that has no sender IDs keeps this
+    /// default and sends from its own.
+    fn send_from<'a>(
+        &'a self,
+        state: &'a AppState,
+        to: &'a str,
+        text: &'a str,
+        sender: &'a str,
+    ) -> ProviderFuture<'a, Result> {
+        let _ = sender;
+        self.send(state, to, text)
+    }
 }
 
 /// The app's SMS gateway, as provided.
@@ -347,7 +370,10 @@ pub fn register(app: &mut Registry) {
                 .address(SMS_CHANNEL)
                 .ok_or_else(|| renox::Error::permanent_message("the SMS has no number"))?;
             let text = message["text"].as_str().unwrap_or_default();
-            gateway.0.send(&state, &number, text).await
+            match message["from"].as_str() {
+                Some(sender) => gateway.0.send_from(&state, &number, text, sender).await,
+                None => gateway.0.send(&state, &number, text).await,
+            }
         },
     );
 }
@@ -363,6 +389,8 @@ pub struct ProviderNotice {
     pub title: String,
     /// The body.
     pub body: String,
+    /// The sender ID of an SMS.
+    pub sender_id: Option<String>,
 }
 
 impl Outgoing {
@@ -373,6 +401,7 @@ impl Outgoing {
             address: self.address.clone(),
             title: self.title.clone(),
             body: self.body.clone(),
+            sender_id: self.sender_id.clone(),
         }
     }
 }
@@ -399,7 +428,11 @@ impl Notification for ProviderNotice {
     }
 
     fn to_channel(&self, _channel: &str, _to: &Recipient, _state: &AppState) -> Result<Value> {
-        Ok(json!({ "to": self.address, "text": self.body }))
+        let mut payload = json!({ "to": self.address, "text": self.body });
+        if let Some(sender) = &self.sender_id {
+            payload["from"] = json!(sender);
+        }
+        Ok(payload)
     }
 }
 

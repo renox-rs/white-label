@@ -100,6 +100,16 @@ impl Job for SendMessage {
     }
 }
 
+/// The `AD-...` sender ID a marketing SMS of a broadcast goes out with.
+fn sender_id(state: &AppState, message: &Message) -> Option<String> {
+    if message.channel != wl_kernel::notify::NotifyChannel::Sms || message.broadcast_id.is_none() {
+        return None;
+    }
+    crate::broadcast::settings(state)
+        .valid_sms_sender_id()
+        .map(str::to_owned)
+}
+
 /// Sends message `id` once, if it is `queued`.
 ///
 /// "Now" is the module's clock ([`crate::clock`]).
@@ -133,7 +143,8 @@ pub async fn send_at(state: &AppState, id: i64, now: DateTime) -> Result<SendOut
         .filter(|p| p.available(state));
     let (name, result) = match (provider, message.address.as_deref()) {
         (Some(provider), Some(address)) => {
-            let outgoing = Outgoing::of(&message, address);
+            let outgoing = Outgoing::of(&message, address)
+                .with_sender_id(sender_id(state, &message).as_deref());
             (Some(provider.name()), provider.send(state, &outgoing).await)
         }
         (None, _) => (

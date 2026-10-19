@@ -39,6 +39,7 @@ use crate::broadcasts::announce_cancelled;
 use crate::clock::clock;
 use crate::message::Message;
 use crate::notifier::{compose, type_def};
+use crate::opt_out;
 use crate::recipients::{Resolved, Route};
 use crate::send::SendMessage;
 
@@ -258,6 +259,8 @@ async fn send_all(state: &AppState, id: i64, now: DateTime, batching: Batching) 
             let mut message = message_for(&def, &locked, recipient);
             message.insert(&mut tx).await?;
             message.chain_id = Some(message.id);
+            // The brand and the way out, now that the id is known.
+            opt_out::add_footer(state, &mut message)?;
             message.save(&mut tx).await?;
             state
                 .queue

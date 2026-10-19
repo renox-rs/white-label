@@ -1239,6 +1239,7 @@ async fn boot_core(
     let path = views.path().join("layouts/app.html");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(&path, LAYOUT).unwrap();
+    std::fs::write(views.path().join("layouts/public.html"), LAYOUT).unwrap();
 
     let email = Script::default();
     let sms = Script::default();

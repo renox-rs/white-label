@@ -9,6 +9,35 @@ use renox::prelude::*;
 const TEXTS: &[(&str, &str)] = &[
     ("wl_notify.title", "Notifications"),
     (
+        "wl_notify.optout.email",
+        "You are receiving this because you agreed to hear from :brand. Unsubscribe: :link",
+    ),
+    (
+        "wl_notify.optout.email_ar",
+        "وصلتك هذه الرسالة لأنك وافقت على تلقي رسائل من :brand. لإلغاء الاشتراك: :link",
+    ),
+    ("wl_notify.optout.sms", ":brand. Reply STOP to opt out"),
+    ("wl_notify.optout.sms_ar", ":brand. للإلغاء أرسل STOP"),
+    (
+        "wl_notify.unsubscribe.title",
+        "Unsubscribe from marketing emails",
+    ),
+    (
+        "wl_notify.unsubscribe.intro",
+        "Confirm to stop receiving marketing emails from this sender. Messages about your account and invoices are not affected.",
+    ),
+    ("wl_notify.unsubscribe.confirm", "Unsubscribe"),
+    ("wl_notify.unsubscribe.done_title", "You are unsubscribed"),
+    (
+        "wl_notify.unsubscribe.done",
+        "You will not receive marketing emails from this sender any more.",
+    ),
+    ("wl_notify.unsubscribe.invalid_title", "Link not valid"),
+    (
+        "wl_notify.unsubscribe.invalid",
+        "This unsubscribe link is not valid. Use the link in a recent email from the sender.",
+    ),
+    (
         "wl_notify.broadcast.excluded.blocked_party",
         "On hold or no longer active",
     ),

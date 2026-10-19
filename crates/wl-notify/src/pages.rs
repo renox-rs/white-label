@@ -11,6 +11,8 @@
 //! | `GET /statutory-notices/{id}/proof` | `wl_notify.notice_proof` | `notifications.notices.record_proof` (an unknown notice is 404) |
 //! | `POST /statutory-notices/{id}/proof` | `wl_notify.notice_proof_store` | the same (multipart; a refused proof is a 422, a second one a 409) |
 //! | `GET /statutory-notices/{id}/proof/file` | `wl_notify.notice_proof_file` | the same (the attachment) |
+//! | `GET /unsubscribe/{token}` | `wl_notify.unsubscribe` | nobody: public, the signed token is the key (a bad token shows a neutral page) |
+//! | `POST /unsubscribe/{token}` | `wl_notify.unsubscribe_confirm` | the same (withdraws the e-mail marketing consent, idempotent) |
 //!
 //! (`/notifications` is the Renox bell's page.) The log never shows a
 //! message that gave up or fell back as sent or delivered: an `abandoned`
@@ -31,6 +33,7 @@ use wl_kernel::notify::{self, GiveUpReaction, NotifyChannel, ProofMethod};
 use crate::message::{Message, MessageStatus, RecipientKind};
 use crate::notices::{self, ProofError, ProofFile, ProofInput, ProofRefusal, StatutoryNotice};
 use crate::notifier::type_def;
+use crate::opt_out;
 use crate::permissions;
 use crate::send_window::SendWindow;
 use crate::texts;
@@ -84,6 +87,61 @@ pub fn routes() -> Routes {
                 .name("wl_notify.notice_proof_file")
                 .require_permission(permissions::RECORD_PROOF),
         )
+        // Public: a recipient opens it from an e-mail, signed out. No
+        // guard; the token is the proof.
+        .merge(
+            Routes::new()
+                .get("/unsubscribe/{token}", unsubscribe_page)
+                .name(opt_out::ROUTE)
+                .post("/unsubscribe/{token}", unsubscribe_confirm)
+                .name("wl_notify.unsubscribe_confirm"),
+        )
+}
+
+/// The public unsubscribe page.
+#[derive(Serialize, ViewData)]
+#[view(template = "wl-notify/unsubscribe.html")]
+pub(crate) struct UnsubscribePage {
+    tx: Texts,
+    /// `ask` (the button), `done` or `invalid`.
+    step: &'static str,
+    token: String,
+    brand: String,
+}
+
+/// The page for `token` in `step`; a token that opens nothing is `invalid`.
+fn unsubscribe_view(state: &AppState, lang: &Lang, token: String, step: &'static str) -> View {
+    let valid = opt_out::message_of(state, &token).is_some();
+    View::typed(UnsubscribePage {
+        tx: texts::all(lang),
+        step: if valid { step } else { "invalid" },
+        token,
+        brand: opt_out::brand(state),
+    })
+}
+
+/// `GET /unsubscribe/{token}`: asks for the confirmation. It changes nothing
+/// (mail scanners open links).
+async fn unsubscribe_page(
+    State(state): State<AppState>,
+    lang: Lang,
+    Path(token): Path<String>,
+) -> Result<View> {
+    Ok(unsubscribe_view(&state, &lang, token, "ask"))
+}
+
+/// `POST /unsubscribe/{token}`: withdraws the e-mail marketing consent and
+/// suppresses the address as `opt_out`. A bad token changes nothing and shows
+/// the neutral page.
+async fn unsubscribe_confirm(
+    State(state): State<AppState>,
+    lang: Lang,
+    Path(token): Path<String>,
+) -> Result<View> {
+    if let Some(id) = opt_out::message_of(&state, &token) {
+        opt_out::confirm(&state, id).await?;
+    }
+    Ok(unsubscribe_view(&state, &lang, token, "done"))
 }
 
 /// The package texts in `lang`.
