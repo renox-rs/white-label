@@ -25,6 +25,7 @@ use crate::cheque::Cheque;
 use crate::cheque_bounce::{self, BOUNCE};
 use crate::cheque_deposit::CLEAR;
 use crate::cheque_represent::{self, REPRESENT};
+use crate::cheque_settle::{self, REPLACE};
 
 /// The event that says `cheque` was resolved as `outcome`, with the other
 /// bounced cheques of the party still open.
@@ -53,7 +54,12 @@ pub(crate) fn register(app: &mut Registry) {
     app.listen(|event: Transitioned<Cheque>, state: AppState| async move {
         let name = event.transition.as_str();
         if name == BOUNCE {
+            // A replacement cheque that bounces keeps its original.
+            cheque_settle::after_bounce(&state, event.key).await?;
             return cheque_bounce::after_bounce(&state, event.key).await;
+        }
+        if name == REPLACE {
+            return cheque_settle::after_replace(&state, event.key).await;
         }
         if name == REPRESENT {
             return cheque_represent::after_represent(&state, event.key).await;
@@ -63,6 +69,8 @@ pub(crate) fn register(app: &mut Registry) {
             if cheque.presentations > 1 {
                 resolved(&state, &cheque, ChequeOutcome::Cleared).await?;
             }
+            // The original this cheque replaces can be handed back.
+            cheque_settle::after_clear(&state, event.key).await?;
         }
         Ok(())
     });

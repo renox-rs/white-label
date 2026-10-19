@@ -8,6 +8,9 @@
 //! | `POST /cheques/{id}/clear` | `wl_payments.cheques.clear` | `cheques.deposit` |
 //! | `POST /cheques/{id}/bounce` | `wl_payments.cheques.bounce` | `cheques.deposit` (fields `reason`, `certificate`, `honoured`) |
 //! | `POST /cheques/{id}/represent` | `wl_payments.cheques.represent` | `cheques.deposit` (fields `date`, `funds_confirmed`, `note`) |
+//! | `POST /cheques/{id}/settle` | `wl_payments.cheques.settle` | `cheques.manage` (fields `method`, `amount`, `reference`) |
+//! | `POST /cheques/{id}/replacements` | `wl_payments.cheques.replacements` | `cheques.manage` (fields `kind`, `ref_id`) |
+//! | `POST /cheques/{id}/replace` | `wl_payments.cheques.replace` | `cheques.manage` |
 //!
 //! Every action has its own route: the transitions take input (a return
 //! reason and certificate, a date, an amount) that the kernel's transition
@@ -23,12 +26,16 @@ use renox::state_machine::{self, TransitionError};
 use serde::{Deserialize, Serialize};
 use wl_kernel::cheques::ChequeStatus;
 use wl_kernel::invoicing::INVOICE_SUBJECT_TYPE;
-use wl_kernel::payments::Direction;
+use wl_kernel::payments::{Direction, PaymentMethod};
 
 use crate::cheque::{Cheque, ChequeReturn};
 use crate::cheque_bounce::{self, BounceRequest};
 use crate::cheque_deposit;
 use crate::cheque_represent::{self, RepresentRequest};
+use crate::cheque_settle::{
+    self, ChequeReplacement, ReplacementKind, SETTLE_METHODS, SettleRequest,
+};
+use crate::payment::Payment;
 use crate::followup::{FollowupTask, money_text};
 use crate::pages::{
     Text, Texts, filled, invalid, options, parse_amount, party_name, texts_in,
@@ -90,6 +97,16 @@ pub fn routes() -> Routes {
                 .post("/cheques/{id}/represent", store_represent)
                 .name("wl_payments.cheques.represent")
                 .require_permission(permissions::CHEQUES_DEPOSIT),
+        )
+        .merge(
+            Routes::new()
+                .post("/cheques/{id}/settle", store_settle)
+                .name("wl_payments.cheques.settle")
+                .post("/cheques/{id}/replacements", store_replacement)
+                .name("wl_payments.cheques.replacements")
+                .post("/cheques/{id}/replace", store_replace)
+                .name("wl_payments.cheques.replace")
+                .require_permission(permissions::CHEQUES_MANAGE),
         )
 }
 
@@ -213,6 +230,16 @@ pub(crate) struct ChequeTaskRow {
     open: bool,
 }
 
+/// One replacement linked to a bounced cheque.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct ReplacementRow {
+    id: i64,
+    kind: String,
+    label: String,
+    link: String,
+    amount: String,
+}
+
 /// What the cheque page needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "wl-payments/cheque.html")]
@@ -239,6 +266,18 @@ pub(crate) struct ShowPage {
     can_represent: bool,
     /// Today, the earliest new presentation date.
     today: String,
+    /// Whether "Settle part" is offered: a received cheque still owed.
+    can_settle: bool,
+    /// Whether linking a replacement and "Replace" are offered: owed.
+    can_replace: bool,
+    /// The methods a part payment is made by, `(code, label)`.
+    settle_methods: Vec<(String, String)>,
+    /// The kinds of replacement, `(code, label)`.
+    replacement_kinds: Vec<(String, String)>,
+    /// The replacements linked, and what they cover against what is open.
+    replacements: Vec<ReplacementRow>,
+    covered: String,
+    covers_open_amount: bool,
     /// The return reasons offered, `(code, label)`.
     reasons: Vec<(String, String)>,
     /// Whether a certificate is required (a received cheque).
@@ -300,6 +339,42 @@ async fn task_rows(db: &Db, t: Text<'_>, cheque: &Cheque) -> Result<Vec<ChequeTa
         .collect())
 }
 
+/// The replacement rows of `cheque`.
+async fn replacement_rows(db: &Db, t: Text<'_>, cheque: &Cheque) -> Result<Vec<ReplacementRow>> {
+    let mut rows = Vec::new();
+    for link in ChequeReplacement::of_cheque(db, cheque.id).await? {
+        let (label, url) = match link.kind {
+            ReplacementKind::Cheque => {
+                let number = Cheque::find(db, link.ref_id)
+                    .await?
+                    .map_or_else(|| format!("#{}", link.ref_id), |c| c.number);
+                (
+                    format!("{} {number}", t("cheques.heading")),
+                    format!("/cheques/{}", link.ref_id),
+                )
+            }
+            ReplacementKind::Payment => {
+                let number = Payment::find(db, link.ref_id)
+                    .await?
+                    .and_then(|p| p.number)
+                    .unwrap_or_else(|| format!("#{}", link.ref_id));
+                (
+                    format!("{} {number}", t("cheques.replacement.payment")),
+                    format!("/payments/{}", link.ref_id),
+                )
+            }
+        };
+        rows.push(ReplacementRow {
+            id: link.id,
+            kind: t(&format!("cheques.replacement.{}", link.kind.as_str())),
+            label,
+            link: url,
+            amount: money_text(&cheque.currency, link.amount),
+        });
+    }
+    Ok(rows)
+}
+
 /// `GET /cheques/{id}`: the card, the documents it pays, its bank returns,
 /// its tasks, the actions and the history.
 async fn show(
@@ -337,6 +412,11 @@ async fn show(
         && cheque.honoured_amount == 0
         && i64::from(cheque.presentations) < config.cheque_max_presentations;
     let reason_codes: Vec<&str> = RETURN_REASONS.iter().map(|(code, _)| *code).collect();
+    let manage_rights = user.has_permission(permissions::CHEQUES_MANAGE);
+    let can_replace = manage_rights && cheque.status.is_owed();
+    let can_settle = can_replace && cheque.is_received();
+    let replacements = replacement_rows(&db, &t, &cheque).await?;
+    let covered = cheque_settle::covered_by_replacements(&db, &cheque).await?;
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
         title: format!("{} {}", t("cheques.heading"), cheque.number),
@@ -357,6 +437,17 @@ async fn show(
         can_clear,
         can_bounce,
         can_represent,
+        can_settle,
+        can_replace,
+        settle_methods: options(
+            &t,
+            "method",
+            &SETTLE_METHODS.iter().map(|m| m.as_str()).collect::<Vec<_>>(),
+        ),
+        replacement_kinds: options(&t, "cheques.replacement", &["cheque", "payment"]),
+        replacements,
+        covered: money(covered),
+        covers_open_amount: covered >= cheque.open_amount && cheque.open_amount > 0,
         today: wl_kernel::documents::today().format("%Y-%m-%d").to_string(),
         reasons: options(&t, "cheques.reason", &reason_codes),
         certificate_required: cheque.direction == Direction::In,
@@ -523,6 +614,131 @@ async fn store_represent(
     }
 }
 
+/// The part-payment sheet's form.
+#[derive(Deserialize, Serialize, Validate, Debug)]
+pub struct SettleForm {
+    /// The method code: `cash`, `transfer` or `card`.
+    #[validate(max = 32)]
+    pub method: Option<String>,
+    /// The amount in dirhams, like `4000.00`.
+    #[validate(max = 32)]
+    pub amount: Option<String>,
+    /// The transfer's or card slip's reference.
+    #[validate(max = 200)]
+    pub reference: Option<String>,
+}
+
+/// The method with code `code`, if a part payment can be made by it.
+fn settle_method_of(code: &str) -> Option<PaymentMethod> {
+    SETTLE_METHODS
+        .iter()
+        .copied()
+        .find(|method| method.as_str() == code.trim())
+}
+
+/// `POST /cheques/{id}/settle`: records the party's part payment and reloads
+/// the page. A refused guard (not below the open amount, a transfer without a
+/// reference) answers 422 under its field.
+async fn store_settle(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(cheque): Found<Cheque>,
+    Valid(form): Valid<SettleForm>,
+) -> Result<Response> {
+    let t = texts_in(&lang);
+    let Some(method) = filled(&form.method).and_then(settle_method_of) else {
+        return Err(invalid("method", t("cheques.settle.method_required"), &form));
+    };
+    let Some(amount) = filled(&form.amount).and_then(parse_amount) else {
+        return Err(invalid("amount", t("cheques.settle.amount_required"), &form));
+    };
+    let request = SettleRequest {
+        method,
+        amount,
+        reference: form.reference.clone(),
+    };
+    match cheque_settle::settle_part(&state, &user, &cheque, &request).await {
+        Ok(_) => Ok((Toast::success(t("cheques.settle.done")), renox::HxRefresh).into_response()),
+        Err(TransitionError::Guard(message)) => {
+            let field = if message.contains("reference") {
+                "reference"
+            } else if message.contains("method") || message.contains("cash") {
+                "method"
+            } else {
+                "amount"
+            };
+            Err(invalid(field, message, &form))
+        }
+        Err(other) => Err(other.into_error()),
+    }
+}
+
+/// The replacement sheet's form.
+#[derive(Deserialize, Serialize, Validate, Debug)]
+pub struct ReplacementForm {
+    /// `cheque` or `payment`.
+    #[validate(max = 32)]
+    pub kind: Option<String>,
+    /// The id of the replacement cheque or payment.
+    #[validate(required)]
+    pub ref_id: Option<i64>,
+}
+
+/// The replacement kind with code `code`.
+fn replacement_kind_of(code: &str) -> Option<ReplacementKind> {
+    ReplacementKind::ALL
+        .iter()
+        .copied()
+        .find(|kind| kind.as_str() == code.trim())
+}
+
+/// `POST /cheques/{id}/replacements`: links a cheque or a payment as the
+/// replacement and reloads the page. A refusal (another party, already
+/// linked) answers 422 under the id.
+async fn store_replacement(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(cheque): Found<Cheque>,
+    Valid(form): Valid<ReplacementForm>,
+) -> Result<Response> {
+    let t = texts_in(&lang);
+    let Some(kind) = filled(&form.kind).and_then(replacement_kind_of) else {
+        return Err(invalid("kind", t("cheques.replacement.kind_required"), &form));
+    };
+    let Some(ref_id) = form.ref_id else {
+        return Err(invalid("ref_id", t("cheques.replacement.id_required"), &form));
+    };
+    match cheque_settle::link_replacement(&state, &user, &cheque, kind, ref_id).await {
+        Ok(_) => Ok((
+            Toast::success(t("cheques.replacement.done")),
+            renox::HxRefresh,
+        )
+            .into_response()),
+        Err(TransitionError::Guard(message)) => Err(invalid("ref_id", message, &form)),
+        Err(other) => Err(other.into_error()),
+    }
+}
+
+/// `POST /cheques/{id}/replace`: marks the cheque replaced and reloads the
+/// page. Replacements that do not cover the open amount answer 422.
+async fn store_replace(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(cheque): Found<Cheque>,
+) -> Result<Response> {
+    cheque_settle::replace(&state, &user, &cheque)
+        .await
+        .map_err(TransitionError::into_error)?;
+    Ok((
+        Toast::success(texts::t(&lang, "wl_payments.cheques.replace.done")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -590,6 +806,20 @@ mod tests {
         assert_eq!(honoured_of(&form(Some("6000"))), Some(600_000));
         assert_eq!(honoured_of(&form(Some("6,000.50"))), Some(600_050));
         assert_eq!(honoured_of(&form(Some("six"))), None);
+    }
+
+    #[test]
+    fn a_part_payment_is_made_in_cash_by_transfer_or_by_card() {
+        for code in ["cash", "transfer", "card"] {
+            assert!(settle_method_of(code).is_some(), "{code}");
+        }
+        assert_eq!(settle_method_of(" cash "), Some(PaymentMethod::Cash));
+        for code in ["cheque", "gateway", ""] {
+            assert_eq!(settle_method_of(code), None, "{code}");
+        }
+        assert_eq!(replacement_kind_of("cheque"), Some(ReplacementKind::Cheque));
+        assert_eq!(replacement_kind_of("payment"), Some(ReplacementKind::Payment));
+        assert_eq!(replacement_kind_of("loan"), None);
     }
 
     #[test]

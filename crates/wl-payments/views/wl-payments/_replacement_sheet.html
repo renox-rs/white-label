@@ -1,0 +1,10 @@
+{#- wl-payments: the "link a replacement" action on a bounced cheque's page,
+    a sheet with the kind of replacement (a new cheque or a payment) and its
+    id. Replace it with resources/views/wl-payments/_replacement_sheet.html
+    in the app. -#}
+<rx-action-sheet :id="'replacement-cheque-' ~ cheque.id" :label="tx['cheques.replacement.action']" :action="route('wl_payments.cheques.replacements', cheque.id)"
+                 :title="tx['cheques.replacement.title']" :description="tx['cheques.replacement.description']" :submit-label="tx['cheques.replacement.submit']"
+                 icon="link">
+  <rx-select name="kind" :label="tx['cheques.replacement.kind']" :options="replacement_kinds" :id="'replacement-kind-' ~ cheque.id" required/>
+  <rx-input name="ref_id" type="number" :label="tx['cheques.replacement.id']" :hint="tx['cheques.replacement.id_hint']" :id="'replacement-id-' ~ cheque.id" required/>
+</rx-action-sheet>

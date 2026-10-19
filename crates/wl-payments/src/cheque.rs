@@ -104,6 +104,8 @@ pub struct Cheque {
     pub referred_on: Option<NaiveDate>,
     /// The user who registered it; `None` for the system.
     pub recorded_by: Option<i64>,
+    /// Why a replaced cheque is still kept: its replacement bounced.
+    pub custody_note: Option<String>,
     /// The lifecycle state; changed only by a transition.
     pub status: ChequeStatus,
     /// When the row was created.

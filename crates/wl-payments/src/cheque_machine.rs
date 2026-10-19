@@ -63,6 +63,7 @@ impl StateMachine for Cheque {
             .into_iter()
             .chain(crate::cheque_bounce::transitions())
             .chain(crate::cheque_represent::transitions())
+            .chain(crate::cheque_settle::transitions())
             .fold(machine, Machine::transition)
     }
 }

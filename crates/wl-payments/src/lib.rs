@@ -11,6 +11,7 @@ mod cheque_machine;
 mod cheque_money;
 pub mod cheque_pages;
 pub mod cheque_represent;
+pub mod cheque_settle;
 pub mod chequer;
 pub mod config;
 pub mod credit;
@@ -115,6 +116,14 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "wl-payments/_represent_sheet.html",
         include_str!("../views/wl-payments/_represent_sheet.html"),
+    ),
+    (
+        "wl-payments/_settle_sheet.html",
+        include_str!("../views/wl-payments/_settle_sheet.html"),
+    ),
+    (
+        "wl-payments/_replacement_sheet.html",
+        include_str!("../views/wl-payments/_replacement_sheet.html"),
     ),
 ];
 
@@ -289,6 +298,7 @@ impl Module for WlPayments {
         app.model::<Cheque>();
         app.model::<ChequeLink>();
         app.model::<ChequeReturn>();
+        app.model::<cheque_settle::ChequeReplacement>();
         app.model::<FollowupTask>();
         app.view_data::<pages::IndexPage>()
             .view_data::<pages::NewPage>()
