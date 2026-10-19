@@ -1369,3 +1369,32 @@ fn the_late_entry_check_and_the_opt_in_registry() {
         "late_entries.approve"
     );
 }
+
+/// #29: the integration contract. A module registers a connection with its
+/// screens and manual fallback; the retry wait is 1, 2, 4 and 8 minutes and
+/// then 15 minutes for ever.
+#[test]
+fn the_integration_registry_and_the_retry_wait() {
+    use wl_kernel::integrations::{self, retry_wait};
+    use wl_kernel::{Delivery, IntegrationDef};
+
+    IntegrationDef::of("asp.acme", "invoicing", |_state, _call| {
+        Box::pin(async { Ok(Delivery::Sent) })
+    })
+    .owner_role("accountant")
+    .screens(["invoicing.invoice_list", "invoicing.invoice_detail"])
+    .fallback("File the invoice on the ASP portal by hand.", None)
+    .register();
+    let def = integrations::get("asp.acme").expect("registered");
+    assert_eq!(def.owner_role_name(), "accountant");
+    assert_eq!(def.down_after(), 15);
+    assert_eq!(def.screen_keys().len(), 2);
+
+    let waits: Vec<i64> = (1..=6).map(|n| retry_wait(n).num_minutes()).collect();
+    assert_eq!(waits, [1, 2, 4, 8, 15, 15]);
+    assert_eq!(wl_kernel::permissions::INTEGRATIONS_VIEW, "integrations.view");
+    assert_eq!(
+        wl_kernel::permissions::INTEGRATIONS_MANAGE,
+        "integrations.manage"
+    );
+}

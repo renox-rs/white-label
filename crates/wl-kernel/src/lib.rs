@@ -14,6 +14,7 @@ pub mod delivery;
 pub mod documents;
 pub mod entities;
 pub mod held_funds;
+pub mod integrations;
 pub mod invoicing;
 pub mod late_entries;
 pub mod machines;
@@ -71,6 +72,7 @@ pub use documents::{
 };
 pub use entities::{IssuerSnapshot, LegalEntity, ScopeEntity};
 pub use held_funds::{FundsSource, HeldFund, HeldFundsSource, held_for_all};
+pub use integrations::{Delivery, IntegrationDef, IntegrationStatusChanged, Outbound};
 pub use invoicing::{
     BillBalance, BillReopenReason, CostObjectAmount, CostPoster, CostReversal, CreditLine,
     CreditNoteId, CreditNoteIssued, CreditNoteReopened, CreditNoteStatus, CreditNoteSummary,
@@ -133,6 +135,10 @@ pub mod permissions {
     pub const RECORDS_VOID: &str = "records.void";
     /// Approve a late entry beyond N hours or in a closed period (`PLT.ACL.10`).
     pub const LATE_ENTRIES_APPROVE: &str = "late_entries.approve";
+    /// See the integration connections: their health, last error and queue.
+    pub const INTEGRATIONS_VIEW: &str = "integrations.view";
+    /// Disable and enable an integration connection.
+    pub const INTEGRATIONS_MANAGE: &str = "integrations.manage";
 }
 
 /// The templates, compiled in. An app replaces one with a file of the same

@@ -63,6 +63,8 @@ pub const ROLES: &[(&str, &[&str])] = &[
             wl_kernel::permissions::AUTOMATIONS_RETRY,
             wl_kernel::permissions::RECORDS_VOID,
             wl_kernel::permissions::LATE_ENTRIES_APPROVE,
+            wl_kernel::permissions::INTEGRATIONS_VIEW,
+            wl_kernel::permissions::INTEGRATIONS_MANAGE,
             parties::VIEW,
             parties::CREATE,
             parties::UPDATE,
