@@ -354,6 +354,32 @@ async fn without_notify_the_notifier_queues_nothing() {
     );
 }
 
+/// #59 AC6: without the notify module, a statutory notice is never read as
+/// delivered, and no undelivered notice is listed.
+#[renox::test]
+async fn without_notify_a_notice_is_not_delivered() {
+    use wl_kernel::Subject;
+    use wl_kernel::notify::{self, NoticeStatus};
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let state = app.state();
+    let subject = Subject::new("property.lease", 7);
+    let notifier = notify::notifier(state);
+    let status = notifier
+        .notice_status(state, &subject, "lease.changed_terms_notice")
+        .await
+        .unwrap();
+    assert_eq!(status, NoticeStatus::NotDelivered);
+    assert!(
+        notifier
+            .undelivered_notices(state, &subject)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
 /// AC8 of #99: with payments off (the kernel alone), `RefundFailed` and
 /// `RefundSource` still compile and serialise, so the listeners of other
 /// modules (credit note, order, booking) build and can read the event.

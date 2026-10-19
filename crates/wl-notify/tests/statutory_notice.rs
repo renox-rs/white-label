@@ -5,16 +5,23 @@
 mod support;
 
 use renox::prelude::Model;
-use wl_kernel::notify::{GiveUpReaction, MessageGaveUp, NoticeStatus, Urgency};
+use renox::state_machine::StateMachine;
+use wl_kernel::notify::{
+    self, GiveUpReaction, MessageGaveUp, NoticeStatus, ProofMethod, StatutoryNoticeProofRecorded,
+    Urgency,
+};
 use wl_kernel::tickets::{Assignee, TASK_CATEGORY};
 use wl_kernel::{Subject, calendar};
 use wl_notify::reactions::DEFERRED;
 use wl_notify::staff_task::{NO_TASK_CREATOR, TASK_CREATED};
 use wl_notify::statutory_notice::{NOT_STATUTORY, StatutoryNoticeHandler, TASK_OPEN};
-use wl_notify::{GiveUpContext, GiveUpHandler, Message, ReactionRun, RunStatus, StatutoryNotice};
+use wl_notify::{
+    GiveUpContext, GiveUpHandler, Message, MessageStatus, NotificationType, ReactionRun, RunStatus,
+    StatutoryNotice, notices,
+};
 
 use support::{
-    COORDINATOR, SARA_EMAIL, SARA_MOBILE, SECRET_BODY, SECRET_SUBJECT, TICKET_NOT_STATUTORY,
+    COORDINATOR, SARA, SARA_EMAIL, SARA_MOBILE, SECRET_BODY, SECRET_SUBJECT, TICKET_NOT_STATUTORY,
     TICKET_NOTICE, TICKET_NOTICE_URGENT, TOWER_A_TICKET, boot_statutory,
     boot_statutory_without_tickets, tower_a,
 };
@@ -194,4 +201,162 @@ async fn without_ticketing_the_record_is_kept_and_the_run_succeeds() {
     let steps = steps(&t, &event).await;
     assert_eq!(steps[0].status, NO_TASK_CREATOR);
     assert_eq!(steps[1].status, DEFERRED);
+}
+
+/// AC4: a statutory notice the provider accepts gives up on nothing: no
+/// record, no task. Only `sent` it is `NotDelivered`; once the provider
+/// confirms delivery it is `Delivered` with the provider's time.
+#[renox::test]
+async fn a_delivered_notice_makes_no_record_and_no_task() {
+    let t = boot_statutory().await;
+    t.holder("Aisha", COORDINATOR, Some(&tower_a())).await;
+    let ids = t.notify_party(TICKET_NOTICE, SARA).await;
+    t.app.run_all_jobs().await;
+    assert!(t.gave_up.all().is_empty());
+    assert!(t.tasks.opened().is_empty());
+    assert!(
+        StatutoryNotice::query()
+            .first(t.db())
+            .await
+            .unwrap()
+            .is_none()
+    );
+
+    let invoice = Subject::new("invoicing.invoice", 7);
+    let state = t.app.state();
+    let status = || async {
+        notify::notifier(state)
+            .notice_status(state, &invoice, TICKET_NOTICE)
+            .await
+            .unwrap()
+    };
+    let message = t.message(ids[0]).await;
+    assert_eq!(message.status, MessageStatus::Sent);
+    assert_eq!(status().await, NoticeStatus::NotDelivered);
+
+    let at = renox::db::now();
+    let mut tx = t.db().begin().await.unwrap();
+    let _ = message
+        .transition("deliver")
+        .by_system()
+        .run_in(&mut tx)
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    let mut message = t.message(ids[0]).await;
+    assert_eq!(message.status, MessageStatus::Delivered);
+    message.delivered_at = Some(at);
+    message.save(t.db()).await.unwrap();
+    assert_eq!(status().await, NoticeStatus::Delivered { at });
+    assert!(
+        notices::undelivered(t.db(), &invoice)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert!(t.tasks.opened().is_empty());
+}
+
+/// AC5: two statutory types on one subject keep separate statuses; the
+/// proof of one leaves the other not delivered.
+#[renox::test]
+async fn the_proof_of_one_type_leaves_the_other_not_delivered() {
+    let t = boot_statutory().await;
+    t.holder("Aisha", COORDINATOR, Some(&tower_a())).await;
+    let first = t
+        .give_up_on_sara(TICKET_NOTICE, TOWER_A_TICKET, "TKT-2026-0042")
+        .await;
+    t.give_up_on_sara(TICKET_NOTICE_URGENT, TOWER_A_TICKET, "TKT-2026-0042")
+        .await;
+    let notice = record_of(&t, &first).await.unwrap();
+    assert_eq!(t.tasks.opened().len(), 2);
+
+    let clerk = t.user("Pia", &[wl_notify::permissions::RECORD_PROOF]).await;
+    t.app.acting_as(&clerk);
+    t.app.fake_events();
+    let today = wl_kernel::documents::today().format("%Y-%m-%d").to_string();
+    t.app
+        .post_multipart(
+            &format!("/statutory-notices/{}/proof", notice.id),
+            &[
+                ("method", "call"),
+                ("delivered_on", &today),
+                ("note", "Phoned"),
+            ],
+            &[],
+        )
+        .await
+        .assert_ok();
+    assert_eq!(t.app.emitted::<StatutoryNoticeProofRecorded>().len(), 1);
+
+    let first = notices::status(t.db(), &ticket(), TICKET_NOTICE)
+        .await
+        .unwrap();
+    assert!(matches!(first, NoticeStatus::ProofRecorded { .. }));
+    let second = notices::status(t.db(), &ticket(), TICKET_NOTICE_URGENT)
+        .await
+        .unwrap();
+    assert_eq!(second, NoticeStatus::NotDelivered);
+    let left = notices::undelivered(t.db(), &ticket()).await.unwrap();
+    assert_eq!(left.len(), 1);
+    assert_eq!(left[0].type_key, TICKET_NOTICE_URGENT);
+}
+
+/// AC3 and AC7: a `call` proof needs a note, not an attachment; a method
+/// the type does not offer is refused and the form lists only what it
+/// offers.
+#[renox::test]
+async fn only_the_methods_a_type_offers_are_accepted() {
+    let t = boot_statutory().await;
+    t.holder("Aisha", COORDINATOR, Some(&tower_a())).await;
+    let event = t
+        .give_up_on_sara(TICKET_NOTICE, TOWER_A_TICKET, "TKT-2026-0042")
+        .await;
+    let notice = record_of(&t, &event).await.unwrap();
+    let mut row = NotificationType::by_key(t.db(), TICKET_NOTICE)
+        .await
+        .unwrap()
+        .unwrap();
+    row.proof_methods = renox::db::Json(vec![ProofMethod::Call, ProofMethod::Courier]);
+    row.save(t.db()).await.unwrap();
+
+    let clerk = t.user("Pia", &[wl_notify::permissions::RECORD_PROOF]).await;
+    t.app.acting_as(&clerk);
+    let url = format!("/statutory-notices/{}/proof", notice.id);
+    t.app
+        .get(&url)
+        .await
+        .assert_ok()
+        .assert_see("courier")
+        .assert_dont_see("registered mail")
+        .assert_dont_see("hand delivery");
+    let today = wl_kernel::documents::today().format("%Y-%m-%d").to_string();
+    t.app
+        .htmx()
+        .post_multipart(
+            &url,
+            &[("method", "hand_delivery"), ("delivered_on", &today)],
+            &[("files", "signed.pdf", b"%PDF-1.7")],
+        )
+        .await
+        .assert_invalid("method");
+    t.app
+        .post_multipart(
+            &url,
+            &[
+                ("method", "call"),
+                ("delivered_on", &today),
+                ("note", "Phoned Sara M."),
+            ],
+            &[],
+        )
+        .await
+        .assert_ok();
+    let stored = StatutoryNotice::find(t.db(), notice.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(stored.proof_method, Some(ProofMethod::Call));
+    assert!(stored.attachment_key.is_none());
+    assert_eq!(t.tasks.completed().len(), 1);
 }

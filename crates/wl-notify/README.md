@@ -20,6 +20,9 @@ What is here so far:
 | Part | Spec | Module |
 |---|---|---|
 | Permissions (`notifications.*`) | §6 | `permissions` |
+| Statutory notice records, `notice_status`, `undelivered_notices` | §5.4, §6 | `notices` |
+| The `statutory_notice` give-up reaction and its task | §5.4 | `statutory_notice` |
+| Proof of delivery: form, attachment, `StatutoryNoticeProofRecorded` (`notifications.notices.record_proof`) | §5.4 | `pages` |
 
 `types::install` also fills the default give-up reaction (kernel `default_give_up`, §5.4) into a
 stored type whose reactions are empty and which the client never edited; edited rows are kept.

@@ -297,6 +297,35 @@ with backoff like any automation and shows as `AutomationFailed`.
 | `statutory_notice` | For statutory types: `staff_task` to the responsible staff, due in 1 working day, to deliver the notice by another means (courier, registered mail, hand delivery, a call with a note) and record the proof on the subject. Until proof is recorded, the subject shows "notice not delivered", and any deadline that depends on the notice being given is not treated as started |
 | `none` | Only the delivery log records it (marketing, tracking links) |
 
+**The `statutory_notice` reaction.** When a statutory notice gives up, `wl-notify` keeps one
+statutory-notice record for the chain (a retried run adds no second one) and opens one task
+through the task creator: "Deliver {subject} notice to {recipient} by another means", due 1
+working day after the give-up, assigned like `staff_task`, with an urgent alert for an urgent
+type. The task lists the channels tried with masked addresses, never the message, the proof
+methods the type accepts and the link to the proof form. It takes over the type's `staff_task`,
+so the staff get one task (that step is recorded `deferred`). The run records one outcome:
+`task_created`, `task_open` (a retry found the open task), `no_task_creator` (ticketing is off;
+the record is kept and the run succeeds) or `not_statutory` (the type is not statutory:
+nothing is kept).
+
+**Proof of delivery.** Staff with `notifications.notices.record_proof` (company admin by
+default) record the proof on the notice's page: method (`courier`, `registered_mail`,
+`hand_delivery` or `call`, narrowed per type by its proof methods), delivery date, note and
+attachment. The delivery date must not be in the future nor before the day the notice gave up
+(the same day is allowed). The attachment is required for every method except `call`, which
+needs a note instead; it is a PDF, image or plain-text file, stored privately and served only
+to holders of the permission. An invalid proof answers 422 and stores nothing; a second proof
+on a notice, or one on a notice already delivered, answers 409; an unknown notice answers 404.
+Recording the proof resolves the task ("Proof recorded") and emits
+`StatutoryNoticeProofRecorded` once, after commit, with the notice, subject, type, method and
+delivery date. `Notifier::notice_status(subject, type)` then answers `proof_recorded` with that
+date. It answers `delivered` with the provider's delivery time for a notice that was delivered,
+and `not_delivered` for one only sent, queued, retrying or given up without proof, and for every
+type when `notify` is off. Each type has its own status; the newest message chain of the
+subject and type decides. `undelivered_notices(subject)` lists the notices that gave up without
+proof, for the "notice not delivered" banner (`wl-notify/_notice_banner.html`) a vertical page
+includes on the subject.
+
 **Default reaction per type group.** A type registered without a give-up reaction gets one from
 the table below, chosen in this order: statutory, then OTP, then the group, then urgency. The
 group is the key the module gives in `register_type` (constants in the kernel); any other
