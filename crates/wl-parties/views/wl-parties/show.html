@@ -6,6 +6,7 @@
     <rx-page-header :title="party.display_name" :subtitle="party.code" :back="route('wl_parties.index')" :back-label="tx['title']">
       <template rx-if="can_block"><rx-include template="wl-parties/_block_sheet.html"/></template>
       <template rx-if="can_unblock"><rx-include template="wl-parties/_unblock_sheet.html"/></template>
+      <rx-link-button rx-if="can_update and company" :href="route('wl_parties.einvoice', party.id)" :label="tx['fields.einvoice_recipient_id']" variant="plain" icon="file-text"/>
       <template rx-if="can_manual_check"><rx-include template="wl-parties/manual_check_sheet.html"/></template>
     </rx-page-header>
     <rx-include template="wl-kernel/screening_notice.html"/>

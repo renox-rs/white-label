@@ -1,0 +1,27 @@
+{#- wl-parties: a company's e-invoicing recipient identifier (Peppol
+    participant ID) with *Look up* by TRN. The lookup only fills the field
+    for the user to confirm; saving is a separate step. While the ASP
+    connection is not up (or the company has no TRN) the lookup is off and
+    the identifier is entered by hand. Replace it with
+    resources/views/wl-parties/einvoice.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['fields.einvoice_recipient_id']">
+  <rx-stack>
+    <rx-page-header :title="tx['fields.einvoice_recipient_id']" :subtitle="party.display_name" :back="route('wl_parties.show', party.id)" :back-label="party.display_name"/>
+    <rx-include template="wl-kernel/integration_banner.html"/>
+    <rx-alert rx-if="message" :kind="message_kind" :message="message"/>
+    <rx-card>
+      <rx-form :action="route('wl_parties.einvoice_store', party.id)" novalidate>
+        <rx-form-errors/>
+        <rx-input name="einvoice_recipient_id" :label="tx['fields.einvoice_recipient_id']" :hint="tx['fields.einvoice_recipient_id_hint']" :value="value" maxlength="100"/>
+        <div class="rx-card__footer">
+          <rx-link-button :href="route('wl_parties.show', party.id)" :label="tx['cancel']" variant="plain"/>
+          <rx-button :label="tx['einvoice.save']"/>
+        </div>
+      </rx-form>
+      <rx-form :action="route('wl_parties.einvoice_lookup', party.id)" novalidate>
+        <rx-button rx-if="lookup_enabled" :label="tx['einvoice.lookup']" variant="plain" icon="search"/>
+        <rx-button rx-else :label="tx['einvoice.lookup']" variant="plain" icon="search" disabled :disabled-reason="tx['einvoice.unavailable']"/>
+      </rx-form>
+    </rx-card>
+  </rx-stack>
+</rx-page>

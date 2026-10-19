@@ -713,6 +713,7 @@ const TEXTS: &[(&str, &str)] = &[
         "Peppol participant ID, scheme and identifier, e.g. 0235:100123456700003.",
     ),
     ("wl_parties.einvoice.lookup", "Look up"),
+    ("wl_parties.einvoice.save", "Save"),
     (
         "wl_parties.einvoice.found",
         "Found :id. Check it and save to keep it.",

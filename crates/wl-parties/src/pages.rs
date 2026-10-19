@@ -12,6 +12,9 @@
 //! | `GET /parties/{id}/block-records/{record}/evidence/{file}` | `wl_parties.block_evidence` | `parties.view` (same visibility as the record) |
 //! | `POST /parties/{id}/contact-points/{point}` | `wl_parties.contact_update` | `parties.update` (a point of another party is 404; a bad value is a 422) |
 //! | `POST /parties/{id}/contact-points/{point}/verify` | `wl_parties.contact_verify` | `parties.update` (the same 404) |
+//! | `GET /parties/{id}/einvoice` | `wl_parties.einvoice` | `parties.update` (a person is 404; `?result=` and `?found=` carry the answer of a lookup) |
+//! | `POST /parties/{id}/einvoice` | `wl_parties.einvoice_store` | `parties.update` (form field `einvoice_recipient_id`; a change emits `PartyUpdated`) |
+//! | `POST /parties/{id}/einvoice/lookup` | `wl_parties.einvoice_lookup` | `parties.update` (asks the ASP by the company's TRN, saves nothing, then shows the page) |
 //! | `GET /parties/block-effects` | `wl_parties.block_effects` | `parties.block` (read-only: the vertical sets the values) |
 //! | `GET /parties/review-tasks` | `wl_parties.review_tasks` | signed in; lists the open tasks whose decider role the user holds |
 //! | `GET /parties/review-tasks/{id}` | `wl_parties.review_task` | the task's decider role in its scope, else 403 |
@@ -34,6 +37,7 @@
 use std::collections::BTreeMap;
 
 use renox::Download;
+use renox::axum::extract::Query;
 use renox::chrono::{NaiveDate, NaiveDateTime};
 use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
@@ -42,6 +46,8 @@ use renox::validation::{Errors, ValidationError};
 use serde::{Deserialize, Serialize};
 use wl_kernel::approvals::{self, ApprovalCard};
 use wl_kernel::block_effects::{self as kernel_effects, BlockEffect, Decision};
+use wl_kernel::einvoice::{Lookup, PARTY_SCREEN};
+use wl_kernel::integrations::web::banner_for;
 use wl_kernel::screening_guard::{ScreeningNoticeView, screening_guard, stale_notice_view};
 use wl_kernel::{PartyKind, PartyStatus, ScreeningStatus, Subject};
 
@@ -55,6 +61,7 @@ use crate::confirm_match;
 use crate::contacts::{ContactPoint, ContactStatus, ContactType, update_contact, verify_contact};
 use crate::create::{NewParty, create};
 use crate::details::{CompanyDetails, PersonDetails};
+use crate::einvoice::{clean, lookup_available, lookup_recipient, set_recipient_id};
 use crate::evidence::{UnblockBasis, UnblockEvidence};
 use crate::list_parser::ListParsers;
 use crate::list_upload::{
@@ -163,6 +170,12 @@ pub fn routes() -> Routes {
                     verify_contact_point,
                 )
                 .name("wl_parties.contact_verify")
+                .get("/parties/{id}/einvoice", einvoice_page)
+                .name("wl_parties.einvoice")
+                .post("/parties/{id}/einvoice", store_einvoice)
+                .name("wl_parties.einvoice_store")
+                .post("/parties/{id}/einvoice/lookup", lookup_einvoice)
+                .name("wl_parties.einvoice_lookup")
                 .require_permission(permissions::UPDATE),
         )
         .merge(
@@ -345,6 +358,10 @@ pub struct PartyForm {
     /// A company's TRN (sent only for a company).
     #[validate(max = 15)]
     pub trn: Option<String>,
+    /// A company's e-invoicing recipient identifier, entered by hand (the
+    /// lookup by TRN is on the company's e-invoicing page).
+    #[validate(max = 100)]
+    pub einvoice_recipient_id: Option<String>,
 }
 
 impl PartyForm {
@@ -372,6 +389,7 @@ impl PartyForm {
             company: (self.kind == PartyKind::Company).then(|| CompanyDetails {
                 vat_registered: trn.is_some(),
                 trn,
+                einvoice_recipient_id: clean(self.einvoice_recipient_id.as_deref()),
                 ..Default::default()
             }),
             roles: Vec::new(),
@@ -883,6 +901,146 @@ async fn verify_contact_point(
         renox::HxRefresh,
     )
         .into_response())
+}
+
+/// What the e-invoicing page of a company needs.
+#[derive(Serialize, ViewData)]
+#[view(template = "wl-parties/einvoice.html")]
+pub(crate) struct EinvoicePage {
+    tx: Texts,
+    party: Party,
+    /// What the field starts with: the ID a lookup found (to confirm), else
+    /// the stored one.
+    value: String,
+    /// The answer of a lookup, if one was just made.
+    message: Option<String>,
+    /// `success` or `warning`.
+    message_kind: &'static str,
+    /// Whether the company has a TRN, so the lookup can be used.
+    has_trn: bool,
+    /// Whether *Look up* is enabled: a TRN and the ASP connection `up`.
+    lookup_enabled: bool,
+    /// The banner of a `down` ASP connection (the manual fallback).
+    integration_banner: Option<renox::serde_json::Value>,
+}
+
+/// What a lookup left in the address.
+#[derive(Deserialize, Debug, Default)]
+pub struct EinvoiceQuery {
+    /// `found`, `not_found`, `failed` or `unavailable`.
+    #[serde(default)]
+    pub result: String,
+    /// The ID that was found, when `result` is `found`.
+    #[serde(default)]
+    pub found: String,
+}
+
+/// `GET /parties/{id}/einvoice`: the company's e-invoicing recipient
+/// identifier with *Look up*. A found ID is only filled in; nothing is saved
+/// until the user saves the form. A person has no such field (404).
+async fn einvoice_page(
+    State(state): State<AppState>,
+    lang: Lang,
+    Found(party): Found<Party>,
+    Query(query): Query<EinvoiceQuery>,
+) -> Result<View> {
+    let company = CompanyDetails::query()
+        .where_(CompanyDetails::PARTY_ID.eq(party.id))
+        .first(&state.db)
+        .await?
+        .ok_or(Error::NotFound)?;
+    let has_trn = clean(company.trn.as_deref()).is_some();
+    let lookup_enabled = has_trn && lookup_available(&state).await?;
+    let found = clean(Some(&query.found)).filter(|_| query.result == "found");
+    let (message, message_kind) = match (query.result.as_str(), &found) {
+        ("found", Some(id)) => (
+            Some(texts::t_with(&lang, "wl_parties.einvoice.found", &[("id", id)])),
+            "success",
+        ),
+        ("not_found", _) => (
+            Some(texts::t(&lang, "wl_parties.einvoice.not_found")),
+            "warning",
+        ),
+        ("failed", _) => (
+            Some(texts::t(&lang, "wl_parties.einvoice.lookup_failed")),
+            "warning",
+        ),
+        ("unavailable", _) => (
+            Some(texts::t(&lang, "wl_parties.einvoice.unavailable")),
+            "warning",
+        ),
+        _ => (None, "success"),
+    };
+    let value = found.unwrap_or_else(|| company.einvoice_recipient_id.clone().unwrap_or_default());
+    Ok(View::typed(EinvoicePage {
+        tx: texts::all(&lang),
+        party,
+        value,
+        message,
+        message_kind,
+        has_trn,
+        lookup_enabled,
+        integration_banner: banner_for(&state.db, PARTY_SCREEN, &lang).await?,
+    }))
+}
+
+/// The e-invoicing form.
+#[derive(Deserialize, Validate, Debug)]
+pub struct EinvoiceForm {
+    /// The recipient identifier; blank clears it.
+    #[validate(max = 100)]
+    pub einvoice_recipient_id: Option<String>,
+}
+
+/// `POST /parties/{id}/einvoice`: saves the identifier as entered (trimmed).
+async fn store_einvoice(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Valid(form): Valid<EinvoiceForm>,
+) -> Result<Response> {
+    set_recipient_id(&state, &user, id, form.einvoice_recipient_id.as_deref()).await?;
+    Ok((
+        Toast::success(texts::t(&lang, "wl_parties.einvoice.saved")),
+        Redirect::route("wl_parties.show", &[&id])?,
+    )
+        .into_response())
+}
+
+/// `value` as a query-string component.
+fn query_component(value: &str) -> String {
+    let mut out = String::new();
+    for byte in value.bytes() {
+        match byte {
+            b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(char::from(byte));
+            }
+            other => out.push_str(&format!("%{other:02X}")),
+        }
+    }
+    out
+}
+
+/// `POST /parties/{id}/einvoice/lookup`: asks the ASP of the legal entity
+/// for the company's identifier by its TRN and shows the page again with the
+/// answer. Nothing is saved.
+async fn lookup_einvoice(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<i64>,
+) -> Result<Redirect> {
+    let (result, found) = match lookup_recipient(&state, &user, id).await? {
+        Lookup::Found(found) => ("found", found),
+        Lookup::NotFound => ("not_found", String::new()),
+        Lookup::Failed(_) => ("failed", String::new()),
+        Lookup::Unavailable => ("unavailable", String::new()),
+    };
+    let page = state.url("wl_parties.einvoice", &[&id])?;
+    Ok(Redirect::to(&format!(
+        "{page}?result={result}&found={}",
+        query_component(&found)
+    )))
 }
 
 /// `GET /parties/{id}/block-records/{record}/evidence/{file}`: an evidence

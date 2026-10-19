@@ -24,6 +24,7 @@
         </rx-fieldset>
         <rx-show-when field="kind" values="company">
           <rx-input name="trn" :label="tx['fields.trn']" :hint="tx['fields.trn_hint']" inputmode="numeric" maxlength="15"/>
+          <rx-input name="einvoice_recipient_id" :label="tx['fields.einvoice_recipient_id']" :hint="tx['fields.einvoice_recipient_id_hint']" maxlength="100"/>
         </rx-show-when>
         <div class="rx-card__footer">
           <rx-link-button route="wl_parties.index" :label="tx['cancel']" variant="plain"/>

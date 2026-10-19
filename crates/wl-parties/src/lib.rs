@@ -128,6 +128,10 @@ const VIEWS: &[(&str, &str)] = &[
         include_str!("../views/wl-parties/show.html"),
     ),
     (
+        "wl-parties/einvoice.html",
+        include_str!("../views/wl-parties/einvoice.html"),
+    ),
+    (
         "wl-parties/_card.html",
         include_str!("../views/wl-parties/_card.html"),
     ),
