@@ -57,9 +57,9 @@ impl Scene {
         let lease = property::leases::create_draft(self.t.state(), None, new)
             .await
             .unwrap();
+        self.t.deposits.hold(&lease.agreement(), TENANT, aed(5_000));
         self.t.submit(&self.agent, &lease).await.assert_ok();
         self.t.activate(&self.manager, &lease).await.assert_ok();
-        self.t.deposits.hold(&lease.agreement(), TENANT, aed(5_000));
         self.t.reload(&lease).await
     }
 
