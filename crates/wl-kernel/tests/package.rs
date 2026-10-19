@@ -1524,3 +1524,42 @@ async fn without_an_asp_adapter_the_recipient_lookup_is_unavailable() {
     let json = renox::serde_json::to_value(&event).unwrap();
     assert_eq!(json["changed_fields"][0], "einvoice_recipient_id");
 }
+
+/// #148: a planned visit carries its planned due date, a chargeable ticket
+/// its billed party, and the compliance flag events name the subject, the
+/// category and the reason; without ticketing nothing is opened.
+#[renox::test]
+async fn a_planned_visit_and_the_compliance_flag_events_are_part_of_the_ticket_contract() {
+    use wl_kernel::tickets::{
+        ComplianceFlagCleared, ComplianceFlagRaised, ComplianceFlagReason, OpenTicket,
+        TaskCreator, task_creator,
+    };
+    use wl_kernel::Subject;
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let visit = OpenTicket::new(Subject::new("property.system", 4), "fire_safety", "Fire alarm")
+        .planned_due(NaiveDate::from_ymd_opt(2026, 11, 1).unwrap())
+        .bill_to(PartyId(9));
+    assert_eq!(visit.planned_due.unwrap().to_string(), "2026-11-01");
+    assert_eq!(visit.bill_party, Some(PartyId(9)));
+    let creator = task_creator(app.state());
+    assert_eq!(creator.open(app.state(), visit).await.unwrap(), None);
+
+    let reason = ComplianceFlagReason::VisitMissed.as_str().to_owned();
+    let raised = ComplianceFlagRaised {
+        subject: Subject::new("property.system", 4),
+        category: "fire_safety".into(),
+        reason: reason.clone(),
+        contract: None,
+    };
+    let cleared = ComplianceFlagCleared {
+        subject: raised.subject.clone(),
+        category: raised.category.clone(),
+        reason,
+        contract: Some(3),
+    };
+    assert_eq!(renox::serde_json::to_value(&raised).unwrap()["reason"], "visit_missed");
+    assert_eq!(renox::serde_json::to_value(&cleared).unwrap()["contract"], 3);
+    let _: &dyn TaskCreator = &*creator;
+}

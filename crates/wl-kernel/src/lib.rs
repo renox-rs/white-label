@@ -120,8 +120,9 @@ pub use scopes::COMPANY_ADMIN_ROLE;
 pub use segments::{NoSegments, SegmentId, Segments};
 pub use subject::Subject;
 pub use tickets::{
-    Assignee, NoTickets, OpenTicket, Requester, TASK_CATEGORY, TaskComment, TaskCreator,
-    TicketAssigned, TicketChannel, TicketClosed, TicketId, TicketRef, ticket_path,
+    Assignee, ComplianceFlagCleared, ComplianceFlagRaised, ComplianceFlagReason, NoTickets,
+    OpenTicket, Requester, TASK_CATEGORY, TaskComment, TaskCreator, TicketAssigned,
+    TicketChannel, TicketClosed, TicketId, TicketRef, ticket_path,
 };
 pub use voids::{
     Effect, EffectKind, RecordVoided, Reverse, ReverseError, VoidRecord, Voidable, VoidableBuilder,

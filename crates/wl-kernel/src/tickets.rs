@@ -29,6 +29,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use renox::chrono::NaiveDate;
 use renox::db::DateTime;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -208,6 +209,11 @@ pub struct OpenTicket {
     /// without it the requester's party is billed.
     #[serde(default)]
     pub bill_party: Option<PartyId>,
+    /// The due date of the maintenance plan occurrence that opens the
+    /// ticket, for a planned visit (from `MaintenanceDue`): not the visit's
+    /// appointment and not an SLA due time. `WRK.RUL.14` reads it.
+    #[serde(default)]
+    pub planned_due: Option<NaiveDate>,
 }
 
 impl OpenTicket {
@@ -226,6 +232,7 @@ impl OpenTicket {
             due_at: None,
             source_key: None,
             bill_party: None,
+            planned_due: None,
         }
     }
 
@@ -278,6 +285,12 @@ impl OpenTicket {
     /// Findable by `key` while open.
     pub fn source_key(mut self, key: &str) -> Self {
         self.source_key = Some(key.to_owned());
+        self
+    }
+
+    /// A planned visit whose maintenance plan occurrence is due on `date`.
+    pub fn planned_due(mut self, date: NaiveDate) -> Self {
+        self.planned_due = Some(date);
         self
     }
 
@@ -409,6 +422,51 @@ pub fn task_creator(state: &AppState) -> Arc<dyn TaskCreator> {
     }
 }
 
+/// Why a covered subject is not compliant (wl-ticketing §3 *Compliance
+/// flag*).
+#[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum ComplianceFlagReason {
+    /// A compliance contract ended with no replacement.
+    #[default]
+    NoContract,
+    /// A planned visit was not resolved N days after its planned due date
+    /// (`WRK.RUL.14`).
+    VisitMissed,
+    /// The vendor's required approval expired.
+    VendorDocumentExpired,
+}
+
+/// A compliance flag was raised on a covered subject.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ComplianceFlagRaised {
+    /// The building, building system or asset.
+    pub subject: Subject,
+    /// The key of the compliance-critical category.
+    pub category: String,
+    /// Why, as [`ComplianceFlagReason::as_str`] writes it.
+    pub reason: String,
+    /// The service contract, when the flag is about one.
+    pub contract: Option<i64>,
+}
+
+impl Event for ComplianceFlagRaised {}
+
+/// A compliance flag was cleared; the same payload as
+/// [`ComplianceFlagRaised`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ComplianceFlagCleared {
+    /// The building, building system or asset.
+    pub subject: Subject,
+    /// The key of the compliance-critical category.
+    pub category: String,
+    /// Why it had been raised.
+    pub reason: String,
+    /// The service contract, when the flag was about one.
+    pub contract: Option<i64>,
+}
+
+impl Event for ComplianceFlagCleared {}
+
 /// A ticket was assigned (`assign`): a first assignment, or a reassignment
 /// to someone else.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -499,6 +557,35 @@ mod tests {
         assert_eq!(ticket.due_at, None);
         assert_eq!(ticket.source_key, None);
         assert_eq!(ticket.bill_party, None);
+    }
+
+    #[test]
+    fn a_planned_visit_carries_its_planned_due_date() {
+        let due = NaiveDate::from_ymd_opt(2026, 11, 1).unwrap();
+        let visit = OpenTicket::new(Subject::new("property.system", 4), "fire_safety", "Fire alarm")
+            .planned_due(due);
+        assert_eq!(visit.planned_due, Some(due));
+        assert_eq!(
+            OpenTicket::new(Subject::new("property.system", 4), "general", "x").planned_due,
+            None
+        );
+        let json = renox::serde_json::to_value(&visit).unwrap();
+        assert_eq!(json["planned_due"], "2026-11-01");
+    }
+
+    #[test]
+    fn flag_reasons_are_stored_in_snake_case() {
+        let names: Vec<_> = ComplianceFlagReason::ALL.iter().map(|r| r.as_str()).collect();
+        assert_eq!(names, ["no_contract", "visit_missed", "vendor_document_expired"]);
+        let raised = ComplianceFlagRaised {
+            subject: Subject::new("property.system", 4),
+            category: "fire_safety".into(),
+            reason: ComplianceFlagReason::VisitMissed.as_str().into(),
+            contract: None,
+        };
+        let json = renox::serde_json::to_value(&raised).unwrap();
+        assert_eq!(json["reason"], "visit_missed");
+        assert!(json["contract"].is_null());
     }
 
     #[test]
