@@ -102,6 +102,10 @@ const TEXTS: &[(&str, &str)] = &[
         "Possible duplicate",
     ),
     (
+        "wl_invoicing.supplier_bill.exception.work_after_contract_end",
+        "Work after contract end",
+    ),
+    (
         "wl_invoicing.supplier_bill.problem.supplier",
         "The supplier was not found.",
     ),
@@ -123,11 +127,11 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     (
         "wl_invoicing.supplier_bill.problem.not_held",
-        "The bill may be a duplicate; it is held, not matched.",
+        "The bill is held, as a possible duplicate or for work after the contract end; it is not matched.",
     ),
     (
         "wl_invoicing.supplier_bill.problem.held",
-        "The bill is not held as a possible duplicate.",
+        "The bill is not held.",
     ),
     (
         "wl_invoicing.supplier_bill.problem.approve_reason",
@@ -135,7 +139,7 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     (
         "wl_invoicing.supplier_bill.problem.creator",
-        "A possible duplicate cannot be approved by the user who entered it.",
+        "A bill held as a possible duplicate or for work after the contract end cannot be approved by the user who entered it.",
     ),
     (
         "wl_invoicing.supplier_bill.problem.void_reason",
@@ -1086,7 +1090,7 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     (
         "wl_invoicing.supplier_bill.submit.held",
-        "Supplier bill submitted and held: it may duplicate an earlier bill.",
+        "Supplier bill submitted and held: see the reasons on the bill.",
     ),
     ("wl_invoicing.supplier_bill.discard.action", "Delete"),
     (

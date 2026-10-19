@@ -18,9 +18,9 @@
 //! `approve` (matched or exception to approved, `supplier_bills.approve`)
 //! takes a `reason` (the run's reason, which the history row carries). From
 //! `exception` the reason must not be blank, and a bill held as a possible
-//! duplicate cannot be approved by the user who entered it, whatever their
-//! permissions. The approver and the reason are stored on the bill; one
-//! approval covers every exception row.
+//! duplicate, or held for work after the contract end, cannot be approved by
+//! the user who entered it, whatever their permissions. The approver and the
+//! reason are stored on the bill; one approval covers every exception row.
 //!
 //! A bill with a line coded to owner drawings is approved only after the
 //! approval of the drawing ([`crate::drawings`], `FIN.ACL.21`): the effect of
@@ -160,10 +160,11 @@ fn approve_rules(transition: Transition<SupplierBill>) -> Transition<SupplierBil
             })
         })
         .guard("not_creator", |bill: &SupplierBill, ctx| {
-            // A held possible duplicate: never the user who entered it.
+            // A held possible duplicate, or work after the contract end:
+            // never the user who entered it.
             let creator = bill.created_by;
             let blocked = bill.status == SupplierBillStatus::Exception
-                && bill.duplicate_of.is_some()
+                && (bill.duplicate_of.is_some() || bill.after_end_hold)
                 && creator.is_some()
                 && actor_id(ctx) == creator;
             Box::pin(async move {

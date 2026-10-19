@@ -235,6 +235,9 @@ pub(crate) struct ExceptionRow {
     /// The earlier bill's supplier invoice number and page.
     related: Option<String>,
     related_link: Option<String>,
+    /// What the reason is about, e.g. the lines of work after the contract
+    /// end.
+    detail: Option<String>,
 }
 
 /// One reason sheet (`approve` or `void`).
@@ -339,7 +342,9 @@ fn sheets_for(t: Text<'_>, user: &AuthUser, bill: &SupplierBill) -> Vec<ReasonSh
         return Vec::new();
     }
     let held = bill.status == SupplierBillStatus::Exception;
-    let own_duplicate = held && bill.duplicate_of.is_some() && bill.created_by == Some(user.id);
+    let own_duplicate = held
+        && (bill.duplicate_of.is_some() || bill.after_end_hold)
+        && bill.created_by == Some(user.id);
     let mut sheets = Vec::new();
     if matches!(
         bill.status,
@@ -459,6 +464,7 @@ async fn show(
             related_link: row
                 .related_bill_id
                 .map(|id| format!("/supplier-bills/{id}")),
+            detail: row.detail.clone(),
         });
     }
     let allocations = BillAllocation::of_bill(&db, bill.id)

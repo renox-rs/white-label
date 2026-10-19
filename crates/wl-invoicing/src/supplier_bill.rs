@@ -37,6 +37,10 @@ pub enum SupplierBillStatus {
 /// The reason code of a held bill that may duplicate an earlier one.
 pub const POSSIBLE_DUPLICATE: &str = "possible_duplicate";
 
+/// The reason code of a held bill with a line for work after the end of its
+/// service contract.
+pub const WORK_AFTER_CONTRACT_END: &str = "work_after_contract_end";
+
 /// A supplier bill. Money is `i64` fils of [`SupplierBill::currency`].
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
 #[model(
@@ -96,6 +100,9 @@ pub struct SupplierBill {
     pub void_reason: Option<String>,
     /// The earlier bill a held bill may duplicate.
     pub duplicate_of: Option<i64>,
+    /// Whether the bill is held for a line of work after the end of its
+    /// service contract (`FIN.ACL.03`: not approved by its creator).
+    pub after_end_hold: bool,
     /// Counts the changes of the row.
     pub lock_version: i64,
     /// The lifecycle state.

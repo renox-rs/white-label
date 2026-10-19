@@ -50,6 +50,7 @@
         <rx-row rx-for="item in exceptions">
           <rx-badge kind="warning" :text="item.reason"/>
           <a rx-if="item.related_link" href="{{ item.related_link }}">{{ tx['supplier_bill.fields.earlier_bill'] }}: {{ item.related }}</a>
+          <span rx-if="item.detail">{{ item.detail }}</span>
         </rx-row>
       </rx-stack>
     </rx-card>

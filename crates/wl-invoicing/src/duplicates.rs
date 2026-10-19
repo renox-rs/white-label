@@ -38,6 +38,9 @@ pub struct BillException {
     pub reason_code: String,
     /// The bill the reason points to, if any.
     pub related_bill_id: Option<i64>,
+    /// What the reason is about, e.g. the late lines of a bill held for work
+    /// after the contract end.
+    pub detail: Option<String>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
 }
