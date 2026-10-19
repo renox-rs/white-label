@@ -21,6 +21,7 @@ pub mod notify;
 pub mod numbering;
 pub mod parties;
 pub mod payments;
+pub mod sales;
 pub mod scopes;
 pub mod screening_guard;
 pub mod segments;
@@ -73,7 +74,8 @@ pub use invoicing::{
     CreditLine, CreditNoteId, CreditNoteIssued, CreditNoteReopened, CreditNoteStatus,
     CreditNoteSummary, DraftLine, InvoiceCredited, InvoiceDraft, InvoiceId, InvoiceIssued,
     InvoiceOverdue, InvoicePaid, InvoiceStatus, InvoiceSummary, InvoiceWrittenOff, Invoicer,
-    NoInvoicer, VatCategory,
+    NoInvoicer, NoSupplierBills, SupplierBillApproved, SupplierBillId, SupplierBillLine,
+    SupplierBillLineId, SupplierBillStatus, SupplierBillVoided, SupplierBills, VatCategory,
 };
 pub use machines::SubjectMachine;
 pub use manifest::Manifest;
@@ -93,6 +95,7 @@ pub use payments::{
     PaymentSummary, RecordPayment, RefundAttemptRef, RefundFailed, RefundFailedFrom,
     RefundFailureKind, RefundId, RefundPaid, RefundRequest, RefundSource, ReversalReason,
 };
+pub use sales::{CampaignActivated, CampaignEnded, CampaignId};
 pub use scopes::COMPANY_ADMIN_ROLE;
 pub use segments::{NoSegments, SegmentId, Segments};
 pub use subject::Subject;

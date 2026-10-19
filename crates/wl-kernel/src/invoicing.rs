@@ -1082,9 +1082,239 @@ pub struct BadDebtRecovered {
 
 impl Event for BadDebtRecovered {}
 
+/// The subject type of a supplier bill, for [`Subject`] references.
+pub const SUPPLIER_BILL_SUBJECT_TYPE: &str = "invoicing.supplier_bill";
+
+/// The id of a supplier bill (wl-invoicing §3).
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default, Serialize, Deserialize,
+)]
+#[serde(transparent)]
+pub struct SupplierBillId(pub i64);
+
+impl SupplierBillId {
+    /// The bill as a [`Subject`]: `invoicing.supplier_bill:5`.
+    pub fn subject(self) -> Subject {
+        Subject::new(SUPPLIER_BILL_SUBJECT_TYPE, self.0)
+    }
+}
+
+impl fmt::Display for SupplierBillId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl From<i64> for SupplierBillId {
+    fn from(id: i64) -> Self {
+        SupplierBillId(id)
+    }
+}
+
+/// The id of one line of a supplier bill.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default, Serialize, Deserialize,
+)]
+#[serde(transparent)]
+pub struct SupplierBillLineId(pub i64);
+
+impl fmt::Display for SupplierBillLineId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl From<i64> for SupplierBillLineId {
+    fn from(id: i64) -> Self {
+        SupplierBillLineId(id)
+    }
+}
+
+/// The lifecycle state of a supplier bill (wl-invoicing §4); the same seven
+/// states, with the same stored names, as the `wl-invoicing` machine.
+#[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum SupplierBillStatus {
+    /// Editable, not yet submitted.
+    #[default]
+    Draft,
+    /// Submitted and not held.
+    Matched,
+    /// Held, e.g. as a possible duplicate.
+    Exception,
+    /// Approved for payment.
+    Approved,
+    /// Part of the bill is paid.
+    PartiallyPaid,
+    /// Paid in full.
+    Paid,
+    /// Voided (terminal).
+    Void,
+}
+
+impl SupplierBillStatus {
+    /// Whether the bill has been approved and not voided: `approved`,
+    /// `partially_paid` or `paid`. Only then do its amounts count elsewhere
+    /// (e.g. as a campaign cost).
+    pub fn is_approved(self) -> bool {
+        matches!(
+            self,
+            SupplierBillStatus::Approved
+                | SupplierBillStatus::PartiallyPaid
+                | SupplierBillStatus::Paid
+        )
+    }
+}
+
+/// One line of a supplier bill, as other modules see it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SupplierBillLine {
+    /// The bill.
+    pub bill: SupplierBillId,
+    /// The line.
+    pub line: SupplierBillLineId,
+    /// The supplier's invoice number as entered.
+    pub bill_number: String,
+    /// The supplier.
+    pub supplier: PartyId,
+    /// The receiving legal entity, if set.
+    pub legal_entity_id: Option<i64>,
+    /// The line's description.
+    pub description: String,
+    /// The line amount in fils of AED, excluding recoverable VAT and already
+    /// converted at the bill's exchange rate.
+    pub amount_aed: i64,
+    /// The bill's state now.
+    pub bill_status: SupplierBillStatus,
+}
+
+/// The future a [`SupplierBills`] method returns.
+pub type SupplierBillFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
+
+/// Reads supplier bill lines. `wl-invoicing` provides it with
+/// [`provide_supplier_bills`]; without that module, [`supplier_bills`] gives
+/// [`NoSupplierBills`].
+pub trait SupplierBills: Send + Sync + 'static {
+    /// The line `id`, or `None` when there is no such line.
+    fn line<'a>(
+        &'a self,
+        db: &'a Db,
+        id: SupplierBillLineId,
+    ) -> SupplierBillFuture<'a, Option<SupplierBillLine>>;
+}
+
+/// The supplier bills when `invoicing` is off: no line exists, so a module
+/// hides its "link a bill line" option.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoSupplierBills;
+
+impl SupplierBills for NoSupplierBills {
+    fn line<'a>(
+        &'a self,
+        _db: &'a Db,
+        _id: SupplierBillLineId,
+    ) -> SupplierBillFuture<'a, Option<SupplierBillLine>> {
+        Box::pin(async { Ok(None) })
+    }
+}
+
+/// Makes `bills` the app's [`SupplierBills`]; `wl-invoicing` calls it in
+/// `register`.
+pub fn provide_supplier_bills(app: &mut Registry, bills: impl SupplierBills) {
+    let bills: Arc<dyn SupplierBills> = Arc::new(bills);
+    app.provide(bills);
+}
+
+/// The app's [`SupplierBills`], or [`NoSupplierBills`] when none is provided.
+pub fn supplier_bills(state: &AppState) -> Arc<dyn SupplierBills> {
+    match state.provided::<Arc<dyn SupplierBills>>() {
+        Some(bills) => Arc::clone(&bills),
+        None => Arc::new(NoSupplierBills),
+    }
+}
+
+/// A supplier bill was approved (`approve`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SupplierBillApproved {
+    /// The bill.
+    pub bill: SupplierBillId,
+    /// The supplier.
+    pub supplier: PartyId,
+    /// The bill total in fils of the bill's currency.
+    pub amount: i64,
+}
+
+impl Event for SupplierBillApproved {}
+
+/// A supplier bill was voided (`void`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SupplierBillVoided {
+    /// The bill.
+    pub bill: SupplierBillId,
+    /// Why it was voided.
+    pub reason: String,
+}
+
+impl Event for SupplierBillVoided {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_supplier_bill_id_is_a_subject_and_a_plain_number() {
+        let id = SupplierBillId::from(5);
+        assert_eq!(id.to_string(), "5");
+        assert_eq!(id.subject(), Subject::new("invoicing.supplier_bill", 5));
+        assert_eq!(renox::serde_json::to_string(&id).unwrap(), "5");
+        let line: SupplierBillLineId = renox::serde_json::from_str("9").unwrap();
+        assert_eq!(line, SupplierBillLineId(9));
+        assert_eq!(line.to_string(), "9");
+    }
+
+    #[test]
+    fn a_supplier_bill_counts_once_approved_and_not_voided() {
+        use SupplierBillStatus::*;
+        for s in [Approved, PartiallyPaid, Paid] {
+            assert!(s.is_approved(), "{s:?}");
+        }
+        for s in [Draft, Matched, Exception, Void] {
+            assert!(!s.is_approved(), "{s:?}");
+        }
+        assert_eq!(SupplierBillStatus::default(), Draft);
+    }
+
+    #[renox::test]
+    async fn without_invoicing_no_bill_line_exists() {
+        let app = renox::testing::TestApp::new(App::new()).await;
+        let line = supplier_bills(app.state())
+            .line(&app.state().db, SupplierBillLineId(1))
+            .await
+            .expect("no failure");
+        assert_eq!(line, None);
+    }
+
+    #[test]
+    fn the_bill_events_round_trip_through_json() {
+        let approved = SupplierBillApproved {
+            bill: SupplierBillId(3),
+            supplier: PartyId(4),
+            amount: 300_000,
+        };
+        let json = renox::serde_json::to_string(&approved).unwrap();
+        assert_eq!(
+            renox::serde_json::from_str::<SupplierBillApproved>(&json).unwrap(),
+            approved
+        );
+        let voided = SupplierBillVoided {
+            bill: SupplierBillId(3),
+            reason: "duplicate".into(),
+        };
+        let json = renox::serde_json::to_string(&voided).unwrap();
+        assert_eq!(
+            renox::serde_json::from_str::<SupplierBillVoided>(&json).unwrap(),
+            voided
+        );
+    }
 
     fn summary(status: InvoiceStatus, balance: i64) -> InvoiceSummary {
         InvoiceSummary {
