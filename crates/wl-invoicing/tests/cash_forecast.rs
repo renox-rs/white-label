@@ -4,7 +4,7 @@
 
 mod support;
 
-use renox::chrono::{NaiveDate, Weekday};
+use renox::chrono::{Datelike, NaiveDate, Weekday};
 use renox::prelude::*;
 use renox::state_machine::StateMachine;
 use wl_invoicing::cash_balance::{self, EnterBalance, OpeningCashBalance};
@@ -13,7 +13,7 @@ use wl_invoicing::cash_forecast_load;
 use wl_invoicing::duplicates::BillException;
 use wl_invoicing::supplier_bill::{POSSIBLE_DUPLICATE, SupplierBill, SupplierBillStatus};
 use wl_invoicing::vat_summary::VatSummaryStatus;
-use wl_invoicing::{Invoice, WlInvoicing, permissions as perm};
+use wl_invoicing::{Allocation, BillLine, Invoice, WlInvoicing, permissions as perm};
 use wl_kernel::cash_forecast::{
     CashForecastSource, ForecastFuture, ForecastLine, register_cash_forecast_source,
 };
@@ -674,4 +674,377 @@ async fn a_cell_lists_the_documents_behind_it() {
         .await
         .assert_ok()
         .assert_dont_see("INV-1");
+}
+
+// ---- Budget fill and days late (#92) ----------------------------------------
+
+/// A booted app whose clock reads `date` (a Monday, for the weeks to line up)
+/// after the approved budget `lines` of the entity PGP for `year` were made
+/// with the real clock.
+async fn booted_with_budget(
+    module: WlInvoicing,
+    year: i64,
+    lines: &[(&str, usize, i64)],
+    date: &str,
+) -> Booted {
+    let t = boot_with(module).await;
+    if !lines.is_empty() {
+        t.approved_budget("PGP", year, lines).await;
+    }
+    t.travel_to(date, 8, 0);
+    t
+}
+
+/// The budget fill lines of `forecast` dated in `month` of `year`, in fils.
+fn fill_in(forecast: &Forecast, year: i32, month: u32) -> i64 {
+    forecast
+        .lines
+        .iter()
+        .filter(|l| l.kind == LineKind::BudgetFill)
+        .filter(|l| l.date.year() == year && l.date.month() == month)
+        .map(|l| l.amount)
+        .sum()
+}
+
+/// The fill counted in week `week` (from 0), in fils.
+fn fill_week(forecast: &Forecast, week: usize) -> i64 {
+    forecast
+        .lines
+        .iter()
+        .filter(|l| l.kind == LineKind::BudgetFill && l.week == week)
+        .map(|l| l.amount)
+        .sum()
+}
+
+/// A bill of `entity` not yet approved with one line of `net` fils coded to
+/// the cost code `code`, dated `date`.
+async fn bill_with_line(
+    t: &Booted,
+    entity: &LegalEntity,
+    number: &str,
+    date: NaiveDate,
+    net: i64,
+    code: &str,
+    status: SupplierBillStatus,
+) -> SupplierBill {
+    let mut bill = SupplierBill {
+        party_id: BLUE_DUNES.0,
+        legal_entity_id: Some(entity.id),
+        supplier_invoice_number: number.to_owned(),
+        number_key: number.to_lowercase(),
+        bill_date: date,
+        due_date: Some(date + renox::chrono::Days::new(30)),
+        currency: "AED".to_owned(),
+        gross_total: net,
+        balance: net,
+        status,
+        ..Default::default()
+    };
+    let mut tx = t.db().begin().await.unwrap();
+    bill.insert_in_state(&mut tx, status, "fixture").await.unwrap();
+    tx.commit().await.unwrap();
+    let mut line = BillLine {
+        bill_id: bill.id,
+        position: 1,
+        description: "Rent".to_owned(),
+        quantity_milli: 1_000,
+        unit_price: net,
+        cost_code: Some(code.to_owned()),
+        net_amount_aed: Some(net),
+        vat_amount_aed: Some(0),
+        ..Default::default()
+    };
+    line.insert(t.db()).await.unwrap();
+    bill
+}
+
+/// Rent and utilities AED 31,000 for March 2027, no actual, no bills, on Monday
+/// 2027-03-01: AED 1,000 a day, AED 7,000 in each of the weeks of 1, 8, 15 and
+/// 22 March and AED 3,000 in the week of 29 March.
+#[renox::test]
+async fn a_budget_line_is_spread_evenly_over_the_days_of_its_month() {
+    let t = booted_with_budget(
+        WlInvoicing::new(),
+        2027,
+        &[("rent_utilities", 3, 3_100_000)],
+        "2027-03-01",
+    )
+    .await;
+    let e1 = t.entity("PGP").await;
+    let forecast = grid(&t, &[&e1]).await;
+    for week in 0..4 {
+        assert_eq!(fill_week(&forecast, week), 700_000, "week {}", week + 1);
+        assert_eq!(forecast.payments(week), 700_000);
+    }
+    assert_eq!(fill_week(&forecast, 4), 300_000);
+    assert_eq!(fill_week(&forecast, 5), 0);
+    let line = &forecast.lines[0];
+    assert_eq!((line.kind, line.category.as_str()), (LineKind::BudgetFill, "rent_utilities"));
+    assert_eq!(line.label, "Rent and utilities");
+    assert_eq!(line.direction, Direction::Out);
+}
+
+/// An approved bill of AED 25,000 excl. VAT for rent dated 2027-03-01 is in the
+/// March actual: the fill is AED 6,000 and the April fill is not reduced.
+#[renox::test]
+async fn an_approved_bill_is_in_the_actual_and_not_subtracted_twice() {
+    let t = booted_with_budget(
+        WlInvoicing::new(),
+        2027,
+        &[("rent_utilities", 3, 3_100_000), ("rent_utilities", 4, 3_000_000)],
+        "2027-03-01",
+    )
+    .await;
+    let e1 = t.entity("PGP").await;
+    t.approved_bill(
+        &e1,
+        "SB-RENT",
+        day(3, 1),
+        &[("Rent", 2_500_000, "rent", wl_kernel::invoicing::VatCategory::Standard)],
+    )
+    .await;
+    let forecast = grid(&t, &[&e1]).await;
+    assert_eq!(fill_in(&forecast, 2027, 3), 600_000);
+    assert_eq!(fill_in(&forecast, 2027, 4), 3_000_000);
+}
+
+/// A bill matched (not approved) for rent dated 2027-03-01 leaves a March fill
+/// of AED 6,000; one dated 2027-02-26 leaves AED 31,000.
+#[renox::test]
+async fn a_bill_not_yet_approved_covers_the_month_of_its_bill_date() {
+    let t = booted_with_budget(
+        WlInvoicing::new(),
+        2027,
+        &[("rent_utilities", 3, 3_100_000)],
+        "2027-03-01",
+    )
+    .await;
+    let e1 = t.entity("PGP").await;
+    bill_with_line(&t, &e1, "SB-F", day(2, 26), 2_500_000, "rent", SupplierBillStatus::Matched).await;
+    assert_eq!(fill_in(&grid(&t, &[&e1]).await, 2027, 3), 3_100_000);
+    bill_with_line(&t, &e1, "SB-M", day(3, 1), 2_500_000, "rent", SupplierBillStatus::Matched).await;
+    let forecast = grid(&t, &[&e1]).await;
+    assert_eq!(fill_in(&forecast, 2027, 3), 600_000);
+    // The bills themselves are payments by their due dates, by bill date + 30.
+    assert!(forecast.lines.iter().any(|l| l.kind == LineKind::Bill && l.not_approved));
+}
+
+/// With AED 33,000 posted against a budget of AED 31,000 there is no fill.
+#[renox::test]
+async fn the_fill_is_never_negative() {
+    let t = booted_with_budget(
+        WlInvoicing::new(),
+        2027,
+        &[("rent_utilities", 3, 3_100_000)],
+        "2027-03-01",
+    )
+    .await;
+    let e1 = t.entity("PGP").await;
+    t.approved_bill(
+        &e1,
+        "SB-BIG",
+        day(3, 1),
+        &[("Rent", 3_300_000, "rent", wl_kernel::invoicing::VatCategory::Exempt)],
+    )
+    .await;
+    let forecast = grid(&t, &[&e1]).await;
+    assert!(forecast.lines.iter().all(|l| l.kind != LineKind::BudgetFill));
+}
+
+/// Without an approved budget there is no fill and the forecast says so.
+#[renox::test]
+async fn without_an_approved_budget_there_is_no_fill_and_a_warning() {
+    let t = booted_with_budget(WlInvoicing::new(), 2027, &[], "2027-03-01").await;
+    let e1 = t.entity("PGP").await;
+    let forecast = grid(&t, &[&e1]).await;
+    assert!(forecast.lines.iter().all(|l| l.kind != LineKind::BudgetFill));
+    assert!(forecast
+        .warnings
+        .iter()
+        .any(|w| matches!(w, Warning::NoBudget { months, .. } if months.first() == Some(&day(3, 1)))));
+    let user = viewer(&t).await;
+    t.app.acting_as(&user);
+    t.app
+        .get("/cash-forecast")
+        .await
+        .assert_ok()
+        .assert_see("no approved budget for the months");
+}
+
+/// On 2027-11-15 with an approved 2027 budget and none for 2028, December has
+/// fill and January and February 2028 show the warning and no fill.
+#[renox::test]
+async fn a_year_without_a_budget_gets_the_warning_and_no_fill() {
+    let t = booted_with_budget(
+        WlInvoicing::new(),
+        2027,
+        &[("rent_utilities", 11, 3_000_000), ("rent_utilities", 12, 3_100_000)],
+        "2027-11-15",
+    )
+    .await;
+    let e1 = t.entity("PGP").await;
+    let forecast = grid(&t, &[&e1]).await;
+    // 16 days of November (15 to 30) and all of December.
+    assert_eq!(fill_in(&forecast, 2027, 11), 3_000_000);
+    assert_eq!(fill_in(&forecast, 2027, 12), 3_100_000);
+    assert!(forecast
+        .lines
+        .iter()
+        .filter(|l| l.kind == LineKind::BudgetFill)
+        .all(|l| l.date < NaiveDate::from_ymd_opt(2028, 1, 1).unwrap()));
+    let months: Vec<NaiveDate> = forecast
+        .warnings
+        .iter()
+        .find_map(|w| match w {
+            Warning::NoBudget { months, .. } => Some(months.clone()),
+            _ => None,
+        })
+        .expect("the warning");
+    assert_eq!(
+        months,
+        vec![
+            NaiveDate::from_ymd_opt(2028, 1, 1).unwrap(),
+            NaiveDate::from_ymd_opt(2028, 2, 1).unwrap()
+        ]
+    );
+}
+
+/// An income category fills receipts; owner drawings fill a total only.
+#[renox::test]
+async fn income_fill_is_a_receipt_and_drawings_fill_is_a_total() {
+    let t = booted_with_budget(
+        WlInvoicing::new(),
+        2027,
+        &[("sales_services", 3, 3_100_000), ("owner_drawings", 3, 620_000)],
+        "2027-03-01",
+    )
+    .await;
+    let e1 = t.entity("PGP").await;
+    let forecast = grid(&t, &[&e1]).await;
+    assert_eq!(forecast.receipts(0), 700_000);
+    assert_eq!(forecast.payments(0), 140_000);
+    let drawings = forecast
+        .lines
+        .iter()
+        .find(|l| l.category == "owner_drawings")
+        .expect("a drawings fill");
+    assert!(drawings.total_only);
+    assert!(forecast
+        .lines
+        .iter()
+        .filter(|l| l.category == "sales_services")
+        .all(|l| !l.total_only && l.direction == Direction::In));
+}
+
+/// The grid shows a row for the fill and the cell opens its lines.
+#[renox::test]
+async fn the_grid_shows_a_fill_row_per_category_and_its_cell() {
+    let t = booted_with_budget(
+        WlInvoicing::new(),
+        2027,
+        &[("rent_utilities", 3, 3_100_000)],
+        "2027-03-01",
+    )
+    .await;
+    let user = viewer(&t).await;
+    t.app.acting_as(&user);
+    t.app
+        .get("/cash-forecast")
+        .await
+        .assert_ok()
+        .assert_see("Budget fill: Rent and utilities")
+        .assert_see("7,000");
+    t.app
+        .get("/cash-forecast/cell?week=5&side=fill:rent_utilities")
+        .await
+        .assert_ok()
+        .assert_see("Rent and utilities")
+        .assert_see("3,000.00");
+}
+
+/// Customer C with invoices paid 10, 20 and 30 days late moves INV-9 due
+/// 2027-03-01 to 2027-03-21; payments are not moved.
+#[renox::test]
+async fn days_late_moves_a_customers_receipts_by_its_average() {
+    let t = booted_with_budget(WlInvoicing::new().cash_days_late(true), 2027, &[], "2027-03-01").await;
+    let e1 = t.entity("PGP").await;
+    for (i, late) in [10_i64, 20, 30].iter().enumerate() {
+        let due = day(1, 1);
+        let paid = invoice_in_state(&t, &e1, &format!("INV-P{i}"), due, 0, InvoiceStatus::Paid).await;
+        let mut allocation = Allocation::new(paid.id, &Subject::new("payments.payment", 40 + i as i64), 1_000, None);
+        allocation.allocated_at = (due + renox::chrono::Days::new(*late as u64))
+            .and_hms_opt(8, 0, 0)
+            .unwrap()
+            .and_utc();
+        allocation.insert(t.db()).await.unwrap();
+    }
+    open_invoice(&t, &e1, "INV-9", day(3, 1), 500_000).await;
+    open_bill(&t, &e1, "SB-5", day(3, 1), 200_000, SupplierBillStatus::Approved).await;
+    let forecast = grid(&t, &[&e1]).await;
+    let line = forecast.lines.iter().find(|l| l.label == "INV-9").expect("INV-9");
+    assert_eq!(line.date, day(3, 21));
+    assert_eq!(forecast.receipts(2), 500_000);
+    assert_eq!(forecast.payments(0), 200_000);
+
+    // Off: the due date.
+    let plain = booted_with_budget(WlInvoicing::new(), 2027, &[], "2027-03-01").await;
+    let e = plain.entity("PGP").await;
+    open_invoice(&plain, &e, "INV-9", day(3, 1), 500_000).await;
+    let forecast = grid(&plain, &[&e]).await;
+    assert_eq!(forecast.lines[0].date, day(3, 1));
+}
+
+/// Fewer than three paid invoices: no adjustment; written-off invoices are not
+/// in the average.
+#[renox::test]
+async fn days_late_needs_three_paid_invoices() {
+    let t = booted_with_budget(WlInvoicing::new().cash_days_late(true), 2027, &[], "2027-03-01").await;
+    let e1 = t.entity("PGP").await;
+    for (i, late) in [10_i64, 20].iter().enumerate() {
+        let due = day(1, 1);
+        let paid = invoice_in_state(&t, &e1, &format!("INV-P{i}"), due, 0, InvoiceStatus::Paid).await;
+        let mut allocation = Allocation::new(paid.id, &Subject::new("payments.payment", 40 + i as i64), 1_000, None);
+        allocation.allocated_at = (due + renox::chrono::Days::new(*late as u64))
+            .and_hms_opt(8, 0, 0)
+            .unwrap()
+            .and_utc();
+        allocation.insert(t.db()).await.unwrap();
+    }
+    invoice_in_state(&t, &e1, "INV-W", day(1, 1), 0, InvoiceStatus::WrittenOff).await;
+    open_invoice(&t, &e1, "INV-9", day(3, 1), 500_000).await;
+    let forecast = grid(&t, &[&e1]).await;
+    let line = forecast.lines.iter().find(|l| l.label == "INV-9").expect("INV-9");
+    assert_eq!(line.date, day(3, 1));
+}
+
+/// A receipt moved beyond the horizon drops out of the grid and is listed as
+/// after week 13.
+#[renox::test]
+async fn a_receipt_moved_beyond_the_horizon_is_listed_after_it() {
+    let t = booted_with_budget(WlInvoicing::new().cash_days_late(true), 2027, &[], "2027-03-01").await;
+    let e1 = t.entity("PGP").await;
+    for (i, late) in [20_i64, 20, 20].iter().enumerate() {
+        let due = day(1, 1);
+        let paid = invoice_in_state(&t, &e1, &format!("INV-P{i}"), due, 0, InvoiceStatus::Paid).await;
+        let mut allocation = Allocation::new(paid.id, &Subject::new("payments.payment", 40 + i as i64), 1_000, None);
+        allocation.allocated_at = (due + renox::chrono::Days::new(*late as u64))
+            .and_hms_opt(8, 0, 0)
+            .unwrap()
+            .and_utc();
+        allocation.insert(t.db()).await.unwrap();
+    }
+    // Week 13 ends 2027-05-30; due 2027-05-28 + 20 days is 2027-06-17.
+    open_invoice(&t, &e1, "INV-LATE", day(5, 28), 500_000).await;
+    let forecast = grid(&t, &[&e1]).await;
+    assert!(forecast.lines.is_empty());
+    assert_eq!(forecast.after.len(), 1);
+    assert_eq!(forecast.after[0].date, day(6, 17));
+    let user = viewer(&t).await;
+    t.app.acting_as(&user);
+    t.app
+        .get("/cash-forecast")
+        .await
+        .assert_ok()
+        .assert_see("After week 13")
+        .assert_see("INV-LATE");
 }
