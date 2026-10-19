@@ -7,6 +7,8 @@ pub mod broadcast;
 pub mod broadcast_approval;
 pub mod broadcast_machine;
 pub mod broadcast_recipients;
+pub mod broadcast_results;
+pub mod broadcast_run;
 pub mod broadcasts;
 pub mod channels;
 pub mod clock;
@@ -212,6 +214,8 @@ impl Module for WlNotify {
         app.job::<SendMessage>();
         // Deferred messages whose time has come go back to the queue.
         release::schedule(app);
+        // Scheduled broadcasts whose send time has come start and complete.
+        broadcast_run::schedule(app);
         // Fallback and give-up: `NTF.RUL.01` runs the type's reactions.
         app.provide(self.reactions.clone());
         app.job::<RunGiveUpReaction>();
