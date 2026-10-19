@@ -15,10 +15,10 @@ use renox::chrono::Duration;
 use renox::prelude::*;
 use renox::state_machine::StateMachine;
 use wl_kernel::cheques::{ChequeId, ChequeStatus};
-use wl_kernel::invoicing::{DraftLine, InvoiceDraft, Invoicer, invoicer};
+use wl_kernel::invoicing::{DraftLine, InvoiceDraft, invoicer};
 use wl_kernel::notify::NotifyRecipient;
 use wl_kernel::parties::PartyKind;
-use wl_kernel::{PartyId, Subject, VatCategory};
+use wl_kernel::{PartyId, VatCategory};
 
 use support::{ACCOUNTANT, AGENT, Booted, MANAGER, TENANT, aed, boot, day};
 
@@ -594,5 +594,4 @@ async fn bl_prp_22_the_pages_show_the_agreement_and_its_pack() {
         .assert_see("Hessa Al Mansoori");
     s.t.app.acting_as(&s.accountant);
     s.t.app.get("/property/agreements").await.assert_forbidden();
-    let _ = (Subject::new("x", 1), &s.units);
 }
