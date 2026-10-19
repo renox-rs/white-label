@@ -1,0 +1,27 @@
+{#- wl-payments: the form that records a payment as staff. Replace it with
+    resources/views/wl-payments/new.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['new']">
+  <rx-stack>
+    <rx-page-header :title="tx['new']" :back="route('wl_payments.index')" :back-label="tx['title']"/>
+    <rx-form route="wl_payments.store" novalidate>
+      <rx-card>
+        <rx-form-errors/>
+        <rx-form-grid columns="2">
+          <rx-input name="party_code" :label="tx['fields.party_code']" :hint="tx['fields.party_code_hint']" required/>
+          <rx-select name="legal_entity_id" :label="tx['fields.entity']" :options="entities" required/>
+          <rx-select name="method" :label="tx['fields.method']" :options="methods" :selected="'transfer'" required/>
+          <rx-input name="amount" :label="tx['fields.amount']" :hint="tx['fields.amount_hint']" required/>
+          <rx-input name="payment_date" type="date" :label="tx['fields.date']"/>
+          <rx-input name="reference" :label="tx['fields.reference']"/>
+          <rx-input name="cheque_number" :label="tx['fields.cheque_number']"/>
+          <rx-input name="cheque_bank" :label="tx['fields.cheque_bank']"/>
+          <rx-input name="cheque_date" type="date" :label="tx['fields.cheque_date']"/>
+        </rx-form-grid>
+        <div class="rx-card__footer">
+          <rx-link-button route="wl_payments.index" :label="tx['cancel']" variant="plain"/>
+          <rx-button :label="tx['record']"/>
+        </div>
+      </rx-card>
+    </rx-form>
+  </rx-stack>
+</rx-page>

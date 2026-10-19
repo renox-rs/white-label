@@ -1,0 +1,10 @@
+{#- wl-invoicing: the approve and void actions on a supplier bill's page,
+    one sheet each with the reason. A held bill needs a reason to be
+    approved; a void always does. Replace it with
+    resources/views/wl-invoicing/_bill_reason_sheet.html in the app. -#}
+<rx-action-sheet rx-for="sheet in sheets" :id="sheet.id" :label="sheet.label" :action="sheet.action"
+                 :title="sheet.title" :description="sheet.description" :submit-label="sheet.submit"
+                 :variant="sheet.variant" :icon="sheet.icon">
+  <rx-textarea rx-if="sheet.reason_required" name="reason" :label="tx['supplier_bill.reason']" :id="sheet.id ~ '-reason'" required/>
+  <rx-textarea rx-if="not sheet.reason_required" name="reason" :label="tx['supplier_bill.reason']" :id="sheet.id ~ '-reason'"/>
+</rx-action-sheet>

@@ -1,0 +1,19 @@
+[package]
+name = "host"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+renox.workspace = true
+serde.workspace = true
+wl-kernel = { path = "../crates/wl-kernel" }
+property = { path = "../apps/property" }
+wl-parties = { path = "../crates/wl-parties" }
+wl-documents = { path = "../crates/wl-documents" }
+wl-notify = { path = "../crates/wl-notify" }
+wl-invoicing = { path = "../crates/wl-invoicing" }
+wl-ticketing = { path = "../crates/wl-ticketing" }
+wl-payments = { path = "../crates/wl-payments" }
+wl-sales = { path = "../crates/wl-sales" }

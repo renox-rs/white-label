@@ -1,0 +1,28 @@
+[workspace]
+resolver = "3"
+members = ["host", "crates/*", "apps/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+# Renox 1.2 needs Rust 1.94 (sqlx 0.9).
+rust-version = "1.94"
+publish = false
+
+[workspace.dependencies]
+renox = "1.2"
+serde = { version = "1", features = ["derive"] }
+
+# Password hashing (Argon2) is deliberately slow, and far slower unoptimised:
+# every login, registration and auth test paid for it. Optimise just these
+# crates in dev and test builds; the rest stays quick to compile.
+[profile.dev.package.argon2]
+opt-level = 3
+
+[profile.dev.package.blake2]
+opt-level = 3
+
+# Line numbers in backtraces, without full debug info: much smaller dev
+# binaries and faster links on every `rnx serve` rebuild.
+[profile.dev]
+debug = "line-tables-only"

@@ -1,0 +1,16 @@
+[package]
+name = "wl-ticketing"
+description = "Ticketing: tickets on any subject, assignment and reassignment, SLA in working time, hold, resolve and close."
+readme = "README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+renox.workspace = true
+serde.workspace = true
+wl-kernel = { path = "../wl-kernel" }
+
+[dev-dependencies]
+tempfile = "3"

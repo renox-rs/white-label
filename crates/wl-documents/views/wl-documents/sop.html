@@ -1,0 +1,95 @@
+{#- wl-documents: one SOP: its details, status and review state, the required
+    readers (with the edit action), the versions with their translations and
+    the accept, reject, upload and withdraw actions, and the history. The
+    buttons show only what the viewer may do; the services check it again.
+    Replace it with resources/views/wl-documents/sop.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="code ~ ' ' ~ title">
+  <rx-stack>
+    <rx-page-header :title="code ~ ' ' ~ title" :subtitle="category" :back="route('wl_documents.sops')" :back-label="tx['sops.title']"
+                    :badge="status_label" :badge-kind="status_kind">
+      <rx-action-sheet rx-if="can_manage" id="upload-version" :label="tx['sops.versions.upload']" :action="route('wl_documents.sops.versions.store', id)"
+                       :title="tx['sops.versions.upload_title']" :description="tx['sops.versions.upload_description']" :submit-label="tx['sops.versions.upload']"
+                       icon="upload" variant="primary" enctype="multipart/form-data">
+        <rx-file name="files" :label="tx['sops.fields.file']" accept=".pdf,.docx" required/>
+        <rx-textarea name="note" :label="tx['sops.fields.note']" id="upload-version-note"/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_withdraw" id="withdraw-sop" :label="tx['sops.withdraw']" :action="route('wl_documents.sops.withdraw', id)"
+                       :title="tx['sops.withdraw_title']" :description="tx['sops.withdraw_description']" :submit-label="tx['sops.withdraw']" icon="circle-x" danger>
+        <rx-textarea name="reason" :label="tx['fields.reason']" id="withdraw-sop-reason"/>
+      </rx-action-sheet>
+    </rx-page-header>
+    <rx-card :title="tx['sops.details']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['sops.fields.code']" :value="code"/>
+        <rx-entry :label="tx['sops.fields.owner_role']" :value="owner_role"/>
+        <rx-entry :label="tx['sops.fields.entity']" :value="entity"/>
+        <rx-entry :label="tx['sops.fields.version']" :value="version" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['sops.fields.review']" :value="review_label"/>
+        <rx-entry :label="tx['sops.fields.review_date']" :value="review_date" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['sops.fields.interval']" :value="review_interval_months"/>
+        <rx-entry :label="tx['sops.fields.ack_days']" :value="ack_due_days"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-card :title="tx['sops.fields.readers']">
+      <rx-stack>
+        <rx-row>
+          <rx-badge rx-for="reader in readers" :text="reader" kind="info"/>
+          <span rx-if="not readers">{{ tx['sops.readers.empty'] }}</span>
+        </rx-row>
+        <rx-action-sheet rx-if="can_readers" id="edit-readers" :label="tx['sops.readers.edit']" :action="route('wl_documents.sops.readers', id)"
+                         :title="tx['sops.readers.edit_title']" :description="tx['sops.readers.edit_description']" :submit-label="tx['sops.readers.edit']" icon="pencil">
+          <rx-textarea name="readers" :label="tx['sops.fields.readers']" :value="readers_text" id="edit-readers-text"/>
+        </rx-action-sheet>
+      </rx-stack>
+    </rx-card>
+    <template rx-for="version in versions">
+      <rx-table :rows="[version]" as="v" :key="v.id" :caption="tx['sops.versions.title'] ~ ' ' ~ version.label" card>
+        <rx-column :label="tx['sops.fields.version']">{{ v.label }}</rx-column>
+        <rx-column :label="tx['sops.fields.status']"><rx-badge :text="v.status_label" :kind="v.status_kind"/></rx-column>
+        <rx-column :label="tx['fields.uploaded_by']" hide-narrow>{{ v.uploaded_by }}</rx-column>
+        <rx-column :label="tx['fields.submitted_at']" hide-narrow>{{ v.submitted_at or tx['none'] }}</rx-column>
+        <rx-column :label="tx['sops.fields.review_date']">{{ v.review_date or tx['none'] }}</rx-column>
+        <rx-row-actions>
+          <rx-icon-button rx-if="v.file_name" icon="external" :label="tx['sops.open_file'] ~ ': ' ~ v.file_name" :href="v.file_url" new-tab/>
+          <rx-action-sheet rx-if="v.can_decide" :id="'accept-version-' ~ v.id" :label="tx['sops.accept']" :action="route('wl_documents.sops.versions.accept', v.id)"
+                           :title="tx['sops.accept_title']" :description="tx['sops.accept_description']" :submit-label="tx['sops.accept']" icon="check">
+            <rx-form-errors/>
+          </rx-action-sheet>
+          <rx-action-sheet rx-if="v.can_decide" :id="'reject-version-' ~ v.id" :label="tx['sops.reject']" :action="route('wl_documents.sops.versions.reject', v.id)"
+                           :title="tx['sops.reject_title']" :description="tx['sops.reject_description']" :submit-label="tx['sops.reject']" icon="circle-x" danger>
+            <rx-textarea name="reason" :label="tx['fields.reason']" :id="'reject-version-reason-' ~ v.id" required/>
+          </rx-action-sheet>
+          <rx-action-sheet rx-if="v.can_translate" :id="'translate-version-' ~ v.id" :label="tx['sops.translate']" :action="route('wl_documents.sops.translations.store', v.id)"
+                           :title="tx['sops.translate_title']" :submit-label="tx['sops.translate']" icon="plus" enctype="multipart/form-data">
+            <rx-input name="language" :label="tx['sops.fields.language']" :hint="tx['sops.fields.language_hint']" :id="'translate-language-' ~ v.id" required/>
+            <rx-file name="files" :label="tx['sops.fields.file']" accept=".pdf,.docx" :id="'translate-file-' ~ v.id" required/>
+          </rx-action-sheet>
+        </rx-row-actions>
+      </rx-table>
+      <rx-table rx-if="version.translations" :rows="version.translations" as="t" :key="t.id" :caption="tx['sops.versions.translations'] ~ ' ' ~ version.label" card>
+        <rx-column :label="tx['sops.fields.language']">{{ t.label }}</rx-column>
+        <rx-column :label="tx['sops.fields.status']"><rx-badge :text="t.status_label" :kind="t.status_kind"/></rx-column>
+        <rx-column :label="tx['fields.uploaded_by']" hide-narrow>{{ t.uploaded_by }}</rx-column>
+        <rx-column :label="tx['fields.submitted_at']" hide-narrow>{{ t.submitted_at or tx['none'] }}</rx-column>
+        <rx-row-actions>
+          <rx-icon-button rx-if="t.file_name" icon="external" :label="tx['sops.open_file'] ~ ': ' ~ t.file_name" :href="t.file_url" new-tab/>
+          <rx-action-sheet rx-if="t.can_decide" :id="'accept-translation-' ~ t.id" :label="tx['sops.accept']" :action="route('wl_documents.sops.translations.accept', t.id)"
+                           :title="tx['sops.accept_title']" :submit-label="tx['sops.accept']" icon="check">
+            <rx-form-errors/>
+          </rx-action-sheet>
+          <rx-action-sheet rx-if="t.can_decide" :id="'reject-translation-' ~ t.id" :label="tx['sops.reject']" :action="route('wl_documents.sops.translations.reject', t.id)"
+                           :title="tx['sops.reject_title']" :description="tx['sops.reject_description']" :submit-label="tx['sops.reject']" icon="circle-x" danger>
+            <rx-textarea name="reason" :label="tx['fields.reason']" :id="'reject-translation-reason-' ~ t.id" required/>
+          </rx-action-sheet>
+        </rx-row-actions>
+      </rx-table>
+    </template>
+    <rx-empty rx-if="not versions" :title="tx['sops.versions.empty']" icon="book-open"/>
+    <rx-table :rows="timeline" as="item" :key="item.time ~ item.title" :caption="tx['sops.history']" card>
+      <rx-column :label="tx['sops.history_change']">{{ item.title }}</rx-column>
+      <rx-column :label="tx['sops.history_at']">{{ item.time }}</rx-column>
+      <rx-column :label="tx['sops.history_reason']" hide-narrow>{{ item.body or "" }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['sops.no_history']" icon="history"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

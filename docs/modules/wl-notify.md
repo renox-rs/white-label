@@ -297,6 +297,94 @@ with backoff like any automation and shows as `AutomationFailed`.
 | `statutory_notice` | For statutory types: `staff_task` to the responsible staff, due in 1 working day, to deliver the notice by another means (courier, registered mail, hand delivery, a call with a note) and record the proof on the subject. Until proof is recorded, the subject shows "notice not delivered", and any deadline that depends on the notice being given is not treated as started |
 | `none` | Only the delivery log records it (marketing, tracking links) |
 
+**The `statutory_notice` reaction.** When a statutory notice gives up, `wl-notify` keeps one
+statutory-notice record for the chain (a retried run adds no second one) and opens one task
+through the task creator: "Deliver {subject} notice to {recipient} by another means", due 1
+working day after the give-up, assigned like `staff_task`, with an urgent alert for an urgent
+type. The task lists the channels tried with masked addresses, never the message, the proof
+methods the type accepts and the link to the proof form. It takes over the type's `staff_task`,
+so the staff get one task (that step is recorded `deferred`). The run records one outcome:
+`task_created`, `task_open` (a retry found the open task), `no_task_creator` (ticketing is off;
+the record is kept and the run succeeds) or `not_statutory` (the type is not statutory:
+nothing is kept).
+
+**Proof of delivery.** Staff with `notifications.notices.record_proof` (company admin by
+default) record the proof on the notice's page: method (`courier`, `registered_mail`,
+`hand_delivery` or `call`, narrowed per type by its proof methods), delivery date, note and
+attachment. The delivery date must not be in the future nor before the day the notice gave up
+(the same day is allowed). The attachment is required for every method except `call`, which
+needs a note instead; it is a PDF, image or plain-text file, stored privately and served only
+to holders of the permission. An invalid proof answers 422 and stores nothing; a second proof
+on a notice, or one on a notice already delivered, answers 409; an unknown notice answers 404.
+Recording the proof resolves the task ("Proof recorded") and emits
+`StatutoryNoticeProofRecorded` once, after commit, with the notice, subject, type, method and
+delivery date. `Notifier::notice_status(subject, type)` then answers `proof_recorded` with that
+date. It answers `delivered` with the provider's delivery time for a notice that was delivered,
+and `not_delivered` for one only sent, queued, retrying or given up without proof, and for every
+type when `notify` is off. Each type has its own status; the newest message chain of the
+subject and type decides. `undelivered_notices(subject)` lists the notices that gave up without
+proof, for the "notice not delivered" banner (`wl-notify/_notice_banner.html`) a vertical page
+includes on the subject.
+
+**Default reaction per type group.** A type registered without a give-up reaction gets one from
+the table below, chosen in this order: statutory, then OTP, then the group, then urgency. The
+group is the key the module gives in `register_type` (constants in the kernel); any other
+group, including the key prefix filled in when none is given, counts as "no group".
+
+| Group key | Default | Staff role |
+|---|---|---|
+| `invoices`, `statements`, `payments`, `reminders` | `mark_contact_invalid`, `alternative_recipient`, `staff_task` | `receivables` |
+| `bookings` | `mark_contact_invalid` | (none) |
+| `portal`, `documents`, `signatures` | `mark_contact_invalid`, `staff_task` | module's own, else company admin |
+| `guardian` | `alternative_recipient`, `staff_task` | module's own |
+| `employee_security` | `mark_contact_invalid`, `staff_task`; never `alternative_recipient` | `hr` |
+| `otp` | `none` (urgency adds nothing) | (none) |
+| `marketing` | `mark_contact_invalid` | (none) |
+| `tracking` | `none` | (none) |
+| no known group | `staff_task` | module's own |
+
+A statutory type gets `mark_contact_invalid`, `statutory_notice` whatever its group or urgency.
+An `urgent` type gets `staff_task` added unless the row ends with it or is `none`; the in-app
+alert follows from every urgent `staff_task`.
+
+**Override rule.** A type whose module or vertical gives its own reactions, even `none`, keeps
+them unchanged, and its own staff role beats the group's. The combination rule of the
+type-edit page runs on those explicit lists and on edits, not on the seeded defaults (the
+`bookings` row is `mark_contact_invalid` alone). On install, a stored type with no reactions
+that the client never edited gets the default; an edited type is kept.
+
+The `alternative_recipient` step ends with one outcome, recorded in the run: `queued` (the new
+message and person; the later `staff_task` step is recorded `deferred` and opens nothing),
+`none_left` (every other contact was tried or has no usable address), `no_rule` (the recipient
+is not a recipient rule, e.g. a plain party) or `alternative_already_tried` (the message is
+itself an alternative). The reaction only applies to a recipient rule. A contact with no address
+on an open channel of the type, with every address on the suppression list, or on hold, is
+skipped. A retried run finds the alternative it already queued and queues nothing new. In every
+outcome except `queued`, `staff_task` runs once for the chain: through the type's own
+`staff_task` step when it comes later, otherwise by the reaction itself. Its task lists the
+channels and errors of both recipients, with masked addresses and no message body, and names
+the last recipient tried.
+
+The `mark_contact_invalid` step looks at every message of the chain, not only the last. Only
+the hard kinds count: `hard_bounce`, `invalid_number` and `unknown_account`. For each message
+with such an error and a party contact point, the point is marked `invalid` with the error kind
+as reason and the give-up time (`gave_up_at`) as since, through the party directory; a point
+that is invalid already keeps its first since and reason. So an email that hard-bounced before
+an SMS that timed out marks only the email point. Timeouts and other permanent errors (for
+example `550 mailbox unknown` stored as `permanent`) mark nothing, and a hard error followed by
+a sent fallback is no give-up. The step ends with one outcome: `marked` (the points and
+reasons are in the detail), `already_invalid` (no point changed, including when parties are
+off), `no_contact_point` (the hard errors went to a user or a bare address, which have no
+status) or `no_hard_failure`. `ContactPointInvalidated` is emitted once per marked point after
+the step is stored; a repeated run is skipped by its occurrence key. The point is never
+deleted and stays primary, but `point_for` never chooses it: a channel with only invalid
+points is skipped as if it had none. The address stays on the suppression list; editing or
+verifying the contact point makes it `valid` again but does not remove the suppression.
+
+The `send` job checks the contact point once more: a queued party message whose point became
+invalid before it was sent is `suppressed` with reason `invalid_contact_point` and the provider
+is not called.
+
 | Type group (requester) | Default reaction |
 |---|---|
 | Statutory notices (04 deadline and document-request notices to clients; 01 notices of changed terms, a landlord's notice to end a lease, formal payment demands, the formal notice on a bounced cheque; other final demands) | `mark_contact_invalid` + `statutory_notice` |
@@ -389,7 +477,7 @@ show its communication history (e.g. reminders sent for an invoice).
 | ID | Rule | When | Then | Parameter (default) |
 |---|---|---|---|---|
 | `NTF.RUL.01` | Give-up reaction | a message ends `abandoned` through `give_up` | run the notification type's give-up reaction ([§5.4](#54-when-a-message-gives-up)): staff task, alternative recipient, mark the contact point invalid, or the statutory-notice task | task due 1 working day; on |
-| `NTF.RUL.02` | Marketing send window and frequency cap | a message of category `marketing` is queued | outside the send window (Asia/Dubai) → `defer` to the next opening; when the recipient already got the cap of marketing messages in the last 7 days (across all broadcasts of the client) → `suppress` with reason *frequency cap*. The cap is checked at `send` under a lock per recipient party, and the message is `sent` under the same lock, so two broadcasts cannot both pass it | window 07:00–21:00, every channel; cap 2 per 7 days; on |
+| `NTF.RUL.02` | Marketing send window and frequency cap | a message of category `marketing` is queued | outside the send window (Asia/Dubai) → `defer` to the next opening; when the recipient already got the cap of marketing messages in the last 7 days (across all broadcasts of the client) → `suppress` with reason *frequency cap*. The cap is checked at `send` under a lock per recipient party, and the message is `sent` under the same lock, so two broadcasts cannot both pass it. Only messages to a party are capped; a message counts once it has a `sent_at` (never a `suppressed`, `abandoned`, `deferred` or `queued` one, and never one suppressed for the cap itself), and a failed attempt releases the lock without counting. The lock is a keyed mutex per party id in the process and is held through the provider call (the provider timeout bounds it) | window 07:00–21:00, every channel; cap 2 per 7 days; on |
 | `NTF.RUL.03` | Stale broadcasts | a broadcast is `pending_approval` N hours after its send at; or a marketing message of a broadcast is still `queued` or `deferred` M hours after the broadcast's `start` | `expire` the broadcast (reason *approval expired*; requester told); `suppress` the message with reason *expired* (counted in the broadcast's excluded counts) | N = 24 h; M = 48 h; on |
 
 ## 7. Configuration per client
@@ -403,12 +491,13 @@ show its communication history (e.g. reminders sent for an invoice).
 | Templates per type and language | the vertical's EN/AR templates |
 | Quiet hours for external recipients | 21:00–08:00 Asia/Dubai, normal urgency only |
 | Default language | EN; AR for parties whose language is Arabic |
-| Retry policy | 3 attempts with backoff; then fall back |
+| Retry policy | 3 attempts per channel, the next one 1 minute, then 5 minutes after a transient error (a permanent or hard error is not retried); then fall back to the next allowed channel of the type, else give up |
 | Delivery log retention | 24 months |
 | Read and open tracking | off for email, provider default for WhatsApp |
 | Give-up reaction per type, statutory flag | the module's and vertical's defaults ([§5.4](#54-when-a-message-gives-up)) |
 | Give-up task due (`NTF.RUL.01`) | 1 working day |
-| Marketing send window; frequency cap (`NTF.RUL.02`) | 07:00–21:00 on every channel, set per channel: SMS may be narrowed but not widened (§10); email and WhatsApp may be narrowed or widened; 2 messages per 7 days |
+| Give-up rule run (`NTF.RUL.01`) | one run per message (occurrence key: the message id; a second run is recorded as skipped); 5 attempts, 1, 5, 15 and 60 minutes apart; then the run is failed and `AutomationFailed` is raised (not compliance-critical) |
+| Marketing send window; frequency cap (`NTF.RUL.02`) | 07:00–21:00 on every channel, set per channel: SMS may be narrowed but not widened (§10); email and WhatsApp may be narrowed or widened; 2 messages per 7 days (7 x 24 hours back from the send, any channel, any broadcast; set with `WlNotify::marketing_frequency_cap(n)`). The window is stored per channel in `wl_notify_send_windows`; no row means 07:00–21:00. The quiet hours are a constant in code. A broadcast's page adds the messages suppressed for the cap to its excluded counts as *frequency cap* |
 | One-time code (`send_otp`): validity; wrong tries before the code is voided | 5 minutes; 3 |
 | Broadcast approval above (`NTF.ACL.03`) | 200 recipients |
 | Broadcast approval expiry; stale marketing messages (`NTF.RUL.03`) | 24 hours after send at; 48 hours after start |

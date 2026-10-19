@@ -1,0 +1,1320 @@
+use std::path::Path;
+
+use renox::auth::{Permissions, permissions};
+use renox::chrono::NaiveDate;
+use renox::prelude::*;
+use renox::testing::TestApp;
+use wl_kernel::parties::{NoParties, PartyDirectory};
+use wl_kernel::{ClientConfig, LegalEntity, PartyId, Reset, Series};
+
+/// The pages extend the app's layout; a package test has no app, so it
+/// brings the smallest one.
+const LAYOUT: &str = r#"<!doctype html>
+<html><body><rx-outlet name="content"/></body></html>
+"#;
+
+/// A group of two companies: a mainland LLC (the default) and a free-zone one.
+const GROUP: &str = r#"
+[client]
+name = "Acme Properties LLC"
+app = "property"
+
+[modules]
+enabled = ["parties", "invoicing"]
+
+[[legal_entities]]
+code = "ACME"
+name_en = "Acme Properties LLC"
+name_ar = "أكمي للعقارات ش.ذ.م.م"
+trn = "100123456700003"
+default = true
+
+[[legal_entities]]
+code = "ACFZ"
+name_en = "Acme FZ-LLC"
+"#;
+
+const INVOICE: Series = Series {
+    key: "invoice",
+    pattern: "{prefix}-{entity}-{yyyy}-{0000}",
+    prefix: "INV",
+    reset: Reset::Yearly,
+    gapless: true,
+    per_entity: true,
+};
+
+/// A views directory holding the layout and `files` (the app's own views).
+fn views(files: &[(&str, &str)]) -> tempfile::TempDir {
+    let dir = tempfile::tempdir().expect("a temporary views directory");
+    for (name, text) in [("layouts/app.html", LAYOUT)].iter().chain(files) {
+        let path = dir.path().join(name);
+        std::fs::create_dir_all(path.parent().expect("a file path")).expect("a directory");
+        std::fs::write(path, text).expect("a view file");
+    }
+    dir
+}
+
+/// The kernel for `GROUP` in an app with auth, in `views`, installed.
+async fn boot(views: &Path) -> TestApp {
+    let config = ClientConfig::parse(GROUP).expect("a valid client.toml");
+    let app = wl_kernel::apply(App::new().module(Auth::new()).module(Permissions), config)
+        .expect("the kernel applies");
+    let app = TestApp::with_config(app, |c| c.views_path = views.to_path_buf()).await;
+    app.kernel()
+        .call("wl:install", Vec::<String>::new())
+        .await
+        .expect("wl:install runs");
+    app
+}
+
+fn day() -> NaiveDate {
+    NaiveDate::from_ymd_opt(2026, 10, 18).unwrap()
+}
+
+#[renox::test]
+async fn install_creates_the_entities_once_and_keeps_admin_changes() {
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let db = app.db();
+    assert_eq!(LegalEntity::query().count(db).await.unwrap(), 2);
+    let mut acme = LegalEntity::default_entity(db).await.unwrap();
+    assert_eq!(acme.code, "ACME");
+    assert!(acme.vat_registered);
+
+    // A change made in the admin survives the next install.
+    acme.name_en = "Acme Properties L.L.C.".into();
+    acme.save(db).await.unwrap();
+    app.kernel()
+        .call("wl:install", Vec::<String>::new())
+        .await
+        .unwrap();
+    assert_eq!(LegalEntity::query().count(db).await.unwrap(), 2);
+    let again = LegalEntity::default_entity(db).await.unwrap();
+    assert_eq!(again.name_en, "Acme Properties L.L.C.");
+}
+
+#[renox::test]
+async fn a_scope_issues_from_its_entity_else_the_default() {
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let db = app.db();
+    let free_zone = LegalEntity::query()
+        .where_(LegalEntity::CODE.eq("ACFZ"))
+        .first(db)
+        .await
+        .unwrap()
+        .unwrap();
+    free_zone
+        .link_scope(db, "property.building", 7)
+        .await
+        .unwrap();
+
+    let linked = LegalEntity::for_scope(db, Some(("property.building", 7)))
+        .await
+        .unwrap();
+    assert_eq!(linked.code, "ACFZ");
+    let unlinked = LegalEntity::for_scope(db, Some(("property.building", 8)))
+        .await
+        .unwrap();
+    assert_eq!(unlinked.code, "ACME");
+    assert_eq!(LegalEntity::for_scope(db, None).await.unwrap().code, "ACME");
+}
+
+#[renox::test]
+async fn the_snapshot_keeps_the_trn_only_when_vat_registered() {
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let db = app.db();
+    let acme = LegalEntity::default_entity(db).await.unwrap();
+    let snapshot = acme.snapshot();
+    assert_eq!(snapshot.trn.as_deref(), Some("100123456700003"));
+    assert_eq!(snapshot.name_ar.as_deref(), Some("أكمي للعقارات ش.ذ.م.م"));
+
+    let free_zone = LegalEntity::query()
+        .where_(LegalEntity::CODE.eq("ACFZ"))
+        .first(db)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(free_zone.snapshot().trn, None);
+}
+
+#[renox::test]
+async fn gapless_numbers_count_per_entity_and_a_rollback_gives_one_back() {
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let db = app.db();
+    let acme = LegalEntity::default_entity(db).await.unwrap();
+    let free_zone = LegalEntity::query()
+        .where_(LegalEntity::CODE.eq("ACFZ"))
+        .first(db)
+        .await
+        .unwrap()
+        .unwrap();
+
+    let mut tx = db.begin().await.unwrap();
+    let first = INVOICE
+        .next(&mut tx, None, Some(&acme), day())
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    assert_eq!(first, "INV-ACME-2026-0001");
+
+    // Taken, then rolled back: the next document gets the same number.
+    let mut tx = db.begin().await.unwrap();
+    let lost = INVOICE
+        .next(&mut tx, None, Some(&acme), day())
+        .await
+        .unwrap();
+    tx.rollback().await.unwrap();
+    let mut tx = db.begin().await.unwrap();
+    let second = INVOICE
+        .next(&mut tx, Some("ACM-INV"), Some(&acme), day())
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    assert_eq!(lost, "INV-ACME-2026-0002");
+    assert_eq!(second, "ACM-INV-ACME-2026-0002");
+
+    let mut tx = db.begin().await.unwrap();
+    let other = INVOICE
+        .next(&mut tx, None, Some(&free_zone), day())
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    assert_eq!(other, "INV-ACFZ-2026-0001");
+
+    // A new year starts again at 1.
+    let next_year = NaiveDate::from_ymd_opt(2027, 1, 1).unwrap();
+    let mut tx = db.begin().await.unwrap();
+    let january = INVOICE
+        .next(&mut tx, None, Some(&acme), next_year)
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    assert_eq!(january, "INV-ACME-2027-0001");
+}
+
+#[renox::test]
+async fn an_entity_series_needs_an_active_entity() {
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let db = app.db();
+    let mut acme = LegalEntity::default_entity(db).await.unwrap();
+    acme.status = "inactive".into();
+    let mut tx = db.begin().await.unwrap();
+    assert!(INVOICE.next(&mut tx, None, None, day()).await.is_err());
+    assert!(
+        INVOICE
+            .next(&mut tx, None, Some(&acme), day())
+            .await
+            .is_err()
+    );
+}
+
+#[renox::test]
+async fn the_legal_entities_page_needs_the_permission() {
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let db = app.db();
+    let user = User::register(db, "Mona", "mona@example.com", "password123")
+        .await
+        .unwrap();
+    app.acting_as(&user);
+    app.get("/legal-entities").await.assert_forbidden();
+
+    permissions::define_role(
+        db,
+        "accountant",
+        &[wl_kernel::permissions::LEGAL_ENTITIES_VIEW],
+    )
+    .await
+    .unwrap();
+    user.assign_role(db, "accountant").await.unwrap();
+    app.get("/legal-entities")
+        .await
+        .assert_ok()
+        .assert_view("wl-kernel/legal_entities.html")
+        .assert_see("Acme FZ-LLC")
+        .assert_see("100123456700003");
+}
+
+/// #34 AC1: without the parties module, the kernel's directory is
+/// `NoParties` and finds nobody.
+#[renox::test]
+async fn without_parties_the_directory_finds_nobody() {
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let parties = wl_kernel::parties::directory(app.state());
+    let db = app.db();
+    assert_eq!(parties.find(db, PartyId(1)).await.unwrap(), None);
+    assert_eq!(parties.find_by_code(db, "P-00001").await.unwrap(), None);
+    assert_eq!(parties.status(db, PartyId(1)).await.unwrap(), None);
+    assert_eq!(
+        parties.display_name(db, PartyId(1), "en").await.unwrap(),
+        None
+    );
+    assert_eq!(NoParties.find(db, PartyId(1)).await.unwrap(), None);
+}
+
+/// #57 AC7: without the parties module nobody is related to anybody, for
+/// the kernel's directory as for `NoParties`; the chooser skips the parties
+/// it is told to and takes the first (primary) one.
+#[renox::test]
+async fn without_parties_nobody_is_a_related_contact() {
+    use wl_kernel::notify::ContactPurpose;
+    use wl_kernel::parties::{RelatedContact, choose_contact};
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let parties = wl_kernel::parties::directory(app.state());
+    let db = app.db();
+    for purpose in [
+        ContactPurpose::contact_of("finance"),
+        ContactPurpose::guardian_of(),
+    ] {
+        assert!(
+            parties
+                .related_contacts(db, PartyId(1), &purpose)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            NoParties
+                .related_contacts(db, PartyId(1), &purpose)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+    }
+    let related = |party: i64, primary: bool| RelatedContact {
+        party: PartyId(party),
+        position: Some("finance".into()),
+        primary,
+    };
+    let candidates = [related(11, true), related(12, false), related(13, false)];
+    assert_eq!(choose_contact(&candidates, &[]).unwrap().party, PartyId(11));
+    let tried = [PartyId(11), PartyId(12)];
+    assert_eq!(
+        choose_contact(&candidates, &tried).unwrap().party,
+        PartyId(13)
+    );
+    assert!(choose_contact(&candidates, &[PartyId(11), PartyId(12), PartyId(13)]).is_none());
+}
+
+/// #55 AC10: without the notify module, the kernel's notifier is
+/// `NoNotifier`: it queues nothing and returns no message id; a staff user
+/// still gets a bell entry.
+#[renox::test]
+async fn without_notify_the_notifier_queues_nothing() {
+    use wl_kernel::Subject;
+    use wl_kernel::notify::{self, NotificationTypeDef, NotifyChannel, NotifyRequest};
+
+    notify::register_type(
+        NotificationTypeDef::new("kernel_package.reminder", "invoicing").template(
+            NotifyChannel::Email,
+            "en",
+            Some("Invoice {{ number }} is overdue"),
+            "Please pay.",
+        ),
+    );
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let user = User::register(app.db(), "Mona", "mona@example.com", "password123")
+        .await
+        .unwrap();
+    app.fake_notifications();
+    let request = NotifyRequest::new(
+        "kernel_package.reminder",
+        Subject::new("invoicing.invoice", 7),
+    )
+    .to_party(PartyId(1))
+    .to_user(user.id)
+    .data(renox::serde_json::json!({ "number": "INV-0007" }));
+    let state = app.state();
+    let ids = notify::notifier(state)
+        .notify(state, request)
+        .await
+        .unwrap();
+    assert!(ids.is_empty());
+    app.assert_notified(&user, notify::FALLBACK_KIND);
+    assert_eq!(app.notifications().len(), 1);
+
+    // An unregistered type is refused.
+    let unknown = NotifyRequest::new(
+        "kernel_package.missing",
+        Subject::new("invoicing.invoice", 1),
+    );
+    assert!(
+        notify::notifier(state)
+            .notify(state, unknown)
+            .await
+            .is_err()
+    );
+}
+
+/// #59 AC6: without the notify module, a statutory notice is never read as
+/// delivered, and no undelivered notice is listed.
+#[renox::test]
+async fn without_notify_a_notice_is_not_delivered() {
+    use wl_kernel::Subject;
+    use wl_kernel::notify::{self, NoticeStatus};
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let state = app.state();
+    let subject = Subject::new("property.lease", 7);
+    let notifier = notify::notifier(state);
+    let status = notifier
+        .notice_status(state, &subject, "lease.changed_terms_notice")
+        .await
+        .unwrap();
+    assert_eq!(status, NoticeStatus::NotDelivered);
+    assert!(
+        notifier
+            .undelivered_notices(state, &subject)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+/// AC8 of #99: with payments off (the kernel alone), `RefundFailed` and
+/// `RefundSource` still compile and serialise, so the listeners of other
+/// modules (credit note, order, booking) build and can read the event.
+#[renox::test]
+async fn without_payments_the_refund_failed_event_still_serialises() {
+    use wl_kernel::Subject;
+    use wl_kernel::payments::{
+        PaymentId, PaymentMethod, RefundAttemptRef, RefundFailed, RefundFailedFrom,
+        RefundFailureKind, RefundId, RefundSource,
+    };
+
+    // The kernel boots without the payments module; the contract is data.
+    let dir = views(&[]);
+    let _app = boot(dir.path()).await;
+    let source = RefundSource::CreditNote(Subject::new("invoicing.credit_note", 7));
+    assert_eq!(source.kind(), "credit_note");
+    assert_eq!(source.subject().to_string(), "invoicing.credit_note:7");
+    let event = RefundFailed {
+        refund: RefundId(5),
+        party: PartyId(2),
+        amount: 50_000,
+        currency: "AED".to_owned(),
+        source: source.clone(),
+        method: PaymentMethod::Gateway,
+        kind: RefundFailureKind::GatewayDeclined,
+        reason: "card expired".to_owned(),
+        attempt: RefundAttemptRef { id: 1, number: 1 },
+        from: RefundFailedFrom::Approved,
+        outgoing_payment: Some(PaymentId(9)),
+    };
+    let json = renox::serde_json::to_value(&event).expect("the event serialises");
+    assert_eq!(json["source"]["kind"], "credit_note");
+    assert_eq!(json["kind"], "gateway_declined");
+    assert_eq!(json["outgoing_payment"], 9);
+    let back: RefundFailed = renox::serde_json::from_value(json).expect("and reads back");
+    assert_eq!(back, event);
+    for kind in [
+        "payment",
+        "credit_note",
+        "deposit",
+        "party_credit",
+        "payer_credit",
+        "order",
+        "booking",
+    ] {
+        let subject = Subject::new("x.y", 3);
+        let source = RefundSource::from_kind(kind, &subject).expect(kind);
+        assert_eq!(source.kind(), kind);
+        let json = renox::serde_json::to_value(&source).expect("serialises");
+        let back: RefundSource = renox::serde_json::from_value(json).expect("reads back");
+        assert_eq!(back, source);
+    }
+}
+
+/// AC6 of #38: the screening events are plain data other modules can listen
+/// to, and the compliance-only one carries no candidate: party, screening and
+/// status only.
+#[renox::test]
+async fn the_screening_events_serialise_without_any_candidate() {
+    use wl_kernel::{ScreeningCompleted, ScreeningFlagged, ScreeningId, ScreeningStatus};
+
+    let dir = views(&[]);
+    let _app = boot(dir.path()).await;
+    let flagged = ScreeningFlagged {
+        party: PartyId(2),
+        screening: ScreeningId(9),
+        status: ScreeningStatus::PossibleMatch,
+    };
+    let json = renox::serde_json::to_value(&flagged).expect("the event serialises");
+    let mut keys: Vec<&str> = json
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
+    keys.sort_unstable();
+    assert_eq!(keys, ["party", "screening", "status"]);
+    let back: ScreeningFlagged = renox::serde_json::from_value(json).expect("and reads back");
+    assert_eq!(back, flagged);
+    let done = ScreeningCompleted {
+        party: PartyId(2),
+        screening: ScreeningId(10),
+        status: ScreeningStatus::Clear,
+    };
+    let json = renox::serde_json::to_value(&done).expect("the event serialises");
+    let back: ScreeningCompleted = renox::serde_json::from_value(json).expect("and reads back");
+    assert_eq!(back, done);
+}
+
+/// AC1 and AC5 of #39: the confirmed-match event carries party and screening
+/// only (no list, candidate, note or reason), and `PartyRestored` only the
+/// party.
+#[renox::test]
+async fn the_confirmed_match_and_restore_events_carry_ids_only() {
+    use wl_kernel::{PartyRestored, ScreeningId, ScreeningMatchConfirmed};
+
+    let dir = views(&[]);
+    let _app = boot(dir.path()).await;
+    let confirmed = ScreeningMatchConfirmed {
+        party: PartyId(2),
+        screening: ScreeningId(9),
+    };
+    let json = renox::serde_json::to_value(&confirmed).expect("the event serialises");
+    let mut keys: Vec<&str> = json
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
+    keys.sort_unstable();
+    assert_eq!(keys, ["party", "screening"]);
+    let back: ScreeningMatchConfirmed = renox::serde_json::from_value(json).expect("reads back");
+    assert_eq!(back, confirmed);
+
+    let restored = PartyRestored { party: PartyId(2) };
+    let json = renox::serde_json::to_value(&restored).expect("the event serialises");
+    assert_eq!(json.as_object().unwrap().len(), 1);
+    let back: PartyRestored = renox::serde_json::from_value(json).expect("reads back");
+    assert_eq!(back, restored);
+}
+
+/// AC7 of #39: the held-funds registry asks every registered source for a
+/// party, in source-key order, and tags each line with its source key.
+#[renox::test]
+async fn the_held_funds_registry_collects_every_source_for_a_party() {
+    use wl_kernel::held_funds::{self, FundsFuture, FundsSource, HeldFund, HeldFundsSource};
+
+    struct Lines(Vec<HeldFund>);
+
+    impl FundsSource for Lines {
+        fn held_for<'a>(
+            &'a self,
+            _state: &'a AppState,
+            party: PartyId,
+        ) -> FundsFuture<'a, Vec<HeldFund>> {
+            Box::pin(async move {
+                // Only party 4242 has money here.
+                Ok(if party == PartyId(4242) {
+                    self.0.clone()
+                } else {
+                    Vec::new()
+                })
+            })
+        }
+    }
+
+    HeldFundsSource::new("pkg_b_credit")
+        .owner("wl-test")
+        .source(Lines(vec![HeldFund::new(
+            "Credit C-1",
+            "prepaid_credit",
+            5_000,
+            "AED",
+        )]))
+        .register();
+    HeldFundsSource::new("pkg_a_deposits")
+        .owner("wl-test")
+        .source(Lines(vec![
+            HeldFund::new("Deposit D-1", "deposit", 150_000, "AED"),
+            HeldFund::new("Refund R-1", "refund", 25_050, "AED"),
+        ]))
+        .register();
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let funds = held_funds::held_for_all(app.state(), PartyId(4242))
+        .await
+        .expect("the sources answer");
+    let ours: Vec<(&str, &str)> = funds
+        .iter()
+        .filter(|f| f.source.starts_with("pkg_"))
+        .map(|f| (f.source.as_str(), f.label.as_str()))
+        .collect();
+    assert_eq!(
+        ours,
+        [
+            ("pkg_a_deposits", "Deposit D-1"),
+            ("pkg_a_deposits", "Refund R-1"),
+            ("pkg_b_credit", "Credit C-1"),
+        ]
+    );
+    let none = held_funds::held_for_all(app.state(), PartyId(1))
+        .await
+        .expect("the sources answer");
+    assert!(none.iter().all(|f| !f.source.starts_with("pkg_")));
+}
+
+#[renox::test]
+async fn the_models_match_the_schema() {
+    let dir = views(&[]);
+    boot(dir.path()).await.assert_models_match_schema().await;
+}
+
+#[renox::test]
+async fn every_view_compiles() {
+    let dir = views(&[]);
+    boot(dir.path()).await.assert_views_compile();
+}
+
+#[test]
+fn a_missing_module_dependency_stops_the_kernel() {
+    let text = GROUP.replace(
+        r#"enabled = ["parties", "invoicing"]"#,
+        r#"enabled = ["invoicing"]"#,
+    );
+    let err = ClientConfig::parse(&text).unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "client.toml: [modules] `invoicing` needs `parties`; enable it too"
+    );
+}
+
+/// #64 AC1: without the invoicing module, the kernel's invoicer is
+/// `NoInvoicer`: nothing is drafted or found, and an allocation is refused.
+#[renox::test]
+async fn without_invoicing_the_invoicer_drafts_nothing() {
+    use wl_kernel::Subject;
+    use wl_kernel::invoicing::{
+        DraftLine, InvoiceDraft, InvoiceId, Invoicer, NoInvoicer, VatCategory, invoicer,
+    };
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let state = app.state();
+    let draft = InvoiceDraft::new(PartyId(1), Subject::new("property.lease", 1))
+        .line(DraftLine::new("Rent", 100_000, VatCategory::Standard));
+    let provided = invoicer(state);
+    let fallback: &dyn Invoicer = &NoInvoicer;
+    for invoicer in [&*provided, fallback] {
+        assert_eq!(invoicer.draft(app.db(), draft.clone()).await.unwrap(), None);
+        assert_eq!(invoicer.find(app.db(), InvoiceId(1)).await.unwrap(), None);
+        let refused = invoicer
+            .allocate(
+                state,
+                InvoiceId(1),
+                Subject::new("payments.payment", 1),
+                100,
+            )
+            .await;
+        assert!(matches!(
+            refused,
+            Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
+        ));
+    }
+}
+
+/// #70 AC10: without the invoicing module, `unallocate` and
+/// `unallocate_all` are refused (422).
+#[renox::test]
+async fn without_invoicing_no_bill_takes_money() {
+    use wl_kernel::Subject;
+    use wl_kernel::invoicing::{
+        BillReopenReason, PayBill, SupplierBillId, UnallocateBill, supplier_bills,
+    };
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let state = app.state();
+    let bills = supplier_bills(state);
+    let source = Subject::new("payments.payment", 1);
+    let pay = PayBill::new(
+        SupplierBillId(1),
+        source.clone(),
+        100,
+        "payments.allocation:1",
+    );
+    assert!(matches!(
+        bills.pay(state, pay).await,
+        Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
+    ));
+    let undo = UnallocateBill::new(
+        SupplierBillId(1),
+        source,
+        100,
+        "payments.allocation:1",
+        BillReopenReason::PaymentReversed,
+    );
+    assert!(matches!(
+        bills.unallocate(state, undo).await,
+        Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
+    ));
+}
+
+#[renox::test]
+async fn without_invoicing_nothing_can_be_unallocated() {
+    use wl_kernel::Subject;
+    use wl_kernel::invoicing::{
+        InvoiceId, Invoicer, NoInvoicer, ReopenReason, Unallocate, invoicer,
+    };
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let state = app.state();
+    let provided = invoicer(state);
+    let fallback: &dyn Invoicer = &NoInvoicer;
+    for invoicer in [&*provided, fallback] {
+        let request = Unallocate::new(
+            InvoiceId(1),
+            Subject::new("payments.payment", 1),
+            100,
+            "payments.allocation:1",
+            ReopenReason::PaymentReversed,
+        );
+        assert!(matches!(
+            invoicer.unallocate(state, request).await,
+            Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
+        ));
+        assert!(matches!(
+            invoicer
+                .unallocate_all(state, InvoiceId(1), ReopenReason::AllocationMoved)
+                .await,
+            Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
+        ));
+    }
+}
+
+/// #71 AC1: without the invoicing module, crediting is refused (422), no
+/// credit note is found, an invoice has none, the party has no open credit,
+/// and a refund cannot take one. A credit note's subject is
+/// `invoicing.credit_note:<id>`, and the three events serialise with plain
+/// ids.
+#[renox::test]
+async fn without_invoicing_no_credit_note_can_be_made() {
+    use wl_kernel::Subject;
+    use wl_kernel::invoicing::{
+        CreditLine, CreditNoteId, CreditNoteIssued, CreditNoteReopened, InvoiceCredited, InvoiceId,
+        Invoicer, NoInvoicer, invoicer,
+    };
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let state = app.state();
+    let provided = invoicer(state);
+    let fallback: &dyn Invoicer = &NoInvoicer;
+    for invoicer in [&*provided, fallback] {
+        let full = invoicer
+            .credit_in_full(state, InvoiceId(1), "Billed twice".into(), None)
+            .await;
+        assert!(matches!(
+            full,
+            Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
+        ));
+        let partly = invoicer
+            .credit_partly(
+                state,
+                InvoiceId(1),
+                vec![CreditLine::new(1, 100)],
+                "Short".into(),
+                None,
+            )
+            .await;
+        assert!(matches!(
+            partly,
+            Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
+        ));
+        assert_eq!(
+            invoicer
+                .find_credit_note(app.db(), CreditNoteId(1))
+                .await
+                .unwrap(),
+            None
+        );
+        assert!(
+            invoicer
+                .credit_notes_for(app.db(), InvoiceId(1))
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            invoicer
+                .open_credit(app.db(), PartyId(1), "AED")
+                .await
+                .unwrap(),
+            0
+        );
+        let taken = invoicer
+            .take_credit_for_refund(
+                state,
+                CreditNoteId(1),
+                Subject::new("payments.refund", 1),
+                2,
+                100,
+            )
+            .await;
+        assert!(matches!(
+            taken,
+            Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
+        ));
+    }
+
+    assert_eq!(
+        CreditNoteId(7).subject().to_string(),
+        "invoicing.credit_note:7"
+    );
+    let issued = renox::serde_json::to_value(CreditNoteIssued {
+        credit_note: CreditNoteId(7),
+        invoice: InvoiceId(3),
+        party: PartyId(2),
+        amount: 21_000,
+        reason: "Damaged".into(),
+    })
+    .unwrap();
+    assert_eq!(issued["credit_note"], 7);
+    assert_eq!(issued["invoice"], 3);
+    assert_eq!(issued["party"], 2);
+    let credited = renox::serde_json::to_value(InvoiceCredited {
+        invoice: InvoiceId(3),
+        credit_note: CreditNoteId(7),
+        amount: 105_000,
+        reason: "Billed twice".into(),
+        released_origins: vec![Subject::new("property.lease", 4)],
+    })
+    .unwrap();
+    assert_eq!(credited["invoice"], 3);
+    assert_eq!(credited["credit_note"], 7);
+    let reopened = renox::serde_json::to_value(CreditNoteReopened {
+        credit_note: CreditNoteId(7),
+        party: PartyId(2),
+        amount_restored: 50_000,
+        cause: Subject::new("payments.refund", 9),
+    })
+    .unwrap();
+    assert_eq!(reopened["credit_note"], 7);
+    assert_eq!(reopened["amount_restored"], 50_000);
+}
+
+/// #146 AC1: without the ticketing module, the kernel's task creator is
+/// `NoTickets`: no ticket is opened and the caller carries on.
+#[renox::test]
+async fn without_ticketing_the_task_creator_opens_nothing() {
+    use wl_kernel::Subject;
+    use wl_kernel::tickets::{
+        NoTickets, OpenTicket, TaskComment, TaskCreator, TicketId, task_creator,
+    };
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let state = app.state();
+    let request = OpenTicket::new(Subject::new("property.unit", 12), "general", "Leaking tap");
+    let provided = task_creator(state);
+    let fallback: &dyn TaskCreator = &NoTickets;
+    for creator in [&*provided, fallback] {
+        assert_eq!(creator.open(state, request.clone()).await.unwrap(), None);
+        assert_eq!(creator.find_open(state, "any").await.unwrap(), None);
+        creator
+            .comment(state, TicketId(1), TaskComment::internal("x"))
+            .await
+            .unwrap();
+    }
+}
+
+/// #146 AC2: the business calendar (Asia/Dubai, Monday to Friday, 09:00 to
+/// 18:00) counts SLA time in working minutes; the client's holidays are
+/// skipped, and `working_minutes_between` is the inverse of `add_working`.
+#[test]
+fn the_business_calendar_counts_working_time() {
+    use renox::chrono::NaiveDateTime;
+    use wl_kernel::BusinessCalendar;
+
+    let text = format!("{GROUP}\n[calendar]\nholidays = [\"2026-11-04\"]\n");
+    let config = ClientConfig::parse(&text).expect("a valid client.toml");
+    let holiday = config.business_calendar();
+    let plain = BusinessCalendar::default();
+    let at = |date: &str, time: &str| {
+        let local: NaiveDateTime = format!("{date}T{time}:00").parse().expect("a time");
+        plain.from_local(local)
+    };
+
+    // Tuesday 09:00 plus 8 working hours is 17:00.
+    assert_eq!(
+        plain.add_working(at("2026-11-03", "09:00"), 8 * 60),
+        at("2026-11-03", "17:00")
+    );
+    // Friday 16:00 plus 8 hours is Monday 15:00 (the weekend is skipped).
+    assert_eq!(
+        plain.add_working(at("2026-11-06", "16:00"), 8 * 60),
+        at("2026-11-09", "15:00")
+    );
+    // A start after closing counts from the next opening.
+    assert_eq!(
+        plain.add_working(at("2026-11-03", "20:00"), 60),
+        at("2026-11-04", "10:00")
+    );
+    // A listed holiday is skipped: Tuesday 16:00 plus 3 hours is Thursday 10:00.
+    assert_eq!(
+        holiday.add_working(at("2026-11-03", "16:00"), 3 * 60),
+        at("2026-11-05", "10:00")
+    );
+    assert!(!holiday.is_working_day("2026-11-04".parse().unwrap()));
+
+    for calendar in [&plain, &holiday] {
+        for (from, minutes) in [
+            (at("2026-11-03", "09:00"), 8 * 60),
+            (at("2026-11-06", "16:00"), 8 * 60),
+            (at("2026-11-03", "10:30"), 27 * 60),
+            (at("2026-11-02", "09:00"), 126 * 60),
+        ] {
+            let due = calendar.add_working(from, minutes);
+            assert_eq!(calendar.working_minutes_between(from, due), minutes);
+        }
+    }
+}
+
+/// #36 AC1 and AC7 (kernel side): with no module registered, the registry
+/// lists the 12 kinds of wl-parties §5.6 with their defaults, and a kind
+/// nobody registered is reviewed with no decider. This binary registers
+/// nothing, so the defaults are what is read.
+#[renox::test]
+async fn the_block_effects_registry_lists_the_twelve_kinds_and_reviews_the_unknown() {
+    use wl_kernel::block_effects::{self, BlockEffect, RuleSource};
+
+    let dir = views(&[]);
+    let _app = boot(dir.path()).await;
+    let kinds = block_effects::kinds();
+    let listed: Vec<(&str, BlockEffect, Option<&str>)> = kinds
+        .iter()
+        .map(|k| (k.key.as_str(), k.effect, k.decider_role.as_deref()))
+        .collect();
+    assert_eq!(
+        listed,
+        [
+            ("engagement", BlockEffect::Pause, Some("compliance")),
+            (
+                "subscription",
+                BlockEffect::Pause,
+                Some("subscriptions_manager")
+            ),
+            ("enrolment", BlockEffect::Pause, Some("centre_manager")),
+            ("lease", BlockEffect::Continue, Some("property_manager")),
+            (
+                "deployment",
+                BlockEffect::Continue,
+                Some("managing_director")
+            ),
+            ("project", BlockEffect::Continue, Some("managing_director")),
+            ("sales_order", BlockEffect::Pause, Some("sales_manager")),
+            ("booking", BlockEffect::Review, Some("branch_manager")),
+            ("purchase_order", BlockEffect::Continue, Some("procurement")),
+            (
+                "service_contract",
+                BlockEffect::Review,
+                Some("facility_manager")
+            ),
+            ("money_out", BlockEffect::Pause, Some("compliance")),
+            ("money_in", BlockEffect::Continue, Some("compliance")),
+        ]
+    );
+    assert!(
+        kinds
+            .iter()
+            .all(|k| k.source == RuleSource::Default && !k.has_source)
+    );
+
+    let scope = renox::auth::permissions::Scope::new("branches", 1);
+    let unknown = block_effects::effect_for("unregistered_kind", &scope);
+    assert_eq!(unknown.effect, BlockEffect::Review);
+    assert_eq!(unknown.decider_role, None);
+    assert_eq!(unknown.source, RuleSource::Default);
+    assert_eq!(unknown.scope, scope);
+    assert!(block_effects::source_for("booking").is_none());
+}
+
+/// #56 AC7: `scope_of` gives the scope of a subject's machine first, then a
+/// registered resolver's, then the global scope; a machine wins over a
+/// resolver for the same type.
+#[renox::test]
+async fn the_scope_of_a_subject_is_its_machine_then_a_resolver_then_global() {
+    use renox::auth::permissions::Scope;
+    use renox::db::{Migration, sql};
+    use renox::state_machine::{Machine, StateMachine, Transition};
+    use serde::{Deserialize, Serialize};
+    use wl_kernel::{Subject, SubjectMachine, scopes};
+
+    #[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+    enum ItemStatus {
+        #[default]
+        New,
+        Done,
+    }
+
+    /// A record in a building.
+    #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
+    #[model(table = "test_scoped_items", state_machine)]
+    struct Item {
+        id: i64,
+        status: ItemStatus,
+        building_id: i64,
+    }
+
+    impl StateMachine for Item {
+        type State = ItemStatus;
+        const COLUMN: renox::db::Col<Item, ItemStatus> = Item::STATUS;
+
+        fn machine() -> Machine<Self> {
+            Machine::new()
+                .initial([ItemStatus::New])
+                .state(ItemStatus::New)
+                .state(ItemStatus::Done)
+                .terminal()
+                .transition(
+                    Transition::new("finish")
+                        .from([ItemStatus::New])
+                        .to(ItemStatus::Done),
+                )
+        }
+    }
+
+    const MIGRATIONS: &[Migration] = &[Migration::new(
+        "20261018130098_create_test_scoped_items",
+        r#"CREATE TABLE "test_scoped_items" (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            status TEXT NOT NULL DEFAULT 'new',
+            building_id INTEGER NOT NULL DEFAULT 0
+        );"#,
+        Some(r#"DROP TABLE "test_scoped_items";"#),
+    )];
+
+    struct Items;
+
+    impl Module for Items {
+        fn name(&self) -> &'static str {
+            "scoped-items"
+        }
+
+        fn migrations(&self) -> &'static [Migration] {
+            MIGRATIONS
+        }
+
+        fn register(&self, app: &mut Registry) {
+            app.model::<Item>();
+        }
+    }
+
+    let app = TestApp::new(App::new().module(Items)).await;
+    let db = app.db();
+    sql(r#"INSERT INTO "test_scoped_items" (building_id) VALUES (7)"#)
+        .execute(db)
+        .await
+        .unwrap();
+    let tower_a = Scope::new("buildings", 7);
+    let tower_b = Scope::new("buildings", 8);
+    let subject = Subject::new("scopes_it.item", 1);
+
+    // Nothing registered: global.
+    assert_eq!(
+        scopes::scope_of(db, &subject).await.unwrap(),
+        Scope::global()
+    );
+
+    // A resolver gives its scope.
+    scopes::register("scopes_it.item", |_db, _id| {
+        Box::pin(async { Ok(Scope::new("buildings", 8)) })
+    });
+    assert_eq!(scopes::scope_of(db, &subject).await.unwrap(), tower_b);
+
+    // A machine with a scope wins over the resolver.
+    SubjectMachine::of::<Item>("scopes_it.item")
+        .scope(|item: &Item| Scope::new("buildings", item.building_id))
+        .register();
+    assert_eq!(scopes::scope_of(db, &subject).await.unwrap(), tower_a);
+}
+
+/// #56 AC2: working days skip the weekend and the holidays of `client.toml`
+/// and keep the Asia/Dubai clock time: Thursday to Friday, Friday to
+/// Monday, and the day before a holiday to the day after it.
+#[test]
+fn a_due_time_is_the_next_working_day_at_the_same_clock_time() {
+    use renox::chrono::NaiveDateTime;
+
+    let text = format!("{GROUP}\n[calendar]\nholidays = [\"2026-11-10\"]\n");
+    let calendar = ClientConfig::parse(&text)
+        .expect("a valid client.toml")
+        .business_calendar();
+    let local = |text: &str| -> NaiveDateTime { text.parse().expect("a time") };
+    let due = |from: &str| {
+        let at = calendar.from_local(local(from));
+        calendar
+            .local(calendar.add_working_days(at, 1))
+            .naive_local()
+    };
+
+    assert_eq!(due("2026-11-05T10:00:00"), local("2026-11-06T10:00:00"));
+    assert_eq!(due("2026-11-06T16:00:00"), local("2026-11-09T16:00:00"));
+    assert_eq!(due("2026-11-07T10:00:00"), local("2026-11-09T10:00:00"));
+    // Monday the 9th is the day before the holiday: due Wednesday the 11th.
+    assert_eq!(due("2026-11-09T10:00:00"), local("2026-11-11T10:00:00"));
+}
+
+/// #94 AC1: without the payments module, the kernel's payment recorder is
+/// `NoPayments`: nothing is found, the credit balance is 0, and recording,
+/// allocating and reversing are refused.
+#[renox::test]
+async fn without_payments_the_recorder_finds_nothing_and_refuses_to_record() {
+    use wl_kernel::Subject;
+    use wl_kernel::invoicing::InvoiceId;
+    use wl_kernel::payments::{
+        AllocationTarget, NoPayments, PaymentId, PaymentMethod, PaymentRecorder, RecordPayment,
+        ReversalReason, payment_recorder,
+    };
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let state = app.state();
+    let provided = payment_recorder(state);
+    let fallback: &dyn PaymentRecorder = &NoPayments;
+    for recorder in [&*provided, fallback] {
+        assert_eq!(recorder.find(app.db(), PaymentId(1)).await.unwrap(), None);
+        assert_eq!(
+            recorder
+                .credit_balance(app.db(), PartyId(1), "AED")
+                .await
+                .unwrap(),
+            0
+        );
+        assert!(
+            recorder
+                .payments_for(app.db(), &Subject::new("property.deposit", 1))
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        let record = recorder
+            .record(
+                state,
+                RecordPayment::new(PartyId(1), 1, PaymentMethod::Cash, 100),
+                None,
+            )
+            .await;
+        assert!(matches!(
+            record,
+            Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
+        ));
+        let allocate = recorder
+            .allocate(
+                state,
+                PaymentId(1),
+                AllocationTarget::Invoice(InvoiceId(1)),
+                100,
+            )
+            .await;
+        assert!(matches!(
+            allocate,
+            Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
+        ));
+        let reverse = recorder
+            .reverse(
+                state,
+                PaymentId(1),
+                ReversalReason::EnteredInError,
+                None,
+                None,
+            )
+            .await;
+        assert!(matches!(
+            reverse,
+            Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
+        ));
+    }
+}
+
+/// #58 AC7: without the parties module the directory marks no contact point
+/// invalid (`None`, for the kernel's directory as for `NoParties`), so a
+/// give-up run still succeeds.
+#[renox::test]
+async fn without_parties_no_contact_point_is_marked_invalid() {
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let parties = wl_kernel::parties::directory(app.state());
+    let since = renox::db::now();
+    assert_eq!(
+        parties
+            .invalidate_contact(app.db(), 11, since, "hard_bounce")
+            .await
+            .unwrap(),
+        None
+    );
+    assert_eq!(
+        NoParties
+            .invalidate_contact(app.db(), 11, since, "hard_bounce")
+            .await
+            .unwrap(),
+        None
+    );
+}
+
+/// #58 AC6: a module that registers a non-marketing type with
+/// `mark_contact_invalid` alone fails at boot; a marketing type, or one with
+/// another reaction beside it, registers.
+#[test]
+fn a_type_with_only_mark_contact_invalid_is_refused_unless_marketing() {
+    use wl_kernel::notify::{
+        self, Category, GiveUpReaction, NotificationTypeDef, NotifyChannel, check_give_up,
+    };
+
+    let def = |key: &str, category: Category, reactions: &[GiveUpReaction]| {
+        NotificationTypeDef::new(key, "invoicing")
+            .category(category)
+            .give_up(reactions)
+            .template(NotifyChannel::Email, "en", Some("Hello"), "Hello.")
+    };
+    let mark = GiveUpReaction::MarkContactInvalid;
+    let refused = std::panic::catch_unwind(|| {
+        notify::register_type(def("kernel_package.alone", Category::Reminder, &[mark]));
+    });
+    assert!(refused.is_err());
+    assert!(notify::notification_type("kernel_package.alone").is_none());
+    assert!(check_give_up(Category::Reminder, &[mark]).is_err());
+
+    notify::register_type(def(
+        "kernel_package.marketing",
+        Category::Marketing,
+        &[mark],
+    ));
+    notify::register_type(def(
+        "kernel_package.paired",
+        Category::Reminder,
+        &[mark, GiveUpReaction::StaffTask],
+    ));
+    assert!(notify::notification_type("kernel_package.marketing").is_some());
+    assert!(notify::notification_type("kernel_package.paired").is_some());
+}
+
+/// #60 AC1/AC7: a type registered without a list gets the default of its
+/// group (and the group's role); an own list is kept.
+#[test]
+fn a_type_registered_without_reactions_gets_the_group_default() {
+    use wl_kernel::notify::{
+        self, GROUP_INVOICES, GiveUpReaction, NotificationTypeDef, default_give_up,
+    };
+
+    let def = NotificationTypeDef::new("kernel_package.seeded", "invoicing").group(GROUP_INVOICES);
+    let expected = default_give_up(&def);
+    notify::register_type(def);
+    let stored = notify::notification_type("kernel_package.seeded").unwrap();
+    assert_eq!(stored.give_up, expected.reactions);
+    assert_eq!(stored.staff_role.as_deref(), Some("receivables"));
+
+    notify::register_type(
+        NotificationTypeDef::new("kernel_package.own", "invoicing")
+            .group(GROUP_INVOICES)
+            .give_up(&[GiveUpReaction::None]),
+    );
+    let own = notify::notification_type("kernel_package.own").unwrap();
+    assert_eq!(own.give_up, [GiveUpReaction::None]);
+}
+
+/// #60 AC2/AC3/AC4/AC7: statutory, OTP and ungrouped types, and the seeded
+/// booking default, through the public registry.
+#[test]
+fn the_registry_seeds_statutory_otp_ungrouped_and_booking_types() {
+    use wl_kernel::notify::{
+        self, GROUP_BOOKINGS, GROUP_OTP, GiveUpReaction as G, NotificationTypeDef, Urgency,
+    };
+
+    let def = |key: &str| NotificationTypeDef::new(key, "kernel_package");
+    notify::register_type(
+        def("kernel_package.changed_terms_notice")
+            .statutory(true)
+            .urgency(Urgency::Urgent),
+    );
+    notify::register_type(
+        def("kernel_package.code")
+            .group(GROUP_OTP)
+            .urgency(Urgency::Urgent),
+    );
+    notify::register_type(def("kernel_package.plain"));
+    notify::register_type(def("kernel_package.booking").group(GROUP_BOOKINGS));
+    let reactions = |key: &str| {
+        notify::notification_type(key)
+            .expect("registered")
+            .give_up
+            .clone()
+    };
+    assert_eq!(
+        reactions("kernel_package.changed_terms_notice"),
+        [G::MarkContactInvalid, G::StatutoryNotice]
+    );
+    assert_eq!(reactions("kernel_package.code"), [G::None]);
+    assert_eq!(reactions("kernel_package.plain"), [G::StaffTask]);
+    assert_eq!(reactions("kernel_package.booking"), [G::MarkContactInvalid]);
+}
+
+/// #76 AC1: without the invoicing module, debit notes refuse or are empty
+/// and the cost poster is a no-op.
+#[renox::test]
+async fn without_invoicing_debit_notes_are_off_and_cost_is_a_no_op() {
+    use wl_kernel::invoicing::{
+        ReverseCost, SupplierDebitNoteId, cost_poster, supplier_debit_notes,
+    };
+    use wl_kernel::{PartyId, Subject};
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let state = app.state();
+    let notes = supplier_debit_notes(state);
+    assert_eq!(
+        SupplierDebitNoteId(7).subject().to_string(),
+        "invoicing.supplier_debit_note:7"
+    );
+    assert_eq!(
+        notes.find(&state.db, SupplierDebitNoteId(7)).await.unwrap(),
+        None
+    );
+    assert_eq!(
+        notes
+            .debit_balance(&state.db, PartyId(1), 1, "AED")
+            .await
+            .unwrap(),
+        0
+    );
+    let request = ReverseCost::new(SupplierDebitNoteId(7).subject(), "k")
+        .line(Subject::new("sales.campaign", 1), 100);
+    cost_poster(state)
+        .reverse(state, request.clone())
+        .await
+        .unwrap();
+    cost_poster(state).restore(state, request).await.unwrap();
+    // #77 AC1: settling from a payment and cancelling refuse (422).
+    assert!(matches!(
+        notes
+            .settle_from_payment(
+                state,
+                SupplierDebitNoteId(7),
+                Subject::new("payments.payment", 1),
+                100,
+                "payments.allocation:1"
+            )
+            .await,
+        Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
+    ));
+    assert!(matches!(
+        notes
+            .cancel(state, SupplierDebitNoteId(7), "issued in error", None)
+            .await,
+        Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
+    ));
+}

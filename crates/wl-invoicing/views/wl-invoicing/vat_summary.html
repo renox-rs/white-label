@@ -1,0 +1,45 @@
+{#- wl-invoicing: one VAT summary: its period and status, who prepared,
+    reviewed and locked it, the transition actions, its adjustments (with
+    the include/exclude sheets of each proposed one) and the history.
+    Replace it with resources/views/wl-invoicing/vat_summary.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="title">
+  <rx-stack>
+    <rx-page-header :title="title" :subtitle="tx['vat.title']" :back="route('wl_invoicing.vat_summaries')" :back-label="tx['vat.title']"
+                    :badge="status_label" :badge-kind="status_kind">
+      <template rx-if="actions">
+        <rx-transition-actions :actions="actions" action="/vat-summaries/{{ summary.id }}/transitions"/>
+      </template>
+    </rx-page-header>
+    <rx-card :title="tx['vat.sections.summary']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['vat.fields.entity']" :value="entity"/>
+        <rx-entry :label="tx['vat.fields.period']" :value="period"/>
+        <rx-entry :label="tx['vat.fields.prepared_by']" :value="prepared_by" placeholder="-"/>
+        <rx-entry :label="tx['vat.fields.prepared_at']" :value="summary.prepared_at" format="date" placeholder="-"/>
+        <rx-entry :label="tx['vat.fields.reviewed_by']" :value="reviewed_by" placeholder="-"/>
+        <rx-entry :label="tx['vat.fields.reviewed_at']" :value="summary.reviewed_at" format="date" placeholder="-"/>
+        <rx-entry rx-if="summary.send_back_reason" :label="tx['vat.fields.send_back_reason']" :value="summary.send_back_reason"/>
+        <rx-entry :label="tx['vat.fields.locked_by']" :value="locked_by" placeholder="-"/>
+        <rx-entry :label="tx['vat.fields.locked_at']" :value="summary.locked_at" format="date" placeholder="-"/>
+        <rx-entry rx-if="summary.filing_reference" :label="tx['vat.fields.filing_reference']" :value="summary.filing_reference" copyable/>
+      </rx-infolist>
+    </rx-card>
+    <rx-table :rows="adjustments" as="adjustment" :key="adjustment.id" :caption="tx['vat.sections.adjustments']" card>
+      <rx-column :label="tx['vat.adjustments.kind']">{{ adjustment.kind }}</rx-column>
+      <rx-column :label="tx['vat.adjustments.invoice']">{{ adjustment.invoice if not adjustment.invoice_id else "" }}<a rx-if="adjustment.invoice_id" href="{{ route('wl_invoicing.show', adjustment.invoice_id) }}">{{ adjustment.invoice }}</a></rx-column>
+      <rx-column :label="tx['vat.adjustments.amount']">{{ adjustment.amount }}</rx-column>
+      <rx-column :label="tx['vat.adjustments.status']"><rx-badge :text="adjustment.status" :kind="adjustment.status_kind"/></rx-column>
+      <rx-column :label="tx['vat.adjustments.reason']" hide-narrow>{{ adjustment.reason or "" }}</rx-column>
+      <rx-column label="">
+        <template rx-if="adjustment.can_decide"><rx-include template="wl-invoicing/_adjustment_sheet.html"/></template>
+      </rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['vat.adjustments.empty']" icon="list"/></rx-slot>
+    </rx-table>
+    <rx-table :rows="timeline" as="item" :key="item.time" :caption="tx['sections.history']" card>
+      <rx-column :label="tx['history.change']">{{ item.title }}</rx-column>
+      <rx-column :label="tx['history.at']">{{ item.time | date('%Y-%m-%d %H:%M') }}</rx-column>
+      <rx-column :label="tx['history.reason']" hide-narrow>{{ item.body or "" }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['no_history']" icon="history"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

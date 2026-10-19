@@ -1,0 +1,10 @@
+{#- wl-sales: the campaigns list, a renox::grid (search on code and name,
+    filters by status and channel). Replace it with
+    resources/views/wl-sales/index.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['campaigns.title']">
+  <rx-page-header :title="tx['campaigns.title']" :subtitle="tx['campaigns.subtitle']">
+    <rx-link-button rx-if="can_lead_sources" :href="route('wl_sales.lead_sources')" :label="tx['lead_sources.title']" variant="secondary" icon="tags"/>
+    <rx-link-button rx-if="can_create" :href="route('wl_sales.campaign_new')" :label="tx['campaigns.form.new_title']" icon="plus"/>
+  </rx-page-header>
+  <rx-grid :page="campaigns"/>
+</rx-page>

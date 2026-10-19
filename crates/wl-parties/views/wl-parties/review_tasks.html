@@ -1,0 +1,16 @@
+{#- wl-parties: the open review tasks of parties on hold, for the decider
+    role. Replace it with resources/views/wl-parties/review_tasks.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['review.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['review.title']" :subtitle="tx['review.subtitle']"/>
+    <rx-table :rows="tasks" as="task" :key="task.id" :caption="tx['review.title']" card>
+      <rx-column :label="tx['review.task']"><a href="{{ route('wl_parties.review_task', task.id) }}">{{ task.header }}</a></rx-column>
+      <rx-column :label="tx['review.fields.party']">{{ task.party }}</rx-column>
+      <rx-column :label="tx['review.fields.agreement']">{{ task.agreement }}</rx-column>
+      <rx-column :label="tx['review.fields.scope']" hide-narrow>{{ task.scope }}</rx-column>
+      <rx-column :label="tx['review.fields.pending']" align="num">{{ task.pending }}</rx-column>
+      <rx-column :label="tx['review.fields.opened']" hide-narrow>{{ task.opened | date('%Y-%m-%d %H:%M') if task.opened else "—" }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['review.empty']" :message="tx['review.empty_hint']" icon="inbox"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

@@ -1,0 +1,21 @@
+{#- wl-notify: the public page behind the unsubscribe link of a marketing
+    e-mail. Replace it with resources/views/wl-notify/unsubscribe.html in the
+    app. -#}
+<rx-page layout="layouts/public.html" :title="tx['unsubscribe.title']">
+  <rx-stack>
+    <rx-card rx-if="step == 'ask'" :title="brand">
+      <rx-page-header :title="tx['unsubscribe.title']" :subtitle="tx['unsubscribe.intro']"/>
+      <rx-form :action="route('wl_notify.unsubscribe_confirm', token)" novalidate>
+        <div class="rx-card__footer">
+          <rx-button :label="tx['unsubscribe.confirm']"/>
+        </div>
+      </rx-form>
+    </rx-card>
+    <rx-card rx-if="step == 'done'" :title="brand">
+      <rx-alert kind="success" :title="tx['unsubscribe.done_title']" :message="tx['unsubscribe.done']"/>
+    </rx-card>
+    <rx-card rx-if="step == 'invalid'">
+      <rx-alert kind="warning" :title="tx['unsubscribe.invalid_title']" :message="tx['unsubscribe.invalid']"/>
+    </rx-card>
+  </rx-stack>
+</rx-page>

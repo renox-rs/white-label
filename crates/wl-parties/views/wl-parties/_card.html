@@ -1,0 +1,33 @@
+{#- wl-parties: the party card (who the party is and its status), on the
+    party page. Replace it with resources/views/wl-parties/_card.html in the
+    app. A blocked party shows `hold_label`, "On hold — Non-payment" or
+    "On hold", made from the display code only (`on_hold` for a restricted
+    reason, PTY.ACL.02). -#}
+<rx-card :title="tx['sections.card']">
+  <rx-infolist columns="2">
+    <rx-entry :label="tx['fields.code']" :value="party.code" copyable/>
+    <rx-entry :label="tx['fields.kind']" :value="tx['kind.' ~ party.kind]"/>
+    <rx-entry :label="tx['fields.status']" :value="party.status"
+              :badge="{'active': 'success', 'blocked': 'error', 'archived': 'neutral', 'merged': 'neutral'}"
+              :labels="{'active': tx['status.active'], 'blocked': hold_label or tx['status.blocked'], 'archived': tx['status.archived'], 'merged': tx['status.merged']}"/>
+    <rx-entry rx-if="invalid_contacts" :label="tx['sections.contacts']" :value="'invalid'"
+              :badge="{'invalid': 'error'}" :labels="{'invalid': tx['contact.needs_updating']}"/>
+    <rx-entry :label="tx['fields.legal_name_en']" :value="party.legal_name_en"/>
+    <rx-entry :label="tx['fields.legal_name_ar']" :value="party.legal_name_ar"/>
+    <rx-entry :label="tx['fields.display_name']" :value="party.display_name"/>
+    <rx-entry :label="tx['fields.default_language']" :value="tx['language.' ~ party.default_language]"/>
+    <rx-entry :label="tx['fields.preferred_channel']" :value="tx['channel.' ~ party.preferred_channel]"/>
+    <template rx-if="company">
+      <rx-entry :label="tx['fields.trn']" :value="company.trn" copyable/>
+      <rx-entry :label="tx['fields.vat_registered']" :value="company.vat_registered" format="bool"/>
+      <rx-entry :label="tx['fields.legal_form']" :value="company.legal_form"/>
+      <rx-entry :label="tx['fields.trade_licence_no']" :value="company.trade_licence_no"/>
+      <rx-entry :label="tx['fields.licence_authority']" :value="company.licence_authority"/>
+    </template>
+    <template rx-if="person">
+      <rx-entry :label="tx['fields.nationality']" :value="person.nationality"/>
+      <rx-entry :label="tx['fields.date_of_birth']" :value="person.date_of_birth" format="date"/>
+    </template>
+    <rx-entry :label="tx['fields.created_at']" :value="party.created_at" format="since"/>
+  </rx-infolist>
+</rx-card>

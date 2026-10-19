@@ -1,0 +1,35 @@
+{#- wl-notify: where staff record the proof that a statutory notice was
+    delivered another way, or read the proof once recorded. Replace it with
+    resources/views/wl-notify/notice_proof.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['proof.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['proof.title']" :subtitle="subject ~ ' · ' ~ type_key"/>
+    <rx-include template="wl-notify/_notice_banner.html"/>
+    <rx-card rx-if="proof">
+      <rx-alert kind="success" :title="tx['proof.recorded_title']" :message="proof.method ~ ' · ' ~ proof.delivered_on"/>
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['proof.method']" :value="proof.method"/>
+        <rx-entry :label="tx['proof.delivered_on']" :value="proof.delivered_on"/>
+        <rx-entry :label="tx['proof.note']" :value="proof.note"/>
+        <rx-entry :label="tx['proof.attachment']" :value="proof.attachment"/>
+      </rx-infolist>
+      <div class="rx-card__footer" rx-if="proof.file_path">
+        <rx-link-button :href="proof.file_path" :label="tx['proof.download']" icon="download"/>
+      </div>
+    </rx-card>
+    <rx-form rx-else :action="route('wl_notify.notice_proof_store', notice)" enctype="multipart/form-data" novalidate>
+      <rx-card>
+        <rx-form-errors/>
+        <rx-form-grid columns="2">
+          <rx-select name="method" :label="tx['proof.method']" :options="methods" id="proof-method" required/>
+          <rx-input name="delivered_on" type="date" :label="tx['proof.delivered_on']" :hint="tx['proof.gave_up_on'] ~ ' ' ~ gave_up_on" id="proof-date" required/>
+          <rx-textarea name="note" :label="tx['proof.note']" id="proof-note" span="full"/>
+          <rx-file name="files" :label="tx['proof.attachment']" :hint="tx['proof.attachment_hint']" accept=".pdf,.jpg,.jpeg,.png,.heic,.txt" span="full"/>
+        </rx-form-grid>
+        <div class="rx-card__footer">
+          <rx-button :label="tx['proof.submit']"/>
+        </div>
+      </rx-card>
+    </rx-form>
+  </rx-stack>
+</rx-page>

@@ -1,0 +1,9 @@
+{#- wl-payments: the allocate action on the payment page, a sheet with the
+    invoice id and the amount. The invoicing module checks the invoice.
+    Replace it with resources/views/wl-payments/_allocate_sheet.html in the app. -#}
+<rx-action-sheet :id="'allocate-payment-' ~ payment.id" :label="tx['allocate.action']" :action="route('wl_payments.allocate', payment.id)"
+                 :title="tx['allocate.title']" :description="allocate_description" :submit-label="tx['allocate.submit']"
+                 icon="link">
+  <rx-input name="invoice_id" type="number" :label="tx['fields.invoice_id']" :hint="tx['fields.invoice_id_hint']" :id="'allocate-invoice-' ~ payment.id" required/>
+  <rx-input name="amount" :label="tx['fields.amount']" :hint="tx['fields.amount_hint']" :id="'allocate-amount-' ~ payment.id" required/>
+</rx-action-sheet>

@@ -1,0 +1,16 @@
+[package]
+name = "wl-payments"
+description = "Payments: receipts by method, allocation to invoices, reversal, refunds and party credit."
+readme = "README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+renox.workspace = true
+serde.workspace = true
+wl-kernel = { path = "../wl-kernel" }
+
+[dev-dependencies]
+tempfile = "3"

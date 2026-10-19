@@ -1,0 +1,7 @@
+{#- wl-invoicing: the VAT summaries list, a renox::grid (filters by legal
+    entity and status). Replace it with
+    resources/views/wl-invoicing/vat_summaries.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['vat.title']">
+  <rx-page-header :title="tx['vat.title']"/>
+  <rx-grid :page="summaries"/>
+</rx-page>

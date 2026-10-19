@@ -1,0 +1,26 @@
+{#- wl-parties: the sanctions lists with their freshness and the latest screenings.
+    Replace it with resources/views/wl-parties/screening.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['screening.page_title']">
+  <rx-stack>
+    <rx-page-header :title="tx['screening.page_title']" :subtitle="tx['screening.page_subtitle']"/>
+    <rx-table :rows="lists" as="list" :key="list.name" :caption="tx['screening.sections.lists']" card>
+      <rx-column :label="tx['screening.fields.list_name']">{{ list.name }}</rx-column>
+      <rx-column :label="tx['screening.fields.source']" hide-narrow>{{ list.source }}</rx-column>
+      <rx-column :label="tx['screening.fields.version']">{{ list.version }}</rx-column>
+      <rx-column :label="tx['screening.fields.updated']">{{ list.updated }}</rx-column>
+      <rx-column :label="tx['screening.fields.status']"><rx-badge :text="list.status_label" :kind="list.status_tone"/><template rx-if="list.can_upload"><rx-include template="wl-parties/list_upload_sheet.html"/></template></rx-column>
+      <rx-column :label="tx['screening.fields.error']" hide-narrow>{{ list.error }}</rx-column>
+      <rx-column :label="tx['screening.fields.uploaded_by']" hide-narrow>{{ list.uploaded_by }}</rx-column>
+      <rx-column :label="tx['screening.fields.source_url']" hide-narrow>{{ list.source_url }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['screening.no_lists']" icon="inbox"/></rx-slot>
+    </rx-table>
+    <rx-table :rows="screenings" as="run" :key="run.id" :caption="tx['screening.sections.latest']" card>
+      <rx-column :label="tx['screening.fields.run_at']">{{ run.run_at }}</rx-column>
+      <rx-column :label="tx['screening.fields.party']">{{ run.party }} {{ run.code }}</rx-column>
+      <rx-column :label="tx['screening.fields.trigger']" hide-narrow>{{ run.trigger }}</rx-column>
+      <rx-column :label="tx['screening.fields.status']">{{ run.status }}</rx-column>
+      <rx-column :label="tx['screening.fields.lists_used']" hide-narrow>{{ run.lists }} <rx-badge rx-if="run.stale" kind="warning" :text="tx['screening.stale_badge']"/></rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['screening.no_screenings']" icon="inbox"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

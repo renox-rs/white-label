@@ -1,0 +1,10 @@
+{#- wl-parties: the edit sheet of one contact point on the party page
+    (`contact`, from the contacts table), behind parties.update. A new
+    value makes an invalid point valid again. Replace it with
+    resources/views/wl-parties/_contact_sheet.html in the app. -#}
+<rx-action-sheet :id="'edit-contact-' ~ contact.id" :label="tx['contact.edit']" :action="route('wl_parties.contact_update', party.id, contact.id)"
+                 :title="tx['contact.edit_title']" :description="tx['contact.edit_description']" :submit-label="tx['contact.save']"
+                 icon="pencil">
+  <rx-input name="value" :label="tx['fields.value_edit']" :value="contact.value" :id="'contact-value-' ~ contact.id" required/>
+  <rx-input name="label" :label="tx['fields.label']" :value="contact.label" :id="'contact-label-' ~ contact.id"/>
+</rx-action-sheet>

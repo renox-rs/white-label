@@ -1,0 +1,11 @@
+{#- wl-sales: the "Add cost" sheet of a campaign's page: a manual entry, or
+    (when invoicing provides supplier bills) a supplier bill line, whose
+    amount and description default to the line's. Replace it with
+    resources/views/wl-sales/_cost_sheet.html in the app. -#}
+<rx-action-sheet id="add-cost" :label="tx['campaigns.cost.add']" :action="route('wl_sales.campaign_cost_store', campaign.id)"
+                 :title="tx['campaigns.cost.add_title']" :description="tx['campaigns.cost.add_description']" :submit-label="tx['campaigns.cost.add']" variant="primary" icon="plus">
+  <rx-input name="entry_date" type="date" :label="tx['campaigns.cost.date']" :value="today" id="add-cost-date" required/>
+  <rx-input name="amount" :label="tx['campaigns.cost.amount']" :hint="tx['campaigns.cost.amount_hint']" id="add-cost-amount"/>
+  <rx-input name="description" :label="tx['campaigns.cost.description']" id="add-cost-description"/>
+  <rx-input rx-if="bills_enabled" name="line_id" type="number" :label="tx['campaigns.cost.bill_line']" :hint="tx['campaigns.cost.bill_line_hint']" id="add-cost-line"/>
+</rx-action-sheet>

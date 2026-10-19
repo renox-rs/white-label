@@ -1,0 +1,22 @@
+{#- wl-notify: the form for one notification type's give-up reactions and the
+    staff role told. Replace it with resources/views/wl-notify/type_edit.html
+    in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['types.edit_title']">
+  <rx-stack>
+    <rx-page-header :title="kind.key" :subtitle="tx['types.edit_subtitle']"
+                    :back="route('wl_notify.types')" :back-label="tx['types.title']"/>
+    <rx-form action="{{ route('wl_notify.type_update', kind.key) }}" novalidate>
+      <rx-card>
+        <rx-form-errors/>
+        <rx-stack>
+          <rx-checkbox rx-for="reaction in reactions" :name="reaction.name" :label="reaction.label" :checked="reaction.checked" :id="'reaction-' ~ reaction.name"/>
+          <rx-input name="staff_role" :label="tx['fields.staff_role']" :hint="tx['types.staff_role_hint']" :value="staff_role" id="type-staff-role"/>
+        </rx-stack>
+        <div class="rx-card__footer">
+          <rx-link-button route="wl_notify.types" :label="tx['types.cancel']" variant="plain"/>
+          <rx-button :label="tx['types.save']"/>
+        </div>
+      </rx-card>
+    </rx-form>
+  </rx-stack>
+</rx-page>

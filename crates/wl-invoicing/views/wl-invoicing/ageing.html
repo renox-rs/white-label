@@ -1,0 +1,22 @@
+{#- wl-invoicing: the receivables ageing: per party the open balance by days
+    past due, the disputed part and the total, with a legal entity filter.
+    Replace it with resources/views/wl-invoicing/ageing.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['ageing.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['ageing.title']" :subtitle="tx['ageing.as_of'] ~ ' ' ~ on ~ '. ' ~ tx['ageing.days_past_due'] ~ ': ' ~ legend"/>
+    <rx-form method="GET" action="{{ route('wl_invoicing.ageing') }}">
+      <rx-row>
+        <rx-select name="entity" :label="tx['ageing.entity']" :options="entities" :selected="entity" id="ageing-entity"/>
+        <rx-button type="submit" :label="tx['ageing.filter']"/>
+      </rx-row>
+    </rx-form>
+    <rx-card rx-for="row in rows" :title="row.party ~ ' (' ~ row.currency ~ ')'">
+      <rx-infolist columns="3">
+        <rx-entry rx-for="cell in row.cells" :label="cell.label" :value="cell.amount"/>
+        <rx-entry :label="tx['ageing.disputed']" :value="row.disputed"/>
+        <rx-entry :label="tx['ageing.total']" :value="row.total"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-empty rx-if="not rows" :title="tx['ageing.empty']" icon="list"/>
+  </rx-stack>
+</rx-page>

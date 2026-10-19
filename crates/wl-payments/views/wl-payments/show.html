@@ -1,0 +1,80 @@
+{#- wl-payments: a payment's page: its status, the allocate and reverse
+    sheets, the card, the allocations (removed ones struck through with
+    their reason), the reversal, the follow-up tasks and the history.
+    Replace it with resources/views/wl-payments/show.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="title">
+  <rx-stack>
+    <rx-page-header :title="title" :subtitle="party_name" :back="route('wl_payments.index')" :back-label="tx['title']"
+                    :badge="status_label" :badge-kind="status_kind">
+      <template rx-if="can_allocate"><rx-include template="wl-payments/_allocate_sheet.html"/></template>
+      <template rx-if="can_reverse"><rx-include template="wl-payments/_reverse_sheet.html"/></template>
+      <template rx-if="actions">
+        <rx-transition-actions :actions="actions" action="/payments/{{ payment.id }}/transitions"/>
+      </template>
+    </rx-page-header>
+    <rx-card :title="tx['sections.details']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['fields.number']" :value="payment.number" copyable :placeholder="tx['no_number']"/>
+        <rx-entry :label="tx['fields.direction']" :value="direction_label"/>
+        <rx-entry :label="tx['fields.party']" :value="party_name"/>
+        <rx-entry :label="tx['fields.entity']" :value="entity_name"/>
+        <rx-entry :label="tx['fields.method']" :value="method_label"/>
+        <rx-entry :label="tx['fields.date']" :value="payment.payment_date" format="date"/>
+        <rx-entry :label="tx['fields.amount']" :value="amounts['amount']"/>
+        <rx-entry :label="tx['fields.allocated']" :value="amounts['allocated']"/>
+        <rx-entry :label="tx['fields.unallocated']" :value="amounts['unallocated']"/>
+        <rx-entry :label="tx['fields.reference']" :value="payment.reference" copyable/>
+        <rx-entry :label="tx['fields.source']" :value="source_label"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-card rx-if="payment.reversed_on" :title="tx['sections.reversal']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['reverse.reason']" :value="reversal_reason_label"/>
+        <rx-entry :label="tx['fields.date']" :value="payment.reversed_on" format="date"/>
+        <rx-entry :label="tx['reverse.note']" :value="payment.reversal_note"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-table :rows="allocations" as="allocation" :key="allocation.id" :caption="tx['sections.allocations']" card>
+      <rx-column :label="tx['fields.target']">
+        <s rx-if="allocation.removed">{{ allocation.target }}</s>
+        <span rx-else>{{ allocation.target }}</span>
+      </rx-column>
+      <rx-column :label="tx['fields.amount']">
+        <s rx-if="allocation.removed">{{ allocation.amount }}</s>
+        <span rx-else>{{ allocation.amount }}</span>
+      </rx-column>
+      <rx-column :label="tx['history.at']" hide-narrow>{{ allocation.allocated_at | date('%Y-%m-%d %H:%M') }}</rx-column>
+      <rx-column :label="tx['fields.status']" hide-narrow>
+        <rx-badge rx-if="allocation.removed" kind="warning" :text="tx['removed']"/>
+        <rx-badge rx-else kind="success" :text="tx['active']"/>
+      </rx-column>
+      <rx-column :label="tx['removed_reason']" hide-narrow>{{ allocation.removed_reason }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['no_allocations']" icon="wallet"/></rx-slot>
+    </rx-table>
+    <rx-table rx-if="written_off" :rows="written_off" as="invoice" :key="invoice.id" :caption="tx['sections.written_off']" card>
+      <rx-column :label="tx['fields.invoice']"><a href="{{ invoice.link }}">{{ invoice.number }}</a></rx-column>
+      <rx-column :label="tx['written_off.left']">{{ invoice.left }}</rx-column>
+      <rx-column :label="tx['written_off.proposal']" hide-narrow>{{ invoice.proposal }}</rx-column>
+      <rx-column label="">
+        <rx-action-sheet :id="'recover-invoice-' ~ invoice.id" :label="tx['allocate.action']" :action="route('wl_payments.allocate', payment.id)"
+                         :title="tx['allocate.title']" :description="tx['written_off.description']" :submit-label="tx['allocate.submit']"
+                         icon="link">
+          <rx-select name="invoice_id" :label="tx['fields.invoice']" :options="invoice.options" :selected="invoice.options[0][0]" :id="'recover-select-' ~ invoice.id" required/>
+          <rx-input name="amount" :label="tx['fields.amount']" :hint="tx['fields.amount_hint']" :value="invoice.proposal" :id="'recover-amount-' ~ invoice.id" required/>
+        </rx-action-sheet>
+      </rx-column>
+    </rx-table>
+    <rx-table :rows="tasks" as="task" :key="task.id" :caption="tx['sections.tasks']" card>
+      <rx-column :label="tx['tasks.task']">{{ task.text }}</rx-column>
+      <rx-column :label="tx['fields.amount']" hide-narrow>{{ task.amount }}</rx-column>
+      <rx-column :label="tx['fields.status']">{{ task.status }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['no_tasks']" icon="list-checks"/></rx-slot>
+    </rx-table>
+    <rx-table :rows="timeline" as="item" :key="item.time" :caption="tx['sections.history']" card>
+      <rx-column :label="tx['history.change']">{{ item.title }}</rx-column>
+      <rx-column :label="tx['history.at']">{{ item.time | date('%Y-%m-%d %H:%M') }}</rx-column>
+      <rx-column :label="tx['history.reason']" hide-narrow>{{ item.body or "" }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['no_history']" icon="history"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

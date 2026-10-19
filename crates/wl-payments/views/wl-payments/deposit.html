@@ -1,0 +1,31 @@
+{#- wl-payments: a deposit's page: its status, a "Refund failed" badge with
+    a link to the refund, the card and the history. Replace it with
+    resources/views/wl-payments/deposit.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="title">
+  <rx-stack>
+    <rx-page-header :title="title" :subtitle="party_name" :back="route('wl_payments.deposits.index')" :back-label="tx['deposits.title']"
+                    :badge="status_label" :badge-kind="status_kind">
+      <template rx-if="refund_failed">
+        <rx-badge kind="error" :text="tx['deposits.refund_failed']"/>
+        <rx-link-button :href="refund_link" :label="tx['deposits.open_refund']" variant="plain" icon="arrow-right"/>
+      </template>
+    </rx-page-header>
+    <rx-card :title="tx['deposits.sections.details']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['fields.party']" :value="party_name"/>
+        <rx-entry :label="tx['deposits.source']" :value="source_label"/>
+        <rx-entry :label="tx['fields.amount']" :value="amounts['amount']"/>
+        <rx-entry :label="tx['deposits.held']" :value="amounts['held']"/>
+        <rx-entry :label="tx['deposits.refund_method']" :value="method_label" :placeholder="tx['refunds.no_method']"/>
+        <rx-entry :label="tx['deposits.refund']" :value="refund_label" :url="refund_link" :placeholder="tx['deposits.no_refund']"/>
+        <rx-entry :label="tx['fields.created_at']" :value="deposit.created_at" format="datetime"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-table :rows="timeline" as="item" :key="item.time" :caption="tx['sections.history']" card>
+      <rx-column :label="tx['history.change']">{{ item.title }}</rx-column>
+      <rx-column :label="tx['history.at']">{{ item.time | date('%Y-%m-%d %H:%M') }}</rx-column>
+      <rx-column :label="tx['history.reason']" hide-narrow>{{ item.body or "" }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['no_history']" icon="history"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

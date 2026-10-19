@@ -1,0 +1,45 @@
+{#- wl-sales: the form that creates or changes a campaign: the basics, the
+    period and budget, the promo code and the retention fields. Replace it
+    with resources/views/wl-sales/form.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="title">
+  <rx-stack>
+    <rx-page-header :title="title" :back="cancel" :back-label="tx['campaigns.title']"/>
+    <rx-form :action="action" novalidate>
+      <rx-card :title="tx['campaigns.sections.basics']">
+        <rx-form-errors/>
+        <rx-form-grid columns="2">
+          <rx-input name="name" :label="tx['campaigns.fields.name']" :value="values['name']" required/>
+          <rx-input name="code" :label="tx['campaigns.fields.code']" :hint="tx['campaigns.form.code_hint']" :value="values['code']" required/>
+          <rx-select name="purpose" :label="tx['campaigns.fields.purpose']" :options="purposes" :selected="values['purpose']" required/>
+          <rx-select name="marketing_channel" :label="tx['campaigns.fields.channel']" :options="channels" :selected="values['marketing_channel']" :placeholder="tx['campaigns.form.choose']"/>
+          <rx-select name="lead_source_id" :label="tx['campaigns.fields.lead_source']" :options="lead_sources" :selected="values['lead_source_id']" :placeholder="tx['campaigns.form.none']"/>
+          <rx-input name="brand" :label="tx['campaigns.fields.brand']" :value="values['brand']"/>
+          <rx-select name="owner_id" :label="tx['campaigns.fields.owner']" :options="owners" :selected="values['owner_id']" :placeholder="tx['campaigns.form.choose']"/>
+          <rx-select name="legal_entity_id" :label="tx['campaigns.fields.entity']" :options="entities" :selected="values['legal_entity_id']" :placeholder="tx['campaigns.form.default_entity']"/>
+          <rx-input name="scope_type" :label="tx['campaigns.fields.scope_type']" :hint="tx['campaigns.form.scope_hint']" :value="values['scope_type']"/>
+          <rx-input name="scope_id" :label="tx['campaigns.fields.scope_id']" :value="values['scope_id']"/>
+        </rx-form-grid>
+      </rx-card>
+      <rx-card :title="tx['campaigns.sections.period']">
+        <rx-form-grid columns="2">
+          <rx-input name="start_date" type="date" :label="tx['campaigns.fields.start_date']" :value="values['start_date']"/>
+          <rx-input name="end_date" type="date" :label="tx['campaigns.fields.end_date']" :value="values['end_date']"/>
+          <rx-input name="budget" :label="tx['campaigns.fields.budget_aed']" :hint="tx['campaigns.form.budget_hint']" :value="values['budget']"/>
+          <rx-input name="promo_code" :label="tx['campaigns.fields.promo_code']" :value="values['promo_code']"/>
+        </rx-form-grid>
+      </rx-card>
+      <rx-card :title="tx['campaigns.sections.retention']">
+        <rx-form-grid columns="2">
+          <rx-input name="segment_id" type="number" :label="tx['campaigns.fields.segment']" :value="values['segment_id']"/>
+          <rx-input name="template_key" :label="tx['campaigns.fields.template']" :value="values['template_key']"/>
+          <rx-input name="message_channel" :label="tx['campaigns.fields.message_channel']" :value="values['message_channel']"/>
+          <rx-input name="send_at" type="datetime-local" :label="tx['campaigns.fields.send_at']" :hint="tx['campaigns.form.send_at_hint']" :value="values['send_at']"/>
+        </rx-form-grid>
+        <div class="rx-card__footer">
+          <rx-link-button :href="cancel" :label="tx['campaigns.form.cancel']" variant="plain"/>
+          <rx-button :label="tx['campaigns.form.save']"/>
+        </div>
+      </rx-card>
+    </rx-form>
+  </rx-stack>
+</rx-page>

@@ -1,0 +1,16 @@
+[package]
+name = "wl-invoicing"
+description = "Invoicing: tax invoices with UAE VAT, numbering, allocations, overdue, reminders and bad-debt write-offs."
+readme = "README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+renox.workspace = true
+serde.workspace = true
+wl-kernel = { path = "../wl-kernel" }
+
+[dev-dependencies]
+tempfile = "3"

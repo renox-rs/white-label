@@ -42,7 +42,7 @@ Consent record, so withdrawal reaches `wl-notify` at once.
 | **Identity record** | Structured identity fields (`PTY.KYC.01`) | party, type (Emirates ID / passport / residence visa / trade licence / TRN / driving licence / other), number, issuing country or authority, issue date, expiry date, linked document (`wl-documents`), sensitivity flag |
 | **Person details** | Fields that only a person has | date of birth, gender, nationality, profession |
 | **Company details** | Fields that only a company has | legal form, licence authority (e.g. DED, free zone), licence activities, registration date, VAT registered flag, e-invoicing recipient identifier (Peppol participant ID; stored as entered, scheme + identifier, trimmed, with no format check until the ASP's format is confirmed, entered by hand or looked up by the company's TRN through the ASP adapter of the legal entity linked to the user's scope: a found ID is filled in for the user to confirm before saving; "not found", an error, or an ASP connection that is not `up` leaves the field empty for entry by hand; required by `wl-invoicing` before an invoice to a recipient in e-invoicing scope is issued; a change emits `PartyUpdated`, so rejected transmissions can be resubmitted) |
-| **Relationship** | A directed link between two parties (`PTY.REL.01`) | from party, to party, type (`guardian_of`, `contact_of`, `employee_of`, `shareholder_of`, `family_member_of`, `member_of_group`), position (for contacts), valid from, valid until, end reason |
+| **Relationship** | A directed link between two parties (`PTY.REL.01`) | from party, to party, type (`guardian_of`, `contact_of`, `employee_of`, `shareholder_of`, `family_member_of`, `member_of_group`), position (for contacts), primary flag (at most one per to party, type and position; `wl-notify` picks it first when a message goes to a contact of the party), valid from, valid until, end reason |
 | **Ownership** | Beneficial ownership of a company (`PTY.UBO.01`) | company, owner party, ownership %, control type (shares / votes / other control / senior managing official), is UBO, effective from, effective until, source document |
 | **Consent** | A recorded consent (`PTY.CNS.01`) | party, purpose (from the configured list), channel (email / SMS / WhatsApp / all), status, given at, given by (party or guardian), source (portal, form, staff), notice version, evidence document, withdrawn at |
 | **Screening** | One check of a party against sanctions lists (`PTY.SCR.01`) | party, lists and list versions used, run at, trigger (onboarding / list update / review / manual), method (*automatic*, or *manual*: checked by a person against a PDF-only list, [§5.4](#54-beneficial-owners-and-screening-when-enabled) step 8), status, match candidates (name, list, score), reviewer, review note, stale list flag (a list used was older than the freshness limit, `PTY.RUL.02`) |
@@ -355,7 +355,8 @@ tasks for possible matches).
 | `RelationshipStarted` / `RelationshipEnded` | link starts or ends | from, to, type, reason |
 | `ConsentGiven` / `ConsentWithdrawn` | consent changes | party, purpose, channel, given by |
 | `OwnershipChanged` | ownership records change | company, UBO list changed flag |
-| `ScreeningCompleted` | a run finishes | party, screening, status (a `possible_match` is delivered only to compliance listeners) |
+| `ScreeningCompleted` | a run finishes | party, screening, status (emitted for `clear` and for the decisions; a `possible_match` run emits `ScreeningFlagged` instead, so other listeners get nothing until the decision) |
+| `ScreeningFlagged` | a run ends `possible_match` | party, screening, status (no candidate names). Kernel event for compliance listeners only: Renox events are not delivered per listener, so a listener acts on it only after checking `parties.block_reason.view` |
 | `ScreeningMatchConfirmed` | a match is confirmed | party, screening (delivered only to compliance listeners) |
 | `SanctionsListStale` | a list download failed, or a list is older than the freshness limit (`PTY.RUL.02`) | list, last successful update, last error (delivered only to compliance listeners) |
 | `SanctionsListUpdated` | a list downloaded successfully, or uploaded by hand, with a new version | list, version; triggers `PTY.RUL.01` |
@@ -428,17 +429,21 @@ event happens.
 | Beneficial ownership | off (on in accounting) |
 | UBO threshold | 25% (Decree-Law 10 of 2025 Art. 10; Cabinet Resolution 109 of 2023) ✔ [S5], [S7] |
 | Screening | off (on in accounting); lists: UN consolidated list, UAE Local Terrorist List |
-| Screening match threshold | 0.85 similarity |
+| Screening match threshold | 0.85 similarity; a candidate scoring at or above it flags (`WlParties::match_threshold`) |
 | Second reviewer for confirmed match | on |
 | Block reason codes (restricted flag) | `on_hold` (neutral, always present), `non_payment`, `legal_dispute`, `fraud_suspected`, `other`; restricted: `sanctions`, `aml_concern`. A vertical can add codes and mark them restricted |
 | Block effect and decider per agreement kind | as in [§5.6](#56-block-a-party); set by each vertical |
+| Agreement kind keys, default effect and default decider role (`wl_kernel::block_effects`) | `engagement` pause, `compliance`; `subscription` pause, `subscriptions_manager`; `enrolment` pause, `centre_manager`; `lease` continue, `property_manager`; `deployment` continue, `managing_director`; `project` continue, `managing_director`; `sales_order` pause, `sales_manager`; `booking` review, `branch_manager`; `purchase_order` continue, `procurement`; `service_contract` review, `facility_manager`; `money_out` pause, `compliance`; `money_in` continue, `compliance`. A decider is a role key; the host or the vertical defines the role. A module registers a kind with `AgreementKind`, the vertical overrides it with `BlockEffectOverride`; an unregistered kind is `review` with no decider |
+| Money out to a blocked party in the effect registry | stored as `pause`: "stop until unblock" (`PTY.ACL.03`) stops and resumes on unblock; only an approved exception releases it earlier |
 | Exception approver for money out to a blocked party (`PTY.ACL.03`) | compliance role; finance manager when screening is off |
 | Sanctions list freshness limit (`PTY.RUL.02`) | 24 hours |
 | Manual upload of an official list file when the download fails | allowed, compliance role (`screening.review`) |
 | Confirmed match on a UBO, director or signatory also blocks the company party | on |
-| Stale list at onboarding | warn (option: block the guarded transition) |
-| Freeze task due | 24 hours after the possible match was flagged |
-| Report task due | 24 hours after the possible match was flagged (`⚠ open: lawyer (L-30)` on the real deadline) |
+| Stale list at onboarding | warn (option: block the guarded transition). A `WlParties` builder, `stale_list_at_onboarding(StaleListPolicy)`, only with screening on; the guard (`wl_kernel::screening_guard`) names the stale lists of the latest Screening plus the lists stale now, with their last update date, reads only Screening and Sanctions list, and writes nothing. Block passes again once no list is stale and the latest Screening is not flagged |
+| Freeze task due | 24 hours after the possible match was flagged. A `WlParties` builder, `freeze_task_due_hours(i64)`; a change affects only tasks created afterwards |
+| Report task due | 24 hours after the possible match was flagged (`⚠ open: lawyer (L-30)` on the real deadline). A `WlParties` builder, `report_task_due_hours(i64)`; the L-30 default is the earlier start (the flag), and nothing about the form or deadline is hard-coded |
+| Confirmed-match settings in code | three parameters on `WlParties`: `related_company_block(bool)` (default on), `freeze_task_due_hours(i64)` (default 24) and `report_task_due_hours(i64)` (default 24), read together as `ConfirmedMatchSettings` |
+| Held funds for the freeze task (`wl_kernel::held_funds`) | A module that holds a party's money registers a `HeldFundsSource` with a `FundsSource` in its `register()`, as agreement kinds are registered. `held_for(state, party)` is read only and returns `HeldFund` lines (label, kind, amount in fils, currency); wl-parties calls every source for each party named and writes the lines as unconfirmed, and the compliance role confirms or edits them. No source registered: an empty list. A source error is returned, not swallowed |
 
 ## 8. Extension points
 

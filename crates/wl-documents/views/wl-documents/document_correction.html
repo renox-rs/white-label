@@ -1,0 +1,26 @@
+{#- wl-documents: the correction form of an accepted document: the corrected
+    values and file become a new document in review, which another user must
+    accept. Replace it with
+    resources/views/wl-documents/document_correction.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['correction.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['correction.title']" :subtitle="document.kind ~ ' · ' ~ document.subject ~ ' — ' ~ tx['correction.subtitle']"/>
+    <rx-form :action="route('wl_documents.correction.store', document.id)" enctype="multipart/form-data" novalidate>
+      <rx-card>
+        <rx-form-errors/>
+        <rx-form-grid columns="2">
+          <rx-input name="title" :label="tx['fields.title']" :value="document.title"/>
+          <rx-input name="authority" :label="tx['fields.authority']" :value="document.issuing_authority"/>
+          <rx-input name="number" :label="tx['fields.number']" :value="document.number"/>
+          <rx-input name="issue_date" type="date" :label="tx['fields.issue_date']" :value="document.issue_date"/>
+          <rx-input name="expiry_date" type="date" :label="tx['fields.expiry_date']" :value="document.expiry_date"/>
+          <rx-file name="files" :label="tx['fields.file']" required/>
+          <rx-textarea name="note" :label="tx['fields.note']" span="full"/>
+        </rx-form-grid>
+        <div class="rx-card__footer">
+          <rx-button :label="tx['correction.submit']"/>
+        </div>
+      </rx-card>
+    </rx-form>
+  </rx-stack>
+</rx-page>

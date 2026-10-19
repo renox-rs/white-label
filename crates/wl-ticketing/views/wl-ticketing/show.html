@@ -1,0 +1,60 @@
+{#- wl-ticketing: a ticket's page: its status, the actions for its state
+    (assign or reassign, hold, cancel, start, resume, resolve, confirm,
+    close, reopen), the card with its due time and service level due times in Asia/Dubai,
+    the reassignment history, the comments and the timeline. Replace it with
+    resources/views/wl-ticketing/show.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="title">
+  <rx-stack>
+    <rx-page-header :title="title" :subtitle="ticket.title" :back="route('wl_ticketing.index')" :back-label="tx['title']"
+                    :badge="status_label" :badge-kind="status_kind">
+      <template rx-if="can_assign"><rx-include template="wl-ticketing/_assign_sheet.html"/></template>
+      <template rx-for="item in actions">
+        <rx-confirm :id="'ticket-' ~ item.name ~ '-' ~ ticket.id" :label="item.label" :action="'/tickets/' ~ ticket.id ~ '/actions/' ~ item.name" method="POST"
+                    :title="tx['action.confirm_title']" :message="item.label" :confirm-label="item.label"/>
+      </template>
+      <rx-action-sheet rx-if="can_hold" :id="'hold-ticket-' ~ ticket.id" :label="tx['hold.action']" :action="route('wl_ticketing.hold', ticket.id)"
+                       :title="tx['hold.title']" :description="tx['hold.description']" :submit-label="tx['hold.submit']" icon="pause">
+        <rx-select name="hold_reason" :label="tx['hold.reason']" :options="hold_reasons" :id="'hold-reason-' ~ ticket.id" required/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_cancel" :id="'cancel-ticket-' ~ ticket.id" :label="tx['cancel_ticket.action']" :action="route('wl_ticketing.cancel', ticket.id)"
+                       :title="tx['cancel_ticket.title']" :description="tx['cancel_ticket.description']" :submit-label="tx['cancel_ticket.submit']"
+                       icon="ban" variant="danger" danger>
+        <rx-textarea name="reason" :label="tx['cancel_ticket.reason']" :id="'cancel-reason-' ~ ticket.id" required/>
+      </rx-action-sheet>
+    </rx-page-header>
+    <rx-card :title="tx['sections.details']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['fields.number']" :value="ticket.number" copyable/>
+        <rx-entry :label="tx['fields.subject']" :value="card.subject"/>
+        <rx-entry :label="tx['fields.category']" :value="card.category"/>
+        <rx-entry :label="tx['fields.priority']" :value="card.priority"/>
+        <rx-entry :label="tx['fields.channel']" :value="card.channel"/>
+        <rx-entry :label="tx['fields.requester']" :value="card.requester" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['fields.assignee']" :value="card.assignee" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['fields.visit_at']" :value="card.visit" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['fields.due_at']" rx-if="card.due" :value="card.due"/>
+        <rx-entry :label="tx['fields.hold_reason']" rx-if="card.hold_reason" :value="card.hold_reason"/>
+        <rx-entry :label="tx['fields.cancel_reason']" rx-if="card.cancel_reason" :value="card.cancel_reason"/>
+        <rx-entry :label="tx['fields.description']" :value="ticket.description" span="full" :placeholder="tx['none']"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-card :title="tx['sections.sla']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['fields.sla_started_at']" :value="card.sla_started" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['fields.response_due']" :value="card.response_due" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['fields.resolution_due']" :value="card.resolution_due" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['fields.responded_at']" :value="card.responded" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['fields.resolved_at']" :value="card.resolved" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['fields.created_at']" :value="card.created"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-include template="wl-ticketing/_assignments.html"/>
+    <rx-include template="wl-ticketing/_comments.html"/>
+    <rx-table :rows="timeline" as="item" :key="item.time" :caption="tx['sections.history']" card>
+      <rx-column :label="tx['history.change']">{{ item.title }}</rx-column>
+      <rx-column :label="tx['history.at']">{{ item.time | date('%Y-%m-%d %H:%M') }}</rx-column>
+      <rx-column :label="tx['history.reason']" hide-narrow>{{ item.body or "" }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['no_history']" icon="history"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

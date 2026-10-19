@@ -1,0 +1,16 @@
+{#- wl-documents: the document flags, a renox::grid (search, filters by state
+    and record type). Unreviewed flags come first; each shows its label, the
+    record, the guarded entry, the date it was judged on, and the reviewer and
+    note once reviewed. "Mark reviewed" (documents.review) opens the sheet
+    below with a required note. Replace it with
+    resources/views/wl-documents/flags.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['flags.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['flags.title']" :subtitle="tx['flags.subtitle']"/>
+    <rx-grid :page="flags"/>
+    <rx-action-sheet rx-if="can_review" id="review-flag" :label="tx['flags.review']" action="#" :title="tx['flags.review_title']"
+                     :description="tx['flags.review_description']" :submit-label="tx['flags.review']" icon="check" :button="false">
+      <rx-textarea name="note" :label="tx['flags.note']" id="review-flag-note" required/>
+    </rx-action-sheet>
+  </rx-stack>
+</rx-page>

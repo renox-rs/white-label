@@ -1,0 +1,32 @@
+{#- wl-documents: the review queue. Documents in pending_review, first the
+    renewals a refused transition waits for (newest first), then the others
+    by submission, oldest first; each with its file and the accept and
+    reject actions. Replace it with
+    resources/views/wl-documents/review_queue.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['review.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['review.title']" :subtitle="tx['review.subtitle']"/>
+    <rx-table :rows="documents" as="document" :key="document.id" :caption="tx['review.title']" card>
+      <rx-column :label="tx['fields.kind']">{{ document.kind }} <rx-badge rx-if="document.priority_since" kind="warning" :text="tx['review.priority']"/> <rx-badge rx-if="document.correction" kind="info" :text="tx['review.correction']"/></rx-column>
+      <rx-column :label="tx['fields.subject']">{{ document.subject }}</rx-column>
+      <rx-column :label="tx['fields.title']" hide-narrow>{{ document.title }}</rx-column>
+      <rx-column :label="tx['fields.number']" hide-narrow>{{ document.number or tx['none'] }}</rx-column>
+      <rx-column :label="tx['fields.expiry_date']">{{ document.expiry_date | date('%Y-%m-%d') if document.expiry_date else tx['none'] }}</rx-column>
+      <rx-column :label="tx['fields.version']" align="num" hide-narrow>{{ document.version }}</rx-column>
+      <rx-column :label="tx['fields.uploaded_by']" hide-narrow>{{ document.uploaded_by }}</rx-column>
+      <rx-column :label="tx['fields.submitted_at']">{{ document.submitted_at | date('%Y-%m-%d %H:%M') if document.submitted_at else tx['none'] }}</rx-column>
+      <rx-row-actions>
+        <rx-icon-button rx-if="document.file_name" icon="external" :label="tx['review.file'] ~ ': ' ~ document.file_name" :href="route('wl_documents.file', document.id)" new-tab/>
+        <rx-action-sheet :id="'accept-document-' ~ document.id" :label="tx['review.accept']" :action="route('wl_documents.accept', document.id)"
+                         :title="tx['review.accept_title']" :description="tx['review.accept_description']" :submit-label="tx['review.accept']" icon="check">
+          <rx-form-errors/>
+        </rx-action-sheet>
+        <rx-action-sheet :id="'reject-document-' ~ document.id" :label="tx['review.reject']" :action="route('wl_documents.reject', document.id)"
+                         :title="tx['review.reject_title']" :description="tx['review.reject_description']" :submit-label="tx['review.reject']" icon="circle-x" danger>
+          <rx-textarea name="reason" :label="tx['fields.reason']" :id="'reject-reason-' ~ document.id" required/>
+        </rx-action-sheet>
+      </rx-row-actions>
+      <rx-slot name="empty"><rx-empty :title="tx['review.empty']" :message="tx['review.empty_hint']" icon="inbox"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

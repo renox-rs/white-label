@@ -1,0 +1,14 @@
+{#- wl-kernel: the refusal of a guarded action on a blocked party (wl-parties
+    §6). A page gives `refusal` (wl_kernel::block_guard::BlockRefusal::view)
+    and includes it with <rx-include template="wl-kernel/block_refusal.html"/>.
+    Replace it with resources/views/wl-kernel/block_refusal.html in the app. -#}
+<rx-stack>
+  <rx-alert kind="warning" :message="refusal.message"/>
+  <rx-list rx-if="refusal.lines" :label="refusal.message">
+    <li rx-for="line in refusal.lines"><a :href="line.link">{{ line.label }}</a></li>
+  </rx-list>
+  <rx-form :action="refusal.action" novalidate>
+    {%- for field in refusal.fields %}<input type="hidden" name="{{ field.name }}" value="{{ field.value }}">{% endfor %}
+    <rx-button :label="refusal.offer"/>
+  </rx-form>
+</rx-stack>

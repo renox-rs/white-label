@@ -1,0 +1,29 @@
+{#- wl-documents: the form that creates an SOP: code, titles, category,
+    owner role, legal entity, review interval and days to acknowledge. Replace
+    it with resources/views/wl-documents/sop_form.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['sops.form_title']">
+  <rx-stack>
+    <rx-page-header :title="tx['sops.form_title']" :subtitle="tx['sops.form_description']"
+                    :back="route('wl_documents.sops')" :back-label="tx['sops.title']"/>
+    <rx-form route="wl_documents.sops.store" novalidate>
+      <rx-card>
+        <rx-form-errors/>
+        <rx-form-grid columns="2">
+          <rx-input name="code" :label="tx['sops.fields.code']" required/>
+          <rx-input name="category" :label="tx['sops.fields.category']"/>
+          <rx-input name="title_en" :label="tx['sops.fields.title_en']" required/>
+          <rx-input name="title_ar" :label="tx['sops.fields.title_ar']"/>
+          <rx-input name="owner_role" :label="tx['sops.fields.owner_role']" :hint="tx['sops.fields.owner_role_hint']" span="full" required/>
+          <rx-input name="legal_entity_type" :label="tx['sops.fields.entity_type']" :hint="tx['sops.fields.entity_hint']"/>
+          <rx-input name="legal_entity_id" type="number" :label="tx['sops.fields.entity_id']"/>
+          <rx-input name="review_interval_months" type="number" :label="tx['sops.fields.interval']" value="12"/>
+          <rx-input name="ack_due_days" type="number" :label="tx['sops.fields.ack_days']" value="7"/>
+        </rx-form-grid>
+        <div class="rx-card__footer">
+          <rx-link-button route="wl_documents.sops" :label="tx['cancel']" variant="plain"/>
+          <rx-button :label="tx['sops.submit']"/>
+        </div>
+      </rx-card>
+    </rx-form>
+  </rx-stack>
+</rx-page>

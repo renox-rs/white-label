@@ -1,0 +1,35 @@
+{#- wl-parties: the form that creates a party. Replace it with
+    resources/views/wl-parties/new.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['new']">
+  <rx-stack>
+    <rx-page-header :title="tx['new']" :back="route('wl_parties.index')" :back-label="tx['title']"/>
+    <rx-form route="wl_parties.store" live novalidate>
+      <rx-card>
+        <rx-form-errors/>
+        <rx-radio name="kind" :label="tx['fields.kind']" :options="kinds" :selected="'person'" inline required/>
+        <rx-fieldset :legend="tx['sections.names']">
+          <rx-form-grid columns="2">
+            <rx-input name="legal_name_en" :label="tx['fields.legal_name_en']" required/>
+            <rx-input name="legal_name_ar" :label="tx['fields.legal_name_ar']" dir="rtl"/>
+            <rx-input name="display_name" :label="tx['fields.display_name']" :hint="tx['fields.display_name_hint']" span="full"/>
+          </rx-form-grid>
+        </rx-fieldset>
+        <rx-fieldset :legend="tx['sections.contact']">
+          <rx-form-grid columns="2">
+            <rx-input name="email" type="email" :label="tx['fields.email']" autocomplete="off"/>
+            <rx-input name="mobile" type="tel" :label="tx['fields.mobile']" autocomplete="off"/>
+            <rx-select name="default_language" :label="tx['fields.default_language']" :options="languages" :selected="'en'"/>
+            <rx-select name="preferred_channel" :label="tx['fields.preferred_channel']" :options="channels" :selected="'email'"/>
+          </rx-form-grid>
+        </rx-fieldset>
+        <rx-show-when field="kind" values="company">
+          <rx-input name="trn" :label="tx['fields.trn']" :hint="tx['fields.trn_hint']" inputmode="numeric" maxlength="15"/>
+        </rx-show-when>
+        <div class="rx-card__footer">
+          <rx-link-button route="wl_parties.index" :label="tx['cancel']" variant="plain"/>
+          <rx-button :label="tx['create']"/>
+        </div>
+      </rx-card>
+    </rx-form>
+  </rx-stack>
+</rx-page>

@@ -1,0 +1,34 @@
+# The demo client of F1 (ARCHITECTURE.md §9): a property management company
+# with a mainland LLC and a free-zone company. Data is fictional.
+
+[client]
+name    = "Palm Grove Properties LLC"
+app     = "property"
+domain  = "demo.palmgrove.example"
+locales = ["en", "ar"]
+
+[branding]
+accent       = "#0F766E"
+second       = "#B8532E"
+display_font = "Poppins"
+
+[modules]
+# F1 modules are added here as they are built: portal, hr.
+enabled = ["parties", "documents", "notify", "invoicing", "ticketing", "payments", "sales"]
+
+[[legal_entities]]
+code      = "PGP"
+name_en   = "Palm Grove Properties LLC"
+name_ar   = "بالم جروف للعقارات ش.ذ.م.م"
+emirate   = "dubai"
+licensing_authority = "Dubai Department of Economy and Tourism"
+trade_licence_no = "1234567"
+trn       = "100000000000003"
+address_en = "Office 1204, Al Moosa Tower 1, Sheikh Zayed Road, Dubai"
+default   = true
+
+[[legal_entities]]
+code      = "PGFZ"
+name_en   = "Palm Grove Facilities FZ-LLC"
+emirate   = "dubai"
+licensing_authority = "Dubai Silicon Oasis Authority"

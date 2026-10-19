@@ -1,0 +1,21 @@
+{#- wl-notify: the "notice not delivered" banner of a record. A vertical page
+    puts wl_notify::pages::notice_banner(db, lang, subject) in its view data
+    as `notice_banner` and includes this with
+    <rx-include template="wl-notify/_notice_banner.html"/>. It shows nothing
+    once a proof is recorded or the notice is delivered. The button, a sheet
+    with the proof form, shows only to holders of
+    notifications.notices.record_proof. Replace it with
+    resources/views/wl-notify/_notice_banner.html in the app. -#}
+<rx-stack rx-for="item in notice_banner.items">
+  <rx-alert kind="warning" :title="notice_banner.tx['notice.banner_title']" :message="item.message ~ ' · ' ~ item.since"/>
+  <template rx-if="item.methods and can('notifications.notices.record_proof')">
+    <rx-action-sheet :id="'record-proof-' ~ item.id" :label="notice_banner.tx['notice.record_proof']" :action="route('wl_notify.notice_proof_store', item.id)"
+                     :title="notice_banner.tx['proof.title']" :description="notice_banner.tx['proof.subtitle']" :submit-label="notice_banner.tx['proof.submit']"
+                     icon="check" variant="primary" enctype="multipart/form-data">
+      <rx-select name="method" :label="notice_banner.tx['proof.method']" :options="item.methods" :id="'proof-method-' ~ item.id" required/>
+      <rx-input name="delivered_on" type="date" :label="notice_banner.tx['proof.delivered_on']" :id="'proof-date-' ~ item.id" required/>
+      <rx-textarea name="note" :label="notice_banner.tx['proof.note']" :id="'proof-note-' ~ item.id"/>
+      <rx-file name="files" :label="notice_banner.tx['proof.attachment']" :hint="notice_banner.tx['proof.attachment_hint']" accept=".pdf,.jpg,.jpeg,.png,.heic,.txt"/>
+    </rx-action-sheet>
+  </template>
+</rx-stack>

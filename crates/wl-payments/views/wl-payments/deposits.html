@@ -1,0 +1,7 @@
+{#- wl-payments: the deposits list, a renox::grid (party, source, amount,
+    status, refund state). Replace it with
+    resources/views/wl-payments/deposits.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['deposits.title']">
+  <rx-page-header :title="tx['deposits.title']"/>
+  <rx-grid :page="deposits"/>
+</rx-page>

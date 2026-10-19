@@ -1,0 +1,9 @@
+{#- wl-ticketing: the tickets list, a renox::grid (search on number and
+    title; filters by status, priority, category and assignee). Replace it
+    with resources/views/wl-ticketing/index.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['title']">
+  <rx-page-header :title="tx['title']">
+    <rx-link-button rx-if="can_create" route="wl_ticketing.create" :label="tx['new']" icon="plus"/>
+  </rx-page-header>
+  <rx-grid :page="tickets"/>
+</rx-page>

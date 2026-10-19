@@ -1,0 +1,9 @@
+{#- wl-payments: the fail action on the refund page, a sheet with the
+    failure kind and the reason (required). Replace it with
+    resources/views/wl-payments/_fail_sheet.html in the app. -#}
+<rx-action-sheet :id="'fail-refund-' ~ refund.id" :label="tx['refunds.fail.action']" :action="route('wl_payments.refunds.fail', refund.id)"
+                 :title="tx['refunds.fail.title']" :description="tx['refunds.fail.description']" :submit-label="tx['refunds.fail.submit']"
+                 icon="octagon-x" variant="danger" danger>
+  <rx-select name="kind" :label="tx['refunds.fail.kind']" :options="kinds" :id="'fail-kind-' ~ refund.id" required/>
+  <rx-textarea name="reason" :label="tx['refunds.fail.reason']" :id="'fail-reason-' ~ refund.id" required/>
+</rx-action-sheet>
