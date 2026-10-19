@@ -586,6 +586,23 @@ async fn collected_before(db: &Db, agreement_id: i64, source: &str) -> Result<i6
         .sum())
 }
 
+/// What was recovered after a write-off of the invoice `source`, in fils: the
+/// invoice's balance falls by it, but it is its own line (*recovered after
+/// write-off*), so it is not collected rent as well.
+async fn recovered_after_write_off(db: &Db, agreement_id: i64, source: &str) -> Result<i64> {
+    let prefix = format!("{source}|");
+    let lines = StatementLine::query()
+        .where_(StatementLine::AGREEMENT_ID.eq(agreement_id))
+        .where_(StatementLine::KIND.eq(LineKind::Recovered))
+        .get(db)
+        .await?;
+    Ok(lines
+        .iter()
+        .filter(|line| line.source.as_deref().is_some_and(|s| s.starts_with(&prefix)))
+        .map(|line| line.amount)
+        .sum())
+}
+
 /// The collected lines a statement ending `end` for `agreement` gets: one per
 /// invoice of the units' leases, for what was paid and not counted before.
 async fn collected_lines(
@@ -625,7 +642,9 @@ async fn collected_lines(
                 if summary.status == InvoiceStatus::Draft {
                     continue;
                 }
-                let paid = summary.gross_total - summary.balance;
+                let paid = summary.gross_total
+                    - summary.balance
+                    - recovered_after_write_off(&state.db, agreement.id, &source).await?;
                 let new = paid - collected_before(&state.db, agreement.id, &source).await?;
                 if new > 0 {
                     found.push((
