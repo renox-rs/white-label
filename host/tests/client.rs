@@ -4,6 +4,8 @@ use renox::prelude::*;
 use renox::testing::TestApp;
 use wl_kernel::{ClientConfig, LegalEntity};
 
+mod support;
+
 #[renox::test]
 async fn the_demo_client_boots_with_its_legal_entities() {
     let app = TestApp::new(host::app()).await;
@@ -22,7 +24,7 @@ async fn the_demo_client_sends_notifications_to_its_parties() {
     use wl_kernel::notify::{self, MessageId, NotificationTypeDef, NotifyChannel, NotifyRequest};
     use wl_kernel::parties::directory;
 
-    let app = TestApp::new(host::app()).await;
+    let app = TestApp::new(host::app().provide(support::noon_clock())).await;
     app.kernel().seed().await.unwrap();
     let al_noor = wl_parties::Party::query()
         .where_(wl_parties::Party::LEGAL_NAME_EN.eq("Al Noor Trading LLC"))
@@ -280,7 +282,12 @@ async fn a_give_up_opens_a_real_ticket_for_the_staff_role() {
     }
 
     const TYPE: &str = "host_test.give_up";
-    let app = TestApp::new(host::app().provide(SmsGatewayHandle(Arc::new(Refusing)))).await;
+    let app = TestApp::new(
+        host::app()
+            .provide(SmsGatewayHandle(Arc::new(Refusing)))
+            .provide(support::noon_clock()),
+    )
+    .await;
     notify::register_type(
         NotificationTypeDef::new(TYPE, "property")
             .channels(&[NotifyChannel::Sms])
@@ -400,7 +407,12 @@ async fn a_give_up_sends_the_message_to_another_finance_contact() {
     const TYPE: &str = "host_test.reminder";
     let sent = Arc::new(Mutex::new(Vec::new()));
     let app =
-        TestApp::new(host::app().provide(SmsGatewayHandle(Arc::new(Gateway(sent.clone()))))).await;
+        TestApp::new(
+            host::app()
+                .provide(SmsGatewayHandle(Arc::new(Gateway(sent.clone()))))
+                .provide(support::noon_clock()),
+        )
+        .await;
     notify::register_type(
         NotificationTypeDef::new(TYPE, "invoicing")
             .channels(&[NotifyChannel::Sms])
