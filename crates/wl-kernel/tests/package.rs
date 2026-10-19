@@ -1621,3 +1621,71 @@ async fn a_service_contract_and_its_events_are_part_of_the_ticket_contract() {
     };
     assert_eq!(renox::serde_json::to_value(&no_show).unwrap()["contract"], 7);
 }
+
+/// #102: without the `payments` module the cheque contract finds nothing,
+/// owes nothing and refuses a registration; a bounce fee adds no charge; the
+/// events name the cheque, the party and the amounts.
+#[renox::test]
+async fn the_cheque_contract_falls_back_when_payments_is_off() {
+    use wl_kernel::Subject;
+    use wl_kernel::cheques::{
+        BounceFeeCharge, ChequeBounceResolved, ChequeBounced, ChequeId, ChequeOutcome,
+        ChequeSchedule, RegisterCheque, ScheduledCheque, bounce_fees, cheques,
+    };
+    use wl_kernel::invoicing::VatCategory;
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let state = app.state();
+    let contract = cheques(state);
+    assert_eq!(ChequeId(4).subject().to_string(), "payments.cheque:4");
+    assert!(contract.find(app.db(), ChequeId(4)).await.unwrap().is_none());
+    let lease = Subject::new("property.lease", 9);
+    assert!(contract.of_agreement(app.db(), &lease).await.unwrap().is_empty());
+    assert_eq!(
+        contract.open_bounced_amount(app.db(), PartyId(7), "AED").await.unwrap(),
+        0
+    );
+    let cheque = RegisterCheque::new(PartyId(7), 1, "ENBD", "1042", day(), 2_000_000)
+        .link(Subject::new("invoicing.invoice", 5));
+    assert!(contract.register(state, cheque, None).await.is_err());
+    let schedule = ChequeSchedule::new(lease.clone(), PartyId(7), 1, "ENBD")
+        .cheque(ScheduledCheque::new("1", day(), 1_000_000))
+        .cheque(ScheduledCheque::new("2", day(), 1_000_000));
+    assert_eq!(schedule.total(), 2_000_000);
+    assert!(contract.register_schedule(state, schedule, None).await.is_err());
+
+    let charge = BounceFeeCharge {
+        cheque: ChequeId(4),
+        party: PartyId(7),
+        legal_entity_id: 1,
+        agreement: Some(lease),
+        charge_type: "bounce_fee".into(),
+        amount: 50_000,
+        currency: "AED".into(),
+        vat_category: VatCategory::Standard,
+        due: day(),
+    };
+    assert_eq!(bounce_fees(state).add(state, charge).await.unwrap(), None);
+
+    let bounced = ChequeBounced {
+        cheque: ChequeId(4),
+        party: PartyId(7),
+        credit_group: None,
+        amount: 2_000_000,
+        honoured_amount: 600_000,
+        open_amount: 1_400_000,
+        currency: "AED".into(),
+        reason: "insufficient funds".into(),
+        presentation: 1,
+        linked: Vec::new(),
+    };
+    assert_eq!(renox::serde_json::to_value(&bounced).unwrap()["open_amount"], 1_400_000);
+    let resolved = ChequeBounceResolved {
+        cheque: ChequeId(4),
+        party: PartyId(7),
+        outcome: ChequeOutcome::Cleared,
+        others_open: Vec::new(),
+    };
+    assert_eq!(renox::serde_json::to_value(&resolved).unwrap()["outcome"], "cleared");
+}

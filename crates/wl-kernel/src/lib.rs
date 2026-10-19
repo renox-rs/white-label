@@ -8,6 +8,7 @@ pub mod block_guard;
 pub mod branding;
 pub mod broadcast;
 pub mod calendar;
+pub mod cheques;
 pub mod compliance;
 pub mod config;
 pub mod consents;
@@ -61,6 +62,11 @@ pub use broadcast::{
     BroadcastId, BroadcastRequest, BroadcastRequesters, NoRequesters, RequesterCheck,
 };
 pub use calendar::BusinessCalendar;
+pub use cheques::{
+    BounceFeeCharge, BounceFees, CHEQUE_SUBJECT_TYPE, ChequeBounceResolved, ChequeBounced,
+    ChequeId, ChequeOutcome, ChequeSchedule, ChequeStatus, ChequeSummary, Cheques, NoBounceFees,
+    NoCheques, RegisterCheque, ScheduledCheque,
+};
 pub use config::{ClientConfig, ConfigError, RolesConfig, owner_role};
 pub use compliance::{ComplianceAlert, ComplianceRule, CriticalRule, Planned};
 pub use consents::{Consents, NoConsents};
