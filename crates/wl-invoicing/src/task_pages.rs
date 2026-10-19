@@ -51,6 +51,8 @@ pub fn grid(lang: &Lang) -> Grid {
         TaskKind::ReversalRefused,
         TaskKind::BillReversalRefused,
         TaskKind::StatementBalanceStale,
+        TaskKind::EinvoiceRejected,
+        TaskKind::EinvoiceStuck,
     ]
     .iter()
     .map(|kind| {
@@ -88,6 +90,8 @@ pub fn grid(lang: &Lang) -> Grid {
                     ("reversal_refused", "danger"),
                     ("bill_reversal_refused", "danger"),
                     ("statement_balance_stale", "warning"),
+                    ("einvoice_rejected", "danger"),
+                    ("einvoice_stuck", "warning"),
                 ])
                 .mobile(),
         )
@@ -133,6 +137,9 @@ async fn index(lang: Lang, request: GridRequest) -> Result<View> {
 async fn open(Found(task): Found<InvoicingTask>) -> Result<Response> {
     if task.kind == TaskKind::StatementBalanceStale {
         return Ok(Redirect::route("wl_invoicing.cash_forecast", &[])?.into_response());
+    }
+    if matches!(task.kind, TaskKind::EinvoiceRejected | TaskKind::EinvoiceStuck) {
+        return Ok(Redirect::route("wl_invoicing.einvoices", &[])?.into_response());
     }
     if let Some(bill_id) = task.bill_id {
         return Ok(Redirect::route("wl_invoicing.supplier_bill", &[&bill_id])?.into_response());

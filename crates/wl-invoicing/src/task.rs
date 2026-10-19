@@ -54,6 +54,12 @@ pub enum TaskKind {
     /// A bank account has no balance, or only an old one, for the cash-flow
     /// forecast (`FIN.RUL.25`): import a statement or enter a balance.
     StatementBalanceStale,
+    /// The ASP rejected an e-invoice transmission (`FIN.RUL.16`): fix the
+    /// cause outside the document and resubmit, or credit the invoice.
+    EinvoiceRejected,
+    /// An e-invoice transmission is not sent H hours after `issue`
+    /// (`FIN.RUL.16`).
+    EinvoiceStuck,
 }
 
 impl TaskKind {
@@ -73,6 +79,8 @@ impl TaskKind {
             TaskKind::ReversalRefused => "wl_invoicing.task.reversal_refused",
             TaskKind::BillReversalRefused => "wl_invoicing.task.bill_reversal_refused",
             TaskKind::StatementBalanceStale => "wl_invoicing.task.statement_balance_stale",
+            TaskKind::EinvoiceRejected => "wl_invoicing.einvoice.task.rejected",
+            TaskKind::EinvoiceStuck => "wl_invoicing.einvoice.task.stuck",
         }
     }
 }

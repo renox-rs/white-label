@@ -55,7 +55,12 @@ pub mod drawings;
 pub mod drawings_machine;
 mod drawing_pages;
 pub mod duplicates;
+pub mod einvoice;
 pub mod einvoice_adapter;
+mod einvoice_pages;
+pub mod einvoice_payload;
+pub mod einvoice_send;
+mod einvoice_tasks;
 pub mod escalation;
 pub mod escalation_log;
 mod events;
@@ -120,6 +125,7 @@ pub use debit_note_line::{DebitNoteLine, PricedAt};
 pub use dispute::{Dispute, DisputeVia};
 pub use drawings::BillRecoding;
 pub use drawings_machine::{DrawingApproval, DrawingStatus};
+pub use einvoice::{EInvoiceTransmission, TransmissionStatus};
 pub use einvoice_adapter::{EInvoiceAdapter, EInvoiceScope};
 pub use escalation_log::EscalationLog;
 pub use invoice::{Invoice, InvoiceKind, PartySnapshot};
@@ -140,6 +146,10 @@ pub use write_off_notice::SendWriteOffNotice;
 /// The templates, compiled in. An app replaces one with a file of the same
 /// name under its views directory.
 const VIEWS: &[(&str, &str)] = &[
+    (
+        "wl-invoicing/einvoices.html",
+        include_str!("../views/wl-invoicing/einvoices.html"),
+    ),
     (
         write_off_notice::TEMPLATE,
         include_str!("../views/wl-invoicing/write_off_notice.html"),
@@ -307,6 +317,10 @@ pub mod permissions {
     pub const CASHFLOW_VIEW: &str = "cashflow.view";
     /// Enter and void opening cash balances.
     pub const CASHFLOW_MANAGE: &str = "cashflow.manage";
+    /// See the e-invoice board: the transmissions per entity and state.
+    pub const EINVOICES_VIEW: &str = "einvoices.view";
+    /// Resubmit a rejected e-invoice transmission after its cause was fixed.
+    pub const EINVOICES_MANAGE: &str = "einvoices.manage";
 }
 
 /// The invoicing module. The host adds it with
@@ -674,6 +688,28 @@ impl WlInvoicing {
     }
 }
 
+/// Registers the integration connection of each entity with a go-live date
+/// (`asp.<code>`): its health, the screens it affects and the manual
+/// fallback. The transmissions are sent by [`einvoice_send`], which reports to
+/// it; its own queue is not used, the retry times being the module's.
+fn register_asp_connections(config: &InvoicingConfig) {
+    use wl_kernel::integrations::{Delivery, IntegrationDef};
+    for entry in &config.einvoice {
+        IntegrationDef::of(
+            &einvoice_send::connection_key(&entry.entity_code),
+            "invoicing",
+            |_state, _call| Box::pin(async { Ok(Delivery::Sent) }),
+        )
+        .owner_role("accountant")
+        .screens(["invoicing.einvoices", "invoicing.invoice_list"])
+        .fallback(
+            "Send the e-invoices from the ASP portal by hand until the connection is back.",
+            Some("أرسل الفواتير الإلكترونية يدويًا من بوابة مزود الخدمة حتى تعود الخدمة."),
+        )
+        .register();
+    }
+}
+
 impl Module for WlInvoicing {
     fn name(&self) -> &'static str {
         "wl-invoicing"
@@ -692,6 +728,7 @@ impl Module for WlInvoicing {
             .merge(budget_report_pages::routes())
             .merge(cash_forecast_pages::routes())
             .merge(drawing_pages::routes())
+            .merge(einvoice_pages::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -701,6 +738,7 @@ impl Module for WlInvoicing {
     fn register(&self, app: &mut Registry) {
         app.model::<cash_balance::OpeningCashBalance>();
         app.model::<cash_alert::CashAlert>();
+        app.model::<EInvoiceTransmission>();
         app.model::<Invoice>()
             .model::<InvoiceLine>()
             .model::<SupplierBill>()
@@ -748,7 +786,8 @@ impl Module for WlInvoicing {
             .view_data::<budget_category_pages::FormPage>()
             .view_data::<budget_report_pages::IndexPage>()
             .view_data::<cash_forecast_pages::IndexPage>()
-            .view_data::<cash_forecast_pages::CellPage>();
+            .view_data::<cash_forecast_pages::CellPage>()
+            .view_data::<einvoice_pages::IndexPage>();
         // The customer write-off notice (§10), sent from the queue.
         app.job::<SendWriteOffNotice>();
         app.templates(|env| {
@@ -866,6 +905,15 @@ impl Module for WlInvoicing {
                 .order(47)
                 .permission(permissions::CASHFLOW_VIEW),
         );
+        // The e-invoice board (`nav.einvoices`).
+        app.nav(
+            "app",
+            NavLink::route("wl_invoicing.einvoices", "nav.einvoices")
+                .icon("send")
+                .group("nav.app")
+                .order(48)
+                .permission(permissions::EINVOICES_VIEW),
+        );
         // The supplier bills (`nav.supplier_bills`).
         app.nav(
             "app",
@@ -926,6 +974,21 @@ impl Module for WlInvoicing {
         wl_kernel::budgets::provide_company_budgets(app, Budgets);
         budget_notices::register_types();
         budget_reminder::schedule(app);
+        // `FIN.INV.01`: the ASP adapters and the scope, the transmission
+        // machine, the connection of each entity with a go-live date, the
+        // queue of transmissions and its scheduled run.
+        app.provide(einvoice_adapter::Installed {
+            adapters: self.adapters.clone(),
+            scope: self
+                .scope
+                .clone()
+                .unwrap_or_else(|| {
+                    Arc::new(einvoice_adapter::DefaultScope) as Arc<dyn EInvoiceScope>
+                }),
+        });
+        renox::state_machine::register::<EInvoiceTransmission>();
+        register_asp_connections(&self.config);
+        einvoice_send::register(app);
         // `FIN.RUL.23` and `FIN.RUL.25`: the notice type and the daily check
         // of the projected cash balance and of the bank balances.
         cash_alert::register_types();
