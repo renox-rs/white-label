@@ -1916,3 +1916,40 @@ fn the_below_threshold_event_names_the_first_week() {
     let back: CashForecastBelowThreshold = renox::serde_json::from_value(json).unwrap();
     assert_eq!(back, event);
 }
+
+/// #119: without the `invoicing` module there is no drawings category and a
+/// drawing request is refused; the cheque of a drawing names its request.
+#[renox::test]
+async fn owner_drawings_without_invoicing_are_refused() {
+    use wl_kernel::Subject;
+    use wl_kernel::cheques::RegisterCheque;
+    use wl_kernel::drawings::{
+        DRAWING_REQUEST_SUBJECT_TYPE, DrawingRequest, owner_drawings,
+    };
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let drawings = owner_drawings(app.state());
+    assert!(drawings
+        .category(app.db(), "owner_drawings")
+        .await
+        .unwrap()
+        .is_none());
+    let refused = drawings
+        .request(
+            app.state(),
+            DrawingRequest {
+                legal_entity_id: 1,
+                category: "owner_drawings".into(),
+                source: Subject::new(DRAWING_REQUEST_SUBJECT_TYPE, 1),
+                amount: 1_500_000,
+                requested_by: 1,
+            },
+        )
+        .await;
+    assert!(refused.is_err());
+    let cheque = RegisterCheque::new(PartyId(1), 1, "ENBD", "1042", day(), 400_000)
+        .issued()
+        .drawing(7);
+    assert_eq!(cheque.drawing, Some(7));
+}

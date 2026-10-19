@@ -145,6 +145,12 @@ pub struct RegisterCheque {
     /// The bank account it is deposited in (received) or drawn on (issued),
     /// free text for now.
     pub bank_account: Option<String>,
+    /// The approved owner drawing an issued cheque pays: the id of the
+    /// drawing request in `wl-payments` (`FIN.ACL.21`). The cheque is then
+    /// registered to the drawings category's owner party for the approved
+    /// amount only, and its `clear` records a payment with purpose *owner
+    /// drawings*.
+    pub drawing: Option<i64>,
 }
 
 impl RegisterCheque {
@@ -171,7 +177,14 @@ impl RegisterCheque {
             collected_by: None,
             field_collected: false,
             bank_account: None,
+            drawing: None,
         }
+    }
+
+    /// Makes it the cheque of an approved owner drawing (an issued cheque).
+    pub fn drawing(mut self, request: i64) -> Self {
+        self.drawing = Some(request);
+        self
     }
 
     /// Makes it an issued cheque (money out).

@@ -19,6 +19,7 @@ pub mod delivery;
 pub mod deposits;
 pub mod digest;
 pub mod documents;
+pub mod drawings;
 pub mod einvoice;
 pub mod entities;
 pub mod held_funds;
@@ -71,6 +72,11 @@ pub use budgets::{
     CompanyBudgetVarianceReached, CompanyBudgets, NoCompanyBudgets,
 };
 pub use calendar::BusinessCalendar;
+pub use drawings::{
+    DRAWING_REQUEST_SUBJECT_TYPE, DrawingCategory, DrawingPayment, DrawingPaymentSource,
+    DrawingRequest, DrawingStart, NoOwnerDrawings, OwnerDrawingDecided, OwnerDrawings,
+    drawing_payment_sources, owner_drawings, provide_owner_drawings, register_drawing_payments,
+};
 pub use cash_forecast::{
     CashForecastBelowThreshold, CashForecastSource, ForecastFuture, ForecastLine,
     cash_forecast_sources, register_cash_forecast_source,
