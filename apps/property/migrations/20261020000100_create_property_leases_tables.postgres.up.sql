@@ -34,8 +34,8 @@ CREATE TABLE "property_leases" (
     -- The day the version entered `pending_signature` (Asia/Dubai).
     submitted_on DATE,
     -- PRP.RUL.12: the follow-up date the property manager extended to, the
-    -- day the reminder at N days was sent, the day the task at M days was
-    -- opened.
+    -- day the reminder at N days was sent, the due date the extend-or-cancel
+    -- task was last opened for.
     follow_up_until DATE,
     chase_reminded_on DATE,
     chase_tasked_on DATE,

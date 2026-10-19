@@ -10,7 +10,7 @@ use renox::chrono::Duration;
 use renox::prelude::*;
 use renox::state_machine::Transitioned;
 use wl_kernel::deposits::{AdjustDeposit, deposits};
-use wl_kernel::role_tasks::{self, RoleTask};
+use wl_kernel::role_tasks::RoleTask;
 
 use crate::events::LeaseActivated;
 use crate::lease::{Lease, VersionKind};
@@ -67,7 +67,7 @@ async fn after_activate(state: &AppState, id: i64) -> Result {
     )
     .description(&english("property.tasks.ejari_description", &[]))
     .due_at(renox::db::now() + Duration::days(EJARI_DAYS));
-    role_tasks::open(state, task).await?;
+    crate::tasks::open(state, &lease.scope(), task).await?;
     adjust_deposit(state, &lease).await
 }
 
@@ -112,7 +112,7 @@ async fn adjust_deposit(state: &AppState, lease: &Lease) -> Result {
             ),
             &format!("property.deposit_adjust:{}", lease.id),
         );
-        role_tasks::open(state, task).await?;
+        crate::tasks::open(state, &lease.scope(), task).await?;
     }
     Ok(())
 }

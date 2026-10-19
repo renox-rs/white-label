@@ -159,7 +159,7 @@ pub struct Lease {
     pub follow_up_until: Option<NaiveDate>,
     /// The day the reminder at N days was sent.
     pub chase_reminded_on: Option<NaiveDate>,
-    /// The day the task at M days was last opened.
+    /// The due date the extend-or-cancel task was last opened for.
     pub chase_tasked_on: Option<NaiveDate>,
     /// The day it was activated.
     pub activated_on: Option<NaiveDate>,

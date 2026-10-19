@@ -475,6 +475,9 @@ pub async fn submit(
     id: i64,
 ) -> std::result::Result<Lease, TransitionError> {
     let lease = load(state, id).await?;
+    if !user.has_permission_in(permissions::LEASES_CREATE, &lease.scope()) {
+        return Err(TransitionError::Forbidden);
+    }
     let outcome = documents::guarded(state, GUARD_SUBMIT, id, Some(user.id), || async {
         lease.transition(SUBMIT).by(user).run(state).await
     })
@@ -500,10 +503,13 @@ pub async fn activate(
     id: i64,
 ) -> std::result::Result<Lease, TransitionError> {
     let lease = load(state, id).await?;
-    if lease.status == LeaseStatus::PendingSignature {
-        deposit_check(state, &lease).await?;
+    if !user.has_permission_in(permissions::LEASES_ACTIVATE, &lease.scope()) {
+        return Err(TransitionError::Forbidden);
     }
     let outcome = documents::guarded(state, GUARD_ACTIVATE, id, Some(user.id), || async {
+        if lease.status == LeaseStatus::PendingSignature {
+            deposit_check(state, &lease).await?;
+        }
         lease.transition(ACTIVATE).by(user).run(state).await
     })
     .await?;
