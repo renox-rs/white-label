@@ -16,6 +16,8 @@ pub mod evidence;
 pub mod feed;
 pub mod freshness;
 pub mod freshness_alert;
+pub mod list_parser;
+pub mod list_upload;
 mod machine;
 pub mod notify;
 pub mod pages;
@@ -54,6 +56,8 @@ pub use directory::Directory;
 pub use events::{SanctionsListStale, SanctionsListUpdated};
 pub use evidence::{UnblockBasis, UnblockEvidence};
 pub use feed::{FeedError, ListFeed, ListVersion, NoListFeed};
+pub use list_parser::{ListParser, ListParsers, ParseError, ParsedList, XmlListParser};
+pub use list_upload::{SanctionsListUpload, UploadOutcome, UploadRefusal, UploadSettings};
 pub use party::{Channel, Language, Party};
 pub use reasons::{BlockReason, BlockReasons};
 pub use relationships::{
@@ -64,7 +68,7 @@ pub use review_tasks::{
     ItemDecision, ReviewTask, ReviewTaskItem, ReviewTaskNote, ReviewTaskStatus,
 };
 pub use roles::PartyRole;
-pub use sanctions_lists::{ListStatus, SanctionsList, UpdateSource, is_stale};
+pub use sanctions_lists::{ListFormat, ListStatus, SanctionsList, UpdateSource, is_stale};
 pub use screening::{
     ListUsed, NewCandidate, ProviderError, Screening, ScreeningCandidate, ScreeningMethod,
     ScreeningProvider, ScreeningRun, ScreeningTrigger, record_run,
@@ -194,6 +198,10 @@ pub struct WlParties {
     confirmed: ConfirmedMatchSettings,
     /// What a guarded onboarding does while a sanctions list is stale.
     stale_list_policy: wl_kernel::screening_guard::StaleListPolicy,
+    /// Whether a reviewer may upload a list file by hand (default on).
+    manual_upload_off: bool,
+    /// The parsers a vertical adds for list formats (#42).
+    list_parsers: ListParsers,
 }
 
 /// The module with the default block reason codes, so the host can write
@@ -209,6 +217,8 @@ pub const WlParties: WlParties = WlParties {
     screening_provider: None,
     confirmed: ConfirmedMatchSettings::DEFAULT,
     stale_list_policy: wl_kernel::screening_guard::StaleListPolicy::Warn,
+    manual_upload_off: false,
+    list_parsers: ListParsers::EMPTY,
 };
 
 impl WlParties {
@@ -357,6 +367,26 @@ impl WlParties {
         self
     }
 
+    /// Turns the manual upload of an official list file on or off (default
+    /// on, #42). Off, every upload is refused and its form is hidden.
+    pub fn manual_upload(mut self, on: bool) -> Self {
+        self.manual_upload_off = !on;
+        self
+    }
+
+    /// Whether a reviewer may upload a list file by hand.
+    pub fn manual_upload_on(&self) -> bool {
+        !self.manual_upload_off
+    }
+
+    /// Sets the parser of lists in `format`, so a vertical can accept an
+    /// upload of a format the module does not read itself (Excel, say).
+    /// XML is built in; a parser given for it replaces the built-in one.
+    pub fn list_parser(mut self, format: ListFormat, parser: impl ListParser) -> Self {
+        self.list_parsers = self.list_parsers.with(format, std::sync::Arc::new(parser));
+        self
+    }
+
     /// The block reason codes this module is set up with.
     pub fn reasons(&self) -> BlockReasons {
         self.reasons.clone().unwrap_or_default()
@@ -395,6 +425,7 @@ impl Module for WlParties {
             .model::<ComplianceTaskParty>()
             .model::<ComplianceTaskFund>()
             .model::<SanctionsList>()
+            .model::<SanctionsListUpload>()
             .view_data::<pages::IndexPage>()
             .view_data::<pages::NewPage>()
             .view_data::<pages::ShowPage>()
@@ -424,6 +455,11 @@ impl Module for WlParties {
         app.provide(feed);
         // What a confirmed sanctions match does.
         app.provide(self.confirmed);
+        // Manual upload of a list file: the setting and the parsers.
+        app.provide(UploadSettings {
+            enabled: self.manual_upload_on(),
+        });
+        app.provide(self.list_parsers.clone());
         // `PTY.RUL.02`: the hourly list check and its command.
         freshness::schedule(app);
         // Screenings made on a stale list are re-run after the list updates.
@@ -570,6 +606,31 @@ mod tests {
         assert!(!module.confirmed.related_company_block);
         assert_eq!(module.confirmed.freeze_task_due_hours, 12);
         assert_eq!(module.confirmed.report_task_due_hours, 48);
+    }
+
+    #[test]
+    fn manual_upload_is_on_unless_turned_off() {
+        assert!(WlParties.manual_upload_on());
+        assert!(WlParties::new().manual_upload_on());
+        assert!(!WlParties::new().manual_upload(false).manual_upload_on());
+        assert!(
+            WlParties::new()
+                .manual_upload(false)
+                .manual_upload(true)
+                .manual_upload_on()
+        );
+    }
+
+    #[test]
+    fn a_vertical_can_add_a_list_parser() {
+        assert!(
+            WlParties::new()
+                .list_parsers
+                .get(ListFormat::Excel)
+                .is_none()
+        );
+        let module = WlParties::new().list_parser(ListFormat::Excel, XmlListParser);
+        assert!(module.list_parsers.get(ListFormat::Excel).is_some());
     }
 
     #[test]

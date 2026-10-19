@@ -35,6 +35,19 @@ pub enum UpdateSource {
     Manual,
 }
 
+/// The file format of a list, which decides whether an official file can be
+/// uploaded by hand (a parser exists for it).
+#[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum ListFormat {
+    /// An XML document.
+    #[default]
+    Xml,
+    /// A PDF; it has no parser, so it is checked by hand.
+    Pdf,
+    /// A spreadsheet; recognised, with no built-in parser.
+    Excel,
+}
+
 /// One sanctions list.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
 #[model(table = "wl_parties_sanctions_lists", index(status))]
@@ -59,6 +72,12 @@ pub struct SanctionsList {
     pub last_attempt_at: Option<DateTime>,
     /// Why the last attempt failed; `None` after a success.
     pub last_error: Option<String>,
+    /// The user who uploaded the current version; `None` for a download.
+    pub updated_by: Option<i64>,
+    /// The page of the authority the current version was taken from.
+    pub source_url: Option<String>,
+    /// The file format of the list.
+    pub format: ListFormat,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
