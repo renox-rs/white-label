@@ -47,6 +47,8 @@ use wl_kernel::parties::PartyStatus;
 use wl_kernel::payments::{PaymentMethod, RefundFailureKind};
 
 use crate::cheque::{Cheque, ChequeReturn};
+use crate::deposit::Deposit;
+use crate::deposit_deductions::DepositDeduction;
 use crate::followup::{ACCOUNTANT_ROLE, FollowupTask, money_text};
 use crate::payment::Payment;
 use crate::refund::Refund;
@@ -93,6 +95,15 @@ pub const CHEQUE_REMINDER: &str = "payments.cheque_reminder";
 
 /// The type of the staff's reminder of a bounced cheque (`FIN.RUL.18`).
 pub const CHEQUE_REMINDER_STAFF: &str = "payments.cheque_reminder_staff";
+
+/// The type of the party's notice that the deposit deductions are published.
+pub const DEPOSIT_DEDUCTIONS: &str = "payments.deposit_deductions";
+
+/// The type of the staff's notice that the party disputed deductions.
+pub const DEPOSIT_DISPUTED: &str = "payments.deposit_disputed";
+
+/// The type of the party's notice that its dispute was answered.
+pub const DEPOSIT_DISPUTE_ANSWERED: &str = "payments.deposit_dispute_answered";
 
 const MODULE: &str = "payments";
 const GROUP: &str = "payments";
@@ -303,8 +314,50 @@ pub fn cheque_reminder_staff_type() -> NotificationTypeDef {
         )
 }
 
+/// The notification type [`DEPOSIT_DEDUCTIONS`].
+pub fn deposit_deductions_type() -> NotificationTypeDef {
+    NotificationTypeDef::new(DEPOSIT_DEDUCTIONS, MODULE)
+        .group(GROUP)
+        .category(Category::Transactional)
+        .template(
+            NotifyChannel::Email,
+            "en",
+            Some(english("wl_payments.deposit_deductions.subject")),
+            english("wl_payments.deposit_deductions.body"),
+        )
+}
+
+/// The notification type [`DEPOSIT_DISPUTED`].
+pub fn deposit_disputed_type() -> NotificationTypeDef {
+    NotificationTypeDef::new(DEPOSIT_DISPUTED, MODULE)
+        .group(GROUP)
+        .category(Category::Transactional)
+        .template(
+            NotifyChannel::Email,
+            "en",
+            Some(english("wl_payments.deposit_disputed.subject")),
+            english("wl_payments.deposit_disputed.body"),
+        )
+}
+
+/// The notification type [`DEPOSIT_DISPUTE_ANSWERED`].
+pub fn deposit_dispute_answered_type() -> NotificationTypeDef {
+    NotificationTypeDef::new(DEPOSIT_DISPUTE_ANSWERED, MODULE)
+        .group(GROUP)
+        .category(Category::Transactional)
+        .template(
+            NotifyChannel::Email,
+            "en",
+            Some(english("wl_payments.deposit_dispute_answered.subject")),
+            english("wl_payments.deposit_dispute_answered.body"),
+        )
+}
+
 /// Registers the types with the kernel registry.
 pub(crate) fn register_types() {
+    notify::register_type(deposit_deductions_type());
+    notify::register_type(deposit_disputed_type());
+    notify::register_type(deposit_dispute_answered_type());
     notify::register_type(cheque_reminder_type());
     notify::register_type(cheque_reminder_staff_type());
     notify::register_type(cheque_bounced_type());
@@ -798,6 +851,108 @@ pub(crate) async fn cheque_reminder(state: &AppState, cheque: &Cheque, days: i64
         notify::notifier(state).notify(state, request).await?;
     }
     Ok(told)
+}
+
+/// After the deductions of `deposit` were published as `deduction`: the party
+/// is told what they come to and until when it may dispute (not while it is
+/// blocked).
+pub(crate) async fn deposit_deductions_published(
+    state: &AppState,
+    deposit: &Deposit,
+    deduction: &DepositDeduction,
+) -> Result {
+    let status = wl_kernel::parties::directory(state)
+        .status(&state.db, deposit.party())
+        .await?;
+    if !tells_party(status) {
+        return Ok(());
+    }
+    let until = match deduction.window_ends_on {
+        Some(end) => format!(" You may dispute them in the portal until {}.", date_text(end)),
+        None => String::new(),
+    };
+    let request = NotifyRequest::new(DEPOSIT_DEDUCTIONS, deposit.subject())
+        .to_party(deposit.party())
+        .data(json!({
+            "deposit": deposit.id,
+            "version": deduction.version,
+            "total": money_text(&deposit.currency, deduction.total),
+            "held": money_text(&deposit.currency, deposit.held_amount),
+            "until": until,
+            "kind": match deduction.kind {
+                wl_kernel::deposits::DeductionKind::Forfeiture => "forfeiture",
+                wl_kernel::deposits::DeductionKind::Deductions => "deductions",
+            },
+        }));
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// After the party disputed `lines` lines of `deduction`: the holders of the
+/// accountant role are told and given the response window.
+pub(crate) async fn deposit_disputed(
+    state: &AppState,
+    deposit: &Deposit,
+    deduction: &DepositDeduction,
+    lines: usize,
+) -> Result {
+    let ids: Vec<i64> = users_with_role_in(&state.db, ACCOUNTANT_ROLE, &Scope::global())
+        .await?
+        .iter()
+        .map(|user| user.id)
+        .collect();
+    if ids.is_empty() {
+        return Ok(());
+    }
+    let party = wl_kernel::parties::directory(state)
+        .display_name(&state.db, deposit.party(), "en")
+        .await?
+        .unwrap_or_else(|| deposit.party().to_string());
+    let days = crate::config_of(state).dispute_response_days;
+    let mut request = NotifyRequest::new(DEPOSIT_DISPUTED, deposit.subject()).data(json!({
+        "deposit": deposit.id,
+        "party": party,
+        "version": deduction.version,
+        "lines": lines,
+        "days": days,
+        "link": format!("/deposits/{}", deposit.id),
+    }));
+    for id in ids {
+        request = request.to_user(id);
+    }
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// After staff answered the dispute of `deposit` (`answer`, with `response`):
+/// the party is told (not while it is blocked).
+pub(crate) async fn deposit_dispute_answered(
+    state: &AppState,
+    deposit: &Deposit,
+    answer: wl_kernel::deposits::DisputeAnswer,
+    response: &str,
+) -> Result {
+    let status = wl_kernel::parties::directory(state)
+        .status(&state.db, deposit.party())
+        .await?;
+    if !tells_party(status) {
+        return Ok(());
+    }
+    let outcome = match answer {
+        wl_kernel::deposits::DisputeAnswer::Revised => {
+            "The deductions were revised; the new version is in the portal and the dispute window starts again."
+        }
+        wl_kernel::deposits::DisputeAnswer::Upheld => "The deductions stand.",
+    };
+    let request = NotifyRequest::new(DEPOSIT_DISPUTE_ANSWERED, deposit.subject())
+        .to_party(deposit.party())
+        .data(json!({
+            "deposit": deposit.id,
+            "outcome": outcome,
+            "response": response,
+        }));
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
 }
 
 #[cfg(test)]

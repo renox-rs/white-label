@@ -5,11 +5,21 @@
   <rx-stack>
     <rx-page-header :title="title" :subtitle="party_name" :back="route('wl_payments.deposits.index')" :back-label="tx['deposits.title']"
                     :badge="status_label" :badge-kind="status_kind">
+      <template rx-if="can_publish"><rx-include template="wl-payments/_publish_sheet.html"/></template>
+      <template rx-if="can_answer"><rx-include template="wl-payments/_answer_sheet.html"/></template>
+      <rx-confirm rx-if="can_legal_case and not deposit.dispute_legal_case" :id="'legal-case-open-' ~ deposit.id" :label="tx['deposits.legal_case.open']" :action="route('wl_payments.deposits.legal_case_open', deposit.id)" method="POST"
+                  :title="tx['deposits.legal_case.open_title']" :message="tx['deposits.legal_case.open_message']" :confirm-label="tx['deposits.legal_case.open']" icon="scale"/>
+      <rx-confirm rx-if="can_legal_case and deposit.dispute_legal_case" :id="'legal-case-close-' ~ deposit.id" :label="tx['deposits.legal_case.close']" :action="route('wl_payments.deposits.legal_case_close', deposit.id)" method="POST"
+                  :title="tx['deposits.legal_case.close_title']" :message="tx['deposits.legal_case.close_message']" :confirm-label="tx['deposits.legal_case.close']" icon="gavel"/>
+      <template rx-if="can_refund"><rx-include template="wl-payments/_deposit_refund_sheet.html"/></template>
+      <template rx-if="can_forfeit"><rx-include template="wl-payments/_forfeit_sheet.html"/></template>
       <template rx-if="refund_failed">
         <rx-badge kind="error" :text="tx['deposits.refund_failed']"/>
         <rx-link-button :href="refund_link" :label="tx['deposits.open_refund']" variant="plain" icon="arrow-right"/>
       </template>
     </rx-page-header>
+    <rx-alert rx-if="dispute_flag" kind="warning" :title="tx['deposits.dispute.flag']" :message="tx['deposits.dispute.flag_message']"/>
+    <rx-alert rx-if="waiting_reason and not dispute_flag" kind="info" :message="waiting_reason"/>
     <rx-card :title="tx['deposits.sections.details']">
       <rx-infolist columns="2">
         <rx-entry :label="tx['fields.party']" :value="party_name"/>
@@ -21,6 +31,30 @@
         <rx-entry :label="tx['fields.created_at']" :value="deposit.created_at" format="datetime"/>
       </rx-infolist>
     </rx-card>
+    <rx-card rx-for="version in versions" :title="tx['deposits.deductions.version'] ~ ' ' ~ version.version ~ ' (' ~ version.kind ~ ')'">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['deposits.deductions.published_on']" :value="version.published_on"/>
+        <rx-entry :label="tx['deposits.deductions.window_ends_on']" :value="version.window_ends_on" :placeholder="tx['deposits.deductions.no_window']"/>
+        <rx-entry :label="tx['deposits.deductions.total']" :value="version.total"/>
+        <rx-entry :label="tx['deposits.deductions.reason']" rx-if="version.reason" :value="version.reason"/>
+      </rx-infolist>
+      <rx-table :rows="version.lines" as="line" :key="line.id">
+        <rx-column :label="tx['deposits.deductions.line']">{{ line.description }}</rx-column>
+        <rx-column :label="tx['fields.amount']">{{ line.amount }}</rx-column>
+        <rx-column :label="tx['deposits.deductions.evidence']" hide-narrow>{{ line.evidence }}</rx-column>
+        <rx-column :label="tx['fields.status']">
+          <rx-badge rx-if="line.disputed" kind="warning" :text="tx['deposits.dispute.disputed']"/>
+        </rx-column>
+        <rx-slot name="empty"><rx-empty :title="tx['deposits.deductions.no_lines']" icon="file-text"/></rx-slot>
+      </rx-table>
+    </rx-card>
+    <rx-table rx-if="disputes" :rows="disputes" as="dispute" :key="dispute.id" :caption="tx['deposits.sections.disputes']" card>
+      <rx-column :label="tx['deposits.deductions.line']">{{ dispute.line }}</rx-column>
+      <rx-column :label="tx['deposits.dispute.comment']">{{ dispute.comment }}</rx-column>
+      <rx-column :label="tx['deposits.dispute.raised_on']" hide-narrow>{{ dispute.raised_on }}</rx-column>
+      <rx-column :label="tx['fields.status']"><rx-badge :kind="dispute.status_kind" :text="dispute.status"/></rx-column>
+      <rx-column :label="tx['deposits.dispute.response']" hide-narrow>{{ dispute.response }}</rx-column>
+    </rx-table>
     <rx-table :rows="timeline" as="item" :key="item.time" :caption="tx['sections.history']" card>
       <rx-column :label="tx['history.change']">{{ item.title }}</rx-column>
       <rx-column :label="tx['history.at']">{{ item.time | date('%Y-%m-%d %H:%M') }}</rx-column>

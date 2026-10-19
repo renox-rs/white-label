@@ -1,0 +1,9 @@
+{#- wl-payments: the "refund" action on a deposit being settled, a sheet with
+    the method (transfer or cheque). It waits for the deductions dispute. The
+    refund then follows the refund flow (approval, pay). Replace it with
+    resources/views/wl-payments/_deposit_refund_sheet.html in the app. -#}
+<rx-action-sheet :id="'refund-deposit-' ~ deposit.id" :label="tx['deposits.refund.action']" :action="route('wl_payments.deposits.refund', deposit.id)"
+                 :title="tx['deposits.refund.title']" :description="tx['deposits.refund.description']" :submit-label="tx['deposits.refund.submit']"
+                 icon="undo-2">
+  <rx-select name="method" :label="tx['deposits.refund.method']" :options="refund_methods" :id="'refund-method-' ~ deposit.id" required/>
+</rx-action-sheet>

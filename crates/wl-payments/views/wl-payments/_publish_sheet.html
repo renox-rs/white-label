@@ -1,0 +1,11 @@
+{#- wl-payments: the "publish deductions" action on a deposit being settled,
+    a sheet with one deduction per row (description | amount | evidence) or a
+    forfeiture reason. Publishing shows the version to the party in the portal
+    and starts its dispute window. Replace it with
+    resources/views/wl-payments/_publish_sheet.html in the app. -#}
+<rx-action-sheet :id="'publish-deductions-' ~ deposit.id" :label="tx['deposits.deductions.action']" :action="route('wl_payments.deposits.deductions', deposit.id)"
+                 :title="tx['deposits.deductions.title']" :description="tx['deposits.deductions.description']" :submit-label="tx['deposits.deductions.submit']"
+                 icon="file-text">
+  <rx-textarea name="lines" :label="tx['deposits.deductions.lines']" :hint="tx['deposits.deductions.lines_hint']" :id="'deductions-lines-' ~ deposit.id"/>
+  <rx-input name="forfeiture_reason" :label="tx['deposits.deductions.forfeiture_reason']" :hint="tx['deposits.deductions.forfeiture_hint']" :id="'deductions-forfeiture-' ~ deposit.id"/>
+</rx-action-sheet>

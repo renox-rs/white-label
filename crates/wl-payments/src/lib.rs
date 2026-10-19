@@ -19,6 +19,8 @@ pub mod chequer;
 pub mod config;
 pub mod credit;
 pub mod deposit;
+pub mod deposit_deductions;
+mod deposit_events;
 mod deposit_machine;
 pub mod deposit_pages;
 mod events;
@@ -131,6 +133,22 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "wl-payments/_replacement_sheet.html",
         include_str!("../views/wl-payments/_replacement_sheet.html"),
+    ),
+    (
+        "wl-payments/_publish_sheet.html",
+        include_str!("../views/wl-payments/_publish_sheet.html"),
+    ),
+    (
+        "wl-payments/_answer_sheet.html",
+        include_str!("../views/wl-payments/_answer_sheet.html"),
+    ),
+    (
+        "wl-payments/_forfeit_sheet.html",
+        include_str!("../views/wl-payments/_forfeit_sheet.html"),
+    ),
+    (
+        "wl-payments/_deposit_refund_sheet.html",
+        include_str!("../views/wl-payments/_deposit_refund_sheet.html"),
     ),
     (
         "wl-payments/_write_off_sheet.html",
@@ -264,6 +282,24 @@ impl WlPayments {
         self
     }
 
+    /// Lets the party dispute the published deposit deductions in the portal
+    /// (§7, off unless set; 01 Property turns it on): `window_days` after
+    /// each publication (14 by default) and `response_days` for staff to
+    /// answer (7). While on, `refund` and `forfeit` of a deposit wait until
+    /// the window of the latest published version has passed.
+    ///
+    /// # Panics
+    ///
+    /// For fewer than one day: a programming error.
+    pub fn deductions_dispute(mut self, window_days: i64, response_days: i64) -> Self {
+        assert!(window_days >= 1, "a dispute window is at least one day");
+        assert!(response_days >= 1, "an answer takes at least one day");
+        self.config.deductions_dispute = true;
+        self.config.dispute_window_days = window_days;
+        self.config.dispute_response_days = response_days;
+        self
+    }
+
     /// Sets how many times one cheque may be presented, the first deposit
     /// included (§7: 2, one re-presentation).
     pub fn cheque_presentations(mut self, max: i64) -> Self {
@@ -326,6 +362,9 @@ impl Module for WlPayments {
         app.model::<Refund>();
         app.model::<RefundAttempt>();
         app.model::<Deposit>();
+        app.model::<deposit_deductions::DepositDeduction>();
+        app.model::<deposit_deductions::DeductionLine>();
+        app.model::<deposit_deductions::DepositDispute>();
         app.model::<Cheque>();
         app.model::<ChequeLink>();
         app.model::<ChequeReturn>();
@@ -414,6 +453,10 @@ impl Module for WlPayments {
         notices::register_types();
         // `PaymentReceived` and `PaymentReversed` after a commit.
         events::register(app);
+        // `DepositSettled` after a commit.
+        deposit_events::register(app);
+        // The published deductions the portal shows and the party's dispute.
+        wl_kernel::deposits::provide_deposit_deductions(app, deposit_deductions::Deductions);
         // `RefundPaid` after a commit.
         refund_machine::register(app);
         // `RefundFailed` and its notices after a commit.
