@@ -196,15 +196,31 @@ async fn tkt03_resolving_the_visit_clears_the_flag_but_cancelling_does_not() {
     visit_check::run(w.t.state(), day(4)).await.unwrap();
     assert_eq!(ComplianceFlag::open(w.t.db()).await.unwrap().len(), 2);
 
-    // Cancelled by the coordinator: the flag stays.
+    // A user cannot cancel a compliance-critical planned visit (BL-PRP-24,
+    // `PRP.ACL.15`); the system's cancel when the contract ends does, and the
+    // flag stays.
     w.t.run(&w.coordinator, &other, "cancel", "2026-11-05 09:00", &[("reason", "Not needed")])
         .await
-        .assert_ok();
+        .assert_status(422);
+    wl_ticketing::work::auto_cancel(w.t.state(), &other, "The contract ended")
+        .await
+        .unwrap();
+    assert_eq!(w.t.reload(&other).await.status, TicketStatus::Cancelled);
     assert_eq!(ComplianceFlag::open(w.t.db()).await.unwrap().len(), 2);
     assert!(w.cleared.all().is_empty());
 
     // Resolved: that visit's flag clears.
     w.t.run(&w.technician, &visit, "start", "2026-11-06 09:00", &[])
+        .await
+        .assert_ok();
+    // A compliance-critical visit is resolved with the service report attached.
+    w.t.app.acting_as(&w.technician);
+    w.t.app
+        .htmx()
+        .post(
+            &format!("/tickets/{}/service-report", visit.id),
+            &[("reference", "SR-2026-114")],
+        )
         .await
         .assert_ok();
     w.t.run(&w.technician, &visit, "resolve", "2026-11-06 11:00", &[])

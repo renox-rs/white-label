@@ -58,7 +58,18 @@ async fn tkt06_resolving_a_fire_alarm_visit_is_refused_while_the_approval_is_exp
     assert_eq!(after.status, TicketStatus::InProgress);
     assert!(after.resolved_at.is_none());
 
-    // The approval is valid through its expiry date.
+    // The approval is valid through its expiry date; a planned visit of a
+    // compliance-critical category is also resolved with the vendor's service
+    // report attached (BL-PRP-24, `PRP.ACL.15`).
+    w.t.app.acting_as(&w.coordinator);
+    w.t.app
+        .htmx()
+        .post(
+            &format!("/tickets/{}/service-report", visit.id),
+            &[("reference", "SR-2026-114")],
+        )
+        .await
+        .assert_ok();
     w.t.run(&w.coordinator, &visit, "resolve", "2026-11-30 10:00", &[])
         .await
         .assert_ok();
