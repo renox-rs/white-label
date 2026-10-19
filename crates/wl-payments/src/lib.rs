@@ -4,7 +4,9 @@
 pub mod allocate;
 pub mod allocation;
 pub mod cheque;
+pub mod cheque_bounce;
 pub mod cheque_deposit;
+mod cheque_events;
 mod cheque_machine;
 mod cheque_money;
 pub mod chequer;
@@ -331,6 +333,8 @@ impl Module for WlPayments {
         wl_kernel::cheques::provide_cheques(app, chequer::ChequeBook);
         // `FIN.RUL.03`: the cheques whose date is close go on the deposit list.
         cheque_deposit::register(app);
+        // The bounce fee, `ChequeBounced` and the follow-ups after a commit.
+        cheque_events::register(app);
         // The notification types of a bank return and a follow-up task.
         notices::register_types();
         // `PaymentReceived` and `PaymentReversed` after a commit.

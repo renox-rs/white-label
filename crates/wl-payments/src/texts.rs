@@ -320,6 +320,43 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_payments.followup.body",
         "{{ text }}: payment {{ number }} was reversed after the party's credit was refunded. See {{ link }}.",
     ),
+    (
+        "wl_payments.cheque_bounced.subject",
+        "Your cheque {{ number }} was returned",
+    ),
+    (
+        "wl_payments.cheque_bounced.body",
+        "Dear customer, your cheque {{ number }} for {{ amount }} drawn on {{ bank }} was returned unpaid by the bank (reason: {{ reason }}). {{ open }} is still due. Please contact us to arrange payment.",
+    ),
+    ("wl_payments.cheque_task.subject", "{{ text }}"),
+    (
+        "wl_payments.cheque_task.body",
+        "{{ text }}. Cheque {{ number }} of {{ party }}, {{ amount }} open. See {{ link }}.",
+    ),
+    (
+        "wl_payments.cheque_presented.subject",
+        "Your cheque {{ number }} will be presented again",
+    ),
+    (
+        "wl_payments.cheque_presented.body",
+        "Dear customer, as agreed, your cheque {{ number }} for {{ amount }} will be presented to the bank again on {{ date }}. Please make sure the funds are available.",
+    ),
+    (
+        "wl_payments.cheque_notice.subject",
+        "Formal notice: returned cheque {{ number }}",
+    ),
+    (
+        "wl_payments.cheque_notice.body",
+        "To {{ drawer }}. Cheque {{ number }} of {{ bank }} dated {{ cheque_date }} for {{ amount }} was returned by the bank on {{ returned_on }} (reason: {{ reason }}). The bank paid {{ honoured }}; {{ open }} is still due{{ fee }}. You are asked to pay the amount still due within {{ days }} days of this notice, failing which we will pursue it through a legal case ({{ case_type }}). Contact: {{ contact }}. (Template content pending legal review.)",
+    ),
+    (
+        "wl_payments.cheque_referred.subject",
+        "Cheque {{ number }} referred to a legal case",
+    ),
+    (
+        "wl_payments.cheque_referred.body",
+        "{{ text }}. Case owner: {{ owner }}. See {{ link }}.",
+    ),
 ];
 
 /// The English text for `key`, or `key` itself when the package has none.

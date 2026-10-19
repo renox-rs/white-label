@@ -21,6 +21,20 @@
 //! - `payments.refund_method_task`: the holders of the accountant role get a
 //!   notice for the task to pay a failed refund another way (`FIN.RUL.21`).
 //!
+//! - `payments.cheque_bounced`: the party is told its cheque was returned
+//!   (`FIN.RUL.04`, transactional, e-mail, EN); skipped while the party is
+//!   blocked.
+//! - `payments.cheque_task`: the staff are told of a cheque task (a bounced
+//!   cheque to follow up or replace, a bounce fee to raise, a legal case, a
+//!   cheque to hand back): the holders of the accountant role, the user who
+//!   registered the cheque and the task's assignee.
+//! - `payments.cheque_presented`: the party is told the new presentation
+//!   date of its re-presented cheque (transactional, e-mail, EN); skipped
+//!   while the party is blocked.
+//! - `payments.cheque_notice`: the formal notice of a legal case to the party
+//!   (transactional, e-mail, EN; the default template, content pending
+//!   `⚠ open: lawyer L-21`).
+//!
 //! While `notify` is off the kernel's `NoNotifier` sends nothing to a party
 //! and a bell notice to each user.
 
@@ -32,6 +46,7 @@ use wl_kernel::notify::{self, Category, NotificationTypeDef, NotifyChannel, Noti
 use wl_kernel::parties::PartyStatus;
 use wl_kernel::payments::{PaymentMethod, RefundFailureKind};
 
+use crate::cheque::{Cheque, ChequeReturn};
 use crate::followup::{ACCOUNTANT_ROLE, FollowupTask, money_text};
 use crate::payment::Payment;
 use crate::refund::Refund;
@@ -57,6 +72,21 @@ pub const REFUND_CANCELLED: &str = "payments.refund_cancelled";
 
 /// The type of the accountants' notice of a task to change a refund's method.
 pub const REFUND_METHOD_TASK: &str = "payments.refund_method_task";
+
+/// The type of the party's notice that its cheque bounced.
+pub const CHEQUE_BOUNCED: &str = "payments.cheque_bounced";
+
+/// The type of the staff's notice of a cheque task.
+pub const CHEQUE_TASK: &str = "payments.cheque_task";
+
+/// The type of the party's notice of the new presentation date.
+pub const CHEQUE_PRESENTED: &str = "payments.cheque_presented";
+
+/// The type of the party's formal notice of a legal case.
+pub const CHEQUE_NOTICE: &str = "payments.cheque_notice";
+
+/// The type of the manager's notice that a cheque was referred to legal.
+pub const CHEQUE_REFERRED: &str = "payments.cheque_referred";
 
 const MODULE: &str = "payments";
 const GROUP: &str = "payments";
@@ -176,8 +206,78 @@ pub fn refund_method_task_type() -> NotificationTypeDef {
         )
 }
 
+/// The notification type [`CHEQUE_BOUNCED`].
+pub fn cheque_bounced_type() -> NotificationTypeDef {
+    NotificationTypeDef::new(CHEQUE_BOUNCED, MODULE)
+        .group(GROUP)
+        .category(Category::Transactional)
+        .template(
+            NotifyChannel::Email,
+            "en",
+            Some(english("wl_payments.cheque_bounced.subject")),
+            english("wl_payments.cheque_bounced.body"),
+        )
+}
+
+/// The notification type [`CHEQUE_TASK`].
+pub fn cheque_task_type() -> NotificationTypeDef {
+    NotificationTypeDef::new(CHEQUE_TASK, MODULE)
+        .group(GROUP)
+        .category(Category::Transactional)
+        .template(
+            NotifyChannel::Email,
+            "en",
+            Some(english("wl_payments.cheque_task.subject")),
+            english("wl_payments.cheque_task.body"),
+        )
+}
+
+/// The notification type [`CHEQUE_PRESENTED`].
+pub fn cheque_presented_type() -> NotificationTypeDef {
+    NotificationTypeDef::new(CHEQUE_PRESENTED, MODULE)
+        .group(GROUP)
+        .category(Category::Transactional)
+        .template(
+            NotifyChannel::Email,
+            "en",
+            Some(english("wl_payments.cheque_presented.subject")),
+            english("wl_payments.cheque_presented.body"),
+        )
+}
+
+/// The notification type [`CHEQUE_NOTICE`].
+pub fn cheque_notice_type() -> NotificationTypeDef {
+    NotificationTypeDef::new(CHEQUE_NOTICE, MODULE)
+        .group(GROUP)
+        .category(Category::Transactional)
+        .template(
+            NotifyChannel::Email,
+            "en",
+            Some(english("wl_payments.cheque_notice.subject")),
+            english("wl_payments.cheque_notice.body"),
+        )
+}
+
+/// The notification type [`CHEQUE_REFERRED`].
+pub fn cheque_referred_type() -> NotificationTypeDef {
+    NotificationTypeDef::new(CHEQUE_REFERRED, MODULE)
+        .group(GROUP)
+        .category(Category::Transactional)
+        .template(
+            NotifyChannel::Email,
+            "en",
+            Some(english("wl_payments.cheque_referred.subject")),
+            english("wl_payments.cheque_referred.body"),
+        )
+}
+
 /// Registers the types with the kernel registry.
 pub(crate) fn register_types() {
+    notify::register_type(cheque_bounced_type());
+    notify::register_type(cheque_task_type());
+    notify::register_type(cheque_presented_type());
+    notify::register_type(cheque_notice_type());
+    notify::register_type(cheque_referred_type());
     notify::register_type(refund_method_changed_type());
     notify::register_type(refund_cancelled_type());
     notify::register_type(refund_method_task_type());
@@ -384,6 +484,82 @@ pub(crate) async fn followup_created(
     }
     let mut request =
         NotifyRequest::new(FOLLOWUP_TASK, payment.subject()).data(followup_data(payment, task));
+    for id in ids {
+        request = request.to_user(id);
+    }
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// The template variables of the party's cheque-bounced notice.
+fn cheque_bounced_data(cheque: &Cheque, bounce: &ChequeReturn) -> renox::serde_json::Value {
+    json!({
+        "number": cheque.number,
+        "bank": cheque.bank,
+        "amount": money_text(&cheque.currency, cheque.amount),
+        "reason": bounce.reason,
+        "open": money_text(&cheque.currency, cheque.open_amount),
+    })
+}
+
+/// The template variables of a cheque task notice.
+fn cheque_task_data(cheque: &Cheque, party_name: &str, task: &FollowupTask) -> renox::serde_json::Value {
+    json!({
+        "text": task.text,
+        "number": cheque.number,
+        "party": party_name,
+        "amount": money_text(&cheque.currency, cheque.open_amount),
+        "link": format!("/cheques/{}", cheque.id),
+    })
+}
+
+/// After a committed `bounce` of the received `cheque`: the drawer is told
+/// the cheque was returned (`FIN.RUL.04`), unless it is blocked.
+pub(crate) async fn cheque_bounced(
+    state: &AppState,
+    cheque: &Cheque,
+    bounce: &ChequeReturn,
+) -> Result {
+    let status = wl_kernel::parties::directory(state)
+        .status(&state.db, cheque.party())
+        .await?;
+    if tells_party(status) {
+        let request = NotifyRequest::new(CHEQUE_BOUNCED, cheque.subject())
+            .to_party(cheque.party())
+            .data(cheque_bounced_data(cheque, bounce));
+        notify::notifier(state).notify(state, request).await?;
+    }
+    Ok(())
+}
+
+/// Tells the staff about the cheque `task`: the holders of the accountant
+/// role, the user who registered `cheque` and the task's assignee, each
+/// once.
+pub(crate) async fn cheque_task(
+    state: &AppState,
+    cheque: &Cheque,
+    task: &FollowupTask,
+) -> Result {
+    let accountants: Vec<i64> = users_with_role_in(&state.db, ACCOUNTANT_ROLE, &Scope::global())
+        .await?
+        .iter()
+        .map(|user| user.id)
+        .collect();
+    let mut ids = staff_ids(cheque.recorded_by, &accountants);
+    if let Some(owner) = task.assignee_id {
+        ids.push(owner);
+        ids.sort_unstable();
+        ids.dedup();
+    }
+    if ids.is_empty() {
+        return Ok(());
+    }
+    let party = wl_kernel::parties::directory(state)
+        .display_name(&state.db, cheque.party(), "en")
+        .await?
+        .unwrap_or_else(|| cheque.party().to_string());
+    let mut request = NotifyRequest::new(CHEQUE_TASK, cheque.subject())
+        .data(cheque_task_data(cheque, &party, task));
     for id in ids {
         request = request.to_user(id);
     }

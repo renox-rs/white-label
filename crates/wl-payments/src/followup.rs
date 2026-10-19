@@ -10,10 +10,12 @@
 
 use renox::db::Json;
 use renox::prelude::*;
+use renox::serde_json::{self, Value};
 use serde::{Deserialize, Serialize};
 use wl_kernel::PartyId;
 use wl_kernel::payments::PAYMENT_SUBJECT_TYPE;
 
+use crate::cheque::Cheque;
 use crate::credit;
 use crate::notices;
 use crate::payment::Payment;
@@ -32,6 +34,20 @@ pub enum FollowupKind {
     /// Pay a failed refund another way (`FIN.RUL.21`): a transfer (new bank
     /// details need an approval), a cheque in the party's name or cash.
     ChangeMethod,
+    /// Follow up a bounced received cheque (`FIN.RUL.04`): re-present,
+    /// settle, replace, refer to legal or write off.
+    FollowUpCheque,
+    /// Replace a bounced issued cheque: a new issued cheque or an outgoing
+    /// payment covers the open amount.
+    ReplaceCheque,
+    /// Raise the bounce fee charge: invoicing could not schedule it.
+    RaiseBounceFee,
+    /// The follow-up of a legal case, for its case owner, with the evidence
+    /// pack (`refer_to_legal`).
+    LegalCase,
+    /// Hand the original of a replaced cheque back to the party, with a
+    /// receipt, once its replacement cleared.
+    HandBack,
 }
 
 /// Whether a follow-up task is still to do.
@@ -68,6 +84,13 @@ pub struct FollowupTask {
     pub refund_ids: Json<Vec<i64>>,
     /// The refund a `change_method` task is about.
     pub refund_id: Option<i64>,
+    /// The cheque a cheque task is about.
+    pub cheque_id: Option<i64>,
+    /// The user a task is assigned to (the case owner of a legal case); the
+    /// role still sees it.
+    pub assignee_id: Option<i64>,
+    /// What a task carries for its reader: the evidence pack of a legal case.
+    pub evidence: Json<Value>,
     /// The text shown to the role.
     pub text: String,
     /// The role that does it, e.g. `accountant`.
@@ -152,6 +175,157 @@ impl FollowupTask {
         }
     }
 
+    /// A cheque task of `kind` for the accountant, about `cheque`, with
+    /// `text`.
+    fn for_cheque(kind: FollowupKind, cheque: &Cheque, amount: i64, text: String) -> Self {
+        FollowupTask {
+            kind,
+            party_id: cheque.party_id,
+            payment_id: None,
+            amount,
+            currency: cheque.currency.clone(),
+            cheque_id: Some(cheque.id),
+            text,
+            role: ACCOUNTANT_ROLE.to_owned(),
+            status: FollowupStatus::Open,
+            evidence: Json(serde_json::json!({})),
+            ..Default::default()
+        }
+    }
+
+    /// The task to follow up the bounced received `cheque` (`FIN.RUL.04`).
+    pub fn follow_up_cheque(cheque: &Cheque) -> Self {
+        Self::for_cheque(
+            FollowupKind::FollowUpCheque,
+            cheque,
+            cheque.open_amount,
+            format!(
+                "Follow up bounced cheque {} ({} open)",
+                cheque.number,
+                money_text(&cheque.currency, cheque.open_amount)
+            ),
+        )
+    }
+
+    /// The task to replace the bounced issued `cheque`.
+    pub fn replace_cheque(cheque: &Cheque) -> Self {
+        Self::for_cheque(
+            FollowupKind::ReplaceCheque,
+            cheque,
+            cheque.open_amount,
+            format!(
+                "Replace bounced cheque {} ({} open)",
+                cheque.number,
+                money_text(&cheque.currency, cheque.open_amount)
+            ),
+        )
+    }
+
+    /// The task to raise the bounce fee of `cheque`: `fee` fils before VAT.
+    pub fn raise_bounce_fee(cheque: &Cheque, fee: i64) -> Self {
+        Self::for_cheque(
+            FollowupKind::RaiseBounceFee,
+            cheque,
+            fee,
+            format!(
+                "Raise a bounce fee charge of {} for cheque {}",
+                money_text(&cheque.currency, fee),
+                cheque.number
+            ),
+        )
+    }
+
+    /// The task to hand the original of the replaced `cheque` back.
+    pub fn hand_back(cheque: &Cheque) -> Self {
+        Self::for_cheque(
+            FollowupKind::HandBack,
+            cheque,
+            cheque.amount,
+            format!(
+                "Hand back cheque {} to the party with a receipt",
+                cheque.number
+            ),
+        )
+    }
+
+    /// The follow-up of the legal case of `cheque` for its case owner
+    /// `owner`, carrying the `evidence` pack. The accountant role sees it
+    /// too.
+    pub fn legal_case(cheque: &Cheque, owner: i64, evidence: Value) -> Self {
+        let mut task = Self::for_cheque(
+            FollowupKind::LegalCase,
+            cheque,
+            cheque.open_amount,
+            format!(
+                "Follow up the legal case of cheque {} ({} open)",
+                cheque.number,
+                money_text(&cheque.currency, cheque.open_amount)
+            ),
+        );
+        task.assignee_id = Some(owner);
+        task.evidence = Json(evidence);
+        task
+    }
+
+    /// The open tasks about the cheque `cheque_id`, oldest first.
+    pub async fn open_of_cheque(db: &Db, cheque_id: i64) -> Result<Vec<FollowupTask>> {
+        FollowupTask::query()
+            .where_(FollowupTask::CHEQUE_ID.eq(cheque_id))
+            .where_(FollowupTask::STATUS.eq(FollowupStatus::Open))
+            .order_by(FollowupTask::ID)
+            .get(db)
+            .await
+    }
+
+    /// The tasks about the cheque `cheque_id`, done ones too, oldest first.
+    pub async fn of_cheque(db: &Db, cheque_id: i64) -> Result<Vec<FollowupTask>> {
+        FollowupTask::query()
+            .where_(FollowupTask::CHEQUE_ID.eq(cheque_id))
+            .order_by(FollowupTask::ID)
+            .get(db)
+            .await
+    }
+
+    /// Marks the open tasks of `kinds` about the cheque `cheque_id` done, by
+    /// nobody: the work is no longer to do. Returns how many were closed.
+    pub async fn close_for_cheque(
+        db: &Db,
+        cheque_id: i64,
+        kinds: &[FollowupKind],
+    ) -> Result<usize> {
+        let open = Self::open_of_cheque(db, cheque_id).await?;
+        let mut closed = 0;
+        for mut task in open {
+            if !kinds.contains(&task.kind) {
+                continue;
+            }
+            task.status = FollowupStatus::Done;
+            task.done_at = Some(renox::db::now());
+            task.save(db).await?;
+            closed += 1;
+        }
+        Ok(closed)
+    }
+
+    /// The open tasks of `role` and those assigned to user `user_id`, oldest
+    /// first.
+    pub async fn open_for_user(db: &Db, role: &str, user_id: i64) -> Result<Vec<FollowupTask>> {
+        let mut tasks = Self::open_for(db, role).await?;
+        let assigned = FollowupTask::query()
+            .where_(FollowupTask::ASSIGNEE_ID.eq(user_id))
+            .where_(FollowupTask::STATUS.eq(FollowupStatus::Open))
+            .order_by(FollowupTask::ID)
+            .get(db)
+            .await?;
+        for task in assigned {
+            if !tasks.iter().any(|t| t.id == task.id) {
+                tasks.push(task);
+            }
+        }
+        tasks.sort_by_key(|t| t.id);
+        Ok(tasks)
+    }
+
     /// The open tasks of `role`, oldest first.
     pub async fn open_for(db: &Db, role: &str) -> Result<Vec<FollowupTask>> {
         FollowupTask::query()
@@ -207,6 +381,18 @@ impl FollowupTask {
                 .count(db)
                 .await?;
             if open > 0 {
+                return Ok(None);
+            }
+        }
+        if let Some(cheque_id) = task.cheque_id {
+            // One open task of a kind per cheque; a hand-back only once.
+            let mut same = FollowupTask::query()
+                .where_(FollowupTask::KIND.eq(task.kind))
+                .where_(FollowupTask::CHEQUE_ID.eq(cheque_id));
+            if task.kind != FollowupKind::HandBack {
+                same = same.where_(FollowupTask::STATUS.eq(FollowupStatus::Open));
+            }
+            if same.count(db).await? > 0 {
                 return Ok(None);
             }
         }
@@ -279,7 +465,8 @@ pub(crate) async fn check_deficit(state: &AppState, payment: &Payment) -> Result
 }
 
 /// Why `user` cannot mark `task` done, if so: a user needs
-/// `payments.record` (the accountant has it) and the task must be open.
+/// `payments.record` (the accountant has it) or be the task's assignee, and
+/// the task must be open.
 pub(crate) fn done_problem(task: &FollowupTask, may: bool) -> Option<Error> {
     if !may {
         return Some(Error::Forbidden);
@@ -301,7 +488,8 @@ pub(crate) fn done_problem(task: &FollowupTask, may: bool) -> Option<Error> {
 /// the task is already done.
 pub async fn mark_done(db: &Db, user: &AuthUser, id: i64) -> Result<FollowupTask> {
     let mut task = FollowupTask::find_or_404(db, id).await?;
-    let may = user.has_permission(permissions::RECORD);
+    // The case owner of a legal case may close it without `payments.record`.
+    let may = user.has_permission(permissions::RECORD) || task.assignee_id == Some(user.id);
     if let Some(problem) = done_problem(&task, may) {
         return Err(problem);
     }
