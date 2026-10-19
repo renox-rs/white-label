@@ -2,6 +2,8 @@
 #![warn(missing_docs)]
 
 pub mod assign;
+pub mod categories;
+pub mod category_pages;
 pub mod comments;
 pub mod config;
 mod machine;
@@ -43,6 +45,10 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "wl-ticketing/show.html",
         include_str!("../views/wl-ticketing/show.html"),
+    ),
+    (
+        "wl-ticketing/categories.html",
+        include_str!("../views/wl-ticketing/categories.html"),
     ),
     (
         "wl-ticketing/_assign_sheet.html",
@@ -128,7 +134,7 @@ impl Module for WlTicketing {
     }
 
     fn routes(&self) -> Routes {
-        pages::routes()
+        pages::routes().merge(category_pages::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -138,7 +144,8 @@ impl Module for WlTicketing {
     fn register(&self, app: &mut Registry) {
         app.view_data::<pages::IndexPage>()
             .view_data::<pages::NewPage>()
-            .view_data::<pages::ShowPage>();
+            .view_data::<pages::ShowPage>()
+            .view_data::<category_pages::CategoriesPage>();
         app.templates(|env| {
             for (name, source) in VIEWS {
                 // The app's own file of that name wins.
@@ -157,6 +164,14 @@ impl Module for WlTicketing {
                 .group("nav.app")
                 .order(50)
                 .permission(permissions::VIEW),
+        );
+        app.nav(
+            "app",
+            NavLink::route("wl_ticketing.categories", "nav.ticket_categories")
+                .icon("tag")
+                .group("nav.admin")
+                .order(55)
+                .permission(permissions::MANAGE),
         );
         app.model::<SlaPolicy>()
             .model::<SlaTarget>()

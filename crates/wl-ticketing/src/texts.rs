@@ -176,6 +176,40 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_ticketing.action.reopen", "Reopen"),
     ("wl_ticketing.action.confirm_title", "Are you sure?"),
     ("wl_ticketing.action.done", "Done."),
+    ("wl_ticketing.categories.title", "Ticket categories"),
+    (
+        "wl_ticketing.categories.subtitle",
+        "Rename a category, turn it off or delete it. The categories other modules open tickets in can only be renamed.",
+    ),
+    ("wl_ticketing.categories.name", "Name"),
+    ("wl_ticketing.categories.name_ar", "Arabic name"),
+    ("wl_ticketing.categories.key", "Key"),
+    ("wl_ticketing.categories.assignee_role", "Assignee role"),
+    ("wl_ticketing.categories.platform", "Platform"),
+    (
+        "wl_ticketing.categories.platform_hint",
+        "Other modules open tickets in it: it cannot be turned off or deleted.",
+    ),
+    ("wl_ticketing.categories.rename", "Rename"),
+    ("wl_ticketing.categories.rename_title", "Rename the category"),
+    ("wl_ticketing.categories.status", "Status"),
+    ("wl_ticketing.categories.on", "On"),
+    ("wl_ticketing.categories.off", "Off"),
+    ("wl_ticketing.categories.status_change", "Change status"),
+    (
+        "wl_ticketing.categories.status_title",
+        "Turn the category on or off",
+    ),
+    ("wl_ticketing.categories.delete", "Delete"),
+    ("wl_ticketing.categories.delete_title", "Delete this category?"),
+    (
+        "wl_ticketing.categories.delete_message",
+        "A category with tickets cannot be deleted.",
+    ),
+    ("wl_ticketing.categories.empty", "No categories yet"),
+    ("wl_ticketing.categories.renamed", "Category renamed."),
+    ("wl_ticketing.categories.updated", "Category updated."),
+    ("wl_ticketing.categories.deleted", "Category deleted."),
 ];
 
 /// The English text for `key`, or `key` itself when the package has none.

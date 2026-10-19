@@ -1,0 +1,34 @@
+{#- wl-ticketing: the ticket categories, with rename, turn off and delete.
+    A platform category (the ones other modules open tickets in) can be
+    renamed only. Replace it with resources/views/wl-ticketing/categories.html
+    in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['categories.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['categories.title']" :subtitle="tx['categories.subtitle']"/>
+    <rx-table :rows="categories" as="category" :key="category.key" :caption="tx['categories.title']" card>
+      <rx-column :label="tx['categories.name']">{{ category.name_en }} <rx-badge rx-if="category.platform" kind="warning" :text="tx['categories.platform']"/> <rx-badge rx-if="category.confidential" kind="error" :text="tx['fields.confidential']"/> <rx-badge rx-if="not category.active" kind="neutral" :text="tx['categories.off']"/></rx-column>
+      <rx-column :label="tx['categories.name_ar']" hide-narrow>{{ category.name_ar or "—" }}</rx-column>
+      <rx-column :label="tx['categories.key']" hide-narrow>{{ category.key }}</rx-column>
+      <rx-column :label="tx['categories.assignee_role']" hide-narrow>{{ category.assignee_role or "—" }}</rx-column>
+      <rx-row-actions>
+        <rx-action-sheet :id="'rename-' ~ category.key" :label="tx['categories.rename']" :action="route('wl_ticketing.category_rename', category.key)"
+                         :title="tx['categories.rename_title']" :submit-label="tx['categories.rename']" icon="pencil">
+          <rx-input name="name_en" :label="tx['categories.name']" :value="category.name_en" :id="'rename-en-' ~ category.key" required/>
+          <rx-input name="name_ar" :label="tx['categories.name_ar']" :value="category.name_ar" dir="rtl" :id="'rename-ar-' ~ category.key"/>
+        </rx-action-sheet>
+        <template rx-if="category.platform">
+          <span>{{ tx['categories.platform_hint'] }}</span>
+        </template>
+        <template rx-else>
+          <rx-action-sheet :id="'active-' ~ category.key" :label="tx['categories.status_change']" :action="route('wl_ticketing.category_active', category.key)"
+                           :title="tx['categories.status_title']" :submit-label="tx['categories.status_change']" icon="refresh">
+            <rx-select name="active" :label="tx['categories.status']" :options="status_options" :selected="'1' if category.active else '0'" :id="'active-select-' ~ category.key"/>
+          </rx-action-sheet>
+          <rx-confirm :id="'delete-' ~ category.key" :label="tx['categories.delete']" :action="route('wl_ticketing.category_destroy', category.key)"
+                      :title="tx['categories.delete_title']" :message="tx['categories.delete_message']" :confirm-label="tx['categories.delete']" :cancel-label="tx['cancel']" icon="trash"/>
+        </template>
+      </rx-row-actions>
+      <rx-slot name="empty"><rx-empty :title="tx['categories.empty']" icon="tag"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>
