@@ -1468,10 +1468,12 @@ mod tests {
         let mut today = march(e);
         today.today = day(2027, 3, 22);
         let forecast = assemble(&today);
-        // 10 days left: 22 to 31 March; the 22nd to the 28th are week 4.
-        assert_eq!(forecast.payments(3), 7 * 310_000);
-        assert_eq!(forecast.receipts(3), 7 * 100_000);
-        assert_eq!(forecast.payments(4), 3 * 310_000);
+        // 10 days left: 22 to 31 March. Week one is the week containing
+        // today (Monday 22 March), so the 22nd to the 28th are week one.
+        assert_eq!(forecast.payments(0), 7 * 310_000);
+        assert_eq!(forecast.receipts(0), 7 * 100_000);
+        assert_eq!(forecast.payments(1), 3 * 310_000);
+        assert_eq!(forecast.payments(3), 0);
         assert!(forecast
             .lines
             .iter()
