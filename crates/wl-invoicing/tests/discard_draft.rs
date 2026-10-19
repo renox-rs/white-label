@@ -48,7 +48,7 @@ async fn a_draft_is_deleted_with_its_lines() {
 #[renox::test]
 async fn an_issued_invoice_is_not_discarded() {
     let t = boot().await;
-    let accountant = t.accountant("Aisha").await;
+    let accountant = t.user_a().await;
     let draft = t.draft(&[(100_000, VatCategory::Standard)], None).await;
     let issued = t.issue(&draft, &accountant).await;
     assert!(

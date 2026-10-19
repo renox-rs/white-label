@@ -21,7 +21,7 @@ fn lease() -> Subject {
 #[renox::test]
 async fn a_held_deposit_is_found_by_its_source() {
     let t = boot().await;
-    let by = t.accountant("Aisha").await;
+    let by = t.user_a().await;
     let payment = t.receive(BLUE_DUNES, 500_000).await;
     let deposit = t.hold_deposit(&by, BLUE_DUNES, 500_000, Some(&payment)).await;
 
@@ -42,7 +42,7 @@ async fn a_held_deposit_is_found_by_its_source() {
 #[renox::test]
 async fn the_settlement_starts_with_a_version_and_no_forfeit() {
     let t = boot().await;
-    let by = t.accountant("Aisha").await;
+    let by = t.user_a().await;
     let payment = t.receive(BLUE_DUNES, 500_000).await;
     let deposit = t.hold_deposit(&by, BLUE_DUNES, 500_000, Some(&payment)).await;
 
@@ -71,7 +71,7 @@ async fn the_settlement_starts_with_a_version_and_no_forfeit() {
 #[renox::test]
 async fn a_forfeit_is_published_as_a_deduction_with_its_clause() {
     let t = boot().await;
-    let by = t.accountant("Aisha").await;
+    let by = t.user_a().await;
     let payment = t.receive(BLUE_DUNES, 500_000).await;
     t.hold_deposit(&by, BLUE_DUNES, 500_000, Some(&payment)).await;
 
@@ -95,7 +95,7 @@ async fn a_forfeit_is_published_as_a_deduction_with_its_clause() {
 #[renox::test]
 async fn a_forfeit_without_a_clause_or_above_the_deposit_is_refused() {
     let t = boot().await;
-    let by = t.accountant("Aisha").await;
+    let by = t.user_a().await;
     let payment = t.receive(BLUE_DUNES, 500_000).await;
     let deposit = t.hold_deposit(&by, BLUE_DUNES, 500_000, Some(&payment)).await;
 
