@@ -86,6 +86,17 @@ impl Scene {
     }
 
     /// A renewal draft of `lease` for 2028 on the same terms.
+    /// The holding-over tasks still open (the Ejari task of the activation
+    /// is not one of them).
+    fn open_holding_tasks(&self) -> usize {
+        self.t
+            .tasks
+            .with_key("property.holding:")
+            .iter()
+            .filter(|task| task.open)
+            .count()
+    }
+
     async fn renewal_draft(&self, lease: &Lease) -> Lease {
         property::leases::create_version(
             self.t.state(),
@@ -207,6 +218,8 @@ async fn bl_prp_06_the_extended_charges_are_invoiced_on_their_due_dates() {
 async fn bl_prp_06_expire_is_refused_before_the_end_date_has_passed() {
     let s = scene().await;
     let lease = s.year().await;
+    // The run moved the lease in the database; the machine reads the row.
+    let lease = s.t.reload(&lease).await;
     let refused = lease
         .transition(EXPIRE)
         .by_system()
@@ -275,11 +288,11 @@ async fn bl_prp_06_only_a_submitted_renewal_closes_the_open_task() {
     let lease = s.year().await;
     s.run(y28(1, 1)).await;
     s.run(y28(1, 8)).await;
-    assert_eq!(s.t.tasks.open().len(), 1);
+    assert_eq!(s.open_holding_tasks(), 1);
 
     let draft = s.renewal_draft(&lease).await;
     s.run(y28(1, 10)).await;
-    assert_eq!(s.t.tasks.open().len(), 1, "a draft leaves the task open");
+    assert_eq!(s.open_holding_tasks(), 1, "a draft leaves the task open");
     assert_eq!(s.run(y28(1, 11)).await.tasked, 0);
 
     s.t.submit(&s.agent, &draft).await.assert_ok();
@@ -290,7 +303,7 @@ async fn bl_prp_06_only_a_submitted_renewal_closes_the_open_task() {
     assert!(tasks[0].note.contains("submitted"), "{}", tasks[0].note);
     // A task that was closed is not opened again for the same period.
     assert_eq!(s.run(y28(1, 12)).await.tasked, 0);
-    assert_eq!(s.t.tasks.all().len(), 1);
+    assert_eq!(s.t.tasks.with_key("property.holding:").len(), 1);
 }
 
 /// The daily run closes the task of a lease whose renewal version waits for
@@ -305,7 +318,7 @@ async fn bl_prp_06_the_daily_run_closes_the_task_of_a_submitted_renewal() {
     // The status is moved as a fixture would, without the listener.
     s.t.set(&draft, &[("status", &LeaseStatus::PendingSignature)]).await;
     s.run(y28(1, 9)).await;
-    assert!(s.t.tasks.open().is_empty());
+    assert_eq!(s.open_holding_tasks(), 0);
 }
 
 /// AC5: still `expired` on 2029-01-01: 12 more charges are created and a new
