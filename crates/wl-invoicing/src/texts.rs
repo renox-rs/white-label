@@ -1511,6 +1511,125 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_invoicing.budget.report.amount", "Amount"),
     ("wl_invoicing.budget.report.self_approved", "Self-approved"),
     ("wl_invoicing.budget.report.open", "Open"),
+    ("wl_invoicing.drawings.title", "Owner drawings"),
+    ("wl_invoicing.drawings.total", "Drawing, with the VAT that is not recovered"),
+    ("wl_invoicing.drawings.status", "Approval of the drawing"),
+    ("wl_invoicing.drawings.status.none", "Not asked for yet"),
+    ("wl_invoicing.drawings.status.draft", "Draft"),
+    ("wl_invoicing.drawings.status.requested", "Waiting for a holder of drawings.approve"),
+    ("wl_invoicing.drawings.status.approved", "Approved"),
+    ("wl_invoicing.drawings.status.rejected", "Not approved"),
+    (
+        "wl_invoicing.drawings.status.self_approved",
+        "Approved by the sole owner (self-approved)",
+    ),
+    ("wl_invoicing.drawings.rejected_because", "Not approved because"),
+    (
+        "wl_invoicing.drawings.open_item",
+        "How drawings are treated for VAT and corporate tax waits for the accountant's answer (open item A-16). Meanwhile the input VAT on a drawing is not recovered and is shown as blocked in the VAT summary. The bill is approved only after the drawing is approved.",
+    ),
+    (
+        "wl_invoicing.drawings.hidden",
+        "Owner drawing (shown to holders of drawings.approve)",
+    ),
+    ("wl_invoicing.drawings.request.action", "Ask for approval"),
+    (
+        "wl_invoicing.drawings.request.title",
+        "Ask for the approval of the drawing?",
+    ),
+    (
+        "wl_invoicing.drawings.request.message",
+        "The holders of drawings.approve, other than you, are asked to approve it.",
+    ),
+    ("wl_invoicing.drawings.recode.action", "Recode a line"),
+    ("wl_invoicing.drawings.recode.title", "Recode a line"),
+    (
+        "wl_invoicing.drawings.recode.description",
+        "Codes a line of this bill to another cost code. The change is logged and shown to whoever approves the bill.",
+    ),
+    ("wl_invoicing.drawings.recode.submit", "Recode"),
+    ("wl_invoicing.drawings.recode.line", "Line"),
+    ("wl_invoicing.drawings.recode.code", "Cost code"),
+    (
+        "wl_invoicing.drawings.recode.hint",
+        "For example other, or marketing.",
+    ),
+    ("wl_invoicing.drawings.recode.from", "Was"),
+    ("wl_invoicing.drawings.recode.to", "Now"),
+    ("wl_invoicing.drawings.recode.by", "Recoded by"),
+    ("wl_invoicing.drawings.recodings", "Recoded lines"),
+    ("wl_invoicing.drawings.requested", "The approval was asked for."),
+    ("wl_invoicing.drawings.none", "The bill has no owner drawing."),
+    ("wl_invoicing.drawings.recoded", "The line was recoded."),
+    (
+        "wl_invoicing.drawings.errors.line",
+        "Choose a line from the list.",
+    ),
+    (
+        "wl_invoicing.drawings.problem.requester_unknown",
+        "Only a signed-in user can ask for the approval of a drawing.",
+    ),
+    (
+        "wl_invoicing.drawings.problem.no_approval_policy",
+        "No approval policy is in force for owner drawings.",
+    ),
+    (
+        "wl_invoicing.drawings.problem.waiting",
+        "The bill has an owner drawing that waits for the approval of a holder of drawings.approve.",
+    ),
+    (
+        "wl_invoicing.drawings.problem.rejected",
+        "The owner drawing was not approved: {{ reason }}. Recode or remove the line, or ask again.",
+    ),
+    (
+        "wl_invoicing.drawings.problem.needed",
+        "The bill has an owner drawing that needs the approval of a holder of drawings.approve first.",
+    ),
+    (
+        "wl_invoicing.drawings.problem.bill_state",
+        "The drawing of a bill can be asked for or recoded only before the bill is approved.",
+    ),
+    (
+        "wl_invoicing.drawings.problem.not_found",
+        "The drawing is not found.",
+    ),
+    (
+        "wl_invoicing.drawings.problem.amount_changed",
+        "The drawing changed while it waited; ask for its approval again.",
+    ),
+    (
+        "wl_invoicing.drawings.problem.code_blank",
+        "Give the cost code.",
+    ),
+    (
+        "wl_invoicing.drawings.problem.cost_object",
+        "A line coded to owner drawings cannot have a cost object.",
+    ),
+    (
+        "wl_invoicing.drawings.problem.line_cost_object",
+        "Line {{ line }} is coded to owner drawings, which are never posted to a cost object.",
+    ),
+    (
+        "wl_invoicing.drawing_self_approved.subject",
+        "Owner drawing recorded without a second approver",
+    ),
+    (
+        "wl_invoicing.drawing_self_approved.body",
+        "The sole owner recorded the drawing on supplier bill {{ bill }} ({{ amount }}) without a second approver. See the bill: {{ link }}",
+    ),
+    (
+        "wl_invoicing.drawing_corrected.subject",
+        "A bill with an approved owner drawing was voided",
+    ),
+    (
+        "wl_invoicing.drawing_corrected.body",
+        "Supplier bill {{ bill }} ({{ amount }}) had an approved owner drawing and was voided: {{ reason }}. See the bill: {{ link }}",
+    ),
+    ("wl_invoicing.vat.blocked_drawings", "Input VAT blocked on owner drawings"),
+    (
+        "wl_invoicing.vat.blocked_drawings_note",
+        "Not recovered until the accountant answers the open item on drawings (A-16).",
+    ),
     (
         "wl_invoicing.budget_variance.subject",
         "{{ category }} reached its budget in {{ month }} ({{ entity }})",

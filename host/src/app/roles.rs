@@ -38,6 +38,11 @@ pub const ACCOUNTANT: &str = "accountant";
 /// approves an exception for a blocked party (wl-parties §6) and approves the
 /// company budget (`FIN.BUD.01`).
 pub const FINANCE_MANAGER: &str = "finance_manager";
+/// The owner: approves the company budget and the owner drawings (a drawing
+/// the owner records themselves is flagged when they are the only holder,
+/// `FIN.ACL.23`), and reads budget vs actual with the drawings lines
+/// (wl-invoicing `FIN.BUD.01`, `FIN.ACL.21`, `FIN.ACL.22`).
+pub const OWNER: &str = "owner";
 /// The maintenance coordinator: raises, triages and assigns tickets, and
 /// works them (wl-ticketing §6, 01 roles).
 pub const COORDINATOR: &str = "coordinator";
@@ -196,6 +201,17 @@ pub const ROLES: &[(&str, &[&str])] = &[
             invoices::BUDGETS_APPROVE,
             parties::VIEW,
             parties::BLOCK_EXCEPTION,
+        ],
+    ),
+    (
+        OWNER,
+        &[
+            invoices::VIEW,
+            invoices::RECEIVABLES_VIEW,
+            invoices::SUPPLIER_BILLS_VIEW,
+            invoices::BUDGETS_VIEW,
+            invoices::BUDGETS_APPROVE,
+            invoices::DRAWINGS_APPROVE,
         ],
     ),
     (

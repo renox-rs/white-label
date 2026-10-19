@@ -46,6 +46,9 @@ pub mod dispute;
 pub mod dispute_credit;
 mod dispute_pages;
 pub mod dispute_resolve;
+pub mod drawings;
+pub mod drawings_machine;
+mod drawing_pages;
 pub mod duplicates;
 pub mod escalation;
 pub mod escalation_log;
@@ -108,6 +111,8 @@ pub use credit_note_line::CreditNoteLine;
 pub use credit_note_movement::{CreditNoteMovement, MovementKind};
 pub use debit_note_line::{DebitNoteLine, PricedAt};
 pub use dispute::{Dispute, DisputeVia};
+pub use drawings::BillRecoding;
+pub use drawings_machine::{DrawingApproval, DrawingStatus};
 pub use escalation_log::EscalationLog;
 pub use invoice::{Invoice, InvoiceKind, PartySnapshot};
 pub use invoicer::Invoices;
@@ -481,6 +486,21 @@ impl WlInvoicing {
         self
     }
 
+    /// Whether the sole holder of `drawings.approve` of an entity records
+    /// their own drawing without a second approver (`FIN.ACL.23`, default
+    /// on). Off, such a drawing waits until a second holder exists.
+    pub fn drawings_self_approve(mut self, on: bool) -> Self {
+        self.config.drawings_self_approve = on;
+        self
+    }
+
+    /// The role told when a drawing is recorded without a second approver
+    /// (default `accountant`).
+    pub fn drawings_notify_role(mut self, role: &str) -> Self {
+        self.config.drawings_notify_role = role.to_owned();
+        self
+    }
+
     /// The module's settings.
     pub fn config(&self) -> &InvoicingConfig {
         &self.config
@@ -503,6 +523,7 @@ impl Module for WlInvoicing {
             .merge(budget_pages::routes())
             .merge(budget_category_pages::routes())
             .merge(budget_report_pages::routes())
+            .merge(drawing_pages::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -537,6 +558,8 @@ impl Module for WlInvoicing {
             .model::<CompanyBudgetLine>()
             .model::<BudgetReminder>()
             .model::<BudgetWarning>()
+            .model::<DrawingApproval>()
+            .model::<BillRecoding>()
             .view_data::<pages::IndexPage>()
             .view_data::<pages::ShowPage>()
             .view_data::<vat_pages::IndexPage>()
@@ -723,6 +746,10 @@ impl Module for WlInvoicing {
         budget_reminder::schedule(app);
         // `FIN.RUL.24`: a bill that posts an actual may reach its budget.
         budget_variance::register(app);
+        // `FIN.ACL.21`: the drawing approval machine and its policy, and the
+        // final re-check and the notice of a corrected drawing.
+        drawings_machine::register();
+        drawings::register(app);
     }
 }
 
