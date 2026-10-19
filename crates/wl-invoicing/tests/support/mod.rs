@@ -29,6 +29,7 @@ use wl_kernel::approvals::{self, ApprovalRequest};
 use wl_kernel::budgets::{CompanyBudgetApproved, CompanyBudgetVarianceReached};
 use wl_kernel::cash_forecast::CashForecastBelowThreshold;
 use wl_kernel::drawings::OwnerDrawingDecided;
+use wl_kernel::einvoice::{EInvoiceAccepted, EInvoiceRejected};
 use wl_kernel::documents::today;
 use wl_kernel::invoicing::{
     BadDebtRecovered, CreditNoteReopened, DraftLine, InvoiceDisputeResolved, InvoiceDisputed,
@@ -86,21 +87,41 @@ pub const QUIET_SANDS: PartyId = PartyId(2);
 /// A party whose status is `blocked`; it exists only for status reads.
 pub const BLOCKED_PARTY: PartyId = PartyId(3);
 
-/// The parties the tests bill.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct TestDirectory;
+/// An individual: a B2C recipient, outside the e-invoicing mandate.
+pub const OMAR: PartyId = PartyId(4);
+
+/// The parties the tests bill. Cloning shares the recipient identifiers a
+/// test sets.
+#[derive(Debug, Clone, Default)]
+pub struct TestDirectory(Arc<Mutex<std::collections::BTreeMap<i64, String>>>);
+
+impl TestDirectory {
+    /// Sets (or clears) the e-invoicing recipient identifier of `party`.
+    pub fn set_recipient(&self, party: PartyId, identifier: Option<&str>) {
+        let mut map = self.0.lock().unwrap();
+        match identifier {
+            Some(id) => map.insert(party.0, id.to_owned()),
+            None => map.remove(&party.0),
+        };
+    }
+}
 
 /// The summary of a test party, by id.
 fn summary_of(party: PartyId) -> Option<PartySummary> {
     let (code, name) = match party {
         BLUE_DUNES => ("P-00001", "Blue Dunes LLC"),
         QUIET_SANDS => ("P-00002", "Quiet Sands LLC"),
+        OMAR => ("P-00004", "Omar Hassan"),
         _ => return None,
     };
     Some(PartySummary {
         id: party,
         code: code.to_owned(),
-        kind: wl_kernel::parties::PartyKind::Company,
+        kind: if party == OMAR {
+            wl_kernel::parties::PartyKind::Person
+        } else {
+            wl_kernel::parties::PartyKind::Company
+        },
         display_name: name.to_owned(),
         status: PartyStatus::Active,
         display_block_reason: None,
@@ -152,8 +173,10 @@ impl PartyDirectory for TestDirectory {
         let (name, email) = match party {
             BLUE_DUNES => ("Blue Dunes LLC", Some(BLUE_DUNES_EMAIL.to_owned())),
             QUIET_SANDS => ("Quiet Sands LLC", None),
+            OMAR => ("Omar Hassan", None),
             _ => return Box::pin(async { Ok(None) }),
         };
+        let recipient = self.0.lock().unwrap().get(&party.0).cloned();
         Box::pin(async move {
             Ok(Some(BillingIdentity {
                 party,
@@ -162,7 +185,7 @@ impl PartyDirectory for TestDirectory {
                 trn: Some("100000000000011".to_owned()),
                 billing_address: Some("Office 12, Business Bay, Dubai".to_owned()),
                 billing_email: email,
-                einvoice_recipient_id: None,
+                einvoice_recipient_id: recipient,
             }))
         })
     }
@@ -762,6 +785,12 @@ pub struct Booted {
     pub below_threshold: Recorded<CashForecastBelowThreshold>,
     /// `OwnerDrawingDecided`.
     pub drawing_decided: Recorded<OwnerDrawingDecided>,
+    /// `EInvoiceAccepted`.
+    pub einvoice_accepted: Recorded<EInvoiceAccepted>,
+    /// `EInvoiceRejected`.
+    pub einvoice_rejected: Recorded<EInvoiceRejected>,
+    /// The test parties' directory: set a recipient identifier here.
+    pub directory: TestDirectory,
 }
 
 impl Booted {
@@ -1511,6 +1540,8 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
     let variance_reached = Recorded::new();
     let below_threshold = Recorded::new();
     let drawing_decided = Recorded::new();
+    let einvoice_accepted = Recorded::new();
+    let einvoice_rejected = Recorded::new();
     let tickets = TicketDesk::default();
     let creator: Arc<dyn TaskCreator> = Arc::new(tickets.clone());
     let notices = Recording::default();
@@ -1519,7 +1550,8 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
     let forecast = ForecastDesk::default();
     let cheque_book: Arc<dyn Cheques> = Arc::new(forecast.clone());
     let statements: Arc<dyn BankStatements> = Arc::new(forecast.clone());
-    let directory: Arc<dyn PartyDirectory> = Arc::new(TestDirectory);
+    let directory_state = TestDirectory::default();
+    let directory: Arc<dyn PartyDirectory> = Arc::new(directory_state.clone());
     let notifier: Arc<dyn Notifier> = Arc::new(notices.clone());
     let app = App::new()
         .module(Auth::new())
@@ -1548,6 +1580,8 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
     let app = record(app, &variance_reached);
     let app = record(app, &below_threshold);
     let app = record(app, &drawing_decided);
+    let app = record(app, &einvoice_accepted);
+    let app = record(app, &einvoice_rejected);
     let config = ClientConfig::parse(CLIENT).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     let dir = views.path().to_path_buf();
@@ -1655,5 +1689,8 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
         variance_reached,
         below_threshold,
         drawing_decided,
+        einvoice_accepted,
+        einvoice_rejected,
+        directory: directory_state,
     }
 }
