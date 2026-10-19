@@ -19,7 +19,7 @@ use wl_invoicing::bill_submit;
 use wl_invoicing::budget_lines::{self, LineInput, NewBudget};
 use wl_invoicing::credit_notes::By;
 use wl_invoicing::supplier_bill::{self, BillDraft};
-use wl_invoicing::{BillLineDraft, SupplierBill};
+use wl_invoicing::{BillLineDraft, DrawingApproval, DrawingStatus, SupplierBill};
 use wl_invoicing::{
     AdjustmentKind, BudgetCategory, CompanyBudget, Invoice, InvoicingConfig, StartChoice,
     VatAdjustment, WlInvoicing, permissions as perm,
@@ -793,13 +793,36 @@ impl Booted {
         for (description, price, code, category) in lines {
             draft = draft.line(BillLineDraft::new(description, *price, *category).cost_code(code));
         }
-        let bill = supplier_bill::create(self.db(), &draft, Some(1))
+        // The user who enters and submits the bill asks for the approval of
+        // a drawing on it; another user, a holder of `drawings.approve`,
+        // gives it.
+        let drawer = self.helper("Drawer", &[perm::SUPPLIER_BILLS_CREATE]).await;
+        let bill = supplier_bill::create(self.db(), &draft, Some(drawer.id))
             .await
             .expect("the bill is made");
-        bill_submit::submit(self.state(), By::System(Some(1)), bill.id)
+        bill_submit::submit(self.state(), By::System(Some(drawer.id)), bill.id)
             .await
             .expect("the bill is submitted");
-        bill_machine::approve(self.state(), By::System(Some(1)), bill.id, "")
+        let drawings = DrawingApproval::for_source(self.db(), &bill.subject())
+            .await
+            .unwrap();
+        if let Some(request) = drawings
+            .iter()
+            .find(|d| d.status == DrawingStatus::Requested)
+            .and_then(|d| d.approval_request_id)
+        {
+            let owner = self
+                .helper(
+                    "Downer",
+                    &[perm::SUPPLIER_BILLS_VIEW, perm::DRAWINGS_APPROVE],
+                )
+                .await;
+            approvals::approve(self.state(), request, &owner, "")
+                .await
+                .unwrap()
+                .expect("the drawing is approved");
+        }
+        bill_machine::approve(self.state(), By::System(Some(drawer.id)), bill.id, "")
             .await
             .expect("the bill is approved")
     }
