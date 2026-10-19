@@ -133,7 +133,7 @@ pub use notify::{
 };
 pub use numbering::{Reset, Series};
 pub use parties::{
-    BillingIdentity, NEUTRAL_BLOCK_REASON, NoParties, PartyBlocked, PartyCreated, PartyDirectory,
+    BillingIdentity, NEUTRAL_BLOCK_REASON, NoParties, PartiesMerged, PartyBlocked, PartyCreated, PartyDirectory,
     PartyId, PartyKind, PartyRestored, PartyStatus, PartySummary, PartyUnblocked, PartyUpdated,
     ScreeningCompleted, ScreeningFlagged, ScreeningId, ScreeningMatchConfirmed, ScreeningStatus,
 };
@@ -149,7 +149,13 @@ pub use payments::{
     PaymentSummary, RecordPayment, RefundAttemptRef, RefundFailed, RefundFailedFrom,
     RefundFailureKind, RefundId, RefundPaid, RefundRequest, RefundSource, ReversalReason, UnpaidRefund,
 };
-pub use sales::{CampaignActivated, CampaignEnded, CampaignId};
+pub use sales::{
+    Attribute, AttributionTarget, CampaignActivated, CampaignAttribution, CampaignEnded, CampaignId,
+    CustomerAcquired, CustomerAcquisitionChanged, FirstSale, LEAD_SUBJECT_TYPE, LeadConversion,
+    LeadCreated, LeadId, LeadLost, LeadWinReverted, LeadWon, NoCampaignAttribution,
+    NoLeadConversion, campaign_attribution, lead_conversion, provide_campaign_attribution,
+    provide_lead_conversion,
+};
 pub use scopes::COMPANY_ADMIN_ROLE;
 pub use segments::{NoSegments, SegmentId, Segments};
 pub use subject::Subject;

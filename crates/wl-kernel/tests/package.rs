@@ -780,6 +780,7 @@ async fn without_invoicing_no_credit_note_can_be_made() {
         invoice: InvoiceId(3),
         party: PartyId(2),
         amount: 21_000,
+        net_amount: 20_000,
         reason: "Damaged".into(),
     })
     .unwrap();
@@ -1998,4 +1999,33 @@ async fn without_ticketing_a_service_contract_covers_nothing_known() {
         ends_on: NaiveDate::from_ymd_opt(2026, 9, 30).unwrap(),
     };
     assert_eq!(renox::serde_json::to_value(after).unwrap()["AfterEnd"]["ends_on"], "2026-09-30");
+}
+
+/// #139: without the `sales` module attribution and lead conversion do
+/// nothing and report it.
+#[renox::test]
+async fn without_sales_attribution_and_lead_conversion_do_nothing() {
+    use wl_kernel::sales::{
+        Attribute, FirstSale, LeadId, campaign_attribution, lead_conversion,
+    };
+    use wl_kernel::Subject;
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let attribution = campaign_attribution(app.state());
+    assert!(!attribution
+        .attribute(app.state(), Attribute::party(PartyId(3), "referral"))
+        .await
+        .unwrap());
+    let sale = FirstSale::new(PartyId(3), Subject::new("invoicing.invoice", 9), 200_000, day());
+    assert!(!attribution.record_first_sale(app.state(), sale).await.unwrap());
+    assert!(!lead_conversion(app.state())
+        .win(app.state(), LeadId(1), Subject::new("property.lease", 4))
+        .await
+        .unwrap());
+    let merged = wl_kernel::PartiesMerged {
+        survivor: PartyId(1),
+        merged: PartyId(2),
+    };
+    assert_eq!(renox::serde_json::to_value(merged).unwrap()["merged"], 2);
 }

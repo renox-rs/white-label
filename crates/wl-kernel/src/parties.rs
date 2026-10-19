@@ -378,6 +378,19 @@ pub struct PartyUpdated {
 
 impl Event for PartyUpdated {}
 
+/// Two parties were merged: `merged` was folded into `survivor`
+/// (wl-parties §4). The modules that keep records per party move or retire
+/// theirs: `wl-sales` keeps the acquisition acquired first (BL-SAL-20).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PartiesMerged {
+    /// The party that stays.
+    pub survivor: PartyId,
+    /// The party that was folded into it.
+    pub merged: PartyId,
+}
+
+impl Event for PartiesMerged {}
+
 /// A party was blocked.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PartyBlocked {

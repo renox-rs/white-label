@@ -988,6 +988,10 @@ pub struct InvoiceIssued {
     pub source: Subject,
     /// The total with VAT, in fils of the invoice's currency.
     pub total: i64,
+    /// The total without VAT, in fils of the invoice's currency.
+    pub net_total: i64,
+    /// The issue date.
+    pub issue_date: NaiveDate,
     /// The due date.
     pub due_date: NaiveDate,
 }
@@ -1094,6 +1098,8 @@ pub struct CreditNoteIssued {
     pub party: PartyId,
     /// The total with VAT, in fils of the invoice's currency.
     pub amount: i64,
+    /// The total without VAT, in fils of the invoice's currency.
+    pub net_amount: i64,
     /// Why it was issued.
     pub reason: String,
 }
@@ -2766,6 +2772,7 @@ mod tests {
             invoice: InvoiceId(1),
             party: PartyId(2),
             amount: 21_000,
+            net_amount: 20_000,
             reason: "price error".into(),
         };
         let json = renox::serde_json::to_value(&issued).unwrap();
