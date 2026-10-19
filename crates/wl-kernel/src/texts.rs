@@ -384,6 +384,14 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_kernel.integrations.page.next_attempt", "Next attempt"),
     ("wl_kernel.integrations.page.queue_empty", "Nothing is queued."),
     (
+        "wl_kernel.integrations.reconcile.title",
+        "Reconcile :connection: manual work against the late sync",
+    ),
+    (
+        "wl_kernel.integrations.reconcile.obsolete",
+        "Not sent: the record changed while the call was queued.",
+    ),
+    (
         "wl_kernel.integrations.not_yet_down",
         "The connection has not been without a successful call for long enough.",
     ),

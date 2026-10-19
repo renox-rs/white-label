@@ -94,6 +94,9 @@ pub struct IntegrationConnection {
     pub last_error: Option<String>,
     /// The first failed call of the current failure run.
     pub failed_since: Option<DateTime>,
+    /// The first failed call of the failure run that began last; kept after
+    /// the connection recovers, so the reconciliation of that run finds it.
+    pub outage_since: Option<DateTime>,
     /// Why an admin disabled it.
     pub disabled_reason: Option<String>,
     /// When the status last changed.
@@ -195,6 +198,7 @@ impl StateMachine for IntegrationConnection {
                                 id,
                                 &[
                                     ("failed_since", &Some(at)),
+                                    ("outage_since", &Some(at)),
                                     ("last_error", &error),
                                     ("status_changed_at", &Some(at)),
                                 ],

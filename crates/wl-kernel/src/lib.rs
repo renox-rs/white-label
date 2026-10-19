@@ -23,6 +23,7 @@ pub mod notify;
 pub mod numbering;
 pub mod parties;
 pub mod payments;
+pub mod role_tasks;
 pub mod sales;
 pub mod scopes;
 pub mod screening_guard;

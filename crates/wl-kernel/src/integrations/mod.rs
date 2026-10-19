@@ -15,6 +15,7 @@ pub mod connection;
 pub mod def;
 pub mod events;
 pub mod queue;
+pub mod reconcile;
 pub mod service;
 pub mod web;
 
@@ -27,6 +28,7 @@ pub use def::{
 };
 pub use events::IntegrationStatusChanged;
 pub use queue::{CallStatus, QueuedCall};
+pub use reconcile::{Line, LineKind, Reconciliation};
 pub use service::{
     Report, Submitted, disable, enable, ensure, go_down, report_failure, report_success, run_due,
     run_queue, submit,
@@ -37,7 +39,9 @@ pub const SUBJECT_TYPE: &str = "kernel.integration_connection";
 
 /// Registers the models and the connection's machine.
 pub(crate) fn register_models(app: &mut Registry) {
-    app.model::<IntegrationConnection>().model::<QueuedCall>();
+    app.model::<IntegrationConnection>()
+        .model::<QueuedCall>()
+        .model::<Reconciliation>();
     renox::state_machine::register::<IntegrationConnection>();
     crate::notify::register_type(alerts::notification_type());
     service::schedule(app);

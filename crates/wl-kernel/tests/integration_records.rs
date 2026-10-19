@@ -255,3 +255,62 @@ async fn calls_leave_the_queue_first_in_first_out_with_the_backoff() {
     assert!(QueuedCall::any_waiting(db, "asp.acme").await.unwrap());
     assert!(!QueuedCall::any_waiting(db, "gateway.other").await.unwrap());
 }
+
+#[renox::test]
+async fn the_failure_run_is_remembered_after_the_connection_recovers() {
+    let app = app().await;
+    run(&app, &connection(&app).await, "degrade", json!({ "error": "timeout" }))
+        .await
+        .unwrap();
+    let degraded = connection(&app).await;
+    assert_eq!(degraded.outage_since, degraded.failed_since);
+    run(&app, &degraded, "recover", json!({})).await.unwrap();
+
+    let up = connection(&app).await;
+    assert!(up.failed_since.is_none());
+    assert_eq!(up.outage_since, degraded.outage_since, "kept for the reconciliation");
+}
+
+#[renox::test]
+async fn a_natural_key_finds_the_queued_or_sent_call_but_not_an_obsolete_one() {
+    let app = app().await;
+    let db = app.db();
+    let call = Outbound::new("asp.acme", "invoice", json!({ "n": 1 })).natural_key("INV-1");
+    let mut tx = db.begin().await.unwrap();
+    let queued = queue::enqueue(&mut tx, &call, None).await.unwrap();
+    tx.commit().await.unwrap();
+
+    let found = QueuedCall::with_natural_key(db, "asp.acme", "INV-1")
+        .await
+        .unwrap()
+        .expect("queued");
+    assert_eq!(found.id, queued.id);
+    assert!(QueuedCall::with_natural_key(db, "asp.acme", "INV-2")
+        .await
+        .unwrap()
+        .is_none());
+    assert!(QueuedCall::with_natural_key(db, "gateway.acme", "INV-1")
+        .await
+        .unwrap()
+        .is_none());
+
+    queue::mark_sent(db, &queued).await.unwrap();
+    assert!(QueuedCall::with_natural_key(db, "asp.acme", "INV-1")
+        .await
+        .unwrap()
+        .is_some());
+}
+
+#[renox::test]
+async fn the_oldest_call_is_found_whatever_its_wait() {
+    let app = app().await;
+    let db = app.db();
+    let call = Outbound::new("asp.acme", "invoice", json!({ "n": 1 }));
+    let mut tx = db.begin().await.unwrap();
+    let queued = queue::enqueue(&mut tx, &call, Some("timeout")).await.unwrap();
+    tx.commit().await.unwrap();
+
+    assert!(QueuedCall::next_due(db, "asp.acme", now()).await.unwrap().is_none());
+    let oldest = QueuedCall::oldest(db, "asp.acme").await.unwrap().expect("queued");
+    assert_eq!(oldest.id, queued.id);
+}

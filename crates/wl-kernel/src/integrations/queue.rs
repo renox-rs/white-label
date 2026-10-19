@@ -116,6 +116,33 @@ impl QueuedCall {
         Ok(oldest.filter(|call| call.next_attempt_at.is_none_or(|next| next <= at)))
     }
 
+    /// The oldest queued call of `connection`, whatever its wait: what a
+    /// drain after a recovery or an `enable` sends first.
+    pub async fn oldest<'c>(db: impl Executor<'c>, connection: &str) -> Result<Option<QueuedCall>> {
+        QueuedCall::query()
+            .where_(QueuedCall::CONNECTION_KEY.eq(connection))
+            .where_(QueuedCall::STATUS.eq(CallStatus::Queued))
+            .order_by(QueuedCall::ID)
+            .first(db)
+            .await
+    }
+
+    /// The call of `connection` with `natural_key` that is queued or was
+    /// sent, if any: the module's natural key prevents a second one.
+    pub async fn with_natural_key<'c>(
+        db: impl Executor<'c>,
+        connection: &str,
+        natural_key: &str,
+    ) -> Result<Option<QueuedCall>> {
+        QueuedCall::query()
+            .where_(QueuedCall::CONNECTION_KEY.eq(connection))
+            .where_(QueuedCall::NATURAL_KEY.eq(natural_key))
+            .where_(QueuedCall::STATUS.is_in([CallStatus::Queued, CallStatus::Sent]))
+            .order_by(QueuedCall::ID)
+            .first(db)
+            .await
+    }
+
     /// Whether `connection` has a queued call.
     pub async fn any_waiting<'c>(db: impl Executor<'c>, connection: &str) -> Result<bool> {
         QueuedCall::query()
