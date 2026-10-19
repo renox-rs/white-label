@@ -16,6 +16,7 @@ pub mod seed;
 pub mod sla;
 mod texts;
 pub mod ticket;
+pub mod visibility;
 pub mod work;
 
 use renox::db::Migration;

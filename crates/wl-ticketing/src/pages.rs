@@ -2,8 +2,8 @@
 //!
 //! | Route | Name | Needs |
 //! |---|---|---|
-//! | `GET /tickets` | `wl_ticketing.index` | `tickets.view` |
-//! | `GET /tickets/{id}` | `wl_ticketing.show` | `tickets.view` |
+//! | `GET /tickets` | `wl_ticketing.index` | `tickets.view` (a confidential ticket only for `tickets.confidential.view` and its requester) |
+//! | `GET /tickets/{id}` | `wl_ticketing.show` | `tickets.view` (a confidential ticket: 404 without `tickets.confidential.view`, unless the requester; each view is audited) |
 //! | `GET /tickets/new` | `wl_ticketing.create` | `tickets.create` |
 //! | `POST /tickets` | `wl_ticketing.store` | `tickets.create` |
 //! | `POST /tickets/{id}/assign` | `wl_ticketing.assign` | `tickets.assign` |
@@ -42,6 +42,7 @@ use crate::permissions;
 use crate::priority::Priority;
 use crate::texts;
 use crate::ticket::{Ticket, TicketStatus};
+use crate::visibility;
 use crate::work;
 
 /// The texts a template reads as `tx['fields.number']`.
@@ -198,7 +199,9 @@ pub(crate) struct IndexPage {
 
 /// `GET /tickets`: the grid.
 async fn index(lang: Lang, user: AuthUser, request: GridRequest) -> Result<View> {
-    let tickets = grid(&lang).page(Ticket::query(), &request).await?;
+    let tickets = grid(&lang)
+        .page(visibility::visible_to(Ticket::query(), &user), &request)
+        .await?;
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         can_create: user.has_permission(permissions::CREATE),
@@ -587,6 +590,8 @@ async fn show(
     lang: Lang,
     Found(ticket): Found<Ticket>,
 ) -> Result<View> {
+    visibility::ensure_visible(&ticket, &user)?;
+    visibility::audit_view(&state.db, &user, &ticket).await?;
     let t = texts_in(&lang);
     let db = state.db.clone();
     let category = Category::find(&db, ticket.category_id).await?;
@@ -721,6 +726,7 @@ async fn store_assign(
     Found(ticket): Found<Ticket>,
     Valid(form): Valid<AssignForm>,
 ) -> Result<Response> {
+    visibility::ensure_visible(&ticket, &user)?;
     let t = texts_in(&lang);
     let party = form.party_code.as_deref().filter(|c| !c.trim().is_empty());
     let assignee = match (form.assignee_user_id, party) {
@@ -768,6 +774,7 @@ async fn store_hold(
     Found(ticket): Found<Ticket>,
     Valid(form): Valid<HoldForm>,
 ) -> Result<Response> {
+    visibility::ensure_visible(&ticket, &user)?;
     match work::hold(&state, &user, &ticket, &form.hold_reason, renox::db::now()).await {
         Ok(()) => Ok((
             Toast::success(texts::t(&lang, "wl_ticketing.hold.done")),
@@ -795,6 +802,7 @@ async fn store_cancel(
     Found(ticket): Found<Ticket>,
     Valid(form): Valid<CancelForm>,
 ) -> Result<Response> {
+    visibility::ensure_visible(&ticket, &user)?;
     let t = texts_in(&lang);
     match work::cancel(&state, &user, &ticket, form.reason.trim()).await {
         Ok(()) => Ok((Toast::success(t("cancel_ticket.done")), renox::HxRefresh).into_response()),
@@ -816,6 +824,7 @@ async fn store_action(
     Path((id, name)): Path<(i64, String)>,
 ) -> Result<Response> {
     let ticket = Ticket::find(&state.db, id).await?.ok_or(Error::NotFound)?;
+    visibility::ensure_visible(&ticket, &user)?;
     let at = renox::db::now();
     let done = match name.as_str() {
         "start" => work::start(&state, &user, &ticket, at).await,

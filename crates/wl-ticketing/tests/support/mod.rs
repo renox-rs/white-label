@@ -427,6 +427,7 @@ pub async fn boot_with(module: WlTicketing) -> Booted {
     let notifier: Arc<dyn Notifier> = Arc::new(notices.clone());
     let app = App::new()
         .module(Auth::new())
+        .module(renox::audit::Audit)
         .module(Permissions)
         .module(module)
         .module(Harness)
