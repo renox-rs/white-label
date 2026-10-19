@@ -1108,6 +1108,58 @@ const TEXTS: &[(&str, &str)] = &[
         "property.notices.owner_statement_dispute_outcome_body",
         "About statement {{ statement }} for {{ period }}: {{ outcome }}.",
     ),
+    // Paying out, carrying forward or invoicing a balance (BL-PRP-20).
+    ("property.payout.pay_out", "Pay out"),
+    (
+        "property.payout.pay_out_message",
+        "Ask to pay the owner the whole balance. A property manager other than you approves it.",
+    ),
+    ("property.payout.block_exception", "Ask for an exception"),
+    ("property.payout.carry_forward", "Carry forward"),
+    (
+        "property.payout.carry_forward_message",
+        "The balance is brought forward on the next statement.",
+    ),
+    ("property.payout.invoice_owner", "Invoice the owner"),
+    (
+        "property.payout.invoice_owner_message",
+        "Invoice the negative balance to the owner from the management company. A property manager other than you approves it.",
+    ),
+    ("property.payout.asked", "The payout waits for approval."),
+    ("property.payout.paid", "The owner is paid."),
+    ("property.payout.exception_asked", "The owner is on hold: an exception was requested."),
+    ("property.payout.carried", "The balance is carried forward."),
+    ("property.payout.invoice_asked", "The invoice to the owner waits for approval."),
+    ("property.payout.invoiced", "The owner is invoiced."),
+    ("property.payout.settled_how", "Settled by"),
+    ("property.payout.how_payout", "Payout"),
+    ("property.payout.how_carried_forward", "Carried forward"),
+    ("property.payout.how_invoiced", "Invoiced to the owner"),
+    (
+        "property.payout.not_positive",
+        "Only a positive balance is paid out; carry a balance of zero or less forward.",
+    ),
+    (
+        "property.payout.disputed",
+        "The statement is disputed: clear the dispute before the payout.",
+    ),
+    (
+        "property.payout.positive",
+        "A positive balance is paid out, not carried forward.",
+    ),
+    (
+        "property.payout.not_negative",
+        "Only a negative balance is invoiced to the owner.",
+    ),
+    (
+        "property.payout.not_allowed",
+        "The agreement does not allow invoicing a negative balance, and the last three statements did not all end negative.",
+    ),
+    (
+        "property.payout.no_charge_type",
+        "Configure the charge type recharged costs (with its VAT treatment) before the owner is invoiced.",
+    ),
+    ("property.payout.invoice_line", "Negative balance of statement :statement"),
     // The deposit applied to the deductions (BL-PRP-17).
     ("property.deposit_forfeit.action", "Apply the deposit to the deductions"),
     (

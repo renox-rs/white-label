@@ -15,6 +15,20 @@
                        :title="action.label" :description="statement.number" :submit-label="action.label">
         <rx-textarea name="reason" :label="tx['statements.reason']" :id="'statement-reason-' ~ statement.id ~ '-' ~ action.name" required/>
       </rx-action-sheet>
+      <template rx-if="can_pay_out">
+        <rx-confirm :id="'pay-out-' ~ statement.id" :label="tx['payout.pay_out']" :action="route('property.statement_pay_out', statement.id)" method="POST"
+                    :title="tx['payout.pay_out']" :message="tx['payout.pay_out_message']" :confirm-label="tx['payout.pay_out']" :cancel-label="tx['button_cancel']" icon="banknote"/>
+      </template>
+      <template rx-if="can_ask_exception">
+        <rx-action-sheet :id="'pay-out-exception-' ~ statement.id" :label="tx['payout.block_exception']" :action="route('property.statement_pay_out', statement.id)"
+                         :title="tx['payout.block_exception']" :description="tx['payout.pay_out_message']" :submit-label="tx['payout.block_exception']" icon="shield-alert">
+          <rx-select name="block_exception" :label="tx['payout.block_exception']" :options="[['1', tx['payout.block_exception']]]" :selected="'1'" :id="'pay-out-exception-select-' ~ statement.id"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_invoice_owner">
+        <rx-confirm :id="'invoice-owner-' ~ statement.id" :label="tx['payout.invoice_owner']" :action="route('property.statement_invoice_owner', statement.id)" method="POST"
+                    :title="tx['payout.invoice_owner']" :message="tx['payout.invoice_owner_message']" :confirm-label="tx['payout.invoice_owner']" :cancel-label="tx['button_cancel']" icon="receipt"/>
+      </template>
       <template rx-if="can_dispute">
         <rx-action-sheet :id="'dispute-' ~ statement.id" :label="tx['disputes.open']" :action="route('property.statement_dispute_open', statement.id)"
                          :title="tx['disputes.open']" :description="tx['disputes.open_description']" :submit-label="tx['disputes.open']" icon="flag">
@@ -63,6 +77,7 @@
         <rx-entry :label="tx['statements.published_on']" :value="statement.published_on" :placeholder="tx['none']"/>
         <rx-entry :label="tx['statements.return_reason']" :value="statement.return_reason" :placeholder="tx['none']"/>
         <rx-entry :label="tx['statements.revise_reason']" :value="statement.revise_reason" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['payout.settled_how']" :value="statement.settled_how" :placeholder="tx['none']"/>
       </rx-infolist>
     </rx-card>
     <template rx-if="disputes">

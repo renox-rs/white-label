@@ -3,6 +3,10 @@
 //! sends the statement to the owner by e-mail, and `revise` tells the owner
 //! that a corrected statement follows.
 //!
+//! The settling transitions (`pay_out`, `invoice_owner` and their approved
+//! twins) record the payout or make the invoice
+//! ([`crate::statement_payout::after`]).
+//!
 //! The PDF of the statement is `DOC.GEN.01` (wl-documents), which has no
 //! contract in the kernel yet: the e-mail carries the statement as text, the
 //! lines included.
@@ -15,6 +19,7 @@ use crate::notices;
 use crate::permissions::ACCOUNTANT_ROLE;
 use crate::statement::{OwnerStatement, StatementLine};
 use crate::statement_machine::{PUBLISH, RETURN, REVISE};
+use crate::statement_payout;
 use crate::money_text;
 
 /// The lines of `statement` as text: `Rent L-000012: AED 12,000.00; ...`.
@@ -63,7 +68,7 @@ pub async fn after(state: &AppState, event: &Transitioned<OwnerStatement>) -> Re
             notices::statement_revised(state, &found, found.revision + 1).await?;
             crate::statement_dispute::after_revise(state, &found).await
         }
-        _ => Ok(()),
+        _ => statement_payout::after(state, event).await,
     }
 }
 

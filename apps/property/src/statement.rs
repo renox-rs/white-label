@@ -185,6 +185,10 @@ pub struct OwnerStatement {
     pub payout_amount: Option<i64>,
     /// The outgoing payment of the payout.
     pub payout_payment_id: Option<i64>,
+    /// How it was settled: `payout`, `carried_forward` or `invoiced`.
+    pub settled_how: Option<String>,
+    /// The invoice to the owner for a negative balance.
+    pub owner_invoice_id: Option<i64>,
     /// The lifecycle state; changed only by a transition.
     pub status: StatementStatus,
     /// When the row was created.

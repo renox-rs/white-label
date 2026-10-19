@@ -9,15 +9,18 @@
 //! | `POST /property/statements/{id}/lines/remove` | `property.statement_line_remove` | `owner_statements.prepare` |
 //! | `POST /property/statements/{id}/disputes` | `property.statement_dispute_open` | `owner_statements.prepare` |
 //! | `POST /property/statements/{id}/disputes/clear` | `property.statement_dispute_clear` | `owner_statements.prepare` |
+//! | `POST /property/statements/{id}/pay-out` | `property.statement_pay_out` | `owner_statements.prepare` (field `block_exception`) |
+//! | `POST /property/statements/{id}/invoice-owner` | `property.statement_invoice_owner` | `owner_statements.approve` |
 //! | `POST /property/statements/{id}/transitions/{name}` | `property.statement_transitions.*` | the transition's permission |
 //!
 //! The transitions are the machine's ([`crate::statement_machine`]): `approve`,
 //! `return`, `publish`, `revise`; the page offers the ones the user may run now.
 
 use renox::prelude::*;
-use renox::state_machine::StateMachine;
+use renox::state_machine::{Outcome, StateMachine, TransitionError};
 use serde::{Deserialize, Serialize};
 use wl_kernel::PartyId;
+use wl_kernel::block_guard::{self, ActionKind, GuardedError};
 use wl_kernel::parties::directory;
 
 use super::{Texts, text, user_name};
@@ -27,6 +30,8 @@ use crate::parse::parse_aed;
 use crate::permissions;
 use crate::statement::{self, LineKind, OwnerStatement, StatementLine, StatementStatus};
 use crate::statement_dispute::{self, Clearing, StatementDispute};
+use crate::statement_machine::{INVOICE_OWNER, PAY_OUT};
+use crate::statement_payout::{self, PayOutOutcome};
 use crate::texts;
 
 /// The routes of the pages.
@@ -40,6 +45,10 @@ pub fn routes() -> Routes {
         .name("property.statement_line_add")
         .post("/property/statements/{id}/lines/remove", remove_line)
         .name("property.statement_line_remove")
+        .post("/property/statements/{id}/pay-out", pay_out)
+        .name("property.statement_pay_out")
+        .post("/property/statements/{id}/invoice-owner", invoice_owner)
+        .name("property.statement_invoice_owner")
         .post("/property/statements/{id}/disputes", open_dispute)
         .name("property.statement_dispute_open")
         .post("/property/statements/{id}/disputes/clear", clear_dispute)
@@ -215,6 +224,8 @@ pub struct StatementView {
     pub return_reason: String,
     /// Why it was revised.
     pub revise_reason: String,
+    /// How it was settled, in the page's language.
+    pub settled_how: String,
 }
 
 /// What a statement page needs.
@@ -232,6 +243,9 @@ pub(crate) struct ShowPage {
     can_edit: bool,
     disputed: bool,
     disputes: Vec<DisputeRow>,
+    can_pay_out: bool,
+    can_ask_exception: bool,
+    can_invoice_owner: bool,
     can_dispute: bool,
     can_clear: bool,
     dispute_lines: Vec<[String; 2]>,
@@ -272,6 +286,11 @@ async fn show(
     let mut plain_actions = Vec::new();
     let mut reason_actions = Vec::new();
     for action in found.available(&user, &state.db).await? {
+        // Paying out and invoicing the owner have their own routes: the block
+        // guard and the checks of the guards' input run there.
+        if action.name == PAY_OUT || action.name == INVOICE_OWNER {
+            continue;
+        }
         let view = ActionView {
             name: action.name.clone(),
             label: action.label.clone(),
@@ -335,6 +354,27 @@ async fn show(
         published_on: found.published_on.map(|d| d.to_string()).unwrap_or_default(),
         return_reason: found.return_reason.clone().unwrap_or_default(),
         revise_reason: found.revise_reason.clone().unwrap_or_default(),
+        settled_how: found
+            .settled_how
+            .as_deref()
+            .map(|how| text(&lang, &format!("payout.how_{how}")))
+            .unwrap_or_default(),
+    };
+    let published = found.status == StatementStatus::Published;
+    let may_prepare = user.has_permission(permissions::OWNER_STATEMENTS_PREPARE);
+    let owner_blocked = if published && may_prepare {
+        let mut tx = state.db.begin().await?;
+        !block_guard::guard(&state)
+            .check_in(
+                &mut tx,
+                Some(&user),
+                PartyId(found.owner_party_id),
+                ActionKind::MoneyOut,
+            )
+            .await?
+            .is_allowed()
+    } else {
+        false
     };
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
@@ -348,6 +388,11 @@ async fn show(
         can_edit: found.status == StatementStatus::Draft
             && user.has_permission(permissions::OWNER_STATEMENTS_PREPARE),
         disputed: found.disputed,
+        can_pay_out: published && may_prepare && found.balance() > 0 && !owner_blocked,
+        can_ask_exception: published && may_prepare && found.balance() > 0 && owner_blocked,
+        can_invoice_owner: published
+            && found.balance() < 0
+            && user.has_permission(permissions::OWNER_STATEMENTS_APPROVE),
         can_dispute: statement_dispute::disputable(found.status)
             && user.has_permission(permissions::OWNER_STATEMENTS_PREPARE),
         can_clear: user.has_permission(permissions::OWNER_STATEMENTS_PREPARE) && found.disputed,
@@ -517,4 +562,53 @@ async fn clear_dispute(
     let note = Some(form.note.clone()).filter(|n| !n.trim().is_empty());
     statement_dispute::clear(&state, &user, found.id, clearing, note).await?;
     Ok((Toast::success(text(&lang, "disputes.cleared")), renox::HxRefresh).into_response())
+}
+
+/// The form that asks for a payout.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct PayOutForm {
+    /// `1` to ask for an exception when the owner is on hold.
+    #[serde(default)]
+    pub block_exception: String,
+}
+
+/// `POST /property/statements/{id}/pay-out`: asks to pay the owner the whole
+/// balance; a property manager other than the requester approves.
+async fn pay_out(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<PayOutForm>,
+) -> Result<Response> {
+    let ask = form.block_exception.trim() == "1";
+    let outcome = statement_payout::pay_out(&state, &user, id, ask)
+        .await
+        .map_err(GuardedError::into_error)?;
+    let done = match outcome {
+        PayOutOutcome::Ran(Outcome::Done(_)) => "payout.paid",
+        PayOutOutcome::Ran(_) => "payout.asked",
+        PayOutOutcome::ExceptionRequested(_) => "payout.exception_asked",
+    };
+    Ok((Toast::success(text(&lang, done)), renox::HxRefresh).into_response())
+}
+
+/// `POST /property/statements/{id}/invoice-owner`: asks to invoice the
+/// negative balance to the owner; a property manager other than the requester
+/// approves.
+async fn invoice_owner(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    let outcome = statement_payout::invoice_owner(&state, &user, id)
+        .await
+        .map_err(TransitionError::into_error)?;
+    let done = if matches!(outcome, Outcome::Done(_)) {
+        "payout.invoiced"
+    } else {
+        "payout.invoice_asked"
+    };
+    Ok((Toast::success(text(&lang, done)), renox::HxRefresh).into_response())
 }

@@ -4,6 +4,7 @@
 //! [*] draft --approve--> approved --publish--> published
 //! approved --return--> draft
 //! published --revise--> superseded                  (and a new draft revision)
+//! published --pay_out, carry_forward, invoice_owner--> settled
 //! ```
 //!
 //! `approve` and `return` are the property manager's (`owner_statements.approve`);
@@ -19,16 +20,26 @@
 //! A revision also clears the dispute flag: the open disputes of the old
 //! statement are cleared as *revised* ([`crate::statement_dispute`]).
 //!
-//! The states `settled` and the settling transitions come with BL-PRP-20.
+//! A published statement is settled one of three ways ([`crate::statement_payout`]):
+//! `pay_out` (the accountant asks, a property manager other than the requester
+//! approves, `pay_out_approved` runs at the final approval), `carry_forward`
+//! and `invoice_owner` (the same approval, `invoice_owner_approved`). Their
+//! guards read the statement as it is when they run, so a dispute or a balance
+//! that changed while an approval waited fails the request.
 
 use renox::db::Transaction;
 use renox::prelude::*;
 use renox::state_machine::{Machine, StateMachine, Transition};
+use wl_kernel::PartyId;
+use wl_kernel::approvals::PolicyDefault;
+use wl_kernel::block_guard::ActionKind;
 use wl_kernel::documents::today;
+use wl_kernel::SubjectMachine;
 
 use crate::permissions;
-use crate::statement::{OwnerStatement, StatementLine, StatementStatus};
+use crate::statement::{OwnerStatement, STATEMENT_SUBJECT_TYPE, StatementLine, StatementStatus};
 use crate::statement_dispute::{DisputeOutcome, DisputeStatus, StatementDispute};
+use crate::statement_payout::{carry_problem, invoice_input, invoice_problem, payout_problem};
 use crate::texts::english;
 
 /// `approve`: a property manager other than the preparer.
@@ -39,6 +50,22 @@ pub const RETURN: &str = "return";
 pub const PUBLISH: &str = "publish";
 /// `revise`: a corrected draft replaces a published statement.
 pub const REVISE: &str = "revise";
+
+/// `pay_out`: the accountant's request (`PRP.ACL.08`).
+pub const PAY_OUT: &str = "pay_out";
+/// `pay_out_approved`: the kernel runs it at the final approval.
+pub const PAY_OUT_APPROVED: &str = "pay_out_approved";
+/// `carry_forward`: a balance of zero or less goes to the next statement.
+pub const CARRY_FORWARD: &str = "carry_forward";
+/// `invoice_owner`: a property manager's request to invoice a negative balance.
+pub const INVOICE_OWNER: &str = "invoice_owner";
+/// `invoice_owner_approved`: the kernel runs it at the final approval.
+pub const INVOICE_OWNER_APPROVED: &str = "invoice_owner_approved";
+
+/// The approval policies' action key of `pay_out` (`PRP.ACL.08`).
+pub const PAYOUT_ACTION: &str = "property.owner_payout";
+/// The approval policies' action key of `invoice_owner`.
+pub const INVOICE_ACTION: &str = "property.owner_invoice";
 
 /// A transition a user runs.
 fn user(name: &str, label: &str, permission: &'static str) -> Transition<OwnerStatement> {
@@ -131,6 +158,65 @@ async fn revise_effects(
         )
         .await?;
     Ok(())
+}
+
+/// A transition only the system runs (the kernel at a final approval).
+fn system(name: &str, label: &str) -> Transition<OwnerStatement> {
+    Transition::new(name).label(label).system()
+}
+
+/// Writes columns of the statement `id` in `tx`; not the status column.
+async fn settle_in(
+    tx: &mut Transaction,
+    id: i64,
+    how: &str,
+    payout: Option<i64>,
+    carried: i64,
+) -> Result {
+    OwnerStatement::query()
+        .where_(OwnerStatement::ID.eq(id))
+        .update(
+            &mut *tx,
+            &[
+                ("settled_how", &Some(how.to_owned())),
+                ("payout_amount", &payout),
+                ("carried_forward", &carried),
+                ("updated_at", &renox::db::now()),
+            ],
+        )
+        .await?;
+    Ok(())
+}
+
+/// The guard and effect `pay_out` and `pay_out_approved` share.
+fn pay_out_rules(transition: Transition<OwnerStatement>) -> Transition<OwnerStatement> {
+    transition
+        .from([StatementStatus::Published])
+        .to(StatementStatus::Settled)
+        .guard("payable", |statement: &OwnerStatement, _ctx| {
+            let problem = payout_problem(statement);
+            Box::pin(async move { problem.map_or(Ok(()), Err) })
+        })
+        .effect(|statement: &OwnerStatement, _ctx, tx| {
+            let id = statement.id;
+            let amount = statement.balance();
+            Box::pin(async move { settle_in(&mut *tx, id, "payout", Some(amount), 0).await })
+        })
+}
+
+/// The guard and effect `invoice_owner` and `invoice_owner_approved` share.
+fn invoice_owner_rules(transition: Transition<OwnerStatement>) -> Transition<OwnerStatement> {
+    transition
+        .from([StatementStatus::Published])
+        .to(StatementStatus::Settled)
+        .guard("invoiceable", |statement: &OwnerStatement, ctx| {
+            let problem = invoice_problem(statement, &invoice_input(ctx));
+            Box::pin(async move { problem.map_or(Ok(()), Err) })
+        })
+        .effect(|statement: &OwnerStatement, _ctx, tx| {
+            let id = statement.id;
+            Box::pin(async move { settle_in(&mut *tx, id, "invoiced", None, 0).await })
+        })
 }
 
 impl StateMachine for OwnerStatement {
@@ -248,12 +334,69 @@ impl StateMachine for OwnerStatement {
                         Box::pin(async move { revise_effects(&mut *tx, &statement, by, &reason).await })
                     }),
             )
+            .transition(pay_out_rules(
+                user(PAY_OUT, "Pay out", permissions::OWNER_STATEMENTS_PREPARE).tone("primary"),
+            ))
+            .transition(pay_out_rules(system(PAY_OUT_APPROVED, "Pay out (approved)")))
+            .transition(
+                user(CARRY_FORWARD, "Carry forward", permissions::OWNER_STATEMENTS_PREPARE)
+                    .from([Published])
+                    .to(Settled)
+                    .guard("not_positive", |statement: &OwnerStatement, _ctx| {
+                        let problem = carry_problem(statement);
+                        Box::pin(async move { problem.map_or(Ok(()), Err) })
+                    })
+                    .effect(|statement: &OwnerStatement, _ctx, tx| {
+                        let id = statement.id;
+                        let carried = statement.balance();
+                        Box::pin(async move {
+                            settle_in(&mut *tx, id, "carried_forward", None, carried).await
+                        })
+                    }),
+            )
+            .transition(invoice_owner_rules(user(
+                INVOICE_OWNER,
+                "Invoice the owner",
+                permissions::OWNER_STATEMENTS_APPROVE,
+            )))
+            .transition(invoice_owner_rules(system(
+                INVOICE_OWNER_APPROVED,
+                "Invoice the owner (approved)",
+            )))
     }
+}
+
+/// The default approval policy of `pay_out` (`PRP.ACL.08`): one step by a
+/// property manager, never the requester.
+pub fn payout_policy() -> PolicyDefault {
+    PolicyDefault::new(PAYOUT_ACTION).step([permissions::PROPERTY_MANAGER_ROLE])
+}
+
+/// The default approval policy of `invoice_owner`: one step by a property
+/// manager other than the requester.
+pub fn invoice_policy() -> PolicyDefault {
+    PolicyDefault::new(INVOICE_ACTION).step([permissions::PROPERTY_MANAGER_ROLE])
+}
+
+/// The Owner statement in the kernel's registry: the approval actions of
+/// `pay_out` and `invoice_owner`, and the block guard of the payout (the owner
+/// on hold is refused, and refused again at the final approval).
+pub fn subject_machine() -> SubjectMachine {
+    SubjectMachine::of::<OwnerStatement>(STATEMENT_SUBJECT_TYPE)
+        .action(PAY_OUT, PAYOUT_ACTION)
+        .action(INVOICE_OWNER, INVOICE_ACTION)
+        .block_guarded(PAY_OUT, ActionKind::MoneyOut, |statement: &OwnerStatement| {
+            Some(PartyId(statement.owner_party_id))
+        })
+        .build()
 }
 
 /// Registers the machine with `rnx state:diagram`.
 pub(crate) fn register() {
+    subject_machine().register();
     renox::state_machine::register::<OwnerStatement>();
+    payout_policy().register();
+    invoice_policy().register();
 }
 
 #[cfg(test)]
@@ -263,18 +406,23 @@ mod tests {
     #[test]
     fn every_transition_of_the_spec_is_declared() {
         let machine = OwnerStatement::machine();
-        let table: [(&str, &[&str], &str); 4] = [
-            (APPROVE, &["draft"], "approved"),
-            (RETURN, &["approved"], "draft"),
-            (PUBLISH, &["approved"], "published"),
-            (REVISE, &["published"], "superseded"),
+        let table: [(&str, &[&str], &str, bool); 9] = [
+            (APPROVE, &["draft"], "approved", false),
+            (RETURN, &["approved"], "draft", false),
+            (PUBLISH, &["approved"], "published", false),
+            (REVISE, &["published"], "superseded", false),
+            (PAY_OUT, &["published"], "settled", false),
+            (PAY_OUT_APPROVED, &["published"], "settled", true),
+            (CARRY_FORWARD, &["published"], "settled", false),
+            (INVOICE_OWNER, &["published"], "settled", false),
+            (INVOICE_OWNER_APPROVED, &["published"], "settled", true),
         ];
         assert_eq!(machine.transitions().len(), table.len());
-        for (name, from, to) in table {
+        for (name, from, to, by_system) in table {
             let transition = machine.find(name).expect(name);
             assert_eq!(transition.from_states(), from, "{name}");
             assert_eq!(transition.to_state(), Some(to), "{name}");
-            assert!(!transition.is_system(), "{name}");
+            assert_eq!(transition.is_system(), by_system, "{name}");
         }
         assert!(machine.find(RETURN).unwrap().needs_reason());
         assert!(machine.find(REVISE).unwrap().needs_reason());
@@ -306,6 +454,23 @@ mod tests {
         assert_eq!(approver_problem(&edited, Some(5)), None);
         // A statement the rule generated and nobody edited.
         assert_eq!(approver_problem(&OwnerStatement::default(), Some(4)), None);
+    }
+
+    #[test]
+    fn the_policies_ask_a_property_manager() {
+        let expected = PolicyDefault::new("property.owner_payout").step(["property_manager"]);
+        assert_eq!(payout_policy(), expected);
+        assert_eq!(payout_policy().action(), PAYOUT_ACTION);
+        assert_eq!(invoice_policy().action(), INVOICE_ACTION);
+    }
+
+    #[test]
+    fn the_payout_is_a_guarded_money_out() {
+        let machine = subject_machine();
+        assert_eq!(machine.action_key(PAY_OUT), PAYOUT_ACTION);
+        assert_eq!(machine.action_key(INVOICE_OWNER), INVOICE_ACTION);
+        assert_eq!(machine.guarded_kind(PAY_OUT), Some(ActionKind::MoneyOut));
+        assert_eq!(machine.guarded_kind(CARRY_FORWARD), None);
     }
 
     #[test]
