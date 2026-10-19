@@ -279,6 +279,10 @@ const TEXTS: &[(&str, &str)] = &[
         "No approval policy is active for late entries.",
     ),
     (
+        "wl_kernel.late_entries.reason_required",
+        "Give the reason this entry is late.",
+    ),
+    (
         "wl_kernel.late_entries.limits_invalid",
         "The flag limit must be above 0 minutes and not above the approval limit.",
     ),

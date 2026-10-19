@@ -15,6 +15,7 @@
 //! ([`limits_for`], [`set_limits`]).
 
 pub mod assess;
+pub mod enter;
 pub mod entry;
 pub mod events;
 pub mod fired;
@@ -36,6 +37,7 @@ pub use assess::{
     ApprovalWhy, Assessment, DEFAULT_APPROVAL_AFTER_HOURS, DEFAULT_FLAG_AFTER_MINUTES, Limits,
     Period, assess,
 };
+pub use enter::{Entered, EntrySpec, announce_approved, enter, preview};
 pub use entry::{LateEntry, LateEntryStatus, transitions};
 pub use events::{FiredRun, LateEntryRecorded};
 pub use limits::{LateEntryLimits, limits_for, set_limits};
