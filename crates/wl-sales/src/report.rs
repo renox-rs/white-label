@@ -842,6 +842,7 @@ mod tests {
         let csv = to_csv(&report, &["SPRING26".to_owned()], "Total");
         let lines: Vec<&str> = csv.lines().collect();
         assert_eq!(lines.len(), 3);
-        assert!(lines[1].starts_with("SPRING26,50,10,20.0%,8,20,000.00"), "{}", lines[1]);
+        // The same numbers as the page, without its thousands separators.
+        assert!(lines[1].starts_with("SPRING26,50,10,20.0%,8,20000.00"), "{}", lines[1]);
     }
 }

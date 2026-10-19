@@ -90,7 +90,7 @@ fn invoice(id: i64, party: PartyId, m: u32, d: u32) -> InvoiceIssued {
         total: 210_000,
         net_total: 200_000,
         issue_date: day(m, d),
-        due_date: day(m, d + 14),
+        due_date: day(m, d) + renox::chrono::Days::new(14),
     }
 }
 
