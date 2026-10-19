@@ -428,7 +428,8 @@ pub struct ImportReport {
 /// first line has most.
 fn delimiter_of(text: &str) -> char {
     let first = text.lines().find(|l| !l.trim().is_empty()).unwrap_or("");
-    [',', ';', '\t']
+    // `max_by_key` keeps the last of equal counts, so the comma comes last and wins a tie.
+    ['\t', ';', ',']
         .into_iter()
         .max_by_key(|d| first.matches(*d).count())
         .unwrap_or(',')
