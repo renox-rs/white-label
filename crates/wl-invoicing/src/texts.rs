@@ -1068,6 +1068,56 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_invoicing.supplier_bill.errors.not_draft",
         "Only a draft supplier bill can be changed.",
     ),
+    ("wl_invoicing.debit_note.title", "Supplier debit notes"),
+    (
+        "wl_invoicing.debit_note.empty",
+        "No supplier debit notes yet",
+    ),
+    (
+        "wl_invoicing.debit_note.waiting",
+        "Waiting for the supplier bill",
+    ),
+    ("wl_invoicing.debit_note.status.draft", "Draft"),
+    ("wl_invoicing.debit_note.status.issued", "Issued"),
+    ("wl_invoicing.debit_note.status.settled", "Settled"),
+    ("wl_invoicing.debit_note.status.cancelled", "Cancelled"),
+    ("wl_invoicing.debit_note.origin.manual", "Manual"),
+    (
+        "wl_invoicing.debit_note.origin.return",
+        "Return to supplier",
+    ),
+    (
+        "wl_invoicing.debit_note.reason.price_difference",
+        "Price difference",
+    ),
+    (
+        "wl_invoicing.debit_note.reason.short_delivery",
+        "Short delivery",
+    ),
+    ("wl_invoicing.debit_note.reason.quality", "Quality"),
+    ("wl_invoicing.debit_note.reason.other", "Other"),
+    ("wl_invoicing.debit_note.priced_at.po", "PO"),
+    ("wl_invoicing.debit_note.priced_at.bill", "Bill"),
+    (
+        "wl_invoicing.debit_note.errors.not_draft",
+        "Only a draft supplier debit note can be changed.",
+    ),
+    (
+        "wl_invoicing.debit_note.errors.bill_state",
+        "A debit note needs an approved, partially paid or paid supplier bill.",
+    ),
+    (
+        "wl_invoicing.debit_note.errors.reason",
+        "Give a reason for the debit note.",
+    ),
+    (
+        "wl_invoicing.debit_note.errors.lines",
+        "A debit note needs at least one line.",
+    ),
+    (
+        "wl_invoicing.debit_note.errors.over_bill_line",
+        "A line is above what is left on its bill line.",
+    ),
 ];
 
 /// The English text for `key`, or `key` itself when the package has none.

@@ -26,6 +26,9 @@ mod credit_note_machine;
 pub mod credit_note_movement;
 mod credit_note_pages;
 pub mod credit_notes;
+pub mod debit_note_line;
+mod debit_note_machine;
+pub mod debit_notes;
 pub mod dispute;
 pub mod dispute_credit;
 mod dispute_pages;
@@ -53,6 +56,7 @@ pub mod restore;
 pub mod reversal;
 pub mod seed;
 pub mod supplier_bill;
+pub mod supplier_debit_note;
 pub mod task;
 mod task_pages;
 mod texts;
@@ -84,6 +88,7 @@ pub use config::{
 pub use credit_note::{CreditNote, CreditNoteKind};
 pub use credit_note_line::CreditNoteLine;
 pub use credit_note_movement::{CreditNoteMovement, MovementKind};
+pub use debit_note_line::{DebitNoteLine, PricedAt};
 pub use dispute::{Dispute, DisputeVia};
 pub use escalation_log::EscalationLog;
 pub use invoice::{Invoice, InvoiceKind, PartySnapshot};
@@ -92,6 +97,7 @@ pub use line::InvoiceLine;
 pub use recovery::Recovery;
 pub use reminders::ReminderLog;
 pub use supplier_bill::{BillDraft, SupplierBill, SupplierBillStatus};
+pub use supplier_debit_note::{DebitNoteOrigin, DebitNoteReason, SupplierDebitNote};
 pub use task::{InvoicingTask, TaskKind, TaskStatus};
 pub use unallocation::{Unallocation, UnallocationOutcome};
 pub use vat::{CategoryTotal, LineAmounts, VatTotals};
@@ -406,6 +412,8 @@ impl Module for WlInvoicing {
             .model::<InvoiceLine>()
             .model::<SupplierBill>()
             .model::<BillLine>()
+            .model::<SupplierDebitNote>()
+            .model::<DebitNoteLine>()
             .model::<duplicates::BillException>()
             .model::<CreditNote>()
             .model::<CreditNoteLine>()
@@ -449,6 +457,8 @@ impl Module for WlInvoicing {
         renox::state_machine::register::<VatSummary>();
         // The supplier bill machine, as the subject `invoicing.supplier_bill`.
         bill_machine::register();
+        // The supplier debit note machine, as `invoicing.supplier_debit_note`.
+        debit_note_machine::register();
         // The kernel runs `write_off_approved` by name; `FIN.ACL.15`.
         policy::register(&self.config);
         // The settings the services read (`config_of`).

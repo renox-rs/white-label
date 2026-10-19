@@ -69,6 +69,12 @@ pub fn remaining_credit(line_net: i64, credited: i64) -> i64 {
     (line_net - credited).max(0)
 }
 
+/// What can still be debited on a bill line after `debited` (quantity in
+/// thousandths, or net in fils) went to issued debit notes (never below 0).
+pub fn remaining_debit(bill_line_value: i64, debited: i64) -> i64 {
+    (bill_line_value - debited).max(0)
+}
+
 /// The computed amounts of one line.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct LineAmounts {
@@ -255,6 +261,13 @@ mod tests {
         assert_eq!(remaining_credit(100_000, 20_000), 80_000);
         assert_eq!(remaining_credit(100_000, 100_000), 0);
         assert_eq!(remaining_credit(100_000, 120_000), 0);
+    }
+
+    #[test]
+    fn remaining_debit_is_what_issued_debit_notes_left() {
+        assert_eq!(remaining_debit(10_000, 0), 10_000);
+        assert_eq!(remaining_debit(10_000, 3_000), 7_000);
+        assert_eq!(remaining_debit(10_000, 12_000), 0);
     }
 
     fn aed(quantity_milli: i64, unit_price: i64, category: VatCategory) -> LineAmounts {

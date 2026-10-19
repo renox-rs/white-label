@@ -26,6 +26,8 @@ pub struct BillLineDraft {
     pub service_date: Option<NaiveDate>,
     /// The cost object the line is coded to, if any.
     pub cost_object: Option<Subject>,
+    /// The purchase order line the goods were ordered on, if any.
+    pub po_line: Option<Subject>,
 }
 
 impl BillLineDraft {
@@ -38,6 +40,7 @@ impl BillLineDraft {
             vat_category,
             service_date: None,
             cost_object: None,
+            po_line: None,
         }
     }
 
@@ -56,6 +59,12 @@ impl BillLineDraft {
     /// Coded to a cost object.
     pub fn cost_object(mut self, cost_object: Subject) -> Self {
         self.cost_object = Some(cost_object);
+        self
+    }
+
+    /// Ordered on a purchase order line.
+    pub fn po_line(mut self, po_line: Subject) -> Self {
+        self.po_line = Some(po_line);
         self
     }
 
@@ -112,6 +121,10 @@ pub struct BillLine {
     pub cost_type: Option<String>,
     /// The id of the cost object the line is coded to, if any.
     pub cost_id: Option<i64>,
+    /// The type of the purchase order line the goods were ordered on.
+    pub po_line_type: Option<String>,
+    /// The id of the purchase order line the goods were ordered on.
+    pub po_line_id: Option<i64>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
@@ -137,6 +150,8 @@ impl BillLine {
             service_date: draft.service_date,
             cost_type: draft.cost_object.as_ref().map(|c| c.subject_type.clone()),
             cost_id: draft.cost_object.as_ref().map(|c| c.subject_id),
+            po_line_type: draft.po_line.as_ref().map(|c| c.subject_type.clone()),
+            po_line_id: draft.po_line.as_ref().map(|c| c.subject_id),
             ..Default::default()
         };
         let amounts = line.compute(rate_micro);
@@ -186,6 +201,17 @@ impl BillLine {
             _ => None,
         }
     }
+
+    /// The purchase order line the goods were ordered on, if any.
+    pub fn po_line(&self) -> Option<Subject> {
+        match (&self.po_line_type, self.po_line_id) {
+            (Some(subject_type), Some(subject_id)) => Some(Subject {
+                subject_type: subject_type.clone(),
+                subject_id,
+            }),
+            _ => None,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -221,6 +247,19 @@ mod tests {
         let line = BillLine::from_draft(1, 2, &draft, None);
         assert_eq!((line.net_amount_aed, line.vat_amount_aed), (None, None));
         assert_eq!(line.cost_object(), None);
+        assert_eq!(line.po_line(), None);
+    }
+
+    #[test]
+    fn a_line_keeps_the_po_line_it_was_ordered_on() {
+        let draft = BillLineDraft::new("Pump", 100, VatCategory::Standard)
+            .po_line(Subject::new("procurement.po_line", 12));
+        let line = BillLine::from_draft(1, 1, &draft, None);
+        assert_eq!(line.po_line_id, Some(12));
+        assert_eq!(
+            line.po_line(),
+            Some(Subject::new("procurement.po_line", 12))
+        );
     }
 
     #[test]
