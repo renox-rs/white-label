@@ -678,3 +678,83 @@ async fn the_payment_list_needs_the_view_permission() {
     app.acting_as(&nobody);
     app.get("/payments").await.assert_forbidden();
 }
+
+/// #74 AC1 and AC6: the demo boots with `invoicing`; `/supplier-bills`
+/// answers 200 with `supplier_bills.view` and 403 without it, the kernel's
+/// `supplier_bills(state)` shows a line of an existing bill, and the demo's
+/// `property` app also holds a bill with the same contract, period and amount.
+#[renox::test]
+async fn the_demo_client_lists_supplier_bills_and_holds_a_repeated_contract_bill() {
+    use wl_invoicing::bill_submit::submit;
+    use wl_invoicing::credit_notes::By;
+    use wl_invoicing::supplier_bill::{self, BillDraft};
+    use wl_invoicing::{BillLineDraft, SupplierBill, SupplierBillStatus};
+    use wl_kernel::invoicing::{
+        SupplierBillLineId, SupplierBillStatus as KernelStatus, VatCategory, supplier_bills,
+    };
+    use wl_kernel::{PartyId, Subject};
+
+    let app = TestApp::new(host::app()).await;
+    app.kernel().seed().await.unwrap();
+    host::roles::define(app.db()).await.unwrap();
+    for (name, role, allowed) in [
+        ("Rima", host::roles::ACCOUNTANT, true),
+        ("Mona", host::roles::MEMBER, false),
+    ] {
+        let email = format!("{}@example.com", name.to_lowercase());
+        let mut user = User::register(app.db(), name, &email, "secret123")
+            .await
+            .unwrap();
+        user.email_verified_at = Some(renox::db::now());
+        user.save(app.db()).await.unwrap();
+        user.assign_role(app.db(), role).await.unwrap();
+        app.acting_as(&user);
+        let page = app.get("/supplier-bills").await;
+        if allowed {
+            page.assert_ok();
+        } else {
+            page.assert_forbidden();
+        }
+    }
+
+    // The demo bills exist after seeding; the provider shows one of them.
+    wl_invoicing::seed::bills(app.state()).await.unwrap();
+    let bill = SupplierBill::query()
+        .first(app.db())
+        .await
+        .unwrap()
+        .expect("a demo bill");
+    let line = supplier_bill::lines_of(app.db(), bill.id).await.unwrap()[0].clone();
+    let shown = supplier_bills(app.state())
+        .line(app.db(), SupplierBillLineId(line.id))
+        .await
+        .unwrap()
+        .expect("the line");
+    assert_eq!(shown.bill.0, bill.id);
+    assert_ne!(shown.bill_status, KernelStatus::Draft);
+
+    // `property`: the same contract, period and amount under another number.
+    let day = |d| renox::chrono::NaiveDate::from_ymd_opt(2026, 10, d).unwrap();
+    let supplier = PartyId(bill.party_id);
+    let contract = Subject::new("ticketing.contract", 3);
+    let mut results = Vec::new();
+    for number in ["C-1", "C-2"] {
+        let draft = BillDraft::new(supplier, number, day(5))
+            .contract(contract.clone(), Some((day(1), day(31))))
+            .line(
+                BillLineDraft::new("Cleaning", 100_000, VatCategory::Standard)
+                    .service_date(day(10)),
+            );
+        let made = supplier_bill::create(app.db(), &draft, Some(1))
+            .await
+            .unwrap();
+        let done = submit(app.state(), By::System(Some(1)), made.id)
+            .await
+            .unwrap();
+        results.push(done.status);
+    }
+    assert_eq!(
+        results,
+        [SupplierBillStatus::Matched, SupplierBillStatus::Exception]
+    );
+}
