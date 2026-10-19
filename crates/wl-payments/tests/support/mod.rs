@@ -19,12 +19,16 @@ use renox::prelude::*;
 use renox::state_machine::TransitionError;
 use renox::testing::{TestApp, TestResponse};
 use serde::Deserialize;
+use wl_kernel::approvals::{ApprovalDecided, ApprovalEnd};
 use wl_kernel::cheques::{
-    BounceFeeCharge, BounceFees, ChequeBounceResolved, ChequeBounced, ChequeFuture, RegisterCheque,
-    cheques as cheque_contract,
+    BounceFeeCharge, BounceFees, ChargeInvoicer, ChequeBounceResolved, ChequeBounced, ChequeFuture,
+    RegisterCheque, cheques as cheque_contract,
 };
 use wl_kernel::documents::today;
-use wl_kernel::invoicing::{InvoiceFuture, InvoiceId, InvoiceStatus, InvoiceSummary, Invoicer};
+use wl_kernel::invoicing::{
+    InvoiceFuture, InvoiceId, InvoiceStatus, InvoiceSummary, InvoiceWrittenOff, Invoicer,
+    WriteOffAnswer,
+};
 use wl_kernel::notify::{MessageId, Notifier, NotifyFuture, NotifyRecipient, NotifyRequest};
 use wl_kernel::parties::{PartyDirectory, PartyFuture, PartyKind, PartyStatus, PartySummary};
 use wl_kernel::payments::{
@@ -153,6 +157,10 @@ struct Ledger {
     invoices: Vec<InvoiceSummary>,
     allocations: Vec<AllocateCall>,
     drafts: usize,
+    /// Whether a write-off waits for an approval (above the limit).
+    approval: bool,
+    /// The write-offs asked for, with the approval request when one waits.
+    write_offs: Vec<(InvoiceId, Option<i64>)>,
 }
 
 /// An `Invoicer` that holds invoices in memory and records every call.
@@ -188,6 +196,70 @@ impl RecordingInvoicer {
     /// How many invoices were drafted.
     pub fn drafts(&self) -> usize {
         self.0.lock().unwrap().drafts
+    }
+
+    /// Whether the next write-offs wait for an approval, as above the
+    /// `FIN.ACL.15` limit (the default: they are made at once).
+    pub fn require_approval(&self, on: bool) {
+        self.0.lock().unwrap().approval = on;
+    }
+
+    /// The invoices a write-off was asked for, oldest first.
+    pub fn write_offs(&self) -> Vec<InvoiceId> {
+        self.0
+            .lock()
+            .unwrap()
+            .write_offs
+            .iter()
+            .map(|(id, _)| *id)
+            .collect()
+    }
+
+    /// The approval request of the write-off asked for `id`, if one waits.
+    pub fn request_of(&self, id: InvoiceId) -> Option<i64> {
+        self.0
+            .lock()
+            .unwrap()
+            .write_offs
+            .iter()
+            .rev()
+            .find(|(invoice, _)| *invoice == id)
+            .and_then(|(_, request)| *request)
+    }
+
+    /// Flags the invoice `id` as disputed.
+    pub fn set_disputed(&self, id: InvoiceId, disputed: bool) {
+        let mut ledger = self.0.lock().unwrap();
+        if let Some(invoice) = ledger.invoices.iter_mut().find(|i| i.id == id) {
+            invoice.disputed = disputed;
+        }
+    }
+
+    /// Sets the balance of the invoice `id`, as when the party pays.
+    pub fn set_balance(&self, id: InvoiceId, balance: i64) {
+        let mut ledger = self.0.lock().unwrap();
+        if let Some(invoice) = ledger.invoices.iter_mut().find(|i| i.id == id) {
+            invoice.balance = balance;
+        }
+    }
+
+    /// Marks the invoice `id` written off; its summary, if it exists.
+    fn mark_written_off(&self, id: InvoiceId) -> Option<InvoiceSummary> {
+        let mut ledger = self.0.lock().unwrap();
+        let invoice = ledger.invoices.iter_mut().find(|i| i.id == id)?;
+        invoice.status = InvoiceStatus::WrittenOff;
+        Some(invoice.clone())
+    }
+
+    /// The status of the invoice `id`.
+    pub fn status_of(&self, id: InvoiceId) -> Option<InvoiceStatus> {
+        self.0
+            .lock()
+            .unwrap()
+            .invoices
+            .iter()
+            .find(|i| i.id == id)
+            .map(|i| i.status)
     }
 }
 
@@ -240,6 +312,93 @@ impl Invoicer for RecordingInvoicer {
             });
         }
         Box::pin(async move { result })
+    }
+
+    fn write_off<'a>(
+        &'a self,
+        state: &'a AppState,
+        _by: &'a AuthUser,
+        id: InvoiceId,
+        _reason_code: &'a str,
+        _reason_text: Option<&'a str>,
+    ) -> InvoiceFuture<'a, WriteOffAnswer> {
+        Box::pin(async move {
+            let (refusal, approval, request) = {
+                let mut ledger = self.0.lock().unwrap();
+                let found = ledger.invoices.iter().find(|i| i.id == id).cloned();
+                let refusal = match found {
+                    None => Some("The invoice was not found.".to_owned()),
+                    Some(i) if i.disputed => Some("The invoice is disputed.".to_owned()),
+                    Some(i) if i.balance <= 0 || !i.status.is_open() => {
+                        Some("The invoice has no balance to write off.".to_owned())
+                    }
+                    Some(_) => None,
+                };
+                let approval = ledger.approval;
+                let request = (refusal.is_none() && approval)
+                    .then(|| ledger.write_offs.iter().filter(|(_, r)| r.is_some()).count() as i64 + 1);
+                if refusal.is_none() {
+                    ledger.write_offs.push((id, request));
+                }
+                (refusal, approval, request)
+            };
+            if let Some(message) = refusal {
+                return Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, message));
+            }
+            if approval {
+                return Ok(WriteOffAnswer::Pending {
+                    request: request.unwrap_or_default(),
+                });
+            }
+            let summary = self.mark_written_off(id).expect("the invoice exists");
+            state.emit(written_off_event(&summary)).await?;
+            Ok(WriteOffAnswer::WrittenOff)
+        })
+    }
+}
+
+fn written_off_event(invoice: &InvoiceSummary) -> InvoiceWrittenOff {
+    InvoiceWrittenOff {
+        invoice: invoice.id,
+        party: invoice.party,
+        source: Subject::new("property.lease", 9),
+        amount: invoice.balance,
+        reason_code: "other".to_owned(),
+        approver: None,
+    }
+}
+
+/// Charges that can be invoiced: `register` a charge, and `invoice` makes an
+/// issued invoice of its amount in the shared ledger.
+#[derive(Clone)]
+pub struct RecordingCharges {
+    invoices: RecordingInvoicer,
+    charges: Arc<Mutex<Vec<(i64, PartyId, i64)>>>,
+}
+
+impl RecordingCharges {
+    /// Knows the charge `id` of `party` for `amount` fils.
+    pub fn register(&self, id: i64, party: PartyId, amount: i64) {
+        self.charges.lock().unwrap().push((id, party, amount));
+    }
+}
+
+impl ChargeInvoicer for RecordingCharges {
+    fn invoice<'a>(
+        &'a self,
+        _state: &'a AppState,
+        charge: &'a Subject,
+    ) -> ChequeFuture<'a, Option<InvoiceId>> {
+        let known = self
+            .charges
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|(id, _, _)| *id == charge.subject_id)
+            .copied();
+        let invoice = known
+            .map(|(id, party, amount)| self.invoices.add(party, &format!("INV-CHG-{id}"), amount));
+        Box::pin(async move { Ok(invoice) })
     }
 }
 
@@ -615,6 +774,8 @@ pub struct Booted {
     pub cheque_resolved: Recorded<ChequeBounceResolved>,
     /// The bounce fee charges asked of invoicing.
     pub fees: RecordingFees,
+    /// The charges that can be invoiced.
+    pub charges: RecordingCharges,
 }
 
 impl Booted {
@@ -1144,6 +1305,44 @@ impl Booted {
         user
     }
 
+    /// `by` writes off the bounced `cheque` for `reason`.
+    pub async fn write_off_cheque(&self, by: &User, cheque: &Cheque, reason: &str) -> TestResponse {
+        self.cheque_action(by, cheque, "write_off", &[("reason", reason)])
+            .await
+    }
+
+    /// The approvers say yes to the waiting write-off of `invoice`: the
+    /// invoice is written off and `InvoiceWrittenOff` arrives.
+    pub async fn approve_invoice_write_off(&self, invoice: InvoiceId) {
+        let summary = self
+            .invoices
+            .mark_written_off(invoice)
+            .expect("the invoice exists");
+        self.state()
+            .emit(written_off_event(&summary))
+            .await
+            .expect("the event is handled");
+    }
+
+    /// The approvers end the waiting write-off request of `invoice` with
+    /// `decision`.
+    pub async fn end_invoice_write_off(&self, invoice: InvoiceId, decision: ApprovalEnd) {
+        let request = self
+            .invoices
+            .request_of(invoice)
+            .expect("a write-off waits for the invoice");
+        self.state()
+            .emit(ApprovalDecided {
+                request,
+                decision,
+                approvers: Vec::new(),
+                subject: invoice.subject(),
+                state_returned_to: None,
+            })
+            .await
+            .expect("the event is handled");
+    }
+
     /// Moves the clock forward to `date` at `hour:minute` UTC.
     pub fn travel_to(&self, date: &str, hour: u32, minute: u32) {
         let target = date
@@ -1197,6 +1396,11 @@ pub async fn boot_with(module: WlPayments, gateway: FakeGateway) -> Booted {
     let notifier: Arc<dyn Notifier> = Arc::new(notices.clone());
     let invoicer: Arc<dyn Invoicer> = Arc::new(invoices.clone());
     let bounce_fees: Arc<dyn BounceFees> = Arc::new(fees.clone());
+    let charges = RecordingCharges {
+        invoices: invoices.clone(),
+        charges: Arc::new(Mutex::new(Vec::new())),
+    };
+    let charge_invoicer: Arc<dyn ChargeInvoicer> = Arc::new(charges.clone());
     let app = App::new()
         .module(Auth::new())
         .module(Permissions)
@@ -1205,7 +1409,8 @@ pub async fn boot_with(module: WlPayments, gateway: FakeGateway) -> Booted {
         .provide(directory)
         .provide(notifier)
         .provide(invoicer)
-        .provide(bounce_fees);
+        .provide(bounce_fees)
+        .provide(charge_invoicer);
     let app = record(app, &received);
     let app = record(app, &reversed);
     let app = record(app, &refund_paid);
@@ -1246,5 +1451,6 @@ pub async fn boot_with(module: WlPayments, gateway: FakeGateway) -> Booted {
         cheque_bounced,
         cheque_resolved,
         fees,
+        charges,
     }
 }
