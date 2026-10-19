@@ -1476,14 +1476,20 @@ impl Invoicer for InvoiceDesk {
 
 // ---- the payment recorder -----------------------------------------------------
 
-/// A payment recorder that only takes refund requests.
+/// A payment recorder that takes refund requests and records the payments the
+/// vertical makes (an owner payout).
 #[derive(Clone, Default)]
-pub struct Refunds(Arc<Mutex<Vec<RefundRequest>>>);
+pub struct Refunds(Arc<Mutex<Vec<RefundRequest>>>, Arc<Mutex<Vec<(RecordPayment, Option<i64>)>>>);
 
 impl Refunds {
     /// The refunds asked for.
     pub fn asked(&self) -> Vec<RefundRequest> {
         self.0.lock().unwrap().clone()
+    }
+
+    /// The payments recorded, oldest first, with the user who recorded them.
+    pub fn payments(&self) -> Vec<(RecordPayment, Option<i64>)> {
+        self.1.lock().unwrap().clone()
     }
 }
 
@@ -1499,10 +1505,28 @@ impl PaymentRecorder for Refunds {
     fn record<'a>(
         &'a self,
         _state: &'a AppState,
-        _payment: RecordPayment,
-        _by: Option<i64>,
+        payment: RecordPayment,
+        by: Option<i64>,
     ) -> PaymentFuture<'a, PaymentSummary> {
-        Box::pin(async { Err(unsupported()) })
+        Box::pin(async move {
+            let mut all = self.1.lock().unwrap();
+            all.push((payment.clone(), by));
+            let id = i64::try_from(all.len()).unwrap_or(0);
+            Ok(PaymentSummary {
+                id: PaymentId(id),
+                number: Some(format!("PV-{id:04}")),
+                party: payment.party,
+                legal_entity_id: payment.legal_entity_id,
+                direction: payment.direction,
+                method: payment.method,
+                amount: payment.amount,
+                allocated: 0,
+                unallocated: payment.amount,
+                currency: payment.currency.clone(),
+                status: wl_kernel::payments::PaymentStatus::Received,
+                date: payment.date.unwrap_or_else(today),
+            })
+        })
     }
 
     fn allocate<'a>(
@@ -2018,6 +2042,14 @@ pub async fn boot() -> Booted {
         .module(Permissions)
         .module(property::Property)
         .module(fakes);
+    // What wl-parties registers: an exception for a blocked party is decided by
+    // the compliance role.
+    wl_kernel::PolicyDefault::new(wl_kernel::BLOCK_EXCEPTION_ACTION)
+        .with_step(
+            wl_kernel::approvals::Step::one_of(["compliance"])
+                .requiring(wl_kernel::BLOCK_EXCEPTION_ACTION),
+        )
+        .register();
     let config = wl_kernel::ClientConfig::parse(CLIENT).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     let dir = views.path().to_path_buf();
