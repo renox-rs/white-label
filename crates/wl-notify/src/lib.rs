@@ -20,6 +20,7 @@ pub mod otp;
 pub mod pages;
 pub mod reactions;
 pub mod recipients;
+pub mod release;
 pub mod render;
 pub mod send;
 pub mod send_window;
@@ -203,6 +204,8 @@ impl Module for WlNotify {
         broadcast_machine::register();
         channels::register(app);
         app.job::<SendMessage>();
+        // Deferred messages whose time has come go back to the queue.
+        release::schedule(app);
         // Fallback and give-up: `NTF.RUL.01` runs the type's reactions.
         app.provide(self.reactions.clone());
         app.job::<RunGiveUpReaction>();

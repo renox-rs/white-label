@@ -16,8 +16,9 @@
 //! run by the send job in [`crate::send`], which stores the provider's id,
 //! the attempts and the error with them; `fall_back` and `give_up` are run
 //! in the same transaction as the last `fail` by [`crate::give_up`] (the
-//! "next channel is allowed" guard is its channel choice); `defer`,
-//! `release`, `deliver` and `mark_read` have no caller yet.
+//! "next channel is allowed" guard is its channel choice); `defer` (which stores `scheduled_for`) is run by `send` when a window or the
+//! quiet hours hold a message, `release` by [`crate::release`]; `deliver` and
+//! `mark_read` have no caller yet.
 
 use renox::prelude::*;
 use renox::state_machine::{Machine, StateMachine, Transition, Transitioned};

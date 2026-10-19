@@ -12,9 +12,12 @@ use std::time::Duration;
 
 use renox::auth::permissions::Scope;
 use renox::auth::{Permissions, permissions};
+use renox::chrono::NaiveDateTime;
+use renox::db::DateTime;
 use renox::prelude::*;
 use renox::testing::TestApp;
 use wl_kernel::automation::AutomationFailed;
+use wl_kernel::consents::{ConsentFuture, Consents};
 use wl_kernel::notify::{
     self, Category, ContactKind, ContactPointInvalidated, ContactPurpose, ContactRelation,
     GiveUpReaction, MessageFailed, MessageGaveUp, MessageId, MessageSuppressed,
@@ -25,12 +28,12 @@ use wl_kernel::parties::{
     InvalidatedContact, PartyDirectory, PartyFuture, PartyStatus, PartySummary, RelatedContact,
 };
 use wl_kernel::tickets::{OpenTicket, TaskComment, TaskCreator, TicketFuture, TicketId, TicketRef};
-use wl_kernel::{ClientConfig, PartyId, Subject};
+use wl_kernel::{BusinessCalendar, ClientConfig, PartyId, Subject};
 use wl_notify::channels::ProviderFuture;
 use wl_notify::reactions::HandlerFuture;
 use wl_notify::{
-    ChannelProvider, GiveUpContext, GiveUpHandler, Message, Outgoing, SendError, StepOutcome,
-    WlNotify,
+    ChannelProvider, Clock, GiveUpContext, GiveUpHandler, Message, Outgoing, SendError,
+    StepOutcome, WlNotify,
 };
 
 /// The pages extend the app's layout; a package test has no app, so it
@@ -888,8 +891,69 @@ impl TaskCreator for Tasks {
     }
 }
 
+/// A Dubai wall-clock time, `2026-10-19 12:00`, as an instant.
+pub fn dubai(text: &str) -> DateTime {
+    let local = NaiveDateTime::parse_from_str(text, "%Y-%m-%d %H:%M").expect("a date and time");
+    BusinessCalendar::default().from_local(local)
+}
+
+/// The module clock of a test: fixed at noon in Dubai, inside every send
+/// window and outside the quiet hours, until a test sets it.
+#[derive(Clone)]
+pub struct TestClock(Arc<Mutex<DateTime>>);
+
+impl TestClock {
+    fn noon() -> Self {
+        Self(Arc::new(Mutex::new(dubai("2026-10-19 12:00"))))
+    }
+
+    /// Says `at` from now on.
+    pub fn set(&self, at: &str) {
+        *self.0.lock().unwrap() = dubai(at);
+    }
+
+    /// The instant now.
+    pub fn now(&self) -> DateTime {
+        *self.0.lock().unwrap()
+    }
+
+    fn clock(&self) -> Clock {
+        let shared = Arc::clone(&self.0);
+        Clock::from_fn(move || *shared.lock().unwrap())
+    }
+}
+
+/// Marketing consent for every party on every channel.
+struct EveryoneConsents;
+
+impl Consents for EveryoneConsents {
+    fn has_consent<'a>(
+        &'a self,
+        _db: &'a Db,
+        _party: PartyId,
+        purpose: &'a str,
+        _channel: NotifyChannel,
+    ) -> ConsentFuture<'a, bool> {
+        let yes = purpose == "marketing";
+        Box::pin(async move { Ok(yes) })
+    }
+
+    fn withdraw<'a>(
+        &'a self,
+        _db: &'a Db,
+        _party: PartyId,
+        _purpose: &'a str,
+        _channel: NotifyChannel,
+        _source: &'a str,
+    ) -> ConsentFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
+}
+
 /// The app under test with its scripts and what it emitted.
 pub struct Booted {
+    /// The module clock: noon in Dubai until a test sets it.
+    pub clock: TestClock,
     /// The app.
     pub app: TestApp,
     /// Keeps the views directory alive.
@@ -1119,7 +1183,18 @@ pub async fn boot_without_tickets() -> Booted {
     boot_with(&[GiveUpReaction::StaffTask], false).await
 }
 
+/// Like [`boot`], with every party consenting to marketing (the default app
+/// has no consents, so a marketing message is suppressed `no_consent`).
+pub async fn boot_consenting() -> Booted {
+    boot_full(&[], true, true).await
+}
+
 async fn boot_with(real: &[GiveUpReaction], ticketing: bool) -> Booted {
+    boot_full(real, ticketing, false).await
+}
+
+async fn boot_full(real: &[GiveUpReaction], ticketing: bool, consenting: bool) -> Booted {
+    let clock = TestClock::noon();
     register_types();
     let tasks = Tasks::default();
     let views = tempfile::tempdir().expect("a temporary views directory");
@@ -1166,7 +1241,14 @@ async fn boot_with(real: &[GiveUpReaction], ticketing: bool) -> Booted {
         .module(Auth::new())
         .module(Permissions)
         .module(module)
-        .provide(directory);
+        .provide(directory)
+        .provide(clock.clock());
+    let app = if consenting {
+        let consents: Arc<dyn Consents> = Arc::new(EveryoneConsents);
+        app.provide(consents)
+    } else {
+        app
+    };
     let app = if ticketing {
         let creator: Arc<dyn TaskCreator> = Arc::new(tasks.clone());
         app.provide(creator)
@@ -1189,6 +1271,7 @@ async fn boot_with(real: &[GiveUpReaction], ticketing: bool) -> Booted {
         .expect("wl:install runs");
     app.kernel().seed().await.expect("the seeders run");
     Booted {
+        clock,
         app,
         _views: views,
         email,

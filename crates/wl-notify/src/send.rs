@@ -18,17 +18,20 @@
 
 use std::time::Duration;
 
+use renox::db::DateTime;
 use renox::prelude::*;
 use renox::state_machine::{Outcome, StateMachine, TransitionError};
 use serde::{Deserialize, Serialize};
-use wl_kernel::notify::MessageFailed;
+use wl_kernel::notify::{Category, MessageFailed, Urgency};
 
 use crate::broadcast_recipients;
 use crate::channels::{self, Outgoing, SendError, SendErrorKind};
 use crate::give_up::{self, Applied};
-use crate::machine::{FAIL, RETRY, SEND, SUPPRESS};
-use crate::message::{INVALID_CONTACT_POINT, Message, MessageStatus};
+use crate::machine::{DEFER, FAIL, RETRY, SEND, SUPPRESS};
+use crate::message::{INVALID_CONTACT_POINT, Message, MessageStatus, RecipientKind};
+use crate::send_window::SendWindow;
 use crate::suppressions;
+use crate::window;
 
 /// Sends on one channel before the message is given up on that channel
 /// (wl-notify §7 "3 attempts with backoff; then fall back").
@@ -72,6 +75,8 @@ pub enum SendOutcome {
     Skipped,
     /// The provider accepted it.
     Sent,
+    /// A send window or the quiet hours hold it: `deferred` until the time.
+    Deferred(DateTime),
     /// It failed and is queued again for a send after the wait.
     Retrying(Duration),
     /// It failed for good on its channel and fell back: the new message's id.
@@ -96,7 +101,15 @@ impl Job for SendMessage {
 }
 
 /// Sends message `id` once, if it is `queued`.
+///
+/// "Now" is the module's clock ([`crate::clock`]).
 pub async fn send(state: &AppState, id: i64) -> Result<SendOutcome> {
+    send_at(state, id, crate::clock::clock(state).now()).await
+}
+
+/// Sends message `id` once, if it is `queued`, as of `now`: the instant the
+/// send window and the quiet hours are checked against and `sent_at` is set to.
+pub async fn send_at(state: &AppState, id: i64, now: DateTime) -> Result<SendOutcome> {
     let Some(message) = Message::find(&state.db, id).await? else {
         return Ok(SendOutcome::Skipped);
     };
@@ -110,6 +123,10 @@ pub async fn send(state: &AppState, id: i64) -> Result<SendOutcome> {
     if let Some(outcome) = consent_guard(state, &message).await? {
         outcome.emit(state).await?;
         return Ok(SendOutcome::Skipped);
+    }
+    if let Some(until) = hold_until(state, &message, now).await? {
+        defer(state, &message, until).await?;
+        return Ok(SendOutcome::Deferred(until));
     }
     let provider = channels::providers(state)
         .for_channel(message.channel)
@@ -135,7 +152,7 @@ pub async fn send(state: &AppState, id: i64) -> Result<SendOutcome> {
         ),
     };
     match result {
-        Ok(provider_message_id) => sent(state, message, name, provider_message_id).await,
+        Ok(provider_message_id) => sent(state, message, name, provider_message_id, now).await,
         Err(error) => failed(state, message, name, error).await,
     }
 }
@@ -187,6 +204,42 @@ async fn consent_guard(state: &AppState, message: &Message) -> Result<Option<Out
     Ok(Some(outcome))
 }
 
+/// The `send` guard "send window and quiet hours" (§4.1, `NTF.RUL.02`): when
+/// the message must wait, the time it is released. The category comes from the
+/// message's type, as the message does not store it.
+///
+/// - `marketing` outside its channel's window waits for the next opening;
+/// - any other category of normal urgency to an external recipient (not a
+///   staff user) inside the quiet hours waits for their end. An `urgent` type
+///   is never held.
+async fn hold_until(
+    state: &AppState,
+    message: &Message,
+    now: DateTime,
+) -> Result<Option<DateTime>> {
+    let def = crate::notifier::type_def(&state.db, &message.type_key).await?;
+    if def.category == Category::Marketing {
+        let window = SendWindow::for_channel(&state.db, message.channel).await?;
+        return Ok((!window::in_window(window, now)).then(|| window::next_opening(window, now)));
+    }
+    let external = message.recipient_kind != RecipientKind::User;
+    if def.urgency == Urgency::Normal && external && window::in_quiet_hours(now) {
+        return Ok(Some(window::next_quiet_end(now)));
+    }
+    Ok(None)
+}
+
+/// `defer`: stores `scheduled_for`, then holds the message.
+async fn defer(state: &AppState, message: &Message, until: DateTime) -> Result {
+    let mut message = message.clone();
+    let mut tx = state.db.begin().await?;
+    message.scheduled_for = Some(until);
+    message.save(&mut tx).await?;
+    let outcome = run(&message, DEFER, None, &mut tx).await?;
+    tx.commit().await?;
+    outcome.emit(state).await
+}
+
 /// Whether `contacts` knows contact point `point` and it is not valid.
 pub fn point_is_invalid(contacts: Option<&wl_kernel::notify::PartyContacts>, point: i64) -> bool {
     contacts.is_some_and(|c| c.points.iter().any(|p| p.id == point && !p.valid))
@@ -198,13 +251,14 @@ async fn sent(
     mut message: Message,
     provider: Option<&str>,
     provider_message_id: String,
+    now: DateTime,
 ) -> Result<SendOutcome> {
     let mut tx = state.db.begin().await?;
     // The accepted send is an attempt too.
     message.attempts += 1;
     message.provider = provider.map(str::to_owned);
     message.provider_message_id = Some(provider_message_id);
-    message.sent_at = Some(renox::db::now());
+    message.sent_at = Some(now);
     message.save(&mut tx).await?;
     let outcome = run(&message, SEND, None, &mut tx).await?;
     tx.commit().await?;
