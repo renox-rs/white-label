@@ -428,19 +428,20 @@ mod tests {
             without_budget: Vec::new(),
             income: Vec::new(),
             expense: vec![row(BudgetKind::Expense, 1_000_000, 1_050_000, "Marketing")],
-            drawings: vec![row(BudgetKind::OwnerDrawings, 250_000, 300_000, "Owner drawings")],
+            drawings: vec![row(BudgetKind::OwnerDrawings, 250_000, 300_000, "Partner A")],
             drawings_items: Vec::new(),
             mapping_changed: None,
         };
         let without = table(&report, false, &english_text);
-        assert!(!without.iter().any(|r| r.name == "Owner drawings"));
+        // The section heading is also called "Owner drawings", so the category has its own name.
+        assert!(!without.iter().any(|r| r.name == "Partner A"));
         let total = without
             .iter()
             .find(|r| r.name == "Total owner drawings")
             .expect("the drawings total");
         assert_eq!(total.actual, "3,000.00");
         let with = table(&report, true, &english_text);
-        assert!(with.iter().any(|r| r.name == "Owner drawings"));
+        assert!(with.iter().any(|r| r.name == "Partner A"));
         let marketing = with.iter().find(|r| r.name == "Marketing").unwrap();
         assert_eq!(
             (marketing.variance.as_str(), marketing.percent.as_str()),

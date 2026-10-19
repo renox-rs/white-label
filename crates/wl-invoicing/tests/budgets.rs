@@ -5,6 +5,7 @@ mod support;
 
 use renox::chrono::{Datelike, Months, NaiveDate};
 use renox::prelude::*;
+use wl_invoicing::budget_machine::EXPIRY_HOURS;
 use wl_invoicing::budget::month_start;
 use wl_invoicing::budget_category::{self, CategoryInput};
 use wl_invoicing::budget_lines::{self, LineInput, NewBudget};
@@ -380,7 +381,12 @@ async fn an_expired_approval_returns_the_draft_and_a_discard_frees_the_year() {
         .unwrap();
     t.submit_budget(&revision, &a).await;
     let request = t.budget_request(&revision).await;
-    approvals::expire(t.state(), request.id).await.unwrap();
+    t.app
+        .travel(std::time::Duration::from_secs((EXPIRY_HOURS as u64 + 1) * 60 * 60));
+    t.app
+        .at_travelled_time(approvals::expire(t.state(), request.id))
+        .await
+        .unwrap();
     let back = t.budget_now(&revision).await;
     assert_eq!(back.status, BudgetStatus::Draft);
     assert_eq!(back.return_reason.as_deref(), Some("approval expired"));
