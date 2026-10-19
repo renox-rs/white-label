@@ -15,6 +15,7 @@ pub mod documents;
 pub mod entities;
 pub mod held_funds;
 pub mod invoicing;
+pub mod late_entries;
 pub mod machines;
 pub mod manifest;
 pub mod notify;
@@ -82,6 +83,9 @@ pub use invoicing::{
     SupplierDebitNoteSettled, SupplierDebitNoteStatus, SupplierDebitNoteSummary,
     SupplierDebitNotes, SupplierReturnDispatched, SupplierReturnLine, UnallocateBill, VatCategory,
 };
+pub use late_entries::{
+    ApprovalWhy, Assessment, FiredRun, LateEntryDef, LateEntryRecorded, Limits, NewRecord, Period,
+};
 pub use machines::SubjectMachine;
 pub use manifest::Manifest;
 pub use notify::{
@@ -126,6 +130,8 @@ pub mod permissions {
     pub const AUTOMATIONS_RETRY: &str = "automations.retry";
     /// Void a record entered in error (a module may declare its own alias).
     pub const RECORDS_VOID: &str = "records.void";
+    /// Approve a late entry beyond N hours or in a closed period (`PLT.ACL.10`).
+    pub const LATE_ENTRIES_APPROVE: &str = "late_entries.approve";
 }
 
 /// The templates, compiled in. An app replaces one with a file of the same

@@ -1318,3 +1318,54 @@ async fn without_invoicing_debit_notes_are_off_and_cost_is_a_no_op() {
         Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
     ));
 }
+
+/// #28: the late-entry contract. Thirty minutes is not late and thirty
+/// minutes and a second is; a closed period needs approval, a locked one is
+/// refused; a module opts an entity in with `LateEntryDef`.
+#[test]
+fn the_late_entry_check_and_the_opt_in_registry() {
+    use renox::db::DateTime;
+    use wl_kernel::late_entries::{self, assess};
+    use wl_kernel::{ApprovalWhy, Assessment, LateEntryDef, Limits, Period};
+
+    let at = |text: &str| text.parse::<DateTime>().expect("an instant");
+    let entered = at("2026-11-03T06:00:00Z");
+    let limits = Limits::default();
+    assert_eq!(limits.flag_after_minutes, 30);
+    assert_eq!(limits.approval_after_hours, 24);
+    assert_eq!(
+        assess(limits, at("2026-11-03T05:30:00Z"), entered, &Period::Open),
+        Assessment::OnTime
+    );
+    assert!(
+        assess(limits, at("2026-11-03T05:29:59Z"), entered, &Period::Open).needs_reason()
+    );
+    assert!(matches!(
+        assess(limits, at("2026-11-03T04:00:00Z"), entered, &Period::Closed),
+        Assessment::NeedsApproval {
+            why: ApprovalWhy::ClosedPeriod,
+            ..
+        }
+    ));
+    assert!(matches!(
+        assess(
+            limits,
+            at("2026-11-03T04:00:00Z"),
+            entered,
+            &Period::Locked("locked".into())
+        ),
+        Assessment::Refused(_)
+    ));
+
+    LateEntryDef::of("bookings.check_in", |_tx, _new| Box::pin(async { Ok(1) }))
+        .business_time("checked_in_at")
+        .parent("booking")
+        .register();
+    let def = late_entries::get("bookings.check_in").expect("registered");
+    assert_eq!(def.business_time_field(), Some("checked_in_at"));
+    assert_eq!(def.parent_field(), Some("booking"));
+    assert_eq!(
+        wl_kernel::permissions::LATE_ENTRIES_APPROVE,
+        "late_entries.approve"
+    );
+}

@@ -270,6 +270,10 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_kernel.voids.cannot_change",
         "A voided record cannot be changed.",
     ),
+    (
+        "wl_kernel.late_entries.not_opted_in",
+        "This kind of record does not take late entries.",
+    ),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.

@@ -52,6 +52,7 @@ What is here so far:
 | The consent contract: `Consents` (`has_consent`, `withdraw`; `NoConsents` grants nothing), `provide_consents`, `MARKETING` | wl-notify §4.3, `NTF.ACL.01` | `consents` |
 | The broadcast contract: `BroadcastRequest`, `BroadcastRequesters` + `RequesterCheck` (`NoRequesters` answers `Ended`, so every marketing request is refused), `BroadcastId`, `BroadcastCompleted`, `BroadcastCancelled` | wl-notify §4.3, §6, `NTF.ACL.04` | `broadcast` |
 | `AutomationFailed`, the event of a failed rule run | §4 | `automation` |
+| Late entries: `late_entries::assess` (flag after M minutes, approval after N hours or in a closed period, refused in a locked one), `LateEntryDef` (a module's opt-in with its `create` handler, business-time and parent-subject fields and period check), `NewRecord`, `FiredRun`, `LateEntryRecorded`, permission `late_entries.approve` | §5.13, `PLT.ACL.10` | `late_entries` |
 | The business calendar: `BusinessCalendar` (Asia/Dubai, Sat–Sun weekend, 09:00–18:00, `[calendar]` holidays), `add_working` and `add_working_days` (same clock time, no working hours) | §6 | `calendar` |
 | Scope of a subject: `scopes::scope_of` (its machine, then a resolver from `scopes::register`, then global) and `COMPANY_ADMIN_ROLE` (`"admin"`, the fallback holder of a task) | §4.1 | `scopes` |
 
