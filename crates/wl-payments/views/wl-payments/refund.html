@@ -7,6 +7,18 @@
     <rx-page-header :title="title" :subtitle="party_name" :back="route('wl_payments.refunds.index')" :back-label="tx['refunds.title']"
                     :badge="status_label" :badge-kind="status_kind">
       <template rx-if="can_fail"><rx-include template="wl-payments/_fail_sheet.html"/></template>
+      <rx-confirm rx-if="can_retry" :id="'retry-refund-' ~ refund.id" :label="tx['refunds.retry.action']" :action="route('wl_payments.refunds.retry', refund.id)" method="POST"
+                  :title="tx['refunds.retry.title']" :message="tx['refunds.retry.message']" :confirm-label="tx['refunds.retry.action']" icon="refresh-cw"/>
+      <rx-action-sheet rx-if="can_change" :id="'change-method-refund-' ~ refund.id" :label="tx['refunds.change.action']" :action="route('wl_payments.refunds.change_method', refund.id)"
+                       :title="tx['refunds.change.title']" :description="tx['refunds.change.description']" :submit-label="tx['refunds.change.submit']" icon="shuffle">
+        <rx-select name="method" :label="tx['refunds.change.method']" :options="change_methods" :id="'change-method-select-' ~ refund.id" required/>
+        <rx-input name="details" :label="tx['refunds.change.details']" :hint="tx['refunds.change.details_hint']" :id="'change-method-details-' ~ refund.id"/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_cancel" :id="'cancel-refund-' ~ refund.id" :label="tx['refunds.cancel.action']" :action="route('wl_payments.refunds.cancel', refund.id)"
+                       :title="tx['refunds.cancel.title']" :description="tx['refunds.cancel.description']" :submit-label="tx['refunds.cancel.submit']"
+                       icon="ban" variant="danger" danger>
+        <rx-textarea name="reason" :label="tx['refunds.cancel.reason']" :id="'cancel-refund-reason-' ~ refund.id" required/>
+      </rx-action-sheet>
       <template rx-if="actions">
         <rx-transition-actions :actions="actions" action="/refunds/{{ refund.id }}/transitions"/>
       </template>
@@ -19,7 +31,10 @@
         <rx-entry :label="tx['refunds.source']" :value="source_label" :url="source_link"/>
         <rx-entry :label="tx['fields.reference']" :value="refund.reference" copyable/>
         <rx-entry :label="tx['refunds.gateway_txn']" :value="refund.gateway_txn" copyable/>
+        <rx-entry :label="tx['refunds.payee_details']" :value="refund.payee_details" copyable/>
+        <rx-entry :label="tx['refunds.retries']" :value="retries"/>
         <rx-entry :label="tx['refunds.reason']" :value="refund.reason" span="2"/>
+        <rx-entry :label="tx['refunds.cancel_reason']" rx-if="refund.cancel_reason" :value="refund.cancel_reason" span="2"/>
         <rx-entry :label="tx['refunds.paid_at']" :value="refund.paid_at" format="datetime"/>
         <rx-entry :label="tx['fields.created_at']" :value="refund.created_at" format="datetime"/>
       </rx-infolist>

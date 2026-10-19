@@ -4,14 +4,17 @@
 //! [*] --> requested --approve--> approved --pay--> paid
 //! requested --reject--> rejected (terminal)
 //! approved --pay_by_system--> paid   (the gateway confirmed a refund)
-//! approved, paid --fail, fail_by_system--> failed --retry--> approved
+//! approved, paid --fail, fail_by_system--> failed
+//! failed --retry, retry_by_system--> approved
+//! failed --change_method--> approved   (cash, the original card, a cheque in the party's name)
+//! failed --change_method_for_approval--> requested   (new bank details)
 //! failed --cancel--> cancelled (terminal)
 //! ```
 //!
 //! All six states are declared with their tones. This part builds
-//! `approve`, `reject`, `pay`, `pay_by_system`, and `fail` and `fail_by_system`
-//! ([`crate::refund_fail`]); `retry`, `change_method` and
-//! `cancel` come with the refund issues that follow, into this `machine()`.
+//! `approve`, `reject`, `pay`, `pay_by_system`, `fail` and `fail_by_system`
+//! ([`crate::refund_fail`]) and `retry`, `change_method` and `cancel`
+//! ([`crate::refund_recover`]).
 //!
 //! `approve` is the approval of `FIN.ACL.04`: it needs `refunds.approve`
 //! and never the user who requested the refund (segregation of duties,
@@ -28,6 +31,7 @@ use crate::permissions;
 use crate::refund::{Refund, RefundStatus};
 use crate::refund_attempt::{AttemptOutcome, RefundAttempt};
 use crate::refund_fail;
+use crate::refund_recover;
 
 /// The `approve` transition's name.
 pub const APPROVE: &str = "approve";
@@ -106,6 +110,7 @@ impl StateMachine for Refund {
 fn transitions() -> Vec<Transition<Refund>> {
     let mut all = vec![approve(), reject(), pay(), pay_by_system()];
     all.extend(refund_fail::transitions());
+    all.extend(refund_recover::transitions());
     all
 }
 
@@ -117,7 +122,11 @@ fn approve() -> Transition<Refund> {
         .from([RefundStatus::Requested])
         .to(RefundStatus::Approved)
         .guard("not_the_requester", |refund: &Refund, ctx| {
-            let problem = sod_problem(refund.requested_by, ctx.actor().map(|user| user.id));
+            let approver = ctx.actor().map(|user| user.id);
+            // Whoever requested the refund, and whoever set its new bank
+            // details after a failure, cannot approve it.
+            let problem = sod_problem(refund.requested_by, approver)
+                .or_else(|| sod_problem(refund.details_by, approver));
             Box::pin(async move { problem.map_or(Ok(()), Err) })
         })
         .effect(|refund: &Refund, ctx, tx| {

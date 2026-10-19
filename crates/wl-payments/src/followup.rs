@@ -29,6 +29,9 @@ pub enum FollowupKind {
     /// Raise a charge for money the party owes after a reversal.
     #[default]
     RaiseCharge,
+    /// Pay a failed refund another way (`FIN.RUL.21`): a transfer (new bank
+    /// details need an approval), a cheque in the party's name or cash.
+    ChangeMethod,
 }
 
 /// Whether a follow-up task is still to do.
@@ -63,6 +66,8 @@ pub struct FollowupTask {
     pub currency: String,
     /// The refunds it links.
     pub refund_ids: Json<Vec<i64>>,
+    /// The refund a `change_method` task is about.
+    pub refund_id: Option<i64>,
     /// The text shown to the role.
     pub text: String,
     /// The role that does it, e.g. `accountant`.
@@ -125,6 +130,28 @@ impl FollowupTask {
         self.status == FollowupStatus::Open
     }
 
+    /// An open `change_method` task for the failed `refund`, for the
+    /// accountant: pay it by another method (`FIN.RUL.21`).
+    pub fn change_method(refund: &Refund) -> Self {
+        FollowupTask {
+            kind: FollowupKind::ChangeMethod,
+            party_id: refund.party_id,
+            payment_id: None,
+            amount: refund.amount,
+            currency: refund.currency.clone(),
+            refund_ids: Json(vec![refund.id]),
+            refund_id: Some(refund.id),
+            text: format!(
+                "Change the method of refund #{} ({})",
+                refund.id,
+                money_text(&refund.currency, refund.amount)
+            ),
+            role: ACCOUNTANT_ROLE.to_owned(),
+            status: FollowupStatus::Open,
+            ..Default::default()
+        }
+    }
+
     /// The open tasks of `role`, oldest first.
     pub async fn open_for(db: &Db, role: &str) -> Result<Vec<FollowupTask>> {
         FollowupTask::query()
@@ -144,9 +171,45 @@ impl FollowupTask {
             .await
     }
 
+    /// The open tasks about the refund `refund_id`, oldest first.
+    pub async fn open_of_refund(db: &Db, refund_id: i64) -> Result<Vec<FollowupTask>> {
+        FollowupTask::query()
+            .where_(FollowupTask::REFUND_ID.eq(refund_id))
+            .where_(FollowupTask::STATUS.eq(FollowupStatus::Open))
+            .order_by(FollowupTask::ID)
+            .get(db)
+            .await
+    }
+
+    /// Marks the open tasks about the refund `refund_id` done, by nobody: the
+    /// refund left `failed`, so the work is no longer to do. Returns how
+    /// many were closed.
+    pub async fn close_for_refund(db: &Db, refund_id: i64) -> Result<usize> {
+        let open = Self::open_of_refund(db, refund_id).await?;
+        let closed = open.len();
+        for mut task in open {
+            task.status = FollowupStatus::Done;
+            task.done_at = Some(renox::db::now());
+            task.save(db).await?;
+        }
+        Ok(closed)
+    }
+
     /// Saves `task` unless its payment already has a task of its kind
-    /// (unique per payment); returns the new task, or `None` for the repeat.
+    /// (unique per payment), or its refund an open one; returns the new task,
+    /// or `None` for the repeat.
     pub async fn create_once(db: &Db, mut task: FollowupTask) -> Result<Option<FollowupTask>> {
+        if let Some(refund_id) = task.refund_id {
+            let open = FollowupTask::query()
+                .where_(FollowupTask::KIND.eq(task.kind))
+                .where_(FollowupTask::REFUND_ID.eq(refund_id))
+                .where_(FollowupTask::STATUS.eq(FollowupStatus::Open))
+                .count(db)
+                .await?;
+            if open > 0 {
+                return Ok(None);
+            }
+        }
         if let Some(payment_id) = task.payment_id {
             let existing = FollowupTask::query()
                 .where_(FollowupTask::KIND.eq(task.kind))

@@ -193,6 +193,28 @@ pub async fn covers(db: &Db, refund: &Refund) -> Result<bool> {
     Ok(refund.amount <= unallocated(db, &payment).await? - paid)
 }
 
+/// Whether the source of the failed `refund` has room to claim its amount
+/// again when the refund goes back to `approved` or `requested` (`retry`,
+/// `change_method`): a refund out of a payment or the party's credit must
+/// fit in what is refundable after the refunds that claim it now. A source
+/// another module owns is vouched for by its owner.
+pub async fn room_for(db: &Db, refund: &Refund) -> Result<bool> {
+    match refund.source_kind.as_str() {
+        "payment" => {
+            let Some(payment_id) = refund.source_payment() else {
+                return Ok(false);
+            };
+            let Some(payment) = Payment::find(db, payment_id.0).await? else {
+                return Ok(false);
+            };
+            Ok(refund.amount <= refundable_payment(db, &payment).await?)
+        }
+        "party_credit" => Ok(refund.amount
+            <= refundable_credit(db, refund.party(), &refund.currency).await?),
+        _ => Ok(true),
+    }
+}
+
 /// The payments made in advance for `prepaid`, oldest first.
 pub async fn payments_for(db: &Db, prepaid: &Subject) -> Result<Vec<PaymentSummary>> {
     let payments = Payment::query()

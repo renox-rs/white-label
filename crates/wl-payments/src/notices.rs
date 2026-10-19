@@ -12,6 +12,15 @@
 //! - `payments.refund_delayed`: the party is told its refund is delayed
 //!   (transactional, e-mail, EN); skipped while the party is blocked.
 //!
+//! - `payments.refund_method_changed`: the party is told how its failed
+//!   refund will be paid now (transactional, e-mail, EN); skipped while the
+//!   party is blocked.
+//! - `payments.refund_cancelled`: the party is told the refund is cancelled
+//!   and the amount stays on its credit (transactional, e-mail, EN); skipped
+//!   while the party is blocked.
+//! - `payments.refund_method_task`: the holders of the accountant role get a
+//!   notice for the task to pay a failed refund another way (`FIN.RUL.21`).
+//!
 //! While `notify` is off the kernel's `NoNotifier` sends nothing to a party
 //! and a bell notice to each user.
 
@@ -21,7 +30,7 @@ use renox::prelude::*;
 use renox::serde_json::json;
 use wl_kernel::notify::{self, Category, NotificationTypeDef, NotifyChannel, NotifyRequest};
 use wl_kernel::parties::PartyStatus;
-use wl_kernel::payments::RefundFailureKind;
+use wl_kernel::payments::{PaymentMethod, RefundFailureKind};
 
 use crate::followup::{ACCOUNTANT_ROLE, FollowupTask, money_text};
 use crate::payment::Payment;
@@ -39,6 +48,15 @@ pub const REFUND_FAILED: &str = "payments.refund_failed";
 
 /// The type of the party's notice that its refund is delayed.
 pub const REFUND_DELAYED: &str = "payments.refund_delayed";
+
+/// The type of the party's notice of the new method of its failed refund.
+pub const REFUND_METHOD_CHANGED: &str = "payments.refund_method_changed";
+
+/// The type of the party's notice that its failed refund is cancelled.
+pub const REFUND_CANCELLED: &str = "payments.refund_cancelled";
+
+/// The type of the accountants' notice of a task to change a refund's method.
+pub const REFUND_METHOD_TASK: &str = "payments.refund_method_task";
 
 const MODULE: &str = "payments";
 const GROUP: &str = "payments";
@@ -119,8 +137,50 @@ pub fn refund_delayed_type() -> NotificationTypeDef {
         )
 }
 
+/// The notification type [`REFUND_METHOD_CHANGED`].
+pub fn refund_method_changed_type() -> NotificationTypeDef {
+    NotificationTypeDef::new(REFUND_METHOD_CHANGED, MODULE)
+        .group(GROUP)
+        .category(Category::Transactional)
+        .template(
+            NotifyChannel::Email,
+            "en",
+            Some(english("wl_payments.refund_method_changed.subject")),
+            english("wl_payments.refund_method_changed.body"),
+        )
+}
+
+/// The notification type [`REFUND_CANCELLED`].
+pub fn refund_cancelled_type() -> NotificationTypeDef {
+    NotificationTypeDef::new(REFUND_CANCELLED, MODULE)
+        .group(GROUP)
+        .category(Category::Transactional)
+        .template(
+            NotifyChannel::Email,
+            "en",
+            Some(english("wl_payments.refund_cancelled.subject")),
+            english("wl_payments.refund_cancelled.body"),
+        )
+}
+
+/// The notification type [`REFUND_METHOD_TASK`].
+pub fn refund_method_task_type() -> NotificationTypeDef {
+    NotificationTypeDef::new(REFUND_METHOD_TASK, MODULE)
+        .group(GROUP)
+        .category(Category::Transactional)
+        .template(
+            NotifyChannel::Email,
+            "en",
+            Some(english("wl_payments.refund_method_task.subject")),
+            english("wl_payments.refund_method_task.body"),
+        )
+}
+
 /// Registers the types with the kernel registry.
 pub(crate) fn register_types() {
+    notify::register_type(refund_method_changed_type());
+    notify::register_type(refund_cancelled_type());
+    notify::register_type(refund_method_task_type());
     notify::register_type(returned_type());
     notify::register_type(followup_type());
     notify::register_type(refund_failed_type());
@@ -212,6 +272,87 @@ pub(crate) async fn refund_failed(
             .data(refund_delayed_data(refund));
         notify::notifier(state).notify(state, request).await?;
     }
+    Ok(())
+}
+
+/// The template variables of the party's method-changed notice.
+fn method_changed_data(refund: &Refund, method: PaymentMethod) -> renox::serde_json::Value {
+    json!({
+        "amount": money_text(&refund.currency, refund.amount),
+        "method": english(&format!("wl_payments.method.{}", method.as_str())),
+    })
+}
+
+/// The template variables of the party's refund-cancelled notice.
+fn cancelled_data(refund: &Refund) -> renox::serde_json::Value {
+    json!({ "amount": money_text(&refund.currency, refund.amount) })
+}
+
+/// The template variables of the accountants' change-method task notice.
+fn method_task_data(refund: &Refund, task: &FollowupTask) -> renox::serde_json::Value {
+    json!({
+        "text": task.text,
+        "reason": refund.failure_reason.clone().unwrap_or_default(),
+        "link": format!("/refunds/{}", refund.id),
+    })
+}
+
+/// After a `change_method` of `refund` to `method`: the party is told how it
+/// will be paid, unless it is blocked.
+pub(crate) async fn method_changed(
+    state: &AppState,
+    refund: &Refund,
+    method: PaymentMethod,
+) -> Result {
+    let status = wl_kernel::parties::directory(state)
+        .status(&state.db, refund.party())
+        .await?;
+    if tells_party(status) {
+        let request = NotifyRequest::new(REFUND_METHOD_CHANGED, refund.refund_id().subject())
+            .to_party(refund.party())
+            .data(method_changed_data(refund, method));
+        notify::notifier(state).notify(state, request).await?;
+    }
+    Ok(())
+}
+
+/// After a `cancel` of `refund`: the party is told, unless it is blocked.
+pub(crate) async fn cancelled(state: &AppState, refund: &Refund) -> Result {
+    let status = wl_kernel::parties::directory(state)
+        .status(&state.db, refund.party())
+        .await?;
+    if tells_party(status) {
+        let request = NotifyRequest::new(REFUND_CANCELLED, refund.refund_id().subject())
+            .to_party(refund.party())
+            .data(cancelled_data(refund));
+        notify::notifier(state).notify(state, request).await?;
+    }
+    Ok(())
+}
+
+/// Tells each holder of the accountant role about the `change_method`
+/// `task` of the failed `refund`, one message per user.
+pub(crate) async fn change_method_task(
+    state: &AppState,
+    refund: &Refund,
+    task: &FollowupTask,
+) -> Result {
+    let mut ids: Vec<i64> = users_with_role_in(&state.db, ACCOUNTANT_ROLE, &Scope::global())
+        .await?
+        .iter()
+        .map(|user| user.id)
+        .collect();
+    ids.sort_unstable();
+    ids.dedup();
+    if ids.is_empty() {
+        return Ok(());
+    }
+    let mut request = NotifyRequest::new(REFUND_METHOD_TASK, refund.refund_id().subject())
+        .data(method_task_data(refund, task));
+    for id in ids {
+        request = request.to_user(id);
+    }
+    notify::notifier(state).notify(state, request).await?;
     Ok(())
 }
 
@@ -360,6 +501,46 @@ mod tests {
         assert!(!tells_party(Some(PartyStatus::Blocked)));
         assert!(tells_party(Some(PartyStatus::Active)));
         assert!(tells_party(None));
+    }
+
+    #[test]
+    fn the_method_and_cancel_notices_tell_the_party_the_amount() {
+        let data = method_changed_data(&refund(), PaymentMethod::Cheque);
+        let def = refund_method_changed_type();
+        let body = &def
+            .template_for(NotifyChannel::Email, "en")
+            .expect("en")
+            .body;
+        let text = notify::fill(body, &data);
+        assert!(text.contains("AED 1,000.00"));
+        assert!(text.contains("Cheque"));
+        assert!(!text.contains("{{"));
+
+        let def = refund_cancelled_type();
+        let body = &def
+            .template_for(NotifyChannel::Email, "en")
+            .expect("en")
+            .body;
+        let text = notify::fill(body, &cancelled_data(&refund()));
+        assert!(text.contains("AED 1,000.00"));
+        assert!(text.contains("credit"));
+    }
+
+    #[test]
+    fn the_method_task_notice_names_the_task_and_links_the_refund() {
+        let failed = Refund {
+            failure_reason: Some("card expired".into()),
+            ..refund()
+        };
+        let task = FollowupTask::change_method(&failed);
+        assert_eq!(task.text, "Change the method of refund #5 (AED 1,000.00)");
+        let data = method_task_data(&failed, &task);
+        let def = refund_method_task_type();
+        let template = def.template_for(NotifyChannel::Email, "en").expect("en");
+        let text = notify::fill(&template.body, &data);
+        assert!(text.contains("card expired"));
+        assert!(text.contains("/refunds/5"));
+        assert!(!text.contains("{{"));
     }
 
     #[test]

@@ -407,6 +407,8 @@ pub(crate) struct TaskRow {
     party: String,
     amount: String,
     payment_id: Option<i64>,
+    /// The failed refund a `change_method` task is about.
+    refund_id: Option<i64>,
     created_at: Option<DateTime>,
     open: bool,
     status: String,
@@ -511,6 +513,7 @@ async fn task_rows(state: &AppState, t: Text<'_>, tasks: &[FollowupTask]) -> Res
             party: party_name(state, task.party()).await?,
             amount: money_text(&task.currency, task.amount),
             payment_id: task.payment_id,
+            refund_id: task.refund_id,
             created_at: task.created_at,
             open: task.is_open(),
             status: t(if task.is_open() {

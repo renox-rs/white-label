@@ -21,6 +21,8 @@ pub mod refund;
 pub mod refund_attempt;
 mod refund_fail;
 mod refund_machine;
+pub mod refund_recover;
+pub mod refund_retry;
 pub mod refund_pages;
 pub mod reverse;
 pub mod seed;
@@ -150,6 +152,21 @@ impl WlPayments {
         self
     }
 
+    /// Sets when and how often a failed gateway refund is retried
+    /// (`FIN.RUL.21`, §7: once, after 24 hours unless set). `hours` at least
+    /// 1; `max_retries` counts the automatic and the manual retries of one
+    /// refund together.
+    ///
+    /// # Panics
+    ///
+    /// For fewer than one hour: a programming error.
+    pub fn refund_retry(mut self, hours: i64, max_retries: i64) -> Self {
+        assert!(hours >= 1, "a retry waits at least one hour");
+        self.config.refund_retry_hours = hours;
+        self.config.refund_max_retries = max_retries.max(0);
+        self
+    }
+
     /// Installs the payment gateway; without one, [`NoGateway`] knows no
     /// disputes.
     pub fn gateway(mut self, gateway: impl Gateway) -> Self {
@@ -250,6 +267,9 @@ impl Module for WlPayments {
         refund_machine::register(app);
         // `RefundFailed` and its notices after a commit.
         refund_fail::register(app);
+        // `FIN.RUL.21`: a failed gateway refund is retried once; otherwise
+        // the accountant changes its method.
+        refund_retry::register(app);
     }
 }
 

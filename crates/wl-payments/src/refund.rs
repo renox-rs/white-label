@@ -175,6 +175,14 @@ pub struct Refund {
     pub failure_kind: Option<RefundFailureKind>,
     /// The reason given for it.
     pub failure_reason: Option<String>,
+    /// The details a changed method pays to: an IBAN, or the name on a
+    /// cheque that is not the party's (`change_method`).
+    pub payee_details: Option<String>,
+    /// The user who set them: new bank details are approved by someone else
+    /// (`FIN.ACL.04`).
+    pub details_by: Option<i64>,
+    /// Why a failed refund was cancelled.
+    pub cancel_reason: Option<String>,
     /// The lifecycle state; changed only by a transition.
     pub status: RefundStatus,
     /// When the row was created.
