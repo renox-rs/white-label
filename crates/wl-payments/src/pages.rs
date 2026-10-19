@@ -5,6 +5,7 @@
 //! | `GET /payments` | `wl_payments.index` | `payments.view` |
 //! | `GET /payments/tasks` | `wl_payments.tasks` | `payments.view` |
 //! | `GET /payments/{id}` | `wl_payments.show` | `payments.view` |
+//! | `GET /payments/drawings/{id}` | `wl_payments.drawing` | `payments.view` |
 //! | `GET /payments/new` | `wl_payments.create` | `payments.record` |
 //! | `POST /payments` | `wl_payments.store` | `payments.record` |
 //! | `POST /payments/{id}/allocate` | `wl_payments.allocate` | `payments.record` |
@@ -28,6 +29,7 @@ use renox::validation::{Errors, ValidationError};
 use serde::{Deserialize, Serialize};
 use wl_kernel::LegalEntity;
 use wl_kernel::PartyId;
+use wl_kernel::drawings::PURPOSE;
 use wl_kernel::invoicing::{InvoiceSummary, allocation_proposal, invoicer};
 use wl_kernel::parties::directory;
 use wl_kernel::payments::{
@@ -38,6 +40,7 @@ use crate::allocate::allocate;
 use crate::allocation::Allocation;
 use crate::config_of;
 use crate::credit;
+use crate::drawings::{self, DrawingInput, DrawingStatus, PaymentDrawing};
 use crate::followup::{ACCOUNTANT_ROLE, FollowupTask, MANAGER_ROLE, mark_done, money_text};
 use crate::payment::Payment;
 use crate::permissions;
@@ -67,6 +70,8 @@ pub fn routes() -> Routes {
                 .name("wl_payments.tasks")
                 .get("/payments/{id}", show)
                 .name("wl_payments.show")
+                .get("/payments/drawings/{id}", show_drawing)
+                .name("wl_payments.drawing")
                 .group(
                     "/payments",
                     "wl_payments.transitions.",
@@ -225,6 +230,10 @@ pub(crate) struct NewPage {
     methods: Vec<(String, String)>,
     /// The active legal entities, `(id, code - name)`.
     entities: Vec<(i64, String)>,
+    /// The purposes of a payment, `(code, label)`: none or owner drawings.
+    purposes: Vec<(String, String)>,
+    /// A drawing or a repayment by the owner, `(code, label)`.
+    drawing_directions: Vec<(String, String)>,
 }
 
 /// The enabled methods and active entities, for the form.
@@ -252,10 +261,16 @@ async fn form_options(
 /// `GET /payments/new`: the record form.
 async fn new(State(state): State<AppState>, lang: Lang) -> Result<View> {
     let (methods, entities) = form_options(&state, &texts_in(&lang)).await?;
+    let t = texts_in(&lang);
     Ok(View::typed(NewPage {
         tx: texts::all(&lang),
         methods,
         entities,
+        purposes: vec![
+            (String::new(), t("purpose.none")),
+            (PURPOSE.to_owned(), t("purpose.owner_drawings")),
+        ],
+        drawing_directions: options(&t, "drawing_direction", &["out", "in"]),
     }))
 }
 
@@ -290,6 +305,17 @@ pub struct PaymentForm {
     pub cheque_bank: Option<String>,
     /// A cheque's date.
     pub cheque_date: Option<NaiveDate>,
+    /// `owner_drawings` for an owner drawing or a repayment by the owner
+    /// (`FIN.ACL.21`); empty for an ordinary payment.
+    #[validate(max = 32)]
+    pub purpose: Option<String>,
+    /// The code of the drawings category; the seeded `owner_drawings` when
+    /// empty.
+    #[validate(max = 64)]
+    pub drawing_category: Option<String>,
+    /// `out` (a drawing, the default) or `in` (a repayment by the owner).
+    #[validate(max = 8)]
+    pub drawing_direction: Option<String>,
 }
 
 /// A validation error on `field`, with the form's input filled in again.
@@ -383,6 +409,9 @@ async fn store(
         );
     }
     request = request.method_details(Value::Object(details));
+    if filled(&form.purpose) == Some(PURPOSE) {
+        return store_drawing(&state, &user, &t, &form, &request).await;
+    }
     let payment = record(&state, Some(&user), &request)
         .await
         .map_err(TransitionError::into_error)?;
@@ -391,6 +420,109 @@ async fn store(
         Redirect::route("wl_payments.show", &[&payment.id])?,
     )
         .into_response())
+}
+
+/// A drawing or a repayment from the record form (`FIN.ACL.21`): a drawing is
+/// kept with its details and waits for its approval (nothing is recorded), a
+/// repayment by the owner is recorded at once.
+async fn store_drawing(
+    state: &AppState,
+    user: &AuthUser,
+    t: Text<'_>,
+    form: &PaymentForm,
+    request: &RecordPayment,
+) -> Result<Response> {
+    let input = DrawingInput {
+        legal_entity_id: request.legal_entity_id,
+        category: filled(&form.drawing_category)
+            .unwrap_or(crate::expense_category::OWNER_DRAWINGS)
+            .to_owned(),
+        party: request.party,
+        method: request.method,
+        method_details: request.method_details.clone(),
+        amount: request.amount,
+        currency: request.currency.clone(),
+        date: request.date,
+        reference: request.reference.clone(),
+        bank_account: request.bank_account.clone(),
+    };
+    let refusal = |error: Error| match error {
+        Error::Status(StatusCode::UNPROCESSABLE_ENTITY, message) => {
+            invalid("purpose", message, form)
+        }
+        other => other,
+    };
+    if filled(&form.drawing_direction) == Some("in") {
+        let payment = drawings::repay(state, user, &input).await.map_err(refusal)?;
+        return Ok((
+            Toast::success(t("recorded")),
+            Redirect::route("wl_payments.show", &[&payment.id])?,
+        )
+            .into_response());
+    }
+    let drawing = drawings::request(state, user, &input).await.map_err(refusal)?;
+    let toast = match drawing.status {
+        DrawingStatus::Recorded => t("drawings.recorded"),
+        _ => t("drawings.requested"),
+    };
+    Ok((
+        Toast::success(toast),
+        Redirect::route("wl_payments.drawing", &[&drawing.id])?,
+    )
+        .into_response())
+}
+
+/// What the page of a drawing request needs.
+#[derive(Serialize, ViewData)]
+#[view(template = "wl-payments/drawing.html")]
+pub(crate) struct DrawingPage {
+    tx: Texts,
+    drawing: PaymentDrawing,
+    title: String,
+    status_label: String,
+    status_kind: &'static str,
+    party_name: String,
+    entity_name: String,
+    method_label: String,
+    amount: String,
+    /// The recorded payment's page, if any.
+    payment_link: String,
+}
+
+/// The badge colour of a drawing request's status.
+fn drawing_kind(status: DrawingStatus) -> &'static str {
+    match status {
+        DrawingStatus::Requested => "warning",
+        DrawingStatus::Approved => "info",
+        DrawingStatus::Recorded => "success",
+        DrawingStatus::Rejected => "error",
+    }
+}
+
+/// `GET /payments/drawings/{id}`: an owner drawing request and where it
+/// stands. The approvers' "Needs your action" card links here.
+async fn show_drawing(
+    State(state): State<AppState>,
+    lang: Lang,
+    Found(drawing): Found<PaymentDrawing>,
+) -> Result<View> {
+    let t = texts_in(&lang);
+    let entity = LegalEntity::find(&state.db, drawing.legal_entity_id).await?;
+    Ok(View::typed(DrawingPage {
+        tx: texts::all(&lang),
+        title: format!("{} #{}", t("drawings.title"), drawing.id),
+        status_label: t(&format!("drawings.status.{}", drawing.status.as_str())),
+        status_kind: drawing_kind(drawing.status),
+        party_name: party_name(&state, drawing.party()).await?,
+        entity_name: entity.map(|e| e.code).unwrap_or_default(),
+        method_label: t(&format!("method.{}", drawing.method.as_str())),
+        amount: money_text(&drawing.currency, drawing.amount),
+        payment_link: drawing
+            .payment_id
+            .map(|id| format!("/payments/{id}"))
+            .unwrap_or_default(),
+        drawing,
+    }))
 }
 
 /// One allocation as the payment page shows it.

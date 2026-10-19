@@ -17,6 +17,9 @@
           <rx-input name="cheque_number" :label="tx['fields.cheque_number']"/>
           <rx-input name="cheque_bank" :label="tx['fields.cheque_bank']"/>
           <rx-input name="cheque_date" type="date" :label="tx['fields.cheque_date']"/>
+          <rx-select name="purpose" :label="tx['fields.purpose']" :options="purposes" :selected="''"/>
+          <rx-input name="drawing_category" :label="tx['fields.drawing_category']" :hint="tx['fields.drawing_category_hint']"/>
+          <rx-select name="drawing_direction" :label="tx['fields.drawing_direction']" :options="drawing_directions" :selected="'out'"/>
         </rx-form-grid>
         <div class="rx-card__footer">
           <rx-link-button route="wl_payments.index" :label="tx['cancel']" variant="plain"/>

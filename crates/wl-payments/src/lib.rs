@@ -26,7 +26,9 @@ pub mod deposit_deductions;
 mod deposit_events;
 mod deposit_machine;
 pub mod deposit_pages;
+pub mod drawings;
 mod events;
+pub mod expense_category;
 pub mod followup;
 pub mod gateway;
 mod machine;
@@ -77,6 +79,10 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "wl-payments/show.html",
         include_str!("../views/wl-payments/show.html"),
+    ),
+    (
+        "wl-payments/drawing.html",
+        include_str!("../views/wl-payments/drawing.html"),
     ),
     (
         "wl-payments/_allocate_sheet.html",
@@ -392,9 +398,12 @@ impl Module for WlPayments {
         app.model::<cheque_settle::ChequeReplacement>();
         app.model::<cheque_write_off::ChequeWriteOff>();
         app.model::<FollowupTask>();
+        app.model::<drawings::PaymentDrawing>();
+        app.model::<expense_category::ExpenseCategory>();
         app.view_data::<pages::IndexPage>()
             .view_data::<pages::NewPage>()
             .view_data::<pages::ShowPage>()
+            .view_data::<pages::DrawingPage>()
             .view_data::<pages::TasksPage>()
             .view_data::<refund_pages::IndexPage>()
             .view_data::<refund_pages::ShowPage>()
@@ -414,6 +423,10 @@ impl Module for WlPayments {
         });
         // `db:seed`: the demo receipts.
         app.seeder(|state: AppState| async move { seed::run(&state).await.map(|_| ()) });
+        // The seeded expense categories, with *Owner drawings* (§7).
+        app.seeder(|state: AppState| async move {
+            expense_category::install(&state.db).await.map(|_| ())
+        });
         // In the app group of the staff sidebar; the label is the app's
         // `nav.payments` text.
         app.nav(
@@ -485,6 +498,9 @@ impl Module for WlPayments {
         notices::register_types();
         // `PaymentReceived` and `PaymentReversed` after a commit.
         events::register(app);
+        // `FIN.ACL.21`: an owner drawing is recorded only after its approval.
+        drawings::register_types();
+        drawings::register(app);
         // `DepositSettled` after a commit.
         deposit_events::register(app);
         // The held amount follows the part refund of an adjustment.
