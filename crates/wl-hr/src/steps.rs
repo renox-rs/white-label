@@ -190,6 +190,16 @@ pub async fn holds_manage(state: &AppState, user: i64, scopes: &[Subject]) -> Re
     Ok(false)
 }
 
+/// Whether steps of `onboarding` can still be done or waived: it is in
+/// progress, or it completed and an optional step is still open. A cancelled
+/// onboarding has no open step left.
+fn accepts_work(onboarding: &Onboarding) -> bool {
+    matches!(
+        onboarding.status,
+        OnboardingStatus::InProgress | OnboardingStatus::Completed
+    )
+}
+
 /// The reason, trimmed; `None` when blank.
 fn trimmed(text: &str) -> Option<String> {
     let text = text.trim();
@@ -216,7 +226,7 @@ pub async fn mark_done(
         employee,
         scopes,
     } = ctx;
-    if onboarding.status != OnboardingStatus::InProgress {
+    if !accepts_work(&onboarding) {
         return Ok(Err(StepRefused::OnboardingClosed));
     }
     if step.status != StepStatus::Open {
@@ -340,7 +350,7 @@ pub async fn waive(
         Ok(ctx) => ctx,
         Err(refused) => return Ok(Err(refused)),
     };
-    if onboarding.status != OnboardingStatus::InProgress {
+    if !accepts_work(&onboarding) {
         return Ok(Err(StepRefused::OnboardingClosed));
     }
     if step.status != StepStatus::Open {
@@ -443,7 +453,7 @@ pub async fn start_checklist(
         Ok(ctx) => ctx,
         Err(refused) => return Ok(Err(refused)),
     };
-    if onboarding.status != OnboardingStatus::InProgress {
+    if !accepts_work(&onboarding) {
         return Ok(Err(StepRefused::OnboardingClosed));
     }
     if step.status != StepStatus::Open {
