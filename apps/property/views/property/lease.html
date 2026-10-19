@@ -101,6 +101,17 @@
           <rx-select name="credit" :label="tx['terminate.credit']" :options="[['refund', tx['terminate.credit_refund']], ['keep', tx['terminate.credit_keep']]]" :selected="'refund'" :id="'terminate-credit-' ~ lease.id"/>
         </rx-action-sheet>
       </template>
+      <template rx-if="can_force">
+        <rx-action-sheet :id="'force-' ~ lease.id" :label="tx['force.action']" :action="route('property.lease_force_terminate', lease.id)"
+                         :title="tx['force.action']" :description="tx['force.description']" :submit-label="tx['force.submit']" icon="shield-alert" variant="danger" danger>
+          <rx-select name="reason" :label="tx['force.reason']" :options="[['abandoned', tx['force.reason_abandoned']], ['eviction_executed', tx['force.reason_eviction_executed']]]" :selected="'abandoned'" :id="'force-reason-' ~ lease.id"/>
+          <rx-input name="move_out" type="date" :label="tx['force.move_out']" :hint="tx['force.move_out_hint']" :value="today" :id="'force-move-out-' ~ lease.id" required/>
+          <rx-textarea name="basis" :label="tx['force.basis']" :hint="tx['force.basis_hint']" :id="'force-basis-' ~ lease.id"/>
+          <rx-select name="defects" :label="tx['inspection.defects']" :options="[['no', tx['terms.no']], ['yes', tx['terms.yes']]]" :selected="'no'" :id="'force-defects-' ~ lease.id"/>
+          <rx-input name="keep" :label="tx['force.keep']" :hint="tx['force.keep_hint']" :id="'force-keep-' ~ lease.id"/>
+          <rx-input name="hand_back" :label="tx['force.hand_back']" :id="'force-hand-back-' ~ lease.id"/>
+        </rx-action-sheet>
+      </template>
       <template rx-if="can_ejari_cancel">
         <rx-action-sheet :id="'ejari-cancel-' ~ lease.id" :label="tx['ejari.cancel']" :action="route('property.lease_ejari_cancellation', lease.id)"
                          :title="tx['ejari.cancel']" :description="tx['ejari.cancel_description']" :submit-label="tx['ejari.cancel']" icon="stamp">
@@ -175,6 +186,8 @@
         <rx-entry :label="tx['terminate.rent_due_until']" :value="lease.rent_due_until" :placeholder="tx['none']"/>
         <rx-entry :label="tx['terminate.credited']" :value="lease.termination_credit" :placeholder="tx['none']"/>
         <rx-entry :label="tx['ejari.cancelled_on']" :value="lease.ejari_cancelled_on" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['force.reason']" :value="lease.force_reason" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['force.basis']" :value="lease.force_basis" :placeholder="tx['none']"/>
         <rx-entry :label="tx['cancel_reason']" :value="lease.cancel_reason" :placeholder="tx['none']"/>
         <rx-entry :label="tx['cancel_forfeit']" :value="lease.cancel_forfeit" :placeholder="tx['none']"/>
         <rx-entry :label="tx['cancel_forfeit_clause']" :value="lease.cancel_forfeit_clause" :placeholder="tx['none']"/>

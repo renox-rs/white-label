@@ -21,6 +21,7 @@
 //! | `POST /property/leases/{id}/legal-cases/clear` | `property.lease_legal_case_clear` | `leases.manage` in the building |
 //! | `POST /property/leases/{id}/move-out-inspection` | `property.lease_inspection` | `leases.manage` in the building |
 //! | `POST /property/leases/{id}/terminate` | `property.lease_terminate` | `leases.manage` in the building |
+//! | `POST /property/leases/{id}/force-terminate` | `property.lease_force_terminate` | `leases.manage` in the building |
 //! | `POST /property/leases/{id}/ejari-cancellation` | `property.lease_ejari_cancellation` | `leases.manage` in the building |
 //! | `POST /property/leases/{id}/waive-deposit` | `property.lease_waive_deposit` | `leases.activate` in the building |
 //! | `POST /property/leases/{id}/ejari` | `property.lease_ejari` | `leases.activate` in the building |
@@ -44,6 +45,7 @@ use crate::charge::{ChargeStatus, LeaseCharge, RENT};
 use crate::cheques::{ChequeEntry, of_version, register_cheques};
 use crate::lease::{Lease, LeaseStatus, RenewalDecision, VersionKind};
 use crate::cancellation::{self, CancelRequest};
+use crate::force::{self, ForceReason, ForceRequest};
 use crate::chase;
 use crate::lease_machine::{ACTIVATE, CANCEL, SUBMIT};
 use crate::legal_case::{self, CaseOutcome, CaseType, LegalCase, NewCase};
@@ -98,6 +100,8 @@ pub fn routes() -> Routes {
         .name("property.lease_inspection")
         .post("/property/leases/{id}/terminate", terminate)
         .name("property.lease_terminate")
+        .post("/property/leases/{id}/force-terminate", force_terminate)
+        .name("property.lease_force_terminate")
         .post("/property/leases/{id}/ejari-cancellation", ejari_cancellation)
         .name("property.lease_ejari_cancellation")
         .post("/property/leases/{id}/waive-deposit", waive_deposit)
@@ -369,6 +373,10 @@ pub struct LeaseView {
     pub termination_credit: String,
     /// The day the Ejari registration was cancelled.
     pub ejari_cancelled_on: String,
+    /// Why the lease was ended by force, in the page's language.
+    pub force_reason: String,
+    /// The legal basis stated for repossessing an abandoned unit.
+    pub force_basis: String,
 }
 
 /// What a lease page needs.
@@ -409,6 +417,7 @@ pub(crate) struct ShowPage {
     can_inspect: bool,
     can_terminate: bool,
     can_ejari_cancel: bool,
+    can_force: bool,
     today: String,
 }
 
@@ -680,6 +689,12 @@ async fn show(
             String::new()
         },
         ejari_cancelled_on: lease.ejari_cancelled_on.map(|d| d.to_string()).unwrap_or_default(),
+        force_reason: lease
+            .force_reason
+            .as_deref()
+            .map(|reason| text(&lang, &format!("force.reason_{reason}")))
+            .unwrap_or_default(),
+        force_basis: lease.force_basis.clone().unwrap_or_default(),
     };
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
@@ -739,6 +754,7 @@ async fn show(
             && lease.status == LeaseStatus::Terminated
             && lease.ejari_number.is_some()
             && lease.ejari_cancelled_on.is_none(),
+        can_force: manages && !pending && LeaseStatus::RUNNING.contains(&lease.status),
         can_cheques: creates
             && !matches!(
                 lease.status,
@@ -1335,6 +1351,71 @@ async fn terminate(
         .await
         .map_err(TransitionError::into_error)?;
     Ok((Toast::success(text(&lang, "terminate.done")), renox::HxRefresh).into_response())
+}
+
+/// The form that requests a forced termination.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct ForceForm {
+    /// `abandoned` or `eviction_executed`.
+    #[serde(default)]
+    pub reason: String,
+    /// The abandonment inspection date or the execution date.
+    #[serde(default)]
+    pub move_out: String,
+    /// The legal basis for repossessing an abandoned unit.
+    #[serde(default)]
+    pub basis: String,
+    /// `yes` when the inspection found defects.
+    #[serde(default)]
+    pub defects: String,
+    /// The ids of the cheques to keep as evidence, separated by commas.
+    #[serde(default)]
+    pub keep: String,
+    /// The ids of the cheques to return, separated by commas.
+    #[serde(default)]
+    pub hand_back: String,
+}
+
+/// The cheque ids in `value`, separated by commas or spaces.
+fn cheque_ids(value: &str, field: &str) -> Result<Vec<i64>> {
+    value
+        .split([',', ' ', ';'])
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .map(|part| whole::<i64>(part, field))
+        .collect()
+}
+
+/// `POST /property/leases/{id}/force-terminate`: the property manager
+/// requests the forced termination; it waits for a holder of
+/// `leases.force_terminate`.
+async fn force_terminate(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<ForceForm>,
+) -> Result<Response> {
+    let reason = ForceReason::parse(&form.reason).ok_or_else(|| {
+        Error::Status(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            text(&lang, "force.reason_required"),
+        )
+    })?;
+    let mut request = ForceRequest::new(reason, required_date(&form.move_out, "move_out")?);
+    request.basis = Some(form.basis).filter(|b| !b.trim().is_empty());
+    request.defects = form.defects.trim() == "yes";
+    request.keep = cheque_ids(&form.keep, "keep")?;
+    request.hand_back = cheque_ids(&form.hand_back, "hand_back")?;
+    let outcome = force::request(&state, &user, id, request)
+        .await
+        .map_err(TransitionError::into_error)?;
+    let key = if outcome.is_pending() {
+        "force.sent"
+    } else {
+        "force.done"
+    };
+    Ok((Toast::success(text(&lang, key)), renox::HxRefresh).into_response())
 }
 
 /// The form that records the Ejari cancellation.

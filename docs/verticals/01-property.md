@@ -925,7 +925,7 @@ role whose holders, in the scope of the document's subject, are told by `DOC.RUL
 | Signed tenancy contract | lease | property manager | no | required on `activate` |
 | Ejari / Tawtheeq certificate | lease | property manager | yes | `PRP.RUL.02`, `PRP.RUL.13` |
 | Tenant acceptance of changed terms | lease | property manager | no | `PRP.ACL.17` |
-| Repossession basis; judgment; execution record (three kinds) | lease | property manager | no | `force_terminate` evidence (`eviction_executed` needs both the judgment and the execution record) |
+| Abandonment inspection (with photos); repossession basis; judgment; execution record (four kinds) | lease | property manager | no | `force_terminate` evidence (`abandoned` needs the inspection and the repossession basis; `eviction_executed` needs both the judgment and the execution record) |
 | Signed management agreement | management agreement | property manager | no | required on `activate` |
 | Civil Defence approval | party (vendor) | maintenance coordinator | yes | `blocks` as above; compliance-critical |
 | Building safety certificate, lift certificate | building | maintenance coordinator | yes | compliance-critical; `DOC.RUL.01` also tells the property manager; no `blocks` |
