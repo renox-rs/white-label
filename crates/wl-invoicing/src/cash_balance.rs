@@ -86,6 +86,28 @@ pub fn enter_problem(balance: &EnterBalance, today: NaiveDate) -> Option<&'stati
     None
 }
 
+/// `text` ("60000", "-1,500.5", "0") as AED fils; negative and zero allowed.
+/// `None` for anything else.
+pub fn parse_balance(text: &str) -> Option<i64> {
+    let text = text.trim().replace(',', "");
+    let (negative, text) = match text.strip_prefix('-') {
+        Some(rest) => (true, rest),
+        None => (false, text.as_str()),
+    };
+    let (whole, fraction) = text.split_once('.').unwrap_or((text, ""));
+    if whole.is_empty() && fraction.is_empty() {
+        return None;
+    }
+    let digits = |s: &str| s.chars().all(|c| c.is_ascii_digit());
+    if !digits(whole) || !digits(fraction) || fraction.len() > 2 {
+        return None;
+    }
+    let whole: i64 = if whole.is_empty() { 0 } else { whole.parse().ok()? };
+    let fraction: i64 = format!("{fraction:0<2}").parse().ok()?;
+    let fils = whole.checked_mul(100)?.checked_add(fraction)?;
+    Some(if negative { -fils } else { fils })
+}
+
 /// Enters `balance` by user `by`.
 ///
 /// # Errors
@@ -204,6 +226,15 @@ mod tests {
             as_of,
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn an_amount_may_be_zero_or_negative() {
+        assert_eq!(parse_balance("60,000"), Some(6_000_000));
+        assert_eq!(parse_balance("-1.5"), Some(-150));
+        assert_eq!(parse_balance("0"), Some(0));
+        assert_eq!(parse_balance("1.234"), None);
+        assert_eq!(parse_balance("x"), None);
     }
 
     #[test]

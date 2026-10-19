@@ -30,6 +30,9 @@ mod budget_pages;
 pub mod budget_reminder;
 pub mod budget_report;
 pub mod cash_balance;
+pub mod cash_forecast;
+pub mod cash_forecast_load;
+mod cash_forecast_pages;
 mod budget_report_pages;
 pub mod budget_variance;
 pub mod config;
@@ -236,6 +239,14 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "wl-invoicing/budget_report.html",
         include_str!("../views/wl-invoicing/budget_report.html"),
+    ),
+    (
+        "wl-invoicing/cash_forecast.html",
+        include_str!("../views/wl-invoicing/cash_forecast.html"),
+    ),
+    (
+        "wl-invoicing/cash_forecast_cell.html",
+        include_str!("../views/wl-invoicing/cash_forecast_cell.html"),
     ),
 ];
 
@@ -575,6 +586,7 @@ impl Module for WlInvoicing {
             .merge(budget_pages::routes())
             .merge(budget_category_pages::routes())
             .merge(budget_report_pages::routes())
+            .merge(cash_forecast_pages::routes())
             .merge(drawing_pages::routes())
     }
 
@@ -629,7 +641,9 @@ impl Module for WlInvoicing {
             .view_data::<budget_pages::FormPage>()
             .view_data::<budget_category_pages::IndexPage>()
             .view_data::<budget_category_pages::FormPage>()
-            .view_data::<budget_report_pages::IndexPage>();
+            .view_data::<budget_report_pages::IndexPage>()
+            .view_data::<cash_forecast_pages::IndexPage>()
+            .view_data::<cash_forecast_pages::CellPage>();
         // The customer write-off notice (§10), sent from the queue.
         app.job::<SendWriteOffNotice>();
         app.templates(|env| {
@@ -736,6 +750,16 @@ impl Module for WlInvoicing {
                 .group("nav.app")
                 .order(46)
                 .permission(permissions::BUDGETS_VIEW),
+        );
+        // The cash-flow forecast (`nav.cash_forecast`); the page checks the
+        // permission against the user's entities.
+        app.nav(
+            "app",
+            NavLink::route("wl_invoicing.cash_forecast", "nav.cash_forecast")
+                .icon("trending-up")
+                .group("nav.app")
+                .order(47)
+                .permission(permissions::CASHFLOW_VIEW),
         );
         // The supplier bills (`nav.supplier_bills`).
         app.nav(
