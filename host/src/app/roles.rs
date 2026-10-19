@@ -142,6 +142,8 @@ pub const ROLES: &[(&str, &[&str])] = &[
             sales::CAMPAIGNS_MANAGE,
             sales::CAMPAIGNS_COSTS_MANAGE,
             sales::ACQUISITION_REPORTS_VIEW,
+            sales::LEADS_VIEW,
+            sales::LEADS_MANAGE,
         ],
     ),
     (
@@ -246,7 +248,15 @@ pub const ROLES: &[(&str, &[&str])] = &[
         ],
     ),
     (TECHNICIAN, &[tickets::VIEW, tickets::WORK]),
-    (MARKETING, &[sales::CAMPAIGNS_VIEW, sales::CAMPAIGNS_MANAGE]),
+    (
+        MARKETING,
+        &[
+            sales::CAMPAIGNS_VIEW,
+            sales::CAMPAIGNS_MANAGE,
+            sales::LEADS_VIEW,
+            sales::LEADS_MANAGE,
+        ],
+    ),
     (
         MARKETING_MANAGER,
         &[
@@ -254,6 +264,8 @@ pub const ROLES: &[(&str, &[&str])] = &[
             sales::CAMPAIGNS_MANAGE,
             sales::CAMPAIGNS_COSTS_MANAGE,
             sales::ACQUISITION_REPORTS_VIEW,
+            sales::LEADS_VIEW,
+            sales::LEADS_MANAGE,
         ],
     ),
     (MEMBER, &[]),
