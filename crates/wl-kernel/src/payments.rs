@@ -30,7 +30,10 @@ use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::invoicing::{CREDIT_NOTE_SUBJECT_TYPE, INVOICE_SUBJECT_TYPE, InvoiceId};
+use crate::invoicing::{
+    CREDIT_NOTE_SUBJECT_TYPE, INVOICE_SUBJECT_TYPE, InvoiceId, SUPPLIER_BILL_SUBJECT_TYPE,
+    SupplierBillId,
+};
 use crate::numbering::{Reset, Series};
 use crate::parties::{PARTY_SUBJECT_TYPE, PartyId};
 use crate::subject::Subject;
@@ -400,6 +403,8 @@ pub enum AllocationTarget {
     /// A deposit held for a source agreement; the money leaves the party's
     /// credit.
     Deposit(DepositId),
+    /// A supplier bill; an outgoing payment pays it.
+    SupplierBill(SupplierBillId),
 }
 
 impl AllocationTarget {
@@ -408,6 +413,7 @@ impl AllocationTarget {
         match self {
             AllocationTarget::Invoice(id) => id.subject(),
             AllocationTarget::Deposit(id) => id.subject(),
+            AllocationTarget::SupplierBill(id) => id.subject(),
         }
     }
 
@@ -417,6 +423,10 @@ impl AllocationTarget {
             Some(AllocationTarget::Invoice(InvoiceId(subject.subject_id)))
         } else if subject.subject_type == DEPOSIT_SUBJECT_TYPE {
             Some(AllocationTarget::Deposit(DepositId(subject.subject_id)))
+        } else if subject.subject_type == SUPPLIER_BILL_SUBJECT_TYPE {
+            Some(AllocationTarget::SupplierBill(SupplierBillId(
+                subject.subject_id,
+            )))
         } else {
             None
         }
@@ -979,6 +989,14 @@ mod tests {
             AllocationTarget::from_subject(&Subject::new("payments.refund", 1)),
             None
         );
+    }
+
+    #[test]
+    fn a_supplier_bill_allocation_target_round_trips_through_its_subject() {
+        let target = AllocationTarget::SupplierBill(SupplierBillId(9));
+        let subject = target.subject();
+        assert_eq!(subject.to_string(), "invoicing.supplier_bill:9");
+        assert_eq!(AllocationTarget::from_subject(&subject), Some(target));
     }
 
     #[test]

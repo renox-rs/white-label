@@ -1187,6 +1187,109 @@ pub struct SupplierBillLine {
     pub bill_status: SupplierBillStatus,
 }
 
+/// Why a supplier bill is reopened (`unallocate`).
+#[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum BillReopenReason {
+    /// The outgoing payment was reversed (`PaymentReversed`).
+    #[default]
+    PaymentReversed,
+    /// A debit note that reduced the bill was cancelled.
+    DebitNoteCancelled,
+}
+
+/// A request to apply money to a supplier bill (`SupplierBills::pay`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PayBill {
+    /// The bill to pay.
+    pub bill: SupplierBillId,
+    /// The money's source: the outgoing payment or debit note.
+    pub source: Subject,
+    /// The amount to apply, in fils of the bill's currency.
+    pub amount: i64,
+    /// The idempotency key, e.g. `payments.allocation:<id>`. A key that was
+    /// already used gives `skipped` and changes nothing.
+    pub key: String,
+}
+
+impl PayBill {
+    /// A payment of `amount` fils from `source` on `bill`, under the
+    /// idempotency `key`.
+    pub fn new(bill: SupplierBillId, source: Subject, amount: i64, key: impl Into<String>) -> Self {
+        Self {
+            bill,
+            source,
+            amount,
+            key: key.into(),
+        }
+    }
+}
+
+/// A request to undo money applied to a supplier bill
+/// (`SupplierBills::unallocate`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UnallocateBill {
+    /// The bill to reopen.
+    pub bill: SupplierBillId,
+    /// The money's source: the payment or debit note applied from.
+    pub source: Subject,
+    /// The amount to give back to the balance, in fils.
+    pub amount: i64,
+    /// The idempotency key, e.g. `payments.allocation:<id>`. A key that was
+    /// already used gives `skipped` and changes nothing.
+    pub key: String,
+    /// Why it is reopened.
+    pub reason: BillReopenReason,
+    /// The payment's reversal reason key (`bank_return`, `entered_in_error`,
+    /// `chargeback`), as text.
+    pub reversal_reason: Option<String>,
+}
+
+impl UnallocateBill {
+    /// An unallocation of `amount` fils from `source` on `bill`, under the
+    /// idempotency `key`.
+    pub fn new(
+        bill: SupplierBillId,
+        source: Subject,
+        amount: i64,
+        key: impl Into<String>,
+        reason: BillReopenReason,
+    ) -> Self {
+        Self {
+            bill,
+            source,
+            amount,
+            key: key.into(),
+            reason,
+            reversal_reason: None,
+        }
+    }
+
+    /// Sets the payment's reversal reason key.
+    pub fn reversal_reason(mut self, reason: impl Into<String>) -> Self {
+        self.reversal_reason = Some(reason.into());
+        self
+    }
+}
+
+/// The outcome of [`SupplierBills::pay`] and [`SupplierBills::unallocate`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BillBalance {
+    /// The bill's state after the call.
+    pub new_status: SupplierBillStatus,
+    /// The bill's open balance after the call, in fils.
+    pub balance: i64,
+    /// Whether the key had been used before: nothing was changed.
+    pub skipped: bool,
+}
+
+/// The 422 of a payment or reopening while invoicing is off.
+fn bill_money_off(id: SupplierBillId) -> Error {
+    Error::Status(
+        StatusCode::UNPROCESSABLE_ENTITY,
+        format!("supplier bill {id} cannot take money: invoicing is not enabled"),
+    )
+}
+
 /// The future a [`SupplierBills`] method returns.
 pub type SupplierBillFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 
@@ -1200,6 +1303,32 @@ pub trait SupplierBills: Send + Sync + 'static {
         db: &'a Db,
         id: SupplierBillLineId,
     ) -> SupplierBillFuture<'a, Option<SupplierBillLine>>;
+
+    /// Applies money to an `approved` or `partially_paid` bill (system
+    /// `pay`/`pay_in_full`). 422 for an amount of 0 or less or above the
+    /// open balance, or a state that takes no payment. The default refuses
+    /// (422): invoicing is not enabled.
+    fn pay<'a>(
+        &'a self,
+        _state: &'a AppState,
+        request: PayBill,
+    ) -> SupplierBillFuture<'a, BillBalance> {
+        Box::pin(async move { Err(bill_money_off(request.bill)) })
+    }
+
+    /// Gives money back to a `partially_paid` or `paid` bill (system
+    /// `unallocate`), returning it to `approved` or `partially_paid`.
+    /// [`SupplierBillReopened`] is emitted; approval, cost, VAT, lines and
+    /// totals are never written. 422 for an amount above what `source`
+    /// applied, or a state that cannot be reopened. The default refuses
+    /// (422): invoicing is not enabled.
+    fn unallocate<'a>(
+        &'a self,
+        _state: &'a AppState,
+        request: UnallocateBill,
+    ) -> SupplierBillFuture<'a, BillBalance> {
+        Box::pin(async move { Err(bill_money_off(request.bill)) })
+    }
 }
 
 /// The supplier bills when `invoicing` is off: no line exists, so a module
@@ -1255,6 +1384,28 @@ pub struct SupplierBillVoided {
 }
 
 impl Event for SupplierBillVoided {}
+
+/// A supplier bill was reopened because money applied to it was undone
+/// (`unallocate`). Approval, cost, VAT, lines and totals are untouched.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SupplierBillReopened {
+    /// The bill.
+    pub bill: SupplierBillId,
+    /// The supplier.
+    pub supplier: PartyId,
+    /// The record the money came from (the payment or debit note).
+    pub source: Subject,
+    /// The amount given back to the balance, in fils.
+    pub amount: i64,
+    /// The open balance after, in fils.
+    pub balance: i64,
+    /// The state after: `approved` or `partially_paid`.
+    pub new_status: SupplierBillStatus,
+    /// Why it was reopened.
+    pub reason: BillReopenReason,
+}
+
+impl Event for SupplierBillReopened {}
 
 #[cfg(test)]
 mod tests {
@@ -1314,6 +1465,70 @@ mod tests {
             renox::serde_json::from_str::<SupplierBillVoided>(&json).unwrap(),
             voided
         );
+    }
+
+    #[test]
+    fn the_reopening_event_and_requests_round_trip_through_json() {
+        let event = SupplierBillReopened {
+            bill: SupplierBillId(3),
+            supplier: PartyId(4),
+            source: Subject::new("payments.payment", 8),
+            amount: 450_000,
+            balance: 450_000,
+            new_status: SupplierBillStatus::PartiallyPaid,
+            reason: BillReopenReason::PaymentReversed,
+        };
+        let json = renox::serde_json::to_string(&event).unwrap();
+        assert_eq!(
+            renox::serde_json::from_str::<SupplierBillReopened>(&json).unwrap(),
+            event
+        );
+        let request = UnallocateBill::new(
+            SupplierBillId(3),
+            Subject::new("payments.payment", 8),
+            450_000,
+            "payments.allocation:1",
+            BillReopenReason::DebitNoteCancelled,
+        )
+        .reversal_reason("bank_return");
+        assert_eq!(request.reversal_reason.as_deref(), Some("bank_return"));
+        let json = renox::serde_json::to_string(&request).unwrap();
+        assert_eq!(
+            renox::serde_json::from_str::<UnallocateBill>(&json).unwrap(),
+            request
+        );
+        assert_eq!(
+            BillReopenReason::default(),
+            BillReopenReason::PaymentReversed
+        );
+    }
+
+    #[renox::test]
+    async fn without_invoicing_a_bill_takes_no_money() {
+        let app = renox::testing::TestApp::new(App::new()).await;
+        let state = app.state();
+        let bills = supplier_bills(state);
+        let pay = PayBill::new(
+            SupplierBillId(1),
+            Subject::new("payments.payment", 1),
+            100,
+            "payments.allocation:1",
+        );
+        assert!(matches!(
+            bills.pay(state, pay).await,
+            Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
+        ));
+        let undo = UnallocateBill::new(
+            SupplierBillId(1),
+            Subject::new("payments.payment", 1),
+            100,
+            "payments.allocation:1",
+            BillReopenReason::PaymentReversed,
+        );
+        assert!(matches!(
+            NoSupplierBills.unallocate(state, undo).await,
+            Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
+        ));
     }
 
     fn summary(status: InvoiceStatus, balance: i64) -> InvoiceSummary {

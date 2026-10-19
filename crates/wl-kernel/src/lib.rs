@@ -71,11 +71,12 @@ pub use documents::{
 pub use entities::{IssuerSnapshot, LegalEntity, ScopeEntity};
 pub use held_funds::{FundsSource, HeldFund, HeldFundsSource, held_for_all};
 pub use invoicing::{
-    CreditLine, CreditNoteId, CreditNoteIssued, CreditNoteReopened, CreditNoteStatus,
-    CreditNoteSummary, DraftLine, InvoiceCredited, InvoiceDraft, InvoiceId, InvoiceIssued,
-    InvoiceOverdue, InvoicePaid, InvoiceStatus, InvoiceSummary, InvoiceWrittenOff, Invoicer,
-    NoInvoicer, NoSupplierBills, SupplierBillApproved, SupplierBillId, SupplierBillLine,
-    SupplierBillLineId, SupplierBillStatus, SupplierBillVoided, SupplierBills, VatCategory,
+    BillBalance, BillReopenReason, CreditLine, CreditNoteId, CreditNoteIssued, CreditNoteReopened,
+    CreditNoteStatus, CreditNoteSummary, DraftLine, InvoiceCredited, InvoiceDraft, InvoiceId,
+    InvoiceIssued, InvoiceOverdue, InvoicePaid, InvoiceStatus, InvoiceSummary, InvoiceWrittenOff,
+    Invoicer, NoInvoicer, NoSupplierBills, PayBill, SupplierBillApproved, SupplierBillId,
+    SupplierBillLine, SupplierBillLineId, SupplierBillReopened, SupplierBillStatus,
+    SupplierBillVoided, SupplierBills, UnallocateBill, VatCategory,
 };
 pub use machines::SubjectMachine;
 pub use manifest::Manifest;

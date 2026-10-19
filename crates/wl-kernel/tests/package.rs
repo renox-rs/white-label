@@ -629,6 +629,41 @@ async fn without_invoicing_the_invoicer_drafts_nothing() {
 /// #70 AC10: without the invoicing module, `unallocate` and
 /// `unallocate_all` are refused (422).
 #[renox::test]
+async fn without_invoicing_no_bill_takes_money() {
+    use wl_kernel::Subject;
+    use wl_kernel::invoicing::{
+        BillReopenReason, PayBill, SupplierBillId, UnallocateBill, supplier_bills,
+    };
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let state = app.state();
+    let bills = supplier_bills(state);
+    let source = Subject::new("payments.payment", 1);
+    let pay = PayBill::new(
+        SupplierBillId(1),
+        source.clone(),
+        100,
+        "payments.allocation:1",
+    );
+    assert!(matches!(
+        bills.pay(state, pay).await,
+        Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
+    ));
+    let undo = UnallocateBill::new(
+        SupplierBillId(1),
+        source,
+        100,
+        "payments.allocation:1",
+        BillReopenReason::PaymentReversed,
+    );
+    assert!(matches!(
+        bills.unallocate(state, undo).await,
+        Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
+    ));
+}
+
+#[renox::test]
 async fn without_invoicing_nothing_can_be_unallocated() {
     use wl_kernel::Subject;
     use wl_kernel::invoicing::{
