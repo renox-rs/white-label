@@ -404,7 +404,7 @@ async fn the_refunds_approved_or_failed_are_returned() {
     assert!(read[0].failed);
 }
 
-async fn counts(t: &Booted) -> (i64, i64, i64, i64) {
+async fn counts(t: &Booted) -> (u64, u64, u64, u64) {
     let db = t.db();
     (
         Cheque::query().count(db).await.unwrap(),

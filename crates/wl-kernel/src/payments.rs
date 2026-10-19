@@ -561,7 +561,7 @@ impl RecordPayment {
 }
 
 /// What other modules see of a payment.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PaymentSummary {
     /// The id.
     pub id: PaymentId,

@@ -157,7 +157,7 @@ pub async fn void(db: &Db, id: i64, by: Option<i64>, reason: &str) -> Result<Ope
     row.voided_by = by;
     row.voided_at = Some(renox::db::now());
     row.void_reason = Some(reason.to_owned());
-    row.update(db).await?;
+    row.save(db).await?;
     Ok(row)
 }
 

@@ -25,7 +25,7 @@ use crate::texts::english;
 pub const OWNER_DRAWINGS: &str = "owner_drawings";
 
 /// What a budget category is.
-#[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub enum BudgetKind {
     /// Money earned; below budget is unfavourable.
     #[default]

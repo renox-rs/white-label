@@ -272,7 +272,7 @@ async fn the_disputed_part_is_a_memo_line() {
     dispute.insert(t.db()).await.unwrap();
     invoice.disputed = true;
     invoice.dispute_id = Some(dispute.id);
-    invoice.update(t.db()).await.unwrap();
+    invoice.save(t.db()).await.unwrap();
     let forecast = grid(&t, &[&e1]).await;
     assert_eq!(forecast.receipts(1), 400_000);
     assert_eq!(forecast.memo(MemoKind::Disputed, 1), 200_000);
@@ -292,7 +292,7 @@ async fn the_disputed_part_is_a_memo_line() {
     d.insert(counting.db()).await.unwrap();
     other.disputed = true;
     other.dispute_id = Some(d.id);
-    other.update(counting.db()).await.unwrap();
+    other.save(counting.db()).await.unwrap();
     assert_eq!(grid(&counting, &[&e]).await.receipts(1), 600_000);
 }
 
@@ -338,7 +338,7 @@ async fn the_vat_payable_is_a_payment_at_the_return_due_date() {
     invoice.issue_date = invoice.date_of_supply;
     invoice.vat_total = 1_400_000;
     invoice.vat_total_aed = Some(1_400_000);
-    invoice.update(t.db()).await.unwrap();
+    invoice.save(t.db()).await.unwrap();
 
     let estimate = grid(&t, &[&e1]).await;
     assert_eq!(estimate.payments(2), 1_400_000);
@@ -360,7 +360,7 @@ async fn a_vat_payment_naming_the_summary_removes_the_line() {
     invoice.status = InvoiceStatus::Paid;
     invoice.date_of_supply = Some(NaiveDate::from_ymd_opt(2026, 12, 15).unwrap());
     invoice.vat_total_aed = Some(1_400_000);
-    invoice.update(t.db()).await.unwrap();
+    invoice.save(t.db()).await.unwrap();
     let summary = t
         .summary(&e1, NaiveDate::from_ymd_opt(2026, 12, 15).unwrap(), VatSummaryStatus::Prepared)
         .await;
@@ -430,7 +430,7 @@ async fn a_blocked_partys_receivable_is_a_memo_line() {
     let e1 = t.entity("PGP").await;
     let mut invoice = open_invoice(&t, &e1, "INV-B", day(1, 20), 300_000).await;
     invoice.party_id = BLOCKED_PARTY.0;
-    invoice.update(t.db()).await.unwrap();
+    invoice.save(t.db()).await.unwrap();
     let forecast = grid(&t, &[&e1]).await;
     assert_eq!(forecast.receipts(1), 0);
     assert_eq!(forecast.memo(MemoKind::BlockedParty, 1), 300_000);
@@ -454,7 +454,7 @@ async fn a_foreign_amount_without_a_rate_is_left_out_with_a_warning() {
     let e1 = t.entity("PGP").await;
     let mut invoice = open_invoice(&t, &e1, "INV-US", day(1, 20), 100_000).await;
     invoice.currency = "USD".into();
-    invoice.update(t.db()).await.unwrap();
+    invoice.save(t.db()).await.unwrap();
     let forecast = grid(&t, &[&e1]).await;
     assert_eq!(forecast.receipts(1), 0);
     assert!(forecast
@@ -463,7 +463,7 @@ async fn a_foreign_amount_without_a_rate_is_left_out_with_a_warning() {
         .any(|w| matches!(w, Warning::Unpriced { document } if *document == invoice.subject())));
     // With a rate it counts in AED.
     invoice.exchange_rate_micro = Some(3_672_500);
-    invoice.update(t.db()).await.unwrap();
+    invoice.save(t.db()).await.unwrap();
     assert_eq!(grid(&t, &[&e1]).await.receipts(1), 367_250);
 }
 
