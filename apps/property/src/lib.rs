@@ -16,6 +16,7 @@ mod db;
 pub mod deposit_forfeit;
 pub mod deposit_watch;
 pub mod documents;
+pub mod enquiry;
 pub mod events;
 pub mod force;
 pub mod holding;
@@ -33,12 +34,14 @@ pub mod parse;
 pub mod permissions;
 pub mod renew;
 pub mod renewal;
+pub mod seed;
 pub mod statement;
 pub mod statement_dispute;
 pub mod statement_events;
 pub mod statement_machine;
 pub mod statement_payout;
 mod tasks;
+pub mod ticket_update;
 pub mod termination;
 pub mod terms;
 mod texts;
@@ -97,6 +100,10 @@ const VIEWS: &[(&str, &str)] = &[
         include_str!("../views/property/compliance.html"),
     ),
     (
+        "property/enquiries.html",
+        include_str!("../views/property/enquiries.html"),
+    ),
+    (
         "property/agreements.html",
         include_str!("../views/property/agreements.html"),
     ),
@@ -145,6 +152,7 @@ impl Module for Property {
             .view_data::<pages::statements::IndexPage>()
             .view_data::<pages::statements::ShowPage>()
             .view_data::<pages::compliance::IndexPage>()
+            .view_data::<pages::enquiries::IndexPage>()
             .view_data::<pages::agreements::IndexPage>()
             .view_data::<pages::agreements::ShowPage>();
         app.templates(|env| {
@@ -174,6 +182,8 @@ impl Module for Property {
             .model::<agreement_lifecycle::HandoverItem>()
             .model::<unit_transfer::UnitTransfer>()
             .model::<compliance::BuildingFlag>()
+            .model::<enquiry::Enquiry>()
+            .model::<ticket_update::TicketUpdate>()
             .model::<statement::OwnerStatement>()
             .model::<statement::StatementLine>()
             .model::<statement_dispute::StatementDispute>()
@@ -199,6 +209,8 @@ impl Module for Property {
         statement::schedule(app);
         write_off::register(app);
         compliance::register(app);
+        seed::register_critical_rules();
+        ticket_update::register();
         // A building is the scope roles are assigned in.
         wl_kernel::scopes::register_label(Building::TABLE, |db, id| {
             let id = id.to_owned();
@@ -234,6 +246,14 @@ impl Module for Property {
                 .group("nav.app")
                 .order(12)
                 .permission(permissions::OWNER_STATEMENTS_PREPARE),
+        );
+        app.nav(
+            "app",
+            NavLink::route("property.enquiries", "nav.enquiries")
+                .icon("inbox")
+                .group("nav.app")
+                .order(14)
+                .permission(permissions::UNITS_VIEW),
         );
         app.nav(
             "app",

@@ -10,7 +10,8 @@ use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use renox::serde_json::json;
 use wl_kernel::notify::{
-    self, Category, GROUP_PORTAL, GiveUpReaction, NotificationTypeDef, NotifyChannel, NotifyRequest,
+    self, Category, GROUP_INVOICES, GROUP_PORTAL, GROUP_SIGNATURES, GROUP_STATEMENTS,
+    GiveUpReaction, NotificationTypeDef, NotifyChannel, NotifyRequest,
 };
 
 use crate::lease::Lease;
@@ -81,13 +82,13 @@ pub const OWNER_STATEMENT_RETURNED: &str = "property.owner_statement_returned";
 
 /// The owner receives a published statement (the e-mail carries the statement;
 /// the PDF comes with `DOC.GEN.01`).
-pub const OWNER_STATEMENT: &str = "property.owner_statement";
+pub const OWNER_STATEMENT: &str = "owner_statement.published";
 
 /// The owner is told that a corrected statement follows a revision.
-pub const OWNER_STATEMENT_REVISED: &str = "property.owner_statement_revised";
+pub const OWNER_STATEMENT_REVISED: &str = "owner_statement.revision_follows";
 
 /// The owner is told how the dispute of a statement line was answered.
-pub const OWNER_STATEMENT_DISPUTE_OUTCOME: &str = "property.owner_statement_dispute_outcome";
+pub const OWNER_STATEMENT_DISPUTE_OUTCOME: &str = "owner_statement.dispute_outcome";
 
 /// The property managers and accountants are told that notice was given on a
 /// management agreement and the handover pack is started (BL-PRP-22).
@@ -95,7 +96,17 @@ pub const AGREEMENT_NOTICE: &str = "property.agreement_notice";
 
 /// The tenant is told who the new payee is after the management agreement
 /// ended or the unit left it: a normal message (BL-PRP-22, BL-PRP-23).
-pub const PAYEE_CHANGED: &str = "lease.payee_changed";
+pub const PAYEE_CHANGED: &str = "lease.new_payee";
+
+/// The tenant receives the contract to sign (a portal invitation or signature
+/// request, §7.2 *Notification types*). Sent with the e-signature of the
+/// contract (`DOC.GEN.01`, later); the type is registered now so its give-up
+/// reaction is the group's.
+pub const CONTRACT_FOR_SIGNATURE: &str = "lease.contract_for_signature";
+
+/// The tenant is told that the notice to end the lease was withdrawn
+/// (`PRP.ACL.20`).
+pub const NOTICE_WITHDRAWN: &str = "lease.notice_withdrawn";
 
 /// The company admin is told that a compliance certificate of a building
 /// expired and the building is flagged non-compliant (BL-PRP-25).
@@ -117,17 +128,30 @@ fn staff_reminder(key: &str, texts: &str) -> NotificationTypeDef {
     english_reminder(key, texts).give_up(&[GiveUpReaction::None])
 }
 
-/// A message to the tenant with English texts; `statutory` for a notice with
-/// legal effect, whose give-up the platform handles with the proof task.
-fn tenant_message(key: &str, texts: &str, statutory: bool) -> NotificationTypeDef {
+/// A message to a party with English texts, in the notification group `group`
+/// of wl-notify §5.4. `staff_role` is the role that gets the task when the
+/// group's reaction ends in a `staff_task`: the property manager for the
+/// portal and signature groups and the statutory notices (the request's owner
+/// is the lease's property manager), the accountant for invoices and
+/// statements (the collector).
+fn party_message(key: &str, texts: &str, group: &str, staff_role: &str) -> NotificationTypeDef {
     let subject = english(&format!("property.notices.{texts}_subject"), &[]);
     let body = english(&format!("property.notices.{texts}_body"), &[]);
-    let def = NotificationTypeDef::new(key, "property")
-        .template(NotifyChannel::Email, "en", Some(&subject), &body);
+    NotificationTypeDef::new(key, "property")
+        .group(group)
+        .staff_role(staff_role)
+        .template(NotifyChannel::Email, "en", Some(&subject), &body)
+}
+
+/// A message to the tenant with English texts; `statutory` for a notice with
+/// legal effect, whose give-up the platform handles with the proof task for
+/// the property manager (`statutory_notice`, `NTF.RUL.01`).
+fn tenant_message(key: &str, texts: &str, statutory: bool) -> NotificationTypeDef {
+    let def = party_message(key, texts, GROUP_PORTAL, PROPERTY_MANAGER_ROLE);
     if statutory {
         def.group("statutory").statutory(true)
     } else {
-        def.group(GROUP_PORTAL)
+        def
     }
 }
 
@@ -139,6 +163,13 @@ pub(crate) fn register_types() {
     notify::register_type(staff_reminder(CURRENT_TERMS_ONLY, "current_terms_only"));
     notify::register_type(staff_reminder(HOLDING_OVER, "holding_over"));
     notify::register_type(tenant_message(RENEWAL_WINDOW, "renewal_window", false));
+    notify::register_type(party_message(
+        CONTRACT_FOR_SIGNATURE,
+        "contract_for_signature",
+        GROUP_SIGNATURES,
+        PROPERTY_MANAGER_ROLE,
+    ));
+    notify::register_type(tenant_message(NOTICE_WITHDRAWN, "notice_withdrawn", false));
     notify::register_type(tenant_message(
         NOTICE_OF_CHANGED_TERMS,
         "changed_terms",
@@ -154,22 +185,34 @@ pub(crate) fn register_types() {
     ));
     notify::register_type(staff_reminder(AGREEMENT_NOTICE, "agreement_notice"));
     notify::register_type(staff_reminder(CERTIFICATE_EXPIRED, "certificate_expired"));
-    notify::register_type(tenant_message(PAYEE_CHANGED, "payee_changed", false));
+    notify::register_type(party_message(
+        PAYEE_CHANGED,
+        "payee_changed",
+        GROUP_INVOICES,
+        ACCOUNTANT_ROLE,
+    ));
     notify::register_type(staff_reminder(OWNER_STATEMENT_DRAFT, "owner_statement_draft"));
     notify::register_type(staff_reminder(
         OWNER_STATEMENT_RETURNED,
         "owner_statement_returned",
     ));
-    notify::register_type(tenant_message(OWNER_STATEMENT, "owner_statement", false));
-    notify::register_type(tenant_message(
+    notify::register_type(party_message(
+        OWNER_STATEMENT,
+        "owner_statement",
+        GROUP_STATEMENTS,
+        ACCOUNTANT_ROLE,
+    ));
+    notify::register_type(party_message(
         OWNER_STATEMENT_REVISED,
         "owner_statement_revised",
-        false,
+        GROUP_STATEMENTS,
+        ACCOUNTANT_ROLE,
     ));
-    notify::register_type(tenant_message(
+    notify::register_type(party_message(
         OWNER_STATEMENT_DISPUTE_OUTCOME,
         "owner_statement_dispute_outcome",
-        false,
+        GROUP_STATEMENTS,
+        ACCOUNTANT_ROLE,
     ));
 }
 

@@ -31,6 +31,7 @@ use wl_kernel::parties::{PartyKind, directory};
 use wl_kernel::{PartyId, Subject, documents::today};
 
 use crate::agreement::ManagementAgreement;
+use crate::building::{BUILDING_SUBJECT_TYPE, Building};
 use crate::lease::Lease;
 
 /// The guarded transition `submit`.
@@ -162,6 +163,28 @@ impl BlockSubjects for AgreementSubjects {
     }
 }
 
+/// `building.certify`: the building itself (its compliance certificates).
+/// Nothing runs this transition: the entry exists so that `DOC.RUL.03` takes
+/// an expiring certificate up, and the entry's mode is `flag`, never `block`
+/// (BL-PRP-27; leasing is not blocked by a certificate).
+struct BuildingSubjects;
+
+impl BlockSubjects for BuildingSubjects {
+    fn subjects<'a>(
+        &'a self,
+        state: &'a AppState,
+        _entry: &'a BlockEntry,
+        record_id: i64,
+    ) -> DocumentFuture<'a, Vec<Subject>> {
+        Box::pin(async move {
+            Ok(Building::find(&state.db, record_id)
+                .await?
+                .map(|building| vec![Subject::new(BUILDING_SUBJECT_TYPE, building.id)])
+                .unwrap_or_default())
+        })
+    }
+}
+
 /// Runs `transition` as the guarded transition `transition_name` of lease
 /// `record_id`, after checking the documents on the business date. A refusal
 /// answers 422 with one line per failing document and `transition` does not
@@ -206,6 +229,7 @@ pub(crate) fn register() {
     register_block_subjects(SUBMIT, SubmitSubjects);
     register_block_subjects(ACTIVATE, LeaseSubjects);
     register_block_subjects(RECORD_EJARI, LeaseSubjects);
+    register_block_subjects(crate::seed::CERTIFY, BuildingSubjects);
 }
 
 #[cfg(test)]
@@ -225,7 +249,7 @@ mod tests {
     fn registering_makes_the_transitions_guardable() {
         register();
         let guarded = wl_kernel::documents::guarded_transitions();
-        for name in [SUBMIT, ACTIVATE, RECORD_EJARI, AGREEMENT_ACTIVATE] {
+        for name in [SUBMIT, ACTIVATE, RECORD_EJARI, AGREEMENT_ACTIVATE, crate::seed::CERTIFY] {
             assert!(guarded.iter().any(|g| g == name), "{name}");
         }
     }

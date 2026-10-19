@@ -5,6 +5,7 @@
 
 pub mod agreements;
 pub mod compliance;
+pub mod enquiries;
 pub mod leases;
 pub mod portfolio;
 pub mod statements;
@@ -30,6 +31,7 @@ pub fn routes() -> Routes {
         .merge(statements::routes())
         .merge(agreements::routes())
         .merge(compliance::routes())
+        .merge(enquiries::routes())
 }
 
 /// The package text `key` (without the `property.` prefix).

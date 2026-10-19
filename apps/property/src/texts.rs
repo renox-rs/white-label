@@ -1276,6 +1276,22 @@ const TEXTS: &[(&str, &str)] = &[
         "property.notices.payee_changed_body",
         "From {{ handover }} the rent and other payments for {{ lease }} are paid to {{ payee }}. This does not change your lease.",
     ),
+    (
+        "property.notices.contract_for_signature_subject",
+        "Your tenancy contract for {{ lease }} is ready to sign",
+    ),
+    (
+        "property.notices.contract_for_signature_body",
+        "Your tenancy contract for {{ lease }} is ready. Please sign it to confirm your tenancy.",
+    ),
+    (
+        "property.notices.notice_withdrawn_subject",
+        "The notice on {{ lease }} was withdrawn",
+    ),
+    (
+        "property.notices.notice_withdrawn_body",
+        "The notice to end {{ lease }} was withdrawn. Your lease continues as before.",
+    ),
     // The management agreement pages (BL-PRP-22).
     ("property.agreements.title", "Management agreements"),
     (
@@ -1468,6 +1484,47 @@ const TEXTS: &[(&str, &str)] = &[
         "property.notices.certificate_expired_body",
         "The {{ kind }} of {{ building }} expired on {{ expired_on }}. The building is flagged non-compliant until a renewed certificate is accepted. Leasing is not blocked.",
     ),
+    // The enquiries and their lead sources (BL-PRP-27).
+    ("property.enquiries.title", "Enquiries"),
+    (
+        "property.enquiries.subtitle",
+        "Who asked about a unit, and where they came from.",
+    ),
+    ("property.enquiries.new", "New enquiry"),
+    (
+        "property.enquiries.new_description",
+        "Record the prospect and the lead source. A campaign is optional.",
+    ),
+    ("property.enquiries.prospect", "Prospect"),
+    ("property.enquiries.contact", "Phone or e-mail"),
+    ("property.enquiries.source", "Lead source"),
+    ("property.enquiries.campaign", "Campaign code"),
+    ("property.enquiries.notes", "Notes"),
+    ("property.enquiries.received", "Received"),
+    ("property.enquiries.empty", "No enquiries yet"),
+    ("property.enquiries.created", "Enquiry recorded."),
+    ("property.enquiries.name_required", "Give the prospect's name."),
+    (
+        "property.enquiries.source_unknown",
+        "Choose one of the lead sources.",
+    ),
+    (
+        "property.enquiries.already_converted",
+        "This enquiry already became a tenant.",
+    ),
+    ("property.enquiries.source_referral", "Referral"),
+    ("property.enquiries.source_walk_in", "Walk-in"),
+    ("property.enquiries.source_website", "Website"),
+    ("property.enquiries.source_social", "Social media"),
+    ("property.enquiries.source_paid_ads", "Paid ads"),
+    ("property.enquiries.source_partner", "Partner (brokers)"),
+    ("property.enquiries.source_event", "Event"),
+    ("property.enquiries.source_other", "Other"),
+    (
+        "property.ticket_updates.note_required",
+        "Write what was done.",
+    ),
+    ("property.nav.enquiries", "Enquiries"),
     ("property.compliance.title", "Buildings non-compliant"),
     (
         "property.compliance.subtitle",
