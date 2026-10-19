@@ -1455,8 +1455,9 @@ impl Booted {
             lines,
             comment: "The wall was already damaged when I moved in.".to_owned(),
         };
-        deposit_deductions(self.state())
-            .dispute(self.state(), party, request)
+        // `today()` reads the clock only inside `at_travelled_time`.
+        self.app
+            .at_travelled_time(deposit_deductions(self.state()).dispute(self.state(), party, request))
             .await
     }
 
