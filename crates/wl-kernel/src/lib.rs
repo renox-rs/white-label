@@ -121,8 +121,10 @@ pub use segments::{NoSegments, SegmentId, Segments};
 pub use subject::Subject;
 pub use tickets::{
     Assignee, ComplianceFlagCleared, ComplianceFlagRaised, ComplianceFlagReason, NoTickets,
-    OpenTicket, Requester, TASK_CATEGORY, TaskComment, TaskCreator, TicketAssigned,
-    TicketChannel, TicketClosed, TicketId, TicketRef, ticket_path,
+    OpenTicket, Requester, SERVICE_CONTRACT_SERIES, SERVICE_CONTRACT_SUBJECT_TYPE,
+    ServiceContractActivated, ServiceContractEnded, ServiceContractId, TASK_CATEGORY, TaskComment,
+    TaskCreator, TicketAssigned, TicketChannel, TicketClosed, TicketId, TicketRef,
+    VendorNoShow, ticket_path,
 };
 pub use voids::{
     Effect, EffectKind, RecordVoided, Reverse, ReverseError, VoidRecord, Voidable, VoidableBuilder,

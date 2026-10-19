@@ -1563,3 +1563,61 @@ async fn a_planned_visit_and_the_compliance_flag_events_are_part_of_the_ticket_c
     assert_eq!(renox::serde_json::to_value(&cleared).unwrap()["contract"], 3);
     let _: &dyn TaskCreator = &*creator;
 }
+
+/// #149, #150: a planned visit names its service contract, and the contract
+/// and no-show events name the contract, the visits and the vendor; the
+/// contract number is its own yearly series.
+#[renox::test]
+async fn a_service_contract_and_its_events_are_part_of_the_ticket_contract() {
+    use wl_kernel::tickets::{
+        OpenTicket, SERVICE_CONTRACT_SERIES, ServiceContractActivated, ServiceContractEnded,
+        ServiceContractId, TicketId, VendorNoShow, task_creator,
+    };
+    use wl_kernel::Subject;
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let contract = ServiceContractId(7);
+    assert_eq!(contract.subject().to_string(), "ticketing.service_contract:7");
+    let visit = OpenTicket::new(Subject::new("property.system", 4), "fire_safety", "Fire alarm")
+        .planned_due(NaiveDate::from_ymd_opt(2026, 12, 20).unwrap())
+        .under_contract(contract);
+    assert_eq!(visit.contract, Some(contract));
+    assert_eq!(
+        task_creator(app.state()).open(app.state(), visit).await.unwrap(),
+        None,
+        "without ticketing nothing is opened"
+    );
+
+    let number = SERVICE_CONTRACT_SERIES
+        .next_allowing_gaps(app.db(), None, None, day())
+        .await
+        .unwrap();
+    assert_eq!(number, "AMC-2026-0001");
+
+    let activated = ServiceContractActivated {
+        contract,
+        vendor: PartyId(5),
+        subjects: vec![Subject::new("property.system", 4)],
+        start: NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(),
+        end: NaiveDate::from_ymd_opt(2026, 12, 31).unwrap(),
+    };
+    assert_eq!(renox::serde_json::to_value(&activated).unwrap()["end"], "2026-12-31");
+    let ended = ServiceContractEnded {
+        contract,
+        outcome: "expired".into(),
+        new_version: None,
+        visits_cancelled: vec![TicketId(3), TicketId(4)],
+        visits_left: vec![TicketId(1), TicketId(2)],
+    };
+    let json = renox::serde_json::to_value(&ended).unwrap();
+    assert_eq!(json["visits_cancelled"].as_array().unwrap().len(), 2);
+    assert_eq!(json["visits_left"].as_array().unwrap().len(), 2);
+    let no_show = VendorNoShow {
+        ticket: TicketId(42),
+        vendor: PartyId(5),
+        contract: Some(contract),
+        scheduled_at: "2026-11-03T06:00:00Z".parse().unwrap(),
+    };
+    assert_eq!(renox::serde_json::to_value(&no_show).unwrap()["contract"], 7);
+}
