@@ -6,17 +6,20 @@
 //! | `GET /hr/employees` | `wl_hr.employees` | `employees.view` |
 //! | `GET /hr/employees/{id}` | `wl_hr.employee` | `employees.view` |
 //! | `POST /hr/employees/{id}/transitions/{name}` | `wl_hr.employee_transitions.*` | `employees.view` and the transition's permission |
-//! | `POST /hr/employees/{id}/onboardings` | `wl_hr.onboarding_start` | `onboarding.manage` |
-//! | `POST /hr/onboardings/{id}/cancel` | `wl_hr.onboarding_cancel` | `onboarding.manage` |
+//! | `POST /hr/employees/{id}/onboardings` | `wl_hr.onboarding_start` | `onboarding.manage` in the employee's scope |
+//! | `POST /hr/onboardings/{id}/cancel` | `wl_hr.onboarding_cancel` | `onboarding.manage` in the employee's scope |
 //! | `POST /hr/steps/{id}/done` | `wl_hr.step_done` | an assignee of the step |
-//! | `POST /hr/steps/{id}/in-person` | `wl_hr.step_in_person` | `onboarding.manage` |
-//! | `POST /hr/steps/{id}/waive` | `wl_hr.step_waive` | `onboarding.manage` |
-//! | `POST /hr/steps/{id}/reopen` | `wl_hr.step_reopen` | `onboarding.manage` |
+//! | `POST /hr/steps/{id}/in-person` | `wl_hr.step_in_person` | `onboarding.manage` in the employee's scope |
+//! | `POST /hr/steps/{id}/waive` | `wl_hr.step_waive` | `onboarding.manage` in the employee's scope |
+//! | `POST /hr/steps/{id}/reopen` | `wl_hr.step_reopen` | `onboarding.manage` in the employee's scope |
 //! | `POST /hr/steps/{id}/checklist` | `wl_hr.step_checklist` | an assignee, or `onboarding.manage` |
 //!
-//! The step routes carry no permission guard of their own, since an
-//! assignee may be the employee or a manager with no HR role; the services
-//! in [`crate::steps`] check who may act (`HRM.ACL.10`) and answer 403.
+//! The action routes need a signed-in user and carry no permission guard of
+//! their own: the guard counts global roles only, while HR may hold
+//! `onboarding.manage` in one branch, and an assignee may be the employee or
+//! a manager with no HR role. The services in [`crate::steps`] and the
+//! handlers check who may act in the employee's scope (`HRM.ACL.10`) and
+//! answer 403.
 
 use std::collections::BTreeMap;
 
@@ -66,14 +69,11 @@ pub fn routes() -> Routes {
                 .name("wl_hr.step_waive")
                 .post("/hr/steps/{id}/reopen", reopen)
                 .name("wl_hr.step_reopen")
-                .require_permission(permissions::ONBOARDING_MANAGE),
-        )
-        .merge(
-            Routes::new()
                 .post("/hr/steps/{id}/done", done)
                 .name("wl_hr.step_done")
                 .post("/hr/steps/{id}/checklist", checklist)
-                .name("wl_hr.step_checklist"),
+                .name("wl_hr.step_checklist")
+                .require_auth(),
         )
 }
 
@@ -454,10 +454,16 @@ pub struct StartForm {
 /// `POST /hr/employees/{id}/onboardings`: starts the chosen template by hand.
 async fn start_manual(
     State(state): State<AppState>,
+    user: AuthUser,
     lang: Lang,
     Path(id): Path<i64>,
     Valid(form): Valid<StartForm>,
 ) -> Result<Response> {
+    let employee = Employee::find(&state.db, id).await?.ok_or(Error::NotFound)?;
+    let scopes = employee.scopes(&state.db).await?;
+    if !steps::holds_manage(&state, user.id, &scopes).await? {
+        return Err(Error::Forbidden);
+    }
     let template: i64 = form
         .template
         .trim()
