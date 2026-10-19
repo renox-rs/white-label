@@ -1,0 +1,358 @@
+//! Registering cheques, and the module's [`Cheques`] (wl-payments §5.3 step
+//! 1, §6): how a vertical hands the register the cheques it received with an
+//! agreement, and reads them back.
+//!
+//! A cheque is registered `received` (a received cheque held, or an issued
+//! one handed to the payee) with its dates and the documents it pays. A
+//! post-dated schedule ([`ChequeSchedule`]) registers all the cheques of a
+//! lease or none. The kernel passes the acting user as an id (`None` = the
+//! system), and the calling module has authorized its user already.
+//!
+//! Refused (422): an amount of 0 or less, a blank bank or number, a currency
+//! that is not an ISO code, an unknown party, an inactive legal entity, a
+//! document linked twice, and a cheque whose number is already registered for
+//! the same party and bank (a lease's cheques entered twice).
+
+use renox::prelude::*;
+use wl_kernel::cheques::{
+    ChequeFuture, ChequeId, ChequeSchedule, ChequeStatus, ChequeSummary, Cheques, RegisterCheque,
+};
+use wl_kernel::payments::Direction;
+use wl_kernel::{LegalEntity, PartyId, Subject};
+
+use crate::cheque::{Cheque, ChequeLink};
+
+/// A 422 with `message`.
+fn refused(message: impl Into<String>) -> Error {
+    Error::Status(StatusCode::UNPROCESSABLE_ENTITY, message.into())
+}
+
+/// `request` with the currency in capitals and the bank and number trimmed.
+fn normalised(request: &RegisterCheque) -> RegisterCheque {
+    RegisterCheque {
+        bank: request.bank.trim().to_owned(),
+        number: request.number.trim().to_owned(),
+        currency: request.currency.trim().to_ascii_uppercase(),
+        ..request.clone()
+    }
+}
+
+/// Why `request` cannot be registered, if it cannot, before the database is
+/// asked.
+pub(crate) fn request_problem(request: &RegisterCheque) -> Option<String> {
+    if request.amount <= 0 {
+        return Some("The cheque amount must be above 0.".to_owned());
+    }
+    if request.bank.trim().is_empty() {
+        return Some("The cheque's bank is required.".to_owned());
+    }
+    if request.number.trim().is_empty() {
+        return Some("The cheque number is required.".to_owned());
+    }
+    let currency = request.currency.trim();
+    if currency.len() != 3 || !currency.bytes().all(|b| b.is_ascii_alphabetic()) {
+        return Some(format!("`{}` is not a currency code like AED.", request.currency));
+    }
+    let mut seen: Vec<&Subject> = Vec::new();
+    for document in &request.linked {
+        if seen.contains(&document) {
+            return Some(format!("{document} is linked twice."));
+        }
+        seen.push(document);
+    }
+    None
+}
+
+/// Checks `request` against the database: the entity is active, the party is
+/// found and the number is not registered yet.
+async fn check(state: &AppState, request: &RegisterCheque) -> Result<()> {
+    if let Some(problem) = request_problem(request) {
+        return Err(refused(problem));
+    }
+    let entity = LegalEntity::find(&state.db, request.legal_entity_id).await?;
+    if !entity.as_ref().is_some_and(LegalEntity::is_active) {
+        return Err(refused("The legal entity is not active."));
+    }
+    let party = wl_kernel::parties::directory(state)
+        .find(&state.db, request.party)
+        .await?;
+    if party.is_none() {
+        return Err(refused("The party was not found."));
+    }
+    let same = Cheque::query()
+        .where_(Cheque::PARTY_ID.eq(request.party.0))
+        .where_(Cheque::BANK.eq(request.bank.trim()))
+        .where_(Cheque::NUMBER.eq(request.number.trim()))
+        .where_(Cheque::STATUS.is_in([
+            ChequeStatus::Received,
+            ChequeStatus::DueForDeposit,
+            ChequeStatus::Deposited,
+            ChequeStatus::Bounced,
+            ChequeStatus::LegalCase,
+        ]))
+        .count(&state.db)
+        .await?;
+    if same > 0 {
+        return Err(refused(format!(
+            "Cheque {} of {} is already registered for this party.",
+            request.number.trim(),
+            request.bank.trim()
+        )));
+    }
+    Ok(())
+}
+
+/// The unsaved `received` cheque for `request`, registered by `by`.
+fn new_cheque(request: &RegisterCheque, by: Option<i64>) -> Cheque {
+    Cheque {
+        direction: request.direction,
+        legal_entity_id: request.legal_entity_id,
+        party_id: request.party.0,
+        bank_account: request
+            .bank_account
+            .as_deref()
+            .map(str::trim)
+            .filter(|a| !a.is_empty())
+            .map(str::to_owned),
+        bank: request.bank.clone(),
+        number: request.number.clone(),
+        cheque_date: request.date,
+        amount: request.amount,
+        currency: request.currency.clone(),
+        agreement_type: request.agreement.as_ref().map(|a| a.subject_type.clone()),
+        agreement_id: request.agreement.as_ref().map(|a| a.subject_id),
+        collected_by: request.collected_by,
+        field_collected: request.field_collected && request.direction == Direction::In,
+        open_amount: request.amount,
+        recorded_by: by,
+        status: ChequeStatus::Received,
+        ..Default::default()
+    }
+}
+
+/// Inserts the cheque for `request` and its links in `tx`.
+async fn insert_in(
+    tx: &mut renox::db::Transaction,
+    request: &RegisterCheque,
+    by: Option<i64>,
+) -> Result<Cheque> {
+    let mut cheque = new_cheque(request, by);
+    cheque.insert(&mut *tx).await?;
+    for (position, document) in request.linked.iter().enumerate() {
+        let mut link = ChequeLink {
+            cheque_id: cheque.id,
+            position: i32::try_from(position).unwrap_or(i32::MAX),
+            subject_type: document.subject_type.clone(),
+            subject_id: document.subject_id,
+            ..Default::default()
+        };
+        link.insert(&mut *tx).await?;
+    }
+    Ok(cheque)
+}
+
+/// Registers `request` as a `received` cheque, by user `by` (`None` = the
+/// system).
+///
+/// # Errors
+///
+/// 422 as described in the module's documentation; nothing is written then.
+pub async fn register(
+    state: &AppState,
+    by: Option<i64>,
+    request: &RegisterCheque,
+) -> Result<Cheque> {
+    let request = normalised(request);
+    check(state, &request).await?;
+    let mut tx = state.db.begin().await?;
+    let cheque = insert_in(&mut tx, &request, by).await?;
+    tx.commit().await?;
+    Ok(cheque)
+}
+
+/// Registers every cheque of `schedule` (received, with the schedule's
+/// agreement) in one transaction, or none.
+///
+/// # Errors
+///
+/// 422 when one cheque is refused, a number repeats in the schedule, or the
+/// schedule has no cheque; nothing is written then.
+pub async fn register_schedule(
+    state: &AppState,
+    by: Option<i64>,
+    schedule: &ChequeSchedule,
+) -> Result<Vec<Cheque>> {
+    if schedule.cheques.is_empty() {
+        return Err(refused("The schedule has no cheque."));
+    }
+    let mut requests: Vec<RegisterCheque> = Vec::new();
+    for item in &schedule.cheques {
+        let mut request = RegisterCheque::new(
+            schedule.party,
+            schedule.legal_entity_id,
+            &schedule.bank,
+            &item.number,
+            item.date,
+            item.amount,
+        )
+        .currency(&schedule.currency)
+        .agreement(schedule.agreement.clone());
+        request.linked = item.linked.clone();
+        let request = normalised(&request);
+        if requests.iter().any(|r| r.number == request.number) {
+            return Err(refused(format!(
+                "Cheque {} is in the schedule twice.",
+                request.number
+            )));
+        }
+        check(state, &request).await?;
+        requests.push(request);
+    }
+    let mut tx = state.db.begin().await?;
+    let mut cheques = Vec::new();
+    for request in &requests {
+        cheques.push(insert_in(&mut tx, request, by).await?);
+    }
+    tx.commit().await?;
+    Ok(cheques)
+}
+
+/// The summary of `cheque` with its links.
+async fn summary_of(db: &Db, cheque: &Cheque) -> Result<ChequeSummary> {
+    Ok(cheque.summary(cheque.linked(db).await?))
+}
+
+/// Registers and reads `wl_payments_cheques` for the kernel contract.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ChequeBook;
+
+impl Cheques for ChequeBook {
+    fn register<'a>(
+        &'a self,
+        state: &'a AppState,
+        cheque: RegisterCheque,
+        by: Option<i64>,
+    ) -> ChequeFuture<'a, ChequeSummary> {
+        Box::pin(async move {
+            let cheque = register(state, by, &cheque).await?;
+            summary_of(&state.db, &cheque).await
+        })
+    }
+
+    fn register_schedule<'a>(
+        &'a self,
+        state: &'a AppState,
+        schedule: ChequeSchedule,
+        by: Option<i64>,
+    ) -> ChequeFuture<'a, Vec<ChequeSummary>> {
+        Box::pin(async move {
+            let cheques = register_schedule(state, by, &schedule).await?;
+            let mut summaries = Vec::new();
+            for cheque in &cheques {
+                summaries.push(summary_of(&state.db, cheque).await?);
+            }
+            Ok(summaries)
+        })
+    }
+
+    fn find<'a>(&'a self, db: &'a Db, id: ChequeId) -> ChequeFuture<'a, Option<ChequeSummary>> {
+        Box::pin(async move {
+            match Cheque::find(db, id.0).await? {
+                Some(cheque) => Ok(Some(summary_of(db, &cheque).await?)),
+                None => Ok(None),
+            }
+        })
+    }
+
+    fn of_agreement<'a>(
+        &'a self,
+        db: &'a Db,
+        agreement: &'a Subject,
+    ) -> ChequeFuture<'a, Vec<ChequeSummary>> {
+        Box::pin(async move {
+            let mut summaries = Vec::new();
+            for cheque in Cheque::of_agreement(db, agreement).await? {
+                summaries.push(summary_of(db, &cheque).await?);
+            }
+            Ok(summaries)
+        })
+    }
+
+    fn open_bounced_amount<'a>(
+        &'a self,
+        db: &'a Db,
+        party: PartyId,
+        currency: &'a str,
+    ) -> ChequeFuture<'a, i64> {
+        Box::pin(Cheque::owed_amount(db, party, currency))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use renox::chrono::NaiveDate;
+
+    fn request() -> RegisterCheque {
+        let date = NaiveDate::from_ymd_opt(2026, 11, 3).unwrap();
+        RegisterCheque::new(PartyId(7), 2, "ENBD", "1042", date, 2_000_000)
+    }
+
+    #[test]
+    fn a_good_request_has_no_problem() {
+        assert_eq!(request_problem(&request()), None);
+    }
+
+    #[test]
+    fn the_amount_bank_number_and_currency_are_checked() {
+        let mut r = request();
+        r.amount = 0;
+        assert!(request_problem(&r).is_some());
+        let mut r = request();
+        r.bank = "  ".into();
+        assert!(request_problem(&r).is_some());
+        let mut r = request();
+        r.number = String::new();
+        assert!(request_problem(&r).is_some());
+        let mut r = request();
+        r.currency = "DIRHAM".into();
+        assert!(request_problem(&r).is_some());
+        let mut r = request();
+        r.currency = " aed ".into();
+        assert_eq!(request_problem(&r), None);
+        assert_eq!(normalised(&r).currency, "AED");
+    }
+
+    #[test]
+    fn a_document_is_linked_once() {
+        let doc = Subject::new("invoicing.invoice", 3);
+        let r = request().link(doc.clone()).link(doc);
+        assert!(request_problem(&r).is_some());
+    }
+
+    #[test]
+    fn a_new_cheque_starts_received_with_the_whole_amount_open() {
+        let r = normalised(&request().agreement(Subject::new("property.lease", 9)));
+        let cheque = new_cheque(&r, Some(4));
+        assert_eq!(cheque.status, ChequeStatus::Received);
+        assert_eq!(cheque.open_amount, 2_000_000);
+        assert_eq!(cheque.honoured_amount, 0);
+        assert_eq!(cheque.presentations, 0);
+        assert_eq!(cheque.recorded_by, Some(4));
+        assert_eq!(cheque.agreement().map(|a| a.to_string()).as_deref(), Some("property.lease:9"));
+    }
+
+    #[test]
+    fn only_a_received_cheque_can_be_a_field_cheque() {
+        let received = new_cheque(&normalised(&request().collected_by(9, true)), None);
+        assert!(received.field_collected);
+        let issued = new_cheque(&normalised(&request().issued().collected_by(9, true)), None);
+        assert!(!issued.field_collected);
+    }
+
+    #[test]
+    fn the_book_is_a_cheques_contract() {
+        fn takes(_: impl Cheques) {}
+        takes(ChequeBook);
+    }
+}

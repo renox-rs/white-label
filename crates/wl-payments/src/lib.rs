@@ -3,6 +3,11 @@
 
 pub mod allocate;
 pub mod allocation;
+pub mod cheque;
+pub mod cheque_deposit;
+mod cheque_machine;
+mod cheque_money;
+pub mod chequer;
 pub mod config;
 pub mod credit;
 pub mod deposit;
@@ -35,6 +40,7 @@ use renox::nav::NavLink;
 use renox::prelude::*;
 
 pub use allocation::Allocation;
+pub use cheque::{Cheque, ChequeLink, ChequeReturn};
 pub use config::PaymentsConfig;
 pub use deposit::Deposit;
 pub use followup::FollowupTask;
@@ -122,6 +128,14 @@ pub mod permissions {
     pub const DEPOSITS_MANAGE: &str = "deposits.manage";
     /// Refund a deposit.
     pub const DEPOSITS_REFUND: &str = "deposits.refund";
+    /// See cheques.
+    pub const CHEQUES_VIEW: &str = "cheques.view";
+    /// Deposit, clear, bounce and re-present a cheque.
+    pub const CHEQUES_DEPOSIT: &str = "cheques.deposit";
+    /// Settle part of a bounced cheque, replace it and write it off.
+    pub const CHEQUES_MANAGE: &str = "cheques.manage";
+    /// Refer a bounced cheque to a legal case.
+    pub const CHEQUES_LEGAL: &str = "cheques.legal";
 }
 
 /// The payments module. The host adds it with
@@ -167,6 +181,56 @@ impl WlPayments {
         self
     }
 
+    /// Sets the bounce fee added when a received cheque bounces (§7: none
+    /// unless the vertical sets it): the `charge_type` of the client's
+    /// charge catalogue and the `amount` before VAT, in fils.
+    ///
+    /// # Panics
+    ///
+    /// For an amount of 0 or less: a programming error.
+    pub fn bounce_fee(mut self, charge_type: &str, amount: i64) -> Self {
+        assert!(amount > 0, "a bounce fee is above 0");
+        self.config.bounce_fee = Some(config::BounceFee {
+            charge_type: charge_type.to_owned(),
+            amount,
+        });
+        self
+    }
+
+    /// Sets the VAT treatment of the bounce fee (standard rated unless set,
+    /// `⚠ open: accountant A-05`).
+    pub fn bounce_fee_vat(mut self, vat: wl_kernel::invoicing::VatCategory) -> Self {
+        self.config.bounce_fee_vat = vat;
+        self
+    }
+
+    /// Sets how many times one cheque may be presented, the first deposit
+    /// included (§7: 2, one re-presentation).
+    pub fn cheque_presentations(mut self, max: i64) -> Self {
+        self.config.cheque_max_presentations = max.max(1);
+        self
+    }
+
+    /// Sets the bank return reasons that allow a criminal complaint (§7;
+    /// compared without case).
+    pub fn criminal_grounds(mut self, reasons: &[&str]) -> Self {
+        self.config.criminal_grounds = reasons.iter().map(|r| r.trim().to_lowercase()).collect();
+        self
+    }
+
+    /// Sets the open amount a legal case needs to be above, in fils (§7: 0).
+    pub fn legal_minimum(mut self, amount: i64) -> Self {
+        self.config.legal_minimum_amount = amount.max(0);
+        self
+    }
+
+    /// Turns the cash-handover rule for cheques collected in the field on or
+    /// off (`FIN.ACL.20`, on unless set).
+    pub fn field_cheque_handover(mut self, on: bool) -> Self {
+        self.config.field_cheque_handover = on;
+        self
+    }
+
     /// Installs the payment gateway; without one, [`NoGateway`] knows no
     /// disputes.
     pub fn gateway(mut self, gateway: impl Gateway) -> Self {
@@ -201,6 +265,9 @@ impl Module for WlPayments {
         app.model::<Refund>();
         app.model::<RefundAttempt>();
         app.model::<Deposit>();
+        app.model::<Cheque>();
+        app.model::<ChequeLink>();
+        app.model::<ChequeReturn>();
         app.model::<FollowupTask>();
         app.view_data::<pages::IndexPage>()
             .view_data::<pages::NewPage>()
@@ -251,6 +318,7 @@ impl Module for WlPayments {
         renox::state_machine::register::<Payment>();
         renox::state_machine::register::<Refund>();
         renox::state_machine::register::<Deposit>();
+        renox::state_machine::register::<Cheque>();
         // The settings the services read (`config_of`).
         app.provide(self.config.clone());
         // The gateway the services ask about disputes (`gateway::gateway_of`).
@@ -259,6 +327,10 @@ impl Module for WlPayments {
         }
         // How other modules record, allocate and read payments.
         wl_kernel::payments::provide_payment_recorder(app, recorder::Payments);
+        // How a vertical registers the post-dated cheques of an agreement.
+        wl_kernel::cheques::provide_cheques(app, chequer::ChequeBook);
+        // `FIN.RUL.03`: the cheques whose date is close go on the deposit list.
+        cheque_deposit::register(app);
         // The notification types of a bank return and a follow-up task.
         notices::register_types();
         // `PaymentReceived` and `PaymentReversed` after a commit.
