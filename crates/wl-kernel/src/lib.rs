@@ -7,6 +7,7 @@ pub mod block_effects;
 pub mod block_guard;
 pub mod branding;
 pub mod broadcast;
+pub mod budgets;
 pub mod calendar;
 pub mod cheques;
 pub mod compliance;
@@ -61,6 +62,10 @@ pub use block_guard::{
 pub use broadcast::{
     BROADCAST_SUBJECT_TYPE, BroadcastCancelReason, BroadcastCancelled, BroadcastCompleted,
     BroadcastId, BroadcastRequest, BroadcastRequesters, NoRequesters, RequesterCheck,
+};
+pub use budgets::{
+    BudgetFuture, COMPANY_BUDGET_SUBJECT_TYPE, CompanyBudgetApproved, CompanyBudgetId,
+    CompanyBudgets, NoCompanyBudgets,
 };
 pub use calendar::BusinessCalendar;
 pub use cheques::{

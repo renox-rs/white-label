@@ -1805,3 +1805,36 @@ async fn the_deposit_adjustment_falls_back_when_payments_is_off() {
     assert_eq!(json["new_amount"], 600_000);
     assert_eq!(json["part_refund"], 4);
 }
+
+/// #88: without the `invoicing` module there is no approved budget and no
+/// category is owner drawings; the event names the version it replaced.
+#[renox::test]
+async fn the_company_budgets_fall_back_when_invoicing_is_off() {
+    use wl_kernel::budgets::{
+        COMPANY_BUDGET_SUBJECT_TYPE, CompanyBudgetApproved, CompanyBudgetId, company_budgets,
+    };
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let budgets = company_budgets(app.state());
+    assert_eq!(
+        budgets
+            .approved_amount(app.db(), 1, "marketing", day())
+            .await
+            .unwrap(),
+        None
+    );
+    assert!(!budgets.is_owner_drawings(app.db(), "owner_drawings").await.unwrap());
+
+    assert_eq!(COMPANY_BUDGET_SUBJECT_TYPE, "invoicing.company_budget");
+    let approved = CompanyBudgetApproved {
+        budget: CompanyBudgetId(2),
+        legal_entity_id: 1,
+        fiscal_year: 2027,
+        version: 2,
+        superseded: Some(CompanyBudgetId(1)),
+    };
+    let json = renox::serde_json::to_value(&approved).unwrap();
+    assert_eq!(json["superseded"], 1);
+    assert_eq!(json["fiscal_year"], 2027);
+}
