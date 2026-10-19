@@ -2,4 +2,4 @@
 -- holder's receipt, and the money passed on is an outgoing payment to it.
 ALTER TABLE "wl_payments_deposits" ADD COLUMN transferred_to INTEGER;
 ALTER TABLE "wl_payments_deposits" ADD COLUMN transfer_receipt TEXT;
-ALTER TABLE "wl_payments_deposits" ADD COLUMN transfer_payment_id INTEGER REFERENCES "wl_payments_payments" (id);
+ALTER TABLE "wl_payments_deposits" ADD COLUMN transfer_payment_id INTEGER;
