@@ -90,6 +90,14 @@ const VIEWS: &[(&str, &str)] = &[
         "property/statement.html",
         include_str!("../views/property/statement.html"),
     ),
+    (
+        "property/agreements.html",
+        include_str!("../views/property/agreements.html"),
+    ),
+    (
+        "property/agreement.html",
+        include_str!("../views/property/agreement.html"),
+    ),
 ];
 
 /// Dirhams as text from fils: `AED 25,000.00`.
@@ -129,7 +137,9 @@ impl Module for Property {
             .view_data::<pages::leases::IndexPage>()
             .view_data::<pages::leases::ShowPage>()
             .view_data::<pages::statements::IndexPage>()
-            .view_data::<pages::statements::ShowPage>();
+            .view_data::<pages::statements::ShowPage>()
+            .view_data::<pages::agreements::IndexPage>()
+            .view_data::<pages::agreements::ShowPage>();
         app.templates(|env| {
             for (name, source) in VIEWS {
                 // The app's own file of that name wins.
@@ -214,6 +224,14 @@ impl Module for Property {
                 .group("nav.app")
                 .order(12)
                 .permission(permissions::OWNER_STATEMENTS_PREPARE),
+        );
+        app.nav(
+            "app",
+            NavLink::route("property.agreements", "nav.agreements")
+                .icon("file-signature")
+                .group("nav.app")
+                .order(13)
+                .permission(permissions::AGREEMENTS_MANAGE),
         );
     }
 }

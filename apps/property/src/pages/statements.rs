@@ -86,7 +86,7 @@ fn signed(fils: i64) -> String {
 }
 
 /// The name of the owner party `id`, else `#id`.
-async fn owner_name(state: &AppState, lang: &Lang, id: i64) -> String {
+pub(super) async fn owner_name(state: &AppState, lang: &Lang, id: i64) -> String {
     directory(state)
         .display_name(&state.db, PartyId(id), &lang.locale)
         .await

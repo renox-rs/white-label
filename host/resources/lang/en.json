@@ -26,6 +26,8 @@
     "employees": "Employees",
     "property": "Property",
     "leases": "Leases",
+    "statements": "Owner statements",
+    "agreements": "Management agreements",
     "tickets": "Tickets",
     "block_effects": "Block effects",
     "review_tasks": "Review tasks",

@@ -1,0 +1,99 @@
+{#- property: a management agreement: its terms, its units, the statements and,
+    from the notice on, the handover pack; with the actions the user may run
+    (activate, add a unit, give notice, record a receipt, prepare the final
+    statement, end). Replace it with resources/views/property/agreement.html in
+    the app. -#}
+<rx-page layout="layouts/app.html" :title="agreement.number">
+  <rx-stack>
+    <rx-page-header :title="agreement.number" :subtitle="agreement.owner" :back="route('property.agreements')" :back-label="tx['agreements.title']"
+                    :badge="status" :badge-kind="status_kind">
+      <template rx-if="can_activate">
+        <rx-confirm :id="'agreement-activate-' ~ agreement.id" :label="tx['agreements.activate']" :action="route('property.agreement_activate', agreement.id)" method="POST"
+                    :title="tx['agreements.activate']" :message="tx['agreements.activate_message']" :confirm-label="tx['agreements.activate']" :cancel-label="tx['button_cancel']" icon="check"/>
+      </template>
+      <template rx-if="can_add_unit">
+        <rx-action-sheet :id="'agreement-unit-' ~ agreement.id" :label="tx['agreements.add_unit']" :action="route('property.agreement_unit_add', agreement.id)"
+                         :title="tx['agreements.add_unit']" :description="tx['agreements.add_unit_description']" :submit-label="tx['agreements.add_unit']" icon="plus">
+          <rx-select name="unit" :label="tx['agreements.unit']" :options="unit_options" :id="'agreement-unit-select-' ~ agreement.id"/>
+          <rx-input name="date_in" type="date" :label="tx['agreements.date_in']" :value="today" :id="'agreement-unit-in-' ~ agreement.id" required/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_give_notice">
+        <rx-action-sheet :id="'agreement-notice-' ~ agreement.id" :label="tx['agreements.give_notice']" :action="route('property.agreement_give_notice', agreement.id)"
+                         :title="tx['agreements.give_notice']" :description="tx['agreements.give_notice_description']" :submit-label="tx['agreements.give_notice']" icon="calendar-x">
+          <rx-input name="notice_on" type="date" :label="tx['agreements.notice_on']" :value="today" :id="'agreement-notice-on-' ~ agreement.id" required/>
+          <rx-select name="party" :label="tx['agreements.notice_party']" :options="[['owner', tx['agreements.party_owner']], ['company', tx['agreements.party_company']]]" :selected="'owner'" :id="'agreement-notice-party-' ~ agreement.id"/>
+          <rx-input name="handover" type="date" :label="tx['agreements.handover_date']" :id="'agreement-notice-handover-' ~ agreement.id" required/>
+          <rx-input name="holder" :label="tx['agreements.new_holder']" :id="'agreement-notice-holder-' ~ agreement.id"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_receipt">
+        <rx-action-sheet :id="'agreement-receipt-' ~ agreement.id" :label="tx['handover.record_receipt']" :action="route('property.agreement_receipt', agreement.id)"
+                         :title="tx['handover.record_receipt']" :description="tx['handover.record_receipt_description']" :submit-label="tx['handover.record_receipt']" icon="receipt">
+          <rx-select name="item" :label="tx['handover.line']" :options="pack_lines" :id="'agreement-receipt-item-' ~ agreement.id"/>
+          <rx-input name="reference" :label="tx['handover.receipt']" :id="'agreement-receipt-reference-' ~ agreement.id" required/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_final_statement">
+        <rx-confirm :id="'agreement-final-' ~ agreement.id" :label="tx['handover.final_statement']" :action="route('property.agreement_final_statement', agreement.id)" method="POST"
+                    :title="tx['handover.final_statement']" :message="tx['handover.final_statement_message']" :confirm-label="tx['handover.final_statement']" :cancel-label="tx['button_cancel']" icon="file-text"/>
+      </template>
+      <template rx-if="can_end">
+        <rx-confirm :id="'agreement-end-' ~ agreement.id" :label="tx['agreements.end']" :action="route('property.agreement_end', agreement.id)" method="POST"
+                    :title="tx['agreements.end']" :message="tx['agreements.end_message']" :confirm-label="tx['agreements.end']" :cancel-label="tx['button_cancel']" icon="flag"/>
+      </template>
+    </rx-page-header>
+    <rx-card :title="tx['agreements.title']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['agreements.owner']" :value="agreement.owner"/>
+        <rx-entry :label="tx['agreements.fee']" :value="agreement.fee"/>
+        <rx-entry :label="tx['agreements.start']" :value="agreement.start"/>
+        <rx-entry :label="tx['agreements.notice']" :value="agreement.notice" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['agreements.handover_date']" :value="agreement.handover" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['agreements.ended_on']" :value="agreement.ended" :placeholder="tx['none']"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-table :rows="units" as="row" :key="row.unit ~ row.date_in" :caption="tx['agreements.units']" card>
+      <rx-column :label="tx['agreements.unit']">{{ row.unit }}</rx-column>
+      <rx-column :label="tx['agreements.date_in']">{{ row.date_in }}</rx-column>
+      <rx-column :label="tx['agreements.date_out']">{{ row.date_out }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['agreements.units_empty']" icon="building-2"/></rx-slot>
+    </rx-table>
+    <template rx-if="show_pack">
+      <rx-card :title="tx['handover.title']">
+        <rx-infolist columns="2">
+          <rx-entry :label="tx['handover.deposit_total']" :value="deposit_total"/>
+        </rx-infolist>
+      </rx-card>
+      <rx-table :rows="pack_deposits" as="line" :key="line.id" :caption="tx['handover.deposits']" card>
+        <rx-column :label="tx['handover.line']">{{ line.description }}</rx-column>
+        <rx-column :label="tx['handover.amount']" align="num">{{ line.amount }}</rx-column>
+        <rx-column :label="tx['handover.receipt']">{{ line.receipt }}</rx-column>
+        <rx-slot name="empty"><rx-empty :title="tx['handover.deposits_empty']" icon="banknote"/></rx-slot>
+      </rx-table>
+      <rx-table :rows="pack_cheques" as="line" :key="line.id" :caption="tx['handover.cheques']" card>
+        <rx-column :label="tx['handover.line']">{{ line.description }}</rx-column>
+        <rx-column :label="tx['handover.amount']" align="num">{{ line.amount }}</rx-column>
+        <rx-column :label="tx['handover.receipt']">{{ line.receipt }}</rx-column>
+        <rx-slot name="empty"><rx-empty :title="tx['handover.cheques_empty']" icon="credit-card"/></rx-slot>
+      </rx-table>
+      <rx-table :rows="pack_invoices" as="line" :key="line.lease ~ line.due" :caption="tx['handover.invoices']" card>
+        <rx-column :label="tx['handover.lease']">{{ line.lease }}</rx-column>
+        <rx-column :label="tx['handover.due']">{{ line.due }}</rx-column>
+        <rx-column :label="tx['handover.balance']" align="num">{{ line.balance }}</rx-column>
+        <rx-slot name="empty"><rx-empty :title="tx['handover.invoices_empty']" icon="receipt"/></rx-slot>
+      </rx-table>
+      <rx-table :rows="pack_ejari" as="line" :key="line.lease" :caption="tx['handover.ejari']" card>
+        <rx-column :label="tx['handover.lease']">{{ line.lease }}</rx-column>
+        <rx-column :label="tx['handover.ejari_number']">{{ line.number }}</rx-column>
+        <rx-slot name="empty"><rx-empty :title="tx['handover.ejari_empty']" icon="file-text"/></rx-slot>
+      </rx-table>
+    </template>
+    <rx-table :rows="statements" as="row" :key="row.id" :caption="tx['agreements.statements']" card>
+      <rx-column :label="tx['statements.number']"><a href="{{ route('property.statement', row.id) }}">{{ row.number }}</a></rx-column>
+      <rx-column :label="tx['statements.period']">{{ row.period }}</rx-column>
+      <rx-column :label="tx['fields.status']">{{ row.status }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['statements.empty']" icon="receipt"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>
