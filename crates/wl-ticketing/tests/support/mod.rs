@@ -18,6 +18,7 @@ use renox::testing::TestApp;
 use serde::Deserialize;
 use wl_kernel::notify::{MessageId, Notifier, NotifyFuture, NotifyRecipient, NotifyRequest};
 use wl_kernel::parties::{PartyDirectory, PartyFuture, PartyKind, PartyStatus, PartySummary};
+use wl_kernel::invoicing::{InvoiceDraft, InvoiceFuture, InvoiceId, InvoiceSummary, Invoicer};
 use wl_kernel::tickets::{Assignee, OpenTicket, TicketAssigned, TicketClosed};
 use wl_kernel::{BusinessCalendar, ClientConfig, PartyId, Subject};
 use wl_ticketing::{
@@ -143,6 +144,86 @@ impl Notifier for Recording {
     ) -> NotifyFuture<'a, Vec<MessageId>> {
         self.0.lock().unwrap().push(request);
         Box::pin(async { Ok(Vec::new()) })
+    }
+}
+
+/// One draft the recording invoicer was asked for.
+#[derive(Debug, Clone)]
+pub struct Drafted {
+    /// The id it answered with.
+    pub id: i64,
+    /// What it was asked for, with the lines as replaced.
+    pub draft: InvoiceDraft,
+    /// Whether the test issued it (then it is not rewritten).
+    pub issued: bool,
+}
+
+/// An invoicer that keeps the drafts it is given and replaces the lines of a
+/// draft that is not issued.
+#[derive(Clone, Default)]
+pub struct Invoices(Arc<Mutex<Vec<Drafted>>>);
+
+impl Invoices {
+    /// Every draft so far, oldest first.
+    pub fn all(&self) -> Vec<Drafted> {
+        self.0.lock().unwrap().clone()
+    }
+
+    /// Marks draft `id` as issued.
+    pub fn issue(&self, id: i64) {
+        for drafted in self.0.lock().unwrap().iter_mut() {
+            if drafted.id == id {
+                drafted.issued = true;
+            }
+        }
+    }
+}
+
+impl Invoicer for Invoices {
+    fn draft<'a>(
+        &'a self,
+        _db: &'a Db,
+        draft: InvoiceDraft,
+    ) -> InvoiceFuture<'a, Option<InvoiceId>> {
+        let mut all = self.0.lock().unwrap();
+        let id = 100 + i64::try_from(all.len()).unwrap();
+        all.push(Drafted {
+            id,
+            draft,
+            issued: false,
+        });
+        Box::pin(async move { Ok(Some(InvoiceId(id))) })
+    }
+
+    fn update_draft<'a>(
+        &'a self,
+        _db: &'a Db,
+        id: InvoiceId,
+        draft: InvoiceDraft,
+    ) -> InvoiceFuture<'a, bool> {
+        let mut all = self.0.lock().unwrap();
+        let changed = match all.iter_mut().find(|d| d.id == id.0 && !d.issued) {
+            Some(found) => {
+                found.draft.lines = draft.lines;
+                true
+            }
+            None => false,
+        };
+        Box::pin(async move { Ok(changed) })
+    }
+
+    fn find<'a>(&'a self, _db: &'a Db, _id: InvoiceId) -> InvoiceFuture<'a, Option<InvoiceSummary>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    fn allocate<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _id: InvoiceId,
+        _source: Subject,
+        _amount: i64,
+    ) -> InvoiceFuture<'a, ()> {
+        Box::pin(async { Ok(()) })
     }
 }
 
@@ -292,6 +373,8 @@ pub struct Booted {
     pub assigned: Recorded<TicketAssigned>,
     /// `TicketClosed`.
     pub closed: Recorded<TicketClosed>,
+    /// The drafts the app's invoicer was asked for.
+    pub invoices: Invoices,
 }
 
 /// `2026-11-03 09:00` as the form field `2026-11-03T09:00:00`.
@@ -431,6 +514,8 @@ pub async fn boot_client(client: &str, module: WlTicketing) -> Booted {
     let notices = Recording::default();
     let directory: Arc<dyn PartyDirectory> = Arc::new(TestDirectory);
     let notifier: Arc<dyn Notifier> = Arc::new(notices.clone());
+    let invoices = Invoices::default();
+    let invoicer: Arc<dyn Invoicer> = Arc::new(invoices.clone());
     let app = App::new()
         .module(Auth::new())
         .module(renox::audit::Audit)
@@ -438,7 +523,8 @@ pub async fn boot_client(client: &str, module: WlTicketing) -> Booted {
         .module(module)
         .module(Harness)
         .provide(directory)
-        .provide(notifier);
+        .provide(notifier)
+        .provide(invoicer);
     let app = record(app, &assigned);
     let app = record(app, &closed);
     let config = ClientConfig::parse(client).expect("a valid client.toml");
@@ -476,5 +562,6 @@ pub async fn boot_client(client: &str, module: WlTicketing) -> Booted {
         notices,
         assigned,
         closed,
+        invoices,
     }
 }
