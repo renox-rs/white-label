@@ -30,6 +30,11 @@ use renox::prelude::*;
 use crate::entities::LegalEntity;
 use crate::integrations::{self, ConnectionStatus, IntegrationConnection};
 
+/// The screen key of the company party form. The ASP connection of an
+/// entity registers it (`IntegrationDef::screens`) so that the form shows the
+/// connection's banner while it is `down`.
+pub const PARTY_SCREEN: &str = "parties.company";
+
 /// The future a [`RecipientLookup`] method returns.
 pub type LookupFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 
