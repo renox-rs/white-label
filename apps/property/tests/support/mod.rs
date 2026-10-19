@@ -28,9 +28,9 @@ use wl_kernel::cheques::{
 };
 use wl_kernel::deposits::{
     AdjustDeposit, ApplyDeposit, ApplyToInvoice, CancelSettlement, DeductionKind,
-    DeductionLineView, DepositAdjusted, DepositApplied, DepositDeductions, DepositFuture, Deposits,
-    HeldDeposit, PublishedDeductions, SettlementStarted, TopUpCharge, deposit_top_ups,
-    provide_deposit_deductions, provide_deposits,
+    DeductionLineView, DepositAdjusted, DepositApplied, DepositDeductions, DepositFuture,
+    DepositTransferred, Deposits, HeldDeposit, PublishedDeductions, SettlementStarted, TopUpCharge,
+    TransferDeposit, deposit_top_ups, provide_deposit_deductions, provide_deposits,
 };
 use wl_kernel::documents::{
     BlockEntry, BlockFailure, BlockMode, BlockRefusal, CheckOutcome, DocumentFuture,
@@ -800,6 +800,7 @@ pub struct DepositBook {
     settling: Arc<Mutex<BTreeMap<String, HeldDeposit>>>,
     published: Arc<Mutex<BTreeMap<String, PublishedDeductions>>>,
     applied: Arc<Mutex<Vec<(ApplyDeposit, i64)>>>,
+    transfers: Arc<Mutex<Vec<(TransferDeposit, i64)>>>,
 }
 
 /// What the portal contract shows of the deductions the deposit book holds.
@@ -941,6 +942,16 @@ impl DepositBook {
     pub fn legal(&self) -> Vec<(Subject, bool)> {
         self.legal.lock().unwrap().clone()
     }
+
+    /// The deposits handed to a new holder, with the user who did it.
+    pub fn transferred(&self) -> Vec<(TransferDeposit, i64)> {
+        self.transfers.lock().unwrap().clone()
+    }
+
+    /// Whether a deposit is still held (not settled, not transferred) for `source`.
+    pub fn is_held(&self, source: &Subject) -> bool {
+        self.held.lock().unwrap().contains_key(&source.to_string())
+    }
 }
 
 impl Deposits for DepositBook {
@@ -962,6 +973,36 @@ impl Deposits for DepositBook {
             self.legal.lock().unwrap().push((source.clone(), open));
             Ok(true)
         })
+    }
+
+    fn transfer<'a>(
+        &'a self,
+        _state: &'a AppState,
+        by: &'a AuthUser,
+        request: TransferDeposit,
+    ) -> DepositFuture<'a, Option<DepositTransferred>> {
+        Box::pin(async move {
+            if request.receipt.trim().is_empty() {
+                return Err(Error::Status(
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    "the receipt is required".to_owned(),
+                ));
+            }
+            let Some(held) = self.held.lock().unwrap().remove(&request.source.to_string()) else {
+                return Ok(None);
+            };
+            let moved = DepositTransferred {
+                deposit: held.deposit,
+                held: held.held,
+                new_holder: request.new_holder,
+            };
+            self.transfers.lock().unwrap().push((request, by.id));
+            Ok(Some(moved))
+        })
+    }
+
+    fn in_settlement<'a>(&'a self, _db: &'a Db, source: &'a Subject) -> DepositFuture<'a, bool> {
+        Box::pin(async move { Ok(self.settling.lock().unwrap().contains_key(&source.to_string())) })
     }
 
     fn start_settlement<'a>(

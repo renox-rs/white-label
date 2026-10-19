@@ -495,7 +495,7 @@ pub async fn activate(
         owner_ok,
         ..AgreementInput::default()
     };
-    documents::guarded(state, documents::AGREEMENT_ACTIVATE, id, Some(user.id), || async {
+    let _outcome = documents::guarded(state, documents::AGREEMENT_ACTIVATE, id, Some(user.id), || async {
         agreement
             .transition(ACTIVATE)
             .by(user)
@@ -551,7 +551,7 @@ pub async fn give_notice(
         new_holder: notice.new_holder.map(|holder| holder.0),
         ..AgreementInput::default()
     };
-    agreement
+    let _outcome = agreement
         .transition(GIVE_NOTICE)
         .by(user)
         .input(&input)
@@ -972,7 +972,7 @@ pub async fn end(
         day: Some(today()),
         ..AgreementInput::default()
     };
-    agreement
+    let _outcome = agreement
         .transition(END)
         .by(user)
         .input(&input)
