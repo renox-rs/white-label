@@ -392,6 +392,10 @@ const TEXTS: &[(&str, &str)] = &[
         "Not sent: the record changed while the call was queued.",
     ),
     (
+        "wl_kernel.integrations.no_inbound",
+        "This connection takes no inbound data.",
+    ),
+    (
         "wl_kernel.integrations.not_yet_down",
         "The connection has not been without a successful call for long enough.",
     ),

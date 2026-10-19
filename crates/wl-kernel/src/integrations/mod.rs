@@ -30,8 +30,8 @@ pub use events::IntegrationStatusChanged;
 pub use queue::{CallStatus, QueuedCall};
 pub use reconcile::{Line, LineKind, Reconciliation};
 pub use service::{
-    Report, Submitted, disable, enable, ensure, go_down, report_failure, report_success, run_due,
-    run_queue, submit,
+    Received, Report, Submitted, disable, drain, enable, ensure, go_down, receive, report_failure,
+    report_success, run_due, run_queue, submit,
 };
 
 /// The subject type of a connection, for rule runs and alerts.

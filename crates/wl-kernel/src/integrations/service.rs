@@ -22,11 +22,13 @@ use renox::state_machine::{Outcome, StateMachine, TransitionError};
 
 use super::alerts;
 use super::connection::{ConnectionStatus, IntegrationConnection, transitions};
-use super::def::{Delivery, IntegrationDef, Outbound, get};
+use super::def::{Delivery, Inbound, IntegrationDef, Match, Outbound, get};
 use super::events::IntegrationStatusChanged;
 use super::queue::{self, QueuedCall};
+use super::reconcile::{self, Line};
 use super::{SUBJECT_TYPE, create_row};
 use crate::automation::{RuleRunSpec, RunOutcome, run_rule};
+use crate::late_entries::{self, Entered};
 use crate::subject::Subject;
 use crate::texts;
 
@@ -49,6 +51,32 @@ pub enum Submitted {
     },
     /// The module's handler reported the call obsolete: nothing was sent.
     Obsolete,
+    /// A call with the same natural key is already queued or was sent: no
+    /// second call is made.
+    Duplicate {
+        /// The id of the call that has the key.
+        id: i64,
+    },
+}
+
+/// What [`receive`] did with an inbound item.
+#[derive(Debug, Clone)]
+pub enum Received {
+    /// No record done by hand had the natural key: the item was entered as a
+    /// new record, through the late-entry rules with its own business time
+    /// (it may wait for approval).
+    Created(Box<Entered>),
+    /// A record done by hand has the natural key and says the same: the item
+    /// is linked to it, no second record is created.
+    Linked(Subject),
+    /// A record done by hand has the natural key but its values differ: a
+    /// line was added to the reconciliation task.
+    Mismatch {
+        /// The record done by hand.
+        subject: Subject,
+        /// How the two differ.
+        detail: String,
+    },
 }
 
 /// What a scheduled run did.
@@ -171,10 +199,21 @@ pub async fn report_failure(state: &AppState, key: &str, error: &str) -> Result 
     Ok(())
 }
 
-/// A call of `key` succeeded: a `degraded` or `down` connection `recover`s
-/// to `up` (the banner goes); an `up` one notes the time; a `disabled` one
-/// is left alone. Returns whether the connection recovered.
+/// A call of `key` succeeded (or the other side got in touch): a `degraded`
+/// or `down` connection `recover`s to `up` (the banner goes) and, once that
+/// has committed, its queue is drained in order; an `up` one notes the time;
+/// a `disabled` one is left alone. Returns whether the connection recovered.
 pub async fn report_success(state: &AppState, key: &str) -> Result<bool> {
+    let recovered = note_success(state, key).await?;
+    if recovered {
+        drain(state, key).await?;
+    }
+    Ok(recovered)
+}
+
+/// The state change of [`report_success`], without the drain: what the
+/// drain itself calls after each call it sent.
+async fn note_success(state: &AppState, key: &str) -> Result<bool> {
     let connection = ensure(&state.db, key).await?;
     match connection.status {
         ConnectionStatus::Degraded | ConnectionStatus::Down => {
@@ -207,6 +246,12 @@ pub async fn report_success(state: &AppState, key: &str) -> Result<bool> {
 /// failed call is not an error: it is queued.
 pub async fn submit(state: &AppState, call: Outbound) -> Result<Submitted> {
     let def = definition(&call.connection)?;
+    if let Some(key) = &call.natural_key
+        && let Some(known) =
+            QueuedCall::with_natural_key(&state.db, &call.connection, key).await?
+    {
+        return Ok(Submitted::Duplicate { id: known.id });
+    }
     let connection = ensure(&state.db, &call.connection).await?;
     let waiting = QueuedCall::any_waiting(&state.db, &call.connection).await?;
     if connection.status != ConnectionStatus::Up || waiting {
@@ -216,7 +261,7 @@ pub async fn submit(state: &AppState, call: Outbound) -> Result<Submitted> {
     }
     match def.send(state, &call).await {
         Ok(Delivery::Sent) => {
-            report_success(state, &call.connection).await?;
+            note_success(state, &call.connection).await?;
             Ok(Submitted::Sent)
         }
         Ok(Delivery::Obsolete) => Ok(Submitted::Obsolete),
@@ -245,38 +290,127 @@ async fn enqueue(db: &Db, call: &Outbound, error: Option<&str>) -> Result<i64> {
 /// `degraded` or `down` connection. Nothing is called while the connection
 /// is `disabled`.
 pub async fn run_queue(state: &AppState, key: &str) -> Result<Report> {
+    process(state, key, false).await
+}
+
+/// The late sync (wl-kernel §5.14 step 4): sends the queued calls of `key`
+/// oldest first without waiting for their backoff, as [`run_queue`] does
+/// otherwise. A call that fails during the drain is a failed call of an `up`
+/// connection: `degrade` runs (its `failed since` is that failure), the
+/// calls behind it stay queued in order, and nothing already sent is sent
+/// again. The calls their module reported obsolete are listed on the
+/// reconciliation task.
+pub async fn drain(state: &AppState, key: &str) -> Result<Report> {
+    process(state, key, true).await
+}
+
+/// [`run_queue`] and [`drain`]; whatever happens, the obsolete calls found
+/// are written to the reconciliation task.
+async fn process(state: &AppState, key: &str, force: bool) -> Result<Report> {
     let mut report = Report::default();
+    let mut lines = Vec::new();
+    let result = work(state, key, force, &mut report, &mut lines).await;
+    if !lines.is_empty() {
+        let connection = ensure(&state.db, key).await?;
+        reconcile::add_lines(state, &connection, lines).await?;
+    }
+    result?;
+    Ok(report)
+}
+
+async fn work(
+    state: &AppState,
+    key: &str,
+    force: bool,
+    report: &mut Report,
+    lines: &mut Vec<Line>,
+) -> Result<()> {
     let def = definition(key)?;
     loop {
         let connection = ensure(&state.db, key).await?;
         if connection.status == ConnectionStatus::Disabled {
-            return Ok(report);
+            return Ok(());
         }
-        let Some(item) = QueuedCall::next_due(&state.db, key, now()).await? else {
-            return Ok(report);
+        let next = if force {
+            QueuedCall::oldest(&state.db, key).await?
+        } else {
+            QueuedCall::next_due(&state.db, key, now()).await?
+        };
+        let Some(item) = next else {
+            return Ok(());
         };
         let call = item.outbound();
         if !def.is_due(state, &call).await? {
             queue::mark_obsolete(&state.db, &item).await?;
             report.obsolete += 1;
+            lines.push(obsolete_line(&call));
             continue;
         }
         match def.send(state, &call).await {
             Ok(Delivery::Sent) => {
                 queue::mark_sent(&state.db, &item).await?;
-                report_success(state, key).await?;
+                note_success(state, key).await?;
                 report.sent += 1;
             }
             Ok(Delivery::Obsolete) => {
                 queue::mark_obsolete(&state.db, &item).await?;
                 report.obsolete += 1;
+                lines.push(obsolete_line(&call));
             }
             Err(error) => {
                 let message = error.to_string();
                 queue::mark_failed(&state.db, &item, &message).await?;
                 report_failure(state, key, &message).await?;
-                return Ok(report);
+                return Ok(());
             }
+        }
+    }
+}
+
+fn obsolete_line(call: &Outbound) -> Line {
+    Line::obsolete(&call.kind, call.natural_key.as_deref(), call.subject.as_ref())
+}
+
+/// Inbound data that arrives late (a gateway callback, an aggregator
+/// order) is matched by its natural key to the record done by hand while the
+/// connection was down:
+///
+/// - none: the item is entered as a new record with its own business time,
+///   under the late-entry rules ([`late_entries::enter`]);
+/// - the same values: it is linked to that record, nothing new is created;
+/// - other values: a line is added to the reconciliation task of the
+///   failure run, for the connection's owner role.
+///
+/// The item also proves the other side is alive: a `degraded` or `down`
+/// connection `recover`s first, and its queue is drained.
+///
+/// # Errors
+///
+/// 400 when the connection is not registered or takes no inbound data; the
+/// late-entry rules' refusals (for example a missing reason when the item is
+/// late).
+pub async fn receive(state: &AppState, item: Inbound) -> Result<Received> {
+    let def = definition(&item.connection)?;
+    if !def.takes_inbound() {
+        return Err(Error::BadRequest(texts::en(
+            "wl_kernel.integrations.no_inbound",
+        )));
+    }
+    report_success(state, &item.connection).await?;
+    match def.match_manual(state, &item).await? {
+        Match::NoRecord => {
+            let spec = def
+                .entry_for(&item)
+                .ok_or_else(|| Error::BadRequest(texts::en("wl_kernel.integrations.no_inbound")))?;
+            let entered = late_entries::enter(state, spec).await?;
+            Ok(Received::Created(Box::new(entered)))
+        }
+        Match::Same(subject) => Ok(Received::Linked(subject)),
+        Match::Differs { subject, detail } => {
+            let connection = ensure(&state.db, &item.connection).await?;
+            let line = Line::mismatch(&item.natural_key, &subject, &detail);
+            reconcile::add_lines(state, &connection, vec![line]).await?;
+            Ok(Received::Mismatch { subject, detail })
         }
     }
 }
@@ -385,7 +519,8 @@ pub async fn disable(
     run_user(state, user, key, transitions::DISABLE, Some(reason)).await
 }
 
-/// An admin switches `key` on again; it is `up`.
+/// An admin switches `key` on again; it is `up`, and the queue kept while
+/// it was disabled is drained in order.
 ///
 /// # Errors
 ///
@@ -396,7 +531,10 @@ pub async fn enable(
     user: &AuthUser,
     key: &str,
 ) -> std::result::Result<IntegrationConnection, TransitionError> {
-    run_user(state, user, key, transitions::ENABLE, None).await
+    run_user(state, user, key, transitions::ENABLE, None).await?;
+    // The queue kept while it was disabled is sent now, in order.
+    drain(state, key).await?;
+    Ok(ensure(&state.db, key).await?)
 }
 
 /// Registers the scheduled task [`TASK`] (every minute) and the command of
