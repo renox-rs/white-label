@@ -273,6 +273,7 @@ impl Module for WlKernel {
         late_entries::register_models(app);
         integrations::register_models(app);
         compliance::register_models(app);
+        digest::register(app);
         // In the admin group of the staff sidebar; the label is the app's
         // `nav.legal_entities` text.
         app.nav(

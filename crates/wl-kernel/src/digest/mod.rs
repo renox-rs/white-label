@@ -15,6 +15,7 @@
 pub mod collect;
 pub mod info;
 pub mod render;
+pub mod run;
 
 use renox::chrono::{Duration, NaiveDate, NaiveTime};
 use renox::db::DateTime;
@@ -23,6 +24,7 @@ use crate::calendar::BusinessCalendar;
 
 pub use collect::{by_manager, gather, managers};
 pub use info::{RecordInfo, info_of, register_info, register_rule_title, rule_title};
+pub use run::{NOTIFICATION_TYPE, Report, run_digest};
 pub use render::{FiredLine, Item, ItemKind, Section, record_name, render};
 
 /// The rule id of the digest (`PLT.RUL.06`).
@@ -65,4 +67,9 @@ mod tests {
         assert_eq!(TASK_ZONE, "Asia/Dubai");
         assert_eq!(RULE, "PLT.RUL.06");
     }
+}
+
+/// Registers the digest's notification type, scheduled task and command.
+pub(crate) fn register(app: &mut renox::prelude::Registry) {
+    run::schedule(app);
 }

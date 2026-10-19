@@ -475,6 +475,11 @@ const TEXTS: &[(&str, &str)] = &[
         "Voids and late entries from :from to :until (Asia/Dubai)",
     ),
     ("wl_kernel.scopes.global", "All locations"),
+    (
+        "wl_kernel.digest.subject",
+        "Voids and late entries of yesterday",
+    ),
+    ("wl_kernel.digest.label", ":records records"),
     ("wl_kernel.digest.voided", "Voided"),
     ("wl_kernel.digest.late", "Late entries"),
     (
