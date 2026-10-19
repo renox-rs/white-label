@@ -672,6 +672,22 @@ pub struct Reopened {
     pub skipped: bool,
 }
 
+/// What [`Invoicer::write_off`] did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WriteOffAnswer {
+    /// The invoice is `written_off` (no approval was needed);
+    /// [`InvoiceWrittenOff`] was emitted.
+    WrittenOff,
+    /// The amount is above the approval limit: the approval request waits
+    /// and the invoice stays as it is. [`InvoiceWrittenOff`] follows when the
+    /// last approver says yes; a request that ends any other way gives
+    /// `ApprovalDecided` for the invoice.
+    Pending {
+        /// The approval request.
+        request: i64,
+    },
+}
+
 /// Drafts, reads and allocates invoices for other modules. `wl-invoicing`
 /// provides it; without that module, [`invoicer`] gives [`NoInvoicer`].
 pub trait Invoicer: Send + Sync + 'static {
@@ -831,6 +847,29 @@ pub trait Invoicer: Send + Sync + 'static {
         _currency: &'a str,
     ) -> InvoiceFuture<'a, i64> {
         Box::pin(async { Ok(0) })
+    }
+
+    /// Writes off the whole open balance of invoice `id` as a bad debt for
+    /// `by` (wl-invoicing `write_off`: the user needs `invoices.write_off`,
+    /// and `FIN.ACL.15` turns a write-off above the limit into an approval
+    /// request). `reason_code` is one of the configured codes (`other` needs
+    /// a `reason_text`). Refused (422) for a disputed invoice, one without a
+    /// balance, or one in a state that cannot be written off. The default
+    /// refuses (422): invoicing is not enabled.
+    fn write_off<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _by: &'a AuthUser,
+        id: InvoiceId,
+        _reason_code: &'a str,
+        _reason_text: Option<&'a str>,
+    ) -> InvoiceFuture<'a, WriteOffAnswer> {
+        Box::pin(async move {
+            Err(Error::Status(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                format!("invoice {id} cannot be written off: invoicing is not enabled"),
+            ))
+        })
     }
 
     /// Takes `amount` fils of a credit note's remaining balance for `refund`

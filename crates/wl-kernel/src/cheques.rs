@@ -499,6 +499,50 @@ pub fn bounce_fees(state: &AppState) -> Arc<dyn BounceFees> {
     }
 }
 
+/// The subject type of a scheduled charge, for [`Subject`] references (the
+/// bounce fee charge, a rent charge of a lease).
+pub const CHARGE_SUBJECT_TYPE: &str = "invoicing.charge";
+
+/// Invoices a scheduled charge that is not invoiced yet, for a cheque
+/// `write_off` (wl-payments §4 *Cheque*: "a linked charge not yet invoiced is
+/// invoiced first"): [`ChargeInvoicer::invoice`]. The module that owns the
+/// charges provides it; without one, [`charge_invoicer`] gives
+/// [`NoChargeInvoicer`], which invoices nothing.
+pub trait ChargeInvoicer: Send + Sync + 'static {
+    /// Invoices the charge `charge` now and returns the issued invoice, or
+    /// the invoice it already has. `None` when it cannot be invoiced (the
+    /// default), so the caller refuses the write-off and asks for the charge
+    /// to be invoiced first.
+    fn invoice<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _charge: &'a Subject,
+    ) -> ChequeFuture<'a, Option<crate::invoicing::InvoiceId>> {
+        Box::pin(async { Ok(None) })
+    }
+}
+
+/// The charge invoicer when nothing can invoice a charge.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoChargeInvoicer;
+
+impl ChargeInvoicer for NoChargeInvoicer {}
+
+/// Makes `invoicer` the app's [`ChargeInvoicer`].
+pub fn provide_charge_invoicer(app: &mut Registry, invoicer: impl ChargeInvoicer) {
+    let invoicer: Arc<dyn ChargeInvoicer> = Arc::new(invoicer);
+    app.provide(invoicer);
+}
+
+/// The app's [`ChargeInvoicer`], or [`NoChargeInvoicer`] when none is
+/// provided.
+pub fn charge_invoicer(state: &AppState) -> Arc<dyn ChargeInvoicer> {
+    match state.provided::<Arc<dyn ChargeInvoicer>>() {
+        Some(invoicer) => Arc::clone(&invoicer),
+        None => Arc::new(NoChargeInvoicer),
+    }
+}
+
 /// A received cheque bounced (`bounce`): wl-sales puts the customer account
 /// (and its credit group) on credit hold (`SAL.CRD.01`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

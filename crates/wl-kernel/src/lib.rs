@@ -63,9 +63,10 @@ pub use broadcast::{
 };
 pub use calendar::BusinessCalendar;
 pub use cheques::{
-    BounceFeeCharge, BounceFees, CHEQUE_SUBJECT_TYPE, ChequeBounceResolved, ChequeBounced,
-    ChequeId, ChequeOutcome, ChequeSchedule, ChequeStatus, ChequeSummary, Cheques, NoBounceFees,
-    NoCheques, RegisterCheque, ScheduledCheque,
+    BounceFeeCharge, BounceFees, CHARGE_SUBJECT_TYPE, CHEQUE_SUBJECT_TYPE, ChargeInvoicer,
+    ChequeBounceResolved, ChequeBounced, ChequeId, ChequeOutcome, ChequeSchedule, ChequeStatus,
+    ChequeSummary, Cheques, NoBounceFees, NoChargeInvoicer, NoCheques, RegisterCheque,
+    ScheduledCheque,
 };
 pub use config::{ClientConfig, ConfigError, RolesConfig, owner_role};
 pub use compliance::{ComplianceAlert, ComplianceRule, CriticalRule, Planned};
@@ -98,6 +99,7 @@ pub use invoicing::{
     SupplierBills, SupplierDebitNoteCancelled, SupplierDebitNoteId, SupplierDebitNoteIssued,
     SupplierDebitNoteSettled, SupplierDebitNoteStatus, SupplierDebitNoteSummary,
     SupplierDebitNotes, SupplierReturnDispatched, SupplierReturnLine, UnallocateBill, VatCategory,
+    WriteOffAnswer,
 };
 pub use late_entries::{
     ApprovalWhy, Assessment, FiredRun, LateEntry, LateEntryDef, LateEntryLimits, LateEntryRecorded,

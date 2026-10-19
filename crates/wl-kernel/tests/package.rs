@@ -1689,3 +1689,25 @@ async fn the_cheque_contract_falls_back_when_payments_is_off() {
     };
     assert_eq!(renox::serde_json::to_value(&resolved).unwrap()["outcome"], "cleared");
 }
+
+/// #106: without the module that owns the charges nothing is invoiced, so a
+/// cheque write-off asks for the charge to be invoiced first; the answer of an
+/// invoice write-off names the approval request that waits.
+#[renox::test]
+async fn a_charge_is_not_invoiced_when_nothing_provides_it() {
+    use wl_kernel::Subject;
+    use wl_kernel::cheques::{CHARGE_SUBJECT_TYPE, charge_invoicer};
+    use wl_kernel::invoicing::WriteOffAnswer;
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let state = app.state();
+    let charge = Subject::new(CHARGE_SUBJECT_TYPE, 12);
+    assert_eq!(charge.to_string(), "invoicing.charge:12");
+    assert_eq!(charge_invoicer(state).invoice(state, &charge).await.unwrap(), None);
+    assert_eq!(
+        WriteOffAnswer::Pending { request: 3 },
+        WriteOffAnswer::Pending { request: 3 }
+    );
+    assert_ne!(WriteOffAnswer::WrittenOff, WriteOffAnswer::Pending { request: 3 });
+}
