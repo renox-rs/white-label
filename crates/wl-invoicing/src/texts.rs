@@ -1487,6 +1487,13 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_invoicing.cash.kind.refund", "Refund"),
     ("wl_invoicing.cash.kind.vat", "VAT payable"),
     ("wl_invoicing.cash.kind.source", "Other"),
+    ("wl_invoicing.cash.kind.budget_fill", "Budget fill"),
+    ("wl_invoicing.cash.row.fill", "Budget fill"),
+    ("wl_invoicing.cash.after", "After week"),
+    (
+        "wl_invoicing.cash.later_hint",
+        "These receipts are expected after the last week because of the days-late adjustment. They are not counted in the grid.",
+    ),
     ("wl_invoicing.cash.drawings", "Owner drawings"),
     ("wl_invoicing.cash.warning.no_balance", "no balance known: counted as zero"),
     ("wl_invoicing.cash.warning.stale", "the balance is old, as of"),

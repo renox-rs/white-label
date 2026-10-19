@@ -14,7 +14,10 @@
 //! `cashflow.view`, and an entity outside it is 403. Each receipts or
 //! payments cell opens the lines behind it (`/cash-forecast/cell`); the owner
 //! drawings and the totals a source marks show their amount only, unless the
-//! user holds `drawings.approve` (`FIN.ACL.22`). The Excel export of the grid
+//! user holds `drawings.approve` (`FIN.ACL.22`). A row per budget category
+//! shows the budget fill (`side=fill:<category code>` opens its lines); the
+//! receipts moved beyond the last week by *adjust by days late* are listed
+//! under the grid as *after week 13* (`side=after`). The Excel export of the grid
 //! as a sensitive report export is not built yet. The templates are compiled
 //! in and an app can replace them.
 
@@ -190,6 +193,9 @@ pub(crate) struct IndexPage {
     can_manage: bool,
     form_entities: Vec<(i64, String)>,
     today: String,
+    later: Vec<LineView>,
+    later_total: String,
+    later_caption: String,
 }
 
 fn kind_text(t: &dyn Fn(&str) -> String, kind: MemoKind) -> String {
@@ -316,6 +322,37 @@ pub(crate) fn rows_of(
         look: "total",
         cells: (0..count).map(|w| plain(whole_text(forecast.balance(w)))).collect(),
     });
+    // The budget fill, a row per category (counted in the rows above).
+    let mut fills: Vec<(&str, &str)> = Vec::new();
+    for line in forecast.lines.iter().filter(|l| l.kind == LineKind::BudgetFill) {
+        if !fills.iter().any(|(code, _)| *code == line.category) {
+            fills.push((line.category.as_str(), line.label.as_str()));
+        }
+    }
+    for (code, name) in fills {
+        let in_week = |w: usize| -> i64 {
+            forecast
+                .lines
+                .iter()
+                .filter(|l| l.kind == LineKind::BudgetFill && l.category == code && l.week == w)
+                .map(|l| l.amount)
+                .sum()
+        };
+        rows.push(Row {
+            name: format!("{}: {}", t("cash.row.fill"), name),
+            look: "normal",
+            cells: (0..count)
+                .map(|w| Cell {
+                    text: whole_text(in_week(w)),
+                    href: if in_week(w) != 0 {
+                        query(w, &format!("fill:{code}"))
+                    } else {
+                        String::new()
+                    },
+                })
+                .collect(),
+        });
+    }
     for kind in MemoKind::ALL {
         if forecast.memos.iter().all(|m| m.kind != kind) {
             continue;
@@ -431,6 +468,30 @@ async fn index(
         can_manage,
         form_entities,
         today: today().format("%Y-%m-%d").to_string(),
+        later: forecast
+            .after
+            .iter()
+            .map(|line| LineView {
+                label: line.label.clone(),
+                kind: t(&format!("cash.kind.{}", line.kind.code())),
+                party: String::new(),
+                date: line.date.format("%Y-%m-%d").to_string(),
+                amount: amount_text("AED", line.amount),
+                flags: vec![t("cash.flag.not_counted")],
+                links: line
+                    .documents
+                    .iter()
+                    .map(|d| (d.to_string(), document_link(d)))
+                    .filter(|(_, href)| !href.is_empty())
+                    .collect(),
+            })
+            .collect(),
+        later_total: amount_text("AED", forecast.after.iter().map(|l| l.amount).sum()),
+        later_caption: format!(
+            "{} {}",
+            t("cash.after"),
+            forecast.weeks.last().map_or(0, |w| w.number)
+        ),
     }))
 }
 
@@ -461,7 +522,8 @@ pub(crate) struct CellPage {
 /// shows its party and documents only for owner drawings and only to a holder
 /// of `drawings.approve` in every entity asked for (`FIN.ACL.22`).
 fn may_open(line: &Line, drawings_ok: bool) -> bool {
-    !line.total_only || (line.kind == LineKind::Bill && drawings_ok)
+    !line.total_only
+        || (matches!(line.kind, LineKind::Bill | LineKind::BudgetFill) && drawings_ok)
 }
 
 /// `GET /cash-forecast/cell`: the lines behind a cell.
@@ -505,12 +567,25 @@ async fn cell(
         "out" => Some(Direction::Out),
         _ => None,
     };
-    if let Some(direction) = direction {
-        for line in forecast
-            .lines
-            .iter()
-            .filter(|l| l.week == week && l.direction == direction)
-        {
+    let fill = side.strip_prefix("fill:").map(str::to_owned);
+    let later = side == "after";
+    if direction.is_some() || fill.is_some() || later {
+        let selected: Vec<&Line> = if later {
+            forecast.after.iter().collect()
+        } else if let Some(code) = &fill {
+            forecast
+                .lines
+                .iter()
+                .filter(|l| l.week == week && l.kind == LineKind::BudgetFill && &l.category == code)
+                .collect()
+        } else {
+            forecast
+                .lines
+                .iter()
+                .filter(|l| l.week == week && Some(l.direction) == direction)
+                .collect()
+        };
+        for line in selected {
             let open = may_open(line, drawings_ok);
             let mut flags = Vec::new();
             if line.not_approved {
@@ -519,8 +594,14 @@ async fn cell(
             if line.estimate {
                 flags.push(t("cash.flag.estimate"));
             }
+            if later {
+                flags.push(t("cash.flag.not_counted"));
+            }
             total += line.amount;
-            let label = if line.kind == LineKind::Bill && line.total_only && !open {
+            let label = if matches!(line.kind, LineKind::Bill | LineKind::BudgetFill)
+                && line.total_only
+                && !open
+            {
                 t("cash.drawings")
             } else {
                 line.label.clone()
@@ -570,8 +651,14 @@ async fn cell(
         }
     }
     let heading = match (direction, forecast.weeks.get(week)) {
+        _ if later => format!(
+            "{} {}",
+            t("cash.after"),
+            forecast.weeks.last().map_or(0, |w| w.number)
+        ),
         (Some(Direction::In), Some(w)) => t("cash.row.receipts") + &week_text(&t, w),
         (Some(Direction::Out), Some(w)) => t("cash.row.payments") + &week_text(&t, w),
+        (None, Some(w)) if fill.is_some() => t("cash.row.fill") + &week_text(&t, w),
         (None, Some(w)) => kind_text(&t, MemoKind::ALL.iter().copied().find(|k| k.code() == side).unwrap_or(MemoKind::Disputed)) + &week_text(&t, w),
         _ => t("cash.title"),
     };
@@ -772,6 +859,7 @@ mod tests {
             LineKind::Refund,
             LineKind::Vat,
             LineKind::Source,
+            LineKind::BudgetFill,
         ] {
             let key = format!("cash.kind.{}", kind.code());
             assert_ne!(english_text(&key), key);

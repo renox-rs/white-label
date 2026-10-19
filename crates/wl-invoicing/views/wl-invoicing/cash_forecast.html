@@ -23,6 +23,14 @@
         </td>
       </tr>
     </rx-simple-table>
+    <template rx-if="later">
+      <rx-table :rows="later" as="item" :key="item.label ~ item.date" :caption="later_caption" card>
+        <rx-column :label="tx['cash.cell.line']">{{ item.label }}</rx-column>
+        <rx-column :label="tx['cash.cell.date']">{{ item.date }}</rx-column>
+        <rx-column :label="tx['cash.cell.amount']">{{ item.amount }}</rx-column>
+      </rx-table>
+      <p>{{ tx['cash.later_hint'] }} {{ tx['cash.cell.total'] }}: <strong>{{ later_total }}</strong></p>
+    </template>
     <rx-table :rows="openings" as="opening" :key="opening.account" :caption="tx['cash.accounts']" card>
       <rx-column :label="tx['cash.account']">{{ opening.entity }} {{ opening.account }}</rx-column>
       <rx-column :label="tx['cash.balance_of']">{{ opening.balance }}</rx-column>
