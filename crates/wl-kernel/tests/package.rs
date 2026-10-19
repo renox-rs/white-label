@@ -1756,3 +1756,52 @@ async fn the_deposit_deductions_fall_back_when_payments_is_off() {
     };
     assert_eq!(renox::serde_json::to_value(&settled).unwrap()["outcome"], "forfeited");
 }
+
+/// #115: without the `payments` module a deposit cannot be adjusted and no
+/// top-up charge is made; the event names the amounts and the charge.
+#[renox::test]
+async fn the_deposit_adjustment_falls_back_when_payments_is_off() {
+    use wl_kernel::Subject;
+    use wl_kernel::deposits::{
+        AdjustDeposit, DepositAdjusted, TopUpCharge, deposit_top_ups, deposits,
+    };
+    use wl_kernel::payments::{DepositId, RefundId};
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let state = app.state();
+    let request = AdjustDeposit {
+        source: Subject::new("property.lease", 9),
+        new_amount: 600_000,
+        source_version: 2,
+        effective_on: day(),
+    };
+    assert!(deposits(state).adjust(state, request, None).await.is_err());
+
+    let charge = TopUpCharge {
+        deposit: DepositId(3),
+        party: PartyId(7),
+        legal_entity_id: 1,
+        source: Subject::new("property.lease", 9),
+        source_version: 2,
+        amount: 100_000,
+        currency: "AED".into(),
+        due: day(),
+    };
+    assert_eq!(deposit_top_ups(state).request(state, charge).await.unwrap(), None);
+
+    let adjusted = DepositAdjusted {
+        deposit: DepositId(3),
+        source: Subject::new("property.lease", 9),
+        party: PartyId(7),
+        source_version: 2,
+        old_amount: 500_000,
+        new_amount: 600_000,
+        effective_on: day(),
+        top_up_charge: Some(Subject::new("invoicing.charge", 12)),
+        part_refund: Some(RefundId(4)),
+    };
+    let json = renox::serde_json::to_value(&adjusted).unwrap();
+    assert_eq!(json["new_amount"], 600_000);
+    assert_eq!(json["part_refund"], 4);
+}

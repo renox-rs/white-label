@@ -12,6 +12,11 @@
 //!   [`DepositDeductions::dispute`]. [`deposit_deductions`] falls back to
 //!   [`NoDepositDeductions`] when `payments` is off: nothing is shown and a
 //!   dispute is refused.
+//! - **A change of the amount while the deposit is held.** A lease amendment or
+//!   renewal (01) calls [`Deposits::adjust`] with the new amount and its
+//!   version: an increase raises a top-up charge ([`DepositTopUps`], provided
+//!   by the module that owns the charges), a decrease becomes a part refund
+//!   through the Refund flow; [`DepositAdjusted`] says what was done.
 //! - **Events.** [`DepositDeductionsPublished`], [`DepositDeductionsDisputed`]
 //!   and [`DepositDisputeAnswered`] let the vertical's rule (01 `PRP.RUL.11`)
 //!   count the window and escalate an unanswered dispute; [`DepositSettled`]
@@ -28,7 +33,7 @@ use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::parties::PartyId;
-use crate::payments::DepositId;
+use crate::payments::{DepositId, RefundId};
 use crate::subject::Subject;
 
 /// What a published version of the deductions is.
@@ -159,6 +164,155 @@ pub fn deposit_deductions(state: &AppState) -> Arc<dyn DepositDeductions> {
         None => Arc::new(NoDepositDeductions),
     }
 }
+
+/// A deposit's required amount changed while it is held: what to adjust it to
+/// ([`Deposits::adjust`]).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AdjustDeposit {
+    /// What the deposit is held for (the lease).
+    pub source: Subject,
+    /// The new amount the source requires, in fils; above 0.
+    pub new_amount: i64,
+    /// The version of the source that changed it (the lease amendment or
+    /// renewal version); above 0.
+    pub source_version: i32,
+    /// The day the change takes effect: the due date of a top-up charge.
+    pub effective_on: NaiveDate,
+}
+
+/// What the module that owns the charges is asked to raise for an increase of
+/// a deposit ([`DepositTopUps::request`]).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TopUpCharge {
+    /// The deposit.
+    pub deposit: DepositId,
+    /// Who pays: the deposit's party.
+    pub party: PartyId,
+    /// The legal entity issuing the charge.
+    pub legal_entity_id: i64,
+    /// What the deposit is held for: the charge is scheduled on it.
+    pub source: Subject,
+    /// The version of the source that raised the amount.
+    pub source_version: i32,
+    /// The increase, in fils.
+    pub amount: i64,
+    /// The ISO currency code.
+    pub currency: String,
+    /// The day the charge is due: the effective date.
+    pub due: NaiveDate,
+}
+
+/// Raises the top-up charge of a deposit that grew. The module that owns the
+/// charges (wl-invoicing) provides it; without one, [`deposit_top_ups`] gives
+/// [`NoDepositTopUps`], which raises nothing, and `wl-payments` leaves the
+/// accountant a task to raise it.
+pub trait DepositTopUps: Send + Sync + 'static {
+    /// Schedules `charge` and returns it as a [`Subject`], or `None` when no
+    /// charge was made (the default).
+    fn request<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _charge: TopUpCharge,
+    ) -> DepositFuture<'a, Option<Subject>> {
+        Box::pin(async { Ok(None) })
+    }
+}
+
+/// The top-up charges when nothing can schedule a charge: none is made.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoDepositTopUps;
+
+impl DepositTopUps for NoDepositTopUps {}
+
+/// Makes `top_ups` the app's [`DepositTopUps`].
+pub fn provide_deposit_top_ups(app: &mut Registry, top_ups: impl DepositTopUps) {
+    let top_ups: Arc<dyn DepositTopUps> = Arc::new(top_ups);
+    app.provide(top_ups);
+}
+
+/// The app's [`DepositTopUps`], or [`NoDepositTopUps`] when none is provided.
+pub fn deposit_top_ups(state: &AppState) -> Arc<dyn DepositTopUps> {
+    match state.provided::<Arc<dyn DepositTopUps>>() {
+        Some(top_ups) => Arc::clone(&top_ups),
+        None => Arc::new(NoDepositTopUps),
+    }
+}
+
+/// What other modules do with deposits. `wl-payments` provides it; without
+/// that module, [`deposits`] gives [`NoDeposits`].
+pub trait Deposits: Send + Sync + 'static {
+    /// Adjusts the held deposit of `request.source` to `request.new_amount`
+    /// for the user `by` (`None` = the system, as a lease amendment or
+    /// renewal `activate` does): an increase raises a top-up charge, a
+    /// decrease asks for a part refund through the Refund flow. The deposit
+    /// stays held. Returns the event, or `None` when the amount is the same
+    /// and nothing was recorded. Refused (422) when the source has no held
+    /// deposit, an earlier adjustment is still open, or the amount or the
+    /// version is not above 0. The default refuses (422): payments is not
+    /// enabled.
+    fn adjust<'a>(
+        &'a self,
+        _state: &'a AppState,
+        request: AdjustDeposit,
+        _by: Option<i64>,
+    ) -> DepositFuture<'a, Option<DepositAdjusted>> {
+        Box::pin(async move {
+            Err(Error::Status(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                format!(
+                    "the deposit of {} cannot be adjusted: payments is not enabled",
+                    request.source
+                ),
+            ))
+        })
+    }
+}
+
+/// The deposits when the `payments` module is off.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoDeposits;
+
+impl Deposits for NoDeposits {}
+
+/// Makes `deposits` the app's [`Deposits`]; `wl-payments` calls it in
+/// `register`.
+pub fn provide_deposits(app: &mut Registry, deposits: impl Deposits) {
+    let deposits: Arc<dyn Deposits> = Arc::new(deposits);
+    app.provide(deposits);
+}
+
+/// The app's [`Deposits`], or [`NoDeposits`] when none is provided.
+pub fn deposits(state: &AppState) -> Arc<dyn Deposits> {
+    match state.provided::<Arc<dyn Deposits>>() {
+        Some(deposits) => Arc::clone(&deposits),
+        None => Arc::new(NoDeposits),
+    }
+}
+
+/// A held deposit's amount was changed by its source (`adjust`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DepositAdjusted {
+    /// The deposit.
+    pub deposit: DepositId,
+    /// What it is held for.
+    pub source: Subject,
+    /// Whose deposit it is.
+    pub party: PartyId,
+    /// The version of the source that changed the amount.
+    pub source_version: i32,
+    /// The amount before, in fils.
+    pub old_amount: i64,
+    /// The amount now, in fils.
+    pub new_amount: i64,
+    /// The day the change takes effect.
+    pub effective_on: NaiveDate,
+    /// The top-up charge of an increase, when one was made.
+    pub top_up_charge: Option<Subject>,
+    /// The part refund of a decrease, when one was asked for.
+    pub part_refund: Option<RefundId>,
+}
+
+impl Event for DepositAdjusted {}
 
 /// Deductions (or a forfeiture) were published to the party: a version, and
 /// the window in which it may dispute starts (01 `PRP.RUL.11` counts N days

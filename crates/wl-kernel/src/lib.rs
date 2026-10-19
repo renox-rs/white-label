@@ -119,9 +119,10 @@ pub use parties::{
     ScreeningCompleted, ScreeningFlagged, ScreeningId, ScreeningMatchConfirmed, ScreeningStatus,
 };
 pub use deposits::{
-    DeductionKind, DeductionLineView, DepositDeductions, DepositDeductionsDisputed,
-    DepositDeductionsPublished, DepositDisputeAnswered, DepositOutcome, DepositSettled,
-    DisputeAnswer, DisputeDeductions, NoDepositDeductions, PublishedDeductions,
+    AdjustDeposit, DeductionKind, DeductionLineView, DepositAdjusted, DepositDeductions,
+    DepositDeductionsDisputed, DepositDeductionsPublished, DepositDisputeAnswered, DepositOutcome,
+    DepositSettled, DepositTopUps, Deposits, DisputeAnswer, DisputeDeductions,
+    NoDepositDeductions, NoDepositTopUps, NoDeposits, PublishedDeductions, TopUpCharge,
 };
 pub use payments::{
     AllocationTarget, DEPOSIT_SUBJECT_TYPE, DepositId, Direction, NoPayments, PaymentId,
