@@ -6,8 +6,11 @@
 //! with `deposits.manage`), [`start_settlement`] (`deposits.manage`, or the
 //! system when the source agreement ended) and [`refund`]
 //! (`deposits.refund`), which requests a Refund with the deposit as source
-//! for the held amount. `forfeit`, `transfer`, `adjust` and the deductions
-//! come with the issues that follow, into the same `machine()`.
+//! for the held amount. [`forfeit`] keeps a deposit being settled and
+//! [`transfer`] hands a held one to a new holder; both and `refund` wait for the
+//! deductions published to the party and disputed by it
+//! ([`crate::deposit_deductions`]). A held deposit's amount is changed by
+//! [`crate::deposit_adjust`].
 //!
 //! The money of a received payment allocated to a deposit
 //! ([`crate::allocate`]) leaves the party's credit. The deposit stays

@@ -19,8 +19,9 @@
 //! of the latest published version must have passed
 //! ([`crate::deposit_deductions`]). `transfer` (`deposits.manage`, a held
 //! deposit, the new holder's receipt) hands the deposit to another holder with
-//! the source agreement. `adjust` comes with the issue that follows, into this
-//! `machine()`.
+//! the source agreement. `adjust` and `adjust_by_system`
+//! ([`crate::deposit_adjust`]) change the amount of a held deposit when its
+//! agreement changes; the deposit stays `held`.
 
 use renox::prelude::*;
 #[cfg(test)]
