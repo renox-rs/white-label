@@ -1,0 +1,34 @@
+{#- wl-invoicing: the actions on a draft budget's page, one sheet each: set an
+    amount for a category over a range of months, remove a line, import pasted
+    CSV (a dry run first), change the revision reason of a revision, and
+    discard the draft. Replace it with
+    resources/views/wl-invoicing/_budget_sheets.html in the app. -#}
+<rx-action-sheet :id="'set-line-' ~ budget.id" :label="tx['budget.set.action']" :action="route('wl_invoicing.budget_set_line', budget.id)"
+                 :title="tx['budget.set.title']" :description="tx['budget.set.description']" :submit-label="tx['budget.set.submit']" icon="pencil">
+  <rx-select name="category_id" :label="tx['budget.set.category']" :options="categories" id="set-line-category" required/>
+  <rx-select name="from" :label="tx['budget.set.from']" :options="months" id="set-line-from" required/>
+  <rx-select name="to" :label="tx['budget.set.to']" :hint="tx['budget.set.to_hint']" :options="months" :placeholder="tx['budget.set.same_month']" id="set-line-to"/>
+  <rx-input name="amount" :label="tx['budget.set.amount']" :hint="tx['budget.set.amount_hint']" id="set-line-amount" required/>
+  <rx-input name="note" :label="tx['budget.set.note']" id="set-line-note"/>
+</rx-action-sheet>
+<rx-action-sheet :id="'clear-line-' ~ budget.id" :label="tx['budget.clear.action']" :action="route('wl_invoicing.budget_clear_line', budget.id)"
+                 :title="tx['budget.clear.title']" :description="tx['budget.clear.description']" :submit-label="tx['budget.clear.submit']" icon="eraser">
+  <rx-select name="category_id" :label="tx['budget.set.category']" :options="categories" id="clear-line-category" required/>
+  <rx-select name="month" :label="tx['budget.clear.month']" :options="months" id="clear-line-month" required/>
+</rx-action-sheet>
+<rx-action-sheet :id="'import-budget-' ~ budget.id" :label="tx['budget.import.action']" :action="route('wl_invoicing.budget_import', budget.id)"
+                 :title="tx['budget.import.title']" :description="tx['budget.import.description']" :submit-label="tx['budget.import.submit']" icon="upload">
+  <rx-textarea name="csv" :label="tx['budget.import.csv']" :hint="tx['budget.import.hint']" :rows="8" id="import-budget-csv" required/>
+  <rx-checkbox name="dry_run" :label="tx['budget.import.dry_run']" :hint="tx['budget.import.dry_run_hint']" id="import-budget-dry-run" checked/>
+</rx-action-sheet>
+<template rx-if="is_revision">
+  <rx-action-sheet :id="'revision-reason-' ~ budget.id" :label="tx['budget.reason.action']" :action="route('wl_invoicing.budget_revision_reason', budget.id)"
+                   :title="tx['budget.reason.title']" :description="tx['budget.reason.description']" :submit-label="tx['budget.reason.submit']" icon="message-square">
+    <rx-textarea name="reason" :label="tx['budget.fields.revision_reason']" id="revision-reason-text" required/>
+  </rx-action-sheet>
+</template>
+<rx-action-sheet :id="'discard-budget-' ~ budget.id" :label="tx['budget.discard.action']" :action="route('wl_invoicing.budget_discard', budget.id)"
+                 :title="tx['budget.discard.title']" :description="tx['budget.discard.description']" :submit-label="tx['budget.discard.submit']"
+                 icon="trash-2" variant="danger" danger>
+  <rx-textarea name="reason" :label="tx['budget.discard.reason']" id="discard-budget-reason" required/>
+</rx-action-sheet>

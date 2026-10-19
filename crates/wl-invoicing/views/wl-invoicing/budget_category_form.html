@@ -1,0 +1,30 @@
+{#- wl-invoicing: the form that makes or changes a budget category: code (kept
+    once saved), names, kind, parent, the role FIN.RUL.24 tells, the owner
+    party of an owner drawings category, and the mapping keys one per line as
+    `kind: value`. Replace it with
+    resources/views/wl-invoicing/budget_category_form.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="title">
+  <rx-stack>
+    <rx-page-header :title="title" :back="cancel" :back-label="tx['budget.category.title']"/>
+    <rx-form :action="action" novalidate>
+      <rx-card :title="title">
+        <rx-form-errors/>
+        <rx-form-grid columns="2">
+          <rx-input name="code" :label="tx['budget.category.code']" :value="values['code']" :readonly="editing" required/>
+          <rx-input name="name_en" :label="tx['budget.category.name_en']" :value="values['name_en']" required/>
+          <rx-input name="name_ar" :label="tx['budget.category.name_ar']" :value="values['name_ar']"/>
+          <rx-select name="kind" :label="tx['budget.category.kind']" :hint="tx['budget.category.kind_hint']" :options="kinds" :selected="values['kind']"/>
+          <rx-input name="parent_code" :label="tx['budget.category.parent']" :hint="tx['budget.category.parent_hint']" :value="values['parent_code']"/>
+          <rx-input name="owner_role" :label="tx['budget.category.owner_role']" :hint="tx['budget.category.owner_role_hint']" :value="values['owner_role']"/>
+          <rx-input name="owner_party_id" type="number" :label="tx['budget.category.owner_party']" :hint="tx['budget.category.owner_party_hint']" :value="values['owner_party_id']"/>
+          <rx-checkbox name="active" :label="tx['budget.category.active']" :checked="values['active'] == '1'"/>
+          <rx-textarea name="mappings" :label="tx['budget.category.keys']" :hint="tx['budget.category.keys_hint']" :rows="6" :value="values['mappings']" span="full"/>
+        </rx-form-grid>
+        <div class="rx-card__footer">
+          <rx-link-button :href="cancel" :label="tx['budget.new.cancel']" variant="plain"/>
+          <rx-button :label="tx['budget.category.save']"/>
+        </div>
+      </rx-card>
+    </rx-form>
+  </rx-stack>
+</rx-page>

@@ -18,6 +18,15 @@ pub mod bill_reversal;
 pub mod bill_submit;
 pub mod bill_unallocate;
 pub mod bill_unallocation;
+pub mod budget;
+pub mod budget_category;
+mod budget_category_pages;
+pub mod budget_contract;
+pub mod budget_lines;
+pub mod budget_machine;
+mod budget_notices;
+mod budget_pages;
+pub mod budget_reminder;
 pub mod config;
 pub mod credit;
 pub mod credit_note;
@@ -82,6 +91,10 @@ pub use bill_line::{BillLine, BillLineDraft};
 pub use bill_machine::{approve as approve_supplier_bill, void as void_supplier_bill};
 pub use bill_submit::submit as submit_supplier_bill;
 pub use bill_unallocation::BillUnallocation;
+pub use budget::{BudgetStatus, CompanyBudget, CompanyBudgetLine, StartChoice};
+pub use budget_category::{BudgetCategory, BudgetKind, BudgetMapping, MappingKind};
+pub use budget_contract::Budgets;
+pub use budget_reminder::BudgetReminder;
 pub use config::{
     DuplicateKey, InvoicingConfig, ReasonProblem, ReliefMonths, SettingError, WriteOffReason,
 };
@@ -185,6 +198,30 @@ const VIEWS: &[(&str, &str)] = &[
         "wl-invoicing/_bill_reason_sheet.html",
         include_str!("../views/wl-invoicing/_bill_reason_sheet.html"),
     ),
+    (
+        "wl-invoicing/budgets.html",
+        include_str!("../views/wl-invoicing/budgets.html"),
+    ),
+    (
+        "wl-invoicing/budget.html",
+        include_str!("../views/wl-invoicing/budget.html"),
+    ),
+    (
+        "wl-invoicing/_budget_sheets.html",
+        include_str!("../views/wl-invoicing/_budget_sheets.html"),
+    ),
+    (
+        "wl-invoicing/budget_form.html",
+        include_str!("../views/wl-invoicing/budget_form.html"),
+    ),
+    (
+        "wl-invoicing/budget_categories.html",
+        include_str!("../views/wl-invoicing/budget_categories.html"),
+    ),
+    (
+        "wl-invoicing/budget_category_form.html",
+        include_str!("../views/wl-invoicing/budget_category_form.html"),
+    ),
 ];
 
 /// The module's settings in `state`: those `register` provided, else the
@@ -225,6 +262,14 @@ pub mod permissions {
     pub const SUPPLIER_BILLS_CREATE: &str = "supplier_bills.create";
     /// Approve a supplier bill for payment, or void it (`FIN.ACL.03`).
     pub const SUPPLIER_BILLS_APPROVE: &str = "supplier_bills.approve";
+    /// See the company budgets and the budget categories.
+    pub const BUDGETS_VIEW: &str = "budgets.view";
+    /// Prepare, submit and discard company budget versions.
+    pub const BUDGETS_MANAGE: &str = "budgets.manage";
+    /// Approve or return a submitted company budget (`PLT.APR.01`).
+    pub const BUDGETS_APPROVE: &str = "budgets.approve";
+    /// Add and change budget categories and their mapping.
+    pub const BUDGET_CATEGORIES_MANAGE: &str = "budget_categories.manage";
 }
 
 /// The invoicing module. The host adds it with
@@ -382,6 +427,34 @@ impl WlInvoicing {
         self
     }
 
+    /// The month a fiscal year of the company budget starts in, 1 to 12
+    /// (default 1, January). Another number is stored as January.
+    pub fn budget_fiscal_start_month(mut self, month: u32) -> Self {
+        self.config.budget_fiscal_start_month = if (1..=12).contains(&month) { month } else { 1 };
+        self
+    }
+
+    /// Whether a new budget version may change the months that had ended
+    /// when it was created (default off: those lines are locked).
+    pub fn budget_revise_past_months(mut self, on: bool) -> Self {
+        self.config.budget_revise_past_months = on;
+        self
+    }
+
+    /// Days before a fiscal year starts that the accountant and the finance
+    /// manager are asked for its budget (`FIN.RUL.26`, default 30).
+    pub fn budget_reminder_days(mut self, days: u32) -> Self {
+        self.config.budget_reminder_days = days;
+        self
+    }
+
+    /// The roles `FIN.RUL.26` tells (default `accountant`,
+    /// `finance_manager`).
+    pub fn budget_reminder_roles(mut self, roles: &[&str]) -> Self {
+        self.config.budget_reminder_roles = roles.iter().map(|r| (*r).to_owned()).collect();
+        self
+    }
+
     /// The module's settings.
     pub fn config(&self) -> &InvoicingConfig {
         &self.config
@@ -401,6 +474,8 @@ impl Module for WlInvoicing {
             .merge(dispute_pages::routes())
             .merge(task_pages::routes())
             .merge(bill_pages::routes())
+            .merge(budget_pages::routes())
+            .merge(budget_category_pages::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -429,6 +504,11 @@ impl Module for WlInvoicing {
             .model::<ReminderLog>()
             .model::<VatAdjustment>()
             .model::<VatSummary>()
+            .model::<BudgetCategory>()
+            .model::<BudgetMapping>()
+            .model::<CompanyBudget>()
+            .model::<CompanyBudgetLine>()
+            .model::<BudgetReminder>()
             .view_data::<pages::IndexPage>()
             .view_data::<pages::ShowPage>()
             .view_data::<vat_pages::IndexPage>()
@@ -439,7 +519,12 @@ impl Module for WlInvoicing {
             .view_data::<task_pages::IndexPage>()
             .view_data::<bill_pages::IndexPage>()
             .view_data::<bill_pages::ShowPage>()
-            .view_data::<bill_pages::FormPage>();
+            .view_data::<bill_pages::FormPage>()
+            .view_data::<budget_pages::IndexPage>()
+            .view_data::<budget_pages::ShowPage>()
+            .view_data::<budget_pages::FormPage>()
+            .view_data::<budget_category_pages::IndexPage>()
+            .view_data::<budget_category_pages::FormPage>();
         // The customer write-off notice (§10), sent from the queue.
         app.job::<SendWriteOffNotice>();
         app.templates(|env| {
@@ -469,6 +554,19 @@ impl Module for WlInvoicing {
         write_off::register(app);
         // `db:seed`: the demo invoices, as drafts.
         app.seeder(|state: AppState| async move { seed::run(&state).await.map(|_| ()) });
+        // The seeded budget categories (§7), kept as the client changed them.
+        app.seeder(|state: AppState| async move {
+            budget_category::install(&state.db).await.map(|_| ())
+        });
+        app.command(
+            "invoicing:install",
+            "Store the seeded budget categories and their mapping, where the database lacks them",
+            |_args, state: AppState| async move {
+                let created = budget_category::install(&state.db).await?;
+                println!("{created} budget categories created.");
+                Ok(())
+            },
+        );
         // In the app group of the staff sidebar; the label is the app's
         // `nav.invoices` text.
         app.nav(
@@ -514,6 +612,15 @@ impl Module for WlInvoicing {
                 .group("nav.app")
                 .order(43)
                 .permission(permissions::RECEIVABLES_VIEW),
+        );
+        // The company budgets (`nav.budgets`).
+        app.nav(
+            "app",
+            NavLink::route("wl_invoicing.budgets", "nav.budgets")
+                .icon("wallet")
+                .group("nav.app")
+                .order(45)
+                .permission(permissions::BUDGETS_VIEW),
         );
         // The supplier bills (`nav.supplier_bills`).
         app.nav(
@@ -568,6 +675,13 @@ impl Module for WlInvoicing {
         bill_reopen_notices::register_types();
         // A reversed payment reopens its supplier bills (`unallocate`).
         bill_reversal::register(app);
+        // The company budget machine, its approval policy and its event
+        // (`FIN.BUD.01`), the budgets other modules read through the kernel,
+        // and `FIN.RUL.26`'s notice and daily task.
+        budget_machine::register(app);
+        wl_kernel::budgets::provide_company_budgets(app, Budgets);
+        budget_notices::register_types();
+        budget_reminder::schedule(app);
     }
 }
 

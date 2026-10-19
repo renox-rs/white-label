@@ -20,7 +20,8 @@ What is here so far:
 | Part | Spec | Module |
 |---|---|---|
 | Permissions (`invoices.*`, `receivables.view`) | §6 | `permissions` |
-| Settings: payment terms, reminder steps, write-off reasons and notice, approvers | §7 | `config` |
+| Settings: payment terms, reminder steps, write-off reasons and notice, approvers, fiscal year start, budget reminder | §7 | `config` |
+| Company budget: categories and their mapping, versions with lines per category and month, submit, approval (`PLT.APR.01`), supersede, discard, CSV import, `FIN.RUL.26` | §3, §4, §5.15 | `budget`, `budget_category`, `budget_lines`, `budget_machine`, `budget_reminder` |
 
 The settings are client defaults set in code (§7); the host changes one with a builder call:
 

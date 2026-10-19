@@ -30,11 +30,13 @@ pub const COMPLIANCE: &str = "compliance";
 pub const RECEIVABLES: &str = "receivables";
 /// The accountant: sees invoices, and prepares, reviews and locks the VAT
 /// summaries (wl-invoicing §6; `FIN.ACL.10` wants two of them), and records,
-/// reverses and refunds payments (wl-payments §6).
+/// reverses and refunds payments (wl-payments §6), and prepares the company
+/// budget (wl-invoicing `FIN.BUD.01`).
 pub const ACCOUNTANT: &str = "accountant";
 /// The finance manager: told when a dispute stays open (`FIN.RUL.15`), and
-/// sees the invoices and receivables to follow it up (wl-invoicing §7), and
-/// approves an exception for a blocked party (wl-parties §6).
+/// sees the invoices and receivables to follow it up (wl-invoicing §7),
+/// approves an exception for a blocked party (wl-parties §6) and approves the
+/// company budget (`FIN.BUD.01`).
 pub const FINANCE_MANAGER: &str = "finance_manager";
 /// The maintenance coordinator: raises, triages and assigns tickets, and
 /// works them (wl-ticketing §6, 01 roles).
@@ -99,6 +101,10 @@ pub const ROLES: &[(&str, &[&str])] = &[
             invoices::SUPPLIER_BILLS_VIEW,
             invoices::SUPPLIER_BILLS_CREATE,
             invoices::SUPPLIER_BILLS_APPROVE,
+            invoices::BUDGETS_VIEW,
+            invoices::BUDGETS_MANAGE,
+            invoices::BUDGETS_APPROVE,
+            invoices::BUDGET_CATEGORIES_MANAGE,
             tickets::VIEW,
             tickets::CREATE,
             tickets::ASSIGN,
@@ -162,6 +168,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             invoices::SUPPLIER_BILLS_CREATE,
             invoices::SUPPLIER_BILLS_APPROVE,
             invoices::RECEIVABLES_VIEW,
+            invoices::BUDGETS_VIEW,
+            invoices::BUDGETS_MANAGE,
+            invoices::BUDGET_CATEGORIES_MANAGE,
             payments::VIEW,
             payments::RECORD,
             payments::REVERSE,
@@ -183,6 +192,8 @@ pub const ROLES: &[(&str, &[&str])] = &[
         &[
             invoices::VIEW,
             invoices::RECEIVABLES_VIEW,
+            invoices::BUDGETS_VIEW,
+            invoices::BUDGETS_APPROVE,
             parties::VIEW,
             parties::BLOCK_EXCEPTION,
         ],
