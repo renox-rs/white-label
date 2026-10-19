@@ -34,7 +34,9 @@ use wl_kernel::invoicing::{
     CreditNoteId, InvoiceDraft, InvoiceFuture, InvoiceId, InvoiceStatus, InvoiceSummary, Invoicer,
     ReopenReason, provide_invoicer,
 };
-use wl_kernel::notify::{MessageId, Notifier, NotifyFuture, NotifyRequest, provide_notifier};
+use wl_kernel::notify::{
+    MessageId, NoticeStatus, Notifier, NotifyFuture, NotifyRequest, provide_notifier,
+};
 use wl_kernel::parties::{
     PartyDirectory, PartyFuture, PartyKind, PartyStatus, PartySummary, provide_directory,
 };
@@ -331,9 +333,14 @@ impl DocumentGuard for Docs {
 
 // ---- the notifier and the tasks -------------------------------------------
 
-/// Records what the notifier is asked for.
+/// Records what the notifier is asked for, can be told to fail on a type, and
+/// answers the delivery status of the statutory notices the test sets.
 #[derive(Clone, Default)]
-pub struct Recording(Arc<Mutex<Vec<NotifyRequest>>>);
+pub struct Recording(
+    Arc<Mutex<Vec<NotifyRequest>>>,
+    Arc<Mutex<Option<String>>>,
+    Arc<Mutex<BTreeMap<String, NoticeStatus>>>,
+);
 
 impl Recording {
     /// Every request so far.
@@ -345,6 +352,18 @@ impl Recording {
     pub fn of_type(&self, key: &str) -> Vec<NotifyRequest> {
         self.all().into_iter().filter(|r| r.type_key == key).collect()
     }
+
+    /// From now on a request of type `key` fails (the notifier is down);
+    /// `None` makes it work again.
+    pub fn fail_on(&self, key: Option<&str>) {
+        *self.1.lock().unwrap() = key.map(str::to_owned);
+    }
+
+    /// The statutory notice of type `key` about `subject` is `status` from
+    /// now on (the provider's receipt, or the proof staff recorded).
+    pub fn set_notice(&self, subject: &Subject, key: &str, status: NoticeStatus) {
+        self.2.lock().unwrap().insert(format!("{subject}|{key}"), status);
+    }
 }
 
 impl Notifier for Recording {
@@ -354,8 +373,31 @@ impl Notifier for Recording {
         request: NotifyRequest,
     ) -> NotifyFuture<'a, Vec<MessageId>> {
         Box::pin(async move {
+            if self.1.lock().unwrap().as_deref() == Some(request.type_key.as_str()) {
+                return Err(Error::Status(
+                    StatusCode::BAD_GATEWAY,
+                    "the notifier is down".to_owned(),
+                ));
+            }
             self.0.lock().unwrap().push(request);
             Ok(vec![MessageId(1)])
+        })
+    }
+
+    fn notice_status<'a>(
+        &'a self,
+        _state: &'a AppState,
+        subject: &'a Subject,
+        type_key: &'a str,
+    ) -> NotifyFuture<'a, NoticeStatus> {
+        Box::pin(async move {
+            Ok(self
+                .2
+                .lock()
+                .unwrap()
+                .get(&format!("{subject}|{type_key}"))
+                .cloned()
+                .unwrap_or(NoticeStatus::NotDelivered))
         })
     }
 }
