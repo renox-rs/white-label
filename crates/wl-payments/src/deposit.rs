@@ -445,6 +445,10 @@ pub struct ForfeitRequest {
     /// The second user who approves the forfeiture: another user who may
     /// refund deposits (`deposits.refund`).
     pub approver: Option<i64>,
+    /// Whether the vertical already vetted the approver (01 Property: a
+    /// property manager, who does not hold `deposits.refund`); the approver
+    /// must still be another user.
+    pub approver_vetted: bool,
 }
 
 /// `user` forfeits `deposit`: the party keeps no claim on it (`forfeited`,
@@ -470,6 +474,7 @@ pub async fn forfeit(
 ) -> std::result::Result<Deposit, TransitionError> {
     let deposit = reload(state, deposit).await?;
     let approver_ok = match request.approver {
+        Some(id) if id != user.id && request.approver_vetted => true,
         Some(id) if id != user.id => {
             renox::auth::permissions::users_with_permission(&state.db, permissions::DEPOSITS_REFUND)
                 .await?

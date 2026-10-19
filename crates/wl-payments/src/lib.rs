@@ -23,6 +23,7 @@ pub mod config;
 pub mod credit;
 pub mod deposit;
 pub mod deposit_adjust;
+mod deposit_apply;
 mod deposit_cancel;
 pub mod deposit_deductions;
 mod deposit_events;

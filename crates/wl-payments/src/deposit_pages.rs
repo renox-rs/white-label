@@ -803,6 +803,7 @@ async fn store_forfeit(
     let request = ForfeitRequest {
         reason: filled(&form.reason).unwrap_or_default().to_owned(),
         approver: form.approver,
+        approver_vetted: false,
     };
     match crate::deposit::forfeit(&state, &user, &deposit, &request).await {
         Ok(_) => Ok((Toast::success(t("deposits.forfeit.done")), renox::HxRefresh).into_response()),

@@ -40,7 +40,7 @@ use renox::prelude::*;
 use renox::state_machine::{StateMachine, Transition, TransitionCtx, TransitionError, Transitioned};
 use serde::{Deserialize, Serialize};
 use wl_kernel::deposits::{
-    AdjustDeposit, CancelSettlement, DepositAdjusted, DepositFuture, Deposits, HeldDeposit,
+    AdjustDeposit, ApplyDeposit, DepositApplied, CancelSettlement, DepositAdjusted, DepositFuture, Deposits, HeldDeposit,
     SettlementStarted, TopUpCharge, deposit_top_ups,
 };
 use wl_kernel::payments::RefundId;
@@ -588,6 +588,15 @@ impl Deposits for DepositBook {
         by: Option<i64>,
     ) -> DepositFuture<'a, Option<SettlementStarted>> {
         Box::pin(async move { crate::deposit_cancel::settle(state, request, by).await })
+    }
+
+    fn apply_to_deductions<'a>(
+        &'a self,
+        state: &'a AppState,
+        by: &'a AuthUser,
+        request: ApplyDeposit,
+    ) -> DepositFuture<'a, DepositApplied> {
+        Box::pin(async move { crate::deposit_apply::apply(state, by, request).await })
     }
 
     fn set_legal_case<'a>(

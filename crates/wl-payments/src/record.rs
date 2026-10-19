@@ -284,6 +284,25 @@ pub(crate) async fn record_for(
     run_record(state, None, by, request).await
 }
 
+/// [`record_for`] for a payment the system makes to apply a deposit to an
+/// invoice (method *deposit applied*, recorded as a set-off): the method does
+/// not have to be one of the methods enabled for the party to choose from.
+pub(crate) async fn record_applied(
+    state: &AppState,
+    by: Option<i64>,
+    request: &RecordPayment,
+) -> std::result::Result<Payment, TransitionError> {
+    let (payment, mut input) = prepare(state, request, by).await?;
+    input.method_enabled = true;
+    let mut tx = state.db.begin().await?;
+    let (payment, outcome) = record_in(&mut tx, None, payment, &input).await?;
+    tx.commit().await?;
+    outcome.emit(state).await.map_err(TransitionError::Failed)?;
+    Payment::find_or_404(&state.db, payment.id)
+        .await
+        .map_err(TransitionError::Failed)
+}
+
 async fn run_record(
     state: &AppState,
     actor: Option<&AuthUser>,

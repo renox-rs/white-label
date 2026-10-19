@@ -306,7 +306,8 @@ pub const APPLIED_TO_DEDUCTIONS: &str = "applied to deductions";
 pub struct ApplyToInvoice {
     /// The invoice of the party.
     pub invoice: InvoiceId,
-    /// The amount applied, in fils; above 0 and not above the invoice's balance.
+    /// In a request, what the invoice is open for; in a result, the amount
+    /// applied to it. In fils, above 0, never above the invoice's balance.
     pub amount: i64,
 }
 
@@ -319,8 +320,9 @@ pub struct ApplyDeposit {
     /// The user whose approval the vertical vetted (a property manager); not
     /// the user who forfeits.
     pub approver: i64,
-    /// The unpaid invoices the deposit is applied to first, oldest first. The
-    /// rest of the deposit covers the damage lines of the published version.
+    /// The unpaid invoices of the party, oldest first, each with what it is
+    /// open for. The deposit is applied to them in this order; what is left
+    /// of it covers the damage lines of the published version.
     pub rent: Vec<ApplyToInvoice>,
 }
 
@@ -337,6 +339,9 @@ pub struct DepositApplied {
     pub held: i64,
     /// The part applied to invoices, in fils.
     pub to_invoices: i64,
+    /// What was applied to each invoice, oldest first; invoices that got
+    /// nothing are left out.
+    pub shares: Vec<ApplyToInvoice>,
     /// The part kept for the damage lines, in fils: `held - to_invoices`.
     pub kept: i64,
     /// The published version of the forfeiture.
@@ -419,12 +424,14 @@ pub trait Deposits: Send + Sync + 'static {
     /// with the reason [`APPLIED_TO_DEDUCTIONS`], for the user `by` (who holds
     /// `deposits.refund`), approved by `request.approver`; the same waits as
     /// `forfeit` apply (no dispute open, the window of the published version
-    /// passed). In the same step the deposit is applied to `request.rent`
-    /// as payments of method *deposit applied* and allocated to those
-    /// invoices; the rest of the held amount is kept for the damage lines.
-    /// Refused (422) when the source has no deposit being settled, the amount
-    /// applied to invoices is above the deposit, or an invoice refuses the
-    /// allocation. The default refuses (422): payments is not enabled.
+    /// passed). In the same step the deposit is applied to `request.rent`,
+    /// oldest first, as payments of method *deposit applied* allocated to
+    /// those invoices; the rest of the held amount is kept for the damage
+    /// lines. Refused (422) when the source has no deposit being settled, the
+    /// total deductions (the invoices' open amounts plus the damage lines of
+    /// the published version) are below the deposit, or an invoice is not the
+    /// party's or refuses the allocation. The default refuses (422):
+    /// payments is not enabled.
     fn apply_to_deductions<'a>(
         &'a self,
         _state: &'a AppState,
