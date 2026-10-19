@@ -56,6 +56,14 @@ pub const NO_CONTACT: &str = "no_contact";
 /// Why a message was `suppressed` because its address is on the list.
 pub const SUPPRESSED_ADDRESS: &str = "suppressed";
 
+/// Why a marketing message was `suppressed` because its party already got the
+/// most marketing messages allowed in 7 days (`NTF.RUL.02`, #62 A7).
+pub const FREQUENCY_CAP: &str = "frequency_cap";
+
+/// The quiet hours, in minutes after midnight Asia/Dubai: a normal urgency
+/// message to an external recipient waits from 21:00 until 08:00 (#62 A4).
+pub const QUIET_HOURS: (u32, u32) = (21 * 60, 8 * 60);
+
 /// Why a message was `suppressed` because it announces a pause and the party
 /// is on hold (#36 A11).
 pub const PARTY_ON_HOLD: &str = "party_on_hold";

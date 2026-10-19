@@ -4,6 +4,7 @@
 pub mod alert;
 pub mod alternative;
 pub mod channels;
+pub mod clock;
 pub mod contact_invalid;
 pub mod delivered;
 pub mod give_up;
@@ -23,6 +24,7 @@ pub mod statutory_notice;
 pub mod suppressions;
 mod texts;
 pub mod types;
+pub mod window;
 
 use std::sync::Arc;
 
@@ -35,6 +37,7 @@ pub use channels::{
     ChannelProvider, EmailProvider, HardError, Outgoing, Providers, SendError, SendErrorKind,
     SmsGateway, SmsProvider,
 };
+pub use clock::Clock;
 pub use contact_invalid::MarkContactInvalidHandler;
 pub use delivered::{UndeliveredMessage, undelivered_for};
 pub use give_up::{ReactionRun, ReactionStep, RunGiveUpReaction, RunStatus};
@@ -163,6 +166,8 @@ impl Module for WlNotify {
         machine::register(app);
         // Sending: the providers, the `sms` channel and the send job.
         app.provide(self.providers.clone());
+        // The clock the window and quiet-hours guards read; an app's wins.
+        app.provide(Clock::system());
         channels::register(app);
         app.job::<SendMessage>();
         // Fallback and give-up: `NTF.RUL.01` runs the type's reactions.
