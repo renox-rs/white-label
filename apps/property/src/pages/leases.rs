@@ -17,6 +17,8 @@
 //! | `POST /property/leases/{id}/notice` | `property.lease_notice` | `leases.manage` in the building |
 //! | `POST /property/leases/{id}/planned-move-out` | `property.lease_planned_move_out` | `leases.manage` in the building |
 //! | `POST /property/leases/{id}/withdraw-notice` | `property.lease_withdraw_notice` | `leases.manage` in the building |
+//! | `POST /property/leases/{id}/legal-cases` | `property.lease_legal_case` | `leases.manage` in the building |
+//! | `POST /property/leases/{id}/legal-cases/clear` | `property.lease_legal_case_clear` | `leases.manage` in the building |
 //! | `POST /property/leases/{id}/move-out-inspection` | `property.lease_inspection` | `leases.manage` in the building |
 //! | `POST /property/leases/{id}/terminate` | `property.lease_terminate` | `leases.manage` in the building |
 //! | `POST /property/leases/{id}/ejari-cancellation` | `property.lease_ejari_cancellation` | `leases.manage` in the building |
@@ -44,6 +46,7 @@ use crate::lease::{Lease, LeaseStatus, RenewalDecision, VersionKind};
 use crate::cancellation::{self, CancelRequest};
 use crate::chase;
 use crate::lease_machine::{ACTIVATE, CANCEL, SUBMIT};
+use crate::legal_case::{self, CaseOutcome, CaseType, LegalCase, NewCase};
 use crate::notice::{self, NewNotice, NoticeParty, NoticeReason};
 use crate::leases::{self, EjariInput, NewLease, NewVersion};
 use crate::parse::{parse_aed, parse_date};
@@ -87,6 +90,10 @@ pub fn routes() -> Routes {
         .name("property.lease_planned_move_out")
         .post("/property/leases/{id}/withdraw-notice", withdraw_notice)
         .name("property.lease_withdraw_notice")
+        .post("/property/leases/{id}/legal-cases", set_legal_case)
+        .name("property.lease_legal_case")
+        .post("/property/leases/{id}/legal-cases/clear", clear_legal_case)
+        .name("property.lease_legal_case_clear")
         .post("/property/leases/{id}/move-out-inspection", move_out_inspection)
         .name("property.lease_inspection")
         .post("/property/leases/{id}/terminate", terminate)
@@ -235,6 +242,25 @@ pub struct DifferenceRow {
     pub difference: String,
 }
 
+/// A legal case flag of the lease.
+#[derive(Serialize, Debug, Clone)]
+pub struct CaseRow {
+    /// What it is about, in the page's language.
+    pub kind: String,
+    /// The Rental Dispute Centre or court reference.
+    pub reference: String,
+    /// Open, or the outcome it was cleared with.
+    pub status: String,
+    /// The badge kind of the status.
+    pub status_kind: &'static str,
+    /// The linked ticket.
+    pub ticket: String,
+    /// The day it was set.
+    pub opened_on: String,
+    /// The day it was cleared.
+    pub cleared_on: String,
+}
+
 /// A version of the lease.
 #[derive(Serialize, Debug, Clone)]
 pub struct VersionRow {
@@ -357,6 +383,10 @@ pub(crate) struct ShowPage {
     cheques: Vec<ChequeRow>,
     versions: Vec<VersionRow>,
     differences: Vec<DifferenceRow>,
+    legal_cases: Vec<CaseRow>,
+    legal_open: bool,
+    case_tickets: Vec<[String; 2]>,
+    open_cases: Vec<[String; 2]>,
     approvals: Vec<ApprovalCard>,
     timeline: Vec<Value>,
     pending: bool,
@@ -374,6 +404,8 @@ pub(crate) struct ShowPage {
     can_notice: bool,
     can_change_planned: bool,
     can_withdraw: bool,
+    can_case: bool,
+    can_clear_case: bool,
     can_inspect: bool,
     can_terminate: bool,
     can_ejari_cancel: bool,
@@ -471,6 +503,42 @@ async fn show(
             invoiced: crate::money_text(d.invoiced),
             renewal: crate::money_text(d.renewal),
             difference: signed_money(d.difference()),
+        })
+        .collect();
+
+    let cases = LegalCase::of_root(&state.db, lease.root_id).await?;
+    let legal_open = cases.iter().any(LegalCase::is_open);
+    let legal_cases: Vec<CaseRow> = cases
+        .iter()
+        .map(|case| CaseRow {
+            kind: text(&lang, &format!("legal.type_{}", case.case_type.as_str())),
+            reference: case.reference.clone().unwrap_or_default(),
+            status: match case.outcome {
+                Some(outcome) if !case.is_open() => {
+                    text(&lang, &format!("legal.outcome_{}", outcome.as_str()))
+                }
+                _ => text(&lang, "legal.status_open"),
+            },
+            status_kind: if case.is_open() { "warning" } else { "info" },
+            ticket: case.ticket_number.clone().unwrap_or_default(),
+            opened_on: case.opened_on.to_string(),
+            cleared_on: case.cleared_on.map(|d| d.to_string()).unwrap_or_default(),
+        })
+        .collect();
+    let mut case_tickets = vec![["new".to_owned(), text(&lang, "legal.ticket_new")]];
+    for (ticket_id, number) in legal_case::free_tickets(&state, &lease).await? {
+        case_tickets.push([ticket_id.to_string(), number]);
+    }
+    let open_cases: Vec<[String; 2]> = cases
+        .iter()
+        .filter(|case| case.is_open())
+        .map(|case| {
+            let kind = text(&lang, &format!("legal.type_{}", case.case_type.as_str()));
+            let label = match case.reference.as_deref() {
+                Some(reference) if !reference.is_empty() => format!("{kind} · {reference}"),
+                _ => kind,
+            };
+            [case.id.to_string(), label]
         })
         .collect();
 
@@ -622,6 +690,10 @@ async fn show(
         cheques: cheque_rows,
         versions,
         differences,
+        legal_cases,
+        legal_open,
+        case_tickets,
+        open_cases,
         approvals: approval_cards,
         timeline,
         pending,
@@ -652,6 +724,12 @@ async fn show(
             && lease.status == LeaseStatus::NoticeGiven
             && lease.notice_party.as_deref() == Some(NoticeParty::Tenant.as_str()),
         can_withdraw: manages && lease.status == LeaseStatus::NoticeGiven,
+        can_case: manages
+            && !matches!(
+                lease.status,
+                LeaseStatus::Draft | LeaseStatus::PendingSignature | LeaseStatus::Cancelled
+            ),
+        can_clear_case: manages && legal_open,
         can_inspect: manages && lease.status == LeaseStatus::NoticeGiven,
         can_terminate: manages
             && lease.status == LeaseStatus::NoticeGiven
@@ -1105,6 +1183,86 @@ async fn withdraw_notice(
         .await
         .map_err(TransitionError::into_error)?;
     Ok((Toast::success(text(&lang, "withdraw.done")), renox::HxRefresh).into_response())
+}
+
+/// The form that sets a legal case flag.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct CaseForm {
+    /// `arrears`, `eviction`, `deposit_dispute` or `other`.
+    #[serde(default)]
+    pub case_type: String,
+    /// The Rental Dispute Centre or court reference.
+    #[serde(default)]
+    pub reference: String,
+    /// `new`, or the id of an open *legal case* ticket of the lease.
+    #[serde(default)]
+    pub ticket: String,
+}
+
+/// `POST /property/leases/{id}/legal-cases`.
+async fn set_legal_case(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<CaseForm>,
+) -> Result<Response> {
+    let case_type: CaseType = form
+        .case_type
+        .trim()
+        .parse()
+        .map_err(|_| Error::BadRequest("case_type".to_owned()))?;
+    let mut new = NewCase::new(case_type);
+    if !form.reference.trim().is_empty() {
+        new = new.reference(&form.reference);
+    }
+    let ticket = form.ticket.trim();
+    if !ticket.is_empty() && ticket != "new" {
+        new = new.existing_ticket(whole::<i64>(ticket, "ticket")?);
+    }
+    legal_case::set_case(&state, &user, id, new).await?;
+    Ok((Toast::success(text(&lang, "legal.set_done")), renox::HxRefresh).into_response())
+}
+
+/// The form that clears a legal case flag.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct ClearCaseForm {
+    /// The flag.
+    #[serde(default)]
+    pub case: String,
+    /// `paid`, `settled` or `judgment`.
+    #[serde(default)]
+    pub outcome: String,
+    /// A note on the outcome.
+    #[serde(default)]
+    pub note: String,
+}
+
+/// `POST /property/leases/{id}/legal-cases/clear`.
+async fn clear_legal_case(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<ClearCaseForm>,
+) -> Result<Response> {
+    let lease = Lease::find(&state.db, id).await?.ok_or(Error::NotFound)?;
+    let case_id = whole::<i64>(&form.case, "case")?;
+    let case = LegalCase::find(&state.db, case_id)
+        .await?
+        .ok_or(Error::NotFound)?;
+    if case.root_id != lease.root_id {
+        return Err(Error::NotFound);
+    }
+    let outcome: CaseOutcome = form.outcome.trim().parse().map_err(|_| {
+        Error::Status(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            texts::english("property.legal.outcome_required", &[]),
+        )
+    })?;
+    let note = Some(form.note).filter(|n| !n.trim().is_empty());
+    legal_case::clear_case(&state, Some(&user), case_id, outcome, note).await?;
+    Ok((Toast::success(text(&lang, "legal.clear_done")), renox::HxRefresh).into_response())
 }
 
 /// The form that records the move-out inspection.

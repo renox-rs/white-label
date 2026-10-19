@@ -666,6 +666,63 @@ const TEXTS: &[(&str, &str)] = &[
         "property.notices.ejari_cancellation_body",
         "The lease {{ lease }} ended on {{ terminated_on }} and its registration {{ ejari_number }} is not cancelled yet. Cancel it and record the date on the lease.",
     ),
+    // The legal case flag (BL-PRP-13).
+    ("property.legal.open", "Legal case open"),
+    ("property.legal.title", "Legal cases"),
+    ("property.legal.set", "Set a legal case"),
+    (
+        "property.legal.set_description",
+        "While a legal case is open, the reminders on the invoices of the lease pause, a renewal or an amendment cannot be submitted and the tenant gets no automatic message. A ticket of the category legal case is linked to it.",
+    ),
+    ("property.legal.set_done", "Legal case set."),
+    ("property.legal.type", "Case"),
+    ("property.legal.type_arrears", "Arrears"),
+    ("property.legal.type_eviction", "Eviction"),
+    ("property.legal.type_deposit_dispute", "Deposit dispute"),
+    ("property.legal.type_other", "Other"),
+    ("property.legal.reference", "Rental Dispute Centre or court reference"),
+    (
+        "property.legal.reference_hint",
+        "Can wait while the case is prepared; needed to clear it with a judgment.",
+    ),
+    ("property.legal.ticket", "Ticket"),
+    ("property.legal.ticket_new", "A new ticket"),
+    ("property.legal.status_open", "Open"),
+    ("property.legal.opened_on", "Set on"),
+    ("property.legal.cleared_on", "Cleared on"),
+    ("property.legal.clear", "Clear a legal case"),
+    (
+        "property.legal.clear_description",
+        "Give the outcome. Its ticket is resolved if it is still open; reminders resume from the next scheduled step.",
+    ),
+    ("property.legal.clear_done", "Legal case cleared."),
+    ("property.legal.case", "Legal case"),
+    ("property.legal.outcome", "Outcome"),
+    ("property.legal.outcome_paid", "Paid"),
+    ("property.legal.outcome_settled", "Settled"),
+    ("property.legal.outcome_judgment", "Judgment"),
+    ("property.legal.outcome_eviction_executed", "Eviction executed"),
+    ("property.legal.note", "Note"),
+    ("property.legal.outcome_required", "Give the outcome: paid, settled or judgment."),
+    (
+        "property.legal.reference_required",
+        "A judgment needs the case reference: record it first.",
+    ),
+    ("property.legal.cleared_already", "This legal case is cleared already."),
+    (
+        "property.legal.not_started",
+        "A lease that never started has no legal case.",
+    ),
+    (
+        "property.legal.ticket_unavailable",
+        "Pick an open legal case ticket of this lease that has no flag yet.",
+    ),
+    ("property.legal.ticket_title", "Legal case (:type) on :lease"),
+    (
+        "property.legal.ticket_description",
+        "The legal case flag of :lease. Follow the case and clear the flag with its outcome.",
+    ),
+    ("property.legal.ticket_resolved", "The legal case was cleared: :outcome."),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.

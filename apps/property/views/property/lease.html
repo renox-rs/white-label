@@ -7,6 +7,7 @@
     <rx-page-header :title="lease.number" :subtitle="lease.unit ~ ' · ' ~ lease.tenant" :back="route('property.leases')" :back-label="tx['leases.title']"
                     :badge="status" :badge-kind="status_kind">
       <rx-badge rx-if="pending" kind="warning" :text="tx['pending_approval']"/>
+      <rx-badge rx-if="legal_open" kind="error" :text="tx['legal.open']"/>
       <template rx-if="can_submit">
         <rx-confirm :id="'submit-lease-' ~ lease.id" :label="tx['leases.submit']" :action="route('property.lease_submit', lease.id)" method="POST"
                     :title="tx['leases.submit']" :message="tx['leases.submit_message']" :confirm-label="tx['leases.submit']" :cancel-label="tx['button_cancel']" icon="send"/>
@@ -62,6 +63,22 @@
         <rx-action-sheet :id="'planned-' ~ lease.id" :label="tx['notice.change_planned']" :action="route('property.lease_planned_move_out', lease.id)"
                          :title="tx['notice.change_planned']" :submit-label="tx['notice.change_planned']" icon="calendar-days">
           <rx-input name="planned_move_out" type="date" :label="tx['notice.planned_move_out']" :value="lease.planned_move_out" :id="'planned-date-' ~ lease.id" required/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_case">
+        <rx-action-sheet :id="'legal-case-' ~ lease.id" :label="tx['legal.set']" :action="route('property.lease_legal_case', lease.id)"
+                         :title="tx['legal.set']" :description="tx['legal.set_description']" :submit-label="tx['legal.set']" icon="shield">
+          <rx-select name="case_type" :label="tx['legal.type']" :options="[['arrears', tx['legal.type_arrears']], ['eviction', tx['legal.type_eviction']], ['deposit_dispute', tx['legal.type_deposit_dispute']], ['other', tx['legal.type_other']]]" :selected="'arrears'" :id="'legal-case-type-' ~ lease.id"/>
+          <rx-input name="reference" :label="tx['legal.reference']" :hint="tx['legal.reference_hint']" :id="'legal-case-reference-' ~ lease.id"/>
+          <rx-select name="ticket" :label="tx['legal.ticket']" :options="case_tickets" :selected="'new'" :id="'legal-case-ticket-' ~ lease.id"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_clear_case">
+        <rx-action-sheet :id="'legal-clear-' ~ lease.id" :label="tx['legal.clear']" :action="route('property.lease_legal_case_clear', lease.id)"
+                         :title="tx['legal.clear']" :description="tx['legal.clear_description']" :submit-label="tx['legal.clear']" icon="circle-check">
+          <rx-select name="case" :label="tx['legal.case']" :options="open_cases" :id="'legal-clear-case-' ~ lease.id"/>
+          <rx-select name="outcome" :label="tx['legal.outcome']" :options="[['paid', tx['legal.outcome_paid']], ['settled', tx['legal.outcome_settled']], ['judgment', tx['legal.outcome_judgment']]]" :selected="'paid'" :id="'legal-clear-outcome-' ~ lease.id"/>
+          <rx-textarea name="note" :label="tx['legal.note']" :id="'legal-clear-note-' ~ lease.id"/>
         </rx-action-sheet>
       </template>
       <template rx-if="can_withdraw">
@@ -163,6 +180,16 @@
         <rx-entry :label="tx['cancel_forfeit_clause']" :value="lease.cancel_forfeit_clause" :placeholder="tx['none']"/>
       </rx-infolist>
     </rx-card>
+    <template rx-if="legal_cases">
+      <rx-table :rows="legal_cases" as="flag" :key="flag.opened_on ~ flag.kind ~ flag.reference" :caption="tx['legal.title']" card>
+        <rx-column :label="tx['legal.type']">{{ flag.kind }}</rx-column>
+        <rx-column :label="tx['legal.reference']">{{ flag.reference }}</rx-column>
+        <rx-column :label="tx['fields.status']"><rx-badge :kind="flag.status_kind" :text="flag.status"/></rx-column>
+        <rx-column :label="tx['legal.ticket']" hide-narrow>{{ flag.ticket }}</rx-column>
+        <rx-column :label="tx['legal.opened_on']" hide-narrow>{{ flag.opened_on }}</rx-column>
+        <rx-column :label="tx['legal.cleared_on']" hide-narrow>{{ flag.cleared_on }}</rx-column>
+      </rx-table>
+    </template>
     <template rx-if="differences">
       <rx-table :rows="differences" as="row" :key="row.period" :caption="tx['renew.differences_title']" card>
         <rx-column :label="tx['renew.period']">{{ row.period }}</rx-column>
