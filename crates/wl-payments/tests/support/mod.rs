@@ -761,7 +761,17 @@ async fn deposit_act(
         }
         "refund" => {
             let method = method_of(form.method.as_deref())?;
-            wl_payments::deposit::refund(&state, &user, &deposit, method).await
+            return match wl_payments::deposit::refund_or_ask(&state, &user, &deposit, method)
+                .await
+                .map_err(TransitionError::into_error)?
+            {
+                wl_payments::deposit::RefundOutcome::Refunded(done) => {
+                    Ok(format!("{:?}", done.status))
+                }
+                wl_payments::deposit::RefundOutcome::ExceptionRequested(request) => {
+                    Ok(format!("exception:{}", request.id))
+                }
+            };
         }
         _ => return Err(Error::NotFound),
     };
@@ -854,6 +864,47 @@ async fn refund_act(
         .map_err(TransitionError::into_error)
 }
 
+/// The parties the block guard of the test refuses (`PTY.ACL.03`).
+#[derive(Clone, Default)]
+pub struct BlockedParties(Arc<Mutex<Vec<i64>>>);
+
+impl BlockedParties {
+    /// The party is on hold from now on.
+    pub fn block(&self, party: PartyId) {
+        self.0.lock().unwrap().push(party.0);
+    }
+
+    /// The party is free again.
+    pub fn free(&self, party: PartyId) {
+        self.0.lock().unwrap().retain(|id| *id != party.0);
+    }
+}
+
+impl wl_kernel::block_guard::BlockGuard for BlockedParties {
+    fn check_in<'a>(
+        &'a self,
+        _tx: &'a mut renox::db::Transaction,
+        _viewer: Option<&'a User>,
+        party: PartyId,
+        kind: wl_kernel::block_guard::ActionKind,
+    ) -> wl_kernel::block_guard::BlockFuture<'a, wl_kernel::block_guard::GuardOutcome> {
+        Box::pin(async move {
+            let blocked = kind.is_guarded() && self.0.lock().unwrap().contains(&party.0);
+            Ok(if blocked {
+                wl_kernel::block_guard::GuardOutcome::Blocked(
+                    wl_kernel::block_guard::BlockRefusal::neutral(party, kind, "Compliance"),
+                )
+            } else {
+                wl_kernel::block_guard::GuardOutcome::Allowed
+            })
+        })
+    }
+
+    fn exception_step(&self) -> wl_kernel::block_guard::ExceptionStep {
+        wl_kernel::block_guard::ExceptionStep::new("compliance")
+    }
+}
+
 /// The test-only routes.
 struct Harness;
 
@@ -902,6 +953,8 @@ pub struct Booted {
     pub deposit_settled: Recorded<DepositSettled>,
     /// `DepositAdjusted`.
     pub deposit_adjusted: Recorded<DepositAdjusted>,
+    /// The parties on hold (`PTY.ACL.03`).
+    pub blocked: BlockedParties,
     /// The top-up charges asked for.
     pub top_ups: RecordingTopUps,
     /// The bounce fee charges asked of invoicing.
@@ -1693,6 +1746,15 @@ pub async fn boot_with(module: WlPayments, gateway: FakeGateway) -> Booted {
     let charge_invoicer: Arc<dyn ChargeInvoicer> = Arc::new(charges.clone());
     let drawings = DrawingsDesk::default();
     let owner_drawings: Arc<dyn OwnerDrawings> = Arc::new(drawings.clone());
+    let blocked = BlockedParties::default();
+    let block_guard: Arc<dyn wl_kernel::block_guard::BlockGuard> = Arc::new(blocked.clone());
+    // What wl-parties registers: an exception is decided by the compliance role.
+    wl_kernel::PolicyDefault::new(wl_kernel::BLOCK_EXCEPTION_ACTION)
+        .with_step(
+            wl_kernel::approvals::Step::one_of(["compliance"])
+                .requiring(wl_kernel::BLOCK_EXCEPTION_ACTION),
+        )
+        .register();
     let app = App::new()
         .module(Auth::new())
         .module(Permissions)
@@ -1704,7 +1766,8 @@ pub async fn boot_with(module: WlPayments, gateway: FakeGateway) -> Booted {
         .provide(bounce_fees)
         .provide(charge_invoicer)
         .provide(top_up_provider)
-        .provide(owner_drawings);
+        .provide(owner_drawings)
+        .provide(block_guard);
     let app = record(app, &received);
     let app = record(app, &reversed);
     let app = record(app, &refund_paid);
@@ -1750,6 +1813,7 @@ pub async fn boot_with(module: WlPayments, gateway: FakeGateway) -> Booted {
         cheque_referred,
         deposit_settled,
         deposit_adjusted,
+        blocked,
         top_ups,
         fees,
         charges,

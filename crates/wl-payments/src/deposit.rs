@@ -21,6 +21,7 @@
 use renox::prelude::*;
 use renox::state_machine::{StateMachine, TransitionError};
 use serde::{Deserialize, Serialize};
+use wl_kernel::block_guard::{self, ActionKind, GuardOutcome};
 use wl_kernel::documents::today;
 use wl_kernel::payments::{DepositId, PaymentId, PaymentMethod, RecordPayment};
 use wl_kernel::{LegalEntity, PartyId, Subject};
@@ -31,7 +32,7 @@ use crate::deposit_adjust::DepositAdjustment;
 use crate::deposit_deductions::gate_of;
 use crate::deposit_machine::{
     FORFEIT, ForfeitInput, REFUND, RefundDepositInput, START_SETTLEMENT,
-    START_SETTLEMENT_BY_SYSTEM, TRANSFER, TransferInput,
+    START_SETTLEMENT_BY_SYSTEM, TRANSFER, TransferInput, refund_problem,
 };
 use crate::payment::Payment;
 use crate::permissions;
@@ -312,18 +313,64 @@ pub async fn start_settlement(
     reload(state, deposit).await
 }
 
+/// What [`refund_or_ask`] did.
+#[derive(Debug, Clone)]
+pub enum RefundOutcome {
+    /// The deposit is `refunded` and its Refund was requested.
+    Refunded(Deposit),
+    /// The party is blocked (`PTY.ACL.03`): no refund was made; an exception
+    /// was requested from the approver the block guard names, and the
+    /// deposit stays as it is.
+    ExceptionRequested(wl_kernel::ApprovalRequest),
+}
+
+/// Whether money may go out to the party of `deposit`: the neutral refusal
+/// text when the party is blocked (`PTY.ACL.03`), asked as the system so a
+/// restricted reason never shows.
+async fn money_out_refusal(state: &AppState, deposit: &Deposit) -> Result<Option<String>> {
+    let mut tx = state.db.begin().await?;
+    let outcome = block_guard::guard(state)
+        .check_in(&mut tx, None, PartyId(deposit.party_id), ActionKind::MoneyOut)
+        .await?;
+    // Only a question: nothing was written.
+    drop(tx);
+    Ok(match outcome {
+        GuardOutcome::Allowed => None,
+        GuardOutcome::Blocked(refusal) => Some(refusal.message_en()),
+    })
+}
+
+/// The input of a refund of `deposit` by `method`, with what the deductions
+/// say now.
+async fn refund_input_of(
+    state: &AppState,
+    deposit: &Deposit,
+    method: Option<PaymentMethod>,
+) -> Result<RefundDepositInput> {
+    Ok(RefundDepositInput {
+        method,
+        gate: Some(gate_of(state, deposit).await?),
+        part_refund_open: DepositAdjustment::part_refund_open(&state.db, deposit.id).await?,
+    })
+}
+
 /// `user` refunds `deposit` by `method` (`transfer` or `cheque`): the
 /// deposit becomes `refunded` and, in the same transaction, a Refund is
 /// requested with the deposit as source, for the held amount. The refund
 /// then follows the Refund flow (approval `FIN.ACL.04`, pay, fail).
+///
+/// Money out to a blocked party waits for unblock or an approved exception
+/// (`PTY.ACL.03`): this refuses it, with the neutral text; the page asks for
+/// the exception with [`refund_or_ask`].
 ///
 /// # Errors
 ///
 /// `Forbidden` without `deposits.refund`; `NotFrom` unless
 /// `settlement_pending`; `Guard` (422) without a method of transfer or
 /// cheque, for a deposit that holds nothing or already has a refund, while a
-/// deductions dispute is open, and (with the dispute setting on) before the
-/// deductions are published and their dispute window has passed.
+/// deductions dispute is open, for a blocked party, and (with the dispute
+/// setting on) before the deductions are published and their dispute window
+/// has passed.
 pub async fn refund(
     state: &AppState,
     user: &AuthUser,
@@ -331,11 +378,10 @@ pub async fn refund(
     method: Option<PaymentMethod>,
 ) -> std::result::Result<Deposit, TransitionError> {
     let deposit = reload(state, deposit).await?;
-    let input = RefundDepositInput {
-        method,
-        gate: Some(gate_of(state, &deposit).await?),
-        part_refund_open: DepositAdjustment::part_refund_open(&state.db, deposit.id).await?,
-    };
+    if let Some(message) = money_out_refusal(state, &deposit).await? {
+        return Err(TransitionError::Guard(message));
+    }
+    let input = refund_input_of(state, &deposit, method).await?;
     let _outcome = deposit
         .transition(REFUND)
         .by(user)
@@ -343,6 +389,52 @@ pub async fn refund(
         .run(state)
         .await?;
     reload(state, &deposit).await
+}
+
+/// Like [`refund`], but a blocked party's refund becomes an exception request
+/// for the approver the block guard names (the compliance role): the request
+/// carries the refund as its payload, no refund is made and the deposit stays
+/// `settlement_pending`. At the final approval the kernel runs
+/// `refund_approved`, which checks the same guards again.
+///
+/// # Errors
+///
+/// As [`refund`], except that a blocked party is not an error.
+pub async fn refund_or_ask(
+    state: &AppState,
+    user: &AuthUser,
+    deposit: &Deposit,
+    method: Option<PaymentMethod>,
+) -> std::result::Result<RefundOutcome, TransitionError> {
+    let deposit = reload(state, deposit).await?;
+    if money_out_refusal(state, &deposit).await?.is_none() {
+        return refund(state, user, &deposit, method)
+            .await
+            .map(RefundOutcome::Refunded);
+    }
+    // The guards are checked now, so a refund that could not run is not asked.
+    let input = refund_input_of(state, &deposit, method).await?;
+    if deposit.status != DepositStatus::SettlementPending {
+        return Err(TransitionError::NotFrom(deposit.status.as_str().to_owned()));
+    }
+    if let Some(problem) = refund_problem(&deposit, &input) {
+        return Err(TransitionError::Guard(problem));
+    }
+    let payload = renox::serde_json::to_value(&input)
+        .map_err(|error| TransitionError::Failed(Error::from(renox::anyhow::anyhow!(error))))?;
+    let mut tx = state.db.begin().await?;
+    let request = block_guard::request_exception_in(
+        state,
+        &mut tx,
+        user,
+        &deposit.subject(),
+        REFUND,
+        payload,
+    )
+    .await?;
+    tx.commit().await?;
+    wl_kernel::approvals::announce_request(state, &request).await?;
+    Ok(RefundOutcome::ExceptionRequested(request))
 }
 
 /// What a user gives to forfeit a deposit.

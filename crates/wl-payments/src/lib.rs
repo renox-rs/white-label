@@ -384,6 +384,15 @@ impl Module for WlPayments {
     }
 
     fn register(&self, app: &mut Registry) {
+        // Money out to a blocked party waits for an approved exception
+        // (`PTY.ACL.03`): the deposit refund is guarded as `money_out`.
+        wl_kernel::SubjectMachine::of::<Deposit>(wl_kernel::payments::DEPOSIT_SUBJECT_TYPE)
+            .block_guarded(
+                deposit_machine::REFUND,
+                wl_kernel::ActionKind::MoneyOut,
+                |deposit: &Deposit| Some(wl_kernel::PartyId(deposit.party_id)),
+            )
+            .register();
         app.model::<Payment>();
         app.model::<Allocation>();
         app.model::<Refund>();

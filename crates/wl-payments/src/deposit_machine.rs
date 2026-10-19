@@ -10,7 +10,9 @@
 //! All five states are declared with their tones. This part builds
 //! `start_settlement` (a user with `deposits.manage`) and
 //! `start_settlement_by_system` (the source agreement ended), and `refund`
-//! (`deposits.refund`): in its transaction a Refund is requested with the
+//! (`deposits.refund`): money out to the party, so a blocked party's refund
+//! waits for an approved exception (`PTY.ACL.03`, `refund_approved`,
+//! [`crate::deposit::refund_or_ask`]): in its transaction a Refund is requested with the
 //! deposit as source for the held amount, and linked to the deposit. The
 //! deposit stays `refunded` whatever happens to that refund. `forfeit`
 //! (`deposits.refund`, with a reason and a second user's approval) keeps the
@@ -41,6 +43,9 @@ pub const START_SETTLEMENT: &str = "start_settlement";
 pub const START_SETTLEMENT_BY_SYSTEM: &str = "start_settlement_by_system";
 /// The `refund` transition's name.
 pub const REFUND: &str = "refund";
+/// The `refund_approved` transition's name: the kernel runs it when an
+/// exception for a blocked party was approved (`PTY.ACL.03`).
+pub const REFUND_APPROVED: &str = "refund_approved";
 /// The `forfeit` transition's name.
 pub const FORFEIT: &str = "forfeit";
 /// The `transfer` transition's name.
@@ -171,6 +176,7 @@ fn transitions() -> Vec<Transition<Deposit>> {
         start_settlement(),
         start_settlement_by_system(),
         refund(),
+        refund_approved(),
         forfeit(),
         transfer(),
     ];
@@ -196,54 +202,44 @@ fn start_settlement_by_system() -> Transition<Deposit> {
         .to(DepositStatus::SettlementPending)
 }
 
-fn refund() -> Transition<Deposit> {
-    Transition::new(REFUND)
-        .label("Refund")
-        .tone("primary")
-        .permission(permissions::DEPOSITS_REFUND)
+/// Why `deposit` cannot be refunded with `input`, if it cannot: a method of
+/// transfer or cheque is given, the deductions allow it, no part refund of an
+/// adjustment is open, the deposit holds money and has no refund yet.
+pub(crate) fn refund_problem(deposit: &Deposit, input: &RefundDepositInput) -> Option<String> {
+    if let Some(text) = method_problem(input.method) {
+        return Some(text.to_owned());
+    }
+    match &input.gate {
+        Some(gate) => {
+            if let Some(problem) = gate_problem(gate, false) {
+                return Some(problem);
+            }
+        }
+        None => return Some("The refund was not prepared by the deposit service.".to_owned()),
+    }
+    if input.part_refund_open {
+        return Some(
+            "A part refund of an adjustment is not settled yet: pay or cancel it first."
+                .to_owned(),
+        );
+    }
+    if deposit.held_amount <= 0 {
+        return Some("The deposit holds nothing to refund.".to_owned());
+    }
+    if deposit.refund_id.is_some() {
+        return Some("The deposit already has a refund.".to_owned());
+    }
+    None
+}
+
+/// The guard and the effect `refund` and `refund_approved` share.
+fn refund_rules(transition: Transition<Deposit>) -> Transition<Deposit> {
+    transition
         .from([DepositStatus::SettlementPending])
         .to(DepositStatus::Refunded)
-        .guard("method_given", |_deposit: &Deposit, ctx| {
-            let problem = method_problem(refund_input(ctx).method);
-            Box::pin(async move { problem.map_or(Ok(()), |text| Err(text.to_owned())) })
-        })
-        .guard("deductions_ready", |_deposit: &Deposit, ctx| {
-            let problem = match refund_input(ctx).gate {
-                Some(gate) => gate_problem(&gate, false),
-                None => Some("The refund was not prepared by the deposit service.".to_owned()),
-            };
+        .guard("refund_possible", |deposit: &Deposit, ctx| {
+            let problem = refund_problem(deposit, &refund_input(ctx));
             Box::pin(async move { problem.map_or(Ok(()), Err) })
-        })
-        .guard("no_part_refund_waiting", |_deposit: &Deposit, ctx| {
-            let open = refund_input(ctx).part_refund_open;
-            Box::pin(async move {
-                if open {
-                    Err("A part refund of an adjustment is not settled yet: pay or cancel it first."
-                        .to_owned())
-                } else {
-                    Ok(())
-                }
-            })
-        })
-        .guard("holds_money", |deposit: &Deposit, _ctx| {
-            let held = deposit.held_amount;
-            Box::pin(async move {
-                if held > 0 {
-                    Ok(())
-                } else {
-                    Err("The deposit holds nothing to refund.".to_owned())
-                }
-            })
-        })
-        .guard("not_refunded_yet", |deposit: &Deposit, _ctx| {
-            let linked = deposit.refund_id.is_some();
-            Box::pin(async move {
-                if linked {
-                    Err("The deposit already has a refund.".to_owned())
-                } else {
-                    Ok(())
-                }
-            })
         })
         .effect(|deposit: &Deposit, ctx, tx| {
             let deposit = deposit.clone();
@@ -270,6 +266,27 @@ fn refund() -> Transition<Deposit> {
                 Ok(())
             })
         })
+}
+
+fn refund() -> Transition<Deposit> {
+    refund_rules(
+        Transition::new(REFUND)
+            .label("Refund")
+            .tone("primary")
+            .permission(permissions::DEPOSITS_REFUND),
+    )
+}
+
+/// The refund the kernel runs once an exception for a blocked party was
+/// approved: the same guards and effect, run by the system with the payload
+/// of the request.
+fn refund_approved() -> Transition<Deposit> {
+    refund_rules(
+        Transition::new(REFUND_APPROVED)
+            .label("Refund (exception approved)")
+            .tone("primary")
+            .system(),
+    )
 }
 
 fn transfer() -> Transition<Deposit> {

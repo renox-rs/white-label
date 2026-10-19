@@ -468,6 +468,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_payments.deposits.refund.method", "Method"),
     ("wl_payments.deposits.refund.submit", "Refund"),
     ("wl_payments.deposits.refund.done", "Refund requested."),
+    (
+        "wl_payments.deposits.refund.exception_requested",
+        "The party is on hold. An exception was requested; the refund waits for its approval.",
+    ),
     ("wl_payments.deposits.forfeit.action", "Forfeit"),
     ("wl_payments.deposits.forfeit.title", "Forfeit the deposit"),
     (

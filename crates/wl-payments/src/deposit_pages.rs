@@ -765,8 +765,15 @@ async fn store_refund(
             .into_iter()
             .find(|m| m.as_str() == code)
     });
-    match crate::deposit::refund(&state, &user, &deposit, method).await {
-        Ok(_) => Ok((Toast::success(t("deposits.refund.done")), renox::HxRefresh).into_response()),
+    match crate::deposit::refund_or_ask(&state, &user, &deposit, method).await {
+        Ok(crate::deposit::RefundOutcome::Refunded(_)) => {
+            Ok((Toast::success(t("deposits.refund.done")), renox::HxRefresh).into_response())
+        }
+        Ok(crate::deposit::RefundOutcome::ExceptionRequested(_)) => Ok((
+            Toast::success(t("deposits.refund.exception_requested")),
+            renox::HxRefresh,
+        )
+            .into_response()),
         Err(TransitionError::Guard(message)) => Err(invalid("method", message, &form)),
         Err(other) => Err(other.into_error()),
     }
