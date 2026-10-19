@@ -16,6 +16,7 @@ pub mod alert;
 pub mod registry;
 pub mod rules;
 pub mod service;
+pub mod web;
 
 use renox::prelude::*;
 

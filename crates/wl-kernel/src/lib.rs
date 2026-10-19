@@ -183,6 +183,10 @@ const VIEWS: &[(&str, &str)] = &[
         include_str!("../views/wl-kernel/integration.html"),
     ),
     (
+        "wl-kernel/compliance_alerts.html",
+        include_str!("../views/wl-kernel/compliance_alerts.html"),
+    ),
+    (
         late_entries::web::FIELDS_TEMPLATE,
         include_str!("../views/wl-kernel/late_entry_fields.html"),
     ),
@@ -245,6 +249,7 @@ impl Module for WlKernel {
             .merge(approvals::web::routes())
             .merge(voids::web::routes())
             .merge(integrations::web::routes())
+            .merge(compliance::web::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -259,7 +264,8 @@ impl Module for WlKernel {
             .model::<ScopeEntity>()
             .view_data::<LegalEntitiesPage>()
             .view_data::<integrations::web::IntegrationsPage>()
-            .view_data::<integrations::web::IntegrationPage>();
+            .view_data::<integrations::web::IntegrationPage>()
+            .view_data::<compliance::web::ComplianceAlertsPage>();
         approvals::register(app);
         automation::register(app);
         voids::register_models(app);
