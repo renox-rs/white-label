@@ -12,7 +12,7 @@
   <rx-select name="priority" :label="tx['fields.priority']" :options="priorities" :selected="priority_selected" :id="'assign-priority-' ~ ticket.id" required/>
   <rx-input name="visit_at" type="datetime-local" :label="tx['fields.visit_at']" :id="'assign-visit-' ~ ticket.id"/>
   <template rx-if="reassigning">
-    <rx-select name="reason_code" :label="tx['assign.reason_code']" :options="reasons" :id="'assign-reason-' ~ ticket.id" :placeholder="tx['none']" required/>
+    <rx-select name="reason_code" :label="tx['assign.reason_code']" :options="reasons" :selected="reason_selected" :id="'assign-reason-' ~ ticket.id" :placeholder="tx['none']" required/>
     <rx-textarea name="reason_text" :label="tx['assign.reason_text']" :id="'assign-reason-text-' ~ ticket.id"/>
   </template>
 </rx-action-sheet>

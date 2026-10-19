@@ -371,6 +371,23 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_ticketing.notice.vendor_no_show.body",
         "{{ title }} was scheduled for {{ scheduled }} and {{ vendor }} has not started it {{ hours }} hours later. Reassign it or set a new time: {{ link }}.",
     ),
+    ("wl_ticketing.no_show.title", "The vendor did not turn up"),
+    (
+        "wl_ticketing.no_show.banner",
+        "{{ vendor }} has not started the visit scheduled for {{ scheduled }}. Reassign the ticket or set a new time.",
+    ),
+    ("wl_ticketing.no_show.new_time", "New time"),
+    ("wl_ticketing.no_show.new_time_title", "Set a new visit time"),
+    (
+        "wl_ticketing.no_show.new_time_description",
+        "The same vendor comes at the new time, and the requester is told.",
+    ),
+    ("wl_ticketing.no_show.new_time_done", "The visit time is changed."),
+    ("wl_ticketing.contract.no_shows", "Vendor no-shows"),
+    ("wl_ticketing.contract.no_shows_empty", "No vendor no-shows"),
+    ("wl_ticketing.contract.no_show_vendor", "Vendor"),
+    ("wl_ticketing.contract.no_show_count", "No-shows"),
+    ("wl_ticketing.contract.no_show_last", "Last scheduled"),
     (
         "wl_ticketing.contract_end.task_title",
         "Open visits of contract {number}: reassign or cancel",

@@ -12,6 +12,10 @@
         <rx-confirm :id="'ticket-' ~ item.name ~ '-' ~ ticket.id" :label="item.label" :action="'/tickets/' ~ ticket.id ~ '/actions/' ~ item.name" method="POST"
                     :title="tx['action.confirm_title']" :message="item.label" :confirm-label="item.label"/>
       </template>
+      <rx-action-sheet rx-if="can_new_time" :id="'new-time-' ~ ticket.id" :label="tx['no_show.new_time']" :action="route('wl_ticketing.new_time', ticket.id)"
+                       :title="tx['no_show.new_time_title']" :description="tx['no_show.new_time_description']" :submit-label="tx['no_show.new_time']" icon="clock">
+        <rx-input name="visit_at" type="datetime-local" :label="tx['fields.visit_at']" :id="'new-time-visit-' ~ ticket.id" required/>
+      </rx-action-sheet>
       <rx-action-sheet rx-if="can_hold" :id="'hold-ticket-' ~ ticket.id" :label="tx['hold.action']" :action="route('wl_ticketing.hold', ticket.id)"
                        :title="tx['hold.title']" :description="tx['hold.description']" :submit-label="tx['hold.submit']" icon="pause">
         <rx-select name="hold_reason" :label="tx['hold.reason']" :options="hold_reasons" :id="'hold-reason-' ~ ticket.id" required/>
@@ -22,6 +26,7 @@
         <rx-textarea name="reason" :label="tx['cancel_ticket.reason']" :id="'cancel-reason-' ~ ticket.id" required/>
       </rx-action-sheet>
     </rx-page-header>
+    <rx-alert rx-if="no_show" kind="warning" :title="tx['no_show.title']" :message="no_show"/>
     <rx-card :title="tx['sections.details']">
       <rx-infolist columns="2">
         <rx-entry :label="tx['fields.number']" :value="ticket.number" copyable/>

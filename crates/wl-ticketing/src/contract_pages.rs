@@ -29,6 +29,7 @@ use crate::config::Category;
 use crate::contract::{ContractStatus, ServiceContract, ServiceContracts, is_open_visit};
 use crate::contract_end::CONTRACT_ENDED_REASON;
 use crate::flags::ComplianceFlag;
+use crate::no_show::NoShow;
 use crate::pages::{Texts, assignee_name, invalid, party_by_code, when};
 use crate::permissions;
 use crate::texts;
@@ -145,6 +146,17 @@ pub struct ContractFlagRow {
     pub raised: String,
 }
 
+/// The vendor no-shows of one vendor under the contract.
+#[derive(Serialize, Debug, Clone)]
+pub struct NoShowRow {
+    /// The vendor's name.
+    pub vendor: String,
+    /// How many no-shows.
+    pub count: i64,
+    /// The latest scheduled time that was missed.
+    pub last: String,
+}
+
 /// What the page needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "wl-ticketing/contract.html")]
@@ -158,6 +170,8 @@ pub(crate) struct ContractPage {
     coverage: Vec<CoverageRow>,
     visits: Vec<VisitRow>,
     flags: Vec<ContractFlagRow>,
+    /// The no-shows per vendor.
+    no_shows: Vec<NoShowRow>,
     /// `(id, name)` of the staff a visit can be reassigned to.
     users: Vec<(i64, String)>,
     /// `(code, name)` of the reassignment reasons.
@@ -251,6 +265,29 @@ async fn show(
         });
     }
 
+    let mut per_vendor: std::collections::BTreeMap<i64, (i64, renox::db::DateTime)> =
+        std::collections::BTreeMap::new();
+    for row in NoShow::of_contract(&db, contract.id).await? {
+        let entry = per_vendor
+            .entry(row.vendor_party_id)
+            .or_insert((0, row.scheduled_at));
+        entry.0 += 1;
+        if row.scheduled_at > entry.1 {
+            entry.1 = row.scheduled_at;
+        }
+    }
+    let mut no_shows = Vec::new();
+    for (vendor, (count, last)) in per_vendor {
+        let name = directory(&state)
+            .display_name(&db, wl_kernel::PartyId(vendor), "en")
+            .await?
+            .unwrap_or_else(|| format!("#{vendor}"));
+        no_shows.push(NoShowRow {
+            vendor: name,
+            count,
+            last: when(&state, Some(last)).unwrap_or_default(),
+        });
+    }
     let manage = user.has_permission(permissions::SERVICE_CONTRACTS_MANAGE);
     let users = if assigner && visits.iter().any(|v| v.can_reassign) {
         let mut users: Vec<(i64, String)> = User::query()
@@ -300,6 +337,7 @@ async fn show(
         coverage,
         visits,
         flags,
+        no_shows,
         users,
         reasons,
         has_actions,

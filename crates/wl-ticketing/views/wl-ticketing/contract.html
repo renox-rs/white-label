@@ -60,6 +60,12 @@
       </rx-row-actions>
       <rx-slot name="empty"><rx-empty :title="tx['contract.visits_empty']" icon="calendar"/></rx-slot>
     </rx-table>
+    <rx-table :rows="no_shows" as="row" :key="row.vendor" :caption="tx['contract.no_shows']" card>
+      <rx-column :label="tx['contract.no_show_vendor']">{{ row.vendor }}</rx-column>
+      <rx-column :label="tx['contract.no_show_count']" align="num">{{ row.count }}</rx-column>
+      <rx-column :label="tx['contract.no_show_last']" hide-narrow>{{ row.last }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['contract.no_shows_empty']" icon="clock"/></rx-slot>
+    </rx-table>
     <rx-table :rows="flags" as="flag" :key="flag.subject ~ flag.reason" :caption="tx['contract.flags']" card>
       <rx-column :label="tx['flags.subject']">{{ flag.subject }}</rx-column>
       <rx-column :label="tx['flags.category']">{{ flag.category }}</rx-column>

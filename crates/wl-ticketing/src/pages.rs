@@ -11,6 +11,7 @@
 //! | `POST /tickets/{id}/assign` | `wl_ticketing.assign` | `tickets.assign` |
 //! | `POST /tickets/{id}/hold` | `wl_ticketing.hold` | `tickets.view` and the assignee |
 //! | `POST /tickets/{id}/cancel` | `wl_ticketing.cancel` | `tickets.assign` |
+//! | `POST /tickets/{id}/new-time` | `wl_ticketing.new_time` | `tickets.assign` (field `visit_at`: a new visit time with the same vendor after a no-show) |
 //! | `POST /tickets/{id}/actions/{name}` | `wl_ticketing.action` | `tickets.view` and the action's own rule |
 //!
 //! Every POST calls the ticket services with the time of the request
@@ -42,6 +43,7 @@ use crate::assign::{AssignKind, AssignRequest, Assignment, assign, reasons_of};
 use crate::comments::{Comment, CommentVisibility};
 use crate::config::{Category, HoldReason};
 use crate::contract::{ServiceContract, ServiceContracts};
+use crate::no_show::{self, NoShow};
 use crate::open::Tickets;
 use crate::permissions;
 use crate::priority::Priority;
@@ -91,6 +93,8 @@ pub fn routes() -> Routes {
                 .name("wl_ticketing.assign")
                 .post("/tickets/{id}/cancel", store_cancel)
                 .name("wl_ticketing.cancel")
+                .post("/tickets/{id}/new-time", store_new_time)
+                .name("wl_ticketing.new_time")
                 .require_permission(permissions::ASSIGN),
         )
 }
@@ -418,6 +422,12 @@ pub(crate) struct ShowPage {
     proposed_party_code: String,
     /// The service contract the ticket is handled under, when it has one.
     contract: Option<ContractLink>,
+    /// The vendor no-show the coordinator has not answered yet, as a line.
+    no_show: Option<String>,
+    /// Whether "New time" is offered: there is such a no-show.
+    can_new_time: bool,
+    /// The reassignment reason the assign sheet starts on.
+    reason_selected: String,
 }
 
 /// The contract a ticket is handled under, as the ticket page links to it.
@@ -768,6 +778,27 @@ async fn show(
         }),
         None => None,
     };
+    let no_show_row = if offered.assign {
+        NoShow::current_for(&db, &ticket).await?
+    } else {
+        None
+    };
+    let no_show = match &no_show_row {
+        Some(row) => {
+            let vendor = assignee_name(&state, Assignee::Party { id: row.vendor() }).await?;
+            let scheduled = when(&state, Some(row.scheduled_at)).unwrap_or_default();
+            Some(fill(
+                &t("no_show.banner"),
+                &json!({ "vendor": vendor, "scheduled": scheduled }),
+            ))
+        }
+        None => None,
+    };
+    let reason_selected = if no_show_row.is_some() {
+        "vendor_no_show".to_owned()
+    } else {
+        String::new()
+    };
     let can_charge = ticket.chargeable && charge::may_change(&ticket, &user);
     let vat_options = options(&t, "vat", VatCategory::ALL.iter().map(VatCategory::as_str));
     Ok(View::typed(ShowPage {
@@ -779,6 +810,9 @@ async fn show(
         invoice_id: ticket.invoice_id,
         proposed_party_code,
         contract,
+        can_new_time: no_show_row.is_some(),
+        no_show,
+        reason_selected,
         tx: texts::all(&lang),
         title: ticket.number.clone(),
         status_label: t(&format!("status.{}", ticket.status.as_str())),
@@ -876,6 +910,35 @@ async fn store_assign(
         Err(TransitionError::Guard(message)) => {
             Err(invalid(assign_field(&message), message, &form))
         }
+        Err(other) => Err(other.into_error()),
+    }
+}
+
+/// The new-time sheet's form.
+#[derive(Deserialize, Serialize, Validate, Debug)]
+pub struct NewTimeForm {
+    /// The new visit time, Asia/Dubai wall-clock time.
+    pub visit_at: NaiveDateTime,
+}
+
+/// `POST /tickets/{id}/new-time`: sets a new visit time with the same vendor
+/// after a no-show; the requester is told the new time.
+async fn store_new_time(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(ticket): Found<Ticket>,
+    Valid(form): Valid<NewTimeForm>,
+) -> Result<Response> {
+    visibility::ensure_visible(&ticket, &user)?;
+    let at = calendar(&state).from_local(form.visit_at);
+    match no_show::new_time(&state, &user, &ticket, at).await {
+        Ok(()) => Ok((
+            Toast::success(texts::t(&lang, "wl_ticketing.no_show.new_time_done")),
+            renox::HxRefresh,
+        )
+            .into_response()),
+        Err(TransitionError::Guard(message)) => Err(invalid("visit_at", message, &form)),
         Err(other) => Err(other.into_error()),
     }
 }
