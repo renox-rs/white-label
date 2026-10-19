@@ -24,6 +24,8 @@
     "bank_statements": "Bank statements",
     "campaigns": "Campaigns",
     "employees": "Employees",
+    "property": "Property",
+    "leases": "Leases",
     "tickets": "Tickets",
     "block_effects": "Block effects",
     "review_tasks": "Review tasks",

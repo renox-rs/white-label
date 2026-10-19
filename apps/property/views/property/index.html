@@ -1,11 +1,31 @@
-{#- property: the page at /property. Replace it with
-    resources/views/property/index.html in your app. -#}
-<rx-page layout="layouts/app.html" :title="heading">
+{#- property: the portfolio: the buildings with their units and occupancy,
+    and the form that adds a building. Replace it with
+    resources/views/property/index.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['portfolio.title']">
   <rx-stack>
-    <rx-page-header :title="heading"/>
-    <rx-table :rows="entries" as="entry" :key="entry.id" :caption="heading">
-      <rx-column label="Title">{{ entry.title }}</rx-column>
-      <rx-slot name="empty"><rx-empty :title="empty"/></rx-slot>
+    <rx-page-header :title="tx['portfolio.title']" :subtitle="tx['portfolio.subtitle']">
+      <template rx-if="can_manage">
+        <rx-action-sheet id="add-building" :label="tx['buildings.add']" :action="route('property.building_create')"
+                         :title="tx['buildings.add']" :submit-label="tx['buildings.add']" variant="primary" icon="plus">
+          <rx-input name="code" :label="tx['buildings.code']" id="add-building-code" required/>
+          <rx-input name="name_en" :label="tx['buildings.name_en']" id="add-building-name-en" required/>
+          <rx-input name="name_ar" :label="tx['buildings.name_ar']" id="add-building-name-ar"/>
+          <rx-select name="emirate" :label="tx['buildings.emirate']" :options="emirates" selected="dubai" id="add-building-emirate"/>
+          <rx-input name="community" :label="tx['buildings.community']" id="add-building-community"/>
+          <rx-input name="plot_number" :label="tx['buildings.plot_number']" id="add-building-plot"/>
+          <rx-input name="premise_number" :label="tx['buildings.premise_number']" id="add-building-premise"/>
+        </rx-action-sheet>
+      </template>
+      <rx-link-button :href="route('property.leases')" :label="tx['leases.title']" variant="secondary" icon="file-text"/>
+    </rx-page-header>
+    <rx-table :rows="buildings" as="building" :key="building.id" :caption="tx['portfolio.title']" card>
+      <rx-column :label="tx['buildings.name']"><a href="{{ route('property.building', building.id) }}">{{ building.name }}</a></rx-column>
+      <rx-column :label="tx['buildings.code']" hide-narrow>{{ building.code }}</rx-column>
+      <rx-column :label="tx['buildings.emirate']" hide-narrow>{{ building.emirate }}</rx-column>
+      <rx-column :label="tx['buildings.units']" align="num">{{ building.units }}</rx-column>
+      <rx-column :label="tx['buildings.available']" align="num">{{ building.available }}</rx-column>
+      <rx-column :label="tx['buildings.occupancy']" align="num">{{ building.occupancy }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['portfolio.empty']" icon="building-2"/></rx-slot>
     </rx-table>
   </rx-stack>
 </rx-page>

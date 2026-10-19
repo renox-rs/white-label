@@ -1,9 +1,12 @@
 # property
 
-Property: a reusable Renox module, made with `rnx make:package property`.
+The vertical app for property management companies ([spec](../../docs/verticals/01-property.md)):
+the portfolio, the lease and its lifecycle, and the lease-to-cash cycle on top of the shared `wl-*`
+modules. Property reaches the other modules only through the contracts of `wl-kernel` (the
+invoicer, the cheque register, the deposit book, the document guard, the party directory, tasks and
+notifications), never through their crates.
 
-Add it to an app (`Cargo.toml`: `property = { path = "…" }`, or its version once
-published) and register the module:
+The host mounts it when `client.toml` names `app = "property"`:
 
 ```
 use renox::prelude::*;
@@ -13,11 +16,21 @@ App::new().module(property::Property)
 # ;
 ```
 
-The page is at `/property`. The module owns:
+What is here so far:
 
-- `migrations/`, run with the app's (`rnx migrate`); their names carry the package
-  name, so two packages can't clash.
-- `views/property/`, compiled in. The app overrides a page by putting a file of the
-  same name under its views directory (`resources/views/property/index.html`).
-- `src/texts.rs`, the English texts (`property.*`). The app changes or translates them
-  in `resources/lang/{locale}.json`.
+| Part | Spec | Module |
+|---|---|---|
+| Permissions (`units.*`, `leases.*`) and the roles the rules name | §3, §7.1 | `permissions` |
+| Buildings, floors and units with type, use, size, bedrooms and asking rent | §6, `PRP.PRT.01` | `building`, `unit` |
+| The Unit machine: available, reserved, occupied, notice given, under maintenance, off the market | §7.1, `PRP.PRT.02` | `unit_machine` |
+| The Lease, one record per version (new, renewal, amendment), with the tenant as a wl-parties party | §6, `PRP.LSE.01` | `lease`, `leases` |
+| The Lease machine with all its states and transitions; `submit`, `activate` and `cancel` are built, the others declare their states and permissions for BL-PRP-03 to BL-PRP-12 | §7.1 | `lease_machine`, `lease_checks` |
+| The payment plan and the charge schedule of a version; the daily run drafts one tax invoice per instalment on its due date through the `Invoicer` | §4.1, `FIN.BIL.01` | `charge`, `invoicing` |
+| The post-dated cheque schedule against the lease as its agreement, each cheque linked to the charge it pays | §4.1, `FIN.CHQ.01` | `cheques` |
+| The document guard hooks: the tenant's documents on `submit`, the signed contract on `activate`, the Ejari certificate when the registration is recorded | §7.1, §7.2, `PRP.LSE.02` | `documents` |
+| Ejari or Tawtheeq registration typed in, with the task that chases it after activation | §8, `PRP.RUL.02` | `leases`, `lease_events` |
+| The events `LeaseActivated` and `LeaseCancelled` | §7.1 | `events` |
+| The portfolio, the building, the leases and the lease pages | §3, §4 | `pages` |
+
+The app owns `src/texts.rs`, the English texts (`property.*`). A client changes or translates them in
+`resources/lang/{locale}.json`.

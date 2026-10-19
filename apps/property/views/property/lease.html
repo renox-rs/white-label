@@ -1,0 +1,116 @@
+{#- property: a lease version: its status (and the pending-approval badge),
+    the actions the user may run, the approval card, the terms, the payment
+    plan, the cheques received with it, its versions and its history.
+    Replace it with resources/views/property/lease.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="lease.number">
+  <rx-stack>
+    <rx-page-header :title="lease.number" :subtitle="lease.unit ~ ' · ' ~ lease.tenant" :back="route('property.leases')" :back-label="tx['leases.title']"
+                    :badge="status" :badge-kind="status_kind">
+      <rx-badge rx-if="pending" kind="warning" :text="tx['pending_approval']"/>
+      <template rx-if="can_submit">
+        <rx-confirm :id="'submit-lease-' ~ lease.id" :label="tx['leases.submit']" :action="route('property.lease_submit', lease.id)" method="POST"
+                    :title="tx['leases.submit']" :message="tx['leases.submit_message']" :confirm-label="tx['leases.submit']" :cancel-label="tx['button_cancel']" icon="send"/>
+      </template>
+      <template rx-if="can_activate">
+        <rx-confirm :id="'activate-lease-' ~ lease.id" :label="tx['leases.activate']" :action="route('property.lease_activate', lease.id)" method="POST"
+                    :title="tx['leases.activate']" :message="tx['leases.activate_message']" :confirm-label="tx['leases.activate']" :cancel-label="tx['button_cancel']" icon="check"/>
+      </template>
+      <template rx-if="can_cancel">
+        <rx-action-sheet :id="'cancel-lease-' ~ lease.id" :label="tx['cancel.action']" :action="route('property.lease_cancel', lease.id)"
+                         :title="tx['cancel.action']" :description="tx['cancel.description']" :submit-label="tx['cancel.submit']"
+                         icon="ban" variant="danger" danger>
+          <rx-textarea name="reason" :label="tx['cancel.reason']" :id="'cancel-lease-reason-' ~ lease.id" required/>
+          <rx-input name="forfeit" :label="tx['cancel.forfeit']" :hint="tx['cancel.forfeit_hint']" :id="'cancel-lease-forfeit-' ~ lease.id"/>
+          <rx-input name="clause" :label="tx['cancel.clause']" :id="'cancel-lease-clause-' ~ lease.id"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_extend">
+        <rx-action-sheet :id="'extend-lease-' ~ lease.id" :label="tx['chase.extend']" :action="route('property.lease_extend', lease.id)"
+                         :title="tx['chase.extend']" :description="tx['chase.extend_description']" :submit-label="tx['chase.extend']" icon="calendar-plus">
+          <rx-input name="until" type="date" :label="tx['chase.until']" :id="'extend-lease-until-' ~ lease.id" required/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_waive">
+        <rx-confirm :id="'waive-deposit-' ~ lease.id" :label="tx['leases.waive_deposit']" :action="route('property.lease_waive_deposit', lease.id)" method="POST"
+                    :title="tx['leases.waive_deposit']" :message="tx['leases.waive_message']" :confirm-label="tx['leases.waive_deposit']" :cancel-label="tx['button_cancel']"/>
+      </template>
+      <template rx-if="can_cheques">
+        <rx-action-sheet :id="'cheques-' ~ lease.id" :label="tx['cheques.record']" :action="route('property.lease_cheques', lease.id)"
+                         :title="tx['cheques.record']" :description="tx['cheques.record_description']" :submit-label="tx['cheques.record']" icon="landmark">
+          <rx-input name="bank" :label="tx['cheques.bank']" :id="'cheques-bank-' ~ lease.id" required/>
+          <rx-textarea name="cheques" :label="tx['cheques.lines']" :hint="tx['cheques.lines_hint']" :id="'cheques-lines-' ~ lease.id" required/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_ejari">
+        <rx-action-sheet :id="'ejari-' ~ lease.id" :label="tx['ejari.record']" :action="route('property.lease_ejari', lease.id)"
+                         :title="tx['ejari.record']" :description="tx['ejari.description']" :submit-label="tx['ejari.record']" icon="stamp">
+          <rx-input name="number" :label="tx['ejari.number']" :id="'ejari-number-' ~ lease.id" required/>
+          <rx-input name="registered_on" type="date" :label="tx['ejari.registered_on']" :value="today" :id="'ejari-registered-' ~ lease.id" required/>
+          <rx-input name="expires_on" type="date" :label="tx['ejari.expires_on']" :id="'ejari-expires-' ~ lease.id"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_version">
+        <rx-action-sheet :id="'version-' ~ lease.id" :label="tx['leases.new_version']" :action="route('property.lease_version', lease.id)"
+                         :title="tx['leases.new_version']" :description="tx['leases.new_version_description']" :submit-label="tx['leases.new_version']" icon="copy-plus">
+          <rx-select name="kind" :label="tx['leases.version_kind']" :options="[['renewal', tx['leases.kind.renewal']], ['amendment', tx['leases.kind.amendment']]]" selected="renewal" :id="'version-kind-' ~ lease.id"/>
+          <rx-input name="start_date" type="date" :label="tx['leases.start_date']" :id="'version-start-' ~ lease.id" required/>
+          <rx-input name="end_date" type="date" :label="tx['leases.end_date']" :id="'version-end-' ~ lease.id" required/>
+          <rx-input name="annual_rent" :label="tx['leases.annual_rent']" :id="'version-rent-' ~ lease.id" required/>
+          <rx-input name="deposit" :label="tx['leases.deposit']" :id="'version-deposit-' ~ lease.id"/>
+          <rx-input name="instalments" :label="tx['leases.instalments']" value="4" :id="'version-instalments-' ~ lease.id" required/>
+          <rx-input name="effective_date" type="date" :label="tx['leases.effective_date']" :hint="tx['leases.effective_date_hint']" :id="'version-effective-' ~ lease.id"/>
+        </rx-action-sheet>
+      </template>
+    </rx-page-header>
+    <rx-include template="wl-kernel/approval_card.html"/>
+    <rx-card :title="tx['leases.terms_title']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['leases.unit']" :value="lease.unit"/>
+        <rx-entry :label="tx['leases.tenant']" :value="lease.tenant"/>
+        <rx-entry :label="tx['leases.kind_label']" :value="lease.kind" :placeholder="tx['leases.kind.new']"/>
+        <rx-entry :label="tx['leases.term']" :value="lease.start_date ~ ' → ' ~ lease.end_date"/>
+        <rx-entry :label="tx['leases.annual_rent']" :value="lease.annual_rent"/>
+        <rx-entry :label="tx['leases.deposit']" :value="lease.deposit"/>
+        <rx-entry :label="tx['leases.vat']" :value="lease.vat"/>
+        <rx-entry :label="tx['leases.notice_days_label']" :value="lease.notice_days"/>
+        <rx-entry :label="tx['leases.effective_date']" :value="lease.effective_date" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['ejari.number']" :value="lease.ejari_number" :placeholder="tx['ejari.missing']"/>
+        <rx-entry :label="tx['ejari.expires_on']" :value="lease.ejari_expires_on" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['leases.follow_up_until']" :value="lease.follow_up_until" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['leases.terms']" :value="lease.terms" :placeholder="tx['none']" span="full"/>
+        <rx-entry :label="tx['cancel_reason']" :value="lease.cancel_reason" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['cancel_forfeit']" :value="lease.cancel_forfeit" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['cancel_forfeit_clause']" :value="lease.cancel_forfeit_clause" :placeholder="tx['none']"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-table :rows="charges" as="charge" :key="charge.number ~ charge.due_date" :caption="tx['charges.title']" card>
+      <rx-column :label="tx['charges.number']" align="num">{{ charge.number }}</rx-column>
+      <rx-column :label="tx['charges.description']">{{ charge.description }}</rx-column>
+      <rx-column :label="tx['charges.due_date']">{{ charge.due_date }}</rx-column>
+      <rx-column :label="tx['charges.amount']" align="num">{{ charge.amount }}</rx-column>
+      <rx-column :label="tx['leases.vat']" hide-narrow>{{ charge.vat }}</rx-column>
+      <rx-column :label="tx['fields.status']"><rx-badge :kind="charge.status_kind" :text="charge.status"/></rx-column>
+      <rx-column :label="tx['charges.invoice']" hide-narrow>{{ charge.invoice_id or "" }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['charges.empty']" icon="calendar-days"/></rx-slot>
+    </rx-table>
+    <rx-table :rows="cheques" as="cheque" :key="cheque.number" :caption="tx['cheques.title']" card>
+      <rx-column :label="tx['cheques.number']">{{ cheque.number }}</rx-column>
+      <rx-column :label="tx['cheques.bank']" hide-narrow>{{ cheque.bank }}</rx-column>
+      <rx-column :label="tx['cheques.date']">{{ cheque.date }}</rx-column>
+      <rx-column :label="tx['charges.amount']" align="num">{{ cheque.amount }}</rx-column>
+      <rx-column :label="tx['fields.status']">{{ cheque.status }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['cheques.empty']" icon="landmark"/></rx-slot>
+    </rx-table>
+    <rx-table :rows="versions" as="version" :key="version.id" :caption="tx['leases.versions']" card>
+      <rx-column :label="tx['leases.version']"><a href="{{ route('property.lease', version.id) }}">{{ version.label }}</a> {{ version.kind }}</rx-column>
+      <rx-column :label="tx['leases.term']">{{ version.term }}</rx-column>
+      <rx-column :label="tx['fields.status']">{{ version.status }}</rx-column>
+    </rx-table>
+    <rx-table :rows="timeline" as="item" :key="item.time" :caption="tx['history.title']" card>
+      <rx-column :label="tx['history.change']">{{ item.title }}</rx-column>
+      <rx-column :label="tx['history.at']">{{ item.time | date('%Y-%m-%d %H:%M') }}</rx-column>
+      <rx-column :label="tx['history.reason']" hide-narrow>{{ item.body or "" }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['history.empty']" icon="history"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

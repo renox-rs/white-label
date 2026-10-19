@@ -1,0 +1,17 @@
+{#- property: the leases, newest first, with their unit, tenant, term and
+    status. A lease is drafted on an available unit (the building page).
+    Replace it with resources/views/property/leases.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['leases.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['leases.title']" :subtitle="tx['leases.subtitle']" :back="route('property.index')" :back-label="tx['portfolio.title']"/>
+    <rx-table :rows="leases" as="lease" :key="lease.id" :caption="tx['leases.title']" card>
+      <rx-column :label="tx['leases.number']"><a href="{{ route('property.lease', lease.id) }}">{{ lease.number }}</a> {{ lease.kind }}</rx-column>
+      <rx-column :label="tx['leases.unit']">{{ lease.unit }}</rx-column>
+      <rx-column :label="tx['leases.tenant']" hide-narrow>{{ lease.tenant }}</rx-column>
+      <rx-column :label="tx['leases.term']" hide-narrow>{{ lease.term }}</rx-column>
+      <rx-column :label="tx['leases.annual_rent']" align="num" hide-narrow>{{ lease.annual_rent }}</rx-column>
+      <rx-column :label="tx['fields.status']"><rx-badge :kind="lease.status_kind" :text="lease.status"/></rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['leases.empty']" icon="file-text"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

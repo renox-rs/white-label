@@ -7,6 +7,7 @@ use renox::anyhow::anyhow;
 use renox::auth::permissions;
 use renox::command::Args;
 use renox::prelude::*;
+use property::permissions as prp;
 use wl_documents::permissions as documents;
 use wl_hr::permissions as hr;
 use wl_invoicing::permissions as invoices;
@@ -59,6 +60,13 @@ pub const MARKETING: &str = "marketing";
 /// The marketing manager: also approves costs over a campaign's budget and
 /// reads the acquisition reports (wl-sales §6, `SAL.ACL.07`).
 pub const MARKETING_MANAGER: &str = "marketing_manager";
+/// The property manager: owns a set of buildings (units, leases, renewals,
+/// escalations) and approves the cancellation of a lease after money was
+/// received (01 §3.1, `PRP.ACL.18`).
+pub const PROPERTY_MANAGER: &str = prp::PROPERTY_MANAGER_ROLE;
+/// The leasing agent: drafts and submits leases, asks for a cancellation
+/// (01 §3.1, `PRP.ACL.18`).
+pub const LEASING_AGENT: &str = prp::LEASING_AGENT_ROLE;
 /// HR: keeps the employee records, starts and follows onboardings, and is the
 /// `hr` owner of onboarding steps (wl-hr §3, §6).
 pub const HR: &str = "hr";
@@ -152,6 +160,54 @@ pub const ROLES: &[(&str, &[&str])] = &[
             hr::EMPLOYEES_MANAGE,
             hr::ONBOARDING_VIEW,
             hr::ONBOARDING_MANAGE,
+            prp::UNITS_VIEW,
+            prp::UNITS_MANAGE,
+            prp::UNITS_RESERVE,
+            prp::LEASES_VIEW,
+            prp::LEASES_CREATE,
+            prp::LEASES_CANCEL,
+            prp::LEASES_ACTIVATE,
+            prp::LEASES_MANAGE,
+            prp::LEASES_FORCE_TERMINATE,
+        ],
+    ),
+    (
+        PROPERTY_MANAGER,
+        &[
+            prp::UNITS_VIEW,
+            prp::UNITS_MANAGE,
+            prp::UNITS_RESERVE,
+            prp::LEASES_VIEW,
+            prp::LEASES_CREATE,
+            prp::LEASES_CANCEL,
+            prp::LEASES_ACTIVATE,
+            prp::LEASES_MANAGE,
+            parties::VIEW,
+            documents::VIEW,
+            invoices::VIEW,
+            tickets::VIEW,
+            tickets::CREATE,
+            tickets::ASSIGN,
+            payments::VIEW,
+            payments::DEPOSITS_VIEW,
+            payments::DEPOSITS_MANAGE,
+            payments::CHEQUES_VIEW,
+        ],
+    ),
+    (
+        LEASING_AGENT,
+        &[
+            prp::UNITS_VIEW,
+            prp::LEASES_VIEW,
+            prp::LEASES_CREATE,
+            prp::LEASES_CANCEL,
+            parties::VIEW,
+            parties::CREATE,
+            parties::UPDATE,
+            documents::VIEW,
+            documents::UPLOAD,
+            sales::LEADS_VIEW,
+            sales::LEADS_MANAGE,
         ],
     ),
     (
@@ -178,6 +234,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
     (
         ACCOUNTANT,
         &[
+            prp::UNITS_VIEW,
+            prp::LEASES_VIEW,
+            prp::LEASES_CANCEL,
             invoices::VIEW,
             invoices::CREDIT,
             invoices::VAT_VIEW,
