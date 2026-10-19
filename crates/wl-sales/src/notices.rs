@@ -116,6 +116,28 @@ pub(crate) async fn cost_rejected(state: &AppState, entry: &CostEntry) -> Result
     Ok(())
 }
 
+/// Tells the owner of the entry's campaign that the entry was voided with
+/// its supplier bill.
+pub(crate) async fn cost_bill_voided(state: &AppState, entry: &CostEntry) -> Result {
+    let Some(campaign) = Campaign::find(&state.db, entry.campaign_id).await? else {
+        return Ok(());
+    };
+    let Some(owner) = campaign.owner_id else {
+        return Ok(());
+    };
+    let request = NotifyRequest::new(COST_BILL_VOIDED, campaign.campaign_id().subject())
+        .to_user(owner)
+        .subject_label(&campaign.code)
+        .data(json!({
+            "name": campaign.name,
+            "code": campaign.code,
+            "amount": aed(entry.amount),
+            "description": entry.description,
+        }));
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
 /// Tells the campaign's owner that it ended. A campaign without an owner
 /// tells nobody.
 pub(crate) async fn campaign_ended(state: &AppState, campaign: &Campaign) -> Result {

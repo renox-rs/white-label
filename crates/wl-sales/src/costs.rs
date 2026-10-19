@@ -20,7 +20,7 @@ use crate::budget::BudgetCheck;
 use crate::campaign::Campaign;
 use crate::config::SalesConfig;
 use crate::cost_entry::{CostEntry, CostRefused, CostStatus};
-use crate::cost_machine::{SUBMIT, SUBMIT_OVER_BUDGET};
+use crate::cost_machine::{AWAIT_BILL, SUBMIT, SUBMIT_OVER_BUDGET};
 
 /// What a user enters.
 #[derive(Debug, Clone)]
@@ -117,11 +117,12 @@ pub fn delete_check<'a>(
 
 /// Reads the approved total under the lock already held by `tx` and runs the
 /// one transition the budget decides: `submit` or `submit_over_budget`.
-async fn submit_in(
+pub(crate) async fn submit_in(
     state: &AppState,
     tx: &mut Transaction,
     entry: &CostEntry,
     campaign: &Campaign,
+    await_bill: bool,
 ) -> Result<Outcome<CostEntry>> {
     let enforce = state
         .provided::<SalesConfig>()
@@ -131,7 +132,9 @@ async fn submit_in(
         budget: campaign.budget,
         enforce,
     };
-    let name = if check.over(entry.amount) {
+    let name = if await_bill {
+        AWAIT_BILL
+    } else if check.over(entry.amount) {
         SUBMIT_OVER_BUDGET
     } else {
         SUBMIT
@@ -148,7 +151,7 @@ async fn submit_in(
 
 /// After the commit: the approval request is announced to its approvers and
 /// the engine's event is emitted.
-async fn finish(state: &AppState, outcome: Outcome<CostEntry>) -> Result {
+pub(crate) async fn finish(state: &AppState, outcome: Outcome<CostEntry>) -> Result {
     approvals::announce(state, &outcome).await?;
     outcome.emit(state).await
 }
@@ -196,7 +199,7 @@ pub async fn save(
         },
     )
     .await?;
-    let outcome = submit_in(state, &mut tx, &entry, &campaign).await?;
+    let outcome = submit_in(state, &mut tx, &entry, &campaign, false).await?;
     tx.commit().await?;
     finish(state, outcome).await?;
     Ok(Ok(CostEntry::find_or_404(&state.db, entry.id).await?))
@@ -234,9 +237,16 @@ pub async fn edit(
         };
         approvals::withdraw(state, request, &user).await?;
     }
+    // Read before the transaction: the provider uses its own connection.
+    let line = crate::bill_links::line_of(state, &entry).await?;
     let mut tx = state.db.begin().await?;
     if !lock(&mut tx, entry.campaign_id).await? {
         return Ok(Err(CostRefused::CampaignNotFound));
+    }
+    if let Some(refused) =
+        crate::bill_links::check_edit(&mut tx, line.as_ref(), &entry, input.amount).await?
+    {
+        return Ok(Err(refused));
     }
     let Some(campaign) = Campaign::find(&mut tx, entry.campaign_id).await? else {
         return Ok(Err(CostRefused::CampaignNotFound));
@@ -262,7 +272,7 @@ pub async fn edit(
         )
         .await?;
     let entry = CostEntry::find_or_404(&mut tx, id).await?;
-    let outcome = submit_in(state, &mut tx, &entry, &campaign).await?;
+    let outcome = submit_in(state, &mut tx, &entry, &campaign, false).await?;
     tx.commit().await?;
     finish(state, outcome).await?;
     Ok(Ok(CostEntry::find_or_404(&state.db, id).await?))

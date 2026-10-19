@@ -105,6 +105,14 @@ pub enum CostRefused {
     Approved,
     /// The entry is in a state that cannot be edited.
     NotEditable,
+    /// There is no such supplier bill line.
+    LineNotFound,
+    /// The supplier bill was voided.
+    BillVoided,
+    /// A linked amount must be above zero.
+    NotPositive,
+    /// The line's entries would take more than the line.
+    LineExceeded,
 }
 
 impl CostRefused {
@@ -118,6 +126,10 @@ impl CostRefused {
             CostRefused::NotRequester => "wl_sales.costs.not_requester",
             CostRefused::Approved => "wl_sales.costs.approved",
             CostRefused::NotEditable => "wl_sales.costs.not_editable",
+            CostRefused::LineNotFound => "wl_sales.costs.line_not_found",
+            CostRefused::BillVoided => "wl_sales.costs.bill_voided",
+            CostRefused::NotPositive => "wl_sales.costs.not_positive",
+            CostRefused::LineExceeded => "wl_sales.costs.line_exceeded",
         };
         crate::texts::english(key, &[])
     }
@@ -160,6 +172,10 @@ mod tests {
             CostRefused::NotRequester,
             CostRefused::Approved,
             CostRefused::NotEditable,
+            CostRefused::LineNotFound,
+            CostRefused::BillVoided,
+            CostRefused::NotPositive,
+            CostRefused::LineExceeded,
         ] {
             assert!(!r.message().starts_with("wl_sales."), "{r:?}");
         }

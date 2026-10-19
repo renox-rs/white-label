@@ -13,8 +13,15 @@
 //! (`approvals::require_in`, action `campaigns.cost_over_budget`, requester =
 //! `requested_by`); the kernel runs `submit_over_budget_approved` on the last
 //! yes and `back_to_draft` when the request ends without one. A listener on
-//! `ApprovalDecided` then runs `reject` after a rejection. The bill and void
-//! transitions come with part 6.
+//! `ApprovalDecided` then runs `reject` after a rejection.
+//!
+//! Part 6 adds the bill links and voids:
+//!
+//! ```text
+//! draft --await_bill--> awaiting_bill --bill_approved--> draft (then submit)
+//! draft | awaiting_bill --void_with_bill--> voided
+//! approved | pending_approval --void / void_approved--> voided   (kernel Voidable)
+//! ```
 
 use renox::prelude::*;
 use renox::serde_json::{Value, json};
@@ -22,6 +29,7 @@ use renox::state_machine::{Machine, StateMachine, Transition, Transitioned};
 use wl_kernel::approvals::{self, ApprovalDecided, ApprovalEnd, Require, Required};
 use wl_kernel::machines::SubjectMachine;
 use wl_kernel::sales::CAMPAIGN_COST_ENTRY_SUBJECT_TYPE;
+use wl_kernel::voids;
 
 use crate::budget::{self, BudgetCheck};
 use crate::cost_entry::{CostEntry, CostStatus};
@@ -41,6 +49,13 @@ pub const SUBMIT_OVER_BUDGET_APPROVED: &str = "submit_over_budget_approved";
 pub const BACK_TO_DRAFT: &str = "back_to_draft";
 /// `draft → rejected`: an approver rejected the request.
 pub const REJECT: &str = "reject";
+
+/// `draft → awaiting_bill`: linked to a supplier bill that is not approved.
+pub const AWAIT_BILL: &str = "await_bill";
+/// `awaiting_bill → draft`: the bill was approved; the entry is submitted next.
+pub const BILL_APPROVED: &str = "bill_approved";
+/// `draft | awaiting_bill → voided`: the supplier bill was voided.
+pub const VOID_WITH_BILL: &str = "void_with_bill";
 
 /// The stored reason of a rejection with no comment.
 const REJECTED: &str = "rejected";
@@ -68,7 +83,7 @@ impl StateMachine for CostEntry {
 
     fn machine() -> Machine<Self> {
         use CostStatus::{Approved, AwaitingBill, Draft, PendingApproval, Rejected, Voided};
-        Machine::new()
+        let mut machine = Machine::new()
             .initial([Draft])
             .state(Draft)
             .tone("neutral")
@@ -130,7 +145,72 @@ impl StateMachine for CostEntry {
                         Box::pin(async move { set(tx, id, &[("reason", &Some(reason))]).await })
                     }),
             )
+            .transition(await_bill())
+            .transition(bill_approved())
+            .transition(void_with_bill());
+        // The kernel's `void` and `void_approved` (#27); nothing is posted,
+        // so a void needs no approval and has no reverse handlers.
+        for transition in
+            voids::transitions::<CostEntry, _>(SUBJECT_TYPE, [Approved, PendingApproval])
+        {
+            machine = machine.transition(crate::voids::with_request_ended(transition));
+        }
+        machine
     }
+}
+
+/// `await_bill`: a linked entry whose bill is not approved yet is left out of
+/// every check.
+fn await_bill() -> Transition<CostEntry> {
+    Transition::new(AWAIT_BILL)
+        .label("Wait for the bill")
+        .from([CostStatus::Draft])
+        .to(CostStatus::AwaitingBill)
+        .system()
+        .guard("linked_to_a_bill", |e: &CostEntry, _ctx| {
+            let verdict = if e.supplier_bill_id.is_some() && e.supplier_bill_line_id.is_some() {
+                Ok(())
+            } else {
+                Err(crate::texts::english("wl_sales.costs.not_linked", &[]))
+            };
+            Box::pin(async move { verdict })
+        })
+}
+
+/// `bill_approved`: the bill is approved; the one who linked the line becomes
+/// the requester and the entry is submitted again with a budget check.
+fn bill_approved() -> Transition<CostEntry> {
+    Transition::new(BILL_APPROVED)
+        .label("Bill approved")
+        .from([CostStatus::AwaitingBill])
+        .to(CostStatus::Draft)
+        .system()
+        .effect(|e: &CostEntry, _ctx, tx| {
+            let id = e.id;
+            let linked_by = e.linked_by.unwrap_or(e.requested_by);
+            Box::pin(async move { set(tx, id, &[("requested_by", &linked_by)]).await })
+        })
+}
+
+/// `void_with_bill`: the supplier bill was voided before the entry counted.
+fn void_with_bill() -> Transition<CostEntry> {
+    Transition::new(VOID_WITH_BILL)
+        .label("Bill voided")
+        .from([CostStatus::AwaitingBill, CostStatus::Draft])
+        .to(CostStatus::Voided)
+        .system()
+        .effect(|e: &CostEntry, ctx, tx| {
+            let id = e.id;
+            let reason = ctx
+                .reason()
+                .map(str::trim)
+                .filter(|r| !r.is_empty())
+                .map_or_else(
+                    || crate::texts::english("wl_sales.costs.bill_voided_reason", &[]),
+                    str::to_owned,
+                );
+            Box::pin(async move { set(tx, id, &[("reason", &Some(reason))]).await })
+        })
 }
 
 /// The budget check the run was given.
@@ -292,7 +372,7 @@ mod tests {
             (BACK_TO_DRAFT, "pending_approval", "draft"),
             (REJECT, "draft", "rejected"),
         ];
-        assert_eq!(machine.transitions().len(), table.len());
+        assert_eq!(machine.transitions().len(), table.len() + 5);
         for (name, from, to) in table {
             let t = machine.find(name).expect(name);
             assert!(t.is_system(), "{name}");
@@ -300,6 +380,39 @@ mod tests {
             assert_eq!(t.to_state(), Some(to), "{name}");
         }
         assert_eq!(machine.initial_states(), ["draft"]);
+    }
+
+    #[test]
+    fn the_bill_and_void_transitions_are_declared() {
+        let machine = CostEntry::machine();
+        let table = [
+            (AWAIT_BILL, vec!["draft"], "awaiting_bill", true),
+            (BILL_APPROVED, vec!["awaiting_bill"], "draft", true),
+            (
+                VOID_WITH_BILL,
+                vec!["awaiting_bill", "draft"],
+                "voided",
+                true,
+            ),
+            (
+                "void",
+                vec!["approved", "pending_approval"],
+                "voided",
+                false,
+            ),
+            (
+                "void_approved",
+                vec!["approved", "pending_approval"],
+                "voided",
+                true,
+            ),
+        ];
+        for (name, from, to, system) in table {
+            let t = machine.find(name).expect(name);
+            assert_eq!(t.is_system(), system, "{name}");
+            assert_eq!(t.from_states(), from, "{name}");
+            assert_eq!(t.to_state(), Some(to), "{name}");
+        }
     }
 
     #[test]

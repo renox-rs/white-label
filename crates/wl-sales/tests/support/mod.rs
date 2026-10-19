@@ -86,6 +86,7 @@ pub async fn boot_with(extra: impl Module) -> Booted {
     let app = App::new()
         .module(Auth::new())
         .module(Permissions)
+        .module(renox::audit::Audit)
         .module(WlSales::new())
         .module(extra);
     let config = wl_kernel::ClientConfig::parse(CLIENT).expect("a valid client.toml");

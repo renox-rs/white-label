@@ -159,6 +159,27 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_sales.costs.no_policy",
         "No approval policy is set for a cost over the budget.",
     ),
+    (
+        "wl_sales.costs.line_not_found",
+        "There is no such supplier bill line.",
+    ),
+    (
+        "wl_sales.costs.bill_voided",
+        "The supplier bill is voided; it cannot be linked.",
+    ),
+    (
+        "wl_sales.costs.not_positive",
+        "A cost linked to a supplier bill line must be above zero.",
+    ),
+    (
+        "wl_sales.costs.line_exceeded",
+        "The costs linked to this supplier bill line would exceed the line.",
+    ),
+    (
+        "wl_sales.costs.not_linked",
+        "The cost is not linked to a supplier bill line.",
+    ),
+    ("wl_sales.costs.bill_voided_reason", "supplier bill voided"),
     ("wl_sales.fields.code", "Code"),
     ("wl_sales.fields.name_en", "Name (English)"),
     ("wl_sales.fields.name_ar", "Name (Arabic)"),

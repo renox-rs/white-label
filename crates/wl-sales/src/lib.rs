@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
+pub mod bill_links;
 pub mod budget;
 pub mod campaign;
 pub mod config;
@@ -17,6 +18,7 @@ pub mod policy;
 pub mod promo_code;
 pub mod seed;
 mod texts;
+pub mod voids;
 
 use renox::db::Migration;
 use renox::prelude::*;
@@ -130,6 +132,8 @@ impl Module for WlSales {
         app.model::<BudgetAlert>();
         app.provide(self.config.clone());
         cost_machine::register(app);
+        bill_links::register(app);
+        voids::register(app);
         notices::register_types();
         events::register(app);
         daily::schedule(app);
