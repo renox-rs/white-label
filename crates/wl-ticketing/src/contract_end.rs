@@ -356,7 +356,10 @@ async fn nightly(state: &AppState, today: NaiveDate, report: &mut NightlyReport)
         .await?;
     for contract in expiring.iter().filter(|c| today > c.end_date) {
         match ServiceContracts::expire(state, contract, today).await {
-            Ok(()) => report.expired += 1,
+            Ok(done) => {
+                report.expired += 1;
+                report.ended.extend(done);
+            }
             Err(TransitionError::NotFrom(_) | TransitionError::Conflict) => {}
             Err(other) => return Err(other.into_error()),
         }

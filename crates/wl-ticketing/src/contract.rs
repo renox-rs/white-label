@@ -611,7 +611,7 @@ impl ServiceContracts {
         state: &AppState,
         contract: &ServiceContract,
         today: NaiveDate,
-    ) -> std::result::Result<(), TransitionError> {
+    ) -> std::result::Result<Option<crate::contract_end::EndReport>, TransitionError> {
         let input = ContractInput {
             today,
             ..ContractInput::default()
@@ -622,8 +622,7 @@ impl ServiceContracts {
             .input(&input)
             .run(state)
             .await?;
-        crate::contract_end::handle(state, contract.id, today).await?;
-        Ok(())
+        Ok(crate::contract_end::handle(state, contract.id, today).await?)
     }
 
     /// `user` terminates the `active` or `expiring` `contract` for `reason`,

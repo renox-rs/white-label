@@ -7,6 +7,7 @@
 
 mod support;
 
+use renox::prelude::*;
 use renox::chrono::TimeDelta;
 use wl_kernel::cheques::{
     ChequeSchedule, ChequeStatus, RegisterCheque, ScheduledCheque, cheques as cheque_contract,

@@ -258,7 +258,8 @@ async fn tkt05_a_ticket_started_in_time_records_nothing() {
 #[renox::test]
 async fn tkt05_without_an_appointment_the_response_due_time_is_the_trigger() {
     let w = world().await;
-    let ticket = vendor_ticket(&w, "plumbing", tower_a_cleaning(), None, None).await;
+    // The `general` category carries the standard SLA policy.
+    let ticket = vendor_ticket(&w, "general", tower_a_cleaning(), None, None).await;
     let due: DateTime = ticket.response_due.expect("the SLA started with the assignment");
     assert!(ticket.visit_at.is_none());
 

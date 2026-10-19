@@ -7,6 +7,7 @@
 
 mod support;
 
+use renox::prelude::*;
 use wl_kernel::cheques::{ChequeId, ChequeOutcome, ChequeStatus, RegisterCheque};
 use wl_kernel::documents::today;
 use wl_kernel::payments::{Direction, PaymentMethod, PaymentSource, RecordPayment};
@@ -388,7 +389,7 @@ async fn a_replacement_that_bounces_keeps_the_original_with_a_note() {
         .assert_ok();
     let kept = t.cheque(original.id).await;
     assert_eq!(kept.status, ChequeStatus::Replaced);
-    let note = kept.custody_note.expect("a note");
+    let note = kept.custody_note.clone().expect("a note");
     assert!(note.contains("3051"), "{note}");
     assert!(tasks_of(&t, &kept, FollowupKind::HandBack).await.is_empty());
     // The new cheque is bounced on its own and ChequeBounced was emitted.

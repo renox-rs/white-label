@@ -235,7 +235,7 @@ pub async fn bounce(
             .where_(ChequeReturn::CHEQUE_ID.eq(cheque.id))
             .where_(ChequeReturn::PRESENTATION.eq(cheque.presentations))
             .update(
-                &mut *tx,
+                &mut tx,
                 &[("honoured_payment_id", &Some(payment.id))],
             )
             .await?;
