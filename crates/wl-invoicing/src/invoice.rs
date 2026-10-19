@@ -117,6 +117,9 @@ pub struct Invoice {
     pub balance: i64,
     /// The user who issued it.
     pub owner_id: Option<i64>,
+    /// The invoice this one replaces after an e-invoice correction: named by
+    /// the user on the new invoice (`supersede`).
+    pub replaces_invoice_id: Option<i64>,
     /// The lifecycle state; changed only by a transition.
     pub status: InvoiceStatus,
     /// Whether the party disputes it.

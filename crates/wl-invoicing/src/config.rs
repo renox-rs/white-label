@@ -84,6 +84,19 @@ pub enum DuplicateKey {
     ContractPeriodAmount,
 }
 
+/// The e-invoicing settings of one legal entity (`FIN.INV.01`, §7).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EInvoiceEntity {
+    /// The legal entity's code.
+    pub entity_code: String,
+    /// The go-live date: e-invoicing applies to documents issued on or after
+    /// it (Asia/Dubai).
+    pub go_live: renox::chrono::NaiveDate,
+    /// The name of the ASP adapter; `None` while none is chosen (documents
+    /// are queued and wait).
+    pub adapter: Option<String>,
+}
+
 /// The settings of the invoicing module.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InvoicingConfig {
@@ -179,6 +192,17 @@ pub struct InvoicingConfig {
     /// Whether the income budget fill counts in the balance `FIN.RUL.23`
     /// checks.
     pub cash_income_fill_counted: bool,
+    /// The e-invoicing settings of the entities that have a go-live date
+    /// (`FIN.INV.01`).
+    pub einvoice: Vec<EInvoiceEntity>,
+    /// The minutes after `issue` at which a transmission the ASP did not take
+    /// is tried again: 5, 30, 120 and 360.
+    pub einvoice_retry_minutes: Vec<i64>,
+    /// The hours between tries after the last of those, until it is sent: 6.
+    pub einvoice_repeat_hours: i64,
+    /// The hours after `issue` at which a transmission still `queued` or
+    /// `submitted` raises a task (`FIN.RUL.16`): 24.
+    pub einvoice_task_hours: i64,
     /// The bank accounts of each legal entity (by code) the forecast shows
     /// even before they have a balance.
     pub cash_accounts: Vec<(String, String)>,
@@ -235,6 +259,10 @@ impl Default for InvoicingConfig {
             cash_alert_time: "06:00".to_owned(),
             cash_alert_roles: vec!["finance_manager".to_owned(), "admin".to_owned()],
             cash_income_fill_counted: false,
+            einvoice: Vec::new(),
+            einvoice_retry_minutes: vec![5, 30, 120, 360],
+            einvoice_repeat_hours: 6,
+            einvoice_task_hours: 24,
             cash_accounts: Vec::new(),
         }
     }
@@ -260,6 +288,36 @@ impl ReasonProblem {
 }
 
 impl InvoicingConfig {
+    /// The e-invoicing settings of the entity with this code, if it has a
+    /// go-live date.
+    pub fn einvoice_of(&self, entity_code: &str) -> Option<&EInvoiceEntity> {
+        self.einvoice.iter().find(|e| e.entity_code == entity_code)
+    }
+
+    /// Whether e-invoicing applies to the entity on `date`: its go-live date
+    /// has come.
+    pub fn einvoice_applies(&self, entity_code: &str, date: renox::chrono::NaiveDate) -> bool {
+        self.einvoice_of(entity_code)
+            .is_some_and(|e| e.go_live <= date)
+    }
+
+    /// How long after `issue` the transmission is tried for the
+    /// `failed`-th time, `failed` from 1: the configured minutes, then every
+    /// [`InvoicingConfig::einvoice_repeat_hours`] after the last of them
+    /// (5 min, 30 min, 2 h, 6 h, then 12 h, 18 h, 24 h, ...).
+    pub fn einvoice_retry_after(&self, failed: i64) -> renox::chrono::Duration {
+        let steps = &self.einvoice_retry_minutes;
+        let failed = failed.max(1);
+        let index = usize::try_from(failed - 1).unwrap_or(usize::MAX);
+        if let Some(minutes) = steps.get(index) {
+            return renox::chrono::Duration::minutes(*minutes);
+        }
+        let last = steps.last().copied().unwrap_or(0);
+        let beyond = failed - i64::try_from(steps.len()).unwrap_or(i64::MAX);
+        renox::chrono::Duration::minutes(last)
+            + renox::chrono::Duration::hours(self.einvoice_repeat_hours.max(1) * beyond)
+    }
+
     /// The projected balance the entity with this code wants to keep, in AED
     /// fils (default 0).
     pub fn cash_threshold_of(&self, entity_code: &str) -> i64 {
@@ -347,8 +405,42 @@ mod tests {
         assert_eq!(config.cash_alert_time, "06:00");
         assert_eq!(config.cash_alert_roles, ["finance_manager", "admin"]);
         assert!(!config.cash_income_fill_counted);
+        assert!(config.einvoice.is_empty());
+        assert_eq!(config.einvoice_retry_minutes, [5, 30, 120, 360]);
+        assert_eq!((config.einvoice_repeat_hours, config.einvoice_task_hours), (6, 24));
         assert!(config.drawings_self_approve);
         assert_eq!(config.drawings_notify_role, "accountant");
+    }
+
+    #[test]
+    fn the_retries_are_measured_from_issue_and_then_every_six_hours() {
+        let config = InvoicingConfig::default();
+        let minutes = |failed: i64| config.einvoice_retry_after(failed).num_minutes();
+        // Issued at 10:00: 10:05, 10:30, 12:00, 16:00, 22:00, 04:00, ...
+        assert_eq!(minutes(1), 5);
+        assert_eq!(minutes(2), 30);
+        assert_eq!(minutes(3), 120);
+        assert_eq!(minutes(4), 360);
+        assert_eq!(minutes(5), 720);
+        assert_eq!(minutes(6), 1_080);
+        assert_eq!(minutes(7), 1_440);
+        assert_eq!(minutes(0), 5);
+    }
+
+    #[test]
+    fn e_invoicing_applies_from_the_go_live_date() {
+        let mut config = InvoicingConfig::default();
+        let go_live = renox::chrono::NaiveDate::from_ymd_opt(2027, 1, 1).unwrap();
+        config.einvoice.push(EInvoiceEntity {
+            entity_code: "PGP".into(),
+            go_live,
+            adapter: Some("peppol".into()),
+        });
+        let day = |m, d| renox::chrono::NaiveDate::from_ymd_opt(2027, m, d).unwrap();
+        assert!(config.einvoice_applies("PGP", day(1, 1)));
+        assert!(config.einvoice_applies("PGP", day(1, 5)));
+        assert!(!config.einvoice_applies("PGP", renox::chrono::NaiveDate::from_ymd_opt(2026, 12, 31).unwrap()));
+        assert!(!config.einvoice_applies("PGFZ", day(1, 5)));
     }
 
     #[test]

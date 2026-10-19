@@ -55,6 +55,7 @@ pub mod drawings;
 pub mod drawings_machine;
 mod drawing_pages;
 pub mod duplicates;
+pub mod einvoice_adapter;
 pub mod escalation;
 pub mod escalation_log;
 mod events;
@@ -110,7 +111,7 @@ pub use budget_contract::Budgets;
 pub use budget_reminder::BudgetReminder;
 pub use budget_variance::BudgetWarning;
 pub use config::{
-    DuplicateKey, InvoicingConfig, ReasonProblem, ReliefMonths, SettingError, WriteOffReason,
+    DuplicateKey, EInvoiceEntity, InvoicingConfig, ReasonProblem, ReliefMonths, SettingError, WriteOffReason,
 };
 pub use credit_note::{CreditNote, CreditNoteKind};
 pub use credit_note_line::CreditNoteLine;
@@ -119,6 +120,7 @@ pub use debit_note_line::{DebitNoteLine, PricedAt};
 pub use dispute::{Dispute, DisputeVia};
 pub use drawings::BillRecoding;
 pub use drawings_machine::{DrawingApproval, DrawingStatus};
+pub use einvoice_adapter::{EInvoiceAdapter, EInvoiceScope};
 pub use escalation_log::EscalationLog;
 pub use invoice::{Invoice, InvoiceKind, PartySnapshot};
 pub use invoicer::Invoices;
@@ -313,6 +315,10 @@ pub mod permissions {
 #[derive(Default)]
 pub struct WlInvoicing {
     config: InvoicingConfig,
+    /// The ASP adapters by name (`FIN.INV.01`).
+    adapters: Vec<(String, Arc<dyn EInvoiceAdapter>)>,
+    /// The e-invoicing scope; the default puts company recipients in.
+    scope: Option<Arc<dyn EInvoiceScope>>,
 }
 
 impl WlInvoicing {
@@ -546,6 +552,64 @@ impl WlInvoicing {
     /// late (default off).
     pub fn cash_days_late(mut self, on: bool) -> Self {
         self.config.cash_days_late = on;
+        self
+    }
+
+    /// Turns e-invoicing on for the legal entity with `entity_code` from
+    /// `go_live` (Asia/Dubai) through the ASP adapter named `adapter`
+    /// (install it with [`WlInvoicing::asp_adapter`]). From that date every
+    /// invoice and credit note to a recipient in scope is sent to the ASP
+    /// and a simplified tax invoice can no longer be issued.
+    pub fn einvoicing(
+        mut self,
+        entity_code: &str,
+        go_live: renox::chrono::NaiveDate,
+        adapter: &str,
+    ) -> Self {
+        let entry = EInvoiceEntity {
+            entity_code: entity_code.to_owned(),
+            go_live,
+            adapter: Some(adapter.to_owned()).filter(|a| !a.trim().is_empty()),
+        };
+        match self
+            .config
+            .einvoice
+            .iter_mut()
+            .find(|e| e.entity_code == entity_code)
+        {
+            Some(existing) => *existing = entry,
+            None => self.config.einvoice.push(entry),
+        }
+        self
+    }
+
+    /// Installs the ASP adapter `adapter` under `name`.
+    pub fn asp_adapter(mut self, name: &str, adapter: impl EInvoiceAdapter) -> Self {
+        self.adapters.retain(|(n, _)| n != name);
+        self.adapters.push((name.to_owned(), Arc::new(adapter)));
+        self
+    }
+
+    /// Replaces the e-invoicing scope (default: company recipients).
+    pub fn einvoice_scope(mut self, scope: impl EInvoiceScope) -> Self {
+        self.scope = Some(Arc::new(scope));
+        self
+    }
+
+    /// The minutes after `issue` at which a transmission is tried again
+    /// (default 5, 30, 120, 360), then every 6 hours until it is sent.
+    pub fn einvoice_retries(mut self, minutes: &[i64]) -> Self {
+        let mut steps: Vec<i64> = minutes.iter().copied().filter(|m| *m > 0).collect();
+        steps.sort_unstable();
+        steps.dedup();
+        self.config.einvoice_retry_minutes = steps;
+        self
+    }
+
+    /// The hours after `issue` at which a transmission still not sent raises
+    /// a task (`FIN.RUL.16`, default 24).
+    pub fn einvoice_task_after_hours(mut self, hours: i64) -> Self {
+        self.config.einvoice_task_hours = hours.max(1);
         self
     }
 
