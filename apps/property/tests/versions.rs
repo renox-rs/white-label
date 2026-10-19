@@ -269,7 +269,7 @@ async fn bl_prp_05_a_changed_deposit_asks_the_deposit_to_adjust() {
     t.submit(&s.agent, &v2).await.assert_ok();
     t.activate(&s.manager, &v2).await.assert_ok();
     assert_eq!(t.status(&v2).await, LeaseStatus::Active);
-    // The test book does not adjust, so the accountant is asked to.
+    // The test book holds no deposit to adjust, so the accountant is asked to.
     let tasks = t.tasks.with_key(&format!("property.deposit_adjust:{}", v2.id));
     assert_eq!(tasks.len(), 1);
     assert!(tasks[0].title.contains("AED 6,000.00"), "{}", tasks[0].title);

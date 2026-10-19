@@ -10,8 +10,9 @@ use std::sync::{Arc, Mutex};
 
 use property::permissions as perm;
 use property::{
-    Building, Lease, LeaseActivated, LeaseCancelled, LeaseNoticeWithdrawn, LeaseStatus, LeaseTerminated,
-    NewBuilding, NewLease, NewUnit, Unit, UnitUse, create_building, create_unit,
+    Building, Lease, LeaseActivated, LeaseAmended, LeaseCancelled, LeaseNoticeWithdrawn,
+    LeaseStatus, LeaseTerminated, NewBuilding, NewLease, NewUnit, Unit, UnitUse, create_building,
+    create_unit,
 };
 use renox::auth::permissions::{self, Scope};
 use renox::auth::{Auth, Permissions};
@@ -23,7 +24,8 @@ use wl_kernel::cheques::{
     ReturnCheques, ReturnedCheques, provide_cheques,
 };
 use wl_kernel::deposits::{
-    CancelSettlement, DepositFuture, Deposits, HeldDeposit, SettlementStarted, provide_deposits,
+    AdjustDeposit, CancelSettlement, DepositAdjusted, DepositFuture, Deposits, HeldDeposit,
+    SettlementStarted, TopUpCharge, deposit_top_ups, provide_deposits,
 };
 use wl_kernel::documents::{
     BlockEntry, BlockFailure, BlockMode, BlockRefusal, CheckOutcome, DocumentFuture,
@@ -41,8 +43,9 @@ use wl_kernel::parties::{
     PartyDirectory, PartyFuture, PartyKind, PartyStatus, PartySummary, provide_directory,
 };
 use wl_kernel::payments::{
-    PaymentFuture, PaymentId, PaymentRecorder, PaymentSummary, RecordPayment, RefundId,
-    RefundRequest, ReversalReason, AllocationTarget, provide_payment_recorder,
+    AllocationTarget, PaymentFuture, PaymentId, PaymentRecorder, PaymentSummary, RecordPayment,
+    RefundId, RefundRequest, RefundSource, ReversalReason, payment_recorder,
+    provide_payment_recorder,
 };
 use wl_kernel::tickets::{
     Assignee, OpenTicket, TaskCreator, TicketFuture, TicketId, TicketRef, provide_task_creator,
@@ -758,6 +761,7 @@ pub struct DepositBook {
     settled: Arc<Mutex<Vec<(CancelSettlement, SettlementStarted)>>>,
     started: Arc<Mutex<Vec<Subject>>>,
     legal: Arc<Mutex<Vec<(Subject, bool)>>>,
+    adjusted: Arc<Mutex<Vec<AdjustDeposit>>>,
 }
 
 impl DepositBook {
@@ -780,6 +784,12 @@ impl DepositBook {
     /// The settlements started.
     pub fn settled(&self) -> Vec<(CancelSettlement, SettlementStarted)> {
         self.settled.lock().unwrap().clone()
+    }
+
+    /// The adjustments asked for (a lease amendment or renewal with another
+    /// deposit), oldest first.
+    pub fn adjusted(&self) -> Vec<AdjustDeposit> {
+        self.adjusted.lock().unwrap().clone()
     }
 
     /// The sources whose settlement started because the agreement ended.
@@ -829,6 +839,81 @@ impl Deposits for DepositBook {
                 held: held.held,
                 forfeit: 0,
                 version: 0,
+            }))
+        })
+    }
+
+    fn adjust<'a>(
+        &'a self,
+        state: &'a AppState,
+        request: AdjustDeposit,
+        _by: Option<i64>,
+    ) -> DepositFuture<'a, Option<DepositAdjusted>> {
+        Box::pin(async move {
+            let held = self
+                .held
+                .lock()
+                .unwrap()
+                .get(&request.source.to_string())
+                .cloned();
+            let Some(held) = held else {
+                return Err(Error::Status(
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    "no deposit is held".to_owned(),
+                ));
+            };
+            if held.held == request.new_amount {
+                return Ok(None);
+            }
+            self.adjusted.lock().unwrap().push(request.clone());
+            let mut top_up_charge = None;
+            let mut part_refund = None;
+            if request.new_amount > held.held {
+                top_up_charge = deposit_top_ups(state)
+                    .request(
+                        state,
+                        TopUpCharge {
+                            deposit: held.deposit,
+                            party: held.party,
+                            legal_entity_id: 1,
+                            source: request.source.clone(),
+                            source_version: request.source_version,
+                            amount: request.new_amount - held.held,
+                            currency: "AED".to_owned(),
+                            due: request.effective_on,
+                        },
+                    )
+                    .await?;
+            } else {
+                part_refund = Some(
+                    payment_recorder(state)
+                        .request_refund(
+                            state,
+                            RefundRequest {
+                                source: RefundSource::Deposit(held.deposit),
+                                party: held.party,
+                                legal_entity_id: 1,
+                                amount: held.held - request.new_amount,
+                                currency: "AED".to_owned(),
+                                method: None,
+                                gateway_txn: None,
+                                reason: "Deposit lowered".to_owned(),
+                            },
+                            None,
+                        )
+                        .await?,
+                );
+            }
+            Ok(Some(DepositAdjusted {
+                deposit: held.deposit,
+                source: request.source,
+                party: held.party,
+                source_version: request.source_version,
+                old_amount: held.held,
+                new_amount: request.new_amount,
+                effective_on: request.effective_on,
+                top_up_charge,
+                part_refund,
             }))
         })
     }
@@ -1194,6 +1279,7 @@ struct Fakes {
     cancelled: Recorded<LeaseCancelled>,
     withdrawn: Recorded<LeaseNoticeWithdrawn>,
     terminated: Recorded<LeaseTerminated>,
+    amended: Recorded<LeaseAmended>,
     parties: Parties,
     docs: Docs,
     notices: Recording,
@@ -1222,6 +1308,7 @@ impl Module for Fakes {
         record(app, &self.cancelled);
         record(app, &self.withdrawn);
         record(app, &self.terminated);
+        record(app, &self.amended);
     }
 }
 
@@ -1255,6 +1342,8 @@ pub struct Booted {
     pub withdrawn: Recorded<LeaseNoticeWithdrawn>,
     /// `LeaseTerminated`.
     pub terminated: Recorded<LeaseTerminated>,
+    /// The `LeaseAmended` events.
+    pub amended: Recorded<LeaseAmended>,
 }
 
 /// The tenant of the tests: a person.
@@ -1459,6 +1548,7 @@ pub async fn boot() -> Booted {
         cancelled: Recorded::default(),
         withdrawn: Recorded::default(),
         terminated: Recorded::default(),
+        amended: Recorded::default(),
         parties: Parties::default(),
         docs: Docs::default(),
         notices: Recording::default(),
@@ -1473,6 +1563,7 @@ pub async fn boot() -> Booted {
         fakes.cancelled.clone(),
         fakes.withdrawn.clone(),
         fakes.terminated.clone(),
+        fakes.amended.clone(),
     );
     let handles = (
         fakes.parties.clone(),
@@ -1541,6 +1632,7 @@ pub async fn boot() -> Booted {
         cancelled: logs.1,
         withdrawn: logs.2,
         terminated: logs.3,
+        amended: logs.4,
     }
 }
 
