@@ -1071,6 +1071,44 @@ impl Booted {
         self.cheque(cheque.id).await
     }
 
+    /// `by` records a part payment of `amount` dirhams (`"4000.00"`) by
+    /// `method` towards the bounced `cheque`.
+    pub async fn settle_cheque(
+        &self,
+        by: &User,
+        cheque: &Cheque,
+        method: &str,
+        amount: &str,
+        reference: &str,
+    ) -> TestResponse {
+        self.cheque_action(
+            by,
+            cheque,
+            "settle",
+            &[("method", method), ("amount", amount), ("reference", reference)],
+        )
+        .await
+    }
+
+    /// `by` links the cheque or payment `id` (`kind` is `cheque` or
+    /// `payment`) as a replacement of the bounced `cheque`.
+    pub async fn link_replacement(
+        &self,
+        by: &User,
+        cheque: &Cheque,
+        kind: &str,
+        id: i64,
+    ) -> TestResponse {
+        let id = id.to_string();
+        self.cheque_action(by, cheque, "replacements", &[("kind", kind), ("ref_id", id.as_str())])
+            .await
+    }
+
+    /// `by` marks the bounced `cheque` replaced.
+    pub async fn replace_cheque(&self, by: &User, cheque: &Cheque) -> TestResponse {
+        self.cheque_action(by, cheque, "replace", &[]).await
+    }
+
     /// Moves the clock forward to `date` at `hour:minute` UTC.
     pub fn travel_to(&self, date: &str, hour: u32, minute: u32) {
         let target = date
