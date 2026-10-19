@@ -17,3 +17,4 @@ wl-invoicing = { path = "../crates/wl-invoicing" }
 wl-ticketing = { path = "../crates/wl-ticketing" }
 wl-payments = { path = "../crates/wl-payments" }
 wl-sales = { path = "../crates/wl-sales" }
+wl-hr = { path = "../crates/wl-hr" }

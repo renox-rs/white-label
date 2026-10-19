@@ -914,6 +914,7 @@ dependencies = [
  "renox",
  "serde",
  "wl-documents",
+ "wl-hr",
  "wl-invoicing",
  "wl-kernel",
  "wl-notify",
@@ -3440,6 +3441,16 @@ dependencies = [
  "renox",
  "serde",
  "sha2 0.11.1",
+ "tempfile",
+ "wl-kernel",
+]
+
+[[package]]
+name = "wl-hr"
+version = "0.1.0"
+dependencies = [
+ "renox",
+ "serde",
  "tempfile",
  "wl-kernel",
 ]
