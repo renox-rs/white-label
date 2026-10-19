@@ -73,8 +73,8 @@ pub use documents::{
 pub use entities::{IssuerSnapshot, LegalEntity, ScopeEntity};
 pub use held_funds::{FundsSource, HeldFund, HeldFundsSource, held_for_all};
 pub use integrations::{
-    ConnectionStatus, Delivery, IntegrationConnection, IntegrationDef, IntegrationStatusChanged,
-    Outbound, QueuedCall,
+    ConnectionStatus, Delivery, Inbound, IntegrationConnection, IntegrationDef,
+    IntegrationStatusChanged, Match, Outbound, QueuedCall,
 };
 pub use invoicing::{
     BillBalance, BillReopenReason, CostObjectAmount, CostPoster, CostReversal, CreditLine,

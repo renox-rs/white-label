@@ -1398,3 +1398,30 @@ fn the_integration_registry_and_the_retry_wait() {
         "integrations.manage"
     );
 }
+
+/// #30: a connection takes inbound data that arrives late when its module
+/// gives a matcher (by natural key) and the record to enter otherwise.
+#[test]
+fn a_connection_can_take_late_inbound_data() {
+    use wl_kernel::integrations;
+    use wl_kernel::late_entries::EntrySpec;
+    use wl_kernel::{Delivery, Inbound, IntegrationDef, Match, Subject};
+
+    IntegrationDef::of("gateway.acme", "payments", |_state, _call| {
+        Box::pin(async { Ok(Delivery::Sent) })
+    })
+    .inbound(
+        |_state, _item| {
+            Box::pin(async { Ok(Match::Same(Subject::new("payments.payment", 4))) })
+        },
+        |item| EntrySpec::new("payments.payment", item.user_id, item.occurred_at),
+    )
+    .register();
+    let def = integrations::get("gateway.acme").expect("registered");
+    assert!(def.takes_inbound());
+    let at = "2026-11-03T06:20:00Z".parse().expect("an instant");
+    let item = Inbound::new("gateway.acme", "TX-889", at, renox::serde_json::Value::Null, 7);
+    let spec = def.entry_for(&item).expect("an entry");
+    assert_eq!(spec.subject_type, "payments.payment");
+    assert_eq!(spec.occurred_at, at);
+}

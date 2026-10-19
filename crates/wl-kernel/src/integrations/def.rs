@@ -28,6 +28,7 @@ use renox::prelude::{Error, StatusCode};
 use renox::serde_json::Value;
 use renox::{AppState, Result};
 
+use crate::late_entries::EntrySpec;
 use crate::machines::BoxFuture;
 use crate::subject::Subject;
 
@@ -97,6 +98,73 @@ impl Outbound {
     }
 }
 
+/// Data that arrives from the external system after the fact (a gateway
+/// callback, an aggregator order), with its own business time. It is
+/// processed under the late-entry rules ([`crate::late_entries`]).
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub struct Inbound {
+    /// The connection's key.
+    pub connection: String,
+    /// The module's natural key of the thing, e.g. the gateway's transaction
+    /// reference: it prevents a second record.
+    pub natural_key: String,
+    /// The business time: when it happened at the other side.
+    pub occurred_at: DateTime,
+    /// What the external system says (amount, status…).
+    pub payload: Value,
+    /// The user the record is entered for (the late entry's author).
+    pub user_id: i64,
+}
+
+impl Inbound {
+    /// An inbound item of `connection` with `natural_key`, that happened at
+    /// `occurred_at`, entered for `user_id`.
+    pub fn new(
+        connection: &str,
+        natural_key: &str,
+        occurred_at: DateTime,
+        payload: Value,
+        user_id: i64,
+    ) -> Self {
+        Inbound {
+            connection: connection.to_owned(),
+            natural_key: natural_key.to_owned(),
+            occurred_at,
+            payload,
+            user_id,
+        }
+    }
+}
+
+/// What the module's matcher found for an inbound item.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Match {
+    /// No record has this natural key: the item is entered as a new record.
+    NoRecord,
+    /// A record done by hand has this natural key and says the same: the
+    /// item is linked to it, no second record is created.
+    Same(Subject),
+    /// A record done by hand has this natural key but its values differ; the
+    /// detail (for example `AED 250 manual vs AED 205 gateway`) goes on the
+    /// reconciliation task.
+    Differs {
+        /// The record done by hand.
+        subject: Subject,
+        /// How the two differ.
+        detail: String,
+    },
+}
+
+/// The module's handler that finds the record done by hand for an inbound
+/// item, by its natural key, and compares the two.
+pub type MatchFn =
+    Arc<dyn for<'a> Fn(&'a AppState, &'a Inbound) -> BoxFuture<'a, Result<Match>> + Send + Sync>;
+
+/// The module's description of the record an inbound item creates when no
+/// record done by hand matches (a late entry of an opted-in entity).
+pub type EntryFn = Arc<dyn Fn(&Inbound) -> EntrySpec + Send + Sync>;
+
 /// What a module's send handler found.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Delivery {
@@ -132,6 +200,8 @@ pub struct IntegrationDef {
     down_after_minutes: i64,
     send: SendFn,
     due: Option<DueFn>,
+    matcher: Option<MatchFn>,
+    entry: Option<EntryFn>,
 }
 
 impl fmt::Debug for IntegrationDef {
@@ -142,6 +212,7 @@ impl fmt::Debug for IntegrationDef {
             .field("owner_role", &self.owner_role)
             .field("screens", &self.screens)
             .field("down_after_minutes", &self.down_after_minutes)
+            .field("inbound", &self.matcher.is_some())
             .finish()
     }
 }
@@ -167,6 +238,8 @@ impl IntegrationDef {
             down_after_minutes: DEFAULT_DOWN_AFTER_MINUTES,
             send: Arc::new(send),
             due: None,
+            matcher: None,
+            entry: None,
         }
     }
 
@@ -208,6 +281,23 @@ impl IntegrationDef {
             + 'static,
     {
         self.due = Some(Arc::new(due));
+        self
+    }
+
+    /// How inbound data that arrives late is handled: `matcher` finds the
+    /// record done by hand with the same natural key and compares the two;
+    /// when there is none, `entry` describes the record to enter, which goes
+    /// through the late-entry rules with the item's own business time.
+    pub fn inbound<M, E>(mut self, matcher: M, entry: E) -> Self
+    where
+        M: for<'a> Fn(&'a AppState, &'a Inbound) -> BoxFuture<'a, Result<Match>>
+            + Send
+            + Sync
+            + 'static,
+        E: Fn(&Inbound) -> EntrySpec + Send + Sync + 'static,
+    {
+        self.matcher = Some(Arc::new(matcher));
+        self.entry = Some(Arc::new(entry));
         self
     }
 
@@ -258,6 +348,25 @@ impl IntegrationDef {
             Some(due) => due(state, call).await,
             None => Ok(true),
         }
+    }
+
+    /// Whether the connection takes inbound data ([`IntegrationDef::inbound`]).
+    pub fn takes_inbound(&self) -> bool {
+        self.matcher.is_some() && self.entry.is_some()
+    }
+
+    /// Asks the module's matcher about `item`; [`Match::NoRecord`] without
+    /// one.
+    pub async fn match_manual(&self, state: &AppState, item: &Inbound) -> Result<Match> {
+        match &self.matcher {
+            Some(matcher) => matcher(state, item).await,
+            None => Ok(Match::NoRecord),
+        }
+    }
+
+    /// The record `item` creates when nothing matches it.
+    pub fn entry_for(&self, item: &Inbound) -> Option<EntrySpec> {
+        self.entry.as_ref().map(|entry| entry(item))
     }
 
     /// Adds this definition to the process-wide registry, replacing one of
@@ -386,6 +495,24 @@ mod tests {
     #[should_panic(expected = "needs N above 0")]
     fn a_limit_of_zero_minutes_panics() {
         def("tests.zero").down_after_minutes(0).register();
+    }
+
+    #[test]
+    fn a_connection_takes_inbound_data_only_with_both_handlers() {
+        let plain = def("tests.inbound_plain");
+        assert!(!plain.takes_inbound());
+        let at: DateTime = "2026-11-03T06:20:00Z".parse().unwrap();
+        let with = def("tests.inbound_with").inbound(
+            |_state, _item| Box::pin(async { Ok(Match::NoRecord) }),
+            move |item| EntrySpec::new("payments.payment", item.user_id, item.occurred_at),
+        );
+        assert!(with.takes_inbound());
+        let item = Inbound::new("tests.inbound_with", "TX-889", at, Value::Null, 7);
+        let spec = with.entry_for(&item).expect("an entry");
+        assert_eq!(spec.subject_type, "payments.payment");
+        assert_eq!(spec.occurred_at, at);
+        assert_eq!(spec.user_id, 7);
+        assert!(plain.entry_for(&item).is_none());
     }
 
     #[test]

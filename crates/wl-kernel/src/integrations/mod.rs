@@ -22,8 +22,8 @@ use renox::prelude::*;
 
 pub use connection::{ConnectionStatus, IntegrationConnection, transitions};
 pub use def::{
-    DEFAULT_DOWN_AFTER_MINUTES, Delivery, DueFn, IntegrationDef, Outbound, SendFn, all, call_failed,
-    down_at, get, register, retry_wait,
+    DEFAULT_DOWN_AFTER_MINUTES, Delivery, DueFn, EntryFn, Inbound, IntegrationDef, Match, MatchFn,
+    Outbound, SendFn, all, call_failed, down_at, get, register, retry_wait,
 };
 pub use events::IntegrationStatusChanged;
 pub use queue::{CallStatus, QueuedCall};
