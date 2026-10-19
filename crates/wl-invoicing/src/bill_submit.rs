@@ -283,6 +283,13 @@ pub async fn submit(
         .await?;
     tx.commit().await?;
     outcome.emit(state).await.map_err(TransitionError::Failed)?;
+    // A bill with an owner drawing asks for the approval of the drawing, by
+    // the user who submits it (`FIN.ACL.21`).
+    if let Some(requester) = by.id() {
+        crate::drawings::request_for_bill(state, id, requester)
+            .await
+            .map_err(TransitionError::Failed)?;
+    }
     Ok(SupplierBill::find_or_404(&state.db, id).await?)
 }
 

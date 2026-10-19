@@ -22,6 +22,10 @@
 //! permissions. The approver and the reason are stored on the bill; one
 //! approval covers every exception row.
 //!
+//! A bill with a line coded to owner drawings is approved only after the
+//! approval of the drawing ([`crate::drawings`], `FIN.ACL.21`): the effect of
+//! both approve transitions refuses (422) until one covers the same amount.
+//!
 //! `void` (draft, matched or exception to void, `supplier_bills.approve`)
 //! takes a `reason` that must not be blank and is stored on the bill. The
 //! creator may void. Each has a system twin (`approve_system`,
@@ -175,6 +179,10 @@ fn approve_rules(transition: Transition<SupplierBill>) -> Transition<SupplierBil
             let approver = actor_id(ctx);
             let reason = reason_of(ctx);
             Box::pin(async move {
+                // A bill with an owner drawing is approved only after the
+                // approval of the drawing (`FIN.ACL.21`); a refusal rolls
+                // the transition back (422).
+                crate::drawings::ensure_bill_approved(&mut *tx, id).await?;
                 // Not the status column, so outside the machine's guard.
                 SupplierBill::query()
                     .where_(SupplierBill::ID.eq(id))

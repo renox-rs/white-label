@@ -17,6 +17,34 @@
       </template>
       <template rx-if="sheets"><rx-include template="wl-invoicing/_bill_reason_sheet.html"/></template>
     </rx-page-header>
+    <rx-include template="wl-kernel/approval_card.html"/>
+    <rx-card rx-if="drawings.present" :title="tx['drawings.title']">
+      <rx-stack>
+        <rx-alert kind="info" :message="tx['drawings.open_item']"/>
+        <rx-infolist columns="2">
+          <rx-entry :label="tx['drawings.total']" :value="drawings.total"/>
+          <rx-entry :label="tx['drawings.status']" :value="drawings.status"/>
+          <rx-entry rx-if="drawings.reason" :label="tx['drawings.rejected_because']" :value="drawings.reason"/>
+        </rx-infolist>
+        <rx-row>
+          <rx-badge :text="drawings.status" :kind="drawings.status_kind"/>
+          <rx-confirm rx-if="drawings.can_request" :id="'request-drawing-' ~ bill.id" :label="tx['drawings.request.action']" :action="route('wl_invoicing.drawing_request', bill.id)" method="POST"
+                      :title="tx['drawings.request.title']" :message="tx['drawings.request.message']" :confirm-label="tx['drawings.request.action']" icon="send"/>
+          <rx-action-sheet rx-if="drawings.can_recode" :id="'recode-line-' ~ bill.id" :label="tx['drawings.recode.action']" :action="route('wl_invoicing.bill_recode', bill.id)"
+                           :title="tx['drawings.recode.title']" :description="tx['drawings.recode.description']" :submit-label="tx['drawings.recode.submit']" icon="tag">
+            <rx-select name="line_id" :label="tx['drawings.recode.line']" :options="drawings.lines" id="recode-line-id" required/>
+            <rx-input name="cost_code" :label="tx['drawings.recode.code']" :hint="tx['drawings.recode.hint']" id="recode-line-code" required/>
+          </rx-action-sheet>
+        </rx-row>
+        <rx-table rx-if="drawings.recodings" :rows="drawings.recodings" as="item" :key="item.line" :caption="tx['drawings.recodings']">
+          <rx-column :label="tx['drawings.recode.line']">{{ item.line }}</rx-column>
+          <rx-column :label="tx['drawings.recode.from']">{{ item.from }}</rx-column>
+          <rx-column :label="tx['drawings.recode.to']">{{ item.to }}</rx-column>
+          <rx-column :label="tx['drawings.recode.by']" hide-narrow>{{ item.by }}</rx-column>
+          <rx-column :label="tx['history.at']" hide-narrow>{{ item.at | date('%Y-%m-%d %H:%M') }}</rx-column>
+        </rx-table>
+      </rx-stack>
+    </rx-card>
     <rx-card rx-if="exceptions" :title="tx['supplier_bill.sections.exceptions']">
       <rx-stack>
         <rx-row rx-for="item in exceptions">
