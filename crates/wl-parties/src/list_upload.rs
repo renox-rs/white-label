@@ -15,8 +15,10 @@ use renox::db::DateTime;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::events::SanctionsListUpdated;
 use crate::list_parser::{ListParsers, ParsedList};
-use crate::sanctions_lists::ListFormat;
+use crate::permissions;
+use crate::sanctions_lists::{ListFormat, ListStatus, SanctionsList, UpdateSource};
 
 /// The largest file an upload may have, in bytes (20 MB).
 pub const MAX_UPLOAD_BYTES: usize = 20 * 1024 * 1024;
@@ -262,6 +264,240 @@ pub fn validate(
         same_version,
         parsed,
     })
+}
+
+/// An upload as the back office gives it.
+#[derive(Debug)]
+pub struct UploadRequest {
+    /// The official file.
+    pub file: Upload,
+    /// The page of the authority the file was taken from.
+    pub source_url: String,
+    /// The date of the list (`YYYY-MM-DD`).
+    pub list_date: String,
+}
+
+/// What an accepted upload did.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UploadResult {
+    /// The file is a new version; `SanctionsListUpdated` was emitted.
+    NewVersion(String),
+    /// The list date is the version already held: the list is refreshed and
+    /// current again, with no event and no re-screening.
+    SameVersion,
+}
+
+/// Why `upload_list_file` did not take the file.
+#[derive(Debug)]
+pub enum UploadError {
+    /// The user lacks `screening.review`; nothing is logged.
+    Forbidden,
+    /// The list does not exist; nothing is logged.
+    NotFound,
+    /// The list is current, so no upload is needed (logged as refused).
+    NotStale,
+    /// The file or its details were refused (logged as refused).
+    Refused(UploadRefusal),
+    /// The database or the storage failed.
+    Failed(renox::Error),
+}
+
+impl fmt::Display for UploadError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            UploadError::Forbidden => f.write_str("not allowed"),
+            UploadError::NotFound => f.write_str("no such list"),
+            UploadError::NotStale => f.write_str("the list is current; no upload needed"),
+            UploadError::Refused(why) => why.fmt(f),
+            UploadError::Failed(e) => e.fmt(f),
+        }
+    }
+}
+
+impl std::error::Error for UploadError {}
+
+impl From<renox::Error> for UploadError {
+    fn from(e: renox::Error) -> Self {
+        UploadError::Failed(e)
+    }
+}
+
+/// Where the files of list `list_id` are kept (private).
+pub fn storage_dir(list_id: i64) -> String {
+    format!("parties/lists/{list_id}/uploads")
+}
+
+/// `user` uploads the official file of list `list_id` by hand. Needs
+/// `screening.review`. Only a `stale` list takes an upload, and only while
+/// the `manual_upload` setting is on. In one transaction it locks the list,
+/// checks the details and the file ([`validate`]), stores the file privately,
+/// makes the list current with source *manual upload* (version = the list
+/// date, uploader, source URL, `stale_since` and `last_error` cleared) and
+/// logs an accepted upload. A list date equal to the version held refreshes
+/// the list without a new version. After the commit a new version emits
+/// `SanctionsListUpdated`, which starts the same re-run as a download.
+///
+/// A refused upload (setting off, list current, bad details or file) changes
+/// nothing on the list and is logged with its reason, so the audit shows who
+/// tried what.
+///
+/// # Errors
+///
+/// See [`UploadError`].
+pub async fn upload_list_file(
+    state: &AppState,
+    user: &AuthUser,
+    list_id: i64,
+    request: UploadRequest,
+) -> Result<UploadResult, UploadError> {
+    if !user.has_permission(permissions::SCREENING_REVIEW) {
+        return Err(UploadError::Forbidden);
+    }
+    let mut tx = state
+        .db
+        .begin_immediate()
+        .await
+        .map_err(renox::Error::from)?;
+    let Some(mut list) = SanctionsList::query()
+        .where_eq("id", list_id)
+        .lock_for_update()
+        .first(&mut tx)
+        .await?
+    else {
+        return Err(UploadError::NotFound);
+    };
+    let now = renox::db::now();
+    let valid = match check(state, &list, &request, now) {
+        Ok(valid) => valid,
+        Err(error) => {
+            drop(tx);
+            log_refusal(state, user, list_id, &request, &error.to_string(), now).await?;
+            return Err(error);
+        }
+    };
+    let key = request
+        .file
+        .store(&state.storage, &storage_dir(list.id))
+        .await?;
+    let applied = apply(&mut tx, user, &mut list, &request, &valid, &key, now).await;
+    let committed = match applied {
+        Ok(()) => tx.commit().await.map_err(renox::Error::from),
+        Err(e) => Err(e),
+    };
+    if let Err(e) = committed {
+        // Do not leave the file of an upload that was not recorded.
+        let _ = state.storage.delete(&key).await;
+        return Err(e.into());
+    }
+    if valid.same_version {
+        return Ok(UploadResult::SameVersion);
+    }
+    let version = list.version.clone().unwrap_or_default();
+    state
+        .emit(SanctionsListUpdated {
+            list: list.id,
+            name: list.name.clone(),
+            version: version.clone(),
+        })
+        .await?;
+    Ok(UploadResult::NewVersion(version))
+}
+
+/// The checks that need the list: the setting, staleness, then [`validate`].
+fn check(
+    state: &AppState,
+    list: &SanctionsList,
+    request: &UploadRequest,
+    now: DateTime,
+) -> Result<ValidUpload, UploadError> {
+    if !UploadSettings::of(state).enabled {
+        return Err(UploadError::Refused(UploadRefusal::Disabled));
+    }
+    if list.status != ListStatus::Stale {
+        return Err(UploadError::NotStale);
+    }
+    let parsers = state
+        .provided::<ListParsers>()
+        .map(|p| (*p).clone())
+        .unwrap_or_default();
+    validate(
+        UploadInput {
+            format: list.format,
+            current_version: list.version.as_deref(),
+            source_url: &request.source_url,
+            list_date: &request.list_date,
+            bytes: request.file.bytes(),
+        },
+        &parsers,
+        today_dubai(now),
+    )
+    .map_err(UploadError::Refused)
+}
+
+/// Writes the list and the accepted upload row in `tx`.
+async fn apply(
+    tx: &mut renox::db::Transaction,
+    user: &AuthUser,
+    list: &mut SanctionsList,
+    request: &UploadRequest,
+    valid: &ValidUpload,
+    key: &str,
+    now: DateTime,
+) -> Result<()> {
+    let date = valid.list_date.format("%Y-%m-%d").to_string();
+    if !valid.same_version {
+        list.version = Some(date.clone());
+    }
+    list.last_updated_at = Some(now);
+    list.update_source = Some(UpdateSource::Manual);
+    list.updated_by = Some(user.id);
+    list.source_url = Some(valid.source_url.clone());
+    list.last_error = None;
+    list.stale_since = None;
+    list.status = ListStatus::Current;
+    list.updated_at = Some(now);
+    list.save(&mut *tx).await?;
+    let mut row = SanctionsListUpload {
+        list_id: list.id,
+        uploaded_by: user.id,
+        uploaded_at: now,
+        source_url: Some(valid.source_url.clone()),
+        list_date: Some(date),
+        file_name: request.file.file_name().trim().to_owned(),
+        file_ref: Some(key.to_owned()),
+        byte_size: i64::try_from(request.file.size()).unwrap_or(i64::MAX),
+        outcome: UploadOutcome::Accepted,
+        ..SanctionsListUpload::default()
+    };
+    row.insert(&mut *tx).await?;
+    Ok(())
+}
+
+/// Logs a refused upload; the file is not kept.
+async fn log_refusal(
+    state: &AppState,
+    user: &AuthUser,
+    list_id: i64,
+    request: &UploadRequest,
+    reason: &str,
+    now: DateTime,
+) -> Result<()> {
+    let given = |text: &str| Some(text.trim().to_owned()).filter(|t| !t.is_empty());
+    let mut row = SanctionsListUpload {
+        list_id,
+        uploaded_by: user.id,
+        uploaded_at: now,
+        source_url: given(&request.source_url),
+        list_date: given(&request.list_date),
+        file_name: request.file.file_name().trim().to_owned(),
+        file_ref: None,
+        byte_size: i64::try_from(request.file.size()).unwrap_or(i64::MAX),
+        outcome: UploadOutcome::Refused,
+        refusal_reason: Some(reason.to_owned()),
+        ..SanctionsListUpload::default()
+    };
+    row.insert(&state.db).await?;
+    Ok(())
 }
 
 #[cfg(test)]

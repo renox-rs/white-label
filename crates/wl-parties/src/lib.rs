@@ -57,7 +57,10 @@ pub use events::{SanctionsListStale, SanctionsListUpdated};
 pub use evidence::{UnblockBasis, UnblockEvidence};
 pub use feed::{FeedError, ListFeed, ListVersion, NoListFeed};
 pub use list_parser::{ListParser, ListParsers, ParseError, ParsedList, XmlListParser};
-pub use list_upload::{SanctionsListUpload, UploadOutcome, UploadRefusal, UploadSettings};
+pub use list_upload::{
+    SanctionsListUpload, UploadError, UploadOutcome, UploadRefusal, UploadRequest, UploadResult,
+    UploadSettings, upload_list_file,
+};
 pub use party::{Channel, Language, Party};
 pub use reasons::{BlockReason, BlockReasons};
 pub use relationships::{
