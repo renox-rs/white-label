@@ -48,6 +48,7 @@
         <rx-entry :label="tx['fields.created_at']" :value="card.created"/>
       </rx-infolist>
     </rx-card>
+    <rx-include template="wl-ticketing/_charges.html"/>
     <rx-include template="wl-ticketing/_assignments.html"/>
     <rx-include template="wl-ticketing/_comments.html"/>
     <rx-table :rows="timeline" as="item" :key="item.time" :caption="tx['sections.history']" card>

@@ -10,11 +10,17 @@
       <rx-column :label="tx['categories.name_ar']" hide-narrow>{{ category.name_ar or "—" }}</rx-column>
       <rx-column :label="tx['categories.key']" hide-narrow>{{ category.key }}</rx-column>
       <rx-column :label="tx['categories.assignee_role']" hide-narrow>{{ category.assignee_role or "—" }}</rx-column>
+      <rx-column :label="tx['categories.charging']" hide-narrow>{{ category.charging_label }}</rx-column>
       <rx-row-actions>
         <rx-action-sheet :id="'rename-' ~ category.key" :label="tx['categories.rename']" :action="route('wl_ticketing.category_rename', category.key)"
                          :title="tx['categories.rename_title']" :submit-label="tx['categories.rename']" icon="pencil">
           <rx-input name="name_en" :label="tx['categories.name']" :value="category.name_en" :id="'rename-en-' ~ category.key" required/>
           <rx-input name="name_ar" :label="tx['categories.name_ar']" :value="category.name_ar" dir="rtl" :id="'rename-ar-' ~ category.key"/>
+        </rx-action-sheet>
+        <rx-action-sheet :id="'charging-' ~ category.key" :label="tx['categories.charging_change']" :action="route('wl_ticketing.category_charging', category.key)"
+                         :title="tx['categories.charging_title']" :description="tx['categories.charging_description']" :submit-label="tx['categories.charging_change']" icon="receipt">
+          <rx-select name="chargeable" :label="tx['categories.charging']" :options="chargeable_options" :selected="'1' if category.chargeable else '0'" :id="'charging-select-' ~ category.key"/>
+          <rx-select name="invoice_on" :label="tx['categories.invoice_on']" :options="invoice_on_options" :selected="category.invoice_on" :id="'invoice-on-select-' ~ category.key"/>
         </rx-action-sheet>
         <template rx-if="category.platform">
           <span>{{ tx['categories.platform_hint'] }}</span>

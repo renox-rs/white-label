@@ -1,0 +1,32 @@
+{#- wl-ticketing: the charge lines of a chargeable ticket and their total
+    with VAT: the amount the requester is shown and what the invoice draft
+    carries. The assignee adds lines before resolving; a coordinator may
+    change them until the ticket is closed. Replace it with
+    resources/views/wl-ticketing/_charges.html in the app. -#}
+<template rx-if="chargeable">
+  <rx-table :rows="charges" as="line" :key="line.id" :caption="tx['sections.charges']" card>
+    <rx-column :label="tx['charge.description']">{{ line.description }}</rx-column>
+    <rx-column :label="tx['charge.quantity']" hide-narrow>{{ line.quantity }}</rx-column>
+    <rx-column :label="tx['charge.unit_price']" hide-narrow>{{ line.unit_price }}</rx-column>
+    <rx-column :label="tx['charge.vat']" hide-narrow>{{ line.vat }}</rx-column>
+    <rx-column :label="tx['charge.total']">{{ line.total }}</rx-column>
+    <rx-row-actions rx-if="can_charge">
+      <rx-confirm :id="'charge-remove-' ~ line.id" :label="tx['charge.remove']" :action="route('wl_ticketing.charge_remove', ticket.id, line.id)"
+                  :title="tx['charge.remove_title']" :message="line.description" :confirm-label="tx['charge.remove']" :cancel-label="tx['cancel']" icon="trash"/>
+    </rx-row-actions>
+    <rx-slot name="empty"><rx-empty :title="tx['charge.empty']" :message="tx['charge.empty_hint']" icon="receipt"/></rx-slot>
+  </rx-table>
+  <rx-card>
+    <rx-infolist columns="2">
+      <rx-entry :label="tx['charge.amount']" :value="charge_total"/>
+      <rx-entry rx-if="invoice_id" :label="tx['charge.draft']" :value="invoice_id"/>
+    </rx-infolist>
+    <rx-action-sheet rx-if="can_charge" :id="'charge-add-' ~ ticket.id" :label="tx['charge.add']" :action="route('wl_ticketing.charge_add', ticket.id)"
+                     :title="tx['charge.add_title']" :description="tx['charge.add_description']" :submit-label="tx['charge.add']" icon="plus">
+      <rx-input name="description" :label="tx['charge.description']" :id="'charge-description-' ~ ticket.id" required/>
+      <rx-input name="quantity" :label="tx['charge.quantity']" :hint="tx['charge.quantity_hint']" inputmode="decimal" :id="'charge-quantity-' ~ ticket.id"/>
+      <rx-input name="unit_price" :label="tx['charge.unit_price']" :hint="tx['charge.unit_price_hint']" inputmode="decimal" :id="'charge-price-' ~ ticket.id" required/>
+      <rx-select name="vat_category" :label="tx['charge.vat']" :options="vat_options" :selected="'standard'" :id="'charge-vat-' ~ ticket.id"/>
+    </rx-action-sheet>
+  </rx-card>
+</template>

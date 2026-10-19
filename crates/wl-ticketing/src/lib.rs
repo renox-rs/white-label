@@ -63,6 +63,10 @@ const VIEWS: &[(&str, &str)] = &[
         include_str!("../views/wl-ticketing/_assignments.html"),
     ),
     (
+        "wl-ticketing/_charges.html",
+        include_str!("../views/wl-ticketing/_charges.html"),
+    ),
+    (
         "wl-ticketing/_comments.html",
         include_str!("../views/wl-ticketing/_comments.html"),
     ),

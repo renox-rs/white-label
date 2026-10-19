@@ -6,6 +6,8 @@
 //! | `GET /tickets/{id}` | `wl_ticketing.show` | `tickets.view` (a confidential ticket: 404 without `tickets.confidential.view`, unless the requester; each view is audited) |
 //! | `GET /tickets/new` | `wl_ticketing.create` | `tickets.create` |
 //! | `POST /tickets` | `wl_ticketing.store` | `tickets.create` |
+//! | `POST /tickets/{id}/charges` | `wl_ticketing.charge_add` | `tickets.view` and the assignee before resolve, or `tickets.assign` (fields `description`, `quantity`, `unit_price` in AED, `vat_category`) |
+//! | `DELETE /tickets/{id}/charges/{line}` | `wl_ticketing.charge_remove` | the same |
 //! | `POST /tickets/{id}/assign` | `wl_ticketing.assign` | `tickets.assign` |
 //! | `POST /tickets/{id}/hold` | `wl_ticketing.hold` | `tickets.view` and the assignee |
 //! | `POST /tickets/{id}/cancel` | `wl_ticketing.cancel` | `tickets.assign` |
@@ -32,8 +34,10 @@ use wl_kernel::Subject;
 use wl_kernel::calendar::calendar;
 use wl_kernel::notify::fill;
 use wl_kernel::parties::directory;
+use wl_kernel::invoicing::VatCategory;
 use wl_kernel::tickets::{Assignee, OpenTicket, Requester, TicketChannel};
 
+use crate::charge::{self, ChargeInput};
 use crate::assign::{AssignKind, AssignRequest, Assignment, assign, reasons_of};
 use crate::comments::{Comment, CommentVisibility};
 use crate::config::{Category, HoldReason};
@@ -74,6 +78,10 @@ pub fn routes() -> Routes {
                 .name("wl_ticketing.hold")
                 .post("/tickets/{id}/actions/{name}", store_action)
                 .name("wl_ticketing.action")
+                .post("/tickets/{id}/charges", store_charge)
+                .name("wl_ticketing.charge_add")
+                .delete("/tickets/{id}/charges/{line}", destroy_charge)
+                .name("wl_ticketing.charge_remove")
                 .require_permission(permissions::VIEW),
         )
         .merge(
@@ -392,6 +400,66 @@ pub(crate) struct ShowPage {
     assignments: Vec<AssignmentRow>,
     comments: Vec<CommentRow>,
     timeline: Vec<Value>,
+    /// Whether the ticket is chargeable, so the charge section shows.
+    chargeable: bool,
+    /// The charge lines, in order.
+    charges: Vec<ChargeRow>,
+    /// The total with VAT, `AED 350.00`; the amount the requester is shown.
+    charge_total: String,
+    /// Whether the add and remove actions show.
+    can_charge: bool,
+    /// The VAT categories, `(value, label)`.
+    vat_options: Vec<(String, String)>,
+    /// The draft invoice made for the ticket, when there is one.
+    invoice_id: Option<i64>,
+}
+
+/// One charge line as the ticket page shows it.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct ChargeRow {
+    id: i64,
+    description: String,
+    /// `1` or `2.5`.
+    quantity: String,
+    /// `AED 333.33`, before VAT.
+    unit_price: String,
+    /// The VAT category's label.
+    vat: String,
+    /// The line with VAT.
+    total: String,
+}
+
+/// A quantity in thousandths as text: `1`, `2.5`, `0.125`.
+fn quantity_text(milli: i64) -> String {
+    let (whole, part) = (milli / 1000, milli % 1000);
+    if part == 0 {
+        whole.to_string()
+    } else {
+        format!("{whole}.{part:03}").trim_end_matches('0').to_owned()
+    }
+}
+
+/// `text` as a number scaled by 10^`decimals` (`333.33` at 2 is 33333):
+/// digits with at most `decimals` after the point; `None` for anything else.
+fn parse_scaled(text: &str, decimals: usize) -> Option<i64> {
+    let text = text.trim();
+    let (whole, fraction) = text.split_once('.').unwrap_or((text, ""));
+    let digits = |part: &str| part.bytes().all(|b| b.is_ascii_digit());
+    if whole.is_empty() && fraction.is_empty()
+        || !digits(whole)
+        || !digits(fraction)
+        || fraction.len() > decimals
+    {
+        return None;
+    }
+    let mut padded = fraction.to_owned();
+    while padded.len() < decimals {
+        padded.push('0');
+    }
+    let scale = 10_i64.checked_pow(u32::try_from(decimals).ok()?)?;
+    let whole: i64 = if whole.is_empty() { 0 } else { whole.parse().ok()? };
+    let fraction: i64 = if padded.is_empty() { 0 } else { padded.parse().ok()? };
+    whole.checked_mul(scale)?.checked_add(fraction)
 }
 
 /// An instant as Asia/Dubai wall-clock time.
@@ -656,7 +724,28 @@ async fn show(
     };
     let history = state_machine::history(&db, Ticket::TABLE, ticket.id).await?;
     let timeline = state_machine::timeline(&history, Some(&state_machine::info_of::<Ticket>()));
+    let charge_lines = charge::lines_of(&db, ticket.id).await?;
+    let charge_total = charge::money(charge::total(&charge_lines));
+    let charges = charge_lines
+        .iter()
+        .map(|line| ChargeRow {
+            id: line.id,
+            description: line.description.clone(),
+            quantity: quantity_text(line.quantity_milli),
+            unit_price: charge::money(line.unit_price),
+            vat: t(&format!("vat.{}", line.vat_category.as_str())),
+            total: charge::money(line.gross()),
+        })
+        .collect();
+    let can_charge = ticket.chargeable && charge::may_change(&ticket, &user);
+    let vat_options = options(&t, "vat", VatCategory::ALL.iter().map(VatCategory::as_str));
     Ok(View::typed(ShowPage {
+        chargeable: ticket.chargeable,
+        charges,
+        charge_total,
+        can_charge,
+        vat_options,
+        invoice_id: ticket.invoice_id,
         tx: texts::all(&lang),
         title: ticket.number.clone(),
         status_label: t(&format!("status.{}", ticket.status.as_str())),
@@ -814,6 +903,70 @@ async fn store_cancel(
     }
 }
 
+/// The add-charge form: the price in AED and the quantity as typed.
+#[derive(Deserialize, Serialize, Validate, Debug)]
+pub struct ChargeForm {
+    /// What is billed.
+    #[validate(required, max = 200)]
+    pub description: String,
+    /// The quantity, e.g. `1` or `2.5`; 1 when left empty.
+    #[validate(max = 20)]
+    pub quantity: Option<String>,
+    /// The price of one unit in AED before VAT, e.g. `333.33`.
+    #[validate(required, max = 20)]
+    pub unit_price: String,
+    /// The VAT category.
+    #[serde(default)]
+    pub vat_category: VatCategory,
+}
+
+/// `POST /tickets/{id}/charges`: adds a charge line and reloads. A price or
+/// quantity that is not a number is a 422 under its field; so is a ticket
+/// that is not chargeable. The service checks who may.
+async fn store_charge(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(ticket): Found<Ticket>,
+    Valid(form): Valid<ChargeForm>,
+) -> Result<Response> {
+    visibility::ensure_visible(&ticket, &user)?;
+    let t = texts_in(&lang);
+    let Some(unit_price) = parse_scaled(&form.unit_price, 2) else {
+        return Err(invalid("unit_price", t("charge.bad_price_text"), &form));
+    };
+    let quantity_milli = match form.quantity.as_deref().map(str::trim).filter(|q| !q.is_empty()) {
+        None => 1000,
+        Some(text) => match parse_scaled(text, 3) {
+            Some(milli) => milli,
+            None => return Err(invalid("quantity", t("charge.bad_quantity_text"), &form)),
+        },
+    };
+    let input = ChargeInput {
+        description: form.description.clone(),
+        quantity_milli,
+        unit_price,
+        vat_category: form.vat_category,
+    };
+    charge::add_line(&state, &user, ticket.id, input).await?;
+    Ok((Toast::success(t("charge.added")), renox::HxRefresh).into_response())
+}
+
+/// `DELETE /tickets/{id}/charges/{line}`: removes a charge line and goes
+/// back to the page.
+async fn destroy_charge(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    back: Back,
+    Path((id, line)): Path<(i64, i64)>,
+) -> Result<Response> {
+    let ticket = Ticket::find_or_404(&state.db, id).await?;
+    visibility::ensure_visible(&ticket, &user)?;
+    charge::remove_line(&state, &user, id, line).await?;
+    Ok((Toast::success(texts::t(&lang, "wl_ticketing.charge.removed")), back).into_response())
+}
+
 /// `POST /tickets/{id}/actions/{name}`: start, resume, resolve, confirm,
 /// close or reopen, with the time of the request. The service checks who
 /// may; a refusal answers 422 or 403 as the transition route does.
@@ -896,6 +1049,23 @@ mod tests {
         for channel in TicketChannel::ALL {
             assert!(!missing(format!("channel.{}", channel.as_str())));
         }
+    }
+
+    #[test]
+    fn prices_and_quantities_are_read_as_scaled_numbers() {
+        assert_eq!(parse_scaled("333.33", 2), Some(33_333));
+        assert_eq!(parse_scaled(" 350 ", 2), Some(35_000));
+        assert_eq!(parse_scaled("0.5", 2), Some(50));
+        assert_eq!(parse_scaled(".5", 3), Some(500));
+        assert_eq!(parse_scaled("2.5", 3), Some(2_500));
+        assert_eq!(parse_scaled("1.234", 2), None);
+        assert_eq!(parse_scaled("", 2), None);
+        assert_eq!(parse_scaled("-1", 2), None);
+        assert_eq!(parse_scaled("1,5", 2), None);
+        assert_eq!(parse_scaled("abc", 2), None);
+        assert_eq!(quantity_text(1_000), "1");
+        assert_eq!(quantity_text(2_500), "2.5");
+        assert_eq!(quantity_text(125), "0.125");
     }
 
     #[test]

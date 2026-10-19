@@ -10,7 +10,7 @@
 
 use renox::prelude::*;
 
-use crate::config::Category;
+use crate::config::{Category, InvoiceOn};
 use crate::permissions;
 use crate::ticket::Ticket;
 
@@ -63,6 +63,30 @@ pub async fn rename(
     category.name_en = name_en.to_owned();
     category.name_ar = name_ar.trim().to_owned();
     category.save(db).await?;
+    Ok(category)
+}
+
+/// Sets whether the tickets of the category `key` are chargeable and when
+/// they are invoiced: at `resolve` or at close (§7). It applies to tickets
+/// opened from now on (a ticket keeps the flag it was opened with).
+///
+/// # Errors
+///
+/// `Forbidden` without `tickets.manage`, `NotFound` for an unknown key.
+pub async fn set_charging(
+    db: &Db,
+    user: &AuthUser,
+    key: &str,
+    chargeable: bool,
+    invoice_on: InvoiceOn,
+) -> Result<Category> {
+    manage(user)?;
+    let mut category = category(db, key).await?;
+    if category.chargeable != chargeable || category.invoice_on != invoice_on {
+        category.chargeable = chargeable;
+        category.invoice_on = invoice_on;
+        category.save(db).await?;
+    }
     Ok(category)
 }
 
