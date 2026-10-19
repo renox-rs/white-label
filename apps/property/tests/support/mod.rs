@@ -38,8 +38,9 @@ use wl_kernel::documents::{
     provide_guard, today,
 };
 use wl_kernel::invoicing::{
-    CreditLine, CreditNoteId, InvoiceDraft, InvoiceFuture, InvoiceId, InvoiceStatus, InvoiceSummary, Invoicer,
-    ReopenReason, invoicer, provide_invoicer,
+    BadDebtRecovered, CreditLine, CreditNoteId, InvoiceDraft, InvoiceFuture, InvoiceId,
+    InvoiceStatus, InvoiceSummary, InvoiceWrittenOff, Invoicer, ReopenReason, WriteOffAnswer,
+    invoicer, provide_invoicer,
 };
 use wl_kernel::notify::{
     MessageId, NoticeStatus, Notifier, NotifyFuture, NotifyRequest, provide_notifier,
@@ -1171,9 +1172,85 @@ pub struct Credit {
 pub struct InvoiceDesk(
     Arc<Mutex<BTreeMap<i64, FakeInvoice>>>,
     Arc<Mutex<Vec<Credit>>>,
+    Arc<Mutex<Vec<WriteOffAsk>>>,
 );
 
+/// A write-off the fake invoicer was asked for; it waits for an approval.
+#[derive(Debug, Clone)]
+pub struct WriteOffAsk {
+    /// The invoice.
+    pub invoice: i64,
+    /// The user who asked.
+    pub by: i64,
+    /// The reason code.
+    pub reason: String,
+}
+
 impl InvoiceDesk {
+    /// The write-offs asked for, oldest first.
+    pub fn write_offs(&self) -> Vec<WriteOffAsk> {
+        self.2.lock().unwrap().clone()
+    }
+
+    /// The approver says yes to the write-off of invoice `id`: it is
+    /// `written_off` and `InvoiceWrittenOff` is emitted.
+    pub async fn approve_write_off(&self, state: &AppState, id: i64, approver: i64) {
+        let found = {
+            let mut all = self.0.lock().unwrap();
+            all.get_mut(&id).map(|invoice| {
+                invoice.summary.status = InvoiceStatus::WrittenOff;
+                (
+                    invoice.summary.party,
+                    invoice.draft.source.clone(),
+                    invoice.summary.balance,
+                )
+            })
+        };
+        let (party, source, amount) = found.expect("the invoice exists");
+        let reason_code = self
+            .write_offs()
+            .iter()
+            .rev()
+            .find(|ask| ask.invoice == id)
+            .map_or_else(|| "insolvent".to_owned(), |ask| ask.reason.clone());
+        state
+            .emit(InvoiceWrittenOff {
+                invoice: InvoiceId(id),
+                party,
+                source,
+                amount,
+                reason_code,
+                approver: Some(approver),
+            })
+            .await
+            .unwrap();
+    }
+
+    /// `amount` fils are recovered on the written-off invoice `id` on `on`:
+    /// `BadDebtRecovered` is emitted.
+    pub async fn recover(&self, state: &AppState, id: i64, amount: i64, on: NaiveDate) {
+        let party = {
+            let mut all = self.0.lock().unwrap();
+            let invoice = all.get_mut(&id).expect("the invoice exists");
+            invoice.summary.balance -= amount;
+            if invoice.summary.balance <= 0 {
+                invoice.summary.status = InvoiceStatus::Paid;
+            }
+            invoice.summary.party
+        };
+        state
+            .emit(BadDebtRecovered {
+                invoice: InvoiceId(id),
+                party,
+                source: Subject::new("payments.payment", 700 + id * 1_000 + amount / 100),
+                amount,
+                relief_claimed: false,
+                recovered_on: on,
+            })
+            .await
+            .unwrap();
+    }
+
     /// The partial credit notes made, oldest first.
     pub fn credits(&self) -> Vec<Credit> {
         self.1.lock().unwrap().clone()
@@ -1339,6 +1416,36 @@ impl Invoicer for InvoiceDesk {
             invoice.summary.balance = invoice.summary.gross_total;
             invoice.summary.status = InvoiceStatus::Issued;
             Ok(taken)
+        })
+    }
+
+    fn write_off<'a>(
+        &'a self,
+        _state: &'a AppState,
+        by: &'a AuthUser,
+        id: InvoiceId,
+        reason_code: &'a str,
+        _reason_text: Option<&'a str>,
+    ) -> InvoiceFuture<'a, WriteOffAnswer> {
+        Box::pin(async move {
+            let open = self
+                .get(id.0)
+                .is_some_and(|i| i.summary.balance > 0 && !i.summary.disputed);
+            if !open {
+                return Err(Error::Status(
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    "the invoice cannot be written off".to_owned(),
+                ));
+            }
+            let mut asked = self.2.lock().unwrap();
+            asked.push(WriteOffAsk {
+                invoice: id.0,
+                by: by.id,
+                reason: reason_code.to_owned(),
+            });
+            Ok(WriteOffAnswer::Pending {
+                request: i64::try_from(asked.len()).unwrap_or(0),
+            })
         })
     }
 
