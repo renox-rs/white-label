@@ -6,6 +6,10 @@
 //! | `GET /documents/{id}/file` | `wl_documents.file` | `documents.review` |
 //! | `POST /documents/{id}/accept` | `wl_documents.accept` | `documents.review` |
 //! | `POST /documents/{id}/reject` | `wl_documents.reject` | `documents.review` (`reason` required) |
+//! | `GET /documents/{id}/edit` | `wl_documents.edit` | `documents.manage` |
+//! | `POST /documents/{id}` | `wl_documents.update` | `documents.manage` |
+//! | `GET /documents/{id}/correction` | `wl_documents.correction` | `documents.upload` |
+//! | `POST /documents/{id}/correction` | `wl_documents.correction.store` | `documents.upload` (multipart) |
 //! | `GET /documents/flags` | `wl_documents.flags` | `documents.view` |
 //! | `POST /documents/flags/{id}/review` | `wl_documents.flags.review` | `documents.review` |
 //! | `GET /document-kinds` | `wl_documents.kinds` | `document_kinds.manage` |
@@ -14,6 +18,11 @@
 //! | `POST /document-kinds/{key}/blocks/{guarded}/mode` | `wl_documents.blocks.mode` | `document_kinds.manage` |
 //! | `POST /document-kinds/{key}/override-mode` | `wl_documents.kinds.override_mode` | `document_kinds.manage` |
 //! | `DELETE /document-kinds/{key}/blocks/{guarded}` | `wl_documents.blocks.destroy` | `document_kinds.manage` |
+//!
+//! The edit form shows the number and expiry date of a document of a
+//! blocking kind as plain values: they change only through the correction
+//! form, a new document another user must accept (#51). The review queue
+//! marks such a correction with a badge.
 //!
 //! The review queue lists the documents in `pending_review`: first those a
 //! refused transition waits for (`review_priority_at`, newest first), then
@@ -35,7 +44,9 @@ use renox::validation::{Errors, ValidationError};
 use serde::{Deserialize, Serialize};
 use wl_kernel::documents::{BlockCondition, BlockMode, OverrideMode};
 
-use crate::documents::{Document, DocumentStatus, DocumentVersion, Documents};
+use crate::documents::{
+    CorrectionInput, Document, DocumentStatus, DocumentVersion, Documents, FieldsUpdate,
+};
 use crate::flags::{self, DocumentFlag};
 use crate::kinds::{self, BlockChangeRefused, DocumentKind, KindBlock};
 use crate::permissions;
@@ -62,6 +73,22 @@ pub fn routes() -> Routes {
         .post("/documents/flags/{id}/review", review_flag)
         .name("wl_documents.flags.review")
         .require_permission(permissions::REVIEW)
+        .merge(
+            Routes::new()
+                .get("/documents/{id}/edit", edit_page)
+                .name("wl_documents.edit")
+                .post("/documents/{id}", update)
+                .name("wl_documents.update")
+                .require_permission(permissions::MANAGE),
+        )
+        .merge(
+            Routes::new()
+                .get("/documents/{id}/correction", correction_page)
+                .name("wl_documents.correction")
+                .post("/documents/{id}/correction", correction_store)
+                .name("wl_documents.correction.store")
+                .require_permission(permissions::UPLOAD),
+        )
         .merge(
             Routes::new()
                 .get("/documents/flags", flags_index)
@@ -150,6 +177,9 @@ pub struct QueueRow {
     pub submitted_at: Option<DateTime>,
     /// Since when a refused transition waits for it, if one does.
     pub priority_since: Option<DateTime>,
+    /// A correction: the kind blocks other work and an accepted document of
+    /// the kind and record is in force.
+    pub correction: bool,
 }
 
 /// What the review queue needs.
@@ -181,8 +211,29 @@ async fn queue_rows(db: &Db, lang: &Lang, documents: Vec<Document>) -> Result<Ve
             .collect()
     };
     let mut names: HashMap<i64, String> = HashMap::new();
+    let mut blocking: HashMap<i64, bool> = HashMap::new();
     let mut rows = Vec::with_capacity(documents.len());
     for document in documents {
+        let is_blocking = match blocking.get(&document.kind_id) {
+            Some(known) => *known,
+            None => {
+                let known = match kinds.get(&document.kind_id) {
+                    Some(kind) => kind.is_blocking(db).await?,
+                    None => false,
+                };
+                blocking.insert(document.kind_id, known);
+                known
+            }
+        };
+        let correction = is_blocking
+            && Document::query()
+                .where_(Document::SUBJECT_TYPE.eq(document.subject_type.as_str()))
+                .where_(Document::SUBJECT_ID.eq(document.subject_id))
+                .where_(Document::KIND_ID.eq(document.kind_id))
+                .where_(Document::STATUS.eq(DocumentStatus::Accepted))
+                .first(db)
+                .await?
+                .is_some();
         let uploaded_by = match document.uploaded_by {
             Some(id) => match names.get(&id) {
                 Some(name) => name.clone(),
@@ -211,6 +262,7 @@ async fn queue_rows(db: &Db, lang: &Lang, documents: Vec<Document>) -> Result<Ve
             uploaded_by,
             submitted_at: document.submitted_at,
             priority_since: document.review_priority_at,
+            correction,
         });
     }
     Ok(rows)
@@ -241,6 +293,247 @@ fn invalid(field: &str, message: String, input: &impl Serialize) -> Error {
     let mut errors = Errors::new();
     errors.add(field, message);
     ValidationError::new(errors).with_input(input).into()
+}
+
+/// A date field as typed: blank is none, anything else must be `YYYY-MM-DD`.
+fn parse_date(value: &str) -> Option<Option<NaiveDate>> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Some(None);
+    }
+    NaiveDate::parse_from_str(value, "%Y-%m-%d").ok().map(Some)
+}
+
+/// A text field as typed: none when blank.
+fn blank_to_none(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
+}
+
+/// A date shown in an input, or empty.
+fn date_value(date: Option<NaiveDate>) -> String {
+    date.map(|d| d.format("%Y-%m-%d").to_string())
+        .unwrap_or_default()
+}
+
+/// What the edit and correction forms show of a document.
+#[derive(Serialize, Debug)]
+struct DocumentFields {
+    id: i64,
+    kind: String,
+    subject: String,
+    title: String,
+    issuing_authority: String,
+    number: String,
+    issue_date: String,
+    expiry_date: String,
+    blocking: bool,
+    can_correct: bool,
+}
+
+async fn document_fields(
+    db: &Db,
+    user: &AuthUser,
+    lang: &Lang,
+    document: &Document,
+) -> Result<DocumentFields> {
+    let kind = document.kind(db).await?;
+    Ok(DocumentFields {
+        id: document.id,
+        kind: kind.name(&lang.locale).to_owned(),
+        subject: format!("{} #{}", document.subject_type, document.subject_id),
+        title: document.title.clone(),
+        issuing_authority: document.issuing_authority.clone().unwrap_or_default(),
+        number: document.number.clone().unwrap_or_default(),
+        issue_date: date_value(document.issue_date),
+        expiry_date: date_value(document.expiry_date),
+        blocking: kind.is_blocking(db).await?,
+        can_correct: user.has_permission(permissions::UPLOAD),
+    })
+}
+
+/// What the edit form needs.
+#[derive(Serialize, ViewData)]
+#[view(template = "wl-documents/document_edit.html")]
+pub(crate) struct EditPage {
+    tx: Texts,
+    document: DocumentFields,
+}
+
+/// `GET /documents/{id}/edit`: the edit form; the number and expiry date of
+/// a blocking kind are read-only, with a link to the correction form.
+async fn edit_page(
+    State(db): State<Db>,
+    user: AuthUser,
+    lang: Lang,
+    Found(document): Found<Document>,
+) -> Result<View> {
+    Ok(View::typed(EditPage {
+        tx: texts::all(&lang),
+        document: document_fields(&db, &user, &lang, &document).await?,
+    }))
+}
+
+/// The edit form. A field that is absent keeps the stored value (the form
+/// of a blocking kind has no number or date inputs).
+#[derive(Deserialize, Serialize, Validate, Debug, Default)]
+pub struct EditForm {
+    /// The title (required).
+    #[validate(max = 255)]
+    #[serde(default)]
+    pub title: String,
+    /// The issuing authority.
+    #[validate(max = 255)]
+    #[serde(default)]
+    pub issuing_authority: Option<String>,
+    /// The number.
+    #[validate(max = 255)]
+    #[serde(default)]
+    pub number: Option<String>,
+    /// The issue date, `YYYY-MM-DD`.
+    #[serde(default)]
+    pub issue_date: Option<String>,
+    /// The expiry date, `YYYY-MM-DD`.
+    #[serde(default)]
+    pub expiry_date: Option<String>,
+}
+
+/// `POST /documents/{id}`: saves the edit. A change to the number or expiry
+/// date of a blocking kind is a 422 and nothing changes.
+async fn update(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(document): Found<Document>,
+    Valid(form): Valid<EditForm>,
+) -> Result<Response> {
+    let title = form.title.trim();
+    if title.is_empty() {
+        return Err(invalid("title", text(&lang, "form.title_required"), &form));
+    }
+    let mut update = FieldsUpdate::of(&document);
+    title.clone_into(&mut update.title);
+    if form.issuing_authority.is_some() {
+        update.issuing_authority = blank_to_none(form.issuing_authority.as_deref());
+    }
+    if form.number.is_some() {
+        update.number = blank_to_none(form.number.as_deref());
+    }
+    for (field, value, target) in [
+        ("issue_date", &form.issue_date, &mut update.issue_date),
+        ("expiry_date", &form.expiry_date, &mut update.expiry_date),
+    ] {
+        if let Some(value) = value {
+            match parse_date(value) {
+                Some(date) => *target = date,
+                None => return Err(invalid(field, text(&lang, "form.date_invalid"), &form)),
+            }
+        }
+    }
+    match Documents::update_fields(&state, &user, &document, update).await {
+        Ok(_) => Ok((Toast::success(text(&lang, "edit.saved")), renox::HxRefresh).into_response()),
+        Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, message)) => {
+            Err(invalid("document", message, &form))
+        }
+        Err(other) => Err(other),
+    }
+}
+
+/// What the correction form needs.
+#[derive(Serialize, ViewData)]
+#[view(template = "wl-documents/document_correction.html")]
+pub(crate) struct CorrectionPage {
+    tx: Texts,
+    document: DocumentFields,
+}
+
+/// `GET /documents/{id}/correction`: the correction form, prefilled with the
+/// accepted document's values.
+async fn correction_page(
+    State(db): State<Db>,
+    user: AuthUser,
+    lang: Lang,
+    Found(document): Found<Document>,
+) -> Result<View> {
+    Ok(View::typed(CorrectionPage {
+        tx: texts::all(&lang),
+        document: document_fields(&db, &user, &lang, &document).await?,
+    }))
+}
+
+/// The correction form (multipart).
+#[derive(Deserialize, Serialize, Validate, Debug, Default)]
+pub struct CorrectionForm {
+    /// The title.
+    #[validate(max = 255)]
+    #[serde(default)]
+    pub title: Option<String>,
+    /// The issuing authority.
+    #[validate(max = 255)]
+    #[serde(default)]
+    pub authority: Option<String>,
+    /// The number.
+    #[validate(max = 255)]
+    #[serde(default)]
+    pub number: Option<String>,
+    /// The issue date, `YYYY-MM-DD`.
+    #[serde(default)]
+    pub issue_date: Option<String>,
+    /// The expiry date, `YYYY-MM-DD`.
+    #[serde(default)]
+    pub expiry_date: Option<String>,
+    /// A note on the file.
+    #[validate(max = 2000)]
+    #[serde(default)]
+    pub note: Option<String>,
+    /// The corrected file.
+    #[serde(default)]
+    pub files: Vec<Upload>,
+}
+
+/// `POST /documents/{id}/correction`: submits the correction for review. A
+/// missing file, a bad date or a refusal (not accepted, one already open, a
+/// bad file) is a 422.
+async fn correction_store(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(document): Found<Document>,
+    Valid(form): Valid<CorrectionForm>,
+) -> Result<Response> {
+    let Some(file) = form.files.first().cloned() else {
+        return Err(invalid(
+            "files",
+            text(&lang, "correction.file_required"),
+            &form,
+        ));
+    };
+    let mut input = CorrectionInput::new(file);
+    input.title = blank_to_none(form.title.as_deref());
+    input.authority = blank_to_none(form.authority.as_deref());
+    input.number = blank_to_none(form.number.as_deref());
+    input.note = blank_to_none(form.note.as_deref());
+    for (field, value, target) in [
+        ("issue_date", &form.issue_date, &mut input.issue_date),
+        ("expiry_date", &form.expiry_date, &mut input.expiry_date),
+    ] {
+        if let Some(value) = value {
+            match parse_date(value) {
+                Some(date) => *target = date,
+                None => return Err(invalid(field, text(&lang, "form.date_invalid"), &form)),
+            }
+        }
+    }
+    match Documents::correct(&state, &user, &document, input).await? {
+        Ok(_) => Ok((
+            Toast::success(text(&lang, "correction.submitted")),
+            renox::HxRefresh,
+        )
+            .into_response()),
+        Err(refused) => Err(invalid("document", refused.message(&lang), &form)),
+    }
 }
 
 /// The form of the accept action (nothing to fill in).

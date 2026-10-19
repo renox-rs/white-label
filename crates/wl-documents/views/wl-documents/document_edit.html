@@ -1,0 +1,32 @@
+{#- wl-documents: edits one document in place. For a kind that blocks other
+    work the number and expiry date are shown as plain values, with a link to
+    the correction form: they change only through a correction another user
+    accepts. Replace it with resources/views/wl-documents/document_edit.html
+    in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['edit.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['edit.title']" :subtitle="document.kind ~ ' · ' ~ document.subject"/>
+    <rx-form :action="route('wl_documents.update', document.id)" novalidate>
+      <rx-card>
+        <rx-form-errors/>
+        <rx-form-grid columns="2">
+          <rx-input name="title" :label="tx['fields.title']" :value="document.title" required/>
+          <rx-input name="issuing_authority" :label="tx['fields.authority']" :value="document.issuing_authority"/>
+          <rx-input rx-if="not document.blocking" name="number" :label="tx['fields.number']" :value="document.number"/>
+          <rx-input rx-if="not document.blocking" name="issue_date" type="date" :label="tx['fields.issue_date']" :value="document.issue_date"/>
+          <rx-input rx-if="not document.blocking" name="expiry_date" type="date" :label="tx['fields.expiry_date']" :value="document.expiry_date"/>
+        </rx-form-grid>
+        <rx-infolist rx-if="document.blocking" columns="2">
+          <rx-entry :label="tx['fields.number']" :value="document.number" :placeholder="tx['none']"/>
+          <rx-entry :label="tx['fields.issue_date']" :value="document.issue_date" :placeholder="tx['none']"/>
+          <rx-entry :label="tx['fields.expiry_date']" :value="document.expiry_date" :placeholder="tx['none']"/>
+        </rx-infolist>
+        <p rx-if="document.blocking">{{ tx['edit.readonly'] }}</p>
+        <div class="rx-card__footer">
+          <rx-link-button rx-if="document.blocking and document.can_correct" :href="route('wl_documents.correction', document.id)" :label="tx['edit.correct']" variant="plain"/>
+          <rx-button :label="tx['edit.save']"/>
+        </div>
+      </rx-card>
+    </rx-form>
+  </rx-stack>
+</rx-page>

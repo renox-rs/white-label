@@ -7,7 +7,7 @@
   <rx-stack>
     <rx-page-header :title="tx['review.title']" :subtitle="tx['review.subtitle']"/>
     <rx-table :rows="documents" as="document" :key="document.id" :caption="tx['review.title']" card>
-      <rx-column :label="tx['fields.kind']">{{ document.kind }} <rx-badge rx-if="document.priority_since" kind="warning" :text="tx['review.priority']"/></rx-column>
+      <rx-column :label="tx['fields.kind']">{{ document.kind }} <rx-badge rx-if="document.priority_since" kind="warning" :text="tx['review.priority']"/> <rx-badge rx-if="document.correction" kind="info" :text="tx['review.correction']"/></rx-column>
       <rx-column :label="tx['fields.subject']">{{ document.subject }}</rx-column>
       <rx-column :label="tx['fields.title']" hide-narrow>{{ document.title }}</rx-column>
       <rx-column :label="tx['fields.number']" hide-narrow>{{ document.number or tx['none'] }}</rx-column>

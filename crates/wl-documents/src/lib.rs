@@ -81,6 +81,14 @@ const VIEWS: &[(&str, &str)] = &[
         include_str!("../views/wl-documents/override_form.html"),
     ),
     (
+        "wl-documents/document_edit.html",
+        include_str!("../views/wl-documents/document_edit.html"),
+    ),
+    (
+        "wl-documents/document_correction.html",
+        include_str!("../views/wl-documents/document_correction.html"),
+    ),
+    (
         "wl-documents/sops.html",
         include_str!("../views/wl-documents/sops.html"),
     ),
