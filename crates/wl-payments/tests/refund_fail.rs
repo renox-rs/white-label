@@ -11,6 +11,7 @@ use wl_kernel::payments::{
     ReversalReason, payment_recorder,
 };
 use wl_kernel::{PartyId, Subject};
+use wl_payments::followup::FollowupKind;
 use wl_payments::gateway::{FakeGateway, RefundOutcome};
 use wl_payments::notices::{REFUND_DELAYED, REFUND_FAILED};
 use wl_payments::refund::{DECLINED_BY_GATEWAY, RefundStatus, gateway_refund_outcome};
@@ -401,7 +402,12 @@ async fn a_bank_return_fails_a_paid_refund_and_restores_the_credit() {
 
     // The people concerned are told by the refund notices only.
     assert!(t.notices.of_type("payments.payment_returned").is_empty());
-    assert_eq!(FollowupTask::query().count(t.db()).await.unwrap(), 0);
+    // The one task is the accountant's to change the method (`FIN.RUL.21`: a
+    // returned transfer is not retried); no charge is raised.
+    let tasks = FollowupTask::query().get(t.db()).await.unwrap();
+    assert_eq!(tasks.len(), 1);
+    assert_eq!(tasks[0].kind, FollowupKind::ChangeMethod);
+    assert_eq!(tasks[0].refund_id, Some(paid.id));
     let staff = t.notices.of_type(REFUND_FAILED);
     assert_eq!(staff.len(), 1);
     assert!(users(&staff[0].recipients).contains(&accountant.id));
