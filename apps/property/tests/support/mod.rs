@@ -10,8 +10,8 @@ use std::sync::{Arc, Mutex};
 
 use property::permissions as perm;
 use property::{
-    Building, Lease, LeaseActivated, LeaseAmended, LeaseCancelled, LeaseNoticeWithdrawn,
-    LeaseStatus, LeaseTerminated, NewBuilding, NewLease, NewUnit, Unit, UnitUse, create_building,
+    Building, Lease, LeaseActivated, LeaseAmended, LeaseCancelled, LeaseForceTerminated,
+    LeaseNoticeWithdrawn, LeaseStatus, LeaseTerminated, NewBuilding, NewLease, NewUnit, Unit, UnitUse, create_building,
     create_unit,
 };
 use renox::auth::permissions::{self, Scope};
@@ -562,7 +562,11 @@ impl TaskCreator for Tasks {
 
 /// An in-memory cheque register.
 #[derive(Clone, Default)]
-pub struct ChequeBook(Arc<Mutex<Vec<ChequeSummary>>>, Arc<Mutex<Vec<ReturnCheques>>>);
+pub struct ChequeBook(
+    Arc<Mutex<Vec<ChequeSummary>>>,
+    Arc<Mutex<Vec<ReturnCheques>>>,
+    Arc<Mutex<Vec<ChequeId>>>,
+);
 
 impl ChequeBook {
     /// The requests to hand cheques back, oldest first.
@@ -573,6 +577,11 @@ impl ChequeBook {
     /// Every cheque.
     pub fn all(&self) -> Vec<ChequeSummary> {
         self.0.lock().unwrap().clone()
+    }
+
+    /// The cheques held as evidence.
+    pub fn evidence(&self) -> Vec<ChequeId> {
+        self.2.lock().unwrap().clone()
     }
 
     /// Cheque `id`, as stored now.
@@ -725,6 +734,25 @@ impl Cheques for ChequeBook {
                 returned,
                 skipped,
             }))
+        })
+    }
+
+    fn hold_as_evidence<'a>(
+        &'a self,
+        _state: &'a AppState,
+        cheques: Vec<ChequeId>,
+        _note: String,
+    ) -> ChequeFuture<'a, Vec<ChequeId>> {
+        Box::pin(async move {
+            let mut marked = Vec::new();
+            for id in cheques {
+                let status = self.get(id).status;
+                if matches!(status, ChequeStatus::Received | ChequeStatus::DueForDeposit) {
+                    self.2.lock().unwrap().push(id);
+                    marked.push(id);
+                }
+            }
+            Ok(marked)
         })
     }
 
@@ -1280,6 +1308,7 @@ struct Fakes {
     withdrawn: Recorded<LeaseNoticeWithdrawn>,
     terminated: Recorded<LeaseTerminated>,
     amended: Recorded<LeaseAmended>,
+    forced: Recorded<LeaseForceTerminated>,
     parties: Parties,
     docs: Docs,
     notices: Recording,
@@ -1309,6 +1338,7 @@ impl Module for Fakes {
         record(app, &self.withdrawn);
         record(app, &self.terminated);
         record(app, &self.amended);
+        record(app, &self.forced);
     }
 }
 
@@ -1344,6 +1374,8 @@ pub struct Booted {
     pub terminated: Recorded<LeaseTerminated>,
     /// The `LeaseAmended` events.
     pub amended: Recorded<LeaseAmended>,
+    /// The `LeaseForceTerminated` events.
+    pub forced: Recorded<LeaseForceTerminated>,
 }
 
 /// The tenant of the tests: a person.
@@ -1549,6 +1581,7 @@ pub async fn boot() -> Booted {
         withdrawn: Recorded::default(),
         terminated: Recorded::default(),
         amended: Recorded::default(),
+        forced: Recorded::default(),
         parties: Parties::default(),
         docs: Docs::default(),
         notices: Recording::default(),
@@ -1564,6 +1597,7 @@ pub async fn boot() -> Booted {
         fakes.withdrawn.clone(),
         fakes.terminated.clone(),
         fakes.amended.clone(),
+        fakes.forced.clone(),
     );
     let handles = (
         fakes.parties.clone(),
@@ -1611,7 +1645,9 @@ pub async fn boot() -> Booted {
         .await
         .unwrap();
     // The admin role the tasks fall back to.
-    permissions::define_role(app.db(), wl_kernel::COMPANY_ADMIN_ROLE, &manager)
+    let mut admin = manager.to_vec();
+    admin.push(perm::LEASES_FORCE_TERMINATE);
+    permissions::define_role(app.db(), wl_kernel::COMPANY_ADMIN_ROLE, &admin)
         .await
         .unwrap();
     let (parties, docs, notices, tasks, cheques, deposits, invoices, refunds) = handles;
@@ -1633,6 +1669,7 @@ pub async fn boot() -> Booted {
         withdrawn: logs.2,
         terminated: logs.3,
         amended: logs.4,
+        forced: logs.5,
     }
 }
 
