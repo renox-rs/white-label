@@ -1,0 +1,1350 @@
+//! Booting Property in a `TestApp` with auth, the kernel, and fakes for the
+//! contracts it calls: the party directory, the document guard, the invoicer,
+//! the cheque register, the deposit book, the payment recorder, the task
+//! creator and the notifier. Each fake records what it is asked for.
+
+#![allow(dead_code)]
+
+use std::collections::BTreeMap;
+use std::sync::{Arc, Mutex};
+
+use property::permissions as perm;
+use property::{
+    Building, Lease, LeaseActivated, LeaseCancelled, LeaseStatus, NewBuilding, NewLease, NewUnit,
+    Unit, UnitUse, create_building, create_unit,
+};
+use renox::auth::permissions::{self, Scope};
+use renox::auth::{Auth, Permissions};
+use renox::chrono::{Duration, NaiveDate};
+use renox::prelude::*;
+use renox::testing::TestApp;
+use wl_kernel::cheques::{
+    ChequeFuture, ChequeId, ChequeSchedule, ChequeStatus, ChequeSummary, Cheques, RegisterCheque,
+    ReturnCheques, ReturnedCheques, provide_cheques,
+};
+use wl_kernel::deposits::{
+    CancelSettlement, DepositFuture, Deposits, HeldDeposit, SettlementStarted, provide_deposits,
+};
+use wl_kernel::documents::{
+    BlockEntry, BlockFailure, BlockMode, BlockRefusal, CheckOutcome, DocumentFuture,
+    DocumentGuard, FlagFailure, InvalidReason, OverrideMode, RecordFlag, Validity, block_subjects,
+    provide_guard, today,
+};
+use wl_kernel::invoicing::{
+    CreditNoteId, InvoiceDraft, InvoiceFuture, InvoiceId, InvoiceStatus, InvoiceSummary, Invoicer,
+    ReopenReason, provide_invoicer,
+};
+use wl_kernel::notify::{MessageId, Notifier, NotifyFuture, NotifyRequest, provide_notifier};
+use wl_kernel::parties::{
+    PartyDirectory, PartyFuture, PartyKind, PartyStatus, PartySummary, provide_directory,
+};
+use wl_kernel::payments::{
+    PaymentFuture, PaymentId, PaymentRecorder, PaymentSummary, RecordPayment, RefundId,
+    RefundRequest, ReversalReason, AllocationTarget, provide_payment_recorder,
+};
+use wl_kernel::tickets::{
+    Assignee, OpenTicket, TaskCreator, TicketFuture, TicketId, TicketRef, provide_task_creator,
+};
+use wl_kernel::{PartyId, Subject};
+
+/// The pages extend the app's layout; a package test has no app, so it
+/// brings the smallest one.
+const LAYOUT: &str = r#"<!doctype html>
+<html><body><rx-outlet name="content"/></body></html>
+"#;
+
+/// A client with one default legal entity and no optional module.
+const CLIENT: &str = r#"
+[client]
+name = "Palm Grove Properties LLC"
+app = "property"
+
+[modules]
+enabled = []
+
+[[legal_entities]]
+code = "PGP"
+name_en = "Palm Grove Properties LLC"
+default = true
+"#;
+
+/// Today plus `days` (negative for the past), in Asia/Dubai.
+pub fn day(days: i64) -> NaiveDate {
+    today() + Duration::days(days)
+}
+
+/// A date in 2027.
+pub fn d(month: u32, day: u32) -> NaiveDate {
+    NaiveDate::from_ymd_opt(2027, month, day).unwrap()
+}
+
+/// AED in fils.
+pub const fn aed(dirhams: i64) -> i64 {
+    dirhams * 100
+}
+
+// ---- the party directory -------------------------------------------------
+
+/// The parties the tests know.
+#[derive(Clone, Default)]
+pub struct Parties(Arc<Mutex<BTreeMap<i64, PartySummary>>>);
+
+impl Parties {
+    /// Adds party `id`, a person or a company.
+    pub fn add(&self, id: i64, name: &str, kind: PartyKind) {
+        self.0.lock().unwrap().insert(
+            id,
+            PartySummary {
+                id: PartyId(id),
+                code: format!("P-{id:05}"),
+                kind,
+                display_name: name.to_owned(),
+                status: PartyStatus::Active,
+                display_block_reason: None,
+            },
+        );
+    }
+}
+
+impl PartyDirectory for Parties {
+    fn find<'a>(&'a self, _db: &'a Db, party: PartyId) -> PartyFuture<'a, Option<PartySummary>> {
+        Box::pin(async move { Ok(self.0.lock().unwrap().get(&party.0).cloned()) })
+    }
+
+    fn find_by_code<'a>(
+        &'a self,
+        _db: &'a Db,
+        code: &'a str,
+    ) -> PartyFuture<'a, Option<PartySummary>> {
+        Box::pin(async move {
+            Ok(self
+                .0
+                .lock()
+                .unwrap()
+                .values()
+                .find(|p| p.code == code)
+                .cloned())
+        })
+    }
+
+    fn display_name<'a>(
+        &'a self,
+        _db: &'a Db,
+        party: PartyId,
+        _lang: &'a str,
+    ) -> PartyFuture<'a, Option<String>> {
+        Box::pin(async move {
+            Ok(self
+                .0
+                .lock()
+                .unwrap()
+                .get(&party.0)
+                .map(|p| p.display_name.clone()))
+        })
+    }
+
+    fn status<'a>(&'a self, _db: &'a Db, party: PartyId) -> PartyFuture<'a, Option<PartyStatus>> {
+        Box::pin(async move { Ok(self.0.lock().unwrap().get(&party.0).map(|p| p.status)) })
+    }
+}
+
+// ---- the document guard --------------------------------------------------
+
+/// A document guard that asks the vertical's own providers whose documents a
+/// transition needs, and holds the entries (`blocks`) and the accepted
+/// documents of the test.
+#[derive(Clone, Default)]
+pub struct Docs {
+    entries: Arc<Mutex<Vec<BlockEntry>>>,
+    accepted: Arc<Mutex<Vec<(String, String)>>>,
+}
+
+impl Docs {
+    /// A kind `kind` blocks the transition `guarded` (`lease.activate`).
+    pub fn block(&self, kind: &str, guarded: &str) {
+        self.block_if(kind, guarded, None);
+    }
+
+    /// Like [`Docs::block`], for the records whose condition field has one of
+    /// `values`.
+    pub fn block_if(&self, kind: &str, guarded: &str, condition: Option<(&str, &[&str])>) {
+        self.entries.lock().unwrap().push(BlockEntry {
+            kind: kind.to_owned(),
+            guarded: guarded.to_owned(),
+            mode: BlockMode::Block,
+            override_mode: OverrideMode::Never,
+            condition: condition.map(|(field, values)| {
+                wl_kernel::documents::BlockCondition::new(field, values.iter().copied())
+            }),
+            locked: false,
+        });
+    }
+
+    /// `subject` has an accepted document of `kind`.
+    pub fn accept(&self, subject: &Subject, kind: &str) {
+        self.accepted
+            .lock()
+            .unwrap()
+            .push((subject.to_string(), kind.to_owned()));
+    }
+
+    fn has(&self, subject: &Subject, kind: &str) -> bool {
+        self.accepted
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(s, k)| *s == subject.to_string() && k == kind)
+    }
+}
+
+impl DocumentGuard for Docs {
+    fn blocks_for<'a>(
+        &'a self,
+        _db: &'a Db,
+        guarded: &'a str,
+    ) -> DocumentFuture<'a, Vec<BlockEntry>> {
+        Box::pin(async move {
+            Ok(self
+                .entries
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|e| e.guarded == guarded)
+                .cloned()
+                .collect())
+        })
+    }
+
+    fn is_valid<'a>(
+        &'a self,
+        _db: &'a Db,
+        subject: &'a Subject,
+        kind: &'a str,
+        _on_date: NaiveDate,
+    ) -> DocumentFuture<'a, Validity> {
+        Box::pin(async move {
+            Ok(if self.has(subject, kind) {
+                Validity::Valid {
+                    document: None,
+                    expires_on: None,
+                }
+            } else {
+                Validity::Invalid {
+                    reason: InvalidReason::Missing,
+                    document: None,
+                    expired_on: None,
+                    pending: None,
+                }
+            })
+        })
+    }
+
+    fn check_as<'a>(
+        &'a self,
+        state: &'a AppState,
+        guarded: &'a str,
+        record_id: i64,
+        _on_date: NaiveDate,
+        _actor: Option<i64>,
+    ) -> DocumentFuture<'a, std::result::Result<CheckOutcome, BlockRefusal>> {
+        Box::pin(async move {
+            let entries: Vec<BlockEntry> = self
+                .entries
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|e| e.guarded == guarded)
+                .cloned()
+                .collect();
+            let Some(provider) = block_subjects(guarded) else {
+                return Ok(Ok(CheckOutcome::default()));
+            };
+            let mut failures = Vec::new();
+            for entry in entries {
+                for subject in provider.subjects(state, &entry, record_id).await? {
+                    if self.has(&subject, &entry.kind) {
+                        continue;
+                    }
+                    failures.push(BlockFailure {
+                        message: format!("{} is missing for {subject}", entry.kind),
+                        entry: entry.clone(),
+                        subject,
+                        validity: Validity::Invalid {
+                            reason: InvalidReason::Missing,
+                            document: None,
+                            expired_on: None,
+                            pending: None,
+                        },
+                    });
+                }
+            }
+            if failures.is_empty() {
+                Ok(Ok(CheckOutcome::default()))
+            } else {
+                Ok(Err(BlockRefusal {
+                    guarded: guarded.to_owned(),
+                    record_id,
+                    failures,
+                }))
+            }
+        })
+    }
+
+    fn record_flags<'a>(
+        &'a self,
+        _db: &'a Db,
+        _guarded: &'a str,
+        _record_id: i64,
+        _flags: &'a [FlagFailure],
+    ) -> DocumentFuture<'a, Vec<RecordFlag>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
+    fn flags_for<'a>(
+        &'a self,
+        _db: &'a Db,
+        _record_type: &'a str,
+        _record_id: i64,
+    ) -> DocumentFuture<'a, Vec<RecordFlag>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
+    fn open_flag_counts<'a>(
+        &'a self,
+        _db: &'a Db,
+        _record_type: &'a str,
+        _ids: &'a [i64],
+    ) -> DocumentFuture<'a, BTreeMap<i64, u64>> {
+        Box::pin(async { Ok(BTreeMap::new()) })
+    }
+
+    fn review_flag<'a>(
+        &'a self,
+        _db: &'a Db,
+        _flag_id: i64,
+        _reviewer: i64,
+        _note: &'a str,
+    ) -> DocumentFuture<'a, RecordFlag> {
+        Box::pin(async { Err(Error::NotFound) })
+    }
+}
+
+// ---- the notifier and the tasks -------------------------------------------
+
+/// Records what the notifier is asked for.
+#[derive(Clone, Default)]
+pub struct Recording(Arc<Mutex<Vec<NotifyRequest>>>);
+
+impl Recording {
+    /// Every request so far.
+    pub fn all(&self) -> Vec<NotifyRequest> {
+        self.0.lock().unwrap().clone()
+    }
+
+    /// The requests of type `key`.
+    pub fn of_type(&self, key: &str) -> Vec<NotifyRequest> {
+        self.all().into_iter().filter(|r| r.type_key == key).collect()
+    }
+}
+
+impl Notifier for Recording {
+    fn notify<'a>(
+        &'a self,
+        _state: &'a AppState,
+        request: NotifyRequest,
+    ) -> NotifyFuture<'a, Vec<MessageId>> {
+        Box::pin(async move {
+            self.0.lock().unwrap().push(request);
+            Ok(vec![MessageId(1)])
+        })
+    }
+}
+
+/// A task a rule opened.
+#[derive(Debug, Clone)]
+pub struct Task {
+    /// The ticket's id.
+    pub id: i64,
+    /// The title.
+    pub title: String,
+    /// The description.
+    pub description: String,
+    /// The key it is found by while open.
+    pub key: Option<String>,
+    /// The record it is about.
+    pub subject: Subject,
+    /// Who it is assigned to.
+    pub assignee: Option<Assignee>,
+    /// Whether it is still open.
+    pub open: bool,
+    /// How it was completed.
+    pub note: String,
+}
+
+/// The tasks the vertical opens.
+#[derive(Clone, Default)]
+pub struct Tasks(Arc<Mutex<Vec<Task>>>);
+
+impl Tasks {
+    /// Every task, oldest first.
+    pub fn all(&self) -> Vec<Task> {
+        self.0.lock().unwrap().clone()
+    }
+
+    /// The open tasks.
+    pub fn open(&self) -> Vec<Task> {
+        self.all().into_iter().filter(|t| t.open).collect()
+    }
+
+    /// The tasks whose key starts with `prefix`.
+    pub fn with_key(&self, prefix: &str) -> Vec<Task> {
+        self.all()
+            .into_iter()
+            .filter(|t| t.key.as_deref().is_some_and(|k| k.starts_with(prefix)))
+            .collect()
+    }
+}
+
+impl TaskCreator for Tasks {
+    fn open<'a>(
+        &'a self,
+        _state: &'a AppState,
+        ticket: OpenTicket,
+    ) -> TicketFuture<'a, Option<TicketRef>> {
+        Box::pin(async move {
+            let mut tasks = self.0.lock().unwrap();
+            let id = i64::try_from(tasks.len()).unwrap_or(0) + 1;
+            tasks.push(Task {
+                id,
+                title: ticket.title.clone(),
+                description: ticket.description.clone(),
+                key: ticket.source_key.clone(),
+                subject: ticket.subject.clone(),
+                assignee: ticket.assignee,
+                open: true,
+                note: String::new(),
+            });
+            Ok(Some(TicketRef {
+                id: TicketId(id),
+                number: format!("TKT-{id}"),
+            }))
+        })
+    }
+
+    fn find_open<'a>(
+        &'a self,
+        _state: &'a AppState,
+        source_key: &'a str,
+    ) -> TicketFuture<'a, Option<TicketRef>> {
+        Box::pin(async move {
+            Ok(self
+                .0
+                .lock()
+                .unwrap()
+                .iter()
+                .find(|t| t.open && t.key.as_deref() == Some(source_key))
+                .map(|t| TicketRef {
+                    id: TicketId(t.id),
+                    number: format!("TKT-{}", t.id),
+                }))
+        })
+    }
+
+    fn complete<'a>(
+        &'a self,
+        _state: &'a AppState,
+        ticket: TicketId,
+        note: &'a str,
+    ) -> TicketFuture<'a, bool> {
+        Box::pin(async move {
+            let mut tasks = self.0.lock().unwrap();
+            match tasks.iter_mut().find(|t| t.id == ticket.0 && t.open) {
+                Some(task) => {
+                    task.open = false;
+                    task.note = note.to_owned();
+                    Ok(true)
+                }
+                None => Ok(false),
+            }
+        })
+    }
+}
+
+// ---- the cheque register --------------------------------------------------
+
+/// An in-memory cheque register.
+#[derive(Clone, Default)]
+pub struct ChequeBook(Arc<Mutex<Vec<ChequeSummary>>>, Arc<Mutex<Vec<ReturnCheques>>>);
+
+impl ChequeBook {
+    /// The requests to hand cheques back, oldest first.
+    pub fn returns(&self) -> Vec<ReturnCheques> {
+        self.1.lock().unwrap().clone()
+    }
+
+    /// Every cheque.
+    pub fn all(&self) -> Vec<ChequeSummary> {
+        self.0.lock().unwrap().clone()
+    }
+
+    /// Cheque `id`, as stored now.
+    pub fn get(&self, id: ChequeId) -> ChequeSummary {
+        self.all().into_iter().find(|c| c.id == id).expect("a cheque")
+    }
+
+    /// Moves cheque `id` to `status` (the register's own transitions).
+    pub fn set_status(&self, id: ChequeId, status: ChequeStatus) {
+        for cheque in self.0.lock().unwrap().iter_mut() {
+            if cheque.id == id {
+                cheque.status = status;
+            }
+        }
+    }
+
+    /// Adds a cheque received with `agreement`, linked to `links`.
+    pub fn receive(
+        &self,
+        party: PartyId,
+        agreement: &Subject,
+        number: &str,
+        date: NaiveDate,
+        amount: i64,
+        links: &[Subject],
+    ) -> ChequeId {
+        let mut all = self.0.lock().unwrap();
+        let id = ChequeId(i64::try_from(all.len()).unwrap_or(0) + 1);
+        all.push(ChequeSummary {
+            id,
+            direction: wl_kernel::payments::Direction::In,
+            party,
+            legal_entity_id: 1,
+            bank: "ENBD".to_owned(),
+            number: number.to_owned(),
+            date,
+            amount,
+            honoured_amount: 0,
+            open_amount: amount,
+            currency: "AED".to_owned(),
+            presentations: 0,
+            status: ChequeStatus::Received,
+            agreement: Some(agreement.clone()),
+            linked: links.to_vec(),
+        });
+        id
+    }
+}
+
+impl Cheques for ChequeBook {
+    fn register<'a>(
+        &'a self,
+        _state: &'a AppState,
+        cheque: RegisterCheque,
+        _by: Option<i64>,
+    ) -> ChequeFuture<'a, ChequeSummary> {
+        Box::pin(async move {
+            let id = self.receive(
+                cheque.party,
+                cheque.agreement.as_ref().expect("an agreement"),
+                &cheque.number,
+                cheque.date,
+                cheque.amount,
+                &cheque.linked,
+            );
+            Ok(self.get(id))
+        })
+    }
+
+    fn register_schedule<'a>(
+        &'a self,
+        _state: &'a AppState,
+        schedule: ChequeSchedule,
+        _by: Option<i64>,
+    ) -> ChequeFuture<'a, Vec<ChequeSummary>> {
+        Box::pin(async move {
+            let ids: Vec<ChequeId> = schedule
+                .cheques
+                .iter()
+                .map(|c| {
+                    self.receive(
+                        schedule.party,
+                        &schedule.agreement,
+                        &c.number,
+                        c.date,
+                        c.amount,
+                        &c.linked,
+                    )
+                })
+                .collect();
+            Ok(ids.into_iter().map(|id| self.get(id)).collect())
+        })
+    }
+
+    fn find<'a>(
+        &'a self,
+        _db: &'a Db,
+        id: ChequeId,
+    ) -> ChequeFuture<'a, Option<ChequeSummary>> {
+        Box::pin(async move { Ok(self.all().into_iter().find(|c| c.id == id)) })
+    }
+
+    fn of_agreement<'a>(
+        &'a self,
+        _db: &'a Db,
+        agreement: &'a Subject,
+    ) -> ChequeFuture<'a, Vec<ChequeSummary>> {
+        Box::pin(async move {
+            Ok(self
+                .all()
+                .into_iter()
+                .filter(|c| c.agreement.as_ref() == Some(agreement))
+                .collect())
+        })
+    }
+
+    fn open_bounced_amount<'a>(
+        &'a self,
+        _db: &'a Db,
+        _party: PartyId,
+        _currency: &'a str,
+    ) -> ChequeFuture<'a, i64> {
+        Box::pin(async { Ok(0) })
+    }
+
+    fn return_undeposited<'a>(
+        &'a self,
+        _state: &'a AppState,
+        request: ReturnCheques,
+        _by: Option<i64>,
+    ) -> ChequeFuture<'a, Option<ReturnedCheques>> {
+        Box::pin(async move {
+            self.1.lock().unwrap().push(request.clone());
+            let mut returned = Vec::new();
+            let mut skipped = Vec::new();
+            for id in &request.cheques {
+                let status = self.get(*id).status;
+                if matches!(status, ChequeStatus::Received | ChequeStatus::DueForDeposit) {
+                    self.set_status(*id, ChequeStatus::Returned);
+                    returned.push(*id);
+                } else {
+                    skipped.push(*id);
+                }
+            }
+            if returned.is_empty() {
+                return Ok(None);
+            }
+            Ok(Some(ReturnedCheques {
+                receipt: format!("HOR-TEST-{}", returned[0]),
+                returned,
+                skipped,
+            }))
+        })
+    }
+}
+
+// ---- the deposit book -----------------------------------------------------
+
+/// An in-memory deposit book.
+#[derive(Clone, Default)]
+pub struct DepositBook {
+    held: Arc<Mutex<BTreeMap<String, HeldDeposit>>>,
+    settled: Arc<Mutex<Vec<(CancelSettlement, SettlementStarted)>>>,
+}
+
+impl DepositBook {
+    /// `amount` fils are held for `source`.
+    pub fn hold(&self, source: &Subject, party: PartyId, amount: i64) {
+        let mut held = self.held.lock().unwrap();
+        let id = i64::try_from(held.len()).unwrap_or(0) + 1;
+        held.insert(
+            source.to_string(),
+            HeldDeposit {
+                deposit: wl_kernel::payments::DepositId(id),
+                party,
+                required: amount,
+                held: amount,
+                currency: "AED".to_owned(),
+            },
+        );
+    }
+
+    /// The settlements started.
+    pub fn settled(&self) -> Vec<(CancelSettlement, SettlementStarted)> {
+        self.settled.lock().unwrap().clone()
+    }
+}
+
+impl Deposits for DepositBook {
+    fn held_for<'a>(
+        &'a self,
+        _db: &'a Db,
+        source: &'a Subject,
+    ) -> DepositFuture<'a, Option<HeldDeposit>> {
+        Box::pin(async move { Ok(self.held.lock().unwrap().get(&source.to_string()).cloned()) })
+    }
+
+    fn settle_cancelled<'a>(
+        &'a self,
+        _state: &'a AppState,
+        request: CancelSettlement,
+        _by: Option<i64>,
+    ) -> DepositFuture<'a, Option<SettlementStarted>> {
+        Box::pin(async move {
+            let Some(held) = self.held.lock().unwrap().remove(&request.source.to_string()) else {
+                return Ok(None);
+            };
+            let started = SettlementStarted {
+                deposit: held.deposit,
+                held: held.held,
+                forfeit: request.forfeit,
+                version: 1,
+            };
+            self.settled.lock().unwrap().push((request, started.clone()));
+            Ok(Some(started))
+        })
+    }
+}
+
+// ---- the invoicer -----------------------------------------------------------
+
+/// An invoice of the fake invoicer.
+#[derive(Debug, Clone)]
+pub struct FakeInvoice {
+    /// What it was drafted from.
+    pub draft: InvoiceDraft,
+    /// Its summary.
+    pub summary: InvoiceSummary,
+    /// What is allocated to it: the source and the fils.
+    pub allocations: Vec<(Subject, i64)>,
+}
+
+/// An in-memory invoicer.
+#[derive(Clone, Default)]
+pub struct InvoiceDesk(Arc<Mutex<BTreeMap<i64, FakeInvoice>>>);
+
+impl InvoiceDesk {
+    /// Every invoice.
+    pub fn all(&self) -> Vec<FakeInvoice> {
+        self.0.lock().unwrap().values().cloned().collect()
+    }
+
+    /// Invoice `id`, if it still exists.
+    pub fn get(&self, id: i64) -> Option<FakeInvoice> {
+        self.0.lock().unwrap().get(&id).cloned()
+    }
+
+    /// Issues draft `id`.
+    pub fn issue(&self, id: i64) {
+        if let Some(invoice) = self.0.lock().unwrap().get_mut(&id) {
+            invoice.summary.status = InvoiceStatus::Issued;
+        }
+    }
+
+    /// `amount` fils of `source` are allocated to invoice `id`.
+    pub fn pay(&self, id: i64, source: &Subject, amount: i64) {
+        if let Some(invoice) = self.0.lock().unwrap().get_mut(&id) {
+            invoice.allocations.push((source.clone(), amount));
+            invoice.summary.balance -= amount;
+            invoice.summary.status = if invoice.summary.balance <= 0 {
+                InvoiceStatus::Paid
+            } else {
+                InvoiceStatus::PartiallyPaid
+            };
+        }
+    }
+}
+
+impl Invoicer for InvoiceDesk {
+    fn draft<'a>(
+        &'a self,
+        _db: &'a Db,
+        draft: InvoiceDraft,
+    ) -> InvoiceFuture<'a, Option<InvoiceId>> {
+        Box::pin(async move {
+            let mut all = self.0.lock().unwrap();
+            let id = i64::try_from(all.len()).unwrap_or(0) + 1;
+            let gross: i64 = draft.lines.iter().map(|l| l.gross()).sum();
+            let summary = InvoiceSummary {
+                id: InvoiceId(id),
+                number: None,
+                status: InvoiceStatus::Draft,
+                party: draft.party,
+                legal_entity_id: draft.legal_entity_id,
+                currency: draft.currency.clone(),
+                gross_total: gross,
+                balance: gross,
+                due_date: draft.due_date,
+                disputed: false,
+                chasing_paused_until: None,
+            };
+            all.insert(
+                id,
+                FakeInvoice {
+                    draft,
+                    summary,
+                    allocations: Vec::new(),
+                },
+            );
+            Ok(Some(InvoiceId(id)))
+        })
+    }
+
+    fn discard_draft<'a>(&'a self, _db: &'a Db, id: InvoiceId) -> InvoiceFuture<'a, bool> {
+        Box::pin(async move {
+            let mut all = self.0.lock().unwrap();
+            let is_draft = all
+                .get(&id.0)
+                .is_some_and(|i| i.summary.status == InvoiceStatus::Draft);
+            if is_draft {
+                all.remove(&id.0);
+            }
+            Ok(is_draft)
+        })
+    }
+
+    fn find<'a>(
+        &'a self,
+        _db: &'a Db,
+        id: InvoiceId,
+    ) -> InvoiceFuture<'a, Option<InvoiceSummary>> {
+        Box::pin(async move { Ok(self.get(id.0).map(|i| i.summary)) })
+    }
+
+    fn allocate<'a>(
+        &'a self,
+        _state: &'a AppState,
+        id: InvoiceId,
+        source: Subject,
+        amount: i64,
+    ) -> InvoiceFuture<'a, ()> {
+        Box::pin(async move {
+            self.pay(id.0, &source, amount);
+            Ok(())
+        })
+    }
+
+    fn unallocate_all<'a>(
+        &'a self,
+        _state: &'a AppState,
+        id: InvoiceId,
+        _reason: ReopenReason,
+    ) -> InvoiceFuture<'a, Vec<(Subject, i64)>> {
+        Box::pin(async move {
+            let mut all = self.0.lock().unwrap();
+            let Some(invoice) = all.get_mut(&id.0) else {
+                return Ok(Vec::new());
+            };
+            let taken = std::mem::take(&mut invoice.allocations);
+            invoice.summary.balance = invoice.summary.gross_total;
+            invoice.summary.status = InvoiceStatus::Issued;
+            Ok(taken)
+        })
+    }
+
+    fn credit_in_full<'a>(
+        &'a self,
+        _state: &'a AppState,
+        invoice: InvoiceId,
+        _reason: String,
+        _by: Option<i64>,
+    ) -> InvoiceFuture<'a, CreditNoteId> {
+        Box::pin(async move {
+            let mut all = self.0.lock().unwrap();
+            let Some(found) = all.get_mut(&invoice.0) else {
+                return Err(Error::NotFound);
+            };
+            if !found.allocations.is_empty() {
+                return Err(Error::Status(
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    "something is allocated".to_owned(),
+                ));
+            }
+            found.summary.status = InvoiceStatus::Credited;
+            found.summary.balance = 0;
+            Ok(CreditNoteId(invoice.0))
+        })
+    }
+}
+
+// ---- the payment recorder -----------------------------------------------------
+
+/// A payment recorder that only takes refund requests.
+#[derive(Clone, Default)]
+pub struct Refunds(Arc<Mutex<Vec<RefundRequest>>>);
+
+impl Refunds {
+    /// The refunds asked for.
+    pub fn asked(&self) -> Vec<RefundRequest> {
+        self.0.lock().unwrap().clone()
+    }
+}
+
+/// The 422 of the fake's unsupported calls.
+fn unsupported() -> Error {
+    Error::Status(
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "the test recorder takes refund requests only".to_owned(),
+    )
+}
+
+impl PaymentRecorder for Refunds {
+    fn record<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _payment: RecordPayment,
+        _by: Option<i64>,
+    ) -> PaymentFuture<'a, PaymentSummary> {
+        Box::pin(async { Err(unsupported()) })
+    }
+
+    fn allocate<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _payment: PaymentId,
+        _target: AllocationTarget,
+        _amount: i64,
+    ) -> PaymentFuture<'a, ()> {
+        Box::pin(async { Err(unsupported()) })
+    }
+
+    fn reverse<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _payment: PaymentId,
+        _reason: ReversalReason,
+        _note: Option<String>,
+        _by: Option<i64>,
+    ) -> PaymentFuture<'a, ()> {
+        Box::pin(async { Err(unsupported()) })
+    }
+
+    fn find<'a>(
+        &'a self,
+        _db: &'a Db,
+        _id: PaymentId,
+    ) -> PaymentFuture<'a, Option<PaymentSummary>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    fn credit_balance<'a>(
+        &'a self,
+        _db: &'a Db,
+        _party: PartyId,
+        _currency: &'a str,
+    ) -> PaymentFuture<'a, i64> {
+        Box::pin(async { Ok(0) })
+    }
+
+    fn payments_for<'a>(
+        &'a self,
+        _db: &'a Db,
+        _prepaid: &'a Subject,
+    ) -> PaymentFuture<'a, Vec<PaymentSummary>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
+    fn request_refund<'a>(
+        &'a self,
+        _state: &'a AppState,
+        request: RefundRequest,
+        _by: Option<i64>,
+    ) -> PaymentFuture<'a, RefundId> {
+        Box::pin(async move {
+            let mut all = self.0.lock().unwrap();
+            all.push(request);
+            Ok(RefundId(i64::try_from(all.len()).unwrap_or(0)))
+        })
+    }
+}
+
+// ---- the booted app -----------------------------------------------------------
+
+/// An event log.
+#[derive(Clone)]
+pub struct Recorded<E>(pub Arc<Mutex<Vec<E>>>);
+
+impl<E: Clone> Recorded<E> {
+    /// What was recorded.
+    pub fn all(&self) -> Vec<E> {
+        self.0.lock().unwrap().clone()
+    }
+}
+
+impl<E> Default for Recorded<E> {
+    fn default() -> Self {
+        Recorded(Arc::new(Mutex::new(Vec::new())))
+    }
+}
+
+/// Records `event`s of type `E` into `log`.
+fn record<E: Event + Clone + Send + Sync + 'static>(app: &mut Registry, log: &Recorded<E>) {
+    let log = log.0.clone();
+    app.listen(move |event: E, _state: AppState| {
+        let log = log.clone();
+        async move {
+            log.lock().unwrap().push(event);
+            Ok(())
+        }
+    });
+}
+
+/// Provides the fakes.
+struct Fakes {
+    activated: Recorded<LeaseActivated>,
+    cancelled: Recorded<LeaseCancelled>,
+    parties: Parties,
+    docs: Docs,
+    notices: Recording,
+    tasks: Tasks,
+    cheques: ChequeBook,
+    deposits: DepositBook,
+    invoices: InvoiceDesk,
+    refunds: Refunds,
+}
+
+impl Module for Fakes {
+    fn name(&self) -> &'static str {
+        "fakes"
+    }
+
+    fn register(&self, app: &mut Registry) {
+        provide_directory(app, self.parties.clone());
+        provide_guard(app, self.docs.clone());
+        provide_notifier(app, self.notices.clone());
+        provide_task_creator(app, self.tasks.clone());
+        provide_cheques(app, self.cheques.clone());
+        provide_deposits(app, self.deposits.clone());
+        provide_invoicer(app, self.invoices.clone());
+        provide_payment_recorder(app, self.refunds.clone());
+        record(app, &self.activated);
+        record(app, &self.cancelled);
+    }
+}
+
+/// The app under test and its fakes.
+pub struct Booted {
+    /// The app.
+    pub app: TestApp,
+    /// Keeps the views directory alive.
+    _views: tempfile::TempDir,
+    /// The parties.
+    pub parties: Parties,
+    /// The document guard.
+    pub docs: Docs,
+    /// What the notifier was asked for.
+    pub notices: Recording,
+    /// The tasks opened.
+    pub tasks: Tasks,
+    /// The cheque register.
+    pub cheques: ChequeBook,
+    /// The deposit book.
+    pub deposits: DepositBook,
+    /// The invoicer.
+    pub invoices: InvoiceDesk,
+    /// The refunds asked for.
+    pub refunds: Refunds,
+    /// `LeaseActivated`.
+    pub activated: Recorded<LeaseActivated>,
+    /// `LeaseCancelled`.
+    pub cancelled: Recorded<LeaseCancelled>,
+}
+
+/// The tenant of the tests: a person.
+pub const TENANT: PartyId = PartyId(7);
+
+/// A company tenant.
+pub const COMPANY: PartyId = PartyId(8);
+
+impl Booted {
+    /// The database.
+    pub fn db(&self) -> &Db {
+        self.app.db()
+    }
+
+    /// The app state.
+    pub fn state(&self) -> &AppState {
+        self.app.state()
+    }
+
+    /// A user with no role.
+    pub async fn user(&self, name: &str) -> User {
+        let email = format!("{}@example.com", name.to_lowercase());
+        User::register(self.db(), name, &email, "password123")
+            .await
+            .unwrap()
+    }
+
+    /// A user holding `role` in the building `building_id`.
+    pub async fn user_in(&self, name: &str, role: &str, building_id: i64) -> User {
+        let user = self.user(name).await;
+        user.assign_role_in(self.db(), role, &Building::scope_of(building_id))
+            .await
+            .unwrap();
+        user
+    }
+
+    /// A user holding `role` everywhere.
+    pub async fn user_with(&self, name: &str, role: &str) -> User {
+        let user = self.user(name).await;
+        user.assign_role(self.db(), role).await.unwrap();
+        user
+    }
+
+    /// A building `TWR-A`.
+    pub async fn building(&self) -> Building {
+        self.building_coded("TWR-A").await
+    }
+
+    /// A building with `code`.
+    pub async fn building_coded(&self, code: &str) -> Building {
+        create_building(
+            self.db(),
+            NewBuilding {
+                code: code.to_owned(),
+                name_en: format!("Tower {code}"),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap()
+    }
+
+    /// A residential unit `number` in `building`.
+    pub async fn unit(&self, building: &Building, number: &str) -> Unit {
+        self.unit_of(building, number, UnitUse::Residential).await
+    }
+
+    /// A unit `number` in `building` with `usage`.
+    pub async fn unit_of(&self, building: &Building, number: &str, usage: UnitUse) -> Unit {
+        create_unit(
+            self.db(),
+            NewUnit {
+                building_id: building.id,
+                number: number.to_owned(),
+                usage,
+                asking_rent: Some(aed(100_000)),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap()
+    }
+
+    /// A draft lease of `unit` for [`TENANT`]: one year starting `start_in`
+    /// days from today, AED 100,000 a year in 4 instalments, a deposit of
+    /// AED 5,000.
+    pub async fn lease(&self, unit: &Unit, start_in: i64) -> Lease {
+        let new = NewLease::new(
+            unit.id,
+            TENANT,
+            day(start_in),
+            day(start_in + 364),
+            aed(100_000),
+            4,
+        )
+        .deposit(aed(5_000));
+        property::leases::create_draft(self.state(), None, new)
+            .await
+            .unwrap()
+    }
+
+    /// `lease`, as stored now.
+    pub async fn reload(&self, lease: &Lease) -> Lease {
+        Lease::find_or_404(self.db(), lease.id).await.unwrap()
+    }
+
+    /// The unit `unit`, as stored now.
+    pub async fn unit_now(&self, unit: &Unit) -> Unit {
+        Unit::find_or_404(self.db(), unit.id).await.unwrap()
+    }
+
+    /// `POST path` as `user`, the way a sheet posts it (htmx).
+    pub async fn post(
+        &self,
+        user: &User,
+        path: &str,
+        pairs: &[(&str, &str)],
+    ) -> renox::testing::TestResponse {
+        self.app.acting_as(user);
+        self.app.htmx().post(path, pairs).await
+    }
+
+    /// `POST path` as `user`, as a browser form posts it (a redirect answers).
+    pub async fn post_plain(
+        &self,
+        user: &User,
+        path: &str,
+        pairs: &[(&str, &str)],
+    ) -> renox::testing::TestResponse {
+        self.app.acting_as(user);
+        self.app.post(path, pairs).await
+    }
+
+    /// Submits `lease` as `user`.
+    pub async fn submit(&self, user: &User, lease: &Lease) -> renox::testing::TestResponse {
+        self.post(user, &format!("/property/leases/{}/submit", lease.id), &[])
+            .await
+    }
+
+    /// `user` waives the deposit of `lease`.
+    pub async fn waive(&self, user: &User, lease: &Lease) {
+        self.post(user, &format!("/property/leases/{}/waive-deposit", lease.id), &[])
+            .await
+            .assert_ok();
+    }
+
+    /// Activates `lease` as `user`.
+    pub async fn activate(&self, user: &User, lease: &Lease) -> renox::testing::TestResponse {
+        self.post(user, &format!("/property/leases/{}/activate", lease.id), &[])
+            .await
+    }
+
+    /// A lease of `unit` submitted by `agent`: `pending_signature`.
+    pub async fn pending(&self, agent: &User, unit: &Unit, start_in: i64) -> Lease {
+        let lease = self.lease(unit, start_in).await;
+        self.submit(agent, &lease).await.assert_ok();
+        self.reload(&lease).await
+    }
+
+    /// The status of `lease`.
+    pub async fn status(&self, lease: &Lease) -> LeaseStatus {
+        self.reload(lease).await.status
+    }
+
+    /// Writes columns of `lease` directly: a fixture's date.
+    pub async fn set(
+        &self,
+        lease: &Lease,
+        columns: &[(&str, &(dyn renox::db::ToDbValue + Sync))],
+    ) {
+        Lease::query()
+            .where_(Lease::ID.eq(lease.id))
+            .update(self.db(), columns)
+            .await
+            .unwrap();
+    }
+}
+
+/// The roles of the tests: the property manager, the leasing agent and the
+/// accountant, with the permissions the host gives them.
+pub const MANAGER: &str = perm::PROPERTY_MANAGER_ROLE;
+/// The leasing agent.
+pub const AGENT: &str = perm::LEASING_AGENT_ROLE;
+/// The accountant.
+pub const ACCOUNTANT: &str = perm::ACCOUNTANT_ROLE;
+
+/// Property booted with auth, the kernel and the fakes, and the three roles.
+pub async fn boot() -> Booted {
+    let views = tempfile::tempdir().expect("a temporary views directory");
+    let path = views.path().join("layouts/app.html");
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(&path, LAYOUT).unwrap();
+    let fakes = Fakes {
+        activated: Recorded::default(),
+        cancelled: Recorded::default(),
+        parties: Parties::default(),
+        docs: Docs::default(),
+        notices: Recording::default(),
+        tasks: Tasks::default(),
+        cheques: ChequeBook::default(),
+        deposits: DepositBook::default(),
+        invoices: InvoiceDesk::default(),
+        refunds: Refunds::default(),
+    };
+    let logs = (fakes.activated.clone(), fakes.cancelled.clone());
+    let handles = (
+        fakes.parties.clone(),
+        fakes.docs.clone(),
+        fakes.notices.clone(),
+        fakes.tasks.clone(),
+        fakes.cheques.clone(),
+        fakes.deposits.clone(),
+        fakes.invoices.clone(),
+        fakes.refunds.clone(),
+    );
+    let app = App::new()
+        .module(Auth::new())
+        .module(Permissions)
+        .module(property::Property)
+        .module(fakes);
+    let config = wl_kernel::ClientConfig::parse(CLIENT).expect("a valid client.toml");
+    let app = wl_kernel::apply(app, config).expect("the kernel applies");
+    let dir = views.path().to_path_buf();
+    let app = TestApp::with_config(app, |c| c.views_path = dir).await;
+    app.kernel()
+        .call("wl:install", Vec::<String>::new())
+        .await
+        .expect("wl:install runs");
+    let manager = [
+        perm::UNITS_VIEW,
+        perm::UNITS_MANAGE,
+        perm::UNITS_RESERVE,
+        perm::LEASES_VIEW,
+        perm::LEASES_CREATE,
+        perm::LEASES_CANCEL,
+        perm::LEASES_ACTIVATE,
+        perm::LEASES_MANAGE,
+    ];
+    permissions::define_role(app.db(), MANAGER, &manager).await.unwrap();
+    let agent = [
+        perm::UNITS_VIEW,
+        perm::LEASES_VIEW,
+        perm::LEASES_CREATE,
+        perm::LEASES_CANCEL,
+    ];
+    permissions::define_role(app.db(), AGENT, &agent).await.unwrap();
+    let accountant = [perm::UNITS_VIEW, perm::LEASES_VIEW, perm::LEASES_CANCEL];
+    permissions::define_role(app.db(), ACCOUNTANT, &accountant)
+        .await
+        .unwrap();
+    // The admin role the tasks fall back to.
+    permissions::define_role(app.db(), wl_kernel::COMPANY_ADMIN_ROLE, &manager)
+        .await
+        .unwrap();
+    let (parties, docs, notices, tasks, cheques, deposits, invoices, refunds) = handles;
+    parties.add(TENANT.0, "Tariq Hassan", PartyKind::Person);
+    parties.add(COMPANY.0, "Blue Dunes LLC", PartyKind::Company);
+    Booted {
+        app,
+        _views: views,
+        parties,
+        docs,
+        notices,
+        tasks,
+        cheques,
+        deposits,
+        invoices,
+        refunds,
+        activated: logs.0,
+        cancelled: logs.1,
+    }
+}
+
+/// The scope of a building, for assertions.
+pub fn scope_of(building: &Building) -> Scope {
+    building.scope()
+}
+
+impl Booted {
+    /// A lease of `unit` for [`TENANT`] that is active: its term began 300
+    /// days ago and ends in 64 days, AED 100,000 a year in 4 instalments.
+    pub async fn active_lease(&self, unit: &Unit, agent: &User, manager: &User) -> Lease {
+        let lease = self.pending(agent, unit, -300).await;
+        self.waive(manager, &lease).await;
+        self.activate(manager, &lease).await.assert_ok();
+        let active = self.reload(&lease).await;
+        assert_eq!(active.status, LeaseStatus::Active);
+        active
+    }
+
+    /// Runs the system transition `name` on `lease`.
+    pub async fn system(&self, lease: &Lease, name: &str) {
+        use renox::state_machine::StateMachine;
+        let current = self.reload(lease).await;
+        current
+            .transition(name)
+            .by_system()
+            .run(self.state())
+            .await
+            .unwrap_or_else(|e| panic!("{name}: {e}"));
+    }
+}
