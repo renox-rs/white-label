@@ -39,6 +39,7 @@ async fn booted(asp: &FakeAsp) -> Booted {
 
 /// Moves the clock to `minutes` after 2027-01-05 06:00 UTC.
 fn at(t: &Booted, minutes: u32) {
+    let minutes = 6 * 60 + minutes;
     let day = 5 + minutes / (24 * 60);
     let rest = minutes % (24 * 60);
     t.travel_to(&format!("2027-01-{day:02}"), rest / 60, rest % 60);
@@ -219,7 +220,8 @@ async fn a_rejection_with_a_cause_outside_the_document_is_resubmitted_with_the_f
 
     // The ASP is back: it is sent as attempt 2.
     asp.unreachable(false);
-    at(&t, 3);
+    // The first retry of the queued attempt is 5 minutes after it was queued.
+    at(&t, 6);
     run(&t).await;
     let sent_again = transmissions(&t).await.remove(0);
     assert_eq!(sent_again.status, TransmissionStatus::Submitted);
@@ -334,7 +336,9 @@ async fn a_correction_credit_note_supersedes_the_rejected_transmission() {
         .expect("the new invoice has its own transmission");
     assert_ne!(fresh.status, TransmissionStatus::Superseded);
     assert_eq!(fresh.attempt, 1);
-    assert_eq!(t.reload(&invoice).await.status, InvoiceStatus::PartiallyPaid);
+    // 10,000 + 90,000 net credit the whole line: with its VAT the credit notes
+    // allocate the whole gross, so the balance is zero.
+    assert_eq!(t.reload(&invoice).await.status, InvoiceStatus::Paid);
 }
 
 /// An invoice that no transmission has been superseded for cannot be named as
