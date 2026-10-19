@@ -52,7 +52,7 @@
         <rx-column :label="tx['cash.as_of']">{{ balance.as_of }}</rx-column>
         <rx-column :label="tx['cash.balances.note']" hide-narrow>{{ balance.note }}</rx-column>
         <rx-column :label="tx['cash.balances.status']" hide-narrow>
-          <rx-badge rx-if="balance.voided" kind="neutral" :text="tx['cash.balances.voided'] ~ ': ' ~ balance.void_reason"/>
+          <rx-badge rx-if="balance.voided" kind="warning" :text="tx['cash.balances.voided'] ~ ': ' ~ balance.void_reason"/>
         </rx-column>
         <rx-column label="">
           <template rx-if="balance.can_void">

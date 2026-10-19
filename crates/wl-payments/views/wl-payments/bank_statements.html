@@ -3,7 +3,7 @@
     resources/views/wl-payments/bank_statements.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['bank_statements.title']">
   <rx-stack>
-    <rx-page-header :title="tx['bank_statements.title']" :description="tx['bank_statements.description']"/>
+    <rx-page-header :title="tx['bank_statements.title']" :subtitle="tx['bank_statements.description']"/>
     <rx-table :rows="rows" as="import" :key="import.id" card>
       <rx-column :label="tx['fields.entity']" hide-narrow>{{ import.entity }}</rx-column>
       <rx-column :label="tx['bank_statements.bank_account']">{{ import.bank_account }}</rx-column>
