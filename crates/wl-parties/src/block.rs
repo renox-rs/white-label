@@ -54,6 +54,10 @@ pub(crate) struct BlockInput {
     /// For a system run, the user whose action caused it (stored as the
     /// Block record's blocked-by).
     pub ran_by: Option<i64>,
+    /// For a system run made by a confirmed screening match, that screening
+    /// (stored on the Block record so a rerun finds it).
+    #[serde(default)]
+    pub screening_id: Option<i64>,
 }
 
 /// The `block` and `block_by_system` transitions, for the machine.
@@ -114,13 +118,23 @@ fn rules(transition: Transition<Party>) -> Transition<Party> {
             Box::pin(async move {
                 let input = input(ctx).unwrap_or_default();
                 let blocked_by = ctx.actor().map(|user| user.id).or(input.ran_by);
-                let mut record = BlockRecord::open(
-                    party_id,
-                    &input.code,
-                    input.restricted,
-                    &input.note,
-                    blocked_by,
-                );
+                let mut record = match input.screening_id {
+                    Some(screening) => BlockRecord::open_for_screening(
+                        party_id,
+                        screening,
+                        &input.code,
+                        input.restricted,
+                        &input.note,
+                        blocked_by,
+                    ),
+                    None => BlockRecord::open(
+                        party_id,
+                        &input.code,
+                        input.restricted,
+                        &input.note,
+                        blocked_by,
+                    ),
+                };
                 record.insert(&mut *tx).await?;
                 // Only the display code: never a restricted one (`PTY.ACL.02`).
                 // Not the status column, so outside the machine's guard.
@@ -158,6 +172,7 @@ fn resolve(state: &AppState, code: &str, note: &str, ran_by: Option<i64>) -> Blo
         known: reasons.contains(code),
         restricted: reasons.is_restricted(code),
         ran_by,
+        screening_id: None,
     }
 }
 
@@ -207,7 +222,37 @@ pub async fn block_by_system(
     note: &str,
     ran_by: Option<i64>,
 ) -> std::result::Result<(), TransitionError> {
-    let input = resolve(state, code, note, ran_by);
+    block_system(state, party, None, code, note, ran_by).await
+}
+
+/// [`block_by_system`] for the confirmed match of screening `screening_id`:
+/// the Block record keeps the screening id, so the confirmation can be run
+/// again without a second record.
+///
+/// # Errors
+///
+/// As [`block_by_system`].
+pub async fn block_by_system_for_screening(
+    state: &AppState,
+    party: &Party,
+    screening_id: i64,
+    code: &str,
+    note: &str,
+    ran_by: Option<i64>,
+) -> std::result::Result<(), TransitionError> {
+    block_system(state, party, Some(screening_id), code, note, ran_by).await
+}
+
+async fn block_system(
+    state: &AppState,
+    party: &Party,
+    screening_id: Option<i64>,
+    code: &str,
+    note: &str,
+    ran_by: Option<i64>,
+) -> std::result::Result<(), TransitionError> {
+    let mut input = resolve(state, code, note, ran_by);
+    input.screening_id = screening_id;
     let display = display_block_reason(&input.code, input.restricted).to_owned();
     let meta = match ran_by {
         Some(user) => renox::serde_json::json!({ "ran_by": user }),
@@ -297,6 +342,7 @@ mod tests {
             known: true,
             restricted: true,
             ran_by: None,
+            screening_id: None,
         };
         assert!(block.check_guards(&party, &run(good.clone())).await.is_ok());
         let blank = BlockInput {

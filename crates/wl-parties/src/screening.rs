@@ -285,7 +285,7 @@ impl StateMachine for Screening {
 
     fn machine() -> Machine<Self> {
         use ScreeningStatus::{Clear, ConfirmedMatch, FalsePositive, Pending, PossibleMatch};
-        Machine::new()
+        let machine = Machine::new()
             .initial([Pending])
             .state(Pending)
             .tone("neutral")
@@ -341,7 +341,12 @@ impl StateMachine for Screening {
                             }
                         })
                     }),
-            )
+            );
+        // `confirm_match` and `confirm_match_approved` (#39): possible_match ->
+        // confirmed_match; see `crate::confirm_match`.
+        crate::confirm_match::transitions()
+            .into_iter()
+            .fold(machine, Machine::transition)
     }
 }
 

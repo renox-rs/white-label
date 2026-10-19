@@ -467,6 +467,22 @@ const TEXTS: &[(&str, &str)] = &[
         "Party :code is due for review by :due (Asia/Dubai).",
     ),
     (
+        "wl_parties.errors.review_note_required",
+        "Write a review note to confirm the match.",
+    ),
+    (
+        "wl_parties.confirm.default_note",
+        "Match confirmed by the compliance review.",
+    ),
+    (
+        "wl_parties.confirm.notice_title",
+        "Freeze and report tasks opened",
+    ),
+    (
+        "wl_parties.confirm.notice_body",
+        "Open the compliance tasks to see what is due.",
+    ),
+    (
         "wl_parties.errors.unblock_file_type",
         "Evidence files must be PDF, JPG, PNG, HEIC, DOCX or XLSX.",
     ),

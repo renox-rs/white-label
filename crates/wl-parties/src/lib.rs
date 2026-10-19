@@ -6,6 +6,7 @@ pub mod block_effects;
 pub mod block_guard;
 pub mod block_record;
 pub mod compliance_tasks;
+pub mod confirm_match;
 pub mod contacts;
 pub mod create;
 pub mod details;
@@ -38,12 +39,13 @@ use renox::db::Migration;
 use renox::nav::NavLink;
 use renox::prelude::*;
 
-pub use block::{block, block_by_system};
+pub use block::{block, block_by_system, block_by_system_for_screening};
 pub use block_record::BlockRecord;
 pub use compliance_tasks::{
     ComplianceTask, ComplianceTaskFund, ComplianceTaskKind, ComplianceTaskParty,
     ComplianceTaskStatus, PartyStanding,
 };
+pub use confirm_match::{apply_confirmed_match, confirm_match};
 pub use contacts::{ContactPoint, ContactStatus, ContactType, update_contact, verify_contact};
 pub use create::{NewParty, create};
 pub use details::{CompanyDetails, PersonDetails};
@@ -396,6 +398,8 @@ impl Module for WlParties {
         }
         // The compliance alert of a stale list.
         freshness_alert::register(app);
+        // `confirm_match` with its second reviewer, and its effects.
+        confirm_match::register(app);
         // The block reason codes; `on_hold` must be there and not restricted.
         let reasons = self.reasons();
         reasons.check();
