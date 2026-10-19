@@ -274,6 +274,14 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_kernel.late_entries.not_opted_in",
         "This kind of record does not take late entries.",
     ),
+    (
+        "wl_kernel.late_entries.no_approval_policy",
+        "No approval policy is active for late entries.",
+    ),
+    (
+        "wl_kernel.late_entries.limits_invalid",
+        "The flag limit must be above 0 minutes and not above the approval limit.",
+    ),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.

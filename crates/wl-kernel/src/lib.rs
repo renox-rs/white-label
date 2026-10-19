@@ -84,7 +84,8 @@ pub use invoicing::{
     SupplierDebitNotes, SupplierReturnDispatched, SupplierReturnLine, UnallocateBill, VatCategory,
 };
 pub use late_entries::{
-    ApprovalWhy, Assessment, FiredRun, LateEntryDef, LateEntryRecorded, Limits, NewRecord, Period,
+    ApprovalWhy, Assessment, FiredRun, LateEntry, LateEntryDef, LateEntryLimits, LateEntryRecorded,
+    LateEntryStatus, Limits, NewRecord, Period,
 };
 pub use machines::SubjectMachine;
 pub use manifest::Manifest;
@@ -227,6 +228,7 @@ impl Module for WlKernel {
         approvals::register(app);
         automation::register(app);
         voids::register_models(app);
+        late_entries::register_models(app);
         // In the admin group of the staff sidebar; the label is the app's
         // `nav.legal_entities` text.
         app.nav(
