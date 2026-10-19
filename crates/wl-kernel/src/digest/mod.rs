@@ -12,6 +12,7 @@
 //! a record and respect its visibility ([`register_info`]), the titles of the
 //! rules ([`register_rule_title`]), and the text itself ([`render`]).
 
+pub mod collect;
 pub mod info;
 pub mod render;
 
@@ -20,6 +21,7 @@ use renox::db::DateTime;
 
 use crate::calendar::BusinessCalendar;
 
+pub use collect::{by_manager, gather, managers};
 pub use info::{RecordInfo, info_of, register_info, register_rule_title, rule_title};
 pub use render::{FiredLine, Item, ItemKind, Section, record_name, render};
 
