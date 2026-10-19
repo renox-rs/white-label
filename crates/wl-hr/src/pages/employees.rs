@@ -335,7 +335,11 @@ async fn show(
                 required: step.required,
                 due: step.due_date.to_string(),
                 overdue: step.overdue_on(day),
-                status: text(&lang, &format!("steps.status.{}", step.status.as_str())),
+                status: if step.overdue_on(day) {
+                    text(&lang, "steps.overdue")
+                } else {
+                    text(&lang, &format!("steps.status.{}", step.status.as_str()))
+                },
                 status_kind: match step.status {
                     StepStatus::Open if step.overdue_on(day) => "error",
                     StepStatus::Done => "success",

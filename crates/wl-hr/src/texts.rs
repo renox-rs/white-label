@@ -273,6 +273,22 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_hr.notices.in_person_body",
         "The step \"{{ step }}\" of your onboarding was recorded for you in person on {{ at }}, witnessed by {{ witness }}. If this is not right, tell HR.",
     ),
+    (
+        "wl_hr.notices.step_reminder_subject",
+        "Overdue onboarding step for {{ employee }}: {{ step }}",
+    ),
+    (
+        "wl_hr.notices.step_reminder_body",
+        "The step \"{{ step }}\" of the onboarding of {{ employee }} was due {{ due }} and is still open ({{ days }} days overdue).",
+    ),
+    (
+        "wl_hr.notices.step_escalated_subject",
+        "Onboarding step of {{ employee }} is {{ days }} days overdue",
+    ),
+    (
+        "wl_hr.notices.step_escalated_body",
+        "The step \"{{ step }}\" of the onboarding of {{ employee }} was due {{ due }} and is still open, {{ days }} days overdue. Its assignees were reminded.",
+    ),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.

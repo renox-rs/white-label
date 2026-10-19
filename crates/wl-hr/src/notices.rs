@@ -6,7 +6,7 @@
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use renox::serde_json::json;
-use wl_kernel::notify::{self, NotificationTypeDef, NotifyChannel, NotifyRequest};
+use wl_kernel::notify::{self, Category, NotificationTypeDef, NotifyChannel, NotifyRequest};
 
 use crate::employee::Employee;
 use crate::onboarding::{Onboarding, OnboardingStep};
@@ -21,6 +21,10 @@ pub const IN_PERSON_RECORDED: &str = "hr.onboarding_in_person_recorded";
 pub const ONBOARDING_COMPLETED: &str = "hr.onboarding_completed";
 /// The assignees are told that a step they marked was reopened.
 pub const STEP_REOPENED: &str = "hr.onboarding_step_reopened";
+/// The assignees are reminded of an overdue step (`HRM.RUL.17`).
+pub const STEP_REMINDER: &str = "hr.onboarding_step_reminder";
+/// HR and the manager are told that a step is far overdue (`HRM.RUL.17`).
+pub const STEP_ESCALATED: &str = "hr.onboarding_step_escalated";
 
 /// `date` as `9 Nov 2026`.
 fn date_text(date: NaiveDate) -> String {
@@ -36,8 +40,15 @@ fn english_type(key: &str, texts: &str) -> NotificationTypeDef {
         .template(NotifyChannel::Email, "en", Some(&subject), &body)
 }
 
+/// A reminder type of the module with English texts.
+fn english_reminder(key: &str, texts: &str) -> NotificationTypeDef {
+    english_type(key, texts).category(Category::Reminder)
+}
+
 /// Registers the module's notification types with the kernel registry.
 pub(crate) fn register_types() {
+    notify::register_type(english_reminder(STEP_REMINDER, "step_reminder"));
+    notify::register_type(english_reminder(STEP_ESCALATED, "step_escalated"));
     notify::register_type(english_type(STEP_ASSIGNED, "step_assigned"));
     notify::register_type(english_type(ONBOARDING_COMPLETED, "completed"));
     notify::register_type(english_type(STEP_REOPENED, "step_reopened"));
@@ -150,6 +161,55 @@ pub(crate) async fn completed(
     }
     let mut request = NotifyRequest::new(ONBOARDING_COMPLETED, onboarding.subject())
         .data(json!({ "employee": name_of(state, employee).await }));
+    for user in users {
+        request = request.to_user(*user);
+    }
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// Reminds `users` that `step` of `employee` is `days` days overdue.
+pub(crate) async fn step_reminder(
+    state: &AppState,
+    employee: &Employee,
+    step: &OnboardingStep,
+    users: &[i64],
+    days: i64,
+) -> Result {
+    overdue(state, STEP_REMINDER, employee, step, users, days).await
+}
+
+/// Tells `users` (HR and the manager) that `step` of `employee` is `days`
+/// days overdue.
+pub(crate) async fn step_escalated(
+    state: &AppState,
+    employee: &Employee,
+    step: &OnboardingStep,
+    users: &[i64],
+    days: i64,
+) -> Result {
+    overdue(state, STEP_ESCALATED, employee, step, users, days).await
+}
+
+async fn overdue(
+    state: &AppState,
+    type_key: &str,
+    employee: &Employee,
+    step: &OnboardingStep,
+    users: &[i64],
+    days: i64,
+) -> Result {
+    if users.is_empty() {
+        return Ok(());
+    }
+    let mut request = NotifyRequest::new(type_key, step.subject())
+        .subject_label(&step.title_en)
+        .data(json!({
+            "employee": name_of(state, employee).await,
+            "step": step.title_en,
+            "due": date_text(step.due_date),
+            "days": days,
+        }));
     for user in users {
         request = request.to_user(*user);
     }

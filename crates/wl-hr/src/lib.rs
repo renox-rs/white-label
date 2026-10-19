@@ -6,10 +6,12 @@ pub mod config;
 pub mod employee;
 pub mod employee_machine;
 mod events;
+pub mod leave;
 mod notices;
 pub mod onboarding;
 pub mod onboarding_machine;
 pub mod pages;
+pub mod reminders;
 pub mod seed;
 pub mod steps;
 pub mod template;
@@ -25,6 +27,7 @@ pub use employee::{
     Employee, EmployeeScope, EmployeeStatus, EmploymentType, NewEmployee, change_job_role,
     correct_hire_date, set_scope,
 };
+pub use leave::{LeaveRequest, LeaveStatus};
 pub use onboarding::{
     AppliedTemplate, Onboarding, OnboardingStatus, OnboardingStep, StartRefused, StartRequest,
     StartTrigger, StepAssignee, StepStatus,
@@ -138,12 +141,15 @@ impl Module for WlHr {
         app.model::<AppliedTemplate>();
         app.model::<OnboardingStep>();
         app.model::<StepAssignee>();
+        app.model::<LeaveRequest>();
         app.provide(self.config.clone());
         employee_machine::register(app);
         renox::state_machine::register::<Onboarding>();
         renox::state_machine::register::<OnboardingStep>();
         events::register(app);
         notices::register_types();
+        // `HRM.RUL.17`: the daily reminders of overdue onboarding steps.
+        reminders::schedule(app);
         wl_kernel::workforce::provide_workforce(app, workforce::Staff);
         // The all staff induction template; a re-run keeps the client's changes.
         app.command(

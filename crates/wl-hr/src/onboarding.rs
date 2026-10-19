@@ -167,6 +167,10 @@ pub struct OnboardingStep {
     pub waive_reason: Option<String>,
     /// A note, e.g. *no SOPs*.
     pub note: Option<String>,
+    /// The day the assignees were last reminded (`HRM.RUL.17`).
+    pub last_reminded_on: Option<NaiveDate>,
+    /// The day HR and the manager were told it is overdue; once.
+    pub escalated_on: Option<NaiveDate>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
@@ -566,8 +570,10 @@ pub async fn re_resolve(state: &AppState, employee_id: i64) -> Result {
 }
 
 /// A corrected hire date moves the due dates of the open steps of the
-/// `hire` onboardings of `employee` to the new date plus their due days.
+/// `hire` onboardings of `employee` to the new date plus their due days, plus
+/// the days of the approved leave that has started (`HRM.RUL.17`).
 pub async fn recompute_due_dates(state: &AppState, employee_id: i64, hire_date: NaiveDate) -> Result {
+    let leave = crate::leave::started_leave(&state.db, employee_id, today()).await?;
     let hired = Onboarding::query()
         .where_(Onboarding::EMPLOYEE_ID.eq(employee_id))
         .where_(Onboarding::START_TRIGGER.eq("hire"))
@@ -590,7 +596,14 @@ pub async fn recompute_due_dates(state: &AppState, employee_id: i64, hire_date: 
                 .update(
                     &state.db,
                     &[
-                        ("due_date", &due_date(hire_date, step.due_days)),
+                        (
+                            "due_date",
+                            &crate::leave::shifted_due(
+                                due_date(hire_date, step.due_days),
+                                hire_date,
+                                &leave,
+                            ),
+                        ),
                         ("updated_at", &now()),
                     ],
                 )

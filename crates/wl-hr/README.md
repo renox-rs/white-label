@@ -25,6 +25,7 @@ What is here so far:
 | Onboarding templates per job role or trade and for all staff, with steps; the seeded induction (`hr:install`, the seeder) | §3, §7 | `template`, `seed` |
 | `HRM.RUL.16`: the onboarding starts from the templates that apply when an employee is created in `onboarding`; HR starts a template by hand; templates are frozen, steps are assigned to HR, the manager, the employee or a role, due from the hire date; assignees follow the people; a corrected hire date moves the due dates; exit, death and a cancelled onboarding cancel it | §3, §4, §5.8 | `onboarding`, `onboarding_machine`, `assignees`, `events` |
 | Doing the steps (`HRM.ACL.10`): `task` with evidence, `checklist` from the checklist run, `document` from the accepted document, `sop_acknowledgement` from the SOP acknowledgements, in person with the employee's signature and a witness; waive and reopen by another holder of `onboarding.manage`; the onboarding completes after the last required step | §3, §4 | `steps` |
+| `HRM.RUL.17`: daily at 08:00 Asia/Dubai (`hr:step-reminders`), an open step past its due date is reminded to its assignees on the first run and then every 2 days, HR and the manager are told once after 5 days (not for an optional step); paused while the employee is `on_leave` or `absconded`; the due dates of open steps move by the days of approved leave as recorded now | §3, §6, §7 | `reminders`, `leave` |
 | `Workforce::employees_in(role, scope)` | §6 | `workforce` |
 | The employees, the employee page with its onboarding, and the templates page | §3, §4 | `pages` |
 
