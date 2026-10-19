@@ -47,7 +47,10 @@ use wl_kernel::payments::{
     PaymentRecorder, PaymentStatus, PaymentSummary, RecordPayment, RefundId, RefundRequest,
     ReversalReason, UnpaidRefund,
 };
-use wl_kernel::tickets::{OpenTicket, TaskCreator, TicketFuture, TicketId, TicketRef};
+use wl_kernel::tickets::{
+    ContractCover, OpenTicket, ServiceContractCoverage, ServiceContractId, TaskCreator, TicketFuture,
+    TicketId, TicketRef,
+};
 use wl_kernel::{ClientConfig, PartyId, Subject};
 
 /// The pages extend the app's layout; a package test has no app, so it
@@ -739,6 +742,37 @@ fn record<E: Event + Clone>(app: App, into: &Recorded<E>) -> App {
     })
 }
 
+/// The service contracts' coverage of a day, as ticketing answers it: a
+/// contract covers the days up to the last day the test sets; an unset
+/// contract is unknown.
+#[derive(Debug, Clone, Default)]
+pub struct ContractDesk(Arc<Mutex<std::collections::BTreeMap<i64, NaiveDate>>>);
+
+impl ContractDesk {
+    /// Sets the last day `contract` covers (its end or termination date).
+    pub fn ends_on(&self, contract: i64, last_day: NaiveDate) {
+        self.0.lock().unwrap().insert(contract, last_day);
+    }
+}
+
+impl ServiceContractCoverage for ContractDesk {
+    fn covers<'a>(
+        &'a self,
+        _db: &'a Db,
+        contract: ServiceContractId,
+        on: NaiveDate,
+    ) -> TicketFuture<'a, ContractCover> {
+        Box::pin(async move {
+            let ends = self.0.lock().unwrap().get(&contract.0).copied();
+            Ok(match ends {
+                None => ContractCover::Unknown,
+                Some(last) if on <= last => ContractCover::Covered,
+                Some(last) => ContractCover::AfterEnd { ends_on: last },
+            })
+        })
+    }
+}
+
 /// The app under test with what it emitted.
 pub struct Booted {
     /// The app.
@@ -763,6 +797,8 @@ pub struct Booted {
     pub refunds: RefundDesk,
     /// The cheques and statement balances the cash-flow forecast reads.
     pub forecast: ForecastDesk,
+    /// The coverage of service contracts the match asks of ticketing.
+    pub contracts: ContractDesk,
     /// `BadDebtRecovered`.
     pub recovered: Recorded<BadDebtRecovered>,
     /// `InvoiceDisputeResolved`.
@@ -1544,6 +1580,8 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
     let einvoice_rejected = Recorded::new();
     let tickets = TicketDesk::default();
     let creator: Arc<dyn TaskCreator> = Arc::new(tickets.clone());
+    let contracts = ContractDesk::default();
+    let coverage: Arc<dyn ServiceContractCoverage> = Arc::new(contracts.clone());
     let notices = Recording::default();
     let refunds = RefundDesk::default();
     let recorder: Arc<dyn PaymentRecorder> = Arc::new(refunds.clone());
@@ -1563,6 +1601,7 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
         .provide(cheque_book)
         .provide(statements)
         .provide(creator)
+        .provide(coverage)
         .provide(notifier);
     let app = record(app, &issued);
     let app = record(app, &overdue);
@@ -1678,6 +1717,7 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
         invoice_reopened,
         refunds,
         forecast,
+        contracts,
         recovered,
         resolved,
         disputed,
