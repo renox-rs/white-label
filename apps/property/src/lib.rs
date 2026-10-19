@@ -43,6 +43,7 @@ pub mod terms;
 mod texts;
 pub mod unit;
 pub mod unit_machine;
+pub mod unit_transfer;
 pub mod withdraw;
 pub mod write_off;
 
@@ -165,6 +166,7 @@ impl Module for Property {
             .model::<agreement::ManagementAgreement>()
             .model::<agreement::AgreementUnit>()
             .model::<agreement_lifecycle::HandoverItem>()
+            .model::<unit_transfer::UnitTransfer>()
             .model::<statement::OwnerStatement>()
             .model::<statement::StatementLine>()
             .model::<statement_dispute::StatementDispute>()

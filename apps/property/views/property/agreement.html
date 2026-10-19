@@ -38,6 +38,22 @@
         <rx-confirm :id="'agreement-final-' ~ agreement.id" :label="tx['handover.final_statement']" :action="route('property.agreement_final_statement', agreement.id)" method="POST"
                     :title="tx['handover.final_statement']" :message="tx['handover.final_statement_message']" :confirm-label="tx['handover.final_statement']" :cancel-label="tx['button_cancel']" icon="file-text"/>
       </template>
+      <template rx-if="can_transfer">
+        <rx-action-sheet :id="'agreement-transfer-' ~ agreement.id" :label="tx['transfers.request']" :action="route('property.agreement_transfer_request', agreement.id)"
+                         :title="tx['transfers.request']" :description="tx['transfers.request_description']" :submit-label="tx['transfers.request']" icon="log-out">
+          <rx-select name="unit" :label="tx['transfers.unit']" :options="transfer_units" :id="'agreement-transfer-unit-' ~ agreement.id"/>
+          <rx-input name="date" type="date" :label="tx['transfers.date']" :value="today" :id="'agreement-transfer-date-' ~ agreement.id" required/>
+          <rx-input name="new_owner" :label="tx['transfers.new_owner']" :id="'agreement-transfer-owner-' ~ agreement.id"/>
+          <rx-textarea name="note" :label="tx['transfers.note']" :id="'agreement-transfer-note-' ~ agreement.id"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="transfer_lines">
+        <rx-action-sheet :id="'agreement-transfer-receipt-' ~ agreement.id" :label="tx['transfers.record_receipt']" :action="route('property.agreement_transfer_receipt', agreement.id)"
+                         :title="tx['transfers.record_receipt']" :description="tx['handover.record_receipt_description']" :submit-label="tx['handover.record_receipt']" icon="receipt">
+          <rx-select name="item" :label="tx['handover.line']" :options="transfer_lines" :id="'agreement-transfer-receipt-item-' ~ agreement.id"/>
+          <rx-input name="reference" :label="tx['handover.receipt']" :id="'agreement-transfer-receipt-reference-' ~ agreement.id" required/>
+        </rx-action-sheet>
+      </template>
       <template rx-if="can_end">
         <rx-confirm :id="'agreement-end-' ~ agreement.id" :label="tx['agreements.end']" :action="route('property.agreement_end', agreement.id)" method="POST"
                     :title="tx['agreements.end']" :message="tx['agreements.end_message']" :confirm-label="tx['agreements.end']" :cancel-label="tx['button_cancel']" icon="flag"/>
@@ -88,6 +104,25 @@
         <rx-column :label="tx['handover.ejari_number']">{{ line.number }}</rx-column>
         <rx-slot name="empty"><rx-empty :title="tx['handover.ejari_empty']" icon="file-text"/></rx-slot>
       </rx-table>
+    </template>
+    <rx-table :rows="transfers" as="row" :key="row.id" :caption="tx['transfers.title']" card>
+      <rx-column :label="tx['transfers.unit']">{{ row.unit }}</rx-column>
+      <rx-column :label="tx['transfers.date']">{{ row.date }}</rx-column>
+      <rx-column :label="tx['transfers.kind']" hide-narrow>{{ row.kind }} {{ row.new_owner }}</rx-column>
+      <rx-column :label="tx['transfers.status']"><rx-badge :kind="row.status_kind" :text="row.status"/></rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['transfers.empty']" icon="log-out"/></rx-slot>
+    </rx-table>
+    <template rx-for="row in open_transfers">
+      <rx-card :title="tx['transfers.status_requested'] ~ ' · ' ~ row.unit">
+        <rx-row>
+          <rx-action-sheet :id="'transfer-approve-' ~ row.id" :label="tx['transfers.approve']" :action="route('property.transfer_approve', row.id)"
+                           :title="tx['transfers.approve']" :description="row.unit ~ ' · ' ~ row.date" :submit-label="tx['transfers.approve']" icon="check">
+            <rx-input name="receipt" :label="tx['transfers.deposit_receipt']" :id="'transfer-approve-receipt-' ~ row.id"/>
+          </rx-action-sheet>
+          <rx-confirm :id="'transfer-reject-' ~ row.id" :label="tx['transfers.reject']" :action="route('property.transfer_reject', row.id)" method="POST"
+                      :title="tx['transfers.reject']" :message="row.unit ~ ' · ' ~ row.date" :confirm-label="tx['transfers.reject']" :cancel-label="tx['button_cancel']" icon="x"/>
+        </rx-row>
+      </rx-card>
     </template>
     <rx-table :rows="statements" as="row" :key="row.id" :caption="tx['agreements.statements']" card>
       <rx-column :label="tx['statements.number']"><a href="{{ route('property.statement', row.id) }}">{{ row.number }}</a></rx-column>

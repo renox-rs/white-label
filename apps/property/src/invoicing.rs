@@ -49,7 +49,7 @@ pub struct Report {
 /// The invoice draft of `charge` of `lease`.
 pub fn draft_of(lease: &Lease, charge: &LeaseCharge) -> InvoiceDraft {
     let text = format!("{} · {}", charge.description, lease.number());
-    InvoiceDraft::new(lease.tenant(), lease.subject())
+    let draft = InvoiceDraft::new(lease.tenant(), lease.subject())
         .scope(wl_kernel::Subject::new(BUILDING_SUBJECT_TYPE, lease.building_id))
         .due_date(charge.due_date)
         .date_of_supply(charge.due_date)
@@ -57,7 +57,12 @@ pub fn draft_of(lease: &Lease, charge: &LeaseCharge) -> InvoiceDraft {
             DraftLine::new(&text, charge.amount, charge.vat_category)
                 .charge_type(&charge.charge_type)
                 .origin(charge.subject()),
-        )
+        );
+    // A charge recreated for the new owner's agreement names its issuer.
+    match charge.legal_entity_id {
+        Some(entity) => draft.legal_entity(entity),
+        None => draft,
+    }
 }
 
 /// Drafts the invoices of the scheduled charges due by `day` (plus

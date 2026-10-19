@@ -1382,6 +1382,83 @@ const TEXTS: &[(&str, &str)] = &[
         "property.handover.final_statement_exists",
         "A statement for these days exists already.",
     ),
+    // Moving a unit out of a management agreement (BL-PRP-23).
+    (
+        "property.transfers.state",
+        "Units leave an active or ending agreement only.",
+    ),
+    (
+        "property.transfers.not_in_agreement",
+        "The unit is not under this agreement.",
+    ),
+    (
+        "property.transfers.date_early",
+        "The transfer date must be after the day the unit came in.",
+    ),
+    (
+        "property.transfers.open_request",
+        "A transfer of this unit waits for its approval.",
+    ),
+    (
+        "property.transfers.same_owner",
+        "The new owner is the owner of this agreement.",
+    ),
+    (
+        "property.transfers.new_agreement_inactive",
+        "The new owner's agreement is not active. Draft it, list the unit from the transfer date and activate it with the signed agreement first, or choose \"no longer managed\".",
+    ),
+    (
+        "property.transfers.same_user",
+        "A property manager other than the requester approves the transfer.",
+    ),
+    (
+        "property.transfers.not_requested",
+        "This transfer was decided already.",
+    ),
+    (
+        "property.transfers.receipt_required",
+        "Give the new owner's receipt for the deposit that stays held.",
+    ),
+    (
+        "property.transfers.task_problems",
+        "Finish the transfer of unit :unit out of :agreement by hand",
+    ),
+    (
+        "property.transfers.task_empty",
+        ":agreement has no unit left: give notice if the company stops managing for the owner",
+    ),
+    ("property.transfers.title", "Units leaving the agreement"),
+    ("property.transfers.request", "Move a unit out"),
+    (
+        "property.transfers.request_description",
+        "A sale that the company still manages, or a unit that is no longer managed. A property manager other than you approves it; nothing changes before.",
+    ),
+    ("property.transfers.unit", "Unit"),
+    ("property.transfers.date", "Transfer date"),
+    (
+        "property.transfers.new_owner",
+        "New owner (party number); empty for \"no longer managed\"",
+    ),
+    ("property.transfers.note", "Note"),
+    ("property.transfers.requested", "Transfer requested; a property manager other than you approves it."),
+    ("property.transfers.empty", "No unit has been moved out"),
+    ("property.transfers.kind", "What"),
+    ("property.transfers.kind_sale", "Sold, still managed"),
+    ("property.transfers.kind_unmanaged", "No longer managed"),
+    ("property.transfers.status", "Status"),
+    ("property.transfers.status_requested", "Waiting for approval"),
+    ("property.transfers.status_approved", "Approved"),
+    ("property.transfers.status_rejected", "Rejected"),
+    ("property.transfers.approve", "Approve"),
+    ("property.transfers.approved", "Transfer approved and carried out."),
+    ("property.transfers.approved_with_problems", "Transfer approved. Some steps need a hand: the accountant has a task."),
+    ("property.transfers.reject", "Reject"),
+    ("property.transfers.rejected", "Transfer rejected; nothing changed."),
+    (
+        "property.transfers.deposit_receipt",
+        "New owner's receipt for the deposit",
+    ),
+    ("property.transfers.record_receipt", "Record receipt of a transfer"),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.

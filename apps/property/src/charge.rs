@@ -65,6 +65,10 @@ pub struct LeaseCharge {
     pub invoice_id: Option<i64>,
     /// Created by `expire` for a period the tenant holds over (`PRP.RUL.03`).
     pub holding_over: bool,
+    /// The legal entity that issues the invoice, when it is not the default:
+    /// the new owner's entity of a charge recreated when its unit moved to
+    /// another agreement (BL-PRP-23).
+    pub legal_entity_id: Option<i64>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.

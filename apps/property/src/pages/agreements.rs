@@ -1,6 +1,6 @@
 //! The management agreement pages: the list, an agreement with its units,
 //! the handover pack and the actions on it (01 Property §4.4, §7.1
-//! *Management agreement*; BL-PRP-22).
+//! *Management agreement*; BL-PRP-22, BL-PRP-23).
 //!
 //! | Route | Name | Needs |
 //! |---|---|---|
@@ -13,6 +13,10 @@
 //! | `POST /property/agreements/{id}/receipts` | `property.agreement_receipt` | `agreements.manage` |
 //! | `POST /property/agreements/{id}/final-statement` | `property.agreement_final_statement` | `owner_statements.prepare` |
 //! | `POST /property/agreements/{id}/end` | `property.agreement_end` | `agreements.manage` |
+//! | `POST /property/agreements/{id}/transfers` | `property.agreement_transfer_request` | `agreements.manage` |
+//! | `POST /property/agreements/{id}/transfer-receipts` | `property.agreement_transfer_receipt` | `agreements.manage` |
+//! | `POST /property/transfers/{id}/approve` | `property.transfer_approve` | `agreements.manage`, not the requester |
+//! | `POST /property/transfers/{id}/reject` | `property.transfer_reject` | `agreements.manage` |
 //!
 //! The actions answer with a toast and a refresh, as the sheets post them by
 //! htmx; a refusal answers 422 with its reason.
@@ -37,6 +41,7 @@ use crate::permissions;
 use crate::statement::OwnerStatement;
 use crate::texts;
 use crate::unit::Unit;
+use crate::unit_transfer::{self, TransferKind, TransferRequest, TransferStatus, UnitTransfer};
 
 /// The routes of the pages.
 pub fn routes() -> Routes {
@@ -59,6 +64,14 @@ pub fn routes() -> Routes {
         .name("property.agreement_final_statement")
         .post("/property/agreements/{id}/end", end)
         .name("property.agreement_end")
+        .post("/property/agreements/{id}/transfers", request_transfer)
+        .name("property.agreement_transfer_request")
+        .post("/property/agreements/{id}/transfer-receipts", transfer_receipt)
+        .name("property.agreement_transfer_receipt")
+        .post("/property/transfers/{id}/approve", approve_transfer)
+        .name("property.transfer_approve")
+        .post("/property/transfers/{id}/reject", reject_transfer)
+        .name("property.transfer_reject")
         .require_auth()
 }
 
@@ -255,6 +268,29 @@ pub struct StatementLink {
     pub status: String,
 }
 
+/// A transfer of a unit out of the agreement.
+#[derive(Serialize, Debug, Clone)]
+pub struct TransferRow {
+    /// The primary key.
+    pub id: i64,
+    /// The building and the unit.
+    pub unit: String,
+    /// The transfer date.
+    pub date: String,
+    /// What the unit becomes, in the page's language.
+    pub kind: String,
+    /// The new owner, for a sale.
+    pub new_owner: String,
+    /// The status in the page's language.
+    pub status: String,
+    /// The badge kind of the status.
+    pub status_kind: &'static str,
+    /// Whether it still waits for a decision.
+    pub open: bool,
+    /// Whether it is a sale (the new owner's deposit receipt is asked).
+    pub sale: bool,
+}
+
 /// The agreement as the page shows it.
 #[derive(Serialize, Debug, Clone)]
 pub struct AgreementView {
@@ -301,6 +337,11 @@ pub(crate) struct ShowPage {
     can_receipt: bool,
     can_final_statement: bool,
     can_end: bool,
+    transfers: Vec<TransferRow>,
+    open_transfers: Vec<TransferRow>,
+    transfer_units: Vec<[String; 2]>,
+    transfer_lines: Vec<[String; 2]>,
+    can_transfer: bool,
 }
 
 /// The line of the pack as the page shows it.
@@ -395,6 +436,50 @@ async fn show(
         .filter(|item| !item.done)
         .map(|item| [item.id.to_string(), item.description.clone()])
         .collect();
+    let mut transfers = Vec::new();
+    let mut transfer_lines: Vec<[String; 2]> = Vec::new();
+    for transfer in UnitTransfer::of_agreement(&state.db, found.id).await? {
+        let unit = match Unit::find(&state.db, transfer.unit_id).await? {
+            Some(unit) => unit.number,
+            None => format!("#{}", transfer.unit_id),
+        };
+        let new_owner = match transfer.new_owner_party_id {
+            Some(owner) => owner_name(&state, &lang, owner).await,
+            None => String::new(),
+        };
+        if transfer.is_open() && transfer.kind == TransferKind::Unmanaged {
+            for item in HandoverItem::of_transfer(&state.db, transfer.id).await? {
+                if !item.done {
+                    transfer_lines.push([item.id.to_string(), format!("{unit} · {}", item.description)]);
+                }
+            }
+        }
+        transfers.push(TransferRow {
+            id: transfer.id,
+            unit,
+            date: transfer.transfer_date.to_string(),
+            kind: text(&lang, &format!("transfers.kind_{}", transfer.kind.as_str())),
+            new_owner,
+            status: text(&lang, &format!("transfers.status_{}", transfer.status.as_str())),
+            status_kind: match transfer.status {
+                TransferStatus::Requested => "warning",
+                TransferStatus::Approved => "success",
+                TransferStatus::Rejected => "info",
+            },
+            open: transfer.is_open(),
+            sale: transfer.kind == TransferKind::Sale,
+        });
+    }
+    let open_transfers: Vec<TransferRow> = transfers.iter().filter(|t| t.open).cloned().collect();
+    let mut transfer_units: Vec<[String; 2]> = Vec::new();
+    for row in found.units(&state.db).await? {
+        if row.date_out.is_none() && !row.awaiting_transfer {
+            let unit = Unit::find(&state.db, row.unit_id).await?;
+            let label = unit.map_or_else(|| format!("#{}", row.unit_id), |u| u.number);
+            transfer_units.push([row.unit_id.to_string(), label]);
+        }
+    }
+    let reporting = AgreementStatus::REPORTING.contains(&found.status);
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
         agreement: view,
@@ -432,6 +517,11 @@ async fn show(
         can_receipt: ending,
         can_final_statement: ending && may_prepare,
         can_end: ending,
+        transfers,
+        open_transfers,
+        transfer_units,
+        transfer_lines,
+        can_transfer: reporting,
     }))
 }
 
@@ -599,4 +689,113 @@ async fn end(
         Toast::warning(text(&lang, "agreements.ended_with_problems"))
     };
     Ok((toast, renox::HxRefresh).into_response())
+}
+
+/// The form that asks to move a unit out.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct TransferForm {
+    /// The unit.
+    #[serde(default)]
+    pub unit: String,
+    /// The transfer date.
+    #[serde(default)]
+    pub date: String,
+    /// The new owner's party number; empty for "no longer managed".
+    #[serde(default)]
+    pub new_owner: String,
+    /// A note.
+    #[serde(default)]
+    pub note: String,
+}
+
+/// `POST /property/agreements/{id}/transfers`.
+async fn request_transfer(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<TransferForm>,
+) -> Result<Response> {
+    let unit_id: i64 = form
+        .unit
+        .trim()
+        .parse()
+        .map_err(|_| invalid("unit: 1, 2, 3 ..."))?;
+    let date = parse_date(&form.date).ok_or_else(|| invalid("date: YYYY-MM-DD"))?;
+    let new_owner = if form.new_owner.trim().is_empty() {
+        None
+    } else {
+        Some(PartyId(
+            form.new_owner
+                .trim()
+                .parse()
+                .map_err(|_| invalid("new_owner: 1, 2, 3 ..."))?,
+        ))
+    };
+    let asked = TransferRequest {
+        unit_id,
+        date,
+        new_owner,
+        note: Some(form.note.clone()),
+    };
+    unit_transfer::request(&state, &user, id, asked).await?;
+    Ok((Toast::success(text(&lang, "transfers.requested")), renox::HxRefresh).into_response())
+}
+
+/// `POST /property/agreements/{id}/transfer-receipts`.
+async fn transfer_receipt(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<ReceiptForm>,
+) -> Result<Response> {
+    let item_id: i64 = form
+        .item
+        .trim()
+        .parse()
+        .map_err(|_| invalid("item: 1, 2, 3 ..."))?;
+    let item = HandoverItem::find(&state.db, item_id)
+        .await?
+        .filter(|item| item.agreement_id == id)
+        .ok_or(Error::NotFound)?;
+    let transfer = item.transfer_id.ok_or(Error::NotFound)?;
+    unit_transfer::record_receipt(&state, &user, transfer, item_id, &form.reference).await?;
+    Ok((Toast::success(text(&lang, "handover.receipt_recorded")), renox::HxRefresh).into_response())
+}
+
+/// The form that approves a transfer.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct ApproveForm {
+    /// The new owner's receipt for the deposit that stays held (a sale).
+    #[serde(default)]
+    pub receipt: String,
+}
+
+/// `POST /property/transfers/{id}/approve`.
+async fn approve_transfer(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<ApproveForm>,
+) -> Result<Response> {
+    let report = unit_transfer::approve(&state, &user, id, Some(form.receipt.as_str())).await?;
+    let toast = if report.problems.is_empty() {
+        Toast::success(text(&lang, "transfers.approved"))
+    } else {
+        Toast::warning(text(&lang, "transfers.approved_with_problems"))
+    };
+    Ok((toast, renox::HxRefresh).into_response())
+}
+
+/// `POST /property/transfers/{id}/reject`.
+async fn reject_transfer(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    unit_transfer::reject(&state, &user, id).await?;
+    Ok((Toast::success(text(&lang, "transfers.rejected")), renox::HxRefresh).into_response())
 }

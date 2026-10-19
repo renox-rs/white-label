@@ -141,6 +141,10 @@ pub struct AgreementUnit {
     pub date_in: NaiveDate,
     /// The day it goes out.
     pub date_out: Option<NaiveDate>,
+    /// Listed under the new owner's agreement while the unit is still under
+    /// another one: the row counts only when `transfer_unit` is approved
+    /// (BL-PRP-23), which clears the flag.
+    pub awaiting_transfer: bool,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
@@ -148,9 +152,12 @@ pub struct AgreementUnit {
 }
 
 impl AgreementUnit {
-    /// Whether the unit is under the agreement on some day of `from..=to`.
+    /// Whether the unit is under the agreement on some day of `from..=to`. A
+    /// row that waits for a transfer covers nothing yet.
     pub fn covers(&self, from: NaiveDate, to: NaiveDate) -> bool {
-        self.date_in <= to && self.date_out.is_none_or(|out| out >= from)
+        !self.awaiting_transfer
+            && self.date_in <= to
+            && self.date_out.is_none_or(|out| out >= from)
     }
 }
 
@@ -308,6 +315,11 @@ pub async fn create_draft(
 
 /// Puts `unit` under `agreement` from `date_in`.
 ///
+/// A unit that is under another agreement that reports (`active` or `ending`)
+/// can be listed from a later day: the row waits for the transfer of the unit
+/// (`awaiting_transfer`, BL-PRP-23) and counts only once it is approved. A
+/// unit under another agreement on that day otherwise is refused.
+///
 /// # Errors
 ///
 /// 422 when the unit does not exist, or is under another agreement that is
@@ -325,11 +337,19 @@ pub async fn add_unit(
         .where_(AgreementUnit::UNIT_ID.eq(unit_id))
         .get(db)
         .await?;
-    if rows
+    let mut awaiting = false;
+    for row in rows
         .iter()
-        .any(|row| row.covers(date_in, date_in) && row.agreement_id != agreement.id)
+        .filter(|row| row.covers(date_in, date_in) && row.agreement_id != agreement.id)
     {
-        return Err(refused(english("property.agreements.unit_taken", &[])));
+        let reporting = ManagementAgreement::find(db, row.agreement_id)
+            .await?
+            .is_some_and(|other| AgreementStatus::REPORTING.contains(&other.status));
+        if reporting && date_in > row.date_in {
+            awaiting = true;
+        } else {
+            return Err(refused(english("property.agreements.unit_taken", &[])));
+        }
     }
     AgreementUnit::create(
         db,
@@ -337,6 +357,7 @@ pub async fn add_unit(
             agreement_id: agreement.id,
             unit_id,
             date_in,
+            awaiting_transfer: awaiting,
             ..Default::default()
         },
     )
