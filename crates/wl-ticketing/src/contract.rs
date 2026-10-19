@@ -461,19 +461,23 @@ impl ServiceContracts {
 
     /// The vendor `assign` proposes for `ticket`: the vendor of the contract
     /// it is handled under, while that contract still covers its subject and
-    /// the vendor can be given new work.
+    /// the vendor can be given new work, on the date `on`.
     ///
     /// # Errors
     ///
     /// The database's errors.
-    pub async fn proposed_vendor(state: &AppState, ticket: &Ticket) -> Result<Option<PartyId>> {
+    pub async fn proposed_vendor(
+        state: &AppState,
+        ticket: &Ticket,
+        on: NaiveDate,
+    ) -> Result<Option<PartyId>> {
         let Some(contract_id) = ticket.contract_id else {
             return Ok(None);
         };
         let Some(contract) = ServiceContract::find(&state.db, contract_id).await? else {
             return Ok(None);
         };
-        if !contract.covers_on(today()) {
+        if !contract.covers_on(on) {
             return Ok(None);
         }
         let status = directory(state).status(&state.db, contract.vendor()).await?;

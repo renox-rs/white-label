@@ -57,6 +57,17 @@ pub const DUSTY: PartyId = PartyId(6);
 /// The code of Dusty Ducts.
 pub const DUSTY_CODE: &str = "P-00006";
 
+/// The vendor "SafeFire LLC" (active): fire and life safety.
+pub const SAFEFIRE: PartyId = PartyId(7);
+/// The code of SafeFire.
+pub const SAFEFIRE_CODE: &str = "P-00007";
+/// The vendor "BlueFire" (active): another fire and life safety vendor.
+pub const BLUEFIRE: PartyId = PartyId(8);
+/// The code of BlueFire.
+pub const BLUEFIRE_CODE: &str = "P-00008";
+
+pub mod contracts;
+
 /// The parties the tickets are assigned to.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct TestDirectory;
@@ -65,6 +76,8 @@ fn summary(party: PartyId) -> Option<PartySummary> {
     let (code, name, status) = match party {
         COOLAIR => (COOLAIR_CODE, "CoolAir", PartyStatus::Active),
         DUSTY => (DUSTY_CODE, "Dusty Ducts", PartyStatus::Blocked),
+        SAFEFIRE => (SAFEFIRE_CODE, "SafeFire LLC", PartyStatus::Active),
+        BLUEFIRE => (BLUEFIRE_CODE, "BlueFire", PartyStatus::Active),
         _ => return None,
     };
     Some(PartySummary {
@@ -88,7 +101,7 @@ impl PartyDirectory for TestDirectory {
         code: &'a str,
     ) -> PartyFuture<'a, Option<PartySummary>> {
         Box::pin(async move {
-            Ok([COOLAIR, DUSTY]
+            Ok([COOLAIR, DUSTY, SAFEFIRE, BLUEFIRE]
                 .into_iter()
                 .filter_map(summary)
                 .find(|party| party.code == code))
@@ -570,7 +583,7 @@ pub async fn boot_app(
     .execute(app.db())
     .await
     .expect("the stand-in table");
-    sql(r#"INSERT INTO "wl_parties_parties" (id, display_name) VALUES (5, 'CoolAir'), (6, 'Dusty Ducts')"#)
+    sql(r#"INSERT INTO "wl_parties_parties" (id, display_name) VALUES (5, 'CoolAir'), (6, 'Dusty Ducts'), (7, 'SafeFire LLC'), (8, 'BlueFire')"#)
         .execute(app.db())
         .await
         .expect("the stand-in rows");

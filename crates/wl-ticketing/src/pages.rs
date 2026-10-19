@@ -751,7 +751,7 @@ async fn show(
         })
         .collect();
     let proposed_party_code = match (offered.assign, ticket.assignee()) {
-        (true, None) => match ServiceContracts::proposed_vendor(&state, &ticket).await? {
+        (true, None) => match ServiceContracts::proposed_vendor(&state, &ticket, wl_kernel::documents::today()).await? {
             Some(vendor) => directory(&state)
                 .find(&db, vendor)
                 .await?
