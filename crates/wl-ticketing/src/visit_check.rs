@@ -31,7 +31,7 @@ use wl_kernel::automation::{RuleRunSpec, run_rule};
 use wl_kernel::compliance::{CriticalRule, occurrence_key, schedule_subject};
 use wl_kernel::notify::{self, NotificationTypeDef, NotifyChannel, NotifyRequest};
 use wl_kernel::tickets::ComplianceFlagReason;
-use wl_kernel::{COMPANY_ADMIN_ROLE, scopes};
+use wl_kernel::{COMPANY_ADMIN_ROLE, Subject, scopes};
 
 use crate::config::Category;
 use crate::flags::{self, Raise};
@@ -114,7 +114,12 @@ pub fn is_missed(ticket: &Ticket, days: i64, today: NaiveDate) -> bool {
 
 /// The users holding `role` in the scope of `ticket`, once each.
 async fn holders(state: &AppState, ticket: &Ticket, role: &str) -> Result<Vec<i64>> {
-    let scope = scopes::scope_of(&state.db, &ticket.ticket_id().subject()).await?;
+    holders_in(state, &ticket.ticket_id().subject(), role).await
+}
+
+/// The users holding `role` in the scope of `subject`, once each.
+pub(crate) async fn holders_in(state: &AppState, subject: &Subject, role: &str) -> Result<Vec<i64>> {
+    let scope = scopes::scope_of(&state.db, subject).await?;
     let mut ids: Vec<i64> = users_with_role_in(&state.db, role, &scope)
         .await?
         .into_iter()

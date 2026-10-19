@@ -23,7 +23,7 @@ use renox::db::DateTime;
 use renox::prelude::*;
 use renox::state_machine::{StateMachine, TransitionError};
 use serde::{Deserialize, Serialize};
-use wl_kernel::documents::{dubai_date, today};
+use wl_kernel::documents::today;
 use wl_kernel::parties::{PartyStatus, directory};
 use wl_kernel::tickets::{
     SERVICE_CONTRACT_SERIES, SERVICE_CONTRACT_SUBJECT_TYPE, ServiceContractActivated,
@@ -569,9 +569,9 @@ impl ServiceContracts {
         Ok(())
     }
 
-    /// The system expires the `expiring` `contract` (`WRK.RUL.13`) at `at`,
-    /// when its end date has passed, and then handles its open visits and
-    /// compliance (`WRK.RUL.18`, [`crate::contract_end`]).
+    /// The system expires the `expiring` `contract` (`WRK.RUL.13`) on the
+    /// Asia/Dubai date `today`, when its end date has passed, and then handles
+    /// its open visits and compliance (`WRK.RUL.18`, [`crate::contract_end`]).
     ///
     /// # Errors
     ///
@@ -580,10 +580,10 @@ impl ServiceContracts {
     pub async fn expire(
         state: &AppState,
         contract: &ServiceContract,
-        at: DateTime,
+        today: NaiveDate,
     ) -> std::result::Result<(), TransitionError> {
         let input = ContractInput {
-            today: dubai_date(at),
+            today,
             ..ContractInput::default()
         };
         let _outcome = contract
@@ -592,6 +592,7 @@ impl ServiceContracts {
             .input(&input)
             .run(state)
             .await?;
+        crate::contract_end::handle(state, contract.id, today).await?;
         Ok(())
     }
 
@@ -624,6 +625,9 @@ impl ServiceContracts {
             .input(&input)
             .run(state)
             .await?;
+        if termination_date <= input.today {
+            crate::contract_end::handle(state, contract.id, input.today).await?;
+        }
         Ok(())
     }
 
@@ -653,6 +657,7 @@ impl ServiceContracts {
             .meta(renox::serde_json::json!({ "decided_by": decided_by }))
             .run(state)
             .await?;
+        crate::contract_end::handle(state, contract.id, input.today).await?;
         Ok(())
     }
 }

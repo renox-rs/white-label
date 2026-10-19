@@ -33,6 +33,10 @@ pub const VISIT_RESOLVED: &str = "visit resolved";
 /// contract covering the subject and category became `active`.
 pub const REPLACEMENT_ACTIVE: &str = "replacement contract active";
 
+/// Why a `vendor_document_expired` flag cleared when its contract ended
+/// (`WRK.RUL.18`, which raises `no_contract` instead).
+pub const CONTRACT_ENDED: &str = "contract ended";
+
 /// Why a `vendor_document_expired` flag cleared when a renewed document was
 /// accepted.
 pub const DOCUMENT_RENEWED: &str = "document renewed";
