@@ -47,6 +47,11 @@ impl Documents {
         documents
     }
 
+    /// Every entry of the kinds' `blocks`.
+    pub fn all_entries(&self) -> Vec<BlockEntry> {
+        self.entries.lock().unwrap().clone()
+    }
+
     /// Adds `entry` to the kinds' `blocks`.
     pub fn block(&self, entry: BlockEntry) {
         self.entries.lock().unwrap().push(entry);
