@@ -16,7 +16,7 @@
 use renox::prelude::*;
 use wl_kernel::cheques::{
     ChequeDocument, ChequeFuture, ChequeId, ChequeSchedule, ChequeStatus, ChequeSummary, Cheques,
-    OpenCheque, RegisterCheque,
+    OpenCheque, RegisterCheque, ReturnCheques, ReturnedCheques,
 };
 use wl_kernel::invoicing::invoicer;
 use wl_kernel::payments::{AllocationTarget, Direction};
@@ -382,6 +382,15 @@ impl Cheques for ChequeBook {
         currency: &'a str,
     ) -> ChequeFuture<'a, i64> {
         Box::pin(Cheque::owed_amount(db, party, currency))
+    }
+
+    fn return_undeposited<'a>(
+        &'a self,
+        state: &'a AppState,
+        request: ReturnCheques,
+        by: Option<i64>,
+    ) -> ChequeFuture<'a, Option<ReturnedCheques>> {
+        Box::pin(async move { crate::cheque_return::return_undeposited(state, &request, by).await })
     }
 
     fn not_cleared<'a>(

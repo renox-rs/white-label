@@ -39,6 +39,10 @@ impl Invoicer for Invoices {
         Box::pin(async move { replace_draft(db, id, draft).await })
     }
 
+    fn discard_draft<'a>(&'a self, db: &'a Db, id: InvoiceId) -> InvoiceFuture<'a, bool> {
+        Box::pin(async move { discard_draft(db, id).await })
+    }
+
     fn find<'a>(&'a self, db: &'a Db, id: InvoiceId) -> InvoiceFuture<'a, Option<InvoiceSummary>> {
         Box::pin(async move { Ok(Invoice::find(db, id.0).await?.map(|i| i.summary())) })
     }
@@ -299,6 +303,30 @@ pub async fn create_draft(db: &Db, draft: InvoiceDraft) -> Result<Invoice> {
     }
     tx.commit().await?;
     Ok(invoice)
+}
+
+/// Deletes the `draft` invoice `id` and its lines ([`Invoicer::discard_draft`],
+/// spec `discard`): a draft has no number and was never sent. Returns `false`
+/// and changes nothing for an invoice that is not a draft or does not exist.
+pub async fn discard_draft(db: &Db, id: InvoiceId) -> Result<bool> {
+    let Some(invoice) = Invoice::find(db, id.0).await? else {
+        return Ok(false);
+    };
+    if invoice.status != InvoiceStatus::Draft {
+        return Ok(false);
+    }
+    let mut tx = db.begin().await?;
+    renox::db::sql("DELETE FROM wl_invoicing_invoice_lines WHERE invoice_id = ?")
+        .bind(id.0)
+        .execute(&mut tx)
+        .await?;
+    // Not the status column of the machine: a draft is gone, not moved.
+    let gone = renox::db::sql("DELETE FROM wl_invoicing_invoices WHERE id = ? AND status = 'draft'")
+        .bind(id.0)
+        .execute(&mut tx)
+        .await?;
+    tx.commit().await?;
+    Ok(gone > 0)
 }
 
 /// Replaces the lines of the `draft` invoice `id` with those of `draft` and

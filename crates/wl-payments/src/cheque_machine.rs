@@ -10,7 +10,8 @@
 //! bounced, legal_case --replace--> replaced          (terminal)
 //! bounced, legal_case --write_off--> written_off     (terminal; by a user once the
 //!   invoice write-offs are made, or write_off_by_system when the last one arrives)
-//! received, due_for_deposit --return--> returned     (terminal, later)
+//! received, due_for_deposit --return--> returned     (terminal; `return` by a user,
+//!   `return_by_system` when a vertical ends the agreement, [`crate::cheque_return`])
 //! ```
 //!
 //! All nine states are declared here with their tones, and a new cheque is
@@ -19,7 +20,7 @@
 //! ([`crate::cheque_deposit`]), `bounce` ([`crate::cheque_bounce`]),
 //! `represent` ([`crate::cheque_represent`]), `settle_part` and `replace`
 //! ([`crate::cheque_settle`]), `refer_to_legal` ([`crate::cheque_legal`]);
-//! `write_off` ([`crate::cheque_write_off`]) is built; `return` comes later. `Cheque` is
+//! `write_off` ([`crate::cheque_write_off`]) and `return` ([`crate::cheque_return`]) are built. `Cheque` is
 //! `#[model(state_machine)]`, so `save` refuses a changed status.
 
 use renox::state_machine::{Machine, StateMachine};
@@ -67,6 +68,7 @@ impl StateMachine for Cheque {
             .chain(crate::cheque_settle::transitions())
             .chain(crate::cheque_legal::transitions())
             .chain(crate::cheque_write_off::transitions())
+            .chain(crate::cheque_return::transitions())
             .fold(machine, Machine::transition)
     }
 }

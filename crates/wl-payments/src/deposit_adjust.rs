@@ -40,7 +40,8 @@ use renox::prelude::*;
 use renox::state_machine::{StateMachine, Transition, TransitionCtx, TransitionError, Transitioned};
 use serde::{Deserialize, Serialize};
 use wl_kernel::deposits::{
-    AdjustDeposit, DepositAdjusted, DepositFuture, Deposits, TopUpCharge, deposit_top_ups,
+    AdjustDeposit, CancelSettlement, DepositAdjusted, DepositFuture, Deposits, HeldDeposit,
+    SettlementStarted, TopUpCharge, deposit_top_ups,
 };
 use wl_kernel::payments::RefundId;
 use wl_kernel::Subject;
@@ -557,6 +558,38 @@ pub(crate) fn register(app: &mut Registry) {
 pub struct DepositBook;
 
 impl Deposits for DepositBook {
+    fn held_for<'a>(
+        &'a self,
+        db: &'a Db,
+        source: &'a Subject,
+    ) -> DepositFuture<'a, Option<HeldDeposit>> {
+        Box::pin(async move {
+            let found = Deposit::query()
+                .where_(Deposit::SOURCE_TYPE.eq(source.subject_type.as_str()))
+                .where_(Deposit::SOURCE_ID.eq(source.subject_id))
+                .where_(Deposit::STATUS.eq(DepositStatus::Held))
+                .order_by_desc(Deposit::ID)
+                .first(db)
+                .await?;
+            Ok(found.map(|deposit| HeldDeposit {
+                deposit: deposit.deposit_id(),
+                party: deposit.party(),
+                required: deposit.amount,
+                held: deposit.held_amount,
+                currency: deposit.currency.clone(),
+            }))
+        })
+    }
+
+    fn settle_cancelled<'a>(
+        &'a self,
+        state: &'a AppState,
+        request: CancelSettlement,
+        by: Option<i64>,
+    ) -> DepositFuture<'a, Option<SettlementStarted>> {
+        Box::pin(async move { crate::deposit_cancel::settle(state, request, by).await })
+    }
+
     fn adjust<'a>(
         &'a self,
         state: &'a AppState,

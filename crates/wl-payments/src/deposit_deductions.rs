@@ -491,6 +491,18 @@ pub async fn publish(
     if !user.has_permission(permissions::DEPOSITS_MANAGE) {
         return Err(TransitionError::Forbidden);
     }
+    publish_by(state, Some(user.id), deposit, request).await
+}
+
+/// [`publish`] for `by` (`None` is the system, as when a vertical cancels an
+/// agreement and the first version carries the forfeited part): the same
+/// checks, without the permission, which the caller has settled.
+pub(crate) async fn publish_by(
+    state: &AppState,
+    by: Option<i64>,
+    deposit: &Deposit,
+    request: &PublishRequest,
+) -> std::result::Result<DepositDeduction, TransitionError> {
     let deposit = reload(state, deposit).await?;
     if deposit.status != DepositStatus::SettlementPending {
         return Err(TransitionError::NotFrom(deposit.status.as_str().to_owned()));
@@ -512,7 +524,7 @@ pub async fn publish(
         kind,
         reason,
         lines: &lines,
-        by: Some(user.id),
+        by,
         answered: Vec::new(),
         answer: None,
     };
