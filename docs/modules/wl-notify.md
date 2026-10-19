@@ -297,6 +297,33 @@ with backoff like any automation and shows as `AutomationFailed`.
 | `statutory_notice` | For statutory types: `staff_task` to the responsible staff, due in 1 working day, to deliver the notice by another means (courier, registered mail, hand delivery, a call with a note) and record the proof on the subject. Until proof is recorded, the subject shows "notice not delivered", and any deadline that depends on the notice being given is not treated as started |
 | `none` | Only the delivery log records it (marketing, tracking links) |
 
+**Default reaction per type group.** A type registered without a give-up reaction gets one from
+the table below, chosen in this order: statutory, then OTP, then the group, then urgency. The
+group is the key the module gives in `register_type` (constants in the kernel); any other
+group, including the key prefix filled in when none is given, counts as "no group".
+
+| Group key | Default | Staff role |
+|---|---|---|
+| `invoices`, `statements`, `payments`, `reminders` | `mark_contact_invalid`, `alternative_recipient`, `staff_task` | `receivables` |
+| `bookings` | `mark_contact_invalid` | (none) |
+| `portal`, `documents`, `signatures` | `mark_contact_invalid`, `staff_task` | module's own, else company admin |
+| `guardian` | `alternative_recipient`, `staff_task` | module's own |
+| `employee_security` | `mark_contact_invalid`, `staff_task`; never `alternative_recipient` | `hr` |
+| `otp` | `none` (urgency adds nothing) | (none) |
+| `marketing` | `mark_contact_invalid` | (none) |
+| `tracking` | `none` | (none) |
+| no known group | `staff_task` | module's own |
+
+A statutory type gets `mark_contact_invalid`, `statutory_notice` whatever its group or urgency.
+An `urgent` type gets `staff_task` added unless the row ends with it or is `none`; the in-app
+alert follows from every urgent `staff_task`.
+
+**Override rule.** A type whose module or vertical gives its own reactions, even `none`, keeps
+them unchanged, and its own staff role beats the group's. The combination rule of the
+type-edit page runs on those explicit lists and on edits, not on the seeded defaults (the
+`bookings` row is `mark_contact_invalid` alone). On install, a stored type with no reactions
+that the client never edited gets the default; an edited type is kept.
+
 The `alternative_recipient` step ends with one outcome, recorded in the run: `queued` (the new
 message and person; the later `staff_task` step is recorded `deferred` and opens nothing),
 `none_left` (every other contact was tried or has no usable address), `no_rule` (the recipient

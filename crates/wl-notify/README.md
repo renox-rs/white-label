@@ -21,5 +21,8 @@ What is here so far:
 |---|---|---|
 | Permissions (`notifications.*`) | §6 | `permissions` |
 
+`types::install` also fills the default give-up reaction (kernel `default_give_up`, §5.4) into a
+stored type whose reactions are empty and which the client never edited; edited rows are kept.
+
 The module owns `src/texts.rs`, the English texts (`wl_notify.*`). The app changes or
 translates them in `resources/lang/{locale}.json`.
