@@ -125,6 +125,17 @@ impl DocumentKind {
             .await
     }
 
+    /// Whether the kind is blocking: it has at least one `blocks` entry, in
+    /// either mode (`DOC.ACL.03`). A document of a blocking kind needs
+    /// review and cannot be accepted by its own uploader.
+    pub async fn is_blocking(&self, db: &Db) -> Result<bool> {
+        Ok(KindBlock::query()
+            .where_(KindBlock::KIND_ID.eq(self.id))
+            .first(db)
+            .await?
+            .is_some())
+    }
+
     /// The name in `locale`: Arabic for `ar` when there is one, else English.
     pub fn name(&self, locale: &str) -> &str {
         if locale == "ar" && !self.name_ar.is_empty() {

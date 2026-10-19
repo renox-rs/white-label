@@ -666,6 +666,8 @@ impl Documents {
             needs_number: kind.has_number,
             needs_expiry: kind.has_expiry,
             sop_kind: crate::sops::is_sop_kind(&kind.key),
+            blocking: kind.is_blocking(&state.db).await?,
+            uploaded_by: document.uploaded_by,
         };
         let mut tx = state.db.begin().await?;
         let outcome = document
@@ -889,7 +891,7 @@ async fn create(
         ..Document::default()
     };
     if recording {
-        if kind.needs_review {
+        if kind.needs_review || kind.is_blocking(&state.db).await? {
             return refuse(AttachReason::NeedsReview);
         }
         let rules = AcceptInput {

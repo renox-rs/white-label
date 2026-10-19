@@ -17,9 +17,10 @@
 //! (the kind's number and expiry rules, the new version, the replacing
 //! document); a run without it is refused.
 //!
-//! The `DOC.ACL.03` rules (no `record` for kinds with `blocks`, the
-//! reviewer is not the uploader) come with #51; the `PLT.ACL.07` archive
-//! guard with the modules whose evidence it protects.
+//! The `DOC.ACL.03` rules: no `record` for kinds with `blocks` (checked by
+//! the service) and the `not_uploader` guard of `accept` (#51). The
+//! `PLT.ACL.07` archive guard comes with the modules whose evidence it
+//! protects.
 
 use renox::db::now;
 use renox::prelude::*;
@@ -60,6 +61,13 @@ pub(crate) struct AcceptInput {
     /// The kind is an SOP kind: only `accept_sop` accepts it.
     #[serde(default)]
     pub sop_kind: bool,
+    /// The kind is blocking (has `blocks` entries): the uploader cannot
+    /// accept their own upload.
+    #[serde(default)]
+    pub blocking: bool,
+    /// Who uploaded the document, `None` for the system.
+    #[serde(default)]
+    pub uploaded_by: Option<i64>,
 }
 
 /// What `reject` and `archive` carry: whether the document is of an SOP
@@ -166,6 +174,13 @@ fn accept() -> Transition<Document> {
             let sop = input::<AcceptInput>(ctx).is_some_and(|i| i.sop_kind);
             Box::pin(async move { not_sop(sop) })
         })
+        .guard("not_uploader", |_: &Document, ctx| {
+            let verdict = input::<AcceptInput>(ctx)
+                .map(|i| not_uploader(i.blocking, i.uploaded_by, actor_id(ctx)));
+            Box::pin(async move {
+                verdict.unwrap_or_else(|| Err("The document's kind was not checked.".to_owned()))
+            })
+        })
         .guard("fields_filled", |document: &Document, ctx| {
             let missing = input::<AcceptInput>(ctx).map(|i| i.missing(document));
             Box::pin(async move {
@@ -176,6 +191,24 @@ fn accept() -> Transition<Document> {
                 }
             })
         })
+}
+
+/// The refusal of the uploader accepting their own document of a blocking
+/// kind (`DOC.ACL.03`). Nobody is exempt; a document with no uploader (the
+/// system) or a run with no actor has no conflict.
+fn not_uploader(
+    blocking: bool,
+    uploaded_by: Option<i64>,
+    actor: Option<i64>,
+) -> std::result::Result<(), String> {
+    if blocking && uploaded_by.is_some() && uploaded_by == actor {
+        Err(
+            "A document of a blocking kind must be accepted by someone other than the uploader."
+                .to_owned(),
+        )
+    } else {
+        Ok(())
+    }
 }
 
 /// The refusal of a generic transition on a document of an SOP kind.
@@ -486,7 +519,7 @@ mod tests {
         let both = AcceptInput {
             needs_number: true,
             needs_expiry: true,
-            sop_kind: false,
+            ..AcceptInput::default()
         };
         let refused = accept.check_guards(&pending(), &ctx(both)).await;
         assert!(matches!(refused, Err(TransitionError::Guard(m)) if m.contains("number")));
@@ -534,5 +567,21 @@ mod tests {
                 .await
                 .is_ok()
         );
+    }
+
+    #[test]
+    fn not_uploader_refuses_only_a_blocking_self_accept() {
+        assert!(not_uploader(true, Some(5), Some(5)).is_err());
+        assert!(not_uploader(true, Some(5), Some(6)).is_ok());
+        assert!(not_uploader(true, None, Some(5)).is_ok());
+        assert!(not_uploader(true, Some(5), None).is_ok());
+        assert!(not_uploader(false, Some(5), Some(5)).is_ok());
+    }
+
+    #[test]
+    fn accept_input_without_the_new_fields_still_reads() {
+        let old: AcceptInput =
+            renox::serde_json::from_str(r#"{"needs_number":true,"needs_expiry":false}"#).unwrap();
+        assert!(!old.blocking && old.uploaded_by.is_none());
     }
 }

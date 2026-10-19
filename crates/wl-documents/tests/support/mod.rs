@@ -981,6 +981,26 @@ async fn record(
     }
 }
 
+/// `attach` as the logged-in user, so the document has an uploader.
+async fn attach(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Form(form): Form<FileForm>,
+) -> Result<String> {
+    let mut new = NewDocument::new(
+        Subject::new("hr.employee", form.subject_id),
+        &form.kind,
+        form.upload(),
+    );
+    if let Some(expiry) = form.expires_on {
+        new = new.expires_on(expiry);
+    }
+    match Documents::attach(&state, Some(&user), new).await? {
+        Ok(document) => Ok(document.id.to_string()),
+        Err(refused) => Err(refused.into_error()),
+    }
+}
+
 async fn resubmit(
     State(state): State<AppState>,
     user: AuthUser,
@@ -1246,6 +1266,7 @@ impl Module for Harness {
     fn routes(&self) -> Routes {
         Routes::new()
             .post("/test/documents/record", record)
+            .post("/test/documents/attach", attach)
             .post("/test/documents/{id}/resubmit", resubmit)
             .post("/test/documents/{id}/archive", archive)
             .post("/test/sops", sop_create)
