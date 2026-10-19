@@ -114,6 +114,17 @@ const TEXTS: &[(&str, &str)] = &[
         "Whether a refusal for this kind can be overridden once, with a second person's approval.",
     ),
     ("wl_documents.kinds.override_change", "Change override"),
+    ("wl_documents.fields.enabled", "Status"),
+    ("wl_documents.kinds.on", "On"),
+    ("wl_documents.kinds.off", "Off"),
+    ("wl_documents.kinds.status_change", "Change status"),
+    ("wl_documents.kinds.status_title", "Turn this kind on or off"),
+    (
+        "wl_documents.kinds.status_description",
+        "While it is off, no new documents of this kind can be added. The ones it has stay, and their reminders continue.",
+    ),
+    ("wl_documents.kinds.turned_on", "Kind turned on."),
+    ("wl_documents.kinds.turned_off", "Kind turned off."),
     (
         "wl_documents.kinds.override_changed",
         "Override mode changed.",
@@ -162,6 +173,10 @@ const TEXTS: &[(&str, &str)] = &[
         ":file is larger than :max MB, the most :kind allows",
     ),
     ("wl_documents.attach.empty", ":file is empty"),
+    (
+        "wl_documents.attach.kind_off",
+        ":kind is off: ask an administrator to turn it on",
+    ),
     (
         "wl_documents.attach.needs_review",
         ":kind needs review: submit it instead of recording it",

@@ -20,12 +20,17 @@
       <rx-infolist columns="2">
         <rx-entry :label="tx['fields.subject_types']" :value="subject_types"/>
         <rx-entry :label="tx['fields.legal_block']" :value="legal_block" format="bool"/>
+        <rx-entry :label="tx['fields.enabled']" :value="enabled" format="bool"/>
         <rx-entry :label="tx['fields.override_mode']" :value="override_label"/>
         <rx-entry :label="tx['fields.responsible_role']" :value="responsible_role"/>
       </rx-infolist>
       <rx-action-sheet rx-if="not legal_block" id="override-mode" :label="tx['kinds.override_change']" :action="route('wl_documents.kinds.override_mode', key)"
                        :title="tx['kinds.override_title']" :description="tx['kinds.override_description']" :submit-label="tx['kinds.override_change']" icon="refresh">
         <rx-select name="mode" :label="tx['fields.override_mode']" :options="override_modes" :selected="override_mode" id="override-mode-select"/>
+      </rx-action-sheet>
+      <rx-action-sheet id="kind-enabled" :label="tx['kinds.status_change']" :action="route('wl_documents.kinds.enabled', key)"
+                       :title="tx['kinds.status_title']" :description="tx['kinds.status_description']" :submit-label="tx['kinds.status_change']" icon="refresh">
+        <rx-select name="enabled" :label="tx['fields.enabled']" :options="enabled_options" :selected="'1' if enabled else '0'" id="kind-enabled-select"/>
       </rx-action-sheet>
       <span rx-if="override_locked">{{ override_locked }}</span>
     </rx-card>

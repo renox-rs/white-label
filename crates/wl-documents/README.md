@@ -20,7 +20,7 @@ What is here so far:
 | Part | Spec | Module |
 |---|---|---|
 | Permissions (`documents.*`, `document_kinds.manage`) | §6 | `permissions` |
-| Document kinds and their `blocks`: `KindSeed`, the seeder that locks legal blocks again, `blocks_for`, client changes that leave locked entries alone | §3, §5.6, §7 | `kinds` |
+| Document kinds and their `blocks`: `KindSeed`, the seeder that locks legal blocks again, `blocks_for`, client changes that leave locked entries alone, `set_enabled` (a kind that is off takes no new documents; the ones it has stay) | §3, §5.6, §7 | `kinds` |
 
 The module owns `src/texts.rs`, the English texts (`wl_documents.*`). The app changes or
 translates them in `resources/lang/{locale}.json`.

@@ -354,6 +354,8 @@ pub enum AttachReason {
     /// `correct` while another document of the kind and subject waits for
     /// review.
     CorrectionOpen,
+    /// `attach` or `record` on a kind that is available and off.
+    KindOff,
 }
 
 impl AttachReason {
@@ -369,6 +371,7 @@ impl AttachReason {
             AttachReason::ExpiryMissing => "wl_documents.attach.expiry_missing",
             AttachReason::NotAccepted => "wl_documents.correction.not_accepted",
             AttachReason::CorrectionOpen => "wl_documents.correction.open",
+            AttachReason::KindOff => "wl_documents.attach.kind_off",
         }
     }
 }
@@ -453,6 +456,27 @@ fn megabytes(bytes: i64) -> String {
         let mb = bytes as f64 / MB as f64;
         format!("{mb:.1}")
     }
+}
+
+/// The refusal of `new` when its kind is off (available, not enabled), else
+/// `None`. Documents the kind already has stay, and a correction of one is
+/// not a new document, so only `attach` and `record` ask.
+///
+/// # Errors
+///
+/// `NotFound` for an unknown kind; the database's errors.
+async fn kind_off(state: &AppState, new: &NewDocument) -> Result<Option<AttachRefused>> {
+    let kind = DocumentKind::by_key(&state.db, &new.kind)
+        .await?
+        .ok_or(Error::NotFound)?;
+    Ok((!kind.enabled).then(|| {
+        AttachRefused::new(
+            AttachReason::KindOff,
+            &kind,
+            &new.subject.subject_type,
+            &new.file,
+        )
+    }))
 }
 
 /// Why `kind` refuses `file` on a subject of `subject_type`, if it does:
@@ -723,6 +747,9 @@ impl Documents {
         by: Option<&AuthUser>,
         new: NewDocument,
     ) -> Attach<Document> {
+        if let Some(refused) = kind_off(state, &new).await? {
+            return Ok(Err(refused));
+        }
         create(
             state,
             by.map(|user| user.id),
@@ -746,6 +773,9 @@ impl Documents {
     pub async fn record(state: &AppState, by: &AuthUser, new: NewDocument) -> Attach<Document> {
         if !by.has_permission(permissions::UPLOAD) {
             return Err(Error::Forbidden);
+        }
+        if let Some(refused) = kind_off(state, &new).await? {
+            return Ok(Err(refused));
         }
         create(state, Some(by.id), new, DocumentStatus::Accepted).await
     }

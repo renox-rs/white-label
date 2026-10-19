@@ -93,6 +93,10 @@ pub struct DocumentKind {
     pub responsible_role: Option<String>,
     /// The roles told on expiry as well as the responsible role, e.g. `hr`.
     pub also_notify: Json<Vec<String>>,
+    /// Whether new documents of the kind may be attached. A kind that is not
+    /// enabled is available and off: existing documents stay and their
+    /// reminders continue (§3, §7).
+    pub enabled: bool,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
@@ -178,6 +182,7 @@ impl DocumentKind {
             compliance_critical: seed.compliance_critical,
             responsible_role: seed.responsible_role.clone(),
             also_notify: Json(seed.also_notify.clone()),
+            enabled: seed.enabled,
             ..DocumentKind::default()
         };
         if seed.legal_block {
@@ -327,6 +332,9 @@ pub struct KindSeed {
     pub responsible_role: Option<String>,
     /// The roles told on expiry as well as the responsible role.
     pub also_notify: Vec<String>,
+    /// Whether the kind is on when it is first stored (on unless
+    /// [`KindSeed::off`] says otherwise). The client changes it later.
+    pub enabled: bool,
     /// The seeded `blocks`.
     pub blocks: Vec<BlockSeed>,
 }
@@ -355,8 +363,16 @@ impl KindSeed {
             compliance_critical: false,
             responsible_role: None,
             also_notify: Vec::new(),
+            enabled: true,
             blocks: Vec::new(),
         }
+    }
+
+    /// Available but off when first stored: no new documents until the
+    /// client enables the kind.
+    pub fn off(mut self) -> Self {
+        self.enabled = false;
+        self
     }
 
     /// The Arabic name.
@@ -832,6 +848,17 @@ pub async fn set_override_mode(
         kind.save(db).await?;
     }
     Ok(Ok(kind))
+}
+
+/// Turns the kind `kind` on or off. Documents it already has stay and their
+/// reminders continue; only new documents are refused while it is off.
+pub async fn set_enabled(db: &Db, kind: &str, enabled: bool) -> Result<DocumentKind> {
+    let mut kind = kind_or_404(db, kind).await?;
+    if kind.enabled != enabled {
+        kind.enabled = enabled;
+        kind.save(db).await?;
+    }
+    Ok(kind)
 }
 
 #[cfg(test)]

@@ -25,7 +25,7 @@ pub use flags::DocumentFlag;
 pub use guard::DocumentsGuard;
 pub use kinds::{
     BlockChangeRefused, BlockSeed, DocumentKind, KindBlock, KindSeed, RefusalReason, Sensitivity,
-    add_block, blocks_for, register_kind, remove_block, set_block_mode,
+    add_block, blocks_for, register_kind, remove_block, set_block_mode, set_enabled,
 };
 pub use overrides::{BlockOverride, BlockOverrideStatus};
 pub use sops::{Sop, SopInput, SopReader, SopStatus, SopTranslation, Sops};
