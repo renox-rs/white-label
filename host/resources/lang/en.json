@@ -25,6 +25,7 @@
     "documents_review": "Document review",
     "document_flags": "Document flags",
     "document_overrides": "Block overrides",
+    "document_sops": "SOPs",
     "document_kinds": "Document kinds",
     "admin": "Admin",
     "app": "App",

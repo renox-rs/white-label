@@ -80,6 +80,18 @@ const VIEWS: &[(&str, &str)] = &[
         "wl-documents/override_form.html",
         include_str!("../views/wl-documents/override_form.html"),
     ),
+    (
+        "wl-documents/sops.html",
+        include_str!("../views/wl-documents/sops.html"),
+    ),
+    (
+        "wl-documents/sop.html",
+        include_str!("../views/wl-documents/sop.html"),
+    ),
+    (
+        "wl-documents/sop_form.html",
+        include_str!("../views/wl-documents/sop_form.html"),
+    ),
 ];
 
 /// The documents module. The host adds it with
@@ -92,7 +104,9 @@ impl Module for WlDocuments {
     }
 
     fn routes(&self) -> Routes {
-        pages::routes().merge(overrides::web::routes())
+        pages::routes()
+            .merge(overrides::web::routes())
+            .merge(sops::web::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -119,7 +133,10 @@ impl Module for WlDocuments {
             .view_data::<pages::KindPage>()
             .view_data::<overrides::web::OverridesPage>()
             .view_data::<overrides::web::OverrideFormPage>()
-            .view_data::<overrides::web::OverridePage>();
+            .view_data::<overrides::web::OverridePage>()
+            .view_data::<sops::web::SopsPage>()
+            .view_data::<sops::web::SopFormPage>()
+            .view_data::<sops::web::SopPage>();
         // `DOC.RUL.01` to `DOC.RUL.03`: the `documents.expiring` and
         // `documents.expired` types, the daily `documents:expiry` task
         // (01:00 Asia/Dubai) and its command.
@@ -179,6 +196,14 @@ impl Module for WlDocuments {
                 .icon("shield")
                 .group("nav.app")
                 .order(37),
+        );
+        app.nav(
+            "app",
+            NavLink::route("wl_documents.sops", "nav.document_sops")
+                .icon("book-open")
+                .group("nav.app")
+                .order(38)
+                .permission(permissions::VIEW),
         );
         app.nav(
             "app",

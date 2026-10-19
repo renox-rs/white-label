@@ -11,6 +11,7 @@ pub mod review;
 pub mod service;
 pub mod translations;
 pub mod versions;
+pub mod web;
 
 use crate::kinds::{KindSeed, register_kind};
 

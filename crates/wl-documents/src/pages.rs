@@ -106,11 +106,21 @@ pub fn queue_order(a: &Document, b: &Document) -> Ordering {
 }
 
 /// The documents in `pending_review`, in review order ([`queue_order`]).
+/// SOP versions and translations are not listed: they have their own pages
+/// and only the SOP's owner role may decide them (#52).
 pub async fn review_queue(db: &Db) -> Result<Vec<Document>> {
     let mut documents = Document::query()
         .where_(Document::STATUS.eq(DocumentStatus::PendingReview))
         .get(db)
         .await?;
+    let sop_kinds: Vec<i64> = DocumentKind::query()
+        .get(db)
+        .await?
+        .into_iter()
+        .filter(|kind| crate::sops::is_sop_kind(&kind.key))
+        .map(|kind| kind.id)
+        .collect();
+    documents.retain(|document| !sop_kinds.contains(&document.kind_id));
     documents.sort_by(queue_order);
     Ok(documents)
 }
