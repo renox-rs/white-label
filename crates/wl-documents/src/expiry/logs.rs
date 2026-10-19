@@ -135,6 +135,16 @@ impl ReminderLog {
         Ok(written > 0)
     }
 
+    /// Forgets every offset logged for `document_id`, so the next run
+    /// reaches them again against a changed expiry date (#51).
+    pub async fn reset_for<'c>(db: impl Executor<'c>, document_id: i64) -> Result<()> {
+        sql(format!("DELETE FROM {} WHERE document_id = ?", Self::TABLE))
+            .bind(document_id)
+            .execute(db)
+            .await?;
+        Ok(())
+    }
+
     /// The offsets already logged for `document_id`, ascending.
     pub async fn offsets_for(db: &Db, document_id: i64) -> Result<Vec<i64>> {
         let mut offsets: Vec<i64> = Self::query()

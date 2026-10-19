@@ -15,8 +15,8 @@ use renox::prelude::*;
 use renox::testing::TestApp;
 use serde::Deserialize;
 use wl_documents::{
-    CorrectionInput, Document, DocumentKind, Documents, KindSeed, NewDocument, SopInput, Sops,
-    WlDocuments, permissions as perm,
+    CorrectionInput, Document, DocumentKind, Documents, FieldsUpdate, KindSeed, NewDocument,
+    SopInput, Sops, WlDocuments, permissions as perm,
 };
 use wl_kernel::documents::{
     BlockCondition, BlockEntry, BlockMode, BlockSubjects, DocumentAccepted, DocumentFuture,
@@ -952,6 +952,12 @@ struct FileForm {
     expires_on: Option<NaiveDate>,
     #[serde(default)]
     reason: Option<String>,
+    #[serde(default)]
+    number: Option<String>,
+    #[serde(default)]
+    title: Option<String>,
+    #[serde(default)]
+    authority: Option<String>,
 }
 
 impl FileForm {
@@ -1015,6 +1021,33 @@ async fn correct(
         Ok(document) => Ok(document.id.to_string()),
         Err(refused) => Err(refused.into_error()),
     }
+}
+
+/// `update_fields` as the logged-in user: the form's values over the
+/// document's own.
+async fn update_fields(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<i64>,
+    Form(form): Form<FileForm>,
+) -> Result<String> {
+    let document = Document::find_or_404(&state.db, id).await?;
+    let mut update = FieldsUpdate::of(&document);
+    if let Some(title) = form.title {
+        update.title = title;
+    }
+    if form.authority.is_some() {
+        update.issuing_authority = form.authority;
+    }
+    if form.number.is_some() {
+        update.number = form.number;
+    }
+    if form.expires_on.is_some() {
+        update.expiry_date = form.expires_on;
+    }
+    Documents::update_fields(&state, &user, &document, update)
+        .await
+        .map(|document| document.id.to_string())
 }
 
 async fn resubmit(
@@ -1284,6 +1317,7 @@ impl Module for Harness {
             .post("/test/documents/record", record)
             .post("/test/documents/attach", attach)
             .post("/test/documents/{id}/correct", correct)
+            .post("/test/documents/{id}/update", update_fields)
             .post("/test/documents/{id}/resubmit", resubmit)
             .post("/test/documents/{id}/archive", archive)
             .post("/test/sops", sop_create)

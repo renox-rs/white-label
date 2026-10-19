@@ -182,6 +182,14 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_documents.correction.open",
         "A correction of :kind is already waiting for review",
     ),
+    (
+        "wl_documents.update.blocking_fields",
+        ":kind blocks other work: its number and expiry date cannot be edited; submit a correction instead",
+    ),
+    (
+        "wl_documents.update.status",
+        "Only an accepted or pending :kind can be edited",
+    ),
     ("wl_documents.guard.expired", ":kind expired on :date"),
     ("wl_documents.guard.missing", ":kind missing"),
     ("wl_documents.guard.rejected", ":kind rejected"),

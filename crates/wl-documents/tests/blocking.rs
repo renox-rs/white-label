@@ -6,7 +6,7 @@ mod support;
 use renox::prelude::*;
 
 use wl_documents::permissions as perm;
-use wl_documents::{Document, DocumentKind, DocumentStatus, KindSeed};
+use wl_documents::{Document, DocumentKind, DocumentStatus, KindSeed, ReminderLog};
 
 use support::{boot, driving_licence, residence_visa};
 
@@ -207,4 +207,131 @@ async fn a_correction_replaces_the_document_once_someone_else_accepts_it() {
         .post(&correct, &form("residence_visa", "2029-11-30"))
         .await
         .assert_status(422);
+}
+
+/// Sub-task 3/5: number and expiry date of a blocking kind cannot be edited
+/// in place, by anyone; title and authority can, and it is audited.
+#[renox::test]
+async fn a_blocking_kind_refuses_in_place_edits_of_number_and_expiry() {
+    let t = boot().await;
+    t.install(&[residence_visa()]).await;
+    let a = t.user("Aya", &[perm::UPLOAD]).await;
+    let b = t.reviewer().await;
+    let manager = t.user("Omar", &[perm::MANAGE]).await;
+    let viewer = t.user("Vera", &[perm::VIEW]).await;
+
+    t.app.acting_as(&a);
+    let response = t
+        .app
+        .htmx()
+        .post(
+            "/test/documents/attach",
+            &form("residence_visa", "2026-11-30"),
+        )
+        .await;
+    let id: i64 = response.text().parse().unwrap();
+    let visa = Document::find(t.db(), id).await.unwrap().unwrap();
+    let visa = t.accept(&b, &visa).await;
+    let update = format!("/test/documents/{id}/update");
+
+    t.app.acting_as(&viewer);
+    t.app
+        .htmx()
+        .post(&update, &[("title", "X")])
+        .await
+        .assert_status(403);
+
+    t.app.acting_as(&manager);
+    t.app
+        .htmx()
+        .post(&update, &[("expires_on", "2030-01-01")])
+        .await
+        .assert_status(422);
+    t.app
+        .htmx()
+        .post(&update, &[("number", "N-1")])
+        .await
+        .assert_status(422);
+    let same = t.reload(&visa).await;
+    assert_eq!(same.expiry_date, visa.expiry_date);
+    assert_eq!(same.number, visa.number);
+
+    t.app
+        .htmx()
+        .post(&update, &[("title", "Visa of Aya"), ("authority", "GDRFA")])
+        .await
+        .assert_ok();
+    let edited = t.reload(&visa).await;
+    assert_eq!(edited.title, "Visa of Aya");
+    assert_eq!(edited.issuing_authority.as_deref(), Some("GDRFA"));
+    assert_eq!(edited.expiry_date, visa.expiry_date);
+    let entries = renox::audit::for_subject(t.db(), Document::TABLE, id, 10)
+        .await
+        .unwrap();
+    let updated = entries
+        .iter()
+        .find(|e| e.action == "document.updated")
+        .expect("the edit is audited");
+    assert_eq!(updated.user_id, Some(manager.id));
+    assert_eq!(updated.data["new"]["title"], "Visa of Aya");
+    assert_eq!(updated.data["old"]["title"], visa.title);
+}
+
+/// Sub-task 3/5: a non-blocking kind edits its expiry date in place, audited
+/// with old and new values, and the reminders sent for the old date are
+/// forgotten.
+#[renox::test]
+async fn a_non_blocking_kind_edits_its_expiry_and_reschedules_reminders() {
+    let t = boot().await;
+    t.install(&[site_pass()]).await;
+    let a = t.user("Aya", &[perm::UPLOAD, perm::REVIEW]).await;
+    let manager = t.user("Omar", &[perm::MANAGE]).await;
+
+    t.app.acting_as(&a);
+    let response = t
+        .app
+        .htmx()
+        .post("/test/documents/attach", &form("site_pass", "2026-11-30"))
+        .await;
+    let id: i64 = response.text().parse().unwrap();
+    let pass = Document::find(t.db(), id).await.unwrap().unwrap();
+    let pass = t.accept(&a, &pass).await;
+    let date = renox::chrono::NaiveDate::from_ymd_opt(2026, 10, 1).unwrap();
+    ReminderLog::insert_new(t.db(), id, 30, date).await.unwrap();
+
+    t.app.acting_as(&manager);
+    let update = format!("/test/documents/{id}/update");
+    // A title-only edit keeps the reminders.
+    t.app
+        .htmx()
+        .post(&update, &[("title", "Pass")])
+        .await
+        .assert_ok();
+    assert_eq!(ReminderLog::offsets_for(t.db(), id).await.unwrap(), [30]);
+
+    t.app
+        .htmx()
+        .post(&update, &[("expires_on", "2027-06-30"), ("number", "P-9")])
+        .await
+        .assert_ok();
+    let edited = t.reload(&pass).await;
+    assert_eq!(edited.expiry_date.unwrap().to_string(), "2027-06-30");
+    assert_eq!(edited.number.as_deref(), Some("P-9"));
+    assert!(
+        ReminderLog::offsets_for(t.db(), id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+
+    let entries = renox::audit::for_subject(t.db(), Document::TABLE, id, 10)
+        .await
+        .unwrap();
+    let last = entries
+        .iter()
+        .find(|e| e.data["new"]["number"] == "P-9")
+        .expect("the edit is audited");
+    assert_eq!(last.action, "document.updated");
+    assert_eq!(last.data["old"]["expiry_date"], "2026-11-30");
+    assert_eq!(last.data["new"]["expiry_date"], "2027-06-30");
 }

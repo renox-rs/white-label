@@ -18,7 +18,7 @@ use renox::prelude::*;
 
 pub use documents::{
     Attach, AttachReason, AttachRefused, CorrectionInput, Document, DocumentSource, DocumentStatus,
-    DocumentVersion, Documents, NewDocument,
+    DocumentVersion, Documents, FieldsUpdate, NewDocument,
 };
 pub use expiry::{AffectedItem, ExpiredLog, ReminderLog, RenewalTask};
 pub use flags::DocumentFlag;

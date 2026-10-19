@@ -42,6 +42,7 @@ use wl_kernel::documents::{
     DocumentAccepted, DocumentId, DocumentRejected, DocumentSuperseded, DocumentUploaded,
 };
 
+use crate::expiry::ReminderLog;
 use crate::kinds::DocumentKind;
 use crate::machine::{
     ACCEPT, ARCHIVE, AcceptInput, KindInput, RECORD, REJECT, RESUBMIT, ResubmitInput, SUBMIT,
@@ -647,6 +648,37 @@ impl CorrectionInput {
     }
 }
 
+/// The fields of a document that can be edited in place (`DOC.ACL.03`,
+/// #51): every field is replaced by the value given, so start from
+/// [`FieldsUpdate::of`] and change what is needed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FieldsUpdate {
+    /// The title.
+    pub title: String,
+    /// The issuing authority.
+    pub issuing_authority: Option<String>,
+    /// The number; refused for a blocking kind when changed.
+    pub number: Option<String>,
+    /// The issue date.
+    pub issue_date: Option<NaiveDate>,
+    /// The expiry date; refused for a blocking kind when changed.
+    pub expiry_date: Option<NaiveDate>,
+}
+
+impl FieldsUpdate {
+    /// The values `document` has now.
+    #[must_use]
+    pub fn of(document: &Document) -> Self {
+        FieldsUpdate {
+            title: document.title.clone(),
+            issuing_authority: document.issuing_authority.clone(),
+            number: document.number.clone(),
+            issue_date: document.issue_date,
+            expiry_date: document.expiry_date,
+        }
+    }
+}
+
 /// Records, after the commit, that `document` replaced `old`: the old and
 /// new ids, number and expiry date, the uploader and the accepting user.
 async fn audit_corrected(
@@ -793,6 +825,97 @@ impl Documents {
         )
         .await?;
         Ok(Ok(created))
+    }
+
+    /// `update_fields`: `by` (holding `documents.manage`) edits `document`
+    /// in place, accepted or pending only. Title and issuing authority are
+    /// always editable. For a blocking kind any change to the number or
+    /// expiry date is refused with a 422, whatever the user's roles: that
+    /// takes a correction ([`Documents::correct`]). Records
+    /// `document.updated` with the old and new values of what changed. For
+    /// another kind a changed expiry date forgets the reminders already
+    /// sent, so the nightly run (#48) reaches them again. Nothing is
+    /// stored when nothing changed. Returns the document as stored.
+    ///
+    /// # Errors
+    ///
+    /// `Forbidden` without `documents.manage`; a 422 when refused; the
+    /// database's errors.
+    pub async fn update_fields(
+        state: &AppState,
+        by: &AuthUser,
+        document: &Document,
+        update: FieldsUpdate,
+    ) -> Result<Document> {
+        if !by.has_permission(permissions::MANAGE) {
+            return Err(Error::Forbidden);
+        }
+        let kind = document.kind(&state.db).await?;
+        let current = Document::find_or_404(&state.db, document.id).await?;
+        let refuse = |key: &str| {
+            Error::Status(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                texts::english(key, &[("kind", &kind.name_en)]),
+            )
+        };
+        if !matches!(
+            current.status,
+            DocumentStatus::Accepted | DocumentStatus::PendingReview
+        ) {
+            return Err(refuse("wl_documents.update.status"));
+        }
+        let key_fields_changed =
+            update.number != current.number || update.expiry_date != current.expiry_date;
+        let blocking = kind.is_blocking(&state.db).await?;
+        if blocking && key_fields_changed {
+            return Err(refuse("wl_documents.update.blocking_fields"));
+        }
+        if update == FieldsUpdate::of(&current) {
+            return Ok(current);
+        }
+        let mut tx = state.db.begin().await?;
+        Document::query()
+            .where_(Document::ID.eq(current.id))
+            .update(
+                &mut tx,
+                &[
+                    ("title", &update.title),
+                    ("issuing_authority", &update.issuing_authority),
+                    ("number", &update.number),
+                    ("issue_date", &update.issue_date),
+                    ("expiry_date", &update.expiry_date),
+                    ("updated_at", &now()),
+                ],
+            )
+            .await?;
+        if update.expiry_date != current.expiry_date {
+            ReminderLog::reset_for(&mut tx, current.id).await?;
+        }
+        tx.commit().await?;
+        renox::audit::record(
+            &state.db,
+            renox::audit::Entry::new("document.updated")
+                .user(by.id)
+                .subject(Document::TABLE, current.id)
+                .data(json!({
+                    "old": {
+                        "title": current.title,
+                        "issuing_authority": current.issuing_authority,
+                        "number": current.number,
+                        "issue_date": current.issue_date,
+                        "expiry_date": current.expiry_date,
+                    },
+                    "new": {
+                        "title": update.title,
+                        "issuing_authority": update.issuing_authority,
+                        "number": update.number,
+                        "issue_date": update.issue_date,
+                        "expiry_date": update.expiry_date,
+                    },
+                })),
+        )
+        .await?;
+        Document::find_or_404(&state.db, current.id).await
     }
 
     /// `accept`: `by` (holding `documents.review`) accepts the pending
