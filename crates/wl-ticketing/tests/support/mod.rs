@@ -66,6 +66,7 @@ pub const BLUEFIRE: PartyId = PartyId(8);
 /// The code of BlueFire.
 pub const BLUEFIRE_CODE: &str = "P-00008";
 
+pub mod blocks;
 pub mod contracts;
 pub mod documents;
 

@@ -21,8 +21,10 @@ use wl_ticketing::{
 
 use std::sync::Arc;
 
+use wl_kernel::block_guard::BlockGuard;
 use wl_kernel::documents::DocumentGuard;
 
+use super::blocks::Blocks;
 use super::documents::Documents;
 use super::{Booted, CLIENT, Recorded, boot_app, dubai, record};
 
@@ -88,6 +90,18 @@ pub async fn world_with_documents() -> (World, Documents) {
     )
     .await;
     (world, documents)
+}
+
+/// The world with a block guard that blocks the vendors the test names.
+pub async fn world_with_blocks() -> (World, Blocks) {
+    let blocks = Blocks::default();
+    let guard: Arc<dyn BlockGuard> = Arc::new(blocks.clone());
+    let world = world_customized(
+        WlTicketing::new().compliance_manager_role("property_manager"),
+        move |app| app.provide(guard),
+    )
+    .await;
+    (world, blocks)
 }
 
 /// The world with `module`.
