@@ -24,17 +24,28 @@
 //! - A date already past counts in week 1; money is AED fils; a foreign
 //!   amount without a stored rate is left out with a warning.
 //!
-//! The days-late adjustment and the budget fill come with BL-INV-29. Payroll,
-//! final settlements, subscription cycles, payer bills and scheduled charges
-//! belong to modules this build does not have; they join the forecast through
-//! `CashForecastSource`.
+//! - **Days late** (`adjust by days late`, §5.14 step 6): a party's expected
+//!   receipt date is its due date plus its average days late
+//!   ([`average_days_late`]); a receipt moved beyond the horizon drops out of
+//!   the grid and is listed in [`Forecast::after`]. Payments are never moved.
+//! - **Budget fill** (§5.14 step 7): for each line of the approved company
+//!   budget in a month of the horizon, the part not covered by the actual and
+//!   by the items that will count in it is spread evenly over the month's
+//!   remaining days within the horizon ([`FillInput`]).
+//!
+//! Payroll, final settlements, subscription cycles, payer bills and scheduled
+//! charges belong to modules this build does not have; they join the forecast
+//! through `CashForecastSource`.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use renox::chrono::{Datelike, Days, NaiveDate, Weekday};
 use wl_kernel::cash_forecast::ForecastLine;
 use wl_kernel::payments::{BankPayment, Direction, UnpaidRefund};
 use wl_kernel::{PartyId, Subject};
+
+use crate::budget::{month_end, month_start};
+use crate::budget_category::BudgetKind;
 
 /// Where an opening balance comes from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -171,6 +182,59 @@ pub struct VatInput {
     pub paid: bool,
 }
 
+/// A budget category as the budget fill needs it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FillCategory {
+    /// The category's id.
+    pub id: i64,
+    /// Its code.
+    pub code: String,
+    /// Its name in English.
+    pub name: String,
+    /// Income, expense or owner drawings.
+    pub kind: BudgetKind,
+}
+
+/// The approved budget of one category and month.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FillBudget {
+    /// The category's id.
+    pub category_id: i64,
+    /// The first day of the month.
+    pub month: NaiveDate,
+    /// The budgeted amount in AED fils, without VAT.
+    pub amount: i64,
+}
+
+/// What a document not yet in actual will add to the actual of a month.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Cover {
+    /// The document.
+    pub document: Subject,
+    /// The category it counts in.
+    pub category_id: i64,
+    /// The month of its actual date.
+    pub month: NaiveDate,
+    /// The amount in AED fils, without recoverable VAT.
+    pub amount: i64,
+}
+
+/// What the budget fill of one entity reads.
+#[derive(Debug, Clone, Default)]
+pub struct FillInput {
+    /// The budget categories.
+    pub categories: Vec<FillCategory>,
+    /// The lines of the approved budgets of the months of the horizon.
+    pub budget: Vec<FillBudget>,
+    /// The actual already posted per category and month.
+    pub actual: BTreeMap<(i64, NaiveDate), i64>,
+    /// The supplier bills not yet approved, by line, with their actual date.
+    pub bill_covers: Vec<Cover>,
+    /// The budget category of a source line's category, per direction
+    /// (`true`: a receipt).
+    pub source_categories: BTreeMap<(String, bool), i64>,
+}
+
 /// Everything about one entity the grid needs.
 #[derive(Debug, Clone, Default)]
 pub struct EntityInput {
@@ -198,6 +262,11 @@ pub struct EntityInput {
     pub sources: Vec<(String, ForecastLine)>,
     /// Months of the horizon without an approved budget.
     pub months_without_budget: Vec<NaiveDate>,
+    /// What the budget fill reads.
+    pub fill: FillInput,
+    /// The average days late of each party (its id) with at least three
+    /// invoices paid in the last 12 months.
+    pub late_days: BTreeMap<i64, i64>,
     /// Foreign-currency documents left out for a missing rate.
     pub unpriced: Vec<Subject>,
 }
@@ -219,6 +288,8 @@ pub struct Inputs {
     pub vat_counted: bool,
     /// Whether the bills not yet approved count.
     pub unapproved_counted: bool,
+    /// Whether receipts move by each party's average days late.
+    pub days_late: bool,
     /// The entities.
     pub entities: Vec<EntityInput>,
 }
@@ -240,6 +311,8 @@ pub enum LineKind {
     Vat,
     /// A line of a [`CashForecastSource`](wl_kernel::cash_forecast::CashForecastSource).
     Source,
+    /// The uncovered part of a budget line, spread over the days of its month.
+    BudgetFill,
 }
 
 impl LineKind {
@@ -253,6 +326,7 @@ impl LineKind {
             LineKind::Refund => "refund",
             LineKind::Vat => "vat",
             LineKind::Source => "source",
+            LineKind::BudgetFill => "budget_fill",
         }
     }
 }
@@ -406,6 +480,10 @@ pub struct Forecast {
     pub lines: Vec<Line>,
     /// The memo lines.
     pub memos: Vec<Memo>,
+    /// The receipts moved beyond the last week by the days-late adjustment:
+    /// listed as *after week 13*, not counted. Their `week` is the number of
+    /// weeks.
+    pub after: Vec<Line>,
     /// The warnings.
     pub warnings: Vec<Warning>,
 }
@@ -497,6 +575,7 @@ pub fn assemble(inputs: &Inputs) -> Forecast {
         openings: Vec::new(),
         lines: Vec::new(),
         memos: Vec::new(),
+        after: Vec::new(),
         warnings: Vec::new(),
     };
     for entity in &inputs.entities {
@@ -553,9 +632,116 @@ fn covered(cheques: &[ChequeInput], document: &Subject) -> i64 {
         .sum()
 }
 
+/// The mean of `days` (the days from the due date to the full payment of the
+/// invoices, or payer bills, of one party paid in the last 12 months),
+/// rounded to whole days and never below 0; `None` below three documents.
+pub fn average_days_late(days: &[i64]) -> Option<i64> {
+    if days.len() < 3 {
+        return None;
+    }
+    let count = i64::try_from(days.len()).ok()?;
+    let sum: i64 = days.iter().sum();
+    // Half rounds up.
+    Some((sum * 2 + count).div_euclid(2 * count).max(0))
+}
+
+/// The date a receipt of `party` due on `due` is expected: with the days-late
+/// adjustment on, the due date plus the party's average days late.
+fn shifted(inputs: &Inputs, entity: &EntityInput, party: PartyId, due: NaiveDate) -> NaiveDate {
+    if !inputs.days_late {
+        return due;
+    }
+    let late = entity.late_days.get(&party.0).copied().unwrap_or(0).max(0);
+    due + Days::new(u64::try_from(late).unwrap_or(0))
+}
+
+/// The budget fill of `entity` (§5.14 step 7): per line of the approved
+/// budget in a month of the horizon, the part not covered, spread evenly in
+/// fils over the month's remaining days within the horizon (the remainder on
+/// the last day) and counted in their weeks, one line per category and week.
+/// The current month's days start today; a month wholly past, or beyond the
+/// horizon, has none; an amount covered in full leaves nothing, never a
+/// negative line. An income category fills receipts, the others payments; an
+/// owner drawings fill is a total only (`FIN.ACL.22`).
+fn add_fill(
+    forecast: &mut Forecast,
+    today: NaiveDate,
+    entity: &EntityInput,
+    covered: &BTreeMap<(i64, NaiveDate), i64>,
+) {
+    let Some(last) = forecast.weeks.last().map(|w| w.end) else {
+        return;
+    };
+    let weeks = forecast.weeks.clone();
+    for budget in &entity.fill.budget {
+        let Some(category) = entity
+            .fill
+            .categories
+            .iter()
+            .find(|c| c.id == budget.category_id)
+        else {
+            continue;
+        };
+        let month = month_start(budget.month);
+        let from = today.max(month);
+        let to = month_end(month).min(last);
+        if to < from {
+            continue;
+        }
+        let already = covered.get(&(budget.category_id, month)).copied().unwrap_or(0);
+        let open = (budget.amount - already).max(0);
+        if open == 0 {
+            continue;
+        }
+        let days = (to - from).num_days() + 1;
+        let per_day = open / days;
+        let remainder = open - per_day * days;
+        let mut by_week: BTreeMap<usize, (NaiveDate, i64)> = BTreeMap::new();
+        for i in 0..days {
+            let date = from + Days::new(u64::try_from(i).unwrap_or(0));
+            let Some(week) = week_of(date, &weeks) else {
+                continue;
+            };
+            let amount = per_day + if i == days - 1 { remainder } else { 0 };
+            let entry = by_week.entry(week).or_insert((date, 0));
+            entry.1 += amount;
+        }
+        let direction = if category.kind == BudgetKind::Income {
+            Direction::In
+        } else {
+            Direction::Out
+        };
+        for (week, (date, amount)) in by_week {
+            if amount <= 0 {
+                continue;
+            }
+            forecast.lines.push(Line {
+                legal_entity_id: entity.legal_entity_id,
+                kind: LineKind::BudgetFill,
+                label: category.name.clone(),
+                category: category.code.clone(),
+                source: None,
+                party: None,
+                date,
+                week,
+                amount,
+                direction,
+                documents: Vec::new(),
+                not_approved: false,
+                estimate: false,
+                total_only: category.kind == BudgetKind::OwnerDrawings,
+            });
+        }
+    }
+}
+
 fn add_entity(forecast: &mut Forecast, inputs: &Inputs, entity: &EntityInput) {
     let id = entity.legal_entity_id;
     let mut counted: BTreeSet<Subject> = BTreeSet::new();
+    // The bills not yet approved that count as payments, and what the items
+    // above will add to the actual of each category and month (§5.14 step 7).
+    let mut unapproved: BTreeSet<Subject> = BTreeSet::new();
+    let mut covered: BTreeMap<(i64, NaiveDate), i64> = entity.fill.actual.clone();
     let weeks = forecast.weeks.clone();
     let push_line = |forecast: &mut Forecast, line: Line| {
         if line.week < weeks.len() && line.amount > 0 {
@@ -577,7 +763,8 @@ fn add_entity(forecast: &mut Forecast, inputs: &Inputs, entity: &EntityInput) {
         };
         let pending = covered(&entity.cheques_in, &invoice.subject);
         let bounced = covered(&entity.bounced, &invoice.subject);
-        let week = week_of(invoice.due, &weeks);
+        let expected = shifted(inputs, entity, invoice.party, invoice.due);
+        let week = week_of(expected, &weeks);
         let memo_week = week.unwrap_or(0);
         let after_pending = (balance - pending).max(0);
         let bounced_part = bounced.min(after_pending);
@@ -608,26 +795,32 @@ fn add_entity(forecast: &mut Forecast, inputs: &Inputs, entity: &EntityInput) {
         if disputed > 0 {
             forecast.memos.push(memo(MemoKind::Disputed, disputed));
         }
-        if let Some(week) = week {
-            push_line(
-                forecast,
-                Line {
-                    legal_entity_id: id,
-                    kind: LineKind::Invoice,
-                    label: invoice.label.clone(),
-                    category: LineKind::Invoice.code().to_owned(),
-                    source: None,
-                    party: Some(invoice.party),
-                    date: invoice.due,
-                    week,
-                    amount: remaining - disputed,
-                    direction: Direction::In,
-                    documents: vec![invoice.subject.clone()],
-                    not_approved: false,
-                    estimate: false,
-                    total_only: false,
-                },
-            );
+        let line = Line {
+            legal_entity_id: id,
+            kind: LineKind::Invoice,
+            label: invoice.label.clone(),
+            category: LineKind::Invoice.code().to_owned(),
+            source: None,
+            party: Some(invoice.party),
+            date: expected,
+            week: week.unwrap_or(weeks.len()),
+            amount: remaining - disputed,
+            direction: Direction::In,
+            documents: vec![invoice.subject.clone()],
+            not_approved: false,
+            estimate: false,
+            total_only: false,
+        };
+        match week {
+            Some(_) => push_line(forecast, line),
+            // Moved beyond the horizon by the days-late adjustment only.
+            None if inputs.days_late
+                && week_of(invoice.due, &weeks).is_some()
+                && line.amount > 0 =>
+            {
+                forecast.after.push(line);
+            }
+            None => {}
         }
     }
 
@@ -692,6 +885,9 @@ fn add_entity(forecast: &mut Forecast, inputs: &Inputs, entity: &EntityInput) {
         }
         if !bill.approved && !inputs.unapproved_counted {
             continue;
+        }
+        if !bill.approved {
+            unapproved.insert(bill.subject.clone());
         }
         if let Some(week) = week {
             push_line(
@@ -793,6 +989,16 @@ fn add_entity(forecast: &mut Forecast, inputs: &Inputs, entity: &EntityInput) {
         if line.documents.iter().any(|d| counted.contains(d)) || line.amount <= 0 {
             continue;
         }
+        // It will count in the actual of the month of its date.
+        if let Some(category) = entity
+            .fill
+            .source_categories
+            .get(&(line.category.clone(), line.direction == Direction::In))
+        {
+            *covered
+                .entry((*category, month_start(line.date)))
+                .or_insert(0) += line.amount;
+        }
         let Some(week) = week_of(line.date, &weeks) else {
             continue;
         };
@@ -816,6 +1022,15 @@ fn add_entity(forecast: &mut Forecast, inputs: &Inputs, entity: &EntityInput) {
             },
         );
     }
+
+    for cover in &entity.fill.bill_covers {
+        if unapproved.contains(&cover.document) {
+            *covered
+                .entry((cover.category_id, month_start(cover.month)))
+                .or_insert(0) += cover.amount;
+        }
+    }
+    add_fill(forecast, inputs.today, entity, &covered);
 
     if !entity.months_without_budget.is_empty() {
         forecast.warnings.push(Warning::NoBudget {
@@ -843,6 +1058,7 @@ mod tests {
             disputed_counted: false,
             vat_counted: true,
             unapproved_counted: true,
+            days_late: false,
             entities: vec![entity],
         }
     }
@@ -1113,5 +1329,214 @@ mod tests {
             source: Subject::new("invoicing.credit_note", 2),
         });
         assert_eq!(assemble(&inputs(e)).payments(0), 90_000);
+    }
+
+    fn rent_budget(amount: i64) -> FillInput {
+        FillInput {
+            categories: vec![
+                FillCategory {
+                    id: 1,
+                    code: "rent_utilities".into(),
+                    name: "Rent and utilities".into(),
+                    kind: BudgetKind::Expense,
+                },
+                FillCategory {
+                    id: 2,
+                    code: "sales".into(),
+                    name: "Sales".into(),
+                    kind: BudgetKind::Income,
+                },
+            ],
+            budget: vec![FillBudget {
+                category_id: 1,
+                month: day(2027, 3, 1),
+                amount,
+            }],
+            ..Default::default()
+        }
+    }
+
+    fn march(entity: EntityInput) -> Inputs {
+        Inputs {
+            today: day(2027, 3, 1),
+            ..inputs(entity)
+        }
+    }
+
+    #[test]
+    fn a_budget_line_is_spread_over_the_days_of_its_month() {
+        let mut e = entity();
+        e.fill = rent_budget(3_100_000);
+        let forecast = assemble(&march(e));
+        // AED 1,000 a day: 7 days in the weeks of 1, 8, 15 and 22 March and
+        // 3 days (29 to 31 March) in the fifth.
+        for week in 0..4 {
+            assert_eq!(forecast.payments(week), 700_000);
+        }
+        assert_eq!(forecast.payments(4), 300_000);
+        assert_eq!(forecast.payments(5), 0);
+        assert!(forecast.lines.iter().all(|l| l.kind == LineKind::BudgetFill));
+        assert_eq!(forecast.lines[0].label, "Rent and utilities");
+    }
+
+    #[test]
+    fn what_is_covered_is_not_filled_and_never_below_zero() {
+        let mut e = entity();
+        e.fill = rent_budget(3_100_000);
+        // An approved bill of AED 25,000 is in the actual.
+        e.fill.actual.insert((1, day(2027, 3, 1)), 2_500_000);
+        let forecast = assemble(&march(e.clone()));
+        let total: i64 = (0..13).map(|w| forecast.payments(w)).sum();
+        assert_eq!(total, 600_000);
+        // A bill not yet approved covers the month too, once, when counted.
+        e.fill.actual.clear();
+        e.fill.bill_covers.push(Cover {
+            document: Subject::new("invoicing.supplier_bill", 8),
+            category_id: 1,
+            month: day(2027, 3, 1),
+            amount: 2_500_000,
+        });
+        e.bills.push(bill(8, day(2027, 4, 5), 2_500_000, false));
+        let total: i64 = (0..13).map(|w| assemble(&march(e.clone())).payments(w)).sum();
+        assert_eq!(total, 2_500_000 + 600_000);
+        // More actual than budget: no fill.
+        e.fill.actual.insert((1, day(2027, 3, 1)), 3_300_000);
+        let forecast = assemble(&march(e));
+        assert!(forecast.lines.iter().all(|l| l.kind != LineKind::BudgetFill));
+    }
+
+    #[test]
+    fn a_cover_of_a_bill_that_does_not_count_is_ignored() {
+        let mut e = entity();
+        e.fill = rent_budget(3_100_000);
+        e.fill.bill_covers.push(Cover {
+            document: Subject::new("invoicing.supplier_bill", 8),
+            category_id: 1,
+            month: day(2027, 3, 1),
+            amount: 2_500_000,
+        });
+        e.bills.push(bill(8, day(2027, 4, 5), 2_500_000, false));
+        let mut left_out = march(e);
+        left_out.unapproved_counted = false;
+        let forecast = assemble(&left_out);
+        assert_eq!(forecast.payments(0), 700_000);
+    }
+
+    #[test]
+    fn the_remainder_of_the_spread_goes_to_the_last_day() {
+        let mut e = entity();
+        e.fill = rent_budget(600_000);
+        let forecast = assemble(&march(e));
+        let total: i64 = (0..13).map(|w| forecast.payments(w)).sum();
+        assert_eq!(total, 600_000);
+        // 600,000 / 31 = 19,354 a day, 26 over: 7 * 19,354 in the first week.
+        assert_eq!(forecast.payments(0), 7 * 19_354);
+        assert_eq!(forecast.payments(4), 3 * 19_354 + 26);
+    }
+
+    #[test]
+    fn the_current_month_fills_from_today_and_an_income_line_is_a_receipt() {
+        let mut e = entity();
+        e.fill = rent_budget(3_100_000);
+        e.fill.budget.push(FillBudget {
+            category_id: 2,
+            month: day(2027, 3, 1),
+            amount: 1_000_000,
+        });
+        let mut today = march(e);
+        today.today = day(2027, 3, 22);
+        let forecast = assemble(&today);
+        // 10 days left: 22 to 31 March; the 22nd to the 28th are week 4.
+        assert_eq!(forecast.payments(3), 7 * 310_000);
+        assert_eq!(forecast.receipts(3), 7 * 100_000);
+        assert_eq!(forecast.payments(4), 3 * 310_000);
+        assert!(forecast
+            .lines
+            .iter()
+            .filter(|l| l.category == "sales")
+            .all(|l| l.direction == Direction::In && !l.total_only));
+    }
+
+    #[test]
+    fn a_month_past_or_beyond_the_horizon_has_no_fill() {
+        let mut e = entity();
+        e.fill = rent_budget(3_100_000);
+        e.fill.budget.push(FillBudget {
+            category_id: 1,
+            month: day(2027, 9, 1),
+            amount: 100,
+        });
+        let mut late = march(e);
+        late.today = day(2027, 4, 2);
+        let forecast = assemble(&late);
+        assert!(forecast.lines.is_empty());
+    }
+
+    #[test]
+    fn a_source_line_covers_its_category_in_the_month_of_its_date() {
+        let mut e = entity();
+        e.fill = rent_budget(3_100_000);
+        e.fill
+            .source_categories
+            .insert(("rent".into(), false), 1);
+        e.sources.push((
+            "pm.rent".into(),
+            ForecastLine::new("Rent", "rent", day(2027, 3, 20), 3_100_000, Direction::Out),
+        ));
+        let forecast = assemble(&march(e));
+        assert!(forecast.lines.iter().all(|l| l.kind == LineKind::Source));
+    }
+
+    #[test]
+    fn a_party_is_late_by_the_mean_of_at_least_three_documents() {
+        assert_eq!(average_days_late(&[10, 20, 30]), Some(20));
+        assert_eq!(average_days_late(&[15, 30, 45]), Some(30));
+        assert_eq!(average_days_late(&[10, 20]), None);
+        assert_eq!(average_days_late(&[-5, -10, 0]), Some(0));
+        assert_eq!(average_days_late(&[1, 1, 2]), Some(1));
+        assert_eq!(average_days_late(&[1, 2, 2]), Some(2));
+    }
+
+    #[test]
+    fn days_late_moves_receipts_and_not_payments() {
+        let mut e = entity();
+        e.invoices.push(invoice(9, day(2027, 3, 1), 500_000));
+        e.late_days.insert(1, 20);
+        e.bills.push(bill(5, day(2027, 3, 1), 200_000, true));
+        let mut moved = march(e.clone());
+        moved.days_late = true;
+        let forecast = assemble(&moved);
+        let line = forecast.lines.iter().find(|l| l.kind == LineKind::Invoice).unwrap();
+        assert_eq!(line.date, day(2027, 3, 21));
+        assert_eq!(forecast.payments(0), 200_000);
+        // Off: the due date.
+        let plain = assemble(&march(e));
+        let line = plain.lines.iter().find(|l| l.kind == LineKind::Invoice).unwrap();
+        assert_eq!(line.date, day(2027, 3, 1));
+    }
+
+    #[test]
+    fn a_receipt_moved_beyond_the_horizon_is_listed_after_it() {
+        let mut e = entity();
+        e.invoices.push(invoice(9, day(2027, 5, 28), 500_000));
+        e.invoices.push(invoice(10, day(2027, 8, 1), 700_000));
+        e.late_days.insert(1, 20);
+        let mut moved = march(e);
+        moved.days_late = true;
+        let forecast = assemble(&moved);
+        assert!(forecast.lines.is_empty());
+        assert_eq!(forecast.after.len(), 1);
+        assert_eq!(forecast.after[0].amount, 500_000);
+        assert_eq!(forecast.after[0].date, day(2027, 6, 17));
+    }
+
+    #[test]
+    fn an_adjusted_date_already_past_counts_in_week_one() {
+        let mut e = entity();
+        e.invoices.push(invoice(9, day(2027, 2, 1), 500_000));
+        e.late_days.insert(1, 10);
+        let mut moved = march(e);
+        moved.days_late = true;
+        assert_eq!(assemble(&moved).receipts(0), 500_000);
     }
 }

@@ -6,23 +6,27 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use renox::chrono::{Days, NaiveDate};
+use renox::chrono::{Days, Months, NaiveDate};
 use renox::prelude::*;
 use wl_kernel::bank_statements::bank_statements;
 use wl_kernel::cash_forecast::cash_forecast_sources;
 use wl_kernel::cheques::{OpenCheque, cheques as cheque_contract};
 use wl_kernel::invoicing::{CreditNoteStatus, InvoiceStatus};
 use wl_kernel::parties::{PartyStatus, directory};
+use wl_kernel::documents::dubai_date;
 use wl_kernel::payments::{Direction, payment_recorder};
 use wl_kernel::{LegalEntity, PartyId, Subject};
 
+use crate::allocation::Allocation;
 use crate::bill_line::BillLine;
-use crate::budget::{CompanyBudget, month_start};
-use crate::budget_actual::Mapped;
+use crate::budget::{CompanyBudget, CompanyBudgetLine, month_start};
+use crate::budget_actual::{self, Mapped};
+use crate::budget_category::{BudgetCategory, BudgetKind, MappingKind};
 use crate::cash_balance;
 use crate::cash_forecast::{
-    AccountInput, Balance, BalanceSource, BillInput, ChequeInput, EntityInput, Inputs,
-    InvoiceInput, VatInput, choose_balance, vat_due, week_one_start, weeks_of,
+    AccountInput, Balance, BalanceSource, BillInput, ChequeInput, Cover, EntityInput, FillBudget,
+    FillCategory, FillInput, Inputs, InvoiceInput, VatInput, average_days_late, choose_balance,
+    vat_due, week_one_start, weeks_of,
 };
 use crate::config::InvoicingConfig;
 use crate::credit_note::CreditNote;
@@ -126,6 +130,7 @@ pub async fn load(
         disputed_counted: config.cash_disputed_counted,
         vat_counted: config.cash_vat_counted,
         unapproved_counted: config.cash_unapproved_bills_counted,
+        days_late: config.cash_days_late,
         entities: loaded,
     })
 }
@@ -238,6 +243,12 @@ async fn load_entity(
         });
     }
 
+    // How late each party pays, for the days-late adjustment.
+    if config.cash_days_late {
+        let parties: BTreeSet<i64> = input.invoices.iter().map(|i| i.party.0).collect();
+        input.late_days = late_days(db, &parties, today).await?;
+    }
+
     // Supplier bills.
     let bills = SupplierBill::query()
         .where_(SupplierBill::LEGAL_ENTITY_ID.eq(entity.id))
@@ -328,15 +339,191 @@ async fn load_entity(
         }
     }
 
-    // Months of the horizon with no approved budget.
+    // The approved budget of each month of the horizon, and what covers it.
+    load_fill(db, entity.id, (first, horizon_end), mapped, &mut input).await?;
+    Ok(input)
+}
+
+/// The days-late average of each of `parties` (their ids): over the invoices
+/// fully paid (`paid`, never written off or credited) in the 12 months before
+/// `today`, the days from the due date to the day of the last allocation,
+/// the one that brought the balance to 0. A party with fewer than three has
+/// no entry. Payer bills (`FIN.TPP.01`) join through the same average when
+/// their module exists.
+async fn late_days(
+    db: &Db,
+    parties: &BTreeSet<i64>,
+    today: NaiveDate,
+) -> Result<BTreeMap<i64, i64>> {
+    let mut found = BTreeMap::new();
+    if parties.is_empty() {
+        return Ok(found);
+    }
+    let since = today
+        .checked_sub_months(Months::new(12))
+        .unwrap_or(NaiveDate::MIN);
+    let paid = Invoice::query()
+        .where_(Invoice::PARTY_ID.is_in(parties.iter().copied().collect::<Vec<_>>()))
+        .where_(Invoice::STATUS.eq(InvoiceStatus::Paid))
+        .get(db)
+        .await?;
+    if paid.is_empty() {
+        return Ok(found);
+    }
+    let allocations = Allocation::query()
+        .where_(Allocation::INVOICE_ID.is_in(paid.iter().map(|i| i.id).collect::<Vec<_>>()))
+        .where_(Allocation::REMOVED_AT.is_null())
+        .get(db)
+        .await?;
+    let mut samples: BTreeMap<i64, Vec<i64>> = BTreeMap::new();
+    for invoice in &paid {
+        let Some(due) = invoice.due_date else {
+            continue;
+        };
+        let Some(last) = allocations
+            .iter()
+            .filter(|a| a.invoice_id == invoice.id)
+            .map(|a| a.allocated_at)
+            .max()
+        else {
+            continue;
+        };
+        let on = dubai_date(last);
+        if on < since || on > today {
+            continue;
+        }
+        samples
+            .entry(invoice.party_id)
+            .or_default()
+            .push((on - due).num_days());
+    }
+    for (party, days) in samples {
+        if let Some(average) = average_days_late(&days) {
+            found.insert(party, average);
+        }
+    }
+    Ok(found)
+}
+
+/// The category a line of a source counts in: the category with the line's
+/// category as its code, else the one that maps the line's category as a key
+/// (payroll, expense category or cost code for a payment; charge type or item
+/// group for a receipt), of a kind that fits the direction.
+fn source_category(
+    mapped: &Mapped,
+    categories: &[BudgetCategory],
+    category: &str,
+    income: bool,
+) -> Option<i64> {
+    if let Some(found) = categories
+        .iter()
+        .find(|c| c.code == category && (c.kind == BudgetKind::Income) == income)
+    {
+        return Some(found.id);
+    }
+    let kinds: &[MappingKind] = if income {
+        &[MappingKind::ChargeType, MappingKind::ItemGroup]
+    } else {
+        &[
+            MappingKind::Payroll,
+            MappingKind::ExpenseCategory,
+            MappingKind::CostCode,
+        ]
+    };
+    kinds.iter().find_map(|kind| {
+        mapped
+            .find(*kind, Some(category))
+            .filter(|(_, budget_kind)| (*budget_kind == BudgetKind::Income) == income)
+            .map(|(id, _)| id)
+    })
+}
+
+/// Reads what the budget fill needs (§5.14 step 7): the lines of the approved
+/// budget of each month of the horizon (a month with none goes to
+/// `months_without_budget`), the actual of those months, the supplier bills
+/// not yet approved with the category and month their lines will count in,
+/// and the category of each source line.
+async fn load_fill(
+    db: &Db,
+    entity: i64,
+    (first, horizon_end): (NaiveDate, NaiveDate),
+    mapped: &Mapped,
+    input: &mut EntityInput,
+) -> Result<()> {
+    let mut months = Vec::new();
     let mut month = month_start(first);
     while month <= horizon_end {
-        if CompanyBudget::approved_on(db, entity.id, month).await?.is_none() {
-            input.months_without_budget.push(month);
-        }
+        months.push(month);
         month = month_start(month + Days::new(32));
     }
-    Ok(input)
+    let categories = BudgetCategory::query().get(db).await?;
+    let mut fill = FillInput {
+        categories: categories
+            .iter()
+            .map(|c| FillCategory {
+                id: c.id,
+                code: c.code.clone(),
+                name: c.name_en.clone(),
+                kind: c.kind,
+            })
+            .collect(),
+        ..Default::default()
+    };
+    let mut lines: BTreeMap<i64, Vec<CompanyBudgetLine>> = BTreeMap::new();
+    let mut budgeted = Vec::new();
+    for month in &months {
+        let Some(budget) = CompanyBudget::approved_on(db, entity, *month).await? else {
+            input.months_without_budget.push(*month);
+            continue;
+        };
+        budgeted.push(*month);
+        if !lines.contains_key(&budget.id) {
+            lines.insert(budget.id, CompanyBudgetLine::of(db, budget.id).await?);
+        }
+        for line in lines.get(&budget.id).into_iter().flatten() {
+            if line.month == *month {
+                fill.budget.push(FillBudget {
+                    category_id: line.category_id,
+                    month: *month,
+                    amount: line.amount,
+                });
+            }
+        }
+    }
+    if !budgeted.is_empty() {
+        fill.actual = budget_actual::per_category_month(db, entity, &budgeted).await?;
+    }
+    // The bills not yet approved that the forecast counts, by line.
+    let pending: Vec<SupplierBill> = SupplierBill::query()
+        .where_(SupplierBill::LEGAL_ENTITY_ID.eq(entity))
+        .where_(SupplierBill::STATUS.is_in([
+            SupplierBillStatus::Matched,
+            SupplierBillStatus::Exception,
+        ]))
+        .get(db)
+        .await?
+        .into_iter()
+        .filter(|b| !input.bills.iter().any(|i| i.subject == b.subject() && i.duplicate))
+        .collect();
+    for item in budget_actual::bill_items(db, mapped, &pending).await? {
+        if let Some(category) = item.category_id {
+            fill.bill_covers.push(Cover {
+                document: item.source,
+                category_id: category,
+                month: month_start(item.month),
+                amount: item.amount,
+            });
+        }
+    }
+    for (_, line) in &input.sources {
+        let income = line.direction == Direction::In;
+        if let Some(category) = source_category(mapped, &categories, &line.category, income) {
+            fill.source_categories
+                .insert((line.category.clone(), income), category);
+        }
+    }
+    input.fill = fill;
+    Ok(())
 }
 
 /// The VAT payable of the tax periods whose return is due in the horizon.

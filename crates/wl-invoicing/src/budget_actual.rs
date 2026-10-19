@@ -285,6 +285,57 @@ fn expense_item(mapped: &Mapped, line: &BillLine, amounts: (i64, i64), sign: i64
     }
 }
 
+/// The items of the lines of `bills`, by bill date, whatever their state: the
+/// caller chooses which bills count. The cash-flow forecast reads the bills
+/// not yet approved through it, to know what they will add to the actual.
+pub async fn bill_items(
+    db: &Db,
+    mapped: &Mapped,
+    bills: &[SupplierBill],
+) -> Result<Vec<ActualItem>> {
+    let mut items = Vec::new();
+    if bills.is_empty() {
+        return Ok(items);
+    }
+    let ids: Vec<i64> = bills.iter().map(|b| b.id).collect();
+    // The bills whose drawing the sole owner approved themselves
+    // (`FIN.ACL.23`).
+    let self_approved: BTreeSet<i64> = DrawingApproval::query()
+        .where_(DrawingApproval::SOURCE_TYPE.eq("invoicing.supplier_bill"))
+        .where_(DrawingApproval::SOURCE_ID.is_in(ids.clone()))
+        .where_(DrawingApproval::STATUS.eq(DrawingStatus::Approved))
+        .where_(DrawingApproval::SELF_APPROVED.eq(true))
+        .get(db)
+        .await?
+        .into_iter()
+        .map(|a| a.source_id)
+        .collect();
+    let lines = BillLine::query()
+        .where_(BillLine::BILL_ID.is_in(ids))
+        .order_by(BillLine::ID)
+        .get(db)
+        .await?;
+    for line in &lines {
+        let Some(bill) = bills.iter().find(|b| b.id == line.bill_id) else {
+            continue;
+        };
+        let Some(net) = line.net_amount_aed else {
+            continue;
+        };
+        let mut item = ActualItem {
+            legal_entity_id: bill.legal_entity_id.unwrap_or_default(),
+            month: month_start(bill.bill_date),
+            source: bill.subject(),
+            party_id: Some(bill.party_id),
+            ..expense_item(mapped, line, (net, line.vat_amount_aed.unwrap_or(0)), 1)
+        };
+        item.self_approved =
+            item.kind == BudgetKind::OwnerDrawings && self_approved.contains(&bill.id);
+        items.push(item);
+    }
+    Ok(items)
+}
+
 /// The items of the lines of approved supplier bills and issued debit notes
 /// of `entities` dated from `from` to `to`.
 async fn expense_items(
@@ -302,44 +353,7 @@ async fn expense_items(
         .where_(SupplierBill::BILL_DATE.lte(to))
         .get(db)
         .await?;
-    if !bills.is_empty() {
-        let ids: Vec<i64> = bills.iter().map(|b| b.id).collect();
-        // The bills whose drawing the sole owner approved themselves
-        // (`FIN.ACL.23`).
-        let self_approved: BTreeSet<i64> = DrawingApproval::query()
-            .where_(DrawingApproval::SOURCE_TYPE.eq("invoicing.supplier_bill"))
-            .where_(DrawingApproval::SOURCE_ID.is_in(ids.clone()))
-            .where_(DrawingApproval::STATUS.eq(DrawingStatus::Approved))
-            .where_(DrawingApproval::SELF_APPROVED.eq(true))
-            .get(db)
-            .await?
-            .into_iter()
-            .map(|a| a.source_id)
-            .collect();
-        let lines = BillLine::query()
-            .where_(BillLine::BILL_ID.is_in(ids))
-            .order_by(BillLine::ID)
-            .get(db)
-            .await?;
-        for line in &lines {
-            let Some(bill) = bills.iter().find(|b| b.id == line.bill_id) else {
-                continue;
-            };
-            let Some(net) = line.net_amount_aed else {
-                continue;
-            };
-            let mut item = ActualItem {
-                legal_entity_id: bill.legal_entity_id.unwrap_or_default(),
-                month: month_start(bill.bill_date),
-                source: bill.subject(),
-                party_id: Some(bill.party_id),
-                ..expense_item(mapped, line, (net, line.vat_amount_aed.unwrap_or(0)), 1)
-            };
-            item.self_approved =
-                item.kind == BudgetKind::OwnerDrawings && self_approved.contains(&bill.id);
-            items.push(item);
-        }
-    }
+    items.extend(bill_items(db, mapped, &bills).await?);
     let notes: Vec<SupplierDebitNote> = SupplierDebitNote::query()
         .where_(SupplierDebitNote::LEGAL_ENTITY_ID.is_in(entities.to_vec()))
         .where_(SupplierDebitNote::STATUS.is_in([

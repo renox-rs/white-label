@@ -540,6 +540,13 @@ impl WlInvoicing {
         self
     }
 
+    /// Whether the forecast moves each receipt by its party's average days
+    /// late (default off).
+    pub fn cash_days_late(mut self, on: bool) -> Self {
+        self.config.cash_days_late = on;
+        self
+    }
+
     /// Names a bank account of the legal entity with `entity_code`, so the
     /// forecast shows it (with a warning) before it has a balance.
     pub fn cash_account(mut self, entity_code: &str, account: &str) -> Self {

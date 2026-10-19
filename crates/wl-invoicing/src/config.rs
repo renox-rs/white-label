@@ -164,6 +164,9 @@ pub struct InvoicingConfig {
     pub cash_disputed_counted: bool,
     /// The days after which a bank balance is stale (a warning).
     pub cash_stale_days: i64,
+    /// Whether receipts move by each party's average days late
+    /// (`adjust by days late`, §5.14 step 6).
+    pub cash_days_late: bool,
     /// The bank accounts of each legal entity (by code) the forecast shows
     /// even before they have a balance.
     pub cash_accounts: Vec<(String, String)>,
@@ -215,6 +218,7 @@ impl Default for InvoicingConfig {
             cash_unapproved_bills_counted: true,
             cash_disputed_counted: false,
             cash_stale_days: 7,
+            cash_days_late: false,
             cash_accounts: Vec::new(),
         }
     }
@@ -313,6 +317,7 @@ mod tests {
         assert!(config.cash_vat_counted && config.cash_unapproved_bills_counted);
         assert!(!config.cash_disputed_counted);
         assert_eq!(config.cash_stale_days, 7);
+        assert!(!config.cash_days_late);
         assert!(config.drawings_self_approve);
         assert_eq!(config.drawings_notify_role, "accountant");
     }
