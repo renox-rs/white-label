@@ -16,7 +16,7 @@ use wl_ticketing::contract_end::{
 use wl_ticketing::flags::{ComplianceFlag, REPLACEMENT_ACTIVE};
 use wl_ticketing::plans::{MaintenancePlans, PlanStatus};
 use wl_ticketing::{
-    Category, ContractStatus, SlaPolicy, Ticket, TicketStatus, Tickets,
+    Category, ContractStatus, ServiceContract, SlaPolicy, Ticket, TicketStatus, Tickets,
 };
 
 use support::contracts::{World, date, tower_a_cleaning, tower_a_lifts, world};
@@ -504,4 +504,67 @@ async fn tkt04_the_contract_page_and_its_actions_are_behind_permissions() {
         .await
         .assert_forbidden();
     assert_eq!(w.reload(&contract).await.status, ContractStatus::Active);
+}
+
+/// BL-INV-24 (#87): the kernel coverage of a contract on a day runs up to
+/// its end date, or its termination date, and a renewal covers the days
+/// after the old end.
+#[renox::test]
+async fn inv24_the_coverage_of_a_day_runs_up_to_the_end_or_termination_date() {
+    use wl_kernel::tickets::{ContractCover, ServiceContractCoverage, ServiceContractId};
+    use wl_ticketing::contract::ContractCoverage;
+
+    let w = world().await;
+    let contract = w
+        .contract(COOLAIR, "2026-01-01", "2027-12-31", &[(tower_a_lifts(), "lifts")])
+        .await;
+    let id = ServiceContractId(contract.id);
+    let cover = |day: &str| {
+        let db = w.t.db();
+        let on = date(day);
+        async move { ContractCoverage.covers(db, id, on).await.unwrap() }
+    };
+    assert_eq!(cover("2027-12-31").await, ContractCover::Covered);
+    assert_eq!(
+        cover("2028-01-01").await,
+        ContractCover::AfterEnd { ends_on: date("2027-12-31") }
+    );
+    assert_eq!(
+        ContractCoverage
+            .covers(w.t.db(), ServiceContractId(9_999), date("2026-10-05"))
+            .await
+            .unwrap(),
+        ContractCover::Unknown
+    );
+
+    w.terminate(&contract, "Poor service", "2026-11-30").await.assert_ok();
+    assert_eq!(cover("2026-11-30").await, ContractCover::Covered);
+    assert_eq!(
+        cover("2026-12-01").await,
+        ContractCover::AfterEnd { ends_on: date("2026-11-30") }
+    );
+
+    // A renewal that starts the day after covers the later days.
+    use renox::state_machine::StateMachine;
+    let mut renewal = ServiceContract {
+        number: "AMC-2026-0900".into(),
+        vendor_party_id: COOLAIR.0,
+        title: "Renewal".into(),
+        start_date: date("2026-12-01"),
+        end_date: date("2027-12-31"),
+        previous_version_id: Some(contract.id),
+        status: ContractStatus::Active,
+        ..ServiceContract::default()
+    };
+    let mut tx = w.t.db().begin().await.unwrap();
+    renewal
+        .insert_in_state(&mut tx, ContractStatus::Active, "fixture")
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    assert_eq!(cover("2026-12-15").await, ContractCover::Covered);
+    assert_eq!(
+        cover("2028-01-01").await,
+        ContractCover::AfterEnd { ends_on: date("2027-12-31") }
+    );
 }

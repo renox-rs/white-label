@@ -314,6 +314,8 @@ impl Module for WlTicketing {
         contract::register_scope();
         // Other modules open tickets through the kernel's `TaskCreator`.
         wl_kernel::tickets::provide_task_creator(app, Tickets);
+        // The invoicing match asks whether a contract covers a day of work.
+        wl_kernel::tickets::provide_service_contract_coverage(app, contract::ContractCoverage);
         // The reassignment reasons: the defaults and the vertical's own.
         app.provide(self.reasons.clone());
         // `WRK.RUL.02`: the system confirms a resolved ticket whose

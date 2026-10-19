@@ -709,6 +709,54 @@ pub(crate) fn register_scope() {
     });
 }
 
+/// The app's [`ServiceContractCoverage`](wl_kernel::tickets::ServiceContractCoverage):
+/// whether a contract covers work done on a day (wl-invoicing §5.4 step 3).
+///
+/// The contract covers the work up to its end date, or its termination date
+/// when it was terminated. A later version (a contract whose
+/// `previous_version_id` chain leads to this one, `draft` versions left out)
+/// covers the days from its own start to its own end, so work after the old
+/// end is covered when a renewal covers it.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ContractCoverage;
+
+impl wl_kernel::tickets::ServiceContractCoverage for ContractCoverage {
+    fn covers<'a>(
+        &'a self,
+        db: &'a Db,
+        contract: ServiceContractId,
+        on: NaiveDate,
+    ) -> wl_kernel::tickets::TicketFuture<'a, wl_kernel::tickets::ContractCover> {
+        use wl_kernel::tickets::ContractCover;
+        Box::pin(async move {
+            let Some(first) = ServiceContract::find(db, contract.0).await? else {
+                return Ok(ContractCover::Unknown);
+            };
+            let mut ends_on = first.ending_on();
+            if on <= ends_on {
+                return Ok(ContractCover::Covered);
+            }
+            // The renewals, oldest first.
+            let mut previous = first.id;
+            while let Some(next) = ServiceContract::query()
+                .where_(ServiceContract::PREVIOUS_VERSION_ID.eq(previous))
+                .where_(ServiceContract::STATUS.ne(ContractStatus::Draft))
+                .order_by(ServiceContract::ID)
+                .first(db)
+                .await?
+            {
+                let last = next.ending_on();
+                if next.start_date <= on && on <= last {
+                    return Ok(ContractCover::Covered);
+                }
+                ends_on = ends_on.max(last);
+                previous = next.id;
+            }
+            Ok(ContractCover::AfterEnd { ends_on })
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
