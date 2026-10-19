@@ -33,14 +33,14 @@
       <template rx-if="can_answer_terms">
         <rx-action-sheet :id="'terms-answer-' ~ lease.id" :label="tx['terms.answer']" :action="route('property.lease_terms_answer', lease.id)"
                          :title="tx['terms.answer']" :description="tx['terms.answer_description']" :submit-label="tx['terms.answer']" icon="scale">
-          <rx-select name="against" :label="tx['terms.against_question']" :options="[['yes', tx['terms.yes']], ['no', tx['terms.no']]]" selected="yes" :id="'terms-answer-against-' ~ lease.id"/>
+          <rx-select name="against" :label="tx['terms.against_question']" :options="[['yes', tx['terms.yes']], ['no', tx['terms.no']]]" :selected="'yes'" :id="'terms-answer-against-' ~ lease.id"/>
           <rx-textarea name="reason" :label="tx['terms.reason']" :hint="tx['terms.reason_hint']" :id="'terms-answer-reason-' ~ lease.id"/>
         </rx-action-sheet>
       </template>
       <template rx-if="can_decide">
         <rx-action-sheet :id="'decision-' ~ lease.id" :label="tx['renewal.decide']" :action="route('property.lease_renewal_decision', lease.id)"
                          :title="tx['renewal.decide']" :description="tx['renewal.decide_description']" :submit-label="tx['renewal.decide']" icon="refresh-cw">
-          <rx-select name="decision" :label="tx['renewal.decision']" :options="[['undecided', tx['renewal.decision_undecided']], ['same_terms', tx['renewal.decision_same_terms']], ['changed_terms', tx['renewal.decision_changed_terms']], ['not_renewing', tx['renewal.decision_not_renewing']]]" selected="same_terms" :id="'decision-select-' ~ lease.id"/>
+          <rx-select name="decision" :label="tx['renewal.decision']" :options="[['undecided', tx['renewal.decision_undecided']], ['same_terms', tx['renewal.decision_same_terms']], ['changed_terms', tx['renewal.decision_changed_terms']], ['not_renewing', tx['renewal.decision_not_renewing']]]" :selected="'same_terms'" :id="'decision-select-' ~ lease.id"/>
         </rx-action-sheet>
       </template>
       <template rx-if="can_send_notice">
@@ -69,7 +69,7 @@
       <template rx-if="can_version">
         <rx-action-sheet :id="'version-' ~ lease.id" :label="tx['leases.new_version']" :action="route('property.lease_version', lease.id)"
                          :title="tx['leases.new_version']" :description="tx['leases.new_version_description']" :submit-label="tx['leases.new_version']" icon="copy-plus">
-          <rx-select name="kind" :label="tx['leases.version_kind']" :options="[['renewal', tx['leases.kind.renewal']], ['amendment', tx['leases.kind.amendment']]]" selected="renewal" :id="'version-kind-' ~ lease.id"/>
+          <rx-select name="kind" :label="tx['leases.version_kind']" :options="[['renewal', tx['leases.kind.renewal']], ['amendment', tx['leases.kind.amendment']]]" :selected="'renewal'" :id="'version-kind-' ~ lease.id"/>
           <rx-input name="start_date" type="date" :label="tx['leases.start_date']" :id="'version-start-' ~ lease.id" required/>
           <rx-input name="end_date" type="date" :label="tx['leases.end_date']" :id="'version-end-' ~ lease.id" required/>
           <rx-input name="annual_rent" :label="tx['leases.annual_rent']" :id="'version-rent-' ~ lease.id" required/>

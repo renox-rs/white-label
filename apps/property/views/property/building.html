@@ -9,8 +9,8 @@
         <rx-action-sheet id="add-unit" :label="tx['units.add']" :action="route('property.unit_create', building.id)"
                          :title="tx['units.add']" :submit-label="tx['units.add']" variant="primary" icon="plus">
           <rx-input name="number" :label="tx['units.number']" id="add-unit-number" required/>
-          <rx-select name="unit_type" :label="tx['units.type_label']" :options="unit_types" selected="apartment" id="add-unit-type"/>
-          <rx-select name="usage" :label="tx['units.usage_label']" :options="usages" selected="residential" id="add-unit-usage"/>
+          <rx-select name="unit_type" :label="tx['units.type_label']" :options="unit_types" :selected="'apartment'" id="add-unit-type"/>
+          <rx-select name="usage" :label="tx['units.usage_label']" :options="usages" :selected="'residential'" id="add-unit-usage"/>
           <rx-input name="area" :label="tx['units.area']" id="add-unit-area"/>
           <rx-input name="bedrooms" :label="tx['units.bedrooms']" id="add-unit-bedrooms"/>
           <rx-input name="asking_rent" :label="tx['units.asking_rent']" id="add-unit-rent"/>
