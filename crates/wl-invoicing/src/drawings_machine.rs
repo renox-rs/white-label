@@ -26,7 +26,8 @@ use renox::prelude::*;
 use renox::serde_json::{Value, json};
 use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx};
 use serde::{Deserialize, Serialize};
-use wl_kernel::Subject;
+use renox::auth::permissions::Scope;
+use wl_kernel::{LegalEntity, Subject};
 use wl_kernel::approvals::{self, PolicyDefault, Require, Required};
 use wl_kernel::machines::SubjectMachine;
 
@@ -321,6 +322,7 @@ pub(crate) fn page_of(id: i64) -> String {
 pub(crate) fn register() {
     SubjectMachine::of::<DrawingApproval>(SUBJECT_TYPE)
         .waiting(DrawingStatus::Requested)
+        .scope(|drawing| Scope::of_id::<LegalEntity>(drawing.legal_entity_id))
         .register();
     renox::state_machine::register::<DrawingApproval>();
     approval_policy().register();
