@@ -10,8 +10,8 @@ use std::sync::{Arc, Mutex};
 
 use property::permissions as perm;
 use property::{
-    Building, Lease, LeaseActivated, LeaseCancelled, LeaseStatus, NewBuilding, NewLease, NewUnit,
-    Unit, UnitUse, create_building, create_unit,
+    Building, Lease, LeaseActivated, LeaseCancelled, LeaseNoticeWithdrawn, LeaseStatus, NewBuilding,
+    NewLease, NewUnit, Unit, UnitUse, create_building, create_unit,
 };
 use renox::auth::permissions::{self, Scope};
 use renox::auth::{Auth, Permissions};
@@ -1036,6 +1036,7 @@ fn record<E: Event + Clone + Send + Sync + 'static>(app: &mut Registry, log: &Re
 struct Fakes {
     activated: Recorded<LeaseActivated>,
     cancelled: Recorded<LeaseCancelled>,
+    withdrawn: Recorded<LeaseNoticeWithdrawn>,
     parties: Parties,
     docs: Docs,
     notices: Recording,
@@ -1062,6 +1063,7 @@ impl Module for Fakes {
         provide_payment_recorder(app, self.refunds.clone());
         record(app, &self.activated);
         record(app, &self.cancelled);
+        record(app, &self.withdrawn);
     }
 }
 
@@ -1091,6 +1093,8 @@ pub struct Booted {
     pub activated: Recorded<LeaseActivated>,
     /// `LeaseCancelled`.
     pub cancelled: Recorded<LeaseCancelled>,
+    /// `LeaseNoticeWithdrawn`.
+    pub withdrawn: Recorded<LeaseNoticeWithdrawn>,
 }
 
 /// The tenant of the tests: a person.
@@ -1293,6 +1297,7 @@ pub async fn boot() -> Booted {
     let fakes = Fakes {
         activated: Recorded::default(),
         cancelled: Recorded::default(),
+        withdrawn: Recorded::default(),
         parties: Parties::default(),
         docs: Docs::default(),
         notices: Recording::default(),
@@ -1302,7 +1307,11 @@ pub async fn boot() -> Booted {
         invoices: InvoiceDesk::default(),
         refunds: Refunds::default(),
     };
-    let logs = (fakes.activated.clone(), fakes.cancelled.clone());
+    let logs = (
+        fakes.activated.clone(),
+        fakes.cancelled.clone(),
+        fakes.withdrawn.clone(),
+    );
     let handles = (
         fakes.parties.clone(),
         fakes.docs.clone(),
@@ -1368,6 +1377,7 @@ pub async fn boot() -> Booted {
         refunds,
         activated: logs.0,
         cancelled: logs.1,
+        withdrawn: logs.2,
     }
 }
 

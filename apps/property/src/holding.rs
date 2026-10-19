@@ -47,6 +47,7 @@ use wl_kernel::role_tasks::RoleTask;
 use wl_kernel::tickets::task_creator;
 
 use crate::charge::{ChargeStatus, LeaseCharge};
+use crate::charge_type::EARLY_TERMINATION_FEE;
 use crate::db::{refused, set_lease};
 use crate::lease::{Lease, LeaseStatus, VersionKind};
 use crate::lease_machine::{EXPIRE, ExpireInput};
@@ -147,7 +148,11 @@ pub fn plan_extension(lease: &Lease, charges: &[LeaseCharge], from: NaiveDate) -
     let mut base: Vec<&LeaseCharge> = charges
         .iter()
         .filter(|c| {
-            !c.holding_over && c.status != ChargeStatus::Cancelled && c.due_date <= lease.end_date
+            !c.holding_over
+                && c.status != ChargeStatus::Cancelled
+                && c.due_date <= lease.end_date
+                // A one-off penalty is not part of the plan that is repeated.
+                && c.charge_type != EARLY_TERMINATION_FEE
         })
         .collect();
     base.sort_by_key(|c| (c.due_date, c.position, c.id));

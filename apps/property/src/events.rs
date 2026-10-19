@@ -55,6 +55,21 @@ pub struct LeaseCancelled {
 
 impl Event for LeaseCancelled {}
 
+/// A notice to end the lease was withdrawn (`withdraw_notice`, `PRP.ACL.20`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LeaseNoticeWithdrawn {
+    /// The version.
+    pub lease: i64,
+    /// The lease all versions belong to.
+    pub root: i64,
+    /// The tenant.
+    pub tenant: PartyId,
+    /// The state the dates gave: `active`, `renewal_due` or `expired`.
+    pub status: String,
+}
+
+impl Event for LeaseNoticeWithdrawn {}
+
 #[cfg(test)]
 mod tests {
     use super::*;

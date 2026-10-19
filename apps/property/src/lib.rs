@@ -29,6 +29,7 @@ pub mod terms;
 mod texts;
 pub mod unit;
 pub mod unit_machine;
+pub mod withdraw;
 
 use renox::db::Migration;
 use renox::nav::NavLink;
@@ -38,7 +39,7 @@ pub use cancellation::CancelWait;
 pub use building::{Building, Floor, NewBuilding, create_building, ensure_floor};
 pub use charge::{ChargeStatus, LeaseCharge};
 pub use charge_type::ChargeType;
-pub use events::{LeaseActivated, LeaseCancelled};
+pub use events::{LeaseActivated, LeaseCancelled, LeaseNoticeWithdrawn};
 pub use lease::{Lease, LeaseStatus, RenewalDecision, VersionKind};
 pub use leases::{DraftEdit, EjariInput, NewLease, NewVersion};
 pub use unit::{NewUnit, Unit, UnitStatus, UnitType, UnitUse, create_unit};

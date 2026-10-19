@@ -16,6 +16,7 @@
 //! | `POST /property/leases/{id}/changed-terms-notice` | `property.lease_changed_terms_notice` | `leases.manage` in the building |
 //! | `POST /property/leases/{id}/notice` | `property.lease_notice` | `leases.manage` in the building |
 //! | `POST /property/leases/{id}/planned-move-out` | `property.lease_planned_move_out` | `leases.manage` in the building |
+//! | `POST /property/leases/{id}/withdraw-notice` | `property.lease_withdraw_notice` | `leases.manage` in the building |
 //! | `POST /property/leases/{id}/waive-deposit` | `property.lease_waive_deposit` | `leases.activate` in the building |
 //! | `POST /property/leases/{id}/ejari` | `property.lease_ejari` | `leases.activate` in the building |
 //! | `POST /property/leases/{id}/cheques` | `property.lease_cheques` | `leases.create` in the building |
@@ -49,6 +50,7 @@ use crate::renewal;
 use crate::terms;
 use crate::texts;
 use crate::unit::Unit;
+use crate::withdraw;
 
 /// The routes of the pages.
 pub fn routes() -> Routes {
@@ -79,6 +81,8 @@ pub fn routes() -> Routes {
         .name("property.lease_notice")
         .post("/property/leases/{id}/planned-move-out", planned_move_out)
         .name("property.lease_planned_move_out")
+        .post("/property/leases/{id}/withdraw-notice", withdraw_notice)
+        .name("property.lease_withdraw_notice")
         .post("/property/leases/{id}/waive-deposit", waive_deposit)
         .name("property.lease_waive_deposit")
         .post("/property/leases/{id}/ejari", ejari)
@@ -347,6 +351,7 @@ pub(crate) struct ShowPage {
     can_cheques: bool,
     can_notice: bool,
     can_change_planned: bool,
+    can_withdraw: bool,
     today: String,
 }
 
@@ -611,6 +616,7 @@ async fn show(
         can_change_planned: manages
             && lease.status == LeaseStatus::NoticeGiven
             && lease.notice_party.as_deref() == Some(NoticeParty::Tenant.as_str()),
+        can_withdraw: manages && lease.status == LeaseStatus::NoticeGiven,
         can_cheques: creates
             && !matches!(
                 lease.status,
@@ -1042,6 +1048,19 @@ async fn planned_move_out(
     let date = required_date(&form.planned_move_out, "planned_move_out")?;
     notice::change_planned_move_out(&state, &user, id, date).await?;
     Ok((Toast::success(text(&lang, "notice.planned_changed")), renox::HxRefresh).into_response())
+}
+
+/// `POST /property/leases/{id}/withdraw-notice` (`PRP.ACL.20`).
+async fn withdraw_notice(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    withdraw::withdraw(&state, &user, id)
+        .await
+        .map_err(TransitionError::into_error)?;
+    Ok((Toast::success(text(&lang, "withdraw.done")), renox::HxRefresh).into_response())
 }
 
 /// The form of the Ejari registration.

@@ -563,6 +563,31 @@ const TEXTS: &[(&str, &str)] = &[
         "Inspect the unit when the tenant moves out, collect the keys and record the inspection on the lease. The move-out date follows the proof of delivery of the landlord's notice.",
     ),
     ("property.charge_types.required", "Give the charge type a code and a name."),
+    // Withdrawing a notice (BL-PRP-10, PRP.ACL.20).
+    ("property.withdraw.action", "Withdraw the notice"),
+    (
+        "property.withdraw.message",
+        "The lease goes back to the state its dates give and the unit to occupied. The landlord side's written agreement must be attached to the lease.",
+    ),
+    ("property.withdraw.done", "Notice withdrawn."),
+    (
+        "property.withdraw.agreement_missing",
+        "Attach the written agreement of the landlord side to the lease first (PRP.ACL.20).",
+    ),
+    (
+        "property.withdraw.inspection_done",
+        "The move-out inspection was completed: the notice cannot be withdrawn.",
+    ),
+    (
+        "property.withdraw.other_tenant",
+        "A lease for another tenant on this unit was submitted: the notice cannot be withdrawn (PRP.ACL.20).",
+    ),
+    (
+        "property.withdraw.wrong_target",
+        "By its dates the lease goes back to :state.",
+    ),
+    ("property.withdraw.reason", "Notice withdrawn with the written agreement of the landlord side"),
+    ("property.withdraw.ticket_note", "Cancelled: the notice was withdrawn."),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.

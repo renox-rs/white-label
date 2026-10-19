@@ -39,10 +39,12 @@
 //! - `record_notice` stores the notice, moves the unit to `notice_given` and
 //!   adds the penalty charge; the move-out inspection ticket follows the
 //!   commit ([`crate::notice`], BL-PRP-09).
-//! - `amend`, `withdraw_notice*`, `terminate` and `force_terminate` are
-//!   declared with their states and permissions; their effects are built by
-//!   BL-PRP-08 and BL-PRP-10 to BL-PRP-12 and until then the pages do not
-//!   offer them.
+//! - `withdraw_notice*` goes back to the state the dates give, clears the
+//!   notice, returns the unit to `occupied` and cancels the penalty that is
+//!   not invoiced ([`crate::withdraw`], BL-PRP-10).
+//! - `amend`, `terminate` and `force_terminate` are declared with their
+//!   states and permissions; their effects are built by BL-PRP-08, BL-PRP-11
+//!   and BL-PRP-12 and until then the pages do not offer them.
 
 use renox::db::Transaction;
 use renox::prelude::*;
@@ -60,6 +62,7 @@ use crate::lease_checks::{activate_checks, apply_activation, submit_checks};
 use crate::notice::{notice_input, notice_problem, record_effects};
 use crate::permissions;
 use crate::renew::renew_effects;
+use crate::withdraw::{problem as withdraw_problem, withdraw_day, withdraw_effects};
 use crate::texts::english;
 
 /// `submit`: the draft goes out for signature.
@@ -262,6 +265,23 @@ async fn record_cancellation(tx: &mut Transaction, id: i64, input: &CancelInput)
     Ok(())
 }
 
+/// The guards and the effect the three `withdraw_notice` transitions share,
+/// for the state `target` the dates give (`PRP.ACL.20`).
+fn withdraw_rules(transition: Transition<Lease>, target: LeaseStatus) -> Transition<Lease> {
+    transition
+        .from([LeaseStatus::NoticeGiven])
+        .to(target)
+        .guard("dates_give_target", move |lease: &Lease, ctx| {
+            let problem = withdraw_problem(lease, target, withdraw_day(ctx));
+            Box::pin(async move { problem.map_or(Ok(()), Err) })
+        })
+        .effect(move |lease: &Lease, ctx, tx| {
+            let lease = lease.clone();
+            let day = withdraw_day(ctx);
+            Box::pin(async move { withdraw_effects(&mut *tx, &lease, target, day).await })
+        })
+}
+
 impl StateMachine for Lease {
     type State = LeaseStatus;
     const COLUMN: renox::db::Col<Lease, LeaseStatus> = Lease::STATUS;
@@ -360,29 +380,26 @@ impl StateMachine for Lease {
                         Box::pin(async move { record_effects(&mut *tx, &lease, &input).await })
                     }),
             )
-            .transition(
-                user(WITHDRAW_NOTICE, "Withdraw notice", permissions::LEASES_MANAGE)
-                    .from([NoticeGiven])
-                    .to(Active),
-            )
-            .transition(
+            .transition(withdraw_rules(
+                user(WITHDRAW_NOTICE, "Withdraw notice", permissions::LEASES_MANAGE),
+                Active,
+            ))
+            .transition(withdraw_rules(
                 user(
                     WITHDRAW_NOTICE_TO_RENEWAL_DUE,
                     "Withdraw notice",
                     permissions::LEASES_MANAGE,
-                )
-                .from([NoticeGiven])
-                .to(RenewalDue),
-            )
-            .transition(
+                ),
+                RenewalDue,
+            ))
+            .transition(withdraw_rules(
                 user(
                     WITHDRAW_NOTICE_TO_EXPIRED,
                     "Withdraw notice",
                     permissions::LEASES_MANAGE,
-                )
-                .from([NoticeGiven])
-                .to(Expired),
-            )
+                ),
+                Expired,
+            ))
             .transition(
                 system(RENEW, "Renew")
                     .from([RenewalDue, Expired])

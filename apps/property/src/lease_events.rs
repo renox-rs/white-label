@@ -14,6 +14,9 @@
 //!   over (`PRP.RUL.03`).
 //! - **`submit`:** a renewal version closes the holding-over task of the
 //!   version it renews (`PRP.RUL.14`).
+//! - **`withdraw_notice*`:** the move-out inspection ticket is closed, the
+//!   property managers are told when the lease started to hold over, and
+//!   `LeaseNoticeWithdrawn` is emitted.
 //! - **`record_notice`:** the move-out inspection ticket is created
 //!   (`PRP.RUL.04`); the proof of delivery of a landlord's notice computes the
 //!   planned move-out date.
@@ -27,7 +30,10 @@ use wl_kernel::role_tasks::RoleTask;
 
 use crate::events::LeaseActivated;
 use crate::lease::{Lease, VersionKind};
-use crate::lease_machine::{ACTIVATE, EXPIRE, FLAG_RENEWAL, RECORD_NOTICE, SUBMIT};
+use crate::lease_machine::{
+    ACTIVATE, EXPIRE, FLAG_RENEWAL, RECORD_NOTICE, SUBMIT, WITHDRAW_NOTICE,
+    WITHDRAW_NOTICE_TO_EXPIRED, WITHDRAW_NOTICE_TO_RENEWAL_DUE,
+};
 use crate::leases::ejari_task_key;
 use crate::permissions::{ACCOUNTANT_ROLE, PROPERTY_MANAGER_ROLE};
 use crate::texts::english;
@@ -44,6 +50,14 @@ pub(crate) fn register(app: &mut Registry) {
             EXPIRE => crate::holding::announce(&state, event.key).await,
             SUBMIT => crate::holding::renewal_submitted(&state, event.key).await,
             RECORD_NOTICE => crate::notice::after_record(&state, event.key).await,
+            WITHDRAW_NOTICE | WITHDRAW_NOTICE_TO_RENEWAL_DUE | WITHDRAW_NOTICE_TO_EXPIRED => {
+                let holding_starts = event
+                    .meta
+                    .get("holding_starts")
+                    .and_then(renox::serde_json::Value::as_bool)
+                    .unwrap_or(false);
+                crate::withdraw::after_withdraw(&state, event.key, &event.to, holding_starts).await
+            }
             _ => Ok(()),
         }
     });
