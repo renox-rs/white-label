@@ -1031,6 +1031,20 @@ impl InvoiceDesk {
         }
     }
 
+    /// Invoice `id` is disputed (or not).
+    pub fn dispute(&self, id: i64, disputed: bool) {
+        if let Some(invoice) = self.0.lock().unwrap().get_mut(&id) {
+            invoice.summary.disputed = disputed;
+        }
+    }
+
+    /// Invoice `id` is in `status` (written off, credited...).
+    pub fn set_status(&self, id: i64, status: InvoiceStatus) {
+        if let Some(invoice) = self.0.lock().unwrap().get_mut(&id) {
+            invoice.summary.status = status;
+        }
+    }
+
     /// `amount` fils of `source` are allocated to invoice `id`.
     pub fn pay(&self, id: i64, source: &Subject, amount: i64) {
         if let Some(invoice) = self.0.lock().unwrap().get_mut(&id) {
