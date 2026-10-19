@@ -952,6 +952,9 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
         perm::VAT_PREPARE,
         perm::VAT_REVIEW,
         perm::VAT_LOCK,
+        perm::SUPPLIER_BILLS_VIEW,
+        perm::SUPPLIER_BILLS_CREATE,
+        perm::SUPPLIER_BILLS_APPROVE,
     ];
     permissions::define_role(app.db(), "admin", &all)
         .await
@@ -966,6 +969,9 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
             perm::VAT_PREPARE,
             perm::VAT_REVIEW,
             perm::VAT_LOCK,
+            perm::SUPPLIER_BILLS_VIEW,
+            perm::SUPPLIER_BILLS_CREATE,
+            perm::SUPPLIER_BILLS_APPROVE,
         ],
     )
     .await

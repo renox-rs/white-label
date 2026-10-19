@@ -65,13 +65,14 @@ pub fn app() -> renox::App {
 
 /// The application for one client.
 pub fn app_for(config: ClientConfig) -> Result<renox::App, ConfigError> {
-    let vertical = vertical(&config.client.app)?;
+    let client_app = config.client.app.clone();
+    let vertical = vertical(&client_app)?;
     let manifest = config.manifest()?;
     // The kernel goes first: its seeder creates the legal entities the other
     // modules' demo data needs, and seeders run in the order modules mount.
     let mut app = wl_kernel::apply(base(), config)?;
     for module in manifest.enabled() {
-        app = enable(app, module)?;
+        app = enable(app, module, &client_app)?;
     }
     Ok(app.module(vertical))
 }
@@ -86,14 +87,26 @@ fn vertical(name: &str) -> Result<property::Property, ConfigError> {
     }
 }
 
-/// Mounts one enabled `wl-*` module.
-fn enable(app: renox::App, module: &str) -> Result<renox::App, ConfigError> {
+/// The invoicing module with the settings of the client's app: `property`
+/// also holds a supplier bill for the same contract, period and amount
+/// (`PRP.ACL.22`).
+fn invoicing_for(client_app: &str) -> wl_invoicing::WlInvoicing {
+    use wl_invoicing::DuplicateKey::{ContractPeriodAmount, SupplierInvoiceNumber};
+    let module = wl_invoicing::WlInvoicing::new();
+    match client_app {
+        "property" => module.duplicate_keys(&[SupplierInvoiceNumber, ContractPeriodAmount]),
+        _ => module,
+    }
+}
+
+/// Mounts one enabled `wl-*` module; `client_app` is `[client] app`.
+fn enable(app: renox::App, module: &str, client_app: &str) -> Result<renox::App, ConfigError> {
     // Each F1 module gets its arm here as it is built (decision 0004).
     match module {
         "parties" => Ok(app.module(wl_parties::WlParties)),
         "documents" => Ok(app.module(wl_documents::WlDocuments)),
         "notify" => Ok(app.module(wl_notify::WlNotify::new())),
-        "invoicing" => Ok(app.module(wl_invoicing::WlInvoicing::new())),
+        "invoicing" => Ok(app.module(invoicing_for(client_app))),
         "ticketing" => Ok(app.module(wl_ticketing::WlTicketing::new())),
         "payments" => Ok(app.module(wl_payments::WlPayments::new())),
         other => Err(ConfigError(format!(
@@ -152,4 +165,22 @@ fn base() -> renox::App {
         .seeder(app::seed::run)
         // The seeded people on the login page, in local only (src/app/demo.rs).
         .share("demo_logins", app::demo::for_view)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wl_invoicing::DuplicateKey::{ContractPeriodAmount, SupplierInvoiceNumber};
+
+    #[test]
+    fn the_property_app_adds_the_contract_period_amount_key() {
+        assert_eq!(
+            invoicing_for("property").config().duplicate_keys,
+            [SupplierInvoiceNumber, ContractPeriodAmount]
+        );
+        assert_eq!(
+            invoicing_for("other").config().duplicate_keys,
+            [SupplierInvoiceNumber]
+        );
+    }
 }

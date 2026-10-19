@@ -72,6 +72,18 @@ impl Default for ReliefMonths {
     }
 }
 
+/// A key set the supplier bill duplicate check compares (`FIN.ACL.03`, §7).
+/// Each enabled key set is checked on its own, always within one supplier.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum DuplicateKey {
+    /// The same supplier invoice number, compared without surrounding
+    /// spaces and ignoring case.
+    SupplierInvoiceNumber,
+    /// The same service contract, billing period, currency and gross total
+    /// (`PRP.ACL.22`).
+    ContractPeriodAmount,
+}
+
 /// The settings of the invoicing module.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InvoicingConfig {
@@ -111,6 +123,13 @@ pub struct InvoicingConfig {
     pub dispute_escalation_days: u32,
     /// The role told from the second escalation step on.
     pub dispute_escalation_role: String,
+    /// Whether a submitted supplier bill is checked for a duplicate
+    /// (`FIN.ACL.03`).
+    pub duplicate_check: bool,
+    /// The key sets the duplicate check compares, each on its own.
+    pub duplicate_keys: Vec<DuplicateKey>,
+    /// The role told when a bill is held as a possible duplicate.
+    pub duplicate_notify_role: String,
 }
 
 impl Default for InvoicingConfig {
@@ -142,6 +161,9 @@ impl Default for InvoicingConfig {
             ageing_buckets: vec![30, 60, 90],
             dispute_escalation_days: 14,
             dispute_escalation_role: "finance_manager".to_owned(),
+            duplicate_check: true,
+            duplicate_keys: vec![DuplicateKey::SupplierInvoiceNumber],
+            duplicate_notify_role: "accountant".to_owned(),
         }
     }
 }
@@ -225,6 +247,9 @@ mod tests {
         assert_eq!(config.ageing_buckets, [30, 60, 90]);
         assert_eq!(config.dispute_escalation_days, 14);
         assert_eq!(config.dispute_escalation_role, "finance_manager");
+        assert!(config.duplicate_check);
+        assert_eq!(config.duplicate_keys, [DuplicateKey::SupplierInvoiceNumber]);
+        assert_eq!(config.duplicate_notify_role, "accountant");
     }
 
     #[test]

@@ -6,6 +6,7 @@ mod ageing_pages;
 pub mod allocate;
 pub mod allocation;
 pub mod bad_debt_relief;
+pub mod bill_line;
 pub mod config;
 pub mod credit;
 pub mod credit_note;
@@ -38,6 +39,7 @@ pub mod reopen_notices;
 pub mod restore;
 pub mod reversal;
 pub mod seed;
+pub mod supplier_bill;
 pub mod task;
 mod task_pages;
 mod texts;
@@ -58,7 +60,10 @@ use renox::nav::NavLink;
 use renox::prelude::*;
 
 pub use allocation::Allocation;
-pub use config::{InvoicingConfig, ReasonProblem, ReliefMonths, SettingError, WriteOffReason};
+pub use bill_line::{BillLine, BillLineDraft};
+pub use config::{
+    DuplicateKey, InvoicingConfig, ReasonProblem, ReliefMonths, SettingError, WriteOffReason,
+};
 pub use credit_note::{CreditNote, CreditNoteKind};
 pub use credit_note_line::CreditNoteLine;
 pub use credit_note_movement::{CreditNoteMovement, MovementKind};
@@ -69,6 +74,7 @@ pub use invoicer::Invoices;
 pub use line::InvoiceLine;
 pub use recovery::Recovery;
 pub use reminders::ReminderLog;
+pub use supplier_bill::{BillDraft, SupplierBill, SupplierBillStatus};
 pub use task::{InvoicingTask, TaskKind, TaskStatus};
 pub use unallocation::{Unallocation, UnallocationOutcome};
 pub use vat::{CategoryTotal, LineAmounts, VatTotals};
@@ -174,6 +180,12 @@ pub mod permissions {
     pub const VAT_REVIEW: &str = "vat.review";
     /// Lock a reviewed VAT summary.
     pub const VAT_LOCK: &str = "vat.lock";
+    /// See supplier bills.
+    pub const SUPPLIER_BILLS_VIEW: &str = "supplier_bills.view";
+    /// Enter, change and delete draft supplier bills, and submit them.
+    pub const SUPPLIER_BILLS_CREATE: &str = "supplier_bills.create";
+    /// Approve a supplier bill for payment, or void it (`FIN.ACL.03`).
+    pub const SUPPLIER_BILLS_APPROVE: &str = "supplier_bills.approve";
 }
 
 /// The invoicing module. The host adds it with
@@ -304,6 +316,33 @@ impl WlInvoicing {
         self
     }
 
+    /// Whether a submitted supplier bill is checked for a duplicate
+    /// (`FIN.ACL.03`, default on). Off, no bill is held.
+    pub fn duplicate_check(mut self, on: bool) -> Self {
+        self.config.duplicate_check = on;
+        self
+    }
+
+    /// The key sets the duplicate check compares, each on its own (default
+    /// `[SupplierInvoiceNumber]`). Repeats are dropped.
+    pub fn duplicate_keys(mut self, keys: &[DuplicateKey]) -> Self {
+        let mut kept: Vec<DuplicateKey> = Vec::new();
+        for key in keys {
+            if !kept.contains(key) {
+                kept.push(*key);
+            }
+        }
+        self.config.duplicate_keys = kept;
+        self
+    }
+
+    /// The role told when a bill is held as a possible duplicate (default
+    /// `accountant`).
+    pub fn duplicate_notify_role(mut self, role: &str) -> Self {
+        self.config.duplicate_notify_role = role.to_owned();
+        self
+    }
+
     /// The module's settings.
     pub fn config(&self) -> &InvoicingConfig {
         &self.config
@@ -331,6 +370,8 @@ impl Module for WlInvoicing {
     fn register(&self, app: &mut Registry) {
         app.model::<Invoice>()
             .model::<InvoiceLine>()
+            .model::<SupplierBill>()
+            .model::<BillLine>()
             .model::<CreditNote>()
             .model::<CreditNoteLine>()
             .model::<CreditNoteMovement>()
@@ -481,7 +522,14 @@ mod tests {
             .portal_disputes(true)
             .dispute_grace_days(10)
             .dispute_escalation_days(0)
-            .dispute_escalation_role("cfo");
+            .dispute_escalation_role("cfo")
+            .duplicate_check(false)
+            .duplicate_keys(&[
+                DuplicateKey::ContractPeriodAmount,
+                DuplicateKey::SupplierInvoiceNumber,
+                DuplicateKey::ContractPeriodAmount,
+            ])
+            .duplicate_notify_role("finance");
         let config = module.config();
         assert_eq!(config.payment_terms_days, 14);
         assert_eq!(config.reminder_steps, [-3, 7]);
@@ -502,5 +550,14 @@ mod tests {
         assert_eq!(config.dispute_grace_days, 10);
         assert_eq!(config.dispute_escalation_days, 1);
         assert_eq!(config.dispute_escalation_role, "cfo");
+        assert!(!config.duplicate_check);
+        assert_eq!(
+            config.duplicate_keys,
+            [
+                DuplicateKey::ContractPeriodAmount,
+                DuplicateKey::SupplierInvoiceNumber
+            ]
+        );
+        assert_eq!(config.duplicate_notify_role, "finance");
     }
 }

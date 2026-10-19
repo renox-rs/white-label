@@ -197,7 +197,7 @@ fn line_problem(position: usize, line: &DraftLine) -> Option<String> {
 }
 
 /// Whether `currency` is an ISO code like `AED`.
-fn is_currency(currency: &str) -> bool {
+pub(crate) fn is_currency(currency: &str) -> bool {
     currency.len() == 3 && currency.bytes().all(|b| b.is_ascii_uppercase())
 }
 
