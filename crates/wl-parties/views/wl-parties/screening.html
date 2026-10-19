@@ -8,8 +8,10 @@
       <rx-column :label="tx['screening.fields.source']" hide-narrow>{{ list.source }}</rx-column>
       <rx-column :label="tx['screening.fields.version']">{{ list.version }}</rx-column>
       <rx-column :label="tx['screening.fields.updated']">{{ list.updated }}</rx-column>
-      <rx-column :label="tx['screening.fields.status']"><rx-badge :text="list.status_label" :kind="list.status_tone"/></rx-column>
+      <rx-column :label="tx['screening.fields.status']"><rx-badge :text="list.status_label" :kind="list.status_tone"/><template rx-if="list.can_upload"><rx-include template="wl-parties/list_upload_sheet.html"/></template></rx-column>
       <rx-column :label="tx['screening.fields.error']" hide-narrow>{{ list.error }}</rx-column>
+      <rx-column :label="tx['screening.fields.uploaded_by']" hide-narrow>{{ list.uploaded_by }}</rx-column>
+      <rx-column :label="tx['screening.fields.source_url']" hide-narrow>{{ list.source_url }}</rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['screening.no_lists']" icon="inbox"/></rx-slot>
     </rx-table>
     <rx-table :rows="screenings" as="run" :key="run.id" :caption="tx['screening.sections.latest']" card>

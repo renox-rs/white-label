@@ -1,0 +1,11 @@
+{#- wl-parties: the upload sheet of one stale sanctions list (`list`, from
+    the lists table on the screening page), behind screening.review. It posts
+    as multipart: the official file, its source URL and the list date.
+    Replace it with resources/views/wl-parties/list_upload_sheet.html in the app. -#}
+<rx-action-sheet :id="'upload-list-' ~ list.id" :label="tx['screening.upload_action']" :action="route('wl_parties.list_upload', list.id)"
+                 :title="tx['screening.upload_title']" :description="tx['screening.upload_description']" :submit-label="tx['screening.upload_submit']"
+                 icon="upload" enctype="multipart/form-data">
+  <rx-file name="file" :label="tx['screening.upload_file']" :hint="tx['screening.upload_file_hint']" accept=".xml" required/>
+  <rx-input name="source_url" type="url" :label="tx['screening.upload_source_url']" :id="'upload-url-' ~ list.id" required/>
+  <rx-input name="list_date" type="date" :label="tx['screening.upload_list_date']" :id="'upload-date-' ~ list.id" required/>
+</rx-action-sheet>

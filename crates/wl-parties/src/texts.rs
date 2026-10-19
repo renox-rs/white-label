@@ -150,6 +150,70 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("wl_parties.fields.contact_status", "Status"),
     ("wl_parties.fields.value_edit", "Address or number"),
+    ("wl_parties.screening.source_manual", "Manual upload"),
+    ("wl_parties.screening.fields.uploaded_by", "Uploaded by"),
+    ("wl_parties.screening.fields.source_url", "Source URL"),
+    ("wl_parties.screening.upload_action", "Upload official file"),
+    (
+        "wl_parties.screening.upload_title",
+        "Upload the official file",
+    ),
+    (
+        "wl_parties.screening.upload_description",
+        "Use this when the download keeps failing. Take the file from the authority's page and give that page and the date of the list.",
+    ),
+    ("wl_parties.screening.upload_submit", "Upload file"),
+    (
+        "wl_parties.screening.upload_done",
+        "The list file is uploaded.",
+    ),
+    ("wl_parties.screening.upload_file", "Official file"),
+    (
+        "wl_parties.screening.upload_file_hint",
+        "An XML file, at most 20 MB.",
+    ),
+    ("wl_parties.screening.upload_source_url", "Source URL"),
+    (
+        "wl_parties.screening.upload_list_date",
+        "List date (YYYY-MM-DD)",
+    ),
+    (
+        "wl_parties.errors.upload_file_required",
+        "Choose the official file.",
+    ),
+    ("wl_parties.errors.manual_list_required", "Choose the list."),
+    (
+        "wl_parties.errors.manual_result_required",
+        "Choose the result.",
+    ),
+    ("wl_parties.manual_check.action", "Record manual check"),
+    ("wl_parties.manual_check.title", "Record a manual check"),
+    (
+        "wl_parties.manual_check.description",
+        "Record that you checked this party by hand against the list file of the date below.",
+    ),
+    ("wl_parties.manual_check.submit", "Record check"),
+    (
+        "wl_parties.manual_check.done",
+        "The manual check is recorded.",
+    ),
+    ("wl_parties.manual_check.list", "List"),
+    (
+        "wl_parties.manual_check.list_date",
+        "List date (YYYY-MM-DD)",
+    ),
+    ("wl_parties.manual_check.result", "Result"),
+    ("wl_parties.manual_check.name", "Name on the list"),
+    ("wl_parties.manual_check.list_entry", "List entry"),
+    (
+        "wl_parties.manual_check.candidate_hint",
+        "Only for a candidate.",
+    ),
+    ("wl_parties.manual_check.result.no_match", "No match"),
+    (
+        "wl_parties.manual_check.result.candidate",
+        "Candidate found",
+    ),
     ("wl_parties.unblock.action", "Unblock"),
     ("wl_parties.unblock.title", "Lift the hold"),
     (

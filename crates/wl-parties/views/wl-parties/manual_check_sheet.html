@@ -1,0 +1,14 @@
+{#- wl-parties: the Record manual check action on the party page, behind
+    screening.review, shown only with screening on and a PDF-only list. It
+    records a Screening with method manual: no match, or a candidate with its
+    name and list entry. Replace it with
+    resources/views/wl-parties/manual_check_sheet.html in the app. -#}
+<rx-action-sheet :id="'manual-check-' ~ party.id" :label="tx['manual_check.action']" :action="route('wl_parties.manual_check', party.id)"
+                 :title="tx['manual_check.title']" :description="tx['manual_check.description']" :submit-label="tx['manual_check.submit']"
+                 icon="search">
+  <rx-select name="list_id" :label="tx['manual_check.list']" :options="manual_lists" :id="'manual-list-' ~ party.id" required/>
+  <rx-input name="list_date" type="date" :label="tx['manual_check.list_date']" :id="'manual-date-' ~ party.id" required/>
+  <rx-select name="result" :label="tx['manual_check.result']" :options="manual_results" :id="'manual-result-' ~ party.id" required/>
+  <rx-input name="name" :label="tx['manual_check.name']" :hint="tx['manual_check.candidate_hint']" :id="'manual-name-' ~ party.id"/>
+  <rx-input name="list_entry" :label="tx['manual_check.list_entry']" :hint="tx['manual_check.candidate_hint']" :id="'manual-entry-' ~ party.id"/>
+</rx-action-sheet>

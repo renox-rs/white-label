@@ -170,6 +170,14 @@ const VIEWS: &[(&str, &str)] = &[
         include_str!("../views/wl-parties/compliance_task.html"),
     ),
     (
+        "wl-parties/list_upload_sheet.html",
+        include_str!("../views/wl-parties/list_upload_sheet.html"),
+    ),
+    (
+        "wl-parties/manual_check_sheet.html",
+        include_str!("../views/wl-parties/manual_check_sheet.html"),
+    ),
+    (
         "wl-parties/screening.html",
         include_str!("../views/wl-parties/screening.html"),
     ),

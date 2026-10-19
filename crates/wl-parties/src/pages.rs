@@ -56,13 +56,18 @@ use crate::contacts::{ContactPoint, ContactStatus, ContactType, update_contact, 
 use crate::create::{NewParty, create};
 use crate::details::{CompanyDetails, PersonDetails};
 use crate::evidence::{UnblockBasis, UnblockEvidence};
+use crate::list_parser::ListParsers;
+use crate::list_upload::{
+    UploadError, UploadRefusal, UploadRequest, UploadSettings, upload_list_file,
+};
+use crate::manual_check::{ManualCheckError, ManualRefusal, ManualResult, record_manual_check};
 use crate::party::{Channel, Language, Party};
 use crate::permissions;
 use crate::reasons::BlockReasons;
 use crate::review_tasks::{self, ReviewTask, ReviewTaskStatus};
 use crate::roles::PartyRole;
-use crate::sanctions_lists::{ListStatus, SanctionsList};
-use crate::screening::{Screening, ScreeningMethod, ScreeningTrigger};
+use crate::sanctions_lists::{ListFormat, ListStatus, SanctionsList, UpdateSource};
+use crate::screening::{Screening, ScreeningMethod, ScreeningSettings, ScreeningTrigger};
 use crate::screening_task::{ScreeningTask, ScreeningTaskStatus, dubai_label};
 use crate::texts;
 use crate::unblock::{UnblockRequest, unblock};
@@ -105,6 +110,10 @@ pub fn routes() -> Routes {
                 .name("wl_parties.compliance_tasks")
                 .get("/parties/compliance-tasks/{id}", compliance_task_page)
                 .name("wl_parties.compliance_task")
+                .post("/parties/screening/lists/{id}/upload", upload_list)
+                .name("wl_parties.list_upload")
+                .post("/parties/{id}/manual-check", store_manual_check)
+                .name("wl_parties.manual_check")
                 .post("/parties/compliance-tasks/{id}/funds", add_compliance_fund)
                 .name("wl_parties.compliance_fund_add")
                 .post(
@@ -425,6 +434,13 @@ pub(crate) struct ShowPage {
     notice: Option<ScreeningNoticeView>,
     /// The Block records this user may read, newest first.
     block_records: Vec<BlockRecordRow>,
+    /// Whether *Record manual check* shows: `screening.review`, screening
+    /// on, a PDF-only list exists and the party is not archived.
+    can_manual_check: bool,
+    /// The PDF-only lists the manual check offers, `(id, name)`.
+    manual_lists: Vec<(i64, String)>,
+    /// The results the manual check offers, `(value, label)`.
+    manual_results: Vec<(String, String)>,
 }
 
 /// One contact point as the party page shows it.
@@ -616,6 +632,20 @@ async fn show(
     );
     let block_records = block_rows(&db, &lang, party.id, sees_restricted).await?;
     let notice = stale_notice(&state, &user, &lang, party.id).await?;
+    let manual_lists = if user.has_permission(permissions::SCREENING_REVIEW)
+        && ScreeningSettings::of(&state).on
+        && party.status != PartyStatus::Archived
+    {
+        manual_check_lists(&db).await?
+    } else {
+        Vec::new()
+    };
+    let can_manual_check = !manual_lists.is_empty();
+    let manual_results = options(
+        &texts_in(&lang),
+        "manual_check.result",
+        ["no_match", "candidate"],
+    );
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
         party,
@@ -634,7 +664,20 @@ async fn show(
         bases,
         block_records,
         notice,
+        can_manual_check,
+        manual_lists,
+        manual_results,
     }))
+}
+
+/// The PDF-only lists, `(id, name)`.
+async fn manual_check_lists(db: &Db) -> Result<Vec<(i64, String)>> {
+    Ok(SanctionsList::all(db)
+        .await?
+        .into_iter()
+        .filter(|list| list.format == ListFormat::Pdf)
+        .map(|list| (list.id, list.name))
+        .collect())
 }
 
 /// The "screened on a stale list" line of the party page. Screening data never
@@ -2013,6 +2056,13 @@ const SCREENING_PAGE_LIMIT: u64 = 50;
 /// One sanctions list on the screening page.
 #[derive(Serialize, Debug, Clone)]
 pub(crate) struct SanctionsListRow {
+    id: i64,
+    /// Whether *Upload official file* shows on this row.
+    can_upload: bool,
+    /// Who uploaded the current version (a manual upload only).
+    uploaded_by: String,
+    /// The page the current version was taken from.
+    source_url: String,
     name: String,
     source: String,
     version: String,
@@ -2063,14 +2113,32 @@ async fn screening_page(State(state): State<AppState>, user: AuthUser, lang: Lan
     let t = texts_in(&lang);
     let never = t("freshness.never");
     let dash = "\u{2014}".to_owned();
-    let lists = SanctionsList::all(db)
-        .await?
-        .into_iter()
-        .map(|list| {
+    let reviewer =
+        user.has_permission(permissions::SCREENING_REVIEW) && UploadSettings::of(&state).enabled;
+    let parsers = state
+        .provided::<ListParsers>()
+        .map(|p| (*p).clone())
+        .unwrap_or_default();
+    let mut lists = Vec::new();
+    for list in SanctionsList::all(db).await? {
+        {
             let stale = list.status == ListStatus::Stale;
-            SanctionsListRow {
+            let manual = list.update_source == Some(UpdateSource::Manual);
+            let uploaded_by = match list.updated_by {
+                Some(id) if manual => user_name(db, id).await?,
+                _ => dash.clone(),
+            };
+            lists.push(SanctionsListRow {
+                id: list.id,
+                can_upload: reviewer && stale && parsers.get(list.format).is_some(),
+                uploaded_by,
+                source_url: list.source_url.clone().unwrap_or_else(|| dash.clone()),
                 name: list.name,
-                source: list.source,
+                source: if manual {
+                    t("screening.source_manual")
+                } else {
+                    list.source
+                },
                 version: list.version.unwrap_or_else(|| dash.clone()),
                 updated: list
                     .last_updated_at
@@ -2082,9 +2150,9 @@ async fn screening_page(State(state): State<AppState>, user: AuthUser, lang: Lan
                 }),
                 status_tone: if stale { "warning" } else { "success" },
                 error: list.last_error.unwrap_or_else(|| dash.clone()),
-            }
-        })
-        .collect();
+            });
+        }
+    }
     let latest = Screening::query()
         .order_by_desc(Screening::ID)
         .limit(SCREENING_PAGE_LIMIT)
@@ -2141,4 +2209,157 @@ async fn screening_page(State(state): State<AppState>, user: AuthUser, lang: Lan
         lists,
         screenings,
     }))
+}
+
+/// The upload sheet's multipart form.
+#[derive(Deserialize, Serialize, Validate, Debug)]
+pub struct ListUploadForm {
+    /// The official file.
+    #[serde(default)]
+    pub file: Option<Upload>,
+    /// The page of the authority the file was taken from.
+    #[serde(default)]
+    pub source_url: Option<String>,
+    /// The date of the list, `YYYY-MM-DD`.
+    #[serde(default)]
+    pub list_date: Option<String>,
+}
+
+/// The sheet field an upload refusal belongs under.
+fn upload_field(error: &UploadError) -> &'static str {
+    match error {
+        UploadError::Refused(UploadRefusal::SourceUrlMissing | UploadRefusal::SourceUrlInvalid) => {
+            "source_url"
+        }
+        UploadError::Refused(
+            UploadRefusal::ListDateMissing
+            | UploadRefusal::ListDateInvalid
+            | UploadRefusal::ListDateInFuture
+            | UploadRefusal::OlderThanCurrent,
+        ) => "list_date",
+        _ => "file",
+    }
+}
+
+/// `POST /parties/screening/lists/{id}/upload`: takes the official file of a
+/// stale list. 403 without `screening.review`; a refusal is a 422 with the
+/// message in the sheet and nothing changed.
+async fn upload_list(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Valid(form): Valid<ListUploadForm>,
+) -> Result<Response> {
+    if !user.has_permission(permissions::SCREENING_REVIEW) {
+        return Err(Error::Forbidden);
+    }
+    let Some(file) = form.file.clone() else {
+        return Err(invalid_field(
+            "file",
+            texts::t(&lang, "wl_parties.errors.upload_file_required"),
+            &form,
+        ));
+    };
+    let request = UploadRequest {
+        file,
+        source_url: form.source_url.clone().unwrap_or_default(),
+        list_date: form.list_date.clone().unwrap_or_default(),
+    };
+    match upload_list_file(&state, &user, id, request).await {
+        Ok(_) => Ok((
+            Toast::success(texts::t(&lang, "wl_parties.screening.upload_done")),
+            renox::HxRefresh,
+        )
+            .into_response()),
+        Err(UploadError::Forbidden) => Err(Error::Forbidden),
+        Err(UploadError::NotFound) => Err(Error::NotFound),
+        Err(UploadError::Failed(e)) => Err(e),
+        Err(other) => Err(invalid_field(
+            upload_field(&other),
+            other.to_string(),
+            &form,
+        )),
+    }
+}
+
+/// The manual check sheet's form.
+#[derive(Deserialize, Serialize, Validate, Debug)]
+pub struct ManualCheckForm {
+    /// The list that was checked.
+    #[serde(default)]
+    pub list_id: Option<i64>,
+    /// The date of the list file, `YYYY-MM-DD`.
+    #[serde(default)]
+    pub list_date: Option<String>,
+    /// `no_match` or `candidate`.
+    #[serde(default)]
+    pub result: Option<String>,
+    /// The candidate's name as written on the list.
+    #[serde(default)]
+    pub name: Option<String>,
+    /// The candidate's entry on the list.
+    #[serde(default)]
+    pub list_entry: Option<String>,
+}
+
+/// The sheet field a manual check refusal belongs under.
+fn manual_field(why: &ManualRefusal) -> &'static str {
+    match why {
+        ManualRefusal::ListDateMissing
+        | ManualRefusal::ListDateInvalid
+        | ManualRefusal::ListDateInFuture => "list_date",
+        ManualRefusal::CandidateNameMissing => "name",
+        ManualRefusal::ListEntryMissing => "list_entry",
+        _ => "list_id",
+    }
+}
+
+/// `POST /parties/{id}/manual-check`: records a manual sanctions check.
+/// 403 without `screening.review`; a refusal is a 422 in the sheet.
+async fn store_manual_check(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(party): Found<Party>,
+    Valid(form): Valid<ManualCheckForm>,
+) -> Result<Response> {
+    if !user.has_permission(permissions::SCREENING_REVIEW) {
+        return Err(Error::Forbidden);
+    }
+    let Some(list_id) = form.list_id else {
+        return Err(invalid_field(
+            "list_id",
+            texts::t(&lang, "wl_parties.errors.manual_list_required"),
+            &form,
+        ));
+    };
+    let result = match form.result.as_deref() {
+        Some("no_match") => ManualResult::NoMatch,
+        Some("candidate") => ManualResult::Candidate {
+            name: form.name.clone().unwrap_or_default(),
+            list_entry: form.list_entry.clone().unwrap_or_default(),
+        },
+        _ => {
+            return Err(invalid_field(
+                "result",
+                texts::t(&lang, "wl_parties.errors.manual_result_required"),
+                &form,
+            ));
+        }
+    };
+    let list_date = form.list_date.clone().unwrap_or_default();
+    match record_manual_check(&state, &user, &party, list_id, &list_date, result).await {
+        Ok(_) => Ok((
+            Toast::success(texts::t(&lang, "wl_parties.manual_check.done")),
+            renox::HxRefresh,
+        )
+            .into_response()),
+        Err(ManualCheckError::Forbidden) => Err(Error::Forbidden),
+        Err(ManualCheckError::NotFound) => Err(Error::NotFound),
+        Err(ManualCheckError::Refused(why)) => {
+            Err(invalid_field(manual_field(&why), why.to_string(), &form))
+        }
+        Err(ManualCheckError::Run(e)) => Err(e.into_error()),
+    }
 }
