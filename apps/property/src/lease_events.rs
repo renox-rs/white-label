@@ -19,6 +19,9 @@
 //!   `LeaseNoticeWithdrawn` is emitted.
 //! - **`terminate`:** the credit notes, the cheques and the deposit settlement
 //!   ([`crate::termination::settle`]) and `LeaseTerminated`.
+//! - **`force_terminate`:** as `terminate`, after the cheques the requester
+//!   chose to keep are held as evidence and before the eviction flags are
+//!   closed and `LeaseForceTerminated` is emitted ([`crate::force`]).
 //! - **`record_notice`:** the move-out inspection ticket is created
 //!   (`PRP.RUL.04`); the proof of delivery of a landlord's notice computes the
 //!   planned move-out date.
@@ -33,7 +36,8 @@ use wl_kernel::role_tasks::RoleTask;
 use crate::events::LeaseActivated;
 use crate::lease::{Lease, VersionKind};
 use crate::lease_machine::{
-    ACTIVATE, EXPIRE, FLAG_RENEWAL, RECORD_NOTICE, SUBMIT, TERMINATE, WITHDRAW_NOTICE,
+    ACTIVATE, EXPIRE, FLAG_RENEWAL, FORCE_TERMINATE, FORCE_TERMINATE_APPROVED, RECORD_NOTICE, SUBMIT,
+    TERMINATE, WITHDRAW_NOTICE,
     WITHDRAW_NOTICE_TO_EXPIRED, WITHDRAW_NOTICE_TO_RENEWAL_DUE,
 };
 use crate::leases::ejari_task_key;
@@ -53,6 +57,9 @@ pub(crate) fn register(app: &mut Registry) {
             SUBMIT => crate::holding::renewal_submitted(&state, event.key).await,
             RECORD_NOTICE => crate::notice::after_record(&state, event.key).await,
             TERMINATE => crate::termination::after_terminate(&state, event.key, event.actor_id).await,
+            FORCE_TERMINATE | FORCE_TERMINATE_APPROVED => {
+                crate::force::after_force(&state, &event).await
+            }
             WITHDRAW_NOTICE | WITHDRAW_NOTICE_TO_RENEWAL_DUE | WITHDRAW_NOTICE_TO_EXPIRED => {
                 let holding_starts = event
                     .meta

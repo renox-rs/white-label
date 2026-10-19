@@ -593,8 +593,11 @@ pub async fn on_cheque_bounced(state: &AppState, event: &ChequeBounced) -> Resul
 
 /// The user who asked for a cancellation: the actor of a direct run, else the
 /// requester of the approval request that was approved.
-async fn requester(state: &AppState, event: &Transitioned<Lease>) -> Result<Option<i64>> {
-    if event.transition == CANCEL {
+pub(crate) async fn requester(
+    state: &AppState,
+    event: &Transitioned<Lease>,
+) -> Result<Option<i64>> {
+    if event.transition == CANCEL || event.transition == crate::lease_machine::FORCE_TERMINATE {
         return Ok(event.actor_id);
     }
     let Some(request) = event

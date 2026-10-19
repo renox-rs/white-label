@@ -50,8 +50,13 @@
 //!   charges from the effective date on; the credit notes, the reissued
 //!   invoices, the cheques and the deposit follow the commit ([`crate::amend`],
 //!   BL-PRP-08).
-//! - `force_terminate` is declared with its states and permissions; its
-//!   effects are built by BL-PRP-12 and until then the pages do not offer it.
+//! - `force_terminate` is the property manager's request (`leases.manage`);
+//!   the kernel's interceptor defers it as an approval request for a holder of
+//!   `leases.force_terminate` (`PRP.ACL.19`, [`crate::force::policy`]) and at
+//!   the final approval runs `force_terminate_approved`, which has the same
+//!   guard and effect: as `terminate`, with the inspection done without the
+//!   tenant. The cheques held as evidence, the money effects, the legal case
+//!   flags and the event follow the commit ([`crate::force`], BL-PRP-12).
 
 use renox::db::Transaction;
 use renox::prelude::*;
@@ -64,6 +69,7 @@ use wl_kernel::documents::today;
 use crate::charge::{ChargeStatus, LeaseCharge};
 use crate::amend::amend_effects;
 use crate::db::{refused, set_lease};
+use crate::force::{force_effects, force_input, force_problem};
 use crate::holding::expire_effects;
 use crate::lease::{LEASE_SUBJECT_TYPE, Lease, LeaseStatus};
 use crate::lease_checks::{activate_checks, apply_activation, submit_checks};
@@ -98,8 +104,10 @@ pub const AMEND: &str = "amend";
 pub const EXPIRE: &str = "expire";
 /// `terminate`.
 pub const TERMINATE: &str = "terminate";
-/// `force_terminate`.
+/// `force_terminate`: the property manager's request (`PRP.ACL.19`).
 pub const FORCE_TERMINATE: &str = "force_terminate";
+/// `force_terminate_approved`: the kernel runs it at the final approval.
+pub const FORCE_TERMINATE_APPROVED: &str = "force_terminate_approved";
 /// `cancel`: the user's.
 pub const CANCEL: &str = "cancel";
 /// `cancel_approved`: the kernel runs it at the final approval.
@@ -107,6 +115,9 @@ pub const CANCEL_APPROVED: &str = "cancel_approved";
 
 /// The approval policies' action key of `cancel` (`PRP.ACL.18`).
 pub const CANCEL_ACTION: &str = "property.lease_cancel";
+
+/// The approval policies' action key of `force_terminate` (`PRP.ACL.19`).
+pub const FORCE_ACTION: &str = "property.lease_force_terminate";
 
 /// The transitions the pages offer so far.
 pub const OFFERED: [&str; 3] = [SUBMIT, ACTIVATE, CANCEL];
@@ -301,6 +312,28 @@ fn withdraw_rules(transition: Transition<Lease>, target: LeaseStatus) -> Transit
         })
 }
 
+/// The guard and effect `force_terminate` and `force_terminate_approved`
+/// share.
+fn force_rules(transition: Transition<Lease>) -> Transition<Lease> {
+    transition
+        .from([
+            LeaseStatus::Active,
+            LeaseStatus::RenewalDue,
+            LeaseStatus::Expired,
+            LeaseStatus::NoticeGiven,
+        ])
+        .to(LeaseStatus::Terminated)
+        .guard("evidence", |lease: &Lease, ctx| {
+            let problem = force_problem(lease, &force_input(ctx));
+            Box::pin(async move { problem.map_or(Ok(()), Err) })
+        })
+        .effect(|lease: &Lease, ctx, tx| {
+            let lease = lease.clone();
+            let input = force_input(ctx);
+            Box::pin(async move { force_effects(&mut *tx, &lease, &input).await })
+        })
+}
+
 impl StateMachine for Lease {
     type State = LeaseStatus;
     const COLUMN: renox::db::Col<Lease, LeaseStatus> = Lease::STATUS;
@@ -473,15 +506,15 @@ impl StateMachine for Lease {
                         Box::pin(async move { terminate_effects(&mut *tx, &lease, &input).await })
                     }),
             )
-            .transition(
-                user(
-                    FORCE_TERMINATE,
-                    "Force terminate",
-                    permissions::LEASES_FORCE_TERMINATE,
-                )
-                .from([Active, RenewalDue, Expired, NoticeGiven])
-                .to(Terminated),
-            )
+            .transition(force_rules(user(
+                FORCE_TERMINATE,
+                "Force terminate",
+                permissions::LEASES_MANAGE,
+            )))
+            .transition(force_rules(system(
+                FORCE_TERMINATE_APPROVED,
+                "Force terminate (approved)",
+            )))
             .transition(cancel_rules(
                 user(CANCEL, "Cancel", permissions::LEASES_CANCEL).tone("danger"),
             ))
@@ -504,6 +537,7 @@ pub fn cancel_policy() -> PolicyDefault {
 pub fn subject_machine() -> SubjectMachine {
     SubjectMachine::of::<Lease>(LEASE_SUBJECT_TYPE)
         .action(CANCEL, CANCEL_ACTION)
+        .action(FORCE_TERMINATE, FORCE_ACTION)
         .scope(|lease: &Lease| lease.scope())
         .build()
 }
@@ -514,6 +548,7 @@ pub(crate) fn register() {
     subject_machine().register();
     renox::state_machine::register::<Lease>();
     cancel_policy().register();
+    crate::force::policy().register();
 }
 
 /// Whether `event` is the transition `name` of a lease.
@@ -528,7 +563,7 @@ mod tests {
     #[test]
     fn every_transition_of_the_spec_is_declared() {
         let machine = Lease::machine();
-        let table: [(&str, &[&str], &str, bool); 14] = [
+        let table: [(&str, &[&str], &str, bool); 15] = [
             (SUBMIT, &["draft"], "pending_signature", false),
             (ACTIVATE, &["pending_signature"], "active", false),
             (FLAG_RENEWAL, &["active"], "renewal_due", true),
@@ -555,6 +590,12 @@ mod tests {
                 &["active", "renewal_due", "expired", "notice_given"],
                 "terminated",
                 false,
+            ),
+            (
+                FORCE_TERMINATE_APPROVED,
+                &["active", "renewal_due", "expired", "notice_given"],
+                "terminated",
+                true,
             ),
             (CANCEL, &["draft", "pending_signature"], "cancelled", false),
             (

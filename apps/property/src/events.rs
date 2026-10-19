@@ -101,6 +101,33 @@ pub struct LeaseAmended {
 
 impl Event for LeaseAmended {}
 
+/// A lease was ended by force and its money effects ran (`force_terminate`,
+/// `PRP.ACL.19`, BL-PRP-12): the tenant abandoned the unit or was evicted.
+/// `LeaseTerminated` follows with the money; the portal turns read-only on it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LeaseForceTerminated {
+    /// The version.
+    pub lease: i64,
+    /// The lease all versions belong to.
+    pub root: i64,
+    /// The unit.
+    pub unit: i64,
+    /// The tenant.
+    pub tenant: PartyId,
+    /// `abandoned` or `eviction_executed`.
+    pub reason: String,
+    /// The abandonment inspection date or the execution date.
+    pub move_out: NaiveDate,
+    /// The user who requested it.
+    pub requested_by: Option<i64>,
+    /// How many later cheques are held as evidence.
+    pub evidence_cheques: usize,
+    /// How many legal case flags were closed.
+    pub closed_cases: usize,
+}
+
+impl Event for LeaseForceTerminated {}
+
 /// A lease was terminated and its money effects ran (`terminate`). The
 /// tenant's portal turns read-only on it (`POR.ACL.01`: wl-portal's end
 /// policy maps it to `end`; the grant closes after 90 days).

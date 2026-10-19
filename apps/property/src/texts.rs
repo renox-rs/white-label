@@ -758,6 +758,74 @@ const TEXTS: &[(&str, &str)] = &[
         ":amount of the payments taken off the credited invoices stays as the tenant's credit.",
     ),
     ("property.amend.top_up_line", "Deposit top-up · :lease"),
+    // Forcing the end of a lease (BL-PRP-12).
+    ("property.force.action", "Force terminate"),
+    ("property.force.submit", "Request approval"),
+    (
+        "property.force.description",
+        "The tenant abandoned the unit or was evicted. Another user with the right to approve forced terminations decides; the lease stays as it is until then.",
+    ),
+    ("property.force.reason", "Reason"),
+    ("property.force.reason_abandoned", "The unit was abandoned"),
+    ("property.force.reason_eviction_executed", "The eviction was executed"),
+    ("property.force.reason_required", "Choose the reason: abandoned or eviction executed."),
+    ("property.force.move_out", "Move-out date"),
+    (
+        "property.force.move_out_hint",
+        "The abandonment inspection date, or the execution date of the eviction.",
+    ),
+    ("property.force.move_out_required", "Give the move-out date."),
+    ("property.force.basis", "Legal basis for repossession"),
+    (
+        "property.force.basis_hint",
+        "For an abandoned unit: the document or reference that allows repossession. Attach it to the lease too.",
+    ),
+    (
+        "property.force.basis_required",
+        "State the legal basis for repossessing the abandoned unit.",
+    ),
+    ("property.force.keep", "Cheques to keep as evidence"),
+    (
+        "property.force.keep_hint",
+        "Cheque numbers of the register, separated by commas. Later cheques not named are kept while a legal case is open, else returned.",
+    ),
+    ("property.force.hand_back", "Cheques to return"),
+    (
+        "property.force.cheque_unknown",
+        "A cheque named here was not received with this lease.",
+    ),
+    (
+        "property.force.missing_judgment",
+        "Judgment missing: attach the court judgment to the lease.",
+    ),
+    (
+        "property.force.missing_execution_record",
+        "Execution record missing: attach the execution report of the eviction to the lease.",
+    ),
+    (
+        "property.force.missing_abandonment_inspection",
+        "Abandonment inspection missing: attach the inspection with its photos to the lease.",
+    ),
+    (
+        "property.force.missing_repossession_basis",
+        "Repossession basis missing: attach the legal basis for repossession to the lease.",
+    ),
+    ("property.force.history_abandoned", "The tenant abandoned the unit"),
+    ("property.force.history_eviction_executed", "The eviction was executed"),
+    (
+        "property.force.sent",
+        "Sent for approval. The lease stays as it is until it is approved.",
+    ),
+    ("property.force.done", "Lease terminated."),
+    (
+        "property.force.evidence_note",
+        "Held as evidence: lease :lease was ended by force",
+    ),
+    ("property.force.case_executed", "The eviction was executed."),
+    (
+        "property.force.case_abandoned",
+        "The unit was abandoned and the lease ended by force.",
+    ),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.

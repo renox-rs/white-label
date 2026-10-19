@@ -53,6 +53,8 @@
 //!   the next charge of the same type, the last one to the end date of the
 //!   lease ([`crate::renew::periods`]).
 
+use std::collections::BTreeSet;
+
 use renox::chrono::{Duration, NaiveDate};
 use renox::db::Transaction;
 use renox::prelude::*;
@@ -364,6 +366,22 @@ fn problem_line(what: &str, error: &Error) -> String {
 /// The database's errors; a failing contract call is a problem in the result
 /// and a task for the accountant, not an error.
 pub async fn settle(state: &AppState, id: i64, by: Option<i64>) -> Result<Settlement> {
+    settle_keeping(state, id, by, &BTreeSet::new()).await
+}
+
+/// Like [`settle`], but the cheques whose ids are in `keep` are not returned
+/// (a forced termination holds them as evidence, [`crate::force`]).
+///
+/// # Errors
+///
+/// The database's errors; a failing contract call is a problem in the result
+/// and a task for the accountant, not an error.
+pub async fn settle_keeping(
+    state: &AppState,
+    id: i64,
+    by: Option<i64>,
+    keep: &BTreeSet<i64>,
+) -> Result<Settlement> {
     let lease = Lease::find(&state.db, id).await?.ok_or(Error::NotFound)?;
     let Some(move_out) = lease.actual_move_out else {
         return Ok(Settlement::default());
@@ -486,6 +504,7 @@ pub async fn settle(state: &AppState, id: i64, by: Option<i64>) -> Result<Settle
                 .filter(|c| {
                     matches!(c.status, ChequeStatus::Received | ChequeStatus::DueForDeposit)
                         && c.date > cut
+                        && !keep.contains(&c.id.0)
                 })
                 .map(|c| c.id)
                 .collect();

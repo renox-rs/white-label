@@ -265,6 +265,15 @@ pub struct Lease {
     pub keys_returned_on: Option<NaiveDate>,
     /// The move-out inspection found defects that need work.
     pub inspection_defects: bool,
+    /// Why the lease was ended by force: `abandoned` or `eviction_executed`
+    /// (`PRP.ACL.19`).
+    pub force_reason: Option<String>,
+    /// The legal basis stated for repossessing an abandoned unit (the
+    /// platform does not judge it, `⚠ open: lawyer (L-22)`).
+    pub force_basis: Option<String>,
+    /// What the requester chose for each later cheque, as JSON
+    /// ([`crate::force::ChequeChoices`]).
+    pub force_cheques: Option<String>,
     /// The day the lease was handed over with a management agreement.
     pub handed_over_on: Option<NaiveDate>,
     /// When the row was created.

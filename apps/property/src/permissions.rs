@@ -21,7 +21,9 @@ pub const LEASES_ACTIVATE: &str = "leases.activate";
 /// Notice, renewal decision, termination and the other changes to a running
 /// lease.
 pub const LEASES_MANAGE: &str = "leases.manage";
-/// Approve a forced termination (`PRP.ACL.19`).
+/// Approve a forced termination (`PRP.ACL.19`): the property manager
+/// requests it with `leases.manage`, another holder of this permission (the
+/// company admin by default) approves.
 pub const LEASES_FORCE_TERMINATE: &str = "leases.force_terminate";
 
 /// Every permission of the module.
