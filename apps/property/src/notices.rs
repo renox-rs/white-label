@@ -53,6 +53,11 @@ pub const NOTICE_OF_CHANGED_TERMS: &str = "lease.notice_of_changed_terms";
 /// that depend on the notice start from it.
 pub const LANDLORD_NOTICE: &str = "lease.landlord_notice";
 
+/// The statutory formal payment demand to the tenant (`PRP.RUL.10`). The
+/// property manager sends it from the task; the M-day clock of the legal-case
+/// task starts at its proof of delivery, never at sending.
+pub const PAYMENT_DEMAND: &str = "lease.payment_demand";
+
 /// The property managers are told that a terminated lease still has its
 /// Ejari or Tawtheeq registration to cancel (`PRP.RUL.13`).
 pub const EJARI_CANCELLATION: &str = "property.ejari_cancellation";
@@ -102,6 +107,7 @@ pub(crate) fn register_types() {
     ));
     notify::register_type(tenant_message(LANDLORD_NOTICE, "landlord_notice", true));
     notify::register_type(staff_reminder(EJARI_CANCELLATION, "ejari_cancellation"));
+    notify::register_type(tenant_message(PAYMENT_DEMAND, "payment_demand", true));
 }
 
 /// The users who hold `role` in the building of `lease`, or everywhere.
@@ -294,5 +300,23 @@ pub async fn holding_over(state: &AppState, lease: &Lease) -> Result {
         "until": lease.holding_over_until.map(shown).unwrap_or_default(),
     });
     tell_managers(state, lease, HOLDING_OVER, data).await?;
+    Ok(())
+}
+
+/// Sends the formal payment demand `demand` to the tenant of `lease` as a
+/// statutory notice listing the overdue invoices in `rows`, with the demand
+/// period of `days` days.
+pub async fn payment_demand(
+    state: &AppState,
+    lease: &Lease,
+    demand: &crate::arrears::ArrearsDemand,
+    rows: &[crate::arrears::DemandInvoice],
+    days: i64,
+) -> Result {
+    let request = NotifyRequest::new(PAYMENT_DEMAND, demand.subject())
+        .subject_label(&lease.number_with_version())
+        .to_party(lease.tenant())
+        .data(crate::arrears::notice_data(lease, rows, days));
+    notify::notifier(state).notify(state, request).await?;
     Ok(())
 }

@@ -821,6 +821,68 @@ const TEXTS: &[(&str, &str)] = &[
         "property.force.evidence_note",
         "Held as evidence: lease :lease was ended by force",
     ),
+    // Escalating arrears (BL-PRP-14).
+    (
+        "property.notices.payment_demand_subject",
+        "Formal payment demand for {{ lease }}",
+    ),
+    (
+        "property.notices.payment_demand_body",
+        "Rent is overdue on tenancy {{ lease }}: {{ invoices }}. The total open is {{ total }}. Pay it within {{ days }} days of receiving this demand; otherwise the landlord may refer the matter to the Rental Dispute Centre.",
+    ),
+    (
+        "property.arrears.demand_task",
+        "Send the formal payment demand for :lease",
+    ),
+    (
+        "property.arrears.demand_task_description",
+        "Invoices overdue by :days days or more: :list. Send the statutory notice from the lease; the demand period starts when its delivery is proven.",
+    ),
+    ("property.arrears.demand_added", "Added to the demand: :list"),
+    ("property.arrears.nothing_left", "Nothing is overdue any more: the demand is not needed."),
+    ("property.arrears.demand_sent", "The formal payment demand was sent."),
+    (
+        "property.arrears.not_open",
+        "This demand is sent or closed already.",
+    ),
+    (
+        "property.arrears.legal_task",
+        "Open a legal case or agree a payment plan for :lease",
+    ),
+    (
+        "property.arrears.legal_task_description",
+        "The demand period of :days days has passed and these invoices are still unpaid: :list. Open a legal case on the lease, or record a payment plan with the agreed dates.",
+    ),
+    (
+        "property.arrears.plan_agreed",
+        "A payment plan was agreed until :until.",
+    ),
+    ("property.arrears.plan_note_required", "Write the agreed dates."),
+    ("property.arrears.plan_date_past", "The latest agreed date cannot be in the past."),
+    ("property.arrears.title", "Arrears"),
+    ("property.arrears.send", "Send the formal payment demand"),
+    (
+        "property.arrears.send_description",
+        "Sends the statutory notice to the tenant, listing the invoices overdue by 30 days or more. The list is frozen once it is sent.",
+    ),
+    ("property.arrears.demand", "Demand"),
+    ("property.arrears.sent_done", "Formal payment demand sent."),
+    ("property.arrears.plan", "Record a payment plan"),
+    (
+        "property.arrears.plan_description",
+        "A note with the agreed dates. The invoices are not changed; reminders and escalation stay quiet until the latest agreed date.",
+    ),
+    ("property.arrears.plan_note", "The agreed dates"),
+    ("property.arrears.plan_latest", "Latest agreed date"),
+    ("property.arrears.plan_done", "Payment plan recorded."),
+    ("property.arrears.demand_open", "Waiting to be sent"),
+    ("property.arrears.demand_sent_on", "Sent on :day"),
+    ("property.arrears.demand_closed", "Closed"),
+    ("property.arrears.delivered", "Delivered on :day"),
+    ("property.arrears.not_delivered", "Delivery not proven"),
+    ("property.arrears.invoices", "Invoices"),
+    ("property.arrears.status", "Demand"),
+    ("property.arrears.plan_until", "Payment plan until"),
     ("property.force.case_executed", "The eviction was executed."),
     (
         "property.force.case_abandoned",

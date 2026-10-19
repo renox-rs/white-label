@@ -2,6 +2,7 @@
 #![warn(missing_docs)]
 
 pub mod amend;
+pub mod arrears;
 pub mod building;
 pub mod cancellation;
 pub mod chase;
@@ -125,7 +126,10 @@ impl Module for Property {
             .model::<LeaseCharge>()
             .model::<ChargeType>()
             .model::<LegalCase>()
-            .model::<CancelWait>();
+            .model::<CancelWait>()
+            .model::<arrears::ArrearsDemand>()
+            .model::<arrears::DemandInvoice>()
+            .model::<arrears::PaymentPlan>();
         unit_machine::register();
         lease_machine::register();
         documents::register();
@@ -139,6 +143,7 @@ impl Module for Property {
         chase::schedule(app);
         renewal::schedule(app);
         termination::schedule(app);
+        arrears::schedule(app);
         // A building is the scope roles are assigned in.
         wl_kernel::scopes::register_label(Building::TABLE, |db, id| {
             let id = id.to_owned();
