@@ -8,6 +8,20 @@ use renox::prelude::*;
 /// Every key the package uses, with its English text.
 const TEXTS: &[(&str, &str)] = &[
     ("wl_notify.title", "Notifications"),
+    (
+        "wl_notify.broadcast.excluded.blocked_party",
+        "On hold or no longer active",
+    ),
+    ("wl_notify.broadcast.excluded.no_consent", "No consent"),
+    (
+        "wl_notify.broadcast.excluded.no_contact_point",
+        "No contact point",
+    ),
+    ("wl_notify.broadcast.excluded.opted_out", "Opted out"),
+    (
+        "wl_notify.broadcast.excluded.suppressed",
+        "Address suppressed",
+    ),
     ("wl_notify.types.title", "Notification types"),
     (
         "wl_notify.types.subtitle",

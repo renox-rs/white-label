@@ -23,6 +23,7 @@ use renox::state_machine::{Outcome, StateMachine, TransitionError};
 use serde::{Deserialize, Serialize};
 use wl_kernel::notify::MessageFailed;
 
+use crate::broadcast_recipients;
 use crate::channels::{self, Outgoing, SendError, SendErrorKind};
 use crate::give_up::{self, Applied};
 use crate::machine::{FAIL, RETRY, SEND, SUPPRESS};
@@ -106,6 +107,10 @@ pub async fn send(state: &AppState, id: i64) -> Result<SendOutcome> {
         outcome.emit(state).await?;
         return Ok(SendOutcome::Skipped);
     }
+    if let Some(outcome) = consent_guard(state, &message).await? {
+        outcome.emit(state).await?;
+        return Ok(SendOutcome::Skipped);
+    }
     let provider = channels::providers(state)
         .for_channel(message.channel)
         .filter(|p| p.available(state));
@@ -157,6 +162,24 @@ async fn invalid_point_guard(
         message,
         SUPPRESS,
         Some(INVALID_CONTACT_POINT.to_owned()),
+        &mut tx,
+    )
+    .await?;
+    tx.commit().await?;
+    Ok(Some(outcome))
+}
+
+/// The `send` guard "marketing consent" (§4.1, `NTF.ACL.01`): a marketing
+/// message to a party whose consent is gone is `suppressed` with `no_consent`.
+async fn consent_guard(state: &AppState, message: &Message) -> Result<Option<Outcome<Message>>> {
+    if !broadcast_recipients::lacks_consent(state, message).await? {
+        return Ok(None);
+    }
+    let mut tx = state.db.begin().await?;
+    let outcome = run(
+        message,
+        SUPPRESS,
+        Some(broadcast_recipients::NO_CONSENT.to_owned()),
         &mut tx,
     )
     .await?;

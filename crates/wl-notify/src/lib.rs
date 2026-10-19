@@ -5,6 +5,7 @@ pub mod alert;
 pub mod alternative;
 pub mod broadcast;
 pub mod broadcast_machine;
+pub mod broadcast_recipients;
 pub mod channels;
 pub mod clock;
 pub mod contact_invalid;

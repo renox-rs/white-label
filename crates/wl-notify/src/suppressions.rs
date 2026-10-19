@@ -65,6 +65,20 @@ pub async fn is_suppressed<'c>(
         .await
 }
 
+/// Why `address` is on the list for `channel`, if it is.
+pub async fn reason_for<'c>(
+    db: impl Executor<'c>,
+    channel: NotifyChannel,
+    address: &str,
+) -> Result<Option<SuppressionReason>> {
+    Ok(Suppression::query()
+        .where_(Suppression::CHANNEL.eq(channel))
+        .where_(Suppression::ADDRESS.eq(normalize(channel, address)))
+        .first(db)
+        .await?
+        .map(|row| row.reason))
+}
+
 /// Puts `address` on the list for `channel`, unless it is there already.
 /// Returns whether it was added.
 pub async fn add(
