@@ -497,6 +497,30 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_ticketing.categories.contract_end_description",
         "What the coordinator may do with the open visits of an ended contract in this category. Reassign only offers no cancel (01: compliance-critical categories).",
     ),
+    (
+        "wl_ticketing.visit.no_skip",
+        "A planned visit of a compliance contract is not cancelled: reschedule it with a reason.",
+    ),
+    (
+        "wl_ticketing.visit.report_needed",
+        "Attach the vendor's service report before resolving this visit.",
+    ),
+    ("wl_ticketing.visit.report_blank", "Give the reference of the service report of a planned visit."),
+    ("wl_ticketing.visit.report_attached", "Service report attached: :reference"),
+    ("wl_ticketing.visit.report_done", "Service report attached."),
+    ("wl_ticketing.visit.not_planned", "Only a planned visit is rescheduled."),
+    (
+        "wl_ticketing.visit.reschedule_refused",
+        "Give a reason; only an open visit is rescheduled.",
+    ),
+    ("wl_ticketing.visit.rescheduled", "Visit rescheduled from :from to :to: :reason"),
+    ("wl_ticketing.visit.rescheduled_done", "Visit rescheduled."),
+    ("wl_ticketing.visit.bad_date", "Give the date as YYYY-MM-DD."),
+    (
+        "wl_ticketing.visit.charge_invalid",
+        "To charge the requester give a reason and a charge line with a text and a price.",
+    ),
+    ("wl_ticketing.visit.charged", "The requester is charged for the work done: :reason"),
 ];
 
 /// The English text for `key`, or `key` itself when the package has none.

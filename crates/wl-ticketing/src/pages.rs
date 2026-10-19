@@ -10,7 +10,9 @@
 //! | `DELETE /tickets/{id}/charges/{line}` | `wl_ticketing.charge_remove` | the same |
 //! | `POST /tickets/{id}/assign` | `wl_ticketing.assign` | `tickets.assign` |
 //! | `POST /tickets/{id}/hold` | `wl_ticketing.hold` | `tickets.view` and the assignee |
-//! | `POST /tickets/{id}/cancel` | `wl_ticketing.cancel` | `tickets.assign` |
+//! | `POST /tickets/{id}/cancel` | `wl_ticketing.cancel` | `tickets.assign` (fields `charge` = `1`, `charge_reason`, `description`, `unit_price` charge the requester for the work done; refused for a compliance-critical planned visit) |
+//! | `POST /tickets/{id}/reschedule` | `wl_ticketing.reschedule` | `tickets.assign` (fields `date`, `reason`: a planned visit is moved, not skipped) |
+//! | `POST /tickets/{id}/service-report` | `wl_ticketing.service_report` | `tickets.view` and the assignee, or `tickets.assign` (field `reference`) |
 //! | `POST /tickets/{id}/new-time` | `wl_ticketing.new_time` | `tickets.assign` (field `visit_at`: a new visit time with the same vendor after a no-show) |
 //! | `POST /tickets/{id}/actions/{name}` | `wl_ticketing.action` | `tickets.view` and the action's own rule |
 //!
@@ -85,6 +87,8 @@ pub fn routes() -> Routes {
                 .name("wl_ticketing.charge_add")
                 .delete("/tickets/{id}/charges/{line}", destroy_charge)
                 .name("wl_ticketing.charge_remove")
+                .post("/tickets/{id}/service-report", store_report)
+                .name("wl_ticketing.service_report")
                 .require_permission(permissions::VIEW),
         )
         .merge(
@@ -93,6 +97,8 @@ pub fn routes() -> Routes {
                 .name("wl_ticketing.assign")
                 .post("/tickets/{id}/cancel", store_cancel)
                 .name("wl_ticketing.cancel")
+                .post("/tickets/{id}/reschedule", store_reschedule)
+                .name("wl_ticketing.reschedule")
                 .post("/tickets/{id}/new-time", store_new_time)
                 .name("wl_ticketing.new_time")
                 .require_permission(permissions::ASSIGN),
@@ -981,9 +987,22 @@ pub struct CancelForm {
     /// Why the ticket is cancelled.
     #[validate(required, max = 500)]
     pub reason: String,
+    /// `1` to charge the requester for the work already done (`PRP.ACL.15`).
+    pub charge: Option<String>,
+    /// Why the requester is charged.
+    #[validate(max = 500)]
+    pub charge_reason: Option<String>,
+    /// The charge line's text.
+    #[validate(max = 200)]
+    pub description: Option<String>,
+    /// The charge line's price in AED before VAT, e.g. `200`.
+    #[validate(max = 20)]
+    pub unit_price: Option<String>,
 }
 
-/// `POST /tickets/{id}/cancel`: cancels the ticket for the reason.
+/// `POST /tickets/{id}/cancel`: cancels the ticket for the reason, charging
+/// the requester for the work done when the coordinator ticked it, with a
+/// reason and a charge line.
 async fn store_cancel(
     State(state): State<AppState>,
     user: AuthUser,
@@ -993,14 +1012,82 @@ async fn store_cancel(
 ) -> Result<Response> {
     visibility::ensure_visible(&ticket, &user)?;
     let t = texts_in(&lang);
-    match work::cancel(&state, &user, &ticket, form.reason.trim()).await {
-        Ok(()) => Ok((Toast::success(t("cancel_ticket.done")), renox::HxRefresh).into_response()),
+    let charging = form.charge.as_deref().map(str::trim) == Some("1");
+    let charge_on_cancel = if charging {
+        let Some(unit_price) = form.unit_price.as_deref().and_then(|p| parse_scaled(p, 2)) else {
+            return Err(invalid("unit_price", t("charge.bad_price_text"), &form));
+        };
+        Some(crate::job_cancel::ChargeOnCancel {
+            reason: form.charge_reason.clone().unwrap_or_default(),
+            lines: vec![ChargeInput {
+                description: form.description.clone().unwrap_or_default(),
+                quantity_milli: 1000,
+                unit_price,
+                vat_category: VatCategory::Standard,
+            }],
+        })
+    } else {
+        None
+    };
+    match crate::job_cancel::cancel_job(&state, &user, &ticket, form.reason.trim(), charge_on_cancel).await {
+        Ok(_) => Ok((Toast::success(t("cancel_ticket.done")), renox::HxRefresh).into_response()),
         Err(TransitionError::ReasonRequired) => {
             Err(invalid("reason", t("cancel_ticket.required"), &form))
         }
         Err(TransitionError::Guard(message)) => Err(invalid("reason", message, &form)),
         Err(other) => Err(other.into_error()),
     }
+}
+
+/// The reschedule sheet's form.
+#[derive(Deserialize, Serialize, Validate, Debug)]
+pub struct RescheduleForm {
+    /// The new planned due date, `YYYY-MM-DD`.
+    #[validate(required, max = 10)]
+    pub date: String,
+    /// Why the visit is moved.
+    #[validate(required, max = 500)]
+    pub reason: String,
+}
+
+/// `POST /tickets/{id}/reschedule`: moves the due date of a planned visit,
+/// with a reason (`PRP.ACL.15`: rescheduled, not skipped).
+async fn store_reschedule(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(ticket): Found<Ticket>,
+    Valid(form): Valid<RescheduleForm>,
+) -> Result<Response> {
+    visibility::ensure_visible(&ticket, &user)?;
+    let t = texts_in(&lang);
+    let Ok(date) = form.date.trim().parse::<renox::chrono::NaiveDate>() else {
+        return Err(invalid("date", t("visit.bad_date"), &form));
+    };
+    crate::job_cancel::reschedule(&state, &user, ticket.id, date, &form.reason).await?;
+    Ok((Toast::success(t("visit.rescheduled_done")), renox::HxRefresh).into_response())
+}
+
+/// The service report form.
+#[derive(Deserialize, Serialize, Validate, Debug)]
+pub struct ReportForm {
+    /// The reference of the vendor's service report.
+    #[validate(required, max = 200)]
+    pub reference: String,
+}
+
+/// `POST /tickets/{id}/service-report`: attaches the reference of the
+/// vendor's service report to a planned visit.
+async fn store_report(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(ticket): Found<Ticket>,
+    Valid(form): Valid<ReportForm>,
+) -> Result<Response> {
+    visibility::ensure_visible(&ticket, &user)?;
+    crate::job_cancel::attach_service_report(&state, &user, ticket.id, &form.reference).await?;
+    Ok((Toast::success(texts::t(&lang, "wl_ticketing.visit.report_done")), renox::HxRefresh).into_response())
 }
 
 /// The add-charge form: the price in AED and the quantity as typed.

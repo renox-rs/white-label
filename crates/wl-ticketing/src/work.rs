@@ -760,6 +760,9 @@ pub async fn resolve(
     } else {
         0
     };
+    // `PRP.ACL.15`: a compliance-critical planned visit needs the vendor's
+    // service report.
+    crate::job_cancel::ensure_service_report(state, ticket).await?;
     let input = WorkInput {
         charge_lines,
         ..WorkInput::at(at)
@@ -894,6 +897,9 @@ pub async fn cancel(
     ticket: &Ticket,
     reason: &str,
 ) -> std::result::Result<(), TransitionError> {
+    // `PRP.ACL.15`: a compliance-critical planned visit is rescheduled, not
+    // skipped; only the system cancels it when the contract ends.
+    crate::job_cancel::ensure_not_skipped(state, ticket).await?;
     let _outcome = ticket
         .transition(CANCEL)
         .by(user)

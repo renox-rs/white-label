@@ -116,6 +116,9 @@ pub struct Ticket {
     /// plan occurrence that opened it. Not the visit scheduled at, and not an
     /// SLA due time: moving the appointment does not move it.
     pub planned_due_date: Option<NaiveDate>,
+    /// The reference of the vendor's service report attached to a planned
+    /// visit (`PRP.ACL.15`).
+    pub service_report: Option<String>,
     /// When `WRK.RUL.14` told the coordinator the visit was missed.
     pub missed_notified_at: Option<DateTime>,
     /// The service contract it is handled under: set for a planned visit of

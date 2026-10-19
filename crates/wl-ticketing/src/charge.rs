@@ -136,7 +136,7 @@ fn refused(key: &str) -> Error {
 }
 
 /// Why `input` cannot be a charge line, if it cannot.
-fn input_problem(input: &ChargeInput) -> Option<&'static str> {
+pub(crate) fn input_problem(input: &ChargeInput) -> Option<&'static str> {
     if input.description.trim().is_empty() {
         Some("wl_ticketing.charge.no_description")
     } else if input.quantity_milli <= 0 {

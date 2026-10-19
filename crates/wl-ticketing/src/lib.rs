@@ -14,6 +14,7 @@ mod contract_machine;
 pub mod contract_pages;
 pub mod flag_pages;
 pub mod flags;
+pub mod job_cancel;
 mod machine;
 mod notices;
 pub mod no_show;
