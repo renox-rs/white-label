@@ -1,6 +1,6 @@
 [package]
 name = "property"
-description = "Property: a reusable Renox module."
+description = "Property: the vertical app for property management companies (portfolio, leases, lease to cash)."
 readme = "README.md"
 version.workspace = true
 edition.workspace = true
@@ -10,6 +10,7 @@ publish.workspace = true
 [dependencies]
 renox.workspace = true
 serde.workspace = true
+wl-kernel = { path = "../../crates/wl-kernel" }
 
 [dev-dependencies]
 tempfile = "3"
