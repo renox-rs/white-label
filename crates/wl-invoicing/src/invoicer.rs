@@ -30,6 +30,15 @@ impl Invoicer for Invoices {
         Box::pin(async move { create_draft(db, draft).await.map(|i| Some(i.invoice_id())) })
     }
 
+    fn update_draft<'a>(
+        &'a self,
+        db: &'a Db,
+        id: InvoiceId,
+        draft: InvoiceDraft,
+    ) -> InvoiceFuture<'a, bool> {
+        Box::pin(async move { replace_draft(db, id, draft).await })
+    }
+
     fn find<'a>(&'a self, db: &'a Db, id: InvoiceId) -> InvoiceFuture<'a, Option<InvoiceSummary>> {
         Box::pin(async move { Ok(Invoice::find(db, id.0).await?.map(|i| i.summary())) })
     }
@@ -263,6 +272,62 @@ pub async fn create_draft(db: &Db, draft: InvoiceDraft) -> Result<Invoice> {
     }
     tx.commit().await?;
     Ok(invoice)
+}
+
+/// Replaces the lines of the `draft` invoice `id` with those of `draft` and
+/// recomputes its totals in one transaction ([`Invoicer::update_draft`]). The
+/// party, source, entity and dates stay. Returns `false` and changes nothing
+/// when the invoice is no longer a draft. Refused (422) for a line as
+/// [`create_draft`] refuses; `NotFound` for an unknown invoice.
+pub async fn replace_draft(db: &Db, id: InvoiceId, draft: InvoiceDraft) -> Result<bool> {
+    if let Some(problem) = draft
+        .lines
+        .iter()
+        .enumerate()
+        .find_map(|(i, line)| line_problem(i + 1, line))
+    {
+        return Err(refused(problem));
+    }
+    let invoice = Invoice::find_or_404(db, id.0).await?;
+    if invoice.status != InvoiceStatus::Draft {
+        return Ok(false);
+    }
+    let rate = invoice.aed_rate();
+    let mut lines: Vec<InvoiceLine> = draft
+        .lines
+        .iter()
+        .zip(1..)
+        .map(|(line, position)| InvoiceLine::from_draft(invoice.id, position, line, rate))
+        .collect();
+    let amounts: Vec<_> = lines.iter().map(InvoiceLine::amounts).collect();
+    let mut totals = invoice.clone();
+    totals.set_totals(&VatTotals::of(&amounts));
+
+    let mut tx = db.begin().await?;
+    InvoiceLine::query()
+        .where_(InvoiceLine::INVOICE_ID.eq(invoice.id))
+        .delete(&mut tx)
+        .await?;
+    for line in &mut lines {
+        line.insert(&mut tx).await?;
+    }
+    Invoice::query()
+        .where_(Invoice::ID.eq(invoice.id))
+        .where_(Invoice::STATUS.eq(InvoiceStatus::Draft))
+        .update(
+            &mut tx,
+            &[
+                ("net_total", &totals.net_total),
+                ("vat_total", &totals.vat_total),
+                ("gross_total", &totals.gross_total),
+                ("vat_total_aed", &totals.vat_total_aed),
+                ("balance", &totals.balance),
+                ("updated_at", &renox::db::now()),
+            ],
+        )
+        .await?;
+    tx.commit().await?;
+    Ok(true)
 }
 
 /// The lines of invoice `invoice_id`, in order.

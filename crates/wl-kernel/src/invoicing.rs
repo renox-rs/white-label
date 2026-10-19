@@ -335,6 +335,38 @@ impl DraftLine {
         self.origin = Some(origin);
         self
     }
+
+    /// The net of the line in fils: quantity × unit price rounded half-up
+    /// to fils, minus the discount.
+    pub fn net(&self) -> i64 {
+        div_half_up(
+            i128::from(self.quantity_milli) * i128::from(self.unit_price),
+            1_000,
+        ) - self.discount
+    }
+
+    /// The VAT of the line in fils: the net × the category's rate, rounded
+    /// half-up to fils (as `wl-invoicing` computes a line).
+    pub fn vat(&self) -> i64 {
+        div_half_up(
+            i128::from(self.net()) * i128::from(self.vat_category.rate_bp()),
+            10_000,
+        )
+    }
+
+    /// The line with VAT, in fils: [`net`](Self::net) + [`vat`](Self::vat).
+    /// A module that shows an amount before it drafts an invoice (a ticket's
+    /// charge) adds these up, so the figure is the one the draft will carry.
+    pub fn gross(&self) -> i64 {
+        self.net() + self.vat()
+    }
+}
+
+/// `num ÷ den` rounded half-up (half away from zero when negative).
+fn div_half_up(num: i128, den: i128) -> i64 {
+    let magnitude = (2 * num.abs() + den) / (2 * den);
+    let rounded = if num < 0 { -magnitude } else { magnitude };
+    i64::try_from(rounded).unwrap_or(if num < 0 { i64::MIN } else { i64::MAX })
 }
 
 /// A draft invoice another module asks for: [`Invoicer::draft`].
@@ -647,6 +679,21 @@ pub trait Invoicer: Send + Sync + 'static {
     /// when invoicing is off.
     fn draft<'a>(&'a self, db: &'a Db, draft: InvoiceDraft)
     -> InvoiceFuture<'a, Option<InvoiceId>>;
+
+    /// Replaces the lines of the `draft` invoice `id` with those of `draft`
+    /// and recomputes its totals; the party, source and dates stay. Returns
+    /// whether it did: `false` when the invoice is no longer a draft (it was
+    /// issued), so an issued invoice is never rewritten, and by default
+    /// (invoicing is off). A module that drafts one invoice per record calls
+    /// it instead of drafting a second.
+    fn update_draft<'a>(
+        &'a self,
+        _db: &'a Db,
+        _id: InvoiceId,
+        _draft: InvoiceDraft,
+    ) -> InvoiceFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
 
     /// The invoice with this id.
     fn find<'a>(&'a self, db: &'a Db, id: InvoiceId) -> InvoiceFuture<'a, Option<InvoiceSummary>>;
@@ -1865,6 +1912,21 @@ pub fn cost_poster(state: &AppState) -> Arc<dyn CostPoster> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_draft_line_has_its_net_vat_and_gross_in_fils() {
+        // AED 333.33 at 5%: VAT 16.6665 rounds half-up to 16.67.
+        let line = DraftLine::new("Replace AC capacitor", 33_333, VatCategory::Standard);
+        assert_eq!((line.net(), line.vat(), line.gross()), (33_333, 1_667, 35_000));
+        // 2.5 hours at AED 80.00 less AED 10.00, exempt.
+        let line = DraftLine::new("Labour", 8_000, VatCategory::Exempt)
+            .quantity_milli(2_500)
+            .discount(1_000);
+        assert_eq!((line.net(), line.vat(), line.gross()), (19_000, 0, 19_000));
+        // Half-up at the fil: 0.5 fils of VAT rounds to 1.
+        let line = DraftLine::new("Fee", 10, VatCategory::Standard);
+        assert_eq!((line.net(), line.vat()), (10, 1));
+    }
 
     #[test]
     fn a_supplier_debit_note_id_is_a_subject_and_a_plain_number() {
