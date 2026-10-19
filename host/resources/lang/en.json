@@ -39,6 +39,7 @@
     "document_sops": "SOPs",
     "document_acknowledgements": "SOP acknowledgements",
     "document_kinds": "Document kinds",
+    "portal_block_refusals": "Refused portal actions",
     "admin": "Admin",
     "app": "App",
     "log_in": "Log in",

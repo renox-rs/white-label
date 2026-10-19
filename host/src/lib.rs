@@ -111,6 +111,7 @@ fn enable(app: renox::App, module: &str, client_app: &str) -> Result<renox::App,
         "payments" => Ok(app.module(wl_payments::WlPayments::new())),
         "sales" => Ok(app.module(wl_sales::WlSales::new())),
         "hr" => Ok(app.module(wl_hr::WlHr::new())),
+        "portal" => Ok(app.module(wl_portal::WlPortal)),
         other => Err(ConfigError(format!(
             "[modules] `{other}` is not built yet; remove it from client.toml for now"
         ))),

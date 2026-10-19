@@ -1,0 +1,16 @@
+[package]
+name = "wl-portal"
+description = "Portal: access grants for external users, and the neutral refusal of new business and money out while a party is blocked."
+readme = "README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+renox.workspace = true
+serde.workspace = true
+wl-kernel = { path = "../wl-kernel" }
+
+[dev-dependencies]
+tempfile = "3"
