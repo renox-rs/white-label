@@ -19,6 +19,7 @@ pub mod freshness_alert;
 pub mod list_parser;
 pub mod list_upload;
 mod machine;
+pub mod manual_check;
 pub mod notify;
 pub mod pages;
 pub mod party;
@@ -61,6 +62,7 @@ pub use list_upload::{
     SanctionsListUpload, UploadError, UploadOutcome, UploadRefusal, UploadRequest, UploadResult,
     UploadSettings, upload_list_file,
 };
+pub use manual_check::{ManualCheckError, ManualRefusal, ManualResult, record_manual_check};
 pub use party::{Channel, Language, Party};
 pub use reasons::{BlockReason, BlockReasons};
 pub use relationships::{

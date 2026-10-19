@@ -38,6 +38,8 @@ use crate::sanctions_lists::{ListStatus, SanctionsList};
 use crate::screening_task::ScreeningTask;
 use crate::texts;
 
+pub use crate::manual_check::record_manual_check;
+
 /// The system transition for a run with no candidate at the threshold.
 pub const COMPLETE_CLEAR: &str = "complete_clear";
 /// The system transition for a run with a candidate at the threshold.
