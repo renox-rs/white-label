@@ -329,6 +329,8 @@ struct RefundForm {
     source_id: Option<i64>,
     #[serde(default)]
     gateway_txn: Option<String>,
+    #[serde(default)]
+    details: Option<String>,
 }
 
 /// What the deposit routes take.
@@ -497,6 +499,22 @@ async fn refund_act(
                 .ok_or(Error::NotFound)?;
             let reason = form.reason.unwrap_or_default();
             wl_payments::refund::fail(&state, &user, &refund, kind, &reason).await
+        }
+        "retry" => wl_payments::refund_recover::retry(&state, &user, &refund).await,
+        "change_method" => {
+            let method = method_of(form.method.as_deref())?.ok_or(Error::NotFound)?;
+            wl_payments::refund_recover::change_method(
+                &state,
+                &user,
+                &refund,
+                method,
+                form.details.as_deref(),
+            )
+            .await
+        }
+        "cancel" => {
+            let reason = form.reason.unwrap_or_default();
+            wl_payments::refund_recover::cancel(&state, &user, &refund, &reason).await
         }
         _ => return Err(Error::NotFound),
     };
