@@ -158,6 +158,10 @@ pub struct Category {
     /// Whether a covered subject that is not compliant for it gets a
     /// compliance flag (01: fire and life safety, lifts), set by the vertical.
     pub compliance_critical: bool,
+    /// Whether the coordinator's task when a service contract ends offers only
+    /// "reassign" for the category's open visits (`WRK.RUL.18`; 01: the
+    /// compliance-critical categories, which cannot be cancelled).
+    pub contract_end_reassign_only: bool,
     /// Whether the platform owns it (the categories other modules open
     /// tickets in): the client may rename it, not delete it or turn it off.
     pub platform: bool,

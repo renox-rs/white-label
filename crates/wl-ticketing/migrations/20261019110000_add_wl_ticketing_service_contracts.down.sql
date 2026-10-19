@@ -1,0 +1,10 @@
+ALTER TABLE "wl_ticketing_categories" DROP COLUMN contract_end_reassign_only;
+DROP INDEX IF EXISTS "wl_ticketing_tickets_contract";
+ALTER TABLE "wl_ticketing_tickets" DROP COLUMN contract_id;
+DROP INDEX IF EXISTS "wl_ticketing_maintenance_plans_contract";
+DROP TABLE IF EXISTS "wl_ticketing_maintenance_plans";
+DROP INDEX IF EXISTS "wl_ticketing_contract_coverage_subject";
+DROP TABLE IF EXISTS "wl_ticketing_contract_coverage";
+DROP INDEX IF EXISTS "wl_ticketing_service_contracts_status";
+DROP INDEX IF EXISTS "wl_ticketing_service_contracts_vendor";
+DROP TABLE IF EXISTS "wl_ticketing_service_contracts";

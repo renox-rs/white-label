@@ -26,6 +26,7 @@ What is here so far:
 | Compliance flags on a covered subject (`no_contract`, `visit_missed`, `vendor_document_expired`): one open per subject, category and reason, raised only for a compliance-critical category, `ComplianceFlagRaised` and `ComplianceFlagCleared`; a `visit_missed` flag clears when its visit is resolved | §3, §6 | `flags` |
 | `WRK.RUL.14`, nightly and compliance-critical: a planned visit not resolved 3 days (`WlTicketing::visit_missed_days`) after its planned due date tells the coordinator (`coordinator_role`) and, for a compliance-critical category, the manager in scope (`compliance_manager_role`) and raises the flag `visit_missed` | §6 | `visit_check` |
 | The compliance report: the open flags by subject, reason and age (`/compliance-flags`), and the compliance-critical setting of a category | §6, §7 | `flag_pages`, `category_pages` |
+| Service contracts with a vendor (draft, active, expiring, expired, terminated; `renew` and `discard` come later) covering subjects for categories, one maintenance plan per covered subject and category at `activate`, `ServiceContracts::coverage` (a ticket on a covered subject records the contract and takes its SLA policy) | §3, §4.3, §4.6 | `contract`, `plans` |
 | Auto-close after resolve (`WRK.RUL.02`): the hourly task `ticketing:auto_close` confirms, as the system, a resolved ticket whose requester did nothing for 3 days (`WlTicketing::auto_close_days`) | §7 | `auto_close` |
 
 The module owns `src/texts.rs`, the English texts (`wl_ticketing.*`). The app changes or

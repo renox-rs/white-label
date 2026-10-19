@@ -117,6 +117,9 @@ pub struct Ticket {
     pub planned_due_date: Option<NaiveDate>,
     /// When `WRK.RUL.14` told the coordinator the visit was missed.
     pub missed_notified_at: Option<DateTime>,
+    /// The service contract it is handled under: set for a planned visit of
+    /// the contract's plan, and for a ticket opened on a covered subject.
+    pub contract_id: Option<i64>,
     /// The lifecycle state; changed only by a transition.
     pub status: TicketStatus,
     /// When it is due, if its opener gave it a due time of its own (a staff

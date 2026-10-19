@@ -29,6 +29,14 @@ use crate::work::{COMPLETE, RESOLVE, RESOLVE_FROM_SOURCE};
 /// Why a `visit_missed` flag cleared.
 pub const VISIT_RESOLVED: &str = "visit resolved";
 
+/// Why a `no_contract` or `vendor_document_expired` flag cleared when another
+/// contract covering the subject and category became `active`.
+pub const REPLACEMENT_ACTIVE: &str = "replacement contract active";
+
+/// Why a `vendor_document_expired` flag cleared when a renewed document was
+/// accepted.
+pub const DOCUMENT_RENEWED: &str = "document renewed";
+
 /// A covered subject that is not compliant for a compliance-critical
 /// category.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
@@ -214,6 +222,64 @@ pub async fn clear(
         })
         .await?;
     Ok(Some(flag))
+}
+
+/// Clears the open flags of `reasons` on `subject` for the category
+/// `category_id`, because of `cleared_by`. Returns how many were cleared.
+///
+/// # Errors
+///
+/// The database's errors.
+pub async fn clear_matching(
+    state: &AppState,
+    subject: &Subject,
+    category_id: i64,
+    reasons: &[ComplianceFlagReason],
+    cleared_by: &str,
+    at: DateTime,
+) -> Result<usize> {
+    let open = ComplianceFlag::query()
+        .where_(ComplianceFlag::SUBJECT_TYPE.eq(subject.subject_type.as_str()))
+        .where_(ComplianceFlag::SUBJECT_ID.eq(subject.subject_id))
+        .where_(ComplianceFlag::CATEGORY_ID.eq(category_id))
+        .where_(ComplianceFlag::CLEARED_AT.is_null())
+        .get(&state.db)
+        .await?;
+    let mut cleared = 0;
+    for flag in open.into_iter().filter(|f| reasons.contains(&f.reason)) {
+        if clear(state, flag.id, cleared_by, at).await?.is_some() {
+            cleared += 1;
+        }
+    }
+    Ok(cleared)
+}
+
+/// Clears the `no_contract` and `vendor_document_expired` flags of a covered
+/// subject and category: a replacement contract covering them became
+/// `active`. A `visit_missed` flag stays until its visit is resolved.
+///
+/// # Errors
+///
+/// The database's errors.
+pub async fn clear_covered(
+    state: &AppState,
+    subject: &Subject,
+    category_id: i64,
+    cleared_by: &str,
+    at: DateTime,
+) -> Result<usize> {
+    clear_matching(
+        state,
+        subject,
+        category_id,
+        &[
+            ComplianceFlagReason::NoContract,
+            ComplianceFlagReason::VendorDocumentExpired,
+        ],
+        cleared_by,
+        at,
+    )
+    .await
 }
 
 /// Clears the `visit_missed` flags raised for the visit `ticket`: the visit

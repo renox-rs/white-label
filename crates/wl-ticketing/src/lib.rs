@@ -8,12 +8,15 @@ pub mod category_pages;
 pub mod charge;
 pub mod comments;
 pub mod config;
+pub mod contract;
+mod contract_machine;
 pub mod flag_pages;
 pub mod flags;
 mod machine;
 mod notices;
 pub mod open;
 pub mod pages;
+pub mod plans;
 pub mod priority;
 pub mod reasons;
 pub mod seed;
@@ -33,7 +36,11 @@ pub use charge::{ChargeInput, ChargeLine};
 pub use comments::{Comment, CommentVisibility};
 pub use flags::ComplianceFlag;
 pub use config::{Category, CustomField, FieldKind, HoldReason, InvoiceOn, SlaPolicy, SlaTarget};
+pub use contract::{
+    ContractStatus, Coverage, NewContract, ServiceContract, ServiceContracts,
+};
 pub use open::Tickets;
+pub use plans::{MaintenancePlan, MaintenancePlans, PlanStatus};
 pub use priority::Priority;
 pub use reasons::{ReasonRefused, ReassignReason, ReassignReasons};
 pub use sla::{SlaCalendar, provide_sla_calendar, sla_calendar};
@@ -95,6 +102,12 @@ pub mod permissions {
     pub const CONFIDENTIAL_VIEW: &str = "tickets.confidential.view";
     /// Configure categories, SLA policies and hold reasons.
     pub const MANAGE: &str = "tickets.manage";
+    /// See service contracts and their coverage.
+    pub const SERVICE_CONTRACTS_VIEW: &str = "service_contracts.view";
+    /// Create, activate, renew and terminate service contracts.
+    pub const SERVICE_CONTRACTS_MANAGE: &str = "service_contracts.manage";
+    /// See and manage maintenance plans.
+    pub const MAINTENANCE_PLANS_MANAGE: &str = "maintenance_plans.manage";
 }
 
 /// The ticketing module. The host adds it with
@@ -250,9 +263,14 @@ impl Module for WlTicketing {
             .model::<Assignment>()
             .model::<Comment>()
             .model::<ChargeLine>()
-            .model::<ComplianceFlag>();
+            .model::<ComplianceFlag>()
+            .model::<ServiceContract>()
+            .model::<Coverage>()
+            .model::<MaintenancePlan>();
         // `rnx state:diagram Ticket` and the admin panel find the machine.
         renox::state_machine::register::<Ticket>();
+        renox::state_machine::register::<ServiceContract>();
+        renox::state_machine::register::<MaintenancePlan>();
         // `TicketClosed` after a `confirm` or `close` commits.
         work::register_events(app);
         // The invoice draft of a chargeable ticket, after `resolve` or at
@@ -265,6 +283,7 @@ impl Module for WlTicketing {
         // A ticket's scope is its subject's (the approvals and wl-notify find
         // the people responsible through it).
         ticket::register_scope();
+        contract::register_scope();
         // Other modules open tickets through the kernel's `TaskCreator`.
         wl_kernel::tickets::provide_task_creator(app, Tickets);
         // The reassignment reasons: the defaults and the vertical's own.

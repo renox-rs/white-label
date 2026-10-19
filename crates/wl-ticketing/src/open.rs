@@ -21,6 +21,7 @@ use wl_kernel::tickets::{
 use crate::assign::{assign_as_system, check_assignee};
 use crate::comments::{Comment, CommentVisibility};
 use crate::config::Category;
+use crate::contract::{ServiceContract, ServiceContracts};
 use crate::ticket::{Ticket, TicketStatus};
 use crate::work::{complete, resolve_from_source};
 use renox::state_machine::TransitionError;
@@ -73,6 +74,15 @@ impl Tickets {
             .filter(|key| !key.is_empty())
             .map(str::to_owned);
         let on = calendar(state).local(at).date_naive();
+        // The contract it is handled under: the one a planned visit names, else
+        // the one covering the subject and the category. Its SLA policy
+        // replaces the category's.
+        let contract = match request.contract {
+            Some(id) => ServiceContract::find(&state.db, id.0).await?,
+            None => ServiceContracts::coverage(&state.db, &request.subject, category.id, on)
+                .await?
+                .map(|covering| covering.contract),
+        };
         let number = TICKET_SERIES
             .next_allowing_gaps(&state.db, None, None, on)
             .await?;
@@ -96,7 +106,11 @@ impl Tickets {
             channel: request.channel,
             title: title.to_owned(),
             description: request.description.trim().to_owned(),
-            sla_policy_id: category.sla_policy_id,
+            sla_policy_id: contract
+                .as_ref()
+                .and_then(|c| c.sla_policy_id)
+                .or(category.sla_policy_id),
+            contract_id: contract.as_ref().map(|c| c.id),
             confidential: category.confidential,
             chargeable: category.chargeable,
             due_at: request.due_at,
