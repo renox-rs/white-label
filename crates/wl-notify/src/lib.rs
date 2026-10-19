@@ -5,12 +5,14 @@ pub mod alert;
 pub mod alternative;
 pub mod channels;
 pub mod contact_invalid;
+pub mod delivered;
 pub mod give_up;
 mod machine;
 pub mod mask;
 pub mod message;
 pub mod notices;
 pub mod notifier;
+pub mod otp;
 pub mod pages;
 pub mod reactions;
 pub mod recipients;
@@ -34,6 +36,7 @@ pub use channels::{
     SmsGateway, SmsProvider,
 };
 pub use contact_invalid::MarkContactInvalidHandler;
+pub use delivered::{UndeliveredMessage, undelivered_for};
 pub use give_up::{ReactionRun, ReactionStep, RunGiveUpReaction, RunStatus};
 pub use machine::{
     DEFER, DELIVER, FAIL, FALL_BACK, GIVE_UP, MARK_READ, RELEASE, RETRY, SEND, SUPPRESS,
@@ -43,6 +46,7 @@ pub use notices::{
     ProofError, ProofFile, ProofInput, ProofRefusal, StatutoryNotice, record_proof, validate_proof,
 };
 pub use notifier::Messages;
+pub use otp::{OtpFailure, failure_notice};
 pub use reactions::{
     GiveUpContext, GiveUpHandler, ReactionOutcome, Reactions, RecordingHandler, StepOutcome,
 };

@@ -200,6 +200,11 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_notify.alert.body",
         "Notification type: :type\nTask: :ticket",
     ),
+    (
+        "wl_notify.otp.try_other",
+        "Code could not be sent; try :channel",
+    ),
+    ("wl_notify.otp.failed", "Code could not be sent"),
     ("wl_notify.status.queued", "Queued"),
     ("wl_notify.status.deferred", "Held"),
     ("wl_notify.status.sent", "Sent"),
