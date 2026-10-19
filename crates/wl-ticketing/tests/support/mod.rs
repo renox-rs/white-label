@@ -415,6 +415,12 @@ pub async fn boot() -> Booted {
 
 /// `module` booted in an app with auth and the kernel, seeded.
 pub async fn boot_with(module: WlTicketing) -> Booted {
+    boot_client(CLIENT, module).await
+}
+
+/// `module` booted for the client `client` (its `[modules]` decide which
+/// platform categories the seeder adds), seeded as `db:seed` seeds.
+pub async fn boot_client(client: &str, module: WlTicketing) -> Booted {
     let views = tempfile::tempdir().expect("a temporary views directory");
     let path = views.path().join("layouts/app.html");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -435,7 +441,7 @@ pub async fn boot_with(module: WlTicketing) -> Booted {
         .provide(notifier);
     let app = record(app, &assigned);
     let app = record(app, &closed);
-    let config = ClientConfig::parse(CLIENT).expect("a valid client.toml");
+    let config = ClientConfig::parse(client).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     let dir = views.path().to_path_buf();
     let app = TestApp::with_config(app, |c| c.views_path = dir).await;
@@ -456,7 +462,14 @@ pub async fn boot_with(module: WlTicketing) -> Booted {
         .execute(app.db())
         .await
         .expect("the stand-in rows");
-    seed::install(app.db()).await.expect("the defaults seed");
+    if client == CLIENT {
+        seed::install(app.db()).await.expect("the defaults seed");
+    } else {
+        app.kernel()
+            .call("ticketing:install", Vec::<String>::new())
+            .await
+            .expect("ticketing:install runs");
+    }
     Booted {
         app,
         _views: views,
