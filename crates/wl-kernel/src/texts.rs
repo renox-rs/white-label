@@ -318,6 +318,18 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_kernel.late_entries.status.recorded", "Recorded"),
     ("wl_kernel.late_entries.status.discarded", "Not recorded"),
     (
+        "wl_kernel.integrations.unknown",
+        "This connection is not registered.",
+    ),
+    (
+        "wl_kernel.integrations.alert.subject",
+        "Connection down: {{ connection }}",
+    ),
+    (
+        "wl_kernel.integrations.alert.body",
+        "{{ connection }} has had no successful call since {{ since }} (Asia/Dubai). Last error: {{ error }}. Manual fallback: {{ fallback }}",
+    ),
+    (
         "wl_kernel.integrations.not_yet_down",
         "The connection has not been without a successful call for long enough.",
     ),

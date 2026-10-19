@@ -10,10 +10,12 @@
 //! records: the [`IntegrationConnection`] with its machine (`up`,
 //! `degraded`, `down`, `disabled`) and the [`QueuedCall`]s waiting for it.
 
+pub mod alerts;
 pub mod connection;
 pub mod def;
 pub mod events;
 pub mod queue;
+pub mod service;
 
 use renox::prelude::*;
 
@@ -24,6 +26,10 @@ pub use def::{
 };
 pub use events::IntegrationStatusChanged;
 pub use queue::{CallStatus, QueuedCall};
+pub use service::{
+    Report, Submitted, disable, enable, ensure, go_down, report_failure, report_success, run_due,
+    run_queue, submit,
+};
 
 /// The subject type of a connection, for rule runs and alerts.
 pub const SUBJECT_TYPE: &str = "kernel.integration_connection";
@@ -32,6 +38,8 @@ pub const SUBJECT_TYPE: &str = "kernel.integration_connection";
 pub(crate) fn register_models(app: &mut Registry) {
     app.model::<IntegrationConnection>().model::<QueuedCall>();
     renox::state_machine::register::<IntegrationConnection>();
+    crate::notify::register_type(alerts::notification_type());
+    service::schedule(app);
 }
 
 /// Stores a connection row for each registered definition the database
