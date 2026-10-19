@@ -1,0 +1,38 @@
+{#- wl-kernel: one integration connection (wl-kernel §4.5): status, last
+    error, the manual fallback and the queued calls; holders of
+    integrations.manage disable it with a reason or enable it. Replace it
+    with resources/views/wl-kernel/integration.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="heading">
+  <rx-stack>
+    <rx-page-header :title="heading" :subtitle="tx['module'] ~ ': ' ~ module">
+      <rx-badge :text="status_label" :kind="status_kind"/>
+      <template rx-if="can_disable">
+        <rx-action-sheet id="disable-connection" :label="tx['disable']" :action="route('wl_kernel.integrations.disable', key)" :title="tx['disable_title']" :submit-label="tx['disable']" icon="plug-zap" danger>
+          <rx-textarea name="reason" :label="tx['reason']" :hint="tx['reason_hint']" id="disable-connection-reason" required/>
+        </rx-action-sheet>
+      </template>
+      <rx-confirm rx-if="can_enable" id="enable-connection" :label="tx['enable']" :action="route('wl_kernel.integrations.enable', key)" method="POST" :title="tx['enable_title']" :message="tx['enable_message']" :confirm-label="tx['enable']" :cancel-label="tx['cancel']" icon="plug"/>
+    </rx-page-header>
+    <rx-alert rx-if="is_down" kind="error" :message="fallback"/>
+    <rx-infolist columns="2">
+      <rx-entry :label="tx['owner_role']" :value="owner_role"/>
+      <rx-entry :label="tx['down_after']" :value="down_after"/>
+      <rx-entry :label="tx['last_success']" :value="last_success"/>
+      <rx-entry :label="tx['failed_since']" :value="failed_since"/>
+      <rx-entry :label="tx['last_error']" :value="last_error"/>
+      <rx-entry :label="tx['disabled_reason']" :value="disabled_reason"/>
+      <rx-entry :label="tx['fallback']" :value="fallback"/>
+      <rx-entry :label="tx['screens']" :value="screens"/>
+    </rx-infolist>
+    <h2>{{ tx['queue'] }}</h2>
+    <rx-table :rows="queue" as="call" :key="call.id" :caption="tx['queue']" card>
+      <rx-column :label="tx['call']">{{ call.kind }}</rx-column>
+      <rx-column :label="tx['subject']" hide-narrow>{{ call.subject }}</rx-column>
+      <rx-column :label="tx['enqueued_at']" hide-narrow>{{ call.enqueued_at }}</rx-column>
+      <rx-column :label="tx['attempts']" align="num">{{ call.attempts }}</rx-column>
+      <rx-column :label="tx['next_attempt']" hide-narrow>{{ call.next_attempt }}</rx-column>
+      <rx-column :label="tx['last_error']" hide-narrow>{{ call.last_error }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['queue_empty']" icon="inbox"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

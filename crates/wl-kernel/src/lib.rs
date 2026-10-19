@@ -168,6 +168,18 @@ const VIEWS: &[(&str, &str)] = &[
         include_str!("../views/wl-kernel/void_action.html"),
     ),
     (
+        integrations::web::BANNER_TEMPLATE,
+        include_str!("../views/wl-kernel/integration_banner.html"),
+    ),
+    (
+        "wl-kernel/integrations.html",
+        include_str!("../views/wl-kernel/integrations.html"),
+    ),
+    (
+        "wl-kernel/integration.html",
+        include_str!("../views/wl-kernel/integration.html"),
+    ),
+    (
         late_entries::web::FIELDS_TEMPLATE,
         include_str!("../views/wl-kernel/late_entry_fields.html"),
     ),
@@ -229,6 +241,7 @@ impl Module for WlKernel {
             // The approval card's buttons; who may decide is checked per request.
             .merge(approvals::web::routes())
             .merge(voids::web::routes())
+            .merge(integrations::web::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -241,7 +254,9 @@ impl Module for WlKernel {
             .provide(Arc::clone(&self.calendar))
             .model::<LegalEntity>()
             .model::<ScopeEntity>()
-            .view_data::<LegalEntitiesPage>();
+            .view_data::<LegalEntitiesPage>()
+            .view_data::<integrations::web::IntegrationsPage>()
+            .view_data::<integrations::web::IntegrationPage>();
         approvals::register(app);
         automation::register(app);
         voids::register_models(app);

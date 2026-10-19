@@ -16,6 +16,7 @@ pub mod def;
 pub mod events;
 pub mod queue;
 pub mod service;
+pub mod web;
 
 use renox::prelude::*;
 

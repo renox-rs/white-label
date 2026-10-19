@@ -1,0 +1,12 @@
+{#- wl-kernel: the banner of a screen a down connection affects (wl-kernel
+    §5.14 step 3). A screen registered with a connection gives
+    `integration_banner` (wl_kernel::integrations::web::banner_for) and
+    includes it with <rx-include template="wl-kernel/integration_banner.html"/>.
+    It shows nothing unless a connection that affects the screen is down.
+    Replace it with resources/views/wl-kernel/integration_banner.html in the
+    app. -#}
+<template rx-if="integration_banner">
+  <template rx-for="banner in integration_banner">
+    <rx-alert kind="error" :message="banner.text"/>
+  </template>
+</template>
