@@ -10,8 +10,8 @@
     <rx-column :label="tx['charge.unit_price']" hide-narrow>{{ line.unit_price }}</rx-column>
     <rx-column :label="tx['charge.vat']" hide-narrow>{{ line.vat }}</rx-column>
     <rx-column :label="tx['charge.total']">{{ line.total }}</rx-column>
-    <rx-row-actions rx-if="can_charge">
-      <rx-confirm :id="'charge-remove-' ~ line.id" :label="tx['charge.remove']" :action="route('wl_ticketing.charge_remove', ticket.id, line.id)"
+    <rx-row-actions>
+      <rx-confirm rx-if="can_charge" :id="'charge-remove-' ~ line.id" :label="tx['charge.remove']" :action="route('wl_ticketing.charge_remove', ticket.id, line.id)"
                   :title="tx['charge.remove_title']" :message="line.description" :confirm-label="tx['charge.remove']" :cancel-label="tx['cancel']" icon="trash"/>
     </rx-row-actions>
     <rx-slot name="empty"><rx-empty :title="tx['charge.empty']" :message="tx['charge.empty_hint']" icon="receipt"/></rx-slot>
