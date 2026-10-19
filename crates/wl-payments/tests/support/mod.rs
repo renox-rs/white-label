@@ -24,7 +24,10 @@ use wl_kernel::cheques::{
     BounceFeeCharge, BounceFees, ChargeInvoicer, ChequeBounceResolved, ChequeBounced, ChequeFuture,
     RegisterCheque, cheques as cheque_contract,
 };
-use wl_kernel::deposits::{DepositSettled, DisputeDeductions, deposit_deductions};
+use wl_kernel::deposits::{
+    DepositAdjusted, DepositFuture, DepositSettled, DepositTopUps, DisputeDeductions, TopUpCharge,
+    deposit_deductions,
+};
 use wl_kernel::documents::today;
 use wl_kernel::invoicing::{
     InvoiceFuture, InvoiceId, InvoiceStatus, InvoiceSummary, InvoiceWrittenOff, Invoicer,
@@ -485,6 +488,50 @@ impl BounceFees for RecordingFees {
     }
 }
 
+/// A [`DepositTopUps`] that records every charge it is asked for and makes it
+/// (a charge of the next number) unless told not to.
+#[derive(Clone)]
+pub struct RecordingTopUps {
+    charges: Arc<Mutex<Vec<TopUpCharge>>>,
+    makes: Arc<Mutex<bool>>,
+}
+
+impl Default for RecordingTopUps {
+    fn default() -> Self {
+        RecordingTopUps {
+            charges: Arc::new(Mutex::new(Vec::new())),
+            makes: Arc::new(Mutex::new(true)),
+        }
+    }
+}
+
+impl RecordingTopUps {
+    /// The charges asked for, oldest first.
+    pub fn charges(&self) -> Vec<TopUpCharge> {
+        self.charges.lock().unwrap().clone()
+    }
+
+    /// Whether the next charges are made (the default) or left out, as when
+    /// nothing can schedule charges.
+    pub fn make_charges(&self, makes: bool) {
+        *self.makes.lock().unwrap() = makes;
+    }
+}
+
+impl DepositTopUps for RecordingTopUps {
+    fn request<'a>(
+        &'a self,
+        _state: &'a AppState,
+        charge: TopUpCharge,
+    ) -> DepositFuture<'a, Option<Subject>> {
+        let mut charges = self.charges.lock().unwrap();
+        charges.push(charge);
+        let made = *self.makes.lock().unwrap();
+        let number = charges.len() as i64;
+        Box::pin(async move { Ok(made.then(|| Subject::new("invoicing.charge", 100 + number))) })
+    }
+}
+
 /// Everything of one type `E` emitted so far.
 #[derive(Clone)]
 pub struct Recorded<E>(Arc<Mutex<Vec<E>>>);
@@ -775,6 +822,10 @@ pub struct Booted {
     pub cheque_resolved: Recorded<ChequeBounceResolved>,
     /// `DepositSettled`.
     pub deposit_settled: Recorded<DepositSettled>,
+    /// `DepositAdjusted`.
+    pub deposit_adjusted: Recorded<DepositAdjusted>,
+    /// The top-up charges asked for.
+    pub top_ups: RecordingTopUps,
     /// The bounce fee charges asked of invoicing.
     pub fees: RecordingFees,
     /// The charges that can be invoiced.
@@ -1417,6 +1468,46 @@ impl Booted {
             .unwrap()
     }
 
+    /// `by` adjusts the held `deposit` to `amount` dirhams (`"6000.00"`) for
+    /// version `version` of its agreement, effective on `date`.
+    pub async fn adjust_deposit(
+        &self,
+        by: &User,
+        deposit: &Deposit,
+        amount: &str,
+        version: &str,
+        date: &str,
+    ) -> TestResponse {
+        self.deposit_page(
+            by,
+            deposit,
+            "adjust",
+            &[
+                ("new_amount", amount),
+                ("source_version", version),
+                ("effective_on", date),
+            ],
+        )
+        .await
+    }
+
+    /// Allocates `amount` fils of `payment` to the held `deposit`.
+    pub async fn allocate_to_deposit(
+        &self,
+        payment: &Payment,
+        deposit: &Deposit,
+        amount: i64,
+    ) -> Result<Allocation> {
+        wl_payments::allocate::allocate(
+            self.state(),
+            payment.payment_id(),
+            AllocationTarget::Deposit(deposit.deposit_id()),
+            amount,
+            None,
+        )
+        .await
+    }
+
     /// `by` writes off the bounced `cheque` for `reason`.
     pub async fn write_off_cheque(&self, by: &User, cheque: &Cheque, reason: &str) -> TestResponse {
         self.cheque_action(by, cheque, "write_off", &[("reason", reason)])
@@ -1502,6 +1593,9 @@ pub async fn boot_with(module: WlPayments, gateway: FakeGateway) -> Booted {
     let cheque_bounced = Recorded::new();
     let cheque_resolved = Recorded::new();
     let deposit_settled = Recorded::new();
+    let deposit_adjusted = Recorded::new();
+    let top_ups = RecordingTopUps::default();
+    let top_up_provider: Arc<dyn DepositTopUps> = Arc::new(top_ups.clone());
     let fees = RecordingFees::default();
     let notices = Recording::default();
     let invoices = RecordingInvoicer::default();
@@ -1523,7 +1617,8 @@ pub async fn boot_with(module: WlPayments, gateway: FakeGateway) -> Booted {
         .provide(notifier)
         .provide(invoicer)
         .provide(bounce_fees)
-        .provide(charge_invoicer);
+        .provide(charge_invoicer)
+        .provide(top_up_provider);
     let app = record(app, &received);
     let app = record(app, &reversed);
     let app = record(app, &refund_paid);
@@ -1531,6 +1626,7 @@ pub async fn boot_with(module: WlPayments, gateway: FakeGateway) -> Booted {
     let app = record(app, &cheque_bounced);
     let app = record(app, &cheque_resolved);
     let app = record(app, &deposit_settled);
+    let app = record(app, &deposit_adjusted);
     let config = ClientConfig::parse(CLIENT).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     let dir = views.path().to_path_buf();
@@ -1565,6 +1661,8 @@ pub async fn boot_with(module: WlPayments, gateway: FakeGateway) -> Booted {
         cheque_bounced,
         cheque_resolved,
         deposit_settled,
+        deposit_adjusted,
+        top_ups,
         fees,
         charges,
     }
