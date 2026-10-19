@@ -1425,3 +1425,33 @@ fn a_connection_can_take_late_inbound_data() {
     assert_eq!(spec.subject_type, "payments.payment");
     assert_eq!(spec.occurred_at, at);
 }
+
+/// #32: a module marks a rule compliance-critical; a nightly rule is watched
+/// for a missed run, which counts from 60 minutes after its planned time.
+#[test]
+fn a_critical_rule_is_registered_and_its_nightly_occurrences_are_planned() {
+    use renox::db::DateTime;
+    use wl_kernel::CriticalRule;
+    use wl_kernel::compliance::{self, planned_daily};
+
+    CriticalRule::new("DOC.RUL.03")
+        .owner_role("md")
+        .daily_at("01:00")
+        .register();
+    assert!(compliance::is_critical("DOC.RUL.03"));
+    assert!(!compliance::is_critical("DOC.RUL.99"));
+    let rule = compliance::rule("DOC.RUL.03").expect("registered");
+    assert_eq!(rule.owner_role_name(), Some("md"));
+
+    let at = |text: &str| text.parse::<DateTime>().expect("an instant");
+    let planned = planned_daily(
+        "DOC.RUL.03",
+        "01:00",
+        at("2026-11-02T00:00:00Z"),
+        at("2026-11-03T00:00:00Z"),
+    );
+    assert_eq!(planned.len(), 1);
+    assert_eq!(planned[0].planned_at, at("2026-11-02T21:00:00Z"));
+    assert_eq!(planned[0].occurrence_key, "DOC.RUL.03:2026-11-03");
+    assert!(planned[0].planned_at <= compliance::missed_before(at("2026-11-02T22:00:00Z")));
+}

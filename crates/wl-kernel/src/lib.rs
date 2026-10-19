@@ -8,6 +8,7 @@ pub mod block_guard;
 pub mod branding;
 pub mod broadcast;
 pub mod calendar;
+pub mod compliance;
 pub mod config;
 pub mod consents;
 pub mod delivery;
@@ -59,6 +60,7 @@ pub use broadcast::{
 };
 pub use calendar::BusinessCalendar;
 pub use config::{ClientConfig, ConfigError, RolesConfig, owner_role};
+pub use compliance::{CriticalRule, Planned};
 pub use consents::{Consents, NoConsents};
 pub use delivery::{
     DELIVERY_SUBJECT_TYPE, DeliveryDisputeClosed, DeliveryDisputed, DeliveryId, DeliveryLost,
