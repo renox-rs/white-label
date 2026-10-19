@@ -2117,6 +2117,19 @@ async fn the_lease_cancellation_contracts_fall_back_when_the_modules_are_off() {
 
     assert!(!invoicer(state).discard_draft(app.db(), InvoiceId(1)).await.unwrap());
 
+    // #267: the deposit cannot be applied to deductions either; the request
+    // keeps the invoices in the order the vertical gave them.
+    let applied = wl_kernel::deposits::ApplyDeposit {
+        source: Subject::new("property.lease", 9),
+        approver: 4,
+        rent: vec![wl_kernel::deposits::ApplyToInvoice {
+            invoice: InvoiceId(1),
+            amount: 200_000,
+        }],
+    };
+    assert_eq!(applied.rent.len(), 1);
+    assert_eq!(wl_kernel::deposits::APPLIED_TO_DEDUCTIONS, "applied to deductions");
+
     // #262: nor held as evidence.
     let evidence = cheques(state)
         .hold_as_evidence(state, vec![ChequeId(1)], "Forced termination".to_owned())

@@ -22,6 +22,13 @@
 //!   count the window and escalate an unanswered dispute; [`DepositSettled`]
 //!   says a deposit was refunded, forfeited or transferred.
 //!
+//! - **A forfeiture applied to the deductions.** When the deductions exceed
+//!   the deposit (01 Property §4.3), the vertical asks [`Deposits::apply_to_deductions`]
+//!   to forfeit the deposit with the reason [`APPLIED_TO_DEDUCTIONS`] and to
+//!   apply it first to the unpaid invoices it names, oldest first, as payments
+//!   of method *deposit applied*; what is left covers the damage lines. The
+//!   vertical invoices the rest of the damages itself.
+//!
 //! Money is `i64` in fils of the deposit's currency.
 
 use std::future::Future;
@@ -32,6 +39,7 @@ use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::invoicing::InvoiceId;
 use crate::parties::PartyId;
 use crate::payments::{DepositId, RefundId};
 use crate::subject::Subject;
@@ -288,6 +296,53 @@ impl CancelSettlement {
     }
 }
 
+/// The reason of a forfeiture that applies the deposit to the deductions: the
+/// whole deposit goes to the unpaid rent and the damage lines (01 Property
+/// §4.3 row "Deductions exceed the deposit").
+pub const APPLIED_TO_DEDUCTIONS: &str = "applied to deductions";
+
+/// The part of a deposit applied to one unpaid invoice.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ApplyToInvoice {
+    /// The invoice of the party.
+    pub invoice: InvoiceId,
+    /// The amount applied, in fils; above 0 and not above the invoice's balance.
+    pub amount: i64,
+}
+
+/// A forfeiture of the deposit of `source` that applies it to the deductions
+/// ([`Deposits::apply_to_deductions`]).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ApplyDeposit {
+    /// What the deposit is held for (the lease).
+    pub source: Subject,
+    /// The user whose approval the vertical vetted (a property manager); not
+    /// the user who forfeits.
+    pub approver: i64,
+    /// The unpaid invoices the deposit is applied to first, oldest first. The
+    /// rest of the deposit covers the damage lines of the published version.
+    pub rent: Vec<ApplyToInvoice>,
+}
+
+/// What [`Deposits::apply_to_deductions`] did.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DepositApplied {
+    /// The deposit, now `forfeited`.
+    pub deposit: DepositId,
+    /// Whose deposit it was.
+    pub party: PartyId,
+    /// The legal entity that held it.
+    pub legal_entity_id: i64,
+    /// What it held, in fils.
+    pub held: i64,
+    /// The part applied to invoices, in fils.
+    pub to_invoices: i64,
+    /// The part kept for the damage lines, in fils: `held - to_invoices`.
+    pub kept: i64,
+    /// The published version of the forfeiture.
+    pub version: i32,
+}
+
 /// What [`Deposits::settle_cancelled`] and [`Deposits::start_settlement`] did.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SettlementStarted {
@@ -358,6 +413,33 @@ pub trait Deposits: Send + Sync + 'static {
         _open: bool,
     ) -> DepositFuture<'a, bool> {
         Box::pin(async { Ok(false) })
+    }
+
+    /// Forfeits the deposit of `request.source` that is `settlement_pending`
+    /// with the reason [`APPLIED_TO_DEDUCTIONS`], for the user `by` (who holds
+    /// `deposits.refund`), approved by `request.approver`; the same waits as
+    /// `forfeit` apply (no dispute open, the window of the published version
+    /// passed). In the same step the deposit is applied to `request.rent`
+    /// as payments of method *deposit applied* and allocated to those
+    /// invoices; the rest of the held amount is kept for the damage lines.
+    /// Refused (422) when the source has no deposit being settled, the amount
+    /// applied to invoices is above the deposit, or an invoice refuses the
+    /// allocation. The default refuses (422): payments is not enabled.
+    fn apply_to_deductions<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _by: &'a AuthUser,
+        request: ApplyDeposit,
+    ) -> DepositFuture<'a, DepositApplied> {
+        Box::pin(async move {
+            Err(Error::Status(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                format!(
+                    "the deposit of {} cannot be applied: payments is not enabled",
+                    request.source
+                ),
+            ))
+        })
     }
 
     /// Adjusts the held deposit of `request.source` to `request.new_amount`
@@ -587,6 +669,29 @@ mod tests {
             .await
             .unwrap();
         assert!(settled.is_none());
+    }
+
+    #[test]
+    fn an_application_of_a_deposit_keeps_its_invoices_in_order() {
+        let request = ApplyDeposit {
+            source: Subject::new("property.lease", 9),
+            approver: 4,
+            rent: vec![
+                ApplyToInvoice {
+                    invoice: InvoiceId(11),
+                    amount: 350_000,
+                },
+                ApplyToInvoice {
+                    invoice: InvoiceId(12),
+                    amount: 150_000,
+                },
+            ],
+        };
+        let json = renox::serde_json::to_value(&request).unwrap();
+        assert_eq!(json["rent"][1]["amount"], 150_000);
+        let back: ApplyDeposit = renox::serde_json::from_value(json).unwrap();
+        assert_eq!(back, request);
+        assert_eq!(APPLIED_TO_DEDUCTIONS, "applied to deductions");
     }
 
     #[test]
