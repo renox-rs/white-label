@@ -20,7 +20,7 @@ use wl_kernel::block_effects::{
 use wl_kernel::notify::{self, NotifyChannel, NotifyRecipient, NotifyRequest};
 use wl_kernel::{NEUTRAL_BLOCK_REASON, PartyBlocked, PartyId, Subject};
 use wl_notify::channels::ProviderFuture;
-use wl_notify::{ChannelProvider, Message, MessageStatus, Outgoing, SendError, WlNotify};
+use wl_notify::{ChannelProvider, Clock, Message, MessageStatus, Outgoing, SendError, WlNotify};
 use wl_parties::notify::NEUTRAL_TYPE;
 use wl_parties::review_tasks::{ItemDecision, ReviewTask, ReviewTaskStatus};
 use wl_parties::{WlParties, permissions as perm};
@@ -175,6 +175,15 @@ impl ChannelProvider for Mailer {
     }
 }
 
+/// The notify module's clock, fixed at noon in Dubai so a send does not depend
+/// on the hour the test runs at.
+fn noon_clock() -> Clock {
+    let noon = renox::chrono::NaiveDate::from_ymd_opt(2026, 10, 19)
+        .and_then(|day| day.and_hms_opt(12, 0, 0))
+        .expect("a date and time");
+    Clock::fixed(wl_kernel::BusinessCalendar::default().from_local(noon))
+}
+
 /// The app with the test kinds, the store, the subscription module's
 /// listener and, when `notify`, wl-notify with `mailer`.
 async fn boot(notify_module: Option<Mailer>) -> (Booted, Arc<Store>) {
@@ -200,7 +209,11 @@ async fn boot(notify_module: Option<Mailer>) -> (Booted, Arc<Store>) {
             },
         );
         match notify_module {
-            Some(mailer) => app.module(WlNotify::new().provider(mailer)),
+            // The clock is noon in Dubai: outside the quiet hours (21:00-08:00),
+            // which hold a normal message to a party until morning.
+            Some(mailer) => app
+                .module(WlNotify::new().provider(mailer))
+                .provide(noon_clock()),
             None => app,
         }
     })
