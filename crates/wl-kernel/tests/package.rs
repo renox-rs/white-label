@@ -1953,3 +1953,30 @@ async fn owner_drawings_without_invoicing_are_refused() {
         .drawing(7);
     assert_eq!(cheque.drawing, Some(7));
 }
+
+/// #72: the events of an e-invoice transmission name it, its document, the
+/// entity and the ASP's error codes.
+#[test]
+fn the_einvoice_events_name_the_transmission_and_the_document() {
+    use wl_kernel::Subject;
+    use wl_kernel::einvoice::{EInvoiceAccepted, EInvoiceRejected};
+
+    let rejected = EInvoiceRejected {
+        transmission: Subject::new("invoicing.einvoice_transmission", 4),
+        document: Subject::new("invoicing.invoice", 9),
+        legal_entity_id: 2,
+        asp_reference: Some("ASP-77".into()),
+        error_codes: vec!["BR-CO-15".into(), "BR-S-08".into()],
+    };
+    let json = renox::serde_json::to_value(&rejected).unwrap();
+    assert_eq!(json["error_codes"].as_array().map(Vec::len), Some(2));
+    let back: EInvoiceRejected = renox::serde_json::from_value(json).unwrap();
+    assert_eq!(back, rejected);
+    let accepted = EInvoiceAccepted {
+        transmission: rejected.transmission.clone(),
+        document: rejected.document.clone(),
+        legal_entity_id: 2,
+        asp_reference: Some("ASP-77".into()),
+    };
+    assert_eq!(accepted.document.to_string(), "invoicing.invoice:9");
+}

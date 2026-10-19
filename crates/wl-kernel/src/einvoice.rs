@@ -20,15 +20,55 @@
 //!
 //! Without a provider every lookup is [`Lookup::Unavailable`]: the field is
 //! entered by hand.
+//!
+//! The events of an e-invoice transmission (wl-invoicing §4 *E-invoice
+//! transmission*, §6) are here too: [`EInvoiceAccepted`] when the ASP
+//! validates a document and [`EInvoiceRejected`] when it refuses one, with
+//! its error codes. A rejection changes nothing already issued.
 
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
 use renox::prelude::*;
+use serde::{Deserialize, Serialize};
 
 use crate::entities::LegalEntity;
 use crate::integrations::{self, ConnectionStatus, IntegrationConnection};
+use crate::subject::Subject;
+
+/// The ASP accepted an e-invoice transmission (`accept`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EInvoiceAccepted {
+    /// The transmission (`invoicing.einvoice_transmission`).
+    pub transmission: Subject,
+    /// The invoice or credit note it sends.
+    pub document: Subject,
+    /// The issuing legal entity.
+    pub legal_entity_id: i64,
+    /// The ASP's reference.
+    pub asp_reference: Option<String>,
+}
+
+impl Event for EInvoiceAccepted {}
+
+/// The ASP rejected an e-invoice transmission (`reject`): the document stays
+/// as it was; a task is raised.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EInvoiceRejected {
+    /// The transmission (`invoicing.einvoice_transmission`).
+    pub transmission: Subject,
+    /// The invoice or credit note it sends.
+    pub document: Subject,
+    /// The issuing legal entity.
+    pub legal_entity_id: i64,
+    /// The ASP's reference.
+    pub asp_reference: Option<String>,
+    /// The error codes the ASP gave, e.g. `BR-CO-15`.
+    pub error_codes: Vec<String>,
+}
+
+impl Event for EInvoiceRejected {}
 
 /// The screen key of the company party form. The ASP connection of an
 /// entity registers it (`IntegrationDef::screens`) so that the form shows the
@@ -158,6 +198,27 @@ pub async fn lookup(state: &AppState, entity: &LegalEntity, trn: &str) -> Result
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_events_carry_the_transmission_and_the_document() {
+        let rejected = EInvoiceRejected {
+            transmission: Subject::new("invoicing.einvoice_transmission", 4),
+            document: Subject::new("invoicing.invoice", 9),
+            legal_entity_id: 1,
+            asp_reference: Some("ASP-1".into()),
+            error_codes: vec!["BR-CO-15".into()],
+        };
+        let json = renox::serde_json::to_value(&rejected).unwrap();
+        assert_eq!(json["error_codes"][0], "BR-CO-15");
+        assert_eq!(json["document"]["subject_id"], 9);
+        let accepted = EInvoiceAccepted {
+            transmission: rejected.transmission.clone(),
+            document: rejected.document.clone(),
+            legal_entity_id: 1,
+            asp_reference: None,
+        };
+        assert_eq!(accepted.asp_reference, None);
+    }
 
     #[test]
     fn nobody_provides_a_lookup_until_a_module_does() {
