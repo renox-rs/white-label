@@ -319,6 +319,52 @@ async fn open_with_documents(state: &AppState, cheques: Vec<Cheque>) -> Result<V
     Ok(open)
 }
 
+/// Moves the link of `cheque` from `from` to `to`, keeping its place in the
+/// order the documents are paid in (`Cheques::relink`).
+///
+/// # Errors
+///
+/// 422 for a cheque that is not `received` or `due_for_deposit`, one not
+/// linked to `from`, or one linked to `to` already; 404 for an unknown cheque.
+async fn relink(state: &AppState, cheque: ChequeId, from: &Subject, to: &Subject) -> Result {
+    let found = Cheque::find(&state.db, cheque.0).await?.ok_or(Error::NotFound)?;
+    if !matches!(
+        found.status,
+        ChequeStatus::Received | ChequeStatus::DueForDeposit
+    ) {
+        return Err(refused(format!(
+            "Cheque {} is {} and cannot be relinked.",
+            found.number,
+            found.status.as_str()
+        )));
+    }
+    let links = found.links(&state.db).await?;
+    if links.iter().any(|link| &link.subject() == to) {
+        return Err(refused(format!(
+            "Cheque {} is linked to {to} already.",
+            found.number
+        )));
+    }
+    let Some(link) = links.iter().find(|link| &link.subject() == from) else {
+        return Err(refused(format!(
+            "Cheque {} is not linked to {from}.",
+            found.number
+        )));
+    };
+    ChequeLink::query()
+        .where_(ChequeLink::ID.eq(link.id))
+        .update(
+            &state.db,
+            &[
+                ("subject_type", &to.subject_type),
+                ("subject_id", &to.subject_id),
+                ("updated_at", &renox::db::now()),
+            ],
+        )
+        .await?;
+    Ok(())
+}
+
 /// Registers and reads `wl_payments_cheques` for the kernel contract.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ChequeBook;
@@ -400,6 +446,16 @@ impl Cheques for ChequeBook {
         direction: Direction,
     ) -> ChequeFuture<'a, Vec<OpenCheque>> {
         Box::pin(not_cleared(state, legal_entity_id, direction))
+    }
+
+    fn relink<'a>(
+        &'a self,
+        state: &'a AppState,
+        cheque: ChequeId,
+        from: Subject,
+        to: Subject,
+    ) -> ChequeFuture<'a, ()> {
+        Box::pin(async move { relink(state, cheque, &from, &to).await })
     }
 
     fn bounced<'a>(

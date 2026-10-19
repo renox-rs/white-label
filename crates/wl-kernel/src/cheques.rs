@@ -463,6 +463,25 @@ pub trait Cheques: Send + Sync + 'static {
         Box::pin(async { Err(payments_off("the cheques cannot be returned")) })
     }
 
+    /// Moves the link of cheque `cheque` from the document `from` to the
+    /// document `to` (an amended lease: the cheque pays the new charge). The
+    /// link keeps its place in the order the cheque's documents are paid in.
+    /// Only a `received` or `due_for_deposit` cheque is relinked; refused
+    /// (422) for another status, for a cheque not linked to `from`, or when
+    /// it is linked to `to` already. The default refuses (422): payments is
+    /// not enabled.
+    fn relink<'a>(
+        &'a self,
+        _state: &'a AppState,
+        cheque: ChequeId,
+        _from: Subject,
+        _to: Subject,
+    ) -> ChequeFuture<'a, ()> {
+        Box::pin(async move {
+            Err(payments_off(&format!("cheque {cheque} cannot be relinked")))
+        })
+    }
+
     /// The received cheques of `legal_entity_id` that bounced and are still
     /// owed (`bounced` or `legal_case`), oldest cheque date first, each with
     /// its open amount and the documents it pays: the forecast shows what

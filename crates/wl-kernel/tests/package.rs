@@ -2116,6 +2116,20 @@ async fn the_lease_cancellation_contracts_fall_back_when_the_modules_are_off() {
     ));
 
     assert!(!invoicer(state).discard_draft(app.db(), InvoiceId(1)).await.unwrap());
+
+    // #258: a cheque cannot be relinked either.
+    let relinked = cheques(state)
+        .relink(
+            state,
+            ChequeId(1),
+            Subject::new("property.lease_charge", 1),
+            Subject::new("property.lease_charge", 2),
+        )
+        .await;
+    assert!(matches!(
+        relinked,
+        Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
+    ));
 }
 
 /// #263: without the modules a legal case needs, no chase is held, no deposit

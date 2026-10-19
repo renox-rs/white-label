@@ -73,3 +73,55 @@ async fn nothing_returnable_gives_none_and_a_reason_is_needed() {
         Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
     ));
 }
+
+/// `Cheques::relink` (#258): a received cheque pays another document, in the
+/// same place; a deposited cheque, an unknown link and a repeat are refused.
+#[renox::test]
+async fn a_received_cheque_is_relinked_to_another_document() {
+    use wl_kernel::Subject;
+
+    let t = boot().await;
+    let staff = t.cheque_staff("Aisha").await;
+    let old = Subject::new("property.lease_charge", 5);
+    let new = Subject::new("property.lease_charge", 9);
+    let entity = t.entity("PGP").await;
+    let request = wl_kernel::cheques::RegisterCheque::new(
+        BLUE_DUNES,
+        entity.id,
+        "ENBD",
+        "301",
+        wl_kernel::documents::today(),
+        1_000_000,
+    )
+    .link(old.clone());
+    let cheque = t.register_cheque(request).await;
+
+    cheques(t.state())
+        .relink(t.state(), ChequeId(cheque.id), old.clone(), new.clone())
+        .await
+        .unwrap();
+    let linked = cheque.linked(t.db()).await.unwrap();
+    assert_eq!(linked, vec![new.clone()]);
+
+    // The old link is gone, and a repeat is refused.
+    for (from, to) in [(old.clone(), new.clone()), (new.clone(), new.clone())] {
+        let refused = cheques(t.state())
+            .relink(t.state(), ChequeId(cheque.id), from, to)
+            .await;
+        assert!(matches!(
+            refused,
+            Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
+        ));
+    }
+
+    // A deposited cheque keeps its link.
+    let deposited = t.deposit_cheque(&staff, &cheque).await;
+    assert_eq!(deposited.status, ChequeStatus::Deposited);
+    let refused = cheques(t.state())
+        .relink(t.state(), ChequeId(cheque.id), new, old)
+        .await;
+    assert!(matches!(
+        refused,
+        Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
+    ));
+}

@@ -724,6 +724,29 @@ impl Cheques for ChequeBook {
             }))
         })
     }
+
+    fn relink<'a>(
+        &'a self,
+        _state: &'a AppState,
+        cheque: ChequeId,
+        from: Subject,
+        to: Subject,
+    ) -> ChequeFuture<'a, ()> {
+        Box::pin(async move {
+            let mut all = self.0.lock().unwrap();
+            let Some(found) = all.iter_mut().find(|c| c.id == cheque) else {
+                return Err(Error::NotFound);
+            };
+            let Some(link) = found.linked.iter_mut().find(|s| **s == from) else {
+                return Err(Error::Status(
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    "not linked".to_owned(),
+                ));
+            };
+            *link = to;
+            Ok(())
+        })
+    }
 }
 
 // ---- the deposit book -----------------------------------------------------
