@@ -1191,3 +1191,39 @@ fn a_type_registered_without_reactions_gets_the_group_default() {
     let own = notify::notification_type("kernel_package.own").unwrap();
     assert_eq!(own.give_up, [GiveUpReaction::None]);
 }
+
+/// #60 AC2/AC3/AC4/AC7: statutory, OTP and ungrouped types, and the seeded
+/// booking default, through the public registry.
+#[test]
+fn the_registry_seeds_statutory_otp_ungrouped_and_booking_types() {
+    use wl_kernel::notify::{
+        self, GROUP_BOOKINGS, GROUP_OTP, GiveUpReaction as G, NotificationTypeDef, Urgency,
+    };
+
+    let def = |key: &str| NotificationTypeDef::new(key, "kernel_package");
+    notify::register_type(
+        def("kernel_package.changed_terms_notice")
+            .statutory(true)
+            .urgency(Urgency::Urgent),
+    );
+    notify::register_type(
+        def("kernel_package.code")
+            .group(GROUP_OTP)
+            .urgency(Urgency::Urgent),
+    );
+    notify::register_type(def("kernel_package.plain"));
+    notify::register_type(def("kernel_package.booking").group(GROUP_BOOKINGS));
+    let reactions = |key: &str| {
+        notify::notification_type(key)
+            .expect("registered")
+            .give_up
+            .clone()
+    };
+    assert_eq!(
+        reactions("kernel_package.changed_terms_notice"),
+        [G::MarkContactInvalid, G::StatutoryNotice]
+    );
+    assert_eq!(reactions("kernel_package.code"), [G::None]);
+    assert_eq!(reactions("kernel_package.plain"), [G::StaffTask]);
+    assert_eq!(reactions("kernel_package.booking"), [G::MarkContactInvalid]);
+}

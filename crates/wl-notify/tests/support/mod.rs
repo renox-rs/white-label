@@ -166,6 +166,26 @@ pub const SECOND_GUARDIAN: PartyId = PartyId(24);
 /// `coordinator`.
 pub const ABSENCE: &str = "student.absence";
 
+/// Types registered without a `give_up` list (#60): the module's group
+/// and the flags decide the default reaction.
+pub const SEEDED_INVOICE: &str = "invoice.seeded";
+/// A statutory, urgent type without a list.
+pub const SEEDED_STATUTORY: &str = "lease.changed_terms_notice";
+/// An urgent one-time-code type (group `otp`).
+pub const SEEDED_OTP: &str = "portal.otp_code";
+/// A normal type with no known group.
+pub const SEEDED_PLAIN: &str = "misc.plain";
+/// An urgent type with no known group.
+pub const SEEDED_PLAIN_URGENT: &str = "misc.plain_urgent";
+/// An urgent guardian type.
+pub const SEEDED_GUARDIAN_URGENT: &str = "school.urgent_absence";
+/// An urgent booking type.
+pub const SEEDED_BOOKING_URGENT: &str = "booking.urgent_change";
+/// A normal booking type.
+pub const SEEDED_BOOKING: &str = "booking.reminder";
+/// An employee-security type.
+pub const SEEDED_SECURITY: &str = "employee.security_code";
+
 /// The relationships of the test directory: to-party, relation, position,
 /// from-party (a person), primary. (The real directory also drops ended
 /// ones; that is tested in wl-parties.)
@@ -406,6 +426,32 @@ pub fn register_types() {
                     SECRET_BODY,
                 )
                 .template(NotifyChannel::Sms, "en", None, SECRET_BODY),
+        );
+    }
+    for (key, group, urgency, statutory) in [
+        (SEEDED_INVOICE, "invoices", Urgency::Normal, false),
+        (SEEDED_STATUTORY, "leases", Urgency::Urgent, true),
+        (SEEDED_OTP, "otp", Urgency::Urgent, false),
+        (SEEDED_PLAIN, "misc", Urgency::Normal, false),
+        (SEEDED_PLAIN_URGENT, "misc", Urgency::Urgent, false),
+        (SEEDED_GUARDIAN_URGENT, "guardian", Urgency::Urgent, false),
+        (SEEDED_BOOKING_URGENT, "bookings", Urgency::Urgent, false),
+        (SEEDED_BOOKING, "bookings", Urgency::Normal, false),
+        (SEEDED_SECURITY, "employee_security", Urgency::Normal, false),
+    ] {
+        notify::register_type(
+            NotificationTypeDef::new(key, "seeded")
+                .group(group)
+                .urgency(urgency)
+                .statutory(statutory)
+                .channels(&[NotifyChannel::Email, NotifyChannel::Sms])
+                .template(
+                    NotifyChannel::Email,
+                    "en",
+                    Some("Seeded"),
+                    "A seeded message.",
+                )
+                .template(NotifyChannel::Sms, "en", None, "A seeded message."),
         );
     }
     notify::register_type(

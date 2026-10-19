@@ -8,7 +8,7 @@ use renox::prelude::Model;
 use wl_kernel::notify::GiveUpReaction;
 use wl_notify::NotificationType;
 
-use support::{PAUSE_NOTICE, RECEIPT, REMINDER, boot};
+use support::{PAUSE_NOTICE, RECEIPT, REMINDER, SEEDED_INVOICE, boot};
 
 async fn stored(t: &support::Booted, key: &str) -> NotificationType {
     NotificationType::by_key(t.db(), key)
@@ -28,6 +28,27 @@ async fn blank(t: &support::Booted, key: &str) {
     row.created_at = None;
     row.updated_at = None;
     NotificationType::create(t.db(), row).await.unwrap();
+}
+
+#[renox::test]
+async fn a_blank_unedited_row_gets_the_role_of_its_group_too() {
+    let t = boot().await;
+    blank(&t, SEEDED_INVOICE).await;
+    assert!(stored(&t, SEEDED_INVOICE).await.staff_role.is_none());
+
+    wl_notify::types::install(t.db()).await.unwrap();
+
+    let filled = stored(&t, SEEDED_INVOICE).await;
+    assert_eq!(
+        filled.give_up.0,
+        [
+            GiveUpReaction::MarkContactInvalid,
+            GiveUpReaction::AlternativeRecipient,
+            GiveUpReaction::StaffTask
+        ]
+    );
+    assert_eq!(filled.staff_role.as_deref(), Some("receivables"));
+    assert!(filled.is_unedited(), "the backfill is not an edit");
 }
 
 #[renox::test]

@@ -128,3 +128,34 @@ async fn a_hard_bounce_marks_a_seeded_partys_contact_point_invalid() {
         .assert_see("Contact needs updating")
         .assert_see(&email.value);
 }
+
+/// #60 AC1: a type a module registers in group `invoices` without reactions
+/// is stored by `notify:install` with the group default and its role.
+#[renox::test]
+async fn a_registered_invoices_type_is_stored_with_its_default() {
+    let app = TestApp::new(host::app()).await;
+    app.kernel().seed().await.unwrap();
+    notify::register_type(
+        NotificationTypeDef::new("host_test.invoice_default", "invoicing")
+            .group(notify::GROUP_INVOICES)
+            .template(NotifyChannel::Email, "en", Some("Invoice"), "Invoice."),
+    );
+    app.kernel()
+        .call("notify:install", Vec::<String>::new())
+        .await
+        .unwrap();
+
+    let row = wl_notify::NotificationType::by_key(app.db(), "host_test.invoice_default")
+        .await
+        .unwrap()
+        .expect("the stored type");
+    assert_eq!(
+        row.give_up.0,
+        [
+            GiveUpReaction::MarkContactInvalid,
+            GiveUpReaction::AlternativeRecipient,
+            GiveUpReaction::StaffTask
+        ]
+    );
+    assert_eq!(row.staff_role.as_deref(), Some("receivables"));
+}
