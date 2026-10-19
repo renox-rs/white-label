@@ -4,6 +4,7 @@ pub mod acquisition;
 pub mod campaigns;
 pub mod lead_sources;
 pub mod leads;
+pub mod report;
 
 use renox::prelude::*;
 
@@ -14,4 +15,5 @@ pub fn routes() -> Routes {
         .merge(campaigns::routes())
         .merge(lead_sources::routes())
         .merge(leads::routes())
+        .merge(report::routes())
 }

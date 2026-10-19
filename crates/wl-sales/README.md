@@ -26,6 +26,7 @@ What is here so far:
 | Leads: capture with the source and campaign of a web form code (late-response days), notes, the machine (`contact`, `qualify`, `win`, `lose`, `reopen`, `revert_win`), `LeadWon`/`LeadLost`/`LeadWinReverted` | §3, §4.1, §5.1 | `lead`, `lead_machine`, `lead_events` |
 | Party acquisitions: source and campaign per party (first touch, never overwritten), the first sale with its converted value (net of credit notes, or the attribution window), `CustomerAcquired`, the source check of a sale for a new party, the nightly `sales:acquisitions` run that replaces a first sale that no longer stands, and the party merge | §3, §5.8 | `acquisition`, `acquisition_daily` |
 | Changing an acquisition or a won lead (`SAL.ACL.09`): a reason, a second `campaigns.manage` holder, the audit record and `CustomerAcquisitionChanged`; the exceptions report page | §5.8, §6 | `acquisition_change`, `pages::acquisition` |
+| The acquisition report (`/sales/acquisition-report`, `.csv`): leads, conversion, new customers, cost (linked to bills and manual), cost per lead, CAC and ROAS per source, campaign, channel, brand, branch or month, within the viewer's branch scope, "—" for an undefined ratio | §5.8 step 5 | `report`, `pages::report` |
 | The kernel's `CampaignAttribution` and `LeadConversion` for the verticals | §6 | `attribution` |
 
 The module owns `src/texts.rs`, the English texts (`wl_sales.*`). The app changes or

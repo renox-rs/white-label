@@ -23,6 +23,7 @@ pub mod notices;
 pub mod pages;
 pub mod policy;
 pub mod promo_code;
+pub mod report;
 pub mod seed;
 mod texts;
 pub mod voids;
@@ -68,6 +69,10 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "wl-sales/show.html",
         include_str!("../views/wl-sales/show.html"),
+    ),
+    (
+        "wl-sales/acquisition_report.html",
+        include_str!("../views/wl-sales/acquisition_report.html"),
     ),
     (
         "wl-sales/acquisition_exceptions.html",
@@ -191,6 +196,7 @@ impl Module for WlSales {
     fn register(&self, app: &mut Registry) {
         app.view_data::<pages::lead_sources::IndexPage>()
             .view_data::<pages::acquisition::ExceptionsPage>()
+            .view_data::<pages::report::ReportPage>()
             .view_data::<pages::campaigns::IndexPage>()
             .view_data::<pages::campaigns::FormPage>()
             .view_data::<pages::campaigns::ShowPage>();
