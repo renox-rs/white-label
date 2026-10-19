@@ -69,7 +69,8 @@ fn previous_refusal(lease: &Lease, previous: &Lease) -> Error {
 /// amendment's date and the payment plan (§7.1 `submit`).
 ///
 /// Not checked here: the tenant's documents (the document guard, run by
-/// [`crate::leases::submit`]), a blocked tenant (`PTY.ACL.03`, BL-PRP-15).
+/// [`crate::leases::submit`]) and a blocked tenant (`PTY.ACL.03`, BL-PRP-15:
+/// [`crate::leases::hold_refusal`], run by `submit` and again by `activate`).
 /// Changed terms against the tenant (`PRP.ACL.17`) need the notifier and the
 /// document guard, so [`crate::terms::refusal`] decides before the run and the
 /// transition refuses with its message after these checks

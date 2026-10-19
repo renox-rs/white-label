@@ -19,6 +19,9 @@ use renox::auth::{Auth, Permissions};
 use renox::chrono::{Duration, NaiveDate};
 use renox::prelude::*;
 use renox::testing::TestApp;
+use wl_kernel::block_guard::{
+    ActionKind, BlockFuture, BlockGuard, BlockRefusal, GuardOutcome, provide_block_guard,
+};
 use wl_kernel::cheques::{
     ChequeFuture, ChequeId, ChequeSchedule, ChequeStatus, ChequeSummary, Cheques, RegisterCheque,
     ReturnCheques, ReturnedCheques, provide_cheques,
@@ -1284,6 +1287,50 @@ impl PaymentRecorder for Refunds {
     }
 }
 
+// ---- the block guard ------------------------------------------------------------
+
+/// A block guard that refuses the parties of the test (`PTY.ACL.03`) and
+/// remembers what it was asked.
+#[derive(Clone, Default)]
+pub struct Blocks(Arc<Mutex<Vec<i64>>>, Arc<Mutex<Vec<(i64, ActionKind)>>>);
+
+impl Blocks {
+    /// The party is on hold from now on.
+    pub fn block(&self, party: PartyId) {
+        self.0.lock().unwrap().push(party.0);
+    }
+
+    /// The party is free again.
+    pub fn free(&self, party: PartyId) {
+        self.0.lock().unwrap().retain(|id| *id != party.0);
+    }
+
+    /// What the guard was asked, oldest first.
+    pub fn asked(&self) -> Vec<(i64, ActionKind)> {
+        self.1.lock().unwrap().clone()
+    }
+}
+
+impl BlockGuard for Blocks {
+    fn check_in<'a>(
+        &'a self,
+        _tx: &'a mut renox::db::Transaction,
+        _viewer: Option<&'a User>,
+        party: PartyId,
+        kind: ActionKind,
+    ) -> BlockFuture<'a, GuardOutcome> {
+        Box::pin(async move {
+            self.1.lock().unwrap().push((party.0, kind));
+            let blocked = kind.is_guarded() && self.0.lock().unwrap().contains(&party.0);
+            Ok(if blocked {
+                GuardOutcome::Blocked(BlockRefusal::neutral(party, kind, "Compliance"))
+            } else {
+                GuardOutcome::Allowed
+            })
+        })
+    }
+}
+
 // ---- the booted app -----------------------------------------------------------
 
 /// An event log.
@@ -1331,6 +1378,7 @@ struct Fakes {
     deposits: DepositBook,
     invoices: InvoiceDesk,
     refunds: Refunds,
+    blocks: Blocks,
 }
 
 impl Module for Fakes {
@@ -1347,6 +1395,7 @@ impl Module for Fakes {
         provide_deposits(app, self.deposits.clone());
         provide_invoicer(app, self.invoices.clone());
         provide_payment_recorder(app, self.refunds.clone());
+        provide_block_guard(app, self.blocks.clone());
         record(app, &self.activated);
         record(app, &self.cancelled);
         record(app, &self.withdrawn);
@@ -1390,6 +1439,8 @@ pub struct Booted {
     pub amended: Recorded<LeaseAmended>,
     /// The `LeaseForceTerminated` events.
     pub forced: Recorded<LeaseForceTerminated>,
+    /// The parties on hold.
+    pub blocks: Blocks,
 }
 
 /// The tenant of the tests: a person.
@@ -1604,6 +1655,7 @@ pub async fn boot() -> Booted {
         deposits: DepositBook::default(),
         invoices: InvoiceDesk::default(),
         refunds: Refunds::default(),
+        blocks: Blocks::default(),
     };
     let logs = (
         fakes.activated.clone(),
@@ -1622,6 +1674,7 @@ pub async fn boot() -> Booted {
         fakes.deposits.clone(),
         fakes.invoices.clone(),
         fakes.refunds.clone(),
+        fakes.blocks.clone(),
     );
     let app = App::new()
         .module(Auth::new())
@@ -1664,7 +1717,7 @@ pub async fn boot() -> Booted {
     permissions::define_role(app.db(), wl_kernel::COMPANY_ADMIN_ROLE, &admin)
         .await
         .unwrap();
-    let (parties, docs, notices, tasks, cheques, deposits, invoices, refunds) = handles;
+    let (parties, docs, notices, tasks, cheques, deposits, invoices, refunds, blocks) = handles;
     parties.add(TENANT.0, "Tariq Hassan", PartyKind::Person);
     parties.add(COMPANY.0, "Blue Dunes LLC", PartyKind::Company);
     Booted {
@@ -1678,6 +1731,7 @@ pub async fn boot() -> Booted {
         deposits,
         invoices,
         refunds,
+        blocks,
         activated: logs.0,
         cancelled: logs.1,
         withdrawn: logs.2,

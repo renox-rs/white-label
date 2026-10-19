@@ -12,6 +12,7 @@ use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use renox::state_machine::{StateMachine, TransitionError};
 use wl_kernel::PartyId;
+use wl_kernel::block_guard::{self, ActionKind, GuardOutcome};
 use wl_kernel::deposits::deposits;
 use wl_kernel::parties::directory;
 use wl_kernel::tickets::task_creator;
@@ -461,6 +462,39 @@ async fn load(state: &AppState, id: i64) -> std::result::Result<Lease, Transitio
         .ok_or(TransitionError::Failed(Error::NotFound))
 }
 
+/// The kind of action the block guard is asked about for the version `lease`
+/// (`PTY.ACL.03`): a new lease `start`s, a renewal `renew`s, an amendment
+/// `extend`s.
+pub fn action_kind(lease: &Lease) -> ActionKind {
+    match lease.version_kind {
+        VersionKind::New => ActionKind::Start,
+        VersionKind::Renewal => ActionKind::Renew,
+        VersionKind::Amendment => ActionKind::Extend,
+    }
+}
+
+/// The neutral text that refuses the version `lease` because its tenant is on
+/// hold (`PTY.ACL.03`, BL-PRP-15), `None` when the tenant is not blocked. The
+/// guard is asked as the system, so a restricted reason never shows. The
+/// active lease itself continues: only new agreements, renewals and
+/// amendments are refused here, never the billing or the payments.
+///
+/// # Errors
+///
+/// The database's errors.
+pub async fn hold_refusal(state: &AppState, lease: &Lease) -> Result<Option<String>> {
+    let mut tx = state.db.begin().await?;
+    let outcome = block_guard::guard(state)
+        .check_in(&mut tx, None, lease.tenant(), action_kind(lease))
+        .await?;
+    // Only a question: nothing was written.
+    drop(tx);
+    Ok(match outcome {
+        GuardOutcome::Allowed => None,
+        GuardOutcome::Blocked(refusal) => Some(refusal.message_en()),
+    })
+}
+
 /// `user` submits the draft `id` for signature. The tenant's documents are
 /// checked first by the document guard (`lease.submit`); the unit, the
 /// previous version, the amendment's date and the payment plan by the
@@ -472,7 +506,8 @@ async fn load(state: &AppState, id: i64) -> std::result::Result<Lease, Transitio
 /// # Errors
 ///
 /// `Forbidden` without `leases.create` in the lease's building, `NotFrom`
-/// unless `draft`, 422 with the reason when a document or a check refuses,
+/// unless `draft`, 422 with the reason when the tenant is on hold (neutral
+/// text, `PTY.ACL.03`) or a document or a check refuses,
 /// among them the deadline, the proof status and the two ways forward of a
 /// renewal with changed terms.
 pub async fn submit(
@@ -483,6 +518,13 @@ pub async fn submit(
     let lease = load(state, id).await?;
     if !user.has_permission_in(permissions::LEASES_CREATE, &lease.scope()) {
         return Err(TransitionError::Forbidden);
+    }
+    if lease.status == LeaseStatus::Draft
+        && let Some(message) = hold_refusal(state, &lease)
+            .await
+            .map_err(TransitionError::Failed)?
+    {
+        return Err(TransitionError::Guard(message));
     }
     // A draft only: a version already submitted is refused by the machine.
     let input = SubmitInput {
@@ -526,6 +568,14 @@ pub async fn activate(
     let lease = load(state, id).await?;
     if !user.has_permission_in(permissions::LEASES_ACTIVATE, &lease.scope()) {
         return Err(TransitionError::Forbidden);
+    }
+    // Checked again: the tenant may have been blocked since `submit`.
+    if lease.status == LeaseStatus::PendingSignature
+        && let Some(message) = hold_refusal(state, &lease)
+            .await
+            .map_err(TransitionError::Failed)?
+    {
+        return Err(TransitionError::Guard(message));
     }
     let outcome = documents::guarded(state, GUARD_ACTIVATE, id, Some(user.id), || async {
         if lease.status == LeaseStatus::PendingSignature {
