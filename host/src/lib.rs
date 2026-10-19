@@ -84,6 +84,7 @@ pub fn app_for(config: ClientConfig) -> Result<renox::App, ConfigError> {
     // The page that shows the shared modules' settings of this client.
     Ok(app
         .module(app::negative_flow::NegativeFlow::new(&client_app, entities))
+        .module(app::compliance_settings::ComplianceSettings::new(&client_app, &owner_role))
         .module(vertical))
 }
 

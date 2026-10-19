@@ -29,6 +29,7 @@
     "statements": "Owner statements",
     "agreements": "Management agreements",
     "negative_flow": "Money settings",
+    "compliance_settings": "Compliance settings",
     "tickets": "Tickets",
     "block_effects": "Block effects",
     "review_tasks": "Review tasks",
@@ -185,6 +186,17 @@
       "setting": "Setting",
       "value": "Value",
       "source": "Set by"
+    },
+    "compliance": {
+      "title": "Compliance, documents and notices",
+      "subtitle": "The values of the shared modules for this client: owner alerts, document kinds and their blocks, ticket categories, statutory notices, lead sources, onboarding and SOPs. A value marked open waits for the lawyer or the authority.",
+      "number": "No.",
+      "group": "Group",
+      "setting": "Setting",
+      "value": "Value",
+      "source": "Set by",
+      "reference": "Spec",
+      "open": "Open item"
     }
   },
   "activity": {
