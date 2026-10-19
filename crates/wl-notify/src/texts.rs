@@ -237,6 +237,7 @@ const TEXTS: &[(&str, &str)] = &[
     (
         "wl_notify.send_windows.bad_time",
         "Enter a time as hours and minutes, e.g. 07:00.",
+    ),
     ("wl_notify.broadcast.status.draft", "Draft"),
     (
         "wl_notify.broadcast.status.pending_approval",
