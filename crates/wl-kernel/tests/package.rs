@@ -1455,3 +1455,41 @@ fn a_critical_rule_is_registered_and_its_nightly_occurrences_are_planned() {
     assert_eq!(planned[0].occurrence_key, "DOC.RUL.03:2026-11-03");
     assert!(planned[0].planned_at <= compliance::missed_before(at("2026-11-02T22:00:00Z")));
 }
+
+/// #33: the digest of a date covers 07:00 the day before to 07:00 that day in
+/// Asia/Dubai, and a confidential record shows only its type and number.
+#[test]
+fn the_digest_period_and_a_confidential_line() {
+    use renox::db::DateTime;
+    use wl_kernel::Subject;
+    use wl_kernel::digest::{self, Item, ItemKind, Section};
+
+    let date = "2026-11-04".parse().expect("a date");
+    let (from, until) = digest::period_for(date);
+    let at = |text: &str| text.parse::<DateTime>().expect("an instant");
+    assert_eq!(from, at("2026-11-03T03:00:00Z"));
+    assert_eq!(until, at("2026-11-04T03:00:00Z"));
+
+    let secret = Item {
+        kind: ItemKind::Late,
+        record: Subject::new("bookings.check_in", 7),
+        number: Some("CI-9".into()),
+        by: "Anna".into(),
+        reason: "router down".into(),
+        at: at("2026-11-03T06:30:00Z"),
+        occurred_at: Some(at("2026-11-03T05:05:00Z")),
+        fired: Vec::new(),
+        confidential: true,
+    };
+    let text = digest::render(
+        from,
+        until,
+        &[Section {
+            scope: "Tower A".into(),
+            items: vec![secret],
+        }],
+    );
+    assert!(text.contains("- check in CI-9"), "{text}");
+    assert!(!text.contains("Anna") && !text.contains("router down"), "{text}");
+    assert_eq!(digest::TASK_AT, "07:00");
+}

@@ -471,6 +471,25 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("wl_kernel.compliance.toast.closed", "Alert closed."),
     (
+        "wl_kernel.digest.heading",
+        "Voids and late entries from :from to :until (Asia/Dubai)",
+    ),
+    ("wl_kernel.digest.voided", "Voided"),
+    ("wl_kernel.digest.late", "Late entries"),
+    (
+        "wl_kernel.digest.void_line",
+        "- :record: voided by :user, reason: :reason (:at)",
+    ),
+    (
+        "wl_kernel.digest.late_line",
+        "- :record: entered by :user, reason: :reason; business time :occurred, entered :entered",
+    ),
+    ("wl_kernel.digest.confidential_line", "- :record"),
+    (
+        "wl_kernel.digest.review_line",
+        "  already fired, review: :rule, :record, :at",
+    ),
+    (
         "wl_kernel.integrations.not_yet_down",
         "The connection has not been without a successful call for long enough.",
     ),

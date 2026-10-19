@@ -12,6 +12,7 @@ pub mod compliance;
 pub mod config;
 pub mod consents;
 pub mod delivery;
+pub mod digest;
 pub mod documents;
 pub mod entities;
 pub mod held_funds;
