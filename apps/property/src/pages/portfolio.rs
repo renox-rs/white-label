@@ -80,6 +80,8 @@ pub(crate) struct IndexPage {
     buildings: Vec<BuildingRow>,
     emirates: Vec<(String, String)>,
     can_manage: bool,
+    non_compliant: usize,
+    can_see_compliance: bool,
 }
 
 /// The emirates of the building form, `(key, label)`.
@@ -121,6 +123,10 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
         buildings: rows,
         emirates: emirates(&lang),
         can_manage: user.has_permission(permissions::UNITS_MANAGE),
+        non_compliant: super::compliance::count_for(&state, &user).await?,
+        can_see_compliance: !user
+            .scopes_with::<Building>(permissions::COMPLIANCE_VIEW)
+            .is_empty(),
     }))
 }
 

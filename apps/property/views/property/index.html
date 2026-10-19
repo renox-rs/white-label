@@ -16,6 +16,9 @@
           <rx-input name="premise_number" :label="tx['buildings.premise_number']" id="add-building-premise"/>
         </rx-action-sheet>
       </template>
+      <template rx-if="can_see_compliance">
+        <rx-link-button :href="route('property.compliance')" :label="tx['compliance.title'] ~ ' (' ~ non_compliant ~ ')'" variant="secondary" icon="shield-alert"/>
+      </template>
       <rx-link-button :href="route('property.leases')" :label="tx['leases.title']" variant="secondary" icon="file-text"/>
     </rx-page-header>
     <rx-table :rows="buildings" as="building" :key="building.id" :caption="tx['portfolio.title']" card>

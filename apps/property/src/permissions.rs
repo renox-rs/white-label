@@ -32,6 +32,10 @@ pub const OWNER_STATEMENTS_PREPARE: &str = "owner_statements.prepare";
 /// Approve or return an owner statement, and approve a payout or an owner
 /// invoice. The property manager's.
 pub const OWNER_STATEMENTS_APPROVE: &str = "owner_statements.approve";
+/// See the buildings flagged non-compliant and their cause (BL-PRP-25). The
+/// property manager (in the buildings they own), the maintenance coordinator
+/// and the company admin.
+pub const COMPLIANCE_VIEW: &str = "compliance.view";
 /// Draft management agreements and put units under them.
 pub const AGREEMENTS_MANAGE: &str = "agreements.manage";
 
@@ -58,6 +62,7 @@ pub const ALL: &[&str] = &[
     OWNER_STATEMENTS_PREPARE,
     OWNER_STATEMENTS_APPROVE,
     AGREEMENTS_MANAGE,
+    COMPLIANCE_VIEW,
 ];
 
 /// The role whose holders approve a cancellation after money was received

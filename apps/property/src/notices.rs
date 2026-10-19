@@ -97,6 +97,10 @@ pub const AGREEMENT_NOTICE: &str = "property.agreement_notice";
 /// ended or the unit left it: a normal message (BL-PRP-22, BL-PRP-23).
 pub const PAYEE_CHANGED: &str = "lease.payee_changed";
 
+/// The company admin is told that a compliance certificate of a building
+/// expired and the building is flagged non-compliant (BL-PRP-25).
+pub const CERTIFICATE_EXPIRED: &str = "property.certificate_expired";
+
 /// An e-mail reminder type of the vertical with English texts.
 fn english_reminder(key: &str, texts: &str) -> NotificationTypeDef {
     let subject = english(&format!("property.notices.{texts}_subject"), &[]);
@@ -149,6 +153,7 @@ pub(crate) fn register_types() {
         "deposit_dispute_unanswered",
     ));
     notify::register_type(staff_reminder(AGREEMENT_NOTICE, "agreement_notice"));
+    notify::register_type(staff_reminder(CERTIFICATE_EXPIRED, "certificate_expired"));
     notify::register_type(tenant_message(PAYEE_CHANGED, "payee_changed", false));
     notify::register_type(staff_reminder(OWNER_STATEMENT_DRAFT, "owner_statement_draft"));
     notify::register_type(staff_reminder(
@@ -590,6 +595,35 @@ pub async fn payee_changed(state: &AppState, lease: &Lease, payee: &str) -> Resu
             "payee": payee,
             "handover": lease.handed_over_on.map(shown).unwrap_or_default(),
         }));
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// Tells `users` (the company admin) that the certificate `kind` of
+/// `building`, valid through `expired_on`, expired (BL-PRP-25).
+pub async fn certificate_expired(
+    state: &AppState,
+    building: &crate::building::Building,
+    kind: &str,
+    expired_on: NaiveDate,
+    users: &[i64],
+) -> Result {
+    if users.is_empty() {
+        return Ok(());
+    }
+    let mut request = NotifyRequest::new(
+        CERTIFICATE_EXPIRED,
+        wl_kernel::Subject::new(crate::building::BUILDING_SUBJECT_TYPE, building.id),
+    )
+    .subject_label(&building.code)
+    .data(json!({
+        "building": building.name_en.clone(),
+        "kind": kind,
+        "expired_on": shown(expired_on),
+    }));
+    for user in users {
+        request = request.to_user(*user);
+    }
     notify::notifier(state).notify(state, request).await?;
     Ok(())
 }

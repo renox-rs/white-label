@@ -1459,6 +1459,29 @@ const TEXTS: &[(&str, &str)] = &[
         "New owner's receipt for the deposit",
     ),
     ("property.transfers.record_receipt", "Record receipt of a transfer"),
+    (
+        "property.notices.certificate_expired_subject",
+        "Certificate expired: {{ building }}",
+    ),
+    (
+        "property.notices.certificate_expired_body",
+        "The {{ kind }} of {{ building }} expired on {{ expired_on }}. The building is flagged non-compliant until a renewed certificate is accepted. Leasing is not blocked.",
+    ),
+    ("property.compliance.title", "Buildings non-compliant"),
+    (
+        "property.compliance.subtitle",
+        "Buildings with an open compliance flag or an expired compliance certificate. Leasing goes on.",
+    ),
+    ("property.compliance.empty", "No building is flagged"),
+    ("property.compliance.building", "Building"),
+    ("property.compliance.cause", "Cause"),
+    ("property.compliance.category", "Category or certificate"),
+    ("property.compliance.since", "Since"),
+    ("property.compliance.count", "Buildings non-compliant"),
+    ("property.compliance.cause_visit_missed", "Planned visit missed"),
+    ("property.compliance.cause_no_contract", "No service contract"),
+    ("property.compliance.cause_vendor_document_expired", "Vendor document expired"),
+    ("property.compliance.cause_certificate_expired", "Certificate expired"),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.

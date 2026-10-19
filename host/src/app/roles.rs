@@ -172,6 +172,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             prp::OWNER_STATEMENTS_PREPARE,
             prp::OWNER_STATEMENTS_APPROVE,
             prp::AGREEMENTS_MANAGE,
+            prp::COMPLIANCE_VIEW,
         ],
     ),
     (
@@ -187,6 +188,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             prp::LEASES_MANAGE,
             prp::OWNER_STATEMENTS_APPROVE,
             prp::AGREEMENTS_MANAGE,
+            prp::COMPLIANCE_VIEW,
             parties::VIEW,
             documents::VIEW,
             invoices::VIEW,
@@ -317,6 +319,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
     (
         COORDINATOR,
         &[
+            prp::COMPLIANCE_VIEW,
             tickets::VIEW,
             tickets::CREATE,
             tickets::ASSIGN,

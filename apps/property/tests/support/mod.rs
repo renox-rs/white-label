@@ -2110,6 +2110,7 @@ pub async fn boot() -> Booted {
         perm::LEASES_MANAGE,
         perm::OWNER_STATEMENTS_APPROVE,
         perm::AGREEMENTS_MANAGE,
+        perm::COMPLIANCE_VIEW,
     ];
     permissions::define_role(app.db(), MANAGER, &manager).await.unwrap();
     let agent = [

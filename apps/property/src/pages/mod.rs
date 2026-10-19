@@ -4,6 +4,7 @@
 //! (§3.2) and a route guard counts global roles only.
 
 pub mod agreements;
+pub mod compliance;
 pub mod leases;
 pub mod portfolio;
 pub mod statements;
@@ -28,6 +29,7 @@ pub fn routes() -> Routes {
         .merge(leases::routes())
         .merge(statements::routes())
         .merge(agreements::routes())
+        .merge(compliance::routes())
 }
 
 /// The package text `key` (without the `property.` prefix).

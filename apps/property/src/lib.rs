@@ -11,6 +11,7 @@ pub mod chase;
 pub mod charge;
 pub mod charge_type;
 pub mod cheques;
+pub mod compliance;
 mod db;
 pub mod deposit_forfeit;
 pub mod deposit_watch;
@@ -92,6 +93,10 @@ const VIEWS: &[(&str, &str)] = &[
         include_str!("../views/property/statement.html"),
     ),
     (
+        "property/compliance.html",
+        include_str!("../views/property/compliance.html"),
+    ),
+    (
         "property/agreements.html",
         include_str!("../views/property/agreements.html"),
     ),
@@ -139,6 +144,7 @@ impl Module for Property {
             .view_data::<pages::leases::ShowPage>()
             .view_data::<pages::statements::IndexPage>()
             .view_data::<pages::statements::ShowPage>()
+            .view_data::<pages::compliance::IndexPage>()
             .view_data::<pages::agreements::IndexPage>()
             .view_data::<pages::agreements::ShowPage>();
         app.templates(|env| {
@@ -167,6 +173,7 @@ impl Module for Property {
             .model::<agreement::AgreementUnit>()
             .model::<agreement_lifecycle::HandoverItem>()
             .model::<unit_transfer::UnitTransfer>()
+            .model::<compliance::BuildingFlag>()
             .model::<statement::OwnerStatement>()
             .model::<statement::StatementLine>()
             .model::<statement_dispute::StatementDispute>()
@@ -191,6 +198,7 @@ impl Module for Property {
         statement_events::register(app);
         statement::schedule(app);
         write_off::register(app);
+        compliance::register(app);
         // A building is the scope roles are assigned in.
         wl_kernel::scopes::register_label(Building::TABLE, |db, id| {
             let id = id.to_owned();
