@@ -57,6 +57,13 @@ pub fn dubai_date(at: DateTime) -> NaiveDate {
     at.with_timezone(&dubai).date_naive()
 }
 
+/// `at` as `2026-11-03 09:15` in Asia/Dubai: how times are shown in alerts,
+/// digests and cards.
+pub fn dubai_text(at: DateTime) -> String {
+    let dubai = FixedOffset::east_opt(DUBAI_OFFSET_SECONDS).expect("UTC+4 is a valid offset");
+    at.with_timezone(&dubai).format("%Y-%m-%d %H:%M").to_string()
+}
+
 /// Today in Asia/Dubai, from [`renox::db::now`] (so a test that travels
 /// moves it too): the default `on_date` of the guard.
 pub fn today() -> NaiveDate {

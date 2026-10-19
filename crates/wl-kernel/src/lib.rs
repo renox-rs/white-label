@@ -158,6 +158,14 @@ const VIEWS: &[(&str, &str)] = &[
         voids::web::ACTION_TEMPLATE,
         include_str!("../views/wl-kernel/void_action.html"),
     ),
+    (
+        late_entries::web::FIELDS_TEMPLATE,
+        include_str!("../views/wl-kernel/late_entry_fields.html"),
+    ),
+    (
+        late_entries::web::CARD_TEMPLATE,
+        include_str!("../views/wl-kernel/late_entry_card.html"),
+    ),
 ];
 
 /// The kernel module. The host adds it with [`apply`], which also gives the

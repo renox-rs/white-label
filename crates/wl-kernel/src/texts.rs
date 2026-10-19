@@ -282,6 +282,41 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_kernel.late_entries.reason_required",
         "Give the reason this entry is late.",
     ),
+    ("wl_kernel.late_entries.title", "Late entry"),
+    ("wl_kernel.late_entries.late_by", "Entered :minutes minutes late"),
+    (
+        "wl_kernel.late_entries.notice",
+        "This work happened :minutes minutes ago. Give the reason it is entered late.",
+    ),
+    (
+        "wl_kernel.late_entries.notice_approval",
+        "This work happened :minutes minutes ago, or in a closed period. A manager must approve it before it is saved.",
+    ),
+    ("wl_kernel.late_entries.reason", "Reason it is late"),
+    (
+        "wl_kernel.late_entries.reason_hint",
+        "For example: router down, power cut, paper sheet from the site.",
+    ),
+    ("wl_kernel.late_entries.outage", "Outage reference"),
+    (
+        "wl_kernel.late_entries.outage_hint",
+        "Optional: the connection that was down, or a note such as outage at branch 2 from 08:30 to 10:00.",
+    ),
+    ("wl_kernel.late_entries.occurred_at", "Business time"),
+    ("wl_kernel.late_entries.entered_at", "Entered at"),
+    ("wl_kernel.late_entries.approval", "Approval request"),
+    ("wl_kernel.late_entries.review", "Already fired, review"),
+    (
+        "wl_kernel.late_entries.fired_run",
+        ":rule on :subject at :at",
+    ),
+    ("wl_kernel.late_entries.status.requested", "Requested"),
+    (
+        "wl_kernel.late_entries.status.awaiting_approval",
+        "Waiting for approval",
+    ),
+    ("wl_kernel.late_entries.status.recorded", "Recorded"),
+    ("wl_kernel.late_entries.status.discarded", "Not recorded"),
     (
         "wl_kernel.late_entries.limits_invalid",
         "The flag limit must be above 0 minutes and not above the approval limit.",

@@ -21,6 +21,7 @@ pub mod events;
 pub mod fired;
 pub mod limits;
 pub mod register;
+pub mod web;
 
 use renox::prelude::*;
 

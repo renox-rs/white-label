@@ -1,0 +1,25 @@
+{#- wl-kernel: the late-entry card on a record's page (wl-kernel §5.13). The
+    page gives `late_entry` (wl_kernel::late_entries::web::card_for) and
+    includes it with <rx-include template="wl-kernel/late_entry_card.html"/>.
+    It shows nothing for a record that was not entered late. Replace it with
+    resources/views/wl-kernel/late_entry_card.html in the app. -#}
+<template rx-if="late_entry">
+  <rx-card :title="late_entry.labels.title" :subtitle="late_entry.late_by">
+    <rx-row>
+      <rx-badge :text="late_entry.status_label" :kind="late_entry.status_kind"/>
+    </rx-row>
+    <rx-infolist columns="2">
+      <rx-entry :label="late_entry.labels.occurred_at" :value="late_entry.occurred_at"/>
+      <rx-entry :label="late_entry.labels.entered_at" :value="late_entry.entered_at"/>
+      <rx-entry :label="late_entry.labels.reason" :value="late_entry.reason"/>
+      <rx-entry :label="late_entry.labels.outage" :value="late_entry.outage_reference"/>
+      <rx-entry :label="late_entry.labels.approval" :value="late_entry.approval"/>
+    </rx-infolist>
+    <section rx-if="late_entry.runs" :aria-label="late_entry.labels.review">
+      <h3>{{ late_entry.labels.review }}</h3>
+      <rx-list :label="late_entry.labels.review">
+        <li rx-for="run in late_entry.runs">{{ run.text }}</li>
+      </rx-list>
+    </section>
+  </rx-card>
+</template>
