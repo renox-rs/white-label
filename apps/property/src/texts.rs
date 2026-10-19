@@ -481,6 +481,88 @@ const TEXTS: &[(&str, &str)] = &[
         "property.tasks.relink_cheques",
         "Relink the cheques of :lease to the charges of the renewal",
     ),
+    // Recording a notice to end a lease (BL-PRP-09).
+    (
+        "property.notices.landlord_notice_subject",
+        "Notice to end tenancy {{ lease }}",
+    ),
+    (
+        "property.notices.landlord_notice_body",
+        "Your landlord gives notice, dated {{ notice_date }}, that tenancy {{ lease }} (ending {{ end_date }}) will be ended. {{ ground }}",
+    ),
+    ("property.notice.record", "Record a notice"),
+    (
+        "property.notice.record_description",
+        "The tenant's or the landlord's notice to end the lease. A tenant's notice needs the planned move-out date. A landlord's notice is sent to the tenant as a statutory notice.",
+    ),
+    ("property.notice.recorded", "Notice recorded."),
+    ("property.notice.date", "Notice date"),
+    ("property.notice.party", "Given by"),
+    ("property.notice.party_tenant", "The tenant"),
+    ("property.notice.party_landlord", "The landlord"),
+    ("property.notice.reason", "Reason"),
+    ("property.notice.reason_end_of_term", "End of term"),
+    ("property.notice.reason_early_termination", "Early termination"),
+    ("property.notice.reason_landlords_ground", "Landlord's ground"),
+    ("property.notice.reason_non_payment", "Non-payment"),
+    ("property.notice.ground", "Landlord's ground, as text"),
+    ("property.notice.planned_move_out", "Planned move-out date"),
+    ("property.notice.penalty", "Early termination penalty (AED)"),
+    (
+        "property.notice.penalty_hint",
+        "From the contract; added as a charge due on the planned move-out date.",
+    ),
+    ("property.notice.title", "Notice to end the lease"),
+    ("property.notice.not_delivered", "Notice not delivered"),
+    ("property.notice.delivered_on", "Delivered on :day"),
+    ("property.notice.sent_on", "Sent on :day"),
+    ("property.notice.party_required", "Say who gave the notice: the tenant or the landlord."),
+    (
+        "property.notice.reason_required",
+        "Give the reason: end of term, early termination, the landlord's ground or non-payment.",
+    ),
+    ("property.notice.date_required", "Give the date of the notice."),
+    (
+        "property.notice.planned_required",
+        "A tenant's notice needs the planned move-out date.",
+    ),
+    (
+        "property.notice.planned_before",
+        "The planned move-out date cannot be before the notice date.",
+    ),
+    ("property.notice.penalty_negative", "The penalty cannot be negative."),
+    (
+        "property.notice.penalty_not_allowed",
+        "A penalty belongs to a tenant's notice with the reason early termination.",
+    ),
+    (
+        "property.notice.charge_type_missing",
+        "Configure the charge type first: the early termination fee is not in the charge catalogue.",
+    ),
+    ("property.notice.not_running", "A notice can be recorded on a lease in force only."),
+    (
+        "property.notice.planned_edit_refused",
+        "Only the planned move-out date of a tenant's notice can be changed.",
+    ),
+    ("property.notice.planned_changed", "Planned move-out date changed."),
+    ("property.notice.change_planned", "Change the planned move-out date"),
+    (
+        "property.notice.penalty_line",
+        "Early termination fee, :lease",
+    ),
+    (
+        "property.notice.ticket_title",
+        "Move-out inspection of :lease",
+    ),
+    (
+        "property.notice.ticket_description",
+        "The tenant moves out on :day. Inspect the unit, collect the keys and record the inspection on the lease.",
+    ),
+    (
+        "property.notice.ticket_description_open",
+        "Inspect the unit when the tenant moves out, collect the keys and record the inspection on the lease. The move-out date follows the proof of delivery of the landlord's notice.",
+    ),
+    ("property.charge_types.required", "Give the charge type a code and a name."),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.

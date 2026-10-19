@@ -5,6 +5,7 @@ pub mod building;
 pub mod cancellation;
 pub mod chase;
 pub mod charge;
+pub mod charge_type;
 pub mod cheques;
 mod db;
 pub mod documents;
@@ -16,6 +17,7 @@ mod lease_checks;
 mod lease_events;
 pub mod lease_machine;
 pub mod leases;
+pub mod notice;
 pub mod notices;
 pub mod pages;
 pub mod parse;
@@ -35,6 +37,7 @@ use renox::prelude::*;
 pub use cancellation::CancelWait;
 pub use building::{Building, Floor, NewBuilding, create_building, ensure_floor};
 pub use charge::{ChargeStatus, LeaseCharge};
+pub use charge_type::ChargeType;
 pub use events::{LeaseActivated, LeaseCancelled};
 pub use lease::{Lease, LeaseStatus, RenewalDecision, VersionKind};
 pub use leases::{DraftEdit, EjariInput, NewLease, NewVersion};
@@ -111,6 +114,7 @@ impl Module for Property {
             .model::<Unit>()
             .model::<Lease>()
             .model::<LeaseCharge>()
+            .model::<ChargeType>()
             .model::<CancelWait>();
         unit_machine::register();
         lease_machine::register();

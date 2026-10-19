@@ -14,16 +14,20 @@
 //!   over (`PRP.RUL.03`).
 //! - **`submit`:** a renewal version closes the holding-over task of the
 //!   version it renews (`PRP.RUL.14`).
+//! - **`record_notice`:** the move-out inspection ticket is created
+//!   (`PRP.RUL.04`); the proof of delivery of a landlord's notice computes the
+//!   planned move-out date.
 
 use renox::chrono::Duration;
 use renox::prelude::*;
 use renox::state_machine::Transitioned;
 use wl_kernel::deposits::{AdjustDeposit, deposits};
+use wl_kernel::notify::StatutoryNoticeProofRecorded;
 use wl_kernel::role_tasks::RoleTask;
 
 use crate::events::LeaseActivated;
 use crate::lease::{Lease, VersionKind};
-use crate::lease_machine::{ACTIVATE, EXPIRE, FLAG_RENEWAL, SUBMIT};
+use crate::lease_machine::{ACTIVATE, EXPIRE, FLAG_RENEWAL, RECORD_NOTICE, SUBMIT};
 use crate::leases::ejari_task_key;
 use crate::permissions::{ACCOUNTANT_ROLE, PROPERTY_MANAGER_ROLE};
 use crate::texts::english;
@@ -39,8 +43,13 @@ pub(crate) fn register(app: &mut Registry) {
             FLAG_RENEWAL => after_flag_renewal(&state, event.key).await,
             EXPIRE => crate::holding::announce(&state, event.key).await,
             SUBMIT => crate::holding::renewal_submitted(&state, event.key).await,
+            RECORD_NOTICE => crate::notice::after_record(&state, event.key).await,
             _ => Ok(()),
         }
+    });
+    // The proof of delivery of a landlord's notice starts what depends on it.
+    app.listen(|event: StatutoryNoticeProofRecorded, state: AppState| async move {
+        crate::notice::on_proof(&state, &event).await
     });
 }
 

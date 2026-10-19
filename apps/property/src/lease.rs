@@ -222,12 +222,27 @@ pub struct Lease {
     pub notice_party: Option<String>,
     /// Why: end of term, early termination, landlord's ground, non-payment.
     pub notice_reason: Option<String>,
+    /// The landlord's ground, as text (`PRP.RUL.04`; which grounds are valid
+    /// is `⚠ open: lawyer (L-22)`, the platform does not judge it).
+    pub notice_ground: Option<String>,
+    /// The day a landlord's notice was sent (a statutory notice).
+    pub notice_sent_on: Option<NaiveDate>,
+    /// The day a landlord's notice was delivered: the provider's receipt or
+    /// the proof staff recorded. Nothing that depends on the notice starts
+    /// before it.
+    pub notice_delivered_on: Option<NaiveDate>,
     /// The planned move-out date.
     pub planned_move_out: Option<NaiveDate>,
     /// The day the tenant moved out.
     pub actual_move_out: Option<NaiveDate>,
     /// Rent stays due to this date after move-out, when the contract says so.
     pub rent_due_until: Option<NaiveDate>,
+    /// The day the move-out inspection was completed.
+    pub inspection_done_on: Option<NaiveDate>,
+    /// The day all the keys were returned.
+    pub keys_returned_on: Option<NaiveDate>,
+    /// The move-out inspection found defects that need work.
+    pub inspection_defects: bool,
     /// The day the lease was handed over with a management agreement.
     pub handed_over_on: Option<NaiveDate>,
     /// When the row was created.

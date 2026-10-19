@@ -14,6 +14,8 @@
 //! | `POST /property/leases/{id}/terms-answer` | `property.lease_terms_answer` | `leases.create` in the building |
 //! | `POST /property/leases/{id}/renewal-decision` | `property.lease_renewal_decision` | `leases.manage` in the building |
 //! | `POST /property/leases/{id}/changed-terms-notice` | `property.lease_changed_terms_notice` | `leases.manage` in the building |
+//! | `POST /property/leases/{id}/notice` | `property.lease_notice` | `leases.manage` in the building |
+//! | `POST /property/leases/{id}/planned-move-out` | `property.lease_planned_move_out` | `leases.manage` in the building |
 //! | `POST /property/leases/{id}/waive-deposit` | `property.lease_waive_deposit` | `leases.activate` in the building |
 //! | `POST /property/leases/{id}/ejari` | `property.lease_ejari` | `leases.activate` in the building |
 //! | `POST /property/leases/{id}/cheques` | `property.lease_cheques` | `leases.create` in the building |
@@ -38,6 +40,7 @@ use crate::lease::{Lease, LeaseStatus, RenewalDecision, VersionKind};
 use crate::cancellation::{self, CancelRequest};
 use crate::chase;
 use crate::lease_machine::{ACTIVATE, CANCEL, SUBMIT};
+use crate::notice::{self, NewNotice, NoticeParty, NoticeReason};
 use crate::leases::{self, EjariInput, NewLease, NewVersion};
 use crate::parse::{parse_aed, parse_date};
 use crate::permissions;
@@ -72,6 +75,10 @@ pub fn routes() -> Routes {
         .name("property.lease_renewal_decision")
         .post("/property/leases/{id}/changed-terms-notice", changed_terms_notice)
         .name("property.lease_changed_terms_notice")
+        .post("/property/leases/{id}/notice", record_notice)
+        .name("property.lease_notice")
+        .post("/property/leases/{id}/planned-move-out", planned_move_out)
+        .name("property.lease_planned_move_out")
         .post("/property/leases/{id}/waive-deposit", waive_deposit)
         .name("property.lease_waive_deposit")
         .post("/property/leases/{id}/ejari", ejari)
@@ -297,6 +304,19 @@ pub struct LeaseView {
     /// Why the submitter answered that the changes are not against the
     /// tenant.
     pub terms_answer_reason: String,
+    /// The date of the notice to end the lease.
+    pub notice_date: String,
+    /// Who gave it, in the page's language.
+    pub notice_party: String,
+    /// Why, in the page's language.
+    pub notice_reason: String,
+    /// The landlord's ground.
+    pub notice_ground: String,
+    /// The planned move-out date.
+    pub planned_move_out: String,
+    /// For a landlord's notice: "Notice not delivered", or the day it was
+    /// delivered; empty for a tenant's.
+    pub notice_delivery: String,
 }
 
 /// What a lease page needs.
@@ -325,6 +345,8 @@ pub(crate) struct ShowPage {
     can_ejari: bool,
     can_version: bool,
     can_cheques: bool,
+    can_notice: bool,
+    can_change_planned: bool,
     today: String,
 }
 
@@ -468,6 +490,22 @@ async fn show(
     } else {
         crate::money_text(lease.deposit_amount)
     };
+    let landlord_notice =
+        lease.notice_party.as_deref() == Some(NoticeParty::Landlord.as_str());
+    let notice_delivery = if lease.status == LeaseStatus::NoticeGiven && landlord_notice {
+        match notice::delivered_on(&state, &lease).await? {
+            Some(day) => texts::t_with(&lang, "property.notice.delivered_on", &[("day", &day)]),
+            None => text(&lang, "notice.not_delivered"),
+        }
+    } else {
+        String::new()
+    };
+    // The planned date of a landlord's notice follows its proof of delivery.
+    let planned = if landlord_notice && lease.planned_move_out.is_none() {
+        None
+    } else {
+        lease.planned_move_out
+    };
     let view = LeaseView {
         id: lease.id,
         number: lease.number_with_version(),
@@ -520,6 +558,20 @@ async fn show(
         } else {
             String::new()
         },
+        notice_date: lease.notice_date.map(|d| d.to_string()).unwrap_or_default(),
+        notice_party: lease
+            .notice_party
+            .as_deref()
+            .map(|p| text(&lang, &format!("notice.party_{p}")))
+            .unwrap_or_default(),
+        notice_reason: lease
+            .notice_reason
+            .as_deref()
+            .map(|r| text(&lang, &format!("notice.reason_{r}")))
+            .unwrap_or_default(),
+        notice_ground: lease.notice_ground.clone().unwrap_or_default(),
+        planned_move_out: planned.map(|d| d.to_string()).unwrap_or_default(),
+        notice_delivery,
     };
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
@@ -551,6 +603,14 @@ async fn show(
             && lease.deposit_amount > 0,
         can_ejari: activates && LeaseStatus::RUNNING.contains(&lease.status),
         can_version,
+        can_notice: manages
+            && matches!(
+                lease.status,
+                LeaseStatus::Active | LeaseStatus::RenewalDue | LeaseStatus::Expired
+            ),
+        can_change_planned: manages
+            && lease.status == LeaseStatus::NoticeGiven
+            && lease.notice_party.as_deref() == Some(NoticeParty::Tenant.as_str()),
         can_cheques: creates
             && !matches!(
                 lease.status,
@@ -907,6 +967,81 @@ async fn waive_deposit(
 ) -> Result<Response> {
     leases::waive_deposit(&state, &user, id).await?;
     Ok((Toast::success(text(&lang, "leases.deposit_waived_done")), renox::HxRefresh).into_response())
+}
+
+/// The form that records a notice to end the lease.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct NoticeForm {
+    /// The date of the notice.
+    #[serde(default)]
+    pub date: String,
+    /// `tenant` or `landlord`.
+    #[serde(default)]
+    pub party: String,
+    /// `end_of_term`, `early_termination`, `landlords_ground` or `non_payment`.
+    #[serde(default)]
+    pub reason: String,
+    /// The landlord's ground.
+    #[serde(default)]
+    pub ground: String,
+    /// The planned move-out date of a tenant's notice.
+    #[serde(default)]
+    pub planned_move_out: String,
+    /// The early termination penalty in dirhams.
+    #[serde(default)]
+    pub penalty: String,
+}
+
+/// `POST /property/leases/{id}/notice` (`record_notice`).
+async fn record_notice(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<NoticeForm>,
+) -> Result<Response> {
+    let party = NoticeParty::parse(&form.party)
+        .ok_or_else(|| Error::Status(StatusCode::UNPROCESSABLE_ENTITY, texts::english("property.notice.party_required", &[])))?;
+    let reason = NoticeReason::parse(&form.reason)
+        .ok_or_else(|| Error::Status(StatusCode::UNPROCESSABLE_ENTITY, texts::english("property.notice.reason_required", &[])))?;
+    let planned = if form.planned_move_out.trim().is_empty() {
+        None
+    } else {
+        Some(required_date(&form.planned_move_out, "planned_move_out")?)
+    };
+    let new = NewNotice {
+        date: required_date(&form.date, "date")?,
+        party,
+        reason,
+        ground: Some(form.ground).filter(|g| !g.trim().is_empty()),
+        planned_move_out: planned,
+        penalty: optional_amount(&form.penalty, "penalty")?,
+    };
+    notice::record(&state, &user, id, new)
+        .await
+        .map_err(TransitionError::into_error)?;
+    Ok((Toast::success(text(&lang, "notice.recorded")), renox::HxRefresh).into_response())
+}
+
+/// The form that changes the planned move-out date.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct PlannedForm {
+    /// The new planned move-out date.
+    #[serde(default)]
+    pub planned_move_out: String,
+}
+
+/// `POST /property/leases/{id}/planned-move-out`.
+async fn planned_move_out(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<PlannedForm>,
+) -> Result<Response> {
+    let date = required_date(&form.planned_move_out, "planned_move_out")?;
+    notice::change_planned_move_out(&state, &user, id, date).await?;
+    Ok((Toast::success(text(&lang, "notice.planned_changed")), renox::HxRefresh).into_response())
 }
 
 /// The form of the Ejari registration.

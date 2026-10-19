@@ -36,10 +36,13 @@
 //! - `renew` links the two versions, cancels the old version's scheduled
 //!   charges that the new one covers and skips the periods the old version
 //!   already invoiced ([`crate::renew`], BL-PRP-07).
-//! - `amend`, `record_notice`, `withdraw_notice*`, `terminate` and
-//!   `force_terminate` are declared with their states and permissions; their
-//!   effects are built by BL-PRP-08 to BL-PRP-12 and until then the pages do
-//!   not offer them.
+//! - `record_notice` stores the notice, moves the unit to `notice_given` and
+//!   adds the penalty charge; the move-out inspection ticket follows the
+//!   commit ([`crate::notice`], BL-PRP-09).
+//! - `amend`, `withdraw_notice*`, `terminate` and `force_terminate` are
+//!   declared with their states and permissions; their effects are built by
+//!   BL-PRP-08 and BL-PRP-10 to BL-PRP-12 and until then the pages do not
+//!   offer them.
 
 use renox::db::Transaction;
 use renox::prelude::*;
@@ -54,6 +57,7 @@ use crate::db::{refused, set_lease};
 use crate::holding::expire_effects;
 use crate::lease::{LEASE_SUBJECT_TYPE, Lease, LeaseStatus};
 use crate::lease_checks::{activate_checks, apply_activation, submit_checks};
+use crate::notice::{notice_input, notice_problem, record_effects};
 use crate::permissions;
 use crate::renew::renew_effects;
 use crate::texts::english;
@@ -345,7 +349,16 @@ impl StateMachine for Lease {
             .transition(
                 user(RECORD_NOTICE, "Record notice", permissions::LEASES_MANAGE)
                     .from([Active, RenewalDue, Expired])
-                    .to(NoticeGiven),
+                    .to(NoticeGiven)
+                    .guard("notice", |_lease: &Lease, ctx| {
+                        let problem = notice_problem(&notice_input(ctx));
+                        Box::pin(async move { problem.map_or(Ok(()), Err) })
+                    })
+                    .effect(|lease: &Lease, ctx, tx| {
+                        let lease = lease.clone();
+                        let input = notice_input(ctx);
+                        Box::pin(async move { record_effects(&mut *tx, &lease, &input).await })
+                    }),
             )
             .transition(
                 user(WITHDRAW_NOTICE, "Withdraw notice", permissions::LEASES_MANAGE)

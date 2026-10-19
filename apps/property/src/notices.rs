@@ -47,6 +47,12 @@ pub const RENEWAL_WINDOW: &str = "lease.renewal_window";
 /// provider's receipt or the proof staff record when it gave up.
 pub const NOTICE_OF_CHANGED_TERMS: &str = "lease.notice_of_changed_terms";
 
+/// The statutory notice of a landlord who ends the lease (`record_notice`
+/// with party landlord). Its delivery is the provider's receipt or the proof
+/// staff record when it gave up; the planned move-out date and the deadlines
+/// that depend on the notice start from it.
+pub const LANDLORD_NOTICE: &str = "lease.landlord_notice";
+
 /// An e-mail reminder type of the vertical with English texts.
 fn english_reminder(key: &str, texts: &str) -> NotificationTypeDef {
     let subject = english(&format!("property.notices.{texts}_subject"), &[]);
@@ -90,6 +96,7 @@ pub(crate) fn register_types() {
         "changed_terms",
         true,
     ));
+    notify::register_type(tenant_message(LANDLORD_NOTICE, "landlord_notice", true));
 }
 
 /// The users who hold `role` in the building of `lease`, or everywhere.
@@ -230,6 +237,28 @@ pub async fn changed_terms(state: &AppState, lease: &Lease, deadline: NaiveDate)
             "lease": lease.number_with_version(),
             "end_date": shown(lease.end_date),
             "deadline": shown(deadline),
+        }));
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// Sends the statutory notice of the landlord to end `lease` to the tenant:
+/// `notice_date` is the date of the notice and `ground` the landlord's ground
+/// as text.
+pub async fn landlord_notice(
+    state: &AppState,
+    lease: &Lease,
+    notice_date: NaiveDate,
+    ground: &str,
+) -> Result {
+    let request = NotifyRequest::new(LANDLORD_NOTICE, lease.subject())
+        .subject_label(&lease.number_with_version())
+        .to_party(lease.tenant())
+        .data(json!({
+            "lease": lease.number_with_version(),
+            "end_date": shown(lease.end_date),
+            "notice_date": shown(notice_date),
+            "ground": ground,
         }));
     notify::notifier(state).notify(state, request).await?;
     Ok(())

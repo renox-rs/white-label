@@ -47,6 +47,23 @@
         <rx-confirm :id="'changed-terms-' ~ lease.id" :label="tx['renewal.send_notice']" :action="route('property.lease_changed_terms_notice', lease.id)" method="POST"
                     :title="tx['renewal.send_notice']" :message="tx['renewal.send_notice_message']" :confirm-label="tx['renewal.send_notice']" :cancel-label="tx['button_cancel']" icon="mail"/>
       </template>
+      <template rx-if="can_notice">
+        <rx-action-sheet :id="'notice-' ~ lease.id" :label="tx['notice.record']" :action="route('property.lease_notice', lease.id)"
+                         :title="tx['notice.record']" :description="tx['notice.record_description']" :submit-label="tx['notice.record']" icon="log-out">
+          <rx-input name="date" type="date" :label="tx['notice.date']" :value="today" :id="'notice-date-' ~ lease.id" required/>
+          <rx-select name="party" :label="tx['notice.party']" :options="[['tenant', tx['notice.party_tenant']], ['landlord', tx['notice.party_landlord']]]" :selected="'tenant'" :id="'notice-party-' ~ lease.id"/>
+          <rx-select name="reason" :label="tx['notice.reason']" :options="[['end_of_term', tx['notice.reason_end_of_term']], ['early_termination', tx['notice.reason_early_termination']], ['landlords_ground', tx['notice.reason_landlords_ground']], ['non_payment', tx['notice.reason_non_payment']]]" :selected="'end_of_term'" :id="'notice-reason-' ~ lease.id"/>
+          <rx-input name="ground" :label="tx['notice.ground']" :id="'notice-ground-' ~ lease.id"/>
+          <rx-input name="planned_move_out" type="date" :label="tx['notice.planned_move_out']" :id="'notice-planned-' ~ lease.id"/>
+          <rx-input name="penalty" :label="tx['notice.penalty']" :hint="tx['notice.penalty_hint']" :id="'notice-penalty-' ~ lease.id"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_change_planned">
+        <rx-action-sheet :id="'planned-' ~ lease.id" :label="tx['notice.change_planned']" :action="route('property.lease_planned_move_out', lease.id)"
+                         :title="tx['notice.change_planned']" :submit-label="tx['notice.change_planned']" icon="calendar-days">
+          <rx-input name="planned_move_out" type="date" :label="tx['notice.planned_move_out']" :value="lease.planned_move_out" :id="'planned-date-' ~ lease.id" required/>
+        </rx-action-sheet>
+      </template>
       <template rx-if="can_waive">
         <rx-confirm :id="'waive-deposit-' ~ lease.id" :label="tx['leases.waive_deposit']" :action="route('property.lease_waive_deposit', lease.id)" method="POST"
                     :title="tx['leases.waive_deposit']" :message="tx['leases.waive_message']" :confirm-label="tx['leases.waive_deposit']" :cancel-label="tx['button_cancel']"/>
@@ -103,6 +120,12 @@
         <rx-entry :label="tx['terms.acceptance']" :value="lease.acceptance" :placeholder="tx['none']"/>
         <rx-entry :label="tx['terms.reason']" :value="lease.terms_answer_reason" :placeholder="tx['none']"/>
         <rx-entry :label="tx['leases.terms']" :value="lease.terms" :placeholder="tx['none']" span="full"/>
+        <rx-entry :label="tx['notice.date']" :value="lease.notice_date" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['notice.party']" :value="lease.notice_party" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['notice.reason']" :value="lease.notice_reason" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['notice.ground']" :value="lease.notice_ground" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['notice.planned_move_out']" :value="lease.planned_move_out" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['notice.title']" :value="lease.notice_delivery" :placeholder="tx['none']"/>
         <rx-entry :label="tx['cancel_reason']" :value="lease.cancel_reason" :placeholder="tx['none']"/>
         <rx-entry :label="tx['cancel_forfeit']" :value="lease.cancel_forfeit" :placeholder="tx['none']"/>
         <rx-entry :label="tx['cancel_forfeit_clause']" :value="lease.cancel_forfeit_clause" :placeholder="tx['none']"/>

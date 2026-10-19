@@ -415,6 +415,8 @@ pub struct Task {
     pub key: Option<String>,
     /// The record it is about.
     pub subject: Subject,
+    /// The ticket category it was opened in.
+    pub category: String,
     /// Who it is assigned to.
     pub assignee: Option<Assignee>,
     /// Whether it is still open.
@@ -462,6 +464,7 @@ impl TaskCreator for Tasks {
                 description: ticket.description.clone(),
                 key: ticket.source_key.clone(),
                 subject: ticket.subject.clone(),
+                category: ticket.category_key.clone(),
                 assignee: ticket.assignee,
                 open: true,
                 note: String::new(),
