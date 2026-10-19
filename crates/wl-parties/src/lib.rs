@@ -28,6 +28,7 @@ pub mod review_tasks;
 pub mod roles;
 pub mod sanctions_lists;
 pub mod screening;
+pub mod screening_guard;
 pub mod screening_task;
 pub mod seed;
 pub mod settings;
@@ -191,6 +192,8 @@ pub struct WlParties {
     screening_provider: Option<std::sync::Arc<dyn ScreeningProvider>>,
     /// What a confirmed sanctions match does (wl-parties §7).
     confirmed: ConfirmedMatchSettings,
+    /// What a guarded onboarding does while a sanctions list is stale.
+    stale_list_policy: wl_kernel::screening_guard::StaleListPolicy,
 }
 
 /// The module with the default block reason codes, so the host can write
@@ -205,6 +208,7 @@ pub const WlParties: WlParties = WlParties {
     list_feed: None,
     screening_provider: None,
     confirmed: ConfirmedMatchSettings::DEFAULT,
+    stale_list_policy: wl_kernel::screening_guard::StaleListPolicy::Warn,
 };
 
 impl WlParties {
@@ -283,6 +287,23 @@ impl WlParties {
     pub fn screening_provider(mut self, provider: impl ScreeningProvider) -> Self {
         self.screening_provider = Some(std::sync::Arc::new(provider));
         self
+    }
+
+    /// Sets what a guarded onboarding does while a sanctions list is stale
+    /// (wl-parties §7): `Warn` (the default) runs the transition and shows a
+    /// notice, `Block` refuses it until the list is current and re-screened.
+    /// It applies only with [`WlParties::screening`] on.
+    pub fn stale_list_at_onboarding(
+        mut self,
+        policy: wl_kernel::screening_guard::StaleListPolicy,
+    ) -> Self {
+        self.stale_list_policy = policy;
+        self
+    }
+
+    /// What a guarded onboarding does while a sanctions list is stale.
+    pub fn stale_list_policy(&self) -> wl_kernel::screening_guard::StaleListPolicy {
+        self.stale_list_policy
     }
 
     /// The score at or above which a candidate is a possible match.
@@ -429,6 +450,17 @@ impl Module for WlParties {
         let guard = block_guard::PartiesBlockGuard::new(self.approver());
         guard.policy().register();
         wl_kernel::block_guard::provide_block_guard(app, guard);
+        // Onboarding on a stale list warns or is refused; with screening off
+        // the kernel's no-op guard stays in place.
+        if self.screening {
+            wl_kernel::screening_guard::provide_screening_guard(
+                app,
+                screening_guard::PartiesScreeningGuard::new(
+                    self.stale_list_policy,
+                    self.freshness_hours(),
+                ),
+            );
+        }
         // Other modules read parties through the kernel (wl-parties §6).
         wl_kernel::parties::provide_directory(app, Directory);
         // `db:seed`: the demo parties (DEMO-DATA.md).
@@ -538,6 +570,14 @@ mod tests {
         assert!(!module.confirmed.related_company_block);
         assert_eq!(module.confirmed.freeze_task_due_hours, 12);
         assert_eq!(module.confirmed.report_task_due_hours, 48);
+    }
+
+    #[test]
+    fn the_stale_list_policy_defaults_to_warn_unless_set() {
+        use wl_kernel::screening_guard::StaleListPolicy;
+        assert_eq!(WlParties::new().stale_list_policy(), StaleListPolicy::Warn);
+        let module = WlParties::new().stale_list_at_onboarding(StaleListPolicy::Block);
+        assert_eq!(module.stale_list_policy(), StaleListPolicy::Block);
     }
 
     #[test]

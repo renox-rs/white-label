@@ -439,7 +439,7 @@ event happens.
 | Sanctions list freshness limit (`PTY.RUL.02`) | 24 hours |
 | Manual upload of an official list file when the download fails | allowed, compliance role (`screening.review`) |
 | Confirmed match on a UBO, director or signatory also blocks the company party | on |
-| Stale list at onboarding | warn (option: block the guarded transition) |
+| Stale list at onboarding | warn (option: block the guarded transition). A `WlParties` builder, `stale_list_at_onboarding(StaleListPolicy)`, only with screening on; the guard (`wl_kernel::screening_guard`) names the stale lists of the latest Screening plus the lists stale now, with their last update date, reads only Screening and Sanctions list, and writes nothing. Block passes again once no list is stale and the latest Screening is not flagged |
 | Freeze task due | 24 hours after the possible match was flagged. A `WlParties` builder, `freeze_task_due_hours(i64)`; a change affects only tasks created afterwards |
 | Report task due | 24 hours after the possible match was flagged (`⚠ open: lawyer (L-30)` on the real deadline). A `WlParties` builder, `report_task_due_hours(i64)`; the L-30 default is the earlier start (the flag), and nothing about the form or deadline is hard-coded |
 | Confirmed-match settings in code | three parameters on `WlParties`: `related_company_block(bool)` (default on), `freeze_task_due_hours(i64)` (default 24) and `report_task_due_hours(i64)` (default 24), read together as `ConfirmedMatchSettings` |
