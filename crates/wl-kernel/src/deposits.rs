@@ -108,7 +108,7 @@ pub trait DepositDeductions: Send + Sync + 'static {
     /// being settled, newest first. The default has none.
     fn published_for<'a>(
         &'a self,
-        _db: &'a Db,
+        _state: &'a AppState,
         _party: PartyId,
     ) -> DepositFuture<'a, Vec<PublishedDeductions>> {
         Box::pin(async { Ok(Vec::new()) })

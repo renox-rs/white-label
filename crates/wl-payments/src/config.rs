@@ -26,6 +26,12 @@ pub const DEFAULT_CHEQUE_REMINDER_DAYS: i64 = 3;
 /// the manager the task to decide (§7).
 pub const DEFAULT_CHEQUE_DECISION_DAYS: i64 = 14;
 
+/// Days the party may dispute the published deposit deductions (§7).
+pub const DEFAULT_DISPUTE_WINDOW_DAYS: i64 = 14;
+
+/// Days staff have to answer a deductions dispute (§7).
+pub const DEFAULT_DISPUTE_RESPONSE_DAYS: i64 = 7;
+
 /// How many times one cheque may be presented, the first deposit included
 /// (§7): 2 allows one re-presentation.
 pub const DEFAULT_CHEQUE_MAX_PRESENTATIONS: i64 = 2;
@@ -73,6 +79,14 @@ pub struct PaymentsConfig {
     /// Days after a bounce that the accountant and the manager get the task to
     /// decide (`FIN.RUL.18`, M).
     pub cheque_decision_days: i64,
+    /// Whether the party may dispute the published deposit deductions in the
+    /// portal (§7: off; 01 turns it on). While on, `refund` and `forfeit` wait
+    /// for the dispute window of the latest published version.
+    pub deductions_dispute: bool,
+    /// Days after publication that the party may dispute.
+    pub dispute_window_days: i64,
+    /// Days staff have to answer a dispute.
+    pub dispute_response_days: i64,
     /// The most presentations of one cheque, the first deposit included.
     pub cheque_max_presentations: i64,
     /// Whether a cheque collected in the field is deposited only after a
@@ -110,6 +124,9 @@ impl Default for PaymentsConfig {
             bounce_fee_vat: VatCategory::Standard,
             cheque_reminder_days: DEFAULT_CHEQUE_REMINDER_DAYS,
             cheque_decision_days: DEFAULT_CHEQUE_DECISION_DAYS,
+            deductions_dispute: false,
+            dispute_window_days: DEFAULT_DISPUTE_WINDOW_DAYS,
+            dispute_response_days: DEFAULT_DISPUTE_RESPONSE_DAYS,
             cheque_max_presentations: DEFAULT_CHEQUE_MAX_PRESENTATIONS,
             field_cheque_handover: true,
             criminal_grounds: DEFAULT_CRIMINAL_GROUNDS

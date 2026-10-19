@@ -1727,7 +1727,7 @@ async fn the_deposit_deductions_fall_back_when_payments_is_off() {
     let app = boot(dir.path()).await;
     let state = app.state();
     let contract = deposit_deductions(state);
-    assert!(contract.published_for(app.db(), PartyId(7)).await.unwrap().is_empty());
+    assert!(contract.published_for(state, PartyId(7)).await.unwrap().is_empty());
     let request = DisputeDeductions {
         deposit: DepositId(3),
         version: 1,

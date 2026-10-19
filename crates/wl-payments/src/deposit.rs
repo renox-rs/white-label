@@ -23,8 +23,10 @@ use wl_kernel::{LegalEntity, PartyId, Subject};
 
 use crate::allocate::{allocate_to_deposit_in, deposit_problem};
 use crate::credit;
+use crate::deposit_deductions::gate_of;
 use crate::deposit_machine::{
-    REFUND, RefundDepositInput, START_SETTLEMENT, START_SETTLEMENT_BY_SYSTEM,
+    FORFEIT, ForfeitInput, REFUND, RefundDepositInput, START_SETTLEMENT,
+    START_SETTLEMENT_BY_SYSTEM,
 };
 use crate::payment::Payment;
 use crate::permissions;
@@ -108,6 +110,13 @@ pub struct Deposit {
     pub refund_method: Option<PaymentMethod>,
     /// The refund `refund` requested.
     pub refund_id: Option<i64>,
+    /// Whether a legal case on the source agreement keeps the deductions
+    /// dispute flag until a staff member records its decision.
+    pub dispute_legal_case: bool,
+    /// Why `forfeit` kept the deposit.
+    pub forfeit_reason: Option<String>,
+    /// The second user who approved the forfeiture.
+    pub forfeit_approved_by: Option<i64>,
     /// The lifecycle state; changed only by a transition.
     pub status: DepositStatus,
     /// When the row was created.
@@ -301,21 +310,84 @@ pub async fn start_settlement(
 ///
 /// `Forbidden` without `deposits.refund`; `NotFrom` unless
 /// `settlement_pending`; `Guard` (422) without a method of transfer or
-/// cheque, for a deposit that holds nothing or already has a refund.
+/// cheque, for a deposit that holds nothing or already has a refund, while a
+/// deductions dispute is open, and (with the dispute setting on) before the
+/// deductions are published and their dispute window has passed.
 pub async fn refund(
     state: &AppState,
     user: &AuthUser,
     deposit: &Deposit,
     method: Option<PaymentMethod>,
 ) -> std::result::Result<Deposit, TransitionError> {
-    let input = RefundDepositInput { method };
+    let deposit = reload(state, deposit).await?;
+    let input = RefundDepositInput {
+        method,
+        gate: Some(gate_of(state, &deposit).await?),
+    };
     let _outcome = deposit
         .transition(REFUND)
         .by(user)
         .input(&input)
         .run(state)
         .await?;
-    reload(state, deposit).await
+    reload(state, &deposit).await
+}
+
+/// What a user gives to forfeit a deposit.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ForfeitRequest {
+    /// Why the deposit is kept; required.
+    pub reason: String,
+    /// The second user who approves the forfeiture: another user who may
+    /// refund deposits (`deposits.refund`).
+    pub approver: Option<i64>,
+}
+
+/// `user` forfeits `deposit`: the party keeps no claim on it (`forfeited`,
+/// terminal). Like `refund`, it waits for the deductions: no deductions
+/// dispute may be open, and with the dispute setting on the forfeiture must
+/// have been published to the party ([`crate::deposit_deductions::publish`]
+/// with a reason) and the dispute window of that version must have passed.
+///
+/// The approval is that of a second user who holds `deposits.refund`
+/// (`request.approver`); the vertical's limits (e.g. `PRP.ACL.05`) are its own.
+///
+/// # Errors
+///
+/// `Forbidden` without `deposits.refund`; `NotFrom` unless
+/// `settlement_pending`; `Guard` (422) without a reason, without an approver
+/// who is another user holding `deposits.refund`, while a dispute is open, and
+/// before the forfeiture is published and its window has passed.
+pub async fn forfeit(
+    state: &AppState,
+    user: &AuthUser,
+    deposit: &Deposit,
+    request: &ForfeitRequest,
+) -> std::result::Result<Deposit, TransitionError> {
+    let deposit = reload(state, deposit).await?;
+    let approver_ok = match request.approver {
+        Some(id) if id != user.id => {
+            renox::auth::permissions::users_with_permission(&state.db, permissions::DEPOSITS_REFUND)
+                .await?
+                .iter()
+                .any(|u| u.id == id)
+        }
+        _ => false,
+    };
+    let input = ForfeitInput {
+        reason: request.reason.trim().to_owned(),
+        approver: request.approver,
+        approver_ok,
+        gate: Some(gate_of(state, &deposit).await?),
+    };
+    let _outcome = deposit
+        .transition(FORFEIT)
+        .by(user)
+        .reason(input.reason.clone())
+        .input(&input)
+        .run(state)
+        .await?;
+    reload(state, &deposit).await
 }
 
 async fn reload(

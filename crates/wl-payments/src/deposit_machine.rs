@@ -2,7 +2,7 @@
 //!
 //! ```text
 //! [*] --> held --start_settlement--> settlement_pending --refund--> refunded
-//! settlement_pending --forfeit--> forfeited   (later)
+//! settlement_pending --forfeit--> forfeited
 //! held --transfer--> transferred              (later)
 //! ```
 //!
@@ -11,9 +11,13 @@
 //! `start_settlement_by_system` (the source agreement ended), and `refund`
 //! (`deposits.refund`): in its transaction a Refund is requested with the
 //! deposit as source for the held amount, and linked to the deposit. The
-//! deposit stays `refunded` whatever happens to that refund. `forfeit`,
-//! `transfer` and `adjust` come with the issues that follow, into this
-//! `machine()`.
+//! deposit stays `refunded` whatever happens to that refund. `forfeit`
+//! (`deposits.refund`, with a reason and a second user's approval) keeps the
+//! deposit in full. `refund` and `forfeit` wait for the deductions: no
+//! deductions dispute may be open, and with the setting on the dispute window
+//! of the latest published version must have passed
+//! ([`crate::deposit_deductions`]). `transfer` and `adjust` come with the
+//! issues that follow, into this `machine()`.
 
 use renox::prelude::*;
 #[cfg(test)]
@@ -23,6 +27,7 @@ use serde::{Deserialize, Serialize};
 use wl_kernel::payments::PaymentMethod;
 
 use crate::deposit::{Deposit, DepositStatus, method_problem};
+use crate::deposit_deductions::{DeductionGate, gate_problem};
 use crate::permissions;
 use crate::refund::request_for_deposit_in;
 
@@ -32,6 +37,8 @@ pub const START_SETTLEMENT: &str = "start_settlement";
 pub const START_SETTLEMENT_BY_SYSTEM: &str = "start_settlement_by_system";
 /// The `refund` transition's name.
 pub const REFUND: &str = "refund";
+/// The `forfeit` transition's name.
+pub const FORFEIT: &str = "forfeit";
 
 /// What a `refund` run carries to its guards and effect, gathered by
 /// [`crate::deposit::refund`].
@@ -39,6 +46,48 @@ pub const REFUND: &str = "refund";
 pub(crate) struct RefundDepositInput {
     /// How the deposit is paid back; `None` is refused.
     pub method: Option<PaymentMethod>,
+    /// What the deductions say about running it now; `None` (a run the
+    /// deposit service did not prepare) is refused.
+    pub gate: Option<DeductionGate>,
+}
+
+/// What a `forfeit` run carries to its guards and effect, gathered by
+/// [`crate::deposit::forfeit`].
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub(crate) struct ForfeitInput {
+    /// Why the deposit is kept, trimmed.
+    pub reason: String,
+    /// The second user who approved it.
+    pub approver: Option<i64>,
+    /// Whether that user exists, holds `deposits.refund` and is not the one
+    /// who forfeits.
+    pub approver_ok: bool,
+    /// What the deductions say about running it now.
+    pub gate: Option<DeductionGate>,
+}
+
+fn forfeit_input(ctx: &TransitionCtx) -> ForfeitInput {
+    ctx.input_as::<ForfeitInput>().unwrap_or_default()
+}
+
+/// Why the deposit cannot be forfeited with `input`, if it cannot.
+pub(crate) fn forfeit_problem(deposit: &Deposit, input: &ForfeitInput) -> Option<String> {
+    if input.reason.trim().is_empty() {
+        return Some("A reason is required.".to_owned());
+    }
+    if input.approver.is_none() || !input.approver_ok {
+        return Some(
+            "The forfeiture needs the approval of another user who may refund deposits."
+                .to_owned(),
+        );
+    }
+    if deposit.refund_id.is_some() {
+        return Some("The deposit already has a refund.".to_owned());
+    }
+    match &input.gate {
+        Some(gate) => gate_problem(gate, true),
+        None => Some("The forfeiture was not prepared by the deposit service.".to_owned()),
+    }
 }
 
 fn refund_input(ctx: &TransitionCtx) -> RefundDepositInput {
@@ -71,7 +120,12 @@ impl StateMachine for Deposit {
 }
 
 fn transitions() -> Vec<Transition<Deposit>> {
-    vec![start_settlement(), start_settlement_by_system(), refund()]
+    vec![
+        start_settlement(),
+        start_settlement_by_system(),
+        refund(),
+        forfeit(),
+    ]
 }
 
 fn start_settlement() -> Transition<Deposit> {
@@ -102,6 +156,13 @@ fn refund() -> Transition<Deposit> {
         .guard("method_given", |_deposit: &Deposit, ctx| {
             let problem = method_problem(refund_input(ctx).method);
             Box::pin(async move { problem.map_or(Ok(()), |text| Err(text.to_owned())) })
+        })
+        .guard("deductions_ready", |_deposit: &Deposit, ctx| {
+            let problem = match refund_input(ctx).gate {
+                Some(gate) => gate_problem(&gate, false),
+                None => Some("The refund was not prepared by the deposit service.".to_owned()),
+            };
+            Box::pin(async move { problem.map_or(Ok(()), Err) })
         })
         .guard("holds_money", |deposit: &Deposit, _ctx| {
             let held = deposit.held_amount;
@@ -141,6 +202,38 @@ fn refund() -> Transition<Deposit> {
                         &[
                             ("refund_method", &Some(method.as_str().to_owned())),
                             ("refund_id", &Some(refund.id)),
+                            ("updated_at", &renox::db::now()),
+                        ],
+                    )
+                    .await?;
+                Ok(())
+            })
+        })
+}
+
+fn forfeit() -> Transition<Deposit> {
+    Transition::new(FORFEIT)
+        .label("Forfeit")
+        .tone("danger")
+        .permission(permissions::DEPOSITS_REFUND)
+        .from([DepositStatus::SettlementPending])
+        .to(DepositStatus::Forfeited)
+        .guard("may_be_forfeited", |deposit: &Deposit, ctx| {
+            let problem = forfeit_problem(deposit, &forfeit_input(ctx));
+            Box::pin(async move { problem.map_or(Ok(()), Err) })
+        })
+        .effect(|deposit: &Deposit, ctx, tx| {
+            let id = deposit.id;
+            let input = forfeit_input(ctx);
+            Box::pin(async move {
+                // Not the status column, so outside the machine's guard.
+                Deposit::query()
+                    .where_(Deposit::ID.eq(id))
+                    .update(
+                        &mut *tx,
+                        &[
+                            ("forfeit_reason", &Some(input.reason.trim().to_owned())),
+                            ("forfeit_approved_by", &input.approver),
                             ("updated_at", &renox::db::now()),
                         ],
                     )
@@ -206,7 +299,11 @@ mod tests {
         let found = machine.find(REFUND).expect("transition");
         let with = |method| {
             TransitionCtx::new(None).with_input(
-                renox::serde_json::to_value(RefundDepositInput { method }).expect("json"),
+                renox::serde_json::to_value(RefundDepositInput {
+                    method,
+                    gate: Some(DeductionGate::default()),
+                })
+                .expect("json"),
             )
         };
         let held = Deposit {
@@ -237,9 +334,74 @@ mod tests {
         assert!(method_problem(refund_input(&ctx).method).is_some());
         let input = RefundDepositInput {
             method: Some(PaymentMethod::Transfer),
+            gate: None,
         };
         let ctx =
             TransitionCtx::new(None).with_input(renox::serde_json::to_value(input).expect("json"));
         assert_eq!(method_problem(refund_input(&ctx).method), None);
+    }
+
+    #[test]
+    fn forfeit_leaves_settlement_pending_only() {
+        let machine = Deposit::machine();
+        let found = machine.find(FORFEIT).expect("transition");
+        assert!(found.check_from(DepositStatus::SettlementPending).is_ok());
+        for other in [
+            DepositStatus::Held,
+            DepositStatus::Refunded,
+            DepositStatus::Forfeited,
+            DepositStatus::Transferred,
+        ] {
+            assert!(found.check_from(other).is_err(), "{other:?}");
+        }
+        assert_eq!(found.to_state(), Some("forfeited"));
+        assert_eq!(found.guard_names(), ["may_be_forfeited"]);
+    }
+
+    fn forfeit_ok() -> ForfeitInput {
+        ForfeitInput {
+            reason: "Abandoned the unit".into(),
+            approver: Some(5),
+            approver_ok: true,
+            gate: Some(DeductionGate::default()),
+        }
+    }
+
+    #[test]
+    fn a_forfeiture_needs_a_reason_an_approver_and_the_deductions_to_be_ready() {
+        let deposit = Deposit {
+            held_amount: 800_000,
+            ..Default::default()
+        };
+        assert_eq!(forfeit_problem(&deposit, &forfeit_ok()), None);
+        let blank = ForfeitInput {
+            reason: "  ".into(),
+            ..forfeit_ok()
+        };
+        assert!(forfeit_problem(&deposit, &blank).is_some());
+        let alone = ForfeitInput {
+            approver: None,
+            approver_ok: false,
+            ..forfeit_ok()
+        };
+        assert!(forfeit_problem(&deposit, &alone).is_some());
+        let unchecked = ForfeitInput {
+            approver_ok: false,
+            ..forfeit_ok()
+        };
+        assert!(forfeit_problem(&deposit, &unchecked).is_some());
+        let unprepared = ForfeitInput {
+            gate: None,
+            ..forfeit_ok()
+        };
+        assert!(forfeit_problem(&deposit, &unprepared).is_some());
+        let waiting = ForfeitInput {
+            gate: Some(DeductionGate {
+                open_disputes: 1,
+                ..DeductionGate::default()
+            }),
+            ..forfeit_ok()
+        };
+        assert!(forfeit_problem(&deposit, &waiting).is_some());
     }
 }
