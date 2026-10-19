@@ -1242,8 +1242,7 @@ pub struct SopWithdrawn {
     pub document: DocumentId,
     /// The running number of that version.
     pub version: i64,
-    /// Acknowledgements cancelled by the withdrawal; empty until #53 cancels
-    /// them on this event.
+    /// The pending acknowledgements the withdrawal cancelled.
     pub cancelled_acknowledgements: Vec<i64>,
 }
 

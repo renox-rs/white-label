@@ -27,7 +27,7 @@ What is here so far:
 | Doing the steps (`HRM.ACL.10`): `task` with evidence, `checklist` from the checklist run, `document` from the accepted document, `sop_acknowledgement` from the SOP acknowledgements, in person with the employee's signature and a witness; waive and reopen by another holder of `onboarding.manage`; the onboarding completes after the last required step | §3, §4 | `steps` |
 | `HRM.RUL.17`: daily at 08:00 Asia/Dubai (`hr:step-reminders`), an open step past its due date is reminded to its assignees on the first run and then every 2 days, HR and the manager are told once after 5 days (not for an optional step); paused while the employee is `on_leave` or `absconded`; the due dates of open steps move by the days of approved leave as recorded now | §3, §6, §7 | `reminders`, `leave` |
 | A template with *blocks activation* makes `activate` wait for its required steps (not other templates', not optional steps, not a manual onboarding); the refusal lists the open steps and their assignees | §3, §4, §7 | `activation`, `employee_machine` |
-| `Workforce::employees_in(role, scope)` | §6 | `workforce` |
+| `Workforce`: `employees_in(role, scope)`, `all_staff`, `staff` (role, scopes, account, manager, leave of one employee), `employee_of_user` | §6 | `workforce` |
 | The employees, the employee page with its onboarding, and the templates page | §3, §4 | `pages` |
 
 The module owns `src/texts.rs`, the English texts (`wl_hr.*`). The app changes or translates them

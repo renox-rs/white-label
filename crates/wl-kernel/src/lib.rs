@@ -179,7 +179,8 @@ pub use voids::{
 pub use workforce::{
     EMPLOYEE_SUBJECT_TYPE, EmployeeActivated, EmployeeAssignmentChanged, EmployeeDeceased,
     EmployeeExited, EmployeeId, EmployeeOnboardingCancelled, NoWorkforce, ONBOARDING_SUBJECT_TYPE,
-    OnboardingCompleted, OnboardingId, OnboardingStarted, Workforce, provide_workforce, workforce,
+    OnboardingCompleted, OnboardingId, OnboardingStarted, StaffProfile, Workforce, provide_workforce,
+    workforce,
 };
 
 pub mod permissions {

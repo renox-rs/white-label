@@ -1,11 +1,17 @@
 //! The app's [`Workforce`](wl_kernel::workforce::Workforce) (wl-hr §6,
-//! issue #216): the employees with a job role or trade in a scope.
+//! issues #216 and #53): the employees with a job role or trade in a scope,
+//! every listed employee, the profile of one (role, scopes, account, manager,
+//! leave) and the employee of a user.
 
+use renox::chrono::Days;
 use renox::prelude::*;
 use wl_kernel::Subject;
-use wl_kernel::workforce::{EmployeeId, Workforce, WorkforceFuture};
+use wl_kernel::documents::today;
+use wl_kernel::workforce::{EmployeeId, StaffProfile, Workforce, WorkforceFuture};
 
+use crate::assignees;
 use crate::employee::{Employee, EmployeeScope, EmployeeStatus};
+use crate::leave::{LeaveRequest, LeaveStatus};
 
 /// The workforce of the HR module.
 #[derive(Debug, Clone, Copy, Default)]
@@ -40,6 +46,76 @@ impl Workforce for Staff {
                 .into_iter()
                 .map(|e| e.employee_id())
                 .collect())
+        })
+    }
+
+    fn all_staff<'a>(&'a self, db: &'a Db) -> WorkforceFuture<'a, Vec<EmployeeId>> {
+        Box::pin(async move {
+            Ok(Employee::query()
+                .where_(Employee::STATUS.is_in(EmployeeStatus::WORKING))
+                .order_by(Employee::ID)
+                .get(db)
+                .await?
+                .into_iter()
+                .map(|e| e.employee_id())
+                .collect())
+        })
+    }
+
+    fn staff<'a>(
+        &'a self,
+        state: &'a AppState,
+        employee: EmployeeId,
+    ) -> WorkforceFuture<'a, Option<StaffProfile>> {
+        Box::pin(async move {
+            let Some(row) = Employee::find(&state.db, employee.0).await? else {
+                return Ok(None);
+            };
+            let scopes = row.scopes(&state.db).await?;
+            let managers = assignees::resolve(state, &row, &scopes, "manager").await?;
+            let on_leave = row.status == EmployeeStatus::OnLeave;
+            let returns_on = if on_leave {
+                let day = today();
+                LeaveRequest::query()
+                    .where_(LeaveRequest::EMPLOYEE_ID.eq(row.id))
+                    .where_(LeaveRequest::STATUS.is_in([LeaveStatus::Approved, LeaveStatus::Completed]))
+                    .get(&state.db)
+                    .await?
+                    .into_iter()
+                    .filter(|leave| leave.from_date <= day && day <= leave.to_date)
+                    .map(|leave| leave.to_date)
+                    .max()
+                    .and_then(|last| last.checked_add_days(Days::new(1)))
+            } else {
+                None
+            };
+            Ok(Some(StaffProfile {
+                employee,
+                party: row.party(),
+                user_id: row.user_id,
+                role: row.job_role.clone(),
+                scopes,
+                legal_entity_id: row.legal_entity_id,
+                listed: EmployeeStatus::WORKING.contains(&row.status),
+                on_leave,
+                returns_on,
+                managers,
+            }))
+        })
+    }
+
+    fn employee_of_user<'a>(
+        &'a self,
+        db: &'a Db,
+        user_id: i64,
+    ) -> WorkforceFuture<'a, Option<EmployeeId>> {
+        Box::pin(async move {
+            Ok(Employee::query()
+                .where_(Employee::USER_ID.eq(user_id))
+                .order_by(Employee::ID)
+                .first(db)
+                .await?
+                .map(|e| e.employee_id()))
         })
     }
 }
