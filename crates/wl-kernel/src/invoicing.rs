@@ -1407,9 +1407,452 @@ pub struct SupplierBillReopened {
 
 impl Event for SupplierBillReopened {}
 
+/// The subject type of a supplier debit note, for [`Subject`] references.
+pub const SUPPLIER_DEBIT_NOTE_SUBJECT_TYPE: &str = "invoicing.supplier_debit_note";
+
+/// Supplier debit note numbers when the client has more than one active
+/// legal entity: `DN-ACME-2026-0001`; gapless, per entity, reset yearly (take
+/// them with [`Series::next`] inside the `issue` transaction).
+pub const SUPPLIER_DEBIT_NOTE_SERIES: Series = Series {
+    key: "supplier_debit_note",
+    pattern: "{prefix}-{entity}-{yyyy}-{0000}",
+    prefix: "DN",
+    reset: Reset::Yearly,
+    gapless: true,
+    per_entity: true,
+};
+
+/// Supplier debit note numbers when the client has exactly one active legal
+/// entity: `DN-2026-0001`. Same key and count as
+/// [`SUPPLIER_DEBIT_NOTE_SERIES`].
+pub const SUPPLIER_DEBIT_NOTE_SERIES_SINGLE: Series = Series {
+    key: "supplier_debit_note",
+    pattern: "{prefix}-{yyyy}-{0000}",
+    prefix: "DN",
+    reset: Reset::Yearly,
+    gapless: true,
+    per_entity: true,
+};
+
+/// The supplier debit note series for a client with `active_entities` active
+/// legal entities: [`SUPPLIER_DEBIT_NOTE_SERIES_SINGLE`] for exactly one,
+/// else [`SUPPLIER_DEBIT_NOTE_SERIES`].
+pub fn supplier_debit_note_series(active_entities: usize) -> &'static Series {
+    if active_entities == 1 {
+        &SUPPLIER_DEBIT_NOTE_SERIES_SINGLE
+    } else {
+        &SUPPLIER_DEBIT_NOTE_SERIES
+    }
+}
+
+/// The id of a supplier debit note (wl-invoicing §3).
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default, Serialize, Deserialize,
+)]
+#[serde(transparent)]
+pub struct SupplierDebitNoteId(pub i64);
+
+impl SupplierDebitNoteId {
+    /// The debit note as a [`Subject`]: `invoicing.supplier_debit_note:7`.
+    pub fn subject(self) -> Subject {
+        Subject::new(SUPPLIER_DEBIT_NOTE_SUBJECT_TYPE, self.0)
+    }
+}
+
+impl fmt::Display for SupplierDebitNoteId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl From<i64> for SupplierDebitNoteId {
+    fn from(id: i64) -> Self {
+        SupplierDebitNoteId(id)
+    }
+}
+
+/// The lifecycle state of a supplier debit note (wl-invoicing §4); the same
+/// four states, with the same stored names, as the `wl-invoicing` machine.
+#[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum SupplierDebitNoteStatus {
+    /// Being prepared: no number, no effect on any balance.
+    #[default]
+    Draft,
+    /// Issued with a number; it reduced the bill or opened a debit balance.
+    Issued,
+    /// Settled against a bill, refunded or otherwise closed (terminal).
+    Settled,
+    /// Cancelled (terminal).
+    Cancelled,
+}
+
+/// What other modules see of a supplier debit note.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SupplierDebitNoteSummary {
+    /// The id.
+    pub id: SupplierDebitNoteId,
+    /// The number; `None` until issued.
+    pub number: Option<String>,
+    /// The state now.
+    pub status: SupplierDebitNoteStatus,
+    /// The supplier.
+    pub supplier: PartyId,
+    /// The bill it reduces; `None` while it waits for the bill.
+    pub bill: Option<SupplierBillId>,
+    /// The receiving legal entity.
+    pub legal_entity_id: i64,
+    /// The ISO currency code.
+    pub currency: String,
+    /// The total with VAT, in fils of `currency`.
+    pub gross: i64,
+    /// What reduced the bill, in fils.
+    pub applied_to_bill: i64,
+    /// What is open as the supplier's debit balance, in fils.
+    pub debit_balance: i64,
+}
+
+/// A supplier debit note was issued (`issue`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SupplierDebitNoteIssued {
+    /// The debit note.
+    pub debit_note: SupplierDebitNoteId,
+    /// The supplier.
+    pub supplier: PartyId,
+    /// The bill it reduces.
+    pub bill: SupplierBillId,
+    /// The return it came from, if any.
+    pub return_to_supplier: Option<Subject>,
+    /// The total with VAT, in fils of the bill's currency.
+    pub amount: i64,
+    /// The VAT in it, in fils of the bill's currency.
+    pub vat: i64,
+}
+
+impl Event for SupplierDebitNoteIssued {}
+
+/// One returned line of a [`SupplierReturnDispatched`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SupplierReturnLine {
+    /// The returned item.
+    pub item: Subject,
+    /// The stock lot, if tracked.
+    pub lot: Option<Subject>,
+    /// The returned quantity in thousandths.
+    pub qty_milli: i64,
+    /// The purchase order line the goods came in on.
+    pub po_line: Subject,
+    /// The unit price on the purchase order, in fils of its currency.
+    pub po_price: i64,
+    /// Why it goes back (a reason key, as text).
+    pub reason: String,
+}
+
+/// Goods were dispatched back to a supplier (`FIN.RUL.17` drafts a debit
+/// note from it). Defined here by whichever of wl-invoicing and
+/// wl-inventory landed first; the other reuses it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SupplierReturnDispatched {
+    /// The return's id in its owner's table.
+    pub return_id: i64,
+    /// The supplier the goods go back to.
+    pub supplier: PartyId,
+    /// The return as a [`Subject`]; one debit note draft exists per source.
+    pub source: Subject,
+    /// The returned lines.
+    pub lines: Vec<SupplierReturnLine>,
+}
+
+impl Event for SupplierReturnDispatched {}
+
+/// The 422 of a debit note action while invoicing is off.
+fn debit_notes_off() -> Error {
+    Error::Status(
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "supplier debit notes are not available: invoicing is not enabled".to_string(),
+    )
+}
+
+/// Drafts and reads supplier debit notes. `wl-invoicing` provides it with
+/// [`provide_supplier_debit_notes`]; without that module,
+/// [`supplier_debit_notes`] gives [`NoSupplierDebitNotes`].
+pub trait SupplierDebitNotes: Send + Sync + 'static {
+    /// Drafts the debit note for a dispatched return (`FIN.RUL.17`), once
+    /// per `source`; a repeat gives the existing draft. The default refuses
+    /// (422): invoicing is not enabled.
+    fn draft_for_return<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _event: SupplierReturnDispatched,
+    ) -> SupplierBillFuture<'a, SupplierDebitNoteId> {
+        Box::pin(async { Err(debit_notes_off()) })
+    }
+
+    /// The debit note `id`, or `None` when there is none.
+    fn find<'a>(
+        &'a self,
+        _db: &'a Db,
+        _id: SupplierDebitNoteId,
+    ) -> SupplierBillFuture<'a, Option<SupplierDebitNoteSummary>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    /// What `supplier` has open as a debit balance with the receiving
+    /// `entity` in `currency`, in fils: the sum over its `issued` notes.
+    /// The default is 0.
+    fn debit_balance<'a>(
+        &'a self,
+        _db: &'a Db,
+        _supplier: PartyId,
+        _entity: i64,
+        _currency: &'a str,
+    ) -> SupplierBillFuture<'a, i64> {
+        Box::pin(async { Ok(0) })
+    }
+}
+
+/// The supplier debit notes when `invoicing` is off: none can be drafted,
+/// none exist and the debit balance is 0.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoSupplierDebitNotes;
+
+impl SupplierDebitNotes for NoSupplierDebitNotes {}
+
+/// Makes `notes` the app's [`SupplierDebitNotes`]; `wl-invoicing` calls it in
+/// `register`.
+pub fn provide_supplier_debit_notes(app: &mut Registry, notes: impl SupplierDebitNotes) {
+    let notes: Arc<dyn SupplierDebitNotes> = Arc::new(notes);
+    app.provide(notes);
+}
+
+/// The app's [`SupplierDebitNotes`], or [`NoSupplierDebitNotes`] when none is
+/// provided.
+pub fn supplier_debit_notes(state: &AppState) -> Arc<dyn SupplierDebitNotes> {
+    match state.provided::<Arc<dyn SupplierDebitNotes>>() {
+        Some(notes) => Arc::clone(&notes),
+        None => Arc::new(NoSupplierDebitNotes),
+    }
+}
+
+/// The cost to take back on one cost object.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CostReversal {
+    /// The cost object (e.g. a campaign or project) that carried the cost.
+    pub cost_object: Subject,
+    /// The amount to take back, in fils of AED.
+    pub amount_aed: i64,
+}
+
+/// A request to reverse cost on cost objects (`CostPoster::reverse`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReverseCost {
+    /// The record that causes it, e.g. the supplier debit note.
+    pub source: Subject,
+    /// The idempotency key, e.g. `invoicing.supplier_debit_note:<id>`. A key
+    /// that was already used changes nothing.
+    pub key: String,
+    /// The cost to take back.
+    pub lines: Vec<CostReversal>,
+}
+
+impl ReverseCost {
+    /// A reversal caused by `source`, under the idempotency `key`, with no
+    /// lines yet.
+    pub fn new(source: Subject, key: impl Into<String>) -> Self {
+        Self {
+            source,
+            key: key.into(),
+            lines: Vec::new(),
+        }
+    }
+
+    /// Adds `amount_aed` fils to take back from `cost_object`.
+    pub fn line(mut self, cost_object: Subject, amount_aed: i64) -> Self {
+        self.lines.push(CostReversal {
+            cost_object,
+            amount_aed,
+        });
+        self
+    }
+}
+
+/// Posts and reverses cost on cost objects. The owner of the cost entries
+/// provides it with [`provide_cost_poster`]; `wl-invoicing` calls it and
+/// stores no cost entries itself. Without a provider, [`cost_poster`] gives
+/// [`NoCostPoster`].
+pub trait CostPoster: Send + Sync + 'static {
+    /// Takes cost back from its cost objects. The default does nothing and
+    /// succeeds: no module keeps cost entries.
+    fn reverse<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _request: ReverseCost,
+    ) -> SupplierBillFuture<'a, ()> {
+        Box::pin(async { Ok(()) })
+    }
+}
+
+/// The cost poster when no module keeps cost entries: a no-op.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoCostPoster;
+
+impl CostPoster for NoCostPoster {}
+
+/// Makes `poster` the app's [`CostPoster`].
+pub fn provide_cost_poster(app: &mut Registry, poster: impl CostPoster) {
+    let poster: Arc<dyn CostPoster> = Arc::new(poster);
+    app.provide(poster);
+}
+
+/// The app's [`CostPoster`], or [`NoCostPoster`] when none is provided.
+pub fn cost_poster(state: &AppState) -> Arc<dyn CostPoster> {
+    match state.provided::<Arc<dyn CostPoster>>() {
+        Some(poster) => Arc::clone(&poster),
+        None => Arc::new(NoCostPoster),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_supplier_debit_note_id_is_a_subject_and_a_plain_number() {
+        let id = SupplierDebitNoteId::from(7);
+        assert_eq!(id.to_string(), "7");
+        assert_eq!(
+            id.subject(),
+            Subject::new("invoicing.supplier_debit_note", 7)
+        );
+        assert_eq!(renox::serde_json::to_string(&id).unwrap(), "7");
+    }
+
+    #[test]
+    fn supplier_debit_note_series_are_gapless_per_entity_and_yearly() {
+        for series in [
+            &SUPPLIER_DEBIT_NOTE_SERIES,
+            &SUPPLIER_DEBIT_NOTE_SERIES_SINGLE,
+        ] {
+            assert_eq!(series.key, "supplier_debit_note");
+            assert_eq!(series.prefix, "DN");
+            assert_eq!(series.reset, Reset::Yearly);
+            assert!(series.gapless && series.per_entity);
+        }
+        assert_eq!(
+            SUPPLIER_DEBIT_NOTE_SERIES.pattern,
+            "{prefix}-{entity}-{yyyy}-{0000}"
+        );
+        assert_eq!(
+            SUPPLIER_DEBIT_NOTE_SERIES_SINGLE.pattern,
+            "{prefix}-{yyyy}-{0000}"
+        );
+        assert_eq!(
+            supplier_debit_note_series(1),
+            &SUPPLIER_DEBIT_NOTE_SERIES_SINGLE
+        );
+        assert_eq!(supplier_debit_note_series(2), &SUPPLIER_DEBIT_NOTE_SERIES);
+        assert_eq!(supplier_debit_note_series(0), &SUPPLIER_DEBIT_NOTE_SERIES);
+        assert_ne!(SUPPLIER_DEBIT_NOTE_SERIES.key, CREDIT_NOTE_SERIES.key);
+    }
+
+    #[test]
+    fn supplier_debit_note_states_are_stored_in_snake_case() {
+        use SupplierDebitNoteStatus::*;
+        assert_eq!(SupplierDebitNoteStatus::default(), Draft);
+        let names: Vec<_> = [Draft, Issued, Settled, Cancelled]
+            .iter()
+            .map(|s| s.as_str())
+            .collect();
+        assert_eq!(names, ["draft", "issued", "settled", "cancelled"]);
+    }
+
+    #[test]
+    fn the_debit_note_event_and_return_round_trip_through_json() {
+        let issued = SupplierDebitNoteIssued {
+            debit_note: SupplierDebitNoteId(7),
+            supplier: PartyId(4),
+            bill: SupplierBillId(3),
+            return_to_supplier: Some(Subject::new("inventory.supplier_return", 2)),
+            amount: 31_500,
+            vat: 1_500,
+        };
+        let json = renox::serde_json::to_string(&issued).unwrap();
+        assert_eq!(
+            renox::serde_json::from_str::<SupplierDebitNoteIssued>(&json).unwrap(),
+            issued
+        );
+        let dispatched = SupplierReturnDispatched {
+            return_id: 2,
+            supplier: PartyId(4),
+            source: Subject::new("inventory.supplier_return", 2),
+            lines: vec![SupplierReturnLine {
+                item: Subject::new("inventory.item", 9),
+                lot: None,
+                qty_milli: 3_000,
+                po_line: Subject::new("procurement.po_line", 11),
+                po_price: 9_500,
+                reason: "damaged".into(),
+            }],
+        };
+        let json = renox::serde_json::to_string(&dispatched).unwrap();
+        assert_eq!(
+            renox::serde_json::from_str::<SupplierReturnDispatched>(&json).unwrap(),
+            dispatched
+        );
+    }
+
+    #[test]
+    fn a_cost_reversal_is_built_with_its_builder() {
+        let request = ReverseCost::new(
+            SupplierDebitNoteId(7).subject(),
+            "invoicing.supplier_debit_note:7",
+        )
+        .line(Subject::new("sales.campaign", 1), 30_000);
+        assert_eq!(request.key, "invoicing.supplier_debit_note:7");
+        assert_eq!(request.lines.len(), 1);
+        assert_eq!(request.lines[0].amount_aed, 30_000);
+    }
+
+    #[renox::test]
+    async fn without_invoicing_debit_notes_refuse_and_cost_is_a_no_op() {
+        let app = renox::testing::TestApp::new(App::new()).await;
+        let state = app.state();
+        let notes = supplier_debit_notes(state);
+        let event = SupplierReturnDispatched {
+            return_id: 1,
+            supplier: PartyId(4),
+            source: Subject::new("inventory.supplier_return", 1),
+            lines: Vec::new(),
+        };
+        assert!(matches!(
+            notes.draft_for_return(state, event.clone()).await,
+            Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
+        ));
+        assert!(matches!(
+            NoSupplierDebitNotes.draft_for_return(state, event).await,
+            Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
+        ));
+        assert_eq!(
+            notes
+                .find(&state.db, SupplierDebitNoteId(7))
+                .await
+                .expect("no failure"),
+            None
+        );
+        assert_eq!(
+            notes
+                .debit_balance(&state.db, PartyId(4), 1, "AED")
+                .await
+                .expect("no failure"),
+            0
+        );
+        let reverse = ReverseCost::new(SupplierDebitNoteId(7).subject(), "k")
+            .line(Subject::new("sales.campaign", 1), 100);
+        cost_poster(state)
+            .reverse(state, reverse.clone())
+            .await
+            .expect("a no-op");
+        NoCostPoster.reverse(state, reverse).await.expect("a no-op");
+    }
 
     #[test]
     fn a_supplier_bill_id_is_a_subject_and_a_plain_number() {

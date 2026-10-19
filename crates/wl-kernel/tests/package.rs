@@ -1262,3 +1262,36 @@ fn the_registry_seeds_statutory_otp_ungrouped_and_booking_types() {
     assert_eq!(reactions("kernel_package.plain"), [G::StaffTask]);
     assert_eq!(reactions("kernel_package.booking"), [G::MarkContactInvalid]);
 }
+
+/// #76 AC1: without the invoicing module, debit notes refuse or are empty
+/// and the cost poster is a no-op.
+#[renox::test]
+async fn without_invoicing_debit_notes_are_off_and_cost_is_a_no_op() {
+    use wl_kernel::invoicing::{
+        ReverseCost, SupplierDebitNoteId, cost_poster, supplier_debit_notes,
+    };
+    use wl_kernel::{PartyId, Subject};
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let state = app.state();
+    let notes = supplier_debit_notes(state);
+    assert_eq!(
+        SupplierDebitNoteId(7).subject().to_string(),
+        "invoicing.supplier_debit_note:7"
+    );
+    assert_eq!(
+        notes.find(&state.db, SupplierDebitNoteId(7)).await.unwrap(),
+        None
+    );
+    assert_eq!(
+        notes
+            .debit_balance(&state.db, PartyId(1), 1, "AED")
+            .await
+            .unwrap(),
+        0
+    );
+    let request = ReverseCost::new(SupplierDebitNoteId(7).subject(), "k")
+        .line(Subject::new("sales.campaign", 1), 100);
+    cost_poster(state).reverse(state, request).await.unwrap();
+}
