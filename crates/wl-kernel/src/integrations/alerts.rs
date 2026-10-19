@@ -12,7 +12,7 @@ use super::SUBJECT_TYPE;
 use super::connection::IntegrationConnection;
 use crate::documents::dubai_text;
 use crate::notify::{
-    self, Category, NotificationTypeDef, Notifier, NotifyChannel, NotifyRequest, Urgency,
+    self, Category, NotificationTypeDef, NotifyChannel, NotifyRequest, Urgency,
 };
 use crate::scopes::COMPANY_ADMIN_ROLE;
 use crate::subject::Subject;

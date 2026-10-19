@@ -4,6 +4,7 @@
 use renox::auth::Permissions;
 use renox::db::{DateTime, Json, now};
 use renox::prelude::*;
+use renox::state_machine::StateMachine;
 use renox::testing::TestApp;
 use wl_kernel::late_entries::{self, fired};
 use wl_kernel::{
@@ -106,9 +107,10 @@ async fn limits_that_cannot_work_are_refused() {
 #[renox::test]
 async fn a_late_entry_keeps_both_times_and_finds_its_record() {
     let app = app().await;
-    let entry = LateEntry::create(
-        app.db(),
-        LateEntry {
+    // A fixture in the status it carries: the machine starts new entries in
+    // `requested`.
+    let mut tx = app.db().begin().await.unwrap();
+    let mut entry = LateEntry {
             subject_type: "bookings.check_in".into(),
             record_id: Some(8),
             parent_type: Some("bookings.booking".into()),
@@ -121,10 +123,12 @@ async fn a_late_entry_keeps_both_times_and_finds_its_record() {
             payload: Json(renox::serde_json::json!({ "room": 4 })),
             status: LateEntryStatus::Recorded,
             ..Default::default()
-        },
-    )
-    .await
-    .unwrap();
+    };
+    entry
+        .insert_in_state(&mut tx, LateEntryStatus::Recorded, "fixture")
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
     let found = LateEntry::of_record(app.db(), "bookings.check_in", 8)
         .await
         .unwrap()

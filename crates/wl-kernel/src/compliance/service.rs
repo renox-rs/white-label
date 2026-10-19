@@ -33,7 +33,7 @@ use super::rules::{ComplianceRule, owner_role};
 use crate::automation::RuleRun;
 use crate::documents::dubai_text;
 use crate::notify::{
-    self, Category, NotificationTypeDef, Notifier, NotifyChannel, NotifyRequest, Urgency,
+    self, Category, NotificationTypeDef, NotifyChannel, NotifyRequest, Urgency,
 };
 use crate::role_tasks::{self, RoleTask};
 use crate::scopes::COMPANY_ADMIN_ROLE;

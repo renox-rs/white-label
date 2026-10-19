@@ -22,7 +22,7 @@ use super::{RULE, TASK, TASK_AT, TASK_ZONE, period_for};
 use crate::automation::{RuleRunSpec, RunOutcome, run_rule};
 use crate::documents::today;
 use crate::notify::{
-    self, Category, NotificationTypeDef, Notifier, NotifyChannel, NotifyRequest,
+    self, Category, NotificationTypeDef, NotifyChannel, NotifyRequest,
 };
 use crate::subject::Subject;
 use crate::texts::{en, en_with};
