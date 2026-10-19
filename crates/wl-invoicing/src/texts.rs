@@ -877,6 +877,14 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_invoicing.escalation.body",
         "The dispute of invoice {{ number }} ({{ party_name }}) is still open after {{ days }} days (escalation step {{ step }}). Disputed amount: {{ amount }}. Reason: {{ reason }}. Raised on {{ raised_on }}. Ticket: {{ ticket }}. Owner: {{ owner }}. See the invoice: {{ link }}",
     ),
+    (
+        "wl_invoicing.supplier_bill_duplicate.subject",
+        "Possible duplicate supplier bill {{ number }}",
+    ),
+    (
+        "wl_invoicing.supplier_bill_duplicate.body",
+        "The supplier bill {{ number }} of {{ supplier }} ({{ amount }}) may duplicate the earlier bill {{ earlier_number }}. It is held until another user approves it with a reason or it is voided. See the bill: {{ link }}",
+    ),
 ];
 
 /// The English text for `key`, or `key` itself when the package has none.

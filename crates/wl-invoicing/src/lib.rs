@@ -6,8 +6,10 @@ mod ageing_pages;
 pub mod allocate;
 pub mod allocation;
 pub mod bad_debt_relief;
+mod bill_events;
 pub mod bill_line;
 pub mod bill_machine;
+pub mod bill_notices;
 pub mod bill_submit;
 pub mod config;
 pub mod credit;
@@ -33,6 +35,7 @@ mod machine;
 pub mod overdue;
 pub mod owner;
 pub mod pages;
+pub mod payables;
 pub mod policy;
 pub mod recover;
 pub mod recovery;
@@ -505,6 +508,12 @@ impl Module for WlInvoicing {
         reversal::register(app);
         // Other modules draft and read invoices through the kernel (§6).
         wl_kernel::invoicing::provide_invoicer(app, Invoices);
+        // Other modules read supplier bill lines through the kernel (§6).
+        wl_kernel::invoicing::provide_supplier_bills(app, payables::Payables);
+        // `SupplierBillApproved` / `SupplierBillVoided` after a commit, and
+        // the accountant notice of a held possible duplicate.
+        bill_events::register(app);
+        bill_notices::register_types();
     }
 }
 

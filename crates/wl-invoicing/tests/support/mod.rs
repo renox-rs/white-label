@@ -23,7 +23,7 @@ use wl_kernel::documents::today;
 use wl_kernel::invoicing::{
     BadDebtRecovered, CreditNoteReopened, DraftLine, InvoiceDisputeResolved, InvoiceDisputed,
     InvoiceDraft, InvoiceId, InvoiceIssued, InvoiceOverdue, InvoicePaid, InvoiceReopened,
-    InvoiceWrittenOff, VatCategory,
+    InvoiceWrittenOff, SupplierBillApproved, SupplierBillVoided, VatCategory,
 };
 use wl_kernel::notify::{MessageId, Notifier, NotifyFuture, NotifyRequest};
 use wl_kernel::parties::{BillingIdentity, PartyDirectory, PartyFuture, PartyStatus, PartySummary};
@@ -433,6 +433,10 @@ pub struct Booted {
     pub disputed: Recorded<InvoiceDisputed>,
     /// The tickets asked of ticketing.
     pub tickets: TicketDesk,
+    /// `SupplierBillApproved`.
+    pub bill_approved: Recorded<SupplierBillApproved>,
+    /// `SupplierBillVoided`.
+    pub bill_voided: Recorded<SupplierBillVoided>,
 }
 
 impl Booted {
@@ -907,6 +911,8 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
     let recovered = Recorded::new();
     let resolved = Recorded::new();
     let disputed = Recorded::new();
+    let bill_approved = Recorded::new();
+    let bill_voided = Recorded::new();
     let tickets = TicketDesk::default();
     let creator: Arc<dyn TaskCreator> = Arc::new(tickets.clone());
     let notices = Recording::default();
@@ -932,6 +938,8 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
     let app = record(app, &recovered);
     let app = record(app, &resolved);
     let app = record(app, &disputed);
+    let app = record(app, &bill_approved);
+    let app = record(app, &bill_voided);
     let config = ClientConfig::parse(CLIENT).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     let dir = views.path().to_path_buf();
@@ -1005,5 +1013,7 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
         resolved,
         disputed,
         tickets,
+        bill_approved,
+        bill_voided,
     }
 }
