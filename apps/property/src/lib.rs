@@ -25,6 +25,7 @@ pub mod permissions;
 pub mod renew;
 pub mod renewal;
 mod tasks;
+pub mod termination;
 pub mod terms;
 mod texts;
 pub mod unit;
@@ -39,8 +40,8 @@ pub use cancellation::CancelWait;
 pub use building::{Building, Floor, NewBuilding, create_building, ensure_floor};
 pub use charge::{ChargeStatus, LeaseCharge};
 pub use charge_type::ChargeType;
-pub use events::{LeaseActivated, LeaseCancelled, LeaseNoticeWithdrawn};
-pub use lease::{Lease, LeaseStatus, RenewalDecision, VersionKind};
+pub use events::{LeaseActivated, LeaseCancelled, LeaseNoticeWithdrawn, LeaseTerminated};
+pub use lease::{CreditChoice, Lease, LeaseStatus, RenewalDecision, VersionKind};
 pub use leases::{DraftEdit, EjariInput, NewLease, NewVersion};
 pub use unit::{NewUnit, Unit, UnitStatus, UnitType, UnitUse, create_unit};
 
@@ -126,6 +127,7 @@ impl Module for Property {
         notices::register_types();
         chase::schedule(app);
         renewal::schedule(app);
+        termination::schedule(app);
         // A building is the scope roles are assigned in.
         wl_kernel::scopes::register_label(Building::TABLE, |db, id| {
             let id = id.to_owned();

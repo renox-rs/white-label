@@ -101,6 +101,18 @@ pub enum RenewalDecision {
     NotRenewing,
 }
 
+/// What the property manager chooses for the credit a termination leaves on
+/// the tenant's balance after the deposit settlement's deductions took theirs
+/// (`terminate`).
+#[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum CreditChoice {
+    /// The rest is refunded through the Refund flow.
+    #[default]
+    Refund,
+    /// The rest stays as the tenant's credit.
+    Keep,
+}
+
 /// One version of a lease.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
 #[model(
@@ -237,6 +249,16 @@ pub struct Lease {
     pub actual_move_out: Option<NaiveDate>,
     /// Rent stays due to this date after move-out, when the contract says so.
     pub rent_due_until: Option<NaiveDate>,
+    /// The day the lease became `terminated`.
+    pub terminated_on: Option<NaiveDate>,
+    /// Refund the credit that is left, or keep it as credit.
+    pub credit_choice: CreditChoice,
+    /// The net amount credited at termination for the periods after the
+    /// move-out date, in fils.
+    pub termination_credit: i64,
+    /// The day the property manager was chased for the Ejari cancellation
+    /// (`PRP.RUL.13`).
+    pub ejari_chased_on: Option<NaiveDate>,
     /// The day the move-out inspection was completed.
     pub inspection_done_on: Option<NaiveDate>,
     /// The day all the keys were returned.

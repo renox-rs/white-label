@@ -70,6 +70,30 @@ pub struct LeaseNoticeWithdrawn {
 
 impl Event for LeaseNoticeWithdrawn {}
 
+/// A lease was terminated and its money effects ran (`terminate`). The
+/// tenant's portal turns read-only on it (`POR.ACL.01`: wl-portal's end
+/// policy maps it to `end`; the grant closes after 90 days).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LeaseTerminated {
+    /// The version.
+    pub lease: i64,
+    /// The lease all versions belong to.
+    pub root: i64,
+    /// The unit.
+    pub unit: i64,
+    /// The tenant.
+    pub tenant: PartyId,
+    /// The day the tenant moved out (the keys were returned).
+    pub move_out: NaiveDate,
+    /// Rent stayed due until this day, when the contract says so.
+    pub rent_due_until: Option<NaiveDate>,
+    /// The net amount credited for the periods after the move-out date, in
+    /// fils.
+    pub credited: i64,
+}
+
+impl Event for LeaseTerminated {}
+
 #[cfg(test)]
 mod tests {
     use super::*;

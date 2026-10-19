@@ -42,9 +42,13 @@
 //! - `withdraw_notice*` goes back to the state the dates give, clears the
 //!   notice, returns the unit to `occupied` and cancels the penalty that is
 //!   not invoiced ([`crate::withdraw`], BL-PRP-10).
-//! - `amend`, `terminate` and `force_terminate` are declared with their
-//!   states and permissions; their effects are built by BL-PRP-08, BL-PRP-11
-//!   and BL-PRP-12 and until then the pages do not offer them.
+//! - `terminate` needs the move-out inspection and the keys, stores the
+//!   move-out, vacates the unit and cancels the recurring charges after the
+//!   move-out date; the credit notes, the cheques and the deposit follow the
+//!   commit ([`crate::termination`], BL-PRP-11).
+//! - `amend` and `force_terminate` are declared with their states and
+//!   permissions; their effects are built by BL-PRP-08 and BL-PRP-12 and until
+//!   then the pages do not offer them.
 
 use renox::db::Transaction;
 use renox::prelude::*;
@@ -62,6 +66,9 @@ use crate::lease_checks::{activate_checks, apply_activation, submit_checks};
 use crate::notice::{notice_input, notice_problem, record_effects};
 use crate::permissions;
 use crate::renew::renew_effects;
+use crate::termination::{
+    problem as terminate_problem, terminate_effects, terminate_input,
+};
 use crate::withdraw::{problem as withdraw_problem, withdraw_day, withdraw_effects};
 use crate::texts::english;
 
@@ -438,7 +445,16 @@ impl StateMachine for Lease {
             .transition(
                 user(TERMINATE, "Terminate", permissions::LEASES_MANAGE)
                     .from([NoticeGiven])
-                    .to(Terminated),
+                    .to(Terminated)
+                    .guard("move_out", |lease: &Lease, ctx| {
+                        let problem = terminate_problem(lease, &terminate_input(ctx));
+                        Box::pin(async move { problem.map_or(Ok(()), Err) })
+                    })
+                    .effect(|lease: &Lease, ctx, tx| {
+                        let lease = lease.clone();
+                        let input = terminate_input(ctx);
+                        Box::pin(async move { terminate_effects(&mut *tx, &lease, &input).await })
+                    }),
             )
             .transition(
                 user(

@@ -53,6 +53,10 @@ pub const NOTICE_OF_CHANGED_TERMS: &str = "lease.notice_of_changed_terms";
 /// that depend on the notice start from it.
 pub const LANDLORD_NOTICE: &str = "lease.landlord_notice";
 
+/// The property managers are told that a terminated lease still has its
+/// Ejari or Tawtheeq registration to cancel (`PRP.RUL.13`).
+pub const EJARI_CANCELLATION: &str = "property.ejari_cancellation";
+
 /// An e-mail reminder type of the vertical with English texts.
 fn english_reminder(key: &str, texts: &str) -> NotificationTypeDef {
     let subject = english(&format!("property.notices.{texts}_subject"), &[]);
@@ -97,6 +101,7 @@ pub(crate) fn register_types() {
         true,
     ));
     notify::register_type(tenant_message(LANDLORD_NOTICE, "landlord_notice", true));
+    notify::register_type(staff_reminder(EJARI_CANCELLATION, "ejari_cancellation"));
 }
 
 /// The users who hold `role` in the building of `lease`, or everywhere.
@@ -262,6 +267,18 @@ pub async fn landlord_notice(
         }));
     notify::notifier(state).notify(state, request).await?;
     Ok(())
+}
+
+/// Tells the property managers that the Ejari or Tawtheeq registration of the
+/// terminated `lease` is not cancelled yet (`PRP.RUL.13`). Returns who was
+/// told.
+pub async fn ejari_cancellation(state: &AppState, lease: &Lease) -> Result<Vec<i64>> {
+    let data = json!({
+        "lease": lease.number_with_version(),
+        "ejari_number": lease.ejari_number.clone().unwrap_or_default(),
+        "terminated_on": lease.terminated_on.map(shown).unwrap_or_default(),
+    });
+    tell_managers(state, lease, EJARI_CANCELLATION, data).await
 }
 
 /// Tells the property managers that `lease` is holding over until the end of
