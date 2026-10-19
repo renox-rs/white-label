@@ -35,9 +35,14 @@ use wl_kernel::invoicing::{
 };
 use wl_kernel::notify::{MessageId, Notifier, NotifyFuture, NotifyRequest};
 use wl_kernel::parties::{BillingIdentity, PartyDirectory, PartyFuture, PartyStatus, PartySummary};
+use wl_kernel::bank_statements::{BankBalance, BankStatementFuture, BankStatements};
+use wl_kernel::cheques::{
+    ChequeFuture, ChequeId, ChequeSchedule, ChequeSummary, Cheques, OpenCheque, RegisterCheque,
+};
 use wl_kernel::payments::{
-    AllocationTarget, PaymentFuture, PaymentId, PaymentRecorder, PaymentSummary, RecordPayment,
-    RefundId, RefundRequest, ReversalReason,
+    AllocationTarget, BankPayment, Direction, PaymentFuture, PaymentId, PaymentMethod,
+    PaymentRecorder, PaymentStatus, PaymentSummary, RecordPayment, RefundId, RefundRequest,
+    ReversalReason, UnpaidRefund,
 };
 use wl_kernel::tickets::{OpenTicket, TaskCreator, TicketFuture, TicketId, TicketRef};
 use wl_kernel::{ClientConfig, PartyId, Subject};
@@ -75,6 +80,9 @@ pub const BLUE_DUNES: PartyId = PartyId(1);
 pub const BLUE_DUNES_EMAIL: &str = "ap@bluedunes.example";
 /// Quiet Sands LLC: no billing e-mail.
 pub const QUIET_SANDS: PartyId = PartyId(2);
+
+/// A party whose status is `blocked`; it exists only for status reads.
+pub const BLOCKED_PARTY: PartyId = PartyId(3);
 
 /// The parties the tests bill.
 #[derive(Debug, Clone, Copy, Default)]
@@ -124,8 +132,14 @@ impl PartyDirectory for TestDirectory {
         Box::pin(async { Ok(None) })
     }
 
-    fn status<'a>(&'a self, _db: &'a Db, _party: PartyId) -> PartyFuture<'a, Option<PartyStatus>> {
-        Box::pin(async { Ok(Some(PartyStatus::Active)) })
+    fn status<'a>(&'a self, _db: &'a Db, party: PartyId) -> PartyFuture<'a, Option<PartyStatus>> {
+        // Party 3 is blocked (the cash-flow forecast tests).
+        let status = if party == BLOCKED_PARTY {
+            PartyStatus::Blocked
+        } else {
+            PartyStatus::Active
+        };
+        Box::pin(async move { Ok(Some(status)) })
     }
 
     fn billing_identity<'a>(
@@ -254,9 +268,62 @@ pub type Asked = (RefundRequest, Option<i64>);
 pub struct RefundDesk {
     asked: Arc<Mutex<Vec<Asked>>>,
     refuse: Arc<AtomicBool>,
+    bank: Arc<Mutex<Vec<(i64, BankPayment)>>>,
+    unpaid: Arc<Mutex<Vec<UnpaidRefund>>>,
 }
 
 impl RefundDesk {
+    /// A payment of `entity` in `account` for the cash-flow reads.
+    pub fn bank_payment(
+        &self,
+        entity: i64,
+        account: &str,
+        direction: Direction,
+        amount: i64,
+        date: NaiveDate,
+        reference: Option<&str>,
+    ) {
+        let mut bank = self.bank.lock().unwrap();
+        let id = bank.len() as i64 + 1;
+        bank.push((
+            entity,
+            BankPayment {
+                payment: PaymentSummary {
+                    id: PaymentId(id),
+                    number: None,
+                    party: BLUE_DUNES,
+                    legal_entity_id: entity,
+                    direction,
+                    method: PaymentMethod::Transfer,
+                    amount,
+                    allocated: 0,
+                    unallocated: amount,
+                    currency: "AED".to_owned(),
+                    status: PaymentStatus::Received,
+                    date,
+                },
+                bank_account: account.to_owned(),
+                reference: reference.map(str::to_owned),
+            },
+        ));
+    }
+
+    /// A refund approved or failed and not paid, for the cash-flow reads.
+    pub fn unpaid_refund(&self, entity: i64, amount: i64, failed: bool) {
+        let mut unpaid = self.unpaid.lock().unwrap();
+        let id = unpaid.len() as i64 + 1;
+        unpaid.push(UnpaidRefund {
+            id: RefundId(id),
+            party: BLUE_DUNES,
+            legal_entity_id: entity,
+            amount,
+            currency: "AED".to_owned(),
+            failed,
+            approved_on: None,
+            source: Subject::new("invoicing.credit_note", id),
+        });
+    }
+
     /// The requests so far, oldest first, each with its user.
     pub fn asked(&self) -> Vec<Asked> {
         self.asked.lock().unwrap().clone()
@@ -341,6 +408,214 @@ impl PaymentRecorder for RefundDesk {
             let mut asked = self.asked.lock().unwrap();
             asked.push((request, by));
             Ok(RefundId(asked.len() as i64))
+        })
+    }
+
+    fn payments_after<'a>(
+        &'a self,
+        _db: &'a Db,
+        legal_entity_id: i64,
+        bank_account: &'a str,
+        after: NaiveDate,
+    ) -> PaymentFuture<'a, Vec<BankPayment>> {
+        Box::pin(async move {
+            Ok(self
+                .bank
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(entity, p)| {
+                    *entity == legal_entity_id
+                        && p.bank_account == bank_account
+                        && p.payment.date > after
+                })
+                .map(|(_, p)| p.clone())
+                .collect())
+        })
+    }
+
+    fn refunds_unpaid<'a>(
+        &'a self,
+        _db: &'a Db,
+        legal_entity_id: i64,
+    ) -> PaymentFuture<'a, Vec<UnpaidRefund>> {
+        Box::pin(async move {
+            Ok(self
+                .unpaid
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|r| r.legal_entity_id == legal_entity_id)
+                .cloned()
+                .collect())
+        })
+    }
+}
+
+/// The cheques and the statement balances the cash-flow forecast reads,
+/// scripted by the test.
+#[derive(Clone, Default)]
+pub struct ForecastDesk {
+    open: Arc<Mutex<Vec<(i64, OpenCheque)>>>,
+    bounced: Arc<Mutex<Vec<(i64, OpenCheque)>>>,
+    balances: Arc<Mutex<Vec<BankBalance>>>,
+}
+
+impl ForecastDesk {
+    /// A cheque not cleared, of `entity`.
+    pub fn open_cheque(&self, entity: i64, cheque: OpenCheque) {
+        self.open.lock().unwrap().push((entity, cheque));
+    }
+
+    /// A cheque that bounced, of `entity`.
+    pub fn bounced_cheque(&self, entity: i64, cheque: OpenCheque) {
+        self.bounced.lock().unwrap().push((entity, cheque));
+    }
+
+    /// A completed statement's closing balance.
+    pub fn statement(&self, entity: i64, account: &str, amount: i64, as_of: NaiveDate) {
+        self.balances.lock().unwrap().push(BankBalance {
+            legal_entity_id: entity,
+            bank_account: account.to_owned(),
+            amount,
+            currency: "AED".to_owned(),
+            as_of,
+            import_id: 1,
+        });
+    }
+}
+
+/// A scripted [`OpenCheque`] of `amount` fils dated `date` paying
+/// `documents` (each with the part applied).
+pub fn open_cheque(
+    id: i64,
+    number: &str,
+    direction: Direction,
+    date: NaiveDate,
+    amount: i64,
+    documents: &[(Subject, i64)],
+) -> OpenCheque {
+    OpenCheque {
+        cheque: ChequeSummary {
+            id: ChequeId(id),
+            direction,
+            party: BLUE_DUNES,
+            legal_entity_id: 0,
+            bank: "ENBD".to_owned(),
+            number: number.to_owned(),
+            date,
+            amount,
+            honoured_amount: 0,
+            open_amount: amount,
+            currency: "AED".to_owned(),
+            presentations: 1,
+            status: wl_kernel::cheques::ChequeStatus::Received,
+            agreement: None,
+            linked: documents.iter().map(|(d, _)| d.clone()).collect(),
+        },
+        documents: documents
+            .iter()
+            .map(|(document, amount)| wl_kernel::cheques::ChequeDocument {
+                document: document.clone(),
+                amount: *amount,
+            })
+            .collect(),
+    }
+}
+
+impl Cheques for ForecastDesk {
+    fn register<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _cheque: RegisterCheque,
+        _by: Option<i64>,
+    ) -> ChequeFuture<'a, ChequeSummary> {
+        Box::pin(async { Err(desk_off("not registered")) })
+    }
+
+    fn register_schedule<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _schedule: ChequeSchedule,
+        _by: Option<i64>,
+    ) -> ChequeFuture<'a, Vec<ChequeSummary>> {
+        Box::pin(async { Err(desk_off("not registered")) })
+    }
+
+    fn find<'a>(&'a self, _db: &'a Db, _id: ChequeId) -> ChequeFuture<'a, Option<ChequeSummary>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    fn of_agreement<'a>(
+        &'a self,
+        _db: &'a Db,
+        _agreement: &'a Subject,
+    ) -> ChequeFuture<'a, Vec<ChequeSummary>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
+    fn open_bounced_amount<'a>(
+        &'a self,
+        _db: &'a Db,
+        _party: PartyId,
+        _currency: &'a str,
+    ) -> ChequeFuture<'a, i64> {
+        Box::pin(async { Ok(0) })
+    }
+
+    fn not_cleared<'a>(
+        &'a self,
+        _state: &'a AppState,
+        legal_entity_id: i64,
+        direction: Direction,
+    ) -> ChequeFuture<'a, Vec<OpenCheque>> {
+        Box::pin(async move {
+            Ok(self
+                .open
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(entity, c)| *entity == legal_entity_id && c.cheque.direction == direction)
+                .map(|(_, c)| c.clone())
+                .collect())
+        })
+    }
+
+    fn bounced<'a>(
+        &'a self,
+        _state: &'a AppState,
+        legal_entity_id: i64,
+    ) -> ChequeFuture<'a, Vec<OpenCheque>> {
+        Box::pin(async move {
+            Ok(self
+                .bounced
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(entity, _)| *entity == legal_entity_id)
+                .map(|(_, c)| c.clone())
+                .collect())
+        })
+    }
+}
+
+impl BankStatements for ForecastDesk {
+    fn latest_closing_balances<'a>(
+        &'a self,
+        _db: &'a Db,
+        legal_entity_id: i64,
+    ) -> BankStatementFuture<'a, Vec<BankBalance>> {
+        Box::pin(async move {
+            let mut found: Vec<BankBalance> = self
+                .balances
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|b| b.legal_entity_id == legal_entity_id)
+                .cloned()
+                .collect();
+            found.sort_by(|a, b| a.bank_account.cmp(&b.bank_account));
+            Ok(found)
         })
     }
 }
@@ -456,6 +731,8 @@ pub struct Booted {
     pub invoice_reopened: Recorded<InvoiceReopened>,
     /// The refunds asked of payments.
     pub refunds: RefundDesk,
+    /// The cheques and statement balances the cash-flow forecast reads.
+    pub forecast: ForecastDesk,
     /// `BadDebtRecovered`.
     pub recovered: Recorded<BadDebtRecovered>,
     /// `InvoiceDisputeResolved`.
@@ -1009,6 +1286,22 @@ impl Booted {
         }
     }
 
+    /// Moves the clock forward to `date` at `hour:minute` UTC.
+    pub fn travel_to(&self, date: &str, hour: u32, minute: u32) {
+        let target = date
+            .parse::<NaiveDate>()
+            .expect("a date")
+            .and_hms_opt(hour, minute, 0)
+            .expect("a time")
+            .and_utc();
+        // `now()` outside `at_travelled_time` is the real clock, so a second
+        // trip starts from the present again instead of adding to the first.
+        self.app.travel_back();
+        let seconds = (target - renox::db::now()).num_seconds();
+        assert!(seconds > 0, "the target {target} is in the past");
+        self.app.travel(std::time::Duration::from_secs(seconds as u64));
+    }
+
     /// A draft to Blue Dunes with lines of `(unit price in fils, category)`,
     /// through the kernel contract.
     pub async fn draft(&self, lines: &[(i64, VatCategory)], due: Option<NaiveDate>) -> Invoice {
@@ -1210,6 +1503,9 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
     let notices = Recording::default();
     let refunds = RefundDesk::default();
     let recorder: Arc<dyn PaymentRecorder> = Arc::new(refunds.clone());
+    let forecast = ForecastDesk::default();
+    let cheque_book: Arc<dyn Cheques> = Arc::new(forecast.clone());
+    let statements: Arc<dyn BankStatements> = Arc::new(forecast.clone());
     let directory: Arc<dyn PartyDirectory> = Arc::new(TestDirectory);
     let notifier: Arc<dyn Notifier> = Arc::new(notices.clone());
     let app = App::new()
@@ -1219,6 +1515,8 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
         .module(Probe)
         .provide(directory)
         .provide(recorder)
+        .provide(cheque_book)
+        .provide(statements)
         .provide(creator)
         .provide(notifier);
     let app = record(app, &issued);
@@ -1265,6 +1563,8 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
         perm::BUDGETS_MANAGE,
         perm::BUDGETS_APPROVE,
         perm::BUDGET_CATEGORIES_MANAGE,
+        perm::CASHFLOW_VIEW,
+        perm::CASHFLOW_MANAGE,
     ];
     permissions::define_role(app.db(), "admin", &all)
         .await
@@ -1285,6 +1585,8 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
             perm::BUDGETS_VIEW,
             perm::BUDGETS_MANAGE,
             perm::BUDGET_CATEGORIES_MANAGE,
+            perm::CASHFLOW_VIEW,
+            perm::CASHFLOW_MANAGE,
         ],
     )
     .await
@@ -1326,6 +1628,7 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
         reopened,
         invoice_reopened,
         refunds,
+        forecast,
         recovered,
         resolved,
         disputed,

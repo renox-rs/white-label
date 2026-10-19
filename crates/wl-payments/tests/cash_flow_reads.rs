@@ -428,3 +428,30 @@ async fn the_reads_change_nothing() {
     unpaid(&t).await;
     assert_eq!(counts(&t).await, before);
 }
+
+/// The received cheques that bounced are listed with what they cover, for the
+/// forecast's memo line; a cleared one is not.
+#[renox::test]
+async fn the_bounced_cheques_are_listed_with_their_documents() {
+    let t = boot().await;
+    let staff = t.cheque_staff("Amal").await;
+    let rent = t.invoices.add(BLUE_DUNES, "INV-5", 700_000);
+    let bounced = t
+        .bounced_cheque(&staff, BLUE_DUNES, "3401", 700_000, Some(rent), "")
+        .await;
+    let fine = t.received_cheque(BLUE_DUNES, "3402", 100_000, None).await;
+    let fine = t.deposit_cheque(&staff, &fine).await;
+    t.cheque_action(&staff, &fine, "clear", &[]).await.assert_ok();
+
+    let entity = t.entity("PGP").await;
+    let read = cheque_contract(t.state())
+        .bounced(t.state(), entity.id)
+        .await
+        .unwrap();
+    assert_eq!(read.len(), 1);
+    assert_eq!(read[0].cheque.id.0, bounced.id);
+    assert_eq!(read[0].cheque.status, ChequeStatus::Bounced);
+    assert_eq!(read[0].documents.len(), 1);
+    assert_eq!(read[0].documents[0].document, rent.subject());
+    assert_eq!(read[0].documents[0].amount, 700_000);
+}
