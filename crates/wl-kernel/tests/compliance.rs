@@ -262,9 +262,10 @@ impl World {
             .unwrap()
     }
 
-    /// Moves the clock to `at` (which must not be in the past).
+    /// Moves the clock to `at` (which must not be in the past), rounded up to
+    /// the next whole second so the clock is never just before `at`.
     fn travel_to(&self, at: DateTime) {
-        let seconds = (at - now()).num_seconds().max(0);
+        let seconds = ((at - now()).num_milliseconds().max(0) + 999) / 1000;
         self.app
             .travel(Duration::from_secs(u64::try_from(seconds).unwrap_or(0)));
     }
