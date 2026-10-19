@@ -14,14 +14,19 @@ use renox::prelude::*;
 use renox::state_machine::StateMachine;
 use renox::testing::TestApp;
 use wl_invoicing::vat_summary::{self, VatSummary, VatSummaryStatus};
+use wl_invoicing::bill_machine;
+use wl_invoicing::bill_submit;
 use wl_invoicing::budget_lines::{self, LineInput, NewBudget};
+use wl_invoicing::credit_notes::By;
+use wl_invoicing::supplier_bill::{self, BillDraft};
+use wl_invoicing::{BillLineDraft, SupplierBill};
 use wl_invoicing::{
     AdjustmentKind, BudgetCategory, CompanyBudget, Invoice, InvoicingConfig, StartChoice,
     VatAdjustment, WlInvoicing, permissions as perm,
 };
 use wl_kernel::LegalEntity;
 use wl_kernel::approvals::{self, ApprovalRequest};
-use wl_kernel::budgets::CompanyBudgetApproved;
+use wl_kernel::budgets::{CompanyBudgetApproved, CompanyBudgetVarianceReached};
 use wl_kernel::documents::today;
 use wl_kernel::invoicing::{
     BadDebtRecovered, CreditNoteReopened, DraftLine, InvoiceDisputeResolved, InvoiceDisputed,
@@ -467,6 +472,8 @@ pub struct Booted {
     pub bill_reopened: Recorded<SupplierBillReopened>,
     /// `CompanyBudgetApproved`.
     pub budget_approved: Recorded<CompanyBudgetApproved>,
+    /// `CompanyBudgetVarianceReached`.
+    pub variance_reached: Recorded<CompanyBudgetVarianceReached>,
 }
 
 impl Booted {
@@ -725,6 +732,105 @@ impl Booted {
             .filter(|n| n.kind == kind)
             .map(|n| n.data.to_string())
             .collect()
+    }
+
+    /// A user holding `grants` through a role given in the scope of the legal
+    /// entity `entity_id` only, made once.
+    pub async fn scoped_user(&self, name: &str, grants: &[&str], entity_id: i64) -> User {
+        let email = format!("{}@example.com", name.to_lowercase());
+        if let Some(user) = User::find_by_email(self.db(), &email).await.unwrap() {
+            return user;
+        }
+        let user = User::register(self.db(), name, &email, "password123")
+            .await
+            .unwrap();
+        let role = format!("scoped_{}", name.to_lowercase());
+        permissions::define_role(self.db(), &role, grants)
+            .await
+            .unwrap();
+        let scope = renox::auth::permissions::Scope::of_id::<LegalEntity>(entity_id);
+        user.assign_role_in(self.db(), &role, &scope).await.unwrap();
+        user
+    }
+
+    /// An approved budget of the entity `code` for `year` with the lines
+    /// `(category code, month 1 to 12, amount in fils)`.
+    pub async fn approved_budget(
+        &self,
+        code: &str,
+        year: i64,
+        lines: &[(&str, usize, i64)],
+    ) -> CompanyBudget {
+        let preparer = self.budget_preparer("Budgeter").await;
+        let approver = self.budget_approver("Boss").await;
+        let draft = self
+            .new_budget(code, year, StartChoice::Empty, &preparer)
+            .await;
+        for (category, month, amount) in lines {
+            self.fill(&draft, category, *amount, *month, *month).await;
+        }
+        self.submit_budget(&draft, &preparer).await;
+        let request = self.budget_request(&draft).await;
+        approvals::approve(self.state(), request.id, &approver, "")
+            .await
+            .unwrap()
+            .expect("the approval runs");
+        self.budget_now(&draft).await
+    }
+
+    /// A supplier bill of Blue Dunes to the entity `entity`, dated `date`,
+    /// approved, with the lines `(description, price in fils, cost code,
+    /// VAT category)`.
+    pub async fn approved_bill(
+        &self,
+        entity: &LegalEntity,
+        number: &str,
+        date: NaiveDate,
+        lines: &[(&str, i64, &str, VatCategory)],
+    ) -> SupplierBill {
+        let mut draft = BillDraft::new(BLUE_DUNES, number, date);
+        draft.legal_entity_id = Some(entity.id);
+        for (description, price, code, category) in lines {
+            draft = draft.line(BillLineDraft::new(description, *price, *category).cost_code(code));
+        }
+        let bill = supplier_bill::create(self.db(), &draft, Some(1))
+            .await
+            .expect("the bill is made");
+        bill_submit::submit(self.state(), By::System(Some(1)), bill.id)
+            .await
+            .expect("the bill is submitted");
+        bill_machine::approve(self.state(), By::System(Some(1)), bill.id, "")
+            .await
+            .expect("the bill is approved")
+    }
+
+    /// An issued invoice of `entity` with a line of `price` fils (exempt)
+    /// billed under the charge type `charge_type`, with the date of supply
+    /// `supply`.
+    pub async fn invoice_with_charge(
+        &self,
+        entity: &LegalEntity,
+        charge_type: &str,
+        price: i64,
+        supply: NaiveDate,
+        by: &User,
+    ) -> Invoice {
+        let draft = self
+            .draft_of(
+                InvoiceDraft::new(BLUE_DUNES, Subject::new("property.lease", 9))
+                    .line(
+                        DraftLine::new("Rent", price, VatCategory::Exempt).charge_type(charge_type),
+                    )
+                    .legal_entity(entity.id),
+            )
+            .await;
+        let issued = self.issue(&draft, by).await;
+        Invoice::query()
+            .where_(Invoice::ID.eq(issued.id))
+            .update(self.db(), &[("date_of_supply", &Some(supply))])
+            .await
+            .unwrap();
+        self.reload(&issued).await
     }
 
     /// The summary of `entity` for the period that contains `date`, taken
@@ -1075,6 +1181,7 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
     let bill_voided = Recorded::new();
     let bill_reopened = Recorded::new();
     let budget_approved = Recorded::new();
+    let variance_reached = Recorded::new();
     let tickets = TicketDesk::default();
     let creator: Arc<dyn TaskCreator> = Arc::new(tickets.clone());
     let notices = Recording::default();
@@ -1104,6 +1211,7 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
     let app = record(app, &bill_voided);
     let app = record(app, &bill_reopened);
     let app = record(app, &budget_approved);
+    let app = record(app, &variance_reached);
     let config = ClientConfig::parse(CLIENT).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     let dir = views.path().to_path_buf();
@@ -1158,6 +1266,10 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
     )
     .await
     .unwrap();
+    // The role a seeded category tells (marketing).
+    permissions::define_role(app.db(), "marketing_manager", &[perm::VIEW])
+        .await
+        .unwrap();
     // The host's `finance_manager` role: sees budgets and approves them.
     permissions::define_role(
         app.db(),
@@ -1199,5 +1311,6 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
         bill_voided,
         bill_reopened,
         budget_approved,
+        variance_reached,
     }
 }
