@@ -389,6 +389,24 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_ticketing.contract.no_show_count", "No-shows"),
     ("wl_ticketing.contract.no_show_last", "Last scheduled"),
     (
+        "wl_ticketing.notice.vendor_document_expired.subject",
+        "Vendor document expired for contract {{ contract }}",
+    ),
+    (
+        "wl_ticketing.notice.vendor_document_expired.body",
+        "{{ vendor }}'s {{ kind }} expired on {{ expires_on }}. Its open planned visits under contract {{ contract }} are flagged and cannot be resolved; reassign them or terminate the contract.",
+    ),
+    ("wl_ticketing.contract.vendor_document", "Vendor document expired"),
+    (
+        "wl_ticketing.contract.vendor_document_message",
+        "A document the vendor needs for this contract is expired or missing. Its open visits cannot be resolved and the covered subjects are flagged until a renewed document is accepted: reassign the visits or terminate the contract.",
+    ),
+    (
+        "wl_ticketing.contract.vendor_document_visit",
+        "The vendor's document is expired or missing, so this visit cannot be resolved. Reassign it, or wait for the renewed document.",
+    ),
+    ("wl_ticketing.contract.vendor_document_badge", "Document expired"),
+    (
         "wl_ticketing.contract_end.task_title",
         "Open visits of contract {number}: reassign or cancel",
     ),

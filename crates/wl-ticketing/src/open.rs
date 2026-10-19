@@ -111,6 +111,9 @@ impl Tickets {
                 .and_then(|c| c.sla_policy_id)
                 .or(category.sla_policy_id),
             contract_id: contract.as_ref().map(|c| c.id),
+            // A planned visit of a flagged contract is flagged from the start.
+            vendor_document_flag: request.planned_due.is_some()
+                && contract.as_ref().is_some_and(|c| c.vendor_document_flag),
             confidential: category.confidential,
             chargeable: category.chargeable,
             due_at: request.due_at,

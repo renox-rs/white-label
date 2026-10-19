@@ -88,6 +88,12 @@ pub struct ServiceContract {
     pub sla_policy_id: Option<i64>,
     /// Whether a covered category is compliance-critical (set at `activate`).
     pub compliance_contract: bool,
+    /// The vendor document flag: set while a vendor document the contract's
+    /// categories need is expired or missing, cleared by a renewed one
+    /// ([`crate::vendor_flags`]).
+    pub vendor_document_flag: bool,
+    /// The key of the document kind that expired, while the flag is set.
+    pub vendor_document_kind: Option<String>,
     /// The contract this one renews.
     pub previous_version_id: Option<i64>,
     /// The reason entered with `terminate`.

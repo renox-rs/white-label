@@ -30,6 +30,7 @@ use crate::contract::{ContractStatus, ServiceContract, ServiceContracts, is_open
 use crate::contract_end::CONTRACT_ENDED_REASON;
 use crate::flags::ComplianceFlag;
 use crate::no_show::NoShow;
+use crate::vendor_flags::REASSIGN_REASON;
 use crate::pages::{Texts, assignee_name, invalid, party_by_code, when};
 use crate::permissions;
 use crate::texts;
@@ -99,6 +100,9 @@ pub struct ContractCard {
     pub termination: String,
     /// When the end was handled (`WRK.RUL.18`), if it was.
     pub ended: String,
+    /// The vendor document flag: a vendor document its categories need is
+    /// expired or missing.
+    pub vendor_document_flag: bool,
 }
 
 /// One covered subject and category.
@@ -129,6 +133,9 @@ pub struct VisitRow {
     pub can_reassign: bool,
     /// Whether "Cancel" is offered: not for a reassign-only category.
     pub can_cancel: bool,
+    /// Whether the vendor's document is expired or missing for the visit
+    /// (the visit flag): its resolve is refused.
+    pub vendor_document_flag: bool,
     /// The reason the reassign sheet starts with.
     pub reason_code: String,
 }
@@ -186,10 +193,13 @@ fn day(date: NaiveDate) -> String {
 }
 
 /// The reassign sheet's reason for `visit`: the contract's end when it has
-/// ended, else none chosen.
-fn default_reason(contract: &ServiceContract, _visit: &Ticket) -> String {
+/// ended, the expired vendor document when the visit is flagged, else none
+/// chosen.
+fn default_reason(contract: &ServiceContract, visit: &Ticket) -> String {
     if contract.ended_at.is_some() {
         CONTRACT_ENDED_REASON.to_owned()
+    } else if visit.vendor_document_flag {
+        REASSIGN_REASON.to_owned()
     } else {
         String::new()
     }
@@ -241,6 +251,7 @@ async fn show(
             assignee,
             can_reassign: assigner && open,
             can_cancel: assigner && open && !reassign_only,
+            vendor_document_flag: visit.vendor_document_flag,
             reason_code: default_reason(&contract, &visit),
         });
     }
@@ -321,6 +332,7 @@ async fn show(
         compliance: contract.compliance_contract,
         termination,
         ended: when(&state, contract.ended_at).unwrap_or_default(),
+        vendor_document_flag: contract.vendor_document_flag,
     };
     let has_actions = visits.iter().any(|v| v.can_reassign || v.can_cancel);
     Ok(View::typed(ContractPage {
@@ -546,8 +558,10 @@ mod tests {
     #[test]
     fn the_reassign_sheet_starts_with_the_contract_end_once_it_is_handled() {
         let mut contract = ServiceContract::default();
-        let visit = Ticket::default();
+        let mut visit = Ticket::default();
         assert_eq!(default_reason(&contract, &visit), "");
+        visit.vendor_document_flag = true;
+        assert_eq!(default_reason(&contract, &visit), "vendor_document_expired");
         contract.ended_at = Some(renox::db::now());
         assert_eq!(default_reason(&contract, &visit), "contract_ended");
     }

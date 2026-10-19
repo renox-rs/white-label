@@ -26,6 +26,7 @@
         <rx-textarea name="reason" :label="tx['cancel_ticket.reason']" :id="'cancel-reason-' ~ ticket.id" required/>
       </rx-action-sheet>
     </rx-page-header>
+    <rx-alert rx-if="ticket.vendor_document_flag" kind="warning" :title="tx['contract.vendor_document']" :message="tx['contract.vendor_document_visit']"/>
     <rx-alert rx-if="no_show" kind="warning" :title="tx['no_show.title']" :message="no_show"/>
     <rx-card :title="tx['sections.details']">
       <rx-infolist columns="2">

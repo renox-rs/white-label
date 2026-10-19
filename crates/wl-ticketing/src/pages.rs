@@ -796,6 +796,8 @@ async fn show(
     };
     let reason_selected = if no_show_row.is_some() {
         "vendor_no_show".to_owned()
+    } else if ticket.vendor_document_flag {
+        crate::vendor_flags::REASSIGN_REASON.to_owned()
     } else {
         String::new()
     };

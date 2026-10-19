@@ -120,6 +120,10 @@ pub struct Ticket {
     /// The service contract it is handled under: set for a planned visit of
     /// the contract's plan, and for a ticket opened on a covered subject.
     pub contract_id: Option<i64>,
+    /// The vendor document flag of a planned visit: the vendor's document the
+    /// category needs is expired or missing; cleared by a renewed document or
+    /// by reassigning the visit ([`crate::vendor_flags`]).
+    pub vendor_document_flag: bool,
     /// The lifecycle state; changed only by a transition.
     pub status: TicketStatus,
     /// When it is due, if its opener gave it a due time of its own (a staff

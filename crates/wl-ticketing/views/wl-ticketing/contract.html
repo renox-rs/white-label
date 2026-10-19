@@ -18,6 +18,7 @@
         <rx-input name="termination_date" type="date" :label="tx['contract.terminate_date']" :hint="tx['contract.terminate_date_hint']" :id="'terminate-date-' ~ contract.id" required/>
       </rx-action-sheet>
     </rx-page-header>
+    <rx-alert rx-if="contract.vendor_document_flag" kind="warning" :title="tx['contract.vendor_document']" :message="tx['contract.vendor_document_message']"/>
     <rx-card :title="tx['contract.details']">
       <rx-infolist columns="2">
         <rx-entry :label="tx['contract.number']" :value="contract.number" copyable/>
@@ -39,7 +40,7 @@
       <rx-column :label="tx['fields.number']"><a href="{{ route('wl_ticketing.show', visit.id) }}">{{ visit.number }}</a></rx-column>
       <rx-column :label="tx['fields.title']" hide-narrow>{{ visit.title }}</rx-column>
       <rx-column :label="tx['contract.planned_due']">{{ visit.planned_due }}</rx-column>
-      <rx-column :label="tx['contract.visit_status']">{{ visit.status }}</rx-column>
+      <rx-column :label="tx['contract.visit_status']">{{ visit.status }} <rx-badge rx-if="visit.vendor_document_flag" kind="warning" :text="tx['contract.vendor_document_badge']"/></rx-column>
       <rx-column :label="tx['fields.assignee']" hide-narrow>{{ visit.assignee or "—" }}</rx-column>
       <rx-row-actions>
         <rx-action-sheet rx-if="visit.can_reassign" :id="'reassign-visit-' ~ visit.id" :label="tx['contract.reassign']"
