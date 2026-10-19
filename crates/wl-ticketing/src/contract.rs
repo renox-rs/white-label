@@ -492,7 +492,9 @@ impl ServiceContracts {
     /// # Errors
     ///
     /// `Forbidden` without `service_contracts.manage`; `NotFrom` unless it is
-    /// a `draft`; `Guard` (422) without a covered subject.
+    /// a `draft`; `Guard` (422) without a covered subject; `Failed` (422)
+    /// while the vendor's document of a guarded category is not valid on the
+    /// start date ([`crate::vendor_guard`]).
     pub async fn activate(
         state: &AppState,
         user: &AuthUser,
@@ -521,12 +523,25 @@ impl ServiceContracts {
             plans,
             ..ContractInput::default()
         };
-        let _outcome = contract
-            .transition(ACTIVATE)
-            .by(user)
-            .input(&input)
-            .run(state)
-            .await?;
+        // `WRK.ACL.11`: the vendor's document of a guarded category must be
+        // valid on the start date.
+        crate::vendor_guard::run(
+            state,
+            crate::vendor_guard::ACTIVATE,
+            contract.id,
+            contract.start_date,
+            Some(user.id),
+            || async {
+                contract
+                    .transition(ACTIVATE)
+                    .by(user)
+                    .input(&input)
+                    .run(state)
+                    .await
+                    .map(|_| ())
+            },
+        )
+        .await?;
         let at = renox::db::now();
         let mut subjects: Vec<Subject> = Vec::new();
         for row in &coverage {

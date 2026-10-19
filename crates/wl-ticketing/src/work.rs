@@ -399,8 +399,9 @@ fn auto_resume_transition() -> Transition<Ticket> {
     )
 }
 
-/// `resolve`: in_progress → resolved. (The after-photo, custom field,
-/// document and charge line guards come with #151 and #147.)
+/// `resolve`: in_progress → resolved. (The vendor document guard runs in
+/// [`resolve`] before the transition, [`crate::vendor_guard`]; the after-photo
+/// and custom field guards come with their issues.)
 fn resolve_transition() -> Transition<Ticket> {
     by_assignee(with_input(
         Transition::new(RESOLVE)
@@ -741,8 +742,10 @@ pub async fn auto_resume(
 ///
 /// # Errors
 ///
-/// `Guard` (422) for a user who is not the assignee; `NotFrom` unless it is
-/// `in_progress`.
+/// `Guard` (422) for a user who is not the assignee, or a chargeable ticket
+/// without a charge line; `Failed` (422) while the assigned vendor's document
+/// is expired or missing for a guarded category ([`crate::vendor_guard`]);
+/// `NotFrom` unless it is `in_progress`.
 pub async fn resolve(
     state: &AppState,
     user: &AuthUser,
@@ -761,13 +764,25 @@ pub async fn resolve(
         charge_lines,
         ..WorkInput::at(at)
     };
-    let _outcome = ticket
-        .transition(RESOLVE)
-        .by(user)
-        .input(&input)
-        .run(state)
-        .await?;
-    Ok(())
+    // `WRK.ACL.11`: a category guarded by a vendor document kind is not
+    // resolved while the assigned vendor's document is expired or missing.
+    crate::vendor_guard::run(
+        state,
+        crate::vendor_guard::RESOLVE,
+        ticket.id,
+        wl_kernel::documents::dubai_date(at),
+        Some(user.id),
+        || async {
+            ticket
+                .transition(RESOLVE)
+                .by(user)
+                .input(&input)
+                .run(state)
+                .await
+                .map(|_| ())
+        },
+    )
+    .await
 }
 
 /// The requester `user` confirms the work on `ticket`; it is `closed` and

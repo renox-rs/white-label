@@ -26,6 +26,7 @@ pub mod seed;
 pub mod sla;
 mod texts;
 pub mod ticket;
+pub mod vendor_guard;
 pub mod visibility;
 pub mod visit_check;
 pub mod work;
@@ -326,6 +327,9 @@ impl Module for WlTicketing {
         // `WRK.RUL.18`: what happens when a service contract ends;
         // compliance-critical (`PLT.RUL.04`).
         contract_end::register(app);
+        // `WRK.ACL.11`: the vendor document guards of `resolve` and
+        // contract `activate`.
+        vendor_guard::register();
         // `WRK.RUL.19`: a vendor that did not start a ticket in time.
         app.provide(no_show::NoShowHours(
             self.no_show_hours.unwrap_or(no_show::DEFAULT_HOURS),
