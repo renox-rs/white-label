@@ -1370,9 +1370,82 @@ pub struct SupplierBillApproved {
     pub supplier: PartyId,
     /// The bill total in fils of the bill's currency.
     pub amount: i64,
+    /// The cost objects the approval posted actual cost to, one entry per
+    /// line coded to a cost object (net amount). Empty when absent from an
+    /// older stored event.
+    #[serde(default)]
+    pub cost_objects: Vec<CostObjectAmount>,
+    /// The lines coded to a landed cost: no cost was posted for them, the
+    /// owner of the landed cost allocates or adjusts. Empty when the bill
+    /// has none, or when absent from an older stored event.
+    #[serde(default)]
+    pub landed_costs: Vec<LandedCostLine>,
 }
 
 impl Event for SupplierBillApproved {}
+
+/// A cost object and the net amount an approved bill charged to it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CostObjectAmount {
+    /// The cost object.
+    pub cost_object: Subject,
+    /// The net amount (excluding VAT) in fils of the bill's currency.
+    pub amount: i64,
+}
+
+/// A bill line coded to a landed cost.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LandedCostLine {
+    /// The bill line.
+    pub line: SupplierBillLineId,
+    /// The landed cost the line is coded to.
+    pub landed_cost: Subject,
+    /// The line net amount (excluding VAT) in fils of the bill's currency.
+    pub amount: i64,
+}
+
+/// Knows the landed costs of the app (owned by the inventory module).
+/// `wl-invoicing` reads it to check a bill line's landed cost; the app
+/// provides it with [`provide_landed_costs`], and without one
+/// [`landed_costs`] gives [`NoLandedCosts`].
+pub trait LandedCosts: Send + Sync + 'static {
+    /// The legal entity that owns `landed_cost`, or `None` when there is no
+    /// such landed cost.
+    fn entity_of<'a>(
+        &'a self,
+        db: &'a Db,
+        landed_cost: &'a Subject,
+    ) -> SupplierBillFuture<'a, Option<i64>>;
+}
+
+/// The landed costs when none are provided: none is known, so a bill line
+/// coded to one is refused.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoLandedCosts;
+
+impl LandedCosts for NoLandedCosts {
+    fn entity_of<'a>(
+        &'a self,
+        _db: &'a Db,
+        _landed_cost: &'a Subject,
+    ) -> SupplierBillFuture<'a, Option<i64>> {
+        Box::pin(async { Ok(None) })
+    }
+}
+
+/// Makes `costs` the app's [`LandedCosts`].
+pub fn provide_landed_costs(app: &mut Registry, costs: impl LandedCosts) {
+    let costs: Arc<dyn LandedCosts> = Arc::new(costs);
+    app.provide(costs);
+}
+
+/// The app's [`LandedCosts`], or [`NoLandedCosts`] when none is provided.
+pub fn landed_costs(state: &AppState) -> Arc<dyn LandedCosts> {
+    match state.provided::<Arc<dyn LandedCosts>>() {
+        Some(costs) => Arc::clone(&costs),
+        None => Arc::new(NoLandedCosts),
+    }
+}
 
 /// A supplier bill was voided (`void`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1888,11 +1961,40 @@ mod tests {
     }
 
     #[test]
+    fn an_old_approved_event_without_the_new_fields_still_deserializes() {
+        let old = r#"{"bill":3,"supplier":4,"amount":300000}"#;
+        let event: SupplierBillApproved = renox::serde_json::from_str(old).unwrap();
+        assert_eq!(event.amount, 300_000);
+        assert!(event.cost_objects.is_empty());
+        assert!(event.landed_costs.is_empty());
+    }
+
+    #[renox::test]
+    async fn without_a_provider_no_landed_cost_is_known() {
+        let app = renox::testing::TestApp::new(App::new()).await;
+        let subject = Subject::new("inventory.landed_cost", 12);
+        let entity = landed_costs(app.state())
+            .entity_of(&app.state().db, &subject)
+            .await
+            .expect("no failure");
+        assert_eq!(entity, None);
+    }
+
+    #[test]
     fn the_bill_events_round_trip_through_json() {
         let approved = SupplierBillApproved {
             bill: SupplierBillId(3),
             supplier: PartyId(4),
             amount: 300_000,
+            cost_objects: vec![CostObjectAmount {
+                cost_object: Subject::new("projects.project", 9),
+                amount: 500_000,
+            }],
+            landed_costs: vec![LandedCostLine {
+                line: SupplierBillLineId(2),
+                landed_cost: Subject::new("inventory.landed_cost", 12),
+                amount: 40_000,
+            }],
         };
         let json = renox::serde_json::to_string(&approved).unwrap();
         assert_eq!(

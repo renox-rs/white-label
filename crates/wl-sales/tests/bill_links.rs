@@ -304,6 +304,8 @@ async fn an_entry_waits_for_its_bill_and_is_voided_with_it() {
             bill: SupplierBillId(1),
             supplier: PartyId(1),
             amount: 100_000,
+            cost_objects: Vec::new(),
+            landed_costs: Vec::new(),
         })
         .await
         .unwrap();
@@ -366,6 +368,8 @@ async fn an_approved_bill_goes_through_the_budget_check() {
             bill: SupplierBillId(1),
             supplier: PartyId(1),
             amount: 200_000,
+            cost_objects: Vec::new(),
+            landed_costs: Vec::new(),
         })
         .await
         .unwrap();

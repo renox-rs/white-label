@@ -71,15 +71,16 @@ pub use documents::{
 pub use entities::{IssuerSnapshot, LegalEntity, ScopeEntity};
 pub use held_funds::{FundsSource, HeldFund, HeldFundsSource, held_for_all};
 pub use invoicing::{
-    BillBalance, BillReopenReason, CostPoster, CostReversal, CreditLine, CreditNoteId,
-    CreditNoteIssued, CreditNoteReopened, CreditNoteStatus, CreditNoteSummary, DraftLine,
-    InvoiceCredited, InvoiceDraft, InvoiceId, InvoiceIssued, InvoiceOverdue, InvoicePaid,
-    InvoiceStatus, InvoiceSummary, InvoiceWrittenOff, Invoicer, NoCostPoster, NoInvoicer,
-    NoSupplierBills, NoSupplierDebitNotes, PayBill, ReverseCost, SupplierBillApproved,
-    SupplierBillId, SupplierBillLine, SupplierBillLineId, SupplierBillReopened, SupplierBillStatus,
-    SupplierBillVoided, SupplierBills, SupplierDebitNoteId, SupplierDebitNoteIssued,
-    SupplierDebitNoteStatus, SupplierDebitNoteSummary, SupplierDebitNotes,
-    SupplierReturnDispatched, SupplierReturnLine, UnallocateBill, VatCategory,
+    BillBalance, BillReopenReason, CostObjectAmount, CostPoster, CostReversal, CreditLine,
+    CreditNoteId, CreditNoteIssued, CreditNoteReopened, CreditNoteStatus, CreditNoteSummary,
+    DraftLine, InvoiceCredited, InvoiceDraft, InvoiceId, InvoiceIssued, InvoiceOverdue,
+    InvoicePaid, InvoiceStatus, InvoiceSummary, InvoiceWrittenOff, Invoicer, LandedCostLine,
+    LandedCosts, NoCostPoster, NoInvoicer, NoLandedCosts, NoSupplierBills, NoSupplierDebitNotes,
+    PayBill, ReverseCost, SupplierBillApproved, SupplierBillId, SupplierBillLine,
+    SupplierBillLineId, SupplierBillReopened, SupplierBillStatus, SupplierBillVoided,
+    SupplierBills, SupplierDebitNoteId, SupplierDebitNoteIssued, SupplierDebitNoteStatus,
+    SupplierDebitNoteSummary, SupplierDebitNotes, SupplierReturnDispatched, SupplierReturnLine,
+    UnallocateBill, VatCategory,
 };
 pub use machines::SubjectMachine;
 pub use manifest::Manifest;

@@ -31,6 +31,8 @@ pub(crate) fn approved(bill: &SupplierBill) -> SupplierBillApproved {
         bill: SupplierBillId(bill.id),
         supplier: bill.supplier(),
         amount: bill.gross_total,
+        cost_objects: Vec::new(),
+        landed_costs: Vec::new(),
     }
 }
 
