@@ -14,11 +14,14 @@ use renox::prelude::*;
 use renox::state_machine::StateMachine;
 use renox::testing::TestApp;
 use wl_invoicing::vat_summary::{self, VatSummary, VatSummaryStatus};
+use wl_invoicing::budget_lines::{self, LineInput, NewBudget};
 use wl_invoicing::{
-    AdjustmentKind, Invoice, InvoicingConfig, VatAdjustment, WlInvoicing, permissions as perm,
+    AdjustmentKind, BudgetCategory, CompanyBudget, Invoice, InvoicingConfig, StartChoice,
+    VatAdjustment, WlInvoicing, permissions as perm,
 };
 use wl_kernel::LegalEntity;
 use wl_kernel::approvals::{self, ApprovalRequest};
+use wl_kernel::budgets::CompanyBudgetApproved;
 use wl_kernel::documents::today;
 use wl_kernel::invoicing::{
     BadDebtRecovered, CreditNoteReopened, DraftLine, InvoiceDisputeResolved, InvoiceDisputed,
@@ -462,6 +465,8 @@ pub struct Booted {
     pub bill_voided: Recorded<SupplierBillVoided>,
     /// `SupplierBillReopened`.
     pub bill_reopened: Recorded<SupplierBillReopened>,
+    /// `CompanyBudgetApproved`.
+    pub budget_approved: Recorded<CompanyBudgetApproved>,
 }
 
 impl Booted {
@@ -590,6 +595,136 @@ impl Booted {
         };
         entity.insert(self.db()).await.unwrap();
         entity
+    }
+
+    /// A user who prepares budgets (and sees them), made once.
+    pub async fn budget_preparer(&self, name: &str) -> User {
+        self.helper(name, &[perm::BUDGETS_VIEW, perm::BUDGETS_MANAGE])
+            .await
+    }
+
+    /// A user who approves budgets (and sees them), made once.
+    pub async fn budget_approver(&self, name: &str) -> User {
+        self.helper(name, &[perm::BUDGETS_VIEW, perm::BUDGETS_APPROVE])
+            .await
+    }
+
+    /// The budget category with this code.
+    pub async fn category(&self, code: &str) -> BudgetCategory {
+        BudgetCategory::by_code(self.db(), code)
+            .await
+            .unwrap()
+            .unwrap_or_else(|| panic!("no budget category {code}"))
+    }
+
+    /// Budget `id`, as stored now.
+    pub async fn budget(&self, id: i64) -> CompanyBudget {
+        CompanyBudget::find(self.db(), id).await.unwrap().unwrap()
+    }
+
+    /// `budget`, as stored now.
+    pub async fn budget_now(&self, budget: &CompanyBudget) -> CompanyBudget {
+        self.budget(budget.id).await
+    }
+
+    /// A draft version for the entity `code` and `year`, started as `start`,
+    /// made by `by`.
+    pub async fn new_budget(
+        &self,
+        code: &str,
+        year: i64,
+        start: StartChoice,
+        by: &User,
+    ) -> CompanyBudget {
+        let entity = self.entity(code).await;
+        budget_lines::create(
+            self.state(),
+            NewBudget {
+                legal_entity_id: entity.id,
+                fiscal_year: year,
+                name: String::new(),
+                start,
+                revision_reason: None,
+            },
+            Some(by.id),
+        )
+        .await
+        .expect("the draft is made")
+    }
+
+    /// Sets `amount` fils for the category `code` in each month of
+    /// `budget` from the `from`-th to the `to`-th (1 to 12, of the fiscal
+    /// year).
+    pub async fn fill(
+        &self,
+        budget: &CompanyBudget,
+        code: &str,
+        amount: i64,
+        from: usize,
+        to: usize,
+    ) {
+        let category = self.category(code).await;
+        let months = budget.months();
+        let lines: Vec<LineInput> = months[from - 1..to]
+            .iter()
+            .map(|month| LineInput {
+                category_id: category.id,
+                month: *month,
+                amount,
+                note: None,
+            })
+            .collect();
+        budget_lines::set_lines(self.db(), budget.id, &lines)
+            .await
+            .expect("the lines are set");
+    }
+
+    /// `POST path` as `by` with `fields`, as a sheet or a button sends it.
+    pub async fn post_as(
+        &self,
+        path: &str,
+        by: &User,
+        fields: &[(&str, &str)],
+    ) -> renox::testing::TestResponse {
+        self.app.acting_as(by);
+        self.app.htmx().post(path, fields).await
+    }
+
+    /// Submits `budget` for approval as `by` (the page's button).
+    pub async fn submit_budget(&self, budget: &CompanyBudget, by: &User) {
+        self.post_as(&format!("/budgets/{}/submit", budget.id), by, &[])
+            .await
+            .assert_redirect(&format!("/budgets/{}", budget.id));
+    }
+
+    /// The pending approval request about `budget`.
+    pub async fn budget_request(&self, budget: &CompanyBudget) -> ApprovalRequest {
+        let mut pending = approvals::pending_for(self.db(), &budget.subject())
+            .await
+            .unwrap();
+        assert_eq!(pending.len(), 1, "one pending request");
+        pending.remove(0)
+    }
+
+    /// The names of the transitions `budget` went through, in order.
+    pub async fn budget_history(&self, budget: &CompanyBudget) -> Vec<String> {
+        renox::state_machine::history(self.db(), CompanyBudget::TABLE, budget.id)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|row| row.transition)
+            .collect()
+    }
+
+    /// `user`'s notices of `kind`, newest first, as JSON text.
+    pub async fn notices_of(&self, user: &User, kind: &str) -> Vec<String> {
+        user.notifications(self.db(), 50)
+            .await
+            .unwrap()
+            .into_iter()
+            .filter(|n| n.kind == kind)
+            .map(|n| n.data.to_string())
+            .collect()
     }
 
     /// The summary of `entity` for the period that contains `date`, taken
@@ -939,6 +1074,7 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
     let bill_approved = Recorded::new();
     let bill_voided = Recorded::new();
     let bill_reopened = Recorded::new();
+    let budget_approved = Recorded::new();
     let tickets = TicketDesk::default();
     let creator: Arc<dyn TaskCreator> = Arc::new(tickets.clone());
     let notices = Recording::default();
@@ -967,6 +1103,7 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
     let app = record(app, &bill_approved);
     let app = record(app, &bill_voided);
     let app = record(app, &bill_reopened);
+    let app = record(app, &budget_approved);
     let config = ClientConfig::parse(CLIENT).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     let dir = views.path().to_path_buf();
@@ -975,6 +1112,9 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
         .call("wl:install", Vec::<String>::new())
         .await
         .expect("wl:install runs");
+    wl_invoicing::budget_category::install(app.db())
+        .await
+        .expect("the budget categories are seeded");
     let all = [
         perm::VIEW,
         perm::CREATE,
@@ -990,6 +1130,10 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
         perm::SUPPLIER_BILLS_VIEW,
         perm::SUPPLIER_BILLS_CREATE,
         perm::SUPPLIER_BILLS_APPROVE,
+        perm::BUDGETS_VIEW,
+        perm::BUDGETS_MANAGE,
+        perm::BUDGETS_APPROVE,
+        perm::BUDGET_CATEGORIES_MANAGE,
     ];
     permissions::define_role(app.db(), "admin", &all)
         .await
@@ -1007,7 +1151,18 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
             perm::SUPPLIER_BILLS_VIEW,
             perm::SUPPLIER_BILLS_CREATE,
             perm::SUPPLIER_BILLS_APPROVE,
+            perm::BUDGETS_VIEW,
+            perm::BUDGETS_MANAGE,
+            perm::BUDGET_CATEGORIES_MANAGE,
         ],
+    )
+    .await
+    .unwrap();
+    // The host's `finance_manager` role: sees budgets and approves them.
+    permissions::define_role(
+        app.db(),
+        "finance_manager",
+        &[perm::VIEW, perm::BUDGETS_VIEW, perm::BUDGETS_APPROVE],
     )
     .await
     .unwrap();
@@ -1043,5 +1198,6 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
         bill_approved,
         bill_voided,
         bill_reopened,
+        budget_approved,
     }
 }
