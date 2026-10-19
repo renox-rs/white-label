@@ -1022,6 +1022,34 @@ const TEXTS: &[(&str, &str)] = &[
         "property.notices.owner_statement_revised_body",
         "We found a correction to statement {{ statement }} for {{ period }}. A corrected statement (revision {{ revision }}) follows.",
     ),
+    // Writing off rent with the owner's consent (BL-PRP-18).
+    ("property.write_off.action", "Write off an invoice"),
+    (
+        "property.write_off.description",
+        "For a managed unit the owner's consent is needed. A property manager other than you approves the write-off.",
+    ),
+    ("property.write_off.invoice", "Invoice"),
+    ("property.write_off.reason_code", "Reason"),
+    ("property.write_off.reason_text", "Explanation (needed for other)"),
+    ("property.write_off.consent_note", "Owner's consent (what was agreed, or where the e-mail or letter is kept)"),
+    ("property.write_off.consent_by", "Given by (the owner's contact)"),
+    ("property.write_off.consent_on", "Given on"),
+    ("property.write_off.submit", "Request the write-off"),
+    ("property.write_off.requested", "The write-off waits for approval."),
+    ("property.write_off.done", "The invoice was written off."),
+    ("property.write_off.reason.insolvent", "Insolvent"),
+    ("property.write_off.reason.untraceable", "Untraceable"),
+    ("property.write_off.reason.uneconomic_to_pursue", "Uneconomic to pursue"),
+    ("property.write_off.reason.settlement_agreed", "Settlement agreed"),
+    ("property.write_off.reason.other", "Other"),
+    (
+        "property.write_off.consent_required",
+        "The unit is managed for an owner: record the owner's consent to the write-off first.",
+    ),
+    (
+        "property.write_off.consent_invalid",
+        "The owner's consent needs a note, the owner's contact who gave it, and a date that is not in the future.",
+    ),
     // The deposit applied to the deductions (BL-PRP-17).
     ("property.deposit_forfeit.action", "Apply the deposit to the deductions"),
     (

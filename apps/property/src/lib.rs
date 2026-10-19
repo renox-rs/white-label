@@ -41,6 +41,7 @@ mod texts;
 pub mod unit;
 pub mod unit_machine;
 pub mod withdraw;
+pub mod write_off;
 
 use renox::db::Migration;
 use renox::nav::NavLink;
@@ -151,7 +152,8 @@ impl Module for Property {
             .model::<agreement::ManagementAgreement>()
             .model::<agreement::AgreementUnit>()
             .model::<statement::OwnerStatement>()
-            .model::<statement::StatementLine>();
+            .model::<statement::StatementLine>()
+            .model::<write_off::WriteOffConsent>();
         unit_machine::register();
         lease_machine::register();
         documents::register();
@@ -171,6 +173,7 @@ impl Module for Property {
         statement_machine::register();
         statement_events::register(app);
         statement::schedule(app);
+        write_off::register(app);
         // A building is the scope roles are assigned in.
         wl_kernel::scopes::register_label(Building::TABLE, |db, id| {
             let id = id.to_owned();

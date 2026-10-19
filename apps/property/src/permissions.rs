@@ -40,6 +40,10 @@ pub const AGREEMENTS_MANAGE: &str = "agreements.manage";
 /// it in the lease's building (BL-PRP-17).
 pub const DEPOSITS_REFUND: &str = "deposits.refund";
 
+/// The permission of wl-invoicing that lets a user write off an invoice; the
+/// page offers the write-off of a lease's invoice to its holders (BL-PRP-18).
+pub const INVOICES_WRITE_OFF: &str = "invoices.write_off";
+
 /// Every permission of the module.
 pub const ALL: &[&str] = &[
     UNITS_VIEW,

@@ -89,12 +89,15 @@ fn vertical(name: &str) -> Result<property::Property, ConfigError> {
 
 /// The invoicing module with the settings of the client's app: `property`
 /// also holds a supplier bill for the same contract, period and amount
-/// (`PRP.ACL.22`).
+/// (`PRP.ACL.22`), and a write-off is approved by a property manager other
+/// than the requester (`FIN.ACL.15`).
 fn invoicing_for(client_app: &str) -> wl_invoicing::WlInvoicing {
     use wl_invoicing::DuplicateKey::{ContractPeriodAmount, SupplierInvoiceNumber};
     let module = wl_invoicing::WlInvoicing::new();
     match client_app {
-        "property" => module.duplicate_keys(&[SupplierInvoiceNumber, ContractPeriodAmount]),
+        "property" => module
+            .duplicate_keys(&[SupplierInvoiceNumber, ContractPeriodAmount])
+            .write_off_approvers(&[app::roles::PROPERTY_MANAGER, app::roles::ADMIN]),
         _ => module,
     }
 }

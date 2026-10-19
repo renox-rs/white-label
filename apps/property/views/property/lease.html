@@ -125,6 +125,17 @@
           <rx-input name="hand_back" :label="tx['force.hand_back']" :id="'force-hand-back-' ~ lease.id"/>
         </rx-action-sheet>
       </template>
+      <template rx-if="can_write_off">
+        <rx-action-sheet :id="'write-off-' ~ lease.id" :label="tx['write_off.action']" :action="route('property.lease_write_off', lease.id)"
+                         :title="tx['write_off.action']" :description="tx['write_off.description']" :submit-label="tx['write_off.submit']" icon="file-x" variant="danger" danger>
+          <rx-select name="invoice" :label="tx['write_off.invoice']" :options="write_off_invoices" :id="'write-off-invoice-' ~ lease.id"/>
+          <rx-select name="reason_code" :label="tx['write_off.reason_code']" :options="[['insolvent', tx['write_off.reason.insolvent']], ['untraceable', tx['write_off.reason.untraceable']], ['uneconomic_to_pursue', tx['write_off.reason.uneconomic_to_pursue']], ['settlement_agreed', tx['write_off.reason.settlement_agreed']], ['other', tx['write_off.reason.other']]]" :selected="'insolvent'" :id="'write-off-reason-' ~ lease.id"/>
+          <rx-input name="reason_text" :label="tx['write_off.reason_text']" :id="'write-off-text-' ~ lease.id"/>
+          <rx-textarea name="consent_note" :label="tx['write_off.consent_note']" :id="'write-off-consent-note-' ~ lease.id"/>
+          <rx-input name="consent_by" :label="tx['write_off.consent_by']" :id="'write-off-consent-by-' ~ lease.id"/>
+          <rx-input name="consent_on" type="date" :label="tx['write_off.consent_on']" :id="'write-off-consent-on-' ~ lease.id"/>
+        </rx-action-sheet>
+      </template>
       <template rx-if="can_apply_deposit">
         <rx-action-sheet :id="'apply-deposit-' ~ lease.id" :label="tx['deposit_forfeit.action']" :action="route('property.lease_apply_deposit', lease.id)"
                          :title="tx['deposit_forfeit.action']" :description="tx['deposit_forfeit.description']" :submit-label="tx['deposit_forfeit.submit']" icon="piggy-bank" variant="danger" danger>

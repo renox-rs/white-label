@@ -132,6 +132,8 @@ impl DepositSettlement {
 pub struct Unpaid {
     /// The invoice.
     pub id: i64,
+    /// Its number, once issued.
+    pub number: Option<String>,
     /// What it is open for, in fils.
     pub open: i64,
     /// Its due date, else the due date of its charge.
@@ -212,6 +214,7 @@ pub async fn unpaid_invoices(state: &AppState, root_id: i64) -> Result<Vec<Unpai
             if open && summary.balance > 0 && !summary.disputed {
                 found.push(Unpaid {
                     id,
+                    number: summary.number.clone(),
                     open: summary.balance,
                     due: summary.due_date.unwrap_or(charge.due_date),
                 });

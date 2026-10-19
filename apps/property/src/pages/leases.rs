@@ -26,6 +26,7 @@
 //! | `POST /property/leases/{id}/force-terminate` | `property.lease_force_terminate` | `leases.manage` in the building |
 //! | `POST /property/leases/{id}/ejari-cancellation` | `property.lease_ejari_cancellation` | `leases.manage` in the building |
 //! | `POST /property/leases/{id}/apply-deposit` | `property.lease_apply_deposit` | `deposits.refund` in the building |
+//! | `POST /property/leases/{id}/write-off` | `property.lease_write_off` | `leases.view` in the building (and `invoices.write_off`) |
 //! | `POST /property/leases/{id}/waive-deposit` | `property.lease_waive_deposit` | `leases.activate` in the building |
 //! | `POST /property/leases/{id}/ejari` | `property.lease_ejari` | `leases.activate` in the building |
 //! | `POST /property/leases/{id}/cheques` | `property.lease_cheques` | `leases.create` in the building |
@@ -50,6 +51,7 @@ use crate::lease::{Lease, LeaseStatus, RenewalDecision, VersionKind};
 use crate::arrears::{self, ArrearsDemand, NewPlan, PaymentPlan};
 use crate::cancellation::{self, CancelRequest};
 use crate::deposit_forfeit::{self, ApplyRequest, DepositSettlement};
+use crate::write_off::{self as write_off_mod, Consent};
 use crate::force::{self, ForceReason, ForceRequest};
 use crate::chase;
 use crate::lease_machine::{ACTIVATE, CANCEL, SUBMIT};
@@ -115,6 +117,8 @@ pub fn routes() -> Routes {
         .name("property.lease_ejari_cancellation")
         .post("/property/leases/{id}/apply-deposit", apply_deposit)
         .name("property.lease_apply_deposit")
+        .post("/property/leases/{id}/write-off", write_off)
+        .name("property.lease_write_off")
         .post("/property/leases/{id}/waive-deposit", waive_deposit)
         .name("property.lease_waive_deposit")
         .post("/property/leases/{id}/ejari", ejari)
@@ -442,6 +446,8 @@ pub(crate) struct ShowPage {
     legal_open: bool,
     settlement: Vec<SettlementRow>,
     can_apply_deposit: bool,
+    can_write_off: bool,
+    write_off_invoices: Vec<[String; 2]>,
     demands: Vec<DemandRow>,
     send_demands: Vec<[String; 2]>,
     plan_until: String,
@@ -794,6 +800,22 @@ async fn show(
             .unwrap_or_default(),
         force_basis: lease.force_basis.clone().unwrap_or_default(),
     };
+    let write_off_invoices: Vec<[String; 2]> =
+        deposit_forfeit::unpaid_invoices(&state, lease.root_id)
+            .await?
+            .into_iter()
+            .map(|u| {
+                [
+                    u.id.to_string(),
+                    format!(
+                        "{} · {} · {}",
+                        u.number.unwrap_or_else(|| format!("#{}", u.id)),
+                        u.due,
+                        crate::money_text(u.open)
+                    ),
+                ]
+            })
+            .collect();
     let settled_by_deposit = DepositSettlement::of_root(&state.db, lease.root_id).await?;
     let settlement: Vec<SettlementRow> = settled_by_deposit
         .iter()
@@ -827,6 +849,9 @@ async fn show(
         can_apply_deposit: user.has_permission_in(DEPOSITS_REFUND, &scope)
             && lease.status == LeaseStatus::Terminated
             && settled_by_deposit.is_none(),
+        can_write_off: user.has_permission_in(permissions::INVOICES_WRITE_OFF, &scope)
+            && !write_off_invoices.is_empty(),
+        write_off_invoices,
         demands,
         send_demands,
         plan_until,
@@ -1654,6 +1679,69 @@ async fn apply_deposit(
     }
     deposit_forfeit::apply(&state, &user, id, request).await?;
     Ok((Toast::success(text(&lang, "deposit_forfeit.done")), renox::HxRefresh).into_response())
+}
+
+/// The form that asks to write off an invoice.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct WriteOffForm {
+    /// The invoice.
+    #[serde(default)]
+    pub invoice: String,
+    /// The reason code.
+    #[serde(default)]
+    pub reason_code: String,
+    /// The explanation.
+    #[serde(default)]
+    pub reason_text: String,
+    /// What the owner agreed.
+    #[serde(default)]
+    pub consent_note: String,
+    /// The owner's contact who gave it.
+    #[serde(default)]
+    pub consent_by: String,
+    /// The day it was given.
+    #[serde(default)]
+    pub consent_on: String,
+}
+
+/// `POST /property/leases/{id}/write-off`: asks to write off the open balance
+/// of an invoice of the lease; for a managed unit with the owner's consent.
+async fn write_off(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<WriteOffForm>,
+) -> Result<Response> {
+    let invoice = whole::<i64>(&form.invoice, "invoice")?;
+    let consent = if form.consent_note.trim().is_empty()
+        && form.consent_by.trim().is_empty()
+        && form.consent_on.trim().is_empty()
+    {
+        None
+    } else {
+        Some(Consent {
+            note: form.consent_note.clone(),
+            given_by: form.consent_by.clone(),
+            given_on: required_date(&form.consent_on, "consent_on")?,
+        })
+    };
+    let reason_text = Some(form.reason_text.as_str()).filter(|t| !t.trim().is_empty());
+    let answer = write_off_mod::request(
+        &state,
+        &user,
+        id,
+        invoice,
+        form.reason_code.trim(),
+        reason_text,
+        consent,
+    )
+    .await?;
+    let done = match answer {
+        wl_kernel::invoicing::WriteOffAnswer::WrittenOff => "write_off.done",
+        wl_kernel::invoicing::WriteOffAnswer::Pending { .. } => "write_off.requested",
+    };
+    Ok((Toast::success(text(&lang, done)), renox::HxRefresh).into_response())
 }
 
 /// `POST /property/leases/{id}/ejari`.
