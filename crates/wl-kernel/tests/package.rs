@@ -2100,6 +2100,7 @@ async fn the_lease_cancellation_contracts_fall_back_when_the_modules_are_off() {
     let lease = Subject::new("property.lease", 9);
 
     assert!(deposits(state).held_for(app.db(), &lease).await.unwrap().is_none());
+    assert!(deposits(state).start_settlement(state, &lease).await.unwrap().is_none());
     let settlement = CancelSettlement::new(lease).forfeit(200_000, "Reservation form §4");
     assert!(deposits(state)
         .settle_cancelled(state, settlement, Some(4))

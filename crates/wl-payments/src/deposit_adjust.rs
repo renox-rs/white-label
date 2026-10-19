@@ -590,6 +590,14 @@ impl Deposits for DepositBook {
         Box::pin(async move { crate::deposit_cancel::settle(state, request, by).await })
     }
 
+    fn start_settlement<'a>(
+        &'a self,
+        state: &'a AppState,
+        source: &'a Subject,
+    ) -> DepositFuture<'a, Option<SettlementStarted>> {
+        Box::pin(async move { crate::deposit_cancel::begin(state, source).await })
+    }
+
     fn adjust<'a>(
         &'a self,
         state: &'a AppState,

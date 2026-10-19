@@ -67,6 +67,30 @@ async fn the_settlement_starts_with_a_version_and_no_forfeit() {
     assert!(again.is_none());
 }
 
+/// A lease that ended starts the settlement without publishing anything: the
+/// deductions follow with the move-out inspection (#261).
+#[renox::test]
+async fn the_settlement_of_an_ended_agreement_starts_without_a_version() {
+    let t = boot().await;
+    let by = t.user_a().await;
+    let payment = t.receive(BLUE_DUNES, 500_000).await;
+    let deposit = t.hold_deposit(&by, BLUE_DUNES, 500_000, Some(&payment)).await;
+
+    let started = deposits(t.state())
+        .start_settlement(t.state(), &lease())
+        .await
+        .unwrap()
+        .expect("a deposit was held");
+    assert_eq!(started.deposit.0, deposit.id);
+    assert_eq!((started.held, started.forfeit, started.version), (500_000, 0, 0));
+    assert_eq!(t.deposit(deposit.id).await.status, DepositStatus::SettlementPending);
+    assert!(t.published_for(BLUE_DUNES).await.is_empty());
+    // Not held any more: a second start, and another source, find nothing.
+    assert!(deposits(t.state()).start_settlement(t.state(), &lease()).await.unwrap().is_none());
+    let other = Subject::new("property.lease", 10);
+    assert!(deposits(t.state()).start_settlement(t.state(), &other).await.unwrap().is_none());
+}
+
 /// A forfeit is one line that names the clause, and the party sees it.
 #[renox::test]
 async fn a_forfeit_is_published_as_a_deduction_with_its_clause() {

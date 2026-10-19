@@ -288,7 +288,7 @@ impl CancelSettlement {
     }
 }
 
-/// What [`Deposits::settle_cancelled`] did.
+/// What [`Deposits::settle_cancelled`] and [`Deposits::start_settlement`] did.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SettlementStarted {
     /// The deposit, now `settlement_pending`.
@@ -297,7 +297,8 @@ pub struct SettlementStarted {
     pub held: i64,
     /// The part forfeited, in fils.
     pub forfeit: i64,
-    /// The published version of the deductions: 1.
+    /// The published version of the deductions: 1 after a cancellation, 0
+    /// when nothing was published yet.
     pub version: i32,
 }
 
@@ -327,6 +328,20 @@ pub trait Deposits: Send + Sync + 'static {
         _state: &'a AppState,
         _request: CancelSettlement,
         _by: Option<i64>,
+    ) -> DepositFuture<'a, Option<SettlementStarted>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    /// Starts the settlement of the held deposit of `source` because its
+    /// agreement ended (a lease terminated), as the system: the deposit
+    /// becomes `settlement_pending` and nothing is published to the party yet
+    /// (`version` of the result is 0); the deductions follow with the move-out
+    /// inspection. `None` when the source holds no deposit. The default
+    /// finds no deposit: payments is not enabled.
+    fn start_settlement<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _source: &'a Subject,
     ) -> DepositFuture<'a, Option<SettlementStarted>> {
         Box::pin(async { Ok(None) })
     }

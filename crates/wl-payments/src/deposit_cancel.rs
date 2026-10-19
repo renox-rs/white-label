@@ -10,6 +10,7 @@
 
 use renox::prelude::*;
 use renox::state_machine::TransitionError;
+use wl_kernel::Subject;
 use wl_kernel::deposits::{CancelSettlement, SettlementStarted};
 
 use crate::deposit::{Deposit, DepositStatus, start_settlement};
@@ -96,10 +97,38 @@ pub(crate) async fn settle(
     }))
 }
 
+/// Starts the settlement of the deposit held for `source` as the system,
+/// because its agreement ended, and publishes nothing yet. `None` when the
+/// source holds no deposit.
+///
+/// # Errors
+///
+/// The database's errors, or the machine's refusal.
+pub(crate) async fn begin(state: &AppState, source: &Subject) -> Result<Option<SettlementStarted>> {
+    let Some(deposit) = Deposit::query()
+        .where_(Deposit::SOURCE_TYPE.eq(source.subject_type.as_str()))
+        .where_(Deposit::SOURCE_ID.eq(source.subject_id))
+        .where_(Deposit::STATUS.eq(DepositStatus::Held))
+        .order_by_desc(Deposit::ID)
+        .first(&state.db)
+        .await?
+    else {
+        return Ok(None);
+    };
+    let started = start_settlement(state, None, &deposit)
+        .await
+        .map_err(TransitionError::into_error)?;
+    Ok(Some(SettlementStarted {
+        deposit: started.deposit_id(),
+        held: started.held_amount,
+        forfeit: 0,
+        version: 0,
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use wl_kernel::Subject;
 
     fn settlement(forfeit: i64, clause: Option<&str>) -> CancelSettlement {
         let mut request = CancelSettlement::new(Subject::new("property.lease", 9));
