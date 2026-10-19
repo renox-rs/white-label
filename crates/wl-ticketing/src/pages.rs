@@ -861,6 +861,8 @@ pub struct AssignForm {
 fn assign_field(message: &str) -> &'static str {
     if message.starts_with("Nothing changed") {
         "visit_at"
+    } else if message.contains("on hold") {
+        "party_code"
     } else if message.contains("explanation") {
         "reason_text"
     } else if message.contains("reason") {
@@ -1184,6 +1186,7 @@ mod tests {
             assign_field("The vendor is not active, so it cannot be assigned."),
             "party_code"
         );
+        assert_eq!(assign_field("This party is on hold"), "party_code");
         assert_eq!(
             assign_field("The assignee is not a user."),
             "assignee_user_id"

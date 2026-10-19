@@ -371,6 +371,15 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_ticketing.notice.vendor_no_show.body",
         "{{ title }} was scheduled for {{ scheduled }} and {{ vendor }} has not started it {{ hours }} hours later. Reassign it or set a new time: {{ link }}.",
     ),
+    (
+        "wl_ticketing.vendor_block.terminate_reason",
+        "Vendor on hold",
+    ),
+    ("wl_ticketing.contract.on_hold", "Vendor on hold"),
+    (
+        "wl_ticketing.contract.on_hold_message",
+        "The vendor is on hold: no new visit is assigned to it. Reassign its visits or terminate the contract.",
+    ),
     ("wl_ticketing.no_show.title", "The vendor did not turn up"),
     (
         "wl_ticketing.no_show.banner",

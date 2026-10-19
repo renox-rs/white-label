@@ -18,6 +18,7 @@
         <rx-input name="termination_date" type="date" :label="tx['contract.terminate_date']" :hint="tx['contract.terminate_date_hint']" :id="'terminate-date-' ~ contract.id" required/>
       </rx-action-sheet>
     </rx-page-header>
+    <rx-alert rx-if="contract.vendor_on_hold" kind="warning" :title="tx['contract.on_hold']" :message="tx['contract.on_hold_message']"/>
     <rx-alert rx-if="contract.vendor_document_flag" kind="warning" :title="tx['contract.vendor_document']" :message="tx['contract.vendor_document_message']"/>
     <rx-card :title="tx['contract.details']">
       <rx-infolist columns="2">

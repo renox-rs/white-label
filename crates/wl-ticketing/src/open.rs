@@ -14,7 +14,7 @@ use renox::db::DateTime;
 use renox::prelude::*;
 use wl_kernel::calendar::calendar;
 use wl_kernel::tickets::{
-    OpenTicket, Requester, TICKET_SERIES, TaskComment, TaskCreator, TicketFuture, TicketId,
+    Assignee, OpenTicket, Requester, TICKET_SERIES, TaskComment, TaskCreator, TicketFuture, TicketId,
     TicketRef,
 };
 
@@ -62,7 +62,17 @@ impl Tickets {
                 )));
             }
         };
-        if let Some(assignee) = request.assignee {
+        // A planned visit of a contract whose vendor is blocked is created
+        // unassigned: the plans do not hand new work to a blocked vendor
+        // (`PTY.ACL.03`).
+        let mut assignee = request.assignee;
+        if let Some(Assignee::Party { id }) = assignee
+            && request.planned_due.is_some()
+            && crate::vendor_block::is_blocked(state, id).await?
+        {
+            assignee = None;
+        }
+        if let Some(assignee) = assignee {
             check_assignee(state, assignee)
                 .await
                 .map_err(|error| unprocessable(error.to_string()))?;
@@ -122,7 +132,7 @@ impl Tickets {
             ..Ticket::default()
         };
         ticket.insert(&state.db).await?;
-        if let Some(assignee) = request.assignee {
+        if let Some(assignee) = assignee {
             // The first assignment, as the system. The transition has its
             // own transaction, so a refusal takes the new ticket back.
             if let Err(error) =

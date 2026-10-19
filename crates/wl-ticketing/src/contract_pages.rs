@@ -103,6 +103,9 @@ pub struct ContractCard {
     /// The vendor document flag: a vendor document its categories need is
     /// expired or missing.
     pub vendor_document_flag: bool,
+    /// Whether the vendor is on hold (blocked): the page says only that, never
+    /// why.
+    pub vendor_on_hold: bool,
 }
 
 /// One covered subject and category.
@@ -333,6 +336,7 @@ async fn show(
         termination,
         ended: when(&state, contract.ended_at).unwrap_or_default(),
         vendor_document_flag: contract.vendor_document_flag,
+        vendor_on_hold: crate::vendor_block::is_blocked(&state, contract.vendor()).await?,
     };
     let has_actions = visits.iter().any(|v| v.can_reassign || v.can_cancel);
     Ok(View::typed(ContractPage {

@@ -26,6 +26,7 @@ pub mod seed;
 pub mod sla;
 mod texts;
 pub mod ticket;
+pub mod vendor_block;
 pub mod vendor_flags;
 pub mod vendor_guard;
 pub mod visibility;
@@ -334,6 +335,9 @@ impl Module for WlTicketing {
         // `DocumentExpired` and `DocumentAccepted` of a guarding vendor
         // document flag and unflag the contracts, visits and subjects.
         vendor_flags::register(app);
+        // A blocked vendor's service contracts are reviewed, not ended
+        // (`PTY.ACL.03`).
+        vendor_block::register();
         // `WRK.RUL.19`: a vendor that did not start a ticket in time.
         app.provide(no_show::NoShowHours(
             self.no_show_hours.unwrap_or(no_show::DEFAULT_HOURS),

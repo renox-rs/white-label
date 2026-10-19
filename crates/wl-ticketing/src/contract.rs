@@ -487,7 +487,12 @@ impl ServiceContracts {
             return Ok(None);
         }
         let status = directory(state).status(&state.db, contract.vendor()).await?;
-        Ok((status == Some(PartyStatus::Active)).then(|| contract.vendor()))
+        if status != Some(PartyStatus::Active)
+            || crate::vendor_block::is_blocked(state, contract.vendor()).await?
+        {
+            return Ok(None);
+        }
+        Ok(Some(contract.vendor()))
     }
 
     /// Activates the `draft` `contract` as `user`: one maintenance plan per
