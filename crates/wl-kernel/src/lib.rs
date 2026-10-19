@@ -19,6 +19,7 @@ pub mod numbering;
 pub mod parties;
 pub mod payments;
 pub mod scopes;
+pub mod screening_guard;
 pub mod subject;
 mod texts;
 pub mod tickets;
@@ -115,6 +116,10 @@ const VIEWS: &[(&str, &str)] = &[
     (
         block_guard::REFUSAL_TEMPLATE,
         include_str!("../views/wl-kernel/block_refusal.html"),
+    ),
+    (
+        screening_guard::NOTICE_TEMPLATE,
+        include_str!("../views/wl-kernel/screening_notice.html"),
     ),
     (
         approvals::web::CARD_TEMPLATE,

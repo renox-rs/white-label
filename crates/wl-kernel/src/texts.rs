@@ -19,6 +19,19 @@ const TEXTS: &[(&str, &str)] = &[
         "Request exception (approved by :approver)",
     ),
     (
+        "wl_kernel.screening_guard.refused",
+        "Screening list is out of date: :lists",
+    ),
+    (
+        "wl_kernel.screening_guard.notice",
+        "screened on a stale list (:lists)",
+    ),
+    ("wl_kernel.screening_guard.list", ":name of :date"),
+    (
+        "wl_kernel.screening_guard.never_updated",
+        ":name (no update yet)",
+    ),
+    (
         "wl_kernel.approvals.already_pending",
         "This is already waiting for approval.",
     ),

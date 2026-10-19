@@ -153,6 +153,21 @@ neutral text. A blocked action can go ahead through an approved exception (appro
 `NoBlockGuard` allows everything. The refusal type is `wl_kernel::block_guard::BlockRefusal`,
 not re-exported at the root because `documents::BlockRefusal` owns that name there.
 
+Before a guarded transition onboards a party while a sanctions list may be stale, a module
+calls `wl_kernel::screening_guard::run_screened(&state, &user, &record, "activate", party,
+input)`: it asks `screening_guard(&state)` (`ScreeningGuard::check_in`, in the transition's own
+transaction) and then runs the transition. `ScreeningOutcome::Allowed` and `Warn(lists)` let it
+run (`Warn` is the default `StaleListPolicy`, and the caller shows the lists in its flash
+message); `Blocked(refusal)` runs nothing and is a 422 with code `stale_list`, text "Screening
+list is out of date: UN Consolidated List of 2026-11-02" (each stale list once, its last
+successful update date in Asia/Dubai, or "no update yet"). The text never names a candidate,
+a match or a block reason, so everyone who can run the transition sees it. A module without a
+transition (a plain insert) calls `check_in` directly. The page includes the partial
+`wl-kernel/screening_notice.html` with a `ScreeningNoticeView` (`ScreeningRefusal::view`, or
+`stale_notice_view` from `ScreeningGuard::latest_notice_in`). `wl-parties` provides the guard
+with `provide_screening_guard` when screening is on; otherwise `NoScreeningGuard` allows
+everything and shows no notice.
+
 A module that owns a guarded transition (an entry of a document kind's `blocks`, e.g.
 `deployment.activate`) registers, in `register`, a `BlockSubjects` provider with
 `wl_kernel::documents::register_block_subjects("deployment.activate", provider)`: it maps a

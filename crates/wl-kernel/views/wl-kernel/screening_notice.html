@@ -1,0 +1,7 @@
+{#- wl-kernel: the stale sanctions list notice (wl-parties §7). A page gives
+    `notice` (wl_kernel::screening_guard::ScreeningNoticeView) and includes it
+    with <rx-include template="wl-kernel/screening_notice.html"/>. In warn mode
+    it is the "screened on a stale list" line of the record; in block mode it is
+    the refusal. It names lists and dates only, never a candidate or a match.
+    Replace it with resources/views/wl-kernel/screening_notice.html in the app. -#}
+<rx-alert rx-if="notice" kind="warning" :message="notice.message"/>
