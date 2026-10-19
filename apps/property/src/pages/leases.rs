@@ -289,6 +289,8 @@ pub struct SettlementRow {
     pub rent_due: String,
     /// The damage lines.
     pub damages: String,
+    /// The total deductions: the unpaid rent and the damage lines.
+    pub total: String,
     /// The part applied to the rent invoices.
     pub to_rent: String,
     /// The part kept for the damages.
@@ -823,6 +825,7 @@ async fn show(
             held: crate::money_text(s.held),
             rent_due: crate::money_text(s.rent_due),
             damages: crate::money_text(s.damages),
+            total: crate::money_text(s.total_deductions()),
             to_rent: crate::money_text(s.to_rent),
             to_damages: crate::money_text(s.to_damages),
             excess: crate::money_text(s.excess),

@@ -1176,6 +1176,7 @@ const TEXTS: &[(&str, &str)] = &[
     ("property.deposit_forfeit.held", "Deposit"),
     ("property.deposit_forfeit.rent_due", "Unpaid rent"),
     ("property.deposit_forfeit.damages", "Damages"),
+    ("property.deposit_forfeit.total", "Total deductions"),
     ("property.deposit_forfeit.to_rent", "Applied to rent"),
     ("property.deposit_forfeit.to_damages", "Kept for damages"),
     ("property.deposit_forfeit.excess", "Damages invoiced"),
