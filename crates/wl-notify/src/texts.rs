@@ -41,6 +41,10 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_notify.broadcast.excluded.blocked_party",
         "On hold or no longer active",
     ),
+    (
+        "wl_notify.broadcast.excluded.frequency_cap",
+        "Over the marketing frequency cap",
+    ),
     ("wl_notify.broadcast.excluded.no_consent", "No consent"),
     (
         "wl_notify.broadcast.excluded.no_contact_point",

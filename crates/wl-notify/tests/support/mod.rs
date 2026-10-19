@@ -924,7 +924,7 @@ impl TestClock {
 }
 
 /// Marketing consent for every party on every channel.
-struct EveryoneConsents;
+pub struct EveryoneConsents;
 
 impl Consents for EveryoneConsents {
     fn has_consent<'a>(

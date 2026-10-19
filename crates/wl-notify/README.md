@@ -23,6 +23,7 @@ What is here so far:
 | Statutory notice records, `notice_status`, `undelivered_notices` | §5.4, §6 | `notices` |
 | The `statutory_notice` give-up reaction and its task | §5.4 | `statutory_notice` |
 | Proof of delivery: form, attachment, `StatutoryNoticeProofRecorded` (`notifications.notices.record_proof`) | §5.4 | `pages` |
+| Marketing frequency cap: `WlNotify::marketing_frequency_cap(n)` (default 2 per 7 days, any channel and broadcast), `FREQUENCY_CAP` suppression under a lock per party | §6 `NTF.RUL.02`, §7 | `cap`, `send` |
 
 `types::install` also fills the default give-up reaction (kernel `default_give_up`, §5.4) into a
 stored type whose reactions are empty and which the client never edited; edited rows are kept.

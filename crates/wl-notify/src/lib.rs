@@ -10,6 +10,7 @@ pub mod broadcast_recipients;
 pub mod broadcast_results;
 pub mod broadcast_run;
 pub mod broadcasts;
+pub mod cap;
 pub mod channels;
 pub mod clock;
 pub mod contact_invalid;
@@ -143,6 +144,7 @@ pub struct WlNotify {
     providers: Providers,
     reactions: Reactions,
     broadcast: BroadcastSettings,
+    cap: cap::CapSettings,
 }
 
 impl WlNotify {
@@ -162,6 +164,14 @@ impl WlNotify {
     /// holder of `notifications.marketing.send` to approve it (default 200).
     pub fn broadcast_approval_above(mut self, n: i64) -> Self {
         self.broadcast.approval_above = n;
+        self
+    }
+
+    /// A party gets at most `n` marketing messages in 7 days, on any
+    /// channel and in any broadcast; the next one is suppressed with reason
+    /// `frequency_cap` (default 2).
+    pub fn marketing_frequency_cap(mut self, n: i64) -> Self {
+        self.cap.max = n;
         self
     }
 
@@ -222,6 +232,8 @@ impl Module for WlNotify {
         app.provide(Clock::system());
         // Broadcasts: the settings and the machine with its waiting state.
         app.provide(self.broadcast.clone());
+        // The marketing frequency cap.
+        app.provide(self.cap);
         broadcast_machine::register();
         // Above the limit: the approval policy, its re-check and listener.
         broadcast_approval::register(app);

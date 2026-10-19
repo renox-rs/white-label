@@ -25,10 +25,11 @@ use serde::{Deserialize, Serialize};
 use wl_kernel::notify::{Category, MessageFailed, Urgency};
 
 use crate::broadcast_recipients;
+use crate::cap;
 use crate::channels::{self, Outgoing, SendError, SendErrorKind};
 use crate::give_up::{self, Applied};
 use crate::machine::{DEFER, FAIL, RETRY, SEND, SUPPRESS};
-use crate::message::{INVALID_CONTACT_POINT, Message, MessageStatus, RecipientKind};
+use crate::message::{FREQUENCY_CAP, INVALID_CONTACT_POINT, Message, MessageStatus, RecipientKind};
 use crate::send_window::SendWindow;
 use crate::suppressions;
 use crate::window;
@@ -138,6 +139,24 @@ pub async fn send_at(state: &AppState, id: i64, now: DateTime) -> Result<SendOut
         defer(state, &message, until).await?;
         return Ok(SendOutcome::Deferred(until));
     }
+    // A capped message holds its party's lock from the count through the
+    // provider call and the `sent` commit, so a concurrent send counts it.
+    let party_lock = match (cap::applies(state, &message).await?, message.party_id) {
+        (true, Some(party)) => Some(cap::lock(party).await),
+        _ => None,
+    };
+    if party_lock.is_some() {
+        // Another send may have changed the message while this one waited.
+        let current = Message::find(&state.db, id).await?;
+        if current.is_none_or(|m| m.status != MessageStatus::Queued) {
+            return Ok(SendOutcome::Skipped);
+        }
+        if cap::reached(state, &message, now).await? {
+            let outcome = cap_suppress(state, &message).await?;
+            outcome.emit(state).await?;
+            return Ok(SendOutcome::Skipped);
+        }
+    }
     let provider = channels::providers(state)
         .for_channel(message.channel)
         .filter(|p| p.available(state));
@@ -164,8 +183,21 @@ pub async fn send_at(state: &AppState, id: i64, now: DateTime) -> Result<SendOut
     };
     match result {
         Ok(provider_message_id) => sent(state, message, name, provider_message_id, now).await,
-        Err(error) => failed(state, message, name, error).await,
+        Err(error) => {
+            // A failed attempt does not count: the lock is not held for it.
+            drop(party_lock);
+            failed(state, message, name, error).await
+        }
     }
+}
+
+/// The `send` guard "frequency cap" (§4.1, `NTF.RUL.02`): the message is
+/// `suppressed` with `frequency_cap`.
+async fn cap_suppress(state: &AppState, message: &Message) -> Result<Outcome<Message>> {
+    let mut tx = state.db.begin().await?;
+    let outcome = run(message, SUPPRESS, Some(FREQUENCY_CAP.to_owned()), &mut tx).await?;
+    tx.commit().await?;
+    Ok(outcome)
 }
 
 /// The `send` guard "contact point valid" (§4.1): a party message whose

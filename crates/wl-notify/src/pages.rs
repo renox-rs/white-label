@@ -35,6 +35,7 @@ use wl_kernel::approvals::{self, ApprovalCard};
 use wl_kernel::notify::{self, GiveUpReaction, NotifyChannel, ProofMethod};
 
 use crate::broadcast::{Broadcast, BroadcastStatus};
+use crate::broadcast_results;
 use crate::broadcast_run;
 use crate::broadcasts;
 use crate::message::{Message, MessageStatus, RecipientKind};
@@ -1100,9 +1101,8 @@ async fn broadcast_show(
                 .map(|tpl| tpl.body.clone())
         })
         .unwrap_or_else(|| "—".to_owned());
-    let excluded = b
-        .excluded
-        .0
+    let counts = broadcast_results::excluded(&db, b.id, &b.excluded.0).await?;
+    let excluded = counts
         .0
         .iter()
         .map(|(reason, count)| {
