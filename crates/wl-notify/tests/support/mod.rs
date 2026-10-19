@@ -755,6 +755,7 @@ struct TaskLog {
     opened: Vec<(TicketRef, OpenTicket)>,
     closed: Vec<TicketId>,
     comments: Vec<(TicketId, TaskComment)>,
+    completed: Vec<(TicketId, String)>,
 }
 
 /// A task creator that records what it is asked for, finds an open task by
@@ -772,6 +773,11 @@ impl Tasks {
     /// The comments added: ticket and comment, oldest first.
     pub fn comments(&self) -> Vec<(TicketId, TaskComment)> {
         self.0.lock().unwrap().comments.clone()
+    }
+
+    /// The tasks completed: ticket and note, oldest first.
+    pub fn completed(&self) -> Vec<(TicketId, String)> {
+        self.0.lock().unwrap().completed.clone()
     }
 
     /// Closes the task `id`: it is no longer found.
@@ -811,6 +817,18 @@ impl TaskCreator for Tasks {
             })
             .map(|(r, _)| r.clone());
         Box::pin(async move { Ok(found) })
+    }
+
+    fn complete<'a>(
+        &'a self,
+        _state: &'a AppState,
+        ticket: TicketId,
+        note: &'a str,
+    ) -> TicketFuture<'a, bool> {
+        let mut log = self.0.lock().unwrap();
+        log.completed.push((ticket, note.to_owned()));
+        log.closed.push(ticket);
+        Box::pin(async { Ok(true) })
     }
 
     fn comment<'a>(

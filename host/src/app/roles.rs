@@ -71,6 +71,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             notify::LOG_VIEW,
             notify::TEMPLATES_MANAGE,
             notify::CHANNELS_MANAGE,
+            notify::RECORD_PROOF,
             invoices::VIEW,
             invoices::CREATE,
             invoices::ISSUE,

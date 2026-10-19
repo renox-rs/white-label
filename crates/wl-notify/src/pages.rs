@@ -6,6 +6,9 @@
 //! | `GET /notification-types/{key}` | `wl_notify.type_edit` | `notifications.templates.manage` (an unknown key is 404) |
 //! | `POST /notification-types/{key}` | `wl_notify.type_update` | the same; a refused give-up combination is a 422 and nothing is saved |
 //! | `GET /notification-log` | `wl_notify.log` | `notifications.log.view` |
+//! | `GET /statutory-notices/{id}/proof` | `wl_notify.notice_proof` | `notifications.notices.record_proof` (an unknown notice is 404) |
+//! | `POST /statutory-notices/{id}/proof` | `wl_notify.notice_proof_store` | the same (multipart; a refused proof is a 422, a second one a 409) |
+//! | `GET /statutory-notices/{id}/proof/file` | `wl_notify.notice_proof_file` | the same (the attachment) |
 //!
 //! (`/notifications` is the Renox bell's page.) The log never shows a
 //! message that gave up or fell back as sent or delivered: an `abandoned`
@@ -16,12 +19,16 @@
 
 use std::collections::{BTreeMap, HashMap};
 
+use renox::Download;
 use renox::prelude::*;
 use renox::validation::{Errors, ValidationError};
 use serde::{Deserialize, Serialize};
-use wl_kernel::notify::{self, GiveUpReaction, NotifyChannel};
+use wl_kernel::Subject;
+use wl_kernel::notify::{self, GiveUpReaction, NotifyChannel, ProofMethod};
 
 use crate::message::{Message, MessageStatus, RecipientKind};
+use crate::notices::{self, ProofError, ProofFile, ProofInput, ProofRefusal, StatutoryNotice};
+use crate::notifier::type_def;
 use crate::permissions;
 use crate::texts;
 use crate::types::NotificationType;
@@ -54,6 +61,16 @@ pub fn routes() -> Routes {
                 .get("/notification-log", log_index)
                 .name("wl_notify.log")
                 .require_permission(permissions::LOG_VIEW),
+        )
+        .merge(
+            Routes::new()
+                .get("/statutory-notices/{id}/proof", proof_page)
+                .name("wl_notify.notice_proof")
+                .post("/statutory-notices/{id}/proof", proof_store)
+                .name("wl_notify.notice_proof_store")
+                .get("/statutory-notices/{id}/proof/file", proof_file)
+                .name("wl_notify.notice_proof_file")
+                .require_permission(permissions::RECORD_PROOF),
         )
 }
 
@@ -492,6 +509,255 @@ async fn log_index(State(db): State<Db>, lang: Lang) -> Result<View> {
         counts: LogCounts::of(&db).await?,
         messages: rows,
     }))
+}
+
+/// The methods a type accepts, as `(code, label)` options of a select.
+fn method_options(t: Text<'_>, methods: &[ProofMethod]) -> Vec<(String, String)> {
+    methods
+        .iter()
+        .map(|m| {
+            (
+                m.as_str().to_owned(),
+                t(&format!("proof_method.{}", m.as_str())),
+            )
+        })
+        .collect()
+}
+
+/// The words a notice is called by: the request's label for the subject, else
+/// `property.lease #7`.
+fn notice_subject(notice: &StatutoryNotice) -> String {
+    notice
+        .subject_label
+        .clone()
+        .filter(|label| !label.trim().is_empty())
+        .unwrap_or_else(|| format!("{} #{}", notice.subject_type, notice.subject_id))
+}
+
+/// A date as people read it in the back office: `2026-09-01`.
+fn day(at: DateTime) -> String {
+    notices::local_date(at).format("%Y-%m-%d").to_string()
+}
+
+/// One notice of the banner a vertical page shows.
+#[derive(Serialize, Debug, Clone)]
+pub struct BannerItem {
+    /// The notice's id (the sheet's id).
+    pub id: i64,
+    /// "Notice not delivered: Lease 7".
+    pub message: String,
+    /// "Since 2026-09-01".
+    pub since: String,
+    /// Where the proof is recorded.
+    pub path: String,
+    /// The proof methods the type accepts; empty hides the button.
+    pub methods: Vec<(String, String)>,
+}
+
+/// What `wl-notify/_notice_banner.html` needs, as `notice_banner`.
+#[derive(Serialize, Debug, Clone)]
+pub struct NoticeBanner {
+    /// The package texts of the sheet, as `tx['proof.method']`.
+    pub tx: Texts,
+    /// The notices not delivered; empty shows nothing.
+    pub items: Vec<BannerItem>,
+}
+
+/// The "notice not delivered" banner of `subject` (A10): one item per
+/// statutory notice that gave up and has neither a proof nor a delivery.
+/// A vertical page puts it in its view data as `notice_banner` and includes
+/// `wl-notify/_notice_banner.html`. The button shows only to holders of
+/// `notifications.notices.record_proof`.
+///
+/// # Errors
+///
+/// Database errors.
+pub async fn notice_banner(db: &Db, lang: &Lang, subject: &Subject) -> Result<NoticeBanner> {
+    let t = texts_in(lang);
+    let mut items = Vec::new();
+    for notice in notices::undelivered(db, subject).await? {
+        let methods = type_def(db, &notice.type_key).await?.proof_methods;
+        items.push(BannerItem {
+            id: notice.notice,
+            message: t("notice.not_delivered").replace(":label", &notice.label),
+            since: t("notice.since").replace(":date", &day(notice.gave_up_at)),
+            path: notice.proof_path,
+            methods: method_options(&t, &methods),
+        });
+    }
+    Ok(NoticeBanner {
+        tx: texts::all(lang),
+        items,
+    })
+}
+
+/// A proof once recorded.
+#[derive(Serialize, Debug, Clone)]
+pub struct RecordedProof {
+    /// "hand delivery".
+    pub method: String,
+    /// The delivery date.
+    pub delivered_on: String,
+    /// The note, or empty.
+    pub note: String,
+    /// The attachment's name, or empty.
+    pub attachment: String,
+    /// Where the attachment is downloaded; empty without one.
+    pub file_path: String,
+}
+
+/// What the proof page needs.
+#[derive(Serialize, ViewData)]
+#[view(template = "wl-notify/notice_proof.html")]
+pub(crate) struct NoticeProofPage {
+    tx: Texts,
+    notice: i64,
+    subject: String,
+    type_key: String,
+    gave_up_on: String,
+    methods: Vec<(String, String)>,
+    notice_banner: NoticeBanner,
+    proof: Option<RecordedProof>,
+}
+
+/// `GET /statutory-notices/{id}/proof`: the form offering the type's proof
+/// methods, or the proof once recorded.
+async fn proof_page(
+    State(db): State<Db>,
+    lang: Lang,
+    Found(notice): Found<StatutoryNotice>,
+) -> Result<View> {
+    let t = texts_in(&lang);
+    let methods = type_def(&db, &notice.type_key).await?.proof_methods;
+    let proof = match (notice.proof_method, notice.delivered_on) {
+        (Some(method), Some(delivered_on)) => Some(RecordedProof {
+            method: t(&format!("proof_method.{}", method.as_str())),
+            delivered_on: delivered_on.format("%Y-%m-%d").to_string(),
+            note: notice.proof_note.clone().unwrap_or_default(),
+            attachment: notice.attachment_name.clone().unwrap_or_default(),
+            file_path: if notice.attachment_key.is_some() {
+                format!("{}/file", notice.proof_path())
+            } else {
+                String::new()
+            },
+        }),
+        _ => None,
+    };
+    // The page is where the proof is recorded, so its own banner has no button.
+    let mut banner = notice_banner(&db, &lang, &notice.subject()).await?;
+    banner.items.retain(|item| item.id == notice.id);
+    for item in &mut banner.items {
+        item.methods.clear();
+    }
+    Ok(View::typed(NoticeProofPage {
+        tx: texts::all(&lang),
+        notice: notice.id,
+        subject: notice_subject(&notice),
+        type_key: notice.type_key.clone(),
+        gave_up_on: day(notice.gave_up_at),
+        methods: method_options(&t, &methods),
+        notice_banner: banner,
+        proof,
+    }))
+}
+
+/// The proof form (multipart).
+#[derive(Deserialize, Serialize, Validate, Debug, Default)]
+pub struct ProofForm {
+    /// How the notice was delivered: `courier`, `registered_mail`,
+    /// `hand_delivery` or `call`.
+    #[serde(default)]
+    pub method: Option<String>,
+    /// The delivery date, `YYYY-MM-DD`.
+    #[serde(default)]
+    pub delivered_on: Option<String>,
+    /// The note.
+    #[validate(max = 2000)]
+    #[serde(default)]
+    pub note: Option<String>,
+    /// The attachment: a signed note, a receipt or a photo.
+    #[serde(default)]
+    pub files: Vec<Upload>,
+}
+
+/// A 422 with `message` under `field`.
+fn invalid(field: &str, message: String, input: &impl Serialize) -> Error {
+    let mut errors = Errors::new();
+    errors.add(field, message);
+    Error::Validation(ValidationError::new(errors).with_input(input))
+}
+
+/// `POST /statutory-notices/{id}/proof`: records the proof and reloads the
+/// page. A refused proof is a 422 under its field and stores nothing; a
+/// notice that already has a proof, or was delivered, is a 409.
+async fn proof_store(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Valid(form): Valid<ProofForm>,
+) -> Result<Response> {
+    let delivered_on = match form.delivered_on.as_deref().map(str::trim) {
+        None | Some("") => None,
+        Some(value) => match renox::chrono::NaiveDate::parse_from_str(value, "%Y-%m-%d") {
+            Ok(date) => Some(date),
+            Err(_) => {
+                let message = texts::t(&lang, "wl_notify.proof.date_invalid");
+                return Err(invalid("delivered_on", message, &form));
+            }
+        },
+    };
+    let Some(method) = form.method.as_deref().and_then(notices::parse_method) else {
+        // An unknown notice is still a 404.
+        StatutoryNotice::find(&state.db, id)
+            .await?
+            .ok_or(Error::NotFound)?;
+        let refusal = ProofRefusal::MethodNotOffered;
+        let message = texts::t(&lang, refusal.text_key());
+        return Err(invalid(refusal.field(), message, &form));
+    };
+    // A browser sends an empty file part when none was chosen.
+    let file = form.files.iter().find(|file| file.size() > 0);
+    let input = ProofInput {
+        method,
+        delivered_on,
+        note: form.note.clone().unwrap_or_default(),
+        attachment: file.map(|file| ProofFile {
+            name: file.file_name().trim().to_owned(),
+            mime: file.sniffed_type().map_or_else(
+                || file.content_type().trim().to_owned(),
+                std::borrow::ToOwned::to_owned,
+            ),
+            size: file.size(),
+        }),
+    };
+    match notices::record_proof(&state, user.id, id, input, file).await? {
+        Ok(_) => Ok((
+            Toast::success(texts::t(&lang, "wl_notify.proof.recorded")),
+            renox::HxRefresh,
+        )
+            .into_response()),
+        Err(ProofError::Refused(refusal)) => {
+            let message = texts::t(&lang, refusal.text_key());
+            Err(invalid(refusal.field(), message, &form))
+        }
+        Err(ProofError::AlreadyRecorded) => Err(Error::Status(
+            StatusCode::CONFLICT,
+            texts::t(&lang, "wl_notify.proof.already_recorded"),
+        )),
+    }
+}
+
+/// `GET /statutory-notices/{id}/proof/file`: the attachment of the proof; 404
+/// without one.
+async fn proof_file(
+    State(state): State<AppState>,
+    Found(notice): Found<StatutoryNotice>,
+) -> Result<Download> {
+    let (Some(key), Some(name)) = (notice.attachment_key, notice.attachment_name) else {
+        return Err(Error::NotFound);
+    };
+    Download::from_storage(&state.storage, &key, name).await
 }
 
 #[cfg(test)]

@@ -11,7 +11,9 @@ use renox::db::Json;
 use renox::prelude::*;
 use renox::serde_json::{self, Value};
 use serde::{Deserialize, Serialize};
-use wl_kernel::notify::{NoticeStatus, NotifyRecipient, ProofMethod, UndeliveredNotice};
+use wl_kernel::notify::{
+    NoticeStatus, NotifyRecipient, ProofMethod, StatutoryNoticeProofRecorded, UndeliveredNotice,
+};
 use wl_kernel::{Subject, documents};
 
 use crate::message::{Message, MessageStatus};
@@ -131,7 +133,12 @@ pub struct ProofFile {
     pub name: String,
     /// The file's MIME type.
     pub mime: String,
+    /// The file's size in bytes.
+    pub size: usize,
 }
+
+/// The largest attachment (20 MB, as the unblock evidence of wl-parties).
+pub const MAX_ATTACHMENT_BYTES: usize = 20 * 1024 * 1024;
 
 /// What staff typed into the proof form.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -163,6 +170,8 @@ pub enum ProofRefusal {
     NoteMissing,
     /// The attachment is not a PDF, image or text file.
     AttachmentType,
+    /// The attachment is larger than [`MAX_ATTACHMENT_BYTES`].
+    AttachmentSize,
 }
 
 impl ProofRefusal {
@@ -173,7 +182,9 @@ impl ProofRefusal {
             ProofRefusal::DateMissing
             | ProofRefusal::DateInFuture
             | ProofRefusal::DateBeforeGiveUp => "delivered_on",
-            ProofRefusal::AttachmentMissing | ProofRefusal::AttachmentType => "attachment",
+            ProofRefusal::AttachmentMissing
+            | ProofRefusal::AttachmentType
+            | ProofRefusal::AttachmentSize => "attachment",
             ProofRefusal::NoteMissing => "note",
         }
     }
@@ -188,6 +199,7 @@ impl ProofRefusal {
             ProofRefusal::AttachmentMissing => "wl_notify.proof.attachment_missing",
             ProofRefusal::NoteMissing => "wl_notify.proof.note_missing",
             ProofRefusal::AttachmentType => "wl_notify.proof.attachment_type",
+            ProofRefusal::AttachmentSize => "wl_notify.proof.attachment_size",
         }
     }
 }
@@ -223,6 +235,9 @@ pub fn validate_proof(
     if let Some(file) = &input.attachment {
         if !allowed_mime(&file.mime) {
             return Err(ProofRefusal::AttachmentType);
+        }
+        if file.size > MAX_ATTACHMENT_BYTES {
+            return Err(ProofRefusal::AttachmentSize);
         }
     } else if input.method != ProofMethod::Call {
         return Err(ProofRefusal::AttachmentMissing);
@@ -299,6 +314,106 @@ pub async fn undelivered(db: &Db, subject: &Subject) -> Result<Vec<UndeliveredNo
     Ok(out)
 }
 
+/// The proof method called `name` in a form (`hand_delivery`), if any.
+pub fn parse_method(name: &str) -> Option<ProofMethod> {
+    ProofMethod::ALL
+        .iter()
+        .copied()
+        .find(|method| method.as_str() == name.trim())
+}
+
+/// Why a proof is not recorded.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProofError {
+    /// The rules refuse the proof (422).
+    Refused(ProofRefusal),
+    /// The notice already has a proof, or was delivered (409).
+    AlreadyRecorded,
+}
+
+/// `user` records the proof that the notice `notice` was delivered another
+/// way (A6, A9). In one transaction it checks the rules, keeps the
+/// attachment privately under `notify/proofs/{notice}/` and stores the
+/// proof. After the commit it closes the staff task and emits
+/// `StatutoryNoticeProofRecorded`. A second proof, or a notice that was
+/// delivered after all, is [`ProofError::AlreadyRecorded`] and writes nothing.
+///
+/// # Errors
+///
+/// `NotFound` for an unknown notice; storage and database errors.
+pub async fn record_proof(
+    state: &AppState,
+    user: i64,
+    notice: i64,
+    input: ProofInput,
+    file: Option<&Upload>,
+) -> Result<std::result::Result<StatutoryNotice, ProofError>> {
+    let found = StatutoryNotice::find(&state.db, notice)
+        .await?
+        .ok_or(Error::NotFound)?;
+    let delivered = matches!(
+        status(&state.db, &found.subject(), &found.type_key).await?,
+        NoticeStatus::Delivered { .. }
+    );
+    if found.has_proof() || delivered {
+        return Ok(Err(ProofError::AlreadyRecorded));
+    }
+    let offered = crate::notifier::type_def(&state.db, &found.type_key)
+        .await?
+        .proof_methods;
+    if let Err(refusal) = validate_proof(
+        &offered,
+        &input,
+        local_date(found.gave_up_at),
+        documents::today(),
+    ) {
+        return Ok(Err(ProofError::Refused(refusal)));
+    }
+    let mut tx = state.db.begin_immediate().await?;
+    let mut record = StatutoryNotice::query()
+        .where_(StatutoryNotice::ID.eq(notice))
+        .lock_for_update()
+        .first(&mut tx)
+        .await?
+        .ok_or(Error::NotFound)?;
+    if record.has_proof() {
+        return Ok(Err(ProofError::AlreadyRecorded));
+    }
+    if let (Some(file), Some(attachment)) = (file, &input.attachment) {
+        let key = file
+            .store(&state.storage, &format!("notify/proofs/{notice}"))
+            .await?;
+        record.attachment_key = Some(key);
+        record.attachment_name = Some(attachment.name.clone());
+        record.attachment_mime = Some(attachment.mime.clone());
+    }
+    let delivered_on = input.delivered_on.ok_or(Error::NotFound)?;
+    record.proof_method = Some(input.method);
+    record.delivered_on = Some(delivered_on);
+    let note = input.note.trim();
+    record.proof_note = (!note.is_empty()).then(|| note.to_owned());
+    record.recorded_by = Some(user);
+    record.recorded_at = Some(renox::db::now());
+    record.save(&mut tx).await?;
+    tx.commit().await?;
+    if let Some(ticket) = record.ticket_id {
+        let note = crate::texts::english("wl_notify.proof.task_note");
+        wl_kernel::tickets::task_creator(state)
+            .complete(state, wl_kernel::tickets::TicketId(ticket), &note)
+            .await?;
+    }
+    state
+        .emit(StatutoryNoticeProofRecorded {
+            notice: record.id,
+            subject: record.subject(),
+            type_key: record.type_key.clone(),
+            method: input.method,
+            delivered_on,
+        })
+        .await?;
+    Ok(Ok(record))
+}
+
 /// The Asia/Dubai date `at` falls on.
 pub fn local_date(at: DateTime) -> NaiveDate {
     documents::dubai_date(at)
@@ -320,6 +435,7 @@ mod tests {
             attachment: Some(ProofFile {
                 name: "signed.pdf".into(),
                 mime: "application/pdf".into(),
+                size: 10,
             }),
         }
     }
@@ -399,6 +515,7 @@ mod tests {
             AttachmentMissing,
             NoteMissing,
             AttachmentType,
+            AttachmentSize,
         ] {
             let key = refusal.text_key();
             assert_ne!(crate::texts::english(key), key);

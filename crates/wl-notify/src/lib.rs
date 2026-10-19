@@ -39,7 +39,9 @@ pub use machine::{
     DEFER, DELIVER, FAIL, FALL_BACK, GIVE_UP, MARK_READ, RELEASE, RETRY, SEND, SUPPRESS,
 };
 pub use message::{Message, MessageStatus, RecipientKind};
-pub use notices::{ProofFile, ProofInput, ProofRefusal, StatutoryNotice, validate_proof};
+pub use notices::{
+    ProofError, ProofFile, ProofInput, ProofRefusal, StatutoryNotice, record_proof, validate_proof,
+};
 pub use notifier::Messages;
 pub use reactions::{
     GiveUpContext, GiveUpHandler, ReactionOutcome, Reactions, RecordingHandler, StepOutcome,
@@ -62,6 +64,8 @@ pub mod permissions {
     pub const CHANNELS_MANAGE: &str = "notifications.channels.manage";
     /// Change a party's preferences on their request.
     pub const PREFERENCES_MANAGE: &str = "notifications.preferences.manage";
+    /// Record the proof that a statutory notice was delivered another way.
+    pub const RECORD_PROOF: &str = "notifications.notices.record_proof";
     /// Send a manual or bulk message (Later).
     pub const BROADCAST_SEND: &str = "notifications.broadcast.send";
     /// Approve, cancel and stop marketing broadcasts.
@@ -82,6 +86,14 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "wl-notify/log.html",
         include_str!("../views/wl-notify/log.html"),
+    ),
+    (
+        "wl-notify/notice_proof.html",
+        include_str!("../views/wl-notify/notice_proof.html"),
+    ),
+    (
+        "wl-notify/_notice_banner.html",
+        include_str!("../views/wl-notify/_notice_banner.html"),
     ),
 ];
 
@@ -139,7 +151,8 @@ impl Module for WlNotify {
             .model::<StatutoryNotice>()
             .view_data::<pages::TypesPage>()
             .view_data::<pages::TypeEditPage>()
-            .view_data::<pages::LogPage>();
+            .view_data::<pages::LogPage>()
+            .view_data::<pages::NoticeProofPage>();
         // `rnx state:diagram Message` and the admin panel find the machine.
         renox::state_machine::register::<Message>();
         // `MessageSuppressed` after a `suppress` commits.
