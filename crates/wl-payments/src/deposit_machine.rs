@@ -3,7 +3,7 @@
 //! ```text
 //! [*] --> held --start_settlement--> settlement_pending --refund--> refunded
 //! settlement_pending --forfeit--> forfeited
-//! held --transfer--> transferred              (later)
+//! held --transfer--> transferred
 //! ```
 //!
 //! All five states are declared with their tones. This part builds
@@ -16,8 +16,10 @@
 //! deposit in full. `refund` and `forfeit` wait for the deductions: no
 //! deductions dispute may be open, and with the setting on the dispute window
 //! of the latest published version must have passed
-//! ([`crate::deposit_deductions`]). `transfer` and `adjust` come with the
-//! issues that follow, into this `machine()`.
+//! ([`crate::deposit_deductions`]). `transfer` (`deposits.manage`, a held
+//! deposit, the new holder's receipt) hands the deposit to another holder with
+//! the source agreement. `adjust` comes with the issue that follows, into this
+//! `machine()`.
 
 use renox::prelude::*;
 #[cfg(test)]
@@ -39,6 +41,8 @@ pub const START_SETTLEMENT_BY_SYSTEM: &str = "start_settlement_by_system";
 pub const REFUND: &str = "refund";
 /// The `forfeit` transition's name.
 pub const FORFEIT: &str = "forfeit";
+/// The `transfer` transition's name.
+pub const TRANSFER: &str = "transfer";
 
 /// What a `refund` run carries to its guards and effect, gathered by
 /// [`crate::deposit::refund`].
@@ -64,6 +68,36 @@ pub(crate) struct ForfeitInput {
     pub approver_ok: bool,
     /// What the deductions say about running it now.
     pub gate: Option<DeductionGate>,
+}
+
+/// What a `transfer` run carries to its guards, gathered by
+/// [`crate::deposit::transfer`].
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub(crate) struct TransferInput {
+    /// The reference of the new holder's receipt, trimmed.
+    pub receipt: String,
+    /// The new holder, a party.
+    pub new_holder: i64,
+    /// Whether that party exists and is not the deposit's own party.
+    pub holder_ok: bool,
+}
+
+fn transfer_input(ctx: &TransitionCtx) -> TransferInput {
+    ctx.input_as::<TransferInput>().unwrap_or_default()
+}
+
+/// Why the deposit cannot be handed over with `input`, if it cannot.
+pub(crate) fn transfer_problem(deposit: &Deposit, input: &TransferInput) -> Option<String> {
+    if input.receipt.trim().is_empty() {
+        return Some("The new holder's receipt must be attached.".to_owned());
+    }
+    if !input.holder_ok {
+        return Some("The new holder must be another party that exists.".to_owned());
+    }
+    if deposit.held_amount <= 0 {
+        return Some("The deposit holds nothing to hand over.".to_owned());
+    }
+    None
 }
 
 fn forfeit_input(ctx: &TransitionCtx) -> ForfeitInput {
@@ -125,6 +159,7 @@ fn transitions() -> Vec<Transition<Deposit>> {
         start_settlement_by_system(),
         refund(),
         forfeit(),
+        transfer(),
     ]
 }
 
@@ -208,6 +243,19 @@ fn refund() -> Transition<Deposit> {
                     .await?;
                 Ok(())
             })
+        })
+}
+
+fn transfer() -> Transition<Deposit> {
+    Transition::new(TRANSFER)
+        .label("Transfer")
+        .tone("primary")
+        .permission(permissions::DEPOSITS_MANAGE)
+        .from([DepositStatus::Held])
+        .to(DepositStatus::Transferred)
+        .guard("receipt_attached", |deposit: &Deposit, ctx| {
+            let problem = transfer_problem(deposit, &transfer_input(ctx));
+            Box::pin(async move { problem.map_or(Ok(()), Err) })
         })
 }
 
@@ -403,5 +451,47 @@ mod tests {
             ..forfeit_ok()
         };
         assert!(forfeit_problem(&deposit, &waiting).is_some());
+    }
+
+    #[test]
+    fn transfer_leaves_held_only() {
+        let machine = Deposit::machine();
+        let found = machine.find(TRANSFER).expect("transition");
+        assert!(found.check_from(DepositStatus::Held).is_ok());
+        for other in [
+            DepositStatus::SettlementPending,
+            DepositStatus::Refunded,
+            DepositStatus::Forfeited,
+            DepositStatus::Transferred,
+        ] {
+            assert!(found.check_from(other).is_err(), "{other:?}");
+        }
+        assert_eq!(found.to_state(), Some("transferred"));
+        assert_eq!(found.guard_names(), ["receipt_attached"]);
+    }
+
+    #[test]
+    fn a_transfer_needs_the_receipt_a_new_holder_and_money_held() {
+        let deposit = Deposit {
+            held_amount: 1_000_000,
+            ..Default::default()
+        };
+        let ok = TransferInput {
+            receipt: "RCPT-77".into(),
+            new_holder: 4,
+            holder_ok: true,
+        };
+        assert_eq!(transfer_problem(&deposit, &ok), None);
+        let blank = TransferInput {
+            receipt: "  ".into(),
+            ..ok.clone()
+        };
+        assert!(transfer_problem(&deposit, &blank).unwrap().contains("receipt"));
+        let unknown = TransferInput {
+            holder_ok: false,
+            ..ok.clone()
+        };
+        assert!(transfer_problem(&deposit, &unknown).is_some());
+        assert!(transfer_problem(&Deposit::default(), &ok).is_some());
     }
 }

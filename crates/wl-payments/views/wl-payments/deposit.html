@@ -5,6 +5,7 @@
   <rx-stack>
     <rx-page-header :title="title" :subtitle="party_name" :back="route('wl_payments.deposits.index')" :back-label="tx['deposits.title']"
                     :badge="status_label" :badge-kind="status_kind">
+      <template rx-if="can_transfer"><rx-include template="wl-payments/_transfer_sheet.html"/></template>
       <template rx-if="can_publish"><rx-include template="wl-payments/_publish_sheet.html"/></template>
       <template rx-if="can_answer"><rx-include template="wl-payments/_answer_sheet.html"/></template>
       <rx-confirm rx-if="can_legal_case and not deposit.dispute_legal_case" :id="'legal-case-open-' ~ deposit.id" :label="tx['deposits.legal_case.open']" :action="route('wl_payments.deposits.legal_case_open', deposit.id)" method="POST"
@@ -28,6 +29,7 @@
         <rx-entry :label="tx['deposits.held']" :value="amounts['held']"/>
         <rx-entry :label="tx['deposits.refund_method']" :value="method_label" :placeholder="tx['refunds.no_method']"/>
         <rx-entry :label="tx['deposits.refund']" :value="refund_label" :url="refund_link" :placeholder="tx['deposits.no_refund']"/>
+        <rx-entry :label="tx['deposits.transfer.holder']" rx-if="new_holder_name" :value="new_holder_name"/>
         <rx-entry :label="tx['fields.created_at']" :value="deposit.created_at" format="datetime"/>
       </rx-infolist>
     </rx-card>

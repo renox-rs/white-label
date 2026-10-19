@@ -151,6 +151,10 @@ const VIEWS: &[(&str, &str)] = &[
         include_str!("../views/wl-payments/_deposit_refund_sheet.html"),
     ),
     (
+        "wl-payments/_transfer_sheet.html",
+        include_str!("../views/wl-payments/_transfer_sheet.html"),
+    ),
+    (
         "wl-payments/_write_off_sheet.html",
         include_str!("../views/wl-payments/_write_off_sheet.html"),
     ),

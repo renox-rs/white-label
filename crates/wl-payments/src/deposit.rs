@@ -18,7 +18,8 @@
 use renox::prelude::*;
 use renox::state_machine::{StateMachine, TransitionError};
 use serde::{Deserialize, Serialize};
-use wl_kernel::payments::{DepositId, PaymentId, PaymentMethod};
+use wl_kernel::documents::today;
+use wl_kernel::payments::{DepositId, PaymentId, PaymentMethod, RecordPayment};
 use wl_kernel::{LegalEntity, PartyId, Subject};
 
 use crate::allocate::{allocate_to_deposit_in, deposit_problem};
@@ -26,7 +27,7 @@ use crate::credit;
 use crate::deposit_deductions::gate_of;
 use crate::deposit_machine::{
     FORFEIT, ForfeitInput, REFUND, RefundDepositInput, START_SETTLEMENT,
-    START_SETTLEMENT_BY_SYSTEM,
+    START_SETTLEMENT_BY_SYSTEM, TRANSFER, TransferInput,
 };
 use crate::payment::Payment;
 use crate::permissions;
@@ -117,6 +118,12 @@ pub struct Deposit {
     pub forfeit_reason: Option<String>,
     /// The second user who approved the forfeiture.
     pub forfeit_approved_by: Option<i64>,
+    /// The new holder a transferred deposit was handed to.
+    pub transferred_to: Option<i64>,
+    /// The reference of the new holder's receipt.
+    pub transfer_receipt: Option<String>,
+    /// The outgoing payment to the new holder.
+    pub transfer_payment_id: Option<i64>,
     /// The lifecycle state; changed only by a transition.
     pub status: DepositStatus,
     /// When the row was created.
@@ -387,6 +394,96 @@ pub async fn forfeit(
         .input(&input)
         .run(state)
         .await?;
+    reload(state, &deposit).await
+}
+
+/// What a user gives to hand a deposit to another holder.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TransferRequest {
+    /// The new holder, a party (the new manager or owner).
+    pub new_holder: PartyId,
+    /// The reference of the new holder's receipt (the document attached in
+    /// wl-documents); required.
+    pub receipt: String,
+}
+
+/// `user` hands the `held` `deposit` to another holder, against the new
+/// holder's receipt, when the source agreement passes to it before it ends
+/// (e.g. 01 management agreement `end` or `transfer_unit`). The deposit
+/// becomes `transferred` (terminal) and the liability leaves the client; in the
+/// same transaction the money passed on, the held amount, is recorded as an
+/// outgoing payment to the new holder (by transfer, with the receipt as its
+/// reference); it is not a refund. After the commit the party is told who now
+/// holds the deposit (not while it is blocked: that is a message, the transfer
+/// itself is not money out to the party) and `DepositSettled` (transferred) is
+/// emitted.
+///
+/// # Errors
+///
+/// `Forbidden` without `deposits.manage`; `NotFrom` unless `held` (a deposit
+/// in `settlement_pending` completes its settlement first); `Guard` (422)
+/// without a receipt, for a new holder that does not exist or is the
+/// deposit's own party, for a deposit that holds nothing, or when the payment
+/// is refused (the transfer method is not enabled).
+pub async fn transfer(
+    state: &AppState,
+    user: &AuthUser,
+    deposit: &Deposit,
+    request: &TransferRequest,
+) -> std::result::Result<Deposit, TransitionError> {
+    let deposit = reload(state, deposit).await?;
+    let holder_found = wl_kernel::parties::directory(state)
+        .find(&state.db, request.new_holder)
+        .await?
+        .is_some();
+    let receipt = request.receipt.trim().to_owned();
+    let input = TransferInput {
+        receipt: receipt.clone(),
+        new_holder: request.new_holder.0,
+        holder_ok: holder_found && request.new_holder != deposit.party(),
+    };
+    let mut payment_request = RecordPayment::new(
+        request.new_holder,
+        deposit.legal_entity_id,
+        PaymentMethod::Transfer,
+        deposit.held_amount,
+    )
+    .outgoing()
+    .currency(&deposit.currency)
+    .date(today())
+    .method_details(renox::serde_json::json!({
+        "deposit": deposit.id,
+        "receipt": receipt,
+    }));
+    if !receipt.is_empty() {
+        payment_request = payment_request.reference(&receipt);
+    }
+    let (payment, record_input) =
+        crate::record::prepare(state, &payment_request, Some(user.id)).await?;
+    let mut tx = state.db.begin().await?;
+    let outcome = deposit
+        .transition(TRANSFER)
+        .by(user)
+        .input(&input)
+        .run_in(&mut tx)
+        .await?;
+    let (payment, recorded) = crate::record::record_in(&mut tx, None, payment, &record_input).await?;
+    // Not the status column, so outside the machine's guard.
+    Deposit::query()
+        .where_(Deposit::ID.eq(deposit.id))
+        .update(
+            &mut tx,
+            &[
+                ("transferred_to", &Some(request.new_holder.0)),
+                ("transfer_receipt", &Some(receipt)),
+                ("transfer_payment_id", &Some(payment.id)),
+                ("updated_at", &renox::db::now()),
+            ],
+        )
+        .await?;
+    tx.commit().await?;
+    outcome.emit(state).await.map_err(TransitionError::Failed)?;
+    recorded.emit(state).await.map_err(TransitionError::Failed)?;
     reload(state, &deposit).await
 }
 

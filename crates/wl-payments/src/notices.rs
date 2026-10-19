@@ -105,6 +105,9 @@ pub const DEPOSIT_DISPUTED: &str = "payments.deposit_disputed";
 /// The type of the party's notice that its dispute was answered.
 pub const DEPOSIT_DISPUTE_ANSWERED: &str = "payments.deposit_dispute_answered";
 
+/// The type of the party's notice that its deposit was handed to another holder.
+pub const DEPOSIT_TRANSFERRED: &str = "payments.deposit_transferred";
+
 const MODULE: &str = "payments";
 const GROUP: &str = "payments";
 
@@ -353,8 +356,22 @@ pub fn deposit_dispute_answered_type() -> NotificationTypeDef {
         )
 }
 
+/// The notification type [`DEPOSIT_TRANSFERRED`].
+pub fn deposit_transferred_type() -> NotificationTypeDef {
+    NotificationTypeDef::new(DEPOSIT_TRANSFERRED, MODULE)
+        .group(GROUP)
+        .category(Category::Transactional)
+        .template(
+            NotifyChannel::Email,
+            "en",
+            Some(english("wl_payments.deposit_transferred.subject")),
+            english("wl_payments.deposit_transferred.body"),
+        )
+}
+
 /// Registers the types with the kernel registry.
 pub(crate) fn register_types() {
+    notify::register_type(deposit_transferred_type());
     notify::register_type(deposit_deductions_type());
     notify::register_type(deposit_disputed_type());
     notify::register_type(deposit_dispute_answered_type());
@@ -950,6 +967,33 @@ pub(crate) async fn deposit_dispute_answered(
             "deposit": deposit.id,
             "outcome": outcome,
             "response": response,
+        }));
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// After `deposit` was handed to another holder: the party is told who now
+/// holds it (not while it is blocked).
+pub(crate) async fn deposit_transferred(state: &AppState, deposit: &Deposit) -> Result {
+    let Some(holder) = deposit.transferred_to else {
+        return Ok(());
+    };
+    let status = wl_kernel::parties::directory(state)
+        .status(&state.db, deposit.party())
+        .await?;
+    if !tells_party(status) {
+        return Ok(());
+    }
+    let holder_name = wl_kernel::parties::directory(state)
+        .display_name(&state.db, wl_kernel::PartyId(holder), "en")
+        .await?
+        .unwrap_or_else(|| format!("#{holder}"));
+    let request = NotifyRequest::new(DEPOSIT_TRANSFERRED, deposit.subject())
+        .to_party(deposit.party())
+        .data(json!({
+            "deposit": deposit.id,
+            "amount": money_text(&deposit.currency, deposit.held_amount),
+            "holder": holder_name,
         }));
     notify::notifier(state).notify(state, request).await?;
     Ok(())

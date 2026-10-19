@@ -1,0 +1,11 @@
+{#- wl-payments: the "transfer" action on a held deposit, a sheet with the new
+    holder's party code and the reference of their receipt (required). The
+    money passed on is an outgoing payment to the new holder, not a refund.
+    Replace it with resources/views/wl-payments/_transfer_sheet.html in the
+    app. -#}
+<rx-action-sheet :id="'transfer-deposit-' ~ deposit.id" :label="tx['deposits.transfer.action']" :action="route('wl_payments.deposits.transfer', deposit.id)"
+                 :title="tx['deposits.transfer.title']" :description="tx['deposits.transfer.description']" :submit-label="tx['deposits.transfer.submit']"
+                 icon="arrow-right-left">
+  <rx-input name="new_holder" :label="tx['deposits.transfer.new_holder']" :hint="tx['deposits.transfer.new_holder_hint']" :id="'transfer-holder-' ~ deposit.id" required/>
+  <rx-input name="receipt" :label="tx['deposits.transfer.receipt']" :hint="tx['deposits.transfer.receipt_hint']" :id="'transfer-receipt-' ~ deposit.id" required/>
+</rx-action-sheet>

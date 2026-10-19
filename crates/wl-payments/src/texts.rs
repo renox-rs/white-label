@@ -401,6 +401,25 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_payments.deposits.forfeit.approver", "Approved by"),
     ("wl_payments.deposits.forfeit.submit", "Forfeit"),
     ("wl_payments.deposits.forfeit.done", "Deposit forfeited."),
+    ("wl_payments.deposits.transfer.action", "Transfer to a new holder"),
+    ("wl_payments.deposits.transfer.title", "Hand the deposit to the new holder"),
+    (
+        "wl_payments.deposits.transfer.description",
+        "The source agreement passes to another holder before it ends. The held amount is paid to the new holder against their receipt (an outgoing payment, not a refund), the liability leaves you and the party is told who holds the deposit.",
+    ),
+    ("wl_payments.deposits.transfer.new_holder", "New holder"),
+    (
+        "wl_payments.deposits.transfer.new_holder_hint",
+        "The code of the party, like P-00007.",
+    ),
+    ("wl_payments.deposits.transfer.receipt", "The new holder's receipt"),
+    (
+        "wl_payments.deposits.transfer.receipt_hint",
+        "The reference of the receipt document attached.",
+    ),
+    ("wl_payments.deposits.transfer.submit", "Transfer"),
+    ("wl_payments.deposits.transfer.done", "Deposit handed to the new holder."),
+    ("wl_payments.deposits.transfer.holder", "Transferred to"),
     ("wl_payments.deposits.status.held", "Held"),
     (
         "wl_payments.deposits.status.settlement_pending",
@@ -678,6 +697,14 @@ const TEXTS: &[(&str, &str)] = &[
     (
         "wl_payments.deposit_dispute_answered.body",
         "Dear customer, {{ outcome }} Our answer: {{ response }}",
+    ),
+    (
+        "wl_payments.deposit_transferred.subject",
+        "Your deposit {{ deposit }} is now held by {{ holder }}",
+    ),
+    (
+        "wl_payments.deposit_transferred.body",
+        "Dear customer, your agreement has passed to a new holder and your deposit of {{ amount }} (deposit {{ deposit }}) was handed over to {{ holder }}, against their receipt. {{ holder }} now holds it and will settle it with you when your agreement ends.",
     ),
     (
         "wl_payments.cheque_referred.subject",

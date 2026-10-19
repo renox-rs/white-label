@@ -2,22 +2,27 @@
 //! listener on [`Transitioned<Deposit>`], so only after a commit and never on a
 //! rollback:
 //!
-//! - `refund` and `forfeit` → [`DepositSettled`] with the outcome, the
-//!   deductions of the latest published version and the refund amount.
+//! - `refund`, `forfeit` and `transfer` → [`DepositSettled`] with the outcome,
+//!   the deductions of the latest published version, the refund amount and the
+//!   new holder of a transferred deposit; a transfer also tells the party who
+//!   now holds it.
 
 use renox::prelude::*;
 use renox::state_machine::Transitioned;
+use wl_kernel::PartyId;
 use wl_kernel::deposits::{DepositOutcome, DepositSettled};
 
 use crate::deposit::Deposit;
 use crate::deposit_deductions::DepositDeduction;
-use crate::deposit_machine::{FORFEIT, REFUND};
+use crate::deposit_machine::{FORFEIT, REFUND, TRANSFER};
+use crate::notices;
 
 /// The outcome the transition `name` settles a deposit with, if it does.
 pub(crate) fn outcome_of(name: &str) -> Option<DepositOutcome> {
     match name {
         REFUND => Some(DepositOutcome::Refunded),
         FORFEIT => Some(DepositOutcome::Forfeited),
+        TRANSFER => Some(DepositOutcome::Transferred),
         _ => None,
     }
 }
@@ -47,9 +52,13 @@ pub(crate) async fn settled(
             outcome,
             deductions,
             refund_amount,
-            new_holder: None,
+            new_holder: deposit.transferred_to.map(PartyId),
         })
-        .await
+        .await?;
+    if outcome == DepositOutcome::Transferred {
+        notices::deposit_transferred(state, &deposit).await?;
+    }
+    Ok(())
 }
 
 /// Registers the listener.
@@ -67,9 +76,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn refund_and_forfeit_settle_a_deposit() {
+    fn refund_forfeit_and_transfer_settle_a_deposit() {
         assert_eq!(outcome_of("refund"), Some(DepositOutcome::Refunded));
         assert_eq!(outcome_of("forfeit"), Some(DepositOutcome::Forfeited));
+        assert_eq!(outcome_of("transfer"), Some(DepositOutcome::Transferred));
         assert_eq!(outcome_of("start_settlement"), None);
     }
 }

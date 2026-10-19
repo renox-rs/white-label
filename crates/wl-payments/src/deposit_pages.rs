@@ -7,6 +7,7 @@
 //! | `POST /deposits/{id}/deductions` | `wl_payments.deposits.deductions` | `deposits.manage` (fields `lines`, `forfeiture_reason`) |
 //! | `POST /deposits/{id}/answer` | `wl_payments.deposits.answer` | `deposits.manage` (fields `response`, `evidence`, `changes`) |
 //! | `POST /deposits/{id}/legal_case/open` and `/close` | `wl_payments.deposits.legal_case_open` and `_close` | `deposits.manage` |
+//! | `POST /deposits/{id}/transfer` | `wl_payments.deposits.transfer` | `deposits.manage` (fields `new_holder`, `receipt`) |
 //! | `POST /deposits/{id}/refund` | `wl_payments.deposits.refund` | `deposits.refund` (field `method`) |
 //! | `POST /deposits/{id}/forfeit` | `wl_payments.deposits.forfeit` | `deposits.refund` (fields `reason`, `approver`) |
 //!
@@ -24,7 +25,7 @@ use std::collections::BTreeMap;
 use wl_kernel::deposits::DeductionKind;
 use wl_kernel::payments::PaymentMethod;
 
-use crate::deposit::{Deposit, DepositStatus, ForfeitRequest};
+use crate::deposit::{Deposit, DepositStatus, ForfeitRequest, TransferRequest};
 use crate::deposit_deductions::{
     self, AnswerRequest, DepositDeduction, DepositDispute, DisputeStatus, LineChange, NewLine,
     PublishRequest,
@@ -60,6 +61,8 @@ pub fn routes() -> Routes {
                 .name("wl_payments.deposits.deductions")
                 .post("/deposits/{id}/answer", store_answer)
                 .name("wl_payments.deposits.answer")
+                .post("/deposits/{id}/transfer", store_transfer)
+                .name("wl_payments.deposits.transfer")
                 .post("/deposits/{id}/legal_case/open", store_legal_case_open)
                 .name("wl_payments.deposits.legal_case_open")
                 .post("/deposits/{id}/legal_case/close", store_legal_case_close)
@@ -200,6 +203,10 @@ pub(crate) struct ShowPage {
     can_answer: bool,
     /// Whether the legal case buttons are offered, and which one.
     can_legal_case: bool,
+    /// Whether "Transfer" is offered: a held deposit.
+    can_transfer: bool,
+    /// The party the deposit was transferred to, as text.
+    new_holder_name: String,
     /// Whether "Refund" and "Forfeit" are offered.
     can_refund: bool,
     can_forfeit: bool,
@@ -384,6 +391,11 @@ async fn show(
         can_publish: manage && pending && open.is_empty(),
         can_answer: manage && pending && !open.is_empty(),
         can_legal_case: manage && pending,
+        can_transfer: manage && deposit.status == DepositStatus::Held,
+        new_holder_name: match deposit.transferred_to {
+            Some(holder) => party_name(&state, wl_kernel::PartyId(holder)).await?,
+            None => String::new(),
+        },
         can_refund: refunding && pending && deposit.refund_id.is_none(),
         can_forfeit: refunding && pending,
         waiting_reason,
@@ -575,6 +587,53 @@ async fn store_legal_case_close(
     Found(deposit): Found<Deposit>,
 ) -> Result<Response> {
     legal_case(&state, &user, &lang, &deposit, false).await
+}
+
+/// The transfer sheet's form.
+#[derive(Deserialize, Serialize, Validate, Debug)]
+pub struct TransferForm {
+    /// The code of the new holder's party, like `P-00007`.
+    #[validate(max = 64)]
+    pub new_holder: Option<String>,
+    /// The reference of the new holder's receipt.
+    #[validate(max = 200)]
+    pub receipt: Option<String>,
+}
+
+/// `POST /deposits/{id}/transfer`: hands the held deposit to another holder
+/// against the new holder's receipt. A refused guard (no receipt, an unknown
+/// party) answers 422 under its field.
+async fn store_transfer(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(deposit): Found<Deposit>,
+    Valid(form): Valid<TransferForm>,
+) -> Result<Response> {
+    let t = texts_in(&lang);
+    let code = filled(&form.new_holder).unwrap_or_default();
+    let Some(holder) = wl_kernel::parties::directory(&state)
+        .find_by_code(&state.db, code)
+        .await?
+    else {
+        return Err(invalid("new_holder", t("unknown_party"), &form));
+    };
+    let request = TransferRequest {
+        new_holder: holder.id,
+        receipt: filled(&form.receipt).unwrap_or_default().to_owned(),
+    };
+    match crate::deposit::transfer(&state, &user, &deposit, &request).await {
+        Ok(_) => Ok((Toast::success(t("deposits.transfer.done")), renox::HxRefresh).into_response()),
+        Err(TransitionError::Guard(message)) => {
+            let field = if message.contains("receipt") {
+                "receipt"
+            } else {
+                "new_holder"
+            };
+            Err(invalid(field, message, &form))
+        }
+        Err(other) => Err(other.into_error()),
+    }
 }
 
 /// The refund form.
