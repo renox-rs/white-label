@@ -5,8 +5,8 @@
 //!   ([`crate::renew::after_renew`]), the Ejari task is opened for
 //!   the property manager (`PRP.RUL.02`: the registration is chased 14 days
 //!   after activation), and a renewal or amendment whose deposit differs from
-//!   the held amount asks the deposit to `adjust` (system; an amendment's
-//!   effects are tested with BL-PRP-08).
+//!   the held amount asks the deposit to `adjust` (system). An amendment's
+//!   invoices, cheques and `LeaseAmended` follow ([`crate::amend::settle`]).
 //! - **`flag_renewal`:** the property managers and the tenant are told that
 //!   the lease entered its renewal window, with the notice deadline
 //!   (`PRP.RUL.01`).
@@ -47,7 +47,7 @@ pub const EJARI_DAYS: i64 = 14;
 pub(crate) fn register(app: &mut Registry) {
     app.listen(|event: Transitioned<Lease>, state: AppState| async move {
         match event.transition.as_str() {
-            ACTIVATE => after_activate(&state, event.key).await,
+            ACTIVATE => after_activate(&state, event.key, event.actor_id).await,
             FLAG_RENEWAL => after_flag_renewal(&state, event.key).await,
             EXPIRE => crate::holding::announce(&state, event.key).await,
             SUBMIT => crate::holding::renewal_submitted(&state, event.key).await,
@@ -87,7 +87,7 @@ fn ejari_title(lease: &Lease) -> String {
 }
 
 /// The effects of `activate` that need the app state.
-async fn after_activate(state: &AppState, id: i64) -> Result {
+async fn after_activate(state: &AppState, id: i64, by: Option<i64>) -> Result {
     let lease = Lease::find(&state.db, id).await?.ok_or(Error::NotFound)?;
     state
         .emit(LeaseActivated {
@@ -113,7 +113,8 @@ async fn after_activate(state: &AppState, id: i64) -> Result {
     .description(&english("property.tasks.ejari_description", &[]))
     .due_at(renox::db::now() + Duration::days(EJARI_DAYS));
     crate::tasks::open(state, &lease.scope(), task).await?;
-    adjust_deposit(state, &lease).await
+    adjust_deposit(state, &lease).await?;
+    crate::amend::after_amend(state, &lease, by).await
 }
 
 /// A renewal or amendment with another deposit than the held one asks the

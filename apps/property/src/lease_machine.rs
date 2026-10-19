@@ -46,9 +46,12 @@
 //!   move-out, vacates the unit and cancels the recurring charges after the
 //!   move-out date; the credit notes, the cheques and the deposit follow the
 //!   commit ([`crate::termination`], BL-PRP-11).
-//! - `amend` and `force_terminate` are declared with their states and
-//!   permissions; their effects are built by BL-PRP-08 and BL-PRP-12 and until
-//!   then the pages do not offer them.
+//! - `amend` links the two versions, cancels the old version's scheduled
+//!   charges from the effective date on; the credit notes, the reissued
+//!   invoices, the cheques and the deposit follow the commit ([`crate::amend`],
+//!   BL-PRP-08).
+//! - `force_terminate` is declared with its states and permissions; its
+//!   effects are built by BL-PRP-12 and until then the pages do not offer it.
 
 use renox::db::Transaction;
 use renox::prelude::*;
@@ -59,6 +62,7 @@ use wl_kernel::approvals::PolicyDefault;
 use wl_kernel::documents::today;
 
 use crate::charge::{ChargeStatus, LeaseCharge};
+use crate::amend::amend_effects;
 use crate::db::{refused, set_lease};
 use crate::holding::expire_effects;
 use crate::lease::{LEASE_SUBJECT_TYPE, Lease, LeaseStatus};
@@ -170,6 +174,14 @@ fn expire_day(ctx: &TransitionCtx) -> renox::chrono::NaiveDate {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RenewInput {
     /// The renewal version.
+    #[serde(default)]
+    pub next: Option<i64>,
+}
+
+/// What an `amend` run carries: the amendment version that was activated.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AmendInput {
+    /// The amendment version.
     #[serde(default)]
     pub next: Option<i64>,
 }
@@ -420,7 +432,12 @@ impl StateMachine for Lease {
             .transition(
                 system(AMEND, "Amend")
                     .from([Active, RenewalDue, Expired])
-                    .to(Amended),
+                    .to(Amended)
+                    .effect(|lease: &Lease, ctx, tx| {
+                        let lease = lease.clone();
+                        let next = ctx.input_as::<AmendInput>().ok().and_then(|input| input.next);
+                        Box::pin(async move { amend_effects(&mut *tx, &lease, next).await })
+                    }),
             )
             .transition(
                 system(EXPIRE, "Expire")

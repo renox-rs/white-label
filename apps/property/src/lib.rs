@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
+pub mod amend;
 pub mod building;
 pub mod cancellation;
 pub mod chase;
@@ -41,7 +42,7 @@ pub use cancellation::CancelWait;
 pub use building::{Building, Floor, NewBuilding, create_building, ensure_floor};
 pub use charge::{ChargeStatus, LeaseCharge};
 pub use charge_type::ChargeType;
-pub use events::{LeaseActivated, LeaseCancelled, LeaseNoticeWithdrawn, LeaseTerminated};
+pub use events::{LeaseActivated, LeaseAmended, LeaseCancelled, LeaseNoticeWithdrawn, LeaseTerminated};
 pub use lease::{CreditChoice, Lease, LeaseStatus, RenewalDecision, VersionKind};
 pub use leases::{DraftEdit, EjariInput, NewLease, NewVersion};
 pub use legal_case::{CaseOutcome, CaseStatus, CaseType, LegalCase};
@@ -126,6 +127,8 @@ impl Module for Property {
         documents::register();
         lease_events::register(app);
         legal_case::register(app);
+        // A deposit that grew is raised as a charge of the lease (BL-PRP-08).
+        wl_kernel::deposits::provide_deposit_top_ups(app, amend::LeaseTopUps);
         cancellation::register(app);
         invoicing::schedule(app);
         notices::register_types();

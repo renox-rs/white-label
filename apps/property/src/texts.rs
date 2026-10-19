@@ -723,6 +723,41 @@ const TEXTS: &[(&str, &str)] = &[
         "The legal case flag of :lease. Follow the case and clear the flag with its outcome.",
     ),
     ("property.legal.ticket_resolved", "The legal case was cleared: :outcome."),
+    // Amending an active lease (BL-PRP-08).
+    (
+        "property.amend.no_amendment",
+        "No active amendment of this lease was found.",
+    ),
+    (
+        "property.amend.line_old",
+        "Rent :from to :to (previous terms) · :lease",
+    ),
+    (
+        "property.amend.line_new",
+        "Rent :from to :to (amended terms) · :lease",
+    ),
+    ("property.amend.credit_reason", "Lease :lease amended"),
+    (
+        "property.amend.cheque_reason",
+        "Lease :lease amended: the amounts changed",
+    ),
+    (
+        "property.amend.task_cheques",
+        "Collect replacement cheques for :lease",
+    ),
+    (
+        "property.amend.task_cheques_description",
+        ":count cheques were handed back against receipt :receipt because the amounts changed. Collect the replacements.",
+    ),
+    (
+        "property.amend.task_problems",
+        "Finish the amendment of :lease by hand",
+    ),
+    (
+        "property.amend.credit_left",
+        ":amount of the payments taken off the credited invoices stays as the tenant's credit.",
+    ),
+    ("property.amend.top_up_line", "Deposit top-up · :lease"),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.

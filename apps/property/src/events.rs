@@ -70,6 +70,37 @@ pub struct LeaseNoticeWithdrawn {
 
 impl Event for LeaseNoticeWithdrawn {}
 
+/// A lease was amended mid-term and its money effects ran (`amend`,
+/// BL-PRP-08): the amendment version was activated and the previous version
+/// ended as `amended`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LeaseAmended {
+    /// The amendment version.
+    pub lease: i64,
+    /// The version it replaced.
+    pub previous: i64,
+    /// The lease all versions belong to.
+    pub root: i64,
+    /// The unit.
+    pub unit: i64,
+    /// The tenant.
+    pub tenant: PartyId,
+    /// The day the new terms apply from.
+    pub effective_date: NaiveDate,
+    /// The annual rent of the amendment, in fils.
+    pub annual_rent: i64,
+    /// The annual rent of the replaced version, in fils.
+    pub previous_annual_rent: i64,
+    /// How many invoices were credited.
+    pub credited_invoices: usize,
+    /// How many invoices were made again.
+    pub reissued_invoices: usize,
+    /// How many cheques were handed back.
+    pub returned_cheques: usize,
+}
+
+impl Event for LeaseAmended {}
+
 /// A lease was terminated and its money effects ran (`terminate`). The
 /// tenant's portal turns read-only on it (`POR.ACL.01`: wl-portal's end
 /// policy maps it to `end`; the grant closes after 90 days).

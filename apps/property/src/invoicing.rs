@@ -19,7 +19,7 @@
 use renox::chrono::{Duration, NaiveDate};
 use renox::prelude::*;
 use wl_kernel::documents::today;
-use wl_kernel::invoicing::{DraftLine, InvoiceDraft, invoicer};
+use wl_kernel::invoicing::{DraftLine, InvoiceDraft, InvoiceId, invoicer};
 
 use crate::building::BUILDING_SUBJECT_TYPE;
 use crate::charge::{ChargeStatus, LeaseCharge};
@@ -89,16 +89,28 @@ async fn invoice_one(state: &AppState, charge: &LeaseCharge) -> Result<bool> {
     let Some(lease) = Lease::find(&state.db, charge.lease_id).await? else {
         return Ok(false);
     };
-    if !LeaseStatus::RUNNING.contains(&lease.status) {
+    // A version replaced by an amendment still bills what it kept before the
+    // effective date (the charges after it were cancelled).
+    if !LeaseStatus::RUNNING.contains(&lease.status) && lease.status != LeaseStatus::Amended {
         return Ok(false);
     }
+    Ok(invoice_charge(state, &lease, charge).await?.is_some())
+}
+
+/// Drafts the invoice of the scheduled `charge` of `lease` and marks the
+/// charge invoiced; `None` when invoicing is off or another run invoiced the
+/// charge first. The charge is invoiced once, even when two runs overlap.
+pub(crate) async fn invoice_charge(
+    state: &AppState,
+    lease: &Lease,
+    charge: &LeaseCharge,
+) -> Result<Option<InvoiceId>> {
     let Some(id) = invoicer(state)
-        .draft(&state.db, draft_of(&lease, charge))
+        .draft(&state.db, draft_of(lease, charge))
         .await?
     else {
-        return Ok(false);
+        return Ok(None);
     };
-    // The charge is invoiced once, even when two runs overlap.
     let moved = LeaseCharge::query()
         .where_(LeaseCharge::ID.eq(charge.id))
         .where_(LeaseCharge::STATUS.eq(ChargeStatus::Scheduled))
@@ -114,9 +126,9 @@ async fn invoice_one(state: &AppState, charge: &LeaseCharge) -> Result<bool> {
     if moved == 0 {
         // Another run got there first: drop our draft.
         invoicer(state).discard_draft(&state.db, id).await?;
-        return Ok(false);
+        return Ok(None);
     }
-    Ok(true)
+    Ok(Some(id))
 }
 
 /// Registers the daily task and its command.
