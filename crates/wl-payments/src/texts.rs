@@ -8,6 +8,43 @@ use renox::prelude::*;
 /// Every key the package uses, with its English text.
 const TEXTS: &[(&str, &str)] = &[
     ("wl_payments.title", "Payments"),
+    ("wl_payments.bank_statements.title", "Bank statements"),
+    (
+        "wl_payments.bank_statements.description",
+        "Uploaded statements with the balance at the end of each period. The cash-flow forecast starts from the latest balance of a completed statement.",
+    ),
+    ("wl_payments.bank_statements.empty", "No statements yet"),
+    (
+        "wl_payments.bank_statements.empty_hint",
+        "Record a statement upload to see it here.",
+    ),
+    ("wl_payments.bank_statements.upload", "Record a statement"),
+    ("wl_payments.bank_statements.record", "Record"),
+    ("wl_payments.bank_statements.recorded", "Statement recorded."),
+    ("wl_payments.bank_statements.bank_account", "Bank account"),
+    ("wl_payments.bank_statements.file_name", "File"),
+    ("wl_payments.bank_statements.format", "Format"),
+    ("wl_payments.bank_statements.period", "Period"),
+    ("wl_payments.bank_statements.period_start", "Period start"),
+    ("wl_payments.bank_statements.period_end", "Period end"),
+    ("wl_payments.bank_statements.closing_balance", "Closing balance"),
+    (
+        "wl_payments.bank_statements.closing_balance_hint",
+        "In dirhams, like 125000.00 or -300.00. Enter it when the file carries none; it is the balance at the end of the last day of the period.",
+    ),
+    ("wl_payments.bank_statements.no_balance", "Not given"),
+    (
+        "wl_payments.bank_statements.bad_upload",
+        "Check the bank account, the file, the format and that the period does not end before it starts.",
+    ),
+    ("wl_payments.bank_statements.format.csv", "CSV"),
+    ("wl_payments.bank_statements.format.excel", "Excel"),
+    ("wl_payments.bank_statements.format.mt940", "MT940"),
+    ("wl_payments.bank_statements.status.uploaded", "Uploaded"),
+    ("wl_payments.bank_statements.status.in_review", "In review"),
+    ("wl_payments.bank_statements.status.completed", "Completed"),
+    ("wl_payments.bank_statements.status.failed", "Failed"),
+    ("wl_payments.bank_statements.status.reverted", "Reverted"),
     ("wl_payments.empty", "No payments yet"),
     (
         "wl_payments.empty_hint",

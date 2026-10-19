@@ -18,6 +18,8 @@
     "payments": "Payments",
     "refunds": "Refunds",
     "deposits": "Deposits",
+    "cheques": "Cheques",
+    "bank_statements": "Bank statements",
     "campaigns": "Campaigns",
     "tickets": "Tickets",
     "block_effects": "Block effects",

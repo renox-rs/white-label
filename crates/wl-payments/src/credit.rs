@@ -12,7 +12,8 @@
 use std::collections::HashMap;
 
 use renox::prelude::*;
-use wl_kernel::payments::{Direction, PaymentStatus, PaymentSummary};
+use renox::chrono::NaiveDate;
+use wl_kernel::payments::{BankPayment, Direction, PaymentStatus, PaymentSummary};
 use wl_kernel::{PartyId, Subject};
 
 use crate::allocation::Allocation;
@@ -55,6 +56,40 @@ pub async fn unallocated(db: &Db, payment: &Payment) -> Result<i64> {
 /// The summary of `payment`, with its allocated and unallocated amounts.
 pub async fn summary(db: &Db, payment: &Payment) -> Result<PaymentSummary> {
     Ok(payment.summary(allocated(db, payment.id).await?))
+}
+
+/// The `received` payments of `legal_entity_id` in `bank_account` dated
+/// strictly after `after`, oldest first. The payment's own date decides, not
+/// when it was recorded: a balance is as of the end of its day. A payment
+/// without a bank account (a set-off) never matches.
+///
+/// # Errors
+///
+/// A database error.
+pub async fn payments_after(
+    db: &Db,
+    legal_entity_id: i64,
+    bank_account: &str,
+    after: NaiveDate,
+) -> Result<Vec<BankPayment>> {
+    let payments = Payment::query()
+        .where_(Payment::LEGAL_ENTITY_ID.eq(legal_entity_id))
+        .where_(Payment::BANK_ACCOUNT.eq(bank_account))
+        .where_(Payment::STATUS.eq(PaymentStatus::Received))
+        .where_(Payment::PAYMENT_DATE.gt(after))
+        .order_by(Payment::PAYMENT_DATE)
+        .order_by(Payment::ID)
+        .get(db)
+        .await?;
+    let sums = allocated_by_payment(db, &payments).await?;
+    Ok(payments
+        .iter()
+        .map(|payment| BankPayment {
+            payment: payment.summary(sums.get(&payment.id).copied().unwrap_or(0)),
+            bank_account: bank_account.to_owned(),
+            reference: payment.reference.clone(),
+        })
+        .collect())
 }
 
 /// The sum of the refunds of `party` in `currency` in `statuses`, in fils;

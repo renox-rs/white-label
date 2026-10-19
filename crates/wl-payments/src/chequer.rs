@@ -15,9 +15,11 @@
 
 use renox::prelude::*;
 use wl_kernel::cheques::{
-    ChequeFuture, ChequeId, ChequeSchedule, ChequeStatus, ChequeSummary, Cheques, RegisterCheque,
+    ChequeDocument, ChequeFuture, ChequeId, ChequeSchedule, ChequeStatus, ChequeSummary, Cheques,
+    OpenCheque, RegisterCheque,
 };
-use wl_kernel::payments::Direction;
+use wl_kernel::invoicing::invoicer;
+use wl_kernel::payments::{AllocationTarget, Direction};
 use wl_kernel::{LegalEntity, PartyId, Subject};
 
 use crate::cheque::{Cheque, ChequeLink};
@@ -222,6 +224,71 @@ async fn summary_of(db: &Db, cheque: &Cheque) -> Result<ChequeSummary> {
     Ok(cheque.summary(cheque.linked(db).await?))
 }
 
+/// The part of `open` fils each linked document takes, in link order. An
+/// invoice takes up to its balance (`Some`); a document whose balance this
+/// module cannot read (`None`: a supplier bill, a charge) takes what is left,
+/// and the ones after it nothing.
+pub(crate) fn apply_to_documents(
+    open: i64,
+    documents: Vec<(Subject, Option<i64>)>,
+) -> Vec<ChequeDocument> {
+    let mut left = open.max(0);
+    let mut applied = Vec::new();
+    for (document, balance) in documents {
+        let amount = match balance {
+            Some(balance) => left.min(balance.max(0)),
+            None => left,
+        };
+        left -= amount;
+        applied.push(ChequeDocument { document, amount });
+    }
+    applied
+}
+
+/// The cheques of `legal_entity_id` in `direction` that are not cleared yet,
+/// oldest cheque date first, each with the documents it pays.
+pub(crate) async fn not_cleared(
+    state: &AppState,
+    legal_entity_id: i64,
+    direction: Direction,
+) -> Result<Vec<OpenCheque>> {
+    let cheques = Cheque::query()
+        .where_(Cheque::LEGAL_ENTITY_ID.eq(legal_entity_id))
+        .where_(Cheque::DIRECTION.eq(direction))
+        .where_(Cheque::STATUS.is_in([
+            ChequeStatus::Received,
+            ChequeStatus::DueForDeposit,
+            ChequeStatus::Deposited,
+        ]))
+        .order_by(Cheque::CHEQUE_DATE)
+        .order_by(Cheque::ID)
+        .get(&state.db)
+        .await?;
+    let mut open = Vec::new();
+    for cheque in cheques {
+        let linked = cheque.linked(&state.db).await?;
+        let mut balances = Vec::new();
+        for document in &linked {
+            let balance = match AllocationTarget::from_subject(document) {
+                Some(AllocationTarget::Invoice(id)) => Some(
+                    invoicer(state)
+                        .find(&state.db, id)
+                        .await?
+                        .map_or(0, |invoice| invoice.balance),
+                ),
+                _ => None,
+            };
+            balances.push((document.clone(), balance));
+        }
+        let documents = apply_to_documents(cheque.open_amount, balances);
+        open.push(OpenCheque {
+            cheque: cheque.summary(linked),
+            documents,
+        });
+    }
+    Ok(open)
+}
+
 /// Registers and reads `wl_payments_cheques` for the kernel contract.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ChequeBook;
@@ -286,6 +353,15 @@ impl Cheques for ChequeBook {
     ) -> ChequeFuture<'a, i64> {
         Box::pin(Cheque::owed_amount(db, party, currency))
     }
+
+    fn not_cleared<'a>(
+        &'a self,
+        state: &'a AppState,
+        legal_entity_id: i64,
+        direction: Direction,
+    ) -> ChequeFuture<'a, Vec<OpenCheque>> {
+        Box::pin(not_cleared(state, legal_entity_id, direction))
+    }
 }
 
 #[cfg(test)]
@@ -348,6 +424,35 @@ mod tests {
         assert!(received.field_collected);
         let issued = new_cheque(&normalised(&request().issued().collected_by(9, true)), None);
         assert!(!issued.field_collected);
+    }
+
+    #[test]
+    fn an_invoice_takes_up_to_its_balance_and_the_rest_goes_on() {
+        let one = Subject::new("invoicing.invoice", 1);
+        let two = Subject::new("invoicing.invoice", 2);
+        let applied =
+            apply_to_documents(1_000, vec![(one.clone(), Some(400)), (two.clone(), Some(900))]);
+        assert_eq!(applied[0], ChequeDocument { document: one, amount: 400 });
+        assert_eq!(applied[1], ChequeDocument { document: two, amount: 600 });
+    }
+
+    #[test]
+    fn a_document_of_unknown_balance_takes_what_is_left_once() {
+        let bill = Subject::new("invoicing.supplier_bill", 3);
+        let charge = Subject::new("invoicing.charge", 4);
+        let applied = apply_to_documents(
+            1_000,
+            vec![(bill.clone(), None), (charge.clone(), None)],
+        );
+        assert_eq!(applied[0].amount, 1_000);
+        assert_eq!(applied[1].amount, 0);
+    }
+
+    #[test]
+    fn a_paid_invoice_takes_nothing() {
+        let invoice = Subject::new("invoicing.invoice", 1);
+        let applied = apply_to_documents(500, vec![(invoice, Some(0))]);
+        assert_eq!(applied[0].amount, 0);
     }
 
     #[test]

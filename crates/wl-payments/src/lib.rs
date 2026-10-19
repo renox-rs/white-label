@@ -3,6 +3,8 @@
 
 pub mod allocate;
 pub mod allocation;
+pub mod bank_statement;
+pub mod bank_statement_pages;
 pub mod cheque;
 pub mod cheque_bounce;
 pub mod cheque_chase;
@@ -51,6 +53,7 @@ use renox::nav::NavLink;
 use renox::prelude::*;
 
 pub use allocation::Allocation;
+pub use bank_statement::BankStatementImport;
 pub use cheque::{Cheque, ChequeLink, ChequeReturn};
 pub use config::PaymentsConfig;
 pub use deposit::Deposit;
@@ -160,6 +163,10 @@ const VIEWS: &[(&str, &str)] = &[
         include_str!("../views/wl-payments/_transfer_sheet.html"),
     ),
     (
+        "wl-payments/bank_statements.html",
+        include_str!("../views/wl-payments/bank_statements.html"),
+    ),
+    (
         "wl-payments/_write_off_sheet.html",
         include_str!("../views/wl-payments/_write_off_sheet.html"),
     ),
@@ -203,6 +210,8 @@ pub mod permissions {
     pub const CHEQUES_MANAGE: &str = "cheques.manage";
     /// Refer a bounced cheque to a legal case.
     pub const CHEQUES_LEGAL: &str = "cheques.legal";
+    /// Upload a bank statement and reconcile it.
+    pub const BANK_RECONCILE: &str = "bank.reconcile";
 }
 
 /// The payments module. The host adds it with
@@ -363,6 +372,7 @@ impl Module for WlPayments {
             .merge(refund_pages::routes())
             .merge(deposit_pages::routes())
             .merge(cheque_pages::routes())
+            .merge(bank_statement_pages::routes())
     }
 
     fn register(&self, app: &mut Registry) {
@@ -375,6 +385,7 @@ impl Module for WlPayments {
         app.model::<deposit_deductions::DepositDeduction>();
         app.model::<deposit_deductions::DeductionLine>();
         app.model::<deposit_deductions::DepositDispute>();
+        app.model::<BankStatementImport>();
         app.model::<Cheque>();
         app.model::<ChequeLink>();
         app.model::<ChequeReturn>();
@@ -390,7 +401,8 @@ impl Module for WlPayments {
             .view_data::<deposit_pages::IndexPage>()
             .view_data::<deposit_pages::ShowPage>()
             .view_data::<cheque_pages::IndexPage>()
-            .view_data::<cheque_pages::ShowPage>();
+            .view_data::<cheque_pages::ShowPage>()
+            .view_data::<bank_statement_pages::IndexPage>();
         app.templates(|env| {
             for (name, source) in VIEWS {
                 // The app's own file of that name wins.
@@ -436,6 +448,14 @@ impl Module for WlPayments {
                 .order(45)
                 .permission(permissions::CHEQUES_VIEW),
         );
+        app.nav(
+            "app",
+            NavLink::route("wl_payments.bank_statements.index", "nav.bank_statements")
+                .icon("file-spreadsheet")
+                .group("nav.app")
+                .order(46)
+                .permission(permissions::BANK_RECONCILE),
+        );
         // `rnx state:diagram Payment` and the admin panel find the machine.
         renox::state_machine::register::<Payment>();
         renox::state_machine::register::<Refund>();
@@ -451,6 +471,8 @@ impl Module for WlPayments {
         wl_kernel::payments::provide_payment_recorder(app, recorder::Payments);
         // How a vertical registers the post-dated cheques of an agreement.
         wl_kernel::cheques::provide_cheques(app, chequer::ChequeBook);
+        // The latest closing balance of each bank account (`FIN.CFL.01`).
+        wl_kernel::bank_statements::provide_bank_statements(app, bank_statement::Statements);
         // `FIN.RUL.03`: the cheques whose date is close go on the deposit list.
         cheque_deposit::register(app);
         // `FIN.RUL.18`: a bounced cheque is chased.

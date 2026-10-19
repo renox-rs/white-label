@@ -22,10 +22,11 @@
 use renox::prelude::*;
 use renox::state_machine::{StateMachine, TransitionError};
 use serde::{Deserialize, Serialize};
-use wl_kernel::documents::today;
+use wl_kernel::documents::{dubai_date, today};
 use wl_kernel::payments::{
     DepositId, Direction, PAYMENT_SUBJECT_TYPE, PaymentId, PaymentMethod, PaymentSource,
     RecordPayment, RefundFailureKind, RefundId, RefundSource as KernelRefundSource, ReversalReason,
+    UnpaidRefund,
 };
 use wl_kernel::{LegalEntity, PartyId, Subject};
 
@@ -39,6 +40,35 @@ use crate::refund_attempt::{AttemptOutcome, RefundAttempt};
 use crate::refund_fail::{FAIL, FAIL_BY_SYSTEM, FailInput};
 use crate::refund_machine::{APPROVE, PAY, PAY_BY_SYSTEM, PayBySystemInput, PayInput, REJECT};
 use crate::reverse;
+
+/// The refunds of `legal_entity_id` that are `approved` or `failed`: money
+/// still to go out, oldest first (`FIN.CFL.01`). A `requested` refund is not
+/// decided yet, a `cancelled` one is back on the party's credit.
+///
+/// # Errors
+///
+/// A database error.
+pub async fn unpaid(db: &Db, legal_entity_id: i64) -> Result<Vec<UnpaidRefund>> {
+    let refunds = Refund::query()
+        .where_(Refund::LEGAL_ENTITY_ID.eq(legal_entity_id))
+        .where_(Refund::STATUS.is_in([RefundStatus::Approved, RefundStatus::Failed]))
+        .order_by(Refund::ID)
+        .get(db)
+        .await?;
+    Ok(refunds
+        .iter()
+        .map(|refund| UnpaidRefund {
+            id: refund.refund_id(),
+            party: refund.party(),
+            legal_entity_id: refund.legal_entity_id,
+            amount: refund.amount,
+            currency: refund.currency.clone(),
+            failed: refund.status == RefundStatus::Failed,
+            approved_on: refund.approved_at.map(dubai_date),
+            source: refund.source_subject(),
+        })
+        .collect())
+}
 
 /// The lifecycle state of a refund (wl-payments §4); the state of the
 /// Refund machine.
