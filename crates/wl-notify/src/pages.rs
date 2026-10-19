@@ -11,6 +11,9 @@
 //! | `GET /statutory-notices/{id}/proof` | `wl_notify.notice_proof` | `notifications.notices.record_proof` (an unknown notice is 404) |
 //! | `POST /statutory-notices/{id}/proof` | `wl_notify.notice_proof_store` | the same (multipart; a refused proof is a 422, a second one a 409) |
 //! | `GET /statutory-notices/{id}/proof/file` | `wl_notify.notice_proof_file` | the same (the attachment) |
+//! | `GET /notify/broadcasts` | `wl_notify.broadcasts` | signed in; a holder of `notifications.marketing.send` sees all, anyone else the ones they asked for |
+//! | `GET /notify/broadcasts/{id}` | `wl_notify.broadcast` | the requester or a holder of `notifications.marketing.send` (others 403, unknown 404); no party names |
+//! | `POST /notify/broadcasts/{id}/cancel` | `wl_notify.broadcast_cancel` | the same (a broadcast that cannot be cancelled is a 422) |
 //! | `GET /unsubscribe/{token}` | `wl_notify.unsubscribe` | nobody: public, the signed token is the key (a bad token shows a neutral page) |
 //! | `POST /unsubscribe/{token}` | `wl_notify.unsubscribe_confirm` | the same (withdraws the e-mail marketing consent, idempotent) |
 //!
@@ -28,8 +31,12 @@ use renox::prelude::*;
 use renox::validation::{Errors, ValidationError};
 use serde::{Deserialize, Serialize};
 use wl_kernel::Subject;
+use wl_kernel::approvals::{self, ApprovalCard};
 use wl_kernel::notify::{self, GiveUpReaction, NotifyChannel, ProofMethod};
 
+use crate::broadcast::{Broadcast, BroadcastStatus};
+use crate::broadcast_run;
+use crate::broadcasts;
 use crate::message::{Message, MessageStatus, RecipientKind};
 use crate::notices::{self, ProofError, ProofFile, ProofInput, ProofRefusal, StatutoryNotice};
 use crate::notifier::type_def;
@@ -86,6 +93,16 @@ pub fn routes() -> Routes {
                 .get("/statutory-notices/{id}/proof/file", proof_file)
                 .name("wl_notify.notice_proof_file")
                 .require_permission(permissions::RECORD_PROOF),
+        )
+        // The broadcasts: the handlers check "requester or holder".
+        .merge(
+            Routes::new()
+                .get("/notify/broadcasts", broadcasts_index)
+                .name("wl_notify.broadcasts")
+                .get("/notify/broadcasts/{id}", broadcast_show)
+                .name("wl_notify.broadcast")
+                .post("/notify/broadcasts/{id}/cancel", broadcast_cancel)
+                .name("wl_notify.broadcast_cancel"),
         )
         // Public: a recipient opens it from an e-mail, signed out. No
         // guard; the token is the proof.
@@ -929,6 +946,235 @@ async fn send_windows_update(
             .into_response()),
         Err(refusal) => Err(invalid("end", refusal.message().to_owned(), &form)),
     }
+}
+
+/// One broadcast in the list.
+#[derive(Serialize, Debug, Clone, PartialEq, Eq)]
+pub struct BroadcastRow {
+    /// The broadcast's id.
+    pub id: i64,
+    /// The notification type's key.
+    pub type_key: String,
+    /// "Draft", "Pending approval", ...
+    pub status: String,
+    /// The badge tone of the status.
+    pub tone: &'static str,
+    /// "SMS".
+    pub channel: String,
+    /// The recipients estimated when it was asked.
+    pub estimate: i64,
+    /// When it goes out.
+    pub send_at: DateTime,
+}
+
+/// The badge tone of a broadcast status.
+fn broadcast_tone(status: BroadcastStatus) -> &'static str {
+    match status {
+        BroadcastStatus::PendingApproval => "warning",
+        BroadcastStatus::Completed => "success",
+        BroadcastStatus::Cancelled => "danger",
+        BroadcastStatus::Draft | BroadcastStatus::Scheduled | BroadcastStatus::Sending => "info",
+    }
+}
+
+/// The text key of a broadcast status.
+fn broadcast_status_key(status: BroadcastStatus) -> &'static str {
+    match status {
+        BroadcastStatus::Draft => "broadcast.status.draft",
+        BroadcastStatus::PendingApproval => "broadcast.status.pending_approval",
+        BroadcastStatus::Scheduled => "broadcast.status.scheduled",
+        BroadcastStatus::Sending => "broadcast.status.sending",
+        BroadcastStatus::Completed => "broadcast.status.completed",
+        BroadcastStatus::Cancelled => "broadcast.status.cancelled",
+    }
+}
+
+/// Whether `user` may see and cancel `broadcast`: its requester, or a holder
+/// of `notifications.marketing.send`.
+fn may_handle(user: &AuthUser, broadcast: &Broadcast) -> bool {
+    user.id == broadcast.requested_by || user.has_permission(permissions::MARKETING_SEND)
+}
+
+/// The broadcasts list.
+#[derive(Serialize, ViewData)]
+#[view(template = "wl-notify/broadcasts.html")]
+pub(crate) struct BroadcastsPage {
+    tx: Texts,
+    broadcasts: Vec<BroadcastRow>,
+}
+
+/// `GET /notify/broadcasts`: newest first. A holder sees every broadcast,
+/// anyone else only the ones they asked for.
+async fn broadcasts_index(State(db): State<Db>, user: AuthUser, lang: Lang) -> Result<View> {
+    let t = texts_in(&lang);
+    let mut query = Broadcast::query()
+        .order_by_desc(Broadcast::ID)
+        .limit(LOG_LIMIT);
+    if !user.has_permission(permissions::MARKETING_SEND) {
+        query = query.where_(Broadcast::REQUESTED_BY.eq(user.id));
+    }
+    let rows = query
+        .get(&db)
+        .await?
+        .into_iter()
+        .map(|b| BroadcastRow {
+            id: b.id,
+            status: t(broadcast_status_key(b.status)),
+            tone: broadcast_tone(b.status),
+            channel: channel_label(&t, b.channel),
+            estimate: b.estimate,
+            send_at: b.send_at,
+            type_key: b.type_key,
+        })
+        .collect();
+    Ok(View::typed(BroadcastsPage {
+        tx: texts::all(&lang),
+        broadcasts: rows,
+    }))
+}
+
+/// A count with its label (an excluded reason, a result).
+#[derive(Serialize, Debug, Clone, PartialEq, Eq)]
+pub struct CountRow {
+    /// "No consent".
+    pub label: String,
+    /// How many.
+    pub count: i64,
+}
+
+/// One broadcast's page.
+#[derive(Serialize, ViewData)]
+#[view(template = "wl-notify/broadcast.html")]
+pub(crate) struct BroadcastPage {
+    tx: Texts,
+    broadcast: Broadcast,
+    status: String,
+    tone: &'static str,
+    channel: String,
+    /// The template text of the type for the channel, or "—".
+    template: String,
+    /// Which audience and who asked, as words; never party names.
+    rule: String,
+    excluded: Vec<CountRow>,
+    results: Vec<CountRow>,
+    approvals: Vec<ApprovalCard>,
+    can_cancel: bool,
+}
+
+/// The rule text: the segment of the requester, as words.
+fn rule_text(t: Text<'_>, b: &Broadcast) -> String {
+    t("broadcasts.rule")
+        .replace(":segment", &b.segment_id.to_string())
+        .replace(
+            ":requester",
+            &format!("{} #{}", b.requester_type, b.requester_id),
+        )
+}
+
+/// The broadcast `id` for `user`: 404 when it does not exist, 403 when the
+/// user neither asked for it nor holds the permission.
+async fn broadcast_for(db: &Db, user: &AuthUser, id: i64) -> Result<Broadcast> {
+    let broadcast = Broadcast::find(db, id).await?.ok_or(Error::NotFound)?;
+    if may_handle(user, &broadcast) {
+        Ok(broadcast)
+    } else {
+        Err(Error::Forbidden)
+    }
+}
+
+/// `GET /notify/broadcasts/{id}`: the estimate, the rule, the excluded
+/// counts, the results, the approval card and the cancel button.
+async fn broadcast_show(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<View> {
+    let t = texts_in(&lang);
+    let db = state.db.clone();
+    let b = broadcast_for(&db, &user, id).await?;
+    let template = broadcasts::find_type(&db, &b.type_key)
+        .await?
+        .and_then(|def| {
+            def.template_for(b.channel, &lang.locale)
+                .map(|tpl| tpl.body.clone())
+        })
+        .unwrap_or_else(|| "—".to_owned());
+    let excluded = b
+        .excluded
+        .0
+        .0
+        .iter()
+        .map(|(reason, count)| {
+            let key = format!("broadcast.excluded.{reason}");
+            let found = t(&key);
+            CountRow {
+                label: if found == format!("wl_notify.{key}") {
+                    reason.clone()
+                } else {
+                    found
+                },
+                count: *count,
+            }
+        })
+        .collect();
+    let r = &b.results.0;
+    let results = [
+        ("sent", r.sent),
+        ("delivered", r.delivered),
+        ("failed", r.failed),
+        ("opted_out", r.opted_out),
+    ]
+    .into_iter()
+    .map(|(key, count)| CountRow {
+        label: t(&format!("broadcasts.results.{key}")),
+        count,
+    })
+    .collect();
+    let approvals = approvals::cards_for(&db, &b.broadcast_id().subject(), &user, &lang).await?;
+    let can_cancel = matches!(
+        b.status,
+        BroadcastStatus::PendingApproval | BroadcastStatus::Scheduled
+    );
+    Ok(View::typed(BroadcastPage {
+        tx: texts::all(&lang),
+        status: t(broadcast_status_key(b.status)),
+        tone: broadcast_tone(b.status),
+        channel: channel_label(&t, b.channel),
+        template,
+        rule: rule_text(&t, &b),
+        excluded,
+        results,
+        approvals,
+        can_cancel,
+        broadcast: b,
+    }))
+}
+
+/// The cancel form: an optional reason.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct BroadcastCancelForm {
+    /// Why it is cancelled.
+    #[serde(default)]
+    pub reason: String,
+}
+
+/// `POST /notify/broadcasts/{id}/cancel`: cancels a broadcast that waits for
+/// approval or for its send time.
+async fn broadcast_cancel(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<BroadcastCancelForm>,
+) -> Result<Response> {
+    broadcast_for(&state.db, &user, id).await?;
+    broadcast_run::cancel(&state, id, &user, &form.reason).await?;
+    Ok((
+        Toast::success(texts::t(&lang, "wl_notify.broadcasts.cancelled")),
+        Redirect::route("wl_notify.broadcast", &[&id])?,
+    )
+        .into_response())
 }
 
 #[cfg(test)]

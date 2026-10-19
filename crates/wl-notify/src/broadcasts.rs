@@ -57,7 +57,7 @@ pub(crate) fn type_problem(
 }
 
 /// The type `key` as stored, else as registered; `None` when neither.
-async fn find_type(db: &Db, key: &str) -> Result<Option<NotificationTypeDef>> {
+pub(crate) async fn find_type(db: &Db, key: &str) -> Result<Option<NotificationTypeDef>> {
     if let Some(row) = NotificationType::by_key(db, key).await? {
         return Ok(Some(row.to_def()));
     }

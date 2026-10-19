@@ -122,6 +122,14 @@ const VIEWS: &[(&str, &str)] = &[
         include_str!("../views/wl-notify/send_windows.html"),
     ),
     (
+        "wl-notify/broadcasts.html",
+        include_str!("../views/wl-notify/broadcasts.html"),
+    ),
+    (
+        "wl-notify/broadcast.html",
+        include_str!("../views/wl-notify/broadcast.html"),
+    ),
+    (
         "wl-notify/unsubscribe.html",
         include_str!("../views/wl-notify/unsubscribe.html"),
     ),
@@ -201,6 +209,8 @@ impl Module for WlNotify {
             .view_data::<pages::LogPage>()
             .view_data::<pages::NoticeProofPage>()
             .view_data::<pages::SendWindowsPage>()
+            .view_data::<pages::BroadcastsPage>()
+            .view_data::<pages::BroadcastPage>()
             .view_data::<pages::UnsubscribePage>();
         // `rnx state:diagram Message` and the admin panel find the machine.
         renox::state_machine::register::<Message>();
@@ -266,6 +276,13 @@ impl Module for WlNotify {
                 .group("nav.admin")
                 .order(42)
                 .permission(permissions::CHANNELS_MANAGE),
+        );
+        app.nav(
+            "app",
+            NavLink::route("wl_notify.broadcasts", "nav.broadcasts")
+                .icon("mail")
+                .group("nav.admin")
+                .order(43),
         );
         app.templates(|env| {
             for (name, source) in VIEWS {

@@ -1,0 +1,46 @@
+{#- wl-notify: one broadcast: the estimate, the audience rule, the counts of
+    members left out (never names), the results, the approval card and the
+    cancel button. Replace it with resources/views/wl-notify/broadcast.html in
+    the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['broadcasts.detail_title']">
+  <rx-stack>
+    <rx-page-header :title="broadcast.type_key" :subtitle="tx['broadcasts.detail_title']">
+      <rx-badge :kind="tone" :text="status"/>
+    </rx-page-header>
+    <rx-card :title="tx['broadcasts.detail_title']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['fields.channel']" :value="channel"/>
+        <rx-entry :label="tx['broadcasts.estimate']" :value="broadcast.estimate"/>
+        <rx-entry :label="tx['broadcasts.send_at']" :value="broadcast.send_at" format="datetime"/>
+        <rx-entry :label="tx['broadcasts.rule_label']" :value="rule"/>
+        <rx-entry :label="tx['broadcasts.requested_by']" :value="broadcast.requested_by"/>
+        <rx-entry :label="tx['broadcasts.approved_by']" :value="broadcast.approved_by" placeholder="—"/>
+        <rx-entry :label="tx['broadcasts.recipients']" :value="broadcast.recipients_resolved" placeholder="—"/>
+        <rx-entry :label="tx['broadcasts.cancel_reason']" :value="broadcast.cancel_reason" placeholder="—"/>
+        <rx-entry :label="tx['broadcasts.template']" :value="template" span="full"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-include template="wl-kernel/approval_card.html"/>
+    <rx-card :title="tx['broadcasts.excluded']">
+      <rx-simple-table rx-if="excluded" :head="[tx['broadcasts.reason'], tx['broadcasts.count']]" :caption="tx['broadcasts.excluded']">
+        <tr rx-for="row in excluded"><td>{{ row.label }}</td><td>{{ row.count }}</td></tr>
+      </rx-simple-table>
+      <rx-empty rx-else :title="tx['broadcasts.excluded_none']" icon="mail"/>
+    </rx-card>
+    <rx-card :title="tx['broadcasts.results']">
+      <rx-simple-table :head="[tx['broadcasts.reason'], tx['broadcasts.count']]" :caption="tx['broadcasts.results']">
+        <tr rx-for="row in results"><td>{{ row.label }}</td><td>{{ row.count }}</td></tr>
+      </rx-simple-table>
+    </rx-card>
+    <rx-form rx-if="can_cancel" action="{{ route('wl_notify.broadcast_cancel', broadcast.id) }}" novalidate>
+      <rx-card :title="tx['broadcasts.cancel']">
+        <rx-form-errors/>
+        <rx-textarea name="reason" :label="tx['broadcasts.cancel_reason_label']" id="broadcast-cancel-reason"/>
+        <div class="rx-card__footer">
+          <rx-button :label="tx['broadcasts.cancel']" kind="danger"/>
+        </div>
+      </rx-card>
+    </rx-form>
+    <a href="{{ route('wl_notify.broadcasts') }}">{{ tx['broadcasts.back'] }}</a>
+  </rx-stack>
+</rx-page>

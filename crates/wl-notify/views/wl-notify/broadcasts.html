@@ -1,0 +1,15 @@
+{#- wl-notify: the broadcasts, newest first. Replace it with
+    resources/views/wl-notify/broadcasts.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['broadcasts.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['broadcasts.title']" :subtitle="tx['broadcasts.subtitle']"/>
+    <rx-table :rows="broadcasts" as="item" :key="item.id" :caption="tx['broadcasts.title']" card>
+      <rx-column :label="tx['fields.key']"><a href="{{ route('wl_notify.broadcast', item.id) }}">{{ item.type_key }}</a></rx-column>
+      <rx-column :label="tx['fields.status']"><rx-badge :kind="item.tone" :text="item.status"/></rx-column>
+      <rx-column :label="tx['fields.channel']">{{ item.channel }}</rx-column>
+      <rx-column :label="tx['broadcasts.estimate']" align="num">{{ item.estimate }}</rx-column>
+      <rx-column :label="tx['broadcasts.send_at']">{{ item.send_at | date('%Y-%m-%d %H:%M') }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['broadcasts.empty']" :message="tx['broadcasts.empty_hint']" icon="mail"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>
