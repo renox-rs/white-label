@@ -177,7 +177,33 @@ pub async fn request_for_bill(
         .ok_or_else(|| refused(english("wl_invoicing.supplier_bill.problem.entity")))?;
     let amount = amount_of(&drawings);
     let source = bill.subject();
-    let earlier = DrawingApproval::for_source(&state.db, &source).await?;
+    let (stored, created) = open_request(state, entity, &source, amount, requester).await?;
+    if created && stored.self_approved {
+        tell_self_approved(state, &bill, &stored).await?;
+    }
+    Ok(Some(stored))
+}
+
+/// Makes the approval of a drawing of `amount` fils on `source` in `entity`,
+/// asked for by `requester`, and returns it with whether it is new. An
+/// earlier approval of the same amount that is not rejected is returned as it
+/// is (`false`). The path depends on who asks: a request to the holders of
+/// `drawings.approve` other than the requester; or, for the entity's only
+/// holder with the setting on (`FIN.ACL.23`), recorded at once and flagged
+/// *self-approved*; or, at or below a limit raised above AED 0, recorded at
+/// once.
+///
+/// # Errors
+///
+/// A database error, or the refusal of the approval policy.
+pub async fn open_request(
+    state: &AppState,
+    entity: i64,
+    source: &Subject,
+    amount: i64,
+    requester: i64,
+) -> Result<(DrawingApproval, bool)> {
+    let earlier = DrawingApproval::for_source(&state.db, source).await?;
     if let Some(same) = earlier.iter().find(|a| {
         a.amount == amount
             && matches!(
@@ -185,7 +211,7 @@ pub async fn request_for_bill(
                 DrawingStatus::Draft | DrawingStatus::Requested | DrawingStatus::Approved
             )
     }) {
-        return Ok(Some(same.clone()));
+        return Ok((same.clone(), false));
     }
     let mut approval = DrawingApproval {
         legal_entity_id: entity,
@@ -225,10 +251,7 @@ pub async fn request_for_bill(
     approvals::announce(state, &outcome).await?;
     outcome.emit(state).await?;
     let stored = DrawingApproval::find_or_404(&state.db, approval.id).await?;
-    if stored.self_approved {
-        tell_self_approved(state, &bill, &stored).await?;
-    }
-    Ok(Some(stored))
+    Ok((stored, true))
 }
 
 /// Tells the accountant role that the sole owner recorded a drawing without a
@@ -264,6 +287,11 @@ async fn recheck(
     let Some(approval) = DrawingApproval::find(&mut *tx, request.subject_id).await? else {
         return Ok(Some(english("wl_invoicing.drawings.problem.not_found").to_owned()));
     };
+    // The details of a drawing on another module's record cannot change while
+    // the request waits: that module keeps them as they were entered.
+    if approval.source_type != BILL_TYPE {
+        return Ok(None);
+    }
     let drawings = drawing_lines_in(tx, approval.source_id).await?;
     if amount_of(&drawings) == approval.amount {
         Ok(None)

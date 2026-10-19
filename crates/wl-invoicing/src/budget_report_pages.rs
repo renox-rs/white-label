@@ -110,6 +110,7 @@ pub(crate) fn source_link(source: &wl_kernel::Subject) -> String {
     match source.subject_type.as_str() {
         "invoicing.supplier_bill" => format!("/supplier-bills/{}", source.subject_id),
         "invoicing.invoice" => format!("/invoices/{}", source.subject_id),
+        "payments.payment" => format!("/payments/{}", source.subject_id),
         _ => String::new(),
     }
 }

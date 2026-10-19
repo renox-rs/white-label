@@ -19,9 +19,12 @@
 //! always agree with the documents. The actual is computed when asked, with
 //! the mapping of the day. Foreign amounts are taken at the rate stored on
 //! the document; a line whose rate is unknown is left out. Expense claim lines
-//! (wl-payments `Expenses`), paid payroll runs (wl-hr) and the payments with
-//! purpose *owner drawings* (BL-PAY-26) come from modules this build does
-//! not have yet; their mapping keys are stored and counted when they exist.
+//! (wl-payments `Expenses`) and paid payroll runs (wl-hr) come from modules
+//! this build does not have yet; their mapping keys are stored and counted
+//! when they exist.
+//! The payments with purpose *owner drawings* (wl-payments) are read through
+//! the kernel's drawing payment sources: a drawing adds its amount, a repayment
+//! by the owner takes it off, in the month of the payment date.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -29,7 +32,9 @@ use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use serde::Serialize;
 use wl_kernel::Subject;
+use wl_kernel::drawings::drawing_payment_sources;
 use wl_kernel::invoicing::{CreditNoteStatus, InvoiceStatus, SupplierDebitNoteStatus};
+use wl_kernel::payments::Direction;
 
 use crate::bill_line::BillLine;
 use crate::budget::{month_end, month_start};
@@ -42,6 +47,7 @@ use crate::invoice::Invoice;
 use crate::line::InvoiceLine;
 use crate::supplier_bill::{SupplierBill, SupplierBillStatus};
 use crate::supplier_debit_note::SupplierDebitNote;
+use crate::texts::english;
 use crate::vat;
 
 /// The supplier bill states whose lines count as actual expense.
@@ -420,7 +426,55 @@ pub async fn items(
     let mapped = Mapped::load(db).await?;
     let mut all = income_items(db, &mapped, entities, from, to).await?;
     all.extend(expense_items(db, &mapped, entities, from, to).await?);
+    all.extend(drawing_payment_items(db, entities, from, to).await?);
     Ok(all)
+}
+
+/// The items of the payments with purpose *owner drawings* (wl-payments,
+/// `FIN.ACL.21`) dated from `from` to `to`, read through the kernel's
+/// [`DrawingPaymentSource`](wl_kernel::drawings::DrawingPaymentSource)s: a
+/// drawing adds its amount (the payment has no VAT of its own), a repayment
+/// by the owner takes it off, both in their category and the month of the
+/// payment date.
+async fn drawing_payment_items(
+    db: &Db,
+    entities: &[i64],
+    from: NaiveDate,
+    to: NaiveDate,
+) -> Result<Vec<ActualItem>> {
+    let sources = drawing_payment_sources();
+    if sources.is_empty() {
+        return Ok(Vec::new());
+    }
+    let categories: BTreeMap<String, i64> = BudgetCategory::query()
+        .get(db)
+        .await?
+        .into_iter()
+        .map(|c| (c.code, c.id))
+        .collect();
+    let mut items = Vec::new();
+    for source in sources {
+        for payment in source.payments(db, entities, from, to).await? {
+            let repaid = payment.direction == Direction::In;
+            items.push(ActualItem {
+                legal_entity_id: payment.legal_entity_id,
+                month: month_start(payment.date),
+                kind: BudgetKind::OwnerDrawings,
+                category_id: categories.get(&payment.category).copied(),
+                amount: if repaid { -payment.amount } else { payment.amount },
+                label: english(if repaid {
+                    "wl_invoicing.drawings.repayment"
+                } else {
+                    "wl_invoicing.drawings.payment"
+                })
+                .to_owned(),
+                source: payment.payment.subject(),
+                party_id: Some(payment.party.0),
+                self_approved: payment.self_approved,
+            });
+        }
+    }
+    Ok(items)
 }
 
 /// The actual of category `category` for `entity` in the month of `month`.

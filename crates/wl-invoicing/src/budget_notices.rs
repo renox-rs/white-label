@@ -19,6 +19,10 @@ pub const VARIANCE: &str = "invoicing.budget_variance";
 /// second approver (`FIN.ACL.23`).
 pub const DRAWING_SELF_APPROVED: &str = "invoicing.drawing_self_approved";
 
+/// The notification type of a payment drawing recorded by the sole owner
+/// without a second approver (`FIN.ACL.23`).
+pub const DRAWING_PAYMENT_SELF_APPROVED: &str = "invoicing.drawing_payment_self_approved";
+
 /// The notification type of a bill with an approved drawing that was voided
 /// (`FIN.ACL.21`).
 pub const DRAWING_CORRECTED: &str = "invoicing.drawing_corrected";
@@ -68,6 +72,19 @@ pub fn self_approved_type() -> NotificationTypeDef {
         )
 }
 
+/// The type of `FIN.ACL.23` for a payment: staff, transactional, by e-mail.
+pub fn payment_self_approved_type() -> NotificationTypeDef {
+    NotificationTypeDef::new(DRAWING_PAYMENT_SELF_APPROVED, MODULE)
+        .group("drawings")
+        .category(Category::Transactional)
+        .template(
+            NotifyChannel::Email,
+            "en",
+            Some(english("wl_invoicing.drawing_payment_self_approved.subject")),
+            english("wl_invoicing.drawing_payment_self_approved.body"),
+        )
+}
+
 /// The type of a corrected drawing: staff, transactional, by e-mail.
 pub fn corrected_type() -> NotificationTypeDef {
     NotificationTypeDef::new(DRAWING_CORRECTED, MODULE)
@@ -86,6 +103,7 @@ pub(crate) fn register_types() {
     notify::register_type(reminder_type());
     notify::register_type(variance_type());
     notify::register_type(self_approved_type());
+    notify::register_type(payment_self_approved_type());
     notify::register_type(corrected_type());
 }
 

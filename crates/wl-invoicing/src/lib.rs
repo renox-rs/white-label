@@ -64,6 +64,7 @@ pub mod issue;
 pub mod line;
 mod machine;
 pub mod overdue;
+pub mod owner_drawings;
 pub mod owner;
 pub mod pages;
 pub mod payables;
@@ -871,6 +872,10 @@ impl Module for WlInvoicing {
         // final re-check and the notice of a corrected drawing.
         drawings_machine::register();
         drawings::register(app);
+        // `FIN.ACL.21` for the payments: wl-payments asks for the approval of
+        // a drawing through the kernel, and hears when it ends.
+        wl_kernel::drawings::provide_owner_drawings(app, owner_drawings::Drawings);
+        owner_drawings::register(app);
     }
 }
 

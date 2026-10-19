@@ -1716,6 +1716,20 @@ const TEXTS: &[(&str, &str)] = &[
         "The sole owner recorded the drawing on supplier bill {{ bill }} ({{ amount }}) without a second approver. See the bill: {{ link }}",
     ),
     (
+        "wl_invoicing.drawing_payment_self_approved.subject",
+        "Owner drawing paid without a second approver",
+    ),
+    (
+        "wl_invoicing.drawing_payment_self_approved.body",
+        "The sole owner asked for an owner drawing of {{ amount }} ({{ category }}) without a second approver, and it is recorded. See the payments: {{ link }}",
+    ),
+    ("wl_invoicing.drawings.payment", "Owner drawing paid"),
+    ("wl_invoicing.drawings.repayment", "Owner drawing repaid"),
+    (
+        "wl_invoicing.drawings.problem.category",
+        "The category is not an owner drawings category.",
+    ),
+    (
         "wl_invoicing.drawing_corrected.subject",
         "A bill with an approved owner drawing was voided",
     ),

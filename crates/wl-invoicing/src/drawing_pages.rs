@@ -7,7 +7,8 @@
 //! | `POST /supplier-bills/{id}/drawings/request` | `wl_invoicing.drawing_request` | `supplier_bills.create` |
 //! | `POST /supplier-bills/{id}/recode` | `wl_invoicing.bill_recode` | `supplier_bills.create` |
 //!
-//! The first sends an approver to the bill the approval is about (the
+//! The first sends an approver to the bill, or the payment drawing request, the
+//! approval is about (the
 //! "Needs your action" list links to it). The second asks again for the
 //! approval of the bill's drawing (a rejected drawing whose line stays a
 //! drawing, or one whose amount changed, needs a new request). The third
@@ -45,8 +46,12 @@ pub fn routes() -> Routes {
         )
 }
 
-/// `GET /drawing-approvals/{id}`: the bill the approval is about.
+/// `GET /drawing-approvals/{id}`: the bill, or the payment request, the
+/// approval is about.
 async fn open(Found(approval): Found<DrawingApproval>) -> Redirect {
+    if approval.source_type == wl_kernel::drawings::DRAWING_REQUEST_SUBJECT_TYPE {
+        return Redirect::to(&format!("/payments/drawings/{}", approval.source_id));
+    }
     Redirect::to(&format!("/supplier-bills/{}", approval.source_id))
 }
 
