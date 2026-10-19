@@ -199,13 +199,9 @@ pub async fn extend_on(
     if let Some(key) = open_for {
         let creator = task_creator(state);
         if let Some(task) = creator.find_open(state, &key).await? {
-            creator
-                .complete(
-                    state,
-                    task.id,
-                    &english("property.chase.extended", &[("until", &until)]),
-                )
-                .await?;
+            // Built before the await: the argument list of `english` is not `Send`.
+            let note = english("property.chase.extended", &[("until", &until)]);
+            creator.complete(state, task.id, &note).await?;
         }
     }
     Lease::find(&state.db, id).await?.ok_or(Error::NotFound)

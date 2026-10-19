@@ -500,6 +500,11 @@ async fn ask_refund(
     )
     .await?;
     let tenant: PartyId = lease.tenant();
+    // Built before the await: the argument list of `english` is not `Send`.
+    let refund_reason = english(
+        "property.cancel.refund_reason",
+        &[("lease", &lease.number_with_version()), ("reason", &reason)],
+    );
     payment_recorder(state)
         .request_refund(
             state,
@@ -511,10 +516,7 @@ async fn ask_refund(
                 currency: "AED".to_owned(),
                 method: None,
                 gateway_txn: None,
-                reason: english(
-                    "property.cancel.refund_reason",
-                    &[("lease", &lease.number_with_version()), ("reason", &reason)],
-                ),
+                reason: refund_reason,
             },
             by,
         )

@@ -230,7 +230,7 @@ impl StateMachine for AccessGrant {
                 step(ACCEPT, "Accept", "success", &[Invited], Active).effect(
                     |grant: &AccessGrant, ctx, tx| {
                         let id = grant.id;
-                        let user = ctx.input_as::<AcceptInput>().map(|i| i.user_id);
+                        let user = ctx.input_as::<AcceptInput>().ok().map(|i| i.user_id);
                         Box::pin(async move { set(tx, id, &[("user_id", &user)]).await })
                     },
                 ),
