@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
+pub mod acknowledgements;
 pub mod documents;
 pub mod expiry;
 pub mod flags;
@@ -17,6 +18,9 @@ use renox::db::Migration;
 use renox::nav::NavLink;
 use renox::prelude::*;
 
+pub use acknowledgements::{
+    AckRefused, AckStatus, Acknowledgements, SopAcknowledgement, SopDesk,
+};
 pub use documents::{
     Attach, AttachReason, AttachRefused, CorrectionInput, Document, DocumentSource, DocumentStatus,
     DocumentVersion, Documents, FieldsUpdate, NewDocument,
@@ -101,6 +105,10 @@ const VIEWS: &[(&str, &str)] = &[
         "wl-documents/sop_form.html",
         include_str!("../views/wl-documents/sop_form.html"),
     ),
+    (
+        "wl-documents/acknowledgements.html",
+        include_str!("../views/wl-documents/acknowledgements.html"),
+    ),
 ];
 
 /// The documents module. The host adds it with
@@ -116,6 +124,7 @@ impl Module for WlDocuments {
         pages::routes()
             .merge(overrides::web::routes())
             .merge(sops::web::routes())
+            .merge(acknowledgements::web::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -145,7 +154,8 @@ impl Module for WlDocuments {
             .view_data::<overrides::web::OverridePage>()
             .view_data::<sops::web::SopsPage>()
             .view_data::<sops::web::SopFormPage>()
-            .view_data::<sops::web::SopPage>();
+            .view_data::<sops::web::SopPage>()
+            .view_data::<acknowledgements::web::AcknowledgementsPage>();
         // `DOC.RUL.01` to `DOC.RUL.03`: the `documents.expiring` and
         // `documents.expired` types, the daily `documents:expiry` task
         // (01:00 Asia/Dubai) and its command.
@@ -158,6 +168,9 @@ impl Module for WlDocuments {
         overrides::register(app);
         // The SOP and SOP translation kinds.
         sops::register();
+        // `DOC.RUL.04`: SOP acknowledgements, their machine, the events that
+        // ask and cancel, the daily run and the kernel contract wl-hr asks.
+        acknowledgements::register(app);
         // The dashboard's "approvals waiting for you" links to the override.
         wl_kernel::approvals::register_subject_link(overrides::SUBJECT_TYPE, |id| {
             format!("/documents/overrides/{id}")
@@ -216,6 +229,13 @@ impl Module for WlDocuments {
                 .group("nav.app")
                 .order(38)
                 .permission(permissions::VIEW),
+        );
+        app.nav(
+            "app",
+            NavLink::route("wl_documents.acknowledgements", "nav.document_acknowledgements")
+                .icon("check")
+                .group("nav.app")
+                .order(39),
         );
         app.nav(
             "app",

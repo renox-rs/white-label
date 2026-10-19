@@ -32,6 +32,7 @@ use serde::{Deserialize, Serialize};
 use wl_kernel::documents::SopReaderRef;
 
 use super::model::{Sop, SopStatus};
+use crate::acknowledgements::web::{VersionReport, report as acknowledgement_report};
 use super::versions::holds_owner_role;
 use super::{KIND_SOP, SUBJECT_TYPE, Sops};
 use crate::documents::{Document, DocumentStatus};
@@ -455,6 +456,8 @@ pub struct SopPage {
     readers_text: String,
     versions: Vec<DocumentRow>,
     timeline: Vec<Value>,
+    /// The acknowledgements per version (`DOC.RUL.04`).
+    acks: Vec<VersionReport>,
     can_manage: bool,
     can_withdraw: bool,
     can_readers: bool,
@@ -504,12 +507,13 @@ async fn document_row(
 /// `GET /documents/sops/{id}`: the SOP, its versions with their
 /// translations, readers and history; 403 for anyone who may not see SOPs.
 async fn show(
-    State(db): State<Db>,
+    State(state): State<AppState>,
     user: AuthUser,
     lang: Lang,
     Found(sop): Found<Sop>,
 ) -> Result<View> {
     require_view(&user)?;
+    let db = state.db.clone();
     let manage = user.has_permission(permissions::SOPS_MANAGE);
     let owner = manage && holds_owner_role(&db, &user, &sop).await?;
     let today = wl_kernel::documents::dubai_date(renox::db::now());
@@ -598,6 +602,7 @@ async fn show(
         readers_text: readers_text(&readers),
         versions,
         timeline,
+        acks: acknowledgement_report(&state, &lang, &sop, today).await?,
         can_manage: manage,
         can_withdraw: manage && status == SopStatus::Active,
         can_readers: manage && status != SopStatus::Withdrawn,

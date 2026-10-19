@@ -612,6 +612,146 @@ const TEXTS: &[(&str, &str)] = &[
         "The current version is archived. A new accepted version makes the SOP active again.",
     ),
     ("wl_documents.sops.withdrawn", "SOP withdrawn."),
+    // SOP acknowledgements (#53).
+    ("wl_documents.acks.title", "SOP acknowledgements"),
+    (
+        "wl_documents.acks.subtitle",
+        "Read the current version of each SOP that applies to you, then confirm.",
+    ),
+    ("wl_documents.acks.mine", "To acknowledge"),
+    ("wl_documents.acks.in_person_list", "To acknowledge in person"),
+    ("wl_documents.acks.empty", "Nothing to acknowledge"),
+    (
+        "wl_documents.acks.empty_hint",
+        "A new SOP version that applies to you shows up here.",
+    ),
+    ("wl_documents.acks.due", "Due"),
+    ("wl_documents.acks.overdue", "Overdue"),
+    ("wl_documents.acks.opened", "Opened"),
+    ("wl_documents.acks.yes", "Yes"),
+    ("wl_documents.acks.no", "No"),
+    ("wl_documents.acks.open", "Open"),
+    ("wl_documents.acks.version_file", "Version"),
+    ("wl_documents.acks.acknowledge", "I have read it"),
+    ("wl_documents.acks.acknowledge_title", "Confirm that you read this SOP?"),
+    ("wl_documents.acks.acknowledged_ok", "Acknowledged."),
+    ("wl_documents.acks.in_person", "Record in person"),
+    (
+        "wl_documents.acks.in_person_title",
+        "Record the acknowledgement in person",
+    ),
+    (
+        "wl_documents.acks.in_person_description",
+        "The reader signs on this device after reading the SOP with you; you are recorded as the witness, and the reader is told.",
+    ),
+    ("wl_documents.acks.in_person_ok", "Acknowledgement recorded."),
+    ("wl_documents.acks.signature", "Reader's drawn signature"),
+    ("wl_documents.acks.reader", "Reader"),
+    ("wl_documents.acks.readers", "Readers"),
+    ("wl_documents.acks.report", "Acknowledgements"),
+    ("wl_documents.acks.acknowledged_count", "Acknowledged"),
+    ("wl_documents.acks.pending_count", "Pending"),
+    ("wl_documents.acks.acknowledged_list", "Acknowledged"),
+    ("wl_documents.acks.pending_list", "Pending"),
+    ("wl_documents.acks.in_person_records", "Recorded in person"),
+    ("wl_documents.acks.at", "When (Asia/Dubai)"),
+    ("wl_documents.acks.method", "Method"),
+    ("wl_documents.acks.method.click", "Own session"),
+    ("wl_documents.acks.method.drawn", "In person"),
+    ("wl_documents.acks.witness", "Witness"),
+    ("wl_documents.acks.reminders", "Reminders"),
+    (
+        "wl_documents.acks.cancelled_exit",
+        "The employee exited.",
+    ),
+    (
+        "wl_documents.acks.cancelled_death",
+        "The employee died in service.",
+    ),
+    (
+        "wl_documents.acks.cancelled_withdrawn",
+        "The SOP was withdrawn.",
+    ),
+    (
+        "wl_documents.acks.refused.not_found",
+        "There is no such acknowledgement or file.",
+    ),
+    (
+        "wl_documents.acks.refused.not_reader",
+        "Only the reader acknowledges for themselves, or in person with their signature.",
+    ),
+    (
+        "wl_documents.acks.refused.not_witness",
+        "You may not witness an acknowledgement for this reader.",
+    ),
+    (
+        "wl_documents.acks.refused.not_pending",
+        "This acknowledgement is not pending.",
+    ),
+    (
+        "wl_documents.acks.refused.superseded",
+        "A newer version of this SOP was accepted. Open the current version in your list and acknowledge that one.",
+    ),
+    (
+        "wl_documents.acks.refused.not_opened",
+        "Open the SOP, or a translation of it, before you confirm.",
+    ),
+    (
+        "wl_documents.acks.refused.checksum",
+        "The file changed after you opened it. Open it again.",
+    ),
+    (
+        "wl_documents.acks.refused.signature",
+        "An in-person acknowledgement needs the reader's drawn signature.",
+    ),
+    (
+        "wl_documents.acks.refused.evidence",
+        "The acknowledgement needs its evidence: your session, or the drawn signature and the witness.",
+    ),
+    (
+        "wl_documents.acks.refused.file_missing",
+        "The file is no longer stored.",
+    ),
+    (
+        "wl_documents.acks.notice.requested_subject",
+        "Please read and acknowledge {{ sop }}",
+    ),
+    (
+        "wl_documents.acks.notice.requested_body",
+        "{{ sop }} {{ title }} (version {{ version }}) applies to you. Open it in your SOP list and confirm that you read it by {{ due }}.",
+    ),
+    (
+        "wl_documents.acks.notice.requested_in_person_subject",
+        "Please acknowledge {{ sop }} with your supervisor",
+    ),
+    (
+        "wl_documents.acks.notice.requested_in_person_body",
+        "{{ sop }} {{ title }} (version {{ version }}) applies to you. Read it with your supervisor and sign by {{ due }}.",
+    ),
+    (
+        "wl_documents.acks.notice.reminder_subject",
+        "Overdue: acknowledge {{ sop }}",
+    ),
+    (
+        "wl_documents.acks.notice.reminder_body",
+        "{{ reader }} has not acknowledged {{ sop }} {{ title }} (version {{ version }}), due {{ due }} ({{ days }} days overdue).",
+    ),
+    (
+        "wl_documents.acks.notice.escalated_subject",
+        "{{ reader }} has not acknowledged {{ sop }}",
+    ),
+    (
+        "wl_documents.acks.notice.escalated_body",
+        "{{ reader }} has not acknowledged {{ sop }} {{ title }} (version {{ version }}), due {{ due }}. It is {{ days }} days overdue.",
+    ),
+    (
+        "wl_documents.acks.notice.in_person_recorded_subject",
+        "Your acknowledgement of {{ sop }} was recorded",
+    ),
+    (
+        "wl_documents.acks.notice.in_person_recorded_body",
+        "Your acknowledgement of {{ sop }} {{ title }} (version {{ version }}) was recorded in person on {{ at }}, witnessed by {{ witness }}. If this is not right, tell HR.",
+    ),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.
