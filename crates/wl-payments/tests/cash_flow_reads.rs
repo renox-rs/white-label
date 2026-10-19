@@ -265,7 +265,7 @@ async fn the_accountant_enters_the_closing_balance_at_upload() {
     upload(&t, form("2027-01-31", "ten")).await.assert_status(422);
     assert_eq!(BankStatementImport::query().count(t.db()).await.unwrap(), 0);
 
-    upload(&t, form("2027-01-31", "1,250.50")).await.assert_ok();
+    upload(&t, form("2027-01-31", "1,250.50")).await.assert_redirect("/bank-statements");
     let rows = BankStatementImport::query().get(t.db()).await.unwrap();
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].closing_balance, Some(125_050));
@@ -276,7 +276,7 @@ async fn the_accountant_enters_the_closing_balance_at_upload() {
     assert!(balances(&t).await.is_empty());
 
     // The balance may be left out: the file carries it.
-    upload(&t, form("2027-02-28", "")).await.assert_ok();
+    upload(&t, form("2027-02-28", "")).await.assert_redirect("/bank-statements");
     let rows = BankStatementImport::query().get(t.db()).await.unwrap();
     assert_eq!(rows[1].closing_balance, None);
 

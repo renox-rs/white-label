@@ -1462,8 +1462,9 @@ impl Booted {
 
     /// What the portal shows `party` of the deductions now.
     pub async fn published_for(&self, party: PartyId) -> Vec<wl_kernel::deposits::PublishedDeductions> {
-        deposit_deductions(self.state())
-            .published_for(self.state(), party)
+        // `today()` reads the clock only inside `at_travelled_time`.
+        self.app
+            .at_travelled_time(deposit_deductions(self.state()).published_for(self.state(), party))
             .await
             .unwrap()
     }

@@ -6,6 +6,7 @@ mod support;
 
 use renox::chrono::{NaiveDate, Weekday};
 use renox::prelude::*;
+use renox::state_machine::StateMachine;
 use wl_invoicing::cash_balance::{self, EnterBalance, OpeningCashBalance};
 use wl_invoicing::cash_forecast::{self, Forecast, LineKind, MemoKind, Warning};
 use wl_invoicing::cash_forecast_load;
@@ -37,7 +38,11 @@ async fn booted() -> Booted {
 /// The forecast of `entities` computed now.
 async fn grid(t: &Booted, entities: &[&LegalEntity]) -> Forecast {
     let entities: Vec<LegalEntity> = entities.iter().map(|e| (*e).clone()).collect();
-    let inputs = cash_forecast_load::load(t.state(), &t.config(), &entities, today())
+    let inputs = t
+        .app
+        .at_travelled_time(async {
+            cash_forecast_load::load(t.state(), &t.config(), &entities, today()).await
+        })
         .await
         .unwrap();
     cash_forecast::assemble(&inputs)
@@ -51,6 +56,18 @@ async fn open_invoice(
     due: NaiveDate,
     balance: i64,
 ) -> Invoice {
+    invoice_in_state(t, entity, number, due, balance, InvoiceStatus::Issued).await
+}
+
+/// An invoice of `entity` created in `status` as a fixture.
+async fn invoice_in_state(
+    t: &Booted,
+    entity: &LegalEntity,
+    number: &str,
+    due: NaiveDate,
+    balance: i64,
+    status: InvoiceStatus,
+) -> Invoice {
     let mut invoice = Invoice {
         number: Some(number.to_owned()),
         legal_entity_id: Some(entity.id),
@@ -60,10 +77,12 @@ async fn open_invoice(
         due_date: Some(due),
         gross_total: balance,
         balance,
-        status: InvoiceStatus::Issued,
+        status,
         ..Default::default()
     };
-    invoice.insert(t.db()).await.unwrap();
+    let mut tx = t.db().begin().await.unwrap();
+    invoice.insert_in_state(&mut tx, status, "fixture").await.unwrap();
+    tx.commit().await.unwrap();
     invoice
 }
 
@@ -89,7 +108,9 @@ async fn open_bill(
         status,
         ..Default::default()
     };
-    bill.insert(t.db()).await.unwrap();
+    let mut tx = t.db().begin().await.unwrap();
+    bill.insert_in_state(&mut tx, status, "fixture").await.unwrap();
+    tx.commit().await.unwrap();
     bill
 }
 
@@ -139,7 +160,7 @@ async fn the_later_balance_wins_and_a_voided_one_is_never_used() {
     t.forecast.statement(e1.id, "BA1", 5_000_000, day(1, 10));
     t.refunds
         .bank_payment(e1.id, "BA1", Direction::In, 500_000, day(1, 12), None);
-    let manual = cash_balance::enter(
+    let manual = t.app.at_travelled_time(cash_balance::enter(
         t.db(),
         None,
         &EnterBalance {
@@ -149,7 +170,7 @@ async fn the_later_balance_wins_and_a_voided_one_is_never_used() {
             as_of: day(1, 11),
             note: None,
         },
-    )
+    ))
     .await
     .unwrap();
     assert_eq!(grid(&t, &[&e1]).await.opening_total(), 6_500_000);
@@ -159,13 +180,13 @@ async fn the_later_balance_wins_and_a_voided_one_is_never_used() {
     );
 
     // Voided: back to the statement.
-    cash_balance::void(t.db(), manual.id, None, "entered in error")
+    t.app.at_travelled_time(cash_balance::void(t.db(), manual.id, None, "entered in error"))
         .await
         .unwrap();
     assert_eq!(grid(&t, &[&e1]).await.opening_total(), 5_500_000);
 
     // On the statement's own day the statement wins.
-    cash_balance::enter(
+    t.app.at_travelled_time(cash_balance::enter(
         t.db(),
         None,
         &EnterBalance {
@@ -175,7 +196,7 @@ async fn the_later_balance_wins_and_a_voided_one_is_never_used() {
             as_of: day(1, 10),
             note: Some("same day".into()),
         },
-    )
+    ))
     .await
     .unwrap();
     assert_eq!(grid(&t, &[&e1]).await.opening_total(), 5_500_000);
@@ -194,14 +215,14 @@ async fn an_opening_cash_balance_is_checked_and_voided_with_a_reason() {
         as_of,
         note: None,
     };
-    assert!(cash_balance::enter(t.db(), None, &balance(day(1, 14), "BA1")).await.is_err());
-    assert!(cash_balance::enter(t.db(), None, &balance(day(1, 13), " ")).await.is_err());
-    let kept = cash_balance::enter(t.db(), None, &balance(day(1, 13), "BA1"))
+    assert!(t.app.at_travelled_time(cash_balance::enter(t.db(), None, &balance(day(1, 14), "BA1"))).await.is_err());
+    assert!(t.app.at_travelled_time(cash_balance::enter(t.db(), None, &balance(day(1, 13), " "))).await.is_err());
+    let kept = t.app.at_travelled_time(cash_balance::enter(t.db(), None, &balance(day(1, 13), "BA1")))
         .await
         .unwrap();
-    assert!(cash_balance::void(t.db(), kept.id, None, "  ").await.is_err());
-    cash_balance::void(t.db(), kept.id, None, "wrong bank").await.unwrap();
-    assert!(cash_balance::void(t.db(), kept.id, None, "again").await.is_err());
+    assert!(t.app.at_travelled_time(cash_balance::void(t.db(), kept.id, None, "  ")).await.is_err());
+    t.app.at_travelled_time(cash_balance::void(t.db(), kept.id, None, "wrong bank")).await.unwrap();
+    assert!(t.app.at_travelled_time(cash_balance::void(t.db(), kept.id, None, "again")).await.is_err());
     // The voided balance stays in the history.
     let history = cash_balance::history(t.db(), e1.id).await.unwrap();
     assert_eq!(history.len(), 1);
@@ -332,8 +353,8 @@ async fn a_stale_balance_is_used_with_a_warning() {
 async fn the_vat_payable_is_a_payment_at_the_return_due_date() {
     let t = booted().await;
     let e1 = t.entity("PGP").await;
-    let mut invoice = open_invoice(&t, &e1, "INV-V", day(1, 20), 0).await;
-    invoice.status = InvoiceStatus::Paid;
+    let mut invoice =
+        invoice_in_state(&t, &e1, "INV-V", day(1, 20), 0, InvoiceStatus::Paid).await;
     invoice.date_of_supply = Some(NaiveDate::from_ymd_opt(2026, 12, 15).unwrap());
     invoice.issue_date = invoice.date_of_supply;
     invoice.vat_total = 1_400_000;
@@ -356,8 +377,8 @@ async fn the_vat_payable_is_a_payment_at_the_return_due_date() {
 async fn a_vat_payment_naming_the_summary_removes_the_line() {
     let t = booted().await;
     let e1 = t.entity("PGP").await;
-    let mut invoice = open_invoice(&t, &e1, "INV-V", day(1, 20), 0).await;
-    invoice.status = InvoiceStatus::Paid;
+    let mut invoice =
+        invoice_in_state(&t, &e1, "INV-V", day(1, 20), 0, InvoiceStatus::Paid).await;
     invoice.date_of_supply = Some(NaiveDate::from_ymd_opt(2026, 12, 15).unwrap());
     invoice.vat_total_aed = Some(1_400_000);
     invoice.save(t.db()).await.unwrap();
@@ -623,14 +644,14 @@ async fn opening_the_forecast_writes_nothing_and_balances_need_manage() {
         ("note", ""),
     ];
     t.app.htmx().post("/cash-balances", &future).await.assert_status(422);
-    t.app.htmx().post("/cash-balances", &form).await.assert_ok();
+    t.app.htmx().post("/cash-balances", &form).await.assert_redirect("/cash-forecast");
     let rows = OpeningCashBalance::query().get(t.db()).await.unwrap();
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].amount, 6_000_000);
 
     let path = format!("/cash-balances/{}/void", rows[0].id);
     t.app.htmx().post(&path, &[("reason", " ")]).await.assert_status(422);
-    t.app.htmx().post(&path, &[("reason", "wrong day")]).await.assert_ok();
+    t.app.htmx().post(&path, &[("reason", "wrong day")]).await.assert_redirect("/cash-forecast");
     assert!(OpeningCashBalance::find(t.db(), rows[0].id).await.unwrap().unwrap().is_voided());
 }
 
