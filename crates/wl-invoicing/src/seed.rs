@@ -14,8 +14,12 @@ use renox::prelude::*;
 use wl_kernel::Subject;
 use wl_kernel::invoicing::{DraftLine, InvoiceDraft, VatCategory};
 
+use crate::bill_line::BillLineDraft;
+use crate::bill_submit::submit;
+use crate::credit_notes::By;
 use crate::invoice::Invoice;
 use crate::invoicer::create_draft;
+use crate::supplier_bill::{self, BillDraft, SupplierBill, number_key};
 
 /// The source type of the demo invoices.
 pub const DEMO_SOURCE: &str = "invoicing.demo";
@@ -60,6 +64,14 @@ pub const DEMO_INVOICES: &[DemoInvoice] = &[
     },
 ];
 
+/// The code of the party the demo supplier bills come from.
+pub const DEMO_SUPPLIER_CODE: &str = "P-00003";
+
+/// The supplier invoice numbers of the demo supplier bills: the second is
+/// the first again (in another case, with a space), so submitting both holds
+/// the second as a possible duplicate.
+pub const DEMO_BILL_NUMBERS: [&str; 2] = ["SB-2026-0101", "sb-2026-0101 "];
+
 impl DemoInvoice {
     /// Its source record.
     pub fn source(&self) -> Subject {
@@ -101,6 +113,53 @@ pub async fn run(state: &AppState) -> Result<usize> {
     // The running period's open VAT summary of each VAT-registered demo
     // entity; a period that has one (in any state) gets no second.
     crate::vat_summary::run(state, wl_kernel::documents::today()).await?;
+    bills(state).await?;
+    Ok(created)
+}
+
+/// Enters and submits the two demo supplier bills the database lacks, as
+/// the system: the first is matched, the second has the first's number and
+/// is held as a possible duplicate (`FIN.ACL.03`). A bill whose supplier
+/// invoice number the supplier already has is skipped, so seeding twice
+/// changes nothing. Returns how many were created; none without the demo
+/// supplier party.
+pub async fn bills(state: &AppState) -> Result<usize> {
+    let directory = wl_kernel::parties::directory(state);
+    let Some(supplier) = directory
+        .find_by_code(&state.db, DEMO_SUPPLIER_CODE)
+        .await?
+    else {
+        return Ok(0);
+    };
+    let today = wl_kernel::documents::today();
+    let mut created = 0;
+    for number in DEMO_BILL_NUMBERS {
+        let exists = SupplierBill::query()
+            .where_(SupplierBill::PARTY_ID.eq(supplier.id.0))
+            .where_(SupplierBill::NUMBER_KEY.eq(number_key(number)))
+            .exists(&state.db)
+            .await?;
+        if exists {
+            continue;
+        }
+        let draft = BillDraft::new(supplier.id, number, today)
+            .due_date(today + renox::chrono::Duration::days(30))
+            .line(BillLineDraft::new(
+                "Office fit-out works, stage 2",
+                850_000,
+                VatCategory::Standard,
+            ))
+            .line(BillLineDraft::new(
+                "Site cleaning",
+                25_000,
+                VatCategory::Standard,
+            ));
+        let bill = supplier_bill::create(&state.db, &draft, None).await?;
+        submit(state, By::System(None), bill.id)
+            .await
+            .map_err(renox::state_machine::TransitionError::into_error)?;
+        created += 1;
+    }
     Ok(created)
 }
 

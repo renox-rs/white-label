@@ -1,0 +1,45 @@
+{#- wl-invoicing: the form that enters or changes a draft supplier bill: the
+    header (supplier by party code, receiving entity, invoice number, dates,
+    currency and rate, contract and period) and the line rows; empty rows are
+    skipped. Replace it with resources/views/wl-invoicing/bill_form.html in
+    the app. -#}
+<rx-page layout="layouts/app.html" :title="title">
+  <rx-stack>
+    <rx-page-header :title="title" :back="cancel" :back-label="tx['supplier_bill.title']"/>
+    <rx-form :action="action" novalidate>
+      <rx-card :title="tx['supplier_bill.sections.header']">
+        <rx-form-errors/>
+        <rx-form-grid columns="2">
+          <rx-input name="supplier" :label="tx['supplier_bill.fields.supplier']" :hint="tx['supplier_bill.form.supplier_hint']" :value="values['supplier']" required/>
+          <rx-select name="legal_entity_id" :label="tx['supplier_bill.fields.entity']" :options="entities" :selected="values['legal_entity_id']" :placeholder="tx['supplier_bill.form.default_entity']"/>
+          <rx-input name="supplier_invoice_number" :label="tx['supplier_bill.fields.number']" :value="values['supplier_invoice_number']" required/>
+          <rx-input name="bill_date" type="date" :label="tx['supplier_bill.fields.bill_date']" :value="values['bill_date']" required/>
+          <rx-input name="due_date" type="date" :label="tx['supplier_bill.fields.due_date']" :value="values['due_date']"/>
+          <rx-input name="currency" :label="tx['fields.currency']" :value="values['currency']"/>
+          <rx-input name="exchange_rate" :label="tx['supplier_bill.fields.exchange_rate']" :hint="tx['supplier_bill.form.rate_hint']" :value="values['exchange_rate']"/>
+        </rx-form-grid>
+      </rx-card>
+      <rx-card :title="tx['supplier_bill.sections.contract']">
+        <rx-form-grid columns="2">
+          <rx-input name="contract_type" :label="tx['supplier_bill.fields.contract_type']" :hint="tx['supplier_bill.form.contract_hint']" :value="values['contract_type']"/>
+          <rx-input name="contract_id" type="number" :label="tx['supplier_bill.fields.contract_id']" :value="values['contract_id']"/>
+          <rx-input name="period_start" type="date" :label="tx['supplier_bill.fields.period_start']" :value="values['period_start']"/>
+          <rx-input name="period_end" type="date" :label="tx['supplier_bill.fields.period_end']" :value="values['period_end']"/>
+        </rx-form-grid>
+      </rx-card>
+      <rx-card :title="tx['sections.lines']">
+        <rx-form-grid rx-for="line in lines" columns="2">
+          <rx-input :name="'line_' ~ line.n ~ '_description'" :label="tx['fields.description']" :value="line.description" span="full"/>
+          <rx-input :name="'line_' ~ line.n ~ '_quantity'" :label="tx['fields.quantity']" :value="line.quantity"/>
+          <rx-input :name="'line_' ~ line.n ~ '_unit_price'" :label="tx['fields.unit_price']" :hint="tx['credit_note.amount_hint']" :value="line.unit_price"/>
+          <rx-select :name="'line_' ~ line.n ~ '_vat'" :label="tx['fields.vat_category']" :options="categories" :selected="line.vat"/>
+          <rx-input :name="'line_' ~ line.n ~ '_service_date'" type="date" :label="tx['supplier_bill.fields.service_date']" :value="line.service_date"/>
+        </rx-form-grid>
+        <div class="rx-card__footer">
+          <rx-link-button :href="cancel" :label="tx['supplier_bill.form.cancel']" variant="plain"/>
+          <rx-button :label="tx['supplier_bill.form.save']"/>
+        </div>
+      </rx-card>
+    </rx-form>
+  </rx-stack>
+</rx-page>

@@ -885,6 +885,160 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_invoicing.supplier_bill_duplicate.body",
         "The supplier bill {{ number }} of {{ supplier }} ({{ amount }}) may duplicate the earlier bill {{ earlier_number }}. It is held until another user approves it with a reason or it is voided. See the bill: {{ link }}",
     ),
+    ("wl_invoicing.supplier_bill.none", "None"),
+    ("wl_invoicing.supplier_bill.reason", "Reason"),
+    ("wl_invoicing.supplier_bill.fields.created_by", "Entered by"),
+    (
+        "wl_invoicing.supplier_bill.fields.exchange_rate",
+        "Exchange rate to AED",
+    ),
+    (
+        "wl_invoicing.supplier_bill.fields.gross_aed",
+        "Total in AED",
+    ),
+    (
+        "wl_invoicing.supplier_bill.fields.contract_type",
+        "Contract type",
+    ),
+    (
+        "wl_invoicing.supplier_bill.fields.contract_id",
+        "Contract id",
+    ),
+    (
+        "wl_invoicing.supplier_bill.fields.period_start",
+        "Period start",
+    ),
+    ("wl_invoicing.supplier_bill.fields.period_end", "Period end"),
+    (
+        "wl_invoicing.supplier_bill.fields.earlier_bill",
+        "Earlier bill",
+    ),
+    ("wl_invoicing.supplier_bill.sections.header", "Bill"),
+    (
+        "wl_invoicing.supplier_bill.sections.contract",
+        "Contract and period",
+    ),
+    (
+        "wl_invoicing.supplier_bill.sections.exceptions",
+        "Why the bill is held",
+    ),
+    (
+        "wl_invoicing.supplier_bill.form.new_title",
+        "New supplier bill",
+    ),
+    (
+        "wl_invoicing.supplier_bill.form.edit_title",
+        "Change supplier bill",
+    ),
+    ("wl_invoicing.supplier_bill.form.edit", "Change"),
+    ("wl_invoicing.supplier_bill.form.save", "Save"),
+    ("wl_invoicing.supplier_bill.form.cancel", "Cancel"),
+    (
+        "wl_invoicing.supplier_bill.form.saved",
+        "Supplier bill saved.",
+    ),
+    (
+        "wl_invoicing.supplier_bill.form.supplier_hint",
+        "The supplier's party code, like P-00001.",
+    ),
+    (
+        "wl_invoicing.supplier_bill.form.default_entity",
+        "The default legal entity",
+    ),
+    (
+        "wl_invoicing.supplier_bill.form.rate_hint",
+        "AED for one unit of the currency; needed for a foreign currency.",
+    ),
+    (
+        "wl_invoicing.supplier_bill.form.contract_hint",
+        "Only for a bill against a service contract, like ticketing.contract.",
+    ),
+    ("wl_invoicing.supplier_bill.submit.action", "Submit"),
+    (
+        "wl_invoicing.supplier_bill.submit.confirm_title",
+        "Submit this supplier bill?",
+    ),
+    (
+        "wl_invoicing.supplier_bill.submit.confirm_message",
+        "The bill can no longer be changed. A bill that may duplicate an earlier one is held until another user approves it.",
+    ),
+    (
+        "wl_invoicing.supplier_bill.submit.done",
+        "Supplier bill submitted.",
+    ),
+    (
+        "wl_invoicing.supplier_bill.submit.held",
+        "Supplier bill submitted and held: it may duplicate an earlier bill.",
+    ),
+    ("wl_invoicing.supplier_bill.discard.action", "Delete"),
+    (
+        "wl_invoicing.supplier_bill.discard.confirm_title",
+        "Delete this draft?",
+    ),
+    (
+        "wl_invoicing.supplier_bill.discard.confirm_message",
+        "The draft and its lines are deleted.",
+    ),
+    (
+        "wl_invoicing.supplier_bill.discard.done",
+        "Supplier bill deleted.",
+    ),
+    ("wl_invoicing.supplier_bill.approve.action", "Approve"),
+    (
+        "wl_invoicing.supplier_bill.approve.title",
+        "Approve the supplier bill",
+    ),
+    (
+        "wl_invoicing.supplier_bill.approve.description",
+        "The bill is approved for payment. A held bill needs a reason, and not from the user who entered it.",
+    ),
+    ("wl_invoicing.supplier_bill.approve.submit", "Approve"),
+    ("wl_invoicing.supplier_bill.void.action", "Void"),
+    (
+        "wl_invoicing.supplier_bill.void.title",
+        "Void the supplier bill",
+    ),
+    (
+        "wl_invoicing.supplier_bill.void.description",
+        "A voided bill is kept but never paid. Give the reason.",
+    ),
+    ("wl_invoicing.supplier_bill.void.submit", "Void"),
+    (
+        "wl_invoicing.supplier_bill.errors.supplier",
+        "No supplier has this party code.",
+    ),
+    (
+        "wl_invoicing.supplier_bill.errors.date",
+        "Enter a date like 2026-10-05.",
+    ),
+    (
+        "wl_invoicing.supplier_bill.errors.entity",
+        "Choose a legal entity from the list.",
+    ),
+    (
+        "wl_invoicing.supplier_bill.errors.rate",
+        "Enter a rate like 3.6725.",
+    ),
+    (
+        "wl_invoicing.supplier_bill.errors.contract",
+        "Give the contract type and its id together.",
+    ),
+    (
+        "wl_invoicing.supplier_bill.errors.quantity",
+        "Enter a quantity like 2 or 1.5.",
+    ),
+    (
+        "wl_invoicing.supplier_bill.errors.amount",
+        "Enter an amount like 150.00.",
+    ),
+    (
+        "wl_invoicing.supplier_bill.errors.category",
+        "Choose a VAT category from the list.",
+    ),
+    (
+        "wl_invoicing.supplier_bill.errors.not_draft",
+        "Only a draft supplier bill can be changed.",
+    ),
 ];
 
 /// The English text for `key`, or `key` itself when the package has none.

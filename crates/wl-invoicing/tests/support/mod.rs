@@ -72,17 +72,39 @@ pub const QUIET_SANDS: PartyId = PartyId(2);
 #[derive(Debug, Clone, Copy, Default)]
 pub struct TestDirectory;
 
+/// The summary of a test party, by id.
+fn summary_of(party: PartyId) -> Option<PartySummary> {
+    let (code, name) = match party {
+        BLUE_DUNES => ("P-00001", "Blue Dunes LLC"),
+        QUIET_SANDS => ("P-00002", "Quiet Sands LLC"),
+        _ => return None,
+    };
+    Some(PartySummary {
+        id: party,
+        code: code.to_owned(),
+        kind: wl_kernel::parties::PartyKind::Company,
+        display_name: name.to_owned(),
+        status: PartyStatus::Active,
+        display_block_reason: None,
+    })
+}
+
 impl PartyDirectory for TestDirectory {
-    fn find<'a>(&'a self, _db: &'a Db, _party: PartyId) -> PartyFuture<'a, Option<PartySummary>> {
-        Box::pin(async { Ok(None) })
+    fn find<'a>(&'a self, _db: &'a Db, party: PartyId) -> PartyFuture<'a, Option<PartySummary>> {
+        Box::pin(async move { Ok(summary_of(party)) })
     }
 
     fn find_by_code<'a>(
         &'a self,
         _db: &'a Db,
-        _code: &'a str,
+        code: &'a str,
     ) -> PartyFuture<'a, Option<PartySummary>> {
-        Box::pin(async { Ok(None) })
+        Box::pin(async move {
+            Ok([BLUE_DUNES, QUIET_SANDS]
+                .into_iter()
+                .filter_map(summary_of)
+                .find(|p| p.code == code))
+        })
     }
 
     fn display_name<'a>(

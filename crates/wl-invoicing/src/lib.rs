@@ -10,6 +10,7 @@ mod bill_events;
 pub mod bill_line;
 pub mod bill_machine;
 pub mod bill_notices;
+mod bill_pages;
 pub mod bill_submit;
 pub mod config;
 pub mod credit;
@@ -153,6 +154,22 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "wl-invoicing/_adjustment_sheet.html",
         include_str!("../views/wl-invoicing/_adjustment_sheet.html"),
+    ),
+    (
+        "wl-invoicing/bills_index.html",
+        include_str!("../views/wl-invoicing/bills_index.html"),
+    ),
+    (
+        "wl-invoicing/bill_form.html",
+        include_str!("../views/wl-invoicing/bill_form.html"),
+    ),
+    (
+        "wl-invoicing/bill_show.html",
+        include_str!("../views/wl-invoicing/bill_show.html"),
+    ),
+    (
+        "wl-invoicing/_bill_reason_sheet.html",
+        include_str!("../views/wl-invoicing/_bill_reason_sheet.html"),
     ),
 ];
 
@@ -369,6 +386,7 @@ impl Module for WlInvoicing {
             .merge(ageing_pages::routes())
             .merge(dispute_pages::routes())
             .merge(task_pages::routes())
+            .merge(bill_pages::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -400,7 +418,10 @@ impl Module for WlInvoicing {
             .view_data::<credit_note_pages::IndexPage>()
             .view_data::<credit_note_pages::ShowPage>()
             .view_data::<ageing_pages::IndexPage>()
-            .view_data::<task_pages::IndexPage>();
+            .view_data::<task_pages::IndexPage>()
+            .view_data::<bill_pages::IndexPage>()
+            .view_data::<bill_pages::ShowPage>()
+            .view_data::<bill_pages::FormPage>();
         // The customer write-off notice (§10), sent from the queue.
         app.job::<SendWriteOffNotice>();
         app.templates(|env| {
@@ -473,6 +494,15 @@ impl Module for WlInvoicing {
                 .group("nav.app")
                 .order(43)
                 .permission(permissions::RECEIVABLES_VIEW),
+        );
+        // The supplier bills (`nav.supplier_bills`).
+        app.nav(
+            "app",
+            NavLink::route("wl_invoicing.supplier_bills", "nav.supplier_bills")
+                .icon("file-text")
+                .group("nav.app")
+                .order(44)
+                .permission(permissions::SUPPLIER_BILLS_VIEW),
         );
         // `FIN.RUL.02`: the daily `invoicing:mark-overdue` task.
         overdue::schedule(app);

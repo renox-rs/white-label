@@ -1,0 +1,70 @@
+{#- wl-invoicing: a supplier bill's page: its status, the change, delete and
+    submit actions of a draft, the approve and void sheets, the header and
+    totals, every exception reason (a possible duplicate links to the earlier
+    bill), who approved it and why or the void reason, lines, VAT by category
+    and the history. Replace it with resources/views/wl-invoicing/bill_show.html
+    in the app. -#}
+<rx-page layout="layouts/app.html" :title="title">
+  <rx-stack>
+    <rx-page-header :title="title" :subtitle="supplier" :back="route('wl_invoicing.supplier_bills')" :back-label="tx['supplier_bill.title']"
+                    :badge="status_label" :badge-kind="status_kind">
+      <rx-link-button rx-if="can_edit" :href="route('wl_invoicing.supplier_bill_edit', bill.id)" :label="tx['supplier_bill.form.edit']" variant="secondary" icon="pencil"/>
+      <template rx-if="can_submit">
+        <rx-confirm :id="'submit-supplier-bill-' ~ bill.id" :label="tx['supplier_bill.submit.action']" :action="route('wl_invoicing.supplier_bill_submit', bill.id)" method="POST"
+                    :title="tx['supplier_bill.submit.confirm_title']" :message="tx['supplier_bill.submit.confirm_message']" :confirm-label="tx['supplier_bill.submit.action']" icon="send"/>
+        <rx-confirm :id="'delete-supplier-bill-' ~ bill.id" :label="tx['supplier_bill.discard.action']" :action="route('wl_invoicing.supplier_bill_delete', bill.id)" method="POST"
+                    :title="tx['supplier_bill.discard.confirm_title']" :message="tx['supplier_bill.discard.confirm_message']" :confirm-label="tx['supplier_bill.discard.action']" icon="trash-2"/>
+      </template>
+      <template rx-if="sheets"><rx-include template="wl-invoicing/_bill_reason_sheet.html"/></template>
+    </rx-page-header>
+    <rx-card rx-if="exceptions" :title="tx['supplier_bill.sections.exceptions']">
+      <rx-stack>
+        <rx-row rx-for="item in exceptions">
+          <rx-badge kind="warning" :text="item.reason"/>
+          <a rx-if="item.related_link" href="{{ item.related_link }}">{{ tx['supplier_bill.fields.earlier_bill'] }}: {{ item.related }}</a>
+        </rx-row>
+      </rx-stack>
+    </rx-card>
+    <rx-card :title="tx['sections.totals']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['supplier_bill.fields.number']" :value="bill.supplier_invoice_number" copyable/>
+        <rx-entry :label="tx['supplier_bill.fields.supplier']" :value="supplier"/>
+        <rx-entry :label="tx['supplier_bill.fields.entity']" :value="entity"/>
+        <rx-entry :label="tx['supplier_bill.fields.bill_date']" :value="bill.bill_date" format="date"/>
+        <rx-entry :label="tx['supplier_bill.fields.due_date']" :value="bill.due_date" format="date"/>
+        <rx-entry :label="tx['fields.currency']" :value="bill.currency"/>
+        <rx-entry :label="tx['supplier_bill.fields.contract']" :value="contract" :placeholder="tx['supplier_bill.none']"/>
+        <rx-entry :label="tx['supplier_bill.fields.period']" :value="period" :placeholder="tx['supplier_bill.none']"/>
+        <rx-entry :label="tx['fields.net_total']" :value="amounts['net_total']"/>
+        <rx-entry :label="tx['fields.vat_total']" :value="amounts['vat_total']"/>
+        <rx-entry :label="tx['fields.gross_total']" :value="amounts['gross_total']"/>
+        <rx-entry rx-if="amounts['gross_total_aed']" :label="tx['supplier_bill.fields.gross_aed']" :value="amounts['gross_total_aed']"/>
+        <rx-entry :label="tx['supplier_bill.fields.created_by']" :value="created_by" :placeholder="tx['supplier_bill.none']"/>
+        <rx-entry rx-if="approved_by" :label="tx['supplier_bill.fields.approved_by']" :value="approved_by"/>
+        <rx-entry rx-if="bill.approval_reason" :label="tx['supplier_bill.fields.approval_reason']" :value="bill.approval_reason"/>
+        <rx-entry rx-if="bill.void_reason" :label="tx['supplier_bill.fields.void_reason']" :value="bill.void_reason"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-table :rows="lines" as="line" :key="line.id" :caption="tx['sections.lines']" card>
+      <rx-column :label="tx['fields.description']">{{ line.description }}</rx-column>
+      <rx-column :label="tx['fields.quantity']" hide-narrow>{{ line.quantity }}</rx-column>
+      <rx-column :label="tx['fields.unit_price']" hide-narrow>{{ line.unit_price }}</rx-column>
+      <rx-column :label="tx['fields.vat_category']" hide-narrow>{{ line.category }}</rx-column>
+      <rx-column :label="tx['fields.net_amount']" hide-narrow>{{ line.net }}</rx-column>
+      <rx-column :label="tx['fields.vat_amount']" hide-narrow>{{ line.vat }}</rx-column>
+      <rx-column :label="tx['fields.gross_amount']">{{ line.gross }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['no_lines']" icon="list"/></rx-slot>
+    </rx-table>
+    <rx-table :rows="vat" as="row" :key="row.category" :caption="tx['sections.vat']" card>
+      <rx-column :label="tx['fields.vat_category']">{{ row.category }}</rx-column>
+      <rx-column :label="tx['fields.net_amount']">{{ row.net }}</rx-column>
+      <rx-column :label="tx['fields.vat_amount']">{{ row.vat }}</rx-column>
+    </rx-table>
+    <rx-table :rows="timeline" as="item" :key="item.time" :caption="tx['sections.history']" card>
+      <rx-column :label="tx['history.change']">{{ item.title }}</rx-column>
+      <rx-column :label="tx['history.at']">{{ item.time | date('%Y-%m-%d %H:%M') }}</rx-column>
+      <rx-column :label="tx['history.reason']" hide-narrow>{{ item.body or "" }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['no_history']" icon="history"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

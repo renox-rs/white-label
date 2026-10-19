@@ -1,0 +1,9 @@
+{#- wl-invoicing: the supplier bills list, a renox::grid (search on the
+    supplier's invoice number, filters by status and supplier). Replace it
+    with resources/views/wl-invoicing/bills_index.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['supplier_bill.title']">
+  <rx-page-header :title="tx['supplier_bill.title']">
+    <rx-link-button rx-if="can_create" :href="route('wl_invoicing.supplier_bill_new')" :label="tx['supplier_bill.form.new_title']" icon="plus"/>
+  </rx-page-header>
+  <rx-grid :page="bills"/>
+</rx-page>
