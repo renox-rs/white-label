@@ -82,6 +82,10 @@ pub struct SupplierBill {
     pub gross_total: i64,
     /// The gross in AED fils; `None` while the rate is unknown.
     pub gross_total_aed: Option<i64>,
+    /// The sum of the active allocations (payments and debit notes).
+    pub allocated_total: i64,
+    /// What is still open: gross total minus allocations.
+    pub balance: i64,
     /// The user who entered it; `None` for the system.
     pub created_by: Option<i64>,
     /// The user who approved it.
@@ -141,6 +145,7 @@ impl SupplierBill {
         self.vat_total = totals.vat;
         self.gross_total = totals.gross;
         self.gross_total_aed = self.aed_rate().map(|rate| vat::to_aed(totals.gross, rate));
+        self.balance = totals.gross - self.allocated_total;
     }
 }
 
@@ -434,6 +439,10 @@ mod tests {
         bill.exchange_rate_micro = Some(3_670_000);
         bill.set_totals(&VatTotals::of(&[line]));
         assert_eq!(bill.gross_total_aed, Some(385_350));
+        assert_eq!(bill.balance, 105_000);
+        bill.allocated_total = 40_000;
+        bill.set_totals(&VatTotals::of(&[line]));
+        assert_eq!(bill.balance, 65_000);
         assert_eq!(bill.subject().to_string(), "invoicing.supplier_bill:4");
         assert_eq!(bill.contract(), None);
         assert_eq!(bill.period(), None);

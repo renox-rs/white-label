@@ -6,12 +6,15 @@ mod ageing_pages;
 pub mod allocate;
 pub mod allocation;
 pub mod bad_debt_relief;
+pub mod bill_allocation;
 mod bill_events;
 pub mod bill_line;
 pub mod bill_machine;
 pub mod bill_notices;
 mod bill_pages;
+pub mod bill_pay;
 pub mod bill_submit;
+pub mod bill_unallocation;
 pub mod config;
 pub mod credit;
 pub mod credit_note;
@@ -67,9 +70,11 @@ use renox::nav::NavLink;
 use renox::prelude::*;
 
 pub use allocation::Allocation;
+pub use bill_allocation::BillAllocation;
 pub use bill_line::{BillLine, BillLineDraft};
 pub use bill_machine::{approve as approve_supplier_bill, void as void_supplier_bill};
 pub use bill_submit::submit as submit_supplier_bill;
+pub use bill_unallocation::BillUnallocation;
 pub use config::{
     DuplicateKey, InvoicingConfig, ReasonProblem, ReliefMonths, SettingError, WriteOffReason,
 };
@@ -403,6 +408,8 @@ impl Module for WlInvoicing {
             .model::<CreditNoteLine>()
             .model::<CreditNoteMovement>()
             .model::<Allocation>()
+            .model::<BillAllocation>()
+            .model::<BillUnallocation>()
             .model::<Recovery>()
             .model::<Unallocation>()
             .model::<InvoicingTask>()

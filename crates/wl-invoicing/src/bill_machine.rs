@@ -4,13 +4,14 @@
 //! [*] --> draft --submit--> matched --approve--> approved
 //!         draft --submit_held--> exception --approve--> approved
 //!         draft | matched | exception --void--> void (terminal)
-//!         approved --pay--> partially_paid | paid   (wl-payments, later)
+//!         approved | partially_paid --pay--> partially_paid | paid  (system)
 //! ```
 //!
 //! All seven states are declared with their tones and a new bill is inserted
 //! only as `draft`; `SupplierBill` is `#[model(state_machine)]`, so `save`
 //! refuses a changed status. `submit` and `submit_held` are in
-//! [`crate::bill_submit`]; `pay` and `unallocate` come with wl-payments.
+//! [`crate::bill_submit`]; `pay` and `pay_in_full` (system only) in
+//! [`crate::bill_pay`].
 //!
 //! `approve` (matched or exception to approved, `supplier_bills.approve`)
 //! takes a `reason` (the run's reason, which the history row carries). From
@@ -97,6 +98,7 @@ impl StateMachine for SupplierBill {
             .into_iter()
             .chain(approve_transitions())
             .chain(void_transitions())
+            .chain(crate::bill_pay::transitions())
             .fold(machine, Machine::transition)
     }
 }
