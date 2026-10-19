@@ -194,7 +194,7 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     (
         "wl_ticketing.charge.no_party",
-        "No invoice draft was made: the ticket has no requester party to bill.",
+        "No invoice draft was made: the ticket has no party to bill.",
     ),
     (
         "wl_ticketing.charge.amount_shown",

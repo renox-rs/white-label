@@ -107,6 +107,9 @@ pub struct Ticket {
     pub chargeable: bool,
     /// The draft invoice made for it, once there is one: one per ticket.
     pub invoice_id: Option<i64>,
+    /// The party a chargeable ticket is invoiced to when its requester is a
+    /// user; none bills the requester's party.
+    pub bill_party_id: Option<i64>,
     /// The lifecycle state; changed only by a transition.
     pub status: TicketStatus,
     /// When it is due, if its opener gave it a due time of its own (a staff
@@ -159,6 +162,14 @@ impl Ticket {
             (None, Some(id)) => Some(Assignee::Party { id: PartyId(id) }),
             (None, None) => None,
         }
+    }
+
+    /// The party an invoice for the ticket is addressed to: the one named
+    /// when it was opened, else the requester's party.
+    pub fn bill_party(&self) -> Option<PartyId> {
+        self.bill_party_id
+            .or(self.requester_party_id)
+            .map(PartyId)
     }
 
     /// Who asked for it, if anyone.
@@ -222,6 +233,20 @@ mod tests {
         ticket.assignee_user_id = None;
         ticket.assignee_party_id = Some(9);
         assert_eq!(ticket.assignee(), Some(Assignee::Party { id: PartyId(9) }));
+    }
+
+    #[test]
+    fn the_bill_party_is_the_named_one_else_the_requesters_party() {
+        let mut ticket = Ticket::default();
+        assert_eq!(ticket.bill_party(), None);
+        ticket.requester_user_id = Some(4);
+        assert_eq!(ticket.bill_party(), None);
+        ticket.requester_user_id = None;
+        ticket.requester_party_id = Some(3);
+        assert_eq!(ticket.bill_party(), Some(PartyId(3)));
+        ticket.requester_user_id = Some(4);
+        ticket.bill_party_id = Some(9);
+        assert_eq!(ticket.bill_party(), Some(PartyId(9)));
     }
 
     #[test]

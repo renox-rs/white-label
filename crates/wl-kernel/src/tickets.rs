@@ -203,6 +203,11 @@ pub struct OpenTicket {
     /// A key the opener can find the ticket by while it is open
     /// ([`TaskCreator::find_open`]), e.g. `notify.give_up:…`.
     pub source_key: Option<String>,
+    /// The party an invoice for a chargeable ticket is addressed to, when
+    /// the requester is a user (a portal user pays through their party);
+    /// without it the requester's party is billed.
+    #[serde(default)]
+    pub bill_party: Option<PartyId>,
 }
 
 impl OpenTicket {
@@ -220,6 +225,7 @@ impl OpenTicket {
             assignee: None,
             due_at: None,
             source_key: None,
+            bill_party: None,
         }
     }
 
@@ -272,6 +278,13 @@ impl OpenTicket {
     /// Findable by `key` while open.
     pub fn source_key(mut self, key: &str) -> Self {
         self.source_key = Some(key.to_owned());
+        self
+    }
+
+    /// Invoiced to `party` when the ticket is chargeable (see
+    /// [`OpenTicket::bill_party`]).
+    pub fn bill_to(mut self, party: PartyId) -> Self {
+        self.bill_party = Some(party);
         self
     }
 }
@@ -485,6 +498,18 @@ mod tests {
         assert_eq!(ticket.assignee, None);
         assert_eq!(ticket.due_at, None);
         assert_eq!(ticket.source_key, None);
+        assert_eq!(ticket.bill_party, None);
+    }
+
+    #[test]
+    fn a_portal_requester_is_billed_through_their_party() {
+        let ticket = OpenTicket::new(Subject::new("property.unit", 1), "repair", "AC")
+            .requester_user(4)
+            .bill_to(PartyId(9));
+        assert_eq!(ticket.requester, Some(Requester::User { id: 4 }));
+        assert_eq!(ticket.bill_party, Some(PartyId(9)));
+        let json = renox::serde_json::to_value(&ticket).unwrap();
+        assert_eq!(json["bill_party"], 9);
     }
 
     #[test]

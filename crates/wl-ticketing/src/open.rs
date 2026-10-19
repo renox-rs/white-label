@@ -91,6 +91,7 @@ impl Tickets {
             priority: category.default_priority,
             requester_user_id,
             requester_party_id,
+            bill_party_id: request.bill_party.map(|party| party.0),
             channel: request.channel,
             title: title.to_owned(),
             description: request.description.trim().to_owned(),

@@ -17,8 +17,10 @@
 //! the draft's id is kept on the ticket, and a later `resolve` (after a
 //! `reopen`) or a change of the lines replaces the lines of that draft
 //! ([`Invoicer::update_draft`]) instead of drafting a second one; an issued
-//! invoice is never rewritten. The party billed is the requester's party; a
-//! ticket without one gets no draft and an internal comment says so.
+//! invoice is never rewritten. The party billed is the one the ticket names
+//! when it is opened (`OpenTicket::bill_to`, for a requester who is a user),
+//! else the requester's party; a ticket without one gets no draft and an
+//! internal comment says so.
 //!
 //! The draft is made after the transition commits (a listener on
 //! [`Transitioned`]), never inside it.
@@ -29,7 +31,7 @@ use renox::state_machine::Transitioned;
 use serde::{Deserialize, Serialize};
 use wl_kernel::invoicing::{DraftLine, InvoiceDraft, InvoiceId, VatCategory, invoicer};
 use wl_kernel::tickets::Assignee;
-use wl_kernel::{PartyId, Subject};
+use wl_kernel::Subject;
 
 use crate::comments::{Comment, CommentVisibility};
 use crate::config::{Category, InvoiceOn};
@@ -236,10 +238,10 @@ pub async fn remove_line(state: &AppState, user: &AuthUser, id: i64, line: i64) 
 /// The draft of `ticket` with its charge `lines`, billing its requester's
 /// party; `None` when there is no party to bill.
 fn draft_of(ticket: &Ticket, lines: &[ChargeLine]) -> Option<InvoiceDraft> {
-    let party = ticket.requester_party_id?;
+    let party = ticket.bill_party()?;
     let origin = ticket.ticket_id().subject();
     let mut draft =
-        InvoiceDraft::new(PartyId(party), origin.clone()).scope(ticket.subject());
+        InvoiceDraft::new(party, origin.clone()).scope(ticket.subject());
     for line in lines {
         draft = draft.line(line.draft_line(Some(origin.clone())));
     }

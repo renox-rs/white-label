@@ -8,6 +8,10 @@ ALTER TABLE "wl_ticketing_categories" ADD COLUMN invoice_on TEXT NOT NULL DEFAUL
 -- The draft invoice made for the ticket, once there is one: one per ticket.
 ALTER TABLE "wl_ticketing_tickets" ADD COLUMN invoice_id INTEGER;
 
+-- The party a chargeable ticket is invoiced to when its requester is a user
+-- (a portal user pays through their party); NULL bills the requester's party.
+ALTER TABLE "wl_ticketing_tickets" ADD COLUMN bill_party_id INTEGER;
+
 -- What a chargeable ticket bills: both the amount the requester is shown and
 -- the lines the draft carries.
 CREATE TABLE "wl_ticketing_charge_lines" (
