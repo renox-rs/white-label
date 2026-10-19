@@ -16,6 +16,7 @@ pub mod lease;
 mod lease_checks;
 mod lease_events;
 pub mod lease_machine;
+pub mod legal_case;
 pub mod leases;
 pub mod notice;
 pub mod notices;
@@ -43,6 +44,7 @@ pub use charge_type::ChargeType;
 pub use events::{LeaseActivated, LeaseCancelled, LeaseNoticeWithdrawn, LeaseTerminated};
 pub use lease::{CreditChoice, Lease, LeaseStatus, RenewalDecision, VersionKind};
 pub use leases::{DraftEdit, EjariInput, NewLease, NewVersion};
+pub use legal_case::{CaseOutcome, CaseStatus, CaseType, LegalCase};
 pub use unit::{NewUnit, Unit, UnitStatus, UnitType, UnitUse, create_unit};
 
 /// The templates, compiled in. An app replaces one with a file of the same
@@ -117,11 +119,13 @@ impl Module for Property {
             .model::<Lease>()
             .model::<LeaseCharge>()
             .model::<ChargeType>()
+            .model::<LegalCase>()
             .model::<CancelWait>();
         unit_machine::register();
         lease_machine::register();
         documents::register();
         lease_events::register(app);
+        legal_case::register(app);
         cancellation::register(app);
         invoicing::schedule(app);
         notices::register_types();

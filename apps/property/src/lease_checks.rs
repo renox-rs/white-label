@@ -19,9 +19,19 @@ use crate::charge::{ChargeStatus, LeaseCharge, plan_total};
 use crate::db::{refused, set_lease};
 use crate::lease::{Lease, LeaseStatus, VersionKind};
 use crate::lease_machine::{AMEND, CANCEL_ACTION, RENEW, RenewInput};
+use crate::legal_case::has_open;
 use crate::texts::english;
 use crate::unit::{Unit, UnitStatus};
 use crate::unit_machine::OCCUPY;
+
+/// A renewal or an amendment is refused while the lease carries an open legal
+/// case flag (BL-PRP-13): "legal case open". A draft stays.
+async fn legal_case_check(tx: &mut Transaction, lease: &Lease) -> Result {
+    if lease.is_follow_up() && has_open(&mut *tx, lease.root_id).await? {
+        return Err(refused(english("property.legal.open", &[])));
+    }
+    Ok(())
+}
 
 /// The version `lease` replaces, as stored now.
 async fn previous_in(tx: &mut Transaction, lease: &Lease) -> Result<Lease> {
@@ -65,6 +75,7 @@ fn previous_refusal(lease: &Lease, previous: &Lease) -> Error {
 /// transition refuses with its message after these checks
 /// ([`crate::lease_machine::SubmitInput`]).
 pub(crate) async fn submit_checks(tx: &mut Transaction, lease: &Lease) -> Result {
+    legal_case_check(&mut *tx, lease).await?;
     if lease.version_kind == VersionKind::New {
         let unit = Unit::find(&mut *tx, lease.unit_id)
             .await?
@@ -113,6 +124,7 @@ pub(crate) async fn submit_checks(tx: &mut Transaction, lease: &Lease) -> Result
 /// still accepts `renew` or `amend` (checked again, in the transaction that
 /// ends it).
 pub(crate) async fn activate_checks(tx: &mut Transaction, lease: &Lease) -> Result {
+    legal_case_check(&mut *tx, lease).await?;
     if pending_for_action(&mut *tx, &lease.subject(), CANCEL_ACTION)
         .await?
         .is_some()

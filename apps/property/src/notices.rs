@@ -195,6 +195,10 @@ pub async fn renewal_due(state: &AppState, lease: &Lease, deadline: NaiveDate) -
         "deadline": shown(deadline),
     });
     tell_managers(state, lease, RENEWAL_DUE, data.clone()).await?;
+    // An open legal case: the tenant gets no automatic message.
+    if crate::legal_case::has_open(&state.db, lease.root_id).await? {
+        return Ok(());
+    }
     let request = NotifyRequest::new(RENEWAL_WINDOW, lease.subject())
         .subject_label(&lease.number_with_version())
         .to_party(lease.tenant())
