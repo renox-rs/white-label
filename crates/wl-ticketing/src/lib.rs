@@ -8,6 +8,7 @@ pub mod category_pages;
 pub mod charge;
 pub mod comments;
 pub mod config;
+pub mod flags;
 mod machine;
 mod notices;
 pub mod open;
@@ -28,6 +29,7 @@ use renox::prelude::*;
 pub use assign::{AssignKind, AssignRequest, Assignment, assign, assign_as_system};
 pub use charge::{ChargeInput, ChargeLine};
 pub use comments::{Comment, CommentVisibility};
+pub use flags::ComplianceFlag;
 pub use config::{Category, CustomField, FieldKind, HoldReason, InvoiceOn, SlaPolicy, SlaTarget};
 pub use open::Tickets;
 pub use priority::Priority;
@@ -202,7 +204,8 @@ impl Module for WlTicketing {
             .model::<Ticket>()
             .model::<Assignment>()
             .model::<Comment>()
-            .model::<ChargeLine>();
+            .model::<ChargeLine>()
+            .model::<ComplianceFlag>();
         // `rnx state:diagram Ticket` and the admin panel find the machine.
         renox::state_machine::register::<Ticket>();
         // `TicketClosed` after a `confirm` or `close` commits.
@@ -210,6 +213,8 @@ impl Module for WlTicketing {
         // The invoice draft of a chargeable ticket, after `resolve` or at
         // close, as its category says.
         charge::register_events(app);
+        // A `visit_missed` compliance flag clears when its visit is resolved.
+        flags::register_events(app);
         // `TicketAssigned` and the notices after an `assign` commits.
         notices::register(app);
         // A ticket's scope is its subject's (the approvals and wl-notify find

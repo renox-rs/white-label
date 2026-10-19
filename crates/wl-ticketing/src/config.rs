@@ -155,6 +155,9 @@ pub struct Category {
     pub invoice_on: InvoiceOn,
     /// Whether new tickets can use it.
     pub active: bool,
+    /// Whether a covered subject that is not compliant for it gets a
+    /// compliance flag (01: fire and life safety, lifts), set by the vertical.
+    pub compliance_critical: bool,
     /// Whether the platform owns it (the categories other modules open
     /// tickets in): the client may rename it, not delete it or turn it off.
     pub platform: bool,

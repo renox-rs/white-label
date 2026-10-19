@@ -92,6 +92,7 @@ impl Tickets {
             requester_user_id,
             requester_party_id,
             bill_party_id: request.bill_party.map(|party| party.0),
+            planned_due_date: request.planned_due,
             channel: request.channel,
             title: title.to_owned(),
             description: request.description.trim().to_owned(),

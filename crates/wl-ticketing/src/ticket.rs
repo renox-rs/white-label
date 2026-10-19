@@ -2,6 +2,7 @@
 //! subject), with who asked for it, who works on it, and the SLA clock. Its
 //! status moves only through the machine in [`crate::machine`].
 
+use renox::chrono::NaiveDate;
 use renox::db::DateTime;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -110,6 +111,12 @@ pub struct Ticket {
     /// The party a chargeable ticket is invoiced to when its requester is a
     /// user; none bills the requester's party.
     pub bill_party_id: Option<i64>,
+    /// A planned visit's planned due date: the due date of the maintenance
+    /// plan occurrence that opened it. Not the visit scheduled at, and not an
+    /// SLA due time: moving the appointment does not move it.
+    pub planned_due_date: Option<NaiveDate>,
+    /// When `WRK.RUL.14` told the coordinator the visit was missed.
+    pub missed_notified_at: Option<DateTime>,
     /// The lifecycle state; changed only by a transition.
     pub status: TicketStatus,
     /// When it is due, if its opener gave it a due time of its own (a staff
