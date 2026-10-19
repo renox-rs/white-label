@@ -7,6 +7,7 @@
       <template rx-if="can_block"><rx-include template="wl-parties/_block_sheet.html"/></template>
       <template rx-if="can_unblock"><rx-include template="wl-parties/_unblock_sheet.html"/></template>
     </rx-page-header>
+    <rx-include template="wl-kernel/screening_notice.html"/>
     <rx-alert rx-if="invalid_contacts" kind="warning" :title="tx['contact.needs_updating']" :message="tx['contact.needs_updating_hint']"/>
     <rx-stack rx-for="contact in invalid_contacts" :key="contact.id">
       <rx-row>

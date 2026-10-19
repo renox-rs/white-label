@@ -42,6 +42,7 @@ use renox::validation::{Errors, ValidationError};
 use serde::{Deserialize, Serialize};
 use wl_kernel::approvals::{self, ApprovalCard};
 use wl_kernel::block_effects::{self as kernel_effects, BlockEffect, Decision};
+use wl_kernel::screening_guard::{ScreeningNoticeView, screening_guard, stale_notice_view};
 use wl_kernel::{PartyKind, PartyStatus, ScreeningStatus, Subject};
 
 use crate::block::block;
@@ -419,6 +420,9 @@ pub(crate) struct ShowPage {
     unblock_evidence: bool,
     /// The bases the unblock sheet offers, `(value, label)`.
     bases: Vec<(String, String)>,
+    /// The stale sanctions list line, for `screening.run`, `screening.review`
+    /// or `parties.block_reason.view` only (#41).
+    notice: Option<ScreeningNoticeView>,
     /// The Block records this user may read, newest first.
     block_records: Vec<BlockRecordRow>,
 }
@@ -611,6 +615,7 @@ async fn show(
         ["delisted", "false_match"],
     );
     let block_records = block_rows(&db, &lang, party.id, sees_restricted).await?;
+    let notice = stale_notice(&state, &user, &lang, party.id).await?;
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
         party,
@@ -628,7 +633,35 @@ async fn show(
         unblock_evidence,
         bases,
         block_records,
+        notice,
     }))
+}
+
+/// The "screened on a stale list" line of the party page. Screening data never
+/// reaches viewers without `screening.run`, `screening.review` or
+/// `parties.block_reason.view` (`ACC.ACL.05`), so they get `None` without a
+/// read. It is also `None` with screening off (the no-op guard).
+async fn stale_notice(
+    state: &AppState,
+    user: &AuthUser,
+    lang: &Lang,
+    party: i64,
+) -> Result<Option<ScreeningNoticeView>> {
+    if ![
+        permissions::SCREENING_RUN,
+        permissions::SCREENING_REVIEW,
+        permissions::BLOCK_REASON_VIEW,
+    ]
+    .into_iter()
+    .any(|permission| user.has_permission(permission))
+    {
+        return Ok(None);
+    }
+    let mut tx = state.db.begin().await?;
+    let lists = screening_guard(state)
+        .latest_notice_in(&mut tx, wl_kernel::PartyId(party))
+        .await?;
+    Ok(stale_notice_view(lang, &lists))
 }
 
 /// The block dialog's form.
