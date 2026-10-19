@@ -130,6 +130,18 @@ pub struct InvoicingConfig {
     pub duplicate_keys: Vec<DuplicateKey>,
     /// The role told when a bill is held as a possible duplicate.
     pub duplicate_notify_role: String,
+    /// The month a fiscal year of the company budget starts in, 1 to 12
+    /// (`FIN.BUD.01`). A change applies from the next fiscal year that has
+    /// no budget version yet.
+    pub budget_fiscal_start_month: u32,
+    /// Whether a new budget version may change the months that had ended
+    /// when it was created (`FIN.BUD.01`); off, those lines are locked.
+    pub budget_revise_past_months: bool,
+    /// Days before a fiscal year starts that `FIN.RUL.26` asks for its
+    /// budget.
+    pub budget_reminder_days: u32,
+    /// The roles told by `FIN.RUL.26`.
+    pub budget_reminder_roles: Vec<String>,
 }
 
 impl Default for InvoicingConfig {
@@ -164,6 +176,10 @@ impl Default for InvoicingConfig {
             duplicate_check: true,
             duplicate_keys: vec![DuplicateKey::SupplierInvoiceNumber],
             duplicate_notify_role: "accountant".to_owned(),
+            budget_fiscal_start_month: 1,
+            budget_revise_past_months: false,
+            budget_reminder_days: 30,
+            budget_reminder_roles: vec!["accountant".to_owned(), "finance_manager".to_owned()],
         }
     }
 }
@@ -250,6 +266,10 @@ mod tests {
         assert!(config.duplicate_check);
         assert_eq!(config.duplicate_keys, [DuplicateKey::SupplierInvoiceNumber]);
         assert_eq!(config.duplicate_notify_role, "accountant");
+        assert_eq!(config.budget_fiscal_start_month, 1);
+        assert!(!config.budget_revise_past_months);
+        assert_eq!(config.budget_reminder_days, 30);
+        assert_eq!(config.budget_reminder_roles, ["accountant", "finance_manager"]);
     }
 
     #[test]
