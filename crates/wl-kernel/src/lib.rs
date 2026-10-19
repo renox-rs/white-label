@@ -65,7 +65,7 @@ pub use broadcast::{
 };
 pub use budgets::{
     BudgetFuture, COMPANY_BUDGET_SUBJECT_TYPE, CompanyBudgetApproved, CompanyBudgetId,
-    CompanyBudgets, NoCompanyBudgets,
+    CompanyBudgetVarianceReached, CompanyBudgets, NoCompanyBudgets,
 };
 pub use calendar::BusinessCalendar;
 pub use cheques::{

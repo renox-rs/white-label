@@ -1838,3 +1838,37 @@ async fn the_company_budgets_fall_back_when_invoicing_is_off() {
     assert_eq!(json["superseded"], 1);
     assert_eq!(json["fiscal_year"], 2027);
 }
+
+/// #89: a draft line names its charge type for budget vs actual, an older
+/// stored line without one still reads, and without the `invoicing` module the
+/// actual of a category is 0.
+#[renox::test]
+async fn a_draft_line_names_its_charge_type_and_the_actual_falls_back() {
+    use wl_kernel::budgets::{CompanyBudgetVarianceReached, company_budgets};
+    use wl_kernel::invoicing::{DraftLine, VatCategory};
+
+    let line = DraftLine::new("Rent, March", 100_000, VatCategory::Exempt).charge_type(" rent ");
+    assert_eq!(line.charge_type.as_deref(), Some("rent"));
+    assert_eq!(DraftLine::new("x", 1, VatCategory::Exempt).charge_type(" ").charge_type, None);
+    let mut json = renox::serde_json::to_value(&line).unwrap();
+    json.as_object_mut().unwrap().remove("charge_type");
+    let older: DraftLine = renox::serde_json::from_value(json).unwrap();
+    assert_eq!(older.charge_type, None);
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let actual = company_budgets(app.state())
+        .actual_amount(app.db(), 1, "marketing", day())
+        .await
+        .unwrap();
+    assert_eq!(actual, 0);
+    let reached = CompanyBudgetVarianceReached {
+        legal_entity_id: 1,
+        category: "marketing".into(),
+        month: day(),
+        budget: 1_000_000,
+        actual: 1_050_000,
+        percent_used: Some(105),
+    };
+    assert_eq!(renox::serde_json::to_value(&reached).unwrap()["percent_used"], 105);
+}

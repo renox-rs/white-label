@@ -303,6 +303,11 @@ pub struct DraftLine {
     pub vat_category: VatCategory,
     /// The record the line bills (a charge, a usage record, a job card…).
     pub origin: Option<Subject>,
+    /// The code of the charge type the line bills, if any: the key through
+    /// which budget vs actual maps the line to a budget category
+    /// (`FIN.BUD.01`). Lines without one are reported as *Uncategorised*.
+    #[serde(default)]
+    pub charge_type: Option<String>,
 }
 
 impl DraftLine {
@@ -315,7 +320,14 @@ impl DraftLine {
             discount: 0,
             vat_category,
             origin: None,
+            charge_type: None,
         }
+    }
+
+    /// With this charge type code (`FIN.BUD.01`).
+    pub fn charge_type(mut self, code: &str) -> Self {
+        self.charge_type = Some(code.trim().to_owned()).filter(|c| !c.is_empty());
+        self
     }
 
     /// With this quantity, in thousandths.

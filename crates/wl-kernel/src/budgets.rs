@@ -72,6 +72,30 @@ pub struct CompanyBudgetApproved {
 
 impl Event for CompanyBudgetApproved {}
 
+/// An actual reached its budget (`FIN.RUL.24`): the month's actual expense or
+/// drawings of a budget category reached the percentage of the approved
+/// budget line for the entity, category and month. Sent once per entity,
+/// category and month.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CompanyBudgetVarianceReached {
+    /// The legal entity.
+    pub legal_entity_id: i64,
+    /// The code of the budget category.
+    pub category: String,
+    /// The first day of the month.
+    pub month: NaiveDate,
+    /// The approved budget line, in AED fils (0 when the category has no
+    /// line).
+    pub budget: i64,
+    /// The actual of the month so far, in AED fils.
+    pub actual: i64,
+    /// The share of the budget used, in whole percent; `None` against a
+    /// budget of 0.
+    pub percent_used: Option<i64>,
+}
+
+impl Event for CompanyBudgetVarianceReached {}
+
 /// The future the [`CompanyBudgets`] reads return.
 pub type BudgetFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 
@@ -92,6 +116,21 @@ pub trait CompanyBudgets: Send + Sync + 'static {
         _month: NaiveDate,
     ) -> BudgetFuture<'a, Option<i64>> {
         Box::pin(async { Ok(None) })
+    }
+
+    /// The actual of the budget category with this code for `legal_entity_id`
+    /// in the month that contains `month`, in AED fils without recoverable
+    /// VAT (`FIN.BUD.01`, wl-invoicing §5.15 step 2): issued invoices less
+    /// credit notes for income, approved supplier bills less debit notes for
+    /// expense and owner drawings. The default has none (0).
+    fn actual_amount<'a>(
+        &'a self,
+        _db: &'a Db,
+        _legal_entity_id: i64,
+        _category: &'a str,
+        _month: NaiveDate,
+    ) -> BudgetFuture<'a, i64> {
+        Box::pin(async { Ok(0) })
     }
 
     /// Whether the budget category with this code is of kind
@@ -127,6 +166,21 @@ pub fn company_budgets(state: &AppState) -> Arc<dyn CompanyBudgets> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_variance_event_has_no_percentage_against_a_budget_of_zero() {
+        let event = CompanyBudgetVarianceReached {
+            legal_entity_id: 1,
+            category: "marketing".into(),
+            month: NaiveDate::from_ymd_opt(2027, 3, 1).unwrap(),
+            budget: 0,
+            actual: 80_000,
+            percent_used: None,
+        };
+        let json = renox::serde_json::to_value(&event).unwrap();
+        assert_eq!(json["percent_used"], renox::serde_json::Value::Null);
+        assert_eq!(json["month"], "2027-03-01");
+    }
 
     #[test]
     fn a_budget_id_is_a_subject_and_a_plain_number() {
