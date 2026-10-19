@@ -409,6 +409,22 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_payments.cheques.bounce.honoured_invalid",
         "Give the amount in dirhams, like 6000.00.",
     ),
+    ("wl_payments.cheques.represent.action", "Present again"),
+    ("wl_payments.cheques.represent.title", "Present this cheque again"),
+    (
+        "wl_payments.cheques.represent.description",
+        "Use it when the party confirms there are funds. A cheque is presented at most twice, and not again once the bank has paid part of it. The party is told the new date.",
+    ),
+    ("wl_payments.cheques.represent.date", "New presentation date"),
+    ("wl_payments.cheques.represent.funds", "The party confirmed there are funds"),
+    ("wl_payments.cheques.represent.note", "Note"),
+    (
+        "wl_payments.cheques.represent.note_hint",
+        "Needed when the confirmation is not ticked, e.g. \"funds confirmed by phone\".",
+    ),
+    ("wl_payments.cheques.represent.submit", "Present again"),
+    ("wl_payments.cheques.represent.done", "The cheque is presented again."),
+    ("wl_payments.cheques.represent.date_required", "Give the new presentation date."),
     ("wl_payments.followup.subject", "{{ text }}"),
     (
         "wl_payments.followup.body",

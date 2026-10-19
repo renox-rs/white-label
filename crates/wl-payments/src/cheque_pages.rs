@@ -7,6 +7,7 @@
 //! | `POST /cheques/{id}/deposit` | `wl_payments.cheques.deposit` | `cheques.deposit` |
 //! | `POST /cheques/{id}/clear` | `wl_payments.cheques.clear` | `cheques.deposit` |
 //! | `POST /cheques/{id}/bounce` | `wl_payments.cheques.bounce` | `cheques.deposit` (fields `reason`, `certificate`, `honoured`) |
+//! | `POST /cheques/{id}/represent` | `wl_payments.cheques.represent` | `cheques.deposit` (fields `date`, `funds_confirmed`, `note`) |
 //!
 //! Every action has its own route: the transitions take input (a return
 //! reason and certificate, a date, an amount) that the kernel's transition
@@ -14,6 +15,7 @@
 
 use std::collections::BTreeMap;
 
+use renox::chrono::NaiveDate;
 use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
 use renox::serde_json::Value;
@@ -26,6 +28,7 @@ use wl_kernel::payments::Direction;
 use crate::cheque::{Cheque, ChequeReturn};
 use crate::cheque_bounce::{self, BounceRequest};
 use crate::cheque_deposit;
+use crate::cheque_represent::{self, RepresentRequest};
 use crate::followup::{FollowupTask, money_text};
 use crate::pages::{
     Text, Texts, filled, invalid, options, parse_amount, party_name, texts_in,
@@ -84,6 +87,8 @@ pub fn routes() -> Routes {
                 .name("wl_payments.cheques.clear")
                 .post("/cheques/{id}/bounce", store_bounce)
                 .name("wl_payments.cheques.bounce")
+                .post("/cheques/{id}/represent", store_represent)
+                .name("wl_payments.cheques.represent")
                 .require_permission(permissions::CHEQUES_DEPOSIT),
         )
 }
@@ -229,6 +234,11 @@ pub(crate) struct ShowPage {
     can_deposit: bool,
     can_clear: bool,
     can_bounce: bool,
+    /// Whether "Present again" is offered: bounced, received, nothing paid by
+    /// the bank, presentations left.
+    can_represent: bool,
+    /// Today, the earliest new presentation date.
+    today: String,
     /// The return reasons offered, `(code, label)`.
     reasons: Vec<(String, String)>,
     /// Whether a certificate is required (a received cheque).
@@ -320,6 +330,12 @@ async fn show(
         );
     let can_clear = deposit_rights && cheque.status == ChequeStatus::Deposited;
     let can_bounce = can_clear;
+    let config = crate::config_of(&state);
+    let can_represent = deposit_rights
+        && cheque.status == ChequeStatus::Bounced
+        && cheque.is_received()
+        && cheque.honoured_amount == 0
+        && i64::from(cheque.presentations) < config.cheque_max_presentations;
     let reason_codes: Vec<&str> = RETURN_REASONS.iter().map(|(code, _)| *code).collect();
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
@@ -340,6 +356,8 @@ async fn show(
         can_deposit,
         can_clear,
         can_bounce,
+        can_represent,
+        today: wl_kernel::documents::today().format("%Y-%m-%d").to_string(),
         reasons: options(&t, "cheques.reason", &reason_codes),
         certificate_required: cheque.direction == Direction::In,
         bounce_description: t(if cheque.direction == Direction::In {
@@ -447,6 +465,57 @@ async fn store_bounce(
                 "honoured"
             } else {
                 "reason"
+            };
+            Err(invalid(field, message, &form))
+        }
+        Err(other) => Err(other.into_error()),
+    }
+}
+
+/// The re-present sheet's form.
+#[derive(Deserialize, Serialize, Validate, Debug)]
+pub struct RepresentForm {
+    /// The new presentation date.
+    #[validate(required)]
+    pub date: Option<NaiveDate>,
+    /// Set when the party confirmed there are funds.
+    #[serde(default)]
+    pub funds_confirmed: bool,
+    /// A note, e.g. how the funds were confirmed.
+    #[validate(max = 2000)]
+    pub note: Option<String>,
+}
+
+/// `POST /cheques/{id}/represent`: presents the bounced cheque again and
+/// reloads the page. A refused guard (no confirmation or note, a past date,
+/// too many presentations) answers 422 under its field.
+async fn store_represent(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(cheque): Found<Cheque>,
+    Valid(form): Valid<RepresentForm>,
+) -> Result<Response> {
+    let t = texts_in(&lang);
+    let Some(date) = form.date else {
+        return Err(invalid("date", t("cheques.represent.date_required"), &form));
+    };
+    let request = RepresentRequest {
+        date,
+        funds_confirmed: form.funds_confirmed,
+        note: form.note.clone(),
+    };
+    match cheque_represent::represent(&state, &user, &cheque, &request).await {
+        Ok(_) => Ok((
+            Toast::success(t("cheques.represent.done")),
+            renox::HxRefresh,
+        )
+            .into_response()),
+        Err(TransitionError::Guard(message)) => {
+            let field = if message.contains("date") {
+                "date"
+            } else {
+                "note"
             };
             Err(invalid(field, message, &form))
         }

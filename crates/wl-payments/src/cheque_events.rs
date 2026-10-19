@@ -24,6 +24,7 @@ use wl_kernel::cheques::{ChequeBounceResolved, ChequeId, ChequeOutcome};
 use crate::cheque::Cheque;
 use crate::cheque_bounce::{self, BOUNCE};
 use crate::cheque_deposit::CLEAR;
+use crate::cheque_represent::{self, REPRESENT};
 
 /// The event that says `cheque` was resolved as `outcome`, with the other
 /// bounced cheques of the party still open.
@@ -53,6 +54,9 @@ pub(crate) fn register(app: &mut Registry) {
         let name = event.transition.as_str();
         if name == BOUNCE {
             return cheque_bounce::after_bounce(&state, event.key).await;
+        }
+        if name == REPRESENT {
+            return cheque_represent::after_represent(&state, event.key).await;
         }
         if name == CLEAR {
             let cheque = Cheque::find_or_404(&state.db, event.key).await?;

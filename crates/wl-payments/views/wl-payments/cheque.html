@@ -11,6 +11,7 @@
       <rx-confirm rx-if="can_clear" :id="'clear-cheque-' ~ cheque.id" :label="tx['cheques.clear.action']" :action="route('wl_payments.cheques.clear', cheque.id)" method="POST"
                   :title="tx['cheques.clear.title']" :message="tx['cheques.clear.message']" :confirm-label="tx['cheques.clear.action']" icon="check"/>
       <template rx-if="can_bounce"><rx-include template="wl-payments/_bounce_sheet.html"/></template>
+      <template rx-if="can_represent"><rx-include template="wl-payments/_represent_sheet.html"/></template>
     </rx-page-header>
     <rx-card :title="tx['cheques.sections.details']">
       <rx-infolist columns="2">

@@ -567,6 +567,30 @@ pub(crate) async fn cheque_task(
     Ok(())
 }
 
+/// The template variables of the party's re-presentation notice.
+fn cheque_presented_data(cheque: &Cheque) -> renox::serde_json::Value {
+    json!({
+        "number": cheque.number,
+        "amount": money_text(&cheque.currency, cheque.open_amount),
+        "date": cheque.deposit_date.map(date_text).unwrap_or_default(),
+    })
+}
+
+/// After a committed `represent` of the received `cheque`: the drawer is told
+/// the new presentation date, unless it is blocked.
+pub(crate) async fn cheque_presented(state: &AppState, cheque: &Cheque) -> Result {
+    let status = wl_kernel::parties::directory(state)
+        .status(&state.db, cheque.party())
+        .await?;
+    if tells_party(status) {
+        let request = NotifyRequest::new(CHEQUE_PRESENTED, cheque.subject())
+            .to_party(cheque.party())
+            .data(cheque_presented_data(cheque));
+        notify::notifier(state).notify(state, request).await?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
