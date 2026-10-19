@@ -19,6 +19,7 @@ pub mod bill_submit;
 pub mod bill_unallocate;
 pub mod bill_unallocation;
 pub mod budget;
+pub mod budget_actual;
 pub mod budget_category;
 mod budget_category_pages;
 pub mod budget_contract;
@@ -27,6 +28,9 @@ pub mod budget_machine;
 mod budget_notices;
 mod budget_pages;
 pub mod budget_reminder;
+pub mod budget_report;
+mod budget_report_pages;
+pub mod budget_variance;
 pub mod config;
 pub mod credit;
 pub mod credit_note;
@@ -95,6 +99,7 @@ pub use budget::{BudgetStatus, CompanyBudget, CompanyBudgetLine, StartChoice};
 pub use budget_category::{BudgetCategory, BudgetKind, BudgetMapping, MappingKind};
 pub use budget_contract::Budgets;
 pub use budget_reminder::BudgetReminder;
+pub use budget_variance::BudgetWarning;
 pub use config::{
     DuplicateKey, InvoicingConfig, ReasonProblem, ReliefMonths, SettingError, WriteOffReason,
 };
@@ -222,6 +227,10 @@ const VIEWS: &[(&str, &str)] = &[
         "wl-invoicing/budget_category_form.html",
         include_str!("../views/wl-invoicing/budget_category_form.html"),
     ),
+    (
+        "wl-invoicing/budget_report.html",
+        include_str!("../views/wl-invoicing/budget_report.html"),
+    ),
 ];
 
 /// The module's settings in `state`: those `register` provided, else the
@@ -270,6 +279,9 @@ pub mod permissions {
     pub const BUDGETS_APPROVE: &str = "budgets.approve";
     /// Add and change budget categories and their mapping.
     pub const BUDGET_CATEGORIES_MANAGE: &str = "budget_categories.manage";
+    /// Approve owner drawings (`FIN.ACL.21`) and see their lines, payees and
+    /// notes (`FIN.ACL.22`); others see the drawings totals.
+    pub const DRAWINGS_APPROVE: &str = "drawings.approve";
 }
 
 /// The invoicing module. The host adds it with
@@ -455,6 +467,20 @@ impl WlInvoicing {
         self
     }
 
+    /// The share of a month's budget line at which `FIN.RUL.24` warns, in
+    /// percent (default 100).
+    pub fn budget_variance_percent(mut self, percent: u32) -> Self {
+        self.config.budget_variance_percent = percent.max(1);
+        self
+    }
+
+    /// The role `FIN.RUL.24` tells besides the category's owner role
+    /// (default `finance_manager`).
+    pub fn budget_variance_role(mut self, role: &str) -> Self {
+        self.config.budget_variance_role = role.to_owned();
+        self
+    }
+
     /// The module's settings.
     pub fn config(&self) -> &InvoicingConfig {
         &self.config
@@ -476,6 +502,7 @@ impl Module for WlInvoicing {
             .merge(bill_pages::routes())
             .merge(budget_pages::routes())
             .merge(budget_category_pages::routes())
+            .merge(budget_report_pages::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -509,6 +536,7 @@ impl Module for WlInvoicing {
             .model::<CompanyBudget>()
             .model::<CompanyBudgetLine>()
             .model::<BudgetReminder>()
+            .model::<BudgetWarning>()
             .view_data::<pages::IndexPage>()
             .view_data::<pages::ShowPage>()
             .view_data::<vat_pages::IndexPage>()
@@ -524,7 +552,8 @@ impl Module for WlInvoicing {
             .view_data::<budget_pages::ShowPage>()
             .view_data::<budget_pages::FormPage>()
             .view_data::<budget_category_pages::IndexPage>()
-            .view_data::<budget_category_pages::FormPage>();
+            .view_data::<budget_category_pages::FormPage>()
+            .view_data::<budget_report_pages::IndexPage>();
         // The customer write-off notice (§10), sent from the queue.
         app.job::<SendWriteOffNotice>();
         app.templates(|env| {
@@ -622,6 +651,16 @@ impl Module for WlInvoicing {
                 .order(45)
                 .permission(permissions::BUDGETS_VIEW),
         );
+        // The budget vs actual report (`nav.budget_report`); the page checks
+        // the permission against the user's entities.
+        app.nav(
+            "app",
+            NavLink::route("wl_invoicing.budget_report", "nav.budget_report")
+                .icon("chart-column")
+                .group("nav.app")
+                .order(46)
+                .permission(permissions::BUDGETS_VIEW),
+        );
         // The supplier bills (`nav.supplier_bills`).
         app.nav(
             "app",
@@ -682,6 +721,8 @@ impl Module for WlInvoicing {
         wl_kernel::budgets::provide_company_budgets(app, Budgets);
         budget_notices::register_types();
         budget_reminder::schedule(app);
+        // `FIN.RUL.24`: a bill that posts an actual may reach its budget.
+        budget_variance::register(app);
     }
 }
 
