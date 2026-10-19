@@ -364,6 +364,14 @@ const TEXTS: &[(&str, &str)] = &[
         "Contract {{ contract }} has ended and no other active contract covers {{ subject }} for {{ category }}.",
     ),
     (
+        "wl_ticketing.notice.vendor_no_show.subject",
+        "{{ vendor }} did not turn up for {{ number }}",
+    ),
+    (
+        "wl_ticketing.notice.vendor_no_show.body",
+        "{{ title }} was scheduled for {{ scheduled }} and {{ vendor }} has not started it {{ hours }} hours later. Reassign it or set a new time: {{ link }}.",
+    ),
+    (
         "wl_ticketing.contract_end.task_title",
         "Open visits of contract {number}: reassign or cancel",
     ),

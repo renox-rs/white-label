@@ -16,6 +16,7 @@ pub mod flag_pages;
 pub mod flags;
 mod machine;
 mod notices;
+pub mod no_show;
 pub mod open;
 pub mod pages;
 pub mod plans;
@@ -41,6 +42,7 @@ pub use config::{Category, CustomField, FieldKind, HoldReason, InvoiceOn, SlaPol
 pub use contract::{
     ContractStatus, Coverage, NewContract, ServiceContract, ServiceContracts,
 };
+pub use no_show::NoShow;
 pub use open::Tickets;
 pub use plans::{MaintenancePlan, MaintenancePlans, PlanStatus};
 pub use priority::Priority;
@@ -124,6 +126,7 @@ pub mod permissions {
 pub struct WlTicketing {
     reasons: ReassignReasons,
     auto_close_days: Option<i64>,
+    no_show_hours: Option<i64>,
     visit_check: visit_check::Settings,
 }
 
@@ -143,6 +146,19 @@ impl WlTicketing {
     pub fn auto_close_days(mut self, days: i64) -> Self {
         assert!(days >= 1, "auto-close needs at least one day");
         self.auto_close_days = Some(days);
+        self
+    }
+
+    /// Sets the clock hours after a visit's scheduled time before a vendor
+    /// that has not started the ticket is recorded as a no-show
+    /// (`WRK.RUL.19`, §6: 2 unless set). At least 1.
+    ///
+    /// # Panics
+    ///
+    /// For fewer than one hour: a programming error.
+    pub fn no_show_hours(mut self, hours: i64) -> Self {
+        assert!(hours >= 1, "a no-show needs at least one hour");
+        self.no_show_hours = Some(hours);
         self
     }
 
@@ -274,7 +290,8 @@ impl Module for WlTicketing {
             .model::<ComplianceFlag>()
             .model::<ServiceContract>()
             .model::<Coverage>()
-            .model::<MaintenancePlan>();
+            .model::<MaintenancePlan>()
+            .model::<NoShow>();
         // `rnx state:diagram Ticket` and the admin panel find the machine.
         renox::state_machine::register::<Ticket>();
         renox::state_machine::register::<ServiceContract>();
@@ -309,6 +326,11 @@ impl Module for WlTicketing {
         // `WRK.RUL.18`: what happens when a service contract ends;
         // compliance-critical (`PLT.RUL.04`).
         contract_end::register(app);
+        // `WRK.RUL.19`: a vendor that did not start a ticket in time.
+        app.provide(no_show::NoShowHours(
+            self.no_show_hours.unwrap_or(no_show::DEFAULT_HOURS),
+        ));
+        no_show::register(app);
         // The seeded defaults keep the client's changes.
         app.command(
             "ticketing:install",
