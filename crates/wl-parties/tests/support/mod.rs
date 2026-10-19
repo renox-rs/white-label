@@ -145,6 +145,31 @@ pub async fn block_party(t: &Booted, user: &User, party: &Party, code: &str, not
         .assert_ok();
 }
 
+/// Archives `party` with a raw SQL update: `archive` does not exist yet.
+pub async fn archive_party(t: &Booted, party: &Party) {
+    renox::db::sql("UPDATE wl_parties_parties SET status = 'archived' WHERE id = ?")
+        .bind(party.id)
+        .execute(t.db())
+        .await
+        .unwrap();
+}
+
+/// Moves the clock to `day` November 2026 at `dubai_hour:00:10` Asia/Dubai
+/// (UTC+4), a few seconds in so the minute shown does not roll over while a
+/// test runs. Returns that instant.
+pub fn set_dubai_clock(t: &Booted, day: u32, dubai_hour: u32) -> renox::db::DateTime {
+    use renox::chrono::{TimeZone, Utc};
+    t.app.travel_back();
+    let wanted = Utc
+        .with_ymd_and_hms(2026, 11, day, dubai_hour - 4, 0, 10)
+        .unwrap();
+    let ahead = (wanted - Utc::now()).num_seconds();
+    assert!(ahead > 0, "the fixed day is in the future");
+    t.app
+        .travel(std::time::Duration::from_secs(ahead.unsigned_abs()));
+    wanted
+}
+
 /// wl-parties with the default block reasons, booted and seeded.
 pub async fn boot() -> Booted {
     boot_with(WlParties::new(), true).await

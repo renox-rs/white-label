@@ -443,6 +443,104 @@ async fn the_screening_events_serialise_without_any_candidate() {
     assert_eq!(back, done);
 }
 
+/// AC1 and AC5 of #39: the confirmed-match event carries party and screening
+/// only (no list, candidate, note or reason), and `PartyRestored` only the
+/// party.
+#[renox::test]
+async fn the_confirmed_match_and_restore_events_carry_ids_only() {
+    use wl_kernel::{PartyRestored, ScreeningId, ScreeningMatchConfirmed};
+
+    let dir = views(&[]);
+    let _app = boot(dir.path()).await;
+    let confirmed = ScreeningMatchConfirmed {
+        party: PartyId(2),
+        screening: ScreeningId(9),
+    };
+    let json = renox::serde_json::to_value(&confirmed).expect("the event serialises");
+    let mut keys: Vec<&str> = json
+        .as_object()
+        .unwrap()
+        .keys()
+        .map(String::as_str)
+        .collect();
+    keys.sort_unstable();
+    assert_eq!(keys, ["party", "screening"]);
+    let back: ScreeningMatchConfirmed = renox::serde_json::from_value(json).expect("reads back");
+    assert_eq!(back, confirmed);
+
+    let restored = PartyRestored { party: PartyId(2) };
+    let json = renox::serde_json::to_value(&restored).expect("the event serialises");
+    assert_eq!(json.as_object().unwrap().len(), 1);
+    let back: PartyRestored = renox::serde_json::from_value(json).expect("reads back");
+    assert_eq!(back, restored);
+}
+
+/// AC7 of #39: the held-funds registry asks every registered source for a
+/// party, in source-key order, and tags each line with its source key.
+#[renox::test]
+async fn the_held_funds_registry_collects_every_source_for_a_party() {
+    use wl_kernel::held_funds::{self, FundsFuture, FundsSource, HeldFund, HeldFundsSource};
+
+    struct Lines(Vec<HeldFund>);
+
+    impl FundsSource for Lines {
+        fn held_for<'a>(
+            &'a self,
+            _state: &'a AppState,
+            party: PartyId,
+        ) -> FundsFuture<'a, Vec<HeldFund>> {
+            Box::pin(async move {
+                // Only party 4242 has money here.
+                Ok(if party == PartyId(4242) {
+                    self.0.clone()
+                } else {
+                    Vec::new()
+                })
+            })
+        }
+    }
+
+    HeldFundsSource::new("pkg_b_credit")
+        .owner("wl-test")
+        .source(Lines(vec![HeldFund::new(
+            "Credit C-1",
+            "prepaid_credit",
+            5_000,
+            "AED",
+        )]))
+        .register();
+    HeldFundsSource::new("pkg_a_deposits")
+        .owner("wl-test")
+        .source(Lines(vec![
+            HeldFund::new("Deposit D-1", "deposit", 150_000, "AED"),
+            HeldFund::new("Refund R-1", "refund", 25_050, "AED"),
+        ]))
+        .register();
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let funds = held_funds::held_for_all(app.state(), PartyId(4242))
+        .await
+        .expect("the sources answer");
+    let ours: Vec<(&str, &str)> = funds
+        .iter()
+        .filter(|f| f.source.starts_with("pkg_"))
+        .map(|f| (f.source.as_str(), f.label.as_str()))
+        .collect();
+    assert_eq!(
+        ours,
+        [
+            ("pkg_a_deposits", "Deposit D-1"),
+            ("pkg_a_deposits", "Refund R-1"),
+            ("pkg_b_credit", "Credit C-1"),
+        ]
+    );
+    let none = held_funds::held_for_all(app.state(), PartyId(1))
+        .await
+        .expect("the sources answer");
+    assert!(none.iter().all(|f| !f.source.starts_with("pkg_")));
+}
+
 #[renox::test]
 async fn the_models_match_the_schema() {
     let dir = views(&[]);
