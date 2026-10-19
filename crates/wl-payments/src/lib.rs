@@ -13,6 +13,7 @@ mod cheque_money;
 pub mod cheque_pages;
 pub mod cheque_represent;
 pub mod cheque_settle;
+pub mod cheque_write_off;
 pub mod chequer;
 pub mod config;
 pub mod credit;
@@ -129,6 +130,10 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "wl-payments/_replacement_sheet.html",
         include_str!("../views/wl-payments/_replacement_sheet.html"),
+    ),
+    (
+        "wl-payments/_write_off_sheet.html",
+        include_str!("../views/wl-payments/_write_off_sheet.html"),
     ),
 ];
 
@@ -304,6 +309,7 @@ impl Module for WlPayments {
         app.model::<ChequeLink>();
         app.model::<ChequeReturn>();
         app.model::<cheque_settle::ChequeReplacement>();
+        app.model::<cheque_write_off::ChequeWriteOff>();
         app.model::<FollowupTask>();
         app.view_data::<pages::IndexPage>()
             .view_data::<pages::NewPage>()
@@ -379,6 +385,8 @@ impl Module for WlPayments {
         cheque_deposit::register(app);
         // The bounce fee, `ChequeBounced` and the follow-ups after a commit.
         cheque_events::register(app);
+        // `InvoiceWrittenOff` completes a cheque `write_off` that waits for approvals.
+        cheque_write_off::register(app);
         // The notification types of a bank return and a follow-up task.
         notices::register_types();
         // `PaymentReceived` and `PaymentReversed` after a commit.

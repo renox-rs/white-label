@@ -11,6 +11,7 @@
 //! | `POST /cheques/{id}/settle` | `wl_payments.cheques.settle` | `cheques.manage` (fields `method`, `amount`, `reference`) |
 //! | `POST /cheques/{id}/replacements` | `wl_payments.cheques.replacements` | `cheques.manage` (fields `kind`, `ref_id`) |
 //! | `POST /cheques/{id}/replace` | `wl_payments.cheques.replace` | `cheques.manage` |
+//! | `POST /cheques/{id}/write_off` | `wl_payments.cheques.write_off` | `cheques.manage` (field `reason`) |
 //! | `POST /cheques/{id}/refer` | `wl_payments.cheques.refer` | `cheques.legal` (fields `case_type`, `case_owner`) |
 //!
 //! Every action has its own route: the transitions take input (a return
@@ -40,6 +41,7 @@ use crate::cheque_represent::{self, RepresentRequest};
 use crate::cheque_settle::{
     self, ChequeReplacement, ReplacementKind, SETTLE_METHODS, SettleRequest,
 };
+use crate::cheque_write_off::{self, ChequeWriteOff};
 use crate::payment::Payment;
 use crate::followup::{ACCOUNTANT_ROLE, FollowupTask, money_text};
 use crate::pages::{
@@ -111,6 +113,8 @@ pub fn routes() -> Routes {
                 .name("wl_payments.cheques.replacements")
                 .post("/cheques/{id}/replace", store_replace)
                 .name("wl_payments.cheques.replace")
+                .post("/cheques/{id}/write_off", store_write_off)
+                .name("wl_payments.cheques.write_off")
                 .require_permission(permissions::CHEQUES_MANAGE),
         )
         .merge(
@@ -251,6 +255,18 @@ pub(crate) struct ReplacementRow {
     amount: String,
 }
 
+/// One invoice write-off a cheque asked wl-invoicing for.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct WriteOffRow {
+    id: i64,
+    label: String,
+    link: String,
+    amount: String,
+    status: String,
+    status_kind: &'static str,
+    failure: String,
+}
+
 /// What the cheque page needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "wl-payments/cheque.html")]
@@ -281,6 +297,10 @@ pub(crate) struct ShowPage {
     can_settle: bool,
     /// Whether linking a replacement and "Replace" are offered: owed.
     can_replace: bool,
+    /// Whether "Write off" is offered: a received cheque still owed.
+    can_write_off: bool,
+    /// The invoice write-offs asked for, with where each stands.
+    write_offs: Vec<WriteOffRow>,
     /// Whether "Refer to legal" is offered: a bounced received cheque with
     /// its return certificate.
     can_refer: bool,
@@ -412,6 +432,40 @@ async fn replacement_rows(db: &Db, t: Text<'_>, cheque: &Cheque) -> Result<Vec<R
     Ok(rows)
 }
 
+/// The invoice write-off rows of `cheque`.
+async fn write_off_rows(
+    state: &AppState,
+    t: Text<'_>,
+    cheque: &Cheque,
+) -> Result<Vec<WriteOffRow>> {
+    let mut rows = Vec::new();
+    for request in ChequeWriteOff::of_cheque(&state.db, cheque.id).await? {
+        let invoice = wl_kernel::invoicing::invoicer(state)
+            .find(&state.db, wl_kernel::invoicing::InvoiceId(request.invoice_id))
+            .await?;
+        let label = invoice
+            .and_then(|i| i.number)
+            .unwrap_or_else(|| format!("#{}", request.invoice_id));
+        rows.push(WriteOffRow {
+            id: request.id,
+            label,
+            link: format!("/invoices/{}", request.invoice_id),
+            amount: money_text(&cheque.currency, request.amount),
+            status: t(&format!(
+                "cheques.write_off.status.{}",
+                request.status.as_str()
+            )),
+            status_kind: match request.status {
+                cheque_write_off::WriteOffStatus::Pending => "warning",
+                cheque_write_off::WriteOffStatus::WrittenOff => "success",
+                cheque_write_off::WriteOffStatus::Failed => "error",
+            },
+            failure: request.failure.clone().unwrap_or_default(),
+        });
+    }
+    Ok(rows)
+}
+
 /// `GET /cheques/{id}`: the card, the documents it pays, its bank returns,
 /// its tasks, the actions and the history.
 async fn show(
@@ -452,6 +506,8 @@ async fn show(
     let manage_rights = user.has_permission(permissions::CHEQUES_MANAGE);
     let can_replace = manage_rights && cheque.status.is_owed();
     let can_settle = can_replace && cheque.is_received();
+    let can_write_off = can_settle;
+    let write_offs = write_off_rows(&state, &t, &cheque).await?;
     let can_refer = user.has_permission(permissions::CHEQUES_LEGAL)
         && cheque.status == ChequeStatus::Bounced
         && cheque.is_received()
@@ -500,6 +556,8 @@ async fn show(
         case_owner_name,
         can_settle,
         can_replace,
+        can_write_off,
+        write_offs,
         settle_methods: options(
             &t,
             "method",
@@ -798,6 +856,44 @@ async fn store_replace(
         renox::HxRefresh,
     )
         .into_response())
+}
+
+/// The write-off sheet's form.
+#[derive(Deserialize, Serialize, Validate, Debug)]
+pub struct WriteOffForm {
+    /// Why the open amount is written off.
+    #[validate(max = 2000)]
+    pub reason: Option<String>,
+}
+
+/// `POST /cheques/{id}/write_off`: asks wl-invoicing to write off the linked
+/// invoices and reloads the page. A cheque whose invoices were all written off
+/// at once is `written_off`; otherwise it stays while the approvals wait. A
+/// refused guard (no reason, balances that differ, a disputed invoice) answers
+/// 422 under its field.
+async fn store_write_off(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(cheque): Found<Cheque>,
+    Valid(form): Valid<WriteOffForm>,
+) -> Result<Response> {
+    let t = texts_in(&lang);
+    let Some(reason) = filled(&form.reason) else {
+        return Err(invalid("reason", t("cheques.write_off.reason_required"), &form));
+    };
+    match cheque_write_off::write_off(&state, &user, &cheque, reason).await {
+        Ok(done) => {
+            let text = if done.status == ChequeStatus::WrittenOff {
+                t("cheques.write_off.done")
+            } else {
+                t("cheques.write_off.requested")
+            };
+            Ok((Toast::success(text), renox::HxRefresh).into_response())
+        }
+        Err(TransitionError::Guard(message)) => Err(invalid("reason", message, &form)),
+        Err(other) => Err(other.into_error()),
+    }
 }
 
 /// The refer sheet's form.
