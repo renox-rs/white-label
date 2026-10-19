@@ -3,7 +3,7 @@
 //! on a rollback:
 //!
 //! - `record` / `record_by_system` → [`PaymentReceived`] (a new payment has
-//!   no allocations yet).
+//!   no allocations yet); money out gives none, except an owner drawing.
 //!
 //! - `reverse` / `reverse_by_system` → [`PaymentReversed`] with the
 //!   allocations the reversal removed, the source, the statement line and
@@ -15,6 +15,7 @@
 
 use renox::prelude::*;
 use renox::state_machine::Transitioned;
+use wl_kernel::drawings::PURPOSE;
 use wl_kernel::payments::{Direction, PaymentReceived, PaymentReversed};
 
 use crate::allocation::Allocation;
@@ -25,8 +26,11 @@ use crate::reverse::{self, REVERSE, REVERSE_BY_SYSTEM};
 /// The event a committed transition of `payment` (as it is now) gives, if
 /// any.
 fn received_event(transition: &str, payment: &Payment) -> Option<PaymentReceived> {
-    // Money out (a refund's voucher) is not a payment received.
-    ([RECORD, RECORD_BY_SYSTEM].contains(&transition) && payment.direction == Direction::In).then(
+    // Money out (a refund's voucher) is not a payment received; an owner
+    // drawing is (`record` gives `PaymentReceived`, wl-payments §4).
+    ([RECORD, RECORD_BY_SYSTEM].contains(&transition)
+        && (payment.direction == Direction::In || payment.purpose == PURPOSE))
+        .then(
         || PaymentReceived {
             payment: payment.payment_id(),
             party: payment.party(),

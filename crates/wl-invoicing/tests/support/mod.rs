@@ -28,6 +28,7 @@ use wl_kernel::LegalEntity;
 use wl_kernel::approvals::{self, ApprovalRequest};
 use wl_kernel::budgets::{CompanyBudgetApproved, CompanyBudgetVarianceReached};
 use wl_kernel::cash_forecast::CashForecastBelowThreshold;
+use wl_kernel::drawings::OwnerDrawingDecided;
 use wl_kernel::documents::today;
 use wl_kernel::invoicing::{
     BadDebtRecovered, CreditNoteReopened, DraftLine, InvoiceDisputeResolved, InvoiceDisputed,
@@ -759,6 +760,8 @@ pub struct Booted {
     pub variance_reached: Recorded<CompanyBudgetVarianceReached>,
     /// `CashForecastBelowThreshold`.
     pub below_threshold: Recorded<CashForecastBelowThreshold>,
+    /// `OwnerDrawingDecided`.
+    pub drawing_decided: Recorded<OwnerDrawingDecided>,
 }
 
 impl Booted {
@@ -1507,6 +1510,7 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
     let budget_approved = Recorded::new();
     let variance_reached = Recorded::new();
     let below_threshold = Recorded::new();
+    let drawing_decided = Recorded::new();
     let tickets = TicketDesk::default();
     let creator: Arc<dyn TaskCreator> = Arc::new(tickets.clone());
     let notices = Recording::default();
@@ -1543,6 +1547,7 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
     let app = record(app, &budget_approved);
     let app = record(app, &variance_reached);
     let app = record(app, &below_threshold);
+    let app = record(app, &drawing_decided);
     let config = ClientConfig::parse(CLIENT).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     let dir = views.path().to_path_buf();
@@ -1649,5 +1654,6 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
         budget_approved,
         variance_reached,
         below_threshold,
+        drawing_decided,
     }
 }

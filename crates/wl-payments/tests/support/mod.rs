@@ -29,6 +29,9 @@ use wl_kernel::deposits::{
     deposit_deductions,
 };
 use wl_kernel::documents::today;
+use wl_kernel::drawings::{
+    DrawingCategory, DrawingFuture, DrawingRequest, DrawingStart, OwnerDrawings,
+};
 use wl_kernel::invoicing::{
     InvoiceFuture, InvoiceId, InvoiceStatus, InvoiceSummary, InvoiceWrittenOff, Invoicer,
     WriteOffAnswer,
@@ -558,6 +561,79 @@ fn record<E: Event + Clone>(app: App, into: &Recorded<E>) -> App {
     })
 }
 
+/// The owner drawings approval wl-invoicing provides, scripted by the test: the
+/// category `owner_drawings` has an owner party (Quiet Sands unless changed),
+/// and a request waits for the approvers unless the desk approves at once.
+#[derive(Clone)]
+pub struct DrawingsDesk(Arc<Mutex<DeskState>>);
+
+struct DeskState {
+    owner: Option<PartyId>,
+    start: DrawingStart,
+    asked: Vec<DrawingRequest>,
+}
+
+impl Default for DrawingsDesk {
+    fn default() -> Self {
+        DrawingsDesk(Arc::new(Mutex::new(DeskState {
+            owner: Some(QUIET_SANDS),
+            start: DrawingStart::Pending,
+            asked: Vec::new(),
+        })))
+    }
+}
+
+impl DrawingsDesk {
+    /// Sets the owner party of the category (`None`: it has none yet).
+    pub fn owner(&self, party: Option<PartyId>) {
+        self.0.lock().unwrap().owner = party;
+    }
+
+    /// From now on a request is approved at once (the sole owner,
+    /// `FIN.ACL.23`), flagged or not.
+    pub fn approves_at_once(&self, self_approved: bool) {
+        self.0.lock().unwrap().start = DrawingStart::Approved { self_approved };
+    }
+
+    /// From now on a request waits for the approvers.
+    pub fn waits(&self) {
+        self.0.lock().unwrap().start = DrawingStart::Pending;
+    }
+
+    /// The requests asked so far, oldest first.
+    pub fn asked(&self) -> Vec<DrawingRequest> {
+        self.0.lock().unwrap().asked.clone()
+    }
+}
+
+impl OwnerDrawings for DrawingsDesk {
+    fn category<'a>(
+        &'a self,
+        _db: &'a Db,
+        code: &'a str,
+    ) -> DrawingFuture<'a, Option<DrawingCategory>> {
+        Box::pin(async move {
+            Ok((code == "owner_drawings").then(|| DrawingCategory {
+                code: code.to_owned(),
+                name_en: "Owner drawings".to_owned(),
+                owner_party: self.0.lock().unwrap().owner,
+            }))
+        })
+    }
+
+    fn request<'a>(
+        &'a self,
+        _state: &'a AppState,
+        request: DrawingRequest,
+    ) -> DrawingFuture<'a, DrawingStart> {
+        Box::pin(async move {
+            let mut desk = self.0.lock().unwrap();
+            desk.asked.push(request);
+            Ok(desk.start)
+        })
+    }
+}
+
 /// What the refund routes take.
 #[derive(Deserialize)]
 struct RefundForm {
@@ -830,6 +906,8 @@ pub struct Booted {
     pub fees: RecordingFees,
     /// The charges that can be invoiced.
     pub charges: RecordingCharges,
+    /// The owner drawings approval.
+    pub drawings: DrawingsDesk,
 }
 
 impl Booted {
@@ -1610,6 +1688,8 @@ pub async fn boot_with(module: WlPayments, gateway: FakeGateway) -> Booted {
         charges: Arc::new(Mutex::new(Vec::new())),
     };
     let charge_invoicer: Arc<dyn ChargeInvoicer> = Arc::new(charges.clone());
+    let drawings = DrawingsDesk::default();
+    let owner_drawings: Arc<dyn OwnerDrawings> = Arc::new(drawings.clone());
     let app = App::new()
         .module(Auth::new())
         .module(Permissions)
@@ -1620,7 +1700,8 @@ pub async fn boot_with(module: WlPayments, gateway: FakeGateway) -> Booted {
         .provide(invoicer)
         .provide(bounce_fees)
         .provide(charge_invoicer)
-        .provide(top_up_provider);
+        .provide(top_up_provider)
+        .provide(owner_drawings);
     let app = record(app, &received);
     let app = record(app, &reversed);
     let app = record(app, &refund_paid);
@@ -1667,5 +1748,6 @@ pub async fn boot_with(module: WlPayments, gateway: FakeGateway) -> Booted {
         top_ups,
         fees,
         charges,
+        drawings,
     }
 }
