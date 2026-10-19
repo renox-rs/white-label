@@ -7,6 +7,7 @@ pub mod block_effects;
 pub mod block_guard;
 pub mod branding;
 pub mod broadcast;
+pub mod bank_statements;
 pub mod budgets;
 pub mod calendar;
 pub mod cheques;
@@ -63,6 +64,7 @@ pub use broadcast::{
     BROADCAST_SUBJECT_TYPE, BroadcastCancelReason, BroadcastCancelled, BroadcastCompleted,
     BroadcastId, BroadcastRequest, BroadcastRequesters, NoRequesters, RequesterCheck,
 };
+pub use bank_statements::{BankBalance, BankStatements, NoBankStatements};
 pub use budgets::{
     BudgetFuture, COMPANY_BUDGET_SUBJECT_TYPE, CompanyBudgetApproved, CompanyBudgetId,
     CompanyBudgetVarianceReached, CompanyBudgets, NoCompanyBudgets,
@@ -71,7 +73,8 @@ pub use calendar::BusinessCalendar;
 pub use cheques::{
     BounceFeeCharge, BounceFees, CHARGE_SUBJECT_TYPE, CHEQUE_SUBJECT_TYPE, ChargeInvoicer,
     ChequeBounceResolved, ChequeBounced, ChequeId, ChequeOutcome, ChequeSchedule, ChequeStatus,
-    ChequeSummary, Cheques, NoBounceFees, NoChargeInvoicer, NoCheques, RegisterCheque,
+    ChequeDocument, ChequeSummary, Cheques, NoBounceFees, NoChargeInvoicer, NoCheques, OpenCheque,
+    RegisterCheque,
     ScheduledCheque,
 };
 pub use config::{ClientConfig, ConfigError, RolesConfig, owner_role};
@@ -130,10 +133,10 @@ pub use deposits::{
     NoDepositDeductions, NoDepositTopUps, NoDeposits, PublishedDeductions, TopUpCharge,
 };
 pub use payments::{
-    AllocationTarget, DEPOSIT_SUBJECT_TYPE, DepositId, Direction, NoPayments, PaymentId,
+    AllocationTarget, BankPayment, DEPOSIT_SUBJECT_TYPE, DepositId, Direction, NoPayments, PaymentId,
     PaymentMethod, PaymentReceived, PaymentRecorder, PaymentReversed, PaymentSource, PaymentStatus,
     PaymentSummary, RecordPayment, RefundAttemptRef, RefundFailed, RefundFailedFrom,
-    RefundFailureKind, RefundId, RefundPaid, RefundRequest, RefundSource, ReversalReason,
+    RefundFailureKind, RefundId, RefundPaid, RefundRequest, RefundSource, ReversalReason, UnpaidRefund,
 };
 pub use sales::{CampaignActivated, CampaignEnded, CampaignId};
 pub use scopes::COMPANY_ADMIN_ROLE;

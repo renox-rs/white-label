@@ -321,6 +321,28 @@ pub struct ChequeSummary {
     pub linked: Vec<Subject>,
 }
 
+/// One document a cheque pays, with the part of the cheque applied to it:
+/// [`OpenCheque::documents`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChequeDocument {
+    /// The invoice, charge or supplier bill.
+    pub document: Subject,
+    /// The part of the cheque's open amount applied to it, in fils.
+    pub amount: i64,
+}
+
+/// A cheque not cleared yet and what it pays: [`Cheques::not_cleared`]
+/// (`FIN.CFL.01`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OpenCheque {
+    /// The cheque; its `open_amount` is what is still expected.
+    pub cheque: ChequeSummary,
+    /// What it pays, oldest first, with the open amount applied in that
+    /// order: an invoice up to its balance, the first other document with
+    /// what is left. A document that takes nothing is listed with 0.
+    pub documents: Vec<ChequeDocument>,
+}
+
 /// The future a [`Cheques`] method returns.
 pub type ChequeFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 
@@ -366,6 +388,20 @@ pub trait Cheques: Send + Sync + 'static {
         party: PartyId,
         currency: &'a str,
     ) -> ChequeFuture<'a, i64>;
+
+    /// The cheques of `legal_entity_id` in `direction` not cleared yet
+    /// (`received`, `due_for_deposit` or `deposited`; a bounced cheque
+    /// re-presented counts again once `deposited`), oldest cheque date
+    /// first, each with its open amount and the documents it pays. Read
+    /// only. The default finds none (`FIN.CFL.01`).
+    fn not_cleared<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _legal_entity_id: i64,
+        _direction: Direction,
+    ) -> ChequeFuture<'a, Vec<OpenCheque>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
 }
 
 /// The 422 of a write while payments is off.
