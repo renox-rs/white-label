@@ -17,8 +17,8 @@ use renox::nav::NavLink;
 use renox::prelude::*;
 
 pub use documents::{
-    Attach, AttachReason, AttachRefused, Document, DocumentSource, DocumentStatus, DocumentVersion,
-    Documents, NewDocument,
+    Attach, AttachReason, AttachRefused, CorrectionInput, Document, DocumentSource, DocumentStatus,
+    DocumentVersion, Documents, NewDocument,
 };
 pub use expiry::{AffectedItem, ExpiredLog, ReminderLog, RenewalTask};
 pub use flags::DocumentFlag;

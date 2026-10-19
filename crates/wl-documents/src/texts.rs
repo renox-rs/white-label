@@ -174,6 +174,14 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_documents.attach.expiry_missing",
         ":kind needs its expiry date",
     ),
+    (
+        "wl_documents.correction.not_accepted",
+        "Only an accepted :kind can be corrected",
+    ),
+    (
+        "wl_documents.correction.open",
+        "A correction of :kind is already waiting for review",
+    ),
     ("wl_documents.guard.expired", ":kind expired on :date"),
     ("wl_documents.guard.missing", ":kind missing"),
     ("wl_documents.guard.rejected", ":kind rejected"),

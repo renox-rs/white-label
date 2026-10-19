@@ -348,6 +348,11 @@ pub enum AttachReason {
     NumberMissing,
     /// `record` without the expiry date the kind has.
     ExpiryMissing,
+    /// `correct` on a document that is not accepted.
+    NotAccepted,
+    /// `correct` while another document of the kind and subject waits for
+    /// review.
+    CorrectionOpen,
 }
 
 impl AttachReason {
@@ -361,6 +366,8 @@ impl AttachReason {
             AttachReason::NeedsReview => "wl_documents.attach.needs_review",
             AttachReason::NumberMissing => "wl_documents.attach.number_missing",
             AttachReason::ExpiryMissing => "wl_documents.attach.expiry_missing",
+            AttachReason::NotAccepted => "wl_documents.correction.not_accepted",
+            AttachReason::CorrectionOpen => "wl_documents.correction.open",
         }
     }
 }
@@ -603,6 +610,70 @@ async fn emit_uploaded(state: &AppState, document: &Document, kind: &DocumentKin
         .await
 }
 
+/// What a correction of an accepted document carries (`DOC.ACL.03`, #51):
+/// the new values and the new file. The kind and subject are the old
+/// document's.
+#[derive(Debug)]
+pub struct CorrectionInput {
+    /// The new number.
+    pub number: Option<String>,
+    /// The new issue date.
+    pub issue_date: Option<NaiveDate>,
+    /// The new expiry date.
+    pub expiry_date: Option<NaiveDate>,
+    /// The new issuing authority.
+    pub authority: Option<String>,
+    /// The new title (the old one's when none).
+    pub title: Option<String>,
+    /// A note on the file.
+    pub note: Option<String>,
+    /// The new file.
+    pub file: Upload,
+}
+
+impl CorrectionInput {
+    /// A correction with `file` and nothing else yet.
+    #[must_use]
+    pub fn new(file: Upload) -> Self {
+        CorrectionInput {
+            number: None,
+            issue_date: None,
+            expiry_date: None,
+            authority: None,
+            title: None,
+            note: None,
+            file,
+        }
+    }
+}
+
+/// Records, after the commit, that `document` replaced `old`: the old and
+/// new ids, number and expiry date, the uploader and the accepting user.
+async fn audit_corrected(
+    state: &AppState,
+    by: &AuthUser,
+    old: &Document,
+    document: &Document,
+) -> Result {
+    renox::audit::record(
+        &state.db,
+        renox::audit::Entry::new("document.corrected")
+            .user(by.id)
+            .subject(Document::TABLE, document.id)
+            .data(json!({
+                "old_document": old.id,
+                "new_document": document.id,
+                "old_number": old.number,
+                "new_number": document.number,
+                "old_expiry_date": old.expiry_date,
+                "new_expiry_date": document.expiry_date,
+                "uploaded_by": document.uploaded_by,
+                "accepted_by": by.id,
+            })),
+    )
+    .await
+}
+
 /// The documents service (§6).
 pub struct Documents;
 
@@ -647,6 +718,83 @@ impl Documents {
         create(state, Some(by.id), new, DocumentStatus::Accepted).await
     }
 
+    /// `correct`: `by` (holding `documents.upload`) submits `input` as a
+    /// correction of the accepted `document`: a new document of the same
+    /// kind and subject, in `pending_review`, uploaded by `by`. `document`
+    /// stays accepted and in force until the correction is accepted, by
+    /// someone else for a blocking kind. Refused as [`Documents::attach`] is,
+    /// when `document` is not accepted, and while another document of the
+    /// kind and subject waits for review (one correction at a time).
+    /// Records `document.correction_submitted` and emits `DocumentUploaded`.
+    ///
+    /// # Errors
+    ///
+    /// `Forbidden` without `documents.upload`; the database's or the disk's
+    /// errors.
+    pub async fn correct(
+        state: &AppState,
+        by: &AuthUser,
+        document: &Document,
+        input: CorrectionInput,
+    ) -> Attach<Document> {
+        if !by.has_permission(permissions::UPLOAD) {
+            return Err(Error::Forbidden);
+        }
+        let kind = document.kind(&state.db).await?;
+        let current = Document::find_or_404(&state.db, document.id).await?;
+        let refusal = if current.status != DocumentStatus::Accepted {
+            Some(AttachReason::NotAccepted)
+        } else if Document::query()
+            .where_(Document::SUBJECT_TYPE.eq(current.subject_type.as_str()))
+            .where_(Document::SUBJECT_ID.eq(current.subject_id))
+            .where_(Document::KIND_ID.eq(current.kind_id))
+            .where_(Document::STATUS.eq(DocumentStatus::PendingReview))
+            .first(&state.db)
+            .await?
+            .is_some()
+        {
+            Some(AttachReason::CorrectionOpen)
+        } else {
+            None
+        };
+        if let Some(reason) = refusal {
+            return Ok(Err(AttachRefused::new(
+                reason,
+                &kind,
+                &current.subject_type,
+                &input.file,
+            )));
+        }
+        let mut new = NewDocument::new(current.subject(), &kind.key, input.file);
+        new.title = input.title.or_else(|| Some(current.title.clone()));
+        new.number = input.number;
+        new.issue_date = input.issue_date;
+        new.expiry_date = input.expiry_date;
+        new.issuing_authority = input.authority;
+        new.note = input.note;
+        let created = match create(state, Some(by.id), new, DocumentStatus::PendingReview).await? {
+            Ok(created) => created,
+            Err(refused) => return Ok(Err(refused)),
+        };
+        renox::audit::record(
+            &state.db,
+            renox::audit::Entry::new("document.correction_submitted")
+                .user(by.id)
+                .subject(Document::TABLE, created.id)
+                .data(json!({
+                    "old_document": current.id,
+                    "new_document": created.id,
+                    "old_number": current.number,
+                    "new_number": created.number,
+                    "old_expiry_date": current.expiry_date,
+                    "new_expiry_date": created.expiry_date,
+                    "uploaded_by": by.id,
+                })),
+        )
+        .await?;
+        Ok(Ok(created))
+    }
+
     /// `accept`: `by` (holding `documents.review`) accepts the pending
     /// `document`, once the number and expiry date its kind has are filled.
     /// The previous accepted document of the same kind and subject is
@@ -687,6 +835,12 @@ impl Documents {
         let accepted = Document::find_or_404(&state.db, document.id).await?;
         if done {
             emit_accepted(state, &accepted, &kind).await?;
+            if input.blocking {
+                for (old_id, _) in &superseded {
+                    let old = Document::find_or_404(&state.db, *old_id).await?;
+                    audit_corrected(state, by, &old, &accepted).await?;
+                }
+            }
             emit_superseded(state, superseded, accepted.id).await?;
         }
         Ok(accepted)

@@ -15,8 +15,8 @@ use renox::prelude::*;
 use renox::testing::TestApp;
 use serde::Deserialize;
 use wl_documents::{
-    Document, DocumentKind, Documents, KindSeed, NewDocument, SopInput, Sops, WlDocuments,
-    permissions as perm,
+    CorrectionInput, Document, DocumentKind, Documents, KindSeed, NewDocument, SopInput, Sops,
+    WlDocuments, permissions as perm,
 };
 use wl_kernel::documents::{
     BlockCondition, BlockEntry, BlockMode, BlockSubjects, DocumentAccepted, DocumentFuture,
@@ -1001,6 +1001,22 @@ async fn attach(
     }
 }
 
+/// `correct` as the logged-in user.
+async fn correct(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<i64>,
+    Form(form): Form<FileForm>,
+) -> Result<String> {
+    let document = Document::find_or_404(&state.db, id).await?;
+    let mut input = CorrectionInput::new(form.upload());
+    input.expiry_date = form.expires_on;
+    match Documents::correct(&state, &user, &document, input).await? {
+        Ok(document) => Ok(document.id.to_string()),
+        Err(refused) => Err(refused.into_error()),
+    }
+}
+
 async fn resubmit(
     State(state): State<AppState>,
     user: AuthUser,
@@ -1267,6 +1283,7 @@ impl Module for Harness {
         Routes::new()
             .post("/test/documents/record", record)
             .post("/test/documents/attach", attach)
+            .post("/test/documents/{id}/correct", correct)
             .post("/test/documents/{id}/resubmit", resubmit)
             .post("/test/documents/{id}/archive", archive)
             .post("/test/sops", sop_create)
@@ -1329,6 +1346,7 @@ pub async fn boot_options(options: Options) -> Booted {
     let options_kernel = options.kernel;
     let app = App::new()
         .module(Auth::new())
+        .module(renox::audit::Audit)
         .module(Permissions)
         .module(WlDocuments)
         .module(Harness {
