@@ -53,6 +53,7 @@ use wl_kernel::payments::{
 use wl_kernel::tickets::{
     Assignee, OpenTicket, TaskCreator, TicketFuture, TicketId, TicketRef, provide_task_creator,
 };
+use wl_kernel::workforce::{EmployeeId, StaffProfile, Workforce, WorkforceFuture, provide_workforce};
 use wl_kernel::{PartyId, Subject};
 
 /// The pages extend the app's layout; a package test has no app, so it
@@ -1331,6 +1332,58 @@ impl BlockGuard for Blocks {
     }
 }
 
+// ---- the workforce ----------------------------------------------------------------
+
+/// A workforce that knows the managers of the users the test sets.
+#[derive(Clone, Default)]
+pub struct Staff(Arc<Mutex<BTreeMap<i64, Vec<i64>>>>);
+
+impl Staff {
+    /// The user `user` is an employee whose managers are the users `managers`.
+    pub fn set_managers(&self, user: i64, managers: &[i64]) {
+        self.0.lock().unwrap().insert(user, managers.to_vec());
+    }
+}
+
+impl Workforce for Staff {
+    fn employee_of_user<'a>(
+        &'a self,
+        _db: &'a Db,
+        user_id: i64,
+    ) -> WorkforceFuture<'a, Option<EmployeeId>> {
+        Box::pin(async move {
+            Ok(self
+                .0
+                .lock()
+                .unwrap()
+                .contains_key(&user_id)
+                .then_some(EmployeeId(user_id)))
+        })
+    }
+
+    fn staff<'a>(
+        &'a self,
+        _state: &'a AppState,
+        employee: EmployeeId,
+    ) -> WorkforceFuture<'a, Option<StaffProfile>> {
+        Box::pin(async move {
+            let managers = self.0.lock().unwrap().get(&employee.0).cloned();
+            Ok(managers.map(|managers| StaffProfile {
+                employee,
+                party: PartyId(employee.0),
+                user_id: Some(employee.0),
+                role: "property_manager".to_owned(),
+                scopes: Vec::new(),
+                legal_entity_id: None,
+                listed: true,
+                on_leave: false,
+                returns_on: None,
+                managers,
+            }))
+        })
+    }
+}
+
 // ---- the booted app -----------------------------------------------------------
 
 /// An event log.
@@ -1379,6 +1432,7 @@ struct Fakes {
     invoices: InvoiceDesk,
     refunds: Refunds,
     blocks: Blocks,
+    staff: Staff,
 }
 
 impl Module for Fakes {
@@ -1396,6 +1450,7 @@ impl Module for Fakes {
         provide_invoicer(app, self.invoices.clone());
         provide_payment_recorder(app, self.refunds.clone());
         provide_block_guard(app, self.blocks.clone());
+        provide_workforce(app, self.staff.clone());
         record(app, &self.activated);
         record(app, &self.cancelled);
         record(app, &self.withdrawn);
@@ -1441,6 +1496,8 @@ pub struct Booted {
     pub forced: Recorded<LeaseForceTerminated>,
     /// The parties on hold.
     pub blocks: Blocks,
+    /// The managers of the staff.
+    pub staff: Staff,
 }
 
 /// The tenant of the tests: a person.
@@ -1656,6 +1713,7 @@ pub async fn boot() -> Booted {
         invoices: InvoiceDesk::default(),
         refunds: Refunds::default(),
         blocks: Blocks::default(),
+        staff: Staff::default(),
     };
     let logs = (
         fakes.activated.clone(),
@@ -1675,6 +1733,7 @@ pub async fn boot() -> Booted {
         fakes.invoices.clone(),
         fakes.refunds.clone(),
         fakes.blocks.clone(),
+        fakes.staff.clone(),
     );
     let app = App::new()
         .module(Auth::new())
@@ -1717,7 +1776,8 @@ pub async fn boot() -> Booted {
     permissions::define_role(app.db(), wl_kernel::COMPANY_ADMIN_ROLE, &admin)
         .await
         .unwrap();
-    let (parties, docs, notices, tasks, cheques, deposits, invoices, refunds, blocks) = handles;
+    let (parties, docs, notices, tasks, cheques, deposits, invoices, refunds, blocks, staff) =
+        handles;
     parties.add(TENANT.0, "Tariq Hassan", PartyKind::Person);
     parties.add(COMPANY.0, "Blue Dunes LLC", PartyKind::Company);
     Booted {
@@ -1732,6 +1792,7 @@ pub async fn boot() -> Booted {
         invoices,
         refunds,
         blocks,
+        staff,
         activated: logs.0,
         cancelled: logs.1,
         withdrawn: logs.2,
