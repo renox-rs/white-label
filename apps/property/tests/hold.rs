@@ -52,6 +52,8 @@ impl Scene {
         )
         .await
         .unwrap();
+        // The tenant's signed acceptance is attached (`PRP.ACL.17`).
+        self.t.accept(&v2);
         (v1, v2)
     }
 }
@@ -121,6 +123,7 @@ async fn bl_prp_15_a_new_lease_and_an_amendment_are_refused_too() {
     )
     .await
     .unwrap();
+    s.t.accept(&amendment);
     s.t.blocks.block(TENANT);
 
     let building_b = s.t.user_with("Omar", AGENT).await;
