@@ -229,10 +229,20 @@ pub async fn clear(
     let cheque = reload(state, cheque).await?;
     let request =
         cheque_money::payment_for(&cheque, cheque.open_amount, PaymentMethod::Cheque, None);
-    let prepared = cheque_money::prepare(state, &request, Some(user.id)).await?;
+    let mut prepared = cheque_money::prepare(state, &request, Some(user.id)).await?;
+    // The cheque of an approved owner drawing records the drawing.
+    let drawing = crate::drawings::for_cheque(&state.db, &cheque).await?;
+    if let Some(row) = &drawing {
+        cheque_money::mark_drawing(&mut prepared, row);
+    }
     let mut tx = state.db.begin().await?;
     let outcome = cheque.transition(CLEAR).by(user).run_in(&mut tx).await?;
     let (payment, received) = cheque_money::record_in(&mut tx, prepared).await?;
+    if let Some(mut row) = drawing {
+        row.status = crate::drawings::DrawingStatus::Recorded;
+        row.payment_id = Some(payment.id);
+        row.save(&mut tx).await?;
+    }
     tx.commit().await?;
     outcome.emit(state).await.map_err(TransitionError::Failed)?;
     received.emit(state).await.map_err(TransitionError::Failed)?;

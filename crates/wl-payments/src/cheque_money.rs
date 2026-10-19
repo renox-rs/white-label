@@ -83,6 +83,13 @@ pub(crate) async fn prepare(
     Ok(Prepared { payment, input })
 }
 
+/// Marks the payment of `prepared` as the owner drawing `row` stands for: its
+/// cheque is being cleared, which is the approved payment (`FIN.ACL.21`).
+pub(crate) fn mark_drawing(prepared: &mut Prepared, row: &crate::drawings::PaymentDrawing) {
+    crate::drawings::mark_cheque_payment(&mut prepared.payment, row);
+    prepared.input.drawing_approved = true;
+}
+
 /// Records `prepared` in `tx` (the system transition: the cheque's own
 /// permission covers the user). The caller commits, then emits the outcome.
 pub(crate) async fn record_in(

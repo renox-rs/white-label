@@ -29,6 +29,7 @@ use renox::state_machine::{Outcome, StateMachine, Transition, TransitionCtx, Tra
 use serde::{Deserialize, Serialize};
 use wl_kernel::LegalEntity;
 use wl_kernel::documents::today;
+use wl_kernel::drawings::PURPOSE;
 use wl_kernel::payments::{
     Direction, PaymentMethod, PaymentStatus, RecordPayment, payment_voucher_series, receipt_series,
 };
@@ -51,6 +52,10 @@ pub(crate) struct RecordInput {
     pub entity_active: bool,
     /// Whether the party is found.
     pub party_found: bool,
+    /// Whether an outgoing owner drawing was approved (`FIN.ACL.21`): set
+    /// only by [`crate::drawings`], never by a caller.
+    #[serde(default)]
+    pub drawing_approved: bool,
 }
 
 /// The run's input, if it is a [`RecordInput`].
@@ -133,6 +138,19 @@ fn with_rules(transition: Transition<Payment>) -> Transition<Payment> {
                 match input(ctx) {
                     Some(input) if input.party_found => Ok(()),
                     _ => Err("The party was not found.".to_owned()),
+                }
+            })
+        })
+        .guard("drawing_approved", |payment: &Payment, ctx| {
+            Box::pin(async move {
+                // `FIN.ACL.21`: only the final approval records a drawing out;
+                // a repayment by the owner (money in) needs none.
+                if payment.purpose != PURPOSE || payment.direction != Direction::Out {
+                    return Ok(());
+                }
+                match input(ctx) {
+                    Some(input) if input.drawing_approved => Ok(()),
+                    _ => Err("An owner drawing is recorded only after its approval.".to_owned()),
                 }
             })
         })
@@ -231,6 +249,7 @@ async fn gather(state: &AppState, payment: &Payment) -> Result<RecordInput> {
         method_enabled: crate::config_of(state).method_enabled(payment.method.as_str()),
         entity_active: entity.as_ref().is_some_and(LegalEntity::is_active),
         party_found: party.is_some(),
+        drawing_approved: false,
     })
 }
 
@@ -337,6 +356,7 @@ mod tests {
             method_enabled: true,
             entity_active: true,
             party_found: true,
+            drawing_approved: false,
         }
     }
 
@@ -376,7 +396,8 @@ mod tests {
                 "method_enabled",
                 "details_complete",
                 "entity_active",
-                "party_found"
+                "party_found",
+                "drawing_approved"
             ]
         );
         let system = machine.find(RECORD_BY_SYSTEM).expect("transition");
@@ -422,6 +443,24 @@ mod tests {
 
         let bare = payment_of(&request(PaymentMethod::Cheque));
         assert!(refused(&bare, &ready()).await.is_some());
+    }
+
+    #[renox::test]
+    async fn an_outgoing_drawing_needs_its_approval_and_a_repayment_does_not() {
+        let mut drawing = payment_of(&request(PaymentMethod::Cash).outgoing());
+        assert_eq!(refused(&drawing, &ready()).await, None);
+        drawing.purpose = PURPOSE.to_owned();
+        let message = refused(&drawing, &ready()).await.expect("refused");
+        assert!(message.contains("only after its approval"), "{message}");
+        let approved = RecordInput {
+            drawing_approved: true,
+            ..ready()
+        };
+        assert_eq!(refused(&drawing, &approved).await, None);
+        // Money in with the purpose: the owner pays back.
+        let mut repayment = payment_of(&request(PaymentMethod::Cash));
+        repayment.purpose = PURPOSE.to_owned();
+        assert_eq!(refused(&repayment, &ready()).await, None);
     }
 
     #[renox::test]

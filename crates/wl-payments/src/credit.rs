@@ -124,6 +124,8 @@ pub async fn credit_balance(db: &Db, party: PartyId, currency: &str) -> Result<i
         .where_(Payment::CURRENCY.eq(currency.trim().to_ascii_uppercase()))
         .where_(Payment::DIRECTION.eq(Direction::In))
         .where_(Payment::STATUS.eq(PaymentStatus::Received))
+        // A repayment by the owner is no credit of the owner party.
+        .where_(Payment::PURPOSE.ne(wl_kernel::drawings::PURPOSE))
         .get(db)
         .await?;
     let sums = allocated_by_payment(db, &payments).await?;

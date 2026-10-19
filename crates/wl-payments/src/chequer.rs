@@ -101,6 +101,9 @@ async fn check(state: &AppState, request: &RegisterCheque) -> Result<()> {
             request.bank.trim()
         )));
     }
+    // The cheque of an approved owner drawing: the owner party, the approved
+    // amount (`FIN.ACL.21`).
+    crate::drawings::check_cheque(state, request).await?;
     Ok(())
 }
 
@@ -127,6 +130,7 @@ fn new_cheque(request: &RegisterCheque, by: Option<i64>) -> Cheque {
         field_collected: request.field_collected && request.direction == Direction::In,
         open_amount: request.amount,
         recorded_by: by,
+        drawing_request_id: request.drawing,
         status: ChequeStatus::Received,
         ..Default::default()
     }
@@ -168,6 +172,13 @@ pub async fn register(
     check(state, &request).await?;
     let mut tx = state.db.begin().await?;
     let cheque = insert_in(&mut tx, &request, by).await?;
+    if let Some(id) = request.drawing {
+        // The drawing knows its cheque, so a second one is refused.
+        if let Some(mut row) = crate::drawings::PaymentDrawing::find(&mut tx, id).await? {
+            row.cheque_id = Some(cheque.id);
+            row.save(&mut tx).await?;
+        }
+    }
     tx.commit().await?;
     Ok(cheque)
 }

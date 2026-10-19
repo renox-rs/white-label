@@ -30,6 +30,9 @@ pub(crate) fn payment_problem(payment: &Payment, unallocated: i64, amount: i64) 
     if !payment.status.is_received() {
         return Some("Only a received payment can be allocated.".to_owned());
     }
+    if payment.purpose == wl_kernel::drawings::PURPOSE {
+        return Some("An owner drawings payment cannot be allocated to a document.".to_owned());
+    }
     if payment.direction != Direction::In {
         return Some("Only an incoming payment can be allocated to an invoice.".to_owned());
     }
