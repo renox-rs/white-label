@@ -175,11 +175,15 @@ async fn a_draft_is_changed_and_deleted_but_a_submitted_bill_is_not() {
         "inv-2"
     );
 
-    // Once submitted (set here directly, the machine comes later) neither
-    // is allowed.
-    let mut held = SupplierBill::find_or_404(t.db(), bill.id).await.unwrap();
-    held.status = SupplierBillStatus::Matched;
-    held.save(t.db()).await.unwrap();
+    // Once submitted neither is allowed.
+    let submitted = wl_invoicing::bill_submit::submit(
+        t.state(),
+        wl_invoicing::credit_notes::By::System(None),
+        bill.id,
+    )
+    .await
+    .unwrap();
+    assert_eq!(submitted.status, SupplierBillStatus::Matched);
     assert!(is_refused(
         supplier_bill::change(t.db(), bill.id, &changed).await
     ));

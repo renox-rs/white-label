@@ -1,7 +1,10 @@
 //! The Supplier bill (wl-invoicing §3): a bill from a supplier with its
 //! lines ([`crate::bill_line::BillLine`]), totals and UAE VAT per line. This
-//! part holds the model and the draft service (create, change, discard); the
-//! machine, `submit` and the duplicate hold come with the later parts.
+//! file holds the model and the draft service (create, change, discard); the
+//! machine is in [`crate::bill_machine`], `submit` in [`crate::bill_submit`]
+//! and the duplicate hold in [`crate::duplicates`]. `SupplierBill` is
+//! `#[model(state_machine)]`, so `save` refuses a changed status and a new
+//! bill is inserted only as `draft`.
 
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
@@ -38,6 +41,7 @@ pub const POSSIBLE_DUPLICATE: &str = "possible_duplicate";
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
 #[model(
     table = "wl_invoicing_supplier_bills",
+    state_machine,
     index(status),
     index(party_id, number_key),
     index(contract_type, contract_id)

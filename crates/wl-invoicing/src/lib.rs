@@ -7,6 +7,8 @@ pub mod allocate;
 pub mod allocation;
 pub mod bad_debt_relief;
 pub mod bill_line;
+pub mod bill_machine;
+pub mod bill_submit;
 pub mod config;
 pub mod credit;
 pub mod credit_note;
@@ -19,6 +21,7 @@ pub mod dispute;
 pub mod dispute_credit;
 mod dispute_pages;
 pub mod dispute_resolve;
+pub mod duplicates;
 pub mod escalation;
 pub mod escalation_log;
 mod events;
@@ -61,6 +64,8 @@ use renox::prelude::*;
 
 pub use allocation::Allocation;
 pub use bill_line::{BillLine, BillLineDraft};
+pub use bill_machine::{approve as approve_supplier_bill, void as void_supplier_bill};
+pub use bill_submit::submit as submit_supplier_bill;
 pub use config::{
     DuplicateKey, InvoicingConfig, ReasonProblem, ReliefMonths, SettingError, WriteOffReason,
 };
@@ -372,6 +377,7 @@ impl Module for WlInvoicing {
             .model::<InvoiceLine>()
             .model::<SupplierBill>()
             .model::<BillLine>()
+            .model::<duplicates::BillException>()
             .model::<CreditNote>()
             .model::<CreditNoteLine>()
             .model::<CreditNoteMovement>()
@@ -407,6 +413,8 @@ impl Module for WlInvoicing {
         renox::state_machine::register::<Invoice>();
         renox::state_machine::register::<CreditNote>();
         renox::state_machine::register::<VatSummary>();
+        // The supplier bill machine, as the subject `invoicing.supplier_bill`.
+        bill_machine::register();
         // The kernel runs `write_off_approved` by name; `FIN.ACL.15`.
         policy::register(&self.config);
         // The settings the services read (`config_of`).

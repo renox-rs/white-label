@@ -96,6 +96,46 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_invoicing.supplier_bill.exception.possible_duplicate",
         "Possible duplicate",
     ),
+    (
+        "wl_invoicing.supplier_bill.problem.supplier",
+        "The supplier was not found.",
+    ),
+    (
+        "wl_invoicing.supplier_bill.problem.lines",
+        "A supplier bill needs at least one line.",
+    ),
+    (
+        "wl_invoicing.supplier_bill.problem.entity",
+        "The receiving legal entity is not set or not active.",
+    ),
+    (
+        "wl_invoicing.supplier_bill.problem.rate",
+        "Set the exchange rate of a bill in a foreign currency.",
+    ),
+    (
+        "wl_invoicing.supplier_bill.problem.service_dates",
+        "Every line of a bill against a contract needs a service date.",
+    ),
+    (
+        "wl_invoicing.supplier_bill.problem.not_held",
+        "The bill may be a duplicate; it is held, not matched.",
+    ),
+    (
+        "wl_invoicing.supplier_bill.problem.held",
+        "The bill is not held as a possible duplicate.",
+    ),
+    (
+        "wl_invoicing.supplier_bill.problem.approve_reason",
+        "Give a reason to approve a held bill.",
+    ),
+    (
+        "wl_invoicing.supplier_bill.problem.creator",
+        "A possible duplicate cannot be approved by the user who entered it.",
+    ),
+    (
+        "wl_invoicing.supplier_bill.problem.void_reason",
+        "Give a reason to void the bill.",
+    ),
     ("wl_invoicing.credit_note.title", "Credit notes"),
     ("wl_invoicing.credit_note.empty", "No credit notes yet"),
     ("wl_invoicing.credit_note.draft_number", "Draft"),
