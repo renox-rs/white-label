@@ -154,7 +154,8 @@ pub use scopes::COMPANY_ADMIN_ROLE;
 pub use segments::{NoSegments, SegmentId, Segments};
 pub use subject::Subject;
 pub use tickets::{
-    Assignee, ComplianceFlagCleared, ComplianceFlagRaised, ComplianceFlagReason, NoTickets,
+    Assignee, ContractCover, NoServiceContractCoverage, ServiceContractCoverage,
+    provide_service_contract_coverage, service_contract_coverage, ComplianceFlagCleared, ComplianceFlagRaised, ComplianceFlagReason, NoTickets,
     OpenTicket, Requester, SERVICE_CONTRACT_SERIES, SERVICE_CONTRACT_SUBJECT_TYPE,
     ServiceContractActivated, ServiceContractEnded, ServiceContractId, TASK_CATEGORY, TaskComment,
     TaskCreator, TicketAssigned, TicketChannel, TicketClosed, TicketId, TicketRef,

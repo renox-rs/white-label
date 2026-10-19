@@ -1980,3 +1980,22 @@ fn the_einvoice_events_name_the_transmission_and_the_document() {
     };
     assert_eq!(accepted.document.to_string(), "invoicing.invoice:9");
 }
+
+/// #87: without the `ticketing` module no service contract is known, so the
+/// coverage of a day is unknown.
+#[renox::test]
+async fn without_ticketing_a_service_contract_covers_nothing_known() {
+    use wl_kernel::tickets::{ContractCover, ServiceContractId, service_contract_coverage};
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let cover = service_contract_coverage(app.state())
+        .covers(app.db(), ServiceContractId(12), day())
+        .await
+        .unwrap();
+    assert_eq!(cover, ContractCover::Unknown);
+    let after = ContractCover::AfterEnd {
+        ends_on: NaiveDate::from_ymd_opt(2026, 9, 30).unwrap(),
+    };
+    assert_eq!(renox::serde_json::to_value(after).unwrap()["AfterEnd"]["ends_on"], "2026-09-30");
+}

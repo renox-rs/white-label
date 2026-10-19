@@ -522,6 +522,68 @@ impl From<i64> for ServiceContractId {
     }
 }
 
+/// Whether a service contract covers work done on a day (wl-ticketing §6
+/// `ServiceContracts::coverage`, wl-invoicing §5.4 step 3).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ContractCover {
+    /// The day is up to the contract's end date, or its termination date
+    /// when it was terminated, or a later version of the contract that
+    /// covers the day.
+    Covered,
+    /// The day is after the end: `ends_on` is the last day the contract (and
+    /// its renewals) covered.
+    AfterEnd {
+        /// The contract's end date, or its termination date when terminated.
+        ends_on: NaiveDate,
+    },
+    /// The contract is unknown, or ticketing is off: nothing can be said.
+    Unknown,
+}
+
+/// What other modules ask of the service contracts. `wl-ticketing` provides
+/// it; without that module, [`service_contract_coverage`] gives
+/// [`NoServiceContractCoverage`], which knows no contract.
+pub trait ServiceContractCoverage: Send + Sync + 'static {
+    /// Whether `contract` covers work done on `on` (Asia/Dubai calendar day):
+    /// up to its end date, or its termination date when `terminated`. A day
+    /// after that end is still covered when a renewal of the contract (a
+    /// newer version) covers it. The default knows no contract.
+    fn covers<'a>(
+        &'a self,
+        _db: &'a Db,
+        _contract: ServiceContractId,
+        _on: NaiveDate,
+    ) -> TicketFuture<'a, ContractCover> {
+        Box::pin(async { Ok(ContractCover::Unknown) })
+    }
+}
+
+/// The service contract coverage when the `ticketing` module is off: every
+/// contract is [`ContractCover::Unknown`].
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoServiceContractCoverage;
+
+impl ServiceContractCoverage for NoServiceContractCoverage {}
+
+/// Makes `coverage` the app's [`ServiceContractCoverage`]; `wl-ticketing`
+/// calls it in `register`.
+pub fn provide_service_contract_coverage(
+    app: &mut Registry,
+    coverage: impl ServiceContractCoverage,
+) {
+    let coverage: Arc<dyn ServiceContractCoverage> = Arc::new(coverage);
+    app.provide(coverage);
+}
+
+/// The app's [`ServiceContractCoverage`], or [`NoServiceContractCoverage`]
+/// when none is provided.
+pub fn service_contract_coverage(state: &AppState) -> Arc<dyn ServiceContractCoverage> {
+    match state.provided::<Arc<dyn ServiceContractCoverage>>() {
+        Some(coverage) => Arc::clone(&coverage),
+        None => Arc::new(NoServiceContractCoverage),
+    }
+}
+
 /// A service contract became `active` (`activate`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ServiceContractActivated {
