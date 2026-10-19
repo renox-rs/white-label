@@ -59,6 +59,43 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_sales.lead_sources.in_use_refused",
         "This lead source is in use; deactivate it instead.",
     ),
+    (
+        "wl_sales.campaigns.name_required",
+        "Give the campaign a name.",
+    ),
+    (
+        "wl_sales.campaigns.bad_code",
+        "Use 2 to 20 letters, digits, hyphens or underscores for the code.",
+    ),
+    (
+        "wl_sales.campaigns.code_taken",
+        "A campaign has or had this code.",
+    ),
+    (
+        "wl_sales.campaigns.bad_promo_code",
+        "Use 2 to 20 letters, digits, hyphens or underscores for the promo code.",
+    ),
+    (
+        "wl_sales.campaigns.promo_code_taken",
+        "Another campaign has this promo code.",
+    ),
+    (
+        "wl_sales.campaigns.end_before_start",
+        "The end date cannot be before the start date.",
+    ),
+    (
+        "wl_sales.campaigns.not_draft",
+        "Only a draft campaign can be deleted.",
+    ),
+    ("wl_sales.campaigns.not_found", "There is no such campaign."),
+    (
+        "wl_sales.notices.ended_subject",
+        "Campaign {{ code }} has ended",
+    ),
+    (
+        "wl_sales.notices.ended_body",
+        "The campaign {{ name }} ({{ code }}) ended; its last day was {{ end_date }}.",
+    ),
     ("wl_sales.fields.code", "Code"),
     ("wl_sales.fields.name_en", "Name (English)"),
     ("wl_sales.fields.name_ar", "Name (Arabic)"),

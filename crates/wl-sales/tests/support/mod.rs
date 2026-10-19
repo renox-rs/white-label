@@ -28,6 +28,11 @@ impl Booted {
         self.app.db()
     }
 
+    /// The app state.
+    pub fn state(&self) -> &AppState {
+        self.app.state()
+    }
+
     /// A user holding exactly `grants` (through a role of their own).
     pub async fn user(&self, name: &str, grants: &[&str]) -> User {
         let email = format!("{}@example.com", name.to_lowercase());
@@ -45,6 +50,20 @@ impl Booted {
 
 /// `WlSales` booted with auth and the defaults installed.
 pub async fn boot() -> Booted {
+    boot_with(Noop).await
+}
+
+/// A module that adds nothing.
+struct Noop;
+
+impl Module for Noop {
+    fn name(&self) -> &'static str {
+        "noop"
+    }
+}
+
+/// [`boot`] with one more module (a recorder of events or messages).
+pub async fn boot_with(extra: impl Module) -> Booted {
     let views = tempfile::tempdir().expect("a temporary views directory");
     let path = views.path().join("layouts/app.html");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -52,7 +71,8 @@ pub async fn boot() -> Booted {
     let app = App::new()
         .module(Auth::new())
         .module(Permissions)
-        .module(WlSales::new());
+        .module(WlSales::new())
+        .module(extra);
     let dir = views.path().to_path_buf();
     let app = TestApp::with_config(app, |c| c.views_path = dir).await;
     app.kernel()

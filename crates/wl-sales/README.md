@@ -21,6 +21,8 @@ What is here so far:
 | Permissions (`campaigns.*`, `acquisition.reports.view`) | §6 | `permissions` |
 | Over-budget approval, budget alerts, late-response days | §7 | `config` |
 | Lead sources, their nine seeds (`sales:install`, the seeder) and the `/sales/lead-sources` page | §3 | `lead_source`, `seed`, `pages` |
+| Campaigns, their machine (`activate`, `end`, `reopen`), promo codes, the events and the owner's end notice | §3, §4.6 | `campaign`, `machine`, `promo_code`, `notices` |
+| The daily task `sales:campaigns` (00:05 Asia/Dubai) and `campaigns::run_daily` | §5 | `daily` |
 
 The module owns `src/texts.rs`, the English texts (`wl_sales.*`). The app changes or
 translates them in `resources/lang/{locale}.json`.

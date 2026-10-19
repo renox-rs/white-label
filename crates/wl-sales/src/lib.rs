@@ -1,17 +1,34 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
+pub mod campaign;
 pub mod config;
+pub mod daily;
+mod events;
 pub mod lead_source;
+pub mod machine;
+pub mod notices;
 pub mod pages;
+pub mod promo_code;
 pub mod seed;
 mod texts;
 
 use renox::db::Migration;
 use renox::prelude::*;
 
+pub use campaign::{
+    Campaign, CampaignCode, CampaignRefused, CampaignStatus, MarketingChannel, Purpose,
+};
 pub use config::SalesConfig;
 pub use lead_source::{LeadSource, LeadSourceRefused};
+pub use promo_code::PromoCode;
+
+/// The campaign services under the names of the plan: `campaigns::delete`
+/// and `campaigns::run_daily`.
+pub mod campaigns {
+    pub use crate::campaign::{DELETE_CHECKS, DeleteCheck, delete, delete_with};
+    pub use crate::daily::{Report, run_daily};
+}
 
 /// The templates, compiled in. An app replaces one with a file of the same
 /// name under its views directory.
@@ -99,6 +116,12 @@ impl Module for WlSales {
             }
         });
         app.model::<LeadSource>();
+        app.model::<Campaign>();
+        app.model::<CampaignCode>();
+        app.model::<PromoCode>();
+        notices::register_types();
+        events::register(app);
+        daily::schedule(app);
         // The nine lead sources; a re-run keeps the client's changes.
         app.command(
             "sales:install",
