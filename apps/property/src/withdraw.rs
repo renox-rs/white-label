@@ -234,8 +234,8 @@ pub async fn withdraw(
     }
     let day = today();
     let target = target_for(&lease, day);
-    if let Some(problem) = problem(&lease, target, day) {
-        return Err(TransitionError::Guard(problem));
+    if let Some(why) = problem(&lease, target, day) {
+        return Err(TransitionError::Guard(why));
     }
     if !agreement_attached(state, &lease, day).await? {
         return Err(TransitionError::Guard(english(
