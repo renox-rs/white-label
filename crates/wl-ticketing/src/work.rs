@@ -23,7 +23,7 @@
 //! for the requester user or `tickets.assign`, within seven days of
 //! `resolved_at`. A bare run without the input (the generic transition
 //! route) is refused by the guards. After a `confirm`, `close` or
-//! system `complete` commits, `TicketClosed` is emitted.
+//! system `auto_confirm` or `complete` commits, `TicketClosed` is emitted.
 
 use renox::chrono::TimeDelta;
 use renox::db::DateTime;
@@ -54,6 +54,9 @@ pub const RESOLVE: &str = "resolve";
 pub const CONFIRM: &str = "confirm";
 /// `close`: staff close a resolved ticket.
 pub const CLOSE: &str = "close";
+/// `confirm`, run by the system when the requester does nothing
+/// (`WRK.RUL.02`).
+pub const AUTO_CONFIRM: &str = "auto_confirm";
 /// `reopen`: a resolved ticket goes back to work.
 pub const REOPEN: &str = "reopen";
 /// `cancel`: the ticket is not needed.
@@ -89,6 +92,10 @@ pub(crate) struct WorkInput {
     /// Whether the category needs the requester's sign-off (`close`).
     #[serde(default)]
     pub requires_signoff: bool,
+    /// How many charge lines the ticket has (`resolve`): a chargeable ticket
+    /// needs at least one.
+    #[serde(default)]
+    pub charge_lines: u64,
 }
 
 impl WorkInput {
@@ -101,6 +108,7 @@ impl WorkInput {
             resolution_due: None,
             paused_minutes: 0,
             requires_signoff: false,
+            charge_lines: 0,
         }
     }
 }
@@ -289,6 +297,7 @@ pub(crate) fn transitions() -> Vec<Transition<Ticket>> {
         auto_resume_transition(),
         resolve_transition(),
         confirm_transition(),
+        auto_confirm_transition(),
         close_transition(),
         reopen_transition(),
         cancel_transition(),
@@ -400,6 +409,17 @@ fn resolve_transition() -> Transition<Ticket> {
             .from([TicketStatus::InProgress])
             .to(TicketStatus::Resolved),
     ))
+    .guard("charge", |ticket: &Ticket, ctx| {
+        // A chargeable ticket has at least one charge line (§4.1).
+        let missing = ticket.chargeable && input(ctx).is_none_or(|i| i.charge_lines == 0);
+        Box::pin(async move {
+            if missing {
+                Err(crate::texts::english("wl_ticketing.charge.needed").to_owned())
+            } else {
+                Ok(())
+            }
+        })
+    })
     .effect(|ticket: &Ticket, ctx, tx| {
         let id = ticket.id;
         let at = input(ctx).map(|i| i.at);
@@ -511,6 +531,19 @@ fn confirm_transition() -> Transition<Ticket> {
                 }
             })
         })
+}
+
+/// `confirm`, run by the system (`WRK.RUL.02`): resolved → closed when the
+/// requester did nothing for N days. It counts as the requester's `confirm`.
+fn auto_confirm_transition() -> Transition<Ticket> {
+    with_input(
+        Transition::new(AUTO_CONFIRM)
+            .label("Confirm (system)")
+            .tone("success")
+            .from([TicketStatus::Resolved])
+            .to(TicketStatus::Closed)
+            .system(),
+    )
 }
 
 /// `close`: resolved → closed, by `tickets.assign`, when the category needs
@@ -716,10 +749,22 @@ pub async fn resolve(
     ticket: &Ticket,
     at: DateTime,
 ) -> std::result::Result<(), TransitionError> {
+    let charge_lines = if ticket.chargeable {
+        crate::charge::ChargeLine::query()
+            .where_(crate::charge::ChargeLine::TICKET_ID.eq(ticket.id))
+            .count(&state.db)
+            .await?
+    } else {
+        0
+    };
+    let input = WorkInput {
+        charge_lines,
+        ..WorkInput::at(at)
+    };
     let _outcome = ticket
         .transition(RESOLVE)
         .by(user)
-        .input(&WorkInput::at(at))
+        .input(&input)
         .run(state)
         .await?;
     Ok(())
@@ -738,6 +783,27 @@ pub async fn confirm(
     ticket: &Ticket,
 ) -> std::result::Result<(), TransitionError> {
     let _outcome = ticket.transition(CONFIRM).by(user).run(state).await?;
+    Ok(())
+}
+
+/// The system confirms the resolved `ticket` at `at` for a requester who did
+/// nothing (`WRK.RUL.02`); it is `closed` and `TicketClosed` follows the
+/// commit.
+///
+/// # Errors
+///
+/// `NotFrom` unless it is `resolved`.
+pub async fn auto_confirm(
+    state: &AppState,
+    ticket: &Ticket,
+    at: DateTime,
+) -> std::result::Result<(), TransitionError> {
+    let _outcome = ticket
+        .transition(AUTO_CONFIRM)
+        .by_system()
+        .input(&WorkInput::at(at))
+        .run(state)
+        .await?;
     Ok(())
 }
 
@@ -892,7 +958,7 @@ pub async fn complete(
 /// `close` or `complete` commits.
 pub(crate) fn register_events(app: &mut Registry) {
     app.listen(|event: Transitioned<Ticket>, state: AppState| async move {
-        if ![CONFIRM, CLOSE, COMPLETE].contains(&event.transition.as_str()) {
+        if ![CONFIRM, AUTO_CONFIRM, CLOSE, COMPLETE].contains(&event.transition.as_str()) {
             return Ok(());
         }
         // The committed row: the times the lifecycle wrote.

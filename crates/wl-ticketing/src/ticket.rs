@@ -105,6 +105,8 @@ pub struct Ticket {
     pub confidential: bool,
     /// Whether it can carry charges (copied from the category).
     pub chargeable: bool,
+    /// The draft invoice made for it, once there is one: one per ticket.
+    pub invoice_id: Option<i64>,
     /// The lifecycle state; changed only by a transition.
     pub status: TicketStatus,
     /// When it is due, if its opener gave it a due time of its own (a staff

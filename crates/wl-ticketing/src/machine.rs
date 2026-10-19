@@ -4,6 +4,7 @@
 //! [*] --> open --assign--> assigned --assign--> assigned
 //!         assigned --start--> in_progress --hold--> on_hold --resume--> in_progress
 //!         in_progress --resolve--> resolved --confirm | close--> closed (terminal)
+//!         resolved --auto_confirm (system, WRK.RUL.02)--> closed
 //!         resolved --reopen--> in_progress
 //!         open | assigned | on_hold --cancel--> cancelled (terminal)
 //!         open | assigned | in_progress | on_hold --resolve_from_source (system)--> resolved
@@ -92,6 +93,7 @@ mod tests {
             ("auto_resume", vec!["on_hold"], "in_progress", true),
             ("resolve", vec!["in_progress"], "resolved", false),
             ("confirm", vec!["resolved"], "closed", false),
+            ("auto_confirm", vec!["resolved"], "closed", true),
             ("close", vec!["resolved"], "closed", false),
             ("reopen", vec!["resolved"], "in_progress", false),
             (
@@ -159,7 +161,8 @@ mod tests {
         assert_eq!(guards("start"), ["input", "by_assignee"]);
         assert_eq!(guards("hold"), ["input", "by_assignee", "hold_reason"]);
         assert_eq!(guards("resume"), ["input", "by_assignee"]);
-        assert_eq!(guards("resolve"), ["input", "by_assignee"]);
+        assert_eq!(guards("resolve"), ["input", "by_assignee", "charge"]);
+        assert_eq!(guards("auto_confirm"), ["input"]);
         assert_eq!(guards("confirm"), ["by_requester"]);
         assert_eq!(guards("close"), ["input", "signoff"]);
         assert!(guards("cancel").is_empty());

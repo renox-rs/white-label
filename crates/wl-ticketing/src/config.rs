@@ -117,6 +117,17 @@ impl HoldReason {
     }
 }
 
+/// When a category makes the invoice draft of a chargeable ticket (§4.1).
+#[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum InvoiceOn {
+    /// At `resolve` (the default).
+    #[default]
+    Resolve,
+    /// At close: `confirm`, `close` or the auto-close. At `resolve` the
+    /// requester only sees the amount.
+    Close,
+}
+
 /// A ticket category.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
 #[model(table = "wl_ticketing_categories", unique(key))]
@@ -140,6 +151,8 @@ pub struct Category {
     pub confidential: bool,
     /// Whether its tickets can carry charges.
     pub chargeable: bool,
+    /// When its chargeable tickets are invoiced: at `resolve` or at close.
+    pub invoice_on: InvoiceOn,
     /// Whether new tickets can use it.
     pub active: bool,
     /// Whether the platform owns it (the categories other modules open

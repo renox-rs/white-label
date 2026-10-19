@@ -176,6 +176,34 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_ticketing.action.reopen", "Reopen"),
     ("wl_ticketing.action.confirm_title", "Are you sure?"),
     ("wl_ticketing.action.done", "Done."),
+    (
+        "wl_ticketing.charge.not_chargeable",
+        "This ticket is not chargeable.",
+    ),
+    (
+        "wl_ticketing.charge.no_description",
+        "A charge line needs a description.",
+    ),
+    (
+        "wl_ticketing.charge.bad_quantity",
+        "A charge line needs a quantity above 0.",
+    ),
+    (
+        "wl_ticketing.charge.bad_price",
+        "A charge line cannot have a negative price.",
+    ),
+    (
+        "wl_ticketing.charge.no_party",
+        "No invoice draft was made: the ticket has no requester party to bill.",
+    ),
+    (
+        "wl_ticketing.charge.amount_shown",
+        "The charge for this work is :amount including VAT. You will be invoiced when you confirm it.",
+    ),
+    (
+        "wl_ticketing.charge.needed",
+        "Add the charge before resolving.",
+    ),
     ("wl_ticketing.categories.title", "Ticket categories"),
     (
         "wl_ticketing.categories.subtitle",

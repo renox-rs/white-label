@@ -4,6 +4,7 @@
 pub mod assign;
 pub mod categories;
 pub mod category_pages;
+pub mod charge;
 pub mod comments;
 pub mod config;
 mod machine;
@@ -24,8 +25,9 @@ use renox::nav::NavLink;
 use renox::prelude::*;
 
 pub use assign::{AssignKind, AssignRequest, Assignment, assign, assign_as_system};
+pub use charge::{ChargeInput, ChargeLine};
 pub use comments::{Comment, CommentVisibility};
-pub use config::{Category, CustomField, FieldKind, HoldReason, SlaPolicy, SlaTarget};
+pub use config::{Category, CustomField, FieldKind, HoldReason, InvoiceOn, SlaPolicy, SlaTarget};
 pub use open::Tickets;
 pub use priority::Priority;
 pub use reasons::{ReasonRefused, ReassignReason, ReassignReasons};
@@ -180,11 +182,15 @@ impl Module for WlTicketing {
             .model::<Category>()
             .model::<Ticket>()
             .model::<Assignment>()
-            .model::<Comment>();
+            .model::<Comment>()
+            .model::<ChargeLine>();
         // `rnx state:diagram Ticket` and the admin panel find the machine.
         renox::state_machine::register::<Ticket>();
         // `TicketClosed` after a `confirm` or `close` commits.
         work::register_events(app);
+        // The invoice draft of a chargeable ticket, after `resolve` or at
+        // close, as its category says.
+        charge::register_events(app);
         // `TicketAssigned` and the notices after an `assign` commits.
         notices::register(app);
         // A ticket's scope is its subject's (the approvals and wl-notify find
