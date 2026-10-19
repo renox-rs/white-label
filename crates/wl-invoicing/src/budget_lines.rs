@@ -205,7 +205,7 @@ pub async fn create(state: &AppState, new: NewBudget, by: Option<i64>) -> Result
             }
         },
     };
-    let name = clean(Some(&new.name)).unwrap_or_else(|| format!("{} v{version}", new.fiscal_year));
+    let name = clean(Some(new.name.as_str())).unwrap_or_else(|| format!("{} v{version}", new.fiscal_year));
     let mut budget = CompanyBudget {
         legal_entity_id: entity.id,
         fiscal_year: new.fiscal_year,
