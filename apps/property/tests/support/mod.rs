@@ -1928,6 +1928,8 @@ pub async fn boot() -> Booted {
         perm::LEASES_CANCEL,
         perm::LEASES_ACTIVATE,
         perm::LEASES_MANAGE,
+        perm::OWNER_STATEMENTS_APPROVE,
+        perm::AGREEMENTS_MANAGE,
     ];
     permissions::define_role(app.db(), MANAGER, &manager).await.unwrap();
     let agent = [
@@ -1942,6 +1944,7 @@ pub async fn boot() -> Booted {
         perm::LEASES_VIEW,
         perm::LEASES_CANCEL,
         perm::DEPOSITS_REFUND,
+        perm::OWNER_STATEMENTS_PREPARE,
     ];
     permissions::define_role(app.db(), ACCOUNTANT, &accountant)
         .await
