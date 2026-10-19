@@ -9,6 +9,7 @@ pub mod kinds;
 pub mod machine;
 pub mod overrides;
 pub mod pages;
+pub mod registrations;
 pub mod sops;
 mod texts;
 
@@ -166,19 +167,22 @@ impl Module for WlDocuments {
         // The standard guard `document_valid` other modules call through
         // `wl_kernel::documents::guard`.
         wl_kernel::documents::provide_guard(app, DocumentsGuard);
-        // The kinds modules and verticals register are installed by this
-        // module's command and seeder; both keep the client's changes and
-        // lock legal blocks again.
+        // The kinds modules and verticals register, and the kinds for
+        // registrations and certifications every client gets (#54), are
+        // installed by this module's command and seeder; both keep the
+        // client's changes and lock legal blocks again.
         app.command(
             "documents:install",
             "Store the document kinds the modules register, and lock legal blocks again",
             |_args, state: AppState| async move {
-                let created = kinds::install(&state.db).await?;
+                let created = registrations::install_all(&state).await?;
                 println!("{created} document kinds created.");
                 Ok(())
             },
         );
-        app.seeder(|state: AppState| async move { kinds::install(&state.db).await.map(|_| ()) });
+        app.seeder(|state: AppState| async move {
+            registrations::install_all(&state).await.map(|_| ())
+        });
         // The review queue in the app group and the kinds in the admin group
         // of the staff sidebar; the labels are the app's `nav.documents_review`
         // and `nav.document_kinds` texts.

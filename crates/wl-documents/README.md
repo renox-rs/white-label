@@ -21,6 +21,7 @@ What is here so far:
 |---|---|---|
 | Permissions (`documents.*`, `document_kinds.manage`) | §6 | `permissions` |
 | Document kinds and their `blocks`: `KindSeed`, the seeder that locks legal blocks again, `blocks_for`, client changes that leave locked entries alone, `set_enabled` (a kind that is off takes no new documents; the ones it has stay) | §3, §5.6, §7 | `kinds` |
+| The seeded kinds for registrations and certifications (trademark, Halal, ISO, product registration / conformity, other certification): EN/AR names, expiry and reminders, no `blocks`, on or off per vertical, the responsible role per vertical (`register_vertical`) | §3, §7, `DOC.EXP.01` | `registrations` |
 
 The module owns `src/texts.rs`, the English texts (`wl_documents.*`). The app changes or
 translates them in `resources/lang/{locale}.json`.
