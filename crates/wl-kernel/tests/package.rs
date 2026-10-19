@@ -1141,3 +1141,27 @@ fn a_type_with_only_mark_contact_invalid_is_refused_unless_marketing() {
     assert!(notify::notification_type("kernel_package.marketing").is_some());
     assert!(notify::notification_type("kernel_package.paired").is_some());
 }
+
+/// #60 AC1/AC7: a type registered without a list gets the default of its
+/// group (and the group's role); an own list is kept.
+#[test]
+fn a_type_registered_without_reactions_gets_the_group_default() {
+    use wl_kernel::notify::{
+        self, GROUP_INVOICES, GiveUpReaction, NotificationTypeDef, default_give_up,
+    };
+
+    let def = NotificationTypeDef::new("kernel_package.seeded", "invoicing").group(GROUP_INVOICES);
+    let expected = default_give_up(&def);
+    notify::register_type(def);
+    let stored = notify::notification_type("kernel_package.seeded").unwrap();
+    assert_eq!(stored.give_up, expected.reactions);
+    assert_eq!(stored.staff_role.as_deref(), Some("receivables"));
+
+    notify::register_type(
+        NotificationTypeDef::new("kernel_package.own", "invoicing")
+            .group(GROUP_INVOICES)
+            .give_up(&[GiveUpReaction::None]),
+    );
+    let own = notify::notification_type("kernel_package.own").unwrap();
+    assert_eq!(own.give_up, [GiveUpReaction::None]);
+}

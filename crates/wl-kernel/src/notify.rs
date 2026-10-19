@@ -169,6 +169,80 @@ pub fn check_give_up(
     Ok(())
 }
 
+/// Group key: invoices.
+pub const GROUP_INVOICES: &str = "invoices";
+/// Group key: statements.
+pub const GROUP_STATEMENTS: &str = "statements";
+/// Group key: payments.
+pub const GROUP_PAYMENTS: &str = "payments";
+/// Group key: reminders.
+pub const GROUP_REMINDERS: &str = "reminders";
+/// Group key: bookings.
+pub const GROUP_BOOKINGS: &str = "bookings";
+/// Group key: portal.
+pub const GROUP_PORTAL: &str = "portal";
+/// Group key: documents.
+pub const GROUP_DOCUMENTS: &str = "documents";
+/// Group key: signatures.
+pub const GROUP_SIGNATURES: &str = "signatures";
+/// Group key: guardian.
+pub const GROUP_GUARDIAN: &str = "guardian";
+/// Group key: employee security.
+pub const GROUP_EMPLOYEE_SECURITY: &str = "employee_security";
+/// Group key: one-time passwords.
+pub const GROUP_OTP: &str = "otp";
+/// Group key: marketing.
+pub const GROUP_MARKETING: &str = "marketing";
+/// Group key: tracking.
+pub const GROUP_TRACKING: &str = "tracking";
+
+/// The role told on give-up for the receivables groups.
+const ROLE_RECEIVABLES: &str = "receivables";
+/// The role told on give-up for `employee_security`.
+const ROLE_HR: &str = "hr";
+
+/// The default give-up reaction of a type (wl-notify §5.4).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GiveUpDefault {
+    /// The reactions, in order.
+    pub reactions: Vec<GiveUpReaction>,
+    /// The staff role told, when the group names one.
+    pub staff_role: Option<String>,
+}
+
+/// The default give-up reaction of `def`, by the precedence statutory, then
+/// OTP, then group, then urgency. Pure: it ignores the type's own
+/// `give_up` and `staff_role`.
+pub fn default_give_up(def: &NotificationTypeDef) -> GiveUpDefault {
+    use GiveUpReaction::{AlternativeRecipient, MarkContactInvalid, StaffTask, StatutoryNotice};
+    let (mut reactions, role): (Vec<GiveUpReaction>, Option<&str>) = match def.group.as_str() {
+        GROUP_INVOICES | GROUP_STATEMENTS | GROUP_PAYMENTS | GROUP_REMINDERS => (
+            vec![MarkContactInvalid, AlternativeRecipient, StaffTask],
+            Some(ROLE_RECEIVABLES),
+        ),
+        GROUP_BOOKINGS | GROUP_MARKETING => (vec![MarkContactInvalid], None),
+        GROUP_PORTAL | GROUP_DOCUMENTS | GROUP_SIGNATURES => {
+            (vec![MarkContactInvalid, StaffTask], None)
+        }
+        GROUP_GUARDIAN => (vec![AlternativeRecipient, StaffTask], None),
+        GROUP_EMPLOYEE_SECURITY => (vec![MarkContactInvalid, StaffTask], Some(ROLE_HR)),
+        GROUP_OTP | GROUP_TRACKING => (vec![GiveUpReaction::None], None),
+        _ => (vec![StaffTask], None),
+    };
+    if def.statutory {
+        reactions = vec![MarkContactInvalid, StatutoryNotice];
+    } else if def.urgency == Urgency::Urgent
+        && reactions.last() != Some(&StaffTask)
+        && reactions != [GiveUpReaction::None]
+    {
+        reactions.push(StaffTask);
+    }
+    GiveUpDefault {
+        reactions,
+        staff_role: role.map(str::to_owned),
+    }
+}
+
 /// The default text of a notification type for one channel and language.
 /// `{{ name }}` in the subject or body is replaced with the request data's
 /// field `name` ([`fill`]).
@@ -336,15 +410,26 @@ pub fn fill(template: &str, data: &Value) -> String {
 static TYPES: RwLock<BTreeMap<String, Arc<NotificationTypeDef>>> = RwLock::new(BTreeMap::new());
 
 /// Adds `def` to the process-wide registry of notification types; modules
-/// call it in `register`. Registering the same key again replaces it.
+/// call it in `register`. Registering the same key again replaces it. A
+/// definition with an empty `give_up` gets [`default_give_up`] (its role only
+/// when `staff_role` is `None`); its own list, even `[none]`, is kept.
 ///
 /// # Panics
 ///
 /// When [`check_give_up`] refuses the definition, so a module's mistake
 /// fails at boot.
-pub fn register_type(def: NotificationTypeDef) {
+pub fn register_type(mut def: NotificationTypeDef) {
+    // The combination rule checks the list a module gives, not the seeded
+    // default (the booking row is `mark_contact_invalid` alone).
     if let Err(error) = check_give_up(def.category, &def.give_up) {
         panic!("notification type `{}`: {error}", def.key);
+    }
+    if def.give_up.is_empty() {
+        let default = default_give_up(&def);
+        def.give_up = default.reactions;
+        if def.staff_role.is_none() {
+            def.staff_role = default.staff_role;
+        }
     }
     TYPES
         .write()
@@ -977,6 +1062,127 @@ mod tests {
                 None,
                 "Invoice {{ number }} overdue",
             )
+    }
+
+    fn row(group: &str) -> NotificationTypeDef {
+        NotificationTypeDef::new("kernel_test.row", "kernel_test").group(group)
+    }
+
+    fn keyed(key: &str, group: &str) -> NotificationTypeDef {
+        NotificationTypeDef::new(key, "kernel_test").group(group)
+    }
+
+    fn defaults(def: &NotificationTypeDef) -> (Vec<GiveUpReaction>, Option<String>) {
+        let d = default_give_up(def);
+        (d.reactions, d.staff_role)
+    }
+
+    #[test]
+    fn the_default_table_has_a_row_per_group() {
+        let receivables = (
+            vec![MarkContactInvalid, AlternativeRecipient, StaffTask],
+            Some("receivables".to_owned()),
+        );
+        for group in [
+            GROUP_INVOICES,
+            GROUP_STATEMENTS,
+            GROUP_PAYMENTS,
+            GROUP_REMINDERS,
+        ] {
+            assert_eq!(defaults(&row(group)), receivables, "{group}");
+        }
+        for group in [GROUP_BOOKINGS, GROUP_MARKETING] {
+            assert_eq!(defaults(&row(group)), (vec![MarkContactInvalid], None));
+        }
+        for group in [GROUP_PORTAL, GROUP_DOCUMENTS, GROUP_SIGNATURES] {
+            assert_eq!(
+                defaults(&row(group)),
+                (vec![MarkContactInvalid, StaffTask], None),
+                "{group}"
+            );
+        }
+        assert_eq!(
+            defaults(&row(GROUP_GUARDIAN)),
+            (vec![AlternativeRecipient, StaffTask], None)
+        );
+        assert_eq!(
+            defaults(&row(GROUP_EMPLOYEE_SECURITY)),
+            (vec![MarkContactInvalid, StaffTask], Some("hr".to_owned()))
+        );
+        for group in [GROUP_OTP, GROUP_TRACKING] {
+            assert_eq!(defaults(&row(group)), (vec![GiveUpReaction::None], None));
+        }
+        assert_eq!(defaults(&row("unknown")), (vec![StaffTask], None));
+        // The key-prefix group `new` fills in counts as no group.
+        let fresh = NotificationTypeDef::new("lease.something", "property");
+        assert_eq!(defaults(&fresh), (vec![StaffTask], None));
+    }
+
+    #[test]
+    fn urgency_appends_a_staff_task_except_for_none() {
+        let urgent = |group: &str| row(group).urgency(Urgency::Urgent);
+        for group in [GROUP_BOOKINGS, GROUP_MARKETING] {
+            assert_eq!(defaults(&urgent(group)).0, [MarkContactInvalid, StaffTask]);
+        }
+        assert_eq!(
+            defaults(&urgent(GROUP_GUARDIAN)).0,
+            [AlternativeRecipient, StaffTask]
+        );
+        assert_eq!(
+            defaults(&urgent(GROUP_INVOICES)),
+            defaults(&row(GROUP_INVOICES))
+        );
+        assert_eq!(defaults(&urgent("unknown")).0, [StaffTask]);
+        assert_eq!(defaults(&urgent(GROUP_TRACKING)).0, [GiveUpReaction::None]);
+        assert_eq!(defaults(&urgent(GROUP_OTP)).0, [GiveUpReaction::None]);
+    }
+
+    #[test]
+    fn statutory_wins_over_group_otp_and_urgency() {
+        for group in [GROUP_INVOICES, GROUP_OTP, GROUP_GUARDIAN, "unknown"] {
+            for urgency in [Urgency::Normal, Urgency::Urgent] {
+                let def = row(group).statutory(true).urgency(urgency);
+                assert_eq!(
+                    defaults(&def).0,
+                    [MarkContactInvalid, GiveUpReaction::StatutoryNotice],
+                    "{group}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn register_type_seeds_an_empty_list_and_keeps_an_own_one() {
+        register_type(keyed("kernel_test.seeded", GROUP_INVOICES));
+        let seeded = notification_type("kernel_test.seeded").unwrap();
+        assert_eq!(
+            seeded.give_up,
+            [MarkContactInvalid, AlternativeRecipient, StaffTask]
+        );
+        assert_eq!(seeded.staff_role.as_deref(), Some("receivables"));
+
+        register_type(
+            keyed("kernel_test.own", GROUP_INVOICES)
+                .give_up(&[GiveUpReaction::None])
+                .staff_role("boss"),
+        );
+        let own = notification_type("kernel_test.own").unwrap();
+        assert_eq!(own.give_up, [GiveUpReaction::None]);
+        assert_eq!(own.staff_role.as_deref(), Some("boss"));
+
+        register_type(keyed("kernel_test.role", GROUP_INVOICES).staff_role("boss"));
+        let role = notification_type("kernel_test.role").unwrap();
+        assert_eq!(role.staff_role.as_deref(), Some("boss"));
+        assert_eq!(role.give_up.len(), 3);
+    }
+
+    #[test]
+    fn the_seeded_booking_default_passes_register_type() {
+        register_type(keyed("kernel_test.booking", GROUP_BOOKINGS));
+        assert_eq!(
+            notification_type("kernel_test.booking").unwrap().give_up,
+            [MarkContactInvalid]
+        );
     }
 
     #[test]
