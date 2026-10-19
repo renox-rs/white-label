@@ -1109,6 +1109,41 @@ impl Booted {
         self.cheque_action(by, cheque, "replace", &[]).await
     }
 
+    /// `by` refers the bounced `cheque` to a legal case (`case_type` is
+    /// `civil_execution` or `criminal_complaint`), owned by user `owner`
+    /// when given.
+    pub async fn refer_cheque(
+        &self,
+        by: &User,
+        cheque: &Cheque,
+        case_type: &str,
+        owner: Option<i64>,
+    ) -> TestResponse {
+        let owner = owner.map(|id| id.to_string());
+        let mut pairs = vec![("case_type", case_type)];
+        if let Some(owner) = owner.as_deref() {
+            pairs.push(("case_owner", owner));
+        }
+        self.cheque_action(by, cheque, "refer", &pairs).await
+    }
+
+    /// A user of the `finance_manager` role (told of a legal referral).
+    pub async fn finance_manager(&self, name: &str) -> User {
+        let user = User::register(
+            self.db(),
+            name,
+            &format!("{}@example.com", name.to_lowercase()),
+            "password123",
+        )
+        .await
+        .unwrap();
+        permissions::define_role(self.db(), "finance_manager", &[perm::VIEW])
+            .await
+            .unwrap();
+        user.assign_role(self.db(), "finance_manager").await.unwrap();
+        user
+    }
+
     /// Moves the clock forward to `date` at `hour:minute` UTC.
     pub fn travel_to(&self, date: &str, hour: u32, minute: u32) {
         let target = date
