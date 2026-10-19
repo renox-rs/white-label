@@ -728,10 +728,10 @@ mod tests {
 
     #[test]
     fn a_reader_lists_the_role_in_the_scope_or_everywhere() {
-        let site1 = Subject::new("sites", 1);
-        let readers = [reader("site_worker", Some(("sites", "1")))];
+        let site1 = Subject::new("property.site", 1);
+        let readers = [reader("site_worker", Some(("property.site", "1")))];
         assert!(lists(&readers, "site_worker", &[site1.clone()]));
-        assert!(!lists(&readers, "site_worker", &[Subject::new("sites", 2)]));
+        assert!(!lists(&readers, "site_worker", &[Subject::new("property.site", 2)]));
         assert!(!lists(&readers, "driver", &[site1]));
         // No scope: global, which a scoped reader does not list.
         assert!(!lists(&readers, "site_worker", &[]));
@@ -761,7 +761,7 @@ mod tests {
     fn only_a_listed_employee_is_required() {
         let sop = Sop::default();
         let readers = [reader("site_worker", None)];
-        let ali = profile("site_worker", vec![Subject::new("sites", 1)]);
+        let ali = profile("site_worker", vec![Subject::new("property.site", 1)]);
         assert!(is_required(&sop, &readers, &ali));
         let gone = StaffProfile {
             listed: false,

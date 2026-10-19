@@ -56,7 +56,7 @@ async fn world() -> World {
     t.app
         .post(
             &format!("/test/sops/{}/readers", sop.id),
-            &[("readers", "site_worker@sites:1")],
+            &[("readers", "site_worker@property.site:1")],
         )
         .await
         .assert_ok();

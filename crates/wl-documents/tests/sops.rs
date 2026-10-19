@@ -57,7 +57,7 @@ async fn world() -> World {
     t.app
         .post(
             &format!("/test/sops/{}/readers", sop.id),
-            &[("readers", "site_worker@sites:1")],
+            &[("readers", "site_worker@property.site:1")],
         )
         .await
         .assert_ok();
@@ -139,7 +139,7 @@ async fn an_sop_lives_through_versions_withdrawal_and_republication() {
     let published = w.t.app.emitted::<SopPublished>();
     assert_eq!(published.len(), 1);
     assert_eq!(published[0].readers[0].role, "site_worker");
-    assert_eq!(published[0].readers[0].scope_type, "sites");
+    assert_eq!(published[0].readers[0].scope_type, "property.site");
     assert_eq!(published[0].readers[0].scope_id, "1");
 
     // An Arabic translation accepted afterwards publishes nothing (AC8).
@@ -229,7 +229,7 @@ async fn removing_a_reader_of_an_active_sop_is_announced() {
     w.post(&w.mona, &readers, &[("readers", "driver")])
         .await
         .assert_ok();
-    w.post(&w.mona, &readers, &[("readers", "site_worker@sites:1")])
+    w.post(&w.mona, &readers, &[("readers", "site_worker@property.site:1")])
         .await
         .assert_ok();
     w.t.app.assert_not_emitted::<SopReadersChanged>();
@@ -237,7 +237,7 @@ async fn removing_a_reader_of_an_active_sop_is_announced() {
     w.accept(&w.hana, &v1).await.assert_ok();
 
     // The same readers: nothing; removing "site worker": announced.
-    w.post(&w.mona, &readers, &[("readers", "site_worker@sites:1")])
+    w.post(&w.mona, &readers, &[("readers", "site_worker@property.site:1")])
         .await
         .assert_ok();
     w.t.app.assert_not_emitted::<SopReadersChanged>();

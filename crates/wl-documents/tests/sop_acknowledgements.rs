@@ -87,7 +87,7 @@ async fn world() -> World {
     t.app
         .post(
             &format!("/test/sops/{}/readers", sop.id),
-            &[("readers", "site_worker@sites:1")],
+            &[("readers", "site_worker@property.site:1")],
         )
         .await
         .assert_ok();
@@ -417,7 +417,7 @@ async fn doc_rul_04_a_new_reader_is_asked() {
             onboarding: OnboardingId(9),
             employee: EmployeeId(113),
             job_role: "site_worker".into(),
-            scope: Some(Subject::new("sites", 1)),
+            scope: Some(Subject::new("property.site", 1)),
             trigger: "hire".into(),
         })
         .await
@@ -435,7 +435,7 @@ async fn doc_rul_04_a_new_reader_is_asked() {
             onboarding: OnboardingId(10),
             employee: EmployeeId(114),
             job_role: "driver".into(),
-            scope: Some(Subject::new("sites", 1)),
+            scope: Some(Subject::new("property.site", 1)),
             trigger: "hire".into(),
         })
         .await
@@ -721,7 +721,7 @@ async fn doc_rul_04_withdrawing_and_changing_readers() {
     w.t.app
         .post(
             &format!("/test/sops/{}/readers", w.sop.id),
-            &[("readers", "site_worker@sites:1")],
+            &[("readers", "site_worker@property.site:1")],
         )
         .await
         .assert_ok();
@@ -747,7 +747,7 @@ async fn doc_rul_04_the_onboarding_contract_waits_for_the_acknowledgement() {
     let who = |id: i64, role: &str| SopStaff {
         employee: Subject::new("hr.employee", id),
         role: role.to_owned(),
-        scopes: vec![Subject::new("sites", 1)],
+        scopes: vec![Subject::new("property.site", 1)],
     };
     let contract = sop_acknowledgements(w.t.state());
     assert!(contract

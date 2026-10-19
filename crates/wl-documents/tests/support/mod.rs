@@ -169,7 +169,7 @@ impl BlockSubjects for Deployments {
 /// The site of every deployment (#50): who may approve an override of its
 /// block is decided here.
 pub fn site() -> Scope {
-    Scope::new("sites", 1)
+    Scope::new("property.site", 1)
 }
 
 /// `run.dispatch`: the driver for a licence, the vehicle for insurance.
@@ -822,7 +822,7 @@ pub fn site_worker(id: i64, user: Option<i64>) -> StaffProfile {
         party: wl_kernel::PartyId(1000 + id),
         user_id: user,
         role: "site_worker".to_owned(),
-        scopes: vec![Subject::new("sites", 1)],
+        scopes: vec![Subject::new("property.site", 1)],
         legal_entity_id: None,
         listed: true,
         on_leave: false,
