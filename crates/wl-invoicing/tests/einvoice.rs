@@ -42,6 +42,7 @@ async fn booted(asp: &FakeAsp, date: &str, hour: u32) -> Booted {
 
 /// Moves the clock to `minutes` after 2027-01-05 06:00 UTC.
 fn at(t: &Booted, minutes: u32) {
+    let minutes = 6 * 60 + minutes;
     let day = 5 + minutes / (24 * 60);
     let rest = minutes % (24 * 60);
     t.travel_to(&format!("2027-01-{day:02}"), rest / 60, rest % 60);
