@@ -19,6 +19,11 @@ use renox::prelude::*;
 use renox::state_machine::TransitionError;
 use renox::testing::{TestApp, TestResponse};
 use serde::Deserialize;
+use wl_kernel::cheques::{
+    BounceFeeCharge, BounceFees, ChequeBounceResolved, ChequeBounced, ChequeFuture, RegisterCheque,
+    cheques as cheque_contract,
+};
+use wl_kernel::documents::today;
 use wl_kernel::invoicing::{InvoiceFuture, InvoiceId, InvoiceStatus, InvoiceSummary, Invoicer};
 use wl_kernel::notify::{MessageId, Notifier, NotifyFuture, NotifyRecipient, NotifyRequest};
 use wl_kernel::parties::{PartyDirectory, PartyFuture, PartyKind, PartyStatus, PartySummary};
@@ -31,7 +36,7 @@ use wl_payments::deposit::HoldDeposit;
 use wl_payments::gateway::FakeGateway;
 use wl_payments::refund::{RefundRequest, RefundSource, RequestRefund};
 use wl_payments::{
-    Allocation, Deposit, FollowupTask, Payment, Refund, WlPayments, permissions as perm,
+    Allocation, Cheque, Deposit, FollowupTask, Payment, Refund, WlPayments, permissions as perm,
 };
 
 /// The pages extend the app's layout; a package test has no app, so it
@@ -273,6 +278,50 @@ impl Notifier for Recording {
     ) -> NotifyFuture<'a, Vec<MessageId>> {
         self.0.lock().unwrap().push(request);
         Box::pin(async { Ok(Vec::new()) })
+    }
+}
+
+/// A [`BounceFees`] that records every charge it is asked for and makes it
+/// (a charge of the next number) unless told not to.
+#[derive(Clone)]
+pub struct RecordingFees {
+    charges: Arc<Mutex<Vec<BounceFeeCharge>>>,
+    makes: Arc<Mutex<bool>>,
+}
+
+impl Default for RecordingFees {
+    fn default() -> Self {
+        RecordingFees {
+            charges: Arc::new(Mutex::new(Vec::new())),
+            makes: Arc::new(Mutex::new(true)),
+        }
+    }
+}
+
+impl RecordingFees {
+    /// The charges asked for, oldest first.
+    pub fn charges(&self) -> Vec<BounceFeeCharge> {
+        self.charges.lock().unwrap().clone()
+    }
+
+    /// Whether the next charges are made (the default) or left out, as when
+    /// invoicing cannot schedule charges.
+    pub fn make_charges(&self, makes: bool) {
+        *self.makes.lock().unwrap() = makes;
+    }
+}
+
+impl BounceFees for RecordingFees {
+    fn add<'a>(
+        &'a self,
+        _state: &'a AppState,
+        charge: BounceFeeCharge,
+    ) -> ChequeFuture<'a, Option<Subject>> {
+        let mut charges = self.charges.lock().unwrap();
+        charges.push(charge);
+        let made = *self.makes.lock().unwrap();
+        let number = charges.len() as i64;
+        Box::pin(async move { Ok(made.then(|| Subject::new("invoicing.charge", number))) })
     }
 }
 
@@ -560,6 +609,12 @@ pub struct Booted {
     pub refund_paid: Recorded<RefundPaid>,
     /// `RefundFailed`.
     pub refund_failed: Recorded<RefundFailed>,
+    /// `ChequeBounced`.
+    pub cheque_bounced: Recorded<ChequeBounced>,
+    /// `ChequeBounceResolved`.
+    pub cheque_resolved: Recorded<ChequeBounceResolved>,
+    /// The bounce fee charges asked of invoicing.
+    pub fees: RecordingFees,
 }
 
 impl Booted {
@@ -885,6 +940,98 @@ impl Booted {
         Refund::find_or_404(self.db(), id).await.unwrap()
     }
 
+    /// A user with every cheque permission (and the payments ones to view).
+    pub async fn cheque_staff(&self, name: &str) -> User {
+        self.user(
+            name,
+            &[
+                perm::VIEW,
+                perm::CHEQUES_VIEW,
+                perm::CHEQUES_DEPOSIT,
+                perm::CHEQUES_MANAGE,
+                perm::CHEQUES_LEGAL,
+            ],
+        )
+        .await
+    }
+
+    /// Registers `request` through the kernel contract; the cheque.
+    pub async fn register_cheque(&self, request: RegisterCheque) -> Cheque {
+        let summary = cheque_contract(self.state())
+            .register(self.state(), request, None)
+            .await
+            .expect("the cheque is registered");
+        self.cheque(summary.id.0).await
+    }
+
+    /// A received cheque of `amount` fils of `party`, dated today, paying
+    /// `invoice` when given.
+    pub async fn received_cheque(
+        &self,
+        party: PartyId,
+        number: &str,
+        amount: i64,
+        invoice: Option<InvoiceId>,
+    ) -> Cheque {
+        let entity = self.entity("PGP").await;
+        let mut request = RegisterCheque::new(party, entity.id, "ENBD", number, today(), amount);
+        if let Some(invoice) = invoice {
+            request = request.link(invoice.subject());
+        }
+        self.register_cheque(request).await
+    }
+
+    /// The cheque `id`, as stored now.
+    pub async fn cheque(&self, id: i64) -> Cheque {
+        Cheque::find_or_404(self.db(), id).await.unwrap()
+    }
+
+    /// `by` posts `action` (`deposit`, `clear`, `bounce`, ...) to the page
+    /// route of `cheque`.
+    pub async fn cheque_action(
+        &self,
+        by: &User,
+        cheque: &Cheque,
+        action: &str,
+        pairs: &[(&str, &str)],
+    ) -> TestResponse {
+        self.app.acting_as(by);
+        self.app
+            .htmx()
+            .post(&format!("/cheques/{}/{action}", cheque.id), pairs)
+            .await
+    }
+
+    /// `by` deposits `cheque`; the cheque.
+    pub async fn deposit_cheque(&self, by: &User, cheque: &Cheque) -> Cheque {
+        self.cheque_action(by, cheque, "deposit", &[])
+            .await
+            .assert_ok();
+        self.cheque(cheque.id).await
+    }
+
+    /// `by` records the bounce of the deposited `cheque`.
+    pub async fn bounce_cheque(
+        &self,
+        by: &User,
+        cheque: &Cheque,
+        reason: &str,
+        certificate: &str,
+        honoured: &str,
+    ) -> TestResponse {
+        self.cheque_action(
+            by,
+            cheque,
+            "bounce",
+            &[
+                ("reason", reason),
+                ("certificate", certificate),
+                ("honoured", honoured),
+            ],
+        )
+        .await
+    }
+
     /// Moves the clock forward to `date` at `hour:minute` UTC.
     pub fn travel_to(&self, date: &str, hour: u32, minute: u32) {
         let target = date
@@ -929,11 +1076,15 @@ pub async fn boot_with(module: WlPayments, gateway: FakeGateway) -> Booted {
     let reversed = Recorded::new();
     let refund_paid = Recorded::new();
     let refund_failed = Recorded::new();
+    let cheque_bounced = Recorded::new();
+    let cheque_resolved = Recorded::new();
+    let fees = RecordingFees::default();
     let notices = Recording::default();
     let invoices = RecordingInvoicer::default();
     let directory: Arc<dyn PartyDirectory> = Arc::new(TestDirectory);
     let notifier: Arc<dyn Notifier> = Arc::new(notices.clone());
     let invoicer: Arc<dyn Invoicer> = Arc::new(invoices.clone());
+    let bounce_fees: Arc<dyn BounceFees> = Arc::new(fees.clone());
     let app = App::new()
         .module(Auth::new())
         .module(Permissions)
@@ -941,11 +1092,14 @@ pub async fn boot_with(module: WlPayments, gateway: FakeGateway) -> Booted {
         .module(Harness)
         .provide(directory)
         .provide(notifier)
-        .provide(invoicer);
+        .provide(invoicer)
+        .provide(bounce_fees);
     let app = record(app, &received);
     let app = record(app, &reversed);
     let app = record(app, &refund_paid);
     let app = record(app, &refund_failed);
+    let app = record(app, &cheque_bounced);
+    let app = record(app, &cheque_resolved);
     let config = ClientConfig::parse(CLIENT).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     let dir = views.path().to_path_buf();
@@ -977,5 +1131,8 @@ pub async fn boot_with(module: WlPayments, gateway: FakeGateway) -> Booted {
         reversed,
         refund_paid,
         refund_failed,
+        cheque_bounced,
+        cheque_resolved,
+        fees,
     }
 }
