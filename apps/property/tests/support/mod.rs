@@ -27,8 +27,10 @@ use wl_kernel::cheques::{
     ReturnCheques, ReturnedCheques, provide_cheques,
 };
 use wl_kernel::deposits::{
-    AdjustDeposit, CancelSettlement, DepositAdjusted, DepositFuture, Deposits, HeldDeposit,
-    SettlementStarted, TopUpCharge, deposit_top_ups, provide_deposits,
+    AdjustDeposit, ApplyDeposit, ApplyToInvoice, CancelSettlement, DeductionKind,
+    DeductionLineView, DepositAdjusted, DepositApplied, DepositDeductions, DepositFuture, Deposits,
+    HeldDeposit, PublishedDeductions, SettlementStarted, TopUpCharge, deposit_top_ups,
+    provide_deposit_deductions, provide_deposits,
 };
 use wl_kernel::documents::{
     BlockEntry, BlockFailure, BlockMode, BlockRefusal, CheckOutcome, DocumentFuture,
@@ -37,7 +39,7 @@ use wl_kernel::documents::{
 };
 use wl_kernel::invoicing::{
     CreditLine, CreditNoteId, InvoiceDraft, InvoiceFuture, InvoiceId, InvoiceStatus, InvoiceSummary, Invoicer,
-    ReopenReason, provide_invoicer,
+    ReopenReason, invoicer, provide_invoicer,
 };
 use wl_kernel::notify::{
     MessageId, NoticeStatus, Notifier, NotifyFuture, NotifyRequest, provide_notifier,
@@ -794,9 +796,114 @@ pub struct DepositBook {
     started: Arc<Mutex<Vec<Subject>>>,
     legal: Arc<Mutex<Vec<(Subject, bool)>>>,
     adjusted: Arc<Mutex<Vec<AdjustDeposit>>>,
+    settling: Arc<Mutex<BTreeMap<String, HeldDeposit>>>,
+    published: Arc<Mutex<BTreeMap<String, PublishedDeductions>>>,
+    applied: Arc<Mutex<Vec<(ApplyDeposit, i64)>>>,
+}
+
+/// What the portal contract shows of the deductions the deposit book holds.
+#[derive(Clone)]
+pub struct PublishedBook(pub DepositBook);
+
+impl DepositDeductions for PublishedBook {
+    fn published_for<'a>(
+        &'a self,
+        _state: &'a AppState,
+        party: PartyId,
+    ) -> DepositFuture<'a, Vec<PublishedDeductions>> {
+        Box::pin(async move {
+            Ok(self
+                .0
+                .published
+                .lock()
+                .unwrap()
+                .values()
+                .filter(|shown| self.0.party_of(shown) == Some(party))
+                .cloned()
+                .collect())
+        })
+    }
 }
 
 impl DepositBook {
+    /// The party of the settling deposit that `shown` is about, while it is being settled.
+    fn party_of(&self, shown: &PublishedDeductions) -> Option<PartyId> {
+        self.settling
+            .lock()
+            .unwrap()
+            .get(&shown.source.to_string())
+            .map(|held| held.party)
+    }
+
+    /// The deposit held for `source` is being settled: it holds `held` fils,
+    /// and the deductions published `published_days` days from today (a
+    /// negative number is in the past) carry the damage `lines`, whose window
+    /// of 14 days ends 14 days after.
+    pub fn settle_with(
+        &self,
+        source: &Subject,
+        party: PartyId,
+        held: i64,
+        published_days: i64,
+        lines: &[(&str, i64)],
+    ) {
+        let id = i64::try_from(self.settling.lock().unwrap().len()).unwrap_or(0) + 1;
+        let deposit = wl_kernel::payments::DepositId(id);
+        self.settling.lock().unwrap().insert(
+            source.to_string(),
+            HeldDeposit {
+                deposit,
+                party,
+                required: held,
+                held,
+                currency: "AED".to_owned(),
+            },
+        );
+        let published_on = day(published_days);
+        self.published.lock().unwrap().insert(
+            source.to_string(),
+            PublishedDeductions {
+                deposit,
+                source: source.clone(),
+                version: 1,
+                kind: DeductionKind::Forfeiture,
+                reason: Some("applied to deductions".to_owned()),
+                currency: "AED".to_owned(),
+                published_on,
+                window_ends_on: Some(published_on + Duration::days(14)),
+                lines: lines
+                    .iter()
+                    .enumerate()
+                    .map(|(index, (description, amount))| DeductionLineView {
+                        id: i64::try_from(index).unwrap_or(0) + 1,
+                        description: (*description).to_owned(),
+                        amount: *amount,
+                        evidence: "photos".to_owned(),
+                    })
+                    .collect(),
+                disputed_lines: Vec::new(),
+                can_dispute: false,
+            },
+        );
+    }
+
+    /// The tenant disputes line `line` (from 1) of the published deductions.
+    pub fn dispute_line(&self, source: &Subject, line: i64) {
+        if let Some(shown) = self.published.lock().unwrap().get_mut(&source.to_string()) {
+            shown.disputed_lines.push(line);
+        }
+    }
+
+    /// The applications made, with the user who forfeited.
+    pub fn applied(&self) -> Vec<(ApplyDeposit, i64)> {
+        self.applied.lock().unwrap().clone()
+    }
+
+    /// Whether a deposit is still being settled for `source`.
+    pub fn is_settling(&self, source: &Subject) -> bool {
+        self.settling.lock().unwrap().contains_key(&source.to_string())
+    }
+
     /// `amount` fils are held for `source`.
     pub fn hold(&self, source: &Subject, party: PartyId, amount: i64) {
         let mut held = self.held.lock().unwrap();
@@ -947,6 +1054,69 @@ impl Deposits for DepositBook {
                 top_up_charge,
                 part_refund,
             }))
+        })
+    }
+
+    fn apply_to_deductions<'a>(
+        &'a self,
+        state: &'a AppState,
+        by: &'a AuthUser,
+        request: ApplyDeposit,
+    ) -> DepositFuture<'a, DepositApplied> {
+        Box::pin(async move {
+            let key = request.source.to_string();
+            let refused = |message: &str| {
+                Error::Status(StatusCode::UNPROCESSABLE_ENTITY, message.to_owned())
+            };
+            let held = self.settling.lock().unwrap().get(&key).cloned();
+            let Some(held) = held else {
+                return Err(refused("no deposit is being settled"));
+            };
+            let damages: i64 = self
+                .published
+                .lock()
+                .unwrap()
+                .get(&key)
+                .map_or(0, |shown| shown.lines.iter().map(|l| l.amount).sum());
+            let unpaid: i64 = request.rent.iter().map(|r| r.amount).sum();
+            if unpaid + damages < held.held {
+                return Err(refused("the total deductions are below the deposit"));
+            }
+            let mut left = held.held;
+            let mut shares = Vec::new();
+            for invoice in &request.rent {
+                let take = left.min(invoice.amount);
+                if take > 0 {
+                    shares.push(ApplyToInvoice {
+                        invoice: invoice.invoice,
+                        amount: take,
+                    });
+                    left -= take;
+                }
+            }
+            for share in &shares {
+                invoicer(state)
+                    .allocate(
+                        state,
+                        share.invoice,
+                        Subject::new("payments.payment", 900 + share.invoice.0),
+                        share.amount,
+                    )
+                    .await?;
+            }
+            self.settling.lock().unwrap().remove(&key);
+            self.applied.lock().unwrap().push((request, by.id));
+            let to_invoices: i64 = shares.iter().map(|s| s.amount).sum();
+            Ok(DepositApplied {
+                deposit: held.deposit,
+                party: held.party,
+                legal_entity_id: 1,
+                held: held.held,
+                to_invoices,
+                shares,
+                kept: held.held - to_invoices,
+                version: 1,
+            })
         })
     }
 
@@ -1447,6 +1617,7 @@ impl Module for Fakes {
         provide_task_creator(app, self.tasks.clone());
         provide_cheques(app, self.cheques.clone());
         provide_deposits(app, self.deposits.clone());
+        provide_deposit_deductions(app, PublishedBook(self.deposits.clone()));
         provide_invoicer(app, self.invoices.clone());
         provide_payment_recorder(app, self.refunds.clone());
         provide_block_guard(app, self.blocks.clone());
@@ -1766,10 +1937,21 @@ pub async fn boot() -> Booted {
         perm::LEASES_CANCEL,
     ];
     permissions::define_role(app.db(), AGENT, &agent).await.unwrap();
-    let accountant = [perm::UNITS_VIEW, perm::LEASES_VIEW, perm::LEASES_CANCEL];
+    let accountant = [
+        perm::UNITS_VIEW,
+        perm::LEASES_VIEW,
+        perm::LEASES_CANCEL,
+        perm::DEPOSITS_REFUND,
+    ];
     permissions::define_role(app.db(), ACCOUNTANT, &accountant)
         .await
         .unwrap();
+    // The roles that give the second approval of a forfeiture (`PRP.ACL.05`).
+    for role in perm::SECOND_APPROVER_ROLES {
+        permissions::define_role(app.db(), role, &[perm::UNITS_VIEW])
+            .await
+            .unwrap();
+    }
     // The admin role the tasks fall back to.
     let mut admin = manager.to_vec();
     admin.push(perm::LEASES_FORCE_TERMINATE);
