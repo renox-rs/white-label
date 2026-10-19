@@ -18,7 +18,7 @@ use wl_kernel::documents::today;
 use crate::charge::{ChargeStatus, LeaseCharge, plan_total};
 use crate::db::{refused, set_lease};
 use crate::lease::{Lease, LeaseStatus, VersionKind};
-use crate::lease_machine::{AMEND, CANCEL_ACTION, RENEW};
+use crate::lease_machine::{AMEND, CANCEL_ACTION, RENEW, RenewInput};
 use crate::texts::english;
 use crate::unit::{Unit, UnitStatus};
 use crate::unit_machine::OCCUPY;
@@ -140,8 +140,8 @@ pub(crate) async fn activate_checks(tx: &mut Transaction, lease: &Lease) -> Resu
 /// `occupy`) or the previous version (renewal: `renew`; amendment: `amend`).
 /// A renewal or an amendment never changes the unit's state (§7.1 *Unit*).
 ///
-/// The effects of `renew` and `amend` on the previous version's charges,
-/// invoices and cheques are BL-PRP-07 and BL-PRP-08.
+/// The effects of `renew` on the previous version's charges are in
+/// [`crate::renew`] (BL-PRP-07); those of `amend` are BL-PRP-08.
 pub(crate) async fn apply_activation(tx: &mut Transaction, lease: &Lease) -> Result {
     set_lease(&mut *tx, lease.id, &[("activated_on", &Some(today()))]).await?;
     LeaseCharge::query()
@@ -175,9 +175,13 @@ pub(crate) async fn apply_activation(tx: &mut Transaction, lease: &Lease) -> Res
             } else {
                 AMEND
             };
-            let outcome = previous
-                .transition(name)
-                .by_system()
+            let mut run = previous.transition(name).by_system();
+            if lease.version_kind == VersionKind::Renewal {
+                run = run.input(&RenewInput {
+                    next: Some(lease.id),
+                });
+            }
+            let outcome = run
                 .run_in(&mut *tx)
                 .await
                 .map_err(TransitionError::into_error)?;

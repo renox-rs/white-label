@@ -108,6 +108,14 @@
         <rx-entry :label="tx['cancel_forfeit_clause']" :value="lease.cancel_forfeit_clause" :placeholder="tx['none']"/>
       </rx-infolist>
     </rx-card>
+    <template rx-if="differences">
+      <rx-table :rows="differences" as="row" :key="row.period" :caption="tx['renew.differences_title']" card>
+        <rx-column :label="tx['renew.period']">{{ row.period }}</rx-column>
+        <rx-column :label="tx['renew.invoiced']" align="num">{{ row.invoiced }}</rx-column>
+        <rx-column :label="tx['renew.renewal']" align="num">{{ row.renewal }}</rx-column>
+        <rx-column :label="tx['renew.difference']" align="num">{{ row.difference }}</rx-column>
+      </rx-table>
+    </template>
     <rx-table :rows="charges" as="charge" :key="charge.number ~ charge.due_date" :caption="tx['charges.title']" card>
       <rx-column :label="tx['charges.number']" align="num">{{ charge.number }}</rx-column>
       <rx-column :label="tx['charges.description']">{{ charge.description }}</rx-column>

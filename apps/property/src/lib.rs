@@ -20,6 +20,7 @@ pub mod notices;
 pub mod pages;
 pub mod parse;
 pub mod permissions;
+pub mod renew;
 pub mod renewal;
 mod tasks;
 pub mod terms;

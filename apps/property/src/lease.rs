@@ -121,6 +121,9 @@ pub struct Lease {
     pub version_kind: VersionKind,
     /// The version this one replaces.
     pub previous_id: Option<i64>,
+    /// The version that replaced this one when it was renewed (`renew`);
+    /// the other way of the link `previous_id` makes.
+    pub next_id: Option<i64>,
     /// The day an amendment applies from.
     pub effective_date: Option<NaiveDate>,
     /// The building; the scope roles act in.

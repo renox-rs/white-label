@@ -41,6 +41,7 @@ use crate::lease_machine::{ACTIVATE, CANCEL, SUBMIT};
 use crate::leases::{self, EjariInput, NewLease, NewVersion};
 use crate::parse::{parse_aed, parse_date};
 use crate::permissions;
+use crate::renew;
 use crate::renewal;
 use crate::terms;
 use crate::texts;
@@ -200,6 +201,19 @@ pub struct ChequeRow {
     pub status: String,
 }
 
+/// A period the old version invoiced before a renewal started.
+#[derive(Serialize, Debug, Clone)]
+pub struct DifferenceRow {
+    /// The first day of the period.
+    pub period: String,
+    /// What was invoiced.
+    pub invoiced: String,
+    /// What the renewal charges for it.
+    pub renewal: String,
+    /// The difference, with its sign.
+    pub difference: String,
+}
+
 /// A version of the lease.
 #[derive(Serialize, Debug, Clone)]
 pub struct VersionRow {
@@ -296,6 +310,7 @@ pub(crate) struct ShowPage {
     charges: Vec<ChargeRow>,
     cheques: Vec<ChequeRow>,
     versions: Vec<VersionRow>,
+    differences: Vec<DifferenceRow>,
     approvals: Vec<ApprovalCard>,
     timeline: Vec<Value>,
     pending: bool,
@@ -321,6 +336,15 @@ fn offers(actions: &[state_machine::Available], name: &str) -> bool {
 /// The label of the VAT category of a charge.
 fn vat_text(lang: &Lang, category: wl_kernel::VatCategory) -> String {
     text(lang, &format!("vat.{}", category.as_str()))
+}
+
+/// Dirhams with their sign: `+AED 1,000.00`, `-AED 50.00`, `AED 0.00`.
+fn signed_money(fils: i64) -> String {
+    if fils > 0 {
+        format!("+{}", crate::money_text(fils))
+    } else {
+        crate::money_text(fils)
+    }
 }
 
 /// `GET /property/leases/{id}`.
@@ -384,6 +408,17 @@ async fn show(
             term: format!("{} → {}", v.start_date, v.end_date),
             status: text(&lang, &format!("leases.status.{}", v.status.as_str())),
             current: v.id == lease.id,
+        })
+        .collect();
+
+    let differences = renew::differences(&state.db, &lease)
+        .await?
+        .into_iter()
+        .map(|d| DifferenceRow {
+            period: d.period.to_string(),
+            invoiced: crate::money_text(d.invoiced),
+            renewal: crate::money_text(d.renewal),
+            difference: signed_money(d.difference()),
         })
         .collect();
 
@@ -494,6 +529,7 @@ async fn show(
         charges,
         cheques: cheque_rows,
         versions,
+        differences,
         approvals: approval_cards,
         timeline,
         pending,
@@ -720,10 +756,18 @@ async fn activate(
     lang: Lang,
     Path(id): Path<i64>,
 ) -> Result<Response> {
-    leases::activate(&state, &user, id)
+    let lease = leases::activate(&state, &user, id)
         .await
         .map_err(TransitionError::into_error)?;
-    Ok((Toast::success(text(&lang, "leases.activated")), renox::HxRefresh).into_response())
+    // A renewal that does not charge what the old version invoiced for a
+    // period it covers: the manager is shown, and adjusts by hand.
+    let differences = renew::differences(&state.db, &lease).await?;
+    let toast = if renew::any_difference(&differences) {
+        Toast::warning(text(&lang, "renew.differences_toast"))
+    } else {
+        Toast::success(text(&lang, "leases.activated"))
+    };
+    Ok((toast, renox::HxRefresh).into_response())
 }
 
 /// The form of a cancellation.

@@ -1,6 +1,8 @@
 //! What follows the commit of a lease transition (01 Property §7.1).
 //!
-//! - **`activate`:** `LeaseActivated` is emitted, the Ejari task is opened for
+//! - **`activate`:** `LeaseActivated` is emitted, the accountant gets one task
+//!   to relink the cheques of the charges a renewal cancelled
+//!   ([`crate::renew::after_renew`]), the Ejari task is opened for
 //!   the property manager (`PRP.RUL.02`: the registration is chased 14 days
 //!   after activation), and a renewal or amendment whose deposit differs from
 //!   the held amount asks the deposit to `adjust` (system; an amendment's
@@ -75,6 +77,7 @@ async fn after_activate(state: &AppState, id: i64) -> Result {
             annual_rent: lease.annual_rent,
         })
         .await?;
+    crate::renew::after_renew(state, &lease).await?;
     let task = RoleTask::new(
         lease.subject(),
         PROPERTY_MANAGER_ROLE,

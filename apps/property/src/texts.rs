@@ -460,6 +460,27 @@ const TEXTS: &[(&str, &str)] = &[
         "property.renewal.problem_undelivered",
         "The notice of changed terms was not delivered (notice not delivered).",
     ),
+    // Renewing a lease without billing a period twice (BL-PRP-07).
+    (
+        "property.renew.no_renewal",
+        "No renewal version of this lease is active.",
+    ),
+    (
+        "property.renew.differences_title",
+        "Periods already invoiced before the renewal started",
+    ),
+    ("property.renew.period", "Period from"),
+    ("property.renew.invoiced", "Invoiced"),
+    ("property.renew.renewal", "Renewal charges"),
+    ("property.renew.difference", "Difference"),
+    (
+        "property.renew.differences_toast",
+        "Activated. The renewal charges another rent for periods already invoiced: see the table on this page and add a charge or a credit by hand.",
+    ),
+    (
+        "property.tasks.relink_cheques",
+        "Relink the cheques of :lease to the charges of the renewal",
+    ),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.

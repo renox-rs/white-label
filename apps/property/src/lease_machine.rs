@@ -33,10 +33,13 @@
 //! - `expire` needs the end date to have passed and extends the charge
 //!   schedule for the statutory renewal period ([`crate::holding`],
 //!   BL-PRP-06); the managers are told after the commit.
-//! - `renew`, `amend`, `record_notice`,
-//!   `withdraw_notice*`, `terminate` and `force_terminate` are declared with
-//!   their states and permissions; their effects are built by BL-PRP-03 to
-//!   BL-PRP-12 and until then the pages do not offer them.
+//! - `renew` links the two versions, cancels the old version's scheduled
+//!   charges that the new one covers and skips the periods the old version
+//!   already invoiced ([`crate::renew`], BL-PRP-07).
+//! - `amend`, `record_notice`, `withdraw_notice*`, `terminate` and
+//!   `force_terminate` are declared with their states and permissions; their
+//!   effects are built by BL-PRP-08 to BL-PRP-12 and until then the pages do
+//!   not offer them.
 
 use renox::db::Transaction;
 use renox::prelude::*;
@@ -52,6 +55,7 @@ use crate::holding::expire_effects;
 use crate::lease::{LEASE_SUBJECT_TYPE, Lease, LeaseStatus};
 use crate::lease_checks::{activate_checks, apply_activation, submit_checks};
 use crate::permissions;
+use crate::renew::renew_effects;
 use crate::texts::english;
 
 /// `submit`: the draft goes out for signature.
@@ -145,6 +149,15 @@ fn expire_day(ctx: &TransitionCtx) -> renox::chrono::NaiveDate {
         .ok()
         .and_then(|input| input.day)
         .unwrap_or_else(today)
+}
+
+/// What a `renew` run carries: the renewal version that was activated, so
+/// that the effect does not have to look for it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RenewInput {
+    /// The renewal version.
+    #[serde(default)]
+    pub next: Option<i64>,
 }
 
 /// The input of a cancel run: the run's input, with the history reason as the
@@ -357,7 +370,16 @@ impl StateMachine for Lease {
                 .from([NoticeGiven])
                 .to(Expired),
             )
-            .transition(system(RENEW, "Renew").from([RenewalDue, Expired]).to(Renewed))
+            .transition(
+                system(RENEW, "Renew")
+                    .from([RenewalDue, Expired])
+                    .to(Renewed)
+                    .effect(|lease: &Lease, ctx, tx| {
+                        let lease = lease.clone();
+                        let next = ctx.input_as::<RenewInput>().ok().and_then(|input| input.next);
+                        Box::pin(async move { renew_effects(&mut *tx, &lease, next).await })
+                    }),
+            )
             .transition(
                 system(AMEND, "Amend")
                     .from([Active, RenewalDue, Expired])
