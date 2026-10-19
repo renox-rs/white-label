@@ -17,6 +17,7 @@ pub mod recipients;
 pub mod render;
 pub mod send;
 pub mod staff_task;
+pub mod statutory_notice;
 pub mod suppressions;
 mod texts;
 pub mod types;
@@ -45,6 +46,7 @@ pub use reactions::{
 };
 pub use send::SendMessage;
 pub use staff_task::{StaffTask, StaffTaskHandler, open_give_up_task};
+pub use statutory_notice::StatutoryNoticeHandler;
 pub use suppressions::{Suppression, SuppressionReason};
 pub use types::NotificationType;
 
@@ -108,8 +110,7 @@ impl WlNotify {
     /// Runs `handler`'s give-up reaction through `handler`, in place of the
     /// built-in one (`staff_task` opens a task, `alternative_recipient`
     /// queues the message to another contact, `mark_contact_invalid` marks
-    /// the contact point invalid, the other only records
-    /// their step) in the `NTF.RUL.01` run.
+    /// the contact point invalid, `statutory_notice` records the notice and opens its task) in the `NTF.RUL.01` run.
     pub fn reaction(mut self, handler: impl GiveUpHandler) -> Self {
         self.reactions.replace(Arc::new(handler));
         self

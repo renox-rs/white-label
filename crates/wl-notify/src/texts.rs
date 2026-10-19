@@ -134,6 +134,19 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_notify.task.party", "Party :id"),
     ("wl_notify.task.user", "User :id"),
     (
+        "wl_notify.statutory.title",
+        "Deliver :subject notice to :recipient by another means",
+    ),
+    (
+        "wl_notify.statutory.methods",
+        "Accepted proof of delivery: :methods",
+    ),
+    ("wl_notify.statutory.proof_link", "Record the proof: :path"),
+    ("wl_notify.proof_method.courier", "courier"),
+    ("wl_notify.proof_method.registered_mail", "registered mail"),
+    ("wl_notify.proof_method.hand_delivery", "hand delivery"),
+    ("wl_notify.proof_method.call", "call"),
+    (
         "wl_notify.alert.title",
         "Urgent: could not reach :recipient about :subject",
     ),

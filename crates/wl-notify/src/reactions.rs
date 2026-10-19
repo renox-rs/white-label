@@ -1,12 +1,13 @@
 //! The give-up reactions (wl-notify §5.4): one handler per reaction key,
 //! run by `NTF.RUL.01` ([`crate::give_up`]).
 //!
-//! `staff_task` opens a task for staff ([`crate::staff_task`]). The other
-//! built-in handlers only record what they were given (status `recorded`);
-//! the real reactions replace them through [`crate::WlNotify::reaction`]:
-//! `alternative_recipient` is built in ([`crate::alternative`]), and so is
-//! `mark_contact_invalid` ([`crate::contact_invalid`]); `statutory_notice`
-//! (#59) is not yet. `none` has no handler: it runs nothing.
+//! `staff_task` opens a task for staff ([`crate::staff_task`]);
+//! `alternative_recipient` ([`crate::alternative`]), `mark_contact_invalid`
+//! ([`crate::contact_invalid`]) and `statutory_notice`
+//! ([`crate::statutory_notice`]) are built in too. [`RecordingHandler`]
+//! only records what it was given (status `recorded`). An app replaces a
+//! handler through [`crate::WlNotify::reaction`]. `none` has no handler: it
+//! runs nothing.
 
 use std::future::Future;
 use std::pin::Pin;
@@ -184,8 +185,8 @@ pub struct Reactions {
 }
 
 impl Default for Reactions {
-    /// The staff-task, alternative-recipient and mark-contact-invalid
-    /// handlers, and the recording handler of the other.
+    /// The staff-task, alternative-recipient, mark-contact-invalid and
+    /// statutory-notice handlers.
     fn default() -> Self {
         use GiveUpReaction::{
             AlternativeRecipient, MarkContactInvalid, StaffTask, StatutoryNotice,
@@ -203,6 +204,7 @@ impl Default for Reactions {
                     Arc::new(crate::staff_task::StaffTaskHandler) as Arc<dyn GiveUpHandler>
                 }
                 AlternativeRecipient => Arc::new(crate::alternative::AlternativeRecipientHandler),
+                StatutoryNotice => Arc::new(crate::statutory_notice::StatutoryNoticeHandler),
                 MarkContactInvalid => Arc::new(crate::contact_invalid::MarkContactInvalidHandler),
                 other => Arc::new(RecordingHandler(other)),
             })

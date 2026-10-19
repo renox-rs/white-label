@@ -57,6 +57,7 @@ fn context(event: &MessageGaveUp, ticket: i64, at: DateTime, urgency: Urgency) -
 fn coordinator_task() -> StaffTask {
     StaffTask {
         role: Some(COORDINATOR.to_owned()),
+        ..Default::default()
     }
 }
 

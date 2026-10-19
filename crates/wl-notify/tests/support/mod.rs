@@ -93,6 +93,13 @@ pub const TICKET_UPDATE: &str = "ticket.update";
 pub const TICKET_EMERGENCY: &str = "ticket.emergency";
 /// A type with no staff role.
 pub const TICKET_DIGEST: &str = "ticket.digest";
+/// A statutory type about a ticket with a staff role, that also lists
+/// `staff_task` (#59).
+pub const TICKET_NOTICE: &str = "ticket.statutory_notice";
+/// The same with urgency `urgent`.
+pub const TICKET_NOTICE_URGENT: &str = "ticket.statutory_notice_urgent";
+/// A type that lists `statutory_notice` but is not statutory.
+pub const TICKET_NOT_STATUTORY: &str = "ticket.plain_notice";
 /// The staff role of the ticket types.
 pub const COORDINATOR: &str = "coordinator";
 /// The ticket whose scope is Tower A.
@@ -364,6 +371,42 @@ pub fn register_types() {
             def = def.staff_role(role);
         }
         notify::register_type(def);
+    }
+    for (key, urgency, statutory, reactions) in [
+        (
+            TICKET_NOTICE,
+            Urgency::Normal,
+            true,
+            vec![StatutoryNotice, StaffTask],
+        ),
+        (
+            TICKET_NOTICE_URGENT,
+            Urgency::Urgent,
+            true,
+            vec![StatutoryNotice],
+        ),
+        (
+            TICKET_NOT_STATUTORY,
+            Urgency::Normal,
+            false,
+            vec![StatutoryNotice],
+        ),
+    ] {
+        notify::register_type(
+            NotificationTypeDef::new(key, "ticketing")
+                .urgency(urgency)
+                .statutory(statutory)
+                .channels(&[NotifyChannel::Email, NotifyChannel::Sms])
+                .give_up(&reactions)
+                .staff_role(COORDINATOR)
+                .template(
+                    NotifyChannel::Email,
+                    "en",
+                    Some(SECRET_SUBJECT),
+                    SECRET_BODY,
+                )
+                .template(NotifyChannel::Sms, "en", None, SECRET_BODY),
+        );
     }
     notify::register_type(
         NotificationTypeDef::new(RECEIPT, "payments")
@@ -985,6 +1028,24 @@ pub async fn boot_alternative() -> Booted {
             GiveUpReaction::AlternativeRecipient,
         ],
         true,
+    )
+    .await
+}
+
+/// As [`boot_staff`], with the module's own `statutory_notice` too (#59).
+pub async fn boot_statutory() -> Booted {
+    boot_with(
+        &[GiveUpReaction::StaffTask, GiveUpReaction::StatutoryNotice],
+        true,
+    )
+    .await
+}
+
+/// As [`boot_statutory`], with the `ticketing` module off: no task creator.
+pub async fn boot_statutory_without_tickets() -> Booted {
+    boot_with(
+        &[GiveUpReaction::StaffTask, GiveUpReaction::StatutoryNotice],
+        false,
     )
     .await
 }

@@ -106,6 +106,7 @@ async fn then_staff_task(
     if !staff_task_follows(&ctx.reactions) {
         let task = StaffTask {
             role: ctx.staff_role.clone(),
+            ..Default::default()
         };
         let opened = open_give_up_task(state, ctx, task).await?;
         detail["staff_task"] = json!({ "status": opened.status, "detail": opened.detail });

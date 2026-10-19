@@ -46,6 +46,14 @@ pub struct StaffTask {
     /// The staff role whose holders in the subject's scope get the task;
     /// `None` goes to the company admin.
     pub role: Option<String>,
+    /// The task's title; `None` is "Could not reach {recipient} about
+    /// {subject}".
+    pub title: Option<String>,
+    /// The task's description; `None` lists the channels tried.
+    pub description: Option<String>,
+    /// The key the task is found by while open; `None` is
+    /// [`source_key`]. A statutory notice sets its own (#59 A7).
+    pub source_key: Option<String>,
 }
 
 /// The built-in `staff_task` handler, registered by [`crate::WlNotify`].
@@ -65,6 +73,7 @@ impl GiveUpHandler for StaffTaskHandler {
         Box::pin(async move {
             let task = StaffTask {
                 role: ctx.staff_role.clone(),
+                ..Default::default()
             };
             open_give_up_task(state, ctx, task).await
         })
@@ -267,7 +276,7 @@ async fn party_name(state: &AppState, id: PartyId, language: &str) -> Result<Str
 /// Who the message was for, as staff read it: a party's name in the
 /// message language, a user's name, else the masked address. For a
 /// recipient rule it is the person the last message went to.
-async fn recipient_name(
+pub(crate) async fn recipient_name(
     state: &AppState,
     ctx: &GiveUpContext,
     last: Option<&Message>,
@@ -290,7 +299,7 @@ async fn recipient_name(
 /// The channel lines of `ctx`, with each message's address masked. When
 /// the last message is the alternative of an earlier chain, the lines of
 /// that chain come first and every line names its recipient.
-async fn channel_lines(
+pub(crate) async fn channel_lines(
     state: &AppState,
     ctx: &GiveUpContext,
     last: Option<&Message>,
@@ -342,7 +351,10 @@ pub async fn open_give_up_task(
     task: StaffTask,
 ) -> Result<StepOutcome> {
     let creator = tickets::task_creator(state);
-    let key = source_key(&ctx.subject, &ctx.recipient);
+    let key = task
+        .source_key
+        .clone()
+        .unwrap_or_else(|| source_key(&ctx.subject, &ctx.recipient));
     let language = default_language(state);
     let last = Message::find(&state.db, ctx.message.0).await?;
     let lines = channel_lines(state, ctx, last.as_ref(), &language).await?;
@@ -376,14 +388,18 @@ pub async fn open_give_up_task(
     }
 
     let assignee = pick_assignee(&holders);
-    let mut ticket = OpenTicket::new(
-        ctx.subject.clone(),
-        TASK_CATEGORY,
-        &title(&recipient, &subject),
-    )
-    .description(&description(&recipient, &ctx.type_key, &lines, None))
-    .due_at(calendar.add_working_days(ctx.gave_up_at, 1))
-    .source_key(&key);
+    let task_title = task
+        .title
+        .clone()
+        .unwrap_or_else(|| title(&recipient, &subject));
+    let task_text = task
+        .description
+        .clone()
+        .unwrap_or_else(|| description(&recipient, &ctx.type_key, &lines, None));
+    let mut ticket = OpenTicket::new(ctx.subject.clone(), TASK_CATEGORY, &task_title)
+        .description(&task_text)
+        .due_at(calendar.add_working_days(ctx.gave_up_at, 1))
+        .source_key(&key);
     if let Some(assignee) = assignee {
         ticket = ticket.assign_to(assignee);
     }
