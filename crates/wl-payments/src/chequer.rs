@@ -365,6 +365,44 @@ async fn relink(state: &AppState, cheque: ChequeId, from: &Subject, to: &Subject
     Ok(())
 }
 
+/// Marks the `received` and `due_for_deposit` cheques of `ids` as held as
+/// evidence (`Cheques::hold_as_evidence`); returns the ones marked, in the
+/// order given. Any other cheque is left as it is.
+///
+/// # Errors
+///
+/// 422 for a blank note; the database's errors.
+async fn hold_as_evidence(state: &AppState, ids: &[ChequeId], note: &str) -> Result<Vec<ChequeId>> {
+    let note = note.trim();
+    if note.is_empty() {
+        return Err(refused("The reason a cheque is held as evidence is required."));
+    }
+    let mut marked = Vec::new();
+    for id in ids {
+        let Some(found) = Cheque::find(&state.db, id.0).await? else {
+            continue;
+        };
+        if !matches!(
+            found.status,
+            ChequeStatus::Received | ChequeStatus::DueForDeposit
+        ) {
+            continue;
+        }
+        Cheque::query()
+            .where_(Cheque::ID.eq(found.id))
+            .update(
+                &state.db,
+                &[
+                    ("evidence_note", &Some(note.to_owned())),
+                    ("updated_at", &renox::db::now()),
+                ],
+            )
+            .await?;
+        marked.push(*id);
+    }
+    Ok(marked)
+}
+
 /// Registers and reads `wl_payments_cheques` for the kernel contract.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ChequeBook;
@@ -446,6 +484,15 @@ impl Cheques for ChequeBook {
         direction: Direction,
     ) -> ChequeFuture<'a, Vec<OpenCheque>> {
         Box::pin(not_cleared(state, legal_entity_id, direction))
+    }
+
+    fn hold_as_evidence<'a>(
+        &'a self,
+        state: &'a AppState,
+        cheques: Vec<ChequeId>,
+        note: String,
+    ) -> ChequeFuture<'a, Vec<ChequeId>> {
+        Box::pin(async move { hold_as_evidence(state, &cheques, &note).await })
     }
 
     fn relink<'a>(

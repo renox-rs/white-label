@@ -66,6 +66,9 @@ pub(crate) fn flag_problem(cheque: &Cheque, input: Option<&FlagDueInput>) -> Opt
     if !cheque.is_received() {
         return Some("Only a received cheque goes on the deposit list.".to_owned());
     }
+    if cheque.is_evidence() {
+        return Some("A cheque held as evidence never goes on the deposit list.".to_owned());
+    }
     if cheque.cheque_date > input.today + TimeDelta::days(input.lead_days) {
         return Some("The cheque date is not close yet.".to_owned());
     }
@@ -80,6 +83,9 @@ pub(crate) fn deposit_problem(
     today: NaiveDate,
     field_confirmation: bool,
 ) -> Option<String> {
+    if cheque.is_evidence() {
+        return Some("A cheque held as evidence is never deposited.".to_owned());
+    }
     if cheque.cheque_date > today {
         return Some(format!(
             "The cheque is dated {}: it cannot be deposited before.",
@@ -262,6 +268,7 @@ pub async fn flag_due_run(state: &AppState, today: NaiveDate) -> Result<usize> {
     let due = Cheque::query()
         .where_(Cheque::STATUS.eq(ChequeStatus::Received))
         .where_(Cheque::DIRECTION.eq(wl_kernel::payments::Direction::In))
+        .where_(Cheque::EVIDENCE_NOTE.is_null())
         .where_(Cheque::CHEQUE_DATE.lte(today + TimeDelta::days(lead_days)))
         .order_by(Cheque::CHEQUE_DATE)
         .get(&state.db)

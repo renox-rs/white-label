@@ -125,3 +125,48 @@ async fn a_received_cheque_is_relinked_to_another_document() {
         Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
     ));
 }
+
+/// `Cheques::hold_as_evidence` (#262): a received cheque is marked and never
+/// goes on the deposit list or gets deposited; a deposited one is left alone.
+#[renox::test]
+async fn a_cheque_held_as_evidence_is_never_listed_or_deposited() {
+    let t = boot().await;
+    let staff = t.cheque_staff("Aisha").await;
+    let kept = t.received_cheque(BLUE_DUNES, "401", 1_000_000, None).await;
+    let other = t.received_cheque(BLUE_DUNES, "402", 1_000_000, None).await;
+    let paid = t.received_cheque(BLUE_DUNES, "403", 1_000_000, None).await;
+    let paid = t.deposit_cheque(&staff, &paid).await;
+
+    let marked = cheques(t.state())
+        .hold_as_evidence(
+            t.state(),
+            vec![ChequeId(kept.id), ChequeId(paid.id)],
+            "Lease terminated by force".to_owned(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(marked, [ChequeId(kept.id)]);
+    assert!(t.cheque(kept.id).await.is_evidence());
+    assert!(!t.cheque(paid.id).await.is_evidence());
+
+    // The hourly run puts the other one on the list, not the evidence.
+    let flagged = wl_payments::cheque_deposit::flag_due_run(t.state(), wl_kernel::documents::today())
+        .await
+        .unwrap();
+    assert_eq!(flagged, 1);
+    assert_eq!(t.cheque(kept.id).await.status, ChequeStatus::Received);
+    assert_eq!(t.cheque(other.id).await.status, ChequeStatus::DueForDeposit);
+
+    // It cannot be deposited by hand either.
+    let refused = t.cheque_action(&staff, &t.cheque(kept.id).await, "deposit", &[]).await;
+    refused.assert_status(422);
+
+    // A blank note is refused.
+    let blank = cheques(t.state())
+        .hold_as_evidence(t.state(), vec![ChequeId(other.id)], "  ".to_owned())
+        .await;
+    assert!(matches!(
+        blank,
+        Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
+    ));
+}

@@ -2117,6 +2117,15 @@ async fn the_lease_cancellation_contracts_fall_back_when_the_modules_are_off() {
 
     assert!(!invoicer(state).discard_draft(app.db(), InvoiceId(1)).await.unwrap());
 
+    // #262: nor held as evidence.
+    let evidence = cheques(state)
+        .hold_as_evidence(state, vec![ChequeId(1)], "Forced termination".to_owned())
+        .await;
+    assert!(matches!(
+        evidence,
+        Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
+    ));
+
     // #258: a cheque cannot be relinked either.
     let relinked = cheques(state)
         .relink(

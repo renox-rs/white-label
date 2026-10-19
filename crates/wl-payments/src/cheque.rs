@@ -114,6 +114,10 @@ pub struct Cheque {
     pub drawing_request_id: Option<i64>,
     /// Why a replaced cheque is still kept: its replacement bounced.
     pub custody_note: Option<String>,
+    /// Why the cheque is held as evidence (a forced termination of the lease
+    /// it was received with): it is never put on the deposit list or
+    /// deposited. Empty for an ordinary cheque.
+    pub evidence_note: Option<String>,
     /// The lifecycle state; changed only by a transition.
     pub status: ChequeStatus,
     /// When the row was created.
@@ -238,6 +242,11 @@ impl Cheque {
     /// The drawer or payee.
     pub fn party(&self) -> PartyId {
         PartyId(self.party_id)
+    }
+
+    /// Whether the cheque is held as evidence and must never be deposited.
+    pub fn is_evidence(&self) -> bool {
+        self.evidence_note.is_some()
     }
 
     /// Whether it is a received cheque (money in).

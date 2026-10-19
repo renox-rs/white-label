@@ -482,6 +482,21 @@ pub trait Cheques: Send + Sync + 'static {
         })
     }
 
+    /// Marks the cheques of `cheques` that are `received` or
+    /// `due_for_deposit` as held as evidence (a lease ended by a forced
+    /// termination while a legal case is open): they stay in the register,
+    /// are never put on the deposit list and cannot be deposited. Returns
+    /// the cheques that were marked; any other is left as it is. `note` says
+    /// why. The default refuses (422): payments is not enabled.
+    fn hold_as_evidence<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _cheques: Vec<ChequeId>,
+        _note: String,
+    ) -> ChequeFuture<'a, Vec<ChequeId>> {
+        Box::pin(async { Err(payments_off("the cheques cannot be held as evidence")) })
+    }
+
     /// The received cheques of `legal_entity_id` that bounced and are still
     /// owed (`bounced` or `legal_case`), oldest cheque date first, each with
     /// its open amount and the documents it pays: the forecast shows what
