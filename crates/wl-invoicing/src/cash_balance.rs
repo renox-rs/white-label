@@ -136,6 +136,9 @@ pub async fn enter(db: &Db, by: Option<i64>, balance: &EnterBalance) -> Result<O
         ..Default::default()
     };
     row.insert(db).await?;
+    // A newer balance closes the task that asked for one (`FIN.RUL.25`).
+    crate::cash_alert::close_resolved(db, row.legal_entity_id, &row.bank_account, row.as_of)
+        .await?;
     Ok(row)
 }
 
