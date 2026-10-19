@@ -20,6 +20,7 @@ What is here so far:
 | Part | Spec | Module |
 |---|---|---|
 | Permissions (`tickets.*`) | §6 | `permissions` |
+| Platform categories opened by other modules, seeded when the module is on: `billing_dispute` (invoicing), `labour_case` (hr: confidential, role `hr`, custom fields forum, reference, hearing and reply dates), `delivery_claim` (delivery) | §3, §7 | `seed` |
 
 The module owns `src/texts.rs`, the English texts (`wl_ticketing.*`). The app changes or
 translates them in `resources/lang/{locale}.json`.

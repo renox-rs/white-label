@@ -22,7 +22,7 @@ use renox::prelude::*;
 
 pub use assign::{AssignKind, AssignRequest, Assignment, assign, assign_as_system};
 pub use comments::{Comment, CommentVisibility};
-pub use config::{Category, HoldReason, SlaPolicy, SlaTarget};
+pub use config::{Category, CustomField, FieldKind, HoldReason, SlaPolicy, SlaTarget};
 pub use open::Tickets;
 pub use priority::Priority;
 pub use reasons::{ReasonRefused, ReassignReason, ReassignReasons};
@@ -106,12 +106,20 @@ impl WlTicketing {
     }
 }
 
-/// Whether the manifest enables `invoicing` (false when the kernel module is
-/// not part of the app).
-fn invoicing_on(state: &AppState) -> bool {
-    state
-        .provided::<std::sync::Arc<wl_kernel::Manifest>>()
-        .is_some_and(|manifest| manifest.is_enabled("invoicing"))
+/// The modules the manifest enables whose platform categories are seeded
+/// (all off when the kernel module is not part of the app).
+fn enabled_modules(state: &AppState) -> seed::Enabled {
+    let manifest = state.provided::<std::sync::Arc<wl_kernel::Manifest>>();
+    let on = |name: &str| {
+        manifest
+            .as_ref()
+            .is_some_and(|manifest| manifest.is_enabled(name))
+    };
+    seed::Enabled {
+        invoicing: on("invoicing"),
+        hr: on("hr"),
+        delivery: on("delivery"),
+    }
 }
 
 impl Module for WlTicketing {
@@ -175,13 +183,13 @@ impl Module for WlTicketing {
             "ticketing:install",
             "Store the default SLA policy, hold reasons and categories, where the database lacks them",
             |_args, state: AppState| async move {
-                let installed = seed::install_with(&state.db, invoicing_on(&state)).await?;
+                let installed = seed::install_for(&state.db, enabled_modules(&state)).await?;
                 println!("{} ticketing defaults created.", installed.total());
                 Ok(())
             },
         );
         app.seeder(|state: AppState| async move {
-            seed::install_with(&state.db, invoicing_on(&state))
+            seed::install_for(&state.db, enabled_modules(&state))
                 .await
                 .map(|_| ())
         });
