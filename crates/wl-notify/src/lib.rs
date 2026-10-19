@@ -9,6 +9,7 @@ pub mod give_up;
 mod machine;
 pub mod mask;
 pub mod message;
+pub mod notices;
 pub mod notifier;
 pub mod pages;
 pub mod reactions;
@@ -37,6 +38,7 @@ pub use machine::{
     DEFER, DELIVER, FAIL, FALL_BACK, GIVE_UP, MARK_READ, RELEASE, RETRY, SEND, SUPPRESS,
 };
 pub use message::{Message, MessageStatus, RecipientKind};
+pub use notices::{ProofFile, ProofInput, ProofRefusal, StatutoryNotice, validate_proof};
 pub use notifier::Messages;
 pub use reactions::{
     GiveUpContext, GiveUpHandler, ReactionOutcome, Reactions, RecordingHandler, StepOutcome,
@@ -133,6 +135,7 @@ impl Module for WlNotify {
             .model::<Suppression>()
             .model::<ReactionRun>()
             .model::<ReactionStep>()
+            .model::<StatutoryNotice>()
             .view_data::<pages::TypesPage>()
             .view_data::<pages::TypeEditPage>()
             .view_data::<pages::LogPage>();

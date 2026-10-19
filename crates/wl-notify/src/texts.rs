@@ -36,6 +36,34 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("wl_notify.types.save", "Save"),
     ("wl_notify.types.cancel", "Cancel"),
+    (
+        "wl_notify.proof.method_not_offered",
+        "This way of delivering is not accepted for this notice.",
+    ),
+    (
+        "wl_notify.proof.date_missing",
+        "Enter the date the notice was delivered.",
+    ),
+    (
+        "wl_notify.proof.date_in_future",
+        "The delivery date cannot be in the future.",
+    ),
+    (
+        "wl_notify.proof.date_before_give_up",
+        "The notice was not delivered before it gave up.",
+    ),
+    (
+        "wl_notify.proof.attachment_missing",
+        "Attach the proof of delivery.",
+    ),
+    (
+        "wl_notify.proof.note_missing",
+        "Describe the call: who was told, and when.",
+    ),
+    (
+        "wl_notify.proof.attachment_type",
+        "The proof must be a PDF, an image or a text file.",
+    ),
     ("wl_notify.log.title", "Message log"),
     (
         "wl_notify.log.subtitle",

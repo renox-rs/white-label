@@ -42,6 +42,8 @@ pub struct NotificationType {
     pub channels: Json<Vec<NotifyChannel>>,
     /// The default texts per channel and language.
     pub templates: Json<Vec<TemplateDef>>,
+    /// The proof methods a statutory notice of this type accepts.
+    pub proof_methods: Json<Vec<ProofMethod>>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
@@ -62,6 +64,7 @@ impl NotificationType {
             staff_role: def.staff_role.clone(),
             channels: Json(def.channels.clone()),
             templates: Json(def.templates.clone()),
+            proof_methods: Json(def.proof_methods.clone()),
             ..Default::default()
         }
     }
@@ -79,7 +82,7 @@ impl NotificationType {
             staff_role: self.staff_role.clone(),
             channels: self.channels.0.clone(),
             templates: self.templates.0.clone(),
-            proof_methods: ProofMethod::ALL.to_vec(),
+            proof_methods: self.proof_methods.0.clone(),
         }
     }
 
@@ -150,6 +153,21 @@ mod tests {
         assert_eq!(row.staff_role.as_deref(), Some("collector"));
         assert_eq!(row.channels.0, [NotifyChannel::Email, NotifyChannel::Sms]);
         assert_eq!(row.to_def(), def);
+    }
+
+    #[test]
+    fn the_proof_methods_are_stored_and_read_back() {
+        let def = reminder().proof_methods(&[ProofMethod::Courier, ProofMethod::Call]);
+        let row = NotificationType::from_def(&def);
+        assert_eq!(
+            row.proof_methods.0,
+            [ProofMethod::Courier, ProofMethod::Call]
+        );
+        assert_eq!(row.to_def(), def);
+        assert_eq!(
+            NotificationType::from_def(&reminder()).proof_methods.0,
+            ProofMethod::ALL.to_vec()
+        );
     }
 
     #[test]

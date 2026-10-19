@@ -17,12 +17,13 @@ use renox::serde_json::Value;
 use renox::state_machine::{StateMachine, TransitionError};
 use wl_kernel::Subject;
 use wl_kernel::notify::{
-    self, FALLBACK_KIND, MessageId, NotificationTypeDef, Notifier, NotifyChannel, NotifyFuture,
-    NotifyRecipient, NotifyRequest,
+    self, FALLBACK_KIND, MessageId, NoticeStatus, NotificationTypeDef, Notifier, NotifyChannel,
+    NotifyFuture, NotifyRecipient, NotifyRequest, UndeliveredNotice,
 };
 
 use crate::machine::SUPPRESS;
 use crate::message::{Message, MessageStatus};
+use crate::notices;
 use crate::recipients::{self, Resolved};
 use crate::render::{Rendered, render};
 use crate::send::SendMessage;
@@ -39,6 +40,23 @@ impl Notifier for Messages {
         request: NotifyRequest,
     ) -> NotifyFuture<'a, Vec<MessageId>> {
         Box::pin(queue(state, request))
+    }
+
+    fn notice_status<'a>(
+        &'a self,
+        state: &'a AppState,
+        subject: &'a Subject,
+        type_key: &'a str,
+    ) -> NotifyFuture<'a, NoticeStatus> {
+        Box::pin(async move { notices::status(&state.db, subject, type_key).await })
+    }
+
+    fn undelivered_notices<'a>(
+        &'a self,
+        state: &'a AppState,
+        subject: &'a Subject,
+    ) -> NotifyFuture<'a, Vec<UndeliveredNotice>> {
+        Box::pin(async move { notices::undelivered(&state.db, subject).await })
     }
 }
 
