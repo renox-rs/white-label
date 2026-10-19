@@ -7,12 +7,14 @@
 //! collected, in basis points, and a fixed fee per statement), the payout
 //! frequency, the flag `may_invoice_negative_balance` (default off) and its
 //! status; the units it covers with the days they come in and go out
-//! ([`AgreementUnit`]); and the machine with its four states declared. The
-//! transitions `activate`, `give_notice`, `end` and `transfer_unit` come with
-//! BL-PRP-22 and BL-PRP-23, which is why the machine has none yet: a draft
-//! agreement is created by [`create_draft`] and the statements are generated
-//! for the agreements that are `active` (`ending` agreements keep their
-//! statements until `end`).
+//! ([`AgreementUnit`]); and the machine with its four states. The lifecycle
+//! (`activate`, `give_notice` and `end` with the handover pack) is in
+//! [`crate::agreement_lifecycle`] (BL-PRP-22); `transfer_unit`, a unit
+//! leaving an agreement that stays `active` or `ending`, is not a change of
+//! the agreement's state and lives in [`crate::unit_transfer`] (BL-PRP-23). A
+//! draft agreement is created by [`create_draft`] and the statements are
+//! generated for the agreements that are `active` (`ending` agreements keep
+//! their statements until `end`).
 
 use renox::chrono::NaiveDate;
 use renox::db::DateTime;
@@ -22,6 +24,7 @@ use serde::{Deserialize, Serialize};
 use wl_kernel::parties::directory;
 use wl_kernel::{PartyId, Subject};
 
+use crate::agreement_lifecycle as lifecycle;
 use crate::building::refused;
 use crate::texts::english;
 use crate::unit::Unit;
@@ -76,6 +79,17 @@ pub struct ManagementAgreement {
     pub end_reason: Option<String>,
     /// The day the units are handed over.
     pub handover_date: Option<NaiveDate>,
+    /// The day notice was given (`give_notice`).
+    pub notice_on: Option<NaiveDate>,
+    /// Who gave it: `owner` or `company`.
+    pub notice_party: Option<String>,
+    /// The user who recorded it.
+    pub notice_by: Option<i64>,
+    /// The party the deposits and cheques are handed to (the new manager);
+    /// the owner when empty.
+    pub handover_to_party_id: Option<i64>,
+    /// The day it ended (`end`).
+    pub ended_on: Option<NaiveDate>,
     /// The management company's legal entity, when it is not the default.
     pub legal_entity_id: Option<i64>,
     /// The lifecycle state; changed only by a transition.
@@ -105,6 +119,9 @@ impl StateMachine for ManagementAgreement {
             .state(Ended)
             .tone("neutral")
             .terminal()
+            .transition(lifecycle::activate_transition())
+            .transition(lifecycle::give_notice_transition())
+            .transition(lifecycle::end_transition())
     }
 }
 

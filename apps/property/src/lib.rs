@@ -2,6 +2,7 @@
 #![warn(missing_docs)]
 
 pub mod agreement;
+pub mod agreement_lifecycle;
 pub mod amend;
 pub mod arrears;
 pub mod building;
@@ -153,6 +154,7 @@ impl Module for Property {
             .model::<deposit_forfeit::DepositSettlement>()
             .model::<agreement::ManagementAgreement>()
             .model::<agreement::AgreementUnit>()
+            .model::<agreement_lifecycle::HandoverItem>()
             .model::<statement::OwnerStatement>()
             .model::<statement::StatementLine>()
             .model::<statement_dispute::StatementDispute>()

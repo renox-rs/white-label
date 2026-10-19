@@ -196,6 +196,12 @@ impl ChaseHolds for LeaseHolds {
             let Some(lease) = Lease::find(db, source.subject_id).await? else {
                 return Ok(ChaseHold::Free);
             };
+            // A lease handed over with its management agreement (BL-PRP-22):
+            // its issued invoices stay with the owner and the client stops
+            // chasing them.
+            if lease.handed_over_on.is_some() {
+                return Ok(ChaseHold::Held);
+            }
             let cases = LegalCase::of_root(db, lease.root_id).await?;
             if cases.iter().any(LegalCase::is_open) {
                 return Ok(ChaseHold::Held);

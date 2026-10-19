@@ -89,6 +89,14 @@ pub const OWNER_STATEMENT_REVISED: &str = "property.owner_statement_revised";
 /// The owner is told how the dispute of a statement line was answered.
 pub const OWNER_STATEMENT_DISPUTE_OUTCOME: &str = "property.owner_statement_dispute_outcome";
 
+/// The property managers and accountants are told that notice was given on a
+/// management agreement and the handover pack is started (BL-PRP-22).
+pub const AGREEMENT_NOTICE: &str = "property.agreement_notice";
+
+/// The tenant is told who the new payee is after the management agreement
+/// ended or the unit left it: a normal message (BL-PRP-22, BL-PRP-23).
+pub const PAYEE_CHANGED: &str = "lease.payee_changed";
+
 /// An e-mail reminder type of the vertical with English texts.
 fn english_reminder(key: &str, texts: &str) -> NotificationTypeDef {
     let subject = english(&format!("property.notices.{texts}_subject"), &[]);
@@ -140,6 +148,8 @@ pub(crate) fn register_types() {
         DEPOSIT_DISPUTE_UNANSWERED,
         "deposit_dispute_unanswered",
     ));
+    notify::register_type(staff_reminder(AGREEMENT_NOTICE, "agreement_notice"));
+    notify::register_type(tenant_message(PAYEE_CHANGED, "payee_changed", false));
     notify::register_type(staff_reminder(OWNER_STATEMENT_DRAFT, "owner_statement_draft"));
     notify::register_type(staff_reminder(
         OWNER_STATEMENT_RETURNED,
@@ -534,6 +544,51 @@ pub async fn dispute_outcome(
             "statement": statement.number(),
             "period": statement_period(statement),
             "outcome": outcome,
+        }));
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// Tells the property managers and the accountants that notice was given on
+/// `agreement` and the handover pack is started (BL-PRP-22).
+pub async fn agreement_notice(
+    state: &AppState,
+    agreement: &crate::agreement::ManagementAgreement,
+) -> Result {
+    let mut users: BTreeSet<i64> = BTreeSet::new();
+    for role in [PROPERTY_MANAGER_ROLE, ACCOUNTANT_ROLE] {
+        for user in renox::auth::permissions::users_with_role(&state.db, role).await? {
+            users.insert(user.id);
+        }
+    }
+    if users.is_empty() {
+        return Ok(());
+    }
+    let mut request = NotifyRequest::new(AGREEMENT_NOTICE, agreement.subject())
+        .subject_label(&agreement.number())
+        .data(json!({
+            "agreement": agreement.number(),
+            "party": agreement.notice_party.clone().unwrap_or_default(),
+            "notice_on": agreement.notice_on.map(shown).unwrap_or_default(),
+            "handover": agreement.handover_date.map(shown).unwrap_or_default(),
+        }));
+    for user in users {
+        request = request.to_user(user);
+    }
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// Tells the tenant of `lease` that `payee` is paid from the day it was handed
+/// over (BL-PRP-22, BL-PRP-23).
+pub async fn payee_changed(state: &AppState, lease: &Lease, payee: &str) -> Result {
+    let request = NotifyRequest::new(PAYEE_CHANGED, lease.subject())
+        .subject_label(&lease.number_with_version())
+        .to_party(lease.tenant())
+        .data(json!({
+            "lease": lease.number(),
+            "payee": payee,
+            "handover": lease.handed_over_on.map(shown).unwrap_or_default(),
         }));
     notify::notifier(state).notify(state, request).await?;
     Ok(())

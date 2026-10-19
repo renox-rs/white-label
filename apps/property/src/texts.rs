@@ -1209,6 +1209,72 @@ const TEXTS: &[(&str, &str)] = &[
         "property.deposit_forfeit.no_charge_type",
         "Configure the charge type damages (with its VAT treatment) before the damages are invoiced.",
     ),
+    // The lifecycle of a management agreement and the handover pack (BL-PRP-22).
+    ("property.agreements.no_units", "The agreement lists no unit."),
+    (
+        "property.agreements.fee_missing",
+        "Set the fee (a percentage or a fixed fee) and the payout frequency first.",
+    ),
+    (
+        "property.agreements.notice_missing",
+        "Give the notice date, the party who gave notice and the handover date.",
+    ),
+    (
+        "property.agreements.handover_early",
+        "The handover date cannot be before the notice date.",
+    ),
+    (
+        "property.agreements.holder_unknown",
+        "The party the handover goes to was not found.",
+    ),
+    (
+        "property.agreements.receipts_missing",
+        "The new holder's receipt is missing for :count deposits or cheques of the handover pack.",
+    ),
+    (
+        "property.agreements.settlement_pending",
+        "A deposit waits for its settlement: refund or forfeit it before the agreement ends.",
+    ),
+    (
+        "property.agreements.final_statement",
+        "The final owner statement up to the handover date must be approved first.",
+    ),
+    ("property.handover.deposit_line", "Deposit held for :lease"),
+    ("property.handover.cheque_line", "Cheque :number of :date for :lease"),
+    (
+        "property.handover.not_ending",
+        "The agreement is not waiting for its handover.",
+    ),
+    ("property.handover.receipt_blank", "Give the reference of the receipt."),
+    (
+        "property.handover.done_already",
+        "This line was handed over already.",
+    ),
+    (
+        "property.handover.statement_covers",
+        "A statement covers the handover date already: approve it.",
+    ),
+    ("property.handover.return_reason", "handed over"),
+    (
+        "property.handover.task_problems",
+        "Finish the handover of :agreement by hand",
+    ),
+    (
+        "property.notices.agreement_notice_subject",
+        "Notice on management agreement {{ agreement }}",
+    ),
+    (
+        "property.notices.agreement_notice_body",
+        "Notice was given by the {{ party }} on {{ notice_on }}. The units are handed over on {{ handover }}. Prepare the handover pack and the final owner statement.",
+    ),
+    (
+        "property.notices.payee_changed_subject",
+        "Who you pay for {{ lease }}",
+    ),
+    (
+        "property.notices.payee_changed_body",
+        "From {{ handover }} the rent and other payments for {{ lease }} are paid to {{ payee }}. This does not change your lease.",
+    ),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.

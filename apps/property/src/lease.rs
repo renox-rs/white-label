@@ -196,6 +196,10 @@ pub struct Lease {
     pub ejari_expires_on: Option<NaiveDate>,
     /// The day the registration was cancelled after move-out.
     pub ejari_cancelled_on: Option<NaiveDate>,
+    /// The day the units were handed over with the management agreement
+    /// that ended ("handed over on <date>", BL-PRP-22): the lease stays as
+    /// read-only history for this client and no automation runs on it.
+    pub handed_over_on: Option<NaiveDate>,
     /// The renewal decision.
     pub renewal_decision: RenewalDecision,
     /// The day the notice of changed terms was sent.

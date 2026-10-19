@@ -624,6 +624,10 @@ async fn run_lease(state: &AppState, root_id: i64, day: NaiveDate) -> Result<Rep
     if has_open(&state.db, root_id).await? {
         return Ok(Report::default());
     }
+    // A lease handed over with its management agreement runs no automation.
+    if lease.handed_over_on.is_some() {
+        return Ok(Report::default());
+    }
     if PaymentPlan::latest_of(&state.db, root_id)
         .await?
         .is_some_and(|latest| day <= latest)

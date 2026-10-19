@@ -15,6 +15,7 @@
 //! | [`SUBMIT`] `lease.submit` | the lease | its tenant party (entries may be conditioned on `tenant_kind`: `person` or `company`) |
 //! | [`ACTIVATE`] `lease.activate` | the lease | the lease version itself (the signed contract) |
 //! | [`RECORD_EJARI`] `lease.record_ejari` | the lease | the lease version itself (the Ejari or Tawtheeq certificate) |
+//! | [`AGREEMENT_ACTIVATE`] `agreement.activate` | the management agreement | the agreement itself (the signed agreement) |
 //!
 //! Without `wl-documents` nothing is guarded and every document is valid.
 
@@ -29,6 +30,7 @@ use wl_kernel::documents::{
 use wl_kernel::parties::{PartyKind, directory};
 use wl_kernel::{PartyId, Subject, documents::today};
 
+use crate::agreement::ManagementAgreement;
 use crate::lease::Lease;
 
 /// The guarded transition `submit`.
@@ -37,6 +39,10 @@ pub const SUBMIT: &str = "lease.submit";
 pub const ACTIVATE: &str = "lease.activate";
 /// The guarded step of recording the Ejari or Tawtheeq registration.
 pub const RECORD_EJARI: &str = "lease.record_ejari";
+
+/// The guarded transition `activate` of a management agreement (the signed
+/// agreement, BL-PRP-22).
+pub const AGREEMENT_ACTIVATE: &str = "agreement.activate";
 
 /// The field the entries' conditions read on `lease.submit`: whether the
 /// tenant is a `person` or a `company`.
@@ -137,6 +143,25 @@ impl BlockSubjects for LeaseSubjects {
     }
 }
 
+/// `agreement.activate`: the agreement itself (the signed contract).
+struct AgreementSubjects;
+
+impl BlockSubjects for AgreementSubjects {
+    fn subjects<'a>(
+        &'a self,
+        state: &'a AppState,
+        _entry: &'a BlockEntry,
+        record_id: i64,
+    ) -> DocumentFuture<'a, Vec<Subject>> {
+        Box::pin(async move {
+            Ok(ManagementAgreement::find(&state.db, record_id)
+                .await?
+                .map(|agreement| vec![agreement.subject()])
+                .unwrap_or_default())
+        })
+    }
+}
+
 /// Runs `transition` as the guarded transition `transition_name` of lease
 /// `record_id`, after checking the documents on the business date. A refusal
 /// answers 422 with one line per failing document and `transition` does not
@@ -175,8 +200,9 @@ where
     result.map_err(TransitionError::Failed)
 }
 
-/// Registers the three providers.
+/// Registers the providers.
 pub(crate) fn register() {
+    register_block_subjects(AGREEMENT_ACTIVATE, AgreementSubjects);
     register_block_subjects(SUBMIT, SubmitSubjects);
     register_block_subjects(ACTIVATE, LeaseSubjects);
     register_block_subjects(RECORD_EJARI, LeaseSubjects);
@@ -188,9 +214,9 @@ mod tests {
 
     #[test]
     fn the_guarded_transitions_are_entity_dot_transition() {
-        for guarded in [SUBMIT, ACTIVATE, RECORD_EJARI] {
+        for guarded in [SUBMIT, ACTIVATE, RECORD_EJARI, AGREEMENT_ACTIVATE] {
             let (entity, transition) = guarded.split_once('.').expect("entity.transition");
-            assert_eq!(entity, "lease");
+            assert!(entity == "lease" || entity == "agreement");
             assert!(!transition.is_empty());
         }
     }
@@ -199,7 +225,7 @@ mod tests {
     fn registering_makes_the_transitions_guardable() {
         register();
         let guarded = wl_kernel::documents::guarded_transitions();
-        for name in [SUBMIT, ACTIVATE, RECORD_EJARI] {
+        for name in [SUBMIT, ACTIVATE, RECORD_EJARI, AGREEMENT_ACTIVATE] {
             assert!(guarded.iter().any(|g| g == name), "{name}");
         }
     }

@@ -256,6 +256,7 @@ pub struct Report {
 pub async fn flag_due(state: &AppState, day: NaiveDate) -> Result<usize> {
     let active = Lease::query()
         .where_(Lease::STATUS.eq(LeaseStatus::Active))
+        .where_(Lease::HANDED_OVER_ON.is_null())
         .order_by(Lease::ID)
         .get(&state.db)
         .await?;
@@ -367,6 +368,7 @@ async fn handle_deadline(
 async fn deadlines(state: &AppState, day: NaiveDate, report: &mut Report) -> Result {
     let due = Lease::query()
         .where_(Lease::STATUS.eq(LeaseStatus::RenewalDue))
+        .where_(Lease::HANDED_OVER_ON.is_null())
         .order_by(Lease::ID)
         .get(&state.db)
         .await?;

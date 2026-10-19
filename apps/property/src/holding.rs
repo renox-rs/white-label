@@ -254,6 +254,7 @@ pub(crate) async fn expire_effects(tx: &mut Transaction, lease: &Lease, day: Nai
 pub async fn expire_due(state: &AppState, day: NaiveDate) -> Result<usize> {
     let due = Lease::query()
         .where_(Lease::STATUS.eq(LeaseStatus::RenewalDue))
+        .where_(Lease::HANDED_OVER_ON.is_null())
         .where_(Lease::END_DATE.lt(day))
         .order_by(Lease::ID)
         .get(&state.db)
@@ -319,6 +320,7 @@ async fn extend_period(state: &AppState, lease: &Lease) -> Result<bool> {
 pub async fn extend_due(state: &AppState, day: NaiveDate) -> Result<usize> {
     let holding = Lease::query()
         .where_(Lease::STATUS.eq(LeaseStatus::Expired))
+        .where_(Lease::HANDED_OVER_ON.is_null())
         .where_(Lease::HOLDING_OVER_UNTIL.lt(day))
         .order_by(Lease::ID)
         .get(&state.db)
@@ -470,6 +472,7 @@ async fn handle_task(state: &AppState, lease: &Lease, day: NaiveDate) -> Result<
 pub async fn open_tasks(state: &AppState, day: NaiveDate) -> Result<usize> {
     let expired = Lease::query()
         .where_(Lease::STATUS.eq(LeaseStatus::Expired))
+        .where_(Lease::HANDED_OVER_ON.is_null())
         .order_by(Lease::ID)
         .get(&state.db)
         .await?;
