@@ -760,9 +760,6 @@ pub async fn resolve(
     } else {
         0
     };
-    // `PRP.ACL.15`: a compliance-critical planned visit needs the vendor's
-    // service report.
-    crate::job_cancel::ensure_service_report(state, ticket).await?;
     let input = WorkInput {
         charge_lines,
         ..WorkInput::at(at)
@@ -776,6 +773,9 @@ pub async fn resolve(
         wl_kernel::documents::dubai_date(at),
         Some(user.id),
         || async {
+            // `PRP.ACL.15`: a compliance-critical planned visit needs the
+            // vendor's service report, checked after the vendor's document.
+            crate::job_cancel::ensure_service_report(state, ticket).await?;
             ticket
                 .transition(RESOLVE)
                 .by(user)
