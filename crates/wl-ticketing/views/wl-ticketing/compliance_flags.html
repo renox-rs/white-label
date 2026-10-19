@@ -1,0 +1,18 @@
+{#- wl-ticketing: the compliance report: the open compliance flags by
+    subject, reason and age. Replace it with
+    resources/views/wl-ticketing/compliance_flags.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['flags.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['flags.title']" :subtitle="tx['flags.subtitle']"/>
+    <rx-table :rows="flags" as="flag" :key="flag.subject ~ flag.reason_key ~ flag.raised" :caption="tx['flags.title']" card>
+      <rx-column :label="tx['flags.subject']">{{ flag.subject }}</rx-column>
+      <rx-column :label="tx['flags.category']">{{ flag.category }}</rx-column>
+      <rx-column :label="tx['flags.reason']"><rx-badge kind="error" :text="flag.reason"/></rx-column>
+      <rx-column :label="tx['flags.raised']" hide-narrow>{{ flag.raised }}</rx-column>
+      <rx-column :label="tx['flags.age']">{{ flag.age }}</rx-column>
+      <rx-column :label="tx['flags.visit']" hide-narrow><a rx-if="flag.visit_id" href="{{ route('wl_ticketing.show', flag.visit_id) }}">{{ flag.visit }}</a></rx-column>
+      <rx-column :label="tx['flags.contract']" hide-narrow>{{ flag.contract or "—" }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['flags.empty']" :message="tx['flags.empty_hint']" icon="shield-check"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

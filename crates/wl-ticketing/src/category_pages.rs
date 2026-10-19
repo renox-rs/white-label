@@ -6,6 +6,7 @@
 //! | `POST /ticket-categories/{key}` | `wl_ticketing.category_rename` | `tickets.manage` (fields `name_en`, `name_ar`) |
 //! | `POST /ticket-categories/{key}/active` | `wl_ticketing.category_active` | `tickets.manage` (field `active`: `1` on, else off; a platform category stays on) |
 //! | `POST /ticket-categories/{key}/charging` | `wl_ticketing.category_charging` | `tickets.manage` (fields `chargeable`: `1`/`0`, `invoice_on`: `resolve`/`close`) |
+//! | `POST /ticket-categories/{key}/compliance` | `wl_ticketing.category_compliance` | `tickets.manage` (field `compliance_critical`: `1`/`0`) |
 //! | `DELETE /ticket-categories/{key}` | `wl_ticketing.category_destroy` | `tickets.manage` (a platform category or one with tickets is refused, 422) |
 //!
 //! The templates are compiled in and can be replaced by the app
@@ -35,6 +36,8 @@ pub fn routes() -> Routes {
         .name("wl_ticketing.category_active")
         .post("/ticket-categories/{key}/charging", set_charging)
         .name("wl_ticketing.category_charging")
+        .post("/ticket-categories/{key}/compliance", set_compliance)
+        .name("wl_ticketing.category_compliance")
         .delete("/ticket-categories/{key}", destroy)
         .name("wl_ticketing.category_destroy")
         .require_permission(permissions::MANAGE)
@@ -67,6 +70,8 @@ pub struct CategoryRow {
     pub assignee_role: String,
     /// Whether its tickets can carry charges.
     pub chargeable: bool,
+    /// Whether a covered subject that is not compliant for it is flagged.
+    pub compliance_critical: bool,
     /// `resolve` or `close`: when its chargeable tickets are invoiced.
     pub invoice_on: String,
     /// "Chargeable, invoiced on close" or "Not chargeable".
@@ -85,6 +90,8 @@ pub(crate) struct CategoriesPage {
     chargeable_options: Vec<(String, String)>,
     /// `(value, label)` pairs for the invoice-on select.
     invoice_on_options: Vec<(String, String)>,
+    /// `(value, label)` pairs for the compliance-critical select.
+    critical_options: Vec<(String, String)>,
 }
 
 /// `GET /ticket-categories`: every category, with rename, turn off and
@@ -97,6 +104,7 @@ async fn index(State(db): State<Db>, lang: Lang) -> Result<View> {
         .into_iter()
         .map(|c| CategoryRow {
             chargeable: c.chargeable,
+            compliance_critical: c.compliance_critical,
             invoice_on: invoice_on_value(c.invoice_on).to_owned(),
             charging_label: if c.chargeable {
                 texts::t(
@@ -125,6 +133,10 @@ async fn index(State(db): State<Db>, lang: Lang) -> Result<View> {
         chargeable_options: vec![
             ("1".to_owned(), texts::t(&lang, "wl_ticketing.categories.chargeable")),
             ("0".to_owned(), texts::t(&lang, "wl_ticketing.categories.not_chargeable")),
+        ],
+        critical_options: vec![
+            ("1".to_owned(), texts::t(&lang, "wl_ticketing.categories.critical")),
+            ("0".to_owned(), texts::t(&lang, "wl_ticketing.categories.not_critical")),
         ],
         invoice_on_options: vec![
             ("resolve".to_owned(), texts::t(&lang, "wl_ticketing.categories.on_resolve")),
@@ -212,6 +224,31 @@ async fn set_charging(
     Valid(form): Valid<ChargingForm>,
 ) -> Result<Response> {
     categories::set_charging(&db, &user, &key, form.chargeable == "1", form.invoice_on).await?;
+    Ok((
+        Toast::success(texts::t(&lang, "wl_ticketing.categories.updated")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// The compliance form.
+#[derive(Deserialize, Serialize, Validate, Debug, Default)]
+pub struct ComplianceForm {
+    /// `1` when the category is compliance-critical.
+    #[serde(default)]
+    pub compliance_critical: String,
+}
+
+/// `POST /ticket-categories/{key}/compliance`: marks the category
+/// compliance-critical or not.
+async fn set_compliance(
+    State(db): State<Db>,
+    user: AuthUser,
+    lang: Lang,
+    Path(key): Path<String>,
+    Valid(form): Valid<ComplianceForm>,
+) -> Result<Response> {
+    categories::set_compliance_critical(&db, &user, &key, form.compliance_critical == "1").await?;
     Ok((
         Toast::success(texts::t(&lang, "wl_ticketing.categories.updated")),
         renox::HxRefresh,

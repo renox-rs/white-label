@@ -11,6 +11,7 @@
       <rx-column :label="tx['categories.key']" hide-narrow>{{ category.key }}</rx-column>
       <rx-column :label="tx['categories.assignee_role']" hide-narrow>{{ category.assignee_role or "—" }}</rx-column>
       <rx-column :label="tx['categories.charging']" hide-narrow>{{ category.charging_label }}</rx-column>
+      <rx-column :label="tx['categories.compliance']" hide-narrow><rx-badge rx-if="category.compliance_critical" kind="warning" :text="tx['categories.critical']"/></rx-column>
       <rx-row-actions>
         <rx-action-sheet :id="'rename-' ~ category.key" :label="tx['categories.rename']" :action="route('wl_ticketing.category_rename', category.key)"
                          :title="tx['categories.rename_title']" :submit-label="tx['categories.rename']" icon="pencil">
@@ -21,6 +22,10 @@
                          :title="tx['categories.charging_title']" :description="tx['categories.charging_description']" :submit-label="tx['categories.charging_change']" icon="receipt">
           <rx-select name="chargeable" :label="tx['categories.charging']" :options="chargeable_options" :selected="'1' if category.chargeable else '0'" :id="'charging-select-' ~ category.key"/>
           <rx-select name="invoice_on" :label="tx['categories.invoice_on']" :options="invoice_on_options" :selected="category.invoice_on" :id="'invoice-on-select-' ~ category.key"/>
+        </rx-action-sheet>
+        <rx-action-sheet :id="'compliance-' ~ category.key" :label="tx['categories.compliance_change']" :action="route('wl_ticketing.category_compliance', category.key)"
+                         :title="tx['categories.compliance_title']" :description="tx['categories.compliance_description']" :submit-label="tx['categories.compliance_change']" icon="shield">
+          <rx-select name="compliance_critical" :label="tx['categories.compliance']" :options="critical_options" :selected="'1' if category.compliance_critical else '0'" :id="'compliance-select-' ~ category.key"/>
         </rx-action-sheet>
         <template rx-if="category.platform">
           <span>{{ tx['categories.platform_hint'] }}</span>

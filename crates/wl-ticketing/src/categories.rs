@@ -90,6 +90,28 @@ pub async fn set_charging(
     Ok(category)
 }
 
+/// Marks the category `key` compliance-critical or not (01: fire and life
+/// safety, lifts): a covered subject that is not compliant for it gets a
+/// compliance flag, and a missed planned visit also tells the manager.
+///
+/// # Errors
+///
+/// `Forbidden` without `tickets.manage`, `NotFound` for an unknown key.
+pub async fn set_compliance_critical(
+    db: &Db,
+    user: &AuthUser,
+    key: &str,
+    critical: bool,
+) -> Result<Category> {
+    manage(user)?;
+    let mut category = category(db, key).await?;
+    if category.compliance_critical != critical {
+        category.compliance_critical = critical;
+        category.save(db).await?;
+    }
+    Ok(category)
+}
+
 /// Turns the category `key` on or off: an inactive category takes no new
 /// tickets, and its tickets stay.
 ///

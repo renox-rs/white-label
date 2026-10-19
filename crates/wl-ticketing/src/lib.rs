@@ -8,6 +8,7 @@ pub mod category_pages;
 pub mod charge;
 pub mod comments;
 pub mod config;
+pub mod flag_pages;
 pub mod flags;
 mod machine;
 mod notices;
@@ -64,6 +65,10 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "wl-ticketing/_assignments.html",
         include_str!("../views/wl-ticketing/_assignments.html"),
+    ),
+    (
+        "wl-ticketing/compliance_flags.html",
+        include_str!("../views/wl-ticketing/compliance_flags.html"),
     ),
     (
         "wl-ticketing/_charges.html",
@@ -187,7 +192,9 @@ impl Module for WlTicketing {
     }
 
     fn routes(&self) -> Routes {
-        pages::routes().merge(category_pages::routes())
+        pages::routes()
+            .merge(category_pages::routes())
+            .merge(flag_pages::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -198,7 +205,8 @@ impl Module for WlTicketing {
         app.view_data::<pages::IndexPage>()
             .view_data::<pages::NewPage>()
             .view_data::<pages::ShowPage>()
-            .view_data::<category_pages::CategoriesPage>();
+            .view_data::<category_pages::CategoriesPage>()
+            .view_data::<flag_pages::FlagsPage>();
         app.templates(|env| {
             for (name, source) in VIEWS {
                 // The app's own file of that name wins.
@@ -225,6 +233,14 @@ impl Module for WlTicketing {
                 .group("nav.admin")
                 .order(55)
                 .permission(permissions::MANAGE),
+        );
+        app.nav(
+            "app",
+            NavLink::route("wl_ticketing.compliance_flags", "nav.compliance_flags")
+                .icon("shield-alert")
+                .group("nav.app")
+                .order(56)
+                .permission(permissions::VIEW),
         );
         app.model::<SlaPolicy>()
             .model::<SlaTarget>()
