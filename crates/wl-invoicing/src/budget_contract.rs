@@ -49,6 +49,24 @@ impl CompanyBudgets for Budgets {
         Box::pin(approved_amount(db, legal_entity_id, category, month))
     }
 
+    fn actual_amount<'a>(
+        &'a self,
+        db: &'a Db,
+        legal_entity_id: i64,
+        category: &'a str,
+        month: NaiveDate,
+    ) -> BudgetFuture<'a, i64> {
+        Box::pin(async move {
+            match BudgetCategory::by_code(db, category).await? {
+                Some(category) => {
+                    crate::budget_actual::category_actual(db, legal_entity_id, category.id, month)
+                        .await
+                }
+                None => Ok(0),
+            }
+        })
+    }
+
     fn is_owner_drawings<'a>(&'a self, db: &'a Db, category: &'a str) -> BudgetFuture<'a, bool> {
         Box::pin(async move {
             Ok(BudgetCategory::by_code(db, category)

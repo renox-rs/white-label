@@ -23,6 +23,8 @@
 //! bad amount or a repeated category and month is rejected with its row
 //! number, and a file with any rejected row changes nothing.
 
+use std::collections::BTreeMap;
+
 use renox::chrono::{Months, NaiveDate};
 use renox::prelude::*;
 use renox::serde_json::json;
@@ -30,9 +32,10 @@ use wl_kernel::LegalEntity;
 use wl_kernel::documents::today;
 
 use crate::budget::{
-    BudgetStatus, CompanyBudget, CompanyBudgetLine, StartChoice, month_end, month_start,
-    parse_budget_amount,
+    BudgetStatus, CompanyBudget, CompanyBudgetLine, StartChoice, fiscal_months, month_end,
+    month_start, parse_budget_amount,
 };
+use crate::budget_actual;
 use crate::budget_category::{BudgetCategory, refused, refused_with};
 use crate::texts::english;
 
@@ -124,6 +127,32 @@ async fn last_year_lines(
     Ok(moved)
 }
 
+/// The lines of last year's actual, a year on: one per category that is
+/// active now and had an actual above 0 in a month.
+async fn actual_lines(
+    db: &mut renox::db::Transaction,
+    sums: BTreeMap<(i64, NaiveDate), i64>,
+) -> Result<Vec<CompanyBudgetLine>> {
+    let mut lines = Vec::new();
+    for ((category_id, month), amount) in sums {
+        let active = BudgetCategory::find(&mut *db, category_id)
+            .await?
+            .is_some_and(|c| c.active);
+        let Some(moved) = month.checked_add_months(Months::new(12)) else {
+            continue;
+        };
+        if active && amount > 0 {
+            lines.push(CompanyBudgetLine {
+                category_id,
+                month: moved,
+                amount,
+                ..Default::default()
+            });
+        }
+    }
+    Ok(lines)
+}
+
 /// Creates a `draft` version for the entity and year of `new`, by user `by`.
 ///
 /// # Errors
@@ -131,13 +160,28 @@ async fn last_year_lines(
 /// 422 when the entity is unknown or inactive, the year is not between 2000
 /// and 2100, a `draft` or `submitted` version of the entity and year exists,
 /// *last year's budget* is asked for and the entity has no approved budget
-/// for last year, or *last year's actual* is asked for and it cannot be read.
+/// for last year.
 pub async fn create(state: &AppState, new: NewBudget, by: Option<i64>) -> Result<CompanyBudget> {
     let config = crate::config_of(state);
     if !(2000..=2100).contains(&new.fiscal_year) {
         return Err(refused(english("wl_invoicing.budget.problem.year")));
     }
     let on = today();
+    // Last year's actual is read before the transaction opens: it takes the
+    // connection pool, which an open transaction would hold.
+    let last_actual = if new.start == StartChoice::LastActual {
+        let start_month = CompanyBudget::start_month_for(
+            &state.db,
+            new.legal_entity_id,
+            new.fiscal_year,
+            config.budget_fiscal_start_month,
+        )
+        .await?;
+        let months = fiscal_months(start_month, new.fiscal_year - 1);
+        Some(budget_actual::per_category_month(&state.db, new.legal_entity_id, &months).await?)
+    } else {
+        None
+    };
     let mut tx = state.db.begin().await?;
     let entity = LegalEntity::find(&mut tx, new.legal_entity_id)
         .await?
@@ -198,11 +242,10 @@ pub async fn create(state: &AppState, new: NewBudget, by: Option<i64>) -> Result
                     lines: last_year_lines(&mut tx, lines).await?,
                 }
             }
-            StartChoice::LastActual => {
-                return Err(refused(english(
-                    "wl_invoicing.budget.problem.actual_unavailable",
-                )));
-            }
+            StartChoice::LastActual => Seeded {
+                choice: StartChoice::LastActual,
+                lines: actual_lines(&mut tx, last_actual.unwrap_or_default()).await?,
+            },
         },
     };
     let name = clean(Some(new.name.as_str())).unwrap_or_else(|| format!("{} v{version}", new.fiscal_year));

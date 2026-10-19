@@ -231,12 +231,15 @@ pub fn parse_mappings(text: &str) -> Result<Vec<(MappingKind, String)>> {
 
 /// Whether the kind of category `id` can no longer change: it has a budget
 /// line or an actual.
-pub async fn kind_is_locked(db: impl renox::db::Executor<'_>, id: i64) -> Result<bool> {
+pub async fn kind_is_locked(tx: &mut renox::db::Transaction, id: i64) -> Result<bool> {
     let lines = crate::budget::CompanyBudgetLine::query()
         .where_(crate::budget::CompanyBudgetLine::CATEGORY_ID.eq(id))
-        .exists(db)
+        .exists(&mut *tx)
         .await?;
-    Ok(lines)
+    if lines {
+        return Ok(true);
+    }
+    crate::budget_actual::category_has_actual(tx, id).await
 }
 
 /// Saves a category: a new one when `id` is `None`, else the change of that
