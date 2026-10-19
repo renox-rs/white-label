@@ -125,6 +125,13 @@
           <rx-input name="hand_back" :label="tx['force.hand_back']" :id="'force-hand-back-' ~ lease.id"/>
         </rx-action-sheet>
       </template>
+      <template rx-if="can_apply_deposit">
+        <rx-action-sheet :id="'apply-deposit-' ~ lease.id" :label="tx['deposit_forfeit.action']" :action="route('property.lease_apply_deposit', lease.id)"
+                         :title="tx['deposit_forfeit.action']" :description="tx['deposit_forfeit.description']" :submit-label="tx['deposit_forfeit.submit']" icon="piggy-bank" variant="danger" danger>
+          <rx-input name="approver" :label="tx['deposit_forfeit.approver']" :hint="tx['deposit_forfeit.approver_hint']" :id="'apply-deposit-approver-' ~ lease.id" required/>
+          <rx-input name="second_approver" :label="tx['deposit_forfeit.second']" :hint="tx['deposit_forfeit.second_hint']" :id="'apply-deposit-second-' ~ lease.id"/>
+        </rx-action-sheet>
+      </template>
       <template rx-if="can_ejari_cancel">
         <rx-action-sheet :id="'ejari-cancel-' ~ lease.id" :label="tx['ejari.cancel']" :action="route('property.lease_ejari_cancellation', lease.id)"
                          :title="tx['ejari.cancel']" :description="tx['ejari.cancel_description']" :submit-label="tx['ejari.cancel']" icon="stamp">
@@ -215,6 +222,18 @@
         <rx-column :label="tx['legal.ticket']" hide-narrow>{{ flag.ticket }}</rx-column>
         <rx-column :label="tx['legal.opened_on']" hide-narrow>{{ flag.opened_on }}</rx-column>
         <rx-column :label="tx['legal.cleared_on']" hide-narrow>{{ flag.cleared_on }}</rx-column>
+      </rx-table>
+    </template>
+    <template rx-if="settlement">
+      <rx-table :rows="settlement" as="row" :key="row.applied_on" :caption="tx['deposit_forfeit.title']" card>
+        <rx-column :label="tx['deposit_forfeit.held']" align="num">{{ row.held }}</rx-column>
+        <rx-column :label="tx['deposit_forfeit.rent_due']" align="num" hide-narrow>{{ row.rent_due }}</rx-column>
+        <rx-column :label="tx['deposit_forfeit.damages']" align="num" hide-narrow>{{ row.damages }}</rx-column>
+        <rx-column :label="tx['deposit_forfeit.to_rent']" align="num">{{ row.to_rent }}</rx-column>
+        <rx-column :label="tx['deposit_forfeit.to_damages']" align="num">{{ row.to_damages }}</rx-column>
+        <rx-column :label="tx['deposit_forfeit.excess']" align="num">{{ row.excess }}</rx-column>
+        <rx-column :label="tx['deposit_forfeit.invoice']" hide-narrow>{{ row.invoice }}</rx-column>
+        <rx-column :label="tx['deposit_forfeit.applied_on']" hide-narrow>{{ row.applied_on }}</rx-column>
       </rx-table>
     </template>
     <template rx-if="demands">

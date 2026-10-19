@@ -25,6 +25,7 @@
 //! | `POST /property/leases/{id}/payment-plan` | `property.lease_payment_plan` | `leases.manage` in the building |
 //! | `POST /property/leases/{id}/force-terminate` | `property.lease_force_terminate` | `leases.manage` in the building |
 //! | `POST /property/leases/{id}/ejari-cancellation` | `property.lease_ejari_cancellation` | `leases.manage` in the building |
+//! | `POST /property/leases/{id}/apply-deposit` | `property.lease_apply_deposit` | `deposits.refund` in the building |
 //! | `POST /property/leases/{id}/waive-deposit` | `property.lease_waive_deposit` | `leases.activate` in the building |
 //! | `POST /property/leases/{id}/ejari` | `property.lease_ejari` | `leases.activate` in the building |
 //! | `POST /property/leases/{id}/cheques` | `property.lease_cheques` | `leases.create` in the building |
@@ -48,6 +49,7 @@ use crate::cheques::{ChequeEntry, of_version, register_cheques};
 use crate::lease::{Lease, LeaseStatus, RenewalDecision, VersionKind};
 use crate::arrears::{self, ArrearsDemand, NewPlan, PaymentPlan};
 use crate::cancellation::{self, CancelRequest};
+use crate::deposit_forfeit::{self, ApplyRequest, DepositSettlement};
 use crate::force::{self, ForceReason, ForceRequest};
 use crate::chase;
 use crate::lease_machine::{ACTIVATE, CANCEL, SUBMIT};
@@ -55,7 +57,7 @@ use crate::legal_case::{self, CaseOutcome, CaseType, LegalCase, NewCase};
 use crate::notice::{self, NewNotice, NoticeParty, NoticeReason};
 use crate::leases::{self, EjariInput, NewLease, NewVersion};
 use crate::parse::{parse_aed, parse_date};
-use crate::permissions;
+use crate::permissions::{self, DEPOSITS_REFUND};
 use crate::renew;
 use crate::renewal;
 use crate::termination::{self, Inspection, Termination};
@@ -111,6 +113,8 @@ pub fn routes() -> Routes {
         .name("property.lease_force_terminate")
         .post("/property/leases/{id}/ejari-cancellation", ejari_cancellation)
         .name("property.lease_ejari_cancellation")
+        .post("/property/leases/{id}/apply-deposit", apply_deposit)
+        .name("property.lease_apply_deposit")
         .post("/property/leases/{id}/waive-deposit", waive_deposit)
         .name("property.lease_waive_deposit")
         .post("/property/leases/{id}/ejari", ejari)
@@ -272,6 +276,27 @@ pub struct CaseRow {
     pub cleared_on: String,
 }
 
+/// The settlement statement of a deposit applied to the deductions.
+#[derive(Serialize, Debug, Clone)]
+pub struct SettlementRow {
+    /// The deposit.
+    pub held: String,
+    /// The unpaid rent.
+    pub rent_due: String,
+    /// The damage lines.
+    pub damages: String,
+    /// The part applied to the rent invoices.
+    pub to_rent: String,
+    /// The part kept for the damages.
+    pub to_damages: String,
+    /// The damages invoiced to the tenant.
+    pub excess: String,
+    /// The damages invoice.
+    pub invoice: String,
+    /// The day.
+    pub applied_on: String,
+}
+
 /// A formal payment demand of the lease.
 #[derive(Serialize, Debug, Clone)]
 pub struct DemandRow {
@@ -415,6 +440,8 @@ pub(crate) struct ShowPage {
     differences: Vec<DifferenceRow>,
     legal_cases: Vec<CaseRow>,
     legal_open: bool,
+    settlement: Vec<SettlementRow>,
+    can_apply_deposit: bool,
     demands: Vec<DemandRow>,
     send_demands: Vec<[String; 2]>,
     plan_until: String,
@@ -767,6 +794,24 @@ async fn show(
             .unwrap_or_default(),
         force_basis: lease.force_basis.clone().unwrap_or_default(),
     };
+    let settled_by_deposit = DepositSettlement::of_root(&state.db, lease.root_id).await?;
+    let settlement: Vec<SettlementRow> = settled_by_deposit
+        .iter()
+        .map(|s| SettlementRow {
+            held: crate::money_text(s.held),
+            rent_due: crate::money_text(s.rent_due),
+            damages: crate::money_text(s.damages),
+            to_rent: crate::money_text(s.to_rent),
+            to_damages: crate::money_text(s.to_damages),
+            excess: crate::money_text(s.excess),
+            invoice: s
+                .excess_invoice_number
+                .clone()
+                .or_else(|| s.excess_invoice_id.map(|id| format!("#{id}")))
+                .unwrap_or_default(),
+            applied_on: s.applied_on.to_string(),
+        })
+        .collect();
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
         lease: view,
@@ -778,6 +823,10 @@ async fn show(
         differences,
         legal_cases,
         legal_open,
+        settlement,
+        can_apply_deposit: user.has_permission_in(DEPOSITS_REFUND, &scope)
+            && lease.status == LeaseStatus::Terminated
+            && settled_by_deposit.is_none(),
         demands,
         send_demands,
         plan_until,
@@ -1577,6 +1626,34 @@ pub struct EjariForm {
     /// The day it expires.
     #[serde(default)]
     pub expires_on: String,
+}
+
+/// The form that applies the deposit to the deductions.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct ApplyDepositForm {
+    /// The property manager who approves.
+    #[serde(default)]
+    pub approver: String,
+    /// Finance or the owner, above AED 5,000.
+    #[serde(default)]
+    pub second_approver: String,
+}
+
+/// `POST /property/leases/{id}/apply-deposit`: forfeits the deposit with the
+/// reason *applied to deductions* and invoices the damages it does not cover.
+async fn apply_deposit(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<ApplyDepositForm>,
+) -> Result<Response> {
+    let mut request = ApplyRequest::new(whole::<i64>(&form.approver, "approver")?);
+    if !form.second_approver.trim().is_empty() {
+        request = request.second(whole::<i64>(&form.second_approver, "second_approver")?);
+    }
+    deposit_forfeit::apply(&state, &user, id, request).await?;
+    Ok((Toast::success(text(&lang, "deposit_forfeit.done")), renox::HxRefresh).into_response())
 }
 
 /// `POST /property/leases/{id}/ejari`.

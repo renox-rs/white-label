@@ -10,6 +10,7 @@ pub mod charge;
 pub mod charge_type;
 pub mod cheques;
 mod db;
+pub mod deposit_forfeit;
 pub mod deposit_watch;
 pub mod documents;
 pub mod events;
@@ -131,7 +132,8 @@ impl Module for Property {
             .model::<arrears::ArrearsDemand>()
             .model::<arrears::DemandInvoice>()
             .model::<arrears::PaymentPlan>()
-            .model::<deposit_watch::DepositWatch>();
+            .model::<deposit_watch::DepositWatch>()
+            .model::<deposit_forfeit::DepositSettlement>();
         unit_machine::register();
         lease_machine::register();
         documents::register();

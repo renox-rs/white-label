@@ -26,6 +26,11 @@ pub const LEASES_MANAGE: &str = "leases.manage";
 /// company admin by default) approves.
 pub const LEASES_FORCE_TERMINATE: &str = "leases.force_terminate";
 
+/// The permission of wl-payments that lets the accountant forfeit a deposit;
+/// the forfeiture that applies a deposit to the deductions is checked against
+/// it in the lease's building (BL-PRP-17).
+pub const DEPOSITS_REFUND: &str = "deposits.refund";
+
 /// Every permission of the module.
 pub const ALL: &[&str] = &[
     UNITS_VIEW,
@@ -49,3 +54,11 @@ pub const LEASING_AGENT_ROLE: &str = "leasing_agent";
 /// The role that gets the tasks about cheques and refunds. The host's
 /// `roles::ACCOUNTANT` is this role.
 pub const ACCOUNTANT_ROLE: &str = "accountant";
+/// The finance manager: gives the second approval of deposit deductions above
+/// the threshold of `PRP.ACL.05`. The host's `roles::FINANCE_MANAGER`.
+pub const FINANCE_MANAGER_ROLE: &str = "finance_manager";
+/// The owner: may give the second approval of deposit deductions instead of
+/// finance. The host's `roles::OWNER`.
+pub const OWNER_ROLE: &str = "owner";
+/// The roles whose holders give the second approval (`PRP.ACL.05`).
+pub const SECOND_APPROVER_ROLES: [&str; 2] = [FINANCE_MANAGER_ROLE, OWNER_ROLE];

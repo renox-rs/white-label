@@ -905,6 +905,55 @@ const TEXTS: &[(&str, &str)] = &[
         "property.force.case_abandoned",
         "The unit was abandoned and the lease ended by force.",
     ),
+    // The deposit applied to the deductions (BL-PRP-17).
+    ("property.deposit_forfeit.action", "Apply the deposit to the deductions"),
+    (
+        "property.deposit_forfeit.description",
+        "Keeps the whole deposit. It goes to the unpaid rent invoices, oldest first, then to the damage lines; the damages it does not cover are invoiced to the tenant.",
+    ),
+    ("property.deposit_forfeit.approver", "Approved by (property manager)"),
+    ("property.deposit_forfeit.approver_hint", "The number of a property manager of the building who is not you."),
+    ("property.deposit_forfeit.second", "Second approval (finance or the owner)"),
+    ("property.deposit_forfeit.second_hint", "Needed when the total deductions are above AED 5,000.00."),
+    ("property.deposit_forfeit.submit", "Forfeit the deposit"),
+    ("property.deposit_forfeit.done", "The deposit was applied to the deductions."),
+    ("property.deposit_forfeit.title", "Deposit settlement"),
+    ("property.deposit_forfeit.held", "Deposit"),
+    ("property.deposit_forfeit.rent_due", "Unpaid rent"),
+    ("property.deposit_forfeit.damages", "Damages"),
+    ("property.deposit_forfeit.to_rent", "Applied to rent"),
+    ("property.deposit_forfeit.to_damages", "Kept for damages"),
+    ("property.deposit_forfeit.excess", "Damages invoiced"),
+    ("property.deposit_forfeit.invoice", "Damages invoice"),
+    ("property.deposit_forfeit.applied_on", "Applied on"),
+    (
+        "property.deposit_forfeit.approver_wrong",
+        "The approver must be a property manager of the building.",
+    ),
+    (
+        "property.deposit_forfeit.second_required",
+        "The deductions are above :limit: finance or the owner must approve too.",
+    ),
+    (
+        "property.deposit_forfeit.done_already",
+        "The deposit of this lease was applied to the deductions already.",
+    ),
+    (
+        "property.deposit_forfeit.unpublished",
+        "Publish the deductions to the tenant first.",
+    ),
+    (
+        "property.deposit_forfeit.disputed",
+        "A line of the deductions is disputed: answer it first.",
+    ),
+    (
+        "property.deposit_forfeit.window",
+        "The tenant may dispute the deductions until :day. Wait until it has passed.",
+    ),
+    (
+        "property.deposit_forfeit.no_charge_type",
+        "Configure the charge type damages (with its VAT treatment) before the damages are invoiced.",
+    ),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.

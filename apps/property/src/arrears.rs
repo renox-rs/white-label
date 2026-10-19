@@ -294,6 +294,16 @@ async fn invoices_of(state: &AppState, root_id: i64) -> Result<Vec<Seen>> {
             }
         }
     }
+    // The damages invoice of a deposit applied to the deductions follows the
+    // flow like a rent invoice (BL-PRP-17).
+    if let Some(settlement) = crate::deposit_forfeit::DepositSettlement::of_root(&state.db, root_id).await?
+        && let Some(id) = settlement.excess_invoice_id
+        && !seen.iter().any(|s| s.id == id)
+        && let Some(summary) = invoicer(state).find(&state.db, InvoiceId(id)).await?
+    {
+        let due = summary.due_date.unwrap_or(settlement.applied_on);
+        seen.push(Seen { id, summary, due });
+    }
     Ok(seen)
 }
 
@@ -643,6 +653,17 @@ pub async fn run(state: &AppState, day: NaiveDate) -> Result<Report> {
         if let Some(lease) = Lease::find(&state.db, charge.lease_id).await? {
             roots.insert(lease.root_id);
         }
+    }
+    // The damages invoice of a deposit applied to the deductions (BL-PRP-17).
+    for settlement in crate::deposit_forfeit::DepositSettlement::query()
+        .where_(crate::deposit_forfeit::DepositSettlement::EXCESS_INVOICE_ID.is_not_null())
+        .where_(
+            crate::deposit_forfeit::DepositSettlement::APPLIED_ON.lte(day - Duration::days(DEMAND_DAYS)),
+        )
+        .get(&state.db)
+        .await?
+    {
+        roots.insert(settlement.root_id);
     }
     for demand in ArrearsDemand::query()
         .where_(ArrearsDemand::CLOSED_ON.is_null())
