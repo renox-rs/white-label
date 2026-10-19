@@ -68,13 +68,17 @@ pub fn app_for(config: ClientConfig) -> Result<renox::App, ConfigError> {
     let client_app = config.client.app.clone();
     let vertical = vertical(&client_app)?;
     let manifest = config.manifest()?;
+    let entities: Vec<String> = config.legal_entities.iter().map(|e| e.code.clone()).collect();
     // The kernel goes first: its seeder creates the legal entities the other
     // modules' demo data needs, and seeders run in the order modules mount.
     let mut app = wl_kernel::apply(base(), config)?;
     for module in manifest.enabled() {
-        app = enable(app, module, &client_app)?;
+        app = enable(app, module, &client_app, &entities)?;
     }
-    Ok(app.module(vertical))
+    // The page that shows the shared modules' settings of this client.
+    Ok(app
+        .module(app::negative_flow::NegativeFlow::new(&client_app, entities))
+        .module(vertical))
 }
 
 /// The vertical app named in `[client] app`.
@@ -87,31 +91,21 @@ fn vertical(name: &str) -> Result<property::Property, ConfigError> {
     }
 }
 
-/// The invoicing module with the settings of the client's app: `property`
-/// also holds a supplier bill for the same contract, period and amount
-/// (`PRP.ACL.22`), and a write-off is approved by a property manager other
-/// than the requester (`FIN.ACL.15`).
-fn invoicing_for(client_app: &str) -> wl_invoicing::WlInvoicing {
-    use wl_invoicing::DuplicateKey::{ContractPeriodAmount, SupplierInvoiceNumber};
-    let module = wl_invoicing::WlInvoicing::new();
-    match client_app {
-        "property" => module
-            .duplicate_keys(&[SupplierInvoiceNumber, ContractPeriodAmount])
-            .write_off_approvers(&[app::roles::PROPERTY_MANAGER, app::roles::ADMIN]),
-        _ => module,
-    }
-}
-
 /// Mounts one enabled `wl-*` module; `client_app` is `[client] app`.
-fn enable(app: renox::App, module: &str, client_app: &str) -> Result<renox::App, ConfigError> {
+fn enable(
+    app: renox::App,
+    module: &str,
+    client_app: &str,
+    entities: &[String],
+) -> Result<renox::App, ConfigError> {
     // Each F1 module gets its arm here as it is built (decision 0004).
     match module {
         "parties" => Ok(app.module(wl_parties::WlParties)),
         "documents" => Ok(app.module(wl_documents::WlDocuments)),
         "notify" => Ok(app.module(wl_notify::WlNotify::new())),
-        "invoicing" => Ok(app.module(invoicing_for(client_app))),
+        "invoicing" => Ok(app.module(app::negative_flow::invoicing_for(client_app, entities))),
         "ticketing" => Ok(app.module(wl_ticketing::WlTicketing::new())),
-        "payments" => Ok(app.module(wl_payments::WlPayments::new())),
+        "payments" => Ok(app.module(app::negative_flow::payments_for(client_app))),
         "sales" => Ok(app.module(wl_sales::WlSales::new())),
         "hr" => Ok(app.module(wl_hr::WlHr::new())),
         "portal" => Ok(app.module(wl_portal::WlPortal)),
@@ -171,22 +165,4 @@ fn base() -> renox::App {
         .seeder(app::seed::run)
         // The seeded people on the login page, in local only (src/app/demo.rs).
         .share("demo_logins", app::demo::for_view)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use wl_invoicing::DuplicateKey::{ContractPeriodAmount, SupplierInvoiceNumber};
-
-    #[test]
-    fn the_property_app_adds_the_contract_period_amount_key() {
-        assert_eq!(
-            invoicing_for("property").config().duplicate_keys,
-            [SupplierInvoiceNumber, ContractPeriodAmount]
-        );
-        assert_eq!(
-            invoicing_for("other").config().duplicate_keys,
-            [SupplierInvoiceNumber]
-        );
-    }
 }

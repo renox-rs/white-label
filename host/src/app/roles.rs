@@ -21,6 +21,8 @@ use wl_ticketing::permissions as tickets;
 pub const USERS: &str = "users.manage";
 /// Reads the activity log.
 pub const ACTIVITY: &str = "activity.view";
+/// Reads the settings of the shared modules for this client (BL-PRP-26).
+pub const SETTINGS_VIEW: &str = "settings.view";
 
 /// Everything, except the restricted block reasons (`PTY.ACL.02`).
 pub const ADMIN: &str = wl_kernel::COMPANY_ADMIN_ROLE;
@@ -80,6 +82,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
         &[
             USERS,
             ACTIVITY,
+            SETTINGS_VIEW,
             wl_kernel::permissions::LEGAL_ENTITIES_VIEW,
             wl_kernel::permissions::LEGAL_ENTITIES_MANAGE,
             wl_kernel::permissions::APPROVALS_VIEW,

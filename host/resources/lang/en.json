@@ -28,6 +28,7 @@
     "leases": "Leases",
     "statements": "Owner statements",
     "agreements": "Management agreements",
+    "negative_flow": "Money settings",
     "tickets": "Tickets",
     "block_effects": "Block effects",
     "review_tasks": "Review tasks",
@@ -174,6 +175,17 @@
     "no_role": "No role",
     "cancel": "Cancel",
     "save": "Save"
+  },
+  "settings": {
+    "negative_flow": {
+      "title": "Money settings",
+      "subtitle": "The values of the shared modules for this client: write-offs, disputes, cheques, deposits, supplier bills, party blocks, the cash-flow alert and the budget.",
+      "number": "No.",
+      "group": "Group",
+      "setting": "Setting",
+      "value": "Value",
+      "source": "Set by"
+    }
   },
   "activity": {
     "title": "Activity",
