@@ -11,6 +11,8 @@
 //! - `replace` → [`ChequeBounceResolved`] (replaced), the legal case task
 //!   closed and the hand-back task ([`crate::cheque_settle::after_replace`]).
 //! - `represent` → the party is told the new presentation date.
+//! - `write_off` and `write_off_by_system` → [`ChequeBounceResolved`] (written
+//!   off) ([`crate::cheque_write_off::after_write_off`]).
 //! - `refer_to_legal` → the case owner's task, the formal notice and the
 //!   manager's notice ([`crate::cheque_legal::after_referral`]).
 //!
@@ -27,6 +29,7 @@ use crate::cheque_deposit::CLEAR;
 use crate::cheque_legal::{self, REFER_TO_LEGAL};
 use crate::cheque_represent::{self, REPRESENT};
 use crate::cheque_settle::{self, REPLACE};
+use crate::cheque_write_off::{self, WRITE_OFF, WRITE_OFF_BY_SYSTEM};
 
 /// The event that says `cheque` was resolved as `outcome`, with the other
 /// bounced cheques of the party still open.
@@ -64,6 +67,9 @@ pub(crate) fn register(app: &mut Registry) {
         }
         if name == REPLACE {
             return cheque_settle::after_replace(&state, event.key).await;
+        }
+        if name == WRITE_OFF || name == WRITE_OFF_BY_SYSTEM {
+            return cheque_write_off::after_write_off(&state, event.key).await;
         }
         if name == REPRESENT {
             return cheque_represent::after_represent(&state, event.key).await;

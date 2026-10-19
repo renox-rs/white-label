@@ -51,6 +51,9 @@ pub enum FollowupKind {
     /// Hand the original of a replaced cheque back to the party, with a
     /// receipt, once its replacement cleared.
     HandBack,
+    /// An invoice write-off a cheque `write_off` asked for was rejected or
+    /// failed: the cheque stays where it is (`write_off`).
+    WriteOffFailed,
 }
 
 /// Whether a follow-up task is still to do.
@@ -248,6 +251,17 @@ impl FollowupTask {
                 "Hand back cheque {} to the party with a receipt",
                 cheque.number
             ),
+        )
+    }
+
+    /// The task that a write-off request of the `cheque` was rejected or
+    /// failed, with `text` saying which and why.
+    pub fn write_off_failed(cheque: &Cheque, text: String) -> Self {
+        Self::for_cheque(
+            FollowupKind::WriteOffFailed,
+            cheque,
+            cheque.open_amount,
+            text,
         )
     }
 
