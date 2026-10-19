@@ -247,7 +247,9 @@ impl CashForecastSource for Charges {
 #[renox::test]
 async fn a_scheduled_charge_not_yet_invoiced_counts() {
     register_cash_forecast_source("test.charges", Charges);
-    let t = booted(module().cash_threshold("CHCO", THRESHOLD)).await;
+    // Only CHCO has a threshold: the seeded PGP has no bank balance and would
+    // be below the one `module()` gives it.
+    let t = booted(WlInvoicing::new().cash_threshold("CHCO", THRESHOLD)).await;
     recipients(&t).await;
     let co = t.new_entity("CHCO").await;
     t.forecast.statement(co.id, "BA1", 5_000_000, day(1, 12));
