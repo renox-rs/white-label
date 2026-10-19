@@ -10,6 +10,7 @@ pub mod charge;
 pub mod charge_type;
 pub mod cheques;
 mod db;
+pub mod deposit_watch;
 pub mod documents;
 pub mod events;
 pub mod force;
@@ -129,7 +130,8 @@ impl Module for Property {
             .model::<CancelWait>()
             .model::<arrears::ArrearsDemand>()
             .model::<arrears::DemandInvoice>()
-            .model::<arrears::PaymentPlan>();
+            .model::<arrears::PaymentPlan>()
+            .model::<deposit_watch::DepositWatch>();
         unit_machine::register();
         lease_machine::register();
         documents::register();
@@ -144,6 +146,7 @@ impl Module for Property {
         renewal::schedule(app);
         termination::schedule(app);
         arrears::schedule(app);
+        deposit_watch::schedule(app);
         // A building is the scope roles are assigned in.
         wl_kernel::scopes::register_label(Building::TABLE, |db, id| {
             let id = id.to_owned();

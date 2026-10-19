@@ -14,7 +14,7 @@ use wl_kernel::notify::{
 };
 
 use crate::lease::Lease;
-use crate::permissions::{LEASING_AGENT_ROLE, PROPERTY_MANAGER_ROLE};
+use crate::permissions::{ACCOUNTANT_ROLE, LEASING_AGENT_ROLE, PROPERTY_MANAGER_ROLE};
 use crate::texts::english;
 
 /// The leasing agent and the property manager are reminded that a lease is
@@ -52,6 +52,15 @@ pub const NOTICE_OF_CHANGED_TERMS: &str = "lease.notice_of_changed_terms";
 /// staff record when it gave up; the planned move-out date and the deadlines
 /// that depend on the notice start from it.
 pub const LANDLORD_NOTICE: &str = "lease.landlord_notice";
+
+/// The accountant is told that the dispute window of the published deposit
+/// deductions ended with no dispute, so the settlement may proceed
+/// (`PRP.RUL.11`).
+pub const DEPOSIT_READY: &str = "property.deposit_ready";
+
+/// The property manager's manager is told that a deductions dispute was left
+/// unanswered (`PRP.RUL.11`).
+pub const DEPOSIT_DISPUTE_UNANSWERED: &str = "property.deposit_dispute_unanswered";
 
 /// The statutory formal payment demand to the tenant (`PRP.RUL.10`). The
 /// property manager sends it from the task; the M-day clock of the legal-case
@@ -108,6 +117,11 @@ pub(crate) fn register_types() {
     notify::register_type(tenant_message(LANDLORD_NOTICE, "landlord_notice", true));
     notify::register_type(staff_reminder(EJARI_CANCELLATION, "ejari_cancellation"));
     notify::register_type(tenant_message(PAYMENT_DEMAND, "payment_demand", true));
+    notify::register_type(staff_reminder(DEPOSIT_READY, "deposit_ready"));
+    notify::register_type(staff_reminder(
+        DEPOSIT_DISPUTE_UNANSWERED,
+        "deposit_dispute_unanswered",
+    ));
 }
 
 /// The users who hold `role` in the building of `lease`, or everywhere.
@@ -317,6 +331,60 @@ pub async fn payment_demand(
         .subject_label(&lease.number_with_version())
         .to_party(lease.tenant())
         .data(crate::arrears::notice_data(lease, rows, days));
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// Tells the accountants of the building of `lease` that the dispute window of
+/// version `version` of the deductions, published on `published_on`, ended
+/// with no dispute (`PRP.RUL.11`). Returns who was told.
+pub async fn deposit_may_proceed(
+    state: &AppState,
+    lease: &Lease,
+    version: i32,
+    published_on: NaiveDate,
+) -> Result<Vec<i64>> {
+    let users = holders(state, ACCOUNTANT_ROLE, lease).await?;
+    if users.is_empty() {
+        return Ok(users);
+    }
+    let mut request = NotifyRequest::new(DEPOSIT_READY, lease.subject())
+        .subject_label(&lease.number())
+        .data(json!({
+            "lease": lease.number(),
+            "version": version,
+            "published_on": shown(published_on),
+        }));
+    for user in &users {
+        request = request.to_user(*user);
+    }
+    notify::notifier(state).notify(state, request).await?;
+    Ok(users)
+}
+
+/// Tells `users` (the property manager's manager) that the dispute of the
+/// deposit deductions of `lease`, opened on `opened_on`, has had no answer for
+/// `days` days (`PRP.RUL.11`).
+pub async fn dispute_unanswered(
+    state: &AppState,
+    lease: &Lease,
+    users: &[i64],
+    opened_on: NaiveDate,
+    days: i64,
+) -> Result {
+    if users.is_empty() {
+        return Ok(());
+    }
+    let mut request = NotifyRequest::new(DEPOSIT_DISPUTE_UNANSWERED, lease.subject())
+        .subject_label(&lease.number())
+        .data(json!({
+            "lease": lease.number(),
+            "opened_on": shown(opened_on),
+            "days": days,
+        }));
+    for user in users {
+        request = request.to_user(*user);
+    }
     notify::notifier(state).notify(state, request).await?;
     Ok(())
 }

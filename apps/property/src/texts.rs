@@ -883,6 +883,23 @@ const TEXTS: &[(&str, &str)] = &[
     ("property.arrears.invoices", "Invoices"),
     ("property.arrears.status", "Demand"),
     ("property.arrears.plan_until", "Payment plan until"),
+    // The window to dispute the deposit deductions (BL-PRP-16).
+    (
+        "property.notices.deposit_ready_subject",
+        "The deposit of {{ lease }} may be settled",
+    ),
+    (
+        "property.notices.deposit_ready_body",
+        "Version {{ version }} of the deductions of {{ lease }}, published on {{ published_on }}, was not disputed. The settlement may proceed.",
+    ),
+    (
+        "property.notices.deposit_dispute_unanswered_subject",
+        "Deposit dispute of {{ lease }} not answered",
+    ),
+    (
+        "property.notices.deposit_dispute_unanswered_body",
+        "The tenant of {{ lease }} disputed the deposit deductions on {{ opened_on }} and nobody has answered for {{ days }} days. Answer it or agree the lines with the tenant.",
+    ),
     ("property.force.case_executed", "The eviction was executed."),
     (
         "property.force.case_abandoned",
