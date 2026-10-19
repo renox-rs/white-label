@@ -37,6 +37,7 @@ use crate::budget_category::{BudgetCategory, BudgetKind, BudgetMapping, MappingK
 use crate::credit_note::CreditNote;
 use crate::credit_note_line::CreditNoteLine;
 use crate::debit_note_line::DebitNoteLine;
+use crate::drawings_machine::{DrawingApproval, DrawingStatus};
 use crate::invoice::Invoice;
 use crate::line::InvoiceLine;
 use crate::supplier_bill::{SupplierBill, SupplierBillStatus};
@@ -85,7 +86,8 @@ pub struct Mapped {
 impl Mapped {
     /// The categories and their keys, as they are now.
     pub async fn load(db: &Db) -> Result<Mapped> {
-        let kinds = BudgetCategory::listed(db, true)
+        let kinds = BudgetCategory::query()
+            .get(db)
             .await?
             .into_iter()
             .map(|c| (c.id, c.kind))
@@ -97,6 +99,43 @@ impl Mapped {
             .map(|m| ((m.key_kind, m.key_value), m.category_id))
             .collect();
         Ok(Mapped { keys, kinds })
+    }
+
+    /// [`Mapped::load`] inside the transaction `tx`.
+    pub async fn load_in(tx: &mut renox::db::Transaction) -> Result<Mapped> {
+        let kinds = BudgetCategory::query()
+            .get(&mut *tx)
+            .await?
+            .into_iter()
+            .map(|c| (c.id, c.kind))
+            .collect();
+        let keys = BudgetMapping::query()
+            .get(&mut *tx)
+            .await?
+            .into_iter()
+            .map(|m| ((m.key_kind, m.key_value), m.category_id))
+            .collect();
+        Ok(Mapped { keys, kinds })
+    }
+
+    /// Adds a key, for tests.
+    #[cfg(test)]
+    pub(crate) fn insert_for_test(
+        &mut self,
+        kind: MappingKind,
+        key: &str,
+        id: i64,
+        budget_kind: BudgetKind,
+    ) {
+        self.keys.insert((kind, key.to_owned()), id);
+        self.kinds.insert(id, budget_kind);
+    }
+
+    /// Whether the cost code `code` is collected by a category of kind
+    /// `owner_drawings`.
+    pub fn is_drawings_code(&self, code: Option<&str>) -> bool {
+        self.find(MappingKind::CostCode, code)
+            .is_some_and(|(_, kind)| kind == BudgetKind::OwnerDrawings)
     }
 
     /// The category that collects `value` of `kind`, with its budget kind.
@@ -265,6 +304,18 @@ async fn expense_items(
         .await?;
     if !bills.is_empty() {
         let ids: Vec<i64> = bills.iter().map(|b| b.id).collect();
+        // The bills whose drawing the sole owner approved themselves
+        // (`FIN.ACL.23`).
+        let self_approved: BTreeSet<i64> = DrawingApproval::query()
+            .where_(DrawingApproval::SOURCE_TYPE.eq("invoicing.supplier_bill"))
+            .where_(DrawingApproval::SOURCE_ID.is_in(ids.clone()))
+            .where_(DrawingApproval::STATUS.eq(DrawingStatus::Approved))
+            .where_(DrawingApproval::SELF_APPROVED.eq(true))
+            .get(db)
+            .await?
+            .into_iter()
+            .map(|a| a.source_id)
+            .collect();
         let lines = BillLine::query()
             .where_(BillLine::BILL_ID.is_in(ids))
             .order_by(BillLine::ID)
@@ -277,13 +328,16 @@ async fn expense_items(
             let Some(net) = line.net_amount_aed else {
                 continue;
             };
-            items.push(ActualItem {
+            let mut item = ActualItem {
                 legal_entity_id: bill.legal_entity_id.unwrap_or_default(),
                 month: month_start(bill.bill_date),
                 source: bill.subject(),
                 party_id: Some(bill.party_id),
                 ..expense_item(mapped, line, (net, line.vat_amount_aed.unwrap_or(0)), 1)
-            });
+            };
+            item.self_approved =
+                item.kind == BudgetKind::OwnerDrawings && self_approved.contains(&bill.id);
+            items.push(item);
         }
     }
     let notes: Vec<SupplierDebitNote> = SupplierDebitNote::query()

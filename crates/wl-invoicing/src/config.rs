@@ -147,6 +147,11 @@ pub struct InvoicingConfig {
     pub budget_variance_percent: u32,
     /// The role `FIN.RUL.24` always tells besides the category's owner role.
     pub budget_variance_role: String,
+    /// Whether the sole holder of `drawings.approve` of an entity records
+    /// their own drawing without a second approver (`FIN.ACL.23`).
+    pub drawings_self_approve: bool,
+    /// The role told when a drawing is recorded without a second approver.
+    pub drawings_notify_role: String,
 }
 
 impl Default for InvoicingConfig {
@@ -187,6 +192,8 @@ impl Default for InvoicingConfig {
             budget_reminder_roles: vec!["accountant".to_owned(), "finance_manager".to_owned()],
             budget_variance_percent: 100,
             budget_variance_role: "finance_manager".to_owned(),
+            drawings_self_approve: true,
+            drawings_notify_role: "accountant".to_owned(),
         }
     }
 }
@@ -279,6 +286,8 @@ mod tests {
         assert_eq!(config.budget_reminder_roles, ["accountant", "finance_manager"]);
         assert_eq!(config.budget_variance_percent, 100);
         assert_eq!(config.budget_variance_role, "finance_manager");
+        assert!(config.drawings_self_approve);
+        assert_eq!(config.drawings_notify_role, "accountant");
     }
 
     #[test]

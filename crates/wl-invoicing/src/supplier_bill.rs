@@ -267,6 +267,13 @@ async fn build(
     if let Some(message) = problem(draft, &currency) {
         return Err(refused(message));
     }
+    // An owner drawing is never operating cost: no cost object (`FIN.ACL.21`).
+    let mapped = crate::budget_actual::Mapped::load(db).await?;
+    for (i, line) in draft.lines.iter().enumerate() {
+        if line.cost_object.is_some() && mapped.is_drawings_code(line.cost_code.as_deref()) {
+            return Err(crate::drawings::cost_object_refusal(i + 1));
+        }
+    }
     let legal_entity_id = match draft.legal_entity_id {
         Some(id) => LegalEntity::find_or_404(db, id).await?.id,
         None => LegalEntity::default_entity(db).await?.id,
