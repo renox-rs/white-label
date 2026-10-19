@@ -385,7 +385,7 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_payments.cheques.bounce.title", "The bank returned this cheque"),
     (
         "wl_payments.cheques.bounce.description",
-        "Give the bank's return reason, attach its return certificate and enter what the bank paid from the available balance, if anything. A bounce fee is added when one is set, and the customer account is put on credit hold.",
+        "Give the bank's return reason, attach its return certificate and enter what the bank paid from the available balance, if anything. A bounce fee is added when one is set, with standard VAT until the accountant decides (A-05), and the customer account is put on credit hold.",
     ),
     (
         "wl_payments.cheques.bounce.description_issued",
@@ -413,7 +413,7 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_payments.cheques.represent.title", "Present this cheque again"),
     (
         "wl_payments.cheques.represent.description",
-        "Use it when the party confirms there are funds. A cheque is presented at most twice, and not again once the bank has paid part of it. The party is told the new date.",
+        "Use it when the party confirms there are funds. A cheque is presented at most twice, and not again once the bank has paid part of it (provisional until the lawyer answers, L-21). The party is told the new date.",
     ),
     ("wl_payments.cheques.represent.date", "New presentation date"),
     ("wl_payments.cheques.represent.funds", "The party confirmed there are funds"),
@@ -482,7 +482,7 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_payments.cheques.refer.title", "Refer this cheque to a legal case"),
     (
         "wl_payments.cheques.refer.description",
-        "The open amount is handed to a legal case. The case owner gets a task with the evidence pack, the party gets a formal notice and the manager is told. This records the case; it files nothing with a court or the police. A criminal complaint is allowed only for the return reasons on the list in the settings.",
+        "The open amount is handed to a legal case. The case owner gets a task with the evidence pack, the party gets a formal notice and the manager is told. This records the case; it files nothing with a court or the police. A criminal complaint is allowed only for the return reasons on the list in the settings; that list and the text of the notice are provisional until the lawyer answers (L-21).",
     ),
     ("wl_payments.cheques.refer.case_type", "Kind of case"),
     ("wl_payments.cheques.refer.case_owner", "Case owner"),
