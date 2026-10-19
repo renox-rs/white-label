@@ -584,6 +584,94 @@ pub fn service_contract_coverage(state: &AppState) -> Arc<dyn ServiceContractCov
     }
 }
 
+/// The id of a checklist run (`WRK.CHK.01`).
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default, Serialize, Deserialize,
+)]
+#[serde(transparent)]
+pub struct ChecklistRunId(pub i64);
+
+impl fmt::Display for ChecklistRunId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+/// How a checklist run ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ChecklistOutcome {
+    /// Every required item passed.
+    Passed,
+    /// An item failed; the run can be started again.
+    Failed,
+}
+
+/// A checklist run completed (`WRK.CHK.01`, wl-ticketing §6).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChecklistCompleted {
+    /// The run.
+    pub run: ChecklistRunId,
+    /// The record the run was started on, e.g. an onboarding step.
+    pub subject: Subject,
+    /// How it ended.
+    pub outcome: ChecklistOutcome,
+    /// The titles of the items that failed, empty for a passed run.
+    pub failed_items: Vec<String>,
+}
+
+impl Event for ChecklistCompleted {}
+
+/// Checklist runs for other modules (wl-ticketing §6). `wl-ticketing`
+/// provides it with [`provide_checklists`]; without that module,
+/// [`checklists`] gives [`NoChecklists`], which starts nothing.
+pub trait Checklists: Send + Sync + 'static {
+    /// Starts a run of the checklist template `template` on `subject`.
+    /// `None` when ticketing is off or has no such template. The default
+    /// starts nothing.
+    fn start<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _template: &'a str,
+        _subject: Subject,
+    ) -> TicketFuture<'a, Option<ChecklistRunId>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    /// Voids the run `run` in progress with `reason` (the record it was
+    /// started on was cancelled). Returns `false` when it did nothing. The
+    /// default does nothing.
+    fn void<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _run: ChecklistRunId,
+        _reason: &'a str,
+    ) -> TicketFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
+}
+
+/// The checklists when the `ticketing` module is off.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoChecklists;
+
+impl Checklists for NoChecklists {}
+
+/// Makes `checklists` the app's [`Checklists`]; `wl-ticketing` calls it in
+/// `register`.
+pub fn provide_checklists(app: &mut Registry, checklists: impl Checklists) {
+    let checklists: Arc<dyn Checklists> = Arc::new(checklists);
+    app.provide(checklists);
+}
+
+/// The app's [`Checklists`], or [`NoChecklists`] when none is provided.
+pub fn checklists(state: &AppState) -> Arc<dyn Checklists> {
+    match state.provided::<Arc<dyn Checklists>>() {
+        Some(checklists) => Arc::clone(&checklists),
+        None => Arc::new(NoChecklists),
+    }
+}
+
 /// A service contract became `active` (`activate`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ServiceContractActivated {

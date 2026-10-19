@@ -2029,3 +2029,41 @@ async fn without_sales_attribution_and_lead_conversion_do_nothing() {
     };
     assert_eq!(renox::serde_json::to_value(merged).unwrap()["merged"], 2);
 }
+
+/// #216, #217: without the `hr`, `ticketing` and `documents` modules nobody
+/// works anywhere, no checklist is started and no SOP is pending.
+#[renox::test]
+async fn without_hr_the_workforce_checklists_and_sop_acknowledgements_are_empty() {
+    use wl_kernel::documents::{SopStaff, sop_acknowledgements};
+    use wl_kernel::tickets::{ChecklistOutcome, checklists};
+    use wl_kernel::workforce::{EmployeeId, workforce};
+    use wl_kernel::Subject;
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let branch = Subject::new("property.site", 2);
+    assert!(workforce(app.state())
+        .employees_in(app.db(), "driver", &branch)
+        .await
+        .unwrap()
+        .is_empty());
+    let employee = EmployeeId(7).subject();
+    assert_eq!(
+        checklists(app.state())
+            .start(app.state(), "ppe", employee.clone())
+            .await
+            .unwrap(),
+        None
+    );
+    let who = SopStaff {
+        employee,
+        role: "driver".into(),
+        scopes: vec![branch],
+    };
+    assert!(sop_acknowledgements(app.state())
+        .pending_for(app.state(), &who)
+        .await
+        .unwrap()
+        .is_empty());
+    assert_eq!(renox::serde_json::to_value(ChecklistOutcome::Passed).unwrap(), "passed");
+}

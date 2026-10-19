@@ -41,6 +41,7 @@ pub mod subject;
 mod texts;
 pub mod tickets;
 pub mod voids;
+pub mod workforce;
 
 use std::sync::Arc;
 
@@ -100,7 +101,9 @@ pub use documents::{
     CheckOutcome, DocumentAccepted, DocumentExpired, DocumentGuard, DocumentId, DocumentRejected,
     DocumentSuperseded, DocumentUploaded, FlagFailure, FlagReason, InvalidReason, NoDocuments,
     OverrideMode, PendingRenewal, PlannedError, PlannedItem, PlannedWarning, PlannedWarningLine,
-    RecordFlag, SopId, SopPublished, SopReaderRef, SopReadersChanged, SopWithdrawn, Validity,
+    NoSopAcknowledgements, RecordFlag, SopAcknowledged, SopAcknowledgements, SopId, SopPublished,
+    SopReaderRef, SopReadersChanged, SopStaff, SopWithdrawn, Validity, provide_sop_acknowledgements,
+    sop_acknowledgements,
 };
 pub use entities::{IssuerSnapshot, LegalEntity, ScopeEntity};
 pub use held_funds::{FundsSource, HeldFund, HeldFundsSource, held_for_all};
@@ -160,7 +163,8 @@ pub use scopes::COMPANY_ADMIN_ROLE;
 pub use segments::{NoSegments, SegmentId, Segments};
 pub use subject::Subject;
 pub use tickets::{
-    Assignee, ContractCover, NoServiceContractCoverage, ServiceContractCoverage,
+    Assignee, ChecklistCompleted, ChecklistOutcome, ChecklistRunId, Checklists, NoChecklists,
+    checklists, provide_checklists, ContractCover, NoServiceContractCoverage, ServiceContractCoverage,
     provide_service_contract_coverage, service_contract_coverage, ComplianceFlagCleared, ComplianceFlagRaised, ComplianceFlagReason, NoTickets,
     OpenTicket, Requester, SERVICE_CONTRACT_SERIES, SERVICE_CONTRACT_SUBJECT_TYPE,
     ServiceContractActivated, ServiceContractEnded, ServiceContractId, TASK_CATEGORY, TaskComment,
@@ -172,6 +176,12 @@ pub use voids::{
 };
 
 /// The kernel's permissions (wl-kernel §6).
+pub use workforce::{
+    EMPLOYEE_SUBJECT_TYPE, EmployeeActivated, EmployeeAssignmentChanged, EmployeeDeceased,
+    EmployeeExited, EmployeeId, EmployeeOnboardingCancelled, NoWorkforce, ONBOARDING_SUBJECT_TYPE,
+    OnboardingCompleted, OnboardingId, OnboardingStarted, Workforce, provide_workforce, workforce,
+};
+
 pub mod permissions {
     /// See legal entities and scope–entity links.
     pub const LEGAL_ENTITIES_VIEW: &str = "legal_entities.view";
