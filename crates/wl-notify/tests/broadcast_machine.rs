@@ -7,7 +7,7 @@ use renox::prelude::*;
 use renox::serde_json::json;
 use renox::state_machine::{StateMachine, TransitionError};
 use wl_kernel::approvals::{self, ApprovalPolicy, PolicyDefault};
-use wl_kernel::notify::NotifyChannel;
+use wl_kernel::notify::{self, Category, NotificationTypeDef, NotifyChannel};
 use wl_notify::broadcast_machine::{
     ACTION, CANCEL_SYSTEM, COMPLETE, CompleteInput, EXPIRE, REJECT, REQUEST, REQUEST_OVER_LIMIT,
     RequestInput, START,
@@ -90,6 +90,14 @@ async fn above_the_limit_without_a_policy_nothing_is_requested() {
 
 #[renox::test]
 async fn above_the_limit_a_second_holder_approves_and_it_is_scheduled() {
+    // The final re-check at the last yes wants a marketing type with a text.
+    notify::register_type(
+        NotificationTypeDef::new("campaign.offer", "sales")
+            .group("marketing")
+            .category(Category::Marketing)
+            .channels(&[NotifyChannel::Sms])
+            .template(NotifyChannel::Sms, "en", None, "Offer for you"),
+    );
     let t = boot().await;
     PolicyDefault::new(ACTION)
         .step_permission(MARKETING_SEND)

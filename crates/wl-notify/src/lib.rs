@@ -4,8 +4,10 @@
 pub mod alert;
 pub mod alternative;
 pub mod broadcast;
+pub mod broadcast_approval;
 pub mod broadcast_machine;
 pub mod broadcast_recipients;
+pub mod broadcasts;
 pub mod channels;
 pub mod clock;
 pub mod contact_invalid;
@@ -202,6 +204,10 @@ impl Module for WlNotify {
         // Broadcasts: the settings and the machine with its waiting state.
         app.provide(self.broadcast.clone());
         broadcast_machine::register();
+        // Above the limit: the approval policy, its re-check and listener.
+        broadcast_approval::register(app);
+        // The requester's notice that a broadcast was cancelled.
+        broadcasts::register_type();
         channels::register(app);
         app.job::<SendMessage>();
         // Deferred messages whose time has come go back to the queue.

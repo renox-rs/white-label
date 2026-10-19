@@ -24,6 +24,10 @@
 //! and `complete` are run by the broadcast run (#61 part 5); `complete`
 //! stores the counts it is given ([`CompleteInput`]).
 //!
+//! The kernel ends a request without a yes by running `back_to_draft` on
+//! a broadcast still in `pending_approval` (its waiting state); here that
+//! cancels it, so `reject` and `expire` are for a direct run.
+//!
 //! The status changes only through this machine: `Broadcast` is
 //! `#[model(state_machine)]`. The machine is registered with the kernel as
 //! the subject type `notify.broadcast`, with the waiting state
@@ -54,6 +58,11 @@ pub const REQUEST: &str = "request";
 pub const REQUEST_OVER_LIMIT: &str = "request_over_limit";
 /// `pending_approval → scheduled`: the kernel runs it on the last yes.
 pub const REQUEST_OVER_LIMIT_APPROVED: &str = "request_over_limit_approved";
+/// `pending_approval → cancelled`: the kernel runs it when the approval ends
+/// without a yes (reject, return, withdraw, expiry, failed final check),
+/// because `pending_approval` is the waiting state and the request was made
+/// from `draft`; the reason is the approver's comment or the kernel's text.
+pub const BACK_TO_DRAFT: &str = "back_to_draft";
 /// `pending_approval → cancelled`: an approver rejected the request.
 pub const REJECT: &str = "reject";
 /// `scheduled → sending`: the send time came.
@@ -129,6 +138,13 @@ impl StateMachine for Broadcast {
                     let id = b.id;
                     Box::pin(async move { set(&mut *tx, id, &[("approved_by", &approver)]).await })
                 }),
+            system(
+                BACK_TO_DRAFT,
+                "Approval ended",
+                [PendingApproval],
+                Cancelled,
+                REJECTED,
+            ),
             system(REJECT, "Reject", [PendingApproval], Cancelled, REJECTED),
             system(
                 EXPIRE,
@@ -380,6 +396,7 @@ mod tests {
                 "scheduled",
                 true,
             ),
+            (BACK_TO_DRAFT, &["pending_approval"], "cancelled", true),
             (REJECT, &["pending_approval"], "cancelled", true),
             (EXPIRE, &["pending_approval"], "cancelled", true),
             (

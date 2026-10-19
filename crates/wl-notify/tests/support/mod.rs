@@ -777,7 +777,7 @@ impl GiveUpHandler for Counting {
 pub struct Recorded<E>(Arc<Mutex<Vec<E>>>);
 
 impl<E: Clone> Recorded<E> {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Recorded(Arc::new(Mutex::new(Vec::new())))
     }
 
@@ -787,7 +787,7 @@ impl<E: Clone> Recorded<E> {
     }
 }
 
-fn record<E: Event + Clone>(app: App, into: &Recorded<E>) -> App {
+pub fn record<E: Event + Clone>(app: App, into: &Recorded<E>) -> App {
     let into = into.clone();
     app.listen(move |event: E, _state: AppState| {
         let into = into.clone();
@@ -1194,6 +1194,44 @@ async fn boot_with(real: &[GiveUpReaction], ticketing: bool) -> Booted {
 }
 
 async fn boot_full(real: &[GiveUpReaction], ticketing: bool, consenting: bool) -> Booted {
+    boot_core(
+        real,
+        ticketing,
+        consenting,
+        None,
+        Box::new(|m| m),
+        Box::new(|app| app),
+    )
+    .await
+}
+
+/// As [`boot`], with `directory` in place of the test one, `module` applied
+/// to the notify module (its settings) and `extra` applied to the app
+/// (segments, consents, requesters) before the kernel is applied.
+pub async fn boot_providers(
+    directory: Option<Arc<dyn PartyDirectory>>,
+    module: impl FnOnce(WlNotify) -> WlNotify + 'static,
+    extra: impl FnOnce(App) -> App + 'static,
+) -> Booted {
+    boot_core(
+        &[],
+        true,
+        false,
+        directory,
+        Box::new(module),
+        Box::new(extra),
+    )
+    .await
+}
+
+async fn boot_core(
+    real: &[GiveUpReaction],
+    ticketing: bool,
+    consenting: bool,
+    directory_override: Option<Arc<dyn PartyDirectory>>,
+    settings: Box<dyn FnOnce(WlNotify) -> WlNotify>,
+    extra: Box<dyn FnOnce(App) -> App>,
+) -> Booted {
     let clock = TestClock::noon();
     register_types();
     let tasks = Tasks::default();
@@ -1236,7 +1274,9 @@ async fn boot_full(real: &[GiveUpReaction], ticketing: bool, consenting: bool) -
     let suppressed = Recorded::new();
     let automation_failed = Recorded::new();
     let test_directory = TestDirectory::default();
-    let directory: Arc<dyn PartyDirectory> = Arc::new(test_directory.clone());
+    let directory: Arc<dyn PartyDirectory> =
+        directory_override.unwrap_or_else(|| Arc::new(test_directory.clone()));
+    let module = settings(module);
     let app = App::new()
         .module(Auth::new())
         .module(Permissions)
@@ -1255,6 +1295,7 @@ async fn boot_full(real: &[GiveUpReaction], ticketing: bool, consenting: bool) -
     } else {
         app
     };
+    let app = extra(app);
     let app = record(app, &gave_up);
     let app = record(app, &failed);
     let app = record(app, &suppressed);

@@ -16,11 +16,13 @@ use renox::prelude::*;
 use renox::serde_json::Value;
 use renox::state_machine::{StateMachine, TransitionError};
 use wl_kernel::Subject;
+use wl_kernel::broadcast::{BroadcastId, BroadcastRequest};
 use wl_kernel::notify::{
     self, FALLBACK_KIND, MessageId, NoticeStatus, NotificationTypeDef, Notifier, NotifyChannel,
     NotifyFuture, NotifyRecipient, NotifyRequest, UndeliveredNotice,
 };
 
+use crate::broadcasts;
 use crate::machine::SUPPRESS;
 use crate::message::{Message, MessageStatus};
 use crate::notices;
@@ -40,6 +42,14 @@ impl Notifier for Messages {
         request: NotifyRequest,
     ) -> NotifyFuture<'a, Vec<MessageId>> {
         Box::pin(queue(state, request))
+    }
+
+    fn broadcast<'a>(
+        &'a self,
+        state: &'a AppState,
+        request: BroadcastRequest,
+    ) -> NotifyFuture<'a, BroadcastId> {
+        Box::pin(broadcasts::request(state, request))
     }
 
     fn notice_status<'a>(

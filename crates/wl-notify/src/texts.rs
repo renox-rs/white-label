@@ -281,6 +281,50 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_notify.broadcast.problem.no_approval_policy",
         "A broadcast above the limit needs an approval policy.",
     ),
+    (
+        "wl_notify.broadcast.problem.no_user",
+        "A broadcast needs the user who asks for it.",
+    ),
+    (
+        "wl_notify.broadcast.problem.requester_ended",
+        "A broadcast can only be asked for by an active campaign.",
+    ),
+    (
+        "wl_notify.broadcast.problem.requester_refused",
+        "The campaign may not send this broadcast: :reason.",
+    ),
+    (
+        "wl_notify.broadcast.problem.unknown_type",
+        "The notification type of this broadcast does not exist.",
+    ),
+    (
+        "wl_notify.broadcast.problem.not_marketing",
+        "Only a notification type of category marketing can be broadcast.",
+    ),
+    (
+        "wl_notify.broadcast.problem.channel_unused",
+        "The notification type is not sent on this channel.",
+    ),
+    (
+        "wl_notify.broadcast.problem.no_template",
+        "The notification type has no text for this channel.",
+    ),
+    (
+        "wl_notify.broadcast.problem.no_sender_id",
+        "A marketing SMS needs a registered AD- sender ID.",
+    ),
+    (
+        "wl_notify.broadcast.problem.not_found",
+        "The broadcast no longer exists.",
+    ),
+    (
+        "wl_notify.broadcast.cancelled.subject",
+        "Your broadcast was cancelled",
+    ),
+    (
+        "wl_notify.broadcast.cancelled.body",
+        "Broadcast {{ broadcast }} on {{ channel }} was cancelled: {{ reason }}.",
+    ),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.
