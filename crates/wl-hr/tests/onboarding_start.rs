@@ -31,6 +31,8 @@ async fn hrm26_one_onboarding_with_the_steps_of_every_template_that_applies() {
     add_template(&t, driver_template()).await;
     // The SOPs of the role are pending, so the step stays open.
     t.sops.set_pending(&[1]);
+    // The steps due first (day 1) are HR's and the manager's: HR is told.
+    let hana = t.user_in_branch("Hana", "hr").await;
     let (ravi, account) = t.ravi().await;
     assert_eq!(ravi.status, EmployeeStatus::Onboarding);
 
@@ -58,7 +60,12 @@ async fn hrm26_one_onboarding_with_the_steps_of_every_template_that_applies() {
     assert_eq!(started[0].scope, Some(branch()));
     assert_eq!(started[0].trigger, "hire");
     // The assignees of the first steps are told.
-    assert!(!t.notices.of_type("hr.onboarding_step_assigned").is_empty());
+    let told = t.notices.of_type("hr.onboarding_step_assigned");
+    assert!(
+        told.iter().any(|n| n.recipients
+            == [wl_kernel::notify::NotifyRecipient::User { id: hana.id }]),
+        "{told:?}"
+    );
 }
 
 /// AC2: no manager in the branch, HR users H1 and H2 hold

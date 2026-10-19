@@ -33,7 +33,7 @@ async fn hrm26_activate_takes_an_onboarding_record_to_active() {
     t.app
         .post(&format!("/hr/employees/{}/transitions/activate", ravi.id), &[("reason", "")])
         .await
-        .assert_ok();
+        .assert_status(303);
     let after = Employee::find_or_404(t.db(), ravi.id).await.unwrap();
     assert_eq!(after.status, EmployeeStatus::Active);
     let activated = t.activated.all();
