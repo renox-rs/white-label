@@ -723,6 +723,14 @@ pub trait Invoicer: Send + Sync + 'static {
         Box::pin(async { Ok(false) })
     }
 
+    /// Discards the `draft` invoice `id`: it is deleted, since a draft has no
+    /// number and was never sent. Returns whether it did: `false` when the
+    /// invoice is not a draft (an issued invoice is credited, never deleted)
+    /// or does not exist, and by default (invoicing is off).
+    fn discard_draft<'a>(&'a self, _db: &'a Db, _id: InvoiceId) -> InvoiceFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
+
     /// The invoice with this id.
     fn find<'a>(&'a self, db: &'a Db, id: InvoiceId) -> InvoiceFuture<'a, Option<InvoiceSummary>>;
 

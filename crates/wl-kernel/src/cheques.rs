@@ -356,6 +356,39 @@ pub struct OpenCheque {
     pub documents: Vec<ChequeDocument>,
 }
 
+/// Cheques handed back undeposited: [`Cheques::return_undeposited`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReturnCheques {
+    /// The cheques to hand back.
+    pub cheques: Vec<ChequeId>,
+    /// Why (a cancelled lease, a handover to a new manager).
+    pub reason: String,
+}
+
+impl ReturnCheques {
+    /// Hands back `cheques` for `reason`.
+    pub fn new(cheques: Vec<ChequeId>, reason: &str) -> Self {
+        ReturnCheques {
+            cheques,
+            reason: reason.to_owned(),
+        }
+    }
+}
+
+/// What [`Cheques::return_undeposited`] did.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReturnedCheques {
+    /// The reference of the handover receipt, one for the whole call; the
+    /// person collecting the cheques signs it.
+    pub receipt: String,
+    /// The cheques that were `received` or `due_for_deposit` and are now
+    /// `returned`.
+    pub returned: Vec<ChequeId>,
+    /// The cheques left as they were, because they were deposited or had a
+    /// final outcome already.
+    pub skipped: Vec<ChequeId>,
+}
+
 /// The future a [`Cheques`] method returns.
 pub type ChequeFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 
@@ -414,6 +447,20 @@ pub trait Cheques: Send + Sync + 'static {
         _direction: Direction,
     ) -> ChequeFuture<'a, Vec<OpenCheque>> {
         Box::pin(async { Ok(Vec::new()) })
+    }
+
+    /// Hands back the cheques of `request` that are not deposited yet
+    /// (`received` or `due_for_deposit`) against one handover receipt, as the
+    /// system on behalf of the user `by`; the others are `skipped`, never
+    /// touched. All or none. `None` when no cheque could be returned. The
+    /// default refuses (422): payments is not enabled.
+    fn return_undeposited<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _request: ReturnCheques,
+        _by: Option<i64>,
+    ) -> ChequeFuture<'a, Option<ReturnedCheques>> {
+        Box::pin(async { Err(payments_off("the cheques cannot be returned")) })
     }
 
     /// The received cheques of `legal_entity_id` that bounced and are still
@@ -702,6 +749,17 @@ mod tests {
         assert_eq!(issued.linked.len(), 1);
         assert_eq!(issued.collected_by, Some(9));
         assert!(issued.field_collected);
+    }
+
+    #[renox::test]
+    async fn without_payments_cheques_cannot_be_returned() {
+        let app = renox::testing::TestApp::new(renox::App::new()).await;
+        let request = ReturnCheques::new(vec![ChequeId(1), ChequeId(2)], "lease cancelled");
+        assert_eq!(request.cheques.len(), 2);
+        let refused = NoCheques
+            .return_undeposited(app.state(), request, None)
+            .await;
+        assert!(refused.is_err());
     }
 
     #[test]

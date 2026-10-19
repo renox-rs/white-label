@@ -238,9 +238,99 @@ pub fn deposit_top_ups(state: &AppState) -> Arc<dyn DepositTopUps> {
     }
 }
 
+/// A deposit held for a source: [`Deposits::held_for`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeldDeposit {
+    /// The deposit.
+    pub deposit: DepositId,
+    /// Whose deposit it is.
+    pub party: PartyId,
+    /// What the source requires, in fils.
+    pub required: i64,
+    /// What is held, in fils: the money allocated to the deposit.
+    pub held: i64,
+    /// The ISO currency code.
+    pub currency: String,
+}
+
+/// The settlement of the deposit of a cancelled agreement
+/// ([`Deposits::settle_cancelled`]): the agreement never started, so the
+/// deposit is refunded, or part of it forfeited where the signed terms allow
+/// it. The part forfeited is published to the party as a deduction line with
+/// the clause as its evidence; the refund of the rest waits for the dispute
+/// window like any settlement.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CancelSettlement {
+    /// What the deposit is held for (the lease).
+    pub source: Subject,
+    /// The part forfeited, in fils; 0 for none.
+    pub forfeit: i64,
+    /// The clause of the signed terms that allows the forfeit; required when
+    /// `forfeit` is above 0.
+    pub clause: Option<String>,
+}
+
+impl CancelSettlement {
+    /// A settlement of the deposit held for `source` with nothing forfeited.
+    pub fn new(source: Subject) -> Self {
+        CancelSettlement {
+            source,
+            forfeit: 0,
+            clause: None,
+        }
+    }
+
+    /// With `forfeit` fils kept under `clause`.
+    pub fn forfeit(mut self, forfeit: i64, clause: &str) -> Self {
+        self.forfeit = forfeit;
+        self.clause = Some(clause.to_owned());
+        self
+    }
+}
+
+/// What [`Deposits::settle_cancelled`] did.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SettlementStarted {
+    /// The deposit, now `settlement_pending`.
+    pub deposit: DepositId,
+    /// What was held, in fils.
+    pub held: i64,
+    /// The part forfeited, in fils.
+    pub forfeit: i64,
+    /// The published version of the deductions: 1.
+    pub version: i32,
+}
+
 /// What other modules do with deposits. `wl-payments` provides it; without
 /// that module, [`deposits`] gives [`NoDeposits`].
 pub trait Deposits: Send + Sync + 'static {
+    /// The deposit held (`held`) for `source`, if there is one. The default
+    /// finds none: payments is not enabled.
+    fn held_for<'a>(
+        &'a self,
+        _db: &'a Db,
+        _source: &'a Subject,
+    ) -> DepositFuture<'a, Option<HeldDeposit>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    /// Starts the settlement of the held deposit of `request.source` because
+    /// the agreement was cancelled, as the system on behalf of the user `by`,
+    /// and publishes the first version of the deductions to the party: the
+    /// forfeited part as a line with its clause, else no line. Refused (422)
+    /// for a forfeit above the held amount, or above 0 without a clause.
+    /// `None` when the source holds no deposit. The refund of the rest is the
+    /// accountant's, after the dispute window (`deposits.refund`). The
+    /// default finds no deposit: payments is not enabled.
+    fn settle_cancelled<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _request: CancelSettlement,
+        _by: Option<i64>,
+    ) -> DepositFuture<'a, Option<SettlementStarted>> {
+        Box::pin(async { Ok(None) })
+    }
+
     /// Adjusts the held deposit of `request.source` to `request.new_amount`
     /// for the user `by` (`None` = the system, as a lease amendment or
     /// renewal `activate` does): an increase raises a top-up charge, a
@@ -444,6 +534,30 @@ mod tests {
         assert_eq!(json["deposit"], 3);
         assert_eq!(json["outcome"], "transferred");
         assert_eq!(json["new_holder"], 11);
+    }
+
+    #[test]
+    fn a_cancel_settlement_is_built_with_its_builder() {
+        let source = Subject::new("property.lease", 9);
+        let plain = CancelSettlement::new(source.clone());
+        assert_eq!((plain.forfeit, plain.clause.as_deref()), (0, None));
+        let kept = plain.forfeit(200_000, "Reservation form §4");
+        assert_eq!(kept.forfeit, 200_000);
+        assert_eq!(kept.clause.as_deref(), Some("Reservation form §4"));
+        assert_eq!(kept.source, source);
+    }
+
+    #[renox::test]
+    async fn without_payments_no_deposit_is_held_or_settled() {
+        let app = renox::testing::TestApp::new(renox::App::new()).await;
+        let source = Subject::new("property.lease", 9);
+        let none = NoDeposits.held_for(app.db(), &source).await.unwrap();
+        assert!(none.is_none());
+        let settled = NoDeposits
+            .settle_cancelled(app.state(), CancelSettlement::new(source), None)
+            .await
+            .unwrap();
+        assert!(settled.is_none());
     }
 
     #[test]

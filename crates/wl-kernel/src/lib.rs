@@ -86,7 +86,7 @@ pub use cheques::{
     BounceFeeCharge, BounceFees, CHARGE_SUBJECT_TYPE, CHEQUE_SUBJECT_TYPE, ChargeInvoicer,
     ChequeBounceResolved, ChequeBounced, ChequeId, ChequeOutcome, ChequeSchedule, ChequeStatus,
     ChequeDocument, ChequeSummary, Cheques, NoBounceFees, NoChargeInvoicer, NoCheques, OpenCheque,
-    RegisterCheque,
+    RegisterCheque, ReturnCheques, ReturnedCheques,
     ScheduledCheque,
 };
 pub use config::{ClientConfig, ConfigError, RolesConfig, owner_role};
@@ -141,10 +141,11 @@ pub use parties::{
     ScreeningCompleted, ScreeningFlagged, ScreeningId, ScreeningMatchConfirmed, ScreeningStatus,
 };
 pub use deposits::{
-    AdjustDeposit, DeductionKind, DeductionLineView, DepositAdjusted, DepositDeductions,
+    AdjustDeposit, CancelSettlement, DeductionKind, DeductionLineView, DepositAdjusted, DepositDeductions,
     DepositDeductionsDisputed, DepositDeductionsPublished, DepositDisputeAnswered, DepositOutcome,
-    DepositSettled, DepositTopUps, Deposits, DisputeAnswer, DisputeDeductions,
-    NoDepositDeductions, NoDepositTopUps, NoDeposits, PublishedDeductions, TopUpCharge,
+    DepositSettled, DepositTopUps, Deposits, DisputeAnswer, DisputeDeductions, HeldDeposit,
+    NoDepositDeductions, NoDepositTopUps, NoDeposits, PublishedDeductions, SettlementStarted,
+    TopUpCharge,
 };
 pub use payments::{
     AllocationTarget, BankPayment, DEPOSIT_SUBJECT_TYPE, DepositId, Direction, NoPayments, PaymentId,

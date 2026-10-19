@@ -2083,3 +2083,36 @@ async fn without_hr_the_workforce_checklists_and_sop_acknowledgements_are_empty(
         .is_empty());
     assert_eq!(renox::serde_json::to_value(ChecklistOutcome::Passed).unwrap(), "passed");
 }
+
+/// #251: without the `payments` module no deposit is held for a lease and none
+/// is settled; cheques cannot be handed back (422); and without invoicing no
+/// draft is discarded.
+#[renox::test]
+async fn the_lease_cancellation_contracts_fall_back_when_the_modules_are_off() {
+    use wl_kernel::Subject;
+    use wl_kernel::cheques::{ChequeId, ReturnCheques, cheques};
+    use wl_kernel::deposits::{CancelSettlement, deposits};
+    use wl_kernel::invoicing::{InvoiceId, invoicer};
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let state = app.state();
+    let lease = Subject::new("property.lease", 9);
+
+    assert!(deposits(state).held_for(app.db(), &lease).await.unwrap().is_none());
+    let settlement = CancelSettlement::new(lease).forfeit(200_000, "Reservation form §4");
+    assert!(deposits(state)
+        .settle_cancelled(state, settlement, Some(4))
+        .await
+        .unwrap()
+        .is_none());
+
+    let request = ReturnCheques::new(vec![ChequeId(1), ChequeId(2)], "Lease cancelled");
+    let refused = cheques(state).return_undeposited(state, request, Some(4)).await;
+    assert!(matches!(
+        refused,
+        Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
+    ));
+
+    assert!(!invoicer(state).discard_draft(app.db(), InvoiceId(1)).await.unwrap());
+}
