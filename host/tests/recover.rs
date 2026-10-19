@@ -15,7 +15,7 @@ use wl_kernel::payments::{AllocationTarget, PaymentMethod, RecordPayment, paymen
 use wl_kernel::{LegalEntity, PartyId, Subject};
 use wl_parties::Party;
 
-use host::roles::{self, RECEIVABLES};
+use host::roles::{self, PROPERTY_MANAGER, RECEIVABLES};
 
 /// A verified user with `role`.
 async fn person(app: &TestApp, name: &str, role: &str) -> User {
@@ -35,10 +35,10 @@ async fn person(app: &TestApp, name: &str, role: &str) -> User {
 }
 
 /// An invoice of AED 1,050.00 to `party`, overdue and written off through
-/// the approval of a second user.
+/// the approval of a property manager (FIN.ACL.15 in the Property client).
 async fn written_off(app: &TestApp, party: PartyId) -> Invoice {
     let clerk = person(app, "Wendy", RECEIVABLES).await;
-    let approver = person(app, "Wade", RECEIVABLES).await;
+    let approver = person(app, "Wade", PROPERTY_MANAGER).await;
     let due: NaiveDate = today().checked_sub_days(Days::new(5)).unwrap();
     let draft = InvoiceDraft::new(party, Subject::new("property.lease", 9))
         .line(DraftLine::new("Rent", 100_000, VatCategory::Standard))
