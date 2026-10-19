@@ -17,6 +17,9 @@
 //! | `POST /property/leases/{id}/notice` | `property.lease_notice` | `leases.manage` in the building |
 //! | `POST /property/leases/{id}/planned-move-out` | `property.lease_planned_move_out` | `leases.manage` in the building |
 //! | `POST /property/leases/{id}/withdraw-notice` | `property.lease_withdraw_notice` | `leases.manage` in the building |
+//! | `POST /property/leases/{id}/move-out-inspection` | `property.lease_inspection` | `leases.manage` in the building |
+//! | `POST /property/leases/{id}/terminate` | `property.lease_terminate` | `leases.manage` in the building |
+//! | `POST /property/leases/{id}/ejari-cancellation` | `property.lease_ejari_cancellation` | `leases.manage` in the building |
 //! | `POST /property/leases/{id}/waive-deposit` | `property.lease_waive_deposit` | `leases.activate` in the building |
 //! | `POST /property/leases/{id}/ejari` | `property.lease_ejari` | `leases.activate` in the building |
 //! | `POST /property/leases/{id}/cheques` | `property.lease_cheques` | `leases.create` in the building |
@@ -47,6 +50,7 @@ use crate::parse::{parse_aed, parse_date};
 use crate::permissions;
 use crate::renew;
 use crate::renewal;
+use crate::termination::{self, Inspection, Termination};
 use crate::terms;
 use crate::texts;
 use crate::unit::Unit;
@@ -83,6 +87,12 @@ pub fn routes() -> Routes {
         .name("property.lease_planned_move_out")
         .post("/property/leases/{id}/withdraw-notice", withdraw_notice)
         .name("property.lease_withdraw_notice")
+        .post("/property/leases/{id}/move-out-inspection", move_out_inspection)
+        .name("property.lease_inspection")
+        .post("/property/leases/{id}/terminate", terminate)
+        .name("property.lease_terminate")
+        .post("/property/leases/{id}/ejari-cancellation", ejari_cancellation)
+        .name("property.lease_ejari_cancellation")
         .post("/property/leases/{id}/waive-deposit", waive_deposit)
         .name("property.lease_waive_deposit")
         .post("/property/leases/{id}/ejari", ejari)
@@ -321,6 +331,18 @@ pub struct LeaseView {
     /// For a landlord's notice: "Notice not delivered", or the day it was
     /// delivered; empty for a tenant's.
     pub notice_delivery: String,
+    /// The day the move-out inspection was completed.
+    pub inspection_done_on: String,
+    /// The day all the keys were returned.
+    pub keys_returned_on: String,
+    /// The day the tenant moved out.
+    pub actual_move_out: String,
+    /// The day rent stays due until, when the contract says so.
+    pub rent_due_until: String,
+    /// The net amount credited at termination.
+    pub termination_credit: String,
+    /// The day the Ejari registration was cancelled.
+    pub ejari_cancelled_on: String,
 }
 
 /// What a lease page needs.
@@ -352,6 +374,9 @@ pub(crate) struct ShowPage {
     can_notice: bool,
     can_change_planned: bool,
     can_withdraw: bool,
+    can_inspect: bool,
+    can_terminate: bool,
+    can_ejari_cancel: bool,
     today: String,
 }
 
@@ -577,6 +602,16 @@ async fn show(
         notice_ground: lease.notice_ground.clone().unwrap_or_default(),
         planned_move_out: planned.map(|d| d.to_string()).unwrap_or_default(),
         notice_delivery,
+        inspection_done_on: lease.inspection_done_on.map(|d| d.to_string()).unwrap_or_default(),
+        keys_returned_on: lease.keys_returned_on.map(|d| d.to_string()).unwrap_or_default(),
+        actual_move_out: lease.actual_move_out.map(|d| d.to_string()).unwrap_or_default(),
+        rent_due_until: lease.rent_due_until.map(|d| d.to_string()).unwrap_or_default(),
+        termination_credit: if lease.termination_credit > 0 {
+            crate::money_text(lease.termination_credit)
+        } else {
+            String::new()
+        },
+        ejari_cancelled_on: lease.ejari_cancelled_on.map(|d| d.to_string()).unwrap_or_default(),
     };
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
@@ -617,6 +652,15 @@ async fn show(
             && lease.status == LeaseStatus::NoticeGiven
             && lease.notice_party.as_deref() == Some(NoticeParty::Tenant.as_str()),
         can_withdraw: manages && lease.status == LeaseStatus::NoticeGiven,
+        can_inspect: manages && lease.status == LeaseStatus::NoticeGiven,
+        can_terminate: manages
+            && lease.status == LeaseStatus::NoticeGiven
+            && lease.inspection_done_on.is_some()
+            && lease.keys_returned_on.is_some(),
+        can_ejari_cancel: manages
+            && lease.status == LeaseStatus::Terminated
+            && lease.ejari_number.is_some()
+            && lease.ejari_cancelled_on.is_none(),
         can_cheques: creates
             && !matches!(
                 lease.status,
@@ -1061,6 +1105,99 @@ async fn withdraw_notice(
         .await
         .map_err(TransitionError::into_error)?;
     Ok((Toast::success(text(&lang, "withdraw.done")), renox::HxRefresh).into_response())
+}
+
+/// The form that records the move-out inspection.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct InspectionForm {
+    /// The day the inspection was completed.
+    #[serde(default)]
+    pub done_on: String,
+    /// The day all the keys were returned.
+    #[serde(default)]
+    pub keys_returned_on: String,
+    /// `yes` when the inspection found defects that need work.
+    #[serde(default)]
+    pub defects: String,
+}
+
+/// An optional date: blank is `None`.
+fn optional_date(value: &str, field: &str) -> Result<Option<NaiveDate>> {
+    if value.trim().is_empty() {
+        return Ok(None);
+    }
+    required_date(value, field).map(Some)
+}
+
+/// `POST /property/leases/{id}/move-out-inspection`.
+async fn move_out_inspection(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<InspectionForm>,
+) -> Result<Response> {
+    let inspection = Inspection {
+        done_on: optional_date(&form.done_on, "done_on")?,
+        keys_returned_on: optional_date(&form.keys_returned_on, "keys_returned_on")?,
+        defects: form.defects.trim() == "yes",
+    };
+    termination::record_inspection(&state, &user, id, inspection).await?;
+    Ok((Toast::success(text(&lang, "inspection.recorded")), renox::HxRefresh).into_response())
+}
+
+/// The form that terminates a lease.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct TerminateForm {
+    /// The day the keys were returned.
+    #[serde(default)]
+    pub move_out: String,
+    /// The day rent stays due until, when the contract says so.
+    #[serde(default)]
+    pub rent_due_until: String,
+    /// `refund` or `keep`: what becomes of the credit that is left.
+    #[serde(default)]
+    pub credit: String,
+}
+
+/// `POST /property/leases/{id}/terminate`.
+async fn terminate(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<TerminateForm>,
+) -> Result<Response> {
+    let termination = Termination {
+        move_out: required_date(&form.move_out, "move_out")?,
+        rent_due_until: optional_date(&form.rent_due_until, "rent_due_until")?,
+        keep_credit: form.credit.trim() == "keep",
+    };
+    termination::terminate(&state, &user, id, termination)
+        .await
+        .map_err(TransitionError::into_error)?;
+    Ok((Toast::success(text(&lang, "terminate.done")), renox::HxRefresh).into_response())
+}
+
+/// The form that records the Ejari cancellation.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct EjariCancelForm {
+    /// The day the registration was cancelled.
+    #[serde(default)]
+    pub cancelled_on: String,
+}
+
+/// `POST /property/leases/{id}/ejari-cancellation` (`PRP.RUL.13`).
+async fn ejari_cancellation(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<EjariCancelForm>,
+) -> Result<Response> {
+    let day = required_date(&form.cancelled_on, "cancelled_on")?;
+    termination::record_ejari_cancellation(&state, &user, id, day).await?;
+    Ok((Toast::success(text(&lang, "ejari.cancelled_done")), renox::HxRefresh).into_response())
 }
 
 /// The form of the Ejari registration.

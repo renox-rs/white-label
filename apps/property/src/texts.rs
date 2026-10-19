@@ -588,6 +588,84 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("property.withdraw.reason", "Notice withdrawn with the written agreement of the landlord side"),
     ("property.withdraw.ticket_note", "Cancelled: the notice was withdrawn."),
+    // Terminating a lease (BL-PRP-11).
+    ("property.inspection.record", "Record the move-out inspection"),
+    (
+        "property.inspection.description",
+        "When the inspection is completed and the keys are back, the lease can be terminated. Dates you leave out keep what was recorded.",
+    ),
+    ("property.inspection.done_on", "Inspection completed on"),
+    ("property.inspection.keys_returned_on", "All keys returned on"),
+    ("property.inspection.defects", "Defects that need work"),
+    ("property.inspection.recorded", "Move-out inspection recorded."),
+    ("property.inspection.no_notice", "Only a lease with a notice has a move-out inspection."),
+    ("property.inspection.nothing", "Give the date of the inspection or of the keys."),
+    ("property.inspection.ticket_note", "The move-out inspection was recorded on the lease."),
+    ("property.terminate.action", "Terminate the lease"),
+    (
+        "property.terminate.description",
+        "The tenant has moved out. Charges after the move-out date are cancelled, the invoices of later periods are credited pro rata, later cheques are returned and the deposit settlement starts.",
+    ),
+    ("property.terminate.move_out", "Move-out date (keys returned)"),
+    ("property.terminate.rent_due_until", "Rent due until"),
+    (
+        "property.terminate.rent_due_until_hint",
+        "Only when the contract keeps rent due after move-out: charges and cheques up to this date stay.",
+    ),
+    ("property.terminate.credit", "The credit that is left"),
+    ("property.terminate.credit_refund", "Refund it to the tenant"),
+    ("property.terminate.credit_keep", "Keep it as credit"),
+    ("property.terminate.credited", "Credited for later periods"),
+    ("property.terminate.done", "Lease terminated."),
+    ("property.terminate.history", "Tenant moved out"),
+    (
+        "property.terminate.inspection_missing",
+        "Complete the move-out inspection first.",
+    ),
+    ("property.terminate.keys_missing", "All the keys must be returned first."),
+    ("property.terminate.move_out_required", "Give the move-out date."),
+    (
+        "property.terminate.move_out_early",
+        "The move-out date cannot be before the lease started.",
+    ),
+    (
+        "property.terminate.due_until_early",
+        "Rent cannot be due until a day before the move-out date.",
+    ),
+    ("property.terminate.reason", "Lease :lease ended: the tenant moved out"),
+    (
+        "property.terminate.draft_straddles",
+        "Invoice :invoice is a draft for a period that straddles the move-out date: adjust it by hand.",
+    ),
+    (
+        "property.terminate.task_problems",
+        "Finish the termination of :lease by hand",
+    ),
+    ("property.ejari.cancel", "Record the Ejari cancellation"),
+    (
+        "property.ejari.cancel_description",
+        "The registration was cancelled after move-out.",
+    ),
+    ("property.ejari.cancelled_on", "Ejari cancelled on"),
+    ("property.ejari.cancelled_done", "Ejari cancellation recorded."),
+    (
+        "property.ejari.cancel_refused",
+        "Only a terminated lease with a registration number has an Ejari cancellation.",
+    ),
+    ("property.ejari.cancelled", "The Ejari cancellation was recorded."),
+    ("property.ejari.cancel_task", "Cancel the Ejari contract of :lease"),
+    (
+        "property.ejari.cancel_task_description",
+        "The lease ended :days days ago and the registration :number is not cancelled. Cancel it and record the date on the lease.",
+    ),
+    (
+        "property.notices.ejari_cancellation_subject",
+        "Cancel the Ejari contract of {{ lease }}",
+    ),
+    (
+        "property.notices.ejari_cancellation_body",
+        "The lease {{ lease }} ended on {{ terminated_on }} and its registration {{ ejari_number }} is not cancelled yet. Cancel it and record the date on the lease.",
+    ),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.

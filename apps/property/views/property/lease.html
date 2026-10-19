@@ -68,6 +68,28 @@
         <rx-confirm :id="'withdraw-notice-' ~ lease.id" :label="tx['withdraw.action']" :action="route('property.lease_withdraw_notice', lease.id)" method="POST"
                     :title="tx['withdraw.action']" :message="tx['withdraw.message']" :confirm-label="tx['withdraw.action']" :cancel-label="tx['button_cancel']" icon="refresh-cw"/>
       </template>
+      <template rx-if="can_inspect">
+        <rx-action-sheet :id="'inspection-' ~ lease.id" :label="tx['inspection.record']" :action="route('property.lease_inspection', lease.id)"
+                         :title="tx['inspection.record']" :description="tx['inspection.description']" :submit-label="tx['inspection.record']" icon="clipboard-list">
+          <rx-input name="done_on" type="date" :label="tx['inspection.done_on']" :id="'inspection-done-' ~ lease.id"/>
+          <rx-input name="keys_returned_on" type="date" :label="tx['inspection.keys_returned_on']" :id="'inspection-keys-' ~ lease.id"/>
+          <rx-select name="defects" :label="tx['inspection.defects']" :options="[['no', tx['terms.no']], ['yes', tx['terms.yes']]]" :selected="'no'" :id="'inspection-defects-' ~ lease.id"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_terminate">
+        <rx-action-sheet :id="'terminate-' ~ lease.id" :label="tx['terminate.action']" :action="route('property.lease_terminate', lease.id)"
+                         :title="tx['terminate.action']" :description="tx['terminate.description']" :submit-label="tx['terminate.action']" icon="log-out" variant="danger" danger>
+          <rx-input name="move_out" type="date" :label="tx['terminate.move_out']" :value="today" :id="'terminate-move-out-' ~ lease.id" required/>
+          <rx-input name="rent_due_until" type="date" :label="tx['terminate.rent_due_until']" :hint="tx['terminate.rent_due_until_hint']" :id="'terminate-due-' ~ lease.id"/>
+          <rx-select name="credit" :label="tx['terminate.credit']" :options="[['refund', tx['terminate.credit_refund']], ['keep', tx['terminate.credit_keep']]]" :selected="'refund'" :id="'terminate-credit-' ~ lease.id"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_ejari_cancel">
+        <rx-action-sheet :id="'ejari-cancel-' ~ lease.id" :label="tx['ejari.cancel']" :action="route('property.lease_ejari_cancellation', lease.id)"
+                         :title="tx['ejari.cancel']" :description="tx['ejari.cancel_description']" :submit-label="tx['ejari.cancel']" icon="stamp">
+          <rx-input name="cancelled_on" type="date" :label="tx['ejari.cancelled_on']" :value="today" :id="'ejari-cancelled-' ~ lease.id" required/>
+        </rx-action-sheet>
+      </template>
       <template rx-if="can_waive">
         <rx-confirm :id="'waive-deposit-' ~ lease.id" :label="tx['leases.waive_deposit']" :action="route('property.lease_waive_deposit', lease.id)" method="POST"
                     :title="tx['leases.waive_deposit']" :message="tx['leases.waive_message']" :confirm-label="tx['leases.waive_deposit']" :cancel-label="tx['button_cancel']"/>
@@ -130,6 +152,12 @@
         <rx-entry :label="tx['notice.ground']" :value="lease.notice_ground" :placeholder="tx['none']"/>
         <rx-entry :label="tx['notice.planned_move_out']" :value="lease.planned_move_out" :placeholder="tx['none']"/>
         <rx-entry :label="tx['notice.title']" :value="lease.notice_delivery" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['inspection.done_on']" :value="lease.inspection_done_on" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['inspection.keys_returned_on']" :value="lease.keys_returned_on" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['terminate.move_out']" :value="lease.actual_move_out" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['terminate.rent_due_until']" :value="lease.rent_due_until" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['terminate.credited']" :value="lease.termination_credit" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['ejari.cancelled_on']" :value="lease.ejari_cancelled_on" :placeholder="tx['none']"/>
         <rx-entry :label="tx['cancel_reason']" :value="lease.cancel_reason" :placeholder="tx['none']"/>
         <rx-entry :label="tx['cancel_forfeit']" :value="lease.cancel_forfeit" :placeholder="tx['none']"/>
         <rx-entry :label="tx['cancel_forfeit_clause']" :value="lease.cancel_forfeit_clause" :placeholder="tx['none']"/>
