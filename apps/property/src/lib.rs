@@ -9,6 +9,7 @@ pub mod cheques;
 mod db;
 pub mod documents;
 pub mod events;
+pub mod holding;
 pub mod invoicing;
 pub mod lease;
 mod lease_checks;

@@ -8,6 +8,10 @@
 //! - **`flag_renewal`:** the property managers and the tenant are told that
 //!   the lease entered its renewal window, with the notice deadline
 //!   (`PRP.RUL.01`).
+//! - **`expire`:** the property managers are told that the lease is holding
+//!   over (`PRP.RUL.03`).
+//! - **`submit`:** a renewal version closes the holding-over task of the
+//!   version it renews (`PRP.RUL.14`).
 
 use renox::chrono::Duration;
 use renox::prelude::*;
@@ -17,7 +21,7 @@ use wl_kernel::role_tasks::RoleTask;
 
 use crate::events::LeaseActivated;
 use crate::lease::{Lease, VersionKind};
-use crate::lease_machine::{ACTIVATE, FLAG_RENEWAL};
+use crate::lease_machine::{ACTIVATE, EXPIRE, FLAG_RENEWAL, SUBMIT};
 use crate::leases::ejari_task_key;
 use crate::permissions::{ACCOUNTANT_ROLE, PROPERTY_MANAGER_ROLE};
 use crate::texts::english;
@@ -31,6 +35,8 @@ pub(crate) fn register(app: &mut Registry) {
         match event.transition.as_str() {
             ACTIVATE => after_activate(&state, event.key).await,
             FLAG_RENEWAL => after_flag_renewal(&state, event.key).await,
+            EXPIRE => crate::holding::announce(&state, event.key).await,
+            SUBMIT => crate::holding::renewal_submitted(&state, event.key).await,
             _ => Ok(()),
         }
     });

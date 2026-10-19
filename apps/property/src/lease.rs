@@ -206,6 +206,13 @@ pub struct Lease {
     pub terms_answer_reason: Option<String>,
     /// The end of the statutory renewal period the tenant holds over for.
     pub holding_over_until: Option<NaiveDate>,
+    /// The day it became `expired` (`PRP.RUL.03`).
+    pub expired_on: Option<NaiveDate>,
+    /// The first day of the statutory renewal period it holds over for now.
+    pub holding_period_start: Option<NaiveDate>,
+    /// The first day of the period the holding-over task was last opened for
+    /// (`PRP.RUL.14`).
+    pub holding_tasked_for: Option<NaiveDate>,
     /// The day notice was given.
     pub notice_date: Option<NaiveDate>,
     /// Who gave it: `tenant` or `landlord`.

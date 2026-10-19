@@ -361,6 +361,31 @@ const TEXTS: &[(&str, &str)] = &[
         "property.notices.changed_terms_body",
         "Your landlord gives notice that the terms of tenancy {{ lease }} will change when it is renewed after {{ end_date }}. Please contact your property manager for the new terms.",
     ),
+    (
+        "property.notices.holding_over_subject",
+        "Lease {{ lease }} is holding over",
+    ),
+    (
+        "property.notices.holding_over_body",
+        "The lease {{ lease }} ended on {{ end_date }} and the tenant stays. It renews on the same terms and billing continues until {{ until }}. Issue the renewal version or record a notice.",
+    ),
+    // Holding over (PRP.RUL.03, PRP.RUL.14).
+    ("property.holding.line", ":description (holding over)"),
+    ("property.holding.not_over", "The end date of the lease has not passed."),
+    (
+        "property.holding.renewal_active",
+        "A renewal version is active, so the lease is not holding over.",
+    ),
+    ("property.holding.until", "Holding over until"),
+    (
+        "property.holding.task_title",
+        "Issue the renewal of :lease, held over after its end date, or record a notice",
+    ),
+    (
+        "property.holding.task_description",
+        "The tenant stays after the end date, so the lease renews on the same terms and is billed until :until. Issue the renewal version on the same terms and renew Ejari, or record a notice.",
+    ),
+    ("property.holding.task_done", "A renewal version was submitted."),
     ("property.renewal.title", "Renewal"),
     ("property.renewal.notice_deadline", "Notice deadline"),
     ("property.renewal.decision", "Renewal decision"),

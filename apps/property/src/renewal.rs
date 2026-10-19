@@ -19,6 +19,10 @@
 //!   rule run per date, so a failed or missed run alerts the owner role and
 //!   the company admin (`PLT.RUL.04`).
 //!
+//! The same run goes on with the lease after its end date: `PRP.RUL.03`,
+//! `PRP.RUL.14` and the extension of the charge schedule are in
+//! [`crate::holding`].
+//!
 //! The notice of changed terms is a statutory notice that the property
 //! manager sends ([`send_changed_terms`]); it counts as given only from its
 //! delivery date, read from the notifier ([`delivered_on`]): the provider's
@@ -50,6 +54,7 @@ use wl_kernel::documents::{dubai_date, today};
 use wl_kernel::notify::{NoticeStatus, notifier};
 
 use crate::building::refused;
+use crate::holding;
 use crate::lease::{Lease, LeaseStatus, RenewalDecision};
 use crate::lease_machine::{FLAG_RENEWAL, FlagInput};
 use crate::notices::{self, NOTICE_OF_CHANGED_TERMS};
@@ -233,6 +238,13 @@ pub struct Report {
     pub warned: usize,
     /// Leases that got the current-terms-only marker.
     pub marked: usize,
+    /// Leases that expired (`PRP.RUL.03`).
+    pub expired: usize,
+    /// Statutory renewal periods added to the charge schedule of a lease
+    /// that is still holding over.
+    pub extended: usize,
+    /// Holding-over tasks opened (`PRP.RUL.14`).
+    pub tasked: usize,
 }
 
 /// `PRP.RUL.01` for `day`: flags the `active` leases whose window is open.
@@ -391,8 +403,11 @@ pub async fn run_deadlines(state: &AppState, day: NaiveDate) -> Result<Report> {
     Ok(report)
 }
 
-/// Runs the daily rules for `day` (Asia/Dubai): the renewal window, then the
-/// notice deadline. The window step does not stop the deadline step.
+/// Runs the daily rules for `day` (Asia/Dubai) in the order of a lease's
+/// life: the renewal window (`PRP.RUL.01`), the notice deadline
+/// (`PRP.RUL.09`), expiry after the end date (`PRP.RUL.03`), the next period
+/// of a lease still holding over, and the holding-over tasks
+/// (`PRP.RUL.14`). A failing step does not stop the others.
 ///
 /// # Errors
 ///
@@ -400,8 +415,14 @@ pub async fn run_deadlines(state: &AppState, day: NaiveDate) -> Result<Report> {
 pub async fn run(state: &AppState, day: NaiveDate) -> Result<Report> {
     let window = flag_due(state, day).await;
     let guard = run_deadlines(state, day).await;
+    let expired = holding::expire_due(state, day).await;
+    let extended = holding::extend_due(state, day).await;
+    let tasked = holding::open_tasks(state, day).await;
     let mut report = guard?;
     report.flagged = window?;
+    report.expired = expired?;
+    report.extended = extended?;
+    report.tasked = tasked?;
     Ok(report)
 }
 
@@ -416,7 +437,7 @@ pub(crate) fn schedule(app: &mut Registry) {
         .timezone("Asia/Dubai");
     app.command(
         TASK,
-        "Open the renewal window and guard the notice deadline of the leases (--date YYYY-MM-DD checks another day)",
+        "Open the renewal window, guard the notice deadline and handle the leases held over (--date YYYY-MM-DD checks another day)",
         |args, state: AppState| async move {
             let on = match args.value("--date") {
                 None => today(),
@@ -429,8 +450,13 @@ pub(crate) fn schedule(app: &mut Registry) {
             };
             let report = run(&state, on).await?;
             println!(
-                "{} leases flagged, {} warnings, {} marked current terms only.",
-                report.flagged, report.warned, report.marked
+                "{} leases flagged, {} warnings, {} marked current terms only, {} expired, {} periods added, {} tasks opened.",
+                report.flagged,
+                report.warned,
+                report.marked,
+                report.expired,
+                report.extended,
+                report.tasked
             );
             Ok(())
         },

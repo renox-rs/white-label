@@ -30,7 +30,10 @@
 //! - `flag_renewal` stores the day of the rule run ([`FlagInput`]) as the day
 //!   the lease entered its renewal window (BL-PRP-03); the notices follow the
 //!   commit ([`crate::lease_events`]).
-//! - `renew`, `amend`, `expire`, `record_notice`,
+//! - `expire` needs the end date to have passed and extends the charge
+//!   schedule for the statutory renewal period ([`crate::holding`],
+//!   BL-PRP-06); the managers are told after the commit.
+//! - `renew`, `amend`, `record_notice`,
 //!   `withdraw_notice*`, `terminate` and `force_terminate` are declared with
 //!   their states and permissions; their effects are built by BL-PRP-03 to
 //!   BL-PRP-12 and until then the pages do not offer them.
@@ -45,6 +48,7 @@ use wl_kernel::documents::today;
 
 use crate::charge::{ChargeStatus, LeaseCharge};
 use crate::db::{refused, set_lease};
+use crate::holding::expire_effects;
 use crate::lease::{LEASE_SUBJECT_TYPE, Lease, LeaseStatus};
 use crate::lease_checks::{activate_checks, apply_activation, submit_checks};
 use crate::permissions;
@@ -124,6 +128,23 @@ pub struct FlagInput {
     /// The day of the rule run.
     #[serde(default)]
     pub day: Option<renox::chrono::NaiveDate>,
+}
+
+/// What an `expire` run carries: the day (Asia/Dubai) the rule ran for. A run
+/// without it counts today.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExpireInput {
+    /// The day of the rule run.
+    #[serde(default)]
+    pub day: Option<renox::chrono::NaiveDate>,
+}
+
+/// The day an `expire` run is for.
+fn expire_day(ctx: &TransitionCtx) -> renox::chrono::NaiveDate {
+    ctx.input_as::<ExpireInput>()
+        .ok()
+        .and_then(|input| input.day)
+        .unwrap_or_else(today)
 }
 
 /// The input of a cancel run: the run's input, with the history reason as the
@@ -342,7 +363,26 @@ impl StateMachine for Lease {
                     .from([Active, RenewalDue, Expired])
                     .to(Amended),
             )
-            .transition(system(EXPIRE, "Expire").from([RenewalDue]).to(Expired))
+            .transition(
+                system(EXPIRE, "Expire")
+                    .from([RenewalDue])
+                    .to(Expired)
+                    .guard("end_date_passed", |lease: &Lease, ctx| {
+                        let passed = expire_day(ctx) > lease.end_date;
+                        Box::pin(async move {
+                            if passed {
+                                Ok(())
+                            } else {
+                                Err(english("property.holding.not_over", &[]))
+                            }
+                        })
+                    })
+                    .effect(|lease: &Lease, ctx, tx| {
+                        let lease = lease.clone();
+                        let day = expire_day(ctx);
+                        Box::pin(async move { expire_effects(&mut *tx, &lease, day).await })
+                    }),
+            )
             .transition(
                 user(TERMINATE, "Terminate", permissions::LEASES_MANAGE)
                     .from([NoticeGiven])

@@ -34,6 +34,10 @@ pub const RENEWAL_DEADLINE: &str = "property.renewal_deadline";
 /// now be renewed on the current terms only (`PRP.RUL.09`).
 pub const CURRENT_TERMS_ONLY: &str = "property.current_terms_only";
 
+/// The property managers are told that the tenant holds over after the end
+/// date (`PRP.RUL.03`).
+pub const HOLDING_OVER: &str = "property.holding_over";
+
 /// The tenant is told that the lease entered its renewal window: a normal
 /// message, not a statutory notice (`PRP.RUL.01`).
 pub const RENEWAL_WINDOW: &str = "lease.renewal_window";
@@ -79,6 +83,7 @@ pub(crate) fn register_types() {
     notify::register_type(staff_reminder(RENEWAL_DUE, "renewal_due"));
     notify::register_type(staff_reminder(RENEWAL_DEADLINE, "renewal_deadline"));
     notify::register_type(staff_reminder(CURRENT_TERMS_ONLY, "current_terms_only"));
+    notify::register_type(staff_reminder(HOLDING_OVER, "holding_over"));
     notify::register_type(tenant_message(RENEWAL_WINDOW, "renewal_window", false));
     notify::register_type(tenant_message(
         NOTICE_OF_CHANGED_TERMS,
@@ -227,5 +232,17 @@ pub async fn changed_terms(state: &AppState, lease: &Lease, deadline: NaiveDate)
             "deadline": shown(deadline),
         }));
     notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// Tells the property managers that `lease` is holding over until the end of
+/// its statutory renewal period (`PRP.RUL.03`).
+pub async fn holding_over(state: &AppState, lease: &Lease) -> Result {
+    let data = json!({
+        "lease": lease.number_with_version(),
+        "end_date": shown(lease.end_date),
+        "until": lease.holding_over_until.map(shown).unwrap_or_default(),
+    });
+    tell_managers(state, lease, HOLDING_OVER, data).await?;
     Ok(())
 }

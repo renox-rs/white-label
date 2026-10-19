@@ -63,6 +63,8 @@ pub struct LeaseCharge {
     pub status: ChargeStatus,
     /// The invoice made for it, once invoiced.
     pub invoice_id: Option<i64>,
+    /// Created by `expire` for a period the tenant holds over (`PRP.RUL.03`).
+    pub holding_over: bool,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.

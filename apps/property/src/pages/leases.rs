@@ -271,6 +271,9 @@ pub struct LeaseView {
     pub notice_of_changes: String,
     /// "Current terms only" once the marker is set, else empty.
     pub current_terms_only: String,
+    /// The end of the statutory renewal period the tenant holds over for
+    /// (`PRP.RUL.03`); empty unless the lease expired.
+    pub holding_over_until: String,
     /// Whether a draft renewal or amendment changes terms against the
     /// tenant (`PRP.ACL.17`); empty for other versions.
     pub terms_change: String,
@@ -471,6 +474,10 @@ async fn show(
         } else {
             String::new()
         },
+        holding_over_until: lease
+            .holding_over_until
+            .map(|d| d.to_string())
+            .unwrap_or_default(),
         terms_change,
         acceptance,
         terms_answer_reason: if lease.terms_answered_no {

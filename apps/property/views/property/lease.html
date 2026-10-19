@@ -97,6 +97,7 @@
         <rx-entry :label="tx['renewal.notice_deadline']" :value="lease.notice_deadline" :placeholder="tx['none']"/>
         <rx-entry :label="tx['renewal.decision']" :value="lease.renewal_decision"/>
         <rx-entry :label="tx['renewal.notice']" :value="lease.notice_of_changes"/>
+        <rx-entry :label="tx['holding.until']" :value="lease.holding_over_until" :placeholder="tx['none']"/>
         <rx-entry :label="tx['renewal.current_terms_only']" :value="lease.current_terms_only" :placeholder="tx['none']"/>
         <rx-entry :label="tx['terms.against_question']" :value="lease.terms_change" :placeholder="tx['none']"/>
         <rx-entry :label="tx['terms.acceptance']" :value="lease.acceptance" :placeholder="tx['none']"/>
