@@ -1603,6 +1603,44 @@ pub struct SupplierDebitNoteIssued {
 
 impl Event for SupplierDebitNoteIssued {}
 
+/// A supplier debit note was settled (`settle`): the supplier's tax credit
+/// note is recorded and the whole amount is applied.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SupplierDebitNoteSettled {
+    /// The debit note.
+    pub debit_note: SupplierDebitNoteId,
+    /// The supplier.
+    pub supplier: PartyId,
+    /// The bill it reduced.
+    pub bill: SupplierBillId,
+    /// The total with VAT, in fils of the bill's currency.
+    pub amount: i64,
+    /// What the supplier paid short, accepted with a reason, in fils; 0 when
+    /// the whole amount was applied.
+    pub difference: i64,
+}
+
+impl Event for SupplierDebitNoteSettled {}
+
+/// A supplier debit note was cancelled (`cancel`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SupplierDebitNoteCancelled {
+    /// The debit note.
+    pub debit_note: SupplierDebitNoteId,
+    /// The supplier.
+    pub supplier: PartyId,
+    /// The bill it reduced, if it had one.
+    pub bill: Option<SupplierBillId>,
+    /// The return it came from, if any.
+    pub return_to_supplier: Option<Subject>,
+    /// The total with VAT, in fils of the bill's currency.
+    pub amount: i64,
+    /// Why it was cancelled.
+    pub reason: String,
+}
+
+impl Event for SupplierDebitNoteCancelled {}
+
 /// One returned line of a [`SupplierReturnDispatched`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SupplierReturnLine {
@@ -1681,6 +1719,34 @@ pub trait SupplierDebitNotes: Send + Sync + 'static {
     ) -> SupplierBillFuture<'a, i64> {
         Box::pin(async { Ok(0) })
     }
+
+    /// Applies money the supplier paid back (a `PaymentReceived` allocation
+    /// to the note) as a refund of `amount` fils of `payment`; `key` makes
+    /// a repeat change nothing. The default refuses (422): invoicing is not
+    /// enabled.
+    fn settle_from_payment<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _id: SupplierDebitNoteId,
+        _payment: Subject,
+        _amount: i64,
+        _key: &'a str,
+    ) -> SupplierBillFuture<'a, ()> {
+        Box::pin(async { Err(debit_notes_off()) })
+    }
+
+    /// Cancels the debit note (draft or issued) for `reason`, undoing every
+    /// effect of an issued one. The default refuses (422): invoicing is not
+    /// enabled.
+    fn cancel<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _id: SupplierDebitNoteId,
+        _reason: &'a str,
+        _by: Option<i64>,
+    ) -> SupplierBillFuture<'a, ()> {
+        Box::pin(async { Err(debit_notes_off()) })
+    }
 }
 
 /// The supplier debit notes when `invoicing` is off: none can be drafted,
@@ -1756,6 +1822,18 @@ pub trait CostPoster: Send + Sync + 'static {
     /// Takes cost back from its cost objects. The default does nothing and
     /// succeeds: no module keeps cost entries.
     fn reverse<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _request: ReverseCost,
+    ) -> SupplierBillFuture<'a, ()> {
+        Box::pin(async { Ok(()) })
+    }
+
+    /// Puts back cost that [`reverse`](CostPoster::reverse) took (a
+    /// cancelled debit note); the request has the same shape, and a key
+    /// that was already used changes nothing. The default does nothing and
+    /// succeeds: no module keeps cost entries.
+    fn restore<'a>(
         &'a self,
         _state: &'a AppState,
         _request: ReverseCost,
@@ -1874,6 +1952,35 @@ mod tests {
     }
 
     #[test]
+    fn the_settled_and_cancelled_events_round_trip_through_json() {
+        let settled = SupplierDebitNoteSettled {
+            debit_note: SupplierDebitNoteId(7),
+            supplier: PartyId(4),
+            bill: SupplierBillId(3),
+            amount: 31_500,
+            difference: 1_500,
+        };
+        let json = renox::serde_json::to_string(&settled).unwrap();
+        assert_eq!(
+            renox::serde_json::from_str::<SupplierDebitNoteSettled>(&json).unwrap(),
+            settled
+        );
+        let cancelled = SupplierDebitNoteCancelled {
+            debit_note: SupplierDebitNoteId(7),
+            supplier: PartyId(4),
+            bill: Some(SupplierBillId(3)),
+            return_to_supplier: None,
+            amount: 31_500,
+            reason: "issued in error".into(),
+        };
+        let json = renox::serde_json::to_string(&cancelled).unwrap();
+        assert_eq!(
+            renox::serde_json::from_str::<SupplierDebitNoteCancelled>(&json).unwrap(),
+            cancelled
+        );
+    }
+
+    #[test]
     fn a_cost_reversal_is_built_with_its_builder() {
         let request = ReverseCost::new(
             SupplierDebitNoteId(7).subject(),
@@ -1924,7 +2031,30 @@ mod tests {
             .reverse(state, reverse.clone())
             .await
             .expect("a no-op");
-        NoCostPoster.reverse(state, reverse).await.expect("a no-op");
+        NoCostPoster
+            .reverse(state, reverse.clone())
+            .await
+            .expect("a no-op");
+        NoCostPoster.restore(state, reverse).await.expect("a no-op");
+        for result in [
+            notes
+                .settle_from_payment(
+                    state,
+                    SupplierDebitNoteId(7),
+                    Subject::new("payments.payment", 1),
+                    100,
+                    "k",
+                )
+                .await,
+            notes
+                .cancel(state, SupplierDebitNoteId(7), "error", None)
+                .await,
+        ] {
+            assert!(matches!(
+                result,
+                Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
+            ));
+        }
     }
 
     #[test]

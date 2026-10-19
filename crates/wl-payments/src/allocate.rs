@@ -158,6 +158,11 @@ pub async fn allocate(
                 "supplier bill {id} cannot be paid from here yet"
             )));
         }
+        AllocationTarget::SupplierDebitNote(id) => {
+            return Err(refused(format!(
+                "supplier debit note {id} cannot be settled from here yet"
+            )));
+        }
         AllocationTarget::Deposit(id) => {
             let mut deposit = Deposit::find(&state.db, id.0)
                 .await?

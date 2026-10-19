@@ -78,9 +78,9 @@ pub use invoicing::{
     LandedCosts, NoCostPoster, NoInvoicer, NoLandedCosts, NoSupplierBills, NoSupplierDebitNotes,
     PayBill, ReverseCost, SupplierBillApproved, SupplierBillId, SupplierBillLine,
     SupplierBillLineId, SupplierBillReopened, SupplierBillStatus, SupplierBillVoided,
-    SupplierBills, SupplierDebitNoteId, SupplierDebitNoteIssued, SupplierDebitNoteStatus,
-    SupplierDebitNoteSummary, SupplierDebitNotes, SupplierReturnDispatched, SupplierReturnLine,
-    UnallocateBill, VatCategory,
+    SupplierBills, SupplierDebitNoteCancelled, SupplierDebitNoteId, SupplierDebitNoteIssued,
+    SupplierDebitNoteSettled, SupplierDebitNoteStatus, SupplierDebitNoteSummary,
+    SupplierDebitNotes, SupplierReturnDispatched, SupplierReturnLine, UnallocateBill, VatCategory,
 };
 pub use machines::SubjectMachine;
 pub use manifest::Manifest;

@@ -32,7 +32,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::invoicing::{
     CREDIT_NOTE_SUBJECT_TYPE, INVOICE_SUBJECT_TYPE, InvoiceId, SUPPLIER_BILL_SUBJECT_TYPE,
-    SupplierBillId,
+    SUPPLIER_DEBIT_NOTE_SUBJECT_TYPE, SupplierBillId, SupplierDebitNoteId,
 };
 use crate::numbering::{Reset, Series};
 use crate::parties::{PARTY_SUBJECT_TYPE, PartyId};
@@ -405,6 +405,8 @@ pub enum AllocationTarget {
     Deposit(DepositId),
     /// A supplier bill; an outgoing payment pays it.
     SupplierBill(SupplierBillId),
+    /// A supplier debit note; the supplier's payment back settles it.
+    SupplierDebitNote(SupplierDebitNoteId),
 }
 
 impl AllocationTarget {
@@ -414,6 +416,7 @@ impl AllocationTarget {
             AllocationTarget::Invoice(id) => id.subject(),
             AllocationTarget::Deposit(id) => id.subject(),
             AllocationTarget::SupplierBill(id) => id.subject(),
+            AllocationTarget::SupplierDebitNote(id) => id.subject(),
         }
     }
 
@@ -425,6 +428,10 @@ impl AllocationTarget {
             Some(AllocationTarget::Deposit(DepositId(subject.subject_id)))
         } else if subject.subject_type == SUPPLIER_BILL_SUBJECT_TYPE {
             Some(AllocationTarget::SupplierBill(SupplierBillId(
+                subject.subject_id,
+            )))
+        } else if subject.subject_type == SUPPLIER_DEBIT_NOTE_SUBJECT_TYPE {
+            Some(AllocationTarget::SupplierDebitNote(SupplierDebitNoteId(
                 subject.subject_id,
             )))
         } else {
@@ -996,6 +1003,14 @@ mod tests {
         let target = AllocationTarget::SupplierBill(SupplierBillId(9));
         let subject = target.subject();
         assert_eq!(subject.to_string(), "invoicing.supplier_bill:9");
+        assert_eq!(AllocationTarget::from_subject(&subject), Some(target));
+    }
+
+    #[test]
+    fn a_supplier_debit_note_allocation_target_round_trips_through_its_subject() {
+        let target = AllocationTarget::SupplierDebitNote(SupplierDebitNoteId(7));
+        let subject = target.subject();
+        assert_eq!(subject.to_string(), "invoicing.supplier_debit_note:7");
         assert_eq!(AllocationTarget::from_subject(&subject), Some(target));
     }
 

@@ -1293,5 +1293,28 @@ async fn without_invoicing_debit_notes_are_off_and_cost_is_a_no_op() {
     );
     let request = ReverseCost::new(SupplierDebitNoteId(7).subject(), "k")
         .line(Subject::new("sales.campaign", 1), 100);
-    cost_poster(state).reverse(state, request).await.unwrap();
+    cost_poster(state)
+        .reverse(state, request.clone())
+        .await
+        .unwrap();
+    cost_poster(state).restore(state, request).await.unwrap();
+    // #77 AC1: settling from a payment and cancelling refuse (422).
+    assert!(matches!(
+        notes
+            .settle_from_payment(
+                state,
+                SupplierDebitNoteId(7),
+                Subject::new("payments.payment", 1),
+                100,
+                "payments.allocation:1"
+            )
+            .await,
+        Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
+    ));
+    assert!(matches!(
+        notes
+            .cancel(state, SupplierDebitNoteId(7), "issued in error", None)
+            .await,
+        Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
+    ));
 }
