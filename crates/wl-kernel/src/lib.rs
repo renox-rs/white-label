@@ -6,8 +6,10 @@ pub mod automation;
 pub mod block_effects;
 pub mod block_guard;
 pub mod branding;
+pub mod broadcast;
 pub mod calendar;
 pub mod config;
+pub mod consents;
 pub mod delivery;
 pub mod documents;
 pub mod entities;
@@ -21,6 +23,7 @@ pub mod parties;
 pub mod payments;
 pub mod scopes;
 pub mod screening_guard;
+pub mod segments;
 pub mod subject;
 mod texts;
 pub mod tickets;
@@ -46,8 +49,13 @@ pub use block_guard::{
     ActionKind, BLOCK_EXCEPTION_ACTION, BlockGuard, BlockReasonLine, ExceptionStep, GuardOutcome,
     NoBlockGuard,
 };
+pub use broadcast::{
+    BROADCAST_SUBJECT_TYPE, BroadcastCancelReason, BroadcastCancelled, BroadcastCompleted,
+    BroadcastId, BroadcastRequest, BroadcastRequesters, NoRequesters, RequesterCheck,
+};
 pub use calendar::BusinessCalendar;
 pub use config::{ClientConfig, ConfigError, RolesConfig, owner_role};
+pub use consents::{Consents, NoConsents};
 pub use delivery::{
     DELIVERY_SUBJECT_TYPE, DeliveryDisputeClosed, DeliveryDisputed, DeliveryId, DeliveryLost,
     DeliveryReversed, ReviewOutcome,
@@ -86,6 +94,7 @@ pub use payments::{
     RefundFailureKind, RefundId, RefundPaid, RefundRequest, RefundSource, ReversalReason,
 };
 pub use scopes::COMPANY_ADMIN_ROLE;
+pub use segments::{NoSegments, SegmentId, Segments};
 pub use subject::Subject;
 pub use tickets::{
     Assignee, NoTickets, OpenTicket, Requester, TASK_CATEGORY, TaskComment, TaskCreator,

@@ -34,6 +34,7 @@ use renox::prelude::*;
 use renox::serde_json::Value;
 use serde::{Deserialize, Serialize};
 
+use crate::broadcast::{BroadcastId, BroadcastRequest, broadcasts_off};
 use crate::parties::PartyId;
 use crate::subject::Subject;
 
@@ -650,6 +651,20 @@ pub trait Notifier: Send + Sync + 'static {
         _subject: &'a Subject,
     ) -> NotifyFuture<'a, Vec<UndeliveredNotice>> {
         Box::pin(async { Ok(Vec::new()) })
+    }
+
+    /// Records a marketing broadcast to a segment and returns its id
+    /// (wl-notify §4.3). Fails (422) when the requester is not active, the
+    /// type is not of category `marketing`, no user is named or the channel
+    /// cannot be used. A request above the size limit waits for approval.
+    /// The default, and [`NoNotifier`], refuse (422): broadcasts need the
+    /// notify module.
+    fn broadcast<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _request: BroadcastRequest,
+    ) -> NotifyFuture<'a, BroadcastId> {
+        Box::pin(async { Err(broadcasts_off()) })
     }
 }
 

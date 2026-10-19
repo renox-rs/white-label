@@ -247,6 +247,16 @@ pub trait PartyDirectory: Send + Sync + 'static {
         Box::pin(async { Ok(None) })
     }
 
+    /// The guardians of `party` (wl-notify §4.3): the parties that receive
+    /// its messages when it cannot consent itself. A party counts as a minor
+    /// exactly when it has a guardian. The default knows none; `wl-parties`
+    /// overrides it from `related_contacts` with
+    /// `ContactPurpose::guardian_of()`.
+    fn guardians<'a>(&'a self, db: &'a Db, party: PartyId) -> PartyFuture<'a, Vec<PartyId>> {
+        let _ = (db, party);
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
     /// Marks the contact point `point` invalid since `since` for `reason`
     /// (a hard failure kind such as `hard_bounce`). Returns `Some` only when
     /// the point went from valid to invalid; an unknown or already invalid
