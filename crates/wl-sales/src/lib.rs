@@ -21,6 +21,7 @@ mod texts;
 pub mod voids;
 
 use renox::db::Migration;
+use renox::nav::NavLink;
 use renox::prelude::*;
 
 pub use budget::BudgetAlert;
@@ -41,10 +42,28 @@ pub mod campaigns {
 
 /// The templates, compiled in. An app replaces one with a file of the same
 /// name under its views directory.
-const VIEWS: &[(&str, &str)] = &[(
-    "wl-sales/lead_sources.html",
-    include_str!("../views/wl-sales/lead_sources.html"),
-)];
+const VIEWS: &[(&str, &str)] = &[
+    (
+        "wl-sales/lead_sources.html",
+        include_str!("../views/wl-sales/lead_sources.html"),
+    ),
+    (
+        "wl-sales/index.html",
+        include_str!("../views/wl-sales/index.html"),
+    ),
+    (
+        "wl-sales/form.html",
+        include_str!("../views/wl-sales/form.html"),
+    ),
+    (
+        "wl-sales/show.html",
+        include_str!("../views/wl-sales/show.html"),
+    ),
+    (
+        "wl-sales/_cost_sheet.html",
+        include_str!("../views/wl-sales/_cost_sheet.html"),
+    ),
+];
 
 /// The module's permissions (wl-sales §6).
 pub mod permissions {
@@ -114,7 +133,10 @@ impl Module for WlSales {
     }
 
     fn register(&self, app: &mut Registry) {
-        app.view_data::<pages::lead_sources::IndexPage>();
+        app.view_data::<pages::lead_sources::IndexPage>()
+            .view_data::<pages::campaigns::IndexPage>()
+            .view_data::<pages::campaigns::FormPage>()
+            .view_data::<pages::campaigns::ShowPage>();
         app.templates(|env| {
             for (name, source) in VIEWS {
                 // The app's own file of that name wins.
@@ -147,7 +169,21 @@ impl Module for WlSales {
                 Ok(())
             },
         );
-        app.seeder(|state: AppState| async move { seed::install(&state.db).await.map(|_| ()) });
+        // `db:seed`: the lead sources and two demo campaigns.
+        app.seeder(|state: AppState| async move {
+            seed::install(&state.db).await?;
+            seed::demo_campaigns(&state.db).await.map(|_| ())
+        });
+        // In the app group of the staff sidebar; the label is the app's
+        // `nav.campaigns` text.
+        app.nav(
+            "app",
+            NavLink::route("wl_sales.campaigns", "nav.campaigns")
+                .icon("megaphone")
+                .group("nav.app")
+                .order(50)
+                .permission(permissions::CAMPAIGNS_VIEW),
+        );
     }
 }
 

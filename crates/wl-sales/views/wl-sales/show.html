@@ -1,0 +1,89 @@
+{#- wl-sales: a campaign's page: its status, the transition, edit, reopen,
+    delete and "Add cost" actions, the fields, the costs (approved ones
+    count; pending and awaiting-bill ones are shown apart and not counted),
+    the cost entries with Void, the approval cards and the history. Replace
+    it with resources/views/wl-sales/show.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="title">
+  <rx-stack>
+    <rx-page-header :title="title" :subtitle="campaign.promo_code" :back="route('wl_sales.campaigns')" :back-label="tx['campaigns.title']"
+                    :badge="status_label" :badge-kind="status_kind">
+      <rx-link-button rx-if="can_edit" :href="route('wl_sales.campaign_edit', campaign.id)" :label="tx['campaigns.form.edit']" variant="secondary" icon="pencil"/>
+      <template rx-if="can_add_cost"><rx-include template="wl-sales/_cost_sheet.html"/></template>
+      <template rx-if="actions">
+        <rx-transition-actions :actions="actions" action="/campaigns/{{ campaign.id }}/transitions"/>
+      </template>
+      <template rx-if="can_reopen">
+        <rx-action-sheet id="reopen-campaign" :label="tx['campaigns.reopen.action']" :action="route('wl_sales.campaign_reopen', campaign.id)"
+                         :title="tx['campaigns.reopen.title']" :description="tx['campaigns.reopen.description']" :submit-label="tx['campaigns.reopen.action']" icon="rotate-ccw">
+          <rx-input name="end_date" type="date" :label="tx['campaigns.fields.end_date']" id="reopen-campaign-end-date" required/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_delete">
+        <rx-confirm :id="'delete-campaign-' ~ campaign.id" :label="tx['campaigns.delete.action']" :action="route('wl_sales.campaign_delete', campaign.id)" method="POST"
+                    :title="tx['campaigns.delete.confirm_title']" :message="tx['campaigns.delete.confirm_message']" :confirm-label="tx['campaigns.delete.action']" :cancel-label="tx['cancel']" icon="trash-2"/>
+      </template>
+    </rx-page-header>
+    <rx-alert rx-if="activation_problem" kind="warning" :message="activation_problem"/>
+    <rx-card :title="tx['campaigns.sections.details']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['campaigns.fields.code']" :value="campaign.code" copyable/>
+        <rx-entry :label="tx['campaigns.fields.name']" :value="campaign.name"/>
+        <rx-entry :label="tx['campaigns.fields.purpose']" :value="purpose_label" :placeholder="tx['campaigns.none']"/>
+        <rx-entry :label="tx['campaigns.fields.channel']" :value="channel_label" :placeholder="tx['campaigns.none']"/>
+        <rx-entry :label="tx['campaigns.fields.lead_source']" :value="lead_source" :placeholder="tx['campaigns.none']"/>
+        <rx-entry :label="tx['campaigns.fields.brand']" :value="campaign.brand" :placeholder="tx['campaigns.none']"/>
+        <rx-entry :label="tx['campaigns.fields.owner']" :value="owner" :placeholder="tx['campaigns.none']"/>
+        <rx-entry :label="tx['campaigns.fields.entity']" :value="entity" :placeholder="tx['campaigns.none']"/>
+        <rx-entry :label="tx['campaigns.fields.start_date']" :value="campaign.start_date" format="date" :placeholder="tx['campaigns.none']"/>
+        <rx-entry :label="tx['campaigns.fields.end_date']" :value="campaign.end_date" format="date" :placeholder="tx['campaigns.none']"/>
+        <rx-entry :label="tx['campaigns.fields.budget']" :value="budget" :placeholder="tx['campaigns.no_budget']"/>
+        <rx-entry rx-if="promo" :label="tx['campaigns.fields.promo_code']" :value="promo.code"/>
+        <rx-entry rx-if="promo" :label="tx['campaigns.fields.promo_valid_to']" :value="promo.valid_to" format="date" :placeholder="tx['campaigns.none']"/>
+        <rx-entry rx-if="promo" :label="tx['campaigns.fields.promo_uses']" :value="promo.uses"/>
+        <rx-entry rx-if="campaign.segment_id" :label="tx['campaigns.fields.segment']" :value="campaign.segment_id"/>
+        <rx-entry rx-if="campaign.template_key" :label="tx['campaigns.fields.template']" :value="campaign.template_key"/>
+        <rx-entry rx-if="campaign.message_channel" :label="tx['campaigns.fields.message_channel']" :value="campaign.message_channel"/>
+        <rx-entry rx-if="send_at" :label="tx['campaigns.fields.send_at']" :value="send_at"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-card :title="tx['campaigns.sections.costs']">
+      <rx-stack>
+        <rx-infolist columns="2">
+          <rx-entry :label="tx['campaigns.sums.approved']" :value="sums['approved']"/>
+          <rx-entry :label="tx['campaigns.fields.used_percent']" :value="used_percent" :placeholder="tx['campaigns.no_budget']"/>
+          <rx-entry :label="tx['campaigns.sums.bill_linked']" :value="sums['bill_linked']"/>
+          <rx-entry :label="tx['campaigns.sums.manual']" :value="sums['manual']"/>
+          <rx-entry :label="tx['campaigns.sums.pending']" :value="sums['pending']"/>
+          <rx-entry :label="tx['campaigns.sums.awaiting_bill']" :value="sums['awaiting_bill']"/>
+        </rx-infolist>
+        <rx-alert kind="info" :message="tx['campaigns.sums.not_counted']"/>
+      </rx-stack>
+    </rx-card>
+    <rx-table :rows="costs" as="entry" :key="entry.id" :caption="tx['campaigns.sections.cost_entries']" card>
+      <rx-column :label="tx['campaigns.cost.date']">{{ entry.entry_date }}</rx-column>
+      <rx-column :label="tx['campaigns.cost.amount']">{{ entry.amount }}</rx-column>
+      <rx-column :label="tx['campaigns.cost.description']" hide-narrow>{{ entry.description }}</rx-column>
+      <rx-column :label="tx['campaigns.cost.bill']" hide-narrow>{{ entry.bill or "" }}</rx-column>
+      <rx-column :label="tx['campaigns.cost.requested_by']" hide-narrow>{{ entry.requested_by }}</rx-column>
+      <rx-column :label="tx['campaigns.cost.approved_by']" hide-narrow>{{ entry.approved_by or "" }}</rx-column>
+      <rx-column :label="tx['campaigns.fields.status']"><rx-badge :kind="entry.status_kind" :text="entry.status_label"/></rx-column>
+      <rx-column :label="tx['campaigns.cost.reason']" hide-narrow>{{ entry.reason or "" }}</rx-column>
+      <rx-row-actions>
+        <template rx-if="entry.void">
+          <rx-action-sheet :id="entry.void.id" :label="entry.void.labels.void" :action="route('wl_kernel.voids.void', entry.void.subject_type, entry.void.subject_id)"
+                           :title="entry.void.labels.title" :submit-label="entry.void.labels.void" icon="ban" danger>
+            <rx-textarea name="reason" :label="entry.void.labels.reason" :hint="entry.void.labels.hint" :id="entry.void.id ~ '-reason'" required/>
+          </rx-action-sheet>
+        </template>
+      </rx-row-actions>
+      <rx-slot name="empty"><rx-empty :title="tx['campaigns.cost.empty']" icon="wallet"/></rx-slot>
+    </rx-table>
+    <rx-include template="wl-kernel/approval_card.html"/>
+    <rx-table :rows="timeline" as="item" :key="item.time" :caption="tx['campaigns.sections.history']" card>
+      <rx-column :label="tx['campaigns.history.change']">{{ item.title }}</rx-column>
+      <rx-column :label="tx['campaigns.history.at']">{{ item.time | date('%Y-%m-%d %H:%M') }}</rx-column>
+      <rx-column :label="tx['campaigns.history.reason']" hide-narrow>{{ item.body or "" }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['campaigns.history.empty']" icon="history"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

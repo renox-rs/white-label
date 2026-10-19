@@ -2,6 +2,7 @@
 //! [`install`] adds the sources the database lacks and keeps every row that
 //! is there, so a client's renames and deactivations survive a re-run.
 
+use renox::auth::User;
 use renox::prelude::*;
 
 use crate::lead_source::{DEFAULTS, LeadSource};
@@ -44,6 +45,50 @@ pub async fn install(db: &Db) -> Result<Installed> {
     Ok(installed)
 }
 
+/// Stores two demo campaigns as drafts, where their codes are free: an
+/// acquisition campaign on Meta with a budget and a promo code, and a
+/// retention-style e-mail campaign without a budget. The owner is the first
+/// user, if there is one. A re-run adds nothing. Returns how many it made.
+pub async fn demo_campaigns(db: &Db) -> Result<usize> {
+    use renox::chrono::NaiveDate;
+
+    use crate::campaign::{Campaign, MarketingChannel, Purpose};
+
+    let owner = User::query().order_by("id").first(db).await?.map(|u| u.id);
+    let day = |m, d| NaiveDate::from_ymd_opt(2026, m, d);
+    let demos = [
+        Campaign {
+            name: "Spring offer".into(),
+            code: "SPRING26".into(),
+            purpose: Some(Purpose::Acquisition),
+            marketing_channel: Some(MarketingChannel::Meta),
+            owner_id: owner,
+            start_date: day(3, 1),
+            end_date: day(3, 31),
+            budget: Some(500_000),
+            promo_code: Some("SPRING26".into()),
+            ..Campaign::default()
+        },
+        Campaign {
+            name: "Summer newsletter".into(),
+            code: "SUMMER26".into(),
+            purpose: Some(Purpose::Acquisition),
+            marketing_channel: Some(MarketingChannel::Email),
+            owner_id: owner,
+            start_date: day(6, 1),
+            end_date: day(8, 31),
+            ..Campaign::default()
+        },
+    ];
+    let mut made = 0;
+    for demo in demos {
+        if Campaign::by_code(db, &demo.code).await?.is_none() && demo.store(db).await?.is_ok() {
+            made += 1;
+        }
+    }
+    Ok(made)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -72,6 +117,24 @@ mod tests {
         let walk_in = LeadSource::by_code(db, "walk_in").await.unwrap().unwrap();
         assert_eq!(walk_in.name_en, "Walk in");
         assert!(!walk_in.active);
+    }
+
+    #[renox::test]
+    async fn the_demo_campaigns_are_two_drafts_made_once() {
+        use crate::campaign::{Campaign, CampaignStatus};
+        let app = TestApp::new(
+            App::new()
+                .module(renox::auth::Auth::new())
+                .module(crate::WlSales::new()),
+        )
+        .await;
+        let db = app.db();
+        assert_eq!(demo_campaigns(db).await.unwrap(), 2);
+        assert_eq!(demo_campaigns(db).await.unwrap(), 0);
+        let spring = Campaign::by_code(db, "spring26").await.unwrap().unwrap();
+        assert_eq!(spring.status, CampaignStatus::Draft);
+        assert_eq!(spring.budget, Some(500_000));
+        assert_eq!(Campaign::query().count(db).await.unwrap(), 2);
     }
 
     #[renox::test]

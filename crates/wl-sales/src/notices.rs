@@ -55,7 +55,7 @@ pub(crate) fn register_types() {
 }
 
 /// `fils` as `4,000.00`.
-fn aed(fils: i64) -> String {
+pub(crate) fn aed(fils: i64) -> String {
     let sign = if fils < 0 { "-" } else { "" };
     let fils = fils.abs();
     let whole = (fils / 100).to_string();
