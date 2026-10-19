@@ -1032,6 +1032,45 @@ impl Booted {
         .await
     }
 
+    /// `by` presents the bounced `cheque` again on `date` (`2027-02-05`),
+    /// with the party's confirmation of funds when `funds_confirmed`, and
+    /// `note`.
+    pub async fn represent_cheque(
+        &self,
+        by: &User,
+        cheque: &Cheque,
+        date: &str,
+        funds_confirmed: bool,
+        note: &str,
+    ) -> TestResponse {
+        let mut pairs = vec![("date", date), ("note", note)];
+        if funds_confirmed {
+            pairs.push(("funds_confirmed", "on"));
+        }
+        self.cheque_action(by, cheque, "represent", &pairs).await
+    }
+
+    /// A received cheque of `amount` fils paying `invoice`, dated today,
+    /// deposited by `by` and bounced for "insufficient funds" with the
+    /// certificate "CERT-1" and `honoured` dirhams paid (`""` for nothing);
+    /// the cheque as stored after the bounce.
+    pub async fn bounced_cheque(
+        &self,
+        by: &User,
+        party: PartyId,
+        number: &str,
+        amount: i64,
+        invoice: Option<InvoiceId>,
+        honoured: &str,
+    ) -> Cheque {
+        let cheque = self.received_cheque(party, number, amount, invoice).await;
+        let cheque = self.deposit_cheque(by, &cheque).await;
+        self.bounce_cheque(by, &cheque, "insufficient_funds", "CERT-1", honoured)
+            .await
+            .assert_ok();
+        self.cheque(cheque.id).await
+    }
+
     /// Moves the clock forward to `date` at `hour:minute` UTC.
     pub fn travel_to(&self, date: &str, hour: u32, minute: u32) {
         let target = date
