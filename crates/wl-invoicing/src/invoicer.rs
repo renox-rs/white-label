@@ -3,11 +3,11 @@
 //! with [`wl_kernel::invoicing::provide_invoicer`].
 
 use renox::prelude::*;
-use renox::state_machine::TransitionError;
+use renox::state_machine::{Outcome, TransitionError};
 use wl_kernel::invoicing::{
     CreditLine, CreditNoteId, CreditNoteSummary, DisputeRequest, DraftLine, InvoiceDraft,
     InvoiceFuture, InvoiceId, InvoiceStatus, InvoiceSummary, Invoicer, ReopenReason, Reopened,
-    Unallocate,
+    Unallocate, WriteOffAnswer,
 };
 use wl_kernel::{LegalEntity, PartyId};
 
@@ -104,6 +104,33 @@ impl Invoicer for Invoices {
         request: DisputeRequest,
     ) -> InvoiceFuture<'a, i64> {
         Box::pin(async move { crate::dispute::raise(state, request).await })
+    }
+
+    fn write_off<'a>(
+        &'a self,
+        state: &'a AppState,
+        by: &'a AuthUser,
+        id: InvoiceId,
+        reason_code: &'a str,
+        reason_text: Option<&'a str>,
+    ) -> InvoiceFuture<'a, WriteOffAnswer> {
+        Box::pin(async move {
+            let invoice = Invoice::find_or_404(&state.db, id.0).await?;
+            let outcome =
+                crate::write_off::write_off(state, by, &invoice, reason_code, reason_text)
+                    .await
+                    .map_err(TransitionError::into_error)?;
+            Ok(match outcome {
+                Outcome::Done(_) => WriteOffAnswer::WrittenOff,
+                Outcome::Pending(pending) => WriteOffAnswer::Pending {
+                    request: pending
+                        .data
+                        .get(wl_kernel::approvals::submit::REQUEST_KEY)
+                        .and_then(renox::serde_json::Value::as_i64)
+                        .unwrap_or_default(),
+                },
+            })
+        })
     }
 
     fn credit_in_full<'a>(
