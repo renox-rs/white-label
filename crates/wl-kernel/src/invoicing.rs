@@ -500,6 +500,12 @@ pub struct DisputeRequest {
     pub lines: Vec<i32>,
     /// Who raises it.
     pub by: DisputeBy,
+    /// An existing ticket to use as the billing dispute ticket (no new one
+    /// is opened); `None` opens one as usual.
+    pub ticket: Option<TicketId>,
+    /// The record that caused the dispute (e.g. a delivery); `None` when
+    /// raised on the invoice itself.
+    pub source: Option<Subject>,
 }
 
 impl DisputeRequest {
@@ -512,6 +518,8 @@ impl DisputeRequest {
             amount: None,
             lines: Vec::new(),
             by,
+            ticket: None,
+            source: None,
         }
     }
 
@@ -524,6 +532,18 @@ impl DisputeRequest {
     /// With the disputed line `positions`.
     pub fn lines(mut self, positions: impl IntoIterator<Item = i32>) -> Self {
         self.lines = positions.into_iter().collect();
+        self
+    }
+
+    /// With an existing `ticket` as the dispute ticket (none is opened).
+    pub fn ticket(mut self, ticket: TicketId) -> Self {
+        self.ticket = Some(ticket);
+        self
+    }
+
+    /// With the `source` record that caused the dispute.
+    pub fn source(mut self, source: Subject) -> Self {
+        self.source = Some(source);
         self
     }
 }
@@ -1116,6 +1136,12 @@ mod tests {
         assert_eq!(req.lines, vec![2, 3]);
         let bare = DisputeRequest::new(InvoiceId(3), "x", DisputeBy::System);
         assert_eq!((bare.amount, bare.lines.len()), (None, 0));
+        assert_eq!((bare.ticket, bare.source.clone()), (None, None));
+        let linked = bare
+            .ticket(TicketId(4))
+            .source(Subject::new("delivery.delivery", 8));
+        assert_eq!(linked.ticket, Some(TicketId(4)));
+        assert_eq!(linked.source, Some(Subject::new("delivery.delivery", 8)));
         assert_eq!(DisputeOutcome::default(), DisputeOutcome::Upheld);
     }
 

@@ -8,6 +8,7 @@ pub mod block_guard;
 pub mod branding;
 pub mod calendar;
 pub mod config;
+pub mod delivery;
 pub mod documents;
 pub mod entities;
 pub mod held_funds;
@@ -47,6 +48,10 @@ pub use block_guard::{
 };
 pub use calendar::BusinessCalendar;
 pub use config::{ClientConfig, ConfigError, RolesConfig, owner_role};
+pub use delivery::{
+    DELIVERY_SUBJECT_TYPE, DeliveryDisputeClosed, DeliveryDisputed, DeliveryId, DeliveryLost,
+    DeliveryReversed, ReviewOutcome,
+};
 pub use documents::{
     BlockCondition, BlockEntry, BlockFailure, BlockMode, BlockRefusal, BlockSubjects, BlockedGroup,
     CheckOutcome, DocumentAccepted, DocumentExpired, DocumentGuard, DocumentId, DocumentRejected,
