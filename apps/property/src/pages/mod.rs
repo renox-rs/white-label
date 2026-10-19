@@ -5,6 +5,7 @@
 
 pub mod leases;
 pub mod portfolio;
+pub mod statements;
 
 use std::collections::BTreeMap;
 
@@ -24,6 +25,7 @@ pub fn routes() -> Routes {
     Routes::new()
         .merge(portfolio::routes())
         .merge(leases::routes())
+        .merge(statements::routes())
 }
 
 /// The package text `key` (without the `property.` prefix).

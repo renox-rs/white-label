@@ -26,6 +26,15 @@ pub const LEASES_MANAGE: &str = "leases.manage";
 /// company admin by default) approves.
 pub const LEASES_FORCE_TERMINATE: &str = "leases.force_terminate";
 
+/// Draft, edit, publish and revise the owner statements, and ask for a payout
+/// (`PRP.ACL.08`: prepared by one user, approved by another). The accountant's.
+pub const OWNER_STATEMENTS_PREPARE: &str = "owner_statements.prepare";
+/// Approve or return an owner statement, and approve a payout or an owner
+/// invoice. The property manager's.
+pub const OWNER_STATEMENTS_APPROVE: &str = "owner_statements.approve";
+/// Draft management agreements and put units under them.
+pub const AGREEMENTS_MANAGE: &str = "agreements.manage";
+
 /// The permission of wl-payments that lets the accountant forfeit a deposit;
 /// the forfeiture that applies a deposit to the deductions is checked against
 /// it in the lease's building (BL-PRP-17).
@@ -42,6 +51,9 @@ pub const ALL: &[&str] = &[
     LEASES_ACTIVATE,
     LEASES_MANAGE,
     LEASES_FORCE_TERMINATE,
+    OWNER_STATEMENTS_PREPARE,
+    OWNER_STATEMENTS_APPROVE,
+    AGREEMENTS_MANAGE,
 ];
 
 /// The role whose holders approve a cancellation after money was received

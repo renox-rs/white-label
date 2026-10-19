@@ -1,0 +1,57 @@
+{#- property: an owner statement: its figures, its lines, and the actions the
+    user may run (approve, return, publish, revise), with the form that adds a
+    cost or a correction to a draft. Replace it with
+    resources/views/property/statement.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="statement.number">
+  <rx-stack>
+    <rx-page-header :title="statement.number" :subtitle="statement.owner ~ ' · ' ~ statement.period" :back="route('property.statements')" :back-label="tx['statements.title']"
+                    :badge="status" :badge-kind="status_kind">
+      <rx-confirm rx-for="action in plain_actions" :id="'statement-' ~ statement.id ~ '-' ~ action.name" :label="action.label"
+                  :action="'/property/statements/' ~ statement.id ~ '/transitions/' ~ action.name" method="POST"
+                  :title="action.label" :message="statement.number" :confirm-label="action.label" :cancel-label="tx['button_cancel']"/>
+      <rx-action-sheet rx-for="action in reason_actions" :id="'statement-' ~ statement.id ~ '-' ~ action.name" :label="action.label"
+                       :action="'/property/statements/' ~ statement.id ~ '/transitions/' ~ action.name"
+                       :title="action.label" :description="statement.number" :submit-label="action.label">
+        <rx-textarea name="reason" :label="tx['statements.reason']" :id="'statement-reason-' ~ statement.id ~ '-' ~ action.name" required/>
+      </rx-action-sheet>
+      <template rx-if="can_edit">
+        <rx-action-sheet :id="'add-line-' ~ statement.id" :label="tx['statements.add_line']" :action="route('property.statement_line_add', statement.id)"
+                         :title="tx['statements.add_line']" :description="tx['statements.add_line_description']" :submit-label="tx['statements.add_line']" icon="plus">
+          <rx-select name="kind" :label="tx['statements.line_kind']" :options="[['expense', tx['statements.kind.expense']], ['collected', tx['statements.kind.collected']], ['fee', tx['statements.kind.fee']], ['adjustment', tx['statements.kind.adjustment']]]" :selected="'expense'" :id="'add-line-kind-' ~ statement.id"/>
+          <rx-input name="description" :label="tx['statements.line_description']" :id="'add-line-description-' ~ statement.id" required/>
+          <rx-input name="amount" :label="tx['statements.line_amount']" :id="'add-line-amount-' ~ statement.id" required/>
+          <rx-select name="direction" :label="tx['statements.line_direction']" :options="[['credit', tx['statements.direction_credit']], ['debit', tx['statements.direction_debit']]]" :selected="'credit'" :id="'add-line-direction-' ~ statement.id"/>
+        </rx-action-sheet>
+        <rx-action-sheet :id="'remove-line-' ~ statement.id" :label="tx['statements.remove_line']" :action="route('property.statement_line_remove', statement.id)"
+                         :title="tx['statements.remove_line']" :submit-label="tx['statements.remove_line']" icon="trash-2" variant="danger" danger>
+          <rx-select name="line" :label="tx['statements.lines']" :options="line_options" :id="'remove-line-select-' ~ statement.id"/>
+        </rx-action-sheet>
+      </template>
+    </rx-page-header>
+    <rx-card :title="tx['statements.title']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['statements.owner']" :value="statement.owner"/>
+        <rx-entry :label="tx['statements.agreement']" :value="statement.agreement"/>
+        <rx-entry :label="tx['statements.period']" :value="statement.period"/>
+        <rx-entry :label="tx['statements.brought_forward']" :value="statement.brought_forward"/>
+        <rx-entry :label="tx['statements.collected']" :value="statement.collected"/>
+        <rx-entry :label="tx['statements.expenses']" :value="statement.expenses"/>
+        <rx-entry :label="tx['statements.fee']" :value="statement.fee"/>
+        <rx-entry :label="tx['statements.adjustments']" :value="statement.adjustments"/>
+        <rx-entry :label="tx['statements.balance']" :value="statement.balance"/>
+        <rx-entry :label="tx['statements.prepared_by']" :value="statement.prepared_by" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['statements.approved_by']" :value="statement.approved_by" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['statements.published_on']" :value="statement.published_on" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['statements.return_reason']" :value="statement.return_reason" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['statements.revise_reason']" :value="statement.revise_reason" :placeholder="tx['none']"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-table :rows="lines" as="line" :key="line.description ~ line.amount ~ line.source" :caption="tx['statements.lines']" card>
+      <rx-column :label="tx['statements.line_kind']">{{ line.kind }}</rx-column>
+      <rx-column :label="tx['statements.line_description']">{{ line.description }}</rx-column>
+      <rx-column :label="tx['statements.line_amount']" align="num">{{ line.amount }}</rx-column>
+      <rx-column :label="tx['charges.invoice']" hide-narrow>{{ line.source }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['statements.lines_empty']" icon="receipt"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
+pub mod agreement;
 pub mod amend;
 pub mod arrears;
 pub mod building;
@@ -30,6 +31,9 @@ pub mod parse;
 pub mod permissions;
 pub mod renew;
 pub mod renewal;
+pub mod statement;
+pub mod statement_events;
+pub mod statement_machine;
 mod tasks;
 pub mod termination;
 pub mod terms;
@@ -74,6 +78,14 @@ const VIEWS: &[(&str, &str)] = &[
         "property/lease.html",
         include_str!("../views/property/lease.html"),
     ),
+    (
+        "property/statements.html",
+        include_str!("../views/property/statements.html"),
+    ),
+    (
+        "property/statement.html",
+        include_str!("../views/property/statement.html"),
+    ),
 ];
 
 /// Dirhams as text from fils: `AED 25,000.00`.
@@ -111,7 +123,9 @@ impl Module for Property {
         app.view_data::<pages::portfolio::IndexPage>()
             .view_data::<pages::portfolio::BuildingPage>()
             .view_data::<pages::leases::IndexPage>()
-            .view_data::<pages::leases::ShowPage>();
+            .view_data::<pages::leases::ShowPage>()
+            .view_data::<pages::statements::IndexPage>()
+            .view_data::<pages::statements::ShowPage>();
         app.templates(|env| {
             for (name, source) in VIEWS {
                 // The app's own file of that name wins.
@@ -133,7 +147,11 @@ impl Module for Property {
             .model::<arrears::DemandInvoice>()
             .model::<arrears::PaymentPlan>()
             .model::<deposit_watch::DepositWatch>()
-            .model::<deposit_forfeit::DepositSettlement>();
+            .model::<deposit_forfeit::DepositSettlement>()
+            .model::<agreement::ManagementAgreement>()
+            .model::<agreement::AgreementUnit>()
+            .model::<statement::OwnerStatement>()
+            .model::<statement::StatementLine>();
         unit_machine::register();
         lease_machine::register();
         documents::register();
@@ -149,6 +167,10 @@ impl Module for Property {
         termination::schedule(app);
         arrears::schedule(app);
         deposit_watch::schedule(app);
+        agreement::register();
+        statement_machine::register();
+        statement_events::register(app);
+        statement::schedule(app);
         // A building is the scope roles are assigned in.
         wl_kernel::scopes::register_label(Building::TABLE, |db, id| {
             let id = id.to_owned();
@@ -176,6 +198,14 @@ impl Module for Property {
                 .group("nav.app")
                 .order(11)
                 .permission(permissions::LEASES_VIEW),
+        );
+        app.nav(
+            "app",
+            NavLink::route("property.statements", "nav.statements")
+                .icon("receipt")
+                .group("nav.app")
+                .order(12)
+                .permission(permissions::OWNER_STATEMENTS_PREPARE),
         );
     }
 }

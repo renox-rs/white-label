@@ -71,6 +71,21 @@ pub const PAYMENT_DEMAND: &str = "lease.payment_demand";
 /// Ejari or Tawtheeq registration to cancel (`PRP.RUL.13`).
 pub const EJARI_CANCELLATION: &str = "property.ejari_cancellation";
 
+/// The accountants are told that the draft owner statements of a month were
+/// generated (`PRP.RUL.05`).
+pub const OWNER_STATEMENT_DRAFT: &str = "property.owner_statement_draft";
+
+/// The preparer of an owner statement is told that the property manager
+/// returned it with a reason.
+pub const OWNER_STATEMENT_RETURNED: &str = "property.owner_statement_returned";
+
+/// The owner receives a published statement (the e-mail carries the statement;
+/// the PDF comes with `DOC.GEN.01`).
+pub const OWNER_STATEMENT: &str = "property.owner_statement";
+
+/// The owner is told that a corrected statement follows a revision.
+pub const OWNER_STATEMENT_REVISED: &str = "property.owner_statement_revised";
+
 /// An e-mail reminder type of the vertical with English texts.
 fn english_reminder(key: &str, texts: &str) -> NotificationTypeDef {
     let subject = english(&format!("property.notices.{texts}_subject"), &[]);
@@ -121,6 +136,17 @@ pub(crate) fn register_types() {
     notify::register_type(staff_reminder(
         DEPOSIT_DISPUTE_UNANSWERED,
         "deposit_dispute_unanswered",
+    ));
+    notify::register_type(staff_reminder(OWNER_STATEMENT_DRAFT, "owner_statement_draft"));
+    notify::register_type(staff_reminder(
+        OWNER_STATEMENT_RETURNED,
+        "owner_statement_returned",
+    ));
+    notify::register_type(tenant_message(OWNER_STATEMENT, "owner_statement", false));
+    notify::register_type(tenant_message(
+        OWNER_STATEMENT_REVISED,
+        "owner_statement_revised",
+        false,
     ));
 }
 
@@ -385,6 +411,103 @@ pub async fn dispute_unanswered(
     for user in users {
         request = request.to_user(*user);
     }
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// Tells `users` (the accountants) that the draft statement `statement` was
+/// generated (`PRP.RUL.05`).
+pub async fn statement_drafted(
+    state: &AppState,
+    statement: &crate::statement::OwnerStatement,
+    users: &[i64],
+) -> Result {
+    if users.is_empty() {
+        return Ok(());
+    }
+    let mut request = NotifyRequest::new(OWNER_STATEMENT_DRAFT, statement.subject())
+        .subject_label(&statement.number())
+        .data(json!({
+            "statement": statement.number(),
+            "period": statement_period(statement),
+            "balance": crate::money_text(statement.balance()),
+        }));
+    for user in users {
+        request = request.to_user(*user);
+    }
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// Tells `users` (the preparer) that `statement` was returned with `reason`.
+pub async fn statement_returned(
+    state: &AppState,
+    statement: &crate::statement::OwnerStatement,
+    users: &[i64],
+    reason: &str,
+) -> Result {
+    if users.is_empty() {
+        return Ok(());
+    }
+    let mut request = NotifyRequest::new(OWNER_STATEMENT_RETURNED, statement.subject())
+        .subject_label(&statement.number())
+        .data(json!({
+            "statement": statement.number(),
+            "period": statement_period(statement),
+            "reason": reason,
+        }));
+    for user in users {
+        request = request.to_user(*user);
+    }
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// `3 Jan 2027 - 31 Jan 2027`: the period of a statement as messages show it.
+fn statement_period(statement: &crate::statement::OwnerStatement) -> String {
+    format!("{} - {}", shown(statement.period_start), shown(statement.period_end))
+}
+
+/// Sends the published `statement` to its owner, with the lines `lines` as
+/// text.
+pub async fn statement_published(
+    state: &AppState,
+    statement: &crate::statement::OwnerStatement,
+    lines: &str,
+) -> Result {
+    let request = NotifyRequest::new(OWNER_STATEMENT, statement.subject())
+        .subject_label(&statement.number())
+        .to_party(wl_kernel::PartyId(statement.owner_party_id))
+        .data(json!({
+            "statement": statement.number(),
+            "period": statement_period(statement),
+            "brought_forward": crate::money_text(statement.brought_forward),
+            "collected": crate::money_text(statement.collected),
+            "expenses": crate::money_text(statement.expenses),
+            "fee": crate::money_text(statement.fee),
+            "adjustments": crate::money_text(statement.adjustments),
+            "balance": crate::money_text(statement.balance()),
+            "lines": lines,
+        }));
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// Tells the owner that the statement `statement` is replaced by a corrected
+/// one, revision `revision`.
+pub async fn statement_revised(
+    state: &AppState,
+    statement: &crate::statement::OwnerStatement,
+    revision: i32,
+) -> Result {
+    let request = NotifyRequest::new(OWNER_STATEMENT_REVISED, statement.subject())
+        .subject_label(&statement.number())
+        .to_party(wl_kernel::PartyId(statement.owner_party_id))
+        .data(json!({
+            "statement": statement.number(),
+            "period": statement_period(statement),
+            "revision": revision,
+        }));
     notify::notifier(state).notify(state, request).await?;
     Ok(())
 }
