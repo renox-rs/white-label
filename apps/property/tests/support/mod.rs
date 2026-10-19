@@ -20,7 +20,7 @@ use renox::chrono::{Duration, NaiveDate};
 use renox::prelude::*;
 use renox::testing::TestApp;
 use wl_kernel::block_guard::{
-    ActionKind, BlockFuture, BlockGuard, BlockRefusal, GuardOutcome, provide_block_guard,
+    ActionKind, BlockFuture, BlockGuard, BlockRefusal as PartyBlockRefusal, GuardOutcome, provide_block_guard,
 };
 use wl_kernel::cheques::{
     ChequeFuture, ChequeId, ChequeSchedule, ChequeStatus, ChequeSummary, Cheques, RegisterCheque,
@@ -1324,7 +1324,7 @@ impl BlockGuard for Blocks {
             self.1.lock().unwrap().push((party.0, kind));
             let blocked = kind.is_guarded() && self.0.lock().unwrap().contains(&party.0);
             Ok(if blocked {
-                GuardOutcome::Blocked(BlockRefusal::neutral(party, kind, "Compliance"))
+                GuardOutcome::Blocked(PartyBlockRefusal::neutral(party, kind, "Compliance"))
             } else {
                 GuardOutcome::Allowed
             })
