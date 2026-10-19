@@ -10,8 +10,8 @@ use std::sync::{Arc, Mutex};
 
 use property::permissions as perm;
 use property::{
-    Building, Lease, LeaseActivated, LeaseCancelled, LeaseNoticeWithdrawn, LeaseStatus, NewBuilding,
-    NewLease, NewUnit, Unit, UnitUse, create_building, create_unit,
+    Building, Lease, LeaseActivated, LeaseCancelled, LeaseNoticeWithdrawn, LeaseStatus, LeaseTerminated,
+    NewBuilding, NewLease, NewUnit, Unit, UnitUse, create_building, create_unit,
 };
 use renox::auth::permissions::{self, Scope};
 use renox::auth::{Auth, Permissions};
@@ -31,7 +31,7 @@ use wl_kernel::documents::{
     provide_guard, today,
 };
 use wl_kernel::invoicing::{
-    CreditNoteId, InvoiceDraft, InvoiceFuture, InvoiceId, InvoiceStatus, InvoiceSummary, Invoicer,
+    CreditLine, CreditNoteId, InvoiceDraft, InvoiceFuture, InvoiceId, InvoiceStatus, InvoiceSummary, Invoicer,
     ReopenReason, provide_invoicer,
 };
 use wl_kernel::notify::{
@@ -693,6 +693,7 @@ impl Cheques for ChequeBook {
 pub struct DepositBook {
     held: Arc<Mutex<BTreeMap<String, HeldDeposit>>>,
     settled: Arc<Mutex<Vec<(CancelSettlement, SettlementStarted)>>>,
+    started: Arc<Mutex<Vec<Subject>>>,
 }
 
 impl DepositBook {
@@ -716,6 +717,11 @@ impl DepositBook {
     pub fn settled(&self) -> Vec<(CancelSettlement, SettlementStarted)> {
         self.settled.lock().unwrap().clone()
     }
+
+    /// The sources whose settlement started because the agreement ended.
+    pub fn started(&self) -> Vec<Subject> {
+        self.started.lock().unwrap().clone()
+    }
 }
 
 impl Deposits for DepositBook {
@@ -725,6 +731,25 @@ impl Deposits for DepositBook {
         source: &'a Subject,
     ) -> DepositFuture<'a, Option<HeldDeposit>> {
         Box::pin(async move { Ok(self.held.lock().unwrap().get(&source.to_string()).cloned()) })
+    }
+
+    fn start_settlement<'a>(
+        &'a self,
+        _state: &'a AppState,
+        source: &'a Subject,
+    ) -> DepositFuture<'a, Option<SettlementStarted>> {
+        Box::pin(async move {
+            let Some(held) = self.held.lock().unwrap().remove(&source.to_string()) else {
+                return Ok(None);
+            };
+            self.started.lock().unwrap().push(source.clone());
+            Ok(Some(SettlementStarted {
+                deposit: held.deposit,
+                held: held.held,
+                forfeit: 0,
+                version: 0,
+            }))
+        })
     }
 
     fn settle_cancelled<'a>(
@@ -762,11 +787,39 @@ pub struct FakeInvoice {
     pub allocations: Vec<(Subject, i64)>,
 }
 
+/// A partial credit note of the fake invoicer.
+#[derive(Debug, Clone)]
+pub struct Credit {
+    /// The invoice credited.
+    pub invoice: i64,
+    /// The lines and the net credited on each.
+    pub lines: Vec<CreditLine>,
+    /// Why.
+    pub reason: String,
+}
+
 /// An in-memory invoicer.
 #[derive(Clone, Default)]
-pub struct InvoiceDesk(Arc<Mutex<BTreeMap<i64, FakeInvoice>>>);
+pub struct InvoiceDesk(
+    Arc<Mutex<BTreeMap<i64, FakeInvoice>>>,
+    Arc<Mutex<Vec<Credit>>>,
+);
 
 impl InvoiceDesk {
+    /// The partial credit notes made, oldest first.
+    pub fn credits(&self) -> Vec<Credit> {
+        self.1.lock().unwrap().clone()
+    }
+
+    /// The net credited on invoice `id` in all, in fils.
+    pub fn credited(&self, id: i64) -> i64 {
+        self.credits()
+            .iter()
+            .filter(|c| c.invoice == id)
+            .flat_map(|c| c.lines.iter().map(|l| l.net))
+            .sum()
+    }
+
     /// Every invoice.
     pub fn all(&self) -> Vec<FakeInvoice> {
         self.0.lock().unwrap().values().cloned().collect()
@@ -864,6 +917,28 @@ impl Invoicer for InvoiceDesk {
         Box::pin(async move {
             self.pay(id.0, &source, amount);
             Ok(())
+        })
+    }
+
+    fn credit_partly<'a>(
+        &'a self,
+        _state: &'a AppState,
+        invoice: InvoiceId,
+        lines: Vec<CreditLine>,
+        reason: String,
+        _by: Option<i64>,
+    ) -> InvoiceFuture<'a, CreditNoteId> {
+        Box::pin(async move {
+            if self.get(invoice.0).is_none() {
+                return Err(Error::NotFound);
+            }
+            let mut credits = self.1.lock().unwrap();
+            credits.push(Credit {
+                invoice: invoice.0,
+                lines,
+                reason,
+            });
+            Ok(CreditNoteId(i64::try_from(credits.len()).unwrap_or(0)))
         })
     }
 
@@ -1037,6 +1112,7 @@ struct Fakes {
     activated: Recorded<LeaseActivated>,
     cancelled: Recorded<LeaseCancelled>,
     withdrawn: Recorded<LeaseNoticeWithdrawn>,
+    terminated: Recorded<LeaseTerminated>,
     parties: Parties,
     docs: Docs,
     notices: Recording,
@@ -1064,6 +1140,7 @@ impl Module for Fakes {
         record(app, &self.activated);
         record(app, &self.cancelled);
         record(app, &self.withdrawn);
+        record(app, &self.terminated);
     }
 }
 
@@ -1095,6 +1172,8 @@ pub struct Booted {
     pub cancelled: Recorded<LeaseCancelled>,
     /// `LeaseNoticeWithdrawn`.
     pub withdrawn: Recorded<LeaseNoticeWithdrawn>,
+    /// `LeaseTerminated`.
+    pub terminated: Recorded<LeaseTerminated>,
 }
 
 /// The tenant of the tests: a person.
@@ -1298,6 +1377,7 @@ pub async fn boot() -> Booted {
         activated: Recorded::default(),
         cancelled: Recorded::default(),
         withdrawn: Recorded::default(),
+        terminated: Recorded::default(),
         parties: Parties::default(),
         docs: Docs::default(),
         notices: Recording::default(),
@@ -1311,6 +1391,7 @@ pub async fn boot() -> Booted {
         fakes.activated.clone(),
         fakes.cancelled.clone(),
         fakes.withdrawn.clone(),
+        fakes.terminated.clone(),
     );
     let handles = (
         fakes.parties.clone(),
@@ -1378,6 +1459,7 @@ pub async fn boot() -> Booted {
         activated: logs.0,
         cancelled: logs.1,
         withdrawn: logs.2,
+        terminated: logs.3,
     }
 }
 
