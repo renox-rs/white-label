@@ -27,7 +27,7 @@ use wl_kernel::documents::today;
 use wl_kernel::entities::is_trn;
 use wl_kernel::invoicing::{InvoiceStatus, VatCategory, invoice_series};
 
-use crate::invoice::{Invoice, PartySnapshot};
+use crate::invoice::{Invoice, InvoiceKind, PartySnapshot};
 use crate::invoicer::lines_of;
 use crate::permissions;
 
@@ -50,6 +50,11 @@ pub(crate) struct IssueInput {
     pub party: Option<PartySnapshot>,
     /// Days from the issue date to the due date when the draft has none.
     pub payment_terms_days: u32,
+    /// What e-invoicing says about this invoice: whether it applies to the
+    /// entity today, whether the recipient is in scope and whether the party
+    /// has a recipient identifier (`FIN.INV.01`).
+    #[serde(default)]
+    pub einvoice: crate::einvoice_send::IssueFacts,
 }
 
 /// The `issue` transition, for the machine.
@@ -93,6 +98,33 @@ pub(crate) fn transition() -> Transition<Invoice> {
                 match input(ctx) {
                     Some(IssueInput { party: Some(_), .. }) => Ok(()),
                     _ => Err("The billed party was not found.".to_owned()),
+                }
+            })
+        })
+        .guard("no_simplified_invoice", |invoice: &Invoice, ctx| {
+            let applies = input(ctx).is_some_and(|i| i.einvoice.applies);
+            let simplified = invoice.kind == InvoiceKind::SimplifiedTaxInvoice;
+            Box::pin(async move {
+                if applies && simplified {
+                    Err("A simplified tax invoice cannot be issued once e-invoicing applies \
+                         to the entity; issue a tax invoice."
+                        .to_owned())
+                } else {
+                    Ok(())
+                }
+            })
+        })
+        .guard("recipient_identifier", |_invoice: &Invoice, ctx| {
+            let missing = input(ctx).is_some_and(|i| {
+                i.einvoice.applies && i.einvoice.in_scope && i.einvoice.recipient_id.is_none()
+            });
+            Box::pin(async move {
+                if missing {
+                    Err("The party has no e-invoicing recipient identifier (Peppol ID or TRN): \
+                         enter it on the party before the invoice is issued."
+                        .to_owned())
+                } else {
+                    Ok(())
                 }
             })
         })
@@ -192,6 +224,7 @@ async fn gather(state: &AppState, invoice: &Invoice) -> Result<IssueInput> {
         }),
         party: party.as_ref().map(PartySnapshot::of),
         payment_terms_days: crate::config_of(state).payment_terms_days,
+        einvoice: crate::einvoice_send::issue_facts(state, invoice).await?,
     })
 }
 
@@ -240,6 +273,7 @@ mod tests {
                 taken_at: renox::db::now(),
             }),
             payment_terms_days: 30,
+            einvoice: Default::default(),
         }
     }
 
@@ -268,6 +302,8 @@ mod tests {
                 "entity_active",
                 "entity_vat_registered",
                 "party_found",
+                "no_simplified_invoice",
+                "recipient_identifier",
                 "exchange_rate"
             ]
         );
@@ -350,6 +386,42 @@ mod tests {
                 .await
                 .is_ok()
         );
+    }
+
+    #[renox::test]
+    async fn e_invoicing_refuses_a_simplified_invoice_and_a_recipient_without_an_identifier() {
+        use crate::einvoice_send::IssueFacts;
+        let machine = Invoice::machine();
+        let issue = machine.find(ISSUE).expect("transition");
+        let applies = |in_scope: bool, recipient_id: Option<&str>| IssueInput {
+            einvoice: IssueFacts {
+                applies: true,
+                in_scope,
+                recipient_id: recipient_id.map(str::to_owned),
+            },
+            ..ready()
+        };
+        let simplified = Invoice {
+            kind: InvoiceKind::SimplifiedTaxInvoice,
+            ..aed()
+        };
+        // Before go-live both are fine.
+        assert!(issue.check_guards(&simplified, &run(&ready())).await.is_ok());
+        // After it a simplified invoice is refused, a tax invoice is not.
+        assert!(matches!(
+            issue.check_guards(&simplified, &run(&applies(false, None))).await,
+            Err(TransitionError::Guard(_))
+        ));
+        assert!(issue.check_guards(&aed(), &run(&applies(false, None))).await.is_ok());
+        // A recipient in scope needs an identifier; a B2C one does not.
+        assert!(matches!(
+            issue.check_guards(&aed(), &run(&applies(true, None))).await,
+            Err(TransitionError::Guard(_))
+        ));
+        assert!(issue
+            .check_guards(&aed(), &run(&applies(true, Some("0235:100000000000003"))))
+            .await
+            .is_ok());
     }
 
     #[test]

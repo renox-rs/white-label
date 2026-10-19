@@ -184,14 +184,21 @@ fn grid_with(t: Text<'_>) -> Grid {
 pub(crate) struct IndexPage {
     tx: Texts,
     invoices: GridPage<Invoice>,
+    /// The e-invoice transmissions waiting for the ASP, as a banner.
+    einvoice_banner: Option<String>,
 }
 
 /// `GET /invoices`: the grid.
-async fn index(lang: Lang, request: GridRequest) -> Result<View> {
+async fn index(State(state): State<AppState>, lang: Lang, request: GridRequest) -> Result<View> {
     let invoices = grid(&lang).page(Invoice::query(), &request).await?;
+    let queued = crate::einvoice_send::queued_count_all(&state.db).await?;
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         invoices,
+        einvoice_banner: crate::einvoice_send::queue_banner(
+            &texts::t(&lang, "wl_invoicing.einvoice.banner"),
+            queued,
+        ),
     }))
 }
 
