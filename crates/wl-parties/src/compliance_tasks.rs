@@ -527,9 +527,154 @@ pub async fn complete(
     Ok(())
 }
 
+/// What the compliance role sets on a funds line.
+#[derive(Debug, Clone, Default)]
+pub struct FundInput {
+    /// The line's label (a new line needs one; an edit keeps the old one).
+    pub label: String,
+    /// The kind of money (a new line only).
+    pub kind: String,
+    /// The amount in fils.
+    pub amount_fils: i64,
+    /// Whether the compliance role confirms the line.
+    pub confirmed: bool,
+    /// A note on the line.
+    pub note: Option<String>,
+}
+
+/// An amount as typed (`1,250.50`) in fils; `None` when it is not a plain
+/// non-negative amount with at most two decimals.
+pub fn parse_amount(text: &str) -> Option<i64> {
+    let cleaned: String = text.chars().filter(|c| !matches!(c, ',' | ' ')).collect();
+    let (whole, cents) = cleaned.split_once('.').unwrap_or((cleaned.as_str(), ""));
+    let digits = |part: &str| part.chars().all(|c| c.is_ascii_digit());
+    if whole.is_empty() || cents.len() > 2 || !digits(whole) || !digits(cents) {
+        return None;
+    }
+    let cents = format!("{cents:0<2}");
+    whole
+        .parse::<i64>()
+        .ok()?
+        .checked_mul(100)?
+        .checked_add(cents.parse::<i64>().ok()?)
+}
+
+/// An amount in fils as `1,250.50`.
+pub fn amount_text(fils: i64) -> String {
+    let whole = (fils / 100).to_string();
+    let mut grouped = String::new();
+    for (i, c) in whole.chars().enumerate() {
+        if i > 0 && (whole.len() - i).is_multiple_of(3) {
+            grouped.push(',');
+        }
+        grouped.push(c);
+    }
+    format!("{grouped}.{:02}", fils % 100)
+}
+
+/// Loads the open freeze task a funds edit is about, after the permission
+/// check.
+async fn editable_freeze(
+    tx: &mut Transaction,
+    user: &AuthUser,
+    task_id: i64,
+) -> std::result::Result<ComplianceTask, TransitionError> {
+    if !user.has_permission(permissions::SCREENING_REVIEW)
+        || !user.has_permission(permissions::BLOCK_REASON_VIEW)
+    {
+        return Err(TransitionError::Forbidden);
+    }
+    let task = ComplianceTask::find(&mut *tx, task_id)
+        .await?
+        .ok_or(renox::Error::NotFound)?;
+    if task.kind != ComplianceTaskKind::Freeze || task.status != ComplianceTaskStatus::Open {
+        return Err(TransitionError::Guard(texts::english(
+            "wl_parties.errors.funds_closed",
+        )));
+    }
+    Ok(task)
+}
+
+/// `user` adds a line by hand to the open freeze task `task_id`.
+///
+/// # Errors
+///
+/// `Forbidden` without `screening.review` and `parties.block_reason.view`,
+/// `Guard` for a blank label or a closed task.
+pub async fn add_fund(
+    state: &AppState,
+    user: &AuthUser,
+    task_id: i64,
+    input: &FundInput,
+) -> std::result::Result<(), TransitionError> {
+    let mut tx = state.db.begin_immediate().await?;
+    editable_freeze(&mut tx, user, task_id).await?;
+    if input.label.trim().is_empty() {
+        return Err(TransitionError::Guard(texts::english(
+            "wl_parties.errors.funds_label_required",
+        )));
+    }
+    let kind = input.kind.trim();
+    let mut row = ComplianceTaskFund {
+        task_id,
+        party_id: None,
+        label: input.label.trim().to_owned(),
+        kind: if kind.is_empty() { "other" } else { kind }.to_owned(),
+        amount_fils: input.amount_fils,
+        currency: "AED".to_owned(),
+        confirmed: input.confirmed,
+        note: input.note.clone().filter(|n| !n.trim().is_empty()),
+        ..ComplianceTaskFund::default()
+    };
+    row.insert(&mut tx).await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+/// `user` sets the amount, note and confirmation of line `fund_id` of the
+/// open freeze task `task_id`.
+///
+/// # Errors
+///
+/// `Forbidden` without the permissions, `Guard` for a closed task, and a
+/// not-found error for a line of another task.
+pub async fn update_fund(
+    state: &AppState,
+    user: &AuthUser,
+    task_id: i64,
+    fund_id: i64,
+    input: &FundInput,
+) -> std::result::Result<(), TransitionError> {
+    let mut tx = state.db.begin_immediate().await?;
+    editable_freeze(&mut tx, user, task_id).await?;
+    let mut fund = ComplianceTaskFund::find(&mut tx, fund_id)
+        .await?
+        .filter(|f| f.task_id == task_id)
+        .ok_or(renox::Error::NotFound)?;
+    fund.amount_fils = input.amount_fils;
+    fund.confirmed = input.confirmed;
+    fund.note = input.note.clone().filter(|n| !n.trim().is_empty());
+    fund.save(&mut tx).await?;
+    tx.commit().await?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn amounts_round_trip_between_text_and_fils() {
+        assert_eq!(parse_amount("1,250.5"), Some(125_050));
+        assert_eq!(parse_amount("0"), Some(0));
+        assert_eq!(parse_amount("12.345"), None);
+        assert_eq!(parse_amount("-1"), None);
+        assert_eq!(parse_amount("abc"), None);
+        assert_eq!(parse_amount(""), None);
+        assert_eq!(amount_text(125_050), "1,250.50");
+        assert_eq!(amount_text(5), "0.05");
+        assert_eq!(amount_text(100_000_000), "1,000,000.00");
+    }
 
     #[test]
     fn a_new_task_is_an_open_freeze_task() {

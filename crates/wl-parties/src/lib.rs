@@ -151,6 +151,14 @@ const VIEWS: &[(&str, &str)] = &[
         "wl-parties/screening_task.html",
         include_str!("../views/wl-parties/screening_task.html"),
     ),
+    (
+        "wl-parties/compliance_tasks.html",
+        include_str!("../views/wl-parties/compliance_tasks.html"),
+    ),
+    (
+        "wl-parties/compliance_task.html",
+        include_str!("../views/wl-parties/compliance_task.html"),
+    ),
 ];
 
 /// The parties module. The host adds it with `.module(wl_parties::WlParties)`
@@ -369,7 +377,9 @@ impl Module for WlParties {
             .view_data::<pages::ReviewTasksPage>()
             .view_data::<pages::ReviewTaskPage>()
             .view_data::<pages::ScreeningTasksPage>()
-            .view_data::<pages::ScreeningTaskPage>();
+            .view_data::<pages::ScreeningTaskPage>()
+            .view_data::<pages::ComplianceTasksPage>()
+            .view_data::<pages::ComplianceTaskPage>();
         // `rnx state:diagram Party` and the admin panel find the machine.
         renox::state_machine::register::<Party>();
         renox::state_machine::register::<ReviewTask>();
@@ -456,6 +466,15 @@ impl Module for WlParties {
                 .icon("shield-alert")
                 .group("nav.app")
                 .order(33)
+                .permission(permissions::BLOCK_REASON_VIEW),
+        );
+        // The freeze and report tasks of a confirmed match (#39 A10).
+        app.nav(
+            "app",
+            NavLink::route("wl_parties.compliance_tasks", "nav.compliance_tasks")
+                .icon("snowflake")
+                .group("nav.app")
+                .order(34)
                 .permission(permissions::BLOCK_REASON_VIEW),
         );
         app.templates(|env| {

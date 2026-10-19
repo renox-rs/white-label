@@ -13,7 +13,20 @@
         <rx-entry rx-if="closed" :label="tx['screening.fields.closed']" :value="closed"/>
       </rx-infolist>
     </rx-card>
-    <rx-table :rows="runs" as="run" :key="run.run_at" :caption="tx['screening.sections.runs']" card>
+    <rx-alert rx-if="waiting" kind="warning" :title="tx['confirm.waiting']" :message="tx['confirm.waiting_hint']"/>
+    <rx-row rx-if="can_confirm">
+      <rx-action-sheet :id="'confirm-match-' ~ task.id" :label="tx['confirm.action']" :action="route('wl_parties.screening_confirm', task.id)"
+                       :title="tx['confirm.title']" :description="tx['confirm.description']" :submit-label="tx['confirm.submit']"
+                       icon="shield-alert" variant="danger" danger>
+        <rx-textarea name="note" :label="tx['confirm.note']" :id="'confirm-note-' ~ task.id" required/>
+      </rx-action-sheet>
+    </rx-row>
+    <rx-include rx-if="approvals" template="wl-kernel/approval_card.html"/>
+    <rx-table rx-if="follow_up" :rows="follow_up" as="follow" :key="follow.id" :caption="tx['confirm.follow_up']" card>
+      <rx-column :label="tx['tasks.fields.kind']"><a href="{{ route('wl_parties.compliance_task', follow.id) }}">{{ follow.kind }}</a></rx-column>
+      <rx-column :label="tx['tasks.fields.status']">{{ follow.status }}</rx-column>
+    </rx-table>
+    <rx-table :rows="runs"as="run" :key="run.run_at" :caption="tx['screening.sections.runs']" card>
       <rx-column :label="tx['screening.fields.run_at']">{{ run.run_at }}</rx-column>
       <rx-column :label="tx['screening.fields.trigger']">{{ run.trigger }}</rx-column>
       <rx-column :label="tx['screening.fields.method']" hide-narrow>{{ run.method }}</rx-column>

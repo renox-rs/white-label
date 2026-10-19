@@ -17,6 +17,12 @@
 //! | `GET /parties/review-tasks/{id}` | `wl_parties.review_task` | the task's decider role in its scope, else 403 |
 //! | `GET /parties/screening-tasks` | `wl_parties.screening_tasks` | `parties.view` and `parties.block_reason.view`, else 404 |
 //! | `GET /parties/screening-tasks/{id}` | `wl_parties.screening_task` | the same |
+//! | `POST /parties/screening-tasks/{id}/confirm` | `wl_parties.screening_confirm` | the same; the service needs `screening.review` (403); form field `note` |
+//! | `GET /parties/compliance-tasks` | `wl_parties.compliance_tasks` | the same as the screening tasks (404 without `parties.block_reason.view`) |
+//! | `GET /parties/compliance-tasks/{id}` | `wl_parties.compliance_task` | the same |
+//! | `POST /parties/compliance-tasks/{id}/funds` | `wl_parties.compliance_fund_add` | the same; adding needs `screening.review` (403) |
+//! | `POST /parties/compliance-tasks/{id}/funds/{fund}` | `wl_parties.compliance_fund_update` | the same |
+//! | `POST /parties/compliance-tasks/{id}/complete` | `wl_parties.compliance_complete` | the same; records the freeze time, or the reference and date |
 //! | `POST /parties/review-tasks/{id}/items/{item}` | `wl_parties.review_decide` | the same; form field `decision` is `pause`, `continue` or `end` |
 //!
 //! Lists, search, filters and exports read the party's `hold_reason`, which
@@ -27,16 +33,23 @@
 use std::collections::BTreeMap;
 
 use renox::Download;
+use renox::chrono::{NaiveDate, NaiveDateTime};
 use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
 use renox::state_machine::{self, TransitionError};
 use renox::validation::{Errors, ValidationError};
 use serde::{Deserialize, Serialize};
+use wl_kernel::approvals::{self, ApprovalCard};
 use wl_kernel::block_effects::{self as kernel_effects, BlockEffect, Decision};
-use wl_kernel::{PartyKind, PartyStatus, Subject};
+use wl_kernel::{PartyKind, PartyStatus, ScreeningStatus, Subject};
 
 use crate::block::block;
 use crate::block_record::BlockRecord;
+use crate::compliance_tasks::{
+    self, CompleteInput, ComplianceTask, ComplianceTaskKind, ComplianceTaskStatus, FundInput,
+    PartyStanding, SANCTIONS, amount_text, parse_amount,
+};
+use crate::confirm_match;
 use crate::contacts::{ContactPoint, ContactStatus, ContactType, update_contact, verify_contact};
 use crate::create::{NewParty, create};
 use crate::details::{CompanyDetails, PersonDetails};
@@ -83,6 +96,24 @@ pub fn routes() -> Routes {
                 .name("wl_parties.screening_tasks")
                 .get("/parties/screening-tasks/{id}", screening_task_page)
                 .name("wl_parties.screening_task")
+                .post("/parties/screening-tasks/{id}/confirm", confirm_screening)
+                .name("wl_parties.screening_confirm")
+                .get("/parties/compliance-tasks", compliance_tasks_page)
+                .name("wl_parties.compliance_tasks")
+                .get("/parties/compliance-tasks/{id}", compliance_task_page)
+                .name("wl_parties.compliance_task")
+                .post("/parties/compliance-tasks/{id}/funds", add_compliance_fund)
+                .name("wl_parties.compliance_fund_add")
+                .post(
+                    "/parties/compliance-tasks/{id}/funds/{fund}",
+                    update_compliance_fund,
+                )
+                .name("wl_parties.compliance_fund_update")
+                .post(
+                    "/parties/compliance-tasks/{id}/complete",
+                    complete_compliance_task,
+                )
+                .name("wl_parties.compliance_complete")
                 .get(
                     "/parties/{id}/block-records/{record}/evidence/{file}",
                     block_evidence,
@@ -1243,6 +1274,23 @@ pub(crate) struct ScreeningTaskPage {
     status_tone: &'static str,
     runs: Vec<ScreeningRunRow>,
     candidates: Vec<CandidateRow>,
+    /// The confirm button is offered (open task, a possible match, no request
+    /// pending, and the viewer may review).
+    can_confirm: bool,
+    /// A second reviewer's approval is pending.
+    waiting: bool,
+    /// The approval cards of the pending request.
+    approvals: Vec<ApprovalCard>,
+    /// The freeze and report tasks a confirmation opened.
+    follow_up: Vec<FollowUpRow>,
+}
+
+/// A freeze or report task linked from the screening task page.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct FollowUpRow {
+    id: i64,
+    kind: String,
+    status: String,
 }
 
 /// `GET /parties/screening-tasks/{id}`: the party code, each screening run
@@ -1305,7 +1353,33 @@ async fn screening_task_page(
         .collect();
     let open = task.status == ScreeningTaskStatus::Open;
     let (code, party) = party_code_and_name(db, task.party_id).await?;
+    let screenings = task.screenings(db).await?;
+    let mut approval_cards = Vec::new();
+    let mut waiting = false;
+    let mut follow_up = Vec::new();
+    for run in &screenings {
+        let subject = Subject::new(confirm_match::SUBJECT_TYPE, run.id);
+        waiting |= !approvals::pending_for(db, &subject).await?.is_empty();
+        approval_cards.extend(approvals::cards_for(db, &subject, &user, &lang).await?);
+        for follow in ComplianceTask::for_screening(db, run.id).await? {
+            follow_up.push(FollowUpRow {
+                id: follow.id,
+                kind: t(&format!("tasks.kind.{}", kind_key(follow.kind))),
+                status: t(&format!("tasks.status.{}", status_key(follow.status))),
+            });
+        }
+    }
+    let can_confirm = open
+        && !waiting
+        && user.has_permission(permissions::SCREENING_REVIEW)
+        && screenings
+            .iter()
+            .any(|run| run.status == ScreeningStatus::PossibleMatch);
     Ok(View::typed(ScreeningTaskPage {
+        can_confirm,
+        waiting,
+        approvals: approval_cards,
+        follow_up,
         tx: texts::all(&lang),
         party_id: task.party_id,
         party,
@@ -1428,4 +1502,471 @@ async fn send_neutral(
         &lang,
         "wl_parties.review.neutral_sent",
     )))
+}
+
+/// The text key part of a task kind.
+fn kind_key(kind: ComplianceTaskKind) -> &'static str {
+    match kind {
+        ComplianceTaskKind::Freeze => "freeze",
+        ComplianceTaskKind::Report => "report",
+    }
+}
+
+/// The text key part of a task status.
+fn status_key(status: ComplianceTaskStatus) -> &'static str {
+    match status {
+        ComplianceTaskStatus::Open => "open",
+        ComplianceTaskStatus::Done => "done",
+    }
+}
+
+/// A 422 with `message` under `field`.
+fn invalid_field<T: Serialize>(field: &str, message: String, form: &T) -> Error {
+    let mut errors = Errors::new();
+    errors.add(field, message);
+    Error::Validation(ValidationError::new(errors).with_input(form))
+}
+
+/// 404 for anyone without `parties.block_reason.view`: the compliance pages
+/// are not even known to exist (`PTY.ACL.02`).
+fn holders_only(user: &AuthUser) -> Result<()> {
+    if user.has_permission(permissions::BLOCK_REASON_VIEW) {
+        Ok(())
+    } else {
+        Err(Error::NotFound)
+    }
+}
+
+/// The confirm sheet's form.
+#[derive(Deserialize, Serialize, Validate, Debug)]
+pub struct ConfirmForm {
+    /// The reviewer's note on the decision.
+    #[validate(required, max = 2000)]
+    pub note: String,
+}
+
+/// `POST /parties/screening-tasks/{id}/confirm`: confirms the possible match
+/// of the task. With the second-reviewer policy the screening stays a
+/// possible match and "Waiting for a second reviewer" shows. 404 without
+/// `parties.block_reason.view`, 403 without `screening.review`, 422 for a
+/// blank note.
+async fn confirm_screening(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Valid(form): Valid<ConfirmForm>,
+) -> Result<Response> {
+    holders_only(&user)?;
+    let task = ScreeningTask::find(&state.db, id)
+        .await?
+        .ok_or(Error::NotFound)?;
+    let refresh = |toast: Toast| Ok((toast, renox::HxRefresh).into_response());
+    let Some(screening) = task
+        .screenings(&state.db)
+        .await?
+        .into_iter()
+        .rev()
+        .find(|run| run.status == ScreeningStatus::PossibleMatch)
+    else {
+        return refresh(Toast::warning(texts::t(
+            &lang,
+            "wl_parties.confirm.not_possible",
+        )));
+    };
+    match confirm_match::confirm_match(&state, &user, &screening, &form.note).await {
+        Ok(outcome) if outcome.is_pending() => refresh(Toast::success(texts::t(
+            &lang,
+            "wl_parties.confirm.requested",
+        ))),
+        Ok(_) => refresh(Toast::success(texts::t(&lang, "wl_parties.confirm.done"))),
+        Err(TransitionError::Guard(message)) => Err(invalid_field("note", message, &form)),
+        Err(TransitionError::NotFrom(_)) => refresh(Toast::warning(texts::t(
+            &lang,
+            "wl_parties.confirm.not_possible",
+        ))),
+        Err(other) => Err(other.into_error()),
+    }
+}
+
+/// One task in the compliance task list.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct ComplianceTaskRow {
+    id: i64,
+    kind: String,
+    parties: usize,
+    due: String,
+    overdue: bool,
+    status: String,
+    status_tone: &'static str,
+}
+
+/// What the compliance task list needs.
+#[derive(Serialize, ViewData)]
+#[view(template = "wl-parties/compliance_tasks.html")]
+pub(crate) struct ComplianceTasksPage {
+    tx: Texts,
+    tasks: Vec<ComplianceTaskRow>,
+}
+
+/// `GET /parties/compliance-tasks`: the open freeze and report tasks,
+/// earliest due first, then the latest done ones. Holders only (404).
+async fn compliance_tasks_page(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+) -> Result<View> {
+    holders_only(&user)?;
+    let db = &state.db;
+    let t = texts_in(&lang);
+    let mut all = ComplianceTask::open_tasks(db).await?;
+    all.extend(
+        ComplianceTask::query()
+            .where_(ComplianceTask::STATUS.eq(ComplianceTaskStatus::Done))
+            .order_by_desc(ComplianceTask::COMPLETED_AT)
+            .limit(50)
+            .get(db)
+            .await?,
+    );
+    let now = renox::db::now();
+    let mut tasks = Vec::new();
+    for task in all {
+        tasks.push(ComplianceTaskRow {
+            id: task.id,
+            kind: t(&format!("tasks.kind.{}", kind_key(task.kind))),
+            parties: task.parties(db).await?.len(),
+            due: dubai_label(task.due_at),
+            overdue: task.is_overdue(now),
+            status: t(&format!("tasks.status.{}", status_key(task.status))),
+            status_tone: if task.status == ComplianceTaskStatus::Open {
+                "warning"
+            } else {
+                "success"
+            },
+        });
+    }
+    Ok(View::typed(ComplianceTasksPage {
+        tx: texts::all(&lang),
+        tasks,
+    }))
+}
+
+/// One named party on a freeze or report task.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct NamedPartyRow {
+    id: i64,
+    code: String,
+    name: String,
+    standing: String,
+    state: String,
+    record: bool,
+}
+
+/// One funds line on a freeze task.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct FundRow {
+    id: i64,
+    party: String,
+    label: String,
+    kind: String,
+    amount: String,
+    amount_input: String,
+    currency: String,
+    confirmed: bool,
+    confirmed_label: String,
+    note: String,
+}
+
+/// What a freeze or report task page needs.
+#[derive(Serialize, ViewData)]
+#[view(template = "wl-parties/compliance_task.html")]
+pub(crate) struct ComplianceTaskPage {
+    tx: Texts,
+    task: ComplianceTask,
+    header: String,
+    is_freeze: bool,
+    open: bool,
+    overdue: bool,
+    status_label: String,
+    status_tone: &'static str,
+    due: String,
+    completed: Option<String>,
+    frozen_at: Option<String>,
+    reference: Option<String>,
+    reported_on: Option<String>,
+    screening_task: Option<i64>,
+    parties: Vec<NamedPartyRow>,
+    funds: Vec<FundRow>,
+    /// A named party is not yet on hold with an open sanctions record.
+    not_ready: bool,
+    can_complete: bool,
+    states: Vec<(String, String)>,
+}
+
+/// `GET /parties/compliance-tasks/{id}`: the parties and their hold state,
+/// the funds list of a freeze task and the completing action. Holders only
+/// (404); the actions need `screening.review` as well.
+async fn compliance_task_page(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<View> {
+    holders_only(&user)?;
+    let db = &state.db;
+    let task = ComplianceTask::find(db, id).await?.ok_or(Error::NotFound)?;
+    let t = texts_in(&lang);
+    let mut parties = Vec::new();
+    let mut not_ready = false;
+    let mut names = BTreeMap::new();
+    for named in task.parties(db).await? {
+        let party = Party::find(db, named.party_id).await?;
+        let record = BlockRecord::open_for(db, named.party_id)
+            .await?
+            .iter()
+            .any(|r| r.reason_code == SANCTIONS);
+        let held = party
+            .as_ref()
+            .is_some_and(|p| matches!(p.status, PartyStatus::Blocked | PartyStatus::Archived));
+        not_ready |= !(held && record);
+        let (code, name) = party.as_ref().map_or_else(
+            || {
+                (
+                    format!("#{}", named.party_id),
+                    format!("#{}", named.party_id),
+                )
+            },
+            |p| (p.code.clone(), p.display_name.clone()),
+        );
+        names.insert(named.party_id, name.clone());
+        parties.push(NamedPartyRow {
+            id: named.party_id,
+            code,
+            name,
+            standing: t(&format!(
+                "tasks.standing.{}",
+                match named.standing {
+                    PartyStanding::Blocked => "blocked",
+                    PartyStanding::Archived => "archived",
+                    PartyStanding::BlockedAlready => "blocked_already",
+                }
+            )),
+            state: t(match party.map(|p| p.status) {
+                Some(PartyStatus::Blocked) => "tasks.state.held",
+                Some(PartyStatus::Archived) => "tasks.state.archived",
+                _ => "tasks.state.open",
+            }),
+            record,
+        });
+    }
+    let is_freeze = task.kind == ComplianceTaskKind::Freeze;
+    let funds = if is_freeze {
+        task.funds(db)
+            .await?
+            .into_iter()
+            .map(|f| FundRow {
+                id: f.id,
+                party: f
+                    .party_id
+                    .and_then(|p| names.get(&p).cloned())
+                    .unwrap_or_else(|| "\u{2014}".to_owned()),
+                label: f.label,
+                kind: f.kind,
+                amount: amount_text(f.amount_fils),
+                amount_input: format!("{}.{:02}", f.amount_fils / 100, f.amount_fils % 100),
+                currency: f.currency,
+                confirmed: f.confirmed,
+                confirmed_label: t(if f.confirmed { "tasks.yes" } else { "tasks.no" }),
+                note: f.note.unwrap_or_default(),
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let open = task.status == ComplianceTaskStatus::Open;
+    let screening_task = Screening::find(db, task.screening_id)
+        .await?
+        .and_then(|screening| screening.task_id);
+    Ok(View::typed(ComplianceTaskPage {
+        tx: texts::all(&lang),
+        header: t(&format!("tasks.kind.{}", kind_key(task.kind))),
+        is_freeze,
+        open,
+        overdue: task.is_overdue(renox::db::now()),
+        status_label: t(&format!("tasks.status.{}", status_key(task.status))),
+        status_tone: if open { "warning" } else { "success" },
+        due: dubai_label(task.due_at),
+        completed: task.completed_at.map(dubai_label),
+        frozen_at: task.frozen_at.map(dubai_label),
+        reference: task.reference.clone(),
+        reported_on: task
+            .reported_on
+            .map(|d| dubai_label(d).chars().take(10).collect()),
+        screening_task,
+        parties,
+        funds,
+        not_ready: is_freeze && open && not_ready,
+        can_complete: open && user.has_permission(permissions::SCREENING_REVIEW),
+        states: vec![
+            ("confirmed".to_owned(), t("tasks.yes")),
+            ("unconfirmed".to_owned(), t("tasks.no")),
+        ],
+        task,
+    }))
+}
+
+/// The funds line form (add and edit).
+#[derive(Deserialize, Serialize, Validate, Debug)]
+pub struct FundForm {
+    /// What the money is (a new line).
+    #[validate(max = 200)]
+    pub label: Option<String>,
+    /// The kind of money (a new line).
+    #[validate(max = 64)]
+    pub kind: Option<String>,
+    /// The amount, as typed.
+    #[validate(required, max = 32)]
+    pub amount: String,
+    /// `confirmed` or `unconfirmed`.
+    #[validate(max = 16)]
+    pub state: Option<String>,
+    /// A note on the line.
+    #[validate(max = 1000)]
+    pub note: Option<String>,
+}
+
+impl FundForm {
+    /// The service's input; the amount must parse.
+    fn input(&self, lang: &Lang) -> Result<FundInput> {
+        let amount_fils = parse_amount(&self.amount).ok_or_else(|| {
+            invalid_field(
+                "amount",
+                texts::t(lang, "wl_parties.errors.amount_invalid"),
+                self,
+            )
+        })?;
+        Ok(FundInput {
+            label: self.label.clone().unwrap_or_default(),
+            kind: self.kind.clone().unwrap_or_default(),
+            amount_fils,
+            confirmed: self.state.as_deref() == Some("confirmed"),
+            note: self.note.clone(),
+        })
+    }
+}
+
+/// `POST /parties/compliance-tasks/{id}/funds`: adds a line by hand.
+async fn add_compliance_fund(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Valid(form): Valid<FundForm>,
+) -> Result<Response> {
+    holders_only(&user)?;
+    let input = form.input(&lang)?;
+    match compliance_tasks::add_fund(&state, &user, id, &input).await {
+        Ok(()) => Ok((
+            Toast::success(texts::t(&lang, "wl_parties.tasks.line_added")),
+            renox::HxRefresh,
+        )
+            .into_response()),
+        Err(TransitionError::Guard(message)) => {
+            let field = if input.label.trim().is_empty() {
+                "label"
+            } else {
+                "amount"
+            };
+            Err(invalid_field(field, message, &form))
+        }
+        Err(other) => Err(other.into_error()),
+    }
+}
+
+/// `POST /parties/compliance-tasks/{id}/funds/{fund}`: confirms or edits a
+/// line.
+async fn update_compliance_fund(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path((id, fund)): Path<(i64, i64)>,
+    Valid(form): Valid<FundForm>,
+) -> Result<Response> {
+    holders_only(&user)?;
+    let input = form.input(&lang)?;
+    match compliance_tasks::update_fund(&state, &user, id, fund, &input).await {
+        Ok(()) => Ok((
+            Toast::success(texts::t(&lang, "wl_parties.tasks.line_saved")),
+            renox::HxRefresh,
+        )
+            .into_response()),
+        Err(TransitionError::Guard(message)) => Err(invalid_field("amount", message, &form)),
+        Err(other) => Err(other.into_error()),
+    }
+}
+
+/// The record freeze / record report form.
+#[derive(Deserialize, Serialize, Validate, Debug)]
+pub struct CompleteForm {
+    /// Freeze: when the funds were frozen, Asia/Dubai wall-clock time; empty
+    /// means now.
+    pub frozen_at: Option<NaiveDateTime>,
+    /// Report: the filing reference.
+    #[validate(max = 120)]
+    pub reference: Option<String>,
+    /// Report: the date reported.
+    pub reported_on: Option<NaiveDate>,
+}
+
+/// `POST /parties/compliance-tasks/{id}/complete`: records the freeze (time
+/// given or now) or the report (reference and date) and completes the task.
+/// 404 without `parties.block_reason.view`, 403 without `screening.review`,
+/// 422 when the details are missing or a named party is not held.
+async fn complete_compliance_task(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Valid(form): Valid<CompleteForm>,
+) -> Result<Response> {
+    holders_only(&user)?;
+    let task = ComplianceTask::find(&state.db, id)
+        .await?
+        .ok_or(Error::NotFound)?;
+    let calendar = wl_kernel::calendar::calendar(&state);
+    let input = CompleteInput {
+        frozen_at: (task.kind == ComplianceTaskKind::Freeze).then(|| {
+            form.frozen_at
+                .map_or_else(renox::db::now, |at| calendar.from_local(at))
+        }),
+        reference: form.reference.clone(),
+        reported_on: form
+            .reported_on
+            .and_then(|d| d.and_hms_opt(0, 0, 0))
+            .map(|at| calendar.from_local(at)),
+    };
+    let refresh = |toast: Toast| Ok((toast, renox::HxRefresh).into_response());
+    match compliance_tasks::complete(&state, &user, id, &input).await {
+        Ok(()) => refresh(Toast::success(texts::t(
+            &lang,
+            "wl_parties.tasks.completed",
+        ))),
+        Err(TransitionError::NotFrom(_)) => refresh(Toast::warning(texts::t(
+            &lang,
+            "wl_parties.tasks.already_done",
+        ))),
+        Err(TransitionError::Guard(message)) => {
+            let blank_reference = form
+                .reference
+                .as_deref()
+                .is_none_or(|r| r.trim().is_empty());
+            let field = match task.kind {
+                ComplianceTaskKind::Freeze => "frozen_at",
+                ComplianceTaskKind::Report if blank_reference => "reference",
+                ComplianceTaskKind::Report => "reported_on",
+            };
+            Err(invalid_field(field, message, &form))
+        }
+        Err(other) => Err(other.into_error()),
+    }
 }

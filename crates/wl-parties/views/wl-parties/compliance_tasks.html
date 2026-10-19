@@ -1,0 +1,15 @@
+{#- wl-parties: the freeze and report tasks of confirmed sanctions matches, for
+    the compliance role only (parties.block_reason.view). Replace it with
+    resources/views/wl-parties/compliance_tasks.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['tasks.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['tasks.title']" :subtitle="tx['tasks.subtitle']"/>
+    <rx-table :rows="tasks" as="task" :key="task.id" :caption="tx['tasks.title']" card>
+      <rx-column :label="tx['tasks.fields.kind']"><a href="{{ route('wl_parties.compliance_task', task.id) }}">{{ task.kind }}</a></rx-column>
+      <rx-column :label="tx['tasks.fields.due']">{{ task.due }}</rx-column>
+      <rx-column :label="tx['tasks.fields.parties']" align="num" hide-narrow>{{ task.parties }}</rx-column>
+      <rx-column :label="tx['tasks.fields.status']"><rx-badge :kind="'danger' if task.overdue else task.status_tone" :text="tx['tasks.overdue'] if task.overdue else task.status"/></rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['tasks.empty']" :message="tx['tasks.empty_hint']" icon="inbox"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>
