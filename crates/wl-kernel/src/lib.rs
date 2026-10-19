@@ -13,6 +13,7 @@ pub mod compliance;
 pub mod config;
 pub mod consents;
 pub mod delivery;
+pub mod deposits;
 pub mod digest;
 pub mod documents;
 pub mod einvoice;
@@ -116,6 +117,11 @@ pub use parties::{
     BillingIdentity, NEUTRAL_BLOCK_REASON, NoParties, PartyBlocked, PartyCreated, PartyDirectory,
     PartyId, PartyKind, PartyRestored, PartyStatus, PartySummary, PartyUnblocked, PartyUpdated,
     ScreeningCompleted, ScreeningFlagged, ScreeningId, ScreeningMatchConfirmed, ScreeningStatus,
+};
+pub use deposits::{
+    DeductionKind, DeductionLineView, DepositDeductions, DepositDeductionsDisputed,
+    DepositDeductionsPublished, DepositDisputeAnswered, DepositOutcome, DepositSettled,
+    DisputeAnswer, DisputeDeductions, NoDepositDeductions, PublishedDeductions,
 };
 pub use payments::{
     AllocationTarget, DEPOSIT_SUBJECT_TYPE, DepositId, Direction, NoPayments, PaymentId,

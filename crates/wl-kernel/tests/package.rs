@@ -1711,3 +1711,48 @@ async fn a_charge_is_not_invoiced_when_nothing_provides_it() {
     );
     assert_ne!(WriteOffAnswer::WrittenOff, WriteOffAnswer::Pending { request: 3 });
 }
+
+/// #108: without the `payments` module the portal sees no published
+/// deductions and a dispute of them is refused; the events name the deposit.
+#[renox::test]
+async fn the_deposit_deductions_fall_back_when_payments_is_off() {
+    use wl_kernel::Subject;
+    use wl_kernel::deposits::{
+        DepositDeductionsDisputed, DepositOutcome, DepositSettled, DisputeDeductions,
+        deposit_deductions,
+    };
+    use wl_kernel::payments::DepositId;
+
+    let dir = views(&[]);
+    let app = boot(dir.path()).await;
+    let state = app.state();
+    let contract = deposit_deductions(state);
+    assert!(contract.published_for(app.db(), PartyId(7)).await.unwrap().is_empty());
+    let request = DisputeDeductions {
+        deposit: DepositId(3),
+        version: 1,
+        lines: vec![4],
+        comment: "The wall was painted before".into(),
+    };
+    assert!(contract.dispute(state, PartyId(7), request).await.is_err());
+
+    let disputed = DepositDeductionsDisputed {
+        deposit: DepositId(3),
+        source: Subject::new("property.lease", 9),
+        party: PartyId(7),
+        version: 1,
+        lines: vec![4],
+        raised_on: day(),
+    };
+    assert_eq!(renox::serde_json::to_value(&disputed).unwrap()["lines"][0], 4);
+    let settled = DepositSettled {
+        deposit: DepositId(3),
+        source: Subject::new("property.lease", 9),
+        party: PartyId(7),
+        outcome: DepositOutcome::Forfeited,
+        deductions: 250_000,
+        refund_amount: 0,
+        new_holder: None,
+    };
+    assert_eq!(renox::serde_json::to_value(&settled).unwrap()["outcome"], "forfeited");
+}
