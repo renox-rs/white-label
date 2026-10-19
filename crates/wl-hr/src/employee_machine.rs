@@ -11,14 +11,19 @@
 //! ```
 //!
 //! `activate` (`employees.manage`) is for a record created in `onboarding`.
-//! A minimal record has no statutory items to check (§2). The extra guard of
-//! a template that *blocks activation* is BL-HRM-29; until then onboarding
-//! blocks nothing. `EmployeeActivated` follows the commit.
+//! A minimal record has no statutory items to check (§2). A template that
+//! *blocks activation* (issue #219, [`crate::activation`]) makes `activate`
+//! also need every required step from that template `done` or `waived`; the
+//! check runs as the first effect in the transition's transaction, because a
+//! guard cannot read the database, and a refusal rolls the run back with a
+//! 422 that lists the open steps and their assignees. `EmployeeActivated`
+//! follows the commit.
 
 use renox::prelude::*;
 use renox::state_machine::{Machine, StateMachine, Transition, Transitioned};
 use wl_kernel::workforce::EmployeeActivated;
 
+use crate::activation;
 use crate::employee::{Employee, EmployeeStatus};
 use crate::permissions;
 
@@ -59,7 +64,18 @@ impl StateMachine for Employee {
                     .tone("success")
                     .permission(permissions::EMPLOYEES_MANAGE)
                     .from([Onboarding])
-                    .to(Active),
+                    .to(Active)
+                    .effect(|employee: &Employee, _ctx, tx| {
+                        let id = employee.id;
+                        Box::pin(async move {
+                            let blockers = activation::blockers_in(&mut *tx, id).await?;
+                            if blockers.is_empty() {
+                                Ok(())
+                            } else {
+                                Err(activation::refusal(&blockers))
+                            }
+                        })
+                    }),
             )
     }
 }

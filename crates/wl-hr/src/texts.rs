@@ -152,6 +152,12 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_hr.onboarding.manual_only",
         "Only a manual onboarding is cancelled by hand.",
     ),
+    // Activation.
+    (
+        "wl_hr.activation.blocked",
+        "Activation waits for these required onboarding steps:",
+    ),
+    ("wl_hr.activation.line", ":step (:template): :who"),
     // Steps.
     ("wl_hr.steps.title", "Step"),
     ("wl_hr.steps.assignees", "Assigned to"),
