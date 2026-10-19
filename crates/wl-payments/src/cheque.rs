@@ -109,6 +109,9 @@ pub struct Cheque {
     pub referred_on: Option<NaiveDate>,
     /// The user who registered it; `None` for the system.
     pub recorded_by: Option<i64>,
+    /// The approved owner drawing an issued cheque pays (`FIN.ACL.21`): the
+    /// drawing request it was registered for.
+    pub drawing_request_id: Option<i64>,
     /// Why a replaced cheque is still kept: its replacement bounced.
     pub custody_note: Option<String>,
     /// The lifecycle state; changed only by a transition.
