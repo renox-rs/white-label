@@ -12,6 +12,7 @@ use wl_invoicing::permissions as invoices;
 use wl_notify::permissions as notify;
 use wl_parties::permissions as parties;
 use wl_payments::permissions as payments;
+use wl_sales::permissions as sales;
 use wl_ticketing::permissions as tickets;
 
 /// Manages users and their roles.
@@ -41,6 +42,11 @@ pub const COORDINATOR: &str = "coordinator";
 /// A technician: sees and works the tickets assigned to them
 /// (wl-ticketing §6, 01 roles).
 pub const TECHNICIAN: &str = "technician";
+/// Marketing: sees and manages campaigns and adds cost entries (wl-sales §6).
+pub const MARKETING: &str = "marketing";
+/// The marketing manager: also approves costs over a campaign's budget and
+/// reads the acquisition reports (wl-sales §6, `SAL.ACL.07`).
+pub const MARKETING_MANAGER: &str = "marketing_manager";
 /// Everyone who signs up.
 pub const MEMBER: &str = "member";
 
@@ -102,6 +108,10 @@ pub const ROLES: &[(&str, &[&str])] = &[
             payments::DEPOSITS_VIEW,
             payments::DEPOSITS_MANAGE,
             payments::DEPOSITS_REFUND,
+            sales::CAMPAIGNS_VIEW,
+            sales::CAMPAIGNS_MANAGE,
+            sales::CAMPAIGNS_COSTS_MANAGE,
+            sales::ACQUISITION_REPORTS_VIEW,
         ],
     ),
     (
@@ -169,6 +179,16 @@ pub const ROLES: &[(&str, &[&str])] = &[
         ],
     ),
     (TECHNICIAN, &[tickets::VIEW, tickets::WORK]),
+    (MARKETING, &[sales::CAMPAIGNS_VIEW, sales::CAMPAIGNS_MANAGE]),
+    (
+        MARKETING_MANAGER,
+        &[
+            sales::CAMPAIGNS_VIEW,
+            sales::CAMPAIGNS_MANAGE,
+            sales::CAMPAIGNS_COSTS_MANAGE,
+            sales::ACQUISITION_REPORTS_VIEW,
+        ],
+    ),
     (MEMBER, &[]),
 ];
 

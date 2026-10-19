@@ -919,6 +919,7 @@ dependencies = [
  "wl-notify",
  "wl-parties",
  "wl-payments",
+ "wl-sales",
  "wl-ticketing",
 ]
 
@@ -3486,6 +3487,16 @@ dependencies = [
 
 [[package]]
 name = "wl-payments"
+version = "0.1.0"
+dependencies = [
+ "renox",
+ "serde",
+ "tempfile",
+ "wl-kernel",
+]
+
+[[package]]
+name = "wl-sales"
 version = "0.1.0"
 dependencies = [
  "renox",
