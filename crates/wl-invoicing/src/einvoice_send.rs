@@ -707,6 +707,7 @@ pub async fn queued_count(db: &Db, entities: &[i64]) -> Result<i64> {
         .where_(EInvoiceTransmission::STATUS.eq(TransmissionStatus::Queued))
         .count(db)
         .await
+        .map(|n| i64::try_from(n).unwrap_or(i64::MAX))
 }
 
 /// How many transmissions of any entity wait in the queue.
@@ -719,6 +720,7 @@ pub async fn queued_count_all(db: &Db) -> Result<i64> {
         .where_(EInvoiceTransmission::STATUS.eq(TransmissionStatus::Queued))
         .count(db)
         .await
+        .map(|n| i64::try_from(n).unwrap_or(i64::MAX))
 }
 
 /// The text of the queue banner from the `template` (with `{{ count }}`), or

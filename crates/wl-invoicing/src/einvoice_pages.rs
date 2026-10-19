@@ -329,7 +329,7 @@ mod tests {
     #[test]
     fn every_status_has_a_colour_and_a_text() {
         for status in TransmissionStatus::ALL {
-            assert!(!status_kind(status).is_empty());
+            assert!(!status_kind(*status).is_empty());
             let key = format!("wl_invoicing.einvoice.status.{}", status.as_str());
             assert_ne!(texts::english(&key), key);
         }

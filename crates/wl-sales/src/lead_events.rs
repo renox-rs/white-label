@@ -17,7 +17,7 @@
 
 use renox::prelude::*;
 use renox::serde_json::{Value, json};
-use renox::state_machine::Transitioned;
+use renox::state_machine::{StateMachine, Transitioned};
 use wl_kernel::invoicing::{CreditNoteIssued, InvoiceIssued};
 use wl_kernel::parties::PartiesMerged;
 use wl_kernel::sales::{LeadLost, LeadWinReverted, LeadWon};

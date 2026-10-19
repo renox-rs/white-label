@@ -763,7 +763,7 @@ fn add_entity(forecast: &mut Forecast, inputs: &Inputs, entity: &EntityInput) {
     // The bills not yet approved that count as payments, and what the items
     // above will add to the actual of each category and month (§5.14 step 7).
     let mut unapproved: BTreeSet<Subject> = BTreeSet::new();
-    let mut covered: BTreeMap<(i64, NaiveDate), i64> = entity.fill.actual.clone();
+    let mut actual_by_month: BTreeMap<(i64, NaiveDate), i64> = entity.fill.actual.clone();
     let weeks = forecast.weeks.clone();
     let push_line = |forecast: &mut Forecast, line: Line| {
         if line.week < weeks.len() && line.amount > 0 {
@@ -1017,7 +1017,7 @@ fn add_entity(forecast: &mut Forecast, inputs: &Inputs, entity: &EntityInput) {
             .source_categories
             .get(&(line.category.clone(), line.direction == Direction::In))
         {
-            *covered
+            *actual_by_month
                 .entry((*category, month_start(line.date)))
                 .or_insert(0) += line.amount;
         }
@@ -1047,12 +1047,12 @@ fn add_entity(forecast: &mut Forecast, inputs: &Inputs, entity: &EntityInput) {
 
     for cover in &entity.fill.bill_covers {
         if unapproved.contains(&cover.document) {
-            *covered
+            *actual_by_month
                 .entry((cover.category_id, month_start(cover.month)))
                 .or_insert(0) += cover.amount;
         }
     }
-    add_fill(forecast, inputs.today, entity, &covered);
+    add_fill(forecast, inputs.today, entity, &actual_by_month);
 
     if !entity.months_without_budget.is_empty() {
         forecast.warnings.push(Warning::NoBudget {
