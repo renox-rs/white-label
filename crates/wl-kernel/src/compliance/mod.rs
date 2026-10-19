@@ -15,6 +15,7 @@
 pub mod alert;
 pub mod registry;
 pub mod rules;
+pub mod service;
 
 use renox::prelude::*;
 
@@ -24,8 +25,10 @@ pub use registry::{
     is_critical, missed_before, occurrence_key, planned_daily, register, rule, schedule_subject,
 };
 pub use rules::{ComplianceRule, business_owner_role, install, owner_role};
+pub use service::{Raised, check_missed, close_by_hand, raise, run_succeeded};
 
 /// Registers the models.
 pub(crate) fn register_models(app: &mut Registry) {
     app.model::<ComplianceRule>().model::<ComplianceAlert>();
+    service::schedule(app);
 }

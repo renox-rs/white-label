@@ -396,6 +396,46 @@ const TEXTS: &[(&str, &str)] = &[
         "This connection takes no inbound data.",
     ),
     (
+        "wl_kernel.compliance.alert.subject",
+        "Compliance alert: {{ rule }}",
+    ),
+    (
+        "wl_kernel.compliance.alert.body",
+        "The compliance-critical rule {{ rule }} {{ what }} (Asia/Dubai, {{ at }}). Error: {{ error }}. A task is open for the owner until the duty is met.",
+    ),
+    (
+        "wl_kernel.compliance.what.failed",
+        "failed after its last attempt",
+    ),
+    (
+        "wl_kernel.compliance.what.stopped",
+        "was stopped because its rule chain is too deep",
+    ),
+    (
+        "wl_kernel.compliance.what.missed",
+        "did not run on schedule (planned :planned)",
+    ),
+    (
+        "wl_kernel.compliance.task_title",
+        "Compliance rule :rule :what",
+    ),
+    (
+        "wl_kernel.compliance.task_description",
+        "The rule :rule has not run for this occurrence. Run it again, or record how the duty was met by hand. Error: :error",
+    ),
+    (
+        "wl_kernel.compliance.rerun_note",
+        "Rule ran successfully at :time (Asia/Dubai).",
+    ),
+    (
+        "wl_kernel.compliance.note_required",
+        "Record how the duty was met.",
+    ),
+    (
+        "wl_kernel.compliance.already_closed",
+        "This alert is already closed.",
+    ),
+    (
         "wl_kernel.integrations.not_yet_down",
         "The connection has not been without a successful call for long enough.",
     ),
