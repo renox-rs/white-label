@@ -23,6 +23,7 @@ What is here so far:
 | Platform categories opened by other modules, seeded when the module is on: `billing_dispute` (invoicing), `labour_case` (hr: confidential, role `hr`, custom fields forum, reference, hearing and reply dates), `delivery_claim` (delivery) | §3, §7 | `seed` |
 | Category settings: rename, turn off, delete (a platform category, or one with tickets, is refused), the page `/ticket-categories` | §7 | `categories`, `category_pages` |
 | Chargeable tickets: charge lines (the amount the requester is shown and the lines the draft carries), `resolve` refused without one, one draft invoice per ticket made at `resolve` or at close as the category says (`InvoiceOn`), through `Invoicer` | §3, §4.1 | `charge`, `work` |
+| Auto-close after resolve (`WRK.RUL.02`): the hourly task `ticketing:auto_close` confirms, as the system, a resolved ticket whose requester did nothing for 3 days (`WlTicketing::auto_close_days`) | §7 | `auto_close` |
 
 The module owns `src/texts.rs`, the English texts (`wl_ticketing.*`). The app changes or
 translates them in `resources/lang/{locale}.json`.

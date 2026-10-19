@@ -2,6 +2,7 @@
 #![warn(missing_docs)]
 
 pub mod assign;
+pub mod auto_close;
 pub mod categories;
 pub mod category_pages;
 pub mod charge;
@@ -91,12 +92,26 @@ pub mod permissions {
 #[non_exhaustive]
 pub struct WlTicketing {
     reasons: ReassignReasons,
+    auto_close_days: Option<i64>,
 }
 
 impl WlTicketing {
     /// The module with the §7 defaults.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Sets the days after `resolve` before the system confirms a ticket
+    /// whose requester did nothing (`WRK.RUL.02`, §7: 3 unless set). At
+    /// least 1.
+    ///
+    /// # Panics
+    ///
+    /// For fewer than one day: a programming error.
+    pub fn auto_close_days(mut self, days: i64) -> Self {
+        assert!(days >= 1, "auto-close needs at least one day");
+        self.auto_close_days = Some(days);
+        self
     }
 
     /// Adds the reassignment reason `code` (a vertical's own, besides the
@@ -200,6 +215,12 @@ impl Module for WlTicketing {
         wl_kernel::tickets::provide_task_creator(app, Tickets);
         // The reassignment reasons: the defaults and the vertical's own.
         app.provide(self.reasons.clone());
+        // `WRK.RUL.02`: the system confirms a resolved ticket whose
+        // requester did nothing for N days.
+        app.provide(auto_close::AutoCloseDays(
+            self.auto_close_days.unwrap_or(auto_close::DEFAULT_DAYS),
+        ));
+        auto_close::schedule(app);
         // The seeded defaults keep the client's changes.
         app.command(
             "ticketing:install",
