@@ -134,7 +134,6 @@ pub fn invoice_allowed(
 }
 
 /// What asking a payout did.
-#[derive(Debug)]
 pub enum PayOutOutcome {
     /// The run: done, or deferred as an approval request.
     Ran(Outcome<OwnerStatement>),

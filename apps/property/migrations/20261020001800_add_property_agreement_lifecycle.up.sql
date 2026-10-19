@@ -9,8 +9,6 @@ ALTER TABLE "property_management_agreements" ADD COLUMN notice_by INTEGER;
 ALTER TABLE "property_management_agreements" ADD COLUMN handover_to_party_id INTEGER;
 ALTER TABLE "property_management_agreements" ADD COLUMN ended_on TEXT;
 
-ALTER TABLE "property_leases" ADD COLUMN handed_over_on TEXT;
-
 CREATE TABLE "property_handover_items" (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     agreement_id INTEGER NOT NULL REFERENCES "property_management_agreements" (id),
