@@ -223,10 +223,22 @@ pub(crate) fn refund_problem(deposit: &Deposit, input: &RefundDepositInput) -> O
     if deposit.held_amount <= 0 {
         return Some("The deposit holds nothing to refund.".to_owned());
     }
+    if refundable_after_deductions(deposit, input) <= 0 {
+        return Some(
+            "The deductions take the whole deposit: nothing is left to refund.".to_owned(),
+        );
+    }
     if deposit.refund_id.is_some() {
         return Some("The deposit already has a refund.".to_owned());
     }
     None
+}
+
+/// What the refund of `deposit` pays: the held amount less what the latest
+/// published deductions take (`refunded`: "balance paid back, possibly after
+/// deductions").
+pub(crate) fn refundable_after_deductions(deposit: &Deposit, input: &RefundDepositInput) -> i64 {
+    deposit.held_amount - input.gate.as_ref().map_or(0, |gate| gate.deductions)
 }
 
 /// The guard and the effect `refund` and `refund_approved` share.
@@ -240,14 +252,16 @@ fn refund_rules(transition: Transition<Deposit>) -> Transition<Deposit> {
         })
         .effect(|deposit: &Deposit, ctx, tx| {
             let deposit = deposit.clone();
-            let method = refund_input(ctx).method;
+            let input = refund_input(ctx);
+            let method = input.method;
+            let amount = refundable_after_deductions(&deposit, &input);
             let by = ctx.actor().map(|user| user.id);
             Box::pin(async move {
                 let method = method.ok_or_else(|| {
                     Error::from(renox::anyhow::anyhow!("a deposit refund without a method"))
                 })?;
                 // Requested like any refund: it waits for an approval.
-                let refund = request_for_deposit_in(&mut *tx, &deposit, method, by).await?;
+                let refund = request_for_deposit_in(&mut *tx, &deposit, method, amount, by).await?;
                 // Not the status column, so outside the machine's guard.
                 Deposit::query()
                     .where_(Deposit::ID.eq(deposit.id))

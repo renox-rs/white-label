@@ -221,6 +221,12 @@ pub struct DeductionGate {
     pub open_disputes: i64,
     /// Whether a legal case on the source agreement holds the flag.
     pub legal_case: bool,
+    /// What the latest published deductions take from the deposit, in fils
+    /// (their lines' total); 0 for a forfeiture, whose refund is none anyway,
+    /// and before anything is published. The refund pays the deposit less
+    /// this.
+    #[serde(default)]
+    pub deductions: i64,
 }
 
 /// Why `refund` (or `forfeit`) must wait for the deductions, if it must.
@@ -283,6 +289,10 @@ pub async fn gate_of(state: &AppState, deposit: &Deposit) -> Result<DeductionGat
             .await?
             .len() as i64,
         legal_case: deposit.dispute_legal_case,
+        deductions: latest
+            .as_ref()
+            .filter(|d| d.kind != DeductionKind::Forfeiture)
+            .map_or(0, |d| d.total),
     })
 }
 
@@ -967,6 +977,7 @@ mod tests {
             window_ends_on: Some(day(15)),
             open_disputes: 0,
             legal_case: false,
+            deductions: 0,
         }
     }
 

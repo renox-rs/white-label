@@ -155,6 +155,37 @@ async fn a_dispute_blocks_the_refund_and_a_revision_restarts_the_window() {
     assert_eq!(settled[0].deductions, 110_000);
 }
 
+/// The refund pays the balance after the deductions the party was shown: AED
+/// 8,000.00 held and AED 2,800.00 deducted is a refund of AED 5,200.00. Deductions
+/// that take the whole deposit leave nothing to refund.
+#[renox::test]
+async fn the_refund_is_the_deposit_less_the_published_deductions() {
+    let t = boot_disputes().await;
+    let a = t.user_a().await;
+    let deposit = published_on(&t, &a, "2030-03-01").await;
+    t.travel_to("2030-03-16", 8, 0);
+    t.deposit_action(&a, &deposit, "refund", &[("method", "transfer")])
+        .await
+        .assert_ok();
+    let refund = t
+        .deposit(deposit.id)
+        .await
+        .linked_refund(t.db())
+        .await
+        .unwrap()
+        .expect("the refund");
+    assert_eq!(refund.amount, 520_000);
+
+    let whole = t.settling_deposit(&a, QUIET_SANDS, 100_000).await;
+    t.publish_deductions(&a, &whole, "Repainting | 1000.00 | photos-1", "")
+        .await
+        .assert_ok();
+    t.travel_to("2030-03-31", 8, 0);
+    t.deposit_action(&a, &whole, "refund", &[("method", "transfer")])
+        .await
+        .assert_status(422);
+}
+
 /// AC3 and AC6: staff uphold instead (on 03-08, inside the window): the flag
 /// clears, the window still ends 03-15 and `refund` is allowed from 03-16.
 #[renox::test]

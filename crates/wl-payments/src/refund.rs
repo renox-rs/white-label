@@ -458,7 +458,8 @@ async fn insert_requested_in(
     Ok(refund)
 }
 
-/// The refund of the held amount of `deposit` by `method`, requested by
+/// The refund of `amount` fils of the held amount of `deposit` (what is left
+/// after the published deductions) by `method`, requested by
 /// user `by` in `tx`: the effect of the deposit's `refund`. The deposit
 /// transition checked the user's permission, so none is asked here; the
 /// refund still waits for an approval by another user (`FIN.ACL.04`).
@@ -466,6 +467,7 @@ pub(crate) async fn request_for_deposit_in(
     tx: &mut renox::db::Transaction,
     deposit: &Deposit,
     method: PaymentMethod,
+    amount: i64,
     by: Option<i64>,
 ) -> Result<Refund> {
     let resolved = Resolved {
@@ -479,7 +481,7 @@ pub(crate) async fn request_for_deposit_in(
         by,
         &resolved,
         &KernelRefundSource::Deposit(deposit.deposit_id()),
-        deposit.held_amount,
+        amount,
         Some(method),
         None,
         &format!("Refund of deposit {}", deposit.id),
