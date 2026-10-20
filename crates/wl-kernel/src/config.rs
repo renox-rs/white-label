@@ -130,6 +130,25 @@ pub struct CalendarConfig {
     /// not working days.
     #[serde(default)]
     pub holidays: Vec<NaiveDate>,
+    /// The daily normal hours of a working day. Defaults to 8.
+    #[serde(default)]
+    pub normal_hours: Option<u32>,
+    /// The periods with shorter normal hours (Ramadan), `[[calendar.reduced_hours]]`.
+    #[serde(default)]
+    pub reduced_hours: Vec<ReducedHoursConfig>,
+}
+
+/// One `[[calendar.reduced_hours]]` entry: the normal hours are `hours_less`
+/// shorter from `from` to `to` (included).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReducedHoursConfig {
+    /// The first day, `YYYY-MM-DD`.
+    pub from: NaiveDate,
+    /// The last day, `YYYY-MM-DD`.
+    pub to: NaiveDate,
+    /// Hours taken off each day of the period, e.g. 2 for Ramadan.
+    pub hours_less: u32,
 }
 
 /// One `[[legal_entities]]` entry.
@@ -235,7 +254,14 @@ impl ClientConfig {
     /// The business calendar: the kernel's working days and hours with the
     /// `[calendar]` holidays.
     pub fn business_calendar(&self) -> BusinessCalendar {
-        BusinessCalendar::new(self.calendar.holidays.iter().copied())
+        let mut calendar = BusinessCalendar::new(self.calendar.holidays.iter().copied());
+        if let Some(hours) = self.calendar.normal_hours {
+            calendar = calendar.with_normal_hours(hours);
+        }
+        for period in &self.calendar.reduced_hours {
+            calendar = calendar.with_reduced_hours(period.from, period.to, period.hours_less);
+        }
+        calendar
     }
 
     /// A module's own section, e.g. `section("invoicing")` for `[invoicing]`.
@@ -393,6 +419,21 @@ mod tests {
         assert!(!calendar.is_working_day("2026-12-02".parse().unwrap()));
         let none = ClientConfig::parse(MINIMAL).unwrap().business_calendar();
         assert_eq!(none.holidays().count(), 0);
+    }
+
+    #[test]
+    fn normal_hours_and_reduced_periods_are_read() {
+        let text = format!(
+            "{MINIMAL}\n[calendar]\nnormal_hours = 9\n\n[[calendar.reduced_hours]]\nfrom = \"2026-11-09\"\nto = \"2026-11-13\"\nhours_less = 2\n"
+        );
+        let calendar = ClientConfig::parse(&text).unwrap().business_calendar();
+        let day = |text: &str| -> NaiveDate { text.parse().unwrap() };
+        assert_eq!(calendar.normal_minutes_on(day("2026-11-03")), 9 * 60);
+        assert_eq!(calendar.normal_minutes_on(day("2026-11-10")), 7 * 60);
+        let plain = ClientConfig::parse(MINIMAL).unwrap().business_calendar();
+        assert_eq!(plain.normal_minutes_on(day("2026-11-03")), 8 * 60);
+        let unknown = format!("{MINIMAL}\n[[calendar.reduced_hours]]\nfrom = \"2026-11-09\"\nto = \"2026-11-13\"\nhours_less = 2\nname = \"x\"\n");
+        assert!(ClientConfig::parse(&unknown).is_err());
     }
 
     #[test]
