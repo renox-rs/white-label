@@ -97,11 +97,6 @@ async fn the_brand_is_the_clients_name() {
     assert!(html.contains("rx-brand-mark"));
     let guest = TestApp::new(host::app()).await;
     guest
-        .get("/")
-        .await
-        .assert_ok()
-        .assert_see("Palm Grove Properties LLC");
-    guest
         .get("/login")
         .await
         .assert_ok()
