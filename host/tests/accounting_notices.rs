@@ -14,7 +14,7 @@ mod support;
 use accounting::request_lists::{self, REQUEST_LIST_NOTICE, RequestList};
 use accounting::{Engagement, EngagementStatus, Return, ReturnStatus, ReturnType};
 use host::roles::{ADMIN, ENGAGEMENT_MANAGER, PARTNER};
-use renox::chrono::{Days, Duration};
+use renox::chrono::Days;
 use renox::prelude::*;
 use renox::state_machine::StateMachine;
 use renox::testing::TestApp;
@@ -92,11 +92,13 @@ async fn a_document_request_that_gives_up_waits_for_the_proof_before_any_reminde
         .unwrap();
     assert_eq!(tasks.len(), 1);
     assert_eq!(tasks[0].assignee_user_id, Some(manager.id));
+    // Due the next working day, by the client's calendar.
     let due = tasks[0].due_at.expect("a due time");
-    let wait = due - renox::db::now();
-    assert!(
-        wait > Duration::zero() && wait <= Duration::days(4),
-        "{wait}"
+    let calendar = wl_kernel::calendar::calendar(app.state());
+    assert_eq!(
+        calendar.local(due).date_naive(),
+        calendar.next_working_day(wl_kernel::documents::today()),
+        "{due}"
     );
 
     // The engagement shows the request as not delivered.
@@ -271,8 +273,9 @@ async fn a_kpi_pack_notice_that_gives_up_marks_the_contact_and_tasks_the_manager
         .await
         .unwrap();
     assert!(
-        !tasks.is_empty(),
-        "the manager has a task to reach the client"
+        tasks.iter().any(|t| t.title.contains("Omar Haddad")),
+        "a task to reach the contact: {:?}",
+        tasks.iter().map(|t| &t.title).collect::<Vec<_>>()
     );
 }
 
