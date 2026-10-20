@@ -173,6 +173,62 @@ async fn docexp01_an_expired_halal_certificate_on_an_item_blocks_nothing() {
     assert_eq!(t.reload(&halal).await.status, DocumentStatus::Accepted);
 }
 
+/// AC3, through a guarded transition: resolving a fire alarm ticket checks
+/// the vendor's Civil Defence approval; an expired Halal certificate on an
+/// item and on a supplier changes nothing about the answer, while an
+/// expired Civil Defence approval is still refused (and does not name Halal).
+#[renox::test]
+async fn docexp01_an_expired_halal_certificate_does_not_refuse_a_guarded_transition() {
+    let t = boot().await;
+    install(&t, "fnb", None, &VerticalSettings::new()).await;
+    t.install(&[support::civil_defence()]).await;
+    let reviewer = t.reviewer().await;
+    let item = Subject::new(registrations::ITEM_SUBJECT, 12);
+    accepted(&t, &reviewer, item, HALAL, day(-30)).await;
+    accepted(
+        &t,
+        &reviewer,
+        Subject::new("parties.party", 31),
+        HALAL,
+        day(-1),
+    )
+    .await;
+    let approval = t
+        .accepted(
+            &reviewer,
+            support::safefire(),
+            "civil_defence_approval",
+            Some(day(10)),
+        )
+        .await;
+    let guard = wl_kernel::documents::guard(t.state());
+    let today = day(0);
+
+    let allowed = guard
+        .check(t.state(), "ticket.resolve", support::FIRE_TICKET, today)
+        .await
+        .expect("the check runs");
+    assert!(
+        allowed.is_ok(),
+        "the expired Halal certificates block nothing"
+    );
+
+    // The control: once the Civil Defence approval has expired the same
+    // transition is refused, and the refusal is about that approval only.
+    let refused = guard
+        .check(t.state(), "ticket.resolve", support::FIRE_TICKET, day(11))
+        .await
+        .expect("the check runs")
+        .expect_err("an expired Civil Defence approval refuses");
+    assert!(
+        refused.message().contains("Civil Defence approval"),
+        "{}",
+        refused.message()
+    );
+    assert!(!refused.message().to_lowercase().contains("halal"));
+    assert_eq!(t.reload(&approval).await.status, DocumentStatus::Accepted);
+}
+
 /// AC4: a 06 client whose vertical seeds the storekeeper as the Halal
 /// certificate's responsible role: a certificate on supplier "Fresh Meat
 /// Trading" covering "Chicken breast" reminds the storekeeper 90, 30 and 7
@@ -254,8 +310,11 @@ async fn docexp01_correcting_the_expiry_date_reschedules_reminders_and_is_audite
     t.app
         .htmx()
         .post(
-            &format!("/test/documents/{}/update", mark.id),
-            &[("expires_on", "2027-09-30")],
+            &format!("/documents/{}", mark.id),
+            &[
+                ("title", mark.title.as_str()),
+                ("expiry_date", "2027-09-30"),
+            ],
         )
         .await
         .assert_ok();
