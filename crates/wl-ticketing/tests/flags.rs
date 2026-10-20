@@ -177,6 +177,33 @@ async fn tkt03_a_missed_fire_safety_visit_tells_both_and_raises_the_flag() {
     assert_eq!(w.told(&w.coordinator), 1);
 }
 
+/// Edge case: rescheduling the appointment does not postpone the check: the
+/// visit is judged by its planned due date (1 November), not by the new visit
+/// time (10 November).
+#[renox::test]
+async fn tkt03_rescheduling_the_visit_does_not_postpone_the_missed_check() {
+    let w = world().await;
+    let visit = w.visit("fire_safety", alarm(), day(1)).await;
+    let tech = w.technician.id.to_string();
+    w.t.assign(
+        &w.coordinator,
+        &visit,
+        "2026-10-30 09:00",
+        &[("user", tech.as_str()), ("visit", "2026-11-10T10:00:00")],
+    )
+    .await
+    .assert_ok();
+    let moved = w.t.reload(&visit).await;
+    assert_eq!(moved.visit_at, Some(dubai("2026-11-10", 10, 0)));
+    assert_eq!(moved.planned_due_date, Some(day(1)), "the plan date stays");
+
+    let report = visit_check::run(w.t.state(), day(4)).await.unwrap();
+    assert_eq!((report.missed, report.flags, report.notices), (1, 1, 2));
+    assert_eq!(w.told(&w.coordinator), 1);
+    assert_eq!(w.told(&w.manager), 1);
+    assert_eq!(ComplianceFlag::open(w.t.db()).await.unwrap().len(), 1);
+}
+
 /// AC2: a planned cleaning visit missed the same way only tells the
 /// coordinator, and no flag is raised.
 #[renox::test]
