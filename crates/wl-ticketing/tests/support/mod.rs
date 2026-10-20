@@ -257,6 +257,16 @@ impl Invoicer for Invoices {
     ) -> InvoiceFuture<'a, ()> {
         Box::pin(async { Ok(()) })
     }
+
+    fn issue<'a>(
+        &'a self,
+        _state: &'a AppState,
+        id: InvoiceId,
+        _by: Option<&'a AuthUser>,
+    ) -> InvoiceFuture<'a, ()> {
+        Invoices::issue(self, id.0);
+        Box::pin(async { Ok(()) })
+    }
 }
 
 /// Everything of one type `E` emitted so far.

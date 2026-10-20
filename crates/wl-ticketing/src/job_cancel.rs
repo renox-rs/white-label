@@ -7,10 +7,18 @@
 //!   coordinator marks the job chargeable with a reason and charge lines
 //!   ([`cancel_job`]); the lines are kept, the ticket becomes chargeable and
 //!   one draft invoice is made through the `Invoicer` as for `confirm`
-//!   ([`crate::charge::ensure_draft`]). The draft is issued at once by
-//!   wl-invoicing's setting for the ticket source (automatic issue), there is
-//!   no confirmation step for a cancelled job. The vendor's bill for work
-//!   already done references the cancelled ticket and goes to the owner.
+//!   ([`crate::charge::ensure_draft`]). The draft is issued at once through
+//!   `Invoicer::issue` as the system, which wl-invoicing allows for the
+//!   sources it is set to issue automatically (`auto_issue_source`, set for
+//!   `ticketing.ticket` by the Property client); there is no confirmation
+//!   step for a cancelled job. A client that does not set it keeps the draft
+//!   for a user to issue.
+//! - **Notice.** A user's `cancel` tells the requester and the assignee
+//!   ([`CANCELLED_NOTICE`]).
+//! - **Vendor bill.** The vendor's bill for work already done is a supplier
+//!   bill coded to the ticket; its allocation to the owner's statement needs
+//!   the Property statement to read supplier bills, which it does not yet
+//!   (expenses are entered by hand): not built here.
 //! - **A compliance-critical planned visit** (a planned visit of a category
 //!   marked compliance-critical) is not skipped: a user's `cancel` is refused
 //!   ([`ensure_not_skipped`]); only the system's `auto_cancel` of `WRK.RUL.18`
@@ -22,7 +30,10 @@
 
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
-use renox::state_machine::TransitionError;
+use renox::serde_json::json;
+use renox::state_machine::{TransitionError, Transitioned};
+use wl_kernel::invoicing::{InvoiceId, invoicer};
+use wl_kernel::notify::{self, NotificationTypeDef, NotifyChannel, NotifyRequest};
 
 use crate::charge::{self, ChargeInput, ChargeLine};
 use crate::comments::{Comment, CommentVisibility};
@@ -31,6 +42,56 @@ use crate::permissions;
 use crate::texts::english;
 use crate::ticket::Ticket;
 use crate::work;
+
+/// To the requester and the assignee (the tenant and the vendor in 01): the
+/// ticket was cancelled, with the reason.
+pub const CANCELLED_NOTICE: &str = "ticketing.cancelled";
+
+/// The notification type of [`CANCELLED_NOTICE`], with its English text.
+pub fn notification_type() -> NotificationTypeDef {
+    let subject = english("wl_ticketing.notice.cancelled.subject").to_owned();
+    let body = english("wl_ticketing.notice.cancelled.body").to_owned();
+    NotificationTypeDef::new(CANCELLED_NOTICE, "ticketing")
+        .group("tickets")
+        .template(NotifyChannel::Email, "en", Some(&subject), &body)
+}
+
+/// Registers the notice type and the listener that, after a user's `cancel`
+/// commits, tells the requester and the assignee. The system's cancel of
+/// `WRK.RUL.18` has its own notice ([`crate::contract_end`]).
+pub(crate) fn register(app: &mut Registry) {
+    notify::register_type(notification_type());
+    app.listen(|event: Transitioned<Ticket>, state: AppState| async move {
+        if event.transition != work::CANCEL {
+            return Ok(());
+        }
+        let ticket = Ticket::find_or_404(&state.db, event.key).await?;
+        let mut to = Vec::new();
+        if let Some(requester) = ticket.requester() {
+            to.push(requester.recipient());
+        }
+        if let Some(assignee) = ticket.assignee() {
+            let recipient = assignee.recipient();
+            if !to.contains(&recipient) {
+                to.push(recipient);
+            }
+        }
+        if to.is_empty() {
+            return Ok(());
+        }
+        let mut request =
+            NotifyRequest::new(CANCELLED_NOTICE, ticket.ticket_id().subject()).data(json!({
+                "number": ticket.number,
+                "title": ticket.title,
+                "reason": ticket.cancel_reason.clone().unwrap_or_default(),
+            }));
+        for recipient in to {
+            request = request.to(recipient);
+        }
+        notify::notifier(&state).notify(&state, request).await?;
+        Ok(())
+    });
+}
 
 /// A 422 with the English text of `key`.
 fn refused(key: &str) -> Error {
@@ -270,5 +331,13 @@ pub async fn cancel_job(
         english("wl_ticketing.visit.charged").replace(":reason", wanted.reason.trim()),
     )
     .await?;
-    Ok(charge::ensure_draft(state, ticket.id).await?)
+    let draft = charge::ensure_draft(state, ticket.id).await?;
+    if let Some(id) = draft {
+        // "Issued at once": the system issues the draft when the invoicing
+        // module is set to issue the ticket source automatically. Otherwise
+        // (or when a guard of `issue` refuses, e.g. no billing identity) the
+        // draft stays for a user to review and issue.
+        let _ = invoicer(state).issue(state, InvoiceId(id), None).await;
+    }
+    Ok(draft)
 }

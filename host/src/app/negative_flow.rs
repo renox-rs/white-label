@@ -62,7 +62,10 @@ pub fn invoicing_for(client_app: &str, entities: &[String]) -> WlInvoicing {
                 .cash_week_start(Weekday::Mon)
                 .cash_days_late(true)
                 .cash_disputed_counted(false)
-                .cash_alert_roles(&[ADMIN, ACCOUNTANT]);
+                .cash_alert_roles(&[ADMIN, ACCOUNTANT])
+                // A cancelled job charged to the tenant is issued at once:
+                // there is no confirmation step (BL-PRP-24).
+                .auto_issue_source("ticketing.ticket");
             for code in entities {
                 module = module.cash_threshold(code, CASH_THRESHOLD);
             }
@@ -476,6 +479,7 @@ mod tests {
         assert_eq!(config.cash_forecast_weeks, 13);
         assert_eq!(config.cash_week_start, Weekday::Mon);
         assert_eq!(config.cash_alert_time, "06:00");
+        assert_eq!(config.auto_issue_sources, ["ticketing.ticket"]);
 
         let payments = payments_for("property");
         let config = payments.config();

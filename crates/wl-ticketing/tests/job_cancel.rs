@@ -7,9 +7,10 @@ mod support;
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use wl_kernel::Subject;
+use wl_kernel::notify::NotifyRecipient;
 use wl_kernel::tickets::OpenTicket;
 use wl_ticketing::charge;
-use wl_ticketing::job_cancel;
+use wl_ticketing::job_cancel::{self, CANCELLED_NOTICE};
 use wl_ticketing::{Category, Comment, Priority, Ticket, TicketStatus, Tickets};
 
 use support::{Booted, COOLAIR, boot, dubai};
@@ -220,6 +221,35 @@ async fn bl_prp_24_cancel_after_work_started_charges_nothing_by_default() {
     assert_eq!(cancelled.cancel_reason.as_deref(), Some("tenant fixed it"));
     assert!(t.invoices.all().is_empty());
     assert!(!cancelled.chargeable);
+    // The tenant (requester) and the vendor (assignee) are told, once each,
+    // with the reason.
+    let notice = t.notices.of_type(CANCELLED_NOTICE);
+    assert_eq!(notice.len(), 1);
+    let tenant = cancelled.requester_user_id.expect("the requester");
+    assert_eq!(
+        t.notices.recipients(CANCELLED_NOTICE),
+        [
+            NotifyRecipient::User { id: tenant },
+            NotifyRecipient::User { id: technician.id }
+        ]
+    );
+    assert_eq!(notice[0].data["reason"], "tenant fixed it");
+    assert_eq!(notice[0].data["number"], cancelled.number);
+}
+
+/// The system's cancel (the contract ended) sends no user cancel notice: the
+/// contract end has its own.
+#[renox::test]
+async fn bl_prp_24_a_planned_visit_cancelled_by_the_system_sends_no_user_cancel_notice() {
+    let t = boot().await;
+    categories(&t).await;
+    let coordinator = t.coordinator().await;
+    let technician = t.technician("Tim").await;
+    let visit = visit(&t, &coordinator, &technician).await;
+    wl_ticketing::work::auto_cancel(t.state(), &visit, "contract_ended")
+        .await
+        .unwrap();
+    assert!(t.notices.of_type(CANCELLED_NOTICE).is_empty());
 }
 
 /// With "charge" ticked, a reason and one charge line of AED 200, a draft
@@ -274,5 +304,8 @@ async fn bl_prp_24_cancel_with_a_charge_invoices_the_work_done() {
     assert_eq!(drafts[0].draft.party, COOLAIR);
     assert_eq!(drafts[0].draft.lines[0].unit_price, 20_000);
     assert_eq!(cancelled.invoice_id, Some(drafts[0].id));
+    // Issued at once: the cancel asks the invoicer to issue the draft as the
+    // system (the real issue is in host/tests/job_cancel_real.rs).
+    assert!(drafts[0].issued);
     let _ = job_cancel::is_compliance_visit;
 }

@@ -40,6 +40,14 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_ticketing.notice.visit_rescheduled.body",
         "{{ title }}: the visit is now {{ visit }}.",
     ),
+    (
+        "wl_ticketing.notice.cancelled.subject",
+        "Ticket {{ number }} was cancelled",
+    ),
+    (
+        "wl_ticketing.notice.cancelled.body",
+        "{{ title }} was cancelled. Reason: {{ reason }}.",
+    ),
     ("wl_ticketing.notice.not_scheduled", "not scheduled"),
     ("wl_ticketing.empty", "No tickets yet"),
     (

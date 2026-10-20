@@ -165,6 +165,7 @@ pub(crate) fn register(app: &mut Registry) {
     for def in notification_types() {
         notify::register_type(def);
     }
+    crate::job_cancel::register(app);
     app.listen(|event: Transitioned<Ticket>, state: AppState| async move {
         if event.transition != ASSIGN && event.transition != AUTO_ASSIGN {
             return Ok(());
