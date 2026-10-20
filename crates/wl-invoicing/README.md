@@ -20,6 +20,14 @@ What is here so far:
 | Part | Spec | Module |
 |---|---|---|
 | Permissions (`invoices.*`, `receivables.view`) | §6 | `permissions` |
+| The Invoice with its lines and per-line UAE VAT (half-up to fils, AED VAT for a foreign currency), its machine, `issue` with the gapless number per legal entity, and the kernel's `Invoicer` | §3, §4, §6, §10 | `invoice`, `line`, `vat`, `machine`, `issue`, `invoicer` |
+| Allocations and balances: `allocate` (payment or credit note), `unallocate` (and the `PaymentReversed` consumer with its follow-up tasks), `mark_overdue` (`FIN.RUL.02`) | §4 | `allocate`, `allocation`, `unallocate`, `reversal`, `task`, `overdue` |
+| Credit notes: crediting in full, partial credit notes drafted and issued, refunds of a credit note's balance through wl-payments, `reopen` after a failed refund | §3, §4, §5.12 | `credit`, `credit_note`, `credit_notes`, `refund`, `restore` |
+| Disputes (`dispute`, `resolve_dispute`, escalation `FIN.RUL.15`) and the invoice owner | §5.10 | `dispute`, `dispute_resolve`, `escalation`, `owner` |
+| Bad debt: `write_off` (`FIN.ACL.15`), `recover`, bad-debt VAT relief (`FIN.RUL.14`) | §4, §5.9 | `write_off`, `recover`, `bad_debt_relief` |
+| VAT: tax periods, the VAT summary per entity and period with its lifecycle, VAT adjustments | §3, §4, §7 | `vat_period`, `vat_summary`, `vat_adjustment` |
+| Supplier bills with per-line VAT, their machine, `submit` with the duplicate hold (`FIN.ACL.03`), `pay` and `unallocate`, the kernel's `SupplierBills`; supplier debit notes | §3, §4, §6 | `supplier_bill`, `bill_line`, `bill_machine`, `bill_submit`, `duplicates`, `bill_pay`, `bill_unallocate`, `payables`, `supplier_debit_note`, `debit_notes` |
+| Receivables ageing by days past due, with a *Disputed* column | §5.10 | `ageing` |
 | Reminders (`FIN.RUL.01`) skip an invoice whose source a vertical holds (`wl_kernel::chase_holds`, a legal case on a lease) and, when the hold ended, do not send the steps reached meanwhile | §5.3 | `reminders` |
 | Settings: payment terms, reminder steps, write-off reasons and notice, approvers, fiscal year start, budget reminder | §7 | `config` |
 | Company budget: categories and their mapping, versions with lines per category and month, submit, approval (`PLT.APR.01`), supersede, discard, CSV import, `FIN.RUL.26` | §3, §4, §5.15 | `budget`, `budget_category`, `budget_lines`, `budget_machine`, `budget_reminder` |
