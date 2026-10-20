@@ -22,11 +22,12 @@ impl PortalSection for Engagements {
         party: PartyId,
     ) -> SectionFuture<'a, Vec<SectionRow>> {
         Box::pin(async move {
-            Ok(accounting::portal::rows(state, party)
-                .await?
-                .iter()
-                .map(|row| SectionRow::new(&row.label, &row.status))
-                .collect())
+            let rows = accounting::portal::rows(state, party).await?;
+            Ok::<Vec<SectionRow>, Error>(
+                rows.iter()
+                    .map(|row| SectionRow::new(&row.label, &row.status))
+                    .collect(),
+            )
         })
     }
 }

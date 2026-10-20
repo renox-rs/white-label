@@ -68,7 +68,7 @@ impl BlockSubjects for ActivateSubjects {
                 .into_iter()
                 .filter(|(_, role)| entry.applies_to(Some(role.as_str())))
                 .map(|(party, _)| party.subject())
-                .collect())
+                .collect::<Vec<Subject>>())
         })
     }
 

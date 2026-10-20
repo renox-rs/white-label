@@ -232,7 +232,8 @@ pub(crate) async fn run(
             .await
             .map_err(TransitionError::into_error)?;
         tx.commit().await?;
-        outcome.emit(state).await
+        outcome.emit(state).await?;
+        Ok::<(), Error>(())
     })
     .await
 }

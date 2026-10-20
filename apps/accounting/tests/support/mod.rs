@@ -224,11 +224,12 @@ impl wl_portal::PortalSection for EngagementsSection {
         party: PartyId,
     ) -> wl_portal::SectionFuture<'a, Vec<wl_portal::SectionRow>> {
         Box::pin(async move {
-            Ok(accounting::portal::rows(state, party)
-                .await?
-                .iter()
-                .map(|row| wl_portal::SectionRow::new(&row.label, &row.status))
-                .collect())
+            let rows = accounting::portal::rows(state, party).await?;
+            Ok::<Vec<wl_portal::SectionRow>, Error>(
+                rows.iter()
+                    .map(|row| wl_portal::SectionRow::new(&row.label, &row.status))
+                    .collect(),
+            )
         })
     }
 }
