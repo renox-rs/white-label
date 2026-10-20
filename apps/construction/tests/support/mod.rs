@@ -29,9 +29,10 @@ use wl_kernel::block_guard::{
     provide_block_guard,
 };
 use wl_kernel::invoicing::{
-    BillRequest, CreditLine, CreditNoteId, DisputeRequest, InvoiceDraft, InvoiceFuture, InvoiceId,
-    InvoiceStatus, InvoiceSummary, Invoicer, SupplierBillFuture, SupplierBillId, SupplierBillLine,
-    SupplierBillLineId, SupplierBills, provide_invoicer, provide_supplier_bills,
+    BillRequest, CostPoster, CreditLine, CreditNoteId, DisputeRequest, InvoiceDraft, InvoiceFuture,
+    InvoiceId, InvoiceStatus, InvoiceSummary, Invoicer, PostCost, SupplierBillFuture,
+    SupplierBillId, SupplierBillLine, SupplierBillLineId, SupplierBills, provide_cost_poster,
+    provide_invoicer, provide_supplier_bills,
 };
 use wl_kernel::notify::{
     MessageId, Notifier, NotifyFuture, NotifyRecipient, NotifyRequest, provide_notifier,
@@ -549,6 +550,28 @@ impl SupplierBills for Bills {
     }
 }
 
+/// The cost posted on cost objects, as the cost poster is asked for it.
+#[derive(Clone, Default)]
+pub struct Costs(Arc<Mutex<Vec<PostCost>>>);
+
+impl Costs {
+    /// The cost posted, oldest first.
+    pub fn posted(&self) -> Vec<PostCost> {
+        self.0.lock().unwrap().clone()
+    }
+}
+
+impl CostPoster for Costs {
+    fn post<'a>(&'a self, _state: &'a AppState, request: PostCost) -> SupplierBillFuture<'a, ()> {
+        let mut posted = self.0.lock().unwrap();
+        // A key that was used already changes nothing.
+        if !posted.iter().any(|done| done.key == request.key) {
+            posted.push(request);
+        }
+        Box::pin(async { Ok(()) })
+    }
+}
+
 /// The parties wl-parties blocks, as the block guard answers for them: a
 /// blocked party is refused every action but a receipt, and an exception is
 /// approved by the compliance role.
@@ -597,6 +620,7 @@ struct Fakes {
     notices: Recording,
     invoices: Invoices,
     bills: Bills,
+    costs: Costs,
     terminated: Arc<Mutex<Vec<ProjectTerminated>>>,
 }
 
@@ -611,6 +635,7 @@ impl Module for Fakes {
         provide_notifier(app, self.notices.clone());
         provide_invoicer(app, self.invoices.clone());
         provide_supplier_bills(app, self.bills.clone());
+        provide_cost_poster(app, self.costs.clone());
         provide_block_guard(app, self.blocked.clone());
         record(app, &self.terminated);
     }
@@ -630,6 +655,8 @@ pub struct Booted {
     pub invoices: Invoices,
     /// The supplier bills asked for.
     pub bills: Bills,
+    /// The cost posted on cost objects.
+    pub costs: Costs,
     /// The parties wl-parties blocks.
     pub blocked: Blocked,
     /// `ProjectTerminated`.
@@ -937,6 +964,7 @@ pub async fn boot() -> Booted {
     let notices = Recording::default();
     let invoices = Invoices::default();
     let bills = Bills::default();
+    let costs = Costs::default();
     let blocked = Blocked::default();
     let terminated = Arc::new(Mutex::new(Vec::new()));
     let fakes = Fakes {
@@ -946,6 +974,7 @@ pub async fn boot() -> Booted {
         notices: notices.clone(),
         invoices: invoices.clone(),
         bills: bills.clone(),
+        costs: costs.clone(),
         terminated: terminated.clone(),
     };
     let app = App::new()
@@ -1026,6 +1055,7 @@ pub async fn boot() -> Booted {
         notices,
         invoices,
         bills,
+        costs,
         blocked,
         terminated: Recorded(terminated),
         clock_days: std::sync::atomic::AtomicI64::new(0),
