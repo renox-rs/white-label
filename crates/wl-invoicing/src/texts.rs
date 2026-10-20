@@ -1229,6 +1229,34 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_invoicing.debit_note.errors.over_bill_line",
         "A line is above what is left on its bill line.",
     ),
+    (
+        "wl_invoicing.debit_note.errors.period_locked",
+        "Today is in a locked VAT period of the receiving entity. Ask the accountant to date the debit note in an open period.",
+    ),
+    (
+        "wl_invoicing.debit_note.errors.creator",
+        "FIN.ACL.17: the creator of a manual debit note cannot issue it. Another person must.",
+    ),
+    (
+        "wl_invoicing.debit_note.errors.not_found",
+        "The supplier debit note was not found.",
+    ),
+    (
+        "wl_invoicing.debit_note_issued.subject",
+        "Debit note :number",
+    ),
+    (
+        "wl_invoicing.debit_note_issued.body",
+        "We have issued debit note :number for :amount against your bill :bill. Please send us your tax credit note for it.",
+    ),
+    (
+        "wl_invoicing.debit_note_drafted.subject",
+        "Debit note drafted for a return",
+    ),
+    (
+        "wl_invoicing.debit_note_drafted.body",
+        "A debit note of :amount was drafted for the goods returned to :supplier (:state). Check it and issue it.",
+    ),
     ("wl_invoicing.budget.title", "Company budgets"),
     ("wl_invoicing.budget.empty", "No company budgets yet"),
     (

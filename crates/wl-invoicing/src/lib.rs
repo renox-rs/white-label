@@ -116,8 +116,8 @@ pub use budget_contract::Budgets;
 pub use budget_reminder::BudgetReminder;
 pub use budget_variance::BudgetWarning;
 pub use config::{
-    DuplicateKey, EInvoiceEntity, InvoicingConfig, ReasonProblem, ReliefMonths, SettingError,
-    WriteOffReason,
+    DuplicateKey, EInvoiceEntity, InputVatTiming, InvoicingConfig, ReasonProblem, ReliefMonths,
+    SettingError, WriteOffReason,
 };
 pub use credit_note::{CreditNote, CreditNoteKind};
 pub use credit_note_line::CreditNoteLine;
@@ -695,6 +695,27 @@ impl WlInvoicing {
     /// (default `accountant`).
     pub fn drawings_notify_role(mut self, role: &str) -> Self {
         self.config.drawings_notify_role = role.to_owned();
+        self
+    }
+
+    /// When a supplier debit note reduces input VAT: on its issue (default)
+    /// or on the supplier's tax credit note (§7).
+    pub fn debit_note_vat_timing(mut self, timing: InputVatTiming) -> Self {
+        self.config.debit_note_vat_timing = timing;
+        self
+    }
+
+    /// Whether the supplier's tax credit note must be recorded before a
+    /// debit note settles (default on, §7).
+    pub fn tax_credit_note_required(mut self, required: bool) -> Self {
+        self.config.tax_credit_note_required = required;
+        self
+    }
+
+    /// The role told when a debit note is drafted from a return (default
+    /// `accountant`).
+    pub fn debit_note_notify_role(mut self, role: &str) -> Self {
+        self.config.debit_note_notify_role = role.to_owned();
         self
     }
 

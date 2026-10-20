@@ -12,14 +12,22 @@
 use std::collections::HashMap;
 
 use renox::prelude::*;
+use renox::serde_json::json;
+use renox::state_machine::TransitionError;
+use wl_kernel::LegalEntity;
+use wl_kernel::documents::today;
 use wl_kernel::invoicing::SupplierDebitNoteStatus;
 
 use crate::bill_line::BillLine;
+use crate::bill_pay::pay_in;
+use crate::credit_notes::{By, run_of};
 use crate::debit_note_line::DebitNoteLine;
+use crate::debit_note_machine::{ISSUE, ISSUE_SYSTEM, IssueInput};
 use crate::supplier_bill::{SupplierBill, SupplierBillStatus};
 use crate::supplier_debit_note::{DebitNoteOrigin, DebitNoteReason, SupplierDebitNote};
 use crate::texts::english;
 use crate::vat::{self, VatTotals};
+use crate::vat_summary::{VatSummary, VatSummaryStatus};
 
 /// The bill states a debit note can be raised against.
 pub const DEBITABLE: [SupplierBillStatus; 3] = [
@@ -311,6 +319,85 @@ async fn delete_lines(tx: &mut renox::db::Transaction, id: i64) -> Result<()> {
         line.delete(&mut *tx).await?;
     }
     Ok(())
+}
+
+/// What the guards of issuing draft `note` need, from the stored bill, the
+/// lines, the debit notes already issued and the VAT summary of today.
+async fn gather(state: &AppState, note: &SupplierDebitNote, by: Option<i64>) -> Result<IssueInput> {
+    let db = &state.db;
+    let lines = lines_of(db, note.id).await?;
+    let (bill_debitable, caps) = match note.bill_id {
+        Some(bill_id) => {
+            let bill = SupplierBill::find_or_404(db, bill_id).await?;
+            let bill_lines = crate::supplier_bill::lines_of(db, bill.id).await?;
+            let caps = caps_problem(db, bill.id, &bill_lines, &lines, Some(note.id)).await?;
+            (DEBITABLE.contains(&bill.status), caps)
+        }
+        None => (false, None),
+    };
+    let period_locked = match LegalEntity::find(db, note.legal_entity_id).await? {
+        Some(entity) => VatSummary::containing(db, &crate::config_of(state), &entity, today())
+            .await?
+            .is_some_and(|summary| summary.status == VatSummaryStatus::Locked),
+        None => false,
+    };
+    Ok(IssueInput {
+        bill_debitable,
+        lines: lines.len(),
+        caps_problem: caps,
+        period_locked,
+        by,
+    })
+}
+
+/// Issues draft debit note `id` as `by`, in one transaction: `issue` (the
+/// number, the issue date, the split between the bill and the supplier's
+/// debit balance), then the bill's `pay` for the part the bill takes, with
+/// the debit note as the source. The events, the cost reversal and the
+/// supplier notice follow the commit ([`crate::debit_note_events`]).
+///
+/// # Errors
+///
+/// `Forbidden` without `supplier_bills.approve`; `NotFrom` when it is not a
+/// draft; `Guard` (422) for a note that waits for its bill, a bill that is
+/// not `approved`, `partially_paid` or `paid`, a line above what is left on
+/// its bill line, a locked VAT period, or the creator of a manual note.
+/// Nothing is written then and no number is used.
+pub async fn issue(
+    state: &AppState,
+    by: By<'_>,
+    id: i64,
+) -> std::result::Result<SupplierDebitNote, TransitionError> {
+    let note = SupplierDebitNote::find_or_404(&state.db, id).await?;
+    let input = gather(state, &note, by.id()).await?;
+    let mut tx = state.db.begin().await?;
+    let issued = run_of(&note, &by, ISSUE, ISSUE_SYSTEM, json!({}))
+        .input(&input)
+        .run_in(&mut tx)
+        .await?;
+    let stored = SupplierDebitNote::find_or_404(&mut tx, id).await?;
+    let mut paid = None;
+    if stored.applied_to_bill > 0
+        && let Some(bill_id) = stored.bill_id
+    {
+        let bill = SupplierBill::find_or_404(&mut tx, bill_id).await?;
+        paid = Some(
+            pay_in(
+                &mut tx,
+                &bill,
+                &stored.subject(),
+                stored.applied_to_bill,
+                by.id(),
+            )
+            .await?,
+        );
+    }
+    tx.commit().await?;
+    issued.emit(state).await.map_err(TransitionError::Failed)?;
+    if let Some(outcome) = paid {
+        outcome.emit(state).await.map_err(TransitionError::Failed)?;
+    }
+    Ok(SupplierDebitNote::find_or_404(&state.db, id).await?)
 }
 
 /// The lines of debit note `debit_note_id`, in order.

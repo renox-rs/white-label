@@ -1,0 +1,12 @@
+DROP TABLE IF EXISTS "wl_invoicing_supplier_debit_note_movements";
+ALTER TABLE "wl_invoicing_supplier_debit_notes" DROP COLUMN cancel_reason;
+ALTER TABLE "wl_invoicing_supplier_debit_notes" DROP COLUMN cancelled_by;
+ALTER TABLE "wl_invoicing_supplier_debit_notes" DROP COLUMN cancelled_at;
+ALTER TABLE "wl_invoicing_supplier_debit_notes" DROP COLUMN settle_difference_reason;
+ALTER TABLE "wl_invoicing_supplier_debit_notes" DROP COLUMN settle_difference;
+ALTER TABLE "wl_invoicing_supplier_debit_notes" DROP COLUMN settled_by;
+ALTER TABLE "wl_invoicing_supplier_debit_notes" DROP COLUMN settled_at;
+ALTER TABLE "wl_invoicing_supplier_debit_notes" DROP COLUMN tax_credit_note_by;
+ALTER TABLE "wl_invoicing_supplier_debit_notes" DROP COLUMN tax_credit_note_document;
+ALTER TABLE "wl_invoicing_supplier_debit_notes" DROP COLUMN tax_credit_note_date;
+ALTER TABLE "wl_invoicing_supplier_debit_notes" DROP COLUMN tax_credit_note_number;

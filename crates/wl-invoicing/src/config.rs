@@ -84,6 +84,17 @@ pub enum DuplicateKey {
     ContractPeriodAmount,
 }
 
+/// When a supplier debit note reduces the input VAT of the VAT summary
+/// (§7 *input VAT timing*, `⚠ open: accountant (A-11)`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum InputVatTiming {
+    /// On the issue date of the debit note (the default).
+    #[default]
+    OnIssue,
+    /// On the date of the supplier's tax credit note.
+    OnTaxCreditNote,
+}
+
 /// The e-invoicing settings of one legal entity (`FIN.INV.01`, §7).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EInvoiceEntity {
@@ -210,6 +221,14 @@ pub struct InvoicingConfig {
     /// drafts the system may issue without a user (`Invoicer::issue` with no
     /// user). Empty by default: drafts are reviewed first.
     pub auto_issue_sources: Vec<String>,
+    /// When a supplier debit note reduces the input VAT of the VAT summary.
+    pub debit_note_vat_timing: InputVatTiming,
+    /// Whether the supplier's tax credit note must be recorded before a
+    /// supplier debit note settles (default on).
+    pub tax_credit_note_required: bool,
+    /// The role told when `FIN.RUL.17` drafts a debit note from a return
+    /// (default `accountant`).
+    pub debit_note_notify_role: String,
 }
 
 impl Default for InvoicingConfig {
@@ -269,6 +288,9 @@ impl Default for InvoicingConfig {
             einvoice_task_hours: 24,
             cash_accounts: Vec::new(),
             auto_issue_sources: Vec::new(),
+            debit_note_vat_timing: InputVatTiming::OnIssue,
+            tax_credit_note_required: true,
+            debit_note_notify_role: "accountant".to_owned(),
         }
     }
 }
@@ -395,6 +417,9 @@ mod tests {
         assert_eq!(config.duplicate_keys, [DuplicateKey::SupplierInvoiceNumber]);
         assert_eq!(config.duplicate_notify_role, "accountant");
         assert!(config.auto_issue_sources.is_empty());
+        assert_eq!(config.debit_note_vat_timing, InputVatTiming::OnIssue);
+        assert!(config.tax_credit_note_required);
+        assert_eq!(config.debit_note_notify_role, "accountant");
         assert_eq!(config.budget_fiscal_start_month, 1);
         assert!(!config.budget_revise_past_months);
         assert_eq!(config.budget_reminder_days, 30);
