@@ -20,8 +20,12 @@
 //! - `invoice` (`invoices.issue`) issues the retention tax invoice at 5% for
 //!   the remaining amount (`CON.ACL.11`); `settle` is run by the system when
 //!   that invoice is paid, credited or written off.
-//! - `deduct`, `keep` and the client's deductions come with
-//!   [`crate::retention_deduction`].
+//! - `deduct` (a `held` part stays `held`), `deduct_due` (a `due` part stays
+//!   `due`) and `keep` (nothing remains: `kept`, terminal) are the spec's one
+//!   `deduct`: a Renox transition has one destination. The system runs them
+//!   when the project manager accepts the client's deduction
+//!   ([`crate::retention_deduction`], which also holds the QS's
+//!   `retentions.manage` and the approval of `CON.ACL.14`).
 
 use renox::auth::permissions::Scope;
 use renox::db::Transaction;
@@ -45,6 +49,12 @@ pub const MAKE_DUE_BOND: &str = "make_due_bond";
 pub const INVOICE: &str = "invoice";
 /// The `settle` transition's name.
 pub const SETTLE: &str = "settle";
+/// `deduct`: the client keeps part of a `held` part, which stays `held`.
+pub const DEDUCT: &str = "deduct";
+/// `deduct_due`: the client keeps part of a `due` part, which stays `due`.
+pub const DEDUCT_DUE: &str = "deduct_due";
+/// `keep`: the client keeps all that remains of a part (`kept`).
+pub const KEEP: &str = "keep";
 
 /// Which release part it is.
 #[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -160,6 +170,67 @@ pub fn release_problem(input: &ReleaseInput) -> Option<String> {
     input.problem.clone()
 }
 
+/// What a `deduct`, `deduct_due` or `keep` run carries: the amount the client
+/// keeps, in fils.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeductInput {
+    /// The amount, in fils.
+    #[serde(default)]
+    pub amount: i64,
+}
+
+/// The input of a `deduct`, `deduct_due` or `keep` run.
+pub(crate) fn deduct_input(ctx: &TransitionCtx) -> DeductInput {
+    ctx.input_as::<DeductInput>().unwrap_or_default()
+}
+
+/// Why `part` cannot lose `input.amount`, if it cannot: the amount is above 0
+/// and not above what remains, and `whole` says whether it is all of it
+/// (`keep`) or only a part (`deduct`).
+pub fn deduct_problem(part: &Retention, input: &DeductInput, whole: bool) -> Option<String> {
+    if input.amount <= 0 {
+        return Some(english("construction.retention.deduction_amount", &[]));
+    }
+    if input.amount > part.amount {
+        return Some(english(
+            "construction.retention.deduction_too_big",
+            &[("remaining", &crate::notices::aed(part.amount))],
+        ));
+    }
+    if whole != (input.amount == part.amount) {
+        return Some(english("construction.bad_input", &[]));
+    }
+    None
+}
+
+/// A system transition that takes `input.amount` off the part.
+fn deducting(
+    transition: Transition<Retention>,
+    from: &[RetentionStatus],
+    to: RetentionStatus,
+    whole: bool,
+) -> Transition<Retention> {
+    transition
+        .system()
+        .from(from.iter().copied())
+        .to(to)
+        .guard("amount", move |part: &Retention, ctx| {
+            let problem = deduct_problem(part, &deduct_input(ctx), whole);
+            Box::pin(async move { problem.map_or(Ok(()), Err) })
+        })
+        .effect(|part: &Retention, ctx, tx| {
+            let id = part.id;
+            let remaining = part.amount - deduct_input(ctx).amount;
+            Box::pin(async move {
+                Retention::query()
+                    .where_(Retention::ID.eq(id))
+                    .update(&mut *tx, &[("amount", &remaining)])
+                    .await?;
+                Ok(())
+            })
+        })
+}
+
 impl StateMachine for Retention {
     type State = RetentionStatus;
     const COLUMN: renox::db::Col<Retention, RetentionStatus> = Retention::STATUS;
@@ -215,6 +286,24 @@ impl StateMachine for Retention {
                     .from([Invoiced])
                     .to(Settled),
             )
+            .transition(deducting(
+                Transition::new(DEDUCT).label("Deduct"),
+                &[Held],
+                Held,
+                false,
+            ))
+            .transition(deducting(
+                Transition::new(DEDUCT_DUE).label("Deduct (due)"),
+                &[Due],
+                Due,
+                false,
+            ))
+            .transition(deducting(
+                Transition::new(KEEP).label("Keep"),
+                &[Held, Due],
+                Kept,
+                true,
+            ))
     }
 }
 
@@ -409,6 +498,40 @@ mod tests {
         assert!(settle.is_system());
         assert_eq!(settle.from_states(), ["invoiced"]);
         assert_eq!(settle.to_state(), Some("settled"));
+    }
+
+    #[test]
+    fn the_client_keeps_part_of_a_part_or_all_of_it() {
+        let machine = Retention::machine();
+        for (name, from, to) in [
+            (DEDUCT, ["held"].as_slice(), "held"),
+            (DEDUCT_DUE, ["due"].as_slice(), "due"),
+            (KEEP, ["held", "due"].as_slice(), "kept"),
+        ] {
+            let transition = machine.find(name).expect(name);
+            assert!(transition.is_system(), "{name}");
+            assert_eq!(transition.from_states(), from, "{name}");
+            assert_eq!(transition.to_state(), Some(to), "{name}");
+            assert_eq!(transition.guard_names(), ["amount"], "{name}");
+        }
+        let kept = machine.states().iter().find(|s| s.name == "kept").unwrap();
+        assert!(kept.terminal);
+    }
+
+    #[test]
+    fn a_deduction_is_above_0_and_within_what_remains() {
+        let part = Retention::new(1, RetentionPart::Final, 5_000_000);
+        let amount = |amount| DeductInput { amount };
+        assert_eq!(deduct_problem(&part, &amount(800_000), false), None);
+        assert_eq!(deduct_problem(&part, &amount(5_000_000), true), None);
+        assert!(deduct_problem(&part, &amount(0), false).is_some());
+        assert!(
+            deduct_problem(&part, &amount(5_000_001), false)
+                .is_some_and(|text| text.contains("AED 50,000.00"))
+        );
+        // All of it is `keep`, a part of it is `deduct`.
+        assert!(deduct_problem(&part, &amount(5_000_000), false).is_some());
+        assert!(deduct_problem(&part, &amount(1), true).is_some());
     }
 
     #[test]

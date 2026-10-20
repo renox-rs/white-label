@@ -18,6 +18,7 @@ pub mod permissions;
 pub mod project;
 pub mod release;
 pub mod retention;
+pub mod retention_deduction;
 pub mod submission;
 mod tasks;
 pub mod termination;
@@ -34,6 +35,7 @@ pub use guarantee::{Guarantee, GuaranteeKind, GuaranteeStatus};
 pub use ipa::{Ipa, IpaKind, IpaStatus};
 pub use project::{Project, ProjectStatus};
 pub use retention::{Retention, RetentionPart, RetentionStatus};
+pub use retention_deduction::RetentionDeduction;
 pub use termination::{TerminateRequest, TerminationReason};
 pub use vat_notice::RetentionNotice;
 
@@ -63,6 +65,7 @@ impl Module for Construction {
             .model::<IpaDeduction>()
             .model::<Retention>()
             .model::<RetentionNotice>()
+            .model::<RetentionDeduction>()
             .model::<Guarantee>();
         project::register();
         renox::state_machine::register::<Ipa>();
@@ -70,6 +73,8 @@ impl Module for Construction {
         renox::state_machine::register::<Guarantee>();
         award::register_block_effect();
         deduction::register();
+        retention_deduction::register();
+        retention_deduction::listen(app);
         submission::register_types();
         cutoff::schedule(app);
         termination::register_types();

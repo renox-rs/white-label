@@ -402,6 +402,55 @@ const TEXTS: &[(&str, &str)] = &[
         "No notice was made for this project.",
     ),
     ("construction.vat_notice.dismissed", "Notice dismissed."),
+    // What the client keeps of the retention (BL-CON-08).
+    (
+        "construction.retention.deduction_reference",
+        "Give the client's notice or contra-charge reference.",
+    ),
+    (
+        "construction.retention.deduction_reason",
+        "Give the reason the client keeps the amount.",
+    ),
+    (
+        "construction.retention.deduction_amount",
+        "Give the amount the client keeps, above 0.",
+    ),
+    (
+        "construction.retention.deduction_too_big",
+        "The client cannot keep more than what remains of the part, {{ remaining }}.",
+    ),
+    (
+        "construction.retention.deduct_invoiced",
+        "The retention part is invoiced: dispute the retention invoice instead.",
+    ),
+    (
+        "construction.retention.deduct_finished",
+        "The retention part is finished: nothing can be deducted from it.",
+    ),
+    (
+        "construction.retention.dispute_not_invoiced",
+        "Only an invoiced retention part has an invoice to dispute.",
+    ),
+    (
+        "construction.retention.deduction_recorded",
+        "Deduction recorded.",
+    ),
+    (
+        "construction.retention.deduction_accepted",
+        "Deduction accepted and applied.",
+    ),
+    (
+        "construction.retention.deduction_awaiting_md",
+        "The deduction is above the limit: sent to the MD for approval.",
+    ),
+    (
+        "construction.retention.deduction_contested",
+        "Deduction contested.",
+    ),
+    (
+        "construction.retention.disputed",
+        "Retention invoice disputed.",
+    ),
     // The notice to the people of a project.
     ("construction.notice.subject", "{{ title }}"),
     ("construction.notice.body", "{{ body }}"),

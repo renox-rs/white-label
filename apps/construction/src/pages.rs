@@ -19,6 +19,10 @@
 //! | `POST /construction/retentions/{id}/bond` | `construction.retention_bond` | `retentions.manage` in the project |
 //! | `POST /construction/retentions/{id}/make-due` | `construction.retention_make_due` | `retentions.manage` in the project |
 //! | `POST /construction/retentions/{id}/invoice` | `construction.retention_invoice` | `invoices.issue` in the project |
+//! | `POST /construction/retentions/{id}/deductions` | `construction.retention_deduction_record` | `retentions.manage` in the project |
+//! | `POST /construction/retention-deductions/{id}/accept` | `construction.retention_deduction_accept` | `ipas.deductions.decide` in the project |
+//! | `POST /construction/retention-deductions/{id}/contest` | `construction.retention_deduction_contest` | `ipas.deductions.decide` in the project |
+//! | `POST /construction/retentions/{id}/dispute` | `construction.retention_dispute` | `retentions.manage` in the project |
 //! | `POST /construction/projects/{id}/retention-notice/dismiss` | `construction.retention_notice_dismiss` | `retentions.manage` in the project |
 //!
 //! The approval of a termination is the kernel's: the MD finds the request
@@ -44,6 +48,7 @@ use crate::ipa::{self, Ipa};
 use crate::permissions;
 use crate::project::Project;
 use crate::release;
+use crate::retention_deduction::{self, NewRetentionDeduction};
 use crate::submission;
 use crate::termination::{self, TerminateRequest, TerminationReason};
 use crate::texts::t;
@@ -91,6 +96,23 @@ pub fn routes() -> Routes {
             dismiss_retention_notice,
         )
         .name("construction.retention_notice_dismiss")
+        .post(
+            "/construction/retentions/{id}/deductions",
+            record_retention_deduction,
+        )
+        .name("construction.retention_deduction_record")
+        .post(
+            "/construction/retention-deductions/{id}/accept",
+            accept_retention_deduction,
+        )
+        .name("construction.retention_deduction_accept")
+        .post(
+            "/construction/retention-deductions/{id}/contest",
+            contest_retention_deduction,
+        )
+        .name("construction.retention_deduction_contest")
+        .post("/construction/retentions/{id}/dispute", dispute_retention)
+        .name("construction.retention_dispute")
         .require_auth()
 }
 
@@ -448,6 +470,18 @@ struct ClosingView {
     warnings: ClosingWarnings,
     warning_texts: Vec<String>,
     contested_deductions: Vec<DeductionView>,
+    contested_retention_deductions: Vec<RetentionDeductionView>,
+}
+
+/// A deduction from the retention as the closing screen shows it.
+#[derive(Debug, Serialize)]
+struct RetentionDeductionView {
+    id: i64,
+    retention_id: i64,
+    amount: i64,
+    reference: String,
+    reason: String,
+    status: &'static str,
 }
 
 /// `GET /construction/projects/{id}/closing`.
@@ -484,6 +518,18 @@ async fn closing(
             .await?
             .iter()
             .map(DeductionView::of)
+            .collect(),
+        contested_retention_deductions: retention_deduction::contested_of(&state.db, id)
+            .await?
+            .iter()
+            .map(|line| RetentionDeductionView {
+                id: line.id,
+                retention_id: line.retention_id,
+                amount: line.amount,
+                reference: line.reference.clone(),
+                reason: line.reason.clone(),
+                status: line.status.as_str(),
+            })
             .collect(),
     };
     let body = renox::serde_json::to_string(&view)
@@ -652,6 +698,96 @@ async fn dismiss_retention_notice(
         .map_err(answer)?;
     Ok((
         Toast::success(t(&lang, "construction.vat_notice.dismissed")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// `POST /construction/retentions/{id}/deductions`: `amount` (fils),
+/// `reference` (the client's notice or contra-charge reference) and `reason`.
+async fn record_retention_deduction(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let amount = form
+        .get("amount")
+        .and_then(|amount| amount.trim().parse::<i64>().ok())
+        .ok_or_else(|| refused(t(&lang, "construction.retention.deduction_amount")))?;
+    let new = NewRetentionDeduction {
+        retention_id: id,
+        amount,
+        reference: form.get("reference").cloned().unwrap_or_default(),
+        reason: form.get("reason").cloned().unwrap_or_default(),
+    };
+    retention_deduction::record(&state, &user, &new)
+        .await
+        .map_err(answer)?;
+    Ok((
+        Toast::success(t(&lang, "construction.retention.deduction_recorded")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// `POST /construction/retention-deductions/{id}/accept`: above AED 25,000
+/// the MD is asked and the deduction stays undecided until then.
+async fn accept_retention_deduction(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    let key = match retention_deduction::accept(&state, &user, id)
+        .await
+        .map_err(answer)?
+    {
+        retention_deduction::Decided::Done(_) => "construction.retention.deduction_accepted",
+        retention_deduction::Decided::AwaitingMd(_) => {
+            "construction.retention.deduction_awaiting_md"
+        }
+    };
+    Ok((Toast::success(t(&lang, key)), renox::HxRefresh).into_response())
+}
+
+/// `POST /construction/retention-deductions/{id}/contest`.
+async fn contest_retention_deduction(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    retention_deduction::contest(&state, &user, id)
+        .await
+        .map_err(answer)?;
+    Ok((
+        Toast::success(t(&lang, "construction.retention.deduction_contested")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// `POST /construction/retentions/{id}/dispute`: `amount` (fils, excluding
+/// VAT) and `reason`; opens the dispute on the retention invoice.
+async fn dispute_retention(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let amount = form
+        .get("amount")
+        .and_then(|amount| amount.trim().parse::<i64>().ok())
+        .ok_or_else(|| refused(t(&lang, "construction.retention.deduction_amount")))?;
+    let reason = form.get("reason").map(String::as_str).unwrap_or_default();
+    retention_deduction::dispute_invoiced(&state, &user, id, amount, reason)
+        .await
+        .map_err(answer)?;
+    Ok((
+        Toast::success(t(&lang, "construction.retention.disputed")),
         renox::HxRefresh,
     )
         .into_response())
