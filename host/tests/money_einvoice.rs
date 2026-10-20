@@ -30,12 +30,12 @@ fn go_live() -> NaiveDate {
 async fn booted_with(asp: &FakeAsp) -> TestApp {
     let asp = asp.clone();
     let config = ClientConfig::load(host::DEMO_CLIENT).expect("the demo client");
-    let app = host::app_for_tuned(config, move |invoicing| {
+    let tuning = host::Tuning::default().invoicing(move |invoicing| {
         invoicing
             .einvoicing("PGP", go_live(), "asp")
             .asp_adapter("asp", asp)
-    })
-    .expect("the app");
+    });
+    let app = host::app_for_tuned(config, tuning).expect("the app");
     let app = TestApp::new(app.provide(noon_clock())).await;
     app.kernel()
         .call("wl:install", Vec::<String>::new())

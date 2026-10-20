@@ -119,6 +119,28 @@ fn email_of(name: &str) -> ContactPoint {
     }
 }
 
+/// A verified user `name` holding `role` in `scope` only.
+pub async fn scoped_person(
+    app: &TestApp,
+    name: &str,
+    role: &str,
+    scope: &renox::auth::permissions::Scope,
+) -> User {
+    let mut user = User::register(
+        app.db(),
+        name,
+        &format!("{}@example.com", name.to_lowercase()),
+        "secret123",
+    )
+    .await
+    .unwrap();
+    user.email_verified_at = Some(renox::db::now());
+    user.save(app.db()).await.unwrap();
+    host::roles::define(app.db()).await.unwrap();
+    user.assign_role_in(app.db(), role, scope).await.unwrap();
+    user
+}
+
 /// A person party (a tenant) with a billing e-mail.
 pub async fn tenant(app: &TestApp, name: &str) -> PartyId {
     create(
@@ -406,8 +428,10 @@ pub async fn active_lease(
     company: bool,
 ) -> property::Lease {
     accept_identity(app, tenant, company).await;
-    let agent = person(app, "Ali", host::roles::LEASING_AGENT).await;
-    let manager = person(app, "Mona", host::roles::PROPERTY_MANAGER).await;
+    // The leasing agent and the property manager of the unit's building.
+    let scope = property::Building::scope_of(unit.building_id);
+    let agent = scoped_person(app, "Ali", host::roles::LEASING_AGENT, &scope).await;
+    let manager = scoped_person(app, "Mona", host::roles::PROPERTY_MANAGER, &scope).await;
     let lease = draft_lease(app, unit, tenant, -300).await;
     for (user, action) in [
         (&agent, "submit"),

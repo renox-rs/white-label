@@ -29,6 +29,7 @@ pub use app::roles;
 
 use wl_invoicing::WlInvoicing;
 use wl_kernel::{ClientConfig, ConfigError};
+use wl_notify::WlNotify;
 
 /// The variable naming the client's `client.toml`.
 pub const CLIENT_CONFIG: &str = "CLIENT_CONFIG";
@@ -67,19 +68,38 @@ pub fn app() -> renox::App {
 
 /// The application for one client.
 pub fn app_for(config: ClientConfig) -> Result<renox::App, ConfigError> {
-    app_for_tuned(config, |invoicing| invoicing)
+    app_for_tuned(config, Tuning::default())
 }
 
-/// [`app_for`] with the invoicing module changed by `tune`: what the host
-/// leaves to the client, such as the e-invoicing go-live date of each legal
-/// entity and its ASP adapter (`WlInvoicing::einvoicing`,
-/// `WlInvoicing::asp_adapter`; BL-PRP-26 item 6). `tune` runs on the module
-/// with the client's values already set, and only when `invoicing` is enabled.
-pub fn app_for_tuned(
-    config: ClientConfig,
-    tune: impl FnOnce(WlInvoicing) -> WlInvoicing,
-) -> Result<renox::App, ConfigError> {
-    let mut tune = Some(tune);
+/// What a client sets on the shared modules besides the host's values, in
+/// code: the e-invoicing go-live date of each legal entity and its ASP
+/// adapter (`WlInvoicing::einvoicing`, `WlInvoicing::asp_adapter`; BL-PRP-26
+/// item 6), or the channel providers of the notifications
+/// (`WlNotify::provider`). Each closure runs on the module with the host's
+/// values already set, and only when the module is enabled.
+#[derive(Default)]
+pub struct Tuning {
+    invoicing: Option<Box<dyn FnOnce(WlInvoicing) -> WlInvoicing>>,
+    notify: Option<Box<dyn FnOnce(WlNotify) -> WlNotify>>,
+}
+
+impl Tuning {
+    /// Changes the invoicing module.
+    pub fn invoicing(mut self, tune: impl FnOnce(WlInvoicing) -> WlInvoicing + 'static) -> Self {
+        self.invoicing = Some(Box::new(tune));
+        self
+    }
+
+    /// Changes the notification module.
+    pub fn notify(mut self, tune: impl FnOnce(WlNotify) -> WlNotify + 'static) -> Self {
+        self.notify = Some(Box::new(tune));
+        self
+    }
+}
+
+/// [`app_for`] with the shared modules changed by `tuning`.
+pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App, ConfigError> {
+    let mut tuning = tuning;
     let client_app = config.client.app.clone();
     let vertical = vertical(&client_app)?;
     let manifest = config.manifest()?;
@@ -96,7 +116,14 @@ pub fn app_for_tuned(
     // modules' demo data needs, and seeders run in the order modules mount.
     let mut app = wl_kernel::apply(base(), config)?;
     for module in manifest.enabled() {
-        app = enable(app, module, &client_app, &entities, &owner_role, &mut tune)?;
+        app = enable(
+            app,
+            module,
+            &client_app,
+            &entities,
+            &owner_role,
+            &mut tuning,
+        )?;
     }
     // The Property client's categories, checklists and SOPs go in after the
     // modules' own seeds (BL-PRP-27).
@@ -124,13 +151,13 @@ fn vertical(name: &str) -> Result<property::Property, ConfigError> {
 }
 
 /// Mounts one enabled `wl-*` module; `client_app` is `[client] app`.
-fn enable<T: FnOnce(WlInvoicing) -> WlInvoicing>(
+fn enable(
     app: renox::App,
     module: &str,
     client_app: &str,
     entities: &[String],
     owner_role: &str,
-    tune: &mut Option<T>,
+    tuning: &mut Tuning,
 ) -> Result<renox::App, ConfigError> {
     // Each F1 module gets its arm here as it is built (decision 0004).
     match module {
@@ -139,10 +166,16 @@ fn enable<T: FnOnce(WlInvoicing) -> WlInvoicing>(
             app::property_seed::register_documents(client_app);
             Ok(app.module(wl_documents::WlDocuments))
         }
-        "notify" => Ok(app.module(wl_notify::WlNotify::new())),
+        "notify" => {
+            let module = WlNotify::new();
+            Ok(app.module(match tuning.notify.take() {
+                Some(tune) => tune(module),
+                None => module,
+            }))
+        }
         "invoicing" => {
             let module = app::negative_flow::invoicing_for(client_app, entities);
-            Ok(app.module(match tune.take() {
+            Ok(app.module(match tuning.invoicing.take() {
                 Some(tune) => tune(module),
                 None => module,
             }))

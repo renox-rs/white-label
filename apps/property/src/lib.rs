@@ -238,6 +238,19 @@ impl Module for Property {
                 })
             })
         });
+        // A formal payment demand is about a lease: its notice that gave up
+        // is a task for the property manager of the lease's building.
+        wl_kernel::scopes::register(arrears::DEMAND_SUBJECT_TYPE, |db, id| {
+            Box::pin(async move {
+                Ok(match arrears::ArrearsDemand::find(db, id).await? {
+                    Some(demand) => match Lease::find(db, demand.lease_id).await? {
+                        Some(lease) => lease.scope(),
+                        None => renox::auth::permissions::Scope::global(),
+                    },
+                    None => renox::auth::permissions::Scope::global(),
+                })
+            })
+        });
         // In the app group of the staff sidebar; the labels are the app's
         // `nav.property` and `nav.leases` texts.
         app.nav(
