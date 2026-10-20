@@ -1,0 +1,30 @@
+{#- wl-delivery: a run's page: its driver and vehicle, its stops in order
+    and the dispatch action. Replace it with
+    resources/views/wl-delivery/run.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="run.number">
+  <rx-stack>
+    <rx-page-header :title="run.number" :subtitle="card.driver" :back="route('wl_delivery.runs')" :back-label="tx['runs.title']"
+                    :badge="status_label" :badge-kind="status_kind">
+      <rx-confirm rx-if="can_dispatch" :id="'dispatch-run-' ~ run.id" :label="tx['actions.dispatch']" :action="route('wl_delivery.run_dispatch', run.id)" method="POST"
+                  :title="tx['actions.dispatch']" :message="tx['actions.dispatch_description']" :confirm-label="tx['actions.dispatch']"/>
+    </rx-page-header>
+    <rx-card :title="tx['sections.details']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['fields.number']" :value="run.number" copyable/>
+        <rx-entry :label="tx['fields.date']" :value="card.date"/>
+        <rx-entry :label="tx['fields.driver']" :value="card.driver"/>
+        <rx-entry :label="tx['fields.vehicle_type']" :value="card.vehicle_type"/>
+        <rx-entry :label="tx['fields.vehicle']" :value="card.vehicle" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['fields.depot']" :value="run.depot" :placeholder="tx['none']"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-table :rows="stops" as="stop" :key="stop.id" :caption="tx['sections.stops']" card>
+      <rx-column :label="tx['fields.sequence']">{{ stop.sequence }}</rx-column>
+      <rx-column :label="tx['fields.number']"><a href="/deliveries/{{ stop.id }}">{{ stop.number }}</a></rx-column>
+      <rx-column :label="tx['fields.recipient']">{{ stop.recipient }}</rx-column>
+      <rx-column :label="tx['fields.area']" hide-narrow>{{ stop.area }}</rx-column>
+      <rx-column :label="tx['fields.status']">{{ stop.status }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['stops.none']" icon="truck"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

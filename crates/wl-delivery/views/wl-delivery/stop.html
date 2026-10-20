@@ -1,0 +1,85 @@
+{#- wl-delivery: one stop on the driver's phone: where it is, what is on it,
+    and the two outcomes: delivered (the proof, the delivered and refused
+    quantity of each line, the cash) or failed (the reason). Replace it with
+    resources/views/wl-delivery/stop.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="delivery.number">
+  <rx-stack>
+    <rx-page-header :title="delivery.number" :subtitle="stop.recipient" :back="route('wl_delivery.driver')" :back-label="tx['driver.title']"
+                    :badge="status_label" :badge-kind="status_kind"/>
+    <rx-card :title="tx['sections.details']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['fields.recipient']" :value="stop.recipient"/>
+        <rx-entry :label="tx['fields.phone']" rx-if="stop.phone" :value="stop.phone"/>
+        <rx-entry :label="tx['fields.address']" :value="stop.address or stop.area"/>
+        <rx-entry :label="tx['fields.amount_to_collect']" :value="amount_to_collect"/>
+        <rx-entry :label="tx['fields.pod_required']" :value="pod_required"/>
+        <rx-entry :label="tx['fields.instructions']" :value="delivery.instructions" span="full" :placeholder="tx['none']"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-form rx-if="stop.can_complete" :action="'/driver/stops/' ~ delivery.id ~ '/deliver'" novalidate>
+      <rx-card :title="tx['driver.deliver']">
+        <rx-form-errors/>
+        <rx-form-grid columns="2">
+          <rx-input name="recipient_name" :label="tx['proof.recipient']" id="deliver-recipient"/>
+          <rx-input name="photo" :label="tx['proof.photo']" id="deliver-photo"/>
+          <rx-input name="signature" :label="tx['proof.signature']" id="deliver-signature"/>
+          <rx-select name="otp_verified" :label="tx['proof.otp']" :options="otp_options" :selected="'0'" id="deliver-otp"/>
+          <rx-input name="latitude" :label="tx['proof.latitude']" id="deliver-lat"/>
+          <rx-input name="longitude" :label="tx['proof.longitude']" id="deliver-lng"/>
+          <rx-input name="cash_collected" :label="tx['proof.cash_collected']" id="deliver-cash"/>
+          <rx-input name="cheque" :label="tx['proof.cheque']" id="deliver-cheque"/>
+        </rx-form-grid>
+        <table class="rx-table">
+          <caption>{{ tx['sections.lines'] }}</caption>
+          <thead>
+            <tr>
+              <th>{{ tx['lines.description'] }}</th>
+              <th>{{ tx['lines.quantity'] }}</th>
+              <th>{{ tx['lines.delivered'] }}</th>
+              {% if partial_acceptance %}
+              <th>{{ tx['lines.refused'] }}</th>
+              <th>{{ tx['lines.reason'] }}</th>
+              <th>{{ tx['lines.photo'] }}</th>
+              {% endif %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for line in lines %}
+            <tr>
+              <td>{{ line.description }}</td>
+              <td>{{ line.quantity }}</td>
+              <td><input type="text" name="delivered_{{ line.id }}" value="{{ line.quantity }}" size="6"></td>
+              {% if partial_acceptance %}
+              <td><input type="text" name="refused_{{ line.id }}" value="0" size="6"></td>
+              <td>
+                <select name="reason_{{ line.id }}">
+                  <option value="">-</option>
+                  {% for reason in refusal_reasons %}<option value="{{ reason[0] }}">{{ reason[1] }}</option>{% endfor %}
+                </select>
+              </td>
+              <td><input type="text" name="photo_{{ line.id }}" size="10"></td>
+              {% endif %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <rx-textarea name="notes" :label="tx['proof.notes']" id="deliver-notes"/>
+        <div class="rx-card__footer">
+          <rx-button :label="tx['driver.deliver']"/>
+        </div>
+      </rx-card>
+    </rx-form>
+    <rx-form rx-if="stop.can_complete" :action="'/driver/stops/' ~ delivery.id ~ '/fail'" novalidate>
+      <rx-card :title="tx['driver.fail']">
+        <rx-form-grid columns="2">
+          <rx-select name="reason" :label="tx['attempts.reason']" :options="failure_reasons" :selected="''" id="fail-reason" required/>
+          <rx-input name="latitude" :label="tx['proof.latitude']" id="fail-lat"/>
+          <rx-input name="longitude" :label="tx['proof.longitude']" id="fail-lng"/>
+        </rx-form-grid>
+        <div class="rx-card__footer">
+          <rx-button :label="tx['driver.fail']" variant="secondary"/>
+        </div>
+      </rx-card>
+    </rx-form>
+  </rx-stack>
+</rx-page>

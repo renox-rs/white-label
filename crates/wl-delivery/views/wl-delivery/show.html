@@ -1,0 +1,66 @@
+{#- wl-delivery: a delivery's page: details, lines with the delivered and
+    refused quantities, attempts, the saved proof (never edited), the
+    actions of the dispatcher (assign to a planned run, unassign, cancel)
+    and the history. Replace it with resources/views/wl-delivery/show.html
+    in the app. -#}
+<rx-page layout="layouts/app.html" :title="delivery.number">
+  <rx-stack>
+    <rx-page-header :title="delivery.number" :subtitle="delivery.recipient_name" :back="route('wl_delivery.index')" :back-label="tx['title']"
+                    :badge="status_label" :badge-kind="status_kind">
+      <rx-action-sheet rx-if="can_assign" :id="'assign-delivery-' ~ delivery.id" :label="tx['actions.assign']" :action="route('wl_delivery.assign', delivery.id)"
+                       :title="tx['actions.assign_title']" :description="tx['actions.assign_description']" :submit-label="tx['actions.assign']" icon="truck">
+        <rx-select name="run_id" :label="tx['fields.run']" :options="planned_runs" :selected="''" :id="'assign-run-' ~ delivery.id" required/>
+      </rx-action-sheet>
+      <rx-confirm rx-if="can_unassign" :id="'unassign-delivery-' ~ delivery.id" :label="tx['actions.unassign']" :action="route('wl_delivery.unassign', delivery.id)" method="POST"
+                  :title="tx['actions.unassign']" :message="tx['actions.unassign_description']" :confirm-label="tx['actions.unassign']"/>
+    </rx-page-header>
+    <rx-card :title="tx['sections.details']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['fields.number']" :value="delivery.number" copyable/>
+        <rx-entry :label="tx['fields.source']" :value="delivery.source_type ~ ' #' ~ delivery.source_id"/>
+        <rx-entry :label="tx['fields.recipient']" :value="delivery.recipient_name"/>
+        <rx-entry :label="tx['fields.phone']" :value="delivery.recipient_phone" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['fields.address']" :value="delivery.address" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['fields.area']" :value="delivery.area" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['fields.window']" :value="card.window" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['fields.run']" rx-if="card.run" :value="card.run" :url="'/runs/' ~ delivery.run_id"/>
+        <rx-entry :label="tx['fields.amount_to_collect']" :value="card.amount_to_collect"/>
+        <rx-entry :label="tx['fields.pod_required']" :value="card.pod_required"/>
+        <rx-entry :label="tx['fields.partial_acceptance']" :value="card.partial_acceptance"/>
+        <rx-entry :label="tx['fields.attempts']" :value="card.attempts"/>
+        <rx-entry :label="tx['fields.instructions']" :value="delivery.instructions" span="full" :placeholder="tx['none']"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-table :rows="lines" as="line" :key="line.id" :caption="tx['sections.lines']" card>
+      <rx-column :label="tx['lines.description']">{{ line.description }}</rx-column>
+      <rx-column :label="tx['lines.quantity']">{{ line.quantity }}</rx-column>
+      <rx-column :label="tx['lines.delivered']">{{ line.delivered }}</rx-column>
+      <rx-column :label="tx['lines.refused']">{{ line.refused }}</rx-column>
+      <rx-column :label="tx['lines.reason']" hide-narrow>{{ line.reason or "" }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['lines.none']" icon="package"/></rx-slot>
+    </rx-table>
+    <rx-card rx-if="proof" :title="tx['sections.proof']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['proof.recipient']" :value="proof.recipient_name" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['proof.methods']" :value="proof.methods"/>
+        <rx-entry :label="tx['proof.at']" :value="proof.at"/>
+        <rx-entry :label="tx['proof.cash_expected']" :value="proof.cash_expected"/>
+        <rx-entry :label="tx['proof.cash_collected']" :value="proof.cash_collected"/>
+        <rx-entry :label="tx['proof.cheque']" :value="proof.cheque" :placeholder="tx['none']"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-table :rows="attempts" as="attempt" :key="attempt.id" :caption="tx['sections.attempts']" card>
+      <rx-column :label="tx['attempts.number']">{{ attempt.number }}</rx-column>
+      <rx-column :label="tx['attempts.outcome']">{{ attempt.outcome }}</rx-column>
+      <rx-column :label="tx['attempts.reason']" hide-narrow>{{ attempt.reason or "" }}</rx-column>
+      <rx-column :label="tx['attempts.at']">{{ attempt.at }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['attempts.none']" icon="map-pin"/></rx-slot>
+    </rx-table>
+    <rx-table :rows="timeline" as="item" :key="item.time" :caption="tx['sections.history']" card>
+      <rx-column :label="tx['history.change']">{{ item.title }}</rx-column>
+      <rx-column :label="tx['history.at']">{{ item.time | date('%Y-%m-%d %H:%M') }}</rx-column>
+      <rx-column :label="tx['history.reason']" hide-narrow>{{ item.body or "" }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['history.none']" icon="history"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>
