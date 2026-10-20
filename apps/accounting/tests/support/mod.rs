@@ -849,6 +849,7 @@ async fn define_roles(db: &Db) {
                 perm::ENGAGEMENTS_END,
                 perm::CDD_VIEW,
                 perm::TAX_PROFILES_VIEW,
+                perm::TAX_PROFILES_APPROVE,
                 perm::RETURNS_VIEW,
                 perm::RETURNS_REVIEW,
                 perm::RETURNS_FILE,
@@ -866,6 +867,7 @@ async fn define_roles(db: &Db) {
                 perm::CDD_PREPARE,
                 perm::TAX_PROFILES_VIEW,
                 perm::TAX_PROFILES_MANAGE,
+                perm::TAX_PROFILES_APPROVE,
                 perm::RETURNS_VIEW,
                 perm::RETURNS_REVIEW,
                 perm::WIP_WRITE_OFF,
@@ -887,6 +889,7 @@ async fn define_roles(db: &Db) {
                 perm::CDD_VIEW,
                 perm::CDD_PREPARE,
                 perm::TAX_PROFILES_VIEW,
+                perm::TAX_PROFILES_MANAGE,
                 perm::RETURNS_VIEW,
                 perm::RETURNS_PREPARE,
                 perm::AML_RAISE,
@@ -1540,6 +1543,12 @@ impl Booted {
     /// A complete tax profile of `client`: VAT quarterly (first period ends
     /// 2026-03-31), financial year ending 31 December, effective 2026-01-01.
     pub async fn tax_profile(&self, client: &Client) -> TaxProfile {
+        self.tax_profile_staggered(client, d(3, 31)).await
+    }
+
+    /// Like [`Booted::tax_profile`] with the first VAT period ending
+    /// `first_end` (the stagger).
+    pub async fn tax_profile_staggered(&self, client: &Client, first_end: NaiveDate) -> TaxProfile {
         accounting::tax_profile::record(
             self.db(),
             None,
@@ -1548,7 +1557,7 @@ impl Booted {
                 trn: Some("100000000000003".to_owned()),
                 vat_registered: true,
                 vat_period: VatPeriod::Quarterly,
-                vat_first_period_end: Some(d(3, 31)),
+                vat_first_period_end: Some(first_end),
                 financial_year_end: Some(d(12, 31)),
                 ct_registration_no: Some("CT-100200300".to_owned()),
                 effective_date: d(1, 1),
