@@ -12,8 +12,9 @@ use std::sync::{Arc, Mutex};
 
 use construction::permissions as perm;
 use construction::{
-    Construction, DeductionKind, DeductionStatus, Ipa, IpaDeduction, IpaStatus, Project,
-    ProjectStatus, ProjectTerminated,
+    Construction, DeductionKind, DeductionStatus, Guarantee, GuaranteeKind, GuaranteeStatus, Ipa,
+    IpaDeduction, IpaStatus, Project, ProjectStatus, ProjectTerminated, Retention, RetentionPart,
+    RetentionStatus,
 };
 use renox::auth::{Permissions, permissions};
 use renox::chrono::NaiveDate;
@@ -32,7 +33,9 @@ use wl_kernel::invoicing::{
     InvoiceStatus, InvoiceSummary, Invoicer, SupplierBillFuture, SupplierBillId, SupplierBillLine,
     SupplierBillLineId, SupplierBills, provide_invoicer, provide_supplier_bills,
 };
-use wl_kernel::notify::{MessageId, Notifier, NotifyFuture, NotifyRequest, provide_notifier};
+use wl_kernel::notify::{
+    MessageId, Notifier, NotifyFuture, NotifyRecipient, NotifyRequest, provide_notifier,
+};
 use wl_kernel::tickets::{
     OpenTicket, TaskCreator, TicketFuture, TicketId, TicketRef, provide_task_creator,
 };
@@ -260,6 +263,33 @@ impl Recording {
     }
 }
 
+impl Recording {
+    /// The notices of the vertical (`construction.notice`) whose title
+    /// contains `text`, oldest first.
+    pub fn notices_titled(&self, text: &str) -> Vec<NotifyRequest> {
+        self.of_type(construction::notices::NOTICE)
+            .into_iter()
+            .filter(|request| {
+                request.data["title"]
+                    .as_str()
+                    .is_some_and(|title| title.contains(text))
+            })
+            .collect()
+    }
+}
+
+/// The users a request is for.
+pub fn users_of(request: &NotifyRequest) -> Vec<i64> {
+    request
+        .recipients
+        .iter()
+        .filter_map(|recipient| match recipient {
+            NotifyRecipient::User { id } => Some(*id),
+            _ => None,
+        })
+        .collect()
+}
+
 impl Notifier for Recording {
     fn notify<'a>(
         &'a self,
@@ -357,6 +387,15 @@ impl Invoices {
             },
         );
         id
+    }
+
+    /// Puts invoice `id` in `status`, as wl-invoicing would after a payment,
+    /// a credit note or a write-off.
+    pub fn set_status(&self, id: i64, status: InvoiceStatus) {
+        let mut book = self.0.lock().unwrap();
+        if let Some(summary) = book.summaries.get_mut(&id) {
+            summary.status = status;
+        }
     }
 
     /// The invoice as it is held now.
@@ -724,6 +763,66 @@ impl Booted {
         line
     }
 
+    /// A retention part of `project` in `status`, inserted as a fixture.
+    pub async fn retention(
+        &self,
+        project: &Project,
+        part: RetentionPart,
+        amount: i64,
+        status: RetentionStatus,
+    ) -> Retention {
+        let mut row = Retention::new(project.id, part, amount);
+        row.status = status;
+        let mut tx = self.db().begin().await.unwrap();
+        row.insert_in_state(&mut tx, status, "fixture")
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+        row
+    }
+
+    /// The retention part as it is stored now.
+    pub async fn reload_part(&self, id: i64) -> Retention {
+        Retention::find_or_404(self.db(), id).await.unwrap()
+    }
+
+    /// The part `which` of `project` as it is stored now.
+    pub async fn part_of(&self, project: &Project, which: RetentionPart) -> Retention {
+        Retention::query()
+            .where_(Retention::PROJECT_ID.eq(project.id))
+            .where_(Retention::PART.eq(which))
+            .first(self.db())
+            .await
+            .unwrap()
+            .expect("the retention part")
+    }
+
+    /// A guarantee of `project` in `status`, inserted as a fixture.
+    pub async fn guarantee(
+        &self,
+        project: &Project,
+        kind: GuaranteeKind,
+        amount: i64,
+        status: GuaranteeStatus,
+        expires_on: Option<NaiveDate>,
+    ) -> Guarantee {
+        let mut row = Guarantee::new(project.id, kind, amount);
+        row.bank = "Emirates NBD".into();
+        row.status = status;
+        row.expires_on = expires_on;
+        let mut tx = self.db().begin().await.unwrap();
+        row.insert_in_state(&mut tx, status, "fixture")
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+        row
+    }
+
+    /// The guarantee as it is stored now.
+    pub async fn reload_guarantee(&self, id: i64) -> Guarantee {
+        Guarantee::find_or_404(self.db(), id).await.unwrap()
+    }
+
     /// The IPA as it is stored now.
     pub async fn reload_ipa(&self, id: i64) -> Ipa {
         Ipa::find_or_404(self.db(), id).await.unwrap()
@@ -888,14 +987,24 @@ pub async fn boot() -> Booted {
             perm::PROJECTS_VIEW,
             perm::IPAS_CERTIFY,
             perm::IPAS_DEDUCTIONS_RECORD,
+            perm::RETENTIONS_MANAGE,
         ],
     )
     .await
     .unwrap();
-    // The accountant issues the invoice of a certified IPA.
-    permissions::define_role(app.db(), perm::ACCOUNTANT_ROLE, &[perm::INVOICES_ISSUE])
-        .await
-        .unwrap();
+    // The accountant issues the invoice of a certified IPA, invoices the
+    // retention, links a bond to it and registers the guarantees.
+    permissions::define_role(
+        app.db(),
+        perm::ACCOUNTANT_ROLE,
+        &[
+            perm::INVOICES_ISSUE,
+            perm::RETENTIONS_MANAGE,
+            perm::GUARANTEES_MANAGE,
+        ],
+    )
+    .await
+    .unwrap();
     permissions::define_role(
         app.db(),
         "md",
