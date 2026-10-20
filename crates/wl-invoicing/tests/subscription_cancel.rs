@@ -2,6 +2,7 @@
 //! `cancel`, §7 *pro rata on cancel*; wl-parties `PTY.ACL.03`; #84,
 //! BL-INV-21): the five Done-when points. The vertical's cancel goes through
 //! the kernel's `Subscriptions`; the user's through the back-office route.
+//! A cancel whose credit note fails keeps its settlement due for the retry.
 //! The March cycle is AED 3,100.00 (AED 2,952.38 plus 5% VAT); 21 of its 31
 //! days unused credit AED 2,100.00 (AED 2,000.00 plus AED 100.00 VAT).
 
@@ -232,4 +233,78 @@ async fn a_user_cancel_with_notice_ends_when_the_notice_does() {
     assert_eq!(ended.cancelled_on, Some(d("2027-04-09")));
     assert_eq!(ended.cancel_reason.as_deref(), Some("moving abroad"));
     assert!(credit_notes(&t, &invoice).await.is_empty());
+}
+
+/// Renames the credit note table, so making a credit note fails, or back.
+async fn credit_notes_off(t: &Booted, off: bool) {
+    let (from, to) = if off {
+        ("wl_invoicing_credit_notes", "wl_invoicing_credit_notes_off")
+    } else {
+        ("wl_invoicing_credit_notes_off", "wl_invoicing_credit_notes")
+    };
+    renox::db::sql(format!("ALTER TABLE \"{from}\" RENAME TO \"{to}\""))
+        .execute(t.db())
+        .await
+        .unwrap();
+}
+
+/// Regression (the credit was lost): when the credit note of a withdrawal
+/// cannot be made, the subscription is `cancelled` with its settlement
+/// still due; the vertical's retry makes the credit note, once, and a
+/// further retry or the daily check credits nothing more.
+#[renox::test]
+async fn a_failed_credit_note_is_made_on_the_retry_and_only_once() {
+    let t = boot_subscriptions(WlInvoicing::new()).await;
+    let (sub, invoice) = march(&t, &enrolment(9), true).await;
+    credit_notes_off(&t, true).await;
+    let failed = subscriptions(t.state())
+        .cancel(
+            t.state(),
+            &enrolment(9),
+            CancelSubscription::new(d("2027-03-10")),
+        )
+        .await;
+    credit_notes_off(&t, false).await;
+    assert!(failed.is_err(), "the credit note step failed");
+    let cancelled = now(&t, &sub).await;
+    assert_eq!(cancelled.status, SubscriptionStatus::Cancelled);
+    assert!(cancelled.settlement_due, "the credit is still owed");
+    assert_eq!(cancelled.final_credit_note_id, None);
+    assert!(credit_notes(&t, &invoice).await.is_empty());
+
+    withdraw(&t, &enrolment(9), CancelSubscription::new(d("2027-03-10"))).await;
+    let settled = now(&t, &sub).await;
+    assert!(!settled.settlement_due);
+    let notes = credit_notes(&t, &invoice).await;
+    assert_eq!(notes.len(), 1);
+    assert_eq!(notes[0].gross_total, CREDIT);
+    assert_eq!(settled.final_credit_note_id, Some(notes[0].id));
+    assert_eq!(settled.cancelled_on, Some(d("2027-03-10")));
+
+    withdraw(&t, &enrolment(9), CancelSubscription::new(d("2027-03-12"))).await;
+    support::subscriptions::evaluate(&t, d("2027-03-12")).await;
+    assert_eq!(credit_notes(&t, &invoice).await.len(), 1, "credited once");
+    assert_eq!(t.sub_cancelled.all().len(), 1);
+}
+
+/// The daily check also makes a settlement a failed cancel left.
+#[renox::test]
+async fn the_daily_check_makes_a_settlement_left_due() {
+    let t = boot_subscriptions(WlInvoicing::new()).await;
+    let (sub, invoice) = march(&t, &enrolment(10), true).await;
+    credit_notes_off(&t, true).await;
+    let failed = subscriptions(t.state())
+        .cancel(
+            t.state(),
+            &enrolment(10),
+            CancelSubscription::new(d("2027-03-10")),
+        )
+        .await;
+    credit_notes_off(&t, false).await;
+    assert!(failed.is_err());
+    support::subscriptions::evaluate(&t, d("2027-03-11")).await;
+    assert!(!now(&t, &sub).await.settlement_due);
+    let notes = credit_notes(&t, &invoice).await;
+    assert_eq!(notes.len(), 1);
+    assert_eq!(notes[0].gross_total, CREDIT);
 }

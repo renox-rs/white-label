@@ -602,6 +602,12 @@ pub async fn cancel(
         return Err(TransitionError::Forbidden);
     }
     if subscription.status == SubscriptionStatus::Cancelled {
+        // A cancel whose settlement failed is settled now; otherwise there
+        // is nothing to do again.
+        if subscription.settlement_due {
+            settle_due(state, &subscription).await?;
+            return Ok(Subscription::find_or_404(&state.db, subscription.id).await?);
+        }
         return Err(TransitionError::NotFrom(
             SubscriptionStatus::Cancelled.as_str().to_owned(),
         ));
@@ -661,6 +667,14 @@ pub async fn cancel(
         _ => subscription.transition(CANCEL_SYSTEM).by_system(),
     };
     let outcome = builder.input(&facts).meta(meta).run_in(&mut tx).await?;
+    // The settlement owed is recorded with the cancel, in one transaction:
+    // if making the credit note or the final invoice fails below, the next
+    // `cancel` call or the daily check makes it ([`settle_due`]).
+    let paused_from = if subscription.status == SubscriptionStatus::Paused {
+        subscription.paused_from
+    } else {
+        None
+    };
     Subscription::query()
         .where_(Subscription::ID.eq(subscription.id))
         .update(
@@ -668,15 +682,56 @@ pub async fn cancel(
             &[
                 ("cancelled_on", &Some(on)),
                 ("cancel_reason", &Some(reason)),
+                ("settlement_due", &prorate),
+                ("settlement_paused_from", &paused_from),
+                ("settlement_by", &by.user_id()),
             ],
         )
         .await?;
     tx.commit().await?;
     outcome.emit(state).await.map_err(TransitionError::Failed)?;
     if prorate {
-        settle_unused(state, &subscription, on, by.user_id()).await?;
+        let cancelled = Subscription::find_or_404(&state.db, subscription.id).await?;
+        settle_due(state, &cancelled).await?;
     }
     Ok(Subscription::find_or_404(&state.db, subscription.id).await?)
+}
+
+/// Makes the pro rata settlement a cancel of `subscription` recorded
+/// (`settlement_due`): the credit note or final invoice, as the
+/// subscription was before the cancel, then clears the flag. A settlement
+/// that already made its credit note or final invoice is only cleared, so a
+/// retry never credits twice. Nothing when none is due.
+///
+/// # Errors
+///
+/// What making the credit note or the invoice answers; the flag then stays
+/// for the next try.
+pub async fn settle_due(
+    state: &AppState,
+    subscription: &Subscription,
+) -> std::result::Result<(), TransitionError> {
+    let subscription = Subscription::find_or_404(&state.db, subscription.id).await?;
+    if !subscription.settlement_due {
+        return Ok(());
+    }
+    let made =
+        subscription.final_credit_note_id.is_some() || subscription.final_invoice_id.is_some();
+    if !made && let Some(on) = subscription.cancelled_on {
+        // As it was before the cancel: paused from that day, or running.
+        let mut before = subscription.clone();
+        before.status = match subscription.settlement_paused_from {
+            Some(_) => SubscriptionStatus::Paused,
+            None => SubscriptionStatus::Active,
+        };
+        before.paused_from = subscription.settlement_paused_from;
+        settle_unused(state, &before, on, subscription.settlement_by).await?;
+    }
+    Subscription::query()
+        .where_(Subscription::ID.eq(subscription.id))
+        .update(&state.db, &[("settlement_due", &false)])
+        .await?;
+    Ok(())
 }
 
 /// The invoice states a credit note can be made against.
@@ -951,6 +1006,18 @@ pub async fn evaluate(state: &AppState, on: NaiveDate) -> Result<()> {
             Err(error) if skipped(&error) => {}
             Err(error) => return Err(error.into_error()),
         }
+    }
+    // Cancels whose settlement failed are settled again.
+    let unsettled = Subscription::query()
+        .where_(Subscription::STATUS.eq(SubscriptionStatus::Cancelled))
+        .where_(Subscription::SETTLEMENT_DUE.eq(true))
+        .order_by(Subscription::ID)
+        .get(&state.db)
+        .await?;
+    for subscription in unsettled {
+        settle_due(state, &subscription)
+            .await
+            .map_err(TransitionError::into_error)?;
     }
     // User and party cancels whose notice ended.
     let ending = Subscription::query()
@@ -1365,6 +1432,10 @@ impl Subscriptions for SubscriptionBook {
         Box::pin(async move {
             for subscription in Subscription::of_source(&state.db, agreement).await? {
                 if subscription.status == SubscriptionStatus::Cancelled {
+                    // A retry settles what a failed settlement left.
+                    settle_due(state, &subscription)
+                        .await
+                        .map_err(TransitionError::into_error)?;
                     continue;
                 }
                 resume(state, &subscription, cause, on, None)
@@ -1384,6 +1455,10 @@ impl Subscriptions for SubscriptionBook {
         Box::pin(async move {
             for subscription in Subscription::of_source(&state.db, agreement).await? {
                 if subscription.status == SubscriptionStatus::Cancelled {
+                    // A retry settles what a failed settlement left.
+                    settle_due(state, &subscription)
+                        .await
+                        .map_err(TransitionError::into_error)?;
                     continue;
                 }
                 cancel(

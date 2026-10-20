@@ -90,6 +90,15 @@ pub struct Subscription {
     pub final_credit_note_id: Option<i64>,
     /// The final pro rata invoice made on cancel.
     pub final_invoice_id: Option<i64>,
+    /// The pro rata settlement of the cancel is still to be made (set in the
+    /// cancel's transaction, cleared once the credit note or final invoice
+    /// exists), so a failed one is made again on the next try.
+    pub settlement_due: bool,
+    /// The first day of the pause the subscription was in when cancelled:
+    /// the unused part of its cycle runs from it.
+    pub settlement_paused_from: Option<NaiveDate>,
+    /// The user who cancelled, for the settlement; `None` for the system.
+    pub settlement_by: Option<i64>,
     /// The user who started it; `None` for the system.
     pub created_by: Option<i64>,
     /// When the row was created.
