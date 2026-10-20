@@ -256,7 +256,7 @@ impl Module for WlSales {
         app.nav(
             "app",
             NavLink::route("wl_sales.campaigns", "nav.campaigns")
-                .icon("megaphone")
+                .icon("sparkles")
                 .group("nav.app")
                 .order(50)
                 .permission(permissions::CAMPAIGNS_VIEW),

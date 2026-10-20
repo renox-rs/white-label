@@ -19,17 +19,13 @@ async fn person(app: &TestApp, email: &str, role: &str) -> User {
 }
 
 #[renox::test]
-async fn the_home_page_works() {
+async fn the_front_page_sends_guests_to_the_login_and_people_to_the_dashboard() {
     let app = TestApp::new(host::app()).await;
-    app.get("/")
-        .await
-        .assert_ok()
-        .assert_view("home/index.html")
-        .assert_see("Create an account")
-        // The hero's coloured phrase, the phone tab bar, the figures strip.
-        .assert_see("<em>ready to grow.</em>")
-        .assert_see("rx-tabbar")
-        .assert_see("people signed up");
+    // No marketing page of the starter kit, no sign-up.
+    app.get("/").await.assert_redirect("/login");
+    let anna = person(&app, "anna@example.com", MEMBER).await;
+    app.acting_as(&anna);
+    app.get("/").await.assert_redirect("/dashboard");
 }
 
 #[renox::test]
@@ -76,33 +72,39 @@ async fn the_login_page_lists_the_seeded_people_in_local_only() {
         .assert_see("member@example.com");
     // Only on the login page.
     local
-        .get("/register")
+        .get("/password/forgot")
         .await
         .assert_dont_see("admin@example.com");
 }
 
 #[renox::test]
-async fn sign_ups_are_members_who_verify_their_email_first() {
+async fn nobody_signs_up_on_their_own() {
     let app = TestApp::new(host::app()).await;
-    app.post(
-        "/register",
-        &[
-            ("name", "Anna"),
-            ("email", "anna@example.com"),
-            ("password", "secret123"),
-            ("password_confirmation", "secret123"),
-        ],
-    )
-    .await
-    .assert_redirect("/dashboard");
-    let anna = User::find_by_email(app.db(), "anna@example.com")
+    app.get("/register").await.assert_not_found();
+    let answer = app
+        .post(
+            "/register",
+            &[
+                ("name", "Anna"),
+                ("email", "anna@example.com"),
+                ("password", "secret123"),
+                ("password_confirmation", "secret123"),
+            ],
+        )
+        .await;
+    assert!(answer.status.is_client_error(), "{}", answer.status);
+    assert!(
+        User::find_by_email(app.db(), "anna@example.com")
+            .await
+            .unwrap()
+            .is_none()
+    );
+    // And no page offers it.
+    app.get("/login")
         .await
-        .unwrap()
-        .unwrap();
-    assert_eq!(anna.roles(app.db()).await.unwrap(), ["member"]);
-    // The verification link went by mail; until it's used, the dashboard waits.
-    app.assert_mail_sent("anna@example.com", "Verify your email");
-    app.get("/dashboard").await.assert_redirect("/verify-email");
+        .assert_ok()
+        .assert_dont_see("/register");
+    app.get("/nowhere").await.assert_dont_see("/register");
 }
 
 #[renox::test]

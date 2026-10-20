@@ -39,6 +39,10 @@ pub const COMPLIANCE_VIEW: &str = "compliance.view";
 /// Draft management agreements and put units under them.
 pub const AGREEMENTS_MANAGE: &str = "agreements.manage";
 
+/// The permission of wl-payments that lets a user hold a deposit: record
+/// the money received for a lease and have the lease hold it.
+pub const DEPOSITS_MANAGE: &str = "deposits.manage";
+
 /// The permission of wl-payments that lets the accountant forfeit a deposit;
 /// the forfeiture that applies a deposit to the deductions is checked against
 /// it in the lease's building (BL-PRP-17).

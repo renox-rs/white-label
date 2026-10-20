@@ -1,0 +1,29 @@
+# /etc/white-label/<client>/litestream.yml
+#
+# Replicates the client's SQLite database to the backup VPS (S3-compatible
+# MinIO in the UAE, another provider; OPERATIONS.md section 5). One bucket
+# prefix and one access key per client. The keys come from litestream.env
+# (LITESTREAM_ACCESS_KEY_ID, LITESTREAM_SECRET_ACCESS_KEY), which Litestream
+# expands in this file. Written for Litestream 0.3.x.
+#
+# Replace CLIENT with the client's short name and the endpoint with the backup
+# VPS. Not yet run against a real MinIO (deploy/README.md, status table).
+dbs:
+  - path: /var/lib/white-label/CLIENT/app.db
+    replicas:
+      - type: s3
+        # MinIO: one bucket, one prefix per client.
+        bucket: white-label-backups
+        path: CLIENT/db
+        endpoint: https://backup.example.ae:9000
+        # MinIO needs path-style addressing (bucket in the path, not the host).
+        force-path-style: true
+        region: us-east-1
+        access-key-id: ${LITESTREAM_ACCESS_KEY_ID}
+        secret-access-key: ${LITESTREAM_SECRET_ACCESS_KEY}
+        # RPO target: 1 minute.
+        sync-interval: 10s
+        # New snapshot every 24 h; keep replica generations for 30 days
+        # (OPERATIONS.md section 5: nightly snapshot kept 30 days).
+        snapshot-interval: 24h
+        retention: 720h

@@ -1,7 +1,7 @@
 <rx-page layout="layouts/app.html" title="{{ t('dashboard.title') }}">
-  {#- The dashboard: a welcome card (the compact hero), figures over a period
-      (`?period=`), sign-ups as a chart, a summary with totals and the
-      signed-in person's recent activity. The patterns are components
+  {#- The dashboard: a welcome card (the compact hero), the property figures
+      as linked tiles, the leases that end soonest, the person's tasks and
+      the signed-in person's recent activity. The patterns are components
       (resources/views/components/), their texts are in resources/lang/en.json.
       The layout is `<rx-shell fill>`: on a large screen the activity is a
       pane (`rx-pane`) that takes the height left (`rx-fill`) and scrolls on
@@ -41,27 +41,28 @@
     </app-section-head>
   </template>
 
-  <rx-row>
-    {#- One period for the figures and the chart (`?period=`). -#}
-    <rx-period-filter :selected="period"/>
-  </rx-row>
-
-  <rx-stats columns="3">
-    <app-stat-card icon="user" :label="t('dashboard.stats.signups')" :value="signups_total | number" :delta="signups_change" :trend="signups.values"/>
-    <app-stat-card icon="users" :label="t('dashboard.stats.users')" :value="users | number" tone="clay" :url="route('users.index') if can('users.manage') else none"/>
-    <app-stat-card icon="bell" :label="t('dashboard.stats.unread')" :value="unread | number" tone="sand" :url="route('notifications.index')"/>
+  {#- The figures of the business: one tile per figure the person may open
+      (`figures` in src/app/dashboard/mod.rs), each a link to its page. -#}
+  <rx-stats columns="3" rx-if="tiles">
+    <app-stat-card rx-for="tile in tiles" :icon="tile.icon" :label="t(tile.label)" :value="tile.value" :tone="tile.tone" :url="tile.url" :hint="(t('dashboard.tiles.invoices_one') if tile.count == 1 else t('dashboard.tiles.invoices_many', count=tile.count)) if tile.count is not none else none"/>
   </rx-stats>
 
-  <rx-dashboard columns="2">
-    <rx-widget title="{{ t('dashboard.chart.title') }}" description="{{ t('dashboard.chart.description') }}">
-      <rx-chart kind="bar" :data="signups" name="{{ t('dashboard.chart.title') }}" title="{{ t('dashboard.chart.title') }}" :height="180"/>
+  <rx-dashboard columns="2" rx-if="expiring or tasks">
+    <rx-widget rx-if="expiring" title="{{ t('dashboard.expiring.title') }}" description="{{ t('dashboard.expiring.description') }}">
+      <rx-list label="{{ t('dashboard.expiring.title') }}">
+        <li rx-for="lease in expiring"><app-icon-circle icon="calendar-days" :size="18"/><div class="rx-list__main">
+          <a href="{{ route('property.lease', lease.id) }}">{{ lease.number }}</a>
+          <span class="rx-subtitle">{{ t('dashboard.expiring.ends', date=lease.end_date, days=lease.days_left) }}</span>
+        </div></li>
+      </rx-list>
     </rx-widget>
-    <rx-widget title="{{ t('dashboard.summary.title') }}" description="{{ t('dashboard.summary.description') }}">
-      <app-summary :lines="[
-        {'label': t('dashboard.summary.this_period'), 'value': signups_total | number, 'icon': 'trending-up'},
-        {'label': t('dashboard.summary.before'), 'value': signups_before | number, 'icon': 'history'},
-        {'label': t('dashboard.summary.verified'), 'value': verified | number, 'icon': 'circle-check'},
-      ]" :total="{'label': t('dashboard.summary.total'), 'value': users | number}"/>
+    <rx-widget rx-if="tasks" title="{{ t('dashboard.tasks.title') }}" description="{{ t('dashboard.tasks.description') }}">
+      <rx-list label="{{ t('dashboard.tasks.title') }}">
+        <li rx-for="task in tasks"><app-icon-circle icon="circle-check" :size="18"/><div class="rx-list__main">
+          <a href="/tickets/{{ task.id }}">{{ task.title }}</a>
+          <span class="rx-subtitle">{{ task.number }}</span>
+        </div></li>
+      </rx-list>
     </rx-widget>
   </rx-dashboard>
 

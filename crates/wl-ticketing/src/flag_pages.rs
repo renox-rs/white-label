@@ -27,10 +27,13 @@ type Texts = BTreeMap<&'static str, String>;
 
 /// The routes, behind `tickets.view`.
 pub fn routes() -> Routes {
-    Routes::new()
-        .get("/compliance-flags", index)
-        .name("wl_ticketing.compliance_flags")
-        .require_permission(permissions::VIEW)
+    // Anywhere: a manager sees the flags of their buildings.
+    wl_kernel::scopes::anywhere(
+        Routes::new()
+            .get("/compliance-flags", index)
+            .name("wl_ticketing.compliance_flags"),
+        permissions::VIEW,
+    )
 }
 
 /// The query of the report.
@@ -80,9 +83,11 @@ pub(crate) struct FlagsPage {
 /// `GET /compliance-flags`: the open flags, oldest first.
 async fn index(
     State(state): State<AppState>,
+    user: AuthUser,
     lang: Lang,
     Query(query): Query<FlagQuery>,
 ) -> Result<View> {
+    let reach = wl_kernel::scopes::reach(&state.db, &user, permissions::VIEW).await?;
     let subject = match (query.subject_type, query.subject_id) {
         (Some(kind), Some(id)) if !kind.trim().is_empty() => Some(Subject::new(kind.trim(), id)),
         _ => None,
@@ -95,6 +100,16 @@ async fn index(
     let mut categories: BTreeMap<i64, String> = BTreeMap::new();
     let mut rows = Vec::new();
     for flag in flags {
+        // Only the flags on the subjects of the user's scope.
+        if !reach
+            .contains(
+                &state.db,
+                &Subject::new(&flag.subject_type, flag.subject_id),
+            )
+            .await?
+        {
+            continue;
+        }
         if let std::collections::btree_map::Entry::Vacant(slot) = categories.entry(flag.category_id)
         {
             let name = Category::find(&state.db, flag.category_id)

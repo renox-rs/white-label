@@ -11,11 +11,11 @@
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use renox::state_machine::{StateMachine, TransitionError};
-use wl_kernel::PartyId;
 use wl_kernel::block_guard::{self, ActionKind, GuardOutcome};
 use wl_kernel::deposits::deposits;
 use wl_kernel::parties::directory;
 use wl_kernel::tickets::task_creator;
+use wl_kernel::{LegalEntity, PartyId};
 
 use crate::building::{clean, refused};
 use crate::charge::{ChargeStatus, LeaseCharge, RENT, rent_description, rent_plan};
@@ -615,6 +615,75 @@ async fn deposit_check(
         )));
     }
     Ok(())
+}
+
+/// `user` records the deposit of lease `id` as received from the tenant by
+/// `method` (`reference`: the transfer or receipt number): a payment of the
+/// deposit amount, allocated to a deposit the lease then holds, so `activate`
+/// does not wait for it. The deposit and the payment belong to the building's
+/// legal entity.
+///
+/// # Errors
+///
+/// `Forbidden` without `deposits.manage` in the lease's building; 422 unless
+/// the lease is a draft or waiting for signature, asks for a deposit that is
+/// not waived, and holds none yet; the payment's or the deposit's refusals.
+pub async fn receive_deposit(
+    state: &AppState,
+    user: &AuthUser,
+    id: i64,
+    method: wl_kernel::payments::PaymentMethod,
+    reference: &str,
+) -> Result<Lease> {
+    let lease = Lease::find(&state.db, id).await?.ok_or(Error::NotFound)?;
+    if !user.has_permission_in(permissions::DEPOSITS_MANAGE, &lease.scope()) {
+        return Err(Error::Forbidden);
+    }
+    if !LeaseStatus::IN_PROGRESS.contains(&lease.status)
+        || lease.is_follow_up()
+        || lease.deposit_waived
+        || lease.deposit_amount <= 0
+    {
+        return Err(refused(english("property.leases.deposit_not_due", &[])));
+    }
+    let held = deposits(state)
+        .held_for(&state.db, &lease.agreement())
+        .await?
+        .map_or(0, |deposit| deposit.held);
+    if held > 0 {
+        return Err(refused(english(
+            "property.leases.deposit_held_already",
+            &[],
+        )));
+    }
+    let tenant = lease.tenant();
+    let entity = LegalEntity::for_scope(
+        &state.db,
+        Some((crate::building::BUILDING_SUBJECT_TYPE, lease.building_id)),
+    )
+    .await?;
+    let mut request =
+        wl_kernel::payments::RecordPayment::new(tenant, entity.id, method, lease.deposit_amount);
+    request.reference = Some(reference.trim().to_owned()).filter(|r| !r.is_empty());
+    request.prepaid = Some(lease.agreement());
+    let payment = wl_kernel::payments::payment_recorder(state)
+        .record(state, request, Some(user.id))
+        .await?;
+    deposits(state)
+        .hold(
+            state,
+            user,
+            wl_kernel::deposits::HoldDeposit {
+                source: lease.agreement(),
+                party: tenant,
+                legal_entity_id: entity.id,
+                amount: lease.deposit_amount,
+                currency: "AED".to_owned(),
+                received_payment: payment.id,
+            },
+        )
+        .await?;
+    Lease::find(&state.db, id).await?.ok_or(Error::NotFound)
 }
 
 /// A property manager waives the deposit of a lease that is not active yet,

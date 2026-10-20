@@ -5,7 +5,7 @@
 //!
 //! It started from Renox's starter kit (`rnx new --starter`):
 //!
-//! - sign-up, login, password reset, email verification and the account
+//! - login, password reset, email verification and the account
 //!   pages (`Auth`), with the notification bell;
 //! - roles and permissions (`Permissions`): `admin` manages users and reads
 //!   the activity log, `member` is everyone else (`app::roles`);
@@ -24,6 +24,7 @@ use renox::audit::Audit;
 use renox::auth::{Auth, Permissions};
 use renox::nav::NavLink;
 
+pub use app::demo_data;
 pub use app::negative_flow::{invoicing_for, payments_for};
 pub use app::roles;
 
@@ -54,6 +55,34 @@ pub fn try_app() -> Result<renox::App, ConfigError> {
         _ => DEMO_CLIENT.to_owned(),
     };
     app_for(ClientConfig::load(path)?)
+}
+
+/// Commands that wipe or fill the database with demo data. In production
+/// they are refused before anything is booted (`main.rs`): `migrate:fresh`
+/// drops every table, `db:seed` and `property:demo` make the demo logins
+/// (admin@example.com / password123).
+pub const DEMO_COMMANDS: &[&str] = &["migrate:fresh", "db:seed", demo_data::COMMAND];
+
+/// The refusal for `command` when `app_env` is a production environment.
+///
+/// # Errors
+///
+/// The message to print, when the command is one of [`DEMO_COMMANDS`] and
+/// `app_env` starts with `prod`.
+pub fn refuse_in_production(command: Option<&str>, app_env: Option<&str>) -> Result<(), String> {
+    let production = app_env.is_some_and(|env| env.trim().to_lowercase().starts_with("prod"));
+    match command {
+        Some(command) if production && DEMO_COMMANDS.contains(&command) => Err(format!(
+            "{command} is refused when APP_ENV is production: {}",
+            if command == "migrate:fresh" {
+                "it would drop every table of the live database. To start over, restore a backup."
+            } else {
+                "it would put the demo company and its logins (admin@example.com / password123) \
+                 in the live database. Add people with `users:invite`."
+            }
+        )),
+        _ => Ok(()),
+    }
 }
 
 /// [`try_app`], for tests: the demo client unless `CLIENT_CONFIG` says
@@ -114,7 +143,10 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
     app::negative_flow::register_approvals(&client_app);
     // The kernel goes first: its seeder creates the legal entities the other
     // modules' demo data needs, and seeders run in the order modules mount.
+    let name = config.client.name.clone();
+    let demo_client = config.clone();
     let mut app = wl_kernel::apply(base(), config)?;
+    app = with_brand(app, &name);
     for module in manifest.enabled() {
         app = enable(
             app,
@@ -129,6 +161,9 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
     // modules' own seeds (BL-PRP-27).
     if client_app == "property" {
         app = app.module(app::property_seed::PropertySeed);
+        // The demo company, after the installs: `property:demo`, and `db:seed`
+        // in local (never in production).
+        app = app.module(app::demo_data::DemoSeed::new(demo_client));
     }
     // The page that shows the shared modules' settings of this client.
     Ok(app
@@ -138,6 +173,28 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
             &owner_role,
         ))
         .module(vertical))
+}
+
+/// The client's name is the app's name: `{{ brand }}` in the layouts (the
+/// sidebar, the public pages, the sign-in pages, the error pages), and the
+/// configuration's `name` for what Renox itself titles with it (the sign-in
+/// pages' `<title>`, the mails' sender name, the social cards). `APP_NAME` is
+/// not read for it: the name belongs to the client's `client.toml`.
+fn with_brand(app: renox::App, name: &str) -> renox::App {
+    let shared = name.to_owned();
+    let app = app.share("brand", move |_| {
+        let name = shared.clone();
+        async move { Ok(name) }
+    });
+    // The tests' own configuration replaces this one, which is why the
+    // layouts read `brand` and not `app.name`.
+    match renox::Config::load() {
+        Ok(mut config) => {
+            config.name = name.to_owned();
+            app.config(config)
+        }
+        Err(_) => app,
+    }
 }
 
 /// The vertical app named in `[client] app`.
@@ -204,11 +261,9 @@ fn base() -> renox::App {
                 .notifications() // the bell and /notifications
                 .magic_link() // "Email me a login link" on the login page: no password needed
                 .redirect_to("/dashboard")
-                // Everyone who signs up is a member.
-                .on_registered(|user, _form, state| async move {
-                    roles::define(&state.db).await?;
-                    user.assign_role(&state.db, roles::MEMBER).await
-                }),
+                // No public sign-up: an admin adds the people (`/users`,
+                // `users:invite`), the first one is made with the command.
+                .without_registration(),
         )
         .module(Permissions)
         .module(Audit)
@@ -216,6 +271,11 @@ fn base() -> renox::App {
         .module(app::dashboard::Dashboard)
         .module(app::users::Users)
         .module(app::activity::Activity)
+        .command(
+            "users:invite",
+            "Add a user and mail them the link to choose a password",
+            app::roles::invite,
+        )
         .command(
             "users:admin",
             "Give the user with this email the admin role",

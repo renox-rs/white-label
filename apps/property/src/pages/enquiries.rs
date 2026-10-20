@@ -4,7 +4,7 @@
 //!
 //! | Route | Name | Needs |
 //! |---|---|---|
-//! | `GET /property/enquiries` | `property.enquiries` | `units.view` |
+//! | `GET /property/enquiries` | `property.enquiries` | `units.view`, in some building |
 //! | `POST /property/enquiries` | `property.enquiry_create` | `leases.create` |
 
 use renox::prelude::*;
@@ -79,13 +79,18 @@ pub struct CreateForm {
 
 /// `GET /property/enquiries`.
 async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
-    if !user.has_permission(permissions::UNITS_VIEW) {
-        return Err(Error::Forbidden);
-    }
+    // The enquiries about the units of the user's buildings, and those that
+    // name no unit (a prospect's first call belongs to no building yet).
+    let reach = wl_kernel::scopes::reach(&state.db, &user, permissions::UNITS_VIEW).await?;
+    let units = reach.ids(&state.db, crate::unit::UNIT_SUBJECT_TYPE).await?;
     let source_name = |code: &str| text(&lang, &format!("enquiries.source_{code}"));
     let enquiries = Enquiry::recent(&state.db)
         .await?
         .into_iter()
+        .filter(|e| match (&units, e.unit_id) {
+            (None, _) | (Some(_), None) => true,
+            (Some(units), Some(unit)) => units.contains(&unit),
+        })
         .map(|e| EnquiryRow {
             id: e.id,
             prospect: e.prospect_name.clone(),
@@ -104,7 +109,7 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
         tx: texts::all(&lang),
         enquiries,
         sources,
-        can_record: user.has_permission(permissions::LEASES_CREATE),
+        can_record: user.has_permission_anywhere(permissions::LEASES_CREATE),
         today: today().to_string(),
     }))
 }
@@ -116,7 +121,7 @@ async fn create(
     lang: Lang,
     Form(form): Form<CreateForm>,
 ) -> Result<Response> {
-    if !user.has_permission(permissions::LEASES_CREATE) {
+    if !user.has_permission_anywhere(permissions::LEASES_CREATE) {
         return Err(Error::Forbidden);
     }
     record(

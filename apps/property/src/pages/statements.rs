@@ -567,10 +567,7 @@ async fn clear_dispute(
 ) -> Result<Response> {
     let number = |value: &str, field: &str| -> Result<i64> {
         value.trim().parse::<i64>().map_err(|_| {
-            Error::Status(
-                StatusCode::UNPROCESSABLE_ENTITY,
-                format!("{field}: 1, 2, 3 ..."),
-            )
+            super::field_error(field, texts::english("property.form.number_invalid", &[]))
         })
     };
     let dispute_id = number(&form.dispute, "dispute")?;

@@ -43,7 +43,8 @@
         <template rx-if="unit.can_lease">
           <rx-action-sheet :id="'new-lease-' ~ unit.id" :label="tx['leases.new']" :action="route('property.lease_create', unit.id)"
                            :title="tx['leases.new']" :description="unit.number" :submit-label="tx['leases.new']" icon="file-plus">
-            <rx-input name="tenant" :label="tx['leases.tenant_number']" :id="'new-lease-tenant-' ~ unit.id" required/>
+            {#- The tenant: a search of the parties by name or number; the form sends the party's id (a typed number such as P-00012 is accepted by the server too). -#}
+            <rx-select name="tenant" :label="tx['leases.tenant']" :options="[]" :placeholder="tx['leases.tenant_placeholder']" options-url="{{ route('property.party_options') }}" :id="'new-lease-tenant-' ~ unit.id" required/>
             <rx-input name="start_date" type="date" :label="tx['leases.start_date']" :value="today" :id="'new-lease-start-' ~ unit.id" required/>
             <rx-input name="end_date" type="date" :label="tx['leases.end_date']" :id="'new-lease-end-' ~ unit.id" required/>
             <rx-input name="annual_rent" :label="tx['leases.annual_rent']" :id="'new-lease-rent-' ~ unit.id" required/>

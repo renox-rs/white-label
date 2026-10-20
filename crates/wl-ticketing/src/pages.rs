@@ -73,12 +73,16 @@ pub fn routes() -> Routes {
         .post("/tickets", store)
         .name("wl_ticketing.store")
         .require_permission(permissions::CREATE)
-        .merge(
+        .merge(wl_kernel::scopes::anywhere(
             Routes::new()
                 .get("/tickets", index)
                 .name("wl_ticketing.index")
                 .get("/tickets/{id}", show)
-                .name("wl_ticketing.show")
+                .name("wl_ticketing.show"),
+            permissions::VIEW,
+        ))
+        .merge(
+            Routes::new()
                 .post("/tickets/{id}/hold", store_hold)
                 .name("wl_ticketing.hold")
                 .post("/tickets/{id}/actions/{name}", store_action)
@@ -217,10 +221,23 @@ pub(crate) struct IndexPage {
 }
 
 /// `GET /tickets`: the grid.
-async fn index(lang: Lang, user: AuthUser, request: GridRequest) -> Result<View> {
-    let tickets = grid(&lang)
-        .page(visibility::visible_to(Ticket::query(), &user), &request)
+async fn index(
+    State(state): State<AppState>,
+    lang: Lang,
+    user: AuthUser,
+    request: GridRequest,
+) -> Result<View> {
+    // The tickets about the buildings (their units, leases) of the user's scope.
+    let reach = wl_kernel::scopes::reach(&state.db, &user, permissions::VIEW).await?;
+    let query = reach
+        .apply(
+            &state.db,
+            visibility::visible_to(Ticket::query(), &user),
+            "subject_type",
+            "subject_id",
+        )
         .await?;
+    let tickets = grid(&lang).page(query, &request).await?;
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         can_create: user.has_permission(permissions::CREATE),
@@ -698,6 +715,10 @@ async fn show(
     Found(ticket): Found<Ticket>,
 ) -> Result<View> {
     visibility::ensure_visible(&ticket, &user)?;
+    let reach = wl_kernel::scopes::reach(&state.db, &user, permissions::VIEW).await?;
+    if !reach.contains(&state.db, &ticket.subject()).await? {
+        return Err(Error::Forbidden);
+    }
     visibility::audit_view(&state.db, &user, &ticket).await?;
     let t = texts_in(&lang);
     let db = state.db.clone();

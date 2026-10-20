@@ -271,6 +271,15 @@ stateDiagram-v2
 4. On acceptance, any older accepted document of the same kind for the same subject is
    superseded, and reminders are scheduled from the expiry date.
 
+*Built (F1, back office):* the documents of a record are at `/documents/of/{subject type}/{id}`
+(`documents.view`, in the record's scope): what is on file with its status, and a form to
+add a document (`documents.upload`): kind, optional title, number, dates and authority, and
+the file. The document waits in `pending_review`; the review queue names the record
+(`P-00012 · Tara Nasser`, `L-000050 v1 · JVT-B / 1501`, through
+`register_subject_label`) and links to its page. A vertical's pages link to it where a
+transition waits for a document (the lease page of 01 Property shows what is missing and the
+button).
+
 ### 5.2 Expiry reminders (`DOC.RUL.01`)
 
 1. Every night the scheduler finds accepted documents whose expiry date is N days away for
@@ -593,7 +602,9 @@ sales order, invoice, ticket, item (certificates), SOP.
   - `SignatureMethod`: to add a method later, e.g. UAE PASS.
 - **Providers** per guarded transition: `BlockSubjects` and `FutureWork` (§5.6).
 - **Events** listed in §6, for guards and follow-ups in verticals.
-- **Overridable views:** document list panel on a record, upload dialog, review queue,
+- **Subject labels:** `wl_kernel::documents::register_subject_label(subject_type, …)` names a
+  record where documents of any record are listed (review queue, the documents page).
+- **Overridable views:** document list panel on a record (`wl-documents/subject.html`), upload dialog, review queue,
   signing page, evidence page, all template layouts.
 - **Custom fields** on document kinds, e.g. visa type, licence category, certificate standard.
 

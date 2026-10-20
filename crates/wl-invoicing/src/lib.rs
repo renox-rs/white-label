@@ -752,6 +752,74 @@ impl Module for WlInvoicing {
     }
 
     fn register(&self, app: &mut Registry) {
+        // An invoice is looked after by the people of its scope unit (the
+        // building it was billed for): the approvers of its write-off, credit
+        // or dispute are looked for there, not only among the holders of a
+        // global role. The scope unit's own scope is the vertical's
+        // (`wl_kernel::scopes::register` for its subject type).
+        wl_kernel::scopes::register(wl_kernel::invoicing::INVOICE_SUBJECT_TYPE, |db, id| {
+            Box::pin(async move {
+                let Some(invoice) = Invoice::find(db, id).await? else {
+                    return Ok(renox::auth::permissions::Scope::global());
+                };
+                match (invoice.scope_type, invoice.scope_id) {
+                    (Some(kind), Some(unit)) => {
+                        wl_kernel::scopes::scope_of(db, &wl_kernel::Subject::new(&kind, unit)).await
+                    }
+                    _ => Ok(renox::auth::permissions::Scope::global()),
+                }
+            })
+        });
+        // Where a page names an invoice (a cheque's documents): its number.
+        wl_kernel::documents::register_subject_label(
+            wl_kernel::invoicing::INVOICE_SUBJECT_TYPE,
+            |db, id| {
+                Box::pin(async move {
+                    Ok(Invoice::find(db, id).await?.map(|invoice| {
+                        invoice
+                            .number
+                            .clone()
+                            .unwrap_or_else(|| format!("Draft #{}", invoice.id))
+                    }))
+                })
+            },
+        );
+        // And the other way, for the lists: the invoices billed for the
+        // buildings (or other scope units) a user holds a permission in.
+        wl_kernel::scopes::register_derived_members(
+            wl_kernel::invoicing::INVOICE_SUBJECT_TYPE,
+            |db, scopes| {
+                Box::pin(async move {
+                    let reach = wl_kernel::scopes::Reach::only(scopes.to_vec());
+                    let query = reach
+                        .apply(db, Invoice::query(), "scope_type", "scope_id")
+                        .await?;
+                    Ok(query.get(db).await?.into_iter().map(|i| i.id).collect())
+                })
+            },
+        );
+        wl_kernel::scopes::register_derived_members(
+            wl_kernel::invoicing::CREDIT_NOTE_SUBJECT_TYPE,
+            |db, scopes| {
+                Box::pin(async move {
+                    let reach = wl_kernel::scopes::Reach::only(scopes.to_vec());
+                    let invoices = reach
+                        .ids(db, wl_kernel::invoicing::INVOICE_SUBJECT_TYPE)
+                        .await?
+                        .unwrap_or_default();
+                    if invoices.is_empty() {
+                        return Ok(Vec::new());
+                    }
+                    Ok(CreditNote::query()
+                        .where_in("invoice_id", invoices)
+                        .get(db)
+                        .await?
+                        .into_iter()
+                        .map(|note| note.id)
+                        .collect())
+                })
+            },
+        );
         app.model::<cash_balance::OpeningCashBalance>();
         app.model::<cash_alert::CashAlert>();
         app.model::<EInvoiceTransmission>();
@@ -860,7 +928,7 @@ impl Module for WlInvoicing {
         app.nav(
             "app",
             NavLink::route("wl_invoicing.credit_notes", "nav.credit_notes")
-                .icon("receipt-text")
+                .icon("file-text")
                 .group("nav.app")
                 .order(40)
                 .permission(permissions::VIEW),
@@ -869,7 +937,7 @@ impl Module for WlInvoicing {
         app.nav(
             "app",
             NavLink::route("wl_invoicing.vat_summaries", "nav.vat_summaries")
-                .icon("landmark")
+                .icon("percent")
                 .group("nav.app")
                 .order(41)
                 .permission(permissions::VAT_VIEW),
@@ -887,7 +955,7 @@ impl Module for WlInvoicing {
         app.nav(
             "app",
             NavLink::route("wl_invoicing.tasks", "nav.reversal_tasks")
-                .icon("list-checks")
+                .icon("clipboard-list")
                 .group("nav.app")
                 .order(43)
                 .permission(permissions::RECEIVABLES_VIEW),
@@ -896,7 +964,7 @@ impl Module for WlInvoicing {
         app.nav(
             "app",
             NavLink::route("wl_invoicing.budgets", "nav.budgets")
-                .icon("wallet")
+                .icon("chart-pie")
                 .group("nav.app")
                 .order(45)
                 .permission(permissions::BUDGETS_VIEW),
@@ -925,7 +993,7 @@ impl Module for WlInvoicing {
         app.nav(
             "app",
             NavLink::route("wl_invoicing.einvoices", "nav.einvoices")
-                .icon("send")
+                .icon("upload")
                 .group("nav.app")
                 .order(48)
                 .permission(permissions::EINVOICES_VIEW),
