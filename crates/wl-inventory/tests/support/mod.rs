@@ -209,15 +209,42 @@ impl CostPoster for CostDesk {
     }
 }
 
-/// A block guard that refuses the extension of an order to the suppliers set
-/// as blocked.
+/// A block guard that refuses the suppliers set as blocked. A party blocked
+/// with a reason shows it to the users set as allowed to see it, as
+/// `parties.block_reason.view` does; everyone else gets *on hold*.
 #[derive(Clone, Default)]
-pub struct Blocked(Arc<Mutex<Vec<PartyId>>>);
+pub struct Blocked {
+    parties: Arc<Mutex<Vec<(PartyId, Option<String>)>>>,
+    seers: Arc<Mutex<Vec<i64>>>,
+}
 
 impl Blocked {
     /// `party` is blocked from now on.
     pub fn block(&self, party: PartyId) {
-        self.0.lock().unwrap().push(party);
+        self.parties.lock().unwrap().push((party, None));
+    }
+
+    /// `party` is blocked from now on for `reason` (such as `Sanctions`).
+    pub fn block_for(&self, party: PartyId, reason: &str) {
+        self.parties
+            .lock()
+            .unwrap()
+            .push((party, Some(reason.to_owned())));
+    }
+
+    /// `user` may see the reason of a block.
+    pub fn show_reasons_to(&self, user: &User) {
+        self.seers.lock().unwrap().push(user.id);
+    }
+
+    /// `party` is not blocked any more.
+    pub fn unblock(&self, party: PartyId) {
+        self.parties.lock().unwrap().retain(|(p, _)| *p != party);
+    }
+
+    /// The suppliers blocked now.
+    pub fn blocked(&self) -> Vec<PartyId> {
+        self.parties.lock().unwrap().iter().map(|(p, _)| *p).collect()
     }
 }
 
@@ -225,18 +252,37 @@ impl BlockGuard for Blocked {
     fn check_in<'a>(
         &'a self,
         _tx: &'a mut renox::db::Transaction,
-        _viewer: Option<&'a User>,
+        viewer: Option<&'a User>,
         party: PartyId,
         kind: ActionKind,
     ) -> BlockFuture<'a, GuardOutcome> {
-        let blocked = kind.is_guarded() && self.0.lock().unwrap().contains(&party);
-        Box::pin(async move {
-            Ok(if blocked {
-                GuardOutcome::Blocked(BlockRefusal::neutral(party, kind, "finance_manager"))
-            } else {
-                GuardOutcome::Allowed
-            })
-        })
+        let found = self
+            .parties
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|(p, _)| *p == party)
+            .map(|(_, reason)| reason.clone());
+        let sees = viewer.is_some_and(|v| self.seers.lock().unwrap().contains(&v.id));
+        let outcome = match found {
+            Some(reason) if kind.is_guarded() => {
+                let lines = match (sees, reason) {
+                    (true, Some(label)) => vec![wl_kernel::block_guard::BlockReasonLine {
+                        label,
+                        link: format!("/parties/{}/blocks/1", party.0),
+                    }],
+                    _ => Vec::new(),
+                };
+                GuardOutcome::Blocked(BlockRefusal::detailed(
+                    party,
+                    kind,
+                    lines,
+                    "finance_manager",
+                ))
+            }
+            _ => GuardOutcome::Allowed,
+        };
+        Box::pin(async move { Ok(outcome) })
     }
 }
 
@@ -488,6 +534,42 @@ impl Booted {
         let mut line = PurchaseOrderLine::new(order.id, 1, item.id, quantity_milli, unit_price);
         line.save(self.db()).await.unwrap();
         (order, line)
+    }
+
+    /// A `draft` purchase order to the supplier for delivery at `location`
+    /// with one line of `quantity_milli` of `item` at `unit_price`.
+    pub async fn draft_order(
+        &self,
+        location: &Location,
+        item: &Item,
+        quantity_milli: i64,
+        unit_price: i64,
+    ) -> (PurchaseOrder, PurchaseOrderLine) {
+        let mut order = PurchaseOrder::new(SUPPLIER, location.id);
+        let mut tx = self.db().begin().await.unwrap();
+        order
+            .insert_in_state(&mut tx, PurchaseOrderStatus::Draft, "fixture")
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+        let mut line = PurchaseOrderLine::new(order.id, 1, item.id, quantity_milli, unit_price);
+        line.save(self.db()).await.unwrap();
+        (order, line)
+    }
+
+    /// `POST /purchase-orders/{id}/issue` as `by`; `extra` is more form
+    /// fields (`block_exception=1` asks for the exception).
+    pub async fn issue_as(
+        &self,
+        by: &User,
+        order: &PurchaseOrder,
+        extra: &[(&str, &str)],
+    ) -> TestResponse {
+        self.app.acting_as(by);
+        self.app
+            .htmx()
+            .post(&format!("/purchase-orders/{}/issue", order.id), extra)
+            .await
     }
 
     /// A draft receipt of the order at the location with `lines`.
@@ -896,6 +978,21 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool) -> Booted {
         .call("wl:install", Vec::<String>::new())
         .await
         .expect("wl:install runs");
+    // What wl-parties registers: an exception to a block is decided by the
+    // finance manager (screening off).
+    wl_kernel::PolicyDefault::new(wl_kernel::BLOCK_EXCEPTION_ACTION)
+        .with_step(
+            wl_kernel::approvals::Step::one_of(["finance_manager"])
+                .requiring(wl_kernel::BLOCK_EXCEPTION_ACTION),
+        )
+        .register();
+    permissions::define_role(
+        app.db(),
+        "finance_manager",
+        &[wl_kernel::BLOCK_EXCEPTION_ACTION],
+    )
+    .await
+    .unwrap();
     permissions::define_role(app.db(), "storekeeper", &[perm::GOODS_RECEIPTS_POST])
         .await
         .unwrap();
