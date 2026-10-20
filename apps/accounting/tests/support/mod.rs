@@ -742,6 +742,8 @@ struct Fakes {
     wip: WipBook,
     qualifications: QualificationBook,
     real: bool,
+    /// The real wl-notify sends; the recording notifier is not provided.
+    notify: bool,
 }
 
 impl Module for Fakes {
@@ -750,7 +752,9 @@ impl Module for Fakes {
     }
 
     fn register(&self, app: &mut Registry) {
-        provide_notifier(app, self.notices.clone());
+        if !self.notify {
+            provide_notifier(app, self.notices.clone());
+        }
         provide_unbilled_time(app, self.wip.clone());
         wl_kernel::workforce::provide_workforce(app, self.qualifications.clone());
         wl_kernel::qualifications::provide_qualifications(app, self.qualifications.clone());
@@ -819,6 +823,7 @@ pub fn register_portal_section() {
 }
 
 mod filing;
+pub mod notify;
 mod returns;
 #[allow(unused_imports)]
 pub use returns::Crew;
@@ -984,6 +989,8 @@ pub struct Booted {
     /// The staff with employee records and their FTA tax agent registrations
     /// (wl-hr's `Qualifications`, faked).
     pub qualifications: QualificationBook,
+    /// The scripted e-mail provider of [`boot_notify`] (unused elsewhere).
+    pub mail: notify::ScriptedMail,
 }
 
 /// A client with parties, documents, ticketing and invoicing on (the real
@@ -995,6 +1002,25 @@ app = "accounting"
 
 [modules]
 enabled = ["parties", "documents", "ticketing", "invoicing"]
+
+[[legal_entities]]
+code = "FLA"
+name_en = "Falcon Ledger Accountants LLC"
+trn = "100000000000003"
+default = true
+
+[calendar]
+holidays = ["2026-12-02", "2026-12-03"]
+"#;
+
+/// [`CLIENT_REAL`] with the notify module on ([`boot_notify`]).
+const CLIENT_NOTIFY: &str = r#"
+[client]
+name = "Falcon Ledger Accountants LLC"
+app = "accounting"
+
+[modules]
+enabled = ["parties", "documents", "ticketing", "invoicing", "notify"]
 
 [[legal_entities]]
 code = "FLA"
@@ -1049,6 +1075,23 @@ fn missed_reasons(mut module: wl_ticketing::WlTicketing) -> wl_ticketing::WlTick
 }
 
 async fn boot_with(real: bool, billing: bool, related_block: bool) -> Booted {
+    boot_inner(real, billing, related_block, None).await
+}
+
+/// [`boot_real`] with the real wl-notify in place of the recording notifier:
+/// e-mails go through [`notify::ScriptedMail`] (`Booted::mail`), which sends
+/// or bounces as a test scripts it, and a give-up runs wl-notify's own
+/// reactions (contact point marked invalid, the statutory-notice task).
+pub async fn boot_notify() -> Booted {
+    boot_inner(true, false, true, Some(notify::ScriptedMail::default())).await
+}
+
+async fn boot_inner(
+    real: bool,
+    billing: bool,
+    related_block: bool,
+    mail: Option<notify::ScriptedMail>,
+) -> Booted {
     let views = tempfile::tempdir().expect("a temporary views directory");
     let path = views.path().join("layouts/app.html");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -1062,6 +1105,7 @@ async fn boot_with(real: bool, billing: bool, related_block: bool) -> Booted {
         wip: WipBook::default(),
         qualifications: QualificationBook::default(),
         real,
+        notify: mail.is_some(),
     };
     let (notices, tasks, subscriptions, tickets, invoices, wip, qualifications) = (
         fakes.notices.clone(),
@@ -1100,8 +1144,16 @@ async fn boot_with(real: bool, billing: bool, related_block: bool) -> Booted {
                 wl_invoicing::WlInvoicing::new()
             });
     }
+    let app = match &mail {
+        Some(mail) => app.module(wl_notify::WlNotify::new().provider(mail.clone())),
+        None => app,
+    };
     let app = app.module(Accounting).module(fakes);
-    let client = if real { CLIENT_REAL } else { CLIENT };
+    let client = match (real, mail.is_some()) {
+        (_, true) => CLIENT_NOTIFY,
+        (true, false) => CLIENT_REAL,
+        (false, false) => CLIENT,
+    };
     let config = wl_kernel::ClientConfig::parse(client).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     let dir = views.path().to_path_buf();
@@ -1116,7 +1168,11 @@ async fn boot_with(real: bool, billing: bool, related_block: bool) -> Booted {
             .await
             .expect("the ticket categories seed");
     }
+    if mail.is_some() {
+        app.kernel().seed().await.expect("the seeders run");
+    }
     let t = Booted {
+        mail: mail.unwrap_or_default(),
         app,
         _views: views,
         notices,

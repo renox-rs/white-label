@@ -24,3 +24,5 @@ wl-documents = { path = "../../crates/wl-documents" }
 wl-portal = { path = "../../crates/wl-portal" }
 wl-ticketing = { path = "../../crates/wl-ticketing" }
 wl-invoicing = { path = "../../crates/wl-invoicing" }
+# The real notifier in `deadline_notify_real.rs`: a bounced statutory notice.
+wl-notify = { path = "../../crates/wl-notify" }

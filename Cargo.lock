@@ -12,6 +12,7 @@ dependencies = [
  "wl-documents",
  "wl-invoicing",
  "wl-kernel",
+ "wl-notify",
  "wl-parties",
  "wl-portal",
  "wl-ticketing",
