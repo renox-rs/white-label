@@ -12,7 +12,7 @@ use wl_kernel::documents::today;
 use wl_kernel::invoicing::{DraftLine, InvoiceDraft, VatCategory, invoicer};
 use wl_kernel::{BusinessCalendar, LegalEntity, PartyId, PartyKind, Subject};
 use wl_notify::{Clock, Message};
-use wl_parties::{CompanyDetails, NewParty, PersonDetails, create};
+use wl_parties::{CompanyDetails, ContactPoint, ContactType, NewParty, PersonDetails, create};
 
 /// The notify module's clock fixed at noon in Dubai: inside every send window
 /// and outside the quiet hours (21:00-08:00, `NTF.RUL.02`), so a send does not
@@ -51,6 +51,16 @@ pub async fn person(app: &TestApp, name: &str, role: &str) -> User {
     user
 }
 
+/// The primary e-mail of the party `name`.
+fn email_of(name: &str) -> ContactPoint {
+    ContactPoint {
+        contact_type: ContactType::Email,
+        value: format!("{}@parties.example", name.to_lowercase().replace(' ', ".")),
+        is_primary: true,
+        ..Default::default()
+    }
+}
+
 /// A person party (a tenant) with a billing e-mail.
 pub async fn tenant(app: &TestApp, name: &str) -> PartyId {
     create(
@@ -59,6 +69,7 @@ pub async fn tenant(app: &TestApp, name: &str) -> PartyId {
             kind: PartyKind::Person,
             legal_name_en: name.into(),
             person: Some(PersonDetails::default()),
+            contacts: vec![email_of(name)],
             source: "back_office".into(),
             ..Default::default()
         },
@@ -76,6 +87,7 @@ pub async fn company(app: &TestApp, name: &str) -> PartyId {
             kind: PartyKind::Company,
             legal_name_en: name.into(),
             company: Some(CompanyDetails::default()),
+            contacts: vec![email_of(name)],
             source: "back_office".into(),
             ..Default::default()
         },
@@ -149,6 +161,102 @@ pub async fn issued_invoice(
         .post(&format!("/invoices/{}/issue", draft.id), &[])
         .await
         .assert_redirect(&format!("/invoices/{}", draft.id));
+    Invoice::find_or_404(app.db(), draft.id).await.unwrap()
+}
+
+/// A building `code` with a unit `number` of `usage`.
+pub async fn unit_of(
+    app: &TestApp,
+    code: &str,
+    number: &str,
+    usage: property::UnitUse,
+) -> property::Unit {
+    let building = property::create_building(
+        app.db(),
+        property::NewBuilding {
+            code: code.to_owned(),
+            name_en: format!("Tower {code}"),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    property::create_unit(
+        app.db(),
+        property::NewUnit {
+            building_id: building.id,
+            number: number.to_owned(),
+            usage,
+            asking_rent: Some(10_000_000),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap()
+}
+
+/// A draft lease of `unit` for `tenant`, one year from `start_in` days.
+pub async fn draft_lease(
+    app: &TestApp,
+    unit: &property::Unit,
+    tenant: PartyId,
+    start_in: i64,
+) -> property::Lease {
+    let new = property::NewLease::new(
+        unit.id,
+        tenant,
+        day(start_in),
+        day(start_in + 364),
+        12_000_000,
+        4,
+    );
+    property::leases::create_draft(app.state(), None, new)
+        .await
+        .unwrap()
+}
+
+/// An issued invoice for `lease`, due `due`, charged as the rent instalment
+/// `position` of the lease (what `PRP.RUL.10` reads).
+pub async fn invoiced_charge(
+    app: &TestApp,
+    by: &User,
+    lease: &property::Lease,
+    fils: i64,
+    category: VatCategory,
+    due: NaiveDate,
+    position: i32,
+) -> Invoice {
+    let draft = draft_invoice(
+        app,
+        PartyId(lease.tenant_party_id),
+        lease.subject(),
+        fils,
+        category,
+        due,
+    )
+    .await;
+    app.acting_as(by);
+    app.htmx()
+        .post(&format!("/invoices/{}/issue", draft.id), &[])
+        .await
+        .assert_redirect(&format!("/invoices/{}", draft.id));
+    property::LeaseCharge::create(
+        app.db(),
+        property::LeaseCharge {
+            lease_id: lease.id,
+            position,
+            charge_type: "rent".to_owned(),
+            description: format!("Rent {position}"),
+            due_date: due,
+            amount: fils,
+            vat_category: category,
+            status: property::ChargeStatus::Invoiced,
+            invoice_id: Some(draft.id),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
     Invoice::find_or_404(app.db(), draft.id).await.unwrap()
 }
 

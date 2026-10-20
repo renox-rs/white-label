@@ -311,3 +311,211 @@ async fn a_chargeable_ticket_is_invoiced_and_issued_when_the_tenant_confirms() {
         .unwrap();
     assert_eq!(summary.status, InvoiceStatus::Issued);
 }
+
+/// Item 4: an issued invoice that is disputed gets no `FIN.RUL.01` reminder
+/// and no `PRP.RUL.10` demand task, while the same invoice undisputed does:
+/// two leases, one invoice each, ten and thirty-one days overdue.
+#[renox::test]
+async fn a_disputed_invoice_gets_no_reminder_and_no_formal_demand() {
+    use property::UnitUse;
+    use property::arrears::{self, ArrearsDemand};
+    use wl_invoicing::reminders;
+
+    let app = booted().await;
+    let clerk = person(&app, "Clara", RECEIVABLES).await;
+    let tara = tenant(&app, "Tara Nasser").await;
+    let omar = tenant(&app, "Omar Hassan").await;
+    let tara_unit = unit_of(&app, "TWR-A", "1204", UnitUse::Residential).await;
+    let omar_unit = unit_of(&app, "TWR-B", "803", UnitUse::Residential).await;
+    let tara_lease = draft_lease(&app, &tara_unit, tara, -300).await;
+    let omar_lease = draft_lease(&app, &omar_unit, omar, -300).await;
+
+    // Both invoices fell due 31 days ago and are unpaid.
+    let kept = invoiced_charge(
+        &app,
+        &clerk,
+        &tara_lease,
+        1_000_000,
+        VatCategory::Exempt,
+        day(-31),
+        1,
+    )
+    .await;
+    let disputed = invoiced_charge(
+        &app,
+        &clerk,
+        &omar_lease,
+        1_000_000,
+        VatCategory::Exempt,
+        day(-31),
+        1,
+    )
+    .await;
+    app.acting_as(&clerk);
+    app.htmx()
+        .post(
+            &format!("/invoices/{}/dispute", disputed.id),
+            &[("reason", "Wrong amount"), ("amount", "100.00")],
+        )
+        .await
+        .assert_ok();
+    assert!(reload(&app, &disputed).await.disputed);
+    assert!(!reload(&app, &kept).await.disputed);
+
+    // FIN.RUL.01: one reminder, for the invoice that is not disputed.
+    let sent = reminders::run(app.state(), day(0)).await.unwrap();
+    assert_eq!(sent, 1);
+    let logged = wl_invoicing::ReminderLog::query()
+        .get(app.db())
+        .await
+        .unwrap();
+    assert_eq!(logged.len(), 1);
+    assert_eq!(logged[0].invoice_id, kept.id);
+
+    // PRP.RUL.10: one demand, for the lease without the dispute.
+    let report = arrears::run(app.state(), day(0)).await.unwrap();
+    assert_eq!(report.demands, 1);
+    assert_eq!(
+        ArrearsDemand::of_root(app.db(), tara_lease.root_id)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+    assert!(
+        ArrearsDemand::of_root(app.db(), omar_lease.root_id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
+/// Item 5: a written-off commercial-rent invoice (standard-rated) that meets
+/// the relief conditions gets a `FIN.RUL.14` VAT adjustment proposal on the
+/// open VAT summary and the accountant is told; a written-off residential
+/// rent invoice (exempt) gets none.
+#[renox::test]
+async fn bad_debt_relief_is_proposed_for_commercial_rent_and_not_for_residential_rent() {
+    use wl_invoicing::bad_debt_relief::{self, PROPOSED};
+    use wl_invoicing::{AdjustmentStatus, Invoice, VatAdjustment, VatSummary, vat_summary};
+
+    let app = booted().await;
+    let clerk = person(&app, "Clara", RECEIVABLES).await;
+    let manager = person(&app, "Pam", PROPERTY_MANAGER).await;
+    let accountant = person(&app, "Amal", ACCOUNTANT).await;
+    let admin = person(&app, "Alia", ADMIN).await;
+    let shop = company(&app, "Palm Retail LLC").await;
+    let tara = tenant(&app, "Tara Nasser").await;
+
+    // AED 1,000 plus 5% VAT for the shop, AED 1,000 exempt for the flat.
+    let commercial =
+        issued_invoice(&app, &clerk, shop, 100_000, VatCategory::Standard, day(-60)).await;
+    let residential =
+        issued_invoice(&app, &clerk, tara, 100_000, VatCategory::Exempt, day(-60)).await;
+    for invoice in [&commercial, &residential] {
+        app.acting_as(&clerk);
+        app.htmx()
+            .post(
+                &format!("/invoices/{}/write-off", invoice.id),
+                &[("reason_code", "insolvent"), ("reason_text", "")],
+            )
+            .await
+            .assert_ok();
+        let request = approvals::pending_for(app.db(), &invoice.subject())
+            .await
+            .unwrap()
+            .remove(0);
+        approvals::approve(app.state(), request.id, &manager, "")
+            .await
+            .unwrap()
+            .expect("the approval runs");
+        assert_eq!(
+            reload(&app, invoice).await.status,
+            InvoiceStatus::WrittenOff
+        );
+    }
+    let relief = VatAdjustment::relief_of(app.db(), &commercial)
+        .await
+        .unwrap()
+        .expect("the commercial write-off made the relief");
+    assert_eq!(relief.amount, 5_000);
+    assert_eq!(relief.status, AdjustmentStatus::Pending);
+    let exempt = VatAdjustment::relief_of(app.db(), &residential)
+        .await
+        .unwrap();
+    assert_eq!(
+        exempt.as_ref().map_or(0, |a| a.amount),
+        0,
+        "residential rent is exempt: nothing to relieve"
+    );
+
+    // The conditions: the supply was more than six months ago, the notice of
+    // the write-off was given, and the VAT summary of the supply period is
+    // locked; the relief goes on the open summary of today.
+    let supply = day(-250);
+    Invoice::query()
+        .where_(Invoice::ID.eq(commercial.id))
+        .update(
+            app.db(),
+            &[
+                ("date_of_supply", &Some(supply)),
+                ("write_off_notice_on", &Some(day(-30))),
+            ],
+        )
+        .await
+        .unwrap();
+    let config = wl_invoicing::WlInvoicing::new().config().clone();
+    let entity = entity(&app, "PGP").await;
+    vat_summary::ensure_open(app.db(), &config, &entity, supply)
+        .await
+        .unwrap();
+    let past = VatSummary::containing(app.db(), &config, &entity, supply)
+        .await
+        .unwrap()
+        .expect("the summary of the supply period");
+    for (step, by) in [
+        ("prepare", &accountant),
+        ("review", &admin),
+        ("lock", &admin),
+    ] {
+        app.acting_as(by);
+        app.htmx()
+            .post(
+                &format!("/vat-summaries/{}/transitions/{step}", past.id),
+                &[("reason", "")],
+            )
+            .await
+            .assert_status(303);
+    }
+    vat_summary::ensure_open(app.db(), &config, &entity, day(0))
+        .await
+        .unwrap();
+    let open = VatSummary::containing(app.db(), &config, &entity, day(0))
+        .await
+        .unwrap()
+        .expect("the open summary of today");
+
+    let ran = bad_debt_relief::run(app.state(), day(0)).await.unwrap();
+    assert_eq!(ran.proposed, 1);
+    let proposed = VatAdjustment::find(app.db(), relief.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(proposed.status, AdjustmentStatus::Proposed);
+    assert_eq!(proposed.summary_id, Some(open.id));
+    assert_eq!(messages_to(&app, PROPOSED, &accountant).await.len(), 1);
+    // Nothing was proposed for the residential invoice, even with the same
+    // conditions.
+    if let Some(exempt) = exempt {
+        let still = VatAdjustment::find(app.db(), exempt.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_ne!(still.status, AdjustmentStatus::Proposed);
+    }
+    // The invoice stays as written off.
+    assert_eq!(
+        reload(&app, &commercial).await.status,
+        InvoiceStatus::WrittenOff
+    );
+}

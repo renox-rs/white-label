@@ -26,6 +26,7 @@ use renox::nav::NavLink;
 
 pub use app::roles;
 
+use wl_invoicing::WlInvoicing;
 use wl_kernel::{ClientConfig, ConfigError};
 
 /// The variable naming the client's `client.toml`.
@@ -65,6 +66,19 @@ pub fn app() -> renox::App {
 
 /// The application for one client.
 pub fn app_for(config: ClientConfig) -> Result<renox::App, ConfigError> {
+    app_for_tuned(config, |invoicing| invoicing)
+}
+
+/// [`app_for`] with the invoicing module changed by `tune`: what the host
+/// leaves to the client, such as the e-invoicing go-live date of each legal
+/// entity and its ASP adapter (`WlInvoicing::einvoicing`,
+/// `WlInvoicing::asp_adapter`; BL-PRP-26 item 6). `tune` runs on the module
+/// with the client's values already set, and only when `invoicing` is enabled.
+pub fn app_for_tuned(
+    config: ClientConfig,
+    tune: impl FnOnce(WlInvoicing) -> WlInvoicing,
+) -> Result<renox::App, ConfigError> {
+    let mut tune = Some(tune);
     let client_app = config.client.app.clone();
     let vertical = vertical(&client_app)?;
     let manifest = config.manifest()?;
@@ -80,7 +94,7 @@ pub fn app_for(config: ClientConfig) -> Result<renox::App, ConfigError> {
     // modules' demo data needs, and seeders run in the order modules mount.
     let mut app = wl_kernel::apply(base(), config)?;
     for module in manifest.enabled() {
-        app = enable(app, module, &client_app, &entities, &owner_role)?;
+        app = enable(app, module, &client_app, &entities, &owner_role, &mut tune)?;
     }
     // The Property client's categories, checklists and SOPs go in after the
     // modules' own seeds (BL-PRP-27).
@@ -108,12 +122,13 @@ fn vertical(name: &str) -> Result<property::Property, ConfigError> {
 }
 
 /// Mounts one enabled `wl-*` module; `client_app` is `[client] app`.
-fn enable(
+fn enable<T: FnOnce(WlInvoicing) -> WlInvoicing>(
     app: renox::App,
     module: &str,
     client_app: &str,
     entities: &[String],
     owner_role: &str,
+    tune: &mut Option<T>,
 ) -> Result<renox::App, ConfigError> {
     // Each F1 module gets its arm here as it is built (decision 0004).
     match module {
@@ -123,7 +138,13 @@ fn enable(
             Ok(app.module(wl_documents::WlDocuments))
         }
         "notify" => Ok(app.module(wl_notify::WlNotify::new())),
-        "invoicing" => Ok(app.module(app::negative_flow::invoicing_for(client_app, entities))),
+        "invoicing" => {
+            let module = app::negative_flow::invoicing_for(client_app, entities);
+            Ok(app.module(match tune.take() {
+                Some(tune) => tune(module),
+                None => module,
+            }))
+        }
         "ticketing" => Ok(app.module(app::property_seed::ticketing_for(client_app))),
         "payments" => Ok(app.module(app::negative_flow::payments_for(client_app))),
         "sales" => Ok(app.module(app::property_seed::sales_for(client_app))),
