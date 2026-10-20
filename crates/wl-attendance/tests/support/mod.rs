@@ -618,6 +618,8 @@ pub struct Booted {
     pub approved: Recorded<TimesheetApproved>,
     /// Days the clock was moved forward from the real one.
     clock_days: std::sync::atomic::AtomicI64,
+    /// Keeps the views directory alive.
+    _views: tempfile::TempDir,
 }
 
 impl Booted {
@@ -876,7 +878,18 @@ pub async fn boot_with(module: WlAttendance, extra: &str) -> Booted {
     let config =
         wl_kernel::ClientConfig::parse(&format!("{CLIENT}\n{extra}")).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
-    let app = TestApp::new(app).await;
+    // The pages extend the app's layout; a package test has no app, so it
+    // brings the smallest one.
+    let views = tempfile::tempdir().expect("a temporary views directory");
+    let layout = views.path().join("layouts/app.html");
+    std::fs::create_dir_all(layout.parent().unwrap()).unwrap();
+    std::fs::write(
+        &layout,
+        "<!doctype html>\n<html><body><rx-outlet name=\"content\"/></body></html>\n",
+    )
+    .unwrap();
+    let dir = views.path().to_path_buf();
+    let app = TestApp::with_config(app, |c| c.views_path = dir).await;
     app.kernel()
         .call("wl:install", Vec::<String>::new())
         .await
@@ -963,6 +976,7 @@ pub async fn boot_with(module: WlAttendance, extra: &str) -> Booted {
         posted,
         approved,
         clock_days: std::sync::atomic::AtomicI64::new(0),
+        _views: views,
     }
 }
 

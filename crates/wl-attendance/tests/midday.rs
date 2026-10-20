@@ -123,6 +123,134 @@ async fn att03_a_block_without_the_break_is_flagged_and_with_it_is_not() {
     .await;
 }
 
+/// The marking route carries the break: kept (12:30 to 15:00) there is no
+/// flag, removed (no break fields) every record of the block is flagged and the
+/// supervisor and the HSE officer are told, a half break is refused.
+#[renox::test]
+async fn att03_the_marking_route_keeps_or_removes_the_break() {
+    let t = boot().await;
+    let boss = t.user_with("Bashir", "supervisor").await;
+    let hse = t.user_with("Hamza", "hse").await;
+    let a = t.employee(1, &[]);
+    let b = t.employee(2, &[]);
+    let site = t
+        .location_of(WorkLocation::named("Site 1").outdoors())
+        .await;
+    let form = |employee: i64, extra: &[(&'static str, &'static str)]| {
+        let mut form = vec![
+            ("employee_id", employee.to_string()),
+            ("location_id", site.id.to_string()),
+            ("check_in", "2027-07-12T07:00".to_owned()),
+            ("check_out", "2027-07-12T17:00".to_owned()),
+        ];
+        form.extend(extra.iter().map(|(k, v)| (*k, (*v).to_owned())));
+        form
+    };
+    let (tt, bb) = (&t, &boss);
+    let send = move |form: Vec<(&'static str, String)>| async move {
+        let pairs: Vec<(&str, &str)> = form.iter().map(|(k, v)| (*k, v.as_str())).collect();
+        tt.app.acting_as(bb);
+        tt.app.htmx().post("/attendance/mark", &pairs).await
+    };
+    t.on(july(), async {
+        // Kept: the pre-filled break goes with the marking.
+        send(form(a.0, &[("break_from", "12:30"), ("break_to", "15:00")]))
+            .await
+            .assert_ok();
+        let kept = t.records_of(a).await.remove(0);
+        assert_eq!(kept.status, AttendanceStatus::Recorded);
+        assert_eq!(kept.breaks.0, vec![BreakSpan::hm((12, 30), (15, 0))]);
+        assert!(t.notices.all().is_empty());
+
+        // A break with one time only is refused and saves nothing.
+        send(form(b.0, &[("break_from", "12:30")]))
+            .await
+            .assert_status(422);
+        send(form(b.0, &[("break_from", "15:00"), ("break_to", "12:30")]))
+            .await
+            .assert_status(422);
+        assert!(t.records_of(b).await.is_empty());
+
+        // Removed: flagged, and the supervisor and the HSE officer are told.
+        send(form(b.0, &[])).await.assert_ok();
+        let removed = t.records_of(b).await.remove(0);
+        assert_eq!(removed.status, AttendanceStatus::Flagged);
+        assert!(removed.breaks.0.is_empty());
+        assert_eq!(t.flags_of(&removed).await, ["midday_break"]);
+        let told = t.notices.flagged("midday_break");
+        assert_eq!(told.len(), 1);
+        let users = users_of(&told[0]);
+        assert!(users.contains(&boss.id) && users.contains(&hse.id));
+    })
+    .await;
+}
+
+/// The crew list page of a location and day shows the clash with the other
+/// location and the pre-filled midday break; only a marker sees it.
+#[renox::test]
+async fn att01_att03_the_crew_page_shows_the_clashes_and_the_prefilled_break() {
+    let t = boot().await;
+    let boss = t.user_with("Bashir", "supervisor").await;
+    let nobody = t.user_with("Nadia", "reviewer").await;
+    let a = t.employee(1, &[]);
+    let b = t.employee(2, &[]);
+    let site = t
+        .location_of(WorkLocation::named("Site 1").outdoors())
+        .await;
+    let other = t.location("Site 2").await;
+    let office = t.location("Office").await;
+    t.on(july(), async {
+        // A is already marked at Site 2 from 07:00 to 12:00.
+        service::record(
+            t.state(),
+            NewRecord::supervisor(
+                a,
+                other.id,
+                dubai(july(), 7, 0),
+                Some(dubai(july(), 12, 0)),
+                boss.id,
+            ),
+        )
+        .await
+        .unwrap();
+        let path = |location: i64, extra: &str| {
+            format!(
+                "/attendance/crew?location_id={location}&date=2027-07-12&employees={},{}{extra}",
+                a.0, b.0
+            )
+        };
+
+        t.app.acting_as(&nobody);
+        t.app.get(&path(site.id, "")).await.assert_forbidden();
+
+        t.app.acting_as(&boss);
+        let page = t.app.get(&path(site.id, "")).await;
+        page.assert_ok();
+        let body = page.text();
+        assert!(body.contains("Site 1"), "the location: {body}");
+        assert!(body.contains("Already marked at Site 2"), "{body}");
+        assert!(
+            body.contains("Midday break 12:30 to 15:00"),
+            "the pre-filled break: {body}"
+        );
+        assert!(body.contains("No clash"), "B is free: {body}");
+
+        // Hours that do not meet the other record show no clash.
+        let later = t
+            .app
+            .get(&path(site.id, "&from=2027-07-12T13:00&to=2027-07-12T17:00"))
+            .await;
+        later.assert_ok();
+        assert!(!later.text().contains("Already marked at Site 2"));
+
+        // Indoors there is no break to pre-fill.
+        let indoor = t.app.get(&path(office.id, "")).await;
+        indoor.assert_ok();
+        assert!(indoor.text().contains("No midday break applies"));
+    })
+    .await;
+}
+
 /// A break 12:30 to 14:00 leaves 14:00 to 15:00 worked inside the window.
 #[renox::test]
 async fn att03_a_partial_break_is_flagged() {

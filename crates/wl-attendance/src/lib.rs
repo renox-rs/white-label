@@ -7,6 +7,7 @@ pub mod after_last_day;
 pub mod approval;
 pub mod checks;
 pub mod config;
+pub mod crew;
 pub mod entry;
 pub mod flags;
 pub mod history;
@@ -39,6 +40,13 @@ pub use record::{
 };
 pub use service::NewRecord;
 pub use timesheet::{Timesheet, TimesheetStatus};
+
+/// The templates, compiled in. An app replaces one with a file of the same
+/// name under its views directory.
+const VIEWS: &[(&str, &str)] = &[(
+    "wl-attendance/crew.html",
+    include_str!("../views/wl-attendance/crew.html"),
+)];
 
 /// The module's permissions (wl-attendance §6).
 pub mod permissions {
@@ -133,7 +141,7 @@ impl Module for WlAttendance {
     }
 
     fn routes(&self) -> Routes {
-        pages::routes()
+        pages::routes().merge(crew::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -141,6 +149,16 @@ impl Module for WlAttendance {
     }
 
     fn register(&self, app: &mut Registry) {
+        app.view_data::<crew::CrewPage>();
+        app.templates(|env| {
+            for (name, source) in VIEWS {
+                // The app's own file of that name wins.
+                if env.get_template(name).is_err() {
+                    renox::view::add_template(env, *name, *source)
+                        .expect("a built-in template compiles");
+                }
+            }
+        });
         app.model::<WorkLocation>();
         app.model::<AttendanceRecord>();
         app.model::<AttendanceFlag>();

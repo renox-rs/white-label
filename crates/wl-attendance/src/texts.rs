@@ -53,6 +53,34 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_attendance.record.bad_time",
         "Give the time as 2026-11-02T07:00.",
     ),
+    (
+        "wl_attendance.record.bad_break",
+        "Give the break as 12:30 to 15:00, ending after it starts, or leave both empty.",
+    ),
+    // The crew list page.
+    ("wl_attendance.crew.title", "Crew list"),
+    (
+        "wl_attendance.crew.subtitle",
+        "Who is already marked elsewhere on the day, and the midday break to keep or remove.",
+    ),
+    ("wl_attendance.crew.employee", "Employee"),
+    ("wl_attendance.crew.status", "Status"),
+    ("wl_attendance.crew.clashes", "Marked elsewhere"),
+    ("wl_attendance.crew.clear", "No clash"),
+    ("wl_attendance.crew.clash", "Already marked"),
+    (
+        "wl_attendance.crew.clash_at",
+        "Already marked at :location, :hours",
+    ),
+    ("wl_attendance.crew.empty", "No employees on the list."),
+    (
+        "wl_attendance.crew.break",
+        "Midday break :from to :to is pre-filled: keep it, or remove it and the block is flagged.",
+    ),
+    (
+        "wl_attendance.crew.no_break",
+        "No midday break applies on this day.",
+    ),
     // Flags.
     (
         "wl_attendance.flags.outside_geofence",

@@ -20,10 +20,11 @@
 //! own: the guard counts global roles only, while a supervisor may hold the
 //! permission in one project. The handlers check it in the scope of the
 //! location and answer 403. Times are sent as `2026-11-02T07:00` in
-//! Asia/Dubai. The crew page and the HTML of the field PWA come later; the
-//! crew list's clashes are [`crate::overlap::clashes_for`].
+//! Asia/Dubai. A marking may carry the break (`break_from`, `break_to` as
+//! `12:30`); without it an outdoor block in the midday season is flagged. The
+//! crew list page is in [`crate::crew`]; the HTML of the field PWA comes later.
 
-use renox::chrono::NaiveDateTime;
+use renox::chrono::{NaiveDateTime, NaiveTime};
 use renox::db::{DateTime, now};
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -35,7 +36,7 @@ use crate::adjustment;
 use crate::approval;
 use crate::location::WorkLocation;
 use crate::permissions;
-use crate::record::AttendanceRecord;
+use crate::record::{AttendanceRecord, BreakSpan};
 use crate::review::{self, Correction};
 use crate::service::{self, NewRecord, refuse};
 use crate::submit;
@@ -73,12 +74,17 @@ pub fn routes() -> Routes {
 }
 
 /// The package text `key`.
-fn text(lang: &Lang, key: &str) -> String {
+pub(crate) fn text(lang: &Lang, key: &str) -> String {
     texts::t(lang, &format!("wl_attendance.{key}"))
 }
 
 /// `2026-11-02T07:00` in Asia/Dubai as an instant.
-fn parse_time(state: &AppState, lang: &Lang, field: &str, value: &str) -> Result<DateTime> {
+pub(crate) fn parse_time(
+    state: &AppState,
+    lang: &Lang,
+    field: &str,
+    value: &str,
+) -> Result<DateTime> {
     let local = NaiveDateTime::parse_from_str(value.trim(), "%Y-%m-%dT%H:%M")
         .map_err(|_| refuse(format!("{field}: {}", text(lang, "record.bad_time"))))?;
     Ok(calendar(state).from_local(local))
@@ -102,6 +108,34 @@ pub struct MarkForm {
     #[validate(max = 500)]
     #[serde(default)]
     pub note: String,
+    /// The break taken, from `12:30`; empty when the break is removed. The
+    /// crew page pre-fills it in the midday season (`HRM.RUL.13`).
+    #[validate(max = 10)]
+    #[serde(default)]
+    pub break_from: String,
+    /// The break taken, to `15:00`; both or none of the break times.
+    #[validate(max = 10)]
+    #[serde(default)]
+    pub break_to: String,
+}
+
+/// The break of the form: none when both times are empty, else `from` and
+/// `to` as `12:30`, refused when only one is given or `to` is not after
+/// `from`.
+fn parse_break(lang: &Lang, form: &MarkForm) -> Result<Vec<BreakSpan>> {
+    let (from, to) = (form.break_from.trim(), form.break_to.trim());
+    if from.is_empty() && to.is_empty() {
+        return Ok(Vec::new());
+    }
+    let time = |field: &str, value: &str| {
+        NaiveTime::parse_from_str(value, "%H:%M")
+            .map_err(|_| refuse(format!("{field}: {}", text(lang, "record.bad_break"))))
+    };
+    let (from, to) = (time("break_from", from)?, time("break_to", to)?);
+    if to <= from {
+        return Err(refuse(text(lang, "record.bad_break")));
+    }
+    Ok(vec![BreakSpan { from, to }])
 }
 
 /// `POST /attendance/mark`: a supervisor marks an employee present.
@@ -123,6 +157,7 @@ async fn mark(
     } else {
         Some(parse_time(&state, &lang, "check_out", &form.check_out)?)
     };
+    let breaks = parse_break(&lang, &form)?;
     service::record(
         &state,
         NewRecord::supervisor(
@@ -132,6 +167,7 @@ async fn mark(
             check_out,
             user.id,
         )
+        .breaks(breaks)
         .note(&form.note),
     )
     .await?;
