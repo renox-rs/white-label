@@ -37,6 +37,35 @@ pub use service::{
 /// The subject type of a connection, for rule runs and alerts.
 pub const SUBJECT_TYPE: &str = "kernel.integration_connection";
 
+/// The key an app registers its e-mail connection under: `wl-notify` reports
+/// each e-mail send to it.
+pub const EMAIL: &str = "email";
+
+/// The key an app registers its sanctions list download under: `wl-parties`
+/// reports each download to it.
+pub const SANCTIONS_DOWNLOAD: &str = "sanctions.download";
+
+/// Reports how a call of connection `key` went to its health: `Ok` is a
+/// success, `Err` a failure with that text. An app that did not register
+/// the connection keeps no health for it, so nothing is reported then.
+///
+/// # Errors
+///
+/// A database error.
+pub async fn report_outcome(
+    state: &AppState,
+    key: &str,
+    outcome: std::result::Result<(), &str>,
+) -> Result {
+    if get(key).is_none() {
+        return Ok(());
+    }
+    match outcome {
+        Ok(()) => report_success(state, key).await.map(|_recovered| ()),
+        Err(error) => report_failure(state, key, error).await,
+    }
+}
+
 /// Registers the models and the connection's machine.
 pub(crate) fn register_models(app: &mut Registry) {
     app.model::<IntegrationConnection>()

@@ -739,7 +739,7 @@ pub async fn pay(
         return Err(TransitionError::Forbidden);
     }
     let reference = reference.trim();
-    if let Some(message) = part_refund_refusal(state, refund).await? {
+    if let Some(message) = money_out_refusal(state, refund).await? {
         return Err(TransitionError::Guard(message));
     }
     if latest_attempt_pending(state, refund).await? {
@@ -794,12 +794,14 @@ pub async fn pay(
     reload(state, refund).await
 }
 
-/// The neutral refusal when `refund` is the part refund of a held deposit
-/// adjustment and its party is blocked: the part refund is money out and
-/// waits under `PTY.ACL.03` (it stays `approved`) until the party is
-/// unblocked. Other refunds are guarded where they are requested (the
-/// deposit `refund`) or not at all. Only a question: nothing is written.
-async fn part_refund_refusal(
+/// The neutral refusal when the party of `refund` is blocked: the refund is
+/// money out and waits under `PTY.ACL.03` (it stays `approved`) until the
+/// party is unblocked. The refund of a deposit is guarded where it is
+/// requested (the deposit `refund`, with its exception), so only the part
+/// refund of a held deposit adjustment and the refunds of other sources (a
+/// credit note, a payment) are guarded here, at the step that releases the
+/// money. Only a question: nothing is written.
+async fn money_out_refusal(
     state: &AppState,
     refund: &Refund,
 ) -> std::result::Result<Option<String>, TransitionError> {
@@ -808,7 +810,7 @@ async fn part_refund_refusal(
         .where_(crate::deposit_adjust::DepositAdjustment::REFUND_ID.eq(refund.id))
         .first(&state.db)
         .await?;
-    if part.is_none() {
+    if part.is_none() && refund.source_type == wl_kernel::payments::DEPOSIT_SUBJECT_TYPE {
         return Ok(None);
     }
     let mut tx = state.db.begin().await?;
@@ -863,7 +865,7 @@ pub async fn send_to_gateway(
     else {
         return Err(guard("A gateway refund needs the gateway transaction."));
     };
-    if let Some(message) = part_refund_refusal(state, &refund).await? {
+    if let Some(message) = money_out_refusal(state, &refund).await? {
         return Err(TransitionError::Guard(message));
     }
     if latest_attempt_pending(state, &refund).await? {

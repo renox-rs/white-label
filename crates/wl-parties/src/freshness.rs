@@ -136,7 +136,19 @@ async fn check(state: &AppState, id: i64, now: DateTime, hours: i64) -> Result<L
     let mut new_version = None;
     if should_download(&list, now, hours) {
         list.last_attempt_at = Some(now);
-        match feed::feed(state).fetch(&list).await {
+        let fetched = feed::feed(state).fetch(&list).await;
+        // The download is the sanctions connection's health, when the app
+        // registered it.
+        wl_kernel::integrations::report_outcome(
+            state,
+            wl_kernel::integrations::SANCTIONS_DOWNLOAD,
+            fetched
+                .as_ref()
+                .map(|_| ())
+                .map_err(|error| error.0.as_str()),
+        )
+        .await?;
+        match fetched {
             Ok(got) => {
                 if list.version.as_deref() != Some(got.version.as_str()) {
                     list.version = Some(got.version.clone());
