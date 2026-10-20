@@ -284,6 +284,44 @@ async fn bl_prp_14_without_a_proof_of_delivery_there_is_no_second_task() {
     assert!(s.legal_tasks().is_empty());
 }
 
+/// AC4, with the notice given up: the demand message gave up (the contract
+/// reports `NotDelivered`, which is how a notice given up without a proof
+/// reads) and staff record no proof: no second task for months. When staff
+/// later record a proof of delivery dated 2027-06-10, the task comes 30 days
+/// after it, on 2027-07-10, not before.
+#[renox::test]
+async fn bl_prp_14_a_demand_that_gave_up_opens_no_second_task_until_a_proof_is_recorded() {
+    let s = scene().await;
+    let lease = s.leased().await;
+    s.invoice(d(3, 1)).await;
+    s.run(d(3, 31)).await;
+    let demand = s.demands(&lease).await.remove(0);
+    s.send(&lease, &demand, d(4, 3)).await;
+    s.t.notices.set_notice(
+        &demand.subject(),
+        PAYMENT_DEMAND,
+        NoticeStatus::NotDelivered,
+    );
+
+    for on in [d(5, 5), d(6, 1), d(9, 1), d(12, 1)] {
+        assert_eq!(s.run(on).await.legal_tasks, 0, "{on}");
+    }
+    assert!(s.legal_tasks().is_empty());
+    assert!(s.t.tasks.with_key("property.arrears_legal:").is_empty());
+
+    // Staff record a proof of delivery by other means.
+    s.t.notices.set_notice(
+        &demand.subject(),
+        PAYMENT_DEMAND,
+        NoticeStatus::ProofRecorded {
+            delivered_on: d(6, 10),
+        },
+    );
+    assert_eq!(s.run(d(7, 9)).await.legal_tasks, 0);
+    assert_eq!(s.run(d(7, 10)).await.legal_tasks, 1);
+    assert_eq!(s.legal_tasks().len(), 1);
+}
+
 /// AC5: the demand for the March invoice sent on 2027-04-03 (task closed); the
 /// April invoice (due 04-01) reaching 30 days on 05-01 opens a new demand
 /// listing only that invoice; the first demand's legal-case task still comes
