@@ -50,6 +50,7 @@ mod seed_people;
 mod seed_portfolio;
 mod seed_sales;
 mod seed_service;
+mod seed_tail;
 mod service;
 mod specimen;
 
@@ -78,6 +79,8 @@ pub struct Report {
     pub made: BTreeMap<&'static str, usize>,
     /// Whether the demo was there already (nothing was made).
     pub already: bool,
+    /// The time the seed had taken when each part was done.
+    pub laps: Vec<(&'static str, std::time::Duration)>,
 }
 
 impl Report {
@@ -176,6 +179,10 @@ pub async fn seed(kernel: &Kernel) -> Result<Report> {
 
 impl Seed<'_> {
     async fn run(&mut self) -> Result {
+        let started = std::time::Instant::now();
+        let mut lap = |what: &'static str, seed: &mut Self| {
+            seed.report.laps.push((what, started.elapsed()));
+        };
         roles::define(self.db()).await?;
         // The company is set up some 17 months ago.
         at!(self, day(-520), {
@@ -184,12 +191,21 @@ impl Seed<'_> {
             self.portfolio().await?;
             self.logins().await
         })?;
+        lap("people and portfolio", self);
         self.leases().await?;
+        lap("leases and money", self);
         self.owners().await?;
+        lap("owners", self);
         self.service().await?;
+        lap("service", self);
         self.sales().await?;
+        lap("sales", self);
         self.staff().await?;
+        lap("staff", self);
         self.finance().await?;
+        lap("finance", self);
+        self.tail().await?;
+        lap("tail", self);
         // The sign that the seed is done.
         renox::audit::record(
             self.db(),
@@ -266,7 +282,12 @@ async fn run_command(client: wl_kernel::ClientConfig, state: AppState, said: boo
     if report.already {
         println!("The demo company is there already.");
     } else {
-        println!("Demo company made:");
+        println!("Demo company made in {:?}:", report.laps.last().map(|l| l.1).unwrap_or_default());
+        let mut before = std::time::Duration::default();
+        for (what, at) in &report.laps {
+            println!("  {:>6.1}s {what}", (*at - before).as_secs_f32());
+            before = *at;
+        }
         for (what, count) in &report.made {
             println!("  {count:>5} {what}");
         }

@@ -215,7 +215,7 @@ pub const PLANS: &[Plan] = &[
         -275,
         6,
         3_500,
-        Decided("same_terms"),
+        RenewalSent,
     ),
     plan(
         "a302",
@@ -513,6 +513,19 @@ pub const PLANS: &[Plan] = &[
         Active,
     ),
     plan(
+        "sj401",
+        ("SHJ", "401"),
+        "Pavel Novak",
+        -420,
+        2,
+        2_500,
+        Terminated {
+            notice: -240,
+            move_out: -200,
+            defects: true,
+        },
+    ),
+    plan(
         "aq3",
         ("AQZ", "W3"),
         "Pearl Tech Solutions LLC",
@@ -555,6 +568,15 @@ pub const PLANS: &[Plan] = &[
         Active,
     ),
     // Sharjah.
+    plan(
+        "sj402",
+        ("SHJ", "402"),
+        "Dina Qasim Al Zahrani",
+        14,
+        4,
+        2_750,
+        CancelApproved,
+    ),
     plan(
         "sj101",
         ("SHJ", "101"),
