@@ -13,6 +13,7 @@ pub mod pages;
 pub mod purchase_order;
 pub mod receipt_post;
 pub mod receipt_reverse;
+pub mod return_credit;
 pub mod return_dispatch;
 pub mod return_note;
 pub mod supplier_return;

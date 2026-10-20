@@ -247,6 +247,26 @@ impl Booted {
             .await
     }
 
+    /// `POST /supplier-returns/{id}/cancel` as `by`, for `reason`; `kept` is
+    /// `receive_again` or `discard` for goods rejected at receipt.
+    pub async fn cancel_as(
+        &self,
+        by: &User,
+        ret: &SupplierReturn,
+        reason: &str,
+        kept: Option<&str>,
+    ) -> TestResponse {
+        self.app.acting_as(by);
+        let mut form = vec![("reason", reason)];
+        if let Some(kept) = kept {
+            form.push(("kept", kept));
+        }
+        self.app
+            .htmx()
+            .post(&format!("/supplier-returns/{}/cancel", ret.id), &form)
+            .await
+    }
+
     /// `quantity_milli` of `item` in `location` (and `lot`) at `unit_cost`
     /// fils a unit, as a `receive` movement of an earlier receipt.
     pub async fn stock_in(

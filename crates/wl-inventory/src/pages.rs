@@ -6,6 +6,7 @@
 //! | `POST /goods-receipts/{id}/lines/{line}` | `wl_inventory.receipt_line` | `goods_receipts.post` at the receiving location |
 //! | `POST /goods-receipts/{id}/post` | `wl_inventory.receipt_post` | `goods_receipts.post` at the receiving location |
 //! | `POST /supplier-returns/{id}/dispatch` | `wl_inventory.return_dispatch` | `supplier_returns.manage` |
+//! | `POST /supplier-returns/{id}/cancel` | `wl_inventory.return_cancel` | `supplier_returns.manage` |
 //! | `POST /goods-receipts/{id}/reverse` | `wl_inventory.receipt_reverse` | `goods_receipts.reverse` at the receiving location |
 //!
 //! The routes need a signed-in user and carry no permission guard of their
@@ -24,6 +25,7 @@ use serde::{Deserialize, Serialize};
 use crate::goods_receipt::{DraftLine, GoodsReceipt, GoodsReceiptStatus, update_line};
 use crate::permissions;
 use crate::receipt_post::{PostOutcome, post};
+use crate::return_credit::KeptGoods;
 use crate::return_dispatch::{CollectionProof, DispatchOutcome};
 use crate::supplier_return::{RejectedHandling, WantedOutcome};
 use crate::texts;
@@ -39,6 +41,8 @@ pub fn routes() -> Routes {
         .name("wl_inventory.receipt_reverse")
         .post("/supplier-returns/{id}/dispatch", dispatch_return)
         .name("wl_inventory.return_dispatch")
+        .post("/supplier-returns/{id}/cancel", cancel_return)
+        .name("wl_inventory.return_cancel")
         .require_auth()
 }
 
@@ -328,6 +332,67 @@ async fn dispatch_return(
         )
             .into_response()),
         Err(TransitionError::Guard(message)) => Err(refused(message)),
+        Err(other) => Err(other.into_error()),
+    }
+}
+
+/// Whether `user` holds `supplier_returns.manage`.
+async fn may_manage_returns(state: &AppState, user: &AuthUser) -> Result<bool> {
+    Ok(users_with_permission_in(
+        &state.db,
+        permissions::SUPPLIER_RETURNS_MANAGE,
+        &renox::auth::permissions::Scope::global(),
+    )
+    .await?
+    .iter()
+    .any(|holder| holder.id == user.id))
+}
+
+/// What procurement enters to cancel a draft return.
+#[derive(Deserialize, Serialize, Validate, Debug, Default)]
+pub struct CancelForm {
+    /// Why it will not be sent.
+    #[validate(max = 500)]
+    pub reason: Option<String>,
+    /// `receive_again` or `discard`, for goods rejected at receipt.
+    #[validate(max = 32)]
+    pub kept: Option<String>,
+}
+
+/// `POST /supplier-returns/{id}/cancel`: cancels a draft return with a
+/// reason; the goods stay.
+async fn cancel_return(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Valid(form): Valid<CancelForm>,
+) -> Result<Response> {
+    if !may_manage_returns(&state, &user).await? {
+        return Err(Error::Forbidden);
+    }
+    let kept = match form.kept.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+        None => None,
+        Some(value) => Some(
+            KeptGoods::parse(value).ok_or_else(|| refused(text(&lang, "return.bad_kept_goods")))?,
+        ),
+    };
+    match crate::return_credit::cancel(
+        &state,
+        &user,
+        id,
+        form.reason.as_deref().unwrap_or_default(),
+        kept,
+    )
+    .await
+    {
+        Ok(_) => Ok((
+            Toast::success(text(&lang, "return.cancelled")),
+            renox::HxRefresh,
+        )
+            .into_response()),
+        Err(TransitionError::Guard(message)) => Err(refused(message)),
+        Err(TransitionError::ReasonRequired) => Err(refused(text(&lang, "return.reason_needed"))),
         Err(other) => Err(other.into_error()),
     }
 }

@@ -286,7 +286,7 @@ async fn reverse_in(tx: &mut Transaction, receipt: GoodsReceipt, by: Option<i64>
             continue;
         }
         let _outcome = ret
-            .transition(supplier_return::CANCEL)
+            .transition(crate::return_credit::CANCEL_WITH_RECEIPT)
             .by_system()
             .reason(cancelled.clone())
             .run_in(&mut *tx)

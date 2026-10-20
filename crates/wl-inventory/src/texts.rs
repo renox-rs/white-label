@@ -162,6 +162,27 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_inventory.return.bad_proof",
         "The collection proof is a driver signature, a courier number or a goods receipt.",
     ),
+    // `cancel` on a Return to supplier.
+    (
+        "wl_inventory.return.cancel_draft_only",
+        "Only a draft return to supplier can be cancelled.",
+    ),
+    (
+        "wl_inventory.return.kept_goods_needed",
+        "Say what becomes of the rejected goods kept for collection: receive them on a new goods receipt, or discard them.",
+    ),
+    (
+        "wl_inventory.return.cancelled",
+        "Return to supplier cancelled.",
+    ),
+    (
+        "wl_inventory.return.bad_kept_goods",
+        "The kept goods are received again or discarded.",
+    ),
+    (
+        "wl_inventory.return.reason_needed",
+        "Give a reason.",
+    ),
     // Names of the rejected goods' returns.
     (
         "wl_inventory.return.collection_proof",

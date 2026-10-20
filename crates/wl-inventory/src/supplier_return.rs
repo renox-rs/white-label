@@ -5,11 +5,11 @@
 //! for collection, both `draft`; the door-refused one is dispatched at once
 //! by the system, and a return of stock that failed is made with
 //! [`create_from_stock`]. `dispatch` is in [`crate::return_dispatch`];
-//! `credit` and the user's `cancel` come with BL-STK-05.
+//! `credit` and `cancel` are in [`crate::return_credit`].
 
 use renox::db::Transaction;
 use renox::prelude::*;
-use renox::state_machine::{Machine, StateMachine, Transition};
+use renox::state_machine::{Machine, StateMachine};
 use serde::{Deserialize, Serialize};
 use wl_kernel::Subject;
 use wl_kernel::documents::today;
@@ -19,10 +19,6 @@ use crate::item::Item;
 use crate::purchase_order::PurchaseOrderLine;
 use crate::receipt_post::SUPPLIER_RETURN_SERIES;
 use crate::texts::said;
-
-/// The `cancel` transition's name: the system withdraws a draft return (its
-/// receipt was reversed).
-pub const CANCEL: &str = "cancel";
 
 /// Where a return to supplier stands (§4).
 #[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -104,6 +100,29 @@ pub struct SupplierReturn {
     pub dispatched_at: Option<DateTime>,
     /// The return note, a PDF document.
     pub return_note: Option<String>,
+    /// Why a draft return was cancelled.
+    pub cancel_reason: Option<String>,
+    /// The user who cancelled it; `None` for the system.
+    pub cancelled_by: Option<i64>,
+    /// When it was cancelled.
+    pub cancelled_at: Option<DateTime>,
+    /// What became of the goods kept for collection when it was cancelled:
+    /// `received_again` or `discarded`.
+    pub kept_goods: Option<String>,
+    /// How it was credited: `debit_note`, `replacement`, `refund_received`
+    /// or `supplier_refused`.
+    pub credit_basis: Option<String>,
+    /// Why it was credited by hand.
+    pub credit_reason: Option<String>,
+    /// The user who credited it by hand.
+    pub credited_by: Option<i64>,
+    /// When it was credited.
+    pub credited_at: Option<DateTime>,
+    /// The debit note that completed the cover, in wl-invoicing.
+    pub debit_note_id: Option<i64>,
+    /// The value posted as wastage when the supplier refused the credit, in
+    /// fils.
+    pub wastage_fils: i64,
     /// The user who made it; `None` for the system.
     pub created_by: Option<i64>,
     /// When the row was created.
@@ -160,6 +179,9 @@ pub struct SupplierReturnLine {
     pub variance: i64,
     /// The quantity the line gave back to its order line, in thousandths.
     pub restored_milli: i64,
+    /// What a supplier debit note (credit line) or a replacement receipt
+    /// (replace line) has covered of the line, in thousandths.
+    pub covered_milli: i64,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
@@ -309,6 +331,33 @@ pub async fn create_from_stock(db: &Db, by: Option<i64>, new: NewReturn) -> Resu
     Ok(ret)
 }
 
+/// What draft returns hold aside of `item_id` at `location_id` (of `lot_id`
+/// when given), in thousandths: the stock lines of returns not sent yet.
+/// Cancelling a draft return releases them.
+pub async fn reserved_milli(
+    db: &Db,
+    item_id: i64,
+    location_id: i64,
+    lot_id: Option<i64>,
+) -> Result<i64> {
+    let drafts = SupplierReturn::query()
+        .where_(SupplierReturn::STATUS.eq(ReturnStatus::Draft))
+        .where_(SupplierReturn::LOCATION_ID.eq(Some(location_id)))
+        .get(db)
+        .await?;
+    let mut reserved = 0;
+    for draft in drafts {
+        reserved += lines_of(db, draft.id)
+            .await?
+            .iter()
+            .filter(|line| line.origin == ReturnOrigin::FromStock && line.item_id == item_id)
+            .filter(|line| lot_id.is_none() || line.lot_id == lot_id)
+            .map(|line| line.quantity_milli)
+            .sum::<i64>();
+    }
+    Ok(reserved)
+}
+
 /// The lines of return `supplier_return_id`, in order, read in `tx`.
 pub async fn lines_in(
     tx: &mut Transaction,
@@ -367,17 +416,8 @@ impl StateMachine for SupplierReturn {
             .terminal()
             .state(Cancelled)
             .tone("neutral")
-            .terminal()
-            // A user's `cancel` and the credit come with BL-STK-05; so far
-            // the system withdraws a draft whose receipt was reversed.
-            .transition(
-                Transition::new(CANCEL)
-                    .label("Cancel")
-                    .system()
-                    .from([Draft])
-                    .to(Cancelled),
-            );
-        crate::return_dispatch::add_to(machine)
+            .terminal();
+        crate::return_credit::add_to(crate::return_dispatch::add_to(machine))
     }
 }
 
