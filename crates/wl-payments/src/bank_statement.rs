@@ -3,12 +3,14 @@
 //! balance, and the module's [`BankStatements`] for the cash-flow forecast
 //! (`FIN.CFL.01`).
 //!
-//! Only the record is built here: the accountant enters the closing balance
-//! at upload when the file carries none. Parsing the lines, the match
-//! suggestions and the `parse`, `complete` and `revert` transitions come with
-//! the bank reconciliation feature; until then an import stays `uploaded` and
-//! no balance is read from it. The closing balance is as of the last day of
-//! the period.
+//! The record keeps the text of the file and the period; the accountant
+//! enters the closing balance at upload when the file carries none (CSV).
+//! The import has its state machine ([`crate::bank_statement_machine`]):
+//! `parse` reads the lines ([`crate::bank_statement_parse`]), `complete`
+//! needs every line matched or ignored, `revert` undoes an import still in
+//! review; the services are in [`crate::bank_statement_flow`]. Until an
+//! import is `completed` no balance is read from it. The closing balance is
+//! as of the last day of the period.
 //!
 //! The latest balance of an account is that of the `completed` import with a
 //! closing balance whose period ends last (not the one imported last); on the
@@ -64,6 +66,8 @@ pub struct BankStatementImport {
     pub period_end: NaiveDate,
     /// The balance at the end of the period, in fils; may be below 0.
     pub closing_balance: Option<i64>,
+    /// The text of the file, read by `parse`.
+    pub content: Option<String>,
     /// How many lines were imported.
     pub line_count: i32,
     /// The user who uploaded it.
@@ -98,6 +102,8 @@ pub struct Upload {
     pub period_end: NaiveDate,
     /// The closing balance in fils, when given.
     pub closing_balance: Option<i64>,
+    /// The text of the file (CSV or MT940), when it is given now.
+    pub content: Option<String>,
 }
 
 /// Why `upload` cannot be recorded, if it cannot.
@@ -165,6 +171,10 @@ pub async fn record(db: &Db, by: Option<i64>, upload: &Upload) -> Result<BankSta
         period_start: upload.period_start,
         period_end: upload.period_end,
         closing_balance: upload.closing_balance,
+        content: upload
+            .content
+            .clone()
+            .filter(|text| !text.trim().is_empty()),
         imported_by: by,
         status: ImportStatus::Uploaded,
         ..Default::default()
@@ -232,6 +242,16 @@ impl BankStatements for Statements {
         legal_entity_id: i64,
     ) -> BankStatementFuture<'a, Vec<BankBalance>> {
         Box::pin(latest_balances(db, legal_entity_id))
+    }
+
+    fn drawing_lines<'a>(
+        &'a self,
+        db: &'a Db,
+        entities: &'a [i64],
+        from: NaiveDate,
+        to: NaiveDate,
+    ) -> BankStatementFuture<'a, Vec<wl_kernel::bank_statements::DrawingLine>> {
+        crate::bank_statement_flow::drawing_lines(db, entities, from, to)
     }
 }
 
@@ -335,6 +355,7 @@ mod tests {
             period_start: day(1, 1),
             period_end: day(1, 31),
             closing_balance: None,
+            content: None,
         };
         assert_eq!(upload_problem(&upload), None);
         upload.period_end = NaiveDate::from_ymd_opt(2026, 12, 31).unwrap();

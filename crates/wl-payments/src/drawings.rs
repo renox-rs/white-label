@@ -32,8 +32,10 @@
 //! [`DrawingPaymentSource`]; reversing a drawing (`reverse`, reason *entered
 //! in error*) needs no approval and tells the holders of `drawings.approve`
 //! ([`register_types`]). A drawing marked on a bank statement line (§5.7
-//! step 3) waits for the bank statement lines, which this build does not
-//! have yet.
+//! step 3, [`crate::bank_statement_flow::mark_drawing`]) is requested with
+//! [`request_for_line`]; the line stays `suggested` until the approval
+//! records the payment and matches it, or the rejection, withdrawal or expiry
+//! puts it back to `unmatched`.
 
 use renox::auth::permissions::{Scope, users_with_permission_in};
 use renox::chrono::NaiveDate;
@@ -120,6 +122,8 @@ pub struct PaymentDrawing {
     pub payment_id: Option<i64>,
     /// The cheque registered for it.
     pub cheque_id: Option<i64>,
+    /// The bank statement line it was marked on, if any (§5.7 step 3).
+    pub statement_line_id: Option<i64>,
     /// Where it stands.
     pub status: DrawingStatus,
     /// When the row was created.
@@ -272,6 +276,32 @@ pub async fn request(
     by: &AuthUser,
     input: &DrawingInput,
 ) -> Result<PaymentDrawing> {
+    request_with(state, by, input, None).await
+}
+
+/// Like [`request`] for an outgoing bank statement line marked as an owner
+/// drawing (§5.7 step 3): the request remembers the line, which is matched to
+/// the payment when the drawing is recorded and put back to `unmatched` with
+/// the reason when it is not approved.
+///
+/// # Errors
+///
+/// As [`request`].
+pub(crate) async fn request_for_line(
+    state: &AppState,
+    by: &AuthUser,
+    input: &DrawingInput,
+    line_id: i64,
+) -> Result<PaymentDrawing> {
+    request_with(state, by, input, Some(line_id)).await
+}
+
+async fn request_with(
+    state: &AppState,
+    by: &AuthUser,
+    input: &DrawingInput,
+    statement_line_id: Option<i64>,
+) -> Result<PaymentDrawing> {
     let category = category_of(state, &input.category).await?;
     if let Some(problem) = input_problem(&category, input) {
         return Err(refused(problem));
@@ -309,6 +339,7 @@ pub async fn request(
         reference: payment.reference.clone(),
         bank_account: payment.bank_account.clone(),
         requested_by: Some(by.id),
+        statement_line_id,
         status: DrawingStatus::Requested,
         ..Default::default()
     };
@@ -393,6 +424,8 @@ pub async fn record_approved(state: &AppState, row: &PaymentDrawing) -> Result<(
     done.save(&mut tx).await?;
     tx.commit().await?;
     outcome.emit(state).await?;
+    // The statement line it was marked on is matched to the payment.
+    crate::bank_statement_flow::drawing_recorded(state, &done).await?;
     Ok(())
 }
 
@@ -444,6 +477,8 @@ pub async fn decided(state: &AppState, event: &OwnerDrawingDecided) -> Result<()
         row.status = DrawingStatus::Rejected;
         row.reason = event.reason.clone();
         row.save(&state.db).await?;
+        // The statement line it was marked on goes back to `unmatched`.
+        crate::bank_statement_flow::drawing_rejected(state, &row).await?;
     }
     Ok(())
 }

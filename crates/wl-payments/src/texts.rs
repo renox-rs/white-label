@@ -38,6 +38,127 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_payments.bank_statements.closing_balance_hint",
         "In dirhams, like 125000.00 or -300.00. Enter it when the file carries none; it is the balance at the end of the last day of the period.",
     ),
+    (
+        "wl_payments.bank_import_failed.subject",
+        "A bank statement file was not recognised",
+    ),
+    (
+        "wl_payments.bank_import_failed.body",
+        "The statement file {{ file }} could not be read: {{ reason }} See the statements: {{ link }}",
+    ),
+    (
+        "wl_payments.bank_line_drawing_rejected.subject",
+        "An owner drawing on a bank statement line was not approved",
+    ),
+    (
+        "wl_payments.bank_line_drawing_rejected.body",
+        "The line of {{ amount }} dated {{ date }} marked as an owner drawing was not approved ({{ reason }}). It is unmatched again: {{ link }}",
+    ),
+    ("wl_payments.bank_statements.content", "File text"),
+    (
+        "wl_payments.bank_statements.content_hint",
+        "Paste the CSV (header date, description, amount; optional reference, counterparty) or the MT940 text.",
+    ),
+    ("wl_payments.bank_statements.lines", "Lines"),
+    ("wl_payments.bank_statements.actions", "Actions"),
+    ("wl_payments.bank_statements.no_lines", "No lines"),
+    ("wl_payments.bank_statements.open", "Open"),
+    ("wl_payments.bank_statements.parse.action", "Read the file"),
+    (
+        "wl_payments.bank_statements.parse.title",
+        "Read the statement file?",
+    ),
+    (
+        "wl_payments.bank_statements.parse.message",
+        "The lines are created for review. A file that is not recognised fails the import.",
+    ),
+    (
+        "wl_payments.bank_statements.parse.done",
+        "The file was read.",
+    ),
+    ("wl_payments.bank_statements.complete.action", "Complete"),
+    (
+        "wl_payments.bank_statements.complete.title",
+        "Complete the import?",
+    ),
+    (
+        "wl_payments.bank_statements.complete.message",
+        "Every line is matched or ignored. The closing balance becomes the account balance.",
+    ),
+    (
+        "wl_payments.bank_statements.complete.done",
+        "The import is completed.",
+    ),
+    ("wl_payments.bank_statements.revert.action", "Revert"),
+    (
+        "wl_payments.bank_statements.revert.title",
+        "Revert the import?",
+    ),
+    (
+        "wl_payments.bank_statements.revert.message",
+        "The lines are removed and no balance is read from this import.",
+    ),
+    (
+        "wl_payments.bank_statements.revert.done",
+        "The import was reverted.",
+    ),
+    ("wl_payments.bank_statements.line.date", "Date"),
+    ("wl_payments.bank_statements.line.amount", "Amount"),
+    (
+        "wl_payments.bank_statements.line.description",
+        "Description",
+    ),
+    ("wl_payments.bank_statements.line.reference", "Reference"),
+    ("wl_payments.bank_statements.line.status", "Line"),
+    (
+        "wl_payments.bank_statements.line.status.unmatched",
+        "Unmatched",
+    ),
+    (
+        "wl_payments.bank_statements.line.status.suggested",
+        "Suggested",
+    ),
+    ("wl_payments.bank_statements.line.status.matched", "Matched"),
+    ("wl_payments.bank_statements.line.status.ignored", "Ignored"),
+    ("wl_payments.bank_statements.line.ignore.action", "Ignore"),
+    (
+        "wl_payments.bank_statements.line.ignore.title",
+        "Ignore this line",
+    ),
+    (
+        "wl_payments.bank_statements.line.ignore.description",
+        "Leave the line out of the reconciliation, with the reason.",
+    ),
+    ("wl_payments.bank_statements.line.ignore.reason", "Reason"),
+    ("wl_payments.bank_statements.line.ignore.submit", "Ignore"),
+    (
+        "wl_payments.bank_statements.line.ignore.done",
+        "The line is ignored.",
+    ),
+    (
+        "wl_payments.bank_statements.line.drawing.action",
+        "Owner drawing",
+    ),
+    (
+        "wl_payments.bank_statements.line.drawing.title",
+        "Mark as an owner drawing",
+    ),
+    (
+        "wl_payments.bank_statements.line.drawing.description",
+        "Asks for the drawings approval; the line stays suggested until it is decided.",
+    ),
+    (
+        "wl_payments.bank_statements.line.drawing.category",
+        "Drawings category",
+    ),
+    (
+        "wl_payments.bank_statements.line.drawing.submit",
+        "Ask for approval",
+    ),
+    (
+        "wl_payments.bank_statements.line.drawing.done",
+        "The owner drawing was asked for.",
+    ),
     ("wl_payments.bank_statements.no_balance", "Not given"),
     (
         "wl_payments.bank_statements.bad_upload",

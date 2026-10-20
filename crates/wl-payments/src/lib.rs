@@ -4,7 +4,11 @@
 pub mod allocate;
 pub mod allocation;
 pub mod bank_statement;
+pub mod bank_statement_flow;
+pub mod bank_statement_line;
+mod bank_statement_machine;
 pub mod bank_statement_pages;
+pub mod bank_statement_parse;
 pub mod cheque;
 pub mod cheque_bounce;
 pub mod cheque_chase;
@@ -174,6 +178,10 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "wl-payments/bank_statements.html",
         include_str!("../views/wl-payments/bank_statements.html"),
+    ),
+    (
+        "wl-payments/bank_statement.html",
+        include_str!("../views/wl-payments/bank_statement.html"),
     ),
     (
         "wl-payments/_write_off_sheet.html",
@@ -404,6 +412,7 @@ impl Module for WlPayments {
         app.model::<deposit_deductions::DeductionLine>();
         app.model::<deposit_deductions::DepositDispute>();
         app.model::<BankStatementImport>();
+        app.model::<bank_statement_line::BankStatementLine>();
         app.model::<Cheque>();
         app.model::<ChequeLink>();
         app.model::<ChequeReturn>();
@@ -423,7 +432,8 @@ impl Module for WlPayments {
             .view_data::<deposit_pages::ShowPage>()
             .view_data::<cheque_pages::IndexPage>()
             .view_data::<cheque_pages::ShowPage>()
-            .view_data::<bank_statement_pages::IndexPage>();
+            .view_data::<bank_statement_pages::IndexPage>()
+            .view_data::<bank_statement_pages::ShowPage>();
         app.templates(|env| {
             for (name, source) in VIEWS {
                 // The app's own file of that name wins.
@@ -486,6 +496,9 @@ impl Module for WlPayments {
         renox::state_machine::register::<Refund>();
         renox::state_machine::register::<Deposit>();
         renox::state_machine::register::<Cheque>();
+        renox::state_machine::register::<BankStatementImport>();
+        // `BankStatementImported` and `BankStatementCompleted` after a commit.
+        bank_statement_flow::register(app);
         // The settings the services read (`config_of`).
         app.provide(self.config.clone());
         // The gateway the services ask about disputes (`gateway::gateway_of`).

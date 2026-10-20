@@ -1,0 +1,45 @@
+{#- wl-payments: one bank statement import: its status, the lines read from
+    the file with the ignore and owner drawing actions, and the parse,
+    complete and revert actions. Replace it with
+    resources/views/wl-payments/bank_statement.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="title">
+  <rx-stack>
+    <rx-page-header :title="title" :subtitle="import.period" :back="route('wl_payments.bank_statements.index')" :back-label="tx['bank_statements.title']"
+                    :badge="import.status" :badge-kind="status_kind">
+      <rx-confirm rx-if="can_parse" :id="'parse-import-' ~ import.id" :label="tx['bank_statements.parse.action']" :action="route('wl_payments.bank_statements.parse', import.id)" method="POST"
+                  :title="tx['bank_statements.parse.title']" :message="tx['bank_statements.parse.message']" :confirm-label="tx['bank_statements.parse.action']" icon="file-search"/>
+      <rx-confirm rx-if="can_complete" :id="'complete-import-' ~ import.id" :label="tx['bank_statements.complete.action']" :action="route('wl_payments.bank_statements.complete', import.id)" method="POST"
+                  :title="tx['bank_statements.complete.title']" :message="tx['bank_statements.complete.message']" :confirm-label="tx['bank_statements.complete.action']" icon="check"/>
+      <rx-confirm rx-if="can_revert" :id="'revert-import-' ~ import.id" :label="tx['bank_statements.revert.action']" :action="route('wl_payments.bank_statements.revert', import.id)" method="POST"
+                  :title="tx['bank_statements.revert.title']" :message="tx['bank_statements.revert.message']" :confirm-label="tx['bank_statements.revert.action']" icon="undo-2"/>
+    </rx-page-header>
+    <rx-card :title="tx['bank_statements.title']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['fields.entity']" :value="import.entity"/>
+        <rx-entry :label="tx['bank_statements.bank_account']" :value="import.bank_account"/>
+        <rx-entry :label="tx['bank_statements.file_name']" :value="import.file_name"/>
+        <rx-entry :label="tx['bank_statements.closing_balance']" :value="import.closing_balance"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-table :rows="lines" as="line" :key="line.id" card>
+      <rx-column :label="tx['bank_statements.line.date']">{{ line.date }}</rx-column>
+      <rx-column :label="tx['bank_statements.line.amount']">{{ line.amount }}</rx-column>
+      <rx-column :label="tx['bank_statements.line.description']" hide-narrow>{{ line.description }}</rx-column>
+      <rx-column :label="tx['bank_statements.line.reference']" hide-narrow>{{ line.reference }}</rx-column>
+      <rx-column :label="tx['bank_statements.line.status']"><rx-badge :kind="line.status_kind" :text="line.status"/> {{ line.note }}</rx-column>
+      <rx-column :label="tx['bank_statements.actions']">
+        <template rx-if="line.open">
+          <rx-action-sheet :id="'ignore-line-' ~ line.id" :label="tx['bank_statements.line.ignore.action']" :action="route('wl_payments.bank_statements.ignore', line.id)"
+                           :title="tx['bank_statements.line.ignore.title']" :description="tx['bank_statements.line.ignore.description']" :submit-label="tx['bank_statements.line.ignore.submit']" icon="eye-off">
+            <rx-textarea name="reason" :label="tx['bank_statements.line.ignore.reason']" :id="'ignore-reason-' ~ line.id" required/>
+          </rx-action-sheet>
+          <rx-action-sheet :id="'drawing-line-' ~ line.id" :label="tx['bank_statements.line.drawing.action']" :action="route('wl_payments.bank_statements.drawing', line.id)"
+                           :title="tx['bank_statements.line.drawing.title']" :description="tx['bank_statements.line.drawing.description']" :submit-label="tx['bank_statements.line.drawing.submit']" icon="wallet">
+            <rx-input name="category" :label="tx['bank_statements.line.drawing.category']" :id="'drawing-category-' ~ line.id" value="owner_drawings"/>
+          </rx-action-sheet>
+        </template>
+      </rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['bank_statements.no_lines']" :message="tx['bank_statements.empty_hint']" icon="file-spreadsheet"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

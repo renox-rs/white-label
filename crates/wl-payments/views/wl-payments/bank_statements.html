@@ -7,7 +7,7 @@
     <rx-table :rows="rows" as="import" :key="import.id" card>
       <rx-column :label="tx['fields.entity']" hide-narrow>{{ import.entity }}</rx-column>
       <rx-column :label="tx['bank_statements.bank_account']">{{ import.bank_account }}</rx-column>
-      <rx-column :label="tx['bank_statements.file_name']" hide-narrow>{{ import.file_name }} ({{ import.format }})</rx-column>
+      <rx-column :label="tx['bank_statements.file_name']" hide-narrow><a href="{{ route('wl_payments.bank_statements.show', import.id) }}">{{ import.file_name }}</a> ({{ import.format }})</rx-column>
       <rx-column :label="tx['bank_statements.period']">{{ import.period }}</rx-column>
       <rx-column :label="tx['bank_statements.closing_balance']">{{ import.closing_balance }}</rx-column>
       <rx-column :label="tx['fields.status']" hide-narrow>{{ import.status }}</rx-column>
@@ -24,6 +24,7 @@
           <rx-input name="period_start" type="date" :label="tx['bank_statements.period_start']" required/>
           <rx-input name="period_end" type="date" :label="tx['bank_statements.period_end']" required/>
           <rx-input name="closing_balance" :label="tx['bank_statements.closing_balance']" :hint="tx['bank_statements.closing_balance_hint']"/>
+          <rx-textarea name="content" :label="tx['bank_statements.content']" :hint="tx['bank_statements.content_hint']"/>
         </rx-form-grid>
         <div class="rx-card__footer">
           <rx-button :label="tx['bank_statements.record']"/>

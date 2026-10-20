@@ -111,6 +111,12 @@ pub const DEPOSIT_TRANSFERRED: &str = "payments.deposit_transferred";
 /// The type of the accountants' notice of a deposit task.
 pub const DEPOSIT_TASK: &str = "payments.deposit_task";
 
+/// The uploader is told that a statement file was not recognised.
+pub const BANK_IMPORT_FAILED: &str = "payments.bank_import_failed";
+/// The accountant is told that a statement line marked as an owner drawing
+/// was not approved and is unmatched again.
+pub const BANK_LINE_DRAWING_REJECTED: &str = "payments.bank_line_drawing_rejected";
+
 const MODULE: &str = "payments";
 const GROUP: &str = "payments";
 
@@ -136,6 +142,32 @@ fn followup_data(payment: &Payment, task: &FollowupTask) -> renox::serde_json::V
         "amount": money_text(&task.currency, task.amount),
         "link": "/payments/tasks",
     })
+}
+
+/// The notification type [`BANK_IMPORT_FAILED`].
+pub fn bank_import_failed_type() -> NotificationTypeDef {
+    NotificationTypeDef::new(BANK_IMPORT_FAILED, MODULE)
+        .group(GROUP)
+        .category(Category::Transactional)
+        .template(
+            NotifyChannel::Email,
+            "en",
+            Some(english("wl_payments.bank_import_failed.subject")),
+            english("wl_payments.bank_import_failed.body"),
+        )
+}
+
+/// The notification type [`BANK_LINE_DRAWING_REJECTED`].
+pub fn bank_line_drawing_rejected_type() -> NotificationTypeDef {
+    NotificationTypeDef::new(BANK_LINE_DRAWING_REJECTED, MODULE)
+        .group(GROUP)
+        .category(Category::Transactional)
+        .template(
+            NotifyChannel::Email,
+            "en",
+            Some(english("wl_payments.bank_line_drawing_rejected.subject")),
+            english("wl_payments.bank_line_drawing_rejected.body"),
+        )
 }
 
 /// The notification type [`PAYMENT_RETURNED`].
@@ -387,6 +419,8 @@ pub fn deposit_task_type() -> NotificationTypeDef {
 
 /// Registers the types with the kernel registry.
 pub(crate) fn register_types() {
+    notify::register_type(bank_import_failed_type());
+    notify::register_type(bank_line_drawing_rejected_type());
     notify::register_type(deposit_task_type());
     notify::register_type(deposit_transferred_type());
     notify::register_type(deposit_deductions_type());

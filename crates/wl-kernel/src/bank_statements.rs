@@ -37,6 +37,65 @@ pub struct BankBalance {
     pub import_id: i64,
 }
 
+/// A statement line that was marked as an owner drawing (`FIN.BUD.01`): an
+/// outgoing line the owner spent for personal use (company card, ATM).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DrawingLine {
+    /// The statement line.
+    pub line_id: i64,
+    /// The import it belongs to.
+    pub import_id: i64,
+    /// The legal entity the account belongs to.
+    pub legal_entity_id: i64,
+    /// The bank account, as the statement import names it.
+    pub bank_account: String,
+    /// The day of the bank transaction.
+    pub date: NaiveDate,
+    /// The amount taken out, in fils (above 0).
+    pub amount: i64,
+    /// The ISO currency code.
+    pub currency: String,
+    /// The code of the drawings category it was marked with.
+    pub category: String,
+    /// Whether the drawing is approved and its payment recorded (`matched`);
+    /// until then the line is `suggested` and the drawing waits for its
+    /// approval.
+    pub recorded: bool,
+}
+
+/// A statement was read into lines (`parse`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BankStatementImported {
+    /// The import.
+    pub import_id: i64,
+    /// The legal entity.
+    pub legal_entity_id: i64,
+    /// The bank account.
+    pub bank_account: String,
+    /// How many lines were created.
+    pub lines: i32,
+}
+
+impl Event for BankStatementImported {}
+
+/// A statement was reconciled (`complete`): the closing balance, if the
+/// import has one, is now the account's balance.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BankStatementCompleted {
+    /// The import.
+    pub import_id: i64,
+    /// The legal entity.
+    pub legal_entity_id: i64,
+    /// The bank account.
+    pub bank_account: String,
+    /// The closing balance in fils, when the import has one.
+    pub closing_balance: Option<i64>,
+    /// The last day of the period.
+    pub as_of: NaiveDate,
+}
+
+impl Event for BankStatementCompleted {}
+
 /// The future a [`BankStatements`] method returns.
 pub type BankStatementFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 
@@ -55,6 +114,21 @@ pub trait BankStatements: Send + Sync + 'static {
         db: &'a Db,
         legal_entity_id: i64,
     ) -> BankStatementFuture<'a, Vec<BankBalance>>;
+
+    /// The outgoing lines marked as owner drawings (`FIN.BUD.01`) of
+    /// `entities` dated from `from` to `to` (both included), whose
+    /// drawing is waiting for its approval or recorded (a line put back to
+    /// `unmatched` by a rejection is not returned), oldest first. Read only.
+    /// Without the statement lines (the default) nothing is returned.
+    fn drawing_lines<'a>(
+        &'a self,
+        _db: &'a Db,
+        _entities: &'a [i64],
+        _from: NaiveDate,
+        _to: NaiveDate,
+    ) -> BankStatementFuture<'a, Vec<DrawingLine>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
 }
 
 /// The statements when the `payments` module is off: no balance is known.

@@ -15,7 +15,7 @@ use wl_kernel::documents::today;
 use wl_kernel::payments::{
     Direction, PaymentMethod, RecordPayment, RefundSource, payment_recorder,
 };
-use wl_payments::bank_statement::{BankStatementImport, ImportStatus};
+use wl_payments::bank_statement::{self, BankStatementImport, ImportStatus, Upload};
 use wl_payments::refund::RefundStatus;
 use wl_payments::{Cheque, Payment, Refund, permissions as perm};
 
@@ -152,29 +152,65 @@ async fn the_documents_a_cheque_pays_come_with_the_amount_applied() {
     assert!(open(&t, Direction::In).await[1].documents.is_empty());
 }
 
+/// An import of `account` for the 31 days to `end`, brought to `status`
+/// through the real transitions: `Uploaded` is only recorded, `Completed` and
+/// `Reverted` are read (`parse`) and then completed or reverted by an
+/// accountant, `Failed` is a file that cannot be read (Excel).
 async fn import(
     t: &Booted,
     account: &str,
     end: NaiveDate,
     balance: Option<i64>,
     status: ImportStatus,
-    completed_after_secs: i64,
 ) -> BankStatementImport {
     let entity = t.entity("PGP").await;
-    let mut row = BankStatementImport {
-        legal_entity_id: entity.id,
-        bank_account: account.to_owned(),
-        file_name: "statement.csv".into(),
-        format: "csv".into(),
-        currency: "AED".into(),
-        period_start: end - TimeDelta::days(30),
-        period_end: end,
-        closing_balance: balance,
-        status,
-        completed_at: Some(renox::db::now() + TimeDelta::seconds(completed_after_secs)),
-        ..Default::default()
+    static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    let accountant = t
+        .user(&format!("Dina{n}"), &[perm::VIEW, perm::BANK_RECONCILE])
+        .await;
+    let format = if status == ImportStatus::Failed {
+        "excel"
+    } else {
+        "csv"
     };
-    row.insert(t.db()).await.unwrap();
+    let row = bank_statement::record(
+        t.db(),
+        Some(accountant.id),
+        &Upload {
+            legal_entity_id: entity.id,
+            bank_account: account.to_owned(),
+            file_name: "statement.csv".into(),
+            format: format.into(),
+            period_start: end - TimeDelta::days(30),
+            period_end: end,
+            closing_balance: balance,
+            content: None,
+        },
+    )
+    .await
+    .unwrap();
+    t.app.acting_as(&accountant);
+    let post = |action: &'static str| {
+        let path = format!("/bank-statements/{}/{action}", row.id);
+        async move { t.app.htmx().post(&path, &[]).await }
+    };
+    if status != ImportStatus::Uploaded {
+        post("parse").await.assert_ok();
+    }
+    match status {
+        ImportStatus::Completed => {
+            post("complete").await.assert_ok();
+        }
+        ImportStatus::Reverted => {
+            post("revert").await.assert_ok();
+        }
+        _ => {}
+    }
+    let row = BankStatementImport::find_or_404(t.db(), row.id)
+        .await
+        .unwrap();
+    assert_eq!(row.status, status, "the import went through its machine");
     row
 }
 
@@ -197,7 +233,6 @@ async fn an_older_period_imported_later_does_not_replace_the_balance() {
         date(2027, 1, 31),
         Some(900_000),
         ImportStatus::Completed,
-        0,
     )
     .await;
     import(
@@ -206,7 +241,6 @@ async fn an_older_period_imported_later_does_not_replace_the_balance() {
         date(2026, 12, 31),
         Some(100_000),
         ImportStatus::Completed,
-        10,
     )
     .await;
     let read = balances(&t).await;
@@ -228,7 +262,6 @@ async fn only_a_completed_import_with_a_balance_counts() {
         date(2027, 1, 31),
         Some(-250_000),
         ImportStatus::Completed,
-        0,
     )
     .await;
     import(
@@ -237,7 +270,6 @@ async fn only_a_completed_import_with_a_balance_counts() {
         date(2027, 2, 28),
         None,
         ImportStatus::Completed,
-        5,
     )
     .await;
     import(
@@ -246,7 +278,6 @@ async fn only_a_completed_import_with_a_balance_counts() {
         date(2027, 3, 31),
         Some(1),
         ImportStatus::Reverted,
-        6,
     )
     .await;
     import(
@@ -255,7 +286,6 @@ async fn only_a_completed_import_with_a_balance_counts() {
         date(2027, 4, 30),
         Some(2),
         ImportStatus::Uploaded,
-        7,
     )
     .await;
     import(
@@ -264,7 +294,6 @@ async fn only_a_completed_import_with_a_balance_counts() {
         date(2027, 5, 31),
         Some(3),
         ImportStatus::Failed,
-        8,
     )
     .await;
     let read = balances(&t).await;
@@ -280,7 +309,6 @@ async fn only_a_completed_import_with_a_balance_counts() {
         date(2027, 3, 31),
         None,
         ImportStatus::Completed,
-        0,
     )
     .await;
     assert!(balances(&t).await.is_empty());
@@ -297,7 +325,6 @@ async fn the_import_completed_last_wins_on_the_same_period_end() {
         date(2027, 1, 31),
         Some(100_000),
         ImportStatus::Completed,
-        0,
     )
     .await;
     let corrected = import(
@@ -306,7 +333,6 @@ async fn the_import_completed_last_wins_on_the_same_period_end() {
         date(2027, 1, 31),
         Some(110_000),
         ImportStatus::Completed,
-        30,
     )
     .await;
     import(
@@ -315,7 +341,6 @@ async fn the_import_completed_last_wins_on_the_same_period_end() {
         date(2027, 1, 15),
         Some(5_000),
         ImportStatus::Completed,
-        0,
     )
     .await;
     let read = balances(&t).await;
@@ -657,7 +682,6 @@ async fn the_reads_change_nothing() {
         date(2027, 1, 31),
         Some(1),
         ImportStatus::Completed,
-        0,
     )
     .await;
     let before = counts(&t).await;
