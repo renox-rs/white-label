@@ -75,6 +75,8 @@
   </rx-shell>
   {#- Toasts from `Toast::success(…)`, after a redirect or an htmx request. -#}
   <rx-toasts/>
+  {#- A refusal of a form sent with htmx shows inside its modal or form (public/forms.js). -#}
+  <script src="{{ asset('forms.js') }}" defer></script>
   <rx-outlet stack="scripts"/>
 </body>
 </html>
