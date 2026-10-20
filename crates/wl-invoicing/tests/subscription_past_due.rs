@@ -30,7 +30,8 @@ async fn disputed(t: &Booted, invoice: &Invoice) {
             InvoiceId(invoice.id),
             "the hours are wrong",
             DisputeBy::User { id: clerk.id },
-        ),
+        )
+        .amount(invoice.balance),
     )
     .await
     .expect("the dispute is raised");
