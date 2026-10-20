@@ -421,3 +421,158 @@ async fn a_block_pauses_the_engagement_the_retainer_and_holds_the_tasks() {
         .expect("the task");
     assert!(held.held, "the engagement's tasks are held");
 }
+
+/// A verified client user acting for `company` as an owner, with the person
+/// party `name`.
+async fn client_user(app: &TestApp, name: &str, company: PartyId) -> (User, PartyId) {
+    let party = support::tenant(app, name).await;
+    let user = person(app, name, host::roles::MEMBER).await;
+    wl_portal::PortalAccess::register(
+        app.state(),
+        user.id,
+        wl_portal::NewGrant::new(party, company, "client", &["owner"]),
+    )
+    .await
+    .unwrap();
+    (user, party)
+}
+
+const TB_OCTOBER: &str = "code,name,debit,credit\n1000,Bank,5000.00,\n4000,Sales,,10000.00\n5000,Cost of sales,4000.00,\n6000,Rent,1000.00\n";
+const TB_LATE: &str = "code,name,debit,credit\n1000,Bank,7000.00,\n4000,Sales,,12000.00\n5000,Cost of sales,4000.00,\n6000,Rent,1000.00\n";
+
+/// `by` imports `csv` for October 2026 of `company`.
+async fn import(app: &TestApp, by: &User, company: PartyId, csv: &str) {
+    app.acting_as(by);
+    app.htmx()
+        .post(
+            "/accounting/kpi-packs/import",
+            &[
+                ("client", &company.0.to_string()),
+                ("period", "2026-10"),
+                ("csv", csv),
+            ],
+        )
+        .await
+        .assert_ok();
+}
+
+/// The pack of `company` in `version`.
+async fn pack(app: &TestApp, company: PartyId, version: i64) -> accounting::KpiPack {
+    accounting::KpiPack::query()
+        .where_(accounting::KpiPack::CLIENT_PARTY_ID.eq(company.0))
+        .where_(accounting::KpiPack::VERSION.eq(version))
+        .first(app.db())
+        .await
+        .unwrap()
+        .expect("that version exists")
+}
+
+/// `by` maps, comments and publishes `pack`.
+async fn publish(app: &TestApp, by: &User, pack: &accounting::KpiPack, map: bool) {
+    app.acting_as(by);
+    if map {
+        for (code, category) in [
+            ("1000", "assets"),
+            ("4000", "revenue"),
+            ("5000", "cost_of_sales"),
+            ("6000", "operating_expenses"),
+        ] {
+            app.htmx()
+                .post(
+                    &format!("/accounting/kpi-packs/{}/map", pack.id),
+                    &[("code", code), ("category", category)],
+                )
+                .await
+                .assert_ok();
+        }
+        app.htmx()
+            .post(
+                &format!("/accounting/kpi-packs/{}/commentary", pack.id),
+                &[("commentary", "Sales up on last month.")],
+            )
+            .await
+            .assert_ok();
+    }
+    app.htmx()
+        .post(&format!("/accounting/kpi-packs/{}/publish", pack.id), &[])
+        .await
+        .assert_ok();
+}
+
+/// #344 in the host: the client reads the published pack in the portal, a
+/// re-import shows it as being revised while the draft stays hidden, the new
+/// version supersedes the old (one published version only) and each publish
+/// reaches the client through the real wl-notify; another company's user gets
+/// 404 on the pack.
+#[renox::test]
+async fn the_portal_shows_the_latest_published_pack_and_says_when_it_is_being_revised() {
+    let app = accounting_booted().await;
+    let manager = person(&app, "Mona", ENGAGEMENT_MANAGER).await;
+    let client = company(&app, "Gulf Trading A LLC").await;
+    let other = company(&app, "Gulf Trading B LLC").await;
+    let (omar, omar_party) = client_user(&app, "Omar Haddad", client).await;
+    let (stranger, _) = client_user(&app, "Sami Rahal", other).await;
+    let section = format!("/portal/{}/kpi_packs", client.0);
+
+    import(&app, &manager, client, TB_OCTOBER).await;
+    let v1 = pack(&app, client, 1).await;
+    publish(&app, &manager, &v1, true).await;
+    app.run_all_jobs().await;
+    assert_eq!(
+        support::messages_to_party(&app, "accounting.kpi_published", omar_party)
+            .await
+            .len(),
+        1,
+        "the publish reaches the client through wl-notify"
+    );
+    app.acting_as(&omar);
+    app.get(&section).await.assert_ok().assert_see(&v1.number());
+    app.get(&format!("/accounting/portal/kpi-packs/{}", v1.id))
+        .await
+        .assert_ok();
+    app.acting_as(&stranger);
+    app.get(&format!("/accounting/portal/kpi-packs/{}", v1.id))
+        .await
+        .assert_not_found();
+
+    // The re-import: v1 stays, being revised; the draft is hidden.
+    import(&app, &manager, client, TB_LATE).await;
+    let v2 = pack(&app, client, 2).await;
+    app.acting_as(&omar);
+    app.get(&section)
+        .await
+        .assert_ok()
+        .assert_see(&v1.number())
+        .assert_see("Being revised");
+    app.get(&format!("/accounting/portal/kpi-packs/{}", v2.id))
+        .await
+        .assert_not_found();
+
+    // Publishing v2: only v2 is served.
+    publish(&app, &manager, &v2, false).await;
+    app.run_all_jobs().await;
+    let published = accounting::KpiPack::query()
+        .where_(accounting::KpiPack::CLIENT_PARTY_ID.eq(client.0))
+        .where_(accounting::KpiPack::STATUS.eq(accounting::KpiStatus::Published))
+        .count(app.db())
+        .await
+        .unwrap();
+    assert_eq!(published, 1);
+    app.acting_as(&omar);
+    let page = app.get(&section).await;
+    page.assert_ok().assert_see(&v2.number());
+    assert!(!page.text().contains(&v1.number()));
+    assert!(!page.text().contains("Being revised"));
+    app.get(&format!("/accounting/portal/kpi-packs/{}", v1.id))
+        .await
+        .assert_not_found();
+    app.get(&format!("/accounting/portal/kpi-packs/{}", v2.id))
+        .await
+        .assert_ok();
+    assert_eq!(
+        support::messages_to_party(&app, "accounting.kpi_published", omar_party)
+            .await
+            .len(),
+        2
+    );
+}
