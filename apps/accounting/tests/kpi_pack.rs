@@ -305,3 +305,60 @@ async fn an_unreadable_trial_balance_is_refused_with_its_rows() {
     assert!(refused.text().contains("Row 2"), "{}", refused.text());
     assert!(t.kpi_packs(client.company).await.is_empty());
 }
+
+/// Bug fix: the older version is superseded in the publish transaction, not
+/// by the listener afterwards: when the listener fails (the notifier is
+/// down) two `published` versions never coexist, and the portal serves only
+/// the current version.
+#[renox::test]
+async fn the_older_version_is_superseded_in_the_publish_transaction() {
+    register_portal_section();
+    let t = boot().await;
+    let manager = t.manager().await;
+    let client = t.client().await;
+    let finance = t.portal_user("Omar", client.ubo, client.company).await;
+    let v1 = t.kpi_published(&manager, client.company, TB_OCTOBER).await;
+    t.kpi_import(&manager, client.company, OCTOBER, TB_OCTOBER_LATE)
+        .await
+        .assert_ok();
+    let v2 = t.kpi_version(client.company, 2).await;
+    t.notices.fail(PUBLISHED_NOTICE);
+
+    // The listener fails after the commit; the publish itself stood.
+    let _ = t.kpi_act(&manager, &v2, "publish", &[]).await;
+
+    assert_eq!(t.kpi_now(&v2).await.status, KpiStatus::Published);
+    assert_eq!(t.kpi_now(&v1).await.status, KpiStatus::Superseded);
+    let published = t
+        .kpi_packs(client.company)
+        .await
+        .into_iter()
+        .filter(|p| p.status == KpiStatus::Published)
+        .count();
+    assert_eq!(published, 1);
+    t.get(&finance, &format!("/accounting/portal/kpi-packs/{}", v1.id))
+        .await
+        .assert_not_found();
+    t.get(&finance, &format!("/accounting/portal/kpi-packs/{}", v2.id))
+        .await
+        .assert_ok();
+}
+
+/// Bug fix (`ACC.ACL.14`): the publish notice is an automatic message and
+/// is not sent while the client's engagement reason is restricted; the pack
+/// is published all the same.
+#[renox::test]
+async fn no_publish_notice_goes_out_while_the_engagement_reason_is_restricted() {
+    let t = boot().await;
+    let manager = t.manager().await;
+    let client = t.client().await;
+    let engagement = t
+        .engagement_in(&client, EngagementStatus::Suspended, Some("on_hold"))
+        .await;
+    t.suppress_messages(&engagement).await;
+
+    let pack = t.kpi_published(&manager, client.company, TB_OCTOBER).await;
+
+    assert_eq!(pack.status, KpiStatus::Published);
+    assert!(t.notices.of_type(PUBLISHED_NOTICE).is_empty());
+}

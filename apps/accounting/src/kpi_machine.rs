@@ -15,6 +15,7 @@
 //! ([`crate::kpi_packs::after`]), never in an effect.
 
 use renox::chrono::NaiveDate;
+use renox::prelude::*;
 use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx};
 use serde::{Deserialize, Serialize};
 use wl_kernel::documents::today;
@@ -85,8 +86,8 @@ impl StateMachine for KpiPack {
 }
 
 /// `publish`: every account is mapped and the commentary is there; the day
-/// and the user are kept. The previous version is superseded and the client
-/// told after the commit.
+/// and the user are kept. The previous version is superseded in the same
+/// transaction and the client told after the commit.
 fn publish() -> Transition<KpiPack> {
     Transition::new(PUBLISH)
         .label("Publish")
@@ -119,9 +120,32 @@ fn publish() -> Transition<KpiPack> {
         })
         .effect(|p: &KpiPack, ctx, tx| {
             let id = p.id;
+            let client = p.client_party_id;
+            let period = p.period_end;
+            let version = p.version;
             let on = input_of(ctx).on.unwrap_or_else(today);
             let by = ctx.actor().map(|user| user.id);
             Box::pin(async move {
+                // Decision: the earlier published version of the period is
+                // superseded in the same transaction, so two published
+                // versions never coexist (BL-ACC-20).
+                let stamp = renox::db::now();
+                KpiPack::query()
+                    .where_(KpiPack::CLIENT_PARTY_ID.eq(client))
+                    .where_(KpiPack::PERIOD_END.eq(period))
+                    .where_(KpiPack::STATUS.eq(KpiStatus::Published))
+                    .where_(KpiPack::VERSION.lt(version))
+                    .update(
+                        &mut *tx,
+                        &[
+                            (
+                                "status",
+                                &KpiStatus::Superseded as &(dyn renox::db::ToDbValue + Sync),
+                            ),
+                            ("updated_at", &stamp),
+                        ],
+                    )
+                    .await?;
                 crate::db::set_kpi_pack(
                     &mut *tx,
                     id,

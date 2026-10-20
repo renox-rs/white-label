@@ -12,8 +12,9 @@
 //! engagement manager is told to add the commentary; the client is told
 //! nothing at the import, only at the `publish`.
 //!
-//! **After a transition** ([`after`], a listener): `publish` supersedes the
-//! earlier published version of the period and tells the client users;
+//! **After a transition** ([`after`], a listener): `publish` (which
+//! superseded the earlier published version in its own transaction) tells
+//! the client users;
 //! `withdraw` tells them the pack was withdrawn (for a wrong client without
 //! naming any company and without the period) and, for a wrong client, opens
 //! a privacy incident task for the company admin listing who of the
@@ -41,7 +42,7 @@ use wl_kernel::{COMPANY_ADMIN_ROLE, PartyId};
 use crate::db::refused;
 use crate::engagement::{Engagement, EngagementStatus};
 use crate::kpi::{CATEGORIES, KpiFigure, KpiMapping, KpiPack, KpiStatus};
-use crate::kpi_machine::{KpiInput, PUBLISH, SUPERSEDE, WITHDRAW, WRONG_CLIENT};
+use crate::kpi_machine::{KpiInput, PUBLISH, WITHDRAW, WRONG_CLIENT};
 use crate::permissions::{self, MANAGER_ROLE};
 use crate::texts::english;
 
@@ -52,6 +53,12 @@ pub const RULE: &str = "ACC.RUL.06";
 pub const COMMENTARY_REQUIRED: bool = true;
 /// The audit action of a client user opening a pack in the portal.
 pub const VIEWED: &str = "kpi_pack.viewed";
+/// The audit action of the privacy incident task being opened for a pack.
+pub const INCIDENT_OPENED: &str = "kpi_pack.incident_opened";
+/// When the daily catch-up of missing incident tasks runs, Asia/Dubai.
+pub const CATCH_UP_AT: &str = "07:30";
+/// The scheduled task of the catch-up.
+pub const CATCH_UP_TASK: &str = "accounting:kpi_incident_catch_up";
 /// The engagement manager is told a trial balance was imported.
 pub const IMPORTED_NOTICE: &str = "accounting.kpi_imported";
 /// The client users are told a pack was published.
@@ -706,6 +713,15 @@ async fn tell_client(
     pack: &KpiPack,
     data: renox::serde_json::Value,
 ) -> Result {
+    // `ACC.ACL.14`: nothing automatic goes to the client while the
+    // engagement's reason is restricted.
+    let suppressed = Engagement::of_client(&state.db, pack.client())
+        .await?
+        .iter()
+        .any(|engagement| !engagement.may_message_client());
+    if suppressed {
+        return Ok(());
+    }
     let mut request = NotifyRequest::new(key, pack.subject())
         .subject_label(&pack.number())
         .data(data);
@@ -725,16 +741,6 @@ pub async fn after(state: &AppState, transition: &str, id: i64) -> Result {
     let pack = KpiPack::find_or_404(&state.db, id).await?;
     match transition {
         PUBLISH => {
-            for older in KpiPack::of_period(&state.db, pack.client(), pack.period_end).await? {
-                if older.status == KpiStatus::Published && older.version < pack.version {
-                    let _outcome = older
-                        .transition(SUPERSEDE)
-                        .by_system()
-                        .run(state)
-                        .await
-                        .map_err(TransitionError::into_error)?;
-                }
-            }
             let data = json!({
                 "number": pack.number(),
                 "period": pack.period_end.to_string(),
@@ -755,17 +761,17 @@ pub async fn after(state: &AppState, transition: &str, id: i64) -> Result {
                     &[("period", &pack.period_end)],
                 )
             };
+            // The incident first: it is the part that must not be lost.
+            if wrong_client {
+                open_incident(state, &pack).await?;
+            }
             tell_client(
                 state,
                 WITHDRAWN_NOTICE,
                 &pack,
                 json!({ "message": message }),
             )
-            .await?;
-            if wrong_client {
-                open_incident(state, &pack).await?;
-            }
-            Ok(())
+            .await
         }
         _ => Ok(()),
     }
@@ -802,7 +808,40 @@ async fn open_incident(state: &AppState, pack: &KpiPack) -> Result {
     )
     .description(&description);
     role_tasks::open(state, task).await?;
-    Ok(())
+    audit::record(
+        &state.db,
+        Entry::new(INCIDENT_OPENED).subject(KpiPack::TABLE, pack.id),
+    )
+    .await
+}
+
+/// Opens the privacy incident task of every pack withdrawn as sent to the
+/// wrong client that has none: the process ending between the commit of
+/// `withdraw` and [`after`] must not lose it. Idempotent (the task has a
+/// source key, and the pack is marked once served). Answers the ids served.
+///
+/// # Errors
+///
+/// The database's and the task service's errors.
+pub async fn catch_up_incidents(state: &AppState) -> Result<Vec<i64>> {
+    let withdrawn = KpiPack::query()
+        .where_(KpiPack::STATUS.eq(KpiStatus::Withdrawn))
+        .order_by(KpiPack::ID)
+        .get(&state.db)
+        .await?;
+    let mut served = Vec::new();
+    for pack in withdrawn {
+        if pack.withdraw_reason.as_deref() != Some(WRONG_CLIENT) {
+            continue;
+        }
+        let trail = audit::for_subject(&state.db, KpiPack::TABLE, pack.id, 1000).await?;
+        if trail.iter().any(|entry| entry.action == INCIDENT_OPENED) {
+            continue;
+        }
+        open_incident(state, &pack).await?;
+        served.push(pack.id);
+    }
+    Ok(served)
 }
 
 /// The notification types of the KPI pack.
@@ -845,6 +884,11 @@ pub(crate) fn register(app: &mut Registry) {
     app.listen(|event: Transitioned<KpiPack>, state: AppState| async move {
         after(&state, &event.transition, event.key).await
     });
+    app.schedule()
+        .daily_at(CATCH_UP_AT, CATCH_UP_TASK, |state: AppState| async move {
+            catch_up_incidents(&state).await.map(|_| ())
+        })
+        .timezone("Asia/Dubai");
 }
 
 #[cfg(test)]

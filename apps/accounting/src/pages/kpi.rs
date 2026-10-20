@@ -462,6 +462,14 @@ async fn visible(state: &AppState, user: &AuthUser, id: i64) -> Result<KpiPack> 
     {
         return Err(Error::NotFound);
     }
+    // Only the current version: a newer published one of the period wins.
+    let newer = KpiPack::of_period(&state.db, pack.client(), pack.period_end)
+        .await?
+        .into_iter()
+        .any(|other| other.status == KpiStatus::Published && other.version > pack.version);
+    if newer {
+        return Err(Error::NotFound);
+    }
     Ok(pack)
 }
 

@@ -10,6 +10,7 @@ mod support;
 use accounting::kpi_packs::{WITHDRAWN_NOTICE, incident_key};
 use accounting::{KpiMapping, KpiStatus};
 use renox::auth::permissions;
+use renox::prelude::*;
 use wl_kernel::COMPANY_ADMIN_ROLE;
 use wl_kernel::notify::{self, NotifyChannel, NotifyRecipient};
 use wl_kernel::tickets::Assignee;
@@ -260,4 +261,91 @@ async fn copy_makes_a_draft_for_the_right_client_and_leaves_the_withdrawn_pack()
         again[1].commentary, None,
         "nothing is copied from a withdrawn pack"
     );
+}
+
+/// Bug fix (`ACC.ACL.14`): the withdrawn notice is not sent while the
+/// engagement reason is restricted; the privacy incident task is still
+/// opened.
+#[renox::test]
+async fn no_withdrawn_notice_goes_out_while_the_engagement_reason_is_restricted() {
+    let t = boot().await;
+    let manager = t.manager().await;
+    let client = t.client().await;
+    let pack = t.kpi_published(&manager, client.company, TB_OCTOBER).await;
+    let engagement = t
+        .engagement_in(
+            &client,
+            accounting::EngagementStatus::Suspended,
+            Some("on_hold"),
+        )
+        .await;
+    t.suppress_messages(&engagement).await;
+
+    t.kpi_act(&manager, &pack, "withdraw", &[("reason", "wrong_client")])
+        .await
+        .assert_ok();
+
+    assert!(t.notices.of_type(WITHDRAWN_NOTICE).is_empty());
+    assert_eq!(t.tickets.with_key(&incident_key(pack.id)).len(), 1);
+}
+
+/// Bug fix: the incident task is opened before the notice, so a failing
+/// notifier does not lose it, and the daily catch-up opens it for a
+/// withdrawal whose listener never ran, once.
+#[renox::test]
+async fn the_incident_task_is_not_lost_when_the_listener_fails() {
+    let t = boot().await;
+    let manager = t.manager().await;
+    let client = t.client().await;
+    let pack = t.kpi_published(&manager, client.company, TB_OCTOBER).await;
+    t.notices.fail(WITHDRAWN_NOTICE);
+
+    let _ = t
+        .kpi_act(&manager, &pack, "withdraw", &[("reason", "wrong_client")])
+        .await;
+
+    assert_eq!(t.kpi_now(&pack).await.status, KpiStatus::Withdrawn);
+    assert_eq!(t.tickets.with_key(&incident_key(pack.id)).len(), 1);
+    // The catch-up has nothing left to do.
+    let served = t
+        .run(accounting::kpi_packs::catch_up_incidents(t.state()))
+        .await
+        .unwrap();
+    assert!(served.is_empty());
+    assert_eq!(t.tickets.with_key(&incident_key(pack.id)).len(), 1);
+}
+
+/// Bug fix: a withdrawal committed without its incident task (the process
+/// ended) gets it from the daily catch-up, once.
+#[renox::test]
+async fn the_catch_up_opens_the_incident_task_of_a_withdrawal_that_lost_it() {
+    let t = boot().await;
+    let manager = t.manager().await;
+    let client = t.client().await;
+    let pack = t.kpi_published(&manager, client.company, TB_OCTOBER).await;
+    // The row as the commit left it, before any listener ran.
+    accounting::KpiPack::query()
+        .where_(accounting::KpiPack::ID.eq(pack.id))
+        .update(
+            t.db(),
+            &[
+                ("status", &KpiStatus::Withdrawn),
+                ("withdraw_reason", &Some("wrong_client".to_owned())),
+            ],
+        )
+        .await
+        .unwrap();
+    assert!(t.tickets.with_key(&incident_key(pack.id)).is_empty());
+
+    let served = t
+        .run(accounting::kpi_packs::catch_up_incidents(t.state()))
+        .await
+        .unwrap();
+    assert_eq!(served, [pack.id]);
+    assert_eq!(t.tickets.with_key(&incident_key(pack.id)).len(), 1);
+    let again = t
+        .run(accounting::kpi_packs::catch_up_incidents(t.state()))
+        .await
+        .unwrap();
+    assert!(again.is_empty());
 }

@@ -143,9 +143,16 @@ pub struct Recording {
     delivered: Arc<Mutex<Vec<(Subject, String, DateTime)>>>,
     bounced: Arc<Mutex<Vec<Subject>>>,
     proofs: Arc<Mutex<Vec<(Subject, NaiveDate)>>>,
+    failing: Arc<Mutex<Vec<String>>>,
 }
 
 impl Recording {
+    /// From now on the notifier fails for the notification type `key` (a
+    /// process that ends right after a commit, for the listener).
+    pub fn fail(&self, key: &str) {
+        self.failing.lock().unwrap().push(key.to_owned());
+    }
+
     /// Every request.
     pub fn all(&self) -> Vec<NotifyRequest> {
         self.requests.lock().unwrap().clone()
@@ -193,6 +200,9 @@ impl Notifier for Recording {
         _state: &'a AppState,
         request: NotifyRequest,
     ) -> NotifyFuture<'a, Vec<MessageId>> {
+        if self.failing.lock().unwrap().contains(&request.type_key) {
+            return Box::pin(async { Err(Error::permanent_message("the notifier is down")) });
+        }
         let id = {
             self.delivered.lock().unwrap().push((
                 request.subject.clone(),
@@ -1725,6 +1735,16 @@ impl Booted {
             .unwrap();
         tx.commit().await.unwrap();
         self.reload(&engagement).await
+    }
+
+    /// Marks the reason of `engagement` as restricted: no automatic message
+    /// reaches the client (`ACC.ACL.14`).
+    pub async fn suppress_messages(&self, engagement: &Engagement) {
+        Engagement::query()
+            .where_(Engagement::ID.eq(engagement.id))
+            .update(self.db(), &[("client_messages_suppressed", &true)])
+            .await
+            .unwrap();
     }
 
     /// `engagement`, as stored now.
