@@ -27,7 +27,7 @@ use wl_kernel::approvals::PolicyDefault;
 use wl_kernel::block_effects::{BlockEffect, BlockEffectOverride, effect_for};
 use wl_payments::WlPayments;
 
-use super::roles::{ACCOUNTANT, ADMIN, PROPERTY_MANAGER, SETTINGS_VIEW};
+use super::roles::{ACCOUNTANT, ADMIN, OPERATIONS_MANAGER, PROPERTY_MANAGER, SETTINGS_VIEW};
 
 /// Days a dispute may stay open before it is escalated (`FIN.RUL.15`).
 pub const DISPUTE_ESCALATION_DAYS: u32 = 14;
@@ -43,6 +43,9 @@ pub const BOUNCE_REMIND_DAYS: i64 = 3;
 pub const BOUNCE_DECIDE_DAYS: i64 = 14;
 /// Hours a payment reversal request may wait before it can expire.
 pub const PAYMENT_REVERSAL_EXPIRY_HOURS: i64 = 168;
+/// The cash shortage an operations manager of a logistics client writes off
+/// without a second approver, in fils (`FIN.ACL.06`, 03: AED 50).
+pub const LOGISTICS_CASH_WRITE_OFF_LIMIT: i64 = 5_000;
 /// The projected balance below which `FIN.RUL.23` alerts, in fils (AED 50,000).
 pub const CASH_THRESHOLD: i64 = 5_000_000;
 
@@ -137,6 +140,12 @@ pub fn payments_for(client_app: &str) -> WlPayments {
             // The property manager is told of a bounce and at the reminder,
             // and decides beside the accountant (items 10 and 11).
             .cheque_manager(PROPERTY_MANAGER, true),
+        // 03: a driver's cash shortage up to AED 50 is written off by the
+        // operations manager; the manager of a driver is that role. Salary
+        // deduction stays off (`FIN.ACL.19`, open item L-20).
+        "logistics" => module
+            .cash_write_off_limit(LOGISTICS_CASH_WRITE_OFF_LIMIT)
+            .cash_manager(OPERATIONS_MANAGER),
         _ => module,
     }
 }
@@ -591,6 +600,18 @@ mod tests {
     fn another_client_keeps_the_module_defaults() {
         assert!(!invoicing_for("other", &entities()).config().portal_disputes);
         assert!(!payments_for("other").config().deductions_dispute);
+    }
+
+    #[test]
+    fn the_logistics_client_writes_off_a_shortage_up_to_aed_50_and_never_deducts_wages() {
+        let payments = payments_for("logistics");
+        let config = payments.config();
+        assert_eq!(config.cash_write_off_limit, 5_000);
+        assert_eq!(config.cash_manager_role, OPERATIONS_MANAGER);
+        // L-20 is a setting, off unless a client turns it on.
+        assert!(!config.cash_salary_deduction);
+        assert!(!payments_for("property").config().cash_salary_deduction);
+        assert_eq!(payments_for("other").config().cash_write_off_limit, 0);
     }
 
     #[test]

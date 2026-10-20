@@ -76,6 +76,12 @@ pub const HR: &str = "hr";
 /// The dispatcher: puts deliveries on runs, plans and dispatches runs, and
 /// manages deliveries (wl-delivery §6, 03 roles).
 pub const DISPATCHER: &str = "dispatcher";
+/// The operations manager of a logistics client: approves and reverses
+/// deliveries, approves a COD difference (`WRK.ACL.09`), counts and recounts
+/// drivers' cash, raises a later shortage against a driver and writes small
+/// shortages off within the limit (wl-payments §6, 03 roles; the second
+/// approver of a write-off is another holder of `cash.write_off`).
+pub const OPERATIONS_MANAGER: &str = "operations_manager";
 /// A driver or rider: sees today's stops of their own runs and records their
 /// outcomes (wl-delivery §6, `WRK.ACL.05`).
 pub const DRIVER: &str = "driver";
@@ -166,6 +172,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             payments::EXPENSES_VIEW,
             payments::EXPENSES_SUBMIT,
             payments::EXPENSES_APPROVE,
+            payments::CASH_VIEW,
+            payments::CASH_COUNT,
+            payments::CASH_WRITE_OFF,
             sales::CAMPAIGNS_VIEW,
             sales::CAMPAIGNS_MANAGE,
             sales::CAMPAIGNS_COSTS_MANAGE,
@@ -306,6 +315,8 @@ pub const ROLES: &[(&str, &[&str])] = &[
             payments::EXPENSES_VIEW,
             payments::EXPENSES_SUBMIT,
             payments::EXPENSES_APPROVE,
+            payments::CASH_VIEW,
+            payments::CASH_COUNT,
         ],
     ),
     (
@@ -318,6 +329,8 @@ pub const ROLES: &[(&str, &[&str])] = &[
             invoices::CASHFLOW_VIEW,
             payments::EXPENSES_VIEW,
             payments::EXPENSES_APPROVE,
+            payments::CASH_VIEW,
+            payments::CASH_WRITE_OFF,
             parties::VIEW,
             parties::BLOCK_EXCEPTION,
         ],
@@ -397,6 +410,23 @@ pub const ROLES: &[(&str, &[&str])] = &[
             delivery::RUNS_VIEW,
             delivery::RUNS_DISPATCH,
             delivery::POD_VIEW,
+        ],
+    ),
+    (
+        OPERATIONS_MANAGER,
+        &[
+            delivery::VIEW,
+            delivery::DISPATCH,
+            delivery::MANAGE,
+            delivery::RUNS_VIEW,
+            delivery::RUNS_DISPATCH,
+            delivery::POD_VIEW,
+            delivery::REVERSE,
+            delivery::APPROVE_COD_DIFFERENCE,
+            payments::VIEW,
+            payments::CASH_VIEW,
+            payments::CASH_COUNT,
+            payments::CASH_WRITE_OFF,
         ],
     ),
     (DRIVER, &[delivery::RUNS_DRIVE, delivery::COMPLETE]),
