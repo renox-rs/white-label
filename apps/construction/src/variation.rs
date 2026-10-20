@@ -13,7 +13,11 @@
 //! ```
 //!
 //! This is the minimal base BL-CON-11, BL-CON-12 and BL-CON-13 need: the
-//! entity, its states and transitions and the effects of §7.1.
+//! entity, its states and transitions and the effects of §7.1. The omission
+//! (a quantity taken out of a BOQ line, never more than is not yet done) is in
+//! [`crate::omission`]; an approved extension of time moves the completion date
+//! of the project by the days granted, and an addition priced at one amount and
+//! approved at another shows its gap in the variation report ([`report_of`]).
 //!
 //! - The QS (`variations.record`) records and prices a draft ([`create`],
 //!   [`update_draft`]) and records the client's decision (`approve`, `reject`,
@@ -53,7 +57,7 @@
 //!   code use, once per cost line.
 
 use renox::auth::permissions::Scope;
-use renox::chrono::NaiveDate;
+use renox::chrono::{Days, NaiveDate};
 use renox::db::{DateTime, Db, Transaction};
 use renox::prelude::*;
 use renox::state_machine::{
@@ -184,6 +188,13 @@ pub struct Variation {
     pub notice_late: bool,
     /// The IPA that valued the approved variation.
     pub ipa_id: Option<i64>,
+    /// The BOQ line an omission takes work out of.
+    pub boq_line_id: Option<i64>,
+    /// The quantity an omission takes out.
+    pub omitted_quantity: Option<i64>,
+    /// How much of an approved omission progress had overtaken: the QS is
+    /// warned to record it as a claim.
+    pub excess_quantity: i64,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
@@ -245,6 +256,10 @@ pub struct VariationInput {
     /// The days the client granted (a time variation).
     #[serde(default)]
     pub days_granted: Option<i64>,
+    /// The quantity of the BOQ line not yet done (`submit` of an omission),
+    /// read from the latest recorded progress.
+    #[serde(default)]
+    pub not_yet_done: Option<i64>,
 }
 
 /// The input of a transition of a variation.
@@ -383,6 +398,23 @@ pub(crate) async fn approve_effects(
                 &[("contract_value", &contract_value), ("budget", &budget)],
             )
             .await?;
+    }
+    // An approved extension of time moves the completion date by the days
+    // granted (none to move when the contract has no completion date).
+    if variation.kind == VariationKind::Time
+        && let Some(days) = days.and_then(|days| u64::try_from(days).ok())
+    {
+        let project = Project::find_or_404(&mut *tx, variation.project_id).await?;
+        if let Some(moved) = project
+            .completion_due_on
+            .and_then(|due| due.checked_add_days(Days::new(days)))
+        {
+            let moved = Some(moved);
+            Project::query()
+                .where_(Project::ID.eq(project.id))
+                .update(&mut *tx, &[("completion_due_on", &moved)])
+                .await?;
+        }
     }
     Ok(())
 }
@@ -527,6 +559,11 @@ impl StateMachine for Variation {
                         let problem = price_problem(variation);
                         Box::pin(async move { problem.map_or(Ok(()), Err) })
                     })
+                    .guard("omission", |variation: &Variation, ctx| {
+                        let problem =
+                            crate::omission::submit_problem(variation, &variation_input(ctx));
+                        Box::pin(async move { problem.map_or(Ok(()), Err) })
+                    })
                     .effect(|variation: &Variation, _ctx, tx| {
                         let variation = variation.clone();
                         Box::pin(async move { submit_effects(&mut *tx, &variation).await })
@@ -644,6 +681,10 @@ pub struct NewVariation {
     pub event: Option<String>,
     /// The date of the delay event.
     pub event_date: Option<NaiveDate>,
+    /// The BOQ line an omission takes work out of.
+    pub boq_line_id: Option<i64>,
+    /// The quantity an omission takes out.
+    pub omitted_quantity: Option<i64>,
 }
 
 /// Why `new` cannot be recorded, if it cannot: it says what it is.
@@ -692,7 +733,10 @@ pub async fn create(
         revision: 1,
         ..Variation::default()
     };
-    apply(&mut variation, new);
+    apply(
+        &mut variation,
+        &crate::omission::priced(&state.db, new).await?,
+    );
     variation.save(&state.db).await?;
     Ok(Variation::find_or_404(&state.db, variation.id).await?)
 }
@@ -717,6 +761,8 @@ fn apply(variation: &mut Variation, new: &NewVariation) {
         .filter(|event| !event.is_empty())
         .map(str::to_owned);
     variation.event_date = new.event_date;
+    variation.boq_line_id = new.boq_line_id;
+    variation.omitted_quantity = new.omitted_quantity;
 }
 
 /// `user` (the QS) changes the price or the evidence of the `draft` `id`; a
@@ -747,7 +793,10 @@ pub async fn update_draft(
     if let Some(problem) = new_problem(new) {
         return Err(TransitionError::Guard(problem));
     }
-    apply(&mut variation, new);
+    apply(
+        &mut variation,
+        &crate::omission::priced(&state.db, new).await?,
+    );
     variation.save(&state.db).await?;
     Ok(Variation::find_or_404(&state.db, id).await?)
 }
@@ -785,7 +834,11 @@ pub async fn submit(
     user: &AuthUser,
     id: i64,
 ) -> std::result::Result<Variation, TransitionError> {
-    let _outcome = run_user(state, user, id, SUBMIT, &VariationInput::default(), None).await?;
+    let variation = Variation::find(&state.db, id)
+        .await?
+        .ok_or(TransitionError::Failed(Error::NotFound))?;
+    let input = crate::omission::prepare_submit(&state.db, &variation).await?;
+    let _outcome = run_user(state, user, id, SUBMIT, &input, None).await?;
     Ok(Variation::find_or_404(&state.db, id).await?)
 }
 
@@ -806,6 +859,7 @@ impl Decision {
             client_reference: self.client_reference.clone(),
             approved_amount: self.approved_amount,
             days_granted: self.days_granted,
+            ..VariationInput::default()
         }
     }
 }
@@ -826,6 +880,7 @@ pub async fn approve(
     decision: &Decision,
 ) -> std::result::Result<Variation, TransitionError> {
     let _outcome = run_user(state, user, id, APPROVE, &decision.input(), None).await?;
+    let _warned = crate::omission::warn_after_approval(state, id).await?;
     Ok(Variation::find_or_404(&state.db, id).await?)
 }
 
@@ -1037,6 +1092,85 @@ pub async fn of_project(db: &Db, project_id: i64) -> Result<Vec<Variation>> {
         .order_by(Variation::ID)
         .get(db)
         .await
+}
+
+/// A line of the variation report: what was priced, what the client approved
+/// and the gap between them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ReportLine {
+    /// The variation's id.
+    pub id: i64,
+    /// `VO-07`.
+    pub code: String,
+    /// The revision.
+    pub revision: i64,
+    /// `addition`, `omission` or `time`.
+    pub kind: &'static str,
+    /// The state.
+    pub status: &'static str,
+    /// The price asked, negative for an omission.
+    pub priced_amount: i64,
+    /// The amount the client approved, negative for an omission.
+    pub approved_amount: Option<i64>,
+    /// What the client approved less than was priced, in fils (the size of
+    /// the price less the size of the approved amount); `None` until it is
+    /// approved, and for a time variation.
+    pub gap: Option<i64>,
+    /// The days asked.
+    pub days_asked: Option<i64>,
+    /// The days granted.
+    pub days_granted: Option<i64>,
+    /// The days asked that were not granted.
+    pub days_gap: Option<i64>,
+    /// The quantity of an approved omission that progress had overtaken.
+    pub excess_quantity: i64,
+    /// The cost nothing recovers.
+    pub unrecovered_amount: i64,
+    /// Whether the notice came after the contract's notice deadline.
+    pub notice_late: bool,
+}
+
+impl ReportLine {
+    /// The line of `variation`.
+    pub fn of(variation: &Variation) -> Self {
+        let money = variation.kind != VariationKind::Time;
+        ReportLine {
+            id: variation.id,
+            code: variation.code.clone(),
+            revision: variation.revision,
+            kind: variation.kind.as_str(),
+            status: variation.status.as_str(),
+            priced_amount: variation.priced_amount,
+            approved_amount: variation.approved_amount,
+            gap: variation
+                .approved_amount
+                .filter(|_| money)
+                .map(|approved| variation.priced_amount.abs() - approved.abs()),
+            days_asked: variation.days_asked,
+            days_granted: variation.days_granted,
+            days_gap: match (variation.days_asked, variation.days_granted) {
+                (Some(asked), Some(granted)) if !money => Some(asked - granted),
+                _ => None,
+            },
+            excess_quantity: variation.excess_quantity,
+            unrecovered_amount: variation.unrecovered_amount,
+            notice_late: variation.notice_late,
+        }
+    }
+}
+
+/// The variation report of `project_id`: every revision with its price, its
+/// approved amount and the gap, oldest first.
+///
+/// # Errors
+///
+/// A database error.
+pub async fn report_of(db: &Db, project_id: i64) -> Result<Vec<ReportLine>> {
+    Ok(of_project(db, project_id)
+        .await?
+        .iter()
+        .map(ReportLine::of)
+        .collect())
 }
 
 /// The claims of the final account of `project_id`: the `claimed` variations,

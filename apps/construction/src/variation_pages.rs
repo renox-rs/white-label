@@ -13,6 +13,7 @@
 //! | `POST /construction/variations/{id}/settle-claim` | `construction.variation_settle_claim` | `variations.record` in the project |
 //! | `POST /construction/variations/{id}/abandon` | `construction.variation_abandon` | `variations.submit` in the project |
 //! | `POST /construction/variations/{id}/withdraw` | `construction.variation_withdraw` | `variations.submit` in the project |
+//! | `GET /construction/projects/{id}/variation-report` | `construction.variation_report` | `projects.view`, `variations.record` or `variations.submit` in the project |
 //!
 //! The approval of an abandon is the kernel's: the MD finds the request under
 //! "Needs your action".
@@ -23,6 +24,8 @@ use renox::chrono::NaiveDate;
 use renox::prelude::*;
 
 use crate::pages::{answer, date_field, refused, text};
+use crate::permissions;
+use crate::project::Project;
 use crate::texts::t;
 use crate::variation::{self, Abandoning, Decision, NewVariation, VariationKind};
 
@@ -52,6 +55,11 @@ pub fn routes() -> Routes {
         .name("construction.variation_abandon")
         .post("/construction/variations/{id}/withdraw", withdraw_variation)
         .name("construction.variation_withdraw")
+        .get(
+            "/construction/projects/{id}/variation-report",
+            variation_report,
+        )
+        .name("construction.variation_report")
         .require_auth()
 }
 
@@ -100,6 +108,8 @@ fn new_variation(form: &BTreeMap<String, String>, lang: &Lang) -> Result<NewVari
         days_asked: number_field(form, "days_asked", lang)?,
         event: Some(text(form, "event")),
         event_date,
+        boq_line_id: number_field(form, "boq_line_id", lang)?,
+        omitted_quantity: number_field(form, "omitted_quantity", lang)?,
     })
 }
 
@@ -254,4 +264,29 @@ async fn withdraw_variation(
         .await
         .map_err(answer)?;
     done(&lang, "construction.variation.withdrawn")
+}
+
+/// `GET /construction/projects/{id}/variation-report`: every variation with
+/// its price, the amount the client approved and the gap, in JSON.
+async fn variation_report(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    let project = Project::find_or_404(&state.db, id).await?;
+    let scope = project.scope();
+    let may = [
+        permissions::PROJECTS_VIEW,
+        permissions::VARIATIONS_RECORD,
+        permissions::VARIATIONS_SUBMIT,
+    ]
+    .iter()
+    .any(|permission| user.has_permission_in(permission, &scope));
+    if !may {
+        return Err(Error::Forbidden);
+    }
+    let lines = variation::report_of(&state.db, id).await?;
+    let body = renox::serde_json::to_string(&lines)
+        .map_err(|error| Error::Internal(renox::anyhow::Error::new(error)))?;
+    Ok(([("content-type", "application/json")], body).into_response())
 }

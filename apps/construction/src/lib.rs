@@ -2,6 +2,7 @@
 #![warn(missing_docs)]
 
 pub mod award;
+pub mod boq;
 pub mod call;
 pub mod cancellation;
 pub mod certificate;
@@ -15,6 +16,7 @@ pub mod guarantee;
 pub mod invoice;
 pub mod ipa;
 pub mod notices;
+pub mod omission;
 pub mod pages;
 pub mod permissions;
 pub mod project;
@@ -33,6 +35,7 @@ use renox::db::Migration;
 use renox::prelude::*;
 use renox::state_machine::Transitioned;
 
+pub use boq::{BoqLine, IpaProgress};
 pub use call::GuaranteeCall;
 pub use deduction::{DeductionKind, DeductionStatus, IpaDeduction};
 pub use events::ProjectTerminated;
@@ -78,7 +81,9 @@ impl Module for Construction {
             .model::<Guarantee>()
             .model::<GuaranteeDocument>()
             .model::<GuaranteeCall>()
-            .model::<Variation>();
+            .model::<Variation>()
+            .model::<BoqLine>()
+            .model::<IpaProgress>();
         project::register();
         variation::register();
         variation::listen(app);

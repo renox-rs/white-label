@@ -593,6 +593,22 @@ const TEXTS: &[(&str, &str)] = &[
         "construction.variation.rejected_body",
         "Reason: {{ reason }}. The cost of the work already executed, {{ unrecovered }}, stays on the variation's cost code, unrecovered, until it is resubmitted, claimed or abandoned.",
     ),
+    (
+        "construction.variation.omission_line_needed",
+        "Name the BOQ line and the quantity the omission takes out.",
+    ),
+    (
+        "construction.variation.omission_above",
+        "The omission takes out {{ omitted }} but only {{ left }} is not yet done; work already done stays in the valuation, or becomes a claim.",
+    ),
+    (
+        "construction.variation.excess_title",
+        "Progress has overtaken the approved omission {{ label }} of {{ project }}",
+    ),
+    (
+        "construction.variation.excess_body",
+        "{{ excess }} {{ unit }} of the omission was already done when the client approved it. Record the excess as a claim.",
+    ),
     ("construction.variation.created", "Variation recorded."),
     ("construction.variation.priced", "Variation updated."),
     (
