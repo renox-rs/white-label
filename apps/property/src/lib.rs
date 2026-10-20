@@ -229,6 +229,43 @@ impl Module for Property {
                 Ok(Building::find(db, id).await?.map(|b| b.name_en))
             })
         });
+        // The records' names where documents are listed.
+        wl_kernel::documents::register_subject_label(lease::LEASE_SUBJECT_TYPE, |db, id| {
+            Box::pin(async move {
+                Ok(match Lease::find(db, id).await? {
+                    Some(lease) => {
+                        let unit = match Unit::find(db, lease.unit_id).await? {
+                            Some(unit) => {
+                                let building = Building::find(db, unit.building_id)
+                                    .await?
+                                    .map(|b| b.code)
+                                    .unwrap_or_default();
+                                format!("{building} / {}", unit.number)
+                            }
+                            None => String::new(),
+                        };
+                        Some(format!("{} · {unit}", lease.number_with_version()))
+                    }
+                    None => None,
+                })
+            })
+        });
+        wl_kernel::documents::register_subject_label(charge::CHARGE_SUBJECT_TYPE, |db, id| {
+            Box::pin(async move {
+                Ok(match LeaseCharge::find(db, id).await? {
+                    Some(charge) => {
+                        let lease = Lease::find(db, charge.lease_id).await?;
+                        Some(match lease {
+                            Some(lease) => {
+                                format!("{} · {}", charge.description, lease.number_with_version())
+                            }
+                            None => charge.description,
+                        })
+                    }
+                    None => None,
+                })
+            })
+        });
         // And from the buildings to what is in them, for the lists.
         scope_members::register();
         // A ticket about a building or one of its units is looked after by

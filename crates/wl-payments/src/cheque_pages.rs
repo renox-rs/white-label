@@ -341,16 +341,23 @@ pub(crate) struct ShowPage {
 
 /// The documents `cheque` pays as rows.
 async fn link_rows(db: &Db, cheque: &Cheque) -> Result<Vec<LinkRow>> {
-    Ok(cheque
-        .linked(db)
-        .await?
-        .iter()
-        .map(|document| LinkRow {
-            label: document.to_string(),
+    let mut rows = Vec::new();
+    for document in cheque.linked(db).await? {
+        rows.push(LinkRow {
+            label: subject_name(db, &document).await?,
             link: (document.subject_type == INVOICE_SUBJECT_TYPE)
                 .then(|| format!("/invoices/{}", document.subject_id)),
-        })
-        .collect())
+        });
+    }
+    Ok(rows)
+}
+
+/// A record by name where its module registered one (`L-000050 · JVT-B /
+/// 1501`, `INV-PGP-2026-0085`), else `type:id`.
+async fn subject_name(db: &Db, subject: &wl_kernel::Subject) -> Result<String> {
+    Ok(wl_kernel::documents::subject_label(db, subject)
+        .await?
+        .unwrap_or_else(|| subject.to_string()))
 }
 
 /// The return rows of `cheque`.
@@ -489,6 +496,10 @@ async fn show(
     lang: Lang,
     Found(cheque): Found<Cheque>,
 ) -> Result<View> {
+    let reach = wl_kernel::scopes::reach(&state.db, &user, permissions::CHEQUES_VIEW).await?;
+    if !crate::scoped::agreement_in_reach(&state.db, &reach, cheque.agreement()).await? {
+        return Err(Error::Forbidden);
+    }
     let t = texts_in(&lang);
     let db = state.db.clone();
     let money = |fils: i64| money_text(&cheque.currency, fils);
@@ -496,10 +507,6 @@ async fn show(
         ("amount", money(cheque.amount)),
         ("open", money(cheque.open_amount)),
         ("honoured", money(cheque.honoured_amount)),
-    let reach = wl_kernel::scopes::reach(&state.db, &user, permissions::CHEQUES_VIEW).await?;
-    if !crate::scoped::agreement_in_reach(&state.db, &reach, cheque.agreement()).await? {
-        return Err(Error::Forbidden);
-    }
         ("settled", money(cheque.settled_amount)),
         ("fees", money(cheque.bounce_fee_total)),
     ]);
@@ -551,10 +558,10 @@ async fn show(
         party_name: party_name(&state, cheque.party()).await?,
         direction_label: t(&format!("cheques.direction.{}", cheque.direction.as_str())),
         amounts,
-        agreement_label: cheque
-            .agreement()
-            .map(|a| a.to_string())
-            .unwrap_or_default(),
+        agreement_label: match cheque.agreement() {
+            Some(a) => subject_name(&db, &a).await?,
+            None => String::new(),
+        },
         linked: link_rows(&db, &cheque).await?,
         returns: return_rows(&db, &cheque).await?,
         tasks: task_rows(&db, &t, &cheque).await?,

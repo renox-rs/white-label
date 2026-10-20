@@ -12,6 +12,7 @@ pub mod overrides;
 pub mod pages;
 pub mod registrations;
 pub mod sops;
+pub mod subject_pages;
 mod texts;
 
 use renox::db::Migration;
@@ -92,6 +93,10 @@ const VIEWS: &[(&str, &str)] = &[
         include_str!("../views/wl-documents/document_correction.html"),
     ),
     (
+        "wl-documents/subject.html",
+        include_str!("../views/wl-documents/subject.html"),
+    ),
+    (
         "wl-documents/sops.html",
         include_str!("../views/wl-documents/sops.html"),
     ),
@@ -121,6 +126,7 @@ impl Module for WlDocuments {
     fn routes(&self) -> Routes {
         pages::routes()
             .merge(overrides::web::routes())
+            .merge(subject_pages::routes())
             .merge(sops::web::routes())
             .merge(acknowledgements::web::routes())
     }

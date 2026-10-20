@@ -447,6 +447,9 @@ pub(crate) struct ShowPage {
     invalid_contacts: Vec<ContactRow>,
     /// Whether the edit and verify actions show (`parties.update`).
     can_update: bool,
+    /// The party's documents page, when the documents module is on and the
+    /// user may see documents.
+    documents_url: Option<String>,
     roles: Vec<PartyRole>,
     timeline: Vec<renox::serde_json::Value>,
     /// "On hold — Non-payment" / "On hold" while blocked.
@@ -612,9 +615,6 @@ async fn show(
     lang: Lang,
     Found(party): Found<Party>,
 ) -> Result<View> {
-    let db = state.db.clone();
-    let person = PersonDetails::query()
-        .where_(PersonDetails::PARTY_ID.eq(party.id))
     let reach = wl_kernel::scopes::reach(&state.db, &user, permissions::VIEW).await?;
     if let Some(ids) = reach
         .ids(&state.db, wl_kernel::parties::PARTY_SUBJECT_TYPE)
@@ -623,6 +623,9 @@ async fn show(
     {
         return Err(Error::Forbidden);
     }
+    let db = state.db.clone();
+    let person = PersonDetails::query()
+        .where_(PersonDetails::PARTY_ID.eq(party.id))
         .first(&db)
         .await?;
     let company = CompanyDetails::query()
@@ -687,6 +690,17 @@ async fn show(
         "manual_check.result",
         ["no_match", "candidate"],
     );
+    let documents_url = (state
+        .provided::<std::sync::Arc<dyn wl_kernel::documents::DocumentGuard>>()
+        .is_some()
+        && user.has_permission_anywhere("documents.view"))
+    .then(|| {
+        format!(
+            "/documents/of/{}/{}",
+            wl_kernel::parties::PARTY_SUBJECT_TYPE,
+            party.id
+        )
+    });
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
         party,
@@ -695,6 +709,7 @@ async fn show(
         contacts,
         invalid_contacts,
         can_update,
+        documents_url,
         roles,
         timeline,
         hold_label,

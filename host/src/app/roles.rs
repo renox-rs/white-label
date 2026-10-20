@@ -200,6 +200,8 @@ pub const ROLES: &[(&str, &[&str])] = &[
             prp::COMPLIANCE_VIEW,
             parties::VIEW,
             documents::VIEW,
+            // The signed tenancy contract and the Ejari certificate of a lease.
+            documents::UPLOAD,
             invoices::VIEW,
             tickets::VIEW,
             tickets::CREATE,
@@ -229,6 +231,10 @@ pub const ROLES: &[(&str, &[&str])] = &[
     (
         COMPLIANCE,
         &[
+            // The identity documents of the people the company deals with are
+            // accepted here (the uploader never accepts their own).
+            documents::VIEW,
+            documents::REVIEW,
             parties::VIEW,
             parties::BLOCK,
             parties::BLOCK_REASON_VIEW,

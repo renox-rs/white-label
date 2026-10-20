@@ -770,6 +770,20 @@ impl Module for WlInvoicing {
                 }
             })
         });
+        // Where a page names an invoice (a cheque's documents): its number.
+        wl_kernel::documents::register_subject_label(
+            wl_kernel::invoicing::INVOICE_SUBJECT_TYPE,
+            |db, id| {
+                Box::pin(async move {
+                    Ok(Invoice::find(db, id).await?.map(|invoice| {
+                        invoice
+                            .number
+                            .clone()
+                            .unwrap_or_else(|| format!("Draft #{}", invoice.id))
+                    }))
+                })
+            },
+        );
         // And the other way, for the lists: the invoices billed for the
         // buildings (or other scope units) a user holds a permission in.
         wl_kernel::scopes::register_derived_members(
