@@ -349,3 +349,110 @@ async fn the_catch_up_opens_the_incident_task_of_a_withdrawal_that_lost_it() {
         .unwrap();
     assert!(again.is_empty());
 }
+
+/// Done when 1 with the real wl-ticketing: the incident task is a real
+/// ticket for the company admin and lists who of the receiving company
+/// opened the pack, with the time of the opening.
+#[renox::test]
+async fn the_incident_task_is_a_real_ticket_listing_who_opened_the_pack_and_when() {
+    register_portal_section();
+    let t = support::boot_real().await;
+    permissions::define_role(t.db(), COMPANY_ADMIN_ROLE, &[])
+        .await
+        .unwrap();
+    let admin = t.user_with("Ada", COMPANY_ADMIN_ROLE).await;
+    let manager = t.manager().await;
+    let b = t.client_named(" Beta").await;
+    let reader = t.portal_user("Bea", b.ubo, b.company).await;
+    t.set_clock(5, 10, 0);
+    let pack = t.kpi_published(&manager, b.company, TB_OCTOBER).await;
+    t.get(
+        &reader,
+        &format!("/accounting/portal/kpi-packs/{}", pack.id),
+    )
+    .await
+    .assert_ok();
+    let opened = wl_kernel::documents::dubai_text(t.now().await);
+
+    t.kpi_act(&manager, &pack, "withdraw", &[("reason", "wrong_client")])
+        .await
+        .assert_ok();
+
+    let tickets = wl_ticketing::Ticket::query()
+        .where_(wl_ticketing::Ticket::SOURCE_KEY.eq(incident_key(pack.id).as_str()))
+        .get(t.db())
+        .await
+        .unwrap();
+    assert_eq!(tickets.len(), 1);
+    assert_eq!(tickets[0].assignee_user_id, Some(admin.id));
+    let description = &tickets[0].description;
+    assert!(description.contains("Bea"), "{description}");
+    assert!(description.contains(&opened), "{opened} in {description}");
+    assert!(
+        description.contains("Gulf Trading Beta LLC"),
+        "{description}"
+    );
+}
+
+/// A client user reads only the packs of the company they act for: company
+/// A's portal user gets 404 on company B's published pack, in both ways.
+#[renox::test]
+async fn a_portal_user_of_another_company_gets_not_found() {
+    register_portal_section();
+    let t = boot().await;
+    let manager = t.manager().await;
+    let a = t.client_named(" Alpha").await;
+    let b = t.client_named(" Beta").await;
+    let reader_a = t.portal_user("Alan", a.ubo, a.company).await;
+    let reader_b = t.portal_user("Bea", b.ubo, b.company).await;
+    let pack = t.kpi_published(&manager, b.company, TB_OCTOBER).await;
+    let page = format!("/accounting/portal/kpi-packs/{}", pack.id);
+
+    t.get(&reader_a, &page).await.assert_not_found();
+    t.get(&reader_b, &page).await.assert_ok();
+    // And it is not in A's section.
+    let section = t
+        .get(&reader_a, &format!("/portal/{}/kpi_packs", a.company.0))
+        .await;
+    assert!(!section.text().contains(&pack.number()));
+    // B's section is closed to A's user.
+    t.get(&reader_a, &format!("/portal/{}/kpi_packs", b.company.0))
+        .await
+        .assert_forbidden();
+}
+
+/// The withdrawn notice through the real wl-notify: the e-mail the client
+/// approver gets says the report must be disregarded and names neither
+/// company, the period nor the pack.
+#[renox::test]
+async fn the_withdrawn_notice_the_client_reads_names_no_company() {
+    register_portal_section();
+    let t = support::boot_notify().await;
+    let manager = t.manager().await;
+    let b = t.client_named(" Beta").await;
+    t.portal_user("Bea", b.ubo, b.company).await;
+    t.email_for(b.ubo, "bea@beta.example").await;
+    t.set_clock(5, 12, 0);
+    let pack = t.kpi_published(&manager, b.company, TB_OCTOBER).await;
+
+    t.kpi_act(&manager, &pack, "withdraw", &[("reason", "wrong_client")])
+        .await
+        .assert_ok();
+    t.app.run_all_jobs().await;
+
+    let mails: Vec<_> = t
+        .mail
+        .attempts()
+        .into_iter()
+        .filter(|mail| mail.address == "bea@beta.example" && mail.body.contains("disregarded"))
+        .collect();
+    assert_eq!(mails.len(), 1, "{:?}", t.mail.attempts());
+    for name in ["Alpha", "Beta", "2026-10", &pack.number()] {
+        assert!(!mails[0].body.contains(name), "{name} in {}", mails[0].body);
+        assert!(
+            !mails[0].title.contains(name),
+            "{name} in {}",
+            mails[0].title
+        );
+    }
+}
