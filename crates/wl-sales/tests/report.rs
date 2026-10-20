@@ -426,3 +426,99 @@ async fn sal21_the_page_and_the_csv_show_the_same_numbers() {
         .assert_ok()
         .assert_dont_see("SPRING26");
 }
+
+/// An active campaign `code` of the branch `test.branch:<id>`, in March 2026.
+async fn branch_campaign(t: &Booted, code: &str, branch: i64) -> Campaign {
+    let campaign = Campaign {
+        name: code.into(),
+        code: code.into(),
+        purpose: Some(Purpose::Acquisition),
+        marketing_channel: Some(MarketingChannel::Meta),
+        lead_source_id: Some(source_id(t, "paid_ads").await),
+        owner_id: Some(1),
+        start_date: Some(day(3, 1)),
+        end_date: Some(day(3, 31)),
+        scope_type: Some("test.branch".into()),
+        scope_id: Some(branch.to_string()),
+        ..Campaign::default()
+    }
+    .store(t.db())
+    .await
+    .unwrap()
+    .unwrap();
+    Campaign::query()
+        .where_(Campaign::ID.eq(campaign.id))
+        .update(t.db(), &[("status", &"active")])
+        .await
+        .unwrap();
+    Campaign::find(t.db(), campaign.id).await.unwrap().unwrap()
+}
+
+/// AC4 through the page: a user whose role is given in branch B1 only sees
+/// B1's leads and costs on the page and in the CSV; the cost of a B2
+/// campaign is hidden, and so is the cost of the entity-wide campaign C9
+/// ("—"), while a user with the role everywhere sees them all.
+#[renox::test]
+async fn sal21_a_user_scoped_to_one_branch_does_not_see_the_other_branchs_campaign() {
+    use renox::auth::permissions::{self, Scope};
+    let (t, _) = boot_events().await;
+    let c9 = c1(&t).await;
+    cost(&t, &c9, 100_000, false).await;
+    let b1 = branch_campaign(&t, "B1PUSH", 1).await;
+    let b2 = branch_campaign(&t, "B2PUSH", 2).await;
+    cost(&t, &b1, 30_000, false).await;
+    cost(&t, &b2, 70_000, false).await;
+    for code in ["B1PUSH", "B2PUSH", "B2PUSH"] {
+        wl_sales::lead::capture(
+            t.state(),
+            NewLead::web_form(None, "Omar").campaign_code(code),
+            day(3, 10),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    }
+
+    permissions::define_role(t.db(), "branch_analyst", &[perm::ACQUISITION_REPORTS_VIEW])
+        .await
+        .unwrap();
+    let analyst = User::register(t.db(), "Branch", "branch@example.com", "password123")
+        .await
+        .unwrap();
+    analyst
+        .assign_role_in(t.db(), "branch_analyst", &Scope::new("test.branch", 1))
+        .await
+        .unwrap();
+
+    t.app.acting_as(&analyst);
+    for path in [
+        "/sales/acquisition-report?group=campaign",
+        "/sales/acquisition-report.csv?group=campaign",
+    ] {
+        let response = t.app.get(path).await;
+        let seen = response.assert_ok();
+        seen.assert_see("B1PUSH");
+        seen.assert_see("300.00");
+        seen.assert_dont_see("B2PUSH");
+        seen.assert_dont_see("700.00");
+        seen.assert_dont_see("1,000.00");
+        seen.assert_dont_see("1000.00");
+    }
+
+    let owner = t.user("Owner", &[perm::ACQUISITION_REPORTS_VIEW]).await;
+    t.app.acting_as(&owner);
+    for path in [
+        "/sales/acquisition-report?group=campaign",
+        "/sales/acquisition-report.csv?group=campaign",
+    ] {
+        let response = t.app.get(path).await;
+        let seen = response.assert_ok();
+        seen.assert_see("B1PUSH");
+        seen.assert_see("B2PUSH");
+    }
+    t.app
+        .get("/sales/acquisition-report?group=campaign")
+        .await
+        .assert_see("700.00")
+        .assert_see("1,000.00");
+}
