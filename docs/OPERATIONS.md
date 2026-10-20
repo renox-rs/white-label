@@ -1,11 +1,19 @@
 # Operations
 
-> Status: draft for review · Last updated: 2026-10-15
+> Status: draft for review · Last updated: 2026-10-20
 
 How we run the hosted platform: where it runs, how releases reach clients, backups,
 monitoring, support, and how a client is onboarded and offboarded. The tools for this live in
 the control plane, [wl-operator](modules/wl-operator.md). Security controls are in
 [SECURITY.md](SECURITY.md).
+
+> **What exists today (F1).** The per-client deployment files and the runbook are in
+> [`deploy/`](../deploy/README.md): Dockerfile, systemd service and socket units, Litestream
+> configuration, production environment file, Caddyfile and the release workflow
+> (`.github/workflows/release.yml`). Everything about the control plane (`wl-operator`), the
+> host agent, automatic rollback, the nightly snapshot job, uploads sync, monitoring and
+> alerting below is still a **target**. Section 12 says what has been built and what has been
+> tested.
 
 ## 1. Model
 
@@ -79,6 +87,8 @@ or with an anonymised extract approved by the client.
 4. **Per deployment:** stop accepting new requests (socket activation keeps connections),
    snapshot the database, run migrations on boot, health check, switch over. If the health
    check fails, roll back automatically: previous binary + snapshot.
+   *Today* this is a manual checklist with commands ([deploy/README.md](../deploy/README.md)
+   sections 5 and 6); the automatic rollback is a target.
 5. **Two-person rule:** wave 2 and every hotfix need a second operator's approval in
    `wl-operator`.
 6. **Release notes** per client, in English and Arabic, listing what changed in the modules
@@ -114,7 +124,7 @@ or with an anonymised extract approved by the client.
 
 | Signal | Source | Alert when |
 |---|---|---|
-| Health endpoint per client | Renox health check, polled by the host agent | 2 failures in a row |
+| Health endpoint per client | `GET /health` (200 and `"status":"ok"` when the database answers, else 503; also reports queue `pending`/`failed`), polled by the host agent | 2 failures in a row |
 | Error rate and latency | Request logs | 5xx rate > 1% or p95 > 1 s for 10 min |
 | Queue | Renox queue dashboard data | Jobs waiting > 15 min, or failed jobs |
 | Failed automation runs | `PLT.RUL.03` digest, rule run log | Any failure for a money or deadline rule |
@@ -184,6 +194,31 @@ without an extension crate.
 2. Do clinic clients need dedicated hosts? *(authority)*
 3. Is 99.5% availability enough for clients, or do some need 99.9% with a higher price? *(sales)*
 4. Who staffs out-of-hours S1 support at the start? *(us)*
+
+## 12. F1 deployment status
+
+State at 2026-10-20. *Built* = the file or procedure exists in the repository. *Tested* = it was
+run, and the note says where. Nothing is marked tested that was not run.
+
+| Item | Built | Tested | Notes |
+|---|---|---|---|
+| Release binary (`cargo build --release -p host --locked`) | yes (CI job) | **no** | Skipped locally: under 15 GB of free disk. First run is the `release.yml` workflow. |
+| Dockerfile and container image | yes | **no** | No Docker daemon in the build sandbox. CI builds it and boots it (`release.yml`, job `image`). |
+| Production boot (`APP_ENV=production`, demo `client.toml`, temp SQLite) | yes | yes | Debug binary: `migrate`, `db:check`, `view:check`, `wl:install` and the other `:install` commands, `serve`, `/health`, sign-up, e-mail verification, `users:admin`, sign-in, secure cookie and HSTS behind simulated proxy headers, `TRUSTED_HOSTS`. Failures met are in [deploy/README.md](../deploy/README.md) section 8. |
+| Socket activation | yes (units) | partly | The app took the socket handed over by `systemd-socket-activate` and stopped cleanly on SIGTERM. The unit files pass `systemd-analyze verify`. No restart under load, no real systemd run. |
+| systemd service, socket, litestream units | yes | **no** | Not started by systemd. |
+| Caddy TLS and proxy | example | **no** | No Caddy; proxy headers simulated with curl. |
+| Health endpoint | Renox `GET /health` | yes | There is no `/up`. |
+| Litestream replication to MinIO | configuration | **no** | No Litestream and no MinIO available. Written for Litestream 0.3.x. |
+| **Backups tested** | | **no** | No replica was written or read. |
+| **Restore drill** | procedure | **no** | `deploy/README.md` section 7. Never run, not even on a scratch host. |
+| Nightly snapshot kept 30 days, monthly 12 months | partly | no | Litestream snapshot and retention settings only; no monthly copy job. |
+| Uploads sync to the backup VPS (RPO 5 min) | **no** | no | Not built. |
+| Release rollout checklist and rollback | runbook | no | Manual commands; the switch (symlink + restart + health loop) was run against stand-ins, `sqlite3 .backup` was not run. |
+| Rollout rings, two-person rule, automatic rollback | **no** | no | Need `wl-operator` / `deploy/rollout`. |
+| Monitoring and alerting (section 6) | **no** | no | Only the data source exists (`/health`, journal). |
+| Capacity figure (12 MiB per process) | no | no | Still to be measured. |
+| Production hardening of the host | **open** | | `db:seed` and `migrate:fresh` run in production without a guard (the first creates `admin@example.com` / `password123`); registration is open; `CSP=strict` not tried; a sign-up with a failing SMTP gives a 500 after creating the user. Host code, not changed by the deployment files. |
 
 ## Sources
 
