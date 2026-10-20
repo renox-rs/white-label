@@ -26,6 +26,20 @@ pub enum ItemType {
     Service,
 }
 
+/// How the quantity of a reorder suggestion is worked out (§8
+/// `ReorderPolicy`).
+#[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum ReorderPolicy {
+    /// Order up to the maximum (the default).
+    #[default]
+    MinMax,
+    /// Order up to the par level (06): the maximum holds the par.
+    Par,
+    /// Order up to the maximum and take the lead time of the item supplier
+    /// the suggestion goes to (08).
+    ReorderPointLeadTime,
+}
+
 /// An item. Money is `i64` fils of the base unit.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
 #[model(table = "wl_inventory_items", unique(code))]
@@ -50,6 +64,16 @@ pub struct Item {
     pub shelf_life_days: Option<i64>,
     /// The moving weighted average cost of one base unit.
     pub average_cost: i64,
+    /// At or below this quantity the item is reordered (`STK.RUL.04`), in
+    /// thousandths of the base unit; 0 means no reorder point.
+    pub reorder_point_milli: i64,
+    /// The maximum, or the par level, a reorder fills up to, in thousandths.
+    pub reorder_max_milli: i64,
+    /// How the quantity of a suggestion is worked out.
+    pub reorder_policy: ReorderPolicy,
+    /// Whether the item ever had a preferred supplier: the first one is set
+    /// directly, any later change is a request (`STK.ACL.07`).
+    pub had_preferred_supplier: bool,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
@@ -70,6 +94,19 @@ impl Item {
     /// Tracked by lot.
     pub fn lot_tracked(mut self) -> Self {
         self.lot_tracked = true;
+        self
+    }
+
+    /// Reordered at or below `reorder_point_milli`, up to `reorder_max_milli`.
+    pub fn reordered(mut self, reorder_point_milli: i64, reorder_max_milli: i64) -> Self {
+        self.reorder_point_milli = reorder_point_milli;
+        self.reorder_max_milli = reorder_max_milli;
+        self
+    }
+
+    /// With the reorder `policy`.
+    pub fn with_policy(mut self, policy: ReorderPolicy) -> Self {
+        self.reorder_policy = policy;
         self
     }
 

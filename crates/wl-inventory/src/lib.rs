@@ -6,6 +6,7 @@ pub mod config;
 mod events;
 pub mod goods_receipt;
 pub mod item;
+pub mod item_supplier;
 pub mod landed_adjust;
 pub mod landed_cost;
 pub mod landed_draft;
@@ -18,11 +19,13 @@ pub mod po_issue;
 pub mod po_revise;
 pub mod purchase_order;
 pub mod receipt_post;
+pub mod reorder;
 pub mod receipt_reverse;
 pub mod return_credit;
 pub mod return_dispatch;
 pub mod return_note;
 pub mod supplier_return;
+mod supplier_pages;
 mod texts;
 
 use std::sync::Arc;
@@ -34,7 +37,8 @@ pub use config::{InventoryConfig, RejectionReason};
 pub use goods_receipt::{
     DraftLine, DraftReceipt, GoodsReceipt, GoodsReceiptLine, GoodsReceiptStatus,
 };
-pub use item::{Item, ItemType};
+pub use item::{Item, ItemType, ReorderPolicy};
+pub use item_supplier::{ItemSupplier, PreferredSupplierRequest, SupplierRole};
 pub use landed_adjust::{AdjustOutcome, AdjustmentStatus, LandedCostAdjustment, adjust};
 pub use landed_cost::{AllocationBasis, CostKind, LandedCost, LandedCostStatus, allocate};
 pub use location::{Location, LocationType, NegativeStockPolicy};
@@ -46,6 +50,7 @@ pub use po_revise::{PurchaseOrderRevision, ReviseInput, ReviseOutcome, revise};
 pub use purchase_order::{PurchaseOrder, PurchaseOrderLine, PurchaseOrderStatus};
 pub use receipt_post::{PostOutcome, post};
 pub use receipt_reverse::reverse;
+pub use reorder::{ReorderSuggestion, SuggestionStatus};
 pub use return_credit::{CreditBasis, CreditOutcome, KeptGoods, cancel, credit};
 pub use return_dispatch::{CollectionProof, DispatchOutcome, dispatch};
 pub use supplier_return::{
@@ -73,6 +78,10 @@ pub mod permissions {
     pub const GOODS_RECEIPTS_REVERSE: &str = "goods_receipts.reverse";
     /// Manage returns to supplier.
     pub const SUPPLIER_RETURNS_MANAGE: &str = "supplier_returns.manage";
+    /// List, rank and deactivate the suppliers of an item (`STK.SUP.01`).
+    pub const ITEM_SUPPLIERS_MANAGE: &str = "item_suppliers.manage";
+    /// See the cost side of stock: last prices and values (`stock.cost.view`).
+    pub const STOCK_COST_VIEW: &str = "stock.cost.view";
     /// Allocate, adjust and cancel landed costs, and approve an adjustment
     /// above the value (`STK.ACL.06`).
     pub const LANDED_COSTS_POST: &str = "landed_costs.post";
@@ -176,7 +185,7 @@ impl Module for WlInventory {
     }
 
     fn routes(&self) -> Routes {
-        pages::routes()
+        pages::routes().merge(supplier_pages::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -186,6 +195,9 @@ impl Module for WlInventory {
     fn register(&self, app: &mut Registry) {
         app.model::<Item>();
         app.model::<Location>();
+        app.model::<ItemSupplier>();
+        app.model::<PreferredSupplierRequest>();
+        app.model::<ReorderSuggestion>();
         app.model::<PurchaseOrder>();
         app.model::<PurchaseOrderLine>();
         app.model::<PurchaseOrderRevision>();
@@ -208,6 +220,7 @@ impl Module for WlInventory {
         renox::state_machine::register::<SupplierReturn>();
         renox::state_machine::register::<LandedCost>();
         renox::state_machine::register::<LandedCostAdjustment>();
+        renox::state_machine::register::<ReorderSuggestion>();
         // An over-receipt above the tolerance sends `post` to approval by a
         // holder of `purchase_orders.issue` in the location's scope
         // (`STK.ACL.04`, `PLT.APR.01`); the kernel runs `post_approved`.
@@ -295,6 +308,13 @@ impl Module for WlInventory {
         // that stay `dispatched`.
         chase::register_types();
         chase::schedule(app);
+        // `STK.RUL.04`: the daily reorder suggestions, and the rows of a
+        // merged supplier.
+        reorder::register_types();
+        reorder::schedule(app);
+        app.listen(|event: wl_kernel::PartiesMerged, state: AppState| async move {
+            item_supplier::on_merged(&state, &event).await
+        });
     }
 }
 

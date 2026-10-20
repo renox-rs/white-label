@@ -1,0 +1,278 @@
+//! The actions on the suppliers of an item and on reorder suggestions
+//! (wl-inventory §3, §5.9, issue #247):
+//!
+//! | Route | Name | Needs |
+//! |---|---|---|
+//! | `GET /items/{id}/suppliers` | `wl_inventory.item_suppliers` | `items.view`, `item_suppliers.manage` or `purchase_orders.issue` |
+//! | `POST /items/{id}/suppliers/add` | `wl_inventory.item_supplier_add` | `item_suppliers.manage` |
+//! | `POST /item-suppliers/{id}/deactivate` | `wl_inventory.item_supplier_deactivate` | `item_suppliers.manage` |
+//! | `GET /reorder-suggestions/{id}` | `wl_inventory.reorder_show` | as the suppliers |
+//! | `POST /reorder-suggestions/{id}/switch` | `wl_inventory.reorder_switch` | `purchase_orders.issue` |
+//!
+//! The last price is part of the answers only for a holder of
+//! `stock.cost.view`; a blocked supplier shows as `on_hold` without a reason.
+
+use std::collections::BTreeMap;
+
+use renox::prelude::*;
+use serde::Serialize;
+
+use crate::item_supplier::{
+    self, DeactivateOutcome, LastPrice, NewItemSupplier, SupplierRole, holds,
+    is_on_hold, last_price, refused, rows_of, warnings_of,
+};
+use crate::pages::parse_quantity;
+use crate::permissions;
+use crate::reorder::{Alternative, ReorderSuggestion};
+use crate::texts;
+
+/// The routes.
+pub(crate) fn routes() -> Routes {
+    Routes::new()
+        .get("/items/{id}/suppliers", list_suppliers)
+        .name("wl_inventory.item_suppliers")
+        .post("/items/{id}/suppliers/add", add_supplier)
+        .name("wl_inventory.item_supplier_add")
+        .post("/item-suppliers/{id}/deactivate", deactivate_supplier)
+        .name("wl_inventory.item_supplier_deactivate")
+        .get("/reorder-suggestions/{id}", show_suggestion)
+        .name("wl_inventory.reorder_show")
+        .post("/reorder-suggestions/{id}/switch", switch_suggestion)
+        .name("wl_inventory.reorder_switch")
+        .require_auth()
+}
+
+fn text(lang: &Lang, key: &str) -> String {
+    texts::t(lang, &format!("wl_inventory.{key}"))
+}
+
+/// An answer in JSON.
+fn json_response<T: Serialize>(value: &T) -> Result<Response> {
+    let body = renox::serde_json::to_string(value)
+        .map_err(|error| Error::Internal(renox::anyhow::Error::new(error)))?;
+    Ok(([("content-type", "application/json")], body).into_response())
+}
+
+/// Whether `user` may read the suppliers of items.
+async fn may_read(state: &AppState, user: &AuthUser) -> Result<bool> {
+    for permission in [
+        permissions::ITEMS_VIEW,
+        permissions::ITEM_SUPPLIERS_MANAGE,
+        permissions::PURCHASE_ORDERS_ISSUE,
+    ] {
+        if holds(state, user, permission).await? {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+/// One supplier of an item as the back office reads it.
+#[derive(Debug, Serialize)]
+struct SupplierView {
+    id: i64,
+    supplier_party_id: i64,
+    role: &'static str,
+    rank: i64,
+    active: bool,
+    supplier_item_code: Option<String>,
+    purchase_unit: Option<String>,
+    lead_time_days: i64,
+    min_order_qty_milli: i64,
+    on_hold: bool,
+    warnings: Vec<String>,
+    last_price: Option<LastPrice>,
+}
+
+/// `GET /items/{id}/suppliers`: the preferred supplier first, then the
+/// alternatives by rank.
+async fn list_suppliers(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    if !may_read(&state, &user).await? {
+        return Err(Error::Forbidden);
+    }
+    let costs = holds(&state, &user, permissions::STOCK_COST_VIEW).await?;
+    let mut views = Vec::new();
+    for row in rows_of(&state.db, id).await? {
+        let price = if costs {
+            last_price(&state.db, id, row.supplier_party_id).await?
+        } else {
+            None
+        };
+        views.push(SupplierView {
+            id: row.id,
+            supplier_party_id: row.supplier_party_id,
+            role: row.role.as_str(),
+            rank: row.rank,
+            active: row.active,
+            supplier_item_code: row.supplier_item_code.clone(),
+            purchase_unit: row.purchase_unit.clone(),
+            lead_time_days: row.lead_time_days,
+            min_order_qty_milli: row.min_order_qty_milli,
+            on_hold: row.active && is_on_hold(&state, row.supplier_party_id).await?,
+            warnings: warnings_of(&state, &row).await?,
+            last_price: price,
+        });
+    }
+    json_response(&views)
+}
+
+/// The supplier a form describes: `supplier`, `role`, optionally `rank`,
+/// `code`, `unit`, `lead_days`, `min_qty` (base units), `certificates`
+/// (comma separated) and `notes`.
+fn supplier_of(
+    item_id: i64,
+    form: &BTreeMap<String, String>,
+) -> std::result::Result<NewItemSupplier, &'static str> {
+    let field = |name: &str| form.get(name).map(|v| v.trim()).filter(|v| !v.is_empty());
+    let supplier: i64 = field("supplier")
+        .and_then(|v| v.parse().ok())
+        .ok_or("supplier.bad_input")?;
+    let role = field("role")
+        .and_then(SupplierRole::parse)
+        .ok_or("supplier.bad_input")?;
+    let rank = match field("rank") {
+        Some(rank) => Some(rank.parse::<i64>().map_err(|_| "supplier.bad_input")?),
+        None => None,
+    };
+    let lead_time_days = match field("lead_days") {
+        Some(days) => days.parse::<i64>().map_err(|_| "supplier.bad_input")?,
+        None => 0,
+    };
+    let min_order_qty_milli = match field("min_qty") {
+        Some(quantity) => parse_quantity(quantity).ok_or("supplier.bad_input")?,
+        None => 0,
+    };
+    Ok(NewItemSupplier {
+        item_id,
+        supplier,
+        role,
+        rank,
+        supplier_item_code: field("code").map(str::to_owned),
+        purchase_unit: field("unit").map(str::to_owned),
+        lead_time_days,
+        min_order_qty_milli,
+        certificate_kinds: field("certificates")
+            .map(|kinds| {
+                kinds
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|kind| !kind.is_empty())
+                    .map(str::to_owned)
+                    .collect()
+            })
+            .unwrap_or_default(),
+        notes: field("notes").map(str::to_owned),
+    })
+}
+
+/// `POST /items/{id}/suppliers/add`.
+async fn add_supplier(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let new = supplier_of(id, &form).map_err(|key| refused(text(&lang, key)))?;
+    item_supplier::add(&state, &user, new).await?;
+    Ok((
+        Toast::success(text(&lang, "supplier.added")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// `POST /item-suppliers/{id}/deactivate`.
+async fn deactivate_supplier(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    let key = match item_supplier::deactivate(&state, &user, id).await? {
+        DeactivateOutcome::Deactivated(_) => "supplier.deactivated",
+        DeactivateOutcome::Requested(_) => "supplier.requested",
+    };
+    Ok((Toast::success(text(&lang, key)), renox::HxRefresh).into_response())
+}
+
+/// A suggestion as the back office reads it.
+#[derive(Debug, Serialize)]
+struct SuggestionView {
+    id: i64,
+    item_id: i64,
+    location_id: i64,
+    supplier_party_id: Option<i64>,
+    supplier_role: Option<String>,
+    reason: Option<String>,
+    lead_time_days: Option<i64>,
+    suggested_qty_milli: i64,
+    rounded_from_milli: Option<i64>,
+    alternatives: Vec<Alternative>,
+    warnings: Vec<String>,
+    status: &'static str,
+}
+
+/// `GET /reorder-suggestions/{id}`: without `stock.cost.view` the last
+/// prices of the suppliers are left out.
+async fn show_suggestion(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    if !may_read(&state, &user).await? {
+        return Err(Error::Forbidden);
+    }
+    let suggestion = ReorderSuggestion::find_or_404(&state.db, id).await?;
+    let costs = holds(&state, &user, permissions::STOCK_COST_VIEW).await?;
+    let mut alternatives = suggestion.alternatives();
+    if !costs {
+        for alternative in &mut alternatives {
+            alternative.last_price = None;
+            alternative.currency = None;
+        }
+    }
+    json_response(&SuggestionView {
+        id: suggestion.id,
+        item_id: suggestion.item_id,
+        location_id: suggestion.location_id,
+        supplier_party_id: suggestion.supplier_party_id,
+        supplier_role: suggestion.supplier_role.clone(),
+        reason: suggestion.reason.clone(),
+        lead_time_days: suggestion.lead_time_days,
+        suggested_qty_milli: suggestion.suggested_qty_milli,
+        rounded_from_milli: suggestion.rounded_from_milli,
+        alternatives,
+        warnings: suggestion.warnings(),
+        status: match suggestion.status {
+            crate::reorder::SuggestionStatus::Open => "open",
+            crate::reorder::SuggestionStatus::Converted => "converted",
+            crate::reorder::SuggestionStatus::Dismissed => "dismissed",
+        },
+    })
+}
+
+/// `POST /reorder-suggestions/{id}/switch`: `supplier` and `reason`.
+async fn switch_suggestion(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let supplier: i64 = form
+        .get("supplier")
+        .and_then(|v| v.trim().parse().ok())
+        .ok_or_else(|| refused(text(&lang, "supplier.bad_input")))?;
+    let reason = form.get("reason").map(String::as_str).unwrap_or_default();
+    crate::reorder::switch(&state, &user, id, supplier, reason).await?;
+    Ok((
+        Toast::success(text(&lang, "reorder.switched_done")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}

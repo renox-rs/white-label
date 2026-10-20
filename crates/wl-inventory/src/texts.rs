@@ -431,6 +431,80 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_inventory.issue.exception_asked",
         "The exception was asked for; the purchase order stays a draft until it is approved.",
     ),
+    // The suppliers of an item and the reorder suggestions.
+    (
+        "wl_inventory.supplier.twice",
+        "The item already lists this supplier.",
+    ),
+    (
+        "wl_inventory.supplier.needs_request",
+        "The item has, or had, a preferred supplier: changing it needs a request that a second person approves.",
+    ),
+    (
+        "wl_inventory.supplier.inactive",
+        "This supplier is not in use for the item.",
+    ),
+    (
+        "wl_inventory.supplier.negative",
+        "The lead time and the minimum order cannot be negative.",
+    ),
+    (
+        "wl_inventory.supplier.added",
+        "Supplier added to the item.",
+    ),
+    (
+        "wl_inventory.supplier.deactivated",
+        "Supplier taken out of use for the item.",
+    ),
+    (
+        "wl_inventory.supplier.requested",
+        "The supplier is the preferred one: a request was opened for a second person to approve.",
+    ),
+    (
+        "wl_inventory.supplier.bad_input",
+        "Enter the supplier, the role, the lead time and the minimum order as numbers.",
+    ),
+    (
+        "wl_inventory.reorder.preferred_on_hold",
+        "preferred supplier on hold",
+    ),
+    (
+        "wl_inventory.reorder.preferred_inactive",
+        "preferred supplier inactive",
+    ),
+    (
+        "wl_inventory.reorder.switched",
+        "supplier switched by the purchaser",
+    ),
+    (
+        "wl_inventory.reorder.reason_needed",
+        "Give the reason for switching the supplier.",
+    ),
+    (
+        "wl_inventory.reorder.not_open",
+        "Only an open suggestion can be switched.",
+    ),
+    (
+        "wl_inventory.reorder.not_listed",
+        "The supplier is not listed and in use for the item.",
+    ),
+    (
+        "wl_inventory.reorder.same",
+        "The suggestion already goes to this supplier.",
+    ),
+    ("wl_inventory.reorder.on_hold", "This supplier is on hold."),
+    (
+        "wl_inventory.reorder.switched_done",
+        "Suggestion switched to the other supplier.",
+    ),
+    (
+        "wl_inventory.reorder.subject",
+        "{{ count }} reorder suggestion(s) for you",
+    ),
+    (
+        "wl_inventory.reorder.body",
+        "Today's run found {{ count }} item(s) at or below their reorder point. Open the suggestions to choose the supplier and order.",
+    ),
     // Names of the rejected goods' returns.
     (
         "wl_inventory.return.collection_proof",
