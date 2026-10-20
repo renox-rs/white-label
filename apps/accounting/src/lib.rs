@@ -207,6 +207,8 @@ impl Module for Accounting {
         aml_cases::register();
         // `engagement.activate` checks the client's KYC documents.
         documents::register();
+        // `ACC.RUL.05` and `DOC.RUL.03` are compliance-critical too (BL-ACC-23).
+        seed::register_critical_rules();
         events::register(app);
         // An expired KYC document of a client being served opens a CDD
         // update task (BL-ACC-12).

@@ -17,19 +17,26 @@
 //! the return for the MLRO ([`flag_expired`]). `BlockSubjects`: a return →
 //! the client company and its UBOs, as for `activate`.
 //!
+//! `FutureWork` (what the look-ahead of `DOC.RUL.02` lists): the returns due
+//! after the expiry date for `return.file`, and the engagements still
+//! onboarding for `engagement.activate`.
+//!
 //! An expired KYC document may be overridden once, within 72 hours of the
 //! MLRO's approval, by the manager who asked (wl-documents' one-use
 //! override). Without `wl-documents` nothing is guarded.
 
+use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use wl_kernel::documents::{
-    BlockEntry, BlockSubjects, DocumentFuture, RecordFlag, guard, register_block_subjects,
+    BlockEntry, BlockSubjects, DocumentFuture, FutureWork, PlannedRecord, RecordFlag, guard,
+    register_block_subjects, register_future_work,
 };
 use wl_kernel::parties::{PARTY_SUBJECT_TYPE, directory};
 use wl_kernel::{PartyId, Subject};
 
 use crate::cdd::{CddFile, ScreenedRole};
-use crate::engagement::Engagement;
+use crate::engagement::{Engagement, EngagementStatus};
+use crate::kyc_updates::clients_of;
 use crate::tax_return::Return;
 
 /// The guarded transition `activate` of an engagement.
@@ -138,10 +145,108 @@ impl BlockSubjects for ReturnSubjects {
     }
 }
 
+/// The engagements of the clients `subject` holds KYC documents for (the
+/// party itself, or the company it is a UBO of), with the role the party plays
+/// for each client company, when `entry`'s condition on that role picks it.
+async fn engagements_needing(
+    state: &AppState,
+    entry: &BlockEntry,
+    subject: &Subject,
+) -> Result<Vec<Engagement>> {
+    if subject.subject_type != PARTY_SUBJECT_TYPE {
+        return Ok(Vec::new());
+    }
+    let holder = PartyId(subject.subject_id);
+    let mut found = Vec::new();
+    for client in clients_of(&state.db, holder).await? {
+        for engagement in Engagement::of_client(&state.db, client).await? {
+            let roles = kyc_parties(&state.db, &engagement).await?;
+            let plays = roles
+                .iter()
+                .any(|(party, role)| *party == holder && entry.applies_to(Some(role.as_str())));
+            if plays {
+                found.push(engagement);
+            }
+        }
+    }
+    Ok(found)
+}
+
+/// `FutureWork` of `engagement.activate`: the engagements still in
+/// `onboarding` whose start date falls on or after the expiry date (an
+/// engagement with no start date is planned for today).
+struct PlannedActivations;
+
+impl FutureWork for PlannedActivations {
+    fn planned_from<'a>(
+        &'a self,
+        state: &'a AppState,
+        entry: &'a BlockEntry,
+        subject: &'a Subject,
+        from: NaiveDate,
+    ) -> DocumentFuture<'a, Vec<PlannedRecord>> {
+        Box::pin(async move {
+            let mut found = Vec::new();
+            for engagement in engagements_needing(state, entry, subject).await? {
+                if engagement.status != EngagementStatus::Onboarding {
+                    continue;
+                }
+                let date = engagement.start_date.unwrap_or_else(wl_kernel::documents::today);
+                if date < from {
+                    continue;
+                }
+                found.push(PlannedRecord {
+                    record: engagement.subject(),
+                    date,
+                    label: format!("{} {}", engagement.number(), engagement.title),
+                    scope: None,
+                });
+            }
+            found.sort_by_key(|p| (p.date, p.record.subject_id));
+            Ok(found)
+        })
+    }
+}
+
+/// `FutureWork` of `return.file`: the returns still to be filed (`preparing`,
+/// `in_review`, `client_approval` or `approved`) that are due on or after the
+/// expiry date, and, as already running, the ones in progress now.
+struct PlannedFilings;
+
+impl FutureWork for PlannedFilings {
+    fn planned_from<'a>(
+        &'a self,
+        state: &'a AppState,
+        entry: &'a BlockEntry,
+        subject: &'a Subject,
+        from: NaiveDate,
+    ) -> DocumentFuture<'a, Vec<PlannedRecord>> {
+        Box::pin(async move {
+            let mut found = Vec::new();
+            for engagement in engagements_needing(state, entry, subject).await? {
+                for ret in Return::of_engagement(&state.db, engagement.id).await? {
+                    if ret.status.is_open() && ret.due_date >= from {
+                        found.push(PlannedRecord {
+                            record: ret.subject(),
+                            date: ret.due_date,
+                            label: format!("{} {}", ret.number(), ret.period_end),
+                            scope: None,
+                        });
+                    }
+                }
+            }
+            found.sort_by_key(|p| (p.date, p.record.subject_id));
+            Ok(found)
+        })
+    }
+}
+
 /// Registers the providers.
 pub(crate) fn register() {
     register_block_subjects(ACTIVATE_GUARDED, ActivateSubjects);
     register_block_subjects(RETURN_FILE_GUARDED, ReturnSubjects);
+    register_future_work(ACTIVATE_GUARDED, PlannedActivations);
+    register_future_work(RETURN_FILE_GUARDED, PlannedFilings);
 }
 
 /// After `ret` was filed: the client KYC documents judged on the filing

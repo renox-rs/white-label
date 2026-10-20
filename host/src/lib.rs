@@ -111,6 +111,8 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
     let owner_role = config.owner_role().to_owned();
     // What a block does to a lease and to a service contract (BL-PRP-26).
     app::negative_flow::register_block_effects(&client_app);
+    app::accounting_seed::register_block_effects(&client_app);
+    app::accounting_seed::register_integrations(&client_app);
     app::negative_flow::register_approvals(&client_app);
     // What a client user of an accounting firm sees of its engagements.
     app::accounting_portal::register(&client_app);
@@ -131,6 +133,10 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
     // modules' own seeds (BL-PRP-27).
     if client_app == "property" {
         app = app.module(app::property_seed::PropertySeed);
+    }
+    // The 04 client's lead sources, checklists and SOPs (BL-ACC-23).
+    if client_app == "accounting" {
+        app = app.module(app::accounting_seed::AccountingSeed);
     }
     // The page that shows the shared modules' settings of this client.
     let app = app
@@ -182,9 +188,10 @@ fn enable(
 ) -> Result<renox::App, ConfigError> {
     // Each F1 module gets its arm here as it is built (decision 0004).
     match module {
-        "parties" => Ok(app.module(wl_parties::WlParties)),
+        "parties" => Ok(app.module(app::accounting_seed::parties_for(client_app))),
         "documents" => {
             app::property_seed::register_documents(client_app);
+            app::accounting_seed::register_documents(client_app);
             Ok(app.module(wl_documents::WlDocuments))
         }
         "notify" => {

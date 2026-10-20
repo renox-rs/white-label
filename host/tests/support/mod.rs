@@ -90,6 +90,20 @@ struct VersionForm {
     file_name: String,
 }
 
+/// The signed-in user confirms the possible match of screening `id` (what the
+/// reviewer's page does).
+async fn confirm_match(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<i64>,
+) -> Result<String> {
+    let screening = wl_parties::Screening::find_or_404(&state.db, id).await?;
+    let _outcome = wl_parties::confirm_match(&state, &user, &screening, "Same date of birth")
+        .await
+        .map_err(|e| Error::permanent_message(e.to_string()))?;
+    Ok("done".to_owned())
+}
+
 impl Module for Probe {
     fn name(&self) -> &'static str {
         "probe"
@@ -97,6 +111,7 @@ impl Module for Probe {
 
     fn routes(&self) -> Routes {
         Routes::new()
+            .post("/probe/confirm/{id}", confirm_match)
             .post("/probe/deposits", hold_deposit)
             .post("/probe/deposits/{id}/start-settlement", start_settlement)
             .post("/probe/sops/{id}/versions", upload_sop_version)
@@ -107,6 +122,30 @@ impl Module for Probe {
 /// The Property host, with `wl:install` and the seeds run as the demo does.
 pub async fn booted() -> TestApp {
     let app = TestApp::new(host::app().provide(noon_clock()).module(Probe)).await;
+    app.kernel()
+        .call("wl:install", Vec::<String>::new())
+        .await
+        .unwrap();
+    app.kernel().seed().await.unwrap();
+    app
+}
+
+/// The demo accounting firm (04 Accounting).
+const ACCOUNTING_CLIENT: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../clients/demo-accounting/client.toml"
+);
+
+/// The accounting host, with `wl:install` and the seeds run as the demo does.
+pub async fn accounting_booted() -> TestApp {
+    let config = wl_kernel::ClientConfig::load(ACCOUNTING_CLIENT).expect("the accounting client");
+    let app = TestApp::new(
+        host::app_for(config)
+            .expect("the app")
+            .provide(noon_clock())
+            .module(Probe),
+    )
+    .await;
     app.kernel()
         .call("wl:install", Vec::<String>::new())
         .await

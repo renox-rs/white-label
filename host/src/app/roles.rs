@@ -278,6 +278,11 @@ pub const ROLES: &[(&str, &[&str])] = &[
             parties::BLOCK,
             parties::BLOCK_REASON_VIEW,
             parties::BLOCK_EXCEPTION,
+            // 04 §8 and `PTY.RUL.01`: the MLRO and deputy review the possible
+            // matches (the second review of a confirmed one), run screenings
+            // and upload a sanctions list by hand.
+            parties::SCREENING_REVIEW,
+            parties::SCREENING_RUN,
             // 04: the MLRO approves CDD files and the one-use override of
             // an expired KYC document (`DOC.ACL.02`).
             documents::VIEW,
@@ -390,6 +395,11 @@ pub const ROLES: &[(&str, &[&str])] = &[
         &[
             acc::AML_RAISE,
             acc::ENGAGEMENTS_VIEW,
+            // 04 §3.1 billing / admin is HR: `HRM.RUL.17` tells it.
+            hr::EMPLOYEES_VIEW,
+            hr::EMPLOYEES_MANAGE,
+            hr::ONBOARDING_VIEW,
+            hr::ONBOARDING_MANAGE,
             parties::VIEW,
             invoices::VIEW,
             invoices::CREATE,

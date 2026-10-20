@@ -14,7 +14,12 @@ second       = "#B45309"
 display_font = "Poppins"
 
 [modules]
-enabled = ["parties", "documents", "notify", "invoicing", "ticketing", "portal"]
+enabled = ["parties", "documents", "notify", "invoicing", "ticketing", "payments", "sales", "hr", "portal"]
+
+[roles]
+# `PLT.RUL.04`: a compliance-critical rule that fails alerts the partner role
+# (this vertical's owner role) and the company admin (04 §7.2).
+owner = "partner"
 
 [[legal_entities]]
 code      = "FLA"
