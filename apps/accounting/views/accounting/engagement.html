@@ -2,7 +2,8 @@
     neutral reason, its history, the neutral templates sent to the client, and
     the actions the user may run (record the signed letter, activate, decline,
     suspend, resume, end; the MLRO also tells the client with the neutral
-    template and opens the client's Block record). Replace it with
+    template and opens the client's Block record), and the statutory deadline
+    notices (ACC.RUL.09) with the partner's or MLRO's Send of a prepared one. Replace it with
     resources/views/accounting/engagement.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="engagement.number">
   <rx-stack>
@@ -40,6 +41,10 @@
           <rx-select name="reason" :label="tx['engagements.reason']" :options="end_reasons" :selected="''" :id="'engagement-end-reason-' ~ engagement.id"/>
         </rx-action-sheet>
       </template>
+      <template rx-if="send_notice_id">
+        <rx-confirm :id="'engagement-deadline-notice-' ~ engagement.id" :label="tx['deadline_notices.send']" :action="route('accounting.deadline_notice_send', send_notice_id)" method="POST"
+                    :title="tx['deadline_notices.send']" :message="tx['deadline_notices.send_message']" :confirm-label="tx['deadline_notices.send']" :cancel-label="tx['button_cancel']" icon="mail"/>
+      </template>
       <template rx-if="can_notify">
         <rx-confirm :id="'engagement-notice-' ~ engagement.id" :label="tx['client_notices.send']" :action="route('accounting.engagement_client_notice', engagement.id)" method="POST"
                     :title="tx['client_notices.send']" :message="notice_template_text" :confirm-label="tx['client_notices.send']" :cancel-label="tx['button_cancel']" icon="mail"
@@ -72,6 +77,13 @@
       <rx-column :label="tx['client_notices.template']">{{ row.template }}</rx-column>
       <rx-column :label="tx['history.by']" hide-narrow>{{ row.by }}</rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['client_notices.empty']" icon="mail"/></rx-slot>
+    </rx-table>
+    <rx-table :rows="deadline_notices" as="row" :key="row.on ~ row.cause ~ row.state" :caption="tx['deadline_notices.list']" card>
+      <rx-column :label="tx['deadline_notices.cause']">{{ row.cause }}</rx-column>
+      <rx-column :label="tx['history.at']">{{ row.on }}</rx-column>
+      <rx-column :label="tx['deadline_notices.deadlines']">{{ row.deadlines }}</rx-column>
+      <rx-column :label="tx['deadline_notices.state']">{{ row.state }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['deadline_notices.empty']" icon="calendar"/></rx-slot>
     </rx-table>
     <rx-table :rows="history" as="row" :key="row.at ~ row.action" :caption="tx['history.title']" card>
       <rx-column :label="tx['history.at']">{{ row.at }}</rx-column>

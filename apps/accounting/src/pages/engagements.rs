@@ -32,6 +32,7 @@ use wl_kernel::documents::{dubai_text, today};
 use super::{Texts, invalid, parse_aed, parse_id, party_name, require, text, user_name};
 use crate::cdd::CddFile;
 use crate::client_notices::{self, ClientNotice, NeutralTemplate};
+use crate::deadline_notices::{self, DeadlineNotice};
 use crate::engagement::{Engagement, EngagementStatus, FeeBasis, NewEngagement};
 use crate::engagement_machine::{DECLINE, END, SUSPEND};
 use crate::engagements;
@@ -296,6 +297,35 @@ pub struct NoticeRow {
     pub by: String,
 }
 
+/// One statutory deadline notice of the engagement (`ACC.RUL.09`).
+#[derive(Serialize, Debug, Clone, PartialEq, Eq)]
+pub struct DeadlineNoticeRow {
+    /// The transition day.
+    pub on: String,
+    /// After a suspension or an end.
+    pub cause: String,
+    /// To send, sent, delivered, acknowledged or cancelled.
+    pub state: String,
+    /// The deadlines listed.
+    pub deadlines: i64,
+}
+
+/// The state of `notice` in the page's language.
+fn notice_state(lang: &Lang, notice: &DeadlineNotice) -> String {
+    let key = if notice.cancelled_on.is_some() {
+        "cancelled"
+    } else if notice.acknowledged_at.is_some() {
+        "acknowledged"
+    } else if notice.delivered_on.is_some() {
+        "delivered"
+    } else if notice.sent_at.is_some() {
+        "sent"
+    } else {
+        "prepared"
+    };
+    text(lang, &format!("deadline_notices.state.{key}"))
+}
+
 /// What an engagement page needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "accounting/engagement.html")]
@@ -322,6 +352,8 @@ pub(crate) struct ShowPage {
     notice_template: String,
     notice_template_text: String,
     block_record: String,
+    deadline_notices: Vec<DeadlineNoticeRow>,
+    send_notice_id: Option<i64>,
 }
 
 /// The options of a reason select for `transition`.
@@ -393,8 +425,26 @@ async fn show(
             by: user_name(&state.db, notice.sent_by).await,
         });
     }
+    let mut deadline_rows = Vec::new();
+    let mut send_notice_id = None;
+    for notice in DeadlineNotice::of_engagement(&state.db, found.id).await? {
+        if deadline_notices::may_send(&user, &notice) {
+            send_notice_id = Some(notice.id);
+        }
+        deadline_rows.push(DeadlineNoticeRow {
+            on: notice.on_date.to_string(),
+            cause: text(
+                &lang,
+                &format!("deadline_notices.cause.{}", notice.cause.as_str()),
+            ),
+            state: notice_state(&lang, &notice),
+            deadlines: notice.deadline_count,
+        });
+    }
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
+        deadline_notices: deadline_rows,
+        send_notice_id,
         status: status_label(&lang, found.status),
         status_kind: status_kind(found.status),
         history: history_rows(&state, &lang, &found).await?,

@@ -3,6 +3,7 @@
 //! of its action.
 
 pub mod cdd;
+pub mod deadline_notices;
 pub mod engagements;
 
 use std::collections::BTreeMap;
@@ -21,6 +22,7 @@ pub fn routes() -> Routes {
     Routes::new()
         .merge(engagements::routes())
         .merge(cdd::routes())
+        .merge(deadline_notices::routes())
 }
 
 /// The app text `key` (without the `accounting.` prefix).

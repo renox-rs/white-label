@@ -9,6 +9,9 @@
 //! - `PartyBlocked`: the client's engagements are suspended with the neutral
 //!   reason *on hold* ([`crate::engagements::suspend_for_block`],
 //!   `ACC.ACL.14`).
+//! - Engagement `suspend`, `auto_suspend` and `end`: `ACC.RUL.09` sends the
+//!   statutory deadline notice, or prepares it for the partner or the MLRO
+//!   ([`crate::deadline_notices::run_for`]).
 
 use renox::prelude::*;
 use renox::state_machine::Transitioned;
@@ -18,8 +21,8 @@ use wl_kernel::documents::today;
 use crate::cdd::CddFile;
 use crate::cdd_machine::REJECT;
 use crate::engagement::Engagement;
-use crate::engagement_machine::ACTIVATE;
-use crate::{calendar, engagements, retainer};
+use crate::engagement_machine::{ACTIVATE, AUTO_SUSPEND, END, SUSPEND};
+use crate::{calendar, deadline_notices, engagements, retainer};
 
 /// Registers the listeners.
 pub(crate) fn register(app: &mut Registry) {
@@ -32,6 +35,15 @@ pub(crate) fn register(app: &mut Registry) {
             let on = engagement.activated_on.unwrap_or_else(today);
             calendar::generate(&state, &engagement, on).await?;
             retainer::start(&state, &engagement, on).await?;
+            Ok(())
+        },
+    );
+    app.listen(
+        |event: Transitioned<Engagement>, state: AppState| async move {
+            if ![SUSPEND, AUTO_SUSPEND, END].contains(&event.transition.as_str()) {
+                return Ok(());
+            }
+            deadline_notices::run_for(&state, event.key, &event.transition).await?;
             Ok(())
         },
     );

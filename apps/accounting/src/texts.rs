@@ -372,6 +372,97 @@ const TEXTS: &[(&str, &str)] = &[
         "accounting.cdd_update.notice_body",
         "The {{ kind }} of {{ party }} (client {{ client }}) expired on {{ expired }}. The compliance officer has the CDD update task {{ task }}, due {{ due }}; you may need to ask the client for the renewed document.",
     ),
+    // The statutory deadline notice of a suspension or an end (BL-ACC-04).
+    ("accounting.deadline_notices.title", "Statutory deadlines"),
+    ("accounting.deadline_notices.deadlines", "Deadlines"),
+    ("accounting.deadline_notices.deadline", "Deadline"),
+    (
+        "accounting.deadline_notices.none",
+        "There are no statutory deadlines in the next :days days.",
+    ),
+    ("accounting.deadline_notices.line", ":date — :title"),
+    (
+        "accounting.deadline_notices.wording_suspend",
+        "Your engagement :number is suspended. These are the statutory deadlines that fall due in the next :days days: the firm will not act on these while the engagement is suspended.",
+    ),
+    (
+        "accounting.deadline_notices.wording_end",
+        "Your engagement :number has ended. These are the statutory deadlines that fall due in the next :days days: the firm no longer acts on these.",
+    ),
+    ("accounting.deadline_notices.acknowledge", "Acknowledge"),
+    (
+        "accounting.deadline_notices.acknowledge_message",
+        "Confirm that you have read the statutory deadlines and that the firm will not act on them.",
+    ),
+    (
+        "accounting.deadline_notices.acknowledged",
+        "Acknowledged on :at.",
+    ),
+    (
+        "accounting.deadline_notices.acknowledged_toast",
+        "Thank you: your acknowledgement is recorded.",
+    ),
+    (
+        "accounting.deadline_notices.acknowledged_note",
+        "The client approver acknowledged the deadline notice.",
+    ),
+    ("accounting.deadline_notices.sent", "The deadline notice was sent to the client."),
+    (
+        "accounting.deadline_notices.cancelled",
+        "The engagement resumed: the deadline notice needs no more follow-up.",
+    ),
+    (
+        "accounting.deadline_notices.not_prepared",
+        "This deadline notice is not waiting to be sent.",
+    ),
+    ("accounting.deadline_notices.send", "Send the deadline notice"),
+    (
+        "accounting.deadline_notices.send_message",
+        "The client approvers get the statutory deadlines listed and are asked to acknowledge them in the portal.",
+    ),
+    ("accounting.deadline_notices.list", "Deadline notices"),
+    ("accounting.deadline_notices.empty", "No deadline notice"),
+    ("accounting.deadline_notices.cause", "After"),
+    ("accounting.deadline_notices.cause.suspend", "Suspension"),
+    ("accounting.deadline_notices.cause.end", "End"),
+    ("accounting.deadline_notices.state", "Status"),
+    ("accounting.deadline_notices.state.prepared", "To send"),
+    ("accounting.deadline_notices.state.sent", "Sent"),
+    ("accounting.deadline_notices.state.delivered", "Delivered"),
+    ("accounting.deadline_notices.state.acknowledged", "Acknowledged"),
+    ("accounting.deadline_notices.state.cancelled", "Cancelled"),
+    (
+        "accounting.deadline_notices.notice_subject",
+        "Statutory deadlines for {{ number }}",
+    ),
+    (
+        "accounting.deadline_notices.notice_body",
+        "{{ wording }}\n\n{{ lines }}\n\nPlease acknowledge this notice in the portal: {{ link }}",
+    ),
+    (
+        "accounting.deadline_notices.reminder_subject",
+        "Reminder: statutory deadlines for {{ number }}",
+    ),
+    (
+        "accounting.deadline_notices.reminder_body",
+        "We have not received your acknowledgement yet.\n\n{{ wording }}\n\n{{ lines }}\n\nPlease acknowledge this notice in the portal: {{ link }}",
+    ),
+    (
+        "accounting.deadline_notices.prepared_title",
+        "Deadline notice of :number: send it when you decide",
+    ),
+    (
+        "accounting.deadline_notices.prepared_description",
+        "Nothing was sent to the client automatically. When you decide, send the statutory deadline notice of :number from :link with the neutral template below.\n\nStatutory deadlines due by :until:\n:lines\n\nNeutral template: :template",
+    ),
+    (
+        "accounting.deadline_notices.escalation_title",
+        "No acknowledgement of the deadline notice of :number",
+    ),
+    (
+        "accounting.deadline_notices.escalation_description",
+        "The client approvers have not acknowledged the statutory deadline notice of :number, delivered on :delivered, after :days days. Contact the client.\n\n:lines",
+    ),
 ];
 
 /// Whether the app has a text for `key`.

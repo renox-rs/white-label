@@ -1,0 +1,20 @@
+{#- accounting: the statutory deadline notice a client approver reads in the
+    portal (ACC.RUL.09): what the firm will not do, the statutory deadlines
+    due in the window, and the Acknowledge button. Replace it with
+    resources/views/accounting/deadline_notice.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['deadline_notices.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['deadline_notices.title']" :subtitle="number">
+      <template rx-if="can_acknowledge">
+        <rx-confirm :id="'deadline-notice-ack-' ~ id" :label="tx['deadline_notices.acknowledge']" :action="route('accounting.deadline_notice_acknowledge', id)" method="POST"
+                    :title="tx['deadline_notices.acknowledge']" :message="tx['deadline_notices.acknowledge_message']" :confirm-label="tx['deadline_notices.acknowledge']" :cancel-label="tx['button_cancel']" icon="check"/>
+      </template>
+    </rx-page-header>
+    <rx-alert kind="info" :message="wording"/>
+    <rx-alert rx-if="acknowledged" kind="success" :message="acknowledged"/>
+    <rx-table :rows="lines" as="row" :key="row.line" :caption="tx['deadline_notices.deadlines']" card>
+      <rx-column :label="tx['deadline_notices.deadline']">{{ row.line }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="empty" icon="calendar"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

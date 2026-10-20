@@ -8,6 +8,7 @@ pub mod cdd_files;
 pub mod cdd_machine;
 pub mod client_notices;
 mod db;
+pub mod deadline_notices;
 pub mod documents;
 pub mod engagement;
 pub mod engagement_machine;
@@ -48,6 +49,10 @@ const VIEWS: &[(&str, &str)] = &[
         "accounting/cdd_file.html",
         include_str!("../views/accounting/cdd_file.html"),
     ),
+    (
+        "accounting/deadline_notice.html",
+        include_str!("../views/accounting/deadline_notice.html"),
+    ),
 ];
 
 /// Dirhams as text from fils: `AED 25,000.00`.
@@ -85,7 +90,8 @@ impl Module for Accounting {
     fn register(&self, app: &mut Registry) {
         app.view_data::<pages::engagements::IndexPage>()
             .view_data::<pages::engagements::ShowPage>()
-            .view_data::<pages::cdd::CddPage>();
+            .view_data::<pages::cdd::CddPage>()
+            .view_data::<pages::deadline_notices::NoticePage>();
         app.templates(|env| {
             for (name, source) in VIEWS {
                 // The app's own file of that name wins.
@@ -99,7 +105,8 @@ impl Module for Accounting {
             .model::<CddFile>()
             .model::<CddParty>()
             .model::<TaxProfile>()
-            .model::<client_notices::ClientNotice>();
+            .model::<client_notices::ClientNotice>()
+            .model::<deadline_notices::DeadlineNotice>();
         engagement_machine::register();
         cdd_machine::register();
         // `engagement.activate` checks the client's KYC documents.
@@ -113,6 +120,9 @@ impl Module for Accounting {
         tasks::register();
         // The neutral templates the MLRO sends (`ACC.ACL.14`).
         client_notices::register_types();
+        // `ACC.RUL.09`: the statutory deadline notice on suspend or end, its
+        // daily follow-up, compliance-critical (BL-ACC-04).
+        deadline_notices::register(app);
         // In the app group of the staff sidebar; the label is the host's
         // `nav.engagements` text.
         app.nav(
