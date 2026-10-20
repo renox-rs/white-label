@@ -20,7 +20,6 @@
 //! written by the services in the transition's transaction, and the events
 //! and notices follow after the commit ([`crate::subscriptions`]).
 
-use renox::prelude::*;
 use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx};
 use serde::{Deserialize, Serialize};
 use wl_kernel::subscriptions::SubscriptionStatus;
