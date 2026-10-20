@@ -353,6 +353,34 @@ async fn handle(
             }
         }
     }
+    // `DOC.RUL.01`: a kind marked *notify party* reminds the party the
+    // document is about, at an offset (a tenant's Emirates ID).
+    if kind.notify_party
+        && offset.is_some()
+        && subject.subject_type == wl_kernel::parties::PARTY_SUBJECT_TYPE
+    {
+        let request = NotifyRequest::new(NOTIFICATION_TYPE, subject.clone())
+            .to_party(wl_kernel::PartyId(subject.subject_id))
+            .subject_label(&label)
+            .data(message_data(
+                kind.name("en"),
+                &label,
+                expires_on,
+                days_left,
+                offset,
+                &[],
+            ));
+        match notify::notifier(state).notify(state, request).await {
+            Ok(ids) => done.messages += ids.len().max(1),
+            Err(error) => {
+                eprintln!(
+                    "documents:expiry: message for document {} to the party failed: {error}",
+                    document.id
+                );
+                done.failed += 1;
+            }
+        }
+    }
     Ok(done)
 }
 

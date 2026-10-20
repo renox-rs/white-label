@@ -97,6 +97,9 @@ pub struct DocumentKind {
     /// enabled is available and off: existing documents stay and their
     /// reminders continue (§3, §7).
     pub enabled: bool,
+    /// Whether the party the document is about is reminded as well as the
+    /// staff (`DOC.RUL.01`, e.g. a tenant's Emirates ID).
+    pub notify_party: bool,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
@@ -183,6 +186,7 @@ impl DocumentKind {
             responsible_role: seed.responsible_role.clone(),
             also_notify: Json(seed.also_notify.clone()),
             enabled: seed.enabled,
+            notify_party: seed.notify_party,
             ..DocumentKind::default()
         };
         if seed.legal_block {
@@ -335,6 +339,9 @@ pub struct KindSeed {
     /// Whether the kind is on when it is first stored (on unless
     /// [`KindSeed::off`] says otherwise). The client changes it later.
     pub enabled: bool,
+    /// Whether the party the document is about is reminded as well as the
+    /// staff when it is about to expire.
+    pub notify_party: bool,
     /// The seeded `blocks`.
     pub blocks: Vec<BlockSeed>,
 }
@@ -364,6 +371,7 @@ impl KindSeed {
             responsible_role: None,
             also_notify: Vec::new(),
             enabled: true,
+            notify_party: false,
             blocks: Vec::new(),
         }
     }
@@ -372,6 +380,13 @@ impl KindSeed {
     /// client enables the kind.
     pub fn off(mut self) -> Self {
         self.enabled = false;
+        self
+    }
+
+    /// Reminds the party the document is about as well as the staff when it
+    /// is about to expire (`DOC.RUL.01`).
+    pub fn notify_party(mut self) -> Self {
+        self.notify_party = true;
         self
     }
 

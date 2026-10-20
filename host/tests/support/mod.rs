@@ -540,6 +540,68 @@ pub async fn published_statement(
         .unwrap()
 }
 
+/// The vendor's Civil Defence approval, accepted, valid through `expires`.
+pub async fn civil_defence_approval(app: &TestApp, vendor: PartyId, expires: NaiveDate) {
+    let kind = wl_documents::DocumentKind::by_key(app.db(), "civil_defence_approval")
+        .await
+        .unwrap()
+        .expect("the Civil Defence kind is seeded");
+    wl_documents::Document::create(
+        app.db(),
+        wl_documents::Document {
+            subject_type: "parties.party".into(),
+            subject_id: vendor.0,
+            kind_id: kind.id,
+            title: "Civil Defence approval".into(),
+            expiry_date: Some(expires),
+            current_version: 1,
+            status: wl_documents::DocumentStatus::Accepted,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+}
+
+/// A building `code`, as the subject a ticket is about.
+pub async fn building(app: &TestApp, code: &str) -> (property::Building, Subject) {
+    let building = property::create_building(
+        app.db(),
+        property::NewBuilding {
+            code: code.to_owned(),
+            name_en: format!("Tower {code}"),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let subject = Subject::new("property.building", building.id);
+    (building, subject)
+}
+
+/// A ticket of `category` about `subject`, assigned to the vendor `vendor`,
+/// planned for `due` when given; its id.
+pub async fn vendor_ticket(
+    app: &TestApp,
+    subject: &Subject,
+    category: &str,
+    vendor: PartyId,
+    due: Option<NaiveDate>,
+) -> wl_ticketing::Ticket {
+    use wl_kernel::tickets::{Assignee, OpenTicket};
+    let mut request = OpenTicket::new(subject.clone(), category, "Visit")
+        .assign_to(Assignee::party(vendor));
+    if let Some(due) = due {
+        request = request.planned_due(due);
+    }
+    let opened = wl_ticketing::Tickets::open_at(app.state(), request, renox::db::now())
+        .await
+        .unwrap();
+    wl_ticketing::Ticket::find_or_404(app.db(), opened.id.0)
+        .await
+        .unwrap()
+}
+
 /// The invoice, as stored now.
 pub async fn reload(app: &TestApp, invoice: &Invoice) -> Invoice {
     Invoice::find_or_404(app.db(), invoice.id).await.unwrap()

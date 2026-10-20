@@ -223,6 +223,21 @@ impl Module for Property {
                 Ok(Building::find(db, id).await?.map(|b| b.name_en))
             })
         });
+        // A ticket about a building or one of its units is looked after by
+        // the people of that building: the scope of a building is itself, the
+        // scope of a unit is its building (the coordinators of the vendor's
+        // buildings are told, `DOC.RUL.01`, `WRK.RUL.14`).
+        wl_kernel::scopes::register(building::BUILDING_SUBJECT_TYPE, |_db, id| {
+            Box::pin(async move { Ok(Building::scope_of(id)) })
+        });
+        wl_kernel::scopes::register(unit::UNIT_SUBJECT_TYPE, |db, id| {
+            Box::pin(async move {
+                Ok(match Unit::find(db, id).await? {
+                    Some(unit) => Building::scope_of(unit.building_id),
+                    None => renox::auth::permissions::Scope::global(),
+                })
+            })
+        });
         // In the app group of the staff sidebar; the labels are the app's
         // `nav.property` and `nav.leases` texts.
         app.nav(

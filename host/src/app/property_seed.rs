@@ -64,6 +64,9 @@ pub fn kind_seed(spec: &KindSpec) -> KindSeed {
     if spec.personal {
         seed = seed.sensitivity(Sensitivity::Personal);
     }
+    if spec.notify_party {
+        seed = seed.notify_party();
+    }
     if spec.critical {
         seed = seed.compliance_critical();
     }
