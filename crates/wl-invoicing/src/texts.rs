@@ -888,10 +888,6 @@ const TEXTS: &[(&str, &str)] = &[
         "{{ description }}: {{ hours }} h more, adjustment timesheet {{ adjustment }} of {{ adjusts }}",
     ),
     (
-        "wl_invoicing.dispute.adjustment_not_applied",
-        "The adjustment timesheet {{ adjustment }} gave no credit note against this invoice.",
-    ),
-    (
         "wl_invoicing.tasks.kind.record_tax_credit_note",
         "Record the tax credit note",
     ),
