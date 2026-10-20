@@ -7,7 +7,7 @@
 //! [*] --create--> draft --post--> posted --reverse--> reversed
 //! ```
 //!
-//! `reverse` comes with the issue that builds it. A receipt is recorded as a
+//! `reverse` is in [`crate::receipt_reverse`]. A receipt is recorded as a
 //! draft ([`create_draft`]), its lines are filled in as the storekeeper counts
 //! ([`update_line`]), and posted by a holder of `goods_receipts.post` at the
 //! location.

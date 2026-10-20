@@ -7,11 +7,16 @@
 //! (BL-STK-03, BL-STK-05): until then a door-refused return stays `draft`.
 //! The machine declares the states.
 
+use renox::db::Transaction;
 use renox::prelude::*;
-use renox::state_machine::{Machine, StateMachine};
+use renox::state_machine::{Machine, StateMachine, Transition};
 use serde::{Deserialize, Serialize};
 use wl_kernel::Subject;
 use wl_kernel::inventory::SUPPLIER_RETURN_SUBJECT_TYPE;
+
+/// The `cancel` transition's name: the system withdraws a draft return (its
+/// receipt was reversed).
+pub const CANCEL: &str = "cancel";
 
 /// Where a return to supplier stands (§4).
 #[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -160,6 +165,16 @@ pub async fn of_source(db: &Db, source: &Subject) -> Result<Vec<SupplierReturn>>
         .await
 }
 
+/// The returns made from `source`, oldest first, read in `tx`.
+pub async fn of_source_in(tx: &mut Transaction, source: &Subject) -> Result<Vec<SupplierReturn>> {
+    SupplierReturn::query()
+        .where_(SupplierReturn::SOURCE_TYPE.eq(source.subject_type.as_str()))
+        .where_(SupplierReturn::SOURCE_ID.eq(source.subject_id))
+        .order_by(SupplierReturn::ID)
+        .get(&mut *tx)
+        .await
+}
+
 impl StateMachine for SupplierReturn {
     type State = ReturnStatus;
     const COLUMN: renox::db::Col<SupplierReturn, ReturnStatus> = SupplierReturn::STATUS;
@@ -178,6 +193,15 @@ impl StateMachine for SupplierReturn {
             .state(Cancelled)
             .tone("neutral")
             .terminal()
+            // A user's `cancel` and the credit come with BL-STK-05; so far
+            // the system withdraws a draft whose receipt was reversed.
+            .transition(
+                Transition::new(CANCEL)
+                    .label("Cancel")
+                    .system()
+                    .from([Draft])
+                    .to(Cancelled),
+            )
     }
 }
 

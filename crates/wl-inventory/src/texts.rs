@@ -99,6 +99,39 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_inventory.order.bad_input",
         "The receipt's quantities are missing.",
     ),
+    // Refusals of `reverse` on a goods receipt.
+    (
+        "wl_inventory.reverse.not_posted",
+        "Only a posted goods receipt can be reversed.",
+    ),
+    (
+        "wl_inventory.reverse.return_left",
+        "Return {{ number }} from this receipt has left with the supplier; it cannot be reversed. Correct it with a credit from the supplier.",
+    ),
+    (
+        "wl_inventory.reverse.billed",
+        "The purchase order is closed: its goods were billed, so the receipt cannot be reversed.",
+    ),
+    (
+        "wl_inventory.reverse.missing",
+        "Line {{ position }}: {{ item }} has {{ available }} left at the location of the {{ accepted }} accepted, {{ missing }} missing. Correct it with a stock adjustment or a return to supplier.",
+    ),
+    (
+        "wl_inventory.reverse.held",
+        "Line {{ position }}: lot {{ lot }} of {{ item }} is not free ({{ status }}). Correct it with a stock adjustment or a return to supplier.",
+    ),
+    (
+        "wl_inventory.reverse.reason",
+        "Goods receipt reversed",
+    ),
+    (
+        "wl_inventory.reverse.return_cancelled",
+        "receipt reversed",
+    ),
+    (
+        "wl_inventory.receipt.reversed",
+        "Goods receipt reversed.",
+    ),
     // Names of the rejected goods' returns.
     (
         "wl_inventory.return.collection_proof",

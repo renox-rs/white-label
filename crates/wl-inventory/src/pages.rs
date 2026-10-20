@@ -5,6 +5,7 @@
 //! |---|---|---|
 //! | `POST /goods-receipts/{id}/lines/{line}` | `wl_inventory.receipt_line` | `goods_receipts.post` at the receiving location |
 //! | `POST /goods-receipts/{id}/post` | `wl_inventory.receipt_post` | `goods_receipts.post` at the receiving location |
+//! | `POST /goods-receipts/{id}/reverse` | `wl_inventory.receipt_reverse` | `goods_receipts.reverse` at the receiving location |
 //!
 //! The routes need a signed-in user and carry no permission guard of their
 //! own: the guard counts global roles only, while a storekeeper may hold the
@@ -32,6 +33,8 @@ pub fn routes() -> Routes {
         .name("wl_inventory.receipt_line")
         .post("/goods-receipts/{id}/post", post_receipt)
         .name("wl_inventory.receipt_post")
+        .post("/goods-receipts/{id}/reverse", reverse_receipt)
+        .name("wl_inventory.receipt_reverse")
         .require_auth()
 }
 
@@ -214,6 +217,32 @@ async fn post_receipt(
             .into_response()),
         Ok(PostOutcome::Waiting(_)) => Ok((
             Toast::success(text(&lang, "receipt.waiting")),
+            renox::HxRefresh,
+        )
+            .into_response()),
+        Err(TransitionError::Guard(message)) => Err(refused(message)),
+        Err(other) => Err(other.into_error()),
+    }
+}
+
+/// `POST /goods-receipts/{id}/reverse`: reverses a posted receipt. Refused
+/// with the line and the missing quantity, or with the return that has left.
+async fn reverse_receipt(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    let receipt = GoodsReceipt::find_or_404(&state.db, id).await?;
+    let holders =
+        users_with_permission_in(&state.db, permissions::GOODS_RECEIPTS_REVERSE, &receipt.scope())
+            .await?;
+    if !holders.iter().any(|holder| holder.id == user.id) {
+        return Err(Error::Forbidden);
+    }
+    match crate::receipt_reverse::reverse(&state, &user, id).await {
+        Ok(_) => Ok((
+            Toast::success(text(&lang, "receipt.reversed")),
             renox::HxRefresh,
         )
             .into_response()),

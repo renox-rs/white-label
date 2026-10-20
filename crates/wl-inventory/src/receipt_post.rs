@@ -380,7 +380,10 @@ impl StateMachine for GoodsReceipt {
             .state(Reversed)
             .tone("neutral")
             .terminal();
-        transitions().into_iter().fold(machine, Machine::transition)
+        transitions()
+            .into_iter()
+            .fold(machine, Machine::transition)
+            .transition(crate::receipt_reverse::transition())
     }
 }
 

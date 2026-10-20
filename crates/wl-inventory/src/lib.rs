@@ -12,6 +12,7 @@ pub mod movement;
 pub mod pages;
 pub mod purchase_order;
 pub mod receipt_post;
+pub mod receipt_reverse;
 pub mod supplier_return;
 mod texts;
 
@@ -31,6 +32,7 @@ pub use match_source::PurchaseMatch;
 pub use movement::{MovementType, StockMovement};
 pub use purchase_order::{PurchaseOrder, PurchaseOrderLine, PurchaseOrderStatus};
 pub use receipt_post::{PostOutcome, post};
+pub use receipt_reverse::reverse;
 pub use supplier_return::{
     RejectedHandling, ReturnOrigin, ReturnStatus, SupplierReturn, SupplierReturnLine,
     WantedOutcome,

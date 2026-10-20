@@ -3,8 +3,10 @@
 //! movement. The balance of an item at a location is derived from the
 //! movements ([`on_hand`]), never stored.
 //!
-//! Only `receive` is posted so far, by a goods receipt: accepted quantity
-//! only. Rejected goods never have a movement.
+//! `receive` is posted by a goods receipt: accepted quantity only, rejected
+//! goods never have a movement. A reversed receipt takes its quantity out
+//! again with `adjust`, and a dispatched return to supplier takes goods from
+//! stock with `return_out`.
 
 use renox::db::Transaction;
 use renox::prelude::*;
@@ -117,6 +119,39 @@ impl StockMovement {
         }
     }
 
+    /// A movement of `movement_type` that takes `quantity_milli` of `item_id`
+    /// out of `location_id` (a reversed receipt, goods back to a supplier),
+    /// caused by `source`, at `unit_cost` fils a unit worth `value`.
+    #[allow(clippy::too_many_arguments)]
+    pub fn leaving(
+        movement_type: MovementType,
+        item_id: i64,
+        lot_id: Option<i64>,
+        location_id: i64,
+        quantity_milli: i64,
+        unit_cost: i64,
+        value: i64,
+        source: &Subject,
+        reason: Option<String>,
+        user_id: Option<i64>,
+    ) -> Self {
+        StockMovement {
+            movement_type,
+            item_id,
+            lot_id,
+            from_location_id: Some(location_id),
+            quantity_milli,
+            unit_cost,
+            value,
+            source_type: source.subject_type.clone(),
+            source_id: source.subject_id,
+            reason,
+            user_id,
+            moved_at: renox::db::now(),
+            ..StockMovement::default()
+        }
+    }
+
     /// The record that caused it.
     pub fn source(&self) -> Subject {
         Subject::new(&self.source_type, self.source_id)
@@ -135,6 +170,60 @@ pub async fn on_hand(db: &Db, item_id: i64, location_id: i64) -> Result<i64> {
         .where_(StockMovement::ITEM_ID.eq(item_id))
         .where_(StockMovement::FROM_LOCATION_ID.eq(location_id))
         .sum::<i64, _>(db, "quantity_milli")
+        .await?;
+    Ok(arrived - left)
+}
+
+/// The quantity of `item_id` at `location_id`, read in `tx`: [`on_hand`]
+/// without the pool, for a check inside a transaction.
+pub async fn on_hand_in(tx: &mut Transaction, item_id: i64, location_id: i64) -> Result<i64> {
+    let arrived = StockMovement::query()
+        .where_(StockMovement::ITEM_ID.eq(item_id))
+        .where_(StockMovement::TO_LOCATION_ID.eq(location_id))
+        .sum::<i64, _>(&mut *tx, "quantity_milli")
+        .await?;
+    let left = StockMovement::query()
+        .where_(StockMovement::ITEM_ID.eq(item_id))
+        .where_(StockMovement::FROM_LOCATION_ID.eq(location_id))
+        .sum::<i64, _>(&mut *tx, "quantity_milli")
+        .await?;
+    Ok(arrived - left)
+}
+
+/// The quantity of lot `lot_id` of `item_id` at `location_id`, read in `tx`.
+pub async fn on_hand_lot_in(
+    tx: &mut Transaction,
+    item_id: i64,
+    lot_id: i64,
+    location_id: i64,
+) -> Result<i64> {
+    let arrived = StockMovement::query()
+        .where_(StockMovement::ITEM_ID.eq(item_id))
+        .where_(StockMovement::LOT_ID.eq(lot_id))
+        .where_(StockMovement::TO_LOCATION_ID.eq(location_id))
+        .sum::<i64, _>(&mut *tx, "quantity_milli")
+        .await?;
+    let left = StockMovement::query()
+        .where_(StockMovement::ITEM_ID.eq(item_id))
+        .where_(StockMovement::LOT_ID.eq(lot_id))
+        .where_(StockMovement::FROM_LOCATION_ID.eq(location_id))
+        .sum::<i64, _>(&mut *tx, "quantity_milli")
+        .await?;
+    Ok(arrived - left)
+}
+
+/// The quantity of lot `lot_id` in all locations, read in `tx`: what is left
+/// of the lot.
+pub async fn lot_left_in(tx: &mut Transaction, lot_id: i64) -> Result<i64> {
+    let arrived = StockMovement::query()
+        .where_(StockMovement::LOT_ID.eq(lot_id))
+        .where_(StockMovement::TO_LOCATION_ID.is_not_null())
+        .sum::<i64, _>(&mut *tx, "quantity_milli")
+        .await?;
+    let left = StockMovement::query()
+        .where_(StockMovement::LOT_ID.eq(lot_id))
+        .where_(StockMovement::FROM_LOCATION_ID.is_not_null())
+        .sum::<i64, _>(&mut *tx, "quantity_milli")
         .await?;
     Ok(arrived - left)
 }

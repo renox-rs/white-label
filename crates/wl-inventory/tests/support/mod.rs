@@ -126,6 +126,11 @@ impl Booted {
         user
     }
 
+    /// A stores manager (`goods_receipts.reverse`) everywhere.
+    pub async fn reverser(&self, name: &str) -> User {
+        self.user_with(name, "stores_manager").await
+    }
+
     /// A procurement officer (`purchase_orders.issue`) everywhere.
     pub async fn procurement(&self, name: &str) -> User {
         self.user_with(name, "procurement").await
@@ -207,6 +212,15 @@ impl Booted {
             .await
     }
 
+    /// `POST /goods-receipts/{id}/reverse` as `by`.
+    pub async fn reverse_as(&self, by: &User, receipt: &GoodsReceipt) -> TestResponse {
+        self.app.acting_as(by);
+        self.app
+            .htmx()
+            .post(&format!("/goods-receipts/{}/reverse", receipt.id), &[])
+            .await
+    }
+
     /// The receipt as stored now.
     pub async fn reload(&self, receipt: &GoodsReceipt) -> GoodsReceipt {
         GoodsReceipt::find_or_404(self.db(), receipt.id).await.unwrap()
@@ -255,6 +269,9 @@ pub async fn boot_with(module: WlInventory) -> Booted {
         .await
         .expect("wl:install runs");
     permissions::define_role(app.db(), "storekeeper", &[perm::GOODS_RECEIPTS_POST])
+        .await
+        .unwrap();
+    permissions::define_role(app.db(), "stores_manager", &[perm::GOODS_RECEIPTS_REVERSE])
         .await
         .unwrap();
     permissions::define_role(app.db(), "procurement", &[perm::PURCHASE_ORDERS_ISSUE])

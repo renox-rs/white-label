@@ -96,6 +96,34 @@ pub fn weighted_average(on_hand_milli: i64, average: i64, quantity_milli: i64, p
     i64::try_from((2 * value + total) / (2 * total)).unwrap_or(price)
 }
 
+/// The moving weighted average cost after `quantity_milli` thousandths that
+/// were bought at `price` leave again (a reversed receipt), when
+/// `on_hand_milli` were on hand at `average`: the value left over the
+/// quantity left, rounded half up. When nothing (or less) is left the
+/// average stays, as the next receipt takes its own price.
+pub fn average_after_removal(on_hand_milli: i64, average: i64, quantity_milli: i64, price: i64) -> i64 {
+    let left = i128::from(on_hand_milli) - i128::from(quantity_milli);
+    if left <= 0 {
+        return average;
+    }
+    let value =
+        i128::from(on_hand_milli) * i128::from(average) - i128::from(quantity_milli) * i128::from(price);
+    i64::try_from(((2 * value + left) / (2 * left)).max(0)).unwrap_or(average)
+}
+
+/// `quantity_milli` thousandths as a number of base units for a message:
+/// `80`, `12.5`, `0.125`.
+pub fn quantity_text(quantity_milli: i64) -> String {
+    let sign = if quantity_milli < 0 { "-" } else { "" };
+    let whole = quantity_milli.abs() / 1_000;
+    let fraction = quantity_milli.abs() % 1_000;
+    if fraction == 0 {
+        return format!("{sign}{whole}");
+    }
+    let fraction = format!("{fraction:03}");
+    format!("{sign}{whole}.{}", fraction.trim_end_matches('0'))
+}
+
 /// The value of `quantity_milli` thousandths at `unit_cost` fils a unit,
 /// rounded half up, in fils.
 pub fn value_of(quantity_milli: i64, unit_cost: i64) -> i64 {
@@ -125,6 +153,23 @@ mod tests {
         assert_eq!(weighted_average(-5_000, 500, 80_000, 1_200), 1_200);
         // Rounded half up: (1 kg at 0.01 + 1 kg at 0.02) / 2 = 0.015 -> 0.02.
         assert_eq!(weighted_average(1_000, 1, 1_000, 2), 2);
+    }
+
+    #[test]
+    fn the_average_cost_comes_back_when_a_receipt_leaves() {
+        // 100 kg at 10.00 and 80 kg at 12.00 (average 10.89); the 80 leave.
+        assert_eq!(weighted_average(100_000, 1_000, 80_000, 1_200), 1_089);
+        assert_eq!(average_after_removal(180_000, 1_089, 80_000, 1_200), 1_000);
+        // Nothing left: the average stays.
+        assert_eq!(average_after_removal(80_000, 1_200, 80_000, 1_200), 1_200);
+    }
+
+    #[test]
+    fn a_quantity_reads_as_base_units() {
+        assert_eq!(quantity_text(80_000), "80");
+        assert_eq!(quantity_text(12_500), "12.5");
+        assert_eq!(quantity_text(125), "0.125");
+        assert_eq!(quantity_text(0), "0");
     }
 
     #[test]
