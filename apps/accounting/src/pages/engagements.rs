@@ -27,6 +27,7 @@ use renox::prelude::*;
 use renox::state_machine::history;
 use serde::{Deserialize, Serialize};
 use wl_kernel::PartyId;
+use wl_kernel::deadlines::deadline_tasks;
 use wl_kernel::documents::{dubai_text, today};
 
 use super::{Texts, invalid, parse_aed, parse_id, party_name, require, text, user_name};
@@ -310,6 +311,19 @@ pub struct DeadlineNoticeRow {
     pub deadlines: i64,
 }
 
+/// One deadline task of the engagement's compliance calendar.
+#[derive(Serialize, Debug, Clone, PartialEq, Eq)]
+pub struct TaskRow {
+    /// The title.
+    pub title: String,
+    /// The due date.
+    pub due: String,
+    /// The state in the page's language.
+    pub status: String,
+    /// "Held" while the engagement is suspended; empty otherwise.
+    pub held: String,
+}
+
 /// The state of `notice` in the page's language.
 fn notice_state(lang: &Lang, notice: &DeadlineNotice) -> String {
     let key = if notice.cancelled_on.is_some() {
@@ -354,6 +368,7 @@ pub(crate) struct ShowPage {
     block_record: String,
     deadline_notices: Vec<DeadlineNoticeRow>,
     send_notice_id: Option<i64>,
+    tasks: Vec<TaskRow>,
 }
 
 /// The options of a reason select for `transition`.
@@ -441,8 +456,24 @@ async fn show(
             deadlines: notice.deadline_count,
         });
     }
+    let tasks = deadline_tasks(&state)
+        .of_subject(&state.db, &found.subject())
+        .await?
+        .into_iter()
+        .map(|task| TaskRow {
+            title: task.title,
+            due: task.due_date.to_string(),
+            status: text(&lang, &format!("tasks.status.{}", task.status.as_str())),
+            held: if task.held {
+                text(&lang, "tasks.held")
+            } else {
+                String::new()
+            },
+        })
+        .collect();
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
+        tasks,
         deadline_notices: deadline_rows,
         send_notice_id,
         status: status_label(&lang, found.status),

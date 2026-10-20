@@ -337,6 +337,21 @@ const TEXTS: &[(&str, &str)] = &[
         "The identity documents are not attached",
     ),
     ("accounting.cdd.not_rated", "The risk is not rated"),
+    // The compliance calendar on the engagement page (BL-ACC-03).
+    ("accounting.tasks.title", "Compliance calendar"),
+    ("accounting.tasks.task", "Task"),
+    ("accounting.tasks.due", "Due"),
+    ("accounting.tasks.held", "Held"),
+    ("accounting.tasks.held_column", "Held"),
+    ("accounting.tasks.empty", "No deadline task"),
+    ("accounting.tasks.status.upcoming", "Upcoming"),
+    ("accounting.tasks.status.in_progress", "In progress"),
+    ("accounting.tasks.status.waiting", "Waiting on client"),
+    ("accounting.tasks.status.in_review", "In review"),
+    ("accounting.tasks.status.overdue", "Overdue"),
+    ("accounting.tasks.status.completed", "Completed"),
+    ("accounting.tasks.status.missed", "Missed"),
+    ("accounting.tasks.status.not_required", "Not required"),
     // The reasons a deadline task is closed as missed (BL-ACC-13).
     (
         "accounting.tasks.missed.client_no_documents",

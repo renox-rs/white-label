@@ -78,6 +78,13 @@
       <rx-column :label="tx['history.by']" hide-narrow>{{ row.by }}</rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['client_notices.empty']" icon="mail"/></rx-slot>
     </rx-table>
+    <rx-table :rows="tasks" as="row" :key="row.title ~ row.due" :caption="tx['tasks.title']" card>
+      <rx-column :label="tx['tasks.task']">{{ row.title }}</rx-column>
+      <rx-column :label="tx['tasks.due']">{{ row.due }}</rx-column>
+      <rx-column :label="tx['fields.status']">{{ row.status }}</rx-column>
+      <rx-column :label="tx['tasks.held_column']">{{ row.held }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['tasks.empty']" icon="calendar"/></rx-slot>
+    </rx-table>
     <rx-table :rows="deadline_notices" as="row" :key="row.on ~ row.cause ~ row.state" :caption="tx['deadline_notices.list']" card>
       <rx-column :label="tx['deadline_notices.cause']">{{ row.cause }}</rx-column>
       <rx-column :label="tx['history.at']">{{ row.on }}</rx-column>
