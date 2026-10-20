@@ -18,7 +18,7 @@ use wl_kernel::Subject;
 use wl_kernel::approvals::{self, ApprovalRequest};
 use wl_kernel::documents::today;
 
-use support::{Booted, boot};
+use support::{Booted, boot, boot_with_invoicing};
 
 /// What a scene holds: the items and their receipt lines, posted and in stock.
 struct Scene {
@@ -400,6 +400,56 @@ async fn a_posting_date_in_a_filed_period_is_refused() {
     let a = t.procurement("Amal").await;
     let draft = adjustment(&t, &landed, a.id, 30_000).await;
     t.locks.lock(today());
+
+    t.post_adjustment_as(&a, &landed, &draft)
+        .await
+        .assert_status(422);
+
+    assert_eq!(
+        t.adjustment_now(&draft).await.status,
+        landed_adjust::AdjustmentStatus::Draft
+    );
+    assert_eq!(t.item_now(&scene.items[0]).await.average_cost, 3_000);
+    assert!(t.adjusted.all().is_empty());
+}
+
+/// Done when 5 against the real `VatPeriodLocks` of wl-invoicing: the period
+/// of the posting date has a locked VAT summary, so `post` is refused; the
+/// day before the period is not locked.
+#[renox::test]
+async fn a_posting_date_in_a_vat_period_locked_by_invoicing_is_refused() {
+    use renox::state_machine::StateMachine;
+    use wl_invoicing::{VatSummary, VatSummaryStatus, vat_period};
+
+    let t = boot_with_invoicing().await;
+    let store = t.location("STORE-1", None).await;
+    let scene = received(&t, store, None, &[("PIPE", 100_000)]).await;
+    let landed = allocated(&t, &scene, AllocationBasis::Value, 200_000).await;
+    let a = t.procurement("Amal").await;
+    let draft = adjustment(&t, &landed, a.id, 30_000).await;
+
+    let entity = wl_kernel::LegalEntity::find(t.db(), landed.legal_entity_id)
+        .await
+        .unwrap()
+        .expect("the landed cost's entity");
+    let config = t
+        .state()
+        .provided::<wl_invoicing::config::InvoicingConfig>()
+        .expect("invoicing provides its settings");
+    let (start, end) = vat_period::containing(config.tax_period_of(&entity.code), today());
+    let mut summary = VatSummary {
+        legal_entity_id: entity.id,
+        period_start: start,
+        period_end: end,
+        status: VatSummaryStatus::Locked,
+        ..Default::default()
+    };
+    let mut tx = t.db().begin().await.unwrap();
+    summary
+        .insert_in_state(&mut tx, VatSummaryStatus::Locked, "fixture")
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
 
     t.post_adjustment_as(&a, &landed, &draft)
         .await
