@@ -416,6 +416,72 @@ async fn bl_prp_20_three_negative_statements_let_the_owner_be_invoiced() {
     assert_eq!(settled.owner_invoice_id, Some(invoices[0].summary.id.0));
 }
 
+/// AC5, the entity: when the management company is a legal entity of its own
+/// (the agreement names it), the owner invoice is drafted from that entity and
+/// not from the default one, and so is the payout of a positive statement.
+#[renox::test]
+async fn bl_prp_20_the_owner_is_invoiced_and_paid_from_the_management_companys_entity() {
+    let s = scene().await;
+    let mut company = wl_kernel::LegalEntity {
+        code: "PMC".to_owned(),
+        name_en: "Palm Grove Management LLC".to_owned(),
+        trn: Some("100000000000029".to_owned()),
+        vat_registered: true,
+        status: "active".to_owned(),
+        ..Default::default()
+    };
+    company.insert(s.t.db()).await.unwrap();
+    let default = wl_kernel::LegalEntity::default_entity(s.t.db())
+        .await
+        .unwrap();
+    assert_ne!(company.id, default.id);
+    ManagementAgreement::query()
+        .where_(ManagementAgreement::ID.eq(s.agreement.id))
+        .update(s.t.db(), &[("legal_entity_id", &Some(company.id))])
+        .await
+        .unwrap();
+    charge_type::configure(
+        s.t.db(),
+        RECHARGED_COSTS,
+        "Recharged costs",
+        VatCategory::Exempt,
+    )
+    .await
+    .unwrap();
+
+    // The negative statement is invoiced from the management company.
+    let history = negative_history(&s, [-aed(1_000), -aed(2_000), -aed(3_500)]).await;
+    let last = &history[2];
+    s.t.post(
+        &s.manager,
+        &format!("/property/statements/{}/invoice-owner", last.id),
+        &[],
+    )
+    .await
+    .assert_ok();
+    let request = s.requests(last).await.remove(0);
+    let second = s.t.user_with("Maher", MANAGER).await;
+    approve(s.t.state(), request.id, &second, "ok")
+        .await
+        .unwrap();
+    let invoices = s.t.invoices.all();
+    assert_eq!(invoices.len(), 1);
+    assert_eq!(invoices[0].draft.legal_entity_id, Some(company.id));
+    assert_ne!(invoices[0].draft.legal_entity_id, Some(default.id));
+    assert_eq!(invoices[0].draft.lines[0].unit_price, aed(3_500));
+
+    // A positive statement is paid out from the same entity.
+    let positive = s.published("collected", "9,000", -150).await;
+    s.pay_out(positive.id, &[]).await.assert_ok();
+    let request = s.requests(&positive).await.remove(0);
+    approve(s.t.state(), request.id, &s.manager, "ok")
+        .await
+        .unwrap();
+    let paid = s.t.refunds.payments();
+    assert_eq!(paid.len(), 1);
+    assert_eq!(paid[0].0.legal_entity_id, company.id);
+}
+
 /// With only two negative statements and the flag off, `invoice_owner` is
 /// refused; with the agreement's clause it is allowed whatever the history.
 #[renox::test]
