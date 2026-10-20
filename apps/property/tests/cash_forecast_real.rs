@@ -239,6 +239,93 @@ async fn an_invoiced_lease_charge_counts_through_its_invoice_only() {
     );
 }
 
+/// #91, "must not count the same money twice (… invoice and its PDC)": CH-3
+/// has post-dated cheque CHQ-7 of AED 8,000 dated 2027-02-01 linked to it
+/// (`property.lease_charge:<id>`). Once the daily run of 2027-01-20 has
+/// invoiced CH-3 and the invoice is issued, the cheque still names the
+/// charge, and wl-invoicing reads it as covering the invoice that bills the
+/// charge: the AED 8,000 counts once, through the cheque by its date (week 3,
+/// 02-01 to 02-07, seen from 2027-01-20), and the invoice adds nothing.
+#[renox::test]
+async fn an_issued_invoice_of_a_charge_with_a_linked_cheque_counts_once() {
+    let s = scene(WlInvoicing::new()).await;
+    let lease = s.draft(d(1, 20), aed(96_000)).await;
+    let lease = s.activate(&lease).await;
+    let ch3 = s.charges(&lease).await[0].clone();
+    register_cheques(
+        s.t.state(),
+        None,
+        &lease,
+        "ENBD",
+        vec![ChequeEntry::new("CHQ-7", d(2, 1), aed(8_000), Some(ch3.id))],
+    )
+    .await
+    .unwrap();
+
+    let forecast =
+        s.t.at(d(1, 20), async {
+            let report = property::invoicing::run(s.t.state(), d(1, 20))
+                .await
+                .unwrap();
+            assert_eq!(report.invoiced, 1);
+            let charge = LeaseCharge::find_or_404(s.t.db(), ch3.id).await.unwrap();
+            let invoice = InvoiceId(charge.invoice_id.expect("the invoice"));
+            let found = invoicer(s.t.state())
+                .find(s.t.db(), invoice)
+                .await
+                .unwrap()
+                .expect("the invoice");
+            if found.status == InvoiceStatus::Draft {
+                invoicer(s.t.state())
+                    .issue(s.t.state(), invoice, None)
+                    .await
+                    .unwrap();
+            }
+            let found = invoicer(s.t.state())
+                .find(s.t.db(), invoice)
+                .await
+                .unwrap()
+                .expect("the invoice");
+            assert_eq!(found.status, InvoiceStatus::Issued);
+            assert_eq!(found.balance, aed(8_000));
+            s.forecast(d(1, 20)).await
+        })
+        .await;
+    let charge = LeaseCharge::find_or_404(s.t.db(), ch3.id).await.unwrap();
+    let invoice = InvoiceId(charge.invoice_id.expect("the invoice")).subject();
+
+    // Every line that stands for CH-3, its invoice or CHQ-7 adds up to the
+    // AED 8,000 once.
+    let ours: Vec<&Line> = forecast
+        .lines
+        .iter()
+        .chain(forecast.after.iter())
+        .filter(|l| {
+            l.kind == LineKind::ChequeIn
+                || l.documents.contains(&invoice)
+                || l.documents.contains(&ch3.subject())
+        })
+        .collect();
+    assert_eq!(ours.len(), 1, "one line: {ours:?}");
+    assert_eq!(ours.iter().map(|l| l.amount).sum::<i64>(), aed(8_000));
+    let cheque = ours[0];
+    assert_eq!(cheque.kind, LineKind::ChequeIn);
+    assert_eq!(cheque.week, 2, "week 3, by the cheque date");
+    assert!(cheque.documents.contains(&invoice));
+    assert!(forecast.lines.iter().all(|l| l.kind != LineKind::Invoice));
+    assert_eq!(
+        forecast.receipts(0),
+        0,
+        "week 1: neither the invoice nor CH-3"
+    );
+    assert_eq!(forecast.receipts(2), aed(8_000));
+    let total: i64 = (0..forecast.weeks.len())
+        .map(|w| forecast.receipts(w))
+        .sum();
+    // The two later charges of the lease within the 13 weeks, and CHQ-7.
+    assert_eq!(total, aed(24_000));
+}
+
 /// #93: PGP has AED 50,000 in the bank on 2027-01-12, a threshold of AED
 /// 20,000 and a supplier bill of AED 35,000 due 2027-02-16: week 6 is
 /// projected at AED 15,000 and the 06:00 run warns for week 6 while the lease

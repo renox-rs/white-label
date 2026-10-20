@@ -27,7 +27,10 @@
 //! tenant and the charge. A post-dated cheque linked to the charge
 //! (`property.lease_charge:<id>`) names it too, so the forecast drops the
 //! charge line and counts the cheque by its date (step 5). Once its invoice
-//! is issued the charge counts through the invoice only; while the daily run's
+//! is issued the charge counts through the invoice only, and a cheque still
+//! linked to the charge covers that invoice (wl-invoicing reads a link to a
+//! record a counted invoice bills as a link to the invoice), so the invoice
+//! counts only what the cheque leaves; while the daily run's
 //! invoice is still a draft (wl-invoicing does not count drafts) the charge
 //! stays a line here, so it is counted once either way.
 //! Decided where the spec is silent: only the charges the daily run will bill
