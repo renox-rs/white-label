@@ -268,6 +268,13 @@ pub const ROLES: &[(&str, &[&str])] = &[
             acc::CDD_VIEW,
             acc::CDD_PREPARE,
             acc::CDD_APPROVE,
+            // 04 §3.1: the MLRO opens and works the CDD update task of an
+            // expired KYC document (a staff task assigned to them,
+            // `ACC.RUL.05`) and sees the deadline tasks.
+            tickets::VIEW,
+            tickets::WORK,
+            tickets::TASKS_VIEW,
+            tickets::TASKS_WORK,
         ],
     ),
     (
@@ -300,9 +307,15 @@ pub const ROLES: &[(&str, &[&str])] = &[
             documents::VIEW,
             documents::UPLOAD,
             invoices::VIEW,
+            // 04 §3.1 "engagements, tasks, returns (review)": works and
+            // reviews the deadline tasks, and waives them or closes them as
+            // missed (`ACC.RUL.04`, BL-TKT-09); sees the staff tasks of
+            // their clients.
+            tickets::VIEW,
             tickets::TASKS_VIEW,
             tickets::TASKS_WORK,
             tickets::TASKS_REVIEW,
+            tickets::TASKS_MANAGE,
         ],
     ),
     (

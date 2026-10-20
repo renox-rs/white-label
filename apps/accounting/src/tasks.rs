@@ -75,6 +75,23 @@ pub fn missed_reason(code: &str, text: Option<&str>) -> Option<String> {
     Some(format!("{name}: {text}"))
 }
 
+/// Each reason of [`MISSED_REASONS`] with its English name and whether it
+/// needs a text (*other*), as the host gives them to wl-ticketing
+/// (`WlTicketing::missed_reason`), so its `close_missed` form offers them and
+/// refuses any other reason.
+pub fn missed_reason_names() -> Vec<(&'static str, String, bool)> {
+    MISSED_REASONS
+        .iter()
+        .map(|code| {
+            (
+                *code,
+                english(&format!("accounting.tasks.missed.{code}"), &[]),
+                *code == MISSED_OTHER,
+            )
+        })
+        .collect()
+}
+
 /// Marks `ACC.RUL.04` compliance-critical: its owner role is the partner
 /// (with the company admin), and its nightly run at 00:30 is watched for a
 /// missed run.
@@ -105,6 +122,22 @@ mod tests {
         );
         assert_eq!(missed_reason(MISSED_OTHER, Some("  ")), None);
         assert_eq!(missed_reason("forgot", None), None);
+    }
+
+    #[test]
+    fn the_reason_names_are_what_missed_reason_stores() {
+        let names = missed_reason_names();
+        assert_eq!(names.len(), MISSED_REASONS.len());
+        for (code, name, needs_text) in names {
+            let text = needs_text.then_some("x");
+            let stored = missed_reason(code, text).expect("a listed reason");
+            let expected = if needs_text {
+                format!("{name}: x")
+            } else {
+                name
+            };
+            assert_eq!(stored, expected);
+        }
     }
 
     #[test]
