@@ -9,6 +9,7 @@ use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use renox::testing::TestResponse;
 use wl_attendance::entry::{self, NewEntry, TimesheetEntry};
+use wl_attendance::period_end;
 use wl_attendance::submit::{self, SystemSubmit};
 use wl_attendance::timesheet::HoursSource;
 use wl_attendance::{AttendanceStatus, Timesheet, TimesheetStatus};
@@ -278,6 +279,52 @@ async fn att06_a_failed_system_submit_leaves_the_timesheet_open_and_opens_a_task
     // Run again: the open task is not opened twice.
     submit::submit_by_system(t.state(), t2.id).await.unwrap();
     assert_eq!(t.tasks.opened().len(), 1);
+}
+
+/// The period-end job (`attendance:period-end-submit`) submits the open
+/// timesheets whose period is over: T1 is submitted with no submitter, T2 (over
+/// the attended hours) stays `open` with a task for its creator, a timesheet
+/// whose period is not over is left alone, and a second run changes nothing.
+#[renox::test]
+async fn att06_the_period_end_job_submits_what_passes_and_tasks_what_fails() {
+    let t = boot().await;
+    let keeper = t.user_with("Tariq", "timekeeper").await;
+    let a = t.employee(1, &[]);
+    attended(&t, a).await;
+    let t1 = sheet(&t, a, 10, &[(nov(2), 300)], None).await;
+    let t2 = sheet(&t, a, 20, &[(nov(2), 240)], Some(keeper.id)).await;
+    let mut later = Timesheet::regular(a, nov(9), nov(15)).in_context(&project(30));
+    later.created_by = None;
+    let later = Timesheet::create(t.db(), later).await.unwrap();
+
+    // The last day of the period: nothing is due yet.
+    t.on(nov(8), async {
+        t.app.run_scheduled(period_end::TASK).await
+    })
+    .await
+    .unwrap();
+    assert_eq!(t.reload_sheet(&t1).await.status, TimesheetStatus::Open);
+
+    for _ in 0..2 {
+        t.on(nov(9), async {
+            t.app.run_scheduled(period_end::TASK).await
+        })
+        .await
+        .unwrap();
+    }
+    let done = t.reload_sheet(&t1).await;
+    assert_eq!(done.status, TimesheetStatus::Submitted);
+    assert_eq!(done.submitted_by, None);
+    assert_eq!(t.reload_sheet(&t2).await.status, TimesheetStatus::Open);
+    assert_eq!(t.reload_sheet(&later).await.status, TimesheetStatus::Open);
+    let opened = t.tasks.opened();
+    assert_eq!(opened.len(), 1, "one task, not one per run");
+    assert_eq!(opened[0].subject, t2.subject());
+    assert_eq!(
+        opened[0].assignee,
+        Some(wl_kernel::tickets::Assignee::user(keeper.id))
+    );
+    assert!(opened[0].description.contains("2026-11-02"));
 }
 
 /// T1 and T2 submitted in two parallel requests at the same moment: exactly

@@ -18,6 +18,7 @@ mod notices;
 pub mod overlap;
 pub mod overtime;
 pub mod pages;
+pub mod period_end;
 pub mod permit;
 pub mod proposal;
 pub mod record;
@@ -173,6 +174,7 @@ impl Module for WlAttendance {
         renox::state_machine::register::<AttendanceRecord>();
         renox::state_machine::register::<Timesheet>();
         notices::register_types();
+        period_end::schedule(app);
     }
 }
 
