@@ -313,12 +313,7 @@ pub const ONBOARDING: [OnboardingSpec; 5] = [
         steps: &[
             HR_STEP,
             MANAGER_STEP,
-            (
-                "Site induction",
-                "manager",
-                1,
-                "checklist:site_induction",
-            ),
+            ("Site induction", "manager", 1, "checklist:site_induction"),
             ("PPE issue", "manager", 1, "checklist:ppe_issue"),
             EMPLOYEE_STEP,
             SOP_STEP,
@@ -330,12 +325,7 @@ pub const ONBOARDING: [OnboardingSpec; 5] = [
         steps: &[
             HR_STEP,
             MANAGER_STEP,
-            (
-                "Site induction",
-                "manager",
-                1,
-                "checklist:site_induction",
-            ),
+            ("Site induction", "manager", 1, "checklist:site_induction"),
             EMPLOYEE_STEP,
             SOP_STEP,
         ],

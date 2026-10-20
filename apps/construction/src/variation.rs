@@ -1326,6 +1326,7 @@ mod tests {
             client_reference: reference.into(),
             approved_amount: amount,
             days_granted: days,
+            not_yet_done: None,
         }
     }
 

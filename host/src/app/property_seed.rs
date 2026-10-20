@@ -153,9 +153,7 @@ pub fn hr_for(client_app: &str, owner_role: &str) -> wl_hr::WlHr {
     let module = wl_hr::WlHr::new();
     match client_app {
         PROPERTY => module.manager_role(PROPERTY_MANAGER).owner_role(owner_role),
-        super::construction_seed::CONSTRUCTION => {
-            super::construction_seed::hr(module, owner_role)
-        }
+        super::construction_seed::CONSTRUCTION => super::construction_seed::hr(module, owner_role),
         _ => module,
     }
 }

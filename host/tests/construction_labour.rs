@@ -62,12 +62,16 @@ async fn the_five_onboarding_checklists_are_stored_once() {
         assert_eq!(found, 1, "{}", spec.name);
         let owners: Vec<&str> = spec.steps.iter().map(|s| s.1).collect();
         for owner in ["hr", "manager", "employee"] {
-            assert!(owners.contains(&owner), "{} has a step for {owner}", spec.name);
+            assert!(
+                owners.contains(&owner),
+                "{} has a step for {owner}",
+                spec.name
+            );
         }
     }
     assert_eq!(
         OnboardingTemplate::query().count(app.db()).await.unwrap(),
-        construction::seed::ONBOARDING.len() as i64
+        construction::seed::ONBOARDING.len() as u64
     );
 }
 
@@ -89,9 +93,12 @@ async fn the_sop_library_has_the_hse_officer_and_the_project_manager_as_owners()
             .count(app.db())
             .await
             .unwrap();
-        assert_eq!(readers, spec.readers.len() as i64, "{}", spec.code);
+        assert_eq!(readers, spec.readers.len() as u64, "{}", spec.code);
     }
-    let owners: Vec<&str> = construction::seed::SOPS.iter().map(|s| s.owner_role).collect();
+    let owners: Vec<&str> = construction::seed::SOPS
+        .iter()
+        .map(|s| s.owner_role)
+        .collect();
     assert!(owners.contains(&HSE_OFFICER) && owners.contains(&PROJECT_MANAGER));
 }
 

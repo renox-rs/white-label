@@ -3,7 +3,7 @@
 //! modules of the host in a fresh Construction deployment (`wl:install` and
 //! the seeds), not as constants.
 
-use host::app::construction_seed;
+use host::construction_seed;
 use host::roles::{self, ACCOUNTANT, ADMIN, HR, PROJECT_MANAGER, RECEIVABLES};
 use renox::chrono::{Days, NaiveDate};
 use renox::prelude::*;
@@ -204,7 +204,10 @@ async fn the_document_kinds_flag_remind_and_register_as_in_02() {
         assert_eq!(kind.responsible_role.as_deref(), Some(HR));
         assert_eq!(kind.blocks(app.db()).await.unwrap().len(), 1);
     }
-    for key in ["client_contractor_registration", "performance_bond_document"] {
+    for key in [
+        "client_contractor_registration",
+        "performance_bond_document",
+    ] {
         assert!(kind(key).await.blocks(app.db()).await.unwrap().is_empty());
     }
     assert_eq!(

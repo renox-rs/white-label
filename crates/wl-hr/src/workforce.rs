@@ -7,9 +7,7 @@ use renox::chrono::{Days, NaiveDate};
 use renox::prelude::*;
 use wl_kernel::Subject;
 use wl_kernel::documents::today;
-use wl_kernel::workforce::{
-    EmployeeId, LeaveCalendar, StaffProfile, Workforce, WorkforceFuture,
-};
+use wl_kernel::workforce::{EmployeeId, LeaveCalendar, StaffProfile, Workforce, WorkforceFuture};
 
 use crate::assignees;
 use crate::employee::{Employee, EmployeeScope, EmployeeStatus};

@@ -24,6 +24,7 @@ use renox::audit::Audit;
 use renox::auth::{Auth, Permissions};
 use renox::nav::NavLink;
 
+pub use app::construction_seed;
 pub use app::negative_flow::{invoicing_for, payments_for};
 pub use app::roles;
 
@@ -209,11 +210,13 @@ fn enable(
         "attendance" => Ok(app.module(app::property_seed::attendance_for(client_app))),
         "inventory" => {
             let module = wl_inventory::WlInventory::new();
-            Ok(app.module(if client_app == app::construction_seed::CONSTRUCTION {
-                app::construction_seed::inventory(module)
-            } else {
-                module
-            }))
+            Ok(
+                app.module(if client_app == app::construction_seed::CONSTRUCTION {
+                    app::construction_seed::inventory(module)
+                } else {
+                    module
+                }),
+            )
         }
         "portal" => Ok(app.module(wl_portal::WlPortal)),
         other => Err(ConfigError(format!(

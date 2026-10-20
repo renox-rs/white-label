@@ -12,7 +12,6 @@ use construction::call::{self, COST_CODE};
 use construction::expiry;
 use construction::guarantee::documents_of;
 use construction::{Guarantee, GuaranteeKind, GuaranteeStatus, Project, ProjectStatus};
-use renox::prelude::*;
 use wl_kernel::tickets::Assignee;
 
 use support::{Booted, boot, date, users_of};

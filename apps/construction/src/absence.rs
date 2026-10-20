@@ -164,7 +164,7 @@ fn blocked_on(history: &[(NaiveDate, String)], day: NaiveDate) -> bool {
     let state = history
         .iter()
         .take_while(|(on, _)| *on <= day)
-        .next_back()
+        .last()
         .map(|(_, state)| state.as_str());
     matches!(
         state,

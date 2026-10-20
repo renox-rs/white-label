@@ -9,6 +9,7 @@ use construction::registration::APPROVAL_ACTION;
 use construction::{Project, ProjectStatus};
 use renox::auth::permissions::define_role;
 use renox::prelude::*;
+use renox::state_machine::StateMachine;
 use wl_inventory::{Item, PurchaseOrder, PurchaseOrderLine, PurchaseOrderStatus};
 use wl_kernel::PartyId;
 use wl_kernel::approvals::{self, ApprovalRequest, ApprovalStatus};

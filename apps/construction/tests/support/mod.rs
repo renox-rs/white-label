@@ -804,7 +804,8 @@ impl DocumentGuard for Registrations {
         _record_id: i64,
         _on_date: NaiveDate,
         _actor: Option<i64>,
-    ) -> DocumentFuture<'a, std::result::Result<CheckOutcome, BlockRefusal>> {
+    ) -> DocumentFuture<'a, std::result::Result<CheckOutcome, wl_kernel::documents::BlockRefusal>>
+    {
         Box::pin(async { Ok(Ok(CheckOutcome::default())) })
     }
 
