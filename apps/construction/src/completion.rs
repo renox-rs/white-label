@@ -13,7 +13,9 @@
 //!   made due ([`crate::retention::make_part_due_in`]). The accountant is
 //!   told after the commit ([`crate::release::announce_due`]).
 //! - `close` (`projects.manage`) needs the defects liability end date to have
-//!   passed. It makes the **final** retention part due.
+//!   passed. It makes the **final** retention part due and gives the
+//!   accountant one release task per `active` performance or retention bond
+//!   ([`crate::expiry::release_tasks`]).
 //!
 //! Decisions where the spec is silent:
 //!
@@ -34,9 +36,9 @@ use serde::{Deserialize, Serialize};
 use wl_kernel::documents::today;
 
 use crate::project::{CLOSE, COMPLETE, Project};
-use crate::release;
 use crate::retention::{RetentionPart, make_part_due_in};
 use crate::texts::english;
+use crate::{expiry, release};
 
 /// What a `complete` run carries to its guard and effect.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -174,7 +176,8 @@ pub async fn complete(
 }
 
 /// `user` closes project `id` once its defects liability period has ended:
-/// the final retention part is due.
+/// the final retention part is due and the accountant gets a release task for
+/// each `active` performance or retention bond.
 ///
 /// # Errors
 ///
@@ -191,6 +194,7 @@ pub async fn close(
         .ok_or(TransitionError::Failed(Error::NotFound))?;
     let _outcome = project.transition(CLOSE).by(user).run(state).await?;
     release::announce_due(state, id).await?;
+    expiry::release_tasks(state, id).await?;
     Ok(Project::find_or_404(&state.db, id).await?)
 }
 

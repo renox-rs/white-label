@@ -120,6 +120,10 @@ pub struct Project {
     pub retention_due_on_termination: bool,
     /// The days of the defects liability period.
     pub defects_liability_days: i64,
+    /// The advance paid to the project, in fils.
+    pub advance_paid: i64,
+    /// What the invoiced IPAs recovered of the advance, in fils.
+    pub advance_recovered: i64,
     /// The project manager, who gets the tasks of the project.
     pub manager_user_id: Option<i64>,
     /// The lifecycle state; changed only by a transition.
@@ -186,6 +190,12 @@ impl Project {
     /// The project as a [`Subject`]: `construction.project:4`.
     pub fn subject(&self) -> Subject {
         Subject::new(SUBJECT_TYPE, self.id)
+    }
+
+    /// The advance paid less what the invoiced IPAs recovered of it, in fils:
+    /// the advance guarantee cannot go below it.
+    pub fn unrecovered_advance(&self) -> i64 {
+        (self.advance_paid - self.advance_recovered).max(0)
     }
 
     /// The client as a [`PartyId`].

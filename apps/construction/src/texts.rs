@@ -451,6 +451,88 @@ const TEXTS: &[(&str, &str)] = &[
         "construction.retention.disputed",
         "Retention invoice disputed.",
     ),
+    // The guarantees (BL-CON-09).
+    (
+        "construction.guarantee.document_needed",
+        "Attach the bank's document.",
+    ),
+    (
+        "construction.guarantee.release_document_needed",
+        "Attach the original guarantee, returned, or the bank's cancellation letter.",
+    ),
+    (
+        "construction.guarantee.amount_needed",
+        "Give the amount of the guarantee, above 0.",
+    ),
+    (
+        "construction.guarantee.beneficiary_needed",
+        "Give the beneficiary of the guarantee.",
+    ),
+    (
+        "construction.guarantee.expiry_needed",
+        "Give the expiry date of the guarantee.",
+    ),
+    (
+        "construction.guarantee.bank_needed",
+        "Give the bank that issues the guarantee.",
+    ),
+    (
+        "construction.guarantee.reduce_to_less",
+        "Give an amount below the current {{ amount }}.",
+    ),
+    (
+        "construction.guarantee.below_advance",
+        "An advance guarantee cannot go below the unrecovered advance, {{ unrecovered }}.",
+    ),
+    (
+        "construction.guarantee.extend_later",
+        "The new expiry must be later than the current one, {{ date }}.",
+    ),
+    (
+        "construction.guarantee.not_expired",
+        "The guarantee has not passed its expiry date.",
+    ),
+    (
+        "construction.guarantee.kind_unknown",
+        "The kind of the guarantee is advance, performance or retention_bond.",
+    ),
+    (
+        "construction.guarantee.extension_title",
+        "Ask the bank to extend the {{ kind }} of {{ project }}, which expires on {{ date }}",
+    ),
+    (
+        "construction.guarantee.extension_body",
+        "The guarantee of {{ bank }} for {{ amount }} expires on {{ date }} and the project has not reached the point where it is released. The beneficiary may call a guarantee that is not extended: request the bank's amendment.",
+    ),
+    (
+        "construction.guarantee.expiring_title",
+        "The {{ kind }} of {{ project }} expires on {{ date }}",
+    ),
+    (
+        "construction.guarantee.expiring_body",
+        "The guarantee expires on {{ date }} before it may be released. The accountant asks the bank for an extension.",
+    ),
+    (
+        "construction.guarantee.expired_title",
+        "The {{ kind }} of {{ project }} expired",
+    ),
+    (
+        "construction.guarantee.expired_body",
+        "The guarantee of {{ bank }} for {{ amount }} expired on {{ date }} without an extension.",
+    ),
+    (
+        "construction.guarantee.release_title",
+        "Release the {{ kind }} of {{ project }}",
+    ),
+    (
+        "construction.guarantee.release_body",
+        "The project is closed. Ask for the original of the guarantee of {{ bank }} for {{ amount }}, or the bank's cancellation letter, and release it.",
+    ),
+    ("construction.guarantee.registered", "Guarantee registered."),
+    ("construction.guarantee.issued", "Guarantee issued."),
+    ("construction.guarantee.reduced", "Guarantee reduced."),
+    ("construction.guarantee.extended", "Guarantee extended."),
+    ("construction.guarantee.released", "Guarantee released."),
     // The notice to the people of a project.
     ("construction.notice.subject", "{{ title }}"),
     ("construction.notice.body", "{{ body }}"),

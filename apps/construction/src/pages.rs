@@ -23,6 +23,11 @@
 //! | `POST /construction/retention-deductions/{id}/accept` | `construction.retention_deduction_accept` | `ipas.deductions.decide` in the project |
 //! | `POST /construction/retention-deductions/{id}/contest` | `construction.retention_deduction_contest` | `ipas.deductions.decide` in the project |
 //! | `POST /construction/retentions/{id}/dispute` | `construction.retention_dispute` | `retentions.manage` in the project |
+//! | `POST /construction/projects/{id}/guarantees` | `construction.guarantee_register` | `guarantees.manage` in the project |
+//! | `POST /construction/guarantees/{id}/issue` | `construction.guarantee_issue` | `guarantees.manage` in the project |
+//! | `POST /construction/guarantees/{id}/reduce` | `construction.guarantee_reduce` | `guarantees.manage` in the project |
+//! | `POST /construction/guarantees/{id}/extend` | `construction.guarantee_extend` | `guarantees.manage` in the project |
+//! | `POST /construction/guarantees/{id}/release` | `construction.guarantee_release` | `guarantees.manage` in the project |
 //! | `POST /construction/projects/{id}/retention-notice/dismiss` | `construction.retention_notice_dismiss` | `retentions.manage` in the project |
 //!
 //! The approval of a termination is the kernel's: the MD finds the request
@@ -43,6 +48,7 @@ use crate::certificate::{self, CertificateRequest, Recorded};
 use crate::completion::{self, CompleteRequest};
 use crate::deduction::{self, Decided, DeductionKind, NewDeduction};
 use crate::final_account::{self, ClosingWarnings};
+use crate::guarantee::{self, GuaranteeKind, NewGuarantee};
 use crate::invoice;
 use crate::ipa::{self, Ipa};
 use crate::permissions;
@@ -113,6 +119,16 @@ pub fn routes() -> Routes {
         .name("construction.retention_deduction_contest")
         .post("/construction/retentions/{id}/dispute", dispute_retention)
         .name("construction.retention_dispute")
+        .post("/construction/projects/{id}/guarantees", register_guarantee)
+        .name("construction.guarantee_register")
+        .post("/construction/guarantees/{id}/issue", issue_guarantee)
+        .name("construction.guarantee_issue")
+        .post("/construction/guarantees/{id}/reduce", reduce_guarantee)
+        .name("construction.guarantee_reduce")
+        .post("/construction/guarantees/{id}/extend", extend_guarantee)
+        .name("construction.guarantee_extend")
+        .post("/construction/guarantees/{id}/release", release_guarantee)
+        .name("construction.guarantee_release")
         .require_auth()
 }
 
@@ -791,4 +807,133 @@ async fn dispute_retention(
         renox::HxRefresh,
     )
         .into_response())
+}
+
+/// The text field `name` of a form, empty when absent.
+fn text(form: &BTreeMap<String, String>, name: &str) -> String {
+    form.get(name).cloned().unwrap_or_default()
+}
+
+/// The date field `name` of a form; `None` when empty, a 422 when it is not a
+/// date.
+fn date_field(
+    form: &BTreeMap<String, String>,
+    name: &str,
+    lang: &Lang,
+) -> Result<Option<NaiveDate>> {
+    match form.get(name).map(|value| value.trim()) {
+        None | Some("") => Ok(None),
+        Some(value) => value
+            .parse::<NaiveDate>()
+            .map(Some)
+            .map_err(|_| refused(t(lang, "construction.bad_input"))),
+    }
+}
+
+/// The amount field `name` of a form, in fils.
+fn amount_field(form: &BTreeMap<String, String>, name: &str, lang: &Lang) -> Result<i64> {
+    text(form, name)
+        .trim()
+        .parse::<i64>()
+        .map_err(|_| refused(t(lang, "construction.guarantee.amount_needed")))
+}
+
+/// A toast for a step of a guarantee, refreshing the page.
+fn guarantee_done(lang: &Lang, key: &str) -> Result<Response> {
+    Ok((Toast::success(t(lang, key)), renox::HxRefresh).into_response())
+}
+
+/// `POST /construction/projects/{id}/guarantees`: `kind` (`advance`,
+/// `performance` or `retention_bond`), `bank`, `beneficiary`, `amount` (fils)
+/// and `expires_on`.
+async fn register_guarantee(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let kind = [
+        GuaranteeKind::Advance,
+        GuaranteeKind::Performance,
+        GuaranteeKind::RetentionBond,
+    ]
+    .into_iter()
+    .find(|kind| kind.as_str() == text(&form, "kind").trim())
+    .ok_or_else(|| refused(t(&lang, "construction.guarantee.kind_unknown")))?;
+    let new = NewGuarantee {
+        project_id: id,
+        kind,
+        bank: text(&form, "bank"),
+        beneficiary: text(&form, "beneficiary"),
+        amount: amount_field(&form, "amount", &lang)?,
+        expires_on: date_field(&form, "expires_on", &lang)?,
+    };
+    guarantee::register(&state, &user, &new)
+        .await
+        .map_err(answer)?;
+    guarantee_done(&lang, "construction.guarantee.registered")
+}
+
+/// `POST /construction/guarantees/{id}/issue`: `document`, the bank's
+/// guarantee.
+async fn issue_guarantee(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    guarantee::issue(&state, &user, id, &text(&form, "document"))
+        .await
+        .map_err(answer)?;
+    guarantee_done(&lang, "construction.guarantee.issued")
+}
+
+/// `POST /construction/guarantees/{id}/reduce`: the new `amount` (fils) and
+/// `document`, the bank's amendment or the beneficiary's consent.
+async fn reduce_guarantee(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let amount = amount_field(&form, "amount", &lang)?;
+    guarantee::reduce(&state, &user, id, amount, &text(&form, "document"))
+        .await
+        .map_err(answer)?;
+    guarantee_done(&lang, "construction.guarantee.reduced")
+}
+
+/// `POST /construction/guarantees/{id}/extend`: the new `expires_on` and
+/// `document`, the bank's amendment.
+async fn extend_guarantee(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let expires_on = date_field(&form, "expires_on", &lang)?
+        .ok_or_else(|| refused(t(&lang, "construction.guarantee.expiry_needed")))?;
+    guarantee::extend(&state, &user, id, expires_on, &text(&form, "document"))
+        .await
+        .map_err(answer)?;
+    guarantee_done(&lang, "construction.guarantee.extended")
+}
+
+/// `POST /construction/guarantees/{id}/release`: `document`, the returned
+/// original or the bank's cancellation letter.
+async fn release_guarantee(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    guarantee::release(&state, &user, id, &text(&form, "document"))
+        .await
+        .map_err(answer)?;
+    guarantee_done(&lang, "construction.guarantee.released")
 }

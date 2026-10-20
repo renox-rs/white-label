@@ -8,6 +8,7 @@ pub mod completion;
 pub mod cutoff;
 pub mod deduction;
 pub mod events;
+pub mod expiry;
 pub mod final_account;
 pub mod guarantee;
 pub mod invoice;
@@ -31,7 +32,7 @@ use renox::state_machine::Transitioned;
 
 pub use deduction::{DeductionKind, DeductionStatus, IpaDeduction};
 pub use events::ProjectTerminated;
-pub use guarantee::{Guarantee, GuaranteeKind, GuaranteeStatus};
+pub use guarantee::{Guarantee, GuaranteeDocument, GuaranteeKind, GuaranteeStatus};
 pub use ipa::{Ipa, IpaKind, IpaStatus};
 pub use project::{Project, ProjectStatus};
 pub use retention::{Retention, RetentionPart, RetentionStatus};
@@ -41,6 +42,9 @@ pub use vat_notice::RetentionNotice;
 
 /// The name of the daily scheduled task of the retention (`CON.RUL.07`).
 pub const RETENTION_TASK: &str = "construction:retention-daily";
+
+/// The name of the daily scheduled task of the guarantees (`CON.RUL.11`).
+pub const GUARANTEE_TASK: &str = "construction:guarantee-daily";
 
 /// The Construction module. Add it to the app with
 /// `.module(construction::Construction)`.
@@ -66,7 +70,8 @@ impl Module for Construction {
             .model::<Retention>()
             .model::<RetentionNotice>()
             .model::<RetentionDeduction>()
-            .model::<Guarantee>();
+            .model::<Guarantee>()
+            .model::<GuaranteeDocument>();
         project::register();
         renox::state_machine::register::<Ipa>();
         renox::state_machine::register::<Retention>();
@@ -75,6 +80,14 @@ impl Module for Construction {
         deduction::register();
         retention_deduction::register();
         retention_deduction::listen(app);
+        // A guarantee never expires silently, and `CON.RUL.11` asks the bank
+        // for an extension 60 days before: daily at 02:00 Asia/Dubai.
+        expiry::listen(app);
+        app.schedule()
+            .daily_at("02:00", GUARANTEE_TASK, |state: AppState| async move {
+                expiry::daily(&state).await
+            })
+            .timezone("Asia/Dubai");
         submission::register_types();
         cutoff::schedule(app);
         termination::register_types();
