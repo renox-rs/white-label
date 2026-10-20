@@ -3467,6 +3467,7 @@ dependencies = [
  "tempfile",
  "wl-kernel",
  "wl-payments",
+ "wl-ticketing",
 ]
 
 [[package]]
