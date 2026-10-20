@@ -10,6 +10,9 @@
 //! | `POST /supplier-returns/{id}/cancel` | `wl_inventory.return_cancel` | `supplier_returns.manage` |
 //! | `POST /purchase-orders/{id}/revise` | `wl_inventory.order_revise` | `purchase_orders.issue` |
 //! | `GET /purchase-orders/{id}/revisions/{revision}/document` | `wl_inventory.order_document` | `purchase_orders.view` or `.issue` |
+//! | `POST /landed-costs/{id}/allocate` | `wl_inventory.landed_cost_allocate` | `landed_costs.post` |
+//! | `POST /landed-costs/{id}/adjustments` | `wl_inventory.landed_cost_adjustment` | `landed_costs.post` |
+//! | `POST /landed-costs/{id}/adjustments/{adjustment}/post` | `wl_inventory.landed_cost_adjust` | `landed_costs.post` |
 //! | `POST /goods-receipts/{id}/reverse` | `wl_inventory.receipt_reverse` | `goods_receipts.reverse` at the receiving location |
 //!
 //! The routes need a signed-in user and carry no permission guard of their
@@ -28,6 +31,8 @@ use renox::state_machine::TransitionError;
 use serde::{Deserialize, Serialize};
 
 use crate::goods_receipt::{DraftLine, GoodsReceipt, GoodsReceiptStatus, update_line};
+use crate::landed_adjust::{AdjustOutcome, NewAdjustment};
+use crate::landed_cost::{CostKind, NewCostLine};
 use crate::permissions;
 use crate::po_revise::{ReviseInput, ReviseOutcome};
 use crate::purchase_order::PurchaseOrder;
@@ -53,6 +58,15 @@ pub fn routes() -> Routes {
             order_document,
         )
         .name("wl_inventory.order_document")
+        .post("/landed-costs/{id}/allocate", allocate_landed_cost)
+        .name("wl_inventory.landed_cost_allocate")
+        .post("/landed-costs/{id}/adjustments", create_adjustment)
+        .name("wl_inventory.landed_cost_adjustment")
+        .post(
+            "/landed-costs/{id}/adjustments/{adjustment}/post",
+            post_adjustment,
+        )
+        .name("wl_inventory.landed_cost_adjust")
         .post("/supplier-returns/{id}/dispatch", dispatch_return)
         .name("wl_inventory.return_dispatch")
         .post("/supplier-returns/{id}/credit", credit_return)
@@ -425,6 +439,145 @@ async fn order_document(
     Ok(([("content-type", "application/pdf")], document).into_response())
 }
 
+/// `text` ("120", "-1,200.50") as fils, negative for a refund; `None` for
+/// anything else or more than two decimals.
+pub fn parse_signed_money(text: &str) -> Option<i64> {
+    let text = text.trim();
+    match text.strip_prefix('-') {
+        Some(rest) => parse_money(rest).map(|fils| -fils),
+        None => parse_money(text),
+    }
+}
+
+/// The form of a landed cost adjustment: `bill_reference`, `posting_date`
+/// (like `2027-01-31`) and, for each cost line N from 1, `kind_N` (`freight`,
+/// `duty`, `clearing` or `insurance`), `amount_N` (negative for a refund) and
+/// optionally `description_N`.
+fn adjustment_of(
+    form: &BTreeMap<String, String>,
+) -> std::result::Result<NewAdjustment, &'static str> {
+    let field = |name: &str| form.get(name).map(|v| v.trim()).filter(|v| !v.is_empty());
+    let posting_date =
+        NaiveDate::parse_from_str(field("posting_date").unwrap_or_default(), "%Y-%m-%d")
+            .map_err(|_| "landed.bad_date")?;
+    let mut lines = Vec::new();
+    for position in 1..=50 {
+        let Some(amount) = field(&format!("amount_{position}")) else {
+            continue;
+        };
+        let amount = parse_signed_money(amount).ok_or("landed.bad_number")?;
+        let kind = match field(&format!("kind_{position}")).unwrap_or("freight") {
+            "freight" => CostKind::Freight,
+            "duty" => CostKind::Duty,
+            "clearing" => CostKind::Clearing,
+            "insurance" => CostKind::Insurance,
+            _ => return Err("landed.bad_kind"),
+        };
+        let mut line = NewCostLine::of(kind, amount);
+        line.description = field(&format!("description_{position}"))
+            .unwrap_or_default()
+            .to_owned();
+        line.bill_reference = field("bill_reference").map(str::to_owned);
+        lines.push(line);
+    }
+    Ok(NewAdjustment {
+        bill_reference: field("bill_reference").unwrap_or_default().to_owned(),
+        bill_id: None,
+        posting_date,
+        lines,
+    })
+}
+
+/// `POST /landed-costs/{id}/allocate`: spreads the cost over the receipts;
+/// `weight_<receipt line>` gives the weight or volume for those bases.
+async fn allocate_landed_cost(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let mut weights = Vec::new();
+    for (name, value) in &form {
+        let Some(line) = name
+            .strip_prefix("weight_")
+            .and_then(|line| line.parse::<i64>().ok())
+        else {
+            continue;
+        };
+        let weight =
+            parse_quantity(value).ok_or_else(|| refused(text(&lang, "landed.bad_number")))?;
+        weights.push((line, weight));
+    }
+    match crate::landed_cost::allocate(&state, &user, id, &weights).await {
+        Ok(_) => Ok((
+            Toast::success(text(&lang, "landed.allocated")),
+            renox::HxRefresh,
+        )
+            .into_response()),
+        Err(TransitionError::Guard(message)) => Err(refused(message)),
+        Err(other) => Err(other.into_error()),
+    }
+}
+
+/// `POST /landed-costs/{id}/adjustments`: enters a draft adjustment of an
+/// allocated landed cost.
+async fn create_adjustment(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    if !may_post_landed_costs(&state, &user).await? {
+        return Err(Error::Forbidden);
+    }
+    let new = adjustment_of(&form).map_err(|key| refused(text(&lang, key)))?;
+    crate::landed_adjust::create_adjustment(&state.db, Some(user.id), id, new).await?;
+    Ok((
+        Toast::success(text(&lang, "landed.drafted")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// `POST /landed-costs/{id}/adjustments/{adjustment}/post`: posts an
+/// adjustment. Above the value it asks a second person to approve instead
+/// (`STK.ACL.06`).
+async fn post_adjustment(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path((id, adjustment)): Path<(i64, i64)>,
+) -> Result<Response> {
+    match crate::landed_adjust::adjust(&state, &user, id, adjustment).await {
+        Ok(AdjustOutcome::Posted(_)) => Ok((
+            Toast::success(text(&lang, "landed.adjusted")),
+            renox::HxRefresh,
+        )
+            .into_response()),
+        Ok(AdjustOutcome::Waiting(_)) => Ok((
+            Toast::success(text(&lang, "landed.waiting")),
+            renox::HxRefresh,
+        )
+            .into_response()),
+        Err(TransitionError::Guard(message)) => Err(refused(message)),
+        Err(other) => Err(other.into_error()),
+    }
+}
+
+/// Whether `user` holds `landed_costs.post`.
+async fn may_post_landed_costs(state: &AppState, user: &AuthUser) -> Result<bool> {
+    Ok(users_with_permission_in(
+        &state.db,
+        permissions::LANDED_COSTS_POST,
+        &renox::auth::permissions::Scope::global(),
+    )
+    .await?
+    .iter()
+    .any(|holder| holder.id == user.id))
+}
+
 /// What procurement enters to dispatch a return.
 #[derive(Deserialize, Serialize, Validate, Debug, Default)]
 pub struct DispatchForm {
@@ -603,6 +756,44 @@ mod tests {
         for bad in ["", " ", "-5", "1.2345", "abc", "1.2.3", "."] {
             assert_eq!(parse_quantity(bad), None, "{bad:?}");
         }
+    }
+
+    #[test]
+    fn a_refund_is_a_negative_amount() {
+        assert_eq!(parse_signed_money("-6,000"), Some(-600_000));
+        assert_eq!(parse_signed_money("800"), Some(80_000));
+        assert_eq!(parse_signed_money("--1"), None);
+    }
+
+    #[test]
+    fn an_adjustment_form_numbers_its_lines() {
+        let form: BTreeMap<String, String> = [
+            ("bill_reference", "FWD-77"),
+            ("posting_date", "2027-01-31"),
+            ("kind_1", "freight"),
+            ("amount_1", "800"),
+            ("kind_2", "duty"),
+            ("amount_2", "-300.50"),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_owned(), v.to_owned()))
+        .collect();
+        let new = adjustment_of(&form).unwrap();
+        assert_eq!(new.bill_reference, "FWD-77");
+        assert_eq!(new.lines.len(), 2);
+        assert_eq!(
+            (new.lines[0].kind, new.lines[0].amount),
+            (CostKind::Freight, 80_000)
+        );
+        assert_eq!(
+            (new.lines[1].kind, new.lines[1].amount),
+            (CostKind::Duty, -30_050)
+        );
+        let mut bad = form.clone();
+        bad.insert("kind_1".into(), "tea".into());
+        assert!(adjustment_of(&bad).is_err());
+        bad.remove("posting_date");
+        assert!(adjustment_of(&bad).is_err());
     }
 
     #[test]

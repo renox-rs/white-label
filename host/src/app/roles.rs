@@ -202,6 +202,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             inventory::GOODS_RECEIPTS_POST,
             inventory::GOODS_RECEIPTS_REVERSE,
             inventory::SUPPLIER_RETURNS_MANAGE,
+            inventory::LANDED_COSTS_POST,
             prp::UNITS_VIEW,
             prp::UNITS_MANAGE,
             prp::UNITS_RESERVE,
@@ -391,6 +392,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             inventory::PURCHASE_ORDERS_VIEW,
             inventory::PURCHASE_ORDERS_ISSUE,
             inventory::SUPPLIER_RETURNS_MANAGE,
+            inventory::LANDED_COSTS_POST,
         ],
     ),
     (
