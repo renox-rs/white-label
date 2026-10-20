@@ -576,3 +576,92 @@ async fn the_portal_shows_the_latest_published_pack_and_says_when_it_is_being_re
         2
     );
 }
+
+/// `ACC.ACL.14`/`DOC.RUL.01` in the host: activating an engagement whose UBO
+/// passport expired is refused through the route naming the passport and
+/// offering the MLRO's override; the engagement manager asks for it through
+/// the override route, cannot approve it, and the MLRO approves it through
+/// the kernel's route for 72 hours.
+#[renox::test]
+async fn an_expired_passport_refuses_activation_and_the_mlro_approves_an_override() {
+    use accounting::cdd::ScreenedRole;
+    use accounting::engagement::NewEngagement;
+    use wl_documents::{BlockOverride, BlockOverrideStatus};
+
+    let app = accounting_booted().await;
+    let manager = person(&app, "Mona", ENGAGEMENT_MANAGER).await;
+    let mlro = person(&app, "Mariam", COMPLIANCE).await;
+    let company = company(&app, "Gulf Trading A LLC").await;
+    let ubo = support::tenant(&app, "Omar Haddad").await;
+    let file = accounting::cdd_files::open(app.db(), None, company)
+        .await
+        .unwrap();
+    accounting::cdd_files::add_party(app.state(), file.id, ubo, ScreenedRole::Ubo)
+        .await
+        .unwrap();
+    let engagement = accounting::engagements::create(
+        app.state(),
+        None,
+        NewEngagement::retainer(company, "Bookkeeping and VAT", 500_000),
+    )
+    .await
+    .unwrap();
+    let year = today() + Days::new(365);
+    kyc_document(&app, company, "trade_licence", year).await;
+    kyc_document(&app, ubo, "emirates_id", year).await;
+    kyc_document(&app, ubo, "passport", today() - Days::new(1)).await;
+
+    app.acting_as(&manager);
+    let refused = app
+        .htmx()
+        .post(
+            &format!("/accounting/engagements/{}/activate", engagement.id),
+            &[],
+        )
+        .await;
+    refused.assert_status(422);
+    assert!(
+        refused.text().contains("Omar Haddad — Passport expired on"),
+        "{}",
+        refused.text()
+    );
+
+    // The manager asks for the override; the MLRO decides.
+    app.htmx()
+        .post(
+            "/documents/overrides",
+            &[
+                ("kind", "passport"),
+                ("guarded", "engagement.activate"),
+                ("record", &engagement.id.to_string()),
+                ("reason", "Renewal appointment booked"),
+            ],
+        )
+        .await
+        .assert_status(303);
+    let asked = BlockOverride::query()
+        .first(app.db())
+        .await
+        .unwrap()
+        .expect("the override is asked");
+    assert_eq!(asked.status, BlockOverrideStatus::Requested);
+    let approve = format!(
+        "/approvals/{}/approve",
+        asked.approval_request_id.expect("an approval request")
+    );
+    app.acting_as(&manager);
+    app.htmx().post(&approve, &[]).await.assert_forbidden();
+    app.acting_as(&mlro);
+    app.htmx()
+        .post(&approve, &[("comment", "Renewal confirmed")])
+        .await
+        .assert_ok();
+    let approved = BlockOverride::find(app.db(), asked.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(approved.status, BlockOverrideStatus::Approved);
+    assert_eq!(approved.approved_by, Some(mlro.id));
+    let window = approved.valid_until.unwrap() - approved.approved_at.unwrap();
+    assert_eq!(window.num_hours(), 72);
+}
