@@ -5,7 +5,10 @@
 //!   the lines through the kernel's `CostPoster` (the net of each line in AED
 //!   fils, one request per note under the key `invoicing.supplier_debit_note:<id>`
 //!   so a repeat changes nothing), tell the supplier, and emit
-//!   `SupplierDebitNoteIssued`.
+//!   `SupplierDebitNoteIssued`;
+//! - a `SupplierBillApproved` bill links the drafts that wait for it
+//!   ([`crate::debit_note_contract::link_waiting`]);
+//! - `SupplierReturnDispatched` drafts the note of a return (`FIN.RUL.17`).
 
 use std::collections::BTreeMap;
 
@@ -13,11 +16,12 @@ use renox::prelude::*;
 use renox::serde_json::json;
 use renox::state_machine::Transitioned;
 use wl_kernel::invoicing::{
-    ReverseCost, SupplierBillId, SupplierDebitNoteIssued, cost_poster,
+    ReverseCost, SupplierBillId, SupplierDebitNoteIssued, SupplierReturnDispatched, cost_poster,
 };
 use wl_kernel::notify::{self, Category, NotificationTypeDef, NotifyChannel, NotifyRequest};
 
 use crate::allocate::amount_text;
+use crate::bill_machine::{APPROVE, APPROVE_SYSTEM};
 use crate::debit_note_machine::{ISSUE, ISSUE_SYSTEM};
 use crate::debit_notes::lines_of;
 use crate::supplier_bill::SupplierBill;
@@ -27,7 +31,7 @@ use crate::texts::english;
 /// The notification type that tells the supplier of an issued note.
 pub const ISSUED: &str = "invoicing.supplier_debit_note_issued";
 
-/// Registers [`ISSUED`].
+/// Registers [`ISSUED`] and the accountant's draft notice.
 pub(crate) fn register_types() {
     notify::register_type(
         NotificationTypeDef::new(ISSUED, "invoicing")
@@ -40,6 +44,7 @@ pub(crate) fn register_types() {
                 english("wl_invoicing.debit_note_issued.body"),
             ),
     );
+    crate::debit_note_contract::register_types();
 }
 
 /// The idempotency key of the cost reversal of `note`.
@@ -111,6 +116,20 @@ pub(crate) fn register(app: &mut Registry) {
             }
         },
     );
+    app.listen(
+        |event: Transitioned<SupplierBill>, state: AppState| async move {
+            if matches!(event.transition.as_str(), APPROVE | APPROVE_SYSTEM) {
+                let bill = SupplierBill::find_or_404(&state.db, event.key).await?;
+                crate::debit_note_contract::link_waiting(&state.db, &bill).await?;
+            }
+            Ok(())
+        },
+    );
+    app.listen(|event: SupplierReturnDispatched, state: AppState| async move {
+        crate::debit_note_contract::draft_for_return(&state, event)
+            .await
+            .map(|_| ())
+    });
 }
 
 #[cfg(test)]

@@ -44,6 +44,7 @@ mod credit_note_machine;
 pub mod credit_note_movement;
 mod credit_note_pages;
 pub mod credit_notes;
+pub mod debit_note_contract;
 mod debit_note_events;
 pub mod debit_note_line;
 mod debit_note_machine;
@@ -846,9 +847,14 @@ impl Module for WlInvoicing {
         bill_machine::register();
         // The supplier debit note machine, as `invoicing.supplier_debit_note`.
         debit_note_machine::register();
-        // The cost reversal and the supplier notice of `issue`.
+        // `FIN.RUL.17`, the cost reversal and the supplier notice of `issue`,
+        // and the debit notes other modules draft and read through the kernel.
         debit_note_events::register_types();
         debit_note_events::register(app);
+        wl_kernel::invoicing::provide_supplier_debit_notes(
+            app,
+            debit_note_contract::DebitNotes,
+        );
         // The kernel runs `write_off_approved` by name; `FIN.ACL.15`.
         policy::register(&self.config);
         // The settings the services read (`config_of`).
