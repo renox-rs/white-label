@@ -596,10 +596,17 @@ pub async fn cancel(
             SubscriptionStatus::Cancelled.as_str().to_owned(),
         ));
     }
+    // The reason given with a cancel whose notice ended is the one stored
+    // when it was asked.
+    let stored = match by {
+        Canceller::NoticeEnded => subscription.cancel_reason.clone(),
+        _ => None,
+    };
     let reason = reason
         .map(str::trim)
         .filter(|r| !r.is_empty())
         .map(str::to_owned)
+        .or(stored)
         .unwrap_or_else(|| {
             english(&format!(
                 "wl_invoicing.subscription.cancel_reason.{}",
