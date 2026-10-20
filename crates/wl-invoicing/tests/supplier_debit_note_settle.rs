@@ -102,8 +102,8 @@ async fn issued_note(t: &Booted, bill: &SupplierBill, line: &BillLine) -> Suppli
 
 /// A debit note of AED 315.00 issued on a bill that was paid in full: the
 /// supplier owes AED 315.00.
-async fn on_paid_bill(t: &Booted) -> (SupplierBill, SupplierDebitNote) {
-    let (bill, line) = bill_of(t, BLUE_DUNES, "INV-9", 10, None).await;
+async fn on_paid_bill(t: &Booted, number: &str) -> (SupplierBill, SupplierDebitNote) {
+    let (bill, line) = bill_of(t, BLUE_DUNES, number, 10, None).await;
     pay(t.state(), &bill, &payment(9), 105_000, None)
         .await
         .unwrap();
@@ -137,7 +137,7 @@ async fn bill_now(t: &Booted, bill: &SupplierBill) -> SupplierBill {
 #[renox::test]
 async fn inv14_the_supplier_payment_and_the_tax_credit_note_settle_the_note() {
     let t = boot().await;
-    let (_, note) = on_paid_bill(&t).await;
+    let (_, note) = on_paid_bill(&t, "INV-9").await;
     assert_eq!(open_tasks(t.db(), &note).await.unwrap().len(), 1);
 
     // The payment back is a refund through the kernel contract.
@@ -199,7 +199,7 @@ async fn inv14_the_supplier_payment_and_the_tax_credit_note_settle_the_note() {
 #[renox::test]
 async fn inv14_a_short_payment_settles_with_the_difference_and_its_reason() {
     let t = boot().await;
-    let (_, note) = on_paid_bill(&t).await;
+    let (_, note) = on_paid_bill(&t, "INV-9").await;
     refund(t.state(), note.id, &payment(21), 30_000, "payments.allocation:5")
         .await
         .unwrap();
@@ -247,7 +247,7 @@ async fn inv14_a_short_payment_settles_with_the_difference_and_its_reason() {
 #[renox::test]
 async fn inv14_the_refund_settles_when_the_tax_credit_note_is_already_there() {
     let t = boot().await;
-    let (_, note) = on_paid_bill(&t).await;
+    let (_, note) = on_paid_bill(&t, "INV-9").await;
     let recorded =
         record_tax_credit_note(t.state(), By::System(Some(B)), note.id, "TCN-1", day(0), None)
             .await
@@ -271,7 +271,7 @@ async fn inv14_the_refund_settles_when_the_tax_credit_note_is_already_there() {
 #[renox::test]
 async fn inv14_a_set_off_pays_the_next_bill_and_the_tax_credit_note_settles() {
     let t = boot().await;
-    let (_, note) = on_paid_bill(&t).await;
+    let (_, note) = on_paid_bill(&t, "INV-9").await;
     let line = BillLineDraft::new("Freight", 200_000, VatCategory::ZeroRated);
     let draft = BillDraft::new(BLUE_DUNES, "INV-10", day(0)).line(line);
     let second = supplier_bill::create(t.db(), &draft, Some(A)).await.unwrap();
@@ -309,7 +309,7 @@ async fn inv14_a_set_off_pays_the_next_bill_and_the_tax_credit_note_settles() {
 #[renox::test]
 async fn inv14_a_set_off_is_for_the_same_supplier_and_entity_within_both_balances() {
     let t = boot().await;
-    let (_, note) = on_paid_bill(&t).await;
+    let (_, note) = on_paid_bill(&t, "INV-9").await;
     let other_supplier = bill_of(&t, QUIET_SANDS, "Q-1", 10, None).await.0;
     let facilities = t.entity("PGFZ").await;
     let other_entity = bill_of(&t, BLUE_DUNES, "INV-11", 10, Some(facilities.id)).await.0;
@@ -493,7 +493,7 @@ async fn inv14_cancel_reopens_a_bill_the_note_had_set_to_paid() {
 #[renox::test]
 async fn inv14_cancel_closes_the_debit_balance_and_gives_back_a_set_off() {
     let (t, ledger) = boot_with_costs().await;
-    let (_, note) = on_paid_bill(&t).await;
+    let (_, note) = on_paid_bill(&t, "INV-9").await;
     let big = bill_of(&t, BLUE_DUNES, "INV-13", 10, None).await.0;
     set_off(t.state(), By::System(Some(B)), note.id, big.id, 10_000).await.unwrap();
     assert_eq!(bill_now(&t, &big).await.balance, 95_000);
@@ -557,7 +557,7 @@ async fn inv14_a_draft_is_cancelled_without_effects_and_a_refunded_note_is_not()
     assert!(t.notices.of_type("invoicing.supplier_debit_note_cancelled").is_empty());
     assert_eq!(SupplierDebitNote::find(t.db(), draft.id).await.unwrap().map(|n| n.id), Some(draft.id));
 
-    let (_, owed) = on_paid_bill(&t).await;
+    let (_, owed) = on_paid_bill(&t, "INV-20").await;
     refund(t.state(), owed.id, &payment(40), 1_000, "k").await.unwrap();
     let message = refused(cancel(t.state(), By::System(Some(B)), owed.id, "Too late").await);
     assert!(message.unwrap().contains("paid part"));
