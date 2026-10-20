@@ -543,6 +543,8 @@ pub struct Task {
     pub open: bool,
     /// How it was completed.
     pub note: String,
+    /// When it is due, if it has a due time of its own.
+    pub due_at: Option<renox::db::DateTime>,
 }
 
 /// The tasks the vertical opens.
@@ -588,6 +590,7 @@ impl TaskCreator for Tasks {
                 assignee: ticket.assignee,
                 open: true,
                 note: String::new(),
+                due_at: ticket.due_at,
             });
             Ok(Some(TicketRef {
                 id: TicketId(id),
@@ -1911,6 +1914,7 @@ struct Fakes {
     terminated: Recorded<LeaseTerminated>,
     amended: Recorded<LeaseAmended>,
     forced: Recorded<LeaseForceTerminated>,
+    adjusted: Recorded<DepositAdjusted>,
     parties: Parties,
     docs: Docs,
     notices: Recording,
@@ -1956,6 +1960,42 @@ async fn hold_route(
     Ok(deposit.id.to_string())
 }
 
+/// What the test route that approves or pays a refund takes.
+#[derive(serde::Deserialize, Default)]
+struct RefundForm {
+    #[serde(default)]
+    method: Option<String>,
+    #[serde(default)]
+    reference: Option<String>,
+}
+
+/// `POST /test/refunds/{id}/{action}`: `approve` or `pay` a refund of the real
+/// wl-payments (the functions need the user of a request).
+async fn refund_route(
+    State(state): State<AppState>,
+    user: AuthUser,
+    renox::axum::extract::Path((id, action)): renox::axum::extract::Path<(i64, String)>,
+    renox::axum::extract::Form(form): renox::axum::extract::Form<RefundForm>,
+) -> Result<String> {
+    let refund = wl_payments::Refund::find_or_404(&state.db, id).await?;
+    let done = match action.as_str() {
+        "approve" => wl_payments::refund::approve(&state, &user, &refund).await,
+        "pay" => {
+            let code = form.method.unwrap_or_default();
+            let method = wl_kernel::payments::PaymentMethod::ALL
+                .iter()
+                .copied()
+                .find(|m| m.as_str() == code)
+                .ok_or(Error::NotFound)?;
+            let reference = form.reference.unwrap_or_default();
+            wl_payments::refund::pay(&state, &user, &refund, method, &reference).await
+        }
+        _ => return Err(Error::NotFound),
+    };
+    done.map(|refund| refund.id.to_string())
+        .map_err(renox::state_machine::TransitionError::into_error)
+}
+
 impl Module for Fakes {
     fn name(&self) -> &'static str {
         "fakes"
@@ -1963,7 +2003,9 @@ impl Module for Fakes {
 
     fn routes(&self) -> Routes {
         if self.real.payments {
-            Routes::new().post("/test/deposits", hold_route)
+            Routes::new()
+                .post("/test/deposits", hold_route)
+                .post("/test/refunds/{id}/{action}", refund_route)
         } else {
             Routes::new()
         }
@@ -1991,6 +2033,7 @@ impl Module for Fakes {
         record(app, &self.terminated);
         record(app, &self.amended);
         record(app, &self.forced);
+        record(app, &self.adjusted);
     }
 }
 
@@ -2028,6 +2071,8 @@ pub struct Booted {
     pub amended: Recorded<LeaseAmended>,
     /// The `LeaseForceTerminated` events.
     pub forced: Recorded<LeaseForceTerminated>,
+    /// The `DepositAdjusted` events of the deposit book in use.
+    pub deposit_adjusted: Recorded<DepositAdjusted>,
     /// The parties on hold.
     pub blocks: Blocks,
     /// The managers of the staff.
@@ -2249,6 +2294,7 @@ pub async fn boot_with(real: Real) -> Booted {
         terminated: Recorded::default(),
         amended: Recorded::default(),
         forced: Recorded::default(),
+        adjusted: Recorded::default(),
         parties: Parties::default(),
         docs: Docs::default(),
         notices: Recording::default(),
@@ -2267,6 +2313,7 @@ pub async fn boot_with(real: Real) -> Booted {
         fakes.terminated.clone(),
         fakes.amended.clone(),
         fakes.forced.clone(),
+        fakes.adjusted.clone(),
     );
     let handles = (
         fakes.parties.clone(),
@@ -2387,6 +2434,7 @@ pub async fn boot_with(real: Real) -> Booted {
         terminated: logs.3,
         amended: logs.4,
         forced: logs.5,
+        deposit_adjusted: logs.6,
     }
 }
 

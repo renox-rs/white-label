@@ -12,11 +12,19 @@
 //!   never changes a target's state; each owner reacts to the event. The
 //!   notice and the deficit check are for incoming payments only: a refund's
 //!   outgoing payment reversed by `fail` is told by the refund notices.
+//!
+//! - [`InvoiceReopened`] with the reason *allocation moved* (a vertical took a
+//!   payment off an invoice it credits and issues again, such as a lease
+//!   amendment) → the payment's own allocation rows to that invoice are
+//!   released, so the money is the party's credit again and can be allocated to
+//!   the new invoice ([`release_moved`]). A reopening for another reason (a
+//!   reversed payment) already removed them.
 
 use renox::prelude::*;
 use renox::state_machine::Transitioned;
 use wl_kernel::drawings::PURPOSE;
-use wl_kernel::payments::{Direction, PaymentReceived, PaymentReversed};
+use wl_kernel::invoicing::{InvoiceReopened, ReopenReason};
+use wl_kernel::payments::{Direction, PAYMENT_SUBJECT_TYPE, PaymentReceived, PaymentReversed};
 
 use crate::allocation::Allocation;
 use crate::payment::Payment;
@@ -60,8 +68,67 @@ fn reversed_event(payment: &Payment, allocations: &[Allocation]) -> Option<Payme
     })
 }
 
+/// Releases the payment's allocation to the invoice of `event`, for the amount
+/// the invoice gave back to its balance, when the reason is *allocation moved*:
+/// the oldest rows first, the rows marked removed (never deleted); a row larger
+/// than what is left to release is removed and a new active row keeps the rest.
+///
+/// # Errors
+///
+/// The database's errors.
+pub(crate) async fn release_moved(state: &AppState, event: &InvoiceReopened) -> Result {
+    if event.reason != ReopenReason::AllocationMoved
+        || event.money_source.subject_type != PAYMENT_SUBJECT_TYPE
+    {
+        return Ok(());
+    }
+    let target = event.invoice.subject();
+    let rows = Allocation::query()
+        .where_(Allocation::PAYMENT_ID.eq(event.money_source.subject_id))
+        .where_(Allocation::TARGET_TYPE.eq(target.subject_type.as_str()))
+        .where_(Allocation::TARGET_ID.eq(target.subject_id))
+        .where_(Allocation::REMOVED_AT.is_null())
+        .order_by(Allocation::ID)
+        .get(&state.db)
+        .await?;
+    let now = renox::db::now();
+    let mut left = event.amount;
+    for row in rows {
+        if left <= 0 {
+            break;
+        }
+        let take = left.min(row.amount);
+        Allocation::query()
+            .where_(Allocation::ID.eq(row.id))
+            .update(
+                &state.db,
+                &[
+                    ("removed_at", &Some(now)),
+                    ("removed_reason", &Some("allocation_moved".to_owned())),
+                    ("updated_at", &now),
+                ],
+            )
+            .await?;
+        if row.amount > take {
+            let mut rest = Allocation::new(
+                row.payment_id,
+                &row.target(),
+                row.amount - take,
+                row.allocated_by,
+            );
+            rest.allocated_at = row.allocated_at;
+            Allocation::create(&state.db, rest).await?;
+        }
+        left -= take;
+    }
+    Ok(())
+}
+
 /// Registers the listener.
 pub(crate) fn register(app: &mut Registry) {
+    app.listen(|event: InvoiceReopened, state: AppState| async move {
+        release_moved(&state, &event).await
+    });
     app.listen(|event: Transitioned<Payment>, state: AppState| async move {
         let name = event.transition.as_str();
         let recorded = [RECORD, RECORD_BY_SYSTEM].contains(&name);
