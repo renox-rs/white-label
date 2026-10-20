@@ -380,3 +380,40 @@ async fn hrm_rul_17_a_step_without_an_assignee_is_reminded_to_hr() {
     assert_eq!(sent.len(), 1);
     assert_eq!(users(&sent[0]), [hana.id]);
 }
+
+/// A waived step is not reminded or escalated (the "must not" of #218); the
+/// open step next to it still is.
+#[renox::test]
+async fn hrm_rul_17_a_waived_step_is_not_reminded() {
+    let (t, hana, _) = booted().await;
+    add_template(
+        &t,
+        TemplateInput::for_role("Counter", "counter")
+            .step(StepInput::task("Return the access card", "hr", 7))
+            .step(StepInput::task("Sign the handbook", "hr", 7)),
+    )
+    .await;
+    let (_, onboarding) = hired(&t, 60).await;
+    let waived = step_of(&t, &onboarding, "Return the access card").await;
+    let owner = t.user_with("Omar", "owner").await;
+    let done = steps::waive(t.state(), waived.id, owner.id, "keeps the card")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(done.status, StepStatus::Waived);
+
+    for day in [10, 12, 14, 16] {
+        reminders::run(t.state(), nov(day)).await.unwrap();
+    }
+    let sent = t.notices.of_type(REMINDER);
+    assert_eq!(sent.len(), 4, "only the open step is reminded");
+    assert!(
+        sent.iter()
+            .all(|r| r.subject_label.as_deref() == Some("Sign the handbook")
+                && users(r) == [hana.id]),
+        "{sent:?}"
+    );
+    let told = t.notices.of_type(ESCALATED);
+    assert_eq!(told.len(), 1);
+    assert_eq!(told[0].subject_label.as_deref(), Some("Sign the handbook"));
+}
