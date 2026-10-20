@@ -72,6 +72,11 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_attendance.overtime.note_window",
         "The overtime of the :days days up to :date is :overtime h against :cap h allowed.",
     ),
+    // The midday break (`HRM.RUL.13`).
+    (
+        "wl_attendance.midday.note",
+        "Worked :minutes minutes inside the midday break, :from to :to.",
+    ),
     // Notifications.
     (
         "wl_attendance.notices.flagged_subject",

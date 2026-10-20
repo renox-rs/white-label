@@ -7,6 +7,7 @@ pub mod config;
 pub mod flags;
 pub mod location;
 pub mod lock;
+pub mod midday;
 mod notices;
 pub mod overlap;
 pub mod overtime;
@@ -21,6 +22,7 @@ use renox::prelude::*;
 pub use config::AttendanceConfig;
 pub use flags::{AttendanceFlag, FlagType};
 pub use location::WorkLocation;
+pub use midday::MiddayWindow;
 pub use record::{
     AttendanceMethod, AttendanceRecord, AttendanceStatus, BreakSpan, FLAG as FLAG_TRANSITION,
 };
@@ -106,6 +108,7 @@ impl Module for WlAttendance {
         app.model::<WorkLocation>();
         app.model::<AttendanceRecord>();
         app.model::<AttendanceFlag>();
+        app.model::<MiddayWindow>();
         app.provide(self.config.clone());
         renox::state_machine::register::<AttendanceRecord>();
         notices::register_types();
