@@ -505,6 +505,82 @@ const TEXTS: &[(&str, &str)] = &[
     // The supplier score.
     ("wl_inventory.score.note_needed", "Write the review note."),
     ("wl_inventory.score.noted", "Review note added."),
+    // Changing the preferred supplier of an item (`STK.ACL.07`).
+    (
+        "wl_inventory.preferred.same_person",
+        "A second person decides: the requester cannot approve or reject their own request.",
+    ),
+    (
+        "wl_inventory.preferred.only_requester",
+        "Only the requester can withdraw the request.",
+    ),
+    (
+        "wl_inventory.preferred.not_pending",
+        "This request has been decided already.",
+    ),
+    (
+        "wl_inventory.preferred.pending_exists",
+        "A request to change the preferred supplier of this item is pending: decide or withdraw it first.",
+    ),
+    (
+        "wl_inventory.preferred.add_directly",
+        "The item never had a preferred supplier: add it as the preferred supplier, no request is needed.",
+    ),
+    (
+        "wl_inventory.preferred.already",
+        "This supplier is the preferred supplier of the item already.",
+    ),
+    (
+        "wl_inventory.preferred.stale",
+        "The suppliers of the item changed since the request was made; ask again.",
+    ),
+    (
+        "wl_inventory.preferred.new_on_hold",
+        "The new supplier is on hold now: the request is returned and nothing changed.",
+    ),
+    (
+        "wl_inventory.preferred.cancel_row_off",
+        "The supplier was taken out of use for the item.",
+    ),
+    (
+        "wl_inventory.preferred.cancel_archived",
+        "The item was archived.",
+    ),
+    (
+        "wl_inventory.preferred.reason_needed",
+        "Give the reason for rejecting the request.",
+    ),
+    (
+        "wl_inventory.preferred.requested",
+        "Request sent: a second person approves the change.",
+    ),
+    (
+        "wl_inventory.preferred.applied",
+        "The preferred supplier is changed.",
+    ),
+    ("wl_inventory.preferred.approved", "Request approved."),
+    ("wl_inventory.preferred.rejected", "Request rejected."),
+    ("wl_inventory.preferred.withdrawn", "Request withdrawn."),
+    (
+        "wl_inventory.preferred.subject",
+        "Preferred supplier of {{ item }}: {{ outcome }}",
+    ),
+    (
+        "wl_inventory.preferred.body",
+        "Your request to change the preferred supplier of {{ item }} was {{ outcome }}. {{ note }}",
+    ),
+    (
+        "wl_inventory.preferred.task_title",
+        "Decide the preferred supplier change for {{ item }}",
+    ),
+    (
+        "wl_inventory.preferred.task_body",
+        "Open request {{ request }} to see both suppliers' scores, lead times and last prices, then approve or reject it.",
+    ),
+    (
+        "wl_inventory.preferred.task_done",
+        "The request was decided.",
+    ),
     // The review of a supplier under the threshold.
     (
         "wl_inventory.review.title",

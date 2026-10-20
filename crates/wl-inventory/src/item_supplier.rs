@@ -130,13 +130,22 @@ pub enum RequestStatus {
     Approved,
     /// Rejected.
     Rejected,
+    /// Taken back by the requester.
+    Withdrawn,
+    /// Cancelled by the system: a row was deactivated or another request
+    /// for the item was approved.
+    Cancelled,
 }
 
 /// A request to change who is the preferred supplier of an item
 /// (`STK.ACL.07`): decided by a holder of `item_suppliers.approve` who is not
 /// the requester (BL-STK-31).
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
-#[model(table = "wl_inventory_preferred_supplier_requests", index(item_id))]
+#[model(
+    table = "wl_inventory_preferred_supplier_requests",
+    state_machine,
+    index(item_id)
+)]
 pub struct PreferredSupplierRequest {
     /// The primary key.
     pub id: i64,
@@ -152,6 +161,14 @@ pub struct PreferredSupplierRequest {
     pub status: RequestStatus,
     /// Who asked.
     pub requested_by: Option<i64>,
+    /// Who approved, rejected or withdrew it.
+    pub decided_by: Option<i64>,
+    /// When it was decided.
+    pub decided_at: Option<DateTime>,
+    /// Why it was rejected, withdrawn or cancelled.
+    pub decision_reason: Option<String>,
+    /// Why an approval was refused and the request returned.
+    pub returned_note: Option<String>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
@@ -232,7 +249,11 @@ pub async fn rows_of(db: &Db, item_id: i64) -> Result<Vec<ItemSupplier>> {
 
 /// Ranks the alternatives of `item_id` 1..n in `tx`. `moved` is a row that
 /// goes to rank `wanted` (the others make room); without it the order stays.
-async fn renumber(tx: &mut Transaction, item_id: i64, moved: Option<(i64, i64)>) -> Result<()> {
+pub(crate) async fn renumber(
+    tx: &mut Transaction,
+    item_id: i64,
+    moved: Option<(i64, i64)>,
+) -> Result<()> {
     let mut alternatives: Vec<ItemSupplier> = rows_in(tx, item_id)
         .await?
         .into_iter()
@@ -445,6 +466,7 @@ pub async fn deactivate(
             json!({ "item": row.item_id, "supplier": row.supplier_party_id, "kind": "deactivate" }),
         )
         .await?;
+        let request = crate::preferred_change::after_request(state, request.id).await?;
         return Ok(DeactivateOutcome::Requested(request));
     }
     let now = renox::db::now();
@@ -461,6 +483,8 @@ pub async fn deactivate(
         json!({ "item": row.item_id, "supplier": row.supplier_party_id }),
     )
     .await?;
+    // A pending request to make this supplier preferred cannot go on.
+    crate::preferred_change::cancel_targeting(state, row.item_id, row.supplier_party_id).await?;
     Ok(DeactivateOutcome::Deactivated(
         ItemSupplier::find_or_404(&state.db, row.id).await?,
     ))

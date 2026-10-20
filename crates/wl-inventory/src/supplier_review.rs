@@ -511,6 +511,15 @@ pub async fn close(
     if decision == Decision::RequestBlock {
         open_block_task(state, &review).await?;
     }
+    // The requests *change preferred* opened get their task for the second
+    // person (or apply at once when that person is switched off).
+    for change in &run.replacements {
+        if let Some(request) =
+            crate::preferred_change::pending_of(&state.db, change.item_id).await?
+        {
+            crate::preferred_change::after_request(state, request.id).await?;
+        }
+    }
     audit(
         state,
         Some(user.id),

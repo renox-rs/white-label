@@ -84,6 +84,10 @@ pub const STOREKEEPER: &str = "storekeeper";
 /// over-receipt at the locations in their scope (wl-inventory §6,
 /// `STK.ACL.04`).
 pub const PROCUREMENT: &str = "procurement";
+/// The procurement manager: told of a supplier review and of a request to
+/// change the preferred supplier of an item, and approves it when they are
+/// not the requester (wl-inventory §6, `STK.ACL.07`).
+pub const PROCUREMENT_MANAGER: &str = "procurement_manager";
 /// Everyone who signs up.
 pub const MEMBER: &str = "member";
 
@@ -203,6 +207,8 @@ pub const ROLES: &[(&str, &[&str])] = &[
             inventory::GOODS_RECEIPTS_REVERSE,
             inventory::SUPPLIER_RETURNS_MANAGE,
             inventory::LANDED_COSTS_POST,
+            inventory::ITEM_SUPPLIERS_MANAGE,
+            inventory::ITEM_SUPPLIERS_APPROVE,
             prp::UNITS_VIEW,
             prp::UNITS_MANAGE,
             prp::UNITS_RESERVE,
@@ -393,6 +399,18 @@ pub const ROLES: &[(&str, &[&str])] = &[
             inventory::PURCHASE_ORDERS_ISSUE,
             inventory::SUPPLIER_RETURNS_MANAGE,
             inventory::LANDED_COSTS_POST,
+            inventory::ITEM_SUPPLIERS_MANAGE,
+        ],
+    ),
+    (
+        PROCUREMENT_MANAGER,
+        &[
+            inventory::ITEMS_VIEW,
+            inventory::STOCK_VIEW,
+            inventory::PURCHASE_ORDERS_VIEW,
+            inventory::PURCHASE_ORDERS_ISSUE,
+            inventory::ITEM_SUPPLIERS_MANAGE,
+            inventory::ITEM_SUPPLIERS_APPROVE,
         ],
     ),
     (

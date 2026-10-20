@@ -16,6 +16,7 @@ pub mod match_source;
 pub mod movement;
 pub mod pages;
 pub mod po_issue;
+pub mod preferred_change;
 pub mod po_revise;
 pub mod purchase_order;
 pub mod receipt_post;
@@ -86,6 +87,9 @@ pub mod permissions {
     pub const ITEM_SUPPLIERS_MANAGE: &str = "item_suppliers.manage";
     /// See the cost side of stock: last prices and values (`stock.cost.view`).
     pub const STOCK_COST_VIEW: &str = "stock.cost.view";
+    /// Approve or reject a change of an item's preferred supplier; never the
+    /// requester (`STK.ACL.07`).
+    pub const ITEM_SUPPLIERS_APPROVE: &str = "item_suppliers.approve";
     /// See the supplier score and its percentages (`STK.SUP.01`).
     pub const SUPPLIER_SCORES_VIEW: &str = "supplier_scores.view";
     /// Allocate, adjust and cancel landed costs, and approve an adjustment
@@ -164,6 +168,15 @@ impl WlInventory {
         self
     }
 
+    /// Whether changing the preferred supplier of an item needs a second
+    /// person who holds `item_suppliers.approve` (default on; `STK.ACL.07`).
+    /// Off, a change applies at once, audited with the user, and
+    /// `PreferredSupplierChanged` names the requester as the approver.
+    pub fn preferred_change_needs_approval(mut self, needed: bool) -> Self {
+        self.config.preferred_change_needs_approval = needed;
+        self
+    }
+
     /// Adds a rejection reason, or changes whether an existing one needs a
     /// reading or a photo (06: `temperature`).
     pub fn rejection_reason(mut self, code: &str, evidence_required: bool) -> Self {
@@ -198,7 +211,9 @@ impl Module for WlInventory {
     }
 
     fn routes(&self) -> Routes {
-        pages::routes().merge(supplier_pages::routes())
+        pages::routes()
+            .merge(supplier_pages::routes())
+            .merge(preferred_change::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -239,6 +254,7 @@ impl Module for WlInventory {
         renox::state_machine::register::<LandedCostAdjustment>();
         renox::state_machine::register::<ReorderSuggestion>();
         renox::state_machine::register::<SupplierReview>();
+        renox::state_machine::register::<PreferredSupplierRequest>();
         // An over-receipt above the tolerance sends `post` to approval by a
         // holder of `purchase_orders.issue` in the location's scope
         // (`STK.ACL.04`, `PLT.APR.01`); the kernel runs `post_approved`.
@@ -335,6 +351,9 @@ impl Module for WlInventory {
         supplier_score::schedule(app);
         // `STK.RUL.09`: the review task after a snapshot under the threshold.
         supplier_review::register_types();
+        // `STK.ACL.07`: the notice to the requester of a preferred supplier
+        // change that was decided.
+        preferred_change::register_types();
         app.listen(
             |event: wl_kernel::invoicing::SupplierDebitNoteIssued, state: AppState| async move {
                 supplier_score::on_debit_note_issued(&state, &event).await

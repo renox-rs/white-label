@@ -338,6 +338,27 @@ pub struct SupplierScoreBelowThreshold {
 
 impl Event for SupplierScoreBelowThreshold {}
 
+/// Another supplier was made the preferred one of an item, or the preferred
+/// row was taken out of use (wl-inventory §6 `PreferredSupplierChanged`,
+/// `STK.ACL.07`): emitted once the change is applied, after the second
+/// person approved it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PreferredSupplierChanged {
+    /// The item, `inventory.item:9`.
+    pub item: Subject,
+    /// The preferred supplier before; none when the item had none.
+    pub old_supplier: Option<PartyId>,
+    /// The preferred supplier now; none when the preferred row was removed.
+    pub new_supplier: Option<PartyId>,
+    /// The user who asked for the change.
+    pub requester: Option<i64>,
+    /// The user who approved it (the requester when the second person is
+    /// switched off).
+    pub approver: Option<i64>,
+}
+
+impl Event for PreferredSupplierChanged {}
+
 /// One quality incident of a supplier, as the scorecard counts it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SupplierIncident {

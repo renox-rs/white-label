@@ -117,6 +117,10 @@ pub struct InventoryConfig {
     pub order_limits_fils: Vec<i64>,
     /// The supplier score settings.
     pub score: ScoreSettings,
+    /// Whether changing the preferred supplier of an item needs a second
+    /// person (`STK.ACL.07`, §7 *Second person for a preferred supplier
+    /// change*, default on).
+    pub preferred_change_needs_approval: bool,
 }
 
 impl InventoryConfig {
@@ -136,6 +140,7 @@ impl Default for InventoryConfig {
             landed_cost_approval_fils: DEFAULT_LANDED_COST_APPROVAL_FILS,
             order_limits_fils: DEFAULT_ORDER_LIMITS_FILS.to_vec(),
             score: ScoreSettings::default(),
+            preferred_change_needs_approval: true,
             rejection_reasons: DEFAULT_REASONS
                 .iter()
                 .map(|code| RejectionReason {
@@ -170,5 +175,6 @@ mod tests {
         assert_eq!(config.score.weights, [40, 30, 15, 15]);
         assert_eq!(config.score.threshold, 70);
         assert_eq!(config.score.min_receipts, 3);
+        assert!(config.preferred_change_needs_approval);
     }
 }
