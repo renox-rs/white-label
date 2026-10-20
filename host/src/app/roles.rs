@@ -11,6 +11,7 @@ use renox::prelude::*;
 use wl_attendance::permissions as attendance;
 use wl_documents::permissions as documents;
 use wl_hr::permissions as hr;
+use wl_inventory::permissions as inventory;
 use wl_invoicing::permissions as invoices;
 use wl_notify::permissions as notify;
 use wl_parties::permissions as parties;
@@ -76,6 +77,13 @@ pub const HR: &str = "hr";
 /// A site supervisor: marks attendance of the crews and people of their
 /// location and corrects it within the window (wl-attendance §6, `HRM.ACL.01`).
 pub const SUPERVISOR: &str = "supervisor";
+/// The storekeeper: receives deliveries at the stores of their site and
+/// records what was accepted and rejected (wl-inventory §6, `STK.ACL.04`).
+pub const STOREKEEPER: &str = "storekeeper";
+/// The procurement officer: sees purchase orders and approves an
+/// over-receipt at the locations in their scope (wl-inventory §6,
+/// `STK.ACL.04`).
+pub const PROCUREMENT: &str = "procurement";
 /// Everyone who signs up.
 pub const MEMBER: &str = "member";
 
@@ -185,6 +193,15 @@ pub const ROLES: &[(&str, &[&str])] = &[
             attendance::TIMESHEETS_APPROVE,
             attendance::TIMESHEETS_APPROVE_ON_BEHALF,
             attendance::TIMESHEETS_REOPEN,
+            inventory::ITEMS_VIEW,
+            inventory::ITEMS_MANAGE,
+            inventory::LOCATIONS_MANAGE,
+            inventory::STOCK_VIEW,
+            inventory::PURCHASE_ORDERS_VIEW,
+            inventory::PURCHASE_ORDERS_ISSUE,
+            inventory::GOODS_RECEIPTS_POST,
+            inventory::GOODS_RECEIPTS_REVERSE,
+            inventory::SUPPLIER_RETURNS_MANAGE,
             prp::UNITS_VIEW,
             prp::UNITS_MANAGE,
             prp::UNITS_RESERVE,
@@ -356,6 +373,25 @@ pub const ROLES: &[(&str, &[&str])] = &[
     (
         SUPERVISOR,
         &[attendance::VIEW, attendance::MARK, attendance::CORRECT],
+    ),
+    (
+        STOREKEEPER,
+        &[
+            inventory::ITEMS_VIEW,
+            inventory::STOCK_VIEW,
+            inventory::PURCHASE_ORDERS_VIEW,
+            inventory::GOODS_RECEIPTS_POST,
+        ],
+    ),
+    (
+        PROCUREMENT,
+        &[
+            inventory::ITEMS_VIEW,
+            inventory::STOCK_VIEW,
+            inventory::PURCHASE_ORDERS_VIEW,
+            inventory::PURCHASE_ORDERS_ISSUE,
+            inventory::SUPPLIER_RETURNS_MANAGE,
+        ],
     ),
     (
         COORDINATOR,

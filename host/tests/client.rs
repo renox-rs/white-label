@@ -81,13 +81,13 @@ fn a_client_of_an_unbuilt_app_or_module_is_refused() {
     let err = host::app_for(manpower).err().unwrap();
     assert!(err.0.contains("app `manpower` is not built yet"), "{err}");
 
-    let with_inventory = ClientConfig::parse(&demo.replace(
+    let with_delivery = ClientConfig::parse(&demo.replace(
         r#"enabled = ["parties", "documents", "notify", "invoicing", "ticketing", "payments", "sales", "hr", "portal"]"#,
-        r#"enabled = ["parties", "documents", "notify", "invoicing", "ticketing", "payments", "sales", "hr", "portal", "inventory"]"#,
+        r#"enabled = ["parties", "documents", "notify", "invoicing", "ticketing", "payments", "sales", "hr", "portal", "delivery"]"#,
     ))
     .unwrap();
-    let err = host::app_for(with_inventory).err().unwrap();
-    assert!(err.0.contains("`inventory` is not built yet"), "{err}");
+    let err = host::app_for(with_delivery).err().unwrap();
+    assert!(err.0.contains("`delivery` is not built yet"), "{err}");
 }
 
 #[test]

@@ -916,6 +916,7 @@ dependencies = [
  "wl-attendance",
  "wl-documents",
  "wl-hr",
+ "wl-inventory",
  "wl-invoicing",
  "wl-kernel",
  "wl-notify",
