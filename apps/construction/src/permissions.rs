@@ -63,6 +63,12 @@ pub const ACCOUNTANT_ROLE: &str = "accountant";
 /// The role the tasks of procurement go to.
 pub const PROCUREMENT_ROLE: &str = "procurement";
 
+/// The role of the site supervisor, who is told of an absence.
+pub const SUPERVISOR_ROLE: &str = "supervisor";
+
+/// The role of HR, who gets the absence cases.
+pub const HR_ROLE: &str = "hr";
+
 /// Every permission of the module.
 pub const ALL: &[&str] = &[
     PROJECTS_VIEW,

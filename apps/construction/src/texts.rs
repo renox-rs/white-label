@@ -633,6 +633,31 @@ const TEXTS: &[(&str, &str)] = &[
         "construction.variation.notice_body",
         "The contract requires notice of the delay event of {{ event_date }} by {{ deadline }} and the variation is still a draft. Submit it before then, or the right to claim may be lost.",
     ),
+    // A worker stops coming (`CON.RUL.08`).
+    (
+        "construction.absence.ticket_title",
+        "Absence: employee {{ employee }} has not come for {{ days }} working days on {{ project }}",
+    ),
+    (
+        "construction.absence.ticket_body",
+        "Employee {{ employee }}, assigned to {{ project }}, has no attendance and no approved leave since {{ last }}, the last day present. Try to reach the worker. HR may request `report_absconding` after {{ reminder }} working days; the MD approves it.",
+    ),
+    (
+        "construction.absence.supervisor_title",
+        "Employee {{ employee }} of {{ project }} has not come for {{ days }} working days",
+    ),
+    (
+        "construction.absence.supervisor_body",
+        "HR opened an absence case ({{ ticket }}). Tell HR if you know where the worker is.",
+    ),
+    (
+        "construction.absence.reminder_title",
+        "Employee {{ employee }} has been absent for {{ days }} working days: report_absconding may be requested",
+    ),
+    (
+        "construction.absence.reminder_body",
+        "The absence case {{ ticket }} of {{ project }} is open and the worker has not come back. HR may request the absconding report; the MD approves it. Nothing is reported automatically.",
+    ),
     ("construction.variation.created", "Variation recorded."),
     ("construction.variation.priced", "Variation updated."),
     (

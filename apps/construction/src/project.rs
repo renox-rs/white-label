@@ -125,6 +125,9 @@ pub struct Project {
     /// The days after a delay event within which the contract requires
     /// notice (`CON.RUL.10`); none by default.
     pub notice_days: Option<i64>,
+    /// Whether the site works on Saturdays: its calendar for `CON.RUL.08`
+    /// (Sunday and the public holidays never count).
+    pub works_saturdays: bool,
     /// The advance paid to the project, in fils.
     pub advance_paid: i64,
     /// What the invoiced IPAs recovered of the advance, in fils.
@@ -183,6 +186,12 @@ impl Project {
     /// With a budget of `fils`.
     pub fn with_budget(mut self, fils: i64) -> Self {
         self.budget = fils;
+        self
+    }
+
+    /// With a site that works on Saturdays.
+    pub fn working_saturdays(mut self) -> Self {
+        self.works_saturdays = true;
         self
     }
 

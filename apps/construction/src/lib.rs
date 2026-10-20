@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
+pub mod absence;
 pub mod award;
 pub mod boq;
 pub mod call;
@@ -37,6 +38,7 @@ use renox::db::Migration;
 use renox::prelude::*;
 use renox::state_machine::Transitioned;
 
+pub use absence::AbsenceCase;
 pub use boq::{BoqLine, IpaProgress};
 pub use call::GuaranteeCall;
 pub use deduction::{DeductionKind, DeductionStatus, IpaDeduction};
@@ -63,6 +65,9 @@ pub const VARIATION_CHASE_TASK: &str = "construction:variation-chase-daily";
 /// The name of the daily scheduled task of the notice deadlines
 /// (`CON.RUL.10`).
 pub const NOTICE_DEADLINE_TASK: &str = "construction:notice-deadline-daily";
+
+/// The name of the daily scheduled task of the absence cases (`CON.RUL.08`).
+pub const ABSENCE_TASK: &str = "construction:absence-daily";
 
 /// The Construction module. Add it to the app with
 /// `.module(construction::Construction)`.
@@ -93,7 +98,8 @@ impl Module for Construction {
             .model::<GuaranteeCall>()
             .model::<Variation>()
             .model::<BoqLine>()
-            .model::<IpaProgress>();
+            .model::<IpaProgress>()
+            .model::<AbsenceCase>();
         project::register();
         variation::register();
         variation::listen(app);
@@ -131,6 +137,13 @@ impl Module for Construction {
                 NOTICE_DEADLINE_TASK,
                 |state: AppState| async move { notice_deadline::daily(&state).await },
             )
+            .timezone("Asia/Dubai");
+        // `CON.RUL.08`: a worker who stops coming gets an absence case for
+        // HR after 3 working days, a reminder at 7.
+        app.schedule()
+            .daily_at("02:00", ABSENCE_TASK, |state: AppState| async move {
+                absence::daily(&state).await
+            })
             .timezone("Asia/Dubai");
         submission::register_types();
         cutoff::schedule(app);
