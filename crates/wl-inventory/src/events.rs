@@ -1,16 +1,30 @@
-//! The kernel events wl-inventory emits (§6), from a listener on
-//! [`Transitioned<GoodsReceipt>`], so only after a commit and never on a
-//! rollback: `post` and `post_approved` give [`GoodsReceived`] with the
-//! accepted and the rejected quantity of every line.
+//! The kernel events wl-inventory emits (§6), from listeners on
+//! [`Transitioned<GoodsReceipt>`] and [`Transitioned<SupplierReturn>`], so
+//! only after a commit and never on a rollback: `post` and `post_approved`
+//! give [`GoodsReceived`] with the accepted and the rejected quantity of every
+//! line, and the return of the goods refused at the door that `post`
+//! dispatched gives [`SupplierReturnDispatched`] after it; a user's `dispatch`
+//! and `dispatch_approved` give [`SupplierReturnDispatched`] with the lines
+//! (item, lot, quantity, order line, order price, wanted outcome, reason).
+
+use std::collections::BTreeMap;
 
 use renox::prelude::*;
 use renox::state_machine::Transitioned;
-use wl_kernel::inventory::{GoodsReceived, GoodsReceivedLine, ITEM_SUBJECT_TYPE, LOCATION_SUBJECT_TYPE};
 use wl_kernel::Subject;
+use wl_kernel::inventory::{
+    GoodsReceived, GoodsReceivedLine, ITEM_SUBJECT_TYPE, LOCATION_SUBJECT_TYPE, LOT_SUBJECT_TYPE,
+    ReturnOutcome, SupplierReturnDispatched, SupplierReturnDispatchedLine,
+};
 
 use crate::goods_receipt::{GoodsReceipt, GoodsReceiptLine, lines_of};
 use crate::item::value_of;
+use crate::purchase_order::PurchaseOrderLine;
 use crate::receipt_post::{POST, POST_APPROVED};
+use crate::return_dispatch::{DISPATCH, DISPATCH_APPROVED};
+use crate::supplier_return::{
+    ReturnStatus, SupplierReturn, SupplierReturnLine, WantedOutcome, of_source,
+};
 
 /// The event of the posted `receipt` with its `lines`.
 pub fn received_event(receipt: &GoodsReceipt, lines: &[GoodsReceiptLine]) -> GoodsReceived {
@@ -39,7 +53,54 @@ pub fn received_event(receipt: &GoodsReceipt, lines: &[GoodsReceiptLine]) -> Goo
     }
 }
 
-/// Registers the listener.
+/// The event of the dispatched `ret` with its `lines`. `prices` gives the
+/// order's price of an order line; a line without one is at its unit cost.
+pub fn dispatched_event(
+    ret: &SupplierReturn,
+    lines: &[SupplierReturnLine],
+    prices: &BTreeMap<i64, i64>,
+) -> SupplierReturnDispatched {
+    SupplierReturnDispatched {
+        supplier_return: ret.subject(),
+        supplier: wl_kernel::PartyId(ret.supplier_party_id),
+        source: ret.source(),
+        lines: lines
+            .iter()
+            .map(|line| SupplierReturnDispatchedLine {
+                item: Subject::new(ITEM_SUBJECT_TYPE, line.item_id),
+                lot: line.lot_id.map(|id| Subject::new(LOT_SUBJECT_TYPE, id)),
+                quantity_milli: line.quantity_milli,
+                po_line: line.po_line_id,
+                po_price: line
+                    .po_line_id
+                    .and_then(|id| prices.get(&id).copied())
+                    .unwrap_or(line.unit_cost),
+                wanted_outcome: match line.wanted_outcome {
+                    WantedOutcome::Credit => ReturnOutcome::Credit,
+                    WantedOutcome::Replace => ReturnOutcome::Replace,
+                },
+                reason: line.reason.clone(),
+            })
+            .collect(),
+    }
+}
+
+/// Emits [`SupplierReturnDispatched`] for return `id`, read as committed.
+async fn emit_dispatched(state: &AppState, id: i64) -> Result {
+    let ret = SupplierReturn::find_or_404(&state.db, id).await?;
+    let lines = crate::supplier_return::lines_of(&state.db, ret.id).await?;
+    let mut prices = BTreeMap::new();
+    for line in &lines {
+        if let Some(po_line_id) = line.po_line_id {
+            if let Some(po_line) = PurchaseOrderLine::find(&state.db, po_line_id).await? {
+                prices.insert(po_line.id, po_line.unit_price);
+            }
+        }
+    }
+    state.emit(dispatched_event(&ret, &lines, &prices)).await
+}
+
+/// Registers the listeners.
 pub(crate) fn register(app: &mut Registry) {
     app.listen(|event: Transitioned<GoodsReceipt>, state: AppState| async move {
         if ![POST, POST_APPROVED].contains(&event.transition.as_str()) {
@@ -48,13 +109,64 @@ pub(crate) fn register(app: &mut Registry) {
         // The committed rows.
         let receipt = GoodsReceipt::find_or_404(&state.db, event.key).await?;
         let lines = lines_of(&state.db, receipt.id).await?;
-        state.emit(received_event(&receipt, &lines)).await
+        state.emit(received_event(&receipt, &lines)).await?;
+        // The goods refused at the door left with the driver as the receipt
+        // posted: the system dispatched their return.
+        for ret in of_source(&state.db, &receipt.subject()).await? {
+            if ret.status == ReturnStatus::Dispatched {
+                emit_dispatched(&state, ret.id).await?;
+            }
+        }
+        Ok(())
+    });
+    app.listen(|event: Transitioned<SupplierReturn>, state: AppState| async move {
+        if ![DISPATCH, DISPATCH_APPROVED].contains(&event.transition.as_str()) {
+            return Ok(());
+        }
+        emit_dispatched(&state, event.key).await
     });
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_dispatched_event_names_the_order_price_and_the_outcome() {
+        let ret = SupplierReturn {
+            id: 4,
+            supplier_party_id: 7,
+            source_type: "inventory.goods_receipt".into(),
+            source_id: 5,
+            ..SupplierReturn::default()
+        };
+        let line = SupplierReturnLine {
+            item_id: 9,
+            lot_id: Some(2),
+            quantity_milli: 10_000,
+            unit_cost: 4_800,
+            reason: "damaged".into(),
+            wanted_outcome: WantedOutcome::Credit,
+            po_line_id: Some(11),
+            ..SupplierReturnLine::default()
+        };
+        let other = SupplierReturnLine {
+            po_line_id: None,
+            lot_id: None,
+            wanted_outcome: WantedOutcome::Replace,
+            ..line.clone()
+        };
+        let event = dispatched_event(&ret, &[line, other], &BTreeMap::from([(11, 5_000)]));
+        assert_eq!(event.supplier_return.to_string(), "inventory.supplier_return:4");
+        assert_eq!(event.source.to_string(), "inventory.goods_receipt:5");
+        assert_eq!(event.lines[0].po_price, 5_000);
+        assert_eq!(event.lines[0].wanted_outcome, ReturnOutcome::Credit);
+        assert_eq!(event.lines[0].lot.as_ref().unwrap().to_string(), "inventory.lot:2");
+        // No order line: the line's own cost.
+        assert_eq!(event.lines[1].po_price, 4_800);
+        assert_eq!(event.lines[1].wanted_outcome, ReturnOutcome::Replace);
+        assert_eq!(event.lines[1].lot, None);
+    }
 
     #[test]
     fn the_event_shows_accepted_and_rejected_quantity_per_line() {

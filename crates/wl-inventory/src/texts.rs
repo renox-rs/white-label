@@ -132,6 +132,51 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_inventory.receipt.reversed",
         "Goods receipt reversed.",
     ),
+    // Refusals of `dispatch` on a Return to supplier.
+    (
+        "wl_inventory.return.not_draft",
+        "Only a draft return to supplier can be dispatched.",
+    ),
+    (
+        "wl_inventory.return.no_lines",
+        "A return to supplier needs a supplier and at least one line.",
+    ),
+    (
+        "wl_inventory.return.bad_line",
+        "Line {{ position }}: give a quantity above 0 and a reason.",
+    ),
+    (
+        "wl_inventory.return.proof_needed",
+        "Give the collection proof: the driver's signature, a courier number or the goods receipt.",
+    ),
+    (
+        "wl_inventory.return.no_location",
+        "Line {{ position }}: the return names no location to take the stock from.",
+    ),
+    (
+        "wl_inventory.return.not_in_stock",
+        "Line {{ position }}: {{ item }} has {{ available }} at the location, {{ quantity }} are to go back.",
+    ),
+    (
+        "wl_inventory.return.order_closed",
+        "Line {{ position }}: the purchase order is closed, so the goods can only be credited, not replaced on it.",
+    ),
+    (
+        "wl_inventory.return.not_at_door",
+        "Only goods refused at the door are dispatched by the system.",
+    ),
+    (
+        "wl_inventory.return.dispatched",
+        "Return to supplier dispatched.",
+    ),
+    (
+        "wl_inventory.return.waiting",
+        "The return is worth more than the limit and waits for a second person to approve it.",
+    ),
+    (
+        "wl_inventory.return.bad_proof",
+        "The collection proof is a driver signature, a courier number or a goods receipt.",
+    ),
     // Names of the rejected goods' returns.
     (
         "wl_inventory.return.collection_proof",

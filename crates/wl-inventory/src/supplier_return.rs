@@ -2,17 +2,23 @@
 //! sent back to a supplier for credit or replacement. A posted goods receipt
 //! makes one from its rejected lines (§5.6): one for the goods refused at the
 //! door (the goods receipt is the collection proof) and one for the goods kept
-//! for collection, both `draft`. The system `dispatch` of a door-refused
-//! return, `credit` and `cancel` come with the issues that build them
-//! (BL-STK-03, BL-STK-05): until then a door-refused return stays `draft`.
-//! The machine declares the states.
+//! for collection, both `draft`; the door-refused one is dispatched at once
+//! by the system, and a return of stock that failed is made with
+//! [`create_from_stock`]. `dispatch` is in [`crate::return_dispatch`];
+//! `credit` and the user's `cancel` come with BL-STK-05.
 
 use renox::db::Transaction;
 use renox::prelude::*;
 use renox::state_machine::{Machine, StateMachine, Transition};
 use serde::{Deserialize, Serialize};
 use wl_kernel::Subject;
+use wl_kernel::documents::today;
 use wl_kernel::inventory::SUPPLIER_RETURN_SUBJECT_TYPE;
+
+use crate::item::Item;
+use crate::purchase_order::PurchaseOrderLine;
+use crate::receipt_post::SUPPLIER_RETURN_SERIES;
+use crate::texts::said;
 
 /// The `cancel` transition's name: the system withdraws a draft return (its
 /// receipt was reversed).
@@ -87,8 +93,17 @@ pub struct SupplierReturn {
     pub handling: RejectedHandling,
     /// The collection proof: the goods receipt for goods refused at the door.
     pub collection_proof: Option<String>,
+    /// The location the stock lines leave from.
+    pub location_id: Option<i64>,
     /// The lifecycle state; changed only by a transition.
     pub status: ReturnStatus,
+    /// The user who dispatched it (who asked, when it waited for approval);
+    /// `None` for the system.
+    pub dispatched_by: Option<i64>,
+    /// When it was dispatched.
+    pub dispatched_at: Option<DateTime>,
+    /// The return note, a PDF document.
+    pub return_note: Option<String>,
     /// The user who made it; `None` for the system.
     pub created_by: Option<i64>,
     /// When the row was created.
@@ -140,10 +155,167 @@ pub struct SupplierReturnLine {
     pub origin: ReturnOrigin,
     /// The goods receipt line the goods were rejected on.
     pub receipt_line_id: Option<i64>,
+    /// (Source unit cost - average cost) x quantity in fils, set at
+    /// `dispatch` for a line taken from stock: the purchase price variance.
+    pub variance: i64,
+    /// The quantity the line gave back to its order line, in thousandths.
+    pub restored_milli: i64,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
     pub updated_at: Option<DateTime>,
+}
+
+/// A line of a return to make from stock.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct NewReturnLine {
+    /// The item.
+    pub item_id: i64,
+    /// The lot, if any.
+    pub lot_id: Option<i64>,
+    /// The quantity, in thousandths of the base unit.
+    pub quantity_milli: i64,
+    /// Why the goods go back.
+    pub reason: String,
+    /// Credit or replacement.
+    pub wanted_outcome: WantedOutcome,
+    /// The purchase order line a replacement is counted on.
+    pub po_line_id: Option<i64>,
+    /// The cost of one base unit the goods are valued at: the source
+    /// receipt's when known. The item's average cost when `None`.
+    pub unit_cost: Option<i64>,
+}
+
+impl NewReturnLine {
+    /// `quantity_milli` of `item_id` going back for `reason`.
+    pub fn of(item_id: i64, quantity_milli: i64, reason: &str) -> Self {
+        NewReturnLine {
+            item_id,
+            quantity_milli,
+            reason: reason.to_owned(),
+            ..NewReturnLine::default()
+        }
+    }
+
+    /// Of lot `lot_id`.
+    pub fn lot(mut self, lot_id: i64) -> Self {
+        self.lot_id = Some(lot_id);
+        self
+    }
+
+    /// Credited, not replaced.
+    pub fn credit(mut self) -> Self {
+        self.wanted_outcome = WantedOutcome::Credit;
+        self
+    }
+
+    /// Replaced on `po_line_id`.
+    pub fn replacing_on(mut self, po_line_id: i64) -> Self {
+        self.wanted_outcome = WantedOutcome::Replace;
+        self.po_line_id = Some(po_line_id);
+        self
+    }
+
+    /// Valued at `unit_cost` fils a unit (the source receipt's cost).
+    pub fn at_cost(mut self, unit_cost: i64) -> Self {
+        self.unit_cost = Some(unit_cost);
+        self
+    }
+}
+
+/// A return to make from stock, as a `draft`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NewReturn {
+    /// The supplier.
+    pub supplier: wl_kernel::PartyId,
+    /// The record the goods came from: a stock hold, a recall, an NCR...
+    pub source: Subject,
+    /// The location the goods leave from (the quarantine or source location).
+    pub location_id: i64,
+    /// The lines.
+    pub lines: Vec<NewReturnLine>,
+}
+
+/// A 422 with `message`.
+fn refused(message: impl Into<String>) -> Error {
+    Error::Status(StatusCode::UNPROCESSABLE_ENTITY, message.into())
+}
+
+/// Records `new` as a `draft` Return to supplier by user `by`, its lines
+/// taken from stock at the location, kept for collection.
+///
+/// # Errors
+///
+/// 422 for a return without lines, a line without quantity or reason, or an
+/// unknown item.
+pub async fn create_from_stock(db: &Db, by: Option<i64>, new: NewReturn) -> Result<SupplierReturn> {
+    if new.lines.is_empty() {
+        return Err(refused(said("wl_inventory.return.no_lines", &[])));
+    }
+    let mut rows = Vec::new();
+    for (position, line) in (1..).zip(&new.lines) {
+        let position_text = position.to_string();
+        if line.quantity_milli <= 0 || line.reason.trim().is_empty() {
+            return Err(refused(said(
+                "wl_inventory.return.bad_line",
+                &[("position", &position_text)],
+            )));
+        }
+        let Some(item) = Item::find(db, line.item_id).await? else {
+            return Err(refused(said(
+                "wl_inventory.receipt.unknown_item",
+                &[("position", &position_text)],
+            )));
+        };
+        let po_price = match line.po_line_id {
+            Some(id) => PurchaseOrderLine::find(db, id).await?.map(|l| l.unit_price),
+            None => None,
+        };
+        rows.push(SupplierReturnLine {
+            position,
+            item_id: item.id,
+            lot_id: line.lot_id,
+            quantity_milli: line.quantity_milli,
+            unit_cost: line.unit_cost.or(po_price).unwrap_or(item.average_cost),
+            reason: line.reason.trim().to_owned(),
+            wanted_outcome: line.wanted_outcome,
+            po_line_id: line.po_line_id,
+            origin: ReturnOrigin::FromStock,
+            ..SupplierReturnLine::default()
+        });
+    }
+    let mut ret = SupplierReturn {
+        supplier_party_id: new.supplier.0,
+        source_type: new.source.subject_type.clone(),
+        source_id: new.source.subject_id,
+        handling: RejectedHandling::KeptForCollection,
+        location_id: Some(new.location_id),
+        status: ReturnStatus::Draft,
+        created_by: by,
+        ..SupplierReturn::default()
+    };
+    let mut tx = db.begin().await?;
+    ret.number = Some(
+        SUPPLIER_RETURN_SERIES
+            .next(&mut tx, None, None, today())
+            .await?,
+    );
+    ret.insert(&mut tx).await?;
+    for row in &mut rows {
+        row.supplier_return_id = ret.id;
+        row.insert(&mut tx).await?;
+    }
+    tx.commit().await?;
+    Ok(ret)
+}
+
+/// The lines of return `supplier_return_id`, in order, read in `tx`.
+pub async fn lines_in(tx: &mut Transaction, supplier_return_id: i64) -> Result<Vec<SupplierReturnLine>> {
+    SupplierReturnLine::query()
+        .where_(SupplierReturnLine::SUPPLIER_RETURN_ID.eq(supplier_return_id))
+        .order_by(SupplierReturnLine::POSITION)
+        .get(&mut *tx)
+        .await
 }
 
 /// The lines of return `supplier_return_id`, in order.
@@ -181,7 +353,7 @@ impl StateMachine for SupplierReturn {
 
     fn machine() -> Machine<Self> {
         use ReturnStatus::{Cancelled, Credited, Dispatched, Draft};
-        Machine::new()
+        let machine = Machine::new()
             .initial([Draft])
             .state(Draft)
             .tone("neutral")
@@ -201,7 +373,8 @@ impl StateMachine for SupplierReturn {
                     .system()
                     .from([Draft])
                     .to(Cancelled),
-            )
+            );
+        crate::return_dispatch::add_to(machine)
     }
 }
 

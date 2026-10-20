@@ -2,13 +2,17 @@
 //! date and status. A goods receipt creates a lot for an accepted line of a
 //! lot-tracked item, in `quarantine` or `released` as the item says. The
 //! lifecycle transitions (`release`, `hold`, `expire`...) come with the
-//! issues that build them; the machine declares the states.
+//! issues that build them; the machine declares the states, and the system's
+//! `reject` is here.
 
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
-use renox::state_machine::{Machine, StateMachine};
+use renox::state_machine::{Machine, StateMachine, Transition};
 use serde::{Deserialize, Serialize};
 use wl_kernel::Subject;
+
+/// The `reject` transition's name.
+pub const REJECT: &str = "reject";
 
 /// Where a lot stands (§4).
 #[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -86,6 +90,16 @@ impl StateMachine for Lot {
             .state(Depleted)
             .tone("neutral")
             .terminal()
+            // The user's `reject` (`lots.release`) comes with the lot issues;
+            // so far the system rejects a held lot when a Return to supplier
+            // takes its last quantity.
+            .transition(
+                Transition::new(REJECT)
+                    .label("Reject")
+                    .system()
+                    .from([Quarantine, OnHold])
+                    .to(Rejected),
+            )
     }
 }
 

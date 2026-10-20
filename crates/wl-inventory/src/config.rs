@@ -9,6 +9,10 @@ use serde::{Deserialize, Serialize};
 /// points.
 pub const DEFAULT_TOLERANCE_BPS: i64 = 500;
 
+/// The value of a Return to supplier above which a second person approves it
+/// by default (§7, `STK.ACL.06`): AED 5,000, in fils.
+pub const DEFAULT_RETURN_APPROVAL_FILS: i64 = 500_000;
+
 /// The rejection reasons by default (§7).
 pub const DEFAULT_REASONS: &[&str] = &[
     "temperature",
@@ -38,6 +42,9 @@ pub struct InventoryConfig {
     pub over_receipt_tolerance_bps: i64,
     /// The configured rejection reasons.
     pub rejection_reasons: Vec<RejectionReason>,
+    /// The value, in fils, above which dispatching a Return to supplier needs
+    /// a second person (`STK.ACL.06`).
+    pub return_approval_fils: i64,
 }
 
 impl InventoryConfig {
@@ -51,6 +58,7 @@ impl Default for InventoryConfig {
     fn default() -> Self {
         InventoryConfig {
             over_receipt_tolerance_bps: DEFAULT_TOLERANCE_BPS,
+            return_approval_fils: DEFAULT_RETURN_APPROVAL_FILS,
             rejection_reasons: DEFAULT_REASONS
                 .iter()
                 .map(|code| RejectionReason {
@@ -71,6 +79,7 @@ mod tests {
         let config = InventoryConfig::default();
         assert_eq!(config.over_receipt_tolerance_bps, 500);
         assert_eq!(config.rejection_reasons.len(), 7);
+        assert_eq!(config.return_approval_fils, 500_000);
         assert!(config.reason("temperature").is_some_and(|r| !r.evidence_required));
         assert!(config.reason("spoiled").is_none());
     }

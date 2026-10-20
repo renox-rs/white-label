@@ -17,9 +17,9 @@
 //!   quantity only (and a lot, `quarantine` or `released` as the item says),
 //!   the item's moving weighted average cost, the purchase order's `receive`
 //!   (only accepted quantity counts, rejected quantity stays outstanding),
-//!   and a Return to supplier for the rejected lines (a `draft` each for the
-//!   goods refused at the door and the goods kept for collection; rejected
-//!   goods never get a movement);
+//!   and a Return to supplier for the rejected lines (one for the goods
+//!   refused at the door, dispatched at once by the system, and a `draft` for
+//!   the goods kept for collection; rejected goods never get a movement);
 //! - `GoodsReceived` after the commit ([`crate::events`]).
 //!
 //! An accepted quantity above the ordered one by more than the tolerance
@@ -423,8 +423,7 @@ async fn ensure_lot(
 }
 
 /// A Return to supplier for `lines` of `receipt`, rejected for the reasons on
-/// the lines, in `draft` (§4: a door-refused return is dispatched by the
-/// system with BL-STK-03).
+/// the lines, in `draft`; the caller dispatches a door-refused one (§4).
 async fn make_return(
     tx: &mut Transaction,
     receipt: &GoodsReceipt,
@@ -444,6 +443,7 @@ async fn make_return(
         source_id: source.subject_id,
         handling,
         collection_proof: proof,
+        location_id: Some(receipt.location_id),
         status: ReturnStatus::Draft,
         created_by: by,
         ..SupplierReturn::default()
@@ -543,8 +543,14 @@ async fn post_in(
     // Rejected goods never enter stock: they go back to the supplier.
     for handling in [RejectedHandling::RefusedAtDoor, RejectedHandling::KeptForCollection] {
         let group = rejected_with(&lines, handling);
-        if !group.is_empty() {
-            make_return(tx, &receipt, handling, &group, input.by).await?;
+        if group.is_empty() {
+            continue;
+        }
+        let ret = make_return(tx, &receipt, handling, &group, input.by).await?;
+        // The goods left with the driver already: dispatched at once by the
+        // system, with the receipt as the collection proof (BL-STK-03).
+        if handling == RejectedHandling::RefusedAtDoor {
+            crate::return_dispatch::dispatch_at_door(tx, &ret, input.by).await?;
         }
     }
 

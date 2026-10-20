@@ -5,6 +5,7 @@
 //! |---|---|---|
 //! | `POST /goods-receipts/{id}/lines/{line}` | `wl_inventory.receipt_line` | `goods_receipts.post` at the receiving location |
 //! | `POST /goods-receipts/{id}/post` | `wl_inventory.receipt_post` | `goods_receipts.post` at the receiving location |
+//! | `POST /supplier-returns/{id}/dispatch` | `wl_inventory.return_dispatch` | `supplier_returns.manage` |
 //! | `POST /goods-receipts/{id}/reverse` | `wl_inventory.receipt_reverse` | `goods_receipts.reverse` at the receiving location |
 //!
 //! The routes need a signed-in user and carry no permission guard of their
@@ -23,6 +24,7 @@ use serde::{Deserialize, Serialize};
 use crate::goods_receipt::{DraftLine, GoodsReceipt, GoodsReceiptStatus, update_line};
 use crate::permissions;
 use crate::receipt_post::{PostOutcome, post};
+use crate::return_dispatch::{CollectionProof, DispatchOutcome};
 use crate::supplier_return::{RejectedHandling, WantedOutcome};
 use crate::texts;
 
@@ -35,6 +37,8 @@ pub fn routes() -> Routes {
         .name("wl_inventory.receipt_post")
         .post("/goods-receipts/{id}/reverse", reverse_receipt)
         .name("wl_inventory.receipt_reverse")
+        .post("/supplier-returns/{id}/dispatch", dispatch_return)
+        .name("wl_inventory.return_dispatch")
         .require_auth()
 }
 
@@ -243,6 +247,57 @@ async fn reverse_receipt(
     match crate::receipt_reverse::reverse(&state, &user, id).await {
         Ok(_) => Ok((
             Toast::success(text(&lang, "receipt.reversed")),
+            renox::HxRefresh,
+        )
+            .into_response()),
+        Err(TransitionError::Guard(message)) => Err(refused(message)),
+        Err(other) => Err(other.into_error()),
+    }
+}
+
+/// What procurement enters to dispatch a return.
+#[derive(Deserialize, Serialize, Validate, Debug, Default)]
+pub struct DispatchForm {
+    /// `driver_signature`, `courier` or `goods_receipt`.
+    #[validate(max = 32)]
+    pub proof_kind: Option<String>,
+    /// The reference of the signature, the courier's number or the receipt.
+    #[validate(max = 200)]
+    pub proof_ref: Option<String>,
+}
+
+/// `POST /supplier-returns/{id}/dispatch`: dispatches a draft return with the
+/// collection proof. Above the limit it asks a second person to approve
+/// instead (`STK.ACL.06`).
+async fn dispatch_return(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Valid(form): Valid<DispatchForm>,
+) -> Result<Response> {
+    let holders = users_with_permission_in(
+        &state.db,
+        permissions::SUPPLIER_RETURNS_MANAGE,
+        &renox::auth::permissions::Scope::global(),
+    )
+    .await?;
+    if !holders.iter().any(|holder| holder.id == user.id) {
+        return Err(Error::Forbidden);
+    }
+    let proof = CollectionProof::parse(
+        form.proof_kind.as_deref().unwrap_or_default(),
+        form.proof_ref.as_deref().unwrap_or_default(),
+    )
+    .ok_or_else(|| refused(text(&lang, "return.bad_proof")))?;
+    match crate::return_dispatch::dispatch(&state, &user, id, &proof).await {
+        Ok(DispatchOutcome::Dispatched(_)) => Ok((
+            Toast::success(text(&lang, "return.dispatched")),
+            renox::HxRefresh,
+        )
+            .into_response()),
+        Ok(DispatchOutcome::Waiting(_)) => Ok((
+            Toast::success(text(&lang, "return.waiting")),
             renox::HxRefresh,
         )
             .into_response()),

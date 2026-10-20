@@ -2,7 +2,8 @@
 //! verticals may know about stock, purchase orders and goods receipts
 //! without depending on the `wl-inventory` crate.
 //!
-//! `wl-inventory` emits [`GoodsReceived`] when a goods receipt is posted,
+//! `wl-inventory` emits [`SupplierReturnDispatched`] when goods go back to a
+//! supplier, and [`GoodsReceived`] when a goods receipt is posted,
 //! with the accepted and the rejected quantity of every line, and provides a
 //! [`PurchaseMatchSource`]: the purchase order lines with the quantity
 //! accepted so far, which wl-invoicing matches a supplier bill against
@@ -32,6 +33,9 @@ pub const PURCHASE_ORDER_SUBJECT_TYPE: &str = "inventory.purchase_order";
 
 /// The subject type of a goods receipt.
 pub const GOODS_RECEIPT_SUBJECT_TYPE: &str = "inventory.goods_receipt";
+
+/// The subject type of a lot.
+pub const LOT_SUBJECT_TYPE: &str = "inventory.lot";
 
 /// The subject type of a Return to supplier.
 pub const SUPPLIER_RETURN_SUBJECT_TYPE: &str = "inventory.supplier_return";
@@ -76,6 +80,54 @@ pub struct GoodsReceived {
 }
 
 impl Event for GoodsReceived {}
+
+/// What the user wants for goods sent back to a supplier.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReturnOutcome {
+    /// A credit: the supplier issues a credit note (wl-invoicing drafts the
+    /// supplier debit note).
+    Credit,
+    /// New goods in place of the returned ones.
+    Replace,
+}
+
+/// One line of a dispatched Return to supplier.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SupplierReturnDispatchedLine {
+    /// The item, `inventory.item:9`.
+    pub item: Subject,
+    /// The lot, `inventory.lot:4`, if any.
+    pub lot: Option<Subject>,
+    /// What went back, in thousandths of the base unit.
+    pub quantity_milli: i64,
+    /// The purchase order line, if any.
+    pub po_line: Option<i64>,
+    /// The order's price of one base unit, in fils; the unit cost of the
+    /// line when it names no order line.
+    pub po_price: i64,
+    /// Credit or replacement.
+    pub wanted_outcome: ReturnOutcome,
+    /// Why the goods went back.
+    pub reason: String,
+}
+
+/// A Return to supplier was dispatched (wl-inventory §6): the goods left with
+/// the supplier or their driver. wl-invoicing drafts a supplier debit note
+/// for the `credit` lines at the order's price (`FIN.RUL.17`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SupplierReturnDispatched {
+    /// The return, `inventory.supplier_return:4`.
+    pub supplier_return: Subject,
+    /// The supplier.
+    pub supplier: PartyId,
+    /// The record the goods came from: the goods receipt, a stock hold...
+    pub source: Subject,
+    /// The lines.
+    pub lines: Vec<SupplierReturnDispatchedLine>,
+}
+
+impl Event for SupplierReturnDispatched {}
 
 /// One purchase order line, as the supplier bill match reads it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -145,9 +197,34 @@ mod tests {
             PURCHASE_ORDER_SUBJECT_TYPE,
             GOODS_RECEIPT_SUBJECT_TYPE,
             SUPPLIER_RETURN_SUBJECT_TYPE,
+            LOT_SUBJECT_TYPE,
         ] {
             assert_eq!(Subject::new(subject_type, 1).subject_type, subject_type);
         }
+    }
+
+    #[test]
+    fn the_dispatched_event_round_trips_through_json() {
+        let dispatched = SupplierReturnDispatched {
+            supplier_return: Subject::new(SUPPLIER_RETURN_SUBJECT_TYPE, 4),
+            supplier: PartyId(7),
+            source: Subject::new(GOODS_RECEIPT_SUBJECT_TYPE, 5),
+            lines: vec![SupplierReturnDispatchedLine {
+                item: Subject::new(ITEM_SUBJECT_TYPE, 9),
+                lot: Some(Subject::new(LOT_SUBJECT_TYPE, 2)),
+                quantity_milli: 10_000,
+                po_line: Some(11),
+                po_price: 5_000,
+                wanted_outcome: ReturnOutcome::Credit,
+                reason: "damaged".into(),
+            }],
+        };
+        let json = renox::serde_json::to_string(&dispatched).unwrap();
+        assert!(json.contains("\"credit\""), "{json}");
+        assert_eq!(
+            renox::serde_json::from_str::<SupplierReturnDispatched>(&json).unwrap(),
+            dispatched
+        );
     }
 
     #[test]

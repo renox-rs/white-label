@@ -13,6 +13,8 @@ pub mod pages;
 pub mod purchase_order;
 pub mod receipt_post;
 pub mod receipt_reverse;
+pub mod return_dispatch;
+pub mod return_note;
 pub mod supplier_return;
 mod texts;
 
@@ -33,6 +35,7 @@ pub use movement::{MovementType, StockMovement};
 pub use purchase_order::{PurchaseOrder, PurchaseOrderLine, PurchaseOrderStatus};
 pub use receipt_post::{PostOutcome, post};
 pub use receipt_reverse::reverse;
+pub use return_dispatch::{CollectionProof, DispatchOutcome, dispatch};
 pub use supplier_return::{
     RejectedHandling, ReturnOrigin, ReturnStatus, SupplierReturn, SupplierReturnLine,
     WantedOutcome,
@@ -79,6 +82,13 @@ impl WlInventory {
     /// approval, in basis points (default 500, 5%; `STK.ACL.04`).
     pub fn over_receipt_tolerance_bps(mut self, bps: i64) -> Self {
         self.config.over_receipt_tolerance_bps = bps.max(0);
+        self
+    }
+
+    /// The value, in fils, above which dispatching a Return to supplier needs
+    /// a second person's approval (default 500000, AED 5,000; `STK.ACL.06`).
+    pub fn return_approval_fils(mut self, fils: i64) -> Self {
+        self.config.return_approval_fils = fils.max(0);
         self
     }
 
@@ -148,6 +158,18 @@ impl Module for WlInventory {
         .action(receipt_post::POST, receipt_post::ACTION)
         .scope(|receipt: &GoodsReceipt| receipt.scope())
         .register();
+        // Dispatching a return above the value needs a second holder of
+        // `supplier_returns.manage`, never the requester (`STK.ACL.06`).
+        wl_kernel::SubjectMachine::of::<SupplierReturn>(
+            wl_kernel::inventory::SUPPLIER_RETURN_SUBJECT_TYPE,
+        )
+        .action(return_dispatch::DISPATCH, return_dispatch::ACTION)
+        .scope(|_ret: &SupplierReturn| renox::auth::permissions::Scope::global())
+        .register();
+        wl_kernel::PolicyDefault::new(return_dispatch::ACTION)
+            .amount_above(self.config.return_approval_fils)
+            .step_permission(permissions::SUPPLIER_RETURNS_MANAGE)
+            .register();
         wl_kernel::PolicyDefault::new(receipt_post::ACTION)
             .percentage_above(self.config.over_receipt_tolerance_bps)
             .step_permission(permissions::PURCHASE_ORDERS_ISSUE)
