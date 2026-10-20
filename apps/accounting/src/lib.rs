@@ -19,6 +19,7 @@ pub mod pages;
 pub mod permissions;
 pub mod portal;
 pub mod reasons;
+pub mod request_lists;
 pub mod retainer;
 pub mod screening;
 pub mod seed;
@@ -106,7 +107,8 @@ impl Module for Accounting {
             .model::<CddParty>()
             .model::<TaxProfile>()
             .model::<client_notices::ClientNotice>()
-            .model::<deadline_notices::DeadlineNotice>();
+            .model::<deadline_notices::DeadlineNotice>()
+            .model::<request_lists::RequestList>();
         engagement_machine::register();
         cdd_machine::register();
         // `engagement.activate` checks the client's KYC documents.
@@ -123,6 +125,9 @@ impl Module for Accounting {
         // `ACC.RUL.09`: the statutory deadline notice on suspend or end, its
         // daily follow-up, compliance-critical (BL-ACC-04).
         deadline_notices::register(app);
+        // `ACC.RUL.02` and `POR.RUL.01`: the request lists of the periods,
+        // skipped while an engagement is suspended (BL-ACC-03, BL-ACC-05).
+        request_lists::register(app);
         // In the app group of the staff sidebar; the label is the host's
         // `nav.engagements` text.
         app.nav(

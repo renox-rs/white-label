@@ -372,6 +372,23 @@ const TEXTS: &[(&str, &str)] = &[
         "accounting.cdd_update.notice_body",
         "The {{ kind }} of {{ party }} (client {{ client }}) expired on {{ expired }}. The compliance officer has the CDD update task {{ task }}, due {{ due }}; you may need to ask the client for the renewed document.",
     ),
+    // The document request lists (ACC.RUL.02, POR.RUL.01).
+    (
+        "accounting.request_lists.notice_subject",
+        "Documents requested for {{ number }}",
+    ),
+    (
+        "accounting.request_lists.notice_body",
+        "Please upload the documents for the periods ending {{ periods }} by {{ due }}.",
+    ),
+    (
+        "accounting.request_lists.reminder_subject",
+        "Reminder: documents for {{ number }}",
+    ),
+    (
+        "accounting.request_lists.reminder_body",
+        "We are still waiting for the documents for the period ending {{ period }}, due {{ due }}.",
+    ),
     // The statutory deadline notice of a suspension or an end (BL-ACC-04).
     ("accounting.deadline_notices.title", "Statutory deadlines"),
     ("accounting.deadline_notices.deadlines", "Deadlines"),
