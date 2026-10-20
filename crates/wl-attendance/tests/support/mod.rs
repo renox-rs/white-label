@@ -18,7 +18,11 @@ use wl_attendance::permissions as perm;
 use wl_attendance::{
     AttendanceMethod, AttendanceRecord, AttendanceStatus, WlAttendance, WorkLocation,
 };
-use wl_kernel::attendance::{AttendanceFlagged, AttendanceRecorded};
+use wl_kernel::attendance::{
+    AttendanceFlagged, AttendanceRecorded, CostRateResolver, LabourFuture, TimesheetApproved,
+    provide_cost_rates,
+};
+use wl_kernel::invoicing::{CostPoster, PostCost, SupplierBillFuture, provide_cost_poster};
 use wl_kernel::documents::{
     BlockEntry, CheckOutcome, DocumentFuture, DocumentGuard, FlagFailure, RecordFlag, Validity,
     provide_guard,
@@ -171,6 +175,62 @@ impl Workforce for Staff {
                 .get(&user_id)
                 .copied()
                 .map(EmployeeId))
+        })
+    }
+}
+
+/// The labour cost posted through the kernel's cost poster.
+#[derive(Clone, Default)]
+pub struct Posted(Arc<Mutex<Vec<PostCost>>>);
+
+impl Posted {
+    /// Every posting so far.
+    pub fn all(&self) -> Vec<PostCost> {
+        self.0.lock().unwrap().clone()
+    }
+}
+
+impl CostPoster for Posted {
+    fn post<'a>(&'a self, _state: &'a AppState, request: PostCost) -> SupplierBillFuture<'a, ()> {
+        Box::pin(async move {
+            let mut all = self.0.lock().unwrap();
+            // A key that was used changes nothing.
+            if !all.iter().any(|p| p.key == request.key) {
+                all.push(request);
+            }
+            Ok(())
+        })
+    }
+}
+
+/// Construction posts cost from hours at the trade rate (AED 25 an hour
+/// normal, AED 31.25 overtime); manpower and every other context do not.
+#[derive(Clone, Copy, Default)]
+pub struct TradeRates;
+
+impl CostRateResolver for TradeRates {
+    fn posts_cost<'a>(
+        &'a self,
+        _state: &'a AppState,
+        context: Option<&'a Subject>,
+    ) -> LabourFuture<'a, bool> {
+        Box::pin(async move { Ok(context.is_some_and(|c| c.subject_type == "construction.project")) })
+    }
+
+    fn hourly_rate<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _employee: EmployeeId,
+        _context: Option<&'a Subject>,
+        category: &'a str,
+        _date: NaiveDate,
+    ) -> LabourFuture<'a, Option<i64>> {
+        Box::pin(async move {
+            Ok(match category {
+                "normal" => Some(2_500),
+                "overtime" => Some(3_125),
+                _ => None,
+            })
         })
     }
 }
@@ -507,8 +567,10 @@ struct Fakes {
     tasks: Tasks,
     docs: DocDesk,
     quals: Quals,
+    posted: Posted,
     recorded: Arc<Mutex<Vec<AttendanceRecorded>>>,
     flagged: Arc<Mutex<Vec<AttendanceFlagged>>>,
+    approved: Arc<Mutex<Vec<TimesheetApproved>>>,
 }
 
 impl Module for Fakes {
@@ -522,8 +584,11 @@ impl Module for Fakes {
         provide_workforce(app, self.staff.clone());
         provide_guard(app, self.docs.clone());
         provide_qualifications(app, self.quals.clone());
+        provide_cost_poster(app, self.posted.clone());
+        provide_cost_rates(app, TradeRates);
         record(app, &self.recorded);
         record(app, &self.flagged);
+        record(app, &self.approved);
     }
 }
 
@@ -545,6 +610,10 @@ pub struct Booted {
     pub recorded: Recorded<AttendanceRecorded>,
     /// `AttendanceFlagged`.
     pub flagged: Recorded<AttendanceFlagged>,
+    /// The labour cost posted.
+    pub posted: Posted,
+    /// `TimesheetApproved`.
+    pub approved: Recorded<TimesheetApproved>,
     /// Days the clock was moved forward from the real one.
     clock_days: std::sync::atomic::AtomicI64,
 }
@@ -780,8 +849,10 @@ pub async fn boot_with(module: WlAttendance, extra: &str) -> Booted {
         tasks: Tasks::default(),
         docs: DocDesk::default(),
         quals: Quals::default(),
+        posted: Posted::default(),
         recorded: Arc::default(),
         flagged: Arc::default(),
+        approved: Arc::default(),
     };
     let (notices, staff, tasks) = (
         fakes.notices.clone(),
@@ -789,6 +860,7 @@ pub async fn boot_with(module: WlAttendance, extra: &str) -> Booted {
         fakes.tasks.clone(),
     );
     let (docs, quals) = (fakes.docs.clone(), fakes.quals.clone());
+    let (posted, approved) = (fakes.posted.clone(), Recorded(fakes.approved.clone()));
     let (recorded, flagged) = (
         Recorded(fakes.recorded.clone()),
         Recorded(fakes.flagged.clone()),
@@ -844,6 +916,26 @@ pub async fn boot_with(module: WlAttendance, extra: &str) -> Booted {
     permissions::define_role(app.db(), "adjuster", &[perm::VIEW, perm::TIMESHEETS_ADJUST])
         .await
         .unwrap();
+    // The approver approves internal timesheets and rejects them; staff with
+    // `approve_on_behalf` approve for the client; the client's approver holds
+    // a role of the timesheet's `approver_role` and no permission.
+    permissions::define_role(
+        app.db(),
+        "approver",
+        &[perm::VIEW, perm::TIMESHEETS_SUBMIT, perm::TIMESHEETS_APPROVE],
+    )
+    .await
+    .unwrap();
+    permissions::define_role(
+        app.db(),
+        "account_manager",
+        &[perm::VIEW, perm::TIMESHEETS_APPROVE_ON_BEHALF],
+    )
+    .await
+    .unwrap();
+    permissions::define_role(app.db(), "client_approver", &[])
+        .await
+        .unwrap();
     permissions::define_role(app.db(), "worker", &[perm::SELF_CHECK_IN])
         .await
         .unwrap();
@@ -862,6 +954,8 @@ pub async fn boot_with(module: WlAttendance, extra: &str) -> Booted {
         quals,
         recorded,
         flagged,
+        posted,
+        approved,
         clock_days: std::sync::atomic::AtomicI64::new(0),
     }
 }
