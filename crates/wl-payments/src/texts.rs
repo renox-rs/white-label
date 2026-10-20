@@ -1216,6 +1216,14 @@ const TEXTS: &[(&str, &str)] = &[
         "Cheque {{ number }} of {{ party }} was returned {{ days }} days ago on {{ returned_on }}. {{ open }} is still due{{ fee }}. See {{ link }}.",
     ),
     (
+        "wl_payments.cheque_bounced_staff.subject",
+        "Cheque {{ number }} of {{ party }} was returned",
+    ),
+    (
+        "wl_payments.cheque_bounced_staff.body",
+        "Cheque {{ number }} of {{ party }} was returned by the bank on {{ returned_on }}: {{ reason }}. {{ open }} is open. See {{ link }}.",
+    ),
+    (
         "wl_payments.deposit_deductions.subject",
         "Deposit {{ deposit }}: the {{ kind }} are published",
     ),

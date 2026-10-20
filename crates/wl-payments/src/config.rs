@@ -79,6 +79,16 @@ pub struct PaymentsConfig {
     /// Days after a bounce that the accountant and the manager get the task to
     /// decide (`FIN.RUL.18`, M).
     pub cheque_decision_days: i64,
+    /// The role that is the manager of a bounced cheque: it gets the decision
+    /// task of `FIN.RUL.18` beside the accountant, is told when a cheque is
+    /// referred to legal and, when [`Self::cheque_notify_manager`] is on, is
+    /// told of the bounce and at the reminder (default `finance_manager`; 01
+    /// Property: the property manager).
+    pub cheque_manager_role: String,
+    /// Whether the manager is also told when a received cheque bounces
+    /// (`FIN.RUL.04`) and at the reminder of N days (`FIN.RUL.18`), not only
+    /// given the decision task (default off; 01 Property turns it on).
+    pub cheque_notify_manager: bool,
     /// Whether the party may dispute the published deposit deductions in the
     /// portal (§7: off; 01 turns it on). While on, `refund` and `forfeit` wait
     /// for the dispute window of the latest published version.
@@ -124,6 +134,8 @@ impl Default for PaymentsConfig {
             bounce_fee_vat: VatCategory::Standard,
             cheque_reminder_days: DEFAULT_CHEQUE_REMINDER_DAYS,
             cheque_decision_days: DEFAULT_CHEQUE_DECISION_DAYS,
+            cheque_manager_role: crate::followup::MANAGER_ROLE.to_owned(),
+            cheque_notify_manager: false,
             deductions_dispute: false,
             dispute_window_days: DEFAULT_DISPUTE_WINDOW_DAYS,
             dispute_response_days: DEFAULT_DISPUTE_RESPONSE_DAYS,

@@ -329,6 +329,17 @@ impl WlPayments {
         self
     }
 
+    /// Names the manager of a bounced cheque (default `finance_manager`):
+    /// the role that gets the decision task of `FIN.RUL.18` beside the
+    /// accountant and is told when the cheque is referred to legal. With
+    /// `notify` on, the manager is also told when a received cheque bounces
+    /// and at the reminder (01 Property: the property manager).
+    pub fn cheque_manager(mut self, role: &str, notify: bool) -> Self {
+        self.config.cheque_manager_role = role.to_owned();
+        self.config.cheque_notify_manager = notify;
+        self
+    }
+
     /// Lets the party dispute the published deposit deductions in the portal
     /// (§7, off unless set; 01 Property turns it on): `window_days` after
     /// each publication (14 by default) and `response_days` for staff to

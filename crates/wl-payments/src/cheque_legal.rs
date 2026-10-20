@@ -43,7 +43,7 @@ use wl_kernel::invoicing::INVOICE_SUBJECT_TYPE;
 
 use crate::cheque::{CaseType, Cheque, ChequeReturn};
 use crate::config_of;
-use crate::followup::{FollowupKind, FollowupTask, MANAGER_ROLE};
+use crate::followup::{FollowupKind, FollowupTask};
 use crate::notices;
 use crate::permissions;
 
@@ -274,11 +274,15 @@ pub(crate) async fn after_referral(state: &AppState, cheque_id: i64) -> Result<(
         notices::cheque_task(state, &cheque, &task).await?;
     }
     notices::cheque_formal_notice(state, &cheque).await?;
-    let managers: Vec<i64> = users_with_role_in(&state.db, MANAGER_ROLE, &Scope::global())
-        .await?
-        .iter()
-        .map(|manager| manager.id)
-        .collect();
+    let managers: Vec<i64> = users_with_role_in(
+        &state.db,
+        &crate::config_of(state).cheque_manager_role,
+        &Scope::global(),
+    )
+    .await?
+    .iter()
+    .map(|manager| manager.id)
+    .collect();
     notices::cheque_referred(state, &cheque, owner, &managers).await?;
     // A vertical whose agreement the cheque was received with sets its own
     // legal case flag (01 Property: a flag of type arrears on the lease).

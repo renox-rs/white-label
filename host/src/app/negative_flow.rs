@@ -114,7 +114,10 @@ pub fn payments_for(client_app: &str) -> WlPayments {
         "property" => module
             .deductions_dispute(DEDUCTIONS_WINDOW_DAYS, DEDUCTIONS_RESPONSE_DAYS)
             .cheque_presentations(CHEQUE_PRESENTATIONS)
-            .cheque_chase(BOUNCE_REMIND_DAYS, BOUNCE_DECIDE_DAYS),
+            .cheque_chase(BOUNCE_REMIND_DAYS, BOUNCE_DECIDE_DAYS)
+            // The property manager is told of a bounce and at the reminder,
+            // and decides beside the accountant (items 10 and 11).
+            .cheque_manager(PROPERTY_MANAGER, true),
         _ => module,
     }
 }
@@ -281,8 +284,11 @@ pub fn rows(client_app: &str, entities: &[String]) -> Vec<Row> {
             "Cheques",
             "Chase after a bounce (FIN.RUL.18)",
             format!(
-                "{} days, then the decision task at {} days",
-                payments.cheque_reminder_days, payments.cheque_decision_days
+                "{} days: the tenant and the {} are reminded; {} days: task to the accountant and the {}",
+                payments.cheque_reminder_days,
+                payments.cheque_manager_role,
+                payments.cheque_decision_days,
+                payments.cheque_manager_role
             ),
             host,
         ),
@@ -290,8 +296,20 @@ pub fn rows(client_app: &str, entities: &[String]) -> Vec<Row> {
             "11",
             "Cheques",
             "On bounce (FIN.RUL.04)",
-            "the tenant and the property manager are told; the accountant has a task".to_owned(),
-            module,
+            format!(
+                "the tenant{} {}; the accountant has a task",
+                if payments.cheque_notify_manager {
+                    format!(" and the {}", payments.cheque_manager_role)
+                } else {
+                    String::new()
+                },
+                if payments.cheque_notify_manager {
+                    "are told"
+                } else {
+                    "is told"
+                }
+            ),
+            host,
         ),
         make(
             "12",
@@ -543,6 +561,8 @@ mod tests {
             (config.cheque_reminder_days, config.cheque_decision_days),
             (3, 14)
         );
+        assert_eq!(config.cheque_manager_role, PROPERTY_MANAGER);
+        assert!(config.cheque_notify_manager);
         assert!(config.bounce_fee.is_none(), "the seed sets no bounce fee");
     }
 

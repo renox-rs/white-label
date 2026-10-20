@@ -96,6 +96,10 @@ pub const CHEQUE_REMINDER: &str = "payments.cheque_reminder";
 /// The type of the staff's reminder of a bounced cheque (`FIN.RUL.18`).
 pub const CHEQUE_REMINDER_STAFF: &str = "payments.cheque_reminder_staff";
 
+/// The type of the manager's notice that a received cheque bounced
+/// (`FIN.RUL.04`, when the manager is told: `cheque_notify_manager`).
+pub const CHEQUE_BOUNCED_STAFF: &str = "payments.cheque_bounced_staff";
+
 /// The type of the party's notice that the deposit deductions are published.
 pub const DEPOSIT_DEDUCTIONS: &str = "payments.deposit_deductions";
 
@@ -352,6 +356,19 @@ pub fn cheque_reminder_staff_type() -> NotificationTypeDef {
         )
 }
 
+/// The notification type [`CHEQUE_BOUNCED_STAFF`].
+pub fn cheque_bounced_staff_type() -> NotificationTypeDef {
+    NotificationTypeDef::new(CHEQUE_BOUNCED_STAFF, MODULE)
+        .group(GROUP)
+        .category(Category::Transactional)
+        .template(
+            NotifyChannel::Email,
+            "en",
+            Some(english("wl_payments.cheque_bounced_staff.subject")),
+            english("wl_payments.cheque_bounced_staff.body"),
+        )
+}
+
 /// The notification type [`DEPOSIT_DEDUCTIONS`].
 pub fn deposit_deductions_type() -> NotificationTypeDef {
     NotificationTypeDef::new(DEPOSIT_DEDUCTIONS, MODULE)
@@ -428,6 +445,7 @@ pub(crate) fn register_types() {
     notify::register_type(deposit_dispute_answered_type());
     notify::register_type(cheque_reminder_type());
     notify::register_type(cheque_reminder_staff_type());
+    notify::register_type(cheque_bounced_staff_type());
     notify::register_type(cheque_bounced_type());
     notify::register_type(cheque_task_type());
     notify::register_type(cheque_presented_type());
@@ -688,7 +706,42 @@ pub(crate) async fn cheque_bounced(
             .data(cheque_bounced_data(cheque, bounce));
         notify::notifier(state).notify(state, request).await?;
     }
+    // The manager of the cheque, when the client wants it told (01 Property:
+    // the property manager).
+    let config = crate::config_of(state);
+    if config.cheque_notify_manager {
+        let managers = manager_ids(state).await?;
+        if !managers.is_empty() {
+            let party = wl_kernel::parties::directory(state)
+                .display_name(&state.db, cheque.party(), "en")
+                .await?
+                .unwrap_or_else(|| cheque.party().to_string());
+            let mut request =
+                NotifyRequest::new(CHEQUE_BOUNCED_STAFF, cheque.subject()).data(json!({
+                    "number": cheque.number,
+                    "party": party,
+                    "reason": bounce.reason,
+                    "returned_on": date_text(bounce.returned_on),
+                    "open": money_text(&cheque.currency, cheque.open_amount),
+                    "link": format!("/cheques/{}", cheque.id),
+                }));
+            for id in managers {
+                request = request.to_user(id);
+            }
+            notify::notifier(state).notify(state, request).await?;
+        }
+    }
     Ok(())
+}
+
+/// The users who hold the manager role of bounced cheques.
+async fn manager_ids(state: &AppState) -> Result<Vec<i64>> {
+    let role = crate::config_of(state).cheque_manager_role.clone();
+    Ok(users_with_role_in(&state.db, &role, &Scope::global())
+        .await?
+        .iter()
+        .map(|user| user.id)
+        .collect())
 }
 
 /// Tells the staff about the cheque `task`: the holders of the accountant
@@ -886,6 +939,11 @@ pub(crate) async fn chase_staff(state: &AppState, cheque: &Cheque) -> Result<Vec
             .iter()
             .map(|user| user.id)
             .collect();
+    }
+    if crate::config_of(state).cheque_notify_manager {
+        ids.extend(manager_ids(state).await?);
+        ids.sort_unstable();
+        ids.dedup();
     }
     Ok(ids)
 }

@@ -276,6 +276,17 @@ pub async fn messages_to(app: &TestApp, type_key: &str, user: &User) -> Vec<Mess
         .unwrap()
 }
 
+/// The messages of type `type_key` that went to the party `party`.
+pub async fn messages_to_party(app: &TestApp, type_key: &str, party: PartyId) -> Vec<Message> {
+    Message::query()
+        .where_(Message::TYPE_KEY.eq(type_key))
+        .where_(Message::PARTY_ID.eq(party.0))
+        .order_by(Message::ID)
+        .get(app.db())
+        .await
+        .unwrap()
+}
+
 /// How many messages of type `type_key` exist at all.
 pub async fn count_messages(app: &TestApp, type_key: &str) -> usize {
     Message::query()

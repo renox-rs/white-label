@@ -4,7 +4,7 @@
 //! |---|---|---|
 //! | `GET /cheques` | `wl_payments.cheques.index` | `cheques.view` |
 //! | `GET /cheques/{id}` | `wl_payments.cheques.show` | `cheques.view` |
-//! | `POST /cheques/{id}/deposit` | `wl_payments.cheques.deposit` | `cheques.deposit` |
+//! | `POST /cheques/{id}/deposit` | `wl_payments.cheques.deposit` | `cheques.deposit` (field `deposit_date`: the day of a deposit entered later; its business time) |
 //! | `POST /cheques/{id}/clear` | `wl_payments.cheques.clear` | `cheques.deposit` |
 //! | `POST /cheques/{id}/bounce` | `wl_payments.cheques.bounce` | `cheques.deposit` (fields `reason`, `certificate`, `honoured`) |
 //! | `POST /cheques/{id}/represent` | `wl_payments.cheques.represent` | `cheques.deposit` (fields `date`, `funds_confirmed`, `note`) |
@@ -596,8 +596,9 @@ async fn store_deposit(
     user: AuthUser,
     lang: Lang,
     Found(cheque): Found<Cheque>,
+    Valid(form): Valid<DepositForm>,
 ) -> Result<Response> {
-    cheque_deposit::deposit(&state, &user, &cheque)
+    cheque_deposit::deposit_on(&state, &user, &cheque, form.deposit_date)
         .await
         .map_err(TransitionError::into_error)?;
     Ok((
@@ -699,6 +700,14 @@ async fn store_bounce(
         }
         Err(other) => Err(other.into_error()),
     }
+}
+
+/// The deposit form: the day of the deposit when it is entered later (a late
+/// entry; its business time), else today.
+#[derive(Deserialize, Serialize, Validate, Debug, Default)]
+pub struct DepositForm {
+    /// The day the cheque was deposited; today when empty.
+    pub deposit_date: Option<NaiveDate>,
 }
 
 /// The re-present sheet's form.

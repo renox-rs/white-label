@@ -561,7 +561,7 @@ pub async fn mark_done(db: &Db, user: &AuthUser, id: i64) -> Result<FollowupTask
     // The case owner of a legal case may close it without `payments.record`.
     let may = user.has_permission(permissions::RECORD)
         || task.assignee_id == Some(user.id)
-        || (task.role == MANAGER_ROLE && user.has_role(MANAGER_ROLE));
+        || (task.role != ACCOUNTANT_ROLE && user.has_role(&task.role));
     if let Some(problem) = done_problem(&task, may) {
         return Err(problem);
     }

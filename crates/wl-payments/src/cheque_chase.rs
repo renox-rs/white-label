@@ -35,7 +35,7 @@ use wl_kernel::payments::Direction;
 
 use crate::cheque::Cheque;
 use crate::config_of;
-use crate::followup::{ACCOUNTANT_ROLE, FollowupTask, MANAGER_ROLE};
+use crate::followup::{ACCOUNTANT_ROLE, FollowupTask};
 use crate::notices;
 
 /// The rule id.
@@ -157,7 +157,7 @@ pub async fn run(state: &AppState, today: NaiveDate) -> Result<Report> {
         }
         if decision_due(&cheque, today, config.cheque_decision_days) {
             make_decision_task(state, &cheque, ACCOUNTANT_ROLE, days).await?;
-            make_decision_task(state, &cheque, MANAGER_ROLE, days).await?;
+            make_decision_task(state, &cheque, &config.cheque_manager_role, days).await?;
             mark(state, cheque.id, "decision_task_on", today).await?;
             report.decisions += 1;
         }

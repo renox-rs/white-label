@@ -55,6 +55,11 @@ pub(crate) struct FlagDueInput {
 pub(crate) struct DepositInput {
     /// Whether a field cheque needs a handover first (`FIN.ACL.20`).
     pub field_confirmation: bool,
+    /// The day the cheque was deposited when it is entered later (a late
+    /// entry, e.g. after an outage): the business time of the deposit. `None`
+    /// is today.
+    #[serde(default)]
+    pub on: Option<NaiveDate>,
 }
 
 /// Why `cheque` is not due for the list on `today` with `lead_days`, if it
@@ -109,6 +114,7 @@ fn deposit_input(ctx: &TransitionCtx) -> DepositInput {
     // Without the gathered input the rule is on.
     ctx.input_as::<DepositInput>().unwrap_or(DepositInput {
         field_confirmation: true,
+        on: None,
     })
 }
 
@@ -133,14 +139,25 @@ pub(crate) fn transitions() -> Vec<Transition<Cheque>> {
             .guard(
                 "date_reached_and_custody_confirmed",
                 |cheque: &Cheque, ctx| {
-                    let problem =
-                        deposit_problem(cheque, today(), deposit_input(ctx).field_confirmation);
+                    let input = deposit_input(ctx);
+                    let problem = if input.on.is_some_and(|day| day > today()) {
+                        Some("A deposit cannot be dated in the future.".to_owned())
+                    } else {
+                        deposit_problem(
+                            cheque,
+                            input.on.unwrap_or_else(today),
+                            input.field_confirmation,
+                        )
+                    };
                     Box::pin(async move { problem.map_or(Ok(()), Err) })
                 },
             )
-            .effect(|cheque: &Cheque, _ctx, tx| {
+            .effect(|cheque: &Cheque, ctx, tx| {
                 let id = cheque.id;
                 let presentations = cheque.presentations + 1;
+                // The deposit date is the business time: the day it was
+                // deposited, also when it is entered later.
+                let deposited_on = deposit_input(ctx).on.unwrap_or_else(today);
                 Box::pin(async move {
                     // Not the status column, so outside the machine's guard.
                     Cheque::query()
@@ -149,7 +166,7 @@ pub(crate) fn transitions() -> Vec<Transition<Cheque>> {
                             &mut *tx,
                             &[
                                 ("presentations", &presentations),
-                                ("deposit_date", &Some(today())),
+                                ("deposit_date", &Some(deposited_on)),
                                 ("updated_at", &renox::db::now()),
                             ],
                         )
@@ -207,9 +224,26 @@ pub async fn deposit(
     user: &AuthUser,
     cheque: &Cheque,
 ) -> std::result::Result<Cheque, TransitionError> {
+    deposit_on(state, user, cheque, None).await
+}
+
+/// [`deposit`] for a deposit made on the earlier day `on` and entered now
+/// (late entry): the deposit date of the cheque, its business time, is `on`.
+///
+/// # Errors
+///
+/// As [`deposit`]; `Guard` (422) for a day in the future, or before the
+/// cheque date.
+pub async fn deposit_on(
+    state: &AppState,
+    user: &AuthUser,
+    cheque: &Cheque,
+    on: Option<NaiveDate>,
+) -> std::result::Result<Cheque, TransitionError> {
     let cheque = reload(state, cheque).await?;
     let input = DepositInput {
         field_confirmation: config_of(state).field_cheque_handover,
+        on,
     };
     let _outcome = cheque
         .transition(DEPOSIT)
