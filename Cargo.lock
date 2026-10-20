@@ -910,9 +910,11 @@ dependencies = [
 name = "host"
 version = "0.1.0"
 dependencies = [
+ "http-body-util",
  "property",
  "renox",
  "serde",
+ "tower",
  "wl-documents",
  "wl-hr",
  "wl-invoicing",

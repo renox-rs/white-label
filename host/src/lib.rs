@@ -115,6 +115,7 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
     // The kernel goes first: its seeder creates the legal entities the other
     // modules' demo data needs, and seeders run in the order modules mount.
     let name = config.client.name.clone();
+    let demo_client = config.clone();
     let mut app = wl_kernel::apply(base(), config)?;
     app = with_brand(app, &name);
     for module in manifest.enabled() {
@@ -131,6 +132,9 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
     // modules' own seeds (BL-PRP-27).
     if client_app == "property" {
         app = app.module(app::property_seed::PropertySeed);
+        // The demo company, after the installs: `property:demo`, and `db:seed`
+        // in local (never in production).
+        app = app.module(app::demo_data::DemoSeed::new(demo_client));
     }
     // The page that shows the shared modules' settings of this client.
     Ok(app
