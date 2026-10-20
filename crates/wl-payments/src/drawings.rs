@@ -406,6 +406,11 @@ async fn approved(
 /// A guard of `record` (a method that is no longer enabled, an inactive
 /// legal entity) or a database error; nothing is written then.
 pub async fn record_approved(state: &AppState, row: &PaymentDrawing) -> Result<()> {
+    // Money out to a blocked owner party waits under `PTY.ACL.03`: the
+    // approval stands, the payment is not recorded until the party is free.
+    if let Some(message) = money_out_refusal(state, row.party()).await? {
+        return Err(refused(message));
+    }
     let pay = row.as_payment();
     let (mut payment, mut input): (Payment, RecordInput) =
         record::prepare(state, &pay, row.requested_by)
@@ -427,6 +432,21 @@ pub async fn record_approved(state: &AppState, row: &PaymentDrawing) -> Result<(
     // The statement line it was marked on is matched to the payment.
     crate::bank_statement_flow::drawing_recorded(state, &done).await?;
     Ok(())
+}
+
+/// Whether money may go out to `party`: the neutral refusal text when the
+/// party is blocked (`PTY.ACL.03`). Only a question: nothing is written.
+async fn money_out_refusal(state: &AppState, party: PartyId) -> Result<Option<String>> {
+    use wl_kernel::block_guard::{ActionKind, GuardOutcome, guard};
+    let mut tx = state.db.begin().await?;
+    let outcome = guard(state)
+        .check_in(&mut tx, None, party, ActionKind::MoneyOut)
+        .await?;
+    drop(tx);
+    Ok(match outcome {
+        GuardOutcome::Allowed => None,
+        GuardOutcome::Blocked(refusal) => Some(refusal.message_en()),
+    })
 }
 
 /// Records an incoming repayment by the owner, by `by`: purpose *owner
@@ -472,6 +492,11 @@ pub async fn decided(state: &AppState, event: &OwnerDrawingDecided) -> Result<()
         return Ok(());
     }
     if event.approved {
+        // `FIN.ACL.21`: the user who saved the drawing never approves it (the
+        // sole owner's own approval is `DrawingStart::Approved`, not this).
+        if event.approved_by.is_some() && event.approved_by == row.requested_by {
+            return Err(refused("The requester cannot approve their own drawing."));
+        }
         approved(state, row, event.approved_by, false).await?;
     } else {
         row.status = DrawingStatus::Rejected;

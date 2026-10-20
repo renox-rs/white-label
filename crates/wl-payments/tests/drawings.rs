@@ -2,12 +2,13 @@
 //! `FIN.ACL.21`, `FIN.ACL.23`): the acceptance checks of #119. wl-invoicing is
 //! not part of this app: the approval is the test's `DrawingsDesk`, and a
 //! decision is the kernel event `OwnerDrawingDecided` the test emits. The bank
-//! statement line marked as a drawing waits for the bank statement lines.
+//! statement line marked as a drawing is tested at the end of this file.
 
 mod support;
 
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
+use wl_kernel::bank_statements::bank_statements;
 use wl_kernel::cheques::RegisterCheque;
 use wl_kernel::documents::today;
 use wl_kernel::drawings::{
@@ -16,8 +17,11 @@ use wl_kernel::drawings::{
 use wl_kernel::payments::{Direction, PaymentStatus};
 use wl_kernel::{LegalEntity, Subject};
 use wl_payments::allocate::allocate;
-use wl_payments::drawings::{DrawingStatus, PaymentDrawing, PaymentDrawings};
+use wl_payments::bank_statement::{BankStatementImport, ImportStatus};
+use wl_payments::bank_statement_line::{BankStatementLine, LineStatus};
+use wl_payments::drawings::{DrawingStatus, PaymentDrawing, PaymentDrawings, record_approved};
 use wl_payments::expense_category::{self, ExpenseCategory, VatTreatment};
+use wl_payments::notices::BANK_LINE_DRAWING_REJECTED;
 use wl_payments::{Payment, permissions as perm};
 
 use support::{BLUE_DUNES, BLUE_DUNES_CODE, Booted, QUIET_SANDS, QUIET_SANDS_CODE, boot};
@@ -602,4 +606,355 @@ async fn the_form_and_the_request_page_show_the_drawing() {
         .assert_ok()
         .assert_see("Waiting for approval")
         .assert_see("Quiet Sands LLC");
+}
+
+// ---------------------------------------------------------------------------
+// §5.7 step 3: a bank statement line marked as an owner drawing.
+
+/// An import of PGP's account `ENBD-1` for March 2027 with the lines of `csv`,
+/// read and in review; the user who reconciles it acts.
+async fn reviewed(t: &Booted, csv: &str) -> (User, BankStatementImport) {
+    let dina = t.user("Dina", &[perm::VIEW, perm::BANK_RECONCILE]).await;
+    t.app.acting_as(&dina);
+    let entity = t.entity("PGP").await.id.to_string();
+    t.app
+        .htmx()
+        .post(
+            "/bank-statements",
+            &[
+                ("legal_entity_id", entity.as_str()),
+                ("bank_account", "ENBD-1"),
+                ("file_name", "march.csv"),
+                ("format", "csv"),
+                ("period_start", "2027-03-01"),
+                ("period_end", "2027-03-31"),
+                ("closing_balance", "10,000"),
+                ("content", csv),
+            ],
+        )
+        .await
+        .assert_status(303);
+    let import = BankStatementImport::query()
+        .first(t.db())
+        .await
+        .unwrap()
+        .unwrap();
+    t.app
+        .htmx()
+        .post(&format!("/bank-statements/{}/parse", import.id), &[])
+        .await
+        .assert_ok();
+    (dina, import)
+}
+
+const ATM: &str = "date,description,reference,amount\n\
+    2027-03-08,ATM Marina,ATM-1,-1200.00\n\
+    2027-03-09,Rent received,RENT-1,3000.00\n";
+
+async fn lines(t: &Booted, import: &BankStatementImport) -> Vec<BankStatementLine> {
+    BankStatementLine::of_import(t.db(), import.id)
+        .await
+        .unwrap()
+}
+
+async fn mark(t: &Booted, line: &BankStatementLine) -> renox::testing::TestResponse {
+    t.app
+        .htmx()
+        .post(
+            &format!("/bank-statement-lines/{}/drawing", line.id),
+            &[("category", "owner_drawings")],
+        )
+        .await
+}
+
+async fn line_of(t: &Booted, line: &BankStatementLine) -> BankStatementLine {
+    BankStatementLine::find_or_404(t.db(), line.id)
+        .await
+        .unwrap()
+}
+
+async fn complete(t: &Booted, import: &BankStatementImport) -> renox::testing::TestResponse {
+    t.app
+        .htmx()
+        .post(&format!("/bank-statements/{}/complete", import.id), &[])
+        .await
+}
+
+/// An outgoing line of AED 1,200.00 (ATM) marked as a drawing stays
+/// `suggested`; the import cannot complete while the request is open; after
+/// the approval the payment is recorded with the line's date and amount and
+/// the line is matched, and the import can complete.
+#[renox::test]
+async fn a_marked_line_is_matched_when_the_drawing_is_approved() {
+    let t = boot().await;
+    let b = t.user_b().await;
+    let (dina, import) = reviewed(&t, ATM).await;
+    let all = lines(&t, &import).await;
+    let (atm, rent) = (&all[0], &all[1]);
+    assert_eq!((atm.amount, rent.amount), (-120_000, 300_000));
+
+    mark(&t, atm).await.assert_ok();
+    let marked = line_of(&t, atm).await;
+    assert_eq!(marked.status, LineStatus::Suggested);
+    assert!(payments(&t).await.is_empty(), "nothing before the approval");
+    let asked = t.drawings.asked();
+    assert_eq!(asked.len(), 1);
+    assert_eq!((asked[0].amount, asked[0].requested_by), (120_000, dina.id));
+    let request = drawings(&t).await;
+    assert_eq!(request.len(), 1);
+    assert_eq!(marked.drawing_request_id, Some(request[0].id));
+    assert_eq!(request[0].statement_line_id, Some(atm.id));
+
+    // The read of the marked lines (FIN.BUD.01): waiting, not recorded.
+    let entity = t.entity("PGP").await;
+    let read = bank_statements(t.state())
+        .drawing_lines(t.db(), &[entity.id], day(3, 1), day(3, 31))
+        .await
+        .unwrap();
+    assert_eq!(read.len(), 1);
+    assert_eq!(
+        (read[0].line_id, read[0].amount, read[0].date),
+        (atm.id, 120_000, day(3, 8))
+    );
+    assert_eq!(read[0].category, "owner_drawings");
+    assert!(!read[0].recorded);
+
+    // The rent line is ignored; the drawing still holds the import back.
+    t.app
+        .htmx()
+        .post(
+            &format!("/bank-statement-lines/{}/ignore", rent.id),
+            &[("reason", "booked in the rent run")],
+        )
+        .await
+        .assert_ok();
+    complete(&t, &import).await.assert_status(422);
+    assert_eq!(
+        BankStatementImport::find_or_404(t.db(), import.id)
+            .await
+            .unwrap()
+            .status,
+        ImportStatus::InReview
+    );
+
+    decide(&t, &request[0], Some(&b), None).await;
+    let recorded = payments(&t).await;
+    assert_eq!(recorded.len(), 1);
+    assert_eq!(recorded[0].direction, Direction::Out);
+    assert_eq!(
+        (recorded[0].amount, recorded[0].payment_date),
+        (120_000, day(3, 8))
+    );
+    assert_eq!(recorded[0].purpose, "owner_drawings");
+    assert_eq!(recorded[0].reference.as_deref(), Some("ATM-1"));
+    assert_eq!(recorded[0].bank_account.as_deref(), Some("ENBD-1"));
+    let matched = line_of(&t, atm).await;
+    assert_eq!(matched.status, LineStatus::Matched);
+    assert_eq!(matched.match_id, Some(recorded[0].id));
+    let read = bank_statements(t.state())
+        .drawing_lines(t.db(), &[entity.id], day(3, 1), day(3, 31))
+        .await
+        .unwrap();
+    assert!(read[0].recorded);
+    // Outside its dates, or for another entity, nothing is read.
+    assert!(
+        bank_statements(t.state())
+            .drawing_lines(t.db(), &[entity.id], day(4, 1), day(4, 30))
+            .await
+            .unwrap()
+            .is_empty()
+    );
+
+    complete(&t, &import).await.assert_ok();
+    assert_eq!(
+        BankStatementImport::find_or_404(t.db(), import.id)
+            .await
+            .unwrap()
+            .status,
+        ImportStatus::Completed
+    );
+}
+
+/// A rejection (or a withdrawal or an expiry) puts the line back to
+/// `unmatched` with the reason and tells the accountant who marked it; the
+/// line can be marked again; the drawing is no longer read.
+#[renox::test]
+async fn a_rejected_drawing_puts_the_line_back_with_the_reason() {
+    let t = boot().await;
+    let (dina, import) = reviewed(&t, ATM).await;
+    let atm = lines(&t, &import).await.remove(0);
+    mark(&t, &atm).await.assert_ok();
+    let request = drawings(&t).await.remove(0);
+
+    decide(&t, &request, None, Some("expired after 7 days")).await;
+    assert!(payments(&t).await.is_empty());
+    let back = line_of(&t, &atm).await;
+    assert_eq!(back.status, LineStatus::Unmatched);
+    assert_eq!(back.reason.as_deref(), Some("expired after 7 days"));
+    assert_eq!(back.drawing_request_id, None);
+    let told = t.notices.of_type(BANK_LINE_DRAWING_REJECTED);
+    assert_eq!(told.len(), 1);
+    assert!(matches!(
+        told[0].recipients[0],
+        wl_kernel::notify::NotifyRecipient::User { id } if id == dina.id
+    ));
+    let data = told[0].data.to_string();
+    assert!(
+        data.contains("expired after 7 days") && data.contains("1,200.00"),
+        "{data}"
+    );
+    let entity = t.entity("PGP").await;
+    assert!(
+        bank_statements(t.state())
+            .drawing_lines(t.db(), &[entity.id], day(3, 1), day(3, 31))
+            .await
+            .unwrap()
+            .is_empty()
+    );
+
+    // Marked again, it is a new request.
+    mark(&t, &atm).await.assert_ok();
+    assert_eq!(line_of(&t, &atm).await.status, LineStatus::Suggested);
+    assert_eq!(drawings(&t).await.len(), 2);
+    assert_eq!(line_of(&t, &atm).await.reason, None);
+}
+
+/// The sole owner's drawing is approved at once: the line is matched when it
+/// is marked.
+#[renox::test]
+async fn a_sole_owner_marks_a_line_and_it_is_matched_at_once() {
+    let t = boot().await;
+    t.drawings.approves_at_once(true);
+    let (_dina, import) = reviewed(&t, ATM).await;
+    let atm = lines(&t, &import).await.remove(0);
+    mark(&t, &atm).await.assert_ok();
+    let matched = line_of(&t, &atm).await;
+    assert_eq!(matched.status, LineStatus::Matched);
+    let recorded = payments(&t).await;
+    assert_eq!(recorded.len(), 1);
+    assert!(recorded[0].self_approved);
+    assert_eq!(matched.match_id, Some(recorded[0].id));
+}
+
+/// Only money out, of an unmatched line, in a known drawings category, can be
+/// marked; an import in review with a drawing waiting cannot be reverted.
+#[renox::test]
+async fn only_an_outgoing_unmatched_line_is_marked_and_a_waiting_drawing_blocks_the_revert() {
+    let t = boot().await;
+    let (_dina, import) = reviewed(&t, ATM).await;
+    let all = lines(&t, &import).await;
+    mark(&t, &all[1]).await.assert_status(422);
+    t.app
+        .htmx()
+        .post(
+            &format!("/bank-statement-lines/{}/drawing", all[0].id),
+            &[("category", "no_such_category")],
+        )
+        .await
+        .assert_status(422);
+    assert_eq!(line_of(&t, &all[0]).await.status, LineStatus::Unmatched);
+    t.drawings.owner(None);
+    mark(&t, &all[0]).await.assert_status(422);
+    t.drawings.owner(Some(QUIET_SANDS));
+    assert!(t.drawings.asked().is_empty());
+
+    mark(&t, &all[0]).await.assert_ok();
+    mark(&t, &all[0]).await.assert_status(422);
+    let revert = format!("/bank-statements/{}/revert", import.id);
+    t.app.htmx().post(&revert, &[]).await.assert_status(422);
+    let request = drawings(&t).await.remove(0);
+    decide(&t, &request, None, Some("withdrawn")).await;
+    t.app.htmx().post(&revert, &[]).await.assert_ok();
+    assert!(lines(&t, &import).await.is_empty());
+}
+
+/// Requester cannot approve: the decision of the user who saved the drawing
+/// records nothing; another approver's does.
+#[renox::test]
+async fn the_requester_cannot_approve_their_own_drawing() {
+    let t = boot().await;
+    let a = t.user_a().await;
+    let b = t.user_b().await;
+    let pgp = t.entity("PGP").await;
+    post_drawing(
+        &t,
+        &a,
+        &pgp,
+        QUIET_SANDS_CODE,
+        "out",
+        "15000.00",
+        "2027-03-10",
+    )
+    .await
+    .assert_status(303);
+    let saved = drawings(&t).await.remove(0);
+
+    let refused = t
+        .state()
+        .emit(OwnerDrawingDecided {
+            source: Subject::new(DRAWING_REQUEST_SUBJECT_TYPE, saved.id),
+            legal_entity_id: saved.legal_entity_id,
+            approved: true,
+            approved_by: Some(a.id),
+            reason: None,
+        })
+        .await;
+    assert!(refused.is_err(), "the requester's approval is refused");
+    assert!(payments(&t).await.is_empty());
+    assert_eq!(drawings(&t).await[0].status, DrawingStatus::Requested);
+
+    decide(&t, &saved, Some(&b), None).await;
+    assert_eq!(payments(&t).await.len(), 1);
+    assert_eq!(drawings(&t).await[0].status, DrawingStatus::Recorded);
+}
+
+/// Money out to a blocked owner party waits under `PTY.ACL.03`: the approval
+/// stands but the payment is not recorded until the party is free; a
+/// repayment from the same party is money in and never refused.
+#[renox::test]
+async fn a_drawing_to_a_blocked_owner_waits_for_the_unblock() {
+    let t = boot().await;
+    let a = t.user_a().await;
+    let b = t.user_b().await;
+    let pgp = t.entity("PGP").await;
+    post_drawing(
+        &t,
+        &a,
+        &pgp,
+        QUIET_SANDS_CODE,
+        "out",
+        "900.00",
+        "2027-03-12",
+    )
+    .await
+    .assert_status(303);
+    let saved = drawings(&t).await.remove(0);
+
+    t.blocked.block(QUIET_SANDS);
+    decide(&t, &saved, Some(&b), None).await;
+    assert!(payments(&t).await.is_empty(), "no money goes out");
+    let waiting = drawings(&t).await.remove(0);
+    assert_eq!(waiting.status, DrawingStatus::Approved);
+    assert!(
+        waiting
+            .reason
+            .as_deref()
+            .is_some_and(|r| r.contains("hold")),
+        "{:?}",
+        waiting.reason
+    );
+    let again = record_approved(t.state(), &waiting).await.unwrap_err();
+    assert!(again.to_string().contains("hold"), "{again}");
+
+    // Money in from the blocked party is received.
+    post_drawing(&t, &a, &pgp, QUIET_SANDS_CODE, "in", "100.00", "2027-03-13")
+        .await
+        .assert_status(303);
+    assert_eq!(payments(&t).await.len(), 1);
+
+    t.blocked.free(QUIET_SANDS);
+    record_approved(t.state(), &waiting).await.unwrap();
+    let recorded = payments(&t).await;
+    assert_eq!(recorded.len(), 2);
+    assert_eq!(drawings(&t).await[0].status, DrawingStatus::Recorded);
 }
