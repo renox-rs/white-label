@@ -26,7 +26,7 @@ use wl_kernel::block_guard::{
 };
 use wl_kernel::inventory::{
     GoodsReceived, LandedCostAdjusted, LandedCostAllocated, PurchaseOrderRevised,
-    SupplierReturnCredited, SupplierReturnDispatched,
+    SupplierReturnCredited, SupplierReturnDispatched, SupplierScoreBelowThreshold,
 };
 use wl_kernel::invoicing::{
     CostPoster, DebitedLine, PeriodLocks, PostCost, SupplierBillFuture, SupplierBillId,
@@ -513,6 +513,7 @@ struct Fakes {
     blocked: Blocked,
     certificates: Certificates,
     incidents: SupplierIncidents,
+    below: Arc<Mutex<Vec<SupplierScoreBelowThreshold>>>,
     locks: Option<PeriodDesk>,
     bills: Option<BillDesk>,
     received: Arc<Mutex<Vec<GoodsReceived>>>,
@@ -530,6 +531,7 @@ impl Module for Fakes {
 
     fn register(&self, app: &mut Registry) {
         record(app, &self.revised);
+        record(app, &self.below);
         record(app, &self.allocated);
         record(app, &self.adjusted);
         if let Some(bills) = &self.bills {
@@ -574,6 +576,8 @@ pub struct Booted {
     pub certificates: Certificates,
     /// The quality incidents the vertical would report.
     pub incidents: SupplierIncidents,
+    /// Every `SupplierScoreBelowThreshold`.
+    pub below: Recorded<SupplierScoreBelowThreshold>,
     /// `SupplierReturnCredited`.
     pub credited: Recorded<SupplierReturnCredited>,
     /// The tickets opened for tasks.
@@ -1119,6 +1123,7 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool) -> Booted {
     let blocked = Blocked::default();
     let certificates = Certificates::default();
     let incidents = SupplierIncidents::default();
+    let below = Arc::new(Mutex::new(Vec::new()));
     let credited = Arc::new(Mutex::new(Vec::new()));
     let tickets = TicketDesk::default();
     let costs = CostDesk::default();
@@ -1140,6 +1145,7 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool) -> Booted {
         blocked: blocked.clone(),
         certificates: certificates.clone(),
         incidents: incidents.clone(),
+        below: below.clone(),
         locks: (!with_invoicing).then(|| locks.clone()),
         bills: (!with_invoicing).then(|| bills.clone()),
         received: received.clone(),
@@ -1200,6 +1206,16 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool) -> Booted {
     permissions::define_role(app.db(), "cost_viewer", &[perm::STOCK_COST_VIEW])
         .await
         .unwrap();
+    permissions::define_role(
+        app.db(),
+        "procurement_manager",
+        &[perm::PURCHASE_ORDERS_ISSUE],
+    )
+    .await
+    .unwrap();
+    permissions::define_role(app.db(), "party_blocker", &["parties.block"])
+        .await
+        .unwrap();
     Booted {
         app,
         received: Recorded(received),
@@ -1212,6 +1228,7 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool) -> Booted {
         blocked,
         certificates,
         incidents,
+        below: Recorded(below),
         credited: Recorded(credited),
         tickets,
         costs,
