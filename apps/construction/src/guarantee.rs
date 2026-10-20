@@ -8,6 +8,9 @@
 //! active --extend--> active        (the new expiry is later)
 //! active --release--> released
 //! active --expire--> expired       (the system, the day after the expiry date)
+//! active --call--> called          (the beneficiary demands payment, BL-CON-10)
+//! called --settle_call--> active   (partial call, or a call withdrawn before payment)
+//! called --settle_call_full--> released   (the whole guarantee was paid)
 //! ```
 //!
 //! The accountant (`guarantees.manage`) registers the guarantee as a `draft`
@@ -16,8 +19,8 @@
 //! ([`GuaranteeDocument`]) with the transition it came with. Neither the
 //! amount nor the expiry changes without one. `expire` is the system's, in
 //! [`crate::expiry`], together with `CON.RUL.11` (the extension task 60 days
-//! before expiry). `call` and `settle_call` come with the issue that builds
-//! them (BL-CON-10); a `called` guarantee does not expire.
+//! before expiry). `call` and `settle_call` are in [`crate::call`]; a
+//! `called` guarantee does not expire.
 //!
 //! Decisions where the spec is silent:
 //!
@@ -33,6 +36,12 @@
 //!   0.
 //! - A guarantee is issued only with an amount above 0, a beneficiary and an
 //!   expiry date.
+//! - The spec's `settle_call` ends in `released` or in `active`; a Renox
+//!   transition has one target, so it is two transitions with the same guard
+//!   and permission: `settle_call` (to `active`: a partial call, or a call
+//!   withdrawn before payment) and `settle_call_full` (to `released`: the
+//!   amount paid is the whole amount). [`crate::call::settle`] picks the one
+//!   the amount paid asks for.
 
 use renox::auth::permissions::Scope;
 use renox::chrono::NaiveDate;
@@ -61,6 +70,12 @@ pub const EXTEND: &str = "extend";
 pub const RELEASE: &str = "release";
 /// The `expire` transition's name.
 pub const EXPIRE: &str = "expire";
+/// The `call` transition's name (BL-CON-10).
+pub const CALL: &str = "call";
+/// The `settle_call` transition's name: back to `active` (BL-CON-10).
+pub const SETTLE_CALL: &str = "settle_call";
+/// `settle_call_full`: the whole guarantee was paid, so it is `released`.
+pub const SETTLE_CALL_FULL: &str = "settle_call_full";
 
 /// What a guarantee secures.
 #[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -181,6 +196,12 @@ pub struct GuaranteeInput {
     /// guarantee), in fils.
     #[serde(default)]
     pub unrecovered: Option<i64>,
+    /// The amount of the open call (`settle_call`), in fils.
+    #[serde(default)]
+    pub called: Option<i64>,
+    /// The open call (`settle_call`).
+    #[serde(default)]
+    pub call_id: Option<i64>,
 }
 
 /// The input of a transition of a guarantee.
@@ -277,6 +298,81 @@ fn release_check(_guarantee: &Guarantee, input: &GuaranteeInput) -> Option<Strin
     release_problem(input)
 }
 
+/// Why `guarantee` cannot be called with `input`, if it cannot: the
+/// beneficiary's demand notice is attached and the amount demanded is above 0
+/// and not above the guarantee's. The platform does not judge or block a call
+/// (§9); it records it.
+pub fn call_problem(guarantee: &Guarantee, input: &GuaranteeInput) -> Option<String> {
+    if input.document.trim().is_empty() {
+        return Some(english("construction.guarantee.demand_needed", &[]));
+    }
+    let Some(amount) = input.amount.filter(|amount| *amount > 0) else {
+        return Some(english("construction.guarantee.call_amount_needed", &[]));
+    };
+    if amount > guarantee.amount {
+        return Some(english(
+            "construction.guarantee.call_above",
+            &[("amount", &aed(guarantee.amount))],
+        ));
+    }
+    None
+}
+
+/// Why the call of `input` cannot be settled, if it cannot: there is an open
+/// call, the amount paid is not above the amount called, and the bank's debit
+/// advice is attached; a call withdrawn before payment (amount paid 0) needs
+/// the beneficiary's withdrawal letter in its place.
+fn settle_base_problem(input: &GuaranteeInput) -> Option<String> {
+    let Some(called) = input.called else {
+        return Some(english("construction.guarantee.no_open_call", &[]));
+    };
+    let Some(paid) = input.amount.filter(|paid| *paid >= 0) else {
+        return Some(english("construction.guarantee.paid_needed", &[]));
+    };
+    if paid > called {
+        return Some(english(
+            "construction.guarantee.paid_above_call",
+            &[("amount", &aed(called))],
+        ));
+    }
+    if input.document.trim().is_empty() {
+        let key = if paid == 0 {
+            "construction.guarantee.withdrawal_needed"
+        } else {
+            "construction.guarantee.debit_advice_needed"
+        };
+        return Some(english(key, &[]));
+    }
+    None
+}
+
+/// Why `guarantee` cannot be settled back to `active` with `input`, if it
+/// cannot: the call was partial or withdrawn, so the amount paid is below the
+/// guarantee's amount.
+pub fn settle_partial_problem(guarantee: &Guarantee, input: &GuaranteeInput) -> Option<String> {
+    if let Some(problem) = settle_base_problem(input) {
+        return Some(problem);
+    }
+    match input.amount {
+        Some(paid) if paid >= guarantee.amount => {
+            Some(english("construction.guarantee.paid_all", &[]))
+        }
+        _ => None,
+    }
+}
+
+/// Why `guarantee` cannot be settled as `released` with `input`, if it
+/// cannot: the amount paid is the whole amount of the guarantee.
+pub fn settle_full_problem(guarantee: &Guarantee, input: &GuaranteeInput) -> Option<String> {
+    if let Some(problem) = settle_base_problem(input) {
+        return Some(problem);
+    }
+    match input.amount {
+        Some(paid) if paid == guarantee.amount => None,
+        _ => Some(english("construction.guarantee.paid_not_all", &[])),
+    }
+}
+
 /// Why `guarantee` does not expire on `today`, if it does not: its expiry date
 /// has passed.
 pub fn expire_problem(guarantee: &Guarantee, today: NaiveDate) -> Option<String> {
@@ -328,6 +424,17 @@ fn managed(
             let input = guarantee_input(ctx);
             Box::pin(async move { keep_document_in(&mut *tx, id, name, &input).await })
         })
+}
+
+/// The effect both settlements share: the call is closed with the bank's
+/// document and the amount paid, and a partial call takes the amount paid off
+/// the guarantee.
+fn settling(transition: Transition<Guarantee>) -> Transition<Guarantee> {
+    transition.effect(|guarantee: &Guarantee, ctx, tx| {
+        let guarantee = guarantee.clone();
+        let input = guarantee_input(ctx);
+        Box::pin(async move { crate::call::settle_in(&mut *tx, &guarantee, &input).await })
+    })
 }
 
 impl StateMachine for Guarantee {
@@ -383,6 +490,34 @@ impl StateMachine for Guarantee {
                 },
             ))
             .transition(managed(RELEASE, "Release", Active, release_check).to(Released))
+            .transition(
+                managed(CALL, "Record a call", Active, call_problem)
+                    .to(Called)
+                    .tone("danger")
+                    .effect(|guarantee: &Guarantee, ctx, tx| {
+                        let guarantee = guarantee.clone();
+                        let input = guarantee_input(ctx);
+                        let by = ctx.actor().map(|user| user.id);
+                        Box::pin(async move {
+                            crate::call::open_in(&mut *tx, &guarantee, &input, by).await
+                        })
+                    }),
+            )
+            .transition(settling(managed(
+                SETTLE_CALL,
+                "Settle the call",
+                Called,
+                settle_partial_problem,
+            )))
+            .transition(settling(
+                managed(
+                    SETTLE_CALL_FULL,
+                    "Settle the call (paid in full)",
+                    Called,
+                    settle_full_problem,
+                )
+                .to(Released),
+            ))
             .transition(
                 Transition::new(EXPIRE)
                     .label("Expire")
@@ -651,12 +786,15 @@ mod tests {
     #[test]
     fn every_transition_of_the_lifecycle_is_declared() {
         let machine = Guarantee::machine();
-        let table: [(&str, &str, &str, bool); 5] = [
+        let table: [(&str, &str, &str, bool); 8] = [
             (ISSUE, "draft", "active", false),
             (REDUCE, "active", "active", false),
             (EXTEND, "active", "active", false),
             (RELEASE, "active", "released", false),
             (EXPIRE, "active", "expired", true),
+            (CALL, "active", "called", false),
+            (SETTLE_CALL, "called", "active", false),
+            (SETTLE_CALL_FULL, "called", "released", false),
         ];
         assert_eq!(machine.transitions().len(), table.len());
         for (name, from, to, by_system) in table {

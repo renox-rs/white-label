@@ -12,7 +12,7 @@ use renox::auth::permissions::users_with_role_in;
 use renox::prelude::*;
 use wl_kernel::Subject;
 use wl_kernel::notify::{
-    self, Category, GiveUpReaction, NotificationTypeDef, NotifyChannel, NotifyRequest,
+    self, Category, GiveUpReaction, NotificationTypeDef, NotifyChannel, NotifyRequest, Urgency,
 };
 use wl_kernel::role_tasks;
 
@@ -21,6 +21,25 @@ use crate::texts::template;
 
 /// The notification type of a notice to the people of a project.
 pub const NOTICE: &str = "construction.notice";
+
+/// The notification type of a notice that goes out at once, outside quiet
+/// hours and digests: a call on a guarantee.
+pub const URGENT_NOTICE: &str = "construction.urgent_notice";
+
+/// The urgent notification type: a title and a body the caller fills in.
+pub fn urgent_notice_type() -> NotificationTypeDef {
+    NotificationTypeDef::new(URGENT_NOTICE, "construction")
+        .group("projects")
+        .category(Category::Transactional)
+        .urgency(Urgency::Urgent)
+        .give_up(&[GiveUpReaction::None])
+        .template(
+            NotifyChannel::Email,
+            "en",
+            Some(template("construction.notice.subject")),
+            template("construction.notice.body"),
+        )
+}
 
 /// The notification type: a title and a body the caller fills in.
 pub fn notice_type() -> NotificationTypeDef {
@@ -39,6 +58,7 @@ pub fn notice_type() -> NotificationTypeDef {
 /// Registers the notification type.
 pub(crate) fn register_types() {
     notify::register_type(notice_type());
+    notify::register_type(urgent_notice_type());
 }
 
 /// The users who hold `role` in `project`, else the one the kernel picks for
@@ -75,10 +95,39 @@ pub(crate) async fn tell(
     title: &str,
     body: &str,
 ) -> Result<bool> {
+    tell_as(state, NOTICE, subject, label, users, title, body).await
+}
+
+/// Tells `users` about `subject` at once, outside quiet hours and digests.
+///
+/// # Errors
+///
+/// The notifier's errors.
+pub(crate) async fn tell_urgent(
+    state: &AppState,
+    subject: Subject,
+    label: &str,
+    users: &[i64],
+    title: &str,
+    body: &str,
+) -> Result<bool> {
+    tell_as(state, URGENT_NOTICE, subject, label, users, title, body).await
+}
+
+/// Tells `users` with the notification type `type_key`.
+async fn tell_as(
+    state: &AppState,
+    type_key: &str,
+    subject: Subject,
+    label: &str,
+    users: &[i64],
+    title: &str,
+    body: &str,
+) -> Result<bool> {
     if users.is_empty() {
         return Ok(false);
     }
-    let mut request = NotifyRequest::new(NOTICE, subject)
+    let mut request = NotifyRequest::new(type_key, subject)
         .subject_label(label)
         .data(renox::serde_json::json!({ "title": title, "body": body }));
     for user in users {
@@ -131,6 +180,14 @@ mod tests {
         assert_eq!(aed(0), "AED 0.00");
         assert_eq!(aed(10_000_000_000), "AED 100,000,000.00");
         assert_eq!(aed(-250_050), "-AED 2,500.50");
+    }
+
+    #[test]
+    fn the_urgent_notice_goes_out_at_once() {
+        let def = urgent_notice_type();
+        assert_eq!(def.key, URGENT_NOTICE);
+        assert_eq!(def.urgency, Urgency::Urgent);
+        assert!(def.template_for(NotifyChannel::Email, "en").is_some());
     }
 
     #[test]

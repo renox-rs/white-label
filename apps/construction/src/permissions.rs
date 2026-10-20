@@ -46,6 +46,10 @@ pub const PROJECT_MANAGER_ROLE: &str = "project_manager";
 /// The role of the quantity surveyor (QS), who gets the tasks of the IPAs.
 pub const QS_ROLE: &str = "quantity_surveyor";
 
+/// The role of the MD, who is told of what only the MD decides; the company
+/// admin when nobody holds it.
+pub const MD_ROLE: &str = "md";
+
 /// The role the tasks of the accountant go to.
 pub const ACCOUNTANT_ROLE: &str = "accountant";
 

@@ -73,7 +73,7 @@ pub fn release_point_reached(project: &Project, kind: GuaranteeKind, day: NaiveD
 }
 
 /// The kind as the messages show it: `retention bond`.
-fn kind_text(guarantee: &Guarantee) -> String {
+pub(crate) fn kind_text(guarantee: &Guarantee) -> String {
     match guarantee.kind {
         GuaranteeKind::Advance => "advance guarantee",
         GuaranteeKind::Performance => "performance bond",
@@ -84,7 +84,7 @@ fn kind_text(guarantee: &Guarantee) -> String {
 
 /// The users who manage `project`: its project manager, else the holders of
 /// the role.
-async fn managers(state: &AppState, project: &Project) -> Result<Vec<i64>> {
+pub(crate) async fn managers(state: &AppState, project: &Project) -> Result<Vec<i64>> {
     match project.manager_user_id {
         Some(user) => Ok(vec![user]),
         None => holders(state, project, permissions::PROJECT_MANAGER_ROLE).await,

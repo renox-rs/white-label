@@ -279,6 +279,21 @@ impl Recording {
     }
 }
 
+impl Recording {
+    /// The urgent notices of the vertical (`construction.urgent_notice`)
+    /// whose title contains `text`, oldest first.
+    pub fn urgent_titled(&self, text: &str) -> Vec<NotifyRequest> {
+        self.of_type(construction::notices::URGENT_NOTICE)
+            .into_iter()
+            .filter(|request| {
+                request.data["title"]
+                    .as_str()
+                    .is_some_and(|title| title.contains(text))
+            })
+            .collect()
+    }
+}
+
 /// The users a request is for.
 pub fn users_of(request: &NotifyRequest) -> Vec<i64> {
     request

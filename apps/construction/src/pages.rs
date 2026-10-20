@@ -28,6 +28,9 @@
 //! | `POST /construction/guarantees/{id}/reduce` | `construction.guarantee_reduce` | `guarantees.manage` in the project |
 //! | `POST /construction/guarantees/{id}/extend` | `construction.guarantee_extend` | `guarantees.manage` in the project |
 //! | `POST /construction/guarantees/{id}/release` | `construction.guarantee_release` | `guarantees.manage` in the project |
+//! | `POST /construction/guarantees/{id}/call` | `construction.guarantee_call` | `guarantees.manage` in the project |
+//! | `POST /construction/guarantees/{id}/settle-call` | `construction.guarantee_settle_call` | `guarantees.manage` in the project |
+//! | `POST /construction/guarantee-calls/{id}/dispute` | `construction.guarantee_call_dispute` | `projects.manage` in the project |
 //! | `POST /construction/projects/{id}/retention-notice/dismiss` | `construction.retention_notice_dismiss` | `retentions.manage` in the project |
 //!
 //! The approval of a termination is the kernel's: the MD finds the request
@@ -43,6 +46,7 @@ use serde::Serialize;
 use wl_kernel::PartyId;
 
 use crate::award::{self, Award, Awarded};
+use crate::call;
 use crate::cancellation;
 use crate::certificate::{self, CertificateRequest, Recorded};
 use crate::completion::{self, CompleteRequest};
@@ -129,6 +133,18 @@ pub fn routes() -> Routes {
         .name("construction.guarantee_extend")
         .post("/construction/guarantees/{id}/release", release_guarantee)
         .name("construction.guarantee_release")
+        .post("/construction/guarantees/{id}/call", call_guarantee)
+        .name("construction.guarantee_call")
+        .post(
+            "/construction/guarantees/{id}/settle-call",
+            settle_guarantee_call,
+        )
+        .name("construction.guarantee_settle_call")
+        .post(
+            "/construction/guarantee-calls/{id}/dispute",
+            dispute_guarantee_call,
+        )
+        .name("construction.guarantee_call_dispute")
         .require_auth()
 }
 
@@ -487,6 +503,17 @@ struct ClosingView {
     warning_texts: Vec<String>,
     contested_deductions: Vec<DeductionView>,
     contested_retention_deductions: Vec<RetentionDeductionView>,
+    guarantee_call_claims: Vec<GuaranteeCallView>,
+}
+
+/// A disputed call on a guarantee as the closing screen shows it: a claim of
+/// the final account.
+#[derive(Debug, Serialize)]
+struct GuaranteeCallView {
+    id: i64,
+    guarantee_id: i64,
+    demand_notice: String,
+    amount_paid: i64,
 }
 
 /// A deduction from the retention as the closing screen shows it.
@@ -545,6 +572,16 @@ async fn closing(
                 reference: line.reference.clone(),
                 reason: line.reason.clone(),
                 status: line.status.as_str(),
+            })
+            .collect(),
+        guarantee_call_claims: call::claims_of(&state.db, id)
+            .await?
+            .iter()
+            .map(|claim| GuaranteeCallView {
+                id: claim.id,
+                guarantee_id: claim.guarantee_id,
+                demand_notice: claim.demand_notice.clone(),
+                amount_paid: claim.amount_paid.unwrap_or_default(),
             })
             .collect(),
     };
@@ -936,4 +973,50 @@ async fn release_guarantee(
         .await
         .map_err(answer)?;
     guarantee_done(&lang, "construction.guarantee.released")
+}
+
+/// `POST /construction/guarantees/{id}/call`: the `amount` demanded (fils) and
+/// `document`, the beneficiary's demand notice.
+async fn call_guarantee(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let amount = amount_field(&form, "amount", &lang)?;
+    call::record(&state, &user, id, amount, &text(&form, "document"))
+        .await
+        .map_err(answer)?;
+    guarantee_done(&lang, "construction.guarantee.called")
+}
+
+/// `POST /construction/guarantees/{id}/settle-call`: the `amount` the bank
+/// paid (fils; 0 for a call withdrawn before payment) and `document`, the
+/// bank's debit advice or the beneficiary's withdrawal letter.
+async fn settle_guarantee_call(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let paid = amount_field(&form, "amount", &lang)?;
+    call::settle(&state, &user, id, paid, &text(&form, "document"))
+        .await
+        .map_err(answer)?;
+    guarantee_done(&lang, "construction.guarantee.call_settled")
+}
+
+/// `POST /construction/guarantee-calls/{id}/dispute`: the project manager
+/// marks the call disputed, so its paid amount is a claim in the final
+/// account.
+async fn dispute_guarantee_call(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    call::dispute(&state, &user, id).await.map_err(answer)?;
+    guarantee_done(&lang, "construction.guarantee.call_disputed")
 }

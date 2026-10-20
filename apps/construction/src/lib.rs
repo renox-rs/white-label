@@ -2,6 +2,7 @@
 #![warn(missing_docs)]
 
 pub mod award;
+pub mod call;
 pub mod cancellation;
 pub mod certificate;
 pub mod completion;
@@ -30,6 +31,7 @@ use renox::db::Migration;
 use renox::prelude::*;
 use renox::state_machine::Transitioned;
 
+pub use call::GuaranteeCall;
 pub use deduction::{DeductionKind, DeductionStatus, IpaDeduction};
 pub use events::ProjectTerminated;
 pub use guarantee::{Guarantee, GuaranteeDocument, GuaranteeKind, GuaranteeStatus};
@@ -71,7 +73,8 @@ impl Module for Construction {
             .model::<RetentionNotice>()
             .model::<RetentionDeduction>()
             .model::<Guarantee>()
-            .model::<GuaranteeDocument>();
+            .model::<GuaranteeDocument>()
+            .model::<GuaranteeCall>();
         project::register();
         renox::state_machine::register::<Ipa>();
         renox::state_machine::register::<Retention>();
@@ -83,6 +86,8 @@ impl Module for Construction {
         // A guarantee never expires silently, and `CON.RUL.11` asks the bank
         // for an extension 60 days before: daily at 02:00 Asia/Dubai.
         expiry::listen(app);
+        // A call on a guarantee is announced at once and its payment booked.
+        call::listen(app);
         app.schedule()
             .daily_at("02:00", GUARANTEE_TASK, |state: AppState| async move {
                 expiry::daily(&state).await

@@ -528,6 +528,70 @@ const TEXTS: &[(&str, &str)] = &[
         "construction.guarantee.release_body",
         "The project is closed. Ask for the original of the guarantee of {{ bank }} for {{ amount }}, or the bank's cancellation letter, and release it.",
     ),
+    // Calls on a guarantee (BL-CON-10).
+    (
+        "construction.guarantee.demand_needed",
+        "Attach the beneficiary's demand notice.",
+    ),
+    (
+        "construction.guarantee.call_amount_needed",
+        "Give the amount demanded, above 0.",
+    ),
+    (
+        "construction.guarantee.call_above",
+        "The amount demanded cannot be above the guarantee, {{ amount }}.",
+    ),
+    (
+        "construction.guarantee.no_open_call",
+        "The guarantee has no open call to settle.",
+    ),
+    (
+        "construction.guarantee.paid_needed",
+        "Give the amount the bank paid; 0 when the beneficiary withdrew the call.",
+    ),
+    (
+        "construction.guarantee.paid_above_call",
+        "The amount paid cannot be above the amount called, {{ amount }}.",
+    ),
+    (
+        "construction.guarantee.debit_advice_needed",
+        "Attach the bank's debit advice.",
+    ),
+    (
+        "construction.guarantee.withdrawal_needed",
+        "Attach the beneficiary's withdrawal letter for a call withdrawn before payment.",
+    ),
+    (
+        "construction.guarantee.paid_all",
+        "The whole guarantee was paid: settle it as paid in full.",
+    ),
+    (
+        "construction.guarantee.paid_not_all",
+        "The amount paid is not the whole guarantee: settle it as a partial call.",
+    ),
+    (
+        "construction.guarantee.called_title",
+        "The {{ kind }} of {{ project }} was called for {{ amount }}",
+    ),
+    (
+        "construction.guarantee.called_body",
+        "{{ beneficiary }} demanded {{ amount }} under the guarantee of {{ bank }} (demand notice {{ notice }}). Respond to the call.",
+    ),
+    (
+        "construction.guarantee.respond_title",
+        "Respond to the call on the {{ kind }} of {{ project }}",
+    ),
+    (
+        "construction.guarantee.respond_body",
+        "The beneficiary demanded {{ amount }} (demand notice {{ notice }}). Settle the call with the bank's debit advice, or with the withdrawal letter when the beneficiary withdraws it.",
+    ),
+    (
+        "construction.guarantee.respond_done",
+        "call settled",
+    ),
+    ("construction.guarantee.called", "Call recorded."),
+    ("construction.guarantee.call_settled", "Call settled."),
+    ("construction.guarantee.call_disputed", "Call marked disputed."),
     ("construction.guarantee.registered", "Guarantee registered."),
     ("construction.guarantee.issued", "Guarantee issued."),
     ("construction.guarantee.reduced", "Guarantee reduced."),
