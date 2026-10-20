@@ -65,7 +65,10 @@ pub fn invoicing_for(client_app: &str, entities: &[String]) -> WlInvoicing {
                 .cash_alert_roles(&[ADMIN, ACCOUNTANT])
                 // A cancelled job charged to the tenant is issued at once:
                 // there is no confirmation step (BL-PRP-24).
-                .auto_issue_source("ticketing.ticket");
+                .auto_issue_source("ticketing.ticket")
+                // The damages invoice of a deposit applied to deductions and
+                // the invoices reissued by an amendment (BL-PRP-17, BL-PRP-08).
+                .auto_issue_source("property.lease");
             for code in entities {
                 module = module.cash_threshold(code, CASH_THRESHOLD);
             }
@@ -479,7 +482,10 @@ mod tests {
         assert_eq!(config.cash_forecast_weeks, 13);
         assert_eq!(config.cash_week_start, Weekday::Mon);
         assert_eq!(config.cash_alert_time, "06:00");
-        assert_eq!(config.auto_issue_sources, ["ticketing.ticket"]);
+        assert_eq!(
+            config.auto_issue_sources,
+            ["ticketing.ticket", "property.lease"]
+        );
 
         let payments = payments_for("property");
         let config = payments.config();

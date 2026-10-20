@@ -66,6 +66,7 @@ use wl_kernel::documents::today;
 use wl_kernel::invoicing::{
     DraftLine, InvoiceDraft, InvoiceId, InvoiceStatus, ReopenReason, invoicer,
 };
+use wl_kernel::payments::{AllocationTarget, PAYMENT_SUBJECT_TYPE, PaymentId, payment_recorder};
 use wl_kernel::role_tasks::RoleTask;
 use wl_kernel::{Subject, VatCategory};
 
@@ -290,6 +291,9 @@ async fn reissue(
     let Some(id) = invoicer(state).draft(&state.db, draft).await? else {
         return Ok(Vec::new());
     };
+    // Reissued: at once, where the client issues the lease source
+    // automatically, so the credit can be allocated to it.
+    crate::invoicing::issue_at_once(state, id).await;
     // The charge now stands for the reissued invoice.
     LeaseCharge::query()
         .where_(LeaseCharge::ID.eq(charge.id))
@@ -385,7 +389,22 @@ async fn replace_invoice(
             if take <= 0 {
                 continue;
             }
-            match contract.allocate(state, *id, source.clone(), take).await {
+            // A payment is allocated through the payments module (both sides
+            // of the allocation); a credit note through the invoice.
+            let allocated = match source.subject_type.as_str() {
+                PAYMENT_SUBJECT_TYPE => {
+                    payment_recorder(state)
+                        .allocate(
+                            state,
+                            PaymentId(source.subject_id),
+                            AllocationTarget::Invoice(*id),
+                            take,
+                        )
+                        .await
+                }
+                _ => contract.allocate(state, *id, source.clone(), take).await,
+            };
+            match allocated {
                 Ok(()) => {
                     *capacity -= take;
                     left -= take;

@@ -68,6 +68,14 @@ pub fn draft_of(lease: &Lease, charge: &LeaseCharge) -> InvoiceDraft {
     }
 }
 
+/// Issues the draft invoice `id` at once, as the system, where the client's
+/// invoicing is set to issue the lease source automatically
+/// (`Invoicer::issue` with no user). Otherwise (or when a guard of `issue`
+/// refuses) the invoice stays a draft for a clerk. Whether it is issued.
+pub(crate) async fn issue_at_once(state: &AppState, id: InvoiceId) -> bool {
+    invoicer(state).issue(state, id, None).await.is_ok()
+}
+
 /// Drafts the invoices of the scheduled charges due by `day` (plus
 /// [`LEAD_DAYS`]).
 pub async fn run(state: &AppState, day: NaiveDate) -> Result<Report> {

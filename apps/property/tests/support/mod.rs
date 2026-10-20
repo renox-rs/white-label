@@ -1712,14 +1712,25 @@ impl PaymentRecorder for Refunds {
         })
     }
 
+    /// As the real recorder: an invoice target takes the money through the
+    /// invoicer's own contract.
     fn allocate<'a>(
         &'a self,
-        _state: &'a AppState,
-        _payment: PaymentId,
-        _target: AllocationTarget,
-        _amount: i64,
+        state: &'a AppState,
+        payment: PaymentId,
+        target: AllocationTarget,
+        amount: i64,
     ) -> PaymentFuture<'a, ()> {
-        Box::pin(async { Err(unsupported()) })
+        Box::pin(async move {
+            match target {
+                AllocationTarget::Invoice(invoice) => {
+                    invoicer(state)
+                        .allocate(state, invoice, payment.subject(), amount)
+                        .await
+                }
+                _ => Err(unsupported()),
+            }
+        })
     }
 
     fn reverse<'a>(
@@ -2332,7 +2343,9 @@ pub async fn boot_with(real: Real) -> Booted {
         .module(Permissions)
         .module(property::Property);
     if real.invoicing {
-        app = app.module(wl_invoicing::WlInvoicing::new());
+        // As the Property client: the system issues what 01 drafts for a
+        // lease at once (the damages invoice, a reissued invoice).
+        app = app.module(wl_invoicing::WlInvoicing::new().auto_issue_source("property.lease"));
     }
     if real.documents {
         app = app

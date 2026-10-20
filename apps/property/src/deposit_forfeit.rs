@@ -377,6 +377,11 @@ pub async fn apply(
             .draft(&state.db, draft)
             .await?
             .map(|id| id.0);
+        // "Issued as one damages invoice": at once, where the client issues
+        // the lease source automatically; else a clerk issues the draft.
+        if let Some(id) = invoice_id {
+            crate::invoicing::issue_at_once(state, InvoiceId(id)).await;
+        }
     }
     let kept_for_damages = applied.kept.min(damages);
     DepositSettlement::create(

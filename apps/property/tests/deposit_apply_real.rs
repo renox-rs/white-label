@@ -4,9 +4,9 @@
 //! invoices as payments of method *deposit applied*, oldest first; the damages
 //! the deposit did not cover are invoiced to the tenant.
 //!
-//! The damages invoice is left a draft: the kernel `Invoicer` has no call that
-//! issues an invoice (wl-invoicing issues it on its own route), so the clerk
-//! issues it there and the statement of the lease page then shows its number.
+//! The damages invoice is issued at once (`Invoicer::issue`; the Property
+//! client issues the lease source automatically), so the statement of the
+//! lease page shows its number.
 
 mod support;
 
@@ -231,8 +231,8 @@ impl Scene {
 /// and damage deductions of AED 4,500.00: the real payments allocate AED
 /// 2,000.00 to the rent invoice as a payment of method *deposit applied*, AED
 /// 3,000.00 cover damages, the deposit is `forfeited`, and a damages invoice of
-/// AED 1,500.00 is made (a draft) for the tenant. Once the clerk issues it the
-/// statement on the lease page shows its number.
+/// AED 1,500.00 is made and issued for the tenant; the statement on the lease
+/// page shows its number.
 #[renox::test]
 async fn bl_prp_17_the_real_modules_apply_the_deposit_to_the_rent_and_the_damages() {
     let s = scene().await;
@@ -286,32 +286,23 @@ async fn bl_prp_17_the_real_modules_apply_the_deposit_to_the_rent_and_the_damage
     assert_eq!(settlement.to_damages, aed(3_000));
     assert_eq!(settlement.excess, aed(1_500));
 
-    // The damages invoice is a draft of AED 1,500.00 to the tenant.
+    // The damages invoice is issued at once: AED 1,500.00 plus 5% VAT to the
+    // tenant, with its number.
     let invoice = settlement.excess_invoice_id.expect("a damages invoice");
-    let drafted = s.summary(invoice).await;
-    assert_eq!(drafted.status, InvoiceStatus::Draft);
-    assert_eq!(drafted.party, TENANT);
-    assert!(drafted.number.is_none());
+    let issued = s.summary(invoice).await;
+    assert_eq!(issued.status, InvoiceStatus::Issued);
+    assert_eq!(issued.party, TENANT);
+    assert_eq!(issued.balance, aed(1_500) + aed(1_500) * 5 / 100);
+    let number = issued.number.expect("an invoice number");
     let lease_page = format!("/property/leases/{}", s.lease.id);
     s.t.app.acting_as(&s.accountant);
-    s.t.app
-        .get(&lease_page)
-        .await
+    let response = s.t.app.get(&lease_page).await;
+    response
         .assert_ok()
         .assert_see("Deposit settlement")
         .assert_see("AED 6,500.00")
         .assert_see("AED 1,500.00")
-        .assert_see(&format!("#{invoice}"));
-
-    // The clerk issues it; the statement then shows the invoice number.
-    s.issue(invoice).await;
-    let issued = s.summary(invoice).await;
-    assert_eq!(issued.status, InvoiceStatus::Issued);
-    assert_eq!(issued.balance, aed(1_500) + aed(1_500) * 5 / 100);
-    let number = issued.number.expect("an invoice number");
-    s.t.app.acting_as(&s.accountant);
-    let response = s.t.app.get(&lease_page).await;
-    response.assert_ok().assert_see(&number);
+        .assert_see(&number);
     assert!(!response.text().contains(&format!("#{invoice}<")));
 
     // It is applied once.

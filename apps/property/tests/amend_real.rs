@@ -325,10 +325,9 @@ async fn bl_prp_08_an_expired_lease_can_be_amended() {
 /// it as two lines (14 days of the old rent, 16 of the new). The tenant's
 /// payment is taken off the old invoice (the invoice is `credited`; its
 /// allocation is removed on both sides and the AED 10,000 is the tenant's
-/// credit again). The kernel has no call that issues an invoice, so the
-/// reissued one is a draft that cannot take the money yet: the accountant gets
-/// a task, issues it and allocates the credit to it, and it is then open for
-/// the AED 533.34 more.
+/// credit again). The reissued invoice is issued at once (the Property client
+/// issues the lease source automatically), the payment is allocated to it and
+/// it is open for the AED 533.34 more.
 #[renox::test]
 async fn bl_prp_08_the_payment_moves_from_the_credited_invoice_to_the_reissued_one() {
     use wl_kernel::invoicing::{InvoiceId, InvoiceStatus, invoicer};
@@ -422,18 +421,16 @@ async fn bl_prp_08_the_payment_moves_from_the_credited_invoice_to_the_reissued_o
         "{invoice_side:?}"
     );
     let rows = Allocation::all_of(s.t.db(), payment.id.0).await.unwrap();
-    assert_eq!(rows.len(), 1);
-    assert!(!rows[0].is_active(), "{rows:?}");
-    assert_eq!(rows[0].removed_reason.as_deref(), Some("allocation_moved"));
-    let summary = payment_recorder(s.t.state())
-        .find(s.t.db(), payment.id)
-        .await
-        .unwrap()
-        .unwrap();
-    assert_eq!(summary.unallocated, aed(10_000), "the tenant's credit");
+    let removed: Vec<_> = rows.iter().filter(|r| !r.is_active()).collect();
+    assert_eq!(removed.len(), 1, "{rows:?}");
+    assert_eq!(
+        removed[0].removed_reason.as_deref(),
+        Some("allocation_moved")
+    );
 
-    // The reissued invoice has the two periods; it is a draft, so the credit
-    // waits and the accountant is given the step.
+    // The reissued invoice has the two periods and is issued at once (the
+    // client issues the lease source automatically), so the payment moved
+    // to it and no step is left by hand.
     let charges = v1.charges(s.t.db()).await.unwrap();
     let reissued = charges
         .iter()
@@ -446,33 +443,23 @@ async fn bl_prp_08_the_payment_moves_from_the_credited_invoice_to_the_reissued_o
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(new_invoice.status, InvoiceStatus::Draft);
+    assert!(new_invoice.number.is_some());
+    assert_eq!(new_invoice.status, InvoiceStatus::PartiallyPaid);
     assert_eq!(new_invoice.gross_total, 1_053_334);
-    let todo =
-        s.t.tasks
-            .with_key(&format!("property.amend_problems:{}", v2.id));
-    assert_eq!(todo.len(), 1);
-    assert!(todo[0].description.contains("stays as the tenant's credit"));
-
-    // The clerk issues it and the accountant allocates the credit to it.
-    let issued =
-        s.t.post(&clerk, &format!("/invoices/{reissued}/issue"), &[])
-            .await;
-    assert!(issued.status.is_redirection(), "{}", issued.status);
-    payment_recorder(s.t.state())
-        .allocate(
-            s.t.state(),
-            payment.id,
-            AllocationTarget::Invoice(InvoiceId(reissued)),
-            aed(10_000),
-        )
-        .await
-        .expect("the credit is allocated to the reissued invoice");
-    let new_invoice = invoicer(s.t.state())
-        .find(s.t.db(), InvoiceId(reissued))
+    assert_eq!(new_invoice.balance, 53_334, "open for the AED 533.34 more");
+    let summary = payment_recorder(s.t.state())
+        .find(s.t.db(), payment.id)
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(new_invoice.balance, 53_334);
-    assert_eq!(new_invoice.status, InvoiceStatus::PartiallyPaid);
+    assert_eq!(
+        summary.unallocated, 0,
+        "the payment moved to the new invoice"
+    );
+    assert!(
+        s.t.tasks
+            .with_key(&format!("property.amend_problems:{}", v2.id))
+            .is_empty(),
+        "nothing is left to finish by hand"
+    );
 }
