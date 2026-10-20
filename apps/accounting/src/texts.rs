@@ -319,6 +319,14 @@ const TEXTS: &[(&str, &str)] = &[
         "The identity documents are not attached",
     ),
     ("accounting.cdd.not_rated", "The risk is not rated"),
+    // The reasons a deadline task is closed as missed (BL-ACC-13).
+    (
+        "accounting.tasks.missed.client_no_documents",
+        "Client did not provide documents",
+    ),
+    ("accounting.tasks.missed.client_filed_itself", "Client filed itself"),
+    ("accounting.tasks.missed.engagement_ended", "Engagement ended"),
+    ("accounting.tasks.missed.other", "Other"),
     // The CDD update task of an expired KYC document (BL-ACC-12).
     ("accounting.cdd_update.title", "Update the CDD file: :kind of :party expired"),
     (

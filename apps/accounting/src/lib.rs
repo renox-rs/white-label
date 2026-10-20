@@ -22,6 +22,7 @@ pub mod retainer;
 pub mod screening;
 pub mod seed;
 pub mod tax_profile;
+pub mod tasks;
 mod texts;
 
 use renox::db::Migration;
@@ -107,6 +108,9 @@ impl Module for Accounting {
         // An expired KYC document of a client being served opens a CDD
         // update task (BL-ACC-12).
         kyc_updates::register(app);
+        // `ACC.RUL.04` (wl-ticketing's `mark_overdue` run under the 04 id)
+        // is compliance-critical, owned by the partner (BL-ACC-13).
+        tasks::register();
         // The neutral templates the MLRO sends (`ACC.ACL.14`).
         client_notices::register_types();
         // In the app group of the staff sidebar; the label is the host's

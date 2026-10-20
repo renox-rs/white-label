@@ -130,6 +130,12 @@ pub fn ticketing_for(client_app: &str) -> WlTicketing {
             .visit_missed_days(seed::VISIT_MISSED_DAYS)
             .coordinator_role(seed::COORDINATOR_ROLE)
             .compliance_manager_role(PROPERTY_MANAGER),
+        // 04 `ACC.RUL.04`: the nightly overdue run under the 04 rule id,
+        // telling the assignee, the manager and the partner.
+        "accounting" => module
+            .overdue_rule_id(accounting::tasks::OVERDUE_RULE)
+            .task_manager_role(accounting::permissions::MANAGER_ROLE)
+            .task_overdue_role(accounting::permissions::PARTNER_ROLE),
         _ => module,
     }
 }
