@@ -54,7 +54,10 @@ async fn an_expired_ubo_passport_refuses_activation_naming_it() {
     let res = t.activate(&manager, &engagement).await;
     res.assert_status(422);
     let text = res.text();
-    assert!(text.contains("This engagement cannot be activated:"), "{text}");
+    assert!(
+        text.contains("This engagement cannot be activated:"),
+        "{text}"
+    );
     assert!(
         text.contains("Omar Haddad — Passport expired on 2026-11-01"),
         "{text}"
@@ -108,8 +111,12 @@ async fn the_mlro_approves_a_one_use_override_valid_for_72_hours() {
     let for_first = t.run(ask(first.id)).await.expect("the override is asked");
     assert_eq!(for_first.len(), 1, "one override: the UBO's passport");
     let for_third = t.run(ask(third.id)).await.expect("the override is asked");
-    let first_request = for_first[0].approval_request_id.expect("an approval request");
-    let third_request = for_third[0].approval_request_id.expect("an approval request");
+    let first_request = for_first[0]
+        .approval_request_id
+        .expect("an approval request");
+    let third_request = for_third[0]
+        .approval_request_id
+        .expect("an approval request");
 
     // DW3: A, the requester, cannot approve it.
     assert!(
@@ -144,7 +151,11 @@ async fn the_mlro_approves_a_one_use_override_valid_for_72_hours() {
     // The second engagement of the same client cannot reuse it.
     let res = t.activate(&a, &second).await;
     res.assert_status(422);
-    assert!(res.text().contains("Passport expired on 2026-11-01"), "{}", res.text());
+    assert!(
+        res.text().contains("Passport expired on 2026-11-01"),
+        "{}",
+        res.text()
+    );
     assert_eq!(t.status(&second).await, EngagementStatus::Onboarding);
 
     // 2026-11-06 10:01: the third engagement's override, never used, is past
@@ -153,7 +164,11 @@ async fn the_mlro_approves_a_one_use_override_valid_for_72_hours() {
     t.lists_current().await;
     let res = t.activate(&a, &third).await;
     res.assert_status(422);
-    assert!(res.text().contains("Passport expired on 2026-11-01"), "{}", res.text());
+    assert!(
+        res.text().contains("Passport expired on 2026-11-01"),
+        "{}",
+        res.text()
+    );
     assert_eq!(t.status(&third).await, EngagementStatus::Onboarding);
 }
 

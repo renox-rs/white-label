@@ -778,7 +778,12 @@ impl Booted {
 
     /// A `clear` screening of `party` that ran while `list` was stale (last
     /// updated at `updated`): it carries the stale flag.
-    pub async fn screen_on_stale(&self, party: PartyId, list: &str, updated: DateTime) -> Screening {
+    pub async fn screen_on_stale(
+        &self,
+        party: PartyId,
+        list: &str,
+        updated: DateTime,
+    ) -> Screening {
         let mut run = ScreeningRun::automatic(ScreeningTrigger::Onboarding, Vec::new());
         run.lists_stale = true;
         run.lists_used = self.lists_used(Some((list, updated))).await;
@@ -858,10 +863,20 @@ impl Booted {
             .user_with(&format!("Reviewer {}", client.company.0), REVIEWER)
             .await;
         let until = NaiveDate::from_ymd_opt(2027, 12, 31).unwrap();
-        self.kyc(&reviewer, client.company, accounting::seed::TRADE_LICENCE, until)
-            .await;
-        self.kyc(&reviewer, client.ubo, accounting::seed::PASSPORT, passport_until)
-            .await;
+        self.kyc(
+            &reviewer,
+            client.company,
+            accounting::seed::TRADE_LICENCE,
+            until,
+        )
+        .await;
+        self.kyc(
+            &reviewer,
+            client.ubo,
+            accounting::seed::PASSPORT,
+            passport_until,
+        )
+        .await;
         self.kyc(&reviewer, client.ubo, accounting::seed::EMIRATES_ID, until)
             .await;
     }
@@ -909,9 +924,13 @@ impl Booted {
         let preparer = self
             .user_with(&format!("Preparer {}", file.id), ACCOUNTANT)
             .await;
-        self.post(&preparer, &format!("/accounting/cdd/{}/submit", file.id), &[])
-            .await
-            .assert_ok();
+        self.post(
+            &preparer,
+            &format!("/accounting/cdd/{}/submit", file.id),
+            &[],
+        )
+        .await
+        .assert_ok();
         self.post(mlro, &format!("/accounting/cdd/{}/approve", file.id), &[])
             .await
             .assert_ok();

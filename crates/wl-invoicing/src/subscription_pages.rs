@@ -280,16 +280,21 @@ async fn cancel(
         },
     };
     let reason = form.get("reason").map(String::as_str);
-    let toast =
-        match subscriptions::cancel(&state, &subscription, Canceller::User(&user), on, reason)
-            .await
-        {
-            Ok(after) if after.status == SubscriptionStatus::Cancelled => {
-                Toast::success(text(&lang, "subscription.cancel.done"))
-            }
-            Ok(_) => Toast::success(text(&lang, "subscription.cancel.scheduled")),
-            Err(TransitionError::Guard(message)) => Toast::error(message),
-            Err(other) => return Err(other.into_error()),
-        };
+    let toast = match subscriptions::cancel(
+        &state,
+        &subscription,
+        Canceller::User(&user),
+        on,
+        reason,
+    )
+    .await
+    {
+        Ok(after) if after.status == SubscriptionStatus::Cancelled => {
+            Toast::success(text(&lang, "subscription.cancel.done"))
+        }
+        Ok(_) => Toast::success(text(&lang, "subscription.cancel.scheduled")),
+        Err(TransitionError::Guard(message)) => Toast::error(message),
+        Err(other) => return Err(other.into_error()),
+    };
     Ok((toast, back).into_response())
 }

@@ -23,16 +23,18 @@ use crate::{calendar, engagements, retainer};
 
 /// Registers the listeners.
 pub(crate) fn register(app: &mut Registry) {
-    app.listen(|event: Transitioned<Engagement>, state: AppState| async move {
-        if event.transition != ACTIVATE {
-            return Ok(());
-        }
-        let engagement = Engagement::find_or_404(&state.db, event.key).await?;
-        let on = engagement.activated_on.unwrap_or_else(today);
-        calendar::generate(&state, &engagement, on).await?;
-        retainer::start(&state, &engagement, on).await?;
-        Ok(())
-    });
+    app.listen(
+        |event: Transitioned<Engagement>, state: AppState| async move {
+            if event.transition != ACTIVATE {
+                return Ok(());
+            }
+            let engagement = Engagement::find_or_404(&state.db, event.key).await?;
+            let on = engagement.activated_on.unwrap_or_else(today);
+            calendar::generate(&state, &engagement, on).await?;
+            retainer::start(&state, &engagement, on).await?;
+            Ok(())
+        },
+    );
     app.listen(|event: Transitioned<CddFile>, state: AppState| async move {
         if event.transition != REJECT {
             return Ok(());

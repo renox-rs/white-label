@@ -356,7 +356,12 @@ mod tests {
             vec![
                 (ACTIVATE, vec!["onboarding".into()], Some("active"), false),
                 (DECLINE, vec!["onboarding".into()], Some("declined"), false),
-                (AUTO_DECLINE, vec!["onboarding".into()], Some("declined"), true),
+                (
+                    AUTO_DECLINE,
+                    vec!["onboarding".into()],
+                    Some("declined"),
+                    true
+                ),
                 (SUSPEND, vec!["active".into()], Some("suspended"), false),
                 (AUTO_SUSPEND, vec!["active".into()], Some("suspended"), true),
                 (RESUME, vec!["suspended".into()], Some("active"), false),
@@ -371,9 +376,6 @@ mod tests {
         let activate = machine.find(ACTIVATE).unwrap();
         assert_eq!(activate.guard_names(), ["ready"]);
         assert!(machine.find(SUSPEND).unwrap().needs_reason());
-        assert_eq!(
-            machine.find(END).unwrap().guard_names(),
-            ["neutral_reason"]
-        );
+        assert_eq!(machine.find(END).unwrap().guard_names(), ["neutral_reason"]);
     }
 }

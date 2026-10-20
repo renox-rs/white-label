@@ -88,7 +88,10 @@ async fn a_chargeback_on_a_paid_cycle_makes_it_past_due() {
     assert_eq!(events[0].subscription.0, sub.id);
     let told = t.notices.of_type(PAST_DUE_NOTICE);
     assert_eq!(told.len(), 1);
-    assert_eq!(told[0].recipients, [NotifyRecipient::Party { id: BLUE_DUNES }]);
+    assert_eq!(
+        told[0].recipients,
+        [NotifyRecipient::Party { id: BLUE_DUNES }]
+    );
 
     // Paid again: settled.
     t.pay(&invoice, 2, GROSS).await;
@@ -120,7 +123,11 @@ async fn fin_rul_06_does_not_suspend_on_disputed_invoices_only() {
     let suspended = t.sub_suspended.all();
     assert_eq!(suspended.len(), 1);
     assert_eq!(suspended[0].subscription.0, other.id);
-    assert_eq!(t.notices.of_type(RETRY_NOTICE).len(), 3, "the other one only");
+    assert_eq!(
+        t.notices.of_type(RETRY_NOTICE).len(),
+        3,
+        "the other one only"
+    );
 }
 
 /// Done when 4: a dispute on the overdue cycle invoice resolved `upheld` on

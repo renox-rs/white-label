@@ -112,9 +112,7 @@ fn no_problem(transition: Transition<CddFile>, name: &'static str) -> Transition
 fn with_decision_reason(transition: Transition<CddFile>) -> Transition<CddFile> {
     transition
         .guard("reason_given", |_f: &CddFile, ctx| {
-            let given = input_of(ctx)
-                .reason
-                .is_some_and(|r| !r.trim().is_empty());
+            let given = input_of(ctx).reason.is_some_and(|r| !r.trim().is_empty());
             Box::pin(async move {
                 if given {
                     Ok(())
@@ -126,7 +124,9 @@ fn with_decision_reason(transition: Transition<CddFile>) -> Transition<CddFile> 
         .effect(|f: &CddFile, ctx, tx| {
             let id = f.id;
             let reason = input_of(ctx).reason.map(|r| r.trim().to_owned());
-            Box::pin(async move { set_cdd_file(&mut *tx, id, &[("decision_reason", &reason)]).await })
+            Box::pin(
+                async move { set_cdd_file(&mut *tx, id, &[("decision_reason", &reason)]).await },
+            )
         })
 }
 

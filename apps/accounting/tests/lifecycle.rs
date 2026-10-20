@@ -26,9 +26,15 @@ async fn activation_lists_every_failing_check_in_one_refusal() {
     let res = t.activate(&manager, &engagement).await;
     res.assert_status(422);
     let text = res.text();
-    assert!(text.contains("This engagement cannot be activated:"), "{text}");
+    assert!(
+        text.contains("This engagement cannot be activated:"),
+        "{text}"
+    );
     assert!(text.contains("The CDD file is not approved"), "{text}");
-    assert!(text.contains("The engagement letter is not signed"), "{text}");
+    assert!(
+        text.contains("The engagement letter is not signed"),
+        "{text}"
+    );
     assert!(text.contains("No tax profile"), "{text}");
     assert_eq!(t.status(&engagement).await, EngagementStatus::Onboarding);
     assert!(
@@ -65,7 +71,10 @@ async fn a_ready_engagement_activates_with_its_calendar_and_its_retainer() {
     assert_eq!(types, [VAT_RETURN, CT_RETURN]);
     assert_eq!(tasks[0].recurrence, TaskRecurrence::Quarterly);
     assert_eq!(tasks[0].party, Some(client.company));
-    assert_eq!(tasks[0].owner_role.as_deref(), Some(accounting::permissions::ACCOUNTANT_ROLE));
+    assert_eq!(
+        tasks[0].owner_role.as_deref(),
+        Some(accounting::permissions::ACCOUNTANT_ROLE)
+    );
     assert!(tasks[0].evidence_required);
     assert_eq!(tasks[1].recurrence, TaskRecurrence::Yearly);
 
@@ -89,9 +98,14 @@ async fn reasons_are_neutral_codes_and_a_restricted_one_is_refused() {
     t.act(&manager, &onboarding, "decline", &[("reason", "sanctions")])
         .await
         .assert_status(422);
-    t.act(&manager, &onboarding, "decline", &[("reason", "client_withdrew")])
-        .await
-        .assert_ok();
+    t.act(
+        &manager,
+        &onboarding,
+        "decline",
+        &[("reason", "client_withdrew")],
+    )
+    .await
+    .assert_ok();
     let declined = t.reload(&onboarding).await;
     assert_eq!(declined.status, EngagementStatus::Declined);
     assert_eq!(declined.reason_code.as_deref(), Some("client_withdrew"));
@@ -137,12 +151,19 @@ async fn submit_needs_ubos_documents_and_a_rating_and_a_rejection_declines_onboa
         .await
         .unwrap();
     let res = t
-        .post(&accountant, &format!("/accounting/cdd/{}/submit", bare.id), &[])
+        .post(
+            &accountant,
+            &format!("/accounting/cdd/{}/submit", bare.id),
+            &[],
+        )
         .await;
     res.assert_status(422);
     let text = res.text();
     assert!(text.contains("No UBO is identified"), "{text}");
-    assert!(text.contains("The identity documents are not attached"), "{text}");
+    assert!(
+        text.contains("The identity documents are not attached"),
+        "{text}"
+    );
     assert!(text.contains("The risk is not rated"), "{text}");
 
     // A prepared file is submitted and rejected by the MLRO: the onboarding
@@ -153,9 +174,13 @@ async fn submit_needs_ubos_documents_and_a_rating_and_a_rejection_declines_onboa
     t.lists_current().await;
     t.screen_all_clear(&other).await;
     let engagement = t.engagement(&other).await;
-    t.post(&accountant, &format!("/accounting/cdd/{}/submit", file.id), &[])
-        .await
-        .assert_ok();
+    t.post(
+        &accountant,
+        &format!("/accounting/cdd/{}/submit", file.id),
+        &[],
+    )
+    .await
+    .assert_ok();
     t.post(
         &mlro,
         &format!("/accounting/cdd/{}/reject", file.id),

@@ -51,9 +51,14 @@ async fn a_sanctions_block_shows_on_hold_to_the_partner_and_sanctions_to_the_mlr
 
     // The page: the reason and the history row read "On hold".
     let page = t
-        .get(&partner, &format!("/accounting/engagements/{}", engagement.id))
+        .get(
+            &partner,
+            &format!("/accounting/engagements/{}", engagement.id),
+        )
         .await;
-    page.assert_ok().assert_see("On hold").assert_see("Suspended");
+    page.assert_ok()
+        .assert_see("On hold")
+        .assert_see("Suspended");
     assert_neutral("the partner's page", &page.text());
     page.assert_dont_see(&format!("/parties/{}", client.company.0));
 
@@ -161,7 +166,10 @@ async fn the_mlro_sends_the_neutral_template_and_it_is_recorded() {
 
     // The page shows what the client was told, to the partner too.
     let page = t
-        .get(&partner, &format!("/accounting/engagements/{}", engagement.id))
+        .get(
+            &partner,
+            &format!("/accounting/engagements/{}", engagement.id),
+        )
         .await;
     page.assert_ok()
         .assert_see("Your engagement is on hold, please contact your partner.")
@@ -194,9 +202,14 @@ async fn an_end_after_a_cdd_exit_shows_ended_to_staff_and_the_portal() {
     .assert_ok();
     // Whatever reason the partner picks, the end after an exit is the
     // neutral "relationship ended".
-    t.act(&partner, &engagement, "end", &[("reason", "client_request")])
-        .await
-        .assert_ok();
+    t.act(
+        &partner,
+        &engagement,
+        "end",
+        &[("reason", "client_request")],
+    )
+    .await
+    .assert_ok();
     let ended = t.reload(&engagement).await;
     assert_eq!(ended.status, EngagementStatus::Ended);
     assert_eq!(ended.reason_code.as_deref(), Some("relationship_ended"));
@@ -204,7 +217,10 @@ async fn an_end_after_a_cdd_exit_shows_ended_to_staff_and_the_portal() {
 
     for viewer in [&partner, &manager] {
         let page = t
-            .get(viewer, &format!("/accounting/engagements/{}", engagement.id))
+            .get(
+                viewer,
+                &format!("/accounting/engagements/{}", engagement.id),
+            )
             .await;
         page.assert_ok().assert_see("Ended");
         assert_neutral("the staff page", &page.text());
@@ -230,6 +246,9 @@ async fn an_end_after_a_cdd_exit_shows_ended_to_staff_and_the_portal() {
     assert!(!portal.text().contains("unexplained"));
 
     for party in client.parties() {
-        assert!(t.notices.to_party(party).is_empty(), "a message went to {party}");
+        assert!(
+            t.notices.to_party(party).is_empty(),
+            "a message went to {party}"
+        );
     }
 }

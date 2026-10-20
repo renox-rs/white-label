@@ -34,7 +34,10 @@ pub fn title() -> String {
 
 /// The status of `status` as the portal shows it.
 pub fn status_text(status: EngagementStatus) -> String {
-    english(&format!("accounting.portal.status.{}", status.as_str()), &[])
+    english(
+        &format!("accounting.portal.status.{}", status.as_str()),
+        &[],
+    )
 }
 
 /// The engagements of `party` (the client company), oldest first.

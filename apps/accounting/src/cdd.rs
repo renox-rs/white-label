@@ -172,10 +172,7 @@ impl CddFile {
     /// # Errors
     ///
     /// The database's errors.
-    pub async fn current<'c>(
-        db: impl Executor<'c>,
-        client: PartyId,
-    ) -> Result<Option<CddFile>> {
+    pub async fn current<'c>(db: impl Executor<'c>, client: PartyId) -> Result<Option<CddFile>> {
         Ok(CddFile::query()
             .where_(CddFile::CLIENT_PARTY_ID.eq(client.0))
             .order_by_desc(CddFile::ID)

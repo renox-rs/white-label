@@ -70,7 +70,11 @@ fn month_end(date: NaiveDate) -> NaiveDate {
 /// The month end `months` months after the month of `date`.
 fn month_end_after(date: NaiveDate, months: u32) -> NaiveDate {
     let first = date.with_day(1).unwrap_or(date);
-    month_end(first.checked_add_months(Months::new(months)).unwrap_or(first))
+    month_end(
+        first
+            .checked_add_months(Months::new(months))
+            .unwrap_or(first),
+    )
 }
 
 /// The month end twelve months before the month of `date`.

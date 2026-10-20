@@ -216,24 +216,31 @@ pub(crate) async fn run(
     let parties = crate::cdd_files::screened_parties(&state.db, engagement.client()).await?;
     let input = EngagementInput::on(on);
     // The document guard claims the override (if any) around the run.
-    guarded_transition_as(state, ACTIVATE_GUARDED, engagement.id, on, Some(by.id), || async {
-        let mut tx = state.db.begin().await?;
-        // Again, in the transaction that moves the status.
-        let gate = gate_in(&mut tx, state, by, engagement.client(), &parties).await?;
-        if !gate.passes() {
-            tx.rollback().await?;
-            return Err(refusal(&gate.lines(state, by).await));
-        }
-        let outcome = engagement
-            .transition(ACTIVATE)
-            .by(by)
-            .input(&input)
-            .run_in(&mut tx)
-            .await
-            .map_err(TransitionError::into_error)?;
-        tx.commit().await?;
-        outcome.emit(state).await?;
-        Ok::<(), Error>(())
-    })
+    guarded_transition_as(
+        state,
+        ACTIVATE_GUARDED,
+        engagement.id,
+        on,
+        Some(by.id),
+        || async {
+            let mut tx = state.db.begin().await?;
+            // Again, in the transaction that moves the status.
+            let gate = gate_in(&mut tx, state, by, engagement.client(), &parties).await?;
+            if !gate.passes() {
+                tx.rollback().await?;
+                return Err(refusal(&gate.lines(state, by).await));
+            }
+            let outcome = engagement
+                .transition(ACTIVATE)
+                .by(by)
+                .input(&input)
+                .run_in(&mut tx)
+                .await
+                .map_err(TransitionError::into_error)?;
+            tx.commit().await?;
+            outcome.emit(state).await?;
+            Ok::<(), Error>(())
+        },
+    )
     .await
 }

@@ -22,14 +22,23 @@ const TEXTS: &[(&str, &str)] = &[
         "accounting.engagements.new_description",
         "The client company (a party), the services and the fee. It starts in onboarding.",
     ),
-    ("accounting.engagements.client_party", "Client (party number)"),
+    (
+        "accounting.engagements.client_party",
+        "Client (party number)",
+    ),
     ("accounting.engagements.client", "Client"),
     ("accounting.engagements.services", "Services"),
     ("accounting.engagements.fee_basis", "Fee basis"),
     ("accounting.engagements.fee_basis.retainer", "Retainer"),
     ("accounting.engagements.fee_basis.fixed", "Fixed fee"),
-    ("accounting.engagements.fee_basis.time", "Time and materials"),
-    ("accounting.engagements.retainer_fee", "Monthly retainer (AED)"),
+    (
+        "accounting.engagements.fee_basis.time",
+        "Time and materials",
+    ),
+    (
+        "accounting.engagements.retainer_fee",
+        "Monthly retainer (AED)",
+    ),
     ("accounting.engagements.number", "Engagement"),
     ("accounting.engagements.reason", "Reason"),
     ("accounting.engagements.empty", "No engagements yet"),
@@ -40,13 +49,19 @@ const TEXTS: &[(&str, &str)] = &[
     ("accounting.engagements.letter_signed", "Signed"),
     ("accounting.engagements.letter_signed_on", "Signed on :date"),
     ("accounting.engagements.letter_not_signed", "Not signed"),
-    ("accounting.engagements.record_letter", "Record signed letter"),
+    (
+        "accounting.engagements.record_letter",
+        "Record signed letter",
+    ),
     (
         "accounting.engagements.record_letter_description",
         "The day the client signed the engagement letter.",
     ),
     ("accounting.engagements.signed_on", "Signed on"),
-    ("accounting.engagements.letter_recorded", "Signed letter recorded."),
+    (
+        "accounting.engagements.letter_recorded",
+        "Signed letter recorded.",
+    ),
     ("accounting.engagements.tax_profile", "Tax profile"),
     ("accounting.engagements.tax_profile_none", "None recorded"),
     ("accounting.engagements.tax_profile_complete", "Complete"),
@@ -85,7 +100,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("accounting.engagements.transition.decline", "Declined"),
     ("accounting.engagements.transition.auto_decline", "Declined"),
     ("accounting.engagements.transition.suspend", "Suspended"),
-    ("accounting.engagements.transition.auto_suspend", "Suspended"),
+    (
+        "accounting.engagements.transition.auto_suspend",
+        "Suspended",
+    ),
     ("accounting.engagements.transition.resume", "Resumed"),
     ("accounting.engagements.transition.end", "Ended"),
     (
@@ -95,7 +113,10 @@ const TEXTS: &[(&str, &str)] = &[
     // The neutral templates (`ACC.ACL.14`).
     ("accounting.client_notices.title", "Told to the client"),
     ("accounting.client_notices.template", "Template"),
-    ("accounting.client_notices.empty", "Nothing told to the client"),
+    (
+        "accounting.client_notices.empty",
+        "Nothing told to the client",
+    ),
     ("accounting.client_notices.send", "Tell the client"),
     ("accounting.client_notices.sent", "The client is told."),
     (
@@ -162,10 +183,7 @@ const TEXTS: &[(&str, &str)] = &[
         "accounting.activation.tax_profile_incomplete",
         "The tax profile is incomplete: :missing",
     ),
-    (
-        "accounting.activation.document",
-        ":party — :problem",
-    ),
+    ("accounting.activation.document", ":party — :problem"),
     (
         "accounting.activation.on_hold",
         "On hold: the client cannot be served while on hold",
@@ -185,7 +203,10 @@ const TEXTS: &[(&str, &str)] = &[
         ":party (:role) is not screened yet",
     ),
     // The tax profile.
-    ("accounting.tax_profile.financial_year_end", "financial year end"),
+    (
+        "accounting.tax_profile.financial_year_end",
+        "financial year end",
+    ),
     (
         "accounting.tax_profile.ct_registration_no",
         "corporate tax registration number",
@@ -210,10 +231,7 @@ const TEXTS: &[(&str, &str)] = &[
         "accounting.problems.reason_unknown",
         "Choose one of the reasons offered.",
     ),
-    (
-        "accounting.problems.reason_required",
-        "Give the reason.",
-    ),
+    ("accounting.problems.reason_required", "Give the reason."),
     (
         "accounting.problems.client_on_hold",
         "The client is on hold.",
@@ -324,11 +342,20 @@ const TEXTS: &[(&str, &str)] = &[
         "accounting.tasks.missed.client_no_documents",
         "Client did not provide documents",
     ),
-    ("accounting.tasks.missed.client_filed_itself", "Client filed itself"),
-    ("accounting.tasks.missed.engagement_ended", "Engagement ended"),
+    (
+        "accounting.tasks.missed.client_filed_itself",
+        "Client filed itself",
+    ),
+    (
+        "accounting.tasks.missed.engagement_ended",
+        "Engagement ended",
+    ),
     ("accounting.tasks.missed.other", "Other"),
     // The CDD update task of an expired KYC document (BL-ACC-12).
-    ("accounting.cdd_update.title", "Update the CDD file: :kind of :party expired"),
+    (
+        "accounting.cdd_update.title",
+        "Update the CDD file: :kind of :party expired",
+    ),
     (
         "accounting.cdd_update.description",
         "The :kind of :party (client :client, :engagement) expired on :expired. Collect the renewed document and update the CDD file. The engagement stays active.",

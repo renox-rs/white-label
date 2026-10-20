@@ -14,8 +14,7 @@ use wl_kernel::Subject;
 use wl_kernel::automation::RuleRun;
 use wl_kernel::compliance::{occurrence_key, schedule_subject};
 use wl_kernel::deadlines::{
-    DeadlineTaskStatus, NewDeadlineTask, TaskCompleted, TaskOverdue, TaskRecurrence,
-    deadline_tasks,
+    DeadlineTaskStatus, NewDeadlineTask, TaskCompleted, TaskOverdue, TaskRecurrence, deadline_tasks,
 };
 use wl_kernel::notify::NotifyRecipient;
 use wl_ticketing::{WlTicketing, deadlines, permissions as perm};
@@ -82,9 +81,7 @@ async fn bl_acc_13_an_overdue_task_is_completed_late_or_closed_missed_with_a_rea
         record(record(app, &overdue), &completed)
     })
     .await;
-    let accountant = t
-        .user("Aisha", &[perm::TASKS_VIEW, perm::TASKS_WORK])
-        .await;
+    let accountant = t.user("Aisha", &[perm::TASKS_VIEW, perm::TASKS_WORK]).await;
     let manager = t
         .user_in_role(
             "Mona",
@@ -92,9 +89,7 @@ async fn bl_acc_13_an_overdue_task_is_completed_late_or_closed_missed_with_a_rea
             &[perm::TASKS_VIEW, perm::TASKS_REVIEW, perm::TASKS_MANAGE],
         )
         .await;
-    let partner = t
-        .user_in_role("Pia", PARTNER, &[perm::TASKS_VIEW])
-        .await;
+    let partner = t.user_in_role("Pia", PARTNER, &[perm::TASKS_VIEW]).await;
     let tasks = deadline_tasks(t.state());
     let late = tasks
         .create(t.state(), vat("VAT Q3", "2026-11-28", accountant.id))
@@ -102,7 +97,10 @@ async fn bl_acc_13_an_overdue_task_is_completed_late_or_closed_missed_with_a_rea
         .unwrap()
         .expect("ticketing is on");
     let missed = tasks
-        .create(t.state(), vat("VAT Q3 (branch)", "2026-11-28", accountant.id))
+        .create(
+            t.state(),
+            vat("VAT Q3 (branch)", "2026-11-28", accountant.id),
+        )
         .await
         .unwrap()
         .unwrap();
@@ -196,7 +194,9 @@ async fn bl_acc_13_an_overdue_task_is_completed_late_or_closed_missed_with_a_rea
     let task = t.task(missed.0).await;
     assert_eq!(task.status, DeadlineTaskStatus::Missed);
     assert_eq!(task.closed_reason.as_deref(), Some("Client filed itself"));
-    let next = t.task(task.next_task_id.expect("the next occurrence")).await;
+    let next = t
+        .task(task.next_task_id.expect("the next occurrence"))
+        .await;
     assert_eq!(next.status, DeadlineTaskStatus::Upcoming);
     assert_eq!(next.due_date, day("2027-02-28"));
 }

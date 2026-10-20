@@ -1954,54 +1954,21 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_invoicing.budget_variance.body",
         "In {{ month }} {{ entity }} has {{ actual }} of actual in {{ category }} against a budget of {{ budget }} ({{ percent }} used). See the report: {{ link }}",
     ),
-    (
-        "wl_invoicing.subscription.title",
-        "Subscriptions",
-    ),
+    ("wl_invoicing.subscription.title", "Subscriptions"),
     (
         "wl_invoicing.subscription.subtitle",
         "Recurring plans billed every cycle",
     ),
-    (
-        "wl_invoicing.subscription.empty",
-        "No subscriptions yet",
-    ),
-    (
-        "wl_invoicing.subscription.fields.plan",
-        "Plan",
-    ),
-    (
-        "wl_invoicing.subscription.fields.party",
-        "Party",
-    ),
-    (
-        "wl_invoicing.subscription.fields.source",
-        "Agreement",
-    ),
-    (
-        "wl_invoicing.subscription.fields.status",
-        "Status",
-    ),
-    (
-        "wl_invoicing.subscription.fields.next_cycle",
-        "Next cycle",
-    ),
-    (
-        "wl_invoicing.subscription.fields.price",
-        "Price per cycle",
-    ),
-    (
-        "wl_invoicing.subscription.fields.cycle",
-        "Cycle",
-    ),
-    (
-        "wl_invoicing.subscription.fields.start",
-        "Start",
-    ),
-    (
-        "wl_invoicing.subscription.fields.end",
-        "End",
-    ),
+    ("wl_invoicing.subscription.empty", "No subscriptions yet"),
+    ("wl_invoicing.subscription.fields.plan", "Plan"),
+    ("wl_invoicing.subscription.fields.party", "Party"),
+    ("wl_invoicing.subscription.fields.source", "Agreement"),
+    ("wl_invoicing.subscription.fields.status", "Status"),
+    ("wl_invoicing.subscription.fields.next_cycle", "Next cycle"),
+    ("wl_invoicing.subscription.fields.price", "Price per cycle"),
+    ("wl_invoicing.subscription.fields.cycle", "Cycle"),
+    ("wl_invoicing.subscription.fields.start", "Start"),
+    ("wl_invoicing.subscription.fields.end", "End"),
     (
         "wl_invoicing.subscription.fields.notice_days",
         "Notice (days)",
@@ -2018,98 +1985,35 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_invoicing.subscription.fields.cancel_on",
         "Ends on (notice)",
     ),
-    (
-        "wl_invoicing.subscription.sections.summary",
-        "Terms",
-    ),
-    (
-        "wl_invoicing.subscription.sections.causes",
-        "Pause causes",
-    ),
-    (
-        "wl_invoicing.subscription.sections.cycles",
-        "Cycles",
-    ),
-    (
-        "wl_invoicing.subscription.causes.empty",
-        "Not paused",
-    ),
+    ("wl_invoicing.subscription.sections.summary", "Terms"),
+    ("wl_invoicing.subscription.sections.causes", "Pause causes"),
+    ("wl_invoicing.subscription.sections.cycles", "Cycles"),
+    ("wl_invoicing.subscription.causes.empty", "Not paused"),
     (
         "wl_invoicing.subscription.cycles.empty",
         "No cycle billed yet",
     ),
-    (
-        "wl_invoicing.subscription.columns.cause",
-        "Cause",
-    ),
-    (
-        "wl_invoicing.subscription.columns.reason",
-        "Reason",
-    ),
-    (
-        "wl_invoicing.subscription.columns.since",
-        "Since",
-    ),
-    (
-        "wl_invoicing.subscription.columns.until",
-        "Until",
-    ),
-    (
-        "wl_invoicing.subscription.columns.period",
-        "Period",
-    ),
-    (
-        "wl_invoicing.subscription.columns.invoice",
-        "Invoice",
-    ),
+    ("wl_invoicing.subscription.columns.cause", "Cause"),
+    ("wl_invoicing.subscription.columns.reason", "Reason"),
+    ("wl_invoicing.subscription.columns.since", "Since"),
+    ("wl_invoicing.subscription.columns.until", "Until"),
+    ("wl_invoicing.subscription.columns.period", "Period"),
+    ("wl_invoicing.subscription.columns.invoice", "Invoice"),
     (
         "wl_invoicing.subscription.columns.invoice_status",
         "Invoice status",
     ),
-    (
-        "wl_invoicing.subscription.columns.balance",
-        "Balance",
-    ),
-    (
-        "wl_invoicing.subscription.status.active",
-        "Active",
-    ),
-    (
-        "wl_invoicing.subscription.status.past_due",
-        "Past due",
-    ),
-    (
-        "wl_invoicing.subscription.status.paused",
-        "Paused",
-    ),
-    (
-        "wl_invoicing.subscription.status.suspended",
-        "Suspended",
-    ),
-    (
-        "wl_invoicing.subscription.status.cancelled",
-        "Cancelled",
-    ),
-    (
-        "wl_invoicing.subscription.cycle.week",
-        "Weekly",
-    ),
-    (
-        "wl_invoicing.subscription.cycle.month",
-        "Monthly",
-    ),
-    (
-        "wl_invoicing.subscription.cycle.quarter",
-        "Quarterly",
-    ),
-    (
-        "wl_invoicing.subscription.cycle.year",
-        "Yearly",
-    ),
-    (
-        "wl_invoicing.subscription.cause.user",
-        "Paused by a user",
-    ),
+    ("wl_invoicing.subscription.columns.balance", "Balance"),
+    ("wl_invoicing.subscription.status.active", "Active"),
+    ("wl_invoicing.subscription.status.past_due", "Past due"),
+    ("wl_invoicing.subscription.status.paused", "Paused"),
+    ("wl_invoicing.subscription.status.suspended", "Suspended"),
+    ("wl_invoicing.subscription.status.cancelled", "Cancelled"),
+    ("wl_invoicing.subscription.cycle.week", "Weekly"),
+    ("wl_invoicing.subscription.cycle.month", "Monthly"),
+    ("wl_invoicing.subscription.cycle.quarter", "Quarterly"),
+    ("wl_invoicing.subscription.cycle.year", "Yearly"),
+    ("wl_invoicing.subscription.cause.user", "Paused by a user"),
     (
         "wl_invoicing.subscription.cause.agreement",
         "Agreement paused",
@@ -2130,18 +2034,12 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_invoicing.subscription.cancel.submit",
         "Cancel subscription",
     ),
-    (
-        "wl_invoicing.subscription.cancel.on",
-        "Cancel on",
-    ),
+    ("wl_invoicing.subscription.cancel.on", "Cancel on"),
     (
         "wl_invoicing.subscription.cancel.on_hint",
         "YYYY-MM-DD; empty is today. The day counts as used.",
     ),
-    (
-        "wl_invoicing.subscription.cancel.reason",
-        "Reason",
-    ),
+    ("wl_invoicing.subscription.cancel.reason", "Reason"),
     (
         "wl_invoicing.subscription.cancel.done",
         "The subscription is cancelled.",

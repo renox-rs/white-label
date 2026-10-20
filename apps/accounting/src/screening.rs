@@ -21,9 +21,7 @@ use renox::db::Transaction;
 use renox::prelude::*;
 use wl_kernel::PartyId;
 use wl_kernel::parties::directory;
-use wl_kernel::screening_guard::{
-    ScreeningOutcome, ScreeningRefusal, StaleList, screening_guard,
-};
+use wl_kernel::screening_guard::{ScreeningOutcome, ScreeningRefusal, StaleList, screening_guard};
 
 use crate::cdd::ScreenedRole;
 use crate::permissions;

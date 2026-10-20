@@ -372,7 +372,10 @@ async fn show(
         letter,
         tax_profile,
         reason: reason_label(&lang, &found),
-        activated: found.activated_on.map(|d| d.to_string()).unwrap_or_default(),
+        activated: found
+            .activated_on
+            .map(|d| d.to_string())
+            .unwrap_or_default(),
         ended: found.ended_on.map(|d| d.to_string()).unwrap_or_default(),
     };
     let onboarding = found.status == EngagementStatus::Onboarding;
@@ -431,10 +434,7 @@ async fn show(
 
 /// The text of a neutral template, as the client reads it.
 fn template_text(lang: &Lang, template: NeutralTemplate) -> String {
-    text(
-        lang,
-        &format!("client_notices.{}_body", template.as_str()),
-    )
+    text(lang, &format!("client_notices.{}_body", template.as_str()))
 }
 
 /// A CSV field: quoted when it holds a comma, a quote or a line break.
@@ -506,8 +506,8 @@ async fn client_notice(
     Path(id): Path<i64>,
     Form(form): Form<NoticeForm>,
 ) -> Result<Response> {
-    let template =
-        NeutralTemplate::parse(&form.template).ok_or_else(|| invalid("template: on_hold, ended"))?;
+    let template = NeutralTemplate::parse(&form.template)
+        .ok_or_else(|| invalid("template: on_hold, ended"))?;
     client_notices::send(&state, &user, id, template).await?;
     Ok((
         Toast::success(text(&lang, "client_notices.sent")),

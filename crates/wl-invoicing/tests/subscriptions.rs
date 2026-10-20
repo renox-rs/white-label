@@ -81,7 +81,10 @@ async fn an_overdue_cycle_goes_past_due_then_suspended_then_settles() {
     assert_eq!(t.sub_past_due.all().len(), 1);
     let told = t.notices.of_type(PAST_DUE_NOTICE);
     assert_eq!(told.len(), 1);
-    assert_eq!(told[0].recipients, [NotifyRecipient::Party { id: BLUE_DUNES }]);
+    assert_eq!(
+        told[0].recipients,
+        [NotifyRecipient::Party { id: BLUE_DUNES }]
+    );
 
     for (day, retries) in [(1, 1), (2, 1), (3, 2)] {
         evaluate(&t, t.day(day)).await;

@@ -35,8 +35,7 @@ use renox::state_machine::{StateMachine, TransitionError, Transitioned};
 use wl_kernel::block_effects::{self, AgreementKind, BlockEffect};
 use wl_kernel::documents::today;
 use wl_kernel::invoicing::{
-    CreditLine, DraftLine, InvoiceDraft, InvoicePaid, InvoiceReopened, InvoiceStatus,
-    ReopenReason,
+    CreditLine, DraftLine, InvoiceDraft, InvoicePaid, InvoiceReopened, InvoiceStatus, ReopenReason,
 };
 use wl_kernel::notify::{self, Category, NotificationTypeDef, NotifyChannel, NotifyRequest};
 use wl_kernel::parties::{NEUTRAL_BLOCK_REASON, PartyBlocked, PartyStatus, PartyUnblocked};
@@ -163,7 +162,11 @@ fn date_text(date: NaiveDate) -> String {
 /// `None` for the system or a vertical). Refused (422) for a blank plan, a
 /// negative price, a quantity of 0 or less, a currency that is not a code
 /// like `AED`, an anchor day outside 1 to 31, or an end before the start.
-pub async fn start(state: &AppState, start: StartSubscription, by: Option<i64>) -> Result<Subscription> {
+pub async fn start(
+    state: &AppState,
+    start: StartSubscription,
+    by: Option<i64>,
+) -> Result<Subscription> {
     let plan = start.plan.trim().to_owned();
     if plan.is_empty() {
         return Err(refused("give the subscription a plan"));
@@ -266,12 +269,11 @@ pub fn is_outstanding(cycle: &SubscriptionCycle, invoice: &Invoice) -> bool {
 /// invoices, the settings and the party's status.
 pub async fn gather(state: &AppState, subscription: &Subscription, on: NaiveDate) -> Result<Facts> {
     let config = config_of(state);
-    let outstanding: Vec<(SubscriptionCycle, Invoice)> =
-        cycle_invoices(&state.db, subscription.id)
-            .await?
-            .into_iter()
-            .filter(|(cycle, invoice)| is_outstanding(cycle, invoice))
-            .collect();
+    let outstanding: Vec<(SubscriptionCycle, Invoice)> = cycle_invoices(&state.db, subscription.id)
+        .await?
+        .into_iter()
+        .filter(|(cycle, invoice)| is_outstanding(cycle, invoice))
+        .collect();
     let chased: Vec<&(SubscriptionCycle, Invoice)> = outstanding
         .iter()
         .filter(|(_, invoice)| !invoice.chasing_paused(on))
@@ -408,7 +410,9 @@ pub async fn pause(
             .reason
             .clone()
             .filter(|r| !r.trim().is_empty())
-            .or_else(|| Some(english("wl_invoicing.subscription.pause_reason.agreement").to_owned())),
+            .or_else(|| {
+                Some(english("wl_invoicing.subscription.pause_reason.agreement").to_owned())
+            }),
     }
     .map(|r| r.trim().to_owned());
     let year = i64::from(on.year());
@@ -461,7 +465,10 @@ pub async fn pause(
     if first {
         Subscription::query()
             .where_(Subscription::ID.eq(subscription.id))
-            .update(&mut tx, &[("paused_from", &Some(on)), ("pause_reason", &reason)])
+            .update(
+                &mut tx,
+                &[("paused_from", &Some(on)), ("pause_reason", &reason)],
+            )
             .await?;
     }
     if request.cause == PauseCause::User {
@@ -469,7 +476,10 @@ pub async fn pause(
             .where_(Subscription::ID.eq(subscription.id))
             .update(
                 &mut tx,
-                &[("pause_year", &Some(year)), ("pause_days_used", &(used + days))],
+                &[
+                    ("pause_year", &Some(year)),
+                    ("pause_days_used", &(used + days)),
+                ],
             )
             .await?;
     }
@@ -655,7 +665,10 @@ pub async fn cancel(
         .where_(Subscription::ID.eq(subscription.id))
         .update(
             &mut tx,
-            &[("cancelled_on", &Some(on)), ("cancel_reason", &Some(reason))],
+            &[
+                ("cancelled_on", &Some(on)),
+                ("cancel_reason", &Some(reason)),
+            ],
         )
         .await?;
     tx.commit().await?;
@@ -1001,7 +1014,13 @@ async fn retry(
             break;
         }
         done += 1;
-        notify_party(state, subscription, RETRY_NOTICE, json!({ "attempt": done })).await?;
+        notify_party(
+            state,
+            subscription,
+            RETRY_NOTICE,
+            json!({ "attempt": done }),
+        )
+        .await?;
     }
     if done != before {
         Subscription::query()
@@ -1217,7 +1236,9 @@ fn notice_type(key: &str, texts: &str, category: Category) -> NotificationTypeDe
         .template(
             NotifyChannel::Email,
             "en",
-            Some(english(&format!("wl_invoicing.subscription.{texts}.subject"))),
+            Some(english(&format!(
+                "wl_invoicing.subscription.{texts}.subject"
+            ))),
             english(&format!("wl_invoicing.subscription.{texts}.body")),
         )
 }
@@ -1254,9 +1275,7 @@ pub(crate) fn register(app: &mut Registry) {
     app.listen(|event: InvoiceReopened, state: AppState| async move {
         on_reopened(&state, &event).await
     });
-    app.listen(|event: InvoicePaid, state: AppState| async move {
-        on_paid(&state, &event).await
-    });
+    app.listen(|event: InvoicePaid, state: AppState| async move { on_paid(&state, &event).await });
     app.listen(|event: PartyBlocked, state: AppState| async move {
         on_blocked(&state, event.party).await
     });
@@ -1411,7 +1430,10 @@ mod tests {
         };
         assert!(is_outstanding(&cycle, &invoice(InvoiceStatus::Overdue, 10)));
         assert!(!is_outstanding(&cycle, &invoice(InvoiceStatus::Issued, 10)));
-        assert!(is_outstanding(&reopened, &invoice(InvoiceStatus::Issued, 10)));
+        assert!(is_outstanding(
+            &reopened,
+            &invoice(InvoiceStatus::Issued, 10)
+        ));
         assert!(!is_outstanding(&reopened, &invoice(InvoiceStatus::Paid, 0)));
         assert!(!is_outstanding(&cycle, &invoice(InvoiceStatus::Overdue, 0)));
     }

@@ -50,9 +50,7 @@ async fn a_held_task_keeps_its_date_goes_overdue_and_is_listed_on_release() {
         |app| record(app, &overdue),
     )
     .await;
-    let accountant = t
-        .user("Aisha", &[perm::TASKS_VIEW, perm::TASKS_WORK])
-        .await;
+    let accountant = t.user("Aisha", &[perm::TASKS_VIEW, perm::TASKS_WORK]).await;
     let manager = t
         .user_in_role("Mona", "manager", &[perm::TASKS_VIEW, perm::TASKS_MANAGE])
         .await;
@@ -69,7 +67,10 @@ async fn a_held_task_keeps_its_date_goes_overdue_and_is_listed_on_release() {
         .unwrap();
 
     // 2026-11-01: E-12 is suspended.
-    let held = tasks.hold(t.state(), &e12(), day("2026-11-01")).await.unwrap();
+    let held = tasks
+        .hold(t.state(), &e12(), day("2026-11-01"))
+        .await
+        .unwrap();
     assert_eq!(held.len(), 1);
     assert!(held[0].held);
     let task = t.task(held_id.0).await;
@@ -108,10 +109,7 @@ async fn a_held_task_keeps_its_date_goes_overdue_and_is_listed_on_release() {
     assert!(task.held);
     assert_eq!(task.overdue_on, Some(day("2026-11-29")));
     assert!(
-        overdue
-            .all()
-            .iter()
-            .any(|e| e.task == held_id && e.held),
+        overdue.all().iter().any(|e| e.task == held_id && e.held),
         "TaskOverdue for the held task"
     );
     assert!(
@@ -153,9 +151,7 @@ async fn a_held_task_keeps_its_date_goes_overdue_and_is_listed_on_release() {
 #[renox::test]
 async fn a_task_generated_while_held_is_created_held() {
     let t = boot_app(CLIENT, WlTicketing::new(), |app| app).await;
-    let accountant = t
-        .user("Aisha", &[perm::TASKS_VIEW, perm::TASKS_WORK])
-        .await;
+    let accountant = t.user("Aisha", &[perm::TASKS_VIEW, perm::TASKS_WORK]).await;
     let tasks = deadline_tasks(t.state());
     let monthly: DeadlineTaskId = tasks
         .create(
@@ -170,7 +166,10 @@ async fn a_task_generated_while_held_is_created_held() {
     t.task_act(&accountant, monthly.0, "start", "2026-11-02 09:00", &[])
         .await
         .assert_ok();
-    tasks.hold(t.state(), &e12(), day("2026-11-01")).await.unwrap();
+    tasks
+        .hold(t.state(), &e12(), day("2026-11-01"))
+        .await
+        .unwrap();
     let task = t.task(monthly.0).await;
     assert!(task.held);
     assert_eq!(task.status, DeadlineTaskStatus::InProgress, "state kept");
@@ -181,7 +180,12 @@ async fn a_task_generated_while_held_is_created_held() {
     let generated = tasks
         .create(
             t.state(),
-            NewDeadlineTask::new(e12(), "ct_registration", "CT registration", day("2026-12-31")),
+            NewDeadlineTask::new(
+                e12(),
+                "ct_registration",
+                "CT registration",
+                day("2026-12-31"),
+            ),
         )
         .await
         .unwrap()
@@ -191,7 +195,12 @@ async fn a_task_generated_while_held_is_created_held() {
         .await
         .assert_ok();
     let next = t
-        .task(t.task(monthly.0).await.next_task_id.expect("the next month"))
+        .task(
+            t.task(monthly.0)
+                .await
+                .next_task_id
+                .expect("the next month"),
+        )
         .await;
     assert!(next.held);
     assert_eq!(next.due_date, day("2026-12-20"));
@@ -200,7 +209,12 @@ async fn a_task_generated_while_held_is_created_held() {
     let other = tasks
         .create(
             t.state(),
-            NewDeadlineTask::new(e13(), "ct_registration", "CT registration", day("2026-12-31")),
+            NewDeadlineTask::new(
+                e13(),
+                "ct_registration",
+                "CT registration",
+                day("2026-12-31"),
+            ),
         )
         .await
         .unwrap()

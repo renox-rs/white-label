@@ -145,9 +145,7 @@ impl TaxProfile {
             if !trn_ok {
                 missing.push(english("accounting.tax_profile.trn", &[]));
             }
-            if self.vat_period == VatPeriod::NotRegistered
-                || self.vat_first_period_end.is_none()
-            {
+            if self.vat_period == VatPeriod::NotRegistered || self.vat_first_period_end.is_none() {
                 missing.push(english("accounting.tax_profile.vat_period", &[]));
             }
         }

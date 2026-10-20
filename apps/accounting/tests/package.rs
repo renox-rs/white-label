@@ -24,11 +24,14 @@ async fn the_pages_answer_for_the_roles_that_may_see_them() {
         .await
         .assert_ok()
         .assert_see(&engagement.number());
-    t.get(&manager, &format!("/accounting/engagements/{}", engagement.id))
-        .await
-        .assert_ok()
-        .assert_see("Gulf Trading LLC")
-        .assert_see("Onboarding");
+    t.get(
+        &manager,
+        &format!("/accounting/engagements/{}", engagement.id),
+    )
+    .await
+    .assert_ok()
+    .assert_see("Gulf Trading LLC")
+    .assert_see("Onboarding");
     t.get(&mlro, &format!("/accounting/cdd/{}", file.id))
         .await
         .assert_ok()

@@ -58,7 +58,11 @@ const SERVED: [EngagementStatus; 2] = [EngagementStatus::Active, EngagementStatu
 /// is found by while it is open:
 /// `accounting.cdd_update:<client>:parties.party:<holder>:<kind>`.
 pub fn source_key(client: PartyId, holder: PartyId, kind: &str) -> String {
-    format!("accounting.cdd_update:{}:{}:{kind}", client.0, holder.subject())
+    format!(
+        "accounting.cdd_update:{}:{}:{kind}",
+        client.0,
+        holder.subject()
+    )
 }
 
 /// The day the task is due: 14 days after `expires_on`.
@@ -287,7 +291,10 @@ mod tests {
     #[test]
     fn the_task_is_due_fourteen_days_after_the_expiry() {
         let expiry = NaiveDate::from_ymd_opt(2026, 11, 10).unwrap();
-        assert_eq!(due_date(expiry), NaiveDate::from_ymd_opt(2026, 11, 24).unwrap());
+        assert_eq!(
+            due_date(expiry),
+            NaiveDate::from_ymd_opt(2026, 11, 24).unwrap()
+        );
         assert_eq!(
             due_at(due_date(expiry)).to_rfc3339(),
             "2026-11-24T05:00:00+00:00"

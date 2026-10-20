@@ -10,12 +10,12 @@ use renox::prelude::*;
 use wl_invoicing::WlInvoicing;
 use wl_invoicing::reminders::{self, AFTER_DUE};
 use wl_invoicing::subscriptions::PAUSED_NOTICE;
+use wl_kernel::Subject;
 use wl_kernel::documents::today;
 use wl_kernel::parties::{NEUTRAL_BLOCK_REASON, PartyBlocked, PartyUnblocked};
 use wl_kernel::subscriptions::{
     PauseCause, PauseSubscription, SUBSCRIPTION_SUBJECT_TYPE, SubscriptionStatus, subscriptions,
 };
-use wl_kernel::Subject;
 
 use support::subscriptions::{
     bill, boot_subscriptions, causes, d, engagement, enrolment, evaluate, invoices, now, start,
@@ -91,7 +91,11 @@ async fn an_agreement_pause_stops_billing_and_spares_the_allowance() {
     assert_eq!(open[0].cause, PauseCause::Agreement);
 
     assert_eq!(bill(&t, d("2027-03-15")).await, 0);
-    assert_eq!(invoices(&t, &sub).await.len(), 1, "no cycle billed while paused");
+    assert_eq!(
+        invoices(&t, &sub).await.len(),
+        1,
+        "no cycle billed while paused"
+    );
     assert_eq!(t.notices.of_type(PAUSED_NOTICE).len(), 1);
 }
 
@@ -210,7 +214,11 @@ async fn a_block_on_a_frozen_membership_adds_its_cause() {
     let paused = now(&t, &sub).await;
     assert_eq!(paused.status, SubscriptionStatus::Paused);
     assert_eq!(paused.pause_days_used, 0);
-    assert_eq!(paused.paused_from, Some(d("2027-01-15")), "the pause did not restart");
+    assert_eq!(
+        paused.paused_from,
+        Some(d("2027-01-15")),
+        "the pause did not restart"
+    );
     let kinds: Vec<_> = causes(&t, &sub).await.iter().map(|c| c.cause).collect();
     assert_eq!(kinds, [PauseCause::Agreement, PauseCause::PartyBlock]);
     let history = renox::state_machine::history(t.db(), wl_invoicing::Subscription::TABLE, sub.id)
@@ -232,7 +240,12 @@ async fn a_block_on_a_frozen_membership_adds_its_cause() {
 
     // The freeze lifted while the party is still blocked: it stays paused.
     subscriptions(t.state())
-        .resume(t.state(), &enrolment(7), PauseCause::Agreement, d("2027-02-10"))
+        .resume(
+            t.state(),
+            &enrolment(7),
+            PauseCause::Agreement,
+            d("2027-02-10"),
+        )
         .await
         .unwrap();
     assert_eq!(now(&t, &sub).await.status, SubscriptionStatus::Paused);

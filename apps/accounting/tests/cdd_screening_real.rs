@@ -34,7 +34,10 @@ async fn submit_is_refused_on_a_screening_run_on_a_stale_list() {
     let res = t.post(&preparer, &path, &[]).await;
     res.assert_status(422);
     let text = res.text();
-    assert!(text.contains("This CDD file cannot be submitted:"), "{text}");
+    assert!(
+        text.contains("This CDD file cannot be submitted:"),
+        "{text}"
+    );
     assert!(
         text.contains("Screening list is out of date: UN Consolidated List of 2026-11-02"),
         "{text}"
@@ -54,11 +57,16 @@ async fn submit_is_refused_on_a_screening_run_on_a_stale_list() {
         t.screen_clear(party).await;
     }
     let res = t
-        .post(&preparer, &format!("/accounting/cdd/{}/submit", unscreened.id), &[])
+        .post(
+            &preparer,
+            &format!("/accounting/cdd/{}/submit", unscreened.id),
+            &[],
+        )
         .await;
     res.assert_status(422);
     assert!(
-        res.text().contains("Karim Nasser B (Signatory) is not screened yet"),
+        res.text()
+            .contains("Karim Nasser B (Signatory) is not screened yet"),
         "{}",
         res.text()
     );
@@ -74,9 +82,13 @@ async fn approve_is_refused_while_a_list_is_stale_until_the_update_and_a_rerun()
     let (client, file) = prepared(&t).await;
     let preparer = t.accountant().await;
     let mlro = t.mlro().await;
-    t.post(&preparer, &format!("/accounting/cdd/{}/submit", file.id), &[])
-        .await
-        .assert_ok();
+    t.post(
+        &preparer,
+        &format!("/accounting/cdd/{}/submit", file.id),
+        &[],
+    )
+    .await
+    .assert_ok();
     let approve = format!("/accounting/cdd/{}/approve", file.id);
 
     // 2026-11-04 10:00: the UN list is current, the UAE list was last updated
@@ -116,9 +128,13 @@ async fn approve_is_refused_on_an_open_match_and_the_preparer_sees_screening_pen
     let (client, file) = prepared(&t).await;
     let preparer = t.accountant().await;
     let mlro = t.mlro().await;
-    t.post(&preparer, &format!("/accounting/cdd/{}/submit", file.id), &[])
-        .await
-        .assert_ok();
+    t.post(
+        &preparer,
+        &format!("/accounting/cdd/{}/submit", file.id),
+        &[],
+    )
+    .await
+    .assert_ok();
     t.screen_possible_match(client.director).await;
 
     let res = t

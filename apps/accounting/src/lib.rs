@@ -21,8 +21,8 @@ pub mod reasons;
 pub mod retainer;
 pub mod screening;
 pub mod seed;
-pub mod tax_profile;
 pub mod tasks;
+pub mod tax_profile;
 mod texts;
 
 use renox::db::Migration;

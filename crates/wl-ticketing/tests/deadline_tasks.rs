@@ -6,8 +6,7 @@
 mod support;
 
 use wl_kernel::deadlines::{
-    DeadlineTaskStatus, NewDeadlineTask, TaskCompleted, TaskOverdue, TaskRecurrence,
-    deadline_tasks,
+    DeadlineTaskStatus, NewDeadlineTask, TaskCompleted, TaskOverdue, TaskRecurrence, deadline_tasks,
 };
 use wl_kernel::notify::NotifyRecipient;
 use wl_kernel::{PartyId, Subject};
@@ -38,9 +37,7 @@ fn vat(title: &str, due: &str, owner: i64) -> NewDeadlineTask {
 async fn a_completed_task_needs_evidence_and_brings_the_next_occurrence() {
     let completed = Recorded::<TaskCompleted>::new();
     let t = boot_app(CLIENT, WlTicketing::new(), |app| record(app, &completed)).await;
-    let accountant = t
-        .user("Aisha", &[perm::TASKS_VIEW, perm::TASKS_WORK])
-        .await;
+    let accountant = t.user("Aisha", &[perm::TASKS_VIEW, perm::TASKS_WORK]).await;
     let tasks = deadline_tasks(t.state());
 
     let id = tasks
@@ -103,9 +100,7 @@ async fn a_past_due_task_goes_overdue_and_can_still_be_completed_late() {
         |app| record(record(app, &overdue), &completed),
     )
     .await;
-    let accountant = t
-        .user("Aisha", &[perm::TASKS_VIEW, perm::TASKS_WORK])
-        .await;
+    let accountant = t.user("Aisha", &[perm::TASKS_VIEW, perm::TASKS_WORK]).await;
     let manager = t
         .user_in_role(
             "Mona",
@@ -192,9 +187,7 @@ async fn a_past_due_task_goes_overdue_and_can_still_be_completed_late() {
 #[renox::test]
 async fn a_reviewed_task_is_completed_by_its_reviewer() {
     let t = boot_app(CLIENT, WlTicketing::new(), |app| app).await;
-    let accountant = t
-        .user("Aisha", &[perm::TASKS_VIEW, perm::TASKS_WORK])
-        .await;
+    let accountant = t.user("Aisha", &[perm::TASKS_VIEW, perm::TASKS_WORK]).await;
     let reviewer = t
         .user_in_role("Rami", "manager", &[perm::TASKS_VIEW, perm::TASKS_REVIEW])
         .await;

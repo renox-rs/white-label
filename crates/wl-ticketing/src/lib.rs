@@ -254,7 +254,10 @@ impl WlTicketing {
     ///
     /// For a negative day: a programming error.
     pub fn task_reminder_days(mut self, days: &[i64]) -> Self {
-        assert!(days.iter().all(|d| *d >= 0), "reminder days are not negative");
+        assert!(
+            days.iter().all(|d| *d >= 0),
+            "reminder days are not negative"
+        );
         self.deadlines.reminder_days = days.to_vec();
         self
     }

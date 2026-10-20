@@ -91,7 +91,12 @@ async fn add_party_in(
 /// # Errors
 ///
 /// A 422 once the file is approved or closed; the database's errors.
-pub async fn add_party(state: &AppState, id: i64, party: PartyId, role: ScreenedRole) -> Result<CddFile> {
+pub async fn add_party(
+    state: &AppState,
+    id: i64,
+    party: PartyId,
+    role: ScreenedRole,
+) -> Result<CddFile> {
     let file = load(state, id).await?;
     if !matches!(file.status, CddStatus::InProgress) {
         return Err(refused(english("accounting.problems.cdd_locked", &[])));
@@ -317,7 +322,11 @@ pub async fn approve(state: &AppState, by: &AuthUser, id: i64) -> Result<CddFile
 /// # Errors
 ///
 /// The database's errors.
-pub async fn screening_lines(state: &AppState, viewer: &AuthUser, file: &CddFile) -> Result<Vec<String>> {
+pub async fn screening_lines(
+    state: &AppState,
+    viewer: &AuthUser,
+    file: &CddFile,
+) -> Result<Vec<String>> {
     let parties = parties_of(&state.db, file).await?;
     let mut tx = state.db.begin().await?;
     let check = screening::check_in(&mut tx, state, &parties).await;

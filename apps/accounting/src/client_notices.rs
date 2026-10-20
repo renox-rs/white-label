@@ -105,7 +105,12 @@ impl ClientNotice {
 /// A notification type of a neutral template with its English and Arabic
 /// texts: a statutory notice to the client (04 §9), whose give-up is the
 /// MLRO's task.
-fn neutral_type(key: &str, texts: &str, arabic_subject: &str, arabic_body: &str) -> NotificationTypeDef {
+fn neutral_type(
+    key: &str,
+    texts: &str,
+    arabic_subject: &str,
+    arabic_body: &str,
+) -> NotificationTypeDef {
     let subject = english(&format!("accounting.client_notices.{texts}_subject"), &[]);
     let body = english(&format!("accounting.client_notices.{texts}_body"), &[]);
     NotificationTypeDef::new(key, MODULE)
@@ -113,7 +118,12 @@ fn neutral_type(key: &str, texts: &str, arabic_subject: &str, arabic_body: &str)
         .statutory(true)
         .staff_role(MLRO_ROLE)
         .template(NotifyChannel::Email, "en", Some(&subject), &body)
-        .template(NotifyChannel::Email, "ar", Some(arabic_subject), arabic_body)
+        .template(
+            NotifyChannel::Email,
+            "ar",
+            Some(arabic_subject),
+            arabic_body,
+        )
 }
 
 /// Registers the neutral templates with the kernel registry.
@@ -186,7 +196,10 @@ mod tests {
         assert!(!NeutralTemplate::OnHold.fits(EngagementStatus::Ended));
         assert!(NeutralTemplate::Ended.fits(EngagementStatus::Ended));
         assert!(!NeutralTemplate::Ended.fits(EngagementStatus::Active));
-        assert_eq!(NeutralTemplate::parse("ended"), Some(NeutralTemplate::Ended));
+        assert_eq!(
+            NeutralTemplate::parse("ended"),
+            Some(NeutralTemplate::Ended)
+        );
         assert_eq!(NeutralTemplate::parse("sanctions"), None);
         assert_eq!(NeutralTemplate::OnHold.as_str(), "on_hold");
     }

@@ -94,7 +94,9 @@ pub async fn invoices(t: &Booted, subscription: &Subscription) -> Vec<Invoice> {
 
 /// The cycles of `subscription`, oldest first.
 pub async fn cycles(t: &Booted, subscription: &Subscription) -> Vec<SubscriptionCycle> {
-    SubscriptionCycle::of(t.db(), subscription.id).await.unwrap()
+    SubscriptionCycle::of(t.db(), subscription.id)
+        .await
+        .unwrap()
 }
 
 /// The open pause causes of `subscription`.
@@ -116,7 +118,11 @@ pub async fn credit_notes(t: &Booted, invoice: &Invoice) -> Vec<CreditNote> {
 
 /// A subscription started on `start` whose first cycle invoice is issued and
 /// was marked `overdue` (its due date, the cycle start, has passed).
-pub async fn with_overdue_cycle(t: &Booted, agreement: &Subject, start: NaiveDate) -> (Subscription, Invoice) {
+pub async fn with_overdue_cycle(
+    t: &Booted,
+    agreement: &Subject,
+    start: NaiveDate,
+) -> (Subscription, Invoice) {
     let subscription = self::start(t, agreement, start).await;
     assert_eq!(bill(t, start).await, 1);
     wl_invoicing::overdue::run(t.state())

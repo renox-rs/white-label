@@ -6,12 +6,12 @@
 
 mod support;
 
+use wl_kernel::Subject;
 use wl_kernel::deadlines::{
     DeadlineTaskId, DeadlineTaskStatus, NewDeadlineTask, SOURCE_ENDED_REASON, TaskRecurrence,
     deadline_tasks,
 };
 use wl_kernel::notify::NotifyRecipient;
-use wl_kernel::Subject;
 use wl_ticketing::{WlTicketing, deadlines, permissions as perm};
 
 use support::{Booted, CLIENT, COOLAIR, boot_app, day};
@@ -33,9 +33,7 @@ struct Scenario {
 
 async fn scenario(module: WlTicketing) -> Scenario {
     let t = boot_app(CLIENT, module.task_manager_role("manager"), |app| app).await;
-    let accountant = t
-        .user("Aisha", &[perm::TASKS_VIEW, perm::TASKS_WORK])
-        .await;
+    let accountant = t.user("Aisha", &[perm::TASKS_VIEW, perm::TASKS_WORK]).await;
     let manager = t
         .user_in_role(
             "Mona",

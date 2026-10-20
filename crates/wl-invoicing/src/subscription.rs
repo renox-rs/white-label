@@ -296,7 +296,8 @@ fn last_day(year: i32, month: u32) -> u32 {
 /// `date` moved by `months` months, on the anchor day clamped to the
 /// month's last day.
 fn add_months(date: NaiveDate, months: u32, anchor: u32) -> NaiveDate {
-    let total = date.year() * 12 + i32::try_from(date.month0()).unwrap_or(0)
+    let total = date.year() * 12
+        + i32::try_from(date.month0()).unwrap_or(0)
         + i32::try_from(months).unwrap_or(0);
     let year = total.div_euclid(12);
     let month = u32::try_from(total.rem_euclid(12)).unwrap_or(0) + 1;
@@ -361,14 +362,35 @@ mod tests {
 
     #[test]
     fn monthly_cycles_keep_the_anchor_day() {
-        assert_eq!(advance(BillingCycle::Month, 1, d(2027, 3, 1)), d(2027, 4, 1));
-        assert_eq!(cycle_end(BillingCycle::Month, 1, d(2027, 3, 1)), d(2027, 3, 31));
+        assert_eq!(
+            advance(BillingCycle::Month, 1, d(2027, 3, 1)),
+            d(2027, 4, 1)
+        );
+        assert_eq!(
+            cycle_end(BillingCycle::Month, 1, d(2027, 3, 1)),
+            d(2027, 3, 31)
+        );
         // The 31st falls back to the month's last day, then comes back.
-        assert_eq!(advance(BillingCycle::Month, 31, d(2027, 1, 31)), d(2027, 2, 28));
-        assert_eq!(advance(BillingCycle::Month, 31, d(2027, 2, 28)), d(2027, 3, 31));
-        assert_eq!(advance(BillingCycle::Month, 15, d(2027, 12, 15)), d(2028, 1, 15));
-        assert_eq!(advance(BillingCycle::Quarter, 1, d(2027, 11, 1)), d(2028, 2, 1));
-        assert_eq!(advance(BillingCycle::Year, 29, d(2028, 2, 29)), d(2029, 2, 28));
+        assert_eq!(
+            advance(BillingCycle::Month, 31, d(2027, 1, 31)),
+            d(2027, 2, 28)
+        );
+        assert_eq!(
+            advance(BillingCycle::Month, 31, d(2027, 2, 28)),
+            d(2027, 3, 31)
+        );
+        assert_eq!(
+            advance(BillingCycle::Month, 15, d(2027, 12, 15)),
+            d(2028, 1, 15)
+        );
+        assert_eq!(
+            advance(BillingCycle::Quarter, 1, d(2027, 11, 1)),
+            d(2028, 2, 1)
+        );
+        assert_eq!(
+            advance(BillingCycle::Year, 29, d(2028, 2, 29)),
+            d(2029, 2, 28)
+        );
         assert_eq!(advance(BillingCycle::Week, 1, d(2027, 3, 1)), d(2027, 3, 8));
     }
 

@@ -158,15 +158,19 @@ async fn show(
         status_kind: status_kind(found.status),
         parties,
         screening: cdd_files::screening_lines(&state, &user, &found).await?,
-        roles: [ScreenedRole::Ubo, ScreenedRole::Director, ScreenedRole::Signatory]
-            .iter()
-            .map(|r| {
-                [
-                    r.as_str().to_owned(),
-                    text(&lang, &format!("cdd.role.{}", r.as_str())),
-                ]
-            })
-            .collect(),
+        roles: [
+            ScreenedRole::Ubo,
+            ScreenedRole::Director,
+            ScreenedRole::Signatory,
+        ]
+        .iter()
+        .map(|r| {
+            [
+                r.as_str().to_owned(),
+                text(&lang, &format!("cdd.role.{}", r.as_str())),
+            ]
+        })
+        .collect(),
         ratings: RiskRating::ALL
             .iter()
             .map(|r| {
@@ -240,10 +244,14 @@ async fn add_party(
 ) -> Result<Response> {
     require(&user, permissions::CDD_PREPARE)?;
     let party = parse_id(&form.party).ok_or_else(|| invalid("party: 1, 2, 3 ..."))?;
-    let role = [ScreenedRole::Ubo, ScreenedRole::Director, ScreenedRole::Signatory]
-        .into_iter()
-        .find(|r| r.as_str() == form.role.trim())
-        .ok_or_else(|| invalid("role: ubo, director, signatory"))?;
+    let role = [
+        ScreenedRole::Ubo,
+        ScreenedRole::Director,
+        ScreenedRole::Signatory,
+    ]
+    .into_iter()
+    .find(|r| r.as_str() == form.role.trim())
+    .ok_or_else(|| invalid("role: ubo, director, signatory"))?;
     cdd_files::add_party(&state, id, PartyId(party), role).await?;
     Ok(done(&lang, "cdd.party_added"))
 }
@@ -282,8 +290,7 @@ async fn assess(
     let mut assessment = Assessment::rated(rating);
     assessment.risk_factors = form.risk_factors.trim().to_owned();
     assessment.edd_notes = form.edd_notes.trim().to_owned();
-    assessment.identity_documents_attached =
-        matches!(form.documents.trim(), "on" | "1" | "true");
+    assessment.identity_documents_attached = matches!(form.documents.trim(), "on" | "1" | "true");
     cdd_files::assess(&state, id, assessment).await?;
     Ok(done(&lang, "cdd.assessed"))
 }

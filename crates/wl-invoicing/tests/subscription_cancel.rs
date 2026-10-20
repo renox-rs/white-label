@@ -30,9 +30,15 @@ async fn march(t: &Booted, agreement: &Subject, paid: bool) -> (Subscription, In
     let id = subscriptions(t.state())
         .start(
             t.state(),
-            StartSubscription::new(BLUE_DUNES, agreement.clone(), "Membership", NET, d("2027-03-01"))
-                .vat_category(VatCategory::Standard)
-                .notice_days(30),
+            StartSubscription::new(
+                BLUE_DUNES,
+                agreement.clone(),
+                "Membership",
+                NET,
+                d("2027-03-01"),
+            )
+            .vat_category(VatCategory::Standard)
+            .notice_days(30),
         )
         .await
         .unwrap()

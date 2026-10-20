@@ -548,6 +548,9 @@ mod tests {
         let pause = PauseSubscription::new(PauseCause::Agreement, day).reason("frozen");
         assert_eq!(pause.reason.as_deref(), Some("frozen"));
         assert!(CancelSubscription::new(day).settled().settled);
-        assert_eq!(SubscriptionId(4).subject().to_string(), "invoicing.subscription:4");
+        assert_eq!(
+            SubscriptionId(4).subject().to_string(),
+            "invoicing.subscription:4"
+        );
     }
 }

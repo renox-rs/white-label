@@ -93,9 +93,12 @@ async fn bl_acc_12_an_expired_trade_licence_opens_one_cdd_update_task_until_rene
     assert_eq!(t.status(&engagement).await, EngagementStatus::Active);
     assert_eq!(t.cdd(&file).await.status, file.status, "the CDD file stays");
     assert!(
-        t.notices.all().iter().any(|r| r.type_key == CDD_UPDATE_NOTICE
-            && r.recipients
-                .contains(&NotifyRecipient::User { id: manager.id })),
+        t.notices
+            .all()
+            .iter()
+            .any(|r| r.type_key == CDD_UPDATE_NOTICE
+                && r.recipients
+                    .contains(&NotifyRecipient::User { id: manager.id })),
         "the manager watches it"
     );
 
@@ -131,8 +134,13 @@ async fn bl_acc_12_a_ubo_passport_gives_a_task_per_served_client_only() {
     let onboarding_client = t.client_named(" B").await;
     let onboarding = t.engagement(&onboarding_client).await;
     t.kyc(&reviewer, client.ubo, PASSPORT, d(11, 10)).await;
-    t.kyc(&reviewer, onboarding_client.company, TRADE_LICENCE, d(11, 10))
-        .await;
+    t.kyc(
+        &reviewer,
+        onboarding_client.company,
+        TRADE_LICENCE,
+        d(11, 10),
+    )
+    .await;
 
     t.run(wl_documents::expiry::run::run(t.state(), d(11, 11)))
         .await

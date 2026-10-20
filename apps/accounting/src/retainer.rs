@@ -19,10 +19,7 @@ pub fn start_request(engagement: &Engagement, on: NaiveDate) -> Option<StartSubs
     if engagement.fee_basis != FeeBasis::Retainer || engagement.retainer_fee <= 0 {
         return None;
     }
-    let plan = english(
-        "accounting.retainer.plan",
-        &[("title", &engagement.title)],
-    );
+    let plan = english("accounting.retainer.plan", &[("title", &engagement.title)]);
     Some(StartSubscription::new(
         engagement.client(),
         engagement.subject(),
