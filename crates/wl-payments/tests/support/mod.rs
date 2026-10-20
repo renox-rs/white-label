@@ -8,6 +8,8 @@
 
 #![allow(dead_code)]
 
+pub mod cash;
+
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -28,6 +30,7 @@ use wl_kernel::deposits::{
     DepositAdjusted, DepositFuture, DepositSettled, DepositTopUps, DisputeDeductions, TopUpCharge,
     deposit_deductions,
 };
+use wl_kernel::custody::{CashHandoverCounted, CashShortage, CashShortageSettled, ShortageRecovery};
 use wl_kernel::documents::today;
 use wl_kernel::drawings::{
     DrawingCategory, DrawingFuture, DrawingRequest, DrawingStart, OwnerDrawings,
@@ -36,6 +39,7 @@ use wl_kernel::invoicing::{
     InvoiceFuture, InvoiceId, InvoiceStatus, InvoiceSummary, InvoiceWrittenOff, Invoicer,
     WriteOffAnswer,
 };
+use wl_kernel::tickets::TaskCreator;
 use wl_kernel::notify::{MessageId, Notifier, NotifyFuture, NotifyRecipient, NotifyRequest};
 use wl_kernel::parties::{PartyDirectory, PartyFuture, PartyKind, PartyStatus, PartySummary};
 use wl_kernel::payments::{
@@ -969,6 +973,16 @@ pub struct Booted {
     pub charges: RecordingCharges,
     /// The owner drawings approval.
     pub drawings: DrawingsDesk,
+    /// The tickets asked of the task creator.
+    pub cash_tickets: cash::CashTickets,
+    /// The salary deductions passed to wl-hr.
+    pub hr: cash::HrDesk,
+    /// `CashShortage`.
+    pub cash_shortage: Recorded<CashShortage>,
+    /// `CashHandoverCounted`.
+    pub cash_counted: Recorded<CashHandoverCounted>,
+    /// `CashShortageSettled`.
+    pub cash_settled: Recorded<CashShortageSettled>,
 }
 
 impl Booted {
@@ -1754,6 +1768,13 @@ pub async fn boot_with(module: WlPayments, gateway: FakeGateway) -> Booted {
     let cheque_referred = Recorded::new();
     let deposit_settled = Recorded::new();
     let deposit_adjusted = Recorded::new();
+    let cash_shortage = Recorded::new();
+    let cash_counted = Recorded::new();
+    let cash_settled = Recorded::new();
+    let cash_tickets = cash::CashTickets::default();
+    let task_creator: Arc<dyn TaskCreator> = Arc::new(cash_tickets.clone());
+    let hr = cash::HrDesk::default();
+    let shortage_recovery: Arc<dyn ShortageRecovery> = Arc::new(hr.clone());
     let top_ups = RecordingTopUps::default();
     let top_up_provider: Arc<dyn DepositTopUps> = Arc::new(top_ups.clone());
     let fees = RecordingFees::default();
@@ -1791,6 +1812,8 @@ pub async fn boot_with(module: WlPayments, gateway: FakeGateway) -> Booted {
         .provide(charge_invoicer)
         .provide(top_up_provider)
         .provide(owner_drawings)
+        .provide(task_creator)
+        .provide(shortage_recovery)
         .provide(block_guard);
     let app = record(app, &received);
     let app = record(app, &reversed);
@@ -1801,6 +1824,9 @@ pub async fn boot_with(module: WlPayments, gateway: FakeGateway) -> Booted {
     let app = record(app, &cheque_referred);
     let app = record(app, &deposit_settled);
     let app = record(app, &deposit_adjusted);
+    let app = record(app, &cash_shortage);
+    let app = record(app, &cash_counted);
+    let app = record(app, &cash_settled);
     let config = ClientConfig::parse(CLIENT).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     let dir = views.path().to_path_buf();
@@ -1842,5 +1868,10 @@ pub async fn boot_with(module: WlPayments, gateway: FakeGateway) -> Booted {
         fees,
         charges,
         drawings,
+        cash_tickets,
+        hr,
+        cash_shortage,
+        cash_counted,
+        cash_settled,
     }
 }
