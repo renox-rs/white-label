@@ -86,7 +86,7 @@ fn overlap(a: (NaiveDate, NaiveDate), b: (NaiveDate, NaiveDate)) -> bool {
 /// The charges of the old version that count as periods of its plan once the
 /// renewal starts on `start`: the live ones and those `renew` cancelled (due
 /// on or after `start`), but not those cancelled earlier.
-fn plan_of<'a>(charges: &'a [LeaseCharge], start: NaiveDate) -> Vec<&'a LeaseCharge> {
+fn plan_of(charges: &[LeaseCharge], start: NaiveDate) -> Vec<&LeaseCharge> {
     charges
         .iter()
         .filter(|c| c.status != ChargeStatus::Cancelled || c.due_date >= start)

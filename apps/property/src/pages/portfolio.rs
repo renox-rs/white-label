@@ -227,8 +227,11 @@ fn area_text(milli: Option<i64>) -> String {
     })
 }
 
+/// A list of `(code, label)` options.
+type Options = Vec<(String, String)>;
+
 /// The unit types and uses of the unit form.
-fn kinds(lang: &Lang) -> (Vec<(String, String)>, Vec<(String, String)>) {
+fn kinds(lang: &Lang) -> (Options, Options) {
     let types = ["apartment", "villa", "office", "shop", "warehouse"]
         .into_iter()
         .map(|k| (k.to_owned(), text(lang, &format!("units.type.{k}"))))

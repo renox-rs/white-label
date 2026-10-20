@@ -338,8 +338,7 @@ async fn bl_prp_22_end_without_a_receipt_for_one_cheque_is_refused() {
     let items = s.items().await;
     let last_cheque = items
         .iter()
-        .filter(|item| item.kind == ItemKind::Cheque)
-        .next_back()
+        .rfind(|item| item.kind == ItemKind::Cheque)
         .expect("a cheque line")
         .id;
     s.receipts(&[last_cheque]).await;

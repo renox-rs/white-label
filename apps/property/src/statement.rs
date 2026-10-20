@@ -199,6 +199,7 @@ pub struct OwnerStatement {
 
 /// One line of a statement.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
+#[allow(clippy::duplicated_attributes)] // each `index(..)` is a separate index; `status` repeats by design
 #[model(
     table = "property_statement_lines",
     index(statement_id),

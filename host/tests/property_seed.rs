@@ -505,8 +505,7 @@ async fn a_late_ticket_update_keeps_the_work_time_and_carries_the_flag() {
     let refused =
         ticket_update::enter(state, technician.id, id, worked, "Replaced the valve", None)
             .await
-            .err()
-            .expect("a late entry without a reason is refused");
+            .expect_err("a late entry without a reason is refused");
     assert!(
         matches!(refused, Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _)),
         "{refused:?}"

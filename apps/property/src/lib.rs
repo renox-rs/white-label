@@ -120,7 +120,7 @@ pub fn money_text(fils: i64) -> String {
     let whole = (magnitude / 100).to_string();
     let mut grouped = String::new();
     for (index, digit) in whole.chars().enumerate() {
-        if index > 0 && (whole.len() - index) % 3 == 0 {
+        if index > 0 && (whole.len() - index).is_multiple_of(3) {
             grouped.push(',');
         }
         grouped.push(digit);

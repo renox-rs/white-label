@@ -1545,10 +1545,10 @@ impl Invoicer for InvoiceDesk {
 /// A payment recorder that takes refund requests and records the payments the
 /// vertical makes (an owner payout).
 #[derive(Clone, Default)]
-pub struct Refunds(
-    Arc<Mutex<Vec<RefundRequest>>>,
-    Arc<Mutex<Vec<(RecordPayment, Option<i64>)>>>,
-);
+pub struct Refunds(Arc<Mutex<Vec<RefundRequest>>>, Arc<Mutex<PaymentLog>>);
+
+/// The payments recorded, each with the refund it settles.
+type PaymentLog = Vec<(RecordPayment, Option<i64>)>;
 
 impl Refunds {
     /// The refunds asked for.

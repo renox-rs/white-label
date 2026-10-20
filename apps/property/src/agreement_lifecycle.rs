@@ -827,7 +827,7 @@ pub async fn prepare_final_statement(
             ],
         )
         .await?;
-    Ok(OwnerStatement::find(&state.db, draft.id).await?)
+    OwnerStatement::find(&state.db, draft.id).await
 }
 
 /// An open invoice of a lease in the pack.
