@@ -33,6 +33,16 @@ async fn two_lines(
     (store, (a, line_a), (b, line_b), order)
 }
 
+/// The wastage posted to the cost seam (the price variance of a dispatch from
+/// stock is posted too, under its own cost code).
+fn wastage_of(t: &support::Booted) -> Vec<wl_kernel::invoicing::PostCost> {
+    t.costs
+        .posted()
+        .into_iter()
+        .filter(|cost| cost.cost_code.as_deref() == Some("wastage"))
+        .collect()
+}
+
 /// Done when 1: credit lines A (AED 400) and B (AED 200); a debit note that
 /// covers A only leaves the return `dispatched`; a second covering B makes it
 /// `credited` and emits `SupplierReturnCredited`.
@@ -66,7 +76,7 @@ async fn debit_notes_cover_the_lines_and_the_last_one_credits_the_return() {
     assert_eq!(events[0].supplier, SUPPLIER);
     assert_eq!(events[0].debit_note, Some(SupplierDebitNoteId(12)));
     assert_eq!(events[0].basis, "debit_note");
-    assert!(t.costs.posted().is_empty());
+    assert!(wastage_of(&t).is_empty());
 }
 
 /// A note that covers part of a line leaves the return `dispatched`; the
@@ -116,7 +126,7 @@ async fn a_refused_credit_above_the_limit_is_approved_then_posted_as_wastage() {
         .assert_ok();
 
     assert_eq!(t.return_now(&ret).await.status, ReturnStatus::Dispatched);
-    assert!(t.costs.posted().is_empty());
+    assert!(wastage_of(&t).is_empty());
     let requests = ApprovalRequest::pending_about(t.db(), &ret.subject())
         .await
         .unwrap();
@@ -145,7 +155,7 @@ async fn a_refused_credit_above_the_limit_is_approved_then_posted_as_wastage() {
     );
     assert_eq!(done.credited_by, Some(amal.id));
     assert_eq!(done.wastage_fils, 150_000);
-    let posted = t.costs.posted();
+    let posted = wastage_of(&t);
     assert_eq!(posted.len(), 1);
     assert_eq!(posted[0].amount_aed, 150_000);
     assert_eq!(posted[0].source, ret.subject());
@@ -178,8 +188,8 @@ async fn a_refused_credit_within_the_limit_posts_only_the_uncovered_value() {
     assert_eq!(done.status, ReturnStatus::Credited);
     // B only: 2 units at AED 100.
     assert_eq!(done.wastage_fils, 20_000);
-    assert_eq!(t.costs.posted().len(), 1);
-    assert_eq!(t.costs.posted()[0].amount_aed, 20_000);
+    assert_eq!(wastage_of(&t).len(), 1);
+    assert_eq!(wastage_of(&t)[0].amount_aed, 20_000);
     assert!(
         ApprovalRequest::pending_about(t.db(), &ret.subject())
             .await
@@ -206,7 +216,7 @@ async fn a_received_refund_credits_the_return_with_no_wastage() {
     assert_eq!(done.status, ReturnStatus::Credited);
     assert_eq!(done.credit_basis.as_deref(), Some("refund_received"));
     assert_eq!(done.wastage_fils, 0);
-    assert!(t.costs.posted().is_empty());
+    assert!(wastage_of(&t).is_empty());
     assert_eq!(t.credited.all().len(), 1);
     assert_eq!(t.credited.all()[0].wastage, 0);
 }
