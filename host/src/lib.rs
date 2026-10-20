@@ -57,6 +57,34 @@ pub fn try_app() -> Result<renox::App, ConfigError> {
     app_for(ClientConfig::load(path)?)
 }
 
+/// Commands that wipe or fill the database with demo data. In production
+/// they are refused before anything is booted (`main.rs`): `migrate:fresh`
+/// drops every table, `db:seed` and `property:demo` make the demo logins
+/// (admin@example.com / password123).
+pub const DEMO_COMMANDS: &[&str] = &["migrate:fresh", "db:seed", demo_data::COMMAND];
+
+/// The refusal for `command` when `app_env` is a production environment.
+///
+/// # Errors
+///
+/// The message to print, when the command is one of [`DEMO_COMMANDS`] and
+/// `app_env` starts with `prod`.
+pub fn refuse_in_production(command: Option<&str>, app_env: Option<&str>) -> Result<(), String> {
+    let production = app_env.is_some_and(|env| env.trim().to_lowercase().starts_with("prod"));
+    match command {
+        Some(command) if production && DEMO_COMMANDS.contains(&command) => Err(format!(
+            "{command} is refused when APP_ENV is production: it would {} \
+             Add people with `users:invite`; to start over, restore a backup.",
+            if command == "migrate:fresh" {
+                "drop every table of the live database."
+            } else {
+                "put the demo company and its logins (admin@example.com / password123) in the live database."
+            }
+        )),
+        _ => Ok(()),
+    }
+}
+
 /// [`try_app`], for tests: the demo client unless `CLIENT_CONFIG` says
 /// otherwise.
 ///
