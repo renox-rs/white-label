@@ -241,8 +241,11 @@ pub async fn end(state: &AppState, by: &AuthUser, id: i64, reason: &str) -> Resu
 /// [`reasons::ON_HOLD`] for a restricted one (sanctions, AML concern), and
 /// then automatic messages to the client are off (`ACC.ACL.14`). Decision: a
 /// display reason of *on hold* counts as restricted, so a block whose own
-/// code is `on_hold` is treated the safe way. The held tasks and the paused
-/// retainer come with BL-ACC-03.
+/// code is `on_hold` is treated the safe way. The `auto_suspend` holds the
+/// tasks and pauses the retainer with *on hold* after its commit
+/// ([`crate::suspension`]); nothing goes to the client automatically, and
+/// `ACC.RUL.09` gives the partner the deadline list only when the block's
+/// reason is not restricted.
 ///
 /// # Errors
 ///

@@ -23,6 +23,7 @@ pub mod request_lists;
 pub mod retainer;
 pub mod screening;
 pub mod seed;
+pub mod suspension;
 pub mod tasks;
 pub mod tax_profile;
 mod texts;

@@ -122,6 +122,17 @@ impl Engagement {
         !self.client_messages_suppressed
     }
 
+    /// Whether time may be logged against it: while `active`, and while
+    /// `suspended` (work already done stays billable, 04 §4.5). Decision:
+    /// time entries are wl-attendance's (`HRM.TMS.01`, not built yet); this is
+    /// the check its entry form asks of the engagement.
+    pub fn accepts_time_entries(&self) -> bool {
+        matches!(
+            self.status,
+            EngagementStatus::Active | EngagementStatus::Suspended
+        )
+    }
+
     /// The engagements of `client`, oldest first.
     ///
     /// # Errors

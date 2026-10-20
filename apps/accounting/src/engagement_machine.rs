@@ -18,8 +18,10 @@
 //! retainer) runs after the commit, in [`crate::events`].
 //!
 //! Built here: `activate` and `decline` with their effects, and the states.
-//! `suspend`, `resume` and `end` record their reason and dates; their holds,
-//! pauses, notices and checks come with BL-ACC-03 to BL-ACC-06.
+//! `suspend`, `resume` and `end` record their reason and dates; after the
+//! commit a suspension holds the tasks and pauses the retainer
+//! ([`crate::suspension`], BL-ACC-03) and `ACC.RUL.09` sends or prepares the
+//! deadline notice ([`crate::deadline_notices`], BL-ACC-04).
 
 use renox::chrono::NaiveDate;
 use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx};
