@@ -112,10 +112,15 @@ async fn bl_prp_07_a_renewal_from_expired_does_not_bill_a_period_twice() {
     assert_eq!(invoiced.len(), 2, "January and February 2028 are invoiced");
     let invoice_ids: Vec<i64> = invoiced.iter().filter_map(|c| c.invoice_id).collect();
 
-    // The renewal is back-dated to 2028-01-01 and activated later.
+    // The renewal is back-dated to 2028-01-01 and activated on 2028-03-10.
     let v2 = s.renewal(&v1, aed(120_000)).await;
-    s.t.submit(&s.agent, &v2).await.assert_ok();
-    s.t.activate(&s.manager, &v2).await.assert_ok();
+    s.t.at(y28(3, 10), s.t.submit(&s.agent, &v2))
+        .await
+        .assert_ok();
+    s.t.at(y28(3, 10), s.t.activate(&s.manager, &v2))
+        .await
+        .assert_ok();
+    assert_eq!(s.t.reload(&v2).await.activated_on, Some(y28(3, 10)));
 
     let v1_now = s.t.reload(&v1).await;
     let v2_now = s.t.reload(&v2).await;
