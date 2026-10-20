@@ -122,6 +122,9 @@ pub struct Project {
     pub defects_liability_days: i64,
     /// The contract completion date; an approved extension of time moves it.
     pub completion_due_on: Option<NaiveDate>,
+    /// The days after a delay event within which the contract requires
+    /// notice (`CON.RUL.10`); none by default.
+    pub notice_days: Option<i64>,
     /// The advance paid to the project, in fils.
     pub advance_paid: i64,
     /// What the invoiced IPAs recovered of the advance, in fils.
@@ -180,6 +183,12 @@ impl Project {
     /// With a budget of `fils`.
     pub fn with_budget(mut self, fils: i64) -> Self {
         self.budget = fils;
+        self
+    }
+
+    /// With a notice period of `days` after a delay event (`CON.RUL.10`).
+    pub fn with_notice_days(mut self, days: i64) -> Self {
+        self.notice_days = Some(days);
         self
     }
 

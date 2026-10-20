@@ -16,6 +16,7 @@ pub mod final_account;
 pub mod guarantee;
 pub mod invoice;
 pub mod ipa;
+pub mod notice_deadline;
 pub mod notices;
 pub mod omission;
 pub mod pages;
@@ -58,6 +59,10 @@ pub const GUARANTEE_TASK: &str = "construction:guarantee-daily";
 /// The name of the daily scheduled task of the unanswered variations
 /// (`CON.RUL.09`).
 pub const VARIATION_CHASE_TASK: &str = "construction:variation-chase-daily";
+
+/// The name of the daily scheduled task of the notice deadlines
+/// (`CON.RUL.10`).
+pub const NOTICE_DEADLINE_TASK: &str = "construction:notice-deadline-daily";
 
 /// The Construction module. Add it to the app with
 /// `.module(construction::Construction)`.
@@ -116,6 +121,15 @@ impl Module for Construction {
                 "02:00",
                 VARIATION_CHASE_TASK,
                 |state: AppState| async move { chase::daily(&state).await },
+            )
+            .timezone("Asia/Dubai");
+        // `CON.RUL.10`: the project manager and QS are warned 7 and 2 days
+        // before the contract's notice deadline of a delay event.
+        app.schedule()
+            .daily_at(
+                "02:00",
+                NOTICE_DEADLINE_TASK,
+                |state: AppState| async move { notice_deadline::daily(&state).await },
             )
             .timezone("Asia/Dubai");
         submission::register_types();

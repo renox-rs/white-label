@@ -197,6 +197,11 @@ pub struct Variation {
     pub chased_on: Option<NaiveDate>,
     /// The day the MD was notified, for the latest submission.
     pub escalated_on: Option<NaiveDate>,
+    /// The day the project manager and QS were warned 7 days before the notice
+    /// deadline (`CON.RUL.10`).
+    pub notice_warned_7_on: Option<NaiveDate>,
+    /// The day they were warned 2 days before it.
+    pub notice_warned_2_on: Option<NaiveDate>,
     /// How much of an approved omission progress had overtaken: the QS is
     /// warned to record it as a claim.
     pub excess_quantity: i64,
@@ -354,10 +359,16 @@ pub fn claim_problem(variation: &Variation) -> Option<String> {
 }
 
 /// The effect of `submit` inside its transaction: the day of the submission
-/// is the notice date and starts the clock of `CON.RUL.09` again.
+/// is the notice date (late when after the notice deadline, `CON.RUL.10`) and
+/// starts the clock of `CON.RUL.09` again.
 pub(crate) async fn submit_effects(tx: &mut Transaction, variation: &Variation) -> Result {
-    let day = Some(today());
+    let today = today();
+    let day = Some(today);
     let none: Option<NaiveDate> = None;
+    // `CON.RUL.10`: a notice after the contract's deadline is marked late,
+    // never refused.
+    let project = Project::find_or_404(&mut *tx, variation.project_id).await?;
+    let late = crate::notice_deadline::deadline(&project, variation).is_some_and(|due| today > due);
     Variation::query()
         .where_(Variation::ID.eq(variation.id))
         .update(
@@ -365,6 +376,7 @@ pub(crate) async fn submit_effects(tx: &mut Transaction, variation: &Variation) 
             &[
                 ("submitted_on", &day),
                 ("notice_date", &day),
+                ("notice_late", &late),
                 ("chased_on", &none),
                 ("escalated_on", &none),
             ],
@@ -477,6 +489,8 @@ async fn resubmit_effects(tx: &mut Transaction, variation: &Variation) -> Result
         notice_late: false,
         chased_on: None,
         escalated_on: None,
+        notice_warned_7_on: None,
+        notice_warned_2_on: None,
         ipa_id: None,
         created_at: None,
         updated_at: None,

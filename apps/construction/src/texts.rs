@@ -625,6 +625,14 @@ const TEXTS: &[(&str, &str)] = &[
         "construction.variation.escalated_body",
         "The variation was submitted on {{ date }} and the client has neither approved nor rejected it. The project manager was reminded to chase the client 14 days after the submission.",
     ),
+    (
+        "construction.variation.notice_title",
+        "Notice for {{ label }} of {{ project }} is due in {{ days }} days",
+    ),
+    (
+        "construction.variation.notice_body",
+        "The contract requires notice of the delay event of {{ event_date }} by {{ deadline }} and the variation is still a draft. Submit it before then, or the right to claim may be lost.",
+    ),
     ("construction.variation.created", "Variation recorded."),
     ("construction.variation.priced", "Variation updated."),
     (
