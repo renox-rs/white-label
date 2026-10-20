@@ -35,6 +35,7 @@ mod deposit_machine;
 pub mod deposit_pages;
 pub mod drawings;
 mod events;
+pub mod expense_actual;
 pub mod expense_category;
 pub mod expense_claim;
 pub mod expense_claim_pages;
@@ -566,6 +567,8 @@ impl Module for WlPayments {
         // `FIN.ACL.21`: an owner drawing is recorded only after its approval.
         drawings::register_types();
         drawings::register(app);
+        // Approved expense claim lines count in budget vs actual (FIN.BUD.01).
+        expense_actual::register();
         // The decision on the drawing of an expense claim.
         expense_claim::register(app);
         // `DepositSettled` after a commit.
