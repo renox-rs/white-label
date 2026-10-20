@@ -6,6 +6,7 @@
 //! in_progress --submit_review--> in_review --send_back--> in_progress
 //! in_progress --complete--> completed     in_review --complete_reviewed--> completed
 //! upcoming | in_progress | waiting | in_review --mark_overdue (system)--> overdue
+//! open (any) --hand_over (system)--> completed   (the client files it itself)
 //! overdue --close_missed--> missed
 //! upcoming | in_progress | waiting --waive | auto_waive (system)--> not_required
 //! ```
@@ -59,6 +60,10 @@ pub const CLOSE_MISSED: &str = "close_missed";
 pub const WAIVE: &str = "waive";
 /// `waive`, run by the system (the source agreement ended, a regeneration).
 pub const AUTO_WAIVE: &str = "auto_waive";
+
+/// `hand_over`: the firm no longer files it, the client does; completed by
+/// the system with the evidence "handed over to client" (04 return `cancel`).
+pub const HAND_OVER: &str = "hand_over";
 
 /// What the services gather for the transitions that need it (effects and
 /// guards get no `AppState`).
@@ -258,6 +263,40 @@ fn complete_reviewed_transition() -> Transition<DeadlineTask> {
     )
 }
 
+/// `hand_over`: any open task is completed by the system, with the
+/// evidence and closed reason `wl_kernel::deadlines::HANDED_OVER_EVIDENCE`.
+/// No reviewer and no evidence are needed: the firm does not do the work.
+fn hand_over_transition() -> Transition<DeadlineTask> {
+    use DeadlineTaskStatus::{InProgress, InReview, Overdue, Upcoming, Waiting};
+    Transition::new(HAND_OVER)
+        .label("Hand over to client")
+        .tone("neutral")
+        .from([Upcoming, InProgress, Waiting, InReview, Overdue])
+        .to(DeadlineTaskStatus::Completed)
+        .system()
+        .effect(|task: &DeadlineTask, _ctx, tx| {
+            let id = task.id;
+            Box::pin(async move {
+                write(
+                    tx,
+                    id,
+                    &[
+                        ("completed_at", &Some(renox::db::now())),
+                        (
+                            "evidence",
+                            &Some(wl_kernel::deadlines::HANDED_OVER_EVIDENCE.to_owned()),
+                        ),
+                        (
+                            "closed_reason",
+                            &Some(wl_kernel::deadlines::HANDED_OVER_EVIDENCE.to_owned()),
+                        ),
+                    ],
+                )
+                .await
+            })
+        })
+}
+
 fn mark_overdue_transition() -> Transition<DeadlineTask> {
     use DeadlineTaskStatus::{InProgress, InReview, Overdue, Upcoming, Waiting};
     with_input(
@@ -389,6 +428,7 @@ impl StateMachine for DeadlineTask {
             .transition(complete_transition())
             .transition(complete_reviewed_transition())
             .transition(mark_overdue_transition())
+            .transition(hand_over_transition())
             .transition(close_missed_transition())
             .transition(waiving(
                 Transition::new(WAIVE)
@@ -446,6 +486,12 @@ mod tests {
                 "mark_overdue",
                 vec!["upcoming", "in_progress", "waiting", "in_review"],
                 "overdue",
+                true,
+            ),
+            (
+                "hand_over",
+                vec!["upcoming", "in_progress", "waiting", "in_review", "overdue"],
+                "completed",
                 true,
             ),
             ("close_missed", vec!["overdue"], "missed", false),

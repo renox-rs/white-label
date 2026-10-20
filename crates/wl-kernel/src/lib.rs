@@ -45,6 +45,7 @@ pub mod subscriptions;
 mod texts;
 pub mod tickets;
 pub mod voids;
+pub mod wip;
 pub mod workforce;
 
 use std::sync::Arc;
@@ -93,8 +94,8 @@ pub use config::{ClientConfig, ConfigError, RolesConfig, owner_role};
 pub use consents::{Consents, NoConsents};
 pub use deadlines::{
     DEADLINE_TASK_SUBJECT_TYPE, DeadlineTaskId, DeadlineTaskStatus, DeadlineTaskSummary,
-    DeadlineTasks, EndedTasks, NewDeadlineTask, NoDeadlineTasks, ReleasedTasks, TaskCompleted,
-    TaskOverdue, TaskRecurrence, WaiveTask,
+    DeadlineTasks, EndedTasks, HANDED_OVER_EVIDENCE, HandOverTask, NewDeadlineTask,
+    NoDeadlineTasks, ReleasedTasks, TaskCompleted, TaskOverdue, TaskRecurrence, WaiveTask,
 };
 pub use delivery::{
     DELIVERY_SUBJECT_TYPE, DeliveryDisputeClosed, DeliveryDisputed, DeliveryId, DeliveryLost,
@@ -192,6 +193,7 @@ pub use tickets::{
 pub use voids::{
     Effect, EffectKind, RecordVoided, Reverse, ReverseError, VoidRecord, Voidable, VoidableBuilder,
 };
+pub use wip::{NoUnbilledTime, UnbilledTime, WipSummary};
 
 /// The kernel's permissions (wl-kernel §6).
 pub use workforce::{

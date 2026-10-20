@@ -39,8 +39,8 @@ use wl_kernel::automation::{RuleRunSpec, run_rule};
 use wl_kernel::compliance::{occurrence_key, schedule_subject};
 use wl_kernel::deadlines::{
     DeadlineFuture, DeadlineTaskId, DeadlineTaskStatus, DeadlineTaskSummary, DeadlineTasks,
-    EndedTasks, NewDeadlineTask, ReleasedTasks, SOURCE_ENDED_REASON, TaskCompleted, TaskOverdue,
-    WaiveTask,
+    EndedTasks, HandOverTask, NewDeadlineTask, ReleasedTasks, SOURCE_ENDED_REASON, TaskCompleted,
+    TaskOverdue, WaiveTask,
 };
 use wl_kernel::notify::{self, NotificationTypeDef, NotifyChannel, NotifyRequest};
 use wl_kernel::role_tasks::{self, RoleTask};
@@ -49,8 +49,8 @@ use wl_kernel::{COMPANY_ADMIN_ROLE, Subject};
 
 use crate::deadline::{DeadlineTask, TaskSource, start_date};
 use crate::deadline_machine::{
-    AUTO_UNBLOCK, AUTO_WAIVE, CLOSE_MISSED, COMPLETE, COMPLETE_REVIEWED, MARK_OVERDUE, SEND_BACK,
-    START, SUBMIT_REVIEW, TaskInput, UNBLOCK, WAIT, WAIVE,
+    AUTO_UNBLOCK, AUTO_WAIVE, CLOSE_MISSED, COMPLETE, COMPLETE_REVIEWED, HAND_OVER, MARK_OVERDUE,
+    SEND_BACK, START, SUBMIT_REVIEW, TaskInput, UNBLOCK, WAIT, WAIVE,
 };
 use crate::texts::english;
 use crate::visit_check::holders_in;
@@ -522,6 +522,33 @@ pub async fn waive_as_system(
     }
 }
 
+/// Hands `task` over to the client as the system (04 return `cancel`):
+/// completed with the evidence "handed over to client", from any open
+/// state. `Ok(false)` when it is closed already.
+///
+/// # Errors
+///
+/// The database's errors.
+pub async fn hand_over_as_system(
+    state: &AppState,
+    task: &DeadlineTask,
+    hand_over: &HandOverTask,
+) -> Result<bool> {
+    let run = task
+        .transition(HAND_OVER)
+        .by_system()
+        .meta(json!({ "no_next": !hand_over.next_occurrence }))
+        .run(state)
+        .await;
+    match run {
+        Ok(_) => Ok(true),
+        Err(
+            TransitionError::NotFrom(_) | TransitionError::Guard(_) | TransitionError::Conflict,
+        ) => Ok(false),
+        Err(other) => Err(other.into_error()),
+    }
+}
+
 /// Marks `overdue`, as the system, every open task due before `today`
 /// (only those of `only`, when given); held tasks too. Returns the ids.
 async fn overdue_now(
@@ -920,6 +947,18 @@ async fn after(state: &AppState, event: &Transitioned<DeadlineTask>) -> Result<(
         CLOSE_MISSED => {
             next_occurrence(state, &task).await?;
         }
+        HAND_OVER => {
+            // The firm does not file it: no completion is reported; the
+            // next occurrence follows unless the source is ending.
+            let no_next = event
+                .meta
+                .get("no_next")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            if !no_next {
+                next_occurrence(state, &task).await?;
+            }
+        }
         WAIVE | AUTO_WAIVE => {
             let started = matches!(event.from.as_str(), "in_progress" | "waiting");
             if started {
@@ -1082,6 +1121,20 @@ impl DeadlineTasks for Deadlines {
                 return Ok(false);
             };
             waive_as_system(state, &task, &waive, wl_kernel::documents::today()).await
+        })
+    }
+
+    fn hand_over<'a>(
+        &'a self,
+        state: &'a AppState,
+        id: DeadlineTaskId,
+        hand_over: HandOverTask,
+    ) -> DeadlineFuture<'a, bool> {
+        Box::pin(async move {
+            let Some(task) = DeadlineTask::find(&state.db, id.0).await? else {
+                return Ok(false);
+            };
+            hand_over_as_system(state, &task, &hand_over).await
         })
     }
 

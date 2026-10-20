@@ -26,6 +26,8 @@
 //! tasks.release(&state, &engagement.subject(), today).await?;
 //! // 04 engagement `end`:
 //! tasks.end_source(&state, &engagement.subject(), today).await?;
+//! // 04 return `cancel` (the client files itself):
+//! tasks.hand_over(&state, task_id, HandOverTask::new()).await?;
 //! ```
 //!
 //! `wl-ticketing` emits [`TaskOverdue`] and [`TaskCompleted`] after the
@@ -50,6 +52,11 @@ pub const DEADLINE_TASK_SUBJECT_TYPE: &str = "ticketing.task";
 /// The reason recorded when the source agreement ended and its tasks are
 /// waived ([`DeadlineTasks::end_source`]).
 pub const SOURCE_ENDED_REASON: &str = "source agreement ended";
+
+/// The evidence recorded when a task is handed over to the client
+/// ([`DeadlineTasks::hand_over`]): the firm no longer files it, the client
+/// does, and the task stays visible as the client's deadline.
+pub const HANDED_OVER_EVIDENCE: &str = "handed over to client";
 
 /// The id of a deadline task.
 #[derive(
@@ -304,6 +311,36 @@ impl WaiveTask {
     }
 }
 
+/// A hand-over run by the system ([`DeadlineTasks::hand_over`]).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct HandOverTask {
+    /// Whether the next occurrence is generated (the default). Off when the
+    /// source agreement is ending.
+    pub next_occurrence: bool,
+}
+
+impl HandOverTask {
+    /// A hand-over that generates the next occurrence.
+    pub fn new() -> Self {
+        HandOverTask {
+            next_occurrence: true,
+        }
+    }
+
+    /// No next occurrence is generated.
+    pub fn without_next(mut self) -> Self {
+        self.next_occurrence = false;
+        self
+    }
+}
+
+impl Default for HandOverTask {
+    fn default() -> Self {
+        HandOverTask::new()
+    }
+}
+
 /// What other modules see of a deadline task.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct DeadlineTaskSummary {
@@ -436,6 +473,23 @@ pub trait DeadlineTasks: Send + Sync + 'static {
         _state: &'a AppState,
         _id: DeadlineTaskId,
         _waive: WaiveTask,
+    ) -> DeadlineFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
+
+    /// Hands task `id` over to the client as the system: the firm no longer
+    /// files it, so the task is completed with the evidence
+    /// [`HANDED_OVER_EVIDENCE`] (also kept as its closed reason, so the
+    /// portal can show the deadline as the client's), from any open state.
+    /// No completion is reported (`TaskCompleted` is not emitted) and the
+    /// next occurrence follows unless `hand_over.next_occurrence` is off.
+    /// Answers whether it was handed over (`false` when the task is already
+    /// closed); the default hands over nothing.
+    fn hand_over<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _id: DeadlineTaskId,
+        _hand_over: HandOverTask,
     ) -> DeadlineFuture<'a, bool> {
         Box::pin(async { Ok(false) })
     }
