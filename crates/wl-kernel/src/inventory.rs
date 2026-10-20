@@ -41,6 +41,12 @@ pub const GOODS_RECEIPT_SUBJECT_TYPE: &str = "inventory.goods_receipt";
 /// The subject type of a lot.
 pub const LOT_SUBJECT_TYPE: &str = "inventory.lot";
 
+/// The subject type of a landed cost.
+pub const LANDED_COST_SUBJECT_TYPE: &str = "inventory.landed_cost";
+
+/// The subject type of a landed cost adjustment.
+pub const LANDED_COST_ADJUSTMENT_SUBJECT_TYPE: &str = "inventory.landed_cost_adjustment";
+
 /// The subject type of a Return to supplier.
 pub const SUPPLIER_RETURN_SUBJECT_TYPE: &str = "inventory.supplier_return";
 
@@ -125,6 +131,57 @@ pub struct PurchaseOrderRevised {
 }
 
 impl Event for PurchaseOrderRevised {}
+
+/// What a landed cost put on one item at one location: the part that
+/// re-valued the stock still on hand and the part that went to the landed
+/// cost variance (or the cost object charged on receipt) because the goods
+/// were already consumed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LandedCostShare {
+    /// The item, `inventory.item:9`.
+    pub item: Subject,
+    /// Where the goods were received, `inventory.location:2`.
+    pub location: Subject,
+    /// The whole share of the item, in fils (the two parts below add up).
+    pub amount: i64,
+    /// The part that re-valued stock still on hand.
+    pub revalued: i64,
+    /// The part on goods already consumed.
+    pub variance: i64,
+}
+
+/// A landed cost was allocated over its receipts (wl-inventory §6
+/// `LandedCostAllocated`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LandedCostAllocated {
+    /// The landed cost, `inventory.landed_cost:7`.
+    pub landed_cost: Subject,
+    /// The receipts it was spread over.
+    pub receipts: Vec<Subject>,
+    /// The total spread, in fils.
+    pub amount: i64,
+    /// The share of every item.
+    pub shares: Vec<LandedCostShare>,
+}
+
+impl Event for LandedCostAllocated {}
+
+/// A landed cost adjustment was posted (wl-inventory §6 `LandedCostAdjusted`):
+/// a late or corrected import cost spread on the original basis.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LandedCostAdjusted {
+    /// The landed cost, `inventory.landed_cost:7`.
+    pub landed_cost: Subject,
+    /// The adjustment, `inventory.landed_cost_adjustment:3`.
+    pub adjustment: Subject,
+    /// The total of the adjustment, in fils; negative for a refund.
+    pub amount: i64,
+    /// The share of every item: what re-valued stock and what went to the
+    /// variance.
+    pub shares: Vec<LandedCostShare>,
+}
+
+impl Event for LandedCostAdjusted {}
 
 /// What the user wants for goods sent back to a supplier.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -318,6 +375,39 @@ mod tests {
         assert_eq!(
             renox::serde_json::from_str::<PurchaseOrderRevised>(&json).unwrap(),
             revised
+        );
+    }
+
+    #[test]
+    fn the_landed_cost_events_round_trip_through_json() {
+        let share = LandedCostShare {
+            item: Subject::new(ITEM_SUBJECT_TYPE, 9),
+            location: Subject::new(LOCATION_SUBJECT_TYPE, 2),
+            amount: 100_000,
+            revalued: 60_000,
+            variance: 40_000,
+        };
+        let adjusted = LandedCostAdjusted {
+            landed_cost: Subject::new(LANDED_COST_SUBJECT_TYPE, 7),
+            adjustment: Subject::new(LANDED_COST_ADJUSTMENT_SUBJECT_TYPE, 3),
+            amount: 100_000,
+            shares: vec![share.clone()],
+        };
+        let json = renox::serde_json::to_string(&adjusted).unwrap();
+        assert_eq!(
+            renox::serde_json::from_str::<LandedCostAdjusted>(&json).unwrap(),
+            adjusted
+        );
+        let allocated = LandedCostAllocated {
+            landed_cost: Subject::new(LANDED_COST_SUBJECT_TYPE, 7),
+            receipts: vec![Subject::new(GOODS_RECEIPT_SUBJECT_TYPE, 5)],
+            amount: 100_000,
+            shares: vec![share],
+        };
+        let json = renox::serde_json::to_string(&allocated).unwrap();
+        assert_eq!(
+            renox::serde_json::from_str::<LandedCostAllocated>(&json).unwrap(),
+            allocated
         );
     }
 

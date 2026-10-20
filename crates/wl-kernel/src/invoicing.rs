@@ -1616,6 +1616,44 @@ pub fn landed_costs(state: &AppState) -> Arc<dyn LandedCosts> {
     }
 }
 
+/// Knows which accounting periods are locked (VAT periods that were filed).
+/// `wl-invoicing` provides it with [`provide_period_locks`]; without it
+/// [`period_locks`] gives [`NoPeriodLocks`] and no period is locked. A module
+/// that posts a cost to a past date (a landed cost adjustment) refuses a
+/// date in a locked period.
+pub trait PeriodLocks: Send + Sync + 'static {
+    /// Whether `date` falls in a locked period of the legal entity `entity`.
+    /// The default says no.
+    fn is_locked<'a>(
+        &'a self,
+        _db: &'a Db,
+        _entity: i64,
+        _date: NaiveDate,
+    ) -> SupplierBillFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
+}
+
+/// The period locks when none are provided: nothing is locked.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoPeriodLocks;
+
+impl PeriodLocks for NoPeriodLocks {}
+
+/// Makes `locks` the app's [`PeriodLocks`].
+pub fn provide_period_locks(app: &mut Registry, locks: impl PeriodLocks) {
+    let locks: Arc<dyn PeriodLocks> = Arc::new(locks);
+    app.provide(locks);
+}
+
+/// The app's [`PeriodLocks`], or [`NoPeriodLocks`] when none is provided.
+pub fn period_locks(state: &AppState) -> Arc<dyn PeriodLocks> {
+    match state.provided::<Arc<dyn PeriodLocks>>() {
+        Some(locks) => Arc::clone(&locks),
+        None => Arc::new(NoPeriodLocks),
+    }
+}
+
 /// A supplier bill was voided (`void`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SupplierBillVoided {

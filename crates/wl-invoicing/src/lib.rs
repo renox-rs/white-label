@@ -79,6 +79,7 @@ pub mod owner;
 pub mod owner_drawings;
 pub mod pages;
 pub mod payables;
+pub mod period_locks;
 pub mod policy;
 pub mod recover;
 pub mod recovery;
@@ -876,6 +877,12 @@ impl Module for WlInvoicing {
         debit_note_events::register_types();
         debit_note_events::register(app);
         wl_kernel::invoicing::provide_supplier_debit_notes(app, debit_note_contract::DebitNotes);
+        // Which dates are in a filed VAT period, for the modules that post
+        // to a past date.
+        wl_kernel::invoicing::provide_period_locks(
+            app,
+            period_locks::VatPeriodLocks::new(self.config.clone()),
+        );
         // The kernel runs `write_off_approved` by name; `FIN.ACL.15`.
         policy::register(&self.config);
         // The settings the services read (`config_of`).
