@@ -478,7 +478,8 @@ pub async fn approve(state: &AppState, actor: &AuthUser, timesheet_id: i64) -> R
     let Some(kind) = approver_kind_for(state, actor.id, &sheet).await? else {
         return Err(Error::Forbidden);
     };
-    let outcome = sheet
+    // `run` commits and emits the transition's event itself.
+    let _outcome = sheet
         .transition(APPROVE)
         .by(actor)
         .input(&ApproveInput {
@@ -488,7 +489,6 @@ pub async fn approve(state: &AppState, actor: &AuthUser, timesheet_id: i64) -> R
         .run(state)
         .await
         .map_err(|e| e.into_error())?;
-    outcome.emit(state).await?;
     approved(state, timesheet_id).await
 }
 
@@ -518,7 +518,7 @@ pub async fn approve_on_behalf(
     {
         return Err(Error::Forbidden);
     }
-    let outcome = sheet
+    let _outcome = sheet
         .transition(APPROVE_ON_BEHALF)
         .by(actor)
         .input(&ApproveInput {
@@ -528,7 +528,6 @@ pub async fn approve_on_behalf(
         .run(state)
         .await
         .map_err(|e| e.into_error())?;
-    outcome.emit(state).await?;
     approved(state, timesheet_id).await
 }
 
@@ -563,8 +562,7 @@ pub async fn reject(
     if !reason.trim().is_empty() {
         run = run.reason(reason.trim().to_owned());
     }
-    let outcome = run.run(state).await.map_err(|e| e.into_error())?;
-    outcome.emit(state).await?;
+    let _outcome = run.run(state).await.map_err(|e| e.into_error())?;
     let stored = Timesheet::find_or_404(&state.db, timesheet_id).await?;
     notices::timesheet_rejected(state, &stored, reason.trim()).await?;
     Ok(stored)
