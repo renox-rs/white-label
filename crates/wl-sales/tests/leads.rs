@@ -430,3 +430,46 @@ async fn sal20_the_web_form_route_reads_the_campaign_code_of_the_link() {
         .assert_status(422);
     assert_eq!(Lead::query().count(t.db()).await.unwrap(), 2);
 }
+
+/// Edge case of AC8: a conversion record cancelled for a business reason
+/// (not voided) leaves the lead `won` and its acquisition: it did convert.
+/// The record's own cancellation emits no `RecordVoided`; the nightly run
+/// changes nothing either.
+#[renox::test]
+async fn sal20_a_business_cancellation_of_the_conversion_record_leaves_the_lead_won() {
+    let (t, events) = boot_events().await;
+    let lead = created(
+        wl_sales::lead::capture(
+            t.state(),
+            NewLead::staff(Some(PartyId(10)), "Omar", "referral").owner(1),
+            day(3, 5),
+        )
+        .await
+        .unwrap(),
+    );
+    set_status(&t, &lead, "qualified").await;
+    let record = Subject::new("test.conversion", 7);
+    assert!(
+        lead_conversion(t.state())
+            .win(t.state(), LeadId(lead.id), record.clone())
+            .await
+            .unwrap()
+    );
+
+    // The record is cancelled by the business (no void): its owner only
+    // changes its own status. The sales module hears nothing, and the
+    // nightly run finds nothing to revert.
+    wl_sales::acquisition_daily::run_daily(t.state())
+        .await
+        .unwrap();
+    let still = Lead::find(t.db(), lead.id).await.unwrap().unwrap();
+    assert_eq!(still.status, LeadStatus::Won);
+    assert_eq!(still.converted(), Some(record));
+    assert!(events.reverted.lock().unwrap().is_empty());
+    assert!(
+        PartyAcquisition::of_party(t.db(), PartyId(10))
+            .await
+            .unwrap()
+            .is_some()
+    );
+}
