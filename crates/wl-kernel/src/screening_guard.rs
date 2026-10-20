@@ -246,6 +246,28 @@ pub fn stale_notice_view(lang: &Lang, lists: &[StaleList]) -> Option<ScreeningNo
     })
 }
 
+/// Where the screening of one party stands, for a guard that needs it done
+/// and decided (04 Accounting: CDD `submit` and `approve`, engagement
+/// `activate`). It names no candidate, list or score.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ScreeningStanding {
+    /// The party has a screening with a result (not `pending`).
+    pub screened: bool,
+    /// The party has a `possible_match` that no reviewer decided yet and no
+    /// re-run replaced. Only holders of `parties.block_reason.view` may be
+    /// told which party it is.
+    pub open_match: bool,
+}
+
+impl ScreeningStanding {
+    /// Nothing to wait for: what [`NoScreeningGuard`] answers when screening
+    /// is off.
+    pub const SETTLED: ScreeningStanding = ScreeningStanding {
+        screened: true,
+        open_match: false,
+    };
+}
+
 /// A boxed future, so the trait can be used as `dyn`.
 pub type ScreeningFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 
@@ -266,6 +288,18 @@ pub trait ScreeningGuard: Send + Sync + 'static {
         tx: &'a mut Transaction,
         party: PartyId,
     ) -> ScreeningFuture<'a, Vec<StaleList>>;
+
+    /// Whether `party` was screened and whether a possible match of it is
+    /// still open, read in the caller's transaction. The default (screening
+    /// off) is [`ScreeningStanding::SETTLED`].
+    fn standing_in<'a>(
+        &'a self,
+        tx: &'a mut Transaction,
+        party: PartyId,
+    ) -> ScreeningFuture<'a, ScreeningStanding> {
+        let _ = (tx, party);
+        Box::pin(async { Ok(ScreeningStanding::SETTLED) })
+    }
 }
 
 /// The guard when `parties` or screening is off: always allowed, no notice.
@@ -485,5 +519,8 @@ mod tests {
         assert_eq!(outcome, ScreeningOutcome::Allowed);
         let notice = guard.latest_notice_in(&mut tx, PartyId(1)).await.unwrap();
         assert!(notice.is_empty());
+        let standing = guard.standing_in(&mut tx, PartyId(1)).await.unwrap();
+        assert_eq!(standing, ScreeningStanding::SETTLED);
+        assert!(standing.screened && !standing.open_match);
     }
 }
