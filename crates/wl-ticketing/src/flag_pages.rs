@@ -95,12 +95,13 @@ async fn index(
     let mut categories: BTreeMap<i64, String> = BTreeMap::new();
     let mut rows = Vec::new();
     for flag in flags {
-        if !categories.contains_key(&flag.category_id) {
+        if let std::collections::btree_map::Entry::Vacant(slot) = categories.entry(flag.category_id)
+        {
             let name = Category::find(&state.db, flag.category_id)
                 .await?
                 .map(|c| c.name(&lang.locale).to_owned())
                 .unwrap_or_default();
-            categories.insert(flag.category_id, name);
+            slot.insert(name);
         }
         let visit = match flag.ticket_id {
             Some(id) => Ticket::find(&state.db, id).await?.map(|t| t.number),

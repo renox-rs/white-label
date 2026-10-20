@@ -21,11 +21,15 @@ use wl_kernel::documents::{
 /// The key of 01's Civil Defence approval kind.
 pub const CIVIL_DEFENCE: &str = "civil_defence_approval";
 
+/// The expiry date of each `(type, number)` document.
+type Expiries = BTreeMap<(String, String), Option<NaiveDate>>;
+
 /// The expiry dates of the vendors' documents, and the kinds' `blocks`.
+
 #[derive(Clone, Default)]
 pub struct Documents {
     entries: Arc<Mutex<Vec<BlockEntry>>>,
-    expiries: Arc<Mutex<BTreeMap<(String, String), Option<NaiveDate>>>>,
+    expiries: Arc<Mutex<Expiries>>,
 }
 
 impl Documents {

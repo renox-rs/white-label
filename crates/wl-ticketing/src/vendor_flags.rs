@@ -76,7 +76,7 @@ pub fn notification_type() -> NotificationTypeDef {
 
 /// The vendor of a document `subject`, when it is a party.
 fn vendor_of(subject: &wl_kernel::Subject) -> Option<PartyId> {
-    (subject.subject_type == PARTY_SUBJECT_TYPE).then(|| PartyId(subject.subject_id))
+    (subject.subject_type == PARTY_SUBJECT_TYPE).then_some(PartyId(subject.subject_id))
 }
 
 /// The entries of `blocks` that guard what this module reacts to.
