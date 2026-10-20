@@ -279,3 +279,87 @@ async fn a_blocked_client_refuses_activation_with_on_hold() {
     assert!(res.text().contains("Sanctions"), "{}", res.text());
     assert_eq!(t.status(&engagement).await, EngagementStatus::Onboarding);
 }
+
+/// Edge case: a KYC document that is missing refuses `activate` like an
+/// expired one, naming the party and the document.
+#[renox::test]
+async fn a_missing_ubo_passport_refuses_activation_naming_it() {
+    let t = boot().await;
+    let mlro = t.mlro().await;
+    let client = t.client().await;
+    t.cdd_approved(&client, &mlro).await;
+    t.tax_profile(&client).await;
+    let reviewer = t.reviewer().await;
+    let until = renox::chrono::NaiveDate::from_ymd_opt(2027, 12, 31).unwrap();
+    // The licence and the Emirates ID, not the passport.
+    t.kyc(
+        &reviewer,
+        client.company,
+        accounting::seed::TRADE_LICENCE,
+        until,
+    )
+    .await;
+    t.kyc(&reviewer, client.ubo, accounting::seed::EMIRATES_ID, until)
+        .await;
+    let engagement = t.signed_engagement(&client).await;
+    let manager = t.manager().await;
+
+    let res = t.activate(&manager, &engagement).await;
+    res.assert_status(422);
+    let text = res.text();
+    assert!(
+        text.contains("This engagement cannot be activated:"),
+        "{text}"
+    );
+    assert!(text.contains("Omar Haddad — Passport missing"), "{text}");
+    assert!(!text.contains("Trade licence"), "{text}");
+    assert_eq!(t.status(&engagement).await, EngagementStatus::Onboarding);
+}
+
+/// Every failing check is in one refusal: an expired UBO passport, an open
+/// possible match on the director and a block of the client give one 422
+/// with the document line, the screening line and the block line; the
+/// manager sees "Screening pending" and "On hold" only, the MLRO's deputy
+/// the match and the restricted reason.
+#[renox::test]
+async fn one_refusal_lists_the_document_the_screening_and_the_block() {
+    let t = boot().await;
+    t.set_clock(3, 9, 0);
+    let mlro = t.mlro().await;
+    let client = t.client().await;
+    t.prepare_client(&client, &mlro, d(11, 1)).await;
+    let engagement = t.signed_engagement(&client).await;
+    let manager = t.manager().await;
+    let dina = deputy(&t).await;
+    t.screen_possible_match(client.director).await;
+    t.block(client.company, "sanctions").await;
+    let director = t.party_row(client.director).await.display_name;
+
+    let res = t.activate(&manager, &engagement).await;
+    res.assert_status(422);
+    let text = res.text();
+    assert_eq!(
+        text.matches("This engagement cannot be activated:").count(),
+        1,
+        "{text}"
+    );
+    assert!(
+        text.contains("Omar Haddad — Passport expired on 2026-11-01"),
+        "{text}"
+    );
+    assert!(text.contains("Screening pending"), "{text}");
+    assert!(text.contains("On hold"), "{text}");
+    assert!(!text.contains(&director), "{text}");
+    assert!(!text.to_lowercase().contains("sanction"), "{text}");
+
+    let res = t.activate(&dina, &engagement).await;
+    res.assert_status(422);
+    let text = res.text();
+    assert!(text.contains("Passport expired on 2026-11-01"), "{text}");
+    assert!(
+        text.contains(&format!("Possible match on {director} (Director)")),
+        "{text}"
+    );
+    assert!(text.contains("Sanctions"), "{text}");
+    assert_eq!(t.status(&engagement).await, EngagementStatus::Onboarding);
+}
