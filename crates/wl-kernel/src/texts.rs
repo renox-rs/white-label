@@ -425,6 +425,10 @@ const TEXTS: &[(&str, &str)] = &[
         "The compliance-critical rule {{ rule }} {{ what }} (Asia/Dubai, {{ at }}). Error: {{ error }}. A task is open for the owner until the duty is met.",
     ),
     (
+        "wl_kernel.compliance.inapp_body",
+        "A task is open for the owner until the duty is met.",
+    ),
+    (
         "wl_kernel.compliance.what.failed",
         "failed after its last attempt",
     ),

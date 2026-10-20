@@ -22,6 +22,7 @@ use std::collections::BTreeSet;
 
 use renox::AuthUser;
 use renox::auth::permissions::users_with_role;
+use renox::auth::{Channel, DatabaseMessage, Notification, Recipient};
 use renox::chrono::Duration;
 use renox::db::{DateTime, now};
 use renox::prelude::*;
@@ -184,11 +185,71 @@ async fn tell(state: &AppState, alert: &ComplianceAlert) -> Result {
             "error": alert.error.clone().unwrap_or_default(),
             "at": dubai_text(now()),
         }));
-    for id in users {
-        request = request.to_user(id);
+    for id in &users {
+        request = request.to_user(*id);
     }
     notify::notifier(state).notify(state, request).await?;
+    // The in-app side: the bell of every user the e-mail went to.
+    let notice = AlertNotice::of(alert);
+    for id in users {
+        if let Some(user) = User::find(&state.db, id).await? {
+            state.notify(&user, &notice).await?;
+        }
+    }
     Ok(())
+}
+
+/// The kind of the in-app notice of an owner alert.
+pub const ALERT_KIND: &str = "compliance-alert";
+
+/// The in-app notice (the bell) that goes with the e-mail of an owner alert.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AlertNotice {
+    /// The alert's id.
+    pub alert: i64,
+    /// The rule.
+    pub rule: String,
+    /// What happened, in words.
+    pub what: String,
+    /// The record the run is about.
+    pub subject: Subject,
+}
+
+impl AlertNotice {
+    /// The notice of `alert`.
+    pub fn of(alert: &ComplianceAlert) -> Self {
+        AlertNotice {
+            alert: alert.id,
+            rule: alert.rule.clone(),
+            what: what(alert),
+            subject: alert.subject(),
+        }
+    }
+}
+
+impl Notification for AlertNotice {
+    fn kind(&self) -> &'static str {
+        ALERT_KIND
+    }
+
+    fn channels(&self, _to: &Recipient) -> Vec<Channel> {
+        vec![Channel::Database]
+    }
+
+    fn to_database(&self, _to: &Recipient, _state: &AppState) -> Result<renox::serde_json::Value> {
+        let title = en_with(
+            "wl_kernel.compliance.task_title",
+            &[("rule", &self.rule), ("what", &self.what)],
+        );
+        let body = en("wl_kernel.compliance.inapp_body");
+        Ok(DatabaseMessage::error(title)
+            .body(body)
+            .with("compliance_alert", self.alert)
+            .with("rule", &self.rule)
+            .with("subject_type", &self.subject.subject_type)
+            .with("subject_id", self.subject.subject_id)
+            .into())
+    }
 }
 
 /// The key the owner's task is found by while it is open.

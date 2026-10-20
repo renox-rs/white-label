@@ -14,14 +14,16 @@ use renox::auth::{Permissions, permissions};
 use renox::chrono::Duration as Span;
 use renox::db::{DateTime, now};
 use renox::prelude::*;
+use renox::state_machine::StateMachine;
 use renox::testing::TestApp;
-use wl_kernel::automation::{RuleRunStatus, run_rule};
+use wl_kernel::automation::{RuleRunStatus, run_rule, transitions};
 use wl_kernel::compliance::{
     self, AlertKind, AlertStatus, ClosedHow, ComplianceAlert, occurrence_key, planned_daily,
     schedule_subject,
 };
 use wl_kernel::notify::{
-    MessageId, Notifier, NotifyFuture, NotifyRecipient, NotifyRequest, provide_notifier,
+    MessageId, Notifier, NotifyChannel, NotifyFuture, NotifyRecipient, NotifyRequest, Urgency,
+    provide_notifier,
 };
 use wl_kernel::tickets::{
     Assignee, OpenTicket, TaskCreator, TicketFuture, TicketId, TicketRef, provide_task_creator,
@@ -153,6 +155,27 @@ impl Module for Hr {
         CriticalRule::new(NIGHTLY).daily_at("01:00").register();
         CriticalRule::new(LATER).daily_at("01:10").register();
     }
+
+    fn routes(&self) -> Routes {
+        Routes::new().post("/test/rule-runs/{id}/rerun", rerun)
+    }
+}
+
+/// The `rerun` transition (`automations.retry`) as the logged-in user: the
+/// machine checks the permission.
+async fn rerun(
+    State(state): State<AppState>,
+    user: renox::AuthUser,
+    Path(id): Path<i64>,
+) -> Result<String> {
+    let run = RuleRun::find_or_404(&state.db, id).await?;
+    let _done = run
+        .transition(transitions::RERUN)
+        .by(&user)
+        .run(&state)
+        .await
+        .map_err(renox::state_machine::TransitionError::into_error)?;
+    Ok("queued".to_owned())
 }
 
 const CLIENT: &str = r#"
@@ -294,6 +317,33 @@ impl World {
         }
     }
 
+    /// `user`'s in-app owner alerts, as JSON text.
+    async fn bell(&self, user: &User) -> Vec<String> {
+        user.notifications(self.app.db(), 50)
+            .await
+            .unwrap()
+            .into_iter()
+            .filter(|n| n.kind == compliance::service::ALERT_KIND)
+            .map(|n| n.data.to_string())
+            .collect()
+    }
+
+    /// A user who holds `automations.retry`.
+    async fn operator(&self) -> User {
+        permissions::define_role(
+            self.app.db(),
+            "ops",
+            &[wl_kernel::permissions::AUTOMATIONS_RETRY],
+        )
+        .await
+        .unwrap();
+        let user = User::register(self.app.db(), "Olga", "olga@example.com", "password123")
+            .await
+            .unwrap();
+        user.assign_role(self.app.db(), "ops").await.unwrap();
+        user
+    }
+
     /// Runs the check of the scheduled task at the travelled time.
     async fn check(&self) {
         self.app
@@ -322,6 +372,24 @@ async fn a_failed_critical_run_alerts_the_owner_and_the_admin_and_opens_a_task()
     expected.sort_unstable();
     assert_eq!(w.doubles.alerted_users(), expected);
     assert_eq!(w.doubles.alerts_sent(), 1);
+    // The e-mail side: one request through the notice contract, whose type
+    // has an e-mail template and is urgent.
+    let ty = compliance::service::notification_type();
+    assert_eq!(ty.urgency, Urgency::Urgent);
+    assert!(
+        ty.templates
+            .iter()
+            .any(|t| t.channel == NotifyChannel::Email)
+    );
+    // The in-app side: a notice in the bell of each of the two users, none
+    // for the clerk.
+    for user in [&w.md, &w.admin] {
+        let bell = w.bell(user).await;
+        assert_eq!(bell.len(), 1, "{}", user.name);
+        assert!(bell[0].contains(WPS), "{}", bell[0]);
+        assert!(bell[0].contains("failed"), "{}", bell[0]);
+    }
+    assert!(w.bell(&w.clerk).await.is_empty());
     let notice = &w.doubles.notices()[0];
     assert_eq!(notice.data["rule"], WPS);
     assert!(notice.data["what"].as_str().unwrap().contains("failed"));
@@ -461,18 +529,28 @@ async fn a_successful_rerun_closes_the_alert_and_the_task() {
         .expect("the run");
     assert_eq!(run.status, RuleRunStatus::Failed);
 
-    // What `rerun` (automations.retry) does: queued again, attempts reset.
-    RuleRun::where_eq("id", run.id)
-        .update(
-            w.app.db(),
-            &[
-                ("status", &RuleRunStatus::Queued),
-                ("attempts", &0_i64),
-                ("finished_at", &None::<DateTime>),
-            ],
-        )
-        .await
-        .unwrap();
+    // The `rerun` transition (automations.retry) through a request: a clerk
+    // without the permission is refused, an operator who holds it queues the
+    // run again.
+    let url = format!("/test/rule-runs/{}/rerun", run.id);
+    w.app.acting_as(&w.clerk);
+    let denied = w.app.post(&url, &[("x", "y")]).await;
+    assert_eq!(denied.status.as_u16(), 403, "{}", denied.text());
+    assert_eq!(
+        RuleRun::find(w.app.db(), run.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .status,
+        RuleRunStatus::Failed
+    );
+    let ops = w.operator().await;
+    w.app.acting_as(&ops);
+    w.app.post(&url, &[("x", "y")]).await.assert_ok();
+    let queued = RuleRun::find(w.app.db(), run.id).await.unwrap().unwrap();
+    assert_eq!(queued.status, RuleRunStatus::Queued);
+    assert_eq!(queued.attempts, 0);
+    assert_eq!(w.alerts().await[0].status, AlertStatus::Open);
     assert_eq!(
         w.run(WPS, "wps:2026-11", 0, false).await,
         RunOutcome::Succeeded
@@ -583,7 +661,9 @@ async fn the_admin_may_close_it_and_the_attachment_is_a_number() {
 }
 
 /// AC7: a failed run of a rule that is not compliance-critical produces no
-/// alert.
+/// alert, no in-app notice and no task. (The digest line of the failed run
+/// belongs to the digest `PLT.RUL.03`, which no module provides yet; see
+/// DEFERRED-G1.)
 #[renox::test]
 async fn a_failed_run_of_an_ordinary_rule_alerts_nobody() {
     let w = world().await;
@@ -592,6 +672,9 @@ async fn a_failed_run_of_an_ordinary_rule_alerts_nobody() {
     assert!(w.alerts().await.is_empty());
     assert_eq!(w.doubles.alerts_sent(), 0);
     assert!(w.doubles.opened().is_empty());
+    for user in [&w.md, &w.admin, &w.clerk] {
+        assert!(w.bell(user).await.is_empty());
+    }
     w.app
         .assert_emitted::<AutomationFailed>(|e| e.rule == PLAIN && !e.compliance_critical);
 }
