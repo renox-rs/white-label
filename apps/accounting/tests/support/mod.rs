@@ -49,6 +49,7 @@ use wl_kernel::subscriptions::{
 use wl_kernel::tickets::{
     Assignee, OpenTicket, TaskCreator, TicketFuture, TicketId, TicketRef, provide_task_creator,
 };
+use wl_kernel::wip::{UnbilledTime, WipFuture, WipSummary, provide_unbilled_time};
 use wl_kernel::{PartyId, PartyKind, Subject};
 use wl_parties::{
     ListStatus, ListUsed, NewCandidate, NewParty, Party, SanctionsList, Screening, ScreeningRun,
@@ -616,6 +617,83 @@ impl Invoicer for InvoiceBook {
     }
 }
 
+/// The unbilled time (WIP) of the engagements and the write-offs made, as
+/// wl-attendance would answer.
+#[derive(Clone, Default)]
+pub struct WipBook {
+    unbilled: Arc<Mutex<Vec<(Subject, i64)>>>,
+    billed: Arc<Mutex<Vec<(Subject, i64)>>>,
+    written_off: Arc<Mutex<Vec<(Subject, i64, String, Option<i64>)>>>,
+}
+
+impl WipBook {
+    /// `agreement` has `fils` of unbilled time.
+    pub fn set(&self, agreement: &Subject, fils: i64) {
+        let mut all = self.unbilled.lock().unwrap();
+        all.retain(|(s, _)| s != agreement);
+        all.push((agreement.clone(), fils));
+    }
+
+    /// `agreement` has billed `fils` of time.
+    pub fn billed(&self, agreement: &Subject, fils: i64) {
+        let mut all = self.billed.lock().unwrap();
+        all.retain(|(s, _)| s != agreement);
+        all.push((agreement.clone(), fils));
+    }
+
+    /// The unbilled time of `agreement` now.
+    pub fn unbilled_of(&self, agreement: &Subject) -> i64 {
+        self.unbilled
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|(s, _)| s == agreement)
+            .map_or(0, |(_, fils)| *fils)
+    }
+
+    /// Every write-off: agreement, amount, reason, who.
+    pub fn written_off(&self) -> Vec<(Subject, i64, String, Option<i64>)> {
+        self.written_off.lock().unwrap().clone()
+    }
+}
+
+impl UnbilledTime for WipBook {
+    fn summary<'a>(
+        &'a self,
+        _state: &'a AppState,
+        agreement: &'a Subject,
+    ) -> WipFuture<'a, WipSummary> {
+        let summary = WipSummary {
+            unbilled: self.unbilled_of(agreement),
+            billed: self
+                .billed
+                .lock()
+                .unwrap()
+                .iter()
+                .find(|(s, _)| s == agreement)
+                .map_or(0, |(_, fils)| *fils),
+        };
+        Box::pin(async move { Ok(summary) })
+    }
+
+    fn write_off<'a>(
+        &'a self,
+        _state: &'a AppState,
+        agreement: &'a Subject,
+        amount: i64,
+        reason: &'a str,
+        by: Option<i64>,
+    ) -> WipFuture<'a, ()> {
+        let left = self.unbilled_of(agreement) - amount;
+        self.set(agreement, left.max(0));
+        self.written_off
+            .lock()
+            .unwrap()
+            .push((agreement.clone(), amount, reason.to_owned(), by));
+        Box::pin(async { Ok(()) })
+    }
+}
+
 /// Provides the fakes; with `real`, only the notifier (wl-ticketing and
 /// wl-invoicing provide the rest).
 struct Fakes {
@@ -624,6 +702,7 @@ struct Fakes {
     subscriptions: SubscriptionBook,
     tickets: TicketBook,
     invoices: InvoiceBook,
+    wip: WipBook,
     real: bool,
 }
 
@@ -634,6 +713,7 @@ impl Module for Fakes {
 
     fn register(&self, app: &mut Registry) {
         provide_notifier(app, self.notices.clone());
+        provide_unbilled_time(app, self.wip.clone());
         if !self.real {
             provide_deadline_tasks(app, self.tasks.clone());
             provide_subscriptions(app, self.subscriptions.clone());
@@ -673,6 +753,9 @@ pub fn register_portal_section() {
     wl_portal::register_section(accounting::portal::SECTION, EngagementsSection);
 }
 
+mod returns;
+pub use returns::Crew;
+
 // ---- the roles -------------------------------------------------------------
 
 /// The roles of the tests, with the permissions the host gives them.
@@ -709,6 +792,10 @@ async fn define_roles(db: &Db) {
                 perm::ENGAGEMENTS_END,
                 perm::CDD_VIEW,
                 perm::TAX_PROFILES_VIEW,
+                perm::RETURNS_VIEW,
+                perm::RETURNS_REVIEW,
+                perm::RETURNS_FILE,
+                perm::WIP_WRITE_OFF,
                 PARTIES_VIEW,
             ],
         ),
@@ -721,6 +808,9 @@ async fn define_roles(db: &Db) {
                 perm::CDD_PREPARE,
                 perm::TAX_PROFILES_VIEW,
                 perm::TAX_PROFILES_MANAGE,
+                perm::RETURNS_VIEW,
+                perm::RETURNS_REVIEW,
+                perm::WIP_WRITE_OFF,
                 PARTIES_VIEW,
                 DOCUMENTS_VIEW,
                 // As the host gives the 04 manager (A2).
@@ -738,6 +828,8 @@ async fn define_roles(db: &Db) {
                 perm::CDD_VIEW,
                 perm::CDD_PREPARE,
                 perm::TAX_PROFILES_VIEW,
+                perm::RETURNS_VIEW,
+                perm::RETURNS_PREPARE,
             ],
         ),
         (
@@ -804,6 +896,8 @@ pub struct Booted {
     pub tickets: TicketBook,
     /// The overdue invoices the invoicer answers.
     pub invoices: InvoiceBook,
+    /// The unbilled time (WIP) the time module would answer.
+    pub wip: WipBook,
 }
 
 /// A client with parties, documents, ticketing and invoicing on (the real
@@ -827,7 +921,7 @@ default = true
 /// wl-parties (screening on) and wl-documents, the fakes and the roles; the
 /// sanctions lists exist, current, and the KYC kinds are installed.
 pub async fn boot() -> Booted {
-    boot_with(false).await
+    boot_with(false, false).await
 }
 
 /// [`boot`] with the real wl-ticketing (deadline tasks held, released and
@@ -836,7 +930,14 @@ pub async fn boot() -> Booted {
 /// wl-invoicing (the retainer subscription paused and resumed) instead of
 /// the fakes; the notifier is still the recording one.
 pub async fn boot_real() -> Booted {
-    boot_with(true).await
+    boot_with(true, false).await
+}
+
+/// [`boot_real`] where the subscription's cycle invoices are issued by
+/// themselves (as the host sets it for 04), so a cancel can credit the cycle
+/// invoice of the retainer.
+pub async fn boot_billing() -> Booted {
+    boot_with(true, true).await
 }
 
 /// `module` with the 04 reasons for `close_missed`, as the host sets them.
@@ -851,7 +952,7 @@ fn missed_reasons(mut module: wl_ticketing::WlTicketing) -> wl_ticketing::WlTick
     module
 }
 
-async fn boot_with(real: bool) -> Booted {
+async fn boot_with(real: bool, billing: bool) -> Booted {
     let views = tempfile::tempdir().expect("a temporary views directory");
     let path = views.path().join("layouts/app.html");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -862,14 +963,16 @@ async fn boot_with(real: bool) -> Booted {
         subscriptions: SubscriptionBook::default(),
         tickets: TicketBook::default(),
         invoices: InvoiceBook::default(),
+        wip: WipBook::default(),
         real,
     };
-    let (notices, tasks, subscriptions, tickets, invoices) = (
+    let (notices, tasks, subscriptions, tickets, invoices, wip) = (
         fakes.notices.clone(),
         fakes.tasks.clone(),
         fakes.subscriptions.clone(),
         fakes.tickets.clone(),
         fakes.invoices.clone(),
+        fakes.wip.clone(),
     );
     let mut app = App::new()
         .module(Auth::new())
@@ -887,7 +990,12 @@ async fn boot_with(real: bool) -> Booted {
                     .task_overdue_role(PARTNER)
                     .waive_started_tasks(false),
             ))
-            .module(wl_invoicing::WlInvoicing::new());
+            .module(if billing {
+                wl_invoicing::WlInvoicing::new()
+                    .auto_issue_source(wl_kernel::subscriptions::SUBSCRIPTION_SUBJECT_TYPE)
+            } else {
+                wl_invoicing::WlInvoicing::new()
+            });
     }
     let app = app.module(Accounting).module(fakes);
     let client = if real { CLIENT_REAL } else { CLIENT };
@@ -913,6 +1021,7 @@ async fn boot_with(real: bool) -> Booted {
         subscriptions,
         tickets,
         invoices,
+        wip,
     };
     wl_parties::seed::lists(t.state())
         .await

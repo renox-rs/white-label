@@ -505,6 +505,7 @@ async fn send_back(
     Path(id): Path<i64>,
     Form(form): Form<CommentForm>,
 ) -> Result<Response> {
+    require(&user, permissions::RETURNS_REVIEW)?;
     returns::send_back(&state, &user, id, &form.comment).await?;
     Ok(done(&lang, "returns.sent_back"))
 }
@@ -529,6 +530,7 @@ async fn withdraw(
     Path(id): Path<i64>,
     Form(form): Form<CommentForm>,
 ) -> Result<Response> {
+    require(&user, permissions::RETURNS_REVIEW)?;
     returns::withdraw_approval(&state, &user, id, &form.comment, Some(&form.instruction)).await?;
     Ok(done(&lang, "returns.withdrawn"))
 }
