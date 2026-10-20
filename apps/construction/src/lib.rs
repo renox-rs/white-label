@@ -4,6 +4,7 @@
 pub mod award;
 pub mod cancellation;
 pub mod certificate;
+pub mod completion;
 pub mod cutoff;
 pub mod deduction;
 pub mod events;
@@ -11,14 +12,17 @@ pub mod final_account;
 pub mod guarantee;
 pub mod invoice;
 pub mod ipa;
+pub mod notices;
 pub mod pages;
 pub mod permissions;
 pub mod project;
+pub mod release;
 pub mod retention;
 pub mod submission;
 mod tasks;
 pub mod termination;
 mod texts;
+pub mod vat_notice;
 
 use renox::db::Migration;
 use renox::prelude::*;
@@ -31,6 +35,10 @@ pub use ipa::{Ipa, IpaKind, IpaStatus};
 pub use project::{Project, ProjectStatus};
 pub use retention::{Retention, RetentionPart, RetentionStatus};
 pub use termination::{TerminateRequest, TerminationReason};
+pub use vat_notice::RetentionNotice;
+
+/// The name of the daily scheduled task of the retention (`CON.RUL.07`).
+pub const RETENTION_TASK: &str = "construction:retention-daily";
 
 /// The Construction module. Add it to the app with
 /// `.module(construction::Construction)`.
@@ -54,6 +62,7 @@ impl Module for Construction {
             .model::<Ipa>()
             .model::<IpaDeduction>()
             .model::<Retention>()
+            .model::<RetentionNotice>()
             .model::<Guarantee>();
         project::register();
         renox::state_machine::register::<Ipa>();
@@ -64,6 +73,16 @@ impl Module for Construction {
         submission::register_types();
         cutoff::schedule(app);
         termination::register_types();
+        notices::register_types();
+        // A retention part follows its invoice (`settle`).
+        release::listen(app);
+        // `CON.RUL.07` and the final retention part at the end of the
+        // defects liability period, daily at 02:00 Asia/Dubai.
+        app.schedule()
+            .daily_at("02:00", RETENTION_TASK, |state: AppState| async move {
+                release::daily(&state).await
+            })
+            .timezone("Asia/Dubai");
         // The attendance module refuses a day after the last working day of a
         // terminated project (`CON.ACL.15`).
         wl_kernel::attendance::provide_context_closure(app, termination::ProjectClosure);

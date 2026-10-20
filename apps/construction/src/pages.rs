@@ -14,6 +14,12 @@
 //! | `GET /construction/projects/{id}/closing` | `construction.project_closing` | `projects.view` or `projects.manage` in the project |
 //! | `POST /construction/projects/{id}/settle` | `construction.project_settle` | `projects.manage` in the project |
 //! | `POST /construction/projects/{id}/cancel` | `construction.project_cancel` | `projects.cancel` |
+//! | `POST /construction/projects/{id}/complete` | `construction.project_complete` | `projects.manage` in the project |
+//! | `POST /construction/projects/{id}/close` | `construction.project_close` | `projects.manage` in the project |
+//! | `POST /construction/retentions/{id}/bond` | `construction.retention_bond` | `retentions.manage` in the project |
+//! | `POST /construction/retentions/{id}/make-due` | `construction.retention_make_due` | `retentions.manage` in the project |
+//! | `POST /construction/retentions/{id}/invoice` | `construction.retention_invoice` | `invoices.issue` in the project |
+//! | `POST /construction/projects/{id}/retention-notice/dismiss` | `construction.retention_notice_dismiss` | `retentions.manage` in the project |
 //!
 //! The approval of a termination is the kernel's: the MD finds the request
 //! under "Needs your action". The closing screen answers in JSON with the
@@ -30,15 +36,18 @@ use wl_kernel::PartyId;
 use crate::award::{self, Award, Awarded};
 use crate::cancellation;
 use crate::certificate::{self, CertificateRequest, Recorded};
+use crate::completion::{self, CompleteRequest};
 use crate::deduction::{self, Decided, DeductionKind, NewDeduction};
 use crate::final_account::{self, ClosingWarnings};
 use crate::invoice;
 use crate::ipa::{self, Ipa};
 use crate::permissions;
 use crate::project::Project;
+use crate::release;
 use crate::submission;
 use crate::termination::{self, TerminateRequest, TerminationReason};
 use crate::texts::t;
+use crate::vat_notice;
 
 /// The routes.
 pub fn routes() -> Routes {
@@ -67,6 +76,21 @@ pub fn routes() -> Routes {
         .name("construction.project_settle")
         .post("/construction/projects/{id}/cancel", cancel)
         .name("construction.project_cancel")
+        .post("/construction/projects/{id}/complete", complete_project)
+        .name("construction.project_complete")
+        .post("/construction/projects/{id}/close", close_project)
+        .name("construction.project_close")
+        .post("/construction/retentions/{id}/bond", link_bond)
+        .name("construction.retention_bond")
+        .post("/construction/retentions/{id}/make-due", make_due_with_bond)
+        .name("construction.retention_make_due")
+        .post("/construction/retentions/{id}/invoice", invoice_retention)
+        .name("construction.retention_invoice")
+        .post(
+            "/construction/projects/{id}/retention-notice/dismiss",
+            dismiss_retention_notice,
+        )
+        .name("construction.retention_notice_dismiss")
         .require_auth()
 }
 
@@ -501,6 +525,133 @@ async fn cancel(
         .map_err(answer)?;
     Ok((
         Toast::success(t(&lang, "construction.cancel.done")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// The toast of a bond step: the warning when the bond is below the held
+/// amount, else `key`.
+fn bond_toast(lang: &Lang, key: &str, warning: Option<String>) -> Toast {
+    match warning {
+        Some(text) => Toast::warning(text),
+        None => Toast::success(t(lang, key)),
+    }
+}
+
+/// `POST /construction/projects/{id}/complete`: `certificate` (the handover
+/// certificate) and `completed_on` (`2027-06-15`).
+async fn complete_project(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let completed_on = form
+        .get("completed_on")
+        .and_then(|date| date.trim().parse::<NaiveDate>().ok())
+        .ok_or_else(|| refused(t(&lang, "construction.complete.date_needed")))?;
+    let request = CompleteRequest {
+        certificate: form.get("certificate").cloned().unwrap_or_default(),
+        completed_on,
+    };
+    completion::complete(&state, &user, id, request)
+        .await
+        .map_err(answer)?;
+    Ok((
+        Toast::success(t(&lang, "construction.complete.done")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// `POST /construction/projects/{id}/close`.
+async fn close_project(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    completion::close(&state, &user, id).await.map_err(answer)?;
+    Ok((
+        Toast::success(t(&lang, "construction.close.done")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// `POST /construction/retentions/{id}/bond`: `guarantee_id`, the retention
+/// bond that replaces the part. A bond below the held amount is a warning.
+async fn link_bond(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let guarantee = form
+        .get("guarantee_id")
+        .and_then(|value| value.trim().parse::<i64>().ok())
+        .ok_or_else(|| refused(t(&lang, "construction.bad_input")))?;
+    let linked = release::link_bond(&state, &user, id, guarantee)
+        .await
+        .map_err(answer)?;
+    Ok((
+        bond_toast(&lang, "construction.retention.bond_linked", linked.warning),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// `POST /construction/retentions/{id}/make-due`: the `held` part is made due
+/// because its retention bond is `active`.
+async fn make_due_with_bond(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    let made = release::make_due_with_bond(&state, &user, id)
+        .await
+        .map_err(answer)?;
+    Ok((
+        bond_toast(&lang, "construction.retention.made_due", made.warning),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// `POST /construction/retentions/{id}/invoice`: the retention tax invoice of
+/// a `due` part.
+async fn invoice_retention(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    release::invoice(&state, &user, id).await.map_err(answer)?;
+    Ok((
+        Toast::success(t(&lang, "construction.retention.invoiced")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// `POST /construction/projects/{id}/retention-notice/dismiss`: `reason`.
+async fn dismiss_retention_notice(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let reason = form.get("reason").map(String::as_str).unwrap_or_default();
+    vat_notice::dismiss(&state, &user, id, reason)
+        .await
+        .map_err(answer)?;
+    Ok((
+        Toast::success(t(&lang, "construction.vat_notice.dismissed")),
         renox::HxRefresh,
     )
         .into_response())

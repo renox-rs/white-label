@@ -1,12 +1,13 @@
 //! The Project (02 Construction §6, §7.1 *Project*): an awarded contract. The
-//! model, its machine and the transitions the termination and the final
-//! account need are built here; `complete` and `close` (the practical
-//! completion and the defects liability period) come with the issues that
-//! build them.
+//! model, its machine and the transitions the termination, the final account
+//! and the release of the retention need are built here; `complete` and
+//! `close` are in [`crate::completion`], as far as the retention and the
+//! guarantees need them.
 //!
 //! ```text
 //! setup --start--> in_progress
 //! in_progress --hold--> on_hold --resume--> in_progress
+//! in_progress --complete--> practical_completion --close--> closed
 //! in_progress, on_hold --terminate--> terminated      (CON.ACL.15, BL-CON-01)
 //! terminated --settle_final_account--> closed         (BL-CON-02)
 //! setup --cancel--> cancelled                         (BL-CON-02)
@@ -33,6 +34,9 @@ use wl_kernel::approvals::PolicyDefault;
 use wl_kernel::{PartyId, Subject, SubjectMachine};
 
 use crate::cancellation::{cancel_effects, cancel_input, cancel_problem};
+use crate::completion::{
+    close_effects, close_guard, complete_effects, complete_input, complete_problem,
+};
 use crate::final_account::{settle_effects, settle_input, settle_problem};
 use crate::permissions;
 use crate::termination::{terminate_effects, terminate_input, terminate_problem};
@@ -55,6 +59,10 @@ pub const TERMINATE_APPROVED: &str = "terminate_approved";
 pub const SETTLE_FINAL_ACCOUNT: &str = "settle_final_account";
 /// The `cancel` transition's name.
 pub const CANCEL: &str = "cancel";
+/// The `complete` transition's name.
+pub const COMPLETE: &str = "complete";
+/// The `close` transition's name.
+pub const CLOSE: &str = "close";
 
 /// The approval policies' action key of `terminate` (`CON.ACL.15`).
 pub const TERMINATE_ACTION: &str = "construction.project_terminate";
@@ -132,7 +140,16 @@ pub struct Project {
     pub wound_down_at: Option<DateTime>,
     /// Why it was cancelled.
     pub cancel_reason: Option<String>,
-    /// When the final account was settled.
+    /// The handover certificate of the practical completion, a document
+    /// reference.
+    pub handover_certificate: Option<String>,
+    /// The day the handover certificate is dated.
+    pub completed_on: Option<NaiveDate>,
+    /// The last day of the defects liability period.
+    pub defects_liability_ends_on: Option<NaiveDate>,
+    /// When the accountant was told the retention cap was reached.
+    pub retention_cap_notified_at: Option<DateTime>,
+    /// When the project was closed.
     pub closed_at: Option<DateTime>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
@@ -280,6 +297,35 @@ impl StateMachine for Project {
                         })
                     }),
             )
+            .transition(
+                user(COMPLETE, "Complete", permissions::PROJECTS_MANAGE)
+                    .tone("primary")
+                    .from([InProgress])
+                    .to(PracticalCompletion)
+                    .guard("handover", |_project: &Project, ctx| {
+                        let problem = complete_problem(&complete_input(ctx));
+                        Box::pin(async move { problem.map_or(Ok(()), Err) })
+                    })
+                    .effect(|project: &Project, ctx, tx| {
+                        let project = project.clone();
+                        let input = complete_input(ctx);
+                        Box::pin(async move { complete_effects(&mut *tx, &project, &input).await })
+                    }),
+            )
+            .transition(
+                user(CLOSE, "Close", permissions::PROJECTS_MANAGE)
+                    .tone("primary")
+                    .from([PracticalCompletion])
+                    .to(Closed)
+                    .guard("defects_ended", |project: &Project, _ctx| {
+                        let problem = close_guard(project);
+                        Box::pin(async move { problem.map_or(Ok(()), Err) })
+                    })
+                    .effect(|project: &Project, _ctx, tx| {
+                        let id = project.id;
+                        Box::pin(async move { close_effects(&mut *tx, id).await })
+                    }),
+            )
             .transition(terminate_rules(
                 user(TERMINATE, "Terminate", permissions::PROJECTS_TERMINATE).tone("danger"),
             ))
@@ -359,10 +405,12 @@ mod tests {
     #[test]
     fn every_transition_of_the_spec_that_is_built_is_declared() {
         let machine = Project::machine();
-        let table: [(&str, &[&str], &str, bool); 7] = [
+        let table: [(&str, &[&str], &str, bool); 9] = [
             (START, &["setup"], "in_progress", false),
             (HOLD, &["in_progress"], "on_hold", false),
             (RESUME, &["on_hold"], "in_progress", false),
+            (COMPLETE, &["in_progress"], "practical_completion", false),
+            (CLOSE, &["practical_completion"], "closed", false),
             (TERMINATE, &["in_progress", "on_hold"], "terminated", false),
             (
                 TERMINATE_APPROVED,

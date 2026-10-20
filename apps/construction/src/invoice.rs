@@ -38,8 +38,8 @@
 //! - The VAT of the credit note and the bill follows the invoice line (5%,
 //!   `⚠ open: accountant (A-07)` for liquidated damages).
 //! - Advance recovery is not booked: advances are not built yet.
-//! - The cap notice to the accountant (`CON.ACL` retention cap) comes with
-//!   the retention lifecycle.
+//! - The cap notice to the accountant is sent after the commit, once
+//!   ([`release::after_withheld`]).
 
 use renox::prelude::*;
 use renox::state_machine::{StateMachine, TransitionError};
@@ -53,6 +53,7 @@ use crate::deduction::{self, DeductionKind, DeductionStatus, IpaDeduction};
 use crate::ipa::{INVOICE, Ipa, IpaStatus};
 use crate::permissions;
 use crate::project::Project;
+use crate::release;
 use crate::retention;
 use crate::tasks::{self, Task};
 use crate::texts::english;
@@ -295,6 +296,8 @@ pub async fn invoice(
     // 5. The IPA is invoiced; the retention of the period is held.
     // `run` commits and emits the transition's event.
     let _outcome = fresh.transition(INVOICE).by(user).run(state).await?;
+    // The accountant is told once when the retention reaches its cap.
+    release::after_withheld(state, project.id).await?;
     Ok(Ipa::find_or_404(&state.db, ipa.id).await?)
 }
 

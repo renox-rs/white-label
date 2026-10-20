@@ -423,6 +423,9 @@ pub async fn after_termination(state: &AppState, id: i64) -> Result<WoundDown> {
         }
     }
 
+    // The parts made due at the termination are announced to the accountant.
+    crate::release::announce_due(state, id).await?;
+
     // The open snags and defects are cancelled with the reason.
     let creator = task_creator(state);
     let tickets_reason = english("construction.terminate.tickets_reason", &[]);

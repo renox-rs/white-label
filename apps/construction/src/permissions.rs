@@ -32,6 +32,14 @@ pub const IPAS_DEDUCTIONS_RECORD: &str = "ipas.deductions.record";
 /// line they recorded, `CON.ACL.14`).
 pub const IPAS_DEDUCTIONS_DECIDE: &str = "ipas.deductions.decide";
 
+/// Link a bond to a retention part, make a part due when a bond replaces it
+/// and record the client's deductions from it (the accountant's and the
+/// QS's, `CON.ACL.11`, `CON.ACL.14`).
+pub const RETENTIONS_MANAGE: &str = "retentions.manage";
+/// Register, issue, reduce, extend and release a guarantee (the
+/// accountant's).
+pub const GUARANTEES_MANAGE: &str = "guarantees.manage";
+
 /// The role of the project manager.
 pub const PROJECT_MANAGER_ROLE: &str = "project_manager";
 
@@ -55,6 +63,8 @@ pub const ALL: &[&str] = &[
     IPAS_CERTIFY,
     IPAS_DEDUCTIONS_RECORD,
     IPAS_DEDUCTIONS_DECIDE,
+    RETENTIONS_MANAGE,
+    GUARANTEES_MANAGE,
 ];
 
 #[cfg(test)]
@@ -67,9 +77,10 @@ mod tests {
         all.sort_unstable();
         all.dedup();
         assert_eq!(all.len(), ALL.len());
-        assert!(
-            all.iter()
-                .all(|p| p.starts_with("projects.") || p.starts_with("ipas."))
-        );
+        assert!(all.iter().all(|p| {
+            ["projects.", "ipas.", "retentions.", "guarantees."]
+                .iter()
+                .any(|prefix| p.starts_with(prefix))
+        }));
     }
 }

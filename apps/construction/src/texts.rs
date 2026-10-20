@@ -311,6 +311,100 @@ const TEXTS: &[(&str, &str)] = &[
         "Back- and contra-charges the client deducted are supplier bill {{ bill }}. Approve it, then record the set-off against invoice {{ invoice }}.",
     ),
     ("construction.invoice.done", "IPA invoiced."),
+    // Completing and closing a project (BL-CON-07).
+    (
+        "construction.complete.certificate_needed",
+        "Attach the handover certificate.",
+    ),
+    (
+        "construction.complete.date_needed",
+        "Give the day the handover certificate is dated.",
+    ),
+    (
+        "construction.close.no_end_date",
+        "The project has no defects liability end date: complete it first.",
+    ),
+    (
+        "construction.close.defects_running",
+        "The defects liability period runs until {{ date }}.",
+    ),
+    ("construction.complete.done", "Project completed."),
+    ("construction.close.done", "Project closed."),
+    // The release of the retention (BL-CON-07).
+    (
+        "construction.retention.due_title",
+        "The {{ part }} retention of {{ project }} is due",
+    ),
+    (
+        "construction.retention.due_body",
+        "The {{ part }} retention part of {{ project }}, {{ amount }}, is due. Issue its retention tax invoice before VAT on it becomes due.",
+    ),
+    (
+        "construction.retention.cap_title",
+        "The retention cap of {{ project }} is reached",
+    ),
+    (
+        "construction.retention.cap_body",
+        "The retention withheld on {{ project }} reached its cap of {{ cap }}. Later IPAs withhold nothing.",
+    ),
+    (
+        "construction.retention.no_bond",
+        "No retention bond is linked to the {{ part }} part.",
+    ),
+    (
+        "construction.retention.bond_not_active",
+        "The retention bond of the {{ part }} part is not active.",
+    ),
+    (
+        "construction.retention.bond_below",
+        "The bond of {{ bond }} is below the {{ held }} held on the {{ part }} part.",
+    ),
+    (
+        "construction.retention.not_a_bond",
+        "Link a guarantee of the kind retention bond of this project.",
+    ),
+    (
+        "construction.retention.finished",
+        "The retention part is finished: a bond can no longer replace it.",
+    ),
+    (
+        "construction.retention.nothing_held",
+        "Nothing is held on this retention part: there is nothing to invoice.",
+    ),
+    (
+        "construction.retention.before_termination",
+        "The project was terminated: its retention is invoiced from the effective date, {{ date }}.",
+    ),
+    (
+        "construction.retention.invoice_line",
+        "Retention, {{ part }} part, {{ project }}",
+    ),
+    ("construction.retention.invoiced", "Retention invoiced."),
+    (
+        "construction.retention.bond_linked",
+        "Retention bond linked.",
+    ),
+    ("construction.retention.made_due", "Retention made due."),
+    (
+        "construction.vat_notice.title",
+        "VAT on the retention of {{ project }} becomes due",
+    ),
+    (
+        "construction.vat_notice.body",
+        "A year after the completion of {{ project }} ends on {{ date }}, and a retention part is still held or due. VAT on the retention becomes due then: invoice it, or dismiss this notice with a reason.",
+    ),
+    (
+        "construction.vat_notice.reason_needed",
+        "Give the reason for dismissing the notice.",
+    ),
+    (
+        "construction.vat_notice.none",
+        "No notice was made for this project.",
+    ),
+    ("construction.vat_notice.dismissed", "Notice dismissed."),
+    // The notice to the people of a project.
+    ("construction.notice.subject", "{{ title }}"),
+    ("construction.notice.body", "{{ body }}"),
     // The pages.
     ("construction.award.done", "Project started from the award."),
     (
