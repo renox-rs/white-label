@@ -11,6 +11,7 @@ pub mod bank_statement_pages;
 pub mod bank_statement_parse;
 pub mod cash_count;
 pub mod cash_custody;
+pub mod cash_escalation;
 pub mod cash_handover;
 mod cash_machine;
 pub mod cash_notices;
@@ -429,6 +430,26 @@ impl WlPayments {
         self
     }
 
+    /// Sets when a handover left open is escalated (`FIN.RUL.22`, §7: 12 and
+    /// 48 hours after the end of the holder's period): `task_hours` for the
+    /// manager's task to reach the holder, `admin_hours` for the notice to the
+    /// company admin and the count at what was received.
+    ///
+    /// # Panics
+    ///
+    /// For fewer than one hour, or an admin notice before the task: a
+    /// programming error.
+    pub fn cash_escalation(mut self, task_hours: i64, admin_hours: i64) -> Self {
+        assert!(task_hours >= 1, "a task waits at least one hour");
+        assert!(
+            admin_hours >= task_hours,
+            "the admin is told with or after the task"
+        );
+        self.config.cash_escalate_hours = task_hours;
+        self.config.cash_admin_hours = admin_hours;
+        self
+    }
+
     /// Names the manager role of a cash holder who has none recorded (default
     /// `finance_manager`; 03: the operations manager).
     pub fn cash_manager(mut self, role: &str) -> Self {
@@ -662,6 +683,8 @@ impl Module for WlPayments {
         cash_settle::register(app, self.config.cash_write_off_limit);
         // The salary deduction approval (`FIN.ACL.19`).
         cash_recovery::register(app);
+        // `FIN.RUL.22`: a handover left open is escalated.
+        cash_escalation::register(app);
         // `FIN.RUL.21`: a failed gateway refund is retried once; otherwise
         // the accountant changes its method.
         refund_retry::register(app);
