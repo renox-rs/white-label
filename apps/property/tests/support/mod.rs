@@ -2525,6 +2525,23 @@ impl Booted {
         self.user_with(name, &role).await
     }
 
+    /// Runs `work` with the clock at 08:00 UTC of `date` (a date after today):
+    /// `today()` and `now()` read that day inside it, the way the tests of the
+    /// issues' literal dates need.
+    pub async fn at<F: std::future::Future>(&self, date: NaiveDate, work: F) -> F::Output {
+        // Outside `at_travelled_time` the clock is the real one, so a second
+        // trip starts from the present again instead of adding to the first.
+        self.app.travel_back();
+        let target = date.and_hms_opt(8, 0, 0).expect("a time").and_utc();
+        let seconds = (target - renox::db::now()).num_seconds();
+        assert!(seconds > 0, "{date} is not after today");
+        self.app
+            .travel(std::time::Duration::from_secs(seconds as u64));
+        let done = self.app.at_travelled_time(work).await;
+        self.app.travel_back();
+        done
+    }
+
     /// Runs the system transition `name` on `lease`.
     pub async fn system(&self, lease: &Lease, name: &str) {
         use renox::state_machine::StateMachine;
