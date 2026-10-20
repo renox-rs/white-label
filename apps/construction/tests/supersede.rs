@@ -276,8 +276,8 @@ async fn a_late_certificate_after_the_replacing_one_is_certified_changes_no_amou
         .await
         .unwrap();
     // IPA 5 was replaced: it is superseded.
-    let mut tx = t.db().begin().await.unwrap();
     let old = t.reload_ipa(five).await;
+    let mut tx = t.db().begin().await.unwrap();
     let outcome = old
         .transition(construction::ipa::SUPERSEDE)
         .by_system()

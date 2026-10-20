@@ -74,7 +74,12 @@ pub fn release_point_reached(project: &Project, kind: GuaranteeKind, day: NaiveD
 
 /// The kind as the messages show it: `retention bond`.
 fn kind_text(guarantee: &Guarantee) -> String {
-    guarantee.kind.as_str().replace('_', " ")
+    match guarantee.kind {
+        GuaranteeKind::Advance => "advance guarantee",
+        GuaranteeKind::Performance => "performance bond",
+        GuaranteeKind::RetentionBond => "retention bond",
+    }
+    .to_owned()
 }
 
 /// The users who manage `project`: its project manager, else the holders of

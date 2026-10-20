@@ -480,7 +480,7 @@ mod tests {
         assert!(new_problem(&new).is_some_and(|p| p.contains("amount")));
         new.amount = 1;
         new.kind = DeductionKind::Other;
-        assert!(new_problem(&new).is_some_and(|p| p.contains("describe")));
+        assert!(new_problem(&new).is_some_and(|p| p.to_lowercase().contains("describe")));
         new.description = "Scaffolding hire".into();
         assert_eq!(new_problem(&new), None);
     }
