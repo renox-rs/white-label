@@ -7,6 +7,7 @@ pub mod config;
 pub mod employee;
 pub mod employee_machine;
 mod events;
+pub mod exits;
 pub mod leave;
 mod notices;
 pub mod onboarding;
@@ -71,6 +72,10 @@ pub mod permissions {
     /// Manage templates, start a manual onboarding, waive and reopen steps;
     /// its holders are the `hr` owner of steps.
     pub const ONBOARDING_MANAGE: &str = "onboarding.manage";
+    /// Approve the non-standard exits `cancel_onboarding`, `withdraw_notice`,
+    /// `report_absconding`, `reinstate` and `record_death` (`HRM.ACL.07`,
+    /// default: the MD).
+    pub const EMPLOYEES_EXIT_APPROVE: &str = "employees.exit.approve";
 }
 
 /// The HR module. The host adds it with `.module(wl_hr::WlHr::new())` when
@@ -146,6 +151,9 @@ impl Module for WlHr {
         renox::state_machine::register::<Onboarding>();
         renox::state_machine::register::<OnboardingStep>();
         events::register(app);
+        // `HRM.ACL.07`: the policies of the five non-standard exits and the
+        // audit of their requests and decisions.
+        exits::register(app);
         notices::register_types();
         // `HRM.RUL.17`: the daily reminders of overdue onboarding steps.
         reminders::schedule(app);

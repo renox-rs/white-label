@@ -52,6 +52,63 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_hr.employees.type.part_time", "Part-time"),
     ("wl_hr.employees.type.temporary", "Temporary"),
     ("wl_hr.employees.type.freelance", "Freelance"),
+    // Non-standard exits (`HRM.ACL.07`).
+    ("wl_hr.exits.title", "Non-standard exit"),
+    ("wl_hr.exits.request", "Request an exit action"),
+    ("wl_hr.exits.submit", "Send for approval"),
+    ("wl_hr.exits.sent", "Sent for approval."),
+    ("wl_hr.exits.action", "Action"),
+    ("wl_hr.exits.reason", "Reason"),
+    ("wl_hr.exits.pending", "Waiting for approval"),
+    ("wl_hr.exits.pending_by", "Requested by"),
+    ("wl_hr.exits.documents", "Documents"),
+    ("wl_hr.exits.report_number", "MoHRE absence report number"),
+    ("wl_hr.exits.report_date", "Report date"),
+    ("wl_hr.exits.report_file", "Report file (document number)"),
+    ("wl_hr.exits.agreement", "Written agreement (document number or reference)"),
+    ("wl_hr.exits.reference", "Withdrawal or cancellation reference"),
+    ("wl_hr.exits.death_document", "Death certificate (document number or reference)"),
+    ("wl_hr.exits.authority_notice", "Authority notice (document number or reference)"),
+    ("wl_hr.exits.death_date", "Date of death"),
+    ("wl_hr.exits.return_date", "Date the worker returned"),
+    ("wl_hr.exits.transition.cancel_onboarding", "Cancel onboarding"),
+    ("wl_hr.exits.transition.withdraw_notice", "Withdraw notice"),
+    ("wl_hr.exits.transition.report_absconding", "Report absconding"),
+    ("wl_hr.exits.transition.reinstate", "Reinstate"),
+    ("wl_hr.exits.transition.record_death", "Record death"),
+    ("wl_hr.exits.reason_required", "Give the reason."),
+    (
+        "wl_hr.exits.agreement_required",
+        "Attach the other party's written agreement.",
+    ),
+    (
+        "wl_hr.exits.report_required",
+        "Give the MoHRE absence report number and date.",
+    ),
+    (
+        "wl_hr.exits.reference_required",
+        "Give the reference of the withdrawal or cancellation of the absence report.",
+    ),
+    (
+        "wl_hr.exits.death_document_required",
+        "Attach the death certificate or the authority's notice.",
+    ),
+    (
+        "wl_hr.exits.unknown_action",
+        "This is not an action that needs approval.",
+    ),
+    (
+        "wl_hr.exits.wrong_state",
+        "This action cannot be requested in the employee's current state.",
+    ),
+    (
+        "wl_hr.exits.already_pending",
+        "A request for this employee is already waiting for approval.",
+    ),
+    (
+        "wl_hr.exits.no_policy",
+        "No approval policy is active for this action, so it cannot be requested.",
+    ),
     // Templates.
     ("wl_hr.templates.title", "Onboarding templates"),
     (
