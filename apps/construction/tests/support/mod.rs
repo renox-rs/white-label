@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
 use construction::permissions as perm;
-use construction::{Construction, Project, ProjectStatus, ProjectTerminated};
+use construction::{Construction, Ipa, IpaStatus, Project, ProjectStatus, ProjectTerminated};
 use renox::auth::{Permissions, permissions};
 use renox::chrono::NaiveDate;
 use renox::db::DateTime;
@@ -469,6 +469,11 @@ impl Booted {
         self.user_with(name, perm::PROJECT_MANAGER_ROLE).await
     }
 
+    /// A quantity surveyor.
+    pub async fn qs(&self, name: &str) -> User {
+        self.user_with(name, perm::QS_ROLE).await
+    }
+
     /// The MD.
     pub async fn md(&self, name: &str) -> User {
         self.user_with(name, "md").await
@@ -505,6 +510,44 @@ impl Booted {
             .unwrap();
         tx.commit().await.unwrap();
         project
+    }
+
+    /// IPA `number` of `project` in `status`, inserted as a fixture.
+    pub async fn ipa(
+        &self,
+        project: &Project,
+        number: i64,
+        status: IpaStatus,
+        claimed: i64,
+        certified: Option<i64>,
+    ) -> Ipa {
+        let mut ipa = Ipa::new(project.id);
+        ipa.number = number;
+        ipa.status = status;
+        ipa.claimed_amount = claimed;
+        ipa.certified_amount = certified;
+        let mut tx = self.db().begin().await.unwrap();
+        ipa.insert_in_state(&mut tx, status, "fixture")
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+        ipa
+    }
+
+    /// The IPA as it is stored now.
+    pub async fn reload_ipa(&self, id: i64) -> Ipa {
+        Ipa::find_or_404(self.db(), id).await.unwrap()
+    }
+
+    /// The IPA `number` of `project` as it is stored now.
+    pub async fn ipa_numbered(&self, project: &Project, number: i64) -> Ipa {
+        Ipa::query()
+            .where_(Ipa::PROJECT_ID.eq(project.id))
+            .where_(Ipa::NUMBER.eq(number))
+            .first(self.db())
+            .await
+            .unwrap()
+            .expect("the IPA")
     }
 
     /// The project as it is stored now.
@@ -639,7 +682,16 @@ pub async fn boot() -> Booted {
             perm::PROJECTS_MANAGE,
             perm::PROJECTS_TERMINATE,
             perm::PROJECTS_AWARD,
+            perm::IPAS_SUBMIT,
         ],
+    )
+    .await
+    .unwrap();
+    // The QS records the certificates.
+    permissions::define_role(
+        app.db(),
+        perm::QS_ROLE,
+        &[perm::PROJECTS_VIEW, perm::IPAS_CERTIFY],
     )
     .await
     .unwrap();

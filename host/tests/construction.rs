@@ -2,7 +2,7 @@
 //! `app = "construction"` (02 Construction, issue #280).
 
 use construction::{Construction, Project, ProjectStatus};
-use host::roles::{self, ADMIN, MEMBER, PROJECT_MANAGER};
+use host::roles::{self, ADMIN, MEMBER, PROJECT_MANAGER, QUANTITY_SURVEYOR};
 use renox::prelude::*;
 use renox::testing::TestApp;
 use wl_kernel::{ClientConfig, PartyId};
@@ -60,6 +60,19 @@ fn the_roles_hold_the_project_permissions() {
         construction::permissions::PROJECTS_CANCEL
     ));
     assert!(holds(ADMIN, construction::permissions::PROJECTS_CANCEL));
+    // The project manager submits an IPA, the QS records its certificate.
+    assert!(holds(
+        PROJECT_MANAGER,
+        construction::permissions::IPAS_SUBMIT
+    ));
+    assert!(holds(
+        QUANTITY_SURVEYOR,
+        construction::permissions::IPAS_CERTIFY
+    ));
+    assert!(!holds(
+        PROJECT_MANAGER,
+        construction::permissions::IPAS_CERTIFY
+    ));
     assert!(!holds(MEMBER, construction::permissions::PROJECTS_VIEW));
 }
 
