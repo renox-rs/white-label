@@ -22,8 +22,8 @@ use wl_kernel::documents::{DocumentGuard, today};
 use wl_kernel::workforce::Workforce;
 use wl_kernel::{
     ClientConfig, DeliveryAssigned, DeliveryAttemptFailed, DeliveryDelivered, DeliveryItem,
-    DeliveryDisputeClosed, DeliveryDisputed, DeliveryOutForDelivery, DeliveryRequest, PodMethod,
-    RunDispatched, Subject,
+    DeliveryDisputeClosed, DeliveryDisputed, DeliveryFound, DeliveryLost, DeliveryOutForDelivery,
+    DeliveryRequest, PodMethod, RunDispatched, Subject,
 };
 use wl_kernel::tickets::TaskCreator;
 
@@ -117,8 +117,16 @@ pub struct World {
     pub disputed: Recorded<DeliveryDisputed>,
     /// `DeliveryDisputeClosed`.
     pub dispute_closed: Recorded<DeliveryDisputeClosed>,
+    /// `DeliveryLost`.
+    pub lost: Recorded<DeliveryLost>,
+    /// `DeliveryFound`.
+    pub found: Recorded<DeliveryFound>,
     /// The tickets the module opened, resolved and commented on.
     pub tickets: TicketDesk,
+    /// Asks for a loss: holds `deliveries.reverse` and manages deliveries.
+    pub ops_a: User,
+    /// Approves a loss: holds `deliveries.reverse` and manages deliveries.
+    pub ops_b: User,
     /// Dispatches and assigns deliveries.
     pub dispatcher: User,
     /// Also manages deliveries.
@@ -422,6 +430,8 @@ pub async fn boot_with(module: WlDelivery, docs: Documents) -> World {
     let dispatched = Recorded::new();
     let disputed = Recorded::new();
     let dispute_closed = Recorded::new();
+    let lost = Recorded::new();
+    let found = Recorded::new();
     let tickets = TicketDesk::default();
     let roster = Roster::default();
     let guard: Arc<dyn DocumentGuard> = Arc::new(docs.clone());
@@ -442,6 +452,8 @@ pub async fn boot_with(module: WlDelivery, docs: Documents) -> World {
     let app = record(app, &dispatched);
     let app = record(app, &disputed);
     let app = record(app, &dispute_closed);
+    let app = record(app, &lost);
+    let app = record(app, &found);
     let config = ClientConfig::parse(CLIENT).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     let dir = views.path().to_path_buf();
@@ -477,6 +489,15 @@ pub async fn boot_with(module: WlDelivery, docs: Documents) -> World {
         ],
     )
     .await;
+    let ops_grants = [
+        perm::VIEW,
+        perm::MANAGE,
+        perm::REVERSE,
+        perm::RUNS_VIEW,
+        perm::POD_VIEW,
+    ];
+    let ops_a = make_user(app.db(), "Olivia", &ops_grants).await;
+    let ops_b = make_user(app.db(), "Basel", &ops_grants).await;
     let driver = make_user(app.db(), "Dev", &[perm::RUNS_DRIVE, perm::COMPLETE]).await;
     let other_driver = make_user(app.db(), "Omar", &[perm::RUNS_DRIVE, perm::COMPLETE]).await;
     World {
@@ -491,7 +512,11 @@ pub async fn boot_with(module: WlDelivery, docs: Documents) -> World {
         dispatched,
         disputed,
         dispute_closed,
+        lost,
+        found,
         tickets,
+        ops_a,
+        ops_b,
         dispatcher,
         manager,
         driver,
@@ -501,3 +526,14 @@ pub async fn boot_with(module: WlDelivery, docs: Documents) -> World {
 
 /// The default proof methods, for assertions.
 pub const DEFAULT_PROOF: [PodMethod; 2] = [PodMethod::Photo, PodMethod::Signature];
+
+/// A chief driver: drives runs and also holds `deliveries.reverse`, to show
+/// that the driver of a run still cannot request its loss.
+pub async fn chief_driver(w: &World) -> User {
+    make_user(
+        w.db(),
+        "Chief",
+        &[perm::RUNS_DRIVE, perm::COMPLETE, perm::REVERSE, perm::MANAGE, perm::VIEW],
+    )
+    .await
+}
