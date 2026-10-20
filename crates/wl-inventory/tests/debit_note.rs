@@ -6,18 +6,18 @@
 mod support;
 
 use renox::prelude::*;
-use wl_invoicing::{DebitNoteOrigin, SupplierDebitNote};
 use wl_inventory::PurchaseOrderLine;
 use wl_inventory::supplier_return::{self, ReturnStatus};
+use wl_invoicing::BillLineDraft;
 use wl_invoicing::bill_machine::approve;
 use wl_invoicing::bill_submit::submit;
 use wl_invoicing::credit_notes::By;
 use wl_invoicing::debit_notes;
 use wl_invoicing::supplier_bill::{self, BillDraft};
-use wl_invoicing::BillLineDraft;
+use wl_invoicing::{DebitNoteOrigin, SupplierDebitNote};
+use wl_kernel::Subject;
 use wl_kernel::documents::today;
 use wl_kernel::inventory::PURCHASE_ORDER_LINE_SUBJECT_TYPE;
-use wl_kernel::Subject;
 use wl_kernel::invoicing::{SupplierDebitNoteId, SupplierDebitNoteStatus, VatCategory};
 
 use support::{SUPPLIER, boot_with_invoicing, boot_with_parties};
@@ -92,7 +92,11 @@ async fn an_issued_debit_note_credits_the_return() {
         .dispatched_credit_return(&store, &[(&item, 3_000, &po_line)])
         .await;
     approved_bill_on(&t, &po_line, 10_000).await;
-    let note = SupplierDebitNote::query().first(t.db()).await.unwrap().unwrap();
+    let note = SupplierDebitNote::query()
+        .first(t.db())
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(note.status, SupplierDebitNoteStatus::Draft);
     assert_eq!(t.return_now(&ret).await.status, ReturnStatus::Dispatched);
 
@@ -125,7 +129,11 @@ async fn a_cancelled_debit_note_opens_the_task_and_the_return_stays_dispatched()
         .dispatched_credit_return(&store, &[(&item, 3_000, &po_line)])
         .await;
     approved_bill_on(&t, &po_line, 10_000).await;
-    let note = SupplierDebitNote::query().first(t.db()).await.unwrap().unwrap();
+    let note = SupplierDebitNote::query()
+        .first(t.db())
+        .await
+        .unwrap()
+        .unwrap();
 
     wl_invoicing::debit_note_settle::cancel(
         t.state(),

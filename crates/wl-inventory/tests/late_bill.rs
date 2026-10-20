@@ -318,11 +318,10 @@ async fn real_approved_bills_draft_one_adjustment_each() {
         .expect("the entity of the landed cost");
 
     // Freight of AED 800.00 coded to the landed cost.
-    let mut freight = BillDraft::new(supplier, "FWD-880", today())
-        .line(
-            BillLineDraft::new("Sea freight, Jebel Ali", 80_000, VatCategory::Standard)
-                .landed_cost(landed.subject()),
-        );
+    let mut freight = BillDraft::new(supplier, "FWD-880", today()).line(
+        BillLineDraft::new("Sea freight, Jebel Ali", 80_000, VatCategory::Standard)
+            .landed_cost(landed.subject()),
+    );
     freight.legal_entity_id = Some(entity.id);
     freight.due_date = Some(today() + Days::new(30));
     let bill = supplier_bill::create(t.db(), &freight, None).await.unwrap();
@@ -360,7 +359,9 @@ async fn real_approved_bills_draft_one_adjustment_each() {
     duty.legal_entity_id = Some(entity.id);
     duty.due_date = Some(today() + Days::new(30));
     let second = supplier_bill::create(t.db(), &duty, None).await.unwrap();
-    submit(t.state(), By::System(None), second.id).await.unwrap();
+    submit(t.state(), By::System(None), second.id)
+        .await
+        .unwrap();
     approve(t.state(), By::System(None), second.id, "")
         .await
         .unwrap();

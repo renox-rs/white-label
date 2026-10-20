@@ -285,9 +285,8 @@ async fn the_request_shows_the_real_score_and_band_of_both_suppliers() {
     ask(&t, &a, &item, GULF_BUILD).await.assert_ok();
     let id = request_of(&t, &item).await.id;
     let path = format!("/preferred-requests/{id}");
-    let read = |body: String| -> renox::serde_json::Value {
-        renox::serde_json::from_str(&body).unwrap()
-    };
+    let read =
+        |body: String| -> renox::serde_json::Value { renox::serde_json::from_str(&body).unwrap() };
 
     // No receipt yet: nothing to score.
     t.app.acting_as(&b);
