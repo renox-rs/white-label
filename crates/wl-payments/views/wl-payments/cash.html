@@ -2,6 +2,16 @@
     expected, counted, difference, status; filter by status and kind).
     Replace it with resources/views/wl-payments/cash.html in the app. -#}
 <rx-page layout="layouts/app.html" :title="tx['cash.title']">
-  <rx-page-header :title="tx['cash.title']" :subtitle="tx['cash.description']"/>
+  <rx-page-header :title="tx['cash.title']" :subtitle="tx['cash.description']">
+    <rx-action-sheet rx-if="can_raise" id="raise-shortage" :label="tx['cash.raise.action']" :action="route('wl_payments.cash.raise')"
+                     :title="tx['cash.raise.title']" :description="tx['cash.raise.description']" :submit-label="tx['cash.raise.submit']"
+                     icon="triangle-alert" variant="danger" danger>
+      <rx-input name="holder" :label="tx['cash.raise.holder']" :hint="tx['cash.raise.holder_hint']" id="raise-holder" required/>
+      <rx-input name="amount" :label="tx['fields.amount']" :hint="tx['cash.amount_hint']" id="raise-amount" required/>
+      <rx-input name="source_type" :label="tx['cash.raise.source_type']" :hint="tx['cash.raise.source_type_hint']" id="raise-source-type" required/>
+      <rx-input name="source_id" :label="tx['cash.raise.source_id']" id="raise-source-id" required/>
+      <rx-textarea name="reason" :label="tx['cash.raise.reason']" id="raise-reason" required/>
+    </rx-action-sheet>
+  </rx-page-header>
   <rx-grid :page="handovers"/>
 </rx-page>

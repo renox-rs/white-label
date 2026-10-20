@@ -10,6 +10,7 @@
 //! | `POST /cash/{id}/deductions` | `wl_payments.cash.deduction` | `cash.count` (fields `amount`, `note`) |
 //! | `POST /cash/{id}/recover` | `wl_payments.cash.recover` | `cash.count` (field `amount`, optional cash) |
 //! | `POST /cash/{id}/write-off` | `wl_payments.cash.write_off` | `cash.write_off` (field `reason`) |
+//! | `POST /cash/shortages` | `wl_payments.cash.raise` | `cash.count` (fields `holder`, `amount`, `source_type`, `source_id`, `reason`) |
 //! | `POST /cash/recoveries/{id}/acknowledge` | `wl_payments.cash.acknowledge` | the person the deduction is taken from |
 //!
 //! The deduction sheet is offered only while the client's
@@ -23,12 +24,14 @@ use renox::prelude::*;
 use renox::serde_json::Value;
 use renox::state_machine::{self, StateMachine, TransitionError};
 use serde::{Deserialize, Serialize};
+use wl_kernel::Subject;
 use wl_kernel::custody::{HandoverKind, HandoverStatus};
 
 use crate::cash_count;
 use crate::cash_handover::{
     CashCount, CashEntry, CashHandover, CashPosting, CountKind, PostingKind,
 };
+use crate::cash_later::{self, RaiseShortage};
 use crate::cash_notices::period_text;
 use crate::cash_recovery::{self, CashRecovery, RecoveryKind, RecoveryStatus};
 use crate::cash_settle::{self, WriteOffRequest};
@@ -61,6 +64,8 @@ pub fn routes() -> Routes {
                 .name("wl_payments.cash.deduction")
                 .post("/cash/{id}/recover", store_recover)
                 .name("wl_payments.cash.recover")
+                .post("/cash/shortages", store_shortage)
+                .name("wl_payments.cash.raise")
                 .require_permission(permissions::CASH_COUNT),
         )
         .merge(
@@ -164,14 +169,16 @@ fn grid_with(t: Text<'_>) -> Grid {
 pub(crate) struct IndexPage {
     tx: Texts,
     handovers: GridPage<CashHandover>,
+    can_raise: bool,
 }
 
 /// `GET /cash`: the grid.
-async fn index(lang: Lang, request: GridRequest) -> Result<View> {
+async fn index(lang: Lang, user: AuthUser, request: GridRequest) -> Result<View> {
     let handovers = grid(&lang).page(CashHandover::query(), &request).await?;
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         handovers,
+        can_raise: user.has_permission(permissions::CASH_COUNT),
     }))
 }
 
@@ -593,6 +600,59 @@ async fn store_acknowledge(
         .await
         .map_err(TransitionError::into_error)?;
     Ok(done(&lang, "wl_payments.cash.acknowledge.done"))
+}
+
+/// The raise sheet's form.
+#[derive(Deserialize, Serialize, Validate, Debug)]
+pub struct RaiseForm {
+    /// The holder: the user's id.
+    #[validate(max = 20)]
+    pub holder: Option<String>,
+    /// The amount, in dirhams.
+    #[validate(max = 32)]
+    pub amount: Option<String>,
+    /// The type of the record that caused it, e.g. `logistics.shipment`.
+    #[validate(max = 64)]
+    pub source_type: Option<String>,
+    /// The id of that record.
+    #[validate(max = 20)]
+    pub source_id: Option<String>,
+    /// Why.
+    #[validate(max = 2000)]
+    pub reason: Option<String>,
+}
+
+/// `POST /cash/shortages`: raises a later shortage against a holder.
+async fn store_shortage(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Valid(form): Valid<RaiseForm>,
+) -> Result<Response> {
+    let t = texts_in(&lang);
+    let Some(holder) = filled(&form.holder).and_then(|v| v.parse::<i64>().ok()) else {
+        return Err(invalid("holder", t("cash.raise.holder_required"), &form));
+    };
+    let Some(amount) = filled(&form.amount).and_then(parse_amount) else {
+        return Err(invalid("amount", t("cash.amount_required"), &form));
+    };
+    let source = match (filled(&form.source_type), filled(&form.source_id)) {
+        (Some(kind), Some(id)) => format!("{kind}:{id}").parse::<Subject>().ok(),
+        _ => None,
+    };
+    let Some(source) = source else {
+        return Err(invalid("source_type", t("cash.raise.source_required"), &form));
+    };
+    let request = RaiseShortage {
+        holder_user: holder,
+        amount,
+        reason: form.reason.clone().unwrap_or_default(),
+        source,
+    };
+    match cash_later::raise_shortage(&state, &user, &request).await {
+        Ok(_) => Ok(done(&lang, "wl_payments.cash.raise.done")),
+        Err(error) => Err(refuse(error, "amount", &form)),
+    }
 }
 
 #[cfg(test)]
