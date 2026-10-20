@@ -644,7 +644,11 @@ incoming payment allocated to the debit note, which then runs `settle`.
 ### 5.7 Bank statement import and matching
 
 1. The accountant uploads a statement file (CSV, Excel or MT940) for one bank account and
-   period.
+   period. This build reads two layouts: CSV with a header row (`date` as YYYY-MM-DD,
+   `description`, signed `amount`, optional `reference` and `counterparty`; it carries no
+   closing balance, so the accountant enters it at upload) and MT940 (tags `:25:`, `:61:`,
+   `:86:` and `:62F:`/`:62M:`, whose closing balance and date are used). Excel is read by
+   the platform importer (R23) and fails `parse` until then.
 2. Each incoming line is compared with open invoices (amount and reference), deposited
    cheques (amount and date), expected gateway settlements and payments already recorded;
    outgoing lines with supplier bills, refunds, issued cheques and reimbursements. Match
