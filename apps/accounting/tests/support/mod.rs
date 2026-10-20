@@ -1273,7 +1273,9 @@ impl Booted {
             .expect("a valid time")
             .and_utc()
             - renox::chrono::Duration::hours(4);
-        let ahead = (wanted - Utc::now()).num_seconds();
+        // Rounded up: truncating would land the clock up to a second before
+        // `wanted` (09:59:59 for 10:00) and flake any minute-exact assertion.
+        let ahead = (wanted - Utc::now()).num_seconds() + 1;
         assert!(ahead > 0, "the fixed day is in the future");
         self.app
             .travel(std::time::Duration::from_secs(ahead.unsigned_abs()));
