@@ -720,7 +720,9 @@ impl Booted {
     /// The client's trade licence and its UBO's Emirates ID valid to the end
     /// of 2027, and the UBO's passport valid until `passport_until`.
     pub async fn kyc_with(&self, client: &Client, passport_until: NaiveDate) {
-        let reviewer = self.reviewer().await;
+        let reviewer = self
+            .user_with(&format!("Reviewer {}", client.company.0), REVIEWER)
+            .await;
         let until = NaiveDate::from_ymd_opt(2027, 12, 31).unwrap();
         self.kyc(&reviewer, client.company, accounting::seed::TRADE_LICENCE, until)
             .await;
