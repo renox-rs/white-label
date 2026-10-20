@@ -22,14 +22,18 @@ use wl_kernel::documents::{DocumentGuard, today};
 use wl_kernel::workforce::Workforce;
 use wl_kernel::{
     ClientConfig, DeliveryAssigned, DeliveryAttemptFailed, DeliveryDelivered, DeliveryItem,
-    DeliveryOutForDelivery, DeliveryRequest, PodMethod, RunDispatched, Subject,
+    DeliveryDisputeClosed, DeliveryDisputed, DeliveryOutForDelivery, DeliveryRequest, PodMethod,
+    RunDispatched, Subject,
 };
+use wl_kernel::tickets::TaskCreator;
 
 pub mod documents;
 pub mod roster;
+pub mod tickets;
 
 use documents::Documents;
 use roster::{Roster, employee_of};
+use tickets::TicketDesk;
 
 /// The pages extend the app's layout; a package test has no app, so it
 /// brings the smallest one.
@@ -109,6 +113,12 @@ pub struct World {
     pub failed: Recorded<DeliveryAttemptFailed>,
     /// `RunDispatched`.
     pub dispatched: Recorded<RunDispatched>,
+    /// `DeliveryDisputed`.
+    pub disputed: Recorded<DeliveryDisputed>,
+    /// `DeliveryDisputeClosed`.
+    pub dispute_closed: Recorded<DeliveryDisputeClosed>,
+    /// The tickets the module opened, resolved and commented on.
+    pub tickets: TicketDesk,
     /// Dispatches and assigns deliveries.
     pub dispatcher: User,
     /// Also manages deliveries.
@@ -292,6 +302,46 @@ impl World {
             .await
     }
 
+    /// A delivery of one tile line with `collect` fils to collect, delivered
+    /// by the driver with the cash collected in full.
+    pub async fn delivered_cod(&self, collect: i64) -> Delivery {
+        let delivery = self.request(&[("Tiles", 10_000, None)], collect).await;
+        let out = self.out_for_delivery(&delivery).await;
+        let line = self.lines(&out).await.remove(0);
+        let cash = format!("{}.{:02}", collect / 100, collect % 100);
+        let fields = stop_fields(&[(line.id, "10", "0", "", "")], &cash);
+        self.deliver(&self.driver, &out, &fields).await.assert_ok();
+        let after = self.reload(&out).await;
+        assert_eq!(after.status.as_str(), "delivered");
+        after
+    }
+
+    /// `by` posts `fields` to `path`.
+    pub async fn post(&self, by: &User, path: &str, fields: &[(&str, &str)]) -> TestResponse {
+        self.app.acting_as(by);
+        self.app.htmx().post(path, fields).await
+    }
+
+    /// `by` puts `delivery` under review for `reason`.
+    pub async fn open_review(&self, by: &User, delivery: &Delivery, reason: &str) -> TestResponse {
+        self.post(
+            by,
+            &format!("/deliveries/{}/open-review", delivery.id),
+            &[("reason", reason)],
+        )
+        .await
+    }
+
+    /// `by` closes the review of `delivery` as upheld with `note`.
+    pub async fn close_review(&self, by: &User, delivery: &Delivery, note: &str) -> TestResponse {
+        self.post(
+            by,
+            &format!("/deliveries/{}/close-review", delivery.id),
+            &[("outcome", "upheld"), ("note", note)],
+        )
+        .await
+    }
+
     /// `by` posts a failed visit of `delivery` for `reason`.
     pub async fn fail(&self, by: &User, delivery: &Delivery, reason: &str) -> TestResponse {
         self.app.acting_as(by);
@@ -370,21 +420,28 @@ pub async fn boot_with(module: WlDelivery, docs: Documents) -> World {
     let delivered = Recorded::new();
     let failed = Recorded::new();
     let dispatched = Recorded::new();
+    let disputed = Recorded::new();
+    let dispute_closed = Recorded::new();
+    let tickets = TicketDesk::default();
     let roster = Roster::default();
     let guard: Arc<dyn DocumentGuard> = Arc::new(docs.clone());
     let workforce: Arc<dyn Workforce> = Arc::new(roster.clone());
+    let creator: Arc<dyn TaskCreator> = Arc::new(tickets.clone());
     let app = App::new()
         .module(Auth::new())
         .module(renox::audit::Audit)
         .module(Permissions)
         .module(module)
         .provide(guard)
-        .provide(workforce);
+        .provide(workforce)
+        .provide(creator);
     let app = record(app, &assigned);
     let app = record(app, &out);
     let app = record(app, &delivered);
     let app = record(app, &failed);
     let app = record(app, &dispatched);
+    let app = record(app, &disputed);
+    let app = record(app, &dispute_closed);
     let config = ClientConfig::parse(CLIENT).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     let dir = views.path().to_path_buf();
@@ -432,6 +489,9 @@ pub async fn boot_with(module: WlDelivery, docs: Documents) -> World {
         delivered,
         failed,
         dispatched,
+        disputed,
+        dispute_closed,
+        tickets,
         dispatcher,
         manager,
         driver,
