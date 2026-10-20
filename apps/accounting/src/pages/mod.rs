@@ -2,6 +2,7 @@
 //! Every route needs a signed-in user; each handler checks the permission
 //! of its action.
 
+pub mod aml;
 pub mod cdd;
 pub mod deadline_notices;
 pub mod engagements;
@@ -29,6 +30,7 @@ pub fn routes() -> Routes {
         .merge(returns::routes())
         .merge(portal_returns::routes())
         .merge(letters::routes())
+        .merge(aml::routes())
 }
 
 /// The app text `key` (without the `accounting.` prefix).

@@ -37,6 +37,15 @@ pub const RETURNS_FILE: &str = "returns.file";
 /// WIP a partner decides.
 pub const WIP_WRITE_OFF: &str = "wip.write_off";
 
+/// Raise an AML concern about a client (any member of staff). It shows
+/// nothing afterwards: the case is the MLRO's (`ACC.ACL.05`).
+pub const AML_RAISE: &str = "aml.raise";
+/// See and work the AML cases: `review`, `report` and `close`, and the
+/// engagement decision after a report. Held by the MLRO and deputy only
+/// (`ACC.ACL.05`), never by the company admin, as with
+/// `parties.block_reason.view`.
+pub const AML_MANAGE: &str = "aml.manage";
+
 /// The permission of wl-parties that shows restricted block reasons and
 /// Block records (`PTY.ACL.02`; the MLRO and deputy). In 04 it also shows a
 /// possible match in a refusal, the CDD file's exit or rejection reason, and
@@ -59,6 +68,8 @@ pub const ALL: &[&str] = &[
     RETURNS_REVIEW,
     RETURNS_FILE,
     WIP_WRITE_OFF,
+    AML_RAISE,
+    AML_MANAGE,
 ];
 
 /// The partner: owns the client relationship, ends engagements (§3.1). The

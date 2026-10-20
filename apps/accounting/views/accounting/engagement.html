@@ -19,6 +19,12 @@
         <rx-confirm :id="'engagement-letter-send-' ~ engagement.id" :label="tx['letters.send']" :action="route('accounting.engagement_letter_send', engagement.id)" method="POST"
                     :title="tx['letters.send']" :message="tx['letters.send_message']" :confirm-label="tx['letters.send']" :cancel-label="tx['button_cancel']" icon="send"/>
       </template>
+      <template rx-if="can_raise_aml">
+        <rx-action-sheet :id="'engagement-aml-' ~ engagement.id" :label="tx['aml.raise']" :action="route('accounting.engagement_aml_concern', engagement.id)"
+                         :title="tx['aml.raise']" :description="tx['aml.raise_description']" :submit-label="tx['aml.raise']" icon="shield-alert">
+          <rx-textarea name="facts" :label="tx['aml.facts']" :id="'engagement-aml-facts-' ~ engagement.id" required/>
+        </rx-action-sheet>
+      </template>
       <template rx-if="can_activate">
         <rx-confirm :id="'engagement-activate-' ~ engagement.id" :label="tx['engagements.activate']" :action="route('accounting.engagement_activate', engagement.id)" method="POST"
                     :title="tx['engagements.activate']" :message="tx['engagements.activate_message']" :confirm-label="tx['engagements.activate']" :cancel-label="tx['button_cancel']" icon="check"/>

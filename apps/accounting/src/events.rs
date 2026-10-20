@@ -14,6 +14,9 @@
 //! - Engagement `resume` and `resume_approved`: its tasks are released, its
 //!   retainer resumed, the skipped request lists created and the deadline
 //!   notice reminders cancelled ([`crate::engagements::after_resume`]).
+//! - `ScreeningMatchConfirmed`: `ACC.RUL.12` checks the client company is
+//!   blocked, opens the AML case or adds to the open one and notifies the
+//!   MLRO ([`crate::aml_cases::on_match_confirmed`], BL-ACC-10).
 //! - Return transitions: the notices, the preparer's task and the linked
 //!   deadline task ([`crate::return_effects`]); `TaskOverdue` tells the
 //!   preparer's task to start the overdue linked task.
@@ -28,9 +31,9 @@
 
 use renox::prelude::*;
 use renox::state_machine::Transitioned;
-use wl_kernel::PartyBlocked;
 use wl_kernel::deadlines::TaskOverdue;
 use wl_kernel::documents::today;
+use wl_kernel::{PartyBlocked, ScreeningMatchConfirmed};
 
 use crate::cdd::CddFile;
 use crate::cdd_machine::REJECT;
@@ -41,7 +44,8 @@ use crate::engagement_machine::{
 use crate::tax_return::Return;
 use crate::wip::{WRITE_OFF, WRITE_OFF_APPROVED, WipWriteOff};
 use crate::{
-    calendar, deadline_notices, ending, engagements, retainer, return_effects, suspension, wip,
+    aml_cases, calendar, deadline_notices, ending, engagements, retainer, return_effects,
+    suspension, wip,
 };
 
 /// Registers the listeners.
@@ -106,6 +110,13 @@ pub(crate) fn register(app: &mut Registry) {
     app.listen(|event: TaskOverdue, state: AppState| async move {
         return_effects::on_task_overdue(&state, &event).await
     });
+    app.listen(
+        |event: ScreeningMatchConfirmed, state: AppState| async move {
+            aml_cases::on_match_confirmed(&state, &event)
+                .await
+                .map(|_| ())
+        },
+    );
     app.listen(|event: PartyBlocked, state: AppState| async move {
         engagements::suspend_for_block(&state, event.party, &event.display_reason).await
     });

@@ -2,6 +2,9 @@
 #![warn(missing_docs)]
 
 pub mod activation;
+pub mod aml;
+pub mod aml_cases;
+pub mod aml_machine;
 pub mod calendar;
 pub mod cdd;
 pub mod cdd_files;
@@ -39,6 +42,7 @@ use renox::db::Migration;
 use renox::nav::NavLink;
 use renox::prelude::*;
 
+pub use aml::{AmlCase, AmlKind, AmlMatch, AmlStatus};
 pub use cdd::{CddFile, CddParty, CddStatus, RiskRating, ScreenedRole};
 pub use engagement::{Engagement, EngagementStatus, FeeBasis, NewEngagement};
 pub use letters::EngagementLetter;
@@ -76,6 +80,14 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "accounting/portal_return.html",
         include_str!("../views/accounting/portal_return.html"),
+    ),
+    (
+        "accounting/aml_cases.html",
+        include_str!("../views/accounting/aml_cases.html"),
+    ),
+    (
+        "accounting/aml_case.html",
+        include_str!("../views/accounting/aml_case.html"),
     ),
     (
         "accounting/portal_letter.html",
@@ -123,7 +135,9 @@ impl Module for Accounting {
             .view_data::<pages::returns::IndexPage>()
             .view_data::<pages::returns::ShowPage>()
             .view_data::<pages::portal_returns::PortalReturnPage>()
-            .view_data::<pages::letters::PortalLetterPage>();
+            .view_data::<pages::letters::PortalLetterPage>()
+            .view_data::<pages::aml::IndexPage>()
+            .view_data::<pages::aml::ShowPage>();
         app.templates(|env| {
             for (name, source) in VIEWS {
                 // The app's own file of that name wins.
@@ -140,6 +154,8 @@ impl Module for Accounting {
             .model::<client_notices::ClientNotice>()
             .model::<deadline_notices::DeadlineNotice>()
             .model::<request_lists::RequestList>()
+            .model::<AmlCase>()
+            .model::<AmlMatch>()
             .model::<letters::EngagementLetter>()
             .model::<Return>()
             .model::<ReturnSignature>()
@@ -150,6 +166,9 @@ impl Module for Accounting {
         ending::register(app);
         return_effects::register_types();
         cdd_machine::register();
+        // The AML case: the MLRO's alone (`ACC.ACL.05`), BL-ACC-10.
+        aml_machine::register();
+        aml_cases::register();
         // `engagement.activate` checks the client's KYC documents.
         documents::register();
         events::register(app);
@@ -179,6 +198,15 @@ impl Module for Accounting {
                 .group("nav.app")
                 .order(10)
                 .permission(permissions::ENGAGEMENTS_VIEW),
+        );
+        // The MLRO's cases: only their holders see the link (`aml.manage`).
+        app.nav(
+            "app",
+            NavLink::route("accounting.aml_cases", "nav.aml_cases")
+                .icon("shield-alert")
+                .group("nav.app")
+                .order(12)
+                .permission(permissions::AML_MANAGE),
         );
         app.nav(
             "app",

@@ -3,6 +3,7 @@
 use renox::db::{ToDbValue, Transaction, now};
 use renox::prelude::*;
 
+use crate::aml::AmlCase;
 use crate::cdd::CddFile;
 use crate::engagement::Engagement;
 use crate::tax_return::Return;
@@ -58,6 +59,23 @@ pub(crate) async fn set_return(
     all.push(("updated_at", &stamp));
     Return::query()
         .where_(Return::ID.eq(id))
+        .update(&mut *tx, &all)
+        .await?;
+    Ok(())
+}
+
+/// Sets columns of AML case `id` other than the status and stamps
+/// `updated_at`.
+pub(crate) async fn set_aml_case(
+    tx: &mut Transaction,
+    id: i64,
+    columns: &[(&str, &(dyn ToDbValue + Sync))],
+) -> Result {
+    let mut all: Vec<(&str, &(dyn ToDbValue + Sync))> = columns.to_vec();
+    let stamp = now();
+    all.push(("updated_at", &stamp));
+    AmlCase::query()
+        .where_(AmlCase::ID.eq(id))
         .update(&mut *tx, &all)
         .await?;
     Ok(())
