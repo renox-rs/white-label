@@ -192,6 +192,11 @@ pub struct Variation {
     pub boq_line_id: Option<i64>,
     /// The quantity an omission takes out.
     pub omitted_quantity: Option<i64>,
+    /// The day the project manager was reminded to chase the client
+    /// (`CON.RUL.09`), for the latest submission.
+    pub chased_on: Option<NaiveDate>,
+    /// The day the MD was notified, for the latest submission.
+    pub escalated_on: Option<NaiveDate>,
     /// How much of an approved omission progress had overtaken: the QS is
     /// warned to record it as a claim.
     pub excess_quantity: i64,
@@ -349,12 +354,21 @@ pub fn claim_problem(variation: &Variation) -> Option<String> {
 }
 
 /// The effect of `submit` inside its transaction: the day of the submission
-/// is the notice date.
+/// is the notice date and starts the clock of `CON.RUL.09` again.
 pub(crate) async fn submit_effects(tx: &mut Transaction, variation: &Variation) -> Result {
     let day = Some(today());
+    let none: Option<NaiveDate> = None;
     Variation::query()
         .where_(Variation::ID.eq(variation.id))
-        .update(&mut *tx, &[("submitted_on", &day), ("notice_date", &day)])
+        .update(
+            &mut *tx,
+            &[
+                ("submitted_on", &day),
+                ("notice_date", &day),
+                ("chased_on", &none),
+                ("escalated_on", &none),
+            ],
+        )
         .await?;
     Ok(())
 }
@@ -461,6 +475,8 @@ async fn resubmit_effects(tx: &mut Transaction, variation: &Variation) -> Result
         submitted_on: None,
         notice_date: None,
         notice_late: false,
+        chased_on: None,
+        escalated_on: None,
         ipa_id: None,
         created_at: None,
         updated_at: None,

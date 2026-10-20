@@ -609,6 +609,22 @@ const TEXTS: &[(&str, &str)] = &[
         "construction.variation.excess_body",
         "{{ excess }} {{ unit }} of the omission was already done when the client approved it. Record the excess as a claim.",
     ),
+    (
+        "construction.variation.chase_title",
+        "Chase the client: {{ label }} of {{ project }} has had no answer for {{ days }} days",
+    ),
+    (
+        "construction.variation.chase_body",
+        "The variation was submitted on {{ date }} and the client has neither approved nor rejected it. Chase the client; nothing is sent to the client by the platform.",
+    ),
+    (
+        "construction.variation.escalated_title",
+        "{{ label }} of {{ project }} has had no answer from the client for {{ days }} days",
+    ),
+    (
+        "construction.variation.escalated_body",
+        "The variation was submitted on {{ date }} and the client has neither approved nor rejected it. The project manager was reminded to chase the client 14 days after the submission.",
+    ),
     ("construction.variation.created", "Variation recorded."),
     ("construction.variation.priced", "Variation updated."),
     (

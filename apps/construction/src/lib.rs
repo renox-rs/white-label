@@ -6,6 +6,7 @@ pub mod boq;
 pub mod call;
 pub mod cancellation;
 pub mod certificate;
+pub mod chase;
 pub mod completion;
 pub mod cutoff;
 pub mod deduction;
@@ -53,6 +54,10 @@ pub const RETENTION_TASK: &str = "construction:retention-daily";
 
 /// The name of the daily scheduled task of the guarantees (`CON.RUL.11`).
 pub const GUARANTEE_TASK: &str = "construction:guarantee-daily";
+
+/// The name of the daily scheduled task of the unanswered variations
+/// (`CON.RUL.09`).
+pub const VARIATION_CHASE_TASK: &str = "construction:variation-chase-daily";
 
 /// The Construction module. Add it to the app with
 /// `.module(construction::Construction)`.
@@ -103,6 +108,15 @@ impl Module for Construction {
             .daily_at("02:00", GUARANTEE_TASK, |state: AppState| async move {
                 expiry::daily(&state).await
             })
+            .timezone("Asia/Dubai");
+        // `CON.RUL.09`: the project manager is reminded to chase a variation
+        // the client does not answer after 14 days, the MD told at 30.
+        app.schedule()
+            .daily_at(
+                "02:00",
+                VARIATION_CHASE_TASK,
+                |state: AppState| async move { chase::daily(&state).await },
+            )
             .timezone("Asia/Dubai");
         submission::register_types();
         cutoff::schedule(app);
