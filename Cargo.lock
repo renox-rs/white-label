@@ -3480,6 +3480,7 @@ dependencies = [
  "serde",
  "tempfile",
  "wl-kernel",
+ "wl-invoicing",
 ]
 
 [[package]]
