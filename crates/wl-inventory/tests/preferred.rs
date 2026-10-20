@@ -225,6 +225,93 @@ async fn the_request_shows_both_suppliers_with_lead_times_and_last_prices() {
     t.app.get("/preferred-requests").await.assert_status(403);
 }
 
+/// Three posted receipts of `supplier` against `item` in the live window
+/// (the last 30 days), `late` of them after the date the order expected
+/// them; no rejection, no price history.
+async fn receipts_of(t: &Booted, supplier: PartyId, item: &Item, late: usize) {
+    use renox::chrono::{Days, NaiveDate, TimeZone, Utc};
+    use renox::state_machine::StateMachine;
+    use wl_inventory::{GoodsReceipt, GoodsReceiptLine, GoodsReceiptStatus, PurchaseOrder};
+
+    let store = t.location(&format!("S-{}", supplier.0), None).await;
+    let today: NaiveDate = wl_kernel::documents::today();
+    for n in 0..3 {
+        let (order, line) = t.order_from(supplier, &store, item, 10_000, 1_000).await;
+        let on = today - Days::new(10 + n as u64);
+        let expected = if n < late { on - Days::new(5) } else { on };
+        PurchaseOrder::query()
+            .where_(PurchaseOrder::ID.eq(order.id))
+            .update(t.db(), &[("expected_date", &Some(expected))])
+            .await
+            .unwrap();
+        let mut receipt = GoodsReceipt {
+            purchase_order_id: Some(order.id),
+            supplier_party_id: supplier.0,
+            location_id: store.id,
+            status: GoodsReceiptStatus::Posted,
+            posted_at: Some(Utc.from_utc_datetime(&on.and_hms_opt(8, 0, 0).unwrap())),
+            ..GoodsReceipt::default()
+        };
+        let mut tx = t.db().begin().await.unwrap();
+        receipt
+            .insert_in_state(&mut tx, GoodsReceiptStatus::Posted, "fixture")
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+        let mut row = GoodsReceiptLine {
+            goods_receipt_id: receipt.id,
+            position: 1,
+            po_line_id: Some(line.id),
+            item_id: item.id,
+            received_qty_milli: 10_000,
+            accepted_qty_milli: 10_000,
+            unit_cost: 1_000,
+            ..GoodsReceiptLine::default()
+        };
+        row.save(t.db()).await.unwrap();
+    }
+}
+
+/// Done when 2 and 8: a supplier with no receipts in the window shows
+/// *not enough data* (no score); with receipts the screen shows the real
+/// score and band of each supplier: Al Noor all on time (100, good), Gulf
+/// Build one receipt late of three (40 x 2/3 + 30 + 15 of 85: 84, watch).
+#[renox::test]
+async fn the_request_shows_the_real_score_and_band_of_both_suppliers() {
+    let t = boot().await;
+    let item = cement(&t).await;
+    let a = manager(&t, "Amal").await;
+    let b = manager(&t, "Basil").await;
+    ask(&t, &a, &item, GULF_BUILD).await.assert_ok();
+    let id = request_of(&t, &item).await.id;
+    let path = format!("/preferred-requests/{id}");
+    let read = |body: String| -> renox::serde_json::Value {
+        renox::serde_json::from_str(&body).unwrap()
+    };
+
+    // No receipt yet: nothing to score.
+    t.app.acting_as(&b);
+    let shown = t.app.get(&path).await;
+    shown.assert_ok();
+    let body = read(shown.text());
+    for side in ["from", "to"] {
+        assert!(body[side]["score"].is_null(), "{body}");
+        assert_eq!(body[side]["band"], "not_enough_data", "{body}");
+    }
+
+    receipts_of(&t, AL_NOOR, &item, 0).await;
+    receipts_of(&t, GULF_BUILD, &item, 1).await;
+
+    t.app.acting_as(&b);
+    let body = read(t.app.get(&path).await.text());
+    assert_eq!(body["from"]["supplier_party_id"], AL_NOOR.0);
+    assert_eq!(body["from"]["score"], 100, "{body}");
+    assert_eq!(body["from"]["band"], "good", "{body}");
+    assert_eq!(body["to"]["supplier_party_id"], GULF_BUILD.0);
+    assert_eq!(body["to"]["score"], 84, "{body}");
+    assert_eq!(body["to"]["band"], "watch", "{body}");
+}
+
 /// Done when 3: adding a new alternative needs no approval.
 #[renox::test]
 async fn adding_an_alternative_needs_no_approval() {
