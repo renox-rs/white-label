@@ -1,5 +1,6 @@
 pub mod activity;
 pub mod compliance_settings;
+pub mod construction_seed;
 pub mod dashboard;
 pub mod demo;
 pub mod home;

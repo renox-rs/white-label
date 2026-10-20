@@ -27,6 +27,7 @@ pub mod registration;
 pub mod release;
 pub mod retention;
 pub mod retention_deduction;
+pub mod seed;
 pub mod submission;
 mod tasks;
 pub mod termination;
@@ -112,6 +113,8 @@ impl Module for Construction {
         registration::register();
         wl_kernel::inventory::provide_order_rules(app, registration::RegistrationRule);
         award::register_block_effect();
+        // The labour rules the owner is alerted about (BL-CON-18).
+        seed::register_critical_rules();
         deduction::register();
         retention_deduction::register();
         retention_deduction::listen(app);

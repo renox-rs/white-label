@@ -95,6 +95,9 @@ pub const PROJECT_MANAGER: &str = con::PROJECT_MANAGER_ROLE;
 /// The quantity surveyor (QS): records the client's certificates and the
 /// deductions on them (02 §3, `CON.ACL.14`).
 pub const QUANTITY_SURVEYOR: &str = con::QS_ROLE;
+/// The HSE officer: told of a midday break flag (`HRM.RUL.13`) and the
+/// responsible role of the ISO certificate (02 §7.2).
+pub const HSE_OFFICER: &str = "hse";
 /// Everyone who signs up.
 pub const MEMBER: &str = "member";
 
@@ -500,6 +503,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             sales::LEADS_MANAGE,
         ],
     ),
+    (HSE_OFFICER, &[attendance::VIEW]),
     (MEMBER, &[]),
 ];
 

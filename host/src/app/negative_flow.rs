@@ -82,6 +82,7 @@ pub fn invoicing_for(client_app: &str, entities: &[String]) -> WlInvoicing {
             }
             module
         }
+        "construction" => super::construction_seed::invoicing(module, entities),
         _ => module,
     }
 }
@@ -137,6 +138,7 @@ pub fn payments_for(client_app: &str) -> WlPayments {
             // The property manager is told of a bounce and at the reminder,
             // and decides beside the accountant (items 10 and 11).
             .cheque_manager(PROPERTY_MANAGER, true),
+        "construction" => super::construction_seed::payments(module),
         _ => module,
     }
 }

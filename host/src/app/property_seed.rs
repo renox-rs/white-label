@@ -141,6 +141,7 @@ pub fn sales_for(client_app: &str) -> WlSales {
     let module = WlSales::new();
     match client_app {
         PROPERTY => module.over_budget_approval(true).campaign_required_for(&[]),
+        super::construction_seed::CONSTRUCTION => super::construction_seed::sales(module),
         _ => module,
     }
 }
@@ -152,6 +153,9 @@ pub fn hr_for(client_app: &str, owner_role: &str) -> wl_hr::WlHr {
     let module = wl_hr::WlHr::new();
     match client_app {
         PROPERTY => module.manager_role(PROPERTY_MANAGER).owner_role(owner_role),
+        super::construction_seed::CONSTRUCTION => {
+            super::construction_seed::hr(module, owner_role)
+        }
         _ => module,
     }
 }
@@ -159,7 +163,10 @@ pub fn hr_for(client_app: &str, owner_role: &str) -> wl_hr::WlHr {
 /// The attendance module with the client's settings: HR and the HSE officer
 /// are the roles of the roles module; the Property client has no construction
 /// crews, so the defaults of the module apply.
-pub fn attendance_for(_client_app: &str) -> wl_attendance::WlAttendance {
+pub fn attendance_for(client_app: &str) -> wl_attendance::WlAttendance {
+    if client_app == super::construction_seed::CONSTRUCTION {
+        return super::construction_seed::attendance(wl_attendance::WlAttendance::new());
+    }
     wl_attendance::WlAttendance::new().hr_role(super::roles::HR)
 }
 

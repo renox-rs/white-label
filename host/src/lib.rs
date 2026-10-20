@@ -130,6 +130,11 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
     if client_app == "property" {
         app = app.module(app::property_seed::PropertySeed);
     }
+    // The Construction client's categories, checklists and SOPs (BL-CON-17,
+    // BL-CON-18).
+    if client_app == app::construction_seed::CONSTRUCTION {
+        app = app.module(app::construction_seed::ConstructionSeed);
+    }
     // The page that shows the shared modules' settings of this client.
     let app = app
         .module(app::negative_flow::NegativeFlow::new(&client_app, entities))
@@ -178,6 +183,9 @@ fn enable(
         "parties" => Ok(app.module(wl_parties::WlParties)),
         "documents" => {
             app::property_seed::register_documents(client_app);
+            if client_app == app::construction_seed::CONSTRUCTION {
+                app::construction_seed::register_documents();
+            }
             Ok(app.module(wl_documents::WlDocuments))
         }
         "notify" => {
@@ -199,7 +207,14 @@ fn enable(
         "sales" => Ok(app.module(app::property_seed::sales_for(client_app))),
         "hr" => Ok(app.module(app::property_seed::hr_for(client_app, owner_role))),
         "attendance" => Ok(app.module(app::property_seed::attendance_for(client_app))),
-        "inventory" => Ok(app.module(wl_inventory::WlInventory::new())),
+        "inventory" => {
+            let module = wl_inventory::WlInventory::new();
+            Ok(app.module(if client_app == app::construction_seed::CONSTRUCTION {
+                app::construction_seed::inventory(module)
+            } else {
+                module
+            }))
+        }
         "portal" => Ok(app.module(wl_portal::WlPortal)),
         other => Err(ConfigError(format!(
             "[modules] `{other}` is not built yet; remove it from client.toml for now"
