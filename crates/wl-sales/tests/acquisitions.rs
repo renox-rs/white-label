@@ -436,6 +436,24 @@ async fn sal20_a_merge_keeps_the_acquisition_acquired_first() {
         .await
         .unwrap();
     assert_eq!(live, 1, "the customer is counted once");
+    // The report counts one new customer, not two: the sale that moved to
+    // the survivor is its first sale.
+    let facts = wl_sales::report::load(t.db(), &wl_sales::SalesConfig::default())
+        .await
+        .unwrap();
+    let report = wl_sales::report::compute(
+        &facts,
+        &wl_sales::report::Filter::default(),
+        wl_sales::report::GroupBy::Source,
+        &wl_sales::report::Viewer::all(),
+    );
+    assert_eq!(report.rows.iter().map(|r| r.customers).sum::<i64>(), 1);
+    let referral = report
+        .rows
+        .iter()
+        .find(|r| r.cells().customers == "1")
+        .expect("the survivor's source has the customer");
+    assert_eq!(referral.cells().value, "700.00");
     // The sales of the merged party moved to the survivor.
     let sales = AcquisitionSale::query()
         .where_(AcquisitionSale::PARTY_ID.eq(P.0))

@@ -725,6 +725,7 @@ pub async fn merge_parties(state: &AppState, survivor: PartyId, merged: PartyId)
     let mine = PartyAcquisition::of_party(&state.db, survivor).await?;
     let theirs = PartyAcquisition::of_party(&state.db, merged).await?;
     let mut plan: Option<(PartyAcquisition, Option<PartyAcquisition>)> = None;
+    let mut kept = None;
     let mut event = None;
     match (mine, theirs) {
         (_, None) => {}
@@ -757,6 +758,7 @@ pub async fn merge_parties(state: &AppState, survivor: PartyId, merged: PartyId)
     let mut tx = state.db.begin().await?;
     move_records(&mut tx, survivor, merged).await?;
     if let Some((keep, drop)) = plan {
+        kept = Some(keep.id);
         // The kept row is the survivor's; the other is history.
         set_party(&mut tx, keep.id, survivor.0).await?;
         if let Some(drop) = drop {
@@ -772,6 +774,14 @@ pub async fn merge_parties(state: &AppState, survivor: PartyId, merged: PartyId)
     tx.commit().await?;
     if let Some(event) = event {
         state.emit(event).await?;
+    }
+    // The sales of the merged party now belong to the survivor: when its
+    // acquisition has no first sale, the earliest of them becomes it, so the
+    // customer is counted once.
+    if let Some(id) = kept
+        && let Some(acquisition) = PartyAcquisition::find(&state.db, id).await?
+    {
+        relink(state, &acquisition).await?;
     }
     Ok(())
 }
