@@ -14,6 +14,7 @@ pub mod lot;
 pub mod match_source;
 pub mod movement;
 pub mod pages;
+pub mod po_issue;
 pub mod po_revise;
 pub mod purchase_order;
 pub mod receipt_post;
@@ -40,6 +41,7 @@ pub use location::{Location, LocationType, NegativeStockPolicy};
 pub use lot::{Lot, LotStatus};
 pub use match_source::PurchaseMatch;
 pub use movement::{MovementType, StockMovement};
+pub use po_issue::{IssueOutcome, issue};
 pub use po_revise::{PurchaseOrderRevision, ReviseInput, ReviseOutcome, revise};
 pub use purchase_order::{PurchaseOrder, PurchaseOrderLine, PurchaseOrderStatus};
 pub use receipt_post::{PostOutcome, post};
@@ -233,6 +235,13 @@ impl Module for WlInventory {
         .action(po_revise::REVISE, po_revise::ACTION)
         .action(po_revise::REVISE_PART, po_revise::ACTION)
         .scope(|_order: &PurchaseOrder| renox::auth::permissions::Scope::global())
+        // Issuing starts new business with the supplier: a blocked one waits
+        // for an approved exception (`PTY.ACL.03`).
+        .block_guarded(
+            po_issue::ISSUE,
+            wl_kernel::ActionKind::Start,
+            |order: &PurchaseOrder| Some(order.supplier()),
+        )
         .register();
         for (index, limit) in self.config.order_limits_fils.iter().enumerate() {
             let mut policy = wl_kernel::PolicyDefault::new(po_revise::ACTION).amount_above(*limit);

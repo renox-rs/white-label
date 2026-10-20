@@ -427,7 +427,7 @@ impl StateMachine for PurchaseOrder {
                     .from([Received])
                     .to(PartiallyReceived),
             );
-        crate::po_revise::add_to(machine)
+        crate::po_revise::add_to(crate::po_issue::add_to(machine))
     }
 }
 

@@ -753,7 +753,9 @@ pub async fn revise(
 /// A database error.
 pub async fn recheck(tx: &mut Transaction, request: &ApprovalRequest) -> Result<Option<String>> {
     if request.action != ACTION {
-        return Ok(None);
+        // The block guard of `issue` is checked again at its final approval;
+        // registering this check replaced the kernel's.
+        return wl_kernel::block_guard::recheck(tx, request).await;
     }
     let asked: ReviseInput =
         renox::serde_json::from_value(request.payload.0.clone()).unwrap_or_default();

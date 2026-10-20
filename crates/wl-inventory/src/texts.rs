@@ -405,6 +405,32 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_inventory.landed.bad_date",
         "Enter the posting date like 2027-01-31.",
     ),
+    // Issuing a purchase order.
+    (
+        "wl_inventory.issue.not_draft",
+        "Only a draft purchase order can be issued ({{ status }}).",
+    ),
+    (
+        "wl_inventory.issue.no_supplier",
+        "Choose the supplier before the purchase order is issued.",
+    ),
+    (
+        "wl_inventory.issue.no_location",
+        "Choose the delivery location before the purchase order is issued.",
+    ),
+    (
+        "wl_inventory.issue.no_lines",
+        "A purchase order needs at least one line.",
+    ),
+    (
+        "wl_inventory.issue.no_price",
+        "Line {{ position }} needs a quantity and a price.",
+    ),
+    ("wl_inventory.issue.issued", "Purchase order issued."),
+    (
+        "wl_inventory.issue.exception_asked",
+        "The exception was asked for; the purchase order stays a draft until it is approved.",
+    ),
     // Names of the rejected goods' returns.
     (
         "wl_inventory.return.collection_proof",

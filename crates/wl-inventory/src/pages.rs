@@ -8,6 +8,7 @@
 //! | `POST /supplier-returns/{id}/dispatch` | `wl_inventory.return_dispatch` | `supplier_returns.manage` |
 //! | `POST /supplier-returns/{id}/credit` | `wl_inventory.return_credit` | `supplier_returns.manage` |
 //! | `POST /supplier-returns/{id}/cancel` | `wl_inventory.return_cancel` | `supplier_returns.manage` |
+//! | `POST /purchase-orders/{id}/issue` | `wl_inventory.order_issue` | `purchase_orders.issue` |
 //! | `POST /purchase-orders/{id}/revise` | `wl_inventory.order_revise` | `purchase_orders.issue` |
 //! | `GET /purchase-orders/{id}/revisions/{revision}/document` | `wl_inventory.order_document` | `purchase_orders.view` or `.issue` |
 //! | `POST /landed-costs/{id}/allocate` | `wl_inventory.landed_cost_allocate` | `landed_costs.post` |
@@ -34,6 +35,7 @@ use crate::goods_receipt::{DraftLine, GoodsReceipt, GoodsReceiptStatus, update_l
 use crate::landed_adjust::{AdjustOutcome, NewAdjustment};
 use crate::landed_cost::{CostKind, NewCostLine};
 use crate::permissions;
+use crate::po_issue::IssueOutcome;
 use crate::po_revise::{ReviseInput, ReviseOutcome};
 use crate::purchase_order::PurchaseOrder;
 use crate::receipt_post::{PostOutcome, post};
@@ -51,6 +53,8 @@ pub fn routes() -> Routes {
         .name("wl_inventory.receipt_post")
         .post("/goods-receipts/{id}/reverse", reverse_receipt)
         .name("wl_inventory.receipt_reverse")
+        .post("/purchase-orders/{id}/issue", issue_order)
+        .name("wl_inventory.order_issue")
         .post("/purchase-orders/{id}/revise", revise_order)
         .name("wl_inventory.order_revise")
         .get(
@@ -372,6 +376,93 @@ fn revision_of(form: &BTreeMap<String, String>) -> std::result::Result<ReviseInp
         }
     }
     Ok(asked)
+}
+
+/// Escapes `text` for HTML.
+fn escaped(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
+/// The refusal of a blocked supplier as a fragment: the message (neutral
+/// *on hold*, or the reasons for a holder of `parties.block_reason.view`),
+/// the links to the records, and the form that asks for an exception.
+fn refusal_fragment(
+    lang: &Lang,
+    refusal: &wl_kernel::block_guard::BlockRefusal,
+    action: &str,
+) -> Response {
+    let view = refusal.view(lang, action, &[]);
+    let mut html = format!(
+        "<div class=\"rx-alert\" role=\"alert\">{}</div>",
+        escaped(&view.message)
+    );
+    if !view.lines.is_empty() {
+        html.push_str("<ul>");
+        for line in &view.lines {
+            html.push_str(&format!(
+                "<li><a href=\"{}\">{}</a></li>",
+                escaped(&line.link),
+                escaped(&line.label)
+            ));
+        }
+        html.push_str("</ul>");
+    }
+    html.push_str(&format!(
+        "<form method=\"post\" action=\"{}\">",
+        escaped(&view.action)
+    ));
+    for field in &view.fields {
+        html.push_str(&format!(
+            "<input type=\"hidden\" name=\"{}\" value=\"{}\">",
+            escaped(&field.name),
+            escaped(&field.value)
+        ));
+    }
+    html.push_str(&format!(
+        "<button type=\"submit\">{}</button></form>",
+        escaped(&view.offer)
+    ));
+    (
+        StatusCode::UNPROCESSABLE_ENTITY,
+        [("content-type", "text/html; charset=utf-8")],
+        html,
+    )
+        .into_response()
+}
+
+/// `POST /purchase-orders/{id}/issue`: issues a draft order. A blocked
+/// supplier is refused with *on hold* and the offer to request an exception;
+/// the same form posted with `block_exception=1` asks for it (`PTY.ACL.03`).
+async fn issue_order(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let exception = form.contains_key(wl_kernel::block_guard::EXCEPTION_FIELD);
+    match crate::po_issue::issue(&state, &user, id, exception).await {
+        Ok(IssueOutcome::Issued(_)) => Ok((
+            Toast::success(text(&lang, "issue.issued")),
+            renox::HxRefresh,
+        )
+            .into_response()),
+        Ok(IssueOutcome::ExceptionRequested(_)) => Ok((
+            Toast::success(text(&lang, "issue.exception_asked")),
+            renox::HxRefresh,
+        )
+            .into_response()),
+        Ok(IssueOutcome::Refused(refusal)) => Ok(refusal_fragment(
+            &lang,
+            &refusal,
+            &format!("/purchase-orders/{id}/issue"),
+        )),
+        Err(TransitionError::Guard(message)) => Err(refused(message)),
+        Err(other) => Err(other.into_error()),
+    }
 }
 
 /// `POST /purchase-orders/{id}/revise`: revises an issued order. A higher
