@@ -96,6 +96,10 @@ pub(crate) struct SubmitInput {
     /// The lines for work after the end of the bill's service contract.
     #[serde(default)]
     pub after_end: Vec<LateLine>,
+    /// Why a line coded to a landed cost is refused: the landed cost is
+    /// unknown or belongs to another legal entity than the bill's.
+    #[serde(default)]
+    pub landed_cost_problem: Option<String>,
 }
 
 impl SubmitInput {
@@ -202,6 +206,10 @@ fn rules(transition: Transition<SupplierBill>, held: bool) -> Transition<Supplie
                     Err(english("wl_invoicing.supplier_bill.problem.rate").to_owned())
                 }
             })
+        })
+        .guard("landed_costs_known", |_bill: &SupplierBill, ctx| {
+            let problem = input(ctx).and_then(|i| i.landed_cost_problem);
+            Box::pin(async move { problem.map_or(Ok(()), Err) })
         })
         .guard("service_dates", |bill: &SupplierBill, ctx| {
             let contract = bill.contract().is_some();
@@ -329,6 +337,32 @@ async fn late_lines(
     Ok(late)
 }
 
+/// Why a line coded to a landed cost cannot be submitted, if one cannot: the
+/// landed cost must exist (wl-inventory, through the kernel's `LandedCosts`)
+/// and belong to the bill's receiving legal entity.
+async fn landed_cost_problem(
+    state: &AppState,
+    bill: &SupplierBill,
+    lines: &[BillLine],
+) -> Result<Option<String>> {
+    let landed = wl_kernel::invoicing::landed_costs(state);
+    for line in lines {
+        let Some(cost) = line.landed_cost() else {
+            continue;
+        };
+        let owner = landed.entity_of(&state.db, &cost).await?;
+        let message = match owner {
+            None => english("wl_invoicing.supplier_bill.problem.landed_unknown"),
+            Some(entity) if Some(entity) != bill.legal_entity_id => {
+                english("wl_invoicing.supplier_bill.problem.landed_entity")
+            }
+            Some(_) => continue,
+        };
+        return Ok(Some(format!("Line {}: {cost}: {message}", line.position)));
+    }
+    Ok(None)
+}
+
 /// What the guards need that does not depend on the lock: the supplier, the
 /// lines and the entity.
 async fn gather(state: &AppState, bill: &SupplierBill) -> Result<SubmitInput> {
@@ -341,6 +375,7 @@ async fn gather(state: &AppState, bill: &SupplierBill) -> Result<SubmitInput> {
         None => None,
     };
     let after_end = late_lines(state, bill, &lines).await?;
+    let landed_cost_problem = landed_cost_problem(state, bill, &lines).await?;
     Ok(SubmitInput {
         supplier_found: supplier.is_some(),
         lines: lines.len(),
@@ -351,6 +386,7 @@ async fn gather(state: &AppState, bill: &SupplierBill) -> Result<SubmitInput> {
             .count(),
         duplicate: None,
         after_end,
+        landed_cost_problem,
     })
 }
 
@@ -421,6 +457,7 @@ mod tests {
             undated_lines: 0,
             duplicate: None,
             after_end: Vec::new(),
+            landed_cost_problem: None,
         }
     }
 
@@ -494,6 +531,16 @@ mod tests {
             late.after_end[0].describe(),
             "line 2: 2026-10-05 (contract ended 2026-09-30)"
         );
+    }
+
+    #[renox::test]
+    async fn a_landed_cost_that_is_unknown_or_of_another_entity_is_refused() {
+        let wrong = SubmitInput {
+            landed_cost_problem: Some("Line 2: inventory.landed_cost:9: no such landed cost".into()),
+            ..ready()
+        };
+        let refused = refusal(SUBMIT, &bill(), &run(&wrong)).await.unwrap();
+        assert!(refused.contains("landed_cost:9"));
     }
 
     #[renox::test]

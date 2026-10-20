@@ -138,6 +138,14 @@ const TEXTS: &[(&str, &str)] = &[
         "Every line of a bill against a contract needs a service date.",
     ),
     (
+        "wl_invoicing.supplier_bill.problem.landed_unknown",
+        "There is no such landed cost.",
+    ),
+    (
+        "wl_invoicing.supplier_bill.problem.landed_entity",
+        "The landed cost belongs to another legal entity than the one that receives the bill.",
+    ),
+    (
         "wl_invoicing.supplier_bill.problem.not_held",
         "The bill is held, as a possible duplicate or for work after the contract end; it is not matched.",
     ),
