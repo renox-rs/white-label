@@ -32,6 +32,10 @@ mod seed_leases;
 mod seed_money;
 mod seed_owners;
 mod seed_people;
+mod seed_sales;
+mod seed_service;
+mod sales;
+mod service;
 mod seed_portfolio;
 mod specimen;
 
@@ -145,6 +149,8 @@ impl Seed<'_> {
         self.logins(false).await?;
         self.leases().await?;
         self.owners().await?;
+        self.service().await?;
+        self.sales().await?;
         // The last login is the sign the seed is done.
         self.logins(true).await?;
         Ok(())
