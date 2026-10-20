@@ -37,7 +37,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use renox::chrono::{Days, NaiveDate};
-use renox::db::Transaction;
+use renox::db::{DateTime, Transaction};
 use renox::prelude::*;
 use wl_kernel::BusinessCalendar;
 use wl_kernel::calendar::calendar;
@@ -60,7 +60,7 @@ pub trait EntryHours: Send + Sync + 'static {
     /// The minutes entered for `employee` on `date`. The default is none.
     fn minutes_on<'a>(
         &'a self,
-        _state: &'a AppState,
+        _tx: &'a mut Transaction,
         _employee: EmployeeId,
         _date: NaiveDate,
     ) -> HoursFuture<'a> {
@@ -213,12 +213,25 @@ async fn totals_in(
         .where_(AttendanceRecord::STATUS.is_in(AttendanceStatus::LIVE))
         .get(&mut *tx)
         .await?;
-    for record in &records {
-        *totals.entry(record.date).or_default() += worked_minutes(calendar, record);
+    // Records that overlap (an `overlap` flag holds them) count their shared
+    // minutes once: the worker was in one place at a time.
+    let mut ordered: Vec<&AttendanceRecord> = records.iter().collect();
+    ordered.sort_by_key(|r| (r.date, r.check_in));
+    let mut covered: BTreeMap<NaiveDate, DateTime> = BTreeMap::new();
+    for record in ordered {
+        let mut minutes = worked_minutes(calendar, record);
+        if let (Some(out), Some(until)) = (record.check_out, covered.get(&record.date).copied()) {
+            minutes -= minutes_between(record.check_in, out.min(until)).max(0);
+        }
+        if let Some(out) = record.check_out {
+            let end = covered.entry(record.date).or_insert(out);
+            *end = (*end).max(out);
+        }
+        *totals.entry(record.date).or_default() += minutes.max(0);
     }
     let entries = entry_hours(state);
     for day in days {
-        let minutes = entries.minutes_on(state, employee, *day).await?;
+        let minutes = entries.minutes_on(&mut *tx, employee, *day).await?;
         if minutes > 0 {
             *totals.entry(*day).or_default() += minutes;
         }

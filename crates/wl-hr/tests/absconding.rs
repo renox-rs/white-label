@@ -40,13 +40,15 @@ async fn post(
     employee: &Employee,
     fields: &[(&str, &str)],
 ) -> renox::testing::TestResponse {
-    t.app.acting_as(user);
-    t.on(
-        day,
+    // Sign in after the clock has moved: a session made earlier would be
+    // older than its lifetime.
+    t.on(day, async {
+        t.app.acting_as(user);
         t.app
             .htmx()
-            .post(&format!("/hr/employees/{}/exits", employee.id), fields),
-    )
+            .post(&format!("/hr/employees/{}/exits", employee.id), fields)
+            .await
+    })
     .await
 }
 

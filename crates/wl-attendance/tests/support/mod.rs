@@ -690,6 +690,7 @@ impl Booted {
         status: wl_attendance::TimesheetStatus,
     ) -> wl_attendance::Timesheet {
         let mut sheet = sheet;
+        sheet.status = status;
         let mut tx = self.db().begin().await.unwrap();
         sheet
             .insert_in_state(&mut tx, status, "fixture")

@@ -134,7 +134,10 @@ impl Span {
     /// (one ends when the other starts) do not overlap, and an empty span
     /// overlaps nothing.
     pub fn overlaps(&self, other: &Span) -> bool {
-        self.start < other.end && other.start < self.end
+        self.start < self.end
+            && other.start < other.end
+            && self.start < other.end
+            && other.start < self.end
     }
 }
 

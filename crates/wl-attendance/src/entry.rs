@@ -519,7 +519,7 @@ pub struct TimesheetEntryHours;
 impl EntryHours for TimesheetEntryHours {
     fn minutes_on<'a>(
         &'a self,
-        state: &'a AppState,
+        tx: &'a mut Transaction,
         employee: EmployeeId,
         date: NaiveDate,
     ) -> HoursFuture<'a> {
@@ -528,7 +528,7 @@ impl EntryHours for TimesheetEntryHours {
                 .where_(TimesheetEntry::EMPLOYEE_ID.eq(employee.0))
                 .where_(TimesheetEntry::DATE.eq(date))
                 .where_(TimesheetEntry::SOURCE.is_in([HoursSource::Manual, HoursSource::Generated]))
-                .get(&state.db)
+                .get(&mut *tx)
                 .await?;
             if entries.is_empty() {
                 return Ok(0);
@@ -537,7 +537,7 @@ impl EntryHours for TimesheetEntryHours {
             let regular: BTreeSet<i64> = Timesheet::query()
                 .where_(Timesheet::ID.is_in(ids.into_iter().collect::<Vec<_>>()))
                 .where_(Timesheet::KIND.eq(TimesheetKind::Regular))
-                .get(&state.db)
+                .get(&mut *tx)
                 .await?
                 .into_iter()
                 .map(|t| t.id)

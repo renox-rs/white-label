@@ -319,14 +319,15 @@ async fn att05_only_manual_and_generated_entries_count_for_the_cap() {
     )
     .await
     .unwrap();
+    let mut tx = t.db().begin().await.unwrap();
     let minutes = TimesheetEntryHours
-        .minutes_on(t.state(), a, nov(3))
+        .minutes_on(&mut tx, a, nov(3))
         .await
         .unwrap();
     assert_eq!(minutes, 180);
     assert_eq!(
         TimesheetEntryHours
-            .minutes_on(t.state(), a, nov(4))
+            .minutes_on(&mut tx, a, nov(4))
             .await
             .unwrap(),
         0
