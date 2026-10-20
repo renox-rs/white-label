@@ -600,7 +600,7 @@ async fn load_vat(
         let subject = summary
             .as_ref()
             .map(|s| Subject::new("invoicing.vat_summary", s.id));
-        let amount = payable(db, entity.id, start, end).await?;
+        let amount = payable(db, config, entity.id, start, end).await?;
         let mut paid = false;
         if let Some(subject) = &subject {
             let reference = subject.to_string();
@@ -637,8 +637,15 @@ async fn load_vat(
 
 /// The net VAT payable of the period from the documents: the VAT of the
 /// invoices less credit notes, less the input VAT of the approved supplier
-/// bills that is recovered (the VAT on owner drawings is not), in AED fils.
-pub async fn payable(db: &Db, entity: i64, start: NaiveDate, end: NaiveDate) -> Result<i64> {
+/// bills that is recovered (the VAT on owner drawings is not) and not taken
+/// back by supplier debit notes, in AED fils.
+pub async fn payable(
+    db: &Db,
+    config: &InvoicingConfig,
+    entity: i64,
+    start: NaiveDate,
+    end: NaiveDate,
+) -> Result<i64> {
     let invoices = Invoice::query()
         .where_(Invoice::LEGAL_ENTITY_ID.eq(entity))
         .where_(Invoice::STATUS.ne(InvoiceStatus::Draft))
@@ -683,7 +690,9 @@ pub async fn payable(db: &Db, entity: i64, start: NaiveDate, end: NaiveDate) -> 
         .map(|b| in_aed(b.vat_total, &b.currency, b.exchange_rate_micro).unwrap_or(0))
         .sum();
     let blocked = drawings::blocked_input_vat(db, entity, start, end).await?;
-    Ok(output - credited - (input - blocked))
+    // The input VAT that supplier debit notes take back (§5.13 step 3).
+    let debited = crate::debit_note_vat::reduction(db, config, entity, start, end).await?;
+    Ok(output - credited - (input - blocked - debited))
 }
 
 #[cfg(test)]
