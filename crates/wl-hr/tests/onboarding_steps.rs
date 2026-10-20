@@ -174,6 +174,21 @@ async fn hrm27_hr_records_the_sop_acknowledgement_in_person_with_a_witness() {
     assert_eq!(told[0].recipients.len(), 1);
     assert_eq!(told[0].data["witness"], "Amal");
     assert_eq!(told[0].data["step"], "SOPs acknowledged");
+    // It goes to the employee's own party, by SMS first, and the text names
+    // the step (the SOPs) and the witness.
+    assert_eq!(
+        told[0].recipients,
+        [wl_kernel::notify::NotifyRecipient::Party { id: ravi.party() }]
+    );
+    let def = wl_kernel::notify::notification_type("hr.onboarding_in_person_recorded")
+        .expect("the notice type is registered");
+    assert_eq!(def.channels[0], wl_kernel::notify::NotifyChannel::Sms);
+    let sms = def
+        .template_for(wl_kernel::notify::NotifyChannel::Sms, "en")
+        .expect("an SMS text");
+    let text = wl_kernel::notify::fill(&sms.body, &told[0].data);
+    assert!(text.contains("SOPs acknowledged"), "{text}");
+    assert!(text.contains("Amal"), "{text}");
 }
 
 /// AC4: HR user A cannot mark Ravi's `task` step "read the handbook" (owner
@@ -298,6 +313,17 @@ async fn hrm27_a_step_that_needs_evidence_is_not_done_without_it() {
         .unwrap();
     assert_eq!(done.status, StepStatus::Done);
     assert_eq!(done.evidence_document_id, Some(41));
+
+    // A step that does not require evidence is done without any.
+    let handbook = t.step(&onboarding, "Read the handbook").await;
+    assert!(!handbook.evidence_required);
+    let done = steps::mark_done(t.state(), handbook.id, account.id, DoneInput::default())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(done.status, StepStatus::Done);
+    assert_eq!(done.evidence_document_id, None);
+    assert_eq!(done.note, None);
 }
 
 /// AC7 and AC9: an optional step still `open` when the last required step is
