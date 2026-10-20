@@ -748,9 +748,34 @@ impl wl_portal::PortalSection for EngagementsSection {
     }
 }
 
-/// Registers the engagements section of the portal.
+/// The returns section of the portal, as the host registers it.
+struct ReturnsSection;
+
+impl wl_portal::PortalSection for ReturnsSection {
+    fn title(&self) -> String {
+        accounting::portal::returns_title()
+    }
+
+    fn rows<'a>(
+        &'a self,
+        state: &'a AppState,
+        party: PartyId,
+    ) -> wl_portal::SectionFuture<'a, Vec<wl_portal::SectionRow>> {
+        Box::pin(async move {
+            let rows = accounting::portal::returns(state, party).await?;
+            Ok::<Vec<wl_portal::SectionRow>, Error>(
+                rows.iter()
+                    .map(|row| wl_portal::SectionRow::new(&row.label, &row.status))
+                    .collect(),
+            )
+        })
+    }
+}
+
+/// Registers the engagements and the returns sections of the portal.
 pub fn register_portal_section() {
     wl_portal::register_section(accounting::portal::SECTION, EngagementsSection);
+    wl_portal::register_section(accounting::portal::RETURNS_SECTION, ReturnsSection);
 }
 
 mod returns;
