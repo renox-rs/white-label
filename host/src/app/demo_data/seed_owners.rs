@@ -14,7 +14,7 @@ use super::roles::{ACCOUNTANT, ADMIN};
 use super::seed_leases::{text, upto};
 use super::{Seed, day};
 
-impl Seed<'_> {
+impl Seed {
     /// The agreements and their statements.
     pub(crate) async fn owners(&mut self) -> Result {
         let mut made = Vec::new();
@@ -45,7 +45,9 @@ impl Seed<'_> {
             if !plan.fixed.is_empty() {
                 form.push(("fee_fixed", plan.fixed));
             }
-            self.driver.post(admin, "/property/agreements", &form).await?;
+            self.driver
+                .post(admin, "/property/agreements", &form)
+                .await?;
             let agreement = ManagementAgreement::query()
                 .order_by_desc(ManagementAgreement::ID)
                 .first(self.db())
@@ -199,7 +201,7 @@ impl Seed<'_> {
                     .post(admin, &format!("{transition}/approve"), &[])
                     .await
             })?;
-            if from_end == 2 && (number + plan.owner.len()) % 2 == 0 {
+            if from_end == 2 && (number + plan.owner.len()).is_multiple_of(2) {
                 continue;
             }
             at!(self, upto(drafted + Duration::days(3)), {
@@ -278,7 +280,10 @@ impl Seed<'_> {
                     .post(
                         accountant,
                         &format!("/property/statements/{}/transitions/revise", statement.id),
-                        &[("reason", "The owner asked for the cleaning share to be split by unit")],
+                        &[(
+                            "reason",
+                            "The owner asked for the cleaning share to be split by unit",
+                        )],
                     )
                     .await
             })?;

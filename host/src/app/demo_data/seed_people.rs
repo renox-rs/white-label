@@ -27,7 +27,7 @@ pub fn visa(n: u32) -> String {
     format!("DEMO-RV-0000{:03}", n % 1000)
 }
 
-impl Seed<'_> {
+impl Seed {
     /// The parties of the demo, by English name: the ones the shared modules
     /// seed and the ones added here.
     pub(crate) async fn parties(&mut self) -> Result {

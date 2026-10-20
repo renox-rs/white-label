@@ -104,11 +104,6 @@ impl Driver {
         Ok(())
     }
 
-    /// Whether `who` can be sent as.
-    pub fn knows(&self, who: &str) -> bool {
-        self.tokens.contains_key(who)
-    }
-
     async fn send(
         &self,
         who: &str,
@@ -150,11 +145,6 @@ impl Driver {
             headers,
             body: String::from_utf8_lossy(&bytes).into_owned(),
         })
-    }
-
-    /// A GET as `who`.
-    pub async fn get(&self, who: &str, path: &str) -> Result<Reply> {
-        self.send(who, Method::GET, path, &[]).await
     }
 
     /// A POST of a form as `who`; whatever the app answers.

@@ -2,9 +2,9 @@
 //! vendors' and buildings' papers, the contracts, the planned visits and the
 //! tickets.
 
+use super::real_today as today;
 use renox::chrono::Duration;
 use renox::prelude::*;
-use super::real_today as today;
 use wl_kernel::tickets::{Assignee, OpenTicket, Requester, TicketChannel};
 use wl_kernel::{PartyId, Subject};
 use wl_ticketing::{
@@ -31,7 +31,7 @@ const TRADES: &[(&str, &str, &str)] = &[
     ("security", "Security and access", "الأمن والدخول"),
 ];
 
-impl Seed<'_> {
+impl Seed {
     /// The service side of the demo.
     pub(crate) async fn service(&mut self) -> Result {
         at!(self, day(-520), { self.trades().await })?;
@@ -304,13 +304,12 @@ impl Seed<'_> {
                 self.building(plan.place.0).id,
             ),
         };
-        let mut request = OpenTicket::new(subject, plan.category, plan.title).channel(
-            if plan.tenant.is_some() {
+        let mut request =
+            OpenTicket::new(subject, plan.category, plan.title).channel(if plan.tenant.is_some() {
                 TicketChannel::Portal
             } else {
                 TicketChannel::Staff
-            },
-        );
+            });
         if let Some(tenant) = plan.tenant {
             request = request
                 .requester(Requester::Party {
@@ -366,7 +365,11 @@ impl Seed<'_> {
                 })?;
                 at!(self, later(2), {
                     self.driver
-                        .post(worker_user, &format!("{path}/hold"), &[("hold_reason", reason)])
+                        .post(
+                            worker_user,
+                            &format!("{path}/hold"),
+                            &[("hold_reason", reason)],
+                        )
                         .await
                 })?;
             }
@@ -415,7 +418,11 @@ impl Seed<'_> {
             Standing::Cancelled(reason) => {
                 at!(self, later(1), {
                     self.driver
-                        .post(coordinator, &format!("{path}/cancel"), &[("reason", reason)])
+                        .post(
+                            coordinator,
+                            &format!("{path}/cancel"),
+                            &[("reason", reason)],
+                        )
                         .await
                 })?;
             }
@@ -427,7 +434,9 @@ impl Seed<'_> {
     /// within the grace days raise the compliance flag of their building.
     async fn compliance_rules(&mut self) -> Result {
         let now = today();
-        at!(self, now, { wl_ticketing::visit_check::run(&self.state, now).await })?;
+        at!(self, now, {
+            wl_ticketing::visit_check::run(&self.state, now).await
+        })?;
         Ok(())
     }
 }

@@ -29,10 +29,33 @@ pub enum Papers {
     VisaExpired(i64),
 }
 
-impl Seed<'_> {
+impl Seed {
     /// Attaches a document of `kind` to `subject` and has the company admin
     /// accept it; returns its id.
     pub(crate) async fn document(
+        &mut self,
+        subject: Subject,
+        kind: &str,
+        title: &str,
+        number: Option<String>,
+        expires: Option<NaiveDate>,
+        issued: Option<NaiveDate>,
+    ) -> Result<i64> {
+        let id = self
+            .attach_document(subject, kind, title, number, expires, issued)
+            .await?;
+        self.driver
+            .post(
+                login_of(ADMIN).email,
+                &format!("/documents/{id}/accept"),
+                &[],
+            )
+            .await?;
+        Ok(id)
+    }
+
+    /// Attaches a document and leaves it waiting for review.
+    pub(crate) async fn attach_document(
         &mut self,
         subject: Subject,
         kind: &str,
@@ -45,7 +68,7 @@ impl Seed<'_> {
             subject,
             kind,
             Upload::new(
-                &format!("{kind}.pdf"),
+                format!("{kind}.pdf"),
                 "application/pdf",
                 specimen::pdf(title),
             ),
@@ -69,13 +92,6 @@ impl Seed<'_> {
                 .into());
             }
         };
-        self.driver
-            .post(
-                login_of(ADMIN).email,
-                &format!("/documents/{}/accept", document.id),
-                &[],
-            )
-            .await?;
         self.report.add("documents", 1);
         Ok(document.id)
     }

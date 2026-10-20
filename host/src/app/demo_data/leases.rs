@@ -151,11 +151,6 @@ impl Plan {
         self.papers = papers;
         self
     }
-
-    const fn rent(mut self, rent: i64) -> Self {
-        self.rent = rent;
-        self
-    }
 }
 
 use Fate::{

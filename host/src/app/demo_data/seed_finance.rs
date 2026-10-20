@@ -1,12 +1,16 @@
 //! Making the company's books: the opening cash balances, the supplier bills
 //! and their payments, the budget, the expense claims, the bank statements and
 //! the VAT periods.
+//!
+//! Amounts are written as dirhams and fils (`2_300_00` is AED 2,300.00), which
+//! is why the digit groups are uneven.
+#![allow(clippy::inconsistent_digit_grouping)]
 
+use super::real_today as today;
 use renox::chrono::Duration;
 use renox::prelude::*;
 use wl_invoicing::SupplierBill;
 use wl_invoicing::supplier_bill::SupplierBillStatus;
-use super::real_today as today;
 use wl_kernel::payments::{PaymentMethod, RecordPayment, payment_recorder};
 use wl_kernel::{LegalEntity, PartyId, Subject};
 use wl_payments::BankStatementImport;
@@ -18,7 +22,7 @@ use super::seed_leases::{text, upto};
 use super::seed_money::aed;
 use super::{Seed, day};
 
-impl Seed<'_> {
+impl Seed {
     /// The books of the company.
     pub(crate) async fn finance(&mut self) -> Result {
         self.cash_balances().await?;
@@ -47,8 +51,16 @@ impl Seed<'_> {
     async fn cash_balances(&mut self) -> Result {
         let accountant = login_of(ACCOUNTANT).email;
         for (code, account, amount) in [
-            ("PGP", "Gulf Demo Bank AE00 0000 0000 0000 0001 234", "1452880.00"),
-            ("PGFZ", "Emirates Demo Bank AE00 0000 0000 0000 0005 678", "318450.00"),
+            (
+                "PGP",
+                "Gulf Demo Bank AE00 0000 0000 0000 0001 234",
+                "1452880.00",
+            ),
+            (
+                "PGFZ",
+                "Emirates Demo Bank AE00 0000 0000 0000 0005 678",
+                "318450.00",
+            ),
         ] {
             let entity = self.entity_id(code).await?.to_string();
             at!(self, today(), {
@@ -94,7 +106,9 @@ impl Seed<'_> {
         let pairs: Vec<(&str, &str)> = form.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
         let entered = day(-plan.age);
         let reply = at!(self, entered, {
-            self.driver.post(accountant, "/supplier-bills", &pairs).await
+            self.driver
+                .post(accountant, "/supplier-bills", &pairs)
+                .await
         })?;
         let id = reply
             .redirected_id()
@@ -131,7 +145,10 @@ impl Seed<'_> {
                 .post(
                     admin,
                     &format!("{path}/transitions/approve"),
-                    &[("reason", "Checked against the contract and the visit report")],
+                    &[(
+                        "reason",
+                        "Checked against the contract and the visit report",
+                    )],
                 )
                 .await
         })?;
@@ -180,7 +197,11 @@ impl Seed<'_> {
     async fn budgets(&mut self) -> Result {
         let accountant = login_of(ACCOUNTANT).email;
         let finance = login_of(FINANCE_MANAGER).email;
-        let year = today().format("%Y").to_string().parse::<i32>().unwrap_or(2026);
+        let year = today()
+            .format("%Y")
+            .to_string()
+            .parse::<i32>()
+            .unwrap_or(2026);
         let pgp = self.entity_id("PGP").await?.to_string();
         let pgfz = self.entity_id("PGFZ").await?.to_string();
         // The company budget of this year, drawn up in December and approved
@@ -195,7 +216,14 @@ impl Seed<'_> {
         let marketing = self.category_id("marketing").await?.to_string();
         let revision = at!(self, day(-40), {
             let revision = self
-                .budget(accountant, &pgp, year, "Company budget, revised", "last_budget", false)
+                .budget(
+                    accountant,
+                    &pgp,
+                    year,
+                    "Company budget, revised",
+                    "last_budget",
+                    false,
+                )
                 .await?;
             self.driver
                 .post(
@@ -356,14 +384,62 @@ impl Seed<'_> {
         let finance = login_of(FINANCE_MANAGER).email;
         let pgp = self.entity_id("PGP").await?.to_string();
         let claims: [(&str, &str, i64, &str, &str); 8] = [
-            ("Site visit fuel and parking, July", "fuel", 112, "187.50", "approve"),
-            ("Tools for move-out repairs", "tools_materials", 74, "642.00", "reject"),
-            ("Parking at the Land Department, Ejari filings", "parking_tolls", 51, "96.00", "approve"),
-            ("Lunch with the AC contractor", "meals", 33, "310.00", "reject"),
-            ("Fuel for the weekend inspections", "fuel", 20, "144.00", "wait"),
-            ("Taxi to the tenant meeting, Sharjah", "travel", 16, "78.00", "wait"),
-            ("Printer cartridges for the leasing office", "tools_materials", 5, "265.00", "draft"),
-            ("Courier for the cheque deposits", "other", 3, "55.00", "draft"),
+            (
+                "Site visit fuel and parking, July",
+                "fuel",
+                112,
+                "187.50",
+                "approve",
+            ),
+            (
+                "Tools for move-out repairs",
+                "tools_materials",
+                74,
+                "642.00",
+                "reject",
+            ),
+            (
+                "Parking at the Land Department, Ejari filings",
+                "parking_tolls",
+                51,
+                "96.00",
+                "approve",
+            ),
+            (
+                "Lunch with the AC contractor",
+                "meals",
+                33,
+                "310.00",
+                "reject",
+            ),
+            (
+                "Fuel for the weekend inspections",
+                "fuel",
+                20,
+                "144.00",
+                "wait",
+            ),
+            (
+                "Taxi to the tenant meeting, Sharjah",
+                "travel",
+                16,
+                "78.00",
+                "wait",
+            ),
+            (
+                "Printer cartridges for the leasing office",
+                "tools_materials",
+                5,
+                "265.00",
+                "draft",
+            ),
+            (
+                "Courier for the cheque deposits",
+                "other",
+                3,
+                "55.00",
+                "draft",
+            ),
         ];
         for (title, category, age, amount, fate) in claims {
             let date = text(day(-age));
@@ -437,7 +513,6 @@ impl Seed<'_> {
             "binary".to_owned()
         };
         let closing = format!("{}.00", plan.closing);
-        let before = BankStatementImport::query().count(self.db()).await?;
         let uploaded = upto(to + Duration::days(1));
         at!(self, uploaded, {
             self.driver
@@ -461,7 +536,6 @@ impl Seed<'_> {
             .order_by_desc(BankStatementImport::ID)
             .first(self.db())
             .await?
-            .filter(|_| before >= 0)
             .ok_or_else(|| renox::anyhow::anyhow!("demo seed: no statement import"))?;
         self.report.add("bank statements", 1);
         let path = format!("/bank-statements/{}", import.id);
@@ -474,7 +548,10 @@ impl Seed<'_> {
         match plan.end {
             "completed" | "reverted" => {
                 let lines = wl_payments::bank_statement_line::BankStatementLine::query()
-                    .where_(wl_payments::bank_statement_line::BankStatementLine::IMPORT_ID.eq(import.id))
+                    .where_(
+                        wl_payments::bank_statement_line::BankStatementLine::IMPORT_ID
+                            .eq(import.id),
+                    )
                     .get(self.db())
                     .await?;
                 if plan.end == "completed" {
@@ -487,7 +564,10 @@ impl Seed<'_> {
                                     .post(
                                         accountant,
                                         &format!("/bank-statement-lines/{}/ignore", line.id),
-                                        &[("reason", "Bank charge or transfer between own accounts")],
+                                        &[(
+                                            "reason",
+                                            "Bank charge or transfer between own accounts",
+                                        )],
                                     )
                                     .await?;
                             }

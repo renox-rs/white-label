@@ -27,12 +27,15 @@ macro_rules! at {
     ($seed:ident, $day:expr, $body:expr) => {{
         let clock = $seed.clock.clone();
         let when = $day;
-        clock.at(when, async { $body }).await
+        #[allow(unused_braces)]
+        let step = Box::pin(async { $body });
+        clock.at(when, step).await
     }};
 }
 
 mod clock;
 mod driver;
+mod finance;
 mod hooks;
 mod leases;
 mod owners;
@@ -40,7 +43,6 @@ mod people;
 mod portfolio;
 mod sales;
 mod seed_documents;
-mod finance;
 mod seed_finance;
 mod seed_hr;
 mod seed_leases;
@@ -123,8 +125,7 @@ pub async fn is_seeded(db: &Db) -> Result<bool> {
 }
 
 /// The state of a seed in progress.
-pub(crate) struct Seed<'a> {
-    pub kernel: &'a Kernel,
+pub(crate) struct Seed {
     pub state: AppState,
     pub driver: Driver,
     pub report: Report,
@@ -137,7 +138,7 @@ pub(crate) struct Seed<'a> {
     pub clock: std::sync::Arc<clock::Clock>,
 }
 
-impl Seed<'_> {
+impl Seed {
     pub(crate) fn db(&self) -> &Db {
         &self.state.db
     }
@@ -161,7 +162,6 @@ pub async fn seed(kernel: &Kernel) -> Result<Report> {
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(today());
     let mut seed = Seed {
-        kernel,
         state: state.clone(),
         driver: Driver::new(kernel.router()),
         report: Report::default(),
@@ -173,38 +173,38 @@ pub async fn seed(kernel: &Kernel) -> Result<Report> {
         held_back: Default::default(),
         clock: std::sync::Arc::new(clock::Clock::new().await),
     };
-    seed.run().await?;
+    Box::pin(seed.run()).await?;
     Ok(seed.report)
 }
 
-impl Seed<'_> {
+impl Seed {
     async fn run(&mut self) -> Result {
         let started = std::time::Instant::now();
-        let mut lap = |what: &'static str, seed: &mut Self| {
+        let lap = |what: &'static str, seed: &mut Self| {
             seed.report.laps.push((what, started.elapsed()));
         };
         roles::define(self.db()).await?;
         // The company is set up some 17 months ago.
         at!(self, day(-520), {
             self.charge_types().await?;
-            self.parties().await?;
-            self.portfolio().await?;
-            self.logins().await
+            Box::pin(self.parties()).await?;
+            Box::pin(self.portfolio()).await?;
+            Box::pin(self.logins()).await
         })?;
         lap("people and portfolio", self);
-        self.leases().await?;
+        Box::pin(self.leases()).await?;
         lap("leases and money", self);
-        self.owners().await?;
+        Box::pin(self.owners()).await?;
         lap("owners", self);
-        self.service().await?;
+        Box::pin(self.service()).await?;
         lap("service", self);
-        self.sales().await?;
+        Box::pin(self.sales()).await?;
         lap("sales", self);
-        self.staff().await?;
+        Box::pin(self.staff()).await?;
         lap("staff", self);
-        self.finance().await?;
+        Box::pin(self.finance()).await?;
         lap("finance", self);
-        self.tail().await?;
+        Box::pin(self.tail()).await?;
         lap("tail", self);
         // The sign that the seed is done.
         renox::audit::record(
@@ -282,7 +282,10 @@ async fn run_command(client: wl_kernel::ClientConfig, state: AppState, said: boo
     if report.already {
         println!("The demo company is there already.");
     } else {
-        println!("Demo company made in {:?}:", report.laps.last().map(|l| l.1).unwrap_or_default());
+        println!(
+            "Demo company made in {:?}:",
+            report.laps.last().map(|l| l.1).unwrap_or_default()
+        );
         let mut before = std::time::Duration::default();
         for (what, at) in &report.laps {
             println!("  {:>6.1}s {what}", (*at - before).as_secs_f32());

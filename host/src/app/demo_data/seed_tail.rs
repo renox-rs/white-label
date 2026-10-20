@@ -26,16 +26,31 @@ enum Outcome {
 
 /// The lease and how its deposit was settled.
 const SETTLED: &[(&str, Outcome)] = &[
-    ("b202", Outcome::Refund("Professional cleaning of the unit", 350)),
-    ("b201", Outcome::Refund("Repainting the living room walls", 1_200)),
-    ("aq3", Outcome::Forfeit("Floor damage and removal of fixtures, beyond the deposit")),
-    ("sj401", Outcome::Forfeit("The lease was broken and the unit left damaged")),
+    (
+        "b202",
+        Outcome::Refund("Professional cleaning of the unit", 350),
+    ),
+    (
+        "b201",
+        Outcome::Refund("Repainting the living room walls", 1_200),
+    ),
+    (
+        "aq3",
+        Outcome::Forfeit("Floor damage and removal of fixtures, beyond the deposit"),
+    ),
+    (
+        "sj401",
+        Outcome::Forfeit("The lease was broken and the unit left damaged"),
+    ),
 ];
 
-impl Seed<'_> {
+impl Seed {
     pub(crate) async fn tail(&mut self) -> Result {
         self.deposits().await?;
         self.transfers().await?;
+        self.refund_decisions().await?;
+        self.withdraw_units().await?;
+        self.document_states().await?;
         let now = today();
         at!(self, now, { self.rules(now).await })
     }
@@ -77,14 +92,19 @@ impl Seed<'_> {
                                 &format!("{path}/deductions"),
                                 &[(
                                     "lines",
-                                    format!("{what} | {amount}.00 | Move-out inspection report").as_str(),
+                                    format!("{what} | {amount}.00 | Move-out inspection report")
+                                        .as_str(),
                                 )],
                             )
                             .await
                     })?;
                     at!(self, settled, {
                         self.driver
-                            .post(accountant, &format!("{path}/refund"), &[("method", "transfer")])
+                            .post(
+                                accountant,
+                                &format!("{path}/refund"),
+                                &[("method", "transfer")],
+                            )
                             .await
                     })?;
                 }
@@ -146,6 +166,144 @@ impl Seed<'_> {
                     )
                     .await
             })?;
+        }
+        Ok(())
+    }
+
+    /// Documents in the other states of the review: two replaced by a newer
+    /// Emirates ID, two waiting for review, two rejected with a reason. The
+    /// tenants are those with full papers; the two that fail the lease check
+    /// on purpose are left as they are. An archived document is not made: the
+    /// module has no page for it (`Documents::archive` needs a signed-in
+    /// user).
+    async fn document_states(&mut self) -> Result {
+        use super::seed_documents::{Papers, party_number};
+        use wl_kernel::Subject;
+        use wl_kernel::parties::PARTY_SUBJECT_TYPE;
+        let admin = login_of(ADMIN).email;
+        let people: Vec<String> = PLANS
+            .iter()
+            .filter(|p| p.papers == Papers::Full)
+            .map(|p| p.tenant.to_owned())
+            .filter(|name| self.papered.contains(name))
+            .filter(|name| self.party(name).kind == wl_kernel::PartyKind::Person)
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        for (i, name) in people.iter().take(6).enumerate() {
+            let party = self.party(name).clone();
+            let n = party_number(&party.code);
+            let subject = Subject::new(PARTY_SUBJECT_TYPE, party.id);
+            match i / 2 {
+                // A renewed Emirates ID takes the place of the old one.
+                0 => {
+                    self.document(
+                        subject,
+                        "emirates_id",
+                        "Emirates ID (renewed)",
+                        Some(super::seed_people::emirates_id(n, 1990)),
+                        Some(day(1_400 + i as i64)),
+                        Some(day(-20)),
+                    )
+                    .await?;
+                }
+                // Uploaded from the portal, not reviewed yet.
+                1 => {
+                    self.attach_document(
+                        subject,
+                        "passport",
+                        "Passport (new copy)",
+                        Some(super::seed_people::passport(n + 500)),
+                        Some(day(2_000)),
+                        Some(day(-3)),
+                    )
+                    .await?;
+                }
+                _ => {
+                    let id = self
+                        .attach_document(
+                            subject,
+                            "residence_visa",
+                            "Residence visa (blurred scan)",
+                            Some(super::seed_people::visa(n + 500)),
+                            Some(day(900)),
+                            Some(day(-5)),
+                        )
+                        .await?;
+                    self.driver
+                        .post(
+                            admin,
+                            &format!("/documents/{id}/reject"),
+                            &[("reason", "The scan is blurred: the number cannot be read")],
+                        )
+                        .await?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Two empty units taken off the market (a sale in progress, a
+    /// refurbishment). Reserved units are not made: the module refuses to
+    /// reserve until booking deposits exist (`property.units.reserve_later`),
+    /// and a unit is not inserted in a state the module itself refuses.
+    async fn withdraw_units(&mut self) -> Result {
+        let admin = login_of(ADMIN).email;
+        let mut empty: Vec<i64> = property::Unit::query()
+            .where_(property::Unit::STATUS.eq(property::UnitStatus::Available))
+            .order_by_desc(property::Unit::ID)
+            .get(self.db())
+            .await?
+            .into_iter()
+            .map(|u| u.id)
+            .collect();
+        empty.truncate(2);
+        for id in empty {
+            self.driver
+                .post(
+                    admin,
+                    &format!("/property/units/{id}/transitions/withdraw"),
+                    &[("reason", "Taken off the market for a refurbishment")],
+                )
+                .await?;
+            self.report.add("units withdrawn", 1);
+        }
+        Ok(())
+    }
+
+    /// The head of the company decides four of the six refund requests (none
+    /// of them is by the admin, so the separation of duties holds): two are
+    /// approved, two rejected with a reason; two stay waiting.
+    async fn refund_decisions(&mut self) -> Result {
+        let admin = login_of(ADMIN).email;
+        let mut ids: Vec<i64> = wl_payments::Refund::query()
+            .order_by(wl_payments::Refund::ID)
+            .get(self.db())
+            .await?
+            .into_iter()
+            .filter(|r| r.requested_by.is_some())
+            .map(|r| r.id)
+            .collect();
+        ids.truncate(4);
+        for (i, id) in ids.into_iter().enumerate() {
+            let path = format!("/refunds/{id}/transitions");
+            if i % 2 == 0 {
+                self.driver
+                    .post(admin, &format!("{path}/approve"), &[])
+                    .await?;
+            } else {
+                self.driver
+                    .post(
+                        admin,
+                        &format!("{path}/reject"),
+                        &[(
+                            "reason",
+                            "The credit note was issued in error; no money is due",
+                        )],
+                    )
+                    .await?;
+            }
+            self.report.add("refunds decided", 1);
         }
         Ok(())
     }

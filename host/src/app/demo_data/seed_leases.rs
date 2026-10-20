@@ -30,7 +30,7 @@ pub(crate) fn upto(date: NaiveDate) -> NaiveDate {
     date.min(today())
 }
 
-impl Seed<'_> {
+impl Seed {
     pub(crate) async fn leases(&mut self) -> Result {
         for plan in PLANS {
             self.lease(plan).await?;
@@ -53,10 +53,7 @@ impl Seed<'_> {
         if plan.rent > 0 {
             plan.rent
         } else {
-            self.unit(plan.unit.0, plan.unit.1)
-                .asking_rent
-                .unwrap_or(0)
-                / 100
+            self.unit(plan.unit.0, plan.unit.1).asking_rent.unwrap_or(0) / 100
         }
     }
 
@@ -66,8 +63,16 @@ impl Seed<'_> {
         let future = start > today();
         // A lease that has not started was prepared in the last days; one that
         // has was prepared two weeks before it started.
-        let created = if future { today() - Duration::days(6) } else { start - Duration::days(14) };
-        let submitted = if future { today() - Duration::days(4) } else { start - Duration::days(8) };
+        let created = if future {
+            today() - Duration::days(6)
+        } else {
+            start - Duration::days(14)
+        };
+        let submitted = if future {
+            today() - Duration::days(4)
+        } else {
+            start - Duration::days(8)
+        };
         let agent = login_of(LEASING_AGENT).email;
         let id = at!(self, created, {
             self.papers(plan.tenant, plan.papers).await?;
@@ -146,8 +151,16 @@ impl Seed<'_> {
         let (start, end) = Self::term(plan);
         let follow_up = self.is_follow_up(id).await?;
         let future = start > today();
-        let paid = if future { today() - Duration::days(3) } else { start - Duration::days(5) };
-        let signed = if future { today() - Duration::days(2) } else { start - Duration::days(4) };
+        let paid = if future {
+            today() - Duration::days(3)
+        } else {
+            start - Duration::days(5)
+        };
+        let signed = if future {
+            today() - Duration::days(2)
+        } else {
+            start - Duration::days(4)
+        };
         if !follow_up {
             at!(self, paid, { self.deposit(plan, id, paid).await })?;
         }
@@ -285,7 +298,9 @@ impl Seed<'_> {
                 // prepared, signed and starts the day after this one ends.
                 let flag_day = end - Duration::days(110);
                 at!(self, flag_day, {
-                    property::renewal::run(&self.state, flag_day).await.map(|_| ())
+                    property::renewal::run(&self.state, flag_day)
+                        .await
+                        .map(|_| ())
                 })?;
                 let renewal = at!(self, end - Duration::days(70), {
                     self.driver
@@ -320,7 +335,9 @@ impl Seed<'_> {
         let opens = (end - Duration::days(120)).max(start + Duration::days(1));
         let opened = upto(opens);
         at!(self, opened, {
-            property::renewal::run(&self.state, opened).await.map(|_| ())
+            property::renewal::run(&self.state, opened)
+                .await
+                .map(|_| ())
         })?;
         if end < today() {
             let after = end + Duration::days(1);
@@ -329,9 +346,7 @@ impl Seed<'_> {
             })?;
             // The holding-over periods are billed.
             let now = today();
-            at!(self, now, {
-                self.bill_through(now).await
-            })?;
+            at!(self, now, { self.bill_through(now).await })?;
         }
         Ok(())
     }
@@ -447,7 +462,9 @@ impl Seed<'_> {
                 self.ejari(&next, id, manager, registered, finish).await
             })?;
         }
-        at!(self, upto(start.max(signed)), { self.cheques_of(&next, id).await })?;
+        at!(self, upto(start.max(signed)), {
+            self.cheques_of(&next, id).await
+        })?;
         // The version's own life; boxed, since a lease's fate leads here.
         Box::pin(self.life(&next, id)).await
     }

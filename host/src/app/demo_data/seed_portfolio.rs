@@ -6,7 +6,7 @@ use renox::prelude::*;
 use super::Seed;
 use super::portfolio::{BUILDINGS, units};
 
-impl Seed<'_> {
+impl Seed {
     /// The charge catalogue of the client, which has no default: the early
     /// termination fee, damages and recharged costs, standard-rated for the
     /// demo (the VAT treatment is the client's accountant's decision, open

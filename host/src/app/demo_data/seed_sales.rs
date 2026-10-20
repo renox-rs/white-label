@@ -2,11 +2,11 @@
 //! with their costs (one over budget, waiting for a manager), the leads they
 //! brought in, worked by marketing, and the enquiries staff recorded.
 
+use super::real_today as today;
 use property::enquiry::{Enquiry, NewEnquiry};
 use renox::chrono::Duration;
 use renox::prelude::*;
 use wl_kernel::Subject;
-use super::real_today as today;
 use wl_kernel::sales::{LeadId, lead_conversion};
 use wl_sales::{Campaign, Lead, LeadSource, NewLead};
 
@@ -16,7 +16,7 @@ use super::sales::{CAMPAIGNS, CampaignPlan, ENQUIRIES, LEADS, LeadFate, LeadPlan
 use super::seed_leases::{text, upto};
 use super::{Seed, day};
 
-impl Seed<'_> {
+impl Seed {
     /// Campaigns, leads and enquiries.
     pub(crate) async fn sales(&mut self) -> Result {
         for plan in CAMPAIGNS {

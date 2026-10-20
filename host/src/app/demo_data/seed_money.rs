@@ -8,19 +8,19 @@ use property::{ChargeStatus, LeaseCharge};
 use renox::chrono::{Duration, NaiveDate};
 use renox::prelude::*;
 use wl_invoicing::Invoice;
+use wl_kernel::PartyId;
 use wl_kernel::approvals::ApprovalRequest;
 use wl_kernel::invoicing::{InvoiceId, InvoiceStatus};
 use wl_kernel::payments::{AllocationTarget, PaymentMethod, RecordPayment, payment_recorder};
-use wl_kernel::PartyId;
 use wl_payments::Cheque;
 
+use super::Seed;
 use super::leases::{Plan, Quirk};
 use super::people::login_of;
 use super::real_today as today;
 use super::roles::{ACCOUNTANT, RECEIVABLES};
 use super::seed_documents::party_number;
 use super::seed_leases::{text, upto};
-use super::Seed;
 
 /// The banks the demo cheques are drawn on (fictional).
 const BANKS: [&str; 4] = [
@@ -55,7 +55,7 @@ fn rent_of(charges: Vec<LeaseCharge>) -> Vec<LeaseCharge> {
     rent
 }
 
-impl Seed<'_> {
+impl Seed {
     /// Drafts the invoices of the charges due through `day` and has receivables
     /// issue the drafts of leases (run on `day`).
     pub(crate) async fn bill_through(&mut self, day: NaiveDate) -> Result {
@@ -137,7 +137,11 @@ impl Seed<'_> {
     ) -> Result<i64> {
         let reference = format!(
             "{}-{}-{}",
-            if method == PaymentMethod::Cash { "CASH" } else { "TRF" },
+            if method == PaymentMethod::Cash {
+                "CASH"
+            } else {
+                "TRF"
+            },
             party_number(&self.party(plan.tenant).code),
             invoice
         );
@@ -158,7 +162,8 @@ impl Seed<'_> {
 
     /// Whether the instalment `index` (from 0) of `plan` has a cheque.
     fn has_cheque(plan: &Plan, index: usize, past: usize) -> bool {
-        let by_transfer = matches!(plan.quirk, Quirk::FirstByTransfer | Quirk::PartPaid) && index == 0
+        let by_transfer = matches!(plan.quirk, Quirk::FirstByTransfer | Quirk::PartPaid)
+            && index == 0
             || matches!(plan.quirk, Quirk::PartPaid) && index == 1;
         let unpaid = match plan.quirk {
             Quirk::Unpaid(n) => n,
@@ -235,8 +240,14 @@ impl Seed<'_> {
             match (plan.quirk, index, invoice) {
                 (Quirk::FirstByTransfer | Quirk::PartPaid, 0, Some(invoice)) => {
                     at!(self, upto(due), {
-                        self.pay_invoice(plan, invoice, gross_of(&charge), due, PaymentMethod::Transfer)
-                            .await
+                        self.pay_invoice(
+                            plan,
+                            invoice,
+                            gross_of(&charge),
+                            due,
+                            PaymentMethod::Transfer,
+                        )
+                        .await
                     })?;
                     continue;
                 }
@@ -276,10 +287,14 @@ impl Seed<'_> {
             let certificate = format!("RTN-DEMO-{:05}", cheque.id * 17);
             match plan.quirk {
                 Quirk::Bounced(n) if n == k => {
-                    at!(self, result_day, { self.bounce(accountant, &path, &certificate).await })?;
+                    at!(self, result_day, {
+                        self.bounce(accountant, &path, &certificate).await
+                    })?;
                 }
                 Quirk::BouncedReplaced(n) if n == k => {
-                    at!(self, result_day, { self.bounce(accountant, &path, &certificate).await })?;
+                    at!(self, result_day, {
+                        self.bounce(accountant, &path, &certificate).await
+                    })?;
                     let paid = upto(due + Duration::days(9));
                     at!(self, paid, {
                         let payment = self
@@ -304,7 +319,9 @@ impl Seed<'_> {
                     })?;
                 }
                 Quirk::BouncedCleared(n) if n == k => {
-                    at!(self, result_day, { self.bounce(accountant, &path, &certificate).await })?;
+                    at!(self, result_day, {
+                        self.bounce(accountant, &path, &certificate).await
+                    })?;
                     let again = upto(due + Duration::days(8));
                     at!(self, again, {
                         self.driver
@@ -327,7 +344,9 @@ impl Seed<'_> {
                     })?;
                 }
                 Quirk::BouncedLegal(n) if n == k => {
-                    at!(self, result_day, { self.bounce(accountant, &path, &certificate).await })?;
+                    at!(self, result_day, {
+                        self.bounce(accountant, &path, &certificate).await
+                    })?;
                     let referred = upto(due + Duration::days(18));
                     at!(self, referred, {
                         self.driver

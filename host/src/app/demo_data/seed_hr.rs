@@ -106,7 +106,7 @@ fn staff() -> Vec<Staff> {
     ]
 }
 
-impl Seed<'_> {
+impl Seed {
     /// The staff as parties and employees.
     pub(crate) async fn staff(&mut self) -> Result {
         let hr = login_of(HR).email;
@@ -190,7 +190,12 @@ impl Seed<'_> {
     }
 
     /// HR does the steps it owns of a new hire's onboarding that are due.
-    async fn start_steps(&mut self, employee: &Employee, hr: &str, hired: renox::chrono::NaiveDate) -> Result {
+    async fn start_steps(
+        &mut self,
+        employee: &Employee,
+        hr: &str,
+        hired: renox::chrono::NaiveDate,
+    ) -> Result {
         let onboarding = wl_hr::Onboarding::query()
             .where_(wl_hr::Onboarding::EMPLOYEE_ID.eq(employee.id))
             .first(self.db())
