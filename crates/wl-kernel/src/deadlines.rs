@@ -28,6 +28,8 @@
 //! tasks.end_source(&state, &engagement.subject(), today).await?;
 //! // 04 return `cancel` (the client files itself):
 //! tasks.hand_over(&state, task_id, HandOverTask::new()).await?;
+//! // 04 `ACC.RUL.10`, a tax profile change: the same period with a new due date.
+//! tasks.reschedule(&state, task_id, new_due, "tax profile changed").await?;
 //! ```
 //!
 //! `wl-ticketing` emits [`TaskOverdue`] and [`TaskCompleted`] after the
@@ -356,6 +358,8 @@ pub struct DeadlineTaskSummary {
     pub due_date: NaiveDate,
     /// The start date (due date minus lead time).
     pub start_date: NaiveDate,
+    /// The last day of the period it covers, if it covers one.
+    pub period_end: Option<NaiveDate>,
     /// The lifecycle state.
     pub status: DeadlineTaskStatus,
     /// Whether it went `overdue` at some point (a completed task is *late*).
@@ -473,6 +477,22 @@ pub trait DeadlineTasks: Send + Sync + 'static {
         _state: &'a AppState,
         _id: DeadlineTaskId,
         _waive: WaiveTask,
+    ) -> DeadlineFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
+
+    /// Moves the due date of the `upcoming` task `id` to `due_date` as the
+    /// system (04 `ACC.RUL.10`: the same period with a new due date keeps
+    /// its task): the start date follows the lead time and the change is
+    /// audited with `reason`. Answers whether it was moved (`false` when the
+    /// task is not `upcoming` or already due that day); the default moves
+    /// nothing.
+    fn reschedule<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _id: DeadlineTaskId,
+        _due_date: NaiveDate,
+        _reason: &'a str,
     ) -> DeadlineFuture<'a, bool> {
         Box::pin(async { Ok(false) })
     }

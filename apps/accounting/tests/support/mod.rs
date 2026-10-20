@@ -252,6 +252,7 @@ impl BookTask {
             title: self.task.title.clone(),
             due_date: self.task.due_date,
             start_date: self.task.due_date - renox::chrono::Duration::days(self.task.lead_days),
+            period_end: self.task.period_end,
             status: self.status,
             late: false,
             held: self.held,

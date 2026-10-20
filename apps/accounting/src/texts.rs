@@ -327,6 +327,32 @@ const TEXTS: &[(&str, &str)] = &[
         "accounting.tax_profile.problem.no_approval_policy",
         "No approval policy is active for tax profile changes.",
     ),
+    // `ACC.RUL.10`: the calendar regenerated after a tax profile change.
+    ("accounting.regeneration.reason", "tax profile changed"),
+    (
+        "accounting.regeneration.description",
+        "Created after the tax profile changed, effective :from.",
+    ),
+    (
+        "accounting.regeneration.list_title",
+        "Tax profile changed: decide what is left on :number",
+    ),
+    (
+        "accounting.regeneration.list_description",
+        "The tax profile of :number changed, effective :from. The calendar was regenerated; these are left for you to decide (nothing started or overdue was waived):\n:lines\n:link",
+    ),
+    (
+        "accounting.regeneration.line_task",
+        "Task :title (:status, due :due) no longer matches the new profile.",
+    ),
+    (
+        "accounting.regeneration.line_moved",
+        "Task :title (:status, due :due) is due :new under the new profile.",
+    ),
+    (
+        "accounting.regeneration.line_return",
+        "Return :number (:type, period ending :period) is :status for a period the new profile no longer plans.",
+    ),
     // The calendar and the retainer.
     (
         "accounting.calendar.vat_return",

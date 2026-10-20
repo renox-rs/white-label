@@ -522,6 +522,56 @@ pub async fn waive_as_system(
     }
 }
 
+/// The audit action recorded when a task's due date is moved
+/// ([`reschedule_as_system`]).
+pub const RESCHEDULED: &str = "task.rescheduled";
+
+/// Moves the due date of the `upcoming` `task` to `due` as the system (04
+/// `ACC.RUL.10`): the start date follows the lead time, a start reminder
+/// already sent is forgotten, and the move is audited with the old and new
+/// dates and `reason`. `Ok(false)` when the task is not `upcoming` or is due
+/// that day already.
+///
+/// # Errors
+///
+/// 422 for a blank reason; the database's errors.
+pub async fn reschedule_as_system(
+    state: &AppState,
+    task: &DeadlineTask,
+    due: NaiveDate,
+    reason: &str,
+) -> Result<bool> {
+    if reason.trim().is_empty() {
+        return Err(refused("wl_ticketing.task.problem.reason"));
+    }
+    if task.status != DeadlineTaskStatus::Upcoming || task.due_date == due {
+        return Ok(false);
+    }
+    DeadlineTask::query()
+        .where_(DeadlineTask::ID.eq(task.id))
+        .update(
+            &state.db,
+            &[
+                ("due_date", &due),
+                ("start_date", &start_date(due, task.lead_days)),
+                ("start_notified_on", &None::<NaiveDate>),
+            ],
+        )
+        .await?;
+    renox::audit::record(
+        &state.db,
+        renox::audit::Entry::new(RESCHEDULED)
+            .subject(DeadlineTask::TABLE, task.id)
+            .data(json!({
+                "from": task.due_date.to_string(),
+                "to": due.to_string(),
+                "reason": reason.trim(),
+            })),
+    )
+    .await?;
+    Ok(true)
+}
+
 /// Hands `task` over to the client as the system (04 return `cancel`):
 /// completed with the evidence "handed over to client", from any open
 /// state. `Ok(false)` when it is closed already.
@@ -1121,6 +1171,21 @@ impl DeadlineTasks for Deadlines {
                 return Ok(false);
             };
             waive_as_system(state, &task, &waive, wl_kernel::documents::today()).await
+        })
+    }
+
+    fn reschedule<'a>(
+        &'a self,
+        state: &'a AppState,
+        id: DeadlineTaskId,
+        due_date: NaiveDate,
+        reason: &'a str,
+    ) -> DeadlineFuture<'a, bool> {
+        Box::pin(async move {
+            let Some(task) = DeadlineTask::find(&state.db, id.0).await? else {
+                return Ok(false);
+            };
+            reschedule_as_system(state, &task, due_date, reason).await
         })
     }
 

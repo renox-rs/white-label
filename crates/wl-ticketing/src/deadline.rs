@@ -145,6 +145,7 @@ impl DeadlineTask {
             title: self.title.clone(),
             due_date: self.due_date,
             start_date: self.start_date,
+            period_end: self.period_end,
             status: self.status,
             late: self.late,
             held: self.held,
