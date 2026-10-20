@@ -19,3 +19,5 @@ tempfile = "3"
 wl-payments = { path = "../wl-payments" }
 # The real service contracts (coverage by end or termination date) in the contract bill test.
 wl-ticketing = { path = "../wl-ticketing" }
+# The real delivery module (its review, close and loss) in the delivery dispute test.
+wl-delivery = { path = "../wl-delivery" }
