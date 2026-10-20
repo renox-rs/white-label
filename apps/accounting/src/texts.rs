@@ -1707,6 +1707,20 @@ const TEXTS: &[(&str, &str)] = &[
     ("accounting.portal.kpi_title", "KPI packs"),
     ("accounting.portal.kpi_published", "Published on :date"),
     ("accounting.portal.kpi_revised", "Being revised"),
+    ("accounting.request_lists.title", "Document requests"),
+    ("accounting.request_lists.period", "Period ending"),
+    ("accounting.request_lists.due", "Due"),
+    ("accounting.request_lists.empty", "No document requests"),
+    ("accounting.request_lists.state.requested", "Requested"),
+    ("accounting.request_lists.state.received", "Received"),
+    (
+        "accounting.request_lists.state.skipped",
+        "Skipped (on hold)",
+    ),
+    (
+        "accounting.request_lists.state.not_delivered",
+        "Notice not delivered",
+    ),
 ];
 
 /// Whether the app has a text for `key`.

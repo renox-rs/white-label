@@ -136,6 +136,10 @@ pub struct InvoicingConfig {
     pub dispute_escalation_days: u32,
     /// The role told from the second escalation step on.
     pub dispute_escalation_role: String,
+    /// The role whose first holder gets the ticket of a dispute instead of
+    /// the invoice's owner or the holders of `invoices.issue` (04: the
+    /// engagement manager); none: the module's own choice.
+    pub dispute_ticket_role: Option<String>,
     /// Whether a submitted supplier bill is checked for a duplicate
     /// (`FIN.ACL.03`).
     pub duplicate_check: bool,
@@ -261,6 +265,7 @@ impl Default for InvoicingConfig {
             ageing_buckets: vec![30, 60, 90],
             dispute_escalation_days: 14,
             dispute_escalation_role: "finance_manager".to_owned(),
+            dispute_ticket_role: None,
             duplicate_check: true,
             duplicate_keys: vec![DuplicateKey::SupplierInvoiceNumber],
             duplicate_notify_role: "accountant".to_owned(),

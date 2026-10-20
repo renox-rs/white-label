@@ -166,6 +166,12 @@
       <rx-column :label="tx['deadline_notices.state']">{{ row.state }}</rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['deadline_notices.empty']" icon="calendar"/></rx-slot>
     </rx-table>
+    <rx-table :rows="request_lists" as="row" :key="row.period" :caption="tx['request_lists.title']" card>
+      <rx-column :label="tx['request_lists.period']">{{ row.period }}</rx-column>
+      <rx-column :label="tx['request_lists.due']">{{ row.due }}</rx-column>
+      <rx-column :label="tx['fields.status']">{{ row.state }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['request_lists.empty']" icon="calendar"/></rx-slot>
+    </rx-table>
     <rx-table :rows="history" as="row" :key="row.at ~ row.action" :caption="tx['history.title']" card>
       <rx-column :label="tx['history.at']">{{ row.at }}</rx-column>
       <rx-column :label="tx['history.action']">{{ row.action }}</rx-column>

@@ -30,14 +30,12 @@ use serde::{Deserialize, Serialize};
 use wl_kernel::automation::{RuleRunSpec, run_rule};
 use wl_kernel::compliance::{occurrence_key, schedule_subject};
 use wl_kernel::documents::today;
-use wl_kernel::notify::{
-    self, GROUP_DOCUMENTS, GROUP_REMINDERS, NotificationTypeDef, NotifyChannel, NotifyRequest,
-    notifier,
-};
+use wl_kernel::notify::{self, NotificationTypeDef, NotifyChannel, NotifyRequest, notifier};
 use wl_kernel::{PartyId, Subject};
 
 use crate::deadline_notices::client_recipients;
 use crate::engagement::{Engagement, EngagementStatus};
+use crate::permissions::MANAGER_ROLE;
 use crate::texts::english;
 
 /// The rule that creates the request lists.
@@ -301,6 +299,23 @@ pub struct Reminded {
     /// The lists due for a reminder whose engagement is suspended: the
     /// client is not reminded.
     pub held: Vec<i64>,
+    /// The lists whose request notice gave up and has no proof of delivery:
+    /// no reminder is due yet.
+    pub undelivered: Vec<i64>,
+}
+
+/// Whether the request notice of `engagement` (one notice lists the periods
+/// asked for) gave up without a proof of delivery.
+///
+/// # Errors
+///
+/// The notifier's errors.
+pub async fn is_undelivered(state: &AppState, engagement: &Engagement) -> Result<bool> {
+    Ok(notifier(state)
+        .undelivered_notices(state, &engagement.subject())
+        .await?
+        .iter()
+        .any(|n| n.type_key == REQUEST_LIST_NOTICE))
 }
 
 /// `POR.RUL.01` on `on`: each open list 3 and 7 days past its due date
@@ -334,6 +349,12 @@ pub async fn remind(state: &AppState, on: NaiveDate) -> Result<Reminded> {
             report.held.push(list.id);
             continue;
         }
+        // The request's notice gave up and no proof of delivery is recorded:
+        // the reminder deadlines have not started (`NTF.RUL.01`).
+        if is_undelivered(state, &engagement).await? {
+            report.undelivered.push(list.id);
+            continue;
+        }
         let mut request = NotifyRequest::new(REQUEST_REMINDER_NOTICE, list.subject())
             .subject_label(&engagement.number())
             .data(json!({
@@ -360,11 +381,19 @@ pub fn notification_types() -> Vec<NotificationTypeDef> {
     let reminder_subject = english("accounting.request_lists.reminder_subject", &[]);
     let reminder_body = english("accounting.request_lists.reminder_body", &[]);
     vec![
+        // 04 §9 *Notices*: a document request and its reminders are
+        // statutory: on give-up the contact point is marked invalid and the
+        // engagement manager gets a task, due in one working day, to deliver
+        // it by other means (BL-ACC-24).
         NotificationTypeDef::new(REQUEST_LIST_NOTICE, MODULE)
-            .group(GROUP_DOCUMENTS)
+            .group("statutory")
+            .statutory(true)
+            .staff_role(MANAGER_ROLE)
             .template(NotifyChannel::Email, "en", Some(&subject), &body),
         NotificationTypeDef::new(REQUEST_REMINDER_NOTICE, MODULE)
-            .group(GROUP_REMINDERS)
+            .group("statutory")
+            .statutory(true)
+            .staff_role(MANAGER_ROLE)
             .template(
                 NotifyChannel::Email,
                 "en",

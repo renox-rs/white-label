@@ -38,7 +38,7 @@ use wl_kernel::automation::{RuleRunSpec, run_rule};
 use wl_kernel::compliance::{occurrence_key, schedule_subject};
 use wl_kernel::documents::today;
 use wl_kernel::notify::{
-    self, GROUP_REMINDERS, NotificationTypeDef, NotifyChannel, NotifyRequest, notifier,
+    self, GROUP_SIGNATURES, NotificationTypeDef, NotifyChannel, NotifyRequest, notifier,
 };
 use wl_kernel::portal::portal_users;
 use wl_kernel::role_tasks::{self, RoleTask};
@@ -476,8 +476,11 @@ pub fn notification_types() -> Vec<NotificationTypeDef> {
     let subject = english("accounting.letters.reminder_subject", &[]);
     let body = english("accounting.letters.reminder_body", &[]);
     vec![
+        // 04 §9: engagement letters are in the *portal and signatures* group;
+        // a reminder that gives up is a task for the engagement manager.
         NotificationTypeDef::new(LETTER_REMINDER, "accounting")
-            .group(GROUP_REMINDERS)
+            .group(GROUP_SIGNATURES)
+            .staff_role(MANAGER_ROLE)
             .template(NotifyChannel::Email, "en", Some(&subject), &body),
     ]
 }

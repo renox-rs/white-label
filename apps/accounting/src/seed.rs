@@ -307,7 +307,8 @@ mod tests {
     #[test]
     fn the_tax_agent_registration_is_a_legal_block_the_partner_renews() {
         assert_eq!(TAX_AGENT.blocks, "return.file");
-        assert!(!TAX_AGENT.override_allowed);
+        let allowed = std::hint::black_box(TAX_AGENT.override_allowed);
+        assert!(!allowed);
         assert_eq!(TAX_AGENT.look_ahead_days, 30);
         assert_eq!(TAX_AGENT.role, "partner");
     }

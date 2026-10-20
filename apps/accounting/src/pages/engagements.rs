@@ -385,6 +385,44 @@ fn notice_state(lang: &Lang, notice: &DeadlineNotice) -> String {
     text(lang, &format!("deadline_notices.state.{key}"))
 }
 
+/// One document request list of the engagement.
+#[derive(Serialize, Debug, Clone)]
+pub struct RequestRow {
+    /// The period it covers.
+    pub period: String,
+    /// The day it is due.
+    pub due: String,
+    /// Requested, received, skipped, or *notice not delivered* while the
+    /// request e-mail gave up and no proof is recorded.
+    pub state: String,
+}
+
+/// The request lists of engagement `id`, oldest first.
+async fn request_rows(
+    state: &AppState,
+    lang: &Lang,
+    engagement: &Engagement,
+) -> Result<Vec<RequestRow>> {
+    let mut rows = Vec::new();
+    for list in crate::request_lists::RequestList::of_engagement(&state.db, engagement.id).await? {
+        let key = if list.is_skipped() {
+            "skipped"
+        } else if list.received_on.is_some() {
+            "received"
+        } else if crate::request_lists::is_undelivered(state, engagement).await? {
+            "not_delivered"
+        } else {
+            "requested"
+        };
+        rows.push(RequestRow {
+            period: list.period_end.to_string(),
+            due: list.due_date.map(|d| d.to_string()).unwrap_or_default(),
+            state: text(lang, &format!("request_lists.state.{key}")),
+        });
+    }
+    Ok(rows)
+}
+
 /// What an engagement page needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "accounting/engagement.html")]
@@ -417,6 +455,7 @@ pub(crate) struct ShowPage {
     notice_template_text: String,
     block_record: String,
     deadline_notices: Vec<DeadlineNoticeRow>,
+    request_lists: Vec<RequestRow>,
     send_notice_id: Option<i64>,
     tasks: Vec<TaskRow>,
     show_overdue: bool,
@@ -686,6 +725,7 @@ async fn show(
         resume_needs_approval: found.status == EngagementStatus::Suspended
             && found.reason_code.as_deref() == Some(reasons::ON_HOLD),
         deadline_notices: deadline_rows,
+        request_lists: request_rows(&state, &lang, &found).await?,
         send_notice_id,
         status: status_label(&lang, found.status),
         status_kind: status_kind(found.status),

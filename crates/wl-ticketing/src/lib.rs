@@ -231,6 +231,13 @@ impl WlTicketing {
         self
     }
 
+    /// Sets the vertical's label of the `waiting` state of a deadline task
+    /// (the module's own *Waiting* unless set; 04: *Waiting on client*).
+    pub fn waiting_label(mut self, label: &str) -> Self {
+        self.deadlines.waiting_label = Some(label.trim().to_owned());
+        self
+    }
+
     /// Sets the rule id the nightly `mark_overdue` of deadline tasks runs
     /// and is recorded under (`WRK.RUL.05` unless set; 04: `ACC.RUL.04`).
     /// The vertical marks that id compliance-critical, so a failed or missed

@@ -464,6 +464,15 @@ impl WlInvoicing {
         self
     }
 
+    /// The role whose holders get the ticket of a dispute (the first holder
+    /// is the assignee, every holder is told) instead of the invoice's owner
+    /// or the holders of `invoices.issue` (default none; 04: the engagement
+    /// manager).
+    pub fn dispute_ticket_role(mut self, role: &str) -> Self {
+        self.config.dispute_ticket_role = Some(role.to_owned());
+        self
+    }
+
     /// The upper day edges of the ageing buckets (default `[30, 60, 90]`:
     /// 0-30, 31-60, 61-90, 90+). Sorted; zero and repeats are dropped.
     pub fn ageing_buckets(mut self, edges: &[u32]) -> Self {

@@ -127,6 +127,8 @@ pub(crate) struct Settings {
     /// The reasons `close_missed` takes, in the order the form lists them
     /// (empty unless set: any reason text; 04: its §7.1 list).
     pub missed_reasons: Vec<MissedReason>,
+    /// The vertical's label of the `waiting` state (04: *Waiting on client*).
+    pub waiting_label: Option<String>,
 }
 
 /// A reason a vertical allows for `close_missed`
@@ -148,6 +150,7 @@ impl Default for Settings {
             waive_started: true,
             manager_role: COMPANY_ADMIN_ROLE.to_owned(),
             reminder_days: Vec::new(),
+            waiting_label: None,
             overdue_rule: OVERDUE_RULE.to_owned(),
             overdue_roles: Vec::new(),
             missed_reasons: Vec::new(),

@@ -139,7 +139,8 @@ pub fn ticketing_for(client_app: &str) -> WlTicketing {
                 .overdue_rule_id(accounting::tasks::OVERDUE_RULE)
                 .task_manager_role(accounting::permissions::MANAGER_ROLE)
                 .task_overdue_role(accounting::permissions::PARTNER_ROLE)
-                .waive_started_tasks(false);
+                .waive_started_tasks(false)
+                .waiting_label("Waiting on client");
             for (code, name, needs_text) in accounting::tasks::missed_reason_names() {
                 module = if needs_text {
                     module.missed_reason_with_text(code, &name)

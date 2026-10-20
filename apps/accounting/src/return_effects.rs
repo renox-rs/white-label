@@ -27,7 +27,7 @@ use wl_kernel::deadlines::{
 };
 use wl_kernel::documents::today;
 use wl_kernel::notify::{
-    self, GROUP_PORTAL, NotificationTypeDef, NotifyChannel, NotifyRequest, notifier,
+    self, GROUP_PORTAL, GiveUpReaction, NotificationTypeDef, NotifyChannel, NotifyRequest, notifier,
 };
 use wl_kernel::role_tasks::{self, RoleTask};
 use wl_kernel::tickets::{Assignee, OpenTicket, TASK_CATEGORY, TaskComment, task_creator};
@@ -89,7 +89,15 @@ pub fn notification_types() -> Vec<NotificationTypeDef> {
     vec![
         staff(SUBMITTED_NOTICE, "submitted"),
         staff(SENT_BACK_NOTICE, "sent_back"),
-        staff(FOR_APPROVAL_NOTICE, "for_approval"),
+        // 04 §9 *Notices*: a return approval request that gives up goes to
+        // another client approver, then to a staff task for the manager.
+        staff(FOR_APPROVAL_NOTICE, "for_approval")
+            .give_up(&[
+                GiveUpReaction::MarkContactInvalid,
+                GiveUpReaction::AlternativeRecipient,
+                GiveUpReaction::StaffTask,
+            ])
+            .staff_role(MANAGER_ROLE),
         staff(WITHDRAWN_NOTICE, "withdrawn"),
         staff(HANDED_OVER_NOTICE, "handed_over"),
         staff(PAYMENT_REMINDER_NOTICE, "payment_reminder"),

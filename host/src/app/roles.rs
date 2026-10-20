@@ -326,6 +326,15 @@ pub const ROLES: &[(&str, &[&str])] = &[
             // 04 §3.1 "all": reads the KPI packs and can withdraw one.
             acc::KPI_VIEW,
             acc::KPI_PUBLISH,
+            // 04 `FIN.ACL.15`, `FIN.BUD.01`, `FIN.ACL.21`: the partner
+            // approves write-offs, budgets and owner drawings (never their
+            // own request) and reads the cash forecast.
+            invoices::WRITE_OFF,
+            invoices::BUDGETS_VIEW,
+            invoices::BUDGETS_APPROVE,
+            invoices::DRAWINGS_APPROVE,
+            invoices::CASHFLOW_VIEW,
+            invoices::RECEIVABLES_VIEW,
             parties::VIEW,
             documents::VIEW,
             invoices::VIEW,
@@ -350,6 +359,10 @@ pub const ROLES: &[(&str, &[&str])] = &[
             acc::RETURNS_VIEW,
             acc::RETURNS_REVIEW,
             acc::WIP_WRITE_OFF,
+            // 04 §4.5: the manager raises the client's dispute and asks for a
+            // write-off.
+            invoices::DISPUTE,
+            invoices::WRITE_OFF,
             // 04 §7.1 *KPI pack*: the manager prepares and publishes.
             acc::KPI_VIEW,
             acc::KPI_MANAGE,
@@ -402,6 +415,20 @@ pub const ROLES: &[(&str, &[&str])] = &[
             hr::ONBOARDING_MANAGE,
             parties::VIEW,
             invoices::VIEW,
+            // 04 `FIN.ACL.15`: billing asks for the write-off (a partner
+            // approves it), disputes on the client's behalf, keeps the
+            // budget and watches the cash forecast.
+            invoices::WRITE_OFF,
+            invoices::DISPUTE,
+            invoices::BUDGETS_VIEW,
+            invoices::BUDGETS_MANAGE,
+            invoices::BUDGET_CATEGORIES_MANAGE,
+            invoices::CASHFLOW_VIEW,
+            invoices::CASHFLOW_MANAGE,
+            // Supplier bills, owner drawings and the budget's actuals.
+            invoices::SUPPLIER_BILLS_VIEW,
+            invoices::SUPPLIER_BILLS_CREATE,
+            invoices::SUPPLIER_BILLS_APPROVE,
             invoices::CREATE,
             invoices::ISSUE,
             invoices::CREDIT,

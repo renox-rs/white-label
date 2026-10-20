@@ -723,3 +723,80 @@ pub async fn count_messages(app: &TestApp, type_key: &str) -> usize {
         .await
         .unwrap() as usize
 }
+
+/// An e-mail provider whose every send bounces hard (the mailbox does not
+/// exist), recording what it was given.
+#[derive(Clone, Default)]
+pub struct BouncingMail {
+    sent: std::sync::Arc<std::sync::Mutex<Vec<wl_notify::Outgoing>>>,
+    /// Addresses that are accepted instead.
+    ok: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+}
+
+impl BouncingMail {
+    /// Accepts mail to `address` from now on.
+    pub fn accept(&self, address: &str) {
+        self.ok.lock().unwrap().push(address.to_owned());
+    }
+
+    /// Every message it was asked to send.
+    pub fn attempts(&self) -> Vec<wl_notify::Outgoing> {
+        self.sent.lock().unwrap().clone()
+    }
+}
+
+impl wl_notify::ChannelProvider for BouncingMail {
+    fn name(&self) -> &'static str {
+        "bouncing-email"
+    }
+
+    fn channel(&self) -> wl_kernel::notify::NotifyChannel {
+        wl_kernel::notify::NotifyChannel::Email
+    }
+
+    fn available(&self, _state: &AppState) -> bool {
+        true
+    }
+
+    fn send<'a>(
+        &'a self,
+        _state: &'a AppState,
+        outgoing: &'a wl_notify::Outgoing,
+    ) -> wl_notify::channels::ProviderFuture<'a, std::result::Result<String, wl_notify::SendError>>
+    {
+        self.sent.lock().unwrap().push(outgoing.clone());
+        let accepted = self.ok.lock().unwrap().contains(&outgoing.address);
+        Box::pin(async move {
+            if accepted {
+                Ok("accepted".to_owned())
+            } else {
+                Err(wl_notify::SendError::hard(
+                    wl_notify::HardError::HardBounce,
+                    "550",
+                    "mailbox does not exist",
+                ))
+            }
+        })
+    }
+}
+
+/// The accounting host with [`BouncingMail`] as the e-mail provider.
+pub async fn accounting_booted_with_mail(mail: BouncingMail) -> TestApp {
+    let config = wl_kernel::ClientConfig::load(ACCOUNTING_CLIENT).expect("the accounting client");
+    let app = TestApp::new(
+        host::app_for_tuned(
+            config,
+            host::Tuning::default().notify(move |n| n.provider(mail)),
+        )
+        .expect("the app")
+        .provide(noon_clock())
+        .module(Probe),
+    )
+    .await;
+    app.kernel()
+        .call("wl:install", Vec::<String>::new())
+        .await
+        .unwrap();
+    app.kernel().seed().await.unwrap();
+    app
+}

@@ -30,8 +30,8 @@ use renox::serde_json::json;
 use renox::state_machine::{StateMachine, TransitionError, Transitioned};
 use wl_kernel::documents::{dubai_text, today};
 use wl_kernel::notify::{
-    self, GROUP_PORTAL, NotificationTypeDef, NotifyChannel, NotifyRecipient, NotifyRequest,
-    notifier,
+    self, GROUP_PORTAL, GiveUpReaction, NotificationTypeDef, NotifyChannel, NotifyRecipient,
+    NotifyRequest, notifier,
 };
 use wl_kernel::parties::directory;
 use wl_kernel::portal::portal_users;
@@ -807,9 +807,22 @@ async fn open_incident(state: &AppState, pack: &KpiPack) -> Result {
 
 /// The notification types of the KPI pack.
 pub fn notification_types() -> Vec<NotificationTypeDef> {
+    // 04 §9: KPI pack notices are in the *portal and signatures* group; one
+    // that gives up marks the contact invalid and gives the engagement
+    // manager a task. The import notice goes to staff only: no reaction.
     let def = |key: &str, texts: &str| {
+        let client = key != IMPORTED_NOTICE;
         NotificationTypeDef::new(key, "accounting")
             .group(GROUP_PORTAL)
+            .give_up(&if client {
+                vec![
+                    GiveUpReaction::MarkContactInvalid,
+                    GiveUpReaction::StaffTask,
+                ]
+            } else {
+                vec![GiveUpReaction::None]
+            })
+            .staff_role(MANAGER_ROLE)
             .template(
                 NotifyChannel::Email,
                 "en",

@@ -38,7 +38,7 @@ use wl_kernel::documents::{BlockCondition, BlockMode};
 use wl_parties::WlParties;
 use wl_sales::{LeadSource, WlSales};
 
-use super::roles::{COMPLIANCE, ENGAGEMENT_MANAGER};
+use super::roles::{BILLING, COMPLIANCE, ENGAGEMENT_MANAGER, PARTNER};
 
 /// The client app these values are for.
 const ACCOUNTING: &str = "accounting";
@@ -209,6 +209,54 @@ pub fn hr_for(client_app: &str, owner_role: &str) -> wl_hr::WlHr {
     }
 }
 
+/// The projected cash balance below which `FIN.RUL.23` alerts, in fils
+/// (AED 25,000).
+pub const CASH_THRESHOLD: i64 = 2_500_000;
+
+/// The invoicing module with the 04 client's settings (§3.3, §4.5, §7.1,
+/// §7.2, §9): a write-off needs a partner other than the requester and the
+/// client is told (`FIN.ACL.15`); the client approver disputes an invoice in
+/// the portal and the engagement manager gets the ticket; the cash-flow
+/// forecast alerts the partner and billing below AED 25,000 in any of the
+/// next 13 weeks, weeks from Monday, checked at 06:00, due dates moved by
+/// each client's days late, disputed amounts left out (`FIN.RUL.23`);
+/// `FIN.RUL.24` warns billing; the retainer's cycle invoices are issued by
+/// themselves. `entities` are the codes of the legal entities.
+pub fn invoicing(
+    module: wl_invoicing::WlInvoicing,
+    entities: &[String],
+) -> wl_invoicing::WlInvoicing {
+    let mut module = module
+        .auto_issue_source("invoicing.subscription")
+        .write_off_approvers(&[PARTNER])
+        .write_off_notice(true)
+        .bad_debt_relief(true)
+        .portal_disputes(true)
+        .dispute_ticket_role(ENGAGEMENT_MANAGER)
+        .dispute_escalation_role(ENGAGEMENT_MANAGER)
+        .cash_week_start(renox::chrono::Weekday::Mon)
+        .cash_forecast_weeks(13)
+        .cash_days_late(true)
+        .cash_disputed_counted(false)
+        .cash_alert_time("06:00")
+        .cash_alert_roles(&[PARTNER, BILLING])
+        .budget_variance_percent(100)
+        .budget_variance_role(BILLING)
+        .drawings_self_approve(false)
+        .drawings_notify_role(PARTNER);
+    for code in entities {
+        module = module.cash_threshold(code, CASH_THRESHOLD);
+    }
+    module
+}
+
+/// The payments module with the 04 client's settings: a bounced cheque is
+/// chased by the module's own path, adds no fee (none is set) and is decided
+/// by billing with the engagement manager told.
+pub fn payments(module: wl_payments::WlPayments) -> wl_payments::WlPayments {
+    module.cheque_manager(BILLING, true)
+}
+
 /// What [`install`] stored.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Installed {
@@ -218,12 +266,16 @@ pub struct Installed {
     pub checklists: usize,
     /// SOPs created.
     pub sops: usize,
+    /// Notification types given billing as the collector role.
+    pub notice_roles: usize,
+    /// Budget categories given billing as owner role.
+    pub budget_categories: usize,
 }
 
 impl Installed {
     /// Everything created or changed.
     pub fn total(&self) -> usize {
-        self.sources_off + self.checklists + self.sops
+        self.sources_off + self.checklists + self.sops + self.notice_roles + self.budget_categories
     }
 }
 
@@ -246,7 +298,59 @@ pub async fn install(state: &AppState) -> Result<Installed> {
     if on("documents") {
         installed.sops = install_sops(&state.db).await?;
     }
+    if on("notify") {
+        installed.notice_roles = install_collector_role(&state.db).await?;
+    }
+    if on("invoicing") {
+        installed.budget_categories = install_budget_categories(&state.db).await?;
+    }
     Ok(installed)
+}
+
+/// The notification types of the *invoices* and *statements* groups (invoices,
+/// statements, retainer and write-off notices) tell the billing role, the
+/// collector of 04, when a message gives up (§9 *Notices*): the groups' own
+/// `receivables` role is replaced unless the client edited the type.
+async fn install_collector_role(db: &Db) -> Result<usize> {
+    let mut changed = 0;
+    for mut row in wl_notify::NotificationType::query().get(db).await? {
+        let in_group = ["invoices", "statements"].contains(&row.group_key.as_str());
+        let default_role = row
+            .staff_role
+            .as_deref()
+            .is_none_or(|role| role == "receivables");
+        if in_group && default_role && row.is_unedited() {
+            let at = row.updated_at;
+            row.staff_role = Some(BILLING.to_owned());
+            // Keep the "never edited" mark: write the column only.
+            renox::db::sql(format!(
+                "UPDATE {} SET staff_role = ? WHERE id = ?",
+                wl_notify::NotificationType::TABLE
+            ))
+            .bind(row.staff_role.clone())
+            .bind(row.id)
+            .execute(db)
+            .await?;
+            let _ = at;
+            changed += 1;
+        }
+    }
+    Ok(changed)
+}
+
+/// The budget categories are owned by billing (`FIN.BUD.01`, `FIN.RUL.24`):
+/// every category with no owner role gets it; the mapping to the client's
+/// export accounts is the client's.
+async fn install_budget_categories(db: &Db) -> Result<usize> {
+    let mut changed = 0;
+    for mut category in wl_invoicing::BudgetCategory::listed(db, true).await? {
+        if category.owner_role.is_none() && !category.is_drawings() {
+            category.owner_role = Some(BILLING.to_owned());
+            category.save(db).await?;
+            changed += 1;
+        }
+    }
+    Ok(changed)
 }
 
 /// Turns off the lead sources 04 does not use (the module's *walk-in* and

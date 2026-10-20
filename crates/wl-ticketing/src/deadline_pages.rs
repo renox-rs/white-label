@@ -166,7 +166,10 @@ async fn row(
         source: format!("{} #{}", task.subject_type, task.subject_id),
         due: task.due_date.to_string(),
         start: task.start_date.to_string(),
-        status: text(lang, &format!("deadline.status.{}", task.status.as_str())),
+        status: match (&deadlines::settings(state).waiting_label, task.status) {
+            (Some(label), DeadlineTaskStatus::Waiting) => label.clone(),
+            _ => text(lang, &format!("deadline.status.{}", task.status.as_str())),
+        },
         status_kind: status_kind(task.status),
         held: task.held,
         late: task.late,
