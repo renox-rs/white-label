@@ -211,9 +211,18 @@ async fn bl_prp_11_terminating_settles_the_charges_the_invoices_and_the_cheques(
     // The tenant's portal turns read-only on the event.
     let events = s.t.terminated.all();
     assert_eq!(events.len(), 1);
-    assert_eq!(events[0].move_out, d(7, 20));
-    assert_eq!(events[0].credited, 319_355);
-    assert_eq!(events[0].tenant, TENANT);
+    assert_eq!(
+        events[0],
+        property::LeaseTerminated {
+            lease: lease.id,
+            root: lease.root_id,
+            unit: s.unit.id,
+            tenant: TENANT,
+            move_out: d(7, 20),
+            rent_due_until: None,
+            credited: 319_355,
+        }
+    );
 
     // The page shows the credit.
     s.t.app.acting_as(&s.manager);

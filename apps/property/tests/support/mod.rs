@@ -210,6 +210,29 @@ impl PartyDirectory for Parties {
     fn status<'a>(&'a self, _db: &'a Db, party: PartyId) -> PartyFuture<'a, Option<PartyStatus>> {
         Box::pin(async move { Ok(self.0.lock().unwrap().get(&party.0).map(|p| p.status)) })
     }
+
+    fn billing_identity<'a>(
+        &'a self,
+        _db: &'a Db,
+        party: PartyId,
+    ) -> PartyFuture<'a, Option<wl_kernel::parties::BillingIdentity>> {
+        Box::pin(async move {
+            Ok(self
+                .0
+                .lock()
+                .unwrap()
+                .get(&party.0)
+                .map(|p| wl_kernel::parties::BillingIdentity {
+                    party,
+                    legal_name_en: p.display_name.clone(),
+                    legal_name_ar: None,
+                    trn: None,
+                    billing_address: Some("Tower A, Dubai".to_owned()),
+                    billing_email: None,
+                    einvoice_recipient_id: None,
+                }))
+        })
+    }
 }
 
 // ---- the document guard --------------------------------------------------
@@ -1594,7 +1617,11 @@ impl Invoicer for InvoiceDesk {
 /// A payment recorder that takes refund requests and records the payments the
 /// vertical makes (an owner payout).
 #[derive(Clone, Default)]
-pub struct Refunds(Arc<Mutex<Vec<RefundRequest>>>, Arc<Mutex<PaymentLog>>);
+pub struct Refunds(
+    Arc<Mutex<Vec<RefundRequest>>>,
+    Arc<Mutex<PaymentLog>>,
+    Arc<Mutex<bool>>,
+);
 
 /// The payments recorded, each with the refund it settles.
 type PaymentLog = Vec<(RecordPayment, Option<i64>)>;
@@ -1603,6 +1630,12 @@ impl Refunds {
     /// The refunds asked for.
     pub fn asked(&self) -> Vec<RefundRequest> {
         self.0.lock().unwrap().clone()
+    }
+
+    /// From now on the recorder refuses the refunds it is asked for (`true`),
+    /// or takes them again.
+    pub fn refuse(&self, refuse: bool) {
+        *self.2.lock().unwrap() = refuse;
     }
 
     /// The payments recorded, oldest first, with the user who recorded them.
@@ -1700,6 +1733,12 @@ impl PaymentRecorder for Refunds {
         _by: Option<i64>,
     ) -> PaymentFuture<'a, RefundId> {
         Box::pin(async move {
+            if *self.2.lock().unwrap() {
+                return Err(Error::Status(
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                    "the refund is refused".to_owned(),
+                ));
+            }
             let mut all = self.0.lock().unwrap();
             all.push(request);
             Ok(RefundId(i64::try_from(all.len()).unwrap_or(0)))

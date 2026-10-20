@@ -22,14 +22,23 @@
 //!
 //! - the invoices issued for periods after the cutoff are credited pro rata by
 //!   a partial credit note: amount × days after the cutoff ÷ days in the
-//!   invoice's period, rounded half up to a fils ([`credit_for`]). A paid
-//!   invoice's credit goes to the tenant's credit balance, which the deposit
-//!   settlement's deductions use first (the tenant's remaining credit is then
-//!   refunded or kept, as [`CreditChoice`] says; BL-PAY-15 and BL-PRP-17 apply
-//!   it). A draft invoice for a period wholly after the cutoff is discarded;
+//!   invoice's period, rounded half up to a fils ([`credit_for`]). On an
+//!   invoice that is paid (or paid in part) the part of the credit note that
+//!   no balance of the invoice uses stays on the credit note as the tenant's
+//!   credit. A draft invoice for a period wholly after the cutoff is
+//!   discarded;
 //! - the cheques `received` or `due_for_deposit` and dated after the cutoff
 //!   are returned against one receipt; those for kept periods stay;
 //! - the settlement of the held deposit starts (nothing is published yet);
+//! - the credit that is left on those credit notes follows the property
+//!   manager's [`CreditChoice`] ([`settle_credit`]): `refund` asks it back
+//!   through the Refund flow (the credit note is the refund's source, taken
+//!   first through the invoicer, so it cannot be refunded twice; the refund
+//!   waits for another user's approval, `FIN.ACL.04`), `keep` leaves it on
+//!   the credit notes for the tenant to use. The deductions of the deposit are
+//!   itemised only after the move-out inspection is settled (BL-PRP-17), so no
+//!   deduction exists yet to apply the credit to: the tenant's credit is
+//!   there for the invoice the deductions produce;
 //! - `LeaseTerminated` is emitted, which turns the tenant's portal read-only.
 //!
 //! A step that fails does not stop the others: the accountant gets one task
@@ -63,7 +72,10 @@ use serde::{Deserialize, Serialize};
 use wl_kernel::cheques::{ChequeId, ChequeStatus, ReturnCheques, cheques};
 use wl_kernel::deposits::deposits;
 use wl_kernel::documents::today;
-use wl_kernel::invoicing::{CreditLine, InvoiceId, InvoiceStatus, invoicer};
+use wl_kernel::invoicing::{
+    CreditLine, CreditNoteId, CreditNoteStatus, InvoiceId, InvoiceStatus, invoicer,
+};
+use wl_kernel::payments::{RefundRequest, RefundSource, payment_recorder};
 use wl_kernel::role_tasks::RoleTask;
 use wl_kernel::tickets::task_creator;
 
@@ -350,6 +362,14 @@ pub struct Settlement {
     pub deposit: Option<i64>,
     /// The net amount credited in all, in fils.
     pub credit: i64,
+    /// The credit that stayed on the credit notes (the invoices did not use
+    /// it) and was asked back, in fils: the refunds of [`Settlement::refunds`].
+    pub refunded: i64,
+    /// The refunds asked for that credit, oldest first.
+    pub refunds: Vec<i64>,
+    /// The credit that stayed with the tenant because the choice is to keep
+    /// it, in fils.
+    pub kept: i64,
     /// What could not be done and was left to the accountant.
     pub problems: Vec<String>,
     /// Whether this run did the work (`false` for a repeat).
@@ -411,6 +431,7 @@ pub async fn settle_keeping(
         ran: true,
         ..Settlement::default()
     };
+    let mut notes: Vec<CreditNoteId> = Vec::new();
     let cut = cutoff(move_out, lease.rent_due_until);
     let reason = english(
         "property.terminate.reason",
@@ -489,9 +510,10 @@ pub async fn settle_keeping(
                     )
                     .await
                 {
-                    Ok(_) => {
+                    Ok(note) => {
                         done.credited.push((invoice_id, net));
                         done.credit += net;
+                        notes.push(note);
                     }
                     Err(error) => done
                         .problems
@@ -542,6 +564,9 @@ pub async fn settle_keeping(
         Err(error) => done.problems.push(problem_line("deposit", &error)),
     }
 
+    // 3b. The credit that the invoices did not use.
+    settle_credit(state, &lease, &notes, by, &mut done).await;
+
     // 4. What was credited, what is left by hand, the event.
     Lease::query()
         .where_(Lease::ID.eq(id))
@@ -579,6 +604,94 @@ pub async fn settle_keeping(
         })
         .await?;
     Ok(done)
+}
+
+/// The credit left on the credit notes of the termination, as the property
+/// manager chose (`lease.credit_choice`): asked back through the Refund flow,
+/// or kept for the tenant. A failing step is a problem for the accountant, not
+/// an error.
+async fn settle_credit(
+    state: &AppState,
+    lease: &Lease,
+    notes: &[CreditNoteId],
+    by: Option<i64>,
+    done: &mut Settlement,
+) {
+    let contract = invoicer(state);
+    for note in notes {
+        let summary = match contract.find_credit_note(&state.db, *note).await {
+            Ok(Some(summary)) => summary,
+            Ok(None) => continue,
+            Err(error) => {
+                done.problems
+                    .push(problem_line(&format!("credit note {note}"), &error));
+                continue;
+            }
+        };
+        if summary.status != CreditNoteStatus::Issued || summary.remaining <= 0 {
+            continue;
+        }
+        if lease.credit_choice == CreditChoice::Keep {
+            done.kept += summary.remaining;
+            continue;
+        }
+        let Some(entity) = summary.legal_entity_id else {
+            done.problems.push(english(
+                "property.terminate.credit_no_entity",
+                &[("note", &note.0)],
+            ));
+            continue;
+        };
+        // Built before the await: the argument list of `english` is not `Send`.
+        let reason = english(
+            "property.terminate.refund_reason",
+            &[("lease", &lease.number_with_version())],
+        );
+        let asked = payment_recorder(state)
+            .request_refund(
+                state,
+                RefundRequest {
+                    source: RefundSource::CreditNote(note.subject()),
+                    party: lease.tenant(),
+                    legal_entity_id: entity,
+                    amount: summary.remaining,
+                    currency: summary.currency.clone(),
+                    method: None,
+                    gateway_txn: None,
+                    reason,
+                },
+                by,
+            )
+            .await;
+        let refund = match asked {
+            Ok(refund) => refund,
+            Err(error) => {
+                done.problems.push(problem_line(
+                    &format!("refund of credit note {note}"),
+                    &error,
+                ));
+                continue;
+            }
+        };
+        // The refund exists: the credit note gives the amount to it, so the
+        // same credit is not refunded twice.
+        match contract
+            .take_credit_for_refund(state, *note, refund.subject(), 1, summary.remaining)
+            .await
+        {
+            Ok(()) => {
+                done.refunded += summary.remaining;
+                done.refunds.push(refund.0);
+            }
+            Err(error) => {
+                let line = english(
+                    "property.terminate.credit_not_taken",
+                    &[("refund", &refund.0), ("note", &note.0)],
+                );
+                done.problems.push(format!("{line} ({error})"));
+            }
+        }
+    }
 }
 
 /// What a user records of the move-out inspection.

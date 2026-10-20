@@ -869,6 +869,18 @@ const TEXTS: &[(&str, &str)] = &[
         "Invoice :invoice is a draft for a period that straddles the move-out date: adjust it by hand.",
     ),
     (
+        "property.terminate.refund_reason",
+        "Credit left after lease :lease ended: the tenant moved out",
+    ),
+    (
+        "property.terminate.credit_no_entity",
+        "Credit note :note has no issuing entity: refund its credit by hand.",
+    ),
+    (
+        "property.terminate.credit_not_taken",
+        "Refund :refund was asked but credit note :note was not reduced: cancel the refund or reduce the note by hand.",
+    ),
+    (
         "property.terminate.task_problems",
         "Finish the termination of :lease by hand",
     ),
