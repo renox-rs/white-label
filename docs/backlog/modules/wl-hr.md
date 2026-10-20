@@ -14,31 +14,31 @@ supports 05-N8-a, 10-N8-c and 04-N8-d. BL-HRM-26 to 29 add staff onboarding chec
 
 | ID | Title | Priority | Size | Milestone | Depends on |
 |---|---|---|---|---|---|
-| BL-HRM-01 | Answer `qualification_valid` and emit `QualificationExpired` (`HRM.RUL.10`) | high | m | Build 1 | Base: wl-hr Qualification records; Epic wl-documents: `document_valid`, `DocumentExpired` |
-| BL-HRM-02 | Record same-day sick leave as approved (`record_sick`) | medium | s | Build 1 | Base: wl-hr Leave request lifecycle |
+| BL-HRM-01 | Answer `qualification_valid` and emit `QualificationExpired` (`HRM.RUL.10`) | high | m | Launch 02 | Base: wl-hr Qualification records; Epic wl-documents: `document_valid`, `DocumentExpired` |
+| BL-HRM-02 | Record same-day sick leave as approved (`record_sick`) | medium | s | Launch 05 | Base: wl-hr Leave request lifecycle |
 | BL-HRM-03 | Reject a visa case with follow-up tasks | high | m | Build 1 | Base: wl-hr Visa case lifecycle; Epic wl-documents: `DocumentExpiring` |
 | BL-HRM-04 | Approve non-standard exits by a second user (`HRM.ACL.07`) | high | s | Build 1 | Base: wl-hr Employee lifecycle; Epic wl-kernel: approval requests |
 | BL-HRM-05 | Cancel onboarding (`cancel_onboarding`) | high | m | Build 1 | BL-HRM-03; BL-HRM-04; BL-HRM-24 |
-| BL-HRM-06 | Withdraw a notice by agreement (`withdraw_notice`) | medium | s | Build 1 | BL-HRM-04; BL-HRM-24 |
-| BL-HRM-07 | Report an employee as absconded (`report_absconding`) | high | m | Build 1 | BL-HRM-04; Epic wl-attendance: attendance records; Vertical 09: absence case |
-| BL-HRM-08 | Reinstate an absconded employee (`reinstate`) | high | s | Build 1 | BL-HRM-04; BL-HRM-07; BL-HRM-18; BL-HRM-24 |
-| BL-HRM-09 | Record an employee's death (`record_death`) | high | m | Build 1 | BL-HRM-04 |
-| BL-HRM-10 | Exit an absconded or deceased employee | high | s | Build 1 | BL-HRM-07; BL-HRM-09 |
-| BL-HRM-11 | Return a payroll run to draft (`return`) | high | s | Build 1 | Base: wl-hr Payroll run lifecycle |
-| BL-HRM-12 | Record a rejected WPS file and resubmit | high | m | Build 1 | Base: wl-hr Payroll run lifecycle |
-| BL-HRM-13 | Record a partly failed WPS file and regenerate | high | m | Build 1 | BL-HRM-12; BL-HRM-18; BL-HRM-20; BL-HRM-21 |
-| BL-HRM-14 | Escalate WPS rejections before the due date (`HRM.RUL.11`) | high | s | Build 1 | BL-HRM-12; BL-HRM-13 |
-| BL-HRM-15 | Keep salary recoveries within the Art. 25 caps (`HRM.ACL.06`) | high | s | Build 1 | Base: wl-hr Adjustments and payroll calculation |
-| BL-HRM-16 | Calculate payroll with provisional hours and timesheet corrections | high | m | Build 1 | BL-ATT-08; BL-ATT-12; BL-ATT-13; BL-HRM-15 |
-| BL-HRM-17 | Correct a paid run with a supplementary run | high | m | Build 1 | BL-HRM-15; BL-HRM-18 |
-| BL-HRM-18 | Release held lines through an off-cycle run (`HRM.RUL.12`) | high | m | Build 1 | Base: wl-hr Payroll run lifecycle; Vertical 09: absence case |
-| BL-HRM-19 | Request and approve a new pay account with SMS notice | high | m | Build 1 | Base: wl-hr Employee records; Epic wl-notify: SMS |
-| BL-HRM-20 | Activate a pay account after cooling and use it at submit | high | s | Build 1 | BL-HRM-19; BL-HRM-18 |
-| BL-HRM-21 | Stop a pay account change, waive cooling, handle undelivered notice | high | m | Build 1 | BL-HRM-19; BL-HRM-20; Epic wl-ticketing: security tickets; Epic wl-notify: `MessageGaveUp`; Epic wl-kernel: approval requests |
-| BL-HRM-22 | Dispute and resolve a final settlement | high | m | Build 1 | Base: wl-hr Final settlement lifecycle; Epic wl-ticketing: labour-case tickets |
-| BL-HRM-23 | Handle a negative final settlement | high | s | Build 1 | Base: wl-hr Final settlement lifecycle; BL-HRM-15 |
+| BL-HRM-06 | Withdraw a notice by agreement (`withdraw_notice`) | medium | s | Launch 09 | BL-HRM-04; BL-HRM-24 |
+| BL-HRM-07 | Report an employee as absconded (`report_absconding`) | high | m | Launch 02 | BL-HRM-04; Epic wl-attendance: attendance records; Vertical 09: absence case |
+| BL-HRM-08 | Reinstate an absconded employee (`reinstate`) | high | s | Launch 09 | BL-HRM-04; BL-HRM-07; BL-HRM-18; BL-HRM-24 |
+| BL-HRM-09 | Record an employee's death (`record_death`) | high | m | Launch 09 | BL-HRM-04 |
+| BL-HRM-10 | Exit an absconded or deceased employee | high | s | Launch 09 | BL-HRM-07; BL-HRM-09 |
+| BL-HRM-11 | Return a payroll run to draft (`return`) | high | s | Launch 09 | Base: wl-hr Payroll run lifecycle |
+| BL-HRM-12 | Record a rejected WPS file and resubmit | high | m | Launch 09 | Base: wl-hr Payroll run lifecycle |
+| BL-HRM-13 | Record a partly failed WPS file and regenerate | high | m | Launch 09 | BL-HRM-12; BL-HRM-18; BL-HRM-20; BL-HRM-21 |
+| BL-HRM-14 | Escalate WPS rejections before the due date (`HRM.RUL.11`) | high | s | Launch 09 | BL-HRM-12; BL-HRM-13 |
+| BL-HRM-15 | Keep salary recoveries within the Art. 25 caps (`HRM.ACL.06`) | high | s | Launch 09 | Base: wl-hr Adjustments and payroll calculation |
+| BL-HRM-16 | Calculate payroll with provisional hours and timesheet corrections | high | m | Launch 09 | BL-ATT-08; BL-ATT-12; BL-ATT-13; BL-HRM-15 |
+| BL-HRM-17 | Correct a paid run with a supplementary run | high | m | Launch 09 | BL-HRM-15; BL-HRM-18 |
+| BL-HRM-18 | Release held lines through an off-cycle run (`HRM.RUL.12`) | high | m | Launch 09 | Base: wl-hr Payroll run lifecycle; Vertical 09: absence case |
+| BL-HRM-19 | Request and approve a new pay account with SMS notice | high | m | Launch 09 | Base: wl-hr Employee records; Epic wl-notify: SMS |
+| BL-HRM-20 | Activate a pay account after cooling and use it at submit | high | s | Launch 09 | BL-HRM-19; BL-HRM-18 |
+| BL-HRM-21 | Stop a pay account change, waive cooling, handle undelivered notice | high | m | Launch 09 | BL-HRM-19; BL-HRM-20; Epic wl-ticketing: security tickets; Epic wl-notify: `MessageGaveUp`; Epic wl-kernel: approval requests |
+| BL-HRM-22 | Dispute and resolve a final settlement | high | m | Launch 09 | Base: wl-hr Final settlement lifecycle; Epic wl-ticketing: labour-case tickets |
+| BL-HRM-23 | Handle a negative final settlement | high | s | Launch 09 | Base: wl-hr Final settlement lifecycle; BL-HRM-15 |
 | BL-HRM-24 | Close or cancel a final settlement | medium | s | Build 1 | Base: wl-hr Final settlement lifecycle |
-| BL-HRM-25 | Alert on the 14-day settlement deadline (`HRM.RUL.09`) | high | s | Build 1 | Base: wl-hr Final settlement lifecycle; BL-HRM-22 |
+| BL-HRM-25 | Alert on the 14-day settlement deadline (`HRM.RUL.09`) | high | s | Launch 09 | Base: wl-hr Final settlement lifecycle; BL-HRM-22 |
 | BL-HRM-26 | Start an onboarding from the role's templates when an employee is hired (`HRM.RUL.16`) | medium | m | Build 1 | Base: wl-hr Employee lifecycle; BL-HRM-05 |
 | BL-HRM-27 | Complete and waive onboarding steps (`HRM.ACL.10`) | medium | m | Build 1 | BL-HRM-26; BL-DOC-08; BL-DOC-09; Epic wl-ticketing: checklist runs |
 | BL-HRM-28 | Remind and escalate overdue onboarding steps (`HRM.RUL.17`) | medium | s | Build 1 | BL-HRM-26 |
@@ -48,7 +48,7 @@ supports 05-N8-a, 10-N8-c and 04-N8-d. BL-HRM-26 to 29 add staff onboarding chec
 
 ### BL-HRM-01 — wl-hr: answer `qualification_valid` and emit `QualificationExpired` (`HRM.RUL.10`)
 
-**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:system` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:system` · **Milestone:** Launch 02 · **Size:** m
 **Depends on:** Base: wl-hr Qualification records · Epic wl-documents: `document_valid`, `DocumentExpired`, `DocumentExpiring` (with `affected`), `DocumentAccepted` · **Blocks:** BL-ATT-04, BL-SCH-07, BL-SCH-08, BL-ACC-19, BL-ACC-23, BL-CLN-12, BL-CON-18, BL-EDU-08, BL-EDU-10, BL-LOG-25, BL-MPW-08, BL-MPW-11
 **Review items:** X-13, 05-N8-a, 09-N8-b, 10-N8-c, 04-N8-d
 
@@ -155,7 +155,7 @@ dispatch).
 
 ### BL-HRM-02 — wl-hr: record same-day sick leave as approved (`record_sick`)
 
-**Labels:** `module:wl-hr` `area:negative-flow` `priority:medium` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-hr` `area:negative-flow` `priority:medium` `surface:back-office` `surface:system` · **Milestone:** Launch 05 · **Size:** s
 **Depends on:** Base: wl-hr Leave request lifecycle · **Blocks:** BL-SCH-05
 **Review items:** X-17 (05 MEDIUM "practitioner sick on the day")
 
@@ -468,7 +468,7 @@ Approval mechanics (BL-HRM-04); 09 deployment reaction (vertical 09).
 
 ### BL-HRM-06 — wl-hr: withdraw a notice by agreement (`withdraw_notice`)
 
-**Labels:** `module:wl-hr` `area:negative-flow` `priority:medium` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-hr` `area:negative-flow` `priority:medium` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Launch 09 · **Size:** s
 **Depends on:** BL-HRM-04 · BL-HRM-24 · **Blocks:** BL-MPW-13
 **Review items:** X-15, 09 MEDIUM "notice withdrawal"
 
@@ -532,7 +532,7 @@ Approval mechanics (BL-HRM-04).
 
 ### BL-HRM-07 — wl-hr: report an employee as absconded (`report_absconding`)
 
-**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Launch 02 · **Size:** m
 **Depends on:** BL-HRM-04 · Epic wl-attendance: attendance records (last attended day) · Vertical 09: absence case (`MPW.RUL.09`) · **Blocks:** BL-HRM-08, BL-HRM-10, BL-CON-15, BL-CON-18, BL-LOG-13, BL-MPW-13, BL-MPW-17
 **Review items:** X-15, 09-N12-c
 
@@ -623,7 +623,7 @@ Setting: Absence days before `report_absconding` is allowed = 7 consecutive days
 
 ### BL-HRM-08 — wl-hr: reinstate an absconded employee (`reinstate`)
 
-**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Launch 09 · **Size:** s
 **Depends on:** BL-HRM-04 · BL-HRM-07 · BL-HRM-18 · BL-HRM-24 · **Blocks:** BL-MPW-13
 **Review items:** X-15, 09-N12-c
 
@@ -691,7 +691,7 @@ Off-cycle run (BL-HRM-18).
 
 ### BL-HRM-09 — wl-hr: record an employee's death (`record_death`)
 
-**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Launch 09 · **Size:** m
 **Depends on:** BL-HRM-04 · **Blocks:** BL-HRM-10, BL-MPW-13
 **Review items:** X-15
 
@@ -768,7 +768,7 @@ Exit (BL-HRM-10).
 
 ### BL-HRM-10 — wl-hr: exit an absconded or deceased employee
 
-**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `blocked:open-item` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `blocked:open-item` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Launch 09 · **Size:** s
 **Depends on:** BL-HRM-07 · BL-HRM-09 · **Blocks:** None
 **Review items:** X-15, 09-N12-c
 
@@ -835,7 +835,7 @@ Standard exit (base).
 
 ### BL-HRM-11 — wl-hr: return a payroll run to draft (`return`)
 
-**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:back-office` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:back-office` · **Milestone:** Launch 09 · **Size:** s
 **Depends on:** Base: wl-hr Payroll run lifecycle · **Blocks:** None
 **Review items:** X-15
 
@@ -890,7 +890,7 @@ None.
 
 ### BL-HRM-12 — wl-hr: record a rejected WPS file and resubmit
 
-**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Launch 09 · **Size:** m
 **Depends on:** Base: wl-hr Payroll run lifecycle (`submit`) · **Blocks:** BL-HRM-13, BL-HRM-14
 **Review items:** X-15, 09-N7-b
 
@@ -965,7 +965,7 @@ Partial failure (BL-HRM-13); escalation (BL-HRM-14).
 
 ### BL-HRM-13 — wl-hr: record a partly failed WPS file and regenerate
 
-**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:back-office` `surface:portal` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:back-office` `surface:portal` · **Milestone:** Launch 09 · **Size:** m
 **Depends on:** BL-HRM-12 · BL-HRM-18 (held lines, off-cycle) · BL-HRM-20 (account `active` at submit) · BL-HRM-21 (`waive_cooling`) · **Blocks:** BL-HRM-14
 **Review items:** X-15, 09-N7-b
 
@@ -1038,7 +1038,7 @@ Pay account change (BL-HRM-19 to BL-HRM-21); off-cycle (BL-HRM-18).
 
 ### BL-HRM-14 — wl-hr: escalate WPS rejections before the due date (`HRM.RUL.11`)
 
-**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Launch 09 · **Size:** s
 **Depends on:** BL-HRM-12 · BL-HRM-13 · **Blocks:** BL-MPW-21
 **Review items:** X-15, 09-N7-b
 
@@ -1091,7 +1091,7 @@ still not resubmitted N days (default 1) before the WPS due date, the MD and acc
 
 ### BL-HRM-15 — wl-hr: keep salary recoveries within the Art. 25 caps (`HRM.ACL.06`)
 
-**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Launch 09 · **Size:** s
 **Depends on:** Base: wl-hr Adjustments and payroll calculation · **Blocks:** BL-HRM-16, BL-HRM-17, BL-HRM-23, BL-MPW-21
 **Review items:** X-15, 09-N6-b
 
@@ -1156,7 +1156,7 @@ Settlement offsets beyond caps (BL-HRM-23, L-23).
 
 ### BL-HRM-16 — wl-hr: calculate payroll with provisional hours and timesheet corrections
 
-**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Launch 09 · **Size:** m
 **Depends on:** BL-ATT-08 · BL-ATT-12 · BL-ATT-13 · BL-HRM-15 · **Blocks:** None
 **Review items:** X-15, X-16, 09-N5-c, 09-N4-a
 
@@ -1240,7 +1240,7 @@ Supplementary runs (BL-HRM-17).
 
 ### BL-HRM-17 — wl-hr: correct a paid run with a supplementary run
 
-**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Launch 09 · **Size:** m
 **Depends on:** BL-HRM-15 · BL-HRM-18 · **Blocks:** None
 **Review items:** X-15, 09-N6-b
 
@@ -1326,7 +1326,7 @@ Off-cycle mechanics (BL-HRM-18).
 
 ### BL-HRM-18 — wl-hr: release held lines through an off-cycle run (`HRM.RUL.12`)
 
-**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Launch 09 · **Size:** m
 **Depends on:** Base: wl-hr Payroll run lifecycle · Vertical 09: absence case closed (`MPW.RUL.09`) · **Blocks:** BL-HRM-08, BL-HRM-13, BL-HRM-17, BL-HRM-20, BL-MPW-17
 **Review items:** X-15, 09-N3-d
 
@@ -1396,7 +1396,7 @@ Supplementary positive differences (BL-HRM-17).
 
 ### BL-HRM-19 — wl-hr: request and approve a new pay account with SMS notice
 
-**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:back-office` `surface:portal` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:back-office` `surface:portal` · **Milestone:** Launch 09 · **Size:** m
 **Depends on:** Base: wl-hr Employee records · Epic wl-notify: SMS · **Blocks:** BL-HRM-20, BL-HRM-21, BL-MPW-21
 **Review items:** X-15, 09-N11-b
 
@@ -1485,7 +1485,7 @@ Activation (BL-HRM-20); stop and waive (BL-HRM-21).
 
 ### BL-HRM-20 — wl-hr: activate a pay account after cooling and use it at submit
 
-**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Launch 09 · **Size:** s
 **Depends on:** BL-HRM-19 · BL-HRM-18 · **Blocks:** BL-HRM-13, BL-HRM-21
 **Review items:** X-15, 09-N11-b
 
@@ -1556,7 +1556,7 @@ Stop and waive (BL-HRM-21).
 
 ### BL-HRM-21 — wl-hr: stop a pay account change, waive cooling, handle undelivered notice
 
-**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:back-office` `surface:portal` `surface:public` `surface:system` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:back-office` `surface:portal` `surface:public` `surface:system` · **Milestone:** Launch 09 · **Size:** m
 **Depends on:** BL-HRM-19 · BL-HRM-20 (`activate`) · Epic wl-ticketing: security tickets · Epic wl-notify: `MessageGaveUp` · Epic wl-kernel: approval requests · **Blocks:** BL-HRM-13
 **Review items:** X-15, 09-N11-b
 
@@ -1643,7 +1643,7 @@ Ticket handling (Epic wl-ticketing).
 
 ### BL-HRM-22 — wl-hr: dispute and resolve a final settlement
 
-**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:back-office` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:back-office` · **Milestone:** Launch 09 · **Size:** m
 **Depends on:** Base: wl-hr Final settlement lifecycle · Epic wl-ticketing: labour-case tickets · **Blocks:** BL-HRM-25
 **Review items:** X-15, 09-N4-b
 
@@ -1714,7 +1714,7 @@ user to `approved`, the difference paid).
 
 ### BL-HRM-23 — wl-hr: handle a negative final settlement
 
-**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `blocked:open-item` `surface:back-office` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `blocked:open-item` `surface:back-office` · **Milestone:** Launch 09 · **Size:** s
 **Depends on:** Base: wl-hr Final settlement lifecycle · BL-HRM-15 · **Blocks:** None
 **Review items:** X-15
 
@@ -1851,7 +1851,7 @@ Dispute (BL-HRM-22).
 
 ### BL-HRM-25 — wl-hr: alert on the 14-day settlement deadline (`HRM.RUL.09`)
 
-**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:system` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:system` · **Milestone:** Launch 09 · **Size:** s
 **Depends on:** Base: wl-hr Final settlement lifecycle · BL-HRM-22 · **Blocks:** BL-MPW-21
 **Review items:** X-15, 09-N5-d
 

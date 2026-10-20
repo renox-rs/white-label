@@ -11,25 +11,25 @@ attendance at the cut-off with later reconciliation. It closes X-16, 02-N5-d, 02
 
 | ID | Title | Priority | Size | Milestone | Depends on |
 |---|---|---|---|---|---|
-| BL-ATT-01 | Detect overlapping attendance across locations and projects | high | m | Build 1 | Base: wl-attendance Attendance record lifecycle |
-| BL-ATT-02 | Flag hours above the overtime cap (`HRM.RUL.13`) | high | s | Build 1 | Base: wl-attendance Attendance record lifecycle; Base: wl-kernel business calendar |
-| BL-ATT-03 | Flag marked hours that cross the midday break (`HRM.RUL.13`) | high | s | Build 1 | Base: wl-attendance Attendance record lifecycle; BL-ATT-02 |
-| BL-ATT-04 | Flag attendance without a valid permit, visa or qualification (`HRM.RUL.14`) | high | s | Build 1 | Epic wl-documents: `document_valid`; BL-HRM-01 |
-| BL-ATT-05 | Accept held flags only by a separate reviewer (`HRM.ACL.09`) | high | s | Build 1 | BL-ATT-01; BL-ATT-02; BL-ATT-04 |
-| BL-ATT-06 | Refuse timesheet submit when allocated hours exceed attended hours | high | s | Build 1 | Base: wl-attendance Timesheet lifecycle; BL-ATT-01 |
-| BL-ATT-07 | Open an adjustment timesheet on a locked timesheet (`HRM.ACL.08`) | high | m | Build 1 | Base: wl-attendance Timesheet lifecycle |
-| BL-ATT-08 | Approve an adjustment timesheet with segregation of duties | high | s | Build 1 | BL-ATT-07 |
-| BL-ATT-09 | Link a credited invoice dispute to a `client_dispute` adjustment | high | s | Build 1 | BL-ATT-07; Epic wl-invoicing: invoice dispute and `resolve_dispute` |
-| BL-ATT-10 | Escalate an unanswered external timesheet (`HRM.RUL.15` at E days) | medium | s | Build 1 | Base: wl-attendance `HRM.RUL.08` |
-| BL-ATT-11 | Deem an external timesheet approved per contract (`deem_approve`) | high | s | Build 1 | BL-ATT-10; BL-ATT-13 |
-| BL-ATT-12 | Give payroll provisional hours at the cut-off (`hours_for_payroll`) | high | m | Build 1 | Base: wl-attendance Timesheet lifecycle; Base: wl-hr `PayrollCalendar` |
-| BL-ATT-13 | Reconcile provisional hours when the timesheet is approved | high | s | Build 1 | BL-ATT-07; BL-ATT-12 |
+| BL-ATT-01 | Detect overlapping attendance across locations and projects | high | m | Launch 02 | Base: wl-attendance Attendance record lifecycle |
+| BL-ATT-02 | Flag hours above the overtime cap (`HRM.RUL.13`) | high | s | Launch 02 | Base: wl-attendance Attendance record lifecycle; Base: wl-kernel business calendar |
+| BL-ATT-03 | Flag marked hours that cross the midday break (`HRM.RUL.13`) | high | s | Launch 02 | Base: wl-attendance Attendance record lifecycle; BL-ATT-02 |
+| BL-ATT-04 | Flag attendance without a valid permit, visa or qualification (`HRM.RUL.14`) | high | s | Launch 02 | Epic wl-documents: `document_valid`; BL-HRM-01 |
+| BL-ATT-05 | Accept held flags only by a separate reviewer (`HRM.ACL.09`) | high | s | Launch 02 | BL-ATT-01; BL-ATT-02; BL-ATT-04 |
+| BL-ATT-06 | Refuse timesheet submit when allocated hours exceed attended hours | high | s | Launch 02 | Base: wl-attendance Timesheet lifecycle; BL-ATT-01 |
+| BL-ATT-07 | Open an adjustment timesheet on a locked timesheet (`HRM.ACL.08`) | high | m | Launch 02 | Base: wl-attendance Timesheet lifecycle |
+| BL-ATT-08 | Approve an adjustment timesheet with segregation of duties | high | s | Launch 02 | BL-ATT-07 |
+| BL-ATT-09 | Link a credited invoice dispute to a `client_dispute` adjustment | high | s | Launch 09 | BL-ATT-07; Epic wl-invoicing: invoice dispute and `resolve_dispute` |
+| BL-ATT-10 | Escalate an unanswered external timesheet (`HRM.RUL.15` at E days) | medium | s | Launch 09 | Base: wl-attendance `HRM.RUL.08` |
+| BL-ATT-11 | Deem an external timesheet approved per contract (`deem_approve`) | high | s | Launch 09 | BL-ATT-10; BL-ATT-13 |
+| BL-ATT-12 | Give payroll provisional hours at the cut-off (`hours_for_payroll`) | high | m | Launch 09 | Base: wl-attendance Timesheet lifecycle; Base: wl-hr `PayrollCalendar` |
+| BL-ATT-13 | Reconcile provisional hours when the timesheet is approved | high | s | Launch 09 | BL-ATT-07; BL-ATT-12 |
 
 ---
 
 ### BL-ATT-01 — wl-attendance: detect overlapping attendance across locations and projects
 
-**Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` `surface:back-office` `surface:field-pwa` `surface:system` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` `surface:back-office` `surface:field-pwa` `surface:system` · **Milestone:** Launch 02 · **Size:** m
 **Depends on:** Base: wl-attendance Attendance record lifecycle (`record`, `flag`, `accept`) · **Blocks:** BL-ATT-05, BL-ATT-06, BL-CON-18
 **Review items:** X-16, 09 MEDIUM "overlap guards"
 
@@ -153,7 +153,7 @@ Accepting an `overlap` record (BL-ATT-05); the timesheet `submit` check on summe
 
 ### BL-ATT-02 — wl-attendance: flag hours above the overtime cap (`HRM.RUL.13`)
 
-**Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Launch 02 · **Size:** s
 **Depends on:** Base: wl-attendance Attendance record lifecycle · Base: wl-kernel business calendar (normal hours, Ramadan hours) · **Blocks:** BL-ATT-03, BL-ATT-05, BL-CON-18, BL-MPW-21
 **Review items:** X-16, 02-N8-a, 09 MEDIUM "overtime cap flags"
 
@@ -247,7 +247,7 @@ rates (wl-hr payroll).
 
 ### BL-ATT-03 — wl-attendance: flag marked hours that cross the midday break (`HRM.RUL.13`)
 
-**Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` `surface:field-pwa` `surface:system` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` `surface:field-pwa` `surface:system` · **Milestone:** Launch 02 · **Size:** s
 **Depends on:** Base: wl-attendance Attendance record lifecycle · BL-ATT-02 (same rule) · **Blocks:** BL-CON-18
 **Review items:** X-16, 02-N8-a
 
@@ -325,7 +325,7 @@ Overtime-cap part of the rule (BL-ATT-02); the check-in-time check `HRM.RUL.01` 
 
 ### BL-ATT-04 — wl-attendance: flag attendance without a valid permit, visa or qualification (`HRM.RUL.14`)
 
-**Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Launch 02 · **Size:** s
 **Depends on:** Epic wl-documents: `document_valid(subject, kind, on_date)` · BL-HRM-01 (`qualification_valid`) · **Blocks:** BL-ATT-05, BL-CON-18, BL-MPW-21
 **Review items:** X-16, X-13, 02-N5-d
 
@@ -421,7 +421,7 @@ Accepting the flag (BL-ATT-05); deployment `suspend` on `DocumentExpired` (verti
 
 ### BL-ATT-05 — wl-attendance: accept held flags only by a separate reviewer (`HRM.ACL.09`)
 
-**Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Launch 02 · **Size:** s
 **Depends on:** BL-ATT-01 · BL-ATT-02 · BL-ATT-04 · **Blocks:** BL-CON-18
 **Review items:** X-16
 
@@ -499,7 +499,7 @@ How the flags are raised (BL-ATT-01, BL-ATT-02, BL-ATT-04).
 
 ### BL-ATT-06 — wl-attendance: refuse timesheet submit when allocated hours exceed attended hours
 
-**Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Launch 02 · **Size:** s
 **Depends on:** Base: wl-attendance Timesheet lifecycle (`submit`) · BL-ATT-01 · **Blocks:** BL-CON-18
 **Review items:** X-16, 09 MEDIUM "overlap guards"
 
@@ -567,7 +567,7 @@ Attendance overlap flags (BL-ATT-01).
 
 ### BL-ATT-07 — wl-attendance: open an adjustment timesheet on a locked timesheet (`HRM.ACL.08`)
 
-**Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` `surface:back-office` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` `surface:back-office` · **Milestone:** Launch 02 · **Size:** m
 **Depends on:** Base: wl-attendance Timesheet lifecycle (`lock`) · **Blocks:** BL-ATT-08, BL-ATT-09, BL-ATT-13, BL-CON-18, BL-EDU-14
 **Review items:** X-16, 09-N4-a
 
@@ -664,7 +664,7 @@ credit note or extra line from an adjustment timesheet).
 
 ### BL-ATT-08 — wl-attendance: approve an adjustment timesheet with segregation of duties
 
-**Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` `surface:back-office` `surface:portal` `surface:public` `surface:system` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` `surface:back-office` `surface:portal` `surface:public` `surface:system` · **Milestone:** Launch 02 · **Size:** s
 **Depends on:** BL-ATT-07 · **Blocks:** BL-HRM-16, BL-CON-18, BL-EDU-14
 **Review items:** X-16, 09-N4-a
 
@@ -742,7 +742,7 @@ Payroll and billing reactions (BL-HRM-16; Epic wl-invoicing); reconciliation (BL
 
 ### BL-ATT-09 — wl-attendance: link a credited invoice dispute to a `client_dispute` adjustment
 
-**Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Launch 09 · **Size:** s
 **Depends on:** BL-ATT-07 · Epic wl-invoicing: invoice `disputed` flag and `resolve_dispute` outcome `credited` · **Blocks:** None
 **Review items:** X-16, 09-N4-a
 
@@ -836,7 +836,7 @@ The invoice dispute and credit note (Epic wl-invoicing); approval (BL-ATT-08).
 
 ### BL-ATT-10 — wl-attendance: escalate an unanswered external timesheet (`HRM.RUL.15` at E days)
 
-**Labels:** `module:wl-attendance` `area:negative-flow` `priority:medium` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-attendance` `area:negative-flow` `priority:medium` `surface:back-office` `surface:system` · **Milestone:** Launch 09 · **Size:** s
 **Depends on:** Base: wl-attendance `HRM.RUL.08` (submit and reminders) · **Blocks:** BL-ATT-11, BL-MPW-19, BL-MPW-21
 **Review items:** X-16, 09-N5-b
 
@@ -906,7 +906,7 @@ Deemed approval at N (BL-ATT-11).
 
 ### BL-ATT-11 — wl-attendance: deem an external timesheet approved per contract (`deem_approve`)
 
-**Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Launch 09 · **Size:** s
 **Depends on:** BL-ATT-10 · BL-ATT-13 (reconciliation on deemed approval) · **Blocks:** BL-MPW-19
 **Review items:** X-16, 09-N5-b
 
@@ -982,7 +982,7 @@ Escalation at E (BL-ATT-10); later disputes (BL-ATT-07, BL-ATT-09).
 
 ### BL-ATT-12 — wl-attendance: give payroll provisional hours at the cut-off (`hours_for_payroll`)
 
-**Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Launch 09 · **Size:** m
 **Depends on:** Base: wl-attendance Timesheet lifecycle · Base: wl-hr `PayrollCalendar` · **Blocks:** BL-ATT-13, BL-HRM-16, BL-MPW-21
 **Review items:** X-16, 09-N5-c
 
@@ -1077,7 +1077,7 @@ Reconciliation on approval (BL-ATT-13); how payroll shows provisional hours (BL-
 
 ### BL-ATT-13 — wl-attendance: reconcile provisional hours when the timesheet is approved
 
-**Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` `surface:system` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-attendance` `area:negative-flow` `priority:high` `surface:system` · **Milestone:** Launch 09 · **Size:** s
 **Depends on:** BL-ATT-07 · BL-ATT-12 · **Blocks:** BL-HRM-16, BL-ATT-11
 **Review items:** X-16, 09-N5-c
 

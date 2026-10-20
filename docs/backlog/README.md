@@ -88,8 +88,8 @@ issues are created on GitHub, the IDs stay in the title prefix so links can be r
 
 | Milestone | Contains |
 |---|---|
-| **Build 1** | 01 Property and 09 Manpower, and every module issue that 01 or 09 needs in its MVP |
-| **Launch NN** | The vertical's own issues, and module issues first needed by that vertical |
+| **Build 1** | Phase F1: 01 Property, and every module issue that 01 needs in its MVP |
+| **Launch NN** | Phase F*n* (02–10, [decision 0005](../decisions/0005-phases-follow-vertical-numbers.md)): the vertical's own issues, and module issues first needed by that vertical |
 | **Later** | Issues for capabilities marked Later |
 
 A module issue takes the earliest milestone of any vertical that needs it.

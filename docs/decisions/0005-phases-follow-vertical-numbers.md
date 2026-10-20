@@ -28,5 +28,8 @@ rollout, so the phase names and the vertical numbers disagreed.
 
 - `wl-attendance` and `wl-inventory` are built in F2 (Construction), not for Manpower.
   The rest of `wl-hr` (visas, leave, payroll, WPS, final settlement) moves to F9.
-- The milestone **Build 1** of the [backlog](../backlog/README.md) still names 01 Property and
-  09 Manpower; the owner decides how the issues of 09 are re-milestoned.
+- **Build 1** now means phase F1 only. The 21 issues of 09 Manpower and the module issues only
+  09 needs (44 in all) moved to the milestone **Launch 09**; 11 issues first needed by 02
+  (attendance flags and adjustment timesheets, qualification checks, absconding report, the
+  adjustment billing) moved to **Launch 02**, and one to **Launch 05**. Each issue's phase is the
+  earliest vertical whose issues depend on it, directly or through `Depends on`.

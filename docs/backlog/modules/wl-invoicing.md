@@ -40,7 +40,7 @@ forecast (G2, `FIN.CFL.01`: BL-INV-28 to 30).
 | BL-INV-20 | Pause and resume a subscription with its agreement or a party block | high | m | Launch 04 | Base: wl-invoicing Subscription lifecycle; Epic wl-parties: block effects |
 | BL-INV-21 | Cancel a subscription when its agreement ends | high | s | Launch 04 | Base: wl-invoicing Subscription lifecycle; BL-INV-20 |
 | BL-INV-22 | Bill only the delivered quantity and handle a COD difference | high | s | Launch 03 | Base: wl-invoicing billing run; Epic wl-delivery: proof of delivery per line |
-| BL-INV-23 | Bill or credit hours from an adjustment timesheet | high | s | Build 1 | Base: wl-invoicing usage billing; Epic wl-attendance: adjustment timesheets |
+| BL-INV-23 | Bill or credit hours from an adjustment timesheet | high | s | Launch 02 | Base: wl-invoicing usage billing; Epic wl-attendance: adjustment timesheets |
 | BL-INV-24 | Match a vendor contract bill only for work done before the contract end | high | s | Build 1 | Base: wl-invoicing Supplier bill lifecycle; BL-INV-11; BL-TKT-04 |
 | BL-INV-25 | Keep a company budget per entity, category and month | medium | m | Build 1 | Base: wl-kernel approvals, Excel import |
 | BL-INV-26 | Report budget vs actual and warn on overspending (`FIN.RUL.24`) | medium | m | Build 1 | BL-INV-25; Base: Invoice, Supplier bill, Expense claim, Payroll run lifecycles |
@@ -1915,7 +1915,7 @@ Proof of delivery per line (Epic wl-delivery); COD remittance (apps/logistics `L
 
 ### BL-INV-23 — wl-invoicing: bill or credit hours from an adjustment timesheet
 
-**Labels:** `module:wl-invoicing` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-invoicing` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Launch 02 · **Size:** s
 **Depends on:** Base: wl-invoicing usage billing · Epic wl-attendance: adjustment timesheets · BL-INV-04 · **Blocks:** None.
 **Review items:** X-16, 09-N4-a
 

@@ -15,33 +15,33 @@ invoice and cheque behaviour lives in the module epics and is only configured he
 
 | ID | Title | Priority | Size | Milestone | Depends on |
 |---|---|---|---|---|---|
-| BL-MPW-01 | Put a client contract on credit hold (`hold`, `MPW.RUL.10`) | high | m | Build 1 | Base: 09 Client contract lifecycle; BL-INV-04; BL-PAY-09 |
-| BL-MPW-02 | Refuse requests, activations and extensions while a contract is on hold (`MPW.ACL.14`) | high | s | Build 1 | BL-MPW-01; Base: 09 Manpower request and Deployment lifecycle |
-| BL-MPW-03 | Release a credit hold (`release`) | high | m | Build 1 | BL-MPW-01; BL-KRN-01; BL-PAY-10; BL-PAY-11; BL-PAY-13 |
-| BL-MPW-04 | Terminate a client contract early (`terminate`, `MPW.ACL.17`) | high | m | Build 1 | Base: 09 Client contract lifecycle; Base: 09 Deployment lifecycle; BL-KRN-01 |
-| BL-MPW-05 | Warn before a contract ends and renew it (`MPW.RUL.11`, `renew`) | high | m | Build 1 | Base: 09 Client contract lifecycle; BL-MPW-07 |
-| BL-MPW-06 | End a contract with its deployments, requests and last timesheets (`end`) | high | m | Build 1 | BL-MPW-04; BL-MPW-05; Base: 09 Deployment lifecycle; Base: wl-attendance Timesheet lifecycle |
-| BL-MPW-07 | Price hours by rate card version (`MPW.ACL.16`) | high | m | Build 1 | Base: wl-invoicing Rate cards and usage billing; BL-KRN-01 |
-| BL-MPW-08 | Guard deployment `activate`, `resume` and `extend` on worker documents and site licences (`MPW.ACL.07`) | high | m | Build 1 | BL-DOC-01; BL-DOC-06; BL-HRM-01; BL-MPW-09 |
-| BL-MPW-09 | Register the deployment `BlockSubjects` and `FutureWork` providers and flag deployments ahead | high | s | Build 1 | BL-DOC-01; BL-DOC-04 |
-| BL-MPW-10 | Refuse overlapping deployments of one worker (`MPW.ACL.15`) | medium | s | Build 1 | Base: 09 Deployment lifecycle |
-| BL-MPW-11 | Suspend a deployment when a needed document or licence expires (`suspend`) | high | m | Build 1 | BL-MPW-09; BL-DOC-05; BL-HRM-01; Base: 09 Replacements (`MPW.DEP.02`) |
-| BL-MPW-12 | Resume a suspended deployment (`resume`) | high | s | Build 1 | BL-MPW-11; BL-MPW-08 |
-| BL-MPW-13 | End or cancel deployments on non-standard employee exits (`MPW.RUL.12`) | high | m | Build 1 | BL-HRM-03; BL-HRM-05; BL-HRM-06; BL-HRM-07; BL-HRM-08; BL-HRM-09 |
-| BL-MPW-14 | End a deployment rejected by the client and open the replacement | medium | m | Build 1 | Base: 09 Deployment lifecycle; Base: 09 Replacements (`MPW.DEP.02`); Base: wl-ticketing Ticket lifecycle |
-| BL-MPW-15 | Apply a client block to deployments and the contract (`continue`) | high | s | Build 1 | BL-PTY-01; BL-PTY-03 |
-| BL-MPW-16 | Warn when cover is not found in time (`MPW.RUL.13`) | medium | s | Build 1 | Base: 09 Replacements (`MPW.DEP.02`, `MPW.RUL.06`) |
-| BL-MPW-17 | Open and close an absence case (`MPW.RUL.09`) | high | m | Build 1 | Base: wl-ticketing Ticket lifecycle; BL-HRM-07; BL-HRM-18; BL-KRN-08 |
-| BL-MPW-18 | Escalate late visa case steps (`MPW.RUL.14`) | medium | s | Build 1 | Base: wl-hr Visa case lifecycle (step templates) |
-| BL-MPW-19 | Give wl-attendance the client approver, escalation contact and deemed-approval days | medium | s | Build 1 | BL-ATT-10; BL-ATT-11 |
-| BL-MPW-20 | 09: configure shared negative-flow settings (documents, parties, notifications, alerts, integrations) | high | m | Build 1 | BL-DOC-01; BL-DOC-02; BL-DOC-06; BL-PTY-03; BL-NTF-06; BL-KRN-05; BL-KRN-08; BL-TKT-11; BL-SAL-19; BL-SAL-20; BL-SAL-21; BL-HRM-26; BL-HRM-27; BL-HRM-28; BL-DOC-08; BL-DOC-09; BL-DOC-10 |
-| BL-MPW-21 | 09: configure shared negative-flow settings (finance, attendance, payroll and HR) | high | m | Build 1 | BL-INV-01; BL-INV-04; BL-INV-10; BL-PAY-09; BL-ATT-02; BL-ATT-04; BL-ATT-10; BL-ATT-12; BL-HRM-04; BL-HRM-14; BL-HRM-15; BL-HRM-19; BL-HRM-25; BL-INV-25; BL-INV-26; BL-INV-27; BL-INV-28; BL-INV-29; BL-INV-30; BL-PAY-25; BL-PAY-26 |
+| BL-MPW-01 | Put a client contract on credit hold (`hold`, `MPW.RUL.10`) | high | m | Launch 09 | Base: 09 Client contract lifecycle; BL-INV-04; BL-PAY-09 |
+| BL-MPW-02 | Refuse requests, activations and extensions while a contract is on hold (`MPW.ACL.14`) | high | s | Launch 09 | BL-MPW-01; Base: 09 Manpower request and Deployment lifecycle |
+| BL-MPW-03 | Release a credit hold (`release`) | high | m | Launch 09 | BL-MPW-01; BL-KRN-01; BL-PAY-10; BL-PAY-11; BL-PAY-13 |
+| BL-MPW-04 | Terminate a client contract early (`terminate`, `MPW.ACL.17`) | high | m | Launch 09 | Base: 09 Client contract lifecycle; Base: 09 Deployment lifecycle; BL-KRN-01 |
+| BL-MPW-05 | Warn before a contract ends and renew it (`MPW.RUL.11`, `renew`) | high | m | Launch 09 | Base: 09 Client contract lifecycle; BL-MPW-07 |
+| BL-MPW-06 | End a contract with its deployments, requests and last timesheets (`end`) | high | m | Launch 09 | BL-MPW-04; BL-MPW-05; Base: 09 Deployment lifecycle; Base: wl-attendance Timesheet lifecycle |
+| BL-MPW-07 | Price hours by rate card version (`MPW.ACL.16`) | high | m | Launch 09 | Base: wl-invoicing Rate cards and usage billing; BL-KRN-01 |
+| BL-MPW-08 | Guard deployment `activate`, `resume` and `extend` on worker documents and site licences (`MPW.ACL.07`) | high | m | Launch 09 | BL-DOC-01; BL-DOC-06; BL-HRM-01; BL-MPW-09 |
+| BL-MPW-09 | Register the deployment `BlockSubjects` and `FutureWork` providers and flag deployments ahead | high | s | Launch 09 | BL-DOC-01; BL-DOC-04 |
+| BL-MPW-10 | Refuse overlapping deployments of one worker (`MPW.ACL.15`) | medium | s | Launch 09 | Base: 09 Deployment lifecycle |
+| BL-MPW-11 | Suspend a deployment when a needed document or licence expires (`suspend`) | high | m | Launch 09 | BL-MPW-09; BL-DOC-05; BL-HRM-01; Base: 09 Replacements (`MPW.DEP.02`) |
+| BL-MPW-12 | Resume a suspended deployment (`resume`) | high | s | Launch 09 | BL-MPW-11; BL-MPW-08 |
+| BL-MPW-13 | End or cancel deployments on non-standard employee exits (`MPW.RUL.12`) | high | m | Launch 09 | BL-HRM-03; BL-HRM-05; BL-HRM-06; BL-HRM-07; BL-HRM-08; BL-HRM-09 |
+| BL-MPW-14 | End a deployment rejected by the client and open the replacement | medium | m | Launch 09 | Base: 09 Deployment lifecycle; Base: 09 Replacements (`MPW.DEP.02`); Base: wl-ticketing Ticket lifecycle |
+| BL-MPW-15 | Apply a client block to deployments and the contract (`continue`) | high | s | Launch 09 | BL-PTY-01; BL-PTY-03 |
+| BL-MPW-16 | Warn when cover is not found in time (`MPW.RUL.13`) | medium | s | Launch 09 | Base: 09 Replacements (`MPW.DEP.02`, `MPW.RUL.06`) |
+| BL-MPW-17 | Open and close an absence case (`MPW.RUL.09`) | high | m | Launch 09 | Base: wl-ticketing Ticket lifecycle; BL-HRM-07; BL-HRM-18; BL-KRN-08 |
+| BL-MPW-18 | Escalate late visa case steps (`MPW.RUL.14`) | medium | s | Launch 09 | Base: wl-hr Visa case lifecycle (step templates) |
+| BL-MPW-19 | Give wl-attendance the client approver, escalation contact and deemed-approval days | medium | s | Launch 09 | BL-ATT-10; BL-ATT-11 |
+| BL-MPW-20 | 09: configure shared negative-flow settings (documents, parties, notifications, alerts, integrations) | high | m | Launch 09 | BL-DOC-01; BL-DOC-02; BL-DOC-06; BL-PTY-03; BL-NTF-06; BL-KRN-05; BL-KRN-08; BL-TKT-11; BL-SAL-19; BL-SAL-20; BL-SAL-21; BL-HRM-26; BL-HRM-27; BL-HRM-28; BL-DOC-08; BL-DOC-09; BL-DOC-10 |
+| BL-MPW-21 | 09: configure shared negative-flow settings (finance, attendance, payroll and HR) | high | m | Launch 09 | BL-INV-01; BL-INV-04; BL-INV-10; BL-PAY-09; BL-ATT-02; BL-ATT-04; BL-ATT-10; BL-ATT-12; BL-HRM-04; BL-HRM-14; BL-HRM-15; BL-HRM-19; BL-HRM-25; BL-INV-25; BL-INV-26; BL-INV-27; BL-INV-28; BL-INV-29; BL-INV-30; BL-PAY-25; BL-PAY-26 |
 
 ---
 
 ### BL-MPW-01 — 09 Manpower: put a client contract on credit hold (`hold`, `MPW.RUL.10`)
 
-**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Launch 09 · **Size:** m
 **Depends on:** Base: 09 Client contract lifecycle (`activate`) · BL-INV-04 (invoice `disputed` flag) · BL-PAY-09 (`ChequeBounced`) · **Blocks:** BL-MPW-02, BL-MPW-03
 **Review items:** 09-N3-a, X-05
 
@@ -155,7 +155,7 @@ write-off (BL-PAY-10 to BL-PAY-14); invoice write-off (BL-INV-01).
 
 ### BL-MPW-02 — 09 Manpower: refuse requests, activations and extensions while a contract is on hold (`MPW.ACL.14`)
 
-**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Launch 09 · **Size:** s
 **Depends on:** BL-MPW-01 · Base: 09 Manpower request lifecycle · Base: 09 Deployment lifecycle · **Blocks:** None
 **Review items:** 09-N3-a
 
@@ -231,7 +231,7 @@ BL-MPW-15).
 
 ### BL-MPW-03 — 09 Manpower: release a credit hold (`release`)
 
-**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Launch 09 · **Size:** m
 **Depends on:** BL-MPW-01 · BL-KRN-01 (approval ends without a yes) · BL-PAY-10, BL-PAY-11, BL-PAY-13 (`ChequeBounceResolved`) · **Blocks:** None
 **Review items:** 09-N3-a
 
@@ -322,7 +322,7 @@ Putting on hold (BL-MPW-01); cheque resolution itself (BL-PAY-10 to BL-PAY-13).
 
 ### BL-MPW-04 — 09 Manpower: terminate a client contract early (`terminate`, `MPW.ACL.17`)
 
-**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Launch 09 · **Size:** m
 **Depends on:** Base: 09 Client contract lifecycle · Base: 09 Deployment lifecycle · BL-KRN-01 · **Blocks:** BL-MPW-06
 **Review items:** 09-N12-a
 
@@ -416,7 +416,7 @@ The contract `end` on the end date (BL-MPW-06); `renew` (BL-MPW-05).
 
 ### BL-MPW-05 — 09 Manpower: warn before a contract ends and renew it (`MPW.RUL.11`, `renew`)
 
-**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Launch 09 · **Size:** m
 **Depends on:** Base: 09 Client contract lifecycle · BL-MPW-07 (new rate card versions) · **Blocks:** BL-MPW-06
 **Review items:** 09-N12-a
 
@@ -486,7 +486,7 @@ The `end` itself (BL-MPW-06); rate card versions (BL-MPW-07).
 
 ### BL-MPW-06 — 09 Manpower: end a contract with its deployments, requests and last timesheets (`end`)
 
-**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Launch 09 · **Size:** m
 **Depends on:** BL-MPW-04 · BL-MPW-05 · Base: 09 Deployment lifecycle (`end`, `cancel`) · Base: wl-attendance Timesheet lifecycle · Base: 09 billing (`MPW.RUL.05`) · **Blocks:** None
 **Review items:** 09-N12-a
 
@@ -565,7 +565,7 @@ Early termination (BL-MPW-04); renewal and warnings (BL-MPW-05).
 
 ### BL-MPW-07 — 09 Manpower: price hours by rate card version (`MPW.ACL.16`)
 
-**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Launch 09 · **Size:** m
 **Depends on:** Base: wl-invoicing Rate cards and usage billing (`FIN.RAT.01`, `FIN.USG.01`) · BL-KRN-01 · **Blocks:** BL-MPW-05
 **Review items:** 09 MEDIUM "rate card versions"
 
@@ -654,7 +654,7 @@ Contract `renew` (BL-MPW-05); usage billing itself (base).
 
 ### BL-MPW-08 — 09 Manpower: guard deployment `activate`, `resume` and `extend` on worker documents and site licences (`MPW.ACL.07`)
 
-**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Launch 09 · **Size:** m
 **Depends on:** BL-DOC-01 (`document_valid` and `blocks`) · BL-DOC-06 (override) · BL-HRM-01 (`qualification_valid`) · BL-MPW-09 · **Blocks:** BL-MPW-12
 **Review items:** X-13, 09-N8-b
 
@@ -761,7 +761,7 @@ Providers and look-ahead flags (BL-MPW-09); suspension on expiry (BL-MPW-11); at
 
 ### BL-MPW-09 — 09 Manpower: register the deployment `BlockSubjects` and `FutureWork` providers and flag deployments ahead
 
-**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Launch 09 · **Size:** s
 **Depends on:** BL-DOC-01 · BL-DOC-04 (`DOC.RUL.02` look-ahead with `affected`) · **Blocks:** BL-MPW-08, BL-MPW-11
 **Review items:** X-13, 09-N8-b
 
@@ -834,7 +834,7 @@ The guard (BL-MPW-08); suspension (BL-MPW-11).
 
 ### BL-MPW-10 — 09 Manpower: refuse overlapping deployments of one worker (`MPW.ACL.15`)
 
-**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:medium` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:medium` `surface:back-office` `surface:system` · **Milestone:** Launch 09 · **Size:** s
 **Depends on:** Base: 09 Deployment lifecycle · **Blocks:** None
 **Review items:** 09 MEDIUM "overlap guards", X-16
 
@@ -898,7 +898,7 @@ The attendance `overlap` flag (BL-ATT-01).
 
 ### BL-MPW-11 — 09 Manpower: suspend a deployment when a needed document or licence expires (`suspend`)
 
-**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `surface:back-office` `surface:field-pwa` `surface:system` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `surface:back-office` `surface:field-pwa` `surface:system` · **Milestone:** Launch 09 · **Size:** m
 **Depends on:** BL-MPW-09 · BL-DOC-05 (`DocumentExpired` with blocked records) · BL-HRM-01 (`QualificationExpired`) · Base: 09 Replacements (`MPW.DEP.02`) · **Blocks:** BL-MPW-12
 **Review items:** X-13, 09-N8-b
 
@@ -999,7 +999,7 @@ Resume (BL-MPW-12); the `permit_invalid` attendance flag (BL-ATT-04); HR reactio
 
 ### BL-MPW-12 — 09 Manpower: resume a suspended deployment (`resume`)
 
-**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `surface:back-office` `surface:field-pwa` `surface:system` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `surface:back-office` `surface:field-pwa` `surface:system` · **Milestone:** Launch 09 · **Size:** s
 **Depends on:** BL-MPW-11 · BL-MPW-08 · **Blocks:** None
 **Review items:** X-13, 09-N8-b
 
@@ -1070,7 +1070,7 @@ The guard itself (BL-MPW-08).
 
 ### BL-MPW-13 — 09 Manpower: end or cancel deployments on non-standard employee exits (`MPW.RUL.12`)
 
-**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Launch 09 · **Size:** m
 **Depends on:** BL-HRM-03 (`VisaCaseRejected`) · BL-HRM-05 (`EmployeeOnboardingCancelled`) · BL-HRM-06 (`EmployeeNoticeWithdrawn`) · BL-HRM-07 (`EmployeeAbsconded`) · BL-HRM-08 (`EmployeeReinstated`, only for the Must not) · BL-HRM-09 (`EmployeeDeceased`) · **Blocks:** None
 **Review items:** X-15, 09-N12-b, 09-N12-c, 09 MEDIUM "notice withdrawal"
 
@@ -1164,7 +1164,7 @@ BL-MPW-12).
 
 ### BL-MPW-14 — 09 Manpower: end a deployment rejected by the client and open the replacement
 
-**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:medium` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:medium` `surface:back-office` `surface:system` · **Milestone:** Launch 09 · **Size:** m
 **Depends on:** Base: 09 Deployment lifecycle · Base: 09 Replacements (`MPW.DEP.02`) · Base: wl-ticketing Ticket lifecycle (`WRK.TKT.01`) · **Blocks:** None
 **Review items:** 09 MEDIUM "client rejects a deployed worker", 09-N3-a (withdrawal for non-payment)
 
@@ -1240,7 +1240,7 @@ System ends (BL-MPW-06, BL-MPW-13); `MPW.RUL.13` (BL-MPW-16).
 
 ### BL-MPW-15 — 09 Manpower: apply a client block to deployments and the contract (`continue`)
 
-**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Launch 09 · **Size:** s
 **Depends on:** BL-PTY-01 · BL-PTY-03 (block effect per agreement kind) · **Blocks:** None
 **Review items:** X-18
 
@@ -1307,7 +1307,7 @@ Block and unblock (BL-PTY-01, BL-PTY-02); the MD's `terminate` (BL-MPW-04).
 
 ### BL-MPW-16 — 09 Manpower: warn when cover is not found in time (`MPW.RUL.13`)
 
-**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:medium` `blocked:open-item` `surface:system` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:medium` `blocked:open-item` `surface:system` · **Milestone:** Launch 09 · **Size:** s
 **Depends on:** Base: 09 Replacements (`MPW.DEP.02`, `MPW.RUL.06`) · **Blocks:** None
 **Review items:** 09 MEDIUM "no cover available"
 
@@ -1366,7 +1366,7 @@ Creating replacement requests (base `MPW.RUL.06`; BL-MPW-11; BL-MPW-14).
 
 ### BL-MPW-17 — 09 Manpower: open and close an absence case (`MPW.RUL.09`)
 
-**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Launch 09 · **Size:** m
 **Depends on:** Base: wl-ticketing Ticket lifecycle · BL-HRM-07 (`report_absconding`) · BL-HRM-18 (`HRM.RUL.12` releases held lines) · BL-KRN-08 (compliance-critical alert) · **Blocks:** None
 **Review items:** 09-N12-c, X-15
 
@@ -1453,7 +1453,7 @@ Compliance-critical (`PLT.RUL.04`): `MPW.RUL.09` — a failure alerts the MD and
 
 ### BL-MPW-18 — 09 Manpower: escalate late visa case steps (`MPW.RUL.14`)
 
-**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:medium` `blocked:open-item` `surface:system` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:medium` `blocked:open-item` `surface:system` · **Milestone:** Launch 09 · **Size:** s
 **Depends on:** Base: wl-hr Visa case lifecycle (step templates with target days) · **Blocks:** None
 **Review items:** 09 MEDIUM "visa step deadlines"
 
@@ -1510,7 +1510,7 @@ Visa case transitions (wl-hr; BL-HRM-03).
 
 ### BL-MPW-19 — 09 Manpower: give wl-attendance the client approver, escalation contact and deemed-approval days
 
-**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:medium` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:medium` `surface:back-office` `surface:system` · **Milestone:** Launch 09 · **Size:** s
 **Depends on:** BL-ATT-10 · BL-ATT-11 · **Blocks:** None
 **Review items:** 09-N5-b
 
@@ -1584,7 +1584,7 @@ Escalation and deemed approval themselves (BL-ATT-10, BL-ATT-11).
 
 ### BL-MPW-20 — 09 Manpower: configure shared negative-flow settings (documents, parties, notifications, alerts, integrations)
 
-**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `blocked:open-item` `surface:back-office` `surface:field-pwa` `surface:portal` `surface:system` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `blocked:open-item` `surface:back-office` `surface:field-pwa` `surface:portal` `surface:system` · **Milestone:** Launch 09 · **Size:** m
 **Depends on:** BL-DOC-01 · BL-DOC-02 · BL-DOC-06 · BL-PTY-03 · BL-NTF-06 · BL-KRN-05 · BL-KRN-08 · BL-TKT-11 (*labour case* category) · BL-SAL-19 · BL-SAL-20 · BL-SAL-21 · BL-HRM-26 · BL-HRM-27 · BL-HRM-28 · BL-DOC-08 · BL-DOC-09 · BL-DOC-10 · **Blocks:** None
 **Review items:** X-13, X-18, X-19, X-20
 
@@ -1724,7 +1724,7 @@ Finance, attendance and payroll values (BL-MPW-21); the mechanisms (module epics
 
 ### BL-MPW-21 — 09 Manpower: configure shared negative-flow settings (finance, attendance, payroll and HR)
 
-**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `blocked:open-item` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `vertical:09-manpower` `area:negative-flow` `priority:high` `blocked:open-item` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Launch 09 · **Size:** m
 **Depends on:** BL-INV-01 · BL-INV-04 · BL-INV-10 · BL-PAY-09 · BL-ATT-02 · BL-ATT-04 · BL-ATT-10 · BL-ATT-12 · BL-HRM-04 · BL-HRM-14 · BL-HRM-15 · BL-HRM-19 · BL-HRM-25 · BL-INV-25 · BL-INV-26 · BL-INV-27 · BL-INV-28 · BL-INV-29 · BL-INV-30 · BL-PAY-25 · BL-PAY-26 · **Blocks:** None
 **Review items:** X-01, X-02, X-04, X-05, X-15, X-16, 09-N4-a, 09-N5-b, 09-N5-c, 09-N5-d, 09-N7-a, 09-N7-b, 09-N11-b
 
