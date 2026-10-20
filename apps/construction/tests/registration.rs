@@ -25,9 +25,10 @@ async fn draft(
     project: &Project,
     supplier: PartyId,
 ) -> (PurchaseOrder, PurchaseOrderLine) {
-    let mut item = Item::new("PARTS", "PARTS", "kg");
+    let code = format!("PARTS-{}-{}", project.id, supplier.0);
+    let mut item = Item::new(&code, &code, "kg");
     item.save(t.db()).await.unwrap();
-    let store = t.store(project, "STORE-1").await;
+    let store = t.store(project, &format!("STORE-{}", supplier.0)).await;
     let mut order = PurchaseOrder::new(supplier, store.id);
     let mut tx = t.db().begin().await.unwrap();
     order

@@ -1401,7 +1401,7 @@ mod tests {
     #[test]
     fn a_variation_is_priced_before_it_is_submitted() {
         let mut addition = variation(VariationKind::Addition);
-        assert!(price_problem(&addition).is_some_and(|p| p.contains("price")));
+        assert!(price_problem(&addition).is_some_and(|p| p.to_lowercase().contains("price")));
         addition.priced_amount = 5_000_000;
         assert_eq!(price_problem(&addition), None);
 

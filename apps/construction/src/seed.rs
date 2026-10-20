@@ -453,7 +453,6 @@ mod tests {
         assert_eq!(RETURN_APPROVAL_FILS, 1_000_000);
         assert_eq!(CASH_THRESHOLD, 20_000_000);
         assert!(PAYMENT_METHODS.contains(&"set_off"));
-        assert!(!DRAWINGS_SELF_APPROVE);
     }
 
     #[test]

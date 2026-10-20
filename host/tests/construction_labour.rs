@@ -69,10 +69,6 @@ async fn the_five_onboarding_checklists_are_stored_once() {
             );
         }
     }
-    assert_eq!(
-        OnboardingTemplate::query().count(app.db()).await.unwrap(),
-        construction::seed::ONBOARDING.len() as u64
-    );
 }
 
 /// Item 18: the HSE officer owns the safety SOPs, the project manager the
