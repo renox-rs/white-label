@@ -188,3 +188,82 @@ async fn a_credit_note_refund_is_requested_through_the_kernel() {
         .assert_status(422)
         .assert_see("FIN.ACL.04");
 }
+
+/// Money out to a blocked party waits under `PTY.ACL.03`: a refund of a
+/// payment is requested and approved, but not paid while the party is
+/// blocked (it stays `approved`, no voucher is written); once the party is
+/// free it is paid.
+#[renox::test]
+async fn a_refund_to_a_blocked_party_waits_until_it_is_unblocked() {
+    let t = boot().await;
+    let payment = t.receive(BLUE_DUNES, 300_000).await;
+    let a = t.user_a().await;
+    let b = t.user_b().await;
+    let refund = t.request_refund(&a, &payment, 100_000).await;
+    t.refund_action(&b, &refund, "approve", &[])
+        .await
+        .assert_ok();
+
+    t.blocked.block(BLUE_DUNES);
+    let pay = [("method", "transfer"), ("reference", "BANK-9")];
+    t.refund_action(&a, &t.refund(refund.id).await, "pay", &pay)
+        .await
+        .assert_status(422)
+        .assert_see("hold");
+    let waiting = t.refund(refund.id).await;
+    assert_eq!(waiting.status, RefundStatus::Approved);
+    assert_eq!(waiting.payment_id, None, "no voucher is written");
+    assert!(t.refund_paid.all().is_empty());
+
+    t.blocked.free(BLUE_DUNES);
+    t.refund_action(&a, &t.refund(refund.id).await, "pay", &pay)
+        .await
+        .assert_ok();
+    assert_eq!(t.refund(refund.id).await.status, RefundStatus::Paid);
+    assert_eq!(t.refund_paid.all().len(), 1);
+}
+
+/// The refund of a credit note (a source outside this module) is money out
+/// too: for a blocked party it is not paid, whatever its source.
+#[renox::test]
+async fn a_credit_note_refund_to_a_blocked_party_is_not_paid() {
+    use wl_kernel::Subject;
+    use wl_kernel::payments::{PaymentMethod, RefundRequest, RefundSource};
+
+    let t = boot().await;
+    let payment = t.receive(BLUE_DUNES, 300_000).await;
+    let a = t.user_a().await;
+    let b = t.user_b().await;
+    let request = RefundRequest {
+        source: RefundSource::CreditNote(Subject::new("invoicing.credit_note", 7)),
+        party: BLUE_DUNES,
+        legal_entity_id: payment.legal_entity_id,
+        amount: 50_000,
+        currency: "AED".into(),
+        method: Some(PaymentMethod::Transfer),
+        gateway_txn: None,
+        reason: "Credit note CN-1".into(),
+    };
+    let id = payment_recorder(t.state())
+        .request_refund(t.state(), request, Some(a.id))
+        .await
+        .unwrap();
+    let refund = t.refund(id.0).await;
+    t.refund_action(&b, &refund, "approve", &[])
+        .await
+        .assert_ok();
+
+    t.blocked.block(BLUE_DUNES);
+    t.refund_action(
+        &a,
+        &t.refund(id.0).await,
+        "pay",
+        &[("method", "transfer"), ("reference", "BANK-10")],
+    )
+    .await
+    .assert_status(422)
+    .assert_see("hold");
+    let waiting = t.refund(id.0).await;
+    assert_eq!(waiting.status, RefundStatus::Approved);
+    assert_eq!(waiting.payment_id, None);
+}

@@ -22,7 +22,7 @@ use renox::db::DateTime;
 use renox::prelude::*;
 use renox::state_machine::{Outcome, StateMachine, TransitionError};
 use serde::{Deserialize, Serialize};
-use wl_kernel::notify::{Category, MessageFailed, Urgency};
+use wl_kernel::notify::{Category, MessageFailed, NotifyChannel, Urgency};
 
 use crate::broadcast_recipients;
 use crate::cap;
@@ -181,6 +181,7 @@ pub async fn send_at(state: &AppState, id: i64, now: DateTime) -> Result<SendOut
             )),
         ),
     };
+    report_health(state, message.channel, name, &result).await?;
     match result {
         Ok(provider_message_id) => sent(state, message, name, provider_message_id, now).await,
         Err(error) => {
@@ -189,6 +190,28 @@ pub async fn send_at(state: &AppState, id: i64, now: DateTime) -> Result<SendOut
             failed(state, message, name, error).await
         }
     }
+}
+
+/// Reports how the e-mail provider answered to the integration health
+/// ([`wl_kernel::integrations::EMAIL`]), when the app registered the
+/// connection: an accepted send is a success and a transient failure a
+/// failure. A permanent or hard error (a wrong address) says nothing about
+/// the connection, nor does a message no provider tried.
+async fn report_health(
+    state: &AppState,
+    channel: NotifyChannel,
+    provider: Option<&str>,
+    result: &std::result::Result<String, SendError>,
+) -> Result {
+    if channel != NotifyChannel::Email || provider.is_none() {
+        return Ok(());
+    }
+    let outcome = match result {
+        Ok(_) => Ok(()),
+        Err(error) if error.kind == SendErrorKind::Transient => Err(error.message.as_str()),
+        Err(_) => return Ok(()),
+    };
+    wl_kernel::integrations::report_outcome(state, wl_kernel::integrations::EMAIL, outcome).await
 }
 
 /// The `send` guard "frequency cap" (§4.1, `NTF.RUL.02`): the message is
