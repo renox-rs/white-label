@@ -39,6 +39,26 @@ pub async fn open(db: &Db, by: Option<i64>, client: PartyId) -> Result<CddFile> 
     Ok(file)
 }
 
+/// The screened parties of `client`'s current CDD file, with their role:
+/// the client company first, then its UBOs, directors and signatories in the
+/// order they were added. Without a file, the client company alone.
+///
+/// # Errors
+///
+/// The database's errors.
+pub async fn screened_parties(db: &Db, client: PartyId) -> Result<Vec<(PartyId, ScreenedRole)>> {
+    let mut parties = vec![(client, ScreenedRole::Client)];
+    if let Some(file) = CddFile::current(db, client).await? {
+        for row in file.parties(db).await? {
+            let entry = (row.party(), row.role);
+            if !parties.contains(&entry) {
+                parties.push(entry);
+            }
+        }
+    }
+    Ok(parties)
+}
+
 /// Adds `party` as `role` to `file`'s screened parties; adding it twice in
 /// the same role does nothing.
 async fn add_party_in(

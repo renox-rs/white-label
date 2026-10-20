@@ -6,7 +6,7 @@
 //! mode) with the override of `DOC.ACL.02` (the MLRO's approval, 72 hours),
 //! for the parties whose role its condition names: the client company's
 //! trade licence, and the passport and Emirates ID of each UBO
-//! (the condition field `party_role`).
+//! ([`crate::documents::PARTY_ROLE_FIELD`]).
 
 /// One KYC document kind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

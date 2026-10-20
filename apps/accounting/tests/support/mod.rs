@@ -717,16 +717,22 @@ impl Booted {
             .assert_ok();
     }
 
-    /// The client's trade licence and its UBO's passport and Emirates ID,
-    /// valid to the end of 2027.
-    pub async fn kyc_valid(&self, client: &Client) {
+    /// The client's trade licence and its UBO's Emirates ID valid to the end
+    /// of 2027, and the UBO's passport valid until `passport_until`.
+    pub async fn kyc_with(&self, client: &Client, passport_until: NaiveDate) {
         let reviewer = self.reviewer().await;
         let until = NaiveDate::from_ymd_opt(2027, 12, 31).unwrap();
         self.kyc(&reviewer, client.company, accounting::seed::TRADE_LICENCE, until)
             .await;
-        self.kyc(&reviewer, client.ubo, accounting::seed::PASSPORT, until)
+        self.kyc(&reviewer, client.ubo, accounting::seed::PASSPORT, passport_until)
             .await;
         self.kyc(&reviewer, client.ubo, accounting::seed::EMIRATES_ID, until)
+            .await;
+    }
+
+    /// The client's KYC documents, all valid to the end of 2027.
+    pub async fn kyc_valid(&self, client: &Client) {
+        self.kyc_with(client, NaiveDate::from_ymd_opt(2027, 12, 31).unwrap())
             .await;
     }
 
@@ -855,19 +861,33 @@ impl Booted {
         .assert_ok();
     }
 
-    /// An `onboarding` engagement of `client` that passes every activation
-    /// check: CDD approved by `mlro`, letter signed, tax profile complete,
-    /// KYC documents valid, every party screened `clear` on current lists.
-    pub async fn ready_engagement(&self, client: &Client, mlro: &User) -> Engagement {
+    /// Everything `activate` checks on the client, ready: its CDD file
+    /// approved by `mlro` (every party screened `clear` on current lists),
+    /// its tax profile complete, its KYC documents accepted with the UBO's
+    /// passport valid until `passport_until`.
+    pub async fn prepare_client(&self, client: &Client, mlro: &User, passport_until: NaiveDate) {
         self.cdd_approved(client, mlro).await;
         self.tax_profile(client).await;
-        self.kyc_valid(client).await;
+        self.kyc_with(client, passport_until).await;
+    }
+
+    /// An `onboarding` engagement of `client` with its letter signed.
+    pub async fn signed_engagement(&self, client: &Client) -> Engagement {
         let engagement = self.engagement(client).await;
         let manager = self
             .user_with(&format!("Letter {}", engagement.id), MANAGER)
             .await;
         self.sign_letter(&manager, &engagement).await;
         self.reload(&engagement).await
+    }
+
+    /// An `onboarding` engagement of `client` that passes every activation
+    /// check: CDD approved by `mlro`, letter signed, tax profile complete,
+    /// KYC documents valid, every party screened `clear` on current lists.
+    pub async fn ready_engagement(&self, client: &Client, mlro: &User) -> Engagement {
+        self.prepare_client(client, mlro, NaiveDate::from_ymd_opt(2027, 12, 31).unwrap())
+            .await;
+        self.signed_engagement(client).await
     }
 
     /// `user` runs `action` on `engagement` through its route, with `pairs`.

@@ -162,6 +162,28 @@ const TEXTS: &[(&str, &str)] = &[
         "accounting.activation.tax_profile_incomplete",
         "The tax profile is incomplete: :missing",
     ),
+    (
+        "accounting.activation.document",
+        ":party — :problem",
+    ),
+    (
+        "accounting.activation.on_hold",
+        "On hold: the client cannot be served while on hold",
+    ),
+    // Screening (`PTY.RUL.02`).
+    (
+        "accounting.screening.stale",
+        ":refusal — wait for the list update and a re-run of the screening",
+    ),
+    ("accounting.screening.pending", "Screening pending"),
+    (
+        "accounting.screening.possible_match",
+        "Possible match on :party (:role): the MLRO decides it",
+    ),
+    (
+        "accounting.screening.not_screened",
+        ":party (:role) is not screened yet",
+    ),
     // The tax profile.
     ("accounting.tax_profile.financial_year_end", "financial year end"),
     (

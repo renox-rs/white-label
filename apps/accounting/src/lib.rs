@@ -8,6 +8,7 @@ pub mod cdd_files;
 pub mod cdd_machine;
 pub mod client_notices;
 mod db;
+pub mod documents;
 pub mod engagement;
 pub mod engagement_machine;
 pub mod engagements;
@@ -17,6 +18,7 @@ pub mod permissions;
 pub mod portal;
 pub mod reasons;
 pub mod retainer;
+pub mod screening;
 pub mod seed;
 pub mod tax_profile;
 mod texts;
@@ -98,6 +100,8 @@ impl Module for Accounting {
             .model::<client_notices::ClientNotice>();
         engagement_machine::register();
         cdd_machine::register();
+        // `engagement.activate` checks the client's KYC documents.
+        documents::register();
         events::register(app);
         // The neutral templates the MLRO sends (`ACC.ACL.14`).
         client_notices::register_types();
