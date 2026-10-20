@@ -182,9 +182,12 @@ pub use voids::{
 /// The kernel's permissions (wl-kernel §6).
 pub use workforce::{
     EMPLOYEE_SUBJECT_TYPE, EmployeeActivated, EmployeeAssignmentChanged, EmployeeDeceased,
-    EmployeeExited, EmployeeId, EmployeeOnboardingCancelled, NoWorkforce, ONBOARDING_SUBJECT_TYPE,
-    OnboardingCompleted, OnboardingId, OnboardingStarted, StaffProfile, Workforce,
-    provide_workforce, workforce,
+    EmployeeExited, EmployeeId, EmployeeOnboardingCancelled, NoQualifications, NoWorkforce,
+    ONBOARDING_SUBJECT_TYPE, OnboardingCompleted, OnboardingId, OnboardingStarted, StaffProfile,
+    Workforce, provide_qualifications, provide_workforce, qualifications, workforce,
+};
+pub use workforce::{
+    AffectedWork, QualificationExpired, QualificationExpiring, QualificationId, Qualifications,
 };
 
 /// The permission names the kernel declares.

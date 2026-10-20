@@ -345,6 +345,10 @@ const TEXTS: &[(&str, &str)] = &[
         "The step \"{{ step }}\" of the onboarding of {{ employee }} was due {{ due }} and is still open ({{ days }} days overdue).",
     ),
     (
+        "wl_hr.qualifications.kind_required",
+        "Give the document kind of the qualification.",
+    ),
+    (
         "wl_hr.notices.step_escalated_subject",
         "Onboarding step of {{ employee }} is {{ days }} days overdue",
     ),

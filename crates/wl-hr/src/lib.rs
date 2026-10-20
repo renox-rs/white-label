@@ -13,6 +13,7 @@ mod notices;
 pub mod onboarding;
 pub mod onboarding_machine;
 pub mod pages;
+pub mod qualification;
 pub mod reminders;
 pub mod seed;
 pub mod steps;
@@ -30,6 +31,7 @@ pub use employee::{
     correct_hire_date, set_scope,
 };
 pub use leave::{LeaveRequest, LeaveStatus};
+pub use qualification::{NewQualification, Qualification, Quals};
 pub use onboarding::{
     AppliedTemplate, Onboarding, OnboardingStatus, OnboardingStep, StartRefused, StartRequest,
     StartTrigger, StepAssignee, StepStatus,
@@ -146,6 +148,7 @@ impl Module for WlHr {
         app.model::<OnboardingStep>();
         app.model::<StepAssignee>();
         app.model::<LeaveRequest>();
+        app.model::<Qualification>();
         app.provide(self.config.clone());
         employee_machine::register(app);
         renox::state_machine::register::<Onboarding>();
@@ -158,6 +161,7 @@ impl Module for WlHr {
         // `HRM.RUL.17`: the daily reminders of overdue onboarding steps.
         reminders::schedule(app);
         wl_kernel::workforce::provide_workforce(app, workforce::Staff);
+        wl_kernel::workforce::provide_qualifications(app, Quals);
         // The all staff induction template; a re-run keeps the client's changes.
         app.command(
             "hr:install",

@@ -14,6 +14,9 @@
 //! ([`Workforce::all_staff`]), the [`StaffProfile`] of one (role, scopes,
 //! account, manager, leave) and the employee of a user.
 //!
+//! `wl-hr` also provides [`Qualifications`] (`qualification_valid`) and emits
+//! [`QualificationExpiring`] and [`QualificationExpired`].
+//!
 //! An employee is referred to by [`EmployeeId`] or as a [`Subject`] of type
 //! [`EMPLOYEE_SUBJECT_TYPE`]; a scope is a [`Subject`] too (a branch).
 
@@ -26,6 +29,7 @@ use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::documents::{AffectedGroup, BlockedGroup, PlannedRecord};
 use crate::parties::PartyId;
 use crate::subject::Subject;
 
@@ -267,6 +271,188 @@ pub struct StaffProfile {
     /// manager*): the holders of the manager role in the employee's scopes,
     /// HR when there are none.
     pub managers: Vec<i64>,
+}
+
+/// The id of a qualification (a licence, permit or certificate of an
+/// employee).
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default, Serialize, Deserialize,
+)]
+#[serde(transparent)]
+pub struct QualificationId(pub i64);
+
+impl fmt::Display for QualificationId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+/// One record of an employee's work that a qualification blocks: an open or
+/// planned booking, deployment or run, as `wl-documents` found it
+/// ([`BlockedGroup`], [`AffectedGroup`]).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AffectedWork {
+    /// The guarded transition, `<entity>.<transition>`.
+    pub guarded: String,
+    /// The record.
+    pub record: Subject,
+    /// The date it is planned for (Asia/Dubai calendar date).
+    pub date: NaiveDate,
+    /// What to show to the staff.
+    pub label: String,
+    /// Whether it is already running (open) rather than planned.
+    pub open: bool,
+}
+
+impl AffectedWork {
+    /// `record`, found under the guarded transition `guarded`.
+    pub fn of(guarded: &str, record: &PlannedRecord, open: bool) -> Self {
+        AffectedWork {
+            guarded: guarded.to_owned(),
+            record: record.record.clone(),
+            date: record.date,
+            label: record.label.clone(),
+            open,
+        }
+    }
+
+    /// The planned records of `groups`, in order, unchanged
+    /// (`DocumentExpiring::affected`).
+    pub fn planned_in(groups: &[AffectedGroup]) -> Vec<AffectedWork> {
+        groups
+            .iter()
+            .flat_map(|group| {
+                group
+                    .records
+                    .iter()
+                    .map(|record| AffectedWork::of(&group.guarded, record, false))
+            })
+            .collect()
+    }
+
+    /// The open and then the planned records of each of `groups`
+    /// (`DocumentExpired::blocked`).
+    pub fn blocked_in(groups: &[BlockedGroup]) -> Vec<AffectedWork> {
+        groups
+            .iter()
+            .flat_map(|group| {
+                let open = group
+                    .open
+                    .iter()
+                    .map(|record| AffectedWork::of(&group.guarded, record, true));
+                let planned = group
+                    .planned
+                    .iter()
+                    .map(|record| AffectedWork::of(&group.guarded, record, false));
+                open.chain(planned)
+            })
+            .collect()
+    }
+}
+
+/// A qualification of an employee is about to expire (`HRM.RUL.10`, from
+/// `DocumentExpiring`). It carries the planned work after the expiry date, as
+/// the document event listed it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QualificationExpiring {
+    /// The employee.
+    pub employee: EmployeeId,
+    /// The qualification record, when the employee has one of the kind.
+    pub qualification: Option<QualificationId>,
+    /// The document kind.
+    pub kind: String,
+    /// The scopes (branches) the qualification covers; empty for any.
+    pub scope: Vec<Subject>,
+    /// The expiry date; the qualification is valid through it.
+    pub expires_on: NaiveDate,
+    /// Expiry date minus today.
+    pub days_left: i64,
+    /// The planned work after the expiry date.
+    pub affected: Vec<AffectedWork>,
+}
+
+impl Event for QualificationExpiring {}
+
+/// A qualification of an employee expired (`HRM.RUL.10`, from
+/// `DocumentExpired`): `qualification_valid` answers *no* from now on. It
+/// carries the employee's open and planned work that the expiry blocks.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QualificationExpired {
+    /// The employee.
+    pub employee: EmployeeId,
+    /// The qualification record, when the employee has one of the kind.
+    pub qualification: Option<QualificationId>,
+    /// The document kind.
+    pub kind: String,
+    /// The scopes (branches) the qualification covered; empty for any.
+    pub scope: Vec<Subject>,
+    /// The roles the qualification covered; empty for any.
+    pub roles: Vec<String>,
+    /// The expiry date; the qualification was valid through it.
+    pub expires_on: NaiveDate,
+    /// The open and planned work the expiry blocks.
+    pub affected: Vec<AffectedWork>,
+}
+
+impl Event for QualificationExpired {}
+
+/// What other modules ask of the qualifications of the workforce (wl-hr §6
+/// *Provides* `Qualifications`, `HRM.QUA.01`, X-13): may employee E do kind K
+/// (in role R at scope S) on date D? `wl-hr` provides it; without that module
+/// the answer is always *no*.
+pub trait Qualifications: Send + Sync + 'static {
+    /// `qualification_valid(employee, kind, on_date)`: whether the employee
+    /// has a valid qualification or employee document of `kind` on `on_date`
+    /// (through `document_valid`, past and future dates allowed). For a
+    /// role-bound kind this answers *no*: the caller must say which role and
+    /// scope the work needs. The default is *no*.
+    fn qualification_valid<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _employee: EmployeeId,
+        _kind: &'a str,
+        _on_date: NaiveDate,
+    ) -> WorkforceFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
+
+    /// `qualification_valid(employee, kind, on_date, role, scope)` for a
+    /// role-bound kind: also the qualification's roles and scope must include
+    /// `role` and `scope`, the role and branch of the work being guarded. The
+    /// default is *no*.
+    fn qualification_valid_for<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _employee: EmployeeId,
+        _kind: &'a str,
+        _on_date: NaiveDate,
+        _role: &'a str,
+        _scope: &'a Subject,
+    ) -> WorkforceFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
+}
+
+/// The qualifications when the `hr` module is off: nobody is qualified.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoQualifications;
+
+impl Qualifications for NoQualifications {}
+
+/// Makes `qualifications` the app's [`Qualifications`]; `wl-hr` calls it in
+/// `register`.
+pub fn provide_qualifications(app: &mut Registry, qualifications: impl Qualifications) {
+    let qualifications: Arc<dyn Qualifications> = Arc::new(qualifications);
+    app.provide(qualifications);
+}
+
+/// The app's [`Qualifications`], or [`NoQualifications`] when none is
+/// provided.
+pub fn qualifications(state: &AppState) -> Arc<dyn Qualifications> {
+    match state.provided::<Arc<dyn Qualifications>>() {
+        Some(qualifications) => Arc::clone(&qualifications),
+        None => Arc::new(NoQualifications),
+    }
 }
 
 /// The workforce when the `hr` module is off: nobody works anywhere.
