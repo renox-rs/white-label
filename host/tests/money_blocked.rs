@@ -288,10 +288,18 @@ async fn a_blocked_owners_payout_waits_for_an_exception() {
     assert_eq!(settled.status, StatementStatus::Settled);
     assert_eq!(waiting.balance(), 1_000_000);
     assert_eq!(settled.payout_amount, Some(1_000_000));
-    assert!(
-        settled.payout_payment_id.is_some(),
-        "the payout was recorded once"
-    );
+    let payout = wl_payments::Payment::find_or_404(
+        app.db(),
+        settled
+            .payout_payment_id
+            .expect("the payout was recorded once"),
+    )
+    .await
+    .unwrap();
+    // A payout to a landlord is money out, but not an owner drawing
+    // (`PRP.OWN.01`, `FIN.BUD.01`).
+    assert_eq!(payout.direction, wl_kernel::payments::Direction::Out);
+    assert_ne!(payout.purpose, wl_kernel::drawings::PURPOSE);
 }
 
 /// Item 24: a rent payment from a blocked tenant is recorded and allocated as
