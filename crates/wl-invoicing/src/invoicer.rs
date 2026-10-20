@@ -102,6 +102,23 @@ impl Invoicer for Invoices {
         })
     }
 
+    fn overdue_of<'a>(
+        &'a self,
+        db: &'a Db,
+        party: PartyId,
+    ) -> InvoiceFuture<'a, Vec<InvoiceSummary>> {
+        Box::pin(async move {
+            let rows = Invoice::query()
+                .where_(Invoice::STATUS.eq(InvoiceStatus::Overdue))
+                .where_(Invoice::PARTY_ID.eq(party.0))
+                .where_(Invoice::BALANCE.gt(0))
+                .order_by(Invoice::ID)
+                .get(db)
+                .await?;
+            Ok(rows.iter().map(Invoice::summary).collect())
+        })
+    }
+
     fn dispute<'a>(
         &'a self,
         state: &'a AppState,
