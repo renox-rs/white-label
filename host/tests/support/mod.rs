@@ -23,9 +23,67 @@ pub fn noon_clock() -> Clock {
     Clock::fixed(BusinessCalendar::default().from_local(local))
 }
 
+/// A test-only module with the routes a test needs to call the services of the
+/// real modules that take an `AuthUser` (a test cannot build one): holding a
+/// deposit, which no page of the back office does yet.
+pub struct Probe;
+
+#[derive(serde::Deserialize)]
+struct HoldForm {
+    party: i64,
+    entity: i64,
+    lease: i64,
+    amount: i64,
+    payment: Option<i64>,
+}
+
+async fn hold_deposit(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Form(form): Form<HoldForm>,
+) -> Result<String> {
+    let request = wl_payments::deposit::HoldDeposit {
+        party: PartyId(form.party),
+        legal_entity_id: form.entity,
+        source: Subject::new("property.lease", form.lease),
+        amount: form.amount,
+        currency: "AED".to_owned(),
+        received_payment: form.payment.map(wl_kernel::payments::PaymentId),
+    };
+    let deposit = wl_payments::deposit::hold(&state, &user, &request)
+        .await
+        .map_err(renox::state_machine::TransitionError::into_error)?;
+    Ok(deposit.id.to_string())
+}
+
+async fn start_settlement(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<i64>,
+) -> Result<String> {
+    let deposit = wl_payments::Deposit::find_or_404(&state.db, id).await?;
+    let done = wl_payments::deposit::start_settlement(&state, Some(&user), &deposit)
+        .await
+        .map_err(renox::state_machine::TransitionError::into_error)?;
+    Ok(format!("{:?}", done.status))
+}
+
+impl Module for Probe {
+    fn name(&self) -> &'static str {
+        "probe"
+    }
+
+    fn routes(&self) -> Routes {
+        Routes::new()
+            .post("/probe/deposits", hold_deposit)
+            .post("/probe/deposits/{id}/start-settlement", start_settlement)
+            .require_auth()
+    }
+}
+
 /// The Property host, with `wl:install` and the seeds run as the demo does.
 pub async fn booted() -> TestApp {
-    let app = TestApp::new(host::app().provide(noon_clock())).await;
+    let app = TestApp::new(host::app().provide(noon_clock()).module(Probe)).await;
     app.kernel()
         .call("wl:install", Vec::<String>::new())
         .await
@@ -258,6 +316,53 @@ pub async fn invoiced_charge(
     .await
     .unwrap();
     Invoice::find_or_404(app.db(), draft.id).await.unwrap()
+}
+
+/// A deposit of `fils` for `lease` held for `tenant` (the money is a transfer
+/// received and allocated to it), its settlement started; `by` holds it
+/// (`deposits.manage`). The deposit.
+pub async fn settling_deposit(
+    app: &TestApp,
+    by: &User,
+    tenant: PartyId,
+    lease: &property::Lease,
+    fils: i64,
+) -> wl_payments::Deposit {
+    let entity = entity(app, "PGP").await;
+    let mut request = wl_kernel::payments::RecordPayment::new(
+        tenant,
+        entity.id,
+        wl_kernel::payments::PaymentMethod::Transfer,
+        fils,
+    );
+    request.reference = Some(format!("TRF-DEP-{}", lease.id));
+    let payment = wl_kernel::payments::payment_recorder(app.state())
+        .record(app.state(), request, Some(by.id))
+        .await
+        .expect("the payment is recorded");
+    app.acting_as(by);
+    let response = app
+        .htmx()
+        .post(
+            "/probe/deposits",
+            &[
+                ("party", tenant.0.to_string().as_str()),
+                ("entity", entity.id.to_string().as_str()),
+                ("lease", lease.id.to_string().as_str()),
+                ("amount", fils.to_string().as_str()),
+                ("payment", payment.id.0.to_string().as_str()),
+            ],
+        )
+        .await;
+    response.assert_ok();
+    let id: i64 = response.text().trim().parse().expect("a deposit id");
+    app.htmx()
+        .post(&format!("/probe/deposits/{id}/start-settlement"), &[])
+        .await
+        .assert_ok();
+    wl_payments::Deposit::find_or_404(app.db(), id)
+        .await
+        .unwrap()
 }
 
 /// The invoice, as stored now.
