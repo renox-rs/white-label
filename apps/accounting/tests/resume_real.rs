@@ -20,7 +20,7 @@ use renox::prelude::*;
 use wl_kernel::deadlines::{DeadlineTaskStatus, NewDeadlineTask, deadline_tasks};
 use wl_kernel::subscriptions::{SubscriptionStatus, subscriptions};
 
-use support::{boot_real, d};
+use support::{Booted, boot_billing, boot_real, d};
 
 #[renox::test]
 async fn a_resume_releases_the_tasks_resumes_the_retainer_and_creates_the_skipped_lists() {
@@ -155,4 +155,192 @@ async fn a_resume_releases_the_tasks_resumes_the_retainer_and_creates_the_skippe
         told[0].data["periods"].as_str(),
         Some("2026-10-31, 2026-11-30")
     );
+}
+
+/// Starts the retainer of `engagement` on `start` and bills its first cycle
+/// (issued at once, due on `start`).
+async fn retainer_billed(t: &Booted, engagement: &accounting::Engagement, start: NaiveDate) {
+    t.run(retainer::start(t.state(), engagement, start))
+        .await
+        .unwrap()
+        .expect("the retainer started");
+    let billed = t
+        .run(wl_invoicing::subscriptions::bill_due(t.state(), start))
+        .await
+        .unwrap();
+    assert_eq!(billed, 1, "the first cycle is invoiced");
+}
+
+/// DW2 with the real wl-invoicing, through the suspend route: suspended for
+/// *non-payment* with the retainer invoice overdue, the page shows what is
+/// overdue from wl-invoicing itself, the resume needs a note, and releases
+/// the real tasks and resumes the real retainer.
+#[renox::test]
+async fn a_non_payment_suspension_shows_the_real_overdue_invoice_and_resumes() {
+    let t = boot_billing().await;
+    let manager = t.manager().await;
+    let client = t.client().await;
+    let engagement = t.engagement_billed(&client, 600_000).await;
+    let task = t
+        .calendar_task(
+            &engagement,
+            "vat_return",
+            "VAT return, period ending 2026-10-31",
+            d(11, 28),
+        )
+        .await;
+    retainer_billed(&t, &engagement, d(11, 1)).await;
+
+    // The invoice falls due on 2026-11-01 and is overdue on the 2nd.
+    t.set_clock(2, 10, 0);
+    let moved = t.run(wl_invoicing::overdue::run(t.state())).await.unwrap();
+    assert_eq!(moved, 1, "the invoice is overdue");
+    t.act(
+        &manager,
+        &engagement,
+        "suspend",
+        &[("reason", "non_payment")],
+    )
+    .await
+    .assert_ok();
+    assert_eq!(t.status(&engagement).await, EngagementStatus::Suspended);
+    let held = deadline_tasks(t.state())
+        .find(t.db(), task)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(held.held, "the real task is held by the suspension");
+
+    let invoice = wl_invoicing::Invoice::query()
+        .where_(wl_invoicing::Invoice::PARTY_ID.eq(client.company.0))
+        .first(t.db())
+        .await
+        .unwrap()
+        .expect("the retainer invoice");
+    let number = invoice.number.clone().expect("an issued invoice has a number");
+    let page = t
+        .get(
+            &manager,
+            &format!("/accounting/engagements/{}", engagement.id),
+        )
+        .await;
+    page.assert_ok()
+        .assert_see("Overdue invoices")
+        .assert_see(&number)
+        .assert_see(&accounting::money_text(invoice.balance));
+
+    t.set_clock(4, 10, 0);
+    t.act(&manager, &engagement, "resume", &[("note", " ")])
+        .await
+        .assert_status(422);
+    t.act(
+        &manager,
+        &engagement,
+        "resume",
+        &[("note", "Payment plan agreed")],
+    )
+    .await
+    .assert_ok();
+    assert_eq!(t.status(&engagement).await, EngagementStatus::Active);
+    let released = deadline_tasks(t.state())
+        .find(t.db(), task)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(!released.held, "released");
+    let retainer = subscriptions(t.state())
+        .of_agreement(t.db(), &engagement.subject())
+        .await
+        .unwrap();
+    // The overdue invoice keeps it past due (wl-invoicing's own dunning);
+    // the suspension no longer pauses it.
+    assert_eq!(retainer[0].status, SubscriptionStatus::PastDue);
+    assert!(retainer[0].pause_causes.is_empty());
+}
+
+/// DW3 and DW4 with the real modules: a block suspends the engagement
+/// (*on hold*, tasks held, retainer paused); after the unblock the resume
+/// becomes a request to the MLRO; the deputy sends it back (the engagement
+/// stays suspended and nothing is released), and the deputy approves the
+/// second request: active, tasks released, retainer resumed.
+#[renox::test]
+async fn after_a_block_the_deputy_decides_and_the_real_modules_follow() {
+    use wl_kernel::approvals;
+
+    let t = boot_billing().await;
+    let (manager, mlro, deputy) = (t.manager().await, t.mlro().await, t.deputy().await);
+    let client = t.client().await;
+    let engagement = t.engagement_billed(&client, 300_000).await;
+    let task = t
+        .calendar_task(
+            &engagement,
+            "vat_return",
+            "VAT return, period ending 2026-10-31",
+            d(11, 28),
+        )
+        .await;
+    retainer_billed(&t, &engagement, d(11, 1)).await;
+    let tasks = deadline_tasks(t.state());
+
+    t.set_clock(2, 10, 0);
+    t.block(client.company, "non_payment").await;
+    let suspended = t.reload(&engagement).await;
+    assert_eq!(suspended.status, EngagementStatus::Suspended);
+    assert_eq!(suspended.reason_code.as_deref(), Some("on_hold"));
+    assert!(tasks.find(t.db(), task).await.unwrap().unwrap().held);
+
+    // Still blocked: refused. Unblocked: asked of the MLRO, nothing moves.
+    t.act(&manager, &engagement, "resume", &[("note", "Paid")])
+        .await
+        .assert_status(422);
+    t.unblock(&mlro, client.company, "Arrears settled in full")
+        .await;
+    t.set_clock(4, 10, 0);
+    t.act(&manager, &engagement, "resume", &[("note", "Paid")])
+        .await
+        .assert_ok();
+    assert_eq!(t.status(&engagement).await, EngagementStatus::Suspended);
+    assert!(tasks.find(t.db(), task).await.unwrap().unwrap().held);
+    let request = approvals::pending_for(t.db(), &engagement.subject())
+        .await
+        .unwrap()
+        .remove(0);
+
+    // The deputy sends it back: still suspended, nothing released.
+    t.run(approvals::return_request(
+        t.state(),
+        request.id,
+        &deputy,
+        "Wait for the second instalment",
+    ))
+    .await
+    .unwrap();
+    assert_eq!(t.status(&engagement).await, EngagementStatus::Suspended);
+    assert!(tasks.find(t.db(), task).await.unwrap().unwrap().held);
+    assert!(
+        approvals::pending_for(t.db(), &engagement.subject())
+            .await
+            .unwrap()
+            .is_empty()
+    );
+
+    // Asked again, the deputy approves.
+    t.act(&manager, &engagement, "resume", &[("note", "Second paid")])
+        .await
+        .assert_ok();
+    let again = approvals::pending_for(t.db(), &engagement.subject())
+        .await
+        .unwrap()
+        .remove(0);
+    t.run(approvals::approve(t.state(), again.id, &deputy, "Cleared"))
+        .await
+        .unwrap();
+    assert_eq!(t.status(&engagement).await, EngagementStatus::Active);
+    assert!(!tasks.find(t.db(), task).await.unwrap().unwrap().held);
+    let retainer = subscriptions(t.state())
+        .of_agreement(t.db(), &engagement.subject())
+        .await
+        .unwrap();
+    assert_eq!(retainer[0].status, SubscriptionStatus::Active);
+    assert!(retainer[0].pause_causes.is_empty(), "{:?}", retainer[0]);
 }
