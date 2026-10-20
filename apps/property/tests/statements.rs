@@ -411,6 +411,10 @@ async fn bl_prp_19_publishing_sends_the_statement_to_the_owner() {
     let data = sent[0].data.to_string();
     assert!(data.contains("AED 11,400.00"), "{data}");
     assert!(data.contains("AED 600.00"), "{data}");
+    // No PDF travels with it yet (DOC.GEN.01): the e-mail carries the lines of
+    // the statement as text.
+    let lines = sent[0].data["lines"].as_str().unwrap_or_default();
+    assert!(lines.contains("AED 12,000.00"), "{lines}");
 }
 
 /// AC4: revising a published statement with no payout makes it superseded,
