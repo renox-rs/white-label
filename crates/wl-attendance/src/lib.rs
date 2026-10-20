@@ -9,6 +9,7 @@ pub mod checks;
 pub mod config;
 pub mod entry;
 pub mod flags;
+pub mod history;
 pub mod location;
 pub mod lock;
 pub mod midday;
@@ -150,6 +151,7 @@ impl Module for WlAttendance {
         app.provide(self.config.clone());
         overtime::provide_entry_hours(app, entry::TimesheetEntryHours);
         wl_kernel::attendance::provide_attendance_review(app, after_last_day::Reviewer);
+        wl_kernel::attendance::provide_attendance_history(app, history::Attended);
         renox::state_machine::register::<AttendanceRecord>();
         renox::state_machine::register::<Timesheet>();
         notices::register_types();

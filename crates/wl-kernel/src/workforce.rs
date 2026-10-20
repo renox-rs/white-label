@@ -505,6 +505,46 @@ pub fn qualifications(state: &AppState) -> Arc<dyn Qualifications> {
     }
 }
 
+/// The approved leave of an employee (wl-hr §4 *Leave request*): what the
+/// verticals need to tell an absence from a leave (`CON.RUL.08`). `wl-hr`
+/// provides it; without it, [`leave_calendar`] gives [`NoLeaveCalendar`]:
+/// nobody is on leave.
+pub trait LeaveCalendar: Send + Sync + 'static {
+    /// The periods of approved (or completed) leave of `employee` that touch
+    /// the days `from` to `to` (both included), as `(first day, last day)`
+    /// pairs, oldest first. The default has none.
+    fn approved_leave<'a>(
+        &'a self,
+        _db: &'a Db,
+        _employee: EmployeeId,
+        _from: NaiveDate,
+        _to: NaiveDate,
+    ) -> WorkforceFuture<'a, Vec<(NaiveDate, NaiveDate)>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+}
+
+/// The leave calendar when the `hr` module is off: nobody is on leave.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoLeaveCalendar;
+
+impl LeaveCalendar for NoLeaveCalendar {}
+
+/// Makes `calendar` the app's [`LeaveCalendar`]; `wl-hr` calls it in
+/// `register`.
+pub fn provide_leave_calendar(app: &mut Registry, calendar: impl LeaveCalendar) {
+    let calendar: Arc<dyn LeaveCalendar> = Arc::new(calendar);
+    app.provide(calendar);
+}
+
+/// The app's [`LeaveCalendar`], or [`NoLeaveCalendar`] when none is provided.
+pub fn leave_calendar(state: &AppState) -> Arc<dyn LeaveCalendar> {
+    match state.provided::<Arc<dyn LeaveCalendar>>() {
+        Some(calendar) => Arc::clone(&calendar),
+        None => Arc::new(NoLeaveCalendar),
+    }
+}
+
 /// The workforce when the `hr` module is off: nobody works anywhere.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct NoWorkforce;

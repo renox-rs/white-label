@@ -278,6 +278,46 @@ pub fn attendance_review(state: &AppState) -> std::sync::Arc<dyn AttendanceRevie
     }
 }
 
+/// The days an employee was recorded as present: the last attended day an
+/// absence case counts from (`CON.RUL.08`, `MPW.RUL.09`). `wl-attendance`
+/// provides it with [`provide_attendance_history`]; without it,
+/// [`attendance_history`] gives [`NoAttendanceHistory`]: nobody attended.
+pub trait AttendanceHistory: Send + Sync + 'static {
+    /// The days from `from` to `to` (both included, Asia/Dubai) on which
+    /// `employee` has an attendance record that counts (any but a rejected
+    /// one), oldest first, each day once. The default has none.
+    fn attended_days<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _employee: EmployeeId,
+        _from: NaiveDate,
+        _to: NaiveDate,
+    ) -> LabourFuture<'a, Vec<NaiveDate>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+}
+
+/// The attendance history when none is provided: nobody attended.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoAttendanceHistory;
+
+impl AttendanceHistory for NoAttendanceHistory {}
+
+/// Makes `history` the app's [`AttendanceHistory`].
+pub fn provide_attendance_history(app: &mut Registry, history: impl AttendanceHistory) {
+    let history: std::sync::Arc<dyn AttendanceHistory> = std::sync::Arc::new(history);
+    app.provide(history);
+}
+
+/// The app's [`AttendanceHistory`], or [`NoAttendanceHistory`] when none is
+/// provided.
+pub fn attendance_history(state: &AppState) -> std::sync::Arc<dyn AttendanceHistory> {
+    match state.provided::<std::sync::Arc<dyn AttendanceHistory>>() {
+        Some(history) => std::sync::Arc::clone(&history),
+        None => std::sync::Arc::new(NoAttendanceHistory),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
