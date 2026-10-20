@@ -3,6 +3,9 @@
 //! | Route | Name | Needs |
 //! |---|---|---|
 //! | `POST /construction/projects/award` | `construction.project_award` | `projects.award` |
+//! | `POST /construction/ipas/{id}/submit` | `construction.ipa_submit` | `ipas.submit` in the project |
+//! | `POST /construction/ipas/{id}/certificate` | `construction.ipa_certificate` | `ipas.certify` in the project |
+//! | `GET /construction/ipas/{id}` | `construction.ipa_show` | `projects.view`, `projects.manage` or `ipas.certify` in the project |
 //! | `POST /construction/projects/{id}/terminate` | `construction.project_terminate` | `projects.terminate` in the project |
 //! | `GET /construction/projects/{id}/closing` | `construction.project_closing` | `projects.view` or `projects.manage` in the project |
 //! | `POST /construction/projects/{id}/settle` | `construction.project_settle` | `projects.manage` in the project |
@@ -22,10 +25,12 @@ use wl_kernel::PartyId;
 
 use crate::award::{self, Award, Awarded};
 use crate::cancellation;
+use crate::certificate::{self, CertificateRequest, Recorded};
 use crate::final_account::{self, ClosingWarnings};
-use crate::ipa;
+use crate::ipa::{self, Ipa};
 use crate::permissions;
 use crate::project::Project;
+use crate::submission;
 use crate::termination::{self, TerminateRequest, TerminationReason};
 use crate::texts::t;
 
@@ -34,6 +39,12 @@ pub fn routes() -> Routes {
     Routes::new()
         .post("/construction/projects/award", award)
         .name("construction.project_award")
+        .post("/construction/ipas/{id}/submit", submit_ipa)
+        .name("construction.ipa_submit")
+        .post("/construction/ipas/{id}/certificate", certificate)
+        .name("construction.ipa_certificate")
+        .get("/construction/ipas/{id}", show_ipa)
+        .name("construction.ipa_show")
         .post("/construction/projects/{id}/terminate", terminate)
         .name("construction.project_terminate")
         .get("/construction/projects/{id}/closing", closing)
@@ -128,6 +139,126 @@ async fn terminate(
         "construction.terminate.done"
     };
     Ok((Toast::success(t(&lang, key)), renox::HxRefresh).into_response())
+}
+
+/// `POST /construction/ipas/{id}/submit`: `replaces`, the id of the pending
+/// IPA this one replaces (empty when none is pending).
+async fn submit_ipa(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let replaces = match form.get("replaces").map(|value| value.trim()) {
+        None | Some("") => None,
+        Some(value) => Some(
+            value
+                .parse::<i64>()
+                .map_err(|_| refused(t(&lang, "construction.bad_input")))?,
+        ),
+    };
+    submission::submit(&state, &user, id, replaces)
+        .await
+        .map_err(answer)?;
+    Ok((
+        Toast::success(t(&lang, "construction.ipa.submitted")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// `POST /construction/ipas/{id}/certificate`: `certified_amount` (fils, the
+/// cumulative work before deductions), `certificate` and `certified_on`
+/// (`2027-03-05`, today when empty). For a superseded IPA the certificate is
+/// recorded on the IPA that replaced it.
+async fn certificate(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let certified_amount = form
+        .get("certified_amount")
+        .and_then(|amount| amount.trim().parse::<i64>().ok())
+        .ok_or_else(|| refused(t(&lang, "construction.ipa.certified_amount_needed")))?;
+    let certified_on = match form.get("certified_on").map(|value| value.trim()) {
+        None | Some("") => None,
+        Some(value) => Some(
+            value
+                .parse::<NaiveDate>()
+                .map_err(|_| refused(t(&lang, "construction.bad_input")))?,
+        ),
+    };
+    let request = CertificateRequest {
+        certified_amount,
+        certificate: form.get("certificate").cloned().unwrap_or_default(),
+        certified_on,
+    };
+    let key = match certificate::record(&state, &user, id, &request)
+        .await
+        .map_err(answer)?
+    {
+        Recorded::Certified(_) => "construction.ipa.certified",
+        Recorded::Attached(_) => "construction.ipa.certificate_attached",
+    };
+    Ok((Toast::success(t(&lang, key)), renox::HxRefresh).into_response())
+}
+
+/// An IPA as its screen shows it.
+#[derive(Debug, Serialize)]
+struct IpaView {
+    id: i64,
+    project_id: i64,
+    number: i64,
+    status: &'static str,
+    previous_pending: bool,
+    previous_certified: i64,
+    replaces: Option<i64>,
+    claimed_amount: i64,
+    certified_amount: Option<i64>,
+    claim_gap: Option<i64>,
+    certificate: Option<String>,
+    late_certificate: Option<String>,
+}
+
+/// `GET /construction/ipas/{id}`.
+async fn show_ipa(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    let found = Ipa::find_or_404(&state.db, id).await?;
+    let project = Project::find_or_404(&state.db, found.project_id).await?;
+    let scope = project.scope();
+    if ![
+        permissions::PROJECTS_VIEW,
+        permissions::PROJECTS_MANAGE,
+        permissions::IPAS_CERTIFY,
+    ]
+    .iter()
+    .any(|permission| user.has_permission_in(permission, &scope))
+    {
+        return Err(Error::Forbidden);
+    }
+    let view = IpaView {
+        id: found.id,
+        project_id: found.project_id,
+        number: found.number,
+        status: found.status.as_str(),
+        previous_pending: found.previous_pending,
+        previous_certified: found.previous_certified,
+        replaces: found.replaces_id,
+        claimed_amount: found.claimed_amount,
+        certified_amount: found.certified_amount,
+        claim_gap: found.claim_gap,
+        certificate: found.certificate_ref.clone(),
+        late_certificate: found.late_certificate_ref.clone(),
+    };
+    let body = renox::serde_json::to_string(&view)
+        .map_err(|error| Error::Internal(renox::anyhow::Error::new(error)))?;
+    Ok(([("content-type", "application/json")], body).into_response())
 }
 
 /// The final account as the closing screen shows it.

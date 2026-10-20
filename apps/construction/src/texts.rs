@@ -162,11 +162,75 @@ const TEXTS: &[(&str, &str)] = &[
         "A project with the code {{ code }} exists.",
     ),
     ("construction.award.history", "Started from the award"),
-    // The pages.
+    // The IPA: submitting, replacing, certifying (BL-CON-04).
     (
-        "construction.award.done",
-        "Project started from the award.",
+        "construction.ipa.progress_needed",
+        "Record the progress for the period before submitting the IPA.",
     ),
+    (
+        "construction.ipa.replacement_needed",
+        "IPA {{ number }} is still waiting for its certificate: submit this one as its replacement.",
+    ),
+    (
+        "construction.ipa.replace_latest_only",
+        "Only the most recent IPA waiting for its certificate can be replaced.",
+    ),
+    (
+        "construction.ipa.nothing_to_replace",
+        "The IPA to replace is not waiting for its certificate.",
+    ),
+    (
+        "construction.ipa.superseded_subject",
+        "Payment application {{ old }} of {{ project }} is replaced",
+    ),
+    (
+        "construction.ipa.superseded_body",
+        "Payment application {{ old }} of {{ project }} is replaced by payment application {{ new }}. Please certify the new one.",
+    ),
+    (
+        "construction.ipa.certified_amount_needed",
+        "Give the certified amount, the work before the client's deductions.",
+    ),
+    (
+        "construction.ipa.certificate_needed",
+        "Attach the client's certificate.",
+    ),
+    (
+        "construction.ipa.cannot_certify",
+        "IPA {{ number }} cannot take a certificate in its state.",
+    ),
+    (
+        "construction.ipa.late_certificate_title",
+        "Late certificate attached to IPA {{ number }} of {{ project }}",
+    ),
+    (
+        "construction.ipa.late_certificate_body",
+        "A certificate for a replaced IPA arrived after the replacing IPA was certified. It is attached for reference; no amount changed.",
+    ),
+    (
+        "construction.ipa.cutoff_title",
+        "Draft IPA {{ number }} of {{ project }} is ready",
+    ),
+    (
+        "construction.ipa.cutoff_body",
+        "The monthly cut-off made draft IPA {{ number }}. Record the progress.",
+    ),
+    (
+        "construction.ipa.cutoff_pending_title",
+        "Draft IPA {{ number }} of {{ project }} waits for an earlier certificate",
+    ),
+    (
+        "construction.ipa.cutoff_pending_body",
+        "IPA {{ pending }} is still waiting for its certificate. Draft IPA {{ number }} is marked previous pending and can be submitted only as its replacement.",
+    ),
+    ("construction.ipa.submitted", "IPA submitted."),
+    ("construction.ipa.certified", "Certificate recorded."),
+    (
+        "construction.ipa.certificate_attached",
+        "The certificate was attached to the replacing IPA for reference.",
+    ),
+    // The pages.
+    ("construction.award.done", "Project started from the award."),
     (
         "construction.terminate.requested",
         "Termination sent to the MD for approval.",

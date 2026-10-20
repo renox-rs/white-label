@@ -18,8 +18,16 @@ pub const PROJECTS_CANCEL: &str = "projects.cancel";
 /// `accept` ends with, BL-CON-03).
 pub const PROJECTS_AWARD: &str = "projects.award";
 
+/// Submit an IPA to the client (the project manager's, `CON.ACL.05`).
+pub const IPAS_SUBMIT: &str = "ipas.submit";
+/// Record the client's certificate of an IPA (the QS's).
+pub const IPAS_CERTIFY: &str = "ipas.certify";
+
 /// The role of the project manager.
 pub const PROJECT_MANAGER_ROLE: &str = "project_manager";
+
+/// The role of the quantity surveyor (QS), who gets the tasks of the IPAs.
+pub const QS_ROLE: &str = "quantity_surveyor";
 
 /// The role the tasks of the accountant go to.
 pub const ACCOUNTANT_ROLE: &str = "accountant";
@@ -34,6 +42,8 @@ pub const ALL: &[&str] = &[
     PROJECTS_TERMINATE,
     PROJECTS_CANCEL,
     PROJECTS_AWARD,
+    IPAS_SUBMIT,
+    IPAS_CERTIFY,
 ];
 
 #[cfg(test)]
@@ -46,6 +56,9 @@ mod tests {
         all.sort_unstable();
         all.dedup();
         assert_eq!(all.len(), ALL.len());
-        assert!(all.iter().all(|p| p.starts_with("projects.")));
+        assert!(
+            all.iter()
+                .all(|p| p.starts_with("projects.") || p.starts_with("ipas."))
+        );
     }
 }

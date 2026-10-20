@@ -13,16 +13,41 @@
 //! normally; without a draft a new one is made ([`ensure_final_account_in`]).
 //! A decision of a court or an arbitrator is recorded as its certificate,
 //! with the judgment attached ([`Ipa::decision_reference`]).
+//!
+//! ```text
+//! draft --submit--> submitted --certify--> certified
+//! submitted --supersede--> superseded   (a later IPA submits as its replacement)
+//! ```
+//!
+//! - [`crate::submission`]: `submit` (the project manager, `ipas.submit`)
+//!   and `supersede` (the system, at the replacing `submit`);
+//! - [`crate::certificate`]: `certify` (`ipas.certify`), the late certificate
+//!   of a superseded IPA and "previous certified";
+//! - [`crate::cutoff`]: the monthly draft (`CON.RUL.03`).
+//!
+//! `revise` and `invoice` come with the issues that build them.
 
+use renox::auth::permissions::Scope;
 use renox::chrono::NaiveDate;
 use renox::db::Transaction;
 use renox::prelude::*;
-use renox::state_machine::{Machine, StateMachine};
+use renox::state_machine::{Machine, StateMachine, Transition};
 use serde::{Deserialize, Serialize};
 use wl_kernel::Subject;
 
+use crate::certificate::{certify_effects, certify_input, certify_problem};
+use crate::permissions;
+use crate::submission::{progress_problem, submit_effects, submit_input, submit_problem};
+
 /// The subject type of an IPA.
 pub const SUBJECT_TYPE: &str = "construction.ipa";
+
+/// The `submit` transition's name.
+pub const SUBMIT: &str = "submit";
+/// The `supersede` transition's name.
+pub const SUPERSEDE: &str = "supersede";
+/// The `certify` transition's name.
+pub const CERTIFY: &str = "certify";
 
 /// What kind of IPA it is.
 #[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -66,8 +91,30 @@ pub struct Ipa {
     pub valuation_on: Option<NaiveDate>,
     /// What was claimed, in fils.
     pub claimed_amount: i64,
-    /// The certified work, before deductions, in fils.
+    /// The certified work, before deductions, in fils (cumulative).
     pub certified_amount: Option<i64>,
+    /// The sequence number within the project, from 1.
+    pub number: i64,
+    /// A draft made while an earlier IPA still waits for its certificate.
+    pub previous_pending: bool,
+    /// The cumulative certified amount of the latest `certified` or
+    /// `invoiced` IPA of the project, in fils.
+    pub previous_certified: i64,
+    /// The pending IPA this one replaces.
+    pub replaces_id: Option<i64>,
+    /// The cut-off day a monthly draft was made for.
+    pub cutoff_on: Option<NaiveDate>,
+    /// The day it was submitted.
+    pub submitted_on: Option<NaiveDate>,
+    /// The day the client certified it.
+    pub certified_on: Option<NaiveDate>,
+    /// The client's certificate, a document reference.
+    pub certificate_ref: Option<String>,
+    /// What was claimed less the certified work, recorded at `certify`.
+    pub claim_gap: Option<i64>,
+    /// A certificate of a superseded IPA that arrived when this one was
+    /// certified already: kept for reference, no amount changes.
+    pub late_certificate_ref: Option<String>,
     /// The reference of the court or arbitration decision recorded as the
     /// certificate (the judgment is attached).
     pub decision_reference: Option<String>,
@@ -105,6 +152,18 @@ impl Ipa {
     }
 }
 
+/// The scope roles are assigned in: the project of the IPA.
+fn project_scope(ipa: &Ipa) -> Scope {
+    Scope::new(crate::project::SUBJECT_TYPE, ipa.project_id)
+}
+
+/// A user transition of the IPA: `permission` in the project's scope.
+fn user(name: &str, label: &str, permission: &'static str) -> Transition<Ipa> {
+    Transition::new(name)
+        .label(label)
+        .permission_in(permission, project_scope)
+}
+
 impl StateMachine for Ipa {
     type State = IpaStatus;
     const COLUMN: renox::db::Col<Ipa, IpaStatus> = Ipa::STATUS;
@@ -125,7 +184,88 @@ impl StateMachine for Ipa {
             .state(Superseded)
             .tone("neutral")
             .terminal()
+            .transition(
+                user(SUBMIT, "Submit", permissions::IPAS_SUBMIT)
+                    .tone("primary")
+                    .from([Draft])
+                    .to(Submitted)
+                    .guard("progress_recorded", |ipa: &Ipa, _ctx| {
+                        let problem = progress_problem(ipa);
+                        Box::pin(async move { problem.map_or(Ok(()), Err) })
+                    })
+                    .guard("replacement", |_ipa: &Ipa, ctx| {
+                        let problem = submit_problem(&submit_input(ctx));
+                        Box::pin(async move { problem.map_or(Ok(()), Err) })
+                    })
+                    .effect(|ipa: &Ipa, ctx, tx| {
+                        let id = ipa.id;
+                        let input = submit_input(ctx);
+                        Box::pin(async move { submit_effects(&mut *tx, id, &input).await })
+                    }),
+            )
+            .transition(
+                Transition::new(SUPERSEDE)
+                    .label("Supersede")
+                    .system()
+                    .from([Submitted])
+                    .to(Superseded),
+            )
+            .transition(
+                user(CERTIFY, "Certify", permissions::IPAS_CERTIFY)
+                    .tone("primary")
+                    .from([Submitted])
+                    .to(Certified)
+                    .guard("certificate", |_ipa: &Ipa, ctx| {
+                        let problem = certify_problem(&certify_input(ctx));
+                        Box::pin(async move { problem.map_or(Ok(()), Err) })
+                    })
+                    .effect(|ipa: &Ipa, ctx, tx| {
+                        let ipa = ipa.clone();
+                        let input = certify_input(ctx);
+                        Box::pin(async move { certify_effects(&mut *tx, &ipa, &input).await })
+                    }),
+            )
     }
+}
+
+/// The IPAs of `project_id` in `status`, oldest number first, inside `tx`.
+///
+/// # Errors
+///
+/// A database error.
+pub async fn in_status_in(
+    tx: &mut Transaction,
+    project_id: i64,
+    status: IpaStatus,
+) -> Result<Vec<Ipa>> {
+    Ipa::query()
+        .where_(Ipa::PROJECT_ID.eq(project_id))
+        .where_(Ipa::STATUS.eq(status))
+        .order_by(Ipa::NUMBER)
+        .get(&mut *tx)
+        .await
+}
+
+/// The number the next IPA of `project_id` takes, inside `tx`.
+///
+/// # Errors
+///
+/// A database error.
+pub async fn next_number_in(tx: &mut Transaction, project_id: i64) -> Result<i64> {
+    let all = Ipa::query()
+        .where_(Ipa::PROJECT_ID.eq(project_id))
+        .get(&mut *tx)
+        .await?;
+    Ok(all.iter().map(|ipa| ipa.number).max().unwrap_or(0) + 1)
+}
+
+/// The IPA that replaced `id`, if one did.
+///
+/// # Errors
+///
+/// A database error.
+pub async fn replacement_of(db: &Db, id: i64) -> Result<Option<Ipa>> {
+    Ipa::query().where_(Ipa::REPLACES_ID.eq(id)).first(db).await
 }
 
 /// The final account IPA of `project_id`, if there is one.
@@ -197,8 +337,10 @@ pub async fn ensure_final_account_in(
             .await?;
         return Ipa::find_or_404(&mut *tx, draft.id).await;
     }
+    let number = next_number_in(&mut *tx, project_id).await?;
     let mut made = Ipa {
         kind: IpaKind::FinalAccount,
+        number,
         valuation_on: Some(valuation_on),
         ..Ipa::new(project_id)
     };

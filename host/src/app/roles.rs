@@ -92,6 +92,9 @@ pub const PROCUREMENT_MANAGER: &str = "procurement_manager";
 /// The project manager: runs a project, asks for its termination and settles
 /// its final account (02 Construction §3.1, `CON.ACL.15`).
 pub const PROJECT_MANAGER: &str = con::PROJECT_MANAGER_ROLE;
+/// The quantity surveyor (QS): records the client's certificates and the
+/// deductions on them (02 §3, `CON.ACL.14`).
+pub const QUANTITY_SURVEYOR: &str = con::QS_ROLE;
 /// Everyone who signs up.
 pub const MEMBER: &str = "member";
 
@@ -418,6 +421,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             con::PROJECTS_MANAGE,
             con::PROJECTS_TERMINATE,
             con::PROJECTS_AWARD,
+            con::IPAS_SUBMIT,
             inventory::ITEMS_VIEW,
             inventory::STOCK_VIEW,
             inventory::PURCHASE_ORDERS_VIEW,
@@ -425,6 +429,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             attendance::REVIEW,
         ],
     ),
+    (QUANTITY_SURVEYOR, &[con::PROJECTS_VIEW, con::IPAS_CERTIFY]),
     (
         PROCUREMENT_MANAGER,
         &[

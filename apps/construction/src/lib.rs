@@ -3,6 +3,8 @@
 
 pub mod award;
 pub mod cancellation;
+pub mod certificate;
+pub mod cutoff;
 pub mod events;
 pub mod final_account;
 pub mod guarantee;
@@ -11,6 +13,7 @@ pub mod pages;
 pub mod permissions;
 pub mod project;
 pub mod retention;
+pub mod submission;
 mod tasks;
 pub mod termination;
 mod texts;
@@ -53,6 +56,8 @@ impl Module for Construction {
         renox::state_machine::register::<Retention>();
         renox::state_machine::register::<Guarantee>();
         award::register_block_effect();
+        submission::register_types();
+        cutoff::schedule(app);
         termination::register_types();
         // The attendance module refuses a day after the last working day of a
         // terminated project (`CON.ACL.15`).
