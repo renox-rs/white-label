@@ -915,8 +915,18 @@ impl Booted {
     /// Moves the clock to `day` November 2026 at `hour:minute` Asia/Dubai
     /// (forward from the real present).
     pub fn set_clock(&self, day: u32, hour: u32, minute: u32) {
+        self.set_clock_on(d(11, day), hour, minute);
+    }
+
+    /// Moves the clock to `day` at `hour:minute` Asia/Dubai (forward from
+    /// the real present).
+    pub fn set_clock_on(&self, day: NaiveDate, hour: u32, minute: u32) {
         self.app.travel_back();
-        let wanted = dubai(day, hour, minute);
+        let wanted = day
+            .and_hms_opt(hour, minute, 0)
+            .expect("a valid time")
+            .and_utc()
+            - renox::chrono::Duration::hours(4);
         let ahead = (wanted - Utc::now()).num_seconds();
         assert!(ahead > 0, "the fixed day is in the future");
         self.app
@@ -1034,6 +1044,23 @@ impl Booted {
         ))
         .await
         .expect("the party is blocked");
+    }
+
+    /// `user` lifts the block of `party` through wl-parties' route with
+    /// `note` (a block that is not `sanctions` needs no evidence);
+    /// `PartyUnblocked` follows after the commit.
+    pub async fn unblock(&self, user: &User, party: PartyId, note: &str) {
+        self.app.acting_as(user);
+        let files: Vec<(&str, &str, &[u8])> = Vec::new();
+        self.app
+            .htmx()
+            .post_multipart(
+                &format!("/parties/{}/unblock", party.0),
+                &[("note", note)],
+                &files,
+            )
+            .await
+            .assert_ok();
     }
 
     /// The wl-parties row of `party`.

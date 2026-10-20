@@ -122,7 +122,10 @@ async fn reasons_are_neutral_codes_and_a_restricted_one_is_refused() {
         .await
         .assert_ok();
     assert_eq!(t.status(&active).await, EngagementStatus::Suspended);
-    t.act(&manager, &active, "resume", &[]).await.assert_ok();
+    t.act(&manager, &active, "resume", &[]).await.assert_status(422);
+    t.act(&manager, &active, "resume", &[("note", "Paid in full")])
+        .await
+        .assert_ok();
     assert_eq!(t.status(&active).await, EngagementStatus::Active);
 
     // Only the partner ends an engagement.

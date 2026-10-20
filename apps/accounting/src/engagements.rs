@@ -1,14 +1,17 @@
 //! The engagement services: one function per action, each gathering what
 //! the machine's guards need and running the transition (04 §7.1
-//! *Engagement*). Later issues extend these: the effects of `suspend`,
-//! `resume` and `end` on tasks, retainer and notices (BL-ACC-03 to
-//! BL-ACC-06).
+//! *Engagement*). The effects of `suspend` and `resume` on tasks, retainer,
+//! request lists and notices run after the commit ([`crate::events`],
+//! BL-ACC-03 to BL-ACC-05); those of `end` come with BL-ACC-06.
 
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
-use renox::state_machine::{StateMachine, TransitionError};
+use renox::serde_json::Value;
+use renox::state_machine::{Outcome, StateMachine, TransitionError};
 use wl_kernel::PartyId;
+use wl_kernel::approvals::{self, submit::REQUEST_KEY};
 use wl_kernel::documents::today;
+use wl_kernel::invoicing::{InvoiceSummary, invoicer};
 use wl_kernel::parties::{PartyStatus, directory};
 
 use crate::activation;
@@ -20,6 +23,7 @@ use crate::engagement_machine::{
 };
 use crate::permissions;
 use crate::reasons::{self, NOT_ACCEPTED};
+use crate::{deadline_notices, request_lists, suspension};
 use crate::texts::english;
 
 /// The engagement `id`, or 404.
@@ -179,29 +183,96 @@ pub async fn suspend(state: &AppState, by: &AuthUser, id: i64, reason: &str) -> 
     load(state, id).await
 }
 
-/// `by` resumes engagement `id` while its client is not blocked.
+/// What a resume came to.
+#[derive(Debug, Clone)]
+pub struct Resumed {
+    /// The engagement after the commit: `active`, or still `suspended`
+    /// while the MLRO decides.
+    pub engagement: Engagement,
+    /// The approval request to the MLRO or deputy, when the suspension came
+    /// from a block.
+    pub approval_request: Option<i64>,
+}
+
+/// `by` resumes engagement `id` with `note` (what changed, or the client's
+/// instruction) while its client is not blocked. Whether the reason is gone
+/// is the manager's decision; for *non-payment* the page shows the client's
+/// overdue invoices as information only. After a block (the reason is *on
+/// hold*) the resume becomes an approval request to the MLRO or deputy and
+/// the engagement stays `suspended` until their yes. After the commit the
+/// tasks are released, the retainer resumes, the skipped request lists are
+/// created and the deadline notice reminders cancelled ([`crate::events`]).
 ///
 /// # Errors
 ///
-/// As the transition; a 422 while the client is on hold.
-pub async fn resume(state: &AppState, by: &AuthUser, id: i64) -> Result<Engagement> {
+/// As the transition: `Forbidden` without `engagements.manage`; a 422
+/// without a note or while the client is on hold.
+pub async fn resume(state: &AppState, by: &AuthUser, id: i64, note: &str) -> Result<Resumed> {
     let engagement = load(state, id).await?;
     let blocked = directory(state)
         .status(&state.db, engagement.client())
         .await?
         == Some(PartyStatus::Blocked);
+    let after_block = engagement.reason_code.as_deref() == Some(reasons::ON_HOLD);
+    let note = note.trim();
     let input = EngagementInput {
         client_blocked: blocked,
+        note: (!note.is_empty()).then(|| note.to_owned()),
+        after_block: i64::from(after_block),
         ..EngagementInput::on(today())
     };
-    let _outcome = engagement
+    let mut tx = state.db.begin().await?;
+    let outcome = engagement
         .transition(RESUME)
         .by(by)
         .input(&input)
-        .run(state)
+        .run_in(&mut tx)
         .await
         .map_err(TransitionError::into_error)?;
-    load(state, id).await
+    tx.commit().await?;
+    approvals::announce(state, &outcome).await?;
+    let approval_request = match &outcome {
+        Outcome::Pending(pending) => pending.data.get(REQUEST_KEY).and_then(Value::as_i64),
+        Outcome::Done(_) => None,
+    };
+    outcome.emit(state).await?;
+    Ok(Resumed {
+        engagement: load(state, id).await?,
+        approval_request,
+    })
+}
+
+/// The overdue invoices of `client` and their total in fils, as the resume
+/// of a suspension for non-payment shows them (information, not a guard).
+///
+/// # Errors
+///
+/// The invoicing module's errors.
+pub async fn overdue_invoices(
+    state: &AppState,
+    client: PartyId,
+) -> Result<(Vec<InvoiceSummary>, i64)> {
+    let invoices = invoicer(state).overdue_of(&state.db, client).await?;
+    let total = invoices.iter().map(|i| i.balance).sum();
+    Ok((invoices, total))
+}
+
+/// The engagement resumed (by the manager, or on the MLRO's approval) on
+/// `on`: its tasks are released (the manager gets those that went overdue
+/// while held), its retainer resumes from the next cycle, the request lists
+/// of the periods skipped while suspended are created with one notice to
+/// the client, and the deadline notice reminders still pending are
+/// cancelled.
+///
+/// # Errors
+///
+/// The services' errors.
+pub async fn after_resume(state: &AppState, id: i64, on: NaiveDate) -> Result {
+    let engagement = load(state, id).await?;
+    suspension::release(state, &engagement, on).await?;
+    request_lists::create_skipped(state, &engagement, on).await?;
+    deadline_notices::cancel_pending(state, id, on).await?;
+    Ok(())
 }
 
 /// `by` ends engagement `id` today with the neutral `reason` (one of

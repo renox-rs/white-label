@@ -311,6 +311,18 @@ pub struct DeadlineNoticeRow {
     pub deadlines: i64,
 }
 
+/// One overdue invoice of the client, shown before a resume after
+/// *non-payment*.
+#[derive(Serialize, Debug, Clone, PartialEq, Eq)]
+pub struct OverdueRow {
+    /// The invoice number.
+    pub number: String,
+    /// Its due date.
+    pub due: String,
+    /// What is still open.
+    pub balance: String,
+}
+
 /// One deadline task of the engagement's compliance calendar.
 #[derive(Serialize, Debug, Clone, PartialEq, Eq)]
 pub struct TaskRow {
@@ -369,6 +381,10 @@ pub(crate) struct ShowPage {
     deadline_notices: Vec<DeadlineNoticeRow>,
     send_notice_id: Option<i64>,
     tasks: Vec<TaskRow>,
+    show_overdue: bool,
+    overdue_invoices: Vec<OverdueRow>,
+    overdue_total: String,
+    resume_needs_approval: bool,
 }
 
 /// The options of a reason select for `transition`.
@@ -471,9 +487,35 @@ async fn show(
             },
         })
         .collect();
+    // A suspension for non-payment: the client's overdue invoices and their
+    // total, as information before the resume (not a guard).
+    let show_overdue = found.status == EngagementStatus::Suspended
+        && found.reason_code.as_deref() == Some(reasons::NON_PAYMENT);
+    let (overdue_invoices, overdue_total) = if show_overdue {
+        let (invoices, total) = engagements::overdue_invoices(&state, found.client()).await?;
+        let rows = invoices
+            .iter()
+            .map(|invoice| OverdueRow {
+                number: invoice
+                    .number
+                    .clone()
+                    .unwrap_or_else(|| format!("#{}", invoice.id.0)),
+                due: invoice.due_date.map(|d| d.to_string()).unwrap_or_default(),
+                balance: crate::money_text(invoice.balance),
+            })
+            .collect();
+        (rows, crate::money_text(total))
+    } else {
+        (Vec::new(), String::new())
+    };
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
         tasks,
+        show_overdue,
+        overdue_invoices,
+        overdue_total,
+        resume_needs_approval: found.status == EngagementStatus::Suspended
+            && found.reason_code.as_deref() == Some(reasons::ON_HOLD),
         deadline_notices: deadline_rows,
         send_notice_id,
         status: status_label(&lang, found.status),
@@ -681,19 +723,30 @@ async fn suspend(
         .into_response())
 }
 
-/// `POST /accounting/engagements/{id}/resume`.
+/// The form of a resume.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct ResumeForm {
+    /// What changed, or the client's instruction.
+    #[serde(default)]
+    pub note: String,
+}
+
+/// `POST /accounting/engagements/{id}/resume`: resumed, or sent to the
+/// MLRO for approval after a block.
 async fn resume(
     State(state): State<AppState>,
     user: AuthUser,
     lang: Lang,
     Path(id): Path<i64>,
+    Form(form): Form<ResumeForm>,
 ) -> Result<Response> {
-    engagements::resume(&state, &user, id).await?;
-    Ok((
-        Toast::success(text(&lang, "engagements.resumed")),
-        renox::HxRefresh,
-    )
-        .into_response())
+    let resumed = engagements::resume(&state, &user, id, &form.note).await?;
+    let message = if resumed.approval_request.is_some() {
+        text(&lang, "engagements.resume_pending")
+    } else {
+        text(&lang, "engagements.resumed")
+    };
+    Ok((Toast::success(message), renox::HxRefresh).into_response())
 }
 
 /// `POST /accounting/engagements/{id}/end`.

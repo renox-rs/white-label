@@ -82,9 +82,26 @@ const TEXTS: &[(&str, &str)] = &[
     ("accounting.engagements.resume", "Resume"),
     (
         "accounting.engagements.resume_message",
-        "The engagement runs again.",
+        "The engagement runs again: its tasks are released, the retainer resumes and the request lists of the periods skipped are created. Say what changed or what the client asked.",
     ),
     ("accounting.engagements.resumed", "Engagement resumed."),
+    ("accounting.engagements.resume_note", "Note"),
+    (
+        "accounting.engagements.resume_pending",
+        "The resume waits for the MLRO's approval.",
+    ),
+    (
+        "accounting.engagements.resume_needs_approval",
+        "The client was on hold: the resume needs the MLRO's approval.",
+    ),
+    ("accounting.engagements.overdue_invoices", "Overdue invoices"),
+    ("accounting.engagements.invoice_number", "Invoice"),
+    ("accounting.engagements.invoice_due", "Due"),
+    ("accounting.engagements.invoice_balance", "Overdue"),
+    (
+        "accounting.engagements.overdue_empty",
+        "No overdue invoice",
+    ),
     ("accounting.engagements.end", "End"),
     ("accounting.engagements.ended", "Engagement ended."),
     (
@@ -105,6 +122,10 @@ const TEXTS: &[(&str, &str)] = &[
         "Suspended",
     ),
     ("accounting.engagements.transition.resume", "Resumed"),
+    (
+        "accounting.engagements.transition.resume_approved",
+        "Resumed (approved)",
+    ),
     ("accounting.engagements.transition.end", "Ended"),
     (
         "accounting.engagements.block_record",
@@ -232,6 +253,10 @@ const TEXTS: &[(&str, &str)] = &[
         "Choose one of the reasons offered.",
     ),
     ("accounting.problems.reason_required", "Give the reason."),
+    (
+        "accounting.problems.resume_note",
+        "Give a note: what changed, or what the client asked.",
+    ),
     (
         "accounting.problems.client_on_hold",
         "The client is on hold.",

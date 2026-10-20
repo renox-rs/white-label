@@ -11,6 +11,9 @@
 //!   `ACC.ACL.14`).
 //! - Engagement `suspend` and `auto_suspend`: its tasks are held and its
 //!   retainer paused ([`crate::suspension::hold`]).
+//! - Engagement `resume` and `resume_approved`: its tasks are released, its
+//!   retainer resumed, the skipped request lists created and the deadline
+//!   notice reminders cancelled ([`crate::engagements::after_resume`]).
 //! - Engagement `suspend`, `auto_suspend` and `end`: `ACC.RUL.09` sends the
 //!   statutory deadline notice, or prepares it for the partner or the MLRO
 //!   ([`crate::deadline_notices::run_for`]).
@@ -23,7 +26,7 @@ use wl_kernel::documents::today;
 use crate::cdd::CddFile;
 use crate::cdd_machine::REJECT;
 use crate::engagement::Engagement;
-use crate::engagement_machine::{ACTIVATE, AUTO_SUSPEND, END, SUSPEND};
+use crate::engagement_machine::{ACTIVATE, AUTO_SUSPEND, END, RESUME, RESUME_APPROVED, SUSPEND};
 use crate::{calendar, deadline_notices, engagements, retainer, suspension};
 
 /// Registers the listeners.
@@ -51,6 +54,14 @@ pub(crate) fn register(app: &mut Registry) {
             }
             deadline_notices::run_for(&state, event.key, &event.transition).await?;
             Ok(())
+        },
+    );
+    app.listen(
+        |event: Transitioned<Engagement>, state: AppState| async move {
+            if event.transition != RESUME && event.transition != RESUME_APPROVED {
+                return Ok(());
+            }
+            engagements::after_resume(&state, event.key, today()).await
         },
     );
     app.listen(|event: Transitioned<CddFile>, state: AppState| async move {

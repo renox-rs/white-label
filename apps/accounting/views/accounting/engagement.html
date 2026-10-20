@@ -32,8 +32,10 @@
         </rx-action-sheet>
       </template>
       <template rx-if="can_resume">
-        <rx-confirm :id="'engagement-resume-' ~ engagement.id" :label="tx['engagements.resume']" :action="route('accounting.engagement_resume', engagement.id)" method="POST"
-                    :title="tx['engagements.resume']" :message="tx['engagements.resume_message']" :confirm-label="tx['engagements.resume']" :cancel-label="tx['button_cancel']" icon="refresh-cw"/>
+        <rx-action-sheet :id="'engagement-resume-' ~ engagement.id" :label="tx['engagements.resume']" :action="route('accounting.engagement_resume', engagement.id)"
+                         :title="tx['engagements.resume']" :description="tx['engagements.resume_message']" :submit-label="tx['engagements.resume']" icon="refresh-cw">
+          <rx-textarea name="note" :label="tx['engagements.resume_note']" :id="'engagement-resume-note-' ~ engagement.id" required/>
+        </rx-action-sheet>
       </template>
       <template rx-if="can_end">
         <rx-action-sheet :id="'engagement-end-' ~ engagement.id" :label="tx['engagements.end']" :action="route('accounting.engagement_end', engagement.id)"
@@ -51,6 +53,15 @@
                     :fields="{'template': notice_template}"/>
       </template>
     </rx-page-header>
+    <rx-alert rx-if="resume_needs_approval and can_resume" kind="info" :message="tx['engagements.resume_needs_approval']"/>
+    <template rx-if="show_overdue">
+      <rx-table :rows="overdue_invoices" as="row" :key="row.number" :caption="tx['engagements.overdue_invoices'] ~ ': ' ~ overdue_total" card>
+        <rx-column :label="tx['engagements.invoice_number']">{{ row.number }}</rx-column>
+        <rx-column :label="tx['engagements.invoice_due']">{{ row.due }}</rx-column>
+        <rx-column :label="tx['engagements.invoice_balance']">{{ row.balance }}</rx-column>
+        <rx-slot name="empty"><rx-empty :title="tx['engagements.overdue_empty']" icon="receipt"/></rx-slot>
+      </rx-table>
+    </template>
     <template rx-if="block_record">
       <a href="{{ block_record }}">{{ tx['engagements.block_record'] }}</a>
     </template>

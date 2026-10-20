@@ -85,6 +85,9 @@ pub struct Engagement {
     /// reason (a restricted suspension or end, `ACC.ACL.14`): the MLRO
     /// decides what the client is told.
     pub client_messages_suppressed: bool,
+    /// The manager's note of why it last resumed (what changed, or the
+    /// client's instruction).
+    pub resume_note: Option<String>,
     /// The day it was activated.
     pub activated_on: Option<NaiveDate>,
     /// The day it ended.

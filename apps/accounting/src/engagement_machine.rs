@@ -7,7 +7,8 @@
 //! | [`AUTO_DECLINE`] | onboarding | declined | system (CDD `reject`) |
 //! | [`SUSPEND`] | active | suspended | `engagements.manage` |
 //! | [`AUTO_SUSPEND`] | active | suspended | system (`PartyBlocked`, `ACC.RUL.07`) |
-//! | [`RESUME`] | suspended | active | `engagements.manage` |
+//! | [`RESUME`] | suspended | active | `engagements.manage`, with a note; after a block, through the MLRO's approval |
+//! | [`RESUME_APPROVED`] | suspended | active | system (the MLRO approved the resume) |
 //! | [`END`] | active, suspended | ended | `engagements.end` |
 //!
 //! Every reason is a neutral code of [`crate::reasons`], given with
@@ -26,10 +27,12 @@
 use renox::chrono::NaiveDate;
 use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx};
 use serde::{Deserialize, Serialize};
+use wl_kernel::approvals::{self, PolicyDefault};
 use wl_kernel::documents::today;
+use wl_kernel::machines::SubjectMachine;
 
 use crate::db::set_engagement;
-use crate::engagement::{Engagement, EngagementStatus};
+use crate::engagement::{ENGAGEMENT_SUBJECT_TYPE, Engagement, EngagementStatus};
 use crate::permissions;
 use crate::reasons::{self, RELATIONSHIP_ENDED};
 use crate::texts::english;
@@ -46,6 +49,13 @@ pub const SUSPEND: &str = "suspend";
 pub const AUTO_SUSPEND: &str = "auto_suspend";
 /// The `resume` transition's name.
 pub const RESUME: &str = "resume";
+/// The resume the kernel runs once the MLRO approved it (after a block).
+pub const RESUME_APPROVED: &str = "resume_approved";
+/// The approval action of a resume after a block (`accounting.resume`).
+pub const RESUME_ACTION: &str = "accounting.resume";
+/// The input key the resume policy reads: 1 when the suspension came from
+/// a block (the reason is *on hold*), else 0.
+pub const AFTER_BLOCK_KEY: &str = "after_block";
 /// The `end` transition's name.
 pub const END: &str = "end";
 
@@ -67,6 +77,13 @@ pub struct EngagementInput {
     /// The client is blocked (`resume`).
     #[serde(default)]
     pub client_blocked: bool,
+    /// The manager's resume note (`resume`).
+    #[serde(default)]
+    pub note: Option<String>,
+    /// 1 when the suspension came from a block, so the resume needs the
+    /// MLRO's approval ([`resume_policy`]); else 0.
+    #[serde(default)]
+    pub after_block: i64,
 }
 
 impl EngagementInput {
@@ -110,6 +127,7 @@ impl StateMachine for Engagement {
             .transition(suspend())
             .transition(auto_suspend())
             .transition(resume())
+            .transition(resume_approved())
             .transition(end())
     }
 }
@@ -243,15 +261,24 @@ fn auto_suspend() -> Transition<Engagement> {
     keep_reason(reason_in(t, &reasons::SYSTEM_SUSPEND_REASONS))
 }
 
-/// `resume`: suspended → active while the client is not blocked. After a
-/// block, the MLRO's approval comes with BL-ACC-05.
-fn resume() -> Transition<Engagement> {
-    Transition::new(RESUME)
-        .label("Resume")
-        .tone("primary")
-        .permission(permissions::ENGAGEMENTS_MANAGE)
+/// The guards and the effect of a resume: a note is given, the client is
+/// not blocked; the reason clears and the note is kept.
+fn resume_rules(transition: Transition<Engagement>) -> Transition<Engagement> {
+    transition
         .from([EngagementStatus::Suspended])
         .to(EngagementStatus::Active)
+        .guard("note_given", |_e: &Engagement, ctx| {
+            let given = input_of(ctx)
+                .note
+                .is_some_and(|note| !note.trim().is_empty());
+            Box::pin(async move {
+                if given {
+                    Ok(())
+                } else {
+                    Err(english("accounting.problems.resume_note", &[]))
+                }
+            })
+        })
         .guard("client_not_blocked", |_e: &Engagement, ctx| {
             let blocked = input_of(ctx).client_blocked;
             Box::pin(async move {
@@ -262,8 +289,9 @@ fn resume() -> Transition<Engagement> {
                 }
             })
         })
-        .effect(|e: &Engagement, _ctx, tx| {
+        .effect(|e: &Engagement, ctx, tx| {
             let id = e.id;
+            let note = input_of(ctx).note.map(|n| n.trim().to_owned());
             Box::pin(async move {
                 set_engagement(
                     &mut *tx,
@@ -271,11 +299,46 @@ fn resume() -> Transition<Engagement> {
                     &[
                         ("reason_code", &None::<String>),
                         ("client_messages_suppressed", &false),
+                        ("resume_note", &note),
                     ],
                 )
                 .await
             })
         })
+}
+
+/// `resume`: suspended → active, with the manager's note, while the client
+/// is not blocked. After a block (the reason is *on hold*) the kernel's
+/// approval interceptor defers it to the MLRO or deputy ([`resume_policy`]);
+/// on their yes the kernel runs [`RESUME_APPROVED`], and on a no it stays
+/// `suspended`.
+fn resume() -> Transition<Engagement> {
+    resume_rules(
+        Transition::new(RESUME)
+            .label("Resume")
+            .tone("primary")
+            .permission(permissions::ENGAGEMENTS_MANAGE),
+    )
+}
+
+/// `resume_approved`: the MLRO approved the resume after a block. The
+/// input is the request's payload, the manager's run as it was asked.
+/// Decision: the block is checked when the manager asks (the request is not
+/// created while the client is blocked); a new block meanwhile suspends
+/// nothing more, the engagement being still `suspended`.
+fn resume_approved() -> Transition<Engagement> {
+    resume_rules(Transition::new(RESUME_APPROVED).label("Resume").system())
+}
+
+/// The default approval policy of a resume: only after a block (the input's
+/// [`AFTER_BLOCK_KEY`] above 0), one step by the MLRO or deputy (the
+/// compliance role, or `parties.block_reason.view`), never the manager who
+/// asked.
+pub fn resume_policy() -> PolicyDefault {
+    PolicyDefault::new(RESUME_ACTION)
+        .amount_above(0)
+        .input_key(AFTER_BLOCK_KEY)
+        .step_or_permission([permissions::MLRO_ROLE], permissions::BLOCK_REASON_VIEW)
 }
 
 /// `end`: active or suspended → ended, with a reason of
@@ -314,9 +377,18 @@ fn end() -> Transition<Engagement> {
     })
 }
 
-/// Registers the machine for `rnx state:diagram` and the admin.
+/// Registers the machine for `rnx state:diagram` and the admin, with the
+/// kernel (the approval of a resume after a block, its default policy and
+/// the engagement's page for "Needs your action").
 pub(crate) fn register() {
+    SubjectMachine::of::<Engagement>(ENGAGEMENT_SUBJECT_TYPE)
+        .action(RESUME, RESUME_ACTION)
+        .register();
     renox::state_machine::register::<Engagement>();
+    resume_policy().register();
+    approvals::register_subject_link(ENGAGEMENT_SUBJECT_TYPE, |id| {
+        format!("/accounting/engagements/{id}")
+    });
 }
 
 #[cfg(test)]
@@ -368,6 +440,12 @@ mod tests {
                 (AUTO_SUSPEND, vec!["active".into()], Some("suspended"), true),
                 (RESUME, vec!["suspended".into()], Some("active"), false),
                 (
+                    RESUME_APPROVED,
+                    vec!["suspended".into()],
+                    Some("active"),
+                    true
+                ),
+                (
                     END,
                     vec!["active".into(), "suspended".into()],
                     Some("ended"),
@@ -379,5 +457,14 @@ mod tests {
         assert_eq!(activate.guard_names(), ["ready"]);
         assert!(machine.find(SUSPEND).unwrap().needs_reason());
         assert_eq!(machine.find(END).unwrap().guard_names(), ["neutral_reason"]);
+        assert_eq!(
+            machine.find(RESUME).unwrap().guard_names(),
+            ["note_given", "client_not_blocked"]
+        );
+        assert_eq!(
+            wl_kernel::machines::approved(RESUME),
+            RESUME_APPROVED,
+            "the kernel runs it on the MLRO's yes"
+        );
     }
 }
