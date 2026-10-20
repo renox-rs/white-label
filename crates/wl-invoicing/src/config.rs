@@ -160,6 +160,10 @@ pub struct InvoicingConfig {
     pub dispute_escalation_days: u32,
     /// The role told from the second escalation step on.
     pub dispute_escalation_role: String,
+    /// The role whose first holder gets the ticket of a dispute instead of
+    /// the invoice's owner or the holders of `invoices.issue` (04: the
+    /// engagement manager); none: the module's own choice.
+    pub dispute_ticket_role: Option<String>,
     /// Whether a submitted supplier bill is checked for a duplicate
     /// (`FIN.ACL.03`).
     pub duplicate_check: bool,
@@ -248,6 +252,26 @@ pub struct InvoicingConfig {
     /// The role whose task opens when an adjustment's credit is refused
     /// (default `coordinator`).
     pub adjustment_task_role: String,
+    /// Whether `FIN.RUL.06` suspends a subscription after its last retry or
+    /// reminder (§7 *suspension enabled*): on. 04 turns it off.
+    pub subscription_suspension: bool,
+    /// The days after `mark_past_due` at which `FIN.RUL.06` retries the
+    /// charge (automatic payment) or reminds the party (manual), in
+    /// ascending order: 1, 3, 7.
+    pub subscription_retry_days: Vec<u32>,
+    /// The days a user pause may take per calendar year (§7 *pause
+    /// allowance*): 0. A system pause is never counted.
+    ///
+    /// Decision: 0 means no yearly limit (the 04 retainer pauses with no
+    /// allowance); a vertical with an allowance (10 membership) sets it.
+    pub subscription_pause_allowance_days: u32,
+    /// Whether the party may cancel its subscription (portal, through the
+    /// vertical): off.
+    pub subscription_party_may_cancel: bool,
+    /// Whether a user or party cancel gives a final pro rata invoice or
+    /// credit (§7 *pro rata on cancel*): off. A system cancel always
+    /// prorates unless the vertical settled.
+    pub subscription_pro_rata_on_cancel: bool,
 }
 
 impl Default for InvoicingConfig {
@@ -279,6 +303,7 @@ impl Default for InvoicingConfig {
             ageing_buckets: vec![30, 60, 90],
             dispute_escalation_days: 14,
             dispute_escalation_role: "finance_manager".to_owned(),
+            dispute_ticket_role: None,
             duplicate_check: true,
             duplicate_keys: vec![DuplicateKey::SupplierInvoiceNumber],
             duplicate_notify_role: "accountant".to_owned(),
@@ -312,6 +337,11 @@ impl Default for InvoicingConfig {
             debit_note_notify_role: "accountant".to_owned(),
             adjustment_plus: AdjustmentPlus::ExtraLine,
             adjustment_task_role: "coordinator".to_owned(),
+            subscription_suspension: true,
+            subscription_retry_days: vec![1, 3, 7],
+            subscription_pause_allowance_days: 0,
+            subscription_party_may_cancel: false,
+            subscription_pro_rata_on_cancel: false,
         }
     }
 }
@@ -443,6 +473,11 @@ mod tests {
         assert_eq!(config.debit_note_notify_role, "accountant");
         assert_eq!(config.adjustment_plus, AdjustmentPlus::ExtraLine);
         assert_eq!(config.adjustment_task_role, "coordinator");
+        assert!(config.subscription_suspension);
+        assert_eq!(config.subscription_retry_days, [1, 3, 7]);
+        assert_eq!(config.subscription_pause_allowance_days, 0);
+        assert!(!config.subscription_party_may_cancel);
+        assert!(!config.subscription_pro_rata_on_cancel);
         assert_eq!(config.budget_fiscal_start_month, 1);
         assert!(!config.budget_revise_past_months);
         assert_eq!(config.budget_reminder_days, 30);

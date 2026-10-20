@@ -14,7 +14,7 @@
 //! ([`Workforce::all_staff`]), the [`StaffProfile`] of one (role, scopes,
 //! account, manager, leave) and the employee of a user.
 //!
-//! `wl-hr` also provides [`Qualifications`] (`qualification_valid`) and emits
+//! `wl-hr` also provides [`Qualifications`](crate::qualifications::Qualifications) (`qualification_valid`) and emits
 //! [`QualificationExpiring`] and [`QualificationExpired`].
 //!
 //! An employee is referred to by [`EmployeeId`] or as a [`Subject`] of type
@@ -452,65 +452,6 @@ pub struct QualificationExpired {
 }
 
 impl Event for QualificationExpired {}
-
-/// What other modules ask of the qualifications of the workforce (wl-hr §6
-/// *Provides* `Qualifications`, `HRM.QUA.01`, X-13): may employee E do kind K
-/// (in role R at scope S) on date D? `wl-hr` provides it; without that module
-/// the answer is always *no*.
-pub trait Qualifications: Send + Sync + 'static {
-    /// `qualification_valid(employee, kind, on_date)`: whether the employee
-    /// has a valid qualification or employee document of `kind` on `on_date`
-    /// (through `document_valid`, past and future dates allowed). For a
-    /// role-bound kind this answers *no*: the caller must say which role and
-    /// scope the work needs. The default is *no*.
-    fn qualification_valid<'a>(
-        &'a self,
-        _state: &'a AppState,
-        _employee: EmployeeId,
-        _kind: &'a str,
-        _on_date: NaiveDate,
-    ) -> WorkforceFuture<'a, bool> {
-        Box::pin(async { Ok(false) })
-    }
-
-    /// `qualification_valid(employee, kind, on_date, role, scope)` for a
-    /// role-bound kind: also the qualification's roles and scope must include
-    /// `role` and `scope`, the role and branch of the work being guarded. The
-    /// default is *no*.
-    fn qualification_valid_for<'a>(
-        &'a self,
-        _state: &'a AppState,
-        _employee: EmployeeId,
-        _kind: &'a str,
-        _on_date: NaiveDate,
-        _role: &'a str,
-        _scope: &'a Subject,
-    ) -> WorkforceFuture<'a, bool> {
-        Box::pin(async { Ok(false) })
-    }
-}
-
-/// The qualifications when the `hr` module is off: nobody is qualified.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct NoQualifications;
-
-impl Qualifications for NoQualifications {}
-
-/// Makes `qualifications` the app's [`Qualifications`]; `wl-hr` calls it in
-/// `register`.
-pub fn provide_qualifications(app: &mut Registry, qualifications: impl Qualifications) {
-    let qualifications: Arc<dyn Qualifications> = Arc::new(qualifications);
-    app.provide(qualifications);
-}
-
-/// The app's [`Qualifications`], or [`NoQualifications`] when none is
-/// provided.
-pub fn qualifications(state: &AppState) -> Arc<dyn Qualifications> {
-    match state.provided::<Arc<dyn Qualifications>>() {
-        Some(qualifications) => Arc::clone(&qualifications),
-        None => Arc::new(NoQualifications),
-    }
-}
 
 /// The approved leave of an employee (wl-hr §4 *Leave request*): what the
 /// verticals need to tell an absence from a leave (`CON.RUL.08`). `wl-hr`

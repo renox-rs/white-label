@@ -261,6 +261,24 @@ pub struct HeldDeposit {
     pub currency: String,
 }
 
+/// A deposit to hold for a source ([`Deposits::hold`]): the money is in, as a
+/// received payment, and the deposit holds it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HoldDeposit {
+    /// What it is held for, e.g. a lease.
+    pub source: Subject,
+    /// Whose deposit it is.
+    pub party: PartyId,
+    /// The legal entity holding it.
+    pub legal_entity_id: i64,
+    /// What the source requires, in fils; above 0.
+    pub amount: i64,
+    /// The ISO currency code.
+    pub currency: String,
+    /// The received payment to allocate to the deposit.
+    pub received_payment: crate::payments::PaymentId,
+}
+
 /// The settlement of the deposit of a cancelled agreement
 /// ([`Deposits::settle_cancelled`]): the agreement never started, so the
 /// deposit is refunded, or part of it forfeited where the signed terms allow
@@ -407,6 +425,27 @@ pub trait Deposits: Send + Sync + 'static {
         _source: &'a Subject,
     ) -> DepositFuture<'a, Option<HeldDeposit>> {
         Box::pin(async { Ok(None) })
+    }
+
+    /// Holds a deposit for `request.source` with the received payment
+    /// `request.received_payment`, as `by`, who holds `deposits.manage` in
+    /// the source's scope. The default refuses (422): payments is not
+    /// enabled.
+    fn hold<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _by: &'a AuthUser,
+        request: HoldDeposit,
+    ) -> DepositFuture<'a, HeldDeposit> {
+        Box::pin(async move {
+            Err(Error::Status(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                format!(
+                    "a deposit for {} cannot be held: payments is not enabled",
+                    request.source
+                ),
+            ))
+        })
     }
 
     /// Starts the settlement of the held deposit of `request.source` because

@@ -30,12 +30,14 @@ use wl_kernel::invoicing::{CostPoster, PostCost, SupplierBillFuture, provide_cos
 use wl_kernel::notify::{
     MessageId, Notifier, NotifyFuture, NotifyRecipient, NotifyRequest, provide_notifier,
 };
+use wl_kernel::qualifications::{
+    QualificationFuture, QualificationStatus, Qualifications, provide_qualifications,
+};
 use wl_kernel::tickets::{
     OpenTicket, TaskCreator, TicketFuture, TicketId, TicketRef, provide_task_creator,
 };
 use wl_kernel::workforce::{
-    EmployeeId, Qualifications, StaffProfile, Workforce, WorkforceFuture, provide_qualifications,
-    provide_workforce,
+    EmployeeId, StaffProfile, Workforce, WorkforceFuture, provide_workforce,
 };
 use wl_kernel::{BusinessCalendar, PartyId, Subject};
 
@@ -522,20 +524,17 @@ impl Qualifications for Quals {
         employee: EmployeeId,
         kind: &'a str,
         on_date: NaiveDate,
-    ) -> WorkforceFuture<'a, bool> {
-        Box::pin(async move { Ok(self.answer(employee, kind, on_date, None)) })
-    }
-
-    fn qualification_valid_for<'a>(
-        &'a self,
-        _state: &'a AppState,
-        employee: EmployeeId,
-        kind: &'a str,
-        on_date: NaiveDate,
-        role: &'a str,
-        scope: &'a Subject,
-    ) -> WorkforceFuture<'a, bool> {
-        Box::pin(async move { Ok(self.answer(employee, kind, on_date, Some((role, scope)))) })
+        role: Option<&'a str>,
+        scope: Option<&'a Subject>,
+    ) -> QualificationFuture<'a, QualificationStatus> {
+        let asked = role.zip(scope);
+        let valid = self.answer(employee, kind, on_date, asked);
+        Box::pin(async move {
+            Ok(QualificationStatus {
+                valid,
+                ..QualificationStatus::default()
+            })
+        })
     }
 }
 

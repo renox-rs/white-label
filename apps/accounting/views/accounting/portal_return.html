@@ -1,0 +1,45 @@
+{#- accounting: a return in the portal: what the client approver reads, and
+    the buttons Approve, Send back and Withdraw approval (only while the
+    engagement runs; a filed return offers no withdrawal). After the
+    engagement ended the page is read-only. Replace it with
+    resources/views/accounting/portal_return.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="number">
+  <rx-stack>
+    <rx-page-header :title="number" :subtitle="kind" :badge="status" :badge-kind="status_kind">
+      <template rx-if="can_approve">
+        <rx-confirm :id="'portal-return-approve-' ~ id" :label="tx['returns.approve']" :action="route('accounting.portal_return_approve', id)" method="POST"
+                    :title="tx['returns.approve']" :message="tx['returns.approve_message']" :confirm-label="tx['returns.approve']" :cancel-label="tx['button_cancel']" icon="check"/>
+      </template>
+      <template rx-if="can_send_back">
+        <rx-action-sheet :id="'portal-return-send-back-' ~ id" :label="tx['returns.send_back']" :action="route('accounting.portal_return_send_back', id)"
+                         :title="tx['returns.send_back']" :description="tx['returns.comment_description']" :submit-label="tx['returns.send_back']" icon="undo-2">
+          <rx-textarea name="comment" :label="tx['returns.comment']" :id="'portal-return-send-back-comment-' ~ id" required/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_withdraw">
+        <rx-action-sheet :id="'portal-return-withdraw-' ~ id" :label="tx['returns.withdraw']" :action="route('accounting.portal_return_withdraw', id)"
+                         :title="tx['returns.withdraw']" :description="tx['returns.portal_withdraw_description']" :submit-label="tx['returns.withdraw']" icon="rotate-ccw">
+          <rx-textarea name="comment" :label="tx['returns.withdraw_reason']" :id="'portal-return-withdraw-reason-' ~ id" required/>
+        </rx-action-sheet>
+      </template>
+    </rx-page-header>
+    <rx-alert rx-if="read_only" kind="info" :message="tx['returns.read_only']"/>
+    <rx-alert rx-if="client_files" kind="warning" :message="client_files"/>
+    <rx-alert rx-if="filed" kind="success" :message="filed"/>
+    <rx-card :title="tx['returns.details']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['returns.kind']" :value="kind"/>
+        <rx-entry :label="tx['returns.period']" :value="period"/>
+        <rx-entry :label="tx['returns.due']" :value="due"/>
+        <rx-entry :label="tx['returns.version']" :value="version"/>
+        <rx-entry :label="tx['returns.summary']" :value="summary"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-table :rows="signatures" as="row" :key="row.at ~ row.signer" :caption="tx['returns.signatures']" card>
+      <rx-column :label="tx['returns.signer']">{{ row.signer }}</rx-column>
+      <rx-column :label="tx['history.at']">{{ row.at }}</rx-column>
+      <rx-column :label="tx['fields.status']">{{ row.state }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['returns.signatures_empty']" icon="signature"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

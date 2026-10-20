@@ -1919,6 +1919,8 @@ fn record<E: Event + Clone + Send + Sync + 'static>(app: &mut Registry, log: &Re
 /// Provides the fakes.
 struct Fakes {
     real: Real,
+    /// wl-payments answers the cheque register too (needs `real.payments`).
+    real_cheques: bool,
     activated: Recorded<LeaseActivated>,
     cancelled: Recorded<LeaseCancelled>,
     withdrawn: Recorded<LeaseNoticeWithdrawn>,
@@ -2027,7 +2029,9 @@ impl Module for Fakes {
         provide_guard(app, self.docs.clone());
         provide_notifier(app, self.notices.clone());
         provide_task_creator(app, self.tasks.clone());
-        provide_cheques(app, self.cheques.clone());
+        if !self.real_cheques {
+            provide_cheques(app, self.cheques.clone());
+        }
         if !self.real.payments {
             provide_deposits(app, self.deposits.clone());
             provide_deposit_deductions(app, PublishedBook(self.deposits.clone()));
@@ -2293,12 +2297,52 @@ pub async fn boot() -> Booted {
 /// Like [`boot`], with the modules of `real` answering their contracts instead
 /// of the fakes (the cheque register stays the fake one).
 pub async fn boot_with(real: Real) -> Booted {
+    boot_custom(
+        real,
+        wl_invoicing::WlInvoicing::new().auto_issue_source("property.lease"),
+        wl_payments::WlPayments::new(),
+        false,
+    )
+    .await
+}
+
+/// The money modules (wl-invoicing set up as `invoicing`, which should
+/// issue the lease source at once as the Property client does) with
+/// wl-payments answering the cheque register too: the cash-flow forecast
+/// reads real cheques linked to real charges.
+pub async fn boot_money(invoicing: wl_invoicing::WlInvoicing) -> Booted {
+    boot_money_with(invoicing, wl_payments::WlPayments::new()).await
+}
+
+/// [`boot_money`] with wl-payments set up as `payments` (the deductions
+/// dispute of the Property client is added to it).
+pub async fn boot_money_with(
+    invoicing: wl_invoicing::WlInvoicing,
+    payments: wl_payments::WlPayments,
+) -> Booted {
+    boot_custom(Real::MONEY, invoicing, payments, true).await
+}
+
+/// Like [`boot_with`], with wl-invoicing set up as `invoicing` (used when
+/// `real.invoicing`), wl-payments as `payments` (used when `real.payments`)
+/// and, with `real_cheques`, the cheques of wl-payments.
+async fn boot_custom(
+    real: Real,
+    invoicing: wl_invoicing::WlInvoicing,
+    payments: wl_payments::WlPayments,
+    real_cheques: bool,
+) -> Booted {
+    assert!(
+        !real_cheques || real.payments,
+        "real cheques need wl-payments"
+    );
     let views = tempfile::tempdir().expect("a temporary views directory");
     let path = views.path().join("layouts/app.html");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(&path, LAYOUT).unwrap();
     let fakes = Fakes {
         real,
+        real_cheques,
         activated: Recorded::default(),
         cancelled: Recorded::default(),
         withdrawn: Recorded::default(),
@@ -2345,7 +2389,7 @@ pub async fn boot_with(real: Real) -> Booted {
     if real.invoicing {
         // As the Property client: the system issues what 01 drafts for a
         // lease at once (the damages invoice, a reissued invoice).
-        app = app.module(wl_invoicing::WlInvoicing::new().auto_issue_source("property.lease"));
+        app = app.module(invoicing);
     }
     if real.documents {
         app = app
@@ -2354,7 +2398,7 @@ pub async fn boot_with(real: Real) -> Booted {
     }
     if real.payments {
         // The vertical turns the deductions dispute on: 14 days, 7 to answer.
-        app = app.module(wl_payments::WlPayments::new().deductions_dispute(14, 7));
+        app = app.module(payments.deductions_dispute(14, 7));
     }
     let app = app.module(fakes);
     // What wl-parties registers: an exception for a blocked party is decided by

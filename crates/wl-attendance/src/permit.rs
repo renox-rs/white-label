@@ -8,7 +8,7 @@
 //! - **Through the kernel.** The documents are asked with `document_valid`
 //!   ([`DocumentGuard::is_valid`](wl_kernel::documents::DocumentGuard::is_valid))
 //!   and the qualifications with `qualification_valid`
-//!   ([`Qualifications`](wl_kernel::workforce::Qualifications)); this module
+//!   ([`Qualifications`](wl_kernel::qualifications::Qualifications)); this module
 //!   knows neither wl-documents nor wl-hr.
 //! - **`on_date` is the attendance date**, also for a late entry made the
 //!   next day: the guard answers with the document valid on that date. A
@@ -36,7 +36,8 @@
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use wl_kernel::documents::guard;
-use wl_kernel::workforce::{EmployeeId, qualifications, workforce};
+use wl_kernel::qualifications::qualifications;
+use wl_kernel::workforce::{EmployeeId, workforce};
 
 use crate::config::config_of;
 use crate::location::WorkLocation;
@@ -79,18 +80,17 @@ pub async fn failures(
             .or_else(|| profile.map(|p| p.role));
         let scope = location.scope().unwrap_or_else(|| location.subject());
         for kind in &required {
-            let valid = match &role {
-                Some(role) => {
-                    asked
-                        .qualification_valid_for(state, employee, kind, date, role, &scope)
-                        .await?
-                }
-                None => {
-                    asked
-                        .qualification_valid(state, employee, kind, date)
-                        .await?
-                }
-            };
+            let valid = asked
+                .qualification_valid(
+                    state,
+                    employee,
+                    kind,
+                    date,
+                    role.as_deref(),
+                    role.as_ref().map(|_| &scope),
+                )
+                .await?
+                .valid;
             if !valid {
                 failed.push(kind.clone());
             }

@@ -24,6 +24,7 @@ registration and certification kinds (`DOC.EXP.01`, gap G7) of the
 | BL-DOC-08 | Keep SOPs with versions, owner role and required readers | medium | m | Build 1 | Base: wl-documents Document lifecycle; Base: wl-documents Document kinds and expiry reminders; BL-HRM-26 |
 | BL-DOC-09 | Request, remind and record SOP acknowledgements (`DOC.RUL.04`) | medium | m | Build 1 | BL-DOC-08, BL-HRM-26 |
 | BL-DOC-10 | Seed document kinds for registrations and certifications | medium | s | Build 1 | Base: wl-documents Document kinds and expiry reminders |
+| BL-DOC-11 | Generate a branded PDF from a template (`DOC.GEN.01`) | high | m | Build 1 | Base: wl-documents Document lifecycle |
 
 ---
 
@@ -918,3 +919,83 @@ adds `blocks`, `DOC.ACL.03` applies instead.
 
 #### Out of scope
 07's conformity guard (`MFG.ACL.11`, Epic 07 Manufacturing).
+
+---
+
+### BL-DOC-11 — wl-documents: generate a branded PDF from a template (`DOC.GEN.01`)
+
+**Labels:** `module:wl-documents` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
+**Depends on:** Base: wl-documents Document lifecycle · **Blocks:** BL-PRP-31, BL-PAY-30
+**Review items:** 01 MEDIUM "owner statement lifecycle and disputes" (review §6); follow-up of BL-PRP-19, Done-when point 3
+
+#### Goal
+01 must send documents, not only messages: the owner statement PDF on `publish`, the tenancy contract
+in English and Arabic, the cheque handover receipt. Nothing in the repo generates a document today.
+This issue builds `Documents::generate(template, subject, language)`: a module registers a data provider
+for its subject type and a template; wl-documents renders the PDF with the client's branding through
+`renox-pdf` (R3), stores it as an accepted document with source `generated`, and never regenerates an
+issued one.
+
+#### Surfaces
+- **Back office:** a generated document appears in the subject's documents with source *generated*, its
+  number and a download link; templates are listed per document kind in the documents settings
+  (company admin edits wording, clauses, footer and signatory block).
+- **System:** transitions call `generate`; the PDF is rendered and stored in the same call.
+
+#### Files to read
+- `docs/modules/wl-documents.md` §3 (*Document*, *Document template*, *Generation*), §5.3, §6
+  (`Documents::generate`), §7 (languages, templates), §8 (data providers), §9 (R3, R1, R9)
+- `docs/ARCHITECTURE.md` §4 row R3 (`renox-pdf`), `docs/DESIGN-SYSTEM.md` §4
+
+#### Terms
+- **Template:** key, document kind, language mode (`en`, `ar`, `bilingual`), body, paper size, version,
+  active.
+- **Data provider:** a module's function that returns the data of one subject for a template.
+- **Generation:** the record of one generated document: template and version, subject, data snapshot
+  hash, number assigned, resulting document.
+
+#### Spec excerpt (authoritative for this issue)
+§5.3:
+1. A transition or a user action asks for a document from a template, a subject and a language mode.
+2. The module collects the data from the subject through the template's data provider (each module
+   registers providers for its entities), and assigns a number through `wl-kernel` sequences when the
+   kind has one.
+3. The PDF is rendered (R3) with the client's branding (logo, colours from DESIGN-SYSTEM.md §4),
+   right-to-left for Arabic, and a footer with the number and page count. Bilingual templates place
+   English and Arabic side by side.
+4. The PDF is stored as an accepted document with source `generated`, with a hash of the data it was
+   built from. Issued documents are never regenerated. A correction is a new document (e.g. a credit
+   note), never an edit.
+5. Optionally, a verification QR code links to a public page that confirms the document's number, date
+   and checksum.
+
+| Setting | Default |
+|---|---|
+| Languages of generated documents | EN + AR (bilingual) for documents sent to parties; EN for internal ones |
+| Templates: wording, clauses, footer text, signatory block | the vertical's templates |
+
+#### Edge cases decided
+- **Same subject, same data, asked twice:** the existing generation is returned (same hash), no second
+  document; different data for an issued kind is refused (a correction is a new document).
+- **Template edited later:** a new template version; existing documents keep theirs.
+- **Rendering fails:** `generate` returns an error and stores nothing; the caller decides (retry task).
+- **Concurrency:** `PDF_MAX_CONCURRENT` of `renox-pdf` limits renders; callers wait.
+- **QR verification page:** out of scope here (EdTech and certificates of analysis need it, later).
+
+#### Must not
+- Overwrite a stored file or regenerate an issued document.
+- Render Arabic left-to-right or without shaping.
+
+#### Done when
+- [ ] Given a test template `owner_statement` (bilingual) and a provider for a statement, `generate`
+      stores one accepted document with source *generated*, a data hash and a PDF that contains the
+      company logo, the footer number and "Page 1 of 1".
+- [ ] The Arabic half is right-to-left (the PDF text order of an Arabic line matches the reference).
+- [ ] Calling `generate` again with the same data returns the same document; with changed data for an
+      issued kind it is refused.
+- [ ] A template with a number sequence assigns the next number from the kernel series.
+- [ ] A rendering error stores nothing.
+
+#### Out of scope
+The 01 templates and calls (BL-PRP-31), the cheque receipt (BL-PAY-30), e-mail attachments (BL-NTF-10),
+e-signature (`DOC.SIG.01`), the verification page.

@@ -70,6 +70,10 @@ accent_2     = "#B8532E"             # optional, defaults to the theme's terraco
 font_display = "Poppins"             # optional: "Poppins" | "Inter"
 ```
 
+The client's name (`[client] name`) is the app's name: the sidebar brand, the public and sign-in
+pages, the error pages and the mails' sender name show it (the host sets `{{ brand }}` for the
+layouts and the framework's `APP_NAME`; `APP_NAME` itself is not read).
+
 At boot, `wl-kernel` turns them into a stylesheet that is loaded **after** `renox_ui()`. An
 app's own `:root` tokens win over the theme:
 

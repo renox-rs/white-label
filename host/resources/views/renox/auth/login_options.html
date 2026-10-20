@@ -19,7 +19,7 @@
     <li rx-for="account in demo.accounts">
       <button class="app-demo__account" type="button" data-demo-email="{{ account.email }}" data-demo-password="{{ demo.password }}">
         <span class="app-avatar{{ ' app-avatar--clay' if loop.index is even }}" aria-hidden="true">{{ account.name[:1] | upper }}</span>
-        <span class="app-demo__who"><span class="app-demo__role">{{ t('sign_in.demo.as', name=account.name) }}</span><span class="app-demo__email">{{ account.email }}</span></span>
+        <span class="app-demo__who"><span class="app-demo__role">{{ account.label }}</span><span class="app-demo__email">{{ account.name }} · {{ account.email }}</span></span>
         <rx-icon name="arrow-right" :size="18"/>
       </button>
     </li>

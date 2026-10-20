@@ -12,7 +12,8 @@ salary deadlines. The app tracks every worker from onboarding to exit, deploys t
 sites, turns client-approved timesheets into invoices and WPS-compliant payroll, and shows
 margin per client and per worker.
 
-Manpower is the **second vertical in the build order** ([decision 0001](../decisions/0001-first-two-verticals.md)).
+Manpower is built in phase **F9** ([decision 0005](../decisions/0005-phases-follow-vertical-numbers.md); it was the second
+vertical under [decision 0001](../decisions/0001-first-two-verticals.md), superseded).
 Its purpose is to prove that the modules built for Property, together with the attendance and
 timesheet modules first described in Construction, can be reused without being rewritten.
 [§11](#11-platform-fit) lists exactly what is reused.

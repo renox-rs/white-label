@@ -14,7 +14,10 @@ async fn the_demo_client_boots_with_its_legal_entities() {
     assert_eq!(default.code, "PGP");
     assert_eq!(LegalEntity::query().count(app.db()).await.unwrap(), 2);
     // The client's brand colour is the theme every page links.
-    app.get("/").await.assert_ok().assert_see("/_renox/theme/");
+    app.get("/login")
+        .await
+        .assert_ok()
+        .assert_see("/_renox/theme/");
 }
 
 /// #55 AC10: the demo boots with `notify`; wl-parties answers `contacts`

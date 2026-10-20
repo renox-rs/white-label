@@ -1,0 +1,63 @@
+{#- accounting: a KPI pack: its KPIs, accounts with their categories, the
+    commentary, every version of the period, and the actions Map an account,
+    Commentary, Publish, Withdraw and Copy. Replace it with
+    resources/views/accounting/kpi_pack.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="number">
+  <rx-stack>
+    <rx-page-header :title="number" :subtitle="client" :back="route('accounting.kpi_packs')" :back-label="tx['kpi.title']"
+                    :badge="status" :badge-kind="status_kind">
+      <template rx-if="can_edit">
+        <rx-action-sheet :id="'kpi-map-' ~ id" :label="tx['kpi.map']" :action="route('accounting.kpi_map', id)"
+                         :title="tx['kpi.map']" :description="tx['kpi.map_description']" :submit-label="tx['kpi.map']" icon="tag">
+          <rx-input name="code" :label="tx['kpi.account']" :id="'kpi-map-code-' ~ id" required/>
+          <rx-select name="category" :label="tx['kpi.category']" :options="category_options" :selected="'revenue'" :id="'kpi-map-category-' ~ id"/>
+        </rx-action-sheet>
+        <rx-action-sheet :id="'kpi-commentary-' ~ id" :label="tx['kpi.commentary']" :action="route('accounting.kpi_commentary', id)"
+                         :title="tx['kpi.commentary']" :description="tx['kpi.commentary_description']" :submit-label="tx['kpi.commentary_save']" icon="pencil">
+          <rx-textarea name="commentary" :label="tx['kpi.commentary']" :value="commentary" :id="'kpi-commentary-text-' ~ id"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_publish">
+        <rx-confirm :id="'kpi-publish-' ~ id" :label="tx['kpi.publish']" :action="route('accounting.kpi_publish', id)" method="POST"
+                    :title="tx['kpi.publish']" :message="tx['kpi.publish_message']" :confirm-label="tx['kpi.publish']" :cancel-label="tx['button_cancel']" icon="eye"/>
+      </template>
+      <template rx-if="can_withdraw">
+        <rx-action-sheet :id="'kpi-withdraw-' ~ id" :label="tx['kpi.withdraw']" :action="route('accounting.kpi_withdraw', id)"
+                         :title="tx['kpi.withdraw']" :description="tx['kpi.withdraw_description']" :submit-label="tx['kpi.withdraw']" icon="history">
+          <rx-select name="reason" :label="tx['kpi.reason']" :options="reason_options" :selected="'wrong_figures'" :id="'kpi-withdraw-reason-' ~ id"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_copy">
+        <rx-action-sheet :id="'kpi-copy-' ~ id" :label="tx['kpi.copy']" :action="route('accounting.kpi_copy', id)"
+                         :title="tx['kpi.copy']" :description="tx['kpi.copy_description']" :submit-label="tx['kpi.copy']" icon="copy">
+          <rx-input name="client" :label="tx['kpi.client_party']" :id="'kpi-copy-client-' ~ id" required/>
+        </rx-action-sheet>
+      </template>
+    </rx-page-header>
+    <rx-alert rx-if="being_revised" kind="info" :message="tx['kpi.being_revised_staff']"/>
+    <rx-card :title="tx['kpi.details']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['kpi.client']" :value="client"/>
+        <rx-entry :label="tx['kpi.period']" :value="period"/>
+        <rx-entry :label="tx['kpi.version']" :value="version"/>
+        <rx-entry rx-if="withdrawn" :label="tx['kpi.reason']" :value="withdrawn"/>
+        <rx-entry :label="tx['kpi.commentary']" :value="commentary"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-table :rows="kpis" as="row" :key="row.label" :caption="tx['kpi.kpis']" card>
+      <rx-column :label="tx['kpi.kpi']">{{ row.label }}</rx-column>
+      <rx-column :label="tx['kpi.value']">{{ row.value }}</rx-column>
+    </rx-table>
+    <rx-table :rows="figures" as="row" :key="row.code" :caption="tx['kpi.figures']" card>
+      <rx-column :label="tx['kpi.account']">{{ row.code }}</rx-column>
+      <rx-column :label="tx['kpi.account_name']" hide-narrow>{{ row.name }}</rx-column>
+      <rx-column :label="tx['kpi.amount']">{{ row.amount }}</rx-column>
+      <rx-column :label="tx['kpi.category']">{{ row.category }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['kpi.figures_empty']" icon="file-text"/></rx-slot>
+    </rx-table>
+    <rx-table :rows="versions" as="row" :key="row.id" :caption="tx['kpi.versions']" card>
+      <rx-column :label="tx['kpi.version']"><a href="{{ route('accounting.kpi_pack', row.id) }}">{{ row.number }} · v{{ row.version }}</a></rx-column>
+      <rx-column :label="tx['fields.status']"><rx-badge :kind="row.status_kind" :text="row.status"/></rx-column>
+    </rx-table>
+  </rx-stack>
+</rx-page>

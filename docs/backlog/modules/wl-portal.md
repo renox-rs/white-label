@@ -10,13 +10,15 @@ X-18 and 04-N11-a.
 | ID | Title | Priority | Size | Milestone | Depends on |
 |---|---|---|---|---|---|
 | BL-POR-01 | Refuse new business and money out in the portal with a neutral text while the party is blocked | high | m | Build 1 | BL-PTY-01, BL-PTY-04; Base: wl-portal Access grant lifecycle |
+| BL-POR-02 | Build each audience's menu from registered sections and portal-role permissions | high | m | Build 1 | Base: wl-portal Access grant lifecycle; BL-POR-01 |
+| BL-POR-03 | Make a grant read-only when the vertical's contract ends and close it after the period (`POR.ACL.01`) | medium | s | Build 1 | Base: wl-portal Access grant lifecycle; BL-POR-02 |
 
 ---
 
 ### BL-POR-01 — wl-portal: refuse new business and money out in the portal with a neutral text while the party is blocked
 
 **Labels:** `module:wl-portal` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:portal` `surface:public` `surface:system` · **Milestone:** Build 1 · **Size:** m
-**Depends on:** BL-PTY-01, BL-PTY-04 · Base: wl-portal Access grant lifecycle · **Blocks:** BL-LOG-19
+**Depends on:** BL-PTY-01, BL-PTY-04 · Base: wl-portal Access grant lifecycle · **Blocks:** BL-LOG-19, BL-POR-02, BL-TKT-14, BL-INV-31, BL-PRP-30
 **Review items:** X-18, 04-N11-a
 
 #### Goal
@@ -135,3 +137,153 @@ agreements (signature requests), refund and deposit-release requests (vertical p
 #### Out of scope
 The block itself and the guard (BL-PTY-01, BL-PTY-04); back-office handling of blocked parties'
 requests (module epics).
+
+---
+
+### BL-POR-02 — wl-portal: build each audience's menu from registered sections and portal-role permissions
+
+**Labels:** `module:wl-portal` `area:negative-flow` `priority:high` `size:m` `surface:portal` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
+**Depends on:** Base: wl-portal Access grant lifecycle; BL-POR-01 · **Blocks:** BL-TKT-14, BL-INV-31, BL-PAY-27, BL-PRP-30, BL-POR-03
+**Review items:** X-18; follow-up of BL-POR-01, Done-when points 1 and 8
+
+#### Goal
+Modules contribute portal pages, but today a section is a process-wide key with a title and rows: it has
+no audience, no required portal permission, no order and no menu, and a grant's portal roles are keys
+without permissions. A tenant finance contact must see only *Invoices*, a primary contact everything.
+This issue makes `PortalSections` what wl-portal §6 describes: a section registers its audience, the
+portal permission it needs, its order and label (EN/AR), and the portal home and menu show only the
+sections the user's grant allows, for the party the user acts for.
+
+#### Surfaces
+- **Portal:** after login, the home page and menu list the sections of the user's audience allowed by
+  their portal role, in order; a user with grants for several parties switches party; a section the
+  role does not allow is a 403 by URL.
+- **Back office:** the audience's portal roles and their permissions are listed in the portal settings
+  (seeded per vertical; editable by the company admin).
+- **System:** modules register sections at start-up; the vertical seeds the audience's roles.
+
+#### Files to read
+- `docs/modules/wl-portal.md` §3 (*Audience*, *Portal role*, *Portal section*, *Access grant*), §6
+  (`PortalSections`, portal permissions), §7, §8 (`PortalSections` registration)
+- `docs/verticals/01-property.md` §3.1 (tenant primary contact, finance contact)
+- `crates/wl-portal/src/sections.rs`, `grants.rs`, `access.rs`
+
+#### Terms
+- **Audience:** a kind of external user per vertical (`tenant`, `owner`).
+- **Portal role:** a named set of portal permissions inside an audience (`primary_contact`,
+  `finance_contact`).
+- **Portal section:** a page or menu entry contributed by a module: module, audience, required portal
+  permission, order, label.
+
+#### Spec excerpt (authoritative for this issue)
+| Entity | Description | Important fields |
+|---|---|---|
+| **Audience** | A kind of external user, configured per vertical | key (e.g. `tenant`, `owner`, `client`, `worker`), label, login methods, available portal roles, home page, close-after period, self-registration allowed |
+| **Portal role** | A named set of portal permissions inside an audience | key (e.g. `primary_contact`, `finance_contact`, `approver`, `viewer`, `guardian`), permissions |
+| **Portal section** | A page or menu entry contributed by a module | module, audience, required portal permission, order, label |
+
+| Service | Purpose |
+|---|---|
+| `PortalSections` | Modules register portal pages and menu entries per audience, guarded by portal permissions |
+
+01 §3.1: Tenant primary contact: "portal: lease, finance, requests, users"; Tenant finance contact: "Sees
+and pays invoices only — portal: finance".
+
+#### Edge cases decided
+- **01 seed:** audience `tenant` with roles `primary_contact` (`portal.leases.view`,
+  `portal.invoices.view`, `portal.invoices.pay`, `portal.documents.view`, `portal.requests.create`,
+  `portal.users.manage`) and `finance_contact` (`portal.invoices.view`, `portal.invoices.pay`).
+- **Existing section keys:** kept; the registration gains the new fields with defaults (all audiences,
+  no permission) only for tests.
+- **Grant `read_only`:** sections show; their write actions are refused (BL-POR-03).
+- **Party block:** unchanged (BL-POR-01): nothing in the menu reveals it.
+- **Two grants for the same party:** the union of the roles' permissions.
+
+#### Must not
+- Show a section of another audience, or one the role does not allow, even by URL.
+- Read the party block to build the menu.
+
+#### Done when
+- [ ] Given Sara M. with role `primary_contact` for "Al Noor Trading LLC", her menu shows Lease,
+      Invoices, Cheques, Deposit, Documents and Requests in their order.
+- [ ] Omar with role `finance_contact` for the same party sees only Invoices; opening `/portal/{party}/requests`
+      gives 403.
+- [ ] A user with grants for two parties switches party and sees each party's rows only.
+- [ ] A section registered for audience `owner` never appears for a tenant.
+- [ ] The company admin adds `portal.documents.view` to `finance_contact`; Omar then sees Documents.
+
+#### Out of scope
+The sections themselves (BL-PRP-30, BL-INV-31, BL-PAY-27, BL-TKT-14); invitations and login methods (base
+wl-portal Access grant lifecycle); the owner portal (`POR.SLF.02`, Later).
+
+---
+
+### BL-POR-03 — wl-portal: make a grant read-only when the vertical's contract ends and close it after the period (`POR.ACL.01`)
+
+**Labels:** `module:wl-portal` `area:negative-flow` `priority:medium` `size:s` `surface:portal` `surface:system` · **Milestone:** Build 1 · **Size:** s
+**Depends on:** Base: wl-portal Access grant lifecycle; BL-POR-02 · **Blocks:** None.
+**Review items:** 01-N12-a; follow-up of BL-PRP-11, Done-when point 1 (c)
+
+#### Goal
+After move-out a tenant can still read and download their history, but cannot raise requests, dispute or
+pay anything new; 90 days later the access closes. The grant lifecycle has `end` (to `read_only`) and
+`close`, but nothing runs them: the vertical contract-end events are not mapped to `end`, and the
+close-after timer does not exist. This issue maps 01 `LeaseTerminated` to `end`, removes write actions
+from read-only grants and closes them after the audience's period.
+
+#### Surfaces
+- **Portal:** a read-only grant shows every section with a notice "Your access is read-only since
+  <date>"; write actions (pay, dispute, new request, reopen, users) are refused with that notice.
+- **System:** a listener runs `end` on the mapped contract-end event; a daily job closes read-only grants
+  whose close-after period passed.
+
+#### Files to read
+- `docs/modules/wl-portal.md` §4 *Access grant* (transitions `end`, `close`; vertical mapping), §6
+  (*Reacts to*), §7 (close-after period)
+- `docs/verticals/01-property.md` §3.3 `POR.ACL.01`, §7.1 *Lease* (`terminate`)
+- `apps/property/src/events.rs` (`LeaseTerminated`), `crates/wl-portal/src/access.rs` (`end`, `close`)
+
+#### Terms
+- **Contract-end event:** the vertical event that ends the relationship the grant was given for (01:
+  lease `terminated`).
+- **Close-after period:** days from `end` to `close`, per audience (01 tenant: 90).
+
+#### Spec excerpt (authoritative for this issue)
+| Transition | From | To | By | Guards | Effects |
+|---|---|---|---|---|---|
+| `end` | active | read_only | system (relationship or contract ended), or `portal_users.manage` | — | write actions removed; event `PortalAccessReadOnly` |
+| `close` | read_only, active, suspended | closed | system (close-after period), or `portal_users.manage`, or a primary contact for their company's users | — | sessions ended; event `PortalAccessClosed` |
+
+| Vertical | What ends the grant (`end`) | Close-after period |
+|---|---|---|
+| 01 Property | lease `terminated` (`POR.ACL.01`) | 90 days |
+
+| ID | Rule | Pattern | Applies to | Parameter (default) |
+|---|---|---|---|---|
+| `POR.ACL.01` | After move-out, the tenant portal is read-only, then closes | `TIM` | tenant | closes after 90 days |
+
+#### Edge cases decided
+- **A tenant with another running lease:** the grant is for the party; it ends only when the party has no
+  lease left in `active`, `renewal_due`, `expired` (holding over) or `notice_given`.
+- **Force-terminate:** `force_terminated` also ends the grant (same event family).
+- **Deposit deductions dispute:** stays allowed for a read-only grant during its window (BL-PAY-27);
+  it is the one write action a read-only tenant keeps.
+- **Day count:** day 1 is the day after `end`; the grant closes on day 91 at 00:00 Asia/Dubai.
+- **Suspended at the event:** the suspension stays; `reinstate` returns it to `read_only`.
+- **A new lease before closing:** staff invite the tenant again (a new grant); the read-only or closed
+  grant is not reopened.
+
+#### Must not
+- Hide history or documents from a read-only grant.
+- Close a grant the day the lease ends.
+
+#### Done when
+- [ ] Given Sara's only lease is terminated on 2026-12-31, her grant is `read_only` and
+      `PortalAccessReadOnly` is emitted; she can open her invoices and download a document, and *Pay*,
+      *Dispute* and *New request* are refused with the read-only notice.
+- [ ] On 2027-03-31 the grant is still `read_only`; on 2027-04-01 it is `closed` and her sessions end.
+- [ ] A tenant with a second active lease keeps an `active` grant when one lease terminates.
+- [ ] A `force_terminated` lease ends the grant the same way.
+
+#### Out of scope
+The sections (BL-POR-02 and the module issues); owner grants after the agreement ends (BL-PRP-29, Later).

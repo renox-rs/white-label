@@ -603,8 +603,10 @@ pub struct BounceFeeCharge {
     pub due: NaiveDate,
 }
 
-/// Adds the bounce fee charge of a bounced cheque. `wl-invoicing` provides
-/// it; without it [`bounce_fees`] gives [`NoBounceFees`].
+/// Adds the bounce fee charge of a bounced cheque. The module that keeps the
+/// charge schedules provides it (01 Property for the cheques of its leases,
+/// until wl-invoicing keeps charge schedules); without one [`bounce_fees`]
+/// gives [`NoBounceFees`].
 pub trait BounceFees: Send + Sync + 'static {
     /// Schedules `charge` and returns it as a [`Subject`] (e.g.
     /// `invoicing.charge:12`), or `None` when no charge was made (the
@@ -625,8 +627,8 @@ pub struct NoBounceFees;
 
 impl BounceFees for NoBounceFees {}
 
-/// Makes `fees` the app's [`BounceFees`]; `wl-invoicing` calls it in
-/// `register`.
+/// Makes `fees` the app's [`BounceFees`]; the module that keeps the charge
+/// schedules calls it in `register`.
 pub fn provide_bounce_fees(app: &mut Registry, fees: impl BounceFees) {
     let fees: Arc<dyn BounceFees> = Arc::new(fees);
     app.provide(fees);
@@ -650,6 +652,14 @@ pub const CHARGE_SUBJECT_TYPE: &str = "invoicing.charge";
 /// charges provides it; without one, [`charge_invoicer`] gives
 /// [`NoChargeInvoicer`], which invoices nothing.
 pub trait ChargeInvoicer: Send + Sync + 'static {
+    /// Whether `link` (a document a cheque is linked to) is a charge this
+    /// provider owns. The default knows the charges of wl-invoicing
+    /// ([`CHARGE_SUBJECT_TYPE`]); a vertical that keeps its own charges (01
+    /// Property's lease charges) names their subject type.
+    fn owns(&self, link: &Subject) -> bool {
+        link.subject_type == CHARGE_SUBJECT_TYPE
+    }
+
     /// Invoices the charge `charge` now and returns the issued invoice, or
     /// the invoice it already has. `None` when it cannot be invoiced (the
     /// default), so the caller refuses the write-off and asks for the charge

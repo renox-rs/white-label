@@ -194,7 +194,7 @@ impl Module for WlHr {
         reminders::schedule(app);
         wl_kernel::workforce::provide_workforce(app, workforce::Staff);
         wl_kernel::workforce::provide_leave_calendar(app, workforce::Staff);
-        wl_kernel::workforce::provide_qualifications(app, Quals);
+        wl_kernel::qualifications::provide_qualifications(app, Quals);
         // The all staff induction template; a re-run keeps the client's changes.
         app.command(
             "hr:install",

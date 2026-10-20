@@ -1,8 +1,11 @@
+pub mod accounting_portal;
+pub mod accounting_seed;
 pub mod activity;
 pub mod compliance_settings;
 pub mod construction_seed;
 pub mod dashboard;
 pub mod demo;
+pub mod demo_data;
 pub mod home;
 pub mod negative_flow;
 pub mod property_seed;

@@ -83,14 +83,14 @@ pub(crate) fn reason_of(code: &str) -> Option<&'static str> {
 /// The module's cheque routes, each behind its permission.
 pub fn routes() -> Routes {
     Routes::new()
-        .merge(
+        .merge(wl_kernel::scopes::anywhere(
             Routes::new()
                 .get("/cheques", index)
                 .name("wl_payments.cheques.index")
                 .get("/cheques/{id}", show)
-                .name("wl_payments.cheques.show")
-                .require_permission(permissions::CHEQUES_VIEW),
-        )
+                .name("wl_payments.cheques.show"),
+            permissions::CHEQUES_VIEW,
+        ))
         .merge(
             Routes::new()
                 .post("/cheques/{id}/deposit", store_deposit)
@@ -211,8 +211,18 @@ pub(crate) struct IndexPage {
 }
 
 /// `GET /cheques`: the grid.
-async fn index(lang: Lang, request: GridRequest) -> Result<View> {
-    let cheques = grid(&lang).page(Cheque::query(), &request).await?;
+async fn index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<View> {
+    // The cheques received with the agreements of the user's scope.
+    let reach = wl_kernel::scopes::reach(&state.db, &user, permissions::CHEQUES_VIEW).await?;
+    let query = reach
+        .apply(&state.db, Cheque::query(), "agreement_type", "agreement_id")
+        .await?;
+    let cheques = grid(&lang).page(query, &request).await?;
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         cheques,
@@ -331,16 +341,23 @@ pub(crate) struct ShowPage {
 
 /// The documents `cheque` pays as rows.
 async fn link_rows(db: &Db, cheque: &Cheque) -> Result<Vec<LinkRow>> {
-    Ok(cheque
-        .linked(db)
-        .await?
-        .iter()
-        .map(|document| LinkRow {
-            label: document.to_string(),
+    let mut rows = Vec::new();
+    for document in cheque.linked(db).await? {
+        rows.push(LinkRow {
+            label: subject_name(db, &document).await?,
             link: (document.subject_type == INVOICE_SUBJECT_TYPE)
                 .then(|| format!("/invoices/{}", document.subject_id)),
-        })
-        .collect())
+        });
+    }
+    Ok(rows)
+}
+
+/// A record by name where its module registered one (`L-000050 · JVT-B /
+/// 1501`, `INV-PGP-2026-0085`), else `type:id`.
+async fn subject_name(db: &Db, subject: &wl_kernel::Subject) -> Result<String> {
+    Ok(wl_kernel::documents::subject_label(db, subject)
+        .await?
+        .unwrap_or_else(|| subject.to_string()))
 }
 
 /// The return rows of `cheque`.
@@ -479,6 +496,10 @@ async fn show(
     lang: Lang,
     Found(cheque): Found<Cheque>,
 ) -> Result<View> {
+    let reach = wl_kernel::scopes::reach(&state.db, &user, permissions::CHEQUES_VIEW).await?;
+    if !crate::scoped::agreement_in_reach(&state.db, &reach, cheque.agreement()).await? {
+        return Err(Error::Forbidden);
+    }
     let t = texts_in(&lang);
     let db = state.db.clone();
     let money = |fils: i64| money_text(&cheque.currency, fils);
@@ -537,10 +558,10 @@ async fn show(
         party_name: party_name(&state, cheque.party()).await?,
         direction_label: t(&format!("cheques.direction.{}", cheque.direction.as_str())),
         amounts,
-        agreement_label: cheque
-            .agreement()
-            .map(|a| a.to_string())
-            .unwrap_or_default(),
+        agreement_label: match cheque.agreement() {
+            Some(a) => subject_name(&db, &a).await?,
+            None => String::new(),
+        },
         linked: link_rows(&db, &cheque).await?,
         returns: return_rows(&db, &cheque).await?,
         tasks: task_rows(&db, &t, &cheque).await?,

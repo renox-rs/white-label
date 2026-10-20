@@ -9,7 +9,7 @@ Each client gets their own branded app, in English and Arabic, hosted in the UAE
 brand, every app runs the same tested modules for parties, documents, invoicing, payments,
 stock, scheduling, HR and more. Only the vertical's own workflows differ.
 
-> **Status: building F1 (Property).** This repository holds the full design (business context,
+> **Status: building F1 (Property); phase F*n* builds vertical *n*.** This repository holds the full design (business context,
 > state machines, access rules, automations and UAE compliance notes) and, since
 > [decision 0004](docs/decisions/0004-start-f1-build.md), the code: `crates/wl-*`, `apps/*`, `host`.
 
@@ -56,6 +56,24 @@ vertical adds only 9–24 of its own ([capability map](docs/CAPABILITY-MAP.md)).
 `wl-payments` · `wl-sales` · `wl-ticketing` · `wl-delivery` · `wl-scheduling` ·
 `wl-attendance` · `wl-hr` · `wl-inventory`, plus `wl-operator` for running the platform.
 See [docs/modules/](docs/modules/).
+
+## Run it
+
+Rust 1.94 or newer. From the repository root:
+
+```bash
+cargo build -p host --locked
+cd host
+export APP_ENV=local APP_DEBUG=true APP_KEY=base64:$(head -c 32 /dev/urandom | base64) \
+  DATABASE_URL=sqlite://$PWD/storage/app.db?mode=rwc STORAGE_PATH=$PWD/storage APP_PORT=3000 MAIL_MAILER=log
+../target/debug/host migrate:fresh --seed   # creates the demo database and the demo people (local only)
+../target/debug/host serve                  # http://127.0.0.1:3000, admin@example.com / password123
+```
+
+The demo client is `clients/demo-properties/client.toml`. Tests: `cargo test --workspace --locked`.
+Deploying a client to a server (production variables, systemd, Caddy, Litestream, rollout,
+restore drill): [deploy/README.md](deploy/README.md) and [docs/OPERATIONS.md](docs/OPERATIONS.md).
+Never run `migrate:fresh` or `db:seed` against a production database.
 
 ## Where to start
 

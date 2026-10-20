@@ -90,6 +90,20 @@ struct VersionForm {
     file_name: String,
 }
 
+/// The signed-in user confirms the possible match of screening `id` (what the
+/// reviewer's page does).
+async fn confirm_match(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<i64>,
+) -> Result<String> {
+    let screening = wl_parties::Screening::find_or_404(&state.db, id).await?;
+    let _outcome = wl_parties::confirm_match(&state, &user, &screening, "Same date of birth")
+        .await
+        .map_err(|e| Error::permanent_message(e.to_string()))?;
+    Ok("done".to_owned())
+}
+
 impl Module for Probe {
     fn name(&self) -> &'static str {
         "probe"
@@ -97,6 +111,7 @@ impl Module for Probe {
 
     fn routes(&self) -> Routes {
         Routes::new()
+            .post("/probe/confirm/{id}", confirm_match)
             .post("/probe/deposits", hold_deposit)
             .post("/probe/deposits/{id}/start-settlement", start_settlement)
             .post("/probe/sops/{id}/versions", upload_sop_version)
@@ -107,6 +122,30 @@ impl Module for Probe {
 /// The Property host, with `wl:install` and the seeds run as the demo does.
 pub async fn booted() -> TestApp {
     let app = TestApp::new(host::app().provide(noon_clock()).module(Probe)).await;
+    app.kernel()
+        .call("wl:install", Vec::<String>::new())
+        .await
+        .unwrap();
+    app.kernel().seed().await.unwrap();
+    app
+}
+
+/// The demo accounting firm (04 Accounting).
+const ACCOUNTING_CLIENT: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../clients/demo-accounting/client.toml"
+);
+
+/// The accounting host, with `wl:install` and the seeds run as the demo does.
+pub async fn accounting_booted() -> TestApp {
+    let config = wl_kernel::ClientConfig::load(ACCOUNTING_CLIENT).expect("the accounting client");
+    let app = TestApp::new(
+        host::app_for(config)
+            .expect("the app")
+            .provide(noon_clock())
+            .module(Probe),
+    )
+    .await;
     app.kernel()
         .call("wl:install", Vec::<String>::new())
         .await
@@ -683,4 +722,81 @@ pub async fn count_messages(app: &TestApp, type_key: &str) -> usize {
         .count(app.db())
         .await
         .unwrap() as usize
+}
+
+/// An e-mail provider whose every send bounces hard (the mailbox does not
+/// exist), recording what it was given.
+#[derive(Clone, Default)]
+pub struct BouncingMail {
+    sent: std::sync::Arc<std::sync::Mutex<Vec<wl_notify::Outgoing>>>,
+    /// Addresses that are accepted instead.
+    ok: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+}
+
+impl BouncingMail {
+    /// Accepts mail to `address` from now on.
+    pub fn accept(&self, address: &str) {
+        self.ok.lock().unwrap().push(address.to_owned());
+    }
+
+    /// Every message it was asked to send.
+    pub fn attempts(&self) -> Vec<wl_notify::Outgoing> {
+        self.sent.lock().unwrap().clone()
+    }
+}
+
+impl wl_notify::ChannelProvider for BouncingMail {
+    fn name(&self) -> &'static str {
+        "bouncing-email"
+    }
+
+    fn channel(&self) -> wl_kernel::notify::NotifyChannel {
+        wl_kernel::notify::NotifyChannel::Email
+    }
+
+    fn available(&self, _state: &AppState) -> bool {
+        true
+    }
+
+    fn send<'a>(
+        &'a self,
+        _state: &'a AppState,
+        outgoing: &'a wl_notify::Outgoing,
+    ) -> wl_notify::channels::ProviderFuture<'a, std::result::Result<String, wl_notify::SendError>>
+    {
+        self.sent.lock().unwrap().push(outgoing.clone());
+        let accepted = self.ok.lock().unwrap().contains(&outgoing.address);
+        Box::pin(async move {
+            if accepted {
+                Ok("accepted".to_owned())
+            } else {
+                Err(wl_notify::SendError::hard(
+                    wl_notify::HardError::HardBounce,
+                    "550",
+                    "mailbox does not exist",
+                ))
+            }
+        })
+    }
+}
+
+/// The accounting host with [`BouncingMail`] as the e-mail provider.
+pub async fn accounting_booted_with_mail(mail: BouncingMail) -> TestApp {
+    let config = wl_kernel::ClientConfig::load(ACCOUNTING_CLIENT).expect("the accounting client");
+    let app = TestApp::new(
+        host::app_for_tuned(
+            config,
+            host::Tuning::default().notify(move |n| n.provider(mail)),
+        )
+        .expect("the app")
+        .provide(noon_clock())
+        .module(Probe),
+    )
+    .await;
+    app.kernel()
+        .call("wl:install", Vec::<String>::new())
+        .await
+        .unwrap();
+    app.kernel().seed().await.unwrap();
+    app
 }

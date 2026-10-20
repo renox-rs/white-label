@@ -43,6 +43,11 @@ items of review §6.
 | BL-PRP-27 | 01: configure shared negative-flow settings — compliance, documents and notices | high | m | Build 1 | BL-DOC-01; BL-DOC-04; BL-TKT-03 to BL-TKT-08; BL-NTF-05; BL-KRN-08; BL-SAL-19; BL-SAL-20; BL-SAL-21; BL-HRM-26; BL-HRM-27; BL-HRM-28; BL-DOC-08; BL-DOC-09; BL-DOC-10; Base: 01 Enquiries and viewings (`PRP.LEA.01`) |
 | BL-PRP-28 | Release a reserved unit and settle its booking deposit | medium | s | Later | Base: 01 Unit reservation (`PRP.LEA.02`, Later); BL-PRP-01 |
 | BL-PRP-29 | Owner portal: dispute a statement line and keep read-only access after the agreement ends | medium | s | Later | BL-PRP-21; BL-PRP-22; Base: wl-portal owner portal (`POR.SLF.02`, Later) |
+| BL-PRP-30 | Tenant portal: show the lease, its cheques and documents (`POR.SLF.01`, `PRP.ACL.01`) | high | s | Build 1 | BL-POR-02; BL-POR-01; Base: 01 Lease lifecycle |
+| BL-PRP-31 | Generate the tenancy contract and the owner statement PDF and send them | high | s | Build 1 | BL-DOC-11; BL-NTF-10; BL-PRP-19 |
+| BL-PRP-32 | Apply the termination credit to the deposit deductions first | high | s | Build 1 | BL-PRP-11; BL-PRP-17; BL-PAY-15 |
+| BL-PRP-33 | Run `terminate` and its money effects in one transaction | high | s | Build 1 | BL-KRN-11; BL-PRP-11 |
+| BL-PRP-34 | Put approved vendor bills on the owner statement (ticket jobs and AMC shares) | high | m | Build 1 | BL-PRP-19; BL-PRP-24; BL-INV-24; Base: wl-invoicing Supplier bill lifecycle |
 
 ---
 
@@ -987,7 +992,7 @@ Recording the notice (BL-PRP-09).
 ### BL-PRP-11 — 01 Property: terminate a lease and settle charges, cheques and Ejari after move-out
 
 **Labels:** `vertical:01-property` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:portal` `surface:system` · **Milestone:** Build 1 · **Size:** m
-**Depends on:** BL-PRP-09 · Base: wl-payments Cheque lifecycle · Base: wl-invoicing Credit note · **Blocks:** BL-PRP-12, BL-PRP-17
+**Depends on:** BL-PRP-09 · Base: wl-payments Cheque lifecycle · Base: wl-invoicing Credit note · **Blocks:** BL-PRP-12, BL-PRP-17, BL-PRP-32, BL-PRP-33
 **Review items:** 01-N12-a, 01 MEDIUM "Ejari cancellation at move-out" (review §6)
 
 #### Goal
@@ -1505,7 +1510,7 @@ The dispute flag, revise and uphold (BL-PAY-15).
 ### BL-PRP-17 — 01 Property: apply the deposit in full and invoice deductions that exceed it
 
 **Labels:** `vertical:01-property` `area:negative-flow` `priority:high` `blocked:open-item` `size:s` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
-**Depends on:** BL-PAY-15 · BL-PRP-11 · Base: wl-invoicing Invoice lifecycle · **Blocks:** None.
+**Depends on:** BL-PAY-15 · BL-PRP-11 · Base: wl-invoicing Invoice lifecycle · **Blocks:** BL-PRP-32
 **Review items:** 01-N3-e
 
 #### Goal
@@ -1678,7 +1683,7 @@ Write-off and recovery mechanics (BL-INV-01, BL-INV-03); bad-debt relief (BL-INV
 ### BL-PRP-19 — 01 Property: approve, return, publish and revise an owner statement
 
 **Labels:** `vertical:01-property` `area:negative-flow` `priority:medium` `size:m` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
-**Depends on:** Base: 01 Owner statement generation (`PRP.RUL.05`) · BL-KRN-01 · **Blocks:** BL-PRP-18, BL-PRP-20, BL-PRP-21, BL-PRP-22
+**Depends on:** Base: 01 Owner statement generation (`PRP.RUL.05`) · BL-KRN-01 · **Blocks:** BL-PRP-18, BL-PRP-20, BL-PRP-21, BL-PRP-22, BL-PRP-31, BL-PRP-34
 **Review items:** 01 MEDIUM "owner statement lifecycle and disputes" (review §6)
 
 #### Goal
@@ -2094,7 +2099,7 @@ Ending the whole agreement (BL-PRP-22).
 ### BL-PRP-24 — 01 Property: cancel a maintenance job after work started and guard compliance visits (`PRP.ACL.15`)
 
 **Labels:** `vertical:01-property` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:field-pwa` `surface:system` · **Milestone:** Build 1 · **Size:** s
-**Depends on:** Base: wl-ticketing Ticket lifecycle · BL-TKT-02 · BL-TKT-04 · **Blocks:** None.
+**Depends on:** Base: wl-ticketing Ticket lifecycle · BL-TKT-02 · BL-TKT-04 · **Blocks:** BL-PRP-34
 **Review items:** D-14, 01-N8-b
 
 #### Goal
@@ -2567,6 +2572,11 @@ is requested by the leasing agent or accountant and approved by a property manag
 deposit can be forfeited when a prospect backs out before signing is `⚠ open: lawyer (L-22)`.
 
 #### Edge cases decided
+- **Two transitions on main:** the spec's single `release` is built as `release` (a user with
+  `units.reserve`) and `release_by_system` (the lease `cancel`), as `vacate` is split by target
+  (`apps/property/src/unit_machine.rs`). `reserve` is declared and refuses until booking deposits exist
+  (`PRP.LEA.02`, Later). This issue adds the booking deposit behaviour to both release
+  transitions; it does not build `reserve`.
 - **Booking deposit is money received:** a lease `cancel` for the prospect holding the
   reservation needs the `PRP.ACL.18` approval (BL-PRP-01), even for a full refund; the unit is
   released and the booking deposit refunded or part forfeited at final approval.
@@ -2642,3 +2652,348 @@ them" (`OWN`).
 
 #### Out of scope
 The dispute flag itself (BL-PRP-21); the owner portal (`POR.SLF.02`).
+
+---
+
+### BL-PRP-30 — 01 Property: tenant portal: show the lease, its cheques and documents (`POR.SLF.01`, `PRP.ACL.01`)
+
+**Labels:** `vertical:01-property` `area:negative-flow` `priority:high` `size:s` `surface:portal` `surface:system` · **Milestone:** Build 1 · **Size:** s
+**Depends on:** BL-POR-02; BL-POR-01; Base: 01 Lease lifecycle · **Blocks:** None.
+**Review items:** X-18; follow-up of BL-POR-01, Done-when point 1
+
+#### Goal
+The tenant portal (`POR.SLF.01`, MVP in 01) shows the tenant their lease, the post-dated cheques they
+handed over and the lease documents. apps/property registers three portal sections for the audience
+`tenant`, filtered to the leases where the user's party is a tenant (`PRP.ACL.01`), and seeds the
+audience's roles. Invoices, the deposit and requests come from their modules (BL-INV-31, BL-PAY-27,
+BL-TKT-14).
+
+#### Surfaces
+- **Portal:** *Lease* shows each lease of the party (unit, building, term, annual rent, payment plan,
+  status, Ejari number) and its versions; *Cheques* lists the cheques of those leases (number, bank,
+  date, amount, status as wl-payments stored it); *Documents* lists the lease's documents the tenant may
+  see (signed contract, Ejari certificate, notices, receipts) with downloads.
+- **System:** the sections are registered at start-up; the 01 seed creates the `tenant` audience and
+  its portal roles (BL-POR-02 edge cases).
+
+#### Files to read
+- `docs/verticals/01-property.md` §3.1 (tenant roles), §3.3 `PRP.ACL.01`, `PRP.ACL.11`, §5 `POR.SLF.01`
+- `docs/modules/wl-portal.md` §2 (01 audiences), §6 (`PortalSections`, blocked parties)
+- `apps/property/src/lease.rs`, `cheques.rs`, `documents.rs`
+
+#### Terms
+- **Lease version:** a renewal or amendment version of the lease on the unit.
+- **Tenant-visible document:** a document of the lease whose kind is marked visible to the party (not
+  internal notes, not KYC documents of other parties).
+
+#### Spec excerpt (authoritative for this issue)
+| Role | Actor type | What they do | Permissions (summary) |
+|---|---|---|---|
+| Tenant — primary contact | external | Sees the lease, invoices, cheques, documents; pays; raises requests; manages the company's other portal users | portal: lease, finance, requests, users |
+| Tenant — finance contact | external | Sees and pays invoices only | portal: finance |
+
+| ID | Rule | Pattern | Applies to |
+|---|---|---|---|
+| `PRP.ACL.01` | A tenant user sees only leases where their party is a tenant, and the invoices, cheques, documents and tickets of those leases | `OWN` | tenant |
+
+| ID | Capability | Type | Module | Scope |
+|---|---|---|---|---|
+| `POR.SLF.01` | Tenant self-service portal: lease, invoices, cheques, documents, requests | shared | wl-portal | MVP |
+
+#### Edge cases decided
+- **Blocked tenant:** everything shows with the stored statuses and no block text (BL-POR-01).
+- **Read-only grant after move-out:** the sections show (history and downloads are kept) (BL-POR-03).
+- **Draft versions:** not shown; `pending_signature` is shown as *Waiting for signature*.
+- **Legal case flag:** not shown in the portal (internal).
+- **Cheque statuses:** the stored ones (*Received*, *Deposited*, *Cleared*, *Bounced*, *Returned*).
+
+#### Must not
+- Show another party's lease, cheque or document, or internal notes and the legal case flag.
+- Show the finance contact the lease or cheques sections.
+
+#### Done when
+- [ ] Given tenant "Al Noor Trading LLC" with lease L-0042 on unit 1204 (AED 120,000, 4 cheques), Sara
+      (primary contact) sees L-0042 with its term and rent, the 4 cheques with their statuses and the
+      signed contract and Ejari certificate.
+- [ ] She does not see lease L-0043 of another tenant on the same floor, even by URL.
+- [ ] Omar (finance contact) has no Lease or Cheques entry.
+- [ ] With the party blocked (`non_payment`), the same pages show with no block text.
+- [ ] After the lease is terminated, she still sees and downloads them (read-only).
+
+#### Out of scope
+Invoices and statement of account (BL-INV-31), deposit and deductions (BL-PAY-27), requests
+(BL-TKT-14), portal users management (base wl-portal), the owner portal (`POR.SLF.02`, Later).
+
+---
+
+### BL-PRP-31 — 01 Property: generate the tenancy contract and the owner statement PDF and send them
+
+**Labels:** `vertical:01-property` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
+**Depends on:** BL-DOC-11; BL-NTF-10; BL-PRP-19 · **Blocks:** None.
+**Review items:** 01 MEDIUM "owner statement lifecycle and disputes" (review §6); follow-up of BL-PRP-19, Done-when point 3
+
+#### Goal
+Two 01 transitions must produce a document: lease `submit` generates the contract PDF in English and
+Arabic, and owner statement `publish` generates the statement PDF and sends it to the owner. Today
+`publish` e-mails the statement as text and `submit` generates nothing. With document generation
+(BL-DOC-11) and attachments (BL-NTF-10), apps/property registers the two templates and their data
+providers and calls them.
+
+#### Surfaces
+- **Back office:** the lease shows the generated contract (*Tenancy contract L-0042 v1*) under its
+  documents; the statement shows its PDF; both download.
+- **System:** `submit` generates the contract; `publish` generates the statement PDF and sends
+  `owner_statement.published` with the PDF attached; `lease.contract_for_signature` carries the contract.
+
+#### Files to read
+- `docs/verticals/01-property.md` §4.1 step 6, §4.4 step 2, §7.1 *Lease* (`submit`), §7.1 *Owner
+  statement* (`publish`), §7.2 *Notification types*
+- `docs/modules/wl-documents.md` §5.3
+- `apps/property/src/notices.rs`, `statement_events.rs`, `lease_machine.rs`
+
+#### Terms
+- **Tenancy contract:** the bilingual contract of one lease version: parties, unit, term, rent, payment
+  plan, deposit, clauses, signatory block.
+- **Owner statement PDF:** collected, expenses, fee, adjustments and balance of one statement, with its
+  lines.
+
+#### Spec excerpt (authoritative for this issue)
+| Transition | From | To | By | Guards | Effects |
+|---|---|---|---|---|---|
+| `submit` (Lease) | draft | pending_signature | `leases.create` | … | contract PDF generated in EN/AR (`DOC.GEN.01`) |
+| `publish` (Owner statement) | approved | published | `owner_statements.prepare` | — | PDF generated and sent to the owner |
+
+01 §4.4 step 2: "The owner statement is generated as a PDF and published to the owner by email, and in
+the owner portal once it exists (`DOC.GEN.01`, `POR.SLF.02`)."
+
+#### Edge cases decided
+- **Renewal and amendment versions:** each version gets its own contract; the earlier one is kept.
+- **A revision of a statement:** the superseded statement's PDF stays; the new revision gets its own PDF
+  at its own `publish`.
+- **Generation fails:** the transition is refused with the error (nothing published, nothing submitted),
+  so no statement is published without its PDF.
+- **Statement language:** bilingual; contract: bilingual (§4.1 step 6).
+- **E-signature:** the contract is sent for signature by e-mail as an attachment; the signed copy is
+  attached by staff (`activate` guard). Online e-signature (`DOC.SIG.01`) is later.
+
+#### Must not
+- Regenerate the contract of a submitted version or the PDF of a published statement.
+- E-mail the owner outside wl-notify.
+
+#### Done when
+- [ ] Given lease L-0042 in draft, `submit` stores *Tenancy contract L-0042 v1* (source generated,
+      bilingual) and the tenant gets it attached to `lease.contract_for_signature`.
+- [ ] Given an approved statement for October 2026 with balance AED 18,450, `publish` stores its PDF and
+      the owner's e-mail carries it; the message log lists the attachment.
+- [ ] When the PDF cannot be generated, `publish` is refused and the statement stays `approved`.
+- [ ] A revision published later has its own PDF; the first one is still there.
+
+#### Out of scope
+Generation and attachments (BL-DOC-11, BL-NTF-10); the cheque handover receipt (BL-PAY-30); the owner
+portal (`POR.SLF.02`, Later); online e-signature (`DOC.SIG.01`).
+
+---
+
+### BL-PRP-32 — 01 Property: apply the termination credit to the deposit deductions first
+
+**Labels:** `vertical:01-property` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
+**Depends on:** BL-PRP-11; BL-PRP-17; BL-PAY-15 · **Blocks:** None.
+**Review items:** 01-N12-a, 01-N3-e; follow-up of BL-PRP-11, Done-when point 1 (a)
+
+#### Goal
+When a lease ends early, invoices for periods after the move-out are credited pro rata; on a paid invoice
+the credit goes to the tenant's credit balance. The spec applies that credit to the deposit settlement's
+deductions first, and only the rest is refunded or kept. Today `terminate` asks the refund at once (or
+keeps the credit), because the deductions do not exist yet at `terminate`. This issue holds the
+termination credit for the settlement and uses it before the deposit when the deductions are settled.
+
+#### Surfaces
+- **Back office:** the lease and the deposit settlement show *Termination credit held for the settlement:
+  AED 3,193.55*; the settlement statement lists the credit applied, the deposit applied, the deposit
+  refunded and the credit refunded or kept.
+- **System:** at deposit `refund` or `forfeit` the credit is allocated first, then the deposit; the rest
+  of the credit follows the property manager's choice recorded at `terminate`.
+
+#### Files to read
+- `docs/verticals/01-property.md` §4.3 rows "Early termination by the tenant" and "Deductions exceed the
+  deposit", §7.1 *Lease* (`terminate`), §7.1 *Deposit*
+- `apps/property/src/termination.rs` (`settle_credit`), `deposit_forfeit.rs`
+
+#### Terms
+- **Termination credit:** the part of the pro rata credit notes of `terminate` that no balance of their
+  invoices uses (the tenant's credit balance).
+- **Deductions:** unpaid rent invoices plus the published damage lines (BL-PRP-17).
+
+#### Spec excerpt (authoritative for this issue)
+`terminate` effects: "… a credit on a paid invoice goes to the tenant's credit balance, applied to the
+deposit settlement's deductions first, the rest refunded through the Refund flow or kept as credit
+(property manager's choice) …"
+§4.3 "Early termination by the tenant": "a partial credit note on a paid invoice adds its amount to the
+tenant's credit balance, which is applied to the deposit settlement's deductions first and the rest
+refunded through the Refund flow, or kept as credit when the property manager chooses".
+
+#### Edge cases decided
+- **Order:** the credit covers the deductions before the deposit: first the unpaid rent invoices, oldest
+  first (credit note allocated to them), then the damage lines; the deposit covers what is left, and its
+  remainder is refunded as usual. Decided where the spec is silent: the credit goes first because it is
+  already the tenant's money on account, so more of the deposit is returned.
+- **No deposit held, or a deposit already settled:** the credit follows the choice at once, as today.
+- **Credit larger than the deductions:** the rest follows the choice (`refund`: Refund flow with the
+  credit note as source, `FIN.ACL.04`; `keep`: stays on account).
+- **Deductions disputed:** nothing is applied while the dispute flag is set (the settlement waits).
+- **A damages invoice:** only what neither the credit nor the deposit covered is invoiced.
+
+#### Must not
+- Refund the termination credit before the deductions are settled when a deposit is held.
+- Apply the credit twice (once to the deductions and again by refund).
+
+#### Done when
+- [ ] Given a termination credit of AED 3,193.55, deposit AED 10,000 and deductions of AED 2,000, at
+      `refund` the credit covers the AED 2,000, AED 1,193.55 is refunded (choice `refund`), and the full
+      deposit of AED 10,000 is refunded.
+- [ ] With choice `keep`, the AED 1,193.55 stays on the tenant's account.
+- [ ] With deductions of AED 14,000 (rent AED 4,500 + damages AED 9,500), the credit pays AED 3,193.55
+      of the rent invoice, the deposit covers the rest of the rent and AED 8,693.55 of damages, and a
+      damages invoice of AED 806.45 is raised.
+- [ ] With no deposit held, the credit is refunded or kept at `terminate`, as today.
+- [ ] While a deduction line is disputed, nothing is applied.
+
+#### Out of scope
+`terminate` in one transaction (BL-PRP-33); the deductions dispute (BL-PAY-15, BL-PRP-16).
+
+---
+
+### BL-PRP-33 — 01 Property: run `terminate` and its money effects in one transaction
+
+**Labels:** `vertical:01-property` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
+**Depends on:** BL-KRN-11; BL-PRP-11 · **Blocks:** None.
+**Review items:** 01-N12-a; follow-up of BL-PRP-11, Done-when point 1 (b)
+
+#### Goal
+The spec says the effects of lease `terminate` run "all in one transaction" and that "if crediting fails
+for one invoice, the whole `terminate` rolls back". Today the money effects (credit notes, cheque returns,
+deposit settlement, credit handling) run after the commit and a failed step becomes a task for the
+accountant. With the transaction-aware money contracts (BL-KRN-11), `terminate` runs them inside its own
+transaction, so the lease, the unit, the charges, the credit notes, the cheques and the deposit change
+together or not at all.
+
+#### Surfaces
+- **Back office:** `terminate` either succeeds with every effect, or is refused with the reason of the
+  failing step and nothing changed; the "finish by hand" task is no longer created for `terminate`.
+- **System:** the effects run in the transition's transaction; events and messages go out after the
+  commit.
+
+#### Files to read
+- `docs/verticals/01-property.md` §7.1 *Lease* (`terminate`); BL-PRP-11 *Edge cases decided* (Retry)
+- `apps/property/src/termination.rs` (`terminate_effects`, `settle`)
+
+#### Terms
+- **Money effects of `terminate`:** pro rata credit notes, draft invoices discarded, cheques returned
+  against one receipt, deposit `start_settlement`, the termination credit held or handled (BL-PRP-32).
+
+#### Spec excerpt (authoritative for this issue)
+| Transition | From | To | By | Guards | Effects |
+|---|---|---|---|---|---|
+| `terminate` | notice_given | terminated | `leases.manage` | move-out inspection completed; all keys returned | unit `vacate`; deposit `start_settlement`; scheduled charges after the move-out date (or after `rent_due_until`, when set) cancelled; rent and recurring lines of invoices for periods after it credited pro rata by partial credit note; …; cheques in `received` or `due_for_deposit` dated after that date `return`; all in one transaction; Ejari cancellation task (`PRP.RUL.13`); tenant portal read-only (`POR.ACL.01`) |
+
+BL-PRP-11 edge case: "**Retry:** if crediting fails for one invoice, the whole `terminate` rolls back
+(one transaction)."
+
+#### Edge cases decided
+- **Ejari task and `LeaseTerminated`:** after the commit only (no task or event for a rolled-back run).
+- **A cheque that changed meanwhile** (deposited between the screen and the click): the return skips it
+  as today (it is no longer `received`), which is not a failure.
+- **Refund of the credit** (choice `refund`, no deposit held): the refund request is part of the
+  transaction; its approval runs later as usual.
+- **Retry:** the user runs `terminate` again after fixing the cause; nothing is half done.
+
+#### Must not
+- Leave a terminated lease with uncredited invoices or unreturned cheques after a failure.
+- Send the tenant or owner a message for a rolled-back termination.
+
+#### Done when
+- [ ] Given lease L-0042 with 2 invoices to credit and 5 cheques to return, `terminate` commits the lease,
+      the unit, both credit notes, the 5 returns and the deposit `settlement_pending` together.
+- [ ] When crediting the second invoice fails, nothing changed: the lease is `notice_given`, the first
+      credit note does not exist, the cheques are `received`, the deposit is `held`, and the user sees the
+      reason.
+- [ ] No "finish by hand" task is created for a failed `terminate`; no `LeaseTerminated` is emitted.
+- [ ] After the cause is fixed, `terminate` succeeds once.
+
+#### Out of scope
+The contracts themselves (BL-KRN-11); the credit applied to the deductions (BL-PRP-32); lease `cancel`
+and `amend`, which keep their after-commit effects.
+
+---
+
+### BL-PRP-34 — 01 Property: put approved vendor bills on the owner statement (ticket jobs and AMC shares)
+
+**Labels:** `vertical:01-property` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
+**Depends on:** BL-PRP-19; BL-PRP-24; BL-INV-24; Base: wl-invoicing Supplier bill lifecycle · **Blocks:** None.
+**Review items:** D-14, 01-N8-b; follow-up of BL-PRP-24, Done-when point 1
+
+#### Goal
+An owner statement is *collected − expenses − fee*. Expenses are the vendor bills of the owner's units:
+the bill of a maintenance job (also of a job cancelled after work started) and each building's share of
+an AMC bill. Today the accountant types expense lines by hand, so a cancelled job's vendor bill never
+reaches the owner. This issue reads the approved supplier bills coded to a ticket on the owner's units or
+to a service contract covering the owner's buildings, splits contract bills by the allocation basis, and
+adds them as expense lines of the draft statement (`PRP.RUL.05`).
+
+#### Surfaces
+- **Back office:** the draft statement shows expense lines *Vendor bill B-101 CoolAir — TKT-2026-0042
+  (unit 1204)* and *AMC Q4 Lifts — Tower B, owner's share*, each linked to its bill; the accountant can still
+  add or remove lines in the draft.
+- **System:** `PRP.RUL.05` adds the bills approved in or before the period that are on no earlier
+  statement of the agreement.
+
+#### Files to read
+- `docs/verticals/01-property.md` §4.2 step 6 and row "The job is cancelled after work started", §4.4
+  step 1, §4.5 steps 7–8, §7.1 *Owner statement*, §7.2 `PRP.RUL.05`
+- `docs/modules/wl-invoicing.md` §4 *Supplier bill*, §5.4 point 4 (allocation basis), §6 (`SupplierBills`)
+- `apps/property/src/statement.rs` (module comment: expenses entered by hand today)
+
+#### Terms
+- **Allocation basis:** how a contract bill is spread: area (default), number of units, asset, or manual %.
+- **Expense line:** a statement line with negative effect on the owner's balance, its source the bill.
+
+#### Spec excerpt (authoritative for this issue)
+01 §4.2 step 6: "A vendor job produces a vendor bill, allocated to the unit's owner (`FIN.PAB.01`)."
+01 §4.2 row "The job is cancelled after work started": "work already done by a vendor is billed by the
+vendor and allocated to the owner".
+01 §4.4 step 1: "Rent collected, expenses (vendor bills, including each building's share of AMC costs)
+and the management fee are collected per owner for the period (`PRP.OWN.01`, `FIN.PAB.01`, `WRK.SVC.01`)."
+wl-invoicing §5.4 point 4: "A contract bill is spread over buildings, units or assets by the contract's
+allocation basis (area by default, number of units, asset, or manual %), and the shares flow into the
+owner statements of 01 (`PRP.OWN.01`)."
+
+#### Edge cases decided
+- **Which bills:** `approved`, `partially_paid` or `paid` bills; drafts, exceptions (possible duplicates)
+  and void bills never.
+- **Amount:** the bill's total including VAT (the owner bears what the company paid); VAT on
+  recharged costs (`⚠ open: accountant (A-08)`) concerns only an invoice to the owner, not this line.
+- **A chargeable job:** its bill is listed as for any job; crediting the owner with what the tenant
+  pays on the ticket's invoice is not in this issue (collected lines read lease charges only).
+- **Share rounding:** half up to a fils; the last share takes the difference so the shares add up.
+- **A building of several owners:** the building's share is split again by the owners' units in it, by
+  the same basis.
+- **A bill reduced after it was on a published statement** (a supplier debit note): an adjustment line
+  on the next statement; a published statement is never edited.
+- **Repeated runs:** a bill (or share) is on one statement of the agreement only.
+
+#### Must not
+- List a bill that is not approved, or list a bill or a share twice.
+- Edit a published statement.
+
+#### Done when
+- [ ] Given vendor job TKT-2026-0042 on unit 1204 cancelled from `on_hold` and CoolAir's bill of AED 350
+      approved on 2026-10-20, the November draft statement for October lists it as an expense of AED 350.
+- [ ] An AMC bill of AED 8,000 for Tower B and Tower C split by area 60/40, with the owner holding 25% of
+      Tower B's area, gives the owner a line of AED 1,200.
+- [ ] A bill held as a possible duplicate is not listed.
+- [ ] Generating the draft again does not list the bill twice.
+- [ ] A bill approved on 2026-11-03 is not on the October statement; it is on the November one.
+
+#### Out of scope
+Supplier bill approval and duplicates (BL-INV-11); paying the vendor (BL-PAY-28); AMC cost reports
+(`RPT.LIB.01`).

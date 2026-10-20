@@ -10,8 +10,9 @@
 //!   out. An account with neither shows a warning and counts as zero; one
 //!   older than the stale limit is used with a warning.
 //! - **Receipts:** issued invoices by due date for their balance less the
-//!   part covered by a linked cheque, the disputed part and the part covered
-//!   by a bounced cheque; received cheques not cleared, by cheque date for
+//!   part covered by a linked cheque (a cheque linked to a record a line of
+//!   the invoice bills, such as a lease charge, covers the invoice), the
+//!   disputed part and the part covered by a bounced cheque; received cheques not cleared, by cheque date for
 //!   their open amount; the lines of the registered
 //!   [`CashForecastSource`](wl_kernel::cash_forecast::CashForecastSource)s.
 //! - **Payments:** supplier bills by due date for their balance (the not yet

@@ -14,15 +14,18 @@
 
 use renox::db::Transaction;
 use renox::prelude::*;
+use renox::state_machine::TransitionError;
 use wl_kernel::approvals::{PolicyDefault, Step};
 use wl_kernel::block_guard::{
     ActionKind, BLOCK_EXCEPTION_ACTION, BlockFuture, BlockGuard, BlockReasonLine, BlockRefusal,
-    ExceptionStep, GuardOutcome,
+    ExceptionStep, GuardOutcome, SystemBlock,
 };
 use wl_kernel::{PartyId, PartyStatus};
 
-use crate::block_record::BlockRecord;
+use crate::block::block_by_system_for_screening;
+use crate::block_record::{BlockRecord, add_record_without_transition};
 use crate::party::Party;
+use crate::reasons::BlockReasons;
 use crate::texts;
 use crate::visibility;
 
@@ -119,6 +122,69 @@ impl BlockGuard for PartiesBlockGuard {
 
     fn exception_step(&self) -> ExceptionStep {
         ExceptionStep::new(self.approver.clone())
+    }
+
+    fn block_by_system<'a>(
+        &'a self,
+        state: &'a AppState,
+        party: PartyId,
+        block: SystemBlock,
+    ) -> BlockFuture<'a, bool> {
+        Box::pin(async move {
+            let Some(row) = Party::find(&state.db, party.0).await? else {
+                return Ok(false);
+            };
+            match row.status {
+                PartyStatus::Active => {
+                    let done = match block.screening {
+                        Some(screening) => {
+                            block_by_system_for_screening(
+                                state,
+                                &row,
+                                screening,
+                                &block.code,
+                                &block.note,
+                                block.ran_by,
+                            )
+                            .await
+                        }
+                        None => {
+                            crate::block::block_by_system(
+                                state,
+                                &row,
+                                &block.code,
+                                &block.note,
+                                block.ran_by,
+                            )
+                            .await
+                        }
+                    };
+                    match done {
+                        Ok(()) => Ok(true),
+                        // Blocked by someone else in between.
+                        Err(TransitionError::NotFrom(_)) => Ok(false),
+                        Err(error) => Err(error.into_error()),
+                    }
+                }
+                PartyStatus::Blocked | PartyStatus::Archived => {
+                    if let Some(screening) = block.screening {
+                        let restricted = BlockReasons::of(state).is_restricted(&block.code);
+                        add_record_without_transition(
+                            &state.db,
+                            party.0,
+                            screening,
+                            &block.code,
+                            restricted,
+                            &block.note,
+                            block.ran_by,
+                        )
+                        .await?;
+                    }
+                    Ok(false)
+                }
+                _ => Ok(false),
+            }
+        })
     }
 }
 

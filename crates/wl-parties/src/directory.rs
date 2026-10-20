@@ -75,6 +75,32 @@ impl PartyDirectory for Directory {
         })
     }
 
+    fn search<'a>(
+        &'a self,
+        db: &'a Db,
+        text: &'a str,
+        limit: u64,
+    ) -> PartyFuture<'a, Vec<PartySummary>> {
+        Box::pin(async move {
+            let mut query = Party::query();
+            let text = text.trim();
+            if !text.is_empty() {
+                let pattern = format!("%{text}%");
+                query = query.where_any(|q| {
+                    q.where_(Party::CODE.like(&pattern))
+                        .where_(Party::DISPLAY_NAME.like(&pattern))
+                });
+            }
+            let parties = query
+                .order_by(Party::DISPLAY_NAME)
+                .order_by(Party::ID)
+                .limit(limit)
+                .get(db)
+                .await?;
+            Ok(parties.iter().map(Party::summary).collect())
+        })
+    }
+
     fn display_name<'a>(
         &'a self,
         db: &'a Db,

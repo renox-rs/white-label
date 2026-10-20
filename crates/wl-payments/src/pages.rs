@@ -62,7 +62,7 @@ pub(crate) fn texts_in(lang: &Lang) -> impl Fn(&str) -> String + '_ {
 /// The module's routes, each behind its permission.
 pub fn routes() -> Routes {
     Routes::new()
-        .merge(
+        .merge(wl_kernel::scopes::anywhere(
             Routes::new()
                 .get("/payments", index)
                 .name("wl_payments.index")
@@ -71,7 +71,11 @@ pub fn routes() -> Routes {
                 .get("/payments/{id}", show)
                 .name("wl_payments.show")
                 .get("/payments/drawings/{id}", show_drawing)
-                .name("wl_payments.drawing")
+                .name("wl_payments.drawing"),
+            permissions::VIEW,
+        ))
+        .merge(
+            Routes::new()
                 .group(
                     "/payments",
                     "wl_payments.transitions.",
@@ -105,7 +109,7 @@ fn status_kind(status: PaymentStatus) -> &'static str {
         PaymentStatus::Received => "success",
         PaymentStatus::Pending => "info",
         PaymentStatus::Failed => "error",
-        PaymentStatus::ChargedBack => "warning",
+        PaymentStatus::ChargedBack => "error",
         PaymentStatus::Reversed => "neutral",
     }
 }
@@ -190,7 +194,7 @@ fn grid_with(t: Text<'_>) -> Grid {
                 ("pending", "info"),
                 ("received", "success"),
                 ("failed", "danger"),
-                ("charged_back", "warning"),
+                ("charged_back", "danger"),
                 ("reversed", "neutral"),
             ])
             .mobile(),
@@ -212,8 +216,24 @@ pub(crate) struct IndexPage {
 }
 
 /// `GET /payments`: the grid.
-async fn index(lang: Lang, user: AuthUser, request: GridRequest) -> Result<View> {
-    let payments = grid(&lang).page(Payment::query(), &request).await?;
+async fn index(
+    State(state): State<AppState>,
+    lang: Lang,
+    user: AuthUser,
+    request: GridRequest,
+) -> Result<View> {
+    // The payments of the user's scope: allocated to the invoices of their
+    // buildings, prepaid for their leases, or the deposits' payments.
+    let reach = wl_kernel::scopes::reach(&state.db, &user, permissions::VIEW).await?;
+    let query = reach
+        .apply_ids(
+            &state.db,
+            Payment::query(),
+            "id",
+            wl_kernel::payments::PAYMENT_SUBJECT_TYPE,
+        )
+        .await?;
+    let payments = grid(&lang).page(query, &request).await?;
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         payments,
@@ -558,9 +578,17 @@ fn drawing_kind(status: DrawingStatus) -> &'static str {
 /// stands. The approvers' "Needs your action" card links here.
 async fn show_drawing(
     State(state): State<AppState>,
+    user: AuthUser,
     lang: Lang,
     Found(drawing): Found<PaymentDrawing>,
 ) -> Result<View> {
+    // An owner drawing belongs to the company, not to a building.
+    if !wl_kernel::scopes::reach(&state.db, &user, permissions::VIEW)
+        .await?
+        .is_all()
+    {
+        return Err(Error::Forbidden);
+    }
     let t = texts_in(&lang);
     let entity = LegalEntity::find(&state.db, drawing.legal_entity_id).await?;
     Ok(View::typed(DrawingPage {
@@ -730,6 +758,10 @@ async fn show(
     lang: Lang,
     Found(payment): Found<Payment>,
 ) -> Result<View> {
+    let reach = wl_kernel::scopes::reach(&state.db, &user, permissions::VIEW).await?;
+    if !crate::scoped::payment_in_reach(&state.db, &reach, payment.id).await? {
+        return Err(Error::Forbidden);
+    }
     let t = texts_in(&lang);
     let db = state.db.clone();
     let money = |fils: i64| money_text(&payment.currency, fils);

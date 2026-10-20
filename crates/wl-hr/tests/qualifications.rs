@@ -9,7 +9,7 @@ use wl_hr::{Employee, EmployeeStatus};
 use wl_kernel::documents::{AffectedGroup, PlannedRecord};
 use wl_kernel::documents::{BlockMode, BlockedGroup, DocumentExpired, DocumentExpiring};
 use wl_kernel::notify::NotifyRecipient;
-use wl_kernel::workforce::{Qualifications, qualifications};
+use wl_kernel::qualifications::{Qualifications, qualifications};
 use wl_kernel::{DocumentId, Subject};
 
 use support::{Booted, branch, nov, other_branch};
@@ -116,28 +116,37 @@ async fn hrm01_another_scope_or_no_role_and_scope_answers_no() {
     let service = qualifications(t.state());
     assert!(
         !service
-            .qualification_valid(t.state(), id, LICENCE, nov(20))
+            .qualification_valid(t.state(), id, LICENCE, nov(20), None, None)
             .await
             .unwrap()
+            .valid
     );
-    assert!(
-        service
-            .qualification_valid_for(t.state(), id, LICENCE, nov(20), "practitioner", &branch())
-            .await
-            .unwrap()
-    );
+    let found = service
+        .qualification_valid(
+            t.state(),
+            id,
+            LICENCE,
+            nov(20),
+            Some("practitioner"),
+            Some(&branch()),
+        )
+        .await
+        .unwrap();
+    assert!(found.valid);
+    assert!(found.number.is_some());
     assert!(
         !service
-            .qualification_valid_for(
+            .qualification_valid(
                 t.state(),
                 id,
                 LICENCE,
                 nov(20),
-                "practitioner",
-                &other_branch()
+                Some("practitioner"),
+                Some(&other_branch())
             )
             .await
             .unwrap()
+            .valid
     );
 }
 
@@ -171,9 +180,10 @@ async fn hrm01_a_kind_that_is_not_role_bound_follows_the_document() {
     let nobody = wl_kernel::NoQualifications;
     assert!(
         !nobody
-            .qualification_valid(t.state(), id, "freelance_permit", nov(15))
+            .qualification_valid(t.state(), id, "freelance_permit", nov(15), None, None)
             .await
             .unwrap()
+            .valid
     );
 }
 

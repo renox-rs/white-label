@@ -237,7 +237,10 @@ pub async fn hold(
     user: &AuthUser,
     request: &HoldDeposit,
 ) -> std::result::Result<Deposit, TransitionError> {
-    if !user.has_permission(permissions::DEPOSITS_MANAGE) {
+    // In the scope of what it is held for: a property manager holds the
+    // deposit of a lease of their building, the accountant any.
+    let scope = wl_kernel::scopes::scope_of(&state.db, &request.source).await?;
+    if !user.has_permission_in(permissions::DEPOSITS_MANAGE, &scope) {
         return Err(TransitionError::Forbidden);
     }
     if let Some(problem) = amount_problem(request.amount) {

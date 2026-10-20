@@ -8,13 +8,14 @@
                     :badge="status" :badge-kind="status_kind">
       <rx-badge rx-if="pending" kind="warning" :text="tx['pending_approval']"/>
       <rx-badge rx-if="legal_open" kind="error" :text="tx['legal.open']"/>
+      <rx-link-button rx-if="documents_lease_url" :href="documents_lease_url" :label="tx['documents.lease_button']" variant="secondary" icon="file"/>
       <template rx-if="can_submit">
-        <rx-confirm :id="'submit-lease-' ~ lease.id" :label="tx['leases.submit']" :action="route('property.lease_submit', lease.id)" method="POST"
-                    :title="tx['leases.submit']" :message="tx['leases.submit_message']" :confirm-label="tx['leases.submit']" :cancel-label="tx['button_cancel']" icon="send"/>
+        <rx-action-sheet :id="'submit-lease-' ~ lease.id" :label="tx['leases.submit']" :action="route('property.lease_submit', lease.id)"
+                         :title="tx['leases.submit']" :description="tx['leases.submit_message']" :submit-label="tx['leases.submit']" icon="arrow-right"/>
       </template>
       <template rx-if="can_activate">
-        <rx-confirm :id="'activate-lease-' ~ lease.id" :label="tx['leases.activate']" :action="route('property.lease_activate', lease.id)" method="POST"
-                    :title="tx['leases.activate']" :message="tx['leases.activate_message']" :confirm-label="tx['leases.activate']" :cancel-label="tx['button_cancel']" icon="check"/>
+        <rx-action-sheet :id="'activate-lease-' ~ lease.id" :label="tx['leases.activate']" :action="route('property.lease_activate', lease.id)"
+                         :title="tx['leases.activate']" :description="tx['leases.activate_message']" :submit-label="tx['leases.activate']" icon="check"/>
       </template>
       <template rx-if="can_cancel">
         <rx-action-sheet :id="'cancel-lease-' ~ lease.id" :label="tx['cancel.action']" :action="route('property.lease_cancel', lease.id)"
@@ -149,9 +150,16 @@
           <rx-input name="cancelled_on" type="date" :label="tx['ejari.cancelled_on']" :value="today" :id="'ejari-cancelled-' ~ lease.id" required/>
         </rx-action-sheet>
       </template>
+      <template rx-if="can_receive_deposit">
+        <rx-action-sheet :id="'deposit-' ~ lease.id" :label="tx['leases.receive_deposit']" :action="route('property.lease_deposit', lease.id)"
+                         :title="tx['leases.receive_deposit']" :description="tx['leases.receive_deposit_description'] ~ ' ' ~ deposit_amount_text" :submit-label="tx['leases.receive_deposit']" icon="banknote">
+          <rx-select name="method" :label="tx['leases.deposit_method']" :options="[['transfer', tx['leases.deposit_method_transfer']], ['cash', tx['leases.deposit_method_cash']], ['card', tx['leases.deposit_method_card']]]" :selected="'transfer'" :id="'deposit-method-' ~ lease.id"/>
+          <rx-input name="reference" :label="tx['leases.deposit_reference']" :id="'deposit-reference-' ~ lease.id"/>
+        </rx-action-sheet>
+      </template>
       <template rx-if="can_waive">
-        <rx-confirm :id="'waive-deposit-' ~ lease.id" :label="tx['leases.waive_deposit']" :action="route('property.lease_waive_deposit', lease.id)" method="POST"
-                    :title="tx['leases.waive_deposit']" :message="tx['leases.waive_message']" :confirm-label="tx['leases.waive_deposit']" :cancel-label="tx['button_cancel']"/>
+        <rx-action-sheet :id="'waive-deposit-' ~ lease.id" :label="tx['leases.waive_deposit']" :action="route('property.lease_waive_deposit', lease.id)"
+                         :title="tx['leases.waive_deposit']" :description="tx['leases.waive_message']" :submit-label="tx['leases.waive_deposit']" icon="ban"/>
       </template>
       <template rx-if="can_cheques">
         <rx-action-sheet :id="'cheques-' ~ lease.id" :label="tx['cheques.record']" :action="route('property.lease_cheques', lease.id)"
@@ -181,6 +189,10 @@
         </rx-action-sheet>
       </template>
     </rx-page-header>
+    <rx-stack rx-if="documents_note">
+      <rx-alert kind="warning" :message="tx['documents.panel_title'] ~ '. ' ~ documents_note"/>
+      <div><rx-link-button :href="documents_note_url" :label="documents_note_open" variant="secondary" size="small" icon="file"/></div>
+    </rx-stack>
     <rx-include template="wl-kernel/approval_card.html"/>
     <rx-card :title="tx['leases.terms_title']">
       <rx-infolist columns="2">
@@ -271,7 +283,7 @@
       <rx-column :label="tx['charges.amount']" align="num">{{ charge.amount }}</rx-column>
       <rx-column :label="tx['leases.vat']" hide-narrow>{{ charge.vat }}</rx-column>
       <rx-column :label="tx['fields.status']"><rx-badge :kind="charge.status_kind" :text="charge.status"/></rx-column>
-      <rx-column :label="tx['charges.invoice']" hide-narrow>{{ charge.invoice_id or "" }}</rx-column>
+      <rx-column :label="tx['charges.invoice']" hide-narrow><a rx-if="charge.invoice_id" href="/invoices/{{ charge.invoice_id }}">#{{ charge.invoice_id }}</a></rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['charges.empty']" icon="calendar-days"/></rx-slot>
     </rx-table>
     <rx-table :rows="cheques" as="cheque" :key="cheque.number" :caption="tx['cheques.title']" card>

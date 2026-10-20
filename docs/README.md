@@ -2,7 +2,7 @@
 
 A platform of reusable business modules on [Renox](https://renox.rs) that covers ten UAE SME
 verticals. Documentation came first ([decision 0002](decisions/0002-document-all-ten-verticals-first.md));
-phase F1 (Property) is now being built ([decision 0004](decisions/0004-start-f1-build.md)).
+phase F1 (Property) is now being built ([decision 0004](decisions/0004-start-f1-build.md)); phase F*n* builds vertical *n* ([decision 0005](decisions/0005-phases-follow-vertical-numbers.md)).
 
 ## How to read
 

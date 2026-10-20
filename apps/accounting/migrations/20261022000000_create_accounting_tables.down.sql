@@ -1,0 +1,10 @@
+DROP INDEX IF EXISTS "accounting_tax_profiles_client_party_id";
+DROP TABLE IF EXISTS "accounting_tax_profiles";
+DROP INDEX IF EXISTS "accounting_cdd_parties_party";
+DROP TABLE IF EXISTS "accounting_cdd_parties";
+DROP INDEX IF EXISTS "accounting_cdd_files_status";
+DROP INDEX IF EXISTS "accounting_cdd_files_client_party_id";
+DROP TABLE IF EXISTS "accounting_cdd_files";
+DROP INDEX IF EXISTS "accounting_engagements_status";
+DROP INDEX IF EXISTS "accounting_engagements_client_party_id";
+DROP TABLE IF EXISTS "accounting_engagements";

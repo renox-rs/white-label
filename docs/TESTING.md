@@ -1,13 +1,37 @@
 # Testing
 
-> Status: draft for review · Last updated: 2026-10-14
+> Status: draft for review · Last updated: 2026-10-20 (§0 describes the practice in F1; the rest
+> is the target where marked)
 
 How the platform is tested, derived from the documentation. The documents already define
 the behaviour precisely, with IDs: capabilities, access rules, automations and state machine
 transitions. Every one of them becomes at least one test, so a reviewer can check coverage by
 ID instead of by reading code.
 
-## 1. Traceability
+## 0. How tests are written and run today (F1)
+
+- **Where:** integration tests in `crates/<crate>/tests/*.rs`, `apps/property/tests/*.rs` and
+  `host/tests/*.rs`, each crate with a `tests/support` module that boots a `TestApp` with the
+  modules it needs (fakes for the other modules' kernel contracts). Tests named `*_real.rs`
+  and those in `host/tests` boot the real modules together. Unit tests sit next to the code in
+  `#[cfg(test)]` modules.
+- **Named after the backlog issue, not the capability ID.** Each test file starts with a
+  `//!` comment naming the issue it covers (`BL-PRP-02 (#252)`) and the rule or capability IDs
+  (`PRP.RUL.12`); 260 of 267 test files do. Each test's `///` comment names the Done-when
+  point it checks (`AC1:`, `AC2:` …), and the function name says the behaviour in words
+  (`a_second_adjustment_waits_until_the_first_is_settled`). Some files prefix the functions
+  with the issue (`bl_prp_24_...`); a few with a capability or rule ID (`prp_lse_01_...`, `prp_acl_04_...`).
+- **Run:** `cargo test -p <crate> --test <file>` while working, `cargo test --workspace --locked`
+  before a pull request.
+- **CI** (`.github/workflows/ci.yml`, on every pull request and push to `main`):
+  `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --locked`,
+  `cargo test --workspace --locked`, and `cargo check --workspace --locked` on Rust 1.94 (the
+  minimum version).
+- **Not built yet:** the ID coverage report (§1), generated state machine conformance
+  matrices (§3), browser, RTL, dark-mode and PDF comparison checks (§8), `cargo deny`, and the
+  `rnx db:check` / `rnx view:check` steps in CI. They are the target below.
+
+## 1. Traceability (target)
 
 | Documented item | Where it is defined | Test it becomes | Named after |
 |---|---|---|---|
@@ -18,9 +42,10 @@ ID instead of by reading code.
 | Value stream | Vertical §4 | Acceptance scenario (§7) | vertical + stream number |
 | Platform rule `PLT.ACL.*` | [ACCESS-CONTROL.md](ACCESS-CONTROL.md) §8 | Platform-wide tests run for every module | the rule ID |
 
-**Coverage report.** A check lists every ID found in the documents and every ID found in test
-names, and reports IDs without tests. A module is not done while its IDs are uncovered
-(§9).
+**Coverage report** (target, not built). A check lists every ID found in the documents and
+every ID found in tests (names or the file comment, §0), and reports IDs without tests. Once it
+exists, a module is not done while its IDs are uncovered (§9). Until then, coverage is checked
+per issue against its Done-when points (the `AC` comments).
 
 ## 2. Tools
 
@@ -127,9 +152,10 @@ the scenario is a gap.
 - **Documents:** generated PDFs in English and Arabic compared against reference files
   (text and layout regions).
 
-## 9. Definition of Done for a module
+## 9. Definition of Done for a module (target)
 
-A module is done when:
+A module is done when (the items that need a tool not built yet, §0, are checked by review
+until it exists):
 
 - [ ] Every capability, access rule, automation and transition in its document has tests
       named by ID, and the coverage report shows no gaps.

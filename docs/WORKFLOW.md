@@ -89,7 +89,16 @@ Two limits of the Renox engine shape how our tables are built (checked in the so
   available.
 - **No run by name and no replay.** Running a transition chosen at run time (by the approval
   kernel, by an automation rule) goes through the kernel's registry of transitions by name
-  ([wl-kernel](modules/wl-kernel.md) §4.1).
+  ([wl-kernel](modules/wl-kernel.md) §4.1, built in `crates/wl-kernel/src/machines.rs`). The
+  transition the kernel runs after the last approval is a `system` transition named
+  `<action>_approved` (e.g. `cancel_approved`, `force_terminate_approved`, `pay_out_approved`),
+  next to the user's `<action>`, which only opens the request.
+- **No transition that stays in its state.** A row whose "From" and "To" are the same state
+  (deposit `adjust` held → held, management agreement `transfer_unit` active → active, handover
+  `hand_over` open → open) is not a machine transition: it is built as its own record with
+  its own guards and approval (e.g. `DepositAdjustment` in crates/wl-payments/src/deposit_adjust.rs,
+  `UnitTransfer` in apps/property/src/unit_transfer.rs). The tables keep the row, since it is
+  what the user sees as an action on the record.
 
 ### 3.5 How a state machine is documented
 

@@ -17,6 +17,7 @@ pub mod cheques;
 pub mod compliance;
 pub mod config;
 pub mod consents;
+pub mod deadlines;
 pub mod delivery;
 pub mod deposits;
 pub mod digest;
@@ -35,15 +36,19 @@ pub mod notify;
 pub mod numbering;
 pub mod parties;
 pub mod payments;
+pub mod portal;
+pub mod qualifications;
 pub mod role_tasks;
 pub mod sales;
 pub mod scopes;
 pub mod screening_guard;
 pub mod segments;
 pub mod subject;
+pub mod subscriptions;
 mod texts;
 pub mod tickets;
 pub mod voids;
+pub mod wip;
 pub mod workforce;
 
 use std::sync::Arc;
@@ -90,6 +95,11 @@ pub use cheques::{
 pub use compliance::{ComplianceAlert, ComplianceRule, CriticalRule, Planned};
 pub use config::{ClientConfig, ConfigError, RolesConfig, owner_role};
 pub use consents::{Consents, NoConsents};
+pub use deadlines::{
+    DEADLINE_TASK_SUBJECT_TYPE, DeadlineTaskId, DeadlineTaskStatus, DeadlineTaskSummary,
+    DeadlineTasks, EndedTasks, HANDED_OVER_EVIDENCE, HandOverTask, NewDeadlineTask,
+    NoDeadlineTasks, ReleasedTasks, TaskCompleted, TaskOverdue, TaskRecurrence, WaiveTask,
+};
 pub use delivery::{
     DELIVERY_SUBJECT_TYPE, DeliveryDisputeClosed, DeliveryDisputed, DeliveryId, DeliveryLost,
     DeliveryReversed, ReviewOutcome,
@@ -157,6 +167,7 @@ pub use payments::{
     RefundFailureKind, RefundId, RefundPaid, RefundRequest, RefundSource, ReversalReason,
     UnpaidRefund,
 };
+pub use qualifications::{NoQualifications, QualificationStatus, Qualifications};
 pub use sales::{
     Attribute, AttributionTarget, CampaignActivated, CampaignAttribution, CampaignEnded,
     CampaignId, CustomerAcquired, CustomerAcquisitionChanged, FirstSale, LEAD_SUBJECT_TYPE,
@@ -167,29 +178,37 @@ pub use sales::{
 pub use scopes::COMPANY_ADMIN_ROLE;
 pub use segments::{NoSegments, SegmentId, Segments};
 pub use subject::Subject;
+pub use subscriptions::{
+    BillingCycle, CancelSubscription, NoSubscriptions, PauseCause, PauseSubscription, PaymentMode,
+    SUBSCRIPTION_SUBJECT_TYPE, StartSubscription, SubscriptionCancelled, SubscriptionId,
+    SubscriptionPastDue, SubscriptionSettled, SubscriptionStatus, SubscriptionSummary,
+    SubscriptionSuspended, Subscriptions,
+};
 pub use tickets::{
-    Assignee, ChecklistCompleted, ChecklistOutcome, ChecklistRunId, Checklists,
-    ComplianceFlagCleared, ComplianceFlagRaised, ComplianceFlagReason, ContractCover, NoChecklists,
-    NoServiceContractCoverage, NoTickets, OpenTicket, Requester, SERVICE_CONTRACT_SERIES,
-    SERVICE_CONTRACT_SUBJECT_TYPE, ServiceContractActivated, ServiceContractCoverage,
-    ServiceContractEnded, ServiceContractId, TASK_CATEGORY, TaskComment, TaskCreator,
-    TicketAssigned, TicketChannel, TicketClosed, TicketId, TicketRef, VendorNoShow, checklists,
-    provide_checklists, provide_service_contract_coverage, service_contract_coverage, ticket_path,
+    Assignee, CONFIDENTIAL_TASK_CATEGORY, ChecklistCompleted, ChecklistOutcome, ChecklistRunId,
+    Checklists, ComplianceFlagCleared, ComplianceFlagRaised, ComplianceFlagReason, ContractCover,
+    NoChecklists, NoServiceContractCoverage, NoTickets, OpenTicket, Requester,
+    SERVICE_CONTRACT_SERIES, SERVICE_CONTRACT_SUBJECT_TYPE, ServiceContractActivated,
+    ServiceContractCoverage, ServiceContractEnded, ServiceContractId, TASK_CATEGORY, TaskComment,
+    TaskCreator, TicketAssigned, TicketChannel, TicketClosed, TicketId, TicketRef, VendorNoShow,
+    checklists, provide_checklists, provide_service_contract_coverage, service_contract_coverage,
+    ticket_path,
 };
 pub use voids::{
     Effect, EffectKind, RecordVoided, Reverse, ReverseError, VoidRecord, Voidable, VoidableBuilder,
 };
+pub use wip::{NoUnbilledTime, UnbilledTime, WipSummary};
 
 pub use workforce::{
     AbsenceCaseClosed, AbsenceCaseOpened, AffectedWork, EmployeeAbsconded, QualificationExpired,
-    QualificationExpiring, QualificationId, Qualifications,
+    QualificationExpiring, QualificationId,
 };
 /// The kernel's permissions (wl-kernel §6).
 pub use workforce::{
     EMPLOYEE_SUBJECT_TYPE, EmployeeActivated, EmployeeAssignmentChanged, EmployeeDeceased,
-    EmployeeExited, EmployeeId, EmployeeOnboardingCancelled, NoQualifications, NoWorkforce,
-    ONBOARDING_SUBJECT_TYPE, OnboardingCompleted, OnboardingId, OnboardingStarted, StaffProfile,
-    Workforce, provide_qualifications, provide_workforce, qualifications, workforce,
+    EmployeeExited, EmployeeId, EmployeeOnboardingCancelled, NoWorkforce, ONBOARDING_SUBJECT_TYPE,
+    OnboardingCompleted, OnboardingId, OnboardingStarted, StaffProfile, Workforce,
+    provide_workforce, workforce,
 };
 
 /// The permission names the kernel declares.
@@ -345,7 +364,7 @@ impl Module for WlKernel {
         app.nav(
             "app",
             NavLink::route("wl_kernel.legal_entities", "nav.legal_entities")
-                .icon("landmark")
+                .icon("building-2")
                 .group("nav.admin")
                 .order(30)
                 .permission(permissions::LEGAL_ENTITIES_VIEW),

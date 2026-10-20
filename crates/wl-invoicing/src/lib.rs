@@ -89,6 +89,10 @@ pub mod reopen_notices;
 pub mod restore;
 pub mod reversal;
 pub mod seed;
+pub mod subscription;
+pub mod subscription_machine;
+mod subscription_pages;
+pub mod subscriptions;
 pub mod supplier_bill;
 pub mod supplier_debit_note;
 pub mod task;
@@ -143,6 +147,8 @@ pub use invoicer::Invoices;
 pub use line::InvoiceLine;
 pub use recovery::Recovery;
 pub use reminders::ReminderLog;
+pub use subscription::{Subscription, SubscriptionCycle, SubscriptionPause};
+pub use subscriptions::{Canceller, SubscriptionBook};
 pub use supplier_bill::{BillDraft, SupplierBill, SupplierBillStatus};
 pub use supplier_debit_note::{DebitNoteOrigin, DebitNoteReason, SupplierDebitNote};
 pub use task::{InvoicingTask, TaskKind, TaskStatus};
@@ -274,6 +280,14 @@ const VIEWS: &[(&str, &str)] = &[
         "wl-invoicing/cash_forecast_cell.html",
         include_str!("../views/wl-invoicing/cash_forecast_cell.html"),
     ),
+    (
+        "wl-invoicing/subscriptions.html",
+        include_str!("../views/wl-invoicing/subscriptions.html"),
+    ),
+    (
+        "wl-invoicing/subscription.html",
+        include_str!("../views/wl-invoicing/subscription.html"),
+    ),
 ];
 
 /// The module's settings in `state`: those `register` provided, else the
@@ -333,6 +347,10 @@ pub mod permissions {
     pub const EINVOICES_VIEW: &str = "einvoices.view";
     /// Resubmit a rejected e-invoice transmission after its cause was fixed.
     pub const EINVOICES_MANAGE: &str = "einvoices.manage";
+    /// See the subscriptions and their cycles.
+    pub const SUBSCRIPTIONS_VIEW: &str = "subscriptions.view";
+    /// Pause, resume and cancel a subscription in the back office.
+    pub const SUBSCRIPTIONS_MANAGE: &str = "subscriptions.manage";
 }
 
 /// The invoicing module. The host adds it with
@@ -454,6 +472,15 @@ impl WlInvoicing {
     /// `finance_manager`).
     pub fn dispute_escalation_role(mut self, role: &str) -> Self {
         self.config.dispute_escalation_role = role.to_owned();
+        self
+    }
+
+    /// The role whose holders get the ticket of a dispute (the first holder
+    /// is the assignee, every holder is told) instead of the invoice's owner
+    /// or the holders of `invoices.issue` (default none; 04: the engagement
+    /// manager).
+    pub fn dispute_ticket_role(mut self, role: &str) -> Self {
+        self.config.dispute_ticket_role = Some(role.to_owned());
         self
     }
 
@@ -744,6 +771,43 @@ impl WlInvoicing {
         self
     }
 
+    /// Whether `FIN.RUL.06` suspends a subscription after its last retry
+    /// (default on; 04 turns it off).
+    pub fn subscription_suspension(mut self, on: bool) -> Self {
+        self.config.subscription_suspension = on;
+        self
+    }
+
+    /// The days after `mark_past_due` at which `FIN.RUL.06` retries or
+    /// reminds (default 1, 3, 7). Sorted; zero and repeats are dropped.
+    pub fn subscription_retry_days(mut self, days: &[u32]) -> Self {
+        let mut steps: Vec<u32> = days.iter().copied().filter(|d| *d > 0).collect();
+        steps.sort_unstable();
+        steps.dedup();
+        self.config.subscription_retry_days = steps;
+        self
+    }
+
+    /// The days a user may pause a subscription per calendar year (default
+    /// 0: no limit). A system pause never counts.
+    pub fn subscription_pause_allowance(mut self, days: u32) -> Self {
+        self.config.subscription_pause_allowance_days = days;
+        self
+    }
+
+    /// Whether the party may cancel its subscription (default off).
+    pub fn subscription_party_may_cancel(mut self, on: bool) -> Self {
+        self.config.subscription_party_may_cancel = on;
+        self
+    }
+
+    /// Whether a user or party cancel gives a final pro rata invoice or
+    /// credit (default off).
+    pub fn subscription_pro_rata_on_cancel(mut self, on: bool) -> Self {
+        self.config.subscription_pro_rata_on_cancel = on;
+        self
+    }
+
     /// The module's settings.
     pub fn config(&self) -> &InvoicingConfig {
         &self.config
@@ -791,6 +855,7 @@ impl Module for WlInvoicing {
             .merge(cash_forecast_pages::routes())
             .merge(drawing_pages::routes())
             .merge(einvoice_pages::routes())
+            .merge(subscription_pages::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -798,6 +863,74 @@ impl Module for WlInvoicing {
     }
 
     fn register(&self, app: &mut Registry) {
+        // An invoice is looked after by the people of its scope unit (the
+        // building it was billed for): the approvers of its write-off, credit
+        // or dispute are looked for there, not only among the holders of a
+        // global role. The scope unit's own scope is the vertical's
+        // (`wl_kernel::scopes::register` for its subject type).
+        wl_kernel::scopes::register(wl_kernel::invoicing::INVOICE_SUBJECT_TYPE, |db, id| {
+            Box::pin(async move {
+                let Some(invoice) = Invoice::find(db, id).await? else {
+                    return Ok(renox::auth::permissions::Scope::global());
+                };
+                match (invoice.scope_type, invoice.scope_id) {
+                    (Some(kind), Some(unit)) => {
+                        wl_kernel::scopes::scope_of(db, &wl_kernel::Subject::new(&kind, unit)).await
+                    }
+                    _ => Ok(renox::auth::permissions::Scope::global()),
+                }
+            })
+        });
+        // Where a page names an invoice (a cheque's documents): its number.
+        wl_kernel::documents::register_subject_label(
+            wl_kernel::invoicing::INVOICE_SUBJECT_TYPE,
+            |db, id| {
+                Box::pin(async move {
+                    Ok(Invoice::find(db, id).await?.map(|invoice| {
+                        invoice
+                            .number
+                            .clone()
+                            .unwrap_or_else(|| format!("Draft #{}", invoice.id))
+                    }))
+                })
+            },
+        );
+        // And the other way, for the lists: the invoices billed for the
+        // buildings (or other scope units) a user holds a permission in.
+        wl_kernel::scopes::register_derived_members(
+            wl_kernel::invoicing::INVOICE_SUBJECT_TYPE,
+            |db, scopes| {
+                Box::pin(async move {
+                    let reach = wl_kernel::scopes::Reach::only(scopes.to_vec());
+                    let query = reach
+                        .apply(db, Invoice::query(), "scope_type", "scope_id")
+                        .await?;
+                    Ok(query.get(db).await?.into_iter().map(|i| i.id).collect())
+                })
+            },
+        );
+        wl_kernel::scopes::register_derived_members(
+            wl_kernel::invoicing::CREDIT_NOTE_SUBJECT_TYPE,
+            |db, scopes| {
+                Box::pin(async move {
+                    let reach = wl_kernel::scopes::Reach::only(scopes.to_vec());
+                    let invoices = reach
+                        .ids(db, wl_kernel::invoicing::INVOICE_SUBJECT_TYPE)
+                        .await?
+                        .unwrap_or_default();
+                    if invoices.is_empty() {
+                        return Ok(Vec::new());
+                    }
+                    Ok(CreditNote::query()
+                        .where_in("invoice_id", invoices)
+                        .get(db)
+                        .await?
+                        .into_iter()
+                        .map(|note| note.id)
+                        .collect())
+                })
+            },
+        );
         app.model::<cash_balance::OpeningCashBalance>();
         app.model::<cash_alert::CashAlert>();
         app.model::<EInvoiceTransmission>();
@@ -833,6 +966,11 @@ impl Module for WlInvoicing {
             .model::<UsageRecord>()
             .model::<UsageAdjustment>()
             .model::<BillRecoding>()
+            .model::<Subscription>()
+            .model::<SubscriptionPause>()
+            .model::<SubscriptionCycle>()
+            .view_data::<subscription_pages::IndexPage>()
+            .view_data::<subscription_pages::ShowPage>()
             .view_data::<pages::IndexPage>()
             .view_data::<pages::ShowPage>()
             .view_data::<vat_pages::IndexPage>()
@@ -922,7 +1060,7 @@ impl Module for WlInvoicing {
         app.nav(
             "app",
             NavLink::route("wl_invoicing.credit_notes", "nav.credit_notes")
-                .icon("receipt-text")
+                .icon("file-text")
                 .group("nav.app")
                 .order(40)
                 .permission(permissions::VIEW),
@@ -931,7 +1069,7 @@ impl Module for WlInvoicing {
         app.nav(
             "app",
             NavLink::route("wl_invoicing.vat_summaries", "nav.vat_summaries")
-                .icon("landmark")
+                .icon("percent")
                 .group("nav.app")
                 .order(41)
                 .permission(permissions::VAT_VIEW),
@@ -949,7 +1087,7 @@ impl Module for WlInvoicing {
         app.nav(
             "app",
             NavLink::route("wl_invoicing.tasks", "nav.reversal_tasks")
-                .icon("list-checks")
+                .icon("clipboard-list")
                 .group("nav.app")
                 .order(43)
                 .permission(permissions::RECEIVABLES_VIEW),
@@ -958,7 +1096,7 @@ impl Module for WlInvoicing {
         app.nav(
             "app",
             NavLink::route("wl_invoicing.budgets", "nav.budgets")
-                .icon("wallet")
+                .icon("chart-pie")
                 .group("nav.app")
                 .order(45)
                 .permission(permissions::BUDGETS_VIEW),
@@ -987,7 +1125,7 @@ impl Module for WlInvoicing {
         app.nav(
             "app",
             NavLink::route("wl_invoicing.einvoices", "nav.einvoices")
-                .icon("send")
+                .icon("upload")
                 .group("nav.app")
                 .order(48)
                 .permission(permissions::EINVOICES_VIEW),
@@ -1063,6 +1201,12 @@ impl Module for WlInvoicing {
         });
         renox::state_machine::register::<EInvoiceTransmission>();
         register_asp_connections(&self.config);
+        // The *Look up* of a company's recipient identifier (wl-parties)
+        // asks the entity's ASP adapter.
+        wl_kernel::einvoice::provide_recipient_lookup(
+            app,
+            einvoice_adapter::AdapterLookup::of(&self.config),
+        );
         einvoice_send::register(app);
         // `FIN.RUL.23` and `FIN.RUL.25`: the notice type and the daily check
         // of the projected cash balance and of the bank balances.
@@ -1078,6 +1222,22 @@ impl Module for WlInvoicing {
         // a drawing through the kernel, and hears when it ends.
         wl_kernel::drawings::provide_owner_drawings(app, owner_drawings::Drawings);
         owner_drawings::register(app);
+        // The Subscription (§4): its machine, the verticals' contract, the
+        // block effect, the listeners (reopened and paid cycle invoices,
+        // party blocks), the party notices and the daily
+        // `invoicing:subscriptions` (billing and `FIN.RUL.06`).
+        renox::state_machine::register::<Subscription>();
+        wl_kernel::subscriptions::provide_subscriptions(app, SubscriptionBook);
+        subscriptions::register(app);
+        // The subscriptions (`nav.subscriptions`).
+        app.nav(
+            "app",
+            NavLink::route("wl_invoicing.subscriptions", "nav.subscriptions")
+                .icon("refresh-cw")
+                .group("nav.app")
+                .order(44)
+                .permission(permissions::SUBSCRIPTIONS_VIEW),
+        );
     }
 }
 
@@ -1110,7 +1270,12 @@ mod tests {
                 DuplicateKey::SupplierInvoiceNumber,
                 DuplicateKey::ContractPeriodAmount,
             ])
-            .duplicate_notify_role("finance");
+            .duplicate_notify_role("finance")
+            .subscription_suspension(false)
+            .subscription_retry_days(&[7, 0, 2, 7])
+            .subscription_pause_allowance(30)
+            .subscription_party_may_cancel(true)
+            .subscription_pro_rata_on_cancel(true);
         let config = module.config();
         assert_eq!(config.payment_terms_days, 14);
         assert_eq!(config.reminder_steps, [-3, 7]);
@@ -1140,5 +1305,10 @@ mod tests {
             ]
         );
         assert_eq!(config.duplicate_notify_role, "finance");
+        assert!(!config.subscription_suspension);
+        assert_eq!(config.subscription_retry_days, [2, 7]);
+        assert_eq!(config.subscription_pause_allowance_days, 30);
+        assert!(config.subscription_party_may_cancel);
+        assert!(config.subscription_pro_rata_on_cancel);
     }
 }

@@ -30,7 +30,8 @@ use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 use wl_kernel::Subject;
 use wl_kernel::documents::guard;
-use wl_kernel::workforce::{EmployeeId, Qualifications, WorkforceFuture};
+use wl_kernel::qualifications::{QualificationFuture, QualificationStatus, Qualifications};
+use wl_kernel::workforce::EmployeeId;
 
 use crate::employee::Employee;
 
@@ -255,22 +256,23 @@ impl Qualifications for Quals {
         employee: EmployeeId,
         kind: &'a str,
         on_date: NaiveDate,
-    ) -> WorkforceFuture<'a, bool> {
-        Box::pin(qualification_valid(state, employee, kind, on_date))
-    }
-
-    fn qualification_valid_for<'a>(
-        &'a self,
-        state: &'a AppState,
-        employee: EmployeeId,
-        kind: &'a str,
-        on_date: NaiveDate,
-        role: &'a str,
-        scope: &'a Subject,
-    ) -> WorkforceFuture<'a, bool> {
-        Box::pin(qualification_valid_for(
-            state, employee, kind, on_date, role, scope,
-        ))
+        role: Option<&'a str>,
+        scope: Option<&'a Subject>,
+    ) -> QualificationFuture<'a, QualificationStatus> {
+        Box::pin(async move {
+            let asked = match (role, scope) {
+                (Some(role), Some(scope)) => Some((role, scope)),
+                _ => None,
+            };
+            let valid = answer(state, employee, kind, on_date, asked).await?;
+            let rows = Qualification::of_kind(&state.db, employee.0, kind).await?;
+            let found = rows.iter().max_by_key(|q| q.valid_to);
+            Ok(QualificationStatus {
+                valid,
+                number: found.map(|q| q.number.clone()),
+                valid_to: found.and_then(|q| q.valid_to),
+            })
+        })
     }
 }
 

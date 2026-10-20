@@ -5,6 +5,8 @@
 
 #![allow(dead_code)]
 
+pub mod subscriptions;
+
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -47,6 +49,9 @@ use wl_kernel::payments::{
     AllocationTarget, BankPayment, Direction, PaymentFuture, PaymentId, PaymentMethod,
     PaymentRecorder, PaymentStatus, PaymentSummary, RecordPayment, RefundId, RefundRequest,
     ReversalReason, UnpaidRefund,
+};
+use wl_kernel::subscriptions::{
+    SubscriptionCancelled, SubscriptionPastDue, SubscriptionSettled, SubscriptionSuspended,
 };
 use wl_kernel::tickets::{
     ContractCover, OpenTicket, ServiceContractCoverage, ServiceContractId, TaskCreator,
@@ -94,12 +99,25 @@ pub const BLOCKED_PARTY: PartyId = PartyId(3);
 /// An individual: a B2C recipient, outside the e-invoicing mandate.
 pub const OMAR: PartyId = PartyId(4);
 
-/// The parties the tests bill. Cloning shares the recipient identifiers a
-/// test sets.
+/// The parties the tests bill. Cloning shares the recipient identifiers and
+/// the blocks a test sets.
 #[derive(Debug, Clone, Default)]
-pub struct TestDirectory(Arc<Mutex<std::collections::BTreeMap<i64, String>>>);
+pub struct TestDirectory(
+    Arc<Mutex<std::collections::BTreeMap<i64, String>>>,
+    Arc<Mutex<std::collections::BTreeSet<i64>>>,
+);
 
 impl TestDirectory {
+    /// Makes `party` `blocked` (or active again) for status reads.
+    pub fn set_blocked(&self, party: PartyId, blocked: bool) {
+        let mut set = self.1.lock().unwrap();
+        if blocked {
+            set.insert(party.0);
+        } else {
+            set.remove(&party.0);
+        }
+    }
+
     /// Sets (or clears) the e-invoicing recipient identifier of `party`.
     pub fn set_recipient(&self, party: PartyId, identifier: Option<&str>) {
         let mut map = self.0.lock().unwrap();
@@ -160,8 +178,9 @@ impl PartyDirectory for TestDirectory {
     }
 
     fn status<'a>(&'a self, _db: &'a Db, party: PartyId) -> PartyFuture<'a, Option<PartyStatus>> {
-        // Party 3 is blocked (the cash-flow forecast tests).
-        let status = if party == BLOCKED_PARTY {
+        // Party 3 is blocked (the cash-flow forecast tests), and those a
+        // test blocked.
+        let status = if party == BLOCKED_PARTY || self.1.lock().unwrap().contains(&party.0) {
             PartyStatus::Blocked
         } else {
             PartyStatus::Active
@@ -853,6 +872,14 @@ pub struct Booted {
     pub einvoice_rejected: Recorded<EInvoiceRejected>,
     /// The test parties' directory: set a recipient identifier here.
     pub directory: TestDirectory,
+    /// `SubscriptionPastDue`.
+    pub sub_past_due: Recorded<SubscriptionPastDue>,
+    /// `SubscriptionSuspended`.
+    pub sub_suspended: Recorded<SubscriptionSuspended>,
+    /// `SubscriptionSettled`.
+    pub sub_settled: Recorded<SubscriptionSettled>,
+    /// `SubscriptionCancelled`.
+    pub sub_cancelled: Recorded<SubscriptionCancelled>,
 }
 
 impl Booted {
@@ -1672,6 +1699,10 @@ pub async fn boot_all(
     let drawing_decided = Recorded::new();
     let einvoice_accepted = Recorded::new();
     let einvoice_rejected = Recorded::new();
+    let sub_past_due = Recorded::new();
+    let sub_suspended = Recorded::new();
+    let sub_settled = Recorded::new();
+    let sub_cancelled = Recorded::new();
     let tickets = TicketDesk::default();
     let creator: Arc<dyn TaskCreator> = Arc::new(tickets.clone());
     let contracts = ContractDesk::default();
@@ -1726,6 +1757,10 @@ pub async fn boot_all(
     let app = record(app, &drawing_decided);
     let app = record(app, &einvoice_accepted);
     let app = record(app, &einvoice_rejected);
+    let app = record(app, &sub_past_due);
+    let app = record(app, &sub_suspended);
+    let app = record(app, &sub_settled);
+    let app = record(app, &sub_cancelled);
     let config = ClientConfig::parse(CLIENT).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     let dir = views.path().to_path_buf();
@@ -1758,6 +1793,8 @@ pub async fn boot_all(
         perm::BUDGET_CATEGORIES_MANAGE,
         perm::CASHFLOW_VIEW,
         perm::CASHFLOW_MANAGE,
+        perm::SUBSCRIPTIONS_VIEW,
+        perm::SUBSCRIPTIONS_MANAGE,
     ];
     permissions::define_role(app.db(), "admin", &all)
         .await
@@ -1840,6 +1877,10 @@ pub async fn boot_all(
         einvoice_accepted,
         einvoice_rejected,
         directory: directory_state,
+        sub_past_due,
+        sub_suspended,
+        sub_settled,
+        sub_cancelled,
     }
 }
 

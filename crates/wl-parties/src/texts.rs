@@ -707,6 +707,7 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_parties.tasks.notice_hint",
         "Times are shown in Asia/Dubai.",
     ),
+    ("wl_parties.documents.button", "Documents"),
     (
         "wl_parties.fields.einvoice_recipient_id",
         "E-invoicing recipient ID",

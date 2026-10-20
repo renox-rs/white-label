@@ -1,9 +1,10 @@
 # 0002 — Document all ten verticals before writing any code
 
-- **Status:** accepted
+- **Status:** accepted; build order superseded by [0005](0005-phases-follow-vertical-numbers.md)
 - **Date:** 2026-10-14
 - **Amends:** [0001](0001-first-two-verticals.md). Its build order (Property, then Manpower)
-  still applies once development starts.
+  applied when development started; [0005](0005-phases-follow-vertical-numbers.md) replaced it
+  (phases follow the vertical numbers, Manpower is F9).
 
 ## Context
 
@@ -47,5 +48,5 @@ Order of work:
 
 - [ARCHITECTURE.md](../ARCHITECTURE.md) §6 (module × app matrix) is a first guess. It is
   replaced by [CAPABILITY-MAP.md](../CAPABILITY-MAP.md) once the map exists.
-- The roadmap phases F0–F4 start only after this phase is done and the module list is
+- The roadmap phases F0–F10 start only after this phase is done and the module list is
   approved.

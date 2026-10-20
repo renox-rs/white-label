@@ -1,0 +1,61 @@
+{#- accounting: an AML case: the facts, the confirmed matches with their
+    freeze and report tasks, the history, and the MLRO's actions (Review,
+    Close, Report). Only the MLRO and deputy reach it (ACC.ACL.05). Replace it
+    with resources/views/accounting/aml_case.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="number">
+  <rx-stack>
+    <rx-page-header :title="number" :subtitle="client" :back="route('accounting.aml_cases')" :back-label="tx['aml.title']"
+                    :badge="status" :badge-kind="status_kind">
+      <template rx-if="can_review">
+        <rx-confirm :id="'aml-review-' ~ id" :label="tx['aml.review']" :action="route('accounting.aml_case_review', id)" method="POST"
+                    :title="tx['aml.review']" :message="tx['aml.review_message']" :confirm-label="tx['aml.review']" :cancel-label="tx['button_cancel']" icon="search"/>
+      </template>
+      <template rx-if="can_close">
+        <rx-action-sheet :id="'aml-close-' ~ id" :label="tx['aml.close']" :action="route('accounting.aml_case_close', id)"
+                         :title="tx['aml.close']" :description="tx['aml.close_description']" :submit-label="tx['aml.close']" icon="check">
+          <rx-textarea name="reason" :label="tx['aml.reason']" :id="'aml-close-reason-' ~ id" required/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_report">
+        <rx-action-sheet :id="'aml-report-' ~ id" :label="tx['aml.report']" :action="route('accounting.aml_case_report', id)"
+                         :title="tx['aml.report']" :description="tx['aml.report_description']" :submit-label="tx['aml.report']" icon="file-warning">
+          <rx-input name="reference" :label="tx['aml.goaml_reference']" :id="'aml-report-reference-' ~ id" required/>
+          <rx-input name="date" type="date" :label="tx['aml.goaml_date']" :value="today" :id="'aml-report-date-' ~ id" required/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_decide">
+        <rx-action-sheet :id="'aml-decide-' ~ id" :label="tx['aml.decide']" :action="route('accounting.aml_case_decision', id)"
+                         :title="tx['aml.decide']" :description="tx['aml.decide_description']" :submit-label="tx['aml.decide']" icon="scale">
+          <rx-select name="decision" :label="tx['aml.decision']" :options="decision_options" :selected="'continue'" :id="'aml-decide-decision-' ~ id"/>
+          <rx-textarea name="note" :label="tx['aml.decision_note']" :id="'aml-decide-note-' ~ id"/>
+        </rx-action-sheet>
+      </template>
+    </rx-page-header>
+    <rx-alert rx-if="block_note" kind="warning" :message="block_note"/>
+    <rx-card :title="tx['aml.details']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['aml.client']" :value="client"/>
+        <rx-entry :label="tx['aml.kind']" :value="kind"/>
+        <rx-entry :label="tx['aml.raised_by']" :value="raised_by"/>
+        <rx-entry :label="tx['aml.facts']" :value="facts"/>
+        <rx-entry rx-if="goaml_reference" :label="tx['aml.goaml_reference']" :value="goaml_reference"/>
+        <rx-entry rx-if="goaml_date" :label="tx['aml.goaml_date']" :value="goaml_date"/>
+        <rx-entry rx-if="decision" :label="tx['aml.decision']" :value="decision"/>
+        <rx-entry rx-if="closing_reason" :label="tx['aml.closing_reason']" :value="closing_reason"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-table :rows="matches" as="row" :key="row.party ~ row.list" :caption="tx['aml.matches']" card>
+      <rx-column :label="tx['aml.match_party']">{{ row.party }}</rx-column>
+      <rx-column :label="tx['aml.match_role']">{{ row.role }}</rx-column>
+      <rx-column :label="tx['aml.match_list']">{{ row.list }}</rx-column>
+      <rx-column :label="tx['aml.match_tasks']">{{ row.tasks }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['aml.matches_empty']" icon="shield"/></rx-slot>
+    </rx-table>
+    <rx-table :rows="history" as="row" :key="row.at ~ row.action" :caption="tx['aml.history']" card>
+      <rx-column :label="tx['history.at']">{{ row.at }}</rx-column>
+      <rx-column :label="tx['history.action']">{{ row.action }}</rx-column>
+      <rx-column :label="tx['history.by']" hide-narrow>{{ row.by }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['history.empty']" icon="history"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

@@ -35,6 +35,7 @@ mod deposit_machine;
 pub mod deposit_pages;
 pub mod drawings;
 mod events;
+pub mod expense_actual;
 pub mod expense_category;
 pub mod expense_claim;
 pub mod expense_claim_pages;
@@ -54,6 +55,7 @@ pub mod refund_pages;
 pub mod refund_recover;
 pub mod refund_retry;
 pub mod reverse;
+mod scoped;
 pub mod seed;
 pub mod set_off;
 mod texts;
@@ -418,6 +420,8 @@ impl Module for WlPayments {
     }
 
     fn register(&self, app: &mut Registry) {
+        // The payments of some scopes, for the lists (`scoped.rs`).
+        scoped::register();
         // Money out to a blocked party waits for an approved exception
         // (`PTY.ACL.03`): the deposit refund is guarded as `money_out`.
         wl_kernel::SubjectMachine::of::<Deposit>(wl_kernel::payments::DEPOSIT_SUBJECT_TYPE)
@@ -493,7 +497,7 @@ impl Module for WlPayments {
         app.nav(
             "app",
             NavLink::route("wl_payments.index", "nav.payments")
-                .icon("wallet")
+                .icon("credit-card")
                 .group("nav.app")
                 .order(42)
                 .permission(permissions::VIEW),
@@ -501,7 +505,7 @@ impl Module for WlPayments {
         app.nav(
             "app",
             NavLink::route("wl_payments.refunds.index", "nav.refunds")
-                .icon("undo-2")
+                .icon("refresh-cw")
                 .group("nav.app")
                 .order(43)
                 .permission(permissions::VIEW),
@@ -509,7 +513,7 @@ impl Module for WlPayments {
         app.nav(
             "app",
             NavLink::route("wl_payments.deposits.index", "nav.deposits")
-                .icon("piggy-bank")
+                .icon("hand-coins")
                 .group("nav.app")
                 .order(44)
                 .permission(permissions::DEPOSITS_VIEW),
@@ -517,7 +521,7 @@ impl Module for WlPayments {
         app.nav(
             "app",
             NavLink::route("wl_payments.cheques.index", "nav.cheques")
-                .icon("landmark")
+                .icon("banknote")
                 .group("nav.app")
                 .order(45)
                 .permission(permissions::CHEQUES_VIEW),
@@ -525,7 +529,7 @@ impl Module for WlPayments {
         app.nav(
             "app",
             NavLink::route("wl_payments.bank_statements.index", "nav.bank_statements")
-                .icon("file-spreadsheet")
+                .icon("file")
                 .group("nav.app")
                 .order(46)
                 .permission(permissions::BANK_RECONCILE),
@@ -574,6 +578,8 @@ impl Module for WlPayments {
         // `FIN.ACL.21`: an owner drawing is recorded only after its approval.
         drawings::register_types();
         drawings::register(app);
+        // Approved expense claim lines count in budget vs actual (FIN.BUD.01).
+        expense_actual::register();
         // The decision on the drawing of an expense claim.
         expense_claim::register(app);
         // `DepositSettled` after a commit.
