@@ -41,6 +41,22 @@
         <rx-action-sheet :id="'engagement-end-' ~ engagement.id" :label="tx['engagements.end']" :action="route('accounting.engagement_end', engagement.id)"
                          :title="tx['engagements.end']" :description="tx['engagements.reason_description']" :submit-label="tx['engagements.end']" icon="circle-x">
           <rx-select name="reason" :label="tx['engagements.reason']" :options="end_reasons" :selected="''" :id="'engagement-end-reason-' ~ engagement.id"/>
+          <rx-input name="end_date" type="date" :label="tx['engagements.end_date']" :id="'engagement-end-date-' ~ engagement.id"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_unschedule">
+        <rx-confirm :id="'engagement-end-remove-' ~ engagement.id" :label="tx['engagements.unschedule_end']" :action="route('accounting.engagement_unschedule_end', engagement.id)" method="POST"
+                    :title="tx['engagements.unschedule_end']" :message="tx['engagements.unschedule_end_message']" :confirm-label="tx['engagements.unschedule_end']" :cancel-label="tx['button_cancel']" icon="calendar-x"/>
+      </template>
+      <template rx-if="can_confirm_nothing">
+        <rx-confirm :id="'engagement-nothing-to-bill-' ~ engagement.id" :label="tx['engagements.nothing_to_bill']" :action="route('accounting.engagement_nothing_to_bill', engagement.id)" method="POST"
+                    :title="tx['engagements.nothing_to_bill']" :message="tx['engagements.nothing_to_bill_message']" :confirm-label="tx['engagements.nothing_to_bill']" :cancel-label="tx['button_cancel']" icon="receipt"/>
+      </template>
+      <template rx-if="can_write_off">
+        <rx-action-sheet :id="'engagement-wip-write-off-' ~ engagement.id" :label="tx['wip.write_off']" :action="route('accounting.engagement_wip_write_off', engagement.id)"
+                         :title="tx['wip.write_off']" :description="tx['wip.write_off_description']" :submit-label="tx['wip.write_off']" icon="eraser">
+          <rx-input name="amount" :label="tx['wip.amount']" :id="'engagement-wip-amount-' ~ engagement.id" required/>
+          <rx-textarea name="reason" :label="tx['wip.reason']" :id="'engagement-wip-reason-' ~ engagement.id" required/>
         </rx-action-sheet>
       </template>
       <template rx-if="send_notice_id">
@@ -54,6 +70,32 @@
       </template>
     </rx-page-header>
     <rx-alert rx-if="resume_needs_approval and can_resume" kind="info" :message="tx['engagements.resume_needs_approval']"/>
+    <rx-alert rx-if="scheduled_end" kind="warning" :message="scheduled_end"/>
+    <template rx-if="can_end">
+      <rx-table :rows="end_problems" as="row" :key="row" :caption="tx['engagements.end_checklist']" card>
+        <rx-column :label="tx['engagements.end_open_item']">{{ row }}</rx-column>
+        <rx-slot name="empty"><rx-empty :title="tx['engagements.end_checklist_clear']" icon="check"/></rx-slot>
+      </rx-table>
+      <rx-card :title="tx['wip.title']">
+        <rx-infolist columns="2">
+          <rx-entry :label="tx['wip.unbilled']" :value="unbilled"/>
+        </rx-infolist>
+      </rx-card>
+    </template>
+    <rx-table :rows="returns" as="row" :key="row.id" :caption="tx['returns.title']" card>
+      <rx-column :label="tx['returns.number']"><a href="{{ route('accounting.return', row.id) }}">{{ row.number }}</a></rx-column>
+      <rx-column :label="tx['returns.kind']">{{ row.kind }}</rx-column>
+      <rx-column :label="tx['returns.period']" hide-narrow>{{ row.period }}</rx-column>
+      <rx-column :label="tx['returns.due']">{{ row.due }}</rx-column>
+      <rx-column :label="tx['fields.status']"><rx-badge :kind="row.status_kind" :text="row.status"/></rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['returns.empty']" icon="file-text"/></rx-slot>
+    </rx-table>
+    <rx-table :rows="write_offs" as="row" :key="row.amount ~ row.reason ~ row.status" :caption="tx['wip.write_offs']" card>
+      <rx-column :label="tx['wip.amount_column']">{{ row.amount }}</rx-column>
+      <rx-column :label="tx['wip.reason']">{{ row.reason }}</rx-column>
+      <rx-column :label="tx['fields.status']">{{ row.status }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['wip.write_offs_empty']" icon="eraser"/></rx-slot>
+    </rx-table>
     <template rx-if="show_overdue">
       <rx-table :rows="overdue_invoices" as="row" :key="row.number" :caption="tx['engagements.overdue_invoices'] ~ ': ' ~ overdue_total" card>
         <rx-column :label="tx['engagements.invoice_number']">{{ row.number }}</rx-column>

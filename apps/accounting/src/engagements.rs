@@ -2,7 +2,8 @@
 //! the machine's guards need and running the transition (04 §7.1
 //! *Engagement*). The effects of `suspend` and `resume` on tasks, retainer,
 //! request lists and notices run after the commit ([`crate::events`],
-//! BL-ACC-03 to BL-ACC-05); those of `end` come with BL-ACC-06.
+//! BL-ACC-03 to BL-ACC-05); so do those of `end` ([`crate::ending`],
+//! BL-ACC-06).
 
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
@@ -15,7 +16,6 @@ use wl_kernel::invoicing::{InvoiceSummary, invoicer};
 use wl_kernel::parties::{PartyStatus, directory};
 
 use crate::activation;
-use crate::cdd::CddFile;
 use crate::db::{refused, set_engagement};
 use crate::engagement::{Engagement, EngagementStatus, NewEngagement};
 use crate::engagement_machine::{
@@ -24,7 +24,7 @@ use crate::engagement_machine::{
 use crate::permissions;
 use crate::reasons::{self, NOT_ACCEPTED};
 use crate::texts::english;
-use crate::{deadline_notices, request_lists, suspension};
+use crate::{deadline_notices, ending, request_lists, suspension};
 
 /// The engagement `id`, or 404.
 async fn load(state: &AppState, id: i64) -> Result<Engagement> {
@@ -275,23 +275,44 @@ pub async fn after_resume(state: &AppState, id: i64, on: NaiveDate) -> Result {
     Ok(())
 }
 
-/// `by` ends engagement `id` today with the neutral `reason` (one of
-/// [`reasons::END_REASONS`]). After a CDD exit or rejection of the client
-/// the stored reason is always *relationship ended* and nothing goes to the
-/// client automatically (`ACC.ACL.14`).
+/// `by` ends engagement `id` today (Asia/Dubai) with the neutral `reason`
+/// (one of [`reasons::END_REASONS`]); see [`end_on`].
 ///
 /// # Errors
 ///
-/// As the transition.
+/// As [`end_on`].
 pub async fn end(state: &AppState, by: &AuthUser, id: i64, reason: &str) -> Result<Engagement> {
+    end_on(state, by, id, reason, today()).await
+}
+
+/// `by` ends engagement `id` on `on` with the neutral `reason` (one of
+/// [`reasons::END_REASONS`]). Today it ends at once, if the End checklist is
+/// clear ([`ending::checklist`]: every open return filed or cancelled, the
+/// unbilled time billed or written off, a final invoice or credit issued);
+/// a later date is scheduled and the engagement stays as it is until the
+/// daily run ends it ([`ending::run_scheduled`]); a past date is refused.
+/// After a CDD exit or rejection of the client the stored reason is always
+/// *relationship ended* and nothing goes to the client automatically
+/// (`ACC.ACL.14`). After the commit `ACC.RUL.09` sends or prepares the
+/// deadline notice, then the retainer is cancelled and the tasks are waived
+/// or listed ([`ending::after_end`], [`crate::events`]).
+///
+/// # Errors
+///
+/// As the transition: `Forbidden` without `engagements.end`; a 422 listing
+/// the open items of the checklist, or for a past end date.
+pub async fn end_on(
+    state: &AppState,
+    by: &AuthUser,
+    id: i64,
+    reason: &str,
+    on: NaiveDate,
+) -> Result<Engagement> {
+    if on > today() {
+        return ending::schedule(state, by, id, on, reason).await;
+    }
     let engagement = load(state, id).await?;
-    let restricted = CddFile::current(&state.db, engagement.client())
-        .await?
-        .is_some_and(|file| file.ended_relationship());
-    let input = EngagementInput {
-        restricted,
-        ..EngagementInput::on(today())
-    };
+    let input = ending::end_input(state, &engagement, on).await?;
     let _outcome = engagement
         .transition(END)
         .by(by)

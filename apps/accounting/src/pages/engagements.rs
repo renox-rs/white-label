@@ -12,6 +12,10 @@
 //! | `POST /accounting/engagements/{id}/suspend` | `accounting.engagement_suspend` | `engagements.manage` |
 //! | `POST /accounting/engagements/{id}/resume` | `accounting.engagement_resume` | `engagements.manage` |
 //! | `POST /accounting/engagements/{id}/end` | `accounting.engagement_end` | `engagements.end` |
+//! | `POST /accounting/engagements/{id}/end/remove` | `accounting.engagement_unschedule_end` | `engagements.end` |
+//! | `POST /accounting/engagements/{id}/nothing-to-bill` | `accounting.engagement_nothing_to_bill` | `engagements.end` |
+//! | `POST /accounting/engagements/{id}/wip-write-off` | `accounting.engagement_wip_write_off` | `wip.write_off` |
+//! | `GET /accounting/wip-write-offs/{id}` | `accounting.wip_write_off` | `engagements.view` |
 //! | `GET /accounting/engagements/export` | `accounting.engagements_export` | `engagements.view` |
 //! | `POST /accounting/engagements/{id}/client-notice` | `accounting.engagement_client_notice` | `parties.block_reason.view` |
 //!
@@ -30,10 +34,12 @@ use wl_kernel::PartyId;
 use wl_kernel::deadlines::deadline_tasks;
 use wl_kernel::documents::{dubai_text, today};
 
+use super::returns::{ReturnRow, rows as return_rows};
 use super::{Texts, invalid, parse_aed, parse_id, party_name, require, text, user_name};
 use crate::cdd::CddFile;
 use crate::client_notices::{self, ClientNotice, NeutralTemplate};
 use crate::deadline_notices::{self, DeadlineNotice};
+use crate::ending;
 use crate::engagement::{Engagement, EngagementStatus, FeeBasis, NewEngagement};
 use crate::engagement_machine::{DECLINE, END, SUSPEND};
 use crate::engagements;
@@ -41,6 +47,7 @@ use crate::permissions;
 use crate::reasons;
 use crate::tax_profile::TaxProfile;
 use crate::texts;
+use crate::wip::{self, WipWriteOff};
 
 /// The routes of the pages.
 pub fn routes() -> Routes {
@@ -63,6 +70,17 @@ pub fn routes() -> Routes {
         .name("accounting.engagement_resume")
         .post("/accounting/engagements/{id}/end", end)
         .name("accounting.engagement_end")
+        .post("/accounting/engagements/{id}/end/remove", unschedule_end)
+        .name("accounting.engagement_unschedule_end")
+        .post(
+            "/accounting/engagements/{id}/nothing-to-bill",
+            nothing_to_bill,
+        )
+        .name("accounting.engagement_nothing_to_bill")
+        .post("/accounting/engagements/{id}/wip-write-off", wip_write_off)
+        .name("accounting.engagement_wip_write_off")
+        .get("/accounting/wip-write-offs/{id}", wip_write_off_show)
+        .name("accounting.wip_write_off")
         .get("/accounting/engagements/export", export)
         .name("accounting.engagements_export")
         .post("/accounting/engagements/{id}/client-notice", client_notice)
@@ -385,6 +403,25 @@ pub(crate) struct ShowPage {
     overdue_invoices: Vec<OverdueRow>,
     overdue_total: String,
     resume_needs_approval: bool,
+    end_problems: Vec<String>,
+    returns: Vec<ReturnRow>,
+    unbilled: String,
+    can_write_off: bool,
+    can_confirm_nothing: bool,
+    scheduled_end: String,
+    can_unschedule: bool,
+    write_offs: Vec<WriteOffRow>,
+}
+
+/// One write-off of unbilled time of the engagement (`ACC.ACL.09`).
+#[derive(Serialize, Debug, Clone, PartialEq, Eq)]
+pub struct WriteOffRow {
+    /// The amount.
+    pub amount: String,
+    /// Why.
+    pub reason: String,
+    /// Waiting for a partner, written off or discarded.
+    pub status: String,
 }
 
 /// The options of a reason select for `transition`.
@@ -508,8 +545,62 @@ async fn show(
     } else {
         (Vec::new(), String::new())
     };
+    let endable = matches!(
+        found.status,
+        EngagementStatus::Active | EngagementStatus::Suspended
+    );
+    let partner = user.has_permission(permissions::ENGAGEMENTS_END);
+    let list = if endable {
+        Some(ending::checklist(&state, &found).await?)
+    } else {
+        None
+    };
+    let all_returns = crate::tax_return::Return::of_engagement(&state.db, found.id).await?;
+    let mut write_offs = Vec::new();
+    for write_off in WipWriteOff::of_engagement(&state.db, found.id).await? {
+        write_offs.push(WriteOffRow {
+            amount: crate::money_text(write_off.amount),
+            reason: write_off.reason.clone(),
+            status: text(&lang, &format!("wip.status.{}", write_off.status.as_str())),
+        });
+    }
+    let scheduled_end = match (found.end_scheduled_on, found.status) {
+        (Some(date), EngagementStatus::Active | EngagementStatus::Suspended) => texts::t_with(
+            &lang,
+            "accounting.engagements.end_scheduled_on",
+            &[
+                ("date", &date),
+                (
+                    "reason",
+                    &found
+                        .end_scheduled_reason
+                        .as_deref()
+                        .map(|code| reasons::label(&lang, code))
+                        .unwrap_or_default(),
+                ),
+            ],
+        ),
+        _ => String::new(),
+    };
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
+        end_problems: list
+            .as_ref()
+            .map(ending::Checklist::problems)
+            .unwrap_or_default(),
+        returns: return_rows(&state, &lang, &all_returns).await,
+        unbilled: list
+            .as_ref()
+            .map(|l| crate::money_text(l.unbilled))
+            .unwrap_or_default(),
+        can_write_off: user.has_permission(permissions::WIP_WRITE_OFF)
+            && found.accepts_time_entries()
+            && list.as_ref().is_some_and(|l| l.unbilled > 0),
+        can_confirm_nothing: partner
+            && list.as_ref().is_some_and(|l| !l.settled && l.unbilled == 0),
+        can_unschedule: partner && !scheduled_end.is_empty(),
+        scheduled_end,
+        write_offs,
         tasks,
         show_overdue,
         overdue_invoices,
@@ -749,18 +840,107 @@ async fn resume(
     Ok((Toast::success(message), renox::HxRefresh).into_response())
 }
 
-/// `POST /accounting/engagements/{id}/end`.
+/// The form of an end.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct EndForm {
+    /// The neutral reason code.
+    #[serde(default)]
+    pub reason: String,
+    /// The end date; today when empty. A later date is scheduled.
+    #[serde(default)]
+    pub end_date: String,
+}
+
+/// `POST /accounting/engagements/{id}/end`: ends the engagement today, or
+/// schedules the end for a later date.
 async fn end(
     State(state): State<AppState>,
     user: AuthUser,
     lang: Lang,
     Path(id): Path<i64>,
-    Form(form): Form<ReasonForm>,
+    Form(form): Form<EndForm>,
 ) -> Result<Response> {
-    engagements::end(&state, &user, id, &form.reason).await?;
+    let on = match form.end_date.trim() {
+        "" => today(),
+        date => date.parse().map_err(|_| invalid("end_date: YYYY-MM-DD"))?,
+    };
+    let engagement = engagements::end_on(&state, &user, id, &form.reason, on).await?;
+    let message = if engagement.status == EngagementStatus::Ended {
+        text(&lang, "engagements.ended")
+    } else {
+        text(&lang, "engagements.end_scheduled")
+    };
+    Ok((Toast::success(message), renox::HxRefresh).into_response())
+}
+
+/// `POST /accounting/engagements/{id}/end/remove`: removes the scheduled end.
+async fn unschedule_end(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    ending::unschedule(&state, &user, id).await?;
     Ok((
-        Toast::success(text(&lang, "engagements.ended")),
+        Toast::success(text(&lang, "engagements.end_unscheduled")),
         renox::HxRefresh,
     )
         .into_response())
+}
+
+/// `POST /accounting/engagements/{id}/nothing-to-bill`.
+async fn nothing_to_bill(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    ending::confirm_nothing_to_bill(&state, &user, id).await?;
+    Ok((
+        Toast::success(text(&lang, "engagements.nothing_confirmed")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// The form of a write-off of unbilled time.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct WriteOffForm {
+    /// The amount in dirhams.
+    #[serde(default)]
+    pub amount: String,
+    /// Why.
+    #[serde(default)]
+    pub reason: String,
+}
+
+/// `POST /accounting/engagements/{id}/wip-write-off`: written off at once up
+/// to 10% of the WIP, else sent to a partner (`ACC.ACL.09`).
+async fn wip_write_off(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<WriteOffForm>,
+) -> Result<Response> {
+    let amount = parse_aed(&form.amount).ok_or_else(|| invalid("amount: 1500.00"))?;
+    let done = wip::write_off(&state, &user, id, amount, &form.reason).await?;
+    let message = if done.approval_request.is_some() {
+        text(&lang, "wip.pending")
+    } else {
+        text(&lang, "wip.written_off")
+    };
+    Ok((Toast::success(message), renox::HxRefresh).into_response())
+}
+
+/// `GET /accounting/wip-write-offs/{id}`: the engagement page of the
+/// write-off (where "Needs your action" leads).
+async fn wip_write_off_show(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    require(&user, permissions::ENGAGEMENTS_VIEW)?;
+    let found = WipWriteOff::find_or_404(&state.db, id).await?;
+    Ok(Redirect::route("accounting.engagement", &[&found.engagement_id])?.into_response())
 }

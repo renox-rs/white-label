@@ -10,6 +10,7 @@
 //! | [`RESUME`] | suspended | active | `engagements.manage`, with a note; after a block, through the MLRO's approval |
 //! | [`RESUME_APPROVED`] | suspended | active | system (the MLRO approved the resume) |
 //! | [`END`] | active, suspended | ended | `engagements.end` |
+//! | [`AUTO_END`] | active, suspended | ended | system (the scheduled end) |
 //!
 //! Every reason is a neutral code of [`crate::reasons`], given with
 //! `.reason(code)` and kept on the row and in the history. The services in
@@ -58,6 +59,8 @@ pub const RESUME_ACTION: &str = "accounting.resume";
 pub const AFTER_BLOCK_KEY: &str = "after_block";
 /// The `end` transition's name.
 pub const END: &str = "end";
+/// The system's `end` on the date the partner scheduled (BL-ACC-06).
+pub const AUTO_END: &str = "auto_end";
 
 /// What a run carries to the guards and effects.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -84,6 +87,11 @@ pub struct EngagementInput {
     /// MLRO's approval ([`resume_policy`]); else 0.
     #[serde(default)]
     pub after_block: i64,
+    /// Every item of the End checklist still open, one line each, gathered
+    /// by the service before the run (`end`, `auto_end`); the guard refuses
+    /// while any is left.
+    #[serde(default)]
+    pub end_problems: Vec<String>,
 }
 
 impl EngagementInput {
@@ -129,6 +137,7 @@ impl StateMachine for Engagement {
             .transition(resume())
             .transition(resume_approved())
             .transition(end())
+            .transition(auto_end())
     }
 }
 
@@ -341,10 +350,56 @@ pub fn resume_policy() -> PolicyDefault {
         .step_or_permission([permissions::MLRO_ROLE], permissions::BLOCK_REASON_VIEW)
 }
 
+/// The guard and the effect `end` and `auto_end` share: the End checklist is
+/// clear (every open return filed or cancelled, the unbilled time billed or
+/// written off, a final invoice or credit issued or nothing to bill), and the
+/// end date, the reason and the restriction are kept; a scheduled end is
+/// cleared.
+fn ending(transition: Transition<Engagement>) -> Transition<Engagement> {
+    reason_in(transition, &reasons::END_REASONS)
+        .guard("checklist", |_e: &Engagement, ctx| {
+            let problems = input_of(ctx).end_problems;
+            Box::pin(async move {
+                if problems.is_empty() {
+                    Ok(())
+                } else {
+                    Err(problems.join("\n"))
+                }
+            })
+        })
+        .effect(|e: &Engagement, ctx, tx| {
+            let id = e.id;
+            let input = input_of(ctx);
+            let on = input.on.unwrap_or_else(today);
+            let code = if input.restricted {
+                Some(RELATIONSHIP_ENDED.to_owned())
+            } else {
+                ctx.reason().map(|r| r.trim().to_owned())
+            };
+            Box::pin(async move {
+                set_engagement(
+                    &mut *tx,
+                    id,
+                    &[
+                        ("ended_on", &Some(on)),
+                        ("reason_code", &code),
+                        ("client_messages_suppressed", &input.restricted),
+                        ("end_scheduled_on", &None::<NaiveDate>),
+                        ("end_scheduled_reason", &None::<String>),
+                        ("end_scheduled_by", &None::<i64>),
+                    ],
+                )
+                .await
+            })
+        })
+}
+
 /// `end`: active or suspended → ended, with a reason of
-/// [`reasons::END_REASONS`]. After a CDD exit or rejection the reason is
-/// always [`RELATIONSHIP_ENDED`] and restricted (`ACC.ACL.14`), whatever was
-/// chosen.
+/// [`reasons::END_REASONS`], on a date that is today or later (a later date
+/// is scheduled by the service, not run). After a CDD exit or rejection the
+/// reason is always [`RELATIONSHIP_ENDED`] and restricted (`ACC.ACL.14`),
+/// whatever was chosen. Refused while the End checklist has an open item
+/// (`ACC.ACL.09`, BL-ACC-06).
 fn end() -> Transition<Engagement> {
     let t = Transition::new(END)
         .label("End")
@@ -352,29 +407,31 @@ fn end() -> Transition<Engagement> {
         .permission(permissions::ENGAGEMENTS_END)
         .reason_required()
         .from([EngagementStatus::Active, EngagementStatus::Suspended])
+        .to(EngagementStatus::Ended)
+        .guard("end_date", |_e: &Engagement, ctx| {
+            let past = input_of(ctx).on.is_some_and(|on| on < today());
+            Box::pin(async move {
+                if past {
+                    Err(english("accounting.ending.problem.past_date", &[]))
+                } else {
+                    Ok(())
+                }
+            })
+        });
+    ending(t)
+}
+
+/// The system's `end` on the date the partner scheduled: the same guards
+/// and effects as [`END`], the end date being the scheduled date even when
+/// the run is later (an earlier try was refused by the checklist).
+fn auto_end() -> Transition<Engagement> {
+    let t = Transition::new(AUTO_END)
+        .label("End")
+        .system()
+        .reason_required()
+        .from([EngagementStatus::Active, EngagementStatus::Suspended])
         .to(EngagementStatus::Ended);
-    reason_in(t, &reasons::END_REASONS).effect(|e: &Engagement, ctx, tx| {
-        let id = e.id;
-        let input = input_of(ctx);
-        let on = input.on.unwrap_or_else(today);
-        let code = if input.restricted {
-            Some(RELATIONSHIP_ENDED.to_owned())
-        } else {
-            ctx.reason().map(|r| r.trim().to_owned())
-        };
-        Box::pin(async move {
-            set_engagement(
-                &mut *tx,
-                id,
-                &[
-                    ("ended_on", &Some(on)),
-                    ("reason_code", &code),
-                    ("client_messages_suppressed", &input.restricted),
-                ],
-            )
-            .await
-        })
-    })
+    ending(t)
 }
 
 /// Registers the machine for `rnx state:diagram` and the admin, with the
@@ -451,12 +508,25 @@ mod tests {
                     Some("ended"),
                     false
                 ),
+                (
+                    AUTO_END,
+                    vec!["active".into(), "suspended".into()],
+                    Some("ended"),
+                    true
+                ),
             ]
         );
         let activate = machine.find(ACTIVATE).unwrap();
         assert_eq!(activate.guard_names(), ["ready"]);
         assert!(machine.find(SUSPEND).unwrap().needs_reason());
-        assert_eq!(machine.find(END).unwrap().guard_names(), ["neutral_reason"]);
+        assert_eq!(
+            machine.find(END).unwrap().guard_names(),
+            ["end_date", "neutral_reason", "checklist"]
+        );
+        assert_eq!(
+            machine.find(AUTO_END).unwrap().guard_names(),
+            ["neutral_reason", "checklist"]
+        );
         assert_eq!(
             machine.find(RESUME).unwrap().guard_names(),
             ["note_given", "client_not_blocked"]

@@ -127,6 +127,7 @@ const TEXTS: &[(&str, &str)] = &[
         "Resumed (approved)",
     ),
     ("accounting.engagements.transition.end", "Ended"),
+    ("accounting.engagements.transition.auto_end", "Ended"),
     (
         "accounting.engagements.block_record",
         "Open the client's Block record",
@@ -862,6 +863,104 @@ const TEXTS: &[(&str, &str)] = &[
         "Replaced by a correction",
     ),
     ("accounting.portal.return_status.cancelled", "Cancelled"),
+    ("accounting.engagements.end_date", "End date (empty: today)"),
+    ("accounting.engagements.end_scheduled", "End scheduled."),
+    (
+        "accounting.engagements.end_scheduled_on",
+        "Ends on :date (:reason). The engagement stays as it is until then.",
+    ),
+    (
+        "accounting.engagements.unschedule_end",
+        "Remove the scheduled end",
+    ),
+    (
+        "accounting.engagements.unschedule_end_message",
+        "The engagement keeps running.",
+    ),
+    (
+        "accounting.engagements.end_unscheduled",
+        "Scheduled end removed.",
+    ),
+    (
+        "accounting.engagements.nothing_to_bill",
+        "Confirm nothing to bill",
+    ),
+    (
+        "accounting.engagements.nothing_to_bill_message",
+        "No final invoice or credit is owed on this engagement and no time is left to bill.",
+    ),
+    (
+        "accounting.engagements.nothing_confirmed",
+        "Confirmed: nothing to bill.",
+    ),
+    ("accounting.engagements.end_checklist", "Before it can end"),
+    ("accounting.engagements.end_open_item", "Still open"),
+    (
+        "accounting.engagements.end_checklist_clear",
+        "Nothing stands in the way of the end.",
+    ),
+    (
+        "accounting.ending.problem.past_date",
+        "The end date is today or later.",
+    ),
+    (
+        "accounting.ending.problem.open_return",
+        ":number (:type, period ending :period) is still :status: file it or cancel it.",
+    ),
+    (
+        "accounting.ending.problem.unbilled",
+        "Unbilled time of :amount: bill it or write it off.",
+    ),
+    (
+        "accounting.ending.problem.no_settlement",
+        "No final invoice or credit is issued: bill what is owed, or confirm that there is nothing to bill.",
+    ),
+    (
+        "accounting.ending.problem.not_endable",
+        "Only an active or suspended engagement can end.",
+    ),
+    (
+        "accounting.ending.task_title",
+        "The scheduled end of :number on :date could not run",
+    ),
+    (
+        "accounting.ending.task_description",
+        "The end of :number scheduled for :date did not run. It is tried again every day until these items are done, or you change or remove the date: :link\n\n:items",
+    ),
+    (
+        "accounting.ending.task_removed",
+        "The scheduled end was removed.",
+    ),
+    ("accounting.ending.task_done", "The engagement ended."),
+    ("accounting.ending.cancel_reason", "Engagement ended"),
+    ("accounting.wip.title", "Unbilled time"),
+    ("accounting.wip.unbilled", "Unbilled time (WIP)"),
+    ("accounting.wip.write_off", "Write off"),
+    (
+        "accounting.wip.write_off_description",
+        "Write off unbilled time. Above 10% of the WIP a partner decides.",
+    ),
+    ("accounting.wip.amount", "Amount to write off (AED)"),
+    ("accounting.wip.amount_column", "Amount"),
+    ("accounting.wip.reason", "Reason"),
+    ("accounting.wip.written_off", "Unbilled time written off."),
+    (
+        "accounting.wip.pending",
+        "More than 10% of the unbilled time: sent to a partner for approval.",
+    ),
+    ("accounting.wip.write_offs", "Write-offs of unbilled time"),
+    ("accounting.wip.write_offs_empty", "No write-offs"),
+    ("accounting.wip.status.proposed", "Waiting for a partner"),
+    ("accounting.wip.status.written_off", "Written off"),
+    ("accounting.wip.status.discarded", "Discarded"),
+    (
+        "accounting.wip.problem.amount",
+        "Write off more than AED 0 and at most the unbilled time (:wip).",
+    ),
+    (
+        "accounting.wip.problem.engagement",
+        "Time is written off on an active or suspended engagement.",
+    ),
 ];
 
 /// Whether the app has a text for `key`.

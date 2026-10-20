@@ -82,6 +82,10 @@ pub fn invoicing_for(client_app: &str, entities: &[String]) -> WlInvoicing {
             }
             module
         }
+        // The retainer of an engagement bills itself: its cycle invoices
+        // are issued at once, so that ending the engagement can credit the
+        // cycle already invoiced in advance (BL-ACC-06).
+        "accounting" => module.auto_issue_source("invoicing.subscription"),
         _ => module,
     }
 }

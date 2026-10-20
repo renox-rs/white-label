@@ -92,6 +92,19 @@ pub struct Engagement {
     pub activated_on: Option<NaiveDate>,
     /// The day it ended.
     pub ended_on: Option<NaiveDate>,
+    /// The end date the partner scheduled for later: the engagement stays
+    /// `active` until the daily run ends it on that date, the guards checked
+    /// again then ([`crate::ending`]).
+    pub end_scheduled_on: Option<NaiveDate>,
+    /// The neutral reason of the scheduled end.
+    pub end_scheduled_reason: Option<String>,
+    /// The partner who scheduled it.
+    pub end_scheduled_by: Option<i64>,
+    /// The day the partner confirmed there is nothing left to bill (no final
+    /// invoice or credit is owed).
+    pub nothing_to_bill_on: Option<NaiveDate>,
+    /// The partner who confirmed it.
+    pub nothing_to_bill_by: Option<i64>,
     /// The lifecycle state; changed only by a transition.
     pub status: EngagementStatus,
     /// The user who created it.

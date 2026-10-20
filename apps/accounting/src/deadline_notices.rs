@@ -51,7 +51,7 @@ use renox::state_machine::history;
 use serde::{Deserialize, Serialize};
 use wl_kernel::automation::{RuleRunSpec, RunOutcome, run_rule};
 use wl_kernel::compliance::{CriticalRule, occurrence_key, schedule_subject};
-use wl_kernel::deadlines::deadline_tasks;
+use wl_kernel::deadlines::{HANDED_OVER_EVIDENCE, deadline_tasks};
 use wl_kernel::documents::{dubai_date, today};
 use wl_kernel::notify::{
     self, GROUP_REMINDERS, NoticeStatus, NotificationTypeDef, NotifyChannel, NotifyRecipient,
@@ -65,7 +65,7 @@ use wl_kernel::{PartyId, Subject};
 use crate::client_notices::NeutralTemplate;
 use crate::db::refused;
 use crate::engagement::Engagement;
-use crate::engagement_machine::{AUTO_SUSPEND, END, SUSPEND};
+use crate::engagement_machine::{AUTO_END, AUTO_SUSPEND, END, SUSPEND};
 use crate::permissions::{self, MLRO_ROLE, PARTNER_ROLE};
 use crate::reasons;
 use crate::texts::english;
@@ -245,8 +245,10 @@ pub async fn deadlines(
         .await?
         .into_iter()
         .filter(|task| {
+            // The tasks handed over to the client are still its deadlines.
+            let client_files = task.closed_reason.as_deref() == Some(HANDED_OVER_EVIDENCE);
             STATUTORY_TYPES.contains(&task.task_type.as_str())
-                && !task.status.is_terminal()
+                && (!task.status.is_terminal() || client_files)
                 && task.due_date >= on
                 && task.due_date <= until
         })
@@ -319,8 +321,8 @@ pub fn plan_for(transition: &str, engagement: &Engagement) -> NoticePlan {
         SUSPEND if !restricted => NoticePlan::Send,
         AUTO_SUSPEND if from_block && !restricted => NoticePlan::Prepare(PARTNER_ROLE),
         AUTO_SUSPEND if !restricted => NoticePlan::Send,
-        END if restricted => NoticePlan::Prepare(MLRO_ROLE),
-        END => NoticePlan::Send,
+        END | AUTO_END if restricted => NoticePlan::Prepare(MLRO_ROLE),
+        END | AUTO_END => NoticePlan::Send,
         _ => NoticePlan::Nothing,
     }
 }
@@ -416,7 +418,7 @@ pub async fn apply(
     if plan == NoticePlan::Nothing {
         return Ok(None);
     }
-    let cause = if transition == END {
+    let cause = if transition == END || transition == AUTO_END {
         NoticeCause::End
     } else {
         NoticeCause::Suspend

@@ -10,6 +10,7 @@ pub mod client_notices;
 mod db;
 pub mod deadline_notices;
 pub mod documents;
+pub mod ending;
 pub mod engagement;
 pub mod engagement_machine;
 pub mod engagements;
@@ -31,6 +32,7 @@ pub mod tasks;
 pub mod tax_profile;
 pub mod tax_return;
 mod texts;
+pub mod wip;
 
 use renox::db::Migration;
 use renox::nav::NavLink;
@@ -40,6 +42,7 @@ pub use cdd::{CddFile, CddParty, CddStatus, RiskRating, ScreenedRole};
 pub use engagement::{Engagement, EngagementStatus, FeeBasis, NewEngagement};
 pub use tax_profile::{TaxProfile, VatPeriod};
 pub use tax_return::{Return, ReturnSignature, ReturnStatus, ReturnType};
+pub use wip::{WipWriteOff, WriteOffStatus};
 
 /// The templates, compiled in. An app replaces one with a file of the same
 /// name under its views directory (`resources/views/accounting/engagement.html`).
@@ -131,9 +134,12 @@ impl Module for Accounting {
             .model::<deadline_notices::DeadlineNotice>()
             .model::<request_lists::RequestList>()
             .model::<Return>()
-            .model::<ReturnSignature>();
+            .model::<ReturnSignature>()
+            .model::<WipWriteOff>();
         engagement_machine::register();
         return_machine::register();
+        wip::register();
+        ending::register(app);
         return_effects::register_types();
         cdd_machine::register();
         // `engagement.activate` checks the client's KYC documents.
