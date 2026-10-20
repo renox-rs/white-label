@@ -331,7 +331,11 @@ pub fn plan_for(transition: &str, engagement: &Engagement) -> NoticePlan {
 /// # Errors
 ///
 /// The portal's errors.
-pub async fn approvers(state: &AppState, client: PartyId, on: NaiveDate) -> Result<Vec<PortalUser>> {
+pub async fn approvers(
+    state: &AppState,
+    client: PartyId,
+    on: NaiveDate,
+) -> Result<Vec<PortalUser>> {
     Ok(portal_users(state)
         .users_for(&state.db, client, on)
         .await?
@@ -516,7 +520,10 @@ async fn prepare(
             ("until", &notice.window_end),
             ("lines", &notice.lines),
             ("template", &neutral_text(notice.cause)),
-            ("link", &format!("/accounting/engagements/{}", engagement.id)),
+            (
+                "link",
+                &format!("/accounting/engagements/{}", engagement.id),
+            ),
         ],
     );
     let task = RoleTask::new(engagement.subject(), role, &title, &prepared_key(notice.id))
@@ -745,8 +752,8 @@ async fn remind(state: &AppState, engagement: &Engagement, notice: &DeadlineNoti
 ///
 /// The database's errors.
 pub async fn follow_up(state: &AppState, on: NaiveDate) -> Result<FollowUp> {
-    let spec = RuleRunSpec::new(RULE, schedule_subject(), occurrence_key(RULE, on))
-        .compliance_critical();
+    let spec =
+        RuleRunSpec::new(RULE, schedule_subject(), occurrence_key(RULE, on)).compliance_critical();
     let seen = Arc::new(Mutex::new(FollowUp::default()));
     let out = Arc::clone(&seen);
     run_rule(state, spec, move |state: AppState| async move {

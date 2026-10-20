@@ -14,6 +14,9 @@
 //! - Engagement `resume` and `resume_approved`: its tasks are released, its
 //!   retainer resumed, the skipped request lists created and the deadline
 //!   notice reminders cancelled ([`crate::engagements::after_resume`]).
+//! - Return transitions: the notices, the preparer's task and the linked
+//!   deadline task ([`crate::return_effects`]); `TaskOverdue` tells the
+//!   preparer's task to start the overdue linked task.
 //! - Engagement `suspend`, `auto_suspend` and `end`: `ACC.RUL.09` sends the
 //!   statutory deadline notice, or prepares it for the partner or the MLRO
 //!   ([`crate::deadline_notices::run_for`]).
@@ -21,13 +24,15 @@
 use renox::prelude::*;
 use renox::state_machine::Transitioned;
 use wl_kernel::PartyBlocked;
+use wl_kernel::deadlines::TaskOverdue;
 use wl_kernel::documents::today;
 
 use crate::cdd::CddFile;
 use crate::cdd_machine::REJECT;
 use crate::engagement::Engagement;
 use crate::engagement_machine::{ACTIVATE, AUTO_SUSPEND, END, RESUME, RESUME_APPROVED, SUSPEND};
-use crate::{calendar, deadline_notices, engagements, retainer, suspension};
+use crate::tax_return::Return;
+use crate::{calendar, deadline_notices, engagements, retainer, return_effects, suspension};
 
 /// Registers the listeners.
 pub(crate) fn register(app: &mut Registry) {
@@ -70,6 +75,12 @@ pub(crate) fn register(app: &mut Registry) {
         }
         let file = CddFile::find_or_404(&state.db, event.key).await?;
         engagements::decline_not_accepted(&state, file.client()).await
+    });
+    app.listen(|event: Transitioned<Return>, state: AppState| async move {
+        return_effects::after(&state, &event).await
+    });
+    app.listen(|event: TaskOverdue, state: AppState| async move {
+        return_effects::on_task_overdue(&state, &event).await
     });
     app.listen(|event: PartyBlocked, state: AppState| async move {
         engagements::suspend_for_block(&state, event.party, &event.display_reason).await

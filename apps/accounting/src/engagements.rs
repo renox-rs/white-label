@@ -23,8 +23,8 @@ use crate::engagement_machine::{
 };
 use crate::permissions;
 use crate::reasons::{self, NOT_ACCEPTED};
-use crate::{deadline_notices, request_lists, suspension};
 use crate::texts::english;
+use crate::{deadline_notices, request_lists, suspension};
 
 /// The engagement `id`, or 404.
 async fn load(state: &AppState, id: i64) -> Result<Engagement> {

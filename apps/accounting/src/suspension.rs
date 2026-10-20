@@ -25,9 +25,7 @@
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use wl_kernel::deadlines::{DeadlineTaskSummary, ReleasedTasks, deadline_tasks};
-use wl_kernel::subscriptions::{
-    PauseCause, PauseSubscription, SubscriptionSummary, subscriptions,
-};
+use wl_kernel::subscriptions::{PauseCause, PauseSubscription, SubscriptionSummary, subscriptions};
 
 use crate::engagement::Engagement;
 use crate::reasons;
@@ -76,11 +74,7 @@ pub struct Released {
 /// # Errors
 ///
 /// The task and subscription services' errors.
-pub async fn release(
-    state: &AppState,
-    engagement: &Engagement,
-    on: NaiveDate,
-) -> Result<Released> {
+pub async fn release(state: &AppState, engagement: &Engagement, on: NaiveDate) -> Result<Released> {
     let subject = engagement.subject();
     let tasks = deadline_tasks(state).release(state, &subject, on).await?;
     let retainer = subscriptions(state)

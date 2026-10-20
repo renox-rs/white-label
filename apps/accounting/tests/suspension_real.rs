@@ -32,8 +32,7 @@ async fn a_held_task_still_goes_overdue_and_the_real_retainer_is_paused() {
         let id = tasks
             .create(
                 t.state(),
-                NewDeadlineTask::new(subject.clone(), VAT_RETURN, title, due)
-                    .party(client.company),
+                NewDeadlineTask::new(subject.clone(), VAT_RETURN, title, due).party(client.company),
             )
             .await
             .unwrap()

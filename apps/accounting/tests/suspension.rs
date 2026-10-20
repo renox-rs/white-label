@@ -28,7 +28,11 @@ async fn three_tasks(t: &Booted, engagement: &Engagement) {
             "VAT return, period ending 2026-10-31",
             d(11, 28),
         ),
-        ("vat_payment", "VAT payment, period ending 2026-10-31", d(11, 28)),
+        (
+            "vat_payment",
+            "VAT payment, period ending 2026-10-31",
+            d(11, 28),
+        ),
         ("ct_registration", "Corporate tax registration", d(12, 31)),
     ] {
         tasks

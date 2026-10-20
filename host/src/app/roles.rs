@@ -209,6 +209,11 @@ pub const ROLES: &[(&str, &[&str])] = &[
             acc::CDD_APPROVE,
             acc::TAX_PROFILES_VIEW,
             acc::TAX_PROFILES_MANAGE,
+            acc::RETURNS_VIEW,
+            acc::RETURNS_PREPARE,
+            acc::RETURNS_REVIEW,
+            acc::RETURNS_FILE,
+            acc::WIP_WRITE_OFF,
         ],
     ),
     (
@@ -285,6 +290,12 @@ pub const ROLES: &[(&str, &[&str])] = &[
             acc::ENGAGEMENTS_END,
             acc::CDD_VIEW,
             acc::TAX_PROFILES_VIEW,
+            // 04 §3.1: signs off returns, files them, and decides the
+            // write-offs of unbilled time above the manager's share.
+            acc::RETURNS_VIEW,
+            acc::RETURNS_REVIEW,
+            acc::RETURNS_FILE,
+            acc::WIP_WRITE_OFF,
             parties::VIEW,
             documents::VIEW,
             invoices::VIEW,
@@ -301,6 +312,11 @@ pub const ROLES: &[(&str, &[&str])] = &[
             acc::CDD_PREPARE,
             acc::TAX_PROFILES_VIEW,
             acc::TAX_PROFILES_MANAGE,
+            // 04 §3.1 "returns (review)": reviews and cancels returns and
+            // writes off unbilled time up to the limit (`ACC.ACL.09`).
+            acc::RETURNS_VIEW,
+            acc::RETURNS_REVIEW,
+            acc::WIP_WRITE_OFF,
             parties::VIEW,
             parties::CREATE,
             parties::UPDATE,
@@ -324,6 +340,11 @@ pub const ROLES: &[(&str, &[&str])] = &[
             acc::ENGAGEMENTS_VIEW,
             acc::TAX_PROFILES_VIEW,
             acc::TAX_PROFILES_MANAGE,
+            // 04 §3.1 "returns (prepare, review)".
+            acc::RETURNS_VIEW,
+            acc::RETURNS_PREPARE,
+            acc::RETURNS_REVIEW,
+            acc::RETURNS_FILE,
             parties::VIEW,
             documents::VIEW,
             tickets::TASKS_VIEW,
@@ -395,6 +416,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             acc::CDD_VIEW,
             acc::CDD_PREPARE,
             acc::TAX_PROFILES_VIEW,
+            // 04 §3.1 "returns (prepare)".
+            acc::RETURNS_VIEW,
+            acc::RETURNS_PREPARE,
             payments::VIEW,
             payments::RECORD,
             payments::REVERSE,

@@ -23,6 +23,20 @@ pub const TAX_PROFILES_VIEW: &str = "tax_profiles.view";
 /// BL-ACC-14).
 pub const TAX_PROFILES_MANAGE: &str = "tax_profiles.manage";
 
+/// See returns and their history.
+pub const RETURNS_VIEW: &str = "returns.view";
+/// Open a return, enter its figures, `submit` it for review and `correct` a
+/// filed one (the preparer, §7.1 *Return*).
+pub const RETURNS_PREPARE: &str = "returns.prepare";
+/// `review` a return, `send_back` one, `cancel` one, and `withdraw_approval`
+/// on the client's written instruction (the reviewer and the manager).
+pub const RETURNS_REVIEW: &str = "returns.review";
+/// `file` an approved return on EmaraTax (`ACC.ACL.15`).
+pub const RETURNS_FILE: &str = "returns.file";
+/// Write off unbilled time (`ACC.ACL.09`); above a share of the engagement's
+/// WIP a partner decides.
+pub const WIP_WRITE_OFF: &str = "wip.write_off";
+
 /// The permission of wl-parties that shows restricted block reasons and
 /// Block records (`PTY.ACL.02`; the MLRO and deputy). In 04 it also shows a
 /// possible match in a refusal, the CDD file's exit or rejection reason, and
@@ -40,6 +54,11 @@ pub const ALL: &[&str] = &[
     CDD_APPROVE,
     TAX_PROFILES_VIEW,
     TAX_PROFILES_MANAGE,
+    RETURNS_VIEW,
+    RETURNS_PREPARE,
+    RETURNS_REVIEW,
+    RETURNS_FILE,
+    WIP_WRITE_OFF,
 ];
 
 /// The partner: owns the client relationship, ends engagements (§3.1). The

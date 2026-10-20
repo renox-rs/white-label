@@ -5,6 +5,8 @@
 pub mod cdd;
 pub mod deadline_notices;
 pub mod engagements;
+pub mod portal_returns;
+pub mod returns;
 
 use std::collections::BTreeMap;
 
@@ -23,6 +25,8 @@ pub fn routes() -> Routes {
         .merge(engagements::routes())
         .merge(cdd::routes())
         .merge(deadline_notices::routes())
+        .merge(returns::routes())
+        .merge(portal_returns::routes())
 }
 
 /// The app text `key` (without the `accounting.` prefix).

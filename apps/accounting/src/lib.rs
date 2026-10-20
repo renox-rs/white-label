@@ -21,11 +21,15 @@ pub mod portal;
 pub mod reasons;
 pub mod request_lists;
 pub mod retainer;
+pub mod return_effects;
+pub mod return_machine;
+pub mod returns;
 pub mod screening;
 pub mod seed;
 pub mod suspension;
 pub mod tasks;
 pub mod tax_profile;
+pub mod tax_return;
 mod texts;
 
 use renox::db::Migration;
@@ -35,6 +39,7 @@ use renox::prelude::*;
 pub use cdd::{CddFile, CddParty, CddStatus, RiskRating, ScreenedRole};
 pub use engagement::{Engagement, EngagementStatus, FeeBasis, NewEngagement};
 pub use tax_profile::{TaxProfile, VatPeriod};
+pub use tax_return::{Return, ReturnSignature, ReturnStatus, ReturnType};
 
 /// The templates, compiled in. An app replaces one with a file of the same
 /// name under its views directory (`resources/views/accounting/engagement.html`).
@@ -54,6 +59,18 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "accounting/deadline_notice.html",
         include_str!("../views/accounting/deadline_notice.html"),
+    ),
+    (
+        "accounting/returns.html",
+        include_str!("../views/accounting/returns.html"),
+    ),
+    (
+        "accounting/return.html",
+        include_str!("../views/accounting/return.html"),
+    ),
+    (
+        "accounting/portal_return.html",
+        include_str!("../views/accounting/portal_return.html"),
     ),
 ];
 
@@ -93,7 +110,10 @@ impl Module for Accounting {
         app.view_data::<pages::engagements::IndexPage>()
             .view_data::<pages::engagements::ShowPage>()
             .view_data::<pages::cdd::CddPage>()
-            .view_data::<pages::deadline_notices::NoticePage>();
+            .view_data::<pages::deadline_notices::NoticePage>()
+            .view_data::<pages::returns::IndexPage>()
+            .view_data::<pages::returns::ShowPage>()
+            .view_data::<pages::portal_returns::PortalReturnPage>();
         app.templates(|env| {
             for (name, source) in VIEWS {
                 // The app's own file of that name wins.
@@ -109,8 +129,12 @@ impl Module for Accounting {
             .model::<TaxProfile>()
             .model::<client_notices::ClientNotice>()
             .model::<deadline_notices::DeadlineNotice>()
-            .model::<request_lists::RequestList>();
+            .model::<request_lists::RequestList>()
+            .model::<Return>()
+            .model::<ReturnSignature>();
         engagement_machine::register();
+        return_machine::register();
+        return_effects::register_types();
         cdd_machine::register();
         // `engagement.activate` checks the client's KYC documents.
         documents::register();
@@ -138,6 +162,14 @@ impl Module for Accounting {
                 .group("nav.app")
                 .order(10)
                 .permission(permissions::ENGAGEMENTS_VIEW),
+        );
+        app.nav(
+            "app",
+            NavLink::route("accounting.returns", "nav.returns")
+                .icon("file-text")
+                .group("nav.app")
+                .order(11)
+                .permission(permissions::RETURNS_VIEW),
         );
     }
 }

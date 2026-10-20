@@ -94,14 +94,14 @@ const TEXTS: &[(&str, &str)] = &[
         "accounting.engagements.resume_needs_approval",
         "The client was on hold: the resume needs the MLRO's approval.",
     ),
-    ("accounting.engagements.overdue_invoices", "Overdue invoices"),
+    (
+        "accounting.engagements.overdue_invoices",
+        "Overdue invoices",
+    ),
     ("accounting.engagements.invoice_number", "Invoice"),
     ("accounting.engagements.invoice_due", "Due"),
     ("accounting.engagements.invoice_balance", "Overdue"),
-    (
-        "accounting.engagements.overdue_empty",
-        "No overdue invoice",
-    ),
+    ("accounting.engagements.overdue_empty", "No overdue invoice"),
     ("accounting.engagements.end", "End"),
     ("accounting.engagements.ended", "Engagement ended."),
     (
@@ -463,7 +463,10 @@ const TEXTS: &[(&str, &str)] = &[
         "accounting.deadline_notices.acknowledged_note",
         "The client approver acknowledged the deadline notice.",
     ),
-    ("accounting.deadline_notices.sent", "The deadline notice was sent to the client."),
+    (
+        "accounting.deadline_notices.sent",
+        "The deadline notice was sent to the client.",
+    ),
     (
         "accounting.deadline_notices.cancelled",
         "The engagement resumed: the deadline notice needs no more follow-up.",
@@ -472,7 +475,10 @@ const TEXTS: &[(&str, &str)] = &[
         "accounting.deadline_notices.not_prepared",
         "This deadline notice is not waiting to be sent.",
     ),
-    ("accounting.deadline_notices.send", "Send the deadline notice"),
+    (
+        "accounting.deadline_notices.send",
+        "Send the deadline notice",
+    ),
     (
         "accounting.deadline_notices.send_message",
         "The client approvers get the statutory deadlines listed and are asked to acknowledge them in the portal.",
@@ -486,7 +492,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("accounting.deadline_notices.state.prepared", "To send"),
     ("accounting.deadline_notices.state.sent", "Sent"),
     ("accounting.deadline_notices.state.delivered", "Delivered"),
-    ("accounting.deadline_notices.state.acknowledged", "Acknowledged"),
+    (
+        "accounting.deadline_notices.state.acknowledged",
+        "Acknowledged",
+    ),
     ("accounting.deadline_notices.state.cancelled", "Cancelled"),
     (
         "accounting.deadline_notices.notice_subject",
@@ -520,6 +529,339 @@ const TEXTS: &[(&str, &str)] = &[
         "accounting.deadline_notices.escalation_description",
         "The client approvers have not acknowledged the statutory deadline notice of :number, delivered on :delivered, after :days days. Contact the client.\n\n:lines",
     ),
+    ("accounting.reasons.engagement_ended", "Engagement ended"),
+    (
+        "accounting.reasons.client_files_itself",
+        "Client files itself",
+    ),
+    ("accounting.reasons.not_required", "Not required"),
+    ("accounting.returns.title", "Returns"),
+    (
+        "accounting.returns.subtitle",
+        "VAT and corporate tax returns of the firm's clients, from preparation to filing.",
+    ),
+    ("accounting.returns.new", "New return"),
+    (
+        "accounting.returns.new_description",
+        "The engagement it is prepared under, the tax, the period it covers and the day it is due. It starts in preparation and is linked to the calendar task of the same type and due date.",
+    ),
+    (
+        "accounting.returns.engagement_number",
+        "Engagement (number)",
+    ),
+    ("accounting.returns.engagement", "Engagement"),
+    ("accounting.returns.kind", "Tax"),
+    ("accounting.returns.period", "Period ending"),
+    ("accounting.returns.due", "Due"),
+    ("accounting.returns.number", "Return"),
+    ("accounting.returns.client", "Client"),
+    ("accounting.returns.version", "Version"),
+    ("accounting.returns.empty", "No returns yet"),
+    ("accounting.returns.created", "Return opened."),
+    ("accounting.returns.details", "Return"),
+    ("accounting.returns.preparer", "Preparer"),
+    ("accounting.returns.reviewer", "Reviewer"),
+    ("accounting.returns.figures", "Figures"),
+    ("accounting.returns.figures_action", "Enter figures"),
+    (
+        "accounting.returns.figures_description",
+        "The figures of the period, and whether the workpapers are attached.",
+    ),
+    ("accounting.returns.figures_recorded", "Figures recorded."),
+    ("accounting.returns.workpapers", "Workpapers"),
+    (
+        "accounting.returns.workpapers_attached",
+        "Workpapers attached",
+    ),
+    ("accounting.returns.workpapers_missing", "Not attached"),
+    ("accounting.returns.task", "Calendar task"),
+    ("accounting.returns.cancel_reason", "Cancelled because"),
+    ("accounting.returns.filed_on", "Filed on"),
+    ("accounting.returns.filed_on_date", "Filed on :date."),
+    ("accounting.returns.acknowledgement", "FTA acknowledgement"),
+    (
+        "accounting.returns.registration",
+        "Tax agent registration number",
+    ),
+    (
+        "accounting.returns.by_client",
+        "Filed by the client through its own EmaraTax user",
+    ),
+    ("accounting.returns.signatures", "Signatures"),
+    ("accounting.returns.signatures_empty", "Not approved yet"),
+    ("accounting.returns.signer", "Signed by"),
+    ("accounting.returns.ip", "IP address"),
+    ("accounting.returns.hash", "Document hash"),
+    ("accounting.returns.signature_valid", "Valid"),
+    (
+        "accounting.returns.signature_withdrawn",
+        "Withdrawn on :at: :reason",
+    ),
+    ("accounting.returns.reason", "Reason"),
+    ("accounting.returns.submit", "Submit for review"),
+    (
+        "accounting.returns.submit_message",
+        "The reviewer is told. The figures and the workpapers must be in.",
+    ),
+    (
+        "accounting.returns.submitted",
+        "Return submitted for review.",
+    ),
+    ("accounting.returns.review", "Send to the client"),
+    (
+        "accounting.returns.review_message",
+        "The client approver gets the summary to approve in the portal.",
+    ),
+    ("accounting.returns.reviewed", "Return sent to the client."),
+    ("accounting.returns.send_back", "Send back"),
+    (
+        "accounting.returns.sent_back",
+        "Return sent back to preparation.",
+    ),
+    ("accounting.returns.comment", "Comment"),
+    (
+        "accounting.returns.comment_description",
+        "Say what has to change.",
+    ),
+    ("accounting.returns.withdraw", "Withdraw approval"),
+    (
+        "accounting.returns.withdraw_description",
+        "On the client's written instruction. Attach it: the return goes back to preparation and the signature stays, marked withdrawn.",
+    ),
+    (
+        "accounting.returns.portal_withdraw_description",
+        "The return goes back to preparation. Your signature stays on record, marked as withdrawn.",
+    ),
+    (
+        "accounting.returns.withdraw_reason",
+        "Why the approval is withdrawn",
+    ),
+    (
+        "accounting.returns.instruction",
+        "The client's written instruction (attach or paste it)",
+    ),
+    ("accounting.returns.withdrawn", "Approval withdrawn."),
+    ("accounting.returns.cancel", "Cancel return"),
+    (
+        "accounting.returns.cancel_description",
+        "The firm will not file this return. The linked calendar task is waived, handed over or listed for the manager.",
+    ),
+    ("accounting.returns.cancelled", "Return cancelled."),
+    ("accounting.returns.file", "Mark as filed"),
+    (
+        "accounting.returns.file_description",
+        "The FTA acknowledgement of the filing on EmaraTax.",
+    ),
+    ("accounting.returns.filed", "Return marked as filed."),
+    ("accounting.returns.approve", "Approve for filing"),
+    (
+        "accounting.returns.approve_message",
+        "Your approval is recorded as your signature, with your name, the time and your address.",
+    ),
+    ("accounting.returns.approved", "Return approved."),
+    (
+        "accounting.returns.read_only",
+        "The engagement has ended. You can read your returns; nothing can be changed.",
+    ),
+    ("accounting.returns.summary", "Summary"),
+    ("accounting.returns.type.vat", "VAT return"),
+    ("accounting.returns.type.ct", "Corporate tax return"),
+    ("accounting.returns.status.preparing", "Preparing"),
+    ("accounting.returns.status.in_review", "In review"),
+    (
+        "accounting.returns.status.client_approval",
+        "With the client",
+    ),
+    ("accounting.returns.status.approved", "Approved"),
+    ("accounting.returns.status.filed", "Filed"),
+    ("accounting.returns.status.superseded", "Superseded"),
+    ("accounting.returns.status.cancelled", "Cancelled"),
+    (
+        "accounting.returns.transition.submit",
+        "Submitted for review",
+    ),
+    ("accounting.returns.transition.send_back", "Sent back"),
+    ("accounting.returns.transition.review", "Sent to the client"),
+    (
+        "accounting.returns.transition.approve",
+        "Approved by the client",
+    ),
+    (
+        "accounting.returns.transition.withdraw_approval",
+        "Approval withdrawn",
+    ),
+    ("accounting.returns.transition.file", "Filed"),
+    ("accounting.returns.transition.correct", "Corrected"),
+    ("accounting.returns.transition.cancel", "Cancelled"),
+    (
+        "accounting.returns.problem.no_figures",
+        "Enter the figures first.",
+    ),
+    (
+        "accounting.returns.problem.no_workpapers",
+        "Attach the workpapers first.",
+    ),
+    (
+        "accounting.returns.problem.not_allowed",
+        "Only a reviewer or the client approver can do this.",
+    ),
+    (
+        "accounting.returns.problem.same_person",
+        "The reviewer cannot be the preparer.",
+    ),
+    (
+        "accounting.returns.problem.not_approver",
+        "Only a client approver can approve a return.",
+    ),
+    (
+        "accounting.returns.problem.no_instruction",
+        "Attach the client's written instruction.",
+    ),
+    (
+        "accounting.returns.problem.no_acknowledgement",
+        "Attach the FTA acknowledgement.",
+    ),
+    (
+        "accounting.returns.problem.not_preparing",
+        "The figures can be entered while the return is being prepared.",
+    ),
+    (
+        "accounting.returns.problem.engagement",
+        "A return is opened under an active or suspended engagement.",
+    ),
+    (
+        "accounting.returns.submitted_subject",
+        "Return {{ number }} is ready for review",
+    ),
+    (
+        "accounting.returns.submitted_body",
+        "The {{ return }} for the period ending {{ period }} (due {{ due }}) was submitted for review: {{ link }}",
+    ),
+    (
+        "accounting.returns.sent_back_subject",
+        "Return {{ number }} was sent back",
+    ),
+    (
+        "accounting.returns.sent_back_body",
+        "The {{ return }} for the period ending {{ period }} was sent back: {{ comment }}\n\n{{ link }}",
+    ),
+    (
+        "accounting.returns.for_approval_subject",
+        "Please approve your {{ return }} ({{ number }})",
+    ),
+    (
+        "accounting.returns.for_approval_body",
+        "The {{ return }} for the period ending {{ period }} is ready for your approval before it is filed (due {{ due }}). Review the summary and approve it in the portal: {{ portal_link }}",
+    ),
+    (
+        "accounting.returns.withdrawn_subject",
+        "Approval of return {{ number }} withdrawn",
+    ),
+    (
+        "accounting.returns.withdrawn_body",
+        "The approval of the {{ return }} for the period ending {{ period }} was withdrawn: {{ reason }}\n\nThe return is back in preparation: {{ link }}",
+    ),
+    (
+        "accounting.returns.handed_over_subject",
+        "You file the {{ return }} ({{ number }}) yourselves",
+    ),
+    (
+        "accounting.returns.handed_over_body",
+        "We will not file the {{ return }} for the period ending {{ period }}. You file it yourselves, and it is due on {{ due }}. See it in the portal: {{ portal_link }}",
+    ),
+    (
+        "accounting.returns.withdrawn.title",
+        "Client withdrew approval of :number",
+    ),
+    (
+        "accounting.returns.withdrawn.description",
+        "The client withdrew its approval of :number: :reason\n\nRework the return and submit it again: :link",
+    ),
+    (
+        "accounting.returns.withdrawn.linked",
+        "Linked task: :title (:status). :hint",
+    ),
+    (
+        "accounting.returns.withdrawn.hint.upcoming",
+        "Start it when the rework begins.",
+    ),
+    (
+        "accounting.returns.withdrawn.hint.in_progress",
+        "Nothing is needed: it is being worked.",
+    ),
+    (
+        "accounting.returns.withdrawn.hint.waiting",
+        "Nothing is needed: it waits on someone else.",
+    ),
+    (
+        "accounting.returns.withdrawn.hint.in_review",
+        "Ask the reviewer to send it back (send_back).",
+    ),
+    (
+        "accounting.returns.withdrawn.hint.overdue",
+        "Start it (start).",
+    ),
+    (
+        "accounting.returns.withdrawn.hint.completed",
+        "It is completed.",
+    ),
+    (
+        "accounting.returns.withdrawn.hint.missed",
+        "It was closed as missed.",
+    ),
+    (
+        "accounting.returns.withdrawn.hint.not_required",
+        "It is not required.",
+    ),
+    (
+        "accounting.returns.withdrawn.closed",
+        "The return was submitted again.",
+    ),
+    (
+        "accounting.returns.withdrawn.overdue",
+        "The linked task of :number is now overdue (since :on): start it (start).",
+    ),
+    (
+        "accounting.returns.cancelled.closed",
+        "The return was cancelled.",
+    ),
+    (
+        "accounting.returns.cancelled.waive_reason",
+        "Return not required",
+    ),
+    (
+        "accounting.returns.cancelled.left_title",
+        "Linked task of the cancelled return :number",
+    ),
+    (
+        "accounting.returns.cancelled.left_description",
+        "The return :number was cancelled as not required, but its task :title is :status. Complete it or close it.",
+    ),
+    ("accounting.portal.returns_title", "Returns"),
+    ("accounting.portal.you_file", "You file it by :due"),
+    ("accounting.portal.due", "due :due"),
+    (
+        "accounting.portal.return_status.preparing",
+        "In preparation",
+    ),
+    (
+        "accounting.portal.return_status.in_review",
+        "In preparation",
+    ),
+    (
+        "accounting.portal.return_status.client_approval",
+        "Waiting for your approval",
+    ),
+    (
+        "accounting.portal.return_status.approved",
+        "Approved by you",
+    ),
+    ("accounting.portal.return_status.filed", "Filed"),
+    (
+        "accounting.portal.return_status.superseded",
+        "Replaced by a correction",
+    ),
+    ("accounting.portal.return_status.cancelled", "Cancelled"),
 ];
 
 /// Whether the app has a text for `key`.

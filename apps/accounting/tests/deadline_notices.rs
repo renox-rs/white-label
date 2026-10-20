@@ -89,7 +89,10 @@ async fn a_suspension_sends_the_deadlines_of_the_next_90_days_to_acknowledge() {
     let notice = the_notice(&t, &engagement).await;
     assert_eq!(notice.cause, NoticeCause::Suspend);
     assert_eq!(notice.on_date, d(11, 2));
-    assert_eq!(notice.window_end, NaiveDate::from_ymd_opt(2027, 1, 31).unwrap());
+    assert_eq!(
+        notice.window_end,
+        NaiveDate::from_ymd_opt(2027, 1, 31).unwrap()
+    );
     assert_eq!(notice.deadline_count, 1);
     assert!(notice.lines.contains("2026-11-28"), "{}", notice.lines);
     assert!(!notice.lines.contains("2027-02-28"), "{}", notice.lines);
@@ -191,7 +194,11 @@ async fn without_an_acknowledgement_the_client_is_reminded_and_the_partner_told(
 
     let on_8th = t.run(follow_up(t.state(), d(11, 8))).await.unwrap();
     assert!(on_8th.escalated.is_empty());
-    assert!(t.tickets.with_key("accounting.deadline_notice_ack:").is_empty());
+    assert!(
+        t.tickets
+            .with_key("accounting.deadline_notice_ack:")
+            .is_empty()
+    );
 
     let on_9th = t.run(follow_up(t.state(), d(11, 9))).await.unwrap();
     assert_eq!(on_9th.escalated, [notice.id]);

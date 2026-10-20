@@ -30,6 +30,13 @@ pub const CLIENT_WITHDREW: &str = "client_withdrew";
 /// stays on the file, for the MLRO only.
 pub const NOT_ACCEPTED: &str = "not_accepted";
 
+/// A return cancelled because the engagement ended (`engagement_ended`).
+pub const ENGAGEMENT_ENDED: &str = "engagement_ended";
+/// A return cancelled because the client files it itself.
+pub const CLIENT_FILES_ITSELF: &str = "client_files_itself";
+/// A return cancelled because it is not required.
+pub const NOT_REQUIRED: &str = "not_required";
+
 /// The reasons a user gives for `suspend`.
 pub const SUSPEND_REASONS: [&str; 3] = [NON_PAYMENT, CLIENT_REQUEST, OTHER];
 /// The reasons the system gives for its suspension (`PartyBlocked`,
@@ -39,6 +46,9 @@ pub const SYSTEM_SUSPEND_REASONS: [&str; 2] = [ON_HOLD, NON_PAYMENT];
 pub const END_REASONS: [&str; 4] = [CLIENT_REQUEST, NON_PAYMENT, RELATIONSHIP_ENDED, OTHER];
 /// The reasons for `decline`.
 pub const DECLINE_REASONS: [&str; 3] = [LETTER_NOT_SIGNED, CLIENT_WITHDREW, NOT_ACCEPTED];
+
+/// The reasons for cancelling a return (§7.1 *Return* `cancel`).
+pub const RETURN_CANCEL_REASONS: [&str; 3] = [ENGAGEMENT_ENDED, CLIENT_FILES_ITSELF, NOT_REQUIRED];
 
 /// Whether `code` is one of `allowed`.
 pub fn is_one_of(code: Option<&str>, allowed: &[&str]) -> bool {

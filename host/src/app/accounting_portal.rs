@@ -32,9 +32,36 @@ impl PortalSection for Engagements {
     }
 }
 
-/// Registers the section for the Accounting client.
+/// The returns section: a client user sees its company's returns, and the
+/// deadline of one the firm no longer files as its own (BL-ACC-17); read-only
+/// after the engagement ends, closed 90 days later (`POR.ACL.01`).
+pub struct Returns;
+
+impl PortalSection for Returns {
+    fn title(&self) -> String {
+        accounting::portal::returns_title()
+    }
+
+    fn rows<'a>(
+        &'a self,
+        state: &'a AppState,
+        party: PartyId,
+    ) -> SectionFuture<'a, Vec<SectionRow>> {
+        Box::pin(async move {
+            let rows = accounting::portal::returns(state, party).await?;
+            Ok::<Vec<SectionRow>, Error>(
+                rows.iter()
+                    .map(|row| SectionRow::new(&row.label, &row.status))
+                    .collect(),
+            )
+        })
+    }
+}
+
+/// Registers the sections for the Accounting client.
 pub fn register(client_app: &str) {
     if client_app == "accounting" {
         register_section(accounting::portal::SECTION, Engagements);
+        register_section(accounting::portal::RETURNS_SECTION, Returns);
     }
 }

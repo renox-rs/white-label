@@ -38,9 +38,14 @@ async fn a_non_payment_suspension_shows_what_is_overdue_and_resumes_with_a_note(
         .overdue(client.company, "INV-FLA-2026-0007", 600_000, d(10, 15));
 
     t.set_clock(2, 10, 0);
-    t.act(&manager, &engagement, "suspend", &[("reason", "non_payment")])
-        .await
-        .assert_ok();
+    t.act(
+        &manager,
+        &engagement,
+        "suspend",
+        &[("reason", "non_payment")],
+    )
+    .await
+    .assert_ok();
     let page = t
         .get(
             &manager,
@@ -53,7 +58,9 @@ async fn a_non_payment_suspension_shows_what_is_overdue_and_resumes_with_a_note(
         .assert_see("AED 6,000.00");
 
     t.set_clock(4, 10, 0);
-    t.act(&manager, &engagement, "resume", &[]).await.assert_status(422);
+    t.act(&manager, &engagement, "resume", &[])
+        .await
+        .assert_status(422);
     t.act(&manager, &engagement, "resume", &[("note", "   ")])
         .await
         .assert_status(422);
@@ -173,9 +180,14 @@ async fn after_a_block_the_resume_waits_for_the_unblock_and_the_mlro() {
     let requests = pending(&t, &engagement).await;
     assert_eq!(requests.len(), 1);
     assert_eq!(requests[0].status, ApprovalStatus::Pending);
-    t.run(approvals::approve(t.state(), requests[0].id, &mlro, "Cleared"))
-        .await
-        .unwrap();
+    t.run(approvals::approve(
+        t.state(),
+        requests[0].id,
+        &mlro,
+        "Cleared",
+    ))
+    .await
+    .unwrap();
     let resumed = t.reload(&engagement).await;
     assert_eq!(resumed.status, EngagementStatus::Active);
     assert_eq!(
