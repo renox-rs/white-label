@@ -283,6 +283,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             acc::CDD_VIEW,
             acc::CDD_PREPARE,
             acc::CDD_APPROVE,
+            // 04 `ACC.ACL.15`: sees the returns, and the KYC flag on a
+            // return filed with an expired client document.
+            acc::RETURNS_VIEW,
             // 04 §3.1: the MLRO opens and works the CDD update task of an
             // expired KYC document (a staff task assigned to them,
             // `ACC.RUL.05`) and sees the deadline tasks.

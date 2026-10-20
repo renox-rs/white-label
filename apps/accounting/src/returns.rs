@@ -25,7 +25,7 @@ use crate::engagement::{Engagement, EngagementStatus};
 use crate::permissions;
 use crate::reasons;
 use crate::return_machine::{
-    APPROVE, CANCEL, CORRECT, FILE, REVIEW, ReturnInput, SEND_BACK, SUBMIT, WITHDRAW_APPROVAL,
+    APPROVE, CANCEL, CORRECT, REVIEW, ReturnInput, SEND_BACK, SUBMIT, WITHDRAW_APPROVAL,
 };
 use crate::tax_return::{CorrectionRoute, Return, ReturnStatus, ReturnType, document_hash};
 use crate::texts::english;
@@ -330,29 +330,6 @@ pub async fn withdraw_approval(
         ..who(state, by, &ret).await?
     };
     run(state, by, id, WITHDRAW_APPROVAL, Some(reason), input).await
-}
-
-/// `by` marks return `id` filed on EmaraTax with the FTA `acknowledgement`.
-/// Basic form: BL-ACC-18 adds the tax agent rule and the block check.
-///
-/// # Errors
-///
-/// `Forbidden` without `returns.file`; a 422 without an acknowledgement.
-pub async fn file(
-    state: &AppState,
-    by: &AuthUser,
-    id: i64,
-    acknowledgement: &str,
-    filed_by_client: bool,
-    tax_agent_registration: Option<&str>,
-) -> Result<Return> {
-    let input = ReturnInput {
-        acknowledgement: Some(acknowledgement.to_owned()),
-        filed_by_client,
-        tax_agent_registration: tax_agent_registration.map(str::to_owned),
-        ..ReturnInput::on(today())
-    };
-    run(state, by, id, FILE, None, input).await
 }
 
 /// What a correction of a filed return is made of (`ACC.ACL.04`).

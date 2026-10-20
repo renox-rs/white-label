@@ -10,7 +10,7 @@
 //! | `review` | the client approvers get the summary and the link to approve it |
 //! | `withdraw_approval` | the preparer and the reviewer are told; the preparer gets a task (due 1 working day) to rework the return and bring the linked task back to work |
 //! | `correct` | the voluntary disclosure task, or the adjustment attached to the named return ([`crate::corrections`]) |
-//! | `file` | the corrections made through this return are cancelled as *not required* |
+//! | `file`, `file_approved` | the linked task is completed with the acknowledgement (*late* when it was overdue); the client approvers get the payment reminder when tax is payable; an expired client KYC document flags the return for the MLRO; the corrections made through this return are cancelled as *not required* |
 //! | `cancel` | the linked task is waived (*not required*, `upcoming`), listed for the manager (*not required*, otherwise) or handed over to the client (*client files itself*, *engagement ended*); the client is told who files it, unless the reason is restricted |
 //!
 //! The linked task is never moved back to work by the system after a
@@ -34,10 +34,13 @@ use wl_kernel::tickets::{Assignee, OpenTicket, TASK_CATEGORY, TaskComment, task_
 
 use crate::corrections;
 use crate::deadline_notices::client_recipients;
+use crate::documents;
 use crate::engagement::Engagement;
 use crate::permissions::{ACCOUNTANT_ROLE, MANAGER_ROLE};
 use crate::reasons;
-use crate::return_machine::{CANCEL, CORRECT, FILE, REVIEW, SEND_BACK, SUBMIT, WITHDRAW_APPROVAL};
+use crate::return_machine::{
+    CANCEL, CORRECT, FILE, FILE_APPROVED, REVIEW, SEND_BACK, SUBMIT, WITHDRAW_APPROVAL,
+};
 use crate::tax_return::{Return, ReturnStatus};
 use crate::texts::english;
 
@@ -54,6 +57,8 @@ pub const FOR_APPROVAL_NOTICE: &str = "accounting.return_for_approval";
 pub const WITHDRAWN_NOTICE: &str = "accounting.return_approval_withdrawn";
 /// The client is told it files the return itself.
 pub const HANDED_OVER_NOTICE: &str = "accounting.return_handed_over";
+/// The client approvers are reminded to pay the tax of a filed return.
+pub const PAYMENT_REMINDER_NOTICE: &str = "accounting.return_payment_reminder";
 
 /// The key the preparer's task for a withdrawn approval is found by.
 pub fn withdrawn_key(return_id: i64) -> String {
@@ -87,6 +92,7 @@ pub fn notification_types() -> Vec<NotificationTypeDef> {
         staff(FOR_APPROVAL_NOTICE, "for_approval"),
         staff(WITHDRAWN_NOTICE, "withdrawn"),
         staff(HANDED_OVER_NOTICE, "handed_over"),
+        staff(PAYMENT_REMINDER_NOTICE, "payment_reminder"),
     ]
 }
 
@@ -287,11 +293,37 @@ pub async fn after(state: &AppState, event: &Transitioned<Return>) -> Result {
         }
         CANCEL => cancelled(state, &ret).await?,
         CORRECT => corrections::after_correct(state, ret.id).await?,
-        FILE => {
-            corrections::on_filed(state, &ret).await?;
-        }
+        FILE | FILE_APPROVED => filed(state, &ret).await?,
         _ => {}
     }
+    Ok(())
+}
+
+/// A return was filed (by a tax agent, by the client, or on the MLRO's
+/// approval): the linked task is completed with the acknowledgement, the
+/// client is reminded to pay, an expired client KYC document flags the
+/// return, and the corrections made through it are cancelled.
+async fn filed(state: &AppState, ret: &Return) -> Result {
+    corrections::on_filed(state, ret).await?;
+    if let Some(task) = ret.task() {
+        let evidence = ret.acknowledgement.clone().unwrap_or_default();
+        deadline_tasks(state)
+            .complete(state, task, &evidence)
+            .await?;
+    }
+    if ret.tax_payable.unwrap_or(0) > 0 {
+        let recipients = client_recipients(state, ret.client(), today()).await?;
+        let mut data = notice_data(ret);
+        data["amount"] = Value::String(crate::money_text(ret.tax_payable.unwrap_or(0)));
+        let mut request = NotifyRequest::new(PAYMENT_REMINDER_NOTICE, ret.subject())
+            .subject_label(&ret.number())
+            .data(data);
+        for recipient in recipients {
+            request = request.to(recipient);
+        }
+        notifier(state).notify(state, request).await?;
+    }
+    documents::flag_expired(state, ret).await?;
     Ok(())
 }
 

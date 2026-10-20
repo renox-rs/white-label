@@ -136,14 +136,21 @@ pub struct Return {
     /// Whether the cancel reason is restricted: the client is told nothing
     /// automatically (`ACC.ACL.14`).
     pub client_messages_suppressed: bool,
-    /// The day it was filed.
+    /// The day it was filed: the date on the FTA acknowledgement.
     pub filed_on: Option<NaiveDate>,
-    /// The staff member who filed it.
+    /// The staff member who filed it (the tax agent).
     pub filed_by_user_id: Option<i64>,
     /// Whether the client filed it through its own EmaraTax user.
     pub filed_by_client: bool,
-    /// The filer's tax agent registration number.
+    /// The filer's tax agent registration number, as the qualification
+    /// guard found it valid on the filing date (`ACC.ACL.15`).
     pub tax_agent_registration: Option<String>,
+    /// The client's own EmaraTax user that filed it (*filed by the client's
+    /// own staff*); the filer is then not a member of staff.
+    pub client_emaratax_user: Option<String>,
+    /// The tax payable on the filed return, in fils; above 0 the client is
+    /// sent the payment reminder.
+    pub tax_payable: Option<i64>,
     /// The FTA acknowledgement.
     pub acknowledgement: Option<String>,
     /// How its error is corrected.

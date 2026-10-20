@@ -20,6 +20,7 @@ pub mod engagement_machine;
 pub mod engagements;
 mod events;
 pub mod exits;
+pub mod filing;
 pub mod kyc_updates;
 pub mod letters;
 pub mod pages;

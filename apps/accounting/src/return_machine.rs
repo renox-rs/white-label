@@ -7,7 +7,8 @@
 //! | [`REVIEW`] | in_review | client_approval | `returns.review`, not the preparer (`ACC.ACL.03`) |
 //! | [`APPROVE`] | client_approval | approved | a client approver (`ACC.ACL.11`) |
 //! | [`WITHDRAW_APPROVAL`] | approved | preparing | a client approver, or `returns.review` on the client's written instruction |
-//! | [`FILE`] | approved | filed | `returns.file` |
+//! | [`FILE`] | approved | filed | `returns.file`; for a blocked client through the MLRO's approval |
+//! | [`FILE_APPROVED`] | approved | filed | system (the MLRO approved the filing of this return) |
 //! | [`CORRECT`] | filed | superseded | `returns.prepare` |
 //! | [`CANCEL`] | preparing, in_review, client_approval, approved | cancelled | `returns.review` |
 //! | [`AUTO_CANCEL`] | preparing, in_review, client_approval, approved | cancelled | the system, once the return a correction went into is filed |
@@ -22,17 +23,21 @@
 //! after the commit ([`crate::events`]).
 //!
 //! Built here in full: `submit`, `send_back`, `review`, `approve`,
-//! `withdraw_approval`, `cancel` and `correct` (the route rules and the new
-//! version of `ACC.ACL.04`, BL-ACC-18). `file` is an entry with its basic
-//! guards (an acknowledgement); the tax agent rule, the MLRO's approval for a
-//! blocked client and the linked task's completion come with BL-ACC-19.
+//! `withdraw_approval`, `cancel`, `correct` (the route rules and the new
+//! version of `ACC.ACL.04`, BL-ACC-18) and `file` (`ACC.ACL.15`, BL-ACC-19):
+//! the acknowledgement and its date, the filer (a staff member whose tax
+//! agent registration is valid on that date, or the client's own EmaraTax
+//! user) and, for a blocked client, the MLRO's approval ([`file_policy`]).
+//! After the commit the linked task is completed, the payment reminder goes
+//! out and an expired client KYC document flags the return
+//! ([`crate::return_effects`]).
 
 use renox::chrono::NaiveDate;
 use renox::db::ToDbValue;
 use renox::prelude::*;
 use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx};
 use serde::{Deserialize, Serialize};
-use wl_kernel::approvals;
+use wl_kernel::approvals::{self, PolicyDefault};
 use wl_kernel::documents::today;
 use wl_kernel::machines::SubjectMachine;
 
@@ -57,6 +62,13 @@ pub const APPROVE: &str = "approve";
 pub const WITHDRAW_APPROVAL: &str = "withdraw_approval";
 /// The `file` transition's name.
 pub const FILE: &str = "file";
+/// The filing the kernel runs once the MLRO approved it (blocked client).
+pub const FILE_APPROVED: &str = "file_approved";
+/// The approval action of the filing of a blocked client's return
+/// (`accounting.return_file`).
+pub const FILE_ACTION: &str = "accounting.return_file";
+/// The input key the filing policy reads: 1 when the client is blocked.
+pub const CLIENT_BLOCKED_KEY: &str = "client_blocked";
 /// The `correct` transition's name.
 pub const CORRECT: &str = "correct";
 /// The `cancel` transition's name.
@@ -101,12 +113,32 @@ pub struct ReturnInput {
     /// `file`: the FTA acknowledgement attached.
     #[serde(default)]
     pub acknowledgement: Option<String>,
+    /// `file`: the date on the acknowledgement, the filing date.
+    #[serde(default)]
+    pub filed_on: Option<NaiveDate>,
     /// `file`: the client filed it through its own EmaraTax user.
     #[serde(default)]
     pub filed_by_client: bool,
-    /// `file`: the filer's tax agent registration number.
+    /// `file`, by the client: the EmaraTax user the acknowledgement shows.
+    #[serde(default)]
+    pub client_user: Option<String>,
+    /// `file`, by a tax agent: the staff member who filed it.
+    #[serde(default)]
+    pub filer_user: Option<i64>,
+    /// `file`, by a tax agent: the registration number the qualification
+    /// guard found valid on the filing date; empty when it found none.
     #[serde(default)]
     pub tax_agent_registration: Option<String>,
+    /// `file`, by a tax agent: why the registration is not valid, when it
+    /// is not.
+    #[serde(default)]
+    pub filer_problem: Option<String>,
+    /// `file`: the tax payable on the return, in fils.
+    #[serde(default)]
+    pub tax_payable: Option<i64>,
+    /// `file`: 1 when the client is blocked, which the filing policy reads.
+    #[serde(default)]
+    pub client_blocked: i64,
     /// `cancel`: the engagement ended after a CDD exit or rejection, so the
     /// client is told nothing automatically (`ACC.ACL.14`).
     #[serde(default)]
@@ -184,6 +216,7 @@ impl StateMachine for Return {
             .transition(approve())
             .transition(withdraw_approval())
             .transition(file())
+            .transition(file_approved())
             .transition(correct())
             .transition(cancel())
             .transition(auto_cancel())
@@ -380,13 +413,12 @@ fn withdraw_approval() -> Transition<Return> {
         })
 }
 
-/// `file`: approved → filed with the FTA acknowledgement attached. Basic
-/// guard only; BL-ACC-18 adds the tax agent rule and the block check.
-fn file() -> Transition<Return> {
-    Transition::new(FILE)
-        .label("Mark as filed")
-        .tone("success")
-        .permission(permissions::RETURNS_FILE)
+/// The guards and the effect `file` and `file_approved` share: the FTA
+/// acknowledgement and its date, the filer, and the filing's data written on
+/// the return. The data comes in the input, which the kernel keeps as the
+/// payload of the MLRO's approval and runs `file_approved` with.
+fn filing(transition: Transition<Return>) -> Transition<Return> {
+    transition
         .from([ReturnStatus::Approved])
         .to(ReturnStatus::Filed)
         .guard("acknowledgement", |_r: &Return, ctx| {
@@ -399,6 +431,38 @@ fn file() -> Transition<Return> {
                         "accounting.returns.problem.no_acknowledgement",
                         &[],
                     ))
+                }
+            })
+        })
+        .guard("filing_date", |_r: &Return, ctx| {
+            let input = input_of(ctx);
+            let on = input.on.unwrap_or_else(today);
+            Box::pin(async move {
+                match input.filed_on {
+                    None => Err(english("accounting.returns.problem.no_filing_date", &[])),
+                    Some(day) if day > on => Err(english(
+                        "accounting.returns.problem.filing_date_future",
+                        &[],
+                    )),
+                    Some(_) => Ok(()),
+                }
+            })
+        })
+        .guard("filer", |_r: &Return, ctx| {
+            let input = input_of(ctx);
+            Box::pin(async move {
+                if input.filed_by_client {
+                    if given(&input.client_user) {
+                        Ok(())
+                    } else {
+                        Err(english("accounting.returns.problem.no_client_user", &[]))
+                    }
+                } else if given(&input.tax_agent_registration) {
+                    Ok(())
+                } else {
+                    Err(input.filer_problem.unwrap_or_else(|| {
+                        english("accounting.returns.problem.not_tax_agent", &[])
+                    }))
                 }
             })
         })
@@ -415,23 +479,83 @@ fn file() -> Transition<Return> {
         .effect(|r: &Return, ctx, tx| {
             let id = r.id;
             let input = input_of(ctx);
-            let on = input.on.unwrap_or_else(today);
-            let by = ctx.actor().map(|u| u.id);
+            let filer = if input.filed_by_client {
+                None
+            } else {
+                input.filer_user.or_else(|| ctx.actor().map(|u| u.id))
+            };
+            let registration = if input.filed_by_client {
+                None
+            } else {
+                input
+                    .tax_agent_registration
+                    .as_deref()
+                    .map(|n| n.trim().to_owned())
+            };
+            let client_user = if input.filed_by_client {
+                input.client_user.as_deref().map(|u| u.trim().to_owned())
+            } else {
+                None
+            };
+            let acknowledgement = input
+                .acknowledgement
+                .as_deref()
+                .map(|a| a.trim().to_owned());
             Box::pin(async move {
                 set_return(
                     &mut *tx,
                     id,
                     &[
-                        ("filed_on", &Some(on)),
-                        ("filed_by_user_id", &by),
+                        ("filed_on", &input.filed_on),
+                        ("filed_by_user_id", &filer),
                         ("filed_by_client", &input.filed_by_client),
-                        ("tax_agent_registration", &input.tax_agent_registration),
-                        ("acknowledgement", &input.acknowledgement),
+                        ("client_emaratax_user", &client_user),
+                        ("tax_agent_registration", &registration),
+                        ("acknowledgement", &acknowledgement),
+                        ("tax_payable", &input.tax_payable),
                     ],
                 )
                 .await
             })
         })
+}
+
+/// `file`: approved → filed by a staff member whose FTA tax agent
+/// registration is valid on the date of the acknowledgement, or recorded as
+/// filed by the client through its own EmaraTax user (`ACC.ACL.15`). For a
+/// blocked client the kernel's approval interceptor defers it to the MLRO
+/// ([`file_policy`]); on the yes the kernel runs [`FILE_APPROVED`], on a no
+/// the return stays `approved`.
+fn file() -> Transition<Return> {
+    filing(
+        Transition::new(FILE)
+            .label("Mark as filed")
+            .tone("success")
+            .permission(permissions::RETURNS_FILE),
+    )
+}
+
+/// `file_approved`: the filing the MLRO approved, run by the kernel with the
+/// input of the request. The approval is for this return only.
+fn file_approved() -> Transition<Return> {
+    filing(
+        Transition::new(FILE_APPROVED)
+            .label("Mark as filed")
+            .tone("success")
+            .system(),
+    )
+}
+
+/// The default approval policy of the filing: only for a blocked client (the
+/// input's [`CLIENT_BLOCKED_KEY`] above 0), one step by the MLRO or deputy
+/// (the compliance role, or `parties.block_reason.view`), never the filer
+/// (SoD). Until a lawyer answers L-31 the firm may not file for a client
+/// whose funds are frozen without it.
+pub fn file_policy() -> PolicyDefault {
+    PolicyDefault::new(FILE_ACTION)
+        .amount_above(0)
+        .input_key(CLIENT_BLOCKED_KEY)
+        .step_or_permission([permissions::MLRO_ROLE], permissions::BLOCK_REASON_VIEW)
 }
 
 /// `correct`: filed → superseded, with the reason, the error in tax, the day
@@ -618,8 +742,11 @@ fn auto_cancel() -> Transition<Return> {
 /// Registers the machine for `rnx state:diagram` and the admin, and with
 /// the kernel (the return's page for "Needs your action").
 pub(crate) fn register() {
-    SubjectMachine::of::<Return>(RETURN_SUBJECT_TYPE).register();
+    SubjectMachine::of::<Return>(RETURN_SUBJECT_TYPE)
+        .action(FILE, FILE_ACTION)
+        .register();
     renox::state_machine::register::<Return>();
+    file_policy().register();
     approvals::register_subject_link(RETURN_SUBJECT_TYPE, |id| {
         format!("/accounting/returns/{id}")
     });
@@ -698,6 +825,7 @@ mod tests {
                     false
                 ),
                 (FILE, vec!["approved".into()], Some("filed"), false),
+                (FILE_APPROVED, vec!["approved".into()], Some("filed"), true),
                 (CORRECT, vec!["filed".into()], Some("superseded"), false),
                 (CANCEL, open(), Some("cancelled"), false),
                 (AUTO_CANCEL, open(), Some("cancelled"), true),
@@ -719,9 +847,22 @@ mod tests {
             machine.find(WITHDRAW_APPROVAL).unwrap().guard_names(),
             ["client_approver_or_reviewer", "instruction_attached"]
         );
+        for name in [FILE, FILE_APPROVED] {
+            assert_eq!(
+                machine.find(name).unwrap().guard_names(),
+                [
+                    "acknowledgement",
+                    "filing_date",
+                    "filer",
+                    "not_via_next_return"
+                ],
+                "{name}"
+            );
+        }
         assert_eq!(
-            machine.find(FILE).unwrap().guard_names(),
-            ["acknowledgement", "not_via_next_return"]
+            wl_kernel::machines::approved(FILE),
+            FILE_APPROVED,
+            "the kernel runs it on the MLRO's yes"
         );
         assert_eq!(
             machine.find(CORRECT).unwrap().guard_names(),
@@ -734,7 +875,7 @@ mod tests {
         for name in [SEND_BACK, WITHDRAW_APPROVAL, CORRECT, CANCEL] {
             assert!(machine.find(name).unwrap().needs_reason(), "{name}");
         }
-        for name in [SUBMIT, REVIEW, APPROVE, FILE] {
+        for name in [SUBMIT, REVIEW, APPROVE, FILE, FILE_APPROVED] {
             assert!(!machine.find(name).unwrap().needs_reason(), "{name}");
         }
     }

@@ -25,10 +25,11 @@ use renox::prelude::*;
 use renox::state_machine::history;
 use serde::{Deserialize, Serialize};
 use wl_kernel::deadlines::deadline_tasks;
-use wl_kernel::documents::dubai_text;
+use wl_kernel::documents::{dubai_text, today};
 
 use super::{Texts, invalid, parse_aed, parse_id, party_name, require, text, user_name};
 use crate::engagement::Engagement;
+use crate::filing;
 use crate::permissions;
 use crate::reasons;
 use crate::returns::{self, NewReturn};
@@ -248,6 +249,11 @@ pub struct ReturnView {
     /// How the error of a corrected return is corrected, and where the
     /// adjustment goes.
     pub correction: String,
+    /// Who filed it: the tax agent and their registration, or the client's
+    /// EmaraTax user.
+    pub filed_by: String,
+    /// The tax payable.
+    pub tax_payable: String,
 }
 
 /// One row of the history.
@@ -296,6 +302,9 @@ pub(crate) struct ShowPage {
     can_cancel: bool,
     can_file: bool,
     can_correct: bool,
+    kyc_flags: Vec<String>,
+    filing_waits: bool,
+    today: String,
     routes: Vec<[String; 2]>,
     cancel_reasons: Vec<[String; 2]>,
     figures_text: String,
@@ -372,6 +381,69 @@ pub(crate) async fn task_text(state: &AppState, lang: &Lang, ret: &Return) -> Re
         ),
         None => String::new(),
     })
+}
+
+/// Who filed `ret`, for people; empty until it is filed.
+async fn filed_by_text(state: &AppState, lang: &Lang, ret: &Return) -> String {
+    if let Some(client_user) = ret
+        .client_emaratax_user
+        .as_deref()
+        .filter(|_| ret.filed_by_client)
+    {
+        return texts::t_with(
+            lang,
+            "accounting.returns.filed_by_client_user",
+            &[("user", &client_user)],
+        );
+    }
+    match ret.filed_by_user_id {
+        Some(id) => texts::t_with(
+            lang,
+            "accounting.returns.filed_by_agent",
+            &[
+                ("name", &user_name(&state.db, id).await),
+                (
+                    "number",
+                    &ret.tax_agent_registration.clone().unwrap_or_default(),
+                ),
+            ],
+        ),
+        None => String::new(),
+    }
+}
+
+/// Whether the filing of `ret` waits for the MLRO's approval: shown to
+/// everybody as *On hold — MLRO approval needed*, never with the reason of
+/// the block.
+async fn filing_waits(state: &AppState, ret: &Return) -> Result<bool> {
+    Ok(wl_kernel::approvals::pending_for(&state.db, &ret.subject())
+        .await?
+        .iter()
+        .any(|request| request.transition == crate::return_machine::FILE))
+}
+
+/// The KYC flags of `ret`, for the MLRO only (`cdd.approve`): an expired
+/// client document that did not stop the filing.
+async fn kyc_flags(
+    state: &AppState,
+    lang: &Lang,
+    user: &AuthUser,
+    ret: &Return,
+) -> Result<Vec<String>> {
+    if !user.has_permission(permissions::CDD_APPROVE) {
+        return Ok(Vec::new());
+    }
+    Ok(crate::documents::flags_of(state, ret.id)
+        .await?
+        .into_iter()
+        .map(|flag| {
+            texts::t_with(
+                lang,
+                "accounting.returns.kyc_flag",
+                &[("label", &flag.label)],
+            )
+        })
+        .collect())
 }
 
 /// How the error of `ret` is corrected and where the adjustment goes, for
@@ -496,6 +568,8 @@ async fn show(
         filed_on: found.filed_on.map(|d| d.to_string()).unwrap_or_default(),
         acknowledgement: found.acknowledgement.clone().unwrap_or_default(),
         correction: correction_text(&state, &lang, &found).await?,
+        filed_by: filed_by_text(&state, &lang, &found).await,
+        tax_payable: found.tax_payable.map(crate::money_text).unwrap_or_default(),
     };
     let prepare = user.has_permission(permissions::RETURNS_PREPARE);
     let review = user.has_permission(permissions::RETURNS_REVIEW);
@@ -521,6 +595,9 @@ async fn show(
         can_file: user.has_permission(permissions::RETURNS_FILE)
             && status == ReturnStatus::Approved,
         can_correct: prepare && status == ReturnStatus::Filed,
+        kyc_flags: kyc_flags(&state, &lang, &user, &found).await?,
+        filing_waits: filing_waits(&state, &found).await?,
+        today: today().to_string(),
         routes: CorrectionRoute::ALL
             .iter()
             .map(|route| {
@@ -654,12 +731,22 @@ pub struct FileForm {
     /// The FTA acknowledgement.
     #[serde(default)]
     pub acknowledgement: String,
-    /// The filer's tax agent registration number.
+    /// The date on the acknowledgement; today when empty.
     #[serde(default)]
-    pub registration: String,
-    /// `1` when the client filed it itself.
+    pub filed_on: String,
+    /// `1` when the client's own staff filed it.
     #[serde(default)]
     pub by_client: String,
+    /// The EmaraTax user the acknowledgement shows (filed by the client).
+    #[serde(default)]
+    pub client_user: String,
+    /// The staff member who filed it (their user number); the user when
+    /// empty.
+    #[serde(default)]
+    pub filer: String,
+    /// The tax payable, in dirhams.
+    #[serde(default)]
+    pub tax_payable: String,
 }
 
 /// `POST /accounting/returns/{id}/file`.
@@ -670,18 +757,30 @@ async fn file(
     Path(id): Path<i64>,
     Form(form): Form<FileForm>,
 ) -> Result<Response> {
-    let registration = Some(form.registration.trim()).filter(|r| !r.is_empty());
-    let by_client = matches!(form.by_client.trim(), "1" | "on" | "true");
-    returns::file(
-        &state,
-        &user,
-        id,
-        &form.acknowledgement,
-        by_client,
-        registration,
-    )
-    .await?;
-    Ok(done(&lang, "returns.filed"))
+    let filed_on = match form.filed_on.trim() {
+        "" => today(),
+        text => text.parse().map_err(|_| invalid("filed_on: YYYY-MM-DD"))?,
+    };
+    let mut filing = filing::Filing::new(&form.acknowledgement, filed_on);
+    if matches!(form.by_client.trim(), "1" | "on" | "true") {
+        filing = filing.by_client(&form.client_user);
+    }
+    if let Some(filer) = parse_id(&form.filer) {
+        filing = filing.filer(filer);
+    }
+    let payable = parse_aed(&form.tax_payable).ok_or_else(|| invalid("tax_payable: 1250.00"))?;
+    filing = filing.tax_payable(payable);
+    let filed = filing::file(&state, &user, id, filing).await?;
+    // The filer sees only that the MLRO decides, never why.
+    Ok(if filed.approval_request.is_some() {
+        (
+            Toast::info(text(&lang, "returns.on_hold_approval")),
+            renox::HxRefresh,
+        )
+            .into_response()
+    } else {
+        done(&lang, "returns.filed")
+    })
 }
 
 /// The form that corrects a filed return.

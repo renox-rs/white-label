@@ -41,8 +41,11 @@
         <rx-action-sheet :id="'return-file-' ~ ret.id" :label="tx['returns.file']" :action="route('accounting.return_file', ret.id)"
                          :title="tx['returns.file']" :description="tx['returns.file_description']" :submit-label="tx['returns.file']" icon="check-check">
           <rx-input name="acknowledgement" :label="tx['returns.acknowledgement']" :id="'return-file-ack-' ~ ret.id" required/>
-          <rx-input name="registration" :label="tx['returns.registration']" :id="'return-file-registration-' ~ ret.id"/>
+          <rx-input name="filed_on" type="date" :label="tx['returns.filing_date']" :value="today" :id="'return-file-date-' ~ ret.id" required/>
+          <rx-input name="filer" :label="tx['returns.filer']" :id="'return-file-filer-' ~ ret.id"/>
           <rx-checkbox name="by_client" :label="tx['returns.by_client']" :id="'return-file-by-client-' ~ ret.id"/>
+          <rx-input name="client_user" :label="tx['returns.client_user']" :id="'return-file-client-user-' ~ ret.id"/>
+          <rx-input name="tax_payable" :label="tx['returns.tax_payable']" :id="'return-file-payable-' ~ ret.id"/>
         </rx-action-sheet>
       </template>
       <template rx-if="can_correct">
@@ -65,6 +68,8 @@
       </template>
     </rx-page-header>
     <rx-alert rx-if="ret.send_back_comment" kind="warning" :message="ret.send_back_comment"/>
+    <rx-alert rx-if="filing_waits" kind="warning" :message="tx['returns.on_hold_approval']"/>
+    <rx-alert rx-for="line in kyc_flags" kind="warning" :message="line"/>
     <rx-card :title="tx['returns.details']">
       <rx-infolist columns="2">
         <rx-entry :label="tx['returns.client']" :value="ret.client"/>
@@ -80,6 +85,8 @@
         <rx-entry :label="tx['returns.task']" :value="ret.task" :placeholder="tx['none']"/>
         <rx-entry :label="tx['returns.cancel_reason']" :value="ret.cancel_reason" :placeholder="tx['none']"/>
         <rx-entry :label="tx['returns.filed_on']" :value="ret.filed_on" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['returns.filed_by']" :value="ret.filed_by" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['returns.tax_payable']" :value="ret.tax_payable" :placeholder="tx['none']"/>
         <rx-entry :label="tx['returns.acknowledgement']" :value="ret.acknowledgement" :placeholder="tx['none']"/>
         <rx-entry :label="tx['corrections.label']" :value="ret.correction" :placeholder="tx['none']"/>
       </rx-infolist>

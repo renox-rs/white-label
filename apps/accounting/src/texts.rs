@@ -701,7 +701,7 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     (
         "accounting.returns.by_client",
-        "Filed by the client through its own EmaraTax user",
+        "Filed by the client's own staff (enter its EmaraTax user)",
     ),
     ("accounting.returns.signatures", "Signatures"),
     ("accounting.returns.signatures_empty", "Not approved yet"),
@@ -812,6 +812,74 @@ const TEXTS: &[(&str, &str)] = &[
     (
         "accounting.returns.transition.auto_cancel",
         "Cancelled (not required)",
+    ),
+    // Filing a return (`ACC.ACL.15`).
+    (
+        "accounting.returns.payment_reminder_subject",
+        "Tax to pay for {{ number }}",
+    ),
+    (
+        "accounting.returns.payment_reminder_body",
+        "The {{ return }} for the period ending {{ period }} was filed. Please pay {{ amount }} by {{ due }}. See it in the portal: {{ portal_link }}",
+    ),
+    (
+        "accounting.returns.problem.no_filing_date",
+        "Enter the date on the FTA acknowledgement.",
+    ),
+    (
+        "accounting.returns.problem.filing_date_future",
+        "The date on the acknowledgement cannot be in the future.",
+    ),
+    (
+        "accounting.returns.problem.no_client_user",
+        "Enter the EmaraTax user of the client that the acknowledgement shows.",
+    ),
+    (
+        "accounting.returns.problem.not_tax_agent",
+        "The filer has no valid FTA tax agent registration on the filing date.",
+    ),
+    (
+        "accounting.returns.on_hold_approval",
+        "On hold — MLRO approval needed",
+    ),
+    ("accounting.returns.filed_by", "Filed by"),
+    (
+        "accounting.returns.filed_by_agent",
+        "Tax agent :name (registration :number)",
+    ),
+    (
+        "accounting.returns.filed_by_client_user",
+        "The client's own staff, EmaraTax user :user",
+    ),
+    (
+        "accounting.returns.filing_date",
+        "Date on the acknowledgement",
+    ),
+    ("accounting.returns.tax_payable", "Tax payable (AED)"),
+    (
+        "accounting.returns.client_user",
+        "Client's EmaraTax user (if filed by the client's own staff)",
+    ),
+    (
+        "accounting.returns.filer",
+        "Filed by (staff user number, default you)",
+    ),
+    (
+        "accounting.returns.kyc_flag",
+        "KYC document expired: :label",
+    ),
+    ("accounting.returns.kyc_flags", "Flagged for the MLRO"),
+    (
+        "accounting.filing.problem.not_staff",
+        ":name is not a member of staff with an employee record, so cannot file as a registered tax agent.",
+    ),
+    (
+        "accounting.filing.problem.missing",
+        ":name holds no FTA tax agent registration linked to the firm's tax agency that is valid on :on.",
+    ),
+    (
+        "accounting.filing.problem.expired",
+        "The FTA tax agent registration :number of :name (valid to :valid_to) is not valid on :on.",
     ),
     // The correction of a filed return (`ACC.ACL.04`).
     ("accounting.corrections.label", "Correction"),
