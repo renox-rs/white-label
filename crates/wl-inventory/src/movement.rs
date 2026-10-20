@@ -93,6 +93,7 @@ pub struct StockMovement {
 impl StockMovement {
     /// A `receive` of `quantity_milli` of `item_id` at `location_id`,
     /// caused by `source`, at `unit_cost` fils a unit worth `value`.
+    #[allow(clippy::too_many_arguments)]
     pub fn receive(
         item_id: i64,
         lot_id: Option<i64>,

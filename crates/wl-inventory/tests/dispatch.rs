@@ -235,7 +235,7 @@ async fn a_replacement_from_stock_is_outstanding_on_the_order_again() {
     let t = boot().await;
     let item = t.item("PIPE").await;
     let store = t.location("STORE-1", None).await;
-    let (order, mut po_line) = t.order(&store, &item, 50_000, 5_000).await;
+    let (_order, mut po_line) = t.order(&store, &item, 50_000, 5_000).await;
     po_line.accepted_qty_milli = 50_000;
     po_line.save(t.db()).await.unwrap();
     t.stock_in(&item, &store, None, 50_000, 5_000).await;

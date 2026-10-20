@@ -91,10 +91,10 @@ async fn emit_dispatched(state: &AppState, id: i64) -> Result {
     let lines = crate::supplier_return::lines_of(&state.db, ret.id).await?;
     let mut prices = BTreeMap::new();
     for line in &lines {
-        if let Some(po_line_id) = line.po_line_id {
-            if let Some(po_line) = PurchaseOrderLine::find(&state.db, po_line_id).await? {
-                prices.insert(po_line.id, po_line.unit_price);
-            }
+        if let Some(po_line_id) = line.po_line_id
+            && let Some(po_line) = PurchaseOrderLine::find(&state.db, po_line_id).await?
+        {
+            prices.insert(po_line.id, po_line.unit_price);
         }
     }
     state.emit(dispatched_event(&ret, &lines, &prices)).await

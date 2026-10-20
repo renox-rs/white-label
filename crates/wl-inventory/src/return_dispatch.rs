@@ -409,19 +409,23 @@ async fn dispatch_in(tx: &mut Transaction, ret: SupplierReturn, run: &DispatchIn
             .update(&mut *tx, &[("variance", &variance), ("updated_at", &now)])
             .await?;
         // A held lot with nothing left is rejected.
-        if let Some(lot) = lot {
-            if lot.status == LotStatus::OnHold && movement::lot_left_in(tx, lot.id).await? <= 0 {
-                let _outcome = lot
-                    .transition(lot::REJECT)
-                    .by_system()
-                    .run_in(&mut *tx)
-                    .await
-                    .map_err(TransitionError::into_error)?;
-            }
+        if let Some(lot) = lot
+            && lot.status == LotStatus::OnHold
+            && movement::lot_left_in(tx, lot.id).await? <= 0
+        {
+            let _outcome = lot
+                .transition(lot::REJECT)
+                .by_system()
+                .run_in(&mut *tx)
+                .await
+                .map_err(TransitionError::into_error)?;
         }
         // A replacement from stock is outstanding on the order again, once.
-        if line.wanted_outcome == WantedOutcome::Replace && line.restored_milli == 0 {
-            if let Some(po_line_id) = line.po_line_id {
+        if line.wanted_outcome == WantedOutcome::Replace
+            && line.restored_milli == 0
+            && let Some(po_line_id) = line.po_line_id
+        {
+            {
                 let po_line = PurchaseOrderLine::find_or_404(&mut *tx, po_line_id).await?;
                 let restored = line.quantity_milli.min(po_line.accepted_qty_milli).max(0);
                 let accepted = po_line.accepted_qty_milli - restored;

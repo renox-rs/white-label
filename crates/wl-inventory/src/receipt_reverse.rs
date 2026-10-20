@@ -40,7 +40,7 @@ use crate::lot::{Lot, LotStatus};
 use crate::movement::{self, MovementType, StockMovement};
 use crate::permissions;
 use crate::purchase_order::{PurchaseOrder, PurchaseOrderLine, PurchaseOrderStatus};
-use crate::supplier_return::{self, ReturnStatus, SupplierReturn};
+use crate::supplier_return::{self, ReturnStatus};
 use crate::texts::said;
 
 /// The `reverse` transition's name.
@@ -135,20 +135,19 @@ async fn stock_problem(
     for line in lines.iter().filter(|line| line.accepted_qty_milli > 0) {
         let item = Item::find_or_404(&mut *tx, line.item_id).await?;
         let position = line.position.to_string();
-        if let Some(lot_id) = line.lot_id {
-            if let Some(lot) = Lot::find(&mut *tx, lot_id).await? {
-                if lot.status == LotStatus::OnHold {
-                    return Ok(Some(said(
-                        "wl_inventory.reverse.held",
-                        &[
-                            ("position", &position),
-                            ("lot", &lot.number),
-                            ("item", &item.code),
-                            ("status", lot.status.as_str()),
-                        ],
-                    )));
-                }
-            }
+        if let Some(lot_id) = line.lot_id
+            && let Some(lot) = Lot::find(&mut *tx, lot_id).await?
+            && lot.status == LotStatus::OnHold
+        {
+            return Ok(Some(said(
+                "wl_inventory.reverse.held",
+                &[
+                    ("position", &position),
+                    ("lot", &lot.number),
+                    ("item", &item.code),
+                    ("status", lot.status.as_str()),
+                ],
+            )));
         }
         let needed = claimed.entry((line.item_id, line.lot_id)).or_insert(0);
         *needed += line.accepted_qty_milli;
