@@ -60,6 +60,7 @@ impl LeadStatus {
 
 /// A lead.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
+#[allow(clippy::duplicated_attributes)] // each `index(..)` is a separate index; `status` repeats by design
 #[model(
     table = "wl_sales_leads",
     state_machine,
@@ -254,6 +255,7 @@ impl NewLead {
 
 /// What [`capture`] did.
 #[derive(Debug, Clone)]
+#[allow(clippy::large_enum_variant)] // boxing `Lead` would change the public API used by callers and tests
 pub enum Captured {
     /// A lead was created.
     Created(Lead),

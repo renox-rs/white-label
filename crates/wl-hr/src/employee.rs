@@ -315,7 +315,7 @@ pub async fn create(state: &AppState, input: NewEmployee) -> Result<Employee> {
     if initial == EmployeeStatus::Onboarding {
         onboarding::start_on_hire(state, &employee).await?;
     }
-    Ok(Employee::find_or_404(&state.db, employee.id).await?)
+    Employee::find_or_404(&state.db, employee.id).await
 }
 
 /// Corrects the hire date of `employee`; the due dates of its open onboarding
@@ -337,7 +337,7 @@ pub async fn correct_hire_date(
         )
         .await?;
     onboarding::recompute_due_dates(state, id, hire_date).await?;
-    Ok(Employee::find_or_404(&state.db, id).await?)
+    Employee::find_or_404(&state.db, id).await
 }
 
 /// Changes the job role of `employee` to `job_role`; emits
@@ -368,7 +368,7 @@ pub async fn change_job_role(state: &AppState, id: i64, job_role: &str) -> Resul
             to: Some(job_role),
         })
         .await?;
-    Ok(Employee::find_or_404(&state.db, id).await?)
+    Employee::find_or_404(&state.db, id).await
 }
 
 /// Adds `scope` to the scopes of the employee, or ends it (`add` false);

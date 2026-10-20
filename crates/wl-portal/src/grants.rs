@@ -75,6 +75,7 @@ pub const SOURCE_RELATIONSHIP: &str = "relationship";
 
 /// What a portal user may do for one party.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
+#[allow(clippy::duplicated_attributes)] // each `index(..)` is a separate index; `status` repeats by design
 #[model(
     table = "wl_portal_access_grants",
     state_machine,
