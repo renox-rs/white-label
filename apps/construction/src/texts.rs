@@ -265,6 +265,52 @@ const TEXTS: &[(&str, &str)] = &[
         "construction.ipa.certificate_attached",
         "The certificate was attached to the replacing IPA for reference.",
     ),
+    // Invoicing a certified IPA (BL-CON-06).
+    (
+        "construction.invoice.not_made",
+        "The tax invoice of the IPA is not made yet.",
+    ),
+    (
+        "construction.invoice.not_certified",
+        "IPA {{ number }} is not certified: only a certified IPA is invoiced.",
+    ),
+    (
+        "construction.invoice.undecided",
+        "Accept or contest every deduction before invoicing.",
+    ),
+    (
+        "construction.invoice.no_work",
+        "The IPA certifies no work for the period: there is nothing to invoice.",
+    ),
+    (
+        "construction.invoice.invoicing_off",
+        "Invoicing is not enabled: the IPA cannot be invoiced.",
+    ),
+    (
+        "construction.invoice.line",
+        "Certified work, IPA {{ number }} of {{ project }}",
+    ),
+    (
+        "construction.invoice.credit_reason",
+        "Liquidated damages and price reductions accepted on the certificate: {{ references }}",
+    ),
+    (
+        "construction.invoice.dispute_reason",
+        "contested certificate deduction",
+    ),
+    (
+        "construction.invoice.bill_number",
+        "{{ project }}-IPA{{ number }}-DEDUCTIONS",
+    ),
+    (
+        "construction.invoice.set_off_title",
+        "Approve the bill from the client for IPA {{ number }} of {{ project }} and set it off",
+    ),
+    (
+        "construction.invoice.set_off_body",
+        "Back- and contra-charges the client deducted are supplier bill {{ bill }}. Approve it, then record the set-off against invoice {{ invoice }}.",
+    ),
+    ("construction.invoice.done", "IPA invoiced."),
     // The pages.
     ("construction.award.done", "Project started from the award."),
     (

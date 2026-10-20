@@ -23,6 +23,9 @@ pub const IPAS_SUBMIT: &str = "ipas.submit";
 /// Record the client's certificate of an IPA (the QS's).
 pub const IPAS_CERTIFY: &str = "ipas.certify";
 
+/// Issue the tax invoice of a certified IPA: wl-invoicing's `invoices.issue`
+/// (the accountant's), which the transition `invoice` asks for.
+pub const INVOICES_ISSUE: &str = "invoices.issue";
 /// Record the deduction lines of a certificate (the QS's, `CON.ACL.14`).
 pub const IPAS_DEDUCTIONS_RECORD: &str = "ipas.deductions.record";
 /// Accept or contest a deduction line (the project manager's, never for a

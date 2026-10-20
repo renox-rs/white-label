@@ -9,6 +9,7 @@ pub mod deduction;
 pub mod events;
 pub mod final_account;
 pub mod guarantee;
+pub mod invoice;
 pub mod ipa;
 pub mod pages;
 pub mod permissions;

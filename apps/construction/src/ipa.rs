@@ -23,9 +23,11 @@
 //!   and `supersede` (the system, at the replacing `submit`);
 //! - [`crate::certificate`]: `certify` (`ipas.certify`), the late certificate
 //!   of a superseded IPA and "previous certified";
-//! - [`crate::cutoff`]: the monthly draft (`CON.RUL.03`).
+//! - [`crate::cutoff`]: the monthly draft (`CON.RUL.03`);
+//! - [`crate::deduction`]: the typed deductions on a certificate;
+//! - [`crate::invoice`]: `invoice` (`invoices.issue`).
 //!
-//! `revise` and `invoice` come with the issues that build them.
+//! `revise` comes with the issue that builds it.
 
 use renox::auth::permissions::Scope;
 use renox::chrono::NaiveDate;
@@ -36,6 +38,7 @@ use serde::{Deserialize, Serialize};
 use wl_kernel::Subject;
 
 use crate::certificate::{certify_effects, certify_input, certify_problem};
+use crate::invoice::{invoice_effects, invoice_problem};
 use crate::permissions;
 use crate::submission::{progress_problem, submit_effects, submit_input, submit_problem};
 
@@ -48,6 +51,8 @@ pub const SUBMIT: &str = "submit";
 pub const SUPERSEDE: &str = "supersede";
 /// The `certify` transition's name.
 pub const CERTIFY: &str = "certify";
+/// The `invoice` transition's name.
+pub const INVOICE: &str = "invoice";
 
 /// What kind of IPA it is.
 #[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -120,8 +125,16 @@ pub struct Ipa {
     pub decision_reference: Option<String>,
     /// The amount the court or the arbitrator decided, in fils.
     pub decided_amount: Option<i64>,
-    /// The tax invoice in wl-invoicing, once invoiced.
+    /// The tax invoice in wl-invoicing, once made.
     pub invoice_id: Option<i64>,
+    /// The credit note for the accepted liquidated damages and price
+    /// reductions.
+    pub credit_note_id: Option<i64>,
+    /// The dispute of the contested part of the invoice.
+    pub dispute_id: Option<i64>,
+    /// The supplier bill from the client for the accepted back- and
+    /// contra-charges.
+    pub supplier_bill_id: Option<i64>,
     /// The lifecycle state; changed only by a transition.
     pub status: IpaStatus,
     /// When the row was created.
@@ -223,6 +236,20 @@ impl StateMachine for Ipa {
                         let ipa = ipa.clone();
                         let input = certify_input(ctx);
                         Box::pin(async move { certify_effects(&mut *tx, &ipa, &input).await })
+                    }),
+            )
+            .transition(
+                user(INVOICE, "Invoice", permissions::INVOICES_ISSUE)
+                    .tone("primary")
+                    .from([Certified])
+                    .to(Invoiced)
+                    .guard("documents_issued", |ipa: &Ipa, _ctx| {
+                        let problem = invoice_problem(ipa);
+                        Box::pin(async move { problem.map_or(Ok(()), Err) })
+                    })
+                    .effect(|ipa: &Ipa, _ctx, tx| {
+                        let ipa = ipa.clone();
+                        Box::pin(async move { invoice_effects(&mut *tx, &ipa).await })
                     }),
             )
     }

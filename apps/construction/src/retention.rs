@@ -18,6 +18,8 @@ use renox::state_machine::{Machine, StateMachine, Transition, TransitionError};
 use serde::{Deserialize, Serialize};
 use wl_kernel::Subject;
 
+use crate::project::Project;
+
 /// The subject type of a retention part.
 pub const SUBJECT_TYPE: &str = "construction.retention";
 
@@ -170,6 +172,61 @@ pub async fn open_of(db: &Db, project_id: i64) -> Result<Vec<Retention>> {
         .await
 }
 
+/// `amount` x `bps` / 10,000, rounded half up to the fil.
+fn share(amount: i64, bps: i64) -> i64 {
+    let scaled = i128::from(amount) * i128::from(bps);
+    i64::try_from((2 * scaled + 10_000) / 20_000).unwrap_or(i64::MAX)
+}
+
+/// Withholds the retention of an IPA whose certified work of the period is
+/// `work` fils, inside `tx`, and adds it to the parts of `project`
+/// (`CON.IPA.01`, 02 Construction §7.1 *Retention*): retention % of the work,
+/// up to the cap (the IPA that reaches it withholds only the rest, later IPAs
+/// nothing), split per the project's release split, rounded half up to the
+/// fil with the remainder to the final part. A part that does not exist yet
+/// is made `held`. Returns the amount withheld; no tax document is issued.
+///
+/// # Errors
+///
+/// A database error.
+pub async fn withhold_in(tx: &mut Transaction, project: &Project, work: i64) -> Result<i64> {
+    if work <= 0 || project.retention_bps <= 0 {
+        return Ok(0);
+    }
+    let parts = parts_in(tx, project.id).await?;
+    let held: i64 = parts.iter().map(|part| part.amount).sum();
+    let mut withheld = share(work, project.retention_bps);
+    if let Some(cap) = project.retention_cap {
+        withheld = withheld.min((cap - held).max(0));
+    }
+    if withheld <= 0 {
+        return Ok(0);
+    }
+    let first = share(withheld, project.retention_first_bps);
+    for (which, amount) in [
+        (RetentionPart::First, first),
+        (RetentionPart::Final, withheld - first),
+    ] {
+        if amount <= 0 {
+            continue;
+        }
+        match parts.iter().find(|part| part.part == which) {
+            Some(found) => {
+                let total = found.amount + amount;
+                Retention::query()
+                    .where_(Retention::ID.eq(found.id))
+                    .update(&mut *tx, &[("amount", &total)])
+                    .await?;
+            }
+            None => {
+                let mut made = Retention::new(project.id, which, amount);
+                made.insert(&mut *tx).await?;
+            }
+        }
+    }
+    Ok(withheld)
+}
+
 /// Makes every `held` part of `project_id` due, as the system, inside `tx`.
 /// Returns how many it made due.
 ///
@@ -197,6 +254,14 @@ pub async fn make_all_due_in(tx: &mut Transaction, project_id: i64) -> Result<us
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_share_is_rounded_half_up_to_the_fil() {
+        assert_eq!(share(18_000_000, 1_000), 1_800_000);
+        assert_eq!(share(1_000_001, 5_000), 500_001);
+        assert_eq!(share(1, 5_000), 1);
+        assert_eq!(share(0, 5_000), 0);
+    }
 
     #[test]
     fn only_a_held_part_becomes_due() {

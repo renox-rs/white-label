@@ -6,6 +6,7 @@
 //! | `POST /construction/ipas/{id}/submit` | `construction.ipa_submit` | `ipas.submit` in the project |
 //! | `POST /construction/ipas/{id}/certificate` | `construction.ipa_certificate` | `ipas.certify` in the project |
 //! | `GET /construction/ipas/{id}` | `construction.ipa_show` | `projects.view`, `projects.manage` or `ipas.certify` in the project |
+//! | `POST /construction/ipas/{id}/invoice` | `construction.ipa_invoice` | `invoices.issue` in the project |
 //! | `POST /construction/ipas/{id}/deductions` | `construction.deduction_record` | `ipas.deductions.record` in the project |
 //! | `POST /construction/deductions/{id}/accept` | `construction.deduction_accept` | `ipas.deductions.decide` in the project |
 //! | `POST /construction/deductions/{id}/contest` | `construction.deduction_contest` | `ipas.deductions.decide` in the project |
@@ -31,6 +32,7 @@ use crate::cancellation;
 use crate::certificate::{self, CertificateRequest, Recorded};
 use crate::deduction::{self, Decided, DeductionKind, NewDeduction};
 use crate::final_account::{self, ClosingWarnings};
+use crate::invoice;
 use crate::ipa::{self, Ipa};
 use crate::permissions;
 use crate::project::Project;
@@ -49,6 +51,8 @@ pub fn routes() -> Routes {
         .name("construction.ipa_certificate")
         .get("/construction/ipas/{id}", show_ipa)
         .name("construction.ipa_show")
+        .post("/construction/ipas/{id}/invoice", invoice_ipa)
+        .name("construction.ipa_invoice")
         .post("/construction/ipas/{id}/deductions", record_deduction)
         .name("construction.deduction_record")
         .post("/construction/deductions/{id}/accept", accept_deduction)
@@ -216,6 +220,22 @@ async fn certificate(
     Ok((Toast::success(t(&lang, key)), renox::HxRefresh).into_response())
 }
 
+/// `POST /construction/ipas/{id}/invoice`: the tax invoice, the credit note,
+/// the dispute and the supplier bill from the client (see [`crate::invoice`]).
+async fn invoice_ipa(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    invoice::invoice(&state, &user, id).await.map_err(answer)?;
+    Ok((
+        Toast::success(t(&lang, "construction.invoice.done")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
 /// A deduction line as the screen shows it.
 #[derive(Debug, Serialize)]
 struct DeductionView {
@@ -328,6 +348,10 @@ struct IpaView {
     claim_gap: Option<i64>,
     certificate: Option<String>,
     late_certificate: Option<String>,
+    invoice_id: Option<i64>,
+    credit_note_id: Option<i64>,
+    dispute_id: Option<i64>,
+    supplier_bill_id: Option<i64>,
     deductions: Vec<DeductionView>,
 }
 
@@ -363,6 +387,10 @@ async fn show_ipa(
         claim_gap: found.claim_gap,
         certificate: found.certificate_ref.clone(),
         late_certificate: found.late_certificate_ref.clone(),
+        invoice_id: found.invoice_id,
+        credit_note_id: found.credit_note_id,
+        dispute_id: found.dispute_id,
+        supplier_bill_id: found.supplier_bill_id,
         deductions: deduction::lines_of(&state.db, id)
             .await?
             .iter()
