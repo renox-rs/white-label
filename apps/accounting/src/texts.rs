@@ -1158,6 +1158,31 @@ const TEXTS: &[(&str, &str)] = &[
         "accounting.aml.notice_body",
         "Case {{ number }} needs your attention.",
     ),
+    // A CDD exit (BL-ACC-09).
+    (
+        "accounting.exits.partner_title",
+        "End engagement — relationship ended",
+    ),
+    (
+        "accounting.exits.partner_description",
+        "End each engagement below with the reason Relationship ended. The system sends nothing to the client.\n:lines",
+    ),
+    (
+        "accounting.exits.engagement_line",
+        "- :number :title (:status) :link",
+    ),
+    (
+        "accounting.exits.return_line",
+        "  Open return :number, period ending :period: the manager cancels it with the reason Engagement ended before the end.",
+    ),
+    (
+        "accounting.exits.on_hold",
+        "On hold: no new engagement can be created for this client.",
+    ),
+    (
+        "accounting.exits.task_closed",
+        "Every engagement of the client has ended.",
+    ),
 ];
 
 /// Whether the app has a text for `key`.

@@ -6,6 +6,10 @@
 //!   ([`crate::calendar`]) and the retainer started ([`crate::retainer`]).
 //! - CDD `reject`: the client's `onboarding` engagements are declined
 //!   ([`crate::engagements::decline_not_accepted`]).
+//! - CDD `exit`, and `reject` of the file of a client with an `active` or
+//!   `suspended` engagement: the partner gets the task to end it
+//!   ([`crate::exits::after`], BL-ACC-09); the task closes when the last
+//!   engagement has ended ([`crate::exits::on_ended`]).
 //! - `PartyBlocked`: the client's engagements are suspended with the neutral
 //!   reason *on hold* ([`crate::engagements::suspend_for_block`],
 //!   `ACC.ACL.14`).
@@ -36,7 +40,7 @@ use wl_kernel::documents::today;
 use wl_kernel::{PartyBlocked, ScreeningMatchConfirmed};
 
 use crate::cdd::CddFile;
-use crate::cdd_machine::REJECT;
+use crate::cdd_machine::{EXIT, REJECT};
 use crate::engagement::Engagement;
 use crate::engagement_machine::{
     ACTIVATE, AUTO_END, AUTO_SUSPEND, END, RESUME, RESUME_APPROVED, SUSPEND,
@@ -44,7 +48,7 @@ use crate::engagement_machine::{
 use crate::tax_return::Return;
 use crate::wip::{WRITE_OFF, WRITE_OFF_APPROVED, WipWriteOff};
 use crate::{
-    aml_cases, calendar, deadline_notices, ending, engagements, retainer, return_effects,
+    aml_cases, calendar, deadline_notices, ending, engagements, exits, retainer, return_effects,
     suspension, wip,
 };
 
@@ -77,6 +81,7 @@ pub(crate) fn register(app: &mut Registry) {
             deadline_notices::run_for(&state, event.key, &event.transition).await?;
             if ended {
                 ending::after_end(&state, event.key).await?;
+                exits::on_ended(&state, event.key).await?;
             }
             Ok(())
         },
@@ -90,11 +95,17 @@ pub(crate) fn register(app: &mut Registry) {
         },
     );
     app.listen(|event: Transitioned<CddFile>, state: AppState| async move {
-        if event.transition != REJECT {
+        if event.transition != REJECT && event.transition != EXIT {
             return Ok(());
         }
         let file = CddFile::find_or_404(&state.db, event.key).await?;
-        engagements::decline_not_accepted(&state, file.client()).await
+        if event.transition == REJECT {
+            engagements::decline_not_accepted(&state, file.client()).await?;
+        }
+        // A client served by an engagement (an exit, or a file rejected at a
+        // review) gives the partner the task to end it.
+        exits::after(&state, &file).await?;
+        Ok(())
     });
     app.listen(|event: Transitioned<Return>, state: AppState| async move {
         return_effects::after(&state, &event).await

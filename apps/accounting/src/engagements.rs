@@ -26,7 +26,7 @@ use crate::engagement_machine::{
 use crate::permissions;
 use crate::reasons::{self, NOT_ACCEPTED};
 use crate::texts::english;
-use crate::{deadline_notices, ending, letters, request_lists, suspension};
+use crate::{deadline_notices, ending, exits, letters, request_lists, suspension};
 
 /// The engagement `id`, or 404.
 async fn load(state: &AppState, id: i64) -> Result<Engagement> {
@@ -46,8 +46,9 @@ fn require(user: &AuthUser, permission: &str) -> Result {
 ///
 /// # Errors
 ///
-/// A 422 for a blank title, a negative fee or a client that is not a known
-/// party; the database's errors.
+/// A 422 for a blank title, a negative fee, a client that is not a known
+/// party or a client that is *on hold* after a CDD exit or rejection
+/// ([`exits::refuse_new_work`]); the database's errors.
 pub async fn create(state: &AppState, by: Option<i64>, new: NewEngagement) -> Result<Engagement> {
     if new.title.trim().is_empty() {
         return Err(refused(english("accounting.problems.title_required", &[])));
@@ -62,6 +63,8 @@ pub async fn create(state: &AppState, by: Option<i64>, new: NewEngagement) -> Re
     {
         return Err(refused(english("accounting.problems.client_unknown", &[])));
     }
+    // No new work for a client whose relationship ended through CDD.
+    exits::refuse_new_work(&state.db, new.client).await?;
     Engagement::create(
         &state.db,
         Engagement {

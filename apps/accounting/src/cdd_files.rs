@@ -26,8 +26,15 @@ async fn load(state: &AppState, id: i64) -> Result<CddFile> {
 ///
 /// # Errors
 ///
-/// The database's errors.
+/// A 422 (*On hold*) when the client was exited; the database's errors.
 pub async fn open(db: &Db, by: Option<i64>, client: PartyId) -> Result<CddFile> {
+    // An exit is final: no new file brings the client back (BL-ACC-09).
+    if CddFile::current(db, client)
+        .await?
+        .is_some_and(|file| file.status == CddStatus::Exited)
+    {
+        return Err(refused(english("accounting.exits.on_hold", &[])));
+    }
     let mut tx = db.begin().await?;
     let mut file = CddFile {
         client_party_id: client.0,
@@ -365,8 +372,11 @@ pub async fn reopen(state: &AppState, by: &AuthUser, id: i64) -> Result<CddFile>
 }
 
 /// `by` (the MLRO) exits the client of file `id` with `reason` (kept for the
-/// MLRO only). Its effects (the partner's task to end the engagements) come
-/// with BL-ACC-09.
+/// MLRO only, never in the history). After the commit the partner gets one
+/// task, due in five working days, to end the client's `active` and
+/// `suspended` engagements with the neutral reason *relationship ended*; the
+/// engagements run on until then, nothing goes to the client by itself, and
+/// a new engagement is refused with *On hold* ([`crate::exits`]).
 ///
 /// # Errors
 ///
