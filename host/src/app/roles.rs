@@ -8,6 +8,7 @@ use renox::anyhow::anyhow;
 use renox::auth::permissions;
 use renox::command::Args;
 use renox::prelude::*;
+use wl_delivery::permissions as delivery;
 use wl_documents::permissions as documents;
 use wl_hr::permissions as hr;
 use wl_invoicing::permissions as invoices;
@@ -72,6 +73,12 @@ pub const LEASING_AGENT: &str = prp::LEASING_AGENT_ROLE;
 /// HR: keeps the employee records, starts and follows onboardings, and is the
 /// `hr` owner of onboarding steps (wl-hr §3, §6).
 pub const HR: &str = "hr";
+/// The dispatcher: puts deliveries on runs, plans and dispatches runs, and
+/// manages deliveries (wl-delivery §6, 03 roles).
+pub const DISPATCHER: &str = "dispatcher";
+/// A driver or rider: sees today's stops of their own runs and records their
+/// outcomes (wl-delivery §6, `WRK.ACL.05`).
+pub const DRIVER: &str = "driver";
 /// Everyone who signs up.
 pub const MEMBER: &str = "member";
 
@@ -169,6 +176,16 @@ pub const ROLES: &[(&str, &[&str])] = &[
             hr::EMPLOYEES_MANAGE,
             hr::ONBOARDING_VIEW,
             hr::ONBOARDING_MANAGE,
+            delivery::VIEW,
+            delivery::DISPATCH,
+            delivery::COMPLETE,
+            delivery::MANAGE,
+            delivery::RUNS_VIEW,
+            delivery::RUNS_DISPATCH,
+            delivery::RUNS_DRIVE,
+            delivery::POD_VIEW,
+            delivery::REVERSE,
+            delivery::APPROVE_COD_DIFFERENCE,
             prp::UNITS_VIEW,
             prp::UNITS_MANAGE,
             prp::UNITS_RESERVE,
@@ -371,6 +388,18 @@ pub const ROLES: &[(&str, &[&str])] = &[
             sales::LEADS_MANAGE,
         ],
     ),
+    (
+        DISPATCHER,
+        &[
+            delivery::VIEW,
+            delivery::DISPATCH,
+            delivery::MANAGE,
+            delivery::RUNS_VIEW,
+            delivery::RUNS_DISPATCH,
+            delivery::POD_VIEW,
+        ],
+    ),
+    (DRIVER, &[delivery::RUNS_DRIVE, delivery::COMPLETE]),
     (MEMBER, &[]),
 ];
 

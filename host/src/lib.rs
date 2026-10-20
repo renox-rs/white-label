@@ -185,6 +185,7 @@ fn enable(
         "sales" => Ok(app.module(app::property_seed::sales_for(client_app))),
         "hr" => Ok(app.module(app::property_seed::hr_for(client_app, owner_role))),
         "portal" => Ok(app.module(wl_portal::WlPortal)),
+        "delivery" => Ok(app.module(wl_delivery::WlDelivery::new())),
         other => Err(ConfigError(format!(
             "[modules] `{other}` is not built yet; remove it from client.toml for now"
         ))),
