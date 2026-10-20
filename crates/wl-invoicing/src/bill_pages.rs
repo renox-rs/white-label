@@ -216,6 +216,7 @@ pub(crate) struct LineRow {
     vat: String,
     gross: String,
     service_date: Option<NaiveDate>,
+    service_end_date: Option<NaiveDate>,
     cost_code: Option<String>,
 }
 
@@ -418,6 +419,7 @@ async fn show(
                     vat: dash(),
                     gross: dash(),
                     service_date: None,
+                    service_end_date: None,
                     cost_code: None,
                 };
             }
@@ -431,6 +433,7 @@ async fn show(
                 vat: money(line.vat_amount),
                 gross: money(line.gross_amount),
                 service_date: line.service_date,
+                service_end_date: line.service_end_date,
                 cost_code: line.cost_code.clone(),
             }
         })
@@ -688,6 +691,7 @@ pub(crate) struct LineSlot {
     unit_price: String,
     vat: String,
     service_date: String,
+    service_end_date: String,
     cost_code: String,
 }
 
@@ -806,6 +810,17 @@ fn lines_of_form(
             "" => {}
             date => {
                 line = line.service_date(parse_date(date).ok_or((name("service_date"), "date"))?);
+            }
+        }
+        match get(n, "service_end_date") {
+            "" => {}
+            date => {
+                let end = parse_date(date).ok_or((name("service_end_date"), "date"))?;
+                // A period ends on or after the day it starts.
+                if line.service_date.is_none_or(|start| end < start) {
+                    return Err((name("service_end_date"), "period"));
+                }
+                line = line.service_end_date(end);
             }
         }
         line = line.cost_code(get(n, "cost_code"));
@@ -976,6 +991,7 @@ async fn form_page(state: &AppState, lang: &Lang, bill: Option<&SupplierBill>) -
                 unit_price: decimal_text(line.unit_price, 2, 2),
                 vat: line.vat_category.as_str().to_owned(),
                 service_date: date(line.service_date),
+                service_end_date: date(line.service_end_date),
                 cost_code: line.cost_code.clone().unwrap_or_default(),
             });
         }
@@ -1209,6 +1225,29 @@ mod tests {
             ]),
             ("line_1_service_date".to_owned(), "date")
         );
+        // A period needs its first day and ends on or after it.
+        for (start, end) in [("", "2026-10-05"), ("2026-10-05", "2026-10-04")] {
+            let mut pairs = vec![
+                ("line_1_description", "A"),
+                ("line_1_unit_price", "1"),
+                ("line_1_service_end_date", end),
+            ];
+            if !start.is_empty() {
+                pairs.push(("line_1_service_date", start));
+            }
+            assert_eq!(
+                bad(&pairs),
+                ("line_1_service_end_date".to_owned(), "period")
+            );
+        }
+        let ok = lines_of_form(&form(&[
+            ("line_1_description", "A"),
+            ("line_1_unit_price", "1"),
+            ("line_1_service_date", "2026-09-25"),
+            ("line_1_service_end_date", "2026-10-05"),
+        ]))
+        .unwrap();
+        assert_eq!(ok[0].service_end_date, NaiveDate::from_ymd_opt(2026, 10, 5));
     }
 
     #[test]
@@ -1247,6 +1286,7 @@ mod tests {
                 "amount",
                 "category",
                 "not_draft",
+                "period",
             ]
             .iter()
             .map(|k| format!("supplier_bill.errors.{k}")),

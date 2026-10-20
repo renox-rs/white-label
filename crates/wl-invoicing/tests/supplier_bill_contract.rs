@@ -189,3 +189,44 @@ async fn inv24_both_reasons_are_listed_and_an_unknown_contract_holds_nothing() {
         SupplierBillStatus::Matched
     );
 }
+
+/// A period line counts by its last day: a line for 2026-09-25 to 2026-10-05
+/// on a contract that ends on 2026-09-30 is after the end (the exception names
+/// the last day); one for 2026-09-20 to 2026-09-30 is matched; a period over a
+/// single day without an end date is as before.
+#[renox::test]
+async fn inv24_a_period_line_counts_by_its_last_day() {
+    let t = boot().await;
+    t.contracts.ends_on(SC_12, date(9, 30));
+    let period = |from: NaiveDate, to: NaiveDate| {
+        let mut line = BillLineDraft::new("AMC, September", 80_000, VatCategory::Standard);
+        line.service_date = Some(from);
+        line.service_end_date = Some(to);
+        line
+    };
+    let mut over = BillDraft::new(BLUE_DUNES, "C-5", date(10, 6))
+        .contract(Subject::new(SERVICE_CONTRACT_SUBJECT_TYPE, SC_12), None);
+    over = over.line(period(date(9, 25), date(10, 5)));
+    let over = supplier_bill::create(t.db(), &over, Some(A)).await.unwrap();
+    let held = submitted(&t, &over).await;
+    assert_eq!(held.status, SupplierBillStatus::Exception);
+    assert!(held.after_end_hold);
+    let rows = exceptions_of(t.db(), held.id).await.unwrap();
+    assert_eq!(rows[0].reason_code, WORK_AFTER_CONTRACT_END);
+    assert!(
+        rows[0].detail.clone().unwrap().contains("2026-10-05"),
+        "{:?}",
+        rows[0].detail
+    );
+
+    let mut inside = BillDraft::new(BLUE_DUNES, "C-6", date(10, 6))
+        .contract(Subject::new(SERVICE_CONTRACT_SUBJECT_TYPE, SC_12), None);
+    inside = inside.line(period(date(9, 20), date(9, 30)));
+    let inside = supplier_bill::create(t.db(), &inside, Some(A))
+        .await
+        .unwrap();
+    let done = submitted(&t, &inside).await;
+    assert_eq!(done.status, SupplierBillStatus::Matched);
+    let stored = supplier_bill::lines_of(t.db(), done.id).await.unwrap();
+    assert_eq!(stored[0].service_end_date, Some(date(9, 30)));
+}

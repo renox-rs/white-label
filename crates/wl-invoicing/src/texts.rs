@@ -84,6 +84,18 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("wl_invoicing.supplier_bill.fields.cost_code", "Cost code"),
     (
+        "wl_invoicing.supplier_bill.fields.service_end_date",
+        "Service end date",
+    ),
+    (
+        "wl_invoicing.supplier_bill.form.service_end_hint",
+        "For work over a period: its last day. A period counts against the contract end by this day.",
+    ),
+    (
+        "wl_invoicing.supplier_bill.errors.period",
+        "The end of a period cannot be before its service date, which must be entered.",
+    ),
+    (
         "wl_invoicing.supplier_bill.form.cost_code_hint",
         "Budget vs actual files the line under the category that collects this code.",
     ),

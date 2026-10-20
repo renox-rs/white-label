@@ -312,7 +312,7 @@ async fn late_lines(
     let coverage = service_contract_coverage(state);
     let mut late = Vec::new();
     for line in lines {
-        let Some(day) = line.service_date else {
+        let Some(day) = line.counted_day() else {
             continue;
         };
         let cover = coverage
