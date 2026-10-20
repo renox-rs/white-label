@@ -34,7 +34,7 @@ impl StateMachine for Payment {
             .state(Failed)
             .tone("error")
             .state(ChargedBack)
-            .tone("warning")
+            .tone("error")
             .state(Reversed)
             .tone("neutral")
             .terminal();
