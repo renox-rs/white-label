@@ -80,12 +80,7 @@ async fn the_project_manager_and_qs_are_warned_seven_and_two_days_before_the_dea
     let mut expected = vec![pm.id, qs.id];
     expected.sort_unstable();
     assert_eq!(users, expected);
-    assert!(
-        first[0].data["title"]
-            .as_str()
-            .unwrap()
-            .contains("7 days")
-    );
+    assert!(first[0].data["title"].as_str().unwrap().contains("7 days"));
     assert!(
         first[0].data["body"]
             .as_str()
@@ -150,7 +145,11 @@ async fn a_notice_after_the_deadline_is_marked_late_and_not_refused() {
     assert_eq!(sent.notice_date, Some(date(2027, 5, 2)));
     assert!(sent.notice_late);
     let report = variation::report_of(t.db(), project.id).await.unwrap();
-    assert!(report.iter().any(|line| line.id == late.id && line.notice_late));
+    assert!(
+        report
+            .iter()
+            .any(|line| line.id == late.id && line.notice_late)
+    );
 }
 
 /// Done when 3: with no notice period set there is no warning and no late

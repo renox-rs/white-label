@@ -41,7 +41,8 @@ use wl_kernel::tickets::{
     OpenTicket, TaskCreator, TicketFuture, TicketId, TicketRef, provide_task_creator,
 };
 use wl_kernel::workforce::{
-    EmployeeId, StaffProfile, Workforce, WorkforceFuture, provide_workforce,
+    AbsenceCaseOpened, EmployeeId, LeaveCalendar, StaffProfile, Workforce, WorkforceFuture,
+    provide_leave_calendar, provide_workforce,
 };
 use wl_kernel::{BusinessCalendar, PartyId, Subject};
 
@@ -317,14 +318,20 @@ impl Notifier for Recording {
     }
 }
 
-/// The employees of HR, as the workforce of the kernel answers for them.
+/// The employees of HR, as the workforce of the kernel answers for them, with
+/// their approved leave and the absence cases the vertical announced.
 #[derive(Clone, Default)]
-pub struct Staff(Arc<Mutex<BTreeMap<i64, StaffProfile>>>);
+pub struct Staff {
+    people: Arc<Mutex<BTreeMap<i64, StaffProfile>>>,
+    leave: Arc<Mutex<Vec<(i64, NaiveDate, NaiveDate)>>>,
+    /// `AbsenceCaseOpened`.
+    pub opened: Arc<Mutex<Vec<AbsenceCaseOpened>>>,
+}
 
 impl Staff {
     /// Puts an employee who is at work among the staff.
     pub fn employ(&self, id: i64) -> EmployeeId {
-        self.0.lock().unwrap().insert(
+        self.people.lock().unwrap().insert(
             id,
             StaffProfile {
                 employee: EmployeeId(id),
@@ -341,15 +348,65 @@ impl Staff {
         );
         EmployeeId(id)
     }
+
+    /// Assigns the employee `id` to `scope` (a project).
+    pub fn assign(&self, id: i64, scope: Subject) {
+        if let Some(profile) = self.people.lock().unwrap().get_mut(&id) {
+            profile.scopes.push(scope);
+        }
+    }
+
+    /// Approves leave of the employee `id` from `from` to `to`.
+    pub fn approve_leave(&self, id: i64, from: NaiveDate, to: NaiveDate) {
+        self.leave.lock().unwrap().push((id, from, to));
+    }
+
+    /// The absence cases announced.
+    pub fn opened(&self) -> Vec<AbsenceCaseOpened> {
+        self.opened.lock().unwrap().clone()
+    }
 }
 
 impl Workforce for Staff {
+    fn all_staff<'a>(&'a self, _db: &'a Db) -> WorkforceFuture<'a, Vec<EmployeeId>> {
+        Box::pin(async move {
+            Ok(self
+                .people
+                .lock()
+                .unwrap()
+                .keys()
+                .map(|id| EmployeeId(*id))
+                .collect())
+        })
+    }
+
     fn staff<'a>(
         &'a self,
         _state: &'a AppState,
         employee: EmployeeId,
     ) -> WorkforceFuture<'a, Option<StaffProfile>> {
-        Box::pin(async move { Ok(self.0.lock().unwrap().get(&employee.0).cloned()) })
+        Box::pin(async move { Ok(self.people.lock().unwrap().get(&employee.0).cloned()) })
+    }
+}
+
+impl LeaveCalendar for Staff {
+    fn approved_leave<'a>(
+        &'a self,
+        _db: &'a Db,
+        employee: EmployeeId,
+        from: NaiveDate,
+        to: NaiveDate,
+    ) -> WorkforceFuture<'a, Vec<(NaiveDate, NaiveDate)>> {
+        Box::pin(async move {
+            Ok(self
+                .leave
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(id, first, last)| *id == employee.0 && *first <= to && *last >= from)
+                .map(|(_, first, last)| (*first, *last))
+                .collect())
+        })
     }
 }
 
@@ -646,6 +703,8 @@ impl Module for Fakes {
 
     fn register(&self, app: &mut Registry) {
         provide_workforce(app, self.staff.clone());
+        provide_leave_calendar(app, self.staff.clone());
+        record(app, &self.staff.opened);
         provide_task_creator(app, self.tasks.clone());
         provide_notifier(app, self.notices.clone());
         provide_invoicer(app, self.invoices.clone());
@@ -701,6 +760,28 @@ impl Booted {
             .unwrap();
         user.assign_role(self.db(), role).await.unwrap();
         user
+    }
+
+    /// A user holding a role that only names who is told (no permission).
+    pub async fn named(&self, name: &str, role: &str) -> User {
+        permissions::define_role(self.db(), role, &[perm::PROJECTS_VIEW])
+            .await
+            .unwrap();
+        self.user_with(name, role).await
+    }
+
+    /// The employee `id` was recorded present at `site` on `day`.
+    pub async fn present(&self, id: i64, site: &WorkLocation, day: NaiveDate) {
+        let mut record = wl_attendance::AttendanceRecord {
+            employee_id: id,
+            location_id: site.id,
+            date: day,
+            check_in: dubai(day, 7, 0),
+            check_out: Some(dubai(day, 15, 0)),
+            recorded_at: dubai(day, 15, 5),
+            ..wl_attendance::AttendanceRecord::default()
+        };
+        record.save(self.db()).await.unwrap();
     }
 
     /// A project manager.
