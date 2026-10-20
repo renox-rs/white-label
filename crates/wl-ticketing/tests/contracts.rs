@@ -16,7 +16,7 @@ use wl_ticketing::contract_end::{
 use wl_ticketing::flags::{ComplianceFlag, REPLACEMENT_ACTIVE};
 use wl_ticketing::plans::{MaintenancePlans, PlanStatus};
 use wl_ticketing::{
-    Category, ContractStatus, ServiceContract, SlaPolicy, Ticket, TicketStatus, Tickets,
+    Category, ContractStatus, Coverage, ServiceContract, SlaPolicy, Ticket, TicketStatus, Tickets,
 };
 
 use support::contracts::{World, date, tower_a_cleaning, tower_a_lifts, world};
@@ -770,4 +770,163 @@ async fn inv24_the_coverage_of_a_day_runs_up_to_the_end_or_termination_date() {
             ends_on: date("2027-12-31")
         }
     );
+}
+
+/// Edge case: the system cancel of the visits due after the end still runs
+/// for a category set to reassign only; only the coordinator's cancel is
+/// withheld.
+#[renox::test]
+async fn tkt04_the_system_cancel_runs_for_a_reassign_only_category() {
+    let w = world().await;
+    let mut lifts_category = Category::by_key(w.t.db(), "lifts").await.unwrap().unwrap();
+    lifts_category.contract_end_reassign_only = true;
+    lifts_category.save(w.t.db()).await.unwrap();
+    let l = lifts(&w).await;
+
+    expire(&w, &l).await;
+
+    for late in [&l.jan15, &l.feb15] {
+        let visit = w.t.reload(late).await;
+        assert_eq!(visit.status, TicketStatus::Cancelled);
+        assert_eq!(visit.cancel_reason.as_deref(), Some(CONTRACT_ENDED_REASON));
+    }
+    assert_eq!(w.t.reload(&l.dec20).await.status, TicketStatus::Assigned);
+}
+
+/// Edge case: no task is opened when no visit remains on or before the end
+/// date (every open visit is due after it and is cancelled).
+#[renox::test]
+async fn tkt04_no_task_is_opened_when_no_visits_remain() {
+    let w = world().await;
+    let contract = w
+        .contract(
+            COOLAIR,
+            "2026-01-01",
+            "2026-12-31",
+            &[(tower_a_lifts(), "lifts")],
+        )
+        .await;
+    let vendor = Some(Assignee::party(COOLAIR));
+    let jan = w
+        .visit(&contract, "lifts", tower_a_lifts(), "2027-01-15", vendor)
+        .await;
+    let started = w
+        .visit(&contract, "lifts", tower_a_lifts(), "2026-12-10", vendor)
+        .await;
+    w.start(&started).await;
+
+    let report = contract_end::run(w.t.state(), date("2027-01-01"))
+        .await
+        .unwrap();
+    assert_eq!(report.ended.len(), 1);
+    assert_eq!(report.ended[0].cancelled, [jan.id]);
+    assert!(report.ended[0].left.is_empty());
+    assert_eq!(report.ended[0].task, None);
+    let key = task_key(contract.id);
+    let tasks = Ticket::query()
+        .where_(Ticket::SOURCE_KEY.eq(key.as_str()))
+        .get(w.t.db())
+        .await
+        .unwrap();
+    assert!(tasks.is_empty(), "no task: {tasks:?}");
+    assert_eq!(w.ended.all()[0].visits_left, Vec::<TicketId>::new());
+}
+
+/// Edge case: a contract that was renewed does not end: `WRK.RUL.18` leaves
+/// its visits alone, raises no flag and emits no event (the `renew`
+/// transition itself belongs to the renewal issue; the row is placed in the
+/// `renewed` state).
+#[renox::test]
+async fn tkt04_a_renewed_contract_does_not_trigger_the_rule() {
+    let w = world().await;
+    let mut contract = ServiceContract {
+        number: "AMC-2026-0800".into(),
+        vendor_party_id: COOLAIR.0,
+        title: "Renewed".into(),
+        start_date: date("2026-01-01"),
+        end_date: date("2026-12-31"),
+        status: ContractStatus::Renewed,
+        compliance_contract: true,
+        ..ServiceContract::default()
+    };
+    let mut tx = w.t.db().begin().await.unwrap();
+    contract
+        .insert_in_state(&mut tx, ContractStatus::Renewed, "fixture")
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    Coverage::create(
+        w.t.db(),
+        Coverage {
+            contract_id: contract.id,
+            subject_type: tower_a_lifts().subject_type,
+            subject_id: tower_a_lifts().subject_id,
+            category_id: Category::by_key(w.t.db(), "lifts")
+                .await
+                .unwrap()
+                .unwrap()
+                .id,
+            ..Coverage::default()
+        },
+    )
+    .await
+    .unwrap();
+    let jan = w
+        .visit(
+            &contract,
+            "lifts",
+            tower_a_lifts(),
+            "2027-01-15",
+            Some(Assignee::party(COOLAIR)),
+        )
+        .await;
+
+    let report = contract_end::run(w.t.state(), date("2027-01-01"))
+        .await
+        .unwrap();
+    assert!(report.ended.is_empty() && report.expired == 0);
+    assert!(
+        contract_end::handle(w.t.state(), contract.id, date("2027-01-01"))
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(w.t.reload(&jan).await.status, TicketStatus::Assigned);
+    assert!(ComplianceFlag::open(w.t.db()).await.unwrap().is_empty());
+    assert!(w.ended.all().is_empty());
+    assert_eq!(w.reload(&contract).await.ended_at, None);
+}
+
+/// Done-when 1, edge case: the coordinator's task is due exactly one working
+/// day (Asia/Dubai calendar) after the run: a run on Friday 1 January 2027
+/// at 10:00 gives Monday 4 January 10:00; Thursday 31 December 2026 gives
+/// Friday.
+#[renox::test]
+async fn tkt04_the_task_is_due_one_working_day_after_the_run() {
+    use renox::chrono::Timelike;
+    use wl_kernel::calendar::calendar;
+
+    let w = world().await;
+    lifts(&w).await;
+    // Friday 2027-01-01, 10:00 Dubai (06:00 UTC).
+    let target = dubai("2027-01-01", 10, 0);
+    let seconds = (target - renox::db::now()).num_seconds();
+    assert!(seconds > 0);
+    w.t.app
+        .travel(std::time::Duration::from_secs(seconds as u64 + 60));
+    let report =
+        w.t.app
+            .at_travelled_time(contract_end::run(w.t.state(), date("2027-01-01")))
+            .await
+            .unwrap();
+    let task = Ticket::find(w.t.db(), report.ended[0].task.expect("a task"))
+        .await
+        .unwrap()
+        .unwrap();
+    let due = task.due_at.expect("a due time");
+    let local = calendar(w.t.state()).local(due);
+    assert_eq!(local.date_naive(), date("2027-01-04"), "Monday");
+    assert_eq!(local.hour(), 10, "{due} {local} {target}");
+    assert!(local.minute() < 5, "{local}");
+    assert!(due >= dubai("2027-01-04", 10, 0));
 }
