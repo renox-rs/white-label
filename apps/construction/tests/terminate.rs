@@ -10,7 +10,7 @@ mod support;
 
 use construction::{
     Guarantee, GuaranteeKind, GuaranteeStatus, Ipa, IpaKind, IpaStatus, ProjectStatus, Retention,
-    RetentionPart, RetentionStatus,
+    RetentionPart, RetentionStatus, permissions,
 };
 use renox::prelude::*;
 use renox::state_machine::StateMachine;
@@ -22,6 +22,7 @@ use wl_inventory::{
 use wl_kernel::approvals::approve;
 use wl_kernel::documents::dubai_date;
 use wl_kernel::notify::NotifyRecipient;
+use wl_kernel::tickets::Assignee;
 
 use support::{Booted, boot, date, dubai};
 
@@ -287,7 +288,11 @@ async fn the_wind_down_after_the_approval() {
     // orders.
     let draft = request(&t, store.id, PurchaseRequestStatus::Draft).await;
     let approved = request(&t, store.id, PurchaseRequestStatus::Approved).await;
+    let submitted = request(&t, store.id, PurchaseRequestStatus::Submitted).await;
     let ordered = request(&t, store.id, PurchaseRequestStatus::Ordered).await;
+    // Procurement and the accountant hold their roles: the tasks go to them.
+    let buyer = t.named("Pia", permissions::PROCUREMENT_ROLE).await;
+    let books = t.accountant("Ali").await;
     for number in ["PO-2027-0001", "PO-2027-0002", "PO-2027-0003"] {
         t.order(&store, number).await;
     }
@@ -332,7 +337,7 @@ async fn the_wind_down_after_the_approval() {
     t.approve(&md, &project).await;
 
     // Purchase requests without an order are cancelled.
-    for id in [draft.id, approved.id] {
+    for id in [draft.id, submitted.id, approved.id] {
         let found = reload_request(&t, id).await;
         assert_eq!(found.status, PurchaseRequestStatus::Cancelled);
         assert_eq!(found.cancel_reason.as_deref(), Some("project terminated"));
@@ -345,6 +350,7 @@ async fn the_wind_down_after_the_approval() {
     // One task for procurement lists the 3 open orders.
     let orders = t.tasks.with_key("construction.terminate_orders:");
     assert_eq!(orders.len(), 1);
+    assert_eq!(orders[0].ticket.assignee, Some(Assignee::user(buyer.id)));
     for number in ["PO-2027-0001", "PO-2027-0002", "PO-2027-0003"] {
         assert!(
             orders[0].ticket.description.contains(number),
@@ -388,6 +394,11 @@ async fn the_wind_down_after_the_approval() {
     // One task per active guarantee.
     let guarantees = t.tasks.with_key("construction.terminate_guarantee:");
     assert_eq!(guarantees.len(), 2);
+    assert!(
+        guarantees
+            .iter()
+            .all(|task| task.ticket.assignee == Some(Assignee::user(books.id)))
+    );
 
     // The 4 snags are cancelled with the reason; the other ticket stays.
     let cancelled = t.tasks.cancelled_of(&subject, "snag");
