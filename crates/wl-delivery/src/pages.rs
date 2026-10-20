@@ -16,6 +16,10 @@
 //! | `GET /runs/{id}` | `wl_delivery.run` | `runs.view` |
 //! | `POST /runs` | `wl_delivery.runs_store` | `runs.dispatch` (fields `run_date`, `driver_user_id`, `vehicle_type`, `vehicle_asset_id`, `depot`) |
 //! | `POST /runs/{id}/dispatch` | `wl_delivery.run_dispatch` | `runs.dispatch` |
+//! | `POST /runs/{id}/receipts` | `wl_delivery.run_receipts` | `runs.dispatch` (fields `item_{delivery}_0` = `received` or `missing`; `received_{delivery}_{line}`, `missing_{delivery}_{line}`) |
+//! | `POST /runs/{id}/cash` | `wl_delivery.run_cash` | `runs.dispatch` (field `amount`; not the run's driver) |
+//! | `POST /runs/{id}/close` | `wl_delivery.run_close` | `runs.dispatch` |
+//! | `POST /driver/runs/{id}/return` | `wl_delivery.run_return` | `runs.drive` (the run's driver) |
 //! | `GET /driver` | `wl_delivery.driver` | `runs.drive` (today's stops of the user) |
 //! | `GET /driver/stops/{id}` | `wl_delivery.stop` | `runs.drive` (404 for anyone else's stop) |
 //! | `POST /driver/stops/{id}/deliver` | `wl_delivery.stop_deliver` | `deliveries.complete` and the run's driver |
@@ -40,6 +44,7 @@ use serde::{Deserialize, Serialize};
 use wl_kernel::delivery::ReviewOutcome;
 use wl_kernel::documents::{dubai_text, today};
 
+use crate::close;
 use crate::day_list::{StopView, stop_of, stops_of};
 use crate::delivery::{Attempt, Delivery, DeliveryStatus};
 use crate::lost;
@@ -112,6 +117,12 @@ pub fn routes() -> Routes {
                 .name("wl_delivery.runs_store")
                 .post("/runs/{id}/dispatch", store_dispatch)
                 .name("wl_delivery.run_dispatch")
+                .post("/runs/{id}/receipts", store_receipts)
+                .name("wl_delivery.run_receipts")
+                .post("/runs/{id}/cash", store_cash)
+                .name("wl_delivery.run_cash")
+                .post("/runs/{id}/close", store_close)
+                .name("wl_delivery.run_close")
                 .require_permission(permissions::RUNS_DISPATCH),
         )
         .merge(
@@ -120,6 +131,8 @@ pub fn routes() -> Routes {
                 .name("wl_delivery.driver")
                 .get("/driver/stops/{id}", stop)
                 .name("wl_delivery.stop")
+                .post("/driver/runs/{id}/return", store_return)
+                .name("wl_delivery.run_return")
                 .require_permission(permissions::RUNS_DRIVE),
         )
         .merge(
@@ -699,6 +712,138 @@ async fn store_found(
         .into_response())
 }
 
+/// `POST /driver/runs/{id}/return`: the driver brings the run back to the
+/// depot; every stop needs an outcome first.
+async fn store_return(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(run): Found<Run>,
+) -> Result<Response> {
+    close::return_to_depot(&state, &user, &run)
+        .await
+        .map_err(TransitionError::into_error)?;
+    Ok((
+        Toast::success(texts::t(&lang, "wl_delivery.close.returned")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// The answer to a receipt or a count: the run closed, or what it waits for.
+fn closing_toast(lang: &Lang, closed: &close::CloseState, saved: &str) -> Response {
+    let key = match closed {
+        close::CloseState::Closed => "wl_delivery.close.closed",
+        close::CloseState::Waiting(_) => saved,
+    };
+    (Toast::success(texts::t(lang, key)), renox::HxRefresh).into_response()
+}
+
+/// `POST /runs/{id}/receipts`: the depot ticks the items of a run that is
+/// back. For an undelivered delivery the field `item_{delivery}_0` is
+/// `received` or `missing`; for a refused line the quantities
+/// `received_{delivery}_{line}` and `missing_{delivery}_{line}` (one of them
+/// is enough: the other is what is left). Items without a field are left as
+/// they are. The run closes when this completes it.
+async fn store_receipts(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(fields): Form<HashMap<String, String>>,
+) -> Result<Response> {
+    let run = Run::find_or_404(&state.db, id).await?;
+    let mut entries = Vec::new();
+    for item in close::items_of(&state.db, &run).await? {
+        if item.line_id == 0 {
+            let name = format!("item_{}_0", item.delivery_id);
+            let (received, missing) = match field(&fields, &name) {
+                Some("received") => (close::WHOLE, 0),
+                Some("missing") => (0, close::WHOLE),
+                Some(_) => {
+                    return Err(unprocessable(format!(
+                        "{}: choose received or missing.",
+                        item.number
+                    )));
+                }
+                None => continue,
+            };
+            entries.push(close::Entry {
+                delivery_id: item.delivery_id,
+                line_id: 0,
+                received_milli: received,
+                missing_milli: missing,
+            });
+            continue;
+        }
+        let quantity = |name: String| -> Result<Option<i64>> {
+            match field(&fields, &name) {
+                Some(text) => parse_scaled(text, 3).map(Some).ok_or_else(|| {
+                    unprocessable(format!("{}: {name} is not a number.", item.description))
+                }),
+                None => Ok(None),
+            }
+        };
+        let received = quantity(format!("received_{}_{}", item.delivery_id, item.line_id))?;
+        let missing = quantity(format!("missing_{}_{}", item.delivery_id, item.line_id))?;
+        let (received, missing) = match (received, missing) {
+            (None, None) => continue,
+            (Some(r), Some(m)) => (r, m),
+            (Some(r), None) => (r, item.expected_milli - r),
+            (None, Some(m)) => (item.expected_milli - m, m),
+        };
+        entries.push(close::Entry {
+            delivery_id: item.delivery_id,
+            line_id: item.line_id,
+            received_milli: received,
+            missing_milli: missing,
+        });
+    }
+    let closed = close::receive(&state, &user, &run, &entries)
+        .await
+        .map_err(TransitionError::into_error)?;
+    Ok(closing_toast(&lang, &closed, "wl_delivery.close.receipts_saved"))
+}
+
+/// `POST /runs/{id}/cash`: the depot records the cash it counted (field
+/// `amount`, AED); never the run's driver. The run closes when this
+/// completes it.
+async fn store_cash(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(run): Found<Run>,
+    Form(fields): Form<HashMap<String, String>>,
+) -> Result<Response> {
+    let amount = field(&fields, "amount")
+        .and_then(|text| parse_scaled(text, 2))
+        .ok_or_else(|| unprocessable("The cash counted is not an amount.".to_owned()))?;
+    let closed = close::count_cash(&state, &user, &run, amount)
+        .await
+        .map_err(TransitionError::into_error)?;
+    Ok(closing_toast(&lang, &closed, "wl_delivery.close.cash_saved"))
+}
+
+/// `POST /runs/{id}/close`: closes the run when everything is accounted for;
+/// otherwise answers 422 with what it waits for.
+async fn store_close(
+    State(state): State<AppState>,
+    lang: Lang,
+    Found(run): Found<Run>,
+) -> Result<Response> {
+    match close::try_close(&state, run.id)
+        .await
+        .map_err(TransitionError::into_error)?
+    {
+        close::CloseState::Closed => Ok((
+            Toast::success(texts::t(&lang, "wl_delivery.close.closed")),
+            renox::HxRefresh,
+        )
+            .into_response()),
+        close::CloseState::Waiting(reasons) => Err(unprocessable(reasons.join(" "))),
+    }
+}
+
 /// The form that records a scan, a note or a depot receipt.
 #[derive(Deserialize, Serialize, Debug)]
 pub struct TraceForm {
@@ -868,6 +1013,35 @@ pub(crate) struct RunPage {
     card: RunCard,
     stops: Vec<StopRow>,
     can_dispatch: bool,
+    /// The depot's list of a run that is back; none before.
+    depot: Option<DepotView>,
+}
+
+/// One item the depot accounts for.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct ItemRow {
+    delivery_id: i64,
+    line_id: i64,
+    number: String,
+    description: String,
+    whole: bool,
+    expected: String,
+    received: String,
+    missing: String,
+    accounted: bool,
+}
+
+/// The depot section of a run that is back or closed.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct DepotView {
+    items: Vec<ItemRow>,
+    cash_expected: String,
+    cash_counted: Option<String>,
+    /// Whether the viewer may tick items and count cash.
+    can_receive: bool,
+    /// Whether the cash is still to be counted.
+    cash_open: bool,
+    open: bool,
 }
 
 /// One stop of a run.
@@ -913,12 +1087,42 @@ async fn run_show(
         vehicle_type: t(&format!("vehicle.{}", run.vehicle_type.as_str())),
         vehicle: run.vehicle_asset_id.map(|id| format!("#{id}")),
     };
+    let depot = if matches!(run.status, RunStatus::ReturnedToDepot | RunStatus::Closed) {
+        let items = close::items_of(&state.db, &run)
+            .await?
+            .into_iter()
+            .map(|item| ItemRow {
+                delivery_id: item.delivery_id,
+                line_id: item.line_id,
+                number: item.number.clone(),
+                description: item.description.clone(),
+                whole: item.line_id == 0,
+                expected: milli_text(item.expected_milli),
+                received: milli_text(item.received_milli),
+                missing: milli_text(item.missing_milli),
+                accounted: item.accounted,
+            })
+            .collect();
+        let expected = close::cash_expected(&state.db, &run).await?;
+        Some(DepotView {
+            items,
+            cash_expected: aed(expected),
+            cash_counted: run.cash_counted_amount.map(aed),
+            can_receive: user.has_permission(permissions::RUNS_DISPATCH)
+                && run.status == RunStatus::ReturnedToDepot,
+            cash_open: expected > 0 && run.cash_counted_at.is_none(),
+            open: run.status == RunStatus::ReturnedToDepot,
+        })
+    } else {
+        None
+    };
     Ok(View::typed(RunPage {
         tx: texts::all(&lang),
         status_label: t(&format!("run_status.{}", run.status.as_str())),
         status_kind: run_status_kind(run.status),
         can_dispatch: user.has_permission(permissions::RUNS_DISPATCH)
             && run.status == RunStatus::Planned,
+        depot,
         run,
         card,
         stops,
@@ -955,6 +1159,9 @@ pub(crate) struct DriverPage {
     tx: Texts,
     today: String,
     stops: Vec<StopView>,
+    /// `(id, number)` of the driver's runs of today that are out, which the
+    /// driver brings back to the depot.
+    returnable: Vec<(i64, String)>,
 }
 
 /// `GET /driver`: today's stops of the signed-in driver.
@@ -965,10 +1172,21 @@ async fn driver(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Re
         .iter()
         .map(|stop| stop.view())
         .collect();
+    let returnable = Run::query()
+        .where_(Run::DRIVER_USER_ID.eq(user.id))
+        .where_(Run::RUN_DATE.eq(day))
+        .where_(Run::STATUS.eq(RunStatus::Dispatched))
+        .order_by(Run::ID)
+        .get(&state.db)
+        .await?
+        .into_iter()
+        .map(|run| (run.id, run.number))
+        .collect();
     Ok(View::typed(DriverPage {
         tx: texts::all(&lang),
         today: day.format("%Y-%m-%d").to_string(),
         stops,
+        returnable,
     }))
 }
 

@@ -243,6 +243,15 @@ pub struct DeliveryLine {
     pub refusal_reason: Option<String>,
     /// The photo of a refused (damaged) quantity.
     pub refusal_photo_ref: Option<String>,
+    /// The part of the refused quantity received back at the depot at run
+    /// close.
+    pub refused_received_milli: i64,
+    /// The part of the refused quantity reported missing at run close.
+    pub refused_missing_milli: i64,
+    /// When the depot accounted for the refused quantity.
+    pub accounted_at: Option<DateTime>,
+    /// The user who did.
+    pub accounted_by: Option<i64>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.

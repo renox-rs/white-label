@@ -567,6 +567,66 @@ pub struct DeliveryFound {
 
 impl Event for DeliveryFound {}
 
+/// One refused line of a delivered delivery, as the depot accounted for it at
+/// run close: the refused quantity came back (received), was not on the
+/// vehicle (missing), or part of each.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RefusedLineReceived {
+    /// The source line, if the line came with one.
+    pub line: Option<Subject>,
+    /// What the line is.
+    pub description: String,
+    /// The quantity the recipient refused, in thousandths.
+    pub refused_milli: i64,
+    /// The part of it received back at the depot.
+    pub received_milli: i64,
+    /// The part reported missing; `received_milli + missing_milli` is
+    /// `refused_milli`.
+    pub missing_milli: i64,
+    /// The refusal reason's code.
+    pub refusal_reason: Option<String>,
+}
+
+/// The refused lines of a delivery were received back (or reported missing)
+/// when its run closed. Sources move the received goods (for a dispatch note,
+/// into quarantine) and write off the missing ones.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeliveryRefusedReceived {
+    /// The delivery.
+    pub delivery: DeliveryId,
+    /// The record the delivery was requested for.
+    pub source: Subject,
+    /// The run that closed.
+    pub run: RunId,
+    /// The refused lines with what came back and what is missing.
+    pub lines: Vec<RefusedLineReceived>,
+}
+
+impl Event for DeliveryRefusedReceived {}
+
+/// A run closed: its cash was counted and every undelivered and refused item
+/// was received back or reported missing.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RunClosed {
+    /// The run.
+    pub run: RunId,
+    /// The driver (a user).
+    pub driver: i64,
+    /// The vehicle (an asset); `None` for an on-foot rider.
+    pub vehicle: Option<i64>,
+    /// The deliveries handed over.
+    pub delivered: i64,
+    /// The deliveries that came back undelivered (received or missing).
+    pub undelivered: i64,
+    /// How many of the undelivered deliveries and refused lines were reported
+    /// missing.
+    pub missing: i64,
+    /// The cash collected on the run, in fils.
+    pub cash_collected: i64,
+}
+
+impl Event for RunClosed {}
+
 #[cfg(test)]
 mod tests {
     use renox::serde_json::{json, to_value};

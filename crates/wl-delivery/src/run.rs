@@ -97,6 +97,16 @@ pub struct Run {
     pub planned_start: Option<DateTime>,
     /// Why it was aborted.
     pub abort_reason: Option<String>,
+    /// The cash the depot counted when the driver handed it over, in fils.
+    pub cash_counted_amount: Option<i64>,
+    /// The user who counted it (never the driver).
+    pub cash_counted_by: Option<i64>,
+    /// When it was counted.
+    pub cash_counted_at: Option<DateTime>,
+    /// When the driver came back to the depot.
+    pub returned_at: Option<DateTime>,
+    /// When the run closed.
+    pub closed_at: Option<DateTime>,
     /// The lifecycle state; changed only by a transition.
     pub status: RunStatus,
     /// When the row was created.

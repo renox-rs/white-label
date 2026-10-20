@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
+pub mod close;
 pub mod day_list;
 pub mod delivery;
 mod delivery_machine;
@@ -193,6 +194,7 @@ impl Module for WlDelivery {
             .model::<Attempt>()
             .model::<Proof>()
             .model::<Trace>()
+            .model::<close::Receipt>()
             .model::<FailureReason>()
             .model::<RefusalReason>();
         // `rnx state:diagram Delivery` and the admin panel find the machines.

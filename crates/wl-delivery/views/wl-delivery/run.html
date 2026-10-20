@@ -26,5 +26,59 @@
       <rx-column :label="tx['fields.status']">{{ stop.status }}</rx-column>
       <rx-slot name="empty"><rx-empty :title="tx['stops.none']" icon="truck"/></rx-slot>
     </rx-table>
+    <rx-card rx-if="depot" :title="tx['close.title']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['close.cash_expected']" :value="depot.cash_expected"/>
+        <rx-entry :label="tx['close.cash_counted']" :value="depot.cash_counted" :placeholder="tx['none']"/>
+      </rx-infolist>
+      <rx-form rx-if="depot.can_receive and depot.cash_open" :action="route('wl_delivery.run_cash', run.id)" novalidate>
+        <rx-form-errors/>
+        <rx-input name="amount" :label="tx['close.cash_counted']" :id="'run-cash-' ~ run.id"/>
+        <rx-button :label="tx['close.count']"/>
+      </rx-form>
+    </rx-card>
+    <rx-form rx-if="depot" :action="route('wl_delivery.run_receipts', run.id)" novalidate>
+      <rx-card :title="tx['close.item']">
+        <rx-form-errors/>
+        <table class="rx-table">
+          <thead>
+            <tr>
+              <th>{{ tx['fields.number'] }}</th>
+              <th>{{ tx['close.item'] }}</th>
+              <th>{{ tx['close.expected'] }}</th>
+              <th>{{ tx['close.received'] }}</th>
+              <th>{{ tx['close.missing'] }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in depot.items %}
+            <tr>
+              <td>{{ item.number }}</td>
+              <td>{{ item.description }}</td>
+              <td>{{ item.expected }}</td>
+              {% if depot.can_receive and item.whole %}
+              <td colspan="2">
+                <select name="item_{{ item.delivery_id }}_0">
+                  <option value="">-</option>
+                  <option value="received" {% if item.accounted and item.received != '0' %}selected{% endif %}>{{ tx['close.whole_received'] }}</option>
+                  <option value="missing" {% if item.accounted and item.missing != '0' %}selected{% endif %}>{{ tx['close.whole_missing'] }}</option>
+                </select>
+              </td>
+              {% elif depot.can_receive %}
+              <td><input type="text" name="received_{{ item.delivery_id }}_{{ item.line_id }}" value="{{ item.received }}" size="6"></td>
+              <td><input type="text" name="missing_{{ item.delivery_id }}_{{ item.line_id }}" value="{{ item.missing }}" size="6"></td>
+              {% else %}
+              <td>{{ item.received }}</td>
+              <td>{{ item.missing }}</td>
+              {% endif %}
+            </tr>
+            {% else %}
+            <tr><td colspan="5">{{ tx['close.none'] }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <rx-button rx-if="depot.can_receive" :label="tx['close.save']"/>
+      </rx-card>
+    </rx-form>
   </rx-stack>
 </rx-page>

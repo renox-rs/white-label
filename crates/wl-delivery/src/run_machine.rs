@@ -1,11 +1,13 @@
 //! The Run state machine (wl-delivery §4.2).
 //!
 //! ```text
-//! [*] --> planned --dispatch--> dispatched
+//! [*] --> planned --dispatch--> dispatched --return_to_depot--> returned_to_depot --close--> closed
 //! ```
 //!
-//! `cancelled` is declared for the run `cancel` of a later issue. `dispatched` goes on to `returned_to_depot` and `closed` (BL-DLV-08,
-//! BL-DLV-11); the states are declared now so the diagram is whole. The
+//! `cancelled` is declared for the run `cancel` of a later issue; `abort`
+//! and `hand_over` (BL-DLV-08, BL-DLV-09) come with theirs. `return_to_depot`
+//! and `close` are in [`crate::close`] (BL-DLV-11); the states are declared
+//! so the diagram is whole. The
 //! driver and vehicle document guard of `dispatch` runs before the
 //! transition ([`crate::doc_guard`]), because a Renox guard gets no
 //! `AppState`.
@@ -24,7 +26,7 @@ impl StateMachine for Run {
 
     fn machine() -> Machine<Self> {
         use RunStatus::{Cancelled, Closed, Dispatched, Planned, ReturnedToDepot};
-        Machine::new()
+        let machine = Machine::new()
             .initial([Planned])
             .state(Planned)
             .tone("neutral")
@@ -45,7 +47,10 @@ impl StateMachine for Run {
                     .from([Planned])
                     .to(Dispatched)
                     .permission(permissions::RUNS_DISPATCH),
-            )
+            );
+        crate::close::transitions()
+            .into_iter()
+            .fold(machine, Machine::transition)
     }
 }
 
@@ -75,5 +80,18 @@ mod tests {
         assert_eq!(dispatch.from_states(), ["planned"]);
         assert_eq!(dispatch.to_state(), Some("dispatched"));
         assert!(!dispatch.is_system());
+    }
+
+    #[test]
+    fn the_run_returns_to_the_depot_by_its_driver_and_closes_by_the_system() {
+        let machine = Run::machine();
+        let back = machine.find(crate::close::RETURN_TO_DEPOT).expect("return");
+        assert_eq!(back.from_states(), ["dispatched"]);
+        assert_eq!(back.to_state(), Some("returned_to_depot"));
+        assert!(!back.is_system());
+        let close = machine.find(crate::close::CLOSE).expect("close");
+        assert_eq!(close.from_states(), ["returned_to_depot"]);
+        assert_eq!(close.to_state(), Some("closed"));
+        assert!(close.is_system());
     }
 }
