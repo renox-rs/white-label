@@ -26,6 +26,7 @@ pub mod einvoice;
 pub mod entities;
 pub mod held_funds;
 pub mod integrations;
+pub mod inventory;
 pub mod invoicing;
 pub mod late_entries;
 pub mod machines;

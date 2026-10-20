@@ -1,0 +1,16 @@
+[package]
+name = "wl-inventory"
+description = "Inventory: items, locations, purchase orders and goods receipts that take accepted quantity into stock."
+readme = "README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+renox.workspace = true
+serde.workspace = true
+wl-kernel = { path = "../wl-kernel" }
+
+[dev-dependencies]
+tempfile = "3"
