@@ -611,6 +611,19 @@ async fn the_refunds_approved_or_failed_are_returned() {
     let read = unpaid(&t).await;
     assert_eq!(read.len(), 1);
     assert!(read[0].failed);
+
+    // Cancelled (the failed refund is given up; the amount stays on the
+    // party's credit): no longer unpaid.
+    t.refund_action(
+        &b,
+        &t.refund(requested.id).await,
+        "cancel",
+        &[("reason", "The party took the credit")],
+    )
+    .await
+    .assert_ok();
+    assert_eq!(t.refund(requested.id).await.status, RefundStatus::Cancelled);
+    assert!(unpaid(&t).await.is_empty());
 }
 
 async fn counts(t: &Booted) -> (u64, u64, u64, u64) {
