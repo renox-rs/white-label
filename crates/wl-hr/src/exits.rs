@@ -89,7 +89,8 @@ pub fn policies() -> Vec<PolicyDefault> {
     EXIT_TRANSITIONS
         .iter()
         .map(|name| {
-            PolicyDefault::new(action_key(name)).step_permission(permissions::EMPLOYEES_EXIT_APPROVE)
+            PolicyDefault::new(action_key(name))
+                .step_permission(permissions::EMPLOYEES_EXIT_APPROVE)
         })
         .collect()
 }
@@ -110,7 +111,11 @@ pub struct ExitDocument {
 impl ExitDocument {
     /// Whether the document is given: a file or a non-blank reference.
     pub fn is_given(&self) -> bool {
-        self.document.is_some() || self.reference.as_deref().is_some_and(|r| !r.trim().is_empty())
+        self.document.is_some()
+            || self
+                .reference
+                .as_deref()
+                .is_some_and(|r| !r.trim().is_empty())
     }
 }
 
@@ -220,9 +225,11 @@ pub fn available_actions(status: crate::employee::EmployeeStatus) -> Vec<&'stati
     EXIT_TRANSITIONS
         .into_iter()
         .filter(|name| {
-            machine
-                .find(name)
-                .is_some_and(|t| t.from_states().iter().any(|s| s.to_string() == status.as_str()))
+            machine.find(name).is_some_and(|t| {
+                t.from_states()
+                    .iter()
+                    .any(|s| s.to_string() == status.as_str())
+            })
         })
         .collect()
 }
@@ -417,8 +424,8 @@ mod tests {
                 "hr.record_death"
             ]
         );
-        let expected = PolicyDefault::new("hr.report_absconding")
-            .step_permission("employees.exit.approve");
+        let expected =
+            PolicyDefault::new("hr.report_absconding").step_permission("employees.exit.approve");
         assert_eq!(policies()[2], expected);
     }
 
@@ -455,7 +462,10 @@ mod tests {
         let mut death = input("died");
         assert!(missing(RECORD_DEATH, &death).is_some());
         death.documents.push(document(KIND_AUTHORITY_NOTICE, ""));
-        assert!(missing(RECORD_DEATH, &death).is_some(), "a blank reference is no document");
+        assert!(
+            missing(RECORD_DEATH, &death).is_some(),
+            "a blank reference is no document"
+        );
         death.documents[0].document = Some(9);
         assert_eq!(missing(RECORD_DEATH, &death), None);
     }

@@ -14,6 +14,7 @@ pub mod onboarding;
 pub mod onboarding_machine;
 pub mod pages;
 pub mod qualification;
+pub mod qualification_expiry;
 pub mod reminders;
 pub mod seed;
 pub mod steps;
@@ -32,6 +33,7 @@ pub use employee::{
 };
 pub use leave::{LeaveRequest, LeaveStatus};
 pub use qualification::{NewQualification, Qualification, Quals};
+pub use qualification_expiry::QualificationExpiry;
 pub use onboarding::{
     AppliedTemplate, Onboarding, OnboardingStatus, OnboardingStep, StartRefused, StartRequest,
     StartTrigger, StepAssignee, StepStatus,
@@ -149,6 +151,7 @@ impl Module for WlHr {
         app.model::<StepAssignee>();
         app.model::<LeaveRequest>();
         app.model::<Qualification>();
+        app.model::<QualificationExpiry>();
         app.provide(self.config.clone());
         employee_machine::register(app);
         renox::state_machine::register::<Onboarding>();

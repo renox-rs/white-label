@@ -83,11 +83,9 @@ fn exit_pair<const N: usize>(
         .permission(permissions::EMPLOYEES_MANAGE);
     let twin = Transition::new(approved).label(label).system();
     [user, twin].map(|transition| {
-        transition
-            .from(from)
-            .to(to)
-            .reason_required()
-            .guard("exit_documents", move |_employee: &Employee, ctx| {
+        transition.from(from).to(to).reason_required().guard(
+            "exit_documents",
+            move |_employee: &Employee, ctx| {
                 let input = ctx.input_as::<ExitInput>().unwrap_or_default();
                 let missing = exits::missing(name, &input);
                 Box::pin(async move {
@@ -96,7 +94,8 @@ fn exit_pair<const N: usize>(
                         Some(message) => Err(message),
                     }
                 })
-            })
+            },
+        )
     })
 }
 
@@ -187,7 +186,9 @@ impl StateMachine for Employee {
         pairs
             .into_iter()
             .flatten()
-            .fold(machine, |machine, transition| machine.transition(transition))
+            .fold(machine, |machine, transition| {
+                machine.transition(transition)
+            })
     }
 }
 
@@ -246,7 +247,12 @@ mod tests {
                 &["onboarding"],
                 "onboarding_cancelled",
             ),
-            (WITHDRAW_NOTICE, WITHDRAW_NOTICE_APPROVED, &["notice"], "active"),
+            (
+                WITHDRAW_NOTICE,
+                WITHDRAW_NOTICE_APPROVED,
+                &["notice"],
+                "active",
+            ),
             (
                 REPORT_ABSCONDING,
                 REPORT_ABSCONDING_APPROVED,

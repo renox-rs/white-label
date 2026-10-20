@@ -468,7 +468,12 @@ async fn show(
     };
     let exit_actions: Vec<(String, String)> = exits::available_actions(employee.status)
         .into_iter()
-        .map(|name| (name.to_owned(), text(&lang, &format!("exits.transition.{name}"))))
+        .map(|name| {
+            (
+                name.to_owned(),
+                text(&lang, &format!("exits.transition.{name}")),
+            )
+        })
         .collect();
     let can_request_exit = pending_exit.is_none()
         && !exit_actions.is_empty()
@@ -658,11 +663,7 @@ async fn request_exit(
     exits::request(&state, &user, id, form.transition.trim(), input)
         .await?
         .map_err(exits::ExitRefused::into_error)?;
-    Ok((
-        Toast::success(text(&lang, "exits.sent")),
-        renox::HxRefresh,
-    )
-        .into_response())
+    Ok((Toast::success(text(&lang, "exits.sent")), renox::HxRefresh).into_response())
 }
 
 /// A reason.

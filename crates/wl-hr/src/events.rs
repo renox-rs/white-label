@@ -7,20 +7,23 @@
 //!   cancelled ([`crate::onboarding::cancel_for`]).
 //! - `EmployeeAssignmentChanged`: the open steps get their current assignees
 //!   ([`crate::onboarding::re_resolve`]).
+//! - `DocumentExpired` and `DocumentExpiring` of an employee: the qualification
+//!   events of `HRM.RUL.10` ([`crate::qualification_expiry`]).
 //! - `ChecklistCompleted`, `DocumentAccepted`, `SopPublished`,
 //!   `SopAcknowledged`, `SopWithdrawn`, `SopReadersChanged`: the steps of
 //!   [`crate::steps`].
 
 use renox::prelude::*;
 use wl_kernel::documents::{
-    DocumentAccepted, SopAcknowledged, SopPublished, SopReadersChanged, SopWithdrawn,
+    DocumentAccepted, DocumentExpired, DocumentExpiring, SopAcknowledged, SopPublished,
+    SopReadersChanged, SopWithdrawn,
 };
 use wl_kernel::tickets::ChecklistCompleted;
 use wl_kernel::workforce::{
     EmployeeAssignmentChanged, EmployeeDeceased, EmployeeExited, EmployeeOnboardingCancelled,
 };
 
-use crate::{onboarding, steps};
+use crate::{onboarding, qualification_expiry, steps};
 
 /// Registers the listeners.
 pub(crate) fn register(app: &mut Registry) {
@@ -53,6 +56,12 @@ pub(crate) fn register(app: &mut Registry) {
     });
     app.listen(|event: DocumentAccepted, state: AppState| async move {
         steps::on_document_accepted(&state, &event).await
+    });
+    app.listen(|event: DocumentExpired, state: AppState| async move {
+        qualification_expiry::on_expired(&state, &event).await
+    });
+    app.listen(|event: DocumentExpiring, state: AppState| async move {
+        qualification_expiry::on_expiring(&state, &event).await
     });
     app.listen(
         |_event: SopPublished, state: AppState| async move { steps::on_sop_event(&state).await },
