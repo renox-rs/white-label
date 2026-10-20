@@ -14,6 +14,7 @@ pub mod chase;
 pub mod cheque_charges;
 pub mod cheques;
 pub mod compliance;
+pub mod dashboard;
 mod db;
 pub mod deposit_forfeit;
 pub mod deposit_watch;

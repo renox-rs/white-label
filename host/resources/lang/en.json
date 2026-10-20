@@ -135,7 +135,7 @@
   "dashboard": {
     "title": "Dashboard",
     "welcome": "Welcome back,",
-    "lead": "What happened in your app, and what you did lately.",
+    "lead": "Where the portfolio stands today, and what waits for you.",
     "account": "Your account",
     "users": "Manage users",
     "needs_action": {
@@ -143,22 +143,27 @@
       "awaiting_one": "1 approval waiting for you",
       "awaiting_many": ":count approvals waiting for you"
     },
-    "stats": {
-      "signups": "New sign-ups",
-      "users": "Users",
-      "unread": "Unread notifications"
+    "tiles": {
+      "units_available": "Units available",
+      "units_leased": "Units leased",
+      "leases_expiring": "Leases ending in 90 days",
+      "cheques_due": "Cheques due for deposit",
+      "cheques_bounced": "Bounced cheques",
+      "invoices_overdue": "Overdue invoices",
+      "invoices_one": "1 invoice",
+      "invoices_many": ":count invoices",
+      "tickets_open": "Open tickets",
+      "my_tasks": "My tasks",
+      "compliance_flags": "Buildings flagged"
     },
-    "chart": {
-      "title": "Sign-ups",
-      "description": "New accounts per day in this period"
+    "expiring": {
+      "title": "Leases ending soon",
+      "description": "The next to end, within 90 days",
+      "ends": "Ends :date (in :days days)"
     },
-    "summary": {
-      "title": "At a glance",
-      "description": "People in this period and in all",
-      "this_period": "Signed up in this period",
-      "before": "In the period before",
-      "verified": "Verified their email",
-      "total": "People in all"
+    "tasks": {
+      "title": "My tasks",
+      "description": "Open tickets assigned to you"
     },
     "activity": {
       "title": "Your recent activity",
