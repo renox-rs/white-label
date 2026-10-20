@@ -209,6 +209,35 @@ impl Module for Fakes {
     }
 }
 
+/// The engagements section of the portal, as the host registers it
+/// (`host/src/app/accounting_portal.rs`).
+struct EngagementsSection;
+
+impl wl_portal::PortalSection for EngagementsSection {
+    fn title(&self) -> String {
+        accounting::portal::title()
+    }
+
+    fn rows<'a>(
+        &'a self,
+        state: &'a AppState,
+        party: PartyId,
+    ) -> wl_portal::SectionFuture<'a, Vec<wl_portal::SectionRow>> {
+        Box::pin(async move {
+            Ok(accounting::portal::rows(state, party)
+                .await?
+                .iter()
+                .map(|row| wl_portal::SectionRow::new(&row.label, &row.status))
+                .collect())
+        })
+    }
+}
+
+/// Registers the engagements section of the portal.
+pub fn register_portal_section() {
+    wl_portal::register_section(accounting::portal::SECTION, EngagementsSection);
+}
+
 // ---- the roles -------------------------------------------------------------
 
 /// The roles of the tests, with the permissions the host gives them.
@@ -456,6 +485,20 @@ impl Booted {
         self.user_with("Rita", REVIEWER).await
     }
 
+    /// A portal user `name` linked to the person `person`, acting for the
+    /// client company `company` as its owner.
+    pub async fn portal_user(&self, name: &str, person: PartyId, company: PartyId) -> User {
+        let user = self.user_with_grants(name, &[]).await;
+        wl_portal::PortalAccess::register(
+            self.state(),
+            user.id,
+            wl_portal::NewGrant::new(person, company, "client", &["owner"]),
+        )
+        .await
+        .expect("the portal grant is registered");
+        user
+    }
+
     // ---- requests ---------------------------------------------------------
 
     /// `POST path` as `user`, the way a sheet posts it (htmx).
@@ -486,6 +529,21 @@ impl Booted {
         .await
         .expect("the party is created");
         PartyId(party.id)
+    }
+
+    /// The system blocks `party` with the reason `code` (as a confirmed
+    /// match or the MLRO would); `PartyBlocked` follows after the commit.
+    pub async fn block(&self, party: PartyId, code: &str) {
+        let row = self.party_row(party).await;
+        self.run(wl_parties::block_by_system(
+            self.state(),
+            &row,
+            code,
+            "reviewed by the MLRO",
+            None,
+        ))
+        .await
+        .expect("the party is blocked");
     }
 
     /// The wl-parties row of `party`.
