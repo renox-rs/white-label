@@ -25,16 +25,27 @@ use crate::employee::Employee;
 use crate::permissions::ONBOARDING_MANAGE;
 use crate::template::{OWNER_EMPLOYEE, OWNER_HR, OWNER_MANAGER};
 
-/// The scopes to look for people in: the employee's, else global.
-fn scopes_of(scopes: &[Subject]) -> Vec<Scope> {
-    if scopes.is_empty() {
-        vec![Scope::global()]
+/// The scope of one subject: the one the app registered for its type
+/// (`wl_kernel::scopes`), else the subject's own type and id.
+pub(crate) async fn scope_for(db: &Db, subject: &Subject) -> Result<Scope> {
+    let registered = wl_kernel::scopes::scope_of(db, subject).await?;
+    Ok(if registered.is_global() {
+        Scope::new(&subject.subject_type, subject.subject_id)
     } else {
-        scopes
-            .iter()
-            .map(|s| Scope::new(&s.subject_type, s.subject_id))
-            .collect()
+        registered
+    })
+}
+
+/// The scopes to look for people in: the employee's, else global.
+pub(crate) async fn scopes_of(db: &Db, scopes: &[Subject]) -> Result<Vec<Scope>> {
+    if scopes.is_empty() {
+        return Ok(vec![Scope::global()]);
     }
+    let mut found = Vec::with_capacity(scopes.len());
+    for subject in scopes {
+        found.push(scope_for(db, subject).await?);
+    }
+    Ok(found)
 }
 
 /// The ids of the users holding `role` in any of `scopes`.
@@ -55,7 +66,7 @@ async fn holders_of_role(db: &Db, role: &str, scopes: &[Scope]) -> Result<BTreeS
 /// without the ones who hold it only through the owner role, unless nobody
 /// else does.
 pub async fn hr_holders(state: &AppState, scopes: &[Subject]) -> Result<Vec<i64>> {
-    let scopes = scopes_of(scopes);
+    let scopes = scopes_of(&state.db, scopes).await?;
     let owner_role = config_of(state).owner_role;
     let mut holders = BTreeSet::new();
     for scope in &scopes {
@@ -90,7 +101,7 @@ pub async fn resolve(
     owner: &str,
 ) -> Result<Vec<i64>> {
     let config = config_of(state);
-    let looked = scopes_of(scopes);
+    let looked = scopes_of(&state.db, scopes).await?;
     let named: Option<BTreeSet<i64>> = match owner {
         OWNER_EMPLOYEE => return Ok(employee.user_id.into_iter().collect()),
         OWNER_HR => return hr_holders(state, scopes).await,

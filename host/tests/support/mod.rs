@@ -68,6 +68,28 @@ async fn start_settlement(
     Ok(format!("{:?}", done.status))
 }
 
+async fn upload_sop_version(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<i64>,
+    Form(form): Form<VersionForm>,
+) -> Result<String> {
+    let file = renox::upload::Upload::new(
+        &form.file_name,
+        "application/pdf",
+        format!("%PDF-1.7 {}", renox::db::now()).into_bytes(),
+    );
+    match wl_documents::Sops::upload_version(&state, &user, id, file, None).await? {
+        Ok(document) => Ok(document.id.to_string()),
+        Err(refused) => Err(refused.into_error()),
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct VersionForm {
+    file_name: String,
+}
+
 impl Module for Probe {
     fn name(&self) -> &'static str {
         "probe"
@@ -77,6 +99,7 @@ impl Module for Probe {
         Routes::new()
             .post("/probe/deposits", hold_deposit)
             .post("/probe/deposits/{id}/start-settlement", start_settlement)
+            .post("/probe/sops/{id}/versions", upload_sop_version)
             .require_auth()
     }
 }

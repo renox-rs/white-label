@@ -33,7 +33,7 @@
 //! step machine ([`crate::onboarding_machine`]) with the user in the run's
 //! metadata, so the history keeps who did what even after a `reopen`.
 
-use renox::auth::permissions::{Scope, users_with_permission_in};
+use renox::auth::permissions::users_with_permission_in;
 use renox::db::now;
 use renox::prelude::*;
 use renox::serde_json::json;
@@ -170,14 +170,7 @@ async fn load(state: &AppState, step_id: i64) -> Result<Refusal<Loaded>> {
 /// Whether `user` holds `onboarding.manage` in one of `scopes` (globally,
 /// when the employee has none).
 pub async fn holds_manage(state: &AppState, user: i64, scopes: &[Subject]) -> Result<bool> {
-    let scopes: Vec<Scope> = if scopes.is_empty() {
-        vec![Scope::global()]
-    } else {
-        scopes
-            .iter()
-            .map(|s| Scope::new(&s.subject_type, s.subject_id))
-            .collect()
-    };
+    let scopes = assignees::scopes_of(&state.db, scopes).await?;
     for scope in &scopes {
         if users_with_permission_in(&state.db, ONBOARDING_MANAGE, scope)
             .await?
