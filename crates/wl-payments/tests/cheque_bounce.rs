@@ -400,7 +400,7 @@ async fn an_issued_cheque_that_bounces_leaves_a_task_to_replace_it() {
         .register_cheque(
             RegisterCheque::new(BLUE_DUNES, entity.id, "ENBD", "9001", today(), 1_050_000)
                 .issued()
-                .link(bill),
+                .link(bill.clone()),
         )
         .await;
     let cheque = t.deposit_cheque(&staff, &cheque).await;
@@ -420,6 +420,15 @@ async fn an_issued_cheque_that_bounces_leaves_a_task_to_replace_it() {
         "the payee is not told"
     );
     assert!(cheque_payments(&t).await.is_empty());
+    // The supplier bill stays approved: nothing was allocated, drafted or
+    // written off against it, and the cheque still pays it.
+    assert!(t.invoices.calls().is_empty(), "no allocation");
+    assert_eq!(t.invoices.drafts(), 0);
+    assert!(t.invoices.write_offs().is_empty());
+    assert_eq!(
+        t.cheque(cheque.id).await.linked(t.db()).await.unwrap(),
+        vec![bill]
+    );
     let tasks = FollowupTask::open_of_cheque(t.db(), cheque.id)
         .await
         .unwrap();
@@ -473,4 +482,50 @@ async fn a_blocked_party_is_not_told_of_the_bounce() {
         1,
         "the event is still emitted"
     );
+}
+
+/// Edge case: the honoured part of a cheque that pays several invoices is
+/// allocated oldest first, each up to its open balance.
+#[renox::test]
+async fn the_honoured_part_is_allocated_oldest_first_across_the_invoices() {
+    let t = boot().await;
+    let staff = t.cheque_staff("Amal").await;
+    t.accountant("Cara").await;
+    let first = t.invoices.add(BLUE_DUNES, "INV-1", 400_000);
+    let second = t.invoices.add(BLUE_DUNES, "INV-2", 500_000);
+    let entity = t.entity("PGP").await;
+    let cheque = t
+        .register_cheque(
+            wl_kernel::cheques::RegisterCheque::new(
+                BLUE_DUNES,
+                entity.id,
+                "ENBD",
+                "1099",
+                today(),
+                900_000,
+            )
+            .link(first.subject())
+            .link(second.subject()),
+        )
+        .await;
+    let cheque = t.deposit_cheque(&staff, &cheque).await;
+
+    t.bounce_cheque(&staff, &cheque, "insufficient_funds", "CERT-1", "6000.00")
+        .await
+        .assert_ok();
+
+    let calls = t.invoices.calls();
+    assert_eq!(calls.len(), 2);
+    assert_eq!((calls[0].invoice, calls[0].amount), (first, 400_000));
+    assert_eq!((calls[1].invoice, calls[1].amount), (second, 200_000));
+    let payments = cheque_payments(&t).await;
+    assert_eq!(payments.len(), 1);
+    assert_eq!(payments[0].amount, 600_000);
+    let allocations = t.allocations(&payments[0]).await;
+    assert_eq!(
+        allocations.iter().map(|a| a.amount).sum::<i64>(),
+        600_000,
+        "the whole honoured part is allocated"
+    );
+    assert_eq!(t.cheque(cheque.id).await.open_amount, 300_000);
 }

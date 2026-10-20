@@ -289,3 +289,47 @@ async fn clearing_after_a_re_presentation_resolves_the_bounce() {
         .unwrap();
     assert_eq!(owed, 300_000);
 }
+
+/// Edge case: a part settled in cash, then the cheque presented again and
+/// cleared: the clearing payment is only for what was still open.
+#[renox::test]
+async fn a_part_settled_then_presented_again_clears_for_the_open_amount_only() {
+    let t = boot().await;
+    let staff = t.cheque_staff("Amal").await;
+    t.accountant("Cara").await;
+    let rent = t.invoices.add(BLUE_DUNES, "INV-1", 2_000_000);
+    let bounced = t
+        .bounced_cheque(&staff, BLUE_DUNES, "2020", 2_000_000, Some(rent), "")
+        .await;
+
+    t.settle_cheque(&staff, &bounced, "cash", "5000.00", "")
+        .await
+        .assert_ok();
+    let settled = t.cheque(bounced.id).await;
+    assert_eq!(settled.open_amount, 1_500_000);
+
+    t.represent_cheque(&staff, &settled, &in_days(2), true, "")
+        .await
+        .assert_ok();
+    let again = t.cheque(bounced.id).await;
+    assert_eq!(again.status, ChequeStatus::Deposited);
+    assert_eq!(again.presentations, 2);
+    t.cheque_action(&staff, &again, "clear", &[])
+        .await
+        .assert_ok();
+
+    let cleared = t.cheque(bounced.id).await;
+    assert_eq!(cleared.status, ChequeStatus::Cleared);
+    assert_eq!(cleared.open_amount, 0);
+    let payments = cheque_payments(&t).await;
+    assert_eq!(payments.len(), 2, "the part payment and the clearing");
+    assert_eq!(payments[0].method, PaymentMethod::Cash);
+    assert_eq!(payments[0].amount, 500_000);
+    assert_eq!(payments[1].method, PaymentMethod::Cheque);
+    assert_eq!(payments[1].amount, 1_500_000);
+    let paid: i64 = t.invoices.calls().iter().map(|c| c.amount).sum();
+    assert_eq!(paid, 2_000_000, "the invoice is paid once, not twice");
+    let resolved = t.cheque_resolved.all();
+    assert_eq!(resolved.len(), 1);
+    assert_eq!(resolved[0].outcome, ChequeOutcome::Cleared);
+}
