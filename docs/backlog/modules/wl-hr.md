@@ -1,6 +1,6 @@
 # Epic: wl-hr — negative flows
 
-> Status: draft · Last updated: 2026-10-16 · Spec version: same commit as this file
+> Status: draft · Last updated: 2026-10-20 · Spec version: same commit as this file
 
 This epic builds the HR and payroll negative flows added by the review fix X-15 and the wl-hr
 part of X-13: the qualification guard and expiry event, same-day sick leave, visa rejection,
@@ -16,9 +16,9 @@ supports 05-N8-a, 10-N8-c and 04-N8-d. BL-HRM-26 to 29 add staff onboarding chec
 |---|---|---|---|---|---|
 | BL-HRM-01 | Answer `qualification_valid` and emit `QualificationExpired` (`HRM.RUL.10`) | high | m | Launch 02 | Base: wl-hr Qualification records; Epic wl-documents: `document_valid`, `DocumentExpired` |
 | BL-HRM-02 | Record same-day sick leave as approved (`record_sick`) | medium | s | Launch 05 | Base: wl-hr Leave request lifecycle |
-| BL-HRM-03 | Reject a visa case with follow-up tasks | high | m | Build 1 | Base: wl-hr Visa case lifecycle; Epic wl-documents: `DocumentExpiring` |
-| BL-HRM-04 | Approve non-standard exits by a second user (`HRM.ACL.07`) | high | s | Build 1 | Base: wl-hr Employee lifecycle; Epic wl-kernel: approval requests |
-| BL-HRM-05 | Cancel onboarding (`cancel_onboarding`) | high | m | Build 1 | BL-HRM-03; BL-HRM-04; BL-HRM-24 |
+| BL-HRM-03 | Reject a visa case with follow-up tasks | high | m | Launch 09 | Base: wl-hr Visa case lifecycle; Epic wl-documents: `DocumentExpiring` |
+| BL-HRM-04 | Approve non-standard exits by a second user (`HRM.ACL.07`) | high | s | Launch 02 | Base: wl-hr Employee lifecycle; Epic wl-kernel: approval requests |
+| BL-HRM-05 | Cancel onboarding (`cancel_onboarding`) | high | m | Launch 09 | BL-HRM-03; BL-HRM-04; BL-HRM-24 |
 | BL-HRM-06 | Withdraw a notice by agreement (`withdraw_notice`) | medium | s | Launch 09 | BL-HRM-04; BL-HRM-24 |
 | BL-HRM-07 | Report an employee as absconded (`report_absconding`) | high | m | Launch 02 | BL-HRM-04; Epic wl-attendance: attendance records; Vertical 09: absence case |
 | BL-HRM-08 | Reinstate an absconded employee (`reinstate`) | high | s | Launch 09 | BL-HRM-04; BL-HRM-07; BL-HRM-18; BL-HRM-24 |
@@ -37,9 +37,9 @@ supports 05-N8-a, 10-N8-c and 04-N8-d. BL-HRM-26 to 29 add staff onboarding chec
 | BL-HRM-21 | Stop a pay account change, waive cooling, handle undelivered notice | high | m | Launch 09 | BL-HRM-19; BL-HRM-20; Epic wl-ticketing: security tickets; Epic wl-notify: `MessageGaveUp`; Epic wl-kernel: approval requests |
 | BL-HRM-22 | Dispute and resolve a final settlement | high | m | Launch 09 | Base: wl-hr Final settlement lifecycle; Epic wl-ticketing: labour-case tickets |
 | BL-HRM-23 | Handle a negative final settlement | high | s | Launch 09 | Base: wl-hr Final settlement lifecycle; BL-HRM-15 |
-| BL-HRM-24 | Close or cancel a final settlement | medium | s | Build 1 | Base: wl-hr Final settlement lifecycle |
+| BL-HRM-24 | Close or cancel a final settlement | medium | s | Launch 09 | Base: wl-hr Final settlement lifecycle |
 | BL-HRM-25 | Alert on the 14-day settlement deadline (`HRM.RUL.09`) | high | s | Launch 09 | Base: wl-hr Final settlement lifecycle; BL-HRM-22 |
-| BL-HRM-26 | Start an onboarding from the role's templates when an employee is hired (`HRM.RUL.16`) | medium | m | Build 1 | Base: wl-hr Employee lifecycle; BL-HRM-05 |
+| BL-HRM-26 | Start an onboarding from the role's templates when an employee is hired (`HRM.RUL.16`) | medium | m | Build 1 | Base: wl-hr Employee lifecycle |
 | BL-HRM-27 | Complete and waive onboarding steps (`HRM.ACL.10`) | medium | m | Build 1 | BL-HRM-26; BL-DOC-08; BL-DOC-09; Epic wl-ticketing: checklist runs |
 | BL-HRM-28 | Remind and escalate overdue onboarding steps (`HRM.RUL.17`) | medium | s | Build 1 | BL-HRM-26 |
 | BL-HRM-29 | Block employee activation until a blocking onboarding is complete | medium | s | Build 1 | BL-HRM-26; BL-HRM-27 |
@@ -222,7 +222,7 @@ Booking conflicts (BL-SCH-05).
 
 ### BL-HRM-03 — wl-hr: reject a visa case with follow-up tasks
 
-**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
+**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `blocked:open-item` `surface:back-office` `surface:system` · **Milestone:** Launch 09 · **Size:** m
 **Depends on:** Base: wl-hr Visa case lifecycle · Epic wl-documents: `DocumentExpiring` (`DOC.RUL.02`) · **Blocks:** BL-HRM-05, BL-MPW-13
 **Review items:** X-15, 09-N8-c, 09-N12-b
 
@@ -301,7 +301,7 @@ current visa expires."
 
 ### BL-HRM-04 — wl-hr: approve non-standard exits by a second user (`HRM.ACL.07`)
 
-**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Launch 02 · **Size:** s
 **Depends on:** Base: wl-hr Employee lifecycle · Epic wl-kernel: approval requests (approval returned or rejected sends the record back) · **Blocks:** BL-HRM-05, BL-HRM-06, BL-HRM-07, BL-HRM-08, BL-HRM-09, BL-CON-18, BL-MPW-21
 **Review items:** X-15
 
@@ -383,8 +383,8 @@ Each transition's guards and effects (BL-HRM-05 to BL-HRM-09).
 
 ### BL-HRM-05 — wl-hr: cancel onboarding (`cancel_onboarding`)
 
-**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
-**Depends on:** BL-HRM-04 · BL-HRM-03 · BL-HRM-24 (settlement `cancel`/paid) · **Blocks:** BL-MPW-13, BL-HRM-26
+**Labels:** `module:wl-hr` `area:negative-flow` `priority:high` `surface:back-office` `surface:system` · **Milestone:** Launch 09 · **Size:** m
+**Depends on:** BL-HRM-04 · BL-HRM-03 · BL-HRM-24 (settlement `cancel`/paid) · **Blocks:** BL-MPW-13
 **Review items:** X-15, 09-N12-b
 
 #### Goal
@@ -1793,7 +1793,7 @@ Recovery collection (Epic wl-payments).
 
 ### BL-HRM-24 — wl-hr: close or cancel a final settlement
 
-**Labels:** `module:wl-hr` `area:negative-flow` `priority:medium` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
+**Labels:** `module:wl-hr` `area:negative-flow` `priority:medium` `surface:back-office` `surface:system` · **Milestone:** Launch 09 · **Size:** s
 **Depends on:** Base: wl-hr Final settlement lifecycle · **Blocks:** BL-HRM-05, BL-HRM-06, BL-HRM-08
 **Review items:** X-15
 
@@ -1901,7 +1901,7 @@ None.
 ### BL-HRM-26 — wl-hr: start an onboarding from the role's templates when an employee is hired (`HRM.RUL.16`)
 
 **Labels:** `module:wl-hr` `area:sme-gap` `priority:medium` `size:m` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
-**Depends on:** Base: wl-hr Employee lifecycle · BL-HRM-05 (`cancel_onboarding`, for the cancel check) · **Blocks:** BL-HRM-27, BL-HRM-28, BL-HRM-29, BL-DOC-08, BL-DOC-09, BL-ACC-23, BL-AUT-18, BL-CLN-15, BL-CON-18, BL-EDU-17, BL-FNB-17, BL-LOG-25, BL-MFG-14, BL-MPW-20, BL-PRP-27
+**Depends on:** Base: wl-hr Employee lifecycle · **Blocks:** BL-HRM-27, BL-HRM-28, BL-HRM-29, BL-DOC-08, BL-DOC-09, BL-ACC-23, BL-AUT-18, BL-CLN-15, BL-CON-18, BL-EDU-17, BL-FNB-17, BL-LOG-25, BL-MFG-14, BL-MPW-20, BL-PRP-27
 **Review items:** G6 (SME problem map 7, 18)
 
 #### Goal

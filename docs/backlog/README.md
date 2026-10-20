@@ -1,6 +1,6 @@
 # Backlog — Negative Flows
 
-> Status: draft · Last updated: 2026-10-18 · Spec version: same commit as this file
+> Status: draft · Last updated: 2026-10-20 · Spec version: same commit as this file
 
 GitHub issues for building the negative flows fixed in the
 [negative-flow review](../reviews/2026-10-15-negative-flows.md). They were **created on GitHub
@@ -93,6 +93,10 @@ issues are created on GitHub, the IDs stay in the title prefix so links can be r
 | **Later** | Issues for capabilities marked Later |
 
 A module issue takes the earliest milestone of any vertical that needs it.
+
+**Built early.** An issue built before its milestone keeps the milestone (it says which vertical
+first needs it). Built early in Build 1: the sanctions screening issues BL-PTY-05 to BL-PTY-09
+(#38–#42, Launch 04) and the marketing broadcast BL-NTF-07 (#61, Launch 05).
 
 Milestones and [OPEN-ITEMS](../OPEN-ITEMS.md) gates are different things. A milestone says
 when an issue is built; a gate says when an open question must be answered. An issue labelled
