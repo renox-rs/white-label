@@ -105,6 +105,19 @@ async fn reject(t: &Booted, sent: &EInvoiceTransmission, code: &str) {
     assert!(answered.is_some());
 }
 
+/// The reminder steps logged for `invoice`, oldest first.
+async fn reminder_steps(t: &Booted, invoice: &Invoice) -> Vec<i64> {
+    wl_invoicing::ReminderLog::query()
+        .where_(wl_invoicing::ReminderLog::INVOICE_ID.eq(invoice.id))
+        .order_by(wl_invoicing::ReminderLog::STEP)
+        .get(t.db())
+        .await
+        .unwrap()
+        .iter()
+        .map(|log| log.step)
+        .collect()
+}
+
 /// Given a `submitted` transmission, the ASP rejects it with BR-CO-15: it is
 /// `rejected`, the codes are stored, the invoice owner and the accountant get a
 /// task, `EInvoiceRejected` is emitted, and the invoice, its balance and its
@@ -116,6 +129,7 @@ async fn a_rejection_stores_the_codes_and_raises_one_task_without_touching_the_i
     let aya = t.accountant("Aya").await;
     let (invoice, sent, clerk) = submitted(&t).await;
     let before = t.reload(&invoice).await;
+    let logs_before = reminder_steps(&t, &invoice).await;
 
     reject(&t, &sent, "BR-CO-15").await;
     let rejected = transmissions(&t).await.remove(0);
@@ -171,6 +185,22 @@ async fn a_rejection_stores_the_codes_and_raises_one_task_without_touching_the_i
         )
     );
     assert_eq!(after.due_date, before.due_date);
+
+    // Its reminders are as they were: the log is the same, and the reminder
+    // run still picks the invoice on the day its first step comes.
+    assert_eq!(reminder_steps(&t, &invoice).await, logs_before);
+    assert!(!after.disputed && after.dispute_grace_until.is_none());
+    let first_day = after.due_date.unwrap() - renox::chrono::Duration::days(3);
+    assert_eq!(
+        wl_invoicing::reminders::run(t.state(), first_day)
+            .await
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        reminder_steps(&t, &invoice).await.len(),
+        logs_before.len() + 1
+    );
 
     // The task is on the task list and opens the board.
     let viewer = t
