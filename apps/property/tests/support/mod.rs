@@ -2300,6 +2300,7 @@ pub async fn boot_with(real: Real) -> Booted {
     boot_custom(
         real,
         wl_invoicing::WlInvoicing::new().auto_issue_source("property.lease"),
+        wl_payments::WlPayments::new(),
         false,
     )
     .await
@@ -2310,14 +2311,25 @@ pub async fn boot_with(real: Real) -> Booted {
 /// wl-payments answering the cheque register too: the cash-flow forecast
 /// reads real cheques linked to real charges.
 pub async fn boot_money(invoicing: wl_invoicing::WlInvoicing) -> Booted {
-    boot_custom(Real::MONEY, invoicing, true).await
+    boot_money_with(invoicing, wl_payments::WlPayments::new()).await
+}
+
+/// [`boot_money`] with wl-payments set up as `payments` (the deductions
+/// dispute of the Property client is added to it).
+pub async fn boot_money_with(
+    invoicing: wl_invoicing::WlInvoicing,
+    payments: wl_payments::WlPayments,
+) -> Booted {
+    boot_custom(Real::MONEY, invoicing, payments, true).await
 }
 
 /// Like [`boot_with`], with wl-invoicing set up as `invoicing` (used when
-/// `real.invoicing`) and, with `real_cheques`, the cheques of wl-payments.
+/// `real.invoicing`), wl-payments as `payments` (used when `real.payments`)
+/// and, with `real_cheques`, the cheques of wl-payments.
 async fn boot_custom(
     real: Real,
     invoicing: wl_invoicing::WlInvoicing,
+    payments: wl_payments::WlPayments,
     real_cheques: bool,
 ) -> Booted {
     assert!(
@@ -2386,7 +2398,7 @@ async fn boot_custom(
     }
     if real.payments {
         // The vertical turns the deductions dispute on: 14 days, 7 to answer.
-        app = app.module(wl_payments::WlPayments::new().deductions_dispute(14, 7));
+        app = app.module(payments.deductions_dispute(14, 7));
     }
     let app = app.module(fakes);
     // What wl-parties registers: an exception for a blocked party is decided by
