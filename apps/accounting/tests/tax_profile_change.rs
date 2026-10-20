@@ -396,3 +396,81 @@ async fn a_past_effective_date_is_flagged_and_the_first_version_is_recorded_once
         .unwrap();
     assert_eq!(current.effective_date, day("2026-10-01"));
 }
+
+/// A deregistration from VAT and a change of the corporate tax registration
+/// are calendar-driving: each waits for a manager's approval, names its
+/// fields, and leaves the profile in force unchanged.
+#[renox::test]
+async fn a_deregistration_and_a_ct_registration_change_need_the_approval() {
+    let t = boot().await;
+    let accountant = t.accountant().await;
+    let manager = t.manager().await;
+    let client = t.client().await;
+    january(&t, &client).await;
+    let url = format!(
+        "/accounting/clients/{}/tax-profile/change",
+        client.company.0
+    );
+
+    // Corporate tax registration only.
+    t.post(
+        &accountant,
+        &url,
+        &[
+            ("trn", "100000000000003"),
+            ("vat_registered", "1"),
+            ("vat_period", "quarterly"),
+            ("vat_first_period_end", "2026-01-31"),
+            ("financial_year_end", "2026-12-31"),
+            ("ct_registration_no", "CT-999888777"),
+            ("effective_date", "2027-02-01"),
+        ],
+    )
+    .await
+    .assert_ok();
+    let ct = pending(&t, &client).await;
+    assert_eq!(ct.fields(), ["ct_registration_no"]);
+    let request = pending_request(&t, &ct).await;
+    t.run(approvals::reject(
+        t.state(),
+        request.id,
+        &manager,
+        "Not yet",
+    ))
+    .await
+    .unwrap();
+
+    // Deregistration: the registration, the period and the stagger change.
+    t.post(
+        &accountant,
+        &url,
+        &[
+            ("trn", "100000000000003"),
+            ("vat_period", "not_registered"),
+            ("financial_year_end", "2026-12-31"),
+            ("ct_registration_no", "CT-100200300"),
+            ("effective_date", "2027-02-01"),
+        ],
+    )
+    .await
+    .assert_ok();
+    let dereg = pending(&t, &client).await;
+    assert_eq!(
+        dereg.fields(),
+        ["vat_registered", "vat_period", "vat_first_period_end"]
+    );
+    let current = TaxProfile::current(t.db(), client.company, day("2027-03-01"))
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(current.vat_registered, "in force until it is approved");
+    let request = pending_request(&t, &dereg).await;
+    t.run(approvals::approve(t.state(), request.id, &manager, "ok"))
+        .await
+        .unwrap();
+    let after = TaxProfile::current(t.db(), client.company, day("2027-03-01"))
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(!after.vat_registered);
+}
