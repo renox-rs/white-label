@@ -22,7 +22,7 @@
 //!   is apps/logistics, which does not read this module.
 
 use renox::prelude::*;
-use renox::state_machine::TransitionError;
+use renox::state_machine::{StateMachine, TransitionError};
 use wl_kernel::Subject;
 use wl_kernel::custody::{HandoverKind, HandoverStatus, PeriodKind};
 use wl_kernel::documents::today;

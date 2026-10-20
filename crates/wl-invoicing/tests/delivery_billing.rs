@@ -8,6 +8,7 @@
 
 mod support;
 
+use renox::prelude::*;
 use wl_invoicing::delivery_billing::{CodDifference, CodOutcome};
 use wl_invoicing::reminders::{self, AFTER_DUE};
 use wl_invoicing::{Invoice, InvoiceLine};

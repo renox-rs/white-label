@@ -17,6 +17,7 @@
 //! The holder is a staff user, per person and per day unless the period says
 //! otherwise; the row is made with the first collection.
 
+use renox::state_machine::StateMachine;
 use renox::db::DateTime;
 use renox::prelude::*;
 use wl_kernel::Subject;

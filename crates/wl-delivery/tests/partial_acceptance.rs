@@ -6,6 +6,7 @@
 
 mod support;
 
+use renox::prelude::*;
 use wl_delivery::{Attempt, Delivery, DeliveryLine, DeliveryStatus, Proof, WlDelivery};
 use wl_kernel::DeliveredLine;
 

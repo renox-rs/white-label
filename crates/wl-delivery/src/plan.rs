@@ -416,7 +416,7 @@ pub async fn dispatch_run(
         today(),
         Some(user.id),
         || async {
-            let mut tx = state.db.begin().await.map_err(TransitionError::Failed)?;
+            let mut tx = state.db.begin().await.map_err(|e| TransitionError::Failed(e.into()))?;
             let mut outcomes = Vec::new();
             let first = run
                 .transition(run_machine::DISPATCH)
@@ -432,7 +432,7 @@ pub async fn dispatch_run(
                         .await?,
                 );
             }
-            tx.commit().await.map_err(TransitionError::Failed)?;
+            tx.commit().await.map_err(|e| TransitionError::Failed(e.into()))?;
             first.emit(state).await.map_err(TransitionError::Failed)?;
             for outcome in outcomes {
                 outcome.emit(state).await.map_err(TransitionError::Failed)?;

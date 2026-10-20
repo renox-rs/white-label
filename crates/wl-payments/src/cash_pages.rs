@@ -22,7 +22,7 @@
 use renox::grid::{Column, Grid, GridPage, GridRequest};
 use renox::prelude::*;
 use renox::serde_json::Value;
-use renox::state_machine::{self, StateMachine, TransitionError};
+use renox::state_machine::{self, TransitionError};
 use serde::{Deserialize, Serialize};
 use wl_kernel::Subject;
 use wl_kernel::custody::{HandoverKind, HandoverStatus};
