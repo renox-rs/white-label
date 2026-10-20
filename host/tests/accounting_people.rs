@@ -24,7 +24,8 @@ use wl_kernel::{PartyId, Subject};
 use wl_sales::costs::{self, CostInput};
 use wl_sales::report::{self, Filter, GroupBy, Viewer};
 use wl_sales::{
-    Campaign, CostEntry, CostStatus, Lead, LeadSource, MarketingChannel, NewLead, Purpose,
+    Campaign, CostEntry, CostStatus, Lead, LeadSource, LeadStatus, MarketingChannel, NewLead,
+    Purpose,
 };
 
 const CODE: &str = "SEARCH26";
@@ -469,4 +470,132 @@ async fn an_overdue_sop_acknowledgement_is_reminded_every_three_days_and_escalat
         .unwrap()
         .unwrap();
     assert_eq!(after.escalated_on, Some(at(due, 7)));
+}
+
+/// `SAL.CRM.02`: the lead's source is carried to the client party when the
+/// engagement letter is signed, and the party's first real invoice (the
+/// `InvoiceIssued` of wl-invoicing, not a hand-fed sale) is its first sale:
+/// it feeds the campaign's acquisition cost and return, and a second invoice
+/// is not a second customer.
+#[renox::test]
+async fn the_source_is_carried_at_the_letter_and_the_first_invoice_is_the_first_sale() {
+    let app = accounting_booted().await;
+    let manager = person(&app, "Mona", MARKETING_MANAGER).await;
+    let staff = person(&app, "Marco", MARKETING).await;
+    let engagement_manager = person(&app, "Eli", ENGAGEMENT_MANAGER).await;
+    let billing = person(&app, "Bella", host::roles::BILLING).await;
+    let campaign = search_campaign(&app, &manager).await;
+    costs::save(
+        app.state(),
+        CostInput {
+            campaign_id: campaign.id,
+            entry_date: day(-5),
+            amount: 300_000,
+            description: "Search ads".into(),
+            requested_by: staff.id,
+            manages_costs: false,
+        },
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    let client = company(&app, "Gulf Trading A LLC").await;
+    let engagement = accounting::engagements::create(
+        app.state(),
+        None,
+        accounting::NewEngagement::retainer(client, "Bookkeeping and VAT", 500_000),
+    )
+    .await
+    .unwrap();
+    let new = NewLead::staff(Some(client), "Omar Haddad", "paid_ads").campaign_code(CODE);
+    let wl_sales::Captured::Created(lead) = wl_sales::lead::capture(app.state(), new, day(-3))
+        .await
+        .unwrap()
+        .unwrap()
+    else {
+        panic!("a lead is created");
+    };
+    Lead::query()
+        .where_(Lead::ID.eq(lead.id))
+        .update(app.db(), &[("status", &"qualified")])
+        .await
+        .unwrap();
+    assert!(
+        wl_sales::PartyAcquisition::of_party(app.db(), client)
+            .await
+            .unwrap()
+            .is_none(),
+        "nothing is carried before the letter is signed"
+    );
+
+    // The letter is signed (the staff route): the lead is won and the source
+    // and the campaign are on the client party.
+    app.acting_as(&engagement_manager);
+    app.htmx()
+        .post(
+            &format!("/accounting/engagements/{}/letter", engagement.id),
+            &[("signed_on", &today().to_string())],
+        )
+        .await
+        .assert_ok();
+    let won = Lead::find(app.db(), lead.id).await.unwrap().unwrap();
+    assert_eq!(won.status, LeadStatus::Won);
+    let acquisition = wl_sales::PartyAcquisition::of_party(app.db(), client)
+        .await
+        .unwrap()
+        .expect("the party has an acquisition");
+    let source = LeadSource::by_code(app.db(), "paid_ads")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(acquisition.source_id, source.id);
+    assert_eq!(acquisition.campaign_id, Some(campaign.id));
+    assert_eq!(acquisition.first_sale(), None);
+
+    // The first invoice (AED 10,000 without VAT) is the first sale.
+    let invoice = issued_invoice(
+        &app,
+        &billing,
+        client,
+        1_000_000,
+        wl_kernel::invoicing::VatCategory::Exempt,
+        day(10),
+    )
+    .await;
+    let acquisition = wl_sales::PartyAcquisition::of_party(app.db(), client)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(acquisition.first_sale(), Some(invoice.subject()));
+    assert_eq!(acquisition.first_sale_value, 1_000_000);
+    issued_invoice(
+        &app,
+        &billing,
+        client,
+        500_000,
+        wl_kernel::invoicing::VatCategory::Exempt,
+        day(10),
+    )
+    .await;
+    let again = wl_sales::PartyAcquisition::of_party(app.db(), client)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        again.first_sale(),
+        Some(invoice.subject()),
+        "still the first"
+    );
+    let facts = report::load(app.db(), &wl_sales::config::config_of(app.state()))
+        .await
+        .unwrap();
+    let report = report::compute(
+        &facts,
+        &Filter::default(),
+        GroupBy::Campaign,
+        &Viewer::all(),
+    );
+    let cells = report.rows[0].cells();
+    assert_eq!(cells.cac, "3,000.00");
+    assert_eq!(cells.roas, "3.33");
 }
