@@ -123,6 +123,10 @@ pub struct SupplierReturn {
     /// The value posted as wastage when the supplier refused the credit, in
     /// fils.
     pub wastage_fils: i64,
+    /// The day the last `STK.RUL.08` notice went out.
+    pub last_chased_on: Option<renox::chrono::NaiveDate>,
+    /// How many `STK.RUL.08` notices went out.
+    pub chase_count: i64,
     /// The user who made it; `None` for the system.
     pub created_by: Option<i64>,
     /// When the row was created.

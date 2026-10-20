@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
+pub mod chase;
 pub mod config;
 mod events;
 pub mod goods_receipt;
@@ -101,6 +102,14 @@ impl WlInventory {
         self
     }
 
+    /// The days a Return to supplier may stay `dispatched` before procurement
+    /// and finance are told, and the days between two notices (default 30;
+    /// `STK.RUL.08`).
+    pub fn return_chase_days(mut self, days: i64) -> Self {
+        self.config.return_chase_days = days.max(1);
+        self
+    }
+
     /// Adds a rejection reason, or changes whether an existing one needs a
     /// reading or a photo (06: `temperature`).
     pub fn rejection_reason(mut self, code: &str, evidence_required: bool) -> Self {
@@ -193,6 +202,10 @@ impl Module for WlInventory {
         // The supplier bill match reads the accepted quantity (§6).
         wl_kernel::inventory::provide_purchase_match(app, PurchaseMatch);
         events::register(app);
+        // `STK.RUL.08`: the notice type and the daily chase of the returns
+        // that stay `dispatched`.
+        chase::register_types();
+        chase::schedule(app);
     }
 }
 

@@ -35,6 +35,7 @@ use crate::return_dispatch::{DISPATCH, DISPATCH_APPROVED};
 use crate::supplier_return::{
     ReturnStatus, SupplierReturn, SupplierReturnLine, WantedOutcome, of_source,
 };
+use crate::texts::said;
 
 /// The event of the posted `receipt` with its `lines`.
 pub fn received_event(receipt: &GoodsReceipt, lines: &[GoodsReceiptLine]) -> GoodsReceived {
@@ -123,6 +124,15 @@ async fn emit_credited(state: &AppState, id: i64) -> Result {
         )
         .cost_code("wastage");
         post_cost(state, request).await?;
+    }
+    // The task to chase the supplier is done with the return.
+    let creator = wl_kernel::tickets::task_creator(state);
+    if let Some(task) = creator
+        .find_open(state, &crate::chase::task_key(ret.id))
+        .await?
+    {
+        let note = said("wl_inventory.chase.resolved", &[]);
+        creator.resolve_from_source(state, task.id, &note).await?;
     }
     state
         .emit(SupplierReturnCredited {

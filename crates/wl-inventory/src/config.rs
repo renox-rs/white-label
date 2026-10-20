@@ -17,6 +17,10 @@ pub const DEFAULT_RETURN_APPROVAL_FILS: i64 = 500_000;
 /// it by default (`STK.ACL.02`): AED 1,000, in fils.
 pub const DEFAULT_WASTAGE_APPROVAL_FILS: i64 = 100_000;
 
+/// The days a Return to supplier may stay `dispatched` before it is chased
+/// by default (§7, `STK.RUL.08`).
+pub const DEFAULT_RETURN_CHASE_DAYS: i64 = 30;
+
 /// The rejection reasons by default (§7).
 pub const DEFAULT_REASONS: &[&str] = &[
     "temperature",
@@ -52,6 +56,10 @@ pub struct InventoryConfig {
     /// The value, in fils, above which wastage (a credit the supplier
     /// refused) needs a second person (`STK.ACL.02`).
     pub wastage_approval_fils: i64,
+    /// The days a Return to supplier stays `dispatched` before procurement
+    /// and finance are told, and the days between two notices
+    /// (`STK.RUL.08`).
+    pub return_chase_days: i64,
 }
 
 impl InventoryConfig {
@@ -67,6 +75,7 @@ impl Default for InventoryConfig {
             over_receipt_tolerance_bps: DEFAULT_TOLERANCE_BPS,
             return_approval_fils: DEFAULT_RETURN_APPROVAL_FILS,
             wastage_approval_fils: DEFAULT_WASTAGE_APPROVAL_FILS,
+            return_chase_days: DEFAULT_RETURN_CHASE_DAYS,
             rejection_reasons: DEFAULT_REASONS
                 .iter()
                 .map(|code| RejectionReason {
@@ -89,6 +98,7 @@ mod tests {
         assert_eq!(config.rejection_reasons.len(), 7);
         assert_eq!(config.return_approval_fils, 500_000);
         assert_eq!(config.wastage_approval_fils, 100_000);
+        assert_eq!(config.return_chase_days, 30);
         assert!(
             config
                 .reason("temperature")

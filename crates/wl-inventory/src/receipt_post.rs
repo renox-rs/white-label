@@ -33,7 +33,7 @@
 //! transition's input.
 //!
 //! A receipt may instead be a free replacement against a `dispatched` Return
-//! to supplier (issue #226, [`crate::goods_receipt::create_replacement_draft`]):
+//! to supplier (issue #225, [`crate::goods_receipt::create_replacement_draft`]):
 //! no purchase order, so nothing is received on an order or left to match in
 //! wl-invoicing. The guard reads the return: each line names a `replace`
 //! line of it that has no order line, or whose order is `closed` (a

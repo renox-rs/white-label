@@ -25,6 +25,7 @@ use wl_kernel::invoicing::{
     CostPoster, DebitedLine, PostCost, SupplierBillFuture, SupplierBillId,
     SupplierDebitNoteCancelled, SupplierDebitNoteId, SupplierDebitNoteIssued,
 };
+use wl_kernel::notify::{MessageId, Notifier, NotifyFuture, NotifyRequest};
 use wl_kernel::tickets::{OpenTicket, TaskCreator, TicketFuture, TicketId, TicketRef};
 use wl_kernel::{PartyId, Subject};
 
@@ -74,9 +75,15 @@ fn record<E: Event + Clone + Send + Sync + 'static>(app: &mut Registry, log: &Ar
 #[derive(Clone, Default)]
 pub struct TicketDesk {
     opened: Arc<Mutex<Vec<OpenTicket>>>,
+    resolved: Arc<Mutex<Vec<(TicketId, String)>>>,
 }
 
 impl TicketDesk {
+    /// The tickets resolved by their source, with the note.
+    pub fn resolved(&self) -> Vec<(TicketId, String)> {
+        self.resolved.lock().unwrap().clone()
+    }
+
     /// The tickets opened, oldest first.
     pub fn opened(&self) -> Vec<OpenTicket> {
         self.opened.lock().unwrap().clone()
@@ -100,21 +107,60 @@ impl TaskCreator for TicketDesk {
         })
     }
 
+    fn resolve_from_source<'a>(
+        &'a self,
+        _state: &'a AppState,
+        ticket: TicketId,
+        note: &'a str,
+    ) -> TicketFuture<'a, bool> {
+        Box::pin(async move {
+            self.resolved
+                .lock()
+                .unwrap()
+                .push((ticket, note.to_owned()));
+            Ok(true)
+        })
+    }
+
     fn find_open<'a>(
         &'a self,
         _state: &'a AppState,
         source_key: &'a str,
     ) -> TicketFuture<'a, Option<TicketRef>> {
         Box::pin(async move {
+            let resolved = self.resolved.lock().unwrap().clone();
             let opened = self.opened.lock().unwrap();
             Ok(opened
                 .iter()
                 .position(|t| t.source_key.as_deref() == Some(source_key))
+                .filter(|n| !resolved.iter().any(|(id, _)| id.0 == *n as i64 + 1))
                 .map(|n| TicketRef {
                     id: TicketId(n as i64 + 1),
                     number: format!("TKT-{}", n + 1),
                 }))
         })
+    }
+}
+
+/// A notifier that records every request and queues nothing.
+#[derive(Clone, Default)]
+pub struct Recording(Arc<Mutex<Vec<NotifyRequest>>>);
+
+impl Recording {
+    /// Every request so far, oldest first.
+    pub fn all(&self) -> Vec<NotifyRequest> {
+        self.0.lock().unwrap().clone()
+    }
+}
+
+impl Notifier for Recording {
+    fn notify<'a>(
+        &'a self,
+        _state: &'a AppState,
+        request: NotifyRequest,
+    ) -> NotifyFuture<'a, Vec<MessageId>> {
+        self.0.lock().unwrap().push(request);
+        Box::pin(async { Ok(Vec::new()) })
     }
 }
 
@@ -147,6 +193,7 @@ struct Fakes {
     credited: Arc<Mutex<Vec<SupplierReturnCredited>>>,
     tickets: TicketDesk,
     costs: CostDesk,
+    notices: Recording,
 }
 
 impl Module for Fakes {
@@ -160,6 +207,7 @@ impl Module for Fakes {
         record(app, &self.credited);
         wl_kernel::tickets::provide_task_creator(app, self.tickets.clone());
         wl_kernel::invoicing::provide_cost_poster(app, self.costs.clone());
+        wl_kernel::notify::provide_notifier(app, self.notices.clone());
     }
 }
 
@@ -177,6 +225,10 @@ pub struct Booted {
     pub tickets: TicketDesk,
     /// The cost posted (wastage).
     pub costs: CostDesk,
+    /// The notifications asked for.
+    pub notices: Recording,
+    /// The days the clock was moved forward.
+    clock_days: std::sync::atomic::AtomicI64,
 }
 
 impl Booted {
@@ -198,6 +250,24 @@ impl Booted {
             .unwrap();
         user.assign_role(self.db(), role).await.unwrap();
         user
+    }
+
+    /// Moves the clock to `days` days after the real today (days only go
+    /// forward within a test).
+    pub fn clock_at(&self, days: i64) {
+        use std::sync::atomic::Ordering;
+        let moved = self.clock_days.load(Ordering::SeqCst);
+        assert!(days >= moved, "the clock cannot go back to day {days}");
+        if days > moved {
+            let seconds = u64::try_from(days - moved).unwrap() * 24 * 3600;
+            self.app.travel(std::time::Duration::from_secs(seconds));
+            self.clock_days.store(days, Ordering::SeqCst);
+        }
+    }
+
+    /// A finance user (`finance` role).
+    pub async fn finance(&self, name: &str) -> User {
+        self.user_with(name, "finance").await
     }
 
     /// A storekeeper (`goods_receipts.post`) everywhere.
@@ -541,6 +611,7 @@ pub async fn boot_with(module: WlInventory) -> Booted {
     let credited = Arc::new(Mutex::new(Vec::new()));
     let tickets = TicketDesk::default();
     let costs = CostDesk::default();
+    let notices = Recording::default();
     let app = App::new()
         .module(Auth::new())
         .module(Permissions)
@@ -552,6 +623,7 @@ pub async fn boot_with(module: WlInventory) -> Booted {
             credited: credited.clone(),
             tickets: tickets.clone(),
             costs: costs.clone(),
+            notices: notices.clone(),
         });
     let config = wl_kernel::ClientConfig::parse(CLIENT).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
@@ -564,6 +636,9 @@ pub async fn boot_with(module: WlInventory) -> Booted {
         .await
         .unwrap();
     permissions::define_role(app.db(), "stores_manager", &[perm::GOODS_RECEIPTS_REVERSE])
+        .await
+        .unwrap();
+    permissions::define_role(app.db(), "finance", &[perm::STOCK_VIEW])
         .await
         .unwrap();
     permissions::define_role(
@@ -580,6 +655,8 @@ pub async fn boot_with(module: WlInventory) -> Booted {
         credited: Recorded(credited),
         tickets,
         costs,
+        notices,
+        clock_days: std::sync::atomic::AtomicI64::new(0),
     }
 }
 

@@ -1,5 +1,5 @@
 //! Receiving a free replacement against a dispatched Return to supplier
-//! (wl-inventory §4 *Goods receipt* `post`, issue #226): no purchase order,
+//! (wl-inventory §4 *Goods receipt* `post`, issue #225): no purchase order,
 //! zero cost, nothing to match, and the return is credited when every line is
 //! covered.
 

@@ -237,6 +237,27 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_inventory.return.debit_note_cancelled",
         "The supplier debit note of return {{ number }} was cancelled ({{ reason }}). The return stays with the supplier: chase the credit or a replacement.",
     ),
+    // `STK.RUL.08`: chasing a return that stays dispatched.
+    (
+        "wl_inventory.chase.subject",
+        "Return {{ number }} still not credited after {{ days }} days",
+    ),
+    (
+        "wl_inventory.chase.body",
+        "Return {{ number }} to the supplier was dispatched on {{ dispatched }} and is neither credited nor replaced after {{ days }} days. Procurement chases the supplier; finance, expect the credit.",
+    ),
+    (
+        "wl_inventory.chase.resolved",
+        "The return was credited.",
+    ),
+    (
+        "wl_inventory.chase.task_title",
+        "Chase the supplier for return {{ number }}",
+    ),
+    (
+        "wl_inventory.chase.task",
+        "Return {{ number }} has been dispatched for {{ days }} days without a credit or a replacement. Ask the supplier for the debit note or the replacement.",
+    ),
     // Names of the rejected goods' returns.
     (
         "wl_inventory.return.collection_proof",
