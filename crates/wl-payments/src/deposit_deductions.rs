@@ -345,8 +345,12 @@ pub(crate) fn prepare(
         .collect();
     if let Some(reason) = &reason
         && lines.is_empty()
+        && reason != wl_kernel::deposits::APPLIED_TO_DEDUCTIONS
     {
-        // One line for the whole deposit, with the reason as its evidence.
+        // One line for the whole deposit, with the reason as its evidence. A
+        // forfeiture *applied to deductions* with no lines is applied to the
+        // unpaid invoices alone: the tenant already has them, and the vertical
+        // invoices the damage lines it publishes.
         lines.push(NewLine {
             description: "Forfeiture of the deposit".to_owned(),
             amount: held,
@@ -957,6 +961,25 @@ mod tests {
 
     fn day(day: u32) -> NaiveDate {
         NaiveDate::from_ymd_opt(2027, 3, day).unwrap()
+    }
+
+    #[test]
+    fn a_forfeiture_applied_to_deductions_with_no_lines_has_none() {
+        let applied = PublishRequest {
+            lines: Vec::new(),
+            forfeiture_reason: Some(wl_kernel::deposits::APPLIED_TO_DEDUCTIONS.to_owned()),
+        };
+        let (kind, _, lines) = prepare(&applied, 500_000).unwrap();
+        assert_eq!(kind, DeductionKind::Forfeiture);
+        assert!(lines.is_empty());
+        // Any other reason is one line for the whole deposit.
+        let other = PublishRequest {
+            lines: Vec::new(),
+            forfeiture_reason: Some("Reservation form".to_owned()),
+        };
+        let (_, _, lines) = prepare(&other, 500_000).unwrap();
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].amount, 500_000);
     }
 
     fn line(description: &str, amount: i64, evidence: &str) -> NewLine {

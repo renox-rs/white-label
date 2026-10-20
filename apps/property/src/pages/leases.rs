@@ -41,6 +41,7 @@ use renox::state_machine::{self, StateMachine, TransitionError};
 use serde::{Deserialize, Serialize};
 use wl_kernel::approvals::{self, ApprovalCard};
 use wl_kernel::cheques::ChequeSummary;
+use wl_kernel::invoicing::{InvoiceId, invoicer};
 use wl_kernel::parties::directory;
 
 use super::{Texts, buildings_with, lease_kind, text};
@@ -866,9 +867,20 @@ async fn show(
             })
             .collect();
     let settled_by_deposit = DepositSettlement::of_root(&state.db, lease.root_id).await?;
-    let settlement: Vec<SettlementRow> = settled_by_deposit
-        .iter()
-        .map(|s| SettlementRow {
+    let mut settlement: Vec<SettlementRow> = Vec::new();
+    if let Some(s) = &settled_by_deposit {
+        // The damages invoice is drafted when the deposit is applied and issued
+        // by invoicing later: its number is read from there once it has one.
+        let mut number = s.excess_invoice_number.clone();
+        if number.is_none()
+            && let Some(id) = s.excess_invoice_id
+        {
+            number = invoicer(&state)
+                .find(&state.db, InvoiceId(id))
+                .await?
+                .and_then(|found| found.number);
+        }
+        settlement.push(SettlementRow {
             held: crate::money_text(s.held),
             rent_due: crate::money_text(s.rent_due),
             damages: crate::money_text(s.damages),
@@ -876,14 +888,12 @@ async fn show(
             to_rent: crate::money_text(s.to_rent),
             to_damages: crate::money_text(s.to_damages),
             excess: crate::money_text(s.excess),
-            invoice: s
-                .excess_invoice_number
-                .clone()
+            invoice: number
                 .or_else(|| s.excess_invoice_id.map(|id| format!("#{id}")))
                 .unwrap_or_default(),
             applied_on: s.applied_on.to_string(),
-        })
-        .collect();
+        });
+    }
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
         lease: view,
