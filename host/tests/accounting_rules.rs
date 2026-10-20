@@ -79,17 +79,22 @@ async fn a_failed_or_stopped_critical_run_alerts_the_partner_and_the_admin_once_
     assert_eq!(messages_to(&app, OWNER_ALERT, &partner).await.len(), 1);
     assert_eq!(messages_to(&app, OWNER_ALERT, &admin).await.len(), 1);
 
-    // A stopped run (a chain too deep) alerts them once each as well.
-    let spec = RuleRunSpec::new(
-        "PTY.RUL.02",
-        Subject::new("parties.sanctions_list", 99),
-        "stopped",
-    )
-    .compliance_critical()
-    .chain_depth(4);
-    run_rule(app.state(), spec, |_state| async { Ok(()) })
+    // A stopped run (a chain too deep) of one of the app's own critical
+    // rules, `ACC.RUL.09`, alerts them once each as well. No rule chains
+    // into another yet, so the depth is given as a chaining rule would.
+    let subject = Subject::new("accounting.engagement", 99);
+    let spec = RuleRunSpec::new("ACC.RUL.09", subject.clone(), "stopped")
+        .compliance_critical()
+        .chain_depth(4);
+    let outcome = run_rule(app.state(), spec, |_state| async { Ok(()) })
         .await
         .unwrap();
+    assert_eq!(outcome, wl_kernel::automation::RunOutcome::Stopped);
+    let run = RuleRun::find_occurrence(app.db(), "ACC.RUL.09", &subject, "stopped")
+        .await
+        .unwrap()
+        .expect("the run is recorded");
+    assert_eq!(run.status, wl_kernel::automation::RuleRunStatus::Stopped);
     assert_eq!(messages_to(&app, OWNER_ALERT, &partner).await.len(), 2);
     assert_eq!(messages_to(&app, OWNER_ALERT, &admin).await.len(), 2);
 }
