@@ -204,7 +204,7 @@ run, and the note says where. Nothing is marked tested that was not run.
 |---|---|---|---|
 | Release binary (`cargo build --release -p host --locked`) | yes (CI job) | **no** | Skipped locally: under 15 GB of free disk. First run is the `release.yml` workflow. |
 | Dockerfile and container image | yes | **no** | No Docker daemon in the build sandbox. CI builds it and boots it (`release.yml`, job `image`). |
-| Production boot (`APP_ENV=production`, demo `client.toml`, temp SQLite) | yes | yes | Debug binary: `migrate`, `db:check`, `view:check`, `wl:install` and the other `:install` commands, `serve`, `/health`, sign-up, e-mail verification, `users:admin`, sign-in, secure cookie and HSTS behind simulated proxy headers, `TRUSTED_HOSTS`. Failures met are in [deploy/README.md](../deploy/README.md) section 8. |
+| Production boot (`APP_ENV=production`, demo `client.toml`, temp SQLite) | yes | yes | Debug binary: `migrate`, `db:check`, `view:check`, `wl:install` and the other `:install` commands, `serve`, `/health`, `users:invite`, `users:admin`, sign-in, secure cookie and HSTS behind simulated proxy headers, `TRUSTED_HOSTS`. Failures met are in [deploy/README.md](../deploy/README.md) section 8. |
 | Socket activation | yes (units) | partly | The app took the socket handed over by `systemd-socket-activate` and stopped cleanly on SIGTERM. The unit files pass `systemd-analyze verify`. No restart under load, no real systemd run. |
 | systemd service, socket, litestream units | yes | **no** | Not started by systemd. |
 | Caddy TLS and proxy | example | **no** | No Caddy; proxy headers simulated with curl. |
@@ -218,7 +218,7 @@ run, and the note says where. Nothing is marked tested that was not run.
 | Rollout rings, two-person rule, automatic rollback | **no** | no | Need `wl-operator` / `deploy/rollout`. |
 | Monitoring and alerting (section 6) | **no** | no | Only the data source exists (`/health`, journal). |
 | Capacity figure (12 MiB per process) | no | no | Still to be measured. |
-| Production hardening of the host | **open** | | `db:seed` and `migrate:fresh` run in production without a guard (the first creates `admin@example.com` / `password123`); registration is open; `CSP=strict` not tried; a sign-up with a failing SMTP gives a 500 after creating the user. Host code, not changed by the deployment files. |
+| Production hardening of the host | yes | yes (tests and a debug run) | `db:seed`, `migrate:fresh` and `property:demo` refuse to run when `APP_ENV` is production (`host/tests/production_guard.rs`). There is no public sign-up: `/register` is gone, users are added on `/users` or with `users:invite` (a mail that fails leaves the user and no 500: `host/tests/users_invite.rs`). `/` redirects to `/dashboard` or `/login` (no starter-kit page). `CSP=strict` was tried in a browser on the main pages with no violation; the default stays `relaxed` ([deploy/README.md](../deploy/README.md) section 8). Not covered: portal pages, PDFs, uploads under `strict`. |
 
 ## Sources
 

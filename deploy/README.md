@@ -170,10 +170,11 @@ notification types, 11 budget categories, 9 ticketing, 9 sales and 1 HR defaults
 created 0). `systemd-run` itself is *not yet tested*; the sandbox ran the same commands with
 the same variables from a shell.
 
-> **Never run `db:seed` or `migrate:fresh` on a production database.** `db:seed` creates
-> `admin@example.com` and `member@example.com` with the password `password123`;
-> `migrate:fresh` drops every table. Both run in production without any question (*tested
-> here*, on a scratch database).
+> **`db:seed`, `migrate:fresh` and `property:demo` refuse to run when `APP_ENV` is
+> production** (message: `... is refused when APP_ENV is production`, exit code 1, before
+> anything is opened). `db:seed` would create `admin@example.com` / `password123`;
+> `migrate:fresh` drops every table. *Tested here*: the three commands in production mode, on a
+> scratch database that stayed untouched.
 
 ### 3.6 Start
 
@@ -207,30 +208,34 @@ curl: `Host`, `X-Forwarded-Proto: https`, `X-Forwarded-For`).
 
 ### 3.8 The first admin
 
-Registration is open (`/register`), and there is no other way to create a user. So the first
-admin signs up, verifies the e-mail address and is then promoted:
+There is no public sign-up: `/register` does not exist (404), no page links to it, and a
+POST to it creates nothing. Users are added by an admin (the *Add a user* button on `/users`)
+or, for the first admin, with a command that creates the user and prints the link where they
+choose their password:
 
-1. Open `https://$DOMAIN/register` and sign up with the admin's e-mail address.
-2. The verification mail is sent at once. With SMTP it arrives in the inbox. With
-   `MAIL_MAILER=log`, take the link from the journal:
-   `journalctl -u white-label@$C -n 50 | grep -o 'https://[^ ]*verify-email[^ ]*'`.
-   Open it **in the browser where you signed up** (the link needs the logged-in session).
-3. Promote the user:
-   ```bash
-   wl-run users:admin admin@client.example     # prints "<email> is an admin."
-   ```
-   An address that has not signed up fails with `no user with the email ...`.
-4. Reload the page: the sidebar now shows the admin pages (users, activity, legal entities, property).
+```bash
+wl-run users:invite admin@client.example "Client Admin" --role=admin
+# admin@client.example is added.
+# The link to choose a password was mailed. It works for an hour:
+# https://$DOMAIN/reset-password/<token>?email=admin%40client.example
+```
 
-Before step 3 the user is redirected to `/verify-email` (unverified) or gets 403 on
-`/property` (verified, not admin); after it, `/dashboard` and `/property` answer 200. *Tested
-here*, together with the whole of section 3.1 to 3.8 run literally as the `wl-<client>` user, with the real
-`systemd-socket-activate` and a small stand-in for `systemd-run` (there is no systemd here), with the log mailer (the link in the
-log is built from `APP_URL`, so it carries the public domain).
+1. Open the link (mailed, or printed by the command: with `MAIL_MAILER=log` or a broken SMTP
+   the mail is not delivered, the user is still created and the command says so) and choose a
+   password. The address is already verified.
+2. Sign in at `https://$DOMAIN/login`. The sidebar shows the admin pages (users, activity,
+   legal entities, property).
+3. The link works for one hour. After that, "Forgot your password?" on the sign-in page sends
+   a new one.
+4. `wl-run users:admin <email>` still exists to make an existing user an admin.
 
-Anyone can also register as a plain `member` while `/register` is open. **Open item:** the
-host does not call `without_registration()` yet (host code, not part of the deployment files).
-Until it does, check what a member can see before go-live.
+Everyone else is added on `/users`, with the roles ticked, and gets the same mail. A mail that
+fails (wrong `MAIL_*`) does **not** leave a half-made user nor a 500 page: the user is
+created, the page says the mail could not be sent, and the person asks for a link on the
+sign-in page once the mail is fixed (the cause is in the journal:
+`invitation: the mail to user N was not sent: ...`). *Tested here*: the invite, the
+failing-SMTP path and the closed `/register` in the host's tests; the mail was not delivered
+by a real SMTP server.
 
 ### 3.9 Check the install
 
@@ -392,16 +397,24 @@ These all came from running the real binary with `APP_ENV=production` (*tested h
 | Sign-in redirects back to the login page, no error | `APP_URL` is `https://` so the session cookie is `Secure`, and you browse over `http://` (e.g. an SSH tunnel to the port) | browse through Caddy over https |
 | `400 Bad Request`, plain text, on every page except `/health` | `TRUSTED_HOSTS` is set and the `Host` header is not in it (`curl localhost:3100` has `Host: localhost`) | send the right Host: `curl -H 'Host: demo.palmgrove.example' ...` |
 | Rate limits and login lock count everyone as one visitor; logs show 127.0.0.1 | `TRUSTED_PROXIES` unset behind Caddy | `TRUSTED_PROXIES=127.0.0.1`; never set it when the app port is reachable from outside |
-| Sign-up answers `500`, log: `sending mail to ...: failed to lookup address information` | `MAIL_MAILER=smtp` and the host or credentials are wrong; mail is sent inside the request. **The user row is already created** (the next attempt says the address is taken) | fix `MAIL_*`; delete or verify the stray user; test SMTP on the first install with the log mailer then switch |
-| Verification link in the journal says `http://127.0.0.1:3100/...` | `APP_URL` left at the default | set `APP_URL=https://<domain>` before the first sign-up |
+| Adding a user says "the mail could not be sent"; journal: `invitation: the mail to user N was not sent: failed to lookup address information` | `MAIL_MAILER=smtp` and the host or credentials are wrong. The user **is** created (verified, with their roles); only the mail is missing | fix `MAIL_*`, then the person uses "Forgot your password?" on the sign-in page (or `wl-run users:invite` prints the link for the first admin); test SMTP on the first install with the log mailer, then switch |
+| Verification link in the journal says `http://127.0.0.1:3100/...` | `APP_URL` left at the default | set `APP_URL=https://<domain>` before the first invitation: the link to choose a password is built from it |
 | Verification link answers 403 | signed for another host/URL than the one you open, or expired (60 minutes), or opened in a browser that is not logged in as that user | request a new one (the `/verify-email` page has a button); open it in the same browser |
 | `Error: APP_TIMEZONE: unknown time zone ...` | typo in the zone | `Asia/Dubai` |
 | New client has no legal entities or approval policies | `wl:install` not run | 3.5 |
-| `admin@example.com / password123` exists | someone ran `db:seed` or `migrate:fresh --seed` | remove the users, never do it again (3.5) |
+| `admin@example.com / password123` exists | the database was seeded before the guard existed (an older binary) | remove the users; the current binary refuses `db:seed` in production (3.5) |
 
-CSP: `CSP=relaxed` (default) is what the pages are known to work under. `CSP=strict` has
-**not** been tried against the host's pages (Alpine inline expressions and inline scripts
-would break); do not enable it without a page-by-page check.
+CSP: `CSP=relaxed` (default) is what the pages are known to work under. `CSP=strict`
+(`script-src 'self' 'nonce-...'`, no `unsafe-inline` for scripts) was **tried in a real browser**
+(Chromium, local server, `CSP=strict`, signed in as admin): the login page, dashboard,
+property, leases, agreements, parties, invoices, payments, cheques, deposits, tickets, document
+review, users, activity, account, notifications and the money settings, with the sidebar menu,
+the account menu and a sheet submitted with htmx (*Add a user*) opened and used. **No console
+error and no `securitypolicyviolation` event.** The host's templates contain no inline script and
+no Alpine expression. This is not a full check: PDFs and downloads, the portal, file uploads
+and every sheet of every page were not all opened. The default stays `relaxed`; switch a
+client to `strict` on staging first, open its pages with the browser console open, and keep
+`CSP=relaxed` as the rollback.
 
 ## 9. Logs and everyday commands
 
