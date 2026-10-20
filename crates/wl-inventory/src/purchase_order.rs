@@ -3,12 +3,24 @@
 //! receiving needs is built: the model, its lines, the machine's states and
 //! `receive`, the system transition a posted goods receipt runs. `issue`,
 //! `revise`, `short_close`, `close` and `cancel` come with the issues that
-//! build them; a fixture is inserted in the state it needs.
+//! build them; a fixture is inserted in the state it needs. The system's
+//! `reopen` is here as well.
 //!
 //! ```text
 //! issued, partially_received --receive--> partially_received
 //! issued, partially_received --receive_in_full--> received
 //! ```
+//!
+//! ```text
+//! received --reopen--> partially_received
+//! ```
+//!
+//! `reopen` is run by the system when goods of a fully received order go back
+//! to the supplier for replacement (a Return to supplier `dispatch`) or a
+//! receipt is reversed: the returned quantity is outstanding again, so the
+//! replacement is received on the order and its committed cost
+//! ([`committed_value`]: outstanding quantity at the order's price) is back.
+//! Users are not offered it, and a `closed` order is not reopened.
 //!
 //! The spec has one `receive` with two targets; as with a payment's
 //! `allocate` and an invoice's, it is two transitions here, `receive` when
@@ -21,12 +33,14 @@
 //! the receipt needed an approval first, and `approved` says it had one.
 
 use renox::chrono::NaiveDate;
+use renox::db::Transaction;
 use renox::prelude::*;
-use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx};
+use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx, TransitionError};
 use serde::{Deserialize, Serialize};
 use wl_kernel::Subject;
 use wl_kernel::inventory::PURCHASE_ORDER_SUBJECT_TYPE;
 
+use crate::item::value_of;
 use crate::texts::said;
 
 /// The `receive` transition's name: some quantity is still outstanding.
@@ -34,6 +48,9 @@ pub const RECEIVE: &str = "receive";
 
 /// The `receive_in_full` transition's name: every line is fully accepted.
 pub const RECEIVE_IN_FULL: &str = "receive_in_full";
+
+/// The `reopen` transition's name.
+pub const REOPEN: &str = "reopen";
 
 /// Where a purchase order stands (§4).
 #[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -163,6 +180,38 @@ impl PurchaseOrderLine {
     pub fn outstanding_milli(&self) -> i64 {
         (self.quantity_milli - self.accepted_qty_milli).max(0)
     }
+}
+
+/// The committed cost of an order: what is still outstanding on its lines at
+/// the order's prices, in fils (`FIN.CST.01`).
+pub fn committed_value(lines: &[PurchaseOrderLine]) -> i64 {
+    lines
+        .iter()
+        .map(|line| value_of(line.outstanding_milli(), line.unit_price))
+        .sum()
+}
+
+/// Reopens order `order_id` inside `tx` when it is `received`: the system's
+/// `reopen`, run once the returned quantity is outstanding again. An order in
+/// any other state is left as it is (a `closed` one is never reopened).
+/// Whether it was reopened.
+///
+/// # Errors
+///
+/// A database error, or a refusal of the transition.
+pub async fn reopen_in(tx: &mut Transaction, order_id: i64) -> Result<bool> {
+    let order = PurchaseOrder::find_or_404(&mut *tx, order_id).await?;
+    if order.status != PurchaseOrderStatus::Received {
+        return Ok(false);
+    }
+    // Nothing listens to the order yet: the outcome is not emitted.
+    let _outcome = order
+        .transition(REOPEN)
+        .by_system()
+        .run_in(&mut *tx)
+        .await
+        .map_err(TransitionError::into_error)?;
+    Ok(true)
 }
 
 /// The lines of order `purchase_order_id`, in order.
@@ -338,6 +387,13 @@ impl StateMachine for PurchaseOrder {
                     .label("Receive in full")
                     .to(Received),
             ))
+            .transition(
+                Transition::new(REOPEN)
+                    .label("Reopen")
+                    .system()
+                    .from([Received])
+                    .to(PartiallyReceived),
+            )
     }
 }
 
@@ -413,6 +469,28 @@ mod tests {
             approved: false,
         };
         assert!(untouched.over_tolerance().is_none());
+    }
+
+    #[test]
+    fn the_committed_value_is_what_is_outstanding_at_the_orders_prices() {
+        let mut first = PurchaseOrderLine::new(1, 1, 2, 50_000, 5_000);
+        let second = PurchaseOrderLine::new(1, 2, 3, 10_000, 100);
+        assert_eq!(committed_value(&[first.clone(), second.clone()]), 250_000 + 1_000);
+        first.accepted_qty_milli = 50_000;
+        assert_eq!(committed_value(&[first.clone(), second]), 1_000);
+        // 10 come back for replacement: 10 x AED 50.
+        first.accepted_qty_milli = 40_000;
+        assert_eq!(committed_value(&[first]), 50_000);
+        assert_eq!(committed_value(&[]), 0);
+    }
+
+    #[test]
+    fn reopen_is_for_the_system_and_only_from_received() {
+        let machine = PurchaseOrder::machine();
+        let reopen = machine.find(REOPEN).expect("transition");
+        assert!(reopen.is_system());
+        assert_eq!(reopen.from_states(), ["received"]);
+        assert_eq!(reopen.to_state(), Some("partially_received"));
     }
 
     #[test]

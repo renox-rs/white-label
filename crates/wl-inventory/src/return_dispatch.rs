@@ -20,7 +20,8 @@
 //!   to the item's average cost kept on the line as the price variance; the
 //!   lot `reject`ed when it was on hold and nothing of it is left; a
 //!   `replace` line from stock gives its quantity back to the order line
-//!   (outstanding goes up, once per line), and lines rejected at receipt give
+//!   (outstanding goes up, once per line; a `received` order is `reopen`ed),
+//!   and lines rejected at receipt give
 //!   nothing back, their quantity stayed outstanding at `post`; the return
 //!   note; `SupplierReturnDispatched` after the commit ([`crate::events`]).
 //!
@@ -35,7 +36,7 @@
 //! poster with the cost objects); the supplier contact is told through the
 //! event.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use renox::db::Transaction;
 use renox::prelude::*;
@@ -357,6 +358,7 @@ async fn dispatch_in(tx: &mut Transaction, ret: SupplierReturn, run: &DispatchIn
     let source = ret.subject();
     let lines = supplier_return::lines_in(tx, ret.id).await?;
     let mut note_lines = Vec::new();
+    let mut orders: BTreeSet<i64> = BTreeSet::new();
     for line in &lines {
         let item = Item::find_or_404(&mut *tx, line.item_id).await?;
         let lot = match line.lot_id {
@@ -429,8 +431,13 @@ async fn dispatch_in(tx: &mut Transaction, ret: SupplierReturn, run: &DispatchIn
                         &[("restored_milli", &restored), ("updated_at", &now)],
                     )
                     .await?;
+                orders.insert(po_line.purchase_order_id);
             }
         }
+    }
+    // A fully received order expects the returned goods again (BL-STK-04).
+    for order_id in orders {
+        crate::purchase_order::reopen_in(tx, order_id).await?;
     }
     let proof = run
         .proof

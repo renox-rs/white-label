@@ -12,7 +12,8 @@
 //! - the effect, in the transaction: an `adjust` movement out of the
 //!   location per accepted line (the reversing movement), the item's average
 //!   cost without the receipt, the order lines' accepted quantity back down
-//!   by the accepted quantity only (the outstanding quantity goes up), and
+//!   by the accepted quantity only (the outstanding quantity goes up, and a
+//!   `received` order is `reopen`ed), and
 //!   every `draft` return from the receipt cancelled with the reason
 //!   *receipt reversed*.
 //!
@@ -24,7 +25,7 @@
 //! no data yet (reservations come with the issues that build them); an
 //! `on_hold` lot is the held stock. A reversal that empties an order line
 //! leaves the order in the state it was in, except that a `received` order
-//! goes back to `partially_received` (its `reopen`).
+//! goes back to `partially_received` (its `reopen`, BL-STK-04).
 
 use std::collections::BTreeMap;
 
@@ -221,6 +222,7 @@ async fn reverse_in(tx: &mut Transaction, receipt: GoodsReceipt, by: Option<i64>
     let source = receipt.subject();
     let reason = said("wl_inventory.reverse.reason", &[]);
     let lines = lines_in(tx, receipt.id).await?;
+    let mut reduced = false;
     for line in lines.iter().filter(|line| line.accepted_qty_milli > 0) {
         let item = Item::find_or_404(&mut *tx, line.item_id).await?;
         let on_hand = movement::on_hand_everywhere_in(tx, item.id).await?;
@@ -260,7 +262,12 @@ async fn reverse_in(tx: &mut Transaction, receipt: GoodsReceipt, by: Option<i64>
                     &[("accepted_qty_milli", &accepted), ("updated_at", &now)],
                 )
                 .await?;
+            reduced = true;
         }
+    }
+    // A fully received order expects the goods again.
+    if let (true, Some(order_id)) = (reduced, receipt.purchase_order_id) {
+        crate::purchase_order::reopen_in(tx, order_id).await?;
     }
     // The goods that were kept for collection are still there, but the
     // return that waited for them is withdrawn with the receipt.
