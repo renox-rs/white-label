@@ -845,6 +845,7 @@ const DOCUMENTS_REVIEW: &str = wl_documents::permissions::REVIEW;
 const BLOCK_OVERRIDE: &str = wl_documents::permissions::BLOCK_OVERRIDE;
 const TICKETS_VIEW: &str = wl_ticketing::permissions::VIEW;
 const TICKETS_WORK: &str = wl_ticketing::permissions::WORK;
+const TICKETS_CONFIDENTIAL: &str = wl_ticketing::permissions::CONFIDENTIAL_VIEW;
 const TASKS_VIEW: &str = wl_ticketing::permissions::TASKS_VIEW;
 const TASKS_WORK: &str = wl_ticketing::permissions::TASKS_WORK;
 const TASKS_REVIEW: &str = wl_ticketing::permissions::TASKS_REVIEW;
@@ -927,6 +928,8 @@ async fn define_roles(db: &Db) {
                 // As the host gives the MLRO: the CDD update task.
                 TICKETS_VIEW,
                 TICKETS_WORK,
+                // The MLRO's tasks about a client are confidential tickets.
+                TICKETS_CONFIDENTIAL,
                 TASKS_VIEW,
                 TASKS_WORK,
             ],

@@ -291,6 +291,10 @@ pub const ROLES: &[(&str, &[&str])] = &[
             // `ACC.RUL.05`) and sees the deadline tasks.
             tickets::VIEW,
             tickets::WORK,
+            // The MLRO's tasks about a client are confidential tickets
+            // (`confidential_task`): the MLRO and the deputy see them, the
+            // managers and partners do not (`ACC.ACL.05`, `ACC.ACL.14`).
+            tickets::CONFIDENTIAL_VIEW,
             tickets::TASKS_VIEW,
             tickets::TASKS_WORK,
         ],

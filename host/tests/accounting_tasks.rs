@@ -192,3 +192,30 @@ async fn the_04_deadline_task_settings_and_roles_are_in_force() {
     app.acting_as(&mariam);
     app.get("/tickets").await.assert_ok();
 }
+
+/// `ACC.ACL.05`: the MLRO's tasks about a client are tickets of the
+/// confidential category, which only the compliance role (the MLRO and the
+/// deputy) can see: not the engagement manager, the partner or the
+/// accountant. The category is seeded confidential in the accounting host.
+#[renox::test]
+async fn the_mlros_tasks_are_confidential_tickets_only_the_compliance_role_sees() {
+    let holds = |role: &str| {
+        host::roles::ROLES
+            .iter()
+            .find(|(name, _)| *name == role)
+            .is_some_and(|(_, grants)| {
+                grants.contains(&wl_ticketing::permissions::CONFIDENTIAL_VIEW)
+            })
+    };
+    assert!(holds(COMPLIANCE));
+    for role in [ENGAGEMENT_MANAGER, PARTNER, ACCOUNTANT] {
+        assert!(!holds(role), "{role} sees confidential tickets");
+    }
+    let app = booted().await;
+    let category =
+        wl_ticketing::Category::by_key(app.db(), wl_kernel::tickets::CONFIDENTIAL_TASK_CATEGORY)
+            .await
+            .unwrap()
+            .expect("the confidential task category is seeded");
+    assert!(category.confidential && category.active);
+}

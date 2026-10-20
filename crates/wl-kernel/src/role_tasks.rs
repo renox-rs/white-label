@@ -13,7 +13,9 @@ use renox::prelude::*;
 
 use crate::scopes::COMPANY_ADMIN_ROLE;
 use crate::subject::Subject;
-use crate::tickets::{self, Assignee, OpenTicket, TASK_CATEGORY, TicketRef};
+use crate::tickets::{
+    self, Assignee, CONFIDENTIAL_TASK_CATEGORY, OpenTicket, TASK_CATEGORY, TicketRef,
+};
 
 /// The user a task for `role` goes to: the first holder of the role, else
 /// the first company admin; `None` when nobody holds either.
@@ -42,6 +44,9 @@ pub struct RoleTask {
     pub source_key: String,
     /// When it is due, if it has a due time.
     pub due_at: Option<DateTime>,
+    /// Whether only the holders of `tickets.confidential.view` may see the
+    /// ticket (the [`CONFIDENTIAL_TASK_CATEGORY`]).
+    pub confidential: bool,
 }
 
 impl RoleTask {
@@ -54,7 +59,15 @@ impl RoleTask {
             description: String::new(),
             source_key: source_key.to_owned(),
             due_at: None,
+            confidential: false,
         }
+    }
+
+    /// Visible only to the holders of `tickets.confidential.view`: for a
+    /// task whose text must not reach the ticket list of other staff.
+    pub fn confidential(mut self) -> Self {
+        self.confidential = true;
+        self
     }
 
     /// With this description.
@@ -77,7 +90,12 @@ pub async fn open(state: &AppState, task: RoleTask) -> Result<Option<TicketRef>>
     if let Some(found) = creator.find_open(state, &task.source_key).await? {
         return Ok(Some(found));
     }
-    let mut ticket = OpenTicket::new(task.subject.clone(), TASK_CATEGORY, &task.title)
+    let category = if task.confidential {
+        CONFIDENTIAL_TASK_CATEGORY
+    } else {
+        TASK_CATEGORY
+    };
+    let mut ticket = OpenTicket::new(task.subject.clone(), category, &task.title)
         .description(&task.description)
         .source_key(&task.source_key);
     if let Some(due) = task.due_at {
@@ -108,5 +126,18 @@ mod tests {
         assert_eq!(task.description, "TX-889");
         assert_eq!(task.due_at, Some(due));
         assert_eq!(task.source_key, "kernel.reconcile:gateway.acme:1");
+        assert!(!task.confidential, "an ordinary task by default");
+    }
+
+    #[test]
+    fn a_confidential_task_is_marked() {
+        let task = RoleTask::new(
+            Subject::new("accounting.aml_case", 3),
+            "compliance",
+            "Review the CDD file",
+            "k",
+        )
+        .confidential();
+        assert!(task.confidential);
     }
 }

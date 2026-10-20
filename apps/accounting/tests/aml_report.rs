@@ -124,7 +124,7 @@ async fn a_report_flags_the_file_and_tells_the_partner_nothing_of_the_case() {
     // The compliance officer's task.
     let tasks = tickets_with(&t, &review_key(&reported)).await;
     assert_eq!(tasks.len(), 1);
-    assert_eq!(tasks[0].title, "Review CDD after report");
+    assert_eq!(tasks[0].title, "Review the CDD file");
     assert_eq!(tasks[0].assignee_user_id, Some(mlro.id));
     assert!(tasks[0].is_open());
 
@@ -356,7 +356,7 @@ async fn a_file_not_approved_gets_the_task_without_a_transition() {
         assert!(rows.iter().all(|row| row.transition != "flag_review"));
         let tasks = tickets_with(&t, &review_key(&case)).await;
         assert_eq!(tasks.len(), 1, "{status:?}");
-        assert_eq!(tasks[0].title, "Review CDD after report");
+        assert_eq!(tasks[0].title, "Review the CDD file");
         assert_eq!(tasks[0].assignee_user_id, Some(mlro.id));
     }
 }

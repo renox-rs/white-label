@@ -184,13 +184,14 @@ pub use subscriptions::{
     SubscriptionSuspended, Subscriptions,
 };
 pub use tickets::{
-    Assignee, ChecklistCompleted, ChecklistOutcome, ChecklistRunId, Checklists,
-    ComplianceFlagCleared, ComplianceFlagRaised, ComplianceFlagReason, ContractCover, NoChecklists,
-    NoServiceContractCoverage, NoTickets, OpenTicket, Requester, SERVICE_CONTRACT_SERIES,
-    SERVICE_CONTRACT_SUBJECT_TYPE, ServiceContractActivated, ServiceContractCoverage,
-    ServiceContractEnded, ServiceContractId, TASK_CATEGORY, TaskComment, TaskCreator,
-    TicketAssigned, TicketChannel, TicketClosed, TicketId, TicketRef, VendorNoShow, checklists,
-    provide_checklists, provide_service_contract_coverage, service_contract_coverage, ticket_path,
+    Assignee, CONFIDENTIAL_TASK_CATEGORY, ChecklistCompleted, ChecklistOutcome, ChecklistRunId,
+    Checklists, ComplianceFlagCleared, ComplianceFlagRaised, ComplianceFlagReason, ContractCover,
+    NoChecklists, NoServiceContractCoverage, NoTickets, OpenTicket, Requester,
+    SERVICE_CONTRACT_SERIES, SERVICE_CONTRACT_SUBJECT_TYPE, ServiceContractActivated,
+    ServiceContractCoverage, ServiceContractEnded, ServiceContractId, TASK_CATEGORY, TaskComment,
+    TaskCreator, TicketAssigned, TicketChannel, TicketClosed, TicketId, TicketRef, VendorNoShow,
+    checklists, provide_checklists, provide_service_contract_coverage, service_contract_coverage,
+    ticket_path,
 };
 pub use voids::{
     Effect, EffectKind, RecordVoided, Reverse, ReverseError, VoidRecord, Voidable, VoidableBuilder,

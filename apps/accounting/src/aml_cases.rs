@@ -460,7 +460,7 @@ async fn add_match(
 ///
 /// - the client's `approved` CDD file goes to `review_due` (`flag_review`);
 ///   a file in another state, or none, is left as it is;
-/// - the compliance officer gets the task "Review CDD after report", in
+/// - the compliance officer gets the task "Review the CDD file", in
 ///   either case;
 /// - the partners are told only that the MLRO needs to discuss the client;
 ///   they get no access to the case (`ACC.ACL.05`);
@@ -497,7 +497,9 @@ pub async fn after_report(state: &AppState, id: i64) -> Result {
     );
     role_tasks::open(
         state,
-        RoleTask::new(subject, MLRO_ROLE, &title, &review_key(&case)).description(&description),
+        RoleTask::new(subject, MLRO_ROLE, &title, &review_key(&case))
+            .description(&description)
+            .confidential(),
     )
     .await?;
 
@@ -516,7 +518,8 @@ pub async fn after_report(state: &AppState, id: i64) -> Result {
         state,
         RoleTask::new(case.subject(), MLRO_ROLE, &title, &decision_key(&case))
             .description(&description)
-            .due_at(due),
+            .due_at(due)
+            .confidential(),
     )
     .await?;
     Ok(())

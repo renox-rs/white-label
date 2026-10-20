@@ -528,8 +528,13 @@ async fn prepare(
             ),
         ],
     );
-    let task = RoleTask::new(engagement.subject(), role, &title, &prepared_key(notice.id))
+    let mut task = RoleTask::new(engagement.subject(), role, &title, &prepared_key(notice.id))
         .description(&description);
+    // The MLRO's notice exists because the end is restricted: a manager must
+    // not find the task in the ticket list (`ACC.ACL.14`).
+    if role == MLRO_ROLE {
+        task = task.confidential();
+    }
     let opened = role_tasks::open(state, task).await?;
     notice.task_id = opened.map(|t| t.id.0);
     notice.save(&state.db).await?;

@@ -1457,10 +1457,10 @@ const TEXTS: &[(&str, &str)] = &[
         "Every engagement of the client has ended.",
     ),
     // The report and the engagement decision (BL-ACC-11).
-    ("accounting.aml.review_title", "Review CDD after report"),
+    ("accounting.aml.review_title", "Review the CDD file"),
     (
         "accounting.aml.review_description",
-        "Review the CDD file of :client after the report. :link",
+        "Review the CDD file of :client. :link",
     ),
     (
         "accounting.aml.decision_title",
