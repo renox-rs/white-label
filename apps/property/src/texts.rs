@@ -108,6 +108,20 @@ const TEXTS: &[(&str, &str)] = &[
     ("property.leases.unit", "Unit"),
     ("property.leases.tenant", "Tenant"),
     ("property.leases.tenant_number", "Tenant (party number)"),
+    (
+        "property.leases.tenant_placeholder",
+        "Search by name or party number (P-00012)",
+    ),
+    (
+        "property.leases.tenant_unknown",
+        "No party has this number. Enter the number of a party (P-00012) or pick one from the list.",
+    ),
+    ("property.form.date_invalid", "Enter the date as YYYY-MM-DD."),
+    (
+        "property.form.amount_invalid",
+        "Enter the amount in dirhams, like 12000 or 12000.50.",
+    ),
+    ("property.form.number_invalid", "Enter a whole number."),
     ("property.leases.term", "Term"),
     ("property.leases.start_date", "Start date"),
     ("property.leases.end_date", "End date"),

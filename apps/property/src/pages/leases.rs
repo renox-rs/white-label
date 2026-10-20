@@ -44,7 +44,7 @@ use wl_kernel::cheques::ChequeSummary;
 use wl_kernel::invoicing::{InvoiceId, invoicer};
 use wl_kernel::parties::directory;
 
-use super::{Texts, buildings_with, lease_kind, text};
+use super::{Texts, buildings_with, field_error, lease_kind, text};
 use crate::arrears::{self, ArrearsDemand, NewPlan, PaymentPlan};
 use crate::building::Building;
 use crate::cancellation::{self, CancelRequest};
@@ -76,6 +76,8 @@ pub fn routes() -> Routes {
         .name("property.leases")
         .get("/property/leases/{id}", show)
         .name("property.lease")
+        .get("/property/parties/options", party_options)
+        .name("property.party_options")
         .post("/property/units/{id}/leases", create)
         .name("property.lease_create")
         .post("/property/leases/{id}/versions", create_version)
@@ -1015,22 +1017,14 @@ pub struct LeaseForm {
 
 /// A required date, a 422 naming the field when it is blank or malformed.
 fn required_date(value: &str, field: &str) -> Result<NaiveDate> {
-    parse_date(value).ok_or_else(|| {
-        Error::Status(
-            StatusCode::UNPROCESSABLE_ENTITY,
-            format!("{field}: YYYY-MM-DD"),
-        )
-    })
+    parse_date(value)
+        .ok_or_else(|| field_error(field, texts::english("property.form.date_invalid", &[])))
 }
 
 /// A required amount in dirhams.
 fn required_amount(value: &str, field: &str) -> Result<i64> {
-    parse_aed(value).ok_or_else(|| {
-        Error::Status(
-            StatusCode::UNPROCESSABLE_ENTITY,
-            format!("{field}: AED 0.00"),
-        )
-    })
+    parse_aed(value)
+        .ok_or_else(|| field_error(field, texts::english("property.form.amount_invalid", &[])))
 }
 
 /// An optional amount: blank is 0.
@@ -1043,12 +1037,78 @@ fn optional_amount(value: &str, field: &str) -> Result<i64> {
 
 /// A whole number, a 422 naming the field when it is not one.
 fn whole<T: std::str::FromStr>(value: &str, field: &str) -> Result<T> {
-    value.trim().parse().map_err(|_| {
-        Error::Status(
-            StatusCode::UNPROCESSABLE_ENTITY,
-            format!("{field}: 1, 2, 3 ..."),
+    value
+        .trim()
+        .parse()
+        .map_err(|_| field_error(field, texts::english("property.form.number_invalid", &[])))
+}
+
+/// The party a lease form names in its tenant field: the number shown in the
+/// UI (`P-00012`, any case, `P-12` too) or the id the picker sends (`12`). A
+/// 422 on the field when no party has it.
+async fn tenant_of(state: &AppState, value: &str) -> Result<wl_kernel::PartyId> {
+    let value = value.trim();
+    let directory = directory(state);
+    let found = if let Ok(id) = value.parse::<i64>() {
+        directory.find(&state.db, wl_kernel::PartyId(id)).await?
+    } else {
+        let digits = value
+            .get(..2)
+            .filter(|prefix| prefix.eq_ignore_ascii_case("p-"))
+            .map(|_| &value[2..])
+            .and_then(|rest| rest.trim().parse::<u32>().ok());
+        match digits {
+            Some(number) => {
+                directory
+                    .find_by_code(&state.db, &format!("P-{number:05}"))
+                    .await?
+            }
+            None => None,
+        }
+    };
+    found.map(|party| party.id).ok_or_else(|| {
+        field_error(
+            "tenant",
+            texts::english("property.leases.tenant_unknown", &[]),
         )
     })
+}
+
+/// `GET /property/parties/options`: the parties a lease form's picker offers
+/// as the person types (`?q=`), or the labels of the values it already holds
+/// (`?values=`), as `number · name`. For those who may draft a lease in some
+/// building.
+async fn party_options(
+    State(state): State<AppState>,
+    user: AuthUser,
+    query: renox::select::OptionQuery,
+) -> Result<Json<Vec<renox::select::SelectOption>>> {
+    if user
+        .scopes_with::<Building>(permissions::LEASES_CREATE)
+        .is_empty()
+    {
+        return Err(Error::Forbidden);
+    }
+    let directory = directory(&state);
+    let mut parties = Vec::new();
+    if query.is_lookup() {
+        for id in query.values_as::<i64>() {
+            parties.extend(directory.find(&state.db, wl_kernel::PartyId(id)).await?);
+        }
+    } else {
+        parties = directory.search(&state.db, &query.q, 20).await?;
+    }
+    Ok(Json(
+        parties
+            .into_iter()
+            .map(|party| {
+                renox::select::SelectOption::new(
+                    party.id.0,
+                    format!("{} · {}", party.code, party.display_name),
+                )
+            })
+            .collect(),
+    ))
 }
 
 /// `POST /property/units/{id}/leases`.
@@ -1067,7 +1127,7 @@ async fn create(
     }
     let mut new = NewLease::new(
         unit_id,
-        wl_kernel::PartyId(whole::<i64>(&form.tenant, "tenant")?),
+        tenant_of(&state, &form.tenant).await?,
         required_date(&form.start_date, "start_date")?,
         required_date(&form.end_date, "end_date")?,
         required_amount(&form.annual_rent, "annual_rent")?,

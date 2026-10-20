@@ -34,6 +34,15 @@ pub fn routes() -> Routes {
         .merge(enquiries::routes())
 }
 
+/// A 422 for one field of a form: the kit shows `message` next to the input
+/// named `field` (Renox answers an htmx post with the errors as JSON), and a
+/// plain post goes back to the form with it.
+pub(crate) fn field_error(field: &str, message: impl Into<String>) -> Error {
+    let mut errors = renox::validation::Errors::new();
+    errors.add(field, message);
+    Error::Validation(renox::validation::ValidationError::new(errors))
+}
+
 /// The package text `key` (without the `property.` prefix).
 pub(crate) fn text(lang: &Lang, key: &str) -> String {
     texts::t(lang, &format!("property.{key}"))

@@ -230,6 +230,20 @@ pub trait PartyDirectory: Send + Sync + 'static {
         code: &'a str,
     ) -> PartyFuture<'a, Option<PartySummary>>;
 
+    /// The parties whose code or name contains `text` (ignoring case), by
+    /// display name, at most `limit`: what a party picker in another
+    /// module's form searches with. A blank `text` gives the first ones. The
+    /// default knows none.
+    fn search<'a>(
+        &'a self,
+        db: &'a Db,
+        text: &'a str,
+        limit: u64,
+    ) -> PartyFuture<'a, Vec<PartySummary>> {
+        let _ = (db, text, limit);
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
     /// The party's name in the language `lang` (`en`, `ar`), falling back to
     /// its display name.
     fn display_name<'a>(
