@@ -21,7 +21,7 @@ use wl_kernel::documents::today;
 use wl_kernel::invoicing::{DraftLine, InvoiceDraft, InvoiceId, InvoiceStatus, invoicer};
 use wl_kernel::payments::PaymentMethod;
 use wl_payments::deposit::DepositStatus;
-use wl_payments::{Allocation, Deposit, Payment};
+use wl_payments::{Allocation, Deposit, Payment, Refund};
 
 use support::{ACCOUNTANT, AGENT, Booted, MANAGER, Real, TENANT, aed, boot_with, day};
 
@@ -355,4 +355,71 @@ async fn bl_prp_17_the_real_payments_pay_the_oldest_rent_first() {
         invoices_before,
         "no invoice is made"
     );
+}
+
+/// AC7: a deposit of AED 5,000.00 and damages of AED 1,200.00: `forfeit` with
+/// the reason *applied to deductions* is refused by the real modules (nothing
+/// is applied, no invoice is made), and the settlement goes through `refund`,
+/// which requests AED 3,800.00 back for the tenant.
+#[renox::test]
+async fn bl_prp_17_the_real_modules_refuse_the_forfeit_below_the_deposit_and_refund_the_rest() {
+    let s = scene().await;
+    s.publish("Repainting | 1200.00 | photos-1").await;
+    let invoices_before = wl_invoicing::Invoice::query()
+        .count(s.t.db())
+        .await
+        .unwrap();
+
+    // The window has passed, no dispute: the forfeit is still refused.
+    s.forfeit().await.assert_status(422);
+    assert_eq!(s.deposit().await.status, DepositStatus::SettlementPending);
+    assert!(s.applied_payments().await.is_empty());
+    assert!(
+        DepositSettlement::of_root(s.t.db(), s.lease.root_id)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        wl_invoicing::Invoice::query()
+            .count(s.t.db())
+            .await
+            .unwrap(),
+        invoices_before
+    );
+
+    // The settlement goes through `refund`: the deductions are published as
+    // deductions (not as a forfeiture) and AED 3,800.00 is paid back.
+    let deposit = s.deposit().await;
+    s.t.post(
+        &s.teller,
+        &format!("/deposits/{}/deductions", deposit.id),
+        &[("lines", "Repainting | 1200.00 | photos-1")],
+    )
+    .await
+    .assert_ok();
+    let response =
+        s.t.at(
+            today() + Days::days(15),
+            s.t.post(
+                &s.accountant,
+                &format!("/deposits/{}/refund", deposit.id),
+                &[("method", "transfer")],
+            ),
+        )
+        .await;
+    assert!(
+        response.status.is_success() || response.status.is_redirection(),
+        "{}: {}",
+        response.status,
+        response.text()
+    );
+    assert_eq!(s.deposit().await.status, DepositStatus::Refunded);
+    let refunds = Refund::query()
+        .where_(Refund::PARTY_ID.eq(TENANT.0))
+        .get(s.t.db())
+        .await
+        .unwrap();
+    assert_eq!(refunds.len(), 1);
+    assert_eq!(refunds[0].amount, aed(3_800));
 }
