@@ -140,10 +140,7 @@ pub fn month_ends(from: NaiveDate, until: NaiveDate) -> Vec<NaiveDate> {
         return ends;
     };
     let mut month = first;
-    loop {
-        let Some(next) = month.checked_add_months(Months::new(1)) else {
-            break;
-        };
+    while let Some(next) = month.checked_add_months(Months::new(1)) {
         let end = next - Duration::days(1);
         if end > until {
             break;
