@@ -40,7 +40,11 @@ pub enum ChargeStatus {
 
 /// One instalment or other scheduled amount of a lease version.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
-#[model(table = "property_lease_charges", index(lease_id, position), index(status, due_date))]
+#[model(
+    table = "property_lease_charges",
+    index(lease_id, position),
+    index(status, due_date)
+)]
 pub struct LeaseCharge {
     /// The primary key.
     pub id: i64,
@@ -153,7 +157,12 @@ mod tests {
         let dates: Vec<_> = plan.iter().map(|(d, _)| *d).collect();
         assert_eq!(
             dates,
-            [day(2027, 1, 1), day(2027, 4, 1), day(2027, 7, 1), day(2027, 10, 1)]
+            [
+                day(2027, 1, 1),
+                day(2027, 4, 1),
+                day(2027, 7, 1),
+                day(2027, 10, 1)
+            ]
         );
         assert!(plan.iter().all(|(_, amount)| *amount == 2_500_000));
     }
@@ -179,7 +188,10 @@ mod tests {
     #[test]
     fn five_instalments_are_spread_over_the_year() {
         let plan = rent_plan(day(2027, 1, 1), 500_000, 5);
-        let months: Vec<_> = plan.iter().map(|(d, _)| d.format("%m").to_string()).collect();
+        let months: Vec<_> = plan
+            .iter()
+            .map(|(d, _)| d.format("%m").to_string())
+            .collect();
         assert_eq!(months, ["01", "03", "05", "08", "10"]);
     }
 

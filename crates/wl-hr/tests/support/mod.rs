@@ -20,8 +20,9 @@ use wl_hr::{
     template::{self, StepInput, TemplateInput},
 };
 use wl_kernel::documents::{
-    BlockEntry, CheckOutcome, DocumentFuture, DocumentGuard, FlagFailure, RecordFlag, SopFuture,
-    SopStaff, Validity, provide_guard, provide_sop_acknowledgements, SopAcknowledgements,
+    BlockEntry, CheckOutcome, DocumentFuture, DocumentGuard, FlagFailure, RecordFlag,
+    SopAcknowledgements, SopFuture, SopStaff, Validity, provide_guard,
+    provide_sop_acknowledgements,
 };
 use wl_kernel::notify::{MessageId, Notifier, NotifyFuture, NotifyRequest, provide_notifier};
 use wl_kernel::tickets::{ChecklistRunId, Checklists, TicketFuture, provide_checklists};
@@ -83,7 +84,10 @@ impl Recording {
 
     /// The requests of type `key`.
     pub fn of_type(&self, key: &str) -> Vec<NotifyRequest> {
-        self.all().into_iter().filter(|r| r.type_key == key).collect()
+        self.all()
+            .into_iter()
+            .filter(|r| r.type_key == key)
+            .collect()
     }
 
     /// Forgets what was recorded.
@@ -417,7 +421,9 @@ impl Booted {
 
     /// The onboardings of `employee`, oldest first.
     pub async fn onboardings(&self, employee: &Employee) -> Vec<Onboarding> {
-        let mut all = Onboarding::of_employee(self.db(), employee.id).await.unwrap();
+        let mut all = Onboarding::of_employee(self.db(), employee.id)
+            .await
+            .unwrap();
         all.reverse();
         all
     }
@@ -435,7 +441,9 @@ impl Booted {
 
     /// `step`, as stored now.
     pub async fn reload(&self, step: &OnboardingStep) -> OnboardingStep {
-        OnboardingStep::find_or_404(self.db(), step.id).await.unwrap()
+        OnboardingStep::find_or_404(self.db(), step.id)
+            .await
+            .unwrap()
     }
 }
 
@@ -496,9 +504,13 @@ pub async fn boot_with(module: WlHr, induction: bool) -> Booted {
         perm::ONBOARDING_MANAGE,
     ];
     permissions::define_role(app.db(), "hr", &hr).await.unwrap();
-    permissions::define_role(app.db(), "owner", &[perm::ONBOARDING_VIEW, perm::ONBOARDING_MANAGE])
-        .await
-        .unwrap();
+    permissions::define_role(
+        app.db(),
+        "owner",
+        &[perm::ONBOARDING_VIEW, perm::ONBOARDING_MANAGE],
+    )
+    .await
+    .unwrap();
     permissions::define_role(app.db(), "manager", &[perm::EMPLOYEES_VIEW])
         .await
         .unwrap();
@@ -530,8 +542,11 @@ pub fn driver_template() -> TemplateInput {
 
 /// The "Supervisor" template for a manual onboarding.
 pub fn supervisor_template() -> TemplateInput {
-    TemplateInput::for_role("Supervisor", "supervisor")
-        .step(StepInput::task("Supervisor briefing", "manager", 2))
+    TemplateInput::for_role("Supervisor", "supervisor").step(StepInput::task(
+        "Supervisor briefing",
+        "manager",
+        2,
+    ))
 }
 
 /// Saves `input` as a template and returns it.

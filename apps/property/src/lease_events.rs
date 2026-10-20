@@ -36,9 +36,8 @@ use wl_kernel::role_tasks::RoleTask;
 use crate::events::LeaseActivated;
 use crate::lease::{Lease, VersionKind};
 use crate::lease_machine::{
-    ACTIVATE, EXPIRE, FLAG_RENEWAL, FORCE_TERMINATE, FORCE_TERMINATE_APPROVED, RECORD_NOTICE, SUBMIT,
-    TERMINATE, WITHDRAW_NOTICE,
-    WITHDRAW_NOTICE_TO_EXPIRED, WITHDRAW_NOTICE_TO_RENEWAL_DUE,
+    ACTIVATE, EXPIRE, FLAG_RENEWAL, FORCE_TERMINATE, FORCE_TERMINATE_APPROVED, RECORD_NOTICE,
+    SUBMIT, TERMINATE, WITHDRAW_NOTICE, WITHDRAW_NOTICE_TO_EXPIRED, WITHDRAW_NOTICE_TO_RENEWAL_DUE,
 };
 use crate::leases::ejari_task_key;
 use crate::permissions::{ACCOUNTANT_ROLE, PROPERTY_MANAGER_ROLE};
@@ -56,7 +55,9 @@ pub(crate) fn register(app: &mut Registry) {
             EXPIRE => crate::holding::announce(&state, event.key).await,
             SUBMIT => crate::holding::renewal_submitted(&state, event.key).await,
             RECORD_NOTICE => crate::notice::after_record(&state, event.key).await,
-            TERMINATE => crate::termination::after_terminate(&state, event.key, event.actor_id).await,
+            TERMINATE => {
+                crate::termination::after_terminate(&state, event.key, event.actor_id).await
+            }
             FORCE_TERMINATE | FORCE_TERMINATE_APPROVED => {
                 crate::force::after_force(&state, &event).await
             }
@@ -72,9 +73,11 @@ pub(crate) fn register(app: &mut Registry) {
         }
     });
     // The proof of delivery of a landlord's notice starts what depends on it.
-    app.listen(|event: StatutoryNoticeProofRecorded, state: AppState| async move {
-        crate::notice::on_proof(&state, &event).await
-    });
+    app.listen(
+        |event: StatutoryNoticeProofRecorded, state: AppState| async move {
+            crate::notice::on_proof(&state, &event).await
+        },
+    );
 }
 
 /// The effects of `flag_renewal` that need the app state: the notices.
@@ -152,7 +155,10 @@ async fn adjust_deposit(state: &AppState, lease: &Lease) -> Result {
         ))
     };
     if let Err(error) = done {
-        eprintln!("property: deposit of {} not adjusted: {error:?}", lease.number());
+        eprintln!(
+            "property: deposit of {} not adjusted: {error:?}",
+            lease.number()
+        );
         let task = RoleTask::new(
             lease.subject(),
             ACCOUNTANT_ROLE,

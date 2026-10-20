@@ -598,7 +598,11 @@ async fn recovered_after_write_off(db: &Db, agreement_id: i64, source: &str) -> 
         .await?;
     Ok(lines
         .iter()
-        .filter(|line| line.source.as_deref().is_some_and(|s| s.starts_with(&prefix)))
+        .filter(|line| {
+            line.source
+                .as_deref()
+                .is_some_and(|s| s.starts_with(&prefix))
+        })
         .map(|line| line.amount)
         .sum())
 }
@@ -633,9 +637,7 @@ async fn collected_lines(
                 if found.iter().any(|(_, _, s)| *s == source) {
                     continue;
                 }
-                let Some(summary) = invoicer(state)
-                    .find(&state.db, InvoiceId(invoice))
-                    .await?
+                let Some(summary) = invoicer(state).find(&state.db, InvoiceId(invoice)).await?
                 else {
                     continue;
                 };
@@ -744,7 +746,10 @@ pub async fn generate(
     if fee > 0 {
         let label = english(
             "property.statements.fee_line",
-            &[("percent", &format!("{:.2}", f64::from(agreement.fee_bp) / 100.0))],
+            &[(
+                "percent",
+                &format!("{:.2}", f64::from(agreement.fee_bp) / 100.0),
+            )],
         );
         StatementLine::create(
             &state.db,
@@ -941,6 +946,9 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(statement.number(), "OS-0007-202702 r2");
-        assert_eq!(statement.subject().to_string(), "property.owner_statement:3");
+        assert_eq!(
+            statement.subject().to_string(),
+            "property.owner_statement:3"
+        );
     }
 }

@@ -53,7 +53,9 @@ async fn a_held_agreement_gets_no_bounce_reminder() {
 
     // The case ends: the skipped reminder is not sent late.
     *switch.0.lock().unwrap() = ChaseHold::Free;
-    let after = cheque_chase::run(t.state(), day + TimeDelta::days(1)).await.unwrap();
+    let after = cheque_chase::run(t.state(), day + TimeDelta::days(1))
+        .await
+        .unwrap();
     assert_eq!(after.reminded, 0);
     assert!(t.notices.of_type(CHEQUE_REMINDER).is_empty());
 }

@@ -54,7 +54,11 @@ impl AgreementStatus {
 
 /// A management agreement with a landlord.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
-#[model(table = "property_management_agreements", state_machine, index(owner_party_id))]
+#[model(
+    table = "property_management_agreements",
+    state_machine,
+    index(owner_party_id)
+)]
 pub struct ManagementAgreement {
     /// The primary key.
     pub id: i64,
@@ -104,7 +108,8 @@ pub struct ManagementAgreement {
 
 impl StateMachine for ManagementAgreement {
     type State = AgreementStatus;
-    const COLUMN: renox::db::Col<ManagementAgreement, AgreementStatus> = ManagementAgreement::STATUS;
+    const COLUMN: renox::db::Col<ManagementAgreement, AgreementStatus> =
+        ManagementAgreement::STATUS;
 
     fn machine() -> Machine<Self> {
         use AgreementStatus::{Active, Draft, Ended, Ending};
@@ -127,7 +132,11 @@ impl StateMachine for ManagementAgreement {
 
 /// A unit under an agreement, from the day it comes in to the day it goes out.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
-#[model(table = "property_agreement_units", index(agreement_id), index(unit_id))]
+#[model(
+    table = "property_agreement_units",
+    index(agreement_id),
+    index(unit_id)
+)]
 pub struct AgreementUnit {
     /// The primary key.
     pub id: i64,
@@ -155,9 +164,7 @@ impl AgreementUnit {
     /// Whether the unit is under the agreement on some day of `from..=to`. A
     /// row that waits for a transfer covers nothing yet.
     pub fn covers(&self, from: NaiveDate, to: NaiveDate) -> bool {
-        !self.awaiting_transfer
-            && self.date_in <= to
-            && self.date_out.is_none_or(|out| out >= from)
+        !self.awaiting_transfer && self.date_in <= to && self.date_out.is_none_or(|out| out >= from)
     }
 }
 
@@ -281,11 +288,7 @@ pub async fn create_draft(
     by: Option<i64>,
     new: NewAgreement,
 ) -> Result<ManagementAgreement> {
-    if directory(state)
-        .find(&state.db, new.owner)
-        .await?
-        .is_none()
-    {
+    if directory(state).find(&state.db, new.owner).await?.is_none() {
         return Err(refused(english("property.agreements.no_owner", &[])));
     }
     if !(0..=10_000).contains(&new.fee_bp) || new.fee_fixed < 0 {
@@ -413,6 +416,9 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(agreement.number(), "MA-0007");
-        assert_eq!(agreement.subject().to_string(), "property.management_agreement:7");
+        assert_eq!(
+            agreement.subject().to_string(),
+            "property.management_agreement:7"
+        );
     }
 }

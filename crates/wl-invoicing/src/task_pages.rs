@@ -138,7 +138,10 @@ async fn open(Found(task): Found<InvoicingTask>) -> Result<Response> {
     if task.kind == TaskKind::StatementBalanceStale {
         return Ok(Redirect::route("wl_invoicing.cash_forecast", &[])?.into_response());
     }
-    if matches!(task.kind, TaskKind::EinvoiceRejected | TaskKind::EinvoiceStuck) {
+    if matches!(
+        task.kind,
+        TaskKind::EinvoiceRejected | TaskKind::EinvoiceStuck
+    ) {
         return Ok(Redirect::route("wl_invoicing.einvoices", &[])?.into_response());
     }
     if let Some(bill_id) = task.bill_id {

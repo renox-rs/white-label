@@ -216,7 +216,12 @@ mod tests {
         assert_eq!(end.to_state(), Some("ended"));
         assert!(!end.is_system());
         assert!(machine.find("auto_end").unwrap().is_system());
-        assert!(machine.states().iter().any(|s| s.name == "ended" && s.terminal));
+        assert!(
+            machine
+                .states()
+                .iter()
+                .any(|s| s.name == "ended" && s.terminal)
+        );
     }
 
     #[test]

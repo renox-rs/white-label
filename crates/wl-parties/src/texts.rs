@@ -707,7 +707,10 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_parties.tasks.notice_hint",
         "Times are shown in Asia/Dubai.",
     ),
-    ("wl_parties.fields.einvoice_recipient_id", "E-invoicing recipient ID"),
+    (
+        "wl_parties.fields.einvoice_recipient_id",
+        "E-invoicing recipient ID",
+    ),
     (
         "wl_parties.fields.einvoice_recipient_id_hint",
         "Peppol participant ID, scheme and identifier, e.g. 0235:100123456700003.",
@@ -730,7 +733,10 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_parties.einvoice.unavailable",
         "The lookup is not available now; enter the ID by hand",
     ),
-    ("wl_parties.einvoice.saved", "E-invoicing recipient ID saved."),
+    (
+        "wl_parties.einvoice.saved",
+        "E-invoicing recipient ID saved.",
+    ),
     (
         "wl_parties.errors.einvoice_person",
         "Only a company has an e-invoicing recipient ID.",

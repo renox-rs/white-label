@@ -38,11 +38,12 @@ pub(crate) async fn resolved(
     cheque: &Cheque,
     outcome: ChequeOutcome,
 ) -> Result<()> {
-    let others_open: Vec<ChequeId> = Cheque::owed_of_party(&state.db, cheque.party(), Some(cheque.id))
-        .await?
-        .iter()
-        .map(Cheque::cheque_id)
-        .collect();
+    let others_open: Vec<ChequeId> =
+        Cheque::owed_of_party(&state.db, cheque.party(), Some(cheque.id))
+            .await?
+            .iter()
+            .map(Cheque::cheque_id)
+            .collect();
     state
         .emit(ChequeBounceResolved {
             cheque: cheque.cheque_id(),

@@ -517,9 +517,13 @@ mod tests {
 
     #[test]
     fn a_call_names_its_natural_key_and_subject() {
-        let call = Outbound::new("gateway.acme", "refund", renox::serde_json::json!({ "n": 1 }))
-            .natural_key("TX-889")
-            .subject(Subject::new("payments.refund", 3));
+        let call = Outbound::new(
+            "gateway.acme",
+            "refund",
+            renox::serde_json::json!({ "n": 1 }),
+        )
+        .natural_key("TX-889")
+        .subject(Subject::new("payments.refund", 3));
         assert_eq!(call.natural_key.as_deref(), Some("TX-889"));
         assert_eq!(call.subject, Some(Subject::new("payments.refund", 3)));
         assert_eq!(call.attempts, 0);

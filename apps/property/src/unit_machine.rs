@@ -54,7 +54,9 @@ pub const RELIST: &str = "relist";
 fn user(name: &str, label: &str, permission: &'static str) -> Transition<Unit> {
     Transition::new(name)
         .label(label)
-        .permission_in(permission, |unit: &Unit| Building::scope_of(unit.building_id))
+        .permission_in(permission, |unit: &Unit| {
+            Building::scope_of(unit.building_id)
+        })
 }
 
 /// A transition only the system runs (the lease machine, a rule).
@@ -67,9 +69,7 @@ impl StateMachine for Unit {
     const COLUMN: renox::db::Col<Unit, UnitStatus> = Unit::STATUS;
 
     fn machine() -> Machine<Self> {
-        use UnitStatus::{
-            Available, NoticeGiven, Occupied, OffMarket, Reserved, UnderMaintenance,
-        };
+        use UnitStatus::{Available, NoticeGiven, Occupied, OffMarket, Reserved, UnderMaintenance};
         Machine::new()
             .initial([Available])
             .state(Available)
@@ -99,13 +99,21 @@ impl StateMachine for Unit {
                     .from([Reserved])
                     .to(Available),
             )
-            .transition(system(RELEASE_BY_SYSTEM, "Release").from([Reserved]).to(Available))
+            .transition(
+                system(RELEASE_BY_SYSTEM, "Release")
+                    .from([Reserved])
+                    .to(Available),
+            )
             .transition(
                 system(OCCUPY, "Occupy")
                     .from([Available, Reserved])
                     .to(Occupied),
             )
-            .transition(system(MARK_NOTICE, "Mark notice").from([Occupied]).to(NoticeGiven))
+            .transition(
+                system(MARK_NOTICE, "Mark notice")
+                    .from([Occupied])
+                    .to(NoticeGiven),
+            )
             .transition(
                 system(CANCEL_NOTICE, "Cancel notice")
                     .from([NoticeGiven])
@@ -166,7 +174,12 @@ mod tests {
                 true,
             ),
             (MARK_READY, &["under_maintenance"], "available", false),
-            (WITHDRAW, &["available", "under_maintenance"], "off_market", false),
+            (
+                WITHDRAW,
+                &["available", "under_maintenance"],
+                "off_market",
+                false,
+            ),
             (RELIST, &["off_market"], "available", false),
         ];
         assert_eq!(machine.transitions().len(), table.len());

@@ -8,9 +8,7 @@ use renox::prelude::*;
 use wl_kernel::Subject;
 use wl_kernel::tickets::{Assignee, OpenTicket, task_creator};
 use wl_ticketing::config::FieldKind;
-use wl_ticketing::seed::{
-    BILLING_DISPUTE_CATEGORY, DELIVERY_CLAIM_CATEGORY, LABOUR_CASE_CATEGORY,
-};
+use wl_ticketing::seed::{BILLING_DISPUTE_CATEGORY, DELIVERY_CLAIM_CATEGORY, LABOUR_CASE_CATEGORY};
 use wl_ticketing::visibility::VIEWED;
 use wl_ticketing::{Category, Ticket, WlTicketing, permissions as perm};
 
@@ -58,14 +56,18 @@ async fn category(t: &Booted, key: &str) -> Option<Category> {
 async fn tkt11_the_three_platform_categories_exist_with_their_properties() {
     let t = boot_client(ALL_ON, WlTicketing::new()).await;
 
-    let dispute = category(&t, BILLING_DISPUTE_CATEGORY).await.expect("billing dispute");
+    let dispute = category(&t, BILLING_DISPUTE_CATEGORY)
+        .await
+        .expect("billing dispute");
     assert!(dispute.platform && dispute.active);
     assert!(!dispute.confidential && !dispute.requires_signoff);
     assert_eq!(dispute.default_priority, wl_ticketing::Priority::Normal);
     assert!(dispute.sla_policy_id.is_some());
     assert_eq!(dispute.name_en, "Billing dispute");
 
-    let labour = category(&t, LABOUR_CASE_CATEGORY).await.expect("labour case");
+    let labour = category(&t, LABOUR_CASE_CATEGORY)
+        .await
+        .expect("labour case");
     assert!(labour.platform && labour.confidential);
     assert!(!labour.requires_signoff);
     assert_eq!(labour.default_assignee_role.as_deref(), Some("hr"));
@@ -87,7 +89,9 @@ async fn tkt11_the_three_platform_categories_exist_with_their_properties() {
     );
     assert_eq!(labour.custom_fields.0[0].choices, ["mohre", "court"]);
 
-    let claim = category(&t, DELIVERY_CLAIM_CATEGORY).await.expect("delivery claim");
+    let claim = category(&t, DELIVERY_CLAIM_CATEGORY)
+        .await
+        .expect("delivery claim");
     assert!(claim.platform && !claim.confidential && !claim.requires_signoff);
     assert_eq!(claim.default_priority, wl_ticketing::Priority::Normal);
     assert!(claim.name_ar.len() > 2);
@@ -103,7 +107,11 @@ async fn tkt11_a_category_exists_only_when_its_module_is_on() {
     assert!(category(&t, DELIVERY_CLAIM_CATEGORY).await.is_none());
 
     let plain = boot().await;
-    for key in [BILLING_DISPUTE_CATEGORY, LABOUR_CASE_CATEGORY, DELIVERY_CLAIM_CATEGORY] {
+    for key in [
+        BILLING_DISPUTE_CATEGORY,
+        LABOUR_CASE_CATEGORY,
+        DELIVERY_CLAIM_CATEGORY,
+    ] {
         assert!(category(&plain, key).await.is_none(), "{key}");
     }
 
@@ -144,7 +152,10 @@ async fn tkt11_a_platform_category_is_renamed_not_deleted() {
         .htmx()
         .post(
             "/ticket-categories/billing_dispute",
-            &[("name_en", "Invoice query"), ("name_ar", "استفسار عن فاتورة")],
+            &[
+                ("name_en", "Invoice query"),
+                ("name_ar", "استفسار عن فاتورة"),
+            ],
         )
         .await
         .assert_ok();
@@ -218,7 +229,9 @@ async fn tkt11_an_ordinary_category_is_deleted_only_without_tickets() {
 #[renox::test]
 async fn tkt11_a_labour_case_is_not_visible_to_a_site_supervisor() {
     let t = boot_client(ALL_ON, WlTicketing::new()).await;
-    let supervisor = t.user("Sami", &[perm::VIEW, perm::WORK, perm::ASSIGN]).await;
+    let supervisor = t
+        .user("Sami", &[perm::VIEW, perm::WORK, perm::ASSIGN])
+        .await;
     let hr = t
         .user("Hana", &[perm::VIEW, perm::WORK, perm::CONFIDENTIAL_VIEW])
         .await;
@@ -285,13 +298,20 @@ async fn tkt11_a_billing_dispute_takes_the_assignee_its_module_resolves() {
     let owned = creator
         .open(
             t.state(),
-            OpenTicket::new(invoice.clone(), "billing_dispute", "Dispute on INV-ACME-2026-0310")
-                .assign_to(Assignee::user(nadia.id)),
+            OpenTicket::new(
+                invoice.clone(),
+                "billing_dispute",
+                "Dispute on INV-ACME-2026-0310",
+            )
+            .assign_to(Assignee::user(nadia.id)),
         )
         .await
         .unwrap()
         .unwrap();
-    assert_eq!(t.ticket(owned.id.0).await.assignee(), Some(Assignee::user(nadia.id)));
+    assert_eq!(
+        t.ticket(owned.id.0).await.assignee(),
+        Some(Assignee::user(nadia.id))
+    );
 
     let unowned = creator
         .open(

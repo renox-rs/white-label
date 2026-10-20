@@ -78,7 +78,9 @@ impl Workforce for Staff {
                 let day = today();
                 LeaveRequest::query()
                     .where_(LeaveRequest::EMPLOYEE_ID.eq(row.id))
-                    .where_(LeaveRequest::STATUS.is_in([LeaveStatus::Approved, LeaveStatus::Completed]))
+                    .where_(
+                        LeaveRequest::STATUS.is_in([LeaveStatus::Approved, LeaveStatus::Completed]),
+                    )
                     .get(&state.db)
                     .await?
                     .into_iter()

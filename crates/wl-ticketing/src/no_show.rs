@@ -421,6 +421,12 @@ mod tests {
             .template_for(NotifyChannel::Email, "en")
             .expect("a text");
         assert!(!template.body.starts_with("wl_ticketing."));
-        assert!(template.subject.as_deref().unwrap_or_default().contains("{{ number }}"));
+        assert!(
+            template
+                .subject
+                .as_deref()
+                .unwrap_or_default()
+                .contains("{{ number }}")
+        );
     }
 }

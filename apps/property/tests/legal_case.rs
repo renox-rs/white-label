@@ -6,8 +6,8 @@
 
 mod support;
 
-use property::legal_case::{self, CaseOutcome, CaseStatus, CaseType, LegalCase, ticket_key};
 use property::lease_machine::FLAG_RENEWAL;
+use property::legal_case::{self, CaseOutcome, CaseStatus, CaseType, LegalCase, ticket_key};
 use property::notices::{RENEWAL_DUE, RENEWAL_WINDOW};
 use property::renewal;
 use property::{Lease, LeaseStatus, NewLease, NewVersion};
@@ -77,7 +77,9 @@ impl Scene {
     }
 
     async fn cases(&self, lease: &Lease) -> Vec<LegalCase> {
-        LegalCase::of_root(self.t.db(), lease.root_id).await.unwrap()
+        LegalCase::of_root(self.t.db(), lease.root_id)
+            .await
+            .unwrap()
     }
 
     /// `POST` that clears the flag `case` with `outcome`.
@@ -186,7 +188,10 @@ async fn bl_prp_13_an_existing_ticket_is_linked_instead_of_a_new_one() {
     // A ticket that is not the lease's: refused.
     s.set(
         &lease,
-        &[("case_type", "eviction"), ("ticket", elsewhere.id.0.to_string().as_str())],
+        &[
+            ("case_type", "eviction"),
+            ("ticket", elsewhere.id.0.to_string().as_str()),
+        ],
     )
     .await
     .assert_status(422);
@@ -194,7 +199,10 @@ async fn bl_prp_13_an_existing_ticket_is_linked_instead_of_a_new_one() {
 
     s.set(
         &lease,
-        &[("case_type", "eviction"), ("ticket", own.id.0.to_string().as_str())],
+        &[
+            ("case_type", "eviction"),
+            ("ticket", own.id.0.to_string().as_str()),
+        ],
     )
     .await
     .assert_ok();
@@ -207,7 +215,10 @@ async fn bl_prp_13_an_existing_ticket_is_linked_instead_of_a_new_one() {
     // The same ticket cannot carry a second flag.
     s.set(
         &lease,
-        &[("case_type", "other"), ("ticket", own.id.0.to_string().as_str())],
+        &[
+            ("case_type", "other"),
+            ("ticket", own.id.0.to_string().as_str()),
+        ],
     )
     .await
     .assert_status(422);
@@ -225,7 +236,12 @@ async fn bl_prp_13_the_ticket_and_the_flag_clear_separately() {
     // Resolved by hand: the flag stays open.
     let first = s.flag(&lease).await;
     let ticket = TicketId(first.ticket_id.unwrap());
-    assert!(task_creator(state).complete(state, ticket, "Done by hand").await.unwrap());
+    assert!(
+        task_creator(state)
+            .complete(state, ticket, "Done by hand")
+            .await
+            .unwrap()
+    );
     assert_eq!(s.held(&lease).await, ChaseHold::Held);
     assert!(s.cases(&lease).await[0].is_open());
 
@@ -268,7 +284,11 @@ async fn bl_prp_13_a_renewal_is_refused_while_a_flag_is_open() {
 
     let refused = s.t.submit(&s.agent, &v2).await;
     refused.assert_status(422);
-    assert!(refused.text().contains("Legal case open"), "{}", refused.text());
+    assert!(
+        refused.text().contains("Legal case open"),
+        "{}",
+        refused.text()
+    );
     assert_eq!(s.t.status(&v2).await, LeaseStatus::Draft, "the draft stays");
 
     // Cleared: it can be submitted; flagged again before activation: refused.
@@ -277,7 +297,11 @@ async fn bl_prp_13_a_renewal_is_refused_while_a_flag_is_open() {
     s.set(&v1, &[("case_type", "arrears")]).await.assert_ok();
     let refused = s.t.activate(&s.manager, &v2).await;
     refused.assert_status(422);
-    assert!(refused.text().contains("Legal case open"), "{}", refused.text());
+    assert!(
+        refused.text().contains("Legal case open"),
+        "{}",
+        refused.text()
+    );
     assert_eq!(s.t.status(&v2).await, LeaseStatus::PendingSignature);
 
     let second = s.cases(&v1).await.pop().unwrap();
@@ -309,7 +333,10 @@ async fn bl_prp_13_a_cheque_referred_to_legal_sets_a_flag() {
     assert_eq!(cases[0].cheque_id, Some(41));
     assert_eq!(cases[0].lease_id, lease.id);
     assert_eq!(cases[0].opened_by, Some(s.manager.id));
-    assert_eq!(cases[0].reference, None, "the property manager completes it");
+    assert_eq!(
+        cases[0].reference, None,
+        "the property manager completes it"
+    );
     assert_eq!(s.t.tasks.with_key(&ticket_key(cases[0].id)).len(), 1);
     assert_eq!(s.held(&lease).await, ChaseHold::Held);
 
@@ -358,7 +385,9 @@ async fn bl_prp_13_a_flag_is_cleared_with_an_outcome() {
     s.clear(&lease, &case, "paid").await.assert_status(422);
 
     // A judgment needs the reference, which may be empty while it is prepared.
-    s.set(&lease, &[("case_type", "eviction")]).await.assert_ok();
+    s.set(&lease, &[("case_type", "eviction")])
+        .await
+        .assert_ok();
     let bare = s.cases(&lease).await.pop().unwrap();
     assert_eq!(bare.reference, None);
     let refused = s.clear(&lease, &bare, "judgment").await;
@@ -381,7 +410,9 @@ async fn bl_prp_13_several_flags_hold_until_the_last_is_cleared() {
     let s = scene().await;
     let lease = s.lease().await;
     let one = s.flag(&lease).await;
-    s.set(&lease, &[("case_type", "eviction")]).await.assert_ok();
+    s.set(&lease, &[("case_type", "eviction")])
+        .await
+        .assert_ok();
     let cases = s.cases(&lease).await;
     assert_eq!(cases.len(), 2);
 
@@ -397,10 +428,15 @@ async fn bl_prp_13_several_flags_hold_until_the_last_is_cleared() {
 async fn bl_prp_13_a_deposit_dispute_keeps_the_deposit_flag_until_cleared() {
     let s = scene().await;
     let lease = s.lease().await;
-    s.set(&lease, &[("case_type", "deposit_dispute"), ("reference", "RDC-9")])
+    s.set(
+        &lease,
+        &[("case_type", "deposit_dispute"), ("reference", "RDC-9")],
+    )
+    .await
+    .assert_ok();
+    s.set(&lease, &[("case_type", "deposit_dispute")])
         .await
         .assert_ok();
-    s.set(&lease, &[("case_type", "deposit_dispute")]).await.assert_ok();
     let source = lease.agreement();
     assert_eq!(
         s.t.deposits.legal(),
@@ -441,7 +477,8 @@ async fn bl_prp_13_who_and_when() {
     assert!(s.cases(&lease).await[0].is_open());
 
     // A terminated lease keeps its open flag, and can get a new one.
-    s.t.set(&lease, &[("status", &LeaseStatus::Terminated)]).await;
+    s.t.set(&lease, &[("status", &LeaseStatus::Terminated)])
+        .await;
     assert_eq!(s.held(&lease).await, ChaseHold::Held);
     s.set(&lease, &[("case_type", "arrears")]).await.assert_ok();
 
@@ -450,7 +487,11 @@ async fn bl_prp_13_who_and_when() {
     let draft = s.t.lease(&other_unit, 0).await;
     let refused = s.set(&draft, &[("case_type", "arrears")]).await;
     refused.assert_status(422);
-    assert!(refused.text().contains("never started"), "{}", refused.text());
+    assert!(
+        refused.text().contains("never started"),
+        "{}",
+        refused.text()
+    );
     assert!(s.cases(&draft).await.is_empty());
 }
 

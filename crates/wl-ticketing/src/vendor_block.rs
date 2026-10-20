@@ -142,7 +142,8 @@ mod tests {
     #[test]
     fn the_kind_is_a_review_decided_by_the_facility_manager() {
         register();
-        let rule = wl_kernel::block_effects::effect_for(KIND, &renox::auth::permissions::Scope::global());
+        let rule =
+            wl_kernel::block_effects::effect_for(KIND, &renox::auth::permissions::Scope::global());
         assert_eq!(rule.effect, BlockEffect::Review);
         assert_eq!(rule.decider_role.as_deref(), Some("facility_manager"));
         assert!(wl_kernel::block_effects::source_for(KIND).is_some());

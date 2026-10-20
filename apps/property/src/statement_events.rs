@@ -15,12 +15,12 @@ use renox::auth::permissions::users_with_role;
 use renox::prelude::*;
 use renox::state_machine::Transitioned;
 
+use crate::money_text;
 use crate::notices;
 use crate::permissions::ACCOUNTANT_ROLE;
 use crate::statement::{OwnerStatement, StatementLine};
 use crate::statement_machine::{PUBLISH, RETURN, REVISE};
 use crate::statement_payout;
-use crate::money_text;
 
 /// The lines of `statement` as text: `Rent L-000012: AED 12,000.00; ...`.
 async fn lines_text(db: &Db, statement: &OwnerStatement) -> Result<String> {
@@ -80,4 +80,3 @@ pub(crate) fn register(app: &mut Registry) {
         },
     );
 }
-

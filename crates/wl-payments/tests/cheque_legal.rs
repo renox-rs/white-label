@@ -50,7 +50,9 @@ async fn bounced_for(
     reason: &str,
 ) -> Cheque {
     let rent = t.invoices.add(BLUE_DUNES, &format!("INV-{number}"), amount);
-    let cheque = t.received_cheque(BLUE_DUNES, number, amount, Some(rent)).await;
+    let cheque = t
+        .received_cheque(BLUE_DUNES, number, amount, Some(rent))
+        .await;
     let cheque = t.deposit_cheque(staff, &cheque).await;
     t.bounce_cheque(staff, &cheque, reason, "CERT-77", "")
         .await
@@ -138,7 +140,12 @@ async fn a_referral_gives_the_owner_a_task_the_party_a_notice_and_tells_the_mana
     assert_eq!(referred.len(), 1);
     assert_eq!(user_ids(&referred[0].recipients), vec![manager.id]);
     assert!(referred[0].data.to_string().contains("Amal"));
-    assert!(referred[0].data.to_string().contains(&format!("/cheques/{}", cheque.id)));
+    assert!(
+        referred[0]
+            .data
+            .to_string()
+            .contains(&format!("/cheques/{}", cheque.id))
+    );
 }
 
 /// AC2: naming user C as the case owner gives the task to C; a user that does
@@ -165,7 +172,9 @@ async fn the_case_owner_named_gets_the_task() {
     let told = t.notices.of_type(CHEQUE_TASK);
     assert!(user_ids(&told.last().unwrap().recipients).contains(&c.id));
     // The case owner sees the task on the tasks page (the accountants do too).
-    let mine = FollowupTask::open_for_user(t.db(), "accountant", c.id).await.unwrap();
+    let mine = FollowupTask::open_for_user(t.db(), "accountant", c.id)
+        .await
+        .unwrap();
     assert!(mine.iter().any(|task| task.kind == FollowupKind::LegalCase));
 }
 
@@ -206,7 +215,11 @@ async fn a_criminal_complaint_needs_a_return_reason_on_the_list() {
     let still = t.cheque(funds.id).await;
     assert_eq!(still.status, ChequeStatus::Bounced);
     assert_eq!(still.case_type, None);
-    assert!(tasks_of(&t, &still, FollowupKind::LegalCase).await.is_empty());
+    assert!(
+        tasks_of(&t, &still, FollowupKind::LegalCase)
+            .await
+            .is_empty()
+    );
     assert!(t.notices.of_type(CHEQUE_NOTICE).is_empty());
 
     let closed = bounced_for(&t, &a, "4005", 1_000_000, "account_closed").await;
@@ -376,7 +389,9 @@ async fn a_legal_case_takes_a_part_payment_and_is_replaced_with_its_task_closed(
     let a = t.cheque_staff("Amal").await;
     t.accountant("Cara").await;
     let rent = t.invoices.add(BLUE_DUNES, "INV-1", 2_000_000);
-    let cheque = t.received_cheque(BLUE_DUNES, "4050", 2_000_000, Some(rent)).await;
+    let cheque = t
+        .received_cheque(BLUE_DUNES, "4050", 2_000_000, Some(rent))
+        .await;
     let cheque = t.deposit_cheque(&a, &cheque).await;
     t.bounce_cheque(&a, &cheque, "account_closed", "CERT-77", "6000")
         .await
@@ -387,25 +402,40 @@ async fn a_legal_case_takes_a_part_payment_and_is_replaced_with_its_task_closed(
         .assert_ok();
     let case = t.cheque(cheque.id).await;
     assert_eq!(case.open_amount, 1_400_000);
-    assert_eq!(tasks_of(&t, &case, FollowupKind::LegalCase).await[0].status, FollowupStatus::Open);
+    assert_eq!(
+        tasks_of(&t, &case, FollowupKind::LegalCase).await[0].status,
+        FollowupStatus::Open
+    );
 
     // A part payment: still a case, with less open.
-    t.settle_cheque(&a, &case, "cash", "4000.00", "").await.assert_ok();
+    t.settle_cheque(&a, &case, "cash", "4000.00", "")
+        .await
+        .assert_ok();
     let case = t.cheque(cheque.id).await;
     assert_eq!(case.status, ChequeStatus::LegalCase);
-    assert_eq!((case.settled_amount, case.open_amount), (400_000, 1_000_000));
+    assert_eq!(
+        (case.settled_amount, case.open_amount),
+        (400_000, 1_000_000)
+    );
     // Not the whole of it.
     t.settle_cheque(&a, &case, "cash", "10000.00", "")
         .await
         .assert_status(422);
 
     // A new cheque of AED 10,000.00 replaces it.
-    let new = t.received_cheque(BLUE_DUNES, "4051", 1_000_000, Some(rent)).await;
-    t.link_replacement(&a, &case, "cheque", new.id).await.assert_ok();
+    let new = t
+        .received_cheque(BLUE_DUNES, "4051", 1_000_000, Some(rent))
+        .await;
+    t.link_replacement(&a, &case, "cheque", new.id)
+        .await
+        .assert_ok();
     t.replace_cheque(&a, &case).await.assert_ok();
     let replaced = t.cheque(cheque.id).await;
     assert_eq!(replaced.status, ChequeStatus::Replaced);
-    assert_eq!(tasks_of(&t, &replaced, FollowupKind::LegalCase).await[0].status, FollowupStatus::Done);
+    assert_eq!(
+        tasks_of(&t, &replaced, FollowupKind::LegalCase).await[0].status,
+        FollowupStatus::Done
+    );
     let resolved = t.cheque_resolved.all();
     assert_eq!(resolved.len(), 1);
     assert_eq!(resolved[0].cheque, ChequeId(cheque.id));

@@ -10,14 +10,14 @@ mod support;
 use renox::prelude::*;
 use wl_hr::onboarding::{self, StartRefused, StartRequest, StartTrigger};
 use wl_hr::{
-    EmployeeStatus, Employee, NewEmployee, Onboarding, OnboardingStatus, OnboardingTemplate,
+    Employee, EmployeeStatus, NewEmployee, Onboarding, OnboardingStatus, OnboardingTemplate,
     StepStatus, employees,
 };
+use wl_kernel::PartyId;
 use wl_kernel::workforce::{
     EmployeeAssignmentChanged, EmployeeDeceased, EmployeeExited, EmployeeId,
     EmployeeOnboardingCancelled, workforce,
 };
-use wl_kernel::PartyId;
 
 use support::{
     add_template, boot, boot_with, branch, driver_template, nov, other_branch, supervisor_template,
@@ -62,8 +62,8 @@ async fn hrm26_one_onboarding_with_the_steps_of_every_template_that_applies() {
     // The assignees of the first steps are told.
     let told = t.notices.of_type("hr.onboarding_step_assigned");
     assert!(
-        told.iter().any(|n| n.recipients
-            == [wl_kernel::notify::NotifyRecipient::User { id: hana.id }]),
+        told.iter()
+            .any(|n| n.recipients == [wl_kernel::notify::NotifyRecipient::User { id: hana.id }]),
         "{told:?}"
     );
 }
@@ -93,10 +93,12 @@ async fn hrm26_a_step_without_a_manager_goes_to_every_hr_user_and_any_one_marks_
     assert_eq!(done.status, StepStatus::Done);
     assert_eq!(done.done_by, Some(h1.id));
     // Done for both: H2 finds it no longer open.
-    assert!(wl_hr::steps::mark_done(t.state(), welcome.id, h2.id, Default::default())
-        .await
-        .unwrap()
-        .is_err());
+    assert!(
+        wl_hr::steps::mark_done(t.state(), welcome.id, h2.id, Default::default())
+            .await
+            .unwrap()
+            .is_err()
+    );
 }
 
 /// With nobody but the owner holding the permission, the owner gets the `hr`
@@ -129,7 +131,10 @@ async fn hrm26_a_cancelled_onboarding_cancels_the_onboarding_and_its_open_steps(
         .await
         .unwrap();
     assert_eq!(onboarding.status, OnboardingStatus::Cancelled);
-    assert_eq!(onboarding.cancel_reason.as_deref(), Some("candidate withdrew"));
+    assert_eq!(
+        onboarding.cancel_reason.as_deref(),
+        Some("candidate withdrew")
+    );
     for step in onboarding.steps(t.db()).await.unwrap() {
         assert_eq!(step.status, StepStatus::Cancelled, "{}", step.title_en);
     }
@@ -184,12 +189,14 @@ async fn hrm26_death_and_exit_cancel_a_running_onboarding() {
         }
         let after = Onboarding::find_or_404(t.db(), started.id).await.unwrap();
         assert_eq!(after.status, OnboardingStatus::Cancelled);
-        assert!(after
-            .steps(t.db())
-            .await
-            .unwrap()
-            .iter()
-            .all(|s| s.status == StepStatus::Cancelled));
+        assert!(
+            after
+                .steps(t.db())
+                .await
+                .unwrap()
+                .iter()
+                .all(|s| s.status == StepStatus::Cancelled)
+        );
     }
 }
 
@@ -217,7 +224,10 @@ async fn hrm26_a_manual_onboarding_is_due_from_today_and_is_cancelled_with_a_rea
         templates: vec![supervisor.id],
         start_on: None,
     };
-    let started = onboarding::start(t.state(), request()).await.unwrap().unwrap();
+    let started = onboarding::start(t.state(), request())
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(started.start_trigger, "manual");
     let today = wl_kernel::documents::today();
     assert_eq!(started.started_on, today);
@@ -225,7 +235,10 @@ async fn hrm26_a_manual_onboarding_is_due_from_today_and_is_cancelled_with_a_rea
     assert_eq!(step.due_date, onboarding::due_date(today, 2));
     // Not twice from the same template while one is in progress.
     assert_eq!(
-        onboarding::start(t.state(), request()).await.unwrap().unwrap_err(),
+        onboarding::start(t.state(), request())
+            .await
+            .unwrap()
+            .unwrap_err(),
         StartRefused::AlreadyRunning
     );
 
@@ -237,7 +250,10 @@ async fn hrm26_a_manual_onboarding_is_due_from_today_and_is_cancelled_with_a_rea
         .await
         .assert_status(422);
     assert_eq!(
-        Onboarding::find_or_404(t.db(), started.id).await.unwrap().status,
+        Onboarding::find_or_404(t.db(), started.id)
+            .await
+            .unwrap()
+            .status,
         OnboardingStatus::InProgress
     );
     t.app
@@ -248,7 +264,12 @@ async fn hrm26_a_manual_onboarding_is_due_from_today_and_is_cancelled_with_a_rea
     assert_eq!(after.status, OnboardingStatus::Cancelled);
     assert_eq!(after.cancel_reason.as_deref(), Some("no longer needed"));
     // Once cancelled, the template can start again.
-    assert!(onboarding::start(t.state(), request()).await.unwrap().is_ok());
+    assert!(
+        onboarding::start(t.state(), request())
+            .await
+            .unwrap()
+            .is_ok()
+    );
 }
 
 /// AC6: a minimal record created in `onboarding` starts the onboarding too;
@@ -262,7 +283,11 @@ async fn hrm26_the_state_of_a_new_record_follows_the_templates() {
     )
     .await
     .unwrap();
-    assert_eq!(auto.status, EmployeeStatus::Onboarding, "the all staff template applies");
+    assert_eq!(
+        auto.status,
+        EmployeeStatus::Onboarding,
+        "the all staff template applies"
+    );
     assert_eq!(with.onboardings(&auto).await.len(), 1);
 
     let without = boot_with(wl_hr::WlHr::new(), false).await;
@@ -274,12 +299,11 @@ async fn hrm26_the_state_of_a_new_record_follows_the_templates() {
     .unwrap();
     assert_eq!(plain.status, EmployeeStatus::Active);
     assert!(without.onboardings(&plain).await.is_empty());
-    assert!(employees::create(
-        without.state(),
-        NewEmployee::new(PartyId(72), "  ", nov(2)),
-    )
-    .await
-    .is_err());
+    assert!(
+        employees::create(without.state(), NewEmployee::new(PartyId(72), "  ", nov(2)),)
+            .await
+            .is_err()
+    );
 }
 
 /// AC7: `employees_in(driver, branch B)` returns Ravi while he is onboarding
@@ -314,7 +338,11 @@ async fn hrm26_employees_in_lists_the_working_staff_of_a_role_in_a_scope() {
             .update(t.db(), &[("status", &status)])
             .await
             .unwrap();
-        assert_eq!(!in_branch("driver", branch()).await.is_empty(), listed, "{status}");
+        assert_eq!(
+            !in_branch("driver", branch()).await.is_empty(),
+            listed,
+            "{status}"
+        );
     }
 }
 
@@ -345,13 +373,19 @@ async fn hrm26_open_steps_follow_the_manager() {
         })
         .await
         .unwrap();
-    assert_eq!(t.reload(&welcome).await.assignees(t.db()).await.unwrap(), [m2.id]);
+    assert_eq!(
+        t.reload(&welcome).await.assignees(t.db()).await.unwrap(),
+        [m2.id]
+    );
 
     m2.remove_role_in(t.db(), "manager", &support::branch_scope())
         .await
         .unwrap();
     onboarding::re_resolve(t.state(), ravi.id).await.unwrap();
-    assert_eq!(t.reload(&welcome).await.assignees(t.db()).await.unwrap(), [hana.id]);
+    assert_eq!(
+        t.reload(&welcome).await.assignees(t.db()).await.unwrap(),
+        [hana.id]
+    );
     // A done step keeps who did it.
     let done = wl_hr::steps::mark_done(t.state(), welcome.id, hana.id, Default::default())
         .await
@@ -372,11 +406,15 @@ async fn hrm26_a_corrected_hire_date_moves_the_due_dates_and_a_role_change_keeps
     let onboarding = t.onboardings(&ravi).await.remove(0);
     let sops = t.step(&onboarding, "SOPs acknowledged").await;
     assert_eq!(sops.due_date, nov(9));
-    employees::correct_hire_date(t.state(), ravi.id, nov(5)).await.unwrap();
+    employees::correct_hire_date(t.state(), ravi.id, nov(5))
+        .await
+        .unwrap();
     assert_eq!(t.reload(&sops).await.due_date, nov(12));
 
     let before = onboarding.steps(t.db()).await.unwrap().len();
-    let changed = employees::change_job_role(t.state(), ravi.id, "Supervisor").await.unwrap();
+    let changed = employees::change_job_role(t.state(), ravi.id, "Supervisor")
+        .await
+        .unwrap();
     assert_eq!(changed.job_role, "supervisor");
     assert_eq!(onboarding.steps(t.db()).await.unwrap().len(), before);
     let events = t.changed.all();
@@ -395,7 +433,10 @@ async fn hrm26_a_template_edited_after_the_start_does_not_change_the_running_onb
     let (ravi, _) = t.ravi().await;
     let onboarding = t.onboardings(&ravi).await.remove(0);
     let applied = onboarding.templates(t.db()).await.unwrap();
-    let frozen = applied.iter().find(|a| a.template_id == template.id).unwrap();
+    let frozen = applied
+        .iter()
+        .find(|a| a.template_id == template.id)
+        .unwrap();
     assert_eq!(frozen.template_version, 1);
 
     OnboardingTemplate::query()
@@ -408,11 +449,20 @@ async fn hrm26_a_template_edited_after_the_start_does_not_change_the_running_onb
         .update(t.db(), &[("title_en", &"Renamed")])
         .await
         .unwrap();
-    assert_eq!(t.step(&onboarding, "Read the handbook").await.title_en, "Read the handbook");
-    let reloaded = Onboarding::find_or_404(t.db(), onboarding.id).await.unwrap();
+    assert_eq!(
+        t.step(&onboarding, "Read the handbook").await.title_en,
+        "Read the handbook"
+    );
+    let reloaded = Onboarding::find_or_404(t.db(), onboarding.id)
+        .await
+        .unwrap();
     let applied = reloaded.templates(t.db()).await.unwrap();
     assert_eq!(
-        applied.iter().find(|a| a.template_id == template.id).unwrap().template_version,
+        applied
+            .iter()
+            .find(|a| a.template_id == template.id)
+            .unwrap()
+            .template_version,
         1
     );
 }
@@ -426,10 +476,7 @@ async fn hrm26_the_pages_show_the_onboarding_and_the_templates() {
     let hana = t.user_with("Hana", "hr").await;
     let (ravi, _) = t.ravi().await;
     t.app.acting_as(&hana);
-    t.app
-        .get("/hr/employees")
-        .await
-        .assert_ok();
+    t.app.get("/hr/employees").await.assert_ok();
     t.app
         .get(&format!("/hr/employees/{}", ravi.id))
         .await
@@ -464,7 +511,13 @@ async fn hrm26_hr_starts_a_template_by_hand_on_the_page() {
     t.app.acting_as(&hana);
     let path = format!("/hr/employees/{}/onboardings", employee.id);
     t.app
-        .post(&path, &[("template", &supervisor.id.to_string()), ("start_date", "2026-12-01")])
+        .post(
+            &path,
+            &[
+                ("template", &supervisor.id.to_string()),
+                ("start_date", "2026-12-01"),
+            ],
+        )
         .await
         .assert_ok();
     let onboardings = t.onboardings(&employee).await;

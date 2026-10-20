@@ -331,11 +331,18 @@ pub async fn capture(
         }
         _ => None,
     };
-    let source = match input.source.as_deref().map(str::trim).filter(|c| !c.is_empty()) {
-        Some(code) => match LeadSource::by_code(&state.db, &LeadSource::normalize_code(code)).await? {
-            Some(source) if source.active => source,
-            _ => return Ok(Err(LeadRefused::UnknownSource)),
-        },
+    let source = match input
+        .source
+        .as_deref()
+        .map(str::trim)
+        .filter(|c| !c.is_empty())
+    {
+        Some(code) => {
+            match LeadSource::by_code(&state.db, &LeadSource::normalize_code(code)).await? {
+                Some(source) if source.active => source,
+                _ => return Ok(Err(LeadRefused::UnknownSource)),
+            }
+        }
         None => {
             let implied = match campaign.as_ref().and_then(|c| c.lead_source_id) {
                 Some(id) => LeadSource::find(&state.db, id).await?,

@@ -14,9 +14,9 @@ use renox::state_machine::{StateMachine, TransitionError};
 use wl_kernel::documents::{DocumentId, DocumentRejected, SopId, SopPublished, SopWithdrawn};
 
 use super::model::Sop;
-use crate::acknowledgements::Acknowledgements;
 use super::service::{Sops, require_manage};
 use super::{KIND_SOP, SUBJECT_TYPE};
+use crate::acknowledgements::Acknowledgements;
 use crate::documents::{emit_accepted, emit_superseded, supersede_previous};
 use crate::expiry::responsible::holders_in;
 use crate::machine::{ACCEPT_SOP, ARCHIVE_SOP, REJECT_SOP, SopRunInput};
@@ -255,8 +255,7 @@ impl Sops {
             // `cancel`: the readers need not acknowledge a withdrawn SOP; the
             // acknowledged ones stay as history (`DOC.RUL.04`).
             let reason = crate::texts::english("wl_documents.acks.cancelled_withdrawn", &[]);
-            let cancelled =
-                Acknowledgements::cancel_for_sop(state, row.id, &reason).await?;
+            let cancelled = Acknowledgements::cancel_for_sop(state, row.id, &reason).await?;
             state
                 .emit(SopWithdrawn {
                     sop: SopId(row.id),

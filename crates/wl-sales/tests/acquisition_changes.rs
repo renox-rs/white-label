@@ -45,15 +45,23 @@ async fn acquired(t: &Booted, sold: bool) -> PartyAcquisition {
     campaign(t, "C1").await;
     campaign(t, "C2").await;
     let attribution = campaign_attribution(t.state());
-    assert!(attribution
-        .attribute(t.state(), Attribute::party(P, "referral").campaign("C1"))
-        .await
-        .unwrap());
+    assert!(
+        attribution
+            .attribute(t.state(), Attribute::party(P, "referral").campaign("C1"))
+            .await
+            .unwrap()
+    );
     if sold {
         let sale = FirstSale::new(P, Subject::new("invoicing.invoice", 1), 200_000, day(4, 2));
-        attribution.record_first_sale(t.state(), sale).await.unwrap();
+        attribution
+            .record_first_sale(t.state(), sale)
+            .await
+            .unwrap();
     }
-    PartyAcquisition::of_party(t.db(), P).await.unwrap().unwrap()
+    PartyAcquisition::of_party(t.db(), P)
+        .await
+        .unwrap()
+        .unwrap()
 }
 
 fn change(acquisition: i64, campaign: &str, by: i64) -> ChangeRequest {
@@ -81,20 +89,30 @@ async fn sal20_a_change_after_the_first_sale_waits_for_another_manager() {
         .unwrap();
     assert_eq!(pending.status, ChangeStatus::Pending);
     assert_eq!(
-        PartyAcquisition::find(t.db(), before.id).await.unwrap().unwrap().campaign_id,
+        PartyAcquisition::find(t.db(), before.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .campaign_id,
         before.campaign_id,
         "nothing changes yet"
     );
     assert!(events.changed.lock().unwrap().is_empty());
 
     assert_eq!(
-        approve(t.state(), pending.id, a).await.unwrap().unwrap_err(),
+        approve(t.state(), pending.id, a)
+            .await
+            .unwrap()
+            .unwrap_err(),
         ChangeRefused::SamePerson
     );
     let done = approve(t.state(), pending.id, b).await.unwrap().unwrap();
     assert_eq!(done.status, ChangeStatus::Applied);
     assert_eq!(done.decided_by, Some(b));
-    let after = PartyAcquisition::find(t.db(), before.id).await.unwrap().unwrap();
+    let after = PartyAcquisition::find(t.db(), before.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(after.campaign_id, Some(c2.id));
     let changed = events.changed.lock().unwrap().clone();
     assert_eq!(changed.len(), 1);
@@ -103,7 +121,10 @@ async fn sal20_a_change_after_the_first_sale_waits_for_another_manager() {
     assert_eq!(changed[0].reason, "wrong campaign picked");
     // Decided once.
     assert_eq!(
-        approve(t.state(), pending.id, b).await.unwrap().unwrap_err(),
+        approve(t.state(), pending.id, b)
+            .await
+            .unwrap()
+            .unwrap_err(),
         ChangeRefused::NotPending
     );
     // The audit record.
@@ -134,14 +155,23 @@ async fn sal20_a_change_before_the_first_sale_is_applied_and_a_rejection_changes
         ChangeRefused::ReasonRequired
     );
     assert_eq!(
-        request(t.state(), change(before.id, "C1", 7)).await.unwrap().unwrap_err(),
+        request(t.state(), change(before.id, "C1", 7))
+            .await
+            .unwrap()
+            .unwrap_err(),
         ChangeRefused::Unchanged
     );
     assert_eq!(
-        request(t.state(), change(before.id, "NOPE", 7)).await.unwrap().unwrap_err(),
+        request(t.state(), change(before.id, "NOPE", 7))
+            .await
+            .unwrap()
+            .unwrap_err(),
         ChangeRefused::UnknownCampaign
     );
-    let done = request(t.state(), change(before.id, "C2", 7)).await.unwrap().unwrap();
+    let done = request(t.state(), change(before.id, "C2", 7))
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(done.status, ChangeStatus::Applied);
     assert_eq!(events.changed.lock().unwrap().len(), 1);
 
@@ -151,14 +181,24 @@ async fn sal20_a_change_before_the_first_sale_is_applied_and_a_rejection_changes
         .record_first_sale(t.state(), sale)
         .await
         .unwrap();
-    let pending = request(t.state(), change(before.id, "C1", 7)).await.unwrap().unwrap();
+    let pending = request(t.state(), change(before.id, "C1", 7))
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(pending.status, ChangeStatus::Pending);
-    let rejected = reject(t.state(), pending.id, 8, "keep C2").await.unwrap().unwrap();
+    let rejected = reject(t.state(), pending.id, 8, "keep C2")
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(rejected.status, ChangeStatus::Rejected);
     assert_eq!(rejected.decision_reason.as_deref(), Some("keep C2"));
     let c2 = Campaign::by_code(t.db(), "C2").await.unwrap().unwrap();
     assert_eq!(
-        PartyAcquisition::find(t.db(), before.id).await.unwrap().unwrap().campaign_id,
+        PartyAcquisition::find(t.db(), before.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .campaign_id,
         Some(c2.id)
     );
 }
@@ -166,12 +206,14 @@ async fn sal20_a_change_before_the_first_sale_is_applied_and_a_rejection_changes
 /// With the setting off a change after the first sale needs no second person.
 #[renox::test]
 async fn sal20_with_the_approval_setting_off_a_change_is_applied_at_once() {
-    let (t, _) = support::boot_events_with(
-        wl_sales::WlSales::new().acquisition_change_approval(false),
-    )
-    .await;
+    let (t, _) =
+        support::boot_events_with(wl_sales::WlSales::new().acquisition_change_approval(false))
+            .await;
     let before = acquired(&t, true).await;
-    let done = request(t.state(), change(before.id, "C2", 7)).await.unwrap().unwrap();
+    let done = request(t.state(), change(before.id, "C2", 7))
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(done.status, ChangeStatus::Applied);
 }
 
@@ -218,9 +260,16 @@ async fn sal20_a_won_leads_attribution_needs_a_second_person() {
     let pending = request(t.state(), won).await.unwrap().unwrap();
     assert_eq!(pending.status, ChangeStatus::Pending);
     approve(t.state(), pending.id, 8).await.unwrap().unwrap();
-    let referral = LeadSource::by_code(t.db(), "referral").await.unwrap().unwrap();
+    let referral = LeadSource::by_code(t.db(), "referral")
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(
-        wl_sales::Lead::find(t.db(), lead.id).await.unwrap().unwrap().source_id,
+        wl_sales::Lead::find(t.db(), lead.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .source_id,
         referral.id
     );
 }
@@ -243,15 +292,32 @@ async fn sal20_the_exceptions_page_lists_and_decides() {
         .await
         .unwrap();
     let a = t
-        .user("Amal", &[perm::CAMPAIGNS_VIEW, perm::CAMPAIGNS_MANAGE, perm::ACQUISITION_REPORTS_VIEW])
+        .user(
+            "Amal",
+            &[
+                perm::CAMPAIGNS_VIEW,
+                perm::CAMPAIGNS_MANAGE,
+                perm::ACQUISITION_REPORTS_VIEW,
+            ],
+        )
         .await;
     let b = t
-        .user("Basel", &[perm::CAMPAIGNS_VIEW, perm::CAMPAIGNS_MANAGE, perm::ACQUISITION_REPORTS_VIEW])
+        .user(
+            "Basel",
+            &[
+                perm::CAMPAIGNS_VIEW,
+                perm::CAMPAIGNS_MANAGE,
+                perm::ACQUISITION_REPORTS_VIEW,
+            ],
+        )
         .await;
     let nobody = t.user("Nobody", &[]).await;
 
     t.app.acting_as(&nobody);
-    t.app.get("/sales/acquisition-exceptions").await.assert_forbidden();
+    t.app
+        .get("/sales/acquisition-exceptions")
+        .await
+        .assert_forbidden();
 
     t.app.acting_as(&a);
     t.app
@@ -263,7 +329,11 @@ async fn sal20_the_exceptions_page_lists_and_decides() {
         .app
         .post(
             &format!("/sales/acquisitions/{}/changes", acquisition.id),
-            &[("source", "referral"), ("campaign", "C2"), ("reason", "wrong campaign")],
+            &[
+                ("source", "referral"),
+                ("campaign", "C2"),
+                ("reason", "wrong campaign"),
+            ],
         )
         .await;
     response.assert_ok();
@@ -275,7 +345,10 @@ async fn sal20_the_exceptions_page_lists_and_decides() {
         .expect("the change waits");
     // The requester cannot approve it.
     t.app
-        .post(&format!("/sales/acquisition-changes/{}/approve", pending.id), &[("x", "y")])
+        .post(
+            &format!("/sales/acquisition-changes/{}/approve", pending.id),
+            &[("x", "y")],
+        )
         .await
         .assert_status(422);
     t.app.acting_as(&b);
@@ -285,10 +358,16 @@ async fn sal20_the_exceptions_page_lists_and_decides() {
         .assert_ok()
         .assert_see("wrong campaign");
     t.app
-        .post(&format!("/sales/acquisition-changes/{}/approve", pending.id), &[("x", "y")])
+        .post(
+            &format!("/sales/acquisition-changes/{}/approve", pending.id),
+            &[("x", "y")],
+        )
         .await
         .assert_ok();
-    let done = AcquisitionChange::find(t.db(), pending.id).await.unwrap().unwrap();
+    let done = AcquisitionChange::find(t.db(), pending.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(done.status, ChangeStatus::Applied);
     assert_eq!(done.decided_by, Some(b.id));
 }

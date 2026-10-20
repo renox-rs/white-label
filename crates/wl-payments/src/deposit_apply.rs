@@ -99,12 +99,7 @@ pub(crate) async fn apply(
         .order_by_desc(Deposit::ID)
         .first(&state.db)
         .await?
-        .ok_or_else(|| {
-            refused(format!(
-                "{} has no deposit being settled.",
-                request.source
-            ))
-        })?;
+        .ok_or_else(|| refused(format!("{} has no deposit being settled.", request.source)))?;
     let damages: i64 = match DepositDeduction::latest(&state.db, deposit.id).await? {
         Some(latest) => latest
             .lines(&state.db)
@@ -224,7 +219,10 @@ mod tests {
 
     #[test]
     fn the_total_deductions_must_reach_the_deposit() {
-        assert_eq!(request_problem(&request(&[200_000]), 500_000, 450_000), None);
+        assert_eq!(
+            request_problem(&request(&[200_000]), 500_000, 450_000),
+            None
+        );
         assert_eq!(request_problem(&request(&[]), 500_000, 500_000), None);
         assert!(request_problem(&request(&[]), 500_000, 120_000).is_some());
         assert!(request_problem(&request(&[0]), 500_000, 600_000).is_some());

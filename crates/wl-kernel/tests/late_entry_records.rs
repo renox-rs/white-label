@@ -7,9 +7,7 @@ use renox::prelude::*;
 use renox::state_machine::StateMachine;
 use renox::testing::TestApp;
 use wl_kernel::late_entries::{self, fired};
-use wl_kernel::{
-    ClientConfig, FiredRun, LateEntry, LateEntryStatus, Limits, RuleRun, Subject,
-};
+use wl_kernel::{ClientConfig, FiredRun, LateEntry, LateEntryStatus, Limits, RuleRun, Subject};
 
 const CLIENT: &str = r#"
 [client]
@@ -57,12 +55,16 @@ async fn the_limits_are_set_per_entity() {
         .await
         .unwrap();
     assert_eq!(
-        late_entries::limits_for(db, "bookings.check_in").await.unwrap(),
+        late_entries::limits_for(db, "bookings.check_in")
+            .await
+            .unwrap(),
         sixty
     );
     // Another entity keeps the defaults.
     assert_eq!(
-        late_entries::limits_for(db, "ticketing.ticket").await.unwrap(),
+        late_entries::limits_for(db, "ticketing.ticket")
+            .await
+            .unwrap(),
         Limits::default()
     );
     // Setting them again changes the row, it does not add one.
@@ -74,11 +76,16 @@ async fn the_limits_are_set_per_entity() {
         .await
         .unwrap();
     assert_eq!(
-        late_entries::limits_for(db, "bookings.check_in").await.unwrap(),
+        late_entries::limits_for(db, "bookings.check_in")
+            .await
+            .unwrap(),
         twelve
     );
     assert_eq!(
-        late_entries::LateEntryLimits::query().count(db).await.unwrap(),
+        late_entries::LateEntryLimits::query()
+            .count(db)
+            .await
+            .unwrap(),
         1
     );
 }
@@ -111,18 +118,18 @@ async fn a_late_entry_keeps_both_times_and_finds_its_record() {
     // `requested`.
     let mut tx = app.db().begin().await.unwrap();
     let mut entry = LateEntry {
-            subject_type: "bookings.check_in".into(),
-            record_id: Some(8),
-            parent_type: Some("bookings.booking".into()),
-            parent_id: Some(2),
-            occurred_at: at("2026-11-03T05:05:00Z"),
-            entered_at: at("2026-11-03T06:30:00Z"),
-            minutes_late: 85,
-            reason: "router down".into(),
-            entered_by: 7,
-            payload: Json(renox::serde_json::json!({ "room": 4 })),
-            status: LateEntryStatus::Recorded,
-            ..Default::default()
+        subject_type: "bookings.check_in".into(),
+        record_id: Some(8),
+        parent_type: Some("bookings.booking".into()),
+        parent_id: Some(2),
+        occurred_at: at("2026-11-03T05:05:00Z"),
+        entered_at: at("2026-11-03T06:30:00Z"),
+        minutes_late: 85,
+        reason: "router down".into(),
+        entered_by: 7,
+        payload: Json(renox::serde_json::json!({ "room": 4 })),
+        status: LateEntryStatus::Recorded,
+        ..Default::default()
     };
     entry
         .insert_in_state(&mut tx, LateEntryStatus::Recorded, "fixture")
@@ -177,7 +184,14 @@ async fn the_runs_between_the_two_times_on_the_record_or_its_parent_are_listed()
     let check_in = Subject::new("bookings.check_in", 8);
     let no_show = run(&app, "BKG.RUL.02", &booking, "b2", "2026-11-03T05:15:00Z").await;
     let on_record = run(&app, "BKG.RUL.05", &check_in, "c8", "2026-11-03T05:40:00Z").await;
-    run(&app, "BKG.RUL.02", &booking, "early", "2026-11-03T05:04:59Z").await;
+    run(
+        &app,
+        "BKG.RUL.02",
+        &booking,
+        "early",
+        "2026-11-03T05:04:59Z",
+    )
+    .await;
     run(&app, "BKG.RUL.02", &booking, "late", "2026-11-03T06:30:01Z").await;
     run(&app, "BKG.RUL.02", &other, "o3", "2026-11-03T05:15:00Z").await;
 

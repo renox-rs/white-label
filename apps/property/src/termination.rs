@@ -201,7 +201,10 @@ pub(crate) async fn terminate_effects(
     input: &TerminateInput,
 ) -> Result {
     let Some(move_out) = input.move_out else {
-        return Err(refused(english("property.terminate.move_out_required", &[])));
+        return Err(refused(english(
+            "property.terminate.move_out_required",
+            &[],
+        )));
     };
     let day = input.day.unwrap_or_else(today);
     let due_until = input.rent_due_until.or(lease.rent_due_until);
@@ -446,7 +449,10 @@ pub async fn settle_keeping(
         };
         match invoice.status {
             InvoiceStatus::Draft if period.0 > cut => {
-                match contract.discard_draft(&state.db, InvoiceId(invoice_id)).await {
+                match contract
+                    .discard_draft(&state.db, InvoiceId(invoice_id))
+                    .await
+                {
                     Ok(_) => {
                         done.discarded.push(invoice_id);
                         LeaseCharge::query()
@@ -502,8 +508,10 @@ pub async fn settle_keeping(
             let later: Vec<ChequeId> = held
                 .iter()
                 .filter(|c| {
-                    matches!(c.status, ChequeStatus::Received | ChequeStatus::DueForDeposit)
-                        && c.date > cut
+                    matches!(
+                        c.status,
+                        ChequeStatus::Received | ChequeStatus::DueForDeposit
+                    ) && c.date > cut
                         && !keep.contains(&c.id.0)
                 })
                 .map(|c| c.id)
@@ -707,7 +715,10 @@ pub async fn chase_ejari(state: &AppState, day: NaiveDate) -> Result<usize> {
             Ok(true) => handled += 1,
             Ok(false) => {}
             Err(error) => {
-                eprintln!("property:ejari-cancellations: lease {}: {error:?}", lease.id);
+                eprintln!(
+                    "property:ejari-cancellations: lease {}: {error:?}",
+                    lease.id
+                );
                 failure.get_or_insert(error);
             }
         }
@@ -822,7 +833,10 @@ mod tests {
         // Moved out the day before the period starts.
         assert_eq!(credit_for(900_000, august, day(7, 31)), 900_000);
         // Moved out on the first day: 30 of 31 days after it.
-        assert_eq!(credit_for(900_000, july, day(7, 1)), prorated(900_000, 30, 31));
+        assert_eq!(
+            credit_for(900_000, july, day(7, 1)),
+            prorated(900_000, 30, 31)
+        );
     }
 
     #[test]

@@ -69,7 +69,11 @@ async fn request(
         Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, message)) => Toast::error(message),
         Err(other) => return Err(other),
     };
-    Ok((toast, Redirect::route("wl_invoicing.supplier_bill", &[&bill.id])?).into_response())
+    Ok((
+        toast,
+        Redirect::route("wl_invoicing.supplier_bill", &[&bill.id])?,
+    )
+        .into_response())
 }
 
 /// A 422 with `message` under `field`, keeping the input.

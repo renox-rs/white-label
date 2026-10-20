@@ -238,7 +238,11 @@ pub async fn create_draft(state: &AppState, by: Option<i64>, new: NewLease) -> R
         new.deposit_amount,
         new.instalments,
     )?;
-    if directory(state).find(&state.db, new.tenant).await?.is_none() {
+    if directory(state)
+        .find(&state.db, new.tenant)
+        .await?
+        .is_none()
+    {
         return Err(refused(english("property.leases.no_tenant", &[])));
     }
     let mut tx = state.db.begin().await?;
@@ -445,10 +449,7 @@ pub async fn revise_draft(state: &AppState, id: i64, edit: DraftEdit) -> Result<
             annual_rent: rent,
             ..lease.clone()
         };
-        let first = edit
-            .first_due
-            .or(lease.effective_date)
-            .unwrap_or(start);
+        let first = edit.first_due.or(lease.effective_date).unwrap_or(start);
         insert_plan(&mut tx, &edited, first, instalments).await?;
     }
     tx.commit().await?;
@@ -593,7 +594,10 @@ pub async fn activate(
 /// Whether the deposit of a new lease is received (or waived): the held
 /// amount reaches the lease's. A renewal or amendment carries the held
 /// deposit over, so it is not asked for again.
-async fn deposit_check(state: &AppState, lease: &Lease) -> std::result::Result<(), TransitionError> {
+async fn deposit_check(
+    state: &AppState,
+    lease: &Lease,
+) -> std::result::Result<(), TransitionError> {
     if lease.is_follow_up() || lease.deposit_amount <= 0 || lease.deposit_waived {
         return Ok(());
     }
@@ -682,22 +686,28 @@ pub async fn record_ejari(
         return Err(refused(english("property.ejari.not_running", &[])));
     }
     let expires = input.expires_on.unwrap_or(lease.end_date);
-    documents::guarded(state, documents::RECORD_EJARI, id, Some(user.id), || async {
-        Lease::query()
-            .where_(Lease::ID.eq(id))
-            .update(
-                &state.db,
-                &[
-                    ("ejari_number", &Some(number.clone())),
-                    ("ejari_registered_on", &Some(input.registered_on)),
-                    ("ejari_expires_on", &Some(expires)),
-                    ("updated_at", &renox::db::now()),
-                ],
-            )
-            .await
-            .map_err(TransitionError::Failed)?;
-        Ok(())
-    })
+    documents::guarded(
+        state,
+        documents::RECORD_EJARI,
+        id,
+        Some(user.id),
+        || async {
+            Lease::query()
+                .where_(Lease::ID.eq(id))
+                .update(
+                    &state.db,
+                    &[
+                        ("ejari_number", &Some(number.clone())),
+                        ("ejari_registered_on", &Some(input.registered_on)),
+                        ("ejari_expires_on", &Some(expires)),
+                        ("updated_at", &renox::db::now()),
+                    ],
+                )
+                .await
+                .map_err(TransitionError::Failed)?;
+            Ok(())
+        },
+    )
     .await
     .map_err(TransitionError::into_error)?;
     let creator = task_creator(state);

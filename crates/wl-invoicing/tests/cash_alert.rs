@@ -13,12 +13,12 @@ use wl_invoicing::cash_balance::{self, EnterBalance};
 use wl_invoicing::supplier_bill::{SupplierBill, SupplierBillStatus};
 use wl_invoicing::task::{InvoicingTask, TaskKind, TaskStatus};
 use wl_invoicing::{WlInvoicing, permissions as perm};
+use wl_kernel::LegalEntity;
 use wl_kernel::cash_forecast::{
     CashForecastSource, ForecastFuture, ForecastLine, register_cash_forecast_source,
 };
 use wl_kernel::notify::NotifyRecipient;
 use wl_kernel::payments::Direction;
-use wl_kernel::LegalEntity;
 
 use support::{BLUE_DUNES, Booted, boot_with};
 
@@ -133,7 +133,12 @@ async fn the_first_week_below_is_told_once() {
     let events = t.below_threshold.all();
     assert_eq!(events.len(), 1);
     assert_eq!(
-        (events[0].week, events[0].week_start, events[0].projected_balance, events[0].threshold),
+        (
+            events[0].week,
+            events[0].week_start,
+            events[0].projected_balance,
+            events[0].threshold
+        ),
         (6, day(2, 15), 1_500_000, THRESHOLD)
     );
 
@@ -335,7 +340,10 @@ async fn a_stale_balance_gets_one_task_that_a_newer_balance_closes() {
     // Importing a statement (a newer closing balance) closes it.
     t.forecast.statement(e1.id, "BA1", 5_100_000, day(1, 12));
     run_on(&t, day(1, 13)).await;
-    let task = InvoicingTask::find(t.db(), tasks[0].id).await.unwrap().unwrap();
+    let task = InvoicingTask::find(t.db(), tasks[0].id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(task.status, TaskStatus::Done);
     let all = InvoicingTask::query()
         .where_(InvoicingTask::KIND.eq(TaskKind::StatementBalanceStale))
@@ -399,6 +407,9 @@ async fn the_check_changes_no_document() {
     let held = bill(&t, &e1, "SB-W6", day(2, 16), 3_500_000).await;
     run_on(&t, day(1, 13)).await;
     let after = SupplierBill::find(t.db(), held.id).await.unwrap().unwrap();
-    assert_eq!((after.balance, after.status), (3_500_000, SupplierBillStatus::Approved));
+    assert_eq!(
+        (after.balance, after.status),
+        (3_500_000, SupplierBillStatus::Approved)
+    );
     assert_eq!(CashAlert::query().count(t.db()).await.unwrap(), 1);
 }

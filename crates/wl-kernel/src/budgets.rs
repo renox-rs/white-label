@@ -136,11 +136,7 @@ pub trait CompanyBudgets: Send + Sync + 'static {
     /// Whether the cost code `code` is mapped to a budget category of kind
     /// `owner_drawings` (`FIN.ACL.21`: such a code is never posted to a cost
     /// object). The default says no code is.
-    fn is_owner_drawings_code<'a>(
-        &'a self,
-        _db: &'a Db,
-        _code: &'a str,
-    ) -> BudgetFuture<'a, bool> {
+    fn is_owner_drawings_code<'a>(&'a self, _db: &'a Db, _code: &'a str) -> BudgetFuture<'a, bool> {
         Box::pin(async { Ok(false) })
     }
 

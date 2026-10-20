@@ -296,7 +296,12 @@ mod tests {
         let machine = ServiceContract::machine();
         for transition in machine.transitions() {
             let terminates = transition.name().starts_with("terminate");
-            assert_eq!(transition.needs_reason(), terminates, "{}", transition.name());
+            assert_eq!(
+                transition.needs_reason(),
+                terminates,
+                "{}",
+                transition.name()
+            );
         }
     }
 

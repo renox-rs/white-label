@@ -50,7 +50,10 @@ pub struct Report {
 pub fn draft_of(lease: &Lease, charge: &LeaseCharge) -> InvoiceDraft {
     let text = format!("{} · {}", charge.description, lease.number());
     let draft = InvoiceDraft::new(lease.tenant(), lease.subject())
-        .scope(wl_kernel::Subject::new(BUILDING_SUBJECT_TYPE, lease.building_id))
+        .scope(wl_kernel::Subject::new(
+            BUILDING_SUBJECT_TYPE,
+            lease.building_id,
+        ))
         .due_date(charge.due_date)
         .date_of_supply(charge.due_date)
         .line(
@@ -200,7 +203,11 @@ mod tests {
         assert_eq!(draft.lines[0].unit_price, 2_500_000);
         assert_eq!(draft.lines[0].vat_category, VatCategory::Exempt);
         assert_eq!(
-            draft.lines[0].origin.as_ref().map(ToString::to_string).as_deref(),
+            draft.lines[0]
+                .origin
+                .as_ref()
+                .map(ToString::to_string)
+                .as_deref(),
             Some("property.lease_charge:11")
         );
     }

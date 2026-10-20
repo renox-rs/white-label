@@ -99,7 +99,10 @@ async fn install_stores_what_the_module_registered_and_keeps_admin_changes() {
     assert_eq!(stored.status, ConnectionStatus::Up);
     assert_eq!(stored.down_after_minutes, 15);
     assert!(stored.affects("invoicing.invoice_list"));
-    assert_eq!(stored.fallback_en, "File the invoice on the ASP portal by hand.");
+    assert_eq!(
+        stored.fallback_en,
+        "File the invoice on the ASP portal by hand."
+    );
 
     IntegrationConnection::where_eq("id", stored.id)
         .update(app.db(), &[("down_after_minutes", &5_i64)])
@@ -107,15 +110,26 @@ async fn install_stores_what_the_module_registered_and_keeps_admin_changes() {
         .unwrap();
     assert_eq!(integrations::install(app.db()).await.unwrap(), 0);
     assert_eq!(connection(&app).await.down_after_minutes, 5);
-    assert_eq!(IntegrationConnection::query().count(app.db()).await.unwrap(), 1);
+    assert_eq!(
+        IntegrationConnection::query()
+            .count(app.db())
+            .await
+            .unwrap(),
+        1
+    );
 }
 
 #[renox::test]
 async fn a_failed_call_degrades_and_records_when_the_failures_began() {
     let app = app().await;
-    run(&app, &connection(&app).await, "degrade", json!({ "error": "timeout" }))
-        .await
-        .unwrap();
+    run(
+        &app,
+        &connection(&app).await,
+        "degrade",
+        json!({ "error": "timeout" }),
+    )
+    .await
+    .unwrap();
 
     let degraded = connection(&app).await;
     assert_eq!(degraded.status, ConnectionStatus::Degraded);
@@ -131,9 +145,14 @@ async fn a_failed_call_degrades_and_records_when_the_failures_began() {
 #[renox::test]
 async fn go_down_waits_for_n_minutes_from_the_first_failure() {
     let app = app().await;
-    run(&app, &connection(&app).await, "degrade", json!({ "error": "timeout" }))
-        .await
-        .unwrap();
+    run(
+        &app,
+        &connection(&app).await,
+        "degrade",
+        json!({ "error": "timeout" }),
+    )
+    .await
+    .unwrap();
 
     app.travel(Duration::from_secs(14 * 60));
     let early = run(&app, &connection(&app).await, "go_down", json!({})).await;
@@ -161,9 +180,14 @@ async fn go_down_only_starts_from_degraded() {
 #[renox::test]
 async fn recover_clears_the_failure_run_and_notes_the_success() {
     let app = app().await;
-    run(&app, &connection(&app).await, "degrade", json!({ "error": "timeout" }))
-        .await
-        .unwrap();
+    run(
+        &app,
+        &connection(&app).await,
+        "degrade",
+        json!({ "error": "timeout" }),
+    )
+    .await
+    .unwrap();
     run(&app, &connection(&app).await, "recover", json!({}))
         .await
         .unwrap();
@@ -259,16 +283,24 @@ async fn calls_leave_the_queue_first_in_first_out_with_the_backoff() {
 #[renox::test]
 async fn the_failure_run_is_remembered_after_the_connection_recovers() {
     let app = app().await;
-    run(&app, &connection(&app).await, "degrade", json!({ "error": "timeout" }))
-        .await
-        .unwrap();
+    run(
+        &app,
+        &connection(&app).await,
+        "degrade",
+        json!({ "error": "timeout" }),
+    )
+    .await
+    .unwrap();
     let degraded = connection(&app).await;
     assert_eq!(degraded.outage_since, degraded.failed_since);
     run(&app, &degraded, "recover", json!({})).await.unwrap();
 
     let up = connection(&app).await;
     assert!(up.failed_since.is_none());
-    assert_eq!(up.outage_since, degraded.outage_since, "kept for the reconciliation");
+    assert_eq!(
+        up.outage_since, degraded.outage_since,
+        "kept for the reconciliation"
+    );
 }
 
 #[renox::test]
@@ -285,20 +317,26 @@ async fn a_natural_key_finds_the_queued_or_sent_call_but_not_an_obsolete_one() {
         .unwrap()
         .expect("queued");
     assert_eq!(found.id, queued.id);
-    assert!(QueuedCall::with_natural_key(db, "asp.acme", "INV-2")
-        .await
-        .unwrap()
-        .is_none());
-    assert!(QueuedCall::with_natural_key(db, "gateway.acme", "INV-1")
-        .await
-        .unwrap()
-        .is_none());
+    assert!(
+        QueuedCall::with_natural_key(db, "asp.acme", "INV-2")
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        QueuedCall::with_natural_key(db, "gateway.acme", "INV-1")
+            .await
+            .unwrap()
+            .is_none()
+    );
 
     queue::mark_sent(db, &queued).await.unwrap();
-    assert!(QueuedCall::with_natural_key(db, "asp.acme", "INV-1")
-        .await
-        .unwrap()
-        .is_some());
+    assert!(
+        QueuedCall::with_natural_key(db, "asp.acme", "INV-1")
+            .await
+            .unwrap()
+            .is_some()
+    );
 }
 
 #[renox::test]
@@ -307,10 +345,20 @@ async fn the_oldest_call_is_found_whatever_its_wait() {
     let db = app.db();
     let call = Outbound::new("asp.acme", "invoice", json!({ "n": 1 }));
     let mut tx = db.begin().await.unwrap();
-    let queued = queue::enqueue(&mut tx, &call, Some("timeout")).await.unwrap();
+    let queued = queue::enqueue(&mut tx, &call, Some("timeout"))
+        .await
+        .unwrap();
     tx.commit().await.unwrap();
 
-    assert!(QueuedCall::next_due(db, "asp.acme", now()).await.unwrap().is_none());
-    let oldest = QueuedCall::oldest(db, "asp.acme").await.unwrap().expect("queued");
+    assert!(
+        QueuedCall::next_due(db, "asp.acme", now())
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let oldest = QueuedCall::oldest(db, "asp.acme")
+        .await
+        .unwrap()
+        .expect("queued");
     assert_eq!(oldest.id, queued.id);
 }

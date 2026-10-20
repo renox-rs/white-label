@@ -39,12 +39,12 @@ use renox::prelude::*;
 use renox::serde_json::Value;
 use renox::state_machine::{Outcome, StateMachine, TransitionError};
 
+use super::SUBJECT_TYPE;
 use super::assess::{Assessment, assess};
 use super::entry::{LateEntry, LateEntryStatus, transitions};
 use super::events::LateEntryRecorded;
 use super::limits::limits_for;
 use super::register::{self, NewRecord};
-use super::SUBJECT_TYPE;
 use crate::approvals::{self, ApprovalRequest};
 use crate::subject::Subject;
 use crate::texts;
@@ -162,9 +162,7 @@ impl Entered {
     /// The record's id, once it exists.
     pub fn record_id(&self) -> Option<i64> {
         match self {
-            Entered::OnTime { record_id } | Entered::Recorded { record_id, .. } => {
-                Some(*record_id)
-            }
+            Entered::OnTime { record_id } | Entered::Recorded { record_id, .. } => Some(*record_id),
             Entered::Pending { .. } => None,
         }
     }

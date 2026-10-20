@@ -5,12 +5,12 @@
 
 mod support;
 
-use renox::prelude::*;
 use renox::auth::User;
 use renox::chrono::TimeDelta;
+use renox::prelude::*;
+use wl_kernel::Subject;
 use wl_kernel::notify::NotifyRecipient;
 use wl_kernel::payments::{PaymentMethod, RefundSource, payment_recorder};
-use wl_kernel::Subject;
 use wl_payments::followup::{FollowupKind, FollowupStatus};
 use wl_payments::gateway::{FakeGateway, RefundOutcome};
 use wl_payments::notices::{REFUND_CANCELLED, REFUND_METHOD_CHANGED, REFUND_METHOD_TASK};
@@ -96,7 +96,9 @@ async fn returned_transfer(t: &Booted, a: &User, b: &User, amount: i64) -> (Paym
 }
 
 async fn open_tasks(t: &Booted, refund: &Refund) -> Vec<FollowupTask> {
-    FollowupTask::open_of_refund(t.db(), refund.id).await.unwrap()
+    FollowupTask::open_of_refund(t.db(), refund.id)
+        .await
+        .unwrap()
 }
 
 fn users(recipients: &[NotifyRecipient]) -> Vec<i64> {
@@ -134,7 +136,10 @@ async fn a_gateway_refund_is_retried_after_24_hours_and_then_the_accountant_gets
         .unwrap()
         .expect("applied");
     assert_eq!(failed.status, RefundStatus::Failed);
-    let at = failed_at(t.db(), refund.id).await.unwrap().expect("a failure time");
+    let at = failed_at(t.db(), refund.id)
+        .await
+        .unwrap()
+        .expect("a failure time");
     assert_eq!(at.format("%Y-%m-%d").to_string(), "2027-01-10");
 
     // A retry is waiting: no task yet.
@@ -176,7 +181,12 @@ async fn a_gateway_refund_is_retried_after_24_hours_and_then_the_accountant_gets
     let told = t.notices.of_type(REFUND_METHOD_TASK);
     assert_eq!(told.len(), 1);
     assert_eq!(users(&told[0].recipients), vec![accountant.id]);
-    assert!(told[0].data.to_string().contains(&format!("/refunds/{}", refund.id)));
+    assert!(
+        told[0]
+            .data
+            .to_string()
+            .contains(&format!("/refunds/{}", refund.id))
+    );
 
     // A third attempt is refused: by the rule and by hand.
     let later = refund_retry::run(t.state(), at + TimeDelta::hours(200))
@@ -187,7 +197,13 @@ async fn a_gateway_refund_is_retried_after_24_hours_and_then_the_accountant_gets
         .await
         .assert_status(422);
     assert_eq!(t.refund(refund.id).await.status, RefundStatus::Failed);
-    assert_eq!(RefundAttempt::of_refund(t.db(), refund.id).await.unwrap().len(), 2);
+    assert_eq!(
+        RefundAttempt::of_refund(t.db(), refund.id)
+            .await
+            .unwrap()
+            .len(),
+        2
+    );
     assert_eq!(open_tasks(&t, &refund).await.len(), 1, "no second task");
 }
 
@@ -224,7 +240,11 @@ async fn a_manual_retry_counts_toward_the_maximum() {
     let retried = t.refund(refund.id).await;
     assert_eq!(retried.status, RefundStatus::Approved);
     assert_eq!(
-        RefundAttempt::latest(t.db(), refund.id).await.unwrap().unwrap().outcome,
+        RefundAttempt::latest(t.db(), refund.id)
+            .await
+            .unwrap()
+            .unwrap()
+            .outcome,
         AttemptOutcome::Pending
     );
 
@@ -262,8 +282,18 @@ async fn a_retry_the_gateway_refuses_leaves_the_refund_failed_with_a_task() {
         .unwrap();
     assert_eq!((report.retried, report.tasks), (0, 1));
     assert_eq!(t.refund(refund.id).await.status, RefundStatus::Failed);
-    assert_eq!(retries_of(t.db(), refund.id).await.unwrap(), 0, "nothing was retried");
-    assert_eq!(RefundAttempt::of_refund(t.db(), refund.id).await.unwrap().len(), 1);
+    assert_eq!(
+        retries_of(t.db(), refund.id).await.unwrap(),
+        0,
+        "nothing was retried"
+    );
+    assert_eq!(
+        RefundAttempt::of_refund(t.db(), refund.id)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
     assert_eq!(open_tasks(&t, &refund).await.len(), 1);
 }
 
@@ -289,7 +319,11 @@ async fn a_scheduled_retry_after_a_change_of_method_does_nothing() {
     let after = t.refund(refund.id).await;
     assert_eq!(after.status, RefundStatus::Approved);
     assert_eq!(after.method, Some(PaymentMethod::Cash));
-    assert_eq!(t.gateway.refunded().len(), 1, "the gateway heard nothing more");
+    assert_eq!(
+        t.gateway.refunded().len(),
+        1,
+        "the gateway heard nothing more"
+    );
 }
 
 /// AC2: `change_method` to a cheque in the party's name goes to `approved`;
@@ -315,7 +349,10 @@ async fn changing_the_method_goes_to_approved_or_back_to_requested() {
     assert!(open_tasks(&t, &failed).await.is_empty(), "the task closes");
     let told = t.notices.of_type(REFUND_METHOD_CHANGED);
     assert_eq!(told.len(), 1);
-    assert_eq!(told[0].recipients, vec![NotifyRecipient::Party { id: BLUE_DUNES }]);
+    assert_eq!(
+        told[0].recipients,
+        vec![NotifyRecipient::Party { id: BLUE_DUNES }]
+    );
     assert!(told[0].data.to_string().contains("Cheque"));
 
     // A new IBAN: back to requested, for someone else to approve.
@@ -324,7 +361,10 @@ async fn changing_the_method_goes_to_approved_or_back_to_requested() {
         &c,
         &failed,
         "change_method",
-        &[("method", "transfer"), ("details", "AE07 0331 2345 6789 0123 456")],
+        &[
+            ("method", "transfer"),
+            ("details", "AE07 0331 2345 6789 0123 456"),
+        ],
     )
     .await
     .assert_ok();
@@ -419,7 +459,10 @@ async fn cancelling_leaves_the_amount_on_the_credit_and_tells_the_party() {
     assert_eq!(credit(&t).await, 50_000);
     let told = t.notices.of_type(REFUND_CANCELLED);
     assert_eq!(told.len(), 1);
-    assert_eq!(told[0].recipients, vec![NotifyRecipient::Party { id: BLUE_DUNES }]);
+    assert_eq!(
+        told[0].recipients,
+        vec![NotifyRecipient::Party { id: BLUE_DUNES }]
+    );
     assert!(told[0].data.to_string().contains("500.00"));
     assert!(open_tasks(&t, &failed).await.is_empty(), "the task closes");
     let task = FollowupTask::query()

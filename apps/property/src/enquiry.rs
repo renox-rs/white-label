@@ -79,10 +79,7 @@ impl Enquiry {
     ///
     /// The database's errors.
     pub async fn recent(db: &Db) -> Result<Vec<Enquiry>> {
-        Enquiry::query()
-            .order_by_desc(Enquiry::ID)
-            .get(db)
-            .await
+        Enquiry::query().order_by_desc(Enquiry::ID).get(db).await
     }
 }
 
@@ -178,13 +175,19 @@ mod tests {
     #[test]
     fn the_sources_are_the_codes_of_wl_sales() {
         for source in LEAD_SOURCES {
-            assert!(source.chars().all(|c| c.is_ascii_lowercase() || c == '_'), "{source}");
+            assert!(
+                source.chars().all(|c| c.is_ascii_lowercase() || c == '_'),
+                "{source}"
+            );
         }
     }
 
     #[test]
     fn an_enquiry_is_a_subject_of_the_vertical() {
-        let enquiry = Enquiry { id: 3, ..Enquiry::default() };
+        let enquiry = Enquiry {
+            id: 3,
+            ..Enquiry::default()
+        };
         assert_eq!(enquiry.subject().to_string(), "property.enquiry:3");
         assert!(!enquiry.is_converted());
     }

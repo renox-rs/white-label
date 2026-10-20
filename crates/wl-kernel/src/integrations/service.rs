@@ -140,7 +140,9 @@ async fn run_system(
         .await
     {
         Ok(outcome) => outcome,
-        Err(TransitionError::NotFrom(_) | TransitionError::Conflict | TransitionError::Guard(_)) => {
+        Err(
+            TransitionError::NotFrom(_) | TransitionError::Conflict | TransitionError::Guard(_),
+        ) => {
             return Ok(None);
         }
         Err(error) => return Err(error.into_error()),
@@ -247,8 +249,7 @@ async fn note_success(state: &AppState, key: &str) -> Result<bool> {
 pub async fn submit(state: &AppState, call: Outbound) -> Result<Submitted> {
     let def = definition(&call.connection)?;
     if let Some(key) = &call.natural_key
-        && let Some(known) =
-            QueuedCall::with_natural_key(&state.db, &call.connection, key).await?
+        && let Some(known) = QueuedCall::with_natural_key(&state.db, &call.connection, key).await?
     {
         return Ok(Submitted::Duplicate { id: known.id });
     }
@@ -368,7 +369,11 @@ async fn work(
 }
 
 fn obsolete_line(call: &Outbound) -> Line {
-    Line::obsolete(&call.kind, call.natural_key.as_deref(), call.subject.as_ref())
+    Line::obsolete(
+        &call.kind,
+        call.natural_key.as_deref(),
+        call.subject.as_ref(),
+    )
 }
 
 /// Inbound data that arrives late (a gateway callback, an aggregator
@@ -540,9 +545,10 @@ pub async fn enable(
 /// Registers the scheduled task [`TASK`] (every minute) and the command of
 /// the same name.
 pub(crate) fn schedule(app: &mut Registry) {
-    app.schedule().every_minute(TASK, |state: AppState| async move {
-        run_due(&state).await.map(|_| ())
-    });
+    app.schedule()
+        .every_minute(TASK, |state: AppState| async move {
+            run_due(&state).await.map(|_| ())
+        });
     app.command(
         TASK,
         "Retry the queued calls that are due and take down the connections without a success \

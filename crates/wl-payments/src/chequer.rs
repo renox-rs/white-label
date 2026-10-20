@@ -53,7 +53,10 @@ pub(crate) fn request_problem(request: &RegisterCheque) -> Option<String> {
     }
     let currency = request.currency.trim();
     if currency.len() != 3 || !currency.bytes().all(|b| b.is_ascii_alphabetic()) {
-        return Some(format!("`{}` is not a currency code like AED.", request.currency));
+        return Some(format!(
+            "`{}` is not a currency code like AED.",
+            request.currency
+        ));
     }
     let mut seen: Vec<&Subject> = Vec::new();
     for document in &request.linked {
@@ -327,7 +330,9 @@ async fn open_with_documents(state: &AppState, cheques: Vec<Cheque>) -> Result<V
 /// 422 for a cheque that is not `received` or `due_for_deposit`, one not
 /// linked to `from`, or one linked to `to` already; 404 for an unknown cheque.
 async fn relink(state: &AppState, cheque: ChequeId, from: &Subject, to: &Subject) -> Result {
-    let found = Cheque::find(&state.db, cheque.0).await?.ok_or(Error::NotFound)?;
+    let found = Cheque::find(&state.db, cheque.0)
+        .await?
+        .ok_or(Error::NotFound)?;
     if !matches!(
         found.status,
         ChequeStatus::Received | ChequeStatus::DueForDeposit
@@ -375,7 +380,9 @@ async fn relink(state: &AppState, cheque: ChequeId, from: &Subject, to: &Subject
 async fn hold_as_evidence(state: &AppState, ids: &[ChequeId], note: &str) -> Result<Vec<ChequeId>> {
     let note = note.trim();
     if note.is_empty() {
-        return Err(refused("The reason a cheque is held as evidence is required."));
+        return Err(refused(
+            "The reason a cheque is held as evidence is required.",
+        ));
     }
     let mut marked = Vec::new();
     for id in ids {
@@ -565,7 +572,10 @@ mod tests {
         assert_eq!(cheque.honoured_amount, 0);
         assert_eq!(cheque.presentations, 0);
         assert_eq!(cheque.recorded_by, Some(4));
-        assert_eq!(cheque.agreement().map(|a| a.to_string()).as_deref(), Some("property.lease:9"));
+        assert_eq!(
+            cheque.agreement().map(|a| a.to_string()).as_deref(),
+            Some("property.lease:9")
+        );
     }
 
     #[test]
@@ -580,20 +590,31 @@ mod tests {
     fn an_invoice_takes_up_to_its_balance_and_the_rest_goes_on() {
         let one = Subject::new("invoicing.invoice", 1);
         let two = Subject::new("invoicing.invoice", 2);
-        let applied =
-            apply_to_documents(1_000, vec![(one.clone(), Some(400)), (two.clone(), Some(900))]);
-        assert_eq!(applied[0], ChequeDocument { document: one, amount: 400 });
-        assert_eq!(applied[1], ChequeDocument { document: two, amount: 600 });
+        let applied = apply_to_documents(
+            1_000,
+            vec![(one.clone(), Some(400)), (two.clone(), Some(900))],
+        );
+        assert_eq!(
+            applied[0],
+            ChequeDocument {
+                document: one,
+                amount: 400
+            }
+        );
+        assert_eq!(
+            applied[1],
+            ChequeDocument {
+                document: two,
+                amount: 600
+            }
+        );
     }
 
     #[test]
     fn a_document_of_unknown_balance_takes_what_is_left_once() {
         let bill = Subject::new("invoicing.supplier_bill", 3);
         let charge = Subject::new("invoicing.charge", 4);
-        let applied = apply_to_documents(
-            1_000,
-            vec![(bill.clone(), None), (charge.clone(), None)],
-        );
+        let applied = apply_to_documents(1_000, vec![(bill.clone(), None), (charge.clone(), None)]);
         assert_eq!(applied[0].amount, 1_000);
         assert_eq!(applied[1].amount, 0);
     }

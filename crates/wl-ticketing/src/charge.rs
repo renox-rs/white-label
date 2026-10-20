@@ -29,9 +29,9 @@ use renox::db::DateTime;
 use renox::prelude::*;
 use renox::state_machine::Transitioned;
 use serde::{Deserialize, Serialize};
+use wl_kernel::Subject;
 use wl_kernel::invoicing::{DraftLine, InvoiceDraft, InvoiceId, VatCategory, invoicer};
 use wl_kernel::tickets::Assignee;
-use wl_kernel::Subject;
 
 use crate::comments::{Comment, CommentVisibility};
 use crate::config::{Category, InvoiceOn};
@@ -132,7 +132,10 @@ pub struct ChargeInput {
 
 /// A 422 with the English text of `key`.
 fn refused(key: &str) -> Error {
-    Error::Status(StatusCode::UNPROCESSABLE_ENTITY, texts::english(key).to_owned())
+    Error::Status(
+        StatusCode::UNPROCESSABLE_ENTITY,
+        texts::english(key).to_owned(),
+    )
 }
 
 /// Why `input` cannot be a charge line, if it cannot.
@@ -240,8 +243,7 @@ pub async fn remove_line(state: &AppState, user: &AuthUser, id: i64, line: i64) 
 fn draft_of(ticket: &Ticket, lines: &[ChargeLine]) -> Option<InvoiceDraft> {
     let party = ticket.bill_party()?;
     let origin = ticket.ticket_id().subject();
-    let mut draft =
-        InvoiceDraft::new(party, origin.clone()).scope(ticket.subject());
+    let mut draft = InvoiceDraft::new(party, origin.clone()).scope(ticket.subject());
     for line in lines {
         draft = draft.line(line.draft_line(Some(origin.clone())));
     }

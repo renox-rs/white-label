@@ -106,9 +106,11 @@ pub(crate) fn transition() -> Transition<Invoice> {
             let simplified = invoice.kind == InvoiceKind::SimplifiedTaxInvoice;
             Box::pin(async move {
                 if applies && simplified {
-                    Err("A simplified tax invoice cannot be issued once e-invoicing applies \
+                    Err(
+                        "A simplified tax invoice cannot be issued once e-invoicing applies \
                          to the entity; issue a tax invoice."
-                        .to_owned())
+                            .to_owned(),
+                    )
                 } else {
                     Ok(())
                 }
@@ -120,9 +122,11 @@ pub(crate) fn transition() -> Transition<Invoice> {
             });
             Box::pin(async move {
                 if missing {
-                    Err("The party has no e-invoicing recipient identifier (Peppol ID or TRN): \
+                    Err(
+                        "The party has no e-invoicing recipient identifier (Peppol ID or TRN): \
                          enter it on the party before the invoice is issued."
-                        .to_owned())
+                            .to_owned(),
+                    )
                 } else {
                     Ok(())
                 }
@@ -406,22 +410,36 @@ mod tests {
             ..aed()
         };
         // Before go-live both are fine.
-        assert!(issue.check_guards(&simplified, &run(&ready())).await.is_ok());
+        assert!(
+            issue
+                .check_guards(&simplified, &run(&ready()))
+                .await
+                .is_ok()
+        );
         // After it a simplified invoice is refused, a tax invoice is not.
         assert!(matches!(
-            issue.check_guards(&simplified, &run(&applies(false, None))).await,
+            issue
+                .check_guards(&simplified, &run(&applies(false, None)))
+                .await,
             Err(TransitionError::Guard(_))
         ));
-        assert!(issue.check_guards(&aed(), &run(&applies(false, None))).await.is_ok());
+        assert!(
+            issue
+                .check_guards(&aed(), &run(&applies(false, None)))
+                .await
+                .is_ok()
+        );
         // A recipient in scope needs an identifier; a B2C one does not.
         assert!(matches!(
             issue.check_guards(&aed(), &run(&applies(true, None))).await,
             Err(TransitionError::Guard(_))
         ));
-        assert!(issue
-            .check_guards(&aed(), &run(&applies(true, Some("0235:100000000000003"))))
-            .await
-            .is_ok());
+        assert!(
+            issue
+                .check_guards(&aed(), &run(&applies(true, Some("0235:100000000000003"))))
+                .await
+                .is_ok()
+        );
     }
 
     #[test]

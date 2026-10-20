@@ -4,7 +4,7 @@
 mod support;
 
 use property::unit_machine::{
-    CANCEL_NOTICE, MARK_NOTICE, MARK_READY, OCCUPY, RELIST, RELEASE_BY_SYSTEM, RESERVE, VACATE,
+    CANCEL_NOTICE, MARK_NOTICE, MARK_READY, OCCUPY, RELEASE_BY_SYSTEM, RELIST, RESERVE, VACATE,
     VACATE_TO_MAINTENANCE, WITHDRAW,
 };
 use property::{
@@ -65,8 +65,12 @@ async fn prp_prt_01_a_building_has_a_unique_code() {
 async fn prp_prt_01_a_unit_has_attributes_and_starts_available() {
     let t = boot().await;
     let building = t.building().await;
-    let floor = ensure_floor(t.db(), building.id, 12, "Level 12").await.unwrap();
-    let again = ensure_floor(t.db(), building.id, 12, "ignored").await.unwrap();
+    let floor = ensure_floor(t.db(), building.id, 12, "Level 12")
+        .await
+        .unwrap();
+    let again = ensure_floor(t.db(), building.id, 12, "ignored")
+        .await
+        .unwrap();
     assert_eq!(floor.id, again.id);
     let unit = create_unit(
         t.db(),
@@ -130,7 +134,9 @@ async fn prp_prt_02_the_system_drives_the_unit() {
     assert_eq!(t.unit_now(&unit).await.status, UnitStatus::Available);
 
     let _outcome = run(t.unit_now(&unit).await, OCCUPY).await.unwrap();
-    let _outcome = run(t.unit_now(&unit).await, VACATE_TO_MAINTENANCE).await.unwrap();
+    let _outcome = run(t.unit_now(&unit).await, VACATE_TO_MAINTENANCE)
+        .await
+        .unwrap();
     assert_eq!(t.unit_now(&unit).await.status, UnitStatus::UnderMaintenance);
     // A unit cannot be occupied twice, nor released unless reserved.
     let refused = run(t.unit_now(&unit).await, OCCUPY).await;
@@ -222,7 +228,12 @@ async fn prp_prt_01_the_pages_show_the_buildings_and_their_units() {
     let one = t.unit(&mine, "1204").await;
     t.unit(&mine, "1205").await;
     t.unit(&other, "301").await;
-    let _outcome = one.transition(OCCUPY).by_system().run(t.state()).await.unwrap();
+    let _outcome = one
+        .transition(OCCUPY)
+        .by_system()
+        .run(t.state())
+        .await
+        .unwrap();
     let manager = t.user_in("Mona", MANAGER, mine.id).await;
     t.app.acting_as(&manager);
 
@@ -257,7 +268,11 @@ async fn prp_prt_01_the_forms_add_a_building_and_a_unit() {
         .post(
             &admin,
             "/property/buildings",
-            &[("code", "tw-c"), ("name_en", "Tower C"), ("emirate", "dubai")],
+            &[
+                ("code", "tw-c"),
+                ("name_en", "Tower C"),
+                ("emirate", "dubai"),
+            ],
         )
         .await;
     created.assert_ok();
@@ -280,7 +295,10 @@ async fn prp_prt_01_the_forms_add_a_building_and_a_unit() {
     )
     .await
     .assert_ok();
-    let unit = Unit::of_building(t.db(), building.id).await.unwrap().remove(0);
+    let unit = Unit::of_building(t.db(), building.id)
+        .await
+        .unwrap()
+        .remove(0);
     assert_eq!(unit.unit_type, UnitType::Shop);
     assert_eq!(unit.usage, UnitUse::Commercial);
     assert_eq!(unit.area_sqft_milli, Some(900_500));

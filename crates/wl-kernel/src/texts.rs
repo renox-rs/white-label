@@ -283,7 +283,10 @@ const TEXTS: &[(&str, &str)] = &[
         "Give the reason this entry is late.",
     ),
     ("wl_kernel.late_entries.title", "Late entry"),
-    ("wl_kernel.late_entries.late_by", "Entered :minutes minutes late"),
+    (
+        "wl_kernel.late_entries.late_by",
+        "Entered :minutes minutes late",
+    ),
     (
         "wl_kernel.late_entries.notice",
         "This work happened :minutes minutes ago. Give the reason it is entered late.",
@@ -333,12 +336,15 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_kernel.integrations.banner",
         "The connection :connection is down. :fallback",
     ),
+    ("wl_kernel.integrations.reason_required", "Give a reason."),
     (
-        "wl_kernel.integrations.reason_required",
-        "Give a reason.",
+        "wl_kernel.integrations.toast.disabled",
+        "Connection disabled.",
     ),
-    ("wl_kernel.integrations.toast.disabled", "Connection disabled."),
-    ("wl_kernel.integrations.toast.enabled", "Connection enabled."),
+    (
+        "wl_kernel.integrations.toast.enabled",
+        "Connection enabled.",
+    ),
     ("wl_kernel.integrations.status.up", "Up"),
     ("wl_kernel.integrations.status.degraded", "Degraded"),
     ("wl_kernel.integrations.status.down", "Down"),
@@ -354,16 +360,25 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_kernel.integrations.page.failed_since", "Failing since"),
     ("wl_kernel.integrations.page.last_success", "Last success"),
     ("wl_kernel.integrations.page.queued", "Queued"),
-    ("wl_kernel.integrations.page.empty", "No connections are registered."),
+    (
+        "wl_kernel.integrations.page.empty",
+        "No connections are registered.",
+    ),
     ("wl_kernel.integrations.page.disable", "Disable"),
-    ("wl_kernel.integrations.page.disable_title", "Disable this connection"),
+    (
+        "wl_kernel.integrations.page.disable_title",
+        "Disable this connection",
+    ),
     ("wl_kernel.integrations.page.reason", "Reason"),
     (
         "wl_kernel.integrations.page.reason_hint",
         "Why is it switched off? Nothing is sent while it is disabled; the queue is kept.",
     ),
     ("wl_kernel.integrations.page.enable", "Enable"),
-    ("wl_kernel.integrations.page.enable_title", "Enable this connection"),
+    (
+        "wl_kernel.integrations.page.enable_title",
+        "Enable this connection",
+    ),
     (
         "wl_kernel.integrations.page.enable_message",
         "The queued calls are sent in order.",
@@ -373,7 +388,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_kernel.integrations.page.down_after", "Down after"),
     ("wl_kernel.integrations.page.minutes", ":minutes minutes"),
     ("wl_kernel.integrations.page.last_error", "Last error"),
-    ("wl_kernel.integrations.page.disabled_reason", "Disabled because"),
+    (
+        "wl_kernel.integrations.page.disabled_reason",
+        "Disabled because",
+    ),
     ("wl_kernel.integrations.page.fallback", "Manual fallback"),
     ("wl_kernel.integrations.page.screens", "Screens affected"),
     ("wl_kernel.integrations.page.queue", "Queued calls"),
@@ -382,7 +400,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_kernel.integrations.page.enqueued_at", "Queued at"),
     ("wl_kernel.integrations.page.attempts", "Failed attempts"),
     ("wl_kernel.integrations.page.next_attempt", "Next attempt"),
-    ("wl_kernel.integrations.page.queue_empty", "Nothing is queued."),
+    (
+        "wl_kernel.integrations.page.queue_empty",
+        "Nothing is queued.",
+    ),
     (
         "wl_kernel.integrations.reconcile.title",
         "Reconcile :connection: manual work against the late sync",
@@ -464,7 +485,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_kernel.compliance.page.empty", "No open alerts."),
     ("wl_kernel.compliance.kind.failed", "Failed"),
     ("wl_kernel.compliance.kind.stopped", "Stopped"),
-    ("wl_kernel.compliance.kind.missed", "Did not run on schedule"),
+    (
+        "wl_kernel.compliance.kind.missed",
+        "Did not run on schedule",
+    ),
     (
         "wl_kernel.compliance.attachment_invalid",
         "Give the number of a document.",

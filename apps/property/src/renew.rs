@@ -135,11 +135,7 @@ fn skipped<'a>(
 /// # Errors
 ///
 /// 422 when no renewal version of `old` is `active`; the database's errors.
-pub(crate) async fn renew_effects(
-    tx: &mut Transaction,
-    old: &Lease,
-    next: Option<i64>,
-) -> Result {
+pub(crate) async fn renew_effects(tx: &mut Transaction, old: &Lease, next: Option<i64>) -> Result {
     let found = match next {
         Some(id) => Lease::find(&mut *tx, id).await?,
         None => {
@@ -277,10 +273,9 @@ fn to_relink(all: Vec<ChequeSummary>, cancelled: &[i64]) -> Vec<ChequeSummary> {
             matches!(
                 cheque.status,
                 ChequeStatus::Received | ChequeStatus::DueForDeposit
-            ) && cheque
-                .linked
-                .iter()
-                .any(|link| link.subject_type == CHARGE_SUBJECT_TYPE && cancelled.contains(&link.subject_id))
+            ) && cheque.linked.iter().any(|link| {
+                link.subject_type == CHARGE_SUBJECT_TYPE && cancelled.contains(&link.subject_id)
+            })
         })
         .collect()
 }
@@ -325,20 +320,23 @@ pub(crate) async fn after_renew(state: &AppState, new: &Lease) -> Result {
     }
     let list = waiting
         .iter()
-        .map(|c| format!("{} ({}, {}, {})", c.number, c.bank, c.date, crate::money_text(c.amount)))
+        .map(|c| {
+            format!(
+                "{} ({}, {}, {})",
+                c.number,
+                c.bank,
+                c.date,
+                crate::money_text(c.amount)
+            )
+        })
         .collect::<Vec<_>>()
         .join("; ");
     let title = english(
         "property.tasks.relink_cheques",
         &[("lease", &new.number_with_version())],
     );
-    let task = RoleTask::new(
-        new.subject(),
-        ACCOUNTANT_ROLE,
-        &title,
-        &relink_key(new),
-    )
-    .description(&list);
+    let task =
+        RoleTask::new(new.subject(), ACCOUNTANT_ROLE, &title, &relink_key(new)).description(&list);
     crate::tasks::open(state, &new.scope(), task).await?;
     Ok(())
 }

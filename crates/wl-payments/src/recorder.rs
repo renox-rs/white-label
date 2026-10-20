@@ -13,8 +13,8 @@ use renox::prelude::*;
 use wl_kernel::PartyId;
 use wl_kernel::Subject;
 use wl_kernel::payments::{
-    AllocationTarget, BankPayment, PaymentFuture, PaymentId, PaymentRecorder, PaymentSummary, RecordPayment,
-    RefundId, RefundRequest as KernelRefundRequest, ReversalReason, UnpaidRefund,
+    AllocationTarget, BankPayment, PaymentFuture, PaymentId, PaymentRecorder, PaymentSummary,
+    RecordPayment, RefundId, RefundRequest as KernelRefundRequest, ReversalReason, UnpaidRefund,
 };
 
 use crate::payment::Payment;
@@ -133,7 +133,12 @@ impl PaymentRecorder for Payments {
         bank_account: &'a str,
         after: NaiveDate,
     ) -> PaymentFuture<'a, Vec<BankPayment>> {
-        Box::pin(credit::payments_after(db, legal_entity_id, bank_account, after))
+        Box::pin(credit::payments_after(
+            db,
+            legal_entity_id,
+            bank_account,
+            after,
+        ))
     }
 
     fn refunds_unpaid<'a>(

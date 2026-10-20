@@ -101,7 +101,10 @@ pub struct Done(Arc<Mutex<Vec<String>>>);
 impl Done {
     /// The keys of the actions that went through, oldest first.
     pub fn all(&self) -> Vec<String> {
-        self.0.lock().unwrap_or_else(PoisonError::into_inner).clone()
+        self.0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
     }
 }
 
@@ -112,7 +115,10 @@ pub struct Recording(Arc<Mutex<Vec<NotifyRequest>>>);
 impl Recording {
     /// Every request so far.
     pub fn all(&self) -> Vec<NotifyRequest> {
-        self.0.lock().unwrap_or_else(PoisonError::into_inner).clone()
+        self.0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
     }
 }
 
@@ -150,7 +156,11 @@ async fn act(
     Form(form): Form<ActionForm>,
 ) -> Result<String> {
     let action = PortalAction::from_key(&key).ok_or(Error::NotFound)?;
-    let lang = state.lang(if form.lang.is_empty() { "en" } else { &form.lang });
+    let lang = state.lang(if form.lang.is_empty() {
+        "en"
+    } else {
+        &form.lang
+    });
     PortalGuard::require(&state, &lang, &user, PartyId(form.party), action).await?;
     if let Some(done) = state.provided::<Done>() {
         done.0
@@ -281,7 +291,12 @@ impl Booted {
         let grant = PortalAccess::register(
             self.state(),
             user.id,
-            NewGrant::new(PartyId(person), PartyId(party), "tenant", &["primary_contact"]),
+            NewGrant::new(
+                PartyId(person),
+                PartyId(party),
+                "tenant",
+                &["primary_contact"],
+            ),
         )
         .await
         .unwrap();
@@ -324,11 +339,7 @@ pub async fn boot() -> Booted {
     let path = views.path().join("layouts/app.html");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(&path, LAYOUT).unwrap();
-    let (blocks, done, notices) = (
-        Blocks::default(),
-        Done::default(),
-        Recording::default(),
-    );
+    let (blocks, done, notices) = (Blocks::default(), Done::default(), Recording::default());
     let app = App::new()
         .module(Auth::new())
         .module(Permissions)

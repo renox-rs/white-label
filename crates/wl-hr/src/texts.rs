@@ -108,7 +108,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_hr.onboarding.trigger.manual", "HR"),
     ("wl_hr.onboarding.empty", "No onboarding"),
     ("wl_hr.onboarding.start", "Start an onboarding"),
-    ("wl_hr.onboarding.start_title", "Start an onboarding by hand"),
+    (
+        "wl_hr.onboarding.start_title",
+        "Start an onboarding by hand",
+    ),
     (
         "wl_hr.onboarding.start_description",
         "Pick a template, e.g. for a new role; the steps are due from the start date.",
@@ -140,10 +143,7 @@ const TEXTS: &[(&str, &str)] = &[
         "A required step is still open.",
     ),
     ("wl_hr.onboarding.problem.reason", "Give the reason."),
-    (
-        "wl_hr.onboarding.cancelled_exit",
-        "The employee exited.",
-    ),
+    ("wl_hr.onboarding.cancelled_exit", "The employee exited."),
     (
         "wl_hr.onboarding.cancelled_death",
         "The employee died in service.",

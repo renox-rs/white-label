@@ -21,7 +21,10 @@ async fn hrm26_activate_takes_an_onboarding_record_to_active() {
 
     t.app.acting_as(&viewer);
     t.app
-        .post(&format!("/hr/employees/{}/transitions/activate", ravi.id), &[("reason", "")])
+        .post(
+            &format!("/hr/employees/{}/transitions/activate", ravi.id),
+            &[("reason", "")],
+        )
         .await
         .assert_forbidden();
     assert_eq!(
@@ -31,7 +34,10 @@ async fn hrm26_activate_takes_an_onboarding_record_to_active() {
 
     t.app.acting_as(&hana);
     t.app
-        .post(&format!("/hr/employees/{}/transitions/activate", ravi.id), &[("reason", "")])
+        .post(
+            &format!("/hr/employees/{}/transitions/activate", ravi.id),
+            &[("reason", "")],
+        )
         .await
         .assert_status(303);
     let after = Employee::find_or_404(t.db(), ravi.id).await.unwrap();
@@ -44,7 +50,10 @@ async fn hrm26_activate_takes_an_onboarding_record_to_active() {
     // Only a record in onboarding is activated.
     t.app
         .htmx()
-        .post(&format!("/hr/employees/{}/transitions/activate", ravi.id), &[("reason", "")])
+        .post(
+            &format!("/hr/employees/{}/transitions/activate", ravi.id),
+            &[("reason", "")],
+        )
         .await
         .assert_status(422);
 }

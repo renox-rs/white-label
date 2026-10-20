@@ -122,7 +122,9 @@ pub(crate) fn transitions() -> Vec<Transition<Cheque>> {
                 let input = represent_input(ctx);
                 Box::pin(async move {
                     let input = input.ok_or_else(|| {
-                        Error::from(renox::anyhow::anyhow!("a re-presentation without its input"))
+                        Error::from(renox::anyhow::anyhow!(
+                            "a re-presentation without its input"
+                        ))
                     })?;
                     // Not the status column, so outside the machine's guard.
                     Cheque::query()
@@ -293,6 +295,9 @@ mod tests {
         let blank = input(day(5), false, Some("  "));
         assert!(represent_problem(&bounced(), Some(&blank), day(1)).is_some());
         let note_only = input(day(5), false, Some("called the drawer"));
-        assert_eq!(represent_problem(&bounced(), Some(&note_only), day(1)), None);
+        assert_eq!(
+            represent_problem(&bounced(), Some(&note_only), day(1)),
+            None
+        );
     }
 }

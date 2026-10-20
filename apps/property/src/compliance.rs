@@ -187,7 +187,14 @@ pub async fn on_expired(state: &AppState, event: &DocumentExpired) -> Result {
     if !CERTIFICATE_KINDS.contains(&event.kind.as_str()) {
         return Ok(());
     }
-    let raised = raise(&state.db, building_id, CERTIFICATE_EXPIRED, &event.kind, today()).await?;
+    let raised = raise(
+        &state.db,
+        building_id,
+        CERTIFICATE_EXPIRED,
+        &event.kind,
+        today(),
+    )
+    .await?;
     if raised.is_none() {
         return Ok(());
     }
@@ -219,7 +226,14 @@ pub async fn on_accepted(state: &AppState, event: &DocumentAccepted) -> Result {
     if event.expires_on.is_some_and(|expiry| expiry < day) {
         return Ok(());
     }
-    clear(&state.db, building_id, CERTIFICATE_EXPIRED, &event.kind, day).await?;
+    clear(
+        &state.db,
+        building_id,
+        CERTIFICATE_EXPIRED,
+        &event.kind,
+        day,
+    )
+    .await?;
     Ok(())
 }
 
@@ -251,8 +265,14 @@ mod tests {
 
     #[test]
     fn only_a_building_subject_names_a_building() {
-        assert_eq!(building_of(&Subject::new(BUILDING_SUBJECT_TYPE, 4)), Some(4));
-        assert_eq!(building_of(&Subject::new("property.building_system", 4)), None);
+        assert_eq!(
+            building_of(&Subject::new(BUILDING_SUBJECT_TYPE, 4)),
+            Some(4)
+        );
+        assert_eq!(
+            building_of(&Subject::new("property.building_system", 4)),
+            None
+        );
     }
 
     #[test]

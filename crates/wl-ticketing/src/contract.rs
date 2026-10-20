@@ -335,7 +335,11 @@ impl ServiceContracts {
         if new.end_date < new.start_date {
             return Err(unprocessable("The end date is before the start date."));
         }
-        if directory(state).status(&state.db, new.vendor).await?.is_none() {
+        if directory(state)
+            .status(&state.db, new.vendor)
+            .await?
+            .is_none()
+        {
             return Err(unprocessable("The vendor is not a known party."));
         }
         let number = SERVICE_CONTRACT_SERIES
@@ -486,7 +490,9 @@ impl ServiceContracts {
         if !contract.covers_on(on) {
             return Ok(None);
         }
-        let status = directory(state).status(&state.db, contract.vendor()).await?;
+        let status = directory(state)
+            .status(&state.db, contract.vendor())
+            .await?;
         if status != Some(PartyStatus::Active)
             || crate::vendor_block::is_blocked(state, contract.vendor()).await?
         {
@@ -556,8 +562,14 @@ impl ServiceContracts {
         let at = renox::db::now();
         let mut subjects: Vec<Subject> = Vec::new();
         for row in &coverage {
-            flags::clear_covered(state, &row.subject(), row.category_id, REPLACEMENT_ACTIVE, at)
-                .await?;
+            flags::clear_covered(
+                state,
+                &row.subject(),
+                row.category_id,
+                REPLACEMENT_ACTIVE,
+                at,
+            )
+            .await?;
             if !subjects.contains(&row.subject()) {
                 subjects.push(row.subject());
             }
@@ -779,7 +791,14 @@ mod tests {
         let keys: Vec<_> = ContractStatus::ALL.iter().map(|s| s.as_str()).collect();
         assert_eq!(
             keys,
-            ["draft", "active", "expiring", "renewed", "expired", "terminated"]
+            [
+                "draft",
+                "active",
+                "expiring",
+                "renewed",
+                "expired",
+                "terminated"
+            ]
         );
         assert_eq!(ContractStatus::default(), ContractStatus::Draft);
     }
@@ -848,7 +867,10 @@ mod tests {
             vendor_party_id: 5,
             ..ServiceContract::default()
         };
-        assert_eq!(contract.subject().to_string(), "ticketing.service_contract:7");
+        assert_eq!(
+            contract.subject().to_string(),
+            "ticketing.service_contract:7"
+        );
         assert_eq!(contract.vendor(), PartyId(5));
     }
 }

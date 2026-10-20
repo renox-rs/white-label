@@ -32,21 +32,19 @@ use wl_kernel::cheques::ChequeStatus;
 use wl_kernel::invoicing::INVOICE_SUBJECT_TYPE;
 use wl_kernel::payments::{Direction, PaymentMethod};
 
+use crate::cheque::CaseType;
 use crate::cheque::{Cheque, ChequeReturn};
 use crate::cheque_bounce::{self, BounceRequest};
 use crate::cheque_deposit;
-use crate::cheque::CaseType;
 use crate::cheque_legal::{self, ReferRequest};
 use crate::cheque_represent::{self, RepresentRequest};
 use crate::cheque_settle::{
     self, ChequeReplacement, ReplacementKind, SETTLE_METHODS, SettleRequest,
 };
 use crate::cheque_write_off::{self, ChequeWriteOff};
-use crate::payment::Payment;
 use crate::followup::{ACCOUNTANT_ROLE, FollowupTask, money_text};
-use crate::pages::{
-    Text, Texts, filled, invalid, options, parse_amount, party_name, texts_in,
-};
+use crate::pages::{Text, Texts, filled, invalid, options, parse_amount, party_name, texts_in};
+use crate::payment::Payment;
 use crate::permissions;
 use crate::texts;
 
@@ -164,7 +162,11 @@ fn grid_with(t: Text<'_>) -> Grid {
                 .mobile()
                 .searchable(),
         )
-        .column(Column::text("number", &t("cheques.number")).searchable().mobile())
+        .column(
+            Column::text("number", &t("cheques.number"))
+                .searchable()
+                .mobile(),
+        )
         .column(Column::text("bank", &t("cheques.bank")).searchable())
         .column(Column::date("cheque_date", &t("cheques.date")))
         .column(Column::money("amount", &t("fields.amount")).currency_from("currency"))
@@ -441,7 +443,10 @@ async fn write_off_rows(
     let mut rows = Vec::new();
     for request in ChequeWriteOff::of_cheque(&state.db, cheque.id).await? {
         let invoice = wl_kernel::invoicing::invoicer(state)
-            .find(&state.db, wl_kernel::invoicing::InvoiceId(request.invoice_id))
+            .find(
+                &state.db,
+                wl_kernel::invoicing::InvoiceId(request.invoice_id),
+            )
             .await?;
         let label = invoice
             .and_then(|i| i.number)
@@ -485,8 +490,7 @@ async fn show(
         ("fees", money(cheque.bounce_fee_total)),
     ]);
     let history = state_machine::history(&db, Cheque::TABLE, cheque.id).await?;
-    let mut timeline =
-        state_machine::timeline(&history, Some(&state_machine::info_of::<Cheque>()));
+    let mut timeline = state_machine::timeline(&history, Some(&state_machine::info_of::<Cheque>()));
     timeline.sort_by(|a, b| a["time"].as_str().cmp(&b["time"].as_str()));
     let deposit_rights = user.has_permission(permissions::CHEQUES_DEPOSIT);
     let can_deposit = deposit_rights
@@ -546,7 +550,11 @@ async fn show(
         can_bounce,
         can_represent,
         can_refer,
-        case_types: options(&t, "cheques.case", &["civil_execution", "criminal_complaint"]),
+        case_types: options(
+            &t,
+            "cheques.case",
+            &["civil_execution", "criminal_complaint"],
+        ),
         owners,
         owner_default: user.id.to_string(),
         case_label: cheque
@@ -561,7 +569,10 @@ async fn show(
         settle_methods: options(
             &t,
             "method",
-            &SETTLE_METHODS.iter().map(|m| m.as_str()).collect::<Vec<_>>(),
+            &SETTLE_METHODS
+                .iter()
+                .map(|m| m.as_str())
+                .collect::<Vec<_>>(),
         ),
         replacement_kinds: options(&t, "cheques.replacement", &["cheque", "payment"]),
         replacements,
@@ -633,7 +644,11 @@ pub struct BounceForm {
 fn honoured_of(form: &BounceForm) -> Option<i64> {
     match filled(&form.honoured) {
         None => Some(0),
-        Some(text) if text.trim_matches(|c| c == '0' || c == '.' || c == ',').is_empty() => {
+        Some(text)
+            if text
+                .trim_matches(|c| c == '0' || c == '.' || c == ',')
+                .is_empty() =>
+        {
             Some(0)
         }
         Some(text) => parse_amount(text),
@@ -652,10 +667,18 @@ async fn store_bounce(
 ) -> Result<Response> {
     let t = texts_in(&lang);
     let Some(reason) = filled(&form.reason).and_then(reason_of) else {
-        return Err(invalid("reason", t("cheques.bounce.reason_required"), &form));
+        return Err(invalid(
+            "reason",
+            t("cheques.bounce.reason_required"),
+            &form,
+        ));
     };
     let Some(honoured) = honoured_of(&form) else {
-        return Err(invalid("honoured", t("cheques.bounce.honoured_invalid"), &form));
+        return Err(invalid(
+            "honoured",
+            t("cheques.bounce.honoured_invalid"),
+            &form,
+        ));
     };
     let request = BounceRequest {
         reason: reason.to_owned(),
@@ -663,11 +686,7 @@ async fn store_bounce(
         honoured,
     };
     match cheque_bounce::bounce(&state, &user, &cheque, &request).await {
-        Ok(_) => Ok((
-            Toast::success(t("cheques.bounce.done")),
-            renox::HxRefresh,
-        )
-            .into_response()),
+        Ok(_) => Ok((Toast::success(t("cheques.bounce.done")), renox::HxRefresh).into_response()),
         Err(TransitionError::Guard(message)) => {
             let field = if message.contains("certificate") {
                 "certificate"
@@ -767,10 +786,18 @@ async fn store_settle(
 ) -> Result<Response> {
     let t = texts_in(&lang);
     let Some(method) = filled(&form.method).and_then(settle_method_of) else {
-        return Err(invalid("method", t("cheques.settle.method_required"), &form));
+        return Err(invalid(
+            "method",
+            t("cheques.settle.method_required"),
+            &form,
+        ));
     };
     let Some(amount) = filled(&form.amount).and_then(parse_amount) else {
-        return Err(invalid("amount", t("cheques.settle.amount_required"), &form));
+        return Err(invalid(
+            "amount",
+            t("cheques.settle.amount_required"),
+            &form,
+        ));
     };
     let request = SettleRequest {
         method,
@@ -824,10 +851,18 @@ async fn store_replacement(
 ) -> Result<Response> {
     let t = texts_in(&lang);
     let Some(kind) = filled(&form.kind).and_then(replacement_kind_of) else {
-        return Err(invalid("kind", t("cheques.replacement.kind_required"), &form));
+        return Err(invalid(
+            "kind",
+            t("cheques.replacement.kind_required"),
+            &form,
+        ));
     };
     let Some(ref_id) = form.ref_id else {
-        return Err(invalid("ref_id", t("cheques.replacement.id_required"), &form));
+        return Err(invalid(
+            "ref_id",
+            t("cheques.replacement.id_required"),
+            &form,
+        ));
     };
     match cheque_settle::link_replacement(&state, &user, &cheque, kind, ref_id).await {
         Ok(_) => Ok((
@@ -880,7 +915,11 @@ async fn store_write_off(
 ) -> Result<Response> {
     let t = texts_in(&lang);
     let Some(reason) = filled(&form.reason) else {
-        return Err(invalid("reason", t("cheques.write_off.reason_required"), &form));
+        return Err(invalid(
+            "reason",
+            t("cheques.write_off.reason_required"),
+            &form,
+        ));
     };
     match cheque_write_off::write_off(&state, &user, &cheque, reason).await {
         Ok(done) => {
@@ -929,7 +968,13 @@ async fn store_refer(
         None => CaseType::CivilExecution,
         Some(code) => match case_type_of(code) {
             Some(case) => case,
-            None => return Err(invalid("case_type", t("cheques.refer.case_required"), &form)),
+            None => {
+                return Err(invalid(
+                    "case_type",
+                    t("cheques.refer.case_required"),
+                    &form,
+                ));
+            }
         },
     };
     let request = ReferRequest {
@@ -1029,14 +1074,23 @@ mod tests {
             assert_eq!(settle_method_of(code), None, "{code}");
         }
         assert_eq!(replacement_kind_of("cheque"), Some(ReplacementKind::Cheque));
-        assert_eq!(replacement_kind_of("payment"), Some(ReplacementKind::Payment));
+        assert_eq!(
+            replacement_kind_of("payment"),
+            Some(ReplacementKind::Payment)
+        );
         assert_eq!(replacement_kind_of("loan"), None);
     }
 
     #[test]
     fn a_case_is_a_civil_execution_or_a_criminal_complaint() {
-        assert_eq!(case_type_of("civil_execution"), Some(CaseType::CivilExecution));
-        assert_eq!(case_type_of(" criminal_complaint "), Some(CaseType::CriminalComplaint));
+        assert_eq!(
+            case_type_of("civil_execution"),
+            Some(CaseType::CivilExecution)
+        );
+        assert_eq!(
+            case_type_of(" criminal_complaint "),
+            Some(CaseType::CriminalComplaint)
+        );
         assert_eq!(case_type_of("arbitration"), None);
         for case in CaseType::ALL {
             let key = format!("cheques.case.{}", case.as_str());

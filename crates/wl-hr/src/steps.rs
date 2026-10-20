@@ -38,12 +38,12 @@ use renox::db::now;
 use renox::prelude::*;
 use renox::serde_json::json;
 use renox::state_machine::StateMachine;
+use wl_kernel::Subject;
 use wl_kernel::documents::{
     DocumentAccepted, SopStaff, Validity, guard as document_guard, sop_acknowledgements, today,
 };
 use wl_kernel::tickets::{ChecklistCompleted, ChecklistOutcome, ChecklistRunId, checklists};
 use wl_kernel::workforce::{EMPLOYEE_SUBJECT_TYPE, OnboardingCompleted};
-use wl_kernel::Subject;
 
 use crate::employee::Employee;
 use crate::onboarding::{Onboarding, OnboardingStatus, OnboardingStep, StepStatus};
@@ -300,7 +300,8 @@ pub async fn mark_done(
             }
         }
     }
-    let _outcome = step.transition(MARK_DONE)
+    let _outcome = step
+        .transition(MARK_DONE)
         .by_system()
         .input(&run)
         .meta(json!({ "ran_by": by }))
@@ -320,7 +321,11 @@ pub async fn mark_done(
 }
 
 /// Whether nothing is pending any more for `employee`.
-async fn sop_acknowledged_by(state: &AppState, employee: &Employee, scopes: &[Subject]) -> Result<bool> {
+async fn sop_acknowledged_by(
+    state: &AppState,
+    employee: &Employee,
+    scopes: &[Subject],
+) -> Result<bool> {
     let who = SopStaff {
         employee: employee.subject(),
         role: employee.job_role.clone(),
@@ -365,7 +370,8 @@ pub async fn waive(
     if step.assignees(&state.db).await?.contains(&by) {
         return Ok(Err(StepRefused::AssigneeCannotWaive));
     }
-    let _outcome = step.transition(WAIVE)
+    let _outcome = step
+        .transition(WAIVE)
         .by_system()
         .reason(reason)
         .input(&StepRun {
@@ -423,7 +429,8 @@ pub async fn reopen(
         return Ok(Err(StepRefused::SameUser));
     }
     let assignees = step.assignees(&state.db).await?;
-    let _outcome = step.transition(REOPEN)
+    let _outcome = step
+        .transition(REOPEN)
         .by_system()
         .reason(reason.clone())
         .meta(json!({ "ran_by": by }))
@@ -491,7 +498,8 @@ pub async fn start_checklist(
 
 /// Runs `mark_done` on `step` for the system, with `run` as its evidence.
 async fn done_by_system(state: &AppState, step: &OnboardingStep, run: StepRun) -> Result {
-    let _outcome = step.transition(MARK_DONE)
+    let _outcome = step
+        .transition(MARK_DONE)
         .by_system()
         .input(&run)
         .run(state)
@@ -616,7 +624,8 @@ pub async fn evaluate_system_steps(state: &AppState, onboarding_id: i64) -> Resu
     }
     let employee = Employee::find_or_404(&state.db, onboarding.employee_id).await?;
     let scopes = employee.scopes(&state.db).await?;
-    for step in open_steps_of_kind(&state.db, StepKind::Document, Some(onboarding_id), None).await? {
+    for step in open_steps_of_kind(&state.db, StepKind::Document, Some(onboarding_id), None).await?
+    {
         let Some(kind) = step.document_kind.clone() else {
             continue;
         };
@@ -640,7 +649,14 @@ pub async fn evaluate_system_steps(state: &AppState, onboarding_id: i64) -> Resu
             .await?;
         }
     }
-    for step in open_steps_of_kind(&state.db, StepKind::SopAcknowledgement, Some(onboarding_id), None).await? {
+    for step in open_steps_of_kind(
+        &state.db,
+        StepKind::SopAcknowledgement,
+        Some(onboarding_id),
+        None,
+    )
+    .await?
+    {
         if sop_acknowledged_by(state, &employee, &scopes).await? {
             done_by_system(state, &step, StepRun::default()).await?;
             OnboardingStep::query()
@@ -745,7 +761,10 @@ mod tests {
         ] {
             assert!(matches!(refused.into_error(), Error::Forbidden));
         }
-        assert!(matches!(StepRefused::NotFound.into_error(), Error::NotFound));
+        assert!(matches!(
+            StepRefused::NotFound.into_error(),
+            Error::NotFound
+        ));
         assert!(matches!(
             StepRefused::EvidenceRequired.into_error(),
             Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _)

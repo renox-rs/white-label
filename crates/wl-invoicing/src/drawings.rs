@@ -40,8 +40,8 @@ use crate::budget_category::{refused, refused_with};
 use crate::budget_notices::{DRAWING_CORRECTED, DRAWING_SELF_APPROVED, holders_of};
 use crate::config_of;
 use crate::drawings_machine::{
-    ACTION, DrawingApproval, DrawingStatus, RECORD_BELOW_LIMIT, RECORD_SELF,
-    REQUEST, RequestInput, SUBJECT_TYPE,
+    ACTION, DrawingApproval, DrawingStatus, RECORD_BELOW_LIMIT, RECORD_SELF, REQUEST, RequestInput,
+    SUBJECT_TYPE,
 };
 use crate::permissions;
 use crate::supplier_bill::{SupplierBill, SupplierBillStatus};
@@ -223,9 +223,12 @@ pub async fn open_request(
     };
     approval.insert(&state.db).await?;
     let config = config_of(state);
-    let holders =
-        users_with_permission_in(&state.db, permissions::DRAWINGS_APPROVE, &Scope::of_id::<LegalEntity>(entity))
-            .await?;
+    let holders = users_with_permission_in(
+        &state.db,
+        permissions::DRAWINGS_APPROVE,
+        &Scope::of_id::<LegalEntity>(entity),
+    )
+    .await?;
     let sole = config.drawings_self_approve
         && holders.len() == 1
         && holders.first().is_some_and(|u| u.id == requester);
@@ -262,7 +265,11 @@ async fn tell_self_approved(
     approval: &DrawingApproval,
 ) -> Result {
     let config = config_of(state);
-    let recipients = holders_of(&state.db, std::slice::from_ref(&config.drawings_notify_role)).await?;
+    let recipients = holders_of(
+        &state.db,
+        std::slice::from_ref(&config.drawings_notify_role),
+    )
+    .await?;
     if recipients.is_empty() {
         return Ok(());
     }
@@ -285,7 +292,9 @@ async fn recheck(
     request: &approvals::ApprovalRequest,
 ) -> Result<Option<String>> {
     let Some(approval) = DrawingApproval::find(&mut *tx, request.subject_id).await? else {
-        return Ok(Some(english("wl_invoicing.drawings.problem.not_found").to_owned()));
+        return Ok(Some(
+            english("wl_invoicing.drawings.problem.not_found").to_owned(),
+        ));
     };
     // The details of a drawing on another module's record cannot change while
     // the request waits: that module keeps them as they were entered.
@@ -465,7 +474,12 @@ mod tests {
 
     fn mapped() -> Mapped {
         let mut mapped = Mapped::default();
-        mapped.insert_for_test(MappingKind::CostCode, "owner_drawings", 2, BudgetKind::OwnerDrawings);
+        mapped.insert_for_test(
+            MappingKind::CostCode,
+            "owner_drawings",
+            2,
+            BudgetKind::OwnerDrawings,
+        );
         mapped.insert_for_test(MappingKind::CostCode, "marketing", 1, BudgetKind::Expense);
         mapped
     }

@@ -8,7 +8,7 @@ mod support;
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use renox::state_machine::{StateMachine, TransitionCtx};
-use wl_kernel::sales::{lead_conversion, LeadId};
+use wl_kernel::sales::{LeadId, lead_conversion};
 use wl_kernel::voids::RecordVoided;
 use wl_kernel::{PartyId, Subject};
 use wl_sales::lead_machine::{CONTACT, LOSE};
@@ -204,10 +204,14 @@ async fn sal20_a_lead_needs_a_source_and_a_campaign_where_the_setting_says() {
         LeadRefused::SourceRequired
     );
     assert_eq!(
-        wl_sales::lead::capture(t.state(), NewLead::staff(None, "Omar", "nowhere"), day(3, 1))
-            .await
-            .unwrap()
-            .unwrap_err(),
+        wl_sales::lead::capture(
+            t.state(),
+            NewLead::staff(None, "Omar", "nowhere"),
+            day(3, 1)
+        )
+        .await
+        .unwrap()
+        .unwrap_err(),
         LeadRefused::UnknownSource
     );
     assert_eq!(
@@ -229,9 +233,13 @@ async fn sal20_a_lead_needs_a_source_and_a_campaign_where_the_setting_says() {
     );
     assert_eq!(source_code(&t, &ok).await, "social");
     let referral = created(
-        wl_sales::lead::capture(t.state(), NewLead::staff(None, "Sara", "referral"), day(3, 5))
-            .await
-            .unwrap(),
+        wl_sales::lead::capture(
+            t.state(),
+            NewLead::staff(None, "Sara", "referral"),
+            day(3, 5),
+        )
+        .await
+        .unwrap(),
     );
     assert_eq!(referral.campaign_id, None);
 }
@@ -242,9 +250,13 @@ async fn sal20_a_lead_needs_a_source_and_a_campaign_where_the_setting_says() {
 async fn sal20_contact_needs_a_note_and_lose_a_reason() {
     let (t, _) = boot_events().await;
     let lead = created(
-        wl_sales::lead::capture(t.state(), NewLead::staff(None, "Omar", "referral"), day(3, 5))
-            .await
-            .unwrap(),
+        wl_sales::lead::capture(
+            t.state(),
+            NewLead::staff(None, "Omar", "referral"),
+            day(3, 5),
+        )
+        .await
+        .unwrap(),
     );
     let machine = Lead::machine();
     let blank = TransitionCtx::new(None).with_reason("  ");
@@ -254,10 +266,11 @@ async fn sal20_contact_needs_a_note_and_lose_a_reason() {
     assert!(contact.check_guards(&lead, &noted).await.is_ok());
     let lose = machine.find(LOSE).unwrap();
     assert!(lose.check_guards(&lead, &blank).await.is_err());
-    assert!(lose
-        .check_guards(&lead, &TransitionCtx::new(None).with_reason("duplicate"))
-        .await
-        .is_ok());
+    assert!(
+        lose.check_guards(&lead, &TransitionCtx::new(None).with_reason("duplicate"))
+            .await
+            .is_ok()
+    );
 }
 
 /// A lead closed as duplicate or spam is left out of the counts.
@@ -265,13 +278,23 @@ async fn sal20_contact_needs_a_note_and_lose_a_reason() {
 async fn sal20_duplicate_and_spam_leads_are_left_out_of_the_counts() {
     let (t, _) = boot_events().await;
     let lead = created(
-        wl_sales::lead::capture(t.state(), NewLead::staff(None, "Omar", "referral"), day(3, 5))
-            .await
-            .unwrap(),
+        wl_sales::lead::capture(
+            t.state(),
+            NewLead::staff(None, "Omar", "referral"),
+            day(3, 5),
+        )
+        .await
+        .unwrap(),
     );
     Lead::query()
         .where_(Lead::ID.eq(lead.id))
-        .update(t.db(), &[("status", &"lost"), ("lost_reason", &Some("spam_or_invalid"))])
+        .update(
+            t.db(),
+            &[
+                ("status", &"lost"),
+                ("lost_reason", &Some("spam_or_invalid")),
+            ],
+        )
         .await
         .unwrap();
     let lead = Lead::find(t.db(), lead.id).await.unwrap().unwrap();
@@ -296,15 +319,19 @@ async fn sal20_voiding_the_conversion_record_reverts_the_win() {
     // A new lead is not won: only a contacted or qualified one.
     let record = Subject::new("test.conversion", 1);
     let conversion = lead_conversion(t.state());
-    assert!(!conversion
-        .win(t.state(), LeadId(lead.id), record.clone())
-        .await
-        .unwrap());
+    assert!(
+        !conversion
+            .win(t.state(), LeadId(lead.id), record.clone())
+            .await
+            .unwrap()
+    );
     set_status(&t, &lead, "qualified").await;
-    assert!(conversion
-        .win(t.state(), LeadId(lead.id), record.clone())
-        .await
-        .unwrap());
+    assert!(
+        conversion
+            .win(t.state(), LeadId(lead.id), record.clone())
+            .await
+            .unwrap()
+    );
     let won = Lead::find(t.db(), lead.id).await.unwrap().unwrap();
     assert_eq!(won.status, LeadStatus::Won);
     assert_eq!(won.converted(), Some(record.clone()));
@@ -350,10 +377,15 @@ async fn sal20_voiding_the_conversion_record_reverts_the_win() {
     assert_eq!(reverted.len(), 1);
     assert_eq!(reverted[0].voided, record);
     // The acquisition set from the lead, with no other first sale, is cleared.
-    assert!(PartyAcquisition::of_party(t.db(), PartyId(10))
-        .await
-        .unwrap()
-        .is_none());
+    assert!(
+        PartyAcquisition::of_party(t.db(), PartyId(10))
+            .await
+            .unwrap()
+            .is_none()
+    );
     assert_eq!(events.changed.lock().unwrap().len(), 1);
-    assert_eq!(events.changed.lock().unwrap()[0].reason, "lead_win_reverted");
+    assert_eq!(
+        events.changed.lock().unwrap()[0].reason,
+        "lead_win_reverted"
+    );
 }

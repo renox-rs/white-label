@@ -23,7 +23,9 @@ use renox::prelude::*;
 use serde::Serialize;
 use wl_kernel::documents::dubai_date;
 
-use crate::budget::{CompanyBudget, CompanyBudgetLine, fiscal_year_of, month_end, month_start, year_start};
+use crate::budget::{
+    CompanyBudget, CompanyBudgetLine, fiscal_year_of, month_end, month_start, year_start,
+};
 use crate::budget_actual::{self, ActualItem};
 use crate::budget_category::{BudgetCategory, BudgetKind, BudgetMapping};
 use crate::config::InvoicingConfig;
@@ -140,7 +142,10 @@ impl Report {
     pub fn operating(&self) -> (i64, i64) {
         let (income_budget, income_actual) = self.income_total();
         let (expense_budget, expense_actual) = self.expense_total();
-        (income_budget - expense_budget, income_actual - expense_actual)
+        (
+            income_budget - expense_budget,
+            income_actual - expense_actual,
+        )
     }
 
     /// The operating result less the owner drawings.
@@ -250,8 +255,12 @@ pub async fn build(db: &Db, config: &InvoicingConfig, query: &ReportQuery) -> Re
             }
         }
     }
-    let (income, expense, drawings) =
-        assemble(&categories, &budget_sums, &actual_sums, &query.uncategorised);
+    let (income, expense, drawings) = assemble(
+        &categories,
+        &budget_sums,
+        &actual_sums,
+        &query.uncategorised,
+    );
     let mapping_changed = BudgetMapping::query()
         .order_by_desc(BudgetMapping::UPDATED_AT)
         .first(db)

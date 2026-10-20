@@ -95,7 +95,9 @@ async fn bl_prp_07_a_renewal_from_expired_does_not_bill_a_period_twice() {
     renewal::run(s.t.state(), y28(1, 1)).await.unwrap();
     assert_eq!(s.t.status(&v1).await, LeaseStatus::Expired);
     // January and February are invoiced by the daily run.
-    property::invoicing::run(s.t.state(), y28(2, 15)).await.unwrap();
+    property::invoicing::run(s.t.state(), y28(2, 15))
+        .await
+        .unwrap();
     let holding: Vec<LeaseCharge> = s
         .charges(&v1)
         .await
@@ -127,7 +129,12 @@ async fn bl_prp_07_a_renewal_from_expired_does_not_bill_a_period_twice() {
     // invoiced, and so do the charges of 2027.
     let v1_charges = s.charges(&v1).await;
     for charge in v1_charges.iter().filter(|c| c.due_date >= y28(3, 1)) {
-        assert_eq!(charge.status, ChargeStatus::Cancelled, "{}", charge.due_date);
+        assert_eq!(
+            charge.status,
+            ChargeStatus::Cancelled,
+            "{}",
+            charge.due_date
+        );
     }
     let cancelled = v1_charges
         .iter()
@@ -156,13 +163,20 @@ async fn bl_prp_07_a_renewal_from_expired_does_not_bill_a_period_twice() {
     assert_eq!(live[9].due_date, y28(12, 1));
     assert!(live.iter().all(|c| c.amount == aed(10_000)));
     for skipped in v2_charges.iter().filter(|c| c.due_date < y28(3, 1)) {
-        assert_eq!(skipped.status, ChargeStatus::Cancelled, "{}", skipped.due_date);
+        assert_eq!(
+            skipped.status,
+            ChargeStatus::Cancelled,
+            "{}",
+            skipped.due_date
+        );
     }
 
     // Nothing bills a period twice: the run after the activation drafts no
     // invoice for January or February again.
     let before = s.t.invoices.all().len();
-    property::invoicing::run(s.t.state(), y28(3, 1)).await.unwrap();
+    property::invoicing::run(s.t.state(), y28(3, 1))
+        .await
+        .unwrap();
     assert_eq!(s.t.invoices.all().len(), before + 1, "March only");
 }
 
@@ -183,11 +197,20 @@ async fn bl_prp_07_a_renewal_that_starts_after_the_end_cancels_nothing() {
     assert!(after.iter().all(|c| c.status == ChargeStatus::Scheduled));
     let v2_charges = s.charges(&v2).await;
     assert_eq!(v2_charges.len(), 12);
-    assert!(v2_charges.iter().all(|c| c.status == ChargeStatus::Scheduled));
+    assert!(
+        v2_charges
+            .iter()
+            .all(|c| c.status == ChargeStatus::Scheduled)
+    );
     assert!(s.t.tasks.with_key("property.relink_cheques:").is_empty());
     // No period was invoiced twice, so there is nothing to compare.
     let v2_now = s.t.reload(&v2).await;
-    assert!(renew::differences(s.t.db(), &v2_now).await.unwrap().is_empty());
+    assert!(
+        renew::differences(s.t.db(), &v2_now)
+            .await
+            .unwrap()
+            .is_empty()
+    );
 }
 
 /// AC3: the versions are linked both ways, also from `renewal_due`.
@@ -213,7 +236,9 @@ async fn bl_prp_07_a_different_rent_for_an_invoiced_period_is_shown_not_adjusted
     let s = scene().await;
     let v1 = s.year().await;
     renewal::run(s.t.state(), y28(1, 1)).await.unwrap();
-    property::invoicing::run(s.t.state(), y28(2, 15)).await.unwrap();
+    property::invoicing::run(s.t.state(), y28(2, 15))
+        .await
+        .unwrap();
 
     // AED 11,000 a month: the rent goes up, so the tenant accepted it.
     let v2 = s.renewal(&v1, aed(132_000)).await;
@@ -233,13 +258,12 @@ async fn bl_prp_07_a_different_rent_for_an_invoiced_period_is_shown_not_adjusted
     }
     assert!(renew::any_difference(&rows));
     // Nothing was credited or charged by the platform.
-    let credited = s
-        .t
-        .invoices
-        .all()
-        .iter()
-        .filter(|i| i.summary.status == wl_kernel::InvoiceStatus::Credited)
-        .count();
+    let credited =
+        s.t.invoices
+            .all()
+            .iter()
+            .filter(|i| i.summary.status == wl_kernel::InvoiceStatus::Credited)
+            .count();
     assert_eq!(credited, 0);
 
     s.t.app.acting_as(&s.manager);
@@ -289,10 +313,16 @@ async fn bl_prp_07_cheques_of_cancelled_charges_stay_and_the_accountant_relinks_
         wl_kernel::ChequeStatus::Received,
         "the cheque is not touched"
     );
-    let tasks = s.t.tasks.with_key(&renew::relink_key(&s.t.reload(&v2).await));
+    let tasks =
+        s.t.tasks
+            .with_key(&renew::relink_key(&s.t.reload(&v2).await));
     assert_eq!(tasks.len(), 1);
     assert!(tasks[0].open);
-    assert!(tasks[0].description.contains("C-0301"), "{}", tasks[0].description);
+    assert!(
+        tasks[0].description.contains("C-0301"),
+        "{}",
+        tasks[0].description
+    );
 }
 
 /// `renew` is the activation's: it is refused when no renewal version of the

@@ -253,11 +253,14 @@ pub(crate) fn transitions() -> Vec<Transition<Cheque>> {
             .permission(permissions::CHEQUES_MANAGE)
             .from([ChequeStatus::Bounced, ChequeStatus::LegalCase])
             .to(ChequeStatus::Replaced)
-            .guard("replacements_cover_the_open_amount", |cheque: &Cheque, ctx| {
-                let covered = ctx.input_as::<ReplaceInput>().ok().map(|i| i.covered);
-                let problem = replace_problem(cheque, covered);
-                Box::pin(async move { problem.map_or(Ok(()), Err) })
-            })
+            .guard(
+                "replacements_cover_the_open_amount",
+                |cheque: &Cheque, ctx| {
+                    let covered = ctx.input_as::<ReplaceInput>().ok().map(|i| i.covered);
+                    let problem = replace_problem(cheque, covered);
+                    Box::pin(async move { problem.map_or(Ok(()), Err) })
+                },
+            )
             .effect(|cheque: &Cheque, _ctx, tx| {
                 let id = cheque.id;
                 Box::pin(async move {
@@ -356,7 +359,10 @@ pub async fn settle_part(
     };
     let (payment, received) = cheque_money::record_in(&mut tx, prepared).await?;
     tx.commit().await?;
-    received.emit(state).await.map_err(TransitionError::Failed)?;
+    received
+        .emit(state)
+        .await
+        .map_err(TransitionError::Failed)?;
     cheque_money::allocate_to_links(state, &cheque, &payment, payment.amount, Some(user.id))
         .await?;
     outcome.emit(state).await.map_err(TransitionError::Failed)?;
@@ -700,7 +706,10 @@ mod tests {
     #[test]
     fn a_part_payment_is_below_the_open_amount() {
         let cheque = bounced(1_400_000);
-        assert_eq!(settle_problem(&cheque, Some(&input(PaymentMethod::Cash, 400_000))), None);
+        assert_eq!(
+            settle_problem(&cheque, Some(&input(PaymentMethod::Cash, 400_000))),
+            None
+        );
         assert_eq!(
             settle_problem(&cheque, Some(&input(PaymentMethod::Transfer, 1_399_999))),
             None
@@ -714,10 +723,26 @@ mod tests {
     #[test]
     fn a_part_payment_is_cash_transfer_or_card_on_a_received_cheque() {
         let cheque = bounced(1_400_000);
-        for method in [PaymentMethod::Cheque, PaymentMethod::Gateway, PaymentMethod::SetOff] {
-            assert!(settle_problem(&cheque, Some(&input(method, 100))).is_some(), "{method:?}");
+        for method in [
+            PaymentMethod::Cheque,
+            PaymentMethod::Gateway,
+            PaymentMethod::SetOff,
+        ] {
+            assert!(
+                settle_problem(&cheque, Some(&input(method, 100))).is_some(),
+                "{method:?}"
+            );
         }
-        assert!(settle_problem(&cheque, Some(&SettleInput { method: None, amount: 100 })).is_some());
+        assert!(
+            settle_problem(
+                &cheque,
+                Some(&SettleInput {
+                    method: None,
+                    amount: 100
+                })
+            )
+            .is_some()
+        );
         let issued = Cheque {
             direction: Direction::Out,
             ..cheque
@@ -772,9 +797,20 @@ mod tests {
     fn a_replacement_cheque_is_good_while_it_is_not_bounced_or_ended() {
         let original = bounced(1_000_000);
         assert_eq!(replacement_cheque_problem(&original, &candidate()), None);
-        for status in [ChequeStatus::Deposited, ChequeStatus::Cleared, ChequeStatus::DueForDeposit] {
-            let ok = Cheque { status, ..candidate() };
-            assert_eq!(replacement_cheque_problem(&original, &ok), None, "{status:?}");
+        for status in [
+            ChequeStatus::Deposited,
+            ChequeStatus::Cleared,
+            ChequeStatus::DueForDeposit,
+        ] {
+            let ok = Cheque {
+                status,
+                ..candidate()
+            };
+            assert_eq!(
+                replacement_cheque_problem(&original, &ok),
+                None,
+                "{status:?}"
+            );
         }
         for status in [
             ChequeStatus::Bounced,
@@ -783,21 +819,39 @@ mod tests {
             ChequeStatus::WrittenOff,
             ChequeStatus::Returned,
         ] {
-            let bad = Cheque { status, ..candidate() };
-            assert!(replacement_cheque_problem(&original, &bad).is_some(), "{status:?}");
+            let bad = Cheque {
+                status,
+                ..candidate()
+            };
+            assert!(
+                replacement_cheque_problem(&original, &bad).is_some(),
+                "{status:?}"
+            );
         }
     }
 
     #[test]
     fn a_replacement_cheque_is_of_the_same_party_direction_and_currency() {
         let original = bounced(1_000_000);
-        let same = Cheque { id: 1, ..candidate() };
+        let same = Cheque {
+            id: 1,
+            ..candidate()
+        };
         assert!(replacement_cheque_problem(&original, &same).is_some());
-        let party = Cheque { party_id: 8, ..candidate() };
+        let party = Cheque {
+            party_id: 8,
+            ..candidate()
+        };
         assert!(replacement_cheque_problem(&original, &party).is_some());
-        let issued = Cheque { direction: Direction::Out, ..candidate() };
+        let issued = Cheque {
+            direction: Direction::Out,
+            ..candidate()
+        };
         assert!(replacement_cheque_problem(&original, &issued).is_some());
-        let usd = Cheque { currency: "USD".into(), ..candidate() };
+        let usd = Cheque {
+            currency: "USD".into(),
+            ..candidate()
+        };
         assert!(replacement_cheque_problem(&original, &usd).is_some());
     }
 
@@ -812,11 +866,20 @@ mod tests {
             status: wl_kernel::payments::PaymentStatus::Received,
             ..Default::default()
         };
-        assert_eq!(replacement_payment_problem(&original, &payment, 1_000_000), None);
+        assert_eq!(
+            replacement_payment_problem(&original, &payment, 1_000_000),
+            None
+        );
         assert!(replacement_payment_problem(&original, &payment, 0).is_some());
-        let out = Payment { direction: Direction::Out, ..payment.clone() };
+        let out = Payment {
+            direction: Direction::Out,
+            ..payment.clone()
+        };
         assert!(replacement_payment_problem(&original, &out, 1).is_some());
-        let other = Payment { party_id: 9, ..payment.clone() };
+        let other = Payment {
+            party_id: 9,
+            ..payment.clone()
+        };
         assert!(replacement_payment_problem(&original, &other, 1).is_some());
         let reversed = Payment {
             status: wl_kernel::payments::PaymentStatus::Reversed,

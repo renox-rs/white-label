@@ -44,20 +44,19 @@ use wl_kernel::cheques::ChequeSummary;
 use wl_kernel::parties::directory;
 
 use super::{Texts, buildings_with, lease_kind, text};
-use crate::building::Building;
-use crate::charge::{ChargeStatus, LeaseCharge, RENT};
-use crate::cheques::{ChequeEntry, of_version, register_cheques};
-use crate::lease::{Lease, LeaseStatus, RenewalDecision, VersionKind};
 use crate::arrears::{self, ArrearsDemand, NewPlan, PaymentPlan};
+use crate::building::Building;
 use crate::cancellation::{self, CancelRequest};
-use crate::deposit_forfeit::{self, ApplyRequest, DepositSettlement};
-use crate::write_off::{self as write_off_mod, Consent};
-use crate::force::{self, ForceReason, ForceRequest};
+use crate::charge::{ChargeStatus, LeaseCharge, RENT};
 use crate::chase;
+use crate::cheques::{ChequeEntry, of_version, register_cheques};
+use crate::deposit_forfeit::{self, ApplyRequest, DepositSettlement};
+use crate::force::{self, ForceReason, ForceRequest};
+use crate::lease::{Lease, LeaseStatus, RenewalDecision, VersionKind};
 use crate::lease_machine::{ACTIVATE, CANCEL, SUBMIT};
+use crate::leases::{self, EjariInput, NewLease, NewVersion};
 use crate::legal_case::{self, CaseOutcome, CaseType, LegalCase, NewCase};
 use crate::notice::{self, NewNotice, NoticeParty, NoticeReason};
-use crate::leases::{self, EjariInput, NewLease, NewVersion};
 use crate::parse::{parse_aed, parse_date};
 use crate::permissions::{self, DEPOSITS_REFUND};
 use crate::renew;
@@ -67,6 +66,7 @@ use crate::terms;
 use crate::texts;
 use crate::unit::Unit;
 use crate::withdraw;
+use crate::write_off::{self as write_off_mod, Consent};
 
 /// The routes of the pages.
 pub fn routes() -> Routes {
@@ -91,7 +91,10 @@ pub fn routes() -> Routes {
         .name("property.lease_terms_answer")
         .post("/property/leases/{id}/renewal-decision", renewal_decision)
         .name("property.lease_renewal_decision")
-        .post("/property/leases/{id}/changed-terms-notice", changed_terms_notice)
+        .post(
+            "/property/leases/{id}/changed-terms-notice",
+            changed_terms_notice,
+        )
         .name("property.lease_changed_terms_notice")
         .post("/property/leases/{id}/notice", record_notice)
         .name("property.lease_notice")
@@ -103,7 +106,10 @@ pub fn routes() -> Routes {
         .name("property.lease_legal_case")
         .post("/property/leases/{id}/legal-cases/clear", clear_legal_case)
         .name("property.lease_legal_case_clear")
-        .post("/property/leases/{id}/move-out-inspection", move_out_inspection)
+        .post(
+            "/property/leases/{id}/move-out-inspection",
+            move_out_inspection,
+        )
         .name("property.lease_inspection")
         .post("/property/leases/{id}/terminate", terminate)
         .name("property.lease_terminate")
@@ -113,7 +119,10 @@ pub fn routes() -> Routes {
         .name("property.lease_payment_plan")
         .post("/property/leases/{id}/force-terminate", force_terminate)
         .name("property.lease_force_terminate")
-        .post("/property/leases/{id}/ejari-cancellation", ejari_cancellation)
+        .post(
+            "/property/leases/{id}/ejari-cancellation",
+            ejari_cancellation,
+        )
         .name("property.lease_ejari_cancellation")
         .post("/property/leases/{id}/apply-deposit", apply_deposit)
         .name("property.lease_apply_deposit")
@@ -516,7 +525,9 @@ async fn show(
     }
     let actions = lease.available(&user, &state.db).await?;
     let subject = lease.subject();
-    let pending = !approvals::pending_for(&state.db, &subject).await?.is_empty();
+    let pending = !approvals::pending_for(&state.db, &subject)
+        .await?
+        .is_empty();
     let approval_cards = approvals::cards_for(&state.db, &subject, &user, &lang).await?;
     let history = state_machine::history(&state.db, Lease::TABLE, lease.id).await?;
     let mut timeline = state_machine::timeline(&history, Some(&state_machine::info_of::<Lease>()));
@@ -623,7 +634,10 @@ async fn show(
             None => String::new(),
         };
         let (status, status_kind) = if demand.is_open() {
-            send_demands.push([demand.id.to_string(), format!("#{} · {}", demand.id, demand.created_on)]);
+            send_demands.push([
+                demand.id.to_string(),
+                format!("#{} · {}", demand.id, demand.created_on),
+            ]);
             (text(&lang, "arrears.demand_open"), "warning")
         } else if let Some(sent) = demand.sent_on {
             (
@@ -642,7 +656,9 @@ async fn show(
                 .map(|r| {
                     format!(
                         "{} ({})",
-                        r.number.clone().unwrap_or_else(|| format!("#{}", r.invoice_id)),
+                        r.number
+                            .clone()
+                            .unwrap_or_else(|| format!("#{}", r.invoice_id)),
                         crate::money_text(r.open_amount)
                     )
                 })
@@ -664,8 +680,16 @@ async fn show(
         lease.notice_of_changes_delivered_on
     };
     let notice_of_changes = match (delivered, lease.notice_of_changes_sent_on) {
-        (Some(day), _) => texts::t_with(&lang, "property.renewal.notice_delivered", &[("delivered", &day)]),
-        (None, Some(sent)) => texts::t_with(&lang, "property.renewal.notice_undelivered", &[("sent", &sent)]),
+        (Some(day), _) => texts::t_with(
+            &lang,
+            "property.renewal.notice_delivered",
+            &[("delivered", &day)],
+        ),
+        (None, Some(sent)) => texts::t_with(
+            &lang,
+            "property.renewal.notice_undelivered",
+            &[("sent", &sent)],
+        ),
         (None, None) => text(&lang, "renewal.notice_not_sent"),
     };
     let assessment = if lease.status == LeaseStatus::Draft {
@@ -703,8 +727,7 @@ async fn show(
     } else {
         crate::money_text(lease.deposit_amount)
     };
-    let landlord_notice =
-        lease.notice_party.as_deref() == Some(NoticeParty::Landlord.as_str());
+    let landlord_notice = lease.notice_party.as_deref() == Some(NoticeParty::Landlord.as_str());
     let notice_delivery = if lease.status == LeaseStatus::NoticeGiven && landlord_notice {
         match notice::delivered_on(&state, &lease).await? {
             Some(day) => texts::t_with(&lang, "property.notice.delivered_on", &[("day", &day)]),
@@ -733,10 +756,16 @@ async fn show(
         deposit,
         vat: vat_text(&lang, lease.vat_category),
         notice_days: lease.notice_days(),
-        effective_date: lease.effective_date.map(|d| d.to_string()).unwrap_or_default(),
+        effective_date: lease
+            .effective_date
+            .map(|d| d.to_string())
+            .unwrap_or_default(),
         terms: lease.terms.clone().unwrap_or_default(),
         ejari_number: lease.ejari_number.clone().unwrap_or_default(),
-        ejari_expires_on: lease.ejari_expires_on.map(|d| d.to_string()).unwrap_or_default(),
+        ejari_expires_on: lease
+            .ejari_expires_on
+            .map(|d| d.to_string())
+            .unwrap_or_default(),
         cancel_reason: lease.cancel_reason.clone().unwrap_or_default(),
         cancel_forfeit: if lease.cancel_forfeit > 0 {
             crate::money_text(lease.cancel_forfeit)
@@ -744,7 +773,10 @@ async fn show(
             String::new()
         },
         cancel_forfeit_clause: lease.cancel_forfeit_clause.clone().unwrap_or_default(),
-        follow_up_until: lease.follow_up_until.map(|d| d.to_string()).unwrap_or_default(),
+        follow_up_until: lease
+            .follow_up_until
+            .map(|d| d.to_string())
+            .unwrap_or_default(),
         notice_deadline: if running {
             renewal::notice_deadline(&lease).to_string()
         } else {
@@ -785,16 +817,31 @@ async fn show(
         notice_ground: lease.notice_ground.clone().unwrap_or_default(),
         planned_move_out: planned.map(|d| d.to_string()).unwrap_or_default(),
         notice_delivery,
-        inspection_done_on: lease.inspection_done_on.map(|d| d.to_string()).unwrap_or_default(),
-        keys_returned_on: lease.keys_returned_on.map(|d| d.to_string()).unwrap_or_default(),
-        actual_move_out: lease.actual_move_out.map(|d| d.to_string()).unwrap_or_default(),
-        rent_due_until: lease.rent_due_until.map(|d| d.to_string()).unwrap_or_default(),
+        inspection_done_on: lease
+            .inspection_done_on
+            .map(|d| d.to_string())
+            .unwrap_or_default(),
+        keys_returned_on: lease
+            .keys_returned_on
+            .map(|d| d.to_string())
+            .unwrap_or_default(),
+        actual_move_out: lease
+            .actual_move_out
+            .map(|d| d.to_string())
+            .unwrap_or_default(),
+        rent_due_until: lease
+            .rent_due_until
+            .map(|d| d.to_string())
+            .unwrap_or_default(),
         termination_credit: if lease.termination_credit > 0 {
             crate::money_text(lease.termination_credit)
         } else {
             String::new()
         },
-        ejari_cancelled_on: lease.ejari_cancelled_on.map(|d| d.to_string()).unwrap_or_default(),
+        ejari_cancelled_on: lease
+            .ejari_cancelled_on
+            .map(|d| d.to_string())
+            .unwrap_or_default(),
         force_reason: lease
             .force_reason
             .as_deref()
@@ -907,7 +954,11 @@ async fn show(
             && lease.ejari_cancelled_on.is_none(),
         can_force: manages && !pending && LeaseStatus::RUNNING.contains(&lease.status),
         can_send_demand: manages && !send_demands_empty,
-        can_plan: manages && !matches!(lease.status, LeaseStatus::Draft | LeaseStatus::PendingSignature | LeaseStatus::Cancelled),
+        can_plan: manages
+            && !matches!(
+                lease.status,
+                LeaseStatus::Draft | LeaseStatus::PendingSignature | LeaseStatus::Cancelled
+            ),
         can_cheques: creates
             && !matches!(
                 lease.status,
@@ -998,7 +1049,9 @@ async fn create(
     Path(unit_id): Path<i64>,
     Form(form): Form<LeaseForm>,
 ) -> Result<Response> {
-    let unit = Unit::find(&state.db, unit_id).await?.ok_or(Error::NotFound)?;
+    let unit = Unit::find(&state.db, unit_id)
+        .await?
+        .ok_or(Error::NotFound)?;
     if !user.has_permission_in(permissions::LEASES_CREATE, &unit.scope()) {
         return Err(Error::Forbidden);
     }
@@ -1103,7 +1156,11 @@ async fn submit(
     leases::submit(&state, &user, id)
         .await
         .map_err(TransitionError::into_error)?;
-    Ok((Toast::success(text(&lang, "leases.submitted")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(text(&lang, "leases.submitted")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// `POST /property/leases/{id}/activate`.
@@ -1188,7 +1245,11 @@ async fn extend(
 ) -> Result<Response> {
     let until = required_date(&form.until, "until")?;
     chase::extend(&state, &user, id, until).await?;
-    Ok((Toast::success(text(&lang, "chase.extended_done")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(text(&lang, "chase.extended_done")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// The form of the answer to "changes terms against the tenant?".
@@ -1216,7 +1277,11 @@ async fn terms_answer(
         _ => return Err(Error::BadRequest("against".to_owned())),
     };
     terms::answer(&state, &user, id, against, Some(form.reason)).await?;
-    Ok((Toast::success(text(&lang, "terms.answered")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(text(&lang, "terms.answered")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// The form of the renewal decision.
@@ -1241,7 +1306,11 @@ async fn renewal_decision(
         .parse()
         .map_err(|_| Error::BadRequest("decision".to_owned()))?;
     renewal::set_decision(&state, &user, id, decision).await?;
-    Ok((Toast::success(text(&lang, "renewal.decided")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(text(&lang, "renewal.decided")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// `POST /property/leases/{id}/changed-terms-notice` (`PRP.RUL.09`).
@@ -1252,7 +1321,11 @@ async fn changed_terms_notice(
     Path(id): Path<i64>,
 ) -> Result<Response> {
     renewal::send_changed_terms(&state, &user, id).await?;
-    Ok((Toast::success(text(&lang, "renewal.notice_sent")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(text(&lang, "renewal.notice_sent")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// `POST /property/leases/{id}/waive-deposit`.
@@ -1263,7 +1336,11 @@ async fn waive_deposit(
     Path(id): Path<i64>,
 ) -> Result<Response> {
     leases::waive_deposit(&state, &user, id).await?;
-    Ok((Toast::success(text(&lang, "leases.deposit_waived_done")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(text(&lang, "leases.deposit_waived_done")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// The form that records a notice to end the lease.
@@ -1297,10 +1374,18 @@ async fn record_notice(
     Path(id): Path<i64>,
     Form(form): Form<NoticeForm>,
 ) -> Result<Response> {
-    let party = NoticeParty::parse(&form.party)
-        .ok_or_else(|| Error::Status(StatusCode::UNPROCESSABLE_ENTITY, texts::english("property.notice.party_required", &[])))?;
-    let reason = NoticeReason::parse(&form.reason)
-        .ok_or_else(|| Error::Status(StatusCode::UNPROCESSABLE_ENTITY, texts::english("property.notice.reason_required", &[])))?;
+    let party = NoticeParty::parse(&form.party).ok_or_else(|| {
+        Error::Status(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            texts::english("property.notice.party_required", &[]),
+        )
+    })?;
+    let reason = NoticeReason::parse(&form.reason).ok_or_else(|| {
+        Error::Status(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            texts::english("property.notice.reason_required", &[]),
+        )
+    })?;
     let planned = if form.planned_move_out.trim().is_empty() {
         None
     } else {
@@ -1317,7 +1402,11 @@ async fn record_notice(
     notice::record(&state, &user, id, new)
         .await
         .map_err(TransitionError::into_error)?;
-    Ok((Toast::success(text(&lang, "notice.recorded")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(text(&lang, "notice.recorded")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// The form that changes the planned move-out date.
@@ -1338,7 +1427,11 @@ async fn planned_move_out(
 ) -> Result<Response> {
     let date = required_date(&form.planned_move_out, "planned_move_out")?;
     notice::change_planned_move_out(&state, &user, id, date).await?;
-    Ok((Toast::success(text(&lang, "notice.planned_changed")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(text(&lang, "notice.planned_changed")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// `POST /property/leases/{id}/withdraw-notice` (`PRP.ACL.20`).
@@ -1351,7 +1444,11 @@ async fn withdraw_notice(
     withdraw::withdraw(&state, &user, id)
         .await
         .map_err(TransitionError::into_error)?;
-    Ok((Toast::success(text(&lang, "withdraw.done")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(text(&lang, "withdraw.done")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// The form that sets a legal case flag.
@@ -1390,7 +1487,11 @@ async fn set_legal_case(
         new = new.existing_ticket(whole::<i64>(ticket, "ticket")?);
     }
     legal_case::set_case(&state, &user, id, new).await?;
-    Ok((Toast::success(text(&lang, "legal.set_done")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(text(&lang, "legal.set_done")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// The form that clears a legal case flag.
@@ -1431,7 +1532,11 @@ async fn clear_legal_case(
     })?;
     let note = Some(form.note).filter(|n| !n.trim().is_empty());
     legal_case::clear_case(&state, Some(&user), case_id, outcome, note).await?;
-    Ok((Toast::success(text(&lang, "legal.clear_done")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(text(&lang, "legal.clear_done")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// The form that records the move-out inspection.
@@ -1470,7 +1575,11 @@ async fn move_out_inspection(
         defects: form.defects.trim() == "yes",
     };
     termination::record_inspection(&state, &user, id, inspection).await?;
-    Ok((Toast::success(text(&lang, "inspection.recorded")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(text(&lang, "inspection.recorded")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// The form that terminates a lease.
@@ -1503,7 +1612,11 @@ async fn terminate(
     termination::terminate(&state, &user, id, termination)
         .await
         .map_err(TransitionError::into_error)?;
-    Ok((Toast::success(text(&lang, "terminate.done")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(text(&lang, "terminate.done")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// The form that sends a formal payment demand.
@@ -1525,7 +1638,11 @@ async fn send_arrears_demand(
 ) -> Result<Response> {
     let demand = whole::<i64>(&form.demand, "demand")?;
     arrears::send_demand(&state, &user, id, demand).await?;
-    Ok((Toast::success(text(&lang, "arrears.sent_done")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(text(&lang, "arrears.sent_done")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// The form that records a payment plan.
@@ -1553,7 +1670,11 @@ async fn payment_plan(
         latest_on: required_date(&form.latest, "latest")?,
     };
     arrears::record_plan(&state, &user, id, plan).await?;
-    Ok((Toast::success(text(&lang, "arrears.plan_done")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(text(&lang, "arrears.plan_done")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// The form that requests a forced termination.
@@ -1639,7 +1760,11 @@ async fn ejari_cancellation(
 ) -> Result<Response> {
     let day = required_date(&form.cancelled_on, "cancelled_on")?;
     termination::record_ejari_cancellation(&state, &user, id, day).await?;
-    Ok((Toast::success(text(&lang, "ejari.cancelled_done")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(text(&lang, "ejari.cancelled_done")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// The form of the Ejari registration.
@@ -1681,7 +1806,11 @@ async fn apply_deposit(
         request = request.second(whole::<i64>(&form.second_approver, "second_approver")?);
     }
     deposit_forfeit::apply(&state, &user, id, request).await?;
-    Ok((Toast::success(text(&lang, "deposit_forfeit.done")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(text(&lang, "deposit_forfeit.done")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// The form that asks to write off an invoice.
@@ -1771,7 +1900,11 @@ async fn ejari(
         },
     )
     .await?;
-    Ok((Toast::success(text(&lang, "ejari.recorded_done")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(text(&lang, "ejari.recorded_done")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// The form that records the post-dated cheques.
@@ -1804,10 +1937,14 @@ pub fn parse_cheque_lines(
         let n = index + 1;
         let parts: Vec<&str> = line.split('|').map(str::trim).collect();
         if parts.len() < 3 {
-            return Err(format!("Line {n}: number | YYYY-MM-DD | amount | instalment"));
+            return Err(format!(
+                "Line {n}: number | YYYY-MM-DD | amount | instalment"
+            ));
         }
-        let date = parse_date(parts[1]).ok_or_else(|| format!("Line {n}: the date is YYYY-MM-DD"))?;
-        let amount = parse_aed(parts[2]).ok_or_else(|| format!("Line {n}: the amount is AED 0.00"))?;
+        let date =
+            parse_date(parts[1]).ok_or_else(|| format!("Line {n}: the date is YYYY-MM-DD"))?;
+        let amount =
+            parse_aed(parts[2]).ok_or_else(|| format!("Line {n}: the amount is AED 0.00"))?;
         let charge_id = match parts.get(3).filter(|p| !p.is_empty()) {
             None => None,
             Some(position) => {
@@ -1841,7 +1978,11 @@ async fn cheques(
     let entries = parse_cheque_lines(&form.cheques, &charges)
         .map_err(|message| Error::Status(StatusCode::UNPROCESSABLE_ENTITY, message))?;
     register_cheques(&state, Some(user.id), &lease, &form.bank, entries).await?;
-    Ok((Toast::success(text(&lang, "cheques.recorded")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(text(&lang, "cheques.recorded")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 #[cfg(test)]

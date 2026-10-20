@@ -7,7 +7,9 @@
 
 mod support;
 
-use property::force::{EXECUTION_RECORD_KIND, INSPECTION_KIND, JUDGMENT_KIND, REPOSSESSION_BASIS_KIND};
+use property::force::{
+    EXECUTION_RECORD_KIND, INSPECTION_KIND, JUDGMENT_KIND, REPOSSESSION_BASIS_KIND,
+};
 use property::legal_case::{CaseOutcome, CaseStatus, CaseType, LegalCase};
 use property::{ChargeStatus, Lease, LeaseCharge, LeaseStatus, NewLease, UnitStatus};
 use renox::chrono::NaiveDate;
@@ -55,7 +57,9 @@ impl Scene {
         self.t.deposits.hold(&lease.agreement(), TENANT, aed(8_000));
         self.t.submit(&self.agent, &lease).await.assert_ok();
         self.t.activate(&self.manager, &lease).await.assert_ok();
-        property::invoicing::run(self.t.state(), d(3, 31)).await.unwrap();
+        property::invoicing::run(self.t.state(), d(3, 31))
+            .await
+            .unwrap();
         for invoice in self.t.invoices.all() {
             self.t.invoices.issue(invoice.summary.id.0);
         }
@@ -65,7 +69,9 @@ impl Scene {
     /// The evidence of an abandoned unit is attached to the lease.
     fn abandonment_evidence(&self, lease: &Lease) {
         self.t.docs.accept(&lease.subject(), INSPECTION_KIND);
-        self.t.docs.accept(&lease.subject(), REPOSSESSION_BASIS_KIND);
+        self.t
+            .docs
+            .accept(&lease.subject(), REPOSSESSION_BASIS_KIND);
     }
 
     fn path(&self, lease: &Lease) -> String {
@@ -103,7 +109,12 @@ impl Scene {
     /// A cheque for each charge due on or after `from`.
     async fn cheques_from(&self, lease: &Lease, from: NaiveDate) -> Vec<(ChequeId, NaiveDate)> {
         let mut made = Vec::new();
-        for charge in self.charges(lease).await.iter().filter(|c| c.due_date >= from) {
+        for charge in self
+            .charges(lease)
+            .await
+            .iter()
+            .filter(|c| c.due_date >= from)
+        {
             let id = self.t.cheques.receive(
                 TENANT,
                 &lease.agreement(),
@@ -123,7 +134,11 @@ impl Scene {
             .post(
                 &self.manager,
                 &format!("/property/leases/{}/legal-cases", lease.id),
-                &[("case_type", case_type), ("reference", "RDC-2027-77"), ("ticket", "new")],
+                &[
+                    ("case_type", case_type),
+                    ("reference", "RDC-2027-77"),
+                    ("ticket", "new"),
+                ],
             )
             .await
             .assert_ok();
@@ -157,7 +172,9 @@ async fn bl_prp_12_an_abandoned_unit_is_terminated_after_the_admin_approves() {
     assert!(matches!(refused, Err(Error::Forbidden)), "{refused:?}");
     assert_eq!(s.t.status(&lease).await, LeaseStatus::Active);
 
-    let decided = approve(s.t.state(), request.id, &s.admin, "abandoned").await.unwrap();
+    let decided = approve(s.t.state(), request.id, &s.admin, "abandoned")
+        .await
+        .unwrap();
     assert!(decided.is_some());
 
     let after = s.t.reload(&lease).await;
@@ -204,18 +221,31 @@ async fn bl_prp_12_the_evidence_of_an_abandoned_unit_is_required() {
 
     let refused = s.ask(&lease, "abandoned", &[]).await;
     refused.assert_status(422);
-    assert!(refused.text().to_lowercase().contains("abandonment inspection missing"), "{}", refused.text());
+    assert!(
+        refused
+            .text()
+            .to_lowercase()
+            .contains("abandonment inspection missing"),
+        "{}",
+        refused.text()
+    );
 
     s.t.docs.accept(&lease.subject(), INSPECTION_KIND);
     let refused = s.ask(&lease, "abandoned", &[]).await;
     refused.assert_status(422);
-    assert!(refused.text().to_lowercase().contains("repossession basis missing"), "{}", refused.text());
+    assert!(
+        refused
+            .text()
+            .to_lowercase()
+            .contains("repossession basis missing"),
+        "{}",
+        refused.text()
+    );
 
     s.t.docs.accept(&lease.subject(), REPOSSESSION_BASIS_KIND);
     // No legal basis as text.
-    let refused = s
-        .t
-        .post(
+    let refused =
+        s.t.post(
             &s.manager,
             &s.path(&lease),
             &[("reason", "abandoned"), ("move_out", "2027-03-31")],
@@ -224,10 +254,12 @@ async fn bl_prp_12_the_evidence_of_an_abandoned_unit_is_required() {
     refused.assert_status(422);
     assert!(refused.text().contains("legal basis"), "{}", refused.text());
 
-    assert!(ApprovalRequest::pending_about(s.t.db(), &lease.subject())
-        .await
-        .unwrap()
-        .is_empty());
+    assert!(
+        ApprovalRequest::pending_about(s.t.db(), &lease.subject())
+            .await
+            .unwrap()
+            .is_empty()
+    );
     assert_eq!(s.t.status(&lease).await, LeaseStatus::Active);
 }
 
@@ -242,14 +274,28 @@ async fn bl_prp_12_an_eviction_needs_the_judgment_and_the_execution_record() {
     s.t.docs.accept(&lease.subject(), JUDGMENT_KIND);
     let refused = s.ask(&lease, "eviction_executed", &[]).await;
     refused.assert_status(422);
-    assert!(refused.text().to_lowercase().contains("execution record missing"), "{}", refused.text());
+    assert!(
+        refused
+            .text()
+            .to_lowercase()
+            .contains("execution record missing"),
+        "{}",
+        refused.text()
+    );
 
     let other = scene().await;
     let second = other.leased().await;
-    other.t.docs.accept(&second.subject(), EXECUTION_RECORD_KIND);
+    other
+        .t
+        .docs
+        .accept(&second.subject(), EXECUTION_RECORD_KIND);
     let refused = other.ask(&second, "eviction_executed", &[]).await;
     refused.assert_status(422);
-    assert!(refused.text().to_lowercase().contains("judgment missing"), "{}", refused.text());
+    assert!(
+        refused.text().to_lowercase().contains("judgment missing"),
+        "{}",
+        refused.text()
+    );
 
     s.t.docs.accept(&lease.subject(), EXECUTION_RECORD_KIND);
     s.ask(&lease, "eviction_executed", &[]).await.assert_ok();
@@ -276,14 +322,22 @@ async fn bl_prp_12_an_eviction_flag_is_closed_with_its_outcome() {
     s.ask(&lease, "eviction_executed", &[]).await.assert_ok();
     let request = s.request(&lease).await;
 
-    approve(s.t.state(), request.id, &s.admin, "").await.unwrap();
+    approve(s.t.state(), request.id, &s.admin, "")
+        .await
+        .unwrap();
 
     assert_eq!(s.t.status(&lease).await, LeaseStatus::Terminated);
     let cases = LegalCase::of_root(s.t.db(), lease.root_id).await.unwrap();
-    let eviction = cases.iter().find(|c| c.case_type == CaseType::Eviction).unwrap();
+    let eviction = cases
+        .iter()
+        .find(|c| c.case_type == CaseType::Eviction)
+        .unwrap();
     assert_eq!(eviction.status, CaseStatus::Cleared);
     assert_eq!(eviction.outcome, Some(CaseOutcome::EvictionExecuted));
-    let arrears = cases.iter().find(|c| c.case_type == CaseType::Arrears).unwrap();
+    let arrears = cases
+        .iter()
+        .find(|c| c.case_type == CaseType::Arrears)
+        .unwrap();
     assert_eq!(arrears.status, CaseStatus::Open);
     assert_eq!(s.t.forced.all()[0].closed_cases, 1);
 }
@@ -304,11 +358,17 @@ async fn bl_prp_12_later_cheques_are_kept_as_evidence_or_returned_as_chosen() {
     let keep = format!("{}, {}", april.0, may.0);
     let back = june.0.to_string();
 
-    s.ask(&lease, "abandoned", &[("keep", &keep), ("hand_back", &back)])
-        .await
-        .assert_ok();
+    s.ask(
+        &lease,
+        "abandoned",
+        &[("keep", &keep), ("hand_back", &back)],
+    )
+    .await
+    .assert_ok();
     let request = s.request(&lease).await;
-    approve(s.t.state(), request.id, &s.admin, "").await.unwrap();
+    approve(s.t.state(), request.id, &s.admin, "")
+        .await
+        .unwrap();
 
     assert_eq!(s.t.cheques.get(march).status, ChequeStatus::Received);
     assert_eq!(s.t.cheques.get(april).status, ChequeStatus::Received);
@@ -317,7 +377,11 @@ async fn bl_prp_12_later_cheques_are_kept_as_evidence_or_returned_as_chosen() {
     assert_eq!(s.t.cheques.evidence(), vec![april, may]);
     // The others, up to December, were not chosen and go back (no flag is open).
     for (id, date) in &cheques[4..] {
-        assert_eq!(s.t.cheques.get(*id).status, ChequeStatus::Returned, "{date}");
+        assert_eq!(
+            s.t.cheques.get(*id).status,
+            ChequeStatus::Returned,
+            "{date}"
+        );
     }
     assert_eq!(s.t.forced.all()[0].evidence_cheques, 2);
 }
@@ -333,9 +397,13 @@ async fn bl_prp_12_with_a_legal_case_open_later_cheques_are_kept_by_default() {
     let cheques = s.cheques_from(&lease, d(4, 1)).await;
     let back = cheques[0].0.0.to_string();
 
-    s.ask(&lease, "abandoned", &[("hand_back", &back)]).await.assert_ok();
+    s.ask(&lease, "abandoned", &[("hand_back", &back)])
+        .await
+        .assert_ok();
     let request = s.request(&lease).await;
-    approve(s.t.state(), request.id, &s.admin, "").await.unwrap();
+    approve(s.t.state(), request.id, &s.admin, "")
+        .await
+        .unwrap();
 
     assert_eq!(s.t.cheques.get(cheques[0].0).status, ChequeStatus::Returned);
     for (id, _) in &cheques[1..] {
@@ -355,11 +423,22 @@ async fn bl_prp_12_the_request_is_checked() {
 
     let refused = s.ask(&lease, "abandoned", &[("keep", "999")]).await;
     refused.assert_status(422);
-    assert!(refused.text().contains("not received with this lease"), "{}", refused.text());
+    assert!(
+        refused.text().contains("not received with this lease"),
+        "{}",
+        refused.text()
+    );
 
-    let refused = s
-        .t
-        .post(&s.agent, &s.path(&lease), &[("reason", "abandoned"), ("move_out", "2027-03-31"), ("basis", "x")])
+    let refused =
+        s.t.post(
+            &s.agent,
+            &s.path(&lease),
+            &[
+                ("reason", "abandoned"),
+                ("move_out", "2027-03-31"),
+                ("basis", "x"),
+            ],
+        )
         .await;
     refused.assert_status(403);
 

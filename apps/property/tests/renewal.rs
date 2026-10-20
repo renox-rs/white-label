@@ -150,10 +150,7 @@ async fn bl_prp_03_the_lease_enters_the_renewal_window_at_120_days() {
     ));
     assert!(s.t.notices.of_type(NOTICE_OF_CHANGED_TERMS).is_empty());
 
-    s.page(&lease)
-        .await
-        .assert_ok()
-        .assert_see("2027-10-02");
+    s.page(&lease).await.assert_ok().assert_see("2027-10-02");
     // A second run the same day, and the next, flag nothing again.
     assert_eq!(s.run(d(9, 2)).await.flagged, 0);
     assert_eq!(s.run(d(9, 3)).await.flagged, 0);
@@ -187,7 +184,10 @@ async fn bl_prp_03_an_undecided_lease_warns_at_14_and_3_days_then_gets_the_marke
     // The deadline day itself still counts: no marker yet.
     assert_eq!(s.run(d(10, 2)).await.marked, 0);
     assert!(!s.t.reload(&lease).await.current_terms_only);
-    s.page(&lease).await.assert_ok().assert_dont_see("unless the tenant signs");
+    s.page(&lease)
+        .await
+        .assert_ok()
+        .assert_dont_see("unless the tenant signs");
 
     let marked = s.run(d(10, 3)).await;
     assert_eq!(marked.marked, 1);
@@ -411,10 +411,7 @@ async fn bl_prp_03_other_states_are_left_alone() {
 #[renox::test]
 async fn bl_prp_03_a_failed_run_alerts_the_company_admin() {
     let s = scene().await;
-    let admin = s
-        .t
-        .user_with("Ada", wl_kernel::COMPANY_ADMIN_ROLE)
-        .await;
+    let admin = s.t.user_with("Ada", wl_kernel::COMPANY_ADMIN_ROLE).await;
     assert!(wl_kernel::compliance::is_critical(RULE_DEADLINE));
     s.year().await;
     s.run(d(9, 2)).await;
@@ -435,7 +432,10 @@ async fn bl_prp_03_a_failed_run_alerts_the_company_admin() {
     assert_eq!(alerts.len(), 1, "{alerts:?}");
     assert_eq!(alerts[0].rule, RULE_DEADLINE);
     assert!(
-        s.t.notices.all().iter().any(|r| users(r).contains(&admin.id)),
+        s.t.notices
+            .all()
+            .iter()
+            .any(|r| users(r).contains(&admin.id)),
         "the company admin is told"
     );
 }
@@ -459,7 +459,11 @@ async fn bl_prp_03_the_decision_and_the_notice_are_the_managers() {
     // The decision is still undecided: no notice.
     let refused = s.t.post(&s.manager, &notice, &[]).await;
     refused.assert_status(422);
-    assert!(refused.text().contains("changed terms"), "{}", refused.text());
+    assert!(
+        refused.text().contains("changed terms"),
+        "{}",
+        refused.text()
+    );
     s.t.post(&s.agent, &notice, &[]).await.assert_forbidden();
 
     s.decide(&lease, "changed_terms").await;

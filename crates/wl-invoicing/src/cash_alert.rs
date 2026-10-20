@@ -396,9 +396,9 @@ async fn check_balances(
                     .where_(InvoicingTask::KEY.eq(task.key.as_str()))
                     .first(db)
                     .await?;
-                if let Some(mut existing) = existing.filter(|t| {
-                    t.status == TaskStatus::Done && t.done_by.is_none()
-                }) {
+                if let Some(mut existing) =
+                    existing.filter(|t| t.status == TaskStatus::Done && t.done_by.is_none())
+                {
                     existing.status = TaskStatus::Open;
                     existing.done_at = None;
                     existing.save_only(db, &["status", "done_at"]).await?;
@@ -439,9 +439,11 @@ pub async fn run(state: &AppState, on: NaiveDate) -> Result<usize> {
 /// Registers the daily [`TASK`] at the configured time.
 pub(crate) fn schedule(app: &mut Registry, config: &InvoicingConfig) {
     app.schedule()
-        .daily_at(&config.cash_alert_time, TASK, |state: AppState| async move {
-            run(&state, today()).await.map(|_| ())
-        })
+        .daily_at(
+            &config.cash_alert_time,
+            TASK,
+            |state: AppState| async move { run(&state, today()).await.map(|_| ()) },
+        )
         .timezone(TASK_ZONE);
 }
 
@@ -507,7 +509,10 @@ mod tests {
     fn a_task_key_names_the_account_and_the_balance_it_saw() {
         let key = task_key(3, "ENBD-1", Some(day(2027, 1, 5)));
         assert_eq!(key, "3|ENBD-1|2027-01-05");
-        assert_eq!(parse_key(&key), Some(("ENBD-1".to_owned(), Some(day(2027, 1, 5)))));
+        assert_eq!(
+            parse_key(&key),
+            Some(("ENBD-1".to_owned(), Some(day(2027, 1, 5))))
+        );
         let none = task_key(3, "A|B", None);
         assert_eq!(parse_key(&none), Some(("A|B".to_owned(), None)));
     }

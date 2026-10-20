@@ -12,8 +12,8 @@ use property::write_off::{WriteOffConsent, managing_agreement};
 use property::{ChargeStatus, Lease, LeaseCharge};
 use renox::prelude::*;
 use renox::state_machine::StateMachine;
-use wl_kernel::parties::PartyKind;
 use wl_kernel::invoicing::{DraftLine, InvoiceDraft, InvoiceStatus, invoicer};
+use wl_kernel::parties::PartyKind;
 use wl_kernel::{PartyId, Subject, VatCategory};
 
 use support::{ACCOUNTANT, AGENT, Booted, MANAGER, TENANT, aed, boot, day};
@@ -32,7 +32,8 @@ struct Scene {
 /// A managed unit with an active lease, an accountant and a property manager.
 async fn scene() -> Scene {
     let t = boot().await;
-    t.parties.add(OWNER.0, "Hessa Al Mansoori", PartyKind::Person);
+    t.parties
+        .add(OWNER.0, "Hessa Al Mansoori", PartyKind::Person);
     let building = t.building().await;
     let unit = t.unit(&building, "1204").await;
     let agent = t.user_in("Ali", AGENT, building.id).await;
@@ -155,7 +156,12 @@ async fn bl_prp_18_the_owners_consent_is_needed_for_a_managed_building() {
     refused.assert_status(422);
     assert!(refused.text().contains("consent"), "{}", refused.text());
     assert!(s.t.invoices.write_offs().is_empty());
-    assert!(WriteOffConsent::of_invoice(s.t.db(), invoice).await.unwrap().is_none());
+    assert!(
+        WriteOffConsent::of_invoice(s.t.db(), invoice)
+            .await
+            .unwrap()
+            .is_none()
+    );
 
     s.ask(invoice, true).await.assert_ok();
     let asked = s.t.invoices.write_offs();
@@ -197,25 +203,35 @@ async fn bl_prp_18_the_written_off_rent_is_on_the_next_draft() {
     // Nothing yet: the request waits for the approval.
     assert!(s.waiting().await.is_empty());
 
-    s.t.invoices.approve_write_off(s.t.state(), invoice, s.manager.id).await;
+    s.t.invoices
+        .approve_write_off(s.t.state(), invoice, s.manager.id)
+        .await;
 
     let waiting = s.waiting().await;
     assert_eq!(waiting.len(), 1);
     assert_eq!(waiting[0].kind, LineKind::WrittenOff);
     assert_eq!(waiting[0].amount, -aed(6_000));
-    assert!(waiting[0].description.contains("Rent written off"), "{}", waiting[0].description);
+    assert!(
+        waiting[0].description.contains("Rent written off"),
+        "{}",
+        waiting[0].description
+    );
     assert_eq!(waiting[0].line_on, wl_kernel::documents::today());
     // It is made once, whatever the events do.
-    s.t.invoices.approve_write_off(s.t.state(), invoice, s.manager.id).await;
+    s.t.invoices
+        .approve_write_off(s.t.state(), invoice, s.manager.id)
+        .await;
     assert_eq!(s.waiting().await.len(), 1);
 
     let draft = s.draft().await;
     assert_eq!(draft.collected, -aed(6_000));
     assert_eq!(draft.balance(), -aed(6_000));
     let lines = draft.lines(s.t.db()).await.unwrap();
-    assert!(lines
-        .iter()
-        .any(|l| l.kind == LineKind::WrittenOff && l.amount == -aed(6_000)));
+    assert!(
+        lines
+            .iter()
+            .any(|l| l.kind == LineKind::WrittenOff && l.amount == -aed(6_000))
+    );
     assert!(s.waiting().await.is_empty());
 }
 
@@ -229,8 +245,12 @@ async fn bl_prp_18_a_published_statement_is_never_edited() {
 
     // A draft of the period exists: the line goes on it.
     let draft = s.draft().await;
-    s.t.invoices.approve_write_off(s.t.state(), first, s.manager.id).await;
-    let draft = OwnerStatement::find_or_404(s.t.db(), draft.id).await.unwrap();
+    s.t.invoices
+        .approve_write_off(s.t.state(), first, s.manager.id)
+        .await;
+    let draft = OwnerStatement::find_or_404(s.t.db(), draft.id)
+        .await
+        .unwrap();
     assert_eq!(draft.collected, -aed(6_000));
     assert!(s.waiting().await.is_empty());
 
@@ -249,15 +269,24 @@ async fn bl_prp_18_a_published_statement_is_never_edited() {
     )
     .await
     .assert_status(303);
-    let published = OwnerStatement::find_or_404(s.t.db(), draft.id).await.unwrap();
+    let published = OwnerStatement::find_or_404(s.t.db(), draft.id)
+        .await
+        .unwrap();
     assert_eq!(published.status, StatementStatus::Published);
 
     let second = s.overdue(aed(2_500), 11).await;
     s.ask(second, true).await.assert_ok();
-    s.t.invoices.approve_write_off(s.t.state(), second, s.manager.id).await;
-    let after = OwnerStatement::find_or_404(s.t.db(), draft.id).await.unwrap();
+    s.t.invoices
+        .approve_write_off(s.t.state(), second, s.manager.id)
+        .await;
+    let after = OwnerStatement::find_or_404(s.t.db(), draft.id)
+        .await
+        .unwrap();
     assert_eq!(after.collected, published.collected);
-    assert_eq!(after.lines(s.t.db()).await.unwrap().len(), published.lines(s.t.db()).await.unwrap().len());
+    assert_eq!(
+        after.lines(s.t.db()).await.unwrap().len(),
+        published.lines(s.t.db()).await.unwrap().len()
+    );
     let waiting = s.waiting().await;
     assert_eq!(waiting.len(), 1);
     assert_eq!(waiting[0].amount, -aed(2_500));
@@ -270,10 +299,17 @@ async fn bl_prp_18_a_recovery_is_credited_on_the_statement_of_its_period() {
     let s = scene().await;
     let invoice = s.overdue(aed(6_000), 10).await;
     s.ask(invoice, true).await.assert_ok();
-    s.t.invoices.approve_write_off(s.t.state(), invoice, s.manager.id).await;
+    s.t.invoices
+        .approve_write_off(s.t.state(), invoice, s.manager.id)
+        .await;
 
     s.t.invoices
-        .recover(s.t.state(), invoice, aed(2_000), wl_kernel::documents::today())
+        .recover(
+            s.t.state(),
+            invoice,
+            aed(2_000),
+            wl_kernel::documents::today(),
+        )
         .await;
     let waiting = s.waiting().await;
     assert_eq!(waiting.len(), 2);
@@ -282,15 +318,26 @@ async fn bl_prp_18_a_recovery_is_credited_on_the_statement_of_its_period() {
         .find(|l| l.kind == LineKind::Recovered)
         .expect("a recovery line");
     assert_eq!(recovered.amount, aed(2_000));
-    assert!(recovered.description.contains("Recovered after write-off"), "{}", recovered.description);
+    assert!(
+        recovered.description.contains("Recovered after write-off"),
+        "{}",
+        recovered.description
+    );
 
     let draft = s.draft().await;
     assert_eq!(draft.collected, -aed(4_000));
     // A second recovery is a second line.
     s.t.invoices
-        .recover(s.t.state(), invoice, aed(1_000), wl_kernel::documents::today())
+        .recover(
+            s.t.state(),
+            invoice,
+            aed(1_000),
+            wl_kernel::documents::today(),
+        )
         .await;
-    let draft = OwnerStatement::find_or_404(s.t.db(), draft.id).await.unwrap();
+    let draft = OwnerStatement::find_or_404(s.t.db(), draft.id)
+        .await
+        .unwrap();
     assert_eq!(draft.collected, -aed(3_000));
 }
 
@@ -307,15 +354,26 @@ async fn bl_prp_18_the_companys_own_invoice_needs_no_consent() {
             s.t.db(),
             InvoiceDraft::new(OWNER, s.agreement.subject())
                 .due_date(day(-60))
-                .line(DraftLine::new("Management fee", aed(900), VatCategory::Standard)),
+                .line(DraftLine::new(
+                    "Management fee",
+                    aed(900),
+                    VatCategory::Standard,
+                )),
         )
         .await
         .unwrap()
         .expect("invoicing is on")
         .0;
     s.t.invoices.issue(fee);
-    assert!(managing_agreement(s.t.db(), fee, day(0)).await.unwrap().is_none());
-    s.t.invoices.approve_write_off(s.t.state(), fee, s.manager.id).await;
+    assert!(
+        managing_agreement(s.t.db(), fee, day(0))
+            .await
+            .unwrap()
+            .is_none()
+    );
+    s.t.invoices
+        .approve_write_off(s.t.state(), fee, s.manager.id)
+        .await;
     assert!(s.waiting().await.is_empty());
 
     // The rent of a unit nobody manages for an owner.
@@ -361,7 +419,9 @@ async fn bl_prp_18_the_companys_own_invoice_needs_no_consent() {
     .await
     .assert_ok();
     assert_eq!(s.t.invoices.write_offs().len(), 1);
-    s.t.invoices.approve_write_off(s.t.state(), invoice, s.manager.id).await;
+    s.t.invoices
+        .approve_write_off(s.t.state(), invoice, s.manager.id)
+        .await;
     assert!(s.waiting().await.is_empty());
 }
 
@@ -369,16 +429,17 @@ async fn bl_prp_18_the_companys_own_invoice_needs_no_consent() {
 #[renox::test]
 async fn bl_prp_18_the_invoice_must_belong_to_the_lease() {
     let s = scene().await;
-    let stray = invoicer(s.t.state())
-        .draft(
-            s.t.db(),
-            InvoiceDraft::new(TENANT, Subject::new("property.lease", 999))
-                .line(DraftLine::new("Rent", aed(100), VatCategory::Exempt)),
-        )
-        .await
-        .unwrap()
-        .expect("invoicing is on")
-        .0;
+    let stray =
+        invoicer(s.t.state())
+            .draft(
+                s.t.db(),
+                InvoiceDraft::new(TENANT, Subject::new("property.lease", 999))
+                    .line(DraftLine::new("Rent", aed(100), VatCategory::Exempt)),
+            )
+            .await
+            .unwrap()
+            .expect("invoicing is on")
+            .0;
     s.ask(stray, true).await.assert_status(404);
     assert!(s.t.invoices.write_offs().is_empty());
 }

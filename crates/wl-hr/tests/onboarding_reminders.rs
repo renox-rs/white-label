@@ -12,8 +12,8 @@ use wl_hr::reminders;
 use wl_hr::steps::{self, DoneInput};
 use wl_hr::template::{StepInput, TemplateInput};
 use wl_hr::{
-    Employee, EmployeeStatus, LeaveRequest, LeaveStatus, NewEmployee, Onboarding,
-    OnboardingStep, StepStatus, employees,
+    Employee, EmployeeStatus, LeaveRequest, LeaveStatus, NewEmployee, Onboarding, OnboardingStep,
+    StepStatus, employees,
 };
 use wl_kernel::PartyId;
 use wl_kernel::notify::{NotifyRecipient, NotifyRequest};
@@ -48,8 +48,11 @@ async fn booted() -> (Booted, User, User) {
 /// "Counter" template: a required step due 7 days after the start (9 Nov
 /// for a start on 2 Nov), assigned to HR.
 fn counter_template() -> TemplateInput {
-    TemplateInput::for_role("Counter", "counter")
-        .step(StepInput::task("Return the access card", "hr", 7))
+    TemplateInput::for_role("Counter", "counter").step(StepInput::task(
+        "Return the access card",
+        "hr",
+        7,
+    ))
 }
 
 /// A counter employee hired on 2 Nov, in onboarding, with the hire onboarding.
@@ -92,7 +95,11 @@ async fn hrm_rul_17_the_assignee_is_reminded_every_second_day_and_hr_is_told_onc
 
     for (day, reminders_so_far) in [(9, 0), (10, 1), (11, 1), (12, 2), (13, 2)] {
         reminders::run(t.state(), nov(day)).await.unwrap();
-        assert_eq!(t.notices.of_type(REMINDER).len(), reminders_so_far, "9 Nov + {day}");
+        assert_eq!(
+            t.notices.of_type(REMINDER).len(),
+            reminders_so_far,
+            "9 Nov + {day}"
+        );
     }
     // A second run on the same day sends nothing.
     reminders::run(t.state(), nov(12)).await.unwrap();
@@ -168,7 +175,10 @@ async fn hrm_rul_17_hr_is_not_told_about_an_optional_step() {
     reminders::run(t.state(), nov(14)).await.unwrap();
     let told = t.notices.of_type(ESCALATED);
     assert_eq!(told.len(), 1);
-    assert_eq!(told[0].subject_label.as_deref(), Some("Return the access card"));
+    assert_eq!(
+        told[0].subject_label.as_deref(),
+        Some("Return the access card")
+    );
 }
 
 /// AC4 and AC6: an employee with a manual onboarding goes on 10 days' leave
@@ -220,7 +230,12 @@ async fn hrm_rul_17_leave_moves_the_due_date_and_pauses_the_reminders() {
 
     let report = reminders::run(t.state(), nov(10)).await.unwrap();
     assert_eq!(report.moved, 1);
-    assert_eq!(step_of(&t, &onboarding, "Return the access card").await.due_date, nov(19));
+    assert_eq!(
+        step_of(&t, &onboarding, "Return the access card")
+            .await
+            .due_date,
+        nov(19)
+    );
     for day in [12, 15, 18] {
         reminders::run(t.state(), nov(day)).await.unwrap();
     }
@@ -231,13 +246,23 @@ async fn hrm_rul_17_leave_moves_the_due_date_and_pauses_the_reminders() {
     leave.to_date = nov(13);
     leave.save(t.db()).await.unwrap();
     reminders::run(t.state(), nov(14)).await.unwrap();
-    assert_eq!(step_of(&t, &onboarding, "Return the access card").await.due_date, nov(15));
+    assert_eq!(
+        step_of(&t, &onboarding, "Return the access card")
+            .await
+            .due_date,
+        nov(15)
+    );
 
     // Cancelled: the date is back.
     leave.status = LeaveStatus::Cancelled;
     leave.save(t.db()).await.unwrap();
     reminders::run(t.state(), nov(14)).await.unwrap();
-    assert_eq!(step_of(&t, &onboarding, "Return the access card").await.due_date, nov(9));
+    assert_eq!(
+        step_of(&t, &onboarding, "Return the access card")
+            .await
+            .due_date,
+        nov(9)
+    );
 }
 
 /// After the leave the employee is back and the step, now due later, is
@@ -268,7 +293,12 @@ async fn hrm_rul_17_after_the_leave_the_moved_due_date_counts() {
     assert!(t.notices.of_type(REMINDER).is_empty());
     reminders::run(t.state(), nov(20)).await.unwrap();
     assert_eq!(t.notices.of_type(REMINDER).len(), 1);
-    assert_eq!(step_of(&t, &onboarding, "Return the access card").await.due_date, nov(19));
+    assert_eq!(
+        step_of(&t, &onboarding, "Return the access card")
+            .await
+            .due_date,
+        nov(19)
+    );
 }
 
 /// AC5: an absconded employee gets no reminder or escalation.
@@ -281,7 +311,12 @@ async fn hrm_rul_17_an_absconded_employee_is_not_reminded() {
     for day in [10, 12, 14, 16] {
         reminders::run(t.state(), nov(day)).await.unwrap();
     }
-    assert!(t.notices.all().iter().all(|n| n.type_key != REMINDER && n.type_key != ESCALATED));
+    assert!(
+        t.notices
+            .all()
+            .iter()
+            .all(|n| n.type_key != REMINDER && n.type_key != ESCALATED)
+    );
 }
 
 /// AC7: a step due 9 Nov, the employee absconded from 5 Nov and reinstated
@@ -298,14 +333,24 @@ async fn hrm_rul_17_after_reinstatement_the_first_run_reminds_and_tells_hr_once(
         reminders::run(t.state(), nov(day)).await.unwrap();
     }
     assert!(t.notices.of_type(REMINDER).is_empty());
-    assert_eq!(step_of(&t, &onboarding, "Return the access card").await.due_date, nov(9));
+    assert_eq!(
+        step_of(&t, &onboarding, "Return the access card")
+            .await
+            .due_date,
+        nov(9)
+    );
 
     // Reinstated on 20 Nov at 15:00, after that day's 08:00 run.
     set_status(&t, &employee, "active").await;
     reminders::run(t.state(), nov(21)).await.unwrap();
     assert_eq!(t.notices.of_type(REMINDER).len(), 1);
     assert_eq!(t.notices.of_type(ESCALATED).len(), 1);
-    assert_eq!(step_of(&t, &onboarding, "Return the access card").await.due_date, nov(9));
+    assert_eq!(
+        step_of(&t, &onboarding, "Return the access card")
+            .await
+            .due_date,
+        nov(9)
+    );
     reminders::run(t.state(), nov(22)).await.unwrap();
     assert_eq!(t.notices.of_type(REMINDER).len(), 1);
     reminders::run(t.state(), nov(23)).await.unwrap();
@@ -320,8 +365,11 @@ async fn hrm_rul_17_a_step_without_an_assignee_is_reminded_to_hr() {
     let (t, hana, _) = booted().await;
     add_template(
         &t,
-        TemplateInput::for_role("Counter", "counter")
-            .step(StepInput::task("Read the handbook", "employee", 7)),
+        TemplateInput::for_role("Counter", "counter").step(StepInput::task(
+            "Read the handbook",
+            "employee",
+            7,
+        )),
     )
     .await;
     let (_, onboarding) = hired(&t, 60).await;

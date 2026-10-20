@@ -257,7 +257,10 @@ mod tests {
     #[test]
     fn the_error_of_a_rejection_keeps_its_code() {
         let error = AspError::new("BR-CO-15", "totals differ");
-        assert_eq!((error.code.as_str(), error.message.as_str()), ("BR-CO-15", "totals differ"));
+        assert_eq!(
+            (error.code.as_str(), error.message.as_str()),
+            ("BR-CO-15", "totals differ")
+        );
     }
 
     #[renox::test]
@@ -272,9 +275,15 @@ mod tests {
         assert!(asp.submit(app.state(), &submission("2-1")).await.is_err());
         assert!(asp.poll(app.state(), "ASP-1-1").await.is_err());
         asp.unreachable(false);
-        assert_eq!(asp.poll(app.state(), "ASP-1-1").await.unwrap(), AspAnswer::Pending);
+        assert_eq!(
+            asp.poll(app.state(), "ASP-1-1").await.unwrap(),
+            AspAnswer::Pending
+        );
         asp.answers(AspAnswer::Accepted);
-        assert_eq!(asp.poll(app.state(), "ASP-1-1").await.unwrap(), AspAnswer::Accepted);
+        assert_eq!(
+            asp.poll(app.state(), "ASP-1-1").await.unwrap(),
+            AspAnswer::Accepted
+        );
     }
 
     #[renox::test]
@@ -283,14 +292,23 @@ mod tests {
         let entity = LegalEntity::default();
         let document = Subject::new("invoicing.invoice", 1);
         let scope = DefaultScope;
-        assert!(scope
-            .in_scope(app.state(), &entity, &document, Some(PartyKind::Company))
-            .await
-            .unwrap());
-        assert!(!scope
-            .in_scope(app.state(), &entity, &document, Some(PartyKind::Person))
-            .await
-            .unwrap());
-        assert!(!scope.in_scope(app.state(), &entity, &document, None).await.unwrap());
+        assert!(
+            scope
+                .in_scope(app.state(), &entity, &document, Some(PartyKind::Company))
+                .await
+                .unwrap()
+        );
+        assert!(
+            !scope
+                .in_scope(app.state(), &entity, &document, Some(PartyKind::Person))
+                .await
+                .unwrap()
+        );
+        assert!(
+            !scope
+                .in_scope(app.state(), &entity, &document, None)
+                .await
+                .unwrap()
+        );
     }
 }

@@ -34,9 +34,7 @@ use wl_kernel::{LegalEntity, PartyId, Subject};
 
 use crate::allocate::amount_text;
 use crate::cash_balance::{self, EnterBalance, OpeningCashBalance};
-use crate::cash_forecast::{
-    self, BalanceSource, Forecast, Line, LineKind, MemoKind, Warning,
-};
+use crate::cash_forecast::{self, BalanceSource, Forecast, Line, LineKind, MemoKind, Warning};
 use crate::cash_forecast_load;
 use crate::config_of;
 use crate::permissions;
@@ -213,7 +211,12 @@ pub(crate) fn warning_text(
         Warning::NoBalance {
             legal_entity_id,
             account,
-        } => format!("{} {} - {}", code(legal_entity_id), account, t("cash.warning.no_balance")),
+        } => format!(
+            "{} {} - {}",
+            code(legal_entity_id),
+            account,
+            t("cash.warning.no_balance")
+        ),
         Warning::Stale {
             legal_entity_id,
             account,
@@ -254,11 +257,7 @@ pub(crate) fn warning_text(
 }
 
 /// The rows of the grid for `forecast`.
-pub(crate) fn rows_of(
-    forecast: &Forecast,
-    entity: &str,
-    t: &dyn Fn(&str) -> String,
-) -> Vec<Row> {
+pub(crate) fn rows_of(forecast: &Forecast, entity: &str, t: &dyn Fn(&str) -> String) -> Vec<Row> {
     let count = forecast.weeks.len();
     let query = |week: usize, side: &str| {
         let entity = if entity.is_empty() {
@@ -320,11 +319,17 @@ pub(crate) fn rows_of(
     rows.push(Row {
         name: t("cash.row.balance"),
         look: "total",
-        cells: (0..count).map(|w| plain(whole_text(forecast.balance(w)))).collect(),
+        cells: (0..count)
+            .map(|w| plain(whole_text(forecast.balance(w))))
+            .collect(),
     });
     // The budget fill, a row per category (counted in the rows above).
     let mut fills: Vec<(&str, &str)> = Vec::new();
-    for line in forecast.lines.iter().filter(|l| l.kind == LineKind::BudgetFill) {
+    for line in forecast
+        .lines
+        .iter()
+        .filter(|l| l.kind == LineKind::BudgetFill)
+    {
         if !fills.iter().any(|(code, _)| *code == line.category) {
             fills.push((line.category.as_str(), line.label.as_str()));
         }
@@ -522,8 +527,7 @@ pub(crate) struct CellPage {
 /// shows its party and documents only for owner drawings and only to a holder
 /// of `drawings.approve` in every entity asked for (`FIN.ACL.22`).
 fn may_open(line: &Line, drawings_ok: bool) -> bool {
-    !line.total_only
-        || (matches!(line.kind, LineKind::Bill | LineKind::BudgetFill) && drawings_ok)
+    !line.total_only || (matches!(line.kind, LineKind::Bill | LineKind::BudgetFill) && drawings_ok)
 }
 
 /// `GET /cash-forecast/cell`: the lines behind a cell.
@@ -612,7 +616,11 @@ async fn cell(
                     .source
                     .clone()
                     .unwrap_or_else(|| t(&format!("cash.kind.{}", line.kind.code()))),
-                party: if open { party_name(line.party).await? } else { String::new() },
+                party: if open {
+                    party_name(line.party).await?
+                } else {
+                    String::new()
+                },
                 date: line.date.format("%Y-%m-%d").to_string(),
                 amount: amount_text("AED", line.amount),
                 flags,
@@ -659,7 +667,16 @@ async fn cell(
         (Some(Direction::In), Some(w)) => t("cash.row.receipts") + &week_text(&t, w),
         (Some(Direction::Out), Some(w)) => t("cash.row.payments") + &week_text(&t, w),
         (None, Some(w)) if fill.is_some() => t("cash.row.fill") + &week_text(&t, w),
-        (None, Some(w)) => kind_text(&t, MemoKind::ALL.iter().copied().find(|k| k.code() == side).unwrap_or(MemoKind::Disputed)) + &week_text(&t, w),
+        (None, Some(w)) => {
+            kind_text(
+                &t,
+                MemoKind::ALL
+                    .iter()
+                    .copied()
+                    .find(|k| k.code() == side)
+                    .unwrap_or(MemoKind::Disputed),
+            ) + &week_text(&t, w)
+        }
         _ => t("cash.title"),
     };
     Ok(View::typed(CellPage {
@@ -727,7 +744,11 @@ async fn store_balance(
 ) -> Result<Response> {
     let t = |key: &str| texts::t(&lang, &format!("wl_invoicing.{key}"));
     let (Some(entity), Some(as_of)) = (form.legal_entity_id, form.as_of) else {
-        return Err(invalid("legal_entity_id", t("cash.balances.bad_entity"), &form));
+        return Err(invalid(
+            "legal_entity_id",
+            t("cash.balances.bad_entity"),
+            &form,
+        ));
     };
     if !user
         .scopes_with::<LegalEntity>(permissions::CASHFLOW_MANAGE)
@@ -735,11 +756,7 @@ async fn store_balance(
     {
         return Err(Error::Forbidden);
     }
-    let Some(amount) = form
-        .amount
-        .as_deref()
-        .and_then(cash_balance::parse_balance)
-    else {
+    let Some(amount) = form.amount.as_deref().and_then(cash_balance::parse_balance) else {
         return Err(invalid("amount", t("cash.balances.bad_amount"), &form));
     };
     let balance = EnterBalance {
@@ -849,7 +866,10 @@ mod tests {
     #[test]
     fn every_memo_kind_and_line_kind_has_a_label() {
         for kind in MemoKind::ALL {
-            assert_ne!(english_text(&format!("cash.memo.{}", kind.code())), format!("cash.memo.{}", kind.code()));
+            assert_ne!(
+                english_text(&format!("cash.memo.{}", kind.code())),
+                format!("cash.memo.{}", kind.code())
+            );
         }
         for kind in [
             LineKind::Invoice,

@@ -233,7 +233,10 @@ async fn open(
     match Acknowledgements::open(&state, id, user.id, document).await? {
         Ok(opened) => {
             let bytes = opened.file.read(&state).await?.ok_or(Error::NotFound)?;
-            Ok(Download::bytes(opened.file.file_name, opened.file.mime_type, bytes.to_vec()).inline())
+            Ok(
+                Download::bytes(opened.file.file_name, opened.file.mime_type, bytes.to_vec())
+                    .inline(),
+            )
         }
         Err(refused) => Err(refused.into_error()),
     }

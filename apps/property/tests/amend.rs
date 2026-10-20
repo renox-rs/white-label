@@ -13,11 +13,11 @@ use property::legal_case::LegalCase;
 use property::{ChargeStatus, Lease, LeaseCharge, LeaseStatus, NewLease};
 use renox::chrono::{Datelike, Duration, Months, NaiveDate};
 use renox::prelude::*;
+use wl_kernel::Subject;
 use wl_kernel::cheques::{ChequeId, ChequeStatus};
 use wl_kernel::documents::today;
 use wl_kernel::invoicing::InvoiceStatus;
 use wl_kernel::payments::RefundSource;
-use wl_kernel::Subject;
 
 use support::{AGENT, Booted, MANAGER, TENANT, aed, boot, d};
 
@@ -87,7 +87,12 @@ impl Scene {
     /// A cheque for each rent charge due on or after `from`.
     async fn cheques_from(&self, lease: &Lease, from: NaiveDate) -> Vec<ChequeId> {
         let mut made = Vec::new();
-        for charge in self.charges(lease).await.iter().filter(|c| c.due_date >= from) {
+        for charge in self
+            .charges(lease)
+            .await
+            .iter()
+            .filter(|c| c.due_date >= from)
+        {
             made.push(self.t.cheques.receive(
                 TENANT,
                 &lease.agreement(),
@@ -150,7 +155,9 @@ async fn bl_prp_08_an_amendment_recreates_the_charges_and_returns_the_cheques() 
     s.invoice_and_pay(d(4, 30)).await;
     let cheques = s.cheques_from(&v1, d(5, 1)).await;
     assert_eq!(cheques.len(), 8);
-    let v2 = s.amendment(&v1, d(5, 1), aed(132_000), aed(5_000), None).await;
+    let v2 = s
+        .amendment(&v1, d(5, 1), aed(132_000), aed(5_000), None)
+        .await;
 
     s.t.activate(&s.manager, &v2).await.assert_ok();
 
@@ -172,7 +179,10 @@ async fn bl_prp_08_an_amendment_recreates_the_charges_and_returns_the_cheques() 
         assert_eq!(charge.amount, aed(11_000), "{}", charge.due_date);
         assert_eq!(charge.status, ChargeStatus::Scheduled);
     }
-    assert!(s.t.invoices.credits().is_empty(), "nothing is invoiced after May");
+    assert!(
+        s.t.invoices.credits().is_empty(),
+        "nothing is invoiced after May"
+    );
 
     // The 8 cheques go back against one receipt; the accountant collects others.
     for id in &cheques {
@@ -183,8 +193,16 @@ async fn bl_prp_08_an_amendment_recreates_the_charges_and_returns_the_cheques() 
     assert_eq!(returns[0].cheques.len(), 8);
     let tasks = s.t.tasks.with_key(&amend::cheques_key(&v2));
     assert_eq!(tasks.len(), 1);
-    assert!(tasks[0].title.contains("replacement cheques"), "{}", tasks[0].title);
-    assert!(tasks[0].description.contains("HOR-TEST"), "{}", tasks[0].description);
+    assert!(
+        tasks[0].title.contains("replacement cheques"),
+        "{}",
+        tasks[0].title
+    );
+    assert!(
+        tasks[0].description.contains("HOR-TEST"),
+        "{}",
+        tasks[0].description
+    );
 
     let events = s.t.amended.all();
     assert_eq!(events.len(), 1);
@@ -197,7 +215,11 @@ async fn bl_prp_08_an_amendment_recreates_the_charges_and_returns_the_cheques() 
     // PRP.RUL.02: the Ejari task of the amendment, due 14 days from now.
     let ejari = s.t.tasks.with_key(&format!("property.ejari:{}", v2.id));
     assert_eq!(ejari.len(), 1);
-    assert!(ejari[0].title.contains("Update the Ejari"), "{}", ejari[0].title);
+    assert!(
+        ejari[0].title.contains("Update the Ejari"),
+        "{}",
+        ejari[0].title
+    );
 
     // The effects run once.
     let again = amend::settle(s.t.state(), v2.id, None).await.unwrap();
@@ -216,7 +238,9 @@ async fn bl_prp_08_cheques_of_the_same_amount_are_relinked_and_deposited_ones_st
     // The May cheque was deposited already.
     s.t.cheques.set_status(cheques[0], ChequeStatus::Deposited);
     // The rent stays, the deposit goes up: the charges have the same amounts.
-    let v2 = s.amendment(&v1, d(5, 1), aed(120_000), aed(6_000), None).await;
+    let v2 = s
+        .amendment(&v1, d(5, 1), aed(120_000), aed(6_000), None)
+        .await;
 
     s.t.activate(&s.manager, &v2).await.assert_ok();
 
@@ -242,7 +266,10 @@ async fn bl_prp_08_cheques_of_the_same_amount_are_relinked_and_deposited_ones_st
         .into_iter()
         .find(|c| c.due_date == d(5, 1))
         .unwrap();
-    assert_eq!(s.t.cheques.get(cheques[0]).linked, vec![old_charge.subject()]);
+    assert_eq!(
+        s.t.cheques.get(cheques[0]).linked,
+        vec![old_charge.subject()]
+    );
     assert!(s.t.cheques.returns().is_empty());
     assert!(s.t.tasks.with_key(&amend::cheques_key(&v2)).is_empty());
 }
@@ -273,23 +300,21 @@ async fn bl_prp_08_an_invoice_that_straddles_the_effective_date_is_split_pro_rat
     // The old invoice is credited; January to March are left alone.
     let credited = s.t.invoices.get(old_invoice).unwrap();
     assert_eq!(credited.summary.status, InvoiceStatus::Credited);
-    let others = s
-        .t
-        .invoices
-        .all()
-        .into_iter()
-        .filter(|i| i.summary.status == InvoiceStatus::Credited)
-        .count();
+    let others =
+        s.t.invoices
+            .all()
+            .into_iter()
+            .filter(|i| i.summary.status == InvoiceStatus::Credited)
+            .count();
     assert_eq!(others, 1);
 
     // The reissued invoice has two lines.
-    let reissued: Vec<_> = s
-        .t
-        .invoices
-        .all()
-        .into_iter()
-        .filter(|i| i.draft.lines.len() == 2)
-        .collect();
+    let reissued: Vec<_> =
+        s.t.invoices
+            .all()
+            .into_iter()
+            .filter(|i| i.draft.lines.len() == 2)
+            .collect();
     assert_eq!(reissued.len(), 1);
     let nets: Vec<i64> = reissued[0].draft.lines.iter().map(|l| l.net()).collect();
     assert_eq!(nets, vec![466_667, 586_667]);
@@ -345,14 +370,13 @@ async fn bl_prp_08_a_paid_invoice_after_the_effective_date_is_credited_and_reiss
     s.t.activate(&s.manager, &v2).await.assert_ok();
 
     // The invoices of the two earlier months stand.
-    let credited: Vec<i64> = s
-        .t
-        .invoices
-        .all()
-        .into_iter()
-        .filter(|i| i.summary.status == InvoiceStatus::Credited)
-        .map(|i| i.summary.id.0)
-        .collect();
+    let credited: Vec<i64> =
+        s.t.invoices
+            .all()
+            .into_iter()
+            .filter(|i| i.summary.status == InvoiceStatus::Credited)
+            .map(|i| i.summary.id.0)
+            .collect();
     assert_eq!(credited, vec![old_invoice]);
     // The amendment's charge of this month is invoiced at the new rate.
     let new_charge = s
@@ -381,7 +405,9 @@ async fn bl_prp_08_a_draft_invoice_after_the_effective_date_is_discarded() {
     let v1 = s.leased().await;
     s.invoice_and_pay(d(4, 30)).await;
     // May is drafted, not issued.
-    property::invoicing::run(s.t.state(), d(5, 1)).await.unwrap();
+    property::invoicing::run(s.t.state(), d(5, 1))
+        .await
+        .unwrap();
     let may = s
         .charges(&v1)
         .await
@@ -389,11 +415,16 @@ async fn bl_prp_08_a_draft_invoice_after_the_effective_date_is_discarded() {
         .find(|c| c.due_date == d(5, 1))
         .unwrap();
     let draft_id = may.invoice_id.expect("the May draft");
-    let v2 = s.amendment(&v1, d(5, 1), aed(132_000), aed(5_000), None).await;
+    let v2 = s
+        .amendment(&v1, d(5, 1), aed(132_000), aed(5_000), None)
+        .await;
 
     s.t.activate(&s.manager, &v2).await.assert_ok();
 
-    assert!(s.t.invoices.get(draft_id).is_none(), "the draft is discarded");
+    assert!(
+        s.t.invoices.get(draft_id).is_none(),
+        "the draft is discarded"
+    );
     let old = s
         .charges(&v1)
         .await
@@ -418,7 +449,9 @@ async fn bl_prp_08_a_draft_invoice_after_the_effective_date_is_discarded() {
 async fn bl_prp_08_a_changed_deposit_runs_adjust() {
     let up = scene().await;
     let v1 = up.leased().await;
-    let v2 = up.amendment(&v1, d(5, 1), aed(120_000), aed(6_000), None).await;
+    let v2 = up
+        .amendment(&v1, d(5, 1), aed(120_000), aed(6_000), None)
+        .await;
     up.t.activate(&up.manager, &v2).await.assert_ok();
 
     let asked = up.t.deposits.adjusted();
@@ -442,17 +475,20 @@ async fn bl_prp_08_a_changed_deposit_runs_adjust() {
 
     let down = scene().await;
     let v1 = down.leased().await;
-    let v2 = down.amendment(&v1, d(5, 1), aed(120_000), aed(4_000), None).await;
+    let v2 = down
+        .amendment(&v1, d(5, 1), aed(120_000), aed(4_000), None)
+        .await;
     down.t.activate(&down.manager, &v2).await.assert_ok();
     let refunds = down.t.refunds.asked();
     assert_eq!(refunds.len(), 1);
     assert_eq!(refunds[0].amount, aed(1_000));
     assert!(matches!(refunds[0].source, RefundSource::Deposit(_)));
-    assert!(down
-        .charges(&v2)
-        .await
-        .iter()
-        .all(|c| c.charge_type != DEPOSIT_TOP_UP));
+    assert!(
+        down.charges(&v2)
+            .await
+            .iter()
+            .all(|c| c.charge_type != DEPOSIT_TOP_UP)
+    );
 }
 
 /// AC5: with a legal case flag open on v1, `submit` of v2 is refused with
@@ -472,11 +508,19 @@ async fn bl_prp_08_a_legal_case_refuses_submit_and_activate() {
 
     let refused = s.t.submit(&s.agent, &v2).await;
     refused.assert_status(422);
-    assert!(refused.text().contains("Legal case open"), "{}", refused.text());
+    assert!(
+        refused.text().contains("Legal case open"),
+        "{}",
+        refused.text()
+    );
     assert_eq!(s.t.status(&v2).await, LeaseStatus::Draft);
 
     // Cleared, it is submitted; set again, it cannot be activated.
-    let flag = LegalCase::of_root(s.t.db(), v1.root_id).await.unwrap().pop().unwrap();
+    let flag = LegalCase::of_root(s.t.db(), v1.root_id)
+        .await
+        .unwrap()
+        .pop()
+        .unwrap();
     s.t.post(
         &s.manager,
         &format!("/property/leases/{}/legal-cases/clear", v1.id),
@@ -488,7 +532,11 @@ async fn bl_prp_08_a_legal_case_refuses_submit_and_activate() {
     s.flag(&v1).await;
     let refused = s.t.activate(&s.manager, &v2).await;
     refused.assert_status(422);
-    assert!(refused.text().contains("Legal case open"), "{}", refused.text());
+    assert!(
+        refused.text().contains("Legal case open"),
+        "{}",
+        refused.text()
+    );
     assert_eq!(s.t.status(&v2).await, LeaseStatus::PendingSignature);
     assert_eq!(s.t.status(&v1).await, LeaseStatus::Active);
 }
@@ -511,7 +559,11 @@ async fn bl_prp_08_an_effective_date_in_the_previous_month_is_refused() {
     s.t.accept(&draft);
     let refused = s.t.submit(&s.agent, &draft).await;
     refused.assert_status(422);
-    assert!(refused.text().contains("first day of this month"), "{}", refused.text());
+    assert!(
+        refused.text().contains("first day of this month"),
+        "{}",
+        refused.text()
+    );
     assert_eq!(s.t.status(&draft).await, LeaseStatus::Draft);
     let _ = &s.building;
 }

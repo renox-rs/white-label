@@ -216,7 +216,10 @@ async fn active_target(
 ) -> Result<ManagementAgreement> {
     match awaiting_agreement(db, owner, unit_id, date).await? {
         Some(found) if found.status == AgreementStatus::Active => Ok(found),
-        _ => Err(refused(english("property.transfers.new_agreement_inactive", &[]))),
+        _ => Err(refused(english(
+            "property.transfers.new_agreement_inactive",
+            &[],
+        ))),
     }
 }
 
@@ -243,10 +246,9 @@ pub async fn request(
         return Err(refused(english("property.transfers.state", &[])));
     }
     let rows = agreement.units(&state.db).await?;
-    let Some(row) = rows
-        .iter()
-        .find(|row| row.unit_id == asked.unit_id && row.date_out.is_none() && !row.awaiting_transfer)
-    else {
+    let Some(row) = rows.iter().find(|row| {
+        row.unit_id == asked.unit_id && row.date_out.is_none() && !row.awaiting_transfer
+    }) else {
         return Err(refused(english("property.transfers.not_in_agreement", &[])));
     };
     if asked.date <= row.date_in {
@@ -270,7 +272,10 @@ pub async fn request(
         }
         None => (TransferKind::Unmanaged, None),
     };
-    let note = asked.note.map(|n| n.trim().to_owned()).filter(|n| !n.is_empty());
+    let note = asked
+        .note
+        .map(|n| n.trim().to_owned())
+        .filter(|n| !n.is_empty());
     let transfer = UnitTransfer::create(
         &state.db,
         UnitTransfer {
@@ -525,7 +530,10 @@ pub async fn approve(
                     .in_settlement(&state.db, &lease.agreement())
                     .await?
                 {
-                    return Err(refused(english("property.agreements.settlement_pending", &[])));
+                    return Err(refused(english(
+                        "property.agreements.settlement_pending",
+                        &[],
+                    )));
                 }
             }
         }
@@ -613,7 +621,9 @@ pub async fn approve(
                             .await
                         {
                             Ok(()) => report.relinked += 1,
-                            Err(error) => report.problems.push(format!("cheque {}: {error}", cheque.number)),
+                            Err(error) => report
+                                .problems
+                                .push(format!("cheque {}: {error}", cheque.number)),
                         }
                     }
                 }
@@ -656,7 +666,10 @@ pub async fn approve(
     }
     // The last unit left: the agreement stays, and a task suggests the notice.
     if open_unit_ids(&state.db, &agreement).await?.is_empty() {
-        let title = english("property.transfers.task_empty", &[("agreement", &agreement.number())]);
+        let title = english(
+            "property.transfers.task_empty",
+            &[("agreement", &agreement.number())],
+        );
         let task = RoleTask::new(
             agreement.subject(),
             PROPERTY_MANAGER_ROLE,

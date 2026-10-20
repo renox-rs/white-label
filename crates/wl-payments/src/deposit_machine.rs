@@ -111,8 +111,7 @@ pub(crate) fn transfer_problem(deposit: &Deposit, input: &TransferInput) -> Opti
     }
     if input.part_refund_open {
         return Some(
-            "A part refund of an adjustment is not settled yet: pay or cancel it first."
-                .to_owned(),
+            "A part refund of an adjustment is not settled yet: pay or cancel it first.".to_owned(),
         );
     }
     None
@@ -129,8 +128,7 @@ pub(crate) fn forfeit_problem(deposit: &Deposit, input: &ForfeitInput) -> Option
     }
     if input.approver.is_none() || !input.approver_ok {
         return Some(
-            "The forfeiture needs the approval of another user who may refund deposits."
-                .to_owned(),
+            "The forfeiture needs the approval of another user who may refund deposits.".to_owned(),
         );
     }
     if deposit.refund_id.is_some() {
@@ -219,8 +217,7 @@ pub(crate) fn refund_problem(deposit: &Deposit, input: &RefundDepositInput) -> O
     }
     if input.part_refund_open {
         return Some(
-            "A part refund of an adjustment is not settled yet: pay or cancel it first."
-                .to_owned(),
+            "A part refund of an adjustment is not settled yet: pay or cancel it first.".to_owned(),
         );
     }
     if deposit.held_amount <= 0 {
@@ -531,13 +528,21 @@ mod tests {
             part_refund_open: true,
             ..ok.clone()
         };
-        assert!(transfer_problem(&deposit, &waiting).unwrap().contains("part refund"));
+        assert!(
+            transfer_problem(&deposit, &waiting)
+                .unwrap()
+                .contains("part refund")
+        );
         assert_eq!(transfer_problem(&deposit, &ok), None);
         let blank = TransferInput {
             receipt: "  ".into(),
             ..ok.clone()
         };
-        assert!(transfer_problem(&deposit, &blank).unwrap().contains("receipt"));
+        assert!(
+            transfer_problem(&deposit, &blank)
+                .unwrap()
+                .contains("receipt")
+        );
         let unknown = TransferInput {
             holder_ok: false,
             ..ok.clone()

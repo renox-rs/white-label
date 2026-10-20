@@ -5,8 +5,8 @@
 
 mod support;
 
-use renox::prelude::*;
 use renox::chrono::TimeDelta;
+use renox::prelude::*;
 use wl_kernel::cheques::{ChequeId, ChequeOutcome, ChequeStatus, RegisterCheque};
 use wl_kernel::documents::today;
 use wl_kernel::notify::NotifyRecipient;
@@ -20,7 +20,9 @@ use wl_payments::{FollowupTask, Payment, WlPayments};
 use support::{BLUE_DUNES, Booted, QUIET_SANDS, boot, boot_with};
 
 fn in_days(days: i64) -> String {
-    (today() + TimeDelta::days(days)).format("%Y-%m-%d").to_string()
+    (today() + TimeDelta::days(days))
+        .format("%Y-%m-%d")
+        .to_string()
 }
 
 async fn cheque_payments(t: &Booted) -> Vec<Payment> {
@@ -46,7 +48,10 @@ async fn a_bounced_cheque_is_presented_again_and_the_party_is_told() {
         .await;
     assert_eq!((bounced.presentations, bounced.honoured_amount), (1, 0));
     assert_eq!(
-        FollowupTask::open_of_cheque(t.db(), bounced.id).await.unwrap().len(),
+        FollowupTask::open_of_cheque(t.db(), bounced.id)
+            .await
+            .unwrap()
+            .len(),
         1
     );
 
@@ -58,7 +63,10 @@ async fn a_bounced_cheque_is_presented_again_and_the_party_is_told() {
     let again = t.cheque(bounced.id).await;
     assert_eq!(again.status, ChequeStatus::Deposited);
     assert_eq!(again.presentations, 2);
-    assert_eq!(again.deposit_date.map(|d| d.to_string()), Some(date.clone()));
+    assert_eq!(
+        again.deposit_date.map(|d| d.to_string()),
+        Some(date.clone())
+    );
     assert_eq!(again.open_amount, 2_000_000);
 
     let told = t.notices.of_type(CHEQUE_PRESENTED);
@@ -68,7 +76,10 @@ async fn a_bounced_cheque_is_presented_again_and_the_party_is_told() {
         NotifyRecipient::Party { id } if id == BLUE_DUNES
     ));
     let data = told[0].data.to_string();
-    assert!(data.contains("2001") && data.contains("AED 20,000.00"), "{data}");
+    assert!(
+        data.contains("2001") && data.contains("AED 20,000.00"),
+        "{data}"
+    );
 
     // The bounce's follow-up task is done: the cheque is with the bank.
     let tasks = FollowupTask::of_cheque(t.db(), bounced.id).await.unwrap();
@@ -159,7 +170,9 @@ async fn a_second_re_presentation_is_refused_and_each_bounce_adds_a_fee() {
     assert_eq!(returns[1].certificate.as_deref(), Some("CERT-2"));
     assert_eq!(t.cheque_bounced.all().len(), 2);
     // The follow-up task of the second bounce is open again.
-    let open = FollowupTask::open_of_cheque(t.db(), bounced.id).await.unwrap();
+    let open = FollowupTask::open_of_cheque(t.db(), bounced.id)
+        .await
+        .unwrap();
     assert_eq!(open.len(), 1);
 
     t.represent_cheque(&staff, &second, &in_days(5), true, "")
@@ -247,7 +260,9 @@ async fn clearing_after_a_re_presentation_resolves_the_bounce() {
         .assert_ok();
     let again = t.cheque(bounced.id).await;
     assert!(t.cheque_resolved.all().is_empty(), "not resolved yet");
-    t.cheque_action(&staff, &again, "clear", &[]).await.assert_ok();
+    t.cheque_action(&staff, &again, "clear", &[])
+        .await
+        .assert_ok();
 
     let cleared = t.cheque(bounced.id).await;
     assert_eq!(cleared.status, ChequeStatus::Cleared);

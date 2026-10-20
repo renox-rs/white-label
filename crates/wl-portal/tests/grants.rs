@@ -53,8 +53,14 @@ async fn an_invitation_is_accepted_or_revoked() {
     let t = boot().await;
     let inviter = t.user("Ines", &[USERS_INVITE]).await;
     let nobody = t.user("Nora", &[]).await;
-    let form = [("person", "70"), ("party", "70"), ("roles", "primary_contact,viewer")];
-    t.post_as(&nobody, "/test/grants", &form).await.assert_forbidden();
+    let form = [
+        ("person", "70"),
+        ("party", "70"),
+        ("roles", "primary_contact,viewer"),
+    ];
+    t.post_as(&nobody, "/test/grants", &form)
+        .await
+        .assert_forbidden();
     let created = t.post_as(&inviter, "/test/grants", &form).await;
     created.assert_ok();
     let id: i64 = created.text().parse().unwrap();
@@ -64,14 +70,20 @@ async fn an_invitation_is_accepted_or_revoked() {
     assert_eq!(invited.role_keys(), ["primary_contact", "viewer"]);
 
     let invitee = t.user("Ivan", &[]).await;
-    let accepted = PortalAccess::accept(t.state(), id, invitee.id).await.unwrap();
+    let accepted = PortalAccess::accept(t.state(), id, invitee.id)
+        .await
+        .unwrap();
     assert_eq!(accepted.status, GrantStatus::Active);
     assert_eq!(accepted.user_id, Some(invitee.id));
     // An accepted invitation cannot be revoked or accepted again.
     t.post_as(&inviter, &format!("/test/grants/{id}/revoke"), &[])
         .await
         .assert_status(422);
-    assert!(PortalAccess::accept(t.state(), id, invitee.id).await.is_err());
+    assert!(
+        PortalAccess::accept(t.state(), id, invitee.id)
+            .await
+            .is_err()
+    );
 
     let second = t.post_as(&inviter, "/test/grants", &form).await;
     let second: i64 = second.text().parse().unwrap();
@@ -176,25 +188,41 @@ async fn ending_and_closing_a_grant() {
     assert_eq!(ended.status, GrantStatus::ReadOnly);
     assert_eq!(ended.ended_reason.as_deref(), Some("lease terminated"));
     // Only an active grant ends.
-    assert!(PortalAccess::end(t.state(), None, one.id, None).await.is_err());
+    assert!(
+        PortalAccess::end(t.state(), None, one.id, None)
+            .await
+            .is_err()
+    );
     let closed = PortalAccess::close(t.state(), None, one.id, Some("90 days passed"))
         .await
         .unwrap();
     assert_eq!(closed.status, GrantStatus::Closed);
     // Closed is final.
-    assert!(PortalAccess::close(t.state(), None, one.id, None).await.is_err());
-    t.post_as(&staff, &format!("/test/grants/{}/suspend", one.id), &[("reason", "x")])
-        .await
-        .assert_status(422);
+    assert!(
+        PortalAccess::close(t.state(), None, one.id, None)
+            .await
+            .is_err()
+    );
+    t.post_as(
+        &staff,
+        &format!("/test/grants/{}/suspend", one.id),
+        &[("reason", "x")],
+    )
+    .await
+    .assert_status(422);
 
     // Close an active one by hand, and a suspended one.
     t.post_as(&staff, &format!("/test/grants/{}/close", two.id), &[])
         .await
         .assert_ok();
     assert_eq!(status(&t, two.id).await, GrantStatus::Closed);
-    t.post_as(&staff, &format!("/test/grants/{}/suspend", three.id), &[("reason", "x")])
-        .await
-        .assert_ok();
+    t.post_as(
+        &staff,
+        &format!("/test/grants/{}/suspend", three.id),
+        &[("reason", "x")],
+    )
+    .await
+    .assert_ok();
     t.post_as(&staff, &format!("/test/grants/{}/close", three.id), &[])
         .await
         .assert_ok();

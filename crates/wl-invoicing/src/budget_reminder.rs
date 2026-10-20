@@ -83,7 +83,11 @@ pub fn due_kind(start: NaiveDate, on: NaiveDate, days: u32) -> Option<&'static s
 /// `starts on 2028-01-01`, or `started on 2028-01-01` for the first-day
 /// reminder.
 fn when_text(kind: &str, start: NaiveDate) -> String {
-    let verb = if kind == FIRST_DAY { "started" } else { "starts" };
+    let verb = if kind == FIRST_DAY {
+        "started"
+    } else {
+        "starts"
+    };
     format!("{verb} on {}", start.format("%Y-%m-%d"))
 }
 
@@ -106,9 +110,13 @@ pub async fn run(state: &AppState, on: NaiveDate) -> Result<usize> {
             i64::from(on.year()),
             i64::from(on.year()) + 1,
         ] {
-            let month =
-                CompanyBudget::start_month_for(&state.db, entity.id, year, config.budget_fiscal_start_month)
-                    .await?;
+            let month = CompanyBudget::start_month_for(
+                &state.db,
+                entity.id,
+                year,
+                config.budget_fiscal_start_month,
+            )
+            .await?;
             let start = year_start(year, month);
             let Some(kind) = due_kind(start, on, config.budget_reminder_days) else {
                 continue;
@@ -128,16 +136,15 @@ pub async fn run(state: &AppState, on: NaiveDate) -> Result<usize> {
             if done {
                 continue;
             }
-            let mut request = NotifyRequest::new(
-                REMINDER,
-                Subject::new("kernel.legal_entity", entity.id),
-            )
-            .data(json!({
-                "entity": entity.code,
-                "year": year,
-                "when": when_text(kind, start),
-                "link": format!("/budgets?entity={}", entity.id),
-            }));
+            let mut request =
+                NotifyRequest::new(REMINDER, Subject::new("kernel.legal_entity", entity.id)).data(
+                    json!({
+                        "entity": entity.code,
+                        "year": year,
+                        "when": when_text(kind, start),
+                        "link": format!("/budgets?entity={}", entity.id),
+                    }),
+                );
             for id in &recipients {
                 request = request.to_user(*id);
             }

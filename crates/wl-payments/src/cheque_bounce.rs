@@ -35,9 +35,7 @@
 use renox::prelude::*;
 use renox::state_machine::{StateMachine, Transition, TransitionCtx, TransitionError};
 use serde::{Deserialize, Serialize};
-use wl_kernel::cheques::{
-    BounceFeeCharge, ChequeBounced, ChequeStatus, bounce_fees,
-};
+use wl_kernel::cheques::{BounceFeeCharge, ChequeBounced, ChequeStatus, bounce_fees};
 use wl_kernel::documents::today;
 use wl_kernel::payments::PaymentMethod;
 
@@ -234,16 +232,16 @@ pub async fn bounce(
         ChequeReturn::query()
             .where_(ChequeReturn::CHEQUE_ID.eq(cheque.id))
             .where_(ChequeReturn::PRESENTATION.eq(cheque.presentations))
-            .update(
-                &mut tx,
-                &[("honoured_payment_id", &Some(payment.id))],
-            )
+            .update(&mut tx, &[("honoured_payment_id", &Some(payment.id))])
             .await?;
         honoured = Some((payment, received));
     }
     tx.commit().await?;
     if let Some((payment, received)) = honoured {
-        received.emit(state).await.map_err(TransitionError::Failed)?;
+        received
+            .emit(state)
+            .await
+            .map_err(TransitionError::Failed)?;
         cheque_money::allocate_to_links(state, &cheque, &payment, payment.amount, Some(user.id))
             .await?;
     }

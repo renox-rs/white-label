@@ -19,7 +19,11 @@ use wl_kernel::tickets::{Assignee, OpenTicket, TASK_CATEGORY, TicketRef, task_cr
 pub(crate) fn dubai_morning(day: NaiveDate) -> Option<DateTime> {
     let local = day.and_hms_opt(9, 0, 0)?;
     let zone = FixedOffset::east_opt(DUBAI_OFFSET_SECONDS)?;
-    Some(zone.from_local_datetime(&local).single()?.with_timezone(&Utc))
+    Some(
+        zone.from_local_datetime(&local)
+            .single()?
+            .with_timezone(&Utc),
+    )
 }
 
 /// Opens `task`, or returns the one still open under the same source key,

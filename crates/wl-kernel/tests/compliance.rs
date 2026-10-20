@@ -127,7 +127,11 @@ impl TaskCreator for Doubles {
         note: &'a str,
     ) -> TicketFuture<'a, bool> {
         Box::pin(async move {
-            self.0.lock().unwrap().completed.push((ticket.0, note.to_owned()));
+            self.0
+                .lock()
+                .unwrap()
+                .completed
+                .push((ticket.0, note.to_owned()));
             Ok(true)
         })
     }
@@ -229,7 +233,8 @@ impl World {
     /// Runs `rule` about payroll run 4 for `key`, depth `depth`, with an
     /// action that fails when `fail`, at the travelled time.
     async fn run(&self, rule: &str, key: &str, depth: i64, fail: bool) -> RunOutcome {
-        let spec = RuleRunSpec::new(rule, Subject::new("hr.payroll_run", 4), key).chain_depth(depth);
+        let spec =
+            RuleRunSpec::new(rule, Subject::new("hr.payroll_run", 4), key).chain_depth(depth);
         self.app
             .at_travelled_time(run_rule(self.app.state(), spec, move |_state| async move {
                 if fail {
@@ -335,7 +340,10 @@ async fn a_failed_critical_run_alerts_the_owner_and_the_admin_and_opens_a_task()
 #[renox::test]
 async fn a_retrying_run_does_not_alert() {
     let w = world().await;
-    assert_eq!(w.run(WPS, "wps:2026-11", 0, true).await, RunOutcome::Retrying);
+    assert_eq!(
+        w.run(WPS, "wps:2026-11", 0, true).await,
+        RunOutcome::Retrying
+    );
     assert!(w.alerts().await.is_empty());
     assert_eq!(w.doubles.alerts_sent(), 0);
     assert!(w.doubles.opened().is_empty());
@@ -402,7 +410,10 @@ async fn fifty_minutes_late_is_not_missed_and_sixty_five_is() {
     w.app.travel(Duration::from_secs(15 * 60));
     w.check().await;
     let found = w.alerts().await;
-    let later = found.iter().find(|a| a.rule == LATER).expect("found at 02:15");
+    let later = found
+        .iter()
+        .find(|a| a.rule == LATER)
+        .expect("found at 02:15");
     assert_eq!(later.planned_at, Some(two - Span::minutes(50)));
 }
 
@@ -462,12 +473,21 @@ async fn a_successful_rerun_closes_the_alert_and_the_task() {
         )
         .await
         .unwrap();
-    assert_eq!(w.run(WPS, "wps:2026-11", 0, false).await, RunOutcome::Succeeded);
+    assert_eq!(
+        w.run(WPS, "wps:2026-11", 0, false).await,
+        RunOutcome::Succeeded
+    );
 
     let alert = w.alerts().await.remove(0);
     assert_eq!(alert.status, AlertStatus::Closed);
     assert_eq!(alert.closed_how, Some(ClosedHow::Rerun));
-    assert!(alert.note.as_deref().unwrap().starts_with("Rule ran successfully at "));
+    assert!(
+        alert
+            .note
+            .as_deref()
+            .unwrap()
+            .starts_with("Rule ran successfully at ")
+    );
     let done = w.doubles.completed();
     assert_eq!(done.len(), 1);
     assert_eq!(done[0].0, 1);
@@ -519,7 +539,10 @@ async fn the_owner_closes_the_alert_with_a_note() {
     w.app.acting_as(&w.md);
     let ok = w
         .app
-        .post(&url, &[("note", "Paid by hand on 4 Nov"), ("attachment", "12")])
+        .post(
+            &url,
+            &[("note", "Paid by hand on 4 Nov"), ("attachment", "12")],
+        )
         .await;
     assert_eq!(ok.status.as_u16(), 303, "{}", ok.text());
     let alert = w.alerts().await.remove(0);
@@ -578,11 +601,21 @@ async fn a_failed_run_of_an_ordinary_rule_alerts_nobody() {
 async fn an_occurrence_is_raised_once() {
     let w = world().await;
     let raised = || {
-        compliance::Raised::new(WPS, Subject::new("hr.payroll_run", 4), "k", AlertKind::Failed)
+        compliance::Raised::new(
+            WPS,
+            Subject::new("hr.payroll_run", 4),
+            "k",
+            AlertKind::Failed,
+        )
     };
     let first = compliance::raise(w.app.state(), raised()).await.unwrap();
     assert!(first.is_some());
-    assert!(compliance::raise(w.app.state(), raised()).await.unwrap().is_none());
+    assert!(
+        compliance::raise(w.app.state(), raised())
+            .await
+            .unwrap()
+            .is_none()
+    );
     assert_eq!(w.alerts().await.len(), 1);
     assert_eq!(w.doubles.alerts_sent(), 1);
     assert_eq!(w.doubles.opened().len(), 1);

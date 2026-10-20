@@ -23,9 +23,7 @@ use wl_kernel::tickets::{Assignee, OpenTicket};
 use wl_kernel::{PartyId, PartyKind, Subject};
 use wl_parties::{CompanyDetails, NewParty, PersonDetails, create};
 use wl_sales::{LeadSource, PartyAcquisition};
-use wl_ticketing::{
-    Category, NewContract, ServiceContract, ServiceContracts, Ticket, Tickets,
-};
+use wl_ticketing::{Category, NewContract, ServiceContract, ServiceContracts, Ticket, Tickets};
 
 /// The app, with `wl:install` and the seeds run as the demo does.
 async fn booted() -> TestApp {
@@ -144,10 +142,18 @@ async fn the_seed_stores_the_ticket_categories_once() {
     let app = booted().await;
     for key in ["fire_life_safety", "lifts"] {
         let category = Category::by_key(app.db(), key).await.unwrap().expect(key);
-        assert!(category.compliance_critical && category.contract_end_reassign_only, "{key}");
+        assert!(
+            category.compliance_critical && category.contract_end_reassign_only,
+            "{key}"
+        );
         assert!(category.active && category.sla_policy_id.is_some(), "{key}");
     }
-    for key in ["move_out_inspection", "legal_case", "owner_statement_dispute", "billing_dispute"] {
+    for key in [
+        "move_out_inspection",
+        "legal_case",
+        "owner_statement_dispute",
+        "billing_dispute",
+    ] {
         let category = Category::by_key(app.db(), key).await.unwrap().expect(key);
         assert!(!category.compliance_critical, "{key}");
     }
@@ -192,7 +198,10 @@ async fn the_civil_defence_approval_is_a_legal_block_that_cannot_be_overridden()
 async fn the_certificate_and_registration_kinds_and_the_responsible_roles_are_seeded() {
     let app = booted().await;
     for key in ["building_safety_certificate", "lift_certificate"] {
-        let kind = DocumentKind::by_key(app.db(), key).await.unwrap().expect(key);
+        let kind = DocumentKind::by_key(app.db(), key)
+            .await
+            .unwrap()
+            .expect(key);
         assert!(kind.compliance_critical && !kind.legal_block, "{key}");
         assert_eq!(kind.reminder_offsets.0, [90, 30, 7]);
         assert_eq!(kind.responsible_role.as_deref(), Some("coordinator"));
@@ -218,7 +227,10 @@ async fn the_certificate_and_registration_kinds_and_the_responsible_roles_are_se
         ("service_contract", "coordinator"),
         ("service_report", "coordinator"),
     ] {
-        let kind = DocumentKind::by_key(app.db(), key).await.unwrap().expect(key);
+        let kind = DocumentKind::by_key(app.db(), key)
+            .await
+            .unwrap()
+            .expect(key);
         assert_eq!(kind.responsible_role.as_deref(), Some(role), "{key}");
     }
     // The tenant's documents guard `submit` by the kind of tenant.
@@ -271,7 +283,10 @@ async fn an_expired_civil_defence_approval_refuses_fire_safety_work_but_not_othe
         .unwrap()
         .unwrap_err();
     let message = refused.message();
-    assert!(message.contains(&format!("Civil Defence approval expired on {expired}")), "{message}");
+    assert!(
+        message.contains(&format!("Civil Defence approval expired on {expired}")),
+        "{message}"
+    );
     assert!(message.contains("override: not allowed"), "{message}");
 
     let general = ticket(&app, "general", v).await;
@@ -279,7 +294,10 @@ async fn an_expired_civil_defence_approval_refuses_fire_safety_work_but_not_othe
         .check(state, "ticket.resolve", general, today())
         .await
         .unwrap();
-    assert!(allowed.is_ok(), "a cleaning ticket of the same vendor resolves");
+    assert!(
+        allowed.is_ok(),
+        "a cleaning ticket of the same vendor resolves"
+    );
 
     let contract = draft_contract(&app, v, "fire_life_safety").await;
     let refused = documents::guard(state)
@@ -287,24 +305,32 @@ async fn an_expired_civil_defence_approval_refuses_fire_safety_work_but_not_othe
         .await
         .unwrap()
         .unwrap_err();
-    assert!(refused.message().contains("Civil Defence approval"), "{}", refused.message());
+    assert!(
+        refused.message().contains("Civil Defence approval"),
+        "{}",
+        refused.message()
+    );
     assert!(refused.message().contains("override: not allowed"));
 
     // A valid approval lets the same work through, and lifts need none.
     let valid = vendor(&app, "Firewatch LLC").await;
     approval(&app, valid, today() + Days::new(200)).await;
     let ok = ticket(&app, "fire_life_safety", valid).await;
-    assert!(documents::guard(state)
-        .check(state, "ticket.resolve", ok, today())
-        .await
-        .unwrap()
-        .is_ok());
+    assert!(
+        documents::guard(state)
+            .check(state, "ticket.resolve", ok, today())
+            .await
+            .unwrap()
+            .is_ok()
+    );
     let lifts = ticket(&app, "lifts", v).await;
-    assert!(documents::guard(state)
-        .check(state, "ticket.resolve", lifts, today())
-        .await
-        .unwrap()
-        .is_ok());
+    assert!(
+        documents::guard(state)
+            .check(state, "ticket.resolve", lifts, today())
+            .await
+            .unwrap()
+            .is_ok()
+    );
 }
 
 /// The `FutureWork` provider lists the vendor's visits planned after the
@@ -322,12 +348,17 @@ async fn the_look_ahead_lists_the_vendors_visits_planned_after_the_expiry() {
     let cleaning = ticket(&app, "general", v).await;
     for (id, due) in [(before, 10), (after, 25), (cleaning, 25)] {
         Ticket::where_eq("id", id)
-            .update(app.db(), &[("planned_due_date", &Some(today() + Days::new(due)))])
+            .update(
+                app.db(),
+                &[("planned_due_date", &Some(today() + Days::new(due)))],
+            )
             .await
             .unwrap();
     }
 
-    let entries = wl_documents::blocks_for(app.db(), "ticket.resolve").await.unwrap();
+    let entries = wl_documents::blocks_for(app.db(), "ticket.resolve")
+        .await
+        .unwrap();
     let entry = entries
         .iter()
         .find(|e| e.kind == "civil_defence_approval")
@@ -348,7 +379,14 @@ async fn the_look_ahead_lists_the_vendors_visits_planned_after_the_expiry() {
 #[renox::test]
 async fn a_failed_critical_rule_alerts_the_company_admins_once() {
     let app = booted().await;
-    for rule in ["PRP.RUL.09", "WRK.RUL.14", "WRK.RUL.18", "DOC.RUL.01", "DOC.RUL.02", "DOC.RUL.03"] {
+    for rule in [
+        "PRP.RUL.09",
+        "WRK.RUL.14",
+        "WRK.RUL.18",
+        "DOC.RUL.01",
+        "DOC.RUL.02",
+        "DOC.RUL.03",
+    ] {
         assert!(is_critical(rule), "{rule}");
     }
     assert!(!is_critical("PRP.RUL.12"), "a reminder is not critical");
@@ -359,14 +397,29 @@ async fn a_failed_critical_rule_alerts_the_company_admins_once() {
     let mut unique = told.clone();
     unique.sort_unstable();
     unique.dedup();
-    assert_eq!(told.len(), unique.len(), "the owner role and the admin are one role: told once");
+    assert_eq!(
+        told.len(),
+        unique.len(),
+        "the owner role and the admin are one role: told once"
+    );
     assert!(told.contains(&first.id) && told.contains(&second.id));
 
-    let raised = Raised::new("PRP.RUL.09", schedule_subject(), "PRP.RUL.09:2027-01-10", AlertKind::Failed)
-        .error("the renewal run failed");
-    let alert = raise(app.state(), raised.clone()).await.unwrap().expect("an alert");
+    let raised = Raised::new(
+        "PRP.RUL.09",
+        schedule_subject(),
+        "PRP.RUL.09:2027-01-10",
+        AlertKind::Failed,
+    )
+    .error("the renewal run failed");
+    let alert = raise(app.state(), raised.clone())
+        .await
+        .unwrap()
+        .expect("an alert");
     assert_eq!(alert.owner_role, "admin");
-    assert!(raise(app.state(), raised).await.unwrap().is_none(), "one alert per occurrence");
+    assert!(
+        raise(app.state(), raised).await.unwrap().is_none(),
+        "one alert per occurrence"
+    );
 }
 
 /// The notification types take their group's give-up reaction.
@@ -377,13 +430,35 @@ async fn the_notification_types_take_the_reaction_of_their_group() {
         let def = notification_type(key).unwrap_or_else(|| panic!("{key} is registered"));
         (def.give_up.clone(), def.staff_role.clone(), def.statutory)
     };
-    let portal = vec![GiveUpReaction::MarkContactInvalid, GiveUpReaction::StaffTask];
-    for key in ["lease.contract_for_signature", "lease.renewal_window", "lease.notice_withdrawn"] {
-        assert_eq!(reactions(key), (portal.clone(), Some("property_manager".to_owned()), false), "{key}");
+    let portal = vec![
+        GiveUpReaction::MarkContactInvalid,
+        GiveUpReaction::StaffTask,
+    ];
+    for key in [
+        "lease.contract_for_signature",
+        "lease.renewal_window",
+        "lease.notice_withdrawn",
+    ] {
+        assert_eq!(
+            reactions(key),
+            (portal.clone(), Some("property_manager".to_owned()), false),
+            "{key}"
+        );
     }
-    let statutory = vec![GiveUpReaction::MarkContactInvalid, GiveUpReaction::StatutoryNotice];
-    for key in ["lease.notice_of_changed_terms", "lease.landlord_notice", "lease.payment_demand"] {
-        assert_eq!(reactions(key), (statutory.clone(), Some("property_manager".to_owned()), true), "{key}");
+    let statutory = vec![
+        GiveUpReaction::MarkContactInvalid,
+        GiveUpReaction::StatutoryNotice,
+    ];
+    for key in [
+        "lease.notice_of_changed_terms",
+        "lease.landlord_notice",
+        "lease.payment_demand",
+    ] {
+        assert_eq!(
+            reactions(key),
+            (statutory.clone(), Some("property_manager".to_owned()), true),
+            "{key}"
+        );
     }
     let statements = vec![
         GiveUpReaction::MarkContactInvalid,
@@ -396,10 +471,22 @@ async fn the_notification_types_take_the_reaction_of_their_group() {
         "owner_statement.revision_follows",
         "owner_statement.dispute_outcome",
     ] {
-        assert_eq!(reactions(key), (statements.clone(), Some("accountant".to_owned()), false), "{key}");
+        assert_eq!(
+            reactions(key),
+            (statements.clone(), Some("accountant".to_owned()), false),
+            "{key}"
+        );
     }
-    for key in ["property.lease_unsigned", "property.renewal_due", "property.holding_over"] {
-        assert_eq!(reactions(key).0, vec![GiveUpReaction::None], "a staff-only type creates no task: {key}");
+    for key in [
+        "property.lease_unsigned",
+        "property.renewal_due",
+        "property.holding_over",
+    ] {
+        assert_eq!(
+            reactions(key).0,
+            vec![GiveUpReaction::None],
+            "a staff-only type creates no task: {key}"
+        );
     }
 }
 
@@ -415,11 +502,15 @@ async fn a_late_ticket_update_keeps_the_work_time_and_carries_the_flag() {
     let state = app.state();
 
     let worked = renox::db::now() - renox::chrono::Duration::hours(3);
-    let refused = ticket_update::enter(state, technician.id, id, worked, "Replaced the valve", None)
-        .await
-        .err()
-        .expect("a late entry without a reason is refused");
-    assert!(matches!(refused, Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _)), "{refused:?}");
+    let refused =
+        ticket_update::enter(state, technician.id, id, worked, "Replaced the valve", None)
+            .await
+            .err()
+            .expect("a late entry without a reason is refused");
+    assert!(
+        matches!(refused, Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _)),
+        "{refused:?}"
+    );
 
     let entered = ticket_update::enter(
         state,
@@ -436,9 +527,15 @@ async fn a_late_ticket_update_keeps_the_work_time_and_carries_the_flag() {
         _ => panic!("a flagged entry is recorded"),
     };
     let update = TicketUpdate::find(app.db(), record).await.unwrap().unwrap();
-    assert_eq!(update.worked_at, worked, "the work time is the business time");
+    assert_eq!(
+        update.worked_at, worked,
+        "the work time is the business time"
+    );
     assert!(update.late && update.entered_at > update.worked_at);
-    assert_eq!(update.late_reason.as_deref(), Some("No signal in the basement"));
+    assert_eq!(
+        update.late_reason.as_deref(),
+        Some("No signal in the basement")
+    );
     assert_eq!(update.ticket_id, id);
 
     let on_time = ticket_update::enter(state, technician.id, id, renox::db::now(), "Started", None)
@@ -447,11 +544,22 @@ async fn a_late_ticket_update_keeps_the_work_time_and_carries_the_flag() {
     assert!(matches!(on_time, Entered::OnTime { .. }));
 
     let days_ago = renox::db::now() - renox::chrono::Duration::hours(30);
-    let waiting = ticket_update::enter(state, technician.id, id, days_ago, "Inspected", Some("Phone lost"))
-        .await
-        .unwrap();
+    let waiting = ticket_update::enter(
+        state,
+        technician.id,
+        id,
+        days_ago,
+        "Inspected",
+        Some("Phone lost"),
+    )
+    .await
+    .unwrap();
     assert!(matches!(waiting, Entered::Pending { .. }));
-    assert_eq!(TicketUpdate::of_ticket(app.db(), id).await.unwrap().len(), 2, "the pending one is not created yet");
+    assert_eq!(
+        TicketUpdate::of_ticket(app.db(), id).await.unwrap().len(),
+        2,
+        "the pending one is not created yet"
+    );
 }
 
 /// The lead sources, the campaign figures' approval, the checklists and the SOP
@@ -459,11 +567,19 @@ async fn a_late_ticket_update_keeps_the_work_time_and_carries_the_flag() {
 #[renox::test]
 async fn the_lead_sources_checklists_and_sops_are_seeded() {
     let app = booted().await;
-    for code in ["referral", "walk_in", "website", "social", "paid_ads", "partner", "event", "other"] {
-        let source = LeadSource::by_code(app.db(), code).await.unwrap().expect(code);
+    for code in [
+        "referral", "walk_in", "website", "social", "paid_ads", "partner", "event", "other",
+    ] {
+        let source = LeadSource::by_code(app.db(), code)
+            .await
+            .unwrap()
+            .expect(code);
         assert!(source.active, "{code}");
     }
-    let aggregator = LeadSource::by_code(app.db(), "aggregator").await.unwrap().unwrap();
+    let aggregator = LeadSource::by_code(app.db(), "aggregator")
+        .await
+        .unwrap()
+        .unwrap();
     assert!(!aggregator.active, "01 does not use the aggregator source");
 
     for (name, role) in [
@@ -480,10 +596,18 @@ async fn the_lead_sources_checklists_and_sops_are_seeded() {
             .unwrap()
             .unwrap_or_else(|| panic!("{name}"));
         assert_eq!(template.job_roles, role);
-        assert!(!template.blocks_activation, "the role is active before the checklist is complete");
+        assert!(
+            !template.blocks_activation,
+            "the role is active before the checklist is complete"
+        );
         let steps = template.steps(app.db()).await.unwrap();
         let owners: Vec<&str> = steps.iter().map(|s| s.owner.as_str()).collect();
-        assert!(owners.contains(&"role:admin") && owners.contains(&"manager") && owners.contains(&"employee"), "{name}");
+        assert!(
+            owners.contains(&"role:admin")
+                && owners.contains(&"manager")
+                && owners.contains(&"employee"),
+            "{name}"
+        );
     }
 
     let leasing = sop(&app, "SOP-PRP-LEASING").await;
@@ -499,7 +623,10 @@ async fn the_lead_sources_checklists_and_sops_are_seeded() {
         .collect();
     assert!(readers.contains(&"leasing_agent".to_owned()));
     assert_eq!(sop(&app, "SOP-PRP-CHEQUES").await.owner_role, "accountant");
-    assert_eq!(sop(&app, "SOP-PRP-OWNER-STATEMENTS").await.owner_role, "accountant");
+    assert_eq!(
+        sop(&app, "SOP-PRP-OWNER-STATEMENTS").await.owner_role,
+        "accountant"
+    );
 }
 
 /// The source and the campaign of an enquiry reach the tenant's party when it
@@ -518,7 +645,10 @@ async fn an_enquiry_hands_its_source_to_the_tenant_party() {
     )
     .await
     .unwrap_err();
-    assert!(matches!(refused, Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _)));
+    assert!(matches!(
+        refused,
+        Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _)
+    ));
 
     let recorded = enquiry::record(
         app.db(),
@@ -552,10 +682,16 @@ async fn an_enquiry_hands_its_source_to_the_tenant_party() {
         .await
         .unwrap()
         .expect("the party has an acquisition");
-    let source = LeadSource::by_code(app.db(), "walk_in").await.unwrap().unwrap();
+    let source = LeadSource::by_code(app.db(), "walk_in")
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(acquisition.source_id, source.id);
     assert_eq!(acquisition.set_from, "lead");
-    assert!(enquiry::convert(state, recorded.id, tenant).await.is_err(), "it converts once");
+    assert!(
+        enquiry::convert(state, recorded.id, tenant).await.is_err(),
+        "it converts once"
+    );
 }
 
 /// The settings page shows each setting with its value, who set it and the

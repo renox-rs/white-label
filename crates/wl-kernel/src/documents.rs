@@ -61,7 +61,9 @@ pub fn dubai_date(at: DateTime) -> NaiveDate {
 /// digests and cards.
 pub fn dubai_text(at: DateTime) -> String {
     let dubai = FixedOffset::east_opt(DUBAI_OFFSET_SECONDS).expect("UTC+4 is a valid offset");
-    at.with_timezone(&dubai).format("%Y-%m-%d %H:%M").to_string()
+    at.with_timezone(&dubai)
+        .format("%Y-%m-%d %H:%M")
+        .to_string()
 }
 
 /// Today in Asia/Dubai, from [`renox::db::now`] (so a test that travels

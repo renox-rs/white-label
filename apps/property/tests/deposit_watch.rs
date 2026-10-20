@@ -161,7 +161,10 @@ async fn bl_prp_16_a_new_version_restarts_the_count() {
     assert_eq!(sent.len(), 1);
     assert_eq!(sent[0].data["version"], 2);
     // The watch follows the latest version.
-    let watch = DepositWatch::of_deposit(s.t.db(), DEPOSIT.0).await.unwrap().unwrap();
+    let watch = DepositWatch::of_deposit(s.t.db(), DEPOSIT.0)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!((watch.version, watch.published_on), (2, d(3, 10)));
 }
 
@@ -225,7 +228,11 @@ async fn bl_prp_16_a_deposit_dispute_legal_case_stops_the_escalation() {
     s.t.post(
         &s.manager,
         &format!("/property/leases/{}/legal-cases", s.lease.id),
-        &[("case_type", "deposit_dispute"), ("reference", "RDC-9"), ("ticket", "new")],
+        &[
+            ("case_type", "deposit_dispute"),
+            ("reference", "RDC-9"),
+            ("ticket", "new"),
+        ],
     )
     .await
     .assert_ok();
@@ -268,6 +275,11 @@ async fn bl_prp_16_a_settled_deposit_and_other_sources_are_ignored() {
         })
         .await
         .unwrap();
-    assert!(DepositWatch::of_deposit(s.t.db(), 9).await.unwrap().is_none());
+    assert!(
+        DepositWatch::of_deposit(s.t.db(), 9)
+            .await
+            .unwrap()
+            .is_none()
+    );
     assert!(s.t.notices.of_type(DEPOSIT_READY).is_empty());
 }

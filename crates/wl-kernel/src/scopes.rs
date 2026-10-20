@@ -147,13 +147,22 @@ mod tests {
             Box::pin(async move { Ok((id == "1").then(|| "Tower A".to_owned())) })
         });
         let db = app.db();
-        let named = label_of(db, &Scope::new("scopes_test_buildings", 1)).await.unwrap();
+        let named = label_of(db, &Scope::new("scopes_test_buildings", 1))
+            .await
+            .unwrap();
         assert_eq!(named, "Tower A");
-        let unknown = label_of(db, &Scope::new("scopes_test_buildings", 2)).await.unwrap();
+        let unknown = label_of(db, &Scope::new("scopes_test_buildings", 2))
+            .await
+            .unwrap();
         assert_eq!(unknown, "scopes_test_buildings 2");
-        let plain = label_of(db, &Scope::new("scopes_test_other", 5)).await.unwrap();
+        let plain = label_of(db, &Scope::new("scopes_test_other", 5))
+            .await
+            .unwrap();
         assert_eq!(plain, "scopes_test_other 5");
-        assert_eq!(label_of(db, &Scope::global()).await.unwrap(), "All locations");
+        assert_eq!(
+            label_of(db, &Scope::global()).await.unwrap(),
+            "All locations"
+        );
     }
 
     #[renox::test]

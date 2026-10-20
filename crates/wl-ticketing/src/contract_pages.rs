@@ -30,11 +30,11 @@ use crate::contract::{ContractStatus, ServiceContract, ServiceContracts, is_open
 use crate::contract_end::CONTRACT_ENDED_REASON;
 use crate::flags::ComplianceFlag;
 use crate::no_show::NoShow;
-use crate::vendor_flags::REASSIGN_REASON;
 use crate::pages::{Texts, assignee_name, invalid, party_by_code, when};
 use crate::permissions;
 use crate::texts;
 use crate::ticket::{Ticket, TicketStatus};
+use crate::vendor_flags::REASSIGN_REASON;
 use crate::visibility;
 use crate::work;
 
@@ -244,7 +244,9 @@ async fn show(
             None => String::new(),
         };
         let open = is_open_visit(&visit) && visibility::ensure_visible(&visit, &user).is_ok();
-        let reassign_only = category.as_ref().is_some_and(|c| c.contract_end_reassign_only);
+        let reassign_only = category
+            .as_ref()
+            .is_some_and(|c| c.contract_end_reassign_only);
         visits.push(VisitRow {
             id: visit.id,
             number: visit.number.clone(),
@@ -556,7 +558,10 @@ mod tests {
 
     #[test]
     fn a_date_reads_day_month_year() {
-        assert_eq!(day(NaiveDate::from_ymd_opt(2026, 11, 30).unwrap()), "30 Nov 2026");
+        assert_eq!(
+            day(NaiveDate::from_ymd_opt(2026, 11, 30).unwrap()),
+            "30 Nov 2026"
+        );
     }
 
     #[test]

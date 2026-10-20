@@ -120,7 +120,11 @@ pub async fn lookup_recipient(state: &AppState, user: &AuthUser, party: i64) -> 
     let (_party, company) = company_of(state, party).await?;
     let trn = clean(company.trn.as_deref()).filter(|trn| is_trn(trn));
     let Some(trn) = trn else {
-        return Err(refuse(state, "trn", "wl_parties.errors.einvoice_lookup_trn"));
+        return Err(refuse(
+            state,
+            "trn",
+            "wl_parties.errors.einvoice_lookup_trn",
+        ));
     };
     let entity = LegalEntity::for_scope(&state.db, None).await?;
     einvoice::lookup(state, &entity, &trn).await

@@ -263,10 +263,10 @@ pub async fn run_stuck(state: &AppState) -> Result<usize> {
     let hours = config.einvoice_task_hours;
     let cutoff = renox::db::now() - Duration::hours(hours);
     let waiting = EInvoiceTransmission::query()
-        .where_(EInvoiceTransmission::STATUS.is_in([
-            TransmissionStatus::Queued,
-            TransmissionStatus::Submitted,
-        ]))
+        .where_(
+            EInvoiceTransmission::STATUS
+                .is_in([TransmissionStatus::Queued, TransmissionStatus::Submitted]),
+        )
         .where_(EInvoiceTransmission::QUEUED_AT.lte(cutoff))
         .order_by(EInvoiceTransmission::ID)
         .get(&state.db)
@@ -295,18 +295,16 @@ pub async fn run_stuck(state: &AppState) -> Result<usize> {
 /// Tells the company admin that the ASP has been unreachable for all the
 /// transmissions of `entity`, once per outage: every transmission created
 /// since `cutoff` is still `queued`, and one has waited `hours` hours.
-async fn outage(
-    state: &AppState,
-    entity: i64,
-    hours: i64,
-    cutoff: renox::db::DateTime,
-) -> Result {
+async fn outage(state: &AppState, entity: i64, hours: i64, cutoff: renox::db::DateTime) -> Result {
     let recent = EInvoiceTransmission::query()
         .where_(EInvoiceTransmission::LEGAL_ENTITY_ID.eq(entity))
         .where_(EInvoiceTransmission::QUEUED_AT.gt(cutoff))
         .get(&state.db)
         .await?;
-    if recent.iter().any(|t| t.status != TransmissionStatus::Queued) {
+    if recent
+        .iter()
+        .any(|t| t.status != TransmissionStatus::Queued)
+    {
         return Ok(());
     }
     let Some(oldest) = EInvoiceTransmission::query()
@@ -332,15 +330,14 @@ async fn outage(
         if admins.is_empty() {
             return Ok(());
         }
-        let mut request = NotifyRequest::new(
-            OUTAGE_NOTICE,
-            Subject::new("kernel.legal_entity", entity),
-        )
-        .data(json!({
-            "entity": code,
-            "hours": hours,
-            "link": "/einvoices",
-        }));
+        let mut request =
+            NotifyRequest::new(OUTAGE_NOTICE, Subject::new("kernel.legal_entity", entity)).data(
+                json!({
+                    "entity": code,
+                    "hours": hours,
+                    "link": "/einvoices",
+                }),
+            );
         for id in admins {
             request = request.to_user(id);
         }

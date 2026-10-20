@@ -8,11 +8,13 @@ mod support;
 
 use renox::chrono::{NaiveDate, TimeDelta};
 use renox::prelude::*;
+use wl_kernel::Subject;
 use wl_kernel::bank_statements::bank_statements;
 use wl_kernel::cheques::{ChequeStatus, RegisterCheque, cheques as cheque_contract};
 use wl_kernel::documents::today;
-use wl_kernel::payments::{Direction, PaymentMethod, RecordPayment, RefundSource, payment_recorder};
-use wl_kernel::Subject;
+use wl_kernel::payments::{
+    Direction, PaymentMethod, RecordPayment, RefundSource, payment_recorder,
+};
 use wl_payments::bank_statement::{BankStatementImport, ImportStatus};
 use wl_payments::refund::RefundStatus;
 use wl_payments::{Cheque, Payment, Refund, permissions as perm};
@@ -29,8 +31,10 @@ fn date(y: i32, m: u32, d: u32) -> NaiveDate {
 
 async fn cheque_on(t: &Booted, number: &str, on: NaiveDate, amount: i64) -> Cheque {
     let entity = t.entity("PGP").await;
-    t.register_cheque(RegisterCheque::new(BLUE_DUNES, entity.id, "ENBD", number, on, amount))
-        .await
+    t.register_cheque(RegisterCheque::new(
+        BLUE_DUNES, entity.id, "ENBD", number, on, amount,
+    ))
+    .await
 }
 
 async fn open(t: &Booted, direction: Direction) -> Vec<wl_kernel::cheques::OpenCheque> {
@@ -56,7 +60,9 @@ async fn the_cheques_not_cleared_are_listed_by_date() {
 
     let cleared = cheque_on(&t, "3004", today(), 100_000).await;
     let cleared = t.deposit_cheque(&staff, &cleared).await;
-    t.cheque_action(&staff, &cleared, "clear", &[]).await.assert_ok();
+    t.cheque_action(&staff, &cleared, "clear", &[])
+        .await
+        .assert_ok();
     let bounced = t
         .bounced_cheque(&staff, BLUE_DUNES, "3005", 200_000, None, "")
         .await;
@@ -70,7 +76,12 @@ async fn the_cheques_not_cleared_are_listed_by_date() {
     )
     .await;
     t.register_cheque(RegisterCheque::new(
-        BLUE_DUNES, other.id, "ENBD", "3007", in_days(10), 800_000,
+        BLUE_DUNES,
+        other.id,
+        "ENBD",
+        "3007",
+        in_days(10),
+        800_000,
     ))
     .await;
 
@@ -117,9 +128,16 @@ async fn the_documents_a_cheque_pays_come_with_the_amount_applied() {
     let rent = t.invoices.add(BLUE_DUNES, "INV-1", 400_000);
     let charge = Subject::new("invoicing.charge", 5);
     t.register_cheque(
-        RegisterCheque::new(BLUE_DUNES, entity.id, "ENBD", "3201", in_days(20), 1_000_000)
-            .link(rent.subject())
-            .link(charge.clone()),
+        RegisterCheque::new(
+            BLUE_DUNES,
+            entity.id,
+            "ENBD",
+            "3201",
+            in_days(20),
+            1_000_000,
+        )
+        .link(rent.subject())
+        .link(charge.clone()),
     )
     .await;
     let read = open(&t, Direction::In).await;
@@ -173,8 +191,24 @@ async fn balances(t: &Booted) -> Vec<wl_kernel::bank_statements::BankBalance> {
 #[renox::test]
 async fn an_older_period_imported_later_does_not_replace_the_balance() {
     let t = boot().await;
-    let january = import(&t, "ENBD-1", date(2027, 1, 31), Some(900_000), ImportStatus::Completed, 0).await;
-    import(&t, "ENBD-1", date(2026, 12, 31), Some(100_000), ImportStatus::Completed, 10).await;
+    let january = import(
+        &t,
+        "ENBD-1",
+        date(2027, 1, 31),
+        Some(900_000),
+        ImportStatus::Completed,
+        0,
+    )
+    .await;
+    import(
+        &t,
+        "ENBD-1",
+        date(2026, 12, 31),
+        Some(100_000),
+        ImportStatus::Completed,
+        10,
+    )
+    .await;
     let read = balances(&t).await;
     assert_eq!(read.len(), 1);
     assert_eq!(read[0].amount, 900_000);
@@ -188,11 +222,51 @@ async fn an_older_period_imported_later_does_not_replace_the_balance() {
 #[renox::test]
 async fn only_a_completed_import_with_a_balance_counts() {
     let t = boot().await;
-    let good = import(&t, "ENBD-1", date(2027, 1, 31), Some(-250_000), ImportStatus::Completed, 0).await;
-    import(&t, "ENBD-1", date(2027, 2, 28), None, ImportStatus::Completed, 5).await;
-    import(&t, "ENBD-1", date(2027, 3, 31), Some(1), ImportStatus::Reverted, 6).await;
-    import(&t, "ENBD-1", date(2027, 4, 30), Some(2), ImportStatus::Uploaded, 7).await;
-    import(&t, "ENBD-1", date(2027, 5, 31), Some(3), ImportStatus::Failed, 8).await;
+    let good = import(
+        &t,
+        "ENBD-1",
+        date(2027, 1, 31),
+        Some(-250_000),
+        ImportStatus::Completed,
+        0,
+    )
+    .await;
+    import(
+        &t,
+        "ENBD-1",
+        date(2027, 2, 28),
+        None,
+        ImportStatus::Completed,
+        5,
+    )
+    .await;
+    import(
+        &t,
+        "ENBD-1",
+        date(2027, 3, 31),
+        Some(1),
+        ImportStatus::Reverted,
+        6,
+    )
+    .await;
+    import(
+        &t,
+        "ENBD-1",
+        date(2027, 4, 30),
+        Some(2),
+        ImportStatus::Uploaded,
+        7,
+    )
+    .await;
+    import(
+        &t,
+        "ENBD-1",
+        date(2027, 5, 31),
+        Some(3),
+        ImportStatus::Failed,
+        8,
+    )
+    .await;
     let read = balances(&t).await;
     assert_eq!(read.len(), 1);
     assert_eq!(read[0].import_id, good.id);
@@ -200,7 +274,15 @@ async fn only_a_completed_import_with_a_balance_counts() {
     assert_eq!(read[0].amount, -250_000);
 
     let t = boot().await;
-    import(&t, "ENBD-1", date(2027, 3, 31), None, ImportStatus::Completed, 0).await;
+    import(
+        &t,
+        "ENBD-1",
+        date(2027, 3, 31),
+        None,
+        ImportStatus::Completed,
+        0,
+    )
+    .await;
     assert!(balances(&t).await.is_empty());
 }
 
@@ -209,9 +291,33 @@ async fn only_a_completed_import_with_a_balance_counts() {
 #[renox::test]
 async fn the_import_completed_last_wins_on_the_same_period_end() {
     let t = boot().await;
-    import(&t, "ENBD-1", date(2027, 1, 31), Some(100_000), ImportStatus::Completed, 0).await;
-    let corrected = import(&t, "ENBD-1", date(2027, 1, 31), Some(110_000), ImportStatus::Completed, 30).await;
-    import(&t, "MASHREQ-2", date(2027, 1, 15), Some(5_000), ImportStatus::Completed, 0).await;
+    import(
+        &t,
+        "ENBD-1",
+        date(2027, 1, 31),
+        Some(100_000),
+        ImportStatus::Completed,
+        0,
+    )
+    .await;
+    let corrected = import(
+        &t,
+        "ENBD-1",
+        date(2027, 1, 31),
+        Some(110_000),
+        ImportStatus::Completed,
+        30,
+    )
+    .await;
+    import(
+        &t,
+        "MASHREQ-2",
+        date(2027, 1, 15),
+        Some(5_000),
+        ImportStatus::Completed,
+        0,
+    )
+    .await;
     let read = balances(&t).await;
     assert_eq!(read.len(), 2);
     assert_eq!(read[0].bank_account, "ENBD-1");
@@ -229,7 +335,10 @@ async fn the_import_completed_last_wins_on_the_same_period_end() {
 }
 
 async fn upload(t: &Booted, pairs: Vec<(String, String)>) -> renox::testing::TestResponse {
-    let refs: Vec<(&str, &str)> = pairs.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+    let refs: Vec<(&str, &str)> = pairs
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
     t.app.htmx().post("/bank-statements", &refs).await
 }
 
@@ -258,14 +367,22 @@ async fn the_accountant_enters_the_closing_balance_at_upload() {
     };
 
     t.app.acting_as(&clerk);
-    upload(&t, form("2027-01-31", "1,250.50")).await.assert_forbidden();
+    upload(&t, form("2027-01-31", "1,250.50"))
+        .await
+        .assert_forbidden();
 
     t.app.acting_as(&accountant);
-    upload(&t, form("2026-12-01", "10")).await.assert_status(422);
-    upload(&t, form("2027-01-31", "ten")).await.assert_status(422);
+    upload(&t, form("2026-12-01", "10"))
+        .await
+        .assert_status(422);
+    upload(&t, form("2027-01-31", "ten"))
+        .await
+        .assert_status(422);
     assert_eq!(BankStatementImport::query().count(t.db()).await.unwrap(), 0);
 
-    upload(&t, form("2027-01-31", "1,250.50")).await.assert_redirect("/bank-statements");
+    upload(&t, form("2027-01-31", "1,250.50"))
+        .await
+        .assert_redirect("/bank-statements");
     let rows = BankStatementImport::query().get(t.db()).await.unwrap();
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].closing_balance, Some(125_050));
@@ -276,11 +393,17 @@ async fn the_accountant_enters_the_closing_balance_at_upload() {
     assert!(balances(&t).await.is_empty());
 
     // The balance may be left out: the file carries it.
-    upload(&t, form("2027-02-28", "")).await.assert_redirect("/bank-statements");
+    upload(&t, form("2027-02-28", ""))
+        .await
+        .assert_redirect("/bank-statements");
     let rows = BankStatementImport::query().get(t.db()).await.unwrap();
     assert_eq!(rows[1].closing_balance, None);
 
-    t.app.get("/bank-statements").await.assert_ok().assert_see("ENBD-1");
+    t.app
+        .get("/bank-statements")
+        .await
+        .assert_ok()
+        .assert_see("ENBD-1");
 }
 
 async fn pay(
@@ -319,14 +442,68 @@ async fn after(t: &Booted, account: &str, on: NaiveDate) -> Vec<wl_kernel::payme
 async fn the_payments_after_a_date_are_those_dated_after_it() {
     let t = boot().await;
     let on = date(2027, 1, 31);
-    pay(&t, Direction::In, 100_000, on, Some("ENBD-1"), PaymentMethod::Transfer, "R-1").await;
-    let next = pay(&t, Direction::In, 200_000, date(2027, 2, 1), Some("ENBD-1"), PaymentMethod::Transfer, "R-2").await;
+    pay(
+        &t,
+        Direction::In,
+        100_000,
+        on,
+        Some("ENBD-1"),
+        PaymentMethod::Transfer,
+        "R-1",
+    )
+    .await;
+    let next = pay(
+        &t,
+        Direction::In,
+        200_000,
+        date(2027, 2, 1),
+        Some("ENBD-1"),
+        PaymentMethod::Transfer,
+        "R-2",
+    )
+    .await;
     // Recorded now but dated long ago: its date decides.
-    pay(&t, Direction::In, 300_000, date(2026, 6, 1), Some("ENBD-1"), PaymentMethod::Transfer, "R-3").await;
-    let vat = pay(&t, Direction::Out, 400_000, date(2027, 2, 28), Some("ENBD-1"), PaymentMethod::Transfer, "VAT-2027-Q1").await;
+    pay(
+        &t,
+        Direction::In,
+        300_000,
+        date(2026, 6, 1),
+        Some("ENBD-1"),
+        PaymentMethod::Transfer,
+        "R-3",
+    )
+    .await;
+    let vat = pay(
+        &t,
+        Direction::Out,
+        400_000,
+        date(2027, 2, 28),
+        Some("ENBD-1"),
+        PaymentMethod::Transfer,
+        "VAT-2027-Q1",
+    )
+    .await;
     // Another account, and none.
-    pay(&t, Direction::In, 500_000, date(2027, 2, 2), Some("MASHREQ-2"), PaymentMethod::Transfer, "R-5").await;
-    pay(&t, Direction::In, 600_000, date(2027, 2, 3), None, PaymentMethod::Cash, "R-6").await;
+    pay(
+        &t,
+        Direction::In,
+        500_000,
+        date(2027, 2, 2),
+        Some("MASHREQ-2"),
+        PaymentMethod::Transfer,
+        "R-5",
+    )
+    .await;
+    pay(
+        &t,
+        Direction::In,
+        600_000,
+        date(2027, 2, 3),
+        None,
+        PaymentMethod::Cash,
+        "R-6",
+    )
+    .await;
 
     let read = after(&t, "ENBD-1", on).await;
     let numbers: Vec<i64> = read.iter().map(|p| p.payment.id.0).collect();
@@ -344,9 +521,29 @@ async fn the_payments_after_a_date_are_those_dated_after_it() {
 #[renox::test]
 async fn a_reversed_payment_is_not_returned() {
     let t = boot().await;
-    let staff = t.user("Rana", &[perm::VIEW, perm::RECORD, perm::REVERSE]).await;
-    let kept = pay(&t, Direction::In, 100_000, date(2027, 2, 1), Some("ENBD-1"), PaymentMethod::Transfer, "K").await;
-    let gone = pay(&t, Direction::In, 200_000, date(2027, 2, 2), Some("ENBD-1"), PaymentMethod::Transfer, "G").await;
+    let staff = t
+        .user("Rana", &[perm::VIEW, perm::RECORD, perm::REVERSE])
+        .await;
+    let kept = pay(
+        &t,
+        Direction::In,
+        100_000,
+        date(2027, 2, 1),
+        Some("ENBD-1"),
+        PaymentMethod::Transfer,
+        "K",
+    )
+    .await;
+    let gone = pay(
+        &t,
+        Direction::In,
+        200_000,
+        date(2027, 2, 2),
+        Some("ENBD-1"),
+        PaymentMethod::Transfer,
+        "G",
+    )
+    .await;
     t.reverse(&staff, &gone, "bank_return", "returned by the bank")
         .await
         .assert_ok();
@@ -379,7 +576,9 @@ async fn the_refunds_approved_or_failed_are_returned() {
         .await;
     assert!(unpaid(&t).await.is_empty());
 
-    t.refund_action(&b, &requested, "approve", &[]).await.assert_ok();
+    t.refund_action(&b, &requested, "approve", &[])
+        .await
+        .assert_ok();
     let read = unpaid(&t).await;
     assert_eq!(read.len(), 1);
     assert_eq!(read[0].id.0, requested.id);
@@ -389,15 +588,25 @@ async fn the_refunds_approved_or_failed_are_returned() {
     assert_eq!(read[0].approved_on, Some(today()));
     assert_eq!(read[0].source, Subject::new("invoicing.credit_note", 7));
 
-    t.refund_action(&a, &requested, "pay", &[("method", "transfer"), ("reference", "BANK-9")])
-        .await
-        .assert_ok();
+    t.refund_action(
+        &a,
+        &requested,
+        "pay",
+        &[("method", "transfer"), ("reference", "BANK-9")],
+    )
+    .await
+    .assert_ok();
     assert_eq!(t.refund(requested.id).await.status, RefundStatus::Paid);
     assert!(unpaid(&t).await.is_empty());
 
-    t.fail_refund(&a, &t.refund(requested.id).await, "bank_return", "account closed")
-        .await
-        .assert_ok();
+    t.fail_refund(
+        &a,
+        &t.refund(requested.id).await,
+        "bank_return",
+        "account closed",
+    )
+    .await
+    .assert_ok();
     assert_eq!(t.refund(requested.id).await.status, RefundStatus::Failed);
     let read = unpaid(&t).await;
     assert_eq!(read.len(), 1);
@@ -419,8 +628,25 @@ async fn counts(t: &Booted) -> (u64, u64, u64, u64) {
 async fn the_reads_change_nothing() {
     let t = boot().await;
     cheque_on(&t, "3301", in_days(10), 100_000).await;
-    pay(&t, Direction::In, 100_000, date(2027, 2, 1), Some("ENBD-1"), PaymentMethod::Transfer, "X").await;
-    import(&t, "ENBD-1", date(2027, 1, 31), Some(1), ImportStatus::Completed, 0).await;
+    pay(
+        &t,
+        Direction::In,
+        100_000,
+        date(2027, 2, 1),
+        Some("ENBD-1"),
+        PaymentMethod::Transfer,
+        "X",
+    )
+    .await;
+    import(
+        &t,
+        "ENBD-1",
+        date(2027, 1, 31),
+        Some(1),
+        ImportStatus::Completed,
+        0,
+    )
+    .await;
     let before = counts(&t).await;
     open(&t, Direction::In).await;
     balances(&t).await;
@@ -441,7 +667,9 @@ async fn the_bounced_cheques_are_listed_with_their_documents() {
         .await;
     let fine = t.received_cheque(BLUE_DUNES, "3402", 100_000, None).await;
     let fine = t.deposit_cheque(&staff, &fine).await;
-    t.cheque_action(&staff, &fine, "clear", &[]).await.assert_ok();
+    t.cheque_action(&staff, &fine, "clear", &[])
+        .await
+        .assert_ok();
 
     let entity = t.entity("PGP").await;
     let read = cheque_contract(t.state())

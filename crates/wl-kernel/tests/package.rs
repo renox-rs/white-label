@@ -1338,9 +1338,7 @@ fn the_late_entry_check_and_the_opt_in_registry() {
         assess(limits, at("2026-11-03T05:30:00Z"), entered, &Period::Open),
         Assessment::OnTime
     );
-    assert!(
-        assess(limits, at("2026-11-03T05:29:59Z"), entered, &Period::Open).needs_reason()
-    );
+    assert!(assess(limits, at("2026-11-03T05:29:59Z"), entered, &Period::Open).needs_reason());
     assert!(matches!(
         assess(limits, at("2026-11-03T04:00:00Z"), entered, &Period::Closed),
         Assessment::NeedsApproval {
@@ -1393,7 +1391,10 @@ fn the_integration_registry_and_the_retry_wait() {
 
     let waits: Vec<i64> = (1..=6).map(|n| retry_wait(n).num_minutes()).collect();
     assert_eq!(waits, [1, 2, 4, 8, 15, 15]);
-    assert_eq!(wl_kernel::permissions::INTEGRATIONS_VIEW, "integrations.view");
+    assert_eq!(
+        wl_kernel::permissions::INTEGRATIONS_VIEW,
+        "integrations.view"
+    );
     assert_eq!(
         wl_kernel::permissions::INTEGRATIONS_MANAGE,
         "integrations.manage"
@@ -1412,16 +1413,20 @@ fn a_connection_can_take_late_inbound_data() {
         Box::pin(async { Ok(Delivery::Sent) })
     })
     .inbound(
-        |_state, _item| {
-            Box::pin(async { Ok(Match::Same(Subject::new("payments.payment", 4))) })
-        },
+        |_state, _item| Box::pin(async { Ok(Match::Same(Subject::new("payments.payment", 4))) }),
         |item| EntrySpec::new("payments.payment", item.user_id, item.occurred_at),
     )
     .register();
     let def = integrations::get("gateway.acme").expect("registered");
     assert!(def.takes_inbound());
     let at = "2026-11-03T06:20:00Z".parse().expect("an instant");
-    let item = Inbound::new("gateway.acme", "TX-889", at, renox::serde_json::Value::Null, 7);
+    let item = Inbound::new(
+        "gateway.acme",
+        "TX-889",
+        at,
+        renox::serde_json::Value::Null,
+        7,
+    );
     let spec = def.entry_for(&item).expect("an entry");
     assert_eq!(spec.subject_type, "payments.payment");
     assert_eq!(spec.occurred_at, at);
@@ -1491,7 +1496,10 @@ fn the_digest_period_and_a_confidential_line() {
         }],
     );
     assert!(text.contains("- check in CI-9"), "{text}");
-    assert!(!text.contains("Anna") && !text.contains("router down"), "{text}");
+    assert!(
+        !text.contains("Anna") && !text.contains("router down"),
+        "{text}"
+    );
     assert_eq!(digest::TASK_AT, "07:00");
 }
 
@@ -1531,17 +1539,21 @@ async fn without_an_asp_adapter_the_recipient_lookup_is_unavailable() {
 /// category and the reason; without ticketing nothing is opened.
 #[renox::test]
 async fn a_planned_visit_and_the_compliance_flag_events_are_part_of_the_ticket_contract() {
-    use wl_kernel::tickets::{
-        ComplianceFlagCleared, ComplianceFlagRaised, ComplianceFlagReason, OpenTicket,
-        TaskCreator, task_creator,
-    };
     use wl_kernel::Subject;
+    use wl_kernel::tickets::{
+        ComplianceFlagCleared, ComplianceFlagRaised, ComplianceFlagReason, OpenTicket, TaskCreator,
+        task_creator,
+    };
 
     let dir = views(&[]);
     let app = boot(dir.path()).await;
-    let visit = OpenTicket::new(Subject::new("property.system", 4), "fire_safety", "Fire alarm")
-        .planned_due(NaiveDate::from_ymd_opt(2026, 11, 1).unwrap())
-        .bill_to(PartyId(9));
+    let visit = OpenTicket::new(
+        Subject::new("property.system", 4),
+        "fire_safety",
+        "Fire alarm",
+    )
+    .planned_due(NaiveDate::from_ymd_opt(2026, 11, 1).unwrap())
+    .bill_to(PartyId(9));
     assert_eq!(visit.planned_due.unwrap().to_string(), "2026-11-01");
     assert_eq!(visit.bill_party, Some(PartyId(9)));
     let creator = task_creator(app.state());
@@ -1560,8 +1572,14 @@ async fn a_planned_visit_and_the_compliance_flag_events_are_part_of_the_ticket_c
         reason,
         contract: Some(3),
     };
-    assert_eq!(renox::serde_json::to_value(&raised).unwrap()["reason"], "visit_missed");
-    assert_eq!(renox::serde_json::to_value(&cleared).unwrap()["contract"], 3);
+    assert_eq!(
+        renox::serde_json::to_value(&raised).unwrap()["reason"],
+        "visit_missed"
+    );
+    assert_eq!(
+        renox::serde_json::to_value(&cleared).unwrap()["contract"],
+        3
+    );
     let _: &dyn TaskCreator = &*creator;
 }
 
@@ -1570,22 +1588,32 @@ async fn a_planned_visit_and_the_compliance_flag_events_are_part_of_the_ticket_c
 /// contract number is its own yearly series.
 #[renox::test]
 async fn a_service_contract_and_its_events_are_part_of_the_ticket_contract() {
+    use wl_kernel::Subject;
     use wl_kernel::tickets::{
         OpenTicket, SERVICE_CONTRACT_SERIES, ServiceContractActivated, ServiceContractEnded,
         ServiceContractId, TicketId, VendorNoShow, task_creator,
     };
-    use wl_kernel::Subject;
 
     let dir = views(&[]);
     let app = boot(dir.path()).await;
     let contract = ServiceContractId(7);
-    assert_eq!(contract.subject().to_string(), "ticketing.service_contract:7");
-    let visit = OpenTicket::new(Subject::new("property.system", 4), "fire_safety", "Fire alarm")
-        .planned_due(NaiveDate::from_ymd_opt(2026, 12, 20).unwrap())
-        .under_contract(contract);
+    assert_eq!(
+        contract.subject().to_string(),
+        "ticketing.service_contract:7"
+    );
+    let visit = OpenTicket::new(
+        Subject::new("property.system", 4),
+        "fire_safety",
+        "Fire alarm",
+    )
+    .planned_due(NaiveDate::from_ymd_opt(2026, 12, 20).unwrap())
+    .under_contract(contract);
     assert_eq!(visit.contract, Some(contract));
     assert_eq!(
-        task_creator(app.state()).open(app.state(), visit).await.unwrap(),
+        task_creator(app.state())
+            .open(app.state(), visit)
+            .await
+            .unwrap(),
         None,
         "without ticketing nothing is opened"
     );
@@ -1603,7 +1631,10 @@ async fn a_service_contract_and_its_events_are_part_of_the_ticket_contract() {
         start: NaiveDate::from_ymd_opt(2026, 1, 1).unwrap(),
         end: NaiveDate::from_ymd_opt(2026, 12, 31).unwrap(),
     };
-    assert_eq!(renox::serde_json::to_value(&activated).unwrap()["end"], "2026-12-31");
+    assert_eq!(
+        renox::serde_json::to_value(&activated).unwrap()["end"],
+        "2026-12-31"
+    );
     let ended = ServiceContractEnded {
         contract,
         outcome: "expired".into(),
@@ -1620,7 +1651,10 @@ async fn a_service_contract_and_its_events_are_part_of_the_ticket_contract() {
         contract: Some(contract),
         scheduled_at: "2026-11-03T06:00:00Z".parse().unwrap(),
     };
-    assert_eq!(renox::serde_json::to_value(&no_show).unwrap()["contract"], 7);
+    assert_eq!(
+        renox::serde_json::to_value(&no_show).unwrap()["contract"],
+        7
+    );
 }
 
 /// #102: without the `payments` module the cheque contract finds nothing,
@@ -1640,11 +1674,26 @@ async fn the_cheque_contract_falls_back_when_payments_is_off() {
     let state = app.state();
     let contract = cheques(state);
     assert_eq!(ChequeId(4).subject().to_string(), "payments.cheque:4");
-    assert!(contract.find(app.db(), ChequeId(4)).await.unwrap().is_none());
+    assert!(
+        contract
+            .find(app.db(), ChequeId(4))
+            .await
+            .unwrap()
+            .is_none()
+    );
     let lease = Subject::new("property.lease", 9);
-    assert!(contract.of_agreement(app.db(), &lease).await.unwrap().is_empty());
+    assert!(
+        contract
+            .of_agreement(app.db(), &lease)
+            .await
+            .unwrap()
+            .is_empty()
+    );
     assert_eq!(
-        contract.open_bounced_amount(app.db(), PartyId(7), "AED").await.unwrap(),
+        contract
+            .open_bounced_amount(app.db(), PartyId(7), "AED")
+            .await
+            .unwrap(),
         0
     );
     let cheque = RegisterCheque::new(PartyId(7), 1, "ENBD", "1042", day(), 2_000_000)
@@ -1654,7 +1703,12 @@ async fn the_cheque_contract_falls_back_when_payments_is_off() {
         .cheque(ScheduledCheque::new("1", day(), 1_000_000))
         .cheque(ScheduledCheque::new("2", day(), 1_000_000));
     assert_eq!(schedule.total(), 2_000_000);
-    assert!(contract.register_schedule(state, schedule, None).await.is_err());
+    assert!(
+        contract
+            .register_schedule(state, schedule, None)
+            .await
+            .is_err()
+    );
 
     let charge = BounceFeeCharge {
         cheque: ChequeId(4),
@@ -1681,14 +1735,20 @@ async fn the_cheque_contract_falls_back_when_payments_is_off() {
         presentation: 1,
         linked: Vec::new(),
     };
-    assert_eq!(renox::serde_json::to_value(&bounced).unwrap()["open_amount"], 1_400_000);
+    assert_eq!(
+        renox::serde_json::to_value(&bounced).unwrap()["open_amount"],
+        1_400_000
+    );
     let resolved = ChequeBounceResolved {
         cheque: ChequeId(4),
         party: PartyId(7),
         outcome: ChequeOutcome::Cleared,
         others_open: Vec::new(),
     };
-    assert_eq!(renox::serde_json::to_value(&resolved).unwrap()["outcome"], "cleared");
+    assert_eq!(
+        renox::serde_json::to_value(&resolved).unwrap()["outcome"],
+        "cleared"
+    );
 }
 
 /// #106: without the module that owns the charges nothing is invoiced, so a
@@ -1705,12 +1765,21 @@ async fn a_charge_is_not_invoiced_when_nothing_provides_it() {
     let state = app.state();
     let charge = Subject::new(CHARGE_SUBJECT_TYPE, 12);
     assert_eq!(charge.to_string(), "invoicing.charge:12");
-    assert_eq!(charge_invoicer(state).invoice(state, &charge).await.unwrap(), None);
+    assert_eq!(
+        charge_invoicer(state)
+            .invoice(state, &charge)
+            .await
+            .unwrap(),
+        None
+    );
     assert_eq!(
         WriteOffAnswer::Pending { request: 3 },
         WriteOffAnswer::Pending { request: 3 }
     );
-    assert_ne!(WriteOffAnswer::WrittenOff, WriteOffAnswer::Pending { request: 3 });
+    assert_ne!(
+        WriteOffAnswer::WrittenOff,
+        WriteOffAnswer::Pending { request: 3 }
+    );
 }
 
 /// #108: without the `payments` module the portal sees no published
@@ -1728,7 +1797,13 @@ async fn the_deposit_deductions_fall_back_when_payments_is_off() {
     let app = boot(dir.path()).await;
     let state = app.state();
     let contract = deposit_deductions(state);
-    assert!(contract.published_for(state, PartyId(7)).await.unwrap().is_empty());
+    assert!(
+        contract
+            .published_for(state, PartyId(7))
+            .await
+            .unwrap()
+            .is_empty()
+    );
     let request = DisputeDeductions {
         deposit: DepositId(3),
         version: 1,
@@ -1745,7 +1820,10 @@ async fn the_deposit_deductions_fall_back_when_payments_is_off() {
         lines: vec![4],
         raised_on: day(),
     };
-    assert_eq!(renox::serde_json::to_value(&disputed).unwrap()["lines"][0], 4);
+    assert_eq!(
+        renox::serde_json::to_value(&disputed).unwrap()["lines"][0],
+        4
+    );
     let settled = DepositSettled {
         deposit: DepositId(3),
         source: Subject::new("property.lease", 9),
@@ -1755,7 +1833,10 @@ async fn the_deposit_deductions_fall_back_when_payments_is_off() {
         refund_amount: 0,
         new_holder: None,
     };
-    assert_eq!(renox::serde_json::to_value(&settled).unwrap()["outcome"], "forfeited");
+    assert_eq!(
+        renox::serde_json::to_value(&settled).unwrap()["outcome"],
+        "forfeited"
+    );
 }
 
 /// #115: without the `payments` module a deposit cannot be adjusted and no
@@ -1789,7 +1870,10 @@ async fn the_deposit_adjustment_falls_back_when_payments_is_off() {
         currency: "AED".into(),
         due: day(),
     };
-    assert_eq!(deposit_top_ups(state).request(state, charge).await.unwrap(), None);
+    assert_eq!(
+        deposit_top_ups(state).request(state, charge).await.unwrap(),
+        None
+    );
 
     let adjusted = DepositAdjusted {
         deposit: DepositId(3),
@@ -1825,7 +1909,12 @@ async fn the_company_budgets_fall_back_when_invoicing_is_off() {
             .unwrap(),
         None
     );
-    assert!(!budgets.is_owner_drawings(app.db(), "owner_drawings").await.unwrap());
+    assert!(
+        !budgets
+            .is_owner_drawings(app.db(), "owner_drawings")
+            .await
+            .unwrap()
+    );
 
     assert_eq!(COMPANY_BUDGET_SUBJECT_TYPE, "invoicing.company_budget");
     let approved = CompanyBudgetApproved {
@@ -1850,7 +1939,12 @@ async fn a_draft_line_names_its_charge_type_and_the_actual_falls_back() {
 
     let line = DraftLine::new("Rent, March", 100_000, VatCategory::Exempt).charge_type(" rent ");
     assert_eq!(line.charge_type.as_deref(), Some("rent"));
-    assert_eq!(DraftLine::new("x", 1, VatCategory::Exempt).charge_type(" ").charge_type, None);
+    assert_eq!(
+        DraftLine::new("x", 1, VatCategory::Exempt)
+            .charge_type(" ")
+            .charge_type,
+        None
+    );
     let mut json = renox::serde_json::to_value(&line).unwrap();
     json.as_object_mut().unwrap().remove("charge_type");
     let older: DraftLine = renox::serde_json::from_value(json).unwrap();
@@ -1871,7 +1965,10 @@ async fn a_draft_line_names_its_charge_type_and_the_actual_falls_back() {
         actual: 1_050_000,
         percent_used: Some(105),
     };
-    assert_eq!(renox::serde_json::to_value(&reached).unwrap()["percent_used"], 105);
+    assert_eq!(
+        renox::serde_json::to_value(&reached).unwrap()["percent_used"],
+        105
+    );
 }
 
 /// #90: posting cost goes through `post_cost`, which a cost code that is not
@@ -1891,10 +1988,18 @@ async fn posting_cost_without_a_poster_is_a_no_op() {
     )
     .cost_code(" Repairs ");
     assert_eq!(request.cost_code.as_deref(), Some("repairs"));
-    post_cost(app.state(), request.clone()).await.expect("a no-op");
-    post_cost(app.state(), PostCost { cost_code: None, ..request })
+    post_cost(app.state(), request.clone())
         .await
         .expect("a no-op");
+    post_cost(
+        app.state(),
+        PostCost {
+            cost_code: None,
+            ..request
+        },
+    )
+    .await
+    .expect("a no-op");
 }
 
 /// #93: the event of a projected balance below the threshold carries the
@@ -1924,18 +2029,18 @@ fn the_below_threshold_event_names_the_first_week() {
 async fn owner_drawings_without_invoicing_are_refused() {
     use wl_kernel::Subject;
     use wl_kernel::cheques::RegisterCheque;
-    use wl_kernel::drawings::{
-        DRAWING_REQUEST_SUBJECT_TYPE, DrawingRequest, owner_drawings,
-    };
+    use wl_kernel::drawings::{DRAWING_REQUEST_SUBJECT_TYPE, DrawingRequest, owner_drawings};
 
     let dir = views(&[]);
     let app = boot(dir.path()).await;
     let drawings = owner_drawings(app.state());
-    assert!(drawings
-        .category(app.db(), "owner_drawings")
-        .await
-        .unwrap()
-        .is_none());
+    assert!(
+        drawings
+            .category(app.db(), "owner_drawings")
+            .await
+            .unwrap()
+            .is_none()
+    );
     let refused = drawings
         .request(
             app.state(),
@@ -1998,31 +2103,46 @@ async fn without_ticketing_a_service_contract_covers_nothing_known() {
     let after = ContractCover::AfterEnd {
         ends_on: NaiveDate::from_ymd_opt(2026, 9, 30).unwrap(),
     };
-    assert_eq!(renox::serde_json::to_value(after).unwrap()["AfterEnd"]["ends_on"], "2026-09-30");
+    assert_eq!(
+        renox::serde_json::to_value(after).unwrap()["AfterEnd"]["ends_on"],
+        "2026-09-30"
+    );
 }
 
 /// #139: without the `sales` module attribution and lead conversion do
 /// nothing and report it.
 #[renox::test]
 async fn without_sales_attribution_and_lead_conversion_do_nothing() {
-    use wl_kernel::sales::{
-        Attribute, FirstSale, LeadId, campaign_attribution, lead_conversion,
-    };
     use wl_kernel::Subject;
+    use wl_kernel::sales::{Attribute, FirstSale, LeadId, campaign_attribution, lead_conversion};
 
     let dir = views(&[]);
     let app = boot(dir.path()).await;
     let attribution = campaign_attribution(app.state());
-    assert!(!attribution
-        .attribute(app.state(), Attribute::party(PartyId(3), "referral"))
-        .await
-        .unwrap());
-    let sale = FirstSale::new(PartyId(3), Subject::new("invoicing.invoice", 9), 200_000, day());
-    assert!(!attribution.record_first_sale(app.state(), sale).await.unwrap());
-    assert!(!lead_conversion(app.state())
-        .win(app.state(), LeadId(1), Subject::new("property.lease", 4))
-        .await
-        .unwrap());
+    assert!(
+        !attribution
+            .attribute(app.state(), Attribute::party(PartyId(3), "referral"))
+            .await
+            .unwrap()
+    );
+    let sale = FirstSale::new(
+        PartyId(3),
+        Subject::new("invoicing.invoice", 9),
+        200_000,
+        day(),
+    );
+    assert!(
+        !attribution
+            .record_first_sale(app.state(), sale)
+            .await
+            .unwrap()
+    );
+    assert!(
+        !lead_conversion(app.state())
+            .win(app.state(), LeadId(1), Subject::new("property.lease", 4))
+            .await
+            .unwrap()
+    );
     let merged = wl_kernel::PartiesMerged {
         survivor: PartyId(1),
         merged: PartyId(2),
@@ -2034,21 +2154,29 @@ async fn without_sales_attribution_and_lead_conversion_do_nothing() {
 /// works anywhere, no checklist is started and no SOP is pending.
 #[renox::test]
 async fn without_hr_the_workforce_checklists_and_sop_acknowledgements_are_empty() {
+    use wl_kernel::Subject;
     use wl_kernel::documents::{SopStaff, sop_acknowledgements};
     use wl_kernel::tickets::{ChecklistOutcome, checklists};
     use wl_kernel::workforce::{EmployeeId, workforce};
-    use wl_kernel::Subject;
 
     let dir = views(&[]);
     let app = boot(dir.path()).await;
     let branch = Subject::new("property.site", 2);
-    assert!(workforce(app.state())
-        .employees_in(app.db(), "driver", &branch)
-        .await
-        .unwrap()
-        .is_empty());
+    assert!(
+        workforce(app.state())
+            .employees_in(app.db(), "driver", &branch)
+            .await
+            .unwrap()
+            .is_empty()
+    );
     // #53: nobody is on the staff list, no profile and no account either.
-    assert!(workforce(app.state()).all_staff(app.db()).await.unwrap().is_empty());
+    assert!(
+        workforce(app.state())
+            .all_staff(app.db())
+            .await
+            .unwrap()
+            .is_empty()
+    );
     assert_eq!(
         workforce(app.state())
             .staff(app.state(), EmployeeId(7))
@@ -2076,12 +2204,17 @@ async fn without_hr_the_workforce_checklists_and_sop_acknowledgements_are_empty(
         role: "driver".into(),
         scopes: vec![branch],
     };
-    assert!(sop_acknowledgements(app.state())
-        .pending_for(app.state(), &who)
-        .await
-        .unwrap()
-        .is_empty());
-    assert_eq!(renox::serde_json::to_value(ChecklistOutcome::Passed).unwrap(), "passed");
+    assert!(
+        sop_acknowledgements(app.state())
+            .pending_for(app.state(), &who)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        renox::serde_json::to_value(ChecklistOutcome::Passed).unwrap(),
+        "passed"
+    );
 }
 
 /// #251: without the `payments` module no deposit is held for a lease and none
@@ -2099,23 +2232,44 @@ async fn the_lease_cancellation_contracts_fall_back_when_the_modules_are_off() {
     let state = app.state();
     let lease = Subject::new("property.lease", 9);
 
-    assert!(deposits(state).held_for(app.db(), &lease).await.unwrap().is_none());
-    assert!(deposits(state).start_settlement(state, &lease).await.unwrap().is_none());
+    assert!(
+        deposits(state)
+            .held_for(app.db(), &lease)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        deposits(state)
+            .start_settlement(state, &lease)
+            .await
+            .unwrap()
+            .is_none()
+    );
     let settlement = CancelSettlement::new(lease).forfeit(200_000, "Reservation form §4");
-    assert!(deposits(state)
-        .settle_cancelled(state, settlement, Some(4))
-        .await
-        .unwrap()
-        .is_none());
+    assert!(
+        deposits(state)
+            .settle_cancelled(state, settlement, Some(4))
+            .await
+            .unwrap()
+            .is_none()
+    );
 
     let request = ReturnCheques::new(vec![ChequeId(1), ChequeId(2)], "Lease cancelled");
-    let refused = cheques(state).return_undeposited(state, request, Some(4)).await;
+    let refused = cheques(state)
+        .return_undeposited(state, request, Some(4))
+        .await;
     assert!(matches!(
         refused,
         Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
     ));
 
-    assert!(!invoicer(state).discard_draft(app.db(), InvoiceId(1)).await.unwrap());
+    assert!(
+        !invoicer(state)
+            .discard_draft(app.db(), InvoiceId(1))
+            .await
+            .unwrap()
+    );
 
     // #267: the deposit cannot be applied to deductions either; the request
     // keeps the invoices in the order the vertical gave them.
@@ -2128,7 +2282,10 @@ async fn the_lease_cancellation_contracts_fall_back_when_the_modules_are_off() {
         }],
     };
     assert_eq!(applied.rent.len(), 1);
-    assert_eq!(wl_kernel::deposits::APPLIED_TO_DEDUCTIONS, "applied to deductions");
+    assert_eq!(
+        wl_kernel::deposits::APPLIED_TO_DEDUCTIONS,
+        "applied to deductions"
+    );
 
     // #262: nor held as evidence.
     let evidence = cheques(state)
@@ -2159,11 +2316,11 @@ async fn the_lease_cancellation_contracts_fall_back_when_the_modules_are_off() {
 /// event.
 #[renox::test]
 async fn the_legal_case_contracts_fall_back_when_the_modules_are_off() {
+    use wl_kernel::ChequeReferredToLegal;
     use wl_kernel::Subject;
     use wl_kernel::chase_holds::{ChaseHold, hold};
     use wl_kernel::deposits::deposits;
     use wl_kernel::tickets::task_creator;
-    use wl_kernel::ChequeReferredToLegal;
 
     let dir = views(&[]);
     let app = boot(dir.path()).await;
@@ -2171,12 +2328,19 @@ async fn the_legal_case_contracts_fall_back_when_the_modules_are_off() {
     let lease = Subject::new("property.lease", 9);
 
     assert_eq!(hold(app.db(), &lease).await.unwrap(), ChaseHold::Free);
-    assert!(!deposits(state).set_legal_case(state, &lease, true).await.unwrap());
-    assert!(task_creator(state)
-        .open_of(state, &lease, "legal_case")
-        .await
-        .unwrap()
-        .is_empty());
+    assert!(
+        !deposits(state)
+            .set_legal_case(state, &lease, true)
+            .await
+            .unwrap()
+    );
+    assert!(
+        task_creator(state)
+            .open_of(state, &lease, "legal_case")
+            .await
+            .unwrap()
+            .is_empty()
+    );
 
     let event = ChequeReferredToLegal {
         cheque: wl_kernel::ChequeId(4),
@@ -2203,7 +2367,12 @@ async fn the_deposit_handover_falls_back_when_payments_is_off() {
     let state = app.state();
     let lease = Subject::new("property.lease", 9);
 
-    assert!(!deposits(state).in_settlement(app.db(), &lease).await.unwrap());
+    assert!(
+        !deposits(state)
+            .in_settlement(app.db(), &lease)
+            .await
+            .unwrap()
+    );
     let request = TransferDeposit::new(lease.clone(), PartyId(31), "RCPT-1");
     assert_eq!(request.source, lease);
     assert_eq!(request.new_holder, PartyId(31));

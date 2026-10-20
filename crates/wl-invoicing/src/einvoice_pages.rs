@@ -122,7 +122,12 @@ fn problem_of(t: &EInvoiceTransmission) -> String {
             .error_codes
             .0
             .iter()
-            .zip(t.error_messages.0.iter().chain(std::iter::repeat(&String::new())))
+            .zip(
+                t.error_messages
+                    .0
+                    .iter()
+                    .chain(std::iter::repeat(&String::new())),
+            )
             .map(|(code, message)| {
                 if message.is_empty() {
                     code.clone()
@@ -150,10 +155,12 @@ async fn index(
         .get(&state.db)
         .await?;
     let asked: Option<i64> = filter.entity.as_deref().and_then(|e| e.trim().parse().ok());
-    let status: Option<TransmissionStatus> = filter
-        .status
-        .as_deref()
-        .and_then(|s| TransmissionStatus::ALL.iter().copied().find(|c| c.as_str() == s.trim()));
+    let status: Option<TransmissionStatus> = filter.status.as_deref().and_then(|s| {
+        TransmissionStatus::ALL
+            .iter()
+            .copied()
+            .find(|c| c.as_str() == s.trim())
+    });
     let mut query = EInvoiceTransmission::query()
         .order_by_desc(EInvoiceTransmission::ID)
         .limit(200);
@@ -204,11 +211,12 @@ async fn index(
             .map(|e| (e.id.to_string(), format!("{} - {}", e.code, e.name_en))),
     );
     let mut statuses = vec![(String::new(), t("einvoice.all_statuses"))];
-    statuses.extend(
-        TransmissionStatus::ALL
-            .iter()
-            .map(|s| (s.as_str().to_owned(), t(&format!("einvoice.status.{}", s.as_str())))),
-    );
+    statuses.extend(TransmissionStatus::ALL.iter().map(|s| {
+        (
+            s.as_str().to_owned(),
+            t(&format!("einvoice.status.{}", s.as_str())),
+        )
+    }));
     let queued = queued_count_all(&state.db).await?;
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),

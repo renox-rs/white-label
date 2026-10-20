@@ -489,7 +489,9 @@ mod tests {
             lines: 0,
             bad_lines: 0,
         };
-        let text = refusal(&budget, &input_ctx(&empty)).await.unwrap_or_default();
+        let text = refusal(&budget, &input_ctx(&empty))
+            .await
+            .unwrap_or_default();
         assert!(text.contains("at least one line"), "{text}");
         let bad = SubmitInput {
             lines: 3,

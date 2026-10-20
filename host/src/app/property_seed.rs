@@ -212,7 +212,11 @@ async fn install_categories(db: &Db) -> Result<usize> {
                 key: spec.key.to_owned(),
                 name_en: spec.name_en.to_owned(),
                 name_ar: spec.name_ar.to_owned(),
-                default_priority: if spec.critical { Priority::High } else { Priority::Normal },
+                default_priority: if spec.critical {
+                    Priority::High
+                } else {
+                    Priority::Normal
+                },
                 sla_policy_id: policy.as_ref().map(|p| p.id),
                 requires_signoff: false,
                 active: true,
@@ -375,7 +379,10 @@ mod tests {
             .expect("the Civil Defence approval");
         let seed = kind_seed(spec);
         assert!(seed.legal_block && seed.compliance_critical);
-        assert_eq!(seed.override_mode, wl_kernel::documents::OverrideMode::Never);
+        assert_eq!(
+            seed.override_mode,
+            wl_kernel::documents::OverrideMode::Never
+        );
         assert_eq!(seed.look_ahead_days, 30);
         assert!(seed.blocks.iter().all(|b| b.mode == BlockMode::Block));
     }
@@ -394,7 +401,11 @@ mod tests {
             let input = template_input(spec);
             assert_eq!(input.steps.len(), spec.steps.len());
             for step in &input.steps {
-                assert!(wl_hr::template::is_valid_owner(&step.owner), "{}", step.owner);
+                assert!(
+                    wl_hr::template::is_valid_owner(&step.owner),
+                    "{}",
+                    step.owner
+                );
             }
         }
     }

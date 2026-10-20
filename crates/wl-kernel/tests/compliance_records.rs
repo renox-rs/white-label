@@ -34,7 +34,9 @@ impl Module for Hr {
     }
 
     fn register(&self, _app: &mut Registry) {
-        CriticalRule::new("HRM.RUL.03").owner_role("hr_head").register();
+        CriticalRule::new("HRM.RUL.03")
+            .owner_role("hr_head")
+            .register();
         CriticalRule::new("DOC.RUL.03").daily_at("01:00").register();
     }
 }
@@ -42,7 +44,10 @@ impl Module for Hr {
 async fn app() -> TestApp {
     let config = ClientConfig::parse(CLIENT).expect("a valid client.toml");
     let app = wl_kernel::apply(
-        App::new().module(Auth::new()).module(Permissions).module(Hr),
+        App::new()
+            .module(Auth::new())
+            .module(Permissions)
+            .module(Hr),
         config,
     )
     .expect("the kernel applies");
@@ -58,11 +63,17 @@ async fn app() -> TestApp {
 async fn install_stores_each_registered_rule_once() {
     let app = app().await;
     let db = app.db();
-    let wps = ComplianceRule::of(db, "HRM.RUL.03").await.unwrap().expect("stored");
+    let wps = ComplianceRule::of(db, "HRM.RUL.03")
+        .await
+        .unwrap()
+        .expect("stored");
     assert!(wps.critical);
     assert_eq!(wps.owner_role.as_deref(), Some("hr_head"));
     assert!(wps.watched_since.is_some());
-    let nightly = ComplianceRule::of(db, "DOC.RUL.03").await.unwrap().expect("stored");
+    let nightly = ComplianceRule::of(db, "DOC.RUL.03")
+        .await
+        .unwrap()
+        .expect("stored");
     assert_eq!(nightly.owner_role, None);
 
     assert_eq!(compliance::install(db).await.unwrap(), 0);
@@ -76,7 +87,10 @@ async fn a_client_cannot_turn_the_flag_off_but_can_change_the_owner() {
     ComplianceRule::where_eq("rule", "HRM.RUL.03")
         .update(
             db,
-            &[("critical", &false), ("owner_role", &Some("partner".to_owned()))],
+            &[
+                ("critical", &false),
+                ("owner_role", &Some("partner".to_owned())),
+            ],
         )
         .await
         .unwrap();
@@ -84,7 +98,11 @@ async fn a_client_cannot_turn_the_flag_off_but_can_change_the_owner() {
     compliance::install(db).await.unwrap();
     let row = ComplianceRule::of(db, "HRM.RUL.03").await.unwrap().unwrap();
     assert!(row.critical, "written back to yes");
-    assert_eq!(row.owner_role.as_deref(), Some("partner"), "the owner is kept");
+    assert_eq!(
+        row.owner_role.as_deref(),
+        Some("partner"),
+        "the owner is kept"
+    );
 }
 
 #[renox::test]
@@ -92,15 +110,24 @@ async fn the_owner_role_is_the_stored_one_then_the_modules_then_the_deployments(
     let app = app().await;
     let state = app.state();
     // The module named hr_head.
-    assert_eq!(compliance::owner_role(state, "HRM.RUL.03").await.unwrap(), "hr_head");
+    assert_eq!(
+        compliance::owner_role(state, "HRM.RUL.03").await.unwrap(),
+        "hr_head"
+    );
     // The module named none: the deployment's `[roles] owner`.
-    assert_eq!(compliance::owner_role(state, "DOC.RUL.03").await.unwrap(), "md");
+    assert_eq!(
+        compliance::owner_role(state, "DOC.RUL.03").await.unwrap(),
+        "md"
+    );
 
     ComplianceRule::where_eq("rule", "HRM.RUL.03")
         .update(app.db(), &[("owner_role", &Some("partner".to_owned()))])
         .await
         .unwrap();
-    assert_eq!(compliance::owner_role(state, "HRM.RUL.03").await.unwrap(), "partner");
+    assert_eq!(
+        compliance::owner_role(state, "HRM.RUL.03").await.unwrap(),
+        "partner"
+    );
 }
 
 #[renox::test]

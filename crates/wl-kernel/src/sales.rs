@@ -359,7 +359,11 @@ pub trait CampaignAttribution: Send + Sync + 'static {
     /// only remembers the sale, in case the first is voided, cancelled or
     /// credited in full. Returns whether `sale` is the party's first sale
     /// (also when it was already). The default does nothing.
-    fn record_first_sale<'a>(&'a self, _state: &'a AppState, _sale: FirstSale) -> SalesFuture<'a, bool> {
+    fn record_first_sale<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _sale: FirstSale,
+    ) -> SalesFuture<'a, bool> {
         Box::pin(async { Ok(false) })
     }
 
@@ -505,8 +509,13 @@ mod tests {
         assert_eq!(request.set_from, "web_form");
         assert_eq!(Attribute::lead(LeadId(1), "walk_in").set_from, "staff");
         let day = NaiveDate::from_ymd_opt(2026, 4, 2).unwrap();
-        let sale = FirstSale::new(PartyId(3), Subject::new("invoicing.invoice", 9), 200_000, day)
-            .legal_entity(1);
+        let sale = FirstSale::new(
+            PartyId(3),
+            Subject::new("invoicing.invoice", 9),
+            200_000,
+            day,
+        )
+        .legal_entity(1);
         assert_eq!(sale.legal_entity_id, Some(1));
         assert!(sale.branch.is_none());
     }

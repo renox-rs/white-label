@@ -195,7 +195,11 @@ pub(crate) fn schedule(app: &mut Registry) {
             let report = run(&state, on).await?;
             println!(
                 "{} requested, {} cancelled, {} reminded, {} escalated, {} failed.",
-                report.requested, report.cancelled, report.reminded, report.escalated, report.failed
+                report.requested,
+                report.cancelled,
+                report.reminded,
+                report.escalated,
+                report.failed
             );
             Ok(())
         },

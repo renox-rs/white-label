@@ -21,9 +21,7 @@ use super::render::{Section, render};
 use super::{RULE, TASK, TASK_AT, TASK_ZONE, period_for};
 use crate::automation::{RuleRunSpec, RunOutcome, run_rule};
 use crate::documents::today;
-use crate::notify::{
-    self, Category, NotificationTypeDef, NotifyChannel, NotifyRequest,
-};
+use crate::notify::{self, Category, NotificationTypeDef, NotifyChannel, NotifyRequest};
 use crate::subject::Subject;
 use crate::texts::{en, en_with};
 
@@ -85,10 +83,7 @@ async fn send(
 ) -> Result {
     let records: usize = sections.iter().map(|s| s.items.len()).sum();
     let request = NotifyRequest::new(NOTIFICATION_TYPE, Subject::new(SUBJECT_TYPE, user_id))
-        .subject_label(&en_with(
-            "wl_kernel.digest.label",
-            &[("records", &records)],
-        ))
+        .subject_label(&en_with("wl_kernel.digest.label", &[("records", &records)]))
         .to_user(user_id)
         .data(json!({
             "digest": render(from, until, sections),

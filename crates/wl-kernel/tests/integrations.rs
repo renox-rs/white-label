@@ -146,7 +146,10 @@ impl Module for Invoicing {
         IntegrationDef::of(KEY, "invoicing", send)
             .owner_role("accountant")
             .screens([LIST, DETAIL])
-            .fallback("File the invoice on the ASP portal by hand.", Some("قدّم الفاتورة يدويًا."))
+            .fallback(
+                "File the invoice on the ASP portal by hand.",
+                Some("قدّم الفاتورة يدويًا."),
+            )
             .register();
     }
 }
@@ -207,7 +210,9 @@ async fn world() -> World {
 
     let db = app.db();
     permissions::define_role(db, "admin", &[]).await.unwrap();
-    permissions::define_role(db, "accountant", &[]).await.unwrap();
+    permissions::define_role(db, "accountant", &[])
+        .await
+        .unwrap();
     permissions::define_role(
         db,
         "integrations_manager",
@@ -329,7 +334,10 @@ async fn a_failed_call_degrades_and_is_retried_with_the_backoff() {
     assert_eq!(degraded.status, ConnectionStatus::Degraded);
     let since = degraded.failed_since.expect("failed since");
     assert!(since - w.t0 < Span::seconds(30));
-    assert_eq!(degraded.last_error.as_deref(), Some("503 service unavailable"));
+    assert_eq!(
+        degraded.last_error.as_deref(),
+        Some("503 service unavailable")
+    );
     assert_eq!(w.changes(), [("up".to_owned(), "degraded".to_owned())]);
 
     let mut next = Vec::new();
@@ -386,7 +394,8 @@ async fn after_n_minutes_the_connection_goes_down_and_the_owner_is_alerted_once(
         res.assert_ok();
         res.assert_json_path("0.connection", KEY);
         assert!(
-            res.text().contains("File the invoice on the ASP portal by hand."),
+            res.text()
+                .contains("File the invoice on the ASP portal by hand."),
             "{}",
             res.text()
         );
@@ -475,14 +484,20 @@ async fn disable_needs_a_reason_and_keeps_the_queue() {
     w.app.acting_as(&w.viewer);
     let denied = w
         .app
-        .post("/integrations/asp.acme/disable", &[("reason", "contract ended")])
+        .post(
+            "/integrations/asp.acme/disable",
+            &[("reason", "contract ended")],
+        )
         .await;
     assert_eq!(denied.status.as_u16(), 403, "{}", denied.text());
 
     w.app.acting_as(&w.manager);
     let ok = w
         .app
-        .post("/integrations/asp.acme/disable", &[("reason", "contract ended")])
+        .post(
+            "/integrations/asp.acme/disable",
+            &[("reason", "contract ended")],
+        )
         .await;
     assert_eq!(ok.status.as_u16(), 303, "{}", ok.text());
     let disabled = w.connection().await;
@@ -503,7 +518,10 @@ async fn disable_needs_a_reason_and_keeps_the_queue() {
         .await
         .unwrap();
     assert_eq!(rows.last().map(|r| r.transition.as_str()), Some("disable"));
-    assert_eq!(rows.last().and_then(|r| r.reason.as_deref()), Some("contract ended"));
+    assert_eq!(
+        rows.last().and_then(|r| r.reason.as_deref()),
+        Some("contract ended")
+    );
 }
 
 /// AC6: a user without `integrations.view` cannot open the connection page.
@@ -588,7 +606,9 @@ async fn a_success_takes_the_connection_up_and_removes_the_banner() {
 async fn concurrent_failures_degrade_once() {
     let w = world().await;
     let state = w.app.state();
-    service::report_failure(state, KEY, "timeout").await.unwrap();
+    service::report_failure(state, KEY, "timeout")
+        .await
+        .unwrap();
     service::report_failure(state, KEY, "connection reset")
         .await
         .unwrap();

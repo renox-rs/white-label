@@ -233,7 +233,10 @@ const TEXTS: &[(&str, &str)] = &[
         "The lines are the amount the requester is shown and what the invoice carries.",
     ),
     ("wl_ticketing.charge.remove", "Remove"),
-    ("wl_ticketing.charge.remove_title", "Remove this charge line?"),
+    (
+        "wl_ticketing.charge.remove_title",
+        "Remove this charge line?",
+    ),
     ("wl_ticketing.charge.empty", "No charge yet"),
     (
         "wl_ticketing.charge.empty_hint",
@@ -256,8 +259,14 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_ticketing.vat.reverse_charge", "Reverse charge"),
     ("wl_ticketing.categories.compliance", "Compliance"),
     ("wl_ticketing.categories.critical", "Compliance-critical"),
-    ("wl_ticketing.categories.not_critical", "Not compliance-critical"),
-    ("wl_ticketing.categories.compliance_change", "Change compliance"),
+    (
+        "wl_ticketing.categories.not_critical",
+        "Not compliance-critical",
+    ),
+    (
+        "wl_ticketing.categories.compliance_change",
+        "Change compliance",
+    ),
     (
         "wl_ticketing.categories.compliance_title",
         "Compliance-critical category",
@@ -285,7 +294,10 @@ const TEXTS: &[(&str, &str)] = &[
         "Every covered subject is compliant.",
     ),
     ("wl_ticketing.flags.reason_no_contract", "No contract"),
-    ("wl_ticketing.flags.reason_visit_missed", "Planned visit missed"),
+    (
+        "wl_ticketing.flags.reason_visit_missed",
+        "Planned visit missed",
+    ),
     (
         "wl_ticketing.flags.reason_vendor_document_expired",
         "Vendor document expired",
@@ -328,7 +340,10 @@ const TEXTS: &[(&str, &str)] = &[
         "Other modules open tickets in it: it cannot be turned off or deleted.",
     ),
     ("wl_ticketing.categories.rename", "Rename"),
-    ("wl_ticketing.categories.rename_title", "Rename the category"),
+    (
+        "wl_ticketing.categories.rename_title",
+        "Rename the category",
+    ),
     ("wl_ticketing.categories.status", "Status"),
     ("wl_ticketing.categories.on", "On"),
     ("wl_ticketing.categories.off", "Off"),
@@ -338,7 +353,10 @@ const TEXTS: &[(&str, &str)] = &[
         "Turn the category on or off",
     ),
     ("wl_ticketing.categories.delete", "Delete"),
-    ("wl_ticketing.categories.delete_title", "Delete this category?"),
+    (
+        "wl_ticketing.categories.delete_title",
+        "Delete this category?",
+    ),
     (
         "wl_ticketing.categories.delete_message",
         "A category with tickets cannot be deleted.",
@@ -386,12 +404,18 @@ const TEXTS: &[(&str, &str)] = &[
         "{{ vendor }} has not started the visit scheduled for {{ scheduled }}. Reassign the ticket or set a new time.",
     ),
     ("wl_ticketing.no_show.new_time", "New time"),
-    ("wl_ticketing.no_show.new_time_title", "Set a new visit time"),
+    (
+        "wl_ticketing.no_show.new_time_title",
+        "Set a new visit time",
+    ),
     (
         "wl_ticketing.no_show.new_time_description",
         "The same vendor comes at the new time, and the requester is told.",
     ),
-    ("wl_ticketing.no_show.new_time_done", "The visit time is changed."),
+    (
+        "wl_ticketing.no_show.new_time_done",
+        "The visit time is changed.",
+    ),
     ("wl_ticketing.contract.no_shows", "Vendor no-shows"),
     ("wl_ticketing.contract.no_shows_empty", "No vendor no-shows"),
     ("wl_ticketing.contract.no_show_vendor", "Vendor"),
@@ -405,7 +429,10 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_ticketing.notice.vendor_document_expired.body",
         "{{ vendor }}'s {{ kind }} expired on {{ expires_on }}. Its open planned visits under contract {{ contract }} are flagged and cannot be resolved; reassign them or terminate the contract.",
     ),
-    ("wl_ticketing.contract.vendor_document", "Vendor document expired"),
+    (
+        "wl_ticketing.contract.vendor_document",
+        "Vendor document expired",
+    ),
     (
         "wl_ticketing.contract.vendor_document_message",
         "A document the vendor needs for this contract is expired or missing. Its open visits cannot be resolved and the covered subjects are flagged until a renewed document is accepted: reassign the visits or terminate the contract.",
@@ -414,7 +441,10 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_ticketing.contract.vendor_document_visit",
         "The vendor's document is expired or missing, so this visit cannot be resolved. Reassign it, or wait for the renewed document.",
     ),
-    ("wl_ticketing.contract.vendor_document_badge", "Document expired"),
+    (
+        "wl_ticketing.contract.vendor_document_badge",
+        "Document expired",
+    ),
     (
         "wl_ticketing.contract_end.task_title",
         "Open visits of contract {number}: reassign or cancel",
@@ -435,7 +465,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_ticketing.contract.termination", "Terminated"),
     ("wl_ticketing.contract.ended", "End handled"),
     ("wl_ticketing.contract.coverage", "Covered subjects"),
-    ("wl_ticketing.contract.coverage_empty", "Nothing is covered yet"),
+    (
+        "wl_ticketing.contract.coverage_empty",
+        "Nothing is covered yet",
+    ),
     ("wl_ticketing.contract.subject", "Subject"),
     ("wl_ticketing.contract.category", "Category"),
     ("wl_ticketing.contract.visits", "Planned visits"),
@@ -443,7 +476,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_ticketing.contract.planned_due", "Planned for"),
     ("wl_ticketing.contract.visit_status", "Status"),
     ("wl_ticketing.contract.flags", "Compliance flags"),
-    ("wl_ticketing.contract.flags_empty", "No open compliance flags for this contract"),
+    (
+        "wl_ticketing.contract.flags_empty",
+        "No open compliance flags for this contract",
+    ),
     ("wl_ticketing.contract.status_draft", "Draft"),
     ("wl_ticketing.contract.status_active", "Active"),
     ("wl_ticketing.contract.status_expiring", "Expiring"),
@@ -451,14 +487,20 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_ticketing.contract.status_expired", "Expired"),
     ("wl_ticketing.contract.status_terminated", "Terminated"),
     ("wl_ticketing.contract.activate", "Activate"),
-    ("wl_ticketing.contract.activate_title", "Activate this contract?"),
+    (
+        "wl_ticketing.contract.activate_title",
+        "Activate this contract?",
+    ),
     (
         "wl_ticketing.contract.activate_message",
         "Its maintenance plans start, and the subjects it covers are covered from now on.",
     ),
     ("wl_ticketing.contract.activated", "Contract activated."),
     ("wl_ticketing.contract.terminate", "Terminate contract"),
-    ("wl_ticketing.contract.terminate_title", "Terminate this contract"),
+    (
+        "wl_ticketing.contract.terminate_title",
+        "Terminate this contract",
+    ),
     (
         "wl_ticketing.contract.terminate_description",
         "The contract covers its subjects until the termination date. On that date its open visits and compliance flags are handled.",
@@ -472,7 +514,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_ticketing.contract.terminated", "Contract terminated."),
     ("wl_ticketing.contract.reason_required", "Give the reason."),
     ("wl_ticketing.contract.reassign", "Reassign"),
-    ("wl_ticketing.contract.reassign_title", "Reassign this visit"),
+    (
+        "wl_ticketing.contract.reassign_title",
+        "Reassign this visit",
+    ),
     (
         "wl_ticketing.contract.reassign_description",
         "Give the visit to another vendor or to a staff member.",
@@ -486,9 +531,18 @@ const TEXTS: &[(&str, &str)] = &[
         "A visit that has started is left to finish.",
     ),
     ("wl_ticketing.categories.contract_end", "At contract end"),
-    ("wl_ticketing.categories.contract_end_both", "Reassign or cancel"),
-    ("wl_ticketing.categories.contract_end_reassign", "Reassign only"),
-    ("wl_ticketing.categories.contract_end_change", "Change contract end options"),
+    (
+        "wl_ticketing.categories.contract_end_both",
+        "Reassign or cancel",
+    ),
+    (
+        "wl_ticketing.categories.contract_end_reassign",
+        "Reassign only",
+    ),
+    (
+        "wl_ticketing.categories.contract_end_change",
+        "Change contract end options",
+    ),
     (
         "wl_ticketing.categories.contract_end_title",
         "Open visits when a contract ends",
@@ -505,22 +559,40 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_ticketing.visit.report_needed",
         "Attach the vendor's service report before resolving this visit.",
     ),
-    ("wl_ticketing.visit.report_blank", "Give the reference of the service report of a planned visit."),
-    ("wl_ticketing.visit.report_attached", "Service report attached: :reference"),
+    (
+        "wl_ticketing.visit.report_blank",
+        "Give the reference of the service report of a planned visit.",
+    ),
+    (
+        "wl_ticketing.visit.report_attached",
+        "Service report attached: :reference",
+    ),
     ("wl_ticketing.visit.report_done", "Service report attached."),
-    ("wl_ticketing.visit.not_planned", "Only a planned visit is rescheduled."),
+    (
+        "wl_ticketing.visit.not_planned",
+        "Only a planned visit is rescheduled.",
+    ),
     (
         "wl_ticketing.visit.reschedule_refused",
         "Give a reason; only an open visit is rescheduled.",
     ),
-    ("wl_ticketing.visit.rescheduled", "Visit rescheduled from :from to :to: :reason"),
+    (
+        "wl_ticketing.visit.rescheduled",
+        "Visit rescheduled from :from to :to: :reason",
+    ),
     ("wl_ticketing.visit.rescheduled_done", "Visit rescheduled."),
-    ("wl_ticketing.visit.bad_date", "Give the date as YYYY-MM-DD."),
+    (
+        "wl_ticketing.visit.bad_date",
+        "Give the date as YYYY-MM-DD.",
+    ),
     (
         "wl_ticketing.visit.charge_invalid",
         "To charge the requester give a reason and a charge line with a text and a price.",
     ),
-    ("wl_ticketing.visit.charged", "The requester is charged for the work done: :reason"),
+    (
+        "wl_ticketing.visit.charged",
+        "The requester is charged for the work done: :reason",
+    ),
 ];
 
 /// The English text for `key`, or `key` itself when the package has none.

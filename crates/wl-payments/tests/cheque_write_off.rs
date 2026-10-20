@@ -52,7 +52,9 @@ async fn the_cheque_is_written_off_when_the_invoice_write_off_is_approved() {
     let cheque = bounced_for(&t, &a, "5001", 1_000_000, inv5).await;
     assert_eq!(cheque.open_amount, 1_000_000);
 
-    t.write_off_cheque(&a, &cheque, "untraceable").await.assert_ok();
+    t.write_off_cheque(&a, &cheque, "untraceable")
+        .await
+        .assert_ok();
 
     // One request, waiting: the cheque is not written off before the approval.
     assert_eq!(t.invoices.write_offs(), vec![inv5]);
@@ -94,7 +96,9 @@ async fn a_write_off_within_the_limit_writes_the_cheque_off_at_once() {
     let inv = t.invoices.add(BLUE_DUNES, "INV-8", 300_000);
     let cheque = bounced_for(&t, &a, "5002", 300_000, inv).await;
 
-    t.write_off_cheque(&a, &cheque, "untraceable").await.assert_ok();
+    t.write_off_cheque(&a, &cheque, "untraceable")
+        .await
+        .assert_ok();
 
     assert_eq!(t.cheque(cheque.id).await.status, ChequeStatus::WrittenOff);
     assert_eq!(t.invoices.status_of(inv), Some(InvoiceStatus::WrittenOff));
@@ -117,7 +121,9 @@ async fn a_charge_not_yet_invoiced_is_invoiced_first() {
         .assert_ok();
     let cheque = t.cheque(cheque.id).await;
 
-    t.write_off_cheque(&a, &cheque, "untraceable").await.assert_ok();
+    t.write_off_cheque(&a, &cheque, "untraceable")
+        .await
+        .assert_ok();
 
     // The link points at the invoice made from the charge.
     let linked = t.cheque(cheque.id).await.linked(t.db()).await.unwrap();
@@ -161,7 +167,9 @@ async fn a_rejected_invoice_write_off_leaves_the_cheque_bounced() {
     t.invoices.require_approval(true);
     let inv = t.invoices.add(BLUE_DUNES, "INV-5", 1_000_000);
     let cheque = bounced_for(&t, &a, "5005", 1_000_000, inv).await;
-    t.write_off_cheque(&a, &cheque, "untraceable").await.assert_ok();
+    t.write_off_cheque(&a, &cheque, "untraceable")
+        .await
+        .assert_ok();
 
     t.end_invoice_write_off(inv, ApprovalEnd::Rejected).await;
 
@@ -177,7 +185,9 @@ async fn a_rejected_invoice_write_off_leaves_the_cheque_bounced() {
         .notices
         .recipients(wl_payments::notices::CHEQUE_TASK)
         .into_iter()
-        .any(|r| matches!(r, wl_kernel::notify::NotifyRecipient::User { id } if id == accountant.id));
+        .any(
+            |r| matches!(r, wl_kernel::notify::NotifyRecipient::User { id } if id == accountant.id),
+        );
     assert!(told);
 
     // A new request is possible once the first one failed.
@@ -198,7 +208,9 @@ async fn a_request_that_fails_because_the_party_paid_leaves_the_cheque() {
     t.invoices.require_approval(true);
     let inv = t.invoices.add(BLUE_DUNES, "INV-5", 1_000_000);
     let cheque = bounced_for(&t, &a, "5006", 1_000_000, inv).await;
-    t.write_off_cheque(&a, &cheque, "untraceable").await.assert_ok();
+    t.write_off_cheque(&a, &cheque, "untraceable")
+        .await
+        .assert_ok();
 
     t.invoices.set_balance(inv, 400_000);
     t.end_invoice_write_off(inv, ApprovalEnd::Failed).await;
@@ -225,7 +237,12 @@ async fn balances_that_differ_from_the_open_amount_are_refused() {
         .assert_status(422);
     assert!(t.invoices.write_offs().is_empty());
     assert_eq!(t.cheque(cheque.id).await.status, ChequeStatus::Bounced);
-    assert!(ChequeWriteOff::of_cheque(t.db(), cheque.id).await.unwrap().is_empty());
+    assert!(
+        ChequeWriteOff::of_cheque(t.db(), cheque.id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
 }
 
 /// AC5: open AED 10,000.00 linked to INV-5 (AED 6,000.00) and INV-6 (AED
@@ -249,7 +266,9 @@ async fn several_invoices_are_written_off_one_request_each() {
         .assert_ok();
     let cheque = t.cheque(cheque.id).await;
 
-    t.write_off_cheque(&a, &cheque, "untraceable").await.assert_ok();
+    t.write_off_cheque(&a, &cheque, "untraceable")
+        .await
+        .assert_ok();
     assert_eq!(t.invoices.write_offs(), vec![inv5, inv6]);
 
     t.approve_invoice_write_off(inv5).await;
@@ -280,7 +299,9 @@ async fn an_approved_write_off_stays_when_the_other_one_fails() {
         .await
         .assert_ok();
     let cheque = t.cheque(cheque.id).await;
-    t.write_off_cheque(&a, &cheque, "untraceable").await.assert_ok();
+    t.write_off_cheque(&a, &cheque, "untraceable")
+        .await
+        .assert_ok();
 
     t.approve_invoice_write_off(inv5).await;
     t.end_invoice_write_off(inv6, ApprovalEnd::Rejected).await;
@@ -288,7 +309,9 @@ async fn an_approved_write_off_stays_when_the_other_one_fails() {
     assert_eq!(t.invoices.status_of(inv5), Some(InvoiceStatus::WrittenOff));
 
     // Only INV-6 is requested again: INV-5 is written off already.
-    t.write_off_cheque(&a, &cheque, "untraceable").await.assert_ok();
+    t.write_off_cheque(&a, &cheque, "untraceable")
+        .await
+        .assert_ok();
     assert_eq!(t.invoices.write_offs(), vec![inv5, inv6, inv6]);
     t.approve_invoice_write_off(inv6).await;
     assert_eq!(t.cheque(cheque.id).await.status, ChequeStatus::WrittenOff);
@@ -302,7 +325,9 @@ async fn a_request_is_not_made_twice_while_it_waits() {
     t.invoices.require_approval(true);
     let inv = t.invoices.add(BLUE_DUNES, "INV-5", 1_000_000);
     let cheque = bounced_for(&t, &a, "5010", 1_000_000, inv).await;
-    t.write_off_cheque(&a, &cheque, "untraceable").await.assert_ok();
+    t.write_off_cheque(&a, &cheque, "untraceable")
+        .await
+        .assert_ok();
     t.write_off_cheque(&a, &cheque, "untraceable")
         .await
         .assert_status(422);
@@ -315,11 +340,15 @@ async fn a_request_is_not_made_twice_while_it_waits() {
 async fn a_reason_is_required_and_a_disputed_invoice_refuses() {
     let t = boot().await;
     let a = t.cheque_staff("Amal").await;
-    let viewer = t.user("Vera", &[wl_payments::permissions::CHEQUES_VIEW]).await;
+    let viewer = t
+        .user("Vera", &[wl_payments::permissions::CHEQUES_VIEW])
+        .await;
     let inv = t.invoices.add(BLUE_DUNES, "INV-5", 1_000_000);
     let cheque = bounced_for(&t, &a, "5011", 1_000_000, inv).await;
 
-    t.write_off_cheque(&a, &cheque, "  ").await.assert_status(422);
+    t.write_off_cheque(&a, &cheque, "  ")
+        .await
+        .assert_status(422);
     t.write_off_cheque(&viewer, &cheque, "untraceable")
         .await
         .assert_forbidden();

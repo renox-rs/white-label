@@ -40,7 +40,11 @@ pub(crate) fn request_problem(request: &CancelSettlement, held: i64) -> Option<S
     if request.forfeit == 0 {
         return None;
     }
-    if request.clause.as_deref().is_none_or(|c| c.trim().is_empty()) {
+    if request
+        .clause
+        .as_deref()
+        .is_none_or(|c| c.trim().is_empty())
+    {
         return Some("A forfeit needs the clause of the signed terms that allows it.".to_owned());
     }
     if request.forfeit > held {
@@ -148,7 +152,10 @@ mod tests {
         assert!(request_problem(&settlement(200_000, Some("  ")), 500_000).is_some());
         assert!(request_problem(&settlement(600_000, Some("§4")), 500_000).is_some());
         assert!(request_problem(&settlement(-1, Some("§4")), 500_000).is_some());
-        assert_eq!(request_problem(&settlement(200_000, Some("§4")), 500_000), None);
+        assert_eq!(
+            request_problem(&settlement(200_000, Some("§4")), 500_000),
+            None
+        );
     }
 
     #[test]

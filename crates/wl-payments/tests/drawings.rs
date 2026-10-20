@@ -78,7 +78,12 @@ async fn payments(t: &Booted) -> Vec<Payment> {
 
 /// The approvers decide the request `drawing`: `approver` says yes, or
 /// nobody does and `reason` says why.
-async fn decide(t: &Booted, drawing: &PaymentDrawing, approver: Option<&User>, reason: Option<&str>) {
+async fn decide(
+    t: &Booted,
+    drawing: &PaymentDrawing,
+    approver: Option<&User>,
+    reason: Option<&str>,
+) {
     t.state()
         .emit(OwnerDrawingDecided {
             source: Subject::new(DRAWING_REQUEST_SUBJECT_TYPE, drawing.id),
@@ -101,11 +106,22 @@ async fn a_drawing_is_recorded_only_after_the_final_approval() {
     let a = t.user_a().await;
     let b = t.user_b().await;
     let pgp = t.entity("PGP").await;
-    post_drawing(&t, &a, &pgp, QUIET_SANDS_CODE, "out", "15000.00", "2027-03-10")
-        .await
-        .assert_status(303);
+    post_drawing(
+        &t,
+        &a,
+        &pgp,
+        QUIET_SANDS_CODE,
+        "out",
+        "15000.00",
+        "2027-03-10",
+    )
+    .await
+    .assert_status(303);
 
-    assert!(payments(&t).await.is_empty(), "nothing is recorded before the approval");
+    assert!(
+        payments(&t).await.is_empty(),
+        "nothing is recorded before the approval"
+    );
     let saved = drawings(&t).await;
     assert_eq!(saved.len(), 1);
     assert_eq!(saved[0].status, DrawingStatus::Requested);
@@ -113,7 +129,10 @@ async fn a_drawing_is_recorded_only_after_the_final_approval() {
     assert_eq!(asked.len(), 1);
     assert_eq!((asked[0].amount, asked[0].requested_by), (1_500_000, a.id));
     assert_eq!(asked[0].category, "owner_drawings");
-    assert_eq!(asked[0].source, Subject::new(DRAWING_REQUEST_SUBJECT_TYPE, saved[0].id));
+    assert_eq!(
+        asked[0].source,
+        Subject::new(DRAWING_REQUEST_SUBJECT_TYPE, saved[0].id)
+    );
     assert!(t.received.all().is_empty());
 
     decide(&t, &saved[0], Some(&b), None).await;
@@ -122,7 +141,10 @@ async fn a_drawing_is_recorded_only_after_the_final_approval() {
     let payment = &recorded[0];
     assert_eq!(payment.status, PaymentStatus::Received);
     assert_eq!(payment.direction, Direction::Out);
-    assert_eq!((payment.amount, payment.party_id), (1_500_000, QUIET_SANDS.0));
+    assert_eq!(
+        (payment.amount, payment.party_id),
+        (1_500_000, QUIET_SANDS.0)
+    );
     assert_eq!(payment.purpose, "owner_drawings");
     assert_eq!(payment.drawing_category.as_deref(), Some("owner_drawings"));
     assert_eq!(payment.payment_date, day(3, 10));
@@ -132,7 +154,10 @@ async fn a_drawing_is_recorded_only_after_the_final_approval() {
     assert!(payment.number.is_some(), "it has its voucher number");
     assert_eq!(t.received.all().len(), 1, "PaymentReceived");
     let done = drawings(&t).await;
-    assert_eq!((done[0].status, done[0].payment_id), (DrawingStatus::Recorded, Some(payment.id)));
+    assert_eq!(
+        (done[0].status, done[0].payment_id),
+        (DrawingStatus::Recorded, Some(payment.id))
+    );
     assert_eq!(done[0].approved_by, Some(b.id));
 
     // A repeated decision records nothing twice.
@@ -147,9 +172,17 @@ async fn a_rejection_records_nothing() {
     let t = boot().await;
     let a = t.user_a().await;
     let pgp = t.entity("PGP").await;
-    post_drawing(&t, &a, &pgp, QUIET_SANDS_CODE, "out", "2000.00", "2027-03-11")
-        .await
-        .assert_status(303);
+    post_drawing(
+        &t,
+        &a,
+        &pgp,
+        QUIET_SANDS_CODE,
+        "out",
+        "2000.00",
+        "2027-03-11",
+    )
+    .await
+    .assert_status(303);
     let saved = drawings(&t).await;
     decide(&t, &saved[0], None, Some("not this month")).await;
     assert!(payments(&t).await.is_empty());
@@ -167,9 +200,17 @@ async fn a_sole_owner_drawing_is_recorded_at_once_and_flagged() {
     let a = t.user_a().await;
     let pgp = t.entity("PGP").await;
     t.drawings.approves_at_once(true);
-    post_drawing(&t, &a, &pgp, QUIET_SANDS_CODE, "out", "900.00", "2027-03-12")
-        .await
-        .assert_status(303);
+    post_drawing(
+        &t,
+        &a,
+        &pgp,
+        QUIET_SANDS_CODE,
+        "out",
+        "900.00",
+        "2027-03-12",
+    )
+    .await
+    .assert_status(303);
     let recorded = payments(&t).await;
     assert_eq!(recorded.len(), 1);
     assert!(recorded[0].self_approved);
@@ -192,9 +233,17 @@ async fn a_drawing_to_another_party_is_refused() {
     assert!(payments(&t).await.is_empty());
 
     t.drawings.owner(None);
-    post_drawing(&t, &a, &pgp, QUIET_SANDS_CODE, "out", "100.00", "2027-03-12")
-        .await
-        .assert_status(422);
+    post_drawing(
+        &t,
+        &a,
+        &pgp,
+        QUIET_SANDS_CODE,
+        "out",
+        "100.00",
+        "2027-03-12",
+    )
+    .await
+    .assert_status(422);
     assert!(drawings(&t).await.is_empty());
 
     // Not a drawings category.
@@ -229,15 +278,31 @@ async fn a_repayment_by_the_owner_needs_no_approval() {
     let a = t.user_a().await;
     let b = t.user_b().await;
     let pgp = t.entity("PGP").await;
-    post_drawing(&t, &a, &pgp, QUIET_SANDS_CODE, "out", "15000.00", "2027-03-10")
-        .await
-        .assert_status(303);
+    post_drawing(
+        &t,
+        &a,
+        &pgp,
+        QUIET_SANDS_CODE,
+        "out",
+        "15000.00",
+        "2027-03-10",
+    )
+    .await
+    .assert_status(303);
     decide(&t, &drawings(&t).await[0], Some(&b), None).await;
     let asked = t.drawings.asked().len();
 
-    post_drawing(&t, &a, &pgp, QUIET_SANDS_CODE, "in", "5000.00", "2027-03-20")
-        .await
-        .assert_status(303);
+    post_drawing(
+        &t,
+        &a,
+        &pgp,
+        QUIET_SANDS_CODE,
+        "in",
+        "5000.00",
+        "2027-03-20",
+    )
+    .await
+    .assert_status(303);
     assert_eq!(t.drawings.asked().len(), asked, "no approval is asked for");
     let all = payments(&t).await;
     assert_eq!(all.len(), 2);
@@ -252,8 +317,14 @@ async fn a_repayment_by_the_owner_needs_no_approval() {
         .await
         .unwrap();
     assert_eq!(read.len(), 2);
-    assert_eq!((read[0].direction, read[0].amount), (Direction::Out, 1_500_000));
-    assert_eq!((read[1].direction, read[1].amount), (Direction::In, 500_000));
+    assert_eq!(
+        (read[0].direction, read[0].amount),
+        (Direction::Out, 1_500_000)
+    );
+    assert_eq!(
+        (read[1].direction, read[1].amount),
+        (Direction::In, 500_000)
+    );
     assert_eq!(read[0].category, "owner_drawings");
     let none = PaymentDrawings
         .payments(t.db(), &[pgp.id], day(4, 1), day(4, 30))
@@ -269,15 +340,17 @@ async fn a_repayment_by_the_owner_needs_no_approval() {
 
     // The repayment is no credit of the owner party and takes no allocation.
     let repayment = &all[1];
-    assert!(allocate(
-        t.state(),
-        repayment.payment_id(),
-        wl_kernel::payments::AllocationTarget::Invoice(wl_kernel::invoicing::InvoiceId(1)),
-        100,
-        None,
-    )
-    .await
-    .is_err());
+    assert!(
+        allocate(
+            t.state(),
+            repayment.payment_id(),
+            wl_kernel::payments::AllocationTarget::Invoice(wl_kernel::invoicing::InvoiceId(1)),
+            100,
+            None,
+        )
+        .await
+        .is_err()
+    );
     let credit = wl_kernel::payments::payment_recorder(t.state())
         .credit_balance(t.db(), QUIET_SANDS, "AED")
         .await
@@ -332,7 +405,10 @@ async fn the_cheque_of_an_approved_drawing_is_for_the_owner_and_the_amount() {
     decide(&t, &saved[0], Some(&b), None).await;
     let approved = drawings(&t).await;
     assert_eq!(approved[0].status, DrawingStatus::Approved);
-    assert!(payments(&t).await.is_empty(), "a cheque drawing waits for its cheque");
+    assert!(
+        payments(&t).await.is_empty(),
+        "a cheque drawing waits for its cheque"
+    );
     assert!(refused(cheque(QUIET_SANDS, 450_000, "9002")).await.is_err());
     assert!(refused(cheque(BLUE_DUNES, 400_000, "9003")).await.is_err());
     // A received cheque cannot carry a drawing.
@@ -385,18 +461,29 @@ async fn clearing_the_cheque_records_the_drawing() {
         )
         .await;
     let cheque = t.deposit_cheque(&staff, &cheque).await;
-    t.cheque_action(&staff, &cheque, "clear", &[]).await.assert_ok();
+    t.cheque_action(&staff, &cheque, "clear", &[])
+        .await
+        .assert_ok();
 
     let recorded = payments(&t).await;
     assert_eq!(recorded.len(), 1);
     assert_eq!(recorded[0].direction, Direction::Out);
     assert_eq!(recorded[0].purpose, "owner_drawings");
-    assert_eq!(recorded[0].drawing_category.as_deref(), Some("owner_drawings"));
-    assert_eq!((recorded[0].amount, recorded[0].party_id), (400_000, QUIET_SANDS.0));
+    assert_eq!(
+        recorded[0].drawing_category.as_deref(),
+        Some("owner_drawings")
+    );
+    assert_eq!(
+        (recorded[0].amount, recorded[0].party_id),
+        (400_000, QUIET_SANDS.0)
+    );
     assert_eq!(recorded[0].payment_date, today());
     assert_eq!(t.drawings.asked().len(), asked, "no second request");
     let done = drawings(&t).await;
-    assert_eq!((done[0].status, done[0].payment_id), (DrawingStatus::Recorded, Some(recorded[0].id)));
+    assert_eq!(
+        (done[0].status, done[0].payment_id),
+        (DrawingStatus::Recorded, Some(recorded[0].id))
+    );
     assert_eq!(t.received.all().len(), 1);
 }
 
@@ -413,7 +500,9 @@ async fn an_ordinary_cheque_to_the_owner_is_not_a_drawing() {
         )
         .await;
     let cheque = t.deposit_cheque(&staff, &cheque).await;
-    t.cheque_action(&staff, &cheque, "clear", &[]).await.assert_ok();
+    t.cheque_action(&staff, &cheque, "clear", &[])
+        .await
+        .assert_ok();
     let recorded = payments(&t).await;
     assert_eq!(recorded.len(), 1);
     assert_eq!(recorded[0].purpose, "none");
@@ -427,13 +516,19 @@ async fn reversing_a_drawing_tells_the_approvers() {
     let t = boot().await;
     let a = t.user_a().await;
     let b = t.user_b().await;
-    let owner = t
-        .user("Owner", &[perm::VIEW, "drawings.approve"])
-        .await;
+    let owner = t.user("Owner", &[perm::VIEW, "drawings.approve"]).await;
     let pgp = t.entity("PGP").await;
-    post_drawing(&t, &a, &pgp, QUIET_SANDS_CODE, "out", "1000.00", "2027-03-10")
-        .await
-        .assert_status(303);
+    post_drawing(
+        &t,
+        &a,
+        &pgp,
+        QUIET_SANDS_CODE,
+        "out",
+        "1000.00",
+        "2027-03-10",
+    )
+    .await
+    .assert_status(303);
     decide(&t, &drawings(&t).await[0], Some(&b), None).await;
     let payment = payments(&t).await.remove(0);
 
@@ -468,7 +563,10 @@ async fn the_owner_drawings_expense_category_is_seeded() {
     assert_eq!(drawings.vat_treatment, VatTreatment::Blocked);
     assert!(!drawings.cost_object_allowed);
     assert!(drawings.is_owner_drawings());
-    let fuel = ExpenseCategory::by_code(t.db(), "fuel").await.unwrap().unwrap();
+    let fuel = ExpenseCategory::by_code(t.db(), "fuel")
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(fuel.vat_treatment, VatTreatment::Recoverable);
     assert!(fuel.cost_object_allowed);
 }
@@ -486,9 +584,17 @@ async fn the_form_and_the_request_page_show_the_drawing() {
         .await
         .assert_ok()
         .assert_see("Owner drawings");
-    post_drawing(&t, &a, &pgp, QUIET_SANDS_CODE, "out", "250.00", "2027-03-10")
-        .await
-        .assert_status(303);
+    post_drawing(
+        &t,
+        &a,
+        &pgp,
+        QUIET_SANDS_CODE,
+        "out",
+        "250.00",
+        "2027-03-10",
+    )
+    .await
+    .assert_status(303);
     let id = drawings(&t).await[0].id;
     t.app
         .get(&format!("/payments/drawings/{id}"))

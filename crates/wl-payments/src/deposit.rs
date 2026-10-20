@@ -330,7 +330,12 @@ pub enum RefundOutcome {
 async fn money_out_refusal(state: &AppState, deposit: &Deposit) -> Result<Option<String>> {
     let mut tx = state.db.begin().await?;
     let outcome = block_guard::guard(state)
-        .check_in(&mut tx, None, PartyId(deposit.party_id), ActionKind::MoneyOut)
+        .check_in(
+            &mut tx,
+            None,
+            PartyId(deposit.party_id),
+            ActionKind::MoneyOut,
+        )
         .await?;
     // Only a question: nothing was written.
     drop(tx);
@@ -570,7 +575,8 @@ pub async fn transfer(
         .input(&input)
         .run_in(&mut tx)
         .await?;
-    let (payment, recorded) = crate::record::record_in(&mut tx, None, payment, &record_input).await?;
+    let (payment, recorded) =
+        crate::record::record_in(&mut tx, None, payment, &record_input).await?;
     // Not the status column, so outside the machine's guard.
     Deposit::query()
         .where_(Deposit::ID.eq(deposit.id))
@@ -586,7 +592,10 @@ pub async fn transfer(
         .await?;
     tx.commit().await?;
     outcome.emit(state).await.map_err(TransitionError::Failed)?;
-    recorded.emit(state).await.map_err(TransitionError::Failed)?;
+    recorded
+        .emit(state)
+        .await
+        .map_err(TransitionError::Failed)?;
     reload(state, &deposit).await
 }
 

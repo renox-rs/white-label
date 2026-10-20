@@ -31,12 +31,14 @@
 use renox::chrono::{Days, NaiveDate};
 use renox::db::Json;
 use renox::prelude::*;
-use renox::state_machine::{StateMachine, Transitioned, TransitionError};
+use renox::state_machine::{StateMachine, TransitionError, Transitioned};
 use wl_kernel::documents::today;
 use wl_kernel::integrations;
 use wl_kernel::parties::{PartyKind, directory};
 use wl_kernel::{LegalEntity, Subject};
 
+use crate::config::InvoicingConfig;
+use crate::config_of;
 use crate::credit_note::CreditNote;
 use crate::credit_note_machine::{ISSUE as NOTE_ISSUE, ISSUE_APPROVED, ISSUE_SYSTEM};
 use crate::einvoice::{
@@ -47,8 +49,6 @@ use crate::einvoice_adapter::{AspAnswer, AspError, Submission, adapter_of, scope
 use crate::einvoice_payload::{self as payload, Document};
 use crate::invoice::Invoice;
 use crate::issue::ISSUE as INVOICE_ISSUE;
-use crate::config::InvoicingConfig;
-use crate::config_of;
 #[cfg(test)]
 use crate::texts;
 use wl_kernel::invoicing::{CreditNoteStatus, InvoiceStatus};
@@ -187,7 +187,9 @@ pub async fn queue_document(
         legal_entity_id: entity.id,
         document_type: subject.subject_type.clone(),
         document_id: subject.subject_id,
-        adapter: config.einvoice_of(&entity.code).and_then(|e| e.adapter.clone()),
+        adapter: config
+            .einvoice_of(&entity.code)
+            .and_then(|e| e.adapter.clone()),
         recipient_id: built.recipient_id,
         payload: Json(built.payload),
         payload_hash: built.hash,
@@ -280,7 +282,10 @@ pub async fn send_one(state: &AppState, id: i64) -> Result<bool> {
         return Ok(false);
     };
     // A document queued before its party had an identifier reads it again.
-    if t.recipient_id.as_deref().is_none_or(|r| r.trim().is_empty()) {
+    if t.recipient_id
+        .as_deref()
+        .is_none_or(|r| r.trim().is_empty())
+    {
         if let Some(document) =
             Document::load(&state.db, &Subject::new(&t.document_type, t.document_id)).await?
         {
@@ -303,11 +308,7 @@ pub async fn send_one(state: &AppState, id: i64) -> Result<bool> {
             }
         }
     }
-    let Some(recipient) = t
-        .recipient_id
-        .clone()
-        .filter(|r| !r.trim().is_empty())
-    else {
+    let Some(recipient) = t.recipient_id.clone().filter(|r| !r.trim().is_empty()) else {
         failed_try(
             state,
             &config,
@@ -333,7 +334,13 @@ pub async fn send_one(state: &AppState, id: i64) -> Result<bool> {
                 adapter_configured: true,
                 reference,
             };
-            match t.transition(SUBMIT).by_system().input(&input).run(state).await {
+            match t
+                .transition(SUBMIT)
+                .by_system()
+                .input(&input)
+                .run(state)
+                .await
+            {
                 Ok(_) => {}
                 // Another worker moved it first.
                 Err(TransitionError::NotFrom(_) | TransitionError::Conflict) => return Ok(false),
@@ -378,7 +385,11 @@ pub async fn respond(
                     .map(|AspError { code, message }| (code, message))
                     .collect(),
             };
-            t.transition(REJECT).by_system().input(&input).run(state).await
+            t.transition(REJECT)
+                .by_system()
+                .input(&input)
+                .run(state)
+                .await
         }
     };
     match run {
@@ -467,14 +478,13 @@ pub async fn sweep(state: &AppState) -> Result<usize> {
         else {
             continue;
         };
-        let known: std::collections::BTreeSet<(String, i64)> =
-            EInvoiceTransmission::query()
-                .where_(EInvoiceTransmission::LEGAL_ENTITY_ID.eq(entity.id))
-                .get(&state.db)
-                .await?
-                .into_iter()
-                .map(|t| (t.document_type, t.document_id))
-                .collect();
+        let known: std::collections::BTreeSet<(String, i64)> = EInvoiceTransmission::query()
+            .where_(EInvoiceTransmission::LEGAL_ENTITY_ID.eq(entity.id))
+            .get(&state.db)
+            .await?
+            .into_iter()
+            .map(|t| (t.document_type, t.document_id))
+            .collect();
         let invoices = Invoice::query()
             .where_(Invoice::LEGAL_ENTITY_ID.eq(entity.id))
             .where_(Invoice::STATUS.ne(InvoiceStatus::Draft))
@@ -486,7 +496,10 @@ pub async fn sweep(state: &AppState) -> Result<usize> {
             if known.contains(&(INVOICE.to_owned(), invoice.id)) {
                 continue;
             }
-            if queue_document(state, &Document::Invoice(invoice)).await?.is_some() {
+            if queue_document(state, &Document::Invoice(invoice))
+                .await?
+                .is_some()
+            {
                 queued += 1;
             }
         }
@@ -501,7 +514,10 @@ pub async fn sweep(state: &AppState) -> Result<usize> {
             if known.contains(&(CREDIT_NOTE.to_owned(), note.id)) {
                 continue;
             }
-            if queue_document(state, &Document::CreditNote(note)).await?.is_some() {
+            if queue_document(state, &Document::CreditNote(note))
+                .await?
+                .is_some()
+            {
                 queued += 1;
             }
         }
@@ -577,16 +593,27 @@ pub async fn resubmit(
     let entity = LegalEntity::find(&state.db, t.legal_entity_id)
         .await
         .map_err(TransitionError::Failed)?;
-    let adapter = entity
-        .and_then(|entity| config.einvoice_of(&entity.code).and_then(|e| e.adapter.clone()));
+    let adapter = entity.and_then(|entity| {
+        config
+            .einvoice_of(&entity.code)
+            .and_then(|e| e.adapter.clone())
+    });
     let input = ResubmitInput {
         cause_fixed: fixed,
-        payload: built.as_ref().map(|b| b.payload.clone()).unwrap_or_default(),
+        payload: built
+            .as_ref()
+            .map(|b| b.payload.clone())
+            .unwrap_or_default(),
         hash: built.as_ref().map(|b| b.hash.clone()).unwrap_or_default(),
         recipient_id: built.and_then(|b| b.recipient_id),
         adapter,
     };
-    let _outcome = t.transition(RESUBMIT).by(user).input(&input).run(state).await?;
+    let _outcome = t
+        .transition(RESUBMIT)
+        .by(user)
+        .input(&input)
+        .run(state)
+        .await?;
     send_one(state, id).await.map_err(TransitionError::Failed)?;
     EInvoiceTransmission::find_or_404(&state.db, id)
         .await
@@ -614,7 +641,13 @@ pub async fn supersede_for(state: &AppState, note: &CreditNote) -> Result<usize>
         if t.status != TransmissionStatus::Rejected {
             continue;
         }
-        match t.transition(SUPERSEDE).by_system().input(&input).run(state).await {
+        match t
+            .transition(SUPERSEDE)
+            .by_system()
+            .input(&input)
+            .run(state)
+            .await
+        {
             Ok(_) => superseded += 1,
             Err(TransitionError::NotFrom(_) | TransitionError::Conflict) => {}
             Err(error) => return Err(error.into_error()),
@@ -633,7 +666,9 @@ pub async fn supersede_for(state: &AppState, note: &CreditNote) -> Result<usize>
 /// entity, or an invoice with no superseded transmission.
 pub async fn set_replaces(db: &Db, draft: &Invoice, old_invoice_id: i64) -> Result<()> {
     if draft.status != InvoiceStatus::Draft {
-        return Err(refused("Only a draft invoice can name the invoice it replaces."));
+        return Err(refused(
+            "Only a draft invoice can name the invoice it replaces.",
+        ));
     }
     let Some(old) = Invoice::find(db, old_invoice_id).await? else {
         return Err(refused("The invoice to replace was not found."));
@@ -726,9 +761,8 @@ pub async fn queued_count_all(db: &Db) -> Result<i64> {
 /// The text of the queue banner from the `template` (with `{{ count }}`), or
 /// `None` when nothing is queued.
 pub fn queue_banner(template: &str, count: i64) -> Option<String> {
-    (count > 0).then(|| {
-        wl_kernel::notify::fill(template, &renox::serde_json::json!({ "count": count }))
-    })
+    (count > 0)
+        .then(|| wl_kernel::notify::fill(template, &renox::serde_json::json!({ "count": count })))
 }
 
 /// Registers the listeners: a document issued is queued and sent, a credit
@@ -749,18 +783,20 @@ pub(crate) fn register(app: &mut Registry) {
         let _ = after_issue(&state, Document::Invoice(invoice)).await;
         Ok(())
     });
-    app.listen(|event: Transitioned<CreditNote>, state: AppState| async move {
-        let issued = [NOTE_ISSUE, ISSUE_SYSTEM, ISSUE_APPROVED];
-        if !issued.contains(&event.transition.as_str()) {
-            return Ok(());
-        }
-        let Some(note) = CreditNote::find(&state.db, event.key).await? else {
-            return Ok(());
-        };
-        let _ = after_issue(&state, Document::CreditNote(note.clone())).await;
-        let _ = supersede_for(&state, &note).await;
-        Ok(())
-    });
+    app.listen(
+        |event: Transitioned<CreditNote>, state: AppState| async move {
+            let issued = [NOTE_ISSUE, ISSUE_SYSTEM, ISSUE_APPROVED];
+            if !issued.contains(&event.transition.as_str()) {
+                return Ok(());
+            }
+            let Some(note) = CreditNote::find(&state.db, event.key).await? else {
+                return Ok(());
+            };
+            let _ = after_issue(&state, Document::CreditNote(note.clone())).await;
+            let _ = supersede_for(&state, &note).await;
+            Ok(())
+        },
+    );
     crate::einvoice_tasks::register(app);
     app.schedule()
         .every_minute(TASK, |state: AppState| async move {

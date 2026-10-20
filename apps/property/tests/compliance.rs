@@ -4,14 +4,14 @@
 
 mod support;
 
+use property::Building;
 use property::compliance::{BuildingFlag, CERTIFICATE_EXPIRED, non_compliant};
 use property::notices::CERTIFICATE_EXPIRED as CERTIFICATE_NOTICE;
-use property::Building;
 use renox::chrono::Duration;
+use wl_kernel::Subject;
 use wl_kernel::documents::{DocumentAccepted, DocumentExpired, DocumentId};
 use wl_kernel::notify::NotifyRecipient;
 use wl_kernel::tickets::{ComplianceFlagCleared, ComplianceFlagRaised};
-use wl_kernel::Subject;
 
 use support::{ACCOUNTANT, AGENT, MANAGER, aed, boot, day};
 
@@ -52,10 +52,12 @@ async fn bl_prp_25_an_expired_certificate_flags_the_building_but_not_the_leases(
 
     let told = t.notices.of_type(CERTIFICATE_NOTICE);
     assert_eq!(told.len(), 1);
-    assert!(told[0]
-        .recipients
-        .iter()
-        .any(|r| matches!(r, NotifyRecipient::User { id } if *id == admin.id)));
+    assert!(
+        told[0]
+            .recipients
+            .iter()
+            .any(|r| matches!(r, NotifyRecipient::User { id } if *id == admin.id))
+    );
 
     // The same event twice raises one flag.
     t.state().emit(expired(&tower_a, 1)).await.unwrap();
@@ -118,8 +120,16 @@ async fn bl_prp_25_a_ticketing_flag_shows_until_it_clears() {
     assert_eq!(non_compliant(t.db()).await.unwrap(), vec![tower_b.id]);
 
     t.app.acting_as(&manager);
-    t.app.get("/property").await.assert_ok().assert_see("Buildings non-compliant (1)");
-    t.app.get("/property/compliance").await.assert_ok().assert_see("Planned visit missed");
+    t.app
+        .get("/property")
+        .await
+        .assert_ok()
+        .assert_see("Buildings non-compliant (1)");
+    t.app
+        .get("/property/compliance")
+        .await
+        .assert_ok()
+        .assert_see("Planned visit missed");
 
     t.state()
         .emit(ComplianceFlagCleared {
@@ -131,7 +141,11 @@ async fn bl_prp_25_a_ticketing_flag_shows_until_it_clears() {
         .await
         .unwrap();
     assert!(non_compliant(t.db()).await.unwrap().is_empty());
-    t.app.get("/property/compliance").await.assert_ok().assert_see("No building is flagged");
+    t.app
+        .get("/property/compliance")
+        .await
+        .assert_ok()
+        .assert_see("No building is flagged");
 }
 
 /// Only holders of the permission see the page, and a property manager sees

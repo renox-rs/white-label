@@ -247,7 +247,8 @@ pub fn notice_problem(input: &NoticeInput) -> Option<String> {
     if input.penalty < 0 {
         return Some(english("property.notice.penalty_negative", &[]));
     }
-    if input.penalty > 0 && !(party == NoticeParty::Tenant && reason == NoticeReason::EarlyTermination)
+    if input.penalty > 0
+        && !(party == NoticeParty::Tenant && reason == NoticeReason::EarlyTermination)
     {
         return Some(english("property.notice.penalty_not_allowed", &[]));
     }
@@ -489,7 +490,10 @@ pub async fn change_planned_move_out(
     if lease.status != LeaseStatus::NoticeGiven
         || lease.notice_party.as_deref() != Some(NoticeParty::Tenant.as_str())
     {
-        return Err(refused(english("property.notice.planned_edit_refused", &[])));
+        return Err(refused(english(
+            "property.notice.planned_edit_refused",
+            &[],
+        )));
     }
     if lease.notice_date.is_some_and(|notice| date < notice) {
         return Err(refused(english("property.notice.planned_before", &[])));
@@ -601,7 +605,11 @@ mod tests {
         input.planned_move_out = None;
         assert!(notice_problem(&input).unwrap().contains("planned move-out"));
         input.planned_move_out = Some(day(5, 31));
-        assert!(notice_problem(&input).unwrap().contains("before the notice"));
+        assert!(
+            notice_problem(&input)
+                .unwrap()
+                .contains("before the notice")
+        );
         input.planned_move_out = Some(day(6, 1));
         assert_eq!(notice_problem(&input), None);
     }
@@ -621,7 +629,11 @@ mod tests {
     fn a_penalty_belongs_to_a_tenants_early_termination() {
         let mut input = tenant_input();
         input.reason = "end_of_term".into();
-        assert!(notice_problem(&input).unwrap().contains("early termination"));
+        assert!(
+            notice_problem(&input)
+                .unwrap()
+                .contains("early termination")
+        );
         let mut input = tenant_input();
         input.party = "landlord".into();
         input.planned_move_out = None;

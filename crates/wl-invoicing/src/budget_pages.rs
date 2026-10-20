@@ -301,7 +301,8 @@ async fn show(
     let categories = BudgetCategory::listed(&db, true).await?;
     let lines = CompanyBudgetLine::of(&db, budget.id).await?;
     let months = budget.months();
-    let locked_months: Vec<NaiveDate> = lines.iter().filter(|l| l.locked).map(|l| l.month).collect();
+    let locked_months: Vec<NaiveDate> =
+        lines.iter().filter(|l| l.locked).map(|l| l.month).collect();
     let head = std::iter::once(t("budget.lines.category"))
         .chain(months.iter().map(|m| {
             if locked_months.contains(m) {
@@ -377,16 +378,15 @@ async fn new_form(State(state): State<AppState>, lang: Lang) -> Result<View> {
         .filter(LegalEntity::is_active)
         .map(|e| (e.id.to_string(), format!("{} - {}", e.code, e.name_en)))
         .collect();
-    let year = crate::budget::fiscal_year_of(
-        config_of(&state).budget_fiscal_start_month,
-        today(),
-    );
-    let starts = [StartChoice::Empty, StartChoice::LastBudget, StartChoice::LastActual]
-        .iter()
-        .map(|c| {
-            (c.as_str().to_owned(), t(start_key(*c)))
-        })
-        .collect();
+    let year = crate::budget::fiscal_year_of(config_of(&state).budget_fiscal_start_month, today());
+    let starts = [
+        StartChoice::Empty,
+        StartChoice::LastBudget,
+        StartChoice::LastActual,
+    ]
+    .iter()
+    .map(|c| (c.as_str().to_owned(), t(start_key(*c))))
+    .collect();
     let mut values = BTreeMap::new();
     values.insert("fiscal_year", (year + 1).to_string());
     values.insert("start", StartChoice::Empty.as_str().to_owned());
@@ -590,7 +590,11 @@ async fn submit(
         Err(TransitionError::Guard(message)) => Toast::error(message),
         Err(other) => return Err(other.into_error()),
     };
-    Ok((toast, Redirect::route("wl_invoicing.budget", &[&budget.id])?).into_response())
+    Ok((
+        toast,
+        Redirect::route("wl_invoicing.budget", &[&budget.id])?,
+    )
+        .into_response())
 }
 
 /// `POST /budgets/{id}/discard`: gives the draft up with a reason.
@@ -606,7 +610,11 @@ async fn discard(
     {
         Ok(_) => {}
         Err(TransitionError::ReasonRequired) => {
-            return Err(invalid("reason", t("budget.discard.reason_required"), &form));
+            return Err(invalid(
+                "reason",
+                t("budget.discard.reason_required"),
+                &form,
+            ));
         }
         Err(TransitionError::Guard(message)) => return Err(invalid("reason", message, &form)),
         Err(other) => return Err(other.into_error()),
@@ -644,7 +652,14 @@ mod tests {
         let keys: Vec<&str> = grid.columns().iter().map(Column::key).collect();
         assert_eq!(
             keys,
-            ["entity", "fiscal_year", "version", "name", "status", "approved_at"]
+            [
+                "entity",
+                "fiscal_year",
+                "version",
+                "name",
+                "status",
+                "approved_at"
+            ]
         );
         let status = grid
             .columns()
@@ -668,7 +683,11 @@ mod tests {
 
     #[test]
     fn the_figures_have_a_row_per_category_with_lines() {
-        let categories = [category(1, "Rent"), category(2, "Marketing"), category(3, "Fuel")];
+        let categories = [
+            category(1, "Rent"),
+            category(2, "Marketing"),
+            category(3, "Fuel"),
+        ];
         let lines = [
             CompanyBudgetLine {
                 category_id: 1,

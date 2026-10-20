@@ -51,7 +51,12 @@ impl ChannelProvider for Bounces {
 async fn a_hard_bounce_marks_a_seeded_partys_contact_point_invalid() {
     let mut providers = Providers::default();
     providers.replace(Arc::new(Bounces));
-    let app = TestApp::new(host::app().provide(providers).provide(support::noon_clock())).await;
+    let app = TestApp::new(
+        host::app()
+            .provide(providers)
+            .provide(support::noon_clock()),
+    )
+    .await;
     app.kernel().seed().await.unwrap();
     let al_noor = Party::query()
         .where_(Party::LEGAL_NAME_EN.eq("Al Noor Trading LLC"))

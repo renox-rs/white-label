@@ -216,7 +216,10 @@ pub async fn refusal(state: &AppState, lease: &Lease) -> Result<Option<String>> 
         return Ok(None);
     }
     if lease.version_kind == VersionKind::Amendment {
-        return Ok(Some(english("property.terms.amendment_needs_acceptance", &[])));
+        return Ok(Some(english(
+            "property.terms.amendment_needs_acceptance",
+            &[],
+        )));
     }
     let Some(previous) = lease.previous(&state.db).await? else {
         return Ok(None);
@@ -377,7 +380,10 @@ mod tests {
         };
         let changes = compare(&clause, &previous, &plan(2027), &plan(2028));
         assert!(changes.other && !changes.automatic());
-        assert!(changes.against_tenant(&clause), "not answered counts as yes");
+        assert!(
+            changes.against_tenant(&clause),
+            "not answered counts as yes"
+        );
         let no = Lease {
             terms_answered_no: true,
             ..clause
@@ -440,7 +446,10 @@ mod tests {
             ..Default::default()
         };
         // Two instalments are left on the current plan (1 July, 1 October).
-        let rest = vec![charge(day(2027, 7, 1), RENT), charge(day(2027, 10, 1), RENT)];
+        let rest = vec![
+            charge(day(2027, 7, 1), RENT),
+            charge(day(2027, 10, 1), RENT),
+        ];
         assert_eq!(
             compare(&amendment, &previous, &plan(2027), &rest),
             Changes::default()

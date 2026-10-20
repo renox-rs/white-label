@@ -21,15 +21,15 @@
 //! is approved; raised, a drawing at or below it is recorded at once
 //! (`record_below_limit`).
 
+use renox::auth::permissions::Scope;
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use renox::serde_json::{Value, json};
 use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx};
 use serde::{Deserialize, Serialize};
-use renox::auth::permissions::Scope;
-use wl_kernel::{LegalEntity, Subject};
 use wl_kernel::approvals::{self, PolicyDefault, Require, Required};
 use wl_kernel::machines::SubjectMachine;
+use wl_kernel::{LegalEntity, Subject};
 
 use crate::budget_category::refused;
 use crate::permissions;
@@ -183,8 +183,8 @@ fn request_transition() -> Transition<DrawingApproval> {
                 let by = by.ok_or_else(|| {
                     refused(english("wl_invoicing.drawings.problem.requester_unknown"))
                 })?;
-                let require =
-                    Require::new(ACTION, subject, REQUEST, by, "draft").payload(json!({ "amount": amount }));
+                let require = Require::new(ACTION, subject, REQUEST, by, "draft")
+                    .payload(json!({ "amount": amount }));
                 match approvals::require_in(&mut *tx, &require).await? {
                     Required::Pending(request) => {
                         record(tx, id, &[("approval_request_id", &Some(request.id))]).await
@@ -270,9 +270,9 @@ fn below_limit_transition() -> Transition<DrawingApproval> {
         .system()
         .effect(|approval: &DrawingApproval, _ctx, tx| {
             let id = approval.id;
-            Box::pin(async move {
-                record(tx, id, &[("approved_at", &Some(renox::db::now()))]).await
-            })
+            Box::pin(
+                async move { record(tx, id, &[("approved_at", &Some(renox::db::now()))]).await },
+            )
         })
 }
 
@@ -376,8 +376,14 @@ mod tests {
             source_id: 9,
             ..Default::default()
         };
-        assert_eq!(approval.subject(), Subject::new("invoicing.drawing_approval", 4));
-        assert_eq!(approval.source(), Subject::new("invoicing.supplier_bill", 9));
+        assert_eq!(
+            approval.subject(),
+            Subject::new("invoicing.drawing_approval", 4)
+        );
+        assert_eq!(
+            approval.source(),
+            Subject::new("invoicing.supplier_bill", 9)
+        );
         assert_eq!(page_of(4), "/drawing-approvals/4");
     }
 }

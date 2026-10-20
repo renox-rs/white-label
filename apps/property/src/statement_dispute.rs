@@ -170,7 +170,10 @@ pub enum Clearing {
 /// Whether a statement in `status` can be disputed: published, or settled
 /// after its payout.
 pub fn disputable(status: StatementStatus) -> bool {
-    matches!(status, StatementStatus::Published | StatementStatus::Settled)
+    matches!(
+        status,
+        StatementStatus::Published | StatementStatus::Settled
+    )
 }
 
 /// Sets the flag of the statement `id` from its open disputes.
@@ -279,7 +282,10 @@ pub async fn open(
 /// Resolves the ticket of `dispute`, if it has one and it is open.
 async fn resolve_ticket(state: &AppState, dispute: &StatementDispute, outcome: &str) -> Result {
     if let Some(ticket) = dispute.ticket_id {
-        let resolution = english("property.disputes.ticket_resolved", &[("outcome", &outcome)]);
+        let resolution = english(
+            "property.disputes.ticket_resolved",
+            &[("outcome", &outcome)],
+        );
         task_creator(state)
             .resolve_from_source(state, TicketId(ticket), &resolution)
             .await?;
@@ -289,7 +295,10 @@ async fn resolve_ticket(state: &AppState, dispute: &StatementDispute, outcome: &
 
 /// What the owner is told about an outcome.
 fn outcome_text(outcome: DisputeOutcome) -> String {
-    english(&format!("property.disputes.outcome_{}", outcome.as_str()), &[])
+    english(
+        &format!("property.disputes.outcome_{}", outcome.as_str()),
+        &[],
+    )
 }
 
 /// `user` clears the open dispute `dispute_id` with `clearing`: the lines of an
@@ -324,7 +333,10 @@ pub async fn clear(
     let key = ticket_key(dispute.id);
     let reference = english(
         "property.disputes.adjustment_line",
-        &[("statement", &statement.number()), ("what", &dispute.description)],
+        &[
+            ("statement", &statement.number()),
+            ("what", &dispute.description),
+        ],
     );
     let (outcome, adjustment, other) = match &clearing {
         Clearing::Upheld => (DisputeOutcome::Upheld, None, None),
@@ -348,9 +360,16 @@ pub async fn clear(
                         && crate::agreement::AgreementStatus::REPORTING.contains(&a.status)
                 });
             if found.is_none() {
-                return Err(refused(english("property.disputes.other_agreement_invalid", &[])));
+                return Err(refused(english(
+                    "property.disputes.other_agreement_invalid",
+                    &[],
+                )));
             }
-            (DisputeOutcome::Reallocated, Some(*amount), Some(*other_agreement))
+            (
+                DisputeOutcome::Reallocated,
+                Some(*amount),
+                Some(*other_agreement),
+            )
         }
     };
     match (&clearing, adjustment, other) {
@@ -408,8 +427,7 @@ pub async fn after_revise(state: &AppState, statement: &OwnerStatement) -> Resul
         resolve_ticket(state, dispute, DisputeOutcome::Revised.as_str()).await?;
     }
     if !revised.is_empty() {
-        notices::dispute_outcome(state, statement, &outcome_text(DisputeOutcome::Revised))
-            .await?;
+        notices::dispute_outcome(state, statement, &outcome_text(DisputeOutcome::Revised)).await?;
     }
     Ok(())
 }

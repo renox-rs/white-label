@@ -68,7 +68,11 @@ pub fn app_for(config: ClientConfig) -> Result<renox::App, ConfigError> {
     let client_app = config.client.app.clone();
     let vertical = vertical(&client_app)?;
     let manifest = config.manifest()?;
-    let entities: Vec<String> = config.legal_entities.iter().map(|e| e.code.clone()).collect();
+    let entities: Vec<String> = config
+        .legal_entities
+        .iter()
+        .map(|e| e.code.clone())
+        .collect();
     let owner_role = config.owner_role().to_owned();
     // The kernel goes first: its seeder creates the legal entities the other
     // modules' demo data needs, and seeders run in the order modules mount.
@@ -84,7 +88,10 @@ pub fn app_for(config: ClientConfig) -> Result<renox::App, ConfigError> {
     // The page that shows the shared modules' settings of this client.
     Ok(app
         .module(app::negative_flow::NegativeFlow::new(&client_app, entities))
-        .module(app::compliance_settings::ComplianceSettings::new(&client_app, &owner_role))
+        .module(app::compliance_settings::ComplianceSettings::new(
+            &client_app,
+            &owner_role,
+        ))
         .module(vertical))
 }
 

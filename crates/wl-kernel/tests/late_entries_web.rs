@@ -69,7 +69,11 @@ async fn fields(lang: Lang, Path(minutes): Path<i64>) -> Json<Value> {
 }
 
 /// `GET /check-ins/{id}/card`: the late-entry card of a check-in.
-async fn card(State(state): State<AppState>, lang: Lang, Path(id): Path<i64>) -> Result<Json<Value>> {
+async fn card(
+    State(state): State<AppState>,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Json<Value>> {
     let card = web::card_for(&state.db, &Subject::new(CHECK_IN, id), &lang).await?;
     Ok(Json(card.unwrap_or(Value::Null)))
 }
@@ -130,9 +134,13 @@ async fn world() -> (TestApp, User) {
         .await
         .expect("wl:install runs");
     let db = app.db();
-    permissions::define_role(db, "receptionist", &[wl_kernel::permissions::APPROVALS_VIEW])
-        .await
-        .unwrap();
+    permissions::define_role(
+        db,
+        "receptionist",
+        &[wl_kernel::permissions::APPROVALS_VIEW],
+    )
+    .await
+    .unwrap();
     let anna = User::register(db, "Anna", "anna@example.com", "password123")
         .await
         .unwrap();
@@ -145,9 +153,7 @@ async fn the_fields_are_asked_for_only_when_the_entry_is_late() {
     let (app, anna) = world().await;
     app.acting_as(&anna);
 
-    app.get("/late-fields/10")
-        .await
-        .assert_json(Value::Null);
+    app.get("/late-fields/10").await.assert_json(Value::Null);
 
     let late = app.get("/late-fields/90").await;
     late.assert_ok();
@@ -191,8 +197,7 @@ async fn the_card_lists_the_runs_already_fired() {
         .parent(booking.clone())
         .reason("router down")
         .outage_reference("outage at branch 2");
-    let Entered::Recorded { record_id, .. } =
-        late_entries::enter(app.state(), spec).await.unwrap()
+    let Entered::Recorded { record_id, .. } = late_entries::enter(app.state(), spec).await.unwrap()
     else {
         panic!("expected a recorded late entry");
     };
@@ -212,7 +217,9 @@ async fn the_card_lists_the_runs_already_fired() {
     );
 
     // A record that was not entered late has no card.
-    app.get("/check-ins/999/card").await.assert_json(Value::Null);
+    app.get("/check-ins/999/card")
+        .await
+        .assert_json(Value::Null);
 }
 
 #[renox::test]

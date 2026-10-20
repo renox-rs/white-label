@@ -33,7 +33,9 @@ use renox::nav::NavLink;
 use renox::prelude::*;
 
 pub use acquisition::{AcquisitionRefused, AcquisitionSale, PartyAcquisition};
-pub use acquisition_change::{AcquisitionChange, ChangeRefused, ChangeRequest, ChangeStatus, ChangeTarget};
+pub use acquisition_change::{
+    AcquisitionChange, ChangeRefused, ChangeRequest, ChangeStatus, ChangeTarget,
+};
 pub use budget::BudgetAlert;
 pub use campaign::{
     Campaign, CampaignCode, CampaignRefused, CampaignStatus, MarketingChannel, Purpose,
@@ -292,7 +294,10 @@ mod tests {
         assert!(config.campaign_required_for("social"));
         assert_eq!(config.attribution_window_months, Some(12));
         assert!(!config.acquisition_change_approval);
-        assert_eq!(config.lost_reasons, ["duplicate", "spam_or_invalid", "too far"]);
+        assert_eq!(
+            config.lost_reasons,
+            ["duplicate", "spam_or_invalid", "too far"]
+        );
         assert!(!config.over_budget_approval);
         assert_eq!(config.budget_alerts, [5000, 10000]);
         assert_eq!(config.late_response_days, 14);

@@ -123,17 +123,26 @@ pub(crate) fn clean(text: Option<String>) -> Option<String> {
 pub async fn create_building(db: &Db, new: NewBuilding) -> Result<Building> {
     let code = new.code.trim().to_uppercase();
     if code.is_empty() {
-        return Err(refused(crate::texts::english("property.buildings.code_required", &[])));
+        return Err(refused(crate::texts::english(
+            "property.buildings.code_required",
+            &[],
+        )));
     }
     if new.name_en.trim().is_empty() {
-        return Err(refused(crate::texts::english("property.buildings.name_required", &[])));
+        return Err(refused(crate::texts::english(
+            "property.buildings.name_required",
+            &[],
+        )));
     }
     let taken = Building::query()
         .where_(Building::CODE.eq(code.as_str()))
         .count(db)
         .await?;
     if taken > 0 {
-        return Err(refused(crate::texts::english("property.buildings.code_taken", &[])));
+        return Err(refused(crate::texts::english(
+            "property.buildings.code_taken",
+            &[],
+        )));
     }
     let emirate = match new.emirate.trim() {
         "" => "dubai".to_owned(),

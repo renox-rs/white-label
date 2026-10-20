@@ -392,7 +392,10 @@ mod tests {
         assert_eq!(config.budget_fiscal_start_month, 1);
         assert!(!config.budget_revise_past_months);
         assert_eq!(config.budget_reminder_days, 30);
-        assert_eq!(config.budget_reminder_roles, ["accountant", "finance_manager"]);
+        assert_eq!(
+            config.budget_reminder_roles,
+            ["accountant", "finance_manager"]
+        );
         assert_eq!(config.budget_variance_percent, 100);
         assert_eq!(config.budget_variance_role, "finance_manager");
         assert_eq!(config.cash_forecast_weeks, 13);
@@ -407,7 +410,10 @@ mod tests {
         assert!(!config.cash_income_fill_counted);
         assert!(config.einvoice.is_empty());
         assert_eq!(config.einvoice_retry_minutes, [5, 30, 120, 360]);
-        assert_eq!((config.einvoice_repeat_hours, config.einvoice_task_hours), (6, 24));
+        assert_eq!(
+            (config.einvoice_repeat_hours, config.einvoice_task_hours),
+            (6, 24)
+        );
         assert!(config.drawings_self_approve);
         assert_eq!(config.drawings_notify_role, "accountant");
     }
@@ -439,7 +445,10 @@ mod tests {
         let day = |m, d| renox::chrono::NaiveDate::from_ymd_opt(2027, m, d).unwrap();
         assert!(config.einvoice_applies("PGP", day(1, 1)));
         assert!(config.einvoice_applies("PGP", day(1, 5)));
-        assert!(!config.einvoice_applies("PGP", renox::chrono::NaiveDate::from_ymd_opt(2026, 12, 31).unwrap()));
+        assert!(!config.einvoice_applies(
+            "PGP",
+            renox::chrono::NaiveDate::from_ymd_opt(2026, 12, 31).unwrap()
+        ));
         assert!(!config.einvoice_applies("PGFZ", day(1, 5)));
     }
 

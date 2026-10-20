@@ -37,8 +37,8 @@
 //! - The accountant who forfeits holds `deposits.refund` (wl-payments'
 //!   permission) in the lease's building; the approver is another user.
 
-use renox::chrono::NaiveDate;
 use renox::auth::permissions::{users_with_role, users_with_role_in};
+use renox::chrono::NaiveDate;
 use renox::db::DateTime;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -66,7 +66,11 @@ pub const DAMAGES: &str = "damages";
 
 /// The settlement statement of a deposit applied to the deductions.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
-#[model(table = "property_deposit_settlements", unique(deposit_id), index(root_id))]
+#[model(
+    table = "property_deposit_settlements",
+    unique(deposit_id),
+    index(root_id)
+)]
 pub struct DepositSettlement {
     /// The primary key.
     pub id: i64,
@@ -236,7 +240,10 @@ async fn approvers_problem(
 ) -> Result<Option<String>> {
     let managers = users_with_role_in(&state.db, PROPERTY_MANAGER_ROLE, &lease.scope()).await?;
     if request.approver == user.id || !managers.iter().any(|m| m.id == request.approver) {
-        return Ok(Some(english("property.deposit_forfeit.approver_wrong", &[])));
+        return Ok(Some(english(
+            "property.deposit_forfeit.approver_wrong",
+            &[],
+        )));
     }
     if !second_approval_needed(total) {
         return Ok(None);
@@ -291,7 +298,10 @@ pub async fn apply(
         .await?
         .is_some()
     {
-        return Err(refused(english("property.deposit_forfeit.done_already", &[])));
+        return Err(refused(english(
+            "property.deposit_forfeit.done_already",
+            &[],
+        )));
     }
     let published = deposit_deductions(state)
         .published_for(state, lease.tenant())
@@ -325,7 +335,10 @@ pub async fn apply(
     }
     let charge_type = ChargeType::active_by_code(&state.db, DAMAGES).await?;
     if damages > 0 && charge_type.is_none() {
-        return Err(refused(english("property.deposit_forfeit.no_charge_type", &[])));
+        return Err(refused(english(
+            "property.deposit_forfeit.no_charge_type",
+            &[],
+        )));
     }
 
     let applied = deposits(state)
@@ -360,7 +373,10 @@ pub async fn apply(
         for (description, amount) in &rest {
             draft = draft.line(DraftLine::new(description, *amount, vat).charge_type(DAMAGES));
         }
-        invoice_id = invoicer(state).draft(&state.db, draft).await?.map(|id| id.0);
+        invoice_id = invoicer(state)
+            .draft(&state.db, draft)
+            .await?
+            .map(|id| id.0);
     }
     let kept_for_damages = applied.kept.min(damages);
     DepositSettlement::create(

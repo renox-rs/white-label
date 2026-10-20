@@ -137,7 +137,10 @@ fn outage_of(connection: &IntegrationConnection) -> DateTime {
 
 /// The source key of the task of a failure run.
 pub fn source_key(connection_key: &str, outage_since: DateTime) -> String {
-    format!("kernel.reconcile:{connection_key}:{}", outage_since.timestamp())
+    format!(
+        "kernel.reconcile:{connection_key}:{}",
+        outage_since.timestamp()
+    )
 }
 
 /// Adds `lines` to the reconciliation of `connection`'s failure run. The

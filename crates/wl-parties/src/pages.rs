@@ -954,7 +954,11 @@ async fn einvoice_page(
     let found = clean(Some(&query.found)).filter(|_| query.result == "found");
     let (message, message_kind) = match (query.result.as_str(), &found) {
         ("found", Some(id)) => (
-            Some(texts::t_with(&lang, "wl_parties.einvoice.found", &[("id", id)])),
+            Some(texts::t_with(
+                &lang,
+                "wl_parties.einvoice.found",
+                &[("id", id)],
+            )),
             "success",
         ),
         ("not_found", _) => (

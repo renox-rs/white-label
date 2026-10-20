@@ -56,11 +56,7 @@ pub enum ChangeStatus {
 
 /// A requested change of source or campaign.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
-#[model(
-    table = "wl_sales_acquisition_changes",
-    state_machine,
-    index(status)
-)]
+#[model(table = "wl_sales_acquisition_changes", state_machine, index(status))]
 pub struct AcquisitionChange {
     /// The primary key.
     pub id: i64,
@@ -333,11 +329,17 @@ pub async fn request(
     let Some(needs) = needs_approval(state, request.target).await? else {
         return Ok(Err(ChangeRefused::NotFound));
     };
-    let source = match LeadSource::by_code(&state.db, &LeadSource::normalize_code(&request.source)).await? {
-        Some(source) if source.active => source,
-        _ => return Ok(Err(ChangeRefused::UnknownSource)),
-    };
-    let campaign = match request.campaign.as_deref().map(str::trim).filter(|c| !c.is_empty()) {
+    let source =
+        match LeadSource::by_code(&state.db, &LeadSource::normalize_code(&request.source)).await? {
+            Some(source) if source.active => source,
+            _ => return Ok(Err(ChangeRefused::UnknownSource)),
+        };
+    let campaign = match request
+        .campaign
+        .as_deref()
+        .map(str::trim)
+        .filter(|c| !c.is_empty())
+    {
         Some(code) => match Campaign::by_code(&state.db, code).await? {
             Some(campaign) => Some(campaign),
             None => return Ok(Err(ChangeRefused::UnknownCampaign)),
@@ -389,7 +391,9 @@ pub async fn request(
             .await
             .map_err(|e| e.into_error())?;
     }
-    Ok(Ok(AcquisitionChange::find_or_404(&state.db, change.id).await?))
+    Ok(Ok(
+        AcquisitionChange::find_or_404(&state.db, change.id).await?
+    ))
 }
 
 /// Approves pending change `id` as user `by`, who must be another user than
@@ -519,7 +523,11 @@ mod tests {
     fn the_machine_has_three_system_transitions_out_of_pending() {
         let machine = AcquisitionChange::machine();
         assert_eq!(machine.transitions().len(), 3);
-        for (name, to) in [(APPLY, "applied"), (APPROVE, "applied"), (REJECT, "rejected")] {
+        for (name, to) in [
+            (APPLY, "applied"),
+            (APPROVE, "applied"),
+            (REJECT, "rejected"),
+        ] {
             let t = machine.find(name).expect(name);
             assert!(t.is_system(), "{name}");
             assert_eq!(t.from_states(), ["pending"], "{name}");
@@ -536,14 +544,17 @@ mod tests {
             ..AcquisitionChange::default()
         };
         let ctx = |by: i64| {
-            TransitionCtx::new(None).with_input(renox::serde_json::to_value(Decision { by }).unwrap())
+            TransitionCtx::new(None)
+                .with_input(renox::serde_json::to_value(Decision { by }).unwrap())
         };
         let approve = machine.find(APPROVE).unwrap();
         assert!(approve.check_guards(&change, &ctx(7)).await.is_err());
         assert!(approve.check_guards(&change, &ctx(8)).await.is_ok());
-        assert!(approve
-            .check_guards(&change, &TransitionCtx::new(None))
-            .await
-            .is_err());
+        assert!(
+            approve
+                .check_guards(&change, &TransitionCtx::new(None))
+                .await
+                .is_err()
+        );
     }
 }

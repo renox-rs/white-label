@@ -76,7 +76,10 @@ pub async fn return_undeposited(
     for id in &request.cheques {
         let found = Cheque::find(&mut tx, id.0).await?;
         let Some(cheque) = found.filter(|c| {
-            matches!(c.status, ChequeStatus::Received | ChequeStatus::DueForDeposit)
+            matches!(
+                c.status,
+                ChequeStatus::Received | ChequeStatus::DueForDeposit
+            )
         }) else {
             skipped.push(*id);
             continue;

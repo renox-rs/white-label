@@ -2057,7 +2057,10 @@ mod tests {
     fn a_draft_line_has_its_net_vat_and_gross_in_fils() {
         // AED 333.33 at 5%: VAT 16.6665 rounds half-up to 16.67.
         let line = DraftLine::new("Replace AC capacitor", 33_333, VatCategory::Standard);
-        assert_eq!((line.net(), line.vat(), line.gross()), (33_333, 1_667, 35_000));
+        assert_eq!(
+            (line.net(), line.vat(), line.gross()),
+            (33_333, 1_667, 35_000)
+        );
         // 2.5 hours at AED 80.00 less AED 10.00, exempt.
         let line = DraftLine::new("Labour", 8_000, VatCategory::Exempt)
             .quantity_milli(2_500)

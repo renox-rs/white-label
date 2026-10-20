@@ -401,10 +401,12 @@ mod tests {
         let ctx = |input: &ReferInput| {
             TransitionCtx::new(None).with_input(renox::serde_json::to_value(input).expect("json"))
         };
-        assert!(found
-            .check_guards(&bounced(), &ctx(&input(CaseType::CivilExecution, false)))
-            .await
-            .is_ok());
+        assert!(
+            found
+                .check_guards(&bounced(), &ctx(&input(CaseType::CivilExecution, false)))
+                .await
+                .is_ok()
+        );
         assert!(matches!(
             found
                 .check_guards(&bounced(), &ctx(&input(CaseType::CriminalComplaint, false)))
@@ -412,7 +414,9 @@ mod tests {
             Err(TransitionError::Guard(_))
         ));
         assert!(matches!(
-            found.check_guards(&bounced(), &TransitionCtx::new(None)).await,
+            found
+                .check_guards(&bounced(), &TransitionCtx::new(None))
+                .await,
             Err(TransitionError::Guard(_))
         ));
     }

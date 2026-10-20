@@ -22,8 +22,8 @@ use std::collections::BTreeSet;
 
 use renox::AuthUser;
 use renox::auth::permissions::users_with_role;
-use renox::db::{DateTime, now};
 use renox::chrono::Duration;
+use renox::db::{DateTime, now};
 use renox::prelude::*;
 use renox::serde_json::json;
 
@@ -32,9 +32,7 @@ use super::registry::{LOOK_BACK_DAYS, all, missed_before};
 use super::rules::{ComplianceRule, owner_role};
 use crate::automation::RuleRun;
 use crate::documents::dubai_text;
-use crate::notify::{
-    self, Category, NotificationTypeDef, NotifyChannel, NotifyRequest, Urgency,
-};
+use crate::notify::{self, Category, NotificationTypeDef, NotifyChannel, NotifyRequest, Urgency};
 use crate::role_tasks::{self, RoleTask};
 use crate::scopes::COMPANY_ADMIN_ROLE;
 use crate::subject::Subject;
@@ -209,11 +207,19 @@ async fn open_task(state: &AppState, alert: ComplianceAlert) -> Result<Complianc
         "wl_kernel.compliance.task_description",
         &[
             ("rule", &alert.rule),
-            ("error", &alert.error.clone().unwrap_or_else(|| "—".to_owned())),
+            (
+                "error",
+                &alert.error.clone().unwrap_or_else(|| "—".to_owned()),
+            ),
         ],
     );
-    let task = RoleTask::new(alert.subject(), &alert.owner_role, &title, &source_key(&alert))
-        .description(&description);
+    let task = RoleTask::new(
+        alert.subject(),
+        &alert.owner_role,
+        &title,
+        &source_key(&alert),
+    )
+    .description(&description);
     let Some(ticket) = role_tasks::open(state, task).await? else {
         return Ok(alert);
     };
@@ -281,7 +287,8 @@ pub async fn run_succeeded(
     subject: &Subject,
     occurrence_key: &str,
 ) -> Result<bool> {
-    let Some(alert) = ComplianceAlert::of_occurrence(&state.db, rule, subject, occurrence_key).await?
+    let Some(alert) =
+        ComplianceAlert::of_occurrence(&state.db, rule, subject, occurrence_key).await?
     else {
         return Ok(false);
     };
@@ -329,7 +336,15 @@ pub async fn close_by_hand(
         ));
     }
     if !alert.is_open()
-        || !close(&state.db, alert.id, ClosedHow::Manual, Some(user.id), note, attachment).await?
+        || !close(
+            &state.db,
+            alert.id,
+            ClosedHow::Manual,
+            Some(user.id),
+            note,
+            attachment,
+        )
+        .await?
     {
         return Err(Error::Status(
             StatusCode::UNPROCESSABLE_ENTITY,
@@ -369,9 +384,14 @@ pub async fn check_missed(state: &AppState) -> Result<usize> {
             continue;
         }
         for planned in critical.planned(state, from, until).await? {
-            if RuleRun::find_occurrence(db, critical.rule_id(), &planned.subject, &planned.occurrence_key)
-                .await?
-                .is_some()
+            if RuleRun::find_occurrence(
+                db,
+                critical.rule_id(),
+                &planned.subject,
+                &planned.occurrence_key,
+            )
+            .await?
+            .is_some()
             {
                 continue;
             }

@@ -40,7 +40,14 @@ async fn scene() -> Scene {
 impl Scene {
     /// An `active` lease from 2027-03-01 at AED 12,000 a month.
     async fn leased(&self) -> Lease {
-        let new = NewLease::new(self.unit.id, TENANT, d(3, 1), ymd(2028, 2, 29), aed(144_000), 12);
+        let new = NewLease::new(
+            self.unit.id,
+            TENANT,
+            d(3, 1),
+            ymd(2028, 2, 29),
+            aed(144_000),
+            12,
+        );
         self.activated(new).await
     }
 
@@ -68,7 +75,9 @@ impl Scene {
     }
 
     async fn demands(&self, lease: &Lease) -> Vec<ArrearsDemand> {
-        ArrearsDemand::of_root(self.t.db(), lease.root_id).await.unwrap()
+        ArrearsDemand::of_root(self.t.db(), lease.root_id)
+            .await
+            .unwrap()
     }
 
     /// The open tasks about the demands to send.
@@ -93,9 +102,15 @@ impl Scene {
 
     /// The manager sends demand `demand` on `on`.
     async fn send(&self, lease: &Lease, demand: &ArrearsDemand, on: NaiveDate) -> ArrearsDemand {
-        arrears::send_demand_as(self.t.state(), Some(self.manager.id), lease.id, demand.id, on)
-            .await
-            .unwrap()
+        arrears::send_demand_as(
+            self.t.state(),
+            Some(self.manager.id),
+            lease.id,
+            demand.id,
+            on,
+        )
+        .await
+        .unwrap()
     }
 }
 
@@ -120,9 +135,17 @@ async fn bl_prp_14_the_demand_task_comes_thirty_days_after_the_due_date() {
     assert_eq!(on_time.demands, 1);
     let tasks = s.demand_tasks();
     assert_eq!(tasks.len(), 1);
-    assert!(tasks[0].title.contains("formal payment demand"), "{}", tasks[0].title);
+    assert!(
+        tasks[0].title.contains("formal payment demand"),
+        "{}",
+        tasks[0].title
+    );
     assert!(tasks[0].title.contains("L-0000"), "{}", tasks[0].title);
-    assert!(tasks[0].description.contains("AED 12,000.00"), "{}", tasks[0].description);
+    assert!(
+        tasks[0].description.contains("AED 12,000.00"),
+        "{}",
+        tasks[0].description
+    );
     assert_eq!(tasks[0].subject, lease.subject());
 
     // A second run changes nothing.
@@ -173,11 +196,24 @@ async fn bl_prp_14_sending_the_demand_closes_the_task_and_freezes_the_list() {
     assert_eq!(notices.len(), 1);
     assert_eq!(notices[0].subject, demand.subject());
     // The statutory notice has not been delivered: no clock yet.
-    assert_eq!(arrears::delivered_on(s.t.state(), &sent).await.unwrap(), None);
+    assert_eq!(
+        arrears::delivered_on(s.t.state(), &sent).await.unwrap(),
+        None
+    );
 
     // Sent twice: refused.
-    let again = arrears::send_demand_as(s.t.state(), Some(s.manager.id), lease.id, demand.id, d(4, 4)).await;
-    assert!(matches!(again, Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))));
+    let again = arrears::send_demand_as(
+        s.t.state(),
+        Some(s.manager.id),
+        lease.id,
+        demand.id,
+        d(4, 4),
+    )
+    .await;
+    assert!(matches!(
+        again,
+        Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
+    ));
     assert_eq!(s.t.notices.of_type(PAYMENT_DEMAND).len(), 1);
 
     // The invoices on a sent demand are not listed again.
@@ -212,9 +248,18 @@ async fn bl_prp_14_the_legal_case_task_comes_thirty_days_after_the_proof() {
     assert_eq!(on_time.legal_tasks, 1);
     let tasks = s.legal_tasks();
     assert_eq!(tasks.len(), 1);
-    assert!(tasks[0].title.contains("Open a legal case or agree a payment plan"), "{}", tasks[0].title);
+    assert!(
+        tasks[0]
+            .title
+            .contains("Open a legal case or agree a payment plan"),
+        "{}",
+        tasks[0].title
+    );
     assert_eq!(tasks[0].key.as_deref(), Some(legal_key(demand.id).as_str()));
-    let stored = ArrearsDemand::find(s.t.db(), demand.id).await.unwrap().unwrap();
+    let stored = ArrearsDemand::find(s.t.db(), demand.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(stored.delivered_on, Some(d(4, 5)));
     assert_eq!(stored.legal_task_on, Some(d(5, 5)));
 
@@ -271,7 +316,10 @@ async fn bl_prp_14_an_invoice_after_a_sent_demand_opens_a_new_demand() {
     assert_eq!(listed[0].due_date, d(4, 1));
     let tasks = s.demand_tasks();
     assert_eq!(tasks.len(), 1);
-    assert_eq!(tasks[0].key.as_deref(), Some(demand_key(second.id).as_str()));
+    assert_eq!(
+        tasks[0].key.as_deref(),
+        Some(demand_key(second.id).as_str())
+    );
     // The first demand lists only the March invoice.
     assert_eq!(first.invoices(s.t.db()).await.unwrap().len(), 1);
 
@@ -346,7 +394,11 @@ async fn bl_prp_14_a_legal_case_stops_the_rule() {
     s.t.post(
         &s.manager,
         &format!("/property/leases/{}/legal-cases", lease.id),
-        &[("case_type", "arrears"), ("reference", "RDC-1"), ("ticket", "new")],
+        &[
+            ("case_type", "arrears"),
+            ("reference", "RDC-1"),
+            ("ticket", "new"),
+        ],
     )
     .await
     .assert_ok();
@@ -391,7 +443,10 @@ async fn bl_prp_14_a_payment_plan_quiets_the_rule_until_its_last_date() {
     .unwrap();
     assert_eq!(plan.latest_on, d(6, 20));
     assert!(s.legal_tasks().is_empty());
-    let stored = ArrearsDemand::find(s.t.db(), demand.id).await.unwrap().unwrap();
+    let stored = ArrearsDemand::find(s.t.db(), demand.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(stored.legal_task_on, None);
 
     // Quiet until the latest agreed date.
@@ -423,7 +478,10 @@ async fn bl_prp_14_a_payment_plan_needs_its_dates() {
         d(5, 6),
     )
     .await;
-    assert!(matches!(blank, Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))));
+    assert!(matches!(
+        blank,
+        Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
+    ));
     let past = arrears::record_plan_as(
         s.t.state(),
         None,
@@ -435,7 +493,10 @@ async fn bl_prp_14_a_payment_plan_needs_its_dates() {
         d(5, 6),
     )
     .await;
-    assert!(matches!(past, Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))));
+    assert!(matches!(
+        past,
+        Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
+    ));
 }
 
 /// The pages: the property manager sends the demand and records the plan from
@@ -446,7 +507,9 @@ async fn bl_prp_14_the_lease_page_sends_the_demand_and_records_the_plan() {
     // Invoiced 45 days ago, so the demand is due today.
     let new = NewLease::new(s.unit.id, TENANT, day(-45), day(319), aed(144_000), 12);
     let lease = s.activated(new).await;
-    property::invoicing::run(s.t.state(), day(-45)).await.unwrap();
+    property::invoicing::run(s.t.state(), day(-45))
+        .await
+        .unwrap();
     for invoice in s.t.invoices.all() {
         s.t.invoices.issue(invoice.summary.id.0);
     }
@@ -469,18 +532,29 @@ async fn bl_prp_14_the_lease_page_sends_the_demand_and_records_the_plan() {
     s.t.post(&s.manager, &path, &[("demand", id.as_str())])
         .await
         .assert_ok();
-    let sent = ArrearsDemand::find(s.t.db(), demand.id).await.unwrap().unwrap();
+    let sent = ArrearsDemand::find(s.t.db(), demand.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert!(sent.is_sent());
     assert_eq!(s.t.notices.of_type(PAYMENT_DEMAND).len(), 1);
 
     let plan_path = format!("/property/leases/{}/payment-plan", lease.id);
     let until = day(20).to_string();
-    s.t.post(&s.agent, &plan_path, &[("note", "20 days"), ("latest", until.as_str())])
-        .await
-        .assert_forbidden();
-    s.t.post(&s.manager, &plan_path, &[("note", "20 days"), ("latest", until.as_str())])
-        .await
-        .assert_ok();
+    s.t.post(
+        &s.agent,
+        &plan_path,
+        &[("note", "20 days"), ("latest", until.as_str())],
+    )
+    .await
+    .assert_forbidden();
+    s.t.post(
+        &s.manager,
+        &plan_path,
+        &[("note", "20 days"), ("latest", until.as_str())],
+    )
+    .await
+    .assert_ok();
     s.t.app.acting_as(&s.manager);
     s.t.app
         .get(&format!("/property/leases/{}", lease.id))

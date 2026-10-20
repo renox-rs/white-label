@@ -285,10 +285,7 @@ fn rules(transition: Transition<SupplierBill>, held: bool) -> Transition<Supplie
                         .where_(SupplierBill::ID.eq(bill_id))
                         .update(
                             &mut *tx,
-                            &[
-                                ("after_end_hold", &true),
-                                ("updated_at", &renox::db::now()),
-                            ],
+                            &[("after_end_hold", &true), ("updated_at", &renox::db::now())],
                         )
                         .await?;
                 }

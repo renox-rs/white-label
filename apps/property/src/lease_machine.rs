@@ -66,8 +66,8 @@ use wl_kernel::SubjectMachine;
 use wl_kernel::approvals::PolicyDefault;
 use wl_kernel::documents::today;
 
-use crate::charge::{ChargeStatus, LeaseCharge};
 use crate::amend::amend_effects;
+use crate::charge::{ChargeStatus, LeaseCharge};
 use crate::db::{refused, set_lease};
 use crate::force::{force_effects, force_input, force_problem};
 use crate::holding::expire_effects;
@@ -76,11 +76,9 @@ use crate::lease_checks::{activate_checks, apply_activation, submit_checks};
 use crate::notice::{notice_input, notice_problem, record_effects};
 use crate::permissions;
 use crate::renew::renew_effects;
-use crate::termination::{
-    problem as terminate_problem, terminate_effects, terminate_input,
-};
-use crate::withdraw::{problem as withdraw_problem, withdraw_day, withdraw_effects};
+use crate::termination::{problem as terminate_problem, terminate_effects, terminate_input};
 use crate::texts::english;
+use crate::withdraw::{problem as withdraw_problem, withdraw_day, withdraw_effects};
 
 /// `submit`: the draft goes out for signature.
 pub const SUBMIT: &str = "submit";
@@ -218,7 +216,11 @@ fn forfeit_problem(lease: &Lease, input: &CancelInput) -> Option<String> {
     if input.forfeit == 0 {
         return None;
     }
-    if input.forfeit_clause.as_deref().is_none_or(|c| c.trim().is_empty()) {
+    if input
+        .forfeit_clause
+        .as_deref()
+        .is_none_or(|c| c.trim().is_empty())
+    {
         return Some(english("property.cancel.clause_required", &[]));
     }
     if input.forfeit > lease.deposit_amount {
@@ -340,8 +342,8 @@ impl StateMachine for Lease {
 
     fn machine() -> Machine<Self> {
         use LeaseStatus::{
-            Active, Amended, Cancelled, Draft, Expired, NoticeGiven, PendingSignature, Renewed,
-            RenewalDue, Terminated,
+            Active, Amended, Cancelled, Draft, Expired, NoticeGiven, PendingSignature, RenewalDue,
+            Renewed, Terminated,
         };
         Machine::new()
             .initial([Draft])
@@ -433,7 +435,11 @@ impl StateMachine for Lease {
                     }),
             )
             .transition(withdraw_rules(
-                user(WITHDRAW_NOTICE, "Withdraw notice", permissions::LEASES_MANAGE),
+                user(
+                    WITHDRAW_NOTICE,
+                    "Withdraw notice",
+                    permissions::LEASES_MANAGE,
+                ),
                 Active,
             ))
             .transition(withdraw_rules(
@@ -458,7 +464,10 @@ impl StateMachine for Lease {
                     .to(Renewed)
                     .effect(|lease: &Lease, ctx, tx| {
                         let lease = lease.clone();
-                        let next = ctx.input_as::<RenewInput>().ok().and_then(|input| input.next);
+                        let next = ctx
+                            .input_as::<RenewInput>()
+                            .ok()
+                            .and_then(|input| input.next);
                         Box::pin(async move { renew_effects(&mut *tx, &lease, next).await })
                     }),
             )
@@ -468,7 +477,10 @@ impl StateMachine for Lease {
                     .to(Amended)
                     .effect(|lease: &Lease, ctx, tx| {
                         let lease = lease.clone();
-                        let next = ctx.input_as::<AmendInput>().ok().and_then(|input| input.next);
+                        let next = ctx
+                            .input_as::<AmendInput>()
+                            .ok()
+                            .and_then(|input| input.next);
                         Box::pin(async move { amend_effects(&mut *tx, &lease, next).await })
                     }),
             )
@@ -575,9 +587,19 @@ mod tests {
                 "renewal_due",
                 false,
             ),
-            (WITHDRAW_NOTICE_TO_EXPIRED, &["notice_given"], "expired", false),
+            (
+                WITHDRAW_NOTICE_TO_EXPIRED,
+                &["notice_given"],
+                "expired",
+                false,
+            ),
             (RENEW, &["renewal_due", "expired"], "renewed", true),
-            (AMEND, &["active", "renewal_due", "expired"], "amended", true),
+            (
+                AMEND,
+                &["active", "renewal_due", "expired"],
+                "amended",
+                true,
+            ),
             (EXPIRE, &["renewal_due"], "expired", true),
             (TERMINATE, &["notice_given"], "terminated", false),
             (

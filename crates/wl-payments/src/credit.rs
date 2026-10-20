@@ -11,8 +11,8 @@
 
 use std::collections::HashMap;
 
-use renox::prelude::*;
 use renox::chrono::NaiveDate;
+use renox::prelude::*;
 use wl_kernel::payments::{BankPayment, Direction, PaymentStatus, PaymentSummary};
 use wl_kernel::{PartyId, Subject};
 
@@ -246,8 +246,9 @@ pub async fn room_for(db: &Db, refund: &Refund) -> Result<bool> {
             };
             Ok(refund.amount <= refundable_payment(db, &payment).await?)
         }
-        "party_credit" => Ok(refund.amount
-            <= refundable_credit(db, refund.party(), &refund.currency).await?),
+        "party_credit" => {
+            Ok(refund.amount <= refundable_credit(db, refund.party(), &refund.currency).await?)
+        }
         _ => Ok(true),
     }
 }

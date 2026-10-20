@@ -94,7 +94,14 @@ async fn bl_prp_15_a_version_waiting_for_signature_cannot_be_activated_after_the
     assert!(refused.text().contains("on hold"), "{}", refused.text());
     assert_eq!(s.t.status(&v2).await, LeaseStatus::PendingSignature);
     assert_eq!(s.t.status(&v1).await, LeaseStatus::RenewalDue);
-    assert!(s.t.blocks.asked().iter().filter(|(_, k)| *k == ActionKind::Renew).count() >= 2);
+    assert!(
+        s.t.blocks
+            .asked()
+            .iter()
+            .filter(|(_, k)| *k == ActionKind::Renew)
+            .count()
+            >= 2
+    );
 
     s.t.blocks.free(TENANT);
     s.t.activate(&s.manager, &v2).await.assert_ok();
@@ -106,10 +113,7 @@ async fn bl_prp_15_a_version_waiting_for_signature_cannot_be_activated_after_the
 #[renox::test]
 async fn bl_prp_15_a_new_lease_and_an_amendment_are_refused_too() {
     let s = scene().await;
-    let v1 = s
-        .t
-        .active_lease(&s.unit, &s.agent, &s.manager)
-        .await;
+    let v1 = s.t.active_lease(&s.unit, &s.agent, &s.manager).await;
     let other_unit = s.t.unit(&s.t.building_coded("TWR-B").await, "88").await;
     let new = NewLease::new(other_unit.id, TENANT, day(5), day(369), aed(90_000), 4);
     let lease = property::leases::create_draft(s.t.state(), None, new)
@@ -145,10 +149,7 @@ async fn bl_prp_15_a_new_lease_and_an_amendment_are_refused_too() {
 #[renox::test]
 async fn bl_prp_15_the_active_lease_of_a_blocked_tenant_goes_on() {
     let s = scene().await;
-    let v1 = s
-        .t
-        .active_lease(&s.unit, &s.agent, &s.manager)
-        .await;
+    let v1 = s.t.active_lease(&s.unit, &s.agent, &s.manager).await;
     s.t.blocks.block(TENANT);
 
     let report = property::invoicing::run(s.t.state(), day(0)).await.unwrap();

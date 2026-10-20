@@ -252,9 +252,18 @@ impl Filter {
     fn matches(&self, attrs: &Attrs) -> bool {
         self.source.is_none_or(|s| attrs.source == Some(s))
             && self.campaign.is_none_or(|c| attrs.campaign == Some(c))
-            && self.channel.as_ref().is_none_or(|c| attrs.channel.as_ref() == Some(c))
-            && self.brand.as_ref().is_none_or(|b| attrs.brand.as_ref() == Some(b))
-            && self.branch.as_ref().is_none_or(|b| attrs.branch.as_ref() == Some(b))
+            && self
+                .channel
+                .as_ref()
+                .is_none_or(|c| attrs.channel.as_ref() == Some(c))
+            && self
+                .brand
+                .as_ref()
+                .is_none_or(|b| attrs.brand.as_ref() == Some(b))
+            && self
+                .branch
+                .as_ref()
+                .is_none_or(|b| attrs.branch.as_ref() == Some(b))
             && self.entity.is_none_or(|e| attrs.entity == Some(e))
     }
 }
@@ -489,7 +498,13 @@ pub struct Cells {
 impl Row {
     /// The row as text.
     pub fn cells(&self) -> Cells {
-        let shown = |fils: i64| if self.cost_hidden || self.cost.is_none() { None } else { Some(fils) };
+        let shown = |fils: i64| {
+            if self.cost_hidden || self.cost.is_none() {
+                None
+            } else {
+                Some(fils)
+            }
+        };
         Cells {
             leads: self.leads.to_string(),
             won: self.won.to_string(),
@@ -580,17 +595,18 @@ pub async fn load(db: &Db, config: &SalesConfig) -> Result<Facts> {
         .into_iter()
         .map(|c| (c.id, c))
         .collect();
-    let campaign_attrs = |id: Option<i64>| -> (Option<String>, Option<String>, Option<Subject>, Option<i64>) {
-        match id.and_then(|id| campaigns.get(&id)) {
-            Some(c) => (
-                c.marketing_channel.map(|m| m.to_string()),
-                c.brand.clone(),
-                c.branch(),
-                c.legal_entity_id,
-            ),
-            None => (None, None, None, None),
-        }
-    };
+    let campaign_attrs =
+        |id: Option<i64>| -> (Option<String>, Option<String>, Option<Subject>, Option<i64>) {
+            match id.and_then(|id| campaigns.get(&id)) {
+                Some(c) => (
+                    c.marketing_channel.map(|m| m.to_string()),
+                    c.brand.clone(),
+                    c.branch(),
+                    c.legal_entity_id,
+                ),
+                None => (None, None, None, None),
+            }
+        };
     let mut facts = Facts::default();
     for lead in Lead::query().order_by(Lead::ID).get(db).await? {
         let (channel, brand, campaign_branch, campaign_entity) = campaign_attrs(lead.campaign_id);
@@ -724,7 +740,12 @@ mod tests {
 
     #[test]
     fn the_ratios_of_a_campaign_are_rounded_and_split() {
-        let report = compute(&campaign_facts(), &Filter::default(), GroupBy::Campaign, &Viewer::all());
+        let report = compute(
+            &campaign_facts(),
+            &Filter::default(),
+            GroupBy::Campaign,
+            &Viewer::all(),
+        );
         assert_eq!(report.rows.len(), 1);
         let cells = report.rows[0].cells();
         assert_eq!(cells.leads, "50");
@@ -757,7 +778,12 @@ mod tests {
         assert_eq!(cells.leads, "12");
         assert_eq!(cells.conversion, "0.0%");
         assert_eq!(
-            (cells.cost.as_str(), cells.cost_per_lead.as_str(), cells.cac.as_str(), cells.roas.as_str()),
+            (
+                cells.cost.as_str(),
+                cells.cost_per_lead.as_str(),
+                cells.cac.as_str(),
+                cells.roas.as_str()
+            ),
             ("—", "—", "—", "—")
         );
     }
@@ -768,7 +794,12 @@ mod tests {
         for lead in facts.leads.iter_mut().skip(45) {
             lead.counts = false;
         }
-        let report = compute(&facts, &Filter::default(), GroupBy::Campaign, &Viewer::all());
+        let report = compute(
+            &facts,
+            &Filter::default(),
+            GroupBy::Campaign,
+            &Viewer::all(),
+        );
         let cells = report.rows[0].cells();
         assert_eq!(cells.leads, "45");
         assert_eq!(cells.cost_per_lead, "111.11");
@@ -821,15 +852,30 @@ mod tests {
             amount: 100_000,
             linked: false,
         });
-        let scoped = compute(&facts, &Filter::default(), GroupBy::Campaign, &Viewer::scoped(vec![b1.clone()]));
+        let scoped = compute(
+            &facts,
+            &Filter::default(),
+            GroupBy::Campaign,
+            &Viewer::scoped(vec![b1.clone()]),
+        );
         assert_eq!(scoped.rows.len(), 1);
         assert_eq!(scoped.rows[0].leads, 1, "only B1's lead");
         let cells = scoped.rows[0].cells();
         assert_eq!(
-            (cells.cost.as_str(), cells.cost_per_lead.as_str(), cells.cac.as_str(), cells.roas.as_str()),
+            (
+                cells.cost.as_str(),
+                cells.cost_per_lead.as_str(),
+                cells.cac.as_str(),
+                cells.roas.as_str()
+            ),
             ("—", "—", "—", "—")
         );
-        let everything = compute(&facts, &Filter::default(), GroupBy::Campaign, &Viewer::all());
+        let everything = compute(
+            &facts,
+            &Filter::default(),
+            GroupBy::Campaign,
+            &Viewer::all(),
+        );
         assert_eq!(everything.rows[0].leads, 2);
         assert_eq!(everything.rows[0].cells().cost, "1,000.00");
         assert_eq!(everything.rows[0].cells().cost_per_lead, "500.00");
@@ -838,11 +884,20 @@ mod tests {
 
     #[test]
     fn the_csv_has_the_same_numbers() {
-        let report = compute(&campaign_facts(), &Filter::default(), GroupBy::Campaign, &Viewer::all());
+        let report = compute(
+            &campaign_facts(),
+            &Filter::default(),
+            GroupBy::Campaign,
+            &Viewer::all(),
+        );
         let csv = to_csv(&report, &["SPRING26".to_owned()], "Total");
         let lines: Vec<&str> = csv.lines().collect();
         assert_eq!(lines.len(), 3);
         // The same numbers as the page, without its thousands separators.
-        assert!(lines[1].starts_with("SPRING26,50,10,20.0%,8,20000.00"), "{}", lines[1]);
+        assert!(
+            lines[1].starts_with("SPRING26,50,10,20.0%,8,20000.00"),
+            "{}",
+            lines[1]
+        );
     }
 }

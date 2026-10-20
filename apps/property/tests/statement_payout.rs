@@ -34,7 +34,8 @@ struct Scene {
 /// An active agreement, an accountant (A) and a property manager (B).
 async fn scene() -> Scene {
     let t = boot().await;
-    t.parties.add(OWNER.0, "Hessa Al Mansoori", PartyKind::Person);
+    t.parties
+        .add(OWNER.0, "Hessa Al Mansoori", PartyKind::Person);
     let mut agreement = ManagementAgreement {
         owner_party_id: OWNER.0,
         fee_bp: 500,
@@ -64,7 +65,11 @@ impl Scene {
     /// `user` runs the transition `name` on the statement `id`.
     async fn run(&self, user: &User, id: i64, name: &str) -> renox::testing::TestResponse {
         self.t
-            .post_plain(user, &format!("/property/statements/{id}/transitions/{name}"), &[])
+            .post_plain(
+                user,
+                &format!("/property/statements/{id}/transitions/{name}"),
+                &[],
+            )
             .await
     }
 
@@ -72,10 +77,15 @@ impl Scene {
     /// line of `kind` and `amount`, the manager approves and the accountant
     /// publishes.
     async fn published(&self, kind: &str, amount: &str, start: i64) -> OwnerStatement {
-        let draft = statement::generate(self.t.state(), self.agreement.id, day(start), day(start + 29))
-            .await
-            .unwrap()
-            .expect("a draft");
+        let draft = statement::generate(
+            self.t.state(),
+            self.agreement.id,
+            day(start),
+            day(start + 29),
+        )
+        .await
+        .unwrap()
+        .expect("a draft");
         if !amount.is_empty() {
             self.t
                 .post(
@@ -86,8 +96,12 @@ impl Scene {
                 .await
                 .assert_ok();
         }
-        self.run(&self.manager, draft.id, "approve").await.assert_status(303);
-        self.run(&self.accountant, draft.id, "publish").await.assert_status(303);
+        self.run(&self.manager, draft.id, "approve")
+            .await
+            .assert_status(303);
+        self.run(&self.accountant, draft.id, "publish")
+            .await
+            .assert_status(303);
         self.statement(draft.id).await
     }
 
@@ -98,7 +112,11 @@ impl Scene {
     /// The accountant asks to pay out the statement.
     async fn pay_out(&self, id: i64, extra: &[(&str, &str)]) -> renox::testing::TestResponse {
         self.t
-            .post(&self.accountant, &format!("/property/statements/{id}/pay-out"), extra)
+            .post(
+                &self.accountant,
+                &format!("/property/statements/{id}/pay-out"),
+                extra,
+            )
             .await
     }
 
@@ -133,7 +151,9 @@ async fn bl_prp_20_a_positive_balance_is_paid_out_after_a_second_user_approves()
     // A cannot approve; B can.
     let refused = approve(s.t.state(), requests[0].id, &s.accountant, "").await;
     assert!(matches!(refused, Err(Error::Forbidden)), "{refused:?}");
-    approve(s.t.state(), requests[0].id, &s.manager, "ok").await.unwrap();
+    approve(s.t.state(), requests[0].id, &s.manager, "ok")
+        .await
+        .unwrap();
 
     let settled = s.statement(published.id).await;
     assert_eq!(settled.status, StatementStatus::Settled);
@@ -147,12 +167,17 @@ async fn bl_prp_20_a_positive_balance_is_paid_out_after_a_second_user_approves()
     assert_eq!(payment.party, OWNER);
     assert_eq!(payment.amount, aed(42_000));
     assert_eq!(payment.method, PaymentMethod::Transfer);
-    assert_eq!(payment.reference.as_deref(), Some(published.number().as_str()));
+    assert_eq!(
+        payment.reference.as_deref(),
+        Some(published.number().as_str())
+    );
     assert_eq!(*by, Some(s.accountant.id));
     assert_eq!(settled.payout_payment_id, Some(1));
 
     // It is paid once, and a statement with a payout is not revised.
-    s.run(&s.accountant, published.id, "revise").await.assert_status(422);
+    s.run(&s.accountant, published.id, "revise")
+        .await
+        .assert_status(422);
     s.pay_out(published.id, &[]).await.assert_status(422);
     assert_eq!(s.t.refunds.payments().len(), 1);
 }
@@ -177,11 +202,12 @@ async fn bl_prp_20_a_disputed_statement_is_not_paid_out() {
     assert!(refused.text().contains("disputed"), "{}", refused.text());
     assert!(s.requests(&published).await.is_empty());
 
-    let dispute = property::statement_dispute::StatementDispute::of_statement(s.t.db(), published.id)
-        .await
-        .unwrap()[0]
-        .id
-        .to_string();
+    let dispute =
+        property::statement_dispute::StatementDispute::of_statement(s.t.db(), published.id)
+            .await
+            .unwrap()[0]
+            .id
+            .to_string();
     s.t.post(
         &s.accountant,
         &format!("/property/statements/{}/disputes/clear", published.id),
@@ -213,12 +239,17 @@ async fn bl_prp_20_a_blocked_owner_is_refused_with_the_neutral_text() {
     assert!(s.requests(&published).await.is_empty());
     assert!(s.t.refunds.payments().is_empty());
 
-    s.pay_out(published.id, &[("block_exception", "1")]).await.assert_ok();
+    s.pay_out(published.id, &[("block_exception", "1")])
+        .await
+        .assert_ok();
     let requests = s.requests(&published).await;
     assert_eq!(requests.len(), 1);
     assert_eq!(requests[0].action, BLOCK_EXCEPTION_ACTION);
     assert_eq!(requests[0].transition, "pay_out");
-    assert_eq!(s.statement(published.id).await.status, StatementStatus::Published);
+    assert_eq!(
+        s.statement(published.id).await.status,
+        StatementStatus::Published
+    );
     assert!(s.t.refunds.payments().is_empty());
 }
 
@@ -230,7 +261,11 @@ async fn bl_prp_20_a_balance_that_is_not_positive_is_not_paid_out() {
     assert_eq!(nothing.balance(), 0);
     let refused = s.pay_out(nothing.id, &[]).await;
     refused.assert_status(422);
-    assert!(refused.text().contains("positive balance"), "{}", refused.text());
+    assert!(
+        refused.text().contains("positive balance"),
+        "{}",
+        refused.text()
+    );
 
     let negative = s.published("expense", "3,500", -60).await;
     assert_eq!(negative.balance(), -aed(3_500));
@@ -247,8 +282,12 @@ async fn bl_prp_20_a_negative_balance_is_carried_forward() {
     assert_eq!(negative.balance(), -aed(3_500));
 
     // The manager does not carry forward; the accountant does.
-    s.run(&s.manager, negative.id, "carry_forward").await.assert_forbidden();
-    s.run(&s.accountant, negative.id, "carry_forward").await.assert_status(303);
+    s.run(&s.manager, negative.id, "carry_forward")
+        .await
+        .assert_forbidden();
+    s.run(&s.accountant, negative.id, "carry_forward")
+        .await
+        .assert_status(303);
     let settled = s.statement(negative.id).await;
     assert_eq!(settled.status, StatementStatus::Settled);
     assert_eq!(settled.carried_forward, -aed(3_500));
@@ -269,7 +308,9 @@ async fn bl_prp_20_a_balance_of_zero_is_carried_forward_and_a_positive_one_is_no
     let s = scene().await;
     let zero = s.published("collected", "", -90).await;
     assert_eq!(zero.balance(), 0);
-    s.run(&s.accountant, zero.id, "carry_forward").await.assert_status(303);
+    s.run(&s.accountant, zero.id, "carry_forward")
+        .await
+        .assert_status(303);
     let settled = s.statement(zero.id).await;
     assert_eq!(settled.status, StatementStatus::Settled);
     assert_eq!(settled.carried_forward, 0);
@@ -283,7 +324,10 @@ async fn bl_prp_20_a_balance_of_zero_is_carried_forward_and_a_positive_one_is_no
     s.run(&s.accountant, positive.id, "carry_forward")
         .await
         .assert_status(422);
-    assert_eq!(s.statement(positive.id).await.status, StatementStatus::Published);
+    assert_eq!(
+        s.statement(positive.id).await.status,
+        StatementStatus::Published
+    );
 }
 
 /// Three statements in a row, or the agreement's clause, allow the invoice.
@@ -309,7 +353,9 @@ async fn negative_history(s: &Scene, balances: [i64; 3]) -> Vec<OwnerStatement> 
             ..Default::default()
         };
         let mut tx = s.t.db().begin().await.unwrap();
-        row.insert_in_state(&mut tx, status, "fixture").await.unwrap();
+        row.insert_in_state(&mut tx, status, "fixture")
+            .await
+            .unwrap();
         tx.commit().await.unwrap();
         found.push(row);
     }
@@ -329,9 +375,14 @@ async fn bl_prp_20_three_negative_statements_let_the_owner_be_invoiced() {
 
     // The VAT treatment of recharged costs is the client's to configure.
     s.t.post(&s.manager, &path, &[]).await.assert_status(422);
-    charge_type::configure(s.t.db(), RECHARGED_COSTS, "Recharged costs", VatCategory::Exempt)
-        .await
-        .unwrap();
+    charge_type::configure(
+        s.t.db(),
+        RECHARGED_COSTS,
+        "Recharged costs",
+        VatCategory::Exempt,
+    )
+    .await
+    .unwrap();
 
     // The accountant cannot ask; a property manager does.
     s.t.post(&s.accountant, &path, &[]).await.assert_forbidden();
@@ -344,7 +395,9 @@ async fn bl_prp_20_three_negative_statements_let_the_owner_be_invoiced() {
     let refused = approve(s.t.state(), requests[0].id, &s.manager, "").await;
     assert!(refused.is_err());
     let second = s.t.user_with("Maher", MANAGER).await;
-    approve(s.t.state(), requests[0].id, &second, "ok").await.unwrap();
+    approve(s.t.state(), requests[0].id, &second, "ok")
+        .await
+        .unwrap();
 
     let settled = s.statement(last.id).await;
     assert_eq!(settled.status, StatementStatus::Settled);
@@ -368,16 +421,25 @@ async fn bl_prp_20_three_negative_statements_let_the_owner_be_invoiced() {
 #[renox::test]
 async fn bl_prp_20_two_negative_statements_do_not_allow_the_invoice() {
     let s = scene().await;
-    charge_type::configure(s.t.db(), RECHARGED_COSTS, "Recharged costs", VatCategory::Exempt)
-        .await
-        .unwrap();
+    charge_type::configure(
+        s.t.db(),
+        RECHARGED_COSTS,
+        "Recharged costs",
+        VatCategory::Exempt,
+    )
+    .await
+    .unwrap();
     let history = negative_history(&s, [aed(500), -aed(2_000), -aed(3_500)]).await;
     let last = &history[2];
     let path = format!("/property/statements/{}/invoice-owner", last.id);
 
     let refused = s.t.post(&s.manager, &path, &[]).await;
     refused.assert_status(422);
-    assert!(refused.text().contains("does not allow"), "{}", refused.text());
+    assert!(
+        refused.text().contains("does not allow"),
+        "{}",
+        refused.text()
+    );
     assert!(s.requests(last).await.is_empty());
 
     ManagementAgreement::query()
@@ -390,9 +452,14 @@ async fn bl_prp_20_two_negative_statements_do_not_allow_the_invoice() {
 
     // A positive or empty balance is never invoiced.
     let scene2 = scene().await;
-    charge_type::configure(scene2.t.db(), RECHARGED_COSTS, "Recharged costs", VatCategory::Exempt)
-        .await
-        .unwrap();
+    charge_type::configure(
+        scene2.t.db(),
+        RECHARGED_COSTS,
+        "Recharged costs",
+        VatCategory::Exempt,
+    )
+    .await
+    .unwrap();
     ManagementAgreement::query()
         .where_(ManagementAgreement::ID.eq(scene2.agreement.id))
         .update(scene2.t.db(), &[("may_invoice_negative_balance", &true)])

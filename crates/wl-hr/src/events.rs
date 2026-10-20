@@ -24,11 +24,13 @@ use crate::{onboarding, steps};
 
 /// Registers the listeners.
 pub(crate) fn register(app: &mut Registry) {
-    app.listen(|event: EmployeeOnboardingCancelled, state: AppState| async move {
-        onboarding::cancel_for(&state, event.employee.0, &event.reason)
-            .await
-            .map(|_| ())
-    });
+    app.listen(
+        |event: EmployeeOnboardingCancelled, state: AppState| async move {
+            onboarding::cancel_for(&state, event.employee.0, &event.reason)
+                .await
+                .map(|_| ())
+        },
+    );
     app.listen(|event: EmployeeExited, state: AppState| async move {
         let reason = crate::texts::english("wl_hr.onboarding.cancelled_exit", &[]);
         onboarding::cancel_for(&state, event.employee.0, &reason)
@@ -41,24 +43,26 @@ pub(crate) fn register(app: &mut Registry) {
             .await
             .map(|_| ())
     });
-    app.listen(|event: EmployeeAssignmentChanged, state: AppState| async move {
-        onboarding::re_resolve(&state, event.employee.0).await
-    });
+    app.listen(
+        |event: EmployeeAssignmentChanged, state: AppState| async move {
+            onboarding::re_resolve(&state, event.employee.0).await
+        },
+    );
     app.listen(|event: ChecklistCompleted, state: AppState| async move {
         steps::on_checklist_completed(&state, &event).await
     });
     app.listen(|event: DocumentAccepted, state: AppState| async move {
         steps::on_document_accepted(&state, &event).await
     });
-    app.listen(|_event: SopPublished, state: AppState| async move {
-        steps::on_sop_event(&state).await
-    });
+    app.listen(
+        |_event: SopPublished, state: AppState| async move { steps::on_sop_event(&state).await },
+    );
     app.listen(|_event: SopAcknowledged, state: AppState| async move {
         steps::on_sop_event(&state).await
     });
-    app.listen(|_event: SopWithdrawn, state: AppState| async move {
-        steps::on_sop_event(&state).await
-    });
+    app.listen(
+        |_event: SopWithdrawn, state: AppState| async move { steps::on_sop_event(&state).await },
+    );
     app.listen(|_event: SopReadersChanged, state: AppState| async move {
         steps::on_sop_event(&state).await
     });

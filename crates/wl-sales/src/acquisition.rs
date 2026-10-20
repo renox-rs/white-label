@@ -252,7 +252,10 @@ pub async fn check_sale_source(
     source: Option<&str>,
     campaign: Option<&str>,
 ) -> Result<std::result::Result<(), AcquisitionRefused>> {
-    if PartyAcquisition::of_party(&state.db, party).await?.is_some() {
+    if PartyAcquisition::of_party(&state.db, party)
+        .await?
+        .is_some()
+    {
         return Ok(Ok(()));
     }
     let Some(source) = source.map(str::trim).filter(|s| !s.is_empty()) else {
@@ -336,7 +339,9 @@ pub async fn attribute_party(
     .await?;
     // A sale reported before the acquisition existed is linked now.
     relink(state, &created).await?;
-    Ok(Ok(Some(PartyAcquisition::find_or_404(&state.db, created.id).await?)))
+    Ok(Ok(Some(
+        PartyAcquisition::find_or_404(&state.db, created.id).await?,
+    )))
 }
 
 /// The party acquisition of a won `lead`: it takes the lead's source and
@@ -351,7 +356,10 @@ pub async fn attribute_from_lead(
     let Some(party) = lead.party() else {
         return Ok(None);
     };
-    if PartyAcquisition::of_party(&state.db, party).await?.is_some() {
+    if PartyAcquisition::of_party(&state.db, party)
+        .await?
+        .is_some()
+    {
         return Ok(None);
     }
     let created = PartyAcquisition::create(
@@ -371,7 +379,9 @@ pub async fn attribute_from_lead(
     )
     .await?;
     relink(state, &created).await?;
-    Ok(Some(PartyAcquisition::find_or_404(&state.db, created.id).await?))
+    Ok(Some(
+        PartyAcquisition::find_or_404(&state.db, created.id).await?,
+    ))
 }
 
 /// The sale candidates of `party`, earliest first (by date, then recorded).
@@ -395,10 +405,7 @@ pub fn converted_value(
     let Some(months) = config.attribution_window_months else {
         return first.net();
     };
-    let Some(end) = first
-        .sale_date
-        .checked_add_months(Months::new(months))
-    else {
+    let Some(end) = first.sale_date.checked_add_months(Months::new(months)) else {
         return first.net();
     };
     sales
@@ -538,10 +545,7 @@ pub async fn credit_sale(state: &AppState, sale: &Subject, net: i64) -> Result {
         .where_(AcquisitionSale::ID.eq(row.id))
         .update(
             &state.db,
-            &[
-                ("credited", &(row.credited + net)),
-                ("updated_at", &now()),
-            ],
+            &[("credited", &(row.credited + net)), ("updated_at", &now())],
         )
         .await?;
     refresh_value(state, row.party_id).await
@@ -690,10 +694,7 @@ pub async fn clear_for_reverted_lead(
         return Ok(false);
     };
     let sales = candidates(&state.db, acquisition.party_id).await?;
-    if sales
-        .iter()
-        .any(|s| s.standing() && &s.subject() != voided)
-    {
+    if sales.iter().any(|s| s.standing() && &s.subject() != voided) {
         return Ok(false);
     }
     let source = LeadSource::find(&state.db, acquisition.source_id)
@@ -788,11 +789,17 @@ async fn set_party(tx: &mut Transaction, id: i64, party: i64) -> Result {
 async fn move_records(tx: &mut Transaction, survivor: PartyId, merged: PartyId) -> Result {
     AcquisitionSale::query()
         .where_(AcquisitionSale::PARTY_ID.eq(merged.0))
-        .update(&mut *tx, &[("party_id", &survivor.0), ("updated_at", &now())])
+        .update(
+            &mut *tx,
+            &[("party_id", &survivor.0), ("updated_at", &now())],
+        )
         .await?;
     crate::lead::Lead::query()
         .where_(crate::lead::Lead::PARTY_ID.eq(merged.0))
-        .update(&mut *tx, &[("party_id", &Some(survivor.0)), ("updated_at", &now())])
+        .update(
+            &mut *tx,
+            &[("party_id", &Some(survivor.0)), ("updated_at", &now())],
+        )
         .await?;
     Ok(())
 }

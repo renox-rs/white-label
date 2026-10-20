@@ -147,12 +147,18 @@ async fn bl_prp_10_a_withdrawn_notice_before_the_window_goes_back_to_active() {
     assert_eq!(after.notice_party, None);
     assert_eq!(after.planned_move_out, None);
     assert_eq!(s.t.unit_now(&unit).await.status, UnitStatus::Occupied);
-    assert!(!s.t.tasks.with_key(&key)[0].open, "the inspection is cancelled");
+    assert!(
+        !s.t.tasks.with_key(&key)[0].open,
+        "the inspection is cancelled"
+    );
     let fees = s.fees(&lease).await;
     assert_eq!(fees[0].status, ChargeStatus::Cancelled);
     let events = s.t.withdrawn.all();
     assert_eq!(events.len(), 1);
-    assert_eq!((events[0].lease, events[0].status.as_str()), (lease.id, "active"));
+    assert_eq!(
+        (events[0].lease, events[0].status.as_str()),
+        (lease.id, "active")
+    );
 }
 
 /// AC2: inside the renewal window it becomes `renewal_due`.
@@ -181,7 +187,13 @@ async fn bl_prp_10_a_withdrawn_notice_after_the_end_date_goes_back_to_expired() 
     let (_unit, lease) = s.active("1204", -400).await;
     renewal::run(s.t.state(), day(0)).await.unwrap();
     assert_eq!(s.t.status(&lease).await, LeaseStatus::Expired);
-    let holding = s.t.reload(&lease).await.charges(s.t.db()).await.unwrap().len();
+    let holding =
+        s.t.reload(&lease)
+            .await
+            .charges(s.t.db())
+            .await
+            .unwrap()
+            .len();
     s.t.post(
         &s.manager,
         &format!("/property/leases/{}/notice", lease.id),
@@ -239,7 +251,11 @@ async fn bl_prp_10_the_agreement_is_needed() {
     s.tenant_notice(&lease, 60, "").await;
     let refused = s.withdraw(&lease).await;
     refused.assert_status(422);
-    assert!(refused.text().contains("written agreement"), "{}", refused.text());
+    assert!(
+        refused.text().contains("written agreement"),
+        "{}",
+        refused.text()
+    );
     assert_eq!(s.t.status(&lease).await, LeaseStatus::NoticeGiven);
     assert!(s.t.withdrawn.all().is_empty());
 }
@@ -262,10 +278,15 @@ async fn bl_prp_10_another_tenants_submitted_lease_blocks_it() {
     .await
     .unwrap();
     // Submitted: `pending_signature`.
-    s.t.set(&other, &[("status", &LeaseStatus::PendingSignature)]).await;
+    s.t.set(&other, &[("status", &LeaseStatus::PendingSignature)])
+        .await;
     let refused = s.withdraw(&lease).await;
     refused.assert_status(422);
-    assert!(refused.text().contains("another tenant"), "{}", refused.text());
+    assert!(
+        refused.text().contains("another tenant"),
+        "{}",
+        refused.text()
+    );
     assert_eq!(s.t.status(&lease).await, LeaseStatus::NoticeGiven);
 
     // Back to a draft: allowed.
@@ -281,7 +302,8 @@ async fn bl_prp_10_the_inspection_must_not_be_completed() {
     let (_unit, lease) = s.active("1204", -100).await;
     s.tenant_notice(&lease, 60, "").await;
     s.agreement(&lease);
-    s.t.set(&lease, &[("inspection_done_on", &Some(day(-1)))]).await;
+    s.t.set(&lease, &[("inspection_done_on", &Some(day(-1)))])
+        .await;
     let refused = s.withdraw(&lease).await;
     refused.assert_status(422);
     assert!(refused.text().contains("inspection"), "{}", refused.text());
@@ -296,7 +318,9 @@ async fn bl_prp_10_an_invoiced_penalty_stays() {
     s.configure_fee().await;
     s.tenant_notice(&lease, 60, "20000").await;
     // The penalty is due 60 days from today; the daily run invoices it.
-    property::invoicing::run(s.t.state(), day(61)).await.unwrap();
+    property::invoicing::run(s.t.state(), day(61))
+        .await
+        .unwrap();
     assert_eq!(s.fees(&lease).await[0].status, ChargeStatus::Invoiced);
 
     s.agreement(&lease);

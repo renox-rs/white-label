@@ -37,14 +37,17 @@
 
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
-use renox::state_machine::{StateMachine, Transition, TransitionCtx, TransitionError, Transitioned};
+use renox::state_machine::{
+    StateMachine, Transition, TransitionCtx, TransitionError, Transitioned,
+};
 use serde::{Deserialize, Serialize};
+use wl_kernel::Subject;
 use wl_kernel::deposits::{
-    AdjustDeposit, ApplyDeposit, DepositApplied, CancelSettlement, DepositAdjusted, DepositFuture, DepositTransferred,
-    Deposits, HeldDeposit, SettlementStarted, TopUpCharge, TransferDeposit, deposit_top_ups,
+    AdjustDeposit, ApplyDeposit, CancelSettlement, DepositAdjusted, DepositApplied, DepositFuture,
+    DepositTransferred, Deposits, HeldDeposit, SettlementStarted, TopUpCharge, TransferDeposit,
+    deposit_top_ups,
 };
 use wl_kernel::payments::RefundId;
-use wl_kernel::Subject;
 
 use crate::deposit::{Deposit, DepositStatus};
 use crate::followup::{FollowupTask, money_text};
@@ -256,10 +259,13 @@ fn adjusting(transition: Transition<Deposit>) -> Transition<Deposit> {
     transition
         .from([DepositStatus::Held])
         .to(DepositStatus::Held)
-        .guard("amount_changes_and_none_is_open", |deposit: &Deposit, ctx| {
-            let problem = adjust_problem(deposit, adjust_input(ctx).as_ref());
-            Box::pin(async move { problem.map_or(Ok(()), Err) })
-        })
+        .guard(
+            "amount_changes_and_none_is_open",
+            |deposit: &Deposit, ctx| {
+                let problem = adjust_problem(deposit, adjust_input(ctx).as_ref());
+                Box::pin(async move { problem.map_or(Ok(()), Err) })
+            },
+        )
         .effect(|deposit: &Deposit, ctx, tx| {
             let deposit = deposit.clone();
             let input = adjust_input(ctx);
@@ -334,7 +340,10 @@ pub(crate) fn transitions() -> Vec<Transition<Deposit>> {
     ]
 }
 
-async fn reload(state: &AppState, deposit: &Deposit) -> std::result::Result<Deposit, TransitionError> {
+async fn reload(
+    state: &AppState,
+    deposit: &Deposit,
+) -> std::result::Result<Deposit, TransitionError> {
     Deposit::find_or_404(&state.db, deposit.id)
         .await
         .map_err(TransitionError::Failed)
@@ -605,7 +614,9 @@ impl Deposits for DepositBook {
         source: &'a Subject,
         open: bool,
     ) -> DepositFuture<'a, bool> {
-        Box::pin(async move { crate::deposit_deductions::set_legal_case_of(state, source, open).await })
+        Box::pin(
+            async move { crate::deposit_deductions::set_legal_case_of(state, source, open).await },
+        )
     }
 
     fn transfer<'a>(
@@ -778,13 +789,25 @@ mod tests {
             source_version: 0,
             ..input(600_000)
         };
-        assert!(adjust_problem(&deposit, Some(&no_version)).unwrap().contains("version"));
-        assert!(adjust_problem(&deposit, Some(&input(500_000))).unwrap().contains("same"));
+        assert!(
+            adjust_problem(&deposit, Some(&no_version))
+                .unwrap()
+                .contains("version")
+        );
+        assert!(
+            adjust_problem(&deposit, Some(&input(500_000)))
+                .unwrap()
+                .contains("same")
+        );
         let open = AdjustInput {
             open_adjustment: true,
             ..input(600_000)
         };
-        assert!(adjust_problem(&deposit, Some(&open)).unwrap().contains("still open"));
+        assert!(
+            adjust_problem(&deposit, Some(&open))
+                .unwrap()
+                .contains("still open")
+        );
     }
 
     #[renox::test]
@@ -795,13 +818,20 @@ mod tests {
             TransitionCtx::new(None).with_input(renox::serde_json::to_value(input).expect("json"))
         };
         let deposit = held(500_000, 500_000);
-        assert!(found.check_guards(&deposit, &ctx(&input(600_000))).await.is_ok());
+        assert!(
+            found
+                .check_guards(&deposit, &ctx(&input(600_000)))
+                .await
+                .is_ok()
+        );
         assert!(matches!(
             found.check_guards(&deposit, &ctx(&input(500_000))).await,
             Err(TransitionError::Guard(_))
         ));
         assert!(matches!(
-            found.check_guards(&deposit, &TransitionCtx::new(None)).await,
+            found
+                .check_guards(&deposit, &TransitionCtx::new(None))
+                .await,
             Err(TransitionError::Guard(_))
         ));
     }
@@ -813,7 +843,10 @@ mod tests {
             new_amount: 600_000,
             ..Default::default()
         };
-        assert_eq!(change_text("AED", &adjustment), "AED 5,000.00 → AED 6,000.00");
+        assert_eq!(
+            change_text("AED", &adjustment),
+            "AED 5,000.00 → AED 6,000.00"
+        );
         assert_eq!(AdjustmentStatus::default(), AdjustmentStatus::Open);
         assert_eq!(AdjustmentKind::PartRefund.as_str(), "part_refund");
     }

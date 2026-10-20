@@ -20,8 +20,7 @@ fn refused(message: &str) -> Error {
 }
 
 /// The refusal for a platform category that is deleted or turned off.
-pub const PLATFORM_REFUSAL: &str =
-    "This is a platform category other modules open tickets in: rename it, but it cannot be deleted or turned off.";
+pub const PLATFORM_REFUSAL: &str = "This is a platform category other modules open tickets in: rename it, but it cannot be deleted or turned off.";
 
 /// The refusal for a category that has tickets.
 pub const HAS_TICKETS_REFUSAL: &str =

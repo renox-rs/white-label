@@ -6,8 +6,12 @@
 
 mod support;
 
-use property::agreement::{self, AgreementStatus, AgreementUnit, ManagementAgreement, NewAgreement};
-use property::agreement_lifecycle::{self as lifecycle, HandoverItem, ItemKind, SIGNED_AGREEMENT_KIND};
+use property::agreement::{
+    self, AgreementStatus, AgreementUnit, ManagementAgreement, NewAgreement,
+};
+use property::agreement_lifecycle::{
+    self as lifecycle, HandoverItem, ItemKind, SIGNED_AGREEMENT_KIND,
+};
 use property::notices::{AGREEMENT_NOTICE, PAYEE_CHANGED};
 use property::statement::{OwnerStatement, StatementStatus};
 use property::{ChargeStatus, Lease, LeaseCharge};
@@ -42,8 +46,10 @@ struct Scene {
 /// property manager (M) and an accountant (A).
 async fn scene(status: AgreementStatus) -> Scene {
     let t = boot().await;
-    t.parties.add(OWNER.0, "Hessa Al Mansoori", PartyKind::Person);
-    t.parties.add(NEW_MANAGER.0, "Palm Managers LLC", PartyKind::Company);
+    t.parties
+        .add(OWNER.0, "Hessa Al Mansoori", PartyKind::Person);
+    t.parties
+        .add(NEW_MANAGER.0, "Palm Managers LLC", PartyKind::Company);
     let building = t.building().await;
     let agent = t.user_in("Ali", AGENT, building.id).await;
     let site_manager = t.user_in("Sami", MANAGER, building.id).await;
@@ -270,10 +276,12 @@ async fn bl_prp_22_give_notice_makes_it_ending_and_starts_the_pack() {
     let told = s.t.notices.of_type(AGREEMENT_NOTICE);
     assert_eq!(told.len(), 1);
     for user in [s.manager.id, s.accountant.id] {
-        assert!(told[0]
-            .recipients
-            .iter()
-            .any(|r| matches!(r, NotifyRecipient::User { id } if *id == user)));
+        assert!(
+            told[0]
+                .recipients
+                .iter()
+                .any(|r| matches!(r, NotifyRecipient::User { id } if *id == user))
+        );
     }
 
     // The pack: 3 deposits (AED 15,000), 9 cheques, the open invoice and the
@@ -290,7 +298,10 @@ async fn bl_prp_22_give_notice_makes_it_ending_and_starts_the_pack() {
     let _ = invoice;
 
     // Starting the pack again changes nothing.
-    assert_eq!(lifecycle::start_pack(s.t.state(), &ending).await.unwrap(), 0);
+    assert_eq!(
+        lifecycle::start_pack(s.t.state(), &ending).await.unwrap(),
+        0
+    );
 
     // A second notice is refused: the agreement is no longer active.
     s.give_notice("").await.assert_status(422);
@@ -344,7 +355,10 @@ async fn bl_prp_22_end_without_a_receipt_for_one_cheque_is_refused() {
     s.t.post(
         &s.manager,
         &s.path("receipts"),
-        &[("item", last_cheque.to_string().as_str()), ("reference", "RCPT-LAST")],
+        &[
+            ("item", last_cheque.to_string().as_str()),
+            ("reference", "RCPT-LAST"),
+        ],
     )
     .await
     .assert_ok();
@@ -393,9 +407,19 @@ async fn bl_prp_22_end_hands_everything_over() {
             if charge.invoice_id.is_some() {
                 assert_eq!(charge.status, ChargeStatus::Invoiced);
             } else if charge.due_date > handover {
-                assert_eq!(charge.status, ChargeStatus::Cancelled, "{}", charge.due_date);
+                assert_eq!(
+                    charge.status,
+                    ChargeStatus::Cancelled,
+                    "{}",
+                    charge.due_date
+                );
             } else {
-                assert_eq!(charge.status, ChargeStatus::Scheduled, "{}", charge.due_date);
+                assert_eq!(
+                    charge.status,
+                    ChargeStatus::Scheduled,
+                    "{}",
+                    charge.due_date
+                );
             }
         }
         let marked = Lease::find_or_404(s.t.db(), lease.id).await.unwrap();
@@ -429,16 +453,21 @@ async fn bl_prp_22_end_hands_everything_over() {
     let told = s.t.notices.of_type(PAYEE_CHANGED);
     assert_eq!(told.len(), 3);
     assert!(told[0].data.to_string().contains("Palm Managers LLC"));
-    assert!(told[0]
-        .recipients
-        .iter()
-        .any(|r| matches!(r, NotifyRecipient::Party { id } if *id == TENANT)));
+    assert!(
+        told[0]
+            .recipients
+            .iter()
+            .any(|r| matches!(r, NotifyRecipient::Party { id } if *id == TENANT))
+    );
 
     // The units are out the day before the handover; issued invoices stay
     // with the owner and are not credited.
     let rows: Vec<AgreementUnit> = ended.units(s.t.db()).await.unwrap();
     assert_eq!(rows.len(), 3);
-    assert!(rows.iter().all(|row| row.date_out == Some(handover - Duration::days(1))));
+    assert!(
+        rows.iter()
+            .all(|row| row.date_out == Some(handover - Duration::days(1)))
+    );
     assert!(s.t.invoices.credits().is_empty());
     assert!(s.t.tasks.with_key("property.handover_problems").is_empty());
 
@@ -464,19 +493,27 @@ async fn bl_prp_22_the_final_statement_is_published_and_paid_out_after_the_end()
     s.t.post(
         &s.accountant,
         &format!("/property/statements/{}/lines", draft.id),
-        &[("kind", "collected"), ("description", "Rent to the handover"), ("amount", "42,000")],
+        &[
+            ("kind", "collected"),
+            ("description", "Rent to the handover"),
+            ("amount", "42,000"),
+        ],
     )
     .await
     .assert_ok();
     s.statement_run(&s.manager, &draft, "approve").await;
-    let approved = OwnerStatement::find_or_404(s.t.db(), draft.id).await.unwrap();
+    let approved = OwnerStatement::find_or_404(s.t.db(), draft.id)
+        .await
+        .unwrap();
     assert_eq!(approved.status, StatementStatus::Approved);
 
     s.end().await.assert_ok();
     assert_eq!(s.agreement_now().await.status, AgreementStatus::Ended);
 
     s.statement_run(&s.accountant, &approved, "publish").await;
-    let published = OwnerStatement::find_or_404(s.t.db(), draft.id).await.unwrap();
+    let published = OwnerStatement::find_or_404(s.t.db(), draft.id)
+        .await
+        .unwrap();
     assert_eq!(published.status, StatementStatus::Published);
     assert_eq!(s.agreement_now().await.status, AgreementStatus::Ended);
 
@@ -532,7 +569,8 @@ async fn bl_prp_22_a_deposit_in_settlement_refuses_the_end() {
 #[renox::test]
 async fn bl_prp_22_activate_needs_the_signed_agreement() {
     let t = boot().await;
-    t.parties.add(OWNER.0, "Hessa Al Mansoori", PartyKind::Person);
+    t.parties
+        .add(OWNER.0, "Hessa Al Mansoori", PartyKind::Person);
     let building = t.building().await;
     let unit = t.unit(&building, "2001").await;
     let manager = t.user_with("Mona", MANAGER).await;
@@ -546,14 +584,18 @@ async fn bl_prp_22_activate_needs_the_signed_agreement() {
 
     // No unit yet.
     t.post(&manager, &path, &[]).await.assert_status(422);
-    agreement::add_unit(t.db(), &draft, unit.id, day(0)).await.unwrap();
+    agreement::add_unit(t.db(), &draft, unit.id, day(0))
+        .await
+        .unwrap();
     // The signed agreement is missing.
     t.post(&manager, &path, &[]).await.assert_status(422);
     t.docs.accept(&draft.subject(), SIGNED_AGREEMENT_KIND);
     // The accountant does not manage agreements.
     t.post(&accountant, &path, &[]).await.assert_forbidden();
     t.post(&manager, &path, &[]).await.assert_ok();
-    let active = ManagementAgreement::find_or_404(t.db(), draft.id).await.unwrap();
+    let active = ManagementAgreement::find_or_404(t.db(), draft.id)
+        .await
+        .unwrap();
     assert_eq!(active.status, AgreementStatus::Active);
 }
 
@@ -561,19 +603,29 @@ async fn bl_prp_22_activate_needs_the_signed_agreement() {
 #[renox::test]
 async fn bl_prp_22_activate_needs_a_fee() {
     let t = boot().await;
-    t.parties.add(OWNER.0, "Hessa Al Mansoori", PartyKind::Person);
+    t.parties
+        .add(OWNER.0, "Hessa Al Mansoori", PartyKind::Person);
     let building = t.building().await;
     let unit = t.unit(&building, "2002").await;
     let manager = t.user_with("Mona", MANAGER).await;
     let free = agreement::create_draft(t.state(), None, NewAgreement::new(OWNER, day(0), 0))
         .await
         .unwrap();
-    agreement::add_unit(t.db(), &free, unit.id, day(0)).await.unwrap();
-    t.post(&manager, &format!("/property/agreements/{}/activate", free.id), &[])
+    agreement::add_unit(t.db(), &free, unit.id, day(0))
         .await
-        .assert_status(422);
+        .unwrap();
+    t.post(
+        &manager,
+        &format!("/property/agreements/{}/activate", free.id),
+        &[],
+    )
+    .await
+    .assert_status(422);
     assert_eq!(
-        ManagementAgreement::find_or_404(t.db(), free.id).await.unwrap().status,
+        ManagementAgreement::find_or_404(t.db(), free.id)
+            .await
+            .unwrap()
+            .status,
         AgreementStatus::Draft
     );
 }
@@ -584,7 +636,11 @@ async fn bl_prp_22_the_pages_show_the_agreement_and_its_pack() {
     let s = scene(AgreementStatus::Active).await;
     s.give_notice("").await.assert_ok();
     s.t.app.acting_as(&s.manager);
-    s.t.app.get("/property/agreements").await.assert_ok().assert_see("MA-");
+    s.t.app
+        .get("/property/agreements")
+        .await
+        .assert_ok()
+        .assert_see("MA-");
     s.t.app
         .get(&format!("/property/agreements/{}", s.agreement.id))
         .await

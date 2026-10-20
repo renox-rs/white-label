@@ -49,9 +49,12 @@ async fn tkt03_a_manager_marks_a_category_compliance_critical_and_flags_follow()
     Tickets::open_at(t.state(), visit(due), dubai("2026-10-26", 8, 0))
         .await
         .unwrap();
-    let report = visit_check::run(t.state(), renox::chrono::NaiveDate::from_ymd_opt(2026, 11, 5).unwrap())
-        .await
-        .unwrap();
+    let report = visit_check::run(
+        t.state(),
+        renox::chrono::NaiveDate::from_ymd_opt(2026, 11, 5).unwrap(),
+    )
+    .await
+    .unwrap();
     assert_eq!((report.missed, report.flags), (1, 1));
     assert_eq!(ComplianceFlag::open(t.db()).await.unwrap().len(), 1);
 

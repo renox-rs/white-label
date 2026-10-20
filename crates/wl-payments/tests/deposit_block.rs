@@ -17,7 +17,9 @@ use support::{BLUE_DUNES, Booted, boot};
 async fn pending(t: &Booted) -> (renox::auth::User, wl_payments::Deposit) {
     let a = t.user_a().await;
     let payment = t.receive(BLUE_DUNES, 800_000).await;
-    let deposit = t.hold_deposit(&a, BLUE_DUNES, 800_000, Some(&payment)).await;
+    let deposit = t
+        .hold_deposit(&a, BLUE_DUNES, 800_000, Some(&payment))
+        .await;
     t.deposit_action(&a, &deposit, "start_settlement", &[])
         .await
         .assert_ok();

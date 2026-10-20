@@ -149,35 +149,247 @@ pub fn rows(client_app: &str, entities: &[String]) -> Vec<Row> {
             .join(", ")
     };
     vec![
-        make("1", "Invoices", "Write-off approvers (limit AED 0: always an approval, never the requester)", invoicing.write_off_approvers.join(", "), host),
-        make("2", "Invoices", "Invoice dispute by the party in the portal", on(invoicing.portal_disputes).to_owned(), host),
-        make("3", "Invoices", "Dispute escalation (FIN.RUL.15)", format!("{} days, then {}", invoicing.dispute_escalation_days, invoicing.dispute_escalation_role), host),
-        make("4", "Invoices", "Automations paused by a dispute", "FIN.RUL.01 reminders and PRP.RUL.10".to_owned(), module),
-        make("5", "Invoices", "Bad-debt relief (FIN.RUL.14)", format!("{} after {} months; residential rent is exempt", on(invoicing.bad_debt_relief), invoicing.bad_debt_relief_months.get()), module),
-        make("6", "Invoices", "E-invoicing go-live", einvoice, "per client (WlInvoicing::einvoicing)"),
-        make("7", "Invoices", "Chargeable ticket invoiced on", "close (confirm or close), not resolve".to_owned(), category),
-        make("7a", "Invoices", "Drafts issued automatically", "on for the ticket source, reviewed for the others".to_owned(), "wl-invoicing source setting"),
-        make("8", "Cheques", "Bounce fee", bounce_fee, "per client (open: L-22, A-05)"),
-        make("9", "Cheques", "Maximum presentations of one cheque", payments.cheque_max_presentations.to_string(), host),
-        make("10", "Cheques", "Chase after a bounce (FIN.RUL.18)", format!("{} days, then the decision task at {} days", payments.cheque_reminder_days, payments.cheque_decision_days), host),
-        make("11", "Cheques", "On bounce (FIN.RUL.04)", "the tenant and the property manager are told; the accountant has a task".to_owned(), module),
-        make("12", "Cheques", "Legal follow-up of a bounced cheque", "civil case; the lease gets a legal case flag".to_owned(), "Property legal case flag"),
-        make("13", "Cheques", "Void", "allowed while received (entered in error)".to_owned(), module),
-        make("14", "Payments", "Payment void", "with a reason, approved by another user".to_owned(), module),
-        make("15", "Payments", "Reversing a confirmed bank match", "a property manager only".to_owned(), "Property permission PRP.ACL.16"),
-        make("16", "Payments", "Late entry of cheque deposits", "allowed; business time is the deposit date".to_owned(), module),
-        make("17", "Deposits", "Deductions dispute by the tenant", format!("{}; window {} days, response {} days", on(payments.deductions_dispute), payments.dispute_window_days, payments.dispute_response_days), host),
-        make("18", "Deposits", "Deduction approval (PRP.ACL.05)", format!("a property manager; above {} the finance manager or the owner too", aed(property::deposit_forfeit::SECOND_APPROVAL_ABOVE)), "Property"),
-        make("19", "Deposits", "Refund separation of duties (FIN.ACL.04)", "on".to_owned(), module),
-        make("20", "Supplier bills", "Duplicate check keys (PRP.ACL.22)", invoicing.duplicate_keys.iter().map(|k| format!("{k:?}")).collect::<Vec<_>>().join(", "), host),
-        make("20a", "Supplier bills", "Bill after the contract end", "each line needs a service date; work after the end goes to exception".to_owned(), module),
-        make("21", "Party blocked", "Block effect on leases", "continue; decided by the property manager".to_owned(), "block effect kinds"),
-        make("22", "Party blocked", "Block effect on service contracts", "review; decided by the property manager".to_owned(), "block effect kinds"),
-        make("23", "Party blocked", "Money out stopped for a blocked party", "deposit refund, owner payout, vendor payment; exception through PTY.ACL.03".to_owned(), module),
-        make("24", "Party blocked", "Money in from a blocked party", "continues".to_owned(), module),
-        make("25", "Cash-flow", "Forecast alert (FIN.RUL.23)", format!("{} weeks from {:?}; alert below {}; {} at {}; due dates moved by days late: {}; disputed amounts counted: {}", invoicing.cash_forecast_weeks, invoicing.cash_week_start, thresholds, invoicing.cash_alert_roles.join(" and "), invoicing.cash_alert_time, on(invoicing.cash_days_late), on(invoicing.cash_disputed_counted)), host),
-        make("26", "Budget", "Budget categories and approval (FIN.RUL.24)", format!("warns at {}% of a month's line: the category's owner role and {}", invoicing.budget_variance_percent, invoicing.budget_variance_role), module),
-        make("27", "Budget", "Owner drawings (FIN.ACL.21)", format!("every drawing approved by the company admin, never the requester; payouts to landlords are not drawings; {} told when none else can approve", invoicing.drawings_notify_role), module),
+        make(
+            "1",
+            "Invoices",
+            "Write-off approvers (limit AED 0: always an approval, never the requester)",
+            invoicing.write_off_approvers.join(", "),
+            host,
+        ),
+        make(
+            "2",
+            "Invoices",
+            "Invoice dispute by the party in the portal",
+            on(invoicing.portal_disputes).to_owned(),
+            host,
+        ),
+        make(
+            "3",
+            "Invoices",
+            "Dispute escalation (FIN.RUL.15)",
+            format!(
+                "{} days, then {}",
+                invoicing.dispute_escalation_days, invoicing.dispute_escalation_role
+            ),
+            host,
+        ),
+        make(
+            "4",
+            "Invoices",
+            "Automations paused by a dispute",
+            "FIN.RUL.01 reminders and PRP.RUL.10".to_owned(),
+            module,
+        ),
+        make(
+            "5",
+            "Invoices",
+            "Bad-debt relief (FIN.RUL.14)",
+            format!(
+                "{} after {} months; residential rent is exempt",
+                on(invoicing.bad_debt_relief),
+                invoicing.bad_debt_relief_months.get()
+            ),
+            module,
+        ),
+        make(
+            "6",
+            "Invoices",
+            "E-invoicing go-live",
+            einvoice,
+            "per client (WlInvoicing::einvoicing)",
+        ),
+        make(
+            "7",
+            "Invoices",
+            "Chargeable ticket invoiced on",
+            "close (confirm or close), not resolve".to_owned(),
+            category,
+        ),
+        make(
+            "7a",
+            "Invoices",
+            "Drafts issued automatically",
+            "on for the ticket source, reviewed for the others".to_owned(),
+            "wl-invoicing source setting",
+        ),
+        make(
+            "8",
+            "Cheques",
+            "Bounce fee",
+            bounce_fee,
+            "per client (open: L-22, A-05)",
+        ),
+        make(
+            "9",
+            "Cheques",
+            "Maximum presentations of one cheque",
+            payments.cheque_max_presentations.to_string(),
+            host,
+        ),
+        make(
+            "10",
+            "Cheques",
+            "Chase after a bounce (FIN.RUL.18)",
+            format!(
+                "{} days, then the decision task at {} days",
+                payments.cheque_reminder_days, payments.cheque_decision_days
+            ),
+            host,
+        ),
+        make(
+            "11",
+            "Cheques",
+            "On bounce (FIN.RUL.04)",
+            "the tenant and the property manager are told; the accountant has a task".to_owned(),
+            module,
+        ),
+        make(
+            "12",
+            "Cheques",
+            "Legal follow-up of a bounced cheque",
+            "civil case; the lease gets a legal case flag".to_owned(),
+            "Property legal case flag",
+        ),
+        make(
+            "13",
+            "Cheques",
+            "Void",
+            "allowed while received (entered in error)".to_owned(),
+            module,
+        ),
+        make(
+            "14",
+            "Payments",
+            "Payment void",
+            "with a reason, approved by another user".to_owned(),
+            module,
+        ),
+        make(
+            "15",
+            "Payments",
+            "Reversing a confirmed bank match",
+            "a property manager only".to_owned(),
+            "Property permission PRP.ACL.16",
+        ),
+        make(
+            "16",
+            "Payments",
+            "Late entry of cheque deposits",
+            "allowed; business time is the deposit date".to_owned(),
+            module,
+        ),
+        make(
+            "17",
+            "Deposits",
+            "Deductions dispute by the tenant",
+            format!(
+                "{}; window {} days, response {} days",
+                on(payments.deductions_dispute),
+                payments.dispute_window_days,
+                payments.dispute_response_days
+            ),
+            host,
+        ),
+        make(
+            "18",
+            "Deposits",
+            "Deduction approval (PRP.ACL.05)",
+            format!(
+                "a property manager; above {} the finance manager or the owner too",
+                aed(property::deposit_forfeit::SECOND_APPROVAL_ABOVE)
+            ),
+            "Property",
+        ),
+        make(
+            "19",
+            "Deposits",
+            "Refund separation of duties (FIN.ACL.04)",
+            "on".to_owned(),
+            module,
+        ),
+        make(
+            "20",
+            "Supplier bills",
+            "Duplicate check keys (PRP.ACL.22)",
+            invoicing
+                .duplicate_keys
+                .iter()
+                .map(|k| format!("{k:?}"))
+                .collect::<Vec<_>>()
+                .join(", "),
+            host,
+        ),
+        make(
+            "20a",
+            "Supplier bills",
+            "Bill after the contract end",
+            "each line needs a service date; work after the end goes to exception".to_owned(),
+            module,
+        ),
+        make(
+            "21",
+            "Party blocked",
+            "Block effect on leases",
+            "continue; decided by the property manager".to_owned(),
+            "block effect kinds",
+        ),
+        make(
+            "22",
+            "Party blocked",
+            "Block effect on service contracts",
+            "review; decided by the property manager".to_owned(),
+            "block effect kinds",
+        ),
+        make(
+            "23",
+            "Party blocked",
+            "Money out stopped for a blocked party",
+            "deposit refund, owner payout, vendor payment; exception through PTY.ACL.03".to_owned(),
+            module,
+        ),
+        make(
+            "24",
+            "Party blocked",
+            "Money in from a blocked party",
+            "continues".to_owned(),
+            module,
+        ),
+        make(
+            "25",
+            "Cash-flow",
+            "Forecast alert (FIN.RUL.23)",
+            format!(
+                "{} weeks from {:?}; alert below {}; {} at {}; due dates moved by days late: {}; disputed amounts counted: {}",
+                invoicing.cash_forecast_weeks,
+                invoicing.cash_week_start,
+                thresholds,
+                invoicing.cash_alert_roles.join(" and "),
+                invoicing.cash_alert_time,
+                on(invoicing.cash_days_late),
+                on(invoicing.cash_disputed_counted)
+            ),
+            host,
+        ),
+        make(
+            "26",
+            "Budget",
+            "Budget categories and approval (FIN.RUL.24)",
+            format!(
+                "warns at {}% of a month's line: the category's owner role and {}",
+                invoicing.budget_variance_percent, invoicing.budget_variance_role
+            ),
+            module,
+        ),
+        make(
+            "27",
+            "Budget",
+            "Owner drawings (FIN.ACL.21)",
+            format!(
+                "every drawing approved by the company admin, never the requester; payouts to landlords are not drawings; {} told when none else can approve",
+                invoicing.drawings_notify_role
+            ),
+            module,
+        ),
     ]
 }
 
@@ -249,7 +461,10 @@ mod tests {
         let invoicing = invoicing_for("property", &entities());
         let config = invoicing.config();
         assert!(config.portal_disputes);
-        assert_eq!(config.duplicate_keys, [SupplierInvoiceNumber, ContractPeriodAmount]);
+        assert_eq!(
+            config.duplicate_keys,
+            [SupplierInvoiceNumber, ContractPeriodAmount]
+        );
         assert_eq!(config.dispute_escalation_days, 14);
         assert_eq!(config.dispute_escalation_role, PROPERTY_MANAGER);
         assert_eq!(config.write_off_approvers, [PROPERTY_MANAGER, ADMIN]);
@@ -265,9 +480,15 @@ mod tests {
         let payments = payments_for("property");
         let config = payments.config();
         assert!(config.deductions_dispute);
-        assert_eq!((config.dispute_window_days, config.dispute_response_days), (14, 7));
+        assert_eq!(
+            (config.dispute_window_days, config.dispute_response_days),
+            (14, 7)
+        );
         assert_eq!(config.cheque_max_presentations, 2);
-        assert_eq!((config.cheque_reminder_days, config.cheque_decision_days), (3, 14));
+        assert_eq!(
+            (config.cheque_reminder_days, config.cheque_decision_days),
+            (3, 14)
+        );
         assert!(config.bounce_fee.is_none(), "the seed sets no bounce fee");
     }
 

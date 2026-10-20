@@ -191,7 +191,10 @@ pub(crate) fn register_types() {
         GROUP_INVOICES,
         ACCOUNTANT_ROLE,
     ));
-    notify::register_type(staff_reminder(OWNER_STATEMENT_DRAFT, "owner_statement_draft"));
+    notify::register_type(staff_reminder(
+        OWNER_STATEMENT_DRAFT,
+        "owner_statement_draft",
+    ));
     notify::register_type(staff_reminder(
         OWNER_STATEMENT_RETURNED,
         "owner_statement_returned",
@@ -531,7 +534,11 @@ pub async fn statement_returned(
 
 /// `3 Jan 2027 - 31 Jan 2027`: the period of a statement as messages show it.
 fn statement_period(statement: &crate::statement::OwnerStatement) -> String {
-    format!("{} - {}", shown(statement.period_start), shown(statement.period_end))
+    format!(
+        "{} - {}",
+        shown(statement.period_start),
+        shown(statement.period_end)
+    )
 }
 
 /// Sends the published `statement` to its owner, with the lines `lines` as

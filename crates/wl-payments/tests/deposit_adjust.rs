@@ -30,7 +30,9 @@ async fn held_deposit(t: &Booted, by: &renox::auth::User, amount: i64) -> Deposi
 }
 
 async fn adjustments(t: &Booted, deposit: &Deposit) -> Vec<DepositAdjustment> {
-    DepositAdjustment::of_deposit(t.db(), deposit.id).await.unwrap()
+    DepositAdjustment::of_deposit(t.db(), deposit.id)
+        .await
+        .unwrap()
 }
 
 /// The part refund of the latest adjustment.
@@ -87,12 +89,17 @@ async fn an_increase_raises_a_top_up_charge_and_the_held_amount_rises_with_its_p
 
     // The party pays the top-up; the payment is allocated to the deposit.
     let payment = t.receive(BLUE_DUNES, 100_000).await;
-    t.allocate_to_deposit(&payment, &adjusted, 100_000).await.unwrap();
+    t.allocate_to_deposit(&payment, &adjusted, 100_000)
+        .await
+        .unwrap();
 
     let held = t.deposit(deposit.id).await;
     assert_eq!(held.held_amount, 600_000);
     assert_eq!(held.status, DepositStatus::Held);
-    assert_eq!(adjustments(&t, &deposit).await[0].status, AdjustmentStatus::Settled);
+    assert_eq!(
+        adjustments(&t, &deposit).await[0].status,
+        AdjustmentStatus::Settled
+    );
 }
 
 /// AC2: a held deposit of AED 6,000 changed to AED 5,500: a refund request of
@@ -121,15 +128,22 @@ async fn a_decrease_asks_for_a_part_refund_and_the_held_amount_falls_when_it_is_
     let adjusted = t.deposit(deposit.id).await;
     assert_eq!(adjusted.status, DepositStatus::Held);
     assert_eq!(adjusted.amount, 550_000);
-    assert_eq!(adjusted.held_amount, 600_000, "not reduced before the refund is paid");
+    assert_eq!(
+        adjusted.held_amount, 600_000,
+        "not reduced before the refund is paid"
+    );
     assert!(t.top_ups.charges().is_empty());
     let events = t.deposit_adjusted.all();
     assert_eq!(events[0].part_refund, Some(refund.refund_id()));
     assert_eq!(events[0].top_up_charge, None);
 
     // The requester cannot approve it (FIN.ACL.04).
-    t.refund_action(&a, &refund, "approve", &[]).await.assert_status(422);
-    t.refund_action(&b, &refund, "approve", &[]).await.assert_ok();
+    t.refund_action(&a, &refund, "approve", &[])
+        .await
+        .assert_status(422);
+    t.refund_action(&b, &refund, "approve", &[])
+        .await
+        .assert_ok();
     assert_eq!(t.deposit(deposit.id).await.held_amount, 600_000);
     t.refund_action(
         &b,
@@ -144,7 +158,10 @@ async fn a_decrease_asks_for_a_part_refund_and_the_held_amount_falls_when_it_is_
     let paid = t.deposit(deposit.id).await;
     assert_eq!(paid.held_amount, 550_000);
     assert_eq!(paid.status, DepositStatus::Held);
-    assert_eq!(adjustments(&t, &deposit).await[0].status, AdjustmentStatus::Settled);
+    assert_eq!(
+        adjustments(&t, &deposit).await[0].status,
+        AdjustmentStatus::Settled
+    );
 }
 
 /// AC3: when that refund `fail`s after payment, the held amount goes back to
@@ -160,7 +177,9 @@ async fn a_failed_part_refund_restores_the_held_amount_and_a_cancelled_one_keeps
         .await
         .assert_ok();
     let refund = part_refund(&t, &deposit).await;
-    t.refund_action(&b, &refund, "approve", &[]).await.assert_ok();
+    t.refund_action(&b, &refund, "approve", &[])
+        .await
+        .assert_ok();
     t.refund_action(
         &b,
         &t.refund(refund.id).await,
@@ -171,22 +190,35 @@ async fn a_failed_part_refund_restores_the_held_amount_and_a_cancelled_one_keeps
     .assert_ok();
     assert_eq!(t.deposit(deposit.id).await.held_amount, 550_000);
 
-    t.fail_refund(&b, &t.refund(refund.id).await, "bank_return", "Account closed")
-        .await
-        .assert_ok();
+    t.fail_refund(
+        &b,
+        &t.refund(refund.id).await,
+        "bank_return",
+        "Account closed",
+    )
+    .await
+    .assert_ok();
 
     assert_eq!(t.refund(refund.id).await.status, RefundStatus::Failed);
     assert_eq!(t.deposit(deposit.id).await.held_amount, 600_000);
     // The adjustment is not settled while the refund is.
-    assert_eq!(adjustments(&t, &deposit).await[0].status, AdjustmentStatus::Open);
+    assert_eq!(
+        adjustments(&t, &deposit).await[0].status,
+        AdjustmentStatus::Open
+    );
     // A new adjustment is still refused.
     t.adjust_deposit(&a, &deposit, "5000.00", "4", "2030-07-01")
         .await
         .assert_status(422);
 
-    t.refund_action(&b, &t.refund(refund.id).await, "cancel", &[("reason", "The party left")])
-        .await
-        .assert_ok();
+    t.refund_action(
+        &b,
+        &t.refund(refund.id).await,
+        "cancel",
+        &[("reason", "The party left")],
+    )
+    .await
+    .assert_ok();
     assert_eq!(t.refund(refund.id).await.status, RefundStatus::Cancelled);
     assert_eq!(t.deposit(deposit.id).await.held_amount, 550_000);
     let rows = adjustments(&t, &deposit).await;
@@ -217,7 +249,9 @@ async fn a_second_adjustment_waits_until_the_first_is_settled() {
     assert_eq!(t.deposit(deposit.id).await.amount, 550_000);
 
     let refund = part_refund(&t, &deposit).await;
-    t.refund_action(&b, &refund, "approve", &[]).await.assert_ok();
+    t.refund_action(&b, &refund, "approve", &[])
+        .await
+        .assert_ok();
     t.refund_action(
         &b,
         &t.refund(refund.id).await,
@@ -245,7 +279,9 @@ async fn an_unpaid_top_up_blocks_the_next_adjustment() {
         .await
         .assert_status(422);
     let payment = t.receive(BLUE_DUNES, 100_000).await;
-    t.allocate_to_deposit(&payment, &deposit, 100_000).await.unwrap();
+    t.allocate_to_deposit(&payment, &deposit, 100_000)
+        .await
+        .unwrap();
     t.adjust_deposit(&a, &deposit, "7000.00", "3", "2030-06-01")
         .await
         .assert_ok();
@@ -264,9 +300,14 @@ async fn a_rejected_part_refund_leaves_the_held_amount() {
         .assert_ok();
     let refund = part_refund(&t, &deposit).await;
 
-    t.refund_action(&b, &refund, "reject", &[("reason", "Not agreed with the tenant")])
-        .await
-        .assert_ok();
+    t.refund_action(
+        &b,
+        &refund,
+        "reject",
+        &[("reason", "Not agreed with the tenant")],
+    )
+    .await
+    .assert_ok();
 
     assert_eq!(t.refund(refund.id).await.status, RefundStatus::Rejected);
     assert_eq!(t.deposit(deposit.id).await.held_amount, 600_000);
@@ -321,7 +362,10 @@ async fn settlement_before_the_top_up_is_paid_uses_the_held_amount() {
     let refunded = t.deposit(deposit.id).await;
     let refund = t.refund(refunded.refund_id.expect("a refund")).await;
     assert_eq!(refund.amount, 500_000);
-    assert_eq!(adjustments(&t, &deposit).await[0].status, AdjustmentStatus::Open);
+    assert_eq!(
+        adjustments(&t, &deposit).await[0].status,
+        AdjustmentStatus::Open
+    );
 }
 
 /// Edge: a part refund that is not settled holds back the refund at
@@ -357,7 +401,9 @@ async fn a_decrease_below_what_was_paid_in_needs_no_refund() {
     let t = boot().await;
     let a = t.user_a().await;
     let payment = t.receive(BLUE_DUNES, 300_000).await;
-    let deposit = t.hold_deposit(&a, BLUE_DUNES, 600_000, Some(&payment)).await;
+    let deposit = t
+        .hold_deposit(&a, BLUE_DUNES, 600_000, Some(&payment))
+        .await;
     assert_eq!(deposit.held_amount, 300_000);
 
     t.adjust_deposit(&a, &deposit, "5500.00", "3", "2030-06-01")
@@ -405,18 +451,25 @@ async fn the_source_agreement_adjusts_the_deposit_through_the_kernel_contract() 
         new_amount: 650_000,
         ..request.clone()
     };
-    assert!(deposits(t.state())
-        .adjust(t.state(), same, None)
-        .await
-        .unwrap()
-        .is_none());
+    assert!(
+        deposits(t.state())
+            .adjust(t.state(), same, None)
+            .await
+            .unwrap()
+            .is_none()
+    );
 
     // No held deposit for another source.
     let other = AdjustDeposit {
         source: Subject::new("property.lease", 77),
         ..request
     };
-    assert!(deposits(t.state()).adjust(t.state(), other, None).await.is_err());
+    assert!(
+        deposits(t.state())
+            .adjust(t.state(), other, None)
+            .await
+            .is_err()
+    );
 }
 
 /// When nothing can schedule the top-up charge, the accountant gets a task to
@@ -451,7 +504,9 @@ async fn the_accountant_raises_the_top_up_when_nothing_can_schedule_it() {
 async fn only_a_held_deposit_is_adjusted_by_a_deposit_manager_with_a_version() {
     let t = boot().await;
     let a = t.user_a().await;
-    let viewer = t.user("Vera", &[wl_payments::permissions::DEPOSITS_VIEW]).await;
+    let viewer = t
+        .user("Vera", &[wl_payments::permissions::DEPOSITS_VIEW])
+        .await;
     let deposit = held_deposit(&t, &a, 500_000).await;
 
     t.adjust_deposit(&viewer, &deposit, "6000.00", "2", "2030-05-01")
@@ -485,5 +540,8 @@ async fn only_a_held_deposit_is_adjusted_by_a_deposit_manager_with_a_version() {
     t.adjust_deposit(&a, &deposit, "6000.00", "2", "2030-05-01")
         .await
         .assert_status(422);
-    assert_eq!(t.deposit(deposit.id).await.status, DepositStatus::SettlementPending);
+    assert_eq!(
+        t.deposit(deposit.id).await.status,
+        DepositStatus::SettlementPending
+    );
 }

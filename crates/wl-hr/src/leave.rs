@@ -170,14 +170,23 @@ mod tests {
 
     #[test]
     fn a_shorter_leave_moves_it_less_and_none_puts_it_back() {
-        assert_eq!(shifted_due(day(11, 9), day(11, 2), &[(day(11, 8), day(11, 13))]), day(11, 15));
+        assert_eq!(
+            shifted_due(day(11, 9), day(11, 2), &[(day(11, 8), day(11, 13))]),
+            day(11, 15)
+        );
         assert_eq!(shifted_due(day(11, 9), day(11, 2), &[]), day(11, 9));
     }
 
     #[test]
     fn leave_after_the_due_date_or_before_the_start_does_not_move_it() {
-        assert_eq!(shifted_due(day(11, 9), day(11, 2), &[(day(11, 12), day(11, 20))]), day(11, 9));
-        assert_eq!(shifted_due(day(11, 9), day(11, 5), &[(day(10, 20), day(11, 1))]), day(11, 9));
+        assert_eq!(
+            shifted_due(day(11, 9), day(11, 2), &[(day(11, 12), day(11, 20))]),
+            day(11, 9)
+        );
+        assert_eq!(
+            shifted_due(day(11, 9), day(11, 5), &[(day(10, 20), day(11, 1))]),
+            day(11, 9)
+        );
     }
 
     #[test]

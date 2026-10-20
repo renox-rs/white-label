@@ -11,9 +11,7 @@ use wl_kernel::documents;
 use wl_kernel::tickets::{Assignee, OpenTicket};
 use wl_ticketing::{ContractStatus, Ticket, TicketStatus, Tickets};
 
-use support::contracts::{
-    World, date, tower_a_cleaning, tower_a_fire_alarm, world_with_documents,
-};
+use support::contracts::{World, date, tower_a_cleaning, tower_a_fire_alarm, world_with_documents};
 use support::documents::{CIVIL_DEFENCE, Documents};
 use support::{SAFEFIRE, dubai};
 

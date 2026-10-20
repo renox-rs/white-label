@@ -15,8 +15,8 @@ use wl_kernel::PartyId;
 use wl_kernel::deposits::{DepositOutcome, DepositSettled};
 
 use crate::deposit::Deposit;
-use crate::deposit_deductions::DepositDeduction;
 use crate::deposit_adjust::{ADJUST, ADJUST_BY_SYSTEM, after_adjust};
+use crate::deposit_deductions::DepositDeduction;
 use crate::deposit_machine::{FORFEIT, REFUND, TRANSFER};
 use crate::notices;
 

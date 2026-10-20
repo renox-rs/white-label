@@ -8,7 +8,9 @@ mod support;
 use wl_kernel::block_effects::{Decision, source_for};
 use wl_kernel::tickets::{Assignee, OpenTicket};
 use wl_ticketing::vendor_block;
-use wl_ticketing::{ContractStatus, ServiceContract, ServiceContracts, Ticket, TicketStatus, Tickets};
+use wl_ticketing::{
+    ContractStatus, ServiceContract, ServiceContracts, Ticket, TicketStatus, Tickets,
+};
 
 use support::blocks::{Blocks, REAL_REASON};
 use support::contracts::{World, tower_a_cleaning, world_with_blocks};
@@ -58,9 +60,8 @@ async fn tkt08_the_review_lists_the_contract_and_the_page_offers_reassign_and_te
     assert!(refs[0].label.contains("4 planned visits"));
     assert!(!refs[0].label.contains(REAL_REASON));
 
-    let facility = w
-        .t
-        .user(
+    let facility =
+        w.t.user(
             "Fiona",
             &[
                 wl_ticketing::permissions::VIEW,
@@ -71,7 +72,10 @@ async fn tkt08_the_review_lists_the_contract_and_the_page_offers_reassign_and_te
         )
         .await;
     w.t.app.acting_as(&facility);
-    let page = w.t.app.get(&format!("/service-contracts/{}", contract.id)).await;
+    let page =
+        w.t.app
+            .get(&format!("/service-contracts/{}", contract.id))
+            .await;
     page.assert_ok()
         .assert_see("Vendor on hold")
         .assert_see(&format!("terminate-contract-{}", contract.id))
@@ -173,7 +177,10 @@ async fn tkt08_a_started_visit_continues_and_a_reassignment_away_is_allowed() {
     )
     .await
     .assert_ok();
-    assert_eq!(w.t.reload(&visits[1]).await.assignee_user_id, Some(w.imran.id));
+    assert_eq!(
+        w.t.reload(&visits[1]).await.assignee_user_id,
+        Some(w.imran.id)
+    );
 
     // But not the other way round: to a blocked vendor.
     let party = COOLAIR.0.to_string();
@@ -215,7 +222,10 @@ async fn tkt08_the_decision_to_end_terminates_the_contract_and_the_others_change
     assert_eq!(ended.status, ContractStatus::Terminated);
     assert_eq!(ended.termination_reason.as_deref(), Some("Vendor on hold"));
     assert!(!ended.termination_reason.unwrap().contains(REAL_REASON));
-    assert!(ended.ended_at.is_some(), "a termination dated today runs at once");
+    assert!(
+        ended.ended_at.is_some(),
+        "a termination dated today runs at once"
+    );
     assert_eq!(w.ended.all().len(), 1);
     // The visits far in the future are cancelled by the end, as for any
     // termination.
@@ -257,6 +267,10 @@ async fn tkt08_the_refusal_is_neutral() {
     blocks.block(COOLAIR);
     let message = vendor_block::refusal(w.t.state(), COOLAIR).await.unwrap();
     assert_eq!(message.as_deref(), Some("This party is on hold"));
-    assert!(vendor_block::is_blocked(w.t.state(), COOLAIR).await.unwrap());
+    assert!(
+        vendor_block::is_blocked(w.t.state(), COOLAIR)
+            .await
+            .unwrap()
+    );
     let _: &Blocks = &blocks;
 }

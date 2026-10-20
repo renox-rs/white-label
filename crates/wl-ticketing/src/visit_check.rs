@@ -118,7 +118,11 @@ async fn holders(state: &AppState, ticket: &Ticket, role: &str) -> Result<Vec<i6
 }
 
 /// The users holding `role` in the scope of `subject`, once each.
-pub(crate) async fn holders_in(state: &AppState, subject: &Subject, role: &str) -> Result<Vec<i64>> {
+pub(crate) async fn holders_in(
+    state: &AppState,
+    subject: &Subject,
+    role: &str,
+) -> Result<Vec<i64>> {
     let scope = scopes::scope_of(&state.db, subject).await?;
     let mut ids: Vec<i64> = users_with_role_in(&state.db, role, &scope)
         .await?

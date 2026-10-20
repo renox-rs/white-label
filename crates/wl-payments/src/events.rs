@@ -30,15 +30,13 @@ fn received_event(transition: &str, payment: &Payment) -> Option<PaymentReceived
     // drawing is (`record` gives `PaymentReceived`, wl-payments §4).
     ([RECORD, RECORD_BY_SYSTEM].contains(&transition)
         && (payment.direction == Direction::In || payment.purpose == PURPOSE))
-        .then(
-        || PaymentReceived {
+        .then(|| PaymentReceived {
             payment: payment.payment_id(),
             party: payment.party(),
             amount: payment.amount,
             method: payment.method,
             allocations: Vec::new(),
-        },
-    )
+        })
 }
 
 /// The event of a committed reversal of `payment` (as it is now), with the

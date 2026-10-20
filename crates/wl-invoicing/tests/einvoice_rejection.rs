@@ -12,9 +12,11 @@ use wl_invoicing::credit_notes::{self, By};
 use wl_invoicing::einvoice_adapter::{AspAnswer, AspError, FakeAsp};
 use wl_invoicing::einvoice_send;
 use wl_invoicing::task::{InvoicingTask, TaskKind, TaskStatus};
-use wl_invoicing::{EInvoiceTransmission, Invoice, TransmissionStatus, WlInvoicing, permissions as perm};
-use wl_kernel::notify::NotifyRecipient;
+use wl_invoicing::{
+    EInvoiceTransmission, Invoice, TransmissionStatus, WlInvoicing, permissions as perm,
+};
 use wl_kernel::invoicing::{CreditLine, DraftLine, InvoiceDraft, InvoiceStatus, VatCategory};
+use wl_kernel::notify::NotifyRecipient;
 use wl_kernel::{PartyId, Subject};
 
 use support::{BLUE_DUNES, Booted, boot_with};
@@ -55,8 +57,11 @@ async fn transmissions(t: &Booted) -> Vec<EInvoiceTransmission> {
 
 async fn draft_for(t: &Booted, party: PartyId) -> Invoice {
     t.draft_of(
-        InvoiceDraft::new(party, Subject::new("property.lease", 9))
-            .line(DraftLine::new("Rent, January", 100_000, VatCategory::Standard)),
+        InvoiceDraft::new(party, Subject::new("property.lease", 9)).line(DraftLine::new(
+            "Rent, January",
+            100_000,
+            VatCategory::Standard,
+        )),
     )
     .await
 }
@@ -138,7 +143,10 @@ async fn a_rejection_stores_the_codes_and_raises_one_task_without_touching_the_i
             _ => None,
         })
         .collect();
-    assert!(told.contains(&aya.id) && told.contains(&clerk.id), "{told:?}");
+    assert!(
+        told.contains(&aya.id) && told.contains(&clerk.id),
+        "{told:?}"
+    );
 
     // The event.
     let events = t.einvoice_rejected.all();
@@ -149,8 +157,18 @@ async fn a_rejection_stores_the_codes_and_raises_one_task_without_touching_the_i
     // The issued document is as it was.
     let after = t.reload(&invoice).await;
     assert_eq!(
-        (after.status, after.balance, after.gross_total, after.disputed),
-        (before.status, before.balance, before.gross_total, before.disputed)
+        (
+            after.status,
+            after.balance,
+            after.gross_total,
+            after.disputed
+        ),
+        (
+            before.status,
+            before.balance,
+            before.gross_total,
+            before.disputed
+        )
     );
     assert_eq!(after.due_date, before.due_date);
 
@@ -181,7 +199,12 @@ async fn a_rejection_with_a_cause_outside_the_document_is_resubmitted_with_the_f
     let (invoice, sent, _) = submitted(&t).await;
     reject(&t, &sent, "PEPPOL-EN16931-R010").await;
     let before = t.reload(&invoice).await;
-    let manager = t.helper("Bilal", &[perm::VIEW, perm::EINVOICES_VIEW, perm::EINVOICES_MANAGE]).await;
+    let manager = t
+        .helper(
+            "Bilal",
+            &[perm::VIEW, perm::EINVOICES_VIEW, perm::EINVOICES_MANAGE],
+        )
+        .await;
     let reader = t.helper("Rima", &[perm::VIEW, perm::EINVOICES_VIEW]).await;
     let path = format!("/einvoices/{}/resubmit", sent.id);
 
@@ -191,11 +214,18 @@ async fn a_rejection_with_a_cause_outside_the_document_is_resubmitted_with_the_f
 
     // Without the permission: refused.
     t.app.acting_as(&reader);
-    t.app.htmx().post(&path, &[("confirm", "on")]).await.assert_forbidden();
+    t.app
+        .htmx()
+        .post(&path, &[("confirm", "on")])
+        .await
+        .assert_forbidden();
     // Without the confirmation: nothing happens.
     t.app.acting_as(&manager);
     t.app.htmx().post(&path, &[]).await.assert_status(303);
-    assert_eq!(transmissions(&t).await[0].status, TransmissionStatus::Rejected);
+    assert_eq!(
+        transmissions(&t).await[0].status,
+        TransmissionStatus::Rejected
+    );
     assert_eq!(transmissions(&t).await[0].attempt, 1);
 
     t.app
@@ -208,14 +238,27 @@ async fn a_rejection_with_a_cause_outside_the_document_is_resubmitted_with_the_f
     assert_eq!(again.attempt, 2);
     assert_eq!(again.recipient_id.as_deref(), Some(FIXED));
     assert_eq!(again.payload.0["recipient"]["identifier"], FIXED);
-    assert_eq!(again.payload_hash, wl_invoicing::einvoice_payload::hash_of(&again.payload.0));
+    assert_eq!(
+        again.payload_hash,
+        wl_invoicing::einvoice_payload::hash_of(&again.payload.0)
+    );
     assert!(again.error_codes.0.is_empty());
 
     // The issued invoice is unchanged.
     let after = t.reload(&invoice).await;
     assert_eq!(
-        (after.status, after.balance, after.gross_total, after.number.clone()),
-        (before.status, before.balance, before.gross_total, before.number.clone())
+        (
+            after.status,
+            after.balance,
+            after.gross_total,
+            after.number.clone()
+        ),
+        (
+            before.status,
+            before.balance,
+            before.gross_total,
+            before.number.clone()
+        )
     );
 
     // The ASP is back: it is sent as attempt 2.
@@ -232,8 +275,16 @@ async fn a_rejection_with_a_cause_outside_the_document_is_resubmitted_with_the_f
     // Accepted this time: the task closes.
     asp.answers(AspAnswer::Accepted);
     run(&t).await;
-    assert_eq!(transmissions(&t).await[0].status, TransmissionStatus::Accepted);
-    assert!(einvoice_tasks(&t).await.iter().all(|task| task.status == TaskStatus::Done));
+    assert_eq!(
+        transmissions(&t).await[0].status,
+        TransmissionStatus::Accepted
+    );
+    assert!(
+        einvoice_tasks(&t)
+            .await
+            .iter()
+            .all(|task| task.status == TaskStatus::Done)
+    );
 }
 
 /// Resubmitting is refused while the party still has no identifier, and a
@@ -243,15 +294,31 @@ async fn resubmit_needs_an_identifier_and_a_rejected_transmission() {
     let asp = FakeAsp::new();
     let t = booted(&asp).await;
     let (_, sent, _) = submitted(&t).await;
-    let manager = t.helper("Bilal", &[perm::VIEW, perm::EINVOICES_VIEW, perm::EINVOICES_MANAGE]).await;
+    let manager = t
+        .helper(
+            "Bilal",
+            &[perm::VIEW, perm::EINVOICES_VIEW, perm::EINVOICES_MANAGE],
+        )
+        .await;
     let path = format!("/einvoices/{}/resubmit", sent.id);
     t.app.acting_as(&manager);
     // Submitted, not rejected.
-    t.app.htmx().post(&path, &[("confirm", "on")]).await.assert_status(422);
+    t.app
+        .htmx()
+        .post(&path, &[("confirm", "on")])
+        .await
+        .assert_status(422);
     reject(&t, &sent, "BR-CO-15").await;
     t.directory.set_recipient(BLUE_DUNES, None);
-    t.app.htmx().post(&path, &[("confirm", "on")]).await.assert_status(303);
-    assert_eq!(transmissions(&t).await[0].status, TransmissionStatus::Rejected);
+    t.app
+        .htmx()
+        .post(&path, &[("confirm", "on")])
+        .await
+        .assert_status(303);
+    assert_eq!(
+        transmissions(&t).await[0].status,
+        TransmissionStatus::Rejected
+    );
     assert_eq!(transmissions(&t).await[0].attempt, 1);
 }
 
@@ -264,7 +331,12 @@ async fn resubmit_needs_an_identifier_and_a_rejected_transmission() {
 async fn a_correction_credit_note_supersedes_the_rejected_transmission() {
     let asp = FakeAsp::new();
     let t = booted(&asp).await;
-    let credit = t.helper("Cleo", &[perm::VIEW, perm::CREDIT, perm::CREATE, perm::ISSUE]).await;
+    let credit = t
+        .helper(
+            "Cleo",
+            &[perm::VIEW, perm::CREDIT, perm::CREATE, perm::ISSUE],
+        )
+        .await;
     let (invoice, sent, clerk) = submitted(&t).await;
     reject(&t, &sent, "BR-CO-15").await;
     assert_eq!(einvoice_tasks(&t).await.len(), 1);
@@ -280,10 +352,17 @@ async fn a_correction_credit_note_supersedes_the_rejected_transmission() {
     .await
     .unwrap();
     t.app
-        .at_travelled_time(credit_notes::issue(t.state(), By::System(Some(credit.id)), &other))
+        .at_travelled_time(credit_notes::issue(
+            t.state(),
+            By::System(Some(credit.id)),
+            &other,
+        ))
         .await
         .unwrap();
-    assert_eq!(transmissions(&t).await[0].status, TransmissionStatus::Rejected);
+    assert_eq!(
+        transmissions(&t).await[0].status,
+        TransmissionStatus::Rejected
+    );
 
     // The correction credits the invoice with the reason e-invoice correction.
     let draft = credit_notes::draft(
@@ -297,14 +376,23 @@ async fn a_correction_credit_note_supersedes_the_rejected_transmission() {
     .unwrap();
     let note = t
         .app
-        .at_travelled_time(credit_notes::issue(t.state(), By::System(Some(credit.id)), &draft))
+        .at_travelled_time(credit_notes::issue(
+            t.state(),
+            By::System(Some(credit.id)),
+            &draft,
+        ))
         .await
         .unwrap();
     let all = transmissions(&t).await;
     let old = all.iter().find(|row| row.id == sent.id).unwrap();
     assert_eq!(old.status, TransmissionStatus::Superseded);
     assert_eq!(old.replaced_by_credit_note_id, Some(note.id));
-    assert!(einvoice_tasks(&t).await.iter().all(|task| task.status == TaskStatus::Done));
+    assert!(
+        einvoice_tasks(&t)
+            .await
+            .iter()
+            .all(|task| task.status == TaskStatus::Done)
+    );
     let own = all
         .iter()
         .find(|row| row.document_type == "invoicing.credit_note" && row.document_id == note.id)
@@ -319,13 +407,21 @@ async fn a_correction_credit_note_supersedes_the_rejected_transmission() {
         let t = &t;
         async move {
             t.app.acting_as(&user);
-            t.app.htmx().post(&path, &[("number", number.as_str())]).await
+            t.app
+                .htmx()
+                .post(&path, &[("number", number.as_str())])
+                .await
         }
     };
     name_it("INV-NOPE".to_owned()).await.assert_status(303);
     assert_eq!(t.reload(&new_draft).await.replaces_invoice_id, None);
-    name_it(invoice.number.clone().unwrap()).await.assert_status(303);
-    assert_eq!(t.reload(&new_draft).await.replaces_invoice_id, Some(invoice.id));
+    name_it(invoice.number.clone().unwrap())
+        .await
+        .assert_status(303);
+    assert_eq!(
+        t.reload(&new_draft).await.replaces_invoice_id,
+        Some(invoice.id)
+    );
     let new_invoice = t.issue(&new_draft, &clerk).await;
     let all = transmissions(&t).await;
     let old = all.iter().find(|row| row.id == sent.id).unwrap();
@@ -356,7 +452,11 @@ async fn only_an_invoice_with_a_superseded_transmission_can_be_replaced() {
     ));
     // Not a draft either.
     let issued = t.reload(&invoice).await;
-    assert!(einvoice_send::set_replaces(t.db(), &issued, invoice.id).await.is_err());
+    assert!(
+        einvoice_send::set_replaces(t.db(), &issued, invoice.id)
+            .await
+            .is_err()
+    );
 }
 
 /// A transmission still `queued` 24 hours after issue has a task, once; at 9
@@ -377,7 +477,10 @@ async fn a_transmission_not_sent_after_24_hours_raises_one_task() {
     run(&t).await;
     let row = transmissions(&t).await.remove(0);
     assert_eq!(row.status, TransmissionStatus::Queued);
-    assert_eq!((row.next_try_at.unwrap() - row.queued_at).num_minutes(), 12 * 60);
+    assert_eq!(
+        (row.next_try_at.unwrap() - row.queued_at).num_minutes(),
+        12 * 60
+    );
     assert!(einvoice_tasks(&t).await.is_empty(), "no task at 9 hours");
 
     at(&t, 24 * 60 + 1);
@@ -405,7 +508,10 @@ async fn an_outage_tells_the_company_admin_once() {
 
     at(&t, 12 * 60);
     run(&t).await;
-    assert!(t.notices.of_type("invoicing.einvoice_outage").is_empty(), "not yet");
+    assert!(
+        t.notices.of_type("invoicing.einvoice_outage").is_empty(),
+        "not yet"
+    );
     at(&t, 24 * 60 + 1);
     run(&t).await;
     let notices = t.notices.of_type("invoicing.einvoice_outage");
@@ -416,5 +522,9 @@ async fn an_outage_tells_the_company_admin_once() {
     )));
     at(&t, 24 * 60 + 30);
     run(&t).await;
-    assert_eq!(t.notices.of_type("invoicing.einvoice_outage").len(), 1, "once per outage");
+    assert_eq!(
+        t.notices.of_type("invoicing.einvoice_outage").len(),
+        1,
+        "once per outage"
+    );
 }

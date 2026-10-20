@@ -83,22 +83,24 @@ impl StateMachine for Employee {
 /// Registers the listener of `activate`.
 pub(crate) fn register(app: &mut Registry) {
     renox::state_machine::register::<Employee>();
-    app.listen(|event: Transitioned<Employee>, state: AppState| async move {
-        if event.transition != ACTIVATE {
-            return Ok(());
-        }
-        let Some(employee) = Employee::find(&state.db, event.key).await? else {
-            return Ok(());
-        };
-        let scope = employee.scopes(&state.db).await?.into_iter().next();
-        state
-            .emit(EmployeeActivated {
-                employee: employee.employee_id(),
-                scope,
-                hire_date: employee.hire_date,
-            })
-            .await
-    });
+    app.listen(
+        |event: Transitioned<Employee>, state: AppState| async move {
+            if event.transition != ACTIVATE {
+                return Ok(());
+            }
+            let Some(employee) = Employee::find(&state.db, event.key).await? else {
+                return Ok(());
+            };
+            let scope = employee.scopes(&state.db).await?.into_iter().next();
+            state
+                .emit(EmployeeActivated {
+                    employee: employee.employee_id(),
+                    scope,
+                    hire_date: employee.hire_date,
+                })
+                .await
+        },
+    );
 }
 
 #[cfg(test)]

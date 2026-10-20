@@ -86,17 +86,29 @@ pub(crate) struct IndexPage {
 
 /// The emirates of the building form, `(key, label)`.
 fn emirates(lang: &Lang) -> Vec<(String, String)> {
-    ["dubai", "abu_dhabi", "sharjah", "ajman", "umm_al_quwain", "ras_al_khaimah", "fujairah"]
-        .into_iter()
-        .map(|key| (key.to_owned(), text(lang, &format!("emirates.{key}"))))
-        .collect()
+    [
+        "dubai",
+        "abu_dhabi",
+        "sharjah",
+        "ajman",
+        "umm_al_quwain",
+        "ras_al_khaimah",
+        "fujairah",
+    ]
+    .into_iter()
+    .map(|key| (key.to_owned(), text(lang, &format!("emirates.{key}"))))
+    .collect()
 }
 
 /// `GET /property`.
 async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
     let scopes = buildings_with(&user, permissions::UNITS_VIEW)?;
     let mut rows = Vec::new();
-    for building in Building::query().order_by(Building::CODE).get(&state.db).await? {
+    for building in Building::query()
+        .order_by(Building::CODE)
+        .get(&state.db)
+        .await?
+    {
         if !scopes.contains(&building.id) {
             continue;
         }
@@ -238,7 +250,9 @@ async fn building(
     lang: Lang,
     Path(id): Path<i64>,
 ) -> Result<View> {
-    let building = Building::find(&state.db, id).await?.ok_or(Error::NotFound)?;
+    let building = Building::find(&state.db, id)
+        .await?
+        .ok_or(Error::NotFound)?;
     if !user.has_permission_in(permissions::UNITS_VIEW, &building.scope()) {
         return Err(Error::Forbidden);
     }
@@ -257,12 +271,10 @@ async fn building(
             .collect();
         let lease = running_lease(&state, unit.id).await?;
         let tenant = match &lease {
-            Some(lease) => {
-                wl_kernel::parties::directory(&state)
-                    .display_name(&state.db, lease.tenant(), &lang.locale)
-                    .await?
-                    .unwrap_or_else(|| format!("#{}", lease.tenant_party_id))
-            }
+            Some(lease) => wl_kernel::parties::directory(&state)
+                .display_name(&state.db, lease.tenant(), &lang.locale)
+                .await?
+                .unwrap_or_else(|| format!("#{}", lease.tenant_party_id)),
             None => String::new(),
         };
         rows.push(UnitRow {
@@ -361,7 +373,11 @@ async fn building_create(
         },
     )
     .await?;
-    Ok((Toast::success(text(&lang, "buildings.created")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(text(&lang, "buildings.created")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// The form of a new unit.
@@ -406,7 +422,9 @@ async fn unit_create(
     Path(id): Path<i64>,
     Form(form): Form<UnitForm>,
 ) -> Result<Response> {
-    let building = Building::find(&state.db, id).await?.ok_or(Error::NotFound)?;
+    let building = Building::find(&state.db, id)
+        .await?
+        .ok_or(Error::NotFound)?;
     if !user.has_permission_in(permissions::UNITS_MANAGE, &building.scope()) {
         return Err(Error::Forbidden);
     }
@@ -445,7 +463,11 @@ async fn unit_create(
         },
     )
     .await?;
-    Ok((Toast::success(text(&lang, "units.created")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(text(&lang, "units.created")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 #[cfg(test)]

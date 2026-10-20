@@ -477,9 +477,7 @@ pub trait Cheques: Send + Sync + 'static {
         _from: Subject,
         _to: Subject,
     ) -> ChequeFuture<'a, ()> {
-        Box::pin(async move {
-            Err(payments_off(&format!("cheque {cheque} cannot be relinked")))
-        })
+        Box::pin(async move { Err(payments_off(&format!("cheque {cheque} cannot be relinked"))) })
     }
 
     /// Marks the cheques of `cheques` that are `received` or
@@ -820,9 +818,13 @@ mod tests {
     #[test]
     fn a_schedule_adds_up_its_cheques() {
         let date = NaiveDate::from_ymd_opt(2026, 11, 3).unwrap();
-        let schedule = ChequeSchedule::new(Subject::new("property.lease", 9), PartyId(7), 2, "ENBD")
-            .cheque(ScheduledCheque::new("1", date, 2_000_000))
-            .cheque(ScheduledCheque::new("2", date, 2_000_000).link(Subject::new("invoicing.charge", 1)));
+        let schedule =
+            ChequeSchedule::new(Subject::new("property.lease", 9), PartyId(7), 2, "ENBD")
+                .cheque(ScheduledCheque::new("1", date, 2_000_000))
+                .cheque(
+                    ScheduledCheque::new("2", date, 2_000_000)
+                        .link(Subject::new("invoicing.charge", 1)),
+                );
         assert_eq!(schedule.total(), 4_000_000);
         assert_eq!(schedule.cheques[1].linked.len(), 1);
     }

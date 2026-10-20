@@ -91,11 +91,7 @@ pub const DEPOSIT_TOP_UP: &str = "deposit_top_up";
 ///
 /// 422 when no amendment version of `old` is `active` or it has no effective
 /// date; the database's errors.
-pub(crate) async fn amend_effects(
-    tx: &mut Transaction,
-    old: &Lease,
-    next: Option<i64>,
-) -> Result {
+pub(crate) async fn amend_effects(tx: &mut Transaction, old: &Lease, next: Option<i64>) -> Result {
     let found = match next {
         Some(id) => Lease::find(&mut *tx, id).await?,
         None => {
@@ -318,10 +314,7 @@ async fn replace_invoice(
     done: &mut Amendment,
 ) -> Result {
     let Run {
-        new,
-        effective,
-        by,
-        ..
+        new, effective, by, ..
     } = *run;
     let Some(invoice_id) = charge.invoice_id else {
         return Ok(());
@@ -425,7 +418,10 @@ async fn settle_cheques(
     let mut taken: BTreeSet<i64> = BTreeSet::new();
     let mut hand_back = Vec::new();
     for cheque in held.iter().filter(|c| {
-        matches!(c.status, ChequeStatus::Received | ChequeStatus::DueForDeposit)
+        matches!(
+            c.status,
+            ChequeStatus::Received | ChequeStatus::DueForDeposit
+        )
     }) {
         let Some(paid) = cheque
             .linked
@@ -495,8 +491,7 @@ async fn settle_cheques(
 /// and a task for the accountant, not an error.
 pub async fn settle(state: &AppState, id: i64, by: Option<i64>) -> Result<Amendment> {
     let new = Lease::find(&state.db, id).await?.ok_or(Error::NotFound)?;
-    let (Some(effective), Some(old)) = (new.effective_date, new.previous(&state.db).await?)
-    else {
+    let (Some(effective), Some(old)) = (new.effective_date, new.previous(&state.db).await?) else {
         return Ok(Amendment::default());
     };
     if new.version_kind != VersionKind::Amendment || new.status != LeaseStatus::Active {
@@ -610,13 +605,8 @@ pub async fn settle(state: &AppState, id: i64, by: Option<i64>) -> Result<Amendm
             "property.amend.task_problems",
             &[("lease", &new.number_with_version())],
         );
-        let task = RoleTask::new(
-            new.subject(),
-            ACCOUNTANT_ROLE,
-            &title,
-            &problems_key(&new),
-        )
-        .description(&done.problems.join("\n"));
+        let task = RoleTask::new(new.subject(), ACCOUNTANT_ROLE, &title, &problems_key(&new))
+            .description(&done.problems.join("\n"));
         crate::tasks::open(state, &new.scope(), task).await?;
     }
     state

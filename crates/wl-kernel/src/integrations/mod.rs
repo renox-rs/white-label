@@ -53,7 +53,10 @@ pub(crate) fn register_models(app: &mut Registry) {
 pub async fn install(db: &Db) -> Result<usize> {
     let mut created = 0;
     for def in all() {
-        if IntegrationConnection::by_key(db, def.key()).await?.is_some() {
+        if IntegrationConnection::by_key(db, def.key())
+            .await?
+            .is_some()
+        {
             continue;
         }
         create_row(db, &def).await?;

@@ -150,7 +150,10 @@ async fn close(
     let note = form.note.as_deref().map_or("", str::trim);
     if note.is_empty() {
         let mut errors = Errors::new();
-        errors.add("note", texts::t(&lang, "wl_kernel.compliance.note_required"));
+        errors.add(
+            "note",
+            texts::t(&lang, "wl_kernel.compliance.note_required"),
+        );
         return Err(ValidationError::new(errors).with_input(&form).into());
     }
     let attachment = match form.attachment.as_deref().map(str::trim) {

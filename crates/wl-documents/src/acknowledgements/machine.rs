@@ -180,7 +180,11 @@ impl StateMachine for SopAcknowledgement {
 }
 
 /// `replace` or `cancel`: pending to `to`, storing the reason.
-fn ending(name: &'static str, label: &'static str, to: AckStatus) -> Transition<SopAcknowledgement> {
+fn ending(
+    name: &'static str,
+    label: &'static str,
+    to: AckStatus,
+) -> Transition<SopAcknowledgement> {
     Transition::new(name)
         .label(label)
         .tone("neutral")
@@ -238,14 +242,34 @@ mod tests {
         let machine = SopAcknowledgement::machine();
         let ack = SopAcknowledgement::default();
         let acknowledge = machine.find(ACKNOWLEDGE).unwrap();
-        assert!(acknowledge.check_guards(&ack, &ctx(&own_session())).await.is_ok());
+        assert!(
+            acknowledge
+                .check_guards(&ack, &ctx(&own_session()))
+                .await
+                .is_ok()
+        );
         for broken in [
-            AckRun { current: false, ..own_session() },
-            AckRun { opened: false, ..own_session() },
-            AckRun { checksum_ok: false, ..own_session() },
-            AckRun { method: String::new(), ..own_session() },
+            AckRun {
+                current: false,
+                ..own_session()
+            },
+            AckRun {
+                opened: false,
+                ..own_session()
+            },
+            AckRun {
+                checksum_ok: false,
+                ..own_session()
+            },
+            AckRun {
+                method: String::new(),
+                ..own_session()
+            },
         ] {
-            assert!(acknowledge.check_guards(&ack, &ctx(&broken)).await.is_err(), "{broken:?}");
+            assert!(
+                acknowledge.check_guards(&ack, &ctx(&broken)).await.is_err(),
+                "{broken:?}"
+            );
         }
     }
 
@@ -261,13 +285,30 @@ mod tests {
             witness_id: Some(9),
             ..own_session()
         };
-        assert!(acknowledge.check_guards(&ack, &ctx(&in_person)).await.is_ok());
+        assert!(
+            acknowledge
+                .check_guards(&ack, &ctx(&in_person))
+                .await
+                .is_ok()
+        );
         for broken in [
-            AckRun { signature: None, ..in_person.clone() },
-            AckRun { signature: Some("  ".into()), ..in_person.clone() },
-            AckRun { witness_id: None, ..in_person.clone() },
+            AckRun {
+                signature: None,
+                ..in_person.clone()
+            },
+            AckRun {
+                signature: Some("  ".into()),
+                ..in_person.clone()
+            },
+            AckRun {
+                witness_id: None,
+                ..in_person.clone()
+            },
         ] {
-            assert!(acknowledge.check_guards(&ack, &ctx(&broken)).await.is_err(), "{broken:?}");
+            assert!(
+                acknowledge.check_guards(&ack, &ctx(&broken)).await.is_err(),
+                "{broken:?}"
+            );
         }
     }
 }

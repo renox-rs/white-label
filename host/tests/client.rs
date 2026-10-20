@@ -406,13 +406,12 @@ async fn a_give_up_sends_the_message_to_another_finance_contact() {
 
     const TYPE: &str = "host_test.reminder";
     let sent = Arc::new(Mutex::new(Vec::new()));
-    let app =
-        TestApp::new(
-            host::app()
-                .provide(SmsGatewayHandle(Arc::new(Gateway(sent.clone()))))
-                .provide(support::noon_clock()),
-        )
-        .await;
+    let app = TestApp::new(
+        host::app()
+            .provide(SmsGatewayHandle(Arc::new(Gateway(sent.clone()))))
+            .provide(support::noon_clock()),
+    )
+    .await;
     notify::register_type(
         NotificationTypeDef::new(TYPE, "invoicing")
             .channels(&[NotifyChannel::Sms])

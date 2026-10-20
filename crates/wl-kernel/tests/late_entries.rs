@@ -230,12 +230,20 @@ async fn world() -> World {
     app.fake_events();
 
     let db = app.db();
-    permissions::define_role(db, "receptionist", &[wl_kernel::permissions::APPROVALS_VIEW])
-        .await
-        .unwrap();
-    permissions::define_role(db, "manager", &[wl_kernel::permissions::LATE_ENTRIES_APPROVE])
-        .await
-        .unwrap();
+    permissions::define_role(
+        db,
+        "receptionist",
+        &[wl_kernel::permissions::APPROVALS_VIEW],
+    )
+    .await
+    .unwrap();
+    permissions::define_role(
+        db,
+        "manager",
+        &[wl_kernel::permissions::LATE_ENTRIES_APPROVE],
+    )
+    .await
+    .unwrap();
     let user = |name: &'static str, role: &'static str| async move {
         let email = format!("{}@example.com", name.to_lowercase());
         let user = User::register(db, name, &email, "password123")
@@ -550,7 +558,10 @@ async fn the_runs_already_fired_are_listed_for_review() {
     assert_eq!(entry.fired_runs.0[0].rule, "BKG.RUL.02");
     assert_eq!(entry.fired_runs.0[0].subject, booking);
     // The kernel did not touch the run.
-    let still = RuleRun::find(w.app.db(), no_show.id).await.unwrap().unwrap();
+    let still = RuleRun::find(w.app.db(), no_show.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(still.status, no_show.status);
     w.app.assert_emitted::<LateEntryRecorded>(|e| {
         e.fired_runs.len() == 1 && e.fired_runs[0].rule == "BKG.RUL.02"
@@ -569,7 +580,10 @@ async fn changing_the_business_time_of_a_record_is_checked_too() {
 
     let edit = |ago| w.check_in(ago).existing(record_id);
     assert_refused(w.enter(edit(Duration::hours(3))).await);
-    let entered = w.enter(edit(Duration::hours(3)).reason("typo")).await.unwrap();
+    let entered = w
+        .enter(edit(Duration::hours(3)).reason("typo"))
+        .await
+        .unwrap();
     assert_eq!(entered.record_id(), Some(record_id));
 
     let rows = w.check_ins().await;

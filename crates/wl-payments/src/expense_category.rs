@@ -189,10 +189,12 @@ mod tests {
         assert_eq!(drawings.vat, VatTreatment::Blocked);
         assert!(!drawings.cost_object_allowed);
         assert_eq!(drawings.budget_category, Some(OWNER_DRAWINGS));
-        assert!(SEEDS
-            .iter()
-            .filter(|s| s.code != OWNER_DRAWINGS)
-            .all(|s| s.vat == VatTreatment::Recoverable && s.cost_object_allowed));
+        assert!(
+            SEEDS
+                .iter()
+                .filter(|s| s.code != OWNER_DRAWINGS)
+                .all(|s| s.vat == VatTreatment::Recoverable && s.cost_object_allowed)
+        );
     }
 
     #[test]

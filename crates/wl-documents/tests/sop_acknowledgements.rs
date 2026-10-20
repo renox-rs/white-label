@@ -8,11 +8,13 @@ mod support;
 
 use renox::prelude::*;
 use wl_documents::acknowledgements::run::run;
-use wl_documents::{AckStatus, Document, Sop, SopAcknowledgement, sops::kind_seeds, permissions as perm};
+use wl_documents::{
+    AckStatus, Document, Sop, SopAcknowledgement, permissions as perm, sops::kind_seeds,
+};
 use wl_kernel::documents::{SopStaff, sop_acknowledgements};
 use wl_kernel::notify::{NotifyRecipient, NotifyRequest};
 use wl_kernel::workforce::{
-    EmployeeAssignmentChanged, EmployeeExited, EmployeeId, OnboardingStarted, OnboardingId,
+    EmployeeAssignmentChanged, EmployeeExited, EmployeeId, OnboardingId, OnboardingStarted,
 };
 use wl_kernel::{PartyId, SopId, Subject};
 
@@ -166,7 +168,11 @@ impl World {
     }
 
     /// The reader confirms `ack`.
-    async fn confirm(&self, reader: &User, ack: &SopAcknowledgement) -> renox::testing::TestResponse {
+    async fn confirm(
+        &self,
+        reader: &User,
+        ack: &SopAcknowledgement,
+    ) -> renox::testing::TestResponse {
         self.t.app.acting_as(reader);
         self.t
             .app
@@ -221,7 +227,11 @@ fn about_all<'a>(
 #[renox::test]
 async fn doc_rul_04_publishing_asks_every_required_reader() {
     let w = world().await;
-    assert_eq!(w.count(AckStatus::Pending).await, 0, "a draft SOP asks nobody");
+    assert_eq!(
+        w.count(AckStatus::Pending).await,
+        0,
+        "a draft SOP asks nobody"
+    );
     let v1 = w.publish().await;
     assert_eq!(w.count(AckStatus::Pending).await, 12);
     for id in 101..=112 {
@@ -249,7 +259,10 @@ async fn doc_rul_04_publishing_asks_every_required_reader() {
     assert_eq!(sms.len(), 10);
     assert!(sms.iter().any(|r| {
         about(r, &sunil)
-            && r.recipients == [NotifyRecipient::Party { id: PartyId(1000 + SUNIL) }]
+            && r.recipients
+                == [NotifyRecipient::Party {
+                    id: PartyId(1000 + SUNIL),
+                }]
     }));
     // A second run of the rule on the same day asks nobody again.
     let report = run(w.t.state(), day(0)).await.unwrap();
@@ -315,7 +328,10 @@ async fn doc_rul_04_overdue_readers_are_reminded_and_then_escalated_once() {
     assert_eq!(ack.due_date, day(7));
 
     run(w.t.state(), day(7)).await.unwrap();
-    assert!(w.sent(REMINDER).is_empty(), "nothing is due on the due date");
+    assert!(
+        w.sent(REMINDER).is_empty(),
+        "nothing is due on the due date"
+    );
 
     run(w.t.state(), day(8)).await.unwrap();
     let reminders = w.sent(REMINDER);
@@ -543,7 +559,10 @@ async fn doc_rul_04_an_in_person_record_names_the_witness_and_tells_the_reader()
     assert_eq!(done.status, AckStatus::Acknowledged);
     assert_eq!(done.method, "drawn");
     assert_eq!(done.witness_id, Some(w.hana.id));
-    assert_eq!(done.signature.as_deref(), Some("data:image/png;base64,AAAA"));
+    assert_eq!(
+        done.signature.as_deref(),
+        Some("data:image/png;base64,AAAA")
+    );
     assert!(done.in_person_notified_at.is_some());
 
     let notices = w.sent(IN_PERSON_RECORDED);
@@ -623,7 +642,11 @@ async fn doc_rul_04_a_confirmation_on_a_superseded_version_is_refused() {
 
     let refused = w.confirm(&w.bilal, &ack).await;
     refused.assert_status(422);
-    assert!(refused.text().contains("newer version"), "{}", refused.text());
+    assert!(
+        refused.text().contains("newer version"),
+        "{}",
+        refused.text()
+    );
     assert_eq!(w.reload(&ack).await.status, AckStatus::Replaced);
 
     // He is shown version 2 in his list.
@@ -651,14 +674,13 @@ async fn doc_rul_04_a_translation_is_recorded_with_its_language() {
     let _v1 = w.publish().await;
     let v2 = w.publish().await;
     w.t.app.acting_as(&w.hana);
-    let translated = w
-        .t
-        .app
-        .post(
-            &format!("/test/sop-versions/{}/translations", v2.id),
-            &[("language", "ar")],
-        )
-        .await;
+    let translated =
+        w.t.app
+            .post(
+                &format!("/test/sop-versions/{}/translations", v2.id),
+                &[("language", "ar")],
+            )
+            .await;
     translated.assert_ok();
     let translation = Document::find_or_404(w.t.db(), translated.text().parse().unwrap())
         .await
@@ -750,11 +772,14 @@ async fn doc_rul_04_the_onboarding_contract_waits_for_the_acknowledgement() {
         scopes: vec![Subject::new("property.site", 1)],
     };
     let contract = sop_acknowledgements(w.t.state());
-    assert!(contract
-        .pending_for(w.t.state(), &who(ALI, "site_worker"))
-        .await
-        .unwrap()
-        .is_empty(), "a draft SOP is pending for nobody");
+    assert!(
+        contract
+            .pending_for(w.t.state(), &who(ALI, "site_worker"))
+            .await
+            .unwrap()
+            .is_empty(),
+        "a draft SOP is pending for nobody"
+    );
 
     let v1 = w.publish().await;
     assert_eq!(
@@ -764,20 +789,24 @@ async fn doc_rul_04_the_onboarding_contract_waits_for_the_acknowledgement() {
             .unwrap(),
         [SopId(w.sop.id)]
     );
-    assert!(contract
-        .pending_for(w.t.state(), &who(ALI, "accountant"))
-        .await
-        .unwrap()
-        .is_empty());
+    assert!(
+        contract
+            .pending_for(w.t.state(), &who(ALI, "accountant"))
+            .await
+            .unwrap()
+            .is_empty()
+    );
 
     let ack = w.ack(ALI, &v1).await;
     w.open(&w.ali, &ack, &v1).await;
     w.confirm(&w.ali, &ack).await.assert_ok();
-    assert!(contract
-        .pending_for(w.t.state(), &who(ALI, "site_worker"))
-        .await
-        .unwrap()
-        .is_empty());
+    assert!(
+        contract
+            .pending_for(w.t.state(), &who(ALI, "site_worker"))
+            .await
+            .unwrap()
+            .is_empty()
+    );
 
     // Sunil is recorded in person through the contract.
     let sunil = who(SUNIL, "site_worker");
@@ -790,11 +819,13 @@ async fn doc_rul_04_the_onboarding_contract_waits_for_the_acknowledgement() {
     assert_eq!(record.status, AckStatus::Acknowledged);
     assert_eq!(record.method, "drawn");
     assert_eq!(record.witness_id, Some(w.hana.id));
-    assert!(contract
-        .pending_for(w.t.state(), &sunil)
-        .await
-        .unwrap()
-        .is_empty());
+    assert!(
+        contract
+            .pending_for(w.t.state(), &sunil)
+            .await
+            .unwrap()
+            .is_empty()
+    );
     assert_eq!(w.sent(IN_PERSON_RECORDED).len(), 1);
 
     // A version published later is pending again.

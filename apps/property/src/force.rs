@@ -190,8 +190,10 @@ pub fn force_problem(lease: &Lease, input: &ForceInput) -> Option<String> {
 /// request needs one step by a holder of `leases.force_terminate` (the
 /// company admin), never the requester.
 pub fn policy() -> PolicyDefault {
-    PolicyDefault::new(FORCE_ACTION)
-        .step_or_permission([wl_kernel::COMPANY_ADMIN_ROLE], permissions::LEASES_FORCE_TERMINATE)
+    PolicyDefault::new(FORCE_ACTION).step_or_permission(
+        [wl_kernel::COMPANY_ADMIN_ROLE],
+        permissions::LEASES_FORCE_TERMINATE,
+    )
 }
 
 /// The effect of `force_terminate` inside its transaction: the reason and the
@@ -202,8 +204,7 @@ pub(crate) async fn force_effects(
     lease: &Lease,
     input: &ForceInput,
 ) -> Result {
-    let (Some(reason), Some(move_out)) = (ForceReason::parse(&input.reason), input.move_out)
-    else {
+    let (Some(reason), Some(move_out)) = (ForceReason::parse(&input.reason), input.move_out) else {
         return Err(refused(english("property.force.reason_required", &[])));
     };
     let choices = renox::serde_json::to_string(&input.cheques)
@@ -388,8 +389,10 @@ async fn later_cheques(state: &AppState, lease: &Lease, cut: NaiveDate) -> Resul
         .await?
         .iter()
         .filter(|c| {
-            matches!(c.status, ChequeStatus::Received | ChequeStatus::DueForDeposit)
-                && c.date > cut
+            matches!(
+                c.status,
+                ChequeStatus::Received | ChequeStatus::DueForDeposit
+            ) && c.date > cut
         })
         .map(|c| c.id)
         .collect())
@@ -528,14 +531,22 @@ mod tests {
         let mut input = ForceInput::default();
         assert!(force_problem(&lease(), &input).unwrap().contains("reason"));
         input.reason = "eviction_executed".into();
-        assert!(force_problem(&lease(), &input).unwrap().contains("move-out"));
+        assert!(
+            force_problem(&lease(), &input)
+                .unwrap()
+                .contains("move-out")
+        );
         input.move_out = Some(day(7, 20));
         assert_eq!(force_problem(&lease(), &input), None);
         input.move_out = Some(day(1, 1) - renox::chrono::Duration::days(1));
         assert!(force_problem(&lease(), &input).is_some());
         input.move_out = Some(day(7, 20));
         input.reason = "abandoned".into();
-        assert!(force_problem(&lease(), &input).unwrap().contains("legal basis"));
+        assert!(
+            force_problem(&lease(), &input)
+                .unwrap()
+                .contains("legal basis")
+        );
         input.basis = Some("  ".into());
         assert!(force_problem(&lease(), &input).is_some());
         input.basis = Some("Municipality order 12/2027".into());

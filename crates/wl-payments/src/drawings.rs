@@ -221,9 +221,14 @@ async fn category_of(state: &AppState, code: &str) -> Result<DrawingCategory> {
 
 /// The payment `input` makes, outgoing or incoming.
 fn payment_of(input: &DrawingInput, direction: Direction, by: Option<i64>) -> RecordPayment {
-    let mut request = RecordPayment::new(input.party, input.legal_entity_id, input.method, input.amount)
-        .currency("AED")
-        .method_details(input.method_details.clone());
+    let mut request = RecordPayment::new(
+        input.party,
+        input.legal_entity_id,
+        input.method,
+        input.amount,
+    )
+    .currency("AED")
+    .method_details(input.method_details.clone());
     if direction == Direction::Out {
         request = request.outgoing();
     }
@@ -462,7 +467,9 @@ pub async fn check_cheque(
         return Err(refused("The owner drawing was not found."));
     };
     if request.direction != Direction::Out {
-        return Err(refused("The cheque of an owner drawing is an issued cheque."));
+        return Err(refused(
+            "The cheque of an owner drawing is an issued cheque.",
+        ));
     }
     if row.status != DrawingStatus::Approved || row.method != PaymentMethod::Cheque {
         return Err(refused(
@@ -473,7 +480,9 @@ pub async fn check_cheque(
         return Err(refused("The owner drawing has its cheque already."));
     }
     if request.legal_entity_id != row.legal_entity_id {
-        return Err(refused("The cheque is in another legal entity than the drawing."));
+        return Err(refused(
+            "The cheque is in another legal entity than the drawing.",
+        ));
     }
     if request.party != row.party() {
         return Err(refused(
@@ -672,8 +681,14 @@ mod tests {
         };
         let pay = row.as_payment();
         assert_eq!(pay.direction, Direction::Out);
-        assert_eq!((pay.party, pay.legal_entity_id, pay.amount), (PartyId(7), 2, 1_500_000));
-        assert_eq!(pay.date, Some(NaiveDate::from_ymd_opt(2027, 3, 10).unwrap()));
+        assert_eq!(
+            (pay.party, pay.legal_entity_id, pay.amount),
+            (PartyId(7), 2, 1_500_000)
+        );
+        assert_eq!(
+            pay.date,
+            Some(NaiveDate::from_ymd_opt(2027, 3, 10).unwrap())
+        );
         assert_eq!(pay.reference.as_deref(), Some("TRX-9"));
         assert_eq!(pay.bank_account.as_deref(), Some("BA1"));
         assert_eq!(row.subject(), Subject::new("payments.drawing_request", 3));

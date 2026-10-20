@@ -73,7 +73,13 @@ async fn cost(t: &Booted, campaign: &Campaign, amount: i64, linked: bool) {
     if linked {
         CostEntry::query()
             .where_(CostEntry::ID.eq(entry.id))
-            .update(t.db(), &[("supplier_bill_id", &Some(900_i64)), ("supplier_bill_line_id", &Some(901_i64))])
+            .update(
+                t.db(),
+                &[
+                    ("supplier_bill_id", &Some(900_i64)),
+                    ("supplier_bill_line_id", &Some(901_i64)),
+                ],
+            )
             .await
             .unwrap();
     }
@@ -109,7 +115,10 @@ async fn leads(t: &Booted, count: usize, won: usize, spam: usize, source: Option
                 .where_(Lead::ID.eq(lead.id))
                 .update(
                     t.db(),
-                    &[("status", &"lost"), ("lost_reason", &Some("spam_or_invalid"))],
+                    &[
+                        ("status", &"lost"),
+                        ("lost_reason", &Some("spam_or_invalid")),
+                    ],
                 )
                 .await
                 .unwrap();
@@ -130,11 +139,27 @@ async fn customers(t: &Booted, customers: i64, first: i64, second: Option<i64>) 
             )
             .await
             .unwrap();
-        let sale = FirstSale::new(party, Subject::new("invoicing.invoice", 1000 + n), first, day(3, 25));
-        attribution.record_first_sale(t.state(), sale).await.unwrap();
+        let sale = FirstSale::new(
+            party,
+            Subject::new("invoicing.invoice", 1000 + n),
+            first,
+            day(3, 25),
+        );
+        attribution
+            .record_first_sale(t.state(), sale)
+            .await
+            .unwrap();
         if let Some(second) = second {
-            let sale = FirstSale::new(party, Subject::new("invoicing.invoice", 2000 + n), second, day(6, 2));
-            attribution.record_first_sale(t.state(), sale).await.unwrap();
+            let sale = FirstSale::new(
+                party,
+                Subject::new("invoicing.invoice", 2000 + n),
+                second,
+                day(6, 2),
+            );
+            attribution
+                .record_first_sale(t.state(), sale)
+                .await
+                .unwrap();
         }
     }
 }
@@ -198,7 +223,12 @@ async fn sal21_a_source_without_a_campaign_has_no_cost_ratios() {
     assert_eq!(cells.leads, "12");
     assert_eq!(cells.conversion, "25.0%");
     assert_eq!(
-        (cells.cost.as_str(), cells.cost_per_lead.as_str(), cells.cac.as_str(), cells.roas.as_str()),
+        (
+            cells.cost.as_str(),
+            cells.cost_per_lead.as_str(),
+            cells.cac.as_str(),
+            cells.roas.as_str()
+        ),
         ("—", "—", "—", "—")
     );
 }
@@ -215,13 +245,25 @@ async fn sal21_the_attribution_window_changes_the_converted_value() {
     let facts = report::load(t.db(), &wl_sales::config::config_of(t.state()))
         .await
         .unwrap();
-    let report = report::compute(&facts, &Filter::default(), GroupBy::Campaign, &Viewer::all());
+    let report = report::compute(
+        &facts,
+        &Filter::default(),
+        GroupBy::Campaign,
+        &Viewer::all(),
+    );
     let cells = report.rows[0].cells();
     assert_eq!(cells.value, "45,000.00");
     assert_eq!(cells.roas, "9.00");
     // Without the window only the first sale counts.
-    let plain = report::load(t.db(), &wl_sales::SalesConfig::default()).await.unwrap();
-    let report = report::compute(&plain, &Filter::default(), GroupBy::Campaign, &Viewer::all());
+    let plain = report::load(t.db(), &wl_sales::SalesConfig::default())
+        .await
+        .unwrap();
+    let report = report::compute(
+        &plain,
+        &Filter::default(),
+        GroupBy::Campaign,
+        &Viewer::all(),
+    );
     assert_eq!(report.rows[0].cells().roas, "4.00");
 }
 
@@ -246,13 +288,9 @@ async fn sal21_a_credit_note_lowers_the_converted_value() {
     let (t, _) = boot_events().await;
     c1(&t).await;
     customers(&t, 1, 200_000, None).await;
-    wl_sales::acquisition::credit_sale(
-        t.state(),
-        &Subject::new("invoicing.invoice", 1000),
-        50_000,
-    )
-    .await
-    .unwrap();
+    wl_sales::acquisition::credit_sale(t.state(), &Subject::new("invoicing.invoice", 1000), 50_000)
+        .await
+        .unwrap();
     let report = report_of(&t, GroupBy::Campaign, Filter::default()).await;
     assert_eq!(report.rows[0].cells().value, "1,500.00");
 }
@@ -266,11 +304,22 @@ async fn sal21_costs_and_customers_are_counted_in_their_own_months() {
     cost(&t, &campaign, 100_000, false).await;
     let attribution = campaign_attribution(t.state());
     attribution
-        .attribute(t.state(), Attribute::party(PartyId(100), "paid_ads").campaign("SPRING26"))
+        .attribute(
+            t.state(),
+            Attribute::party(PartyId(100), "paid_ads").campaign("SPRING26"),
+        )
         .await
         .unwrap();
-    let sale = FirstSale::new(PartyId(100), Subject::new("invoicing.invoice", 1), 80_000, day(4, 2));
-    attribution.record_first_sale(t.state(), sale).await.unwrap();
+    let sale = FirstSale::new(
+        PartyId(100),
+        Subject::new("invoicing.invoice", 1),
+        80_000,
+        day(4, 2),
+    );
+    attribution
+        .record_first_sale(t.state(), sale)
+        .await
+        .unwrap();
     let by_month = report_of(&t, GroupBy::Month, Filter::default()).await;
     assert_eq!(by_month.rows.len(), 2);
     let march = report_of(&t, GroupBy::Campaign, Filter::default().month(2026, 3)).await;
@@ -313,10 +362,20 @@ async fn sal21_a_branch_scoped_user_sees_their_leads_and_no_entity_wide_cost() {
     assert_eq!(scoped.rows[0].leads, 1);
     let cells = scoped.rows[0].cells();
     assert_eq!(
-        (cells.cost.as_str(), cells.cost_per_lead.as_str(), cells.cac.as_str(), cells.roas.as_str()),
+        (
+            cells.cost.as_str(),
+            cells.cost_per_lead.as_str(),
+            cells.cac.as_str(),
+            cells.roas.as_str()
+        ),
         ("—", "—", "—", "—")
     );
-    let all = report::compute(&facts, &Filter::default(), GroupBy::Campaign, &Viewer::all());
+    let all = report::compute(
+        &facts,
+        &Filter::default(),
+        GroupBy::Campaign,
+        &Viewer::all(),
+    );
     assert_eq!(all.rows[0].leads, 2);
     assert_eq!(all.rows[0].cells().cost, "1,000.00");
     assert_eq!(all.rows[0].cells().cost_per_lead, "500.00");
@@ -336,8 +395,14 @@ async fn sal21_the_page_and_the_csv_show_the_same_numbers() {
 
     let nobody = t.user("Nobody", &[]).await;
     t.app.acting_as(&nobody);
-    t.app.get("/sales/acquisition-report").await.assert_forbidden();
-    t.app.get("/sales/acquisition-report.csv").await.assert_forbidden();
+    t.app
+        .get("/sales/acquisition-report")
+        .await
+        .assert_forbidden();
+    t.app
+        .get("/sales/acquisition-report.csv")
+        .await
+        .assert_forbidden();
 
     let owner = t.user("Owner", &[perm::ACQUISITION_REPORTS_VIEW]).await;
     t.app.acting_as(&owner);

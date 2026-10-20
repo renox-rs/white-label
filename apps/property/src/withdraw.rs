@@ -310,8 +310,14 @@ mod tests {
         assert_eq!(target_for(&lease, day(2027, 6, 1)), LeaseStatus::Active);
         assert_eq!(target_for(&lease, day(2027, 9, 1)), LeaseStatus::Active);
         assert_eq!(target_for(&lease, day(2027, 9, 2)), LeaseStatus::RenewalDue);
-        assert_eq!(target_for(&lease, day(2027, 10, 1)), LeaseStatus::RenewalDue);
-        assert_eq!(target_for(&lease, day(2027, 12, 31)), LeaseStatus::RenewalDue);
+        assert_eq!(
+            target_for(&lease, day(2027, 10, 1)),
+            LeaseStatus::RenewalDue
+        );
+        assert_eq!(
+            target_for(&lease, day(2027, 12, 31)),
+            LeaseStatus::RenewalDue
+        );
         assert_eq!(target_for(&lease, day(2028, 1, 1)), LeaseStatus::Expired);
     }
 

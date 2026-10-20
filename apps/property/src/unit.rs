@@ -161,17 +161,26 @@ pub struct NewUnit {
 pub async fn create_unit(db: &Db, new: NewUnit) -> Result<Unit> {
     let number = new.number.trim().to_owned();
     if number.is_empty() {
-        return Err(refused(crate::texts::english("property.units.number_required", &[])));
+        return Err(refused(crate::texts::english(
+            "property.units.number_required",
+            &[],
+        )));
     }
     if Building::find(db, new.building_id).await?.is_none() {
-        return Err(refused(crate::texts::english("property.units.no_building", &[])));
+        return Err(refused(crate::texts::english(
+            "property.units.no_building",
+            &[],
+        )));
     }
     if [new.area_sqft_milli, new.asking_rent]
         .into_iter()
         .flatten()
         .any(|value| value < 0)
     {
-        return Err(refused(crate::texts::english("property.units.negative", &[])));
+        return Err(refused(crate::texts::english(
+            "property.units.negative",
+            &[],
+        )));
     }
     let taken = Unit::query()
         .where_(Unit::BUILDING_ID.eq(new.building_id))
@@ -179,7 +188,10 @@ pub async fn create_unit(db: &Db, new: NewUnit) -> Result<Unit> {
         .count(db)
         .await?;
     if taken > 0 {
-        return Err(refused(crate::texts::english("property.units.number_taken", &[])));
+        return Err(refused(crate::texts::english(
+            "property.units.number_taken",
+            &[],
+        )));
     }
     Unit::create(
         db,

@@ -14,7 +14,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("property.fields.status", "Status"),
     // The portfolio.
     ("property.portfolio.title", "Property"),
-    ("property.portfolio.subtitle", "Buildings, units and their availability."),
+    (
+        "property.portfolio.subtitle",
+        "Buildings, units and their availability.",
+    ),
     ("property.portfolio.empty", "No buildings yet"),
     ("property.emirates.dubai", "Dubai"),
     ("property.emirates.abu_dhabi", "Abu Dhabi"),
@@ -37,9 +40,18 @@ const TEXTS: &[(&str, &str)] = &[
     ("property.buildings.available", "Available"),
     ("property.buildings.occupancy", "Occupancy"),
     ("property.buildings.details", "Building"),
-    ("property.buildings.code_required", "Give the building a code."),
-    ("property.buildings.name_required", "Give the building a name."),
-    ("property.buildings.code_taken", "A building has this code already."),
+    (
+        "property.buildings.code_required",
+        "Give the building a code.",
+    ),
+    (
+        "property.buildings.name_required",
+        "Give the building a name.",
+    ),
+    (
+        "property.buildings.code_taken",
+        "A building has this code already.",
+    ),
     // Units.
     ("property.units.title", "Units"),
     ("property.units.empty", "No units yet"),
@@ -55,8 +67,14 @@ const TEXTS: &[(&str, &str)] = &[
     ("property.units.tenant", "Tenant"),
     ("property.units.number_required", "Give the unit a number."),
     ("property.units.no_building", "The building was not found."),
-    ("property.units.negative", "The size and the rent cannot be negative."),
-    ("property.units.number_taken", "The building has a unit with this number already."),
+    (
+        "property.units.negative",
+        "The size and the rent cannot be negative.",
+    ),
+    (
+        "property.units.number_taken",
+        "The building has a unit with this number already.",
+    ),
     (
         "property.units.reserve_later",
         "A unit is reserved with a booking deposit, which comes with reservations.",
@@ -72,11 +90,17 @@ const TEXTS: &[(&str, &str)] = &[
     ("property.units.status.reserved", "Reserved"),
     ("property.units.status.occupied", "Occupied"),
     ("property.units.status.notice_given", "Notice given"),
-    ("property.units.status.under_maintenance", "Under maintenance"),
+    (
+        "property.units.status.under_maintenance",
+        "Under maintenance",
+    ),
     ("property.units.status.off_market", "Off the market"),
     // Leases.
     ("property.leases.title", "Leases"),
-    ("property.leases.subtitle", "Tenancy contracts and their versions."),
+    (
+        "property.leases.subtitle",
+        "Tenancy contracts and their versions.",
+    ),
     ("property.leases.empty", "No leases yet"),
     ("property.leases.new", "New lease"),
     ("property.leases.created", "Lease drafted."),
@@ -94,13 +118,19 @@ const TEXTS: &[(&str, &str)] = &[
     ("property.leases.instalments", "Rent instalments"),
     ("property.leases.first_due", "First instalment due"),
     ("property.leases.notice_days", "Notice period (days)"),
-    ("property.leases.notice_days_hint", "Leave empty for the 90 days of the law."),
+    (
+        "property.leases.notice_days_hint",
+        "Leave empty for the 90 days of the law.",
+    ),
     ("property.leases.notice_days_label", "Notice period (days)"),
     ("property.leases.terms", "Clauses"),
     ("property.leases.terms_title", "Terms"),
     ("property.leases.vat", "VAT"),
     ("property.leases.effective_date", "Effective date"),
-    ("property.leases.effective_date_hint", "Required for an amendment."),
+    (
+        "property.leases.effective_date_hint",
+        "Required for an amendment.",
+    ),
     ("property.leases.follow_up_until", "Follow-up date"),
     ("property.leases.kind_label", "Version"),
     ("property.leases.kind.new", "First version"),
@@ -120,7 +150,10 @@ const TEXTS: &[(&str, &str)] = &[
         "property.leases.submit_message",
         "The contract goes out for signature and the lease can no longer be edited.",
     ),
-    ("property.leases.submitted", "Lease submitted for signature."),
+    (
+        "property.leases.submitted",
+        "Lease submitted for signature.",
+    ),
     ("property.leases.activate", "Activate"),
     (
         "property.leases.activate_message",
@@ -128,9 +161,15 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("property.leases.activated", "Lease activated."),
     ("property.leases.waive_deposit", "Waive the deposit"),
-    ("property.leases.waive_message", "Activation will not wait for the deposit."),
+    (
+        "property.leases.waive_message",
+        "Activation will not wait for the deposit.",
+    ),
     ("property.leases.status.draft", "Draft"),
-    ("property.leases.status.pending_signature", "Pending signature"),
+    (
+        "property.leases.status.pending_signature",
+        "Pending signature",
+    ),
     ("property.leases.status.active", "Active"),
     ("property.leases.status.renewal_due", "Renewal due"),
     ("property.leases.status.expired", "Holding over"),
@@ -140,19 +179,46 @@ const TEXTS: &[(&str, &str)] = &[
     ("property.leases.status.terminated", "Terminated"),
     ("property.leases.status.cancelled", "Cancelled"),
     ("property.leases.no_unit", "The unit was not found."),
-    ("property.leases.no_tenant", "The tenant was not found among the parties."),
-    ("property.leases.no_previous", "The version this one replaces was not found."),
-    ("property.leases.dates", "The end date must be after the start date."),
-    ("property.leases.rent_required", "The annual rent must be above 0."),
-    ("property.leases.deposit_negative", "The deposit cannot be negative."),
-    ("property.leases.instalments_range", "Pay the rent in 1 to :max instalments."),
-    ("property.leases.version_kind_bad", "A new version is a renewal or an amendment."),
+    (
+        "property.leases.no_tenant",
+        "The tenant was not found among the parties.",
+    ),
+    (
+        "property.leases.no_previous",
+        "The version this one replaces was not found.",
+    ),
+    (
+        "property.leases.dates",
+        "The end date must be after the start date.",
+    ),
+    (
+        "property.leases.rent_required",
+        "The annual rent must be above 0.",
+    ),
+    (
+        "property.leases.deposit_negative",
+        "The deposit cannot be negative.",
+    ),
+    (
+        "property.leases.instalments_range",
+        "Pay the rent in 1 to :max instalments.",
+    ),
+    (
+        "property.leases.version_kind_bad",
+        "A new version is a renewal or an amendment.",
+    ),
     (
         "property.leases.one_in_progress",
         "Another renewal or amendment of this lease is still being prepared or signed.",
     ),
-    ("property.leases.edit_draft_only", "A lease can be edited only while it is a draft."),
-    ("property.leases.unit_not_available", "The unit is not available."),
+    (
+        "property.leases.edit_draft_only",
+        "A lease can be edited only while it is a draft.",
+    ),
+    (
+        "property.leases.unit_not_available",
+        "The unit is not available.",
+    ),
     (
         "property.leases.previous_not_renewable",
         "The previous version is :status: a renewal replaces a lease that is due for renewal or holding over.",
@@ -177,13 +243,22 @@ const TEXTS: &[(&str, &str)] = &[
         "property.leases.plan_mismatch",
         "The payment plan adds up to :plan, not the annual rent of :rent.",
     ),
-    ("property.leases.cancel_pending", "A cancellation of this lease is waiting for approval."),
+    (
+        "property.leases.cancel_pending",
+        "A cancellation of this lease is waiting for approval.",
+    ),
     (
         "property.leases.deposit_missing",
         "The deposit has not been received: :needed needed, :held held. A property manager can waive it.",
     ),
-    ("property.leases.deposit_zero", "A deposit cannot be adjusted to nothing."),
-    ("property.leases.waive_status", "Only a lease that is not active yet can have its deposit waived."),
+    (
+        "property.leases.deposit_zero",
+        "A deposit cannot be adjusted to nothing.",
+    ),
+    (
+        "property.leases.waive_status",
+        "Only a lease that is not active yet can have its deposit waived.",
+    ),
     // The payment plan and the cheques.
     ("property.charges.title", "Payment plan"),
     ("property.charges.empty", "No charges"),
@@ -218,8 +293,14 @@ const TEXTS: &[(&str, &str)] = &[
         "One cheque a line: number | YYYY-MM-DD | amount | instalment (optional)",
     ),
     ("property.cheques.none", "Give at least one cheque."),
-    ("property.cheques.lease_over", "This lease has ended: no cheque can be recorded for it."),
-    ("property.cheques.bad_charge", "A cheque can only pay a live charge of this lease."),
+    (
+        "property.cheques.lease_over",
+        "This lease has ended: no cheque can be recorded for it.",
+    ),
+    (
+        "property.cheques.bad_charge",
+        "A cheque can only pay a live charge of this lease.",
+    ),
     ("property.cheques.status.received", "Received"),
     ("property.cheques.status.due_for_deposit", "Due for deposit"),
     ("property.cheques.status.deposited", "Deposited"),
@@ -239,19 +320,40 @@ const TEXTS: &[(&str, &str)] = &[
     ("property.ejari.registered_on", "Registered on"),
     ("property.ejari.expires_on", "Expires on"),
     ("property.ejari.missing", "Not registered"),
-    ("property.ejari.recorded", "The Ejari registration was recorded."),
+    (
+        "property.ejari.recorded",
+        "The Ejari registration was recorded.",
+    ),
     ("property.ejari.recorded_done", "Ejari recorded."),
-    ("property.ejari.number_required", "Give the registration number."),
-    ("property.ejari.not_running", "Only a lease in force has an Ejari registration."),
+    (
+        "property.ejari.number_required",
+        "Give the registration number.",
+    ),
+    (
+        "property.ejari.not_running",
+        "Only a lease in force has an Ejari registration.",
+    ),
     // Tasks.
-    ("property.tasks.ejari_new", "Register the Ejari contract of :lease"),
-    ("property.tasks.ejari_renewal", "Renew the Ejari contract of :lease"),
-    ("property.tasks.ejari_amendment", "Update the Ejari contract of :lease"),
+    (
+        "property.tasks.ejari_new",
+        "Register the Ejari contract of :lease",
+    ),
+    (
+        "property.tasks.ejari_renewal",
+        "Renew the Ejari contract of :lease",
+    ),
+    (
+        "property.tasks.ejari_amendment",
+        "Update the Ejari contract of :lease",
+    ),
     (
         "property.tasks.ejari_description",
         "Register the tenancy contract with Ejari or Tawtheeq and record the number on the lease.",
     ),
-    ("property.tasks.deposit_adjust", "Adjust the deposit of :lease to :amount"),
+    (
+        "property.tasks.deposit_adjust",
+        "Adjust the deposit of :lease to :amount",
+    ),
     // History.
     ("property.history.title", "History"),
     ("property.history.change", "Change"),
@@ -262,12 +364,18 @@ const TEXTS: &[(&str, &str)] = &[
     ("property.cancel_reason", "Cancelled because"),
     ("property.cancel_forfeit", "Deposit forfeited"),
     ("property.cancel_forfeit_clause", "Clause of the forfeit"),
-    ("property.cancel.forfeit_negative", "The forfeited amount cannot be negative."),
+    (
+        "property.cancel.forfeit_negative",
+        "The forfeited amount cannot be negative.",
+    ),
     (
         "property.cancel.clause_required",
         "A forfeit needs the clause of the signed reservation or contract terms that allows it.",
     ),
-    ("property.cancel.forfeit_too_high", "The forfeited amount cannot exceed the deposit."),
+    (
+        "property.cancel.forfeit_too_high",
+        "The forfeited amount cannot exceed the deposit.",
+    ),
     ("property.cancel.action", "Cancel the lease"),
     (
         "property.cancel.description",
@@ -282,9 +390,15 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("property.cancel.clause", "Clause of the terms"),
     ("property.cancel.done", "Lease cancelled."),
-    ("property.cancel.sent", "Cancellation sent to a property manager for approval."),
+    (
+        "property.cancel.sent",
+        "Cancellation sent to a property manager for approval.",
+    ),
     ("property.cancel.default_reason", "Lease cancelled"),
-    ("property.cancel.refund_reason", "Lease :lease cancelled: :reason"),
+    (
+        "property.cancel.refund_reason",
+        "Lease :lease cancelled: :reason",
+    ),
     (
         "property.cancel.task_deposited",
         "Cheques deposited before :lease was cancelled",
@@ -309,13 +423,22 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("property.chase.until", "Follow up on"),
     ("property.chase.extended_done", "Follow-up extended."),
-    ("property.chase.extended", "The follow-up was extended to :until."),
-    ("property.chase.task_title", "Extend or cancel the lease :lease, still waiting for its signature"),
+    (
+        "property.chase.extended",
+        "The follow-up was extended to :until.",
+    ),
+    (
+        "property.chase.task_title",
+        "Extend or cancel the lease :lease, still waiting for its signature",
+    ),
     (
         "property.chase.task_description",
         "The lease has waited :days days since :since. Extend the follow-up to a date at most 30 days ahead, or cancel it.",
     ),
-    ("property.chase.not_waiting", "Only a lease waiting for its signature has a follow-up."),
+    (
+        "property.chase.not_waiting",
+        "Only a lease waiting for its signature has a follow-up.",
+    ),
     (
         "property.chase.date_range",
         "The follow-up date is after today and at most :max days ahead.",
@@ -371,7 +494,10 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     // Holding over (PRP.RUL.03, PRP.RUL.14).
     ("property.holding.line", ":description (holding over)"),
-    ("property.holding.not_over", "The end date of the lease has not passed."),
+    (
+        "property.holding.not_over",
+        "The end date of the lease has not passed.",
+    ),
     (
         "property.holding.renewal_active",
         "A renewal version is active, so the lease is not holding over.",
@@ -385,7 +511,10 @@ const TEXTS: &[(&str, &str)] = &[
         "property.holding.task_description",
         "The tenant stays after the end date, so the lease renews on the same terms and is billed until :until. Issue the renewal version on the same terms and renew Ejari, or record a notice.",
     ),
-    ("property.holding.task_done", "A renewal version was submitted."),
+    (
+        "property.holding.task_done",
+        "A renewal version was submitted.",
+    ),
     ("property.renewal.title", "Renewal"),
     ("property.renewal.notice_deadline", "Notice deadline"),
     ("property.renewal.decision", "Renewal decision"),
@@ -399,23 +528,44 @@ const TEXTS: &[(&str, &str)] = &[
         "Same terms, changed terms or not renewing. Changed terms need a notice to the tenant before the notice deadline.",
     ),
     ("property.renewal.decided", "Renewal decision saved."),
-    ("property.renewal.decision_refused", "Only a lease in force has a renewal decision."),
+    (
+        "property.renewal.decision_refused",
+        "Only a lease in force has a renewal decision.",
+    ),
     ("property.renewal.notice", "Notice of changed terms"),
     ("property.renewal.notice_not_sent", "Not sent"),
-    ("property.renewal.notice_undelivered", "Sent on :sent, not delivered"),
-    ("property.renewal.notice_delivered", "Delivered on :delivered"),
-    ("property.renewal.send_notice", "Send the notice of changed terms"),
+    (
+        "property.renewal.notice_undelivered",
+        "Sent on :sent, not delivered",
+    ),
+    (
+        "property.renewal.notice_delivered",
+        "Delivered on :delivered",
+    ),
+    (
+        "property.renewal.send_notice",
+        "Send the notice of changed terms",
+    ),
     (
         "property.renewal.send_notice_message",
         "The tenant gets the notice of changed terms. It counts once its delivery is proved.",
     ),
-    ("property.renewal.notice_sent", "Notice of changed terms sent."),
+    (
+        "property.renewal.notice_sent",
+        "Notice of changed terms sent.",
+    ),
     (
         "property.renewal.notice_needs_decision",
         "Record the decision changed terms before sending the notice.",
     ),
-    ("property.renewal.notice_refused", "Only a lease in force can be sent a notice of changed terms."),
-    ("property.renewal.notice_already_delivered", "The notice was delivered already."),
+    (
+        "property.renewal.notice_refused",
+        "Only a lease in force can be sent a notice of changed terms.",
+    ),
+    (
+        "property.renewal.notice_already_delivered",
+        "The notice was delivered already.",
+    ),
     ("property.renewal.current_terms_only", "Current terms only"),
     (
         "property.renewal.current_terms_only_yes",
@@ -441,21 +591,36 @@ const TEXTS: &[(&str, &str)] = &[
         "property.terms.answer_description",
         "Other terms differ from the current version. Say whether they are against the tenant; a no needs a reason, which is kept in the history.",
     ),
-    ("property.terms.against_question", "Changes terms against the tenant?"),
+    (
+        "property.terms.against_question",
+        "Changes terms against the tenant?",
+    ),
     ("property.terms.yes", "Yes"),
     ("property.terms.no", "No"),
     ("property.terms.reason", "Reason for no"),
     ("property.terms.reason_hint", "For example a typo fix."),
     ("property.terms.answered", "Answer saved."),
-    ("property.terms.answer_draft_only", "Only a draft renewal or amendment has this answer."),
+    (
+        "property.terms.answer_draft_only",
+        "Only a draft renewal or amendment has this answer.",
+    ),
     ("property.terms.reason_required", "A no needs a reason."),
     ("property.terms.not_against", "No"),
-    ("property.terms.against_found", "Yes, found in the rent, the deposit or the cheques"),
-    ("property.terms.against_asked", "Yes, until answered no with a reason"),
+    (
+        "property.terms.against_found",
+        "Yes, found in the rent, the deposit or the cheques",
+    ),
+    (
+        "property.terms.against_asked",
+        "Yes, until answered no with a reason",
+    ),
     ("property.terms.acceptance", "Tenant's signed acceptance"),
     ("property.terms.acceptance_attached", "Attached"),
     ("property.terms.acceptance_missing", "Not attached"),
-    ("property.renewal.problem_undecided", "No renewal decision is recorded."),
+    (
+        "property.renewal.problem_undecided",
+        "No renewal decision is recorded.",
+    ),
     (
         "property.renewal.problem_undelivered",
         "The notice of changed terms was not delivered (notice not delivered).",
@@ -502,8 +667,14 @@ const TEXTS: &[(&str, &str)] = &[
     ("property.notice.party_landlord", "The landlord"),
     ("property.notice.reason", "Reason"),
     ("property.notice.reason_end_of_term", "End of term"),
-    ("property.notice.reason_early_termination", "Early termination"),
-    ("property.notice.reason_landlords_ground", "Landlord's ground"),
+    (
+        "property.notice.reason_early_termination",
+        "Early termination",
+    ),
+    (
+        "property.notice.reason_landlords_ground",
+        "Landlord's ground",
+    ),
     ("property.notice.reason_non_payment", "Non-payment"),
     ("property.notice.ground", "Landlord's ground, as text"),
     ("property.notice.planned_move_out", "Planned move-out date"),
@@ -516,12 +687,18 @@ const TEXTS: &[(&str, &str)] = &[
     ("property.notice.not_delivered", "Notice not delivered"),
     ("property.notice.delivered_on", "Delivered on :day"),
     ("property.notice.sent_on", "Sent on :day"),
-    ("property.notice.party_required", "Say who gave the notice: the tenant or the landlord."),
+    (
+        "property.notice.party_required",
+        "Say who gave the notice: the tenant or the landlord.",
+    ),
     (
         "property.notice.reason_required",
         "Give the reason: end of term, early termination, the landlord's ground or non-payment.",
     ),
-    ("property.notice.date_required", "Give the date of the notice."),
+    (
+        "property.notice.date_required",
+        "Give the date of the notice.",
+    ),
     (
         "property.notice.planned_required",
         "A tenant's notice needs the planned move-out date.",
@@ -530,7 +707,10 @@ const TEXTS: &[(&str, &str)] = &[
         "property.notice.planned_before",
         "The planned move-out date cannot be before the notice date.",
     ),
-    ("property.notice.penalty_negative", "The penalty cannot be negative."),
+    (
+        "property.notice.penalty_negative",
+        "The penalty cannot be negative.",
+    ),
     (
         "property.notice.penalty_not_allowed",
         "A penalty belongs to a tenant's notice with the reason early termination.",
@@ -539,13 +719,22 @@ const TEXTS: &[(&str, &str)] = &[
         "property.notice.charge_type_missing",
         "Configure the charge type first: the early termination fee is not in the charge catalogue.",
     ),
-    ("property.notice.not_running", "A notice can be recorded on a lease in force only."),
+    (
+        "property.notice.not_running",
+        "A notice can be recorded on a lease in force only.",
+    ),
     (
         "property.notice.planned_edit_refused",
         "Only the planned move-out date of a tenant's notice can be changed.",
     ),
-    ("property.notice.planned_changed", "Planned move-out date changed."),
-    ("property.notice.change_planned", "Change the planned move-out date"),
+    (
+        "property.notice.planned_changed",
+        "Planned move-out date changed.",
+    ),
+    (
+        "property.notice.change_planned",
+        "Change the planned move-out date",
+    ),
     (
         "property.notice.penalty_line",
         "Early termination fee, :lease",
@@ -562,7 +751,10 @@ const TEXTS: &[(&str, &str)] = &[
         "property.notice.ticket_description_open",
         "Inspect the unit when the tenant moves out, collect the keys and record the inspection on the lease. The move-out date follows the proof of delivery of the landlord's notice.",
     ),
-    ("property.charge_types.required", "Give the charge type a code and a name."),
+    (
+        "property.charge_types.required",
+        "Give the charge type a code and a name.",
+    ),
     // Withdrawing a notice (BL-PRP-10, PRP.ACL.20).
     ("property.withdraw.action", "Withdraw the notice"),
     (
@@ -586,34 +778,64 @@ const TEXTS: &[(&str, &str)] = &[
         "property.withdraw.wrong_target",
         "By its dates the lease goes back to :state.",
     ),
-    ("property.withdraw.reason", "Notice withdrawn with the written agreement of the landlord side"),
-    ("property.withdraw.ticket_note", "Cancelled: the notice was withdrawn."),
+    (
+        "property.withdraw.reason",
+        "Notice withdrawn with the written agreement of the landlord side",
+    ),
+    (
+        "property.withdraw.ticket_note",
+        "Cancelled: the notice was withdrawn.",
+    ),
     // Terminating a lease (BL-PRP-11).
-    ("property.inspection.record", "Record the move-out inspection"),
+    (
+        "property.inspection.record",
+        "Record the move-out inspection",
+    ),
     (
         "property.inspection.description",
         "When the inspection is completed and the keys are back, the lease can be terminated. Dates you leave out keep what was recorded.",
     ),
     ("property.inspection.done_on", "Inspection completed on"),
-    ("property.inspection.keys_returned_on", "All keys returned on"),
+    (
+        "property.inspection.keys_returned_on",
+        "All keys returned on",
+    ),
     ("property.inspection.defects", "Defects that need work"),
-    ("property.inspection.recorded", "Move-out inspection recorded."),
-    ("property.inspection.no_notice", "Only a lease with a notice has a move-out inspection."),
-    ("property.inspection.nothing", "Give the date of the inspection or of the keys."),
-    ("property.inspection.ticket_note", "The move-out inspection was recorded on the lease."),
+    (
+        "property.inspection.recorded",
+        "Move-out inspection recorded.",
+    ),
+    (
+        "property.inspection.no_notice",
+        "Only a lease with a notice has a move-out inspection.",
+    ),
+    (
+        "property.inspection.nothing",
+        "Give the date of the inspection or of the keys.",
+    ),
+    (
+        "property.inspection.ticket_note",
+        "The move-out inspection was recorded on the lease.",
+    ),
     ("property.terminate.action", "Terminate the lease"),
     (
         "property.terminate.description",
         "The tenant has moved out. Charges after the move-out date are cancelled, the invoices of later periods are credited pro rata, later cheques are returned and the deposit settlement starts.",
     ),
-    ("property.terminate.move_out", "Move-out date (keys returned)"),
+    (
+        "property.terminate.move_out",
+        "Move-out date (keys returned)",
+    ),
     ("property.terminate.rent_due_until", "Rent due until"),
     (
         "property.terminate.rent_due_until_hint",
         "Only when the contract keeps rent due after move-out: charges and cheques up to this date stay.",
     ),
     ("property.terminate.credit", "The credit that is left"),
-    ("property.terminate.credit_refund", "Refund it to the tenant"),
+    (
+        "property.terminate.credit_refund",
+        "Refund it to the tenant",
+    ),
     ("property.terminate.credit_keep", "Keep it as credit"),
     ("property.terminate.credited", "Credited for later periods"),
     ("property.terminate.done", "Lease terminated."),
@@ -622,8 +844,14 @@ const TEXTS: &[(&str, &str)] = &[
         "property.terminate.inspection_missing",
         "Complete the move-out inspection first.",
     ),
-    ("property.terminate.keys_missing", "All the keys must be returned first."),
-    ("property.terminate.move_out_required", "Give the move-out date."),
+    (
+        "property.terminate.keys_missing",
+        "All the keys must be returned first.",
+    ),
+    (
+        "property.terminate.move_out_required",
+        "Give the move-out date.",
+    ),
     (
         "property.terminate.move_out_early",
         "The move-out date cannot be before the lease started.",
@@ -632,7 +860,10 @@ const TEXTS: &[(&str, &str)] = &[
         "property.terminate.due_until_early",
         "Rent cannot be due until a day before the move-out date.",
     ),
-    ("property.terminate.reason", "Lease :lease ended: the tenant moved out"),
+    (
+        "property.terminate.reason",
+        "Lease :lease ended: the tenant moved out",
+    ),
     (
         "property.terminate.draft_straddles",
         "Invoice :invoice is a draft for a period that straddles the move-out date: adjust it by hand.",
@@ -647,13 +878,22 @@ const TEXTS: &[(&str, &str)] = &[
         "The registration was cancelled after move-out.",
     ),
     ("property.ejari.cancelled_on", "Ejari cancelled on"),
-    ("property.ejari.cancelled_done", "Ejari cancellation recorded."),
+    (
+        "property.ejari.cancelled_done",
+        "Ejari cancellation recorded.",
+    ),
     (
         "property.ejari.cancel_refused",
         "Only a terminated lease with a registration number has an Ejari cancellation.",
     ),
-    ("property.ejari.cancelled", "The Ejari cancellation was recorded."),
-    ("property.ejari.cancel_task", "Cancel the Ejari contract of :lease"),
+    (
+        "property.ejari.cancelled",
+        "The Ejari cancellation was recorded.",
+    ),
+    (
+        "property.ejari.cancel_task",
+        "Cancel the Ejari contract of :lease",
+    ),
     (
         "property.ejari.cancel_task_description",
         "The lease ended :days days ago and the registration :number is not cancelled. Cancel it and record the date on the lease.",
@@ -680,7 +920,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("property.legal.type_eviction", "Eviction"),
     ("property.legal.type_deposit_dispute", "Deposit dispute"),
     ("property.legal.type_other", "Other"),
-    ("property.legal.reference", "Rental Dispute Centre or court reference"),
+    (
+        "property.legal.reference",
+        "Rental Dispute Centre or court reference",
+    ),
     (
         "property.legal.reference_hint",
         "Can wait while the case is prepared; needed to clear it with a judgment.",
@@ -701,14 +944,23 @@ const TEXTS: &[(&str, &str)] = &[
     ("property.legal.outcome_paid", "Paid"),
     ("property.legal.outcome_settled", "Settled"),
     ("property.legal.outcome_judgment", "Judgment"),
-    ("property.legal.outcome_eviction_executed", "Eviction executed"),
+    (
+        "property.legal.outcome_eviction_executed",
+        "Eviction executed",
+    ),
     ("property.legal.note", "Note"),
-    ("property.legal.outcome_required", "Give the outcome: paid, settled or judgment."),
+    (
+        "property.legal.outcome_required",
+        "Give the outcome: paid, settled or judgment.",
+    ),
     (
         "property.legal.reference_required",
         "A judgment needs the case reference: record it first.",
     ),
-    ("property.legal.cleared_already", "This legal case is cleared already."),
+    (
+        "property.legal.cleared_already",
+        "This legal case is cleared already.",
+    ),
     (
         "property.legal.not_started",
         "A lease that never started has no legal case.",
@@ -717,12 +969,18 @@ const TEXTS: &[(&str, &str)] = &[
         "property.legal.ticket_unavailable",
         "Pick an open legal case ticket of this lease that has no flag yet.",
     ),
-    ("property.legal.ticket_title", "Legal case (:type) on :lease"),
+    (
+        "property.legal.ticket_title",
+        "Legal case (:type) on :lease",
+    ),
     (
         "property.legal.ticket_description",
         "The legal case flag of :lease. Follow the case and clear the flag with its outcome.",
     ),
-    ("property.legal.ticket_resolved", "The legal case was cleared: :outcome."),
+    (
+        "property.legal.ticket_resolved",
+        "The legal case was cleared: :outcome.",
+    ),
     // Amending an active lease (BL-PRP-08).
     (
         "property.amend.no_amendment",
@@ -767,14 +1025,23 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("property.force.reason", "Reason"),
     ("property.force.reason_abandoned", "The unit was abandoned"),
-    ("property.force.reason_eviction_executed", "The eviction was executed"),
-    ("property.force.reason_required", "Choose the reason: abandoned or eviction executed."),
+    (
+        "property.force.reason_eviction_executed",
+        "The eviction was executed",
+    ),
+    (
+        "property.force.reason_required",
+        "Choose the reason: abandoned or eviction executed.",
+    ),
     ("property.force.move_out", "Move-out date"),
     (
         "property.force.move_out_hint",
         "The abandonment inspection date, or the execution date of the eviction.",
     ),
-    ("property.force.move_out_required", "Give the move-out date."),
+    (
+        "property.force.move_out_required",
+        "Give the move-out date.",
+    ),
     ("property.force.basis", "Legal basis for repossession"),
     (
         "property.force.basis_hint",
@@ -810,8 +1077,14 @@ const TEXTS: &[(&str, &str)] = &[
         "property.force.missing_repossession_basis",
         "Repossession basis missing: attach the legal basis for repossession to the lease.",
     ),
-    ("property.force.history_abandoned", "The tenant abandoned the unit"),
-    ("property.force.history_eviction_executed", "The eviction was executed"),
+    (
+        "property.force.history_abandoned",
+        "The tenant abandoned the unit",
+    ),
+    (
+        "property.force.history_eviction_executed",
+        "The eviction was executed",
+    ),
     (
         "property.force.sent",
         "Sent for approval. The lease stays as it is until it is approved.",
@@ -838,9 +1111,18 @@ const TEXTS: &[(&str, &str)] = &[
         "property.arrears.demand_task_description",
         "Invoices overdue by :days days or more: :list. Send the statutory notice from the lease; the demand period starts when its delivery is proven.",
     ),
-    ("property.arrears.demand_added", "Added to the demand: :list"),
-    ("property.arrears.nothing_left", "Nothing is overdue any more: the demand is not needed."),
-    ("property.arrears.demand_sent", "The formal payment demand was sent."),
+    (
+        "property.arrears.demand_added",
+        "Added to the demand: :list",
+    ),
+    (
+        "property.arrears.nothing_left",
+        "Nothing is overdue any more: the demand is not needed.",
+    ),
+    (
+        "property.arrears.demand_sent",
+        "The formal payment demand was sent.",
+    ),
     (
         "property.arrears.not_open",
         "This demand is sent or closed already.",
@@ -857,8 +1139,14 @@ const TEXTS: &[(&str, &str)] = &[
         "property.arrears.plan_agreed",
         "A payment plan was agreed until :until.",
     ),
-    ("property.arrears.plan_note_required", "Write the agreed dates."),
-    ("property.arrears.plan_date_past", "The latest agreed date cannot be in the past."),
+    (
+        "property.arrears.plan_note_required",
+        "Write the agreed dates.",
+    ),
+    (
+        "property.arrears.plan_date_past",
+        "The latest agreed date cannot be in the past.",
+    ),
     ("property.arrears.title", "Arrears"),
     ("property.arrears.send", "Send the formal payment demand"),
     (
@@ -911,7 +1199,10 @@ const TEXTS: &[(&str, &str)] = &[
         "property.agreements.fee_invalid",
         "The fee must be between 0% and 100%, and the fixed fee cannot be negative.",
     ),
-    ("property.agreements.dates_invalid", "The agreement cannot end before it starts."),
+    (
+        "property.agreements.dates_invalid",
+        "The agreement cannot end before it starts.",
+    ),
     ("property.agreements.no_unit", "The unit was not found."),
     (
         "property.agreements.unit_taken",
@@ -949,29 +1240,53 @@ const TEXTS: &[(&str, &str)] = &[
     ("property.statements.line_description", "Description"),
     ("property.statements.line_amount", "Amount"),
     ("property.statements.line_kind", "Kind"),
-    ("property.statements.line_direction", "Direction (adjustments only)"),
-    ("property.statements.direction_credit", "In favour of the owner"),
+    (
+        "property.statements.line_direction",
+        "Direction (adjustments only)",
+    ),
+    (
+        "property.statements.direction_credit",
+        "In favour of the owner",
+    ),
     ("property.statements.direction_debit", "Against the owner"),
     ("property.statements.kind.collected", "Rent collected"),
     ("property.statements.kind.expense", "Expense"),
     ("property.statements.kind.fee", "Management fee"),
     ("property.statements.kind.adjustment", "Adjustment"),
     ("property.statements.kind.written_off", "Rent written off"),
-    ("property.statements.kind.recovered", "Recovered after write-off"),
+    (
+        "property.statements.kind.recovered",
+        "Recovered after write-off",
+    ),
     ("property.statements.add_line", "Add a line"),
-    ("property.statements.add_line_description", "A cost or a correction on the draft. You become its preparer."),
+    (
+        "property.statements.add_line_description",
+        "A cost or a correction on the draft. You become its preparer.",
+    ),
     ("property.statements.line_added", "Line added."),
     ("property.statements.remove_line", "Remove a line"),
     ("property.statements.line_removed", "Line removed."),
     ("property.statements.reason", "Reason"),
     ("property.statements.approve", "Approve"),
-    ("property.statements.approve_message", "Approve the statement for the owner."),
+    (
+        "property.statements.approve_message",
+        "Approve the statement for the owner.",
+    ),
     ("property.statements.return", "Return"),
-    ("property.statements.return_description", "Sends the statement back to its preparer."),
+    (
+        "property.statements.return_description",
+        "Sends the statement back to its preparer.",
+    ),
     ("property.statements.publish", "Publish"),
-    ("property.statements.publish_message", "Send the statement to the owner."),
+    (
+        "property.statements.publish_message",
+        "Send the statement to the owner.",
+    ),
     ("property.statements.revise", "Revise"),
-    ("property.statements.revise_description", "Replaces the published statement with a corrected draft. Possible until a payout is recorded."),
+    (
+        "property.statements.revise_description",
+        "Replaces the published statement with a corrected draft. Possible until a payout is recorded.",
+    ),
     ("property.statements.done", "Done."),
     ("property.statements.fee_line", "Management fee :percent%"),
     (
@@ -1030,17 +1345,35 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("property.write_off.invoice", "Invoice"),
     ("property.write_off.reason_code", "Reason"),
-    ("property.write_off.reason_text", "Explanation (needed for other)"),
-    ("property.write_off.consent_note", "Owner's consent (what was agreed, or where the e-mail or letter is kept)"),
-    ("property.write_off.consent_by", "Given by (the owner's contact)"),
+    (
+        "property.write_off.reason_text",
+        "Explanation (needed for other)",
+    ),
+    (
+        "property.write_off.consent_note",
+        "Owner's consent (what was agreed, or where the e-mail or letter is kept)",
+    ),
+    (
+        "property.write_off.consent_by",
+        "Given by (the owner's contact)",
+    ),
     ("property.write_off.consent_on", "Given on"),
     ("property.write_off.submit", "Request the write-off"),
-    ("property.write_off.requested", "The write-off waits for approval."),
+    (
+        "property.write_off.requested",
+        "The write-off waits for approval.",
+    ),
     ("property.write_off.done", "The invoice was written off."),
     ("property.write_off.reason.insolvent", "Insolvent"),
     ("property.write_off.reason.untraceable", "Untraceable"),
-    ("property.write_off.reason.uneconomic_to_pursue", "Uneconomic to pursue"),
-    ("property.write_off.reason.settlement_agreed", "Settlement agreed"),
+    (
+        "property.write_off.reason.uneconomic_to_pursue",
+        "Uneconomic to pursue",
+    ),
+    (
+        "property.write_off.reason.settlement_agreed",
+        "Settlement agreed",
+    ),
     ("property.write_off.reason.other", "Other"),
     (
         "property.write_off.consent_required",
@@ -1070,21 +1403,42 @@ const TEXTS: &[(&str, &str)] = &[
     ("property.disputes.dispute", "Dispute"),
     ("property.disputes.outcome", "Outcome"),
     ("property.disputes.outcome_upheld", "The statement stands"),
-    ("property.disputes.outcome_adjusted", "An adjustment line goes on the next statement"),
-    ("property.disputes.outcome_reallocated", "The cost is moved between the owners on their next statements"),
-    ("property.disputes.outcome_revised", "The statement is revised"),
+    (
+        "property.disputes.outcome_adjusted",
+        "An adjustment line goes on the next statement",
+    ),
+    (
+        "property.disputes.outcome_reallocated",
+        "The cost is moved between the owners on their next statements",
+    ),
+    (
+        "property.disputes.outcome_revised",
+        "The statement is revised",
+    ),
     ("property.disputes.amount", "Amount of the adjustment"),
-    ("property.disputes.direction", "Effect on this owner's balance"),
+    (
+        "property.disputes.direction",
+        "Effect on this owner's balance",
+    ),
     ("property.disputes.credit", "In favour of this owner"),
     ("property.disputes.debit", "Against this owner"),
-    ("property.disputes.other_agreement", "Other owner's agreement (number)"),
+    (
+        "property.disputes.other_agreement",
+        "Other owner's agreement (number)",
+    ),
     ("property.disputes.note", "Note"),
     ("property.disputes.cleared", "The dispute was cleared."),
     ("property.disputes.status", "Status"),
     ("property.disputes.status_open", "Open"),
     ("property.disputes.status_cleared", "Cleared"),
-    ("property.disputes.ticket_title", "Owner statement dispute: :statement"),
-    ("property.disputes.ticket_resolved", "Dispute cleared: :outcome"),
+    (
+        "property.disputes.ticket_title",
+        "Owner statement dispute: :statement",
+    ),
+    (
+        "property.disputes.ticket_resolved",
+        "Dispute cleared: :outcome",
+    ),
     (
         "property.disputes.adjustment_line",
         "Adjustment of :statement: :what",
@@ -1093,9 +1447,18 @@ const TEXTS: &[(&str, &str)] = &[
         "property.disputes.not_disputable",
         "Only a published statement, or a settled one after its payout, can be disputed.",
     ),
-    ("property.disputes.comment_required", "Write what the owner disputes."),
-    ("property.disputes.cleared_already", "The dispute is cleared already."),
-    ("property.disputes.amount_required", "Give the amount of the adjustment."),
+    (
+        "property.disputes.comment_required",
+        "Write what the owner disputes.",
+    ),
+    (
+        "property.disputes.cleared_already",
+        "The dispute is cleared already.",
+    ),
+    (
+        "property.disputes.amount_required",
+        "Give the amount of the adjustment.",
+    ),
     (
         "property.disputes.other_agreement_invalid",
         "The other agreement must be another agreement that reports to its owner.",
@@ -1127,9 +1490,15 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("property.payout.asked", "The payout waits for approval."),
     ("property.payout.paid", "The owner is paid."),
-    ("property.payout.exception_asked", "The owner is on hold: an exception was requested."),
+    (
+        "property.payout.exception_asked",
+        "The owner is on hold: an exception was requested.",
+    ),
     ("property.payout.carried", "The balance is carried forward."),
-    ("property.payout.invoice_asked", "The invoice to the owner waits for approval."),
+    (
+        "property.payout.invoice_asked",
+        "The invoice to the owner waits for approval.",
+    ),
     ("property.payout.invoiced", "The owner is invoiced."),
     ("property.payout.settled_how", "Settled by"),
     ("property.payout.how_payout", "Payout"),
@@ -1159,19 +1528,40 @@ const TEXTS: &[(&str, &str)] = &[
         "property.payout.no_charge_type",
         "Configure the charge type recharged costs (with its VAT treatment) before the owner is invoiced.",
     ),
-    ("property.payout.invoice_line", "Negative balance of statement :statement"),
+    (
+        "property.payout.invoice_line",
+        "Negative balance of statement :statement",
+    ),
     // The deposit applied to the deductions (BL-PRP-17).
-    ("property.deposit_forfeit.action", "Apply the deposit to the deductions"),
+    (
+        "property.deposit_forfeit.action",
+        "Apply the deposit to the deductions",
+    ),
     (
         "property.deposit_forfeit.description",
         "Keeps the whole deposit. It goes to the unpaid rent invoices, oldest first, then to the damage lines; the damages it does not cover are invoiced to the tenant.",
     ),
-    ("property.deposit_forfeit.approver", "Approved by (property manager)"),
-    ("property.deposit_forfeit.approver_hint", "The number of a property manager of the building who is not you."),
-    ("property.deposit_forfeit.second", "Second approval (finance or the owner)"),
-    ("property.deposit_forfeit.second_hint", "Needed when the total deductions are above AED 5,000.00."),
+    (
+        "property.deposit_forfeit.approver",
+        "Approved by (property manager)",
+    ),
+    (
+        "property.deposit_forfeit.approver_hint",
+        "The number of a property manager of the building who is not you.",
+    ),
+    (
+        "property.deposit_forfeit.second",
+        "Second approval (finance or the owner)",
+    ),
+    (
+        "property.deposit_forfeit.second_hint",
+        "Needed when the total deductions are above AED 5,000.00.",
+    ),
     ("property.deposit_forfeit.submit", "Forfeit the deposit"),
-    ("property.deposit_forfeit.done", "The deposit was applied to the deductions."),
+    (
+        "property.deposit_forfeit.done",
+        "The deposit was applied to the deductions.",
+    ),
     ("property.deposit_forfeit.title", "Deposit settlement"),
     ("property.deposit_forfeit.held", "Deposit"),
     ("property.deposit_forfeit.rent_due", "Unpaid rent"),
@@ -1211,7 +1601,10 @@ const TEXTS: &[(&str, &str)] = &[
         "Configure the charge type damages (with its VAT treatment) before the damages are invoiced.",
     ),
     // The lifecycle of a management agreement and the handover pack (BL-PRP-22).
-    ("property.agreements.no_units", "The agreement lists no unit."),
+    (
+        "property.agreements.no_units",
+        "The agreement lists no unit.",
+    ),
     (
         "property.agreements.fee_missing",
         "Set the fee (a percentage or a fixed fee) and the payout frequency first.",
@@ -1241,12 +1634,18 @@ const TEXTS: &[(&str, &str)] = &[
         "The final owner statement up to the handover date must be approved first.",
     ),
     ("property.handover.deposit_line", "Deposit held for :lease"),
-    ("property.handover.cheque_line", "Cheque :number of :date for :lease"),
+    (
+        "property.handover.cheque_line",
+        "Cheque :number of :date for :lease",
+    ),
     (
         "property.handover.not_ending",
         "The agreement is not waiting for its handover.",
     ),
-    ("property.handover.receipt_blank", "Give the reference of the receipt."),
+    (
+        "property.handover.receipt_blank",
+        "Give the reference of the receipt.",
+    ),
     (
         "property.handover.done_already",
         "This line was handed over already.",
@@ -1304,8 +1703,14 @@ const TEXTS: &[(&str, &str)] = &[
         "Draft the agreement with the owner; add the units, then activate it with the signed agreement attached.",
     ),
     ("property.agreements.owner_party", "Owner (party number)"),
-    ("property.agreements.fee_percent", "Fee (% of the rent collected)"),
-    ("property.agreements.fee_fixed", "Fixed fee per statement (AED)"),
+    (
+        "property.agreements.fee_percent",
+        "Fee (% of the rent collected)",
+    ),
+    (
+        "property.agreements.fee_fixed",
+        "Fixed fee per statement (AED)",
+    ),
     ("property.agreements.start_date", "First day"),
     ("property.agreements.empty", "No management agreements yet"),
     ("property.agreements.number", "Agreement"),
@@ -1335,7 +1740,10 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("property.agreements.unit", "Unit"),
     ("property.agreements.units", "Units"),
-    ("property.agreements.units_empty", "No unit under this agreement yet"),
+    (
+        "property.agreements.units_empty",
+        "No unit under this agreement yet",
+    ),
     ("property.agreements.date_in", "In from"),
     ("property.agreements.date_out", "Out on"),
     ("property.agreements.give_notice", "Give notice"),
@@ -1353,14 +1761,20 @@ const TEXTS: &[(&str, &str)] = &[
         "Hand over to (party number, empty for the owner)",
     ),
     ("property.agreements.notice", "Notice"),
-    ("property.agreements.notice_given", "Notice recorded; the handover pack is started."),
+    (
+        "property.agreements.notice_given",
+        "Notice recorded; the handover pack is started.",
+    ),
     ("property.agreements.ended_on", "Ended on"),
     ("property.agreements.end", "End the agreement"),
     (
         "property.agreements.end_message",
         "The cheques not deposited are returned, the deposits transferred and the tenants told the new payee.",
     ),
-    ("property.agreements.ended", "Agreement ended and handed over."),
+    (
+        "property.agreements.ended",
+        "Agreement ended and handed over.",
+    ),
     (
         "property.agreements.ended_with_problems",
         "Agreement ended. Some steps need a hand: the accountant has a task.",
@@ -1389,12 +1803,18 @@ const TEXTS: &[(&str, &str)] = &[
         "The reference of the receipt the new holder signed for this deposit or cheque.",
     ),
     ("property.handover.receipt_recorded", "Receipt recorded."),
-    ("property.handover.final_statement", "Prepare the final statement"),
+    (
+        "property.handover.final_statement",
+        "Prepare the final statement",
+    ),
     (
         "property.handover.final_statement_message",
         "Drafts the owner statement up to the handover date. Another user approves it.",
     ),
-    ("property.handover.final_statement_made", "The final statement was drafted."),
+    (
+        "property.handover.final_statement_made",
+        "The final statement was drafted.",
+    ),
     (
         "property.handover.final_statement_exists",
         "A statement for these days exists already.",
@@ -1457,25 +1877,43 @@ const TEXTS: &[(&str, &str)] = &[
         "New owner (party number); empty for \"no longer managed\"",
     ),
     ("property.transfers.note", "Note"),
-    ("property.transfers.requested", "Transfer requested; a property manager other than you approves it."),
+    (
+        "property.transfers.requested",
+        "Transfer requested; a property manager other than you approves it.",
+    ),
     ("property.transfers.empty", "No unit has been moved out"),
     ("property.transfers.kind", "What"),
     ("property.transfers.kind_sale", "Sold, still managed"),
     ("property.transfers.kind_unmanaged", "No longer managed"),
     ("property.transfers.status", "Status"),
-    ("property.transfers.status_requested", "Waiting for approval"),
+    (
+        "property.transfers.status_requested",
+        "Waiting for approval",
+    ),
     ("property.transfers.status_approved", "Approved"),
     ("property.transfers.status_rejected", "Rejected"),
     ("property.transfers.approve", "Approve"),
-    ("property.transfers.approved", "Transfer approved and carried out."),
-    ("property.transfers.approved_with_problems", "Transfer approved. Some steps need a hand: the accountant has a task."),
+    (
+        "property.transfers.approved",
+        "Transfer approved and carried out.",
+    ),
+    (
+        "property.transfers.approved_with_problems",
+        "Transfer approved. Some steps need a hand: the accountant has a task.",
+    ),
     ("property.transfers.reject", "Reject"),
-    ("property.transfers.rejected", "Transfer rejected; nothing changed."),
+    (
+        "property.transfers.rejected",
+        "Transfer rejected; nothing changed.",
+    ),
     (
         "property.transfers.deposit_receipt",
         "New owner's receipt for the deposit",
     ),
-    ("property.transfers.record_receipt", "Record receipt of a transfer"),
+    (
+        "property.transfers.record_receipt",
+        "Record receipt of a transfer",
+    ),
     (
         "property.notices.certificate_expired_subject",
         "Certificate expired: {{ building }}",
@@ -1503,7 +1941,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("property.enquiries.received", "Received"),
     ("property.enquiries.empty", "No enquiries yet"),
     ("property.enquiries.created", "Enquiry recorded."),
-    ("property.enquiries.name_required", "Give the prospect's name."),
+    (
+        "property.enquiries.name_required",
+        "Give the prospect's name.",
+    ),
     (
         "property.enquiries.source_unknown",
         "Choose one of the lead sources.",
@@ -1536,10 +1977,22 @@ const TEXTS: &[(&str, &str)] = &[
     ("property.compliance.category", "Category or certificate"),
     ("property.compliance.since", "Since"),
     ("property.compliance.count", "Buildings non-compliant"),
-    ("property.compliance.cause_visit_missed", "Planned visit missed"),
-    ("property.compliance.cause_no_contract", "No service contract"),
-    ("property.compliance.cause_vendor_document_expired", "Vendor document expired"),
-    ("property.compliance.cause_certificate_expired", "Certificate expired"),
+    (
+        "property.compliance.cause_visit_missed",
+        "Planned visit missed",
+    ),
+    (
+        "property.compliance.cause_no_contract",
+        "No service contract",
+    ),
+    (
+        "property.compliance.cause_vendor_document_expired",
+        "Vendor document expired",
+    ),
+    (
+        "property.compliance.cause_certificate_expired",
+        "Certificate expired",
+    ),
 ];
 
 /// The text for `key`: the app's translation when it has one, else the English one.

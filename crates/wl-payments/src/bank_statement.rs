@@ -133,7 +133,11 @@ pub fn parse_balance(text: &str) -> Option<i64> {
     if !digits(whole) || !digits(fraction) || fraction.len() > 2 {
         return None;
     }
-    let whole: i64 = if whole.is_empty() { 0 } else { whole.parse().ok()? };
+    let whole: i64 = if whole.is_empty() {
+        0
+    } else {
+        whole.parse().ok()?
+    };
     let fraction: i64 = format!("{fraction:0<2}").parse().ok()?;
     let fils = whole.checked_mul(100)?.checked_add(fraction)?;
     Some(if negative { -fils } else { fils })
@@ -266,7 +270,12 @@ mod tests {
     #[test]
     fn the_period_end_decides_not_the_import_order() {
         let january = done(5, "ENBD", day(1, 31), Some(900));
-        let december = done(6, "ENBD", NaiveDate::from_ymd_opt(2026, 12, 31).unwrap(), Some(100));
+        let december = done(
+            6,
+            "ENBD",
+            NaiveDate::from_ymd_opt(2026, 12, 31).unwrap(),
+            Some(100),
+        );
         let latest = latest_of(&[december, january]);
         assert_eq!(latest.len(), 1);
         assert_eq!(latest[0].amount, 900);
@@ -295,10 +304,14 @@ mod tests {
         let mut first = done(1, "ENBD", day(1, 31), Some(100));
         let mut second = done(2, "ENBD", day(1, 31), Some(200));
         first.completed_at = Some(renox::db::now());
-        second.completed_at = first.completed_at.map(|t| t + renox::chrono::Duration::seconds(5));
+        second.completed_at = first
+            .completed_at
+            .map(|t| t + renox::chrono::Duration::seconds(5));
         assert_eq!(latest_of(&[second.clone(), first.clone()])[0].amount, 200);
         // Completed the other way round: the first wins.
-        first.completed_at = second.completed_at.map(|t| t + renox::chrono::Duration::seconds(5));
+        first.completed_at = second
+            .completed_at
+            .map(|t| t + renox::chrono::Duration::seconds(5));
         assert_eq!(latest_of(&[second, first])[0].amount, 100);
     }
 

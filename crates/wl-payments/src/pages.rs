@@ -453,14 +453,18 @@ async fn store_drawing(
         other => other,
     };
     if filled(&form.drawing_direction) == Some("in") {
-        let payment = drawings::repay(state, user, &input).await.map_err(refusal)?;
+        let payment = drawings::repay(state, user, &input)
+            .await
+            .map_err(refusal)?;
         return Ok((
             Toast::success(t("recorded")),
             Redirect::route("wl_payments.show", &[&payment.id])?,
         )
             .into_response());
     }
-    let drawing = drawings::request(state, user, &input).await.map_err(refusal)?;
+    let drawing = drawings::request(state, user, &input)
+        .await
+        .map_err(refusal)?;
     let toast = match drawing.status {
         DrawingStatus::Recorded => t("drawings.recorded"),
         _ => t("drawings.requested"),

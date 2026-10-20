@@ -303,7 +303,12 @@ impl Cheque {
 
     /// The documents it pays as subjects, oldest first.
     pub async fn linked(&self, db: &Db) -> Result<Vec<Subject>> {
-        Ok(self.links(db).await?.iter().map(ChequeLink::subject).collect())
+        Ok(self
+            .links(db)
+            .await?
+            .iter()
+            .map(ChequeLink::subject)
+            .collect())
     }
 
     /// The bank returns, oldest first.
@@ -324,7 +329,11 @@ impl Cheque {
 
     /// The bounced received cheques of `party` still owed (`bounced`,
     /// `legal_case`), other than `except`.
-    pub async fn owed_of_party(db: &Db, party: PartyId, except: Option<i64>) -> Result<Vec<Cheque>> {
+    pub async fn owed_of_party(
+        db: &Db,
+        party: PartyId,
+        except: Option<i64>,
+    ) -> Result<Vec<Cheque>> {
         let owed = Cheque::query()
             .where_(Cheque::PARTY_ID.eq(party.0))
             .where_(Cheque::DIRECTION.eq(Direction::In))
@@ -332,10 +341,7 @@ impl Cheque {
             .order_by(Cheque::ID)
             .get(db)
             .await?;
-        Ok(owed
-            .into_iter()
-            .filter(|c| Some(c.id) != except)
-            .collect())
+        Ok(owed.into_iter().filter(|c| Some(c.id) != except).collect())
     }
 
     /// What `party` still owes on its bounced received cheques in
@@ -400,7 +406,10 @@ mod tests {
         c.agreement_type = Some("property.lease".into());
         assert_eq!(c.agreement(), None);
         c.agreement_id = Some(9);
-        assert_eq!(c.agreement().map(|a| a.to_string()).as_deref(), Some("property.lease:9"));
+        assert_eq!(
+            c.agreement().map(|a| a.to_string()).as_deref(),
+            Some("property.lease:9")
+        );
     }
 
     #[test]
@@ -412,7 +421,10 @@ mod tests {
         c.status = ChequeStatus::Bounced;
         let summary = c.summary(vec![Subject::new("invoicing.invoice", 3)]);
         assert_eq!(summary.id, ChequeId(5));
-        assert_eq!((summary.honoured_amount, summary.open_amount), (600_000, 1_400_000));
+        assert_eq!(
+            (summary.honoured_amount, summary.open_amount),
+            (600_000, 1_400_000)
+        );
         assert_eq!(summary.status, ChequeStatus::Bounced);
         assert_eq!(summary.linked.len(), 1);
     }
@@ -423,6 +435,9 @@ mod tests {
         assert_eq!(r.fee_charge(), None);
         r.fee_subject_type = Some("invoicing.charge".into());
         r.fee_subject_id = Some(12);
-        assert_eq!(r.fee_charge().map(|c| c.to_string()).as_deref(), Some("invoicing.charge:12"));
+        assert_eq!(
+            r.fee_charge().map(|c| c.to_string()).as_deref(),
+            Some("invoicing.charge:12")
+        );
     }
 }

@@ -90,7 +90,8 @@ fn told(t: &Booted) -> Vec<Vec<i64>> {
 async fn the_actual_leaves_out_recoverable_vat_and_warns_once() {
     let t = boot().await;
     let e1 = t.entity("PGP").await;
-    t.approved_budget("PGP", 2027, &[("marketing", 3, 1_000_000)]).await;
+    t.approved_budget("PGP", 2027, &[("marketing", 3, 1_000_000)])
+        .await;
     let owner = with_role(&t, "Mona", "marketing_manager").await;
     let manager = with_role(&t, "Fares", "finance_manager").await;
 
@@ -125,7 +126,11 @@ async fn the_actual_leaves_out_recoverable_vat_and_warns_once() {
     let events = t.variance_reached.all();
     assert_eq!(events.len(), 1);
     assert_eq!(
-        (events[0].category.as_str(), events[0].budget, events[0].actual),
+        (
+            events[0].category.as_str(),
+            events[0].budget,
+            events[0].actual
+        ),
         ("marketing", 1_000_000, 1_050_000)
     );
     assert_eq!(events[0].percent_used, Some(105));
@@ -151,7 +156,8 @@ async fn the_actual_leaves_out_recoverable_vat_and_warns_once() {
 async fn an_actual_with_no_budget_line_shows_no_percentage() {
     let t = boot().await;
     let e1 = t.entity("PGP").await;
-    t.approved_budget("PGP", 2027, &[("marketing", 3, 1_000_000)]).await;
+    t.approved_budget("PGP", 2027, &[("marketing", 3, 1_000_000)])
+        .await;
     let manager = with_role(&t, "Fares", "finance_manager").await;
     t.approved_bill(
         &e1,
@@ -186,11 +192,16 @@ async fn income_follows_the_charge_type_and_the_credit_note_its_own_month() {
     let t = boot().await;
     let e1 = t.entity("PGP").await;
     let clerk = t.user_a().await;
-    t.approved_budget("PGP", 2027, &[("sales_services", 3, 2_000_000)]).await;
-    let rent = t.invoice_with_charge(&e1, "rent", 1_000_000, day(3, 10), &clerk).await;
-    t.invoice_with_charge(&e1, "mystery", 500_000, day(3, 12), &clerk).await;
+    t.approved_budget("PGP", 2027, &[("sales_services", 3, 2_000_000)])
+        .await;
+    let rent = t
+        .invoice_with_charge(&e1, "rent", 1_000_000, day(3, 10), &clerk)
+        .await;
+    t.invoice_with_charge(&e1, "mystery", 500_000, day(3, 12), &clerk)
+        .await;
     // An invoice dated in April is not March income.
-    t.invoice_with_charge(&e1, "rent", 300_000, day(4, 2), &clerk).await;
+    t.invoice_with_charge(&e1, "rent", 300_000, day(4, 2), &clerk)
+        .await;
 
     let march = report(&t, &[&e1], 3, false, false).await;
     assert_eq!(row(&march.income, "Sales and services").actual, 1_000_000);
@@ -221,10 +232,16 @@ async fn income_follows_the_charge_type_and_the_credit_note_its_own_month() {
     let march = report(&t, &[&e1], 3, false, false).await;
     assert_eq!(row(&march.income, "Sales and services").actual, 1_000_000);
     let april = report(&t, &[&e1], 4, false, false).await;
-    assert_eq!(row(&april.income, "Sales and services").actual, 300_000 - 200_000);
+    assert_eq!(
+        row(&april.income, "Sales and services").actual,
+        300_000 - 200_000
+    );
     // The year to date adds them up.
     let ytd = report(&t, &[&e1], 4, true, false).await;
-    assert_eq!(row(&ytd.income, "Sales and services").actual, 1_000_000 + 300_000 - 200_000);
+    assert_eq!(
+        row(&ytd.income, "Sales and services").actual,
+        1_000_000 + 300_000 - 200_000
+    );
 }
 
 /// An approved supplier bill line of AED 3,000 in March coded to *Owner
@@ -246,7 +263,12 @@ async fn owner_drawings_stay_out_of_the_operating_result() {
         &e1,
         "SB-1",
         day(3, 11),
-        &[("Personal bill", 300_000, "owner_drawings", VatCategory::Exempt)],
+        &[(
+            "Personal bill",
+            300_000,
+            "owner_drawings",
+            VatCategory::Exempt,
+        )],
     )
     .await;
     t.approved_bill(
@@ -259,7 +281,12 @@ async fn owner_drawings_stay_out_of_the_operating_result() {
     let march = report(&t, &[&e1], 3, false, true).await;
     assert_eq!(march.drawings_total(), (250_000, 300_000));
     assert_eq!(march.expense_total().1, 100_000);
-    assert!(march.expense.iter().all(|r| r.kind != BudgetKind::OwnerDrawings));
+    assert!(
+        march
+            .expense
+            .iter()
+            .all(|r| r.kind != BudgetKind::OwnerDrawings)
+    );
     assert_eq!(march.operating(), (-1_000_000, -100_000));
     assert_eq!(march.after_drawings(), (-1_250_000, -400_000));
     assert_eq!(march.drawings_items.len(), 1);
@@ -279,7 +306,12 @@ async fn the_vat_of_a_drawings_line_stays_in_the_cost() {
         &e1,
         "SB-1",
         day(3, 11),
-        &[("Personal bill", 300_000, "owner_drawings", VatCategory::Standard)],
+        &[(
+            "Personal bill",
+            300_000,
+            "owner_drawings",
+            VatCategory::Standard,
+        )],
     )
     .await;
     let march = report(&t, &[&e1], 3, false, false).await;
@@ -297,7 +329,12 @@ async fn the_drawings_lines_are_only_for_holders_of_drawings_approve() {
         &e1,
         "SB-1",
         day(3, 11),
-        &[("Villa decorator", 300_000, "owner_drawings", VatCategory::Exempt)],
+        &[(
+            "Villa decorator",
+            300_000,
+            "owner_drawings",
+            VatCategory::Exempt,
+        )],
     )
     .await;
     let viewer = t.helper("Vera", &[perm::BUDGETS_VIEW]).await;
@@ -360,8 +397,10 @@ async fn the_all_entities_view_adds_up_and_a_scoped_user_sees_their_entity() {
     let t = boot().await;
     let e1 = t.entity("PGP").await;
     let e2 = t.entity("PGFZ").await;
-    t.approved_budget("PGP", 2027, &[("marketing", 3, 1_000_000)]).await;
-    t.approved_budget("PGFZ", 2027, &[("marketing", 3, 500_000)]).await;
+    t.approved_budget("PGP", 2027, &[("marketing", 3, 1_000_000)])
+        .await;
+    t.approved_budget("PGFZ", 2027, &[("marketing", 3, 500_000)])
+        .await;
     t.approved_bill(
         &e1,
         "SB-1",
@@ -472,15 +511,24 @@ async fn the_kernel_reads_the_actual() {
     .await;
     let budgets = company_budgets(t.state());
     assert_eq!(
-        budgets.actual_amount(t.db(), e1.id, "marketing", day(3, 31)).await.unwrap(),
+        budgets
+            .actual_amount(t.db(), e1.id, "marketing", day(3, 31))
+            .await
+            .unwrap(),
         600_000
     );
     assert_eq!(
-        budgets.actual_amount(t.db(), e1.id, "marketing", day(4, 1)).await.unwrap(),
+        budgets
+            .actual_amount(t.db(), e1.id, "marketing", day(4, 1))
+            .await
+            .unwrap(),
         0
     );
     assert_eq!(
-        budgets.actual_amount(t.db(), e1.id, "nothing", day(3, 1)).await.unwrap(),
+        budgets
+            .actual_amount(t.db(), e1.id, "nothing", day(3, 1))
+            .await
+            .unwrap(),
         0
     );
 }

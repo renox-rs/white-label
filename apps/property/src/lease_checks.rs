@@ -59,10 +59,7 @@ fn previous_refusal(lease: &Lease, previous: &Lease) -> Error {
         VersionKind::Amendment => "property.leases.previous_not_amendable",
         _ => "property.leases.previous_not_renewable",
     };
-    refused(english(
-        key,
-        &[("status", &previous.status.as_str())],
-    ))
+    refused(english(key, &[("status", &previous.status.as_str())]))
 }
 
 /// The first effect of `submit`: the unit, the previous version, the

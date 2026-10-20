@@ -99,12 +99,20 @@ async fn index(State(state): State<AppState>, lang: Lang) -> Result<View> {
                 .closing_balance
                 .map(|fils| money_text(&import.currency, fils))
                 .unwrap_or_else(|| t("bank_statements.no_balance")),
-            status: t(&format!("bank_statements.status.{}", status_code(import.status))),
+            status: t(&format!(
+                "bank_statements.status.{}",
+                status_code(import.status)
+            )),
         })
         .collect();
     let formats = FORMATS
         .iter()
-        .map(|code| ((*code).to_owned(), t(&format!("bank_statements.format.{code}"))))
+        .map(|code| {
+            (
+                (*code).to_owned(),
+                t(&format!("bank_statements.format.{code}")),
+            )
+        })
         .collect();
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
@@ -181,7 +189,11 @@ async fn store(
         closing_balance,
     };
     if bank_statement::upload_problem(&upload).is_some() {
-        return Err(invalid("period_end", t("bank_statements.bad_upload"), &form));
+        return Err(invalid(
+            "period_end",
+            t("bank_statements.bad_upload"),
+            &form,
+        ));
     }
     bank_statement::record(&state.db, Some(user.id), &upload).await?;
     Ok((

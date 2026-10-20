@@ -40,9 +40,7 @@ pub use template::{
 
 /// The employee services under the names of the plan: `employees::create`.
 pub mod employees {
-    pub use crate::employee::{
-        change_job_role, correct_hire_date, create, set_scope,
-    };
+    pub use crate::employee::{change_job_role, correct_hire_date, create, set_scope};
 }
 
 /// The templates, compiled in. An app replaces one with a file of the same

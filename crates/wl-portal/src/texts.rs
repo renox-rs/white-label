@@ -41,7 +41,10 @@ const TEXTS: &[(&str, &str)] = &[
         "Cancellation with a refund",
     ),
     ("wl_portal.action.pay_invoice", "Pay an invoice"),
-    ("wl_portal.action.maintenance_request", "Maintenance request"),
+    (
+        "wl_portal.action.maintenance_request",
+        "Maintenance request",
+    ),
     ("wl_portal.action.complaint", "Complaint"),
     ("wl_portal.action.message", "Message"),
     ("wl_portal.action.document_upload", "Document upload"),

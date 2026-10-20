@@ -342,8 +342,14 @@ impl Invoicer for RecordingInvoicer {
                     Some(_) => None,
                 };
                 let approval = ledger.approval;
-                let request = (refusal.is_none() && approval)
-                    .then(|| ledger.write_offs.iter().filter(|(_, r)| r.is_some()).count() as i64 + 1);
+                let request = (refusal.is_none() && approval).then(|| {
+                    ledger
+                        .write_offs
+                        .iter()
+                        .filter(|(_, r)| r.is_some())
+                        .count() as i64
+                        + 1
+                });
                 if refusal.is_none() {
                     ledger.write_offs.push((id, request));
                 }
@@ -1433,7 +1439,11 @@ impl Booted {
             by,
             cheque,
             "settle",
-            &[("method", method), ("amount", amount), ("reference", reference)],
+            &[
+                ("method", method),
+                ("amount", amount),
+                ("reference", reference),
+            ],
         )
         .await
     }
@@ -1448,8 +1458,13 @@ impl Booted {
         id: i64,
     ) -> TestResponse {
         let id = id.to_string();
-        self.cheque_action(by, cheque, "replacements", &[("kind", kind), ("ref_id", id.as_str())])
-            .await
+        self.cheque_action(
+            by,
+            cheque,
+            "replacements",
+            &[("kind", kind), ("ref_id", id.as_str())],
+        )
+        .await
     }
 
     /// `by` marks the bounced `cheque` replaced.
@@ -1488,7 +1503,9 @@ impl Booted {
         permissions::define_role(self.db(), "finance_manager", &[perm::VIEW])
             .await
             .unwrap();
-        user.assign_role(self.db(), "finance_manager").await.unwrap();
+        user.assign_role(self.db(), "finance_manager")
+            .await
+            .unwrap();
         user
     }
 
@@ -1590,12 +1607,19 @@ impl Booted {
         };
         // `today()` reads the clock only inside `at_travelled_time`.
         self.app
-            .at_travelled_time(deposit_deductions(self.state()).dispute(self.state(), party, request))
+            .at_travelled_time(deposit_deductions(self.state()).dispute(
+                self.state(),
+                party,
+                request,
+            ))
             .await
     }
 
     /// What the portal shows `party` of the deductions now.
-    pub async fn published_for(&self, party: PartyId) -> Vec<wl_kernel::deposits::PublishedDeductions> {
+    pub async fn published_for(
+        &self,
+        party: PartyId,
+    ) -> Vec<wl_kernel::deposits::PublishedDeductions> {
         // `today()` reads the clock only inside `at_travelled_time`.
         self.app
             .at_travelled_time(deposit_deductions(self.state()).published_for(self.state(), party))

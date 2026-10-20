@@ -6,14 +6,14 @@
 
 mod support;
 
-use renox::prelude::*;
 use renox::chrono::TimeDelta;
+use renox::prelude::*;
+use wl_kernel::Subject;
 use wl_kernel::cheques::{ChequeId, ChequeStatus, RegisterCheque};
 use wl_kernel::documents::today;
 use wl_kernel::invoicing::VatCategory;
 use wl_kernel::notify::NotifyRecipient;
 use wl_kernel::payments::{Direction, PaymentMethod, PaymentSource};
-use wl_kernel::Subject;
 use wl_payments::cheque::ChequeReturn;
 use wl_payments::followup::{FollowupKind, FollowupStatus};
 use wl_payments::gateway::FakeGateway;
@@ -43,7 +43,9 @@ async fn deposited(
     amount: i64,
     rent: wl_kernel::invoicing::InvoiceId,
 ) -> Cheque {
-    let cheque = t.received_cheque(BLUE_DUNES, number, amount, Some(rent)).await;
+    let cheque = t
+        .received_cheque(BLUE_DUNES, number, amount, Some(rent))
+        .await;
     t.deposit_cheque(staff, &cheque).await
 }
 
@@ -82,12 +84,19 @@ async fn a_bounce_with_a_honoured_part_gives_a_payment_the_open_amount_and_the_e
     assert_eq!(payment.party_id, BLUE_DUNES.0);
     let allocations = t.allocations(payment).await;
     assert_eq!(allocations.len(), 1);
-    assert_eq!(allocations[0].target().to_string(), rent.subject().to_string());
+    assert_eq!(
+        allocations[0].target().to_string(),
+        rent.subject().to_string()
+    );
     assert_eq!(allocations[0].amount, 600_000);
     let calls = t.invoices.calls();
     assert_eq!(calls.len(), 1);
     assert_eq!((calls[0].invoice, calls[0].amount), (rent, 600_000));
-    assert_eq!(t.received.all().len(), 1, "the honoured part is a payment received");
+    assert_eq!(
+        t.received.all().len(),
+        1,
+        "the honoured part is a payment received"
+    );
 
     // The return is kept, with its payment.
     let returns = ChequeReturn::of_cheque(t.db(), cheque.id).await.unwrap();
@@ -103,7 +112,11 @@ async fn a_bounce_with_a_honoured_part_gives_a_payment_the_open_amount_and_the_e
     assert_eq!(events[0].cheque, ChequeId(cheque.id));
     assert_eq!(events[0].party, BLUE_DUNES);
     assert_eq!(
-        (events[0].amount, events[0].honoured_amount, events[0].open_amount),
+        (
+            events[0].amount,
+            events[0].honoured_amount,
+            events[0].open_amount
+        ),
         (2_000_000, 600_000, 1_400_000)
     );
     assert_eq!(events[0].reason, "insufficient funds");
@@ -118,18 +131,26 @@ async fn a_bounce_with_a_honoured_part_gives_a_payment_the_open_amount_and_the_e
         NotifyRecipient::Party { id } if id == BLUE_DUNES
     ));
     let data = told[0].data.to_string();
-    assert!(data.contains("1042") && data.contains("insufficient funds"), "{data}");
+    assert!(
+        data.contains("1042") && data.contains("insufficient funds"),
+        "{data}"
+    );
     assert!(data.contains("AED 14,000.00"), "{data}");
-    let tasks = FollowupTask::open_of_cheque(t.db(), cheque.id).await.unwrap();
+    let tasks = FollowupTask::open_of_cheque(t.db(), cheque.id)
+        .await
+        .unwrap();
     assert_eq!(tasks.len(), 1);
     assert_eq!(tasks[0].kind, FollowupKind::FollowUpCheque);
     assert_eq!(tasks[0].role, "accountant");
     assert_eq!(tasks[0].amount, 1_400_000);
     let staff_told = t.notices.of_type(CHEQUE_TASK);
     assert_eq!(staff_told.len(), 1);
-    assert!(staff_told[0].recipients.iter().any(
-        |r| matches!(r, NotifyRecipient::User { id } if *id == accountant.id)
-    ));
+    assert!(
+        staff_told[0]
+            .recipients
+            .iter()
+            .any(|r| matches!(r, NotifyRecipient::User { id } if *id == accountant.id))
+    );
 
     // What the party owes on bounced cheques.
     let owed = wl_kernel::cheques::cheques(t.state())
@@ -152,7 +173,10 @@ async fn a_bounce_with_nothing_honoured_leaves_the_whole_amount_open() {
         .assert_ok();
     let bounced = t.cheque(cheque.id).await;
     assert_eq!(bounced.status, ChequeStatus::Bounced);
-    assert_eq!((bounced.honoured_amount, bounced.open_amount), (0, 2_000_000));
+    assert_eq!(
+        (bounced.honoured_amount, bounced.open_amount),
+        (0, 2_000_000)
+    );
     assert!(cheque_payments(&t).await.is_empty());
     assert!(t.invoices.calls().is_empty());
     assert_eq!(t.cheque_bounced.all().len(), 1);
@@ -201,7 +225,9 @@ async fn a_bounce_fee_charge_is_added_on_the_agreement() {
         Some("invoicing.charge:1")
     );
     // The charge was made: no task for it.
-    let tasks = FollowupTask::open_of_cheque(t.db(), cheque.id).await.unwrap();
+    let tasks = FollowupTask::open_of_cheque(t.db(), cheque.id)
+        .await
+        .unwrap();
     assert!(tasks.iter().all(|t| t.kind != FollowupKind::RaiseBounceFee));
 }
 
@@ -253,7 +279,9 @@ async fn no_fee_is_added_unless_set_and_a_charge_that_cannot_be_made_becomes_a_t
     t.bounce_cheque(&staff, &cheque, "insufficient_funds", "C", "")
         .await
         .assert_ok();
-    let tasks = FollowupTask::open_of_cheque(t.db(), cheque.id).await.unwrap();
+    let tasks = FollowupTask::open_of_cheque(t.db(), cheque.id)
+        .await
+        .unwrap();
     let fee_task = tasks
         .iter()
         .find(|task| task.kind == FollowupKind::RaiseBounceFee)
@@ -291,7 +319,12 @@ async fn a_received_cheque_cannot_bounce_without_the_certificate() {
     assert_eq!(still.honoured_amount, 0);
     assert!(cheque_payments(&t).await.is_empty());
     assert!(t.cheque_bounced.all().is_empty());
-    assert!(ChequeReturn::of_cheque(t.db(), cheque.id).await.unwrap().is_empty());
+    assert!(
+        ChequeReturn::of_cheque(t.db(), cheque.id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
 }
 
 /// A honoured amount of the whole cheque is refused (that is `clear`), and so
@@ -328,7 +361,9 @@ async fn only_a_deposited_cheque_bounces_and_only_for_a_user_with_the_right() {
         .user("Vera", &[wl_payments::permissions::CHEQUES_VIEW])
         .await;
     let rent = t.invoices.add(BLUE_DUNES, "INV-1", 2_000_000);
-    let held = t.received_cheque(BLUE_DUNES, "1050", 2_000_000, Some(rent)).await;
+    let held = t
+        .received_cheque(BLUE_DUNES, "1050", 2_000_000, Some(rent))
+        .await;
     t.bounce_cheque(&staff, &held, "insufficient_funds", "C", "")
         .await
         .assert_status(422);
@@ -380,9 +415,14 @@ async fn an_issued_cheque_that_bounces_leaves_a_task_to_replace_it() {
     assert_eq!(bounced.return_certificate, None);
     assert!(t.fees.charges().is_empty(), "no fee");
     assert!(t.cheque_bounced.all().is_empty(), "no ChequeBounced");
-    assert!(t.notices.of_type(CHEQUE_BOUNCED).is_empty(), "the payee is not told");
+    assert!(
+        t.notices.of_type(CHEQUE_BOUNCED).is_empty(),
+        "the payee is not told"
+    );
     assert!(cheque_payments(&t).await.is_empty());
-    let tasks = FollowupTask::open_of_cheque(t.db(), cheque.id).await.unwrap();
+    let tasks = FollowupTask::open_of_cheque(t.db(), cheque.id)
+        .await
+        .unwrap();
     assert_eq!(tasks.len(), 1);
     assert_eq!(tasks[0].kind, FollowupKind::ReplaceCheque);
     assert_eq!(tasks[0].role, "accountant");
@@ -391,9 +431,12 @@ async fn an_issued_cheque_that_bounces_leaves_a_task_to_replace_it() {
     assert!(tasks[0].text.contains("9001"));
     let staff_told = t.notices.of_type(CHEQUE_TASK);
     assert_eq!(staff_told.len(), 1);
-    assert!(staff_told[0].recipients.iter().any(
-        |r| matches!(r, NotifyRecipient::User { id } if *id == accountant.id)
-    ));
+    assert!(
+        staff_told[0]
+            .recipients
+            .iter()
+            .any(|r| matches!(r, NotifyRecipient::User { id } if *id == accountant.id))
+    );
     // An issued cheque is not owed by the party.
     let owed = wl_kernel::cheques::cheques(t.state())
         .open_bounced_amount(t.db(), BLUE_DUNES, "AED")
@@ -425,5 +468,9 @@ async fn a_blocked_party_is_not_told_of_the_bounce() {
         .assert_ok();
     assert!(t.notices.of_type(CHEQUE_BOUNCED).is_empty());
     assert_eq!(t.notices.of_type(CHEQUE_TASK).len(), 1);
-    assert_eq!(t.cheque_bounced.all().len(), 1, "the event is still emitted");
+    assert_eq!(
+        t.cheque_bounced.all().len(),
+        1,
+        "the event is still emitted"
+    );
 }

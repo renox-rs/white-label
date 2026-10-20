@@ -38,7 +38,10 @@ async fn worker(t: &Booted, party: i64, role: &str) -> Employee {
 }
 
 async fn status_of(t: &Booted, employee: &Employee) -> EmployeeStatus {
-    Employee::find_or_404(t.db(), employee.id).await.unwrap().status
+    Employee::find_or_404(t.db(), employee.id)
+        .await
+        .unwrap()
+        .status
 }
 
 fn activate_path(employee: &Employee) -> String {
@@ -68,7 +71,10 @@ async fn hrm29_a_blocking_template_with_an_open_required_step_refuses_activation
     assert!(body.contains("Safety briefing"), "{body}");
     assert!(body.contains("Site induction"), "{body}");
     assert!(body.contains("Mia"), "{body}");
-    assert!(!body.contains("Site tour"), "an optional step does not block: {body}");
+    assert!(
+        !body.contains("Site tour"),
+        "an optional step does not block: {body}"
+    );
     assert_eq!(status_of(&t, &sami).await, EmployeeStatus::Onboarding);
     assert!(t.activated.all().is_empty());
 

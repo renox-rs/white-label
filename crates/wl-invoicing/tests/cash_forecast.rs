@@ -81,7 +81,10 @@ async fn invoice_in_state(
         ..Default::default()
     };
     let mut tx = t.db().begin().await.unwrap();
-    invoice.insert_in_state(&mut tx, status, "fixture").await.unwrap();
+    invoice
+        .insert_in_state(&mut tx, status, "fixture")
+        .await
+        .unwrap();
     tx.commit().await.unwrap();
     invoice
 }
@@ -109,14 +112,17 @@ async fn open_bill(
         ..Default::default()
     };
     let mut tx = t.db().begin().await.unwrap();
-    bill.insert_in_state(&mut tx, status, "fixture").await.unwrap();
+    bill.insert_in_state(&mut tx, status, "fixture")
+        .await
+        .unwrap();
     tx.commit().await.unwrap();
     bill
 }
 
 /// A cash-flow viewer with the role in every entity.
 async fn viewer(t: &Booted) -> User {
-    t.helper("Cashier", &[perm::CASHFLOW_VIEW, perm::CASHFLOW_MANAGE]).await
+    t.helper("Cashier", &[perm::CASHFLOW_VIEW, perm::CASHFLOW_MANAGE])
+        .await
 }
 
 /// A statement balance of AED 50,000 on 2027-01-10 and an incoming transfer
@@ -160,19 +166,21 @@ async fn the_later_balance_wins_and_a_voided_one_is_never_used() {
     t.forecast.statement(e1.id, "BA1", 5_000_000, day(1, 10));
     t.refunds
         .bank_payment(e1.id, "BA1", Direction::In, 500_000, day(1, 12), None);
-    let manual = t.app.at_travelled_time(cash_balance::enter(
-        t.db(),
-        None,
-        &EnterBalance {
-            legal_entity_id: e1.id,
-            bank_account: "BA1".into(),
-            amount: 6_000_000,
-            as_of: day(1, 11),
-            note: None,
-        },
-    ))
-    .await
-    .unwrap();
+    let manual = t
+        .app
+        .at_travelled_time(cash_balance::enter(
+            t.db(),
+            None,
+            &EnterBalance {
+                legal_entity_id: e1.id,
+                bank_account: "BA1".into(),
+                amount: 6_000_000,
+                as_of: day(1, 11),
+                note: None,
+            },
+        ))
+        .await
+        .unwrap();
     assert_eq!(grid(&t, &[&e1]).await.opening_total(), 6_500_000);
     assert_eq!(
         grid(&t, &[&e1]).await.openings[0].balance.map(|b| b.as_of),
@@ -180,25 +188,32 @@ async fn the_later_balance_wins_and_a_voided_one_is_never_used() {
     );
 
     // Voided: back to the statement.
-    t.app.at_travelled_time(cash_balance::void(t.db(), manual.id, None, "entered in error"))
+    t.app
+        .at_travelled_time(cash_balance::void(
+            t.db(),
+            manual.id,
+            None,
+            "entered in error",
+        ))
         .await
         .unwrap();
     assert_eq!(grid(&t, &[&e1]).await.opening_total(), 5_500_000);
 
     // On the statement's own day the statement wins.
-    t.app.at_travelled_time(cash_balance::enter(
-        t.db(),
-        None,
-        &EnterBalance {
-            legal_entity_id: e1.id,
-            bank_account: "BA1".into(),
-            amount: 9_000_000,
-            as_of: day(1, 10),
-            note: Some("same day".into()),
-        },
-    ))
-    .await
-    .unwrap();
+    t.app
+        .at_travelled_time(cash_balance::enter(
+            t.db(),
+            None,
+            &EnterBalance {
+                legal_entity_id: e1.id,
+                bank_account: "BA1".into(),
+                amount: 9_000_000,
+                as_of: day(1, 10),
+                note: Some("same day".into()),
+            },
+        ))
+        .await
+        .unwrap();
     assert_eq!(grid(&t, &[&e1]).await.opening_total(), 5_500_000);
 }
 
@@ -215,14 +230,47 @@ async fn an_opening_cash_balance_is_checked_and_voided_with_a_reason() {
         as_of,
         note: None,
     };
-    assert!(t.app.at_travelled_time(cash_balance::enter(t.db(), None, &balance(day(1, 14), "BA1"))).await.is_err());
-    assert!(t.app.at_travelled_time(cash_balance::enter(t.db(), None, &balance(day(1, 13), " "))).await.is_err());
-    let kept = t.app.at_travelled_time(cash_balance::enter(t.db(), None, &balance(day(1, 13), "BA1")))
+    assert!(
+        t.app
+            .at_travelled_time(cash_balance::enter(
+                t.db(),
+                None,
+                &balance(day(1, 14), "BA1")
+            ))
+            .await
+            .is_err()
+    );
+    assert!(
+        t.app
+            .at_travelled_time(cash_balance::enter(t.db(), None, &balance(day(1, 13), " ")))
+            .await
+            .is_err()
+    );
+    let kept = t
+        .app
+        .at_travelled_time(cash_balance::enter(
+            t.db(),
+            None,
+            &balance(day(1, 13), "BA1"),
+        ))
         .await
         .unwrap();
-    assert!(t.app.at_travelled_time(cash_balance::void(t.db(), kept.id, None, "  ")).await.is_err());
-    t.app.at_travelled_time(cash_balance::void(t.db(), kept.id, None, "wrong bank")).await.unwrap();
-    assert!(t.app.at_travelled_time(cash_balance::void(t.db(), kept.id, None, "again")).await.is_err());
+    assert!(
+        t.app
+            .at_travelled_time(cash_balance::void(t.db(), kept.id, None, "  "))
+            .await
+            .is_err()
+    );
+    t.app
+        .at_travelled_time(cash_balance::void(t.db(), kept.id, None, "wrong bank"))
+        .await
+        .unwrap();
+    assert!(
+        t.app
+            .at_travelled_time(cash_balance::void(t.db(), kept.id, None, "again"))
+            .await
+            .is_err()
+    );
     // The voided balance stays in the history.
     let history = cash_balance::history(t.db(), e1.id).await.unwrap();
     assert_eq!(history.len(), 1);
@@ -238,10 +286,21 @@ async fn invoices_and_bills_fall_in_the_week_of_their_due_date() {
     let e1 = t.entity("PGP").await;
     open_invoice(&t, &e1, "INV-1", day(1, 25), 1_050_000).await;
     open_invoice(&t, &e1, "INV-2", day(1, 2), 300_000).await;
-    open_bill(&t, &e1, "SB-5", day(2, 10), 1_200_000, SupplierBillStatus::Approved).await;
+    open_bill(
+        &t,
+        &e1,
+        "SB-5",
+        day(2, 10),
+        1_200_000,
+        SupplierBillStatus::Approved,
+    )
+    .await;
     let forecast = grid(&t, &[&e1]).await;
     assert_eq!(forecast.weeks.len(), 13);
-    assert_eq!((forecast.weeks[0].start, forecast.weeks[0].end), (day(1, 11), day(1, 17)));
+    assert_eq!(
+        (forecast.weeks[0].start, forecast.weeks[0].end),
+        (day(1, 11), day(1, 17))
+    );
     // INV-1 is in week 3 (2027-01-25 to 2027-01-31), INV-2 in week 1.
     assert_eq!(forecast.receipts(2), 1_050_000);
     assert_eq!(forecast.receipts(0), 300_000);
@@ -341,10 +400,12 @@ async fn a_stale_balance_is_used_with_a_warning() {
     t.forecast.statement(e1.id, "BA1", 5_000_000, day(1, 3));
     let forecast = grid(&t, &[&e1]).await;
     assert_eq!(forecast.opening_total(), 5_000_000);
-    assert!(forecast
-        .warnings
-        .iter()
-        .any(|w| matches!(w, Warning::Stale { as_of, .. } if *as_of == day(1, 3))));
+    assert!(
+        forecast
+            .warnings
+            .iter()
+            .any(|w| matches!(w, Warning::Stale { as_of, .. } if *as_of == day(1, 3)))
+    );
 }
 
 /// Q4 2026 VAT summary `prepared` with a net payable of AED 14,000 (due
@@ -353,8 +414,7 @@ async fn a_stale_balance_is_used_with_a_warning() {
 async fn the_vat_payable_is_a_payment_at_the_return_due_date() {
     let t = booted().await;
     let e1 = t.entity("PGP").await;
-    let mut invoice =
-        invoice_in_state(&t, &e1, "INV-V", day(1, 20), 0, InvoiceStatus::Paid).await;
+    let mut invoice = invoice_in_state(&t, &e1, "INV-V", day(1, 20), 0, InvoiceStatus::Paid).await;
     invoice.date_of_supply = Some(NaiveDate::from_ymd_opt(2026, 12, 15).unwrap());
     invoice.issue_date = invoice.date_of_supply;
     invoice.vat_total = 1_400_000;
@@ -363,13 +423,27 @@ async fn the_vat_payable_is_a_payment_at_the_return_due_date() {
 
     let estimate = grid(&t, &[&e1]).await;
     assert_eq!(estimate.payments(2), 1_400_000);
-    assert!(estimate.lines.iter().any(|l| l.kind == LineKind::Vat && l.estimate));
+    assert!(
+        estimate
+            .lines
+            .iter()
+            .any(|l| l.kind == LineKind::Vat && l.estimate)
+    );
 
-    t.summary(&e1, NaiveDate::from_ymd_opt(2026, 12, 15).unwrap(), VatSummaryStatus::Prepared)
-        .await;
+    t.summary(
+        &e1,
+        NaiveDate::from_ymd_opt(2026, 12, 15).unwrap(),
+        VatSummaryStatus::Prepared,
+    )
+    .await;
     let prepared = grid(&t, &[&e1]).await;
     assert_eq!(prepared.payments(2), 1_400_000);
-    assert!(prepared.lines.iter().any(|l| l.kind == LineKind::Vat && !l.estimate));
+    assert!(
+        prepared
+            .lines
+            .iter()
+            .any(|l| l.kind == LineKind::Vat && !l.estimate)
+    );
 }
 
 /// A payment that names the VAT summary as its reference removes the line.
@@ -377,13 +451,16 @@ async fn the_vat_payable_is_a_payment_at_the_return_due_date() {
 async fn a_vat_payment_naming_the_summary_removes_the_line() {
     let t = booted().await;
     let e1 = t.entity("PGP").await;
-    let mut invoice =
-        invoice_in_state(&t, &e1, "INV-V", day(1, 20), 0, InvoiceStatus::Paid).await;
+    let mut invoice = invoice_in_state(&t, &e1, "INV-V", day(1, 20), 0, InvoiceStatus::Paid).await;
     invoice.date_of_supply = Some(NaiveDate::from_ymd_opt(2026, 12, 15).unwrap());
     invoice.vat_total_aed = Some(1_400_000);
     invoice.save(t.db()).await.unwrap();
     let summary = t
-        .summary(&e1, NaiveDate::from_ymd_opt(2026, 12, 15).unwrap(), VatSummaryStatus::Prepared)
+        .summary(
+            &e1,
+            NaiveDate::from_ymd_opt(2026, 12, 15).unwrap(),
+            VatSummaryStatus::Prepared,
+        )
         .await;
     t.forecast.statement(e1.id, "BA1", 5_000_000, day(1, 10));
     t.refunds.bank_payment(
@@ -409,7 +486,14 @@ async fn a_bounced_cheques_invoice_is_a_memo_line() {
     let invoice = open_invoice(&t, &e1, "INV-5", day(1, 1), 700_000).await;
     t.forecast.bounced_cheque(
         e1.id,
-        open_cheque(8, "CHQ-8", Direction::In, day(1, 1), 700_000, &[(invoice.subject(), 700_000)]),
+        open_cheque(
+            8,
+            "CHQ-8",
+            Direction::In,
+            day(1, 1),
+            700_000,
+            &[(invoice.subject(), 700_000)],
+        ),
     );
     let forecast = grid(&t, &[&e1]).await;
     assert_eq!(forecast.receipts(0), 0);
@@ -422,8 +506,24 @@ async fn a_bounced_cheques_invoice_is_a_memo_line() {
 async fn bills_not_approved_are_marked_and_a_duplicate_is_a_memo_line() {
     let t = booted().await;
     let e1 = t.entity("PGP").await;
-    open_bill(&t, &e1, "SB-6", day(2, 3), 500_000, SupplierBillStatus::Matched).await;
-    let held = open_bill(&t, &e1, "SB-7", day(2, 3), 900_000, SupplierBillStatus::Exception).await;
+    open_bill(
+        &t,
+        &e1,
+        "SB-6",
+        day(2, 3),
+        500_000,
+        SupplierBillStatus::Matched,
+    )
+    .await;
+    let held = open_bill(
+        &t,
+        &e1,
+        "SB-7",
+        day(2, 3),
+        900_000,
+        SupplierBillStatus::Exception,
+    )
+    .await;
     let mut reason = BillException {
         bill_id: held.id,
         reason_code: POSSIBLE_DUPLICATE.to_owned(),
@@ -433,14 +533,27 @@ async fn bills_not_approved_are_marked_and_a_duplicate_is_a_memo_line() {
     let forecast = grid(&t, &[&e1]).await;
     // 2027-02-03 is in week 4.
     assert_eq!(forecast.payments(3), 500_000);
-    assert!(forecast.lines.iter().any(|l| l.kind == LineKind::Bill && l.not_approved));
+    assert!(
+        forecast
+            .lines
+            .iter()
+            .any(|l| l.kind == LineKind::Bill && l.not_approved)
+    );
     assert_eq!(forecast.memo(MemoKind::DuplicateBill, 3), 900_000);
 
     // The setting that leaves them out.
     let strict = boot_with(WlInvoicing::new().cash_unapproved_bills_counted(false)).await;
     strict.travel_to("2027-01-13", 8, 0);
     let e = strict.entity("PGP").await;
-    open_bill(&strict, &e, "SB-6", day(2, 3), 500_000, SupplierBillStatus::Matched).await;
+    open_bill(
+        &strict,
+        &e,
+        "SB-6",
+        day(2, 3),
+        500_000,
+        SupplierBillStatus::Matched,
+    )
+    .await;
     assert_eq!(grid(&strict, &[&e]).await.payments(3), 0);
 }
 
@@ -478,10 +591,12 @@ async fn a_foreign_amount_without_a_rate_is_left_out_with_a_warning() {
     invoice.save(t.db()).await.unwrap();
     let forecast = grid(&t, &[&e1]).await;
     assert_eq!(forecast.receipts(1), 0);
-    assert!(forecast
-        .warnings
-        .iter()
-        .any(|w| matches!(w, Warning::Unpriced { document } if *document == invoice.subject())));
+    assert!(
+        forecast
+            .warnings
+            .iter()
+            .any(|w| matches!(w, Warning::Unpriced { document } if *document == invoice.subject()))
+    );
     // With a rate it counts in AED.
     invoice.exchange_rate_micro = Some(3_672_500);
     invoice.save(t.db()).await.unwrap();
@@ -494,10 +609,9 @@ async fn months_without_an_approved_budget_are_a_warning() {
     let t = booted().await;
     let e1 = t.entity("PGP").await;
     let forecast = grid(&t, &[&e1]).await;
-    assert!(forecast
-        .warnings
-        .iter()
-        .any(|w| matches!(w, Warning::NoBudget { months, .. } if months.first() == Some(&day(1, 1)))));
+    assert!(forecast.warnings.iter().any(
+        |w| matches!(w, Warning::NoBudget { months, .. } if months.first() == Some(&day(1, 1)))
+    ));
 }
 
 /// With week start Sunday, week 1 of Wednesday 2027-01-13 is 2027-01-10 to
@@ -508,7 +622,10 @@ async fn the_week_starts_on_the_day_the_setting_names() {
     t.travel_to("2027-01-13", 8, 0);
     let e1 = t.entity("PGP").await;
     let forecast = grid(&t, &[&e1]).await;
-    assert_eq!((forecast.weeks[0].start, forecast.weeks[0].end), (day(1, 10), day(1, 16)));
+    assert_eq!(
+        (forecast.weeks[0].start, forecast.weeks[0].end),
+        (day(1, 10), day(1, 16))
+    );
     let short = boot_with(WlInvoicing::new().cash_forecast_weeks(4)).await;
     short.travel_to("2027-01-13", 8, 0);
     let e = short.entity("PGP").await;
@@ -537,8 +654,14 @@ impl CashForecastSource for Hr {
                 ForecastLine::new("Payroll", "payroll", day(2, 1), 9_000_000, Direction::Out)
                     .party(BLUE_DUNES)
                     .total_only(),
-                ForecastLine::new("Final settlement", "settlement", day(2, 3), 1_200_000, Direction::Out)
-                    .total_only(),
+                ForecastLine::new(
+                    "Final settlement",
+                    "settlement",
+                    day(2, 3),
+                    1_200_000,
+                    Direction::Out,
+                )
+                .total_only(),
                 ForecastLine::new("Bill again", "bill", day(2, 3), 77, Direction::Out)
                     .document(Subject::new("invoicing.supplier_bill", 1)),
             ])
@@ -551,12 +674,26 @@ async fn the_lines_of_a_source_join_the_grid_as_totals() {
     register_cash_forecast_source("test.hr", Hr);
     let t = booted().await;
     let co = t.new_entity("HRCO").await;
-    let bill = open_bill(&t, &co, "SB-1", day(2, 10), 1_000, SupplierBillStatus::Approved).await;
+    let bill = open_bill(
+        &t,
+        &co,
+        "SB-1",
+        day(2, 10),
+        1_000,
+        SupplierBillStatus::Approved,
+    )
+    .await;
     assert_eq!(bill.id, 1);
     let forecast = grid(&t, &[&co]).await;
     // Payroll of 2027-02-01 is in week 4, the settlement of 2027-02-03 too.
     assert_eq!(forecast.payments(3), 10_200_000);
-    assert!(forecast.lines.iter().filter(|l| l.kind == LineKind::Source).all(|l| l.total_only));
+    assert!(
+        forecast
+            .lines
+            .iter()
+            .filter(|l| l.kind == LineKind::Source)
+            .all(|l| l.total_only)
+    );
     // The line standing for the counted bill is dropped.
     assert!(forecast.lines.iter().all(|l| l.amount != 77));
 
@@ -566,7 +703,10 @@ async fn the_lines_of_a_source_join_the_grid_as_totals() {
         .await;
     t.app.acting_as(&viewer);
     t.app
-        .get(&format!("/cash-forecast/cell?entity={}&week=4&side=out", co.id))
+        .get(&format!(
+            "/cash-forecast/cell?entity={}&week=4&side=out",
+            co.id
+        ))
         .await
         .assert_ok()
         .assert_see("Payroll")
@@ -582,9 +722,7 @@ async fn a_user_sees_the_entities_of_the_scope() {
     let e2 = t.entity("PGFZ").await;
     open_invoice(&t, &e1, "INV-E1", day(1, 20), 100_000).await;
     open_invoice(&t, &e2, "INV-E2", day(1, 20), 700_000).await;
-    let scoped = t
-        .scoped_user("Scoper", &[perm::CASHFLOW_VIEW], e1.id)
-        .await;
+    let scoped = t.scoped_user("Scoper", &[perm::CASHFLOW_VIEW], e1.id).await;
     t.app.acting_as(&scoped);
     t.app
         .get("/cash-forecast")
@@ -633,7 +771,11 @@ async fn opening_the_forecast_writes_nothing_and_balances_need_manage() {
         ("as_of", "2027-01-11"),
         ("note", ""),
     ];
-    t.app.htmx().post("/cash-balances", &form).await.assert_forbidden();
+    t.app
+        .htmx()
+        .post("/cash-balances", &form)
+        .await
+        .assert_forbidden();
 
     t.app.acting_as(&manager);
     let future = [
@@ -643,16 +785,38 @@ async fn opening_the_forecast_writes_nothing_and_balances_need_manage() {
         ("as_of", "2027-01-20"),
         ("note", ""),
     ];
-    t.app.htmx().post("/cash-balances", &future).await.assert_status(422);
-    t.app.htmx().post("/cash-balances", &form).await.assert_redirect("/cash-forecast");
+    t.app
+        .htmx()
+        .post("/cash-balances", &future)
+        .await
+        .assert_status(422);
+    t.app
+        .htmx()
+        .post("/cash-balances", &form)
+        .await
+        .assert_redirect("/cash-forecast");
     let rows = OpeningCashBalance::query().get(t.db()).await.unwrap();
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].amount, 6_000_000);
 
     let path = format!("/cash-balances/{}/void", rows[0].id);
-    t.app.htmx().post(&path, &[("reason", " ")]).await.assert_status(422);
-    t.app.htmx().post(&path, &[("reason", "wrong day")]).await.assert_redirect("/cash-forecast");
-    assert!(OpeningCashBalance::find(t.db(), rows[0].id).await.unwrap().unwrap().is_voided());
+    t.app
+        .htmx()
+        .post(&path, &[("reason", " ")])
+        .await
+        .assert_status(422);
+    t.app
+        .htmx()
+        .post(&path, &[("reason", "wrong day")])
+        .await
+        .assert_redirect("/cash-forecast");
+    assert!(
+        OpeningCashBalance::find(t.db(), rows[0].id)
+            .await
+            .unwrap()
+            .unwrap()
+            .is_voided()
+    );
 }
 
 /// Clicking the week 3 receipts cell lists INV-1.
@@ -741,7 +905,9 @@ async fn bill_with_line(
         ..Default::default()
     };
     let mut tx = t.db().begin().await.unwrap();
-    bill.insert_in_state(&mut tx, status, "fixture").await.unwrap();
+    bill.insert_in_state(&mut tx, status, "fixture")
+        .await
+        .unwrap();
     tx.commit().await.unwrap();
     let mut line = BillLine {
         bill_id: bill.id,
@@ -779,7 +945,10 @@ async fn a_budget_line_is_spread_evenly_over_the_days_of_its_month() {
     assert_eq!(fill_week(&forecast, 4), 300_000);
     assert_eq!(fill_week(&forecast, 5), 0);
     let line = &forecast.lines[0];
-    assert_eq!((line.kind, line.category.as_str()), (LineKind::BudgetFill, "rent_utilities"));
+    assert_eq!(
+        (line.kind, line.category.as_str()),
+        (LineKind::BudgetFill, "rent_utilities")
+    );
     assert_eq!(line.label, "Rent and utilities");
     assert_eq!(line.direction, Direction::Out);
 }
@@ -791,7 +960,10 @@ async fn an_approved_bill_is_in_the_actual_and_not_subtracted_twice() {
     let t = booted_with_budget(
         WlInvoicing::new(),
         2027,
-        &[("rent_utilities", 3, 3_100_000), ("rent_utilities", 4, 3_000_000)],
+        &[
+            ("rent_utilities", 3, 3_100_000),
+            ("rent_utilities", 4, 3_000_000),
+        ],
         "2027-03-01",
     )
     .await;
@@ -800,7 +972,12 @@ async fn an_approved_bill_is_in_the_actual_and_not_subtracted_twice() {
         &e1,
         "SB-RENT",
         day(3, 1),
-        &[("Rent", 2_500_000, "rent", wl_kernel::invoicing::VatCategory::Standard)],
+        &[(
+            "Rent",
+            2_500_000,
+            "rent",
+            wl_kernel::invoicing::VatCategory::Standard,
+        )],
     )
     .await;
     let forecast = grid(&t, &[&e1]).await;
@@ -820,13 +997,36 @@ async fn a_bill_not_yet_approved_covers_the_month_of_its_bill_date() {
     )
     .await;
     let e1 = t.entity("PGP").await;
-    bill_with_line(&t, &e1, "SB-F", day(2, 26), 2_500_000, "rent", SupplierBillStatus::Matched).await;
+    bill_with_line(
+        &t,
+        &e1,
+        "SB-F",
+        day(2, 26),
+        2_500_000,
+        "rent",
+        SupplierBillStatus::Matched,
+    )
+    .await;
     assert_eq!(fill_in(&grid(&t, &[&e1]).await, 2027, 3), 3_100_000);
-    bill_with_line(&t, &e1, "SB-M", day(3, 1), 2_500_000, "rent", SupplierBillStatus::Matched).await;
+    bill_with_line(
+        &t,
+        &e1,
+        "SB-M",
+        day(3, 1),
+        2_500_000,
+        "rent",
+        SupplierBillStatus::Matched,
+    )
+    .await;
     let forecast = grid(&t, &[&e1]).await;
     assert_eq!(fill_in(&forecast, 2027, 3), 600_000);
     // The bills themselves are payments by their due dates, by bill date + 30.
-    assert!(forecast.lines.iter().any(|l| l.kind == LineKind::Bill && l.not_approved));
+    assert!(
+        forecast
+            .lines
+            .iter()
+            .any(|l| l.kind == LineKind::Bill && l.not_approved)
+    );
 }
 
 /// With AED 33,000 posted against a budget of AED 31,000 there is no fill.
@@ -844,11 +1044,21 @@ async fn the_fill_is_never_negative() {
         &e1,
         "SB-BIG",
         day(3, 1),
-        &[("Rent", 3_300_000, "rent", wl_kernel::invoicing::VatCategory::Exempt)],
+        &[(
+            "Rent",
+            3_300_000,
+            "rent",
+            wl_kernel::invoicing::VatCategory::Exempt,
+        )],
     )
     .await;
     let forecast = grid(&t, &[&e1]).await;
-    assert!(forecast.lines.iter().all(|l| l.kind != LineKind::BudgetFill));
+    assert!(
+        forecast
+            .lines
+            .iter()
+            .all(|l| l.kind != LineKind::BudgetFill)
+    );
 }
 
 /// Without an approved budget there is no fill and the forecast says so.
@@ -857,11 +1067,15 @@ async fn without_an_approved_budget_there_is_no_fill_and_a_warning() {
     let t = booted_with_budget(WlInvoicing::new(), 2027, &[], "2027-03-01").await;
     let e1 = t.entity("PGP").await;
     let forecast = grid(&t, &[&e1]).await;
-    assert!(forecast.lines.iter().all(|l| l.kind != LineKind::BudgetFill));
-    assert!(forecast
-        .warnings
-        .iter()
-        .any(|w| matches!(w, Warning::NoBudget { months, .. } if months.first() == Some(&day(3, 1)))));
+    assert!(
+        forecast
+            .lines
+            .iter()
+            .all(|l| l.kind != LineKind::BudgetFill)
+    );
+    assert!(forecast.warnings.iter().any(
+        |w| matches!(w, Warning::NoBudget { months, .. } if months.first() == Some(&day(3, 1)))
+    ));
     let user = viewer(&t).await;
     t.app.acting_as(&user);
     t.app
@@ -878,7 +1092,10 @@ async fn a_year_without_a_budget_gets_the_warning_and_no_fill() {
     let t = booted_with_budget(
         WlInvoicing::new(),
         2027,
-        &[("rent_utilities", 11, 3_000_000), ("rent_utilities", 12, 3_100_000)],
+        &[
+            ("rent_utilities", 11, 3_000_000),
+            ("rent_utilities", 12, 3_100_000),
+        ],
         "2027-11-15",
     )
     .await;
@@ -887,11 +1104,13 @@ async fn a_year_without_a_budget_gets_the_warning_and_no_fill() {
     // 16 days of November (15 to 30) and all of December.
     assert_eq!(fill_in(&forecast, 2027, 11), 3_000_000);
     assert_eq!(fill_in(&forecast, 2027, 12), 3_100_000);
-    assert!(forecast
-        .lines
-        .iter()
-        .filter(|l| l.kind == LineKind::BudgetFill)
-        .all(|l| l.date < NaiveDate::from_ymd_opt(2028, 1, 1).unwrap()));
+    assert!(
+        forecast
+            .lines
+            .iter()
+            .filter(|l| l.kind == LineKind::BudgetFill)
+            .all(|l| l.date < NaiveDate::from_ymd_opt(2028, 1, 1).unwrap())
+    );
     let months: Vec<NaiveDate> = forecast
         .warnings
         .iter()
@@ -915,7 +1134,10 @@ async fn income_fill_is_a_receipt_and_drawings_fill_is_a_total() {
     let t = booted_with_budget(
         WlInvoicing::new(),
         2027,
-        &[("sales_services", 3, 3_100_000), ("owner_drawings", 3, 620_000)],
+        &[
+            ("sales_services", 3, 3_100_000),
+            ("owner_drawings", 3, 620_000),
+        ],
         "2027-03-01",
     )
     .await;
@@ -929,11 +1151,13 @@ async fn income_fill_is_a_receipt_and_drawings_fill_is_a_total() {
         .find(|l| l.category == "owner_drawings")
         .expect("a drawings fill");
     assert!(drawings.total_only);
-    assert!(forecast
-        .lines
-        .iter()
-        .filter(|l| l.category == "sales_services")
-        .all(|l| !l.total_only && l.direction == Direction::In));
+    assert!(
+        forecast
+            .lines
+            .iter()
+            .filter(|l| l.category == "sales_services")
+            .all(|l| !l.total_only && l.direction == Direction::In)
+    );
 }
 
 /// The grid shows a row for the fill and the cell opens its lines.
@@ -966,12 +1190,24 @@ async fn the_grid_shows_a_fill_row_per_category_and_its_cell() {
 /// 2027-03-01 to 2027-03-21; payments are not moved.
 #[renox::test]
 async fn days_late_moves_a_customers_receipts_by_its_average() {
-    let t = booted_with_budget(WlInvoicing::new().cash_days_late(true), 2027, &[], "2027-03-01").await;
+    let t = booted_with_budget(
+        WlInvoicing::new().cash_days_late(true),
+        2027,
+        &[],
+        "2027-03-01",
+    )
+    .await;
     let e1 = t.entity("PGP").await;
     for (i, late) in [10_i64, 20, 30].iter().enumerate() {
         let due = day(1, 1);
-        let paid = invoice_in_state(&t, &e1, &format!("INV-P{i}"), due, 0, InvoiceStatus::Paid).await;
-        let mut allocation = Allocation::new(paid.id, &Subject::new("payments.payment", 40 + i as i64), 1_000, None);
+        let paid =
+            invoice_in_state(&t, &e1, &format!("INV-P{i}"), due, 0, InvoiceStatus::Paid).await;
+        let mut allocation = Allocation::new(
+            paid.id,
+            &Subject::new("payments.payment", 40 + i as i64),
+            1_000,
+            None,
+        );
         allocation.allocated_at = (due + renox::chrono::Days::new(*late as u64))
             .and_hms_opt(8, 0, 0)
             .unwrap()
@@ -979,9 +1215,21 @@ async fn days_late_moves_a_customers_receipts_by_its_average() {
         allocation.insert(t.db()).await.unwrap();
     }
     open_invoice(&t, &e1, "INV-9", day(3, 1), 500_000).await;
-    open_bill(&t, &e1, "SB-5", day(3, 1), 200_000, SupplierBillStatus::Approved).await;
+    open_bill(
+        &t,
+        &e1,
+        "SB-5",
+        day(3, 1),
+        200_000,
+        SupplierBillStatus::Approved,
+    )
+    .await;
     let forecast = grid(&t, &[&e1]).await;
-    let line = forecast.lines.iter().find(|l| l.label == "INV-9").expect("INV-9");
+    let line = forecast
+        .lines
+        .iter()
+        .find(|l| l.label == "INV-9")
+        .expect("INV-9");
     assert_eq!(line.date, day(3, 21));
     assert_eq!(forecast.receipts(2), 500_000);
     assert_eq!(forecast.payments(0), 200_000);
@@ -998,12 +1246,24 @@ async fn days_late_moves_a_customers_receipts_by_its_average() {
 /// in the average.
 #[renox::test]
 async fn days_late_needs_three_paid_invoices() {
-    let t = booted_with_budget(WlInvoicing::new().cash_days_late(true), 2027, &[], "2027-03-01").await;
+    let t = booted_with_budget(
+        WlInvoicing::new().cash_days_late(true),
+        2027,
+        &[],
+        "2027-03-01",
+    )
+    .await;
     let e1 = t.entity("PGP").await;
     for (i, late) in [10_i64, 20].iter().enumerate() {
         let due = day(1, 1);
-        let paid = invoice_in_state(&t, &e1, &format!("INV-P{i}"), due, 0, InvoiceStatus::Paid).await;
-        let mut allocation = Allocation::new(paid.id, &Subject::new("payments.payment", 40 + i as i64), 1_000, None);
+        let paid =
+            invoice_in_state(&t, &e1, &format!("INV-P{i}"), due, 0, InvoiceStatus::Paid).await;
+        let mut allocation = Allocation::new(
+            paid.id,
+            &Subject::new("payments.payment", 40 + i as i64),
+            1_000,
+            None,
+        );
         allocation.allocated_at = (due + renox::chrono::Days::new(*late as u64))
             .and_hms_opt(8, 0, 0)
             .unwrap()
@@ -1013,7 +1273,11 @@ async fn days_late_needs_three_paid_invoices() {
     invoice_in_state(&t, &e1, "INV-W", day(1, 1), 0, InvoiceStatus::WrittenOff).await;
     open_invoice(&t, &e1, "INV-9", day(3, 1), 500_000).await;
     let forecast = grid(&t, &[&e1]).await;
-    let line = forecast.lines.iter().find(|l| l.label == "INV-9").expect("INV-9");
+    let line = forecast
+        .lines
+        .iter()
+        .find(|l| l.label == "INV-9")
+        .expect("INV-9");
     assert_eq!(line.date, day(3, 1));
 }
 
@@ -1021,12 +1285,24 @@ async fn days_late_needs_three_paid_invoices() {
 /// after week 13.
 #[renox::test]
 async fn a_receipt_moved_beyond_the_horizon_is_listed_after_it() {
-    let t = booted_with_budget(WlInvoicing::new().cash_days_late(true), 2027, &[], "2027-03-01").await;
+    let t = booted_with_budget(
+        WlInvoicing::new().cash_days_late(true),
+        2027,
+        &[],
+        "2027-03-01",
+    )
+    .await;
     let e1 = t.entity("PGP").await;
     for (i, late) in [20_i64, 20, 20].iter().enumerate() {
         let due = day(1, 1);
-        let paid = invoice_in_state(&t, &e1, &format!("INV-P{i}"), due, 0, InvoiceStatus::Paid).await;
-        let mut allocation = Allocation::new(paid.id, &Subject::new("payments.payment", 40 + i as i64), 1_000, None);
+        let paid =
+            invoice_in_state(&t, &e1, &format!("INV-P{i}"), due, 0, InvoiceStatus::Paid).await;
+        let mut allocation = Allocation::new(
+            paid.id,
+            &Subject::new("payments.payment", 40 + i as i64),
+            1_000,
+            None,
+        );
         allocation.allocated_at = (due + renox::chrono::Days::new(*late as u64))
             .and_hms_opt(8, 0, 0)
             .unwrap()

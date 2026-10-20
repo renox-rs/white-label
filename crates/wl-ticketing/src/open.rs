@@ -15,8 +15,8 @@ use renox::prelude::*;
 use wl_kernel::Subject;
 use wl_kernel::calendar::calendar;
 use wl_kernel::tickets::{
-    Assignee, OpenTicket, Requester, TICKET_SERIES, TaskComment, TaskCreator, TicketFuture, TicketId,
-    TicketRef,
+    Assignee, OpenTicket, Requester, TICKET_SERIES, TaskComment, TaskCreator, TicketFuture,
+    TicketId, TicketRef,
 };
 
 use crate::assign::{assign_as_system, check_assignee};
@@ -481,7 +481,12 @@ mod tests {
         );
         let open = Tickets::open_of(state, &lease, "general").await.unwrap();
         assert_eq!(open, vec![second]);
-        assert!(Tickets::open_of(state, &lease, "nope").await.unwrap().is_empty());
+        assert!(
+            Tickets::open_of(state, &lease, "nope")
+                .await
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[renox::test]

@@ -13,24 +13,28 @@ use renox::chrono::{Days, NaiveDate};
 use renox::prelude::*;
 use renox::state_machine::StateMachine;
 use renox::testing::TestApp;
-use wl_invoicing::vat_summary::{self, VatSummary, VatSummaryStatus};
 use wl_invoicing::bill_machine;
 use wl_invoicing::bill_submit;
 use wl_invoicing::budget_lines::{self, LineInput, NewBudget};
 use wl_invoicing::credit_notes::By;
 use wl_invoicing::supplier_bill::{self, BillDraft};
-use wl_invoicing::{BillLineDraft, DrawingApproval, DrawingStatus, SupplierBill};
+use wl_invoicing::vat_summary::{self, VatSummary, VatSummaryStatus};
 use wl_invoicing::{
     AdjustmentKind, BudgetCategory, CompanyBudget, Invoice, InvoicingConfig, StartChoice,
     VatAdjustment, WlInvoicing, permissions as perm,
 };
+use wl_invoicing::{BillLineDraft, DrawingApproval, DrawingStatus, SupplierBill};
 use wl_kernel::LegalEntity;
 use wl_kernel::approvals::{self, ApprovalRequest};
+use wl_kernel::bank_statements::{BankBalance, BankStatementFuture, BankStatements};
 use wl_kernel::budgets::{CompanyBudgetApproved, CompanyBudgetVarianceReached};
 use wl_kernel::cash_forecast::CashForecastBelowThreshold;
+use wl_kernel::cheques::{
+    ChequeFuture, ChequeId, ChequeSchedule, ChequeSummary, Cheques, OpenCheque, RegisterCheque,
+};
+use wl_kernel::documents::today;
 use wl_kernel::drawings::OwnerDrawingDecided;
 use wl_kernel::einvoice::{EInvoiceAccepted, EInvoiceRejected};
-use wl_kernel::documents::today;
 use wl_kernel::invoicing::{
     BadDebtRecovered, CreditNoteReopened, DraftLine, InvoiceDisputeResolved, InvoiceDisputed,
     InvoiceDraft, InvoiceId, InvoiceIssued, InvoiceOverdue, InvoicePaid, InvoiceReopened,
@@ -38,18 +42,14 @@ use wl_kernel::invoicing::{
 };
 use wl_kernel::notify::{MessageId, Notifier, NotifyFuture, NotifyRequest};
 use wl_kernel::parties::{BillingIdentity, PartyDirectory, PartyFuture, PartyStatus, PartySummary};
-use wl_kernel::bank_statements::{BankBalance, BankStatementFuture, BankStatements};
-use wl_kernel::cheques::{
-    ChequeFuture, ChequeId, ChequeSchedule, ChequeSummary, Cheques, OpenCheque, RegisterCheque,
-};
 use wl_kernel::payments::{
     AllocationTarget, BankPayment, Direction, PaymentFuture, PaymentId, PaymentMethod,
     PaymentRecorder, PaymentStatus, PaymentSummary, RecordPayment, RefundId, RefundRequest,
     ReversalReason, UnpaidRefund,
 };
 use wl_kernel::tickets::{
-    ContractCover, OpenTicket, ServiceContractCoverage, ServiceContractId, TaskCreator, TicketFuture,
-    TicketId, TicketRef,
+    ContractCover, OpenTicket, ServiceContractCoverage, ServiceContractId, TaskCreator,
+    TicketFuture, TicketId, TicketRef,
 };
 use wl_kernel::{ClientConfig, PartyId, Subject};
 
@@ -1375,7 +1375,8 @@ impl Booted {
         self.app.travel_back();
         let seconds = (target - renox::db::now()).num_seconds();
         assert!(seconds > 0, "the target {target} is in the past");
-        self.app.travel(std::time::Duration::from_secs(seconds as u64));
+        self.app
+            .travel(std::time::Duration::from_secs(seconds as u64));
     }
 
     /// A draft to Blue Dunes with lines of `(unit price in fils, category)`,

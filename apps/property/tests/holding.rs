@@ -139,13 +139,20 @@ async fn bl_prp_06_the_lease_expires_the_day_after_its_end_date_and_billing_goes
     assert!(extra.iter().all(|c| c.amount == aed(10_000)));
     assert!(extra.iter().all(|c| c.status == ChargeStatus::Scheduled));
     assert!(extra.iter().all(|c| c.charge_type == "rent"));
-    assert!(extra[0].description.contains("holding over"), "{}", extra[0].description);
+    assert!(
+        extra[0].description.contains("holding over"),
+        "{}",
+        extra[0].description
+    );
     // Nothing that existed was stopped or repriced.
     let after = lease.charges(s.t.db()).await.unwrap();
     assert_eq!(after.len(), 24);
     for old in &before {
         let now = after.iter().find(|c| c.id == old.id).unwrap();
-        assert_eq!((now.status, now.amount, now.due_date), (old.status, old.amount, old.due_date));
+        assert_eq!(
+            (now.status, now.amount, now.due_date),
+            (old.status, old.amount, old.due_date)
+        );
     }
     // No cheque is linked to the new charges.
     assert!(s.t.cheques.all().is_empty());
@@ -191,26 +198,32 @@ async fn bl_prp_06_the_extended_charges_are_invoiced_on_their_due_dates() {
     let lease = s.year().await;
     s.run(y28(1, 1)).await;
     let extra = s.holding_charges(&lease).await;
-    property::invoicing::run(s.t.state(), y28(1, 1)).await.unwrap();
+    property::invoicing::run(s.t.state(), y28(1, 1))
+        .await
+        .unwrap();
     let origin = extra[0].subject().to_string();
-    let invoice = s
-        .t
-        .invoices
-        .all()
-        .into_iter()
-        .find(|i| {
-            i.draft.lines.iter().any(|l| {
-                l.origin.as_ref().map(ToString::to_string).as_deref() == Some(origin.as_str())
+    let invoice =
+        s.t.invoices
+            .all()
+            .into_iter()
+            .find(|i| {
+                i.draft.lines.iter().any(|l| {
+                    l.origin.as_ref().map(ToString::to_string).as_deref() == Some(origin.as_str())
+                })
             })
-        })
-        .expect("an invoice for the first holding-over charge");
+            .expect("an invoice for the first holding-over charge");
     assert_eq!(invoice.draft.due_date, Some(y28(1, 1)));
     assert_eq!(invoice.draft.lines[0].unit_price, aed(10_000));
     // The one for February waits for its date.
     let later = extra[1].subject().to_string();
-    assert!(!s.t.invoices.all().iter().any(|i| i.draft.lines.iter().any(|l| {
-        l.origin.as_ref().map(ToString::to_string).as_deref() == Some(later.as_str())
-    })));
+    assert!(
+        !s.t.invoices
+            .all()
+            .iter()
+            .any(|i| i.draft.lines.iter().any(|l| {
+                l.origin.as_ref().map(ToString::to_string).as_deref() == Some(later.as_str())
+            }))
+    );
 }
 
 /// `expire` needs the end date to have passed.
@@ -261,8 +274,15 @@ async fn bl_prp_06_the_manager_gets_the_holding_over_task_seven_days_later() {
     assert!(tasks[0].open);
     assert_eq!(tasks[0].subject, lease.subject());
     assert_eq!(tasks[0].assignee, Some(Assignee::user(s.manager.id)));
-    assert_eq!(tasks[0].key.as_deref(), Some(holding::task_key(&lease, y28(1, 1)).as_str()));
-    assert!(tasks[0].title.contains(&lease.number()), "{}", tasks[0].title);
+    assert_eq!(
+        tasks[0].key.as_deref(),
+        Some(holding::task_key(&lease, y28(1, 1)).as_str())
+    );
+    assert!(
+        tasks[0].title.contains(&lease.number()),
+        "{}",
+        tasks[0].title
+    );
 
     assert_eq!(s.run(y28(1, 9)).await.tasked, 0);
     assert_eq!(s.t.tasks.with_key("property.holding:").len(), 1);
@@ -316,7 +336,8 @@ async fn bl_prp_06_the_daily_run_closes_the_task_of_a_submitted_renewal() {
     s.run(y28(1, 8)).await;
     let draft = s.renewal_draft(&lease).await;
     // The status is moved as a fixture would, without the listener.
-    s.t.set(&draft, &[("status", &LeaseStatus::PendingSignature)]).await;
+    s.t.set(&draft, &[("status", &LeaseStatus::PendingSignature)])
+        .await;
     s.run(y28(1, 9)).await;
     assert_eq!(s.open_holding_tasks(), 0);
 }
@@ -396,18 +417,12 @@ async fn bl_prp_06_a_six_month_lease_gets_six_months() {
     LeaseCharge::query()
         .where_(LeaseCharge::LEASE_ID.eq(lease.id))
         .where_(LeaseCharge::DUE_DATE.gt(d(6, 30)))
-        .update(
-            s.t.db(),
-            &[("status", &ChargeStatus::Cancelled)],
-        )
+        .update(s.t.db(), &[("status", &ChargeStatus::Cancelled)])
         .await
         .unwrap();
     let report = s.run(d(7, 1)).await;
     assert_eq!((report.flagged, report.expired), (1, 1));
-    assert_eq!(
-        s.t.reload(&lease).await.holding_over_until,
-        Some(d(12, 31))
-    );
+    assert_eq!(s.t.reload(&lease).await.holding_over_until, Some(d(12, 31)));
     let extra = s.holding_charges(&lease).await;
     assert_eq!(extra.len(), 6);
     assert_eq!(extra[0].due_date, d(7, 1));
@@ -431,7 +446,8 @@ async fn bl_prp_06_a_lease_with_a_notice_does_not_expire() {
     let s = scene().await;
     let lease = s.year().await;
     // The notice (BL-PRP-09) is a fixture here.
-    s.t.set(&lease, &[("status", &LeaseStatus::NoticeGiven)]).await;
+    s.t.set(&lease, &[("status", &LeaseStatus::NoticeGiven)])
+        .await;
     let report = s.run(y28(1, 1)).await;
     assert_eq!((report.expired, report.extended, report.tasked), (0, 0, 0));
     assert_eq!(s.t.status(&lease).await, LeaseStatus::NoticeGiven);
@@ -458,7 +474,10 @@ async fn bl_prp_06_an_expired_lease_is_not_an_end() {
         .expect("the state");
     assert!(!state.terminal);
     // `expire` itself leaves only `renewal_due`.
-    assert_eq!(machine.find("expire").unwrap().from_states(), ["renewal_due"]);
+    assert_eq!(
+        machine.find("expire").unwrap().from_states(),
+        ["renewal_due"]
+    );
 }
 
 /// An expired lease is still a lease in force: the Ejari can be recorded and

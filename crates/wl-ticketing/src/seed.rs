@@ -102,10 +102,28 @@ pub fn labour_case_fields() -> Vec<CustomField> {
         choices: choices.iter().map(|c| (*c).to_owned()).collect(),
     };
     vec![
-        field("forum", "Forum", "الجهة", FieldKind::Choice, &["mohre", "court"]),
+        field(
+            "forum",
+            "Forum",
+            "الجهة",
+            FieldKind::Choice,
+            &["mohre", "court"],
+        ),
         field("reference", "Reference", "المرجع", FieldKind::Text, &[]),
-        field("hearing_date", "Hearing date", "تاريخ الجلسة", FieldKind::Date, &[]),
-        field("reply_date", "Reply date", "تاريخ الرد", FieldKind::Date, &[]),
+        field(
+            "hearing_date",
+            "Hearing date",
+            "تاريخ الجلسة",
+            FieldKind::Date,
+            &[],
+        ),
+        field(
+            "reply_date",
+            "Reply date",
+            "تاريخ الرد",
+            FieldKind::Date,
+            &[],
+        ),
     ]
 }
 

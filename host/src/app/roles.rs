@@ -3,11 +3,11 @@
 //! permission here, give it to roles, and `define` makes the database agree
 //! (it runs on every sign-up, seed and `users:admin`).
 
+use property::permissions as prp;
 use renox::anyhow::anyhow;
 use renox::auth::permissions;
 use renox::command::Args;
 use renox::prelude::*;
-use property::permissions as prp;
 use wl_documents::permissions as documents;
 use wl_hr::permissions as hr;
 use wl_invoicing::permissions as invoices;

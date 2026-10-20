@@ -89,7 +89,10 @@ pub struct Onboarding {
 
 /// A template an onboarding was started from, at its frozen version.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
-#[model(table = "wl_hr_onboarding_templates_applied", unique(onboarding_id, template_id))]
+#[model(
+    table = "wl_hr_onboarding_templates_applied",
+    unique(onboarding_id, template_id)
+)]
 pub struct AppliedTemplate {
     /// The primary key.
     pub id: i64,
@@ -108,7 +111,11 @@ pub struct AppliedTemplate {
 
 /// One step for one employee.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
-#[model(table = "wl_hr_onboarding_steps", state_machine, index(onboarding_id, status))]
+#[model(
+    table = "wl_hr_onboarding_steps",
+    state_machine,
+    index(onboarding_id, status)
+)]
 pub struct OnboardingStep {
     /// The primary key.
     pub id: i64,
@@ -344,7 +351,13 @@ async fn running_templates(db: &Db, employee: i64) -> Result<Vec<i64>> {
         .get(db)
         .await?;
     for onboarding in running {
-        ids.extend(onboarding.templates(db).await?.into_iter().map(|t| t.template_id));
+        ids.extend(
+            onboarding
+                .templates(db)
+                .await?
+                .into_iter()
+                .map(|t| t.template_id),
+        );
     }
     Ok(ids)
 }
@@ -572,7 +585,11 @@ pub async fn re_resolve(state: &AppState, employee_id: i64) -> Result {
 /// A corrected hire date moves the due dates of the open steps of the
 /// `hire` onboardings of `employee` to the new date plus their due days, plus
 /// the days of the approved leave that has started (`HRM.RUL.17`).
-pub async fn recompute_due_dates(state: &AppState, employee_id: i64, hire_date: NaiveDate) -> Result {
+pub async fn recompute_due_dates(
+    state: &AppState,
+    employee_id: i64,
+    hire_date: NaiveDate,
+) -> Result {
     let leave = crate::leave::started_leave(&state.db, employee_id, today()).await?;
     let hired = Onboarding::query()
         .where_(Onboarding::EMPLOYEE_ID.eq(employee_id))
@@ -583,7 +600,10 @@ pub async fn recompute_due_dates(state: &AppState, employee_id: i64, hire_date: 
     for onboarding in hired {
         Onboarding::query()
             .where_(Onboarding::ID.eq(onboarding.id))
-            .update(&state.db, &[("started_on", &hire_date), ("updated_at", &now())])
+            .update(
+                &state.db,
+                &[("started_on", &hire_date), ("updated_at", &now())],
+            )
             .await?;
         for step in OnboardingStep::query()
             .where_(OnboardingStep::ONBOARDING_ID.eq(onboarding.id))
@@ -688,7 +708,10 @@ mod tests {
     fn due_dates_count_calendar_days_from_the_start() {
         assert_eq!(due_date(day(11, 2), 7), day(11, 9));
         assert_eq!(due_date(day(11, 5), 7), day(11, 12));
-        assert_eq!(due_date(day(12, 28), 7), NaiveDate::from_ymd_opt(2027, 1, 4).unwrap());
+        assert_eq!(
+            due_date(day(12, 28), 7),
+            NaiveDate::from_ymd_opt(2027, 1, 4).unwrap()
+        );
         assert_eq!(due_date(day(11, 2), 0), day(11, 2));
     }
 
@@ -710,6 +733,9 @@ mod tests {
     #[test]
     fn a_refusal_has_a_message() {
         assert!(!StartRefused::NoTemplate.message().is_empty());
-        assert!(matches!(StartRefused::EmployeeNotFound.into_error(), Error::NotFound));
+        assert!(matches!(
+            StartRefused::EmployeeNotFound.into_error(),
+            Error::NotFound
+        ));
     }
 }

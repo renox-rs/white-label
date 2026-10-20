@@ -24,8 +24,8 @@ use crate::calendar::BusinessCalendar;
 
 pub use collect::{by_manager, gather, managers};
 pub use info::{RecordInfo, info_of, register_info, register_rule_title, rule_title};
-pub use run::{NOTIFICATION_TYPE, Report, run_digest};
 pub use render::{FiredLine, Item, ItemKind, Section, record_name, render};
+pub use run::{NOTIFICATION_TYPE, Report, run_digest};
 
 /// The rule id of the digest (`PLT.RUL.06`).
 pub const RULE: &str = "PLT.RUL.06";

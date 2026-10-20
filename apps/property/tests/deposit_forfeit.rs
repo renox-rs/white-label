@@ -10,8 +10,8 @@ mod support;
 use property::deposit_forfeit::{DAMAGES, DepositSettlement};
 use property::{ChargeStatus, Lease, LeaseCharge, arrears, charge_type};
 use renox::prelude::*;
-use wl_kernel::VatCategory;
 use wl_kernel::Subject;
+use wl_kernel::VatCategory;
 use wl_kernel::invoicing::{DraftLine, InvoiceDraft, InvoiceStatus, invoicer};
 
 use support::{ACCOUNTANT, AGENT, Booted, MANAGER, TENANT, aed, boot, day};
@@ -146,7 +146,13 @@ async fn bl_prp_17_the_deposit_covers_the_rent_then_the_damages_and_the_rest_is_
     let paid = s.t.invoices.get(rent).unwrap();
     assert_eq!(paid.summary.balance, 0);
     assert_eq!(paid.summary.status, InvoiceStatus::Paid);
-    assert_eq!(paid.allocations.iter().map(|(_, amount)| amount).sum::<i64>(), aed(2_000));
+    assert_eq!(
+        paid.allocations
+            .iter()
+            .map(|(_, amount)| amount)
+            .sum::<i64>(),
+        aed(2_000)
+    );
 
     let settlement = s.settlement().await.expect("a settlement statement");
     assert_eq!(settlement.held, aed(5_000));
@@ -160,17 +166,19 @@ async fn bl_prp_17_the_deposit_covers_the_rent_then_the_damages_and_the_rest_is_
     assert_eq!(settlement.second_approver_id, Some(s.finance.id));
 
     // One damages invoice with one line for what the deposit did not cover.
-    let invoice = s
-        .t
-        .invoices
-        .get(settlement.excess_invoice_id.expect("a damages invoice"))
-        .unwrap();
+    let invoice =
+        s.t.invoices
+            .get(settlement.excess_invoice_id.expect("a damages invoice"))
+            .unwrap();
     assert_eq!(invoice.draft.party, TENANT);
     assert_eq!(invoice.draft.source, s.lease.subject());
     assert_eq!(invoice.draft.lines.len(), 1);
     assert_eq!(invoice.draft.lines[0].description, "Chiller coil");
     assert_eq!(invoice.draft.lines[0].unit_price, aed(1_500));
-    assert_eq!(invoice.draft.lines[0].charge_type.as_deref(), Some("damages"));
+    assert_eq!(
+        invoice.draft.lines[0].charge_type.as_deref(),
+        Some("damages")
+    );
     assert_eq!(invoice.draft.lines[0].vat_category, VatCategory::Standard);
     // Due after the client's standard terms: the invoicer fills the date in.
     assert!(invoice.draft.due_date.is_none());
@@ -193,8 +201,13 @@ async fn bl_prp_17_the_deposit_covers_the_rent_then_the_damages_and_the_rest_is_
 #[renox::test]
 async fn bl_prp_17_only_a_holder_of_the_refund_permission_forfeits() {
     let s = scene().await;
-    s.t.deposits
-        .settle_with(&s.source, TENANT, aed(5_000), -20, &[("Repainting", aed(5_000))]);
+    s.t.deposits.settle_with(
+        &s.source,
+        TENANT,
+        aed(5_000),
+        -20,
+        &[("Repainting", aed(5_000))],
+    );
     let approver = s.manager.id.to_string();
     s.t.post(
         &s.manager,
@@ -262,7 +275,14 @@ async fn bl_prp_17_unpaid_rent_alone_is_paid_oldest_first_and_issues_no_invoice(
     let second = s.t.invoices.get(newer).unwrap();
     assert_eq!(second.summary.balance, aed(2_000));
     assert_eq!(second.summary.status, InvoiceStatus::PartiallyPaid);
-    assert_eq!(second.allocations.iter().map(|(_, amount)| amount).sum::<i64>(), aed(1_500));
+    assert_eq!(
+        second
+            .allocations
+            .iter()
+            .map(|(_, amount)| amount)
+            .sum::<i64>(),
+        aed(1_500)
+    );
 
     let settlement = s.settlement().await.unwrap();
     assert_eq!(settlement.to_rent, aed(5_000));

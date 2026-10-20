@@ -96,10 +96,8 @@ enum Shift {
 impl Shift {
     /// From the start of the term to the start of the period.
     fn between(start: NaiveDate, period: NaiveDate) -> Self {
-        whole_months(start, period).map_or_else(
-            || Shift::Days((period - start).num_days()),
-            Shift::Months,
-        )
+        whole_months(start, period)
+            .map_or_else(|| Shift::Days((period - start).num_days()), Shift::Months)
     }
 
     fn apply(self, due: NaiveDate) -> Option<NaiveDate> {
@@ -173,10 +171,7 @@ pub fn plan_extension(lease: &Lease, charges: &[LeaseCharge], from: NaiveDate) -
             Some(ExtensionLine {
                 position,
                 charge_type: c.charge_type.clone(),
-                description: english(
-                    "property.holding.line",
-                    &[("description", &c.description)],
-                ),
+                description: english("property.holding.line", &[("description", &c.description)]),
                 due_date: due,
                 amount: c.amount,
                 vat_category: c.vat_category,
@@ -646,7 +641,11 @@ mod tests {
                 ..Default::default()
             });
         }
-        assert!(plan_extension(&year, &all, day(2028, 1, 1)).lines.is_empty());
+        assert!(
+            plan_extension(&year, &all, day(2028, 1, 1))
+                .lines
+                .is_empty()
+        );
     }
 
     #[test]
@@ -659,7 +658,13 @@ mod tests {
         assert_eq!(task_due_on(&lease, day(2028, 1, 1)), day(2028, 1, 8));
         assert_eq!(task_due_on(&lease, day(2029, 1, 1)), day(2029, 1, 1));
         assert_eq!(
-            task_key(&Lease { id: 4, ..Default::default() }, day(2028, 1, 1)),
+            task_key(
+                &Lease {
+                    id: 4,
+                    ..Default::default()
+                },
+                day(2028, 1, 1)
+            ),
             "property.holding:4:2028-01-01"
         );
     }

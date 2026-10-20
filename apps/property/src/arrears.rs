@@ -296,7 +296,8 @@ async fn invoices_of(state: &AppState, root_id: i64) -> Result<Vec<Seen>> {
     }
     // The damages invoice of a deposit applied to the deductions follows the
     // flow like a rent invoice (BL-PRP-17).
-    if let Some(settlement) = crate::deposit_forfeit::DepositSettlement::of_root(&state.db, root_id).await?
+    if let Some(settlement) =
+        crate::deposit_forfeit::DepositSettlement::of_root(&state.db, root_id).await?
         && let Some(id) = settlement.excess_invoice_id
         && !seen.iter().any(|s| s.id == id)
         && let Some(summary) = invoicer(state).find(&state.db, InvoiceId(id)).await?
@@ -448,10 +449,7 @@ async fn sync_open(state: &AppState, lease: &Lease, day: NaiveDate) -> Result<Re
             .where_(ArrearsDemand::ID.eq(demand.id))
             .update(
                 &state.db,
-                &[
-                    ("closed_on", &Some(day)),
-                    ("updated_at", &renox::db::now()),
-                ],
+                &[("closed_on", &Some(day)), ("updated_at", &renox::db::now())],
             )
             .await?;
         report.closed += 1;
@@ -662,7 +660,8 @@ pub async fn run(state: &AppState, day: NaiveDate) -> Result<Report> {
     for settlement in crate::deposit_forfeit::DepositSettlement::query()
         .where_(crate::deposit_forfeit::DepositSettlement::EXCESS_INVOICE_ID.is_not_null())
         .where_(
-            crate::deposit_forfeit::DepositSettlement::APPLIED_ON.lte(day - Duration::days(DEMAND_DAYS)),
+            crate::deposit_forfeit::DepositSettlement::APPLIED_ON
+                .lte(day - Duration::days(DEMAND_DAYS)),
         )
         .get(&state.db)
         .await?
@@ -705,7 +704,9 @@ pub async fn send_demand_as(
     demand_id: i64,
     day: NaiveDate,
 ) -> Result<ArrearsDemand> {
-    let lease = Lease::find(&state.db, lease_id).await?.ok_or(Error::NotFound)?;
+    let lease = Lease::find(&state.db, lease_id)
+        .await?
+        .ok_or(Error::NotFound)?;
     let demand = ArrearsDemand::find(&state.db, demand_id)
         .await?
         .filter(|d| d.root_id == lease.root_id)
@@ -760,7 +761,9 @@ pub async fn send_demand(
     lease_id: i64,
     demand_id: i64,
 ) -> Result<ArrearsDemand> {
-    let lease = Lease::find(&state.db, lease_id).await?.ok_or(Error::NotFound)?;
+    let lease = Lease::find(&state.db, lease_id)
+        .await?
+        .ok_or(Error::NotFound)?;
     if !user.has_permission_in(permissions::LEASES_MANAGE, &lease.scope()) {
         return Err(Error::Forbidden);
     }
@@ -792,7 +795,9 @@ pub async fn record_plan_as(
     plan: NewPlan,
     day: NaiveDate,
 ) -> Result<PaymentPlan> {
-    let lease = Lease::find(&state.db, lease_id).await?.ok_or(Error::NotFound)?;
+    let lease = Lease::find(&state.db, lease_id)
+        .await?
+        .ok_or(Error::NotFound)?;
     let Some(note) = clean(Some(plan.note)) else {
         return Err(refused(english("property.arrears.plan_note_required", &[])));
     };
@@ -851,7 +856,9 @@ pub async fn record_plan(
     lease_id: i64,
     plan: NewPlan,
 ) -> Result<PaymentPlan> {
-    let lease = Lease::find(&state.db, lease_id).await?.ok_or(Error::NotFound)?;
+    let lease = Lease::find(&state.db, lease_id)
+        .await?
+        .ok_or(Error::NotFound)?;
     if !user.has_permission_in(permissions::LEASES_MANAGE, &lease.scope()) {
         return Err(Error::Forbidden);
     }
@@ -892,9 +899,11 @@ pub(crate) fn schedule(app: &mut Registry) {
             Ok(())
         },
     );
-    app.listen(|event: StatutoryNoticeProofRecorded, state: AppState| async move {
-        on_proof(&state, &event).await
-    });
+    app.listen(
+        |event: StatutoryNoticeProofRecorded, state: AppState| async move {
+            on_proof(&state, &event).await
+        },
+    );
 }
 
 /// The data of the notice: what the demand lists and the demand period.
@@ -957,8 +966,14 @@ mod tests {
             summary: summary(status, balance),
             due: day(3, 1),
         };
-        assert!(eligible(&seen(InvoiceStatus::Issued, 1_200_000), day(3, 31)));
-        assert!(eligible(&seen(InvoiceStatus::PartiallyPaid, 100), day(3, 31)));
+        assert!(eligible(
+            &seen(InvoiceStatus::Issued, 1_200_000),
+            day(3, 31)
+        ));
+        assert!(eligible(
+            &seen(InvoiceStatus::PartiallyPaid, 100),
+            day(3, 31)
+        ));
         assert!(eligible(&seen(InvoiceStatus::Overdue, 100), day(3, 31)));
         assert!(!eligible(&seen(InvoiceStatus::Paid, 0), day(3, 31)));
         assert!(!eligible(&seen(InvoiceStatus::WrittenOff, 100), day(3, 31)));

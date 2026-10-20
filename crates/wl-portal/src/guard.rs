@@ -221,7 +221,10 @@ mod tests {
 
     #[test]
     fn paying_an_invoice_is_money_in_and_never_refused() {
-        assert_eq!(PortalAction::PayInvoice.guarded_kind(), Some(ActionKind::MoneyIn));
+        assert_eq!(
+            PortalAction::PayInvoice.guarded_kind(),
+            Some(ActionKind::MoneyIn)
+        );
         assert!(!PortalAction::PayInvoice.refused_while_blocked());
     }
 

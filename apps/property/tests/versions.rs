@@ -52,9 +52,14 @@ async fn bl_prp_05_a_renewal_passes_the_unit_guard_and_a_new_lease_does_not() {
     let t = &s.t;
     assert_eq!(t.unit_now(&s.unit).await.status, UnitStatus::Occupied);
 
-    let v2 = property::leases::create_version(t.state(), Some(s.agent.id), s.v1.id, renewal(aed(110_000), aed(5_000)))
-        .await
-        .unwrap();
+    let v2 = property::leases::create_version(
+        t.state(),
+        Some(s.agent.id),
+        s.v1.id,
+        renewal(aed(110_000), aed(5_000)),
+    )
+    .await
+    .unwrap();
     assert_eq!((v2.version, v2.version_kind), (2, VersionKind::Renewal));
     assert_eq!(v2.root_id, s.v1.root_id);
     assert_eq!(v2.previous_id, Some(s.v1.id));
@@ -65,11 +70,24 @@ async fn bl_prp_05_a_renewal_passes_the_unit_guard_and_a_new_lease_does_not() {
     t.submit(&s.agent, &v2).await.assert_ok();
     assert_eq!(t.status(&v2).await, LeaseStatus::PendingSignature);
 
-    let other = property::NewLease::new(s.unit.id, support::COMPANY, day(65), day(429), aed(90_000), 4);
-    let u = property::leases::create_draft(t.state(), None, other).await.unwrap();
+    let other = property::NewLease::new(
+        s.unit.id,
+        support::COMPANY,
+        day(65),
+        day(429),
+        aed(90_000),
+        4,
+    );
+    let u = property::leases::create_draft(t.state(), None, other)
+        .await
+        .unwrap();
     let refused = t.submit(&s.agent, &u).await;
     refused.assert_status(422);
-    assert!(refused.text().contains("not available"), "{}", refused.text());
+    assert!(
+        refused.text().contains("not available"),
+        "{}",
+        refused.text()
+    );
 }
 
 /// AC3: activating the renewal makes v1 `renewed` and v2 `active`; the unit
@@ -79,9 +97,14 @@ async fn bl_prp_05_a_renewal_passes_the_unit_guard_and_a_new_lease_does_not() {
 async fn bl_prp_05_activating_a_renewal_replaces_the_previous_version() {
     let s = scene().await;
     let t = &s.t;
-    let v2 = property::leases::create_version(t.state(), Some(s.agent.id), s.v1.id, renewal(aed(110_000), aed(5_000)))
-        .await
-        .unwrap();
+    let v2 = property::leases::create_version(
+        t.state(),
+        Some(s.agent.id),
+        s.v1.id,
+        renewal(aed(110_000), aed(5_000)),
+    )
+    .await
+    .unwrap();
     t.accept(&v2);
     t.submit(&s.agent, &v2).await.assert_ok();
     t.activate(&s.manager, &v2).await.assert_ok();
@@ -90,7 +113,10 @@ async fn bl_prp_05_activating_a_renewal_replaces_the_previous_version() {
     assert_eq!(t.status(&v2).await, LeaseStatus::Active);
     assert_eq!(t.unit_now(&s.unit).await.status, UnitStatus::Occupied);
     let versions = Lease::versions_of(t.db(), s.v1.root_id).await.unwrap();
-    let active = versions.iter().filter(|l| l.status == LeaseStatus::Active).count();
+    let active = versions
+        .iter()
+        .filter(|l| l.status == LeaseStatus::Active)
+        .count();
     assert_eq!(active, 1, "never two versions active at once");
 
     let charges = t.reload(&v2).await.charges(t.db()).await.unwrap();
@@ -100,7 +126,11 @@ async fn bl_prp_05_activating_a_renewal_replaces_the_previous_version() {
 
     let tasks = t.tasks.with_key(&format!("property.ejari:{}", v2.id));
     assert_eq!(tasks.len(), 1);
-    assert!(tasks[0].title.contains("Renew the Ejari"), "{}", tasks[0].title);
+    assert!(
+        tasks[0].title.contains("Renew the Ejari"),
+        "{}",
+        tasks[0].title
+    );
     let events = t.activated.all();
     let last = events.last().expect("LeaseActivated");
     assert_eq!((last.lease, last.kind), (v2.id, VersionKind::Renewal));
@@ -138,7 +168,11 @@ async fn bl_prp_05_activating_an_amendment_ends_the_previous_version_as_amended(
     assert_eq!(t.status(&v2).await, LeaseStatus::Active);
     assert_eq!(t.unit_now(&unit).await.status, UnitStatus::Occupied);
     let tasks = t.tasks.with_key(&format!("property.ejari:{}", v2.id));
-    assert!(tasks[0].title.contains("Update the Ejari"), "{}", tasks[0].title);
+    assert!(
+        tasks[0].title.contains("Update the Ejari"),
+        "{}",
+        tasks[0].title
+    );
 }
 
 /// An amendment needs its effective date, within the term of the version it
@@ -154,9 +188,11 @@ async fn bl_prp_05_an_amendments_effective_date_is_checked() {
 
     let mut missing = NewVersion::amendment(day(0), v1.end_date, aed(105_000), 0, 2);
     missing.effective_date = None;
-    assert!(property::leases::create_version(t.state(), None, v1.id, missing)
-        .await
-        .is_err());
+    assert!(
+        property::leases::create_version(t.state(), None, v1.id, missing)
+            .await
+            .is_err()
+    );
 
     for (effective, why) in [
         (day(-40), "before the first day of this month"),
@@ -204,11 +240,21 @@ async fn bl_prp_05_the_previous_version_must_be_in_a_state_renew_or_amend_accept
 async fn bl_prp_05_only_one_renewal_or_amendment_is_in_progress_per_lease() {
     let s = scene().await;
     let t = &s.t;
-    let first = property::leases::create_version(t.state(), None, s.v1.id, renewal(aed(110_000), aed(5_000)))
-        .await
-        .unwrap();
-    let draft_twice =
-        property::leases::create_version(t.state(), None, s.v1.id, renewal(aed(120_000), aed(5_000))).await;
+    let first = property::leases::create_version(
+        t.state(),
+        None,
+        s.v1.id,
+        renewal(aed(110_000), aed(5_000)),
+    )
+    .await
+    .unwrap();
+    let draft_twice = property::leases::create_version(
+        t.state(),
+        None,
+        s.v1.id,
+        renewal(aed(120_000), aed(5_000)),
+    )
+    .await;
     assert!(matches!(
         draft_twice,
         Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
@@ -238,9 +284,14 @@ async fn bl_prp_05_only_one_renewal_or_amendment_is_in_progress_per_lease() {
 async fn bl_prp_05_a_previous_version_that_moved_refuses_the_activation() {
     let s = scene().await;
     let t = &s.t;
-    let v2 = property::leases::create_version(t.state(), None, s.v1.id, renewal(aed(110_000), aed(5_000)))
-        .await
-        .unwrap();
+    let v2 = property::leases::create_version(
+        t.state(),
+        None,
+        s.v1.id,
+        renewal(aed(110_000), aed(5_000)),
+    )
+    .await
+    .unwrap();
     t.accept(&v2);
     t.submit(&s.agent, &v2).await.assert_ok();
     // The previous version ended meanwhile (a bulk update is the fixture).
@@ -262,15 +313,26 @@ async fn bl_prp_05_a_previous_version_that_moved_refuses_the_activation() {
 async fn bl_prp_05_a_changed_deposit_asks_the_deposit_to_adjust() {
     let s = scene().await;
     let t = &s.t;
-    let v2 = property::leases::create_version(t.state(), None, s.v1.id, renewal(aed(110_000), aed(6_000)))
-        .await
-        .unwrap();
+    let v2 = property::leases::create_version(
+        t.state(),
+        None,
+        s.v1.id,
+        renewal(aed(110_000), aed(6_000)),
+    )
+    .await
+    .unwrap();
     t.accept(&v2);
     t.submit(&s.agent, &v2).await.assert_ok();
     t.activate(&s.manager, &v2).await.assert_ok();
     assert_eq!(t.status(&v2).await, LeaseStatus::Active);
     // The test book holds no deposit to adjust, so the accountant is asked to.
-    let tasks = t.tasks.with_key(&format!("property.deposit_adjust:{}", v2.id));
+    let tasks = t
+        .tasks
+        .with_key(&format!("property.deposit_adjust:{}", v2.id));
     assert_eq!(tasks.len(), 1);
-    assert!(tasks[0].title.contains("AED 6,000.00"), "{}", tasks[0].title);
+    assert!(
+        tasks[0].title.contains("AED 6,000.00"),
+        "{}",
+        tasks[0].title
+    );
 }

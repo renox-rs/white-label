@@ -16,9 +16,9 @@ use wl_invoicing::credit_notes::By;
 use wl_invoicing::duplicates::exceptions_of;
 use wl_invoicing::supplier_bill::{self, BillDraft, POSSIBLE_DUPLICATE, WORK_AFTER_CONTRACT_END};
 use wl_invoicing::{BillLineDraft, SupplierBill, SupplierBillStatus};
+use wl_kernel::Subject;
 use wl_kernel::invoicing::VatCategory;
 use wl_kernel::tickets::SERVICE_CONTRACT_SUBJECT_TYPE;
-use wl_kernel::Subject;
 
 use support::{BLUE_DUNES, Booted, boot};
 
@@ -47,7 +47,9 @@ async fn bill(t: &Booted, number: &str, lines: &[(Option<NaiveDate>, i64)]) -> S
         line.service_date = *day;
         draft = draft.line(line);
     }
-    supplier_bill::create(t.db(), &draft, Some(A)).await.unwrap()
+    supplier_bill::create(t.db(), &draft, Some(A))
+        .await
+        .unwrap()
 }
 
 async fn submitted(t: &Booted, bill: &SupplierBill) -> SupplierBill {
@@ -93,7 +95,10 @@ async fn inv24_work_up_to_the_end_date_is_matched() {
     assert!(exceptions_of(t.db(), done.id).await.unwrap().is_empty());
     // The end date itself is covered.
     let last = bill(&t, "C-2b", &[(Some(date(9, 30)), 80_000)]).await;
-    assert_eq!(submitted(&t, &last).await.status, SupplierBillStatus::Matched);
+    assert_eq!(
+        submitted(&t, &last).await.status,
+        SupplierBillStatus::Matched
+    );
 }
 
 /// AC3: a contract terminated on 2026-09-15 covers no work of 2026-09-20.
@@ -105,7 +110,10 @@ async fn inv24_a_terminated_contract_covers_work_up_to_its_termination_date() {
     let done = submitted(&t, &draft).await;
     assert_eq!(done.status, SupplierBillStatus::Exception);
     let on_time = bill(&t, "C-3b", &[(Some(date(9, 15)), 80_000)]).await;
-    assert_eq!(submitted(&t, &on_time).await.status, SupplierBillStatus::Matched);
+    assert_eq!(
+        submitted(&t, &on_time).await.status,
+        SupplierBillStatus::Matched
+    );
 }
 
 /// AC4: accountant B approves the exception with a reason; creator A cannot.
@@ -173,6 +181,11 @@ async fn inv24_both_reasons_are_listed_and_an_unknown_contract_holds_nothing() {
     let mut line = BillLineDraft::new("AMC visit", 80_000, VatCategory::Standard);
     line.service_date = Some(date(12, 1));
     other = other.line(line);
-    let unknown = supplier_bill::create(t.db(), &other, Some(A)).await.unwrap();
-    assert_eq!(submitted(&t, &unknown).await.status, SupplierBillStatus::Matched);
+    let unknown = supplier_bill::create(t.db(), &other, Some(A))
+        .await
+        .unwrap();
+    assert_eq!(
+        submitted(&t, &unknown).await.status,
+        SupplierBillStatus::Matched
+    );
 }

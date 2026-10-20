@@ -113,7 +113,10 @@ async fn a_part_payment_must_be_below_the_open_amount_and_complete() {
         .await
         .assert_status(422);
     let unchanged = t.cheque(cheque.id).await;
-    assert_eq!((unchanged.settled_amount, unchanged.open_amount), (0, 1_000_000));
+    assert_eq!(
+        (unchanged.settled_amount, unchanged.open_amount),
+        (0, 1_000_000)
+    );
     assert!(cheque_payments(&t).await.is_empty());
 
     t.settle_cheque(&staff, &cheque, "transfer", "100.00", "TRX-5")
@@ -156,7 +159,9 @@ async fn settling_needs_the_right_the_direction_and_a_bounced_cheque() {
     t.settle_cheque(&depositor, &bounced, "cash", "100", "")
         .await
         .assert_forbidden();
-    t.replace_cheque(&depositor, &bounced).await.assert_forbidden();
+    t.replace_cheque(&depositor, &bounced)
+        .await
+        .assert_forbidden();
     t.link_replacement(&depositor, &bounced, "payment", 1)
         .await
         .assert_forbidden();
@@ -196,7 +201,9 @@ async fn a_cheque_is_replaced_only_when_the_replacements_cover_the_open_amount()
     // Nothing linked.
     t.replace_cheque(&staff, &original).await.assert_status(422);
     // AED 9,000.00 against AED 10,000.00.
-    let short = t.received_cheque(BLUE_DUNES, "3011", 900_000, Some(rent)).await;
+    let short = t
+        .received_cheque(BLUE_DUNES, "3011", 900_000, Some(rent))
+        .await;
     t.link_replacement(&staff, &original, "cheque", short.id)
         .await
         .assert_ok();
@@ -205,13 +212,17 @@ async fn a_cheque_is_replaced_only_when_the_replacements_cover_the_open_amount()
     assert!(t.cheque_resolved.all().is_empty());
 
     // AED 1,000.00 more.
-    let rest = t.received_cheque(BLUE_DUNES, "3012", 100_000, Some(rent)).await;
+    let rest = t
+        .received_cheque(BLUE_DUNES, "3012", 100_000, Some(rent))
+        .await;
     t.link_replacement(&staff, &original, "cheque", rest.id)
         .await
         .assert_ok();
     t.replace_cheque(&staff, &original).await.assert_ok();
     assert_eq!(t.cheque(original.id).await.status, ChequeStatus::Replaced);
-    let links = ChequeReplacement::of_cheque(t.db(), original.id).await.unwrap();
+    let links = ChequeReplacement::of_cheque(t.db(), original.id)
+        .await
+        .unwrap();
     assert_eq!(links.iter().map(|l| l.amount).sum::<i64>(), 1_000_000);
 }
 
@@ -231,7 +242,9 @@ async fn a_replacement_is_checked() {
     t.link_replacement(&staff, &original, "cheque", original.id)
         .await
         .assert_status(422);
-    let stranger = t.received_cheque(QUIET_SANDS, "3022", 1_000_000, None).await;
+    let stranger = t
+        .received_cheque(QUIET_SANDS, "3022", 1_000_000, None)
+        .await;
     t.link_replacement(&staff, &original, "cheque", stranger.id)
         .await
         .assert_status(422);
@@ -303,9 +316,16 @@ async fn the_original_is_handed_back_with_a_receipt_when_the_replacement_clears(
         .assert_ok();
     let original = t.cheque(original.id).await;
     assert_eq!(original.open_amount, 1_000_000);
-    assert_eq!(tasks_of(&t, &original, FollowupKind::FollowUpCheque).await.len(), 1);
+    assert_eq!(
+        tasks_of(&t, &original, FollowupKind::FollowUpCheque)
+            .await
+            .len(),
+        1
+    );
 
-    let new = t.received_cheque(BLUE_DUNES, "3031", 1_000_000, Some(rent)).await;
+    let new = t
+        .received_cheque(BLUE_DUNES, "3031", 1_000_000, Some(rent))
+        .await;
     t.link_replacement(&staff, &original, "cheque", new.id)
         .await
         .assert_ok();
@@ -321,10 +341,16 @@ async fn the_original_is_handed_back_with_a_receipt_when_the_replacement_clears(
     let follow_up = tasks_of(&t, &replaced, FollowupKind::FollowUpCheque).await;
     assert_eq!(follow_up[0].status, FollowupStatus::Done);
     // Kept until the replacement clears.
-    assert!(tasks_of(&t, &replaced, FollowupKind::HandBack).await.is_empty());
+    assert!(
+        tasks_of(&t, &replaced, FollowupKind::HandBack)
+            .await
+            .is_empty()
+    );
 
     let new = t.deposit_cheque(&staff, &new).await;
-    t.cheque_action(&staff, &new, "clear", &[]).await.assert_ok();
+    t.cheque_action(&staff, &new, "clear", &[])
+        .await
+        .assert_ok();
     let hand_back = tasks_of(&t, &replaced, FollowupKind::HandBack).await;
     assert_eq!(hand_back.len(), 1);
     assert_eq!(hand_back[0].status, FollowupStatus::Open);
@@ -395,7 +421,10 @@ async fn a_replacement_that_bounces_keeps_the_original_with_a_note() {
     // The new cheque is bounced on its own and ChequeBounced was emitted.
     assert_eq!(t.cheque(new.id).await.status, ChequeStatus::Bounced);
     assert_eq!(t.cheque_bounced.all().len(), 2);
-    assert_eq!(tasks_of(&t, &new, FollowupKind::FollowUpCheque).await.len(), 1);
+    assert_eq!(
+        tasks_of(&t, &new, FollowupKind::FollowUpCheque).await.len(),
+        1
+    );
 }
 
 /// AC5: a bounced issued cheque of AED 10,500.00 is replaced by an outgoing
@@ -419,7 +448,12 @@ async fn an_issued_cheque_is_replaced_by_an_outgoing_payment() {
         .await
         .assert_ok();
     let issued = t.cheque(issued.id).await;
-    assert_eq!(tasks_of(&t, &issued, FollowupKind::ReplaceCheque).await.len(), 1);
+    assert_eq!(
+        tasks_of(&t, &issued, FollowupKind::ReplaceCheque)
+            .await
+            .len(),
+        1
+    );
 
     t.settle_cheque(&staff, &issued, "cash", "100", "")
         .await
@@ -447,6 +481,13 @@ async fn an_issued_cheque_is_replaced_by_an_outgoing_payment() {
     assert_eq!(replaced.status, ChequeStatus::Replaced);
     let tasks = tasks_of(&t, &replaced, FollowupKind::ReplaceCheque).await;
     assert_eq!(tasks[0].status, FollowupStatus::Done);
-    assert!(tasks_of(&t, &replaced, FollowupKind::HandBack).await.is_empty());
-    assert!(t.cheque_resolved.all().is_empty(), "an issued cheque holds no credit");
+    assert!(
+        tasks_of(&t, &replaced, FollowupKind::HandBack)
+            .await
+            .is_empty()
+    );
+    assert!(
+        t.cheque_resolved.all().is_empty(),
+        "an issued cheque holds no credit"
+    );
 }

@@ -130,11 +130,14 @@ pub(crate) fn transitions() -> Vec<Transition<Cheque>> {
             .permission(permissions::CHEQUES_DEPOSIT)
             .from([ChequeStatus::Received, ChequeStatus::DueForDeposit])
             .to(ChequeStatus::Deposited)
-            .guard("date_reached_and_custody_confirmed", |cheque: &Cheque, ctx| {
-                let problem =
-                    deposit_problem(cheque, today(), deposit_input(ctx).field_confirmation);
-                Box::pin(async move { problem.map_or(Ok(()), Err) })
-            })
+            .guard(
+                "date_reached_and_custody_confirmed",
+                |cheque: &Cheque, ctx| {
+                    let problem =
+                        deposit_problem(cheque, today(), deposit_input(ctx).field_confirmation);
+                    Box::pin(async move { problem.map_or(Ok(()), Err) })
+                },
+            )
             .effect(|cheque: &Cheque, _ctx, tx| {
                 let id = cheque.id;
                 let presentations = cheque.presentations + 1;
@@ -251,7 +254,10 @@ pub async fn clear(
     }
     tx.commit().await?;
     outcome.emit(state).await.map_err(TransitionError::Failed)?;
-    received.emit(state).await.map_err(TransitionError::Failed)?;
+    received
+        .emit(state)
+        .await
+        .map_err(TransitionError::Failed)?;
     cheque_money::allocate_to_links(state, &cheque, &payment, payment.amount, Some(user.id))
         .await?;
     reload(state, &cheque).await

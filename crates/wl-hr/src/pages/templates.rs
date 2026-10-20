@@ -141,7 +141,11 @@ async fn index(State(db): State<Db>, lang: Lang) -> Result<View> {
                     "wl_hr.templates.inactive"
                 },
             ),
-            status_kind: if template.active { "success" } else { "warning" },
+            status_kind: if template.active {
+                "success"
+            } else {
+                "warning"
+            },
             blocks: template.blocks_activation,
             steps,
         });

@@ -329,7 +329,10 @@ mod tests {
     #[test]
     fn a_fiscal_year_runs_twelve_months_from_the_start_month() {
         let january = fiscal_months(1, 2027);
-        assert_eq!((january[0], january[11]), (day(2027, 1, 1), day(2027, 12, 1)));
+        assert_eq!(
+            (january[0], january[11]),
+            (day(2027, 1, 1), day(2027, 12, 1))
+        );
         let july = fiscal_months(7, 2027);
         assert_eq!((july[0], july[11]), (day(2027, 7, 1), day(2028, 6, 1)));
         assert_eq!(july.len(), 12);

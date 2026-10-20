@@ -106,7 +106,10 @@ pub struct Employee {
 
 /// A scope (branch) an employee works in.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
-#[model(table = "wl_hr_employee_scopes", unique(employee_id, scope_type, scope_id))]
+#[model(
+    table = "wl_hr_employee_scopes",
+    unique(employee_id, scope_type, scope_id)
+)]
 pub struct EmployeeScope {
     /// The primary key.
     pub id: i64,
@@ -270,13 +273,10 @@ pub async fn create(state: &AppState, input: NewEmployee) -> Result<Employee> {
             ));
         }
         None => {
-            let applies = !OnboardingTemplate::applicable(
-                &state.db,
-                &job_role,
-                input.employment_type,
-            )
-            .await?
-            .is_empty();
+            let applies =
+                !OnboardingTemplate::applicable(&state.db, &job_role, input.employment_type)
+                    .await?
+                    .is_empty();
             if applies {
                 EmployeeStatus::Onboarding
             } else {
@@ -320,7 +320,11 @@ pub async fn create(state: &AppState, input: NewEmployee) -> Result<Employee> {
 
 /// Corrects the hire date of `employee`; the due dates of its open onboarding
 /// steps are recomputed from the new date.
-pub async fn correct_hire_date(state: &AppState, id: i64, hire_date: NaiveDate) -> Result<Employee> {
+pub async fn correct_hire_date(
+    state: &AppState,
+    id: i64,
+    hire_date: NaiveDate,
+) -> Result<Employee> {
     let employee = Employee::find_or_404(&state.db, id).await?;
     if employee.hire_date == hire_date {
         return Ok(employee);
@@ -329,10 +333,7 @@ pub async fn correct_hire_date(state: &AppState, id: i64, hire_date: NaiveDate) 
         .where_(Employee::ID.eq(id))
         .update(
             &state.db,
-            &[
-                ("hire_date", &hire_date),
-                ("updated_at", &renox::db::now()),
-            ],
+            &[("hire_date", &hire_date), ("updated_at", &renox::db::now())],
         )
         .await?;
     onboarding::recompute_due_dates(state, id, hire_date).await?;
@@ -354,10 +355,7 @@ pub async fn change_job_role(state: &AppState, id: i64, job_role: &str) -> Resul
         .where_(Employee::ID.eq(id))
         .update(
             &state.db,
-            &[
-                ("job_role", &job_role),
-                ("updated_at", &renox::db::now()),
-            ],
+            &[("job_role", &job_role), ("updated_at", &renox::db::now())],
         )
         .await?;
     let scope = employee.scopes(&state.db).await?.into_iter().next();

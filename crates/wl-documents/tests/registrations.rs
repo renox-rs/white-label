@@ -6,11 +6,9 @@ mod support;
 
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
-use wl_documents::expiry::{self, ReminderLog};
-use wl_documents::registrations::{
-    self, HALAL, ISO, OTHER, PRODUCT, TRADEMARK, VerticalSettings,
-};
 use wl_documents::documents::{AttachReason, NewDocument};
+use wl_documents::expiry::{self, ReminderLog};
+use wl_documents::registrations::{self, HALAL, ISO, OTHER, PRODUCT, TRADEMARK, VerticalSettings};
 use wl_documents::{
     Document, DocumentKind, DocumentStatus, Documents, Sensitivity, permissions as perm,
 };
@@ -81,10 +79,7 @@ async fn docexp01_a_new_06_client_has_three_kinds_on_and_iso_off() {
     assert!(!iso.enabled);
     assert_eq!(iso.name_en, "ISO certificate");
     assert!(!t.kind(PRODUCT).await.enabled);
-    assert_eq!(
-        t.kind(TRADEMARK).await.reminder_offsets.0,
-        [180, 90, 30]
-    );
+    assert_eq!(t.kind(TRADEMARK).await.reminder_offsets.0, [180, 90, 30]);
     assert_eq!(t.kind(HALAL).await.reminder_offsets.0, [90, 30, 7]);
 
     // Seeding again keeps what the client changed.
@@ -111,7 +106,9 @@ async fn docexp01_a_kind_that_is_off_takes_no_new_documents() {
     assert_eq!(refused.reason, AttachReason::KindOff);
 
     let held = accepted(&t, &reviewer, entity(), TRADEMARK, day(200)).await;
-    wl_documents::set_enabled(t.db(), TRADEMARK, false).await.unwrap();
+    wl_documents::set_enabled(t.db(), TRADEMARK, false)
+        .await
+        .unwrap();
     let refused = Documents::attach(
         t.state(),
         None,
@@ -121,10 +118,7 @@ async fn docexp01_a_kind_that_is_off_takes_no_new_documents() {
     .unwrap()
     .unwrap_err();
     assert_eq!(refused.reason, AttachReason::KindOff);
-    assert_eq!(
-        t.reload(&held).await.status,
-        DocumentStatus::Accepted
-    );
+    assert_eq!(t.reload(&held).await.status, DocumentStatus::Accepted);
 }
 
 /// AC2: a trademark expiring 2027-06-30 and no vertical override: the
@@ -176,10 +170,7 @@ async fn docexp01_an_expired_halal_certificate_on_an_item_blocks_nothing() {
             .iter()
             .all(|entry| entry.kind != HALAL)
     );
-    assert_eq!(
-        t.reload(&halal).await.status,
-        DocumentStatus::Accepted
-    );
+    assert_eq!(t.reload(&halal).await.status, DocumentStatus::Accepted);
 }
 
 /// AC4: a 06 client whose vertical seeds the storekeeper as the Halal
@@ -202,8 +193,8 @@ async fn docexp01_a_vertical_role_is_reminded_for_a_supplier_certificate() {
 
     let supplier = Subject::new("parties.party", 31);
     let mut new = NewDocument::new(supplier, HALAL, support::pdf("halal.pdf"))
-    .expires_on(day(90))
-    .note("Covers: Chicken breast");
+        .expires_on(day(90))
+        .note("Covers: Chicken breast");
     new.number = Some("HAL-2026-77".into());
     new.issuing_authority = Some("Emirates Halal Body".into());
     let document = Documents::attach(t.state(), None, new)
@@ -254,7 +245,10 @@ async fn docexp01_correcting_the_expiry_date_reschedules_reminders_and_is_audite
 
     expiry::run(t.state(), date(2027, 1, 1)).await.unwrap();
     assert_eq!(t.notices.to_user(owner.id).len(), 1);
-    assert_eq!(ReminderLog::offsets_for(t.db(), mark.id).await.unwrap(), [180]);
+    assert_eq!(
+        ReminderLog::offsets_for(t.db(), mark.id).await.unwrap(),
+        [180]
+    );
 
     t.app.acting_as(&manager);
     t.app
@@ -267,7 +261,12 @@ async fn docexp01_correcting_the_expiry_date_reschedules_reminders_and_is_audite
         .assert_ok();
     let edited = t.reload(&mark).await;
     assert_eq!(edited.expiry_date, Some(date(2027, 9, 30)));
-    assert!(ReminderLog::offsets_for(t.db(), mark.id).await.unwrap().is_empty());
+    assert!(
+        ReminderLog::offsets_for(t.db(), mark.id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
 
     // Nothing is due on the old schedule; the first reminder of the new
     // date comes 180 days before it.
@@ -302,13 +301,25 @@ async fn docexp01_the_kind_page_turns_a_kind_on() {
         .assert_see("Off");
     t.app
         .htmx()
-        .post(&format!("/document-kinds/{ISO}/enabled"), &[("enabled", "1")])
+        .post(
+            &format!("/document-kinds/{ISO}/enabled"),
+            &[("enabled", "1")],
+        )
         .await
         .assert_ok();
-    assert!(DocumentKind::by_key(t.db(), ISO).await.unwrap().unwrap().enabled);
+    assert!(
+        DocumentKind::by_key(t.db(), ISO)
+            .await
+            .unwrap()
+            .unwrap()
+            .enabled
+    );
     t.app
         .htmx()
-        .post(&format!("/document-kinds/{ISO}/enabled"), &[("enabled", "0")])
+        .post(
+            &format!("/document-kinds/{ISO}/enabled"),
+            &[("enabled", "0")],
+        )
         .await
         .assert_ok();
     assert!(!t.kind(ISO).await.enabled);
@@ -317,7 +328,10 @@ async fn docexp01_the_kind_page_turns_a_kind_on() {
     t.app.acting_as(&nobody);
     t.app
         .htmx()
-        .post(&format!("/document-kinds/{ISO}/enabled"), &[("enabled", "1")])
+        .post(
+            &format!("/document-kinds/{ISO}/enabled"),
+            &[("enabled", "1")],
+        )
         .await
         .assert_status(403);
 }

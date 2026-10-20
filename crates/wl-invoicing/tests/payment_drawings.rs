@@ -27,12 +27,14 @@ fn day(m: u32, d: u32) -> NaiveDate {
 
 /// An accountant who asks for the drawing.
 async fn accountant(t: &Booted, name: &str) -> User {
-    t.helper(name, &[perm::VIEW, perm::SUPPLIER_BILLS_VIEW]).await
+    t.helper(name, &[perm::VIEW, perm::SUPPLIER_BILLS_VIEW])
+        .await
 }
 
 /// An owner: holds `drawings.approve`.
 async fn owner(t: &Booted, name: &str) -> User {
-    t.helper(name, &[perm::SUPPLIER_BILLS_VIEW, perm::DRAWINGS_APPROVE]).await
+    t.helper(name, &[perm::SUPPLIER_BILLS_VIEW, perm::DRAWINGS_APPROVE])
+        .await
 }
 
 /// A drawing of `amount` fils on the payment request `id` in `entity`.
@@ -59,8 +61,20 @@ async fn the_contract_names_the_drawings_category_and_its_owner_party() {
         .expect("a drawings category");
     assert_eq!(category.name_en, "Owner drawings");
     assert_eq!(category.owner_party, None);
-    assert!(drawings.category(t.db(), "marketing").await.unwrap().is_none());
-    assert!(drawings.category(t.db(), "nothing").await.unwrap().is_none());
+    assert!(
+        drawings
+            .category(t.db(), "marketing")
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        drawings
+            .category(t.db(), "nothing")
+            .await
+            .unwrap()
+            .is_none()
+    );
 
     let mut row = BudgetCategory::by_code(t.db(), "owner_drawings")
         .await
@@ -68,7 +82,11 @@ async fn the_contract_names_the_drawings_category_and_its_owner_party() {
         .unwrap();
     row.owner_party_id = Some(7);
     row.save(t.db()).await.unwrap();
-    let category = drawings.category(t.db(), "owner_drawings").await.unwrap().unwrap();
+    let category = drawings
+        .category(t.db(), "owner_drawings")
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(category.owner_party, Some(PartyId(7)));
 }
 
@@ -89,7 +107,10 @@ async fn a_payment_drawing_waits_for_the_owner_and_the_decision_is_announced() {
         .unwrap();
     assert_eq!(started, DrawingStart::Pending);
     let source = Subject::new(DRAWING_REQUEST_SUBJECT_TYPE, 5);
-    let approval = DrawingApproval::for_source(t.db(), &source).await.unwrap().remove(0);
+    let approval = DrawingApproval::for_source(t.db(), &source)
+        .await
+        .unwrap()
+        .remove(0);
     assert_eq!(approval.status, DrawingStatus::Requested);
     assert_eq!(approval.amount, 1_500_000);
     assert_eq!(approval.requested_by, Some(a.id));
@@ -102,9 +123,19 @@ async fn a_payment_drawing_waits_for_the_owner_and_the_decision_is_announced() {
         .request(t.state(), ask(&e1, 5, 1_500_000, &a))
         .await
         .unwrap();
-    assert_eq!(DrawingApproval::for_source(t.db(), &source).await.unwrap().len(), 1);
+    assert_eq!(
+        DrawingApproval::for_source(t.db(), &source)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
 
-    assert!(approvals::approve(t.state(), request_id, &a, "").await.is_err());
+    assert!(
+        approvals::approve(t.state(), request_id, &a, "")
+            .await
+            .is_err()
+    );
     approvals::approve(t.state(), request_id, &b, "")
         .await
         .unwrap()
@@ -121,13 +152,19 @@ async fn a_payment_drawing_waits_for_the_owner_and_the_decision_is_announced() {
         .request(t.state(), ask(&e1, 6, 200_000, &a))
         .await
         .unwrap();
-    let second = DrawingApproval::for_source(t.db(), &Subject::new(DRAWING_REQUEST_SUBJECT_TYPE, 6))
-        .await
-        .unwrap()
-        .remove(0);
-    approvals::reject(t.state(), second.approval_request_id.unwrap(), &b, "not now")
-        .await
-        .unwrap();
+    let second =
+        DrawingApproval::for_source(t.db(), &Subject::new(DRAWING_REQUEST_SUBJECT_TYPE, 6))
+            .await
+            .unwrap()
+            .remove(0);
+    approvals::reject(
+        t.state(),
+        second.approval_request_id.unwrap(),
+        &b,
+        "not now",
+    )
+    .await
+    .unwrap();
     let decided = t.drawing_decided.all();
     assert_eq!(decided.len(), 2);
     assert!(!decided[1].approved);
@@ -169,11 +206,17 @@ async fn the_sole_owner_is_approved_at_once_and_the_accountant_is_told() {
         .request(t.state(), ask(&e4, 11, 500_000, &omar))
         .await
         .unwrap();
-    assert_eq!(started, DrawingStart::Approved { self_approved: true });
-    let approval = DrawingApproval::for_source(t.db(), &Subject::new(DRAWING_REQUEST_SUBJECT_TYPE, 11))
-        .await
-        .unwrap()
-        .remove(0);
+    assert_eq!(
+        started,
+        DrawingStart::Approved {
+            self_approved: true
+        }
+    );
+    let approval =
+        DrawingApproval::for_source(t.db(), &Subject::new(DRAWING_REQUEST_SUBJECT_TYPE, 11))
+            .await
+            .unwrap()
+            .remove(0);
     assert_eq!(approval.status, DrawingStatus::Approved);
     assert!(approval.self_approved);
     let told: Vec<_> = t
@@ -209,16 +252,18 @@ impl DrawingPaymentSource for Payments {
                 .into_iter()
                 .filter(|(_, _, _, date, _)| *date >= from && *date <= to)
                 .filter(|_| entities.contains(&1))
-                .map(|(id, direction, amount, date, self_approved)| DrawingPayment {
-                    payment: PaymentId(id),
-                    legal_entity_id: 1,
-                    category: "owner_drawings".into(),
-                    direction,
-                    amount,
-                    date,
-                    party: PartyId(7),
-                    self_approved,
-                })
+                .map(
+                    |(id, direction, amount, date, self_approved)| DrawingPayment {
+                        payment: PaymentId(id),
+                        legal_entity_id: 1,
+                        category: "owner_drawings".into(),
+                        direction,
+                        amount,
+                        date,
+                        party: PartyId(7),
+                        self_approved,
+                    },
+                )
                 .collect())
         })
     }

@@ -3,11 +3,11 @@
 
 pub mod approvals;
 pub mod automation;
+pub mod bank_statements;
 pub mod block_effects;
 pub mod block_guard;
 pub mod branding;
 pub mod broadcast;
-pub mod bank_statements;
 pub mod budgets;
 pub mod calendar;
 pub mod cash_forecast;
@@ -56,6 +56,7 @@ pub use approvals::{
     ApprovalRequest, ApprovalRequested, ApprovalStatus, PolicyDefault, Require, Required,
 };
 pub use automation::{AutomationFailed, RuleRun, RuleRunSpec, RuleRunStatus, RunOutcome, run_rule};
+pub use bank_statements::{BankBalance, BankStatements, NoBankStatements};
 pub use block_effects::{
     AgreementKind, AgreementRef, AgreementSource, BlockEffect, BlockEffectOverride,
     BlockEffectRule, Decision, RuleSource,
@@ -68,44 +69,49 @@ pub use broadcast::{
     BROADCAST_SUBJECT_TYPE, BroadcastCancelReason, BroadcastCancelled, BroadcastCompleted,
     BroadcastId, BroadcastRequest, BroadcastRequesters, NoRequesters, RequesterCheck,
 };
-pub use bank_statements::{BankBalance, BankStatements, NoBankStatements};
 pub use budgets::{
     BudgetFuture, COMPANY_BUDGET_SUBJECT_TYPE, CompanyBudgetApproved, CompanyBudgetId,
     CompanyBudgetVarianceReached, CompanyBudgets, NoCompanyBudgets,
 };
 pub use calendar::BusinessCalendar;
-pub use drawings::{
-    DRAWING_REQUEST_SUBJECT_TYPE, DrawingCategory, DrawingPayment, DrawingPaymentSource,
-    DrawingRequest, DrawingStart, NoOwnerDrawings, OwnerDrawingDecided, OwnerDrawings,
-    drawing_payment_sources, owner_drawings, provide_owner_drawings, register_drawing_payments,
-};
 pub use cash_forecast::{
     CashForecastBelowThreshold, CashForecastSource, ForecastFuture, ForecastLine,
     cash_forecast_sources, register_cash_forecast_source,
 };
 pub use cheques::{
     BounceFeeCharge, BounceFees, CHARGE_SUBJECT_TYPE, CHEQUE_SUBJECT_TYPE, ChargeInvoicer,
-    ChequeBounceResolved, ChequeBounced, ChequeId, ChequeOutcome, ChequeReferredToLegal,
-    ChequeSchedule, ChequeStatus,
-    ChequeDocument, ChequeSummary, Cheques, NoBounceFees, NoChargeInvoicer, NoCheques, OpenCheque,
-    RegisterCheque, ReturnCheques, ReturnedCheques,
+    ChequeBounceResolved, ChequeBounced, ChequeDocument, ChequeId, ChequeOutcome,
+    ChequeReferredToLegal, ChequeSchedule, ChequeStatus, ChequeSummary, Cheques, NoBounceFees,
+    NoChargeInvoicer, NoCheques, OpenCheque, RegisterCheque, ReturnCheques, ReturnedCheques,
     ScheduledCheque,
 };
-pub use config::{ClientConfig, ConfigError, RolesConfig, owner_role};
 pub use compliance::{ComplianceAlert, ComplianceRule, CriticalRule, Planned};
+pub use config::{ClientConfig, ConfigError, RolesConfig, owner_role};
 pub use consents::{Consents, NoConsents};
 pub use delivery::{
     DELIVERY_SUBJECT_TYPE, DeliveryDisputeClosed, DeliveryDisputed, DeliveryId, DeliveryLost,
     DeliveryReversed, ReviewOutcome,
 };
+pub use deposits::{
+    AdjustDeposit, CancelSettlement, DeductionKind, DeductionLineView, DepositAdjusted,
+    DepositDeductions, DepositDeductionsDisputed, DepositDeductionsPublished,
+    DepositDisputeAnswered, DepositOutcome, DepositSettled, DepositTopUps, Deposits, DisputeAnswer,
+    DisputeDeductions, HeldDeposit, NoDepositDeductions, NoDepositTopUps, NoDeposits,
+    PublishedDeductions, SettlementStarted, TopUpCharge,
+};
 pub use documents::{
     BlockCondition, BlockEntry, BlockFailure, BlockMode, BlockRefusal, BlockSubjects, BlockedGroup,
     CheckOutcome, DocumentAccepted, DocumentExpired, DocumentGuard, DocumentId, DocumentRejected,
     DocumentSuperseded, DocumentUploaded, FlagFailure, FlagReason, InvalidReason, NoDocuments,
-    OverrideMode, PendingRenewal, PlannedError, PlannedItem, PlannedWarning, PlannedWarningLine,
-    NoSopAcknowledgements, RecordFlag, SopAcknowledged, SopAcknowledgements, SopId, SopPublished,
-    SopReaderRef, SopReadersChanged, SopStaff, SopWithdrawn, Validity, provide_sop_acknowledgements,
-    sop_acknowledgements,
+    NoSopAcknowledgements, OverrideMode, PendingRenewal, PlannedError, PlannedItem, PlannedWarning,
+    PlannedWarningLine, RecordFlag, SopAcknowledged, SopAcknowledgements, SopId, SopPublished,
+    SopReaderRef, SopReadersChanged, SopStaff, SopWithdrawn, Validity,
+    provide_sop_acknowledgements, sop_acknowledgements,
+};
+pub use drawings::{
+    DRAWING_REQUEST_SUBJECT_TYPE, DrawingCategory, DrawingPayment, DrawingPaymentSource,
+    DrawingRequest, DrawingStart, NoOwnerDrawings, OwnerDrawingDecided, OwnerDrawings,
+    drawing_payment_sources, owner_drawings, provide_owner_drawings, register_drawing_payments,
 };
 pub use entities::{IssuerSnapshot, LegalEntity, ScopeEntity};
 pub use held_funds::{FundsSource, HeldFund, HeldFundsSource, held_for_all};
@@ -138,27 +144,22 @@ pub use notify::{
 };
 pub use numbering::{Reset, Series};
 pub use parties::{
-    BillingIdentity, NEUTRAL_BLOCK_REASON, NoParties, PartiesMerged, PartyBlocked, PartyCreated, PartyDirectory,
-    PartyId, PartyKind, PartyRestored, PartyStatus, PartySummary, PartyUnblocked, PartyUpdated,
-    ScreeningCompleted, ScreeningFlagged, ScreeningId, ScreeningMatchConfirmed, ScreeningStatus,
-};
-pub use deposits::{
-    AdjustDeposit, CancelSettlement, DeductionKind, DeductionLineView, DepositAdjusted, DepositDeductions,
-    DepositDeductionsDisputed, DepositDeductionsPublished, DepositDisputeAnswered, DepositOutcome,
-    DepositSettled, DepositTopUps, Deposits, DisputeAnswer, DisputeDeductions, HeldDeposit,
-    NoDepositDeductions, NoDepositTopUps, NoDeposits, PublishedDeductions, SettlementStarted,
-    TopUpCharge,
+    BillingIdentity, NEUTRAL_BLOCK_REASON, NoParties, PartiesMerged, PartyBlocked, PartyCreated,
+    PartyDirectory, PartyId, PartyKind, PartyRestored, PartyStatus, PartySummary, PartyUnblocked,
+    PartyUpdated, ScreeningCompleted, ScreeningFlagged, ScreeningId, ScreeningMatchConfirmed,
+    ScreeningStatus,
 };
 pub use payments::{
-    AllocationTarget, BankPayment, DEPOSIT_SUBJECT_TYPE, DepositId, Direction, NoPayments, PaymentId,
-    PaymentMethod, PaymentReceived, PaymentRecorder, PaymentReversed, PaymentSource, PaymentStatus,
-    PaymentSummary, RecordPayment, RefundAttemptRef, RefundFailed, RefundFailedFrom,
-    RefundFailureKind, RefundId, RefundPaid, RefundRequest, RefundSource, ReversalReason, UnpaidRefund,
+    AllocationTarget, BankPayment, DEPOSIT_SUBJECT_TYPE, DepositId, Direction, NoPayments,
+    PaymentId, PaymentMethod, PaymentReceived, PaymentRecorder, PaymentReversed, PaymentSource,
+    PaymentStatus, PaymentSummary, RecordPayment, RefundAttemptRef, RefundFailed, RefundFailedFrom,
+    RefundFailureKind, RefundId, RefundPaid, RefundRequest, RefundSource, ReversalReason,
+    UnpaidRefund,
 };
 pub use sales::{
-    Attribute, AttributionTarget, CampaignActivated, CampaignAttribution, CampaignEnded, CampaignId,
-    CustomerAcquired, CustomerAcquisitionChanged, FirstSale, LEAD_SUBJECT_TYPE, LeadConversion,
-    LeadCreated, LeadId, LeadLost, LeadWinReverted, LeadWon, NoCampaignAttribution,
+    Attribute, AttributionTarget, CampaignActivated, CampaignAttribution, CampaignEnded,
+    CampaignId, CustomerAcquired, CustomerAcquisitionChanged, FirstSale, LEAD_SUBJECT_TYPE,
+    LeadConversion, LeadCreated, LeadId, LeadLost, LeadWinReverted, LeadWon, NoCampaignAttribution,
     NoLeadConversion, campaign_attribution, lead_conversion, provide_campaign_attribution,
     provide_lead_conversion,
 };
@@ -166,13 +167,13 @@ pub use scopes::COMPANY_ADMIN_ROLE;
 pub use segments::{NoSegments, SegmentId, Segments};
 pub use subject::Subject;
 pub use tickets::{
-    Assignee, ChecklistCompleted, ChecklistOutcome, ChecklistRunId, Checklists, NoChecklists,
-    checklists, provide_checklists, ContractCover, NoServiceContractCoverage, ServiceContractCoverage,
-    provide_service_contract_coverage, service_contract_coverage, ComplianceFlagCleared, ComplianceFlagRaised, ComplianceFlagReason, NoTickets,
-    OpenTicket, Requester, SERVICE_CONTRACT_SERIES, SERVICE_CONTRACT_SUBJECT_TYPE,
-    ServiceContractActivated, ServiceContractEnded, ServiceContractId, TASK_CATEGORY, TaskComment,
-    TaskCreator, TicketAssigned, TicketChannel, TicketClosed, TicketId, TicketRef,
-    VendorNoShow, ticket_path,
+    Assignee, ChecklistCompleted, ChecklistOutcome, ChecklistRunId, Checklists,
+    ComplianceFlagCleared, ComplianceFlagRaised, ComplianceFlagReason, ContractCover, NoChecklists,
+    NoServiceContractCoverage, NoTickets, OpenTicket, Requester, SERVICE_CONTRACT_SERIES,
+    SERVICE_CONTRACT_SUBJECT_TYPE, ServiceContractActivated, ServiceContractCoverage,
+    ServiceContractEnded, ServiceContractId, TASK_CATEGORY, TaskComment, TaskCreator,
+    TicketAssigned, TicketChannel, TicketClosed, TicketId, TicketRef, VendorNoShow, checklists,
+    provide_checklists, provide_service_contract_coverage, service_contract_coverage, ticket_path,
 };
 pub use voids::{
     Effect, EffectKind, RecordVoided, Reverse, ReverseError, VoidRecord, Voidable, VoidableBuilder,
@@ -182,8 +183,8 @@ pub use voids::{
 pub use workforce::{
     EMPLOYEE_SUBJECT_TYPE, EmployeeActivated, EmployeeAssignmentChanged, EmployeeDeceased,
     EmployeeExited, EmployeeId, EmployeeOnboardingCancelled, NoWorkforce, ONBOARDING_SUBJECT_TYPE,
-    OnboardingCompleted, OnboardingId, OnboardingStarted, StaffProfile, Workforce, provide_workforce,
-    workforce,
+    OnboardingCompleted, OnboardingId, OnboardingStarted, StaffProfile, Workforce,
+    provide_workforce, workforce,
 };
 
 /// The permission names the kernel declares.

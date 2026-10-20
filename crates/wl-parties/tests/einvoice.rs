@@ -138,7 +138,10 @@ async fn identity_id(t: &Booted, party: &Party) -> Option<String> {
 async fn ptyeinv01_the_directory_exposes_the_recipient_identifier() {
     let (t, _asp) = setup().await;
     let party = company(&t, DELTA, Some(DELTA_TRN), Some("  0235:1234567890 ")).await;
-    assert_eq!(identity_id(&t, &party).await.as_deref(), Some("0235:1234567890"));
+    assert_eq!(
+        identity_id(&t, &party).await.as_deref(),
+        Some("0235:1234567890")
+    );
 
     let other = company(&t, "Sigma Trading LLC", None, None).await;
     assert_eq!(identity_id(&t, &other).await, None);
@@ -165,7 +168,9 @@ async fn ptyeinv02_a_change_emits_party_updated_with_the_field_name_only() {
     let staff = t.user("Sami", &[perm::VIEW, perm::UPDATE]).await;
     t.app.acting_as(&staff);
 
-    save(&t, &party, " 0235:1234567890 ").await.assert_redirect(&format!("/parties/{}", party.id));
+    save(&t, &party, " 0235:1234567890 ")
+        .await
+        .assert_redirect(&format!("/parties/{}", party.id));
     assert_eq!(stored(&t, &party).await.as_deref(), Some("0235:1234567890"));
     let events = t.app.emitted::<PartyUpdated>();
     assert_eq!(events.len(), 1);

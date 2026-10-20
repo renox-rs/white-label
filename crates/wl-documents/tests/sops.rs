@@ -229,17 +229,25 @@ async fn removing_a_reader_of_an_active_sop_is_announced() {
     w.post(&w.mona, &readers, &[("readers", "driver")])
         .await
         .assert_ok();
-    w.post(&w.mona, &readers, &[("readers", "site_worker@property.site:1")])
-        .await
-        .assert_ok();
+    w.post(
+        &w.mona,
+        &readers,
+        &[("readers", "site_worker@property.site:1")],
+    )
+    .await
+    .assert_ok();
     w.t.app.assert_not_emitted::<SopReadersChanged>();
     let v1 = w.upload(&w.hana).await;
     w.accept(&w.hana, &v1).await.assert_ok();
 
     // The same readers: nothing; removing "site worker": announced.
-    w.post(&w.mona, &readers, &[("readers", "site_worker@property.site:1")])
-        .await
-        .assert_ok();
+    w.post(
+        &w.mona,
+        &readers,
+        &[("readers", "site_worker@property.site:1")],
+    )
+    .await
+    .assert_ok();
     w.t.app.assert_not_emitted::<SopReadersChanged>();
     w.post(&w.mona, &readers, &[("readers", "driver")])
         .await

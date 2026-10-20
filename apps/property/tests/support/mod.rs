@@ -11,8 +11,8 @@ use std::sync::{Arc, Mutex};
 use property::permissions as perm;
 use property::{
     Building, Lease, LeaseActivated, LeaseAmended, LeaseCancelled, LeaseForceTerminated,
-    LeaseNoticeWithdrawn, LeaseStatus, LeaseTerminated, NewBuilding, NewLease, NewUnit, Unit, UnitUse, create_building,
-    create_unit,
+    LeaseNoticeWithdrawn, LeaseStatus, LeaseTerminated, NewBuilding, NewLease, NewUnit, Unit,
+    UnitUse, create_building, create_unit,
 };
 use renox::auth::permissions::{self, Scope};
 use renox::auth::{Auth, Permissions};
@@ -20,7 +20,8 @@ use renox::chrono::{Duration, NaiveDate};
 use renox::prelude::*;
 use renox::testing::TestApp;
 use wl_kernel::block_guard::{
-    ActionKind, BlockFuture, BlockGuard, BlockRefusal as PartyBlockRefusal, GuardOutcome, provide_block_guard,
+    ActionKind, BlockFuture, BlockGuard, BlockRefusal as PartyBlockRefusal, GuardOutcome,
+    provide_block_guard,
 };
 use wl_kernel::cheques::{
     ChequeFuture, ChequeId, ChequeSchedule, ChequeStatus, ChequeSummary, Cheques, RegisterCheque,
@@ -33,9 +34,9 @@ use wl_kernel::deposits::{
     TransferDeposit, deposit_top_ups, provide_deposit_deductions, provide_deposits,
 };
 use wl_kernel::documents::{
-    BlockEntry, BlockFailure, BlockMode, BlockRefusal, CheckOutcome, DocumentFuture,
-    DocumentGuard, FlagFailure, InvalidReason, OverrideMode, RecordFlag, Validity, block_subjects,
-    provide_guard, today,
+    BlockEntry, BlockFailure, BlockMode, BlockRefusal, CheckOutcome, DocumentFuture, DocumentGuard,
+    FlagFailure, InvalidReason, OverrideMode, RecordFlag, Validity, block_subjects, provide_guard,
+    today,
 };
 use wl_kernel::invoicing::{
     BadDebtRecovered, CreditLine, CreditNoteId, InvoiceDraft, InvoiceFuture, InvoiceId,
@@ -56,7 +57,9 @@ use wl_kernel::payments::{
 use wl_kernel::tickets::{
     Assignee, OpenTicket, TaskCreator, TicketFuture, TicketId, TicketRef, provide_task_creator,
 };
-use wl_kernel::workforce::{EmployeeId, StaffProfile, Workforce, WorkforceFuture, provide_workforce};
+use wl_kernel::workforce::{
+    EmployeeId, StaffProfile, Workforce, WorkforceFuture, provide_workforce,
+};
 use wl_kernel::{PartyId, Subject};
 
 /// The pages extend the app's layout; a package test has no app, so it
@@ -360,7 +363,10 @@ impl Recording {
 
     /// The requests of type `key`.
     pub fn of_type(&self, key: &str) -> Vec<NotifyRequest> {
-        self.all().into_iter().filter(|r| r.type_key == key).collect()
+        self.all()
+            .into_iter()
+            .filter(|r| r.type_key == key)
+            .collect()
     }
 
     /// From now on a request of type `key` fails (the notifier is down);
@@ -372,7 +378,10 @@ impl Recording {
     /// The statutory notice of type `key` about `subject` is `status` from
     /// now on (the provider's receipt, or the proof staff recorded).
     pub fn set_notice(&self, subject: &Subject, key: &str, status: NoticeStatus) {
-        self.2.lock().unwrap().insert(format!("{subject}|{key}"), status);
+        self.2
+            .lock()
+            .unwrap()
+            .insert(format!("{subject}|{key}"), status);
     }
 }
 
@@ -593,7 +602,10 @@ impl ChequeBook {
 
     /// Cheque `id`, as stored now.
     pub fn get(&self, id: ChequeId) -> ChequeSummary {
-        self.all().into_iter().find(|c| c.id == id).expect("a cheque")
+        self.all()
+            .into_iter()
+            .find(|c| c.id == id)
+            .expect("a cheque")
     }
 
     /// Moves cheque `id` to `status` (the register's own transitions).
@@ -683,11 +695,7 @@ impl Cheques for ChequeBook {
         })
     }
 
-    fn find<'a>(
-        &'a self,
-        _db: &'a Db,
-        id: ChequeId,
-    ) -> ChequeFuture<'a, Option<ChequeSummary>> {
+    fn find<'a>(&'a self, _db: &'a Db, id: ChequeId) -> ChequeFuture<'a, Option<ChequeSummary>> {
         Box::pin(async move { Ok(self.all().into_iter().find(|c| c.id == id)) })
     }
 
@@ -903,7 +911,10 @@ impl DepositBook {
 
     /// Whether a deposit is still being settled for `source`.
     pub fn is_settling(&self, source: &Subject) -> bool {
-        self.settling.lock().unwrap().contains_key(&source.to_string())
+        self.settling
+            .lock()
+            .unwrap()
+            .contains_key(&source.to_string())
     }
 
     /// `amount` fils are held for `source`.
@@ -988,7 +999,12 @@ impl Deposits for DepositBook {
                     "the receipt is required".to_owned(),
                 ));
             }
-            let Some(held) = self.held.lock().unwrap().remove(&request.source.to_string()) else {
+            let Some(held) = self
+                .held
+                .lock()
+                .unwrap()
+                .remove(&request.source.to_string())
+            else {
                 return Ok(None);
             };
             let moved = DepositTransferred {
@@ -1002,7 +1018,13 @@ impl Deposits for DepositBook {
     }
 
     fn in_settlement<'a>(&'a self, _db: &'a Db, source: &'a Subject) -> DepositFuture<'a, bool> {
-        Box::pin(async move { Ok(self.settling.lock().unwrap().contains_key(&source.to_string())) })
+        Box::pin(async move {
+            Ok(self
+                .settling
+                .lock()
+                .unwrap()
+                .contains_key(&source.to_string()))
+        })
     }
 
     fn start_settlement<'a>(
@@ -1107,9 +1129,8 @@ impl Deposits for DepositBook {
     ) -> DepositFuture<'a, DepositApplied> {
         Box::pin(async move {
             let key = request.source.to_string();
-            let refused = |message: &str| {
-                Error::Status(StatusCode::UNPROCESSABLE_ENTITY, message.to_owned())
-            };
+            let refused =
+                |message: &str| Error::Status(StatusCode::UNPROCESSABLE_ENTITY, message.to_owned());
             let held = self.settling.lock().unwrap().get(&key).cloned();
             let Some(held) = held else {
                 return Err(refused("no deposit is being settled"));
@@ -1169,7 +1190,12 @@ impl Deposits for DepositBook {
         _by: Option<i64>,
     ) -> DepositFuture<'a, Option<SettlementStarted>> {
         Box::pin(async move {
-            let Some(held) = self.held.lock().unwrap().remove(&request.source.to_string()) else {
+            let Some(held) = self
+                .held
+                .lock()
+                .unwrap()
+                .remove(&request.source.to_string())
+            else {
                 return Ok(None);
             };
             let started = SettlementStarted {
@@ -1178,7 +1204,10 @@ impl Deposits for DepositBook {
                 forfeit: request.forfeit,
                 version: 1,
             };
-            self.settled.lock().unwrap().push((request, started.clone()));
+            self.settled
+                .lock()
+                .unwrap()
+                .push((request, started.clone()));
             Ok(Some(started))
         })
     }
@@ -1399,11 +1428,7 @@ impl Invoicer for InvoiceDesk {
         })
     }
 
-    fn find<'a>(
-        &'a self,
-        _db: &'a Db,
-        id: InvoiceId,
-    ) -> InvoiceFuture<'a, Option<InvoiceSummary>> {
+    fn find<'a>(&'a self, _db: &'a Db, id: InvoiceId) -> InvoiceFuture<'a, Option<InvoiceSummary>> {
         Box::pin(async move { Ok(self.get(id.0).map(|i| i.summary)) })
     }
 
@@ -1520,7 +1545,10 @@ impl Invoicer for InvoiceDesk {
 /// A payment recorder that takes refund requests and records the payments the
 /// vertical makes (an owner payout).
 #[derive(Clone, Default)]
-pub struct Refunds(Arc<Mutex<Vec<RefundRequest>>>, Arc<Mutex<Vec<(RecordPayment, Option<i64>)>>>);
+pub struct Refunds(
+    Arc<Mutex<Vec<RefundRequest>>>,
+    Arc<Mutex<Vec<(RecordPayment, Option<i64>)>>>,
+);
 
 impl Refunds {
     /// The refunds asked for.
@@ -1982,15 +2010,23 @@ impl Booted {
 
     /// `user` waives the deposit of `lease`.
     pub async fn waive(&self, user: &User, lease: &Lease) {
-        self.post(user, &format!("/property/leases/{}/waive-deposit", lease.id), &[])
-            .await
-            .assert_ok();
+        self.post(
+            user,
+            &format!("/property/leases/{}/waive-deposit", lease.id),
+            &[],
+        )
+        .await
+        .assert_ok();
     }
 
     /// Activates `lease` as `user`.
     pub async fn activate(&self, user: &User, lease: &Lease) -> renox::testing::TestResponse {
-        self.post(user, &format!("/property/leases/{}/activate", lease.id), &[])
-            .await
+        self.post(
+            user,
+            &format!("/property/leases/{}/activate", lease.id),
+            &[],
+        )
+        .await
     }
 
     /// A lease of `unit` submitted by `agent`: `pending_signature`.
@@ -2013,11 +2049,7 @@ impl Booted {
     }
 
     /// Writes columns of `lease` directly: a fixture's date.
-    pub async fn set(
-        &self,
-        lease: &Lease,
-        columns: &[(&str, &(dyn renox::db::ToDbValue + Sync))],
-    ) {
+    pub async fn set(&self, lease: &Lease, columns: &[(&str, &(dyn renox::db::ToDbValue + Sync))]) {
         Lease::query()
             .where_(Lease::ID.eq(lease.id))
             .update(self.db(), columns)
@@ -2112,14 +2144,18 @@ pub async fn boot() -> Booted {
         perm::AGREEMENTS_MANAGE,
         perm::COMPLIANCE_VIEW,
     ];
-    permissions::define_role(app.db(), MANAGER, &manager).await.unwrap();
+    permissions::define_role(app.db(), MANAGER, &manager)
+        .await
+        .unwrap();
     let agent = [
         perm::UNITS_VIEW,
         perm::LEASES_VIEW,
         perm::LEASES_CREATE,
         perm::LEASES_CANCEL,
     ];
-    permissions::define_role(app.db(), AGENT, &agent).await.unwrap();
+    permissions::define_role(app.db(), AGENT, &agent)
+        .await
+        .unwrap();
     let accountant = [
         perm::UNITS_VIEW,
         perm::LEASES_VIEW,

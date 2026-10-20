@@ -16,9 +16,9 @@ use renox::db::{DateTime, sql};
 use renox::prelude::*;
 use renox::testing::TestApp;
 use serde::Deserialize;
+use wl_kernel::invoicing::{InvoiceDraft, InvoiceFuture, InvoiceId, InvoiceSummary, Invoicer};
 use wl_kernel::notify::{MessageId, Notifier, NotifyFuture, NotifyRecipient, NotifyRequest};
 use wl_kernel::parties::{PartyDirectory, PartyFuture, PartyKind, PartyStatus, PartySummary};
-use wl_kernel::invoicing::{InvoiceDraft, InvoiceFuture, InvoiceId, InvoiceSummary, Invoicer};
 use wl_kernel::tickets::{Assignee, OpenTicket, TicketAssigned, TicketClosed};
 use wl_kernel::{BusinessCalendar, ClientConfig, PartyId, Subject};
 use wl_ticketing::{
@@ -240,7 +240,11 @@ impl Invoicer for Invoices {
         Box::pin(async move { Ok(changed) })
     }
 
-    fn find<'a>(&'a self, _db: &'a Db, _id: InvoiceId) -> InvoiceFuture<'a, Option<InvoiceSummary>> {
+    fn find<'a>(
+        &'a self,
+        _db: &'a Db,
+        _id: InvoiceId,
+    ) -> InvoiceFuture<'a, Option<InvoiceSummary>> {
         Box::pin(async { Ok(None) })
     }
 

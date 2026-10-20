@@ -119,7 +119,10 @@ async fn hrm27_hr_records_the_sop_acknowledgement_in_person_with_a_witness() {
     let ravi = walk_in(&t, 90).await;
     let onboarding = onboarding_of(&t, &ravi).await;
     let step = t.step(&onboarding, "SOPs acknowledged").await;
-    assert!(step.assignees(t.db()).await.unwrap().is_empty(), "no account: in person only");
+    assert!(
+        step.assignees(t.db()).await.unwrap().is_empty(),
+        "no account: in person only"
+    );
 
     let refuse = |by: i64, input: DoneInput| {
         let state = t.state().clone();
@@ -131,17 +134,34 @@ async fn hrm27_hr_records_the_sop_acknowledgement_in_person_with_a_witness() {
                 .unwrap_err()
         }
     };
-    assert_eq!(refuse(a.id, DoneInput::default()).await, StepRefused::EmployeeOnly);
-    assert_eq!(refuse(a.id, in_person("  ")).await, StepRefused::SignatureRequired);
-    assert_eq!(refuse(viewer.id, in_person("sig")).await, StepRefused::NotManager);
+    assert_eq!(
+        refuse(a.id, DoneInput::default()).await,
+        StepRefused::EmployeeOnly
+    );
+    assert_eq!(
+        refuse(a.id, in_person("  ")).await,
+        StepRefused::SignatureRequired
+    );
+    assert_eq!(
+        refuse(viewer.id, in_person("sig")).await,
+        StepRefused::NotManager
+    );
 
-    let done = steps::mark_done(t.state(), step.id, a.id, in_person("data:image/png;base64,AAAA"))
-        .await
-        .unwrap()
-        .unwrap();
+    let done = steps::mark_done(
+        t.state(),
+        step.id,
+        a.id,
+        in_person("data:image/png;base64,AAAA"),
+    )
+    .await
+    .unwrap()
+    .unwrap();
     assert_eq!(done.status, StepStatus::Done);
     assert_eq!(done.witness_id, Some(a.id));
-    assert_eq!(done.signature.as_deref(), Some("data:image/png;base64,AAAA"));
+    assert_eq!(
+        done.signature.as_deref(),
+        Some("data:image/png;base64,AAAA")
+    );
     {
         let acknowledged = t.sops.in_person.lock().unwrap();
         assert_eq!(acknowledged.len(), 1);
@@ -222,14 +242,26 @@ async fn hrm27_an_assignee_cannot_waive_but_the_owner_can_with_a_reason() {
         let id = step.id;
         async move { steps::waive(&state, id, by, reason).await.unwrap() }
     };
-    assert_eq!(waive(a.id, "not needed").await.unwrap_err(), StepRefused::AssigneeCannotWaive);
-    assert_eq!(waive(owner.id, "  ").await.unwrap_err(), StepRefused::ReasonRequired);
+    assert_eq!(
+        waive(a.id, "not needed").await.unwrap_err(),
+        StepRefused::AssigneeCannotWaive
+    );
+    assert_eq!(
+        waive(owner.id, "  ").await.unwrap_err(),
+        StepRefused::ReasonRequired
+    );
     let nobody = t.user("Nobody").await;
-    assert_eq!(waive(nobody.id, "x").await.unwrap_err(), StepRefused::NotManager);
+    assert_eq!(
+        waive(nobody.id, "x").await.unwrap_err(),
+        StepRefused::NotManager
+    );
     let waived = waive(owner.id, "uses a shared account").await.unwrap();
     assert_eq!(waived.status, StepStatus::Waived);
     assert_eq!(waived.waived_by, Some(owner.id));
-    assert_eq!(waived.waive_reason.as_deref(), Some("uses a shared account"));
+    assert_eq!(
+        waived.waive_reason.as_deref(),
+        Some("uses a shared account")
+    );
 }
 
 /// AC6: a `task` step with *evidence required* is not marked done without a
@@ -250,10 +282,12 @@ async fn hrm27_a_step_that_needs_evidence_is_not_done_without_it() {
         note: Some("   ".into()),
         ..DoneInput::default()
     };
-    assert!(steps::mark_done(t.state(), licence.id, account.id, blank)
-        .await
-        .unwrap()
-        .is_err());
+    assert!(
+        steps::mark_done(t.state(), licence.id, account.id, blank)
+            .await
+            .unwrap()
+            .is_err()
+    );
     let with_file = DoneInput {
         document_id: Some(41),
         ..DoneInput::default()
@@ -295,7 +329,9 @@ async fn hrm27_the_onboarding_completes_after_the_last_required_step() {
         .await
         .unwrap()
         .unwrap();
-    let after = Onboarding::find_or_404(t.db(), onboarding.id).await.unwrap();
+    let after = Onboarding::find_or_404(t.db(), onboarding.id)
+        .await
+        .unwrap();
     assert_eq!(after.status, OnboardingStatus::Completed);
     assert_eq!(t.reload(&optional).await.status, StepStatus::Open);
     let completed = t.completed.all();
@@ -311,7 +347,9 @@ async fn hrm27_the_onboarding_completes_after_the_last_required_step() {
         .unwrap();
     assert_eq!(late.status, StepStatus::Done);
     assert_eq!(t.completed.all().len(), 1, "completed once");
-    let reopened = steps::reopen(t.state(), required.id, hana.id, "again").await.unwrap();
+    let reopened = steps::reopen(t.state(), required.id, hana.id, "again")
+        .await
+        .unwrap();
     assert_eq!(reopened.unwrap_err(), StepRefused::OnboardingClosed);
 }
 
@@ -337,9 +375,13 @@ async fn hrm27_a_reopened_document_step_is_done_again_and_a_checklist_step_is_op
     t.docs.accepted(&ravi.subject(), "emirates_id", 77);
 
     // The one who waived cannot reopen; another holder can, with a reason.
-    let same = steps::reopen(t.state(), emirates.id, owner.id, "oops").await.unwrap();
+    let same = steps::reopen(t.state(), emirates.id, owner.id, "oops")
+        .await
+        .unwrap();
     assert_eq!(same.unwrap_err(), StepRefused::SameUser);
-    let blank = steps::reopen(t.state(), emirates.id, a.id, " ").await.unwrap();
+    let blank = steps::reopen(t.state(), emirates.id, a.id, " ")
+        .await
+        .unwrap();
     assert_eq!(blank.unwrap_err(), StepRefused::ReasonRequired);
     let reopened = steps::reopen(t.state(), emirates.id, a.id, "the ID is in")
         .await
@@ -354,7 +396,9 @@ async fn hrm27_a_reopened_document_step_is_done_again_and_a_checklist_step_is_op
     assert_eq!(reopened.status, StepStatus::Open);
     assert_eq!(reopened.checklist_run_id, None);
     // A step done by the system from its evidence is not reopened by hand.
-    let done_by_system = steps::reopen(t.state(), emirates.id, owner.id, "again").await.unwrap();
+    let done_by_system = steps::reopen(t.state(), emirates.id, owner.id, "again")
+        .await
+        .unwrap();
     assert_eq!(done_by_system.unwrap_err(), StepRefused::CannotReopen);
 }
 
@@ -374,7 +418,9 @@ async fn hrm27_another_hr_user_reopens_a_step_marked_by_mistake_and_the_history_
         .unwrap()
         .unwrap();
 
-    let own = steps::reopen(t.state(), step.id, a.id, "ticked by mistake").await.unwrap();
+    let own = steps::reopen(t.state(), step.id, a.id, "ticked by mistake")
+        .await
+        .unwrap();
     assert_eq!(own.unwrap_err(), StepRefused::SameUser);
     t.notices.clear();
     let reopened = steps::reopen(t.state(), step.id, b.id, "ticked by mistake")
@@ -383,7 +429,10 @@ async fn hrm27_another_hr_user_reopens_a_step_marked_by_mistake_and_the_history_
         .unwrap();
     assert_eq!(reopened.status, StepStatus::Open);
     assert_eq!(reopened.done_by, None);
-    assert_eq!(reopened.due_date, step.due_date, "the due date is unchanged");
+    assert_eq!(
+        reopened.due_date, step.due_date,
+        "the due date is unchanged"
+    );
     let history = renox::state_machine::history(t.db(), OnboardingStep::TABLE, step.id)
         .await
         .unwrap();

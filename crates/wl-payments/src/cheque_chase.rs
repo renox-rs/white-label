@@ -25,8 +25,8 @@
 //! are closed by the transition that left `bounced`. A run that finds the work
 //! late (the job was down) does it at once, once.
 
-use renox::chrono::NaiveDate;
 use renox::auth::permissions::{Scope, users_with_role_in};
+use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use wl_kernel::chase_holds;
 use wl_kernel::cheques::ChequeStatus;

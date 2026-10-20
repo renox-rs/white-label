@@ -6,7 +6,10 @@ use renox::chrono::NaiveDate;
 /// scale 2 is 2_500_050. `None` for an empty text, a sign, a letter, or more
 /// decimals than the scale holds (unless they are zeros).
 fn parse_decimal(text: &str, scale: usize) -> Option<i64> {
-    let cleaned: String = text.chars().filter(|c| !matches!(c, ',' | ' ' | '_')).collect();
+    let cleaned: String = text
+        .chars()
+        .filter(|c| !matches!(c, ',' | ' ' | '_'))
+        .collect();
     if cleaned.is_empty() {
         return None;
     }
@@ -19,11 +22,19 @@ fn parse_decimal(text: &str, scale: usize) -> Option<i64> {
     if extra.bytes().any(|b| b != b'0') {
         return None;
     }
-    let mut value: i64 = if whole.is_empty() { 0 } else { whole.parse().ok()? };
+    let mut value: i64 = if whole.is_empty() {
+        0
+    } else {
+        whole.parse().ok()?
+    };
     for _ in 0..scale {
         value = value.checked_mul(10)?;
     }
-    let mut fractional: i64 = if kept.is_empty() { 0 } else { kept.parse().ok()? };
+    let mut fractional: i64 = if kept.is_empty() {
+        0
+    } else {
+        kept.parse().ok()?
+    };
     for _ in kept.len()..scale {
         fractional = fractional.checked_mul(10)?;
     }
@@ -73,7 +84,10 @@ mod tests {
 
     #[test]
     fn dates_are_iso() {
-        assert_eq!(parse_date("2027-02-28"), NaiveDate::from_ymd_opt(2027, 2, 28));
+        assert_eq!(
+            parse_date("2027-02-28"),
+            NaiveDate::from_ymd_opt(2027, 2, 28)
+        );
         assert_eq!(parse_date("28/02/2027"), None);
         assert_eq!(parse_date(""), None);
     }

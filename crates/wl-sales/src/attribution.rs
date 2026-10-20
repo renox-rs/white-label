@@ -74,7 +74,12 @@ async fn attribute_lead(state: &AppState, id: LeadId, request: Attribute) -> Res
         .await?
         .filter(|s| s.active)
         .ok_or_else(|| acquisition::AcquisitionRefused::UnknownSource.into_error())?;
-    let campaign = match request.campaign.as_deref().map(str::trim).filter(|c| !c.is_empty()) {
+    let campaign = match request
+        .campaign
+        .as_deref()
+        .map(str::trim)
+        .filter(|c| !c.is_empty())
+    {
         Some(code) => Some(
             Campaign::by_code(&state.db, code)
                 .await?
@@ -108,7 +113,8 @@ async fn win(state: &AppState, lead: Lead, converted: Subject) -> Result<bool> {
     if !matches!(lead.status, LeadStatus::Contacted | LeadStatus::Qualified) {
         return Ok(false);
     }
-    let _outcome = lead.transition(WIN)
+    let _outcome = lead
+        .transition(WIN)
         .by_system()
         .input(&WinInput { converted })
         .run(state)

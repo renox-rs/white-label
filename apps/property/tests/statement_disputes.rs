@@ -6,18 +6,18 @@
 
 mod support;
 
+use property::Lease;
 use property::agreement::{AgreementStatus, ManagementAgreement};
 use property::notices::OWNER_STATEMENT_DISPUTE_OUTCOME;
 use property::statement::{self, LineKind, OwnerStatement, StatementLine, StatementStatus};
 use property::statement_dispute::{
     DISPUTE_CATEGORY, DisputeOutcome, DisputeStatus, StatementDispute,
 };
-use property::Lease;
 use renox::prelude::*;
 use renox::state_machine::StateMachine;
+use wl_kernel::PartyId;
 use wl_kernel::notify::NotifyRecipient;
 use wl_kernel::parties::PartyKind;
-use wl_kernel::PartyId;
 
 use support::{ACCOUNTANT, AGENT, Booted, MANAGER, aed, boot, day};
 
@@ -37,8 +37,10 @@ struct Scene {
 /// An active agreement for each of two owners, an accountant and a manager.
 async fn scene() -> Scene {
     let t = boot().await;
-    t.parties.add(OWNER_X.0, "Hessa Al Mansoori", PartyKind::Person);
-    t.parties.add(OWNER_Y.0, "Rashid Al Falasi", PartyKind::Person);
+    t.parties
+        .add(OWNER_X.0, "Hessa Al Mansoori", PartyKind::Person);
+    t.parties
+        .add(OWNER_Y.0, "Rashid Al Falasi", PartyKind::Person);
     let building = t.building().await;
     let unit = t.unit(&building, "1204").await;
     let agent = t.user_in("Ali", AGENT, building.id).await;
@@ -46,7 +48,9 @@ async fn scene() -> Scene {
     let _lease: Lease = t.active_lease(&unit, &agent, &site).await;
     let x = agreement(&t, OWNER_X).await;
     let y = agreement(&t, OWNER_Y).await;
-    property::agreement::add_unit(t.db(), &x, unit.id, day(-400)).await.unwrap();
+    property::agreement::add_unit(t.db(), &x, unit.id, day(-400))
+        .await
+        .unwrap();
     let accountant = t.user_with("Amal", ACCOUNTANT).await;
     let manager = t.user_with("Mona", MANAGER).await;
     Scene {
@@ -79,14 +83,24 @@ async fn agreement(t: &Booted, owner: PartyId) -> ManagementAgreement {
 
 impl Scene {
     /// `user` runs the transition `name` on the statement `id`.
-    async fn run(&self, user: &User, id: i64, name: &str, reason: &str) -> renox::testing::TestResponse {
+    async fn run(
+        &self,
+        user: &User,
+        id: i64,
+        name: &str,
+        reason: &str,
+    ) -> renox::testing::TestResponse {
         let pairs: Vec<(&str, &str)> = if reason.is_empty() {
             Vec::new()
         } else {
             vec![("reason", reason)]
         };
         self.t
-            .post_plain(user, &format!("/property/statements/{id}/transitions/{name}"), &pairs)
+            .post_plain(
+                user,
+                &format!("/property/statements/{id}/transitions/{name}"),
+                &pairs,
+            )
             .await
     }
 
@@ -101,13 +115,23 @@ impl Scene {
             .post(
                 &self.accountant,
                 &format!("/property/statements/{}/lines", draft.id),
-                &[("kind", "expense"), ("description", "AMC chiller Q1"), ("amount", "4,200")],
+                &[
+                    ("kind", "expense"),
+                    ("description", "AMC chiller Q1"),
+                    ("amount", "4,200"),
+                ],
             )
             .await
             .assert_ok();
-        self.run(&self.manager, draft.id, "approve", "").await.assert_status(303);
-        self.run(&self.accountant, draft.id, "publish", "").await.assert_status(303);
-        let published = OwnerStatement::find_or_404(self.t.db(), draft.id).await.unwrap();
+        self.run(&self.manager, draft.id, "approve", "")
+            .await
+            .assert_status(303);
+        self.run(&self.accountant, draft.id, "publish", "")
+            .await
+            .assert_status(303);
+        let published = OwnerStatement::find_or_404(self.t.db(), draft.id)
+            .await
+            .unwrap();
         let line = published
             .lines(self.t.db())
             .await
@@ -119,7 +143,12 @@ impl Scene {
     }
 
     /// The accountant records the dispute of `line` (blank for the whole).
-    async fn dispute(&self, statement: i64, line: &str, comment: &str) -> renox::testing::TestResponse {
+    async fn dispute(
+        &self,
+        statement: i64,
+        line: &str,
+        comment: &str,
+    ) -> renox::testing::TestResponse {
         self.t
             .post(
                 &self.accountant,
@@ -153,7 +182,9 @@ impl Scene {
     }
 
     async fn disputes(&self, id: i64) -> Vec<StatementDispute> {
-        StatementDispute::of_statement(self.t.db(), id).await.unwrap()
+        StatementDispute::of_statement(self.t.db(), id)
+            .await
+            .unwrap()
     }
 
     /// The lines of `agreement` that wait for the next draft.
@@ -177,24 +208,40 @@ async fn bl_prp_21_flagging_a_line_sets_the_flag_and_opens_a_ticket() {
     let (published, line) = s.published().await;
     assert!(!published.disputed);
 
-    s.dispute(published.id, &line.to_string(), "The owner did not agree to the chiller")
-        .await
-        .assert_ok();
+    s.dispute(
+        published.id,
+        &line.to_string(),
+        "The owner did not agree to the chiller",
+    )
+    .await
+    .assert_ok();
     let flagged = s.statement(published.id).await;
     assert!(flagged.disputed);
     assert_eq!(flagged.status, StatementStatus::Published);
     let disputes = s.disputes(published.id).await;
     assert_eq!(disputes.len(), 1);
     assert_eq!(disputes[0].line_id, Some(line));
-    assert!(disputes[0].description.contains("AMC chiller Q1"), "{}", disputes[0].description);
-    assert!(disputes[0].description.contains("AED 4,200.00"), "{}", disputes[0].description);
+    assert!(
+        disputes[0].description.contains("AMC chiller Q1"),
+        "{}",
+        disputes[0].description
+    );
+    assert!(
+        disputes[0].description.contains("AED 4,200.00"),
+        "{}",
+        disputes[0].description
+    );
     assert_eq!(disputes[0].status, DisputeStatus::Open);
 
     let tickets = s.t.tasks.with_key("property.statement_dispute:");
     assert_eq!(tickets.len(), 1);
     assert_eq!(tickets[0].category, DISPUTE_CATEGORY);
     assert_eq!(tickets[0].subject, published.subject());
-    assert!(tickets[0].title.contains(&published.number()), "{}", tickets[0].title);
+    assert!(
+        tickets[0].title.contains(&published.number()),
+        "{}",
+        tickets[0].title
+    );
     assert!(tickets[0].open);
     assert_eq!(
         disputes[0].ticket_number,
@@ -234,12 +281,18 @@ async fn bl_prp_21_what_can_be_disputed() {
     s.t.post(
         &s.accountant,
         &format!("/property/statements/{}/lines", other.id),
-        &[("kind", "expense"), ("description", "Lift"), ("amount", "10")],
+        &[
+            ("kind", "expense"),
+            ("description", "Lift"),
+            ("amount", "10"),
+        ],
     )
     .await
     .assert_ok();
     let foreign = other.lines(s.t.db()).await.unwrap()[0].id.to_string();
-    s.dispute(published.id, &foreign, "wrong statement").await.assert_status(404);
+    s.dispute(published.id, &foreign, "wrong statement")
+        .await
+        .assert_status(404);
     // The manager does not record disputes.
     s.t.post(
         &s.manager,
@@ -272,7 +325,11 @@ async fn bl_prp_21_an_adjustment_line_goes_on_the_next_draft() {
     s.clear(
         published.id,
         dispute,
-        &[("outcome", "adjustment"), ("amount", "4,200"), ("direction", "debit")],
+        &[
+            ("outcome", "adjustment"),
+            ("amount", "4,200"),
+            ("direction", "debit"),
+        ],
     )
     .await
     .assert_ok();
@@ -291,14 +348,20 @@ async fn bl_prp_21_an_adjustment_line_goes_on_the_next_draft() {
     assert_eq!(waiting[0].kind, LineKind::Adjustment);
     assert_eq!(waiting[0].amount, -aed(4_200));
     assert_eq!(waiting[0].linked_to, Some(line));
-    assert!(waiting[0].description.contains(&published.number()), "{}", waiting[0].description);
+    assert!(
+        waiting[0].description.contains(&published.number()),
+        "{}",
+        waiting[0].description
+    );
 
     let told = s.t.notices.of_type(OWNER_STATEMENT_DISPUTE_OUTCOME);
     assert_eq!(told.len(), 1);
-    assert!(told[0]
-        .recipients
-        .iter()
-        .any(|r| matches!(r, NotifyRecipient::Party { id } if *id == OWNER_X)));
+    assert!(
+        told[0]
+            .recipients
+            .iter()
+            .any(|r| matches!(r, NotifyRecipient::Party { id } if *id == OWNER_X))
+    );
 
     // The next draft shows it.
     let next = statement::generate(s.t.state(), s.x.id, day(-30), day(10))
@@ -308,7 +371,9 @@ async fn bl_prp_21_an_adjustment_line_goes_on_the_next_draft() {
     assert_eq!(next.adjustments, -aed(4_200));
     assert!(s.waiting(s.x.id).await.is_empty());
     // A cleared dispute is not cleared twice.
-    s.clear(published.id, dispute, &[("outcome", "upheld")]).await.assert_status(422);
+    s.clear(published.id, dispute, &[("outcome", "upheld")])
+        .await
+        .assert_status(422);
 }
 
 /// AC3: clearing by `revise` supersedes the statement and creates revision 2;
@@ -317,7 +382,9 @@ async fn bl_prp_21_an_adjustment_line_goes_on_the_next_draft() {
 async fn bl_prp_21_a_revision_clears_the_flag() {
     let s = scene().await;
     let (published, line) = s.published().await;
-    s.dispute(published.id, &line.to_string(), "Wrong amount").await.assert_ok();
+    s.dispute(published.id, &line.to_string(), "Wrong amount")
+        .await
+        .assert_ok();
 
     s.run(&s.accountant, published.id, "revise", "AMC bill was for Q2")
         .await
@@ -331,11 +398,16 @@ async fn bl_prp_21_a_revision_clears_the_flag() {
     assert_eq!(done.outcome, Some(DisputeOutcome::Revised));
     assert!(!s.t.tasks.with_key("property.statement_dispute:")[0].open);
 
-    let all = OwnerStatement::of_agreement(s.t.db(), s.x.id).await.unwrap();
+    let all = OwnerStatement::of_agreement(s.t.db(), s.x.id)
+        .await
+        .unwrap();
     let revision = all.iter().find(|r| r.revision == 2).expect("revision 2");
     assert_eq!(revision.status, StatementStatus::Draft);
     assert!(!revision.disputed);
-    assert_eq!(s.t.notices.of_type(OWNER_STATEMENT_DISPUTE_OUTCOME).len(), 1);
+    assert_eq!(
+        s.t.notices.of_type(OWNER_STATEMENT_DISPUTE_OUTCOME).len(),
+        1
+    );
 }
 
 /// AC4: a cost of AED 1,800 allocated to the wrong owner produces -1,800 on
@@ -355,14 +427,24 @@ async fn bl_prp_21_a_cost_of_the_wrong_owner_is_corrected_on_both_statements() {
     s.clear(
         published.id,
         dispute,
-        &[("outcome", "reallocation"), ("amount", "1,800"), ("direction", "debit"), ("other_agreement", &own)],
+        &[
+            ("outcome", "reallocation"),
+            ("amount", "1,800"),
+            ("direction", "debit"),
+            ("other_agreement", &own),
+        ],
     )
     .await
     .assert_status(422);
     s.clear(
         published.id,
         dispute,
-        &[("outcome", "reallocation"), ("amount", "1,800"), ("direction", "debit"), ("other_agreement", "9999")],
+        &[
+            ("outcome", "reallocation"),
+            ("amount", "1,800"),
+            ("direction", "debit"),
+            ("other_agreement", "9999"),
+        ],
     )
     .await
     .assert_status(422);
@@ -371,7 +453,12 @@ async fn bl_prp_21_a_cost_of_the_wrong_owner_is_corrected_on_both_statements() {
     s.clear(
         published.id,
         dispute,
-        &[("outcome", "reallocation"), ("amount", "1,800"), ("direction", "debit"), ("other_agreement", &y)],
+        &[
+            ("outcome", "reallocation"),
+            ("amount", "1,800"),
+            ("direction", "debit"),
+            ("other_agreement", &y),
+        ],
     )
     .await
     .assert_ok();
@@ -390,8 +477,14 @@ async fn bl_prp_21_a_cost_of_the_wrong_owner_is_corrected_on_both_statements() {
     assert!(!s.statement(published.id).await.disputed);
 
     // Each owner's next statement carries its line.
-    let next_x = statement::generate(s.t.state(), s.x.id, day(-30), day(10)).await.unwrap().unwrap();
-    let next_y = statement::generate(s.t.state(), s.y.id, day(-30), day(10)).await.unwrap().unwrap();
+    let next_x = statement::generate(s.t.state(), s.x.id, day(-30), day(10))
+        .await
+        .unwrap()
+        .unwrap();
+    let next_y = statement::generate(s.t.state(), s.y.id, day(-30), day(10))
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(next_x.adjustments, -aed(1_800));
     assert_eq!(next_y.adjustments, aed(1_800));
 }
@@ -402,18 +495,29 @@ async fn bl_prp_21_a_cost_of_the_wrong_owner_is_corrected_on_both_statements() {
 async fn bl_prp_21_the_flag_stays_while_a_dispute_is_open_and_a_settled_statement_is_upheld() {
     let s = scene().await;
     let (published, line) = s.published().await;
-    s.dispute(published.id, &line.to_string(), "first").await.assert_ok();
+    s.dispute(published.id, &line.to_string(), "first")
+        .await
+        .assert_ok();
     s.dispute(published.id, "", "second").await.assert_ok();
     let disputes = s.disputes(published.id).await;
     assert_eq!(disputes.len(), 2);
 
-    s.clear(published.id, disputes[0].id, &[("outcome", "upheld")]).await.assert_ok();
-    assert!(s.statement(published.id).await.disputed);
-    s.clear(published.id, disputes[1].id, &[("outcome", "upheld"), ("note", "checked")])
+    s.clear(published.id, disputes[0].id, &[("outcome", "upheld")])
         .await
         .assert_ok();
+    assert!(s.statement(published.id).await.disputed);
+    s.clear(
+        published.id,
+        disputes[1].id,
+        &[("outcome", "upheld"), ("note", "checked")],
+    )
+    .await
+    .assert_ok();
     assert!(!s.statement(published.id).await.disputed);
-    assert_eq!(s.disputes(published.id).await[1].note.as_deref(), Some("checked"));
+    assert_eq!(
+        s.disputes(published.id).await[1].note.as_deref(),
+        Some("checked")
+    );
 
     // A settled statement (after its payout).
     let mut settled = OwnerStatement {
@@ -432,11 +536,17 @@ async fn bl_prp_21_the_flag_stays_while_a_dispute_is_open_and_a_settled_statemen
         .await
         .unwrap();
     tx.commit().await.unwrap();
-    s.dispute(settled.id, "", "after the payout").await.assert_ok();
+    s.dispute(settled.id, "", "after the payout")
+        .await
+        .assert_ok();
     assert!(s.statement(settled.id).await.disputed);
     // It cannot be revised.
-    s.run(&s.accountant, settled.id, "revise", "late").await.assert_status(422);
+    s.run(&s.accountant, settled.id, "revise", "late")
+        .await
+        .assert_status(422);
     let dispute = s.disputes(settled.id).await[0].id;
-    s.clear(settled.id, dispute, &[("outcome", "upheld")]).await.assert_ok();
+    s.clear(settled.id, dispute, &[("outcome", "upheld")])
+        .await
+        .assert_ok();
     assert!(!s.statement(settled.id).await.disputed);
 }

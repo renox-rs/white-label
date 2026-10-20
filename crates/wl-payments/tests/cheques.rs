@@ -7,8 +7,8 @@
 
 mod support;
 
-use renox::prelude::*;
 use renox::chrono::TimeDelta;
+use renox::prelude::*;
 use wl_kernel::cheques::{
     ChequeSchedule, ChequeStatus, RegisterCheque, ScheduledCheque, cheques as cheque_contract,
 };
@@ -31,7 +31,8 @@ async fn schedule(t: &support::Booted, numbers: &[&str]) -> ChequeSchedule {
     for (i, number) in numbers.iter().enumerate() {
         let date = today() + TimeDelta::days(30 * (i as i64 + 1));
         schedule = schedule.cheque(
-            ScheduledCheque::new(number, date, 2_000_000).link(Subject::new("invoicing.charge", i as i64 + 1)),
+            ScheduledCheque::new(number, date, 2_000_000)
+                .link(Subject::new("invoicing.charge", i as i64 + 1)),
         );
     }
     schedule
@@ -49,15 +50,26 @@ async fn the_post_dated_cheques_of_a_lease_are_registered_together() {
         .await
         .unwrap();
     assert_eq!(registered.len(), 3);
-    assert!(registered.iter().all(|c| c.status == ChequeStatus::Received));
+    assert!(
+        registered
+            .iter()
+            .all(|c| c.status == ChequeStatus::Received)
+    );
     assert!(registered.iter().all(|c| c.agreement == Some(lease())));
-    assert_eq!(registered[1].linked, vec![Subject::new("invoicing.charge", 2)]);
+    assert_eq!(
+        registered[1].linked,
+        vec![Subject::new("invoicing.charge", 2)]
+    );
     assert_eq!(registered[0].open_amount, 2_000_000);
 
     let read = contract.of_agreement(t.db(), &lease()).await.unwrap();
     let numbers: Vec<&str> = read.iter().map(|c| c.number.as_str()).collect();
     assert_eq!(numbers, ["1001", "1002", "1003"]);
-    let found = contract.find(t.db(), read[2].id).await.unwrap().expect("found");
+    let found = contract
+        .find(t.db(), read[2].id)
+        .await
+        .unwrap()
+        .expect("found");
     assert_eq!(found.amount, 2_000_000);
     assert!(contract.find(t.db(), 999.into()).await.unwrap().is_none());
 }
@@ -70,16 +82,43 @@ async fn a_schedule_with_a_refused_cheque_registers_none() {
     let contract = cheque_contract(t.state());
     let mut bad = schedule(&t, &["2001", "2002"]).await;
     bad.cheques[1].amount = 0;
-    assert!(contract.register_schedule(t.state(), bad, None).await.is_err());
-    assert!(contract.of_agreement(t.db(), &lease()).await.unwrap().is_empty());
+    assert!(
+        contract
+            .register_schedule(t.state(), bad, None)
+            .await
+            .is_err()
+    );
+    assert!(
+        contract
+            .of_agreement(t.db(), &lease())
+            .await
+            .unwrap()
+            .is_empty()
+    );
 
     let mut twice = schedule(&t, &["2001", "2001"]).await;
     twice.legal_entity_id = entity.id;
-    assert!(contract.register_schedule(t.state(), twice, None).await.is_err());
-    assert!(contract.of_agreement(t.db(), &lease()).await.unwrap().is_empty());
+    assert!(
+        contract
+            .register_schedule(t.state(), twice, None)
+            .await
+            .is_err()
+    );
+    assert!(
+        contract
+            .of_agreement(t.db(), &lease())
+            .await
+            .unwrap()
+            .is_empty()
+    );
 
     let empty = ChequeSchedule::new(lease(), BLUE_DUNES, entity.id, "ENBD");
-    assert!(contract.register_schedule(t.state(), empty, None).await.is_err());
+    assert!(
+        contract
+            .register_schedule(t.state(), empty, None)
+            .await
+            .is_err()
+    );
 }
 
 /// A cheque number is registered once per party and bank, and an unknown
@@ -90,8 +129,16 @@ async fn a_cheque_is_registered_once_and_for_a_known_party() {
     let entity = t.entity("PGP").await;
     let contract = cheque_contract(t.state());
     let request = RegisterCheque::new(BLUE_DUNES, entity.id, "ENBD", "3001", today(), 100_000);
-    contract.register(t.state(), request.clone(), None).await.unwrap();
-    assert!(contract.register(t.state(), request.clone(), None).await.is_err());
+    contract
+        .register(t.state(), request.clone(), None)
+        .await
+        .unwrap();
+    assert!(
+        contract
+            .register(t.state(), request.clone(), None)
+            .await
+            .is_err()
+    );
     // Another party or bank may use the same number.
     let other = RegisterCheque::new(QUIET_SANDS, entity.id, "ENBD", "3001", today(), 100_000);
     assert!(contract.register(t.state(), other, None).await.is_ok());
@@ -110,10 +157,14 @@ async fn a_cheque_goes_on_the_deposit_list_one_day_before_its_date() {
     let soon = today() + TimeDelta::days(1);
     let later = today() + TimeDelta::days(2);
     let on_time = t
-        .register_cheque(RegisterCheque::new(BLUE_DUNES, entity.id, "ENBD", "4001", soon, 100_000))
+        .register_cheque(RegisterCheque::new(
+            BLUE_DUNES, entity.id, "ENBD", "4001", soon, 100_000,
+        ))
         .await;
     let early = t
-        .register_cheque(RegisterCheque::new(BLUE_DUNES, entity.id, "ENBD", "4002", later, 100_000))
+        .register_cheque(RegisterCheque::new(
+            BLUE_DUNES, entity.id, "ENBD", "4002", later, 100_000,
+        ))
         .await;
     let issued = t
         .register_cheque(
@@ -121,13 +172,21 @@ async fn a_cheque_goes_on_the_deposit_list_one_day_before_its_date() {
         )
         .await;
     assert_eq!(flag_due_run(t.state(), today()).await.unwrap(), 1);
-    assert_eq!(t.cheque(on_time.id).await.status, ChequeStatus::DueForDeposit);
+    assert_eq!(
+        t.cheque(on_time.id).await.status,
+        ChequeStatus::DueForDeposit
+    );
     assert_eq!(t.cheque(early.id).await.status, ChequeStatus::Received);
     assert_eq!(t.cheque(issued.id).await.status, ChequeStatus::Received);
     // A second run changes nothing.
     assert_eq!(flag_due_run(t.state(), today()).await.unwrap(), 0);
     // The day before the next one it is listed too.
-    assert_eq!(flag_due_run(t.state(), today() + TimeDelta::days(1)).await.unwrap(), 1);
+    assert_eq!(
+        flag_due_run(t.state(), today() + TimeDelta::days(1))
+            .await
+            .unwrap(),
+        1
+    );
     assert_eq!(t.cheque(early.id).await.status, ChequeStatus::DueForDeposit);
 }
 
@@ -139,7 +198,9 @@ async fn a_cheque_is_deposited_from_its_date() {
     let entity = t.entity("PGP").await;
     let future = today() + TimeDelta::days(10);
     let post_dated = t
-        .register_cheque(RegisterCheque::new(BLUE_DUNES, entity.id, "ENBD", "5001", future, 100_000))
+        .register_cheque(RegisterCheque::new(
+            BLUE_DUNES, entity.id, "ENBD", "5001", future, 100_000,
+        ))
         .await;
     t.cheque_action(&staff, &post_dated, "deposit", &[])
         .await
@@ -156,7 +217,9 @@ async fn a_cheque_is_deposited_from_its_date() {
         .await
         .assert_status(422);
 
-    let viewer = t.user("Vera", &[wl_payments::permissions::CHEQUES_VIEW]).await;
+    let viewer = t
+        .user("Vera", &[wl_payments::permissions::CHEQUES_VIEW])
+        .await;
     let other = t.received_cheque(BLUE_DUNES, "5003", 100_000, None).await;
     t.cheque_action(&viewer, &other, "deposit", &[])
         .await
@@ -189,7 +252,10 @@ async fn a_field_cheque_waits_for_its_handover() {
                 .collected_by(driver.id, false),
         )
         .await;
-    assert_eq!(t.deposit_cheque(&staff, &office).await.status, ChequeStatus::Deposited);
+    assert_eq!(
+        t.deposit_cheque(&staff, &office).await.status,
+        ChequeStatus::Deposited
+    );
 
     // The rule off.
     let loose = boot_with(
@@ -205,7 +271,10 @@ async fn a_field_cheque_waits_for_its_handover() {
                 .collected_by(staff.id, true),
         )
         .await;
-    assert_eq!(loose.deposit_cheque(&staff, &field).await.status, ChequeStatus::Deposited);
+    assert_eq!(
+        loose.deposit_cheque(&staff, &field).await.status,
+        ChequeStatus::Deposited
+    );
 }
 
 /// `clear` records a payment for the open amount (cheque method, money in)
@@ -215,11 +284,17 @@ async fn clearing_a_received_cheque_records_and_allocates_its_payment() {
     let t = boot().await;
     let staff = t.cheque_staff("Amal").await;
     let rent = t.invoices.add(BLUE_DUNES, "INV-1", 2_000_000);
-    let cheque = t.received_cheque(BLUE_DUNES, "7001", 2_000_000, Some(rent)).await;
+    let cheque = t
+        .received_cheque(BLUE_DUNES, "7001", 2_000_000, Some(rent))
+        .await;
     // Not before it is deposited.
-    t.cheque_action(&staff, &cheque, "clear", &[]).await.assert_status(422);
+    t.cheque_action(&staff, &cheque, "clear", &[])
+        .await
+        .assert_status(422);
     let cheque = t.deposit_cheque(&staff, &cheque).await;
-    t.cheque_action(&staff, &cheque, "clear", &[]).await.assert_ok();
+    t.cheque_action(&staff, &cheque, "clear", &[])
+        .await
+        .assert_ok();
 
     let cleared = t.cheque(cheque.id).await;
     assert_eq!(cleared.status, ChequeStatus::Cleared);
@@ -259,7 +334,9 @@ async fn clearing_an_issued_cheque_records_an_outgoing_payment() {
         )
         .await;
     let cheque = t.deposit_cheque(&staff, &cheque).await;
-    t.cheque_action(&staff, &cheque, "clear", &[]).await.assert_ok();
+    t.cheque_action(&staff, &cheque, "clear", &[])
+        .await
+        .assert_ok();
     let payments = Payment::query()
         .where_(Payment::SOURCE.eq(PaymentSource::Cheque))
         .get(t.db())
@@ -268,7 +345,10 @@ async fn clearing_an_issued_cheque_records_an_outgoing_payment() {
     assert_eq!(payments.len(), 1);
     assert_eq!(payments[0].direction, Direction::Out);
     assert_eq!(payments[0].amount, 1_050_000);
-    assert!(t.received.all().is_empty(), "money out is not a payment received");
+    assert!(
+        t.received.all().is_empty(),
+        "money out is not a payment received"
+    );
     // Without invoicing's supplier bills the payment stays unallocated.
     assert!(t.allocations(&payments[0]).await.is_empty());
     let found: Cheque = t.cheque(cheque.id).await;

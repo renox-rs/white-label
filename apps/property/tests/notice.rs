@@ -91,7 +91,11 @@ impl Scene {
         pairs: &[(&str, &str)],
     ) -> renox::testing::TestResponse {
         self.t
-            .post(user, &format!("/property/leases/{}/notice", lease.id), pairs)
+            .post(
+                user,
+                &format!("/property/leases/{}/notice", lease.id),
+                pairs,
+            )
             .await
     }
 
@@ -189,7 +193,11 @@ async fn bl_prp_09_the_penalty_is_a_charge_that_follows_the_planned_date_until_i
     // The ticket is due on the planned date.
     let tickets = s.t.tasks.with_key(&notice::move_out_key(&after));
     assert_eq!(tickets.len(), 1);
-    assert!(tickets[0].description.contains("2027-08-31"), "{}", tickets[0].description);
+    assert!(
+        tickets[0].description.contains("2027-08-31"),
+        "{}",
+        tickets[0].description
+    );
 
     // Edited before it is invoiced: the charge moves with the date.
     s.t.post(
@@ -203,7 +211,9 @@ async fn bl_prp_09_the_penalty_is_a_charge_that_follows_the_planned_date_until_i
     assert_eq!(s.fees(&after).await[0].due_date, d(9, 15));
 
     // Once invoiced it stays.
-    property::invoicing::run(s.t.state(), d(9, 15)).await.unwrap();
+    property::invoicing::run(s.t.state(), d(9, 15))
+        .await
+        .unwrap();
     assert_eq!(s.fees(&after).await[0].status, ChargeStatus::Invoiced);
     s.t.post(
         &s.manager,
@@ -288,7 +298,11 @@ async fn bl_prp_09_a_tenant_notice_needs_the_planned_move_out_date() {
         )
         .await;
     refused.assert_status(422);
-    assert!(refused.text().contains("planned move-out"), "{}", refused.text());
+    assert!(
+        refused.text().contains("planned move-out"),
+        "{}",
+        refused.text()
+    );
     assert_eq!(s.t.status(&lease).await, LeaseStatus::Active);
     assert_eq!(s.t.unit_now(&s.unit).await.status, UnitStatus::Occupied);
 }
@@ -320,7 +334,12 @@ async fn bl_prp_09_a_landlord_notice_shows_not_delivered_until_the_proof() {
         .assert_see("Notice not delivered");
     let notice_given = s.t.reload(&lease).await;
     assert_eq!(notice_given.planned_move_out, None);
-    assert_eq!(notice::delivered_on(s.t.state(), &notice_given).await.unwrap(), None);
+    assert_eq!(
+        notice::delivered_on(s.t.state(), &notice_given)
+            .await
+            .unwrap(),
+        None
+    );
 
     // Staff record the proof: delivered on 2027-02-10.
     s.t.notices.set_notice(
@@ -348,12 +367,20 @@ async fn bl_prp_09_a_landlord_notice_shows_not_delivered_until_the_proof() {
 async fn bl_prp_09_a_notice_without_party_or_reason_is_refused() {
     let s = scene().await;
     let lease = s.active().await;
-    s.notice(&s.manager, &lease, &[("date", "2027-06-01"), ("reason", "end_of_term")])
-        .await
-        .assert_status(422);
-    s.notice(&s.manager, &lease, &[("date", "2027-06-01"), ("party", "tenant")])
-        .await
-        .assert_status(422);
+    s.notice(
+        &s.manager,
+        &lease,
+        &[("date", "2027-06-01"), ("reason", "end_of_term")],
+    )
+    .await
+    .assert_status(422);
+    s.notice(
+        &s.manager,
+        &lease,
+        &[("date", "2027-06-01"), ("party", "tenant")],
+    )
+    .await
+    .assert_status(422);
     assert_eq!(s.t.status(&lease).await, LeaseStatus::Active);
 
     // The machine does not take a notice without its details either.
@@ -386,5 +413,7 @@ async fn bl_prp_09_a_notice_is_recorded_from_renewal_due_by_a_manager() {
     s.notice(&s.manager, &lease, &pairs).await.assert_ok();
     assert_eq!(s.t.status(&lease).await, LeaseStatus::NoticeGiven);
     // A second notice on a lease that has one is refused.
-    s.notice(&s.manager, &lease, &pairs).await.assert_status(422);
+    s.notice(&s.manager, &lease, &pairs)
+        .await
+        .assert_status(422);
 }

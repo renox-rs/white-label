@@ -257,7 +257,9 @@ pub fn seeds(app: &str, owner: &str, settings: &VerticalSettings) -> Vec<KindSee
             let role = settings.roles.get(row.key).map_or_else(
                 || match row.responsible {
                     Responsible::Owner => owner,
-                    Responsible::QualityOrOwner => settings.quality_role.as_deref().unwrap_or(owner),
+                    Responsible::QualityOrOwner => {
+                        settings.quality_role.as_deref().unwrap_or(owner)
+                    }
                 },
                 String::as_str,
             );
@@ -330,7 +332,11 @@ mod tests {
     #[test]
     fn a_new_fnb_client_has_three_kinds_on_and_iso_off() {
         let seeds = seeds("fnb", "owner", &VerticalSettings::new());
-        let on: Vec<_> = seeds.iter().filter(|s| s.enabled).map(|s| s.key.as_str()).collect();
+        let on: Vec<_> = seeds
+            .iter()
+            .filter(|s| s.enabled)
+            .map(|s| s.key.as_str())
+            .collect();
         assert_eq!(on, [TRADEMARK, HALAL, OTHER]);
         assert!(!seed(&seeds, ISO).enabled);
         assert!(!seed(&seeds, PRODUCT).enabled);
@@ -338,11 +344,21 @@ mod tests {
 
     #[test]
     fn reminders_and_roles_follow_the_table() {
-        let seeds = seeds("manufacturing", "md", &VerticalSettings::new().quality_role("qc_inspector"));
+        let seeds = seeds(
+            "manufacturing",
+            "md",
+            &VerticalSettings::new().quality_role("qc_inspector"),
+        );
         assert_eq!(seed(&seeds, TRADEMARK).reminder_offsets, [180, 90, 30]);
-        assert_eq!(seed(&seeds, TRADEMARK).responsible_role.as_deref(), Some("md"));
+        assert_eq!(
+            seed(&seeds, TRADEMARK).responsible_role.as_deref(),
+            Some("md")
+        );
         assert_eq!(seed(&seeds, ISO).reminder_offsets, [90, 30, 7]);
-        assert_eq!(seed(&seeds, ISO).responsible_role.as_deref(), Some("qc_inspector"));
+        assert_eq!(
+            seed(&seeds, ISO).responsible_role.as_deref(),
+            Some("qc_inspector")
+        );
         assert_eq!(seed(&seeds, OTHER).responsible_role.as_deref(), Some("md"));
         assert!(seed(&seeds, ISO).enabled && seed(&seeds, HALAL).enabled);
     }
@@ -350,9 +366,19 @@ mod tests {
     #[test]
     fn quality_role_else_owner() {
         let seeds = seeds("fnb", "owner", &VerticalSettings::new());
-        assert_eq!(seed(&seeds, HALAL).responsible_role.as_deref(), Some("owner"));
-        let seeds = super::seeds("fnb", "owner", &VerticalSettings::new().role(HALAL, "storekeeper"));
-        assert_eq!(seed(&seeds, HALAL).responsible_role.as_deref(), Some("storekeeper"));
+        assert_eq!(
+            seed(&seeds, HALAL).responsible_role.as_deref(),
+            Some("owner")
+        );
+        let seeds = super::seeds(
+            "fnb",
+            "owner",
+            &VerticalSettings::new().role(HALAL, "storekeeper"),
+        );
+        assert_eq!(
+            seed(&seeds, HALAL).responsible_role.as_deref(),
+            Some("storekeeper")
+        );
     }
 
     #[test]
@@ -362,13 +388,23 @@ mod tests {
         assert!(allows(seed(&fnb, HALAL), PARTY_SUBJECT_TYPE));
         assert!(!allows(seed(&fnb, TRADEMARK), ITEM_SUBJECT));
         let property = seeds("property", "owner", &VerticalSettings::new());
-        assert_eq!(seed(&property, HALAL).subject_types, [LEGAL_ENTITY_SUBJECT, PARTY_SUBJECT_TYPE]);
-        assert_eq!(seed(&property, PRODUCT).subject_types, [LEGAL_ENTITY_SUBJECT]);
+        assert_eq!(
+            seed(&property, HALAL).subject_types,
+            [LEGAL_ENTITY_SUBJECT, PARTY_SUBJECT_TYPE]
+        );
+        assert_eq!(
+            seed(&property, PRODUCT).subject_types,
+            [LEGAL_ENTITY_SUBJECT]
+        );
     }
 
     #[test]
     fn a_vertical_can_turn_other_kinds_on() {
-        let seeds = seeds("manufacturing", "owner", &VerticalSettings::new().enabled(&[PRODUCT, OTHER]));
+        let seeds = seeds(
+            "manufacturing",
+            "owner",
+            &VerticalSettings::new().enabled(&[PRODUCT, OTHER]),
+        );
         assert!(seed(&seeds, PRODUCT).enabled && !seed(&seeds, HALAL).enabled);
     }
 

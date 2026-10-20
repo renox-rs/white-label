@@ -62,7 +62,10 @@ pub struct OnboardingTemplate {
 
 /// One step of a template.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
-#[model(table = "wl_hr_onboarding_template_steps", unique(template_id, position))]
+#[model(
+    table = "wl_hr_onboarding_template_steps",
+    unique(template_id, position)
+)]
 pub struct TemplateStep {
     /// The primary key.
     pub id: i64,
@@ -307,7 +310,9 @@ impl TemplateRefused {
     /// The English explanation.
     pub fn message(&self) -> String {
         match self {
-            TemplateRefused::NameRequired => crate::texts::english("wl_hr.templates.name_required", &[]),
+            TemplateRefused::NameRequired => {
+                crate::texts::english("wl_hr.templates.name_required", &[])
+            }
             TemplateRefused::NoRole => crate::texts::english("wl_hr.templates.no_role", &[]),
             TemplateRefused::NoSteps => crate::texts::english("wl_hr.templates.no_steps", &[]),
             TemplateRefused::BadStep(text) => text.clone(),
@@ -319,13 +324,22 @@ impl TemplateRefused {
 fn check_step(position: usize, step: &StepInput) -> Option<String> {
     let at = position + 1;
     if step.title_en.trim().is_empty() {
-        return Some(crate::texts::english("wl_hr.templates.step_title", &[("n", &at)]));
+        return Some(crate::texts::english(
+            "wl_hr.templates.step_title",
+            &[("n", &at)],
+        ));
     }
     if !is_valid_owner(&step.owner) {
-        return Some(crate::texts::english("wl_hr.templates.step_owner", &[("n", &at)]));
+        return Some(crate::texts::english(
+            "wl_hr.templates.step_owner",
+            &[("n", &at)],
+        ));
     }
     if step.due_days < 0 {
-        return Some(crate::texts::english("wl_hr.templates.step_due", &[("n", &at)]));
+        return Some(crate::texts::english(
+            "wl_hr.templates.step_due",
+            &[("n", &at)],
+        ));
     }
     let missing = match step.kind {
         StepKind::Checklist => step
@@ -419,7 +433,11 @@ pub async fn create(
 /// (employee, day 7). Every step required, none needs evidence.
 pub fn induction() -> TemplateInput {
     TemplateInput::all_staff("All staff induction")
-        .step(StepInput::task("Welcome and introductions", OWNER_MANAGER, 1))
+        .step(StepInput::task(
+            "Welcome and introductions",
+            OWNER_MANAGER,
+            1,
+        ))
         .step(StepInput::task("System account and access", OWNER_HR, 1))
         .step(StepInput::checklist(
             "Workplace and safety induction",
@@ -492,7 +510,12 @@ mod tests {
                 ("employee", 7, StepKind::SopAcknowledgement),
             ]
         );
-        assert!(template.steps.iter().all(|s| s.required && !s.evidence_required));
+        assert!(
+            template
+                .steps
+                .iter()
+                .all(|s| s.required && !s.evidence_required)
+        );
         for (n, step) in template.steps.iter().enumerate() {
             assert_eq!(check_step(n, step), None);
         }
@@ -502,10 +525,55 @@ mod tests {
     fn a_step_needs_its_title_owner_and_what_its_kind_names() {
         let ok = StepInput::task("Welcome", "hr", 1);
         assert_eq!(check_step(0, &ok), None);
-        assert!(check_step(0, &StepInput { title_en: " ".into(), ..ok.clone() }).is_some());
-        assert!(check_step(0, &StepInput { owner: "boss".into(), ..ok.clone() }).is_some());
-        assert!(check_step(0, &StepInput { due_days: -1, ..ok.clone() }).is_some());
-        assert!(check_step(0, &StepInput { kind: StepKind::Checklist, ..ok.clone() }).is_some());
-        assert!(check_step(0, &StepInput { kind: StepKind::Document, ..ok }).is_some());
+        assert!(
+            check_step(
+                0,
+                &StepInput {
+                    title_en: " ".into(),
+                    ..ok.clone()
+                }
+            )
+            .is_some()
+        );
+        assert!(
+            check_step(
+                0,
+                &StepInput {
+                    owner: "boss".into(),
+                    ..ok.clone()
+                }
+            )
+            .is_some()
+        );
+        assert!(
+            check_step(
+                0,
+                &StepInput {
+                    due_days: -1,
+                    ..ok.clone()
+                }
+            )
+            .is_some()
+        );
+        assert!(
+            check_step(
+                0,
+                &StepInput {
+                    kind: StepKind::Checklist,
+                    ..ok.clone()
+                }
+            )
+            .is_some()
+        );
+        assert!(
+            check_step(
+                0,
+                &StepInput {
+                    kind: StepKind::Document,
+                    ..ok
+                }
+            )
+            .is_some()
+        );
     }
 }

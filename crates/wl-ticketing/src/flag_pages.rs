@@ -84,9 +84,7 @@ async fn index(
     Query(query): Query<FlagQuery>,
 ) -> Result<View> {
     let subject = match (query.subject_type, query.subject_id) {
-        (Some(kind), Some(id)) if !kind.trim().is_empty() => {
-            Some(Subject::new(kind.trim(), id))
-        }
+        (Some(kind), Some(id)) if !kind.trim().is_empty() => Some(Subject::new(kind.trim(), id)),
         _ => None,
     };
     let flags = match &subject {
@@ -111,7 +109,10 @@ async fn index(
         let age = (today - wl_kernel::documents::dubai_date(flag.raised_at)).num_days();
         rows.push(FlagRow {
             subject: format!("{} #{}", flag.subject_type, flag.subject_id),
-            category: categories.get(&flag.category_id).cloned().unwrap_or_default(),
+            category: categories
+                .get(&flag.category_id)
+                .cloned()
+                .unwrap_or_default(),
             reason: texts::t(
                 &lang,
                 &format!("wl_ticketing.flags.reason_{}", flag.reason.as_str()),
@@ -124,7 +125,10 @@ async fn index(
             age: texts::t(&lang, "wl_ticketing.flags.days").replace(":count", &age.to_string()),
             visit: visit.unwrap_or_default(),
             visit_id: flag.ticket_id,
-            contract: flag.contract_id.map(|c| format!("#{c}")).unwrap_or_default(),
+            contract: flag
+                .contract_id
+                .map(|c| format!("#{c}"))
+                .unwrap_or_default(),
             contract_id: flag.contract_id,
         });
     }

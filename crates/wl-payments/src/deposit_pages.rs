@@ -28,7 +28,9 @@ use wl_kernel::deposits::DeductionKind;
 use wl_kernel::payments::PaymentMethod;
 
 use crate::deposit::{Deposit, DepositStatus, ForfeitRequest, TransferRequest};
-use crate::deposit_adjust::{self, AdjustRequest, AdjustmentKind, AdjustmentStatus, DepositAdjustment};
+use crate::deposit_adjust::{
+    self, AdjustRequest, AdjustmentKind, AdjustmentStatus, DepositAdjustment,
+};
 use crate::deposit_deductions::{
     self, AnswerRequest, DepositDeduction, DepositDispute, DisputeStatus, LineChange, NewLine,
     PublishRequest,
@@ -263,7 +265,10 @@ async fn adjustment_rows(db: &Db, t: Text<'_>, deposit: &Deposit) -> Result<Vec<
                 AdjustmentKind::PartRefund => "deposits.adjust.kind.part_refund",
             }),
             difference: money_text(&deposit.currency, adjustment.difference),
-            status: t(&format!("deposits.adjust.status.{}", adjustment.status.as_str())),
+            status: t(&format!(
+                "deposits.adjust.status.{}",
+                adjustment.status.as_str()
+            )),
             status_kind: match adjustment.status {
                 AdjustmentStatus::Open => "warning",
                 AdjustmentStatus::Settled => "success",
@@ -366,7 +371,10 @@ async fn dispute_rows(db: &Db, t: Text<'_>, deposit: &Deposit) -> Result<Vec<Dis
             line,
             comment: dispute.comment.clone(),
             raised_on: dispute.raised_on.format("%Y-%m-%d").to_string(),
-            status: t(&format!("deposits.dispute.status.{}", dispute.status.as_str())),
+            status: t(&format!(
+                "deposits.dispute.status.{}",
+                dispute.status.as_str()
+            )),
             status_kind: match dispute.status {
                 DisputeStatus::Open => "warning",
                 DisputeStatus::Revised => "info",
@@ -399,13 +407,12 @@ async fn show(
     } else {
         String::new()
     };
-    let approvers: Vec<(String, String)> =
-        users_with_permission(&db, permissions::DEPOSITS_REFUND)
-            .await?
-            .into_iter()
-            .filter(|u| u.id != user.id)
-            .map(|u| (u.id.to_string(), u.name))
-            .collect();
+    let approvers: Vec<(String, String)> = users_with_permission(&db, permissions::DEPOSITS_REFUND)
+        .await?
+        .into_iter()
+        .filter(|u| u.id != user.id)
+        .map(|u| (u.id.to_string(), u.name))
+        .collect();
     let refund = deposit.linked_refund(&db).await?;
     let refund_failed = deposit.refund_failed(&db).await?;
     let history = state_machine::history(&db, Deposit::TABLE, deposit.id).await?;
@@ -494,7 +501,10 @@ pub(crate) fn parse_lines(text: &str) -> std::result::Result<Vec<NewLine>, Strin
             ));
         };
         let Some(amount) = parse_amount(amount) else {
-            return Err(format!("Line {}: the amount is not a number above 0.", i + 1));
+            return Err(format!(
+                "Line {}: the amount is not a number above 0.",
+                i + 1
+            ));
         };
         lines.push(NewLine {
             description: (*description).to_owned(),
@@ -523,7 +533,11 @@ async fn store_deductions(
         forfeiture_reason: filled(&form.forfeiture_reason).map(str::to_owned),
     };
     match deposit_deductions::publish(&state, &user, &deposit, &request).await {
-        Ok(_) => Ok((Toast::success(t("deposits.deductions.done")), renox::HxRefresh).into_response()),
+        Ok(_) => Ok((
+            Toast::success(t("deposits.deductions.done")),
+            renox::HxRefresh,
+        )
+            .into_response()),
         Err(TransitionError::Guard(message)) => Err(invalid("lines", message, &form)),
         Err(other) => Err(other.into_error()),
     }
@@ -558,7 +572,10 @@ pub(crate) fn parse_changes(text: &str) -> std::result::Result<Vec<LineChange>, 
         let Ok(line_id) = id.parse::<i64>() else {
             return Err(format!("Row {}: the line id is not a number.", i + 1));
         };
-        let fils = if amount.trim_matches(|c| c == '0' || c == '.' || c == ',').is_empty() {
+        let fils = if amount
+            .trim_matches(|c| c == '0' || c == '.' || c == ',')
+            .is_empty()
+        {
             Some(0)
         } else {
             parse_amount(amount)
@@ -674,13 +691,25 @@ async fn store_adjust(
 ) -> Result<Response> {
     let t = texts_in(&lang);
     let Some(new_amount) = filled(&form.new_amount).and_then(parse_amount) else {
-        return Err(invalid("new_amount", t("deposits.adjust.amount_required"), &form));
+        return Err(invalid(
+            "new_amount",
+            t("deposits.adjust.amount_required"),
+            &form,
+        ));
     };
     let Some(source_version) = form.source_version.filter(|v| *v > 0) else {
-        return Err(invalid("source_version", t("deposits.adjust.version_required"), &form));
+        return Err(invalid(
+            "source_version",
+            t("deposits.adjust.version_required"),
+            &form,
+        ));
     };
     let Some(effective_on) = form.effective_on else {
-        return Err(invalid("effective_on", t("deposits.adjust.date_required"), &form));
+        return Err(invalid(
+            "effective_on",
+            t("deposits.adjust.date_required"),
+            &form,
+        ));
     };
     let request = AdjustRequest {
         new_amount,
@@ -688,7 +717,9 @@ async fn store_adjust(
         effective_on,
     };
     match deposit_adjust::adjust(&state, Some(&user), None, &deposit, &request).await {
-        Ok(Some(_)) => Ok((Toast::success(t("deposits.adjust.done")), renox::HxRefresh).into_response()),
+        Ok(Some(_)) => {
+            Ok((Toast::success(t("deposits.adjust.done")), renox::HxRefresh).into_response())
+        }
         Ok(None) => Ok((Toast::info(t("deposits.adjust.same")), renox::HxRefresh).into_response()),
         Err(TransitionError::Guard(message)) => Err(invalid("new_amount", message, &form)),
         Err(other) => Err(other.into_error()),
@@ -729,7 +760,11 @@ async fn store_transfer(
         receipt: filled(&form.receipt).unwrap_or_default().to_owned(),
     };
     match crate::deposit::transfer(&state, &user, &deposit, &request).await {
-        Ok(_) => Ok((Toast::success(t("deposits.transfer.done")), renox::HxRefresh).into_response()),
+        Ok(_) => Ok((
+            Toast::success(t("deposits.transfer.done")),
+            renox::HxRefresh,
+        )
+            .into_response()),
         Err(TransitionError::Guard(message)) => {
             let field = if message.contains("receipt") {
                 "receipt"
@@ -855,10 +890,8 @@ mod tests {
 
     #[test]
     fn deduction_lines_are_read_one_per_row() {
-        let lines = parse_lines(
-            "Repainting | 2,500.00 | photos-1\n\nCleaning|300|photos-2\n",
-        )
-        .expect("ok");
+        let lines =
+            parse_lines("Repainting | 2,500.00 | photos-1\n\nCleaning|300|photos-2\n").expect("ok");
         assert_eq!(lines.len(), 2);
         assert_eq!(lines[0].description, "Repainting");
         assert_eq!(lines[0].amount, 250_000);

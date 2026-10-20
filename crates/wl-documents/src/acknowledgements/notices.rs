@@ -7,9 +7,7 @@ use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use renox::serde_json::{Value, json};
 use wl_kernel::Subject;
-use wl_kernel::notify::{
-    self, Category, NotificationTypeDef, NotifyChannel, NotifyRequest,
-};
+use wl_kernel::notify::{self, Category, NotificationTypeDef, NotifyChannel, NotifyRequest};
 use wl_kernel::workforce::StaffProfile;
 
 use super::model::SopAcknowledgement;
@@ -60,7 +58,11 @@ fn sms_type(key: &str, texts: &str) -> NotificationTypeDef {
 
 /// Registers the notification types with the kernel registry.
 pub(crate) fn register_types() {
-    notify::register_type(english_type(REQUESTED, "requested", Category::Transactional));
+    notify::register_type(english_type(
+        REQUESTED,
+        "requested",
+        Category::Transactional,
+    ));
     notify::register_type(sms_type(REQUESTED_IN_PERSON, "requested_in_person"));
     notify::register_type(english_type(REMINDER, "reminder", Category::Reminder));
     notify::register_type(english_type(ESCALATED, "escalated", Category::Reminder));

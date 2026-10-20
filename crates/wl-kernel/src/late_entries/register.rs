@@ -215,9 +215,8 @@ pub fn subject_types() -> Vec<String> {
 
 /// The entry of `subject_type`, or a 400 saying it does not opt in.
 pub fn require(subject_type: &str) -> Result<Arc<LateEntryDef>> {
-    get(subject_type).ok_or_else(|| {
-        Error::BadRequest(crate::texts::en("wl_kernel.late_entries.not_opted_in"))
-    })
+    get(subject_type)
+        .ok_or_else(|| Error::BadRequest(crate::texts::en("wl_kernel.late_entries.not_opted_in")))
 }
 
 #[cfg(test)]

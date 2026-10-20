@@ -16,8 +16,8 @@ pub mod flag_pages;
 pub mod flags;
 pub mod job_cancel;
 mod machine;
-mod notices;
 pub mod no_show;
+mod notices;
 pub mod open;
 pub mod pages;
 pub mod plans;
@@ -41,11 +41,9 @@ use renox::prelude::*;
 pub use assign::{AssignKind, AssignRequest, Assignment, assign, assign_as_system};
 pub use charge::{ChargeInput, ChargeLine};
 pub use comments::{Comment, CommentVisibility};
-pub use flags::ComplianceFlag;
 pub use config::{Category, CustomField, FieldKind, HoldReason, InvoiceOn, SlaPolicy, SlaTarget};
-pub use contract::{
-    ContractStatus, Coverage, NewContract, ServiceContract, ServiceContracts,
-};
+pub use contract::{ContractStatus, Coverage, NewContract, ServiceContract, ServiceContracts};
+pub use flags::ComplianceFlag;
 pub use no_show::NoShow;
 pub use open::Tickets;
 pub use plans::{MaintenancePlan, MaintenancePlans, PlanStatus};

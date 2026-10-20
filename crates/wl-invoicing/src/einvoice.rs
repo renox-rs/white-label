@@ -291,7 +291,12 @@ fn accept_transition() -> Transition<EInvoiceTransmission> {
             let id = t.id;
             Box::pin(async move {
                 let at = renox::db::now();
-                record(tx, id, &[("response_at", &Some(at)), ("updated_at", &Some(at))]).await
+                record(
+                    tx,
+                    id,
+                    &[("response_at", &Some(at)), ("updated_at", &Some(at))],
+                )
+                .await
             })
         })
 }
@@ -304,7 +309,9 @@ fn reject_transition() -> Transition<EInvoiceTransmission> {
         .to(TransmissionStatus::Rejected)
         .effect(|t: &EInvoiceTransmission, ctx, tx| {
             let id = t.id;
-            let errors = run::<RejectInput>(ctx).map(|i| i.errors).unwrap_or_default();
+            let errors = run::<RejectInput>(ctx)
+                .map(|i| i.errors)
+                .unwrap_or_default();
             Box::pin(async move {
                 let at = renox::db::now();
                 let codes = Json(errors.iter().map(|(c, _)| c.clone()).collect::<Vec<_>>());
@@ -337,9 +344,11 @@ fn resubmit_transition() -> Transition<EInvoiceTransmission> {
                 if fixed {
                     Ok(())
                 } else {
-                    Err("Confirm that the cause is outside the issued document and has been \
+                    Err(
+                        "Confirm that the cause is outside the issued document and has been \
                          fixed."
-                        .to_owned())
+                            .to_owned(),
+                    )
                 }
             })
         })
@@ -401,9 +410,11 @@ fn supersede_transition() -> Transition<EInvoiceTransmission> {
                 if correction {
                     Ok(())
                 } else {
-                    Err("Only a credit note with the reason e-invoice correction supersedes \
+                    Err(
+                        "Only a credit note with the reason e-invoice correction supersedes \
                          a rejected transmission."
-                        .to_owned())
+                            .to_owned(),
+                    )
                 }
             })
         })
@@ -549,7 +560,10 @@ mod tests {
             document_id: 9,
             ..Default::default()
         };
-        assert_eq!(t.subject(), Subject::new("invoicing.einvoice_transmission", 4));
+        assert_eq!(
+            t.subject(),
+            Subject::new("invoicing.einvoice_transmission", 4)
+        );
         assert_eq!(t.document(), Subject::new("invoicing.invoice", 9));
         assert!(EInvoiceTransmission::is_correction("e-invoice correction"));
         assert!(!EInvoiceTransmission::is_correction("wrong rate"));
@@ -558,6 +572,9 @@ mod tests {
     #[test]
     fn statuses_are_stored_in_snake_case() {
         let stored: Vec<_> = TransmissionStatus::ALL.iter().map(|s| s.as_str()).collect();
-        assert_eq!(stored, ["queued", "submitted", "accepted", "rejected", "superseded"]);
+        assert_eq!(
+            stored,
+            ["queued", "submitted", "accepted", "rejected", "superseded"]
+        );
     }
 }

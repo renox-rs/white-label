@@ -5,10 +5,10 @@ mod support;
 
 use renox::chrono::{Datelike, Months, NaiveDate};
 use renox::prelude::*;
-use wl_invoicing::budget_machine::EXPIRY_HOURS;
 use wl_invoicing::budget::month_start;
 use wl_invoicing::budget_category::{self, CategoryInput};
 use wl_invoicing::budget_lines::{self, LineInput, NewBudget};
+use wl_invoicing::budget_machine::EXPIRY_HOURS;
 use wl_invoicing::budget_reminder;
 use wl_invoicing::{
     BudgetCategory, BudgetKind, BudgetStatus, CompanyBudget, CompanyBudgetLine, MappingKind,
@@ -135,7 +135,11 @@ async fn the_preparer_cannot_approve_their_own_budget() {
     let c = t
         .helper(
             "Cora",
-            &[perm::BUDGETS_VIEW, perm::BUDGETS_MANAGE, perm::BUDGETS_APPROVE],
+            &[
+                perm::BUDGETS_VIEW,
+                perm::BUDGETS_MANAGE,
+                perm::BUDGETS_APPROVE,
+            ],
         )
         .await;
     let budget = t.new_budget("PGP", 2027, StartChoice::Empty, &c).await;
@@ -151,10 +155,7 @@ async fn the_preparer_cannot_approve_their_own_budget() {
             .await
             .is_err()
     );
-    assert_eq!(
-        t.budget_now(&budget).await.status,
-        BudgetStatus::Submitted
-    );
+    assert_eq!(t.budget_now(&budget).await.status, BudgetStatus::Submitted);
     assert!(t.budget_approved.all().is_empty());
 }
 
@@ -168,7 +169,10 @@ async fn a_first_budget_starts_empty_or_as_a_copy_of_last_years() {
     approved_year(&t, "PGP", 2027, &a, &b).await;
     // Version 2 of 2027 changes December; it is the one in force.
     let revision = t.new_budget("PGP", 2027, StartChoice::Empty, &a).await;
-    assert_eq!((revision.version, revision.start_choice), (2, StartChoice::Revision));
+    assert_eq!(
+        (revision.version, revision.start_choice),
+        (2, StartChoice::Revision)
+    );
     let december = t.category("rent_utilities").await;
     budget_lines::set_lines(
         t.db(),
@@ -188,7 +192,10 @@ async fn a_first_budget_starts_empty_or_as_a_copy_of_last_years() {
     approve(&t, &revision, &a, &b).await;
 
     let copy = t.new_budget("PGP", 2028, StartChoice::LastBudget, &a).await;
-    assert_eq!((copy.version, copy.start_choice), (1, StartChoice::LastBudget));
+    assert_eq!(
+        (copy.version, copy.start_choice),
+        (1, StartChoice::LastBudget)
+    );
     let copied = lines(&t, &copy).await;
     assert_eq!(copied.len(), 12);
     let first = NaiveDate::from_ymd_opt(2028, 1, 1).unwrap();
@@ -198,7 +205,10 @@ async fn a_first_budget_starts_empty_or_as_a_copy_of_last_years() {
         .iter()
         .find(|l| l.month == NaiveDate::from_ymd_opt(2028, 12, 1).unwrap())
         .unwrap();
-    assert_eq!((last.amount, last.note.as_deref()), (2_500_000, Some("Rent went up")));
+    assert_eq!(
+        (last.amount, last.note.as_deref()),
+        (2_500_000, Some("Rent went up"))
+    );
 
     let empty = t.new_budget("PGP", 2029, StartChoice::Empty, &a).await;
     assert!(lines(&t, &empty).await.is_empty());
@@ -239,7 +249,10 @@ async fn a_revision_locks_the_ended_months_and_supersedes_the_old_version() {
     assert_eq!(first.start_month, i64::from(started.month()));
 
     let revision = t.new_budget("PGP", year, StartChoice::Empty, &a).await;
-    assert_eq!((revision.version, revision.start_choice), (2, StartChoice::Revision));
+    assert_eq!(
+        (revision.version, revision.start_choice),
+        (2, StartChoice::Revision)
+    );
     let copied = lines(&t, &revision).await;
     assert_eq!(copied.len(), 12);
     let locked: Vec<bool> = {
@@ -381,8 +394,9 @@ async fn an_expired_approval_returns_the_draft_and_a_discard_frees_the_year() {
         .unwrap();
     t.submit_budget(&revision, &a).await;
     let request = t.budget_request(&revision).await;
-    t.app
-        .travel(std::time::Duration::from_secs((EXPIRY_HOURS as u64 + 1) * 60 * 60));
+    t.app.travel(std::time::Duration::from_secs(
+        (EXPIRY_HOURS as u64 + 1) * 60 * 60,
+    ));
     t.app
         .at_travelled_time(approvals::expire(t.state(), request.id))
         .await
@@ -393,9 +407,13 @@ async fn an_expired_approval_returns_the_draft_and_a_discard_frees_the_year() {
     assert_eq!(t.budget_now(&first).await.status, BudgetStatus::Approved);
 
     // A discard without a reason is refused.
-    t.post_as(&format!("/budgets/{}/discard", revision.id), &a, &[("reason", " ")])
-        .await
-        .assert_status(422);
+    t.post_as(
+        &format!("/budgets/{}/discard", revision.id),
+        &a,
+        &[("reason", " ")],
+    )
+    .await
+    .assert_status(422);
     assert_eq!(t.budget_now(&revision).await.status, BudgetStatus::Draft);
     t.post_as(
         &format!("/budgets/{}/discard", revision.id),
@@ -437,7 +455,12 @@ async fn a_category_cannot_repeat_a_mapping_key_of_another() {
     };
     let refused = budget_category::save(t.db(), None, fuel.clone()).await;
     assert_refused(refused, "Transport and fuel");
-    assert!(BudgetCategory::by_code(t.db(), "fuel").await.unwrap().is_none());
+    assert!(
+        BudgetCategory::by_code(t.db(), "fuel")
+            .await
+            .unwrap()
+            .is_none()
+    );
 
     // The same category with a key nobody uses is saved, and keeps it when
     // it is saved again.
@@ -445,14 +468,28 @@ async fn a_category_cannot_repeat_a_mapping_key_of_another() {
         mappings: vec![(MappingKind::CostCode, "diesel".into())],
         ..fuel.clone()
     };
-    let saved = budget_category::save(t.db(), None, free.clone()).await.unwrap();
-    budget_category::save(t.db(), Some(saved.id), free).await.unwrap();
-    let keys = budget_category::mappings_of(t.db(), saved.id).await.unwrap();
+    let saved = budget_category::save(t.db(), None, free.clone())
+        .await
+        .unwrap();
+    budget_category::save(t.db(), Some(saved.id), free)
+        .await
+        .unwrap();
+    let keys = budget_category::mappings_of(t.db(), saved.id)
+        .await
+        .unwrap();
     assert_eq!(keys.len(), 1);
     assert_eq!(keys[0].key_value, "diesel");
     assert_refused(
-        budget_category::save(t.db(), None, CategoryInput { code: "diesel".into(), mappings: vec![(MappingKind::CostCode, "DIESEL ".into())], ..fuel.clone() })
-            .await,
+        budget_category::save(
+            t.db(),
+            None,
+            CategoryInput {
+                code: "diesel".into(),
+                mappings: vec![(MappingKind::CostCode, "DIESEL ".into())],
+                ..fuel.clone()
+            },
+        )
+        .await,
         "Fuel",
     );
 
@@ -462,7 +499,10 @@ async fn a_category_cannot_repeat_a_mapping_key_of_another() {
         mappings: vec![(MappingKind::ChargeType, "x".into())],
         ..fuel.clone()
     };
-    assert_refused(budget_category::save(t.db(), None, wrong).await, "cannot be mapped");
+    assert_refused(
+        budget_category::save(t.db(), None, wrong).await,
+        "cannot be mapped",
+    );
 
     // An owner drawings category needs its owner party.
     let drawings = CategoryInput {
@@ -480,7 +520,9 @@ async fn a_category_cannot_repeat_a_mapping_key_of_another() {
         owner_party_id: Some(2),
         ..drawings
     };
-    let partner = budget_category::save(t.db(), None, with_party).await.unwrap();
+    let partner = budget_category::save(t.db(), None, with_party)
+        .await
+        .unwrap();
     assert_eq!(partner.owner_party_id, Some(2));
     let seeded = BudgetCategory::query()
         .where_(BudgetCategory::KIND.eq(BudgetKind::OwnerDrawings))
@@ -525,9 +567,19 @@ async fn the_accountant_and_the_finance_manager_are_told_before_a_year_without_a
     };
     let day = |y, m, d| NaiveDate::from_ymd_opt(y, m, d).unwrap();
 
-    assert_eq!(budget_reminder::run(t.state(), day(2027, 12, 1)).await.unwrap(), 0);
+    assert_eq!(
+        budget_reminder::run(t.state(), day(2027, 12, 1))
+            .await
+            .unwrap(),
+        0
+    );
     // Two entities, so two notices, each to both people.
-    assert_eq!(budget_reminder::run(t.state(), day(2027, 12, 2)).await.unwrap(), 2);
+    assert_eq!(
+        budget_reminder::run(t.state(), day(2027, 12, 2))
+            .await
+            .unwrap(),
+        2
+    );
     let sent = t.notices.of_type("invoicing.budget_reminder");
     assert_eq!(sent.len(), 2);
     for request in &sent {
@@ -540,18 +592,36 @@ async fn the_accountant_and_the_finance_manager_are_told_before_a_year_without_a
             })
             .collect();
         ids.sort_unstable();
-        assert_eq!(ids, [accountant.id.min(manager.id), accountant.id.max(manager.id)]);
+        assert_eq!(
+            ids,
+            [accountant.id.min(manager.id), accountant.id.max(manager.id)]
+        );
     }
     // Once at N days.
-    assert_eq!(budget_reminder::run(t.state(), day(2027, 12, 20)).await.unwrap(), 0);
+    assert_eq!(
+        budget_reminder::run(t.state(), day(2027, 12, 20))
+            .await
+            .unwrap(),
+        0
+    );
 
     // PGP approves its 2028 budget; only PGFZ is told on the first day.
     let a = t.budget_preparer("Amal").await;
     let b = t.budget_approver("Bilal").await;
     approved_year(&t, "PGP", 2028, &a, &b).await;
-    assert_eq!(budget_reminder::run(t.state(), day(2028, 1, 1)).await.unwrap(), 1);
+    assert_eq!(
+        budget_reminder::run(t.state(), day(2028, 1, 1))
+            .await
+            .unwrap(),
+        1
+    );
     assert_eq!(t.notices.of_type("invoicing.budget_reminder").len(), 3);
-    assert_eq!(budget_reminder::run(t.state(), day(2028, 1, 2)).await.unwrap(), 0);
+    assert_eq!(
+        budget_reminder::run(t.state(), day(2028, 1, 2))
+            .await
+            .unwrap(),
+        0
+    );
 }
 
 /// The CSV import fills a draft: a dry run reads and checks everything and
@@ -566,27 +636,42 @@ async fn the_csv_import_checks_every_row_first() {
     let budget = t.new_budget("PGP", 2027, StartChoice::Empty, &a).await;
     let good = "category,month,amount,note\nmarketing,2027-03,10000.00,Q1 push\nrent_utilities,2027-03,\"20,000\",\n";
 
-    let dry = budget_lines::import_csv(t.db(), budget.id, good, true).await.unwrap();
+    let dry = budget_lines::import_csv(t.db(), budget.id, good, true)
+        .await
+        .unwrap();
     assert_eq!((dry.rows, dry.valid, dry.applied), (2, 2, false));
     assert!(dry.errors.is_empty());
     assert!(lines(&t, &budget).await.is_empty());
 
     let bad = "category,month,amount\nmarketing,2027-03,10\nfuell,2027-03,5\nmarketing,2027-13,5\nmarketing,2027-04,abc\nmarketing,2028-01,5\nmarketing,2027-03,7\n";
-    let report = budget_lines::import_csv(t.db(), budget.id, bad, false).await.unwrap();
+    let report = budget_lines::import_csv(t.db(), budget.id, bad, false)
+        .await
+        .unwrap();
     let rows: Vec<usize> = report.errors.iter().map(|e| e.row).collect();
     assert_eq!(rows, [2, 3, 4, 5, 6, 7]);
-    assert!(report.errors[0].message.contains("rows 2 and 7") || report.errors[0].message.contains("Rows 2 and 7"));
+    assert!(
+        report.errors[0].message.contains("rows 2 and 7")
+            || report.errors[0].message.contains("Rows 2 and 7")
+    );
     assert!(report.errors[1].message.contains("fuell"));
     assert!(!report.applied);
     assert!(lines(&t, &budget).await.is_empty());
 
-    let done = budget_lines::import_csv(t.db(), budget.id, good, false).await.unwrap();
+    let done = budget_lines::import_csv(t.db(), budget.id, good, false)
+        .await
+        .unwrap();
     assert!(done.applied);
     let stored = lines(&t, &budget).await;
     assert_eq!(stored.len(), 2);
     let marketing = t.category("marketing").await;
-    let line = stored.iter().find(|l| l.category_id == marketing.id).unwrap();
-    assert_eq!((line.amount, line.note.as_deref()), (1_000_000, Some("Q1 push")));
+    let line = stored
+        .iter()
+        .find(|l| l.category_id == marketing.id)
+        .unwrap();
+    assert_eq!(
+        (line.amount, line.note.as_deref()),
+        (1_000_000, Some("Q1 push"))
+    );
     assert_eq!(line.month, NaiveDate::from_ymd_opt(2027, 3, 1).unwrap());
 
     // Semicolons, as a workbook saved in some locales has them.
@@ -621,7 +706,11 @@ async fn the_budget_pages_follow_the_permissions() {
     let page = format!("/budgets/{}", budget.id);
 
     t.app.acting_as(&viewer);
-    t.app.get("/budgets").await.assert_ok().assert_see("Company budgets");
+    t.app
+        .get("/budgets")
+        .await
+        .assert_ok()
+        .assert_see("Company budgets");
     t.app
         .get(&page)
         .await
@@ -629,15 +718,29 @@ async fn the_budget_pages_follow_the_permissions() {
         .assert_see("Rent and utilities")
         .assert_see("20,000.00")
         .assert_see("Jan 2027");
-    t.app.get("/budget-categories").await.assert_ok().assert_see("Owner drawings");
+    t.app
+        .get("/budget-categories")
+        .await
+        .assert_ok()
+        .assert_see("Owner drawings");
     t.app.get("/budgets/new").await.assert_status(403);
-    t.post_as(&format!("{page}/submit"), &viewer, &[]).await.assert_status(403);
+    t.post_as(&format!("{page}/submit"), &viewer, &[])
+        .await
+        .assert_status(403);
     t.app.acting_as(&nobody);
     t.app.get("/budgets").await.assert_status(403);
 
     t.app.acting_as(&a);
-    t.app.get("/budgets/new").await.assert_ok().assert_see("Fiscal year");
-    t.app.get(&page).await.assert_ok().assert_see("Submit for approval");
+    t.app
+        .get("/budgets/new")
+        .await
+        .assert_ok()
+        .assert_see("Fiscal year");
+    t.app
+        .get(&page)
+        .await
+        .assert_ok()
+        .assert_see("Submit for approval");
 
     // The set sheet: the same amount over a range of months.
     let marketing = t.category("marketing").await.id.to_string();
@@ -663,7 +766,11 @@ async fn the_budget_pages_follow_the_permissions() {
     t.post_as(
         &format!("{page}/lines"),
         &a,
-        &[("category_id", marketing.as_str()), ("from", "2027-05-01"), ("amount", "-1")],
+        &[
+            ("category_id", marketing.as_str()),
+            ("from", "2027-05-01"),
+            ("amount", "-1"),
+        ],
     )
     .await
     .assert_status(422);
@@ -678,15 +785,25 @@ async fn the_budget_pages_follow_the_permissions() {
 
     // The import sheet: a dry run, then the lines; a rejected row answers 422.
     let ok = "marketing,2027-06,100\n";
-    t.post_as(&format!("{page}/import"), &a, &[("csv", ok), ("dry_run", "on")])
+    t.post_as(
+        &format!("{page}/import"),
+        &a,
+        &[("csv", ok), ("dry_run", "on")],
+    )
+    .await
+    .assert_ok();
+    assert_eq!(lines(&t, &budget).await.len(), 14);
+    t.post_as(&format!("{page}/import"), &a, &[("csv", ok)])
         .await
         .assert_ok();
-    assert_eq!(lines(&t, &budget).await.len(), 14);
-    t.post_as(&format!("{page}/import"), &a, &[("csv", ok)]).await.assert_ok();
     assert_eq!(lines(&t, &budget).await.len(), 15);
-    t.post_as(&format!("{page}/import"), &a, &[("csv", "nothing,2027-06,100\n")])
-        .await
-        .assert_status(422);
+    t.post_as(
+        &format!("{page}/import"),
+        &a,
+        &[("csv", "nothing,2027-06,100\n")],
+    )
+    .await
+    .assert_status(422);
 
     // The form makes a draft and opens its page.
     let pgfz = t.entity("PGFZ").await.id.to_string();
@@ -711,7 +828,11 @@ async fn the_budget_pages_follow_the_permissions() {
     t.post_as(
         "/budgets",
         &a,
-        &[("legal_entity_id", pgfz.as_str()), ("fiscal_year", "2028"), ("start", "empty")],
+        &[
+            ("legal_entity_id", pgfz.as_str()),
+            ("fiscal_year", "2028"),
+            ("start", "empty"),
+        ],
     )
     .await
     .assert_status(422);
@@ -723,7 +844,9 @@ async fn the_budget_pages_follow_the_permissions() {
 async fn the_category_form_saves_and_refuses() {
     let t = boot().await;
     let a = t.budget_preparer("Amal").await;
-    let admin = t.helper("Ada", &[perm::BUDGETS_VIEW, perm::BUDGET_CATEGORIES_MANAGE]).await;
+    let admin = t
+        .helper("Ada", &[perm::BUDGETS_VIEW, perm::BUDGET_CATEGORIES_MANAGE])
+        .await;
     t.post_as(
         "/budget-categories",
         &admin,
@@ -750,12 +873,20 @@ async fn the_category_form_saves_and_refuses() {
     )
     .await;
     t.app.acting_as(&admin);
-    t.app.get("/budget-categories").await.assert_ok().assert_see("diesel");
+    t.app
+        .get("/budget-categories")
+        .await
+        .assert_ok()
+        .assert_see("diesel");
     t.app.get("/budget-categories/new").await.assert_ok();
     // A preparer without the permission cannot save one.
-    t.post_as("/budget-categories", &a, &[("code", "x"), ("name_en", "X"), ("kind", "expense")])
-        .await
-        .assert_status(403);
+    t.post_as(
+        "/budget-categories",
+        &a,
+        &[("code", "x"), ("name_en", "X"), ("kind", "expense")],
+    )
+    .await
+    .assert_status(403);
 }
 
 /// The kernel contract: the approved amount of a category in a month, `None`
@@ -770,38 +901,68 @@ async fn the_kernel_reads_the_approved_budget() {
     let budgets = company_budgets(t.state());
     let march = NaiveDate::from_ymd_opt(2027, 3, 17).unwrap();
     assert_eq!(
-        budgets.approved_amount(t.db(), entity.id, "rent_utilities", march).await.unwrap(),
+        budgets
+            .approved_amount(t.db(), entity.id, "rent_utilities", march)
+            .await
+            .unwrap(),
         None
     );
     let draft = t.new_budget("PGP", 2027, StartChoice::Empty, &a).await;
     t.fill(&draft, "rent_utilities", RENT, 1, 12).await;
     // A draft is not in force.
     assert_eq!(
-        budgets.approved_amount(t.db(), entity.id, "rent_utilities", march).await.unwrap(),
-        None
-    );
-    approve(&t, &draft, &a, &b).await;
-    assert_eq!(
-        budgets.approved_amount(t.db(), entity.id, "rent_utilities", march).await.unwrap(),
-        Some(RENT)
-    );
-    assert_eq!(
-        budgets.approved_amount(t.db(), entity.id, "marketing", march).await.unwrap(),
-        Some(0)
-    );
-    let other = t.entity("PGFZ").await;
-    assert_eq!(
-        budgets.approved_amount(t.db(), other.id, "rent_utilities", march).await.unwrap(),
-        None
-    );
-    assert_eq!(
         budgets
-            .approved_amount(t.db(), entity.id, "rent_utilities", NaiveDate::from_ymd_opt(2028, 1, 1).unwrap())
+            .approved_amount(t.db(), entity.id, "rent_utilities", march)
             .await
             .unwrap(),
         None
     );
-    assert!(budgets.is_owner_drawings(t.db(), "owner_drawings").await.unwrap());
-    assert!(!budgets.is_owner_drawings(t.db(), "marketing").await.unwrap());
+    approve(&t, &draft, &a, &b).await;
+    assert_eq!(
+        budgets
+            .approved_amount(t.db(), entity.id, "rent_utilities", march)
+            .await
+            .unwrap(),
+        Some(RENT)
+    );
+    assert_eq!(
+        budgets
+            .approved_amount(t.db(), entity.id, "marketing", march)
+            .await
+            .unwrap(),
+        Some(0)
+    );
+    let other = t.entity("PGFZ").await;
+    assert_eq!(
+        budgets
+            .approved_amount(t.db(), other.id, "rent_utilities", march)
+            .await
+            .unwrap(),
+        None
+    );
+    assert_eq!(
+        budgets
+            .approved_amount(
+                t.db(),
+                entity.id,
+                "rent_utilities",
+                NaiveDate::from_ymd_opt(2028, 1, 1).unwrap()
+            )
+            .await
+            .unwrap(),
+        None
+    );
+    assert!(
+        budgets
+            .is_owner_drawings(t.db(), "owner_drawings")
+            .await
+            .unwrap()
+    );
+    assert!(
+        !budgets
+            .is_owner_drawings(t.db(), "marketing")
+            .await
+            .unwrap()
+    );
     assert!(!budgets.is_owner_drawings(t.db(), "nothing").await.unwrap());
 }

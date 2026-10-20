@@ -30,12 +30,12 @@ use crate::followup::money_text;
 use crate::pages::{Text, Texts, filled, invalid, options, party_name, texts_in};
 use crate::permissions;
 use crate::refund::{Refund, RefundStatus, fail};
-use crate::refund_recover::{
-    self, CANCEL, CHANGE_METHOD, CHANGE_METHOD_FOR_APPROVAL, CHANGE_METHODS, RETRY,
-};
 use crate::refund_attempt::{AttemptOutcome, RefundAttempt};
 use crate::refund_fail::FAIL;
 use crate::refund_machine::PAY;
+use crate::refund_recover::{
+    self, CANCEL, CHANGE_METHOD, CHANGE_METHOD_FOR_APPROVAL, CHANGE_METHODS, RETRY,
+};
 use crate::texts;
 
 /// The kinds a user may give, by code.
@@ -301,8 +301,17 @@ async fn show(
         .available(&user, &db)
         .await?
         .into_iter()
-        .filter(|a| ![FAIL, PAY, RETRY, CHANGE_METHOD, CHANGE_METHOD_FOR_APPROVAL, CANCEL]
-            .contains(&a.name.as_str()))
+        .filter(|a| {
+            ![
+                FAIL,
+                PAY,
+                RETRY,
+                CHANGE_METHOD,
+                CHANGE_METHOD_FOR_APPROVAL,
+                CANCEL,
+            ]
+            .contains(&a.name.as_str())
+        })
         .collect();
     let failed = refund.status == RefundStatus::Failed;
     let retries = refund_recover::retries_of(&db, refund.id).await?;
@@ -338,7 +347,10 @@ async fn show(
         change_methods: options(
             &t,
             "method",
-            &CHANGE_METHODS.iter().map(|m| m.as_str()).collect::<Vec<_>>(),
+            &CHANGE_METHODS
+                .iter()
+                .map(|m| m.as_str())
+                .collect::<Vec<_>>(),
         ),
         retries: format!("{retries} / {max}"),
         refund,
@@ -436,16 +448,16 @@ async fn store_change_method(
 ) -> Result<Response> {
     let t = texts_in(&lang);
     let Some(method) = filled(&form.method).and_then(change_method_of) else {
-        return Err(invalid("method", t("refunds.change.method_required"), &form));
+        return Err(invalid(
+            "method",
+            t("refunds.change.method_required"),
+            &form,
+        ));
     };
     match refund_recover::change_method(&state, &user, &refund, method, form.details.as_deref())
         .await
     {
-        Ok(_) => Ok((
-            Toast::success(t("refunds.change.done")),
-            renox::HxRefresh,
-        )
-            .into_response()),
+        Ok(_) => Ok((Toast::success(t("refunds.change.done")), renox::HxRefresh).into_response()),
         Err(TransitionError::Guard(message)) => {
             let field = if message.contains("bank details") || message.contains("payee") {
                 "details"

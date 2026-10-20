@@ -185,9 +185,7 @@ impl Ticket {
     /// The party an invoice for the ticket is addressed to: the one named
     /// when it was opened, else the requester's party.
     pub fn bill_party(&self) -> Option<PartyId> {
-        self.bill_party_id
-            .or(self.requester_party_id)
-            .map(PartyId)
+        self.bill_party_id.or(self.requester_party_id).map(PartyId)
     }
 
     /// Who asked for it, if anyone.

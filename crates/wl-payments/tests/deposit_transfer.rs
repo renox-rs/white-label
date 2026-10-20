@@ -26,7 +26,9 @@ async fn a_held_deposit_is_handed_to_the_new_holder_against_their_receipt() {
     let t = boot().await;
     let a = t.user_a().await;
     let payment = t.receive(BLUE_DUNES, 1_000_000).await;
-    let deposit = t.hold_deposit(&a, BLUE_DUNES, 1_000_000, Some(&payment)).await;
+    let deposit = t
+        .hold_deposit(&a, BLUE_DUNES, 1_000_000, Some(&payment))
+        .await;
     assert_eq!(deposit.held_amount, 1_000_000);
 
     t.deposit_page(
@@ -83,7 +85,9 @@ async fn a_transfer_without_a_receipt_is_refused() {
     let t = boot().await;
     let a = t.user_a().await;
     let payment = t.receive(BLUE_DUNES, 1_000_000).await;
-    let deposit = t.hold_deposit(&a, BLUE_DUNES, 1_000_000, Some(&payment)).await;
+    let deposit = t
+        .hold_deposit(&a, BLUE_DUNES, 1_000_000, Some(&payment))
+        .await;
 
     t.deposit_page(
         &a,
@@ -107,7 +111,9 @@ async fn a_transfer_without_a_receipt_is_refused() {
 async fn only_a_held_deposit_goes_to_another_party_by_a_deposit_manager() {
     let t = boot().await;
     let a = t.user_a().await;
-    let viewer = t.user("Vera", &[wl_payments::permissions::DEPOSITS_VIEW]).await;
+    let viewer = t
+        .user("Vera", &[wl_payments::permissions::DEPOSITS_VIEW])
+        .await;
     let settling = t.settling_deposit(&a, BLUE_DUNES, 1_000_000).await;
     t.deposit_page(
         &a,
@@ -119,7 +125,9 @@ async fn only_a_held_deposit_goes_to_another_party_by_a_deposit_manager() {
     .assert_status(422);
 
     let payment = t.receive(BLUE_DUNES, 500_000).await;
-    let held = t.hold_deposit(&a, BLUE_DUNES, 500_000, Some(&payment)).await;
+    let held = t
+        .hold_deposit(&a, BLUE_DUNES, 500_000, Some(&payment))
+        .await;
     for holder in ["P-99999", "P-00001"] {
         t.deposit_page(
             &a,
@@ -165,7 +173,9 @@ async fn the_deposit_of_a_blocked_party_can_be_transferred() {
     let t = boot().await;
     let a = t.user_a().await;
     let payment = t.receive(DUSK_HOLDINGS, 700_000).await;
-    let deposit = t.hold_deposit(&a, DUSK_HOLDINGS, 700_000, Some(&payment)).await;
+    let deposit = t
+        .hold_deposit(&a, DUSK_HOLDINGS, 700_000, Some(&payment))
+        .await;
 
     t.deposit_page(
         &a,
@@ -176,7 +186,10 @@ async fn the_deposit_of_a_blocked_party_can_be_transferred() {
     .await
     .assert_ok();
 
-    assert_eq!(t.deposit(deposit.id).await.status, DepositStatus::Transferred);
+    assert_eq!(
+        t.deposit(deposit.id).await.status,
+        DepositStatus::Transferred
+    );
     assert!(t.notices.of_type(DEPOSIT_TRANSFERRED).is_empty());
     assert_eq!(t.deposit_settled.all().len(), 1);
 }

@@ -7,8 +7,8 @@ mod support;
 
 use property::cheques::{ChequeEntry, of_version, register_cheques};
 use property::invoicing;
-use property::leases::{DraftEdit, NewLease, create_draft, revise_draft};
 use property::lease_machine::OFFERED;
+use property::leases::{DraftEdit, NewLease, create_draft, revise_draft};
 use property::{ChargeStatus, LeaseStatus, UnitStatus, UnitUse, VersionKind};
 use renox::prelude::*;
 use wl_kernel::cheques::ChequeStatus;
@@ -52,7 +52,11 @@ async fn prp_lse_01_the_vat_follows_the_use_and_bad_terms_are_refused() {
     let lease = t.lease(&shop, 0).await;
     assert_eq!(lease.vat_category, VatCategory::Standard);
     let charges = lease.charges(t.db()).await.unwrap();
-    assert!(charges.iter().all(|c| c.vat_category == VatCategory::Standard));
+    assert!(
+        charges
+            .iter()
+            .all(|c| c.vat_category == VatCategory::Standard)
+    );
 
     let unit = t.unit(&building, "1204").await;
     let ok = || NewLease::new(unit.id, TENANT, d(1, 1), d(12, 31), aed(100_000), 4);
@@ -71,7 +75,10 @@ async fn prp_lse_01_the_vat_follows_the_use_and_bad_terms_are_refused() {
     for bad in [backwards, no_rent, too_many, none, stranger, no_unit] {
         let refused = create_draft(t.state(), None, bad).await;
         assert!(
-            matches!(refused, Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))),
+            matches!(
+                refused,
+                Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _))
+            ),
             "{refused:?}"
         );
     }
@@ -131,13 +138,20 @@ async fn prp_lse_01_submit_checks_the_unit_the_plan_and_the_tenants_documents() 
     t.set(&lease, &[("annual_rent", &aed(90_000))]).await;
     let refused = t.submit(&agent, &lease).await;
     refused.assert_status(422);
-    assert!(refused.text().contains("payment plan"), "{}", refused.text());
+    assert!(
+        refused.text().contains("payment plan"),
+        "{}",
+        refused.text()
+    );
     assert_eq!(t.status(&lease).await, LeaseStatus::Draft);
     t.set(&lease, &[("annual_rent", &aed(100_000))]).await;
 
     // A person's identity documents are asked for; a company's are not.
-    t.docs
-        .block_if("emirates_id", "lease.submit", Some(("tenant_kind", &["person"])));
+    t.docs.block_if(
+        "emirates_id",
+        "lease.submit",
+        Some(("tenant_kind", &["person"])),
+    );
     let refused = t.submit(&agent, &lease).await;
     refused.assert_status(422);
     assert!(refused.text().contains("emirates_id"), "{}", refused.text());
@@ -151,7 +165,10 @@ async fn prp_lse_01_submit_checks_the_unit_the_plan_and_the_tenants_documents() 
     let new = NewLease::new(company_unit.id, COMPANY, d(1, 1), d(12, 31), aed(80_000), 2);
     let company_lease = create_draft(t.state(), None, new).await.unwrap();
     t.submit(&agent, &company_lease).await.assert_ok();
-    assert_eq!(t.status(&company_lease).await, LeaseStatus::PendingSignature);
+    assert_eq!(
+        t.status(&company_lease).await,
+        LeaseStatus::PendingSignature
+    );
 }
 
 /// A unit that is not available cannot take a new lease.
@@ -172,7 +189,11 @@ async fn prp_lse_01_a_new_lease_needs_an_available_unit() {
     let second = t.lease(&unit, 400).await;
     let refused = t.submit(&agent, &second).await;
     refused.assert_status(422);
-    assert!(refused.text().contains("not available"), "{}", refused.text());
+    assert!(
+        refused.text().contains("not available"),
+        "{}",
+        refused.text()
+    );
 }
 
 /// Activate: the signed contract is needed, the deposit must be received or
@@ -192,7 +213,11 @@ async fn prp_lse_01_activate_needs_the_signed_contract_and_the_deposit() {
     // No signed contract.
     let refused = t.activate(&manager, &lease).await;
     refused.assert_status(422);
-    assert!(refused.text().contains("signed_tenancy_contract"), "{}", refused.text());
+    assert!(
+        refused.text().contains("signed_tenancy_contract"),
+        "{}",
+        refused.text()
+    );
     t.docs.accept(&lease.subject(), "signed_tenancy_contract");
     // No deposit.
     let refused = t.activate(&manager, &lease).await;
@@ -218,9 +243,13 @@ async fn prp_lse_01_a_waived_deposit_does_not_block_activation() {
     let manager = t.user_in("Mona", MANAGER, building.id).await;
     let lease = t.pending(&agent, &unit, 0).await;
     // The agent cannot waive.
-    t.post(&agent, &format!("/property/leases/{}/waive-deposit", lease.id), &[])
-        .await
-        .assert_forbidden();
+    t.post(
+        &agent,
+        &format!("/property/leases/{}/waive-deposit", lease.id),
+        &[],
+    )
+    .await
+    .assert_forbidden();
     t.waive(&manager, &lease).await;
     assert!(t.reload(&lease).await.deposit_waived);
     t.activate(&manager, &lease).await.assert_ok();
@@ -254,7 +283,11 @@ async fn prp_lse_01_activate_occupies_the_unit_schedules_the_charges_and_opens_t
     let tasks = t.tasks.with_key("property.ejari:");
     assert_eq!(tasks.len(), 1);
     assert!(tasks[0].open);
-    assert!(tasks[0].title.contains(&lease.number()), "{}", tasks[0].title);
+    assert!(
+        tasks[0].title.contains(&lease.number()),
+        "{}",
+        tasks[0].title
+    );
     assert_eq!(tasks[0].subject, lease.subject());
     assert_eq!(
         tasks[0].assignee,
@@ -282,9 +315,13 @@ async fn prp_lse_02_the_ejari_registration_is_recorded() {
     t.waive(&manager, &lease).await;
     t.activate(&manager, &lease).await.assert_ok();
     t.post(&agent, &path, &form).await.assert_forbidden();
-    t.post(&manager, &path, &[("number", " "), ("registered_on", "2027-01-05")])
-        .await
-        .assert_status(422);
+    t.post(
+        &manager,
+        &path,
+        &[("number", " "), ("registered_on", "2027-01-05")],
+    )
+    .await
+    .assert_status(422);
     t.post(&manager, &path, &form).await.assert_ok();
 
     let recorded = t.reload(&lease).await;
@@ -296,10 +333,18 @@ async fn prp_lse_02_the_ejari_registration_is_recorded() {
     // The certificate is guarded by the document kinds that block the step.
     t.docs.block("ejari_certificate", "lease.record_ejari");
     let refused = t
-        .post(&manager, &path, &[("number", "EJ-2"), ("registered_on", "2027-01-06")])
+        .post(
+            &manager,
+            &path,
+            &[("number", "EJ-2"), ("registered_on", "2027-01-06")],
+        )
         .await;
     refused.assert_status(422);
-    assert!(refused.text().contains("ejari_certificate"), "{}", refused.text());
+    assert!(
+        refused.text().contains("ejari_certificate"),
+        "{}",
+        refused.text()
+    );
 }
 
 /// FIN.BIL.01: the daily run drafts one invoice per scheduled charge due,
@@ -330,7 +375,10 @@ async fn fin_bil_01_each_instalment_becomes_one_invoice_on_its_due_date() {
     let invoice = &invoices[0];
     assert_eq!(invoice.draft.party, TENANT);
     assert_eq!(invoice.draft.source, lease.subject());
-    assert_eq!(invoice.draft.scope.as_ref().unwrap().to_string(), format!("property.building:{}", building.id));
+    assert_eq!(
+        invoice.draft.scope.as_ref().unwrap().to_string(),
+        format!("property.building:{}", building.id)
+    );
     assert_eq!(invoice.draft.due_date, Some(day(0)));
     assert_eq!(invoice.draft.date_of_supply, Some(day(0)));
     assert_eq!(invoice.draft.lines[0].unit_price, aed(25_000));
@@ -367,7 +415,11 @@ async fn fin_chq_01_the_cheque_schedule_is_registered_against_the_lease() {
         .await
         .unwrap();
     assert_eq!(summaries.len(), 4);
-    assert!(summaries.iter().all(|c| c.agreement == Some(lease.agreement())));
+    assert!(
+        summaries
+            .iter()
+            .all(|c| c.agreement == Some(lease.agreement()))
+    );
     assert_eq!(summaries[0].linked, vec![charges[0].subject()]);
     assert!(summaries.iter().all(|c| c.status == ChequeStatus::Received));
     assert_eq!(of_version(t.state(), &lease).await.unwrap().len(), 4);

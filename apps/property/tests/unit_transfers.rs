@@ -5,7 +5,9 @@
 
 mod support;
 
-use property::agreement::{self, AgreementStatus, AgreementUnit, ManagementAgreement, NewAgreement};
+use property::agreement::{
+    self, AgreementStatus, AgreementUnit, ManagementAgreement, NewAgreement,
+};
 use property::agreement_lifecycle::HandoverItem;
 use property::notices::PAYEE_CHANGED;
 use property::unit_transfer::{TransferStatus, UnitTransfer, empty_task_key};
@@ -13,9 +15,9 @@ use property::{ChargeStatus, Lease, LeaseCharge, Unit};
 use renox::chrono::Duration;
 use renox::prelude::*;
 use renox::state_machine::StateMachine;
+use wl_kernel::PartyId;
 use wl_kernel::cheques::{ChequeId, ChequeStatus};
 use wl_kernel::parties::PartyKind;
-use wl_kernel::PartyId;
 
 use support::{AGENT, Booted, MANAGER, TENANT, aed, boot, day};
 
@@ -34,7 +36,8 @@ struct Scene {
 
 async fn scene() -> Scene {
     let t = boot().await;
-    t.parties.add(OWNER.0, "Hessa Al Mansoori", PartyKind::Person);
+    t.parties
+        .add(OWNER.0, "Hessa Al Mansoori", PartyKind::Person);
     t.parties.add(BUYER.0, "Omar Khalid", PartyKind::Person);
     let building = t.building().await;
     let agent = t.user_in("Ali", AGENT, building.id).await;
@@ -45,7 +48,14 @@ async fn scene() -> Scene {
     let charges = LeaseCharge::of_lease(t.db(), lease.id).await.unwrap();
     let last = charges.last().expect("a charge").clone();
     assert!(last.due_date > day(-60));
-    let cheque = t.cheques.receive(TENANT, &lease.agreement(), "803-4", last.due_date, aed(25_000), &[last.subject()]);
+    let cheque = t.cheques.receive(
+        TENANT,
+        &lease.agreement(),
+        "803-4",
+        last.due_date,
+        aed(25_000),
+        &[last.subject()],
+    );
     let mut old = ManagementAgreement {
         owner_party_id: OWNER.0,
         fee_bp: 500,
@@ -56,12 +66,24 @@ async fn scene() -> Scene {
         ..Default::default()
     };
     let mut tx = t.db().begin().await.unwrap();
-    old.insert_in_state(&mut tx, AgreementStatus::Active, "fixture").await.unwrap();
+    old.insert_in_state(&mut tx, AgreementStatus::Active, "fixture")
+        .await
+        .unwrap();
     tx.commit().await.unwrap();
-    agreement::add_unit(t.db(), &old, unit.id, day(-400)).await.unwrap();
+    agreement::add_unit(t.db(), &old, unit.id, day(-400))
+        .await
+        .unwrap();
     let first = t.user_with("Mona", MANAGER).await;
     let second = t.user_with("Mira", MANAGER).await;
-    Scene { t, old, unit, lease, cheque, first, second }
+    Scene {
+        t,
+        old,
+        unit,
+        lease,
+        cheque,
+        first,
+        second,
+    }
 }
 
 impl Scene {
@@ -75,37 +97,63 @@ impl Scene {
             .post(
                 &self.first,
                 &format!("/property/agreements/{}/transfers", self.old.id),
-                &[("unit", self.unit.id.to_string().as_str()), ("date", date.as_str()), ("new_owner", new_owner), ("note", "")],
+                &[
+                    ("unit", self.unit.id.to_string().as_str()),
+                    ("date", date.as_str()),
+                    ("new_owner", new_owner),
+                    ("note", ""),
+                ],
             )
             .await
     }
 
     async fn transfer(&self) -> UnitTransfer {
-        UnitTransfer::of_agreement(self.t.db(), self.old.id).await.unwrap().remove(0)
+        UnitTransfer::of_agreement(self.t.db(), self.old.id)
+            .await
+            .unwrap()
+            .remove(0)
     }
 
     async fn approve(&self, user: &User, receipt: &str) -> renox::testing::TestResponse {
         let id = self.transfer().await.id;
-        self.t.post(user, &format!("/property/transfers/{id}/approve"), &[("receipt", receipt)]).await
+        self.t
+            .post(
+                user,
+                &format!("/property/transfers/{id}/approve"),
+                &[("receipt", receipt)],
+            )
+            .await
     }
 
     async fn buyer_agreement(&self, activate: bool) -> ManagementAgreement {
-        let mut draft = agreement::create_draft(self.t.state(), None, NewAgreement::new(BUYER, day(-60), 400))
-            .await
-            .unwrap();
+        let mut draft = agreement::create_draft(
+            self.t.state(),
+            None,
+            NewAgreement::new(BUYER, day(-60), 400),
+        )
+        .await
+        .unwrap();
         ManagementAgreement::query()
             .where_(ManagementAgreement::ID.eq(draft.id))
             .update(self.t.db(), &[("legal_entity_id", &Some(2_i64))])
             .await
             .unwrap();
-        agreement::add_unit(self.t.db(), &draft, self.unit.id, day(-60)).await.unwrap();
+        agreement::add_unit(self.t.db(), &draft, self.unit.id, day(-60))
+            .await
+            .unwrap();
         if activate {
             self.t
-                .post(&self.first, &format!("/property/agreements/{}/activate", draft.id), &[])
+                .post(
+                    &self.first,
+                    &format!("/property/agreements/{}/activate", draft.id),
+                    &[],
+                )
                 .await
                 .assert_ok();
         }
-        draft = ManagementAgreement::find_or_404(self.t.db(), draft.id).await.unwrap();
+        draft = ManagementAgreement::find_or_404(self.t.db(), draft.id)
+            .await
+            .unwrap();
         draft
     }
 }
@@ -119,9 +167,20 @@ async fn bl_prp_23_a_managed_sale_moves_the_unit_and_recreates_the_charges() {
     let buyer = s.buyer_agreement(false).await;
     assert_eq!(buyer.status, AgreementStatus::Draft);
     s.request(&BUYER.0.to_string()).await.assert_status(422);
-    assert!(UnitTransfer::of_agreement(s.t.db(), s.old.id).await.unwrap().is_empty());
+    assert!(
+        UnitTransfer::of_agreement(s.t.db(), s.old.id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
 
-    s.t.post(&s.first, &format!("/property/agreements/{}/activate", buyer.id), &[]).await.assert_ok();
+    s.t.post(
+        &s.first,
+        &format!("/property/agreements/{}/activate", buyer.id),
+        &[],
+    )
+    .await
+    .assert_ok();
     s.request(&BUYER.0.to_string()).await.assert_ok();
     let asked = s.transfer().await;
     assert_eq!(asked.status, TransferStatus::Requested);
@@ -129,26 +188,47 @@ async fn bl_prp_23_a_managed_sale_moves_the_unit_and_recreates_the_charges() {
     // Without approval nothing changes.
     let rows = s.old.units(s.t.db()).await.unwrap();
     assert!(rows[0].date_out.is_none());
-    s.approve(&s.first, "NEW-OWNER-RCPT").await.assert_status(422);
+    s.approve(&s.first, "NEW-OWNER-RCPT")
+        .await
+        .assert_status(422);
     s.approve(&s.second, "").await.assert_status(422);
     assert_eq!(s.transfer().await.status, TransferStatus::Requested);
 
     s.approve(&s.second, "NEW-OWNER-RCPT").await.assert_ok();
     assert_eq!(s.transfer().await.status, TransferStatus::Approved);
-    assert_eq!(s.transfer().await.deposit_receipt.as_deref(), Some("NEW-OWNER-RCPT"));
+    assert_eq!(
+        s.transfer().await.deposit_receipt.as_deref(),
+        Some("NEW-OWNER-RCPT")
+    );
 
     let date = day(-60);
     let charges = LeaseCharge::of_lease(s.t.db(), s.lease.id).await.unwrap();
-    let cancelled: Vec<_> = charges.iter().filter(|c| c.status == ChargeStatus::Cancelled).collect();
-    let fresh: Vec<_> = charges.iter().filter(|c| c.legal_entity_id == Some(2)).collect();
+    let cancelled: Vec<_> = charges
+        .iter()
+        .filter(|c| c.status == ChargeStatus::Cancelled)
+        .collect();
+    let fresh: Vec<_> = charges
+        .iter()
+        .filter(|c| c.legal_entity_id == Some(2))
+        .collect();
     assert_eq!(cancelled.len(), 1);
     assert_eq!(fresh.len(), 1);
     assert_eq!(fresh[0].status, ChargeStatus::Scheduled);
     assert_eq!(fresh[0].due_date, cancelled[0].due_date);
-    assert!(charges.iter().filter(|c| c.due_date < date).all(|c| c.legal_entity_id.is_none()));
+    assert!(
+        charges
+            .iter()
+            .filter(|c| c.due_date < date)
+            .all(|c| c.legal_entity_id.is_none())
+    );
 
     // The cheque follows the recreated charge; the deposit stays held.
-    assert!(s.t.cheques.get(s.cheque).linked.contains(&fresh[0].subject()));
+    assert!(
+        s.t.cheques
+            .get(s.cheque)
+            .linked
+            .contains(&fresh[0].subject())
+    );
     assert!(s.t.deposits.is_held(&s.lease.agreement()));
 
     // The old owner's statements stop the day before; the buyer's start on it.
@@ -156,8 +236,12 @@ async fn bl_prp_23_a_managed_sale_moves_the_unit_and_recreates_the_charges() {
     assert_eq!(old_rows[0].date_out, Some(date - Duration::days(1)));
     let new_rows: Vec<AgreementUnit> = buyer.units(s.t.db()).await.unwrap();
     assert!(!new_rows[0].awaiting_transfer);
-    let before = ManagementAgreement::for_unit(s.t.db(), s.unit.id, date - Duration::days(1)).await.unwrap();
-    let after = ManagementAgreement::for_unit(s.t.db(), s.unit.id, date).await.unwrap();
+    let before = ManagementAgreement::for_unit(s.t.db(), s.unit.id, date - Duration::days(1))
+        .await
+        .unwrap();
+    let after = ManagementAgreement::for_unit(s.t.db(), s.unit.id, date)
+        .await
+        .unwrap();
     assert_eq!(before.map(|a| a.id), Some(s.old.id));
     assert_eq!(after.map(|a| a.id), Some(buyer.id));
 
@@ -165,7 +249,10 @@ async fn bl_prp_23_a_managed_sale_moves_the_unit_and_recreates_the_charges() {
     // The last unit left: the property managers are told to give notice.
     assert_eq!(s.t.tasks.with_key(&empty_task_key(&s.old)).len(), 1);
     assert_eq!(
-        ManagementAgreement::find_or_404(s.t.db(), s.old.id).await.unwrap().status,
+        ManagementAgreement::find_or_404(s.t.db(), s.old.id)
+            .await
+            .unwrap()
+            .status,
         AgreementStatus::Active
     );
 }
@@ -186,7 +273,10 @@ async fn bl_prp_23_no_longer_managed_hands_the_unit_over() {
         s.t.post(
             &s.first,
             &format!("/property/agreements/{}/transfer-receipts", s.old.id),
-            &[("item", item.id.to_string().as_str()), ("reference", "RCPT-X")],
+            &[
+                ("item", item.id.to_string().as_str()),
+                ("reference", "RCPT-X"),
+            ],
         )
         .await
         .assert_ok();
@@ -208,7 +298,9 @@ async fn bl_prp_23_a_rejected_request_changes_nothing() {
     let s = scene().await;
     s.request("").await.assert_ok();
     let id = s.transfer().await.id;
-    s.t.post(&s.second, &format!("/property/transfers/{id}/reject"), &[]).await.assert_ok();
+    s.t.post(&s.second, &format!("/property/transfers/{id}/reject"), &[])
+        .await
+        .assert_ok();
     assert_eq!(s.transfer().await.status, TransferStatus::Rejected);
     s.approve(&s.second, "").await.assert_status(422);
     let rows = s.old.units(s.t.db()).await.unwrap();

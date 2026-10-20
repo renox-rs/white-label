@@ -35,9 +35,12 @@ fn date_text(date: NaiveDate) -> String {
 fn english_type(key: &str, texts: &str) -> NotificationTypeDef {
     let subject = english(&format!("wl_hr.notices.{texts}_subject"), &[]);
     let body = english(&format!("wl_hr.notices.{texts}_body"), &[]);
-    NotificationTypeDef::new(key, "hr")
-        .group("hr")
-        .template(NotifyChannel::Email, "en", Some(&subject), &body)
+    NotificationTypeDef::new(key, "hr").group("hr").template(
+        NotifyChannel::Email,
+        "en",
+        Some(&subject),
+        &body,
+    )
 }
 
 /// A reminder type of the module with English texts.

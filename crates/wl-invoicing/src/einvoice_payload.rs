@@ -197,9 +197,7 @@ async fn recipient_of(
     party: wl_kernel::PartyId,
     snapshot: Option<&PartySnapshot>,
 ) -> Result<(Value, Option<String>)> {
-    let identity = directory(state)
-        .billing_identity(&state.db, party)
-        .await?;
+    let identity = directory(state).billing_identity(&state.db, party).await?;
     let Some(identity) = identity else {
         return Ok((recipient_block(snapshot, None), None));
     };
@@ -210,7 +208,10 @@ async fn recipient_of(
         .filter(|id| !id.is_empty())
         .map(str::to_owned);
     let current = PartySnapshot::of(&identity);
-    Ok((recipient_block(Some(&current), identifier.as_deref()), identifier))
+    Ok((
+        recipient_block(Some(&current), identifier.as_deref()),
+        identifier,
+    ))
 }
 
 /// Builds the payload of `document` from the stored document and the party

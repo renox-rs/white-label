@@ -244,16 +244,12 @@ async fn index(
             .map(|s| (s.code.clone(), s.name(&lang.locale).to_owned())),
     );
     let mut channels = vec![(String::new(), t("report.all"))];
-    channels.extend(
-        MarketingChannel::ALL
-            .iter()
-            .map(|c| {
-                (
-                    c.as_str().to_owned(),
-                    t(&format!("campaigns.channel.{}", c.as_str())),
-                )
-            }),
-    );
+    channels.extend(MarketingChannel::ALL.iter().map(|c| {
+        (
+            c.as_str().to_owned(),
+            t(&format!("campaigns.channel.{}", c.as_str())),
+        )
+    }));
     let mut entities = vec![(String::new(), t("report.all"))];
     entities.extend(
         LegalEntity::query()

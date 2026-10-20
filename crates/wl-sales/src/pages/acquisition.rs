@@ -127,7 +127,12 @@ async fn user_name(db: &Db, id: Option<i64>) -> String {
 }
 
 /// `Source (CODE)`, else `—`.
-async fn label(db: &Db, source: Option<i64>, campaign: Option<i64>, locale: &str) -> Result<String> {
+async fn label(
+    db: &Db,
+    source: Option<i64>,
+    campaign: Option<i64>,
+    locale: &str,
+) -> Result<String> {
     let source = match source {
         Some(id) => LeadSource::find(db, id)
             .await?
@@ -175,8 +180,20 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
         .get(&state.db)
         .await?;
     for change in rows {
-        let before = label(&state.db, change.old_source_id, change.old_campaign_id, &lang.locale).await?;
-        let after = label(&state.db, Some(change.new_source_id), change.new_campaign_id, &lang.locale).await?;
+        let before = label(
+            &state.db,
+            change.old_source_id,
+            change.old_campaign_id,
+            &lang.locale,
+        )
+        .await?;
+        let after = label(
+            &state.db,
+            Some(change.new_source_id),
+            change.new_campaign_id,
+            &lang.locale,
+        )
+        .await?;
         let (status, kind) = match change.status {
             ChangeStatus::Pending => ("pending", "warning"),
             ChangeStatus::Applied => ("applied", "success"),
@@ -278,7 +295,11 @@ async fn approve(
     Path(id): Path<i64>,
 ) -> Result<Response> {
     match acquisition_change::approve(&state, id, user.id).await? {
-        Ok(_) => Ok((Toast::success(text(&lang, "changes.approved")), renox::HxRefresh).into_response()),
+        Ok(_) => Ok((
+            Toast::success(text(&lang, "changes.approved")),
+            renox::HxRefresh,
+        )
+            .into_response()),
         Err(ChangeRefused::NotFound) => Err(Error::NotFound),
         Err(refused) => Err(refused.into_error()),
     }
@@ -302,7 +323,11 @@ async fn reject(
     Valid(form): Valid<RejectForm>,
 ) -> Result<Response> {
     match acquisition_change::reject(&state, id, user.id, &form.reason).await? {
-        Ok(_) => Ok((Toast::success(text(&lang, "changes.rejected")), renox::HxRefresh).into_response()),
+        Ok(_) => Ok((
+            Toast::success(text(&lang, "changes.rejected")),
+            renox::HxRefresh,
+        )
+            .into_response()),
         Err(ChangeRefused::NotFound) => Err(Error::NotFound),
         Err(refused) => Err(refused.into_error()),
     }

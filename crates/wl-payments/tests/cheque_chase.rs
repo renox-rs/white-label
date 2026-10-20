@@ -47,7 +47,9 @@ async fn decisions(t: &Booted, cheque: &Cheque) -> Vec<FollowupTask> {
 /// A cheque of AED 20,000.00 on which the bank paid AED 6,000.00 and that
 /// bounced today for the rest, AED 14,000.00, with the bounce fee AED 500.00.
 async fn bounced_with_fee(t: &Booted, staff: &renox::auth::User, number: &str) -> Cheque {
-    let rent = t.invoices.add(BLUE_DUNES, &format!("INV-{number}"), 2_000_000);
+    let rent = t
+        .invoices
+        .add(BLUE_DUNES, &format!("INV-{number}"), 2_000_000);
     t.bounced_cheque(staff, BLUE_DUNES, number, 2_000_000, Some(rent), "6000.00")
         .await
 }
@@ -113,10 +115,20 @@ async fn the_party_and_staff_are_reminded_at_three_days_and_the_decision_at_four
     roles.sort_unstable();
     assert_eq!(roles, ["accountant", "finance_manager"]);
     assert!(tasks.iter().all(|task| task.status == FollowupStatus::Open));
-    assert!(tasks[0].text.contains("re-present, refer to legal or write off"));
+    assert!(
+        tasks[0]
+            .text
+            .contains("re-present, refer to legal or write off")
+    );
     assert_eq!(tasks[0].amount, 1_400_000);
-    let managers = FollowupTask::open_for(t.db(), "finance_manager").await.unwrap();
-    assert!(managers.iter().any(|task| task.kind == FollowupKind::DecideCheque));
+    let managers = FollowupTask::open_for(t.db(), "finance_manager")
+        .await
+        .unwrap();
+    assert!(
+        managers
+            .iter()
+            .any(|task| task.kind == FollowupKind::DecideCheque)
+    );
     let told: Vec<i64> = t
         .notices
         .of_type(CHEQUE_TASK)
@@ -190,7 +202,9 @@ async fn no_reminder_goes_for_a_cheque_that_is_no_longer_bounced() {
         .bounced_cheque(&a, BLUE_DUNES, "6004", 1_000_000, Some(inv), "")
         .await;
     // Written off at once (no approval needed).
-    t.write_off_cheque(&a, &cheque, "untraceable").await.assert_ok();
+    t.write_off_cheque(&a, &cheque, "untraceable")
+        .await
+        .assert_ok();
     assert_eq!(t.cheque(cheque.id).await.status, ChequeStatus::WrittenOff);
 
     let report = cheque_chase::run(t.state(), after(14)).await.unwrap();
@@ -219,10 +233,12 @@ async fn the_decision_task_is_closed_when_the_cheque_is_replaced() {
     t.replace_cheque(&a, &cheque).await.assert_ok();
 
     assert_eq!(t.cheque(cheque.id).await.status, ChequeStatus::Replaced);
-    assert!(decisions(&t, &cheque)
-        .await
-        .iter()
-        .all(|task| task.status == FollowupStatus::Done));
+    assert!(
+        decisions(&t, &cheque)
+            .await
+            .iter()
+            .all(|task| task.status == FollowupStatus::Done)
+    );
 }
 
 /// Edge: a blocked party gets no reminder; the staff still do, and the tasks
@@ -280,7 +296,9 @@ async fn a_second_bounce_restarts_the_count() {
         .await;
     let first = NaiveDate::from_ymd_opt(2030, 3, 1).unwrap();
     assert_eq!(cheque.bounced_on, Some(first));
-    cheque_chase::run(t.state(), first + TimeDelta::days(3)).await.unwrap();
+    cheque_chase::run(t.state(), first + TimeDelta::days(3))
+        .await
+        .unwrap();
     assert_eq!(t.notices.of_type(CHEQUE_REMINDER).len(), 1);
 
     // Presented again and returned again on the 6th.
@@ -297,12 +315,18 @@ async fn a_second_bounce_restarts_the_count() {
     assert_eq!(again.bounced_on, Some(second));
 
     // Three days after the first bounce's reminder is not enough...
-    cheque_chase::run(t.state(), second + TimeDelta::days(2)).await.unwrap();
+    cheque_chase::run(t.state(), second + TimeDelta::days(2))
+        .await
+        .unwrap();
     assert_eq!(t.notices.of_type(CHEQUE_REMINDER).len(), 1);
     // ...three days after the second bounce is.
-    cheque_chase::run(t.state(), second + TimeDelta::days(3)).await.unwrap();
+    cheque_chase::run(t.state(), second + TimeDelta::days(3))
+        .await
+        .unwrap();
     assert_eq!(t.notices.of_type(CHEQUE_REMINDER).len(), 2);
-    cheque_chase::run(t.state(), second + TimeDelta::days(14)).await.unwrap();
+    cheque_chase::run(t.state(), second + TimeDelta::days(14))
+        .await
+        .unwrap();
     assert_eq!(decisions(&t, &cheque).await.len(), 2);
 }
 

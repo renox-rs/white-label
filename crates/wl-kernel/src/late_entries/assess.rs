@@ -103,9 +103,8 @@ impl Assessment {
     /// Whole minutes late; 0 when on time or refused.
     pub fn minutes_late(&self) -> i64 {
         match self {
-            Assessment::Flagged { minutes_late } | Assessment::NeedsApproval { minutes_late, .. } => {
-                *minutes_late
-            }
+            Assessment::Flagged { minutes_late }
+            | Assessment::NeedsApproval { minutes_late, .. } => *minutes_late,
             _ => 0,
         }
     }
@@ -151,12 +150,7 @@ mod tests {
     }
 
     fn check(occurred: &str, entered: &str) -> Assessment {
-        assess(
-            Limits::default(),
-            at(occurred),
-            at(entered),
-            &Period::Open,
-        )
+        assess(Limits::default(), at(occurred), at(entered), &Period::Open)
     }
 
     #[test]

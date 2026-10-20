@@ -11,7 +11,10 @@ use wl_kernel::tickets::{Assignee, OpenTicket};
 use wl_ticketing::auto_close;
 use wl_ticketing::charge;
 use wl_ticketing::config::InvoiceOn;
-use wl_ticketing::{Category, Comment, CommentVisibility, Priority, Ticket, TicketStatus, Tickets, permissions as perm};
+use wl_ticketing::{
+    Category, Comment, CommentVisibility, Priority, Ticket, TicketStatus, Tickets,
+    permissions as perm,
+};
 
 use support::{Booted, COOLAIR, boot, dubai};
 
@@ -60,9 +63,14 @@ async fn job(t: &Booted, bill: bool) -> Job {
         .unwrap();
     let ticket = t.ticket(opened.id.0).await;
     let tech_id = technician.id.to_string();
-    t.assign(&coordinator, &ticket, "2026-11-03 09:00", &[("user", tech_id.as_str())])
-        .await
-        .assert_ok();
+    t.assign(
+        &coordinator,
+        &ticket,
+        "2026-11-03 09:00",
+        &[("user", tech_id.as_str())],
+    )
+    .await
+    .assert_ok();
     t.run(&technician, &ticket, "start", "2026-11-03 10:00", &[])
         .await
         .assert_ok();
@@ -118,9 +126,15 @@ async fn tkt02_a_close_category_shows_the_amount_at_resolve_and_drafts_at_confir
     assert_eq!(lines.len(), 1);
     assert_eq!(charge::total(&lines), 35_000);
 
-    t.run(&job.technician, &job.ticket, "resolve", "2026-11-03 12:00", &[])
-        .await
-        .assert_ok();
+    t.run(
+        &job.technician,
+        &job.ticket,
+        "resolve",
+        "2026-11-03 12:00",
+        &[],
+    )
+    .await
+    .assert_ok();
     assert!(t.invoices.all().is_empty(), "no draft at resolve");
     let comments = Comment::of_ticket(t.db(), job.ticket.id).await.unwrap();
     let shown = requester_comments(&comments);
@@ -155,26 +169,41 @@ async fn tkt02_resolving_without_a_charge_line_is_refused() {
     let t = boot().await;
     repair_category(&t, InvoiceOn::Close, true).await;
     let job = job(&t, true).await;
-    t.run(&job.technician, &job.ticket, "resolve", "2026-11-03 12:00", &[])
-        .await
-        .assert_status(422)
-        .assert_see("Add the charge before resolving.");
-    assert_eq!(
-        t.reload(&job.ticket).await.status,
-        TicketStatus::InProgress
-    );
+    t.run(
+        &job.technician,
+        &job.ticket,
+        "resolve",
+        "2026-11-03 12:00",
+        &[],
+    )
+    .await
+    .assert_status(422)
+    .assert_see("Add the charge before resolving.");
+    assert_eq!(t.reload(&job.ticket).await.status, TicketStatus::InProgress);
 
     add_capacitor(&t, &job).await;
-    t.run(&job.technician, &job.ticket, "resolve", "2026-11-03 12:00", &[])
-        .await
-        .assert_ok();
+    t.run(
+        &job.technician,
+        &job.ticket,
+        "resolve",
+        "2026-11-03 12:00",
+        &[],
+    )
+    .await
+    .assert_ok();
 
     let plain = boot().await;
     repair_category(&plain, InvoiceOn::Resolve, false).await;
     let free = self::job(&plain, true).await;
     assert!(!free.ticket.chargeable);
     plain
-        .run(&free.technician, &free.ticket, "resolve", "2026-11-03 12:00", &[])
+        .run(
+            &free.technician,
+            &free.ticket,
+            "resolve",
+            "2026-11-03 12:00",
+            &[],
+        )
         .await
         .assert_ok();
     assert!(plain.invoices.all().is_empty());
@@ -188,16 +217,26 @@ async fn tkt02_the_auto_close_confirms_after_three_days_and_the_draft_follows() 
     repair_category(&t, InvoiceOn::Close, true).await;
     let job = job(&t, true).await;
     add_capacitor(&t, &job).await;
-    t.run(&job.technician, &job.ticket, "resolve", "2026-11-03 12:00", &[])
-        .await
-        .assert_ok();
+    t.run(
+        &job.technician,
+        &job.ticket,
+        "resolve",
+        "2026-11-03 12:00",
+        &[],
+    )
+    .await
+    .assert_ok();
 
-    let early = auto_close::run(t.state(), dubai("2026-11-06", 11, 0)).await.unwrap();
+    let early = auto_close::run(t.state(), dubai("2026-11-06", 11, 0))
+        .await
+        .unwrap();
     assert_eq!(early, 0);
     assert_eq!(t.reload(&job.ticket).await.status, TicketStatus::Resolved);
     assert!(t.invoices.all().is_empty());
 
-    let closed = auto_close::run(t.state(), dubai("2026-11-06", 12, 0)).await.unwrap();
+    let closed = auto_close::run(t.state(), dubai("2026-11-06", 12, 0))
+        .await
+        .unwrap();
     assert_eq!(closed, 1);
     assert_eq!(t.reload(&job.ticket).await.status, TicketStatus::Closed);
     assert_eq!(t.invoices.all().len(), 1);
@@ -205,7 +244,9 @@ async fn tkt02_the_auto_close_confirms_after_three_days_and_the_draft_follows() 
 
     // Once closed it is not closed again.
     assert_eq!(
-        auto_close::run(t.state(), dubai("2026-11-09", 12, 0)).await.unwrap(),
+        auto_close::run(t.state(), dubai("2026-11-09", 12, 0))
+            .await
+            .unwrap(),
         0
     );
     assert_eq!(t.invoices.all().len(), 1);
@@ -220,9 +261,15 @@ async fn tkt02_a_resolve_category_drafts_once_even_after_a_reopen() {
     repair_category(&t, InvoiceOn::Resolve, true).await;
     let job = job(&t, true).await;
     add_capacitor(&t, &job).await;
-    t.run(&job.technician, &job.ticket, "resolve", "2026-11-03 12:00", &[])
-        .await
-        .assert_ok();
+    t.run(
+        &job.technician,
+        &job.ticket,
+        "resolve",
+        "2026-11-03 12:00",
+        &[],
+    )
+    .await
+    .assert_ok();
     let drafts = t.invoices.all();
     assert_eq!(drafts.len(), 1, "drafted at resolve");
     assert_eq!(drafts[0].draft.lines.len(), 1);
@@ -239,15 +286,25 @@ async fn tkt02_a_resolve_category_drafts_once_even_after_a_reopen() {
         .htmx()
         .post(
             &format!("/tickets/{}/charges", job.ticket.id),
-            &[("description", "Call-out"), ("unit_price", "50"), ("vat_category", "exempt")],
+            &[
+                ("description", "Call-out"),
+                ("unit_price", "50"),
+                ("vat_category", "exempt"),
+            ],
         )
         .await
         .assert_ok();
     // The new line is already in the draft, and the next resolve adds none.
     assert_eq!(t.invoices.all()[0].draft.lines.len(), 2);
-    t.run(&job.technician, &job.ticket, "resolve", "2026-11-04 11:00", &[])
-        .await
-        .assert_ok();
+    t.run(
+        &job.technician,
+        &job.ticket,
+        "resolve",
+        "2026-11-04 11:00",
+        &[],
+    )
+    .await
+    .assert_ok();
     let drafts = t.invoices.all();
     assert_eq!(drafts.len(), 1, "no second draft");
     assert_eq!(drafts[0].draft.lines.len(), 2);
@@ -266,7 +323,10 @@ async fn tkt02_a_resolve_category_drafts_once_even_after_a_reopen() {
         .await
         .assert_ok();
     assert_eq!(t.invoices.all()[0].draft.lines.len(), 2);
-    assert_eq!(charge::lines_of(t.db(), job.ticket.id).await.unwrap().len(), 3);
+    assert_eq!(
+        charge::lines_of(t.db(), job.ticket.id).await.unwrap().len(),
+        3
+    );
 }
 
 /// The coordinator changes the charge lines after resolve, before close; the
@@ -277,9 +337,15 @@ async fn tkt02_the_coordinator_changes_the_charge_after_resolve() {
     repair_category(&t, InvoiceOn::Close, true).await;
     let job = job(&t, true).await;
     add_capacitor(&t, &job).await;
-    t.run(&job.technician, &job.ticket, "resolve", "2026-11-03 12:00", &[])
-        .await
-        .assert_ok();
+    t.run(
+        &job.technician,
+        &job.ticket,
+        "resolve",
+        "2026-11-03 12:00",
+        &[],
+    )
+    .await
+    .assert_ok();
     let page = format!("/tickets/{}/charges", job.ticket.id);
 
     t.app.acting_as(&job.technician);
@@ -294,7 +360,11 @@ async fn tkt02_the_coordinator_changes_the_charge_after_resolve() {
         .htmx()
         .post(
             &page,
-            &[("description", "Gas top-up"), ("unit_price", "50"), ("vat_category", "exempt")],
+            &[
+                ("description", "Gas top-up"),
+                ("unit_price", "50"),
+                ("vat_category", "exempt"),
+            ],
         )
         .await
         .assert_ok();
@@ -315,9 +385,15 @@ async fn tkt02_the_coordinator_changes_the_charge_after_resolve() {
 
     // Closing drafts what the lines are then; a closed ticket's charge is
     // fixed.
-    t.run(&job.coordinator, &job.ticket, "close", "2026-11-03 16:00", &[])
-        .await
-        .assert_ok();
+    t.run(
+        &job.coordinator,
+        &job.ticket,
+        "close",
+        "2026-11-03 16:00",
+        &[],
+    )
+    .await
+    .assert_ok();
     let drafts = t.invoices.all();
     assert_eq!(drafts.len(), 1);
     assert_eq!(drafts[0].draft.lines.len(), 2);
@@ -340,27 +416,36 @@ async fn tkt02_no_party_means_no_draft_and_a_note() {
     repair_category(&t, InvoiceOn::Close, true).await;
     let job = job(&t, false).await;
     add_capacitor(&t, &job).await;
-    t.run(&job.technician, &job.ticket, "resolve", "2026-11-03 12:00", &[])
-        .await
-        .assert_ok();
+    t.run(
+        &job.technician,
+        &job.ticket,
+        "resolve",
+        "2026-11-03 12:00",
+        &[],
+    )
+    .await
+    .assert_ok();
     t.run(&job.tenant, &job.ticket, "confirm", "2026-11-03 15:00", &[])
         .await
         .assert_ok();
     assert!(t.invoices.all().is_empty());
     let comments = Comment::of_ticket(t.db(), job.ticket.id).await.unwrap();
-    assert!(
-        comments
-            .iter()
-            .any(|c| c.visibility == CommentVisibility::Internal && c.text.contains("no party to bill"))
-    );
+    assert!(comments.iter().any(
+        |c| c.visibility == CommentVisibility::Internal && c.text.contains("no party to bill")
+    ));
 
     let general = t.open("general", None).await;
     assert!(!general.chargeable);
     let tech = t.technician("Tess").await;
     let id = tech.id.to_string();
-    t.assign(&job.coordinator, &general, "2026-11-03 09:00", &[("user", id.as_str())])
-        .await
-        .assert_ok();
+    t.assign(
+        &job.coordinator,
+        &general,
+        "2026-11-03 09:00",
+        &[("user", id.as_str())],
+    )
+    .await
+    .assert_ok();
     t.app.acting_as(&job.coordinator);
     t.app
         .htmx()

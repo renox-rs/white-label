@@ -71,8 +71,7 @@ impl LeaseStatus {
     ];
 
     /// The states of a version still being prepared or signed.
-    pub const IN_PROGRESS: [LeaseStatus; 2] =
-        [LeaseStatus::Draft, LeaseStatus::PendingSignature];
+    pub const IN_PROGRESS: [LeaseStatus; 2] = [LeaseStatus::Draft, LeaseStatus::PendingSignature];
 }
 
 /// What a version is.

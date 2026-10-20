@@ -310,10 +310,8 @@ pub type DeleteCheck = for<'a> fn(
 >;
 
 /// The checks `delete` runs, in order.
-pub const DELETE_CHECKS: &[DeleteCheck] = &[
-    crate::costs::delete_check,
-    crate::acquisition::delete_check,
-];
+pub const DELETE_CHECKS: &[DeleteCheck] =
+    &[crate::costs::delete_check, crate::acquisition::delete_check];
 
 /// Deletes the draft campaign `id` when no check in [`DELETE_CHECKS`] objects.
 /// Its code is kept in `wl_sales_campaign_codes` and its promo code goes.

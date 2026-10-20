@@ -23,9 +23,9 @@ use wl_kernel::documents::today;
 
 use crate::allocate::amount_text;
 use crate::budget::month_start;
+use crate::budget_category::BudgetKind;
 use crate::budget_lines::parse_month;
 use crate::budget_report::{self, Report, ReportQuery, Row, percent_bp, unfavourable};
-use crate::budget_category::BudgetKind;
 use crate::config_of;
 use crate::permissions;
 use crate::texts;
@@ -429,7 +429,12 @@ mod tests {
             without_budget: Vec::new(),
             income: Vec::new(),
             expense: vec![row(BudgetKind::Expense, 1_000_000, 1_050_000, "Marketing")],
-            drawings: vec![row(BudgetKind::OwnerDrawings, 250_000, 300_000, "Partner A")],
+            drawings: vec![row(
+                BudgetKind::OwnerDrawings,
+                250_000,
+                300_000,
+                "Partner A",
+            )],
             drawings_items: Vec::new(),
             mapping_changed: None,
         };
@@ -452,7 +457,10 @@ mod tests {
         // The result after drawings follows the operating result.
         let names: Vec<&str> = with.iter().map(|r| r.name.as_str()).collect();
         let operating = names.iter().position(|n| *n == "Operating result").unwrap();
-        let after = names.iter().position(|n| *n == "Result after drawings").unwrap();
+        let after = names
+            .iter()
+            .position(|n| *n == "Result after drawings")
+            .unwrap();
         assert!(operating < after);
     }
 }

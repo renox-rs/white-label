@@ -155,7 +155,10 @@ fn suspended_from(grant: &AccessGrant, wanted: &'static str) -> GuardFuture {
         if ok {
             Ok(())
         } else {
-            Err(english("wl_portal.grants.refused.suspended_from", &[("from", &wanted)]))
+            Err(english(
+                "wl_portal.grants.refused.suspended_from",
+                &[("from", &wanted)],
+            ))
         }
     })
 }
@@ -238,25 +241,33 @@ impl StateMachine for AccessGrant {
             .transition(step(EXPIRE, "Expire", "neutral", &[Invited], Expired))
             .transition(step(REVOKE, "Revoke", "neutral", &[Invited], Revoked))
             .transition(
-                step(SUSPEND, "Suspend", "warning", &[Active, ReadOnly], Suspended)
-                    .reason_required()
-                    .effect(|grant: &AccessGrant, ctx, tx| {
-                        let id = grant.id;
-                        let from = Some(grant.status.as_str().to_owned());
-                        let reason = reason_of(ctx);
-                        Box::pin(async move {
-                            set(
-                                tx,
-                                id,
-                                &[("suspended_from", &from), ("suspend_reason", &reason)],
-                            )
-                            .await
-                        })
-                    }),
+                step(
+                    SUSPEND,
+                    "Suspend",
+                    "warning",
+                    &[Active, ReadOnly],
+                    Suspended,
+                )
+                .reason_required()
+                .effect(|grant: &AccessGrant, ctx, tx| {
+                    let id = grant.id;
+                    let from = Some(grant.status.as_str().to_owned());
+                    let reason = reason_of(ctx);
+                    Box::pin(async move {
+                        set(
+                            tx,
+                            id,
+                            &[("suspended_from", &from), ("suspend_reason", &reason)],
+                        )
+                        .await
+                    })
+                }),
             )
             .transition(
                 step(REINSTATE, "Reinstate", "success", &[Suspended], Active)
-                    .guard("was_active", |g: &AccessGrant, _ctx| suspended_from(g, "active")),
+                    .guard("was_active", |g: &AccessGrant, _ctx| {
+                        suspended_from(g, "active")
+                    }),
             )
             .transition(
                 step(
@@ -270,23 +281,26 @@ impl StateMachine for AccessGrant {
                     suspended_from(g, "read_only")
                 }),
             )
+            .transition(step(END, "End", "warning", &[Active], ReadOnly).effect(
+                |grant: &AccessGrant, ctx, tx| {
+                    let id = grant.id;
+                    let reason = reason_of(ctx);
+                    Box::pin(async move { set(tx, id, &[("ended_reason", &reason)]).await })
+                },
+            ))
             .transition(
-                step(END, "End", "warning", &[Active], ReadOnly).effect(
-                    |grant: &AccessGrant, ctx, tx| {
-                        let id = grant.id;
-                        let reason = reason_of(ctx);
-                        Box::pin(async move { set(tx, id, &[("ended_reason", &reason)]).await })
-                    },
-                ),
-            )
-            .transition(
-                step(CLOSE, "Close", "neutral", &[ReadOnly, Active, Suspended], Closed).effect(
-                    |grant: &AccessGrant, ctx, tx| {
-                        let id = grant.id;
-                        let reason = reason_of(ctx);
-                        Box::pin(async move { set(tx, id, &[("ended_reason", &reason)]).await })
-                    },
-                ),
+                step(
+                    CLOSE,
+                    "Close",
+                    "neutral",
+                    &[ReadOnly, Active, Suspended],
+                    Closed,
+                )
+                .effect(|grant: &AccessGrant, ctx, tx| {
+                    let id = grant.id;
+                    let reason = reason_of(ctx);
+                    Box::pin(async move { set(tx, id, &[("ended_reason", &reason)]).await })
+                }),
             )
     }
 }
@@ -338,8 +352,18 @@ mod tests {
         let back_read_only = machine.find(REINSTATE_READ_ONLY).unwrap();
         assert!(back.check_guards(&from_active, &ctx).await.is_ok());
         assert!(back.check_guards(&from_read_only, &ctx).await.is_err());
-        assert!(back_read_only.check_guards(&from_read_only, &ctx).await.is_ok());
-        assert!(back_read_only.check_guards(&from_active, &ctx).await.is_err());
+        assert!(
+            back_read_only
+                .check_guards(&from_read_only, &ctx)
+                .await
+                .is_ok()
+        );
+        assert!(
+            back_read_only
+                .check_guards(&from_active, &ctx)
+                .await
+                .is_err()
+        );
     }
 
     #[test]

@@ -8,16 +8,18 @@ mod support;
 use renox::auth::permissions;
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
+use wl_kernel::Subject;
 use wl_kernel::compliance::{ComplianceAlert, is_critical};
 use wl_kernel::tickets::{
     ComplianceFlagCleared, ComplianceFlagRaised, ComplianceFlagReason, OpenTicket,
 };
-use wl_kernel::Subject;
 use wl_ticketing::flags::{self, ComplianceFlag, Raise, VISIT_RESOLVED};
 use wl_ticketing::visit_check::{self, NOTIFICATION_TYPE, RULE};
-use wl_ticketing::{Category, Priority, Ticket, TicketStatus, Tickets, WlTicketing, permissions as perm};
+use wl_ticketing::{
+    Category, Priority, Ticket, TicketStatus, Tickets, WlTicketing, permissions as perm,
+};
 
-use support::{Booted, Recorded, boot_app, dubai, record, CLIENT};
+use support::{Booted, CLIENT, Recorded, boot_app, dubai, record};
 
 /// "Tower A fire alarm" and "Tower A cleaning".
 fn alarm() -> Subject {
@@ -47,11 +49,17 @@ async fn world() -> World {
         move |app| record(record(app, &r), &c),
     )
     .await;
-    permissions::define_role(t.db(), "coordinator", &[perm::VIEW, perm::ASSIGN, perm::WORK])
-        .await
-        .unwrap();
+    permissions::define_role(
+        t.db(),
+        "coordinator",
+        &[perm::VIEW, perm::ASSIGN, perm::WORK],
+    )
+    .await
+    .unwrap();
     for role in ["property_manager", "admin"] {
-        permissions::define_role(t.db(), role, &[perm::VIEW]).await.unwrap();
+        permissions::define_role(t.db(), role, &[perm::VIEW])
+            .await
+            .unwrap();
     }
     let staff = |name: &'static str, role: &'static str| {
         let t = &t;
@@ -191,7 +199,11 @@ async fn tkt03_resolving_the_visit_clears_the_flag_but_cancelling_does_not() {
     let w = world().await;
     let visit = w.visit("fire_safety", alarm(), day(1)).await;
     let other = w
-        .visit("fire_safety", Subject::new("property.building_system", 5), day(1))
+        .visit(
+            "fire_safety",
+            Subject::new("property.building_system", 5),
+            day(1),
+        )
         .await;
     visit_check::run(w.t.state(), day(4)).await.unwrap();
     assert_eq!(ComplianceFlag::open(w.t.db()).await.unwrap().len(), 2);
@@ -199,9 +211,15 @@ async fn tkt03_resolving_the_visit_clears_the_flag_but_cancelling_does_not() {
     // A user cannot cancel a compliance-critical planned visit (BL-PRP-24,
     // `PRP.ACL.15`); the system's cancel when the contract ends does, and the
     // flag stays.
-    w.t.run(&w.coordinator, &other, "cancel", "2026-11-05 09:00", &[("reason", "Not needed")])
-        .await
-        .assert_status(422);
+    w.t.run(
+        &w.coordinator,
+        &other,
+        "cancel",
+        "2026-11-05 09:00",
+        &[("reason", "Not needed")],
+    )
+    .await
+    .assert_status(422);
     wl_ticketing::work::auto_cancel(w.t.state(), &other, "The contract ended")
         .await
         .unwrap();
@@ -256,18 +274,48 @@ async fn tkt03_one_open_flag_per_subject_category_and_reason() {
     let at = dubai("2026-11-04", 9, 0);
     let first = flags::raise(state, raise("fire_safety"), at).await.unwrap();
     assert!(first.is_some());
-    assert!(flags::raise(state, raise("fire_safety"), at).await.unwrap().is_none());
-    assert!(flags::raise(state, raise("cleaning"), at).await.unwrap().is_none());
-    assert!(flags::raise(state, raise("unknown"), at).await.unwrap().is_none());
+    assert!(
+        flags::raise(state, raise("fire_safety"), at)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        flags::raise(state, raise("cleaning"), at)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        flags::raise(state, raise("unknown"), at)
+            .await
+            .unwrap()
+            .is_none()
+    );
     assert_eq!(w.raised.all().len(), 1);
     assert_eq!(w.raised.all()[0].contract, Some(7));
 
     let id = first.unwrap().id;
-    let done = flags::clear(state, id, "replacement contract active", at).await.unwrap();
-    assert_eq!(done.unwrap().cleared_by.as_deref(), Some("replacement contract active"));
-    assert!(flags::clear(state, id, "again", at).await.unwrap().is_none());
+    let done = flags::clear(state, id, "replacement contract active", at)
+        .await
+        .unwrap();
+    assert_eq!(
+        done.unwrap().cleared_by.as_deref(),
+        Some("replacement contract active")
+    );
+    assert!(
+        flags::clear(state, id, "again", at)
+            .await
+            .unwrap()
+            .is_none()
+    );
     assert_eq!(w.cleared.all().len(), 1);
-    assert!(flags::raise(state, raise("fire_safety"), at).await.unwrap().is_some());
+    assert!(
+        flags::raise(state, raise("fire_safety"), at)
+            .await
+            .unwrap()
+            .is_some()
+    );
     assert_eq!(ComplianceFlag::open(w.t.db()).await.unwrap().len(), 1);
 }
 
@@ -277,8 +325,12 @@ async fn tkt03_one_open_flag_per_subject_category_and_reason() {
 async fn tkt03_the_compliance_report_lists_the_open_flags_of_a_subject() {
     let w = world().await;
     let visit = w.visit("fire_safety", alarm(), day(1)).await;
-    w.visit("fire_safety", Subject::new("property.building_system", 9), day(1))
-        .await;
+    w.visit(
+        "fire_safety",
+        Subject::new("property.building_system", 9),
+        day(1),
+    )
+    .await;
     visit_check::run(w.t.state(), day(4)).await.unwrap();
 
     let viewer = w.t.user("Vera", &[perm::VIEW]).await;

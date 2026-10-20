@@ -193,9 +193,9 @@ pub async fn carry_forward(
     user: &AuthUser,
     id: i64,
 ) -> std::result::Result<(), renox::state_machine::TransitionError> {
-    let statement = OwnerStatement::find(&state.db, id)
-        .await?
-        .ok_or(renox::state_machine::TransitionError::Failed(Error::NotFound))?;
+    let statement = OwnerStatement::find(&state.db, id).await?.ok_or(
+        renox::state_machine::TransitionError::Failed(Error::NotFound),
+    )?;
     let _outcome = statement
         .transition(crate::statement_machine::CARRY_FORWARD)
         .by(user)
@@ -359,7 +359,9 @@ async fn make_owner_invoice(state: &AppState, statement: &OwnerStatement) -> Res
 /// The database's, the recorder's and the invoicer's errors.
 pub async fn after(state: &AppState, event: &Transitioned<OwnerStatement>) -> Result {
     let name = event.transition.as_str();
-    if name != PAY_OUT && name != PAY_OUT_APPROVED && name != INVOICE_OWNER
+    if name != PAY_OUT
+        && name != PAY_OUT_APPROVED
+        && name != INVOICE_OWNER
         && name != INVOICE_OWNER_APPROVED
     {
         return Ok(());

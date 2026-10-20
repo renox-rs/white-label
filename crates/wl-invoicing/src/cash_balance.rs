@@ -102,7 +102,11 @@ pub fn parse_balance(text: &str) -> Option<i64> {
     if !digits(whole) || !digits(fraction) || fraction.len() > 2 {
         return None;
     }
-    let whole: i64 = if whole.is_empty() { 0 } else { whole.parse().ok()? };
+    let whole: i64 = if whole.is_empty() {
+        0
+    } else {
+        whole.parse().ok()?
+    };
     let fraction: i64 = format!("{fraction:0<2}").parse().ok()?;
     let fils = whole.checked_mul(100)?.checked_add(fraction)?;
     Some(if negative { -fils } else { fils })

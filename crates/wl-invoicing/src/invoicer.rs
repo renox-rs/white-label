@@ -321,10 +321,11 @@ pub async fn discard_draft(db: &Db, id: InvoiceId) -> Result<bool> {
         .execute(&mut tx)
         .await?;
     // Not the status column of the machine: a draft is gone, not moved.
-    let gone = renox::db::sql("DELETE FROM wl_invoicing_invoices WHERE id = ? AND status = 'draft'")
-        .bind(id.0)
-        .execute(&mut tx)
-        .await?;
+    let gone =
+        renox::db::sql("DELETE FROM wl_invoicing_invoices WHERE id = ? AND status = 'draft'")
+            .bind(id.0)
+            .execute(&mut tx)
+            .await?;
     tx.commit().await?;
     Ok(gone > 0)
 }

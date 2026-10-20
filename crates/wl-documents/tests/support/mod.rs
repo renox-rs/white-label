@@ -24,14 +24,14 @@ use wl_kernel::documents::{
     FutureWork, OverrideMode, PlannedRecord, ReminderSchedule, SopAcknowledged, SopReaderRef,
     register_block_subjects, register_future_work, register_reminder_schedule, today,
 };
-use wl_kernel::workforce::{
-    EmployeeId, StaffProfile, Workforce, WorkforceFuture, provide_workforce,
-};
 use wl_kernel::notify::{
     MessageId, Notifier, NotifyFuture, NotifyRecipient, NotifyRequest, provide_notifier,
 };
 use wl_kernel::tickets::{
     OpenTicket, TaskCreator, TicketFuture, TicketId, TicketRef, provide_task_creator,
+};
+use wl_kernel::workforce::{
+    EmployeeId, StaffProfile, Workforce, WorkforceFuture, provide_workforce,
 };
 use wl_kernel::{ClientConfig, Subject};
 

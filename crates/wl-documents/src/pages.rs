@@ -1077,7 +1077,11 @@ async fn update_enabled(
 ) -> Result<Response> {
     let on = form.enabled == "1";
     kinds::set_enabled(&db, &key, on).await?;
-    let text_key = if on { "kinds.turned_on" } else { "kinds.turned_off" };
+    let text_key = if on {
+        "kinds.turned_on"
+    } else {
+        "kinds.turned_off"
+    };
     Ok((Toast::success(text(&lang, text_key)), renox::HxRefresh).into_response())
 }
 

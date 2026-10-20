@@ -60,7 +60,12 @@ async fn bl_prp_02_the_agent_and_the_manager_are_reminded_once_at_fourteen_days(
     let mut expected = vec![agent.id, manager.id];
     expected.sort_unstable();
     assert_eq!(to, expected);
-    assert!(sent[0].recipients.iter().all(|r| matches!(r, NotifyRecipient::User { .. })));
+    assert!(
+        sent[0]
+            .recipients
+            .iter()
+            .all(|r| matches!(r, NotifyRecipient::User { .. }))
+    );
     assert_eq!(sent[0].subject, lease.subject());
     assert_eq!(sent[0].data["days"], 14);
 
@@ -107,7 +112,11 @@ async fn bl_prp_02_the_manager_gets_one_extend_or_cancel_task_at_thirty_days() {
         tasks[0].assignee,
         Some(wl_kernel::tickets::Assignee::user(manager.id))
     );
-    assert!(tasks[0].title.contains(&lease.number()), "{}", tasks[0].title);
+    assert!(
+        tasks[0].title.contains(&lease.number()),
+        "{}",
+        tasks[0].title
+    );
 
     let again = run(t.state(), since + Duration::days(31)).await.unwrap();
     assert_eq!(again.tasked, 0);
@@ -128,9 +137,13 @@ async fn bl_prp_02_extending_closes_the_task_and_a_new_one_comes_on_the_new_date
 
     // At most 30 days ahead, and after today.
     let far = day(MAX_EXTENSION_DAYS + 1).to_string();
-    t.post(&manager, &path, &[("until", &far)]).await.assert_status(422);
+    t.post(&manager, &path, &[("until", &far)])
+        .await
+        .assert_status(422);
     let today = day(0).to_string();
-    t.post(&manager, &path, &[("until", &today)]).await.assert_status(422);
+    t.post(&manager, &path, &[("until", &today)])
+        .await
+        .assert_status(422);
     assert!(t.tasks.with_key("property.chase:")[0].open);
 
     let until = day(10);
@@ -142,7 +155,11 @@ async fn bl_prp_02_extending_closes_the_task_and_a_new_one_comes_on_the_new_date
     assert_eq!(extended.status, LeaseStatus::PendingSignature);
     let tasks = t.tasks.with_key("property.chase:");
     assert!(!tasks[0].open);
-    assert!(tasks[0].note.contains(&until.to_string()), "{}", tasks[0].note);
+    assert!(
+        tasks[0].note.contains(&until.to_string()),
+        "{}",
+        tasks[0].note
+    );
 
     // Before the new date: nothing.
     let before = run(t.state(), until - Duration::days(1)).await.unwrap();
@@ -153,7 +170,13 @@ async fn bl_prp_02_extending_closes_the_task_and_a_new_one_comes_on_the_new_date
     let tasks = t.tasks.with_key("property.chase:");
     assert_eq!(tasks.len(), 2);
     assert!(tasks[1].open);
-    assert!(tasks[1].key.as_deref().unwrap().ends_with(&until.to_string()));
+    assert!(
+        tasks[1]
+            .key
+            .as_deref()
+            .unwrap()
+            .ends_with(&until.to_string())
+    );
     assert_eq!(run(t.state(), until).await.unwrap().tasked, 0);
 }
 
@@ -198,10 +221,19 @@ async fn bl_prp_02_the_permission_and_the_state_are_checked() {
     let (lease, agent, manager) = waiting(&t, day(-40)).await;
     let path = format!("/property/leases/{}/extend", lease.id);
     let until = day(5).to_string();
-    t.post(&agent, &path, &[("until", &until)]).await.assert_forbidden();
-    t.post(&manager, &path, &[("until", "soon")]).await.assert_status(422);
+    t.post(&agent, &path, &[("until", &until)])
+        .await
+        .assert_forbidden();
+    t.post(&manager, &path, &[("until", "soon")])
+        .await
+        .assert_status(422);
     t.waive(&manager, &lease).await;
     t.activate(&manager, &lease).await.assert_ok();
-    t.post(&manager, &path, &[("until", &until)]).await.assert_status(422);
-    assert_eq!(chase::task_due_on(&t.reload(&lease).await), Some(day(-40) + Duration::days(30)));
+    t.post(&manager, &path, &[("until", &until)])
+        .await
+        .assert_status(422);
+    assert_eq!(
+        chase::task_due_on(&t.reload(&lease).await),
+        Some(day(-40) + Duration::days(30))
+    );
 }

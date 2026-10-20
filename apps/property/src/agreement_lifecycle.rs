@@ -209,7 +209,9 @@ impl HandoverItem {
 
     /// Whether the new holder's receipt is recorded.
     pub fn has_receipt(&self) -> bool {
-        self.receipt.as_deref().is_some_and(|r| !r.trim().is_empty())
+        self.receipt
+            .as_deref()
+            .is_some_and(|r| !r.trim().is_empty())
     }
 
     /// The lease as a kernel subject: what the deposit and the cheques are held for.
@@ -332,10 +334,13 @@ pub(crate) fn give_notice_transition() -> Transition<ManagementAgreement> {
         .permission(permissions::AGREEMENTS_MANAGE)
         .from([AgreementStatus::Active])
         .to(AgreementStatus::Ending)
-        .guard("notice_recorded", |_agreement: &ManagementAgreement, ctx| {
-            let problem = notice_problem(&input_of(ctx));
-            Box::pin(async move { problem.map_or(Ok(()), Err) })
-        })
+        .guard(
+            "notice_recorded",
+            |_agreement: &ManagementAgreement, ctx| {
+                let problem = notice_problem(&input_of(ctx));
+                Box::pin(async move { problem.map_or(Ok(()), Err) })
+            },
+        )
         .effect(|agreement: &ManagementAgreement, ctx, tx| {
             let id = agreement.id;
             let input = input_of(ctx);
@@ -368,10 +373,13 @@ pub(crate) fn end_transition() -> Transition<ManagementAgreement> {
         .permission(permissions::AGREEMENTS_MANAGE)
         .from([AgreementStatus::Ending])
         .to(AgreementStatus::Ended)
-        .guard("handover_complete", |agreement: &ManagementAgreement, ctx| {
-            let problem = end_problem(agreement, &input_of(ctx));
-            Box::pin(async move { problem.map_or(Ok(()), Err) })
-        })
+        .guard(
+            "handover_complete",
+            |agreement: &ManagementAgreement, ctx| {
+                let problem = end_problem(agreement, &input_of(ctx));
+                Box::pin(async move { problem.map_or(Ok(()), Err) })
+            },
+        )
         .effect(|agreement: &ManagementAgreement, ctx, tx| {
             let agreement = agreement.clone();
             let day = input_of(ctx).day.unwrap_or_else(today);
@@ -393,10 +401,7 @@ pub(crate) async fn end_effects(
         .where_(ManagementAgreement::ID.eq(agreement.id))
         .update(
             &mut *tx,
-            &[
-                ("ended_on", &Some(day)),
-                ("updated_at", &renox::db::now()),
-            ],
+            &[("ended_on", &Some(day)), ("updated_at", &renox::db::now())],
         )
         .await?;
     let rows = AgreementUnit::query()
@@ -466,7 +471,10 @@ pub(crate) async fn hand_over_leases(
 }
 
 /// The agreement `id`, or a 404.
-async fn load(state: &AppState, id: i64) -> std::result::Result<ManagementAgreement, TransitionError> {
+async fn load(
+    state: &AppState,
+    id: i64,
+) -> std::result::Result<ManagementAgreement, TransitionError> {
     ManagementAgreement::find(&state.db, id)
         .await?
         .ok_or(TransitionError::Failed(Error::NotFound))
@@ -495,14 +503,20 @@ pub async fn activate(
         owner_ok,
         ..AgreementInput::default()
     };
-    let _outcome = documents::guarded(state, documents::AGREEMENT_ACTIVATE, id, Some(user.id), || async {
-        agreement
-            .transition(ACTIVATE)
-            .by(user)
-            .input(&input)
-            .run(state)
-            .await
-    })
+    let _outcome = documents::guarded(
+        state,
+        documents::AGREEMENT_ACTIVATE,
+        id,
+        Some(user.id),
+        || async {
+            agreement
+                .transition(ACTIVATE)
+                .by(user)
+                .input(&input)
+                .run(state)
+                .await
+        },
+    )
     .await?;
     load(state, id).await
 }
@@ -610,9 +624,9 @@ pub(crate) async fn build_items(
         .get(&state.db)
         .await?;
     let has = |kind: ItemKind, item_ref: i64| {
-        known
-            .iter()
-            .any(|item| item.kind == kind && item.item_ref == item_ref && item.transfer_id == transfer_id)
+        known.iter().any(|item| {
+            item.kind == kind && item.item_ref == item_ref && item.transfer_id == transfer_id
+        })
     };
     let mut added = 0;
     for lease in leases_on(&state.db, unit_ids).await? {
@@ -794,7 +808,9 @@ pub async fn prepare_final_statement(
         .order_by_desc(OwnerStatement::PERIOD_END)
         .first(&state.db)
         .await?;
-    let start = latest.map_or(agreement.start_date, |last| last.period_end + Duration::days(1));
+    let start = latest.map_or(agreement.start_date, |last| {
+        last.period_end + Duration::days(1)
+    });
     if start > handover {
         return Err(refused(english("property.handover.statement_covers", &[])));
     }
@@ -881,7 +897,12 @@ pub async fn pack(state: &AppState, agreement: &ManagementAgreement) -> Result<P
             ItemKind::Cheque => pack.cheques.push(item),
         }
     }
-    let units: Vec<i64> = agreement.units(&state.db).await?.iter().map(|row| row.unit_id).collect();
+    let units: Vec<i64> = agreement
+        .units(&state.db)
+        .await?
+        .iter()
+        .map(|row| row.unit_id)
+        .collect();
     for lease in leases_on(&state.db, &units).await? {
         if let Some(number) = lease.ejari_number.clone() {
             pack.ejari.push(PackEjari {
@@ -959,7 +980,11 @@ pub async fn end(
         let listed = items
             .iter()
             .any(|item| item.kind == ItemKind::Deposit && item.lease_root_id == lease.root_id);
-        if !listed && deposits(state).in_settlement(&state.db, &lease.agreement()).await? {
+        if !listed
+            && deposits(state)
+                .in_settlement(&state.db, &lease.agreement())
+                .await?
+        {
             settling += 1;
         }
     }
@@ -987,7 +1012,11 @@ pub async fn end(
 /// The holder the handover of `agreement` goes to: the party named at the
 /// notice, else the owner.
 pub fn holder_of(agreement: &ManagementAgreement) -> PartyId {
-    PartyId(agreement.handover_to_party_id.unwrap_or(agreement.owner_party_id))
+    PartyId(
+        agreement
+            .handover_to_party_id
+            .unwrap_or(agreement.owner_party_id),
+    )
 }
 
 /// Hands over what the pack lists after `end` committed: the cheques are
@@ -1005,8 +1034,14 @@ async fn settle_end(
         .into_iter()
         .filter(|item| !item.done)
         .collect();
-    let (returned, transferred) =
-        hand_over_items(state, user, &items, holder_of(agreement), &mut report.problems).await;
+    let (returned, transferred) = hand_over_items(
+        state,
+        user,
+        &items,
+        holder_of(agreement),
+        &mut report.problems,
+    )
+    .await;
     report.returned = returned;
     report.transferred = transferred;
     let leases = leases_on(&state.db, units).await?;
@@ -1048,7 +1083,11 @@ pub(crate) async fn hand_over_items(
     if !cheque_ids.is_empty() {
         let reason = english("property.handover.return_reason", &[]);
         match cheques(state)
-            .return_undeposited(state, ReturnCheques::new(cheque_ids, &reason), Some(user.id))
+            .return_undeposited(
+                state,
+                ReturnCheques::new(cheque_ids, &reason),
+                Some(user.id),
+            )
             .await
         {
             Ok(Some(back)) => returned = back.returned,

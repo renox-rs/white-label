@@ -29,13 +29,13 @@ mod budget_notices;
 mod budget_pages;
 pub mod budget_reminder;
 pub mod budget_report;
+mod budget_report_pages;
+pub mod budget_variance;
 pub mod cash_alert;
 pub mod cash_balance;
 pub mod cash_forecast;
 pub mod cash_forecast_load;
 mod cash_forecast_pages;
-mod budget_report_pages;
-pub mod budget_variance;
 pub mod config;
 pub mod credit;
 pub mod credit_note;
@@ -51,9 +51,9 @@ pub mod dispute;
 pub mod dispute_credit;
 mod dispute_pages;
 pub mod dispute_resolve;
+mod drawing_pages;
 pub mod drawings;
 pub mod drawings_machine;
-mod drawing_pages;
 pub mod duplicates;
 pub mod einvoice;
 pub mod einvoice_adapter;
@@ -70,8 +70,8 @@ pub mod issue;
 pub mod line;
 mod machine;
 pub mod overdue;
-pub mod owner_drawings;
 pub mod owner;
+pub mod owner_drawings;
 pub mod pages;
 pub mod payables;
 pub mod policy;
@@ -116,7 +116,8 @@ pub use budget_contract::Budgets;
 pub use budget_reminder::BudgetReminder;
 pub use budget_variance::BudgetWarning;
 pub use config::{
-    DuplicateKey, EInvoiceEntity, InvoicingConfig, ReasonProblem, ReliefMonths, SettingError, WriteOffReason,
+    DuplicateKey, EInvoiceEntity, InvoicingConfig, ReasonProblem, ReliefMonths, SettingError,
+    WriteOffReason,
 };
 pub use credit_note::{CreditNote, CreditNoteKind};
 pub use credit_note_line::CreditNoteLine;
@@ -979,12 +980,9 @@ impl Module for WlInvoicing {
         // queue of transmissions and its scheduled run.
         app.provide(einvoice_adapter::Installed {
             adapters: self.adapters.clone(),
-            scope: self
-                .scope
-                .clone()
-                .unwrap_or_else(|| {
-                    Arc::new(einvoice_adapter::DefaultScope) as Arc<dyn EInvoiceScope>
-                }),
+            scope: self.scope.clone().unwrap_or_else(|| {
+                Arc::new(einvoice_adapter::DefaultScope) as Arc<dyn EInvoiceScope>
+            }),
         });
         renox::state_machine::register::<EInvoiceTransmission>();
         register_asp_connections(&self.config);

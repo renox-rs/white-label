@@ -881,7 +881,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_invoicing.einvoice.status.rejected", "Rejected"),
     ("wl_invoicing.einvoice.status.superseded", "Superseded"),
     ("wl_invoicing.einvoice.resubmit", "Resubmit"),
-    ("wl_invoicing.einvoice.resubmit_title", "Resubmit this e-invoice"),
+    (
+        "wl_invoicing.einvoice.resubmit_title",
+        "Resubmit this e-invoice",
+    ),
     (
         "wl_invoicing.einvoice.resubmit_description",
         "The payload is built again from the same document, with the recipient identifier and the party data read again. Use it only when the cause is outside the document; a cause in the document is corrected with a credit note with the reason e-invoice correction and a new invoice.",
@@ -890,7 +893,10 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_invoicing.einvoice.confirm",
         "The cause is outside the issued document and has been fixed",
     ),
-    ("wl_invoicing.einvoice.resubmitted", "The e-invoice is queued again."),
+    (
+        "wl_invoicing.einvoice.resubmitted",
+        "The e-invoice is queued again.",
+    ),
     (
         "wl_invoicing.einvoice.replaces_saved",
         "The invoice it replaces is saved. The superseded transmission is linked to this invoice when it is issued.",
@@ -1231,7 +1237,10 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_invoicing.budget.fields.revision_reason",
         "Revision reason",
     ),
-    ("wl_invoicing.budget.fields.return_reason", "Returned because"),
+    (
+        "wl_invoicing.budget.fields.return_reason",
+        "Returned because",
+    ),
     (
         "wl_invoicing.budget.fields.discard_reason",
         "Discarded because",
@@ -1255,7 +1264,10 @@ const TEXTS: &[(&str, &str)] = &[
         "A revision of the approved budget",
     ),
     ("wl_invoicing.budget.sections.summary", "Budget"),
-    ("wl_invoicing.budget.sections.lines", "Amounts per category and month (AED, without VAT)"),
+    (
+        "wl_invoicing.budget.sections.lines",
+        "Amounts per category and month (AED, without VAT)",
+    ),
     ("wl_invoicing.budget.lines.category", "Category"),
     ("wl_invoicing.budget.lines.total", "Total"),
     ("wl_invoicing.budget.lines.locked", "locked"),
@@ -1324,13 +1336,19 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_invoicing.budget.import.dry_run_hint",
         "Reads and checks every row and stores nothing. Untick it to store the lines; a file with a rejected row stores nothing.",
     ),
-    ("wl_invoicing.budget.import.empty", "Paste the rows to import."),
+    (
+        "wl_invoicing.budget.import.empty",
+        "Paste the rows to import.",
+    ),
     ("wl_invoicing.budget.import.row", "Row"),
     (
         "wl_invoicing.budget.import.dry_run_ok",
         "{{ rows }} rows are valid. Nothing was stored.",
     ),
-    ("wl_invoicing.budget.import.done", "{{ rows }} rows were stored."),
+    (
+        "wl_invoicing.budget.import.done",
+        "{{ rows }} rows were stored.",
+    ),
     (
         "wl_invoicing.budget.import.unknown_category",
         "There is no category {{ value }}.",
@@ -1392,8 +1410,14 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_invoicing.budget.discard.reason_required",
         "Give a reason to discard the draft.",
     ),
-    ("wl_invoicing.budget.discard.done", "The draft was discarded."),
-    ("wl_invoicing.budget.errors.entity", "Choose an entity from the list."),
+    (
+        "wl_invoicing.budget.discard.done",
+        "The draft was discarded.",
+    ),
+    (
+        "wl_invoicing.budget.errors.entity",
+        "Choose an entity from the list.",
+    ),
     (
         "wl_invoicing.budget.errors.year",
         "Enter the fiscal year like 2027.",
@@ -1402,7 +1426,10 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_invoicing.budget.errors.category",
         "Choose a category from the list.",
     ),
-    ("wl_invoicing.budget.errors.month", "Choose a month of the fiscal year."),
+    (
+        "wl_invoicing.budget.errors.month",
+        "Choose a month of the fiscal year.",
+    ),
     (
         "wl_invoicing.budget.errors.range",
         "The last month cannot be before the first.",
@@ -1411,8 +1438,14 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_invoicing.budget.errors.amount",
         "Enter an amount like 150.00.",
     ),
-    ("wl_invoicing.budget.errors.kind", "Choose a kind from the list."),
-    ("wl_invoicing.budget.errors.party", "Enter the id of the party."),
+    (
+        "wl_invoicing.budget.errors.kind",
+        "Choose a kind from the list.",
+    ),
+    (
+        "wl_invoicing.budget.errors.party",
+        "Enter the id of the party.",
+    ),
     (
         "wl_invoicing.budget.problem.no_lines",
         "A budget needs at least one line.",
@@ -1471,7 +1504,10 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("wl_invoicing.budget.category.title", "Budget categories"),
     ("wl_invoicing.budget.category.new_title", "New category"),
-    ("wl_invoicing.budget.category.edit_title", "Change the category"),
+    (
+        "wl_invoicing.budget.category.edit_title",
+        "Change the category",
+    ),
     ("wl_invoicing.budget.category.code", "Code"),
     ("wl_invoicing.budget.category.name_en", "Name in English"),
     ("wl_invoicing.budget.category.name_ar", "Name in Arabic"),
@@ -1504,9 +1540,15 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_invoicing.budget.category.on", "Active"),
     ("wl_invoicing.budget.category.off", "Inactive"),
     ("wl_invoicing.budget.category.edit", "Change"),
-    ("wl_invoicing.budget.category.empty", "No budget categories yet"),
+    (
+        "wl_invoicing.budget.category.empty",
+        "No budget categories yet",
+    ),
     ("wl_invoicing.budget.category.save", "Save the category"),
-    ("wl_invoicing.budget.category.saved", "The category was saved."),
+    (
+        "wl_invoicing.budget.category.saved",
+        "The category was saved.",
+    ),
     (
         "wl_invoicing.budget.category.problem.blank",
         "Give the category a code and a name.",
@@ -1566,8 +1608,14 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_invoicing.cash.row.memo", "not counted"),
     ("wl_invoicing.cash.memo.disputed", "Disputed amounts"),
     ("wl_invoicing.cash.memo.bounced_cheque", "Bounced cheques"),
-    ("wl_invoicing.cash.memo.blocked_party", "Receivables of blocked parties"),
-    ("wl_invoicing.cash.memo.duplicate_bill", "Bills held as possible duplicates"),
+    (
+        "wl_invoicing.cash.memo.blocked_party",
+        "Receivables of blocked parties",
+    ),
+    (
+        "wl_invoicing.cash.memo.duplicate_bill",
+        "Bills held as possible duplicates",
+    ),
     ("wl_invoicing.cash.kind.invoice", "Invoice"),
     ("wl_invoicing.cash.kind.cheque_in", "Cheque received"),
     ("wl_invoicing.cash.kind.bill", "Supplier bill"),
@@ -1583,8 +1631,14 @@ const TEXTS: &[(&str, &str)] = &[
         "These receipts are expected after the last week because of the days-late adjustment. They are not counted in the grid.",
     ),
     ("wl_invoicing.cash.drawings", "Owner drawings"),
-    ("wl_invoicing.cash.warning.no_balance", "no balance known: counted as zero"),
-    ("wl_invoicing.cash.warning.stale", "the balance is old, as of"),
+    (
+        "wl_invoicing.cash.warning.no_balance",
+        "no balance known: counted as zero",
+    ),
+    (
+        "wl_invoicing.cash.warning.stale",
+        "the balance is old, as of",
+    ),
     (
         "wl_invoicing.cash.warning.unpriced",
         "left out: no exchange rate for its currency",
@@ -1612,7 +1666,10 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_invoicing.cash.no_accounts_hint",
         "Enter an opening cash balance, or upload a bank statement with its closing balance.",
     ),
-    ("wl_invoicing.cash.balances.add", "Enter an opening cash balance"),
+    (
+        "wl_invoicing.cash.balances.add",
+        "Enter an opening cash balance",
+    ),
     ("wl_invoicing.cash.balances.amount", "Balance"),
     (
         "wl_invoicing.cash.balances.amount_hint",
@@ -1620,17 +1677,35 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("wl_invoicing.cash.balances.note", "Note"),
     ("wl_invoicing.cash.balances.save", "Save"),
-    ("wl_invoicing.cash.balances.history", "Opening cash balances"),
+    (
+        "wl_invoicing.cash.balances.history",
+        "Opening cash balances",
+    ),
     ("wl_invoicing.cash.balances.status", "Status"),
     ("wl_invoicing.cash.balances.voided", "Voided"),
     ("wl_invoicing.cash.balances.void", "Void"),
     ("wl_invoicing.cash.balances.void_title", "Void this balance"),
     ("wl_invoicing.cash.balances.void_reason", "Reason"),
-    ("wl_invoicing.cash.balances.reason_required", "Give the reason for voiding."),
-    ("wl_invoicing.cash.balances.bad_entity", "Choose a legal entity."),
-    ("wl_invoicing.cash.balances.bad_amount", "Enter the balance in dirhams, like 60000.00."),
-    ("wl_invoicing.cash.balances.bad_date", "Give the bank account and a day that is not in the future."),
-    ("wl_invoicing.cash.balances.entered_toast", "Balance entered."),
+    (
+        "wl_invoicing.cash.balances.reason_required",
+        "Give the reason for voiding.",
+    ),
+    (
+        "wl_invoicing.cash.balances.bad_entity",
+        "Choose a legal entity.",
+    ),
+    (
+        "wl_invoicing.cash.balances.bad_amount",
+        "Enter the balance in dirhams, like 60000.00.",
+    ),
+    (
+        "wl_invoicing.cash.balances.bad_date",
+        "Give the bank account and a day that is not in the future.",
+    ),
+    (
+        "wl_invoicing.cash.balances.entered_toast",
+        "Balance entered.",
+    ),
     ("wl_invoicing.cash.balances.voided_toast", "Balance voided."),
     ("wl_invoicing.cash.cell.line", "Line"),
     ("wl_invoicing.cash.cell.kind", "Kind"),
@@ -1640,7 +1715,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_invoicing.cash.cell.flags", "Notes"),
     ("wl_invoicing.cash.cell.total", "Total"),
     ("wl_invoicing.cash.cell.empty", "Nothing in this cell"),
-    ("wl_invoicing.cash.cell.empty_hint", "No document is expected in this week."),
+    (
+        "wl_invoicing.cash.cell.empty_hint",
+        "No document is expected in this week.",
+    ),
     ("wl_invoicing.cash.flag.not_approved", "not yet approved"),
     ("wl_invoicing.cash.flag.estimate", "estimate"),
     ("wl_invoicing.cash.flag.not_counted", "not counted"),
@@ -1694,18 +1772,27 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_invoicing.budget.report.self_approved", "Self-approved"),
     ("wl_invoicing.budget.report.open", "Open"),
     ("wl_invoicing.drawings.title", "Owner drawings"),
-    ("wl_invoicing.drawings.total", "Drawing, with the VAT that is not recovered"),
+    (
+        "wl_invoicing.drawings.total",
+        "Drawing, with the VAT that is not recovered",
+    ),
     ("wl_invoicing.drawings.status", "Approval of the drawing"),
     ("wl_invoicing.drawings.status.none", "Not asked for yet"),
     ("wl_invoicing.drawings.status.draft", "Draft"),
-    ("wl_invoicing.drawings.status.requested", "Waiting for a holder of drawings.approve"),
+    (
+        "wl_invoicing.drawings.status.requested",
+        "Waiting for a holder of drawings.approve",
+    ),
     ("wl_invoicing.drawings.status.approved", "Approved"),
     ("wl_invoicing.drawings.status.rejected", "Not approved"),
     (
         "wl_invoicing.drawings.status.self_approved",
         "Approved by the sole owner (self-approved)",
     ),
-    ("wl_invoicing.drawings.rejected_because", "Not approved because"),
+    (
+        "wl_invoicing.drawings.rejected_because",
+        "Not approved because",
+    ),
     (
         "wl_invoicing.drawings.open_item",
         "How drawings are treated for VAT and corporate tax waits for the accountant's answer (open item A-16). Meanwhile the input VAT on a drawing is not recovered and is shown as blocked in the VAT summary. The bill is approved only after the drawing is approved.",
@@ -1740,8 +1827,14 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_invoicing.drawings.recode.to", "Now"),
     ("wl_invoicing.drawings.recode.by", "Recoded by"),
     ("wl_invoicing.drawings.recodings", "Recoded lines"),
-    ("wl_invoicing.drawings.requested", "The approval was asked for."),
-    ("wl_invoicing.drawings.none", "The bill has no owner drawing."),
+    (
+        "wl_invoicing.drawings.requested",
+        "The approval was asked for.",
+    ),
+    (
+        "wl_invoicing.drawings.none",
+        "The bill has no owner drawing.",
+    ),
     ("wl_invoicing.drawings.recoded", "The line was recoded."),
     (
         "wl_invoicing.drawings.errors.line",
@@ -1821,7 +1914,10 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_invoicing.drawing_corrected.body",
         "Supplier bill {{ bill }} ({{ amount }}) had an approved owner drawing and was voided: {{ reason }}. See the bill: {{ link }}",
     ),
-    ("wl_invoicing.vat.blocked_drawings", "Input VAT blocked on owner drawings"),
+    (
+        "wl_invoicing.vat.blocked_drawings",
+        "Input VAT blocked on owner drawings",
+    ),
     (
         "wl_invoicing.vat.blocked_drawings_note",
         "Not recovered until the accountant answers the open item on drawings (A-16).",

@@ -132,5 +132,9 @@ async fn create(
         },
     )
     .await?;
-    Ok((Toast::success(text(&lang, "enquiries.created")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(text(&lang, "enquiries.created")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }

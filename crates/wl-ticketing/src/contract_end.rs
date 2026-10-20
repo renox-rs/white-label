@@ -125,13 +125,14 @@ async fn cancel_late_visits(
         match work::auto_cancel(state, &visit, CONTRACT_ENDED_REASON).await {
             Ok(()) => {
                 if let Some(assignee) = visit.assignee() {
-                    let request = NotifyRequest::new(VISIT_CANCELLED_NOTICE, visit.ticket_id().subject())
-                        .to(assignee.recipient())
-                        .data(json!({
-                            "number": visit.number,
-                            "title": visit.title,
-                            "contract": contract.number,
-                        }));
+                    let request =
+                        NotifyRequest::new(VISIT_CANCELLED_NOTICE, visit.ticket_id().subject())
+                            .to(assignee.recipient())
+                            .data(json!({
+                                "number": visit.number,
+                                "title": visit.title,
+                                "contract": contract.number,
+                            }));
                     notify::notifier(state).notify(state, request).await?;
                 }
             }
@@ -163,7 +164,8 @@ async fn open_task(
         return Ok(None);
     }
     let settings = settings(state);
-    let title = english("wl_ticketing.contract_end.task_title").replace("{number}", &contract.number);
+    let title =
+        english("wl_ticketing.contract_end.task_title").replace("{number}", &contract.number);
     let lines: Vec<String> = left.iter().map(task_line).collect();
     let description = format!(
         "{}\n{}\n/service-contracts/{}",
@@ -180,7 +182,9 @@ async fn open_task(
     )
     .description(&description)
     .due_at(due);
-    Ok(role_tasks::open(state, task).await?.map(|ticket| ticket.id.0))
+    Ok(role_tasks::open(state, task)
+        .await?
+        .map(|ticket| ticket.id.0))
 }
 
 /// Clears and raises the compliance flags of the ended `contract`; returns
@@ -313,7 +317,10 @@ pub async fn handle(
             contract: contract.contract_id(),
             outcome: outcome.to_owned(),
             new_version: None,
-            visits_cancelled: cancelled.iter().map(Ticket::ticket_id).collect::<Vec<TicketId>>(),
+            visits_cancelled: cancelled
+                .iter()
+                .map(Ticket::ticket_id)
+                .collect::<Vec<TicketId>>(),
             visits_left: left.iter().map(Ticket::ticket_id).collect(),
         })
         .await?;
@@ -399,10 +406,7 @@ pub async fn run(state: &AppState, today: NaiveDate) -> Result<NightlyReport> {
         result
     })
     .await?;
-    let report = seen
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .clone();
+    let report = seen.lock().unwrap_or_else(PoisonError::into_inner).clone();
     Ok(report)
 }
 

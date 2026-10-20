@@ -47,7 +47,11 @@ use crate::texts::english;
 
 /// The owner's consent to writing off one invoice.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
-#[model(table = "property_writeoff_consents", unique(invoice_id), index(agreement_id))]
+#[model(
+    table = "property_writeoff_consents",
+    unique(invoice_id),
+    index(agreement_id)
+)]
 pub struct WriteOffConsent {
     /// The primary key.
     pub id: i64,

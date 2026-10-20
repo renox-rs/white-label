@@ -40,11 +40,13 @@ pub(crate) fn register(app: &mut Registry) {
             .await
             .map(|_| ())
     });
-    app.listen(|event: EmployeeAssignmentChanged, state: AppState| async move {
-        Acknowledgements::reconcile_employee(&state, event.employee.0, today())
-            .await
-            .map(|_| ())
-    });
+    app.listen(
+        |event: EmployeeAssignmentChanged, state: AppState| async move {
+            Acknowledgements::reconcile_employee(&state, event.employee.0, today())
+                .await
+                .map(|_| ())
+        },
+    );
     app.listen(|event: EmployeeExited, state: AppState| async move {
         let reason = crate::texts::english("wl_documents.acks.cancelled_exit", &[]);
         Acknowledgements::cancel_for_employee(&state, event.employee.0, &reason)
@@ -57,9 +59,11 @@ pub(crate) fn register(app: &mut Registry) {
             .await
             .map(|_| ())
     });
-    app.listen(|event: EmployeeOnboardingCancelled, state: AppState| async move {
-        Acknowledgements::cancel_for_employee(&state, event.employee.0, &event.reason)
-            .await
-            .map(|_| ())
-    });
+    app.listen(
+        |event: EmployeeOnboardingCancelled, state: AppState| async move {
+            Acknowledgements::cancel_for_employee(&state, event.employee.0, &event.reason)
+                .await
+                .map(|_| ())
+        },
+    );
 }

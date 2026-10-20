@@ -173,10 +173,7 @@ pub(crate) fn change_problem(
 
 /// Why a refund retried `retries` times cannot be retried again, if it
 /// cannot (`max` is the most).
-pub(crate) fn retry_problem(
-    refund: &Refund,
-    input: Option<&RetryInput>,
-) -> Option<String> {
+pub(crate) fn retry_problem(refund: &Refund, input: Option<&RetryInput>) -> Option<String> {
     let Some(input) = input else {
         return Some("The action was not prepared by the refund service.".to_owned());
     };
@@ -226,9 +223,7 @@ fn changing(
             let by = ctx.actor().map(|user| user.id);
             Box::pin(async move {
                 let input = input.ok_or_else(|| {
-                    Error::from(renox::anyhow::anyhow!(
-                        "a method change without its input"
-                    ))
+                    Error::from(renox::anyhow::anyhow!("a method change without its input"))
                 })?;
                 let method = input.method.unwrap_or_default();
                 let details = details_of(method, input.details.as_deref());
@@ -378,7 +373,11 @@ async fn retry_as(
         max: config_of(state).refund_max_retries,
         room: credit::room_for(&state.db, &refund).await?,
     };
-    let run = refund.transition(if user.is_some() { RETRY } else { RETRY_BY_SYSTEM });
+    let run = refund.transition(if user.is_some() {
+        RETRY
+    } else {
+        RETRY_BY_SYSTEM
+    });
     let run = match user {
         Some(user) => run.by(user),
         None => run.by_system(),
@@ -551,8 +550,14 @@ mod tests {
         assert!(!needs_approval(PaymentMethod::Gateway, None));
         assert!(!needs_approval(PaymentMethod::Cheque, None));
         assert!(!needs_approval(PaymentMethod::Cheque, Some("  ")));
-        assert!(needs_approval(PaymentMethod::Cheque, Some("Another Trading LLC")));
-        assert!(needs_approval(PaymentMethod::Transfer, Some("AE07 0331 2345 6789 0123 456")));
+        assert!(needs_approval(
+            PaymentMethod::Cheque,
+            Some("Another Trading LLC")
+        ));
+        assert!(needs_approval(
+            PaymentMethod::Transfer,
+            Some("AE07 0331 2345 6789 0123 456")
+        ));
         assert!(needs_approval(PaymentMethod::Transfer, None));
     }
 
@@ -584,22 +589,29 @@ mod tests {
     fn a_transfer_needs_details_and_the_card_needs_its_transaction() {
         let failed = refund(Some(PaymentMethod::Cheque));
         let bare = change(PaymentMethod::Transfer, None);
-        assert!(change_problem(&failed, Some(&bare), true)
-            .is_some_and(|m| m.contains("bank details")));
+        assert!(
+            change_problem(&failed, Some(&bare), true).is_some_and(|m| m.contains("bank details"))
+        );
         let card = change(PaymentMethod::Gateway, None);
         assert_eq!(change_problem(&failed, Some(&card), false), None);
         let no_txn = Refund {
             gateway_txn: None,
             ..failed.clone()
         };
-        assert!(change_problem(&no_txn, Some(&card), false)
-            .is_some_and(|m| m.contains("gateway transaction")));
+        assert!(
+            change_problem(&no_txn, Some(&card), false)
+                .is_some_and(|m| m.contains("gateway transaction"))
+        );
     }
 
     #[test]
     fn only_the_four_methods_and_a_real_change_are_accepted() {
         let failed = refund(Some(PaymentMethod::Transfer));
-        for method in [PaymentMethod::Card, PaymentMethod::SetOff, PaymentMethod::Wallet] {
+        for method in [
+            PaymentMethod::Card,
+            PaymentMethod::SetOff,
+            PaymentMethod::Wallet,
+        ] {
             assert!(change_problem(&failed, Some(&change(method, None)), true).is_some());
         }
         assert!(change_problem(&failed, None, false).is_some());
@@ -609,10 +621,20 @@ mod tests {
             payee_details: Some("AE07".into()),
             ..failed.clone()
         };
-        assert!(change_problem(&same, Some(&change(PaymentMethod::Transfer, Some("AE07"))), true)
-            .is_some_and(|m| m.contains("Nothing changed")));
+        assert!(
+            change_problem(
+                &same,
+                Some(&change(PaymentMethod::Transfer, Some("AE07"))),
+                true
+            )
+            .is_some_and(|m| m.contains("Nothing changed"))
+        );
         assert_eq!(
-            change_problem(&same, Some(&change(PaymentMethod::Transfer, Some("AE99"))), true),
+            change_problem(
+                &same,
+                Some(&change(PaymentMethod::Transfer, Some("AE99"))),
+                true
+            ),
             None
         );
     }
@@ -622,8 +644,10 @@ mod tests {
         let failed = refund(Some(PaymentMethod::Gateway));
         let mut cash = change(PaymentMethod::Cash, None);
         cash.room = false;
-        assert!(change_problem(&failed, Some(&cash), false)
-            .is_some_and(|m| m.contains("no longer covers")));
+        assert!(
+            change_problem(&failed, Some(&cash), false)
+                .is_some_and(|m| m.contains("no longer covers"))
+        );
     }
 
     #[test]
@@ -670,7 +694,12 @@ mod tests {
     async fn the_guards_refuse_a_run_the_service_did_not_prepare() {
         let machine = Refund::machine();
         let failed = refund(Some(PaymentMethod::Gateway));
-        for name in [RETRY, RETRY_BY_SYSTEM, CHANGE_METHOD, CHANGE_METHOD_FOR_APPROVAL] {
+        for name in [
+            RETRY,
+            RETRY_BY_SYSTEM,
+            CHANGE_METHOD,
+            CHANGE_METHOD_FOR_APPROVAL,
+        ] {
             let found = machine.find(name).expect(name);
             assert!(matches!(
                 found.check_guards(&failed, &TransitionCtx::new(None)).await,

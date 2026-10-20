@@ -207,7 +207,10 @@ pub async fn send_changed_terms(state: &AppState, user: &AuthUser, id: i64) -> R
         return Err(refused(english("property.renewal.notice_refused", &[])));
     }
     if lease.renewal_decision != RenewalDecision::ChangedTerms {
-        return Err(refused(english("property.renewal.notice_needs_decision", &[])));
+        return Err(refused(english(
+            "property.renewal.notice_needs_decision",
+            &[],
+        )));
     }
     if delivered_on(state, &lease).await?.is_some() {
         return Err(refused(english(
@@ -327,7 +330,10 @@ async fn handle_deadline(
     }
     let flagged = lease.renewal_flagged_on.unwrap_or(NaiveDate::MIN);
     let columns = ["deadline_warned_first_on", "deadline_warned_second_on"];
-    let sent = [lease.deadline_warned_first_on, lease.deadline_warned_second_on];
+    let sent = [
+        lease.deadline_warned_first_on,
+        lease.deadline_warned_second_on,
+    ];
     let due: Vec<usize> = (0..WARN_DAYS.len())
         .filter(|&i| {
             let at = deadline - Duration::days(WARN_DAYS[i]);
@@ -390,8 +396,12 @@ async fn deadlines(state: &AppState, day: NaiveDate, report: &mut Report) -> Res
 ///
 /// The database's errors.
 pub async fn run_deadlines(state: &AppState, day: NaiveDate) -> Result<Report> {
-    let spec = RuleRunSpec::new(RULE_DEADLINE, schedule_subject(), occurrence_key(RULE_DEADLINE, day))
-        .compliance_critical();
+    let spec = RuleRunSpec::new(
+        RULE_DEADLINE,
+        schedule_subject(),
+        occurrence_key(RULE_DEADLINE, day),
+    )
+    .compliance_critical();
     let seen = Arc::new(Mutex::new(Report::default()));
     let out = Arc::clone(&seen);
     run_rule(state, spec, move |state: AppState| async move {
@@ -431,7 +441,9 @@ pub async fn run(state: &AppState, day: NaiveDate) -> Result<Report> {
 /// Marks `PRP.RUL.09` compliance-critical and registers the daily task and
 /// its command.
 pub(crate) fn schedule(app: &mut Registry) {
-    CriticalRule::new(RULE_DEADLINE).daily_at(TASK_AT).register();
+    CriticalRule::new(RULE_DEADLINE)
+        .daily_at(TASK_AT)
+        .register();
     app.schedule()
         .daily_at(TASK_AT, TASK, |state: AppState| async move {
             run(&state, today()).await.map(|_| ())

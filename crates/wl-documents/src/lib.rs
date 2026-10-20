@@ -18,9 +18,7 @@ use renox::db::Migration;
 use renox::nav::NavLink;
 use renox::prelude::*;
 
-pub use acknowledgements::{
-    AckRefused, AckStatus, Acknowledgements, SopAcknowledgement, SopDesk,
-};
+pub use acknowledgements::{AckRefused, AckStatus, Acknowledgements, SopAcknowledgement, SopDesk};
 pub use documents::{
     Attach, AttachReason, AttachRefused, CorrectionInput, Document, DocumentSource, DocumentStatus,
     DocumentVersion, Documents, FieldsUpdate, NewDocument,
@@ -232,10 +230,13 @@ impl Module for WlDocuments {
         );
         app.nav(
             "app",
-            NavLink::route("wl_documents.acknowledgements", "nav.document_acknowledgements")
-                .icon("check")
-                .group("nav.app")
-                .order(39),
+            NavLink::route(
+                "wl_documents.acknowledgements",
+                "nav.document_acknowledgements",
+            )
+            .icon("check")
+            .group("nav.app")
+            .order(39),
         );
         app.nav(
             "app",

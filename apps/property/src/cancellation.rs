@@ -268,7 +268,12 @@ pub async fn settle(state: &AppState, id: i64, by: Option<i64>) -> Result<Settle
     let held = of_version(state, &lease).await?;
     let undeposited: Vec<ChequeId> = held
         .iter()
-        .filter(|c| matches!(c.status, ChequeStatus::Received | ChequeStatus::DueForDeposit))
+        .filter(|c| {
+            matches!(
+                c.status,
+                ChequeStatus::Received | ChequeStatus::DueForDeposit
+            )
+        })
         .map(|c| c.id)
         .collect();
     if !undeposited.is_empty() {
@@ -343,7 +348,10 @@ pub async fn settle(state: &AppState, id: i64, by: Option<i64>) -> Result<Settle
     }
 
     // 2. The invoices: drafts discarded, issued ones credited.
-    for charge in charges.iter().filter(|c| c.status == ChargeStatus::Invoiced) {
+    for charge in charges
+        .iter()
+        .filter(|c| c.status == ChargeStatus::Invoiced)
+    {
         let Some(invoice_id) = charge.invoice_id else {
             continue;
         };
@@ -387,7 +395,10 @@ pub async fn settle(state: &AppState, id: i64, by: Option<i64>) -> Result<Settle
         {
             settlement = settlement.forfeit(lease.cancel_forfeit, clause);
         }
-        match deposits(state).settle_cancelled(state, settlement, by).await {
+        match deposits(state)
+            .settle_cancelled(state, settlement, by)
+            .await
+        {
             Ok(started) => done.deposit = started.map(|s| s.deposit.0),
             Err(error) => done.problems.push(problem("deposit", &error)),
         }
@@ -494,11 +505,8 @@ async fn ask_refund(
     reason: &str,
     by: Option<i64>,
 ) -> Result<()> {
-    let entity = LegalEntity::for_scope(
-        &state.db,
-        Some((BUILDING_SUBJECT_TYPE, lease.building_id)),
-    )
-    .await?;
+    let entity =
+        LegalEntity::for_scope(&state.db, Some((BUILDING_SUBJECT_TYPE, lease.building_id))).await?;
     let tenant: PartyId = lease.tenant();
     // Built before the await: the argument list of `english` is not `Send`.
     let refund_reason = english(

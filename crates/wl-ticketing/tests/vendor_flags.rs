@@ -41,10 +41,22 @@ async fn fire(w: &World, docs: &Documents) -> Fire {
         .await;
     let vendor = Some(Assignee::party(SAFEFIRE));
     let first = w
-        .visit(&contract, "fire_safety", tower_a_fire_alarm(), "2026-12-10", vendor)
+        .visit(
+            &contract,
+            "fire_safety",
+            tower_a_fire_alarm(),
+            "2026-12-10",
+            vendor,
+        )
         .await;
     let second = w
-        .visit(&contract, "fire_safety", tower_a_fire_alarm(), "2027-03-10", vendor)
+        .visit(
+            &contract,
+            "fire_safety",
+            tower_a_fire_alarm(),
+            "2027-03-10",
+            vendor,
+        )
         .await;
     Fire {
         contract,
@@ -91,7 +103,10 @@ async fn tkt07_an_expired_approval_flags_the_contract_its_visits_and_its_subject
 
     let contract = w.reload(&f.contract).await;
     assert!(contract.vendor_document_flag);
-    assert_eq!(contract.vendor_document_kind.as_deref(), Some(CIVIL_DEFENCE));
+    assert_eq!(
+        contract.vendor_document_kind.as_deref(),
+        Some(CIVIL_DEFENCE)
+    );
     assert!(w.t.reload(&f.first).await.vendor_document_flag);
     assert!(w.t.reload(&f.second).await.vendor_document_flag);
 
@@ -203,7 +218,10 @@ async fn tkt07_a_renewed_approval_clears_everything() {
     assert!(w.reload(&f.contract).await.vendor_document_flag);
     assert_eq!(open_flags(&w).await.len(), 1);
 
-    w.t.state().emit(accepted(SAFEFIRE, "2027-11-30")).await.unwrap();
+    w.t.state()
+        .emit(accepted(SAFEFIRE, "2027-11-30"))
+        .await
+        .unwrap();
     let contract = w.reload(&f.contract).await;
     assert!(!contract.vendor_document_flag);
     assert_eq!(contract.vendor_document_kind, None);
@@ -214,7 +232,11 @@ async fn tkt07_a_renewed_approval_clears_everything() {
     assert_eq!(cleared.len(), 1);
     assert_eq!(cleared[0].reason, "vendor_document_expired");
     assert_eq!(cleared[0].subject, tower_a_fire_alarm());
-    let flag = ComplianceFlag::query().first(w.t.db()).await.unwrap().unwrap();
+    let flag = ComplianceFlag::query()
+        .first(w.t.db())
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(flag.cleared_by.as_deref(), Some(DOCUMENT_RENEWED));
 }
 
@@ -232,7 +254,10 @@ async fn tkt07_reassigning_a_visit_removes_its_flag_only() {
         &w.coordinator,
         &f.first,
         "2026-12-01 09:00",
-        &[("party", party.as_str()), ("reason_code", "vendor_document_expired")],
+        &[
+            ("party", party.as_str()),
+            ("reason_code", "vendor_document_expired"),
+        ],
     )
     .await
     .assert_ok();
@@ -240,7 +265,10 @@ async fn tkt07_reassigning_a_visit_removes_its_flag_only() {
     assert_eq!(first.assignee_party_id, Some(BLUEFIRE.0));
     assert!(!first.vendor_document_flag);
     let history = w.t.history(&first).await;
-    assert_eq!(history.last().unwrap().reason_code.as_deref(), Some("vendor_document_expired"));
+    assert_eq!(
+        history.last().unwrap().reason_code.as_deref(),
+        Some("vendor_document_expired")
+    );
 
     assert!(w.t.reload(&f.second).await.vendor_document_flag);
     assert!(w.reload(&f.contract).await.vendor_document_flag);
@@ -268,10 +296,17 @@ async fn tkt07_a_replacement_contract_clears_the_subjects_flag_only() {
         .await;
     assert_eq!(replacement.status, ContractStatus::Active);
     assert!(open_flags(&w).await.is_empty());
-    let flag = ComplianceFlag::query().first(w.t.db()).await.unwrap().unwrap();
+    let flag = ComplianceFlag::query()
+        .first(w.t.db())
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(flag.cleared_by.as_deref(), Some(REPLACEMENT_ACTIVE));
     assert_eq!(w.cleared.all().len(), 1);
-    assert!(w.reload(&f.contract).await.vendor_document_flag, "its own flag stays");
+    assert!(
+        w.reload(&f.contract).await.vendor_document_flag,
+        "its own flag stays"
+    );
 }
 
 /// While another flagged contract still covers the subject, a renewal of one
@@ -291,14 +326,24 @@ async fn tkt07_a_subject_stays_flagged_while_another_flagged_contract_covers_it(
         .await;
     w.t.state().emit(expired(&docs, SAFEFIRE)).await.unwrap();
     w.t.state().emit(expired(&docs, BLUEFIRE)).await.unwrap();
-    assert_eq!(open_flags(&w).await.len(), 1, "one open flag per subject, category and reason");
+    assert_eq!(
+        open_flags(&w).await.len(),
+        1,
+        "one open flag per subject, category and reason"
+    );
 
-    w.t.state().emit(accepted(SAFEFIRE, "2027-11-30")).await.unwrap();
+    w.t.state()
+        .emit(accepted(SAFEFIRE, "2027-11-30"))
+        .await
+        .unwrap();
     assert!(!w.reload(&f.contract).await.vendor_document_flag);
     assert!(w.reload(&second).await.vendor_document_flag);
     assert_eq!(open_flags(&w).await.len(), 1);
 
-    w.t.state().emit(accepted(BLUEFIRE, "2027-11-30")).await.unwrap();
+    w.t.state()
+        .emit(accepted(BLUEFIRE, "2027-11-30"))
+        .await
+        .unwrap();
     assert!(open_flags(&w).await.is_empty());
 }
 
@@ -311,10 +356,17 @@ async fn tkt07_the_contract_end_replaces_the_flag_with_no_contract() {
     let f = fire(&w, &docs).await;
     w.t.state().emit(expired(&docs, SAFEFIRE)).await.unwrap();
 
-    w.terminate(&f.contract, "Approval lapsed", "2026-12-15").await.assert_ok();
-    assert_eq!(open_flags(&w).await[0].reason, ComplianceFlagReason::VendorDocumentExpired);
+    w.terminate(&f.contract, "Approval lapsed", "2026-12-15")
+        .await
+        .assert_ok();
+    assert_eq!(
+        open_flags(&w).await[0].reason,
+        ComplianceFlagReason::VendorDocumentExpired
+    );
 
-    contract_end::run(w.t.state(), date("2026-12-15")).await.unwrap();
+    contract_end::run(w.t.state(), date("2026-12-15"))
+        .await
+        .unwrap();
     let flags = open_flags(&w).await;
     assert_eq!(flags.len(), 1);
     assert_eq!(flags[0].reason, ComplianceFlagReason::NoContract);

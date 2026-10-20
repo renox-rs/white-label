@@ -40,13 +40,13 @@ use renox::chrono::{NaiveDate, TimeDelta};
 use renox::prelude::*;
 use renox::state_machine::TransitionError;
 use serde::{Deserialize, Serialize};
+use wl_kernel::PartyId;
 use wl_kernel::deposits::{
     DeductionKind, DeductionLineView, DepositDeductions, DepositDeductionsDisputed,
     DepositDeductionsPublished, DepositDisputeAnswered, DisputeAnswer, DisputeDeductions,
     PublishedDeductions,
 };
 use wl_kernel::documents::today;
-use wl_kernel::PartyId;
 
 use crate::config_of;
 use crate::deposit::{Deposit, DepositStatus};
@@ -368,7 +368,10 @@ fn guard(message: impl Into<String>) -> TransitionError {
     TransitionError::Guard(message.into())
 }
 
-async fn reload(state: &AppState, deposit: &Deposit) -> std::result::Result<Deposit, TransitionError> {
+async fn reload(
+    state: &AppState,
+    deposit: &Deposit,
+) -> std::result::Result<Deposit, TransitionError> {
     Deposit::find_or_404(&state.db, deposit.id)
         .await
         .map_err(TransitionError::Failed)
@@ -534,10 +537,7 @@ pub(crate) async fn publish_by(
 }
 
 /// The latest version as the party sees it.
-async fn published_of(
-    state: &AppState,
-    deposit: &Deposit,
-) -> Result<Option<PublishedDeductions>> {
+async fn published_of(state: &AppState, deposit: &Deposit) -> Result<Option<PublishedDeductions>> {
     if deposit.status != DepositStatus::SettlementPending {
         return Ok(None);
     }
@@ -982,7 +982,10 @@ mod tests {
         g.today = day(5);
         assert!(gate_problem(&g, false).is_some());
         g.today = day(15);
-        assert!(gate_problem(&g, false).is_some(), "the last day is still open");
+        assert!(
+            gate_problem(&g, false).is_some(),
+            "the last day is still open"
+        );
         g.today = day(16);
         assert_eq!(gate_problem(&g, false), None);
     }
@@ -1030,7 +1033,11 @@ mod tests {
     #[test]
     fn a_forfeit_needs_a_published_forfeiture_and_a_refund_published_deductions() {
         let mut g = gate();
-        assert!(gate_problem(&g, true).unwrap().contains("forfeiture must be published"));
+        assert!(
+            gate_problem(&g, true)
+                .unwrap()
+                .contains("forfeiture must be published")
+        );
         g.forfeiture = true;
         assert_eq!(gate_problem(&g, true), None);
         assert!(gate_problem(&g, false).unwrap().contains("is a forfeiture"));
@@ -1058,7 +1065,12 @@ mod tests {
             assert!(prepare(&request, 800_000).is_err());
         }
         // No line is a version without deductions.
-        assert!(prepare(&PublishRequest::default(), 800_000).unwrap().2.is_empty());
+        assert!(
+            prepare(&PublishRequest::default(), 800_000)
+                .unwrap()
+                .2
+                .is_empty()
+        );
     }
 
     #[test]
@@ -1108,7 +1120,10 @@ mod tests {
         }];
         let lines = revised_lines(&current(), &changes).expect("ok");
         assert_eq!(lines.len(), 2);
-        assert_eq!((lines[0].description.as_str(), lines[0].amount), ("Repainting", 80_000));
+        assert_eq!(
+            (lines[0].description.as_str(), lines[0].amount),
+            ("Repainting", 80_000)
+        );
         assert_eq!(lines[0].evidence, "photos-1");
         assert_eq!(lines[1].amount, 30_000);
     }

@@ -87,10 +87,7 @@ impl QueuedCall {
     }
 
     /// The queued calls of `connection`, oldest first.
-    pub async fn waiting<'c>(
-        db: impl Executor<'c>,
-        connection: &str,
-    ) -> Result<Vec<QueuedCall>> {
+    pub async fn waiting<'c>(db: impl Executor<'c>, connection: &str) -> Result<Vec<QueuedCall>> {
         QueuedCall::query()
             .where_(QueuedCall::CONNECTION_KEY.eq(connection))
             .where_(QueuedCall::STATUS.eq(CallStatus::Queued))

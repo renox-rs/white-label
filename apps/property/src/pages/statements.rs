@@ -140,7 +140,10 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
             owner: owner_name(&state, &lang, found.owner_party_id).await,
             period: format!("{} → {}", found.period_start, found.period_end),
             balance: money_text(found.balance()),
-            status: text(&lang, &format!("statements.status.{}", found.status.as_str())),
+            status: text(
+                &lang,
+                &format!("statements.status.{}", found.status.as_str()),
+            ),
             status_kind: status_kind(found.status),
         });
     }
@@ -272,7 +275,12 @@ async fn show(
     let lines: Vec<StatementLine> = found.lines(&state.db).await?;
     let line_options = lines
         .iter()
-        .map(|l| [l.id.to_string(), format!("{} {}", l.description, signed(l.amount))])
+        .map(|l| {
+            [
+                l.id.to_string(),
+                format!("{} {}", l.description, signed(l.amount)),
+            ]
+        })
         .collect();
     let rows = lines
         .iter()
@@ -301,7 +309,8 @@ async fn show(
             plain_actions.push(view);
         }
     }
-    let disputes: Vec<StatementDispute> = StatementDispute::of_statement(&state.db, found.id).await?;
+    let disputes: Vec<StatementDispute> =
+        StatementDispute::of_statement(&state.db, found.id).await?;
     let dispute_rows = disputes
         .iter()
         .map(|d| DisputeRow {
@@ -324,11 +333,12 @@ async fn show(
         .map(|d| [d.id.to_string(), d.description.clone()])
         .collect();
     let mut dispute_lines = vec![[String::new(), text(&lang, "disputes.whole")]];
-    dispute_lines.extend(
-        lines
-            .iter()
-            .map(|l| [l.id.to_string(), format!("{} {}", l.description, signed(l.amount))]),
-    );
+    dispute_lines.extend(lines.iter().map(|l| {
+        [
+            l.id.to_string(),
+            format!("{} {}", l.description, signed(l.amount)),
+        ]
+    }));
     let prepared_by = match found.prepared_by {
         Some(id) => user_name(&state.db, id).await,
         None => text(&lang, "statements.system"),
@@ -351,7 +361,10 @@ async fn show(
         balance: money_text(found.balance()),
         prepared_by,
         approved_by,
-        published_on: found.published_on.map(|d| d.to_string()).unwrap_or_default(),
+        published_on: found
+            .published_on
+            .map(|d| d.to_string())
+            .unwrap_or_default(),
         return_reason: found.return_reason.clone().unwrap_or_default(),
         revise_reason: found.revise_reason.clone().unwrap_or_default(),
         settled_how: found
@@ -379,7 +392,10 @@ async fn show(
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
         statement: view,
-        status: text(&lang, &format!("statements.status.{}", found.status.as_str())),
+        status: text(
+            &lang,
+            &format!("statements.status.{}", found.status.as_str()),
+        ),
         status_kind: status_kind(found.status),
         lines: rows,
         line_options,
@@ -433,7 +449,10 @@ async fn add_line(
         .parse()
         .map_err(|_| Error::BadRequest("kind".to_owned()))?;
     let amount = parse_aed(&form.amount).ok_or_else(|| {
-        Error::Status(StatusCode::UNPROCESSABLE_ENTITY, "amount: AED 0.00".to_owned())
+        Error::Status(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "amount: AED 0.00".to_owned(),
+        )
     })?;
     let amount = if kind == LineKind::Adjustment && form.direction.trim() == "debit" {
         -amount
@@ -441,7 +460,11 @@ async fn add_line(
         amount
     };
     statement::add_line(&state, &user, id, kind, &form.description, amount).await?;
-    Ok((Toast::success(text(&lang, "statements.line_added")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(text(&lang, "statements.line_added")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// The form that removes a line.
@@ -461,10 +484,17 @@ async fn remove_line(
     Form(form): Form<RemoveLineForm>,
 ) -> Result<Response> {
     let line: i64 = form.line.trim().parse().map_err(|_| {
-        Error::Status(StatusCode::UNPROCESSABLE_ENTITY, "line: 1, 2, 3 ...".to_owned())
+        Error::Status(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "line: 1, 2, 3 ...".to_owned(),
+        )
     })?;
     statement::remove_line(&state, &user, id, line).await?;
-    Ok((Toast::success(text(&lang, "statements.line_removed")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(text(&lang, "statements.line_removed")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// The form that records a dispute.
@@ -490,11 +520,18 @@ async fn open_dispute(
         None
     } else {
         Some(form.line.trim().parse::<i64>().map_err(|_| {
-            Error::Status(StatusCode::UNPROCESSABLE_ENTITY, "line: 1, 2, 3 ...".to_owned())
+            Error::Status(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "line: 1, 2, 3 ...".to_owned(),
+            )
         })?)
     };
     statement_dispute::open(&state, &user, id, line, &form.comment).await?;
-    Ok((Toast::success(text(&lang, "disputes.opened")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(text(&lang, "disputes.opened")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// The form that clears a dispute.
@@ -530,7 +567,10 @@ async fn clear_dispute(
 ) -> Result<Response> {
     let number = |value: &str, field: &str| -> Result<i64> {
         value.trim().parse::<i64>().map_err(|_| {
-            Error::Status(StatusCode::UNPROCESSABLE_ENTITY, format!("{field}: 1, 2, 3 ..."))
+            Error::Status(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                format!("{field}: 1, 2, 3 ..."),
+            )
         })
     };
     let dispute_id = number(&form.dispute, "dispute")?;
@@ -540,7 +580,10 @@ async fn clear_dispute(
         .ok_or(Error::NotFound)?;
     let signed_amount = || -> Result<i64> {
         let amount = parse_aed(&form.amount).ok_or_else(|| {
-            Error::Status(StatusCode::UNPROCESSABLE_ENTITY, "amount: AED 0.00".to_owned())
+            Error::Status(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "amount: AED 0.00".to_owned(),
+            )
         })?;
         Ok(if form.direction.trim() == "debit" {
             -amount
@@ -561,7 +604,11 @@ async fn clear_dispute(
     };
     let note = Some(form.note.clone()).filter(|n| !n.trim().is_empty());
     statement_dispute::clear(&state, &user, found.id, clearing, note).await?;
-    Ok((Toast::success(text(&lang, "disputes.cleared")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(text(&lang, "disputes.cleared")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// The form that asks for a payout.

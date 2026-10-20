@@ -313,17 +313,28 @@ mod tests {
         let onboarding = Onboarding::default();
         let complete = machine.find(COMPLETE).unwrap();
         let ctx = |open: usize| {
-            TransitionCtx::new(None)
-                .with_input(renox::serde_json::to_value(CompleteInput { open_required: open }).unwrap())
+            TransitionCtx::new(None).with_input(
+                renox::serde_json::to_value(CompleteInput {
+                    open_required: open,
+                })
+                .unwrap(),
+            )
         };
         assert!(complete.check_guards(&onboarding, &ctx(1)).await.is_err());
         assert!(complete.check_guards(&onboarding, &ctx(0)).await.is_ok());
-        assert!(complete
-            .check_guards(&onboarding, &TransitionCtx::new(None))
-            .await
-            .is_err());
+        assert!(
+            complete
+                .check_guards(&onboarding, &TransitionCtx::new(None))
+                .await
+                .is_err()
+        );
         let cancel = machine.find(CANCEL).unwrap();
-        assert!(cancel.check_guards(&onboarding, &TransitionCtx::new(None)).await.is_err());
+        assert!(
+            cancel
+                .check_guards(&onboarding, &TransitionCtx::new(None))
+                .await
+                .is_err()
+        );
         let with_reason = TransitionCtx::new(None).with_reason("exited");
         assert!(cancel.check_guards(&onboarding, &with_reason).await.is_ok());
     }
@@ -334,7 +345,12 @@ mod tests {
         let step = OnboardingStep::default();
         for name in [WAIVE, REOPEN] {
             let t = machine.find(name).unwrap();
-            assert!(t.check_guards(&step, &TransitionCtx::new(None)).await.is_err(), "{name}");
+            assert!(
+                t.check_guards(&step, &TransitionCtx::new(None))
+                    .await
+                    .is_err(),
+                "{name}"
+            );
             assert!(
                 t.check_guards(&step, &TransitionCtx::new(None).with_reason("not needed"))
                     .await

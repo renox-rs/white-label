@@ -7,10 +7,8 @@ mod support;
 
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
-use wl_kernel::invoicing::{CreditNoteIssued, CreditNoteId, InvoiceId, InvoiceIssued};
-use wl_kernel::sales::{
-    Attribute, FirstSale, campaign_attribution, lead_conversion,
-};
+use wl_kernel::invoicing::{CreditNoteId, CreditNoteIssued, InvoiceId, InvoiceIssued};
+use wl_kernel::sales::{Attribute, FirstSale, campaign_attribution, lead_conversion};
 use wl_kernel::{PartiesMerged, PartyId, Subject};
 use wl_sales::acquisition::{self, AcquisitionRefused, OTHER_SOURCE};
 use wl_sales::acquisition_daily::run_daily;
@@ -75,10 +73,12 @@ async fn won_lead(t: &Booted, party: PartyId, record: Subject) {
         .update(t.db(), &[("status", &"qualified")])
         .await
         .unwrap();
-    assert!(lead_conversion(t.state())
-        .win(t.state(), lead.lead_id(), record)
-        .await
-        .unwrap());
+    assert!(
+        lead_conversion(t.state())
+            .win(t.state(), lead.lead_id(), record)
+            .await
+            .unwrap()
+    );
 }
 
 /// An invoice of `party`: AED 2,100 with VAT, 2,000 without.
@@ -146,15 +146,19 @@ async fn sal20_a_later_lead_does_not_overwrite_the_acquisition() {
     let (t, events) = boot_events().await;
     c1(&t).await;
     let attribution = campaign_attribution(t.state());
-    assert!(attribution
-        .attribute(t.state(), Attribute::party(P, "referral"))
-        .await
-        .unwrap());
+    assert!(
+        attribution
+            .attribute(t.state(), Attribute::party(P, "referral"))
+            .await
+            .unwrap()
+    );
     // A second attribution is kept out too.
-    assert!(!attribution
-        .attribute(t.state(), Attribute::party(P, "social"))
-        .await
-        .unwrap());
+    assert!(
+        !attribution
+            .attribute(t.state(), Attribute::party(P, "social"))
+            .await
+            .unwrap()
+    );
     won_lead(&t, P, Subject::new("test.quotation", 2)).await;
     let acquisition = acquisition_of(&t, P).await;
     assert_eq!(acquisition.source_id, source_id(&t, "referral").await);
@@ -171,9 +175,16 @@ async fn sal20_a_new_partys_sale_needs_a_source_and_where_set_a_campaign() {
     c1(&t).await;
     let check = |source: Option<&'static str>, campaign: Option<&'static str>| {
         let state = t.state().clone();
-        async move { acquisition::check_sale_source(&state, P, source, campaign).await.unwrap() }
+        async move {
+            acquisition::check_sale_source(&state, P, source, campaign)
+                .await
+                .unwrap()
+        }
     };
-    assert_eq!(check(None, None).await, Err(AcquisitionRefused::SourceRequired));
+    assert_eq!(
+        check(None, None).await,
+        Err(AcquisitionRefused::SourceRequired)
+    );
     assert_eq!(
         check(Some("nowhere"), None).await,
         Err(AcquisitionRefused::UnknownSource)
@@ -220,10 +231,25 @@ async fn sal20_the_nightly_run_links_the_next_sale_or_clears_the_first() {
         .unwrap();
     let first = FirstSale::new(P, so(1), 150_000, day(4, 1));
     let second = FirstSale::new(P, so(2), 90_000, day(4, 9));
-    assert!(attribution.record_first_sale(t.state(), first.clone()).await.unwrap());
+    assert!(
+        attribution
+            .record_first_sale(t.state(), first.clone())
+            .await
+            .unwrap()
+    );
     // Called twice for the same sale, or for a later one: the first stays.
-    assert!(attribution.record_first_sale(t.state(), first).await.unwrap());
-    assert!(!attribution.record_first_sale(t.state(), second).await.unwrap());
+    assert!(
+        attribution
+            .record_first_sale(t.state(), first)
+            .await
+            .unwrap()
+    );
+    assert!(
+        !attribution
+            .record_first_sale(t.state(), second)
+            .await
+            .unwrap()
+    );
     let before = acquisition_of(&t, P).await;
     assert_eq!(before.first_sale(), Some(so(1)));
     assert_eq!(events.acquired.lock().unwrap().len(), 1);
@@ -253,7 +279,12 @@ async fn sal20_the_nightly_run_links_the_next_sale_or_clears_the_first() {
 
     // The party buys again: the new sale is its first sale.
     let third = FirstSale::new(P, so(3), 40_000, day(5, 2));
-    assert!(attribution.record_first_sale(t.state(), third).await.unwrap());
+    assert!(
+        attribution
+            .record_first_sale(t.state(), third)
+            .await
+            .unwrap()
+    );
     assert_eq!(acquisition_of(&t, P).await.first_sale(), Some(so(3)));
     assert_eq!(events.acquired.lock().unwrap().len(), 1);
 }
@@ -307,7 +338,10 @@ async fn sal20_the_attribution_window_sums_the_first_months_of_sales() {
         .unwrap();
     for (n, m, d, value) in [(1, 4, 2, 200_000), (2, 9, 1, 300_000)] {
         let sale = FirstSale::new(P, Subject::new("invoicing.invoice", n), value, day(m, d));
-        attribution.record_first_sale(t.state(), sale).await.unwrap();
+        attribution
+            .record_first_sale(t.state(), sale)
+            .await
+            .unwrap();
     }
     let late = FirstSale::new(
         P,
@@ -315,7 +349,10 @@ async fn sal20_the_attribution_window_sums_the_first_months_of_sales() {
         900_000,
         NaiveDate::from_ymd_opt(2027, 4, 2).unwrap(),
     );
-    attribution.record_first_sale(t.state(), late).await.unwrap();
+    attribution
+        .record_first_sale(t.state(), late)
+        .await
+        .unwrap();
     acquisition::refresh_value(t.state(), P.0).await.unwrap();
     assert_eq!(acquisition_of(&t, P).await.first_sale_value, 500_000);
 }
@@ -326,10 +363,12 @@ async fn sal20_the_attribution_window_sums_the_first_months_of_sales() {
 async fn sal20_a_sale_without_a_source_is_set_to_other_and_listed() {
     let (t, events) = boot_events().await;
     let sale = FirstSale::new(P, Subject::new("invoicing.invoice", 8), 100_000, day(4, 3));
-    assert!(campaign_attribution(t.state())
-        .record_first_sale(t.state(), sale)
-        .await
-        .unwrap());
+    assert!(
+        campaign_attribution(t.state())
+            .record_first_sale(t.state(), sale)
+            .await
+            .unwrap()
+    );
     let acquisition = acquisition_of(&t, P).await;
     assert!(acquisition.source_missing);
     assert_eq!(acquisition.source_id, source_id(&t, OTHER_SOURCE).await);
@@ -365,7 +404,10 @@ async fn sal20_a_merge_keeps_the_acquisition_acquired_first() {
         .await
         .unwrap();
     let sale = FirstSale::new(p2, Subject::new("invoicing.invoice", 9), 70_000, day(5, 3));
-    attribution.record_first_sale(t.state(), sale).await.unwrap();
+    attribution
+        .record_first_sale(t.state(), sale)
+        .await
+        .unwrap();
     let p2_row = acquisition_of(&t, p2).await;
 
     t.state()
@@ -377,9 +419,17 @@ async fn sal20_a_merge_keeps_the_acquisition_acquired_first() {
         .unwrap();
     let kept = acquisition_of(&t, P).await;
     assert_eq!(kept.source_id, source_id(&t, "referral").await);
-    let history = PartyAcquisition::find(t.db(), p2_row.id).await.unwrap().unwrap();
+    let history = PartyAcquisition::find(t.db(), p2_row.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(history.superseded_by, Some(kept.id));
-    assert!(PartyAcquisition::of_party(t.db(), p2).await.unwrap().is_none());
+    assert!(
+        PartyAcquisition::of_party(t.db(), p2)
+            .await
+            .unwrap()
+            .is_none()
+    );
     let live = PartyAcquisition::query()
         .where_(PartyAcquisition::SUPERSEDED_BY.is_null())
         .count(t.db())

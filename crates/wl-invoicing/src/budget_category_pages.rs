@@ -231,26 +231,22 @@ fn on_base<F: Serialize>(error: Error, form: &F) -> Error {
 /// The category a submitted form describes.
 fn input_of(form: &BTreeMap<String, String>, code: Option<&str>) -> Result<CategoryInput> {
     let get = |key: &str| form.get(key).map_or("", |v| v.trim());
-    let kind = get("kind")
-        .parse::<BudgetKind>()
-        .map_err(|_| {
-            invalid(
-                "kind",
-                texts::english("wl_invoicing.budget.errors.kind").to_owned(),
-                form,
-            )
-        })?;
+    let kind = get("kind").parse::<BudgetKind>().map_err(|_| {
+        invalid(
+            "kind",
+            texts::english("wl_invoicing.budget.errors.kind").to_owned(),
+            form,
+        )
+    })?;
     let owner_party_id = match get("owner_party_id") {
         "" => None,
-        id => Some(
-            id.parse::<i64>().map_err(|_| {
-                invalid(
-                    "owner_party_id",
-                    texts::english("wl_invoicing.budget.errors.party").to_owned(),
-                    form,
-                )
-            })?,
-        ),
+        id => Some(id.parse::<i64>().map_err(|_| {
+            invalid(
+                "owner_party_id",
+                texts::english("wl_invoicing.budget.errors.party").to_owned(),
+                form,
+            )
+        })?),
     };
     let mappings = parse_mappings(get("mappings")).map_err(|e| on_base(e, form))?;
     let not_blank = |text: &str| (!text.is_empty()).then(|| text.to_owned());
@@ -333,7 +329,11 @@ mod tests {
         assert!(input.active);
         assert_eq!(input.owner_party_id, None);
         let unticked = input_of(
-            &form(&[("name_en", "x"), ("kind", "income"), ("owner_party_id", "7")]),
+            &form(&[
+                ("name_en", "x"),
+                ("kind", "income"),
+                ("owner_party_id", "7"),
+            ]),
             Some("kept"),
         )
         .unwrap();
@@ -345,19 +345,7 @@ mod tests {
     #[test]
     fn a_bad_kind_party_or_mapping_is_refused() {
         assert!(input_of(&form(&[("kind", "other")]), None).is_err());
-        assert!(
-            input_of(
-                &form(&[("kind", "income"), ("owner_party_id", "x")]),
-                None
-            )
-            .is_err()
-        );
-        assert!(
-            input_of(
-                &form(&[("kind", "income"), ("mappings", "no colon")]),
-                None
-            )
-            .is_err()
-        );
+        assert!(input_of(&form(&[("kind", "income"), ("owner_party_id", "x")]), None).is_err());
+        assert!(input_of(&form(&[("kind", "income"), ("mappings", "no colon")]), None).is_err());
     }
 }

@@ -11,9 +11,9 @@ use renox::prelude::*;
 use wl_kernel::bank_statements::bank_statements;
 use wl_kernel::cash_forecast::cash_forecast_sources;
 use wl_kernel::cheques::{OpenCheque, cheques as cheque_contract};
+use wl_kernel::documents::dubai_date;
 use wl_kernel::invoicing::{CreditNoteStatus, InvoiceStatus};
 use wl_kernel::parties::{PartyStatus, directory};
-use wl_kernel::documents::dubai_date;
 use wl_kernel::payments::{Direction, payment_recorder};
 use wl_kernel::{LegalEntity, PartyId, Subject};
 
@@ -219,7 +219,11 @@ async fn load_entity(
                 value
             }
         };
-        let balance = in_aed(invoice.balance, &invoice.currency, invoice.exchange_rate_micro);
+        let balance = in_aed(
+            invoice.balance,
+            &invoice.currency,
+            invoice.exchange_rate_micro,
+        );
         if balance.is_none() {
             input.unpriced.push(subject.clone());
         }
@@ -227,13 +231,20 @@ async fn load_entity(
         if invoice.disputed {
             if let Some(id) = invoice.dispute_id {
                 if let Some(dispute) = Dispute::find(db, id).await? {
-                    disputed = in_aed(dispute.amount, &invoice.currency, invoice.exchange_rate_micro)
-                        .unwrap_or(0);
+                    disputed = in_aed(
+                        dispute.amount,
+                        &invoice.currency,
+                        invoice.exchange_rate_micro,
+                    )
+                    .unwrap_or(0);
                 }
             }
         }
         input.invoices.push(InvoiceInput {
-            label: invoice.number.clone().unwrap_or_else(|| subject.to_string()),
+            label: invoice
+                .number
+                .clone()
+                .unwrap_or_else(|| subject.to_string()),
             subject,
             party: PartyId(invoice.party_id),
             due: invoice.due_date.or(invoice.issue_date).unwrap_or(today),
@@ -496,14 +507,19 @@ async fn load_fill(
     // The bills not yet approved that the forecast counts, by line.
     let pending: Vec<SupplierBill> = SupplierBill::query()
         .where_(SupplierBill::LEGAL_ENTITY_ID.eq(entity))
-        .where_(SupplierBill::STATUS.is_in([
-            SupplierBillStatus::Matched,
-            SupplierBillStatus::Exception,
-        ]))
+        .where_(
+            SupplierBill::STATUS
+                .is_in([SupplierBillStatus::Matched, SupplierBillStatus::Exception]),
+        )
         .get(db)
         .await?
         .into_iter()
-        .filter(|b| !input.bills.iter().any(|i| i.subject == b.subject() && i.duplicate))
+        .filter(|b| {
+            !input
+                .bills
+                .iter()
+                .any(|i| i.subject == b.subject() && i.duplicate)
+        })
         .collect();
     for item in budget_actual::bill_items(db, mapped, &pending).await? {
         if let Some(category) = item.category_id {
@@ -580,12 +596,7 @@ async fn load_vat(
 /// The net VAT payable of the period from the documents: the VAT of the
 /// invoices less credit notes, less the input VAT of the approved supplier
 /// bills that is recovered (the VAT on owner drawings is not), in AED fils.
-pub async fn payable(
-    db: &Db,
-    entity: i64,
-    start: NaiveDate,
-    end: NaiveDate,
-) -> Result<i64> {
+pub async fn payable(db: &Db, entity: i64, start: NaiveDate, end: NaiveDate) -> Result<i64> {
     let invoices = Invoice::query()
         .where_(Invoice::LEGAL_ENTITY_ID.eq(entity))
         .where_(Invoice::STATUS.ne(InvoiceStatus::Draft))
@@ -599,8 +610,9 @@ pub async fn payable(
                 .is_some_and(|d| d >= start && d <= end)
         })
         .map(|i| {
-            i.vat_total_aed
-                .unwrap_or_else(|| in_aed(i.vat_total, &i.currency, i.exchange_rate_micro).unwrap_or(0))
+            i.vat_total_aed.unwrap_or_else(|| {
+                in_aed(i.vat_total, &i.currency, i.exchange_rate_micro).unwrap_or(0)
+            })
         })
         .sum();
     let notes = CreditNote::query()
@@ -643,11 +655,7 @@ mod tests {
     #[test]
     fn the_periods_are_those_whose_return_falls_in_the_window() {
         // Quarterly on calendar quarters; today 2027-01-13, 13 weeks ahead.
-        let periods = vat_periods(
-            TaxPeriod::default(),
-            day(2027, 1, 13),
-            day(2027, 4, 11),
-        );
+        let periods = vat_periods(TaxPeriod::default(), day(2027, 1, 13), day(2027, 4, 11));
         // Q4 2026 is due 2027-01-28; Q1 2027 is due 2027-04-28, beyond the
         // horizon; Q3 2026 was due 2026-10-28, more than 60 days ago.
         assert_eq!(periods, vec![(day(2026, 10, 1), day(2026, 12, 31))]);
@@ -655,11 +663,7 @@ mod tests {
 
     #[test]
     fn a_return_just_past_due_is_still_looked_at() {
-        let periods = vat_periods(
-            TaxPeriod::default(),
-            day(2026, 11, 20),
-            day(2027, 2, 20),
-        );
+        let periods = vat_periods(TaxPeriod::default(), day(2026, 11, 20), day(2027, 2, 20));
         assert_eq!(
             periods,
             vec![

@@ -128,10 +128,7 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_sales.notices.lead_win_reverted_body",
         "The lead {{ name }} was won with {{ voided }}, which was voided as entered in error. The lead is qualified again.",
     ),
-    (
-        "wl_sales.leads.source_required",
-        "Pick the lead source.",
-    ),
+    ("wl_sales.leads.source_required", "Pick the lead source."),
     (
         "wl_sales.leads.unknown_source",
         "There is no such lead source, or it is switched off.",
@@ -144,10 +141,7 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_sales.leads.web_form_note",
         "Another web form enquiry arrived on campaign :code.",
     ),
-    (
-        "wl_sales.leads.problem.note",
-        "Record the contact note.",
-    ),
+    ("wl_sales.leads.problem.note", "Record the contact note."),
     (
         "wl_sales.leads.problem.converted",
         "A lead is won with the conversion record.",
@@ -181,8 +175,14 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_sales.acquisitions.subtitle",
         "Customers whose first sale came with no source, and the changes of source or campaign.",
     ),
-    ("wl_sales.acquisitions.missing.title", "Sales without a source"),
-    ("wl_sales.acquisitions.missing.empty", "Every sale has a source"),
+    (
+        "wl_sales.acquisitions.missing.title",
+        "Sales without a source",
+    ),
+    (
+        "wl_sales.acquisitions.missing.empty",
+        "Every sale has a source",
+    ),
     ("wl_sales.acquisitions.party", "Customer"),
     ("wl_sales.acquisitions.first_sale", "First sale"),
     ("wl_sales.acquisitions.first_sale_date", "Date"),
@@ -199,10 +199,16 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_sales.changes.requested_by", "Asked by"),
     ("wl_sales.changes.decided_by", "Approved by"),
     ("wl_sales.changes.request", "Change source"),
-    ("wl_sales.changes.request_title", "Change the source or campaign"),
+    (
+        "wl_sales.changes.request_title",
+        "Change the source or campaign",
+    ),
     ("wl_sales.changes.approve", "Approve"),
     ("wl_sales.changes.reject", "Reject"),
-    ("wl_sales.changes.status.pending", "Waiting for a second person"),
+    (
+        "wl_sales.changes.status.pending",
+        "Waiting for a second person",
+    ),
     ("wl_sales.changes.status.applied", "Applied"),
     ("wl_sales.changes.status.rejected", "Rejected"),
     (
@@ -218,7 +224,10 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_sales.changes.unknown_source",
         "There is no such lead source, or it is switched off.",
     ),
-    ("wl_sales.changes.unknown_campaign", "There is no such campaign."),
+    (
+        "wl_sales.changes.unknown_campaign",
+        "There is no such campaign.",
+    ),
     (
         "wl_sales.changes.campaign_required",
         "This source needs a campaign.",
@@ -231,7 +240,10 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_sales.changes.same_person",
         "The one who asked for a change cannot approve it.",
     ),
-    ("wl_sales.changes.not_pending", "The change was already decided."),
+    (
+        "wl_sales.changes.not_pending",
+        "The change was already decided.",
+    ),
     ("wl_sales.changes.no_decider", "Say who decides."),
     ("wl_sales.report.title", "Acquisition report"),
     (
@@ -242,7 +254,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_sales.report.show", "Show"),
     ("wl_sales.report.all", "All"),
     ("wl_sales.report.total", "Total"),
-    ("wl_sales.report.empty", "Nothing to report for these filters"),
+    (
+        "wl_sales.report.empty",
+        "Nothing to report for these filters",
+    ),
     ("wl_sales.report.group", "Group by"),
     ("wl_sales.report.source", "Source"),
     ("wl_sales.report.campaign", "Campaign code"),

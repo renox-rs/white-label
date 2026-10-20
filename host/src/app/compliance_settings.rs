@@ -51,7 +51,14 @@ pub struct Row {
     pub open: String,
 }
 
-fn row(number: &str, group: &str, setting: &str, value: String, source: &str, reference: &str) -> Row {
+fn row(
+    number: &str,
+    group: &str,
+    setting: &str,
+    value: String,
+    source: &str,
+    reference: &str,
+) -> Row {
     Row {
         number: number.to_owned(),
         group: group.to_owned(),
@@ -76,23 +83,42 @@ fn names(keys: &[&str]) -> String {
 
 /// The document kind `key` as registered, in words.
 fn kind_text(key: &str) -> String {
-    let Some(kind) = wl_documents::kinds::kind_seeds().into_iter().find(|k| k.key == key) else {
+    let Some(kind) = wl_documents::kinds::kind_seeds()
+        .into_iter()
+        .find(|k| k.key == key)
+    else {
         return "not registered (the documents module is off)".to_owned();
     };
     let blocks: Vec<String> = kind
         .blocks
         .iter()
         .map(|b| {
-            let mode = if b.mode == wl_kernel::documents::BlockMode::Block { "block" } else { "flag" };
+            let mode = if b.mode == wl_kernel::documents::BlockMode::Block {
+                "block"
+            } else {
+                "flag"
+            };
             match &b.condition {
-                Some(c) => format!("{} ({mode}; {} in {})", b.guarded, c.field, c.values.join(", ")),
+                Some(c) => format!(
+                    "{} ({mode}; {} in {})",
+                    b.guarded,
+                    c.field,
+                    c.values.join(", ")
+                ),
                 None => format!("{} ({mode})", b.guarded),
             }
         })
         .collect();
     let mut text = vec![
         format!("expiry {}", if kind.has_expiry { "yes" } else { "no" }),
-        format!("blocks: {}", if blocks.is_empty() { "none".to_owned() } else { blocks.join("; ") }),
+        format!(
+            "blocks: {}",
+            if blocks.is_empty() {
+                "none".to_owned()
+            } else {
+                blocks.join("; ")
+            }
+        ),
         format!("override {}", kind.override_mode.as_str()),
     ];
     if kind.legal_block {
@@ -124,7 +150,10 @@ fn type_text(key: &str) -> String {
         None => format!("{key}: not registered"),
         Some(def) => {
             let reactions: Vec<&str> = def.give_up.iter().map(|r| r.as_str()).collect();
-            let role = def.staff_role.as_deref().map_or(String::new(), |r| format!(" to {r}"));
+            let role = def
+                .staff_role
+                .as_deref()
+                .map_or(String::new(), |r| format!(" to {r}"));
             format!(
                 "{key}: group {}{}; on give-up {}{role}",
                 def.group,
@@ -145,7 +174,11 @@ pub fn rows(client_app: &str, owner_role: &str) -> Vec<Row> {
     let critical: Vec<String> = CRITICAL_RULES
         .iter()
         .map(|rule| {
-            let state = if wl_kernel::compliance::is_critical(rule) { "marked" } else { "not registered" };
+            let state = if wl_kernel::compliance::is_critical(rule) {
+                "marked"
+            } else {
+                "not registered"
+            };
             format!("{rule} ({state})")
         })
         .collect();
@@ -158,13 +191,22 @@ pub fn rows(client_app: &str, owner_role: &str) -> Vec<Row> {
             if future { "registered" } else { "missing" },
         )
     };
-    let kind_roles: Vec<String> = KINDS.iter().map(|k| format!("{}: {}", k.key, k.role)).collect();
+    let kind_roles: Vec<String> = KINDS
+        .iter()
+        .map(|k| format!("{}: {}", k.key, k.role))
+        .collect();
     let categories: Vec<String> = CATEGORIES
         .iter()
         .map(|c| format!("{} ({})", c.key, c.name_en))
         .collect();
-    let onboarding: Vec<String> = ONBOARDING.iter().map(|o| format!("{} ({} steps)", o.role, o.steps.len())).collect();
-    let sops: Vec<String> = SOPS.iter().map(|s| format!("{} — owner {}", s.title, s.owner_role)).collect();
+    let onboarding: Vec<String> = ONBOARDING
+        .iter()
+        .map(|o| format!("{} ({} steps)", o.role, o.steps.len()))
+        .collect();
+    let sops: Vec<String> = SOPS
+        .iter()
+        .map(|s| format!("{} — owner {}", s.title, s.owner_role))
+        .collect();
     let channels: Vec<String> = seed::CAMPAIGN_CHANNELS
         .iter()
         .map(|(name, kind)| format!("{name} (recorded as {kind})"))
@@ -256,7 +298,10 @@ pub fn rows(client_app: &str, owner_role: &str) -> Vec<Row> {
 }
 
 fn days(list: &[i64]) -> String {
-    list.iter().map(i64::to_string).collect::<Vec<_>>().join("/")
+    list.iter()
+        .map(i64::to_string)
+        .collect::<Vec<_>>()
+        .join("/")
 }
 
 /// The Property client's compliance settings and the page that shows them.
@@ -304,7 +349,9 @@ impl Module for ComplianceSettings {
 }
 
 async fn show(State(state): State<AppState>) -> Result<Response> {
-    let settings = state.provided::<ComplianceSettings>().ok_or(Error::NotFound)?;
+    let settings = state
+        .provided::<ComplianceSettings>()
+        .ok_or(Error::NotFound)?;
     let rows = rows(&settings.client_app, &settings.owner_role);
     Ok(view("settings/compliance.html", context! { rows }).into_response())
 }
@@ -321,13 +368,20 @@ mod tests {
         expected.insert(6, "6a".to_owned());
         expected.insert(16, "15a".to_owned());
         assert_eq!(numbers, expected);
-        assert!(rows.iter().all(|r| !r.value.is_empty() && !r.source.is_empty() && !r.reference.is_empty()));
+        assert!(
+            rows.iter()
+                .all(|r| !r.value.is_empty() && !r.source.is_empty() && !r.reference.is_empty())
+        );
     }
 
     #[test]
     fn only_the_civil_defence_row_waits_on_the_lawyer_and_the_authority() {
         let rows = rows("property", "admin");
-        let open: Vec<&str> = rows.iter().filter(|r| r.open.contains("L-19")).map(|r| r.number.as_str()).collect();
+        let open: Vec<&str> = rows
+            .iter()
+            .filter(|r| r.open.contains("L-19"))
+            .map(|r| r.number.as_str())
+            .collect();
         assert_eq!(open, ["3"]);
     }
 }

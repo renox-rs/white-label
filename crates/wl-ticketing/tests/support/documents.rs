@@ -162,7 +162,8 @@ impl DocumentGuard for Documents {
                         continue;
                     }
                     let name = kind_name(&entry.kind);
-                    let allowed = entry.override_mode == OverrideMode::WithApproval && !entry.locked;
+                    let allowed =
+                        entry.override_mode == OverrideMode::WithApproval && !entry.locked;
                     let what = match &validity {
                         Validity::Invalid {
                             expired_on: Some(date),
@@ -172,7 +173,11 @@ impl DocumentGuard for Documents {
                     };
                     let message = format!(
                         "{what}; override: {}",
-                        if allowed { "with approval" } else { "not allowed" }
+                        if allowed {
+                            "with approval"
+                        } else {
+                            "not allowed"
+                        }
                     );
                     failures.push(BlockFailure {
                         entry: entry.clone(),

@@ -21,9 +21,7 @@ use wl_kernel::machines::BoxFuture;
 use wl_kernel::notify::{
     MessageId, Notifier, NotifyFuture, NotifyRecipient, NotifyRequest, provide_notifier,
 };
-use wl_kernel::{
-    ClientConfig, FiredRun, LateEntry, LateEntryStatus, Subject, VoidRecord, scopes,
-};
+use wl_kernel::{ClientConfig, FiredRun, LateEntry, LateEntryStatus, Subject, VoidRecord, scopes};
 
 const BUILDINGS: &str = "test_buildings";
 const TOWER_A: i64 = 1;
@@ -216,15 +214,21 @@ async fn world() -> World {
         .expect("wl:install runs");
 
     let db = app.db();
-    permissions::define_role(db, "manager", &[wl_kernel::permissions::LATE_ENTRIES_APPROVE])
-        .await
-        .unwrap();
+    permissions::define_role(
+        db,
+        "manager",
+        &[wl_kernel::permissions::LATE_ENTRIES_APPROVE],
+    )
+    .await
+    .unwrap();
     permissions::define_role(db, "supervisor", &[wl_kernel::permissions::APPROVALS_VIEW])
         .await
         .unwrap();
     let user = |name: &'static str| async move {
         let email = format!("{}@example.com", name.to_lowercase());
-        User::register(db, name, &email, "password123").await.unwrap()
+        User::register(db, name, &email, "password123")
+            .await
+            .unwrap()
     };
     let tower = |id: i64| Scope::new(BUILDINGS, id);
     let world = World {
@@ -249,7 +253,11 @@ async fn world() -> World {
         .await
         .unwrap();
     for id in [TOWER_A, TOWER_B] {
-        world.both.assign_role_in(db, "manager", &tower(id)).await.unwrap();
+        world
+            .both
+            .assign_role_in(db, "manager", &tower(id))
+            .await
+            .unwrap();
     }
     world
         .supervisor
@@ -330,7 +338,8 @@ impl World {
                 entered_by: self.anna.id,
                 fired_runs: Json(runs),
                 status: LateEntryStatus::Recorded,
-                ..Default::default()            },
+                ..Default::default()
+            },
         )
         .await;
     }
@@ -360,18 +369,57 @@ fn no_show() -> FiredRun {
 async fn insert_late(db: &Db, mut entry: LateEntry) {
     let status = entry.status;
     let mut tx = db.begin().await.unwrap();
-    entry.insert_in_state(&mut tx, status, "fixture").await.unwrap();
+    entry
+        .insert_in_state(&mut tx, status, "fixture")
+        .await
+        .unwrap();
     tx.commit().await.unwrap();
 }
 
 #[renox::test]
 async fn the_manager_gets_one_digest_with_the_five_records_and_the_runs_to_review() {
     let w = world().await;
-    w.void(TOWER_A, "RCP-ACME-2026-0042", "2026-11-03T10:20:00Z", "duplicate").await;
-    w.void(TOWER_A, "RCP-ACME-2026-0043", "2026-11-03T11:00:00Z", "wrong party").await;
-    w.late(TOWER_A, "CI-1", false, "2026-11-03T06:30:00Z", "router down", vec![no_show()]).await;
-    w.late(TOWER_A, "CI-2", false, "2026-11-03T07:00:00Z", "power cut", Vec::new()).await;
-    w.late(TOWER_A, "CI-3", false, "2026-11-03T08:00:00Z", "paper sheet", Vec::new()).await;
+    w.void(
+        TOWER_A,
+        "RCP-ACME-2026-0042",
+        "2026-11-03T10:20:00Z",
+        "duplicate",
+    )
+    .await;
+    w.void(
+        TOWER_A,
+        "RCP-ACME-2026-0043",
+        "2026-11-03T11:00:00Z",
+        "wrong party",
+    )
+    .await;
+    w.late(
+        TOWER_A,
+        "CI-1",
+        false,
+        "2026-11-03T06:30:00Z",
+        "router down",
+        vec![no_show()],
+    )
+    .await;
+    w.late(
+        TOWER_A,
+        "CI-2",
+        false,
+        "2026-11-03T07:00:00Z",
+        "power cut",
+        Vec::new(),
+    )
+    .await;
+    w.late(
+        TOWER_A,
+        "CI-3",
+        false,
+        "2026-11-03T08:00:00Z",
+        "paper sheet",
+        Vec::new(),
+    )
+    .await;
 
     let report = w.run().await;
     assert_eq!(report.sent, 2, "Mia, and Bea who manages both towers");
@@ -380,7 +428,11 @@ async fn the_manager_gets_one_digest_with_the_five_records_and_the_runs_to_revie
     assert_eq!(sent.len(), 1, "one digest");
     let text = sent[0].data["digest"].as_str().unwrap().to_owned();
     assert!(text.contains("Tower A"), "{text}");
-    assert_eq!(text.lines().filter(|l| l.starts_with("- ")).count(), 5, "{text}");
+    assert_eq!(
+        text.lines().filter(|l| l.starts_with("- ")).count(),
+        5,
+        "{text}"
+    );
     for expected in [
         "receipt RCP-ACME-2026-0042: voided by Vera, reason: duplicate",
         "receipt RCP-ACME-2026-0043: voided by Vera, reason: wrong party",
@@ -404,20 +456,36 @@ async fn the_manager_gets_one_digest_with_the_five_records_and_the_runs_to_revie
 #[renox::test]
 async fn only_the_holders_of_the_permission_in_the_scope_with_something_get_one() {
     let w = world().await;
-    w.void(TOWER_A, "RCP-ACME-2026-0042", "2026-11-03T10:20:00Z", "duplicate").await;
+    w.void(
+        TOWER_A,
+        "RCP-ACME-2026-0042",
+        "2026-11-03T10:20:00Z",
+        "duplicate",
+    )
+    .await;
     w.run().await;
 
     assert!(w.notices.to(w.supervisor.id).is_empty());
     assert!(w.notices.to(w.manager_b.id).is_empty());
     assert_eq!(w.notices.to(w.manager_a.id).len(), 1);
-    assert_eq!(w.notices.total(), 2, "Tower A's manager and the one of both");
+    assert_eq!(
+        w.notices.total(),
+        2,
+        "Tower A's manager and the one of both"
+    );
 }
 
 /// AC5: running the rule again for the same date sends nothing new.
 #[renox::test]
 async fn a_second_run_for_the_same_date_sends_nothing() {
     let w = world().await;
-    w.void(TOWER_A, "RCP-ACME-2026-0042", "2026-11-03T10:20:00Z", "duplicate").await;
+    w.void(
+        TOWER_A,
+        "RCP-ACME-2026-0042",
+        "2026-11-03T10:20:00Z",
+        "duplicate",
+    )
+    .await;
     assert_eq!(w.run().await.sent, 2);
 
     let again = w.run().await;
@@ -429,8 +497,22 @@ async fn a_second_run_for_the_same_date_sends_nothing() {
 #[renox::test]
 async fn a_manager_of_two_towers_gets_one_digest_with_two_sections() {
     let w = world().await;
-    w.void(TOWER_B, "RCP-ACME-2026-0050", "2026-11-03T10:20:00Z", "duplicate").await;
-    w.late(TOWER_A, "CI-1", false, "2026-11-03T06:30:00Z", "router down", Vec::new()).await;
+    w.void(
+        TOWER_B,
+        "RCP-ACME-2026-0050",
+        "2026-11-03T10:20:00Z",
+        "duplicate",
+    )
+    .await;
+    w.late(
+        TOWER_A,
+        "CI-1",
+        false,
+        "2026-11-03T06:30:00Z",
+        "router down",
+        Vec::new(),
+    )
+    .await;
     w.run().await;
 
     let both = w.notices.to(w.both.id);
@@ -439,13 +521,28 @@ async fn a_manager_of_two_towers_gets_one_digest_with_two_sections() {
     let a = text.find("Tower A").expect("Tower A");
     let b = text.find("Tower B").expect("Tower B");
     assert!(a < b, "{text}");
-    assert!(text.contains("CI-1") && text.contains("RCP-ACME-2026-0050"), "{text}");
+    assert!(
+        text.contains("CI-1") && text.contains("RCP-ACME-2026-0050"),
+        "{text}"
+    );
 
     // The towers' own managers see only their tower.
-    let only_a = w.notices.to(w.manager_a.id)[0].data["digest"].as_str().unwrap().to_owned();
-    assert!(only_a.contains("CI-1") && !only_a.contains("RCP-ACME-2026-0050"), "{only_a}");
-    let only_b = w.notices.to(w.manager_b.id)[0].data["digest"].as_str().unwrap().to_owned();
-    assert!(only_b.contains("RCP-ACME-2026-0050") && !only_b.contains("CI-1"), "{only_b}");
+    let only_a = w.notices.to(w.manager_a.id)[0].data["digest"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert!(
+        only_a.contains("CI-1") && !only_a.contains("RCP-ACME-2026-0050"),
+        "{only_a}"
+    );
+    let only_b = w.notices.to(w.manager_b.id)[0].data["digest"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert!(
+        only_b.contains("RCP-ACME-2026-0050") && !only_b.contains("CI-1"),
+        "{only_b}"
+    );
 }
 
 /// The period is 07:00 the day before up to, not including, 07:00 on the
@@ -454,15 +551,38 @@ async fn a_manager_of_two_towers_gets_one_digest_with_two_sections() {
 async fn only_the_records_of_the_period_are_listed() {
     let w = world().await;
     // 07:00 Dubai on the 3rd is 03:00 UTC; the 4th, 03:00 UTC.
-    w.void(TOWER_A, "RCP-IN-FROM", "2026-11-03T03:00:00Z", "at the start").await;
-    w.void(TOWER_A, "RCP-BEFORE", "2026-11-03T02:59:59Z", "too early").await;
-    w.void(TOWER_A, "RCP-AT-UNTIL", "2026-11-04T03:00:00Z", "at the end").await;
-    w.void(TOWER_A, "RCP-LAST", "2026-11-04T02:59:59Z", "last second").await;
+    w.void(
+        TOWER_A,
+        "RCP-IN-FROM",
+        "2026-11-03T03:00:00Z",
+        "at the start",
+    )
+    .await;
+    w.void(TOWER_A, "RCP-BEFORE", "2026-11-03T02:59:59Z", "too early")
+        .await;
+    w.void(
+        TOWER_A,
+        "RCP-AT-UNTIL",
+        "2026-11-04T03:00:00Z",
+        "at the end",
+    )
+    .await;
+    w.void(TOWER_A, "RCP-LAST", "2026-11-04T02:59:59Z", "last second")
+        .await;
     w.run().await;
 
-    let text = w.notices.to(w.manager_a.id)[0].data["digest"].as_str().unwrap().to_owned();
-    assert!(text.contains("RCP-IN-FROM") && text.contains("RCP-LAST"), "{text}");
-    assert!(!text.contains("RCP-BEFORE") && !text.contains("RCP-AT-UNTIL"), "{text}");
+    let text = w.notices.to(w.manager_a.id)[0].data["digest"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert!(
+        text.contains("RCP-IN-FROM") && text.contains("RCP-LAST"),
+        "{text}"
+    );
+    assert!(
+        !text.contains("RCP-BEFORE") && !text.contains("RCP-AT-UNTIL"),
+        "{text}"
+    );
 }
 
 /// Content follows field visibility: a late entry on a confidential record
@@ -470,13 +590,26 @@ async fn only_the_records_of_the_period_are_listed() {
 #[renox::test]
 async fn a_confidential_record_shows_only_its_type_and_number() {
     let w = world().await;
-    w.late(TOWER_A, "CI-SECRET", true, "2026-11-03T06:30:00Z", "private matter", vec![no_show()])
-        .await;
+    w.late(
+        TOWER_A,
+        "CI-SECRET",
+        true,
+        "2026-11-03T06:30:00Z",
+        "private matter",
+        vec![no_show()],
+    )
+    .await;
     w.run().await;
 
-    let text = w.notices.to(w.manager_a.id)[0].data["digest"].as_str().unwrap().to_owned();
+    let text = w.notices.to(w.manager_a.id)[0].data["digest"]
+        .as_str()
+        .unwrap()
+        .to_owned();
     assert!(text.contains("- check in CI-SECRET"), "{text}");
-    assert!(!text.contains("Anna") && !text.contains("private matter"), "{text}");
+    assert!(
+        !text.contains("Anna") && !text.contains("private matter"),
+        "{text}"
+    );
     assert!(!text.contains("already fired"), "{text}");
 }
 
@@ -497,7 +630,8 @@ async fn an_entry_that_waits_for_approval_is_not_listed_and_an_empty_day_sends_n
             reason: "power cut".into(),
             entered_by: w.anna.id,
             status: LateEntryStatus::AwaitingApproval,
-            ..Default::default()        },
+            ..Default::default()
+        },
     )
     .await;
 

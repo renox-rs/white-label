@@ -64,9 +64,11 @@ pub struct Report {
 /// extended to, else `CHASE_TASK_AFTER` days after submission. `None` for a
 /// lease that was never submitted.
 pub fn task_due_on(lease: &Lease) -> Option<NaiveDate> {
-    lease
-        .follow_up_until
-        .or_else(|| lease.submitted_on.map(|day| day + Duration::days(CHASE_TASK_AFTER)))
+    lease.follow_up_until.or_else(|| {
+        lease
+            .submitted_on
+            .map(|day| day + Duration::days(CHASE_TASK_AFTER))
+    })
 }
 
 /// The days `lease` has been waiting on `day`; `None` for a lease that is not

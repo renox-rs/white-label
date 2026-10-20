@@ -30,9 +30,7 @@ use wl_kernel::documents::today;
 
 use super::statements::owner_name;
 use super::{Texts, text};
-use crate::agreement::{
-    self, AgreementStatus, AgreementUnit, ManagementAgreement, NewAgreement,
-};
+use crate::agreement::{self, AgreementStatus, AgreementUnit, ManagementAgreement, NewAgreement};
 use crate::agreement_lifecycle::{self as lifecycle, HandoverItem, Notice, NoticeParty};
 use crate::building::Building;
 use crate::money_text;
@@ -66,7 +64,10 @@ pub fn routes() -> Routes {
         .name("property.agreement_end")
         .post("/property/agreements/{id}/transfers", request_transfer)
         .name("property.agreement_transfer_request")
-        .post("/property/agreements/{id}/transfer-receipts", transfer_receipt)
+        .post(
+            "/property/agreements/{id}/transfer-receipts",
+            transfer_receipt,
+        )
         .name("property.agreement_transfer_receipt")
         .post("/property/transfers/{id}/approve", approve_transfer)
         .name("property.transfer_approve")
@@ -151,7 +152,10 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
             owner: owner_name(&state, &lang, found.owner_party_id).await,
             fee: fee_text(&found),
             start: found.start_date.to_string(),
-            status: text(&lang, &format!("agreements.status.{}", found.status.as_str())),
+            status: text(
+                &lang,
+                &format!("agreements.status.{}", found.status.as_str()),
+            ),
             status_kind: status_kind(found.status),
         });
     }
@@ -206,7 +210,11 @@ async fn create(
         new.fee_fixed = parse_aed(&form.fee_fixed).ok_or_else(|| invalid("fee_fixed: AED 0.00"))?;
     }
     agreement::create_draft(&state, Some(user.id), new).await?;
-    Ok((Toast::success(text(&lang, "agreements.created")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(text(&lang, "agreements.created")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// A unit of the agreement.
@@ -392,7 +400,12 @@ async fn show(
     let rows = found.units(&state.db).await?;
     let units = unit_rows(&state.db, &rows).await?;
     let mut unit_options: Vec<[String; 2]> = Vec::new();
-    for unit in Unit::query().order_by(Unit::BUILDING_ID).order_by(Unit::NUMBER).get(&state.db).await? {
+    for unit in Unit::query()
+        .order_by(Unit::BUILDING_ID)
+        .order_by(Unit::NUMBER)
+        .get(&state.db)
+        .await?
+    {
         let building = Building::find(&state.db, unit.building_id)
             .await?
             .map(|b| b.code)
@@ -426,7 +439,10 @@ async fn show(
         fee: fee_text(&found),
         start: found.start_date.to_string(),
         notice,
-        handover: found.handover_date.map(|d| d.to_string()).unwrap_or_default(),
+        handover: found
+            .handover_date
+            .map(|d| d.to_string())
+            .unwrap_or_default(),
         ended: found.ended_on.map(|d| d.to_string()).unwrap_or_default(),
     };
     let pack_lines: Vec<[String; 2]> = pack
@@ -450,7 +466,10 @@ async fn show(
         if transfer.is_open() && transfer.kind == TransferKind::Unmanaged {
             for item in HandoverItem::of_transfer(&state.db, transfer.id).await? {
                 if !item.done {
-                    transfer_lines.push([item.id.to_string(), format!("{unit} · {}", item.description)]);
+                    transfer_lines.push([
+                        item.id.to_string(),
+                        format!("{unit} · {}", item.description),
+                    ]);
                 }
             }
         }
@@ -460,7 +479,10 @@ async fn show(
             date: transfer.transfer_date.to_string(),
             kind: text(&lang, &format!("transfers.kind_{}", transfer.kind.as_str())),
             new_owner,
-            status: text(&lang, &format!("transfers.status_{}", transfer.status.as_str())),
+            status: text(
+                &lang,
+                &format!("transfers.status_{}", transfer.status.as_str()),
+            ),
             status_kind: match transfer.status {
                 TransferStatus::Requested => "warning",
                 TransferStatus::Approved => "success",
@@ -483,7 +505,10 @@ async fn show(
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
         agreement: view,
-        status: text(&lang, &format!("agreements.status.{}", found.status.as_str())),
+        status: text(
+            &lang,
+            &format!("agreements.status.{}", found.status.as_str()),
+        ),
         status_kind: status_kind(found.status),
         units,
         unit_options,
@@ -510,8 +535,14 @@ async fn show(
         deposit_total: money_text(pack.deposit_total()),
         statements,
         today: today().to_string(),
-        show_pack: matches!(found.status, AgreementStatus::Ending | AgreementStatus::Ended),
-        can_add_unit: matches!(found.status, AgreementStatus::Draft | AgreementStatus::Active),
+        show_pack: matches!(
+            found.status,
+            AgreementStatus::Ending | AgreementStatus::Ended
+        ),
+        can_add_unit: matches!(
+            found.status,
+            AgreementStatus::Draft | AgreementStatus::Active
+        ),
         can_activate: found.status == AgreementStatus::Draft,
         can_give_notice: found.status == AgreementStatus::Active,
         can_receipt: ending,
@@ -548,7 +579,10 @@ async fn add_unit(
     let found = ManagementAgreement::find(&state.db, id)
         .await?
         .ok_or(Error::NotFound)?;
-    if !matches!(found.status, AgreementStatus::Draft | AgreementStatus::Active) {
+    if !matches!(
+        found.status,
+        AgreementStatus::Draft | AgreementStatus::Active
+    ) {
         return Err(invalid(&text(&lang, "agreements.units_locked")));
     }
     let unit: i64 = form
@@ -558,7 +592,11 @@ async fn add_unit(
         .map_err(|_| invalid("unit: 1, 2, 3 ..."))?;
     let date_in = parse_date(&form.date_in).ok_or_else(|| invalid("date_in: YYYY-MM-DD"))?;
     agreement::add_unit(&state.db, &found, unit, date_in).await?;
-    Ok((Toast::success(text(&lang, "agreements.unit_added")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(text(&lang, "agreements.unit_added")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// `POST /property/agreements/{id}/activate`.
@@ -571,7 +609,11 @@ async fn activate(
     lifecycle::activate(&state, &user, id)
         .await
         .map_err(TransitionError::into_error)?;
-    Ok((Toast::success(text(&lang, "agreements.activated")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(text(&lang, "agreements.activated")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// The form that records the notice.
@@ -600,7 +642,8 @@ async fn give_notice(
     Form(form): Form<NoticeForm>,
 ) -> Result<Response> {
     may_manage(&user)?;
-    let on: NaiveDate = parse_date(&form.notice_on).ok_or_else(|| invalid("notice_on: YYYY-MM-DD"))?;
+    let on: NaiveDate =
+        parse_date(&form.notice_on).ok_or_else(|| invalid("notice_on: YYYY-MM-DD"))?;
     let handover = parse_date(&form.handover).ok_or_else(|| invalid("handover: YYYY-MM-DD"))?;
     let party = NoticeParty::parse(&form.party).ok_or_else(|| invalid("party: owner, company"))?;
     let new_holder = if form.holder.trim().is_empty() {
@@ -626,7 +669,11 @@ async fn give_notice(
     )
     .await
     .map_err(TransitionError::into_error)?;
-    Ok((Toast::success(text(&lang, "agreements.notice_given")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(text(&lang, "agreements.notice_given")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// The form that records a receipt.
@@ -654,7 +701,11 @@ async fn receipt(
         .parse()
         .map_err(|_| invalid("item: 1, 2, 3 ..."))?;
     lifecycle::record_receipt(&state, &user, id, item, &form.reference).await?;
-    Ok((Toast::success(text(&lang, "handover.receipt_recorded")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(text(&lang, "handover.receipt_recorded")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// `POST /property/agreements/{id}/final-statement`.
@@ -739,7 +790,11 @@ async fn request_transfer(
         note: Some(form.note.clone()),
     };
     unit_transfer::request(&state, &user, id, asked).await?;
-    Ok((Toast::success(text(&lang, "transfers.requested")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(text(&lang, "transfers.requested")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// `POST /property/agreements/{id}/transfer-receipts`.
@@ -761,7 +816,11 @@ async fn transfer_receipt(
         .ok_or(Error::NotFound)?;
     let transfer = item.transfer_id.ok_or(Error::NotFound)?;
     unit_transfer::record_receipt(&state, &user, transfer, item_id, &form.reference).await?;
-    Ok((Toast::success(text(&lang, "handover.receipt_recorded")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(text(&lang, "handover.receipt_recorded")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// The form that approves a transfer.
@@ -797,5 +856,9 @@ async fn reject_transfer(
     Path(id): Path<i64>,
 ) -> Result<Response> {
     unit_transfer::reject(&state, &user, id).await?;
-    Ok((Toast::success(text(&lang, "transfers.rejected")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(text(&lang, "transfers.rejected")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }

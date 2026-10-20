@@ -831,8 +831,12 @@ mod tests {
     #[test]
     fn a_planned_visit_carries_its_planned_due_date() {
         let due = NaiveDate::from_ymd_opt(2026, 11, 1).unwrap();
-        let visit = OpenTicket::new(Subject::new("property.system", 4), "fire_safety", "Fire alarm")
-            .planned_due(due);
+        let visit = OpenTicket::new(
+            Subject::new("property.system", 4),
+            "fire_safety",
+            "Fire alarm",
+        )
+        .planned_due(due);
         assert_eq!(visit.planned_due, Some(due));
         assert_eq!(
             OpenTicket::new(Subject::new("property.system", 4), "general", "x").planned_due,
@@ -844,8 +848,14 @@ mod tests {
 
     #[test]
     fn flag_reasons_are_stored_in_snake_case() {
-        let names: Vec<_> = ComplianceFlagReason::ALL.iter().map(|r| r.as_str()).collect();
-        assert_eq!(names, ["no_contract", "visit_missed", "vendor_document_expired"]);
+        let names: Vec<_> = ComplianceFlagReason::ALL
+            .iter()
+            .map(|r| r.as_str())
+            .collect();
+        assert_eq!(
+            names,
+            ["no_contract", "visit_missed", "vendor_document_expired"]
+        );
         let raised = ComplianceFlagRaised {
             subject: Subject::new("property.system", 4),
             category: "fire_safety".into(),
@@ -988,7 +998,10 @@ mod tests {
     #[test]
     fn a_service_contract_is_a_subject_with_its_own_number_series() {
         let contract = ServiceContractId(7);
-        assert_eq!(contract.subject().to_string(), "ticketing.service_contract:7");
+        assert_eq!(
+            contract.subject().to_string(),
+            "ticketing.service_contract:7"
+        );
         assert_eq!(ServiceContractId::from(7), contract);
         assert_eq!(SERVICE_CONTRACT_SERIES.prefix, "AMC");
         assert_eq!(SERVICE_CONTRACT_SERIES.reset, Reset::Yearly);

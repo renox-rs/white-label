@@ -194,7 +194,10 @@ async fn income_items(
             let Some(amount) = aed(line.net_amount, invoice.aed_rate()) else {
                 continue;
             };
-            let date = invoice.date_of_supply.or(invoice.issue_date).unwrap_or(from);
+            let date = invoice
+                .date_of_supply
+                .or(invoice.issue_date)
+                .unwrap_or(from);
             let category = mapped
                 .find(MappingKind::ChargeType, line.charge_type.as_deref())
                 .filter(|(_, kind)| *kind == BudgetKind::Income);
@@ -461,7 +464,11 @@ async fn drawing_payment_items(
                 month: month_start(payment.date),
                 kind: BudgetKind::OwnerDrawings,
                 category_id: categories.get(&payment.category).copied(),
-                amount: if repaid { -payment.amount } else { payment.amount },
+                amount: if repaid {
+                    -payment.amount
+                } else {
+                    payment.amount
+                },
                 label: english(if repaid {
                     "wl_invoicing.drawings.repayment"
                 } else {
@@ -478,12 +485,7 @@ async fn drawing_payment_items(
 }
 
 /// The actual of category `category` for `entity` in the month of `month`.
-pub async fn category_actual(
-    db: &Db,
-    entity: i64,
-    category: i64,
-    month: NaiveDate,
-) -> Result<i64> {
+pub async fn category_actual(db: &Db, entity: i64, category: i64, month: NaiveDate) -> Result<i64> {
     let found = items(db, &[entity], month_start(month), month_end(month)).await?;
     Ok(found
         .iter()
@@ -578,7 +580,10 @@ mod tests {
         );
         assert_eq!(mapped.find(MappingKind::CostCode, Some("fuel")), None);
         assert_eq!(mapped.find(MappingKind::CostCode, None), None);
-        assert_eq!(mapped.find(MappingKind::ChargeType, Some("marketing")), None);
+        assert_eq!(
+            mapped.find(MappingKind::ChargeType, Some("marketing")),
+            None
+        );
     }
 
     #[test]
@@ -591,7 +596,12 @@ mod tests {
 
     #[test]
     fn a_drawings_line_keeps_its_vat_and_is_not_expense() {
-        let item = expense_item(&mapped(), &line(Some("owner_drawings")), (300_000, 15_000), 1);
+        let item = expense_item(
+            &mapped(),
+            &line(Some("owner_drawings")),
+            (300_000, 15_000),
+            1,
+        );
         assert_eq!(item.kind, BudgetKind::OwnerDrawings);
         assert_eq!(item.amount, 315_000);
     }

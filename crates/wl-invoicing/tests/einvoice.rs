@@ -62,8 +62,16 @@ async fn transmissions(t: &Booted) -> Vec<EInvoiceTransmission> {
 async fn draft_for(t: &Booted, party: PartyId) -> Invoice {
     t.draft_of(
         InvoiceDraft::new(party, Subject::new("property.lease", 9))
-            .line(DraftLine::new("Rent, January", 60_000, VatCategory::Standard))
-            .line(DraftLine::new("Service charge", 40_000, VatCategory::Standard)),
+            .line(DraftLine::new(
+                "Rent, January",
+                60_000,
+                VatCategory::Standard,
+            ))
+            .line(DraftLine::new(
+                "Service charge",
+                40_000,
+                VatCategory::Standard,
+            )),
     )
     .await
 }
@@ -97,7 +105,10 @@ async fn an_invoice_after_go_live_is_queued_and_submitted_with_its_payload() {
     assert_eq!(sent.document(), invoice.subject());
     assert_eq!(sent.attempt, 1);
     assert_eq!(sent.recipient_id.as_deref(), Some(PEPPOL));
-    assert_eq!(sent.asp_reference.as_deref(), Some(format!("ASP-{}-1", sent.id).as_str()));
+    assert_eq!(
+        sent.asp_reference.as_deref(),
+        Some(format!("ASP-{}-1", sent.id).as_str())
+    );
     assert_eq!(asp.submitted().len(), 1);
     assert_eq!(asp.submitted()[0].recipient_id, PEPPOL);
 
@@ -105,7 +116,10 @@ async fn an_invoice_after_go_live_is_queued_and_submitted_with_its_payload() {
     assert_eq!(payload["issuer"]["trn"], "100000000000003");
     assert_eq!(payload["recipient"]["trn"], "100000000000011");
     assert_eq!(payload["recipient"]["identifier"], PEPPOL);
-    assert_eq!(payload["document"]["number"], invoice.number.clone().unwrap());
+    assert_eq!(
+        payload["document"]["number"],
+        invoice.number.clone().unwrap()
+    );
     assert_eq!(payload["document"]["issue_date"], "2027-01-05");
     assert_eq!(payload["document"]["kind"], "tax_invoice");
     let lines = payload["lines"].as_array().unwrap();
@@ -120,7 +134,10 @@ async fn an_invoice_after_go_live_is_queued_and_submitted_with_its_payload() {
 
     // The issued invoice is as it was.
     let after = t.reload(&invoice).await;
-    assert_eq!((after.status, after.gross_total, after.balance), (InvoiceStatus::Issued, 105_000, 105_000));
+    assert_eq!(
+        (after.status, after.gross_total, after.balance),
+        (InvoiceStatus::Issued, 105_000, 105_000)
+    );
     // The recipient identifier is not on the document.
     assert!(after.party_snapshot.is_some());
 }
@@ -138,13 +155,18 @@ async fn the_asps_acceptance_is_recorded_and_announced() {
     // Pending: nothing changes.
     asp.answers(AspAnswer::Pending);
     assert_eq!(run(&t).await.answered, 0);
-    assert_eq!(transmissions(&t).await[0].status, TransmissionStatus::Submitted);
+    assert_eq!(
+        transmissions(&t).await[0].status,
+        TransmissionStatus::Submitted
+    );
 
     // An answer to an older attempt changes nothing.
-    assert!(einvoice_send::respond(t.state(), sent.id, 0, AspAnswer::Accepted)
-        .await
-        .unwrap()
-        .is_none());
+    assert!(
+        einvoice_send::respond(t.state(), sent.id, 0, AspAnswer::Accepted)
+            .await
+            .unwrap()
+            .is_none()
+    );
 
     asp.answers(AspAnswer::Accepted);
     assert_eq!(run(&t).await.answered, 1);
@@ -215,7 +237,10 @@ async fn an_invoice_before_go_live_is_not_queued() {
     // 19:30 UTC is 23:30 on 2026-12-31 in Dubai.
     t.travel_to("2026-12-31", 19, 30);
     let invoice = t.issue(&draft_for(&t, BLUE_DUNES).await, &clerk).await;
-    assert_eq!(invoice.issue_date, Some(NaiveDate::from_ymd_opt(2026, 12, 31).unwrap()));
+    assert_eq!(
+        invoice.issue_date,
+        Some(NaiveDate::from_ymd_opt(2026, 12, 31).unwrap())
+    );
     assert!(transmissions(&t).await.is_empty());
     assert!(run(&t).await.queued == 0);
     // A simplified invoice may still be issued before go-live.
@@ -225,7 +250,10 @@ async fn an_invoice_before_go_live_is_not_queued() {
         .update(t.db(), &[("kind", &InvoiceKind::SimplifiedTaxInvoice)])
         .await
         .unwrap();
-    assert_eq!(t.issue(&simplified, &clerk).await.status, InvoiceStatus::Issued);
+    assert_eq!(
+        t.issue(&simplified, &clerk).await.status,
+        InvoiceStatus::Issued
+    );
 }
 
 /// A credit note issued on 2027-01-10 against an invoice issued on 2026-12-20
@@ -236,7 +264,15 @@ async fn a_credit_note_after_go_live_is_queued_for_an_invoice_before_it() {
     let asp = FakeAsp::new();
     let t = booted(&asp, "2026-12-20", 6).await;
     let clerk = t.user_a().await;
-    let credit = t.helper("Cleo", &[wl_invoicing::permissions::VIEW, wl_invoicing::permissions::CREDIT]).await;
+    let credit = t
+        .helper(
+            "Cleo",
+            &[
+                wl_invoicing::permissions::VIEW,
+                wl_invoicing::permissions::CREDIT,
+            ],
+        )
+        .await;
     let invoice = t.issue(&draft_for(&t, BLUE_DUNES).await, &clerk).await;
     assert!(transmissions(&t).await.is_empty());
 
@@ -254,7 +290,11 @@ async fn a_credit_note_after_go_live_is_queued_for_an_invoice_before_it() {
         .unwrap();
     let note = t
         .app
-        .at_travelled_time(credit_notes::issue(t.state(), By::System(Some(credit.id)), &draft))
+        .at_travelled_time(credit_notes::issue(
+            t.state(),
+            By::System(Some(credit.id)),
+            &draft,
+        ))
         .await
         .unwrap();
 
@@ -264,7 +304,10 @@ async fn a_credit_note_after_go_live_is_queued_for_an_invoice_before_it() {
     assert_eq!(all[0].document_id, note.id);
     assert_eq!(all[0].status, TransmissionStatus::Submitted);
     assert_eq!(all[0].payload.0["document"]["type"], "credit_note");
-    assert_eq!(all[0].payload.0["document"]["credits_invoice"], invoice.number.clone().unwrap());
+    assert_eq!(
+        all[0].payload.0["document"]["credits_invoice"],
+        invoice.number.clone().unwrap()
+    );
     assert_ne!(all[0].document_type, INVOICE);
 }
 
@@ -283,14 +326,30 @@ async fn an_unreachable_asp_is_retried_on_the_schedule_until_it_is_sent() {
     let first = transmissions(&t).await.remove(0);
     assert_eq!(first.status, TransmissionStatus::Queued);
     assert_eq!(first.tries, 1);
-    assert!(first.last_error.as_deref().is_some_and(|e| e.contains("does not answer")));
+    assert!(
+        first
+            .last_error
+            .as_deref()
+            .is_some_and(|e| e.contains("does not answer"))
+    );
     let after = |t: &EInvoiceTransmission| (t.next_try_at.unwrap() - t.queued_at).num_minutes();
     assert_eq!(after(&first), 5);
-    let health = IntegrationConnection::by_key(t.db(), "asp.pgp").await.unwrap().unwrap();
+    let health = IntegrationConnection::by_key(t.db(), "asp.pgp")
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(health.status, ConnectionStatus::Degraded);
 
     // The banner counts the queue.
-    let viewer = t.helper("Viewer", &[wl_invoicing::permissions::VIEW, wl_invoicing::permissions::EINVOICES_VIEW]).await;
+    let viewer = t
+        .helper(
+            "Viewer",
+            &[
+                wl_invoicing::permissions::VIEW,
+                wl_invoicing::permissions::EINVOICES_VIEW,
+            ],
+        )
+        .await;
     t.app.acting_as(&viewer);
     t.app
         .get("/invoices")
@@ -303,7 +362,14 @@ async fn an_unreachable_asp_is_retried_on_the_schedule_until_it_is_sent() {
     run(&t).await;
     assert_eq!(transmissions(&t).await[0].tries, 1);
     // (minutes after issue at which the run happens, the wait it sets in minutes)
-    let steps = [(6, 30), (31, 120), (121, 360), (361, 720), (721, 1_080), (1_081, 1_440)];
+    let steps = [
+        (6, 30),
+        (31, 120),
+        (121, 360),
+        (361, 720),
+        (721, 1_080),
+        (1_081, 1_440),
+    ];
     for (minute, next) in steps {
         at(&t, minute);
         run(&t).await;
@@ -322,7 +388,10 @@ async fn an_unreachable_asp_is_retried_on_the_schedule_until_it_is_sent() {
     assert_eq!(sent.status, TransmissionStatus::Submitted);
     assert_eq!(sent.document(), invoice.subject());
     assert_eq!(asp.submitted().len(), 1);
-    let health = IntegrationConnection::by_key(t.db(), "asp.pgp").await.unwrap().unwrap();
+    let health = IntegrationConnection::by_key(t.db(), "asp.pgp")
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(health.status, ConnectionStatus::Up);
 }
 
@@ -339,7 +408,11 @@ async fn an_entity_without_an_adapter_keeps_the_transmission_queued() {
     assert_eq!(invoice.status, InvoiceStatus::Issued);
     let row = transmissions(&t).await.remove(0);
     assert_eq!(row.status, TransmissionStatus::Queued);
-    assert!(row.last_error.as_deref().is_some_and(|e| e.contains("adapter")));
+    assert!(
+        row.last_error
+            .as_deref()
+            .is_some_and(|e| e.contains("adapter"))
+    );
 }
 
 /// A document the issue could not queue is queued by the scheduled run.
@@ -371,7 +444,13 @@ async fn the_board_lists_the_transmissions_for_those_who_may_see_them() {
     let clerk = t.user_a().await;
     let invoice = t.issue(&draft_for(&t, BLUE_DUNES).await, &clerk).await;
     let viewer = t
-        .helper("Viewer", &[wl_invoicing::permissions::VIEW, wl_invoicing::permissions::EINVOICES_VIEW])
+        .helper(
+            "Viewer",
+            &[
+                wl_invoicing::permissions::VIEW,
+                wl_invoicing::permissions::EINVOICES_VIEW,
+            ],
+        )
         .await;
     t.app.acting_as(&viewer);
     t.app
@@ -389,7 +468,9 @@ async fn the_board_lists_the_transmissions_for_those_who_may_see_them() {
     t.app.acting_as(&nobody);
     t.app.get("/einvoices").await.assert_forbidden();
     assert_eq!(
-        EInvoiceTransmission::status_of(t.db(), &invoice.subject()).await.unwrap(),
+        EInvoiceTransmission::status_of(t.db(), &invoice.subject())
+            .await
+            .unwrap(),
         Some(TransmissionStatus::Submitted)
     );
 }

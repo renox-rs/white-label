@@ -201,9 +201,7 @@ pub async fn create(state: &AppState, new: NewBudget, by: Option<i64>) -> Result
         .last()
         .map_or(config.budget_fiscal_start_month, |v| v.start_month_u32());
     let version = versions.iter().map(|v| v.version).max().unwrap_or(0) + 1;
-    let approved = versions
-        .iter()
-        .find(|v| v.status == BudgetStatus::Approved);
+    let approved = versions.iter().find(|v| v.status == BudgetStatus::Approved);
     let seeded = match approved {
         Some(approved) => {
             let lines = CompanyBudgetLine::query()
@@ -248,7 +246,8 @@ pub async fn create(state: &AppState, new: NewBudget, by: Option<i64>) -> Result
             },
         },
     };
-    let name = clean(Some(new.name.as_str())).unwrap_or_else(|| format!("{} v{version}", new.fiscal_year));
+    let name =
+        clean(Some(new.name.as_str())).unwrap_or_else(|| format!("{} v{version}", new.fiscal_year));
     let mut budget = CompanyBudget {
         legal_entity_id: entity.id,
         fiscal_year: new.fiscal_year,
@@ -270,10 +269,7 @@ pub async fn create(state: &AppState, new: NewBudget, by: Option<i64>) -> Result
 }
 
 /// The draft budget `id`, or why its lines cannot be changed.
-async fn draft_of(
-    tx: &mut renox::db::Transaction,
-    id: i64,
-) -> Result<CompanyBudget> {
+async fn draft_of(tx: &mut renox::db::Transaction, id: i64) -> Result<CompanyBudget> {
     let budget = CompanyBudget::find(&mut *tx, id)
         .await?
         .ok_or(Error::NotFound)?;
@@ -514,11 +510,17 @@ pub async fn import_csv(
         let code = cell(0).to_lowercase();
         let category = BudgetCategory::by_code(db, &code).await?;
         let Some(category) = category else {
-            reject(fill_text("wl_invoicing.budget.import.unknown_category", &code));
+            reject(fill_text(
+                "wl_invoicing.budget.import.unknown_category",
+                &code,
+            ));
             continue;
         };
         if !category.active {
-            reject(fill_text("wl_invoicing.budget.import.inactive_category", &code));
+            reject(fill_text(
+                "wl_invoicing.budget.import.inactive_category",
+                &code,
+            ));
             continue;
         }
         let Some(month) = parse_month(cell(1)) else {
@@ -526,7 +528,10 @@ pub async fn import_csv(
             continue;
         };
         if !months.contains(&month) {
-            reject(fill_text("wl_invoicing.budget.import.month_outside", cell(1)));
+            reject(fill_text(
+                "wl_invoicing.budget.import.month_outside",
+                cell(1),
+            ));
             continue;
         }
         let Some(amount) = parse_budget_amount(cell(2)) else {

@@ -110,7 +110,11 @@ fn matcher<'a>(state: &'a AppState, item: &'a Inbound) -> BoxFuture<'a, Result<M
         } else {
             Match::Differs {
                 subject,
-                detail: format!("AED {} manual vs AED {} gateway", manual / 100, gateway / 100),
+                detail: format!(
+                    "AED {} manual vs AED {} gateway",
+                    manual / 100,
+                    gateway / 100
+                ),
             }
         })
     })
@@ -204,7 +208,11 @@ impl TaskCreator for Tasks {
         comment: TaskComment,
     ) -> TicketFuture<'a, ()> {
         Box::pin(async move {
-            self.0.lock().unwrap().comments.push((ticket.0, comment.text));
+            self.0
+                .lock()
+                .unwrap()
+                .comments
+                .push((ticket.0, comment.text));
             Ok(())
         })
     }
@@ -288,7 +296,9 @@ async fn world() -> World {
 
     let db = app.db();
     permissions::define_role(db, "admin", &[]).await.unwrap();
-    permissions::define_role(db, "accountant", &[]).await.unwrap();
+    permissions::define_role(db, "accountant", &[])
+        .await
+        .unwrap();
     permissions::define_role(
         db,
         "integrations_manager",
@@ -317,8 +327,7 @@ async fn world() -> World {
 
 impl World {
     fn refund(&self, n: i64) -> Outbound {
-        Outbound::new(KEY, "refund", json!({ "n": n }))
-            .subject(Subject::new("payments.refund", n))
+        Outbound::new(KEY, "refund", json!({ "n": n })).subject(Subject::new("payments.refund", n))
     }
 
     async fn submit(&self, call: Outbound) -> Submitted {
@@ -465,7 +474,9 @@ async fn a_callback_for_a_payment_done_by_hand_is_linked_not_created() {
     let w = world().await;
     w.manual_payment("TX-889", 25_000).await;
 
-    let received = w.receive(w.callback("TX-889", 25_000, Span::minutes(20))).await;
+    let received = w
+        .receive(w.callback("TX-889", 25_000, Span::minutes(20)))
+        .await;
     assert!(matches!(received, Received::Linked(subject) if subject.subject_id == 1));
     assert_eq!(w.payments().await, 1);
     assert!(w.tasks.opened().is_empty());
@@ -482,7 +493,9 @@ async fn a_mismatch_opens_one_task_for_the_owner_role() {
     w.manual_payment("TX-890", 10_000).await;
     w.succeed(0).await;
 
-    let first = w.receive(w.callback("TX-889", 20_500, Span::minutes(20))).await;
+    let first = w
+        .receive(w.callback("TX-889", 20_500, Span::minutes(20)))
+        .await;
     assert!(
         matches!(&first, Received::Mismatch { detail, .. } if detail == "AED 250 manual vs AED 205 gateway"),
         "{first:?}"
@@ -496,19 +509,28 @@ async fn a_mismatch_opens_one_task_for_the_owner_role() {
         Some(wl_kernel::tickets::Assignee::user(w.accountant.id))
     );
     assert!(
-        opened[0].description.contains("TX-889: AED 250 manual vs AED 205 gateway"),
+        opened[0]
+            .description
+            .contains("TX-889: AED 250 manual vs AED 205 gateway"),
         "{}",
         opened[0].description
     );
     assert!(opened[0].title.contains(KEY));
 
     // Another mismatch of the same failure run: the same task.
-    w.receive(w.callback("TX-890", 9_000, Span::minutes(15))).await;
+    w.receive(w.callback("TX-890", 9_000, Span::minutes(15)))
+        .await;
     assert_eq!(w.tasks.opened().len(), 1);
     let comments = w.tasks.comments();
     assert_eq!(comments.len(), 1);
-    assert!(comments[0].1.contains("TX-890: AED 100 manual vs AED 90 gateway"));
-    let rows = Reconciliation::of_connection(w.app.db(), KEY).await.unwrap();
+    assert!(
+        comments[0]
+            .1
+            .contains("TX-890: AED 100 manual vs AED 90 gateway")
+    );
+    let rows = Reconciliation::of_connection(w.app.db(), KEY)
+        .await
+        .unwrap();
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].lines.len(), 2);
     assert_eq!(rows[0].ticket_number.as_deref(), Some("TKT-2026-0001"));
@@ -529,9 +551,15 @@ async fn a_failure_during_the_drain_degrades_again_and_keeps_the_rest_in_order()
     let again = w.connection().await;
     assert_eq!(again.status, ConnectionStatus::Degraded);
     let since = again.failed_since.expect("failed since");
-    assert!(since > first_run + Span::minutes(20), "the failure of the drain");
+    assert!(
+        since > first_run + Span::minutes(20),
+        "the failure of the drain"
+    );
     let waiting = w.waiting().await;
-    let numbers: Vec<i64> = waiting.iter().map(|c| c.payload.0["n"].as_i64().unwrap()).collect();
+    let numbers: Vec<i64> = waiting
+        .iter()
+        .map(|c| c.payload.0["n"].as_i64().unwrap())
+        .collect();
     assert_eq!(numbers, [2, 3]);
     assert_eq!(
         w.changes()
@@ -562,7 +590,10 @@ async fn enable_sends_the_queued_calls() {
     w.app.acting_as(&w.manager);
     let off = w
         .app
-        .post("/integrations/gateway.acme/disable", &[("reason", "maintenance")])
+        .post(
+            "/integrations/gateway.acme/disable",
+            &[("reason", "maintenance")],
+        )
         .await;
     assert_eq!(off.status.as_u16(), 303, "{}", off.text());
     for n in 1..=2 {
@@ -612,7 +643,9 @@ async fn an_obsolete_call_is_not_sent_and_is_listed_for_reconciliation() {
 #[renox::test]
 async fn a_callback_with_no_manual_payment_is_entered_with_its_own_time() {
     let w = world().await;
-    let received = w.receive(w.callback("TX-901", 12_000, Span::minutes(90))).await;
+    let received = w
+        .receive(w.callback("TX-901", 12_000, Span::minutes(90)))
+        .await;
     let Received::Created(entered) = received else {
         panic!("expected a new record");
     };
@@ -621,7 +654,9 @@ async fn a_callback_with_no_manual_payment_is_entered_with_its_own_time() {
     assert!(w.tasks.opened().is_empty());
 
     // The same callback again finds the payment: no second one.
-    let again = w.receive(w.callback("TX-901", 12_000, Span::minutes(90))).await;
+    let again = w
+        .receive(w.callback("TX-901", 12_000, Span::minutes(90)))
+        .await;
     assert!(matches!(again, Received::Linked(_)));
     assert_eq!(w.payments().await, 1);
 }

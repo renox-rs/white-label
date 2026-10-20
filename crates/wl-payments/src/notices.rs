@@ -624,7 +624,11 @@ fn cheque_bounced_data(cheque: &Cheque, bounce: &ChequeReturn) -> renox::serde_j
 }
 
 /// The template variables of a cheque task notice.
-fn cheque_task_data(cheque: &Cheque, party_name: &str, task: &FollowupTask) -> renox::serde_json::Value {
+fn cheque_task_data(
+    cheque: &Cheque,
+    party_name: &str,
+    task: &FollowupTask,
+) -> renox::serde_json::Value {
     json!({
         "text": task.text,
         "number": cheque.number,
@@ -656,11 +660,7 @@ pub(crate) async fn cheque_bounced(
 /// Tells the staff about the cheque `task`: the holders of the accountant
 /// role, the user who registered `cheque` and the task's assignee, each
 /// once.
-pub(crate) async fn cheque_task(
-    state: &AppState,
-    cheque: &Cheque,
-    task: &FollowupTask,
-) -> Result {
+pub(crate) async fn cheque_task(state: &AppState, cheque: &Cheque, task: &FollowupTask) -> Result {
     let accountants: Vec<i64> = users_with_role_in(&state.db, ACCOUNTANT_ROLE, &Scope::global())
         .await?
         .iter()
@@ -902,7 +902,10 @@ pub(crate) async fn deposit_deductions_published(
         return Ok(());
     }
     let until = match deduction.window_ends_on {
-        Some(end) => format!(" You may dispute them in the portal until {}.", date_text(end)),
+        Some(end) => format!(
+            " You may dispute them in the portal until {}.",
+            date_text(end)
+        ),
         None => String::new(),
     };
     let request = NotifyRequest::new(DEPOSIT_DEDUCTIONS, deposit.subject())

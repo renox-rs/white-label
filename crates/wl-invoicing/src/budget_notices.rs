@@ -80,7 +80,9 @@ pub fn payment_self_approved_type() -> NotificationTypeDef {
         .template(
             NotifyChannel::Email,
             "en",
-            Some(english("wl_invoicing.drawing_payment_self_approved.subject")),
+            Some(english(
+                "wl_invoicing.drawing_payment_self_approved.subject",
+            )),
             english("wl_invoicing.drawing_payment_self_approved.body"),
         )
 }

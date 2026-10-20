@@ -36,14 +36,29 @@ struct Lifts {
 
 async fn lifts(w: &World) -> Lifts {
     let contract = w
-        .contract(COOLAIR, "2026-01-01", "2026-12-31", &[(tower_a_lifts(), "lifts")])
+        .contract(
+            COOLAIR,
+            "2026-01-01",
+            "2026-12-31",
+            &[(tower_a_lifts(), "lifts")],
+        )
         .await;
     let vendor = Some(Assignee::party(COOLAIR));
-    let dec20 = w.visit(&contract, "lifts", tower_a_lifts(), "2026-12-20", vendor).await;
-    let dec31 = w.visit(&contract, "lifts", tower_a_lifts(), "2026-12-31", None).await;
-    let jan15 = w.visit(&contract, "lifts", tower_a_lifts(), "2027-01-15", vendor).await;
-    let feb15 = w.visit(&contract, "lifts", tower_a_lifts(), "2027-02-15", vendor).await;
-    let started = w.visit(&contract, "lifts", tower_a_lifts(), "2026-12-10", vendor).await;
+    let dec20 = w
+        .visit(&contract, "lifts", tower_a_lifts(), "2026-12-20", vendor)
+        .await;
+    let dec31 = w
+        .visit(&contract, "lifts", tower_a_lifts(), "2026-12-31", None)
+        .await;
+    let jan15 = w
+        .visit(&contract, "lifts", tower_a_lifts(), "2027-01-15", vendor)
+        .await;
+    let feb15 = w
+        .visit(&contract, "lifts", tower_a_lifts(), "2027-02-15", vendor)
+        .await;
+    let started = w
+        .visit(&contract, "lifts", tower_a_lifts(), "2026-12-10", vendor)
+        .await;
     let started = w.start(&started).await;
     Lifts {
         contract,
@@ -82,7 +97,10 @@ async fn tkt04_expiring_cancels_the_late_visits_and_gives_the_coordinator_one_ta
     )
     .await
     .unwrap();
-    assert!(w.t.ticket(reactive.id.0).await.contract_id.is_some(), "handled under the contract");
+    assert!(
+        w.t.ticket(reactive.id.0).await.contract_id.is_some(),
+        "handled under the contract"
+    );
 
     expire(&w, &l).await;
 
@@ -91,10 +109,21 @@ async fn tkt04_expiring_cancels_the_late_visits_and_gives_the_coordinator_one_ta
         assert_eq!(visit.status, TicketStatus::Cancelled);
         assert_eq!(visit.cancel_reason.as_deref(), Some(CONTRACT_ENDED_REASON));
     }
-    assert_eq!(w.told_party(VISIT_CANCELLED_NOTICE, COOLAIR), 2, "the vendor is told");
+    assert_eq!(
+        w.told_party(VISIT_CANCELLED_NOTICE, COOLAIR),
+        2,
+        "the vendor is told"
+    );
     assert_eq!(w.t.reload(&l.dec20).await.status, TicketStatus::Assigned);
-    assert_eq!(w.t.reload(&l.dec31).await.status, TicketStatus::Open, "due on the end date");
-    assert_eq!(w.t.reload(&l.started).await.status, TicketStatus::InProgress);
+    assert_eq!(
+        w.t.reload(&l.dec31).await.status,
+        TicketStatus::Open,
+        "due on the end date"
+    );
+    assert_eq!(
+        w.t.reload(&l.started).await.status,
+        TicketStatus::InProgress
+    );
     assert_eq!(
         w.t.ticket(reactive.id.0).await.status,
         TicketStatus::Assigned,
@@ -120,7 +149,9 @@ async fn tkt04_expiring_cancels_the_late_visits_and_gives_the_coordinator_one_ta
     let contract = w.reload(&l.contract).await;
     assert_eq!(contract.status, ContractStatus::Expired);
     assert!(contract.ended_at.is_some());
-    let plans = MaintenancePlans::of_contract(w.t.db(), contract.id).await.unwrap();
+    let plans = MaintenancePlans::of_contract(w.t.db(), contract.id)
+        .await
+        .unwrap();
     assert_eq!(plans.len(), 1, "one plan per covered subject and category");
     assert!(plans.iter().all(|p| p.status == PlanStatus::Ended));
 }
@@ -149,8 +180,14 @@ async fn tkt04_a_compliance_contract_without_a_replacement_flags_the_subject() {
     assert_eq!(ended.len(), 1);
     assert_eq!(ended[0].contract.0, l.contract.id);
     assert_eq!(ended[0].outcome, "expired");
-    assert_eq!(ended[0].visits_cancelled, [TicketId(l.jan15.id), TicketId(l.feb15.id)]);
-    assert_eq!(ended[0].visits_left, [TicketId(l.dec20.id), TicketId(l.dec31.id)]);
+    assert_eq!(
+        ended[0].visits_cancelled,
+        [TicketId(l.jan15.id), TicketId(l.feb15.id)]
+    );
+    assert_eq!(
+        ended[0].visits_left,
+        [TicketId(l.dec20.id), TicketId(l.dec31.id)]
+    );
 }
 
 /// AC3: activating AMC-2027-0001 covering Tower A lifts clears the flag.
@@ -162,7 +199,12 @@ async fn tkt04_activating_a_replacement_clears_the_flag() {
     assert_eq!(ComplianceFlag::open(w.t.db()).await.unwrap().len(), 1);
 
     let next = w
-        .contract(BLUEFIRE, "2027-01-01", "2027-12-31", &[(tower_a_lifts(), "lifts")])
+        .contract(
+            BLUEFIRE,
+            "2027-01-01",
+            "2027-12-31",
+            &[(tower_a_lifts(), "lifts")],
+        )
         .await;
     assert_eq!(next.status, ContractStatus::Active);
     assert!(ComplianceFlag::open(w.t.db()).await.unwrap().is_empty());
@@ -170,9 +212,17 @@ async fn tkt04_activating_a_replacement_clears_the_flag() {
     assert_eq!(cleared.len(), 1);
     assert_eq!(cleared[0].reason, "no_contract");
     assert_eq!(cleared[0].contract, Some(l.contract.id));
-    let flag = ComplianceFlag::query().first(w.t.db()).await.unwrap().unwrap();
+    let flag = ComplianceFlag::query()
+        .first(w.t.db())
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(flag.cleared_by.as_deref(), Some(REPLACEMENT_ACTIVE));
-    assert_eq!(w.activated.all().len(), 2, "ServiceContractActivated for both contracts");
+    assert_eq!(
+        w.activated.all().len(),
+        2,
+        "ServiceContractActivated for both contracts"
+    );
 }
 
 /// A contract that another `active` one replaces raises no flag.
@@ -181,7 +231,12 @@ async fn tkt04_no_flag_is_raised_while_another_active_contract_covers_the_subjec
     let w = world().await;
     let l = lifts(&w).await;
     let other = w
-        .contract(BLUEFIRE, "2026-06-01", "2027-12-31", &[(tower_a_lifts(), "lifts")])
+        .contract(
+            BLUEFIRE,
+            "2026-06-01",
+            "2027-12-31",
+            &[(tower_a_lifts(), "lifts")],
+        )
         .await;
     expire(&w, &l).await;
     assert!(ComplianceFlag::open(w.t.db()).await.unwrap().is_empty());
@@ -195,13 +250,26 @@ async fn tkt04_no_flag_is_raised_while_another_active_contract_covers_the_subjec
 async fn tkt04_a_cleaning_contract_raises_no_flag() {
     let w = world().await;
     let contract = w
-        .contract(COOLAIR, "2026-01-01", "2026-12-31", &[(tower_a_cleaning(), "cleaning")])
+        .contract(
+            COOLAIR,
+            "2026-01-01",
+            "2026-12-31",
+            &[(tower_a_cleaning(), "cleaning")],
+        )
         .await;
     assert!(!contract.compliance_contract);
     let late = w
-        .visit(&contract, "cleaning", tower_a_cleaning(), "2027-01-15", Some(Assignee::party(COOLAIR)))
+        .visit(
+            &contract,
+            "cleaning",
+            tower_a_cleaning(),
+            "2027-01-15",
+            Some(Assignee::party(COOLAIR)),
+        )
         .await;
-    let report = contract_end::run(w.t.state(), date("2027-01-01")).await.unwrap();
+    let report = contract_end::run(w.t.state(), date("2027-01-01"))
+        .await
+        .unwrap();
     assert_eq!(report.ended.len(), 1);
     assert_eq!(w.t.reload(&late).await.status, TicketStatus::Cancelled);
     assert!(ComplianceFlag::open(w.t.db()).await.unwrap().is_empty());
@@ -214,13 +282,22 @@ async fn tkt04_a_cleaning_contract_raises_no_flag() {
 async fn tkt04_an_on_hold_visit_after_the_end_date_is_cancelled() {
     let w = world().await;
     let contract = w
-        .contract(COOLAIR, "2026-01-01", "2026-12-31", &[(tower_a_cleaning(), "cleaning")])
+        .contract(
+            COOLAIR,
+            "2026-01-01",
+            "2026-12-31",
+            &[(tower_a_cleaning(), "cleaning")],
+        )
         .await;
     let mut held = Ticket {
         number: "TKT-2026-9500".into(),
         subject_type: tower_a_cleaning().subject_type,
         subject_id: tower_a_cleaning().subject_id,
-        category_id: Category::by_key(w.t.db(), "cleaning").await.unwrap().unwrap().id,
+        category_id: Category::by_key(w.t.db(), "cleaning")
+            .await
+            .unwrap()
+            .unwrap()
+            .id,
         title: "Held visit".into(),
         assignee_party_id: Some(COOLAIR.0),
         planned_due_date: Some(date("2027-02-01")),
@@ -234,7 +311,9 @@ async fn tkt04_an_on_hold_visit_after_the_end_date_is_cancelled() {
         .unwrap();
     tx.commit().await.unwrap();
 
-    contract_end::run(w.t.state(), date("2027-01-01")).await.unwrap();
+    contract_end::run(w.t.state(), date("2027-01-01"))
+        .await
+        .unwrap();
     assert_eq!(w.t.reload(&held).await.status, TicketStatus::Cancelled);
 }
 
@@ -256,20 +335,36 @@ async fn tkt04_a_termination_with_a_future_date_runs_on_that_date() {
     .await
     .unwrap();
     let mut draft = w
-        .draft(COOLAIR, "2026-01-01", "2027-12-31", &[(tower_a_lifts(), "lifts")])
+        .draft(
+            COOLAIR,
+            "2026-01-01",
+            "2027-12-31",
+            &[(tower_a_lifts(), "lifts")],
+        )
         .await;
     draft.sla_policy_id = Some(policy.id);
     draft.save(w.t.db()).await.unwrap();
     let contract = w.activate(&draft).await;
     let visit = w
-        .visit(&contract, "lifts", tower_a_lifts(), "2026-12-15", Some(Assignee::party(COOLAIR)))
+        .visit(
+            &contract,
+            "lifts",
+            tower_a_lifts(),
+            "2026-12-15",
+            Some(Assignee::party(COOLAIR)),
+        )
         .await;
 
-    w.terminate(&contract, "Poor service", "2026-11-30").await.assert_ok();
+    w.terminate(&contract, "Poor service", "2026-11-30")
+        .await
+        .assert_ok();
     let terminated = w.reload(&contract).await;
     assert_eq!(terminated.status, ContractStatus::Terminated);
     assert_eq!(terminated.termination_date, Some(date("2026-11-30")));
-    assert_eq!(terminated.termination_reason.as_deref(), Some("Poor service"));
+    assert_eq!(
+        terminated.termination_reason.as_deref(),
+        Some("Poor service")
+    );
     assert!(terminated.ended_at.is_none());
     assert!(w.ended.all().is_empty());
 
@@ -283,7 +378,11 @@ async fn tkt04_a_termination_with_a_future_date_runs_on_that_date() {
     .unwrap();
     let raised = w.t.ticket(opened.id.0).await;
     assert_eq!(raised.contract_id, Some(contract.id));
-    assert_eq!(raised.sla_policy_id, Some(policy.id), "the contract's SLA policy");
+    assert_eq!(
+        raised.sla_policy_id,
+        Some(policy.id),
+        "the contract's SLA policy"
+    );
     let proposed =
         wl_ticketing::ServiceContracts::proposed_vendor(w.t.state(), &raised, date("2026-11-20"))
             .await
@@ -296,12 +395,20 @@ async fn tkt04_a_termination_with_a_future_date_runs_on_that_date() {
         .assert_ok()
         .assert_see("P-00005");
 
-    let before = contract_end::run(w.t.state(), date("2026-11-29")).await.unwrap();
+    let before = contract_end::run(w.t.state(), date("2026-11-29"))
+        .await
+        .unwrap();
     assert!(before.ended.is_empty());
-    assert_eq!(w.t.reload(&visit).await.status, TicketStatus::Assigned, "nothing is cancelled yet");
+    assert_eq!(
+        w.t.reload(&visit).await.status,
+        TicketStatus::Assigned,
+        "nothing is cancelled yet"
+    );
     assert!(w.ended.all().is_empty());
 
-    let on = contract_end::run(w.t.state(), date("2026-11-30")).await.unwrap();
+    let on = contract_end::run(w.t.state(), date("2026-11-30"))
+        .await
+        .unwrap();
     assert_eq!(on.ended.len(), 1);
     assert_eq!(w.t.reload(&visit).await.status, TicketStatus::Cancelled);
     let ended = w.ended.all();
@@ -326,18 +433,35 @@ async fn tkt04_a_termination_with_a_future_date_runs_on_that_date() {
 async fn tkt04_a_termination_dated_today_runs_at_once() {
     let w = world().await;
     let contract = w
-        .contract(COOLAIR, "2026-01-01", "2099-12-31", &[(tower_a_lifts(), "lifts")])
+        .contract(
+            COOLAIR,
+            "2026-01-01",
+            "2099-12-31",
+            &[(tower_a_lifts(), "lifts")],
+        )
         .await;
     let late = w
-        .visit(&contract, "lifts", tower_a_lifts(), "2099-06-01", Some(Assignee::party(COOLAIR)))
+        .visit(
+            &contract,
+            "lifts",
+            tower_a_lifts(),
+            "2099-06-01",
+            Some(Assignee::party(COOLAIR)),
+        )
         .await;
     let today = wl_kernel::documents::today().to_string();
-    w.terminate(&contract, "Vendor closed", &today).await.assert_ok();
+    w.terminate(&contract, "Vendor closed", &today)
+        .await
+        .assert_ok();
 
     assert_eq!(w.t.reload(&late).await.status, TicketStatus::Cancelled);
     assert!(w.reload(&contract).await.ended_at.is_some());
     assert_eq!(w.ended.all().len(), 1);
-    assert_eq!(ComplianceFlag::open(w.t.db()).await.unwrap().len(), 1, "no_contract");
+    assert_eq!(
+        ComplianceFlag::open(w.t.db()).await.unwrap().len(),
+        1,
+        "no_contract"
+    );
 }
 
 /// A terminate needs a reason, and a contract that is not in force cannot
@@ -346,14 +470,28 @@ async fn tkt04_a_termination_dated_today_runs_at_once() {
 async fn tkt04_terminating_needs_a_reason_and_a_contract_in_force() {
     let w = world().await;
     let contract = w
-        .contract(COOLAIR, "2026-01-01", "2099-12-31", &[(tower_a_lifts(), "lifts")])
+        .contract(
+            COOLAIR,
+            "2026-01-01",
+            "2099-12-31",
+            &[(tower_a_lifts(), "lifts")],
+        )
         .await;
-    w.terminate(&contract, "  ", "2099-01-01").await.assert_status(422);
+    w.terminate(&contract, "  ", "2099-01-01")
+        .await
+        .assert_status(422);
     assert_eq!(w.reload(&contract).await.status, ContractStatus::Active);
     let draft = w
-        .draft(COOLAIR, "2026-01-01", "2099-12-31", &[(tower_a_lifts(), "lifts")])
+        .draft(
+            COOLAIR,
+            "2026-01-01",
+            "2099-12-31",
+            &[(tower_a_lifts(), "lifts")],
+        )
         .await;
-    w.terminate(&draft, "Never mind", "2099-01-01").await.assert_status(422);
+    w.terminate(&draft, "Never mind", "2099-01-01")
+        .await
+        .assert_status(422);
     // A draft without coverage cannot be activated.
     let empty = w.draft(COOLAIR, "2026-01-01", "2099-12-31", &[]).await;
     w.try_activate(&empty).await.assert_status(422);
@@ -365,7 +503,9 @@ async fn tkt04_the_end_is_handled_once() {
     let w = world().await;
     let l = lifts(&w).await;
     expire(&w, &l).await;
-    let again = contract_end::run(w.t.state(), date("2027-01-02")).await.unwrap();
+    let again = contract_end::run(w.t.state(), date("2027-01-02"))
+        .await
+        .unwrap();
     assert!(again.ended.is_empty());
     assert!(
         contract_end::handle(w.t.state(), l.contract.id, date("2027-01-02"))
@@ -395,7 +535,10 @@ async fn tkt04_a_reassignment_from_the_task_records_contract_ended() {
     w.t.app
         .htmx()
         .post(
-            &format!("/service-contracts/{}/visits/{}/reassign", l.contract.id, l.dec20.id),
+            &format!(
+                "/service-contracts/{}/visits/{}/reassign",
+                l.contract.id, l.dec20.id
+            ),
             &[("assignee_user_id", imran.as_str())],
         )
         .await
@@ -403,19 +546,36 @@ async fn tkt04_a_reassignment_from_the_task_records_contract_ended() {
     let visit = w.t.reload(&l.dec20).await;
     assert_eq!(visit.assignee_user_id, Some(w.imran.id));
     let history = w.t.history(&visit).await;
-    assert_eq!(history.last().unwrap().reason_code.as_deref(), Some("contract_ended"));
+    assert_eq!(
+        history.last().unwrap().reason_code.as_deref(),
+        Some("contract_ended")
+    );
 
     // Another contract's visit is not reachable through this page.
     let other = w
-        .contract(BLUEFIRE, "2026-06-01", "2027-12-31", &[(tower_a_cleaning(), "cleaning")])
+        .contract(
+            BLUEFIRE,
+            "2026-06-01",
+            "2027-12-31",
+            &[(tower_a_cleaning(), "cleaning")],
+        )
         .await;
     let theirs = w
-        .visit(&other, "cleaning", tower_a_cleaning(), "2026-12-01", Some(Assignee::party(BLUEFIRE)))
+        .visit(
+            &other,
+            "cleaning",
+            tower_a_cleaning(),
+            "2026-12-01",
+            Some(Assignee::party(BLUEFIRE)),
+        )
         .await;
     w.t.app
         .htmx()
         .post(
-            &format!("/service-contracts/{}/visits/{}/reassign", l.contract.id, theirs.id),
+            &format!(
+                "/service-contracts/{}/visits/{}/reassign",
+                l.contract.id, theirs.id
+            ),
             &[("assignee_user_id", imran.as_str())],
         )
         .await
@@ -434,22 +594,41 @@ async fn tkt04_a_reassign_only_category_offers_no_cancel() {
 
     let l = lifts(&w).await;
     let cleaning = w
-        .contract(COOLAIR, "2026-01-01", "2026-12-31", &[(tower_a_cleaning(), "cleaning")])
+        .contract(
+            COOLAIR,
+            "2026-01-01",
+            "2026-12-31",
+            &[(tower_a_cleaning(), "cleaning")],
+        )
         .await;
     let clean = w
-        .visit(&cleaning, "cleaning", tower_a_cleaning(), "2026-12-20", Some(Assignee::party(COOLAIR)))
+        .visit(
+            &cleaning,
+            "cleaning",
+            tower_a_cleaning(),
+            "2026-12-20",
+            Some(Assignee::party(COOLAIR)),
+        )
         .await;
-    let report = contract_end::run(w.t.state(), date("2027-01-01")).await.unwrap();
+    let report = contract_end::run(w.t.state(), date("2027-01-01"))
+        .await
+        .unwrap();
     assert_eq!(report.ended.len(), 2);
 
     w.t.app.acting_as(&w.coordinator);
-    let page = w.t.app.get(&format!("/service-contracts/{}", l.contract.id)).await;
+    let page =
+        w.t.app
+            .get(&format!("/service-contracts/{}", l.contract.id))
+            .await;
     page.assert_ok();
     for visit in [&l.dec20, &l.dec31] {
         page.assert_see(&format!("reassign-visit-{}", visit.id));
         page.assert_dont_see(&format!("cancel-visit-{}", visit.id));
     }
-    let page = w.t.app.get(&format!("/service-contracts/{}", cleaning.id)).await;
+    let page =
+        w.t.app
+            .get(&format!("/service-contracts/{}", cleaning.id))
+            .await;
     page.assert_ok()
         .assert_see(&format!("reassign-visit-{}", clean.id))
         .assert_see(&format!("cancel-visit-{}", clean.id));
@@ -457,7 +636,10 @@ async fn tkt04_a_reassign_only_category_offers_no_cancel() {
     w.t.app
         .htmx()
         .post(
-            &format!("/service-contracts/{}/visits/{}/cancel", l.contract.id, l.dec20.id),
+            &format!(
+                "/service-contracts/{}/visits/{}/cancel",
+                l.contract.id, l.dec20.id
+            ),
             &[("reason", "Not needed")],
         )
         .await
@@ -466,7 +648,10 @@ async fn tkt04_a_reassign_only_category_offers_no_cancel() {
     w.t.app
         .htmx()
         .post(
-            &format!("/service-contracts/{}/visits/{}/cancel", cleaning.id, clean.id),
+            &format!(
+                "/service-contracts/{}/visits/{}/cancel",
+                cleaning.id, clean.id
+            ),
             &[("reason", "Not needed")],
         )
         .await
@@ -480,7 +665,12 @@ async fn tkt04_a_reassign_only_category_offers_no_cancel() {
 async fn tkt04_the_contract_page_and_its_actions_are_behind_permissions() {
     let w = world().await;
     let contract = w
-        .contract(COOLAIR, "2026-01-01", "2099-12-31", &[(tower_a_lifts(), "lifts")])
+        .contract(
+            COOLAIR,
+            "2026-01-01",
+            "2099-12-31",
+            &[(tower_a_lifts(), "lifts")],
+        )
         .await;
     let nobody = w.t.user("Nobody", &[wl_ticketing::permissions::VIEW]).await;
     w.t.app.acting_as(&nobody);
@@ -516,7 +706,12 @@ async fn inv24_the_coverage_of_a_day_runs_up_to_the_end_or_termination_date() {
 
     let w = world().await;
     let contract = w
-        .contract(COOLAIR, "2026-01-01", "2027-12-31", &[(tower_a_lifts(), "lifts")])
+        .contract(
+            COOLAIR,
+            "2026-01-01",
+            "2027-12-31",
+            &[(tower_a_lifts(), "lifts")],
+        )
         .await;
     let id = ServiceContractId(contract.id);
     let cover = |day: &str| {
@@ -527,7 +722,9 @@ async fn inv24_the_coverage_of_a_day_runs_up_to_the_end_or_termination_date() {
     assert_eq!(cover("2027-12-31").await, ContractCover::Covered);
     assert_eq!(
         cover("2028-01-01").await,
-        ContractCover::AfterEnd { ends_on: date("2027-12-31") }
+        ContractCover::AfterEnd {
+            ends_on: date("2027-12-31")
+        }
     );
     assert_eq!(
         ContractCoverage
@@ -537,11 +734,15 @@ async fn inv24_the_coverage_of_a_day_runs_up_to_the_end_or_termination_date() {
         ContractCover::Unknown
     );
 
-    w.terminate(&contract, "Poor service", "2026-11-30").await.assert_ok();
+    w.terminate(&contract, "Poor service", "2026-11-30")
+        .await
+        .assert_ok();
     assert_eq!(cover("2026-11-30").await, ContractCover::Covered);
     assert_eq!(
         cover("2026-12-01").await,
-        ContractCover::AfterEnd { ends_on: date("2026-11-30") }
+        ContractCover::AfterEnd {
+            ends_on: date("2026-11-30")
+        }
     );
 
     // A renewal that starts the day after covers the later days.
@@ -565,6 +766,8 @@ async fn inv24_the_coverage_of_a_day_runs_up_to_the_end_or_termination_date() {
     assert_eq!(cover("2026-12-15").await, ContractCover::Covered);
     assert_eq!(
         cover("2028-01-01").await,
-        ContractCover::AfterEnd { ends_on: date("2027-12-31") }
+        ContractCover::AfterEnd {
+            ends_on: date("2027-12-31")
+        }
     );
 }

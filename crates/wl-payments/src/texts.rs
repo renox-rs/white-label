@@ -20,14 +20,20 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("wl_payments.bank_statements.upload", "Record a statement"),
     ("wl_payments.bank_statements.record", "Record"),
-    ("wl_payments.bank_statements.recorded", "Statement recorded."),
+    (
+        "wl_payments.bank_statements.recorded",
+        "Statement recorded.",
+    ),
     ("wl_payments.bank_statements.bank_account", "Bank account"),
     ("wl_payments.bank_statements.file_name", "File"),
     ("wl_payments.bank_statements.format", "Format"),
     ("wl_payments.bank_statements.period", "Period"),
     ("wl_payments.bank_statements.period_start", "Period start"),
     ("wl_payments.bank_statements.period_end", "Period end"),
-    ("wl_payments.bank_statements.closing_balance", "Closing balance"),
+    (
+        "wl_payments.bank_statements.closing_balance",
+        "Closing balance",
+    ),
     (
         "wl_payments.bank_statements.closing_balance_hint",
         "In dirhams, like 125000.00 or -300.00. Enter it when the file carries none; it is the balance at the end of the last day of the period.",
@@ -96,7 +102,10 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_payments.fields.drawing_category_hint",
         "Owner drawings only: the code of the drawings category, like owner_drawings. It fixes the payee: the category's owner party.",
     ),
-    ("wl_payments.fields.drawing_direction", "Drawing or repayment"),
+    (
+        "wl_payments.fields.drawing_direction",
+        "Drawing or repayment",
+    ),
     (
         "wl_payments.drawing_direction.out",
         "Drawing: money out to the owner, after approval",
@@ -109,13 +118,22 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_payments.drawings.requested",
         "The drawing is saved and waits for the approval of another holder of drawings.approve. Nothing is recorded yet.",
     ),
-    ("wl_payments.drawings.recorded", "The drawing is approved and recorded."),
+    (
+        "wl_payments.drawings.recorded",
+        "The drawing is approved and recorded.",
+    ),
     ("wl_payments.drawings.title", "Owner drawing"),
     ("wl_payments.drawings.details", "Drawing"),
     ("wl_payments.drawings.reason", "Reason"),
-    ("wl_payments.drawings.self_approved", "Approved without a second approver (sole owner)."),
+    (
+        "wl_payments.drawings.self_approved",
+        "Approved without a second approver (sole owner).",
+    ),
     ("wl_payments.drawings.payment", "Open the payment"),
-    ("wl_payments.drawings.status.requested", "Waiting for approval"),
+    (
+        "wl_payments.drawings.status.requested",
+        "Waiting for approval",
+    ),
     ("wl_payments.drawings.status.approved", "Approved"),
     ("wl_payments.drawings.status.recorded", "Recorded"),
     ("wl_payments.drawings.status.rejected", "Not approved"),
@@ -253,10 +271,7 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_payments.refund_cancelled.body",
         "Dear customer, your refund of {{ amount }} is cancelled. The amount stays on your account as credit.",
     ),
-    (
-        "wl_payments.refund_method_task.subject",
-        "{{ text }}",
-    ),
+    ("wl_payments.refund_method_task.subject", "{{ text }}"),
     (
         "wl_payments.refund_method_task.body",
         "{{ text }}: the refund failed ({{ reason }}). Pay it by transfer, a cheque in the party's name or cash. See {{ link }}.",
@@ -273,13 +288,19 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("wl_payments.refunds.retry.done", "Refund retried."),
     ("wl_payments.refunds.change.action", "Change method"),
-    ("wl_payments.refunds.change.title", "Pay this refund another way"),
+    (
+        "wl_payments.refunds.change.title",
+        "Pay this refund another way",
+    ),
     (
         "wl_payments.refunds.change.description",
         "The original card through the gateway, cash and a cheque in the party's name are approved at once. New bank details, or a cheque to someone else, need another user's approval.",
     ),
     ("wl_payments.refunds.change.method", "New method"),
-    ("wl_payments.refunds.change.details", "Bank details or payee"),
+    (
+        "wl_payments.refunds.change.details",
+        "Bank details or payee",
+    ),
     (
         "wl_payments.refunds.change.details_hint",
         "The IBAN of a transfer, or the name on a cheque that is not the party's.",
@@ -385,9 +406,18 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_payments.deposits.refund_failed", "Refund failed"),
     ("wl_payments.deposits.open_refund", "Open the refund"),
     ("wl_payments.deposits.refund_state", "Refund"),
-    ("wl_payments.deposits.sections.disputes", "Disputes by the party"),
-    ("wl_payments.deposits.deductions.action", "Publish deductions"),
-    ("wl_payments.deposits.deductions.title", "Publish the deductions to the party"),
+    (
+        "wl_payments.deposits.sections.disputes",
+        "Disputes by the party",
+    ),
+    (
+        "wl_payments.deposits.deductions.action",
+        "Publish deductions",
+    ),
+    (
+        "wl_payments.deposits.deductions.title",
+        "Publish the deductions to the party",
+    ),
     (
         "wl_payments.deposits.deductions.description",
         "The next version of the deductions (or the forfeiture) is shown to the party in the portal and its dispute window starts today. A published version is never changed; a revision is the next version.",
@@ -397,18 +427,39 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_payments.deposits.deductions.lines_hint",
         "One per line: description | amount in dirhams | evidence reference. Leave empty for none, or for the whole deposit when forfeiting.",
     ),
-    ("wl_payments.deposits.deductions.forfeiture_reason", "Forfeiture reason"),
+    (
+        "wl_payments.deposits.deductions.forfeiture_reason",
+        "Forfeiture reason",
+    ),
     (
         "wl_payments.deposits.deductions.forfeiture_hint",
         "Fill it in to publish a forfeiture instead of deductions.",
     ),
     ("wl_payments.deposits.deductions.submit", "Publish"),
-    ("wl_payments.deposits.deductions.done", "Deductions published to the party."),
-    ("wl_payments.deposits.deductions.version", "Published version"),
-    ("wl_payments.deposits.deductions.kind.deductions", "deductions"),
-    ("wl_payments.deposits.deductions.kind.forfeiture", "forfeiture"),
-    ("wl_payments.deposits.deductions.published_on", "Published on"),
-    ("wl_payments.deposits.deductions.window_ends_on", "Dispute window ends"),
+    (
+        "wl_payments.deposits.deductions.done",
+        "Deductions published to the party.",
+    ),
+    (
+        "wl_payments.deposits.deductions.version",
+        "Published version",
+    ),
+    (
+        "wl_payments.deposits.deductions.kind.deductions",
+        "deductions",
+    ),
+    (
+        "wl_payments.deposits.deductions.kind.forfeiture",
+        "forfeiture",
+    ),
+    (
+        "wl_payments.deposits.deductions.published_on",
+        "Published on",
+    ),
+    (
+        "wl_payments.deposits.deductions.window_ends_on",
+        "Dispute window ends",
+    ),
     ("wl_payments.deposits.deductions.no_window", "No dispute"),
     ("wl_payments.deposits.deductions.total", "Deducted"),
     ("wl_payments.deposits.deductions.reason", "Reason"),
@@ -428,7 +479,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_payments.deposits.dispute.status.revised", "Revised"),
     ("wl_payments.deposits.dispute.status.upheld", "Upheld"),
     ("wl_payments.deposits.answer.action", "Answer the dispute"),
-    ("wl_payments.deposits.answer.title", "Answer the party's dispute"),
+    (
+        "wl_payments.deposits.answer.title",
+        "Answer the party's dispute",
+    ),
     (
         "wl_payments.deposits.answer.description",
         "Answer with evidence. Lines you revise are published as a new version and the dispute window starts again; the other disputed lines are upheld. With no revised line the deductions are upheld and the window does not restart.",
@@ -445,20 +499,35 @@ const TEXTS: &[(&str, &str)] = &[
         "One per row: line id | new amount in dirhams (0 removes the line).",
     ),
     ("wl_payments.deposits.answer.submit", "Answer"),
-    ("wl_payments.deposits.answer.done", "The dispute is answered."),
+    (
+        "wl_payments.deposits.answer.done",
+        "The dispute is answered.",
+    ),
     ("wl_payments.deposits.legal_case.open", "Legal case opened"),
-    ("wl_payments.deposits.legal_case.open_title", "A legal case is open on the agreement"),
+    (
+        "wl_payments.deposits.legal_case.open_title",
+        "A legal case is open on the agreement",
+    ),
     (
         "wl_payments.deposits.legal_case.open_message",
         "The dispute flag stays until the decision is recorded; refund and forfeit wait.",
     ),
-    ("wl_payments.deposits.legal_case.close", "Record the decision"),
-    ("wl_payments.deposits.legal_case.close_title", "Record the decision of the legal case"),
+    (
+        "wl_payments.deposits.legal_case.close",
+        "Record the decision",
+    ),
+    (
+        "wl_payments.deposits.legal_case.close_title",
+        "Record the decision of the legal case",
+    ),
     (
         "wl_payments.deposits.legal_case.close_message",
         "The dispute flag is released and the settlement can go on.",
     ),
-    ("wl_payments.deposits.legal_case.done", "The legal case is recorded."),
+    (
+        "wl_payments.deposits.legal_case.done",
+        "The legal case is recorded.",
+    ),
     ("wl_payments.deposits.refund.action", "Refund"),
     ("wl_payments.deposits.refund.title", "Refund the deposit"),
     (
@@ -482,8 +551,14 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_payments.deposits.forfeit.approver", "Approved by"),
     ("wl_payments.deposits.forfeit.submit", "Forfeit"),
     ("wl_payments.deposits.forfeit.done", "Deposit forfeited."),
-    ("wl_payments.deposits.transfer.action", "Transfer to a new holder"),
-    ("wl_payments.deposits.transfer.title", "Hand the deposit to the new holder"),
+    (
+        "wl_payments.deposits.transfer.action",
+        "Transfer to a new holder",
+    ),
+    (
+        "wl_payments.deposits.transfer.title",
+        "Hand the deposit to the new holder",
+    ),
     (
         "wl_payments.deposits.transfer.description",
         "The source agreement passes to another holder before it ends. The held amount is paid to the new holder against their receipt (an outgoing payment, not a refund), the liability leaves you and the party is told who holds the deposit.",
@@ -493,23 +568,38 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_payments.deposits.transfer.new_holder_hint",
         "The code of the party, like P-00007.",
     ),
-    ("wl_payments.deposits.transfer.receipt", "The new holder's receipt"),
+    (
+        "wl_payments.deposits.transfer.receipt",
+        "The new holder's receipt",
+    ),
     (
         "wl_payments.deposits.transfer.receipt_hint",
         "The reference of the receipt document attached.",
     ),
     ("wl_payments.deposits.transfer.submit", "Transfer"),
-    ("wl_payments.deposits.transfer.done", "Deposit handed to the new holder."),
+    (
+        "wl_payments.deposits.transfer.done",
+        "Deposit handed to the new holder.",
+    ),
     ("wl_payments.deposits.transfer.holder", "Transferred to"),
-    ("wl_payments.deposits.sections.adjustments", "Changes of the amount"),
+    (
+        "wl_payments.deposits.sections.adjustments",
+        "Changes of the amount",
+    ),
     ("wl_payments.deposits.adjust.action", "Adjust the amount"),
-    ("wl_payments.deposits.adjust.title", "Adjust the deposit to a new amount"),
+    (
+        "wl_payments.deposits.adjust.title",
+        "Adjust the deposit to a new amount",
+    ),
     (
         "wl_payments.deposits.adjust.description",
         "The agreement changed the deposit it requires. An increase raises a top-up charge due on the effective date; a decrease asks for a part refund, which another user approves. The deposit stays held and its held amount follows the money actually received or paid back.",
     ),
     ("wl_payments.deposits.adjust.new_amount", "New amount"),
-    ("wl_payments.deposits.adjust.version", "Version of the agreement"),
+    (
+        "wl_payments.deposits.adjust.version",
+        "Version of the agreement",
+    ),
     (
         "wl_payments.deposits.adjust.version_hint",
         "The amendment or renewal version that changed it.",
@@ -517,15 +607,33 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_payments.deposits.adjust.effective_on", "Effective on"),
     ("wl_payments.deposits.adjust.submit", "Adjust"),
     ("wl_payments.deposits.adjust.done", "Deposit adjusted."),
-    ("wl_payments.deposits.adjust.same", "The amount is the same: nothing was recorded."),
-    ("wl_payments.deposits.adjust.amount_required", "Enter the new amount, like 6000.00."),
-    ("wl_payments.deposits.adjust.version_required", "Enter the version of the agreement."),
-    ("wl_payments.deposits.adjust.date_required", "Enter the day the change takes effect."),
+    (
+        "wl_payments.deposits.adjust.same",
+        "The amount is the same: nothing was recorded.",
+    ),
+    (
+        "wl_payments.deposits.adjust.amount_required",
+        "Enter the new amount, like 6000.00.",
+    ),
+    (
+        "wl_payments.deposits.adjust.version_required",
+        "Enter the version of the agreement.",
+    ),
+    (
+        "wl_payments.deposits.adjust.date_required",
+        "Enter the day the change takes effect.",
+    ),
     ("wl_payments.deposits.adjust.change", "Change"),
     ("wl_payments.deposits.adjust.difference", "Difference"),
-    ("wl_payments.deposits.adjust.charge_or_refund", "Charge or refund"),
+    (
+        "wl_payments.deposits.adjust.charge_or_refund",
+        "Charge or refund",
+    ),
     ("wl_payments.deposits.adjust.kind.top_up", "Top-up"),
-    ("wl_payments.deposits.adjust.kind.part_refund", "Part refund"),
+    (
+        "wl_payments.deposits.adjust.kind.part_refund",
+        "Part refund",
+    ),
     ("wl_payments.deposits.adjust.status.open", "Open"),
     ("wl_payments.deposits.adjust.status.settled", "Settled"),
     ("wl_payments.deposits.adjust.status.closed", "Closed"),
@@ -560,7 +668,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_payments.cheques.agreement", "Agreement"),
     ("wl_payments.cheques.linked", "Document"),
     ("wl_payments.cheques.field", "Collected in the field"),
-    ("wl_payments.cheques.field_yes", "Yes: needs a cash handover before deposit"),
+    (
+        "wl_payments.cheques.field_yes",
+        "Yes: needs a cash handover before deposit",
+    ),
     ("wl_payments.cheques.none", "None"),
     ("wl_payments.cheques.no_links", "No document linked"),
     ("wl_payments.cheques.no_returns", "Never returned"),
@@ -569,7 +680,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_payments.cheques.direction.in", "Received"),
     ("wl_payments.cheques.direction.out", "Issued"),
     ("wl_payments.cheques.status.received", "Received"),
-    ("wl_payments.cheques.status.due_for_deposit", "Due for deposit"),
+    (
+        "wl_payments.cheques.status.due_for_deposit",
+        "Due for deposit",
+    ),
     ("wl_payments.cheques.status.deposited", "Deposited"),
     ("wl_payments.cheques.status.cleared", "Cleared"),
     ("wl_payments.cheques.status.bounced", "Bounced"),
@@ -577,8 +691,14 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_payments.cheques.status.replaced", "Replaced"),
     ("wl_payments.cheques.status.written_off", "Written off"),
     ("wl_payments.cheques.status.returned", "Returned"),
-    ("wl_payments.cheques.reason.insufficient_funds", "Insufficient funds"),
-    ("wl_payments.cheques.reason.account_closed", "Account closed"),
+    (
+        "wl_payments.cheques.reason.insufficient_funds",
+        "Insufficient funds",
+    ),
+    (
+        "wl_payments.cheques.reason.account_closed",
+        "Account closed",
+    ),
     (
         "wl_payments.cheques.reason.payment_stopped",
         "Payment stopped by the drawer",
@@ -596,14 +716,23 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("wl_payments.cheques.deposit.done", "Cheque deposited."),
     ("wl_payments.cheques.clear.action", "Clear"),
-    ("wl_payments.cheques.clear.title", "The bank paid this cheque?"),
+    (
+        "wl_payments.cheques.clear.title",
+        "The bank paid this cheque?",
+    ),
     (
         "wl_payments.cheques.clear.message",
         "A payment is recorded for the open amount and allocated to the documents the cheque pays.",
     ),
-    ("wl_payments.cheques.clear.done", "Cheque cleared and its payment recorded."),
+    (
+        "wl_payments.cheques.clear.done",
+        "Cheque cleared and its payment recorded.",
+    ),
     ("wl_payments.cheques.bounce.action", "Record bounce"),
-    ("wl_payments.cheques.bounce.title", "The bank returned this cheque"),
+    (
+        "wl_payments.cheques.bounce.title",
+        "The bank returned this cheque",
+    ),
     (
         "wl_payments.cheques.bounce.description",
         "Give the bank's return reason, attach its return certificate and enter what the bank paid from the available balance, if anything. A bounce fee is added when one is set, with standard VAT until the accountant decides (A-05), and the customer account is put on credit hold.",
@@ -613,7 +742,10 @@ const TEXTS: &[(&str, &str)] = &[
         "Give the bank's return reason and what the bank paid, if anything. The cheque is replaced by a new cheque or a payment: you get a task for it.",
     ),
     ("wl_payments.cheques.bounce.reason", "Return reason"),
-    ("wl_payments.cheques.bounce.certificate", "Return certificate"),
+    (
+        "wl_payments.cheques.bounce.certificate",
+        "Return certificate",
+    ),
     (
         "wl_payments.cheques.bounce.certificate_hint",
         "The reference of the bank's return certificate, as filed with the documents.",
@@ -625,31 +757,52 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("wl_payments.cheques.bounce.submit", "Record bounce"),
     ("wl_payments.cheques.bounce.done", "Bounce recorded."),
-    ("wl_payments.cheques.bounce.reason_required", "Choose the return reason."),
+    (
+        "wl_payments.cheques.bounce.reason_required",
+        "Choose the return reason.",
+    ),
     (
         "wl_payments.cheques.bounce.honoured_invalid",
         "Give the amount in dirhams, like 6000.00.",
     ),
     ("wl_payments.cheques.represent.action", "Present again"),
-    ("wl_payments.cheques.represent.title", "Present this cheque again"),
+    (
+        "wl_payments.cheques.represent.title",
+        "Present this cheque again",
+    ),
     (
         "wl_payments.cheques.represent.description",
         "Use it when the party confirms there are funds. A cheque is presented at most twice, and not again once the bank has paid part of it (provisional until the lawyer answers, L-21). The party is told the new date.",
     ),
-    ("wl_payments.cheques.represent.date", "New presentation date"),
-    ("wl_payments.cheques.represent.funds", "The party confirmed there are funds"),
+    (
+        "wl_payments.cheques.represent.date",
+        "New presentation date",
+    ),
+    (
+        "wl_payments.cheques.represent.funds",
+        "The party confirmed there are funds",
+    ),
     ("wl_payments.cheques.represent.note", "Note"),
     (
         "wl_payments.cheques.represent.note_hint",
         "Needed when the confirmation is not ticked, e.g. \"funds confirmed by phone\".",
     ),
     ("wl_payments.cheques.represent.submit", "Present again"),
-    ("wl_payments.cheques.represent.done", "The cheque is presented again."),
-    ("wl_payments.cheques.represent.date_required", "Give the new presentation date."),
+    (
+        "wl_payments.cheques.represent.done",
+        "The cheque is presented again.",
+    ),
+    (
+        "wl_payments.cheques.represent.date_required",
+        "Give the new presentation date.",
+    ),
     ("wl_payments.cheques.sections.replacements", "Replacements"),
     ("wl_payments.cheques.custody_note", "Kept because"),
     ("wl_payments.cheques.settle.action", "Settle part"),
-    ("wl_payments.cheques.settle.title", "The party paid part of this cheque"),
+    (
+        "wl_payments.cheques.settle.title",
+        "The party paid part of this cheque",
+    ),
     (
         "wl_payments.cheques.settle.description",
         "A payment in cash, by transfer or by card, below the open amount. It is allocated to the documents the cheque pays and the open amount goes down. To settle the whole of it, link the payment as a replacement.",
@@ -661,13 +814,22 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     ("wl_payments.cheques.settle.submit", "Record payment"),
     ("wl_payments.cheques.settle.done", "Part payment recorded."),
-    ("wl_payments.cheques.settle.method_required", "Choose cash, transfer or card."),
+    (
+        "wl_payments.cheques.settle.method_required",
+        "Choose cash, transfer or card.",
+    ),
     (
         "wl_payments.cheques.settle.amount_required",
         "Give the amount in dirhams, like 4000.00.",
     ),
-    ("wl_payments.cheques.replacement.action", "Link a replacement"),
-    ("wl_payments.cheques.replacement.title", "Link a replacement"),
+    (
+        "wl_payments.cheques.replacement.action",
+        "Link a replacement",
+    ),
+    (
+        "wl_payments.cheques.replacement.title",
+        "Link a replacement",
+    ),
     (
         "wl_payments.cheques.replacement.description",
         "A new cheque, or a payment received from the party, that takes the place of the bounced cheque. The cheque can be marked replaced once the replacements cover its open amount.",
@@ -675,7 +837,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_payments.cheques.replacement.kind", "Replacement"),
     ("wl_payments.cheques.replacement.cheque", "Cheque"),
     ("wl_payments.cheques.replacement.payment", "Payment"),
-    ("wl_payments.cheques.replacement.id", "Number in the register"),
+    (
+        "wl_payments.cheques.replacement.id",
+        "Number in the register",
+    ),
     (
         "wl_payments.cheques.replacement.id_hint",
         "The id shown in the address of the cheque or payment, like /cheques/12.",
@@ -683,24 +848,48 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_payments.cheques.replacement.what", "Linked"),
     ("wl_payments.cheques.replacement.covers", "Covers"),
     ("wl_payments.cheques.replacement.submit", "Link"),
-    ("wl_payments.cheques.replacement.done", "Replacement linked."),
-    ("wl_payments.cheques.replacement.kind_required", "Choose a cheque or a payment."),
-    ("wl_payments.cheques.replacement.id_required", "Give the number of the replacement."),
+    (
+        "wl_payments.cheques.replacement.done",
+        "Replacement linked.",
+    ),
+    (
+        "wl_payments.cheques.replacement.kind_required",
+        "Choose a cheque or a payment.",
+    ),
+    (
+        "wl_payments.cheques.replacement.id_required",
+        "Give the number of the replacement.",
+    ),
     ("wl_payments.cheques.replace.action", "Mark replaced"),
-    ("wl_payments.cheques.replace.title", "Mark this cheque replaced?"),
+    (
+        "wl_payments.cheques.replace.title",
+        "Mark this cheque replaced?",
+    ),
     (
         "wl_payments.cheques.replace.message",
         "The linked cheques and payments must cover the open amount. The original is handed back to the party once its replacement cheques clear.",
     ),
-    ("wl_payments.cheques.replace.done", "Cheque marked replaced."),
+    (
+        "wl_payments.cheques.replace.done",
+        "Cheque marked replaced.",
+    ),
     ("wl_payments.cheques.case", "Legal case"),
     ("wl_payments.cheques.case_owner", "Case owner"),
     ("wl_payments.cheques.case_reference", "Case reference"),
     ("wl_payments.cheques.referred_on", "Referred on"),
-    ("wl_payments.cheques.case.civil_execution", "Civil execution"),
-    ("wl_payments.cheques.case.criminal_complaint", "Criminal complaint"),
+    (
+        "wl_payments.cheques.case.civil_execution",
+        "Civil execution",
+    ),
+    (
+        "wl_payments.cheques.case.criminal_complaint",
+        "Criminal complaint",
+    ),
     ("wl_payments.cheques.refer.action", "Refer to legal"),
-    ("wl_payments.cheques.refer.title", "Refer this cheque to a legal case"),
+    (
+        "wl_payments.cheques.refer.title",
+        "Refer this cheque to a legal case",
+    ),
     (
         "wl_payments.cheques.refer.description",
         "The open amount is handed to a legal case. The case owner gets a task with the evidence pack, the party gets a formal notice and the manager is told. This records the case; it files nothing with a court or the police. A criminal complaint is allowed only for the return reasons on the list in the settings; that list and the text of the notice are provisional until the lawyer answers (L-21).",
@@ -708,30 +897,45 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_payments.cheques.refer.case_type", "Kind of case"),
     ("wl_payments.cheques.refer.case_owner", "Case owner"),
     ("wl_payments.cheques.refer.submit", "Refer"),
-    ("wl_payments.cheques.refer.done", "Cheque referred to a legal case."),
-    ("wl_payments.cheques.refer.case_required", "Choose civil execution or a criminal complaint."),
-    ("wl_payments.cheques.sections.write_offs", "Invoice write-offs"),
+    (
+        "wl_payments.cheques.refer.done",
+        "Cheque referred to a legal case.",
+    ),
+    (
+        "wl_payments.cheques.refer.case_required",
+        "Choose civil execution or a criminal complaint.",
+    ),
+    (
+        "wl_payments.cheques.sections.write_offs",
+        "Invoice write-offs",
+    ),
     ("wl_payments.cheques.write_off.action", "Write off"),
-    ("wl_payments.cheques.write_off.title", "Write off this cheque"),
+    (
+        "wl_payments.cheques.write_off.title",
+        "Write off this cheque",
+    ),
     (
         "wl_payments.cheques.write_off.description",
         "The open balance of every invoice this cheque pays is written off as a bad debt through the invoice write-off, which has its own approval limit. The cheque is marked written off when all those write-offs are made. Offered only when the open balances of the invoices equal the cheque's open amount; otherwise write the invoices off directly. The customer's credit hold stays until it is released in sales.",
     ),
     ("wl_payments.cheques.write_off.reason", "Reason"),
     ("wl_payments.cheques.write_off.submit", "Write off"),
-    (
-        "wl_payments.cheques.write_off.done",
-        "Cheque written off.",
-    ),
+    ("wl_payments.cheques.write_off.done", "Cheque written off."),
     (
         "wl_payments.cheques.write_off.requested",
         "Write-off requested: the cheque is written off when the invoice write-offs are approved.",
     ),
-    ("wl_payments.cheques.write_off.reason_required", "A reason is required."),
+    (
+        "wl_payments.cheques.write_off.reason_required",
+        "A reason is required.",
+    ),
     ("wl_payments.cheques.write_off.invoice", "Invoice"),
     ("wl_payments.cheques.write_off.failure", "Why it failed"),
     ("wl_payments.cheques.write_off.status.pending", "Waiting"),
-    ("wl_payments.cheques.write_off.status.written_off", "Written off"),
+    (
+        "wl_payments.cheques.write_off.status.written_off",
+        "Written off",
+    ),
     ("wl_payments.cheques.write_off.status.failed", "Failed"),
     ("wl_payments.followup.subject", "{{ text }}"),
     (
@@ -816,7 +1020,10 @@ const TEXTS: &[(&str, &str)] = &[
         "Dear customer, your agreement has passed to a new holder and your deposit of {{ amount }} (deposit {{ deposit }}) was handed over to {{ holder }}, against their receipt. {{ holder }} now holds it and will settle it with you when your agreement ends.",
     ),
     ("wl_payments.deposit_task.subject", "{{ text }}"),
-    ("wl_payments.deposit_task.body", "{{ text }}. See {{ link }}."),
+    (
+        "wl_payments.deposit_task.body",
+        "{{ text }}. See {{ link }}.",
+    ),
     (
         "wl_payments.cheque_referred.subject",
         "Cheque {{ number }} referred to a legal case",

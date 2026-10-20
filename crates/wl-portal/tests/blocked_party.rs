@@ -24,8 +24,12 @@ async fn por01_a_blocked_tenant_pays_but_cannot_start_new_business_or_move_money
     let (sara, _) = t.portal_user("Sara", 70, SARA_PARTY).await;
     t.blocks.block(SARA_PARTY);
 
-    t.act(&sara, "pay_invoice", SARA_PARTY, "en").await.assert_ok();
-    let refused = t.act(&sara, "deposit_release_request", SARA_PARTY, "en").await;
+    t.act(&sara, "pay_invoice", SARA_PARTY, "en")
+        .await
+        .assert_ok();
+    let refused = t
+        .act(&sara, "deposit_release_request", SARA_PARTY, "en")
+        .await;
     refused.assert_status(422);
     assert!(refused.text().contains(NEUTRAL_EN), "{}", refused.text());
     t.act(&sara, "maintenance_request", SARA_PARTY, "en")
@@ -155,13 +159,20 @@ async fn por01_only_the_party_the_user_acts_for_is_checked() {
         PortalAccess::register(
             t.state(),
             cfo.id,
-            wl_portal::NewGrant::new(PartyId(60), PartyId(company), "client", &["finance_contact"]),
+            wl_portal::NewGrant::new(
+                PartyId(60),
+                PartyId(company),
+                "client",
+                &["finance_contact"],
+            ),
         )
         .await
         .unwrap();
     }
     t.blocks.block(ACME_ONE);
-    t.act(&cfo, "new_order", ACME_ONE, "en").await.assert_status(422);
+    t.act(&cfo, "new_order", ACME_ONE, "en")
+        .await
+        .assert_status(422);
     t.act(&cfo, "new_order", ACME_TWO, "en").await.assert_ok();
 
     let guardian = t.user("Gus", &[]).await;
@@ -191,9 +202,13 @@ async fn por01_a_user_without_an_active_grant_for_the_party_is_forbidden() {
     let (sara, grant) = t.portal_user("Sara", 70, SARA_PARTY).await;
     t.blocks.block(SARA_PARTY);
     // Another party: no grant.
-    t.act(&sara, "new_booking", ACME_ONE, "en").await.assert_forbidden();
+    t.act(&sara, "new_booking", ACME_ONE, "en")
+        .await
+        .assert_forbidden();
     // A suspended grant gives nothing.
-    let staff = t.user("Stan", &[wl_portal::permissions::USERS_MANAGE]).await;
+    let staff = t
+        .user("Stan", &[wl_portal::permissions::USERS_MANAGE])
+        .await;
     t.post_as(
         &staff,
         &format!("/test/grants/{}/suspend", grant.id),
@@ -201,7 +216,9 @@ async fn por01_a_user_without_an_active_grant_for_the_party_is_forbidden() {
     )
     .await
     .assert_ok();
-    t.act(&sara, "pay_invoice", SARA_PARTY, "en").await.assert_forbidden();
+    t.act(&sara, "pay_invoice", SARA_PARTY, "en")
+        .await
+        .assert_forbidden();
     assert!(RefusalLog::latest(t.db(), 10).await.unwrap().is_empty());
 }
 
@@ -219,7 +236,9 @@ async fn por01_the_refusal_log_is_visible_to_the_mlro_only() {
     let mlro = t
         .user("Mlro", &[wl_portal::permissions::BLOCK_REASON_VIEW])
         .await;
-    let other = t.user("Olga", &[wl_portal::permissions::USERS_MANAGE]).await;
+    let other = t
+        .user("Olga", &[wl_portal::permissions::USERS_MANAGE])
+        .await;
     t.app.acting_as(&mlro);
     let page = t.app.get("/portal/block-refusals").await;
     page.assert_ok();

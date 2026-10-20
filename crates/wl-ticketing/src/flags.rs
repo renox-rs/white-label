@@ -142,11 +142,7 @@ pub struct Raise {
 /// # Errors
 ///
 /// The database's errors.
-pub async fn raise(
-    state: &AppState,
-    raise: Raise,
-    at: DateTime,
-) -> Result<Option<ComplianceFlag>> {
+pub async fn raise(state: &AppState, raise: Raise, at: DateTime) -> Result<Option<ComplianceFlag>> {
     let Some(category) = Category::by_key(&state.db, &raise.category).await? else {
         return Ok(None);
     };
@@ -341,7 +337,13 @@ mod tests {
 
     #[test]
     fn the_reasons_are_the_three_of_the_spec() {
-        let names: Vec<_> = ComplianceFlagReason::ALL.iter().map(|r| r.as_str()).collect();
-        assert_eq!(names, ["no_contract", "visit_missed", "vendor_document_expired"]);
+        let names: Vec<_> = ComplianceFlagReason::ALL
+            .iter()
+            .map(|r| r.as_str())
+            .collect();
+        assert_eq!(
+            names,
+            ["no_contract", "visit_missed", "vendor_document_expired"]
+        );
     }
 }

@@ -202,11 +202,7 @@ impl Acknowledgements {
     }
 
     /// The acknowledgements of `sop`'s version `document`, oldest first.
-    pub async fn of_version(
-        db: &Db,
-        sop: i64,
-        document: i64,
-    ) -> Result<Vec<SopAcknowledgement>> {
+    pub async fn of_version(db: &Db, sop: i64, document: i64) -> Result<Vec<SopAcknowledgement>> {
         SopAcknowledgement::query()
             .where_(SopAcknowledgement::SOP_ID.eq(sop))
             .where_(SopAcknowledgement::DOCUMENT_ID.eq(document))
@@ -634,7 +630,9 @@ impl Acknowledgements {
             witness_id: Some(witness),
             ..AckRun::default()
         };
-        run_acknowledge(state, &ack, run, Some(witness)).await.map(Ok)
+        run_acknowledge(state, &ack, run, Some(witness))
+            .await
+            .map(Ok)
     }
 
     /// Whether the user `user` may witness an in-person record for `profile`:
@@ -652,7 +650,8 @@ async fn run_acknowledge(
     run: AckRun,
     witness: Option<i64>,
 ) -> Result<SopAcknowledgement> {
-    let _outcome = ack.transition(ACKNOWLEDGE)
+    let _outcome = ack
+        .transition(ACKNOWLEDGE)
         .by_system()
         .input(&run)
         .meta(renox::serde_json::json!({ "ran_by": run.by }))
@@ -675,7 +674,10 @@ async fn run_acknowledge(
                 .where_(SopAcknowledgement::ID.eq(done.id))
                 .update(
                     &state.db,
-                    &[("in_person_notified_at", &Some(now())), ("updated_at", &now())],
+                    &[
+                        ("in_person_notified_at", &Some(now())),
+                        ("updated_at", &now()),
+                    ],
                 )
                 .await?;
         }
@@ -685,7 +687,8 @@ async fn run_acknowledge(
 
 /// Runs `replace` or `cancel` on `ack` with `reason`.
 async fn end(state: &AppState, ack: &SopAcknowledgement, transition: &str, reason: &str) -> Result {
-    let _outcome = ack.transition(transition)
+    let _outcome = ack
+        .transition(transition)
         .by_system()
         .reason(reason)
         .input(&AckRun {
@@ -731,7 +734,11 @@ mod tests {
         let site1 = Subject::new("property.site", 1);
         let readers = [reader("site_worker", Some(("property.site", "1")))];
         assert!(lists(&readers, "site_worker", &[site1.clone()]));
-        assert!(!lists(&readers, "site_worker", &[Subject::new("property.site", 2)]));
+        assert!(!lists(
+            &readers,
+            "site_worker",
+            &[Subject::new("property.site", 2)]
+        ));
         assert!(!lists(&readers, "driver", &[site1]));
         // No scope: global, which a scoped reader does not list.
         assert!(!lists(&readers, "site_worker", &[]));
@@ -783,7 +790,10 @@ mod tests {
     fn refusals_have_messages_and_the_right_status() {
         assert!(!AckRefused::Superseded.message().is_empty());
         assert!(matches!(AckRefused::NotFound.into_error(), Error::NotFound));
-        assert!(matches!(AckRefused::NotReader.into_error(), Error::Forbidden));
+        assert!(matches!(
+            AckRefused::NotReader.into_error(),
+            Error::Forbidden
+        ));
         assert!(matches!(
             AckRefused::NotOpened.into_error(),
             Error::Status(StatusCode::UNPROCESSABLE_ENTITY, _)

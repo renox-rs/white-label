@@ -15,12 +15,12 @@
 use renox::prelude::*;
 use renox::serde_json::json;
 use renox::state_machine::Transitioned;
+use wl_kernel::PartyId;
 use wl_kernel::drawings::{
     DRAWING_REQUEST_SUBJECT_TYPE, DrawingCategory, DrawingFuture, DrawingRequest, DrawingStart,
     OwnerDrawingDecided, OwnerDrawings,
 };
 use wl_kernel::notify::{self, NotifyRequest};
-use wl_kernel::PartyId;
 
 use crate::allocate::amount_text;
 use crate::budget_category::{BudgetCategory, refused};
@@ -91,18 +91,20 @@ async fn tell_self_approved(
     approval: &DrawingApproval,
 ) -> Result {
     let config = config_of(state);
-    let recipients =
-        holders_of(&state.db, std::slice::from_ref(&config.drawings_notify_role)).await?;
+    let recipients = holders_of(
+        &state.db,
+        std::slice::from_ref(&config.drawings_notify_role),
+    )
+    .await?;
     if recipients.is_empty() {
         return Ok(());
     }
-    let mut request = NotifyRequest::new(DRAWING_PAYMENT_SELF_APPROVED, approval.subject()).data(
-        json!({
+    let mut request =
+        NotifyRequest::new(DRAWING_PAYMENT_SELF_APPROVED, approval.subject()).data(json!({
             "amount": amount_text("AED", approval.amount),
             "category": category.name_en,
             "link": "/payments",
-        }),
-    );
+        }));
     for id in recipients {
         request = request.to_user(id);
     }
@@ -162,14 +164,26 @@ mod tests {
 
     #[test]
     fn only_a_drawing_on_a_payment_request_is_announced() {
-        assert!(decided(&approval("invoicing.supplier_bill", DrawingStatus::Approved)).is_none());
-        let yes = decided(&approval(DRAWING_REQUEST_SUBJECT_TYPE, DrawingStatus::Approved))
-            .expect("announced");
+        assert!(
+            decided(&approval(
+                "invoicing.supplier_bill",
+                DrawingStatus::Approved
+            ))
+            .is_none()
+        );
+        let yes = decided(&approval(
+            DRAWING_REQUEST_SUBJECT_TYPE,
+            DrawingStatus::Approved,
+        ))
+        .expect("announced");
         assert!(yes.approved);
         assert_eq!(yes.source, Subject::new(DRAWING_REQUEST_SUBJECT_TYPE, 9));
         assert_eq!((yes.legal_entity_id, yes.approved_by), (2, Some(5)));
-        let no = decided(&approval(DRAWING_REQUEST_SUBJECT_TYPE, DrawingStatus::Rejected))
-            .expect("announced");
+        let no = decided(&approval(
+            DRAWING_REQUEST_SUBJECT_TYPE,
+            DrawingStatus::Rejected,
+        ))
+        .expect("announced");
         assert!(!no.approved);
         assert_eq!(no.reason.as_deref(), Some("no"));
     }

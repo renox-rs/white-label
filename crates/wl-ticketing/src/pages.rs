@@ -35,13 +35,13 @@ use serde::{Deserialize, Serialize};
 use wl_kernel::PartyId;
 use wl_kernel::Subject;
 use wl_kernel::calendar::calendar;
+use wl_kernel::invoicing::VatCategory;
 use wl_kernel::notify::fill;
 use wl_kernel::parties::directory;
-use wl_kernel::invoicing::VatCategory;
 use wl_kernel::tickets::{Assignee, OpenTicket, Requester, TicketChannel};
 
-use crate::charge::{self, ChargeInput};
 use crate::assign::{AssignKind, AssignRequest, Assignment, assign, reasons_of};
+use crate::charge::{self, ChargeInput};
 use crate::comments::{Comment, CommentVisibility};
 use crate::config::{Category, HoldReason};
 use crate::contract::{ServiceContract, ServiceContracts};
@@ -464,7 +464,9 @@ fn quantity_text(milli: i64) -> String {
     if part == 0 {
         whole.to_string()
     } else {
-        format!("{whole}.{part:03}").trim_end_matches('0').to_owned()
+        format!("{whole}.{part:03}")
+            .trim_end_matches('0')
+            .to_owned()
     }
 }
 
@@ -486,8 +488,16 @@ fn parse_scaled(text: &str, decimals: usize) -> Option<i64> {
         padded.push('0');
     }
     let scale = 10_i64.checked_pow(u32::try_from(decimals).ok()?)?;
-    let whole: i64 = if whole.is_empty() { 0 } else { whole.parse().ok()? };
-    let fraction: i64 = if padded.is_empty() { 0 } else { padded.parse().ok()? };
+    let whole: i64 = if whole.is_empty() {
+        0
+    } else {
+        whole.parse().ok()?
+    };
+    let fraction: i64 = if padded.is_empty() {
+        0
+    } else {
+        padded.parse().ok()?
+    };
     whole.checked_mul(scale)?.checked_add(fraction)
 }
 
@@ -767,14 +777,18 @@ async fn show(
         })
         .collect();
     let proposed_party_code = match (offered.assign, ticket.assignee()) {
-        (true, None) => match ServiceContracts::proposed_vendor(&state, &ticket, wl_kernel::documents::today()).await? {
-            Some(vendor) => directory(&state)
-                .find(&db, vendor)
+        (true, None) => {
+            match ServiceContracts::proposed_vendor(&state, &ticket, wl_kernel::documents::today())
                 .await?
-                .map(|party| party.code)
-                .unwrap_or_default(),
-            None => String::new(),
-        },
+            {
+                Some(vendor) => directory(&state)
+                    .find(&db, vendor)
+                    .await?
+                    .map(|party| party.code)
+                    .unwrap_or_default(),
+                None => String::new(),
+            }
+        }
         _ => String::new(),
     };
     let contract = match ticket.contract_id {
@@ -1029,7 +1043,15 @@ async fn store_cancel(
     } else {
         None
     };
-    match crate::job_cancel::cancel_job(&state, &user, &ticket, form.reason.trim(), charge_on_cancel).await {
+    match crate::job_cancel::cancel_job(
+        &state,
+        &user,
+        &ticket,
+        form.reason.trim(),
+        charge_on_cancel,
+    )
+    .await
+    {
         Ok(_) => Ok((Toast::success(t("cancel_ticket.done")), renox::HxRefresh).into_response()),
         Err(TransitionError::ReasonRequired) => {
             Err(invalid("reason", t("cancel_ticket.required"), &form))
@@ -1065,7 +1087,11 @@ async fn store_reschedule(
         return Err(invalid("date", t("visit.bad_date"), &form));
     };
     crate::job_cancel::reschedule(&state, &user, ticket.id, date, &form.reason).await?;
-    Ok((Toast::success(t("visit.rescheduled_done")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(t("visit.rescheduled_done")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// The service report form.
@@ -1087,7 +1113,11 @@ async fn store_report(
 ) -> Result<Response> {
     visibility::ensure_visible(&ticket, &user)?;
     crate::job_cancel::attach_service_report(&state, &user, ticket.id, &form.reference).await?;
-    Ok((Toast::success(texts::t(&lang, "wl_ticketing.visit.report_done")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(texts::t(&lang, "wl_ticketing.visit.report_done")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// The add-charge form: the price in AED and the quantity as typed.
@@ -1122,7 +1152,12 @@ async fn store_charge(
     let Some(unit_price) = parse_scaled(&form.unit_price, 2) else {
         return Err(invalid("unit_price", t("charge.bad_price_text"), &form));
     };
-    let quantity_milli = match form.quantity.as_deref().map(str::trim).filter(|q| !q.is_empty()) {
+    let quantity_milli = match form
+        .quantity
+        .as_deref()
+        .map(str::trim)
+        .filter(|q| !q.is_empty())
+    {
         None => 1000,
         Some(text) => match parse_scaled(text, 3) {
             Some(milli) => milli,
@@ -1151,7 +1186,11 @@ async fn destroy_charge(
     let ticket = Ticket::find_or_404(&state.db, id).await?;
     visibility::ensure_visible(&ticket, &user)?;
     charge::remove_line(&state, &user, id, line).await?;
-    Ok((Toast::success(texts::t(&lang, "wl_ticketing.charge.removed")), back).into_response())
+    Ok((
+        Toast::success(texts::t(&lang, "wl_ticketing.charge.removed")),
+        back,
+    )
+        .into_response())
 }
 
 /// `POST /tickets/{id}/actions/{name}`: start, resume, resolve, confirm,

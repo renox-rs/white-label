@@ -107,10 +107,19 @@ async fn bl_prp_04_a_late_notice_is_refused_until_the_acceptance_is_attached() {
     let refused = s.t.submit(&s.agent, &v2).await;
     refused.assert_status(422);
     let text = refused.text();
-    assert!(text.contains("notice not timely (deadline 2027-10-02)"), "{text}");
+    assert!(
+        text.contains("notice not timely (deadline 2027-10-02)"),
+        "{text}"
+    );
     assert!(text.contains("2027-10-10"), "the proof status: {text}");
-    assert!(text.contains("current terms"), "the first way forward: {text}");
-    assert!(text.contains("signed acceptance"), "the second way forward: {text}");
+    assert!(
+        text.contains("current terms"),
+        "the first way forward: {text}"
+    );
+    assert!(
+        text.contains("signed acceptance"),
+        "the second way forward: {text}"
+    );
     assert_eq!(s.t.status(&v2).await, LeaseStatus::Draft);
 
     // The draft shows what is missing.
@@ -146,7 +155,9 @@ async fn bl_prp_04_a_notice_that_gave_up_is_not_counted() {
     let refused = s.t.submit(&s.agent, &v2).await;
     refused.assert_status(422);
     assert!(
-        refused.text().contains("notice not delivered (deadline 2027-10-02)"),
+        refused
+            .text()
+            .contains("notice not delivered (deadline 2027-10-02)"),
         "{}",
         refused.text()
     );
@@ -221,7 +232,11 @@ async fn bl_prp_04_a_higher_deposit_or_fewer_cheques_are_found_automatically() {
         .assert_ok();
         let refused = s.t.submit(&s.agent, &draft).await;
         refused.assert_status(422);
-        assert!(refused.text().contains("not delivered"), "{}", refused.text());
+        assert!(
+            refused.text().contains("not delivered"),
+            "{}",
+            refused.text()
+        );
         s.drop_draft(&draft).await;
     }
 }
@@ -241,7 +256,9 @@ async fn bl_prp_04_another_changed_term_is_answered_with_a_reason() {
     s.t.submit(&s.agent, &v2).await.assert_status(422);
 
     let path = format!("/property/leases/{}/terms-answer", v2.id);
-    s.t.post(&s.agent, &path, &[("against", "yes")]).await.assert_ok();
+    s.t.post(&s.agent, &path, &[("against", "yes")])
+        .await
+        .assert_ok();
     s.t.submit(&s.agent, &v2).await.assert_status(422);
 
     // A no needs a reason.
@@ -251,9 +268,13 @@ async fn bl_prp_04_another_changed_term_is_answered_with_a_reason() {
     s.t.post(&s.agent, &path, &[("against", "maybe")])
         .await
         .assert_status(400);
-    s.t.post(&s.agent, &path, &[("against", "no"), ("reason", "typo fix")])
-        .await
-        .assert_ok();
+    s.t.post(
+        &s.agent,
+        &path,
+        &[("against", "no"), ("reason", "typo fix")],
+    )
+    .await
+    .assert_ok();
     s.t.submit(&s.agent, &v2).await.assert_ok();
     assert_eq!(s.t.status(&v2).await, LeaseStatus::PendingSignature);
 
@@ -285,10 +306,7 @@ async fn bl_prp_04_the_answer_is_for_a_draft_version_of_the_users_building() {
     let lease = property::leases::create_draft(s.t.state(), None, new)
         .await
         .unwrap();
-    let boss = s
-        .t
-        .user_with("Boss", wl_kernel::COMPANY_ADMIN_ROLE)
-        .await;
+    let boss = s.t.user_with("Boss", wl_kernel::COMPANY_ADMIN_ROLE).await;
     s.t.post(
         &boss,
         &format!("/property/leases/{}/terms-answer", lease.id),

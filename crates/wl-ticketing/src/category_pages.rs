@@ -118,7 +118,10 @@ async fn index(State(db): State<Db>, lang: Lang) -> Result<View> {
             charging_label: if c.chargeable {
                 texts::t(
                     &lang,
-                    &format!("wl_ticketing.categories.charging_{}", invoice_on_value(c.invoice_on)),
+                    &format!(
+                        "wl_ticketing.categories.charging_{}",
+                        invoice_on_value(c.invoice_on)
+                    ),
                 )
             } else {
                 texts::t(&lang, "wl_ticketing.categories.not_chargeable")
@@ -145,24 +148,54 @@ async fn index(State(db): State<Db>, lang: Lang) -> Result<View> {
         tx: texts::all(&lang),
         categories: rows,
         status_options: vec![
-            ("1".to_owned(), texts::t(&lang, "wl_ticketing.categories.on")),
-            ("0".to_owned(), texts::t(&lang, "wl_ticketing.categories.off")),
+            (
+                "1".to_owned(),
+                texts::t(&lang, "wl_ticketing.categories.on"),
+            ),
+            (
+                "0".to_owned(),
+                texts::t(&lang, "wl_ticketing.categories.off"),
+            ),
         ],
         chargeable_options: vec![
-            ("1".to_owned(), texts::t(&lang, "wl_ticketing.categories.chargeable")),
-            ("0".to_owned(), texts::t(&lang, "wl_ticketing.categories.not_chargeable")),
+            (
+                "1".to_owned(),
+                texts::t(&lang, "wl_ticketing.categories.chargeable"),
+            ),
+            (
+                "0".to_owned(),
+                texts::t(&lang, "wl_ticketing.categories.not_chargeable"),
+            ),
         ],
         critical_options: vec![
-            ("1".to_owned(), texts::t(&lang, "wl_ticketing.categories.critical")),
-            ("0".to_owned(), texts::t(&lang, "wl_ticketing.categories.not_critical")),
+            (
+                "1".to_owned(),
+                texts::t(&lang, "wl_ticketing.categories.critical"),
+            ),
+            (
+                "0".to_owned(),
+                texts::t(&lang, "wl_ticketing.categories.not_critical"),
+            ),
         ],
         contract_end_options: vec![
-            ("0".to_owned(), texts::t(&lang, "wl_ticketing.categories.contract_end_both")),
-            ("1".to_owned(), texts::t(&lang, "wl_ticketing.categories.contract_end_reassign")),
+            (
+                "0".to_owned(),
+                texts::t(&lang, "wl_ticketing.categories.contract_end_both"),
+            ),
+            (
+                "1".to_owned(),
+                texts::t(&lang, "wl_ticketing.categories.contract_end_reassign"),
+            ),
         ],
         invoice_on_options: vec![
-            ("resolve".to_owned(), texts::t(&lang, "wl_ticketing.categories.on_resolve")),
-            ("close".to_owned(), texts::t(&lang, "wl_ticketing.categories.on_close")),
+            (
+                "resolve".to_owned(),
+                texts::t(&lang, "wl_ticketing.categories.on_resolve"),
+            ),
+            (
+                "close".to_owned(),
+                texts::t(&lang, "wl_ticketing.categories.on_close"),
+            ),
         ],
     }))
 }

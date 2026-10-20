@@ -227,7 +227,10 @@ pub async fn cancel_job(
     if let Some(wanted) = &charge {
         let invalid = wanted.reason.trim().is_empty()
             || wanted.lines.is_empty()
-            || wanted.lines.iter().any(|line| charge::input_problem(line).is_some());
+            || wanted
+                .lines
+                .iter()
+                .any(|line| charge::input_problem(line).is_some());
         if invalid {
             return Err(TransitionError::Guard(
                 english("wl_ticketing.visit.charge_invalid").to_owned(),

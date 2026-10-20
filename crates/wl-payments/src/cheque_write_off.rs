@@ -534,7 +534,10 @@ fn end_text(end: ApprovalEnd) -> &'static str {
 /// The database's errors, or a notice that failed.
 pub async fn approval_decided(state: &AppState, event: &ApprovalDecided) -> Result<()> {
     if event.subject.subject_type != INVOICE_SUBJECT_TYPE
-        || matches!(event.decision, ApprovalEnd::Approved | ApprovalEnd::Returned)
+        || matches!(
+            event.decision,
+            ApprovalEnd::Approved | ApprovalEnd::Returned
+        )
     {
         return Ok(());
     }
@@ -667,7 +670,10 @@ mod tests {
             None
         );
         let message = request_problem(1_000_000, &balances(1_250_000, 0, 0, 1)).expect("refused");
-        assert!(message.contains("write the invoices off directly"), "{message}");
+        assert!(
+            message.contains("write the invoices off directly"),
+            "{message}"
+        );
         assert!(message.contains("AED 12,500.00"), "{message}");
         assert!(request_problem(1_000_000, &balances(400_000, 0, 0, 1)).is_some());
     }
@@ -696,10 +702,12 @@ mod tests {
         let ctx = |input: &WriteOffInput| {
             TransitionCtx::new(None).with_input(renox::serde_json::to_value(input).expect("json"))
         };
-        assert!(found
-            .check_guards(&bounced(), &ctx(&input("untraceable", 1_000_000)))
-            .await
-            .is_ok());
+        assert!(
+            found
+                .check_guards(&bounced(), &ctx(&input("untraceable", 1_000_000)))
+                .await
+                .is_ok()
+        );
         assert!(matches!(
             found
                 .check_guards(&bounced(), &ctx(&input("untraceable", 400_000)))
@@ -707,7 +715,9 @@ mod tests {
             Err(TransitionError::Guard(_))
         ));
         assert!(matches!(
-            found.check_guards(&bounced(), &TransitionCtx::new(None)).await,
+            found
+                .check_guards(&bounced(), &TransitionCtx::new(None))
+                .await,
             Err(TransitionError::Guard(_))
         ));
     }

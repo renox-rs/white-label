@@ -617,9 +617,9 @@ async fn drawings_view(
         bill.status,
         SupplierBillStatus::Draft | SupplierBillStatus::Matched | SupplierBillStatus::Exception
     );
-    let covered = approvals_of
-        .iter()
-        .any(|a| a.amount == total && matches!(a.status, DrawingStatus::Requested | DrawingStatus::Approved));
+    let covered = approvals_of.iter().any(|a| {
+        a.amount == total && matches!(a.status, DrawingStatus::Requested | DrawingStatus::Approved)
+    });
     let mut cards = Vec::new();
     for approval in approvals_of
         .iter()

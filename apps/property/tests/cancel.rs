@@ -134,10 +134,15 @@ async fn bl_prp_01_a_lease_with_nothing_received_is_cancelled_at_once() {
     .assert_ok();
     let cancelled = t.reload(&lease).await;
     assert_eq!(cancelled.status, LeaseStatus::Cancelled);
-    assert_eq!(cancelled.cancel_reason.as_deref(), Some("prospect withdrew"));
+    assert_eq!(
+        cancelled.cancel_reason.as_deref(),
+        Some("prospect withdrew")
+    );
     assert_eq!(cancelled.cancelled_on, Some(support::day(0)));
     assert!(cancelled.money_settled_at.is_some());
-    let approvals = ApprovalRequest::pending_about(t.db(), &lease.subject()).await.unwrap();
+    let approvals = ApprovalRequest::pending_about(t.db(), &lease.subject())
+        .await
+        .unwrap();
     assert!(approvals.is_empty());
     assert!(t.refunds.asked().is_empty());
     assert!(t.deposits.settled().is_empty());
@@ -167,15 +172,21 @@ async fn bl_prp_01_the_reason_the_permission_and_the_state_are_checked() {
     let lease = t.pending(&agent, &unit, 0).await;
     let path = format!("/property/leases/{}/cancel", lease.id);
 
-    t.post(&agent, &path, &[("reason", "  ")]).await.assert_status(422);
-    t.post(&nobody, &path, &[("reason", "x")]).await.assert_forbidden();
+    t.post(&agent, &path, &[("reason", "  ")])
+        .await
+        .assert_status(422);
+    t.post(&nobody, &path, &[("reason", "x")])
+        .await
+        .assert_forbidden();
     assert_eq!(t.status(&lease).await, LeaseStatus::PendingSignature);
     // The accountant may ask too (PRP.ACL.18).
     t.post(&accountant, &path, &[("reason", "prospect withdrew")])
         .await
         .assert_ok();
     assert_eq!(t.status(&lease).await, LeaseStatus::Cancelled);
-    t.post(&agent, &path, &[("reason", "again")]).await.assert_status(422);
+    t.post(&agent, &path, &[("reason", "again")])
+        .await
+        .assert_status(422);
 }
 
 /// AC2: with money received the request waits for a property manager and the
@@ -210,7 +221,11 @@ async fn bl_prp_01_money_received_sends_the_cancellation_for_approval() {
         .assert_see("Waiting for approval");
     let refused = s.t.activate(&s.manager, &s.lease).await;
     refused.assert_status(422);
-    assert!(refused.text().contains("waiting for approval"), "{}", refused.text());
+    assert!(
+        refused.text().contains("waiting for approval"),
+        "{}",
+        refused.text()
+    );
     // A second request is refused while one waits.
     s.ask(&[]).await.assert_status(422);
 }
@@ -256,18 +271,27 @@ async fn bl_prp_01_the_money_effects_run_at_the_final_approval() {
     let s = scene().await;
     s.ask(&[]).await.assert_ok();
     let request = s.request().await;
-    let decided = approve(s.t.state(), request.id, &s.manager, "ok").await.unwrap();
+    let decided = approve(s.t.state(), request.id, &s.manager, "ok")
+        .await
+        .unwrap();
     assert!(decided.is_some());
 
     let cancelled = s.lease_now().await;
     assert_eq!(cancelled.status, LeaseStatus::Cancelled);
-    assert_eq!(cancelled.cancel_reason.as_deref(), Some("prospect backed out"));
+    assert_eq!(
+        cancelled.cancel_reason.as_deref(),
+        Some("prospect backed out")
+    );
     assert!(cancelled.money_settled_at.is_some());
 
     for id in &s.cheques {
         assert_eq!(s.t.cheques.get(*id).status, ChequeStatus::Returned);
     }
-    assert_eq!(s.t.cheques.returns().len(), 1, "one receipt for all of them");
+    assert_eq!(
+        s.t.cheques.returns().len(),
+        1,
+        "one receipt for all of them"
+    );
     assert_eq!(s.t.cheques.returns()[0].cheques.len(), 3);
 
     let invoice = s.t.invoices.get(s.invoice).unwrap();
@@ -307,24 +331,31 @@ async fn bl_prp_01_a_forfeit_needs_its_clause_and_stays_within_the_deposit() {
     s.ask(&[("forfeit", "6,000"), ("clause", "Reservation form §4")])
         .await
         .assert_status(422);
-    assert!(ApprovalRequest::pending_about(s.t.db(), &s.lease.subject())
-        .await
-        .unwrap()
-        .is_empty());
+    assert!(
+        ApprovalRequest::pending_about(s.t.db(), &s.lease.subject())
+            .await
+            .unwrap()
+            .is_empty()
+    );
 
     s.ask(&[("forfeit", "2,000.00"), ("clause", "Reservation form §4")])
         .await
         .assert_ok();
     let request = s.request().await;
     assert_eq!(request.payload.0["forfeit"], aed(2_000));
-    approve(s.t.state(), request.id, &s.manager, "").await.unwrap();
+    approve(s.t.state(), request.id, &s.manager, "")
+        .await
+        .unwrap();
 
     let settled = s.t.deposits.settled();
     assert_eq!(settled[0].0.forfeit, aed(2_000));
     assert_eq!(settled[0].0.clause.as_deref(), Some("Reservation form §4"));
     let lease = s.lease_now().await;
     assert_eq!(lease.cancel_forfeit, aed(2_000));
-    assert_eq!(lease.cancel_forfeit_clause.as_deref(), Some("Reservation form §4"));
+    assert_eq!(
+        lease.cancel_forfeit_clause.as_deref(),
+        Some("Reservation form §4")
+    );
 }
 
 /// AC6: when the manager rejects, the lease stays `pending_signature`,
@@ -348,7 +379,10 @@ async fn bl_prp_01_a_rejected_cancellation_changes_nothing() {
     );
     assert!(s.t.refunds.asked().is_empty());
     assert!(s.t.deposits.settled().is_empty());
-    let ended = ApprovalRequest::find(s.t.db(), request.id).await.unwrap().unwrap();
+    let ended = ApprovalRequest::find(s.t.db(), request.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(ended.status, ApprovalStatus::Rejected);
     // The lease can be asked to cancel again, and activation is not blocked.
     s.ask(&[]).await.assert_ok();
@@ -360,21 +394,38 @@ async fn bl_prp_01_a_rejected_cancellation_changes_nothing() {
 #[renox::test]
 async fn bl_prp_01_a_deposited_cheque_waits_for_clear_or_bounce() {
     let s = scene().await;
-    s.t.cheques.set_status(s.cheques[0], ChequeStatus::Deposited);
-    s.t.cheques.set_status(s.cheques[1], ChequeStatus::Deposited);
+    s.t.cheques
+        .set_status(s.cheques[0], ChequeStatus::Deposited);
+    s.t.cheques
+        .set_status(s.cheques[1], ChequeStatus::Deposited);
     s.ask(&[]).await.assert_ok();
     let request = s.request().await;
-    approve(s.t.state(), request.id, &s.manager, "").await.unwrap();
+    approve(s.t.state(), request.id, &s.manager, "")
+        .await
+        .unwrap();
 
     // The undeposited one went back; the two deposited ones wait.
     assert_eq!(s.t.cheques.get(s.cheques[2]).status, ChequeStatus::Returned);
-    assert_eq!(s.t.cheques.get(s.cheques[0]).status, ChequeStatus::Deposited);
-    let waits = CancelWait::waiting_of_lease(s.t.db(), s.lease.id).await.unwrap();
+    assert_eq!(
+        s.t.cheques.get(s.cheques[0]).status,
+        ChequeStatus::Deposited
+    );
+    let waits = CancelWait::waiting_of_lease(s.t.db(), s.lease.id)
+        .await
+        .unwrap();
     assert_eq!(waits.len(), 2);
     let tasks = s.t.tasks.with_key("property.cancel_cheques:");
     assert_eq!(tasks.len(), 1);
-    assert!(tasks[0].description.contains("200"), "{}", tasks[0].description);
-    assert!(tasks[0].description.contains("201"), "{}", tasks[0].description);
+    assert!(
+        tasks[0].description.contains("200"),
+        "{}",
+        tasks[0].description
+    );
+    assert!(
+        tasks[0].description.contains("201"),
+        "{}",
+        tasks[0].description
+    );
     assert_eq!(s.t.refunds.asked().len(), 1, "only the paid rent so far");
 
     // The first clears: its amount joins the refunds.
@@ -440,7 +491,9 @@ async fn bl_prp_01_the_money_is_counted_at_approval_not_at_request() {
         &[],
     );
     let second = invoiced(&s.t, &s.lease, &charges[1], true).await;
-    approve(s.t.state(), request.id, &s.manager, "").await.unwrap();
+    approve(s.t.state(), request.id, &s.manager, "")
+        .await
+        .unwrap();
 
     assert_eq!(s.t.cheques.get(late).status, ChequeStatus::Returned);
     assert_eq!(s.t.cheques.returns().len(), 1, "one receipt");
@@ -462,7 +515,9 @@ async fn bl_prp_01_a_draft_invoice_is_discarded() {
     let draft = invoiced(&s.t, &s.lease, &charges[1], false).await;
     s.ask(&[]).await.assert_ok();
     let request = s.request().await;
-    approve(s.t.state(), request.id, &s.manager, "").await.unwrap();
+    approve(s.t.state(), request.id, &s.manager, "")
+        .await
+        .unwrap();
     assert!(s.t.invoices.get(draft).is_none());
     assert_eq!(
         s.t.invoices.get(s.invoice).unwrap().summary.status,
@@ -486,7 +541,13 @@ async fn bl_prp_01_cancelling_a_renewal_leaves_the_deposit_alone() {
         t.state(),
         None,
         v1.id,
-        property::NewVersion::renewal(support::day(65), support::day(429), aed(110_000), aed(5_000), 4),
+        property::NewVersion::renewal(
+            support::day(65),
+            support::day(429),
+            aed(110_000),
+            aed(5_000),
+            4,
+        ),
     )
     .await
     .unwrap();

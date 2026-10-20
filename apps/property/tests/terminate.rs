@@ -9,9 +9,7 @@ mod support;
 use property::charge_type::{self, EARLY_TERMINATION_FEE};
 use property::notices::EJARI_CANCELLATION;
 use property::termination::{self, cancel_task_key};
-use property::{
-    ChargeStatus, CreditChoice, Lease, LeaseCharge, LeaseStatus, NewLease, UnitStatus,
-};
+use property::{ChargeStatus, CreditChoice, Lease, LeaseCharge, LeaseStatus, NewLease, UnitStatus};
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use wl_kernel::cheques::{ChequeId, ChequeStatus};
@@ -80,7 +78,12 @@ impl Scene {
     /// A cheque for each charge due on or after `from`.
     async fn cheques_from(&self, lease: &Lease, from: NaiveDate) -> Vec<(ChequeId, NaiveDate)> {
         let mut made = Vec::new();
-        for charge in self.charges(lease).await.iter().filter(|c| c.due_date >= from) {
+        for charge in self
+            .charges(lease)
+            .await
+            .iter()
+            .filter(|c| c.due_date >= from)
+        {
             let id = self.t.cheques.receive(
                 TENANT,
                 &lease.agreement(),
@@ -185,7 +188,11 @@ async fn bl_prp_11_terminating_settles_the_charges_the_invoices_and_the_cheques(
     assert_eq!(credits[0].invoice, invoice_id);
     assert_eq!(credits[0].lines.len(), 1);
     assert_eq!(credits[0].lines[0].net, 319_355);
-    assert!(credits[0].reason.contains("moved out"), "{}", credits[0].reason);
+    assert!(
+        credits[0].reason.contains("moved out"),
+        "{}",
+        credits[0].reason
+    );
     assert_eq!(s.t.invoices.credited(invoice_id), 319_355);
     assert_eq!(after.termination_credit, 319_355);
 
@@ -217,7 +224,9 @@ async fn bl_prp_11_terminating_settles_the_charges_the_invoices_and_the_cheques(
         .assert_see("AED 3,193.55");
 
     // The money effects run once.
-    let again = termination::settle(s.t.state(), lease.id, None).await.unwrap();
+    let again = termination::settle(s.t.state(), lease.id, None)
+        .await
+        .unwrap();
     assert!(!again.ran);
     assert_eq!(s.t.invoices.credits().len(), 1);
 }
@@ -277,7 +286,9 @@ async fn bl_prp_11_a_draft_invoice_of_a_later_period_is_discarded() {
     let lease = s.leased().await;
     s.invoice_and_pay(d(7, 1)).await;
     // August is drafted but not issued.
-    property::invoicing::run(s.t.state(), d(8, 1)).await.unwrap();
+    property::invoicing::run(s.t.state(), d(8, 1))
+        .await
+        .unwrap();
     let august = s
         .charges(&lease)
         .await
@@ -288,9 +299,14 @@ async fn bl_prp_11_a_draft_invoice_of_a_later_period_is_discarded() {
     assert!(s.t.invoices.get(draft_id).is_some());
     s.notice_and_inspection(&lease, "no").await;
 
-    s.terminate(&lease, &[("move_out", "2027-07-20")]).await.assert_ok();
+    s.terminate(&lease, &[("move_out", "2027-07-20")])
+        .await
+        .assert_ok();
 
-    assert!(s.t.invoices.get(draft_id).is_none(), "the draft is discarded");
+    assert!(
+        s.t.invoices.get(draft_id).is_none(),
+        "the draft is discarded"
+    );
     let after = s
         .charges(&lease)
         .await
@@ -333,12 +349,17 @@ async fn bl_prp_11_a_one_off_penalty_is_not_cancelled() {
     s.t.post(
         &s.manager,
         &format!("/property/leases/{}/move-out-inspection", lease.id),
-        &[("done_on", "2027-07-19"), ("keys_returned_on", "2027-07-20")],
+        &[
+            ("done_on", "2027-07-19"),
+            ("keys_returned_on", "2027-07-20"),
+        ],
     )
     .await
     .assert_ok();
 
-    s.terminate(&lease, &[("move_out", "2027-07-20")]).await.assert_ok();
+    s.terminate(&lease, &[("move_out", "2027-07-20")])
+        .await
+        .assert_ok();
 
     let charges = s.charges(&lease).await;
     let penalty = charges
@@ -346,7 +367,11 @@ async fn bl_prp_11_a_one_off_penalty_is_not_cancelled() {
         .find(|c| c.charge_type == EARLY_TERMINATION_FEE)
         .unwrap();
     assert_eq!(penalty.status, ChargeStatus::Scheduled);
-    assert_eq!(penalty.due_date, d(8, 31), "the actual date does not move it");
+    assert_eq!(
+        penalty.due_date,
+        d(8, 31),
+        "the actual date does not move it"
+    );
     let cancelled = charges
         .iter()
         .filter(|c| c.status == ChargeStatus::Cancelled)
@@ -360,7 +385,9 @@ async fn bl_prp_11_defects_send_the_unit_to_maintenance() {
     let s = scene().await;
     let lease = s.leased().await;
     s.notice_and_inspection(&lease, "yes").await;
-    s.terminate(&lease, &[("move_out", "2027-07-20")]).await.assert_ok();
+    s.terminate(&lease, &[("move_out", "2027-07-20")])
+        .await
+        .assert_ok();
     assert_eq!(
         s.t.unit_now(&s.unit).await.status,
         UnitStatus::UnderMaintenance
@@ -416,7 +443,9 @@ async fn bl_prp_11_terminating_needs_the_inspection_and_the_keys() {
     .await
     .assert_ok();
     s.terminate(&lease, &[]).await.assert_status(422);
-    s.terminate(&lease, &[("move_out", "2027-07-20")]).await.assert_ok();
+    s.terminate(&lease, &[("move_out", "2027-07-20")])
+        .await
+        .assert_ok();
     assert_eq!(s.t.status(&lease).await, LeaseStatus::Terminated);
 }
 
@@ -435,14 +464,26 @@ async fn bl_prp_11_the_ejari_cancellation_is_chased_after_seven_days() {
     .await
     .assert_ok();
     s.notice_and_inspection(&lease, "no").await;
-    s.terminate(&lease, &[("move_out", "2027-07-20")]).await.assert_ok();
+    s.terminate(&lease, &[("move_out", "2027-07-20")])
+        .await
+        .assert_ok();
     // The lease became `terminated` on 2027-07-20.
     s.t.set(&lease, &[("terminated_on", &Some(d(7, 20)))]).await;
 
-    assert_eq!(termination::chase_ejari(s.t.state(), d(7, 26)).await.unwrap(), 0);
+    assert_eq!(
+        termination::chase_ejari(s.t.state(), d(7, 26))
+            .await
+            .unwrap(),
+        0
+    );
     assert!(s.t.notices.of_type(EJARI_CANCELLATION).is_empty());
 
-    assert_eq!(termination::chase_ejari(s.t.state(), d(7, 27)).await.unwrap(), 1);
+    assert_eq!(
+        termination::chase_ejari(s.t.state(), d(7, 27))
+            .await
+            .unwrap(),
+        1
+    );
     let told = s.t.notices.of_type(EJARI_CANCELLATION);
     assert_eq!(told.len(), 1);
     assert_eq!(told[0].data["ejari_number"], "EJ-4471");
@@ -451,7 +492,12 @@ async fn bl_prp_11_the_ejari_cancellation_is_chased_after_seven_days() {
     assert_eq!(tasks.len(), 1);
     assert!(tasks[0].open);
     // Once only.
-    assert_eq!(termination::chase_ejari(s.t.state(), d(7, 28)).await.unwrap(), 0);
+    assert_eq!(
+        termination::chase_ejari(s.t.state(), d(7, 28))
+            .await
+            .unwrap(),
+        0
+    );
     assert_eq!(s.t.notices.of_type(EJARI_CANCELLATION).len(), 1);
 
     // Recording the cancellation closes the task.
@@ -462,10 +508,7 @@ async fn bl_prp_11_the_ejari_cancellation_is_chased_after_seven_days() {
     )
     .await
     .assert_ok();
-    assert_eq!(
-        s.t.reload(&lease).await.ejari_cancelled_on,
-        Some(d(7, 28))
-    );
+    assert_eq!(s.t.reload(&lease).await.ejari_cancelled_on, Some(d(7, 28)));
     assert!(!s.t.tasks.with_key(&key)[0].open);
 }
 
@@ -483,7 +526,9 @@ async fn bl_prp_11_a_cancelled_or_unregistered_ejari_is_not_chased() {
     .await
     .assert_ok();
     s.notice_and_inspection(&lease, "no").await;
-    s.terminate(&lease, &[("move_out", "2027-07-20")]).await.assert_ok();
+    s.terminate(&lease, &[("move_out", "2027-07-20")])
+        .await
+        .assert_ok();
     s.t.set(&lease, &[("terminated_on", &Some(d(7, 20)))]).await;
     s.t.post(
         &s.manager,
@@ -492,14 +537,21 @@ async fn bl_prp_11_a_cancelled_or_unregistered_ejari_is_not_chased() {
     )
     .await
     .assert_ok();
-    assert_eq!(termination::chase_ejari(s.t.state(), d(7, 27)).await.unwrap(), 0);
+    assert_eq!(
+        termination::chase_ejari(s.t.state(), d(7, 27))
+            .await
+            .unwrap(),
+        0
+    );
     assert!(s.t.notices.of_type(EJARI_CANCELLATION).is_empty());
     assert!(s.t.tasks.with_key(&cancel_task_key(&lease)).is_empty());
 
     // No registration number: nothing to cancel.
     let other_unit = s.t.unit(&s.building, "1300").await;
     let new = NewLease::new(other_unit.id, TENANT, d(1, 1), d(12, 31), aed(108_000), 12);
-    let other = property::leases::create_draft(s.t.state(), None, new).await.unwrap();
+    let other = property::leases::create_draft(s.t.state(), None, new)
+        .await
+        .unwrap();
     s.t.submit(&s.agent, &other).await.assert_ok();
     s.t.activate(&s.manager, &other).await.assert_ok();
     s.t.set(
@@ -510,7 +562,12 @@ async fn bl_prp_11_a_cancelled_or_unregistered_ejari_is_not_chased() {
         ],
     )
     .await;
-    assert_eq!(termination::chase_ejari(s.t.state(), d(7, 27)).await.unwrap(), 0);
+    assert_eq!(
+        termination::chase_ejari(s.t.state(), d(7, 27))
+            .await
+            .unwrap(),
+        0
+    );
 }
 
 /// Only a property manager of the building terminates a lease.

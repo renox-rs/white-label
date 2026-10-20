@@ -33,11 +33,11 @@
 use renox::prelude::*;
 use renox::serde_json::{self, json};
 use renox::state_machine::Transitioned;
+use wl_kernel::PartyId;
 use wl_kernel::documents::{BlockEntry, DocumentAccepted, DocumentExpired, today};
 use wl_kernel::notify::{self, NotificationTypeDef, NotifyChannel, NotifyRequest};
 use wl_kernel::parties::{PARTY_SUBJECT_TYPE, directory};
 use wl_kernel::tickets::ComplianceFlagReason;
-use wl_kernel::PartyId;
 
 use crate::assign::{ASSIGN, AUTO_ASSIGN, AssignKind, AssignMeta};
 use crate::config::Category;
@@ -109,7 +109,10 @@ pub async fn expired(state: &AppState, event: &DocumentExpired) -> Result<Flagge
             let Some(category) = Category::find(&state.db, row.category_id).await? else {
                 continue;
             };
-            if entries.iter().any(|e| e.applies_to(Some(category.key.as_str()))) {
+            if entries
+                .iter()
+                .any(|e| e.applies_to(Some(category.key.as_str())))
+            {
                 guarded.push((row, category));
             }
         }
@@ -129,7 +132,9 @@ pub async fn expired(state: &AppState, event: &DocumentExpired) -> Result<Flagge
             .await?
             > 0;
         for visit in contract.visits(&state.db).await? {
-            let theirs = visit.assignee_party_id.is_none_or(|party| party == vendor.0)
+            let theirs = visit
+                .assignee_party_id
+                .is_none_or(|party| party == vendor.0)
                 && visit.assignee_user_id.is_none();
             if visit.is_open() && theirs && !visit.vendor_document_flag {
                 Ticket::query()
@@ -344,7 +349,10 @@ mod tests {
             entry("deployment.activate"),
             entry("service_contract.activate"),
         ];
-        let kept: Vec<_> = guarding(&blocks).iter().map(|e| e.guarded.as_str()).collect();
+        let kept: Vec<_> = guarding(&blocks)
+            .iter()
+            .map(|e| e.guarded.as_str())
+            .collect();
         assert_eq!(kept, ["ticket.resolve", "service_contract.activate"]);
     }
 

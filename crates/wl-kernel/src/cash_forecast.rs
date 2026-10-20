@@ -51,7 +51,13 @@ pub struct ForecastLine {
 
 impl ForecastLine {
     /// A line of `amount` AED fils expected on `date`.
-    pub fn new(label: &str, category: &str, date: NaiveDate, amount: i64, direction: Direction) -> Self {
+    pub fn new(
+        label: &str,
+        category: &str,
+        date: NaiveDate,
+        amount: i64,
+        direction: Direction,
+    ) -> Self {
         ForecastLine {
             label: label.to_owned(),
             category: category.to_owned(),

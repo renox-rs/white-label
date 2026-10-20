@@ -27,11 +27,7 @@ use crate::voids::{self, VoidRecord};
 
 /// The items of the period `from` to `until` (the end not included) by the
 /// scope of their record, oldest first within a scope.
-pub async fn gather(
-    db: &Db,
-    from: DateTime,
-    until: DateTime,
-) -> Result<Vec<(Scope, Vec<Item>)>> {
+pub async fn gather(db: &Db, from: DateTime, until: DateTime) -> Result<Vec<(Scope, Vec<Item>)>> {
     let mut groups: BTreeMap<(String, String), (Scope, Vec<Item>)> = BTreeMap::new();
     let mut add = |scope: Scope, item: Item| {
         groups

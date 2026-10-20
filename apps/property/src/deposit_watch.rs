@@ -319,9 +319,7 @@ async fn check(state: &AppState, watch: &DepositWatch, day: NaiveDate) -> Result
             .where_(LegalCase::STATUS.eq(CaseStatus::Open))
             .exists(&state.db)
             .await?;
-        if !case_open
-            && let Some(opened) = watch.dispute_opened_on
-        {
+        if !case_open && let Some(opened) = watch.dispute_opened_on {
             let claimed = DepositWatch::query()
                 .where_(DepositWatch::ID.eq(watch.id))
                 .where_(DepositWatch::ESCALATED_ON.is_null())
@@ -401,18 +399,24 @@ pub(crate) fn schedule(app: &mut Registry) {
             Ok(())
         },
     );
-    app.listen(|event: DepositDeductionsPublished, state: AppState| async move {
-        on_published(&state, &event).await
-    });
-    app.listen(|event: DepositDeductionsDisputed, state: AppState| async move {
-        on_disputed(&state, &event).await
-    });
-    app.listen(|event: DepositDisputeAnswered, state: AppState| async move {
-        on_answered(&state, &event).await
-    });
-    app.listen(|event: DepositSettled, state: AppState| async move {
-        on_settled(&state, &event).await
-    });
+    app.listen(
+        |event: DepositDeductionsPublished, state: AppState| async move {
+            on_published(&state, &event).await
+        },
+    );
+    app.listen(
+        |event: DepositDeductionsDisputed, state: AppState| async move {
+            on_disputed(&state, &event).await
+        },
+    );
+    app.listen(
+        |event: DepositDisputeAnswered, state: AppState| async move {
+            on_answered(&state, &event).await
+        },
+    );
+    app.listen(
+        |event: DepositSettled, state: AppState| async move { on_settled(&state, &event).await },
+    );
 }
 
 #[cfg(test)]

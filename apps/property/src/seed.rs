@@ -137,7 +137,11 @@ pub const KINDS: &[KindSpec] = &[
         legal_block: false,
         critical: false,
         look_ahead: 0,
-        blocks: &[BlockSpec { guarded: "lease.submit", mode: Mode::Block, condition: PERSON }],
+        blocks: &[BlockSpec {
+            guarded: "lease.submit",
+            mode: Mode::Block,
+            condition: PERSON,
+        }],
     },
     KindSpec {
         key: "passport",
@@ -153,7 +157,11 @@ pub const KINDS: &[KindSpec] = &[
         legal_block: false,
         critical: false,
         look_ahead: 0,
-        blocks: &[BlockSpec { guarded: "lease.submit", mode: Mode::Block, condition: PERSON }],
+        blocks: &[BlockSpec {
+            guarded: "lease.submit",
+            mode: Mode::Block,
+            condition: PERSON,
+        }],
     },
     KindSpec {
         key: "residence_visa",
@@ -169,7 +177,11 @@ pub const KINDS: &[KindSpec] = &[
         legal_block: false,
         critical: false,
         look_ahead: 0,
-        blocks: &[BlockSpec { guarded: "lease.submit", mode: Mode::Block, condition: PERSON }],
+        blocks: &[BlockSpec {
+            guarded: "lease.submit",
+            mode: Mode::Block,
+            condition: PERSON,
+        }],
     },
     KindSpec {
         key: "trade_licence",
@@ -185,7 +197,11 @@ pub const KINDS: &[KindSpec] = &[
         legal_block: false,
         critical: false,
         look_ahead: 0,
-        blocks: &[BlockSpec { guarded: "lease.submit", mode: Mode::Block, condition: COMPANY }],
+        blocks: &[BlockSpec {
+            guarded: "lease.submit",
+            mode: Mode::Block,
+            condition: COMPANY,
+        }],
     },
     KindSpec {
         key: "trn_certificate",
@@ -201,7 +217,11 @@ pub const KINDS: &[KindSpec] = &[
         legal_block: false,
         critical: false,
         look_ahead: 0,
-        blocks: &[BlockSpec { guarded: "lease.submit", mode: Mode::Block, condition: COMPANY }],
+        blocks: &[BlockSpec {
+            guarded: "lease.submit",
+            mode: Mode::Block,
+            condition: COMPANY,
+        }],
     },
     KindSpec {
         key: "signed_tenancy_contract",
@@ -217,7 +237,11 @@ pub const KINDS: &[KindSpec] = &[
         legal_block: false,
         critical: false,
         look_ahead: 0,
-        blocks: &[BlockSpec { guarded: "lease.activate", mode: Mode::Block, condition: None }],
+        blocks: &[BlockSpec {
+            guarded: "lease.activate",
+            mode: Mode::Block,
+            condition: None,
+        }],
     },
     KindSpec {
         key: "ejari_certificate",
@@ -233,7 +257,11 @@ pub const KINDS: &[KindSpec] = &[
         legal_block: false,
         critical: false,
         look_ahead: 0,
-        blocks: &[BlockSpec { guarded: "lease.record_ejari", mode: Mode::Block, condition: None }],
+        blocks: &[BlockSpec {
+            guarded: "lease.record_ejari",
+            mode: Mode::Block,
+            condition: None,
+        }],
     },
     KindSpec {
         key: crate::terms::TENANT_ACCEPTANCE_KIND,
@@ -329,7 +357,11 @@ pub const KINDS: &[KindSpec] = &[
         legal_block: false,
         critical: false,
         look_ahead: 0,
-        blocks: &[BlockSpec { guarded: "agreement.activate", mode: Mode::Block, condition: None }],
+        blocks: &[BlockSpec {
+            guarded: "agreement.activate",
+            mode: Mode::Block,
+            condition: None,
+        }],
     },
     // The vendor's Civil Defence approval: a legal block (override `never`),
     // compliance-critical, 30 days look-ahead (row 3). Everything it guards
@@ -379,7 +411,11 @@ pub const KINDS: &[KindSpec] = &[
         legal_block: false,
         critical: true,
         look_ahead: 0,
-        blocks: &[BlockSpec { guarded: CERTIFY, mode: Mode::Flag, condition: None }],
+        blocks: &[BlockSpec {
+            guarded: CERTIFY,
+            mode: Mode::Flag,
+            condition: None,
+        }],
     },
     KindSpec {
         key: LIFT_CERTIFICATE,
@@ -395,7 +431,11 @@ pub const KINDS: &[KindSpec] = &[
         legal_block: false,
         critical: true,
         look_ahead: 0,
-        blocks: &[BlockSpec { guarded: CERTIFY, mode: Mode::Flag, condition: None }],
+        blocks: &[BlockSpec {
+            guarded: CERTIFY,
+            mode: Mode::Flag,
+            condition: None,
+        }],
     },
     KindSpec {
         key: "service_contract",
@@ -499,7 +539,11 @@ pub const CONTRACT_ENDED_TASK_DAYS: i64 = 1;
 /// `WRK.RUL.19`: hours after the scheduled visit time (row 11).
 pub const NO_SHOW_HOURS: i64 = 2;
 /// The reassignment reasons (row 12).
-pub const REASSIGN_REASONS: [&str; 3] = ["vendor_no_show", "contract_ended", "vendor_document_expired"];
+pub const REASSIGN_REASONS: [&str; 3] = [
+    "vendor_no_show",
+    "contract_ended",
+    "vendor_document_expired",
+];
 
 /// `PRP.ACL.14`: the annual value above which a service contract needs a
 /// property manager's approval, in fils (AED 50,000; row 13).
@@ -562,7 +606,12 @@ pub const ONBOARDING: [OnboardingSpec; 5] = [
         steps: &[
             COMMON_STEPS[0],
             COMMON_STEPS[1],
-            ("Portfolio and building handover", "manager", 3, "checklist:portfolio_handover"),
+            (
+                "Portfolio and building handover",
+                "manager",
+                3,
+                "checklist:portfolio_handover",
+            ),
             COMMON_STEPS[2],
             COMMON_STEPS[3],
         ],
@@ -573,7 +622,12 @@ pub const ONBOARDING: [OnboardingSpec; 5] = [
         steps: &[
             COMMON_STEPS[0],
             COMMON_STEPS[1],
-            ("Availability, pricing and enquiry process", "manager", 3, "checklist:leasing_induction"),
+            (
+                "Availability, pricing and enquiry process",
+                "manager",
+                3,
+                "checklist:leasing_induction",
+            ),
             COMMON_STEPS[2],
             COMMON_STEPS[3],
         ],
@@ -584,7 +638,12 @@ pub const ONBOARDING: [OnboardingSpec; 5] = [
         steps: &[
             COMMON_STEPS[0],
             COMMON_STEPS[1],
-            ("Cheques, deposits and owner statements walk-through", "manager", 3, "checklist:finance_induction"),
+            (
+                "Cheques, deposits and owner statements walk-through",
+                "manager",
+                3,
+                "checklist:finance_induction",
+            ),
             COMMON_STEPS[2],
             COMMON_STEPS[3],
         ],
@@ -595,7 +654,12 @@ pub const ONBOARDING: [OnboardingSpec; 5] = [
         steps: &[
             COMMON_STEPS[0],
             COMMON_STEPS[1],
-            ("Vendors, service contracts and compliance visits", "manager", 3, "checklist:coordinator_induction"),
+            (
+                "Vendors, service contracts and compliance visits",
+                "manager",
+                3,
+                "checklist:coordinator_induction",
+            ),
             COMMON_STEPS[2],
             COMMON_STEPS[3],
         ],
@@ -606,8 +670,18 @@ pub const ONBOARDING: [OnboardingSpec; 5] = [
         steps: &[
             COMMON_STEPS[0],
             COMMON_STEPS[1],
-            ("Workplace and safety induction", "manager", 3, "checklist:workplace_induction"),
-            ("Uniform or PPE handed over", "manager", 3, "checklist:ppe_handover"),
+            (
+                "Workplace and safety induction",
+                "manager",
+                3,
+                "checklist:workplace_induction",
+            ),
+            (
+                "Uniform or PPE handed over",
+                "manager",
+                3,
+                "checklist:ppe_handover",
+            ),
             COMMON_STEPS[2],
             COMMON_STEPS[3],
         ],
@@ -766,7 +840,11 @@ mod tests {
     #[test]
     fn every_kind_has_a_responsible_role_and_unique_key() {
         let mut keys: Vec<&str> = KINDS.iter().map(|k| k.key).collect();
-        assert!(KINDS.iter().all(|k| !k.role.is_empty() && !k.name_ar.is_empty()));
+        assert!(
+            KINDS
+                .iter()
+                .all(|k| !k.role.is_empty() && !k.name_ar.is_empty())
+        );
         let count = keys.len();
         keys.sort_unstable();
         keys.dedup();
@@ -775,29 +853,69 @@ mod tests {
 
     #[test]
     fn the_responsible_roles_follow_6a() {
-        for key in ["emirates_id", "passport", "residence_visa", "trade_licence", "trn_certificate",
-            "signed_tenancy_contract", "ejari_certificate", "tenant_acceptance", "repossession_basis",
-            "judgment", "execution_record", "management_agreement"] {
+        for key in [
+            "emirates_id",
+            "passport",
+            "residence_visa",
+            "trade_licence",
+            "trn_certificate",
+            "signed_tenancy_contract",
+            "ejari_certificate",
+            "tenant_acceptance",
+            "repossession_basis",
+            "judgment",
+            "execution_record",
+            "management_agreement",
+        ] {
             assert_eq!(kind(key).role, PROPERTY_MANAGER, "{key}");
         }
-        for key in ["civil_defence_approval", "building_safety_certificate", "lift_certificate",
-            "service_contract", "service_report"] {
+        for key in [
+            "civil_defence_approval",
+            "building_safety_certificate",
+            "lift_certificate",
+            "service_contract",
+            "service_report",
+        ] {
             assert_eq!(kind(key).role, COORDINATOR_ROLE, "{key}");
         }
     }
 
     #[test]
     fn the_categories_are_the_two_critical_ones_and_the_three_fallbacks() {
-        let critical: Vec<&str> = CATEGORIES.iter().filter(|c| c.critical).map(|c| c.key).collect();
+        let critical: Vec<&str> = CATEGORIES
+            .iter()
+            .filter(|c| c.critical)
+            .map(|c| c.key)
+            .collect();
         assert_eq!(critical, COMPLIANCE_CATEGORIES);
-        let others: Vec<&str> = CATEGORIES.iter().filter(|c| !c.critical).map(|c| c.key).collect();
-        assert_eq!(others, ["move_out_inspection", "legal_case", "owner_statement_dispute"]);
+        let others: Vec<&str> = CATEGORIES
+            .iter()
+            .filter(|c| !c.critical)
+            .map(|c| c.key)
+            .collect();
+        assert_eq!(
+            others,
+            [
+                "move_out_inspection",
+                "legal_case",
+                "owner_statement_dispute"
+            ]
+        );
     }
 
     #[test]
     fn there_is_a_checklist_for_each_role_and_each_ends_with_the_sops() {
         let roles: Vec<&str> = ONBOARDING.iter().map(|o| o.role).collect();
-        assert_eq!(roles, ["property_manager", "leasing_agent", "accountant", "coordinator", "technician"]);
+        assert_eq!(
+            roles,
+            [
+                "property_manager",
+                "leasing_agent",
+                "accountant",
+                "coordinator",
+                "technician"
+            ]
+        );
         for spec in ONBOARDING {
             assert_eq!(spec.steps.last().map(|s| s.3), Some("sops"));
             assert!(spec.steps.iter().any(|s| s.1 == "employee"));

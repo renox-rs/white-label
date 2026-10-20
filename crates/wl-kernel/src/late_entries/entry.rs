@@ -229,12 +229,7 @@ async fn request_approval(entry: &LateEntry, tx: &mut Transaction) -> Result {
     }));
     match approvals::require_in(&mut *tx, &require).await? {
         Required::Pending(request) => {
-            set(
-                tx,
-                entry.id,
-                &[("approval_request_id", &Some(request.id))],
-            )
-            .await
+            set(tx, entry.id, &[("approval_request_id", &Some(request.id))]).await
         }
         Required::Allowed => Err(Error::Status(
             StatusCode::UNPROCESSABLE_ENTITY,
@@ -342,14 +337,8 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(entry.subject(), Subject::new("kernel.late_entry", 3));
-        assert_eq!(
-            entry.record(),
-            Some(Subject::new("bookings.check_in", 8))
-        );
-        assert_eq!(
-            entry.parent(),
-            Some(Subject::new("bookings.booking", 2))
-        );
+        assert_eq!(entry.record(), Some(Subject::new("bookings.check_in", 8)));
+        assert_eq!(entry.parent(), Some(Subject::new("bookings.booking", 2)));
         assert_eq!(
             entry.scope(),
             renox::auth::permissions::Scope::new("scope_entities", "5")

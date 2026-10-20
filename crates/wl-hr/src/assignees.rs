@@ -41,7 +41,12 @@ fn scopes_of(scopes: &[Subject]) -> Vec<Scope> {
 async fn holders_of_role(db: &Db, role: &str, scopes: &[Scope]) -> Result<BTreeSet<i64>> {
     let mut ids = BTreeSet::new();
     for scope in scopes {
-        ids.extend(users_with_role_in(db, role, scope).await?.iter().map(|u| u.id));
+        ids.extend(
+            users_with_role_in(db, role, scope)
+                .await?
+                .iter()
+                .map(|u| u.id),
+        );
     }
     Ok(ids)
 }

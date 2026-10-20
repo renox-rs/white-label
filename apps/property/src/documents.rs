@@ -206,16 +206,23 @@ where
     Fut: Future<Output = std::result::Result<T, TransitionError>>,
 {
     let failed: Mutex<Option<TransitionError>> = Mutex::new(None);
-    let result = guarded_transition_as(state, transition_name, record_id, today(), actor, || async {
-        match transition().await {
-            Ok(done) => Ok(done),
-            Err(error) => {
-                let message = error.to_string();
-                *failed.lock().unwrap_or_else(PoisonError::into_inner) = Some(error);
-                Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, message))
+    let result = guarded_transition_as(
+        state,
+        transition_name,
+        record_id,
+        today(),
+        actor,
+        || async {
+            match transition().await {
+                Ok(done) => Ok(done),
+                Err(error) => {
+                    let message = error.to_string();
+                    *failed.lock().unwrap_or_else(PoisonError::into_inner) = Some(error);
+                    Err(Error::Status(StatusCode::UNPROCESSABLE_ENTITY, message))
+                }
             }
-        }
-    })
+        },
+    )
     .await;
     if let Some(error) = failed.into_inner().unwrap_or_else(PoisonError::into_inner) {
         return Err(error);
@@ -249,7 +256,13 @@ mod tests {
     fn registering_makes_the_transitions_guardable() {
         register();
         let guarded = wl_kernel::documents::guarded_transitions();
-        for name in [SUBMIT, ACTIVATE, RECORD_EJARI, AGREEMENT_ACTIVATE, crate::seed::CERTIFY] {
+        for name in [
+            SUBMIT,
+            ACTIVATE,
+            RECORD_EJARI,
+            AGREEMENT_ACTIVATE,
+            crate::seed::CERTIFY,
+        ] {
             assert!(guarded.iter().any(|g| g == name), "{name}");
         }
     }

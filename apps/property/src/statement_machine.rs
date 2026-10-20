@@ -31,10 +31,10 @@ use renox::db::Transaction;
 use renox::prelude::*;
 use renox::state_machine::{Machine, StateMachine, Transition};
 use wl_kernel::PartyId;
+use wl_kernel::SubjectMachine;
 use wl_kernel::approvals::PolicyDefault;
 use wl_kernel::block_guard::ActionKind;
 use wl_kernel::documents::today;
-use wl_kernel::SubjectMachine;
 
 use crate::permissions;
 use crate::statement::{OwnerStatement, STATEMENT_SUBJECT_TYPE, StatementLine, StatementStatus};
@@ -331,28 +331,37 @@ impl StateMachine for OwnerStatement {
                         let statement = statement.clone();
                         let by = ctx.actor().map(|actor| actor.id);
                         let reason = ctx.reason().unwrap_or_default().trim().to_owned();
-                        Box::pin(async move { revise_effects(&mut *tx, &statement, by, &reason).await })
+                        Box::pin(
+                            async move { revise_effects(&mut *tx, &statement, by, &reason).await },
+                        )
                     }),
             )
             .transition(pay_out_rules(
                 user(PAY_OUT, "Pay out", permissions::OWNER_STATEMENTS_PREPARE).tone("primary"),
             ))
-            .transition(pay_out_rules(system(PAY_OUT_APPROVED, "Pay out (approved)")))
+            .transition(pay_out_rules(system(
+                PAY_OUT_APPROVED,
+                "Pay out (approved)",
+            )))
             .transition(
-                user(CARRY_FORWARD, "Carry forward", permissions::OWNER_STATEMENTS_PREPARE)
-                    .from([Published])
-                    .to(Settled)
-                    .guard("not_positive", |statement: &OwnerStatement, _ctx| {
-                        let problem = carry_problem(statement);
-                        Box::pin(async move { problem.map_or(Ok(()), Err) })
+                user(
+                    CARRY_FORWARD,
+                    "Carry forward",
+                    permissions::OWNER_STATEMENTS_PREPARE,
+                )
+                .from([Published])
+                .to(Settled)
+                .guard("not_positive", |statement: &OwnerStatement, _ctx| {
+                    let problem = carry_problem(statement);
+                    Box::pin(async move { problem.map_or(Ok(()), Err) })
+                })
+                .effect(|statement: &OwnerStatement, _ctx, tx| {
+                    let id = statement.id;
+                    let carried = statement.balance();
+                    Box::pin(async move {
+                        settle_in(&mut *tx, id, "carried_forward", None, carried).await
                     })
-                    .effect(|statement: &OwnerStatement, _ctx, tx| {
-                        let id = statement.id;
-                        let carried = statement.balance();
-                        Box::pin(async move {
-                            settle_in(&mut *tx, id, "carried_forward", None, carried).await
-                        })
-                    }),
+                }),
             )
             .transition(invoice_owner_rules(user(
                 INVOICE_OWNER,
@@ -385,9 +394,11 @@ pub fn subject_machine() -> SubjectMachine {
     SubjectMachine::of::<OwnerStatement>(STATEMENT_SUBJECT_TYPE)
         .action(PAY_OUT, PAYOUT_ACTION)
         .action(INVOICE_OWNER, INVOICE_ACTION)
-        .block_guarded(PAY_OUT, ActionKind::MoneyOut, |statement: &OwnerStatement| {
-            Some(PartyId(statement.owner_party_id))
-        })
+        .block_guarded(
+            PAY_OUT,
+            ActionKind::MoneyOut,
+            |statement: &OwnerStatement| Some(PartyId(statement.owner_party_id)),
+        )
         .build()
 }
 

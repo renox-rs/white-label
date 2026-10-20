@@ -76,11 +76,8 @@ pub async fn register_cheques(
         return Err(refused(english("property.cheques.lease_over", &[])));
     }
     let charges = lease.charges(&state.db).await?;
-    let entity = LegalEntity::for_scope(
-        &state.db,
-        Some((BUILDING_SUBJECT_TYPE, lease.building_id)),
-    )
-    .await?;
+    let entity =
+        LegalEntity::for_scope(&state.db, Some((BUILDING_SUBJECT_TYPE, lease.building_id))).await?;
     let mut schedule = ChequeSchedule::new(lease.agreement(), lease.tenant(), entity.id, bank);
     for entry in &entries {
         let mut cheque = ScheduledCheque::new(&entry.number, entry.date, entry.amount);
@@ -104,7 +101,12 @@ pub async fn of_version(state: &AppState, lease: &Lease) -> Result<Vec<ChequeSum
     let all = cheques(state)
         .of_agreement(&state.db, &lease.agreement())
         .await?;
-    let ids: Vec<i64> = lease.charges(&state.db).await?.iter().map(|c| c.id).collect();
+    let ids: Vec<i64> = lease
+        .charges(&state.db)
+        .await?
+        .iter()
+        .map(|c| c.id)
+        .collect();
     Ok(all
         .into_iter()
         .filter(|cheque| belongs_to_version(cheque, lease, &ids))

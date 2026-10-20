@@ -170,14 +170,21 @@ async fn progress_of(db: &Db, employee: i64) -> Result<String> {
 /// `GET /hr/employees`.
 async fn index(State(state): State<AppState>, lang: Lang) -> Result<View> {
     let mut employees = Vec::new();
-    for employee in Employee::query().order_by_desc(Employee::ID).get(&state.db).await? {
+    for employee in Employee::query()
+        .order_by_desc(Employee::ID)
+        .get(&state.db)
+        .await?
+    {
         employees.push(EmployeeRow {
             id: employee.id,
             name: employee_name(&state, &lang, &employee).await,
             number: employee.employee_number.clone(),
             job_role: employee.job_role.clone(),
             hire_date: employee.hire_date.to_string(),
-            status: text(&lang, &format!("employees.status.{}", employee.status.as_str())),
+            status: text(
+                &lang,
+                &format!("employees.status.{}", employee.status.as_str()),
+            ),
             status_kind: employee_kind(employee.status),
             progress: progress_of(&state.db, employee.id).await?,
         });
@@ -276,7 +283,9 @@ async fn show(
     lang: Lang,
     Path(id): Path<i64>,
 ) -> Result<View> {
-    let employee = Employee::find(&state.db, id).await?.ok_or(Error::NotFound)?;
+    let employee = Employee::find(&state.db, id)
+        .await?
+        .ok_or(Error::NotFound)?;
     let scopes = employee.scopes(&state.db).await?;
     let manages = steps::holds_manage(&state, user.id, &scopes).await?;
     let can_manage = manages;
@@ -380,9 +389,7 @@ async fn show(
                         StepStatus::Waived => true,
                         _ => false,
                     },
-                can_checklist: open
-                    && step.kind == StepKind::Checklist
-                    && (is_assignee || manages),
+                can_checklist: open && step.kind == StepKind::Checklist && (is_assignee || manages),
                 evidence_required: step.evidence_required,
             });
         }
@@ -394,7 +401,10 @@ async fn show(
         onboardings.push(OnboardingView {
             id: onboarding.id,
             started_on: onboarding.started_on.to_string(),
-            trigger: text(&lang, &format!("onboarding.trigger.{}", onboarding.start_trigger)),
+            trigger: text(
+                &lang,
+                &format!("onboarding.trigger.{}", onboarding.start_trigger),
+            ),
             status: text(&lang, &format!("onboarding.status.{status}")),
             status_kind: kind,
             progress: format!("{settled}/{required}"),
@@ -417,7 +427,10 @@ async fn show(
         number: employee.employee_number.clone(),
         job_role: employee.job_role.clone(),
         hire_date: employee.hire_date.to_string(),
-        status: text(&lang, &format!("employees.status.{}", employee.status.as_str())),
+        status: text(
+            &lang,
+            &format!("employees.status.{}", employee.status.as_str()),
+        ),
         status_kind: employee_kind(employee.status),
         progress: progress_of(&state.db, employee.id).await?,
     };
@@ -463,7 +476,9 @@ async fn start_manual(
     Path(id): Path<i64>,
     Valid(form): Valid<StartForm>,
 ) -> Result<Response> {
-    let employee = Employee::find(&state.db, id).await?.ok_or(Error::NotFound)?;
+    let employee = Employee::find(&state.db, id)
+        .await?
+        .ok_or(Error::NotFound)?;
     let scopes = employee.scopes(&state.db).await?;
     if !steps::holds_manage(&state, user.id, &scopes).await? {
         return Err(Error::Forbidden);
@@ -491,7 +506,11 @@ async fn start_manual(
     )
     .await?
     .map_err(StartRefused::into_error)?;
-    Ok((Toast::success(text(&lang, "onboarding.started")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(text(&lang, "onboarding.started")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// A reason.
@@ -511,7 +530,9 @@ async fn cancel_manual(
     Path(id): Path<i64>,
     Valid(form): Valid<ReasonForm>,
 ) -> Result<Response> {
-    let onboarding = Onboarding::find(&state.db, id).await?.ok_or(Error::NotFound)?;
+    let onboarding = Onboarding::find(&state.db, id)
+        .await?
+        .ok_or(Error::NotFound)?;
     let employee = Employee::find_or_404(&state.db, onboarding.employee_id).await?;
     let scopes = employee.scopes(&state.db).await?;
     if !steps::holds_manage(&state, user.id, &scopes).await? {
@@ -530,7 +551,11 @@ async fn cancel_manual(
         ));
     }
     onboarding::cancel(&state, onboarding, form.reason.trim()).await?;
-    Ok((Toast::success(text(&lang, "onboarding.cancelled")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(text(&lang, "onboarding.cancelled")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// The mark-done form.
@@ -575,7 +600,11 @@ async fn done(
         document_id: form.document.trim().parse().ok(),
         in_person: None,
     };
-    answered(&lang, steps::mark_done(&state, id, user.id, input).await, "steps.done_ok")
+    answered(
+        &lang,
+        steps::mark_done(&state, id, user.id, input).await,
+        "steps.done_ok",
+    )
 }
 
 /// `POST /hr/steps/{id}/in-person`: records a step in person for the
@@ -594,7 +623,11 @@ async fn in_person(
             signature: form.signature.clone(),
         }),
     };
-    answered(&lang, steps::mark_done(&state, id, user.id, input).await, "steps.done_ok")
+    answered(
+        &lang,
+        steps::mark_done(&state, id, user.id, input).await,
+        "steps.done_ok",
+    )
 }
 
 /// `POST /hr/steps/{id}/waive`.

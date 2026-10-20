@@ -11,9 +11,7 @@ use renox::serde_json::json;
 use super::SUBJECT_TYPE;
 use super::connection::IntegrationConnection;
 use crate::documents::dubai_text;
-use crate::notify::{
-    self, Category, NotificationTypeDef, NotifyChannel, NotifyRequest, Urgency,
-};
+use crate::notify::{self, Category, NotificationTypeDef, NotifyChannel, NotifyRequest, Urgency};
 use crate::scopes::COMPANY_ADMIN_ROLE;
 use crate::subject::Subject;
 use crate::texts::en;
@@ -56,17 +54,15 @@ pub async fn connection_down(state: &AppState, connection: &IntegrationConnectio
         .failed_since
         .map(dubai_text)
         .unwrap_or_else(|| "—".to_owned());
-    let mut request = NotifyRequest::new(
-        NOTIFICATION_TYPE,
-        Subject::new(SUBJECT_TYPE, connection.id),
-    )
-    .subject_label(&connection.key)
-    .data(json!({
-        "connection": connection.key,
-        "since": since,
-        "fallback": connection.fallback_en,
-        "error": connection.last_error.clone().unwrap_or_default(),
-    }));
+    let mut request =
+        NotifyRequest::new(NOTIFICATION_TYPE, Subject::new(SUBJECT_TYPE, connection.id))
+            .subject_label(&connection.key)
+            .data(json!({
+                "connection": connection.key,
+                "since": since,
+                "fallback": connection.fallback_en,
+                "error": connection.last_error.clone().unwrap_or_default(),
+            }));
     for id in users {
         request = request.to_user(id);
     }

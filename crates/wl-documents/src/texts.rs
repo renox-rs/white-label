@@ -118,7 +118,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_documents.kinds.on", "On"),
     ("wl_documents.kinds.off", "Off"),
     ("wl_documents.kinds.status_change", "Change status"),
-    ("wl_documents.kinds.status_title", "Turn this kind on or off"),
+    (
+        "wl_documents.kinds.status_title",
+        "Turn this kind on or off",
+    ),
     (
         "wl_documents.kinds.status_description",
         "While it is off, no new documents of this kind can be added. The ones it has stay, and their reminders continue.",
@@ -619,7 +622,10 @@ const TEXTS: &[(&str, &str)] = &[
         "Read the current version of each SOP that applies to you, then confirm.",
     ),
     ("wl_documents.acks.mine", "To acknowledge"),
-    ("wl_documents.acks.in_person_list", "To acknowledge in person"),
+    (
+        "wl_documents.acks.in_person_list",
+        "To acknowledge in person",
+    ),
     ("wl_documents.acks.empty", "Nothing to acknowledge"),
     (
         "wl_documents.acks.empty_hint",
@@ -633,7 +639,10 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_documents.acks.open", "Open"),
     ("wl_documents.acks.version_file", "Version"),
     ("wl_documents.acks.acknowledge", "I have read it"),
-    ("wl_documents.acks.acknowledge_title", "Confirm that you read this SOP?"),
+    (
+        "wl_documents.acks.acknowledge_title",
+        "Confirm that you read this SOP?",
+    ),
     ("wl_documents.acks.acknowledged_ok", "Acknowledged."),
     ("wl_documents.acks.in_person", "Record in person"),
     (
@@ -644,7 +653,10 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_documents.acks.in_person_description",
         "The reader signs on this device after reading the SOP with you; you are recorded as the witness, and the reader is told.",
     ),
-    ("wl_documents.acks.in_person_ok", "Acknowledgement recorded."),
+    (
+        "wl_documents.acks.in_person_ok",
+        "Acknowledgement recorded.",
+    ),
     ("wl_documents.acks.signature", "Reader's drawn signature"),
     ("wl_documents.acks.reader", "Reader"),
     ("wl_documents.acks.readers", "Readers"),
@@ -660,10 +672,7 @@ const TEXTS: &[(&str, &str)] = &[
     ("wl_documents.acks.method.drawn", "In person"),
     ("wl_documents.acks.witness", "Witness"),
     ("wl_documents.acks.reminders", "Reminders"),
-    (
-        "wl_documents.acks.cancelled_exit",
-        "The employee exited.",
-    ),
+    ("wl_documents.acks.cancelled_exit", "The employee exited."),
     (
         "wl_documents.acks.cancelled_death",
         "The employee died in service.",

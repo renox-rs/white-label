@@ -633,7 +633,11 @@ fn add_openings(forecast: &mut Forecast, inputs: &Inputs, entity: &EntityInput) 
             }
         }
         let base = account.balance.map_or(0, |b| b.amount);
-        let movements = if account.balance.is_some() { movements } else { 0 };
+        let movements = if account.balance.is_some() {
+            movements
+        } else {
+            0
+        };
         forecast.openings.push(Opening {
             legal_entity_id: entity.legal_entity_id,
             account: account.account.clone(),
@@ -710,7 +714,10 @@ fn add_fill(
         if to < from {
             continue;
         }
-        let already = covered.get(&(budget.category_id, month)).copied().unwrap_or(0);
+        let already = covered
+            .get(&(budget.category_id, month))
+            .copied()
+            .unwrap_or(0);
         let open = (budget.amount - already).max(0);
         if open == 0 {
             continue;
@@ -801,7 +808,9 @@ fn add_entity(forecast: &mut Forecast, inputs: &Inputs, entity: &EntityInput) {
             documents: vec![invoice.subject.clone()],
         };
         if bounced_part > 0 {
-            forecast.memos.push(memo(MemoKind::BouncedCheque, bounced_part));
+            forecast
+                .memos
+                .push(memo(MemoKind::BouncedCheque, bounced_part));
         }
         if invoice.blocked {
             if remaining > 0 {
@@ -1146,7 +1155,10 @@ mod tests {
         let sunday = week_one_start(day(2027, 1, 13), Weekday::Sun);
         assert_eq!(sunday, day(2027, 1, 10));
         let weeks = weeks_of(day(2027, 1, 13), Weekday::Sun, 13);
-        assert_eq!((weeks[0].start, weeks[0].end), (day(2027, 1, 10), day(2027, 1, 16)));
+        assert_eq!(
+            (weeks[0].start, weeks[0].end),
+            (day(2027, 1, 10), day(2027, 1, 16))
+        );
         assert_eq!(weeks.len(), 13);
     }
 
@@ -1162,11 +1174,25 @@ mod tests {
 
     #[test]
     fn the_later_balance_wins_and_the_statement_wins_a_tie() {
-        let statement = Balance { amount: 5_000_000, as_of: day(2027, 1, 10), source: BalanceSource::Statement };
-        let manual = Balance { amount: 6_000_000, as_of: day(2027, 1, 11), source: BalanceSource::Manual };
+        let statement = Balance {
+            amount: 5_000_000,
+            as_of: day(2027, 1, 10),
+            source: BalanceSource::Statement,
+        };
+        let manual = Balance {
+            amount: 6_000_000,
+            as_of: day(2027, 1, 11),
+            source: BalanceSource::Manual,
+        };
         assert_eq!(choose_balance(Some(statement), Some(manual)), Some(manual));
-        let same_day = Balance { as_of: day(2027, 1, 10), ..manual };
-        assert_eq!(choose_balance(Some(statement), Some(same_day)), Some(statement));
+        let same_day = Balance {
+            as_of: day(2027, 1, 10),
+            ..manual
+        };
+        assert_eq!(
+            choose_balance(Some(statement), Some(same_day)),
+            Some(statement)
+        );
         assert_eq!(choose_balance(None, None), None);
     }
 
@@ -1175,17 +1201,28 @@ mod tests {
         let mut e = entity();
         e.accounts.push(AccountInput {
             account: "BA1".into(),
-            balance: Some(Balance { amount: 5_000_000, as_of: day(2027, 1, 10), source: BalanceSource::Statement }),
+            balance: Some(Balance {
+                amount: 5_000_000,
+                as_of: day(2027, 1, 10),
+                source: BalanceSource::Statement,
+            }),
             payments: vec![
                 payment(Direction::In, 500_000, day(2027, 1, 12)),
                 payment(Direction::Out, 100_000, day(2027, 1, 12)),
             ],
         });
-        e.accounts.push(AccountInput { account: "BA2".into(), balance: None, payments: vec![] });
+        e.accounts.push(AccountInput {
+            account: "BA2".into(),
+            balance: None,
+            payments: vec![],
+        });
         let forecast = assemble(&inputs(e));
         assert_eq!(forecast.openings[0].amount, 5_400_000);
         assert_eq!(forecast.openings[1].amount, 0);
-        assert!(forecast.warnings.contains(&Warning::NoBalance { legal_entity_id: 1, account: "BA2".into() }));
+        assert!(forecast.warnings.contains(&Warning::NoBalance {
+            legal_entity_id: 1,
+            account: "BA2".into()
+        }));
         assert_eq!(forecast.opening_total(), 5_400_000);
     }
 
@@ -1194,7 +1231,11 @@ mod tests {
         let mut e = entity();
         e.accounts.push(AccountInput {
             account: "BA1".into(),
-            balance: Some(Balance { amount: 100, as_of: day(2027, 1, 3), source: BalanceSource::Manual }),
+            balance: Some(Balance {
+                amount: 100,
+                as_of: day(2027, 1, 3),
+                source: BalanceSource::Manual,
+            }),
             payments: vec![],
         });
         let forecast = assemble(&inputs(e));
@@ -1316,7 +1357,12 @@ mod tests {
         let forecast = assemble(&inputs(e));
         assert_eq!(forecast.payments(2), 1_400_000);
         assert_eq!(forecast.lines.len(), 1);
-        assert!(forecast.warnings.iter().any(|w| matches!(w, Warning::VatPastDue { .. })));
+        assert!(
+            forecast
+                .warnings
+                .iter()
+                .any(|w| matches!(w, Warning::VatPastDue { .. }))
+        );
     }
 
     #[test]
@@ -1325,12 +1371,24 @@ mod tests {
         e.bills.push(bill(5, day(2027, 2, 10), 100_000, true));
         e.sources.push((
             "pm.payouts".into(),
-            ForecastLine::new("Payout", "owner_payout", day(2027, 1, 20), 50_000, Direction::Out)
-                .document(Subject::new("invoicing.supplier_bill", 5)),
+            ForecastLine::new(
+                "Payout",
+                "owner_payout",
+                day(2027, 1, 20),
+                50_000,
+                Direction::Out,
+            )
+            .document(Subject::new("invoicing.supplier_bill", 5)),
         ));
         e.sources.push((
             "pm.payouts".into(),
-            ForecastLine::new("Payout", "owner_payout", day(2027, 1, 20), 70_000, Direction::Out),
+            ForecastLine::new(
+                "Payout",
+                "owner_payout",
+                day(2027, 1, 20),
+                70_000,
+                Direction::Out,
+            ),
         ));
         let forecast = assemble(&inputs(e));
         assert_eq!(forecast.payments(1), 70_000);
@@ -1397,7 +1455,12 @@ mod tests {
         }
         assert_eq!(forecast.payments(4), 300_000);
         assert_eq!(forecast.payments(5), 0);
-        assert!(forecast.lines.iter().all(|l| l.kind == LineKind::BudgetFill));
+        assert!(
+            forecast
+                .lines
+                .iter()
+                .all(|l| l.kind == LineKind::BudgetFill)
+        );
         assert_eq!(forecast.lines[0].label, "Rent and utilities");
     }
 
@@ -1419,12 +1482,19 @@ mod tests {
             amount: 2_500_000,
         });
         e.bills.push(bill(8, day(2027, 4, 5), 2_500_000, false));
-        let total: i64 = (0..13).map(|w| assemble(&march(e.clone())).payments(w)).sum();
+        let total: i64 = (0..13)
+            .map(|w| assemble(&march(e.clone())).payments(w))
+            .sum();
         assert_eq!(total, 2_500_000 + 600_000);
         // More actual than budget: no fill.
         e.fill.actual.insert((1, day(2027, 3, 1)), 3_300_000);
         let forecast = assemble(&march(e));
-        assert!(forecast.lines.iter().all(|l| l.kind != LineKind::BudgetFill));
+        assert!(
+            forecast
+                .lines
+                .iter()
+                .all(|l| l.kind != LineKind::BudgetFill)
+        );
     }
 
     #[test]
@@ -1474,11 +1544,13 @@ mod tests {
         assert_eq!(forecast.receipts(0), 7 * 100_000);
         assert_eq!(forecast.payments(1), 3 * 310_000);
         assert_eq!(forecast.payments(3), 0);
-        assert!(forecast
-            .lines
-            .iter()
-            .filter(|l| l.category == "sales")
-            .all(|l| l.direction == Direction::In && !l.total_only));
+        assert!(
+            forecast
+                .lines
+                .iter()
+                .filter(|l| l.category == "sales")
+                .all(|l| l.direction == Direction::In && !l.total_only)
+        );
     }
 
     #[test]
@@ -1500,9 +1572,7 @@ mod tests {
     fn a_source_line_covers_its_category_in_the_month_of_its_date() {
         let mut e = entity();
         e.fill = rent_budget(3_100_000);
-        e.fill
-            .source_categories
-            .insert(("rent".into(), false), 1);
+        e.fill.source_categories.insert(("rent".into(), false), 1);
         e.sources.push((
             "pm.rent".into(),
             ForecastLine::new("Rent", "rent", day(2027, 3, 20), 3_100_000, Direction::Out),
@@ -1530,12 +1600,20 @@ mod tests {
         let mut moved = march(e.clone());
         moved.days_late = true;
         let forecast = assemble(&moved);
-        let line = forecast.lines.iter().find(|l| l.kind == LineKind::Invoice).unwrap();
+        let line = forecast
+            .lines
+            .iter()
+            .find(|l| l.kind == LineKind::Invoice)
+            .unwrap();
         assert_eq!(line.date, day(2027, 3, 21));
         assert_eq!(forecast.payments(0), 200_000);
         // Off: the due date.
         let plain = assemble(&march(e));
-        let line = plain.lines.iter().find(|l| l.kind == LineKind::Invoice).unwrap();
+        let line = plain
+            .lines
+            .iter()
+            .find(|l| l.kind == LineKind::Invoice)
+            .unwrap();
         assert_eq!(line.date, day(2027, 3, 1));
     }
 

@@ -222,9 +222,14 @@ async fn changing_readers_emits_the_difference_for_an_active_sop_only() {
     publish(&t, &rita, &sop).await;
 
     // The same readers (in another order, with a duplicate): nothing.
-    set_readers(&t, &mona, sop.id, "driver; site_worker@property.site:1;driver")
-        .await
-        .assert_ok();
+    set_readers(
+        &t,
+        &mona,
+        sop.id,
+        "driver; site_worker@property.site:1;driver",
+    )
+    .await
+    .assert_ok();
     t.app.assert_not_emitted::<SopReadersChanged>();
 
     // Removing "driver" and adding "all": one event.

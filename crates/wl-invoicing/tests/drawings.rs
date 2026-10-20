@@ -52,7 +52,11 @@ async fn accountant(t: &Booted, name: &str) -> User {
 async fn owner(t: &Booted, name: &str) -> User {
     t.helper(
         name,
-        &[perm::SUPPLIER_BILLS_VIEW, perm::DRAWINGS_APPROVE, perm::BUDGETS_VIEW],
+        &[
+            perm::SUPPLIER_BILLS_VIEW,
+            perm::DRAWINGS_APPROVE,
+            perm::BUDGETS_VIEW,
+        ],
     )
     .await
 }
@@ -71,7 +75,9 @@ async fn draft_bill(
     for (description, price, code, category) in lines {
         draft = draft.line(BillLineDraft::new(description, *price, *category).cost_code(code));
     }
-    supplier_bill::create(t.db(), &draft, Some(by.id)).await.unwrap()
+    supplier_bill::create(t.db(), &draft, Some(by.id))
+        .await
+        .unwrap()
 }
 
 /// The bill as stored now.
@@ -81,7 +87,9 @@ async fn bill_now(t: &Booted, bill: &SupplierBill) -> SupplierBill {
 
 /// The approvals of the drawing on `bill`, newest first.
 async fn drawings_of(t: &Booted, bill: &SupplierBill) -> Vec<DrawingApproval> {
-    DrawingApproval::for_source(t.db(), &bill.subject()).await.unwrap()
+    DrawingApproval::for_source(t.db(), &bill.subject())
+        .await
+        .unwrap()
 }
 
 /// A 422 with a message that holds `word`.
@@ -141,7 +149,12 @@ async fn a_bill_with_a_drawing_waits_for_the_owner() {
         "SB-90",
         &[
             ("Office chairs", 100_000, "other", VatCategory::Standard),
-            ("Villa decorator", 200_000, "owner_drawings", VatCategory::Standard),
+            (
+                "Villa decorator",
+                200_000,
+                "owner_drawings",
+                VatCategory::Standard,
+            ),
         ],
         &a,
     )
@@ -149,7 +162,10 @@ async fn a_bill_with_a_drawing_waits_for_the_owner() {
     t.post_as(&format!("/supplier-bills/{}/submit", bill.id), &a, &[])
         .await
         .assert_redirect(&format!("/supplier-bills/{}", bill.id));
-    assert_eq!(bill_now(&t, &bill).await.status, SupplierBillStatus::Matched);
+    assert_eq!(
+        bill_now(&t, &bill).await.status,
+        SupplierBillStatus::Matched
+    );
 
     // The drawing: AED 2,000 plus the 5% VAT that is not recovered.
     let drawing = drawings_of(&t, &bill).await.remove(0);
@@ -168,10 +184,18 @@ async fn a_bill_with_a_drawing_waits_for_the_owner() {
 
     // Until the drawing is approved the bill is not, whoever asks.
     approve_refused(&t, &bill, &a, "waits for the approval").await;
-    t.post_as(&format!("/supplier-bills/{}/transitions/approve", bill.id), &a, &[])
-        .await
-        .assert_status(422);
-    assert!(approvals::approve(t.state(), request_id, &a, "").await.is_err());
+    t.post_as(
+        &format!("/supplier-bills/{}/transitions/approve", bill.id),
+        &a,
+        &[],
+    )
+    .await
+    .assert_status(422);
+    assert!(
+        approvals::approve(t.state(), request_id, &a, "")
+            .await
+            .is_err()
+    );
 
     approvals::approve(t.state(), request_id, &b, "")
         .await
@@ -271,7 +295,12 @@ async fn a_rejected_drawing_blocks_the_bill_until_the_line_is_recoded() {
         &t,
         &e1,
         "SB-91",
-        &[("Weekend villa", 300_000, "owner_drawings", VatCategory::Exempt)],
+        &[(
+            "Weekend villa",
+            300_000,
+            "owner_drawings",
+            VatCategory::Exempt,
+        )],
         &a,
     )
     .await;
@@ -289,7 +318,10 @@ async fn a_rejected_drawing_blocks_the_bill_until_the_line_is_recoded() {
     .unwrap();
     let rejected = drawings_of(&t, &bill).await.remove(0);
     assert_eq!(rejected.status, DrawingStatus::Rejected);
-    assert_eq!(rejected.rejected_reason.as_deref(), Some("this is personal"));
+    assert_eq!(
+        rejected.rejected_reason.as_deref(),
+        Some("this is personal")
+    );
     approve_refused(&t, &bill, &a, "this is personal").await;
 
     // A recodes the line to another drawings category: a new request is
@@ -310,7 +342,10 @@ async fn a_rejected_drawing_blocks_the_bill_until_the_line_is_recoded() {
     .await
     .unwrap();
     assert_eq!(partner.kind, BudgetKind::OwnerDrawings);
-    let line = supplier_bill::lines_of(t.db(), bill.id).await.unwrap().remove(0);
+    let line = supplier_bill::lines_of(t.db(), bill.id)
+        .await
+        .unwrap()
+        .remove(0);
     let line_id = line.id.to_string();
     t.post_as(
         &format!("/supplier-bills/{}/recode", bill.id),
@@ -320,16 +355,24 @@ async fn a_rejected_drawing_blocks_the_bill_until_the_line_is_recoded() {
     .await
     .assert_ok();
     approve_refused(&t, &bill, &a, "not approved").await;
-    t.post_as(&format!("/supplier-bills/{}/drawings/request", bill.id), &a, &[])
-        .await
-        .assert_redirect(&format!("/supplier-bills/{}", bill.id));
+    t.post_as(
+        &format!("/supplier-bills/{}/drawings/request", bill.id),
+        &a,
+        &[],
+    )
+    .await
+    .assert_redirect(&format!("/supplier-bills/{}", bill.id));
     let again = drawings_of(&t, &bill).await;
     assert_eq!(again.len(), 2);
     assert_eq!(again[0].status, DrawingStatus::Requested);
     // Asking again while it waits changes nothing.
-    t.post_as(&format!("/supplier-bills/{}/drawings/request", bill.id), &a, &[])
-        .await
-        .assert_redirect(&format!("/supplier-bills/{}", bill.id));
+    t.post_as(
+        &format!("/supplier-bills/{}/drawings/request", bill.id),
+        &a,
+        &[],
+    )
+    .await
+    .assert_redirect(&format!("/supplier-bills/{}", bill.id));
     assert_eq!(drawings_of(&t, &bill).await.len(), 2);
     approvals::reject(
         t.state(),
@@ -363,7 +406,9 @@ async fn a_rejected_drawing_blocks_the_bill_until_the_line_is_recoded() {
         .assert_see("Recoded lines")
         .assert_see("partner_c")
         .assert_see("other");
-    let log = wl_invoicing::drawings::recodings_of(t.db(), bill.id).await.unwrap();
+    let log = wl_invoicing::drawings::recodings_of(t.db(), bill.id)
+        .await
+        .unwrap();
     assert_eq!(log.len(), 2);
     assert_eq!(log[0].from_code.as_deref(), Some("owner_drawings"));
     assert_eq!(log[1].to_code.as_deref(), Some("other"));
@@ -386,7 +431,12 @@ async fn the_sole_owner_records_their_own_drawing_and_the_accountant_is_told() {
         &t,
         &e4,
         "SB-E4",
-        &[("Family holiday", 500_000, "owner_drawings", VatCategory::Exempt)],
+        &[(
+            "Family holiday",
+            500_000,
+            "owner_drawings",
+            VatCategory::Exempt,
+        )],
         &omar,
     )
     .await;
@@ -431,17 +481,28 @@ async fn without_the_setting_the_sole_owner_waits_for_a_second_holder() {
     let t = boot_with(WlInvoicing::new().drawings_self_approve(false)).await;
     let e4 = t.new_entity("E4").await;
     let omar = t
-        .scoped_user("Omar", &[perm::DRAWINGS_APPROVE, perm::SUPPLIER_BILLS_VIEW], e4.id)
+        .scoped_user(
+            "Omar",
+            &[perm::DRAWINGS_APPROVE, perm::SUPPLIER_BILLS_VIEW],
+            e4.id,
+        )
         .await;
     let bill = draft_bill(
         &t,
         &e4,
         "SB-E4",
-        &[("Family holiday", 500_000, "owner_drawings", VatCategory::Exempt)],
+        &[(
+            "Family holiday",
+            500_000,
+            "owner_drawings",
+            VatCategory::Exempt,
+        )],
         &omar,
     )
     .await;
-    submit(t.state(), By::System(Some(omar.id)), bill.id).await.unwrap();
+    submit(t.state(), By::System(Some(omar.id)), bill.id)
+        .await
+        .unwrap();
     let drawing = drawings_of(&t, &bill).await.remove(0);
     assert_eq!(drawing.status, DrawingStatus::Requested);
     assert!(!drawing.self_approved);
@@ -451,13 +512,17 @@ async fn without_the_setting_the_sole_owner_waits_for_a_second_holder() {
         .await
         .unwrap()
         .unwrap();
-    let nobody = approvals::notify::step_approvers(t.db(), &request).await.unwrap();
+    let nobody = approvals::notify::step_approvers(t.db(), &request)
+        .await
+        .unwrap();
     assert!(nobody.is_empty());
-    assert!(approvals::approve(t.state(), request_id, &omar, "").await.is_err());
+    assert!(
+        approvals::approve(t.state(), request_id, &omar, "")
+            .await
+            .is_err()
+    );
 
-    let partner = t
-        .scoped_user("Pia", &[perm::DRAWINGS_APPROVE], e4.id)
-        .await;
+    let partner = t.scoped_user("Pia", &[perm::DRAWINGS_APPROVE], e4.id).await;
     approvals::approve(t.state(), request_id, &partner, "")
         .await
         .unwrap()
@@ -481,7 +546,12 @@ async fn the_drawings_line_of_a_bill_is_hidden_from_other_users() {
         "SB-90",
         &[
             ("Office chairs", 100_000, "other", VatCategory::Exempt),
-            ("Villa decorator", 200_000, "owner_drawings", VatCategory::Exempt),
+            (
+                "Villa decorator",
+                200_000,
+                "owner_drawings",
+                VatCategory::Exempt,
+            ),
         ],
         &a,
     )
@@ -502,7 +572,9 @@ async fn the_drawings_line_of_a_bill_is_hidden_from_other_users() {
         .assert_ok()
         .assert_see("Villa decorator");
     // The approver reaches the bill from the approval.
-    submit(t.state(), By::System(Some(a.id)), bill.id).await.unwrap();
+    submit(t.state(), By::System(Some(a.id)), bill.id)
+        .await
+        .unwrap();
     let drawing = drawings_of(&t, &bill).await.remove(0);
     t.app
         .get(&format!("/drawing-approvals/{}", drawing.id))
@@ -531,7 +603,9 @@ async fn a_limit_above_zero_records_a_small_drawing_at_once() {
         &a,
     )
     .await;
-    submit(t.state(), By::System(Some(a.id)), small.id).await.unwrap();
+    submit(t.state(), By::System(Some(a.id)), small.id)
+        .await
+        .unwrap();
     let drawing = drawings_of(&t, &small).await.remove(0);
     assert_eq!(drawing.status, DrawingStatus::Approved);
     assert!(!drawing.self_approved);
@@ -548,7 +622,9 @@ async fn a_limit_above_zero_records_a_small_drawing_at_once() {
         &a,
     )
     .await;
-    submit(t.state(), By::System(Some(a.id)), large.id).await.unwrap();
+    submit(t.state(), By::System(Some(a.id)), large.id)
+        .await
+        .unwrap();
     let drawing = drawings_of(&t, &large).await.remove(0);
     assert_eq!(drawing.status, DrawingStatus::Requested);
 }
@@ -572,20 +648,33 @@ async fn a_changed_amount_fails_the_waiting_request() {
         &a,
     )
     .await;
-    submit(t.state(), By::System(Some(a.id)), bill.id).await.unwrap();
+    submit(t.state(), By::System(Some(a.id)), bill.id)
+        .await
+        .unwrap();
     let waiting = drawings_of(&t, &bill).await.remove(0);
     let lines = supplier_bill::lines_of(t.db(), bill.id).await.unwrap();
     // The second line becomes a drawing too: the amount is no longer 3,000.
-    wl_invoicing::drawings::recode_line(t.state(), bill.id, lines[1].id, "owner_drawings", Some(a.id))
-        .await
-        .unwrap();
+    wl_invoicing::drawings::recode_line(
+        t.state(),
+        bill.id,
+        lines[1].id,
+        "owner_drawings",
+        Some(a.id),
+    )
+    .await
+    .unwrap();
     approvals::approve(t.state(), waiting.approval_request_id.unwrap(), &b, "")
         .await
         .unwrap();
     let failed = drawings_of(&t, &bill).await.remove(0);
     assert_eq!(failed.id, waiting.id);
     assert_eq!(failed.status, DrawingStatus::Rejected);
-    assert!(failed.rejected_reason.unwrap_or_default().contains("changed"));
+    assert!(
+        failed
+            .rejected_reason
+            .unwrap_or_default()
+            .contains("changed")
+    );
     approve_refused(&t, &bill, &a, "Recode or remove").await;
     // Asked again for the new amount, it can be approved.
     let fresh = wl_invoicing::drawings::request_for_bill(t.state(), bill.id, a.id)
@@ -618,13 +707,20 @@ async fn voiding_a_bill_with_an_approved_drawing_tells_the_holders() {
         &a,
     )
     .await;
-    submit(t.state(), By::System(Some(a.id)), bill.id).await.unwrap();
+    submit(t.state(), By::System(Some(a.id)), bill.id)
+        .await
+        .unwrap();
     let drawing = drawings_of(&t, &bill).await.remove(0);
     approvals::approve(t.state(), drawing.approval_request_id.unwrap(), &b, "")
         .await
         .unwrap();
-    void(t.state(), By::System(Some(a.id)), bill.id, "entered in error")
-        .await
-        .unwrap();
+    void(
+        t.state(),
+        By::System(Some(a.id)),
+        bill.id,
+        "entered in error",
+    )
+    .await
+    .unwrap();
     assert_eq!(told(&t, CORRECTED), [vec![b.id]]);
 }

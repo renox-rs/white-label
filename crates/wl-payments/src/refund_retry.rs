@@ -183,7 +183,11 @@ mod tests {
         assert!(retry_eligible(&gateway, 0, 1));
         assert!(!retry_eligible(&gateway, 1, 1), "already retried once");
         assert!(!retry_eligible(&gateway, 0, 0), "retries off");
-        assert!(!retry_eligible(&failed(Some(PaymentMethod::Transfer)), 0, 1));
+        assert!(!retry_eligible(
+            &failed(Some(PaymentMethod::Transfer)),
+            0,
+            1
+        ));
         assert!(!retry_eligible(&failed(None), 0, 1));
         let paid = Refund {
             status: RefundStatus::Approved,

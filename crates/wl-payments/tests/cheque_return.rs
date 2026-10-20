@@ -41,7 +41,9 @@ async fn undeposited_cheques_go_back_against_one_receipt() {
     assert_eq!(t.cheque(three.id).await.status, ChequeStatus::Deposited);
 
     for id in [one.id, two.id] {
-        let history = state_machine::history(t.db(), Cheque::TABLE, id).await.unwrap();
+        let history = state_machine::history(t.db(), Cheque::TABLE, id)
+            .await
+            .unwrap();
         let last = history.last().expect("a history row");
         assert_eq!(last.transition, "return_by_system");
         assert_eq!(last.reason.as_deref(), Some("Lease cancelled"));
@@ -150,15 +152,18 @@ async fn a_cheque_held_as_evidence_is_never_listed_or_deposited() {
     assert!(!t.cheque(paid.id).await.is_evidence());
 
     // The hourly run puts the other one on the list, not the evidence.
-    let flagged = wl_payments::cheque_deposit::flag_due_run(t.state(), wl_kernel::documents::today())
-        .await
-        .unwrap();
+    let flagged =
+        wl_payments::cheque_deposit::flag_due_run(t.state(), wl_kernel::documents::today())
+            .await
+            .unwrap();
     assert_eq!(flagged, 1);
     assert_eq!(t.cheque(kept.id).await.status, ChequeStatus::Received);
     assert_eq!(t.cheque(other.id).await.status, ChequeStatus::DueForDeposit);
 
     // It cannot be deposited by hand either.
-    let refused = t.cheque_action(&staff, &t.cheque(kept.id).await, "deposit", &[]).await;
+    let refused = t
+        .cheque_action(&staff, &t.cheque(kept.id).await, "deposit", &[])
+        .await;
     refused.assert_status(422);
 
     // A blank note is refused.
