@@ -32,14 +32,27 @@
 //! `percentage_bps`, the largest over-receipt of the receipt, from the
 //! transition's input.
 //!
+//! A receipt may instead be a free replacement against a `dispatched` Return
+//! to supplier (issue #226, [`crate::goods_receipt::create_replacement_draft`]):
+//! no purchase order, so nothing is received on an order or left to match in
+//! wl-invoicing. The guard reads the return: each line names a `replace`
+//! line of it that has no order line, or whose order is `closed` (a
+//! replacement with an open order line is received on the order), of the
+//! same item, and what was received of a return line never goes above what is
+//! still to be replaced (the returned quantity less what earlier receipts
+//! covered). The effect receives the accepted quantity at zero cost, so the
+//! item's average cost is diluted, counts it as covered on the return line,
+//! sends what was rejected again to a new return (as for an order), and
+//! credits the return when every line is covered. `SupplierReturnCredited`
+//! follows the receipt's `GoodsReceived`.
+//!
 //! Decisions: the guards read what [`prepare`] gathered into a
 //! [`PostInput`], as the guards of the other machines do, and the effect reads
 //! the lines again in its own transaction. The nested `receive` of the
 //! purchase order emits no `Transitioned<PurchaseOrder>` yet (nothing
-//! listens). A receipt against a Return to supplier (a free replacement) is
-//! BL-STK-06.
+//! listens).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use renox::db::Transaction;
 use renox::prelude::*;
@@ -59,10 +72,11 @@ use crate::lot::{Lot, LotStatus};
 use crate::movement::{self, StockMovement};
 use crate::permissions;
 use crate::purchase_order::{
-    PurchaseOrder, PurchaseOrderLine, ReceiveInput, ReceiveLine, over_receipt_bps,
+    PurchaseOrder, PurchaseOrderLine, PurchaseOrderStatus, ReceiveInput, ReceiveLine,
+    over_receipt_bps,
 };
 use crate::supplier_return::{
-    RejectedHandling, ReturnOrigin, ReturnStatus, SupplierReturn, SupplierReturnLine,
+    RejectedHandling, ReturnOrigin, ReturnStatus, SupplierReturn, SupplierReturnLine, WantedOutcome,
 };
 use crate::texts::said;
 
@@ -147,6 +161,13 @@ pub struct Loaded<'a> {
     pub order: Option<&'a PurchaseOrder>,
     /// The lines of the order.
     pub order_lines: &'a [PurchaseOrderLine],
+    /// The Return to supplier a free replacement is received against.
+    pub source_return: Option<&'a SupplierReturn>,
+    /// The lines of that return.
+    pub return_lines: &'a [SupplierReturnLine],
+    /// The return lines whose purchase order is not `closed`: a replacement
+    /// is received on the order, not on the return.
+    pub open_order_lines: &'a BTreeSet<i64>,
     /// The settings.
     pub config: &'a InventoryConfig,
 }
@@ -177,7 +198,67 @@ fn lines_problem(loaded: &Loaded<'_>) -> Option<String> {
     None
 }
 
+/// The problem of a free replacement received against a return.
+fn return_problem(loaded: &Loaded<'_>, ret: &SupplierReturn) -> Option<String> {
+    if ret.status != ReturnStatus::Dispatched {
+        return Some(said("wl_inventory.receipt.return_not_dispatched", &[]));
+    }
+    let mut asked: BTreeMap<i64, i64> = BTreeMap::new();
+    for line in loaded.lines {
+        let position = line.position.to_string();
+        let on_return = line
+            .return_line_id
+            .and_then(|id| loaded.return_lines.iter().find(|l| l.id == id));
+        let Some(return_line) = on_return else {
+            return Some(said(
+                "wl_inventory.receipt.line_not_on_return",
+                &[("position", &position)],
+            ));
+        };
+        if return_line.item_id != line.item_id {
+            return Some(said(
+                "wl_inventory.receipt.item_differs",
+                &[("position", &position)],
+            ));
+        }
+        if return_line.wanted_outcome != WantedOutcome::Replace {
+            return Some(said(
+                "wl_inventory.receipt.return_line_not_replace",
+                &[("position", &position)],
+            ));
+        }
+        if loaded.open_order_lines.contains(&return_line.id) {
+            return Some(said(
+                "wl_inventory.receipt.return_line_on_open_order",
+                &[("position", &position)],
+            ));
+        }
+        *asked.entry(return_line.id).or_insert(0) += line.received_qty_milli;
+    }
+    for (id, received) in asked {
+        let return_line = loaded.return_lines.iter().find(|l| l.id == id)?;
+        let remaining = (return_line.quantity_milli - return_line.covered_milli).max(0);
+        if received > remaining {
+            return Some(said(
+                "wl_inventory.receipt.above_returned",
+                &[
+                    ("position", &return_line.position.to_string()),
+                    ("remaining", &crate::item::quantity_text(remaining)),
+                    ("received", &crate::item::quantity_text(received)),
+                ],
+            ));
+        }
+    }
+    None
+}
+
 fn source_problem(loaded: &Loaded<'_>) -> Option<String> {
+    if loaded.receipt.supplier_return_id.is_some() {
+        return match loaded.source_return {
+            Some(ret) => return_problem(loaded, ret),
+            None => Some(said("wl_inventory.receipt.unknown_return", &[])),
+        };
+    }
     let Some(order) = loaded.order else {
         return Some(said("wl_inventory.receipt.no_order", &[]));
     };
@@ -565,6 +646,11 @@ async fn post_in(
         }
     }
 
+    // A replacement is covered on its return line, not received on an order.
+    if let Some(return_id) = receipt.supplier_return_id {
+        cover_return_lines(tx, return_id, &lines).await?;
+    }
+
     // The order counts the accepted quantity; a receipt that accepts nothing
     // leaves it as it is.
     if let Some(order_id) = receipt.purchase_order_id {
@@ -588,6 +674,14 @@ async fn post_in(
         }
     }
 
+    // Every line replaced: the return is credited. The event follows the
+    // receipt's (`crate::events`).
+    if let Some(return_id) = receipt.supplier_return_id {
+        let ret = SupplierReturn::find_or_404(&mut *tx, return_id).await?;
+        let _outcome =
+            crate::return_credit::credit_if_covered(tx, &ret, "replacement", None).await?;
+    }
+
     // Not the status column, so outside the machine's guard.
     GoodsReceipt::query()
         .where_(GoodsReceipt::ID.eq(receipt.id))
@@ -601,6 +695,34 @@ async fn post_in(
             ],
         )
         .await?;
+    Ok(())
+}
+
+/// Adds the accepted quantity of each line of a replacement receipt to the
+/// covered quantity of the return line it replaces.
+async fn cover_return_lines(
+    tx: &mut Transaction,
+    return_id: i64,
+    lines: &[GoodsReceiptLine],
+) -> Result {
+    let now = renox::db::now();
+    for line in lines.iter().filter(|line| line.accepted_qty_milli > 0) {
+        let Some(return_line_id) = line.return_line_id else {
+            continue;
+        };
+        let return_line = SupplierReturnLine::find_or_404(&mut *tx, return_line_id).await?;
+        if return_line.supplier_return_id != return_id {
+            continue;
+        }
+        let covered = return_line.covered_milli + line.accepted_qty_milli;
+        SupplierReturnLine::query()
+            .where_(SupplierReturnLine::ID.eq(return_line.id))
+            .update(
+                &mut *tx,
+                &[("covered_milli", &covered), ("updated_at", &now)],
+            )
+            .await?;
+    }
     Ok(())
 }
 
@@ -675,6 +797,26 @@ pub async fn prepare(
         Some(order) => crate::purchase_order::lines_of(&state.db, order.id).await?,
         None => Vec::new(),
     };
+    let source_return = match receipt.supplier_return_id {
+        Some(id) => SupplierReturn::find(&state.db, id).await?,
+        None => None,
+    };
+    let return_lines = match &source_return {
+        Some(ret) => crate::supplier_return::lines_of(&state.db, ret.id).await?,
+        None => Vec::new(),
+    };
+    let mut open_order_lines = BTreeSet::new();
+    for return_line in &return_lines {
+        let Some(po_line_id) = return_line.po_line_id else {
+            continue;
+        };
+        if let Some(po_line) = PurchaseOrderLine::find(&state.db, po_line_id).await?
+            && let Some(order) = PurchaseOrder::find(&state.db, po_line.purchase_order_id).await?
+            && order.status != PurchaseOrderStatus::Closed
+        {
+            open_order_lines.insert(return_line.id);
+        }
+    }
     let config = config_of(state);
     let mut input = check(&Loaded {
         receipt,
@@ -682,6 +824,9 @@ pub async fn prepare(
         items: &items,
         order: order.as_ref(),
         order_lines: &order_lines,
+        source_return: source_return.as_ref(),
+        return_lines: &return_lines,
+        open_order_lines: &open_order_lines,
         config: &config,
     });
     input.by = by;
@@ -746,8 +891,6 @@ pub async fn post(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::purchase_order::PurchaseOrderStatus;
-    use crate::supplier_return::WantedOutcome;
     use renox::chrono::NaiveDate;
 
     fn item(id: i64, lot_tracked: bool) -> Item {
@@ -811,6 +954,9 @@ mod tests {
             items: &items,
             order: Some(&order),
             order_lines: &order_lines,
+            source_return: None,
+            return_lines: &[],
+            open_order_lines: &BTreeSet::new(),
             config: &InventoryConfig::default(),
         })
     }
@@ -886,6 +1032,9 @@ mod tests {
             items: &items,
             order: Some(&order),
             order_lines: &order_lines,
+            source_return: None,
+            return_lines: &[],
+            open_order_lines: &BTreeSet::new(),
             config: &config,
         };
         assert!(
@@ -932,6 +1081,9 @@ mod tests {
                 items: &items,
                 order,
                 order_lines: &order_lines,
+                source_return: None,
+                return_lines: &[],
+                open_order_lines: &BTreeSet::new(),
                 config: &config,
             })
             .source_problem

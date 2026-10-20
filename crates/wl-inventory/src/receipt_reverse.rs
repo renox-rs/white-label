@@ -112,6 +112,10 @@ pub async fn gather(
             &[("number", left.number.as_deref().unwrap_or("-"))],
         ));
     }
+    if receipt.supplier_return_id.is_some() {
+        // The replacement was counted on the return's lines.
+        input.billed_problem = Some(said("wl_inventory.reverse.replacement", &[]));
+    }
     if let Some(order_id) = receipt.purchase_order_id {
         let order = PurchaseOrder::find(&mut *tx, order_id).await?;
         if order.is_some_and(|o| o.status == PurchaseOrderStatus::Closed) {

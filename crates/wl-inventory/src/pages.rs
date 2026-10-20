@@ -188,6 +188,7 @@ impl LineForm {
         };
         Ok(DraftLine {
             po_line_id: None,
+            return_line_id: None,
             received_qty_milli: received,
             accepted_qty_milli: accepted,
             rejected_qty_milli: rejected,
@@ -219,6 +220,7 @@ async fn save_line(
     // The order line stays the line's own.
     let stored = crate::goods_receipt::GoodsReceiptLine::find_or_404(&state.db, line).await?;
     draft.po_line_id = stored.po_line_id;
+    draft.return_line_id = stored.return_line_id;
     update_line(&state.db, receipt.id, line, &draft).await?;
     Ok((
         Toast::success(text(&lang, "receipt.line_saved")),

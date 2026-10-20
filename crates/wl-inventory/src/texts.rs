@@ -16,7 +16,7 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     (
         "wl_inventory.receipt.no_order",
-        "A goods receipt is received against a purchase order.",
+        "A goods receipt is received against a purchase order or a dispatched return to supplier.",
     ),
     (
         "wl_inventory.receipt.order_not_open",
@@ -114,6 +114,10 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_inventory.reverse.held",
         "Line {{ position }}: lot {{ lot }} of {{ item }} is not free ({{ status }}). Correct it with a stock adjustment or a return to supplier.",
     ),
+    (
+        "wl_inventory.reverse.replacement",
+        "This receipt is a replacement counted on a return to supplier; it cannot be reversed.",
+    ),
     ("wl_inventory.reverse.reason", "Goods receipt reversed"),
     ("wl_inventory.reverse.return_cancelled", "receipt reversed"),
     ("wl_inventory.receipt.reversed", "Goods receipt reversed."),
@@ -161,6 +165,31 @@ const TEXTS: &[(&str, &str)] = &[
     (
         "wl_inventory.return.bad_proof",
         "The collection proof is a driver signature, a courier number or a goods receipt.",
+    ),
+    // A free replacement received against a Return to supplier.
+    (
+        "wl_inventory.receipt.unknown_return",
+        "The return to supplier of this receipt does not exist.",
+    ),
+    (
+        "wl_inventory.receipt.return_not_dispatched",
+        "A replacement is received against a dispatched return to supplier.",
+    ),
+    (
+        "wl_inventory.receipt.line_not_on_return",
+        "Line {{ position }} names no line of the return to supplier.",
+    ),
+    (
+        "wl_inventory.receipt.return_line_not_replace",
+        "Line {{ position }}: the return line is to be credited, not replaced.",
+    ),
+    (
+        "wl_inventory.receipt.return_line_on_open_order",
+        "Line {{ position }}: the replacement is received on its purchase order, which is still open.",
+    ),
+    (
+        "wl_inventory.receipt.above_returned",
+        "Line {{ position }} of the return: {{ remaining }} are still to be replaced, {{ received }} were received.",
     ),
     // `cancel` on a Return to supplier.
     (

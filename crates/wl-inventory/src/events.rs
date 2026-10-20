@@ -154,6 +154,16 @@ pub(crate) fn register(app: &mut Registry) {
                     emit_dispatched(&state, ret.id).await?;
                 }
             }
+            // A replacement that covered the last line of its return
+            // credited it.
+            if let Some(return_id) = receipt.supplier_return_id {
+                let ret = SupplierReturn::find_or_404(&state.db, return_id).await?;
+                if ret.status == ReturnStatus::Credited
+                    && ret.credit_basis.as_deref() == Some("replacement")
+                {
+                    emit_credited(&state, ret.id).await?;
+                }
+            }
             Ok(())
         },
     );

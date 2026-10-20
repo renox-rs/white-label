@@ -50,8 +50,11 @@ pub struct GoodsReceipt {
     pub id: i64,
     /// The number from the `GRN-` series, set at `post`.
     pub number: Option<String>,
-    /// The purchase order.
+    /// The purchase order; `None` for a free replacement.
     pub purchase_order_id: Option<i64>,
+    /// The dispatched Return to supplier a free replacement is received
+    /// against; `None` for a receipt on a purchase order.
+    pub supplier_return_id: Option<i64>,
     /// The supplier.
     pub supplier_party_id: i64,
     /// The location the goods arrive at.
@@ -116,6 +119,8 @@ pub struct GoodsReceiptLine {
     pub position: i64,
     /// The purchase order line it is received on.
     pub po_line_id: Option<i64>,
+    /// The return line a free replacement replaces.
+    pub return_line_id: Option<i64>,
     /// The item.
     pub item_id: i64,
     /// What arrived.
@@ -151,6 +156,8 @@ pub struct GoodsReceiptLine {
 pub struct DraftLine {
     /// The purchase order line it is received on.
     pub po_line_id: Option<i64>,
+    /// The return line it replaces, for a receipt against a return.
+    pub return_line_id: Option<i64>,
     /// What arrived, in thousandths of the base unit.
     pub received_qty_milli: i64,
     /// What is accepted.
@@ -177,6 +184,18 @@ impl DraftLine {
     pub fn on(po_line_id: i64, received: i64, accepted: i64) -> Self {
         DraftLine {
             po_line_id: Some(po_line_id),
+            received_qty_milli: received,
+            accepted_qty_milli: accepted,
+            rejected_qty_milli: received - accepted,
+            ..DraftLine::default()
+        }
+    }
+
+    /// A line replacing return line `return_line_id`: `received`, of which
+    /// `accepted` is accepted and the rest rejected (thousandths).
+    pub fn replacing(return_line_id: i64, received: i64, accepted: i64) -> Self {
+        DraftLine {
+            return_line_id: Some(return_line_id),
             received_qty_milli: received,
             accepted_qty_milli: accepted,
             rejected_qty_milli: received - accepted,
@@ -278,6 +297,93 @@ pub async fn create_draft(db: &Db, by: Option<i64>, draft: DraftReceipt) -> Resu
     for line in &mut lines {
         line.goods_receipt_id = receipt.id;
         line.insert(&mut tx).await?;
+    }
+    tx.commit().await?;
+    Ok(receipt)
+}
+
+/// Records `lines` as a `draft` goods receipt against the dispatched Return
+/// to supplier `return_id` by user `by`: a free replacement, at zero cost,
+/// with no purchase order. Each line names the return line it replaces
+/// ([`DraftLine::replacing`]).
+///
+/// # Errors
+///
+/// 422 for an unknown or not dispatched return or location, or a line that
+/// names no line of the return.
+pub async fn create_replacement_draft(
+    db: &Db,
+    by: Option<i64>,
+    return_id: i64,
+    location_id: i64,
+    delivery_note: Option<String>,
+    lines: Vec<DraftLine>,
+) -> Result<GoodsReceipt> {
+    let ret = crate::supplier_return::SupplierReturn::find(db, return_id)
+        .await?
+        .ok_or_else(|| refused(said("wl_inventory.receipt.unknown_return", &[])))?;
+    if ret.status != crate::supplier_return::ReturnStatus::Dispatched {
+        return Err(refused(said(
+            "wl_inventory.receipt.return_not_dispatched",
+            &[],
+        )));
+    }
+    let location = Location::find(db, location_id)
+        .await?
+        .ok_or_else(|| refused(said("wl_inventory.receipt.unknown_location", &[])))?;
+    let return_lines = crate::supplier_return::lines_of(db, ret.id).await?;
+    let mut rows = Vec::new();
+    for (position, line) in (1..).zip(&lines) {
+        let found = line
+            .return_line_id
+            .and_then(|id| return_lines.iter().find(|l| l.id == id));
+        let Some(return_line) = found else {
+            return Err(refused(said(
+                "wl_inventory.receipt.line_not_on_return",
+                &[("position", &position.to_string())],
+            )));
+        };
+        rows.push(GoodsReceiptLine {
+            goods_receipt_id: 0,
+            position,
+            po_line_id: None,
+            return_line_id: Some(return_line.id),
+            item_id: return_line.item_id,
+            received_qty_milli: line.received_qty_milli,
+            accepted_qty_milli: line.accepted_qty_milli,
+            rejected_qty_milli: line.rejected_qty_milli,
+            rejection_reason: clean(&line.rejection_reason),
+            rejected_handling: line.rejected_handling,
+            wanted_outcome: line.wanted_outcome,
+            lot_number: clean(&line.lot_number),
+            expiry_date: line.expiry_date,
+            evidence: clean(&line.evidence),
+            // A free replacement comes in at zero cost.
+            unit_cost: 0,
+            ..GoodsReceiptLine::default()
+        });
+    }
+    let mut receipt = GoodsReceipt {
+        purchase_order_id: None,
+        supplier_return_id: Some(ret.id),
+        supplier_party_id: ret.supplier_party_id,
+        location_id: location.id,
+        scope_type: location.scope_type.clone(),
+        scope_id: location.scope_id,
+        delivery_note: delivery_note
+            .as_deref()
+            .map(str::trim)
+            .filter(|n| !n.is_empty())
+            .map(str::to_owned),
+        status: GoodsReceiptStatus::Draft,
+        created_by: by,
+        ..GoodsReceipt::default()
+    };
+    let mut tx = db.begin().await?;
+    receipt.insert(&mut tx).await?;
+    for row in &mut rows {
+        row.goods_receipt_id = receipt.id;
+        row.insert(&mut tx).await?;
     }
     tx.commit().await?;
     Ok(receipt)
