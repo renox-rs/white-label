@@ -126,11 +126,6 @@ pub struct CancelInput {
     pub kept_problem: Option<String>,
 }
 
-/// A 422 with `message`.
-fn refused(message: impl Into<String>) -> Error {
-    Error::Status(StatusCode::UNPROCESSABLE_ENTITY, message.into())
-}
-
 fn cancel_input(ctx: &TransitionCtx) -> Option<CancelInput> {
     ctx.input_as::<CancelInput>().ok()
 }
