@@ -1,0 +1,186 @@
+//! The back-office actions on a project (02 Construction §7.1 *Project*):
+//!
+//! | Route | Name | Needs |
+//! |---|---|---|
+//! | `POST /construction/projects/{id}/terminate` | `construction.project_terminate` | `projects.terminate` in the project |
+//! | `GET /construction/projects/{id}/closing` | `construction.project_closing` | `projects.view` or `projects.manage` in the project |
+//! | `POST /construction/projects/{id}/settle` | `construction.project_settle` | `projects.manage` in the project |
+//! | `POST /construction/projects/{id}/cancel` | `construction.project_cancel` | `projects.cancel` |
+//!
+//! The approval of a termination is the kernel's: the MD finds the request
+//! under "Needs your action". The closing screen answers in JSON with the
+//! final account and the warnings of what is still open.
+
+use std::collections::BTreeMap;
+
+use renox::chrono::NaiveDate;
+use renox::prelude::*;
+use renox::state_machine::TransitionError;
+use serde::Serialize;
+
+use crate::cancellation;
+use crate::final_account::{self, ClosingWarnings};
+use crate::ipa;
+use crate::permissions;
+use crate::project::Project;
+use crate::termination::{self, TerminateRequest, TerminationReason};
+use crate::texts::t;
+
+/// The routes.
+pub fn routes() -> Routes {
+    Routes::new()
+        .post("/construction/projects/{id}/terminate", terminate)
+        .name("construction.project_terminate")
+        .get("/construction/projects/{id}/closing", closing)
+        .name("construction.project_closing")
+        .post("/construction/projects/{id}/settle", settle)
+        .name("construction.project_settle")
+        .post("/construction/projects/{id}/cancel", cancel)
+        .name("construction.project_cancel")
+        .require_auth()
+}
+
+/// A 422 with `message`.
+fn refused(message: impl Into<String>) -> Error {
+    Error::Status(StatusCode::UNPROCESSABLE_ENTITY, message.into())
+}
+
+/// A transition's refusal as an answer.
+fn answer(error: TransitionError) -> Error {
+    match error {
+        TransitionError::Guard(message) => refused(message),
+        other => other.into_error(),
+    }
+}
+
+/// `POST /construction/projects/{id}/terminate`: `reason`, `notice` and
+/// `effective_on` (`2027-05-31`).
+async fn terminate(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let reason = form
+        .get("reason")
+        .and_then(|reason| TerminationReason::parse(reason))
+        .ok_or_else(|| refused(t(&lang, "construction.terminate.reason_required")))?;
+    let effective_on = form
+        .get("effective_on")
+        .and_then(|date| date.trim().parse::<NaiveDate>().ok())
+        .ok_or_else(|| refused(t(&lang, "construction.terminate.date_required")))?;
+    let notice = form.get("notice").cloned().unwrap_or_default();
+    let ask = TerminateRequest {
+        reason,
+        notice,
+        effective_on,
+    };
+    let outcome = termination::request(&state, &user, id, ask)
+        .await
+        .map_err(answer)?;
+    let key = if outcome.is_pending() {
+        "construction.terminate.requested"
+    } else {
+        "construction.terminate.done"
+    };
+    Ok((Toast::success(t(&lang, key)), renox::HxRefresh).into_response())
+}
+
+/// The final account as the closing screen shows it.
+#[derive(Debug, Serialize)]
+struct FinalAccountView {
+    id: i64,
+    status: &'static str,
+    valuation_on: Option<NaiveDate>,
+    certified_amount: Option<i64>,
+    decided_amount: Option<i64>,
+    decision_reference: Option<String>,
+    invoice_id: Option<i64>,
+}
+
+/// The closing screen of a terminated project.
+#[derive(Debug, Serialize)]
+struct ClosingView {
+    status: &'static str,
+    termination_reason: Option<String>,
+    effective_on: Option<NaiveDate>,
+    final_account: Option<FinalAccountView>,
+    warnings: ClosingWarnings,
+    warning_texts: Vec<String>,
+}
+
+/// `GET /construction/projects/{id}/closing`.
+async fn closing(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    let project = Project::find_or_404(&state.db, id).await?;
+    let scope = project.scope();
+    if !user.has_permission_in(permissions::PROJECTS_VIEW, &scope)
+        && !user.has_permission_in(permissions::PROJECTS_MANAGE, &scope)
+    {
+        return Err(Error::Forbidden);
+    }
+    let account = ipa::final_account_of(&state.db, id).await?;
+    let warnings = final_account::closing_warnings(&state, id).await?;
+    let view = ClosingView {
+        status: project.status.as_str(),
+        termination_reason: project.termination_reason.clone(),
+        effective_on: project.termination_effective_on,
+        final_account: account.map(|account| FinalAccountView {
+            id: account.id,
+            status: account.status.as_str(),
+            valuation_on: account.valuation_on,
+            certified_amount: account.certified_amount,
+            decided_amount: account.decided_amount,
+            decision_reference: account.decision_reference.clone(),
+            invoice_id: account.invoice_id,
+        }),
+        warning_texts: warnings.texts(),
+        warnings,
+    };
+    let body = renox::serde_json::to_string(&view)
+        .map_err(|error| Error::Internal(renox::anyhow::Error::new(error)))?;
+    Ok(([("content-type", "application/json")], body).into_response())
+}
+
+/// `POST /construction/projects/{id}/settle`.
+async fn settle(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    final_account::settle_final_account(&state, &user, id)
+        .await
+        .map_err(answer)?;
+    Ok((
+        Toast::success(t(&lang, "construction.settle.done")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// `POST /construction/projects/{id}/cancel`: `reason`.
+async fn cancel(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let reason = form.get("reason").map(String::as_str).unwrap_or_default();
+    if reason.trim().is_empty() {
+        return Err(refused(t(&lang, "construction.cancel.reason_needed")));
+    }
+    cancellation::cancel(&state, &user, id, reason)
+        .await
+        .map_err(answer)?;
+    Ok((
+        Toast::success(t(&lang, "construction.cancel.done")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}

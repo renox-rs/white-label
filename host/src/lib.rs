@@ -101,7 +101,7 @@ impl Tuning {
 pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App, ConfigError> {
     let mut tuning = tuning;
     let client_app = config.client.app.clone();
-    let vertical = vertical(&client_app)?;
+    check_vertical(&client_app)?;
     let manifest = config.manifest()?;
     let entities: Vec<String> = config
         .legal_entities
@@ -131,22 +131,36 @@ pub fn app_for_tuned(config: ClientConfig, tuning: Tuning) -> Result<renox::App,
         app = app.module(app::property_seed::PropertySeed);
     }
     // The page that shows the shared modules' settings of this client.
-    Ok(app
+    let app = app
         .module(app::negative_flow::NegativeFlow::new(&client_app, entities))
         .module(app::compliance_settings::ComplianceSettings::new(
             &client_app,
             &owner_role,
-        ))
-        .module(vertical))
+        ));
+    Ok(mount_vertical(app, &client_app))
 }
 
-/// The vertical app named in `[client] app`.
-fn vertical(name: &str) -> Result<property::Property, ConfigError> {
+/// The vertical apps the host can run, by their name in `[client] app`.
+const VERTICALS: &[&str] = &["property", "construction"];
+
+/// Refuses a `[client] app` that is not built.
+fn check_vertical(name: &str) -> Result<(), ConfigError> {
+    if VERTICALS.contains(&name) {
+        Ok(())
+    } else {
+        Err(ConfigError(format!(
+            "[client] app `{name}` is not built yet; built: {}",
+            VERTICALS.join(", ")
+        )))
+    }
+}
+
+/// Mounts the vertical app named in `[client] app` (checked by
+/// [`check_vertical`]).
+fn mount_vertical(app: renox::App, name: &str) -> renox::App {
     match name {
-        "property" => Ok(property::Property),
-        other => Err(ConfigError(format!(
-            "[client] app `{other}` is not built yet; F1 has `property`"
-        ))),
+        "construction" => app.module(construction::Construction),
+        _ => app.module(property::Property),
     }
 }
 

@@ -3,6 +3,7 @@
 //! permission here, give it to roles, and `define` makes the database agree
 //! (it runs on every sign-up, seed and `users:admin`).
 
+use construction::permissions as con;
 use property::permissions as prp;
 use renox::anyhow::anyhow;
 use renox::auth::permissions;
@@ -88,6 +89,9 @@ pub const PROCUREMENT: &str = "procurement";
 /// change the preferred supplier of an item, and approves it when they are
 /// not the requester (wl-inventory §6, `STK.ACL.07`).
 pub const PROCUREMENT_MANAGER: &str = "procurement_manager";
+/// The project manager: runs a project, asks for its termination and settles
+/// its final account (02 Construction §3.1, `CON.ACL.15`).
+pub const PROJECT_MANAGER: &str = con::PROJECT_MANAGER_ROLE;
 /// Everyone who signs up.
 pub const MEMBER: &str = "member";
 
@@ -209,6 +213,10 @@ pub const ROLES: &[(&str, &[&str])] = &[
             inventory::LANDED_COSTS_POST,
             inventory::ITEM_SUPPLIERS_MANAGE,
             inventory::ITEM_SUPPLIERS_APPROVE,
+            con::PROJECTS_VIEW,
+            con::PROJECTS_MANAGE,
+            con::PROJECTS_TERMINATE,
+            con::PROJECTS_CANCEL,
             prp::UNITS_VIEW,
             prp::UNITS_MANAGE,
             prp::UNITS_RESERVE,
@@ -400,6 +408,19 @@ pub const ROLES: &[(&str, &[&str])] = &[
             inventory::SUPPLIER_RETURNS_MANAGE,
             inventory::LANDED_COSTS_POST,
             inventory::ITEM_SUPPLIERS_MANAGE,
+        ],
+    ),
+    (
+        PROJECT_MANAGER,
+        &[
+            con::PROJECTS_VIEW,
+            con::PROJECTS_MANAGE,
+            con::PROJECTS_TERMINATE,
+            inventory::ITEMS_VIEW,
+            inventory::STOCK_VIEW,
+            inventory::PURCHASE_ORDERS_VIEW,
+            attendance::VIEW,
+            attendance::REVIEW,
         ],
     ),
     (
