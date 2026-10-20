@@ -384,6 +384,30 @@ async fn bl_prp_01_a_rejected_cancellation_changes_nothing() {
         .unwrap()
         .unwrap();
     assert_eq!(ended.status, ApprovalStatus::Rejected);
+    // The requester is told, with the manager's comment.
+    let told: Vec<String> = s
+        .agent
+        .notifications(s.t.db(), 50)
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|n| n.kind == wl_kernel::approvals::notify::DECIDED_KIND)
+        .map(|n| n.data.to_string())
+        .collect();
+    assert_eq!(told.len(), 1, "{told:?}");
+    assert!(told[0].contains("The prospect signed"), "{}", told[0]);
+    let manager_told = s
+        .manager
+        .notifications(s.t.db(), 50)
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|n| n.kind == wl_kernel::approvals::notify::DECIDED_KIND)
+        .count();
+    assert_eq!(
+        manager_told, 0,
+        "the decider is not told of his own decision"
+    );
     // The lease can be asked to cancel again, and activation is not blocked.
     s.ask(&[]).await.assert_ok();
 }

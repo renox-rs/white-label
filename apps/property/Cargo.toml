@@ -14,3 +14,9 @@ wl-kernel = { path = "../../crates/wl-kernel" }
 
 [dev-dependencies]
 tempfile = "3"
+# The real money modules in the integration tests (lease to cash with no fake
+# invoicer, payment recorder or deposit book), and the real documents module
+# for the tenant acceptance.
+wl-documents = { path = "../../crates/wl-documents" }
+wl-invoicing = { path = "../../crates/wl-invoicing" }
+wl-payments = { path = "../../crates/wl-payments" }

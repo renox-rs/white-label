@@ -68,20 +68,69 @@ const LAYOUT: &str = r#"<!doctype html>
 <html><body><rx-outlet name="content"/></body></html>
 "#;
 
-/// A client with one default legal entity and no optional module.
-const CLIENT: &str = r#"
+/// A client with one default legal entity and the optional `modules` on.
+fn client(modules: &str) -> String {
+    format!(
+        r#"
 [client]
 name = "Palm Grove Properties LLC"
 app = "property"
 
 [modules]
-enabled = []
+enabled = [{modules}]
 
 [[legal_entities]]
 code = "PGP"
 name_en = "Palm Grove Properties LLC"
+trn = "100000000000003"
 default = true
-"#;
+"#
+    )
+}
+
+/// Which of the contracts the real module answers instead of the fake.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Real {
+    /// wl-invoicing answers the `Invoicer` (invoices, credit notes, overdue,
+    /// reminders).
+    pub invoicing: bool,
+    /// wl-payments answers the payment recorder, the deposits and the deposit
+    /// deductions (receipts, refunds, deposit settlement and its window).
+    pub payments: bool,
+}
+
+impl Real {
+    /// The money modules: invoicing and payments.
+    pub const MONEY: Real = Real {
+        invoicing: true,
+        payments: true,
+    };
+    /// Payments only: refunds, deposits and their dispute window.
+    pub const PAYMENTS: Real = Real {
+        invoicing: false,
+        payments: true,
+    };
+    /// Invoicing only: invoices, overdue and reminders.
+    pub const INVOICING: Real = Real {
+        invoicing: true,
+        payments: false,
+    };
+
+    /// The `modules.enabled` list of the client.
+    fn enabled(self) -> String {
+        // The client's manifest: payments needs invoicing and invoicing needs
+        // parties, whichever answers the contract.
+        let mut list = Vec::new();
+        if self.invoicing || self.payments {
+            list.push("\"parties\"");
+            list.push("\"invoicing\"");
+        }
+        if self.payments {
+            list.push("\"payments\"");
+        }
+        list.join(", ")
+    }
+}
 
 /// Today plus `days` (negative for the past), in Asia/Dubai.
 pub fn day(days: i64) -> NaiveDate {
@@ -1787,6 +1836,7 @@ fn record<E: Event + Clone + Send + Sync + 'static>(app: &mut Registry, log: &Re
 
 /// Provides the fakes.
 struct Fakes {
+    real: Real,
     activated: Recorded<LeaseActivated>,
     cancelled: Recorded<LeaseCancelled>,
     withdrawn: Recorded<LeaseNoticeWithdrawn>,
@@ -1805,9 +1855,50 @@ struct Fakes {
     staff: Staff,
 }
 
+/// What the test route that holds a deposit takes.
+#[derive(serde::Deserialize)]
+struct HoldForm {
+    party: i64,
+    entity: i64,
+    source_type: String,
+    source_id: i64,
+    amount: i64,
+    #[serde(default)]
+    payment: Option<i64>,
+}
+
+/// `POST /test/deposits`: holds a deposit through the real wl-payments (the
+/// function needs the user of a request).
+async fn hold_route(
+    State(state): State<AppState>,
+    user: AuthUser,
+    renox::axum::extract::Form(form): renox::axum::extract::Form<HoldForm>,
+) -> Result<String> {
+    let request = wl_payments::deposit::HoldDeposit {
+        party: PartyId(form.party),
+        legal_entity_id: form.entity,
+        source: Subject::new(&form.source_type, form.source_id),
+        amount: form.amount,
+        currency: "AED".to_owned(),
+        received_payment: form.payment.map(PaymentId),
+    };
+    let deposit = wl_payments::deposit::hold(&state, &user, &request)
+        .await
+        .map_err(renox::state_machine::TransitionError::into_error)?;
+    Ok(deposit.id.to_string())
+}
+
 impl Module for Fakes {
     fn name(&self) -> &'static str {
         "fakes"
+    }
+
+    fn routes(&self) -> Routes {
+        if self.real.payments {
+            Routes::new().post("/test/deposits", hold_route)
+        } else {
+            Routes::new()
+        }
     }
 
     fn register(&self, app: &mut Registry) {
@@ -1816,10 +1907,14 @@ impl Module for Fakes {
         provide_notifier(app, self.notices.clone());
         provide_task_creator(app, self.tasks.clone());
         provide_cheques(app, self.cheques.clone());
-        provide_deposits(app, self.deposits.clone());
-        provide_deposit_deductions(app, PublishedBook(self.deposits.clone()));
-        provide_invoicer(app, self.invoices.clone());
-        provide_payment_recorder(app, self.refunds.clone());
+        if !self.real.payments {
+            provide_deposits(app, self.deposits.clone());
+            provide_deposit_deductions(app, PublishedBook(self.deposits.clone()));
+            provide_payment_recorder(app, self.refunds.clone());
+        }
+        if !self.real.invoicing {
+            provide_invoicer(app, self.invoices.clone());
+        }
         provide_block_guard(app, self.blocks.clone());
         provide_workforce(app, self.staff.clone());
         record(app, &self.activated);
@@ -2068,11 +2163,18 @@ pub const ACCOUNTANT: &str = perm::ACCOUNTANT_ROLE;
 
 /// Property booted with auth, the kernel and the fakes, and the three roles.
 pub async fn boot() -> Booted {
+    boot_with(Real::default()).await
+}
+
+/// Like [`boot`], with the modules of `real` answering their contracts instead
+/// of the fakes (the cheque register stays the fake one).
+pub async fn boot_with(real: Real) -> Booted {
     let views = tempfile::tempdir().expect("a temporary views directory");
     let path = views.path().join("layouts/app.html");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(&path, LAYOUT).unwrap();
     let fakes = Fakes {
+        real,
         activated: Recorded::default(),
         cancelled: Recorded::default(),
         withdrawn: Recorded::default(),
@@ -2110,11 +2212,18 @@ pub async fn boot() -> Booted {
         fakes.blocks.clone(),
         fakes.staff.clone(),
     );
-    let app = App::new()
+    let mut app = App::new()
         .module(Auth::new())
         .module(Permissions)
-        .module(property::Property)
-        .module(fakes);
+        .module(property::Property);
+    if real.invoicing {
+        app = app.module(wl_invoicing::WlInvoicing::new());
+    }
+    if real.payments {
+        // The vertical turns the deductions dispute on: 14 days, 7 to answer.
+        app = app.module(wl_payments::WlPayments::new().deductions_dispute(14, 7));
+    }
+    let app = app.module(fakes);
     // What wl-parties registers: an exception for a blocked party is decided by
     // the compliance role.
     wl_kernel::PolicyDefault::new(wl_kernel::BLOCK_EXCEPTION_ACTION)
@@ -2123,7 +2232,8 @@ pub async fn boot() -> Booted {
                 .requiring(wl_kernel::BLOCK_EXCEPTION_ACTION),
         )
         .register();
-    let config = wl_kernel::ClientConfig::parse(CLIENT).expect("a valid client.toml");
+    let config =
+        wl_kernel::ClientConfig::parse(&client(&real.enabled())).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     let dir = views.path().to_path_buf();
     let app = TestApp::with_config(app, |c| c.views_path = dir).await;
@@ -2219,6 +2329,62 @@ impl Booted {
         let active = self.reload(&lease).await;
         assert_eq!(active.status, LeaseStatus::Active);
         active
+    }
+
+    /// Holds a deposit of `amount` fils for `lease` through the real
+    /// wl-payments: a transfer from the tenant is recorded and allocated to
+    /// it. (Needs [`Real::payments`].)
+    pub async fn hold_real_deposit(&self, lease: &Lease, amount: i64) {
+        permissions::define_role(
+            self.db(),
+            "payments_teller",
+            &[
+                wl_payments::permissions::DEPOSITS_MANAGE,
+                wl_payments::permissions::RECORD,
+            ],
+        )
+        .await
+        .unwrap();
+        let teller = self
+            .user_with(&format!("Teller {}", lease.id), "payments_teller")
+            .await;
+        let entity = wl_kernel::LegalEntity::query()
+            .where_(wl_kernel::LegalEntity::CODE.eq("PGP"))
+            .first(self.db())
+            .await
+            .unwrap()
+            .expect("the default entity");
+        let mut request = RecordPayment::new(
+            TENANT,
+            entity.id,
+            wl_kernel::payments::PaymentMethod::Transfer,
+            amount,
+        );
+        request.reference = Some(format!("TRF-DEP-{}", lease.id));
+        let payment = payment_recorder(self.state())
+            .record(self.state(), request, Some(teller.id))
+            .await
+            .expect("the payment is recorded");
+        let (entity, amount, id, payment) = (
+            entity.id.to_string(),
+            amount.to_string(),
+            lease.agreement().subject_id.to_string(),
+            payment.id.0.to_string(),
+        );
+        self.post(
+            &teller,
+            "/test/deposits",
+            &[
+                ("party", &TENANT.0.to_string()),
+                ("entity", &entity),
+                ("source_type", &lease.agreement().subject_type),
+                ("source_id", &id),
+                ("amount", &amount),
+                ("payment", &payment),
+            ],
+        )
+        .await
+        .assert_ok();
     }
 
     /// Runs the system transition `name` on `lease`.
