@@ -15,7 +15,9 @@ use wl_ticketing::{
 use super::people::login_of;
 use super::roles::{ADMIN, COORDINATOR, TECHNICIAN};
 use super::seed_leases::text;
-use super::service::{CONTRACTS, ContractPlan, ContractStanding, Standing, TICKETS, TicketPlan, Worker};
+use super::service::{
+    CONTRACTS, ContractPlan, ContractStanding, Standing, TICKETS, TicketPlan, Worker,
+};
 use super::{Seed, day};
 
 /// The trades the demo adds to the ticket categories: key, English name,
@@ -149,7 +151,11 @@ impl Seed<'_> {
                 continue;
             }
             self.driver
-                .post(admin, &format!("/service-contracts/{}/activate", contract.id), &[])
+                .post(
+                    admin,
+                    &format!("/service-contracts/{}/activate", contract.id),
+                    &[],
+                )
                 .await?;
             let active = ServiceContract::find_or_404(self.db(), contract.id).await?;
             match plan.standing {
@@ -268,13 +274,12 @@ impl Seed<'_> {
                 self.building(plan.place.0).id,
             ),
         };
-        let mut request = OpenTicket::new(subject, plan.category, plan.title).channel(
-            if plan.tenant.is_some() {
+        let mut request =
+            OpenTicket::new(subject, plan.category, plan.title).channel(if plan.tenant.is_some() {
                 TicketChannel::Portal
             } else {
                 TicketChannel::Staff
-            },
-        );
+            });
         if let Some(tenant) = plan.tenant {
             request = request
                 .requester(Requester::Party {
@@ -304,8 +309,12 @@ impl Seed<'_> {
         match plan.standing {
             Standing::Open | Standing::Assigned => {}
             Standing::Done => {
-                Tickets::complete(&self.state, opened.id, "Work done and signed off by the building")
-                    .await?;
+                Tickets::complete(
+                    &self.state,
+                    opened.id,
+                    "Work done and signed off by the building",
+                )
+                .await?;
             }
             Standing::InProgress => {
                 self.driver.post(worker_user, &action("start"), &[]).await?;
@@ -313,16 +322,24 @@ impl Seed<'_> {
             Standing::OnHold(reason) => {
                 self.driver.post(worker_user, &action("start"), &[]).await?;
                 self.driver
-                    .post(worker_user, &format!("{path}/hold"), &[("hold_reason", reason)])
+                    .post(
+                        worker_user,
+                        &format!("{path}/hold"),
+                        &[("hold_reason", reason)],
+                    )
                     .await?;
             }
             Standing::Resolved => {
                 self.driver.post(worker_user, &action("start"), &[]).await?;
-                self.driver.post(worker_user, &action("resolve"), &[]).await?;
+                self.driver
+                    .post(worker_user, &action("resolve"), &[])
+                    .await?;
             }
             Standing::Closed => {
                 self.driver.post(worker_user, &action("start"), &[]).await?;
-                self.driver.post(worker_user, &action("resolve"), &[]).await?;
+                self.driver
+                    .post(worker_user, &action("resolve"), &[])
+                    .await?;
                 self.driver.post(coordinator, &action("close"), &[]).await?;
             }
             Standing::Charged => {
@@ -339,12 +356,18 @@ impl Seed<'_> {
                     )
                     .await?;
                 self.driver.post(worker_user, &action("start"), &[]).await?;
-                self.driver.post(worker_user, &action("resolve"), &[]).await?;
+                self.driver
+                    .post(worker_user, &action("resolve"), &[])
+                    .await?;
                 self.driver.post(coordinator, &action("close"), &[]).await?;
             }
             Standing::Cancelled(reason) => {
                 self.driver
-                    .post(coordinator, &format!("{path}/cancel"), &[("reason", reason)])
+                    .post(
+                        coordinator,
+                        &format!("{path}/cancel"),
+                        &[("reason", reason)],
+                    )
                     .await?;
             }
         }

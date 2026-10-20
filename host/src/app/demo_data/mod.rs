@@ -27,16 +27,19 @@ mod leases;
 mod owners;
 mod people;
 mod portfolio;
+mod sales;
 mod seed_documents;
+mod finance;
+mod seed_finance;
+mod seed_hr;
 mod seed_leases;
 mod seed_money;
 mod seed_owners;
 mod seed_people;
+mod seed_portfolio;
 mod seed_sales;
 mod seed_service;
-mod sales;
 mod service;
-mod seed_portfolio;
 mod specimen;
 
 use std::collections::BTreeMap;
@@ -81,13 +84,14 @@ pub fn day(days: i64) -> NaiveDate {
     }
 }
 
-/// The demo is there once its last login exists (the last thing made).
+/// The audit entry that marks a finished seed.
+const DONE_ACTION: &str = "demo.seeded";
+
+/// The demo is there once its last step recorded that it is done.
 pub async fn is_seeded(db: &Db) -> Result<bool> {
-    Ok(
-        User::find_by_email(db, people::LOGINS[people::LOGINS.len() - 1].email)
-            .await?
-            .is_some(),
-    )
+    Ok(!renox::audit::for_subject(db, "demo", 1, 1)
+        .await?
+        .is_empty())
 }
 
 /// The state of a seed in progress.
@@ -146,13 +150,19 @@ impl Seed<'_> {
         self.parties().await?;
         self.charge_types().await?;
         self.portfolio().await?;
-        self.logins(false).await?;
+        self.logins().await?;
         self.leases().await?;
         self.owners().await?;
         self.service().await?;
         self.sales().await?;
-        // The last login is the sign the seed is done.
-        self.logins(true).await?;
+        self.staff().await?;
+        self.finance().await?;
+        // The sign that the seed is done.
+        renox::audit::record(
+            self.db(),
+            renox::audit::Entry::new(DONE_ACTION).subject("demo", 1),
+        )
+        .await?;
         Ok(())
     }
 }

@@ -158,10 +158,18 @@ impl Seed<'_> {
             }
             LeadFate::Reopened => {
                 self.driver
-                    .post(marketing, &format!("{path}/lose"), &[("reason", "no_response")])
+                    .post(
+                        marketing,
+                        &format!("{path}/lose"),
+                        &[("reason", "no_response")],
+                    )
                     .await?;
                 self.driver
-                    .post(marketing, &format!("{path}/reopen"), &[("reason", "The prospect called back")])
+                    .post(
+                        marketing,
+                        &format!("{path}/reopen"),
+                        &[("reason", "The prospect called back")],
+                    )
                     .await?;
             }
         }

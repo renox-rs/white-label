@@ -125,16 +125,10 @@ impl Seed<'_> {
     }
 
     /// The staff logins: one per role, scoped to buildings where the role is.
-    /// Signed in for the requests that follow. The last login is the sign the
-    /// seed is done ([`super::is_seeded`]), so it is made at the end
-    /// (`last`), and a seed that stopped halfway is made again.
-    pub(crate) async fn logins(&mut self, last: bool) -> Result {
+    /// Signed in for the requests that follow.
+    pub(crate) async fn logins(&mut self) -> Result {
         let mut made = 0;
-        let count = LOGINS.len();
-        for (index, login) in LOGINS.iter().enumerate() {
-            if (index + 1 == count) != last {
-                continue;
-            }
+        for login in LOGINS {
             let user = match User::find_by_email(self.db(), login.email).await? {
                 Some(user) => user,
                 None => {
