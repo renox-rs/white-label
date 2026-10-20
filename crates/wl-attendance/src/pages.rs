@@ -6,6 +6,9 @@
 //! | `POST /attendance/mark` | `wl_attendance.mark` | `attendance.mark` at the location |
 //! | `POST /attendance/check-in` | `wl_attendance.check_in` | `attendance.self` at the location |
 //! | `POST /attendance/records/{id}/check-out` | `wl_attendance.check_out` | the employee themselves, or `attendance.mark` at the location |
+//! | `POST /attendance/records/{id}/accept` | `wl_attendance.accept` | `attendance.review` at the location (`HRM.ACL.09`) |
+//! | `POST /attendance/records/{id}/reject` | `wl_attendance.reject` | `attendance.review` at the location |
+//! | `POST /attendance/records/{id}/correct` | `wl_attendance.correct` | `attendance.correct` at the location, and `attendance.review` when a flag holds the record |
 //!
 //! The routes need a signed-in user and carry no permission guard of their
 //! own: the guard counts global roles only, while a supervisor may hold the
@@ -25,6 +28,7 @@ use crate::access;
 use crate::location::WorkLocation;
 use crate::permissions;
 use crate::record::AttendanceRecord;
+use crate::review::{self, Correction};
 use crate::service::{self, NewRecord, refuse};
 use crate::texts;
 
@@ -37,6 +41,12 @@ pub fn routes() -> Routes {
         .name("wl_attendance.check_in")
         .post("/attendance/records/{id}/check-out", check_out)
         .name("wl_attendance.check_out")
+        .post("/attendance/records/{id}/accept", accept)
+        .name("wl_attendance.accept")
+        .post("/attendance/records/{id}/reject", reject)
+        .name("wl_attendance.reject")
+        .post("/attendance/records/{id}/correct", correct)
+        .name("wl_attendance.correct")
         .require_auth()
 }
 
@@ -162,4 +172,82 @@ async fn check_out(
     }
     service::check_out(&state, id, now()).await?;
     Ok((Toast::success(text(&lang, "record.saved")), renox::HxRefresh).into_response())
+}
+
+/// What a reviewer submits to accept or reject.
+#[derive(Deserialize, Serialize, Validate, Debug, Default)]
+pub struct ReviewForm {
+    /// Why; required when a flag holds the record, and for a rejection.
+    #[validate(max = 500)]
+    #[serde(default)]
+    pub reason: String,
+}
+
+/// `POST /attendance/records/{id}/accept`: a reviewer accepts the record.
+async fn accept(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Valid(form): Valid<ReviewForm>,
+) -> Result<Response> {
+    review::accept(&state, &user, id, &form.reason).await?;
+    Ok((Toast::success(text(&lang, "review.saved")), renox::HxRefresh).into_response())
+}
+
+/// `POST /attendance/records/{id}/reject`: a reviewer rejects the record.
+async fn reject(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Valid(form): Valid<ReviewForm>,
+) -> Result<Response> {
+    review::reject(&state, &user, id, &form.reason).await?;
+    Ok((Toast::success(text(&lang, "review.saved")), renox::HxRefresh).into_response())
+}
+
+/// What a user submits to correct a record.
+#[derive(Deserialize, Serialize, Validate, Debug, Default)]
+pub struct CorrectForm {
+    /// The corrected check-in.
+    #[validate(max = 40)]
+    pub check_in: String,
+    /// The corrected check-out, if any.
+    #[validate(max = 40)]
+    #[serde(default)]
+    pub check_out: String,
+    /// Why the record is corrected.
+    #[validate(max = 500)]
+    #[serde(default)]
+    pub reason: String,
+}
+
+/// `POST /attendance/records/{id}/correct`: a user corrects the times.
+async fn correct(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Valid(form): Valid<CorrectForm>,
+) -> Result<Response> {
+    let check_in = parse_time(&state, &lang, "check_in", &form.check_in)?;
+    let check_out = if form.check_out.trim().is_empty() {
+        None
+    } else {
+        Some(parse_time(&state, &lang, "check_out", &form.check_out)?)
+    };
+    review::correct(
+        &state,
+        &user,
+        id,
+        Correction {
+            check_in,
+            check_out,
+            breaks: None,
+        },
+        &form.reason,
+    )
+    .await?;
+    Ok((Toast::success(text(&lang, "review.saved")), renox::HxRefresh).into_response())
 }

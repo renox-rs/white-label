@@ -755,9 +755,22 @@ pub async fn boot_with(module: WlAttendance, extra: &str) -> Booted {
     )
     .await
     .unwrap();
-    permissions::define_role(app.db(), "reviewer", &[perm::VIEW, perm::REVIEW])
-        .await
-        .unwrap();
+    permissions::define_role(
+        app.db(),
+        "reviewer",
+        &[perm::VIEW, perm::REVIEW, perm::CORRECT],
+    )
+    .await
+    .unwrap();
+    // A site lead who marks and also reviews: the separation of duties
+    // (`HRM.ACL.09`) still keeps them from accepting what they marked.
+    permissions::define_role(
+        app.db(),
+        "lead",
+        &[perm::VIEW, perm::MARK, perm::CORRECT, perm::REVIEW],
+    )
+    .await
+    .unwrap();
     permissions::define_role(app.db(), "worker", &[perm::SELF_CHECK_IN])
         .await
         .unwrap();

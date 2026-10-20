@@ -129,7 +129,7 @@ async fn ensure_at_work(state: &AppState, employee: EmployeeId) -> Result {
 }
 
 /// Refuses a day outside the late-entry window (`HRM.ACL.01`).
-fn ensure_in_window(state: &AppState, date: NaiveDate) -> Result {
+pub(crate) fn ensure_in_window(state: &AppState, date: NaiveDate) -> Result {
     let config = config_of(state);
     let day = today();
     if date > day {
@@ -205,7 +205,7 @@ async fn emit_recorded(state: &AppState, record: &AttendanceRecord) -> Result {
 
 /// Runs the overlap check once more on what is stored, in its own
 /// transaction (see the module docs).
-async fn settle(state: &AppState, record: &AttendanceRecord) -> Result {
+pub(crate) async fn settle(state: &AppState, record: &AttendanceRecord) -> Result {
     let mut tx = state.db.begin().await?;
     let mut pending = Pending::default();
     overlap::flag_in(state, &mut tx, record, &mut pending).await?;

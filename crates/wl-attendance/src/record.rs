@@ -6,14 +6,18 @@
 //! `recorded` ([`crate::service::record`]); the system `flag` moves a
 //! `recorded` or `accepted` record to `flagged` when a flag rule matches
 //! (outside geofence, midday break, missing check-out, overtime cap, permit
-//! invalid, overlap), which keeps the history and the event. `accept`,
-//! `correct`, `reject` and `lock` come with the issues of the reviewer
-//! (BL-ATT-05) and the timesheet; their states are declared so that a
-//! fixture can be in them.
+//! invalid, overlap), which keeps the history and the event. A reviewer
+//! `accept`s, `correct`s or `reject`s it ([`crate::review`], `HRM.ACL.09`);
+//! the system `accept`s a record with no flag (`accept_by_system`) and
+//! `lock`s an accepted one when its timesheet is approved.
 //!
 //! ```text
 //! [*] --record--> recorded
 //! recorded | accepted --flag--> flagged
+//! recorded | flagged --accept--> accepted
+//! recorded | flagged | accepted --correct--> accepted
+//! recorded | flagged --reject--> rejected
+//! accepted --lock--> locked
 //! ```
 //!
 //! Times are instants; a day is the Asia/Dubai calendar day of the check-in
@@ -28,8 +32,20 @@ use wl_kernel::BusinessCalendar;
 use wl_kernel::attendance::AttendanceRecordId;
 use wl_kernel::workforce::EmployeeId;
 
+use crate::review;
+
 /// The system transition that holds a record for review.
 pub const FLAG: &str = "flag";
+/// A reviewer accepts a record (`attendance.review`).
+pub const ACCEPT: &str = "accept";
+/// The system accepts a record that has no flag, at check-out.
+pub const ACCEPT_BY_SYSTEM: &str = "accept_by_system";
+/// A user corrects the times of a record (`attendance.correct`).
+pub const CORRECT: &str = "correct";
+/// A reviewer rejects a record (`attendance.review`).
+pub const REJECT: &str = "reject";
+/// The system locks an accepted record when its timesheet is approved.
+pub const LOCK: &str = "lock";
 
 /// Where an attendance record stands (§4).
 #[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -187,6 +203,72 @@ impl StateMachine for AttendanceRecord {
                     .from([Recorded, Accepted])
                     .to(Flagged),
             )
+            .transition(
+                Transition::new(ACCEPT)
+                    .label("Accept")
+                    .tone("primary")
+                    .from([Recorded, Flagged])
+                    .to(Accepted)
+                    .effect(|record: &AttendanceRecord, ctx, tx| {
+                        let record = record.clone();
+                        let who = review::Who::of(ctx);
+                        Box::pin(async move { review::accept_in(tx, &record, &who).await })
+                    }),
+            )
+            .transition(
+                Transition::new(ACCEPT_BY_SYSTEM)
+                    .label("Accept")
+                    .system()
+                    .from([Recorded])
+                    .to(Accepted)
+                    .effect(|record: &AttendanceRecord, _ctx, tx| {
+                        let record = record.clone();
+                        Box::pin(async move { review::accept_by_system_in(tx, &record).await })
+                    }),
+            )
+            .transition(
+                Transition::new(CORRECT)
+                    .label("Correct")
+                    .from([Recorded, Flagged, Accepted])
+                    .to(Accepted)
+                    .reason_required()
+                    .effect(|record: &AttendanceRecord, ctx, tx| {
+                        let record = record.clone();
+                        let who = review::Who::of(ctx);
+                        let input = ctx.input_as::<review::CorrectInput>();
+                        Box::pin(async move {
+                            // Without the corrected values there is nothing to
+                            // write: refuse rather than accept unchanged.
+                            let input = input.map_err(|_| {
+                                crate::service::refuse(crate::texts::english(
+                                    "wl_attendance.review.no_correction",
+                                    &[],
+                                ))
+                            })?;
+                            review::correct_in(tx, &record, &who, &input).await
+                        })
+                    }),
+            )
+            .transition(
+                Transition::new(REJECT)
+                    .label("Reject")
+                    .tone("danger")
+                    .from([Recorded, Flagged])
+                    .to(Rejected)
+                    .reason_required()
+                    .effect(|record: &AttendanceRecord, ctx, tx| {
+                        let record = record.clone();
+                        let who = review::Who::of(ctx);
+                        Box::pin(async move { review::reject_in(tx, &record, &who).await })
+                    }),
+            )
+            .transition(
+                Transition::new(LOCK)
+                    .label("Lock")
+                    .system()
+                    .from([Accepted])
+                    .to(Locked),
+            )
     }
 }
 
@@ -256,7 +338,20 @@ mod tests {
         assert!(flag.is_system());
         assert_eq!(flag.from_states(), ["recorded", "accepted"]);
         assert_eq!(flag.to_state(), Some("flagged"));
-        assert_eq!(machine.transitions().len(), 1);
+        let names: Vec<&str> = machine.transitions().iter().map(|t| t.name()).collect();
+        assert_eq!(
+            names,
+            ["flag", "accept", "accept_by_system", "correct", "reject", "lock"]
+        );
+        assert_eq!(machine.find(ACCEPT).unwrap().from_states(), ["recorded", "flagged"]);
+        assert_eq!(
+            machine.find(CORRECT).unwrap().from_states(),
+            ["recorded", "flagged", "accepted"]
+        );
+        assert_eq!(machine.find(REJECT).unwrap().to_state(), Some("rejected"));
+        assert!(machine.find(ACCEPT_BY_SYSTEM).unwrap().is_system());
+        assert!(machine.find(LOCK).unwrap().is_system());
+        assert!(!machine.find(ACCEPT).unwrap().is_system());
     }
 
     #[test]

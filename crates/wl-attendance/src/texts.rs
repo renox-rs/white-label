@@ -86,6 +86,32 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_attendance.submit.flagged_record",
         "The attendance record :record of :date at :location is flagged (:flags) and must be reviewed first.",
     ),
+    // The review (`HRM.ACL.09`).
+    (
+        "wl_attendance.review.not_the_marker",
+        "HRM.ACL.09: the person who marked this record, or the employee it is about, cannot accept or correct it while a flag holds it. Another reviewer must.",
+    ),
+    (
+        "wl_attendance.review.reason_required",
+        "A flag holds this record for review: give a reason.",
+    ),
+    (
+        "wl_attendance.review.overlap_remains",
+        "The hours still overlap. :note Correct or reject one of the records first.",
+    ),
+    (
+        "wl_attendance.review.system_flagged",
+        "A record with a flag is not accepted by the system; a reviewer must accept it.",
+    ),
+    (
+        "wl_attendance.review.no_correction",
+        "Give the corrected times.",
+    ),
+    (
+        "wl_attendance.review.corrected_note",
+        "Corrected by hand: :reason",
+    ),
+    ("wl_attendance.review.saved", "Saved."),
     // Notifications.
     (
         "wl_attendance.notices.flagged_subject",

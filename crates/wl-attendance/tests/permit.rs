@@ -8,7 +8,7 @@ mod support;
 
 use wl_attendance::proposal::{self, Proposal};
 use wl_attendance::service::{self, NewRecord};
-use wl_attendance::{AttendanceFlag, AttendanceStatus, FlagType, WlAttendance, WorkLocation};
+use wl_attendance::{AttendanceFlag, AttendanceStatus, WlAttendance, WorkLocation};
 
 use support::{at, boot, boot_with, nov, users_of};
 
@@ -252,12 +252,14 @@ async fn att04_the_setting_and_the_kinds_of_the_client_are_followed() {
 }
 
 /// While the record is `flagged` it proposes no hours and the timesheet's
-/// `submit` is refused with a message that names it; once accepted, its hours
-/// are proposed non-billable and count (a normal record's are billable).
+/// `submit` is refused with a message that names it; once a reviewer accepts
+/// it (`HRM.ACL.09`), its hours are proposed non-billable and count (a normal
+/// record's are billable) and `submit` is no longer held.
 #[renox::test]
 async fn att04_a_flagged_record_proposes_nothing_and_an_accepted_one_non_billable() {
     let t = boot().await;
     let boss = t.user_with("Bashir", "supervisor").await;
+    let hr = t.user_with("Hana", "reviewer").await;
     let a = t.employee(1, &[]);
     t.docs
         .accepted_until(&a.subject(), "work_permit", 11, Some(nov(1)));
@@ -285,30 +287,35 @@ async fn att04_a_flagged_record_proposes_nothing_and_an_accepted_one_non_billabl
                 .unwrap(),
             None
         );
+
+        // HR reviews it: the real `accept`, with a reason.
+        t.app.acting_as(&hr);
+        t.app
+            .htmx()
+            .post(
+                &format!("/attendance/records/{}/accept", record.id),
+                &[("reason", "renewal in process, HR verified")],
+            )
+            .await
+            .assert_ok();
+        let accepted = t.reload(&record).await;
+        assert_eq!(accepted.status, AttendanceStatus::Accepted);
+        assert_eq!(
+            proposal::proposal_of(t.state(), record.id).await.unwrap(),
+            Some(Proposal {
+                minutes: 480,
+                billable: false
+            })
+        );
+        assert_eq!(
+            proposal::submit_blocker(t.state(), a, nov(2), nov(8))
+                .await
+                .unwrap(),
+            None
+        );
     })
     .await;
 
-    // Accepted by a reviewer (BL-ATT-05 builds `accept`): a fixture in that
-    // state carrying the flag proposes its eight hours, non-billable.
-    let accepted = t
-        .fixture(
-            a,
-            &site,
-            at(3, 7, 0),
-            Some(at(3, 15, 0)),
-            AttendanceStatus::Accepted,
-        )
-        .await;
-    AttendanceFlag::create(
-        t.db(),
-        AttendanceFlag {
-            record_id: accepted.id,
-            flag_type: FlagType::PermitInvalid,
-            ..AttendanceFlag::default()
-        },
-    )
-    .await
-    .unwrap();
     let normal = t
         .fixture(
             a,
@@ -318,13 +325,6 @@ async fn att04_a_flagged_record_proposes_nothing_and_an_accepted_one_non_billabl
             AttendanceStatus::Accepted,
         )
         .await;
-    assert_eq!(
-        proposal::proposal_of(t.state(), accepted.id).await.unwrap(),
-        Some(Proposal {
-            minutes: 480,
-            billable: false
-        })
-    );
     assert_eq!(
         proposal::proposal_of(t.state(), normal.id).await.unwrap(),
         Some(Proposal {

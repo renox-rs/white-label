@@ -68,6 +68,14 @@ pub struct AttendanceFlag {
     pub flag_type: FlagType,
     /// What the reviewer should know, e.g. the locked record it overlaps.
     pub note: String,
+    /// When a reviewer settled the flag (accepted, corrected or rejected the
+    /// record); open while empty. A settled flag stays as the record's
+    /// history, and `permit_invalid` still marks its hours non-billable.
+    pub resolved_at: Option<DateTime>,
+    /// The user who settled it; none when the system noted it.
+    pub resolved_by: Option<i64>,
+    /// The reviewer's reason.
+    pub resolution: Option<String>,
     /// When the row was created.
     pub created_at: Option<DateTime>,
     /// When the row was last changed.
@@ -82,6 +90,15 @@ impl AttendanceFlag {
             .order_by(AttendanceFlag::ID)
             .get(db)
             .await
+    }
+
+    /// The flags of a record that no reviewer has settled yet, oldest first.
+    pub async fn open_of_record(db: &Db, record_id: i64) -> Result<Vec<AttendanceFlag>> {
+        Ok(Self::of_record(db, record_id)
+            .await?
+            .into_iter()
+            .filter(|f| f.resolved_at.is_none())
+            .collect())
     }
 
     /// Whether the record carries a flag of `kind`.
@@ -149,8 +166,10 @@ impl Pending {
 }
 
 /// Adds a flag of `kind` to record `record_id` inside `tx`. Returns whether
-/// it was added: not when the record has the flag already (a flag type is
-/// held at most once), or when it is `locked` or `rejected`.
+/// it was added: not when the record has the flag open already (a flag type
+/// is held at most once), when a reviewer settled the same condition, or when
+/// the record is `locked` or `rejected`. A settled flag whose condition
+/// changed (another note) is opened again.
 pub async fn add_in(
     tx: &mut Transaction,
     record_id: i64,
@@ -172,19 +191,43 @@ pub async fn add_in(
         .where_(AttendanceFlag::FLAG_TYPE.eq(kind))
         .first(&mut *tx)
         .await?;
-    if held.is_some() {
-        return Ok(false);
+    match held {
+        // Open already: a flag type is held at most once.
+        Some(held) if held.resolved_at.is_none() => return Ok(false),
+        // Settled by a reviewer for the same condition: it stays settled.
+        // A different note means the hours changed, so it is raised again.
+        Some(held) if held.note == note => return Ok(false),
+        Some(held) => {
+            let open: Option<DateTime> = None;
+            let nobody: Option<i64> = None;
+            let none: Option<String> = None;
+            AttendanceFlag::query()
+                .where_(AttendanceFlag::ID.eq(held.id))
+                .update(
+                    &mut *tx,
+                    &[
+                        ("note", &note.to_owned()),
+                        ("resolved_at", &open),
+                        ("resolved_by", &nobody),
+                        ("resolution", &none),
+                        ("updated_at", &renox::db::now()),
+                    ],
+                )
+                .await?;
+        }
+        None => {
+            AttendanceFlag::create(
+                &mut *tx,
+                AttendanceFlag {
+                    record_id,
+                    flag_type: kind,
+                    note: note.to_owned(),
+                    ..AttendanceFlag::default()
+                },
+            )
+            .await?;
+        }
     }
-    AttendanceFlag::create(
-        &mut *tx,
-        AttendanceFlag {
-            record_id,
-            flag_type: kind,
-            note: note.to_owned(),
-            ..AttendanceFlag::default()
-        },
-    )
-    .await?;
     if record.status.can_be_flagged() {
         let outcome = record
             .transition(FLAG)
@@ -202,6 +245,84 @@ pub async fn add_in(
         note: note.to_owned(),
     });
     Ok(true)
+}
+
+/// Settles the open flags of record `record_id` inside `tx`: a reviewer
+/// accepted, corrected or rejected the record with `reason`. Returns the
+/// flags settled.
+pub async fn settle_in(
+    tx: &mut Transaction,
+    record_id: i64,
+    by: Option<i64>,
+    reason: &str,
+) -> Result<Vec<AttendanceFlag>> {
+    let open: Vec<AttendanceFlag> = AttendanceFlag::query()
+        .where_(AttendanceFlag::RECORD_ID.eq(record_id))
+        .where_(AttendanceFlag::RESOLVED_AT.is_null())
+        .order_by(AttendanceFlag::ID)
+        .get(&mut *tx)
+        .await?;
+    if open.is_empty() {
+        return Ok(open);
+    }
+    AttendanceFlag::query()
+        .where_(AttendanceFlag::RECORD_ID.eq(record_id))
+        .where_(AttendanceFlag::RESOLVED_AT.is_null())
+        .update(
+            &mut *tx,
+            &[
+                ("resolved_at", &Some(renox::db::now())),
+                ("resolved_by", &by),
+                ("resolution", &Some(reason.to_owned())),
+                ("updated_at", &renox::db::now()),
+            ],
+        )
+        .await?;
+    Ok(open)
+}
+
+/// Notes a flag that holds nothing (`manual_correction` of a correction) on
+/// record `record_id`: kept as history and settled at once. A record has it
+/// once; a second correction updates its note.
+pub async fn note_in(
+    tx: &mut Transaction,
+    record_id: i64,
+    kind: FlagType,
+    note: &str,
+    by: Option<i64>,
+) -> Result {
+    let held = AttendanceFlag::query()
+        .where_(AttendanceFlag::RECORD_ID.eq(record_id))
+        .where_(AttendanceFlag::FLAG_TYPE.eq(kind))
+        .first(&mut *tx)
+        .await?;
+    match held {
+        Some(held) => {
+            AttendanceFlag::query()
+                .where_(AttendanceFlag::ID.eq(held.id))
+                .update(
+                    &mut *tx,
+                    &[("note", &note.to_owned()), ("updated_at", &renox::db::now())],
+                )
+                .await?;
+        }
+        None => {
+            AttendanceFlag::create(
+                &mut *tx,
+                AttendanceFlag {
+                    record_id,
+                    flag_type: kind,
+                    note: note.to_owned(),
+                    resolved_at: Some(renox::db::now()),
+                    resolved_by: by,
+                    resolution: Some("noted".to_owned()),
+                    ..AttendanceFlag::default()
+                },
+            )
+            .await?;
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

@@ -15,6 +15,7 @@ pub mod pages;
 pub mod permit;
 pub mod proposal;
 pub mod record;
+pub mod review;
 pub mod service;
 mod texts;
 

@@ -343,6 +343,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             hr::ONBOARDING_MANAGE,
             attendance::VIEW,
             attendance::REVIEW,
+            // HR clears a permit flag by correcting or accepting it, and is
+            // never the supervisor who marked the record (`HRM.ACL.09`).
+            attendance::CORRECT,
         ],
     ),
     (

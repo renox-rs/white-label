@@ -109,6 +109,40 @@ pub async fn flag_in(
     Ok(())
 }
 
+/// The first record of the same employee, other than `record`, that `span`
+/// still overlaps (a `rejected` record does not count), described for a
+/// refusal: its location and times, as in the flag's note. `None` when the
+/// hours no longer overlap. `span` is where `record` would stand: its own, or
+/// the corrected one.
+pub(crate) async fn first_clash_in(
+    tx: &mut Transaction,
+    record: &AttendanceRecord,
+    span: Span,
+) -> Result<Option<String>> {
+    // Only the time zone of the calendar is used here.
+    let calendar = BusinessCalendar::default();
+    let at = now();
+    for other in around(tx, record.employee_id, record.date).await? {
+        let theirs = other.span(&calendar, at);
+        if other.id == record.id || !span.overlaps(&theirs) {
+            continue;
+        }
+        let there = WorkLocation::find(&mut *tx, other.location_id)
+            .await?
+            .map_or_else(|| format!("#{}", other.location_id), |l| l.name);
+        return Ok(Some(english(
+            "wl_attendance.overlap.note",
+            &[
+                ("record", &other.id),
+                ("location", &there),
+                ("from", &clock(&calendar, theirs.start)),
+                ("to", &clock(&calendar, theirs.end)),
+            ],
+        )));
+    }
+    Ok(None)
+}
+
 /// A worker of the crew who is already marked at another location.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Clash {

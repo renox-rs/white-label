@@ -47,7 +47,7 @@ fn the_roles_hold_the_attendance_permissions() {
     assert!(holds(SUPERVISOR, attendance::MARK));
     assert!(holds(SUPERVISOR, attendance::CORRECT));
     assert!(!holds(SUPERVISOR, attendance::REVIEW));
-    assert!(holds(HR, attendance::REVIEW));
+    assert!(holds(HR, attendance::REVIEW) && holds(HR, attendance::CORRECT));
     assert!(!holds(HR, attendance::MARK));
     assert!(holds(ADMIN, attendance::REVIEW) && holds(ADMIN, attendance::SELF_CHECK_IN));
     assert!(!holds(MEMBER, attendance::MARK));
