@@ -222,6 +222,30 @@ impl WlTicketing {
         self
     }
 
+    /// Sets the rule id the nightly `mark_overdue` of deadline tasks runs
+    /// and is recorded under (`WRK.RUL.05` unless set; 04: `ACC.RUL.04`).
+    /// The vertical marks that id compliance-critical, so a failed or missed
+    /// run alerts its owner role.
+    ///
+    /// # Panics
+    ///
+    /// For a blank id: a programming error.
+    pub fn overdue_rule_id(mut self, rule: &str) -> Self {
+        assert!(!rule.trim().is_empty(), "the overdue rule needs an id");
+        self.deadlines.overdue_rule = rule.trim().to_owned();
+        self
+    }
+
+    /// Adds a role told when a deadline task goes overdue, besides its
+    /// owners and the task manager role (holders in the source's scope; none
+    /// unless set; 04 `ACC.RUL.04`: the partner).
+    pub fn task_overdue_role(mut self, role: &str) -> Self {
+        if !self.deadlines.overdue_roles.iter().any(|r| r == role) {
+            self.deadlines.overdue_roles.push(role.to_owned());
+        }
+        self
+    }
+
     /// Sets the days before a deadline task's due date its owner (and, for a
     /// task that needs client input, the client) is reminded (none unless
     /// set; 04 `ACC.RUL.01`: 30, 14, 7 and 3).

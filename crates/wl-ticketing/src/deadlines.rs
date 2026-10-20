@@ -56,8 +56,10 @@ use crate::texts::english;
 use crate::visit_check::holders_in;
 
 /// The rule that marks past-due tasks `overdue` (§6; 04 `ACC.RUL.04`).
-/// A vertical makes it compliance-critical with
-/// `wl_kernel::compliance::CriticalRule::new(OVERDUE_RULE)`.
+/// A vertical runs it under its own rule id with
+/// [`WlTicketing::overdue_rule_id`](crate::WlTicketing::overdue_rule_id) and
+/// makes that id compliance-critical with
+/// `wl_kernel::compliance::CriticalRule::new(..)`.
 pub const OVERDUE_RULE: &str = "WRK.RUL.05";
 /// The nightly task and command of [`OVERDUE_RULE`].
 pub const OVERDUE_TASK: &str = "ticketing:task_overdue";
@@ -116,6 +118,12 @@ pub(crate) struct Settings {
     /// client input, the client) is reminded (none unless set; 04: 30, 14,
     /// 7, 3).
     pub reminder_days: Vec<i64>,
+    /// The rule id the nightly `mark_overdue` runs under ([`OVERDUE_RULE`]
+    /// unless set; 04: `ACC.RUL.04`).
+    pub overdue_rule: String,
+    /// The roles told of an overdue task besides its owners and the manager
+    /// role, in the source's scope (none unless set; 04: the partner).
+    pub overdue_roles: Vec<String>,
 }
 
 impl Default for Settings {
@@ -124,6 +132,8 @@ impl Default for Settings {
             waive_started: true,
             manager_role: COMPANY_ADMIN_ROLE.to_owned(),
             reminder_days: Vec::new(),
+            overdue_rule: OVERDUE_RULE.to_owned(),
+            overdue_roles: Vec::new(),
         }
     }
 }
@@ -494,17 +504,18 @@ async fn overdue_now(
 
 /// Runs `WRK.RUL.05` for `today` (Asia/Dubai): one rule run per date, so a
 /// second run for the same date does nothing and a failed one is retried.
-/// Returns how many tasks went overdue.
+/// The run is recorded under the client's rule id
+/// ([`WlTicketing::overdue_rule_id`](crate::WlTicketing::overdue_rule_id);
+/// 04: `ACC.RUL.04`), so a vertical that marks that id compliance-critical
+/// gets the owner alert when it fails or is missed. Returns how many tasks
+/// went overdue.
 ///
 /// # Errors
 ///
 /// The database's errors.
 pub async fn mark_overdue(state: &AppState, today: NaiveDate) -> Result<usize> {
-    let spec = RuleRunSpec::new(
-        OVERDUE_RULE,
-        schedule_subject(),
-        occurrence_key(OVERDUE_RULE, today),
-    );
+    let rule = settings(state).overdue_rule;
+    let spec = RuleRunSpec::new(&rule, schedule_subject(), occurrence_key(&rule, today));
     let seen = Arc::new(Mutex::new(0usize));
     let out = Arc::clone(&seen);
     run_rule(state, spec, move |state: AppState| async move {
@@ -821,9 +832,14 @@ async fn after(state: &AppState, event: &Transitioned<DeadlineTask>) -> Result<(
     let name = event.transition.as_str();
     match name {
         MARK_OVERDUE => {
+            // The owners, the manager role and the other roles told (04:
+            // the assignee, the manager and the partner), each once.
             let mut users = owners(state, &task).await?;
-            let role = settings(state).manager_role;
-            users.extend(holders_in(state, &task.source(), &role).await?);
+            let settings = settings(state);
+            users.extend(holders_in(state, &task.source(), &settings.manager_role).await?);
+            for role in &settings.overdue_roles {
+                users.extend(holders_in(state, &task.source(), role).await?);
+            }
             users.sort_unstable();
             users.dedup();
             tell_users(state, OVERDUE_NOTICE, &task, &users).await?;
@@ -1036,6 +1052,8 @@ mod tests {
         assert!(settings.waive_started);
         assert_eq!(settings.manager_role, COMPANY_ADMIN_ROLE);
         assert!(settings.reminder_days.is_empty());
+        assert_eq!(settings.overdue_rule, OVERDUE_RULE);
+        assert!(settings.overdue_roles.is_empty());
     }
 
     fn overdue_task() -> DeadlineTask {
