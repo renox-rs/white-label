@@ -35,8 +35,10 @@
 
 use renox::prelude::*;
 use renox::state_machine::{Machine, StateMachine, Transition, Transitioned};
-use wl_kernel::workforce::EmployeeActivated;
+use wl_kernel::workforce::{EmployeeAbsconded, EmployeeActivated, EmployeeId};
 
+use crate::absconding;
+use crate::absence::AbsenceReport;
 use crate::activation;
 use crate::employee::{Employee, EmployeeStatus};
 use crate::exits::{self, ExitInput};
@@ -83,7 +85,7 @@ fn exit_pair<const N: usize>(
         .permission(permissions::EMPLOYEES_MANAGE);
     let twin = Transition::new(approved).label(label).system();
     [user, twin].map(|transition| {
-        transition.from(from).to(to).reason_required().guard(
+        let transition = transition.from(from).to(to).reason_required().guard(
             "exit_documents",
             move |_employee: &Employee, ctx| {
                 let input = ctx.input_as::<ExitInput>().unwrap_or_default();
@@ -95,7 +97,19 @@ fn exit_pair<const N: usize>(
                     }
                 })
             },
-        )
+        );
+        // The effects of the exits come with their own issues; this is
+        // `report_absconding`'s (#197): the checks that read the database,
+        // then the report, the held pay, the settlement and the visa case.
+        if name == REPORT_ABSCONDING {
+            transition.effect(|employee: &Employee, ctx, tx| {
+                let id = employee.id;
+                let input = ctx.input_as::<ExitInput>().unwrap_or_default();
+                Box::pin(async move { absconding::apply(tx, id, &input).await })
+            })
+        } else {
+            transition
+        }
     })
 }
 
@@ -205,20 +219,34 @@ pub(crate) fn register(app: &mut Registry) {
     renox::state_machine::register::<Employee>();
     app.listen(
         |event: Transitioned<Employee>, state: AppState| async move {
-            if event.transition != ACTIVATE {
-                return Ok(());
+            match event.transition.as_str() {
+                ACTIVATE => {
+                    let Some(employee) = Employee::find(&state.db, event.key).await? else {
+                        return Ok(());
+                    };
+                    let scope = employee.scopes(&state.db).await?.into_iter().next();
+                    state
+                        .emit(EmployeeActivated {
+                            employee: employee.employee_id(),
+                            scope,
+                            hire_date: employee.hire_date,
+                        })
+                        .await
+                }
+                REPORT_ABSCONDING | REPORT_ABSCONDING_APPROVED => {
+                    let Some(report) = AbsenceReport::valid_for(&state.db, event.key).await? else {
+                        return Ok(());
+                    };
+                    state
+                        .emit(EmployeeAbsconded {
+                            employee: EmployeeId(event.key),
+                            report_number: report.report_number,
+                            report_date: report.report_date,
+                        })
+                        .await
+                }
+                _ => Ok(()),
             }
-            let Some(employee) = Employee::find(&state.db, event.key).await? else {
-                return Ok(());
-            };
-            let scope = employee.scopes(&state.db).await?.into_iter().next();
-            state
-                .emit(EmployeeActivated {
-                    employee: employee.employee_id(),
-                    scope,
-                    hire_date: employee.hire_date,
-                })
-                .await
         },
     );
 }

@@ -33,15 +33,19 @@
 
 use renox::auth::permissions::users_with_permission_in;
 use renox::chrono::NaiveDate;
+use renox::db::Transaction;
 use renox::prelude::*;
 use renox::serde_json::{Value, json};
 use renox::state_machine::{StateMachine, TransitionError};
 use serde::{Deserialize, Serialize};
 use wl_kernel::approvals::{self, ApprovalPolicy, ApprovalRequest, PolicyDefault};
+use wl_kernel::documents::today;
 use wl_kernel::workforce::EMPLOYEE_SUBJECT_TYPE;
 use wl_kernel::{ApprovalDecided, ApprovalEnd};
 
+use crate::absconding;
 use crate::assignees;
+use crate::config::config_of;
 use crate::employee::Employee;
 use crate::employee_machine::{
     CANCEL_ONBOARDING, RECORD_DEATH, REINSTATE, REPORT_ABSCONDING, WITHDRAW_NOTICE,
@@ -143,6 +147,9 @@ pub struct ExitInput {
     /// The authority's reference of the withdrawal or cancellation of the
     /// absence report (`reinstate`).
     pub withdrawal_reference: Option<String>,
+    /// Absence days before `report_absconding` is allowed: the setting when
+    /// the request was made (the checks at the approval cannot read it).
+    pub absence_days: Option<i64>,
 }
 
 fn blank(text: &Option<String>) -> bool {
@@ -290,6 +297,18 @@ pub async fn request(
     if pending_for(&state.db, &employee).await?.is_some() {
         return Ok(Err(ExitRefused::AlreadyPending));
     }
+    let mut input = input;
+    if transition == REPORT_ABSCONDING {
+        let days = *input
+            .absence_days
+            .get_or_insert(config_of(state).absence_days);
+        let mut tx = state.db.begin().await?;
+        let problem = absconding::problem_in(&mut tx, employee.id, today(), days).await?;
+        drop(tx);
+        if let Some(message) = problem {
+            return Ok(Err(ExitRefused::Incomplete(message)));
+        }
+    }
     let payload = renox::serde_json::to_value(&input).map_err(|e| Error::Internal(e.into()))?;
     if ApprovalPolicy::for_action(&state.db, &action_key(transition), &payload)
         .await?
@@ -379,11 +398,30 @@ async fn audit_decided(state: &AppState, event: &ApprovalDecided) -> Result {
     Ok(())
 }
 
-/// Registers the default policies and the audit listener.
+/// The checks the database answers, run again at the final approval inside
+/// its transaction (the kernel's final-check hook): a message ends the
+/// request `failed` and nothing runs. Today only `report_absconding` has
+/// any: an absence case is open, the days passed and the contact attempts.
+async fn recheck(tx: &mut Transaction, request: &ApprovalRequest) -> Result<Option<String>> {
+    if request.transition != REPORT_ABSCONDING {
+        return Ok(None);
+    }
+    let input: ExitInput =
+        renox::serde_json::from_value(request.payload.0.clone()).unwrap_or_default();
+    let days = input
+        .absence_days
+        .unwrap_or(absconding::DEFAULT_ABSENCE_DAYS);
+    absconding::problem_in(tx, request.subject_id, today(), days).await
+}
+
+/// Registers the default policies, the final re-check and the audit listener.
 pub(crate) fn register(app: &mut Registry) {
     for policy in policies() {
         policy.register();
     }
+    approvals::register_final_check(EMPLOYEE_SUBJECT_TYPE, |tx, request| {
+        Box::pin(recheck(tx, request))
+    });
     app.listen(|event: ApprovalDecided, state: AppState| async move {
         if event.subject.subject_type != EMPLOYEE_SUBJECT_TYPE {
             return Ok(());
