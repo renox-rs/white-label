@@ -966,3 +966,111 @@ async fn the_kernel_reads_the_approved_budget() {
     );
     assert!(!budgets.is_owner_drawings(t.db(), "nothing").await.unwrap());
 }
+
+/// The budget a final check refuses (0: none); the registry of final checks
+/// is process wide, so the check answers for this one budget only.
+static REFUSED_BUDGET: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
+
+/// A revision whose approval is rejected, withdrawn by its requester or
+/// failed at the last yes goes back to `draft` with the matching reason, and
+/// the approved version stays in force each time (it is superseded only by a
+/// version that is approved).
+#[renox::test]
+async fn a_rejected_withdrawn_or_failed_approval_returns_the_draft_and_keeps_the_approved_version()
+{
+    approvals::register_final_check(
+        wl_kernel::budgets::COMPANY_BUDGET_SUBJECT_TYPE,
+        |_tx, request| {
+            let refused = request.payload.0["budget"].as_i64()
+                == Some(REFUSED_BUDGET.load(std::sync::atomic::Ordering::SeqCst));
+            Box::pin(
+                async move { Ok(refused.then(|| "the year is closed for changes".to_owned())) },
+            )
+        },
+    );
+    let t = boot_with(WlInvoicing::new().budget_revise_past_months(true)).await;
+    let a = t.budget_preparer("Amal").await;
+    let b = t.budget_approver("Bilal").await;
+    let first = approved_year(&t, "PGP", 2027, &a, &b).await;
+
+    // Rejected by the approver: the reason is the comment.
+    let revision = t.new_budget("PGP", 2027, StartChoice::Empty, &a).await;
+    budget_lines::set_revision_reason(t.db(), revision.id, "Another look")
+        .await
+        .unwrap();
+    t.submit_budget(&revision, &a).await;
+    let request = t.budget_request(&revision).await;
+    assert!(
+        approvals::reject(t.state(), request.id, &b, " ")
+            .await
+            .is_err()
+    );
+    approvals::reject(t.state(), request.id, &b, "too high")
+        .await
+        .unwrap();
+    let back = t.budget_now(&revision).await;
+    assert_eq!(back.status, BudgetStatus::Draft);
+    assert_eq!(back.return_reason.as_deref(), Some("too high"));
+    assert_eq!(t.budget_now(&first).await.status, BudgetStatus::Approved);
+
+    // Withdrawn by the requester (nobody else can): the kernel's text.
+    t.submit_budget(&revision, &a).await;
+    let request = t.budget_request(&revision).await;
+    assert!(
+        approvals::withdraw(t.state(), request.id, &b)
+            .await
+            .is_err()
+    );
+    approvals::withdraw(t.state(), request.id, &a)
+        .await
+        .unwrap();
+    let back = t.budget_now(&revision).await;
+    assert_eq!(back.status, BudgetStatus::Draft);
+    assert_eq!(
+        back.return_reason.as_deref(),
+        Some("approval withdrawn by requester")
+    );
+    assert_eq!(t.budget_now(&first).await.status, BudgetStatus::Approved);
+
+    // Failed at the last yes: the draft returns with the reason, and the
+    // approved version is not superseded.
+    REFUSED_BUDGET.store(revision.id, std::sync::atomic::Ordering::SeqCst);
+    t.submit_budget(&revision, &a).await;
+    let request = t.budget_request(&revision).await;
+    let _ = approvals::approve(t.state(), request.id, &b, "").await;
+    REFUSED_BUDGET.store(0, std::sync::atomic::Ordering::SeqCst);
+    let back = t.budget_now(&revision).await;
+    assert_eq!(back.status, BudgetStatus::Draft);
+    assert_eq!(
+        back.return_reason.as_deref(),
+        Some("approval failed: the year is closed for changes")
+    );
+    let still = t.budget_now(&first).await;
+    assert_eq!(still.status, BudgetStatus::Approved);
+    let approved = CompanyBudget::query()
+        .where_(CompanyBudget::LEGAL_ENTITY_ID.eq(first.legal_entity_id))
+        .where_(CompanyBudget::FISCAL_YEAR.eq(2027))
+        .where_(CompanyBudget::STATUS.eq(BudgetStatus::Approved))
+        .count(t.db())
+        .await
+        .unwrap();
+    assert_eq!(approved, 1);
+
+    // Resubmitted and approved, the new version replaces the old in the same
+    // step: one approved version, the old one superseded.
+    t.submit_budget(&revision, &a).await;
+    let request = t.budget_request(&revision).await;
+    approvals::approve(t.state(), request.id, &b, "")
+        .await
+        .unwrap();
+    assert_eq!(t.budget_now(&revision).await.status, BudgetStatus::Approved);
+    assert_eq!(t.budget_now(&first).await.status, BudgetStatus::Superseded);
+    let approved = CompanyBudget::query()
+        .where_(CompanyBudget::LEGAL_ENTITY_ID.eq(first.legal_entity_id))
+        .where_(CompanyBudget::FISCAL_YEAR.eq(2027))
+        .where_(CompanyBudget::STATUS.eq(BudgetStatus::Approved))
+        .count(t.db())
+        .await
+        .unwrap();
+    assert_eq!(approved, 1);
+}
