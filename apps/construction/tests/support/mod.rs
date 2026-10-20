@@ -28,6 +28,10 @@ use wl_kernel::block_guard::{
     ActionKind, BlockFuture, BlockGuard, BlockRefusal, ExceptionStep, GuardOutcome,
     provide_block_guard,
 };
+use wl_kernel::documents::{
+    BlockEntry, CheckOutcome, DocumentFuture, DocumentGuard, FlagFailure, InvalidReason,
+    RecordFlag, Validity, provide_guard,
+};
 use wl_kernel::invoicing::{
     BillRequest, CostPoster, CreditLine, CreditNoteId, DisputeRequest, InvoiceDraft, InvoiceFuture,
     InvoiceId, InvoiceStatus, InvoiceSummary, Invoicer, PostCost, SupplierBillFuture,
@@ -37,6 +41,7 @@ use wl_kernel::invoicing::{
 use wl_kernel::notify::{
     MessageId, Notifier, NotifyFuture, NotifyRecipient, NotifyRequest, provide_notifier,
 };
+use wl_kernel::parties::{PartyDirectory, PartyFuture, provide_directory};
 use wl_kernel::tickets::{
     OpenTicket, TaskCreator, TicketFuture, TicketId, TicketRef, provide_task_creator,
 };
@@ -44,7 +49,7 @@ use wl_kernel::workforce::{
     AbsenceCaseOpened, EmployeeId, LeaveCalendar, StaffProfile, Workforce, WorkforceFuture,
     provide_leave_calendar, provide_workforce,
 };
-use wl_kernel::{BusinessCalendar, PartyId, Subject};
+use wl_kernel::{BusinessCalendar, PartyId, PartyStatus, PartySummary, Subject};
 
 /// A contracting client with attendance and stock on.
 const CLIENT: &str = r#"
@@ -684,6 +689,164 @@ impl BlockGuard for Blocked {
     }
 }
 
+/// The subcontractors among the parties and the Dubai Municipality
+/// registrations on file (the party directory and the document guard of the
+/// kernel, as wl-parties and wl-documents answer them).
+#[derive(Clone, Default)]
+pub struct Registrations {
+    subcontractors: Arc<Mutex<Vec<i64>>>,
+    registered_until: Arc<Mutex<BTreeMap<i64, NaiveDate>>>,
+}
+
+impl Registrations {
+    /// The party `id` has the role `subcontractor`.
+    pub fn subcontractor(&self, id: PartyId) {
+        self.subcontractors.lock().unwrap().push(id.0);
+    }
+
+    /// The party `id` has a registration valid through `expires_on`.
+    pub fn register(&self, id: PartyId, expires_on: NaiveDate) {
+        self.registered_until
+            .lock()
+            .unwrap()
+            .insert(id.0, expires_on);
+    }
+}
+
+impl PartyDirectory for Registrations {
+    fn find<'a>(&'a self, _db: &'a Db, _party: PartyId) -> PartyFuture<'a, Option<PartySummary>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    fn find_by_code<'a>(
+        &'a self,
+        _db: &'a Db,
+        _code: &'a str,
+    ) -> PartyFuture<'a, Option<PartySummary>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    fn display_name<'a>(
+        &'a self,
+        _db: &'a Db,
+        _party: PartyId,
+        _lang: &'a str,
+    ) -> PartyFuture<'a, Option<String>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    fn status<'a>(&'a self, _db: &'a Db, _party: PartyId) -> PartyFuture<'a, Option<PartyStatus>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    fn has_role<'a>(
+        &'a self,
+        _db: &'a Db,
+        party: PartyId,
+        role_key: &'a str,
+        _on_date: NaiveDate,
+    ) -> PartyFuture<'a, bool> {
+        Box::pin(async move {
+            Ok(role_key == "subcontractor"
+                && self.subcontractors.lock().unwrap().contains(&party.0))
+        })
+    }
+}
+
+impl DocumentGuard for Registrations {
+    fn blocks_for<'a>(
+        &'a self,
+        _db: &'a Db,
+        _guarded: &'a str,
+    ) -> DocumentFuture<'a, Vec<BlockEntry>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
+    fn is_valid<'a>(
+        &'a self,
+        _db: &'a Db,
+        subject: &'a Subject,
+        _kind: &'a str,
+        on_date: NaiveDate,
+    ) -> DocumentFuture<'a, Validity> {
+        Box::pin(async move {
+            let until = self
+                .registered_until
+                .lock()
+                .unwrap()
+                .get(&subject.subject_id)
+                .copied();
+            Ok(match until {
+                Some(until) if until >= on_date => Validity::Valid {
+                    document: None,
+                    expires_on: Some(until),
+                },
+                Some(until) => Validity::Invalid {
+                    reason: InvalidReason::Expired,
+                    document: None,
+                    expired_on: Some(until),
+                    pending: None,
+                },
+                None => Validity::Invalid {
+                    reason: InvalidReason::Missing,
+                    document: None,
+                    expired_on: None,
+                    pending: None,
+                },
+            })
+        })
+    }
+
+    fn check_as<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _guarded: &'a str,
+        _record_id: i64,
+        _on_date: NaiveDate,
+        _actor: Option<i64>,
+    ) -> DocumentFuture<'a, std::result::Result<CheckOutcome, BlockRefusal>> {
+        Box::pin(async { Ok(Ok(CheckOutcome::default())) })
+    }
+
+    fn record_flags<'a>(
+        &'a self,
+        _db: &'a Db,
+        _guarded: &'a str,
+        _record_id: i64,
+        _flags: &'a [FlagFailure],
+    ) -> DocumentFuture<'a, Vec<RecordFlag>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
+    fn flags_for<'a>(
+        &'a self,
+        _db: &'a Db,
+        _record_type: &'a str,
+        _record_id: i64,
+    ) -> DocumentFuture<'a, Vec<RecordFlag>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
+    fn open_flag_counts<'a>(
+        &'a self,
+        _db: &'a Db,
+        _record_type: &'a str,
+        _ids: &'a [i64],
+    ) -> DocumentFuture<'a, BTreeMap<i64, u64>> {
+        Box::pin(async { Ok(BTreeMap::new()) })
+    }
+
+    fn review_flag<'a>(
+        &'a self,
+        _db: &'a Db,
+        _flag_id: i64,
+        _reviewer: i64,
+        _note: &'a str,
+    ) -> DocumentFuture<'a, RecordFlag> {
+        Box::pin(async { Err(Error::NotFound) })
+    }
+}
+
 /// Records the events and provides the fakes.
 struct Fakes {
     blocked: Blocked,
@@ -694,6 +857,7 @@ struct Fakes {
     bills: Bills,
     costs: Costs,
     terminated: Arc<Mutex<Vec<ProjectTerminated>>>,
+    registrations: Registrations,
 }
 
 impl Module for Fakes {
@@ -703,6 +867,8 @@ impl Module for Fakes {
 
     fn register(&self, app: &mut Registry) {
         provide_workforce(app, self.staff.clone());
+        provide_directory(app, self.registrations.clone());
+        provide_guard(app, self.registrations.clone());
         provide_leave_calendar(app, self.staff.clone());
         record(app, &self.staff.opened);
         provide_task_creator(app, self.tasks.clone());
@@ -733,6 +899,8 @@ pub struct Booted {
     pub costs: Costs,
     /// The parties wl-parties blocks.
     pub blocked: Blocked,
+    /// The subcontractors and their registrations.
+    pub registrations: Registrations,
     /// `ProjectTerminated`.
     pub terminated: Recorded<ProjectTerminated>,
     /// Days the clock was moved forward from the real one.
@@ -1096,7 +1264,9 @@ pub async fn boot() -> Booted {
     let costs = Costs::default();
     let blocked = Blocked::default();
     let terminated = Arc::new(Mutex::new(Vec::new()));
+    let registrations = Registrations::default();
     let fakes = Fakes {
+        registrations: registrations.clone(),
         blocked: blocked.clone(),
         staff: staff.clone(),
         tasks: tasks.clone(),
@@ -1188,6 +1358,7 @@ pub async fn boot() -> Booted {
         bills,
         costs,
         blocked,
+        registrations,
         terminated: Recorded(terminated),
         clock_days: std::sync::atomic::AtomicI64::new(0),
         made: std::sync::atomic::AtomicI64::new(0),
