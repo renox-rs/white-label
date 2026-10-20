@@ -752,6 +752,24 @@ impl Module for WlInvoicing {
     }
 
     fn register(&self, app: &mut Registry) {
+        // An invoice is looked after by the people of its scope unit (the
+        // building it was billed for): the approvers of its write-off, credit
+        // or dispute are looked for there, not only among the holders of a
+        // global role. The scope unit's own scope is the vertical's
+        // (`wl_kernel::scopes::register` for its subject type).
+        wl_kernel::scopes::register(wl_kernel::invoicing::INVOICE_SUBJECT_TYPE, |db, id| {
+            Box::pin(async move {
+                let Some(invoice) = Invoice::find(db, id).await? else {
+                    return Ok(renox::auth::permissions::Scope::global());
+                };
+                match (invoice.scope_type, invoice.scope_id) {
+                    (Some(kind), Some(unit)) => {
+                        wl_kernel::scopes::scope_of(db, &wl_kernel::Subject::new(&kind, unit)).await
+                    }
+                    _ => Ok(renox::auth::permissions::Scope::global()),
+                }
+            })
+        });
         app.model::<cash_balance::OpeningCashBalance>();
         app.model::<cash_alert::CashAlert>();
         app.model::<EInvoiceTransmission>();
