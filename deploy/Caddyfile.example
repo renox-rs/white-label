@@ -1,0 +1,29 @@
+# /etc/caddy/Caddyfile (one block per client, or `import /etc/caddy/clients/*.caddy`)
+#
+# Caddy gets and renews the certificate for the domain on its own (ports 80 and
+# 443 must reach it, and the DNS name must point at this host). It sets
+# X-Forwarded-For, X-Forwarded-Proto and passes Host, which the app needs for
+# TRUSTED_PROXIES and TRUSTED_HOSTS. The port is the client's socket port
+# (ListenStream) and APP_PORT.
+demo.palmgrove.example {
+	encode zstd gzip
+
+	# The sign-in and uploads are small; the biggest request is a document
+	# upload (UPLOAD_MAX_SIZE, default 10 MB).
+	request_body {
+		max_size 12MB
+	}
+
+	reverse_proxy 127.0.0.1:3101 {
+		# Caddy asks /health every few seconds; during a restart the socket
+		# keeps connections waiting (up to 10 s) instead of failing them.
+		health_uri /health
+		health_interval 10s
+		lb_try_duration 10s
+	}
+
+	log {
+		output file /var/log/caddy/demo.palmgrove.example.log
+		format json
+	}
+}

@@ -60,3 +60,22 @@ async fn every_sidebar_label_of_the_host_resolves_to_a_text() {
         assert!(html.contains(label), "the sidebar has no `{label}` link");
     }
 }
+
+/// Every link of the sidebar has an icon the kit knows: an unknown name
+/// draws nothing and leaves the label out of line with the others.
+#[renox::test]
+async fn every_sidebar_link_has_an_icon() {
+    let app = TestApp::new(host::app()).await;
+    app.kernel().seed().await.unwrap();
+    let admin = admin(&app).await;
+    app.acting_as(&admin);
+    let page = app.get("/dashboard").await;
+    let html = page.text();
+    let mut links = 0;
+    for chunk in html.split("<a class=\"rx-sidebar__link\"").skip(1) {
+        let link = &chunk[..chunk.find("</a>").expect("a closed link")];
+        links += 1;
+        assert!(link.contains("<svg"), "a sidebar link has no icon: {link}");
+    }
+    assert!(links > 30, "the admin sidebar lists {links} links");
+}

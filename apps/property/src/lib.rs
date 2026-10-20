@@ -292,7 +292,7 @@ impl Module for Property {
         app.nav(
             "app",
             NavLink::route("property.agreements", "nav.agreements")
-                .icon("file-signature")
+                .icon("file")
                 .group("nav.app")
                 .order(13)
                 .permission(permissions::AGREEMENTS_MANAGE),

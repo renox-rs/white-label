@@ -486,7 +486,7 @@ impl Module for WlPayments {
         app.nav(
             "app",
             NavLink::route("wl_payments.index", "nav.payments")
-                .icon("wallet")
+                .icon("credit-card")
                 .group("nav.app")
                 .order(42)
                 .permission(permissions::VIEW),
@@ -494,7 +494,7 @@ impl Module for WlPayments {
         app.nav(
             "app",
             NavLink::route("wl_payments.refunds.index", "nav.refunds")
-                .icon("undo-2")
+                .icon("refresh-cw")
                 .group("nav.app")
                 .order(43)
                 .permission(permissions::VIEW),
@@ -502,7 +502,7 @@ impl Module for WlPayments {
         app.nav(
             "app",
             NavLink::route("wl_payments.deposits.index", "nav.deposits")
-                .icon("piggy-bank")
+                .icon("hand-coins")
                 .group("nav.app")
                 .order(44)
                 .permission(permissions::DEPOSITS_VIEW),
@@ -510,7 +510,7 @@ impl Module for WlPayments {
         app.nav(
             "app",
             NavLink::route("wl_payments.cheques.index", "nav.cheques")
-                .icon("landmark")
+                .icon("banknote")
                 .group("nav.app")
                 .order(45)
                 .permission(permissions::CHEQUES_VIEW),
@@ -518,7 +518,7 @@ impl Module for WlPayments {
         app.nav(
             "app",
             NavLink::route("wl_payments.bank_statements.index", "nav.bank_statements")
-                .icon("file-spreadsheet")
+                .icon("file")
                 .group("nav.app")
                 .order(46)
                 .permission(permissions::BANK_RECONCILE),

@@ -208,7 +208,7 @@ impl Module for WlDocuments {
         app.nav(
             "app",
             NavLink::route("wl_documents.flags", "nav.document_flags")
-                .icon("flag")
+                .icon("triangle-alert")
                 .group("nav.app")
                 .order(36)
                 .permission(permissions::VIEW),
@@ -234,7 +234,7 @@ impl Module for WlDocuments {
                 "wl_documents.acknowledgements",
                 "nav.document_acknowledgements",
             )
-            .icon("check")
+            .icon("circle-check")
             .group("nav.app")
             .order(39),
         );

@@ -860,7 +860,7 @@ impl Module for WlInvoicing {
         app.nav(
             "app",
             NavLink::route("wl_invoicing.credit_notes", "nav.credit_notes")
-                .icon("receipt-text")
+                .icon("file-text")
                 .group("nav.app")
                 .order(40)
                 .permission(permissions::VIEW),
@@ -869,7 +869,7 @@ impl Module for WlInvoicing {
         app.nav(
             "app",
             NavLink::route("wl_invoicing.vat_summaries", "nav.vat_summaries")
-                .icon("landmark")
+                .icon("percent")
                 .group("nav.app")
                 .order(41)
                 .permission(permissions::VAT_VIEW),
@@ -887,7 +887,7 @@ impl Module for WlInvoicing {
         app.nav(
             "app",
             NavLink::route("wl_invoicing.tasks", "nav.reversal_tasks")
-                .icon("list-checks")
+                .icon("clipboard-list")
                 .group("nav.app")
                 .order(43)
                 .permission(permissions::RECEIVABLES_VIEW),
@@ -896,7 +896,7 @@ impl Module for WlInvoicing {
         app.nav(
             "app",
             NavLink::route("wl_invoicing.budgets", "nav.budgets")
-                .icon("wallet")
+                .icon("chart-pie")
                 .group("nav.app")
                 .order(45)
                 .permission(permissions::BUDGETS_VIEW),
@@ -925,7 +925,7 @@ impl Module for WlInvoicing {
         app.nav(
             "app",
             NavLink::route("wl_invoicing.einvoices", "nav.einvoices")
-                .icon("send")
+                .icon("upload")
                 .group("nav.app")
                 .order(48)
                 .permission(permissions::EINVOICES_VIEW),

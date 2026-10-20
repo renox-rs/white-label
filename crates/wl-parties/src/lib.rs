@@ -546,7 +546,7 @@ impl Module for WlParties {
         app.nav(
             "app",
             NavLink::route("wl_parties.review_tasks", "nav.review_tasks")
-                .icon("list-checks")
+                .icon("clipboard-list")
                 .group("nav.app")
                 .order(32),
         );
@@ -554,7 +554,7 @@ impl Module for WlParties {
         app.nav(
             "app",
             NavLink::route("wl_parties.screening_tasks", "nav.screening_tasks")
-                .icon("shield-alert")
+                .icon("triangle-alert")
                 .group("nav.app")
                 .order(33)
                 .permission(permissions::BLOCK_REASON_VIEW),
@@ -563,7 +563,7 @@ impl Module for WlParties {
         app.nav(
             "app",
             NavLink::route("wl_parties.compliance_tasks", "nav.compliance_tasks")
-                .icon("snowflake")
+                .icon("lock")
                 .group("nav.app")
                 .order(34)
                 .permission(permissions::BLOCK_REASON_VIEW),

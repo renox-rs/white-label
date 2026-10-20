@@ -1,0 +1,11 @@
+target
+dist
+storage
+.env
+.git
+.cargo
+.github
+docs
+deploy
+**/storage
+**/.env
