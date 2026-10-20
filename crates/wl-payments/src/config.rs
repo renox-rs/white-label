@@ -104,7 +104,7 @@ impl PaymentsConfig {
     /// criminal-grounds list.
     pub fn is_criminal_ground(&self, reason: &str) -> bool {
         let reason = reason.trim().to_lowercase();
-        self.criminal_grounds.iter().any(|r| *r == reason)
+        self.criminal_grounds.contains(&reason)
     }
 
     /// Whether the method `code` is enabled.

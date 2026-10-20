@@ -503,17 +503,17 @@ pub async fn covered_by_replacements(db: &Db, cheque: &Cheque) -> Result<i64> {
     for link in ChequeReplacement::of_cheque(db, cheque.id).await? {
         match link.kind {
             ReplacementKind::Cheque => {
-                if let Some(candidate) = Cheque::find(db, link.ref_id).await? {
-                    if replacement_cheque_problem(cheque, &candidate).is_none() {
-                        covered += link.amount;
-                    }
+                if let Some(candidate) = Cheque::find(db, link.ref_id).await?
+                    && replacement_cheque_problem(cheque, &candidate).is_none()
+                {
+                    covered += link.amount;
                 }
             }
             ReplacementKind::Payment => {
-                if let Some(payment) = Payment::find(db, link.ref_id).await? {
-                    if payment.status.is_received() {
-                        covered += link.amount;
-                    }
+                if let Some(payment) = Payment::find(db, link.ref_id).await?
+                    && payment.status.is_received()
+                {
+                    covered += link.amount;
                 }
             }
         }
@@ -891,7 +891,8 @@ mod tests {
     #[test]
     fn the_hand_back_receipt_numbers_are_yearly_and_not_per_entity() {
         assert_eq!(HAND_BACK_SERIES.prefix, "CHR");
-        assert!(!HAND_BACK_SERIES.per_entity);
+        // Checked at compile time: the series is a constant.
+        const { assert!(!HAND_BACK_SERIES.per_entity) };
         assert_eq!(HAND_BACK_SERIES.reset, Reset::Yearly);
     }
 }

@@ -5,9 +5,9 @@
 //!
 //! - a **gateway** refund with retries below the maximum
 //!   ([`PaymentsConfig::refund_max_retries`](crate::config::PaymentsConfig),
-//!   1) waits `refund_retry_hours` (24) and is then retried by the system
-//!   ([`run`], every fifteen minutes): `retry_by_system` and a new gateway
-//!   attempt;
+//!   which is 1) waits `refund_retry_hours` (24) and is then retried by the
+//!   system ([`run`], every fifteen minutes): `retry_by_system` and a new
+//!   gateway attempt;
 //! - any other failed refund (a transfer returned by the bank, a gateway
 //!   refund already retried, a retry the gateway refused or the source has no
 //!   room for) gets **one task for the accountant** to change the method

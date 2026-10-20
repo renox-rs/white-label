@@ -292,10 +292,10 @@ pub async fn request(
     if !gathered.party_found {
         return Err(refused("The party was not found."));
     }
-    if input.method != PaymentMethod::Cheque {
-        if let Some(problem) = record::details_problem(&payment) {
-            return Err(refused(problem));
-        }
+    if input.method != PaymentMethod::Cheque
+        && let Some(problem) = record::details_problem(&payment)
+    {
+        return Err(refused(problem));
     }
     let mut row = PaymentDrawing {
         legal_entity_id: input.legal_entity_id,
