@@ -1556,6 +1556,14 @@ pub async fn boot() -> Booted {
 /// `module` booted in an app with auth and the kernel, the roles of the
 /// host (`receivables`, `admin`) defined.
 pub async fn boot_with(module: WlInvoicing) -> Booted {
+    boot_with_poster(module, None).await
+}
+
+/// [`boot_with`] with `poster` as the app's `CostPoster`, when given.
+pub async fn boot_with_poster(
+    module: WlInvoicing,
+    poster: Option<Arc<dyn wl_kernel::invoicing::CostPoster>>,
+) -> Booted {
     let views = tempfile::tempdir().expect("a temporary views directory");
     let path = views.path().join("layouts/app.html");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -1604,6 +1612,10 @@ pub async fn boot_with(module: WlInvoicing) -> Booted {
         .provide(creator)
         .provide(coverage)
         .provide(notifier);
+    let app = match poster {
+        Some(poster) => app.provide(poster),
+        None => app,
+    };
     let app = record(app, &issued);
     let app = record(app, &overdue);
     let app = record(app, &paid);

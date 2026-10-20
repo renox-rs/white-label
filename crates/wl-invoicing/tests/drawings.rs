@@ -23,7 +23,22 @@ use wl_kernel::invoicing::{PostCost, VatCategory, post_cost};
 use wl_kernel::notify::NotifyRecipient;
 use wl_kernel::{LegalEntity, Subject};
 
-use support::{BLUE_DUNES, Booted, boot, boot_with};
+use support::{BLUE_DUNES, Booted, boot, boot_with, boot_with_poster};
+
+/// A cost poster that keeps what it is asked to post.
+#[derive(Clone, Default)]
+struct RecordingPoster(std::sync::Arc<std::sync::Mutex<Vec<PostCost>>>);
+
+impl wl_kernel::invoicing::CostPoster for RecordingPoster {
+    fn post<'a>(
+        &'a self,
+        _state: &'a renox::AppState,
+        request: PostCost,
+    ) -> wl_kernel::invoicing::SupplierBillFuture<'a, ()> {
+        self.0.lock().unwrap().push(request);
+        Box::pin(async { Ok(()) })
+    }
+}
 
 const SELF_APPROVED: &str = "invoicing.drawing_self_approved";
 const CORRECTED: &str = "invoicing.drawing_corrected";
@@ -139,7 +154,12 @@ fn told(t: &Booted, kind: &str) -> Vec<Vec<i64>> {
 /// line is shown as blocked in the VAT summary.
 #[renox::test]
 async fn a_bill_with_a_drawing_waits_for_the_owner() {
-    let t = boot().await;
+    let poster = RecordingPoster::default();
+    let t = boot_with_poster(
+        WlInvoicing::new(),
+        Some(std::sync::Arc::new(poster.clone())),
+    )
+    .await;
     let e1 = t.entity("PGP").await;
     let a = accountant(&t, "Amal").await;
     let b = owner(&t, "Bilal").await;
@@ -210,7 +230,24 @@ async fn a_bill_with_a_drawing_waits_for_the_owner() {
         .unwrap();
     assert_eq!(done.status, SupplierBillStatus::Approved);
 
-    // No cost object, and the line is on the drawings line of the report.
+    // No cost is posted for any line of the bill (the poster was never
+    // asked), and the line is on the drawings line of the report.
+    assert!(poster.0.lock().unwrap().is_empty());
+    assert!(
+        post_cost(
+            t.state(),
+            PostCost::new(
+                bill.subject(),
+                "invoicing.supplier_bill_line:0",
+                Subject::new("property.unit", 4),
+                100_000,
+            )
+            .cost_code("owner_drawings"),
+        )
+        .await
+        .is_err()
+    );
+    assert!(poster.0.lock().unwrap().is_empty());
     let report = budget_report::build(
         t.db(),
         &t.config(),
