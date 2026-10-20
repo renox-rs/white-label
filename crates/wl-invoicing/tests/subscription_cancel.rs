@@ -1,15 +1,16 @@
 //! Cancelling a subscription when its agreement ends (wl-invoicing §4
 //! `cancel`, §7 *pro rata on cancel*; wl-parties `PTY.ACL.03`; #84,
 //! BL-INV-21): the five Done-when points. The vertical's cancel goes through
-//! the kernel's `Subscriptions`; the user's through the back-office route.
-//! A cancel whose credit note fails keeps its settlement due for the retry.
+//! the kernel's `Subscriptions`; the user's through the back-office route;
+//! the party's through `subscriptions::cancel` (no portal screen yet). A
+//! cancel whose credit note fails keeps its settlement due for the retry.
 //! The March cycle is AED 3,100.00 (AED 2,952.38 plus 5% VAT); 21 of its 31
 //! days unused credit AED 2,100.00 (AED 2,000.00 plus AED 100.00 VAT).
 
 mod support;
 
 use renox::prelude::*;
-use wl_invoicing::{Invoice, Subscription, WlInvoicing, permissions as perm};
+use wl_invoicing::{Canceller, Invoice, Subscription, WlInvoicing, permissions as perm};
 use wl_kernel::Subject;
 use wl_kernel::invoicing::{CreditNoteStatus, InvoiceStatus, VatCategory};
 use wl_kernel::subscriptions::{
@@ -20,7 +21,7 @@ use wl_kernel::subscriptions::{
 use support::subscriptions::{
     GROSS, NET, bill, boot_subscriptions, credit_notes, d, enrolment, invoices, now, subscription,
 };
-use support::{BLUE_DUNES, Booted};
+use support::{BLUE_DUNES, Booted, QUIET_SANDS};
 
 /// The credit of 21 unused days of 31.
 const CREDIT: i64 = 210_000;
@@ -304,6 +305,79 @@ async fn the_daily_check_makes_a_settlement_left_due() {
     assert!(failed.is_err());
     support::subscriptions::evaluate(&t, d("2027-03-11")).await;
     assert!(!now(&t, &sub).await.settlement_due);
+    let notes = credit_notes(&t, &invoice).await;
+    assert_eq!(notes.len(), 1);
+    assert_eq!(notes[0].gross_total, CREDIT);
+}
+
+/// The party cancels on 2027-03-10 (the portal, through the vertical).
+async fn party_cancel(
+    t: &Booted,
+    sub: &Subscription,
+    party: wl_kernel::PartyId,
+) -> std::result::Result<Subscription, renox::state_machine::TransitionError> {
+    wl_invoicing::subscriptions::cancel(
+        t.state(),
+        sub,
+        Canceller::Party(party),
+        d("2027-03-10"),
+        Some("closing the branch"),
+    )
+    .await
+}
+
+/// The party's own cancel (wl-invoicing §4 `cancel`, §7 *party may cancel*,
+/// *pro rata on cancel*): refused while the setting is off and for another
+/// party; with notice it is scheduled for the end of the notice; without
+/// notice it cancels at once, prorated only when the setting is on.
+#[renox::test]
+async fn the_party_cancels_only_when_allowed_with_notice_and_proration_as_set() {
+    use renox::state_machine::TransitionError;
+    // Off by default.
+    let t = boot_subscriptions(WlInvoicing::new()).await;
+    let (sub, _) = march(&t, &enrolment(11), true).await;
+    assert!(matches!(
+        party_cancel(&t, &sub, BLUE_DUNES).await,
+        Err(TransitionError::Forbidden)
+    ));
+    assert_eq!(now(&t, &sub).await.status, SubscriptionStatus::Active);
+
+    // Allowed: another party may not; the party's own cancel waits for the
+    // 30 days' notice and then ends without proration.
+    let t = boot_subscriptions(WlInvoicing::new().subscription_party_may_cancel(true)).await;
+    let (sub, invoice) = march(&t, &enrolment(12), true).await;
+    assert!(matches!(
+        party_cancel(&t, &sub, QUIET_SANDS).await,
+        Err(TransitionError::Forbidden)
+    ));
+    let scheduled = party_cancel(&t, &sub, BLUE_DUNES).await.unwrap();
+    assert_eq!(scheduled.status, SubscriptionStatus::Active);
+    assert_eq!(scheduled.cancel_on, Some(d("2027-04-09")));
+    assert_eq!(
+        scheduled.cancel_reason.as_deref(),
+        Some("closing the branch")
+    );
+    support::subscriptions::evaluate(&t, d("2027-04-09")).await;
+    let ended = now(&t, &sub).await;
+    assert_eq!(ended.status, SubscriptionStatus::Cancelled);
+    assert!(credit_notes(&t, &invoice).await.is_empty());
+
+    // Without notice, at once; prorated with the setting on.
+    let t = boot_subscriptions(
+        WlInvoicing::new()
+            .subscription_party_may_cancel(true)
+            .subscription_pro_rata_on_cancel(true),
+    )
+    .await;
+    let (sub, invoice) = march(&t, &enrolment(13), true).await;
+    Subscription::query()
+        .where_(Subscription::ID.eq(sub.id))
+        .update(t.db(), &[("notice_days", &0_i64)])
+        .await
+        .unwrap();
+    let cancelled = party_cancel(&t, &sub, BLUE_DUNES).await.unwrap();
+    assert_eq!(cancelled.status, SubscriptionStatus::Cancelled);
+    assert_eq!(cancelled.cancelled_on, Some(d("2027-03-10")));
     let notes = credit_notes(&t, &invoice).await;
     assert_eq!(notes.len(), 1);
     assert_eq!(notes[0].gross_total, CREDIT);
