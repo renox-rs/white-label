@@ -459,16 +459,18 @@ async fn other_module_items(
             let found = mapped
                 .find(kind, Some(&cost.key))
                 .filter(|(_, kind)| *kind != BudgetKind::Income);
+            let kind = found.map_or(BudgetKind::Expense, |(_, k)| k);
             items.push(ActualItem {
                 legal_entity_id: cost.legal_entity_id,
                 month: month_start(cost.date),
-                kind: found.map_or(BudgetKind::Expense, |(_, k)| k),
+                kind,
                 category_id: found.map(|(id, _)| id),
                 amount: cost.amount,
                 label: cost.label,
                 source: cost.source,
                 party_id: None,
-                self_approved: false,
+                // A self-approved drawing shows the flag (`FIN.ACL.23`).
+                self_approved: cost.self_approved && kind == BudgetKind::OwnerDrawings,
             });
         }
     }

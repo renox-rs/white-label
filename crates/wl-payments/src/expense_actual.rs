@@ -10,7 +10,10 @@
 //! `owner_drawings` puts it on the drawings line, never in expense). The
 //! amount is without recoverable VAT: the VAT of a line whose category
 //! recovers it is taken off; a category whose VAT is blocked (the *Owner
-//! drawings* one among them) counts the line with its VAT.
+//! drawings* one among them) counts the line with its VAT. A drawings line of
+//! a claim whose drawing the sole owner approved alone (`FIN.ACL.23`,
+//! `drawing_self_approved`) carries the *self-approved* flag, as the drawings
+//! of a supplier bill or a payment do.
 //!
 //! Decided where the spec is silent: a claim counts from its approval (the
 //! claim lifecycle of this build ends there; reimbursement is not built), a
@@ -73,11 +76,11 @@ impl ActualCostSource for ExpenseClaimCosts {
             if claims.is_empty() {
                 return Ok(Vec::new());
             }
-            let treatments: BTreeMap<String, VatTreatment> = ExpenseCategory::query()
+            let categories: BTreeMap<String, ExpenseCategory> = ExpenseCategory::query()
                 .get(db)
                 .await?
                 .into_iter()
-                .map(|c| (c.code, c.vat_treatment))
+                .map(|c| (c.code.clone(), c))
                 .collect();
             let lines = ExpenseLine::query()
                 .where_(ExpenseLine::CLAIM_ID.is_in(claims.keys().copied().collect::<Vec<_>>()))
@@ -92,7 +95,8 @@ impl ActualCostSource for ExpenseClaimCosts {
                 let Some(claim) = claims.get(&line.claim_id) else {
                     continue;
                 };
-                let amount = counted(&line, treatments.get(&line.category).copied());
+                let category = categories.get(&line.category);
+                let amount = counted(&line, category.map(|c| c.vat_treatment));
                 if amount == 0 {
                     continue;
                 }
@@ -109,6 +113,8 @@ impl ActualCostSource for ExpenseClaimCosts {
                     amount,
                     label,
                     source: claim.subject(),
+                    self_approved: claim.drawing_self_approved
+                        && category.is_some_and(ExpenseCategory::is_owner_drawings),
                 });
             }
             Ok(costs)

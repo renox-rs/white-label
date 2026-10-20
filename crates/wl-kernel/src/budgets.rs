@@ -191,6 +191,12 @@ pub struct ActualCost {
     pub label: String,
     /// The record it comes from.
     pub source: Subject,
+    /// Whether it is an owner drawing the sole owner approved alone
+    /// (`FIN.ACL.23`): shown with the *self-approved* flag on the drawings
+    /// line. Only an amount that maps to a category of kind `owner_drawings`
+    /// shows it; `false` by default.
+    #[serde(default)]
+    pub self_approved: bool,
 }
 
 /// Reads the actual that other modules own, for budget vs actual

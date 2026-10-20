@@ -399,6 +399,19 @@ async fn the_sole_owners_expense_line_is_approved_at_once_and_flagged() {
         .await
         .assert_status(303);
     assert_eq!(now(&t, &claim).await.status, ClaimStatus::Approved);
+
+    // Issue #89: in budget vs actual the drawings line of the claim carries
+    // the self-approved flag, like a self-approved bill or payment drawing
+    // (`FIN.ACL.23`); its fuel line is expense and is not flagged.
+    let report = march(&t, &e4).await;
+    let drawing = report
+        .drawings_items
+        .iter()
+        .find(|i| i.source == claim.subject())
+        .expect("the claim's drawing");
+    assert_eq!(drawing.amount, 200_000);
+    assert!(drawing.self_approved);
+    assert_eq!(report.expense_total().1, 10_000);
 }
 
 /// The budget vs actual of March for `entity`.
@@ -476,6 +489,6 @@ async fn an_approved_claims_lines_count_in_the_budget_actual() {
         report
             .drawings_items
             .iter()
-            .any(|i| i.source == claim.subject() && i.amount == 200_000)
+            .any(|i| i.source == claim.subject() && i.amount == 200_000 && !i.self_approved)
     );
 }
