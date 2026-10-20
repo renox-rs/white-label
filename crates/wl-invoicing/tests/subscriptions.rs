@@ -6,7 +6,6 @@
 
 mod support;
 
-use renox::prelude::*;
 use wl_invoicing::WlInvoicing;
 use wl_invoicing::subscriptions::{PAST_DUE_NOTICE, RETRY_NOTICE};
 use wl_kernel::invoicing::InvoiceStatus;

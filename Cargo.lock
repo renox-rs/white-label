@@ -3,6 +3,19 @@
 version = 4
 
 [[package]]
+name = "accounting"
+version = "0.1.0"
+dependencies = [
+ "renox",
+ "serde",
+ "tempfile",
+ "wl-documents",
+ "wl-kernel",
+ "wl-parties",
+ "wl-portal",
+]
+
+[[package]]
 name = "aead"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -910,6 +923,7 @@ dependencies = [
 name = "host"
 version = "0.1.0"
 dependencies = [
+ "accounting",
  "property",
  "renox",
  "serde",

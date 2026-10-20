@@ -4,7 +4,6 @@
 
 mod support;
 
-use renox::prelude::*;
 use wl_invoicing::dispute;
 use wl_invoicing::dispute_resolve::{self, ResolveInput};
 use wl_invoicing::subscriptions::{PAST_DUE_NOTICE, RETRY_NOTICE};
