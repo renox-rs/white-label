@@ -39,6 +39,7 @@ use renox::chrono::{Duration, NaiveDate};
 use renox::prelude::*;
 use renox::serde_json::json;
 use renox::state_machine::TransitionError;
+use wl_kernel::COMPANY_ADMIN_ROLE;
 use wl_kernel::automation::{RuleRunSpec, run_rule};
 use wl_kernel::calendar::calendar;
 use wl_kernel::compliance::{CriticalRule, occurrence_key, schedule_subject};
@@ -233,7 +234,13 @@ async fn settle_flags(
             continue;
         }
         raised += 1;
-        for user in holders_in(state, &subject, &manager_role).await? {
+        // The manager and the company admin (the same role unless the vertical
+        // names its own manager, 01: the property manager), each once.
+        let mut told = holders_in(state, &subject, &manager_role).await?;
+        told.extend(holders_in(state, &subject, COMPANY_ADMIN_ROLE).await?);
+        told.sort_unstable();
+        told.dedup();
+        for user in told {
             let request = NotifyRequest::new(NO_CONTRACT_NOTICE, contract.subject())
                 .to_user(user)
                 .data(json!({

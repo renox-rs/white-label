@@ -14,11 +14,11 @@ use renox::auth::permissions::{Scope, define_role};
 use renox::prelude::*;
 use renox::testing::TestApp;
 use support::*;
+use wl_kernel::ClientConfig;
 use wl_kernel::automation::{MAX_ATTEMPTS, RuleRun, RuleRunSpec, run_rule};
 use wl_kernel::compliance::service::NOTIFICATION_TYPE as OWNER_ALERT;
 use wl_kernel::compliance::{is_critical, occurrence_key, schedule_subject};
 use wl_kernel::documents::today;
-use wl_kernel::ClientConfig;
 use wl_ticketing::{NewContract, ServiceContract, ServiceContracts, Ticket, TicketStatus};
 
 /// Renames the lease table so that every rule reading it fails, and back.
@@ -45,7 +45,10 @@ async fn fail_the_deadline_run(app: &TestApp) {
         RuleRun::query()
             .update(
                 app.db(),
-                &[("next_attempt_at", &Some(renox::db::now() - renox::chrono::Duration::hours(1)))],
+                &[(
+                    "next_attempt_at",
+                    &Some(renox::db::now() - renox::chrono::Duration::hours(1)),
+                )],
             )
             .await
             .unwrap();
@@ -81,13 +84,20 @@ async fn with_the_managing_director_as_owner_role_both_are_alerted() {
     let config = ClientConfig::load(host::DEMO_CLIENT).expect("the demo client");
     let mut config = config;
     config.roles.owner = Some("managing_director".to_owned());
-    let app = TestApp::new(host::app_for(config).expect("the app").provide(noon_clock())).await;
+    let app = TestApp::new(
+        host::app_for(config)
+            .expect("the app")
+            .provide(noon_clock()),
+    )
+    .await;
     app.kernel()
         .call("wl:install", Vec::<String>::new())
         .await
         .unwrap();
     app.kernel().seed().await.unwrap();
-    define_role(app.db(), "managing_director", &[]).await.unwrap();
+    define_role(app.db(), "managing_director", &[])
+        .await
+        .unwrap();
     let md = person(&app, "Mia", "managing_director").await;
     let ada = person(&app, "Ada", ADMIN).await;
     let pam = person(&app, "Pam", PROPERTY_MANAGER).await;
@@ -127,7 +137,10 @@ async fn a_failed_non_critical_rule_does_not_alert_the_owner() {
         RuleRun::query()
             .update(
                 app.db(),
-                &[("next_attempt_at", &Some(renox::db::now() - renox::chrono::Duration::hours(1)))],
+                &[(
+                    "next_attempt_at",
+                    &Some(renox::db::now() - renox::chrono::Duration::hours(1)),
+                )],
             )
             .await
             .unwrap();
@@ -166,7 +179,10 @@ async fn fire_work(app: &TestApp, vendor: wl_kernel::PartyId, code: &str) -> Fir
 }
 
 async fn status(app: &TestApp, ticket: &Ticket) -> TicketStatus {
-    Ticket::find_or_404(app.db(), ticket.id).await.unwrap().status
+    Ticket::find_or_404(app.db(), ticket.id)
+        .await
+        .unwrap()
+        .status
 }
 
 /// With vendor V's Civil Defence approval expired, resolving V's fire and life
@@ -250,7 +266,10 @@ async fn an_expired_civil_defence_approval_refuses_the_real_resolve_and_activate
         .await
         .assert_status(303);
     app.htmx()
-        .post(&format!("/tickets/{}/actions/resolve", valid.ticket.id), &[])
+        .post(
+            &format!("/tickets/{}/actions/resolve", valid.ticket.id),
+            &[],
+        )
         .await
         .assert_status(303);
     assert_eq!(status(&app, &valid.ticket).await, TicketStatus::Resolved);
@@ -266,7 +285,7 @@ async fn an_expired_civil_defence_approval_refuses_the_real_resolve_and_activate
 #[renox::test]
 async fn the_coordinators_of_the_vendors_buildings_get_the_look_ahead_and_the_renewal_task() {
     use wl_documents::expiry;
-    use wl_documents::{RenewalTask, DocumentKind};
+    use wl_documents::{DocumentKind, RenewalTask};
 
     let app = booted().await;
     let pam = person(&app, "Pam", PROPERTY_MANAGER).await;
@@ -278,13 +297,20 @@ async fn the_coordinators_of_the_vendors_buildings_get_the_look_ahead_and_the_re
     let (_tower_c, c) = building(&app, "TWR-C").await;
     // Carla coordinates tower A, Cora tower B; nobody coordinates tower C.
     carla
-        .assign_role_in(app.db(), COORDINATOR, &Scope::of_id::<property::Building>(tower_a.id))
+        .assign_role_in(
+            app.db(),
+            COORDINATOR,
+            &Scope::of_id::<property::Building>(tower_a.id),
+        )
         .await
         .unwrap();
-    cora
-        .assign_role_in(app.db(), COORDINATOR, &Scope::of_id::<property::Building>(tower_b.id))
-        .await
-        .unwrap();
+    cora.assign_role_in(
+        app.db(),
+        COORDINATOR,
+        &Scope::of_id::<property::Building>(tower_b.id),
+    )
+    .await
+    .unwrap();
     let v = company(&app, "SafeFire LLC").await;
     let expires = day(30);
     civil_defence_approval(&app, v, expires).await;
@@ -304,25 +330,53 @@ async fn the_coordinators_of_the_vendors_buildings_get_the_look_ahead_and_the_re
     assert_eq!(to_carla.len(), 1);
     assert_eq!(to_cora.len(), 1);
     let body = |m: &wl_notify::Message| m.rendered_body.clone();
-    assert!(body(&to_carla[0]).contains(&after_a.number), "{}", body(&to_carla[0]));
+    assert!(
+        body(&to_carla[0]).contains(&after_a.number),
+        "{}",
+        body(&to_carla[0])
+    );
     assert!(!body(&to_carla[0]).contains(&before_a.number));
     assert!(!body(&to_carla[0]).contains(&cleaning_a.number));
-    assert!(!body(&to_carla[0]).contains(&after_b.number), "another building");
+    assert!(
+        !body(&to_carla[0]).contains(&after_b.number),
+        "another building"
+    );
     assert!(body(&to_cora[0]).contains(&after_b.number));
     assert!(!body(&to_cora[0]).contains(&after_a.number));
     // The property manager of the kind's also-notify roles is told as well.
-    assert!(!messages_to(&app, "documents.expiring", &pam).await.is_empty());
+    assert!(
+        !messages_to(&app, "documents.expiring", &pam)
+            .await
+            .is_empty()
+    );
 
     // The day after the expiry: the expiry notice and the renewal task.
     let report = expiry::run(app.state(), expires + renox::chrono::Days::new(1))
         .await
         .unwrap();
-    assert_eq!((report.expired, report.expired_events, report.tasks), (1, 1, 1));
-    assert!(!messages_to(&app, "documents.expired", &carla).await.is_empty());
-    assert!(!messages_to(&app, "documents.expired", &cora).await.is_empty());
-    assert!(!messages_to(&app, "documents.expired", &pam).await.is_empty());
+    assert_eq!(
+        (report.expired, report.expired_events, report.tasks),
+        (1, 1, 1)
+    );
     assert!(
-        !messages_to(&app, "documents.expired", &ada).await.is_empty(),
+        !messages_to(&app, "documents.expired", &carla)
+            .await
+            .is_empty()
+    );
+    assert!(
+        !messages_to(&app, "documents.expired", &cora)
+            .await
+            .is_empty()
+    );
+    assert!(
+        !messages_to(&app, "documents.expired", &pam)
+            .await
+            .is_empty()
+    );
+    assert!(
+        !messages_to(&app, "documents.expired", &ada)
+            .await
+            .is_empty(),
         "the owner role is told of a compliance-critical expiry"
     );
     let tasks = RenewalTask::query().get(app.db()).await.unwrap();
@@ -412,5 +466,9 @@ async fn a_trademark_registration_expiring_in_ninety_days_notifies_the_company_a
     let told = messages_to(&app, "documents.expiring", &ada).await;
     assert_eq!(told.len(), 1);
     assert_eq!(told[0].data.0["days_left"], 90);
-    assert!(messages_to(&app, "documents.expiring", &pam).await.is_empty());
+    assert!(
+        messages_to(&app, "documents.expiring", &pam)
+            .await
+            .is_empty()
+    );
 }

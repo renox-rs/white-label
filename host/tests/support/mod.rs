@@ -589,8 +589,8 @@ pub async fn vendor_ticket(
     due: Option<NaiveDate>,
 ) -> wl_ticketing::Ticket {
     use wl_kernel::tickets::{Assignee, OpenTicket};
-    let mut request = OpenTicket::new(subject.clone(), category, "Visit")
-        .assign_to(Assignee::party(vendor));
+    let mut request =
+        OpenTicket::new(subject.clone(), category, "Visit").assign_to(Assignee::party(vendor));
     if let Some(due) = due {
         request = request.planned_due(due);
     }
