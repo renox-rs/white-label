@@ -3536,7 +3536,9 @@ dependencies = [
  "renox",
  "serde",
  "tempfile",
+ "wl-documents",
  "wl-kernel",
+ "wl-parties",
 ]
 
 [[package]]
