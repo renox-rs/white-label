@@ -14,7 +14,8 @@ use wl_documents::{
 use wl_kernel::documents::{SopStaff, sop_acknowledgements};
 use wl_kernel::notify::{NotifyRecipient, NotifyRequest};
 use wl_kernel::workforce::{
-    EmployeeAssignmentChanged, EmployeeExited, EmployeeId, OnboardingId, OnboardingStarted,
+    EmployeeAssignmentChanged, EmployeeDeceased, EmployeeExited, EmployeeId,
+    EmployeeOnboardingCancelled, OnboardingId, OnboardingStarted,
 };
 use wl_kernel::{PartyId, SopId, Subject};
 
@@ -418,6 +419,55 @@ async fn doc_rul_04_a_reader_who_exits_is_not_asked_any_more() {
     w.t.staff.change(ALI, |p| p.listed = false);
     run(w.t.state(), day(20)).await.unwrap();
     assert!(about_all(&w.sent(REMINDER), &ack).is_empty());
+}
+
+/// A death in service cancels the pending acknowledgements with the reason
+/// of the death; the others stay pending and no reminder follows.
+#[renox::test]
+async fn doc_rul_04_a_reader_who_dies_in_service_is_not_asked_any_more() {
+    let w = world().await;
+    let v1 = w.publish().await;
+    let ack = w.ack(BILAL, &v1).await;
+    w.t.state()
+        .emit(EmployeeDeceased {
+            employee: EmployeeId(BILAL),
+            date: day(0),
+        })
+        .await
+        .unwrap();
+    let cancelled = w.reload(&ack).await;
+    assert_eq!(cancelled.status, AckStatus::Cancelled);
+    assert_eq!(
+        cancelled.ended_reason.as_deref(),
+        Some("The employee died in service.")
+    );
+    assert_eq!(w.count(AckStatus::Pending).await, 11);
+    w.t.staff.change(BILAL, |p| p.listed = false);
+    run(w.t.state(), day(20)).await.unwrap();
+    assert!(about_all(&w.sent(REMINDER), &ack).is_empty());
+}
+
+/// A cancelled onboarding cancels the pending acknowledgements with the
+/// reason the onboarding was cancelled for.
+#[renox::test]
+async fn doc_rul_04_a_cancelled_onboarding_cancels_the_pending_acknowledgements() {
+    let w = world().await;
+    let v1 = w.publish().await;
+    let ack = w.ack(SUNIL, &v1).await;
+    w.t.state()
+        .emit(EmployeeOnboardingCancelled {
+            employee: EmployeeId(SUNIL),
+            reason: "The candidate withdrew.".into(),
+        })
+        .await
+        .unwrap();
+    let cancelled = w.reload(&ack).await;
+    assert_eq!(cancelled.status, AckStatus::Cancelled);
+    assert_eq!(
+        cancelled.ended_reason.as_deref(),
+        Some("The candidate withdrew.")
+    );
+    assert_eq!(w.count(AckStatus::Pending).await, 11);
 }
 
 /// AC6: a new site worker hired (`OnboardingStarted`) gets a pending
