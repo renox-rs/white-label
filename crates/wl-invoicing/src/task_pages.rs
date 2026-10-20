@@ -53,6 +53,9 @@ pub fn grid(lang: &Lang) -> Grid {
         TaskKind::StatementBalanceStale,
         TaskKind::EinvoiceRejected,
         TaskKind::EinvoiceStuck,
+        TaskKind::DeliveryDisputedBeforeIssue,
+        TaskKind::DeliveryReversed,
+        TaskKind::DeliveryLost,
     ]
     .iter()
     .map(|kind| {
@@ -92,6 +95,9 @@ pub fn grid(lang: &Lang) -> Grid {
                     ("statement_balance_stale", "warning"),
                     ("einvoice_rejected", "danger"),
                     ("einvoice_stuck", "warning"),
+                    ("delivery_disputed_before_issue", "warning"),
+                    ("delivery_reversed", "danger"),
+                    ("delivery_lost", "danger"),
                 ])
                 .mobile(),
         )

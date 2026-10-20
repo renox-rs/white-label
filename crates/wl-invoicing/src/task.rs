@@ -60,6 +60,15 @@ pub enum TaskKind {
     /// An e-invoice transmission is not sent H hours after `issue`
     /// (`FIN.RUL.16`).
     EinvoiceStuck,
+    /// A delivery was put under review while a draft invoice bills its
+    /// lines (#69): check the review before issuing the draft.
+    DeliveryDisputedBeforeIssue,
+    /// The delivery whose review flagged this invoice was reversed (#69):
+    /// resolve the dispute, usually `credited` for the undelivered lines.
+    DeliveryReversed,
+    /// The delivery whose review flagged this invoice was lost (#69): resolve
+    /// the dispute, usually `credited` for the undelivered lines.
+    DeliveryLost,
 }
 
 impl TaskKind {
@@ -73,7 +82,7 @@ impl TaskKind {
     }
 
     /// The key of the task's message text.
-    fn text_key(self) -> &'static str {
+    pub(crate) fn text_key(self) -> &'static str {
         match self {
             TaskKind::ReversalAfterWriteOff => "wl_invoicing.task.reversal_after_write_off",
             TaskKind::ReversalRefused => "wl_invoicing.task.reversal_refused",
@@ -81,6 +90,9 @@ impl TaskKind {
             TaskKind::StatementBalanceStale => "wl_invoicing.task.statement_balance_stale",
             TaskKind::EinvoiceRejected => "wl_invoicing.einvoice.task.rejected",
             TaskKind::EinvoiceStuck => "wl_invoicing.einvoice.task.stuck",
+            TaskKind::DeliveryDisputedBeforeIssue => "wl_invoicing.delivery.task.before_issue",
+            TaskKind::DeliveryReversed => "wl_invoicing.delivery.task.reversed",
+            TaskKind::DeliveryLost => "wl_invoicing.delivery.task.lost",
         }
     }
 }
