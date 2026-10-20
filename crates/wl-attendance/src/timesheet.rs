@@ -5,13 +5,15 @@
 //! [*] --create--> open
 //! [*] --open_adjustment--> open          (kind adjustment, BL-ATT-07)
 //! open --submit--> submitted
+//! submitted --approve | approve_on_behalf--> approved
+//! submitted --reject--> open
 //! approved --reopen--> open
 //! approved --lock--> locked
 //! ```
 //!
-//! `approve`, `approve_on_behalf`, `deem_approve` and `reject` (submitted to
-//! open) come with the approval issues (BL-ATT-08); `approved` is declared so
-//! that `reopen` and `lock` have their place and a fixture can stand there.
+//! `approve`, `approve_on_behalf` and `reject` (submitted to open) are in
+//! [`crate::approval`] (BL-ATT-08); `deem_approve` comes with the deemed
+//! approval issue.
 //!
 //! The status moves only through the machine. `locked` is terminal: a locked
 //! timesheet is never edited or reopened (`HRM.ACL.08`), and is corrected by
@@ -240,6 +242,10 @@ pub struct Timesheet {
     pub submitted_by: Option<i64>,
     /// When it was submitted.
     pub submitted_at: Option<DateTime>,
+    /// The user who approved it; none for the system (a deemed approval).
+    pub approved_by: Option<i64>,
+    /// When it was approved.
+    pub approved_at: Option<DateTime>,
     /// Where it stands; changed only by the machine.
     pub status: TimesheetStatus,
     /// When the row was created.
@@ -407,6 +413,7 @@ impl StateMachine for Timesheet {
             );
         crate::submit::transitions()
             .into_iter()
+            .chain(crate::approval::transitions())
             .fold(machine, Machine::transition)
     }
 }

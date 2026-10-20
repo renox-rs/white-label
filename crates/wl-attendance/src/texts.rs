@@ -175,6 +175,33 @@ const TEXTS: &[(&str, &str)] = &[
         ":date is outside the period of the original timesheet, :from to :to.",
     ),
     ("wl_attendance.adjustment.opened", "Adjustment opened."),
+    // Approving a timesheet (`HRM.ACL.08`, BL-ATT-08).
+    (
+        "wl_attendance.approval.kind_mismatch",
+        "This timesheet is approved by its :kind approver. An approver of the other kind cannot approve it; staff approve for an external approver with the signed sheet.",
+    ),
+    (
+        "wl_attendance.approval.creator",
+        "HRM.ACL.08: the user who created an adjustment cannot approve it. Another person must.",
+    ),
+    (
+        "wl_attendance.approval.not_external",
+        "Only a timesheet that an external approver approves is approved on behalf of the approver.",
+    ),
+    (
+        "wl_attendance.approval.evidence_required",
+        "Attach the signed sheet: the document, the name of the approver who signed and the day.",
+    ),
+    ("wl_attendance.approval.approved", "Timesheet approved."),
+    ("wl_attendance.approval.rejected", "Timesheet sent back."),
+    (
+        "wl_attendance.notices.rejected_subject",
+        "Timesheet sent back",
+    ),
+    (
+        "wl_attendance.notices.rejected_body",
+        "The timesheet of :employee for :from to :to was sent back: :reason",
+    ),
     // Timesheets and their entries.
     (
         "wl_attendance.timesheet.no_consumer",

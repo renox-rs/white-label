@@ -3,6 +3,7 @@
 
 pub mod access;
 pub mod adjustment;
+pub mod approval;
 pub mod checks;
 pub mod config;
 pub mod entry;
@@ -55,6 +56,10 @@ pub mod permissions {
     pub const TIMESHEETS_SUBMIT: &str = "timesheets.submit";
     /// Open an adjustment timesheet on a locked one (`HRM.ACL.08`).
     pub const TIMESHEETS_ADJUST: &str = "timesheets.adjust";
+    /// Approve (or reject) a timesheet whose approver kind is internal.
+    pub const TIMESHEETS_APPROVE: &str = "timesheets.approve";
+    /// Approve for the external approver, with the signed sheet attached.
+    pub const TIMESHEETS_APPROVE_ON_BEHALF: &str = "timesheets.approve_on_behalf";
     /// Reopen an approved timesheet that nothing has used.
     pub const TIMESHEETS_REOPEN: &str = "timesheets.reopen";
 }
@@ -140,6 +145,7 @@ impl Module for WlAttendance {
         app.model::<MiddayWindow>();
         app.model::<Timesheet>();
         app.model::<TimesheetEntry>();
+        app.model::<approval::ApprovalEvidence>();
         app.provide(self.config.clone());
         overtime::provide_entry_hours(app, entry::TimesheetEntryHours);
         renox::state_machine::register::<AttendanceRecord>();

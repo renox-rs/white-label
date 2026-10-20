@@ -38,8 +38,18 @@ pub const RECORD_FLAGGED: &str = "attendance.record_flagged";
 /// record of it is `locked`, so that nothing could be flagged (`HRM.RUL.13`).
 pub const OVER_CAP: &str = "attendance.over_cap";
 
+/// The user who submitted a timesheet is told it was sent back.
+pub const TIMESHEET_REJECTED: &str = "attendance.timesheet_rejected";
+
 /// Registers the module's notification types with the kernel registry.
 pub(crate) fn register_types() {
+    let subject = english("wl_attendance.notices.rejected_subject", &[]);
+    let body = english("wl_attendance.notices.rejected_body", &[]);
+    notify::register_type(
+        NotificationTypeDef::new(TIMESHEET_REJECTED, "attendance")
+            .group("attendance")
+            .template(NotifyChannel::Email, "en", Some(&subject), &body),
+    );
     let subject = english("wl_attendance.notices.flagged_subject", &[]);
     let body = english("wl_attendance.notices.flagged_body", &[]);
     notify::register_type(
@@ -175,6 +185,40 @@ pub(crate) async fn over_cap_unflagged(
     for user in users {
         request = request.to_user(user);
     }
+    notify::notifier(state).notify(state, request).await?;
+    Ok(())
+}
+
+/// Tells whoever submitted `sheet` that it was sent back with `reason`: the
+/// user who submitted it, else the one who created it. Nobody is told when
+/// neither is known.
+pub(crate) async fn timesheet_rejected(
+    state: &AppState,
+    sheet: &crate::timesheet::Timesheet,
+    reason: &str,
+) -> Result {
+    let Some(user) = sheet.submitted_by.or(sheet.created_by) else {
+        return Ok(());
+    };
+    let profile = workforce(state).staff(state, sheet.owner()).await?;
+    let employee = match &profile {
+        Some(profile) => wl_kernel::parties::directory(state)
+            .display_name(&state.db, profile.party, "en")
+            .await
+            .ok()
+            .flatten(),
+        None => None,
+    }
+    .unwrap_or_else(|| format!("#{}", sheet.owner_employee_id));
+    let request = NotifyRequest::new(TIMESHEET_REJECTED, sheet.subject())
+        .subject_label(&format!("{employee} {}", sheet.period_from))
+        .data(json!({
+            "employee": employee,
+            "from": sheet.period_from.to_string(),
+            "to": sheet.period_to.to_string(),
+            "reason": reason,
+        }))
+        .to_user(user);
     notify::notifier(state).notify(state, request).await?;
     Ok(())
 }

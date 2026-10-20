@@ -10,6 +10,9 @@
 //! | `POST /attendance/records/{id}/reject` | `wl_attendance.reject` | `attendance.review` at the location |
 //! | `POST /timesheets/{id}/reopen` | `wl_attendance.timesheet_reopen` | `timesheets.reopen` |
 //! | `POST /timesheets/{id}/adjustments` | `wl_attendance.adjustment_open` | `timesheets.adjust` in the scope of the original's context (`HRM.ACL.08`) |
+//! | `POST /timesheets/{id}/approve` | `wl_attendance.timesheet_approve` | `timesheets.approve` in the scope of the context (internal), or the timesheet's approver role (external) |
+//! | `POST /timesheets/{id}/approve-on-behalf` | `wl_attendance.timesheet_approve_on_behalf` | `timesheets.approve_on_behalf` in the scope of the context, with the signed sheet |
+//! | `POST /timesheets/{id}/reject` | `wl_attendance.timesheet_reject` | an approver of the timesheet |
 //! | `POST /timesheets/{id}/submit` | `wl_attendance.timesheet_submit` | `timesheets.submit` in the scope of the timesheet's context |
 //! | `POST /attendance/records/{id}/correct` | `wl_attendance.correct` | `attendance.correct` at the location, and `attendance.review` when a flag holds the record |
 //!
@@ -29,6 +32,7 @@ use wl_kernel::workforce::{EmployeeId, workforce};
 
 use crate::access;
 use crate::adjustment;
+use crate::approval;
 use crate::location::WorkLocation;
 use crate::permissions;
 use crate::record::AttendanceRecord;
@@ -59,6 +63,12 @@ pub fn routes() -> Routes {
         .name("wl_attendance.adjustment_open")
         .post("/timesheets/{id}/submit", submit_timesheet)
         .name("wl_attendance.timesheet_submit")
+        .post("/timesheets/{id}/approve", approve_timesheet)
+        .name("wl_attendance.timesheet_approve")
+        .post("/timesheets/{id}/approve-on-behalf", approve_on_behalf)
+        .name("wl_attendance.timesheet_approve_on_behalf")
+        .post("/timesheets/{id}/reject", reject_timesheet)
+        .name("wl_attendance.timesheet_reject")
         .require_auth()
 }
 
@@ -386,6 +396,79 @@ async fn open_adjustment(
     .await?;
     Ok((
         Toast::success(text(&lang, "adjustment.opened")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// `POST /timesheets/{id}/approve`: the approver approves a submitted
+/// timesheet.
+async fn approve_timesheet(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    approval::approve(&state, &user, id).await?;
+    Ok((
+        Toast::success(text(&lang, "approval.approved")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// The signed sheet that goes with an approval on behalf.
+#[derive(Deserialize, Serialize, Validate, Debug, Default)]
+pub struct OnBehalfForm {
+    /// The document that holds the signed sheet; 0 or none when not given.
+    #[serde(default)]
+    pub document_id: i64,
+    /// Who signed for the client.
+    #[validate(max = 120)]
+    #[serde(default)]
+    pub approver_name: String,
+    /// The day they signed, `2026-11-09`.
+    #[validate(max = 10)]
+    #[serde(default)]
+    pub signed_on: String,
+}
+
+/// `POST /timesheets/{id}/approve-on-behalf`: staff approve for the external
+/// approver with the signed sheet.
+async fn approve_on_behalf(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Valid(form): Valid<OnBehalfForm>,
+) -> Result<Response> {
+    let evidence = renox::chrono::NaiveDate::parse_from_str(form.signed_on.trim(), "%Y-%m-%d")
+        .ok()
+        .map(|signed_on| approval::Evidence {
+            document_id: form.document_id,
+            approver_name: form.approver_name.clone(),
+            signed_on,
+        });
+    approval::approve_on_behalf(&state, &user, id, evidence).await?;
+    Ok((
+        Toast::success(text(&lang, "approval.approved")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// `POST /timesheets/{id}/reject`: the approver sends a submitted timesheet
+/// back with a reason.
+async fn reject_timesheet(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Valid(form): Valid<ReviewForm>,
+) -> Result<Response> {
+    approval::reject(&state, &user, id, &form.reason).await?;
+    Ok((
+        Toast::success(text(&lang, "approval.rejected")),
         renox::HxRefresh,
     )
         .into_response())

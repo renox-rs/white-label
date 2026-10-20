@@ -182,6 +182,8 @@ pub const ROLES: &[(&str, &[&str])] = &[
             attendance::WORK_LOCATIONS_MANAGE,
             attendance::TIMESHEETS_SUBMIT,
             attendance::TIMESHEETS_ADJUST,
+            attendance::TIMESHEETS_APPROVE,
+            attendance::TIMESHEETS_APPROVE_ON_BEHALF,
             attendance::TIMESHEETS_REOPEN,
             prp::UNITS_VIEW,
             prp::UNITS_MANAGE,
