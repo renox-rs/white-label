@@ -9,6 +9,7 @@ mod support;
 
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
+use renox::state_machine::StateMachine;
 use wl_hr::payroll::{self, FailedLine};
 use wl_hr::{
     AbsenceReport, Employee, EmployeeStatus, FinalSettlement, LeaveRequest, LeaveStatus,
@@ -225,26 +226,30 @@ async fn hrm07_seven_days_are_not_enough_and_eight_are() {
 #[renox::test]
 async fn hrm07_the_database_checks_in_days_and_attempts() {
     let t = support::boot().await;
-    let check = |e: &Employee, day: NaiveDate| problem(&t, e, day);
+    macro_rules! check {
+        ($e:expr, $day:expr) => {
+            problem(&t, $e, $day)
+        };
+    }
 
     // One attempt only (2026-11-05): refused.
     let one = t.employee_in(61, EmployeeStatus::Active).await;
     t.open_case(&one, nov(4), nov(1)).await;
     t.attempt(&one, nov(5)).await;
-    assert!(check(&one, nov(9)).await.is_some());
+    assert!(check!(&one, nov(9)).await.is_some());
 
     // Two attempts on the same day: refused. On two days: allowed.
     let same = t.employee_in(62, EmployeeStatus::Active).await;
     t.open_case(&same, nov(4), nov(1)).await;
     t.attempt(&same, nov(5)).await;
     t.attempt(&same, nov(5)).await;
-    assert!(check(&same, nov(9)).await.is_some());
+    assert!(check!(&same, nov(9)).await.is_some());
     t.attempt(&same, nov(6)).await;
-    assert_eq!(check(&same, nov(9)).await, None);
+    assert_eq!(check!(&same, nov(9)).await, None);
 
     // 7 days (2026-11-08) are not more than 7; 8 are.
-    assert!(check(&same, nov(8)).await.is_some());
-    assert_eq!(check(&same, nov(9)).await, None);
+    assert!(check!(&same, nov(8)).await.is_some());
+    assert_eq!(check!(&same, nov(9)).await, None);
 
     // An attempt that reached the worker, or came on or before the last day
     // present, does not count.
@@ -264,7 +269,7 @@ async fn hrm07_the_database_checks_in_days_and_attempts() {
     )
     .await
     .unwrap();
-    assert!(check(&reached, nov(9)).await.is_some());
+    assert!(check!(&reached, nov(9)).await.is_some());
 }
 
 /// With the case opened late (2026-11-09) and the last attendance on

@@ -141,7 +141,7 @@ impl Span {
     table = "wl_attendance_records",
     state_machine,
     index(employee_id, date),
-    index(location_id, date)
+    index(location_id)
 )]
 pub struct AttendanceRecord {
     /// The primary key.

@@ -112,7 +112,7 @@ pub enum LineStatus {
 #[model(
     table = "wl_hr_payroll_lines",
     index(run_id, status),
-    index(employee_id, status)
+    index(employee_id)
 )]
 pub struct PayrollLine {
     /// The primary key.

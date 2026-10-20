@@ -295,11 +295,9 @@ async fn att07_a_delta_cannot_take_the_day_below_zero() {
     // Another category has no hours to take away.
     post(entries("overtime", -60)).await.assert_status(422);
     // Two entries of one request: 5 h and 4 h out of 8.
-    let two = format!(
-        r#"[{{"date": "2026-11-02", "category": "normal", "minutes": -300}},
-            {{"date": "2026-11-02", "category": "normal", "minutes": -240}}]"#
-    );
-    post(two).await.assert_status(422);
+    let two = r#"[{"date": "2026-11-02", "category": "normal", "minutes": -300},
+            {"date": "2026-11-02", "category": "normal", "minutes": -240}]"#;
+    post(two.to_owned()).await.assert_status(422);
     assert!(adjustments_of(&t, &original).await.is_empty());
     // A day outside the original's period.
     post(r#"[{"date": "2026-11-20", "category": "normal", "minutes": 60}]"#.to_owned())

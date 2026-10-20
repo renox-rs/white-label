@@ -404,7 +404,7 @@ async fn open_sheet_in(
     employee: i64,
     date: NaiveDate,
 ) -> Result<Option<Timesheet>> {
-    Ok(Timesheet::query()
+    Timesheet::query()
         .where_(Timesheet::OWNER_EMPLOYEE_ID.eq(employee))
         .where_(Timesheet::STATUS.eq(TimesheetStatus::Open))
         .where_(Timesheet::KIND.eq(TimesheetKind::Regular))
@@ -413,7 +413,7 @@ async fn open_sheet_in(
         .where_(Timesheet::PERIOD_TO.gte(date))
         .order_by(Timesheet::ID)
         .first(&mut *tx)
-        .await?)
+        .await
 }
 
 /// Proposes the hours of the `accepted` `record` on the open timesheet of

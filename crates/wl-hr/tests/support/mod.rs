@@ -13,6 +13,7 @@ use renox::auth::permissions::Scope;
 use renox::auth::{Auth, Permissions, permissions};
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
+use renox::state_machine::StateMachine;
 use renox::testing::TestApp;
 use wl_hr::permissions as perm;
 use wl_hr::{

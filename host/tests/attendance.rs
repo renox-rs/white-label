@@ -2,6 +2,7 @@
 //! (wl-kernel §5.1, wl-attendance §6, issue #178).
 
 use host::roles::{self, ADMIN, HR, MEMBER, SUPERVISOR};
+use renox::prelude::*;
 use renox::testing::TestApp;
 use wl_attendance::{WorkLocation, permissions as attendance};
 use wl_kernel::ClientConfig;

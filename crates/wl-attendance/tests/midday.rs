@@ -8,6 +8,7 @@
 
 mod support;
 
+use renox::prelude::*;
 use renox::chrono::NaiveDate;
 use wl_attendance::flags::{self, Pending};
 use wl_attendance::midday::{self, MiddayWindow};
@@ -226,12 +227,9 @@ async fn att03_the_window_is_read_per_scope() {
     let a = t.employee(1, &[]);
     let b = t.employee(2, &[]);
     let project = support::project(5);
-    MiddayWindow::create(
-        t.db(),
-        MiddayWindow::new(Some(&project), d(2027, 7, 1), d(2027, 8, 31), (13, 0), (16, 0)),
-    )
-    .await
-    .unwrap();
+    let mut window =
+        MiddayWindow::new(Some(&project), d(2027, 7, 1), d(2027, 8, 31), (13, 0), (16, 0));
+    window.save(t.db()).await.unwrap();
     let scoped = t
         .location_of(WorkLocation::named("Site 5").in_scope(&project).outdoors())
         .await;

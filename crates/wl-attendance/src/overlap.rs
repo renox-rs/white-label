@@ -42,13 +42,13 @@ async fn around(tx: &mut Transaction, employee: i64, date: NaiveDate) -> Result<
     .into_iter()
     .flatten()
     .collect();
-    Ok(AttendanceRecord::query()
+    AttendanceRecord::query()
         .where_(AttendanceRecord::EMPLOYEE_ID.eq(employee))
         .where_(AttendanceRecord::DATE.is_in(days))
         .where_(AttendanceRecord::STATUS.is_in(AttendanceStatus::LIVE))
         .order_by(AttendanceRecord::ID)
         .get(&mut *tx)
-        .await?)
+        .await
 }
 
 /// Flags `record` and the records of the same employee it overlaps `overlap`,

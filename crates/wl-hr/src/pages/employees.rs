@@ -728,6 +728,7 @@ async fn request_exit(
         report_number: Some(form.report_number.trim().to_owned()).filter(|n| !n.is_empty()),
         report_date: date_field("report_date", &form.report_date)?,
         report_file: form.report_file.trim().parse().ok(),
+        absence_days: None,
         death_date: date_field("death_date", &form.death_date)?,
         return_date: date_field("return_date", &form.return_date)?,
         withdrawal_reference: Some(form.reference.trim().to_owned()).filter(|r| !r.is_empty()),

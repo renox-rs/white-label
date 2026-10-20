@@ -39,6 +39,7 @@
 
 use renox::db::{DateTime, Json, Transaction, now};
 use renox::prelude::*;
+use renox::state_machine::StateMachine;
 use renox::serde_json::json;
 use renox::state_machine::TransitionCtx;
 use serde::{Deserialize, Serialize};

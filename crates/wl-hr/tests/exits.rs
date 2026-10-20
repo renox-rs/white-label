@@ -398,7 +398,8 @@ async fn hrm04_each_exit_moves_the_employee_once_approved() {
     let t = support::boot().await;
     let a = t.user_with("Hana", "hr").await;
     let b = t.user_with("Basel", "md").await;
-    let cases: [(EmployeeStatus, Vec<(&str, &str)>, EmployeeStatus); 4] = [
+    type Case<'a> = (EmployeeStatus, Vec<(&'a str, &'a str)>, EmployeeStatus);
+    let cases: [Case; 4] = [
         (
             EmployeeStatus::Onboarding,
             vec![

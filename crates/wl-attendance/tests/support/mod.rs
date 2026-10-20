@@ -8,7 +8,8 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
-use renox::auth::permissions;
+use renox::auth::{Permissions, permissions};
+use renox::state_machine::StateMachine;
 use renox::chrono::NaiveDate;
 use renox::db::DateTime;
 use renox::prelude::*;

@@ -11,6 +11,7 @@
 
 use renox::db::{DateTime, Transaction};
 use renox::prelude::*;
+use renox::state_machine::StateMachine;
 use renox::serde_json::json;
 use renox::state_machine::Outcome;
 use serde::{Deserialize, Serialize};
