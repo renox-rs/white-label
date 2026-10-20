@@ -245,6 +245,16 @@ pub trait AttendanceReview: Send + Sync + 'static {
     ) -> LabourFuture<'a, Vec<AttendanceRecordId>> {
         Box::pin(async { Ok(Vec::new()) })
     }
+
+    /// Whether any attendance was recorded at a work location in `context`
+    /// (a project that was cancelled may have none). The default is no.
+    fn has_records<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _context: &'a Subject,
+    ) -> LabourFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
 }
 
 /// The review when none is provided: nothing is flagged.

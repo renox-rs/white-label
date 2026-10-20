@@ -18,6 +18,7 @@ use renox::state_machine::StateMachine;
 use wl_kernel::inventory::{OpenOrder, ScopeFuture, ScopeStock};
 use wl_kernel::{PartyId, Subject};
 
+use crate::goods_receipt::GoodsReceipt;
 use crate::location::Location;
 use crate::purchase_order::{PurchaseOrder, PurchaseOrderStatus, lines_of};
 use crate::purchase_request::{self, PurchaseRequest, PurchaseRequestStatus};
@@ -124,6 +125,24 @@ impl ScopeStock for InventoryScopeStock {
                 }
             }
             Ok(opened)
+        })
+    }
+
+    fn has_goods_receipts<'a>(
+        &'a self,
+        state: &'a AppState,
+        scope: &'a Subject,
+    ) -> ScopeFuture<'a, bool> {
+        Box::pin(async move {
+            let ids = location_ids(&state.db, scope).await?;
+            if ids.is_empty() {
+                return Ok(false);
+            }
+            Ok(GoodsReceipt::query()
+                .where_(GoodsReceipt::LOCATION_ID.is_in(ids))
+                .first(&state.db)
+                .await?
+                .is_some())
         })
     }
 

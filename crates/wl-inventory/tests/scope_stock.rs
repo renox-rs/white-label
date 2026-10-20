@@ -8,7 +8,7 @@ mod support;
 use renox::prelude::*;
 use renox::state_machine::StateMachine;
 use wl_inventory::{
-    PurchaseRequest, PurchaseRequestStatus, StockCount, StockCountStatus, stock_count,
+    DraftLine, PurchaseRequest, PurchaseRequestStatus, StockCount, StockCountStatus, stock_count,
 };
 use wl_kernel::Subject;
 use wl_kernel::inventory::scope_stock;
@@ -167,5 +167,47 @@ async fn a_count_is_opened_for_each_store_of_the_scope_once() {
             .unwrap()
             .len(),
         1
+    );
+}
+
+/// A goods receipt at a store of the scope, a draft too, is found; another
+/// project's is not.
+#[renox::test]
+async fn a_goods_receipt_at_a_store_of_the_scope_is_found() {
+    let t = boot().await;
+    let site = t.location("SITE-4", Some(&project(4))).await;
+    let other = t.location("SITE-5", Some(&project(5))).await;
+    let item = t.item("CEMENT").await;
+    let stock = scope_stock(t.state());
+    assert!(
+        !stock
+            .has_goods_receipts(t.state(), &project(4))
+            .await
+            .unwrap()
+    );
+
+    let (order, line) = t.order(&other, &item, 5_000, 1_800).await;
+    t.receipt(&order, &other, vec![DraftLine::on(line.id, 5_000, 5_000)])
+        .await;
+    assert!(
+        !stock
+            .has_goods_receipts(t.state(), &project(4))
+            .await
+            .unwrap()
+    );
+    assert!(
+        stock
+            .has_goods_receipts(t.state(), &project(5))
+            .await
+            .unwrap()
+    );
+    let (order, line) = t.order(&site, &item, 5_000, 1_800).await;
+    t.receipt(&order, &site, vec![DraftLine::on(line.id, 5_000, 5_000)])
+        .await;
+    assert!(
+        stock
+            .has_goods_receipts(t.state(), &project(4))
+            .await
+            .unwrap()
     );
 }

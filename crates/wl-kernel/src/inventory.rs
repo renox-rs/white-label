@@ -375,6 +375,16 @@ pub trait ScopeStock: Send + Sync + 'static {
         Box::pin(async { Ok(Vec::new()) })
     }
 
+    /// Whether any goods receipt was recorded at a location in `scope`
+    /// (a project that was cancelled may have none). The default is no.
+    fn has_goods_receipts<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _scope: &'a Subject,
+    ) -> ScopeFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
+
     /// The stock counts of the locations in `scope` that are not `approved`
     /// or `cancelled` yet.
     fn open_counts<'a>(

@@ -67,6 +67,29 @@ pub async fn flag_after(
     Ok(flagged)
 }
 
+/// Whether any attendance was recorded at the work locations in `context`.
+///
+/// # Errors
+///
+/// A database error.
+pub async fn has_records(state: &AppState, context: &Subject) -> Result<bool> {
+    let ids: Vec<i64> = WorkLocation::query()
+        .get(&state.db)
+        .await?
+        .into_iter()
+        .filter(|location| location.scope().as_ref() == Some(context))
+        .map(|location| location.id)
+        .collect();
+    if ids.is_empty() {
+        return Ok(false);
+    }
+    Ok(AttendanceRecord::query()
+        .where_(AttendanceRecord::LOCATION_ID.is_in(ids))
+        .first(&state.db)
+        .await?
+        .is_some())
+}
+
 /// The module's [`AttendanceReview`].
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Reviewer;
@@ -80,5 +103,13 @@ impl AttendanceReview for Reviewer {
         note: &'a str,
     ) -> LabourFuture<'a, Vec<AttendanceRecordId>> {
         Box::pin(flag_after(state, context, after, note))
+    }
+
+    fn has_records<'a>(
+        &'a self,
+        state: &'a AppState,
+        context: &'a Subject,
+    ) -> LabourFuture<'a, bool> {
+        Box::pin(has_records(state, context))
     }
 }
