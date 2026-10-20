@@ -181,8 +181,7 @@ impl Scene {
         let approver = self.manager.id.to_string();
         let second = self.finance.id.to_string();
         let path = format!("/property/leases/{}/apply-deposit", self.lease.id);
-        let response = self
-            .t
+        self.t
             .at(
                 today() + Days::days(15),
                 self.t.post(
@@ -191,8 +190,7 @@ impl Scene {
                     &[("approver", &approver), ("second_approver", &second)],
                 ),
             )
-            .await;
-        response
+            .await
     }
 
     /// The payments the deposit made: `(reference, amount)` of the payments of
