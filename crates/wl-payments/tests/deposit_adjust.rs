@@ -545,3 +545,41 @@ async fn only_a_held_deposit_is_adjusted_by_a_deposit_manager_with_a_version() {
         DepositStatus::SettlementPending
     );
 }
+
+/// Edge case: the part refund is money out and waits under `PTY.ACL.03`: it
+/// is requested and approved, but not paid while the party is blocked (the
+/// held amount stays); once the party is free it is paid and the held amount
+/// falls.
+#[renox::test]
+async fn a_part_refund_for_a_blocked_party_waits_until_it_is_unblocked() {
+    let t = boot().await;
+    let a = t.user_a().await;
+    let b = t.user_b().await;
+    let deposit = held_deposit(&t, &a, 600_000).await;
+    t.adjust_deposit(&a, &deposit, "5500.00", "3", "2030-06-01")
+        .await
+        .assert_ok();
+    let refund = part_refund(&t, &deposit).await;
+    t.refund_action(&b, &refund, "approve", &[])
+        .await
+        .assert_ok();
+
+    t.blocked.block(BLUE_DUNES);
+    let pay = [("method", "transfer"), ("reference", "TRF-56")];
+    t.refund_action(&b, &t.refund(refund.id).await, "pay", &pay)
+        .await
+        .assert_status(422);
+    assert_eq!(t.refund(refund.id).await.status, RefundStatus::Approved);
+    assert_eq!(t.deposit(deposit.id).await.held_amount, 600_000);
+    assert_eq!(
+        adjustments(&t, &deposit).await[0].status,
+        AdjustmentStatus::Open
+    );
+
+    t.blocked.free(BLUE_DUNES);
+    t.refund_action(&b, &t.refund(refund.id).await, "pay", &pay)
+        .await
+        .assert_ok();
+    assert_eq!(t.refund(refund.id).await.status, RefundStatus::Paid);
+    assert_eq!(t.deposit(deposit.id).await.held_amount, 550_000);
+}

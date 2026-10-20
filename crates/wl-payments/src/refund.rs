@@ -737,6 +737,9 @@ pub async fn pay(
         return Err(TransitionError::Forbidden);
     }
     let reference = reference.trim();
+    if let Some(message) = part_refund_refusal(state, refund).await? {
+        return Err(TransitionError::Guard(message));
+    }
     if latest_attempt_pending(state, refund).await? {
         return Err(guard("A gateway refund is waiting for the gateway."));
     }
@@ -789,6 +792,34 @@ pub async fn pay(
     reload(state, refund).await
 }
 
+/// The neutral refusal when `refund` is the part refund of a held deposit
+/// adjustment and its party is blocked: the part refund is money out and
+/// waits under `PTY.ACL.03` (it stays `approved`) until the party is
+/// unblocked. Other refunds are guarded where they are requested (the
+/// deposit `refund`) or not at all. Only a question: nothing is written.
+async fn part_refund_refusal(
+    state: &AppState,
+    refund: &Refund,
+) -> std::result::Result<Option<String>, TransitionError> {
+    use wl_kernel::block_guard::{ActionKind, GuardOutcome};
+    let part = crate::deposit_adjust::DepositAdjustment::query()
+        .where_(crate::deposit_adjust::DepositAdjustment::REFUND_ID.eq(refund.id))
+        .first(&state.db)
+        .await?;
+    if part.is_none() {
+        return Ok(None);
+    }
+    let mut tx = state.db.begin().await?;
+    let outcome = wl_kernel::block_guard::guard(state)
+        .check_in(&mut tx, None, refund.party(), ActionKind::MoneyOut)
+        .await?;
+    drop(tx);
+    Ok(match outcome {
+        GuardOutcome::Allowed => None,
+        GuardOutcome::Blocked(refusal) => Some(refusal.message_en()),
+    })
+}
+
 async fn latest_attempt_pending(
     state: &AppState,
     refund: &Refund,
@@ -830,6 +861,9 @@ pub async fn send_to_gateway(
     else {
         return Err(guard("A gateway refund needs the gateway transaction."));
     };
+    if let Some(message) = part_refund_refusal(state, &refund).await? {
+        return Err(TransitionError::Guard(message));
+    }
     if latest_attempt_pending(state, &refund).await? {
         return Err(guard("The refund is already with the gateway."));
     }
