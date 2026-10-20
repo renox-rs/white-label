@@ -246,6 +246,69 @@ pub fn stale_notice_view(lang: &Lang, lists: &[StaleList]) -> Option<ScreeningNo
     })
 }
 
+/// Where the screening of one party stands, for a guard that needs it done
+/// and decided (04 Accounting: CDD `submit` and `approve`, engagement
+/// `activate`). It names no candidate, list or score.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ScreeningStanding {
+    /// The party has a screening with a result (not `pending`).
+    pub screened: bool,
+    /// The party has a `possible_match` that no reviewer decided yet and no
+    /// re-run replaced. Only holders of `parties.block_reason.view` may be
+    /// told which party it is.
+    pub open_match: bool,
+}
+
+impl ScreeningStanding {
+    /// Nothing to wait for: what [`NoScreeningGuard`] answers when screening
+    /// is off.
+    pub const SETTLED: ScreeningStanding = ScreeningStanding {
+        screened: true,
+        open_match: false,
+    };
+}
+
+/// What a freeze or report task of a confirmed match asks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MatchTaskKind {
+    /// Freeze the money held for the named parties.
+    Freeze,
+    /// Report the match.
+    Report,
+}
+
+/// A freeze or report task of a confirmed match (wl-parties, `PTY.SCR.01`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MatchTask {
+    /// The task's id in wl-parties.
+    pub id: i64,
+    /// Freeze or report.
+    pub kind: MatchTaskKind,
+    /// When it is due: 24 hours after the flag, by default.
+    pub due_at: renox::db::DateTime,
+    /// Whether it is done.
+    pub done: bool,
+}
+
+/// A confirmed sanctions match as the compliance listeners may read it:
+/// the screening, what it matched and the two tasks. Only the MLRO's own
+/// pages may show it (`PTY.ACL.02`, no tipping off).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConfirmedMatch {
+    /// The matched party.
+    pub party: PartyId,
+    /// The screening.
+    pub screening: i64,
+    /// When the screening ran, hence was flagged.
+    pub flagged_at: renox::db::DateTime,
+    /// The list of the first candidate.
+    pub list_name: Option<String>,
+    /// The entry on that list.
+    pub list_entry: Option<String>,
+    /// The freeze and report tasks.
+    pub tasks: Vec<MatchTask>,
+}
+
 /// A boxed future, so the trait can be used as `dyn`.
 pub type ScreeningFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 
@@ -266,6 +329,30 @@ pub trait ScreeningGuard: Send + Sync + 'static {
         tx: &'a mut Transaction,
         party: PartyId,
     ) -> ScreeningFuture<'a, Vec<StaleList>>;
+
+    /// Whether `party` was screened and whether a possible match of it is
+    /// still open, read in the caller's transaction. The default (screening
+    /// off) is [`ScreeningStanding::SETTLED`].
+    fn standing_in<'a>(
+        &'a self,
+        tx: &'a mut Transaction,
+        party: PartyId,
+    ) -> ScreeningFuture<'a, ScreeningStanding> {
+        let _ = (tx, party);
+        Box::pin(async { Ok(ScreeningStanding::SETTLED) })
+    }
+
+    /// The confirmed match of `screening` with its freeze and report tasks,
+    /// or `None` when it was not confirmed. The default (screening off)
+    /// knows none.
+    fn confirmed_match<'a>(
+        &'a self,
+        db: &'a Db,
+        screening: i64,
+    ) -> ScreeningFuture<'a, Option<ConfirmedMatch>> {
+        let _ = (db, screening);
+        Box::pin(async { Ok(None) })
+    }
 }
 
 /// The guard when `parties` or screening is off: always allowed, no notice.
@@ -485,5 +572,8 @@ mod tests {
         assert_eq!(outcome, ScreeningOutcome::Allowed);
         let notice = guard.latest_notice_in(&mut tx, PartyId(1)).await.unwrap();
         assert!(notice.is_empty());
+        let standing = guard.standing_in(&mut tx, PartyId(1)).await.unwrap();
+        assert_eq!(standing, ScreeningStanding::SETTLED);
+        assert!(standing.screened && !standing.open_match);
     }
 }

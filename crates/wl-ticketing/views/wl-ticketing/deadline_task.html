@@ -1,0 +1,58 @@
+{#- wl-ticketing: a deadline task's page: its status, the held flag (no
+    reason) and the late badge, its dates and reasons, and the actions for
+    its state (start, wait, unblock, submit for review, send back,
+    complete, waive, close as missed). Replace it with
+    resources/views/wl-ticketing/deadline_task.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="task.title">
+  <rx-stack>
+    <rx-page-header :title="task.title" :subtitle="task.source" :back="route('wl_ticketing.deadline_tasks')" :back-label="tx['deadline.title']"
+                    :badge="task.status" :badge-kind="task.status_kind">
+      <template rx-for="item in actions">
+        <rx-confirm :id="'deadline-' ~ item.name ~ '-' ~ task.id" :label="item.label" :action="route('wl_ticketing.deadline_task_action', task.id, item.name)" method="POST"
+                    :title="tx['deadline.confirm_title']" :message="item.label" :confirm-label="item.label"/>
+      </template>
+      <rx-action-sheet rx-if="can_wait" :id="'deadline-wait-' ~ task.id" :label="tx['deadline.action.wait']" :action="route('wl_ticketing.deadline_task_action', task.id, 'wait')"
+                       :title="tx['deadline.action.wait']" :submit-label="tx['deadline.action.wait']" icon="clock">
+        <rx-textarea name="reason" :label="tx['deadline.fields.wait_reason']" :id="'deadline-wait-reason-' ~ task.id"/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_send_back" :id="'deadline-send-back-' ~ task.id" :label="tx['deadline.action.send_back']" :action="route('wl_ticketing.deadline_task_action', task.id, 'send_back')"
+                       :title="tx['deadline.action.send_back']" :submit-label="tx['deadline.action.send_back']" icon="arrow-left">
+        <rx-textarea name="reason" :label="tx['deadline.fields.comment']" :id="'deadline-send-back-reason-' ~ task.id" required/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_complete" :id="'deadline-complete-' ~ task.id" :label="tx['deadline.action.complete']" :action="route('wl_ticketing.deadline_task_action', task.id, 'complete')"
+                       :title="tx['deadline.action.complete']" :submit-label="tx['deadline.action.complete']" icon="circle-check">
+        <rx-input name="evidence" :label="tx['deadline.fields.evidence']" :id="'deadline-evidence-' ~ task.id"/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_waive" :id="'deadline-waive-' ~ task.id" :label="tx['deadline.action.waive']" :action="route('wl_ticketing.deadline_task_action', task.id, 'waive')"
+                       :title="tx['deadline.action.waive']" :description="tx['deadline.waive_description']" :submit-label="tx['deadline.action.waive']" icon="circle-alert">
+        <rx-textarea name="reason" :label="tx['deadline.fields.reason']" :id="'deadline-waive-reason-' ~ task.id" required/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_close_missed" :id="'deadline-missed-' ~ task.id" :label="tx['deadline.action.close_missed']" :action="route('wl_ticketing.deadline_task_action', task.id, 'close_missed')"
+                       :title="tx['deadline.action.close_missed']" :description="tx['deadline.missed_description']" :submit-label="tx['deadline.action.close_missed']"
+                       icon="circle-x" variant="danger" danger>
+        <rx-select rx-if="missed_reasons" name="reason_code" :label="tx['deadline.fields.reason']" :options="missed_reasons" :selected="''" :id="'deadline-missed-code-' ~ task.id" required/>
+        <rx-textarea rx-if="missed_reasons and missed_needs_text" name="reason" :label="tx['deadline.fields.reason_text']" :id="'deadline-missed-text-' ~ task.id"/>
+        <rx-textarea rx-if="not missed_reasons" name="reason" :label="tx['deadline.fields.reason']" :id="'deadline-missed-reason-' ~ task.id" required/>
+      </rx-action-sheet>
+    </rx-page-header>
+    <rx-row>
+      <rx-badge rx-if="task.held" kind="info" :text="tx['task.held']"/>
+      <rx-badge rx-if="task.late" kind="warning" :text="task.late_label"/>
+    </rx-row>
+    <rx-card :title="tx['deadline.sections.details']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['deadline.fields.type']" :value="task.task_type"/>
+        <rx-entry :label="tx['deadline.fields.source']" :value="task.source"/>
+        <rx-entry :label="tx['deadline.fields.start']" :value="task.start"/>
+        <rx-entry :label="tx['deadline.fields.due']" :value="task.due"/>
+        <rx-entry :label="tx['deadline.fields.owner']" :value="task.owner" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['deadline.fields.reviewer']" :value="reviewer_role" :placeholder="tx['none']"/>
+        <rx-entry rx-if="overdue_on" :label="tx['deadline.fields.overdue_on']" :value="overdue_on"/>
+        <rx-entry rx-if="waiting_reason" :label="tx['deadline.fields.wait_reason']" :value="waiting_reason"/>
+        <rx-entry rx-if="evidence" :label="tx['deadline.fields.evidence']" :value="evidence"/>
+        <rx-entry rx-if="closed_reason" :label="tx['deadline.fields.reason']" :value="closed_reason"/>
+        <rx-entry :label="tx['deadline.fields.description']" :value="description" span="full" :placeholder="tx['none']"/>
+      </rx-infolist>
+    </rx-card>
+  </rx-stack>
+</rx-page>

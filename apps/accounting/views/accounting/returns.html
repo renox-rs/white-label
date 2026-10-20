@@ -1,0 +1,28 @@
+{#- accounting: the returns, newest first, with their client, type, period,
+    due date, version and status, and the action that opens one. Replace it
+    with resources/views/accounting/returns.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['returns.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['returns.title']" :subtitle="tx['returns.subtitle']">
+      <template rx-if="can_create">
+        <rx-action-sheet id="return-new" :label="tx['returns.new']" :action="route('accounting.return_create')"
+                         :title="tx['returns.new']" :description="tx['returns.new_description']" :submit-label="tx['returns.new']" icon="plus">
+          <rx-input name="engagement" :label="tx['returns.engagement_number']" id="return-new-engagement" required/>
+          <rx-select name="return_type" :label="tx['returns.kind']" :options="types" :selected="'vat'" id="return-new-type"/>
+          <rx-input name="period_end" type="date" :label="tx['returns.period']" id="return-new-period" required/>
+          <rx-input name="due_date" type="date" :label="tx['returns.due']" id="return-new-due" required/>
+        </rx-action-sheet>
+      </template>
+    </rx-page-header>
+    <rx-table :rows="returns" as="row" :key="row.id" :caption="tx['returns.title']" card>
+      <rx-column :label="tx['returns.number']"><a href="{{ route('accounting.return', row.id) }}">{{ row.number }}</a></rx-column>
+      <rx-column :label="tx['returns.client']">{{ row.client }}</rx-column>
+      <rx-column :label="tx['returns.kind']" hide-narrow>{{ row.kind }}</rx-column>
+      <rx-column :label="tx['returns.period']" hide-narrow>{{ row.period }}</rx-column>
+      <rx-column :label="tx['returns.due']">{{ row.due }}</rx-column>
+      <rx-column :label="tx['returns.version']" hide-narrow>{{ row.version }}</rx-column>
+      <rx-column :label="tx['fields.status']"><rx-badge :kind="row.status_kind" :text="row.status"/></rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['returns.empty']" icon="file-text"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

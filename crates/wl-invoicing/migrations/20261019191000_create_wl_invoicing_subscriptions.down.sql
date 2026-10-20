@@ -1,0 +1,10 @@
+DROP INDEX IF EXISTS "wl_invoicing_subscription_cycles_invoice_id";
+DROP INDEX IF EXISTS "wl_invoicing_subscription_cycles_period";
+DROP TABLE IF EXISTS "wl_invoicing_subscription_cycles";
+DROP INDEX IF EXISTS "wl_invoicing_subscription_pauses_open";
+DROP INDEX IF EXISTS "wl_invoicing_subscription_pauses_subscription_id";
+DROP TABLE IF EXISTS "wl_invoicing_subscription_pauses";
+DROP INDEX IF EXISTS "wl_invoicing_subscriptions_source";
+DROP INDEX IF EXISTS "wl_invoicing_subscriptions_party_id";
+DROP INDEX IF EXISTS "wl_invoicing_subscriptions_status";
+DROP TABLE IF EXISTS "wl_invoicing_subscriptions";

@@ -1,0 +1,21 @@
+{#- accounting: a KPI pack in the portal: the KPIs and the commentary of a
+    published pack, and "being revised" while a newer draft exists. Replace it
+    with resources/views/accounting/portal_kpi_pack.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="number">
+  <rx-stack>
+    <rx-page-header :title="number" :subtitle="period"/>
+    <rx-alert rx-if="being_revised" kind="info" :message="tx['kpi.being_revised']"/>
+    <rx-card :title="tx['kpi.details']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['kpi.period']" :value="period"/>
+        <rx-entry :label="tx['kpi.version']" :value="version"/>
+        <rx-entry :label="tx['kpi.published_on']" :value="published_on"/>
+        <rx-entry :label="tx['kpi.commentary']" :value="commentary"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-table :rows="kpis" as="row" :key="row.label" :caption="tx['kpi.kpis']" card>
+      <rx-column :label="tx['kpi.kpi']">{{ row.label }}</rx-column>
+      <rx-column :label="tx['kpi.value']">{{ row.value }}</rx-column>
+    </rx-table>
+  </rx-stack>
+</rx-page>

@@ -1,0 +1,23 @@
+{#- wl-ticketing: the deadline tasks of an agreement or an owner, or the
+    open ones, by due date, with their status, the held flag (no reason)
+    and the late badge. Replace it with
+    resources/views/wl-ticketing/deadline_tasks.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['deadline.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['deadline.title']" :subtitle="subtitle"/>
+    <rx-table :rows="tasks" as="task" :key="task.id" :caption="tx['deadline.title']" card>
+      <rx-column :label="tx['deadline.fields.title']"><a href="{{ route('wl_ticketing.deadline_task', task.id) }}">{{ task.title }}</a></rx-column>
+      <rx-column :label="tx['deadline.fields.source']" hide-narrow>{{ task.source }}</rx-column>
+      <rx-column :label="tx['deadline.fields.due']">{{ task.due }}</rx-column>
+      <rx-column :label="tx['deadline.fields.status']">
+        <rx-row>
+          <rx-badge :kind="task.status_kind" :text="task.status"/>
+          <rx-badge rx-if="task.held" kind="info" :text="tx['task.held']"/>
+          <rx-badge rx-if="task.late" kind="warning" :text="task.late_label"/>
+        </rx-row>
+      </rx-column>
+      <rx-column :label="tx['deadline.fields.owner']" hide-narrow>{{ task.owner }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['deadline.empty']" icon="calendar-check"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

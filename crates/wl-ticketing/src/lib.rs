@@ -12,6 +12,10 @@ pub mod contract;
 pub mod contract_end;
 mod contract_machine;
 pub mod contract_pages;
+pub mod deadline;
+pub mod deadline_machine;
+pub mod deadline_pages;
+pub mod deadlines;
 pub mod flag_pages;
 pub mod flags;
 pub mod job_cancel;
@@ -43,6 +47,8 @@ pub use charge::{ChargeInput, ChargeLine};
 pub use comments::{Comment, CommentVisibility};
 pub use config::{Category, CustomField, FieldKind, HoldReason, InvoiceOn, SlaPolicy, SlaTarget};
 pub use contract::{ContractStatus, Coverage, NewContract, ServiceContract, ServiceContracts};
+pub use deadline::{DeadlineTask, TaskSource};
+pub use deadlines::Deadlines;
 pub use flags::ComplianceFlag;
 pub use no_show::NoShow;
 pub use open::Tickets;
@@ -95,6 +101,14 @@ const VIEWS: &[(&str, &str)] = &[
         "wl-ticketing/_comments.html",
         include_str!("../views/wl-ticketing/_comments.html"),
     ),
+    (
+        "wl-ticketing/deadline_tasks.html",
+        include_str!("../views/wl-ticketing/deadline_tasks.html"),
+    ),
+    (
+        "wl-ticketing/deadline_task.html",
+        include_str!("../views/wl-ticketing/deadline_task.html"),
+    ),
 ];
 
 /// The module's permissions (wl-ticketing §6).
@@ -118,6 +132,15 @@ pub mod permissions {
     pub const SERVICE_CONTRACTS_MANAGE: &str = "service_contracts.manage";
     /// See and manage maintenance plans.
     pub const MAINTENANCE_PLANS_MANAGE: &str = "maintenance_plans.manage";
+    /// See deadline tasks (§4.4).
+    pub const TASKS_VIEW: &str = "tasks.view";
+    /// Work deadline tasks: start, wait, unblock, submit for review and
+    /// complete one without a reviewer.
+    pub const TASKS_WORK: &str = "tasks.work";
+    /// Review deadline tasks: send back or complete one in review.
+    pub const TASKS_REVIEW: &str = "tasks.review";
+    /// Configure deadline tasks, waive them and close them as missed.
+    pub const TASKS_MANAGE: &str = "tasks.manage";
 }
 
 /// The ticketing module. The host adds it with
@@ -130,6 +153,7 @@ pub struct WlTicketing {
     auto_close_days: Option<i64>,
     no_show_hours: Option<i64>,
     visit_check: visit_check::Settings,
+    deadlines: deadlines::Settings,
 }
 
 impl WlTicketing {
@@ -191,6 +215,98 @@ impl WlTicketing {
         self
     }
 
+    /// Sets whether a started deadline task (`in_progress` or `waiting`) may
+    /// be waived (§7 *waive a started task*: on unless set; 04: off, a
+    /// started task that no longer applies is listed for the manager).
+    pub fn waive_started_tasks(mut self, allowed: bool) -> Self {
+        self.deadlines.waive_started = allowed;
+        self
+    }
+
+    /// Sets the role told of overdue deadline tasks and given the lists on
+    /// release and on the end of an agreement (the company administrators
+    /// unless set; 04: the manager).
+    pub fn task_manager_role(mut self, role: &str) -> Self {
+        self.deadlines.manager_role = role.to_owned();
+        self
+    }
+
+    /// Sets the vertical's label of the `waiting` state of a deadline task
+    /// (the module's own *Waiting* unless set; 04: *Waiting on client*).
+    pub fn waiting_label(mut self, label: &str) -> Self {
+        self.deadlines.waiting_label = Some(label.trim().to_owned());
+        self
+    }
+
+    /// Sets the rule id the nightly `mark_overdue` of deadline tasks runs
+    /// and is recorded under (`WRK.RUL.05` unless set; 04: `ACC.RUL.04`).
+    /// The vertical marks that id compliance-critical, so a failed or missed
+    /// run alerts its owner role.
+    ///
+    /// # Panics
+    ///
+    /// For a blank id: a programming error.
+    pub fn overdue_rule_id(mut self, rule: &str) -> Self {
+        assert!(!rule.trim().is_empty(), "the overdue rule needs an id");
+        self.deadlines.overdue_rule = rule.trim().to_owned();
+        self
+    }
+
+    /// Adds a role told when a deadline task goes overdue, besides its
+    /// owners and the task manager role (holders in the source's scope; none
+    /// unless set; 04 `ACC.RUL.04`: the partner).
+    pub fn task_overdue_role(mut self, role: &str) -> Self {
+        if !self.deadlines.overdue_roles.iter().any(|r| r == role) {
+            self.deadlines.overdue_roles.push(role.to_owned());
+        }
+        self
+    }
+
+    /// Sets the days before a deadline task's due date its owner (and, for a
+    /// task that needs client input, the client) is reminded (none unless
+    /// set; 04 `ACC.RUL.01`: 30, 14, 7 and 3).
+    ///
+    /// # Panics
+    ///
+    /// For a negative day: a programming error.
+    pub fn task_reminder_days(mut self, days: &[i64]) -> Self {
+        assert!(
+            days.iter().all(|d| *d >= 0),
+            "reminder days are not negative"
+        );
+        self.deadlines.reminder_days = days.to_vec();
+        self
+    }
+
+    /// Adds the reason `code` to the list `close_missed` takes from (§4.4;
+    /// any reason text while the list is empty; 04 §7.1: its four reasons);
+    /// `name` is its English name, stored as the task's reason. Adding a
+    /// code that exists replaces it.
+    pub fn missed_reason(mut self, code: &str, name: &str) -> Self {
+        self.add_missed_reason(code, name, false);
+        self
+    }
+
+    /// Like [`missed_reason`](Self::missed_reason), but closing with this
+    /// reason needs a text, stored as "name: text" (*other*).
+    pub fn missed_reason_with_text(mut self, code: &str, name: &str) -> Self {
+        self.add_missed_reason(code, name, true);
+        self
+    }
+
+    fn add_missed_reason(&mut self, code: &str, name: &str, needs_text: bool) {
+        let reason = deadlines::MissedReason {
+            code: code.trim().to_owned(),
+            name: name.trim().to_owned(),
+            needs_text,
+        };
+        let reasons = &mut self.deadlines.missed_reasons;
+        match reasons.iter_mut().find(|r| r.code == reason.code) {
+            Some(found) => *found = reason,
+            None => reasons.push(reason),
+        }
+    }
+
     /// Adds the reassignment reason `code` (a vertical's own, besides the
     /// five §7 defaults); `name` is its English name. Adding a code that
     /// exists replaces it.
@@ -233,6 +349,7 @@ impl Module for WlTicketing {
             .merge(category_pages::routes())
             .merge(flag_pages::routes())
             .merge(contract_pages::routes())
+            .merge(deadline_pages::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -245,7 +362,9 @@ impl Module for WlTicketing {
             .view_data::<pages::ShowPage>()
             .view_data::<category_pages::CategoriesPage>()
             .view_data::<flag_pages::FlagsPage>()
-            .view_data::<contract_pages::ContractPage>();
+            .view_data::<contract_pages::ContractPage>()
+            .view_data::<deadline_pages::TasksPage>()
+            .view_data::<deadline_pages::TaskPage>();
         app.templates(|env| {
             for (name, source) in VIEWS {
                 // The app's own file of that name wins.
@@ -281,6 +400,14 @@ impl Module for WlTicketing {
                 .order(56)
                 .permission(permissions::VIEW),
         );
+        app.nav(
+            "app",
+            NavLink::route("wl_ticketing.deadline_tasks", "nav.deadline_tasks")
+                .icon("calendar-check")
+                .group("nav.app")
+                .order(57)
+                .permission(permissions::TASKS_VIEW),
+        );
         app.model::<SlaPolicy>()
             .model::<SlaTarget>()
             .model::<HoldReason>()
@@ -293,11 +420,14 @@ impl Module for WlTicketing {
             .model::<ServiceContract>()
             .model::<Coverage>()
             .model::<MaintenancePlan>()
-            .model::<NoShow>();
+            .model::<NoShow>()
+            .model::<DeadlineTask>()
+            .model::<TaskSource>();
         // `rnx state:diagram Ticket` and the admin panel find the machine.
         renox::state_machine::register::<Ticket>();
         renox::state_machine::register::<ServiceContract>();
         renox::state_machine::register::<MaintenancePlan>();
+        renox::state_machine::register::<DeadlineTask>();
         // `TicketClosed` after a `confirm` or `close` commits.
         work::register_events(app);
         // The invoice draft of a chargeable ticket, after `resolve` or at
@@ -344,6 +474,12 @@ impl Module for WlTicketing {
             self.no_show_hours.unwrap_or(no_show::DEFAULT_HOURS),
         ));
         no_show::register(app);
+        // Deadline tasks (§4.4): the next occurrence, events and notices after
+        // each transition, `WRK.RUL.05` and `WRK.RUL.06`, and the kernel's
+        // `DeadlineTasks` for the verticals.
+        app.provide(self.deadlines.clone());
+        deadlines::register(app);
+        wl_kernel::deadlines::provide_deadline_tasks(app, Deadlines);
         // The seeded defaults keep the client's changes.
         app.command(
             "ticketing:install",

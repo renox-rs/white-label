@@ -804,6 +804,18 @@ pub trait Invoicer: Send + Sync + 'static {
         Box::pin(async { Ok(Vec::new()) })
     }
 
+    /// The `overdue` invoices of `party` with a balance, oldest first: what
+    /// a vertical shows before it resumes a service suspended for
+    /// non-payment (04 engagement `resume`). The default has none (invoicing
+    /// is not enabled).
+    fn overdue_of<'a>(
+        &'a self,
+        _db: &'a Db,
+        _party: PartyId,
+    ) -> InvoiceFuture<'a, Vec<InvoiceSummary>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
     /// Flags an issued, partly paid or overdue invoice as disputed and
     /// returns the dispute's id. The flag is not a state change. The default
     /// refuses (422): invoicing is not enabled.

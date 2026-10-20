@@ -1,0 +1,22 @@
+{#- accounting: the engagement letter in the portal: what the client approver
+    reads and the button Sign. Replace it with
+    resources/views/accounting/portal_letter.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="tx['letters.title']">
+  <rx-stack>
+    <rx-page-header :title="tx['letters.title']" :subtitle="number">
+      <template rx-if="can_sign">
+        <rx-confirm :id="'portal-letter-sign-' ~ id" :label="tx['letters.sign']" :action="route('accounting.portal_letter_sign', id)" method="POST"
+                    :title="tx['letters.sign']" :message="tx['letters.sign_message']" :confirm-label="tx['letters.sign']" :cancel-label="tx['button_cancel']" icon="signature"/>
+      </template>
+    </rx-page-header>
+    <rx-card :title="tx['letters.title']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['engagements.number']" :value="number"/>
+        <rx-entry :label="tx['engagements.services']" :value="title"/>
+        <rx-entry :label="tx['letters.version']" :value="version"/>
+        <rx-entry :label="tx['letters.sent_on_label']" :value="sent_on"/>
+        <rx-entry :label="tx['fields.status']" :value="state"/>
+      </rx-infolist>
+    </rx-card>
+  </rx-stack>
+</rx-page>

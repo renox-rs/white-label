@@ -1954,6 +1954,212 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_invoicing.budget_variance.body",
         "In {{ month }} {{ entity }} has {{ actual }} of actual in {{ category }} against a budget of {{ budget }} ({{ percent }} used). See the report: {{ link }}",
     ),
+    ("wl_invoicing.subscription.title", "Subscriptions"),
+    (
+        "wl_invoicing.subscription.subtitle",
+        "Recurring plans billed every cycle",
+    ),
+    ("wl_invoicing.subscription.empty", "No subscriptions yet"),
+    ("wl_invoicing.subscription.fields.plan", "Plan"),
+    ("wl_invoicing.subscription.fields.party", "Party"),
+    ("wl_invoicing.subscription.fields.source", "Agreement"),
+    ("wl_invoicing.subscription.fields.status", "Status"),
+    ("wl_invoicing.subscription.fields.next_cycle", "Next cycle"),
+    ("wl_invoicing.subscription.fields.price", "Price per cycle"),
+    ("wl_invoicing.subscription.fields.cycle", "Cycle"),
+    ("wl_invoicing.subscription.fields.start", "Start"),
+    ("wl_invoicing.subscription.fields.end", "End"),
+    (
+        "wl_invoicing.subscription.fields.notice_days",
+        "Notice (days)",
+    ),
+    (
+        "wl_invoicing.subscription.fields.pause_reason",
+        "Pause reason",
+    ),
+    (
+        "wl_invoicing.subscription.fields.cancelled_on",
+        "Cancelled on",
+    ),
+    (
+        "wl_invoicing.subscription.fields.cancel_on",
+        "Ends on (notice)",
+    ),
+    ("wl_invoicing.subscription.sections.summary", "Terms"),
+    ("wl_invoicing.subscription.sections.causes", "Pause causes"),
+    ("wl_invoicing.subscription.sections.cycles", "Cycles"),
+    ("wl_invoicing.subscription.causes.empty", "Not paused"),
+    (
+        "wl_invoicing.subscription.cycles.empty",
+        "No cycle billed yet",
+    ),
+    ("wl_invoicing.subscription.columns.cause", "Cause"),
+    ("wl_invoicing.subscription.columns.reason", "Reason"),
+    ("wl_invoicing.subscription.columns.since", "Since"),
+    ("wl_invoicing.subscription.columns.until", "Until"),
+    ("wl_invoicing.subscription.columns.period", "Period"),
+    ("wl_invoicing.subscription.columns.invoice", "Invoice"),
+    (
+        "wl_invoicing.subscription.columns.invoice_status",
+        "Invoice status",
+    ),
+    ("wl_invoicing.subscription.columns.balance", "Balance"),
+    ("wl_invoicing.subscription.status.active", "Active"),
+    ("wl_invoicing.subscription.status.past_due", "Past due"),
+    ("wl_invoicing.subscription.status.paused", "Paused"),
+    ("wl_invoicing.subscription.status.suspended", "Suspended"),
+    ("wl_invoicing.subscription.status.cancelled", "Cancelled"),
+    ("wl_invoicing.subscription.cycle.week", "Weekly"),
+    ("wl_invoicing.subscription.cycle.month", "Monthly"),
+    ("wl_invoicing.subscription.cycle.quarter", "Quarterly"),
+    ("wl_invoicing.subscription.cycle.year", "Yearly"),
+    ("wl_invoicing.subscription.cause.user", "Paused by a user"),
+    (
+        "wl_invoicing.subscription.cause.agreement",
+        "Agreement paused",
+    ),
+    (
+        "wl_invoicing.subscription.cause.party_block",
+        "Party on hold",
+    ),
+    (
+        "wl_invoicing.subscription.cancel.action",
+        "Cancel subscription",
+    ),
+    (
+        "wl_invoicing.subscription.cancel.title",
+        "Cancel this subscription",
+    ),
+    (
+        "wl_invoicing.subscription.cancel.submit",
+        "Cancel subscription",
+    ),
+    ("wl_invoicing.subscription.cancel.on", "Cancel on"),
+    (
+        "wl_invoicing.subscription.cancel.on_hint",
+        "YYYY-MM-DD; empty is today. The day counts as used.",
+    ),
+    ("wl_invoicing.subscription.cancel.reason", "Reason"),
+    (
+        "wl_invoicing.subscription.cancel.done",
+        "The subscription is cancelled.",
+    ),
+    (
+        "wl_invoicing.subscription.cancel.scheduled",
+        "The subscription ends when its notice period ends.",
+    ),
+    (
+        "wl_invoicing.subscription.cancel.bad_date",
+        "Give the day as YYYY-MM-DD.",
+    ),
+    (
+        "wl_invoicing.subscription.cancel.prorated",
+        "The unused days of the billed cycle are credited (pro rata on cancel).",
+    ),
+    (
+        "wl_invoicing.subscription.cancel.not_prorated",
+        "No final invoice or credit is made: pro rata on cancel is off.",
+    ),
+    (
+        "wl_invoicing.subscription.cancel_reason.user",
+        "Cancelled by a user",
+    ),
+    (
+        "wl_invoicing.subscription.cancel_reason.party",
+        "Cancelled by the party",
+    ),
+    (
+        "wl_invoicing.subscription.cancel_reason.agreement",
+        "Agreement ended",
+    ),
+    (
+        "wl_invoicing.subscription.cancel_reason.notice_ended",
+        "Notice period ended",
+    ),
+    (
+        "wl_invoicing.subscription.pause_reason.agreement",
+        "Agreement paused",
+    ),
+    (
+        "wl_invoicing.subscription.problem.nothing_unpaid",
+        "No cycle invoice is overdue or reopened.",
+    ),
+    (
+        "wl_invoicing.subscription.problem.still_unpaid",
+        "A cycle invoice is still unpaid.",
+    ),
+    (
+        "wl_invoicing.subscription.problem.suspension_off",
+        "Suspension is off for this client.",
+    ),
+    (
+        "wl_invoicing.subscription.problem.retries_left",
+        "Retries or reminders are still to come.",
+    ),
+    (
+        "wl_invoicing.subscription.problem.only_disputed",
+        "Only disputed cycle invoices are overdue.",
+    ),
+    (
+        "wl_invoicing.subscription.problem.no_reason",
+        "Give a reason for the pause.",
+    ),
+    (
+        "wl_invoicing.subscription.problem.no_until",
+        "A user pause needs the day it ends.",
+    ),
+    (
+        "wl_invoicing.subscription.problem.allowance",
+        "The pause allowance for the year would be exceeded.",
+    ),
+    (
+        "wl_invoicing.subscription.problem.cause_left",
+        "Another pause cause is still open.",
+    ),
+    (
+        "wl_invoicing.subscription.problem.party_blocked",
+        "The party is still on hold.",
+    ),
+    (
+        "wl_invoicing.subscription.problem.notice",
+        "The notice period has not ended.",
+    ),
+    (
+        "wl_invoicing.subscription.credit_reason",
+        "Subscription cancelled: {{ days }} of {{ total }} days unused ({{ from }} to {{ to }})",
+    ),
+    (
+        "wl_invoicing.subscription.cycle_line",
+        "{{ plan }}, {{ from }} to {{ to }}",
+    ),
+    (
+        "wl_invoicing.subscription.final_line",
+        "{{ plan }}, {{ from }} to {{ to }} ({{ days }} of {{ total }} days)",
+    ),
+    (
+        "wl_invoicing.subscription.past_due.subject",
+        "Your subscription payment is overdue",
+    ),
+    (
+        "wl_invoicing.subscription.past_due.body",
+        "Your {{ plan }} subscription has an unpaid invoice. Please pay it to keep the service. See: {{ link }}",
+    ),
+    (
+        "wl_invoicing.subscription.retry.subject",
+        "Reminder: your subscription payment is overdue",
+    ),
+    (
+        "wl_invoicing.subscription.retry.body",
+        "Your {{ plan }} subscription is still unpaid (reminder {{ attempt }}). Please pay to keep the service. See: {{ link }}",
+    ),
+    (
+        "wl_invoicing.subscription.paused.subject",
+        "Your subscription is paused",
+    ),
+    (
+        "wl_invoicing.subscription.paused.body",
+        "Your {{ plan }} subscription is paused; it is not billed while paused. See: {{ link }}",
+    ),
 ];
 
 /// The English text for `key`, or `key` itself when the package has none.

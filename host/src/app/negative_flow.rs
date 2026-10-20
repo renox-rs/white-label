@@ -82,6 +82,12 @@ pub fn invoicing_for(client_app: &str, entities: &[String]) -> WlInvoicing {
             }
             module
         }
+        // The retainer of an engagement bills itself: its cycle invoices
+        // are issued at once, so that ending the engagement can credit the
+        // cycle already invoiced in advance (BL-ACC-06).
+        // 04 `FIN.ACL.15`, `FIN.RUL.15`, `FIN.RUL.23`, `FIN.RUL.24`, `FIN.ACL.21`
+        // (BL-ACC-24): see [`super::accounting_seed::invoicing`].
+        "accounting" => super::accounting_seed::invoicing(module, entities),
         _ => module,
     }
 }
@@ -137,6 +143,9 @@ pub fn payments_for(client_app: &str) -> WlPayments {
             // The property manager is told of a bounce and at the reminder,
             // and decides beside the accountant (items 10 and 11).
             .cheque_manager(PROPERTY_MANAGER, true),
+        // 04: a bounced cheque adds no fee; the billing role decides with the
+        // engagement manager (BL-ACC-24).
+        "accounting" => super::accounting_seed::payments(module),
         _ => module,
     }
 }

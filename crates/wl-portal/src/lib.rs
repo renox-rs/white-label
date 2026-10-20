@@ -9,6 +9,7 @@ pub mod links;
 pub mod refusals;
 pub mod sections;
 mod texts;
+pub mod users;
 
 use renox::db::Migration;
 use renox::nav::NavLink;
@@ -81,6 +82,8 @@ impl Module for WlPortal {
         app.view_data::<refusals::RefusalLogPage>();
         app.view_data::<sections::SectionPage>();
         app.view_data::<links::LinkPage>();
+        // Who acts for a party, for the verticals' notices (kernel `portal`).
+        wl_kernel::portal::provide_portal_users(app, users::GrantUsers);
         app.templates(|env| {
             for (name, source) in VIEWS {
                 // The app's own file of that name wins.

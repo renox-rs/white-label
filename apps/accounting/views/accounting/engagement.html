@@ -1,0 +1,183 @@
+{#- accounting: an engagement: its client, services, letter, tax profile and
+    neutral reason, its history, the neutral templates sent to the client, and
+    the actions the user may run (record the signed letter, activate, decline,
+    suspend, resume, end; the MLRO also tells the client with the neutral
+    template and opens the client's Block record), and the statutory deadline
+    notices (ACC.RUL.09) with the partner's or MLRO's Send of a prepared one. Replace it with
+    resources/views/accounting/engagement.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="engagement.number">
+  <rx-stack>
+    <rx-page-header :title="engagement.number" :subtitle="engagement.client" :back="route('accounting.engagements')" :back-label="tx['engagements.title']"
+                    :badge="status" :badge-kind="status_kind">
+      <template rx-if="can_letter">
+        <rx-action-sheet :id="'engagement-letter-' ~ engagement.id" :label="tx['engagements.record_letter']" :action="route('accounting.engagement_letter', engagement.id)"
+                         :title="tx['engagements.record_letter']" :description="tx['engagements.record_letter_description']" :submit-label="tx['engagements.record_letter']" icon="file-text">
+          <rx-input name="signed_on" type="date" :label="tx['engagements.signed_on']" :value="today" :id="'engagement-letter-on-' ~ engagement.id" required/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_send_letter">
+        <rx-confirm :id="'engagement-letter-send-' ~ engagement.id" :label="tx['letters.send']" :action="route('accounting.engagement_letter_send', engagement.id)" method="POST"
+                    :title="tx['letters.send']" :message="tx['letters.send_message']" :confirm-label="tx['letters.send']" :cancel-label="tx['button_cancel']" icon="send"/>
+      </template>
+      <template rx-if="can_raise_aml">
+        <rx-action-sheet :id="'engagement-aml-' ~ engagement.id" :label="tx['aml.raise']" :action="route('accounting.engagement_aml_concern', engagement.id)"
+                         :title="tx['aml.raise']" :description="tx['aml.raise_description']" :submit-label="tx['aml.raise']" icon="shield-alert">
+          <rx-textarea name="facts" :label="tx['aml.facts']" :id="'engagement-aml-facts-' ~ engagement.id" required/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_activate">
+        <rx-confirm :id="'engagement-activate-' ~ engagement.id" :label="tx['engagements.activate']" :action="route('accounting.engagement_activate', engagement.id)" method="POST"
+                    :title="tx['engagements.activate']" :message="tx['engagements.activate_message']" :confirm-label="tx['engagements.activate']" :cancel-label="tx['button_cancel']" icon="check"/>
+      </template>
+      <template rx-if="can_decline">
+        <rx-action-sheet :id="'engagement-decline-' ~ engagement.id" :label="tx['engagements.decline']" :action="route('accounting.engagement_decline', engagement.id)"
+                         :title="tx['engagements.decline']" :description="tx['engagements.reason_description']" :submit-label="tx['engagements.decline']" icon="x">
+          <rx-select name="reason" :label="tx['engagements.reason']" :options="decline_reasons" :selected="''" :id="'engagement-decline-reason-' ~ engagement.id"/>
+          <rx-textarea name="note" :label="tx['engagements.decline_note']" :id="'engagement-decline-note-' ~ engagement.id"/>
+          <rx-select name="template" :label="tx['engagements.decline_template']" :options="decline_templates" :selected="''" :id="'engagement-decline-template-' ~ engagement.id"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_suspend">
+        <rx-action-sheet :id="'engagement-suspend-' ~ engagement.id" :label="tx['engagements.suspend']" :action="route('accounting.engagement_suspend', engagement.id)"
+                         :title="tx['engagements.suspend']" :description="tx['engagements.reason_description']" :submit-label="tx['engagements.suspend']" icon="clock">
+          <rx-select name="reason" :label="tx['engagements.reason']" :options="suspend_reasons" :selected="''" :id="'engagement-suspend-reason-' ~ engagement.id"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_resume">
+        <rx-action-sheet :id="'engagement-resume-' ~ engagement.id" :label="tx['engagements.resume']" :action="route('accounting.engagement_resume', engagement.id)"
+                         :title="tx['engagements.resume']" :description="tx['engagements.resume_message']" :submit-label="tx['engagements.resume']" icon="refresh-cw">
+          <rx-textarea name="note" :label="tx['engagements.resume_note']" :id="'engagement-resume-note-' ~ engagement.id" required/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_end">
+        <rx-action-sheet :id="'engagement-end-' ~ engagement.id" :label="tx['engagements.end']" :action="route('accounting.engagement_end', engagement.id)"
+                         :title="tx['engagements.end']" :description="tx['engagements.reason_description']" :submit-label="tx['engagements.end']" icon="circle-x">
+          <rx-select name="reason" :label="tx['engagements.reason']" :options="end_reasons" :selected="''" :id="'engagement-end-reason-' ~ engagement.id"/>
+          <rx-input name="end_date" type="date" :label="tx['engagements.end_date']" :id="'engagement-end-date-' ~ engagement.id"/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="can_unschedule">
+        <rx-confirm :id="'engagement-end-remove-' ~ engagement.id" :label="tx['engagements.unschedule_end']" :action="route('accounting.engagement_unschedule_end', engagement.id)" method="POST"
+                    :title="tx['engagements.unschedule_end']" :message="tx['engagements.unschedule_end_message']" :confirm-label="tx['engagements.unschedule_end']" :cancel-label="tx['button_cancel']" icon="calendar-x"/>
+      </template>
+      <template rx-if="can_confirm_nothing">
+        <rx-confirm :id="'engagement-nothing-to-bill-' ~ engagement.id" :label="tx['engagements.nothing_to_bill']" :action="route('accounting.engagement_nothing_to_bill', engagement.id)" method="POST"
+                    :title="tx['engagements.nothing_to_bill']" :message="tx['engagements.nothing_to_bill_message']" :confirm-label="tx['engagements.nothing_to_bill']" :cancel-label="tx['button_cancel']" icon="receipt"/>
+      </template>
+      <template rx-if="can_write_off">
+        <rx-action-sheet :id="'engagement-wip-write-off-' ~ engagement.id" :label="tx['wip.write_off']" :action="route('accounting.engagement_wip_write_off', engagement.id)"
+                         :title="tx['wip.write_off']" :description="tx['wip.write_off_description']" :submit-label="tx['wip.write_off']" icon="eraser">
+          <rx-input name="amount" :label="tx['wip.amount']" :id="'engagement-wip-amount-' ~ engagement.id" required/>
+          <rx-textarea name="reason" :label="tx['wip.reason']" :id="'engagement-wip-reason-' ~ engagement.id" required/>
+        </rx-action-sheet>
+      </template>
+      <template rx-if="send_notice_id">
+        <rx-confirm :id="'engagement-deadline-notice-' ~ engagement.id" :label="tx['deadline_notices.send']" :action="route('accounting.deadline_notice_send', send_notice_id)" method="POST"
+                    :title="tx['deadline_notices.send']" :message="tx['deadline_notices.send_message']" :confirm-label="tx['deadline_notices.send']" :cancel-label="tx['button_cancel']" icon="mail"/>
+      </template>
+      <template rx-if="can_notify">
+        <rx-confirm :id="'engagement-notice-' ~ engagement.id" :label="tx['client_notices.send']" :action="route('accounting.engagement_client_notice', engagement.id)" method="POST"
+                    :title="tx['client_notices.send']" :message="notice_template_text" :confirm-label="tx['client_notices.send']" :cancel-label="tx['button_cancel']" icon="mail"
+                    :fields="{'template': notice_template}"/>
+      </template>
+    </rx-page-header>
+    <rx-alert rx-if="resume_needs_approval and can_resume" kind="info" :message="tx['engagements.resume_needs_approval']"/>
+    <rx-alert rx-if="scheduled_end" kind="warning" :message="scheduled_end"/>
+    <template rx-if="can_end">
+      <rx-table :rows="end_problems" as="row" :key="row" :caption="tx['engagements.end_checklist']" card>
+        <rx-column :label="tx['engagements.end_open_item']">{{ row }}</rx-column>
+        <rx-slot name="empty"><rx-empty :title="tx['engagements.end_checklist_clear']" icon="check"/></rx-slot>
+      </rx-table>
+      <rx-card :title="tx['wip.title']">
+        <rx-infolist columns="2">
+          <rx-entry :label="tx['wip.unbilled']" :value="unbilled"/>
+        </rx-infolist>
+      </rx-card>
+    </template>
+    <rx-table :rows="returns" as="row" :key="row.id" :caption="tx['returns.title']" card>
+      <rx-column :label="tx['returns.number']"><a href="{{ route('accounting.return', row.id) }}">{{ row.number }}</a></rx-column>
+      <rx-column :label="tx['returns.kind']">{{ row.kind }}</rx-column>
+      <rx-column :label="tx['returns.period']" hide-narrow>{{ row.period }}</rx-column>
+      <rx-column :label="tx['returns.due']">{{ row.due }}</rx-column>
+      <rx-column :label="tx['fields.status']"><rx-badge :kind="row.status_kind" :text="row.status"/></rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['returns.empty']" icon="file-text"/></rx-slot>
+    </rx-table>
+    <rx-table :rows="write_offs" as="row" :key="row.amount ~ row.reason ~ row.status" :caption="tx['wip.write_offs']" card>
+      <rx-column :label="tx['wip.amount_column']">{{ row.amount }}</rx-column>
+      <rx-column :label="tx['wip.reason']">{{ row.reason }}</rx-column>
+      <rx-column :label="tx['fields.status']">{{ row.status }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['wip.write_offs_empty']" icon="eraser"/></rx-slot>
+    </rx-table>
+    <template rx-if="show_overdue">
+      <rx-table :rows="overdue_invoices" as="row" :key="row.number" :caption="tx['engagements.overdue_invoices'] ~ ': ' ~ overdue_total" card>
+        <rx-column :label="tx['engagements.invoice_number']">{{ row.number }}</rx-column>
+        <rx-column :label="tx['engagements.invoice_due']">{{ row.due }}</rx-column>
+        <rx-column :label="tx['engagements.invoice_balance']">{{ row.balance }}</rx-column>
+        <rx-slot name="empty"><rx-empty :title="tx['engagements.overdue_empty']" icon="receipt"/></rx-slot>
+      </rx-table>
+    </template>
+    <template rx-if="block_record">
+      <a href="{{ block_record }}">{{ tx['engagements.block_record'] }}</a>
+    </template>
+    <rx-card :title="tx['engagements.details']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['engagements.client']" :value="engagement.client"/>
+        <rx-entry :label="tx['engagements.services']" :value="engagement.title"/>
+        <rx-entry :label="tx['engagements.fee_basis']" :value="engagement.fee_basis"/>
+        <rx-entry :label="tx['engagements.retainer_fee']" :value="engagement.retainer"/>
+        <rx-entry :label="tx['engagements.start']" :value="engagement.start" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['engagements.letter']" :value="engagement.letter"/>
+        <rx-entry :label="tx['engagements.tax_profile']" :value="engagement.tax_profile"/>
+        <rx-entry :label="tx['engagements.reason']" :value="engagement.reason" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['engagements.activated_on']" :value="engagement.activated" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['engagements.ended_on']" :value="engagement.ended" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['engagements.cdd']" :value="cdd_status" :placeholder="tx['none']"/>
+      </rx-infolist>
+      <template rx-if="cdd_id">
+        <a href="{{ route('accounting.cdd_file', cdd_id) }}">{{ tx['engagements.open_cdd'] }}</a>
+      </template>
+      <template rx-if="tax_profile_id">
+        <a href="{{ route('accounting.tax_profile', tax_profile_id) }}">{{ tx['engagements.tax_profile'] }}</a>
+      </template>
+    </rx-card>
+    <rx-table :rows="letters" as="row" :key="row.version" :caption="tx['letters.title']" card>
+      <rx-column :label="tx['letters.version']">{{ row.version }}</rx-column>
+      <rx-column :label="tx['letters.sent_on_label']">{{ row.sent_on }}</rx-column>
+      <rx-column :label="tx['fields.status']">{{ row.state }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['letters.empty']" icon="file-text"/></rx-slot>
+    </rx-table>
+    <rx-table :rows="notices" as="row" :key="row.at ~ row.template" :caption="tx['client_notices.title']" card>
+      <rx-column :label="tx['history.at']">{{ row.at }}</rx-column>
+      <rx-column :label="tx['client_notices.template']">{{ row.template }}</rx-column>
+      <rx-column :label="tx['history.by']" hide-narrow>{{ row.by }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['client_notices.empty']" icon="mail"/></rx-slot>
+    </rx-table>
+    <rx-table :rows="tasks" as="row" :key="row.title ~ row.due" :caption="tx['tasks.title']" card>
+      <rx-column :label="tx['tasks.task']">{{ row.title }}</rx-column>
+      <rx-column :label="tx['tasks.due']">{{ row.due }}</rx-column>
+      <rx-column :label="tx['fields.status']">{{ row.status }}</rx-column>
+      <rx-column :label="tx['tasks.held_column']">{{ row.held }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['tasks.empty']" icon="calendar"/></rx-slot>
+    </rx-table>
+    <rx-table :rows="deadline_notices" as="row" :key="row.on ~ row.cause ~ row.state" :caption="tx['deadline_notices.list']" card>
+      <rx-column :label="tx['deadline_notices.cause']">{{ row.cause }}</rx-column>
+      <rx-column :label="tx['history.at']">{{ row.on }}</rx-column>
+      <rx-column :label="tx['deadline_notices.deadlines']">{{ row.deadlines }}</rx-column>
+      <rx-column :label="tx['deadline_notices.state']">{{ row.state }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['deadline_notices.empty']" icon="calendar"/></rx-slot>
+    </rx-table>
+    <rx-table :rows="request_lists" as="row" :key="row.period" :caption="tx['request_lists.title']" card>
+      <rx-column :label="tx['request_lists.period']">{{ row.period }}</rx-column>
+      <rx-column :label="tx['request_lists.due']">{{ row.due }}</rx-column>
+      <rx-column :label="tx['fields.status']">{{ row.state }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['request_lists.empty']" icon="calendar"/></rx-slot>
+    </rx-table>
+    <rx-table :rows="history" as="row" :key="row.at ~ row.action" :caption="tx['history.title']" card>
+      <rx-column :label="tx['history.at']">{{ row.at }}</rx-column>
+      <rx-column :label="tx['history.action']">{{ row.action }}</rx-column>
+      <rx-column :label="tx['engagements.reason']">{{ row.reason }}</rx-column>
+      <rx-column :label="tx['history.by']" hide-narrow>{{ row.by }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['history.empty']" icon="history"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>

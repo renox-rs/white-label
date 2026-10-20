@@ -1,7 +1,9 @@
 //! The idempotent seeder with the §7 defaults (#146 A4, A6): the SLA policy
 //! `standard`, the hold reasons Parts, Access, Waiting on requester and
-//! Approval, and the categories `general` and `task`
-//! (the kernel's [`TASK_CATEGORY`], for staff tasks other modules open). The
+//! Approval, and the categories `general`, `task`
+//! (the kernel's [`TASK_CATEGORY`], for staff tasks other modules open) and
+//! the confidential `confidential_task` (staff tasks only
+//! `tickets.confidential.view` holders see). The
 //! platform categories other modules open tickets in for their negative flows
 //! are added when that module is on ([`PLATFORM_CATEGORIES`], #67 A6, #156):
 //! `billing_dispute` with `invoicing`, `labour_case` with `hr` and
@@ -28,7 +30,15 @@ pub const GENERAL_CATEGORY: &str = "general";
 pub const TASK_CATEGORY: &str = wl_kernel::tickets::TASK_CATEGORY;
 
 /// The seeded categories as (key, English name).
-pub const CATEGORIES: [(&str, &str); 2] = [(GENERAL_CATEGORY, "General"), (TASK_CATEGORY, "Task")];
+pub const CATEGORIES: [(&str, &str); 3] = [
+    (GENERAL_CATEGORY, "General"),
+    (TASK_CATEGORY, "Task"),
+    (CONFIDENTIAL_TASK_CATEGORY, "Confidential task"),
+];
+
+/// The key of the confidential category of staff tasks (an MLRO's task
+/// about a client): only `tickets.confidential.view` holders see its tickets.
+pub const CONFIDENTIAL_TASK_CATEGORY: &str = wl_kernel::tickets::CONFIDENTIAL_TASK_CATEGORY;
 
 /// The key of the category of invoice disputes, seeded when invoicing is on.
 pub const BILLING_DISPUTE_CATEGORY: &str = "billing_dispute";
@@ -279,7 +289,8 @@ pub async fn install_for(db: &Db, on: Enabled) -> Result<Installed> {
                     sla_policy_id: Some(policy.id),
                     requires_signoff: false,
                     active: true,
-                    platform: key == TASK_CATEGORY,
+                    platform: key == TASK_CATEGORY || key == CONFIDENTIAL_TASK_CATEGORY,
+                    confidential: key == CONFIDENTIAL_TASK_CATEGORY,
                     ..Category::default()
                 },
             )
@@ -390,7 +401,7 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(renamed.name_en, "Invoice query");
-        assert_eq!(Category::query().count(db).await.unwrap(), 3);
+        assert_eq!(Category::query().count(db).await.unwrap(), 4);
     }
 
     #[renox::test]
@@ -405,7 +416,7 @@ mod tests {
             Installed {
                 policies: 1,
                 hold_reasons: 4,
-                categories: 2
+                categories: 3
             }
         );
 
@@ -431,10 +442,15 @@ mod tests {
         assert_eq!(SlaPolicy::query().count(db).await.unwrap(), 1);
         assert_eq!(policy.targets(db).await.unwrap().len(), 4);
         assert_eq!(HoldReason::ordered(db).await.unwrap().len(), 4);
-        assert_eq!(Category::query().count(db).await.unwrap(), 2);
+        assert_eq!(Category::query().count(db).await.unwrap(), 3);
         let task = Category::by_key(db, TASK_CATEGORY).await.unwrap().unwrap();
         assert_eq!(task.default_priority, Priority::Normal);
-        assert!(task.active && !task.requires_signoff);
+        assert!(task.active && !task.requires_signoff && !task.confidential);
+        let secret = Category::by_key(db, CONFIDENTIAL_TASK_CATEGORY)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(secret.confidential && secret.platform && secret.active);
         let urgent = policy.target(db, Priority::Urgent).await.unwrap().unwrap();
         assert_eq!(urgent.response_minutes, 30);
         let approval = HoldReason::by_key(db, "approval").await.unwrap().unwrap();
