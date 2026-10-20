@@ -36,6 +36,14 @@ pub const DEFAULT_DISPUTE_RESPONSE_DAYS: i64 = 7;
 /// (§7): 2 allows one re-presentation.
 pub const DEFAULT_CHEQUE_MAX_PRESENTATIONS: i64 = 2;
 
+/// Hours after the end of a holder's period when `FIN.RUL.22` gives the
+/// manager the task to reach the holder (§7, N).
+pub const DEFAULT_CASH_ESCALATE_HOURS: i64 = 12;
+
+/// Hours after the end of a holder's period when `FIN.RUL.22` tells the
+/// company admin and asks the manager to count what was received (§7, M).
+pub const DEFAULT_CASH_ADMIN_HOURS: i64 = 48;
+
 /// The bank return reasons that still allow a criminal complaint (§7,
 /// `⚠ open: lawyer L-21`).
 pub const DEFAULT_CRIMINAL_GROUNDS: &[&str] = &[
@@ -107,6 +115,22 @@ pub struct PaymentsConfig {
     pub criminal_grounds: Vec<String>,
     /// The open amount a legal case needs to be above, in fils (§7: 0, any).
     pub legal_minimum_amount: i64,
+    /// Whether a cash shortage may be recovered by a salary deduction
+    /// (`FIN.ACL.19`, §7: off, recovery in cash only; `⚠ open: lawyer L-20`).
+    /// The code never decides it: only this setting does.
+    pub cash_salary_deduction: bool,
+    /// The cash shortage a user may write off without an approval, in fils
+    /// (`FIN.ACL.06`, §7: 0, always an approval; 03 sets AED 50).
+    pub cash_write_off_limit: i64,
+    /// Hours after the end of a holder's period that the manager gets the task
+    /// to reach the holder (`FIN.RUL.22`, N).
+    pub cash_escalate_hours: i64,
+    /// Hours after the end of the period that the company admin is told and
+    /// the manager counts what was received (`FIN.RUL.22`, M).
+    pub cash_admin_hours: i64,
+    /// The role of the manager of a holder who has none recorded (default
+    /// `finance_manager`; 03: the operations manager).
+    pub cash_manager_role: String,
 }
 
 impl PaymentsConfig {
@@ -146,6 +170,11 @@ impl Default for PaymentsConfig {
                 .map(|r| (*r).to_owned())
                 .collect(),
             legal_minimum_amount: 0,
+            cash_salary_deduction: false,
+            cash_write_off_limit: 0,
+            cash_escalate_hours: DEFAULT_CASH_ESCALATE_HOURS,
+            cash_admin_hours: DEFAULT_CASH_ADMIN_HOURS,
+            cash_manager_role: crate::followup::MANAGER_ROLE.to_owned(),
         }
     }
 }
