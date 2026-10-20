@@ -48,6 +48,11 @@ pub fn period_for(date: NaiveDate) -> (DateTime, DateTime) {
     (until - Duration::days(1), until)
 }
 
+/// Registers the digest's notification type, scheduled task and command.
+pub(crate) fn register(app: &mut renox::prelude::Registry) {
+    run::schedule(app);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -67,9 +72,4 @@ mod tests {
         assert_eq!(TASK_ZONE, "Asia/Dubai");
         assert_eq!(RULE, "PLT.RUL.06");
     }
-}
-
-/// Registers the digest's notification type, scheduled task and command.
-pub(crate) fn register(app: &mut renox::prelude::Registry) {
-    run::schedule(app);
 }

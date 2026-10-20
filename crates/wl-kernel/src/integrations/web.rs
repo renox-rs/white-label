@@ -73,7 +73,7 @@ pub async fn banner_for(db: &Db, screen: &str, lang: &Lang) -> Result<Option<Val
             })
         })
         .collect();
-    Ok((!banners.is_empty()).then(|| Value::Array(banners)))
+    Ok((!banners.is_empty()).then_some(Value::Array(banners)))
 }
 
 /// The label and colour of a status.

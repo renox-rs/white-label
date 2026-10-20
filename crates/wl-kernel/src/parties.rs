@@ -166,9 +166,10 @@ pub struct BillingIdentity {
     pub billing_address: Option<String>,
     /// The e-mail address invoices and notices go to.
     pub billing_email: Option<String>,
-    /// The recipient's e-invoicing identifier (Peppol participant ID, scheme
-    /// + identifier), when a company has one; `wl-invoicing` needs it before
-    /// it issues an invoice to a recipient in e-invoicing scope.
+    /// The recipient's e-invoicing identifier (Peppol participant ID: the
+    /// scheme and the identifier), when a company has one; `wl-invoicing`
+    /// needs it before it issues an invoice to a recipient in e-invoicing
+    /// scope.
     #[serde(default)]
     pub einvoice_recipient_id: Option<String>,
 }
