@@ -19,11 +19,16 @@ use wl_attendance::{
     AttendanceMethod, AttendanceRecord, AttendanceStatus, WlAttendance, WorkLocation,
 };
 use wl_kernel::attendance::{AttendanceFlagged, AttendanceRecorded};
+use wl_kernel::documents::{
+    BlockEntry, CheckOutcome, DocumentFuture, DocumentGuard, FlagFailure, RecordFlag, Validity,
+    provide_guard,
+};
 use wl_kernel::notify::{
     MessageId, Notifier, NotifyFuture, NotifyRecipient, NotifyRequest, provide_notifier,
 };
 use wl_kernel::workforce::{
-    EmployeeId, StaffProfile, Workforce, WorkforceFuture, provide_workforce,
+    EmployeeId, Qualifications, StaffProfile, Workforce, WorkforceFuture, provide_qualifications,
+    provide_workforce,
 };
 use wl_kernel::{BusinessCalendar, PartyId, Subject};
 
@@ -198,6 +203,262 @@ impl EntryHours for Entries {
     }
 }
 
+/// What the document desk holds for one subject and kind.
+#[derive(Clone, Default)]
+struct DocEntry {
+    /// The accepted document and its expiry date.
+    accepted: Option<(i64, Option<NaiveDate>)>,
+    /// A renewal waiting for review.
+    pending: Option<i64>,
+}
+
+/// The documents of the employees: `(subject, kind)` to what is held. Its
+/// `is_valid` follows `document_valid` (wl-documents §5.6): valid on or
+/// before the expiry date, a renewal that waits for review is no answer.
+#[derive(Clone, Default)]
+pub struct DocDesk(Arc<Mutex<BTreeMap<(String, String), DocEntry>>>);
+
+impl DocDesk {
+    /// `subject` has an accepted document `document` of `kind` that does not
+    /// expire.
+    pub fn accepted(&self, subject: &Subject, kind: &str, document: i64) {
+        self.accepted_until(subject, kind, document, None);
+    }
+
+    /// `subject` has an accepted document `document` of `kind`, valid
+    /// through `expires_on`; any renewal waiting is settled.
+    pub fn accepted_until(
+        &self,
+        subject: &Subject,
+        kind: &str,
+        document: i64,
+        expires_on: Option<NaiveDate>,
+    ) {
+        let mut all = self.0.lock().unwrap();
+        let entry = all
+            .entry((subject.to_string(), kind.to_owned()))
+            .or_default();
+        entry.accepted = Some((document, expires_on));
+        entry.pending = None;
+    }
+
+    /// A renewal `document` of `kind` was uploaded and waits for review.
+    pub fn pending_review(&self, subject: &Subject, kind: &str, document: i64) {
+        let mut all = self.0.lock().unwrap();
+        all.entry((subject.to_string(), kind.to_owned()))
+            .or_default()
+            .pending = Some(document);
+    }
+}
+
+impl DocumentGuard for DocDesk {
+    fn blocks_for<'a>(
+        &'a self,
+        _db: &'a Db,
+        _guarded: &'a str,
+    ) -> DocumentFuture<'a, Vec<BlockEntry>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
+    fn is_valid<'a>(
+        &'a self,
+        _db: &'a Db,
+        subject: &'a Subject,
+        kind: &'a str,
+        on_date: NaiveDate,
+    ) -> DocumentFuture<'a, Validity> {
+        Box::pin(async move {
+            let entry = self
+                .0
+                .lock()
+                .unwrap()
+                .get(&(subject.to_string(), kind.to_owned()))
+                .cloned()
+                .unwrap_or_default();
+            Ok(match entry {
+                DocEntry {
+                    accepted: Some((id, expires_on)),
+                    ..
+                } if expires_on.is_none_or(|day| day >= on_date) => Validity::Valid {
+                    document: Some(wl_kernel::DocumentId(id)),
+                    expires_on,
+                },
+                DocEntry {
+                    pending: Some(id),
+                    accepted,
+                    ..
+                } => Validity::Invalid {
+                    reason: wl_kernel::InvalidReason::PendingReview,
+                    document: Some(wl_kernel::DocumentId(id)),
+                    expired_on: accepted.and_then(|(_, expires_on)| expires_on),
+                    pending: Some(wl_kernel::documents::PendingRenewal {
+                        document: wl_kernel::DocumentId(id),
+                        submitted_on: on_date,
+                    }),
+                },
+                DocEntry {
+                    accepted: Some((id, expires_on)),
+                    ..
+                } => Validity::Invalid {
+                    reason: wl_kernel::InvalidReason::Expired,
+                    document: Some(wl_kernel::DocumentId(id)),
+                    expired_on: expires_on,
+                    pending: None,
+                },
+                _ => Validity::Invalid {
+                    reason: wl_kernel::InvalidReason::Missing,
+                    document: None,
+                    expired_on: None,
+                    pending: None,
+                },
+            })
+        })
+    }
+
+    fn check_as<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _guarded: &'a str,
+        _record_id: i64,
+        _on_date: NaiveDate,
+        _actor: Option<i64>,
+    ) -> DocumentFuture<'a, std::result::Result<CheckOutcome, wl_kernel::BlockRefusal>> {
+        Box::pin(async { Ok(Ok(CheckOutcome::default())) })
+    }
+
+    fn record_flags<'a>(
+        &'a self,
+        _db: &'a Db,
+        _guarded: &'a str,
+        _record_id: i64,
+        _flags: &'a [FlagFailure],
+    ) -> DocumentFuture<'a, Vec<RecordFlag>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
+    fn flags_for<'a>(
+        &'a self,
+        _db: &'a Db,
+        _record_type: &'a str,
+        _record_id: i64,
+    ) -> DocumentFuture<'a, Vec<RecordFlag>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
+    fn open_flag_counts<'a>(
+        &'a self,
+        _db: &'a Db,
+        _record_type: &'a str,
+        _ids: &'a [i64],
+    ) -> DocumentFuture<'a, BTreeMap<i64, u64>> {
+        Box::pin(async { Ok(BTreeMap::new()) })
+    }
+
+    fn review_flag<'a>(
+        &'a self,
+        _db: &'a Db,
+        _flag_id: i64,
+        _reviewer: i64,
+        _note: &'a str,
+    ) -> DocumentFuture<'a, RecordFlag> {
+        Box::pin(async { Err(Error::NotFound) })
+    }
+}
+
+/// One qualification of an employee, as the HR module would hold it.
+#[derive(Clone)]
+struct QualEntry {
+    employee: i64,
+    kind: String,
+    roles: Vec<String>,
+    scopes: Vec<Subject>,
+    valid_to: Option<NaiveDate>,
+}
+
+/// The qualifications of the employees: `qualification_valid` answers yes
+/// through the expiry date, and for a role-bound kind only to a caller that
+/// names a role and scope the qualification covers.
+#[derive(Clone, Default)]
+pub struct Quals(Arc<Mutex<Vec<QualEntry>>>);
+
+impl Quals {
+    /// `employee` holds a qualification of `kind` valid through `valid_to`,
+    /// for any role and scope.
+    pub fn grant(&self, employee: EmployeeId, kind: &str, valid_to: Option<NaiveDate>) {
+        self.bound(employee, kind, &[], &[], valid_to);
+    }
+
+    /// The same, covering only `roles` and `scopes`.
+    pub fn bound(
+        &self,
+        employee: EmployeeId,
+        kind: &str,
+        roles: &[&str],
+        scopes: &[Subject],
+        valid_to: Option<NaiveDate>,
+    ) {
+        self.0.lock().unwrap().push(QualEntry {
+            employee: employee.0,
+            kind: kind.to_owned(),
+            roles: roles.iter().map(|r| (*r).to_owned()).collect(),
+            scopes: scopes.to_vec(),
+            valid_to,
+        });
+    }
+
+    fn answer(
+        &self,
+        employee: EmployeeId,
+        kind: &str,
+        on_date: NaiveDate,
+        asked: Option<(&str, &Subject)>,
+    ) -> bool {
+        let all: Vec<QualEntry> = self
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|q| q.employee == employee.0 && q.kind == kind)
+            .cloned()
+            .collect();
+        all.iter().any(|q| {
+            let bound = !q.roles.is_empty() || !q.scopes.is_empty();
+            let covers = match asked {
+                Some((role, scope)) => {
+                    (q.roles.is_empty() || q.roles.iter().any(|r| r == role))
+                        && (q.scopes.is_empty() || q.scopes.contains(scope))
+                }
+                None => !bound,
+            };
+            covers && q.valid_to.is_none_or(|day| day >= on_date)
+        })
+    }
+}
+
+impl Qualifications for Quals {
+    fn qualification_valid<'a>(
+        &'a self,
+        _state: &'a AppState,
+        employee: EmployeeId,
+        kind: &'a str,
+        on_date: NaiveDate,
+    ) -> WorkforceFuture<'a, bool> {
+        Box::pin(async move { Ok(self.answer(employee, kind, on_date, None)) })
+    }
+
+    fn qualification_valid_for<'a>(
+        &'a self,
+        _state: &'a AppState,
+        employee: EmployeeId,
+        kind: &'a str,
+        on_date: NaiveDate,
+        role: &'a str,
+        scope: &'a Subject,
+    ) -> WorkforceFuture<'a, bool> {
+        Box::pin(async move { Ok(self.answer(employee, kind, on_date, Some((role, scope)))) })
+    }
+}
+
 /// An event log.
 #[derive(Clone)]
 pub struct Recorded<E>(pub Arc<Mutex<Vec<E>>>);
@@ -226,6 +487,8 @@ struct Fakes {
     notices: Recording,
     staff: Staff,
     entries: Entries,
+    docs: DocDesk,
+    quals: Quals,
     recorded: Arc<Mutex<Vec<AttendanceRecorded>>>,
     flagged: Arc<Mutex<Vec<AttendanceFlagged>>>,
 }
@@ -239,6 +502,8 @@ impl Module for Fakes {
         provide_notifier(app, self.notices.clone());
         provide_workforce(app, self.staff.clone());
         provide_entry_hours(app, self.entries.clone());
+        provide_guard(app, self.docs.clone());
+        provide_qualifications(app, self.quals.clone());
         record(app, &self.recorded);
         record(app, &self.flagged);
     }
@@ -254,6 +519,10 @@ pub struct Booted {
     pub staff: Staff,
     /// The timesheet entries.
     pub entries: Entries,
+    /// The accepted documents.
+    pub docs: DocDesk,
+    /// The qualifications.
+    pub quals: Quals,
     /// `AttendanceRecorded`.
     pub recorded: Recorded<AttendanceRecorded>,
     /// `AttendanceFlagged`.
@@ -300,7 +569,8 @@ impl Booted {
     }
 
     /// An employee who is at work (listed, not on leave), managed by
-    /// `managers`.
+    /// `managers`, with a work permit and a residence visa that do not
+    /// expire.
     pub fn employee(&self, id: i64, managers: &[i64]) -> EmployeeId {
         self.staff.set(StaffProfile {
             employee: EmployeeId(id),
@@ -314,7 +584,23 @@ impl Booted {
             returns_on: None,
             managers: managers.to_vec(),
         });
+        // Papers in order, so that only the tests of `HRM.RUL.14` have a reason
+        // to flag.
+        self.papers(EmployeeId(id), None);
         EmployeeId(id)
+    }
+
+    /// The work permit and the residence visa of `employee`, valid until
+    /// `expires` (never when none).
+    pub fn papers(&self, employee: EmployeeId, expires: Option<NaiveDate>) {
+        self.docs
+            .accepted_until(&employee.subject(), "work_permit", 100 + employee.0, expires);
+        self.docs.accepted_until(
+            &employee.subject(),
+            "residence_visa",
+            200 + employee.0,
+            expires,
+        );
     }
 
     /// A work location called `name`.
@@ -431,6 +717,8 @@ pub async fn boot_with(module: WlAttendance, extra: &str) -> Booted {
         notices: Recording::default(),
         staff: Staff::default(),
         entries: Entries::default(),
+        docs: DocDesk::default(),
+        quals: Quals::default(),
         recorded: Arc::default(),
         flagged: Arc::default(),
     };
@@ -439,6 +727,7 @@ pub async fn boot_with(module: WlAttendance, extra: &str) -> Booted {
         fakes.staff.clone(),
         fakes.entries.clone(),
     );
+    let (docs, quals) = (fakes.docs.clone(), fakes.quals.clone());
     let (recorded, flagged) = (
         Recorded(fakes.recorded.clone()),
         Recorded(fakes.flagged.clone()),
@@ -483,6 +772,8 @@ pub async fn boot_with(module: WlAttendance, extra: &str) -> Booted {
         notices,
         staff,
         entries,
+        docs,
+        quals,
         recorded,
         flagged,
         clock_days: std::sync::atomic::AtomicI64::new(0),
