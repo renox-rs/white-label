@@ -482,7 +482,10 @@ async fn a_closed_period_needs_approval_and_a_locked_one_refuses() {
 }
 
 /// AC5: a ticket entered 3 hours after it was reported has its response due
-/// 4 hours after the business time, not after the entry time.
+/// 4 hours after the business time, not after the entry time. (The ticket
+/// here is a test fixture: wl-kernel cannot depend on wl-ticketing. The same
+/// check against the real ticketing and its SLA assignment is
+/// `wl-ticketing/tests/late_entry_sla.rs`.)
 #[renox::test]
 async fn the_business_time_decides_the_sla() {
     let w = world().await;
