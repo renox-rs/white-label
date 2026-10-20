@@ -86,6 +86,24 @@ fn the_roles_hold_the_project_permissions() {
         PROJECT_MANAGER,
         construction::permissions::IPAS_DEDUCTIONS_DECIDE
     ));
+    // The QS prices a variation and records the client's decision, only the
+    // project manager submits it (`CON.ACL.06`).
+    assert!(holds(
+        QUANTITY_SURVEYOR,
+        construction::permissions::VARIATIONS_RECORD
+    ));
+    assert!(!holds(
+        QUANTITY_SURVEYOR,
+        construction::permissions::VARIATIONS_SUBMIT
+    ));
+    assert!(holds(
+        PROJECT_MANAGER,
+        construction::permissions::VARIATIONS_SUBMIT
+    ));
+    assert!(!holds(
+        PROJECT_MANAGER,
+        construction::permissions::VARIATIONS_RECORD
+    ));
     assert!(!holds(MEMBER, construction::permissions::PROJECTS_VIEW));
 }
 

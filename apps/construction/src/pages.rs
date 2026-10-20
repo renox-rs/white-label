@@ -62,6 +62,7 @@ use crate::retention_deduction::{self, NewRetentionDeduction};
 use crate::submission;
 use crate::termination::{self, TerminateRequest, TerminationReason};
 use crate::texts::t;
+use crate::variation;
 use crate::vat_notice;
 
 /// The routes.
@@ -149,12 +150,12 @@ pub fn routes() -> Routes {
 }
 
 /// A 422 with `message`.
-fn refused(message: impl Into<String>) -> Error {
+pub(crate) fn refused(message: impl Into<String>) -> Error {
     Error::Status(StatusCode::UNPROCESSABLE_ENTITY, message.into())
 }
 
 /// A transition's refusal as an answer.
-fn answer(error: TransitionError) -> Error {
+pub(crate) fn answer(error: TransitionError) -> Error {
     match error {
         TransitionError::Guard(message) => refused(message),
         other => other.into_error(),
@@ -504,6 +505,33 @@ struct ClosingView {
     contested_deductions: Vec<DeductionView>,
     contested_retention_deductions: Vec<RetentionDeductionView>,
     guarantee_call_claims: Vec<GuaranteeCallView>,
+    variation_claims: Vec<VariationView>,
+    unrecovered_variations: Vec<VariationView>,
+}
+
+/// A variation as the closing screen shows it: a claim of the final account
+/// or an unrecovered cost.
+#[derive(Debug, Serialize)]
+struct VariationView {
+    id: i64,
+    code: String,
+    revision: i64,
+    status: &'static str,
+    unrecovered_amount: i64,
+    approved_amount: Option<i64>,
+}
+
+impl VariationView {
+    fn of(variation: &variation::Variation) -> Self {
+        VariationView {
+            id: variation.id,
+            code: variation.code.clone(),
+            revision: variation.revision,
+            status: variation.status.as_str(),
+            unrecovered_amount: variation.unrecovered_amount,
+            approved_amount: variation.approved_amount,
+        }
+    }
 }
 
 /// A disputed call on a guarantee as the closing screen shows it: a claim of
@@ -583,6 +611,16 @@ async fn closing(
                 demand_notice: claim.demand_notice.clone(),
                 amount_paid: claim.amount_paid.unwrap_or_default(),
             })
+            .collect(),
+        variation_claims: variation::claims_of(&state.db, id)
+            .await?
+            .iter()
+            .map(VariationView::of)
+            .collect(),
+        unrecovered_variations: variation::unrecovered_of(&state.db, id)
+            .await?
+            .iter()
+            .map(VariationView::of)
             .collect(),
     };
     let body = renox::serde_json::to_string(&view)
@@ -847,13 +885,13 @@ async fn dispute_retention(
 }
 
 /// The text field `name` of a form, empty when absent.
-fn text(form: &BTreeMap<String, String>, name: &str) -> String {
+pub(crate) fn text(form: &BTreeMap<String, String>, name: &str) -> String {
     form.get(name).cloned().unwrap_or_default()
 }
 
 /// The date field `name` of a form; `None` when empty, a 422 when it is not a
 /// date.
-fn date_field(
+pub(crate) fn date_field(
     form: &BTreeMap<String, String>,
     name: &str,
     lang: &Lang,

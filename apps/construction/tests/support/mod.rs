@@ -865,6 +865,13 @@ impl Booted {
         Guarantee::find_or_404(self.db(), id).await.unwrap()
     }
 
+    /// The variation as it is stored now.
+    pub async fn reload_variation(&self, id: i64) -> construction::Variation {
+        construction::Variation::find_or_404(self.db(), id)
+            .await
+            .unwrap()
+    }
+
     /// The IPA as it is stored now.
     pub async fn reload_ipa(&self, id: i64) -> Ipa {
         Ipa::find_or_404(self.db(), id).await.unwrap()
@@ -949,6 +956,32 @@ impl Booted {
         .await
     }
 
+    /// The approval request waiting about `subject` (a variation).
+    pub async fn pending_about(&self, subject: &Subject) -> wl_kernel::approvals::ApprovalRequest {
+        wl_kernel::approvals::ApprovalRequest::pending_about(self.db(), subject)
+            .await
+            .unwrap()
+            .into_iter()
+            .next()
+            .expect("an approval request")
+    }
+
+    /// Whether an approval request waits about `subject`.
+    pub async fn has_pending(&self, subject: &Subject) -> bool {
+        !wl_kernel::approvals::ApprovalRequest::pending_about(self.db(), subject)
+            .await
+            .unwrap()
+            .is_empty()
+    }
+
+    /// `approver` approves the request waiting about `subject`.
+    pub async fn approve_about(&self, approver: &User, subject: &Subject) {
+        let request = self.pending_about(subject).await;
+        wl_kernel::approvals::approve(self.state(), request.id, approver, "")
+            .await
+            .unwrap();
+    }
+
     /// The approval request waiting about `project`.
     pub async fn pending_request(
         &self,
@@ -1019,6 +1052,7 @@ pub async fn boot() -> Booted {
             perm::PROJECTS_AWARD,
             perm::IPAS_SUBMIT,
             perm::IPAS_DEDUCTIONS_DECIDE,
+            perm::VARIATIONS_SUBMIT,
         ],
     )
     .await
@@ -1032,6 +1066,7 @@ pub async fn boot() -> Booted {
             perm::IPAS_CERTIFY,
             perm::IPAS_DEDUCTIONS_RECORD,
             perm::RETENTIONS_MANAGE,
+            perm::VARIATIONS_RECORD,
         ],
     )
     .await

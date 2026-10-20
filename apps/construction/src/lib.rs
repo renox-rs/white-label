@@ -25,6 +25,8 @@ pub mod submission;
 mod tasks;
 pub mod termination;
 mod texts;
+pub mod variation;
+mod variation_pages;
 pub mod vat_notice;
 
 use renox::db::Migration;
@@ -40,6 +42,7 @@ pub use project::{Project, ProjectStatus};
 pub use retention::{Retention, RetentionPart, RetentionStatus};
 pub use retention_deduction::RetentionDeduction;
 pub use termination::{TerminateRequest, TerminationReason};
+pub use variation::{Variation, VariationKind, VariationStatus};
 pub use vat_notice::RetentionNotice;
 
 /// The name of the daily scheduled task of the retention (`CON.RUL.07`).
@@ -58,7 +61,7 @@ impl Module for Construction {
     }
 
     fn routes(&self) -> Routes {
-        pages::routes()
+        pages::routes().merge(variation_pages::routes())
     }
 
     fn migrations(&self) -> &'static [Migration] {
@@ -74,8 +77,11 @@ impl Module for Construction {
             .model::<RetentionDeduction>()
             .model::<Guarantee>()
             .model::<GuaranteeDocument>()
-            .model::<GuaranteeCall>();
+            .model::<GuaranteeCall>()
+            .model::<Variation>();
         project::register();
+        variation::register();
+        variation::listen(app);
         renox::state_machine::register::<Ipa>();
         renox::state_machine::register::<Retention>();
         renox::state_machine::register::<Guarantee>();

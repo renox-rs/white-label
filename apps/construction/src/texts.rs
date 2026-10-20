@@ -528,6 +528,94 @@ const TEXTS: &[(&str, &str)] = &[
         "construction.guarantee.release_body",
         "The project is closed. Ask for the original of the guarantee of {{ bank }} for {{ amount }}, or the bank's cancellation letter, and release it.",
     ),
+    // Variations (BL-CON-11).
+    (
+        "construction.variation.resubmitted_as",
+        "resubmitted as rev {{ rev }}",
+    ),
+    (
+        "construction.variation.price_needed",
+        "Price the variation before it is submitted.",
+    ),
+    (
+        "construction.variation.days_needed",
+        "Give the days of extension asked, above 0.",
+    ),
+    (
+        "construction.variation.event_needed",
+        "Give the delay event and its date.",
+    ),
+    (
+        "construction.variation.reference_needed",
+        "Give the client's reference of its decision.",
+    ),
+    (
+        "construction.variation.approved_needed",
+        "Give the amount the client approved.",
+    ),
+    (
+        "construction.variation.granted_needed",
+        "Give the days the client granted; 0 when it grants none.",
+    ),
+    (
+        "construction.variation.replaced",
+        "{{ label }} was {{ text }}: it is kept as it was.",
+    ),
+    (
+        "construction.variation.not_executed",
+        "Only work executed on a site instruction before the approval can be claimed.",
+    ),
+    (
+        "construction.variation.description_needed",
+        "Describe the variation.",
+    ),
+    (
+        "construction.variation.price_negative",
+        "The price is above 0; only an omission takes work out.",
+    ),
+    (
+        "construction.variation.not_draft",
+        "{{ label }} is not a draft: it can no longer be changed.",
+    ),
+    (
+        "construction.variation.reason_needed",
+        "Give the reason the client rejected the variation.",
+    ),
+    (
+        "construction.variation.kind_unknown",
+        "The kind of the variation is addition, omission or time.",
+    ),
+    (
+        "construction.variation.rejected_title",
+        "The client rejected {{ label }} of {{ project }}",
+    ),
+    (
+        "construction.variation.rejected_body",
+        "Reason: {{ reason }}. The cost of the work already executed, {{ unrecovered }}, stays on the variation's cost code, unrecovered, until it is resubmitted, claimed or abandoned.",
+    ),
+    ("construction.variation.created", "Variation recorded."),
+    ("construction.variation.priced", "Variation updated."),
+    (
+        "construction.variation.submitted",
+        "Variation submitted to the client.",
+    ),
+    ("construction.variation.approved", "Variation approved."),
+    ("construction.variation.rejected", "Variation rejected."),
+    (
+        "construction.variation.resubmitted",
+        "New revision made as a draft.",
+    ),
+    (
+        "construction.variation.claimed",
+        "Variation turned into a claim.",
+    ),
+    ("construction.variation.claim_settled", "Claim settled."),
+    ("construction.variation.abandoned", "Variation abandoned."),
+    (
+        "construction.variation.abandon_requested",
+        "Abandoning sent to the MD for approval.",
+    ),
+    ("construction.variation.withdrawn", "Variation withdrawn."),
     // Calls on a guarantee (BL-CON-10).
     (
         "construction.guarantee.demand_needed",
@@ -585,13 +673,13 @@ const TEXTS: &[(&str, &str)] = &[
         "construction.guarantee.respond_body",
         "The beneficiary demanded {{ amount }} (demand notice {{ notice }}). Settle the call with the bank's debit advice, or with the withdrawal letter when the beneficiary withdraws it.",
     ),
-    (
-        "construction.guarantee.respond_done",
-        "call settled",
-    ),
+    ("construction.guarantee.respond_done", "call settled"),
     ("construction.guarantee.called", "Call recorded."),
     ("construction.guarantee.call_settled", "Call settled."),
-    ("construction.guarantee.call_disputed", "Call marked disputed."),
+    (
+        "construction.guarantee.call_disputed",
+        "Call marked disputed.",
+    ),
     ("construction.guarantee.registered", "Guarantee registered."),
     ("construction.guarantee.issued", "Guarantee issued."),
     ("construction.guarantee.reduced", "Guarantee reduced."),

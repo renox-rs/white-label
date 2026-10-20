@@ -120,6 +120,8 @@ pub struct Project {
     pub retention_due_on_termination: bool,
     /// The days of the defects liability period.
     pub defects_liability_days: i64,
+    /// The contract completion date; an approved extension of time moves it.
+    pub completion_due_on: Option<NaiveDate>,
     /// The advance paid to the project, in fils.
     pub advance_paid: i64,
     /// What the invoiced IPAs recovered of the advance, in fils.

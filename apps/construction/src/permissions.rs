@@ -40,6 +40,13 @@ pub const RETENTIONS_MANAGE: &str = "retentions.manage";
 /// accountant's).
 pub const GUARANTEES_MANAGE: &str = "guarantees.manage";
 
+/// Record and price a variation, and record the client's decision on it:
+/// approve, reject, settle a claim (the QS's, `CON.ACL.06`).
+pub const VARIATIONS_RECORD: &str = "variations.record";
+/// Submit a variation to the client, resubmit, claim, abandon or withdraw it
+/// (the project manager's, `CON.ACL.06`, `CON.ACL.16`).
+pub const VARIATIONS_SUBMIT: &str = "variations.submit";
+
 /// The role of the project manager.
 pub const PROJECT_MANAGER_ROLE: &str = "project_manager";
 
@@ -69,6 +76,8 @@ pub const ALL: &[&str] = &[
     IPAS_DEDUCTIONS_DECIDE,
     RETENTIONS_MANAGE,
     GUARANTEES_MANAGE,
+    VARIATIONS_RECORD,
+    VARIATIONS_SUBMIT,
 ];
 
 #[cfg(test)]
@@ -82,9 +91,15 @@ mod tests {
         all.dedup();
         assert_eq!(all.len(), ALL.len());
         assert!(all.iter().all(|p| {
-            ["projects.", "ipas.", "retentions.", "guarantees."]
-                .iter()
-                .any(|prefix| p.starts_with(prefix))
+            [
+                "projects.",
+                "ipas.",
+                "retentions.",
+                "guarantees.",
+                "variations.",
+            ]
+            .iter()
+            .any(|prefix| p.starts_with(prefix))
         }));
     }
 }
