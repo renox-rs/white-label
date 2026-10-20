@@ -1516,6 +1516,7 @@ const TEXTS: &[(&str, &str)] = &[
         "property.forecast.owner_payout",
         "Owner payout, statement :statement",
     ),
+    ("property.forecast.lease_charge", ":charge, lease :lease"),
     ("property.payout.settled_how", "Settled by"),
     ("property.payout.how_payout", "Payout"),
     ("property.payout.how_carried_forward", "Carried forward"),
