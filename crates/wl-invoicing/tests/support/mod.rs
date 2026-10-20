@@ -1599,6 +1599,53 @@ pub async fn boot_with_poster(
     module: WlInvoicing,
     poster: Option<Arc<dyn wl_kernel::invoicing::CostPoster>>,
 ) -> Booted {
+    boot_all(module, poster, None).await
+}
+
+/// The landed costs of the app under test: `(subject, owner entity id)`.
+#[derive(Clone, Default)]
+pub struct LandedDesk(Arc<Mutex<Vec<(Subject, i64)>>>);
+
+impl LandedDesk {
+    /// `landed_cost` exists and belongs to the legal entity `entity`.
+    pub fn add(&self, landed_cost: Subject, entity: i64) {
+        self.0.lock().unwrap().push((landed_cost, entity));
+    }
+}
+
+impl wl_kernel::invoicing::LandedCosts for LandedDesk {
+    fn entity_of<'a>(
+        &'a self,
+        _db: &'a Db,
+        landed_cost: &'a Subject,
+    ) -> wl_kernel::invoicing::SupplierBillFuture<'a, Option<i64>> {
+        let found = self
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|(subject, _)| subject == landed_cost)
+            .map(|(_, entity)| *entity);
+        Box::pin(async move { Ok(found) })
+    }
+}
+
+/// wl-invoicing with a [`CostLedger`] and a [`LandedDesk`] provided.
+pub async fn boot_with_landed() -> (Booted, CostLedger, LandedDesk) {
+    let ledger = CostLedger::default();
+    let desk = LandedDesk::default();
+    let poster: Arc<dyn wl_kernel::invoicing::CostPoster> = Arc::new(ledger.clone());
+    let landed: Arc<dyn wl_kernel::invoicing::LandedCosts> = Arc::new(desk.clone());
+    let booted = boot_all(WlInvoicing::new(), Some(poster), Some(landed)).await;
+    (booted, ledger, desk)
+}
+
+/// [`boot_with_poster`] with `landed` as the app's `LandedCosts`, when given.
+pub async fn boot_all(
+    module: WlInvoicing,
+    poster: Option<Arc<dyn wl_kernel::invoicing::CostPoster>>,
+    landed: Option<Arc<dyn wl_kernel::invoicing::LandedCosts>>,
+) -> Booted {
     let views = tempfile::tempdir().expect("a temporary views directory");
     let path = views.path().join("layouts/app.html");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -1652,6 +1699,10 @@ pub async fn boot_with_poster(
         .provide(notifier);
     let app = match poster {
         Some(poster) => app.provide(poster),
+        None => app,
+    };
+    let app = match landed {
+        Some(landed) => app.provide(landed),
         None => app,
     };
     let app = record(app, &issued);
