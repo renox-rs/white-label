@@ -16,3 +16,5 @@ wl-kernel = { path = "../wl-kernel" }
 tempfile = "3"
 # The real invoicing module, to follow a dispatched return into its debit note.
 wl-invoicing = { path = "../wl-invoicing" }
+# The real parties module: its directory and block guard.
+wl-parties = { path = "../wl-parties" }

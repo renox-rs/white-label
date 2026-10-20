@@ -16,7 +16,7 @@ use wl_kernel::invoicing::{
     LandedCostLine, SupplierBillApproved, SupplierBillId, SupplierBillLineId,
 };
 
-use support::{Booted, SUPPLIER, boot};
+use support::{Booted, SUPPLIER, boot, boot_with_parties};
 
 /// An allocated landed cost (AED 2,000 over a receipt of 100 units) and a
 /// procurement user who is told.
@@ -281,4 +281,98 @@ async fn the_purchaser_posts_the_drafted_adjustment() {
         AdjustmentStatus::Posted
     );
     assert_eq!(t.adjusted.all().len(), 1);
+}
+
+/// Done when 1 to 3 with the real wl-invoicing: a supplier bill with a line
+/// coded to the allocated landed cost is submitted and approved, and the
+/// event its `Payables` and `bill_events` produce drafts the adjustment (one
+/// draft, the bill line and the reference on it, the purchaser told). A
+/// second approved bill (duty) drafts a second adjustment and leaves the
+/// first as it was.
+#[renox::test]
+async fn real_approved_bills_draft_one_adjustment_each() {
+    use renox::chrono::Days;
+    use wl_invoicing::bill_machine::approve;
+    use wl_invoicing::bill_submit::submit;
+    use wl_invoicing::credit_notes::By;
+    use wl_invoicing::supplier_bill::{self, BillDraft};
+    use wl_invoicing::{BillLineDraft, SupplierBillStatus};
+    use wl_kernel::documents::today;
+    use wl_kernel::invoicing::VatCategory;
+
+    let t = boot_with_parties().await;
+    let landed = allocated(&t).await;
+    let buyer = t.procurement("Bea").await;
+    let supplier = wl_kernel::PartyId(
+        wl_parties::party::Party::query()
+            .where_(wl_parties::party::Party::LEGAL_NAME_EN.eq("Gulf Build Materials LLC"))
+            .first(t.db())
+            .await
+            .unwrap()
+            .expect("the demo vendor")
+            .id,
+    );
+    let entity = wl_kernel::LegalEntity::find(t.db(), landed.legal_entity_id)
+        .await
+        .unwrap()
+        .expect("the entity of the landed cost");
+
+    // Freight of AED 800.00 coded to the landed cost.
+    let mut freight = BillDraft::new(supplier, "FWD-880", today())
+        .line(
+            BillLineDraft::new("Sea freight, Jebel Ali", 80_000, VatCategory::Standard)
+                .landed_cost(landed.subject()),
+        );
+    freight.legal_entity_id = Some(entity.id);
+    freight.due_date = Some(today() + Days::new(30));
+    let bill = supplier_bill::create(t.db(), &freight, None).await.unwrap();
+    submit(t.state(), By::System(None), bill.id).await.unwrap();
+    let approved = approve(t.state(), By::System(None), bill.id, "")
+        .await
+        .unwrap();
+    assert_eq!(approved.status, SupplierBillStatus::Approved);
+
+    let found = drafts(&t, &landed).await;
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].status, AdjustmentStatus::Draft);
+    assert_eq!(found[0].bill_id, Some(bill.id));
+    assert_eq!(found[0].bill_reference, "FWD-880");
+    assert_eq!(found[0].total, 80_000);
+    let bill_lines = supplier_bill::lines_of(t.db(), bill.id).await.unwrap();
+    let lines = landed_adjust::lines_of(t.db(), found[0].id).await.unwrap();
+    assert_eq!(lines.len(), 1);
+    assert_eq!(lines[0].amount, 80_000);
+    assert_eq!(lines[0].bill_line_id, Some(bill_lines[0].id));
+    let notices = told(&t);
+    assert_eq!(notices.len(), 1);
+    assert!(
+        notices[0].recipients.iter().any(
+            |r| matches!(r, wl_kernel::notify::NotifyRecipient::User { id } if *id == buyer.id)
+        )
+    );
+    assert!(t.adjusted.all().is_empty());
+
+    // A second bill, customs duty of AED 300.00, with the first still unposted.
+    let mut duty = BillDraft::new(supplier, "CUS-300", today()).line(
+        BillLineDraft::new("Customs duty", 30_000, VatCategory::Standard)
+            .landed_cost(landed.subject()),
+    );
+    duty.legal_entity_id = Some(entity.id);
+    duty.due_date = Some(today() + Days::new(30));
+    let second = supplier_bill::create(t.db(), &duty, None).await.unwrap();
+    submit(t.state(), By::System(None), second.id).await.unwrap();
+    approve(t.state(), By::System(None), second.id, "")
+        .await
+        .unwrap();
+
+    let found = drafts(&t, &landed).await;
+    assert_eq!(found.len(), 2);
+    assert_eq!(found[0].bill_id, Some(bill.id));
+    assert_eq!(found[0].total, 80_000);
+    assert_eq!(found[1].bill_id, Some(second.id));
+    assert_eq!(found[1].total, 30_000);
+    let lines = landed_adjust::lines_of(t.db(), found[1].id).await.unwrap();
+    assert_eq!(lines.len(), 1);
+    assert_eq!(lines[0].kind, CostKind::Duty);
+    assert_eq!(told(&t).len(), 2);
 }

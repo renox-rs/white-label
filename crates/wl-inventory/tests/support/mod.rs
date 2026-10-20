@@ -524,6 +524,7 @@ struct Fakes {
     changed: Arc<Mutex<Vec<PreferredSupplierChanged>>>,
     locks: Option<PeriodDesk>,
     bills: Option<BillDesk>,
+    with_parties: bool,
     received: Arc<Mutex<Vec<GoodsReceived>>>,
     dispatched: Arc<Mutex<Vec<SupplierReturnDispatched>>>,
     credited: Arc<Mutex<Vec<SupplierReturnCredited>>>,
@@ -549,7 +550,9 @@ impl Module for Fakes {
         if let Some(locks) = &self.locks {
             wl_kernel::invoicing::provide_period_locks(app, locks.clone());
         }
-        provide_block_guard(app, self.blocked.clone());
+        if !self.with_parties {
+            provide_block_guard(app, self.blocked.clone());
+        }
         wl_kernel::documents::provide_guard(app, self.certificates.clone());
         wl_kernel::inventory::provide_supplier_incidents(app, self.incidents.clone());
         record(app, &self.received);
@@ -1114,16 +1117,22 @@ pub async fn boot() -> Booted {
 /// `module` booted in an app with auth and the kernel, the roles of a
 /// storekeeper and of procurement defined.
 pub async fn boot_with(module: WlInventory) -> Booted {
-    boot_modules(module, false).await
+    boot_modules(module, false, false).await
 }
 
 /// wl-inventory and the real wl-invoicing booted together, to follow an
 /// event from one module into the other.
 pub async fn boot_with_invoicing() -> Booted {
-    boot_modules(WlInventory::new(), true).await
+    boot_modules(WlInventory::new(), true, false).await
 }
 
-async fn boot_modules(module: WlInventory, with_invoicing: bool) -> Booted {
+/// [`boot_with_invoicing`] with the real wl-parties too (its directory and
+/// block guard instead of the test ones) and its demo parties seeded.
+pub async fn boot_with_parties() -> Booted {
+    boot_modules(WlInventory::new(), true, true).await
+}
+
+async fn boot_modules(module: WlInventory, with_invoicing: bool, with_parties: bool) -> Booted {
     let received = Arc::new(Mutex::new(Vec::new()));
     let dispatched = Arc::new(Mutex::new(Vec::new()));
     let revised = Arc::new(Mutex::new(Vec::new()));
@@ -1150,7 +1159,13 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool) -> Booted {
     } else {
         app
     };
+    let app = if with_parties {
+        app.module(wl_parties::WlParties::new())
+    } else {
+        app
+    };
     let app = app.module(Fakes {
+        with_parties,
         revised: revised.clone(),
         allocated: allocated.clone(),
         adjusted: adjusted.clone(),
@@ -1180,6 +1195,11 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool) -> Booted {
         .call("wl:install", Vec::<String>::new())
         .await
         .expect("wl:install runs");
+    if with_parties {
+        wl_parties::seed::run(app.state())
+            .await
+            .expect("the demo parties seed");
+    }
     // What wl-parties registers: an exception to a block is decided by the
     // finance manager (screening off).
     wl_kernel::PolicyDefault::new(wl_kernel::BLOCK_EXCEPTION_ACTION)
