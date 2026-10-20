@@ -14,13 +14,16 @@ mod notices;
 pub mod onboarding;
 pub mod onboarding_machine;
 pub mod pages;
+pub mod payroll;
 pub mod qualification;
 pub mod qualification_expiry;
 pub mod reminders;
 pub mod seed;
+pub mod settlement;
 pub mod steps;
 pub mod template;
 mod texts;
+pub mod visa;
 pub mod workforce;
 
 use renox::db::Migration;
@@ -38,12 +41,15 @@ pub use onboarding::{
     AppliedTemplate, Onboarding, OnboardingStatus, OnboardingStep, StartRefused, StartRequest,
     StartTrigger, StepAssignee, StepStatus,
 };
+pub use payroll::{LineStatus, PayrollLine, PayrollRun, PayrollRunStatus};
 pub use qualification::{NewQualification, Qualification, Quals};
 pub use qualification_expiry::QualificationExpiry;
+pub use settlement::{FinalSettlement, SettlementStatus};
 pub use steps::{DoneInput, InPerson, StepRefused};
 pub use template::{
     OnboardingTemplate, StepInput, StepKind, TemplateInput, TemplateRefused, TemplateStep,
 };
+pub use visa::{VisaCase, VisaCaseStatus};
 
 /// The employee services under the names of the plan: `employees::create`.
 pub mod employees {
@@ -167,10 +173,17 @@ impl Module for WlHr {
         app.model::<AbsenceCase>();
         app.model::<ContactAttempt>();
         app.model::<AbsenceReport>();
+        app.model::<PayrollRun>();
+        app.model::<PayrollLine>();
+        app.model::<FinalSettlement>();
+        app.model::<VisaCase>();
         app.provide(self.config.clone());
         employee_machine::register(app);
         renox::state_machine::register::<Onboarding>();
         renox::state_machine::register::<OnboardingStep>();
+        renox::state_machine::register::<PayrollRun>();
+        renox::state_machine::register::<FinalSettlement>();
+        renox::state_machine::register::<VisaCase>();
         events::register(app);
         // `HRM.ACL.07`: the policies of the five non-standard exits and the
         // audit of their requests and decisions.
