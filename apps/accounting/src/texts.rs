@@ -307,6 +307,10 @@ const TEXTS: &[(&str, &str)] = &[
         "This CDD file cannot be submitted:",
     ),
     (
+        "accounting.cdd.approve_refused",
+        "This CDD file cannot be approved:",
+    ),
+    (
         "accounting.cdd.no_ubos",
         "No UBO is identified: add the client's UBOs",
     ),

@@ -26,7 +26,9 @@ use renox::chrono::NaiveDate;
 use renox::db::Transaction;
 use renox::prelude::*;
 use renox::state_machine::{StateMachine, TransitionError};
-use wl_kernel::block_guard::{ActionKind, GuardOutcome, guard as block_guard};
+use wl_kernel::block_guard::{
+    ActionKind, BlockRefusal as PartyRefusal, GuardOutcome, guard as block_guard,
+};
 use wl_kernel::documents::{BlockRefusal, guard as document_guard, guarded_transition_as};
 use wl_kernel::parties::PARTY_SUBJECT_TYPE;
 use wl_kernel::{PartyId, Subject};
@@ -37,7 +39,7 @@ use crate::documents::ACTIVATE_GUARDED;
 use crate::engagement::{Engagement, EngagementStatus};
 use crate::engagement_machine::{ACTIVATE, EngagementInput};
 use crate::permissions;
-use crate::screening::{self, party_label};
+use crate::screening::{self, ScreeningCheck, party_label};
 use crate::tax_profile::TaxProfile;
 use crate::texts::english;
 
@@ -96,30 +98,54 @@ async fn subject_label(state: &AppState, subject: &Subject) -> String {
     }
 }
 
+/// What the screening and block checks found, read in a transaction.
+struct Gate {
+    /// The screening of the screened parties.
+    check: ScreeningCheck,
+    /// The block refusal, when the client is blocked.
+    blocked: Option<PartyRefusal>,
+}
+
+impl Gate {
+    /// Whether nothing refuses.
+    fn passes(&self) -> bool {
+        self.check.settled() && self.blocked.is_none()
+    }
+
+    /// One line per refusal for `by`. It reads party names through the
+    /// app's database, so call it after the transaction is closed.
+    async fn lines(&self, state: &AppState, by: &AuthUser) -> Vec<String> {
+        let mut lines: Vec<String> = self.check.stale_line().into_iter().collect();
+        lines.extend(self.check.match_lines(state, by).await);
+        if let Some(refusal) = &self.blocked {
+            lines.push(if refusal.is_detailed() {
+                refusal.message_en()
+            } else {
+                english("accounting.activation.on_hold", &[])
+            });
+        }
+        lines
+    }
+}
+
 /// The screening and block checks of `parties` and `client` for `by`, in
-/// `tx`, one line each.
-async fn screening_and_block_in(
+/// `tx`. Only `tx` is read.
+async fn gate_in(
     tx: &mut Transaction,
     state: &AppState,
     by: &AuthUser,
     client: PartyId,
     parties: &[(PartyId, ScreenedRole)],
-) -> Result<Vec<String>> {
-    let mut lines = Vec::new();
+) -> Result<Gate> {
     let check = screening::check_in(&mut *tx, state, parties).await?;
-    lines.extend(check.stale_line());
-    lines.extend(check.match_lines(state, by).await);
     let outcome = block_guard(state)
         .check_in(&mut *tx, Some(by), client, ActionKind::Start)
         .await?;
-    if let GuardOutcome::Blocked(refusal) = outcome {
-        lines.push(if refusal.is_detailed() {
-            refusal.message_en()
-        } else {
-            english("accounting.activation.on_hold", &[])
-        });
-    }
-    Ok(lines)
+    let blocked = match outcome {
+        GuardOutcome::Blocked(refusal) => Some(refusal),
+        GuardOutcome::Allowed => None,
+    };
+    Ok(Gate { check, blocked })
 }
 
 /// The refusal that lists `problems`: "This engagement cannot be activated:"
@@ -150,9 +176,9 @@ pub async fn problems(
     }
     let parties = crate::cdd_files::screened_parties(&state.db, engagement.client()).await?;
     let mut tx = state.db.begin().await?;
-    let lines = screening_and_block_in(&mut tx, state, by, engagement.client(), &parties).await;
+    let gate = gate_in(&mut tx, state, by, engagement.client(), &parties).await;
     tx.rollback().await?;
-    problems.extend(lines?);
+    problems.extend(gate?.lines(state, by).await);
     Ok(problems)
 }
 
@@ -193,11 +219,10 @@ pub(crate) async fn run(
     guarded_transition_as(state, ACTIVATE_GUARDED, engagement.id, on, Some(by.id), || async {
         let mut tx = state.db.begin().await?;
         // Again, in the transaction that moves the status.
-        let again =
-            screening_and_block_in(&mut tx, state, by, engagement.client(), &parties).await?;
-        if !again.is_empty() {
+        let gate = gate_in(&mut tx, state, by, engagement.client(), &parties).await?;
+        if !gate.passes() {
             tx.rollback().await?;
-            return Err(refusal(&again));
+            return Err(refusal(&gate.lines(state, by).await));
         }
         let outcome = engagement
             .transition(ACTIVATE)

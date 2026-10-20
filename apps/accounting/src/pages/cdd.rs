@@ -12,8 +12,9 @@
 //! | `POST /accounting/cdd/{id}/reopen` | `accounting.cdd_reopen` | `cdd.prepare` |
 //! | `POST /accounting/cdd/{id}/exit` | `accounting.cdd_exit` | `cdd.approve` |
 //!
-//! The exit or rejection reason shows only to holders of
-//! `parties.block_reason.view` (the MLRO and deputy).
+//! The exit or rejection reason, and which party has an open possible match,
+//! show only to holders of `parties.block_reason.view` (the MLRO and
+//! deputy); everyone else sees "Screening pending" (BL-ACC-08).
 
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -108,16 +109,6 @@ pub(crate) struct CddPage {
     can_exit: bool,
 }
 
-/// The lines the page shows about the screening of the file's parties
-/// (BL-ACC-08); none here.
-pub(crate) async fn screening_lines(
-    _state: &AppState,
-    _user: &AuthUser,
-    _file: &CddFile,
-) -> Result<Vec<String>> {
-    Ok(Vec::new())
-}
-
 /// `GET /accounting/cdd/{id}`.
 async fn show(
     State(state): State<AppState>,
@@ -166,7 +157,7 @@ async fn show(
         status: text(&lang, &format!("cdd.status.{}", found.status.as_str())),
         status_kind: status_kind(found.status),
         parties,
-        screening: screening_lines(&state, &user, &found).await?,
+        screening: cdd_files::screening_lines(&state, &user, &found).await?,
         roles: [ScreenedRole::Ubo, ScreenedRole::Director, ScreenedRole::Signatory]
             .iter()
             .map(|r| {

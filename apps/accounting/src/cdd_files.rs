@@ -13,6 +13,7 @@ use crate::cdd::{CddFile, CddParty, CddStatus, RiskRating, ScreenedRole};
 use crate::cdd_machine::{APPROVE, CddInput, EXIT, FLAG_REVIEW, REJECT, REOPEN, SUBMIT};
 use crate::db::{refused, set_cdd_file};
 use crate::permissions;
+use crate::screening;
 use crate::texts::english;
 
 /// The file `id`, or 404.
@@ -206,48 +207,126 @@ fn refusal(heading: &str, problems: &[String]) -> Error {
     refused(lines.join("\n"))
 }
 
-/// `by` (the preparer) submits file `id` for approval.
+/// The screened parties of `file` with their role, the client company
+/// first.
 ///
 /// # Errors
 ///
-/// `Forbidden` without `cdd.prepare`; a 422 listing every failing check.
+/// The database's errors.
+pub async fn parties_of(db: &Db, file: &CddFile) -> Result<Vec<(PartyId, ScreenedRole)>> {
+    let mut parties = vec![(file.client(), ScreenedRole::Client)];
+    for row in file.parties(db).await? {
+        let entry = (row.party(), row.role);
+        if !parties.contains(&entry) {
+            parties.push(entry);
+        }
+    }
+    Ok(parties)
+}
+
+/// Runs `transition` on `file` as `by` in `tx`, where the checks passed;
+/// commits and emits.
+async fn run_in_checked(
+    state: &AppState,
+    by: &AuthUser,
+    file: &CddFile,
+    transition: &str,
+    mut tx: Transaction,
+) -> Result<CddFile> {
+    let input = CddInput {
+        on: Some(today()),
+        ..CddInput::default()
+    };
+    let outcome = file
+        .transition(transition)
+        .by(by)
+        .input(&input)
+        .run_in(&mut tx)
+        .await
+        .map_err(TransitionError::into_error)?;
+    tx.commit().await?;
+    outcome.emit(state).await?;
+    load(state, file.id).await
+}
+
+/// `by` (the preparer) submits file `id` for approval: UBOs identified,
+/// identity documents attached, the risk rated, and every screened party
+/// screened and not on a stale list (`PTY.RUL.02`, BL-ACC-08). The
+/// screening is read in the transaction that moves the status.
+///
+/// # Errors
+///
+/// `Forbidden` without `cdd.prepare`; a 422 listing every failing check,
+/// naming each stale list and its last update.
 pub async fn submit(state: &AppState, by: &AuthUser, id: i64) -> Result<CddFile> {
     if !by.has_permission(permissions::CDD_PREPARE) {
         return Err(Error::Forbidden);
     }
     let file = load(state, id).await?;
-    let on = today();
-    let mut problems = Vec::new();
-    if file.status == CddStatus::InProgress {
-        problems = submit_readiness(&state.db, &file).await?;
-        if !problems.is_empty() {
-            return Err(refusal("accounting.cdd.submit_refused", &problems));
-        }
+    if file.status != CddStatus::InProgress {
+        return run(state, by, &file, SUBMIT, &CddInput::default()).await;
     }
-    let input = CddInput {
-        problems,
-        on: Some(on),
-        reason: None,
-    };
-    run(state, by, &file, SUBMIT, &input).await
+    let mut problems = submit_readiness(&state.db, &file).await?;
+    let parties = parties_of(&state.db, &file).await?;
+    let mut tx = state.db.begin().await?;
+    let check = screening::check_in(&mut tx, state, &parties).await?;
+    if problems.is_empty() && check.unscreened.is_empty() && check.stale.is_empty() {
+        return run_in_checked(state, by, &file, SUBMIT, tx).await;
+    }
+    // The lines read party names through the app's database: close the
+    // transaction first.
+    tx.rollback().await?;
+    problems.extend(check.unscreened_lines(state).await);
+    problems.extend(check.stale_line());
+    Err(refusal("accounting.cdd.submit_refused", &problems))
 }
 
-/// `by` (the MLRO) approves file `id`: the next review date follows the
-/// rating.
+/// `by` (the MLRO) approves file `id`: no list stale, no latest screening
+/// run on a stale list and no open possible match on any screened party
+/// (`PTY.RUL.02`, BL-ACC-08); the next review date follows the rating. The
+/// screening is read in the transaction that moves the status.
 ///
 /// # Errors
 ///
-/// `Forbidden` without `cdd.approve`; a 422 listing every failing check.
+/// `Forbidden` without `cdd.approve`; a 422 listing every failing check
+/// (a match is named to holders of `parties.block_reason.view` only).
 pub async fn approve(state: &AppState, by: &AuthUser, id: i64) -> Result<CddFile> {
     if !by.has_permission(permissions::CDD_APPROVE) {
         return Err(Error::Forbidden);
     }
     let file = load(state, id).await?;
-    let input = CddInput {
-        on: Some(today()),
-        ..CddInput::default()
-    };
-    run(state, by, &file, APPROVE, &input).await
+    if file.status != CddStatus::PendingApproval {
+        return run(state, by, &file, APPROVE, &CddInput::default()).await;
+    }
+    let parties = parties_of(&state.db, &file).await?;
+    let mut tx = state.db.begin().await?;
+    let check = screening::check_in(&mut tx, state, &parties).await?;
+    if check.settled() {
+        return run_in_checked(state, by, &file, APPROVE, tx).await;
+    }
+    tx.rollback().await?;
+    let mut problems: Vec<String> = check.stale_line().into_iter().collect();
+    problems.extend(check.match_lines(state, by).await);
+    Err(refusal("accounting.cdd.approve_refused", &problems))
+}
+
+/// The lines about the screening of `file`'s parties for `viewer`: the
+/// stale lists, the open matches ("Screening pending" unless the viewer
+/// holds `parties.block_reason.view`) and the parties not screened.
+///
+/// # Errors
+///
+/// The database's errors.
+pub async fn screening_lines(state: &AppState, viewer: &AuthUser, file: &CddFile) -> Result<Vec<String>> {
+    let parties = parties_of(&state.db, file).await?;
+    let mut tx = state.db.begin().await?;
+    let check = screening::check_in(&mut tx, state, &parties).await;
+    tx.rollback().await?;
+    let check = check?;
+    let mut lines: Vec<String> = check.stale_line().into_iter().collect();
+    lines.extend(check.match_lines(state, viewer).await);
+    lines.extend(check.unscreened_lines(state).await);
+    Ok(lines)
 }
 
 /// `by` (the MLRO) rejects file `id` with `reason` (kept for the MLRO
