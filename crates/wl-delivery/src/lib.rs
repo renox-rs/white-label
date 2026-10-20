@@ -10,11 +10,13 @@ pub mod plan;
 pub mod proof;
 pub mod reasons;
 pub mod request;
+pub mod review;
 pub mod run;
 mod run_machine;
 pub mod seed;
 pub mod settings;
 mod texts;
+pub mod trace;
 
 use renox::db::Migration;
 use renox::nav::NavLink;
@@ -22,7 +24,7 @@ use renox::prelude::*;
 use wl_kernel::PodMethod;
 
 pub use delivery::{
-    Attempt, AttemptOutcome, Delivery, DeliveryLine, DeliveryStatus, Direction, Proof,
+    Attempt, AttemptOutcome, Delivery, DeliveryLine, DeliveryStatus, Direction, Proof, Trace,
 };
 pub use plan::NewRun;
 pub use reasons::{FailureReason, RefusalReason};
@@ -182,6 +184,7 @@ impl Module for WlDelivery {
             .model::<DeliveryLine>()
             .model::<Attempt>()
             .model::<Proof>()
+            .model::<Trace>()
             .model::<FailureReason>()
             .model::<RefusalReason>();
         // `rnx state:diagram Delivery` and the admin panel find the machines.

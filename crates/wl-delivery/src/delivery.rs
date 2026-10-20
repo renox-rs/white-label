@@ -118,6 +118,18 @@ pub struct Delivery {
     pub run_sequence: Option<i64>,
     /// Why it was cancelled.
     pub cancel_reason: Option<String>,
+    /// The frozen flag (`open_review`): while set, the cash on delivery is
+    /// held out of remittances and settlements and the source does not bill
+    /// the delivery. Changed only by the transitions that set or clear it.
+    pub frozen: bool,
+    /// The review's ticket; `None` when ticketing is off or no review.
+    pub review_ticket_id: Option<i64>,
+    /// Why it was put under review.
+    pub review_reason: Option<String>,
+    /// The note the review was closed with.
+    pub review_note: Option<String>,
+    /// When the review was opened.
+    pub reviewed_at: Option<DateTime>,
     /// The lifecycle state; changed only by a transition.
     pub status: DeliveryStatus,
     /// When the row was created.
@@ -240,6 +252,33 @@ impl DeliveryLine {
             _ => None,
         }
     }
+}
+
+/// A moment the goods were traced (a dispatch, a review, a scan, a note, a
+/// depot receipt, a find). The untraced clock of `WRK.RUL.17` reads the
+/// latest one (#162).
+#[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
+#[model(table = "wl_delivery_traces", index(delivery_id, occurred_at))]
+pub struct Trace {
+    /// The primary key.
+    pub id: i64,
+    /// The delivery.
+    #[model(references = "wl_delivery_deliveries")]
+    pub delivery_id: i64,
+    /// `dispatch`, `review`, `scan`, `note`, `depot_receipt` or `found`.
+    pub kind: String,
+    /// The note, for a note.
+    pub note: String,
+    /// The depot, for a scan or a receipt.
+    pub depot: String,
+    /// When it happened.
+    pub occurred_at: DateTime,
+    /// The user who recorded it; none for the system.
+    pub actor_user_id: Option<i64>,
+    /// When the row was created.
+    pub created_at: Option<DateTime>,
+    /// When the row was last changed.
+    pub updated_at: Option<DateTime>,
 }
 
 /// The outcome of one visit.

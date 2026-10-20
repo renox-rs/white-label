@@ -7,6 +7,8 @@
 //! | `GET /deliveries/{id}` | `wl_delivery.show` | `deliveries.view` |
 //! | `POST /deliveries/{id}/assign` | `wl_delivery.assign` | `deliveries.dispatch` (field `run_id`) |
 //! | `POST /deliveries/{id}/unassign` | `wl_delivery.unassign` | `deliveries.dispatch` |
+//! | `POST /deliveries/{id}/open-review` | `wl_delivery.open_review` | `deliveries.manage` (field `reason`) |
+//! | `POST /deliveries/{id}/close-review` | `wl_delivery.close_review` | `deliveries.manage` (fields `outcome`, `note`) |
 //! | `GET /runs` | `wl_delivery.runs` | `runs.view` |
 //! | `GET /runs/{id}` | `wl_delivery.run` | `runs.view` |
 //! | `POST /runs` | `wl_delivery.runs_store` | `runs.dispatch` (fields `run_date`, `driver_user_id`, `vehicle_type`, `vehicle_asset_id`, `depot`) |
@@ -32,6 +34,7 @@ use renox::prelude::*;
 use renox::serde_json::Value;
 use renox::state_machine::{self, TransitionError};
 use serde::{Deserialize, Serialize};
+use wl_kernel::delivery::ReviewOutcome;
 use wl_kernel::documents::{dubai_text, today};
 
 use crate::day_list::{StopView, stop_of, stops_of};
@@ -40,6 +43,7 @@ use crate::permissions;
 use crate::plan::{self, NewRun};
 use crate::proof::{self, DeliverForm, LineEntry, aed, milli_text};
 use crate::reasons::{FailureReason, RefusalReason};
+use crate::review;
 use crate::run::{Run, RunStatus, VehicleType};
 use crate::texts;
 
@@ -71,6 +75,14 @@ pub fn routes() -> Routes {
                 .post("/deliveries/{id}/unassign", store_unassign)
                 .name("wl_delivery.unassign")
                 .require_permission(permissions::DISPATCH),
+        )
+        .merge(
+            Routes::new()
+                .post("/deliveries/{id}/open-review", store_open_review)
+                .name("wl_delivery.open_review")
+                .post("/deliveries/{id}/close-review", store_close_review)
+                .name("wl_delivery.close_review")
+                .require_permission(permissions::MANAGE),
         )
         .merge(
             Routes::new()
@@ -294,6 +306,15 @@ pub(crate) struct Card {
     attempts: String,
 }
 
+/// The review as the page shows it.
+#[derive(Serialize, Debug, Clone)]
+pub(crate) struct ReviewRow {
+    reason: String,
+    ticket: Option<String>,
+    frozen: bool,
+    note: Option<String>,
+}
+
 /// What the delivery page needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "wl-delivery/show.html")]
@@ -309,6 +330,12 @@ pub(crate) struct ShowPage {
     timeline: Vec<Value>,
     can_assign: bool,
     can_unassign: bool,
+    can_open_review: bool,
+    can_close_review: bool,
+    /// The review of a delivery that is or was under review.
+    review: Option<ReviewRow>,
+    /// `(value, label)` of the outcomes a review closes with.
+    review_outcomes: Vec<(String, String)>,
     /// The planned runs the assign sheet offers, `(id, label)`.
     planned_runs: Vec<(String, String)>,
 }
@@ -393,6 +420,16 @@ async fn show(
     let can_unassign = dispatcher
         && delivery.status == DeliveryStatus::Assigned
         && run.as_ref().is_some_and(|r| r.status == RunStatus::Planned);
+    let manager = user.has_permission(permissions::MANAGE);
+    let can_open_review = manager && delivery.status == DeliveryStatus::Delivered;
+    let can_close_review = manager && delivery.status == DeliveryStatus::UnderReview;
+    let review = delivery.review_reason.as_ref().map(|reason| ReviewRow {
+        reason: reason.clone(),
+        ticket: delivery.review_ticket_id.map(|id| id.to_string()),
+        frozen: delivery.frozen,
+        note: delivery.review_note.clone(),
+    });
+    let review_outcomes = vec![("upheld".to_owned(), t("outcome.upheld"))];
     let planned_runs = if can_assign {
         Run::query()
             .where_(Run::STATUS.eq(RunStatus::Planned))
@@ -434,6 +471,10 @@ async fn show(
         timeline,
         can_assign,
         can_unassign,
+        can_open_review,
+        can_close_review,
+        review,
+        review_outcomes,
         planned_runs,
     }))
 }
@@ -478,6 +519,71 @@ async fn store_unassign(
         .map_err(TransitionError::into_error)?;
     Ok((
         Toast::success(texts::t(&lang, "wl_delivery.actions.unassigned")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// The form that puts a delivery under review.
+#[derive(Deserialize, Serialize, Debug)]
+pub struct OpenReviewForm {
+    /// Why the delivery is disputed.
+    pub reason: String,
+}
+
+/// `POST /deliveries/{id}/open-review`: puts the delivered delivery under
+/// review; a ticket is opened. A blank reason or another state answers 422.
+async fn store_open_review(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(delivery): Found<Delivery>,
+    Form(form): Form<OpenReviewForm>,
+) -> Result<Response> {
+    review::open_review(&state, &user, &delivery, &form.reason)
+        .await
+        .map_err(TransitionError::into_error)?;
+    Ok((
+        Toast::success(texts::t(&lang, "wl_delivery.actions.review_opened")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// The form that closes a review.
+#[derive(Deserialize, Serialize, Debug)]
+pub struct CloseReviewForm {
+    /// How the review ends; only `upheld` is offered.
+    #[serde(default)]
+    pub outcome: String,
+    /// The note the review is closed with (required).
+    #[serde(default)]
+    pub note: String,
+}
+
+/// `POST /deliveries/{id}/close-review`: closes the review as upheld. A
+/// missing note, another outcome or another state answers 422.
+async fn store_close_review(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Found(delivery): Found<Delivery>,
+    Form(form): Form<CloseReviewForm>,
+) -> Result<Response> {
+    let outcome = match form.outcome.trim() {
+        "" | "upheld" => ReviewOutcome::Upheld,
+        _ => {
+            return Err(Error::Status(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                texts::t(&lang, "wl_delivery.actions.close_review_description"),
+            ));
+        }
+    };
+    review::close_review(&state, &user, &delivery, outcome, &form.note)
+        .await
+        .map_err(TransitionError::into_error)?;
+    Ok((
+        Toast::success(texts::t(&lang, "wl_delivery.actions.review_closed")),
         renox::HxRefresh,
     )
         .into_response())

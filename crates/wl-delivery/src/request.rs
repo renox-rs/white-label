@@ -9,10 +9,12 @@ use renox::prelude::*;
 use renox::state_machine::TransitionError;
 use wl_kernel::Subject;
 use wl_kernel::delivery::{DeliveryFuture, DeliveryId, DeliveryRequest, DeliveryRequester};
+use wl_kernel::tickets::TicketId;
 use wl_kernel::documents::today;
 
 use crate::delivery::{DELIVERY_SERIES, Delivery, DeliveryLine, DeliveryStatus, Direction, Proof};
 use crate::plan::cancel_as_system;
+use crate::review;
 use crate::settings::settings;
 
 /// The attempts a delivery gets (§7: 3); a perishable one gets one.
@@ -153,6 +155,46 @@ impl DeliveryRequester for Deliveries {
             cancel_as_system(state, &delivery, reason)
                 .await
                 .map_err(TransitionError::into_error)
+        })
+    }
+
+    fn open_review<'a>(
+        &'a self,
+        state: &'a AppState,
+        delivery: DeliveryId,
+        reason: &'a str,
+        ticket: Option<TicketId>,
+    ) -> DeliveryFuture<'a, ()> {
+        Box::pin(async move {
+            let delivery = Delivery::find_or_404(&state.db, delivery.0).await?;
+            review::open_review_as_system(state, &delivery, reason, ticket)
+                .await
+                .map_err(TransitionError::into_error)
+        })
+    }
+
+    fn is_frozen<'a>(
+        &'a self,
+        state: &'a AppState,
+        delivery: DeliveryId,
+    ) -> DeliveryFuture<'a, bool> {
+        Box::pin(async move {
+            Ok(Delivery::find(&state.db, delivery.0)
+                .await?
+                .is_some_and(|d| review::is_frozen(&d)))
+        })
+    }
+
+    fn remittable_cod<'a>(
+        &'a self,
+        state: &'a AppState,
+        delivery: DeliveryId,
+    ) -> DeliveryFuture<'a, i64> {
+        Box::pin(async move {
+            match Delivery::find(&state.db, delivery.0).await? {
+                Some(delivery) => review::remittable_cod(&state.db, &delivery).await,
+                None => Ok(0),
+            }
         })
     }
 }

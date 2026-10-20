@@ -6,14 +6,15 @@
 //!         out_for_delivery --deliver--> delivered
 //!         out_for_delivery --fail--> attempted
 //!         pending | assigned --cancel--> cancelled (terminal)
+//! delivered --open_review--> under_review --close_review--> delivered
 //! ```
 //!
 //! Every state of §4.1 is declared with its tone so the diagram is whole;
-//! the transitions out of `attempted`, `delivered`, `under_review` and
-//! `lost` come with their issues (BL-DLV-03 to BL-DLV-07). `assign`,
-//! `unassign`, `dispatch` and `cancel` are in [`crate::plan`], `deliver` and
-//! `fail` in [`crate::proof`]. `Delivery` is `#[model(state_machine)]`, so
-//! `save` refuses a changed status.
+//! the transitions out of `attempted` and `lost` come with their issues
+//! (BL-DLV-03 to BL-DLV-07). `assign`, `unassign`, `dispatch` and `cancel`
+//! are in [`crate::plan`], `deliver` and `fail` in [`crate::proof`],
+//! `open_review` and `close_review` in [`crate::review`]. `Delivery` is
+//! `#[model(state_machine)]`, so `save` refuses a changed status.
 
 use renox::state_machine::{Machine, StateMachine};
 
@@ -56,6 +57,7 @@ impl StateMachine for Delivery {
         crate::plan::transitions()
             .into_iter()
             .chain(crate::proof::transitions())
+            .chain(crate::review::transitions())
             .fold(machine, Machine::transition)
     }
 }
@@ -91,7 +93,7 @@ mod tests {
     }
 
     #[test]
-    fn the_transitions_of_planning_and_the_stop_exist() {
+    fn the_transitions_of_planning_the_stop_and_the_review_exist() {
         let machine = Delivery::machine();
         let expected = [
             ("assign", vec!["pending"], "assigned", false),
@@ -101,6 +103,9 @@ mod tests {
             ("auto_cancel", vec!["pending", "assigned"], "cancelled", true),
             ("deliver", vec!["out_for_delivery"], "delivered", false),
             ("fail", vec!["out_for_delivery"], "attempted", false),
+            ("open_review", vec!["delivered"], "under_review", false),
+            ("open_review_system", vec!["delivered"], "under_review", true),
+            ("close_review", vec!["under_review"], "delivered", false),
         ];
         assert_eq!(machine.transitions().len(), expected.len());
         for (name, from, to, system) in expected {

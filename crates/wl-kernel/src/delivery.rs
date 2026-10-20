@@ -280,6 +280,43 @@ pub trait DeliveryRequester: Send + Sync + 'static {
         delivery: DeliveryId,
         reason: &'a str,
     ) -> DeliveryFuture<'a, ()>;
+
+    /// Puts the `delivered` delivery under review as the system (`open_review`
+    /// by a dispute ticket from the recipient or the client). `ticket` is
+    /// the dispute ticket that raised it and becomes the review's ticket; with
+    /// none, the module opens one. The default refuses: the `delivery` module
+    /// is off.
+    fn open_review<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _delivery: DeliveryId,
+        _reason: &'a str,
+        _ticket: Option<TicketId>,
+    ) -> DeliveryFuture<'a, ()> {
+        Box::pin(async { Err(Error::NotFound) })
+    }
+
+    /// Whether the delivery is frozen: under review (or lost after a
+    /// review), so its cash on delivery is held out of remittances and
+    /// settlements and its source must not bill it. The default is `false`.
+    fn is_frozen<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _delivery: DeliveryId,
+    ) -> DeliveryFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
+
+    /// The cash collected on a `delivered` delivery that a remittance or a
+    /// settlement may take now, in fils: 0 while the delivery is frozen, not
+    /// delivered, or unknown. The default is 0.
+    fn remittable_cod<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _delivery: DeliveryId,
+    ) -> DeliveryFuture<'a, i64> {
+        Box::pin(async { Ok(0) })
+    }
 }
 
 /// The requester when the `delivery` module is off: every request is refused.

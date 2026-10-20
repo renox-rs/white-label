@@ -13,7 +13,24 @@
       </rx-action-sheet>
       <rx-confirm rx-if="can_unassign" :id="'unassign-delivery-' ~ delivery.id" :label="tx['actions.unassign']" :action="route('wl_delivery.unassign', delivery.id)" method="POST"
                   :title="tx['actions.unassign']" :message="tx['actions.unassign_description']" :confirm-label="tx['actions.unassign']"/>
+      <rx-action-sheet rx-if="can_open_review" :id="'open-review-' ~ delivery.id" :label="tx['actions.open_review']" :action="route('wl_delivery.open_review', delivery.id)"
+                       :title="tx['actions.open_review_title']" :description="tx['actions.open_review_description']" :submit-label="tx['actions.open_review']" icon="flag" variant="danger" danger>
+        <rx-textarea name="reason" :label="tx['actions.open_review_reason']" :id="'open-review-reason-' ~ delivery.id" required/>
+      </rx-action-sheet>
+      <rx-action-sheet rx-if="can_close_review" :id="'close-review-' ~ delivery.id" :label="tx['actions.close_review']" :action="route('wl_delivery.close_review', delivery.id)"
+                       :title="tx['actions.close_review_title']" :description="tx['actions.close_review_description']" :submit-label="tx['actions.close_review']" icon="check-check">
+        <rx-select name="outcome" :label="tx['actions.close_review_outcome']" :options="review_outcomes" :selected="'upheld'" :id="'close-review-outcome-' ~ delivery.id" required/>
+        <rx-textarea name="note" :label="tx['actions.close_review_note']" :id="'close-review-note-' ~ delivery.id" required/>
+      </rx-action-sheet>
     </rx-page-header>
+    <rx-card rx-if="review" :title="tx['review.title']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['review.reason']" :value="review.reason"/>
+        <rx-entry :label="tx['review.ticket']" :value="review.ticket" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['review.frozen']" :value="tx['yes'] if review.frozen else tx['no']"/>
+        <rx-entry :label="tx['review.note']" :value="review.note" :placeholder="tx['none']"/>
+      </rx-infolist>
+    </rx-card>
     <rx-card :title="tx['sections.details']">
       <rx-infolist columns="2">
         <rx-entry :label="tx['fields.number']" :value="delivery.number" copyable/>
