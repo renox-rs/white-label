@@ -219,9 +219,13 @@ async fn inv13_issue_reduces_the_bill_reverses_cost_and_input_vat() {
         .unwrap();
     assert_eq!(issued.status, SupplierDebitNoteStatus::Issued);
     let number = issued.number.clone().unwrap();
-    assert!(number.starts_with("DN-"), "{number}");
-    assert!(number.ends_with("-0001"), "{number}");
-    assert!(number.contains(&today().year().to_string()), "{number}");
+    // `DN-<entity code>-<year>-0001`.
+    let entity_code = LegalEntity::find_or_404(t.db(), entity).await.unwrap().code;
+    assert_eq!(
+        number,
+        format!("DN-{entity_code}-{}-0001", today().year()),
+        "{number}"
+    );
     assert_eq!(issued.issue_date, Some(today()));
     assert_eq!(issued.issued_by, Some(B));
     assert_eq!((issued.applied_to_bill, issued.debit_balance), (31_500, 0));
