@@ -48,6 +48,7 @@ use wl_kernel::workforce::workforce;
 
 use crate::access;
 use crate::checks;
+use crate::entry;
 use crate::flags::{self, AttendanceFlag, FlagType, Pending};
 use crate::location::WorkLocation;
 use crate::lock;
@@ -186,7 +187,9 @@ pub(crate) async fn accept_in(
     held_rules_in(tx, record, who, None).await?;
     let reason = who.reason.clone().unwrap_or_default();
     flags::settle_in(tx, record.id, who.actor, &reason).await?;
-    Ok(())
+    // The hours are proposed on the open timesheet (non-billable for a
+    // `permit_invalid` record, which the settled flag still marks).
+    entry::propose_in(tx, record).await
 }
 
 /// The effect of `accept_by_system`: refused while the record has an open
@@ -200,7 +203,7 @@ pub(crate) async fn accept_by_system_in(tx: &mut Transaction, record: &Attendanc
     if open > 0 {
         return Err(refuse(english("wl_attendance.review.system_flagged", &[])));
     }
-    Ok(())
+    entry::propose_in(tx, record).await
 }
 
 /// The effect of `correct`: the rule on the corrected values, the values
@@ -236,7 +239,9 @@ pub(crate) async fn correct_in(
     let reason = who.reason.clone().unwrap_or_default();
     flags::settle_in(tx, record.id, who.actor, &reason).await?;
     let note = english("wl_attendance.review.corrected_note", &[("reason", &reason)]);
-    flags::note_in(tx, record.id, FlagType::ManualCorrection, &note, who.actor).await
+    flags::note_in(tx, record.id, FlagType::ManualCorrection, &note, who.actor).await?;
+    // The hours proposed follow the corrected times.
+    entry::propose_in(tx, &AttendanceRecord { breaks, ..view }).await
 }
 
 /// The effect of `reject`: the flags are settled with the reason.
@@ -247,7 +252,8 @@ pub(crate) async fn reject_in(
 ) -> Result {
     let reason = who.reason.clone().unwrap_or_default();
     flags::settle_in(tx, record.id, who.actor, &reason).await?;
-    Ok(())
+    // The hours proposed from it are taken off the open timesheet.
+    entry::unpropose_in(tx, record.id).await
 }
 
 /// The location of `record`, or `NotFound`.

@@ -5,6 +5,7 @@ pub mod access;
 pub mod checks;
 pub mod config;
 pub mod flags;
+pub mod entry;
 pub mod location;
 pub mod lock;
 pub mod midday;
@@ -17,6 +18,7 @@ pub mod proposal;
 pub mod record;
 pub mod review;
 pub mod service;
+pub mod timesheet;
 mod texts;
 
 use renox::db::Migration;
@@ -29,7 +31,9 @@ pub use midday::MiddayWindow;
 pub use record::{
     AttendanceMethod, AttendanceRecord, AttendanceStatus, BreakSpan, FLAG as FLAG_TRANSITION,
 };
+pub use entry::TimesheetEntry;
 pub use service::NewRecord;
+pub use timesheet::{Timesheet, TimesheetStatus};
 
 /// The module's permissions (wl-attendance §6).
 pub mod permissions {
@@ -45,6 +49,12 @@ pub mod permissions {
     pub const CORRECT: &str = "attendance.correct";
     /// Create locations and geofences.
     pub const WORK_LOCATIONS_MANAGE: &str = "work_locations.manage";
+    /// Submit a timesheet for approval.
+    pub const TIMESHEETS_SUBMIT: &str = "timesheets.submit";
+    /// Open an adjustment timesheet on a locked one (`HRM.ACL.08`).
+    pub const TIMESHEETS_ADJUST: &str = "timesheets.adjust";
+    /// Reopen an approved timesheet that nothing has used.
+    pub const TIMESHEETS_REOPEN: &str = "timesheets.reopen";
 }
 
 /// The attendance module. The host adds it with
@@ -126,8 +136,12 @@ impl Module for WlAttendance {
         app.model::<AttendanceRecord>();
         app.model::<AttendanceFlag>();
         app.model::<MiddayWindow>();
+        app.model::<Timesheet>();
+        app.model::<TimesheetEntry>();
         app.provide(self.config.clone());
+        overtime::provide_entry_hours(app, entry::TimesheetEntryHours);
         renox::state_machine::register::<AttendanceRecord>();
+        renox::state_machine::register::<Timesheet>();
         notices::register_types();
     }
 }

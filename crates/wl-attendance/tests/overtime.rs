@@ -4,12 +4,27 @@
 
 mod support;
 
+use renox::prelude::*;
+use wl_attendance::entry::{self, NewEntry, TimesheetEntry};
 use wl_attendance::overtime::{self, DayCheck};
 use wl_attendance::service::{self, NewRecord};
-use wl_attendance::{AttendanceStatus, WlAttendance};
+use wl_attendance::timesheet::HoursSource;
+use wl_attendance::{AttendanceStatus, Timesheet, WlAttendance};
 use wl_kernel::calendar::calendar;
+use wl_kernel::workforce::EmployeeId;
 
-use support::{at, boot, boot_with, nov};
+use support::{Booted, at, boot, boot_with, nov};
+
+/// A timesheet of `employee` for the week of 2 November whose hours are
+/// entered by hand.
+async fn manual_sheet(t: &Booted, employee: EmployeeId) -> Timesheet {
+    Timesheet::create(
+        t.db(),
+        Timesheet::regular(employee, nov(2), nov(8)).from_source(HoursSource::Manual),
+    )
+    .await
+    .unwrap()
+}
 
 /// Ramadan, in November for the tests: 9 to 13 November, two hours shorter.
 const RAMADAN: &str = r#"
@@ -262,10 +277,12 @@ async fn att02_a_timesheet_entry_flags_the_days_records_once() {
         .unwrap();
         assert_eq!(record.status, AttendanceStatus::Recorded);
 
-        // Three hours entered by hand raise the day to 11 h.
-        t.entries.set(a, nov(3), 180);
-        let found = overtime::on_entry_saved(t.state(), a, nov(3)).await.unwrap();
-        assert!(matches!(found, DayCheck::Over { flaggable: true, .. }));
+        // Three hours entered by hand on a real timesheet raise the day to
+        // 11 h; saving the entry runs the check.
+        let sheet = manual_sheet(&t, a).await;
+        let entry = entry::add(t.state(), sheet.id, NewEntry::normal(nov(3), 180))
+            .await
+            .unwrap();
         let after = t.reload(&record).await;
         assert_eq!(after.status, AttendanceStatus::Flagged);
         assert_eq!(t.flags_of(&after).await, ["overtime_cap"]);
@@ -279,7 +296,11 @@ async fn att02_a_timesheet_entry_flags_the_days_records_once() {
         assert_eq!(t.notices.flagged("overtime_cap").len(), 1);
 
         // The entries within the cap flag nothing.
-        t.entries.set(a, nov(3), 0);
+        TimesheetEntry::query()
+            .where_(TimesheetEntry::ID.eq(entry.id))
+            .delete(t.db())
+            .await
+            .unwrap();
         let within = overtime::on_entry_saved(t.state(), a, nov(3)).await.unwrap();
         assert!(matches!(within, DayCheck::Within));
     })
@@ -330,9 +351,10 @@ async fn att02_locked_records_are_left_alone() {
         assert!(t.flags_of(&after).await.is_empty());
 
         // Every record of b's day is locked: nothing to flag, the supervisor is told.
-        t.entries.set(b, nov(3), 180);
-        let found = overtime::on_entry_saved(t.state(), b, nov(3)).await.unwrap();
-        assert!(matches!(found, DayCheck::Over { flaggable: false, .. }));
+        let sheet = manual_sheet(&t, b).await;
+        entry::add(t.state(), sheet.id, NewEntry::normal(nov(3), 180))
+            .await
+            .unwrap();
         assert_eq!(t.reload(&only_locked).await.status, AttendanceStatus::Locked);
         assert!(t.flags_of(&only_locked).await.is_empty());
         let told = t.notices.of_type("attendance.over_cap");

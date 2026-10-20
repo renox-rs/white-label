@@ -50,5 +50,7 @@ fn the_roles_hold_the_attendance_permissions() {
     assert!(holds(HR, attendance::REVIEW) && holds(HR, attendance::CORRECT));
     assert!(!holds(HR, attendance::MARK));
     assert!(holds(ADMIN, attendance::REVIEW) && holds(ADMIN, attendance::SELF_CHECK_IN));
+    assert!(holds(ADMIN, attendance::TIMESHEETS_SUBMIT) && holds(ADMIN, attendance::TIMESHEETS_ADJUST));
+    assert!(holds(ADMIN, attendance::TIMESHEETS_REOPEN));
     assert!(!holds(MEMBER, attendance::MARK));
 }

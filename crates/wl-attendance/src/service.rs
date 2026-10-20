@@ -329,6 +329,13 @@ pub async fn check_out(state: &AppState, record_id: i64, at: DateTime) -> Result
         .ok_or(Error::NotFound)?;
     let mut pending = Pending::default();
     checks::run_in(state, &mut tx, &closed, &location, &prepared, &mut pending).await?;
+    // An accepted record that had no hours yet proposes them now.
+    let after = AttendanceRecord::find(&mut tx, record_id)
+        .await?
+        .ok_or(Error::NotFound)?;
+    if after.status == AttendanceStatus::Accepted {
+        crate::entry::propose_in(&mut tx, &after).await?;
+    }
     tx.commit().await?;
     let stored = AttendanceRecord::find_or_404(&state.db, record_id).await?;
     emit_recorded(state, &stored).await?;

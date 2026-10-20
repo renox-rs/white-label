@@ -112,6 +112,32 @@ const TEXTS: &[(&str, &str)] = &[
         "Corrected by hand: :reason",
     ),
     ("wl_attendance.review.saved", "Saved."),
+    // Timesheets and their entries.
+    (
+        "wl_attendance.timesheet.no_consumer",
+        "Name what used the timesheet: a payroll run, an invoice or an export.",
+    ),
+    (
+        "wl_attendance.timesheet.consumed",
+        "A payroll run, an invoice or an export used this timesheet: it cannot be reopened.",
+    ),
+    (
+        "wl_attendance.entry.not_open",
+        "Hours are entered only on an open timesheet.",
+    ),
+    ("wl_attendance.entry.empty", "Give the hours."),
+    (
+        "wl_attendance.entry.negative",
+        "Hours cannot be negative; only an adjustment holds signed hours.",
+    ),
+    (
+        "wl_attendance.entry.outside_period",
+        ":date is outside the period of the timesheet, :from to :to.",
+    ),
+    (
+        "wl_attendance.entry.below_zero",
+        "On :date the :category hours stand at :standing; :delta would take them below zero.",
+    ),
     // Notifications.
     (
         "wl_attendance.notices.flagged_subject",

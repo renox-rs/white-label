@@ -8,6 +8,7 @@
 //! | `POST /attendance/records/{id}/check-out` | `wl_attendance.check_out` | the employee themselves, or `attendance.mark` at the location |
 //! | `POST /attendance/records/{id}/accept` | `wl_attendance.accept` | `attendance.review` at the location (`HRM.ACL.09`) |
 //! | `POST /attendance/records/{id}/reject` | `wl_attendance.reject` | `attendance.review` at the location |
+//! | `POST /timesheets/{id}/reopen` | `wl_attendance.timesheet_reopen` | `timesheets.reopen` |
 //! | `POST /attendance/records/{id}/correct` | `wl_attendance.correct` | `attendance.correct` at the location, and `attendance.review` when a flag holds the record |
 //!
 //! The routes need a signed-in user and carry no permission guard of their
@@ -31,6 +32,7 @@ use crate::record::AttendanceRecord;
 use crate::review::{self, Correction};
 use crate::service::{self, NewRecord, refuse};
 use crate::texts;
+use crate::timesheet;
 
 /// The routes of the module.
 pub fn routes() -> Routes {
@@ -47,6 +49,8 @@ pub fn routes() -> Routes {
         .name("wl_attendance.reject")
         .post("/attendance/records/{id}/correct", correct)
         .name("wl_attendance.correct")
+        .post("/timesheets/{id}/reopen", reopen)
+        .name("wl_attendance.timesheet_reopen")
         .require_auth()
 }
 
@@ -249,5 +253,18 @@ async fn correct(
         &form.reason,
     )
     .await?;
+    Ok((Toast::success(text(&lang, "review.saved")), renox::HxRefresh).into_response())
+}
+
+/// `POST /timesheets/{id}/reopen`: a user reopens an approved timesheet that
+/// nothing has used.
+async fn reopen(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Valid(form): Valid<ReviewForm>,
+) -> Result<Response> {
+    timesheet::reopen(&state, &user, id, &form.reason).await?;
     Ok((Toast::success(text(&lang, "review.saved")), renox::HxRefresh).into_response())
 }

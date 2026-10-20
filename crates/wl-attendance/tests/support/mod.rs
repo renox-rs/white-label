@@ -13,7 +13,6 @@ use renox::chrono::NaiveDate;
 use renox::db::DateTime;
 use renox::prelude::*;
 use renox::testing::TestApp;
-use wl_attendance::overtime::{EntryHours, HoursFuture, provide_entry_hours};
 use wl_attendance::permissions as perm;
 use wl_attendance::{
     AttendanceMethod, AttendanceRecord, AttendanceStatus, WlAttendance, WorkLocation,
@@ -168,37 +167,6 @@ impl Workforce for Staff {
                 .get(&user_id)
                 .copied()
                 .map(EmployeeId))
-        })
-    }
-}
-
-/// The timesheet entries that do not come from attendance, in minutes per
-/// employee and day.
-#[derive(Clone, Default)]
-pub struct Entries(Arc<Mutex<BTreeMap<(i64, NaiveDate), i64>>>);
-
-impl Entries {
-    /// `employee` has `minutes` of entries on `date`.
-    pub fn set(&self, employee: EmployeeId, date: NaiveDate, minutes: i64) {
-        self.0.lock().unwrap().insert((employee.0, date), minutes);
-    }
-}
-
-impl EntryHours for Entries {
-    fn minutes_on<'a>(
-        &'a self,
-        _state: &'a AppState,
-        employee: EmployeeId,
-        date: NaiveDate,
-    ) -> HoursFuture<'a> {
-        Box::pin(async move {
-            Ok(self
-                .0
-                .lock()
-                .unwrap()
-                .get(&(employee.0, date))
-                .copied()
-                .unwrap_or(0))
         })
     }
 }
@@ -486,7 +454,6 @@ fn record<E: Event + Clone + Send + Sync + 'static>(app: &mut Registry, log: &Ar
 struct Fakes {
     notices: Recording,
     staff: Staff,
-    entries: Entries,
     docs: DocDesk,
     quals: Quals,
     recorded: Arc<Mutex<Vec<AttendanceRecorded>>>,
@@ -501,7 +468,6 @@ impl Module for Fakes {
     fn register(&self, app: &mut Registry) {
         provide_notifier(app, self.notices.clone());
         provide_workforce(app, self.staff.clone());
-        provide_entry_hours(app, self.entries.clone());
         provide_guard(app, self.docs.clone());
         provide_qualifications(app, self.quals.clone());
         record(app, &self.recorded);
@@ -517,8 +483,6 @@ pub struct Booted {
     pub notices: Recording,
     /// The workforce.
     pub staff: Staff,
-    /// The timesheet entries.
-    pub entries: Entries,
     /// The accepted documents.
     pub docs: DocDesk,
     /// The qualifications.
@@ -660,6 +624,44 @@ impl Booted {
         record
     }
 
+    /// A timesheet in `status`, inserted as a fixture (the machine would not
+    /// take it there).
+    pub async fn sheet_in(
+        &self,
+        sheet: wl_attendance::Timesheet,
+        status: wl_attendance::TimesheetStatus,
+    ) -> wl_attendance::Timesheet {
+        let mut sheet = sheet;
+        let mut tx = self.db().begin().await.unwrap();
+        sheet
+            .insert_in_state(&mut tx, status, "fixture")
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+        sheet
+    }
+
+    /// `sheet`, as stored now.
+    pub async fn reload_sheet(&self, sheet: &wl_attendance::Timesheet) -> wl_attendance::Timesheet {
+        wl_attendance::Timesheet::find_or_404(self.db(), sheet.id)
+            .await
+            .unwrap()
+    }
+
+    /// The transitions of a timesheet, oldest first, as `(transition, actor,
+    /// reason)`.
+    pub async fn sheet_history(
+        &self,
+        sheet: &wl_attendance::Timesheet,
+    ) -> Vec<(String, Option<i64>, Option<String>)> {
+        renox::state_machine::history(self.db(), wl_attendance::Timesheet::TABLE, sheet.id)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|row| (row.transition, row.actor_id, row.reason))
+            .collect()
+    }
+
     /// `record`, as stored now.
     pub async fn reload(&self, record: &AttendanceRecord) -> AttendanceRecord {
         AttendanceRecord::find_or_404(self.db(), record.id)
@@ -716,17 +718,12 @@ pub async fn boot_with(module: WlAttendance, extra: &str) -> Booted {
     let fakes = Fakes {
         notices: Recording::default(),
         staff: Staff::default(),
-        entries: Entries::default(),
         docs: DocDesk::default(),
         quals: Quals::default(),
         recorded: Arc::default(),
         flagged: Arc::default(),
     };
-    let (notices, staff, entries) = (
-        fakes.notices.clone(),
-        fakes.staff.clone(),
-        fakes.entries.clone(),
-    );
+    let (notices, staff) = (fakes.notices.clone(), fakes.staff.clone());
     let (docs, quals) = (fakes.docs.clone(), fakes.quals.clone());
     let (recorded, flagged) = (
         Recorded(fakes.recorded.clone()),
@@ -771,6 +768,18 @@ pub async fn boot_with(module: WlAttendance, extra: &str) -> Booted {
     )
     .await
     .unwrap();
+    // The timekeeper submits timesheets and reopens approved ones; the
+    // adjuster opens adjustments on locked ones (`HRM.ACL.08`).
+    permissions::define_role(
+        app.db(),
+        "timekeeper",
+        &[perm::VIEW, perm::TIMESHEETS_SUBMIT, perm::TIMESHEETS_REOPEN],
+    )
+    .await
+    .unwrap();
+    permissions::define_role(app.db(), "adjuster", &[perm::VIEW, perm::TIMESHEETS_ADJUST])
+        .await
+        .unwrap();
     permissions::define_role(app.db(), "worker", &[perm::SELF_CHECK_IN])
         .await
         .unwrap();
@@ -784,7 +793,6 @@ pub async fn boot_with(module: WlAttendance, extra: &str) -> Booted {
         app,
         notices,
         staff,
-        entries,
         docs,
         quals,
         recorded,
