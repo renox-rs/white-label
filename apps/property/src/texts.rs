@@ -1854,7 +1854,7 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     (
         "property.transfers.new_agreement_inactive",
-        "The new owner's agreement is not active. Draft it, list the unit from the transfer date and activate it with the signed agreement first, or choose \"no longer managed\".",
+        "New owner's agreement not active: draft it, list the unit from the transfer date and activate it with the signed agreement first, or choose \"no longer managed\".",
     ),
     (
         "property.transfers.same_user",

@@ -631,7 +631,13 @@ async fn collected_lines(
                 let Some(invoice) = charge.invoice_id else {
                     continue;
                 };
-                if charge.status != ChargeStatus::Invoiced || charge.due_date > end {
+                // Rent due before the unit came under this agreement was the
+                // previous owner's (BL-PRP-23: April's invoice stays with
+                // the old owner after a transfer on 1 May).
+                if charge.status != ChargeStatus::Invoiced
+                    || charge.due_date > end
+                    || charge.due_date < unit.date_in
+                {
                     continue;
                 }
                 let source = InvoiceId(invoice).subject().to_string();
