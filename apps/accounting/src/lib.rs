@@ -110,7 +110,7 @@ impl Module for Accounting {
         app.nav(
             "app",
             NavLink::route("accounting.engagements", "nav.engagements")
-                .icon("briefcase")
+                .icon("handshake")
                 .group("nav.app")
                 .order(10)
                 .permission(permissions::ENGAGEMENTS_VIEW),

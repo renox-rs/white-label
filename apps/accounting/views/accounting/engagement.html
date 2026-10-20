@@ -10,7 +10,7 @@
                     :badge="status" :badge-kind="status_kind">
       <template rx-if="can_letter">
         <rx-action-sheet :id="'engagement-letter-' ~ engagement.id" :label="tx['engagements.record_letter']" :action="route('accounting.engagement_letter', engagement.id)"
-                         :title="tx['engagements.record_letter']" :description="tx['engagements.record_letter_description']" :submit-label="tx['engagements.record_letter']" icon="file-signature">
+                         :title="tx['engagements.record_letter']" :description="tx['engagements.record_letter_description']" :submit-label="tx['engagements.record_letter']" icon="file-text">
           <rx-input name="signed_on" type="date" :label="tx['engagements.signed_on']" :value="today" :id="'engagement-letter-on-' ~ engagement.id" required/>
         </rx-action-sheet>
       </template>
@@ -26,17 +26,17 @@
       </template>
       <template rx-if="can_suspend">
         <rx-action-sheet :id="'engagement-suspend-' ~ engagement.id" :label="tx['engagements.suspend']" :action="route('accounting.engagement_suspend', engagement.id)"
-                         :title="tx['engagements.suspend']" :description="tx['engagements.reason_description']" :submit-label="tx['engagements.suspend']" icon="pause">
+                         :title="tx['engagements.suspend']" :description="tx['engagements.reason_description']" :submit-label="tx['engagements.suspend']" icon="clock">
           <rx-select name="reason" :label="tx['engagements.reason']" :options="suspend_reasons" :selected="''" :id="'engagement-suspend-reason-' ~ engagement.id"/>
         </rx-action-sheet>
       </template>
       <template rx-if="can_resume">
         <rx-confirm :id="'engagement-resume-' ~ engagement.id" :label="tx['engagements.resume']" :action="route('accounting.engagement_resume', engagement.id)" method="POST"
-                    :title="tx['engagements.resume']" :message="tx['engagements.resume_message']" :confirm-label="tx['engagements.resume']" :cancel-label="tx['button_cancel']" icon="play"/>
+                    :title="tx['engagements.resume']" :message="tx['engagements.resume_message']" :confirm-label="tx['engagements.resume']" :cancel-label="tx['button_cancel']" icon="refresh-cw"/>
       </template>
       <template rx-if="can_end">
         <rx-action-sheet :id="'engagement-end-' ~ engagement.id" :label="tx['engagements.end']" :action="route('accounting.engagement_end', engagement.id)"
-                         :title="tx['engagements.end']" :description="tx['engagements.reason_description']" :submit-label="tx['engagements.end']" icon="flag">
+                         :title="tx['engagements.end']" :description="tx['engagements.reason_description']" :submit-label="tx['engagements.end']" icon="circle-x">
           <rx-select name="reason" :label="tx['engagements.reason']" :options="end_reasons" :selected="''" :id="'engagement-end-reason-' ~ engagement.id"/>
         </rx-action-sheet>
       </template>

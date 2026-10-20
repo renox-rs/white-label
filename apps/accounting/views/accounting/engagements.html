@@ -20,7 +20,7 @@
       <rx-column :label="tx['engagements.services']" hide-narrow>{{ row.title }}</rx-column>
       <rx-column :label="tx['fields.status']"><rx-badge :kind="row.status_kind" :text="row.status"/></rx-column>
       <rx-column :label="tx['engagements.reason']" hide-narrow>{{ row.reason }}</rx-column>
-      <rx-slot name="empty"><rx-empty :title="tx['engagements.empty']" icon="briefcase"/></rx-slot>
+      <rx-slot name="empty"><rx-empty :title="tx['engagements.empty']" icon="handshake"/></rx-slot>
     </rx-table>
   </rx-stack>
 </rx-page>

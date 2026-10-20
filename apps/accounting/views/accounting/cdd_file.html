@@ -9,7 +9,7 @@
                     :badge="status" :badge-kind="status_kind">
       <template rx-if="can_prepare">
         <rx-action-sheet :id="'cdd-party-' ~ file.id" :label="tx['cdd.add_party']" :action="route('accounting.cdd_party_add', file.id)"
-                         :title="tx['cdd.add_party']" :description="tx['cdd.add_party_description']" :submit-label="tx['cdd.add_party']" icon="user-plus">
+                         :title="tx['cdd.add_party']" :description="tx['cdd.add_party_description']" :submit-label="tx['cdd.add_party']" icon="user">
           <rx-input name="party" :label="tx['cdd.party']" :id="'cdd-party-id-' ~ file.id" required/>
           <rx-select name="role" :label="tx['cdd.party_role']" :options="roles" :selected="'ubo'" :id="'cdd-party-role-' ~ file.id"/>
         </rx-action-sheet>
@@ -23,7 +23,7 @@
       </template>
       <template rx-if="can_submit">
         <rx-confirm :id="'cdd-submit-' ~ file.id" :label="tx['cdd.submit']" :action="route('accounting.cdd_submit', file.id)" method="POST"
-                    :title="tx['cdd.submit']" :message="tx['cdd.submit_message']" :confirm-label="tx['cdd.submit']" :cancel-label="tx['button_cancel']" icon="send"/>
+                    :title="tx['cdd.submit']" :message="tx['cdd.submit_message']" :confirm-label="tx['cdd.submit']" :cancel-label="tx['button_cancel']" icon="upload"/>
       </template>
       <template rx-if="can_approve">
         <rx-confirm :id="'cdd-approve-' ~ file.id" :label="tx['cdd.approve']" :action="route('accounting.cdd_approve', file.id)" method="POST"
@@ -35,7 +35,7 @@
       </template>
       <template rx-if="can_reopen">
         <rx-confirm :id="'cdd-reopen-' ~ file.id" :label="tx['cdd.reopen']" :action="route('accounting.cdd_reopen', file.id)" method="POST"
-                    :title="tx['cdd.reopen']" :message="tx['cdd.reopen_message']" :confirm-label="tx['cdd.reopen']" :cancel-label="tx['button_cancel']" icon="rotate-ccw"/>
+                    :title="tx['cdd.reopen']" :message="tx['cdd.reopen_message']" :confirm-label="tx['cdd.reopen']" :cancel-label="tx['button_cancel']" icon="refresh-cw"/>
       </template>
       <template rx-if="can_exit">
         <rx-action-sheet :id="'cdd-exit-' ~ file.id" :label="tx['cdd.exit']" :action="route('accounting.cdd_exit', file.id)"
