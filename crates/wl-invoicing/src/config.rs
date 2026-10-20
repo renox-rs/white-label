@@ -206,6 +206,10 @@ pub struct InvoicingConfig {
     /// The bank accounts of each legal entity (by code) the forecast shows
     /// even before they have a balance.
     pub cash_accounts: Vec<(String, String)>,
+    /// The source types (`<module>.<entity>`, e.g. `ticketing.ticket`) whose
+    /// drafts the system may issue without a user (`Invoicer::issue` with no
+    /// user). Empty by default: drafts are reviewed first.
+    pub auto_issue_sources: Vec<String>,
 }
 
 impl Default for InvoicingConfig {
@@ -264,6 +268,7 @@ impl Default for InvoicingConfig {
             einvoice_repeat_hours: 6,
             einvoice_task_hours: 24,
             cash_accounts: Vec::new(),
+            auto_issue_sources: Vec::new(),
         }
     }
 }
@@ -389,6 +394,7 @@ mod tests {
         assert!(config.duplicate_check);
         assert_eq!(config.duplicate_keys, [DuplicateKey::SupplierInvoiceNumber]);
         assert_eq!(config.duplicate_notify_role, "accountant");
+        assert!(config.auto_issue_sources.is_empty());
         assert_eq!(config.budget_fiscal_start_month, 1);
         assert!(!config.budget_revise_past_months);
         assert_eq!(config.budget_reminder_days, 30);

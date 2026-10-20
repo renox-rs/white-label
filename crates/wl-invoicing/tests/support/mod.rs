@@ -207,6 +207,7 @@ impl Module for Probe {
         Routes::new()
             .get("/probe/{id}/available", probe_available)
             .get("/probe/{id}/offered", probe_offered)
+            .post("/probe/{id}/contract-issue", probe_contract_issue)
     }
 }
 
@@ -223,6 +224,24 @@ async fn probe_available(
         .map(|action| action.name)
         .collect();
     Ok(names.join(","))
+}
+
+/// `Invoicer::issue` for the signed-in user: the answer is `ok` or the error's
+/// status.
+async fn probe_contract_issue(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(id): Path<i64>,
+) -> String {
+    match wl_kernel::invoicing::invoicer(&state)
+        .issue(&state, wl_kernel::invoicing::InvoiceId(id), Some(&user))
+        .await
+    {
+        Ok(()) => "ok".to_owned(),
+        Err(Error::Status(code, _)) => code.as_u16().to_string(),
+        Err(Error::Forbidden) => "403".to_owned(),
+        Err(_) => "error".to_owned(),
+    }
 }
 
 async fn probe_offered(
@@ -1442,6 +1461,15 @@ impl Booted {
                 &[("reason_code", code), ("reason_text", text)],
             )
             .await
+    }
+
+    /// `Invoicer::issue` on `draft` as `by`: `ok`, or the status that refused.
+    pub async fn contract_issue(&self, draft: &Invoice, by: &User) -> String {
+        self.app.acting_as(by);
+        self.app
+            .post(&format!("/probe/{}/contract-issue", draft.id), &[])
+            .await
+            .text()
     }
 
     /// Issues `draft` as `by`.

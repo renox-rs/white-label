@@ -659,6 +659,21 @@ impl WlInvoicing {
         self
     }
 
+    /// Lets the system issue the drafts of this source type (`<module>.<entity>`,
+    /// e.g. `ticketing.ticket`) without a user, through `Invoicer::issue` with
+    /// no user (default none: drafts are reviewed first).
+    pub fn auto_issue_source(mut self, source_type: &str) -> Self {
+        if !self
+            .config
+            .auto_issue_sources
+            .iter()
+            .any(|s| s == source_type)
+        {
+            self.config.auto_issue_sources.push(source_type.to_owned());
+        }
+        self
+    }
+
     /// Names a bank account of the legal entity with `entity_code`, so the
     /// forecast shows it (with a warning) before it has a balance.
     pub fn cash_account(mut self, entity_code: &str, account: &str) -> Self {

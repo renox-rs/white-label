@@ -44,7 +44,7 @@ use crate::credit_note_machine::{
 use crate::dispute::Dispute;
 use crate::invoice::Invoice;
 use crate::invoicer::lines_of;
-use crate::issue::ISSUE;
+use crate::issue::{ISSUE, ISSUE_SYSTEM};
 use crate::line::InvoiceLine;
 use crate::overdue::MARK_OVERDUE;
 use crate::recover::{RECOVER, RECOVER_IN_FULL};
@@ -66,7 +66,7 @@ fn days_after(due: NaiveDate, on: NaiveDate) -> i64 {
 /// The event `transition` gives for `invoice`, as it is after the commit.
 fn event_for(transition: &str, invoice: &Invoice, on: NaiveDate) -> Option<InvoiceEvent> {
     match transition {
-        ISSUE => Some(InvoiceEvent::Issued(InvoiceIssued {
+        ISSUE | ISSUE_SYSTEM => Some(InvoiceEvent::Issued(InvoiceIssued {
             invoice: invoice.invoice_id(),
             party: invoice.party(),
             source: invoice.source(),
@@ -228,6 +228,7 @@ pub(crate) fn register(app: &mut Registry) {
     app.listen(|event: Transitioned<Invoice>, state: AppState| async move {
         let known = [
             ISSUE,
+            ISSUE_SYSTEM,
             ALLOCATE_IN_FULL,
             MARK_OVERDUE,
             RECOVER,

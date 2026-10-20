@@ -810,6 +810,23 @@ pub trait Invoicer: Send + Sync + 'static {
         })
     }
 
+    /// Issues the `draft` invoice `id` through its `issue` transition: the
+    /// permission, the guards (lines, active entity, VAT registration,
+    /// billed party, exchange rate, e-invoicing) and the gapless number are
+    /// those of the invoice's own `issue`. `by` is the user, who needs
+    /// `invoices.issue`; `None` is the system, which may issue only an
+    /// invoice whose source the invoicing module is set to issue
+    /// automatically (off by default: drafts are reviewed first). The default
+    /// refuses (422): invoicing is not enabled.
+    fn issue<'a>(
+        &'a self,
+        _state: &'a AppState,
+        id: InvoiceId,
+        _by: Option<&'a AuthUser>,
+    ) -> InvoiceFuture<'a, ()> {
+        Box::pin(async move { Err(issuing_off(id)) })
+    }
+
     /// Credits an invoice in full: drafts and issues a credit note for every
     /// line, applies it and makes the invoice `credited`. Refused while
     /// anything is allocated to the invoice, or for a blank `reason`. `by` is
@@ -911,6 +928,14 @@ pub trait Invoicer: Send + Sync + 'static {
             ))
         })
     }
+}
+
+/// The 422 of issuing an invoice while invoicing is off.
+fn issuing_off(id: InvoiceId) -> Error {
+    Error::Status(
+        StatusCode::UNPROCESSABLE_ENTITY,
+        format!("invoice {id} cannot be issued: invoicing is not enabled"),
+    )
 }
 
 /// The 422 of crediting an invoice while invoicing is off.
@@ -2713,6 +2738,17 @@ mod tests {
         assert_eq!(json["new_status"], "issued");
         assert_eq!(json["reason"], "payment_reversed");
         assert_eq!(json["reversal_reason"], "bank_return");
+    }
+
+    #[test]
+    fn the_issue_fallback_is_a_422() {
+        match issuing_off(InvoiceId(5)) {
+            Error::Status(code, message) => {
+                assert_eq!(code, StatusCode::UNPROCESSABLE_ENTITY);
+                assert!(message.contains("invoice 5"), "{message}");
+            }
+            other => panic!("unexpected error {other:?}"),
+        }
     }
 
     #[test]

@@ -33,6 +33,9 @@ use crate::permissions;
 
 /// The transition's name.
 pub const ISSUE: &str = "issue";
+/// The system twin of [`ISSUE`]: no user, and only for a source the module is
+/// set to issue automatically.
+pub const ISSUE_SYSTEM: &str = "issue_system";
 
 /// What an issue run carries to its guards and effect, gathered by
 /// [`issue`].
@@ -55,14 +58,43 @@ pub(crate) struct IssueInput {
     /// has a recipient identifier (`FIN.INV.01`).
     #[serde(default)]
     pub einvoice: crate::einvoice_send::IssueFacts,
+    /// Whether the module is set to issue this invoice's source type
+    /// automatically (`InvoicingConfig::auto_issue_sources`); only the
+    /// system twin checks it.
+    #[serde(default)]
+    pub auto_issue: bool,
 }
 
-/// The `issue` transition, for the machine.
-pub(crate) fn transition() -> Transition<Invoice> {
-    Transition::new(ISSUE)
-        .label("Issue")
-        .tone("primary")
-        .permission(permissions::ISSUE)
+/// The `issue` transition and its system twin, for the machine.
+pub(crate) fn transitions() -> [Transition<Invoice>; 2] {
+    [
+        rules(
+            Transition::new(ISSUE)
+                .label("Issue")
+                .tone("primary")
+                .permission(permissions::ISSUE),
+        ),
+        rules(
+            Transition::new(ISSUE_SYSTEM)
+                .label("Issue (system)")
+                .system(),
+        )
+        .guard("auto_issue", |_invoice: &Invoice, ctx| {
+            Box::pin(async move {
+                match input(ctx) {
+                    Some(input) if input.auto_issue => Ok(()),
+                    _ => Err(
+                        "The system issues no invoice of this source: a user issues it.".to_owned(),
+                    ),
+                }
+            })
+        }),
+    ]
+}
+
+/// What both transitions share: the draft state, the guards and the effect.
+fn rules(transition: Transition<Invoice>) -> Transition<Invoice> {
+    transition
         .from([InvoiceStatus::Draft])
         .to(InvoiceStatus::Issued)
         .guard("has_lines", |_invoice: &Invoice, ctx| {
@@ -229,7 +261,31 @@ async fn gather(state: &AppState, invoice: &Invoice) -> Result<IssueInput> {
         party: party.as_ref().map(PartySnapshot::of),
         payment_terms_days: crate::config_of(state).payment_terms_days,
         einvoice: crate::einvoice_send::issue_facts(state, invoice).await?,
+        auto_issue: crate::config_of(state)
+            .auto_issue_sources
+            .contains(&invoice.source_type),
     })
+}
+
+/// The system issues the draft `invoice` (`issue_system`), in its own
+/// transaction; refused unless the module is set to issue its source type.
+///
+/// # Errors
+///
+/// `Guard` (422) for a source type that is not issued automatically, and the
+/// guards of [`issue`].
+pub async fn issue_by_system(
+    state: &AppState,
+    invoice: &Invoice,
+) -> std::result::Result<(), TransitionError> {
+    let input = gather(state, invoice).await?;
+    let _outcome = invoice
+        .transition(ISSUE_SYSTEM)
+        .by_system()
+        .input(&input)
+        .run(state)
+        .await?;
+    Ok(())
 }
 
 /// `user` issues the draft `invoice` (`issue`), in its own transaction.
@@ -278,6 +334,7 @@ mod tests {
             }),
             payment_terms_days: 30,
             einvoice: Default::default(),
+            auto_issue: false,
         }
     }
 

@@ -137,6 +137,22 @@ impl Invoicer for Invoices {
         })
     }
 
+    fn issue<'a>(
+        &'a self,
+        state: &'a AppState,
+        id: InvoiceId,
+        by: Option<&'a AuthUser>,
+    ) -> InvoiceFuture<'a, ()> {
+        Box::pin(async move {
+            let invoice = Invoice::find_or_404(&state.db, id.0).await?;
+            let result = match by {
+                Some(user) => crate::issue::issue(state, user, &invoice).await,
+                None => crate::issue::issue_by_system(state, &invoice).await,
+            };
+            result.map_err(TransitionError::into_error)
+        })
+    }
+
     fn credit_in_full<'a>(
         &'a self,
         state: &'a AppState,
