@@ -88,6 +88,105 @@ pub struct AttendanceFlagged {
 
 impl Event for AttendanceFlagged {}
 
+/// Hours of one category, in minutes; signed in an adjustment.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CategoryMinutes {
+    /// `normal`, `overtime`, `night`, `rest_day` or `public_holiday`.
+    pub category: String,
+    /// The minutes; negative for hours an adjustment takes away.
+    pub minutes: i64,
+}
+
+/// A timesheet was approved (`approve`, `approve_on_behalf` or
+/// `deem_approve`). Payroll and billing read it; for an adjustment `kind` is
+/// `adjustment`, the totals are signed and `adjusts`, `origin` and `affects`
+/// say what it corrects and where it flows (wl-attendance §6).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TimesheetApproved {
+    /// The timesheet, `attendance.timesheet:3`.
+    pub timesheet: Subject,
+    /// The employee whose hours these are.
+    pub owner: EmployeeId,
+    /// The first day.
+    pub period_from: NaiveDate,
+    /// The last day.
+    pub period_to: NaiveDate,
+    /// The context (project, deployment...), if any.
+    pub context: Option<Subject>,
+    /// Hours per category, summed over the entries.
+    pub totals: Vec<CategoryMinutes>,
+    /// `internal` or `external`.
+    pub approver_kind: String,
+    /// `approved`, `on_behalf` or `deemed`.
+    pub approval_basis: String,
+    /// `regular` or `adjustment`.
+    pub kind: String,
+    /// An adjustment: the locked timesheet it corrects.
+    pub adjusts: Option<Subject>,
+    /// An adjustment: `client_dispute`, `attendance_error`, `payroll_error`
+    /// or `provisional_reconciliation`.
+    pub origin: Option<String>,
+    /// An adjustment: `billing`, `payroll` or `both`.
+    pub affects: Option<String>,
+}
+
+impl Event for TimesheetApproved {}
+
+/// The future a [`CostRateResolver`] answers with.
+pub type LabourFuture<'a, T> =
+    std::pin::Pin<Box<dyn std::future::Future<Output = Result<T>> + Send + 'a>>;
+
+/// Says whether a context posts labour cost from approved hours and at what
+/// rate (wl-attendance §4 *Labour cost*, §8 `CostRateResolver`). The app
+/// provides it with [`provide_cost_rates`]: construction answers with the
+/// trade's fully loaded rate, manpower and edtech do not post cost from hours.
+/// Without one, [`cost_rates`] gives [`NoCostRates`]: nothing is posted.
+pub trait CostRateResolver: Send + Sync + 'static {
+    /// Whether approved hours of `context` post labour cost. The default is
+    /// no, so that no cost is counted twice.
+    fn posts_cost<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _context: Option<&'a Subject>,
+    ) -> LabourFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
+
+    /// The cost of one hour of `category` (`normal`, `overtime`, ...) for
+    /// `employee` on `date` in the context, in fils of AED; `None` when no
+    /// rate is known (nothing is posted for it).
+    fn hourly_rate<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _employee: EmployeeId,
+        _context: Option<&'a Subject>,
+        _category: &'a str,
+        _date: NaiveDate,
+    ) -> LabourFuture<'a, Option<i64>> {
+        Box::pin(async { Ok(None) })
+    }
+}
+
+/// The resolver when none is provided: no context posts labour cost.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoCostRates;
+
+impl CostRateResolver for NoCostRates {}
+
+/// Makes `rates` the app's [`CostRateResolver`].
+pub fn provide_cost_rates(app: &mut Registry, rates: impl CostRateResolver) {
+    let rates: std::sync::Arc<dyn CostRateResolver> = std::sync::Arc::new(rates);
+    app.provide(rates);
+}
+
+/// The app's [`CostRateResolver`], or [`NoCostRates`] when none is provided.
+pub fn cost_rates(state: &AppState) -> std::sync::Arc<dyn CostRateResolver> {
+    match state.provided::<std::sync::Arc<dyn CostRateResolver>>() {
+        Some(rates) => std::sync::Arc::clone(&rates),
+        None => std::sync::Arc::new(NoCostRates),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -112,6 +211,32 @@ mod tests {
         assert_eq!(
             renox::serde_json::from_str::<AttendanceFlagged>(&json).unwrap(),
             flagged
+        );
+    }
+
+    #[test]
+    fn the_approved_event_round_trips_through_json() {
+        let approved = TimesheetApproved {
+            timesheet: Subject::new("attendance.timesheet", 3),
+            owner: EmployeeId(3),
+            period_from: NaiveDate::from_ymd_opt(2026, 11, 2).unwrap(),
+            period_to: NaiveDate::from_ymd_opt(2026, 11, 8).unwrap(),
+            context: None,
+            totals: vec![CategoryMinutes {
+                category: "normal".into(),
+                minutes: -480,
+            }],
+            approver_kind: "internal".into(),
+            approval_basis: "approved".into(),
+            kind: "adjustment".into(),
+            adjusts: Some(Subject::new("attendance.timesheet", 2)),
+            origin: Some("payroll_error".into()),
+            affects: Some("payroll".into()),
+        };
+        let json = renox::serde_json::to_string(&approved).unwrap();
+        assert_eq!(
+            renox::serde_json::from_str::<TimesheetApproved>(&json).unwrap(),
+            approved
         );
     }
 }
