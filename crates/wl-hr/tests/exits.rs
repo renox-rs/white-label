@@ -17,7 +17,8 @@ use wl_kernel::{ApprovalDecided, ApprovalEnd};
 
 use support::Booted;
 
-/// The fields of a `report_absconding` request.
+/// The fields of a `report_absconding` request; the employee has been absent
+/// for long (`Booted::make_absent`).
 fn absconding<'a>() -> Vec<(&'a str, &'a str)> {
     vec![
         ("transition", "report_absconding"),
@@ -79,6 +80,7 @@ async fn hrm04_a_request_keeps_the_state_and_creates_an_approval_request() {
     let a = t.user_with("Hana", "hr").await;
     let b = t.user_with("Basel", "md").await;
     let e = t.employee_in(60, EmployeeStatus::Active).await;
+    t.make_absent(&e).await;
 
     post(&t, &a, &e, &absconding()).await.assert_ok();
 
@@ -103,6 +105,7 @@ async fn hrm04_the_requester_cannot_approve_and_the_md_can() {
     let a = t.user_with("Hana", "hr").await;
     let b = t.user_with("Basel", "md").await;
     let e = t.employee_in(60, EmployeeStatus::Active).await;
+    t.make_absent(&e).await;
     post(&t, &a, &e, &absconding()).await.assert_ok();
     let request = pending(&t, &e).await.remove(0);
 
@@ -136,6 +139,7 @@ async fn hrm04_a_rejection_changes_nothing_and_tells_the_requester() {
     let a = t.user_with("Hana", "hr").await;
     let b = t.user_with("Basel", "md").await;
     let e = t.employee_in(60, EmployeeStatus::Active).await;
+    t.make_absent(&e).await;
     post(&t, &a, &e, &absconding()).await.assert_ok();
     let request = pending(&t, &e).await.remove(0);
 
@@ -164,6 +168,7 @@ async fn hrm04_one_pending_request_per_employee() {
     let t = support::boot().await;
     let a = t.user_with("Hana", "hr").await;
     let e = t.employee_in(60, EmployeeStatus::Active).await;
+    t.make_absent(&e).await;
     post(&t, &a, &e, &absconding()).await.assert_ok();
 
     post(&t, &a, &e, &absconding()).await.assert_status(422);
@@ -270,6 +275,7 @@ async fn hrm04_the_request_the_approval_and_the_transition_are_audited() {
     let a = t.user_with("Hana", "hr").await;
     let b = t.user_with("Basel", "md").await;
     let e = t.employee_in(60, EmployeeStatus::Active).await;
+    t.make_absent(&e).await;
     post(&t, &a, &e, &absconding()).await.assert_ok();
     let request = pending(&t, &e).await.remove(0);
     approvals::approve(t.state(), request.id, &b, "")
@@ -306,6 +312,7 @@ async fn hrm04_a_rejection_is_audited_without_a_transition() {
     let a = t.user_with("Hana", "hr").await;
     let b = t.user_with("Basel", "md").await;
     let e = t.employee_in(60, EmployeeStatus::Active).await;
+    t.make_absent(&e).await;
     post(&t, &a, &e, &absconding()).await.assert_ok();
     let request = pending(&t, &e).await.remove(0);
     approvals::reject(t.state(), request.id, &b, "not enough attempts")
@@ -332,6 +339,7 @@ async fn hrm04_the_md_who_requests_cannot_approve_their_own_request() {
     let t = support::boot().await;
     let md = t.user_with("Mona", "hr_md").await;
     let e = t.employee_in(60, EmployeeStatus::Active).await;
+    t.make_absent(&e).await;
     post(&t, &md, &e, &absconding()).await.assert_ok();
     let request = pending(&t, &e).await.remove(0);
 
@@ -447,6 +455,7 @@ async fn hrm04_the_page_shows_the_request_and_the_form() {
     let a = t.user_with("Hana", "hr").await;
     let viewer = t.user_with("Vera", "manager").await;
     let e = t.employee_in(60, EmployeeStatus::Active).await;
+    t.make_absent(&e).await;
     let path = format!("/hr/employees/{}", e.id);
 
     t.app.acting_as(&a);

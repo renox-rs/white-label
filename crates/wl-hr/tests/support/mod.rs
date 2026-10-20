@@ -27,8 +27,8 @@ use wl_kernel::documents::{
 use wl_kernel::notify::{MessageId, Notifier, NotifyFuture, NotifyRequest, provide_notifier};
 use wl_kernel::tickets::{ChecklistRunId, Checklists, TicketFuture, provide_checklists};
 use wl_kernel::workforce::{
-    EmployeeActivated, EmployeeAssignmentChanged, OnboardingCompleted, OnboardingStarted,
-    QualificationExpired, QualificationExpiring,
+    AbsenceCaseOpened, EmployeeAbsconded, EmployeeActivated, EmployeeAssignmentChanged,
+    OnboardingCompleted, OnboardingStarted, QualificationExpired, QualificationExpiring,
 };
 use wl_kernel::{PartyId, SopId, Subject};
 
@@ -381,6 +381,7 @@ struct Fakes {
     changed: Arc<Mutex<Vec<EmployeeAssignmentChanged>>>,
     qualification_expired: Arc<Mutex<Vec<QualificationExpired>>>,
     qualification_expiring: Arc<Mutex<Vec<QualificationExpiring>>>,
+    absconded: Arc<Mutex<Vec<EmployeeAbsconded>>>,
 }
 
 /// Records `event`s of type `E` into `log`.
@@ -411,6 +412,7 @@ impl Module for Fakes {
         record(app, &self.changed);
         record(app, &self.qualification_expired);
         record(app, &self.qualification_expiring);
+        record(app, &self.absconded);
     }
 }
 
@@ -440,6 +442,12 @@ pub struct Booted {
     pub qualification_expired: Recorded<QualificationExpired>,
     /// `QualificationExpiring`.
     pub qualification_expiring: Recorded<QualificationExpiring>,
+    /// `EmployeeAbsconded`.
+    pub absconded: Recorded<EmployeeAbsconded>,
+    /// Days the clock was moved forward from the real one.
+    clock_days: std::sync::atomic::AtomicI64,
+    /// The absence cases opened so far.
+    cases: std::sync::atomic::AtomicI64,
 }
 
 impl Booted {
@@ -506,6 +514,68 @@ impl Booted {
         .unwrap();
         tx.commit().await.unwrap();
         employee
+    }
+
+    /// Runs `work` with the clock on `day` (Asia/Dubai), moved forward from
+    /// the real one; days only go forward within a test.
+    pub async fn on<F: std::future::Future>(&self, day: NaiveDate, work: F) -> F::Output {
+        use std::sync::atomic::Ordering;
+        let real = wl_kernel::documents::dubai_date(renox::db::now());
+        let wanted = (day - real).num_days();
+        let moved = self.clock_days.load(Ordering::SeqCst);
+        assert!(wanted >= moved, "the clock cannot go back to {day}");
+        if wanted > moved {
+            let seconds = u64::try_from(wanted - moved).unwrap() * 24 * 3600;
+            self.app.travel(std::time::Duration::from_secs(seconds));
+            self.clock_days.store(wanted, Ordering::SeqCst);
+        }
+        self.app.at_travelled_time(work).await
+    }
+
+    /// An absence case of a vertical opened for `employee` on `opened_on`,
+    /// counting from `last_present`, as the vertical tells wl-hr.
+    pub async fn open_case(
+        &self,
+        employee: &Employee,
+        opened_on: NaiveDate,
+        last_present: NaiveDate,
+    ) {
+        let id = self.cases.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+        self.state()
+            .emit(AbsenceCaseOpened {
+                employee: employee.employee_id(),
+                case: Subject::new("ticketing.ticket", id),
+                opened_on,
+                last_present_on: last_present,
+            })
+            .await
+            .unwrap();
+    }
+
+    /// A failed attempt (no answer) to reach `employee` on `day`.
+    pub async fn attempt(&self, employee: &Employee, day: NaiveDate) {
+        wl_hr::ContactAttempt::create(
+            self.db(),
+            wl_hr::ContactAttempt {
+                employee_id: employee.id,
+                attempted_on: day,
+                method: "phone".into(),
+                outcome: wl_hr::ContactOutcome::NoAnswer,
+                ..wl_hr::ContactAttempt::default()
+            },
+        )
+        .await
+        .unwrap();
+    }
+
+    /// `employee` has been absent for long: an open absence case that counts
+    /// from 2026-01-01 and two failed attempts on 2026-01-05 and 2026-01-06,
+    /// whatever the clock says.
+    pub async fn make_absent(&self, employee: &Employee) {
+        let day = |m: u32, d: u32| NaiveDate::from_ymd_opt(2026, m, d).unwrap();
+        self.open_case(employee, day(1, 9), day(1, 1)).await;
+        self.attempt(employee, day(1, 5)).await;
+        self.attempt(employee, day(1, 6)).await;
     }
 
     /// `employee`, as stored now.
@@ -581,10 +651,12 @@ pub async fn boot_with(module: WlHr, induction: bool) -> Booted {
         changed: Arc::default(),
         qualification_expired: Arc::default(),
         qualification_expiring: Arc::default(),
+        absconded: Arc::default(),
     };
-    let (qualification_expired, qualification_expiring) = (
+    let (qualification_expired, qualification_expiring, absconded) = (
         Recorded(fakes.qualification_expired.clone()),
         Recorded(fakes.qualification_expiring.clone()),
+        Recorded(fakes.absconded.clone()),
     );
     let (notices, checklists, sops, docs) = (
         fakes.notices.clone(),
@@ -667,6 +739,9 @@ pub async fn boot_with(module: WlHr, induction: bool) -> Booted {
         changed,
         qualification_expired,
         qualification_expiring,
+        absconded,
+        clock_days: std::sync::atomic::AtomicI64::new(0),
+        cases: std::sync::atomic::AtomicI64::new(0),
     }
 }
 
