@@ -8,6 +8,113 @@ use renox::prelude::*;
 /// Every key the package uses, with its English text.
 const TEXTS: &[(&str, &str)] = &[
     ("wl_payments.title", "Payments"),
+    ("wl_payments.bad_date", "Enter a date as YYYY-MM-DD."),
+    ("wl_payments.expense_claims.title", "Expense claims"),
+    (
+        "wl_payments.expense_claims.description",
+        "Spending staff paid for the business. A line in the Owner drawings category waits for the approval of an owner other than the claimant.",
+    ),
+    ("wl_payments.expense_claims.empty", "No claims yet"),
+    (
+        "wl_payments.expense_claims.empty_hint",
+        "Record a claim to see it here.",
+    ),
+    ("wl_payments.expense_claims.new", "Record a claim"),
+    ("wl_payments.expense_claims.record", "Record"),
+    ("wl_payments.expense_claims.recorded", "Claim recorded."),
+    ("wl_payments.expense_claims.claim_title", "For"),
+    ("wl_payments.expense_claims.total", "Total"),
+    ("wl_payments.expense_claims.actions", "Actions"),
+    ("wl_payments.expense_claims.reason", "Reason"),
+    (
+        "wl_payments.expense_claims.reason_hint",
+        "The claimant reads the reason.",
+    ),
+    ("wl_payments.expense_claims.status.draft", "Draft"),
+    ("wl_payments.expense_claims.status.submitted", "Submitted"),
+    ("wl_payments.expense_claims.status.approved", "Approved"),
+    ("wl_payments.expense_claims.status.rejected", "Rejected"),
+    ("wl_payments.expense_claims.line.category", "Category"),
+    ("wl_payments.expense_claims.line.date", "Date"),
+    ("wl_payments.expense_claims.line.amount", "Amount paid"),
+    (
+        "wl_payments.expense_claims.line.amount_hint",
+        "In dirhams, VAT included.",
+    ),
+    ("wl_payments.expense_claims.line.vat", "VAT in it"),
+    ("wl_payments.expense_claims.line.merchant", "Paid to"),
+    ("wl_payments.expense_claims.line.description", "For"),
+    ("wl_payments.expense_claims.submit.action", "Submit"),
+    (
+        "wl_payments.expense_claims.submit.title",
+        "Submit the claim",
+    ),
+    (
+        "wl_payments.expense_claims.submit.message",
+        "A line in the Owner drawings category is sent to an owner for approval.",
+    ),
+    ("wl_payments.expense_claims.submit.done", "Claim submitted."),
+    ("wl_payments.expense_claims.approve.action", "Approve"),
+    (
+        "wl_payments.expense_claims.approve.title",
+        "Approve the claim",
+    ),
+    (
+        "wl_payments.expense_claims.approve.message",
+        "You cannot approve your own claim, or one whose owner drawing is not approved.",
+    ),
+    ("wl_payments.expense_claims.approve.done", "Claim approved."),
+    ("wl_payments.expense_claims.reject.action", "Reject"),
+    (
+        "wl_payments.expense_claims.reject.title",
+        "Reject the claim",
+    ),
+    ("wl_payments.expense_claims.reject.done", "Claim rejected."),
+    ("wl_payments.expense_claims.return.action", "Return"),
+    (
+        "wl_payments.expense_claims.return.title",
+        "Return the claim",
+    ),
+    (
+        "wl_payments.expense_claims.return.done",
+        "Claim returned to the claimant.",
+    ),
+    (
+        "wl_payments.expense_claims.problem.no_lines",
+        "A claim needs at least one line.",
+    ),
+    (
+        "wl_payments.expense_claims.problem.amount",
+        "Every line needs an amount above 0, and its VAT cannot be more than the amount.",
+    ),
+    (
+        "wl_payments.expense_claims.problem.category",
+        "The expense category of a line is unknown or not in use.",
+    ),
+    (
+        "wl_payments.expense_claims.problem.entity",
+        "The legal entity is unknown.",
+    ),
+    (
+        "wl_payments.expense_claims.problem.not_draft",
+        "Only a draft claim can be changed.",
+    ),
+    (
+        "wl_payments.expense_claims.problem.own_claim",
+        "You cannot approve your own claim.",
+    ),
+    (
+        "wl_payments.expense_claims.problem.drawing_waits",
+        "The claim has an owner drawing that waits for the approval of an owner.",
+    ),
+    (
+        "wl_payments.expense_claims.problem.drawing_rejected",
+        "The owner drawing of the claim was not approved ({reason}). Return the claim, recode or remove the line, and submit it again.",
+    ),
+    (
+        "wl_payments.expense_claims.problem.own_drawing",
+        "The claimant cannot approve their own drawing.",
+    ),
     ("wl_payments.bank_statements.title", "Bank statements"),
     (
         "wl_payments.bank_statements.description",

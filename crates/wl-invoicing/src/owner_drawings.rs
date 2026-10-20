@@ -18,7 +18,7 @@ use renox::state_machine::Transitioned;
 use wl_kernel::PartyId;
 use wl_kernel::drawings::{
     DRAWING_REQUEST_SUBJECT_TYPE, DrawingCategory, DrawingFuture, DrawingRequest, DrawingStart,
-    OwnerDrawingDecided, OwnerDrawings,
+    EXPENSE_CLAIM_SUBJECT_TYPE, OwnerDrawingDecided, OwnerDrawings,
 };
 use wl_kernel::notify::{self, NotifyRequest};
 
@@ -103,7 +103,11 @@ async fn tell_self_approved(
         NotifyRequest::new(DRAWING_PAYMENT_SELF_APPROVED, approval.subject()).data(json!({
             "amount": amount_text("AED", approval.amount),
             "category": category.name_en,
-            "link": "/payments",
+            "link": if approval.source_type == EXPENSE_CLAIM_SUBJECT_TYPE {
+                "/expense-claims"
+            } else {
+                "/payments"
+            },
         }));
     for id in recipients {
         request = request.to_user(id);
@@ -113,9 +117,12 @@ async fn tell_self_approved(
 }
 
 /// `OwnerDrawingDecided` for the approval `approval` of a drawing on another
-/// module's record, or `None` for one on a supplier bill.
+/// module's record (a payment request or an expense claim), or `None` for one
+/// on a supplier bill.
 pub(crate) fn decided(approval: &DrawingApproval) -> Option<OwnerDrawingDecided> {
-    if approval.source_type != DRAWING_REQUEST_SUBJECT_TYPE {
+    if approval.source_type != DRAWING_REQUEST_SUBJECT_TYPE
+        && approval.source_type != EXPENSE_CLAIM_SUBJECT_TYPE
+    {
         return None;
     }
     Some(OwnerDrawingDecided {
@@ -163,7 +170,13 @@ mod tests {
     }
 
     #[test]
-    fn only_a_drawing_on_a_payment_request_is_announced() {
+    fn only_a_drawing_on_a_payment_request_or_a_claim_is_announced() {
+        let claim = decided(&approval(
+            EXPENSE_CLAIM_SUBJECT_TYPE,
+            DrawingStatus::Approved,
+        ))
+        .expect("announced");
+        assert_eq!(claim.source, Subject::new(EXPENSE_CLAIM_SUBJECT_TYPE, 9));
         assert!(
             decided(&approval(
                 "invoicing.supplier_bill",

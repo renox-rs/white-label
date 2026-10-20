@@ -36,6 +36,8 @@ pub mod deposit_pages;
 pub mod drawings;
 mod events;
 pub mod expense_category;
+pub mod expense_claim;
+pub mod expense_claim_pages;
 pub mod followup;
 pub mod gateway;
 mod machine;
@@ -98,6 +100,10 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "wl-payments/_reverse_sheet.html",
         include_str!("../views/wl-payments/_reverse_sheet.html"),
+    ),
+    (
+        "wl-payments/expense_claims.html",
+        include_str!("../views/wl-payments/expense_claims.html"),
     ),
     (
         "wl-payments/tasks.html",
@@ -229,6 +235,12 @@ pub mod permissions {
     pub const CHEQUES_LEGAL: &str = "cheques.legal";
     /// Upload a bank statement and reconcile it.
     pub const BANK_RECONCILE: &str = "bank.reconcile";
+    /// See expense claims.
+    pub const EXPENSES_VIEW: &str = "expenses.view";
+    /// Record and submit one's own expense claims.
+    pub const EXPENSES_SUBMIT: &str = "expenses.submit";
+    /// Approve, reject or return an expense claim (`FIN.ACL.11`).
+    pub const EXPENSES_APPROVE: &str = "expenses.approve";
 }
 
 /// The payments module. The host adds it with
@@ -390,6 +402,7 @@ impl Module for WlPayments {
             .merge(deposit_pages::routes())
             .merge(cheque_pages::routes())
             .merge(bank_statement_pages::routes())
+            .merge(expense_claim_pages::routes())
     }
 
     fn register(&self, app: &mut Registry) {
@@ -421,6 +434,8 @@ impl Module for WlPayments {
         app.model::<FollowupTask>();
         app.model::<drawings::PaymentDrawing>();
         app.model::<expense_category::ExpenseCategory>();
+        app.model::<expense_claim::ExpenseClaim>();
+        app.model::<expense_claim::ExpenseLine>();
         app.view_data::<pages::IndexPage>()
             .view_data::<pages::NewPage>()
             .view_data::<pages::ShowPage>()
@@ -433,7 +448,8 @@ impl Module for WlPayments {
             .view_data::<cheque_pages::IndexPage>()
             .view_data::<cheque_pages::ShowPage>()
             .view_data::<bank_statement_pages::IndexPage>()
-            .view_data::<bank_statement_pages::ShowPage>();
+            .view_data::<bank_statement_pages::ShowPage>()
+            .view_data::<expense_claim_pages::IndexPage>();
         app.templates(|env| {
             for (name, source) in VIEWS {
                 // The app's own file of that name wins.
@@ -491,12 +507,21 @@ impl Module for WlPayments {
                 .order(46)
                 .permission(permissions::BANK_RECONCILE),
         );
+        app.nav(
+            "app",
+            NavLink::route("wl_payments.expense_claims.index", "nav.expense_claims")
+                .icon("receipt")
+                .group("nav.app")
+                .order(47)
+                .permission(permissions::EXPENSES_VIEW),
+        );
         // `rnx state:diagram Payment` and the admin panel find the machine.
         renox::state_machine::register::<Payment>();
         renox::state_machine::register::<Refund>();
         renox::state_machine::register::<Deposit>();
         renox::state_machine::register::<Cheque>();
         renox::state_machine::register::<BankStatementImport>();
+        renox::state_machine::register::<expense_claim::ExpenseClaim>();
         // `BankStatementImported` and `BankStatementCompleted` after a commit.
         bank_statement_flow::register(app);
         // The settings the services read (`config_of`).
@@ -526,6 +551,8 @@ impl Module for WlPayments {
         // `FIN.ACL.21`: an owner drawing is recorded only after its approval.
         drawings::register_types();
         drawings::register(app);
+        // The decision on the drawing of an expense claim.
+        expense_claim::register(app);
         // `DepositSettled` after a commit.
         deposit_events::register(app);
         // The held amount follows the part refund of an adjustment.

@@ -42,6 +42,9 @@ pub const PURPOSE: &str = "owner_drawings";
 /// The subject type of a drawing a payment record waits to make.
 pub const DRAWING_REQUEST_SUBJECT_TYPE: &str = "payments.drawing_request";
 
+/// The subject type of an expense claim whose lines include a drawing.
+pub const EXPENSE_CLAIM_SUBJECT_TYPE: &str = "payments.expense_claim";
+
 /// A budget category of kind `owner_drawings`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DrawingCategory {
