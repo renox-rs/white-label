@@ -15,8 +15,12 @@ wl-kernel = { path = "../../crates/wl-kernel" }
 [dev-dependencies]
 tempfile = "3"
 # The real modules in the integration tests: parties (screening, blocks and
-# restricted reasons), documents (KYC documents and their one-use override)
-# and the portal (what a client user sees).
+# restricted reasons), documents (KYC documents and their one-use override),
+# the portal (what a client user sees and who acknowledges), and, in the
+# `*_real` suspension tests, ticketing (held deadline tasks) and invoicing
+# (the retainer paused and resumed).
 wl-parties = { path = "../../crates/wl-parties" }
 wl-documents = { path = "../../crates/wl-documents" }
 wl-portal = { path = "../../crates/wl-portal" }
+wl-ticketing = { path = "../../crates/wl-ticketing" }
+wl-invoicing = { path = "../../crates/wl-invoicing" }

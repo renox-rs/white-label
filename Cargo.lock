@@ -10,9 +10,11 @@ dependencies = [
  "serde",
  "tempfile",
  "wl-documents",
+ "wl-invoicing",
  "wl-kernel",
  "wl-parties",
  "wl-portal",
+ "wl-ticketing",
 ]
 
 [[package]]

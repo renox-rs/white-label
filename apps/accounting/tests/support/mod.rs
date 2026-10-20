@@ -30,14 +30,21 @@ use renox::state_machine::StateMachine;
 use renox::testing::{TestApp, TestResponse};
 use wl_documents::{Documents, KindSeed, NewDocument};
 use wl_kernel::deadlines::{
-    DeadlineFuture, DeadlineTaskId, DeadlineTasks, NewDeadlineTask, provide_deadline_tasks,
+    DeadlineFuture, DeadlineTaskId, DeadlineTaskStatus, DeadlineTaskSummary, DeadlineTasks,
+    NewDeadlineTask, ReleasedTasks, provide_deadline_tasks,
 };
 use wl_kernel::documents::{BlockCondition, BlockMode};
+use wl_kernel::invoicing::{
+    InvoiceDraft, InvoiceFuture, InvoiceId, InvoiceStatus, InvoiceSummary, Invoicer,
+    provide_invoicer,
+};
 use wl_kernel::notify::{
-    MessageId, Notifier, NotifyFuture, NotifyRecipient, NotifyRequest, provide_notifier,
+    MessageId, NoticeStatus, Notifier, NotifyFuture, NotifyRecipient, NotifyRequest,
+    provide_notifier,
 };
 use wl_kernel::subscriptions::{
-    StartSubscription, SubscriptionFuture, SubscriptionId, Subscriptions, provide_subscriptions,
+    PauseCause, PauseSubscription, StartSubscription, SubscriptionFuture, SubscriptionId,
+    SubscriptionSummary, Subscriptions, provide_subscriptions,
 };
 use wl_kernel::tickets::{
     Assignee, OpenTicket, TaskCreator, TicketFuture, TicketId, TicketRef, provide_task_creator,
@@ -92,14 +99,30 @@ pub fn dubai(day: u32, hour: u32, minute: u32) -> DateTime {
 
 // ---- the fakes -------------------------------------------------------------
 
-/// What the notifier was asked for.
+/// What the notifier was asked for, and what it answers about the delivery
+/// of a statutory notice: delivered when it was sent, unless the test made
+/// it bounce ([`Recording::bounce`]); a recorded proof wins
+/// ([`Recording::prove`]).
 #[derive(Clone, Default)]
-pub struct Recording(pub Arc<Mutex<Vec<NotifyRequest>>>);
+pub struct Recording {
+    requests: Arc<Mutex<Vec<NotifyRequest>>>,
+    delivered: Arc<Mutex<Vec<(Subject, String, DateTime)>>>,
+    bounced: Arc<Mutex<Vec<Subject>>>,
+    proofs: Arc<Mutex<Vec<(Subject, NaiveDate)>>>,
+}
 
 impl Recording {
     /// Every request.
     pub fn all(&self) -> Vec<NotifyRequest> {
-        self.0.lock().unwrap().clone()
+        self.requests.lock().unwrap().clone()
+    }
+
+    /// The requests of the notification type `key`.
+    pub fn of_type(&self, key: &str) -> Vec<NotifyRequest> {
+        self.all()
+            .into_iter()
+            .filter(|r| r.type_key == key)
+            .collect()
     }
 
     /// The requests addressed to `party` (directly or one of its contacts):
@@ -116,6 +139,18 @@ impl Recording {
             })
             .collect()
     }
+
+    /// The messages about `subject` did not reach anyone: the e-mail
+    /// bounced, so the notice is not delivered until a proof is recorded.
+    pub fn bounce(&self, subject: &Subject) {
+        self.bounced.lock().unwrap().push(subject.clone());
+    }
+
+    /// Staff recorded the proof that the notice about `subject` was
+    /// delivered on `on`.
+    pub fn prove(&self, subject: &Subject, on: NaiveDate) {
+        self.proofs.lock().unwrap().push((subject.clone(), on));
+    }
 }
 
 impl Notifier for Recording {
@@ -125,22 +160,100 @@ impl Notifier for Recording {
         request: NotifyRequest,
     ) -> NotifyFuture<'a, Vec<MessageId>> {
         let id = {
-            let mut all = self.0.lock().unwrap();
+            self.delivered.lock().unwrap().push((
+                request.subject.clone(),
+                request.type_key.clone(),
+                renox::db::now(),
+            ));
+            let mut all = self.requests.lock().unwrap();
             all.push(request);
             all.len() as i64
         };
         Box::pin(async move { Ok(vec![MessageId(id)]) })
     }
+
+    fn notice_status<'a>(
+        &'a self,
+        _state: &'a AppState,
+        subject: &'a Subject,
+        type_key: &'a str,
+    ) -> NotifyFuture<'a, NoticeStatus> {
+        let proof = self
+            .proofs
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|(s, _)| s == subject)
+            .map(|(_, on)| *on);
+        let bounced = self.bounced.lock().unwrap().contains(subject);
+        let delivered = self
+            .delivered
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|(s, key, _)| s == subject && key == type_key)
+            .map(|(_, _, at)| *at);
+        let status = match (proof, bounced, delivered) {
+            (Some(delivered_on), _, _) => NoticeStatus::ProofRecorded { delivered_on },
+            (None, false, Some(at)) => NoticeStatus::Delivered { at },
+            _ => NoticeStatus::NotDelivered,
+        };
+        Box::pin(async move { Ok(status) })
+    }
 }
 
-/// The deadline tasks created.
+/// A deadline task in the [`TaskBook`].
+#[derive(Debug, Clone)]
+pub struct BookTask {
+    /// The id.
+    pub id: DeadlineTaskId,
+    /// What was created.
+    pub task: NewDeadlineTask,
+    /// Whether it is held.
+    pub held: bool,
+    /// Its state.
+    pub status: DeadlineTaskStatus,
+}
+
+impl BookTask {
+    fn summary(&self) -> DeadlineTaskSummary {
+        DeadlineTaskSummary {
+            id: self.id,
+            source: self.task.source.clone(),
+            task_type: self.task.task_type.clone(),
+            title: self.task.title.clone(),
+            due_date: self.task.due_date,
+            start_date: self.task.due_date - renox::chrono::Duration::days(self.task.lead_days),
+            status: self.status,
+            late: false,
+            held: self.held,
+            overdue_on: None,
+            party: self.task.party,
+            owner_user: self.task.owner_user,
+            closed_reason: None,
+            next: None,
+        }
+    }
+}
+
+/// The deadline tasks created, held and released.
 #[derive(Clone, Default)]
-pub struct TaskBook(pub Arc<Mutex<Vec<NewDeadlineTask>>>);
+pub struct TaskBook {
+    tasks: Arc<Mutex<Vec<BookTask>>>,
+    held_sources: Arc<Mutex<Vec<Subject>>>,
+    holds: Arc<Mutex<Vec<(Subject, NaiveDate)>>>,
+    releases: Arc<Mutex<Vec<(Subject, NaiveDate)>>>,
+}
 
 impl TaskBook {
     /// Every task created.
     pub fn all(&self) -> Vec<NewDeadlineTask> {
-        self.0.lock().unwrap().clone()
+        self.tasks
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|t| t.task.clone())
+            .collect()
     }
 
     /// The tasks of `source`.
@@ -150,6 +263,27 @@ impl TaskBook {
             .filter(|t| &t.source == source)
             .collect()
     }
+
+    /// The tasks of `source` with their held flag and state.
+    pub fn book(&self, source: &Subject) -> Vec<BookTask> {
+        self.tasks
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|t| &t.task.source == source)
+            .cloned()
+            .collect()
+    }
+
+    /// The sources held, with the day.
+    pub fn holds(&self) -> Vec<(Subject, NaiveDate)> {
+        self.holds.lock().unwrap().clone()
+    }
+
+    /// The sources released, with the day.
+    pub fn releases(&self) -> Vec<(Subject, NaiveDate)> {
+        self.releases.lock().unwrap().clone()
+    }
 }
 
 impl DeadlineTasks for TaskBook {
@@ -158,12 +292,74 @@ impl DeadlineTasks for TaskBook {
         _state: &'a AppState,
         task: NewDeadlineTask,
     ) -> DeadlineFuture<'a, Option<DeadlineTaskId>> {
+        let held = self.held_sources.lock().unwrap().contains(&task.source);
         let id = {
-            let mut all = self.0.lock().unwrap();
-            all.push(task);
-            all.len() as i64
+            let mut all = self.tasks.lock().unwrap();
+            let id = DeadlineTaskId(all.len() as i64 + 1);
+            all.push(BookTask {
+                id,
+                task,
+                held,
+                status: DeadlineTaskStatus::Upcoming,
+            });
+            id
         };
-        Box::pin(async move { Ok(Some(DeadlineTaskId(id))) })
+        Box::pin(async move { Ok(Some(id)) })
+    }
+
+    fn of_subject<'a>(
+        &'a self,
+        _db: &'a Db,
+        source: &'a Subject,
+    ) -> DeadlineFuture<'a, Vec<DeadlineTaskSummary>> {
+        let tasks = self.book(source).iter().map(BookTask::summary).collect();
+        Box::pin(async move { Ok(tasks) })
+    }
+
+    fn hold<'a>(
+        &'a self,
+        _state: &'a AppState,
+        source: &'a Subject,
+        on: NaiveDate,
+    ) -> DeadlineFuture<'a, Vec<DeadlineTaskSummary>> {
+        {
+            let mut sources = self.held_sources.lock().unwrap();
+            if !sources.contains(source) {
+                sources.push(source.clone());
+            }
+            for task in self.tasks.lock().unwrap().iter_mut() {
+                if &task.task.source == source && !task.status.is_terminal() {
+                    task.held = true;
+                }
+            }
+            self.holds.lock().unwrap().push((source.clone(), on));
+        }
+        let tasks = self.book(source).iter().map(BookTask::summary).collect();
+        Box::pin(async move { Ok(tasks) })
+    }
+
+    fn release<'a>(
+        &'a self,
+        _state: &'a AppState,
+        source: &'a Subject,
+        on: NaiveDate,
+    ) -> DeadlineFuture<'a, ReleasedTasks> {
+        let mut released = Vec::new();
+        {
+            self.held_sources.lock().unwrap().retain(|s| s != source);
+            for task in self.tasks.lock().unwrap().iter_mut() {
+                if &task.task.source == source && task.held {
+                    task.held = false;
+                    released.push(task.id);
+                }
+            }
+            self.releases.lock().unwrap().push((source.clone(), on));
+        }
+        let answer = ReleasedTasks {
+            released,
+            ..ReleasedTasks::default()
+        };
+        Box::pin(async move { Ok(answer) })
     }
 }
 
@@ -290,14 +486,28 @@ impl TaskCreator for TicketBook {
     }
 }
 
-/// The subscriptions started.
+/// The subscriptions started, paused and resumed.
 #[derive(Clone, Default)]
-pub struct SubscriptionBook(pub Arc<Mutex<Vec<StartSubscription>>>);
+pub struct SubscriptionBook {
+    started: Arc<Mutex<Vec<StartSubscription>>>,
+    pauses: Arc<Mutex<Vec<(Subject, PauseSubscription)>>>,
+    resumes: Arc<Mutex<Vec<(Subject, PauseCause, NaiveDate)>>>,
+}
 
 impl SubscriptionBook {
     /// Every subscription started.
     pub fn all(&self) -> Vec<StartSubscription> {
-        self.0.lock().unwrap().clone()
+        self.started.lock().unwrap().clone()
+    }
+
+    /// Every pause asked, with the agreement.
+    pub fn pauses(&self) -> Vec<(Subject, PauseSubscription)> {
+        self.pauses.lock().unwrap().clone()
+    }
+
+    /// Every resume asked, with the agreement.
+    pub fn resumes(&self) -> Vec<(Subject, PauseCause, NaiveDate)> {
+        self.resumes.lock().unwrap().clone()
     }
 }
 
@@ -308,20 +518,112 @@ impl Subscriptions for SubscriptionBook {
         start: StartSubscription,
     ) -> SubscriptionFuture<'a, Option<SubscriptionId>> {
         let id = {
-            let mut all = self.0.lock().unwrap();
+            let mut all = self.started.lock().unwrap();
             all.push(start);
             all.len() as i64
         };
         Box::pin(async move { Ok(Some(SubscriptionId(id))) })
     }
+
+    fn pause<'a>(
+        &'a self,
+        _state: &'a AppState,
+        agreement: &'a Subject,
+        pause: PauseSubscription,
+    ) -> SubscriptionFuture<'a, Vec<SubscriptionSummary>> {
+        self.pauses
+            .lock()
+            .unwrap()
+            .push((agreement.clone(), pause));
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
+    fn resume<'a>(
+        &'a self,
+        _state: &'a AppState,
+        agreement: &'a Subject,
+        cause: PauseCause,
+        on: NaiveDate,
+    ) -> SubscriptionFuture<'a, Vec<SubscriptionSummary>> {
+        self.resumes
+            .lock()
+            .unwrap()
+            .push((agreement.clone(), cause, on));
+        Box::pin(async { Ok(Vec::new()) })
+    }
 }
 
-/// Provides the fakes.
+/// The overdue invoices of the parties, as wl-invoicing would answer.
+#[derive(Clone, Default)]
+pub struct InvoiceBook(pub Arc<Mutex<Vec<InvoiceSummary>>>);
+
+impl InvoiceBook {
+    /// `party` owes `balance` fils on an invoice overdue since `due`.
+    pub fn overdue(&self, party: PartyId, number: &str, balance: i64, due: NaiveDate) {
+        let mut all = self.0.lock().unwrap();
+        let id = InvoiceId(all.len() as i64 + 1);
+        all.push(InvoiceSummary {
+            id,
+            number: Some(number.to_owned()),
+            status: InvoiceStatus::Overdue,
+            party,
+            legal_entity_id: None,
+            currency: "AED".to_owned(),
+            gross_total: balance,
+            balance,
+            due_date: Some(due),
+            disputed: false,
+            chasing_paused_until: None,
+        });
+    }
+}
+
+impl Invoicer for InvoiceBook {
+    fn draft<'a>(&'a self, _db: &'a Db, _draft: InvoiceDraft) -> InvoiceFuture<'a, Option<InvoiceId>> {
+        Box::pin(async { Ok(None) })
+    }
+
+    fn find<'a>(&'a self, _db: &'a Db, id: InvoiceId) -> InvoiceFuture<'a, Option<InvoiceSummary>> {
+        let found = self.0.lock().unwrap().iter().find(|i| i.id == id).cloned();
+        Box::pin(async move { Ok(found) })
+    }
+
+    fn allocate<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _id: InvoiceId,
+        _source: Subject,
+        _amount: i64,
+    ) -> InvoiceFuture<'a, ()> {
+        Box::pin(async { Ok(()) })
+    }
+
+    fn overdue_of<'a>(
+        &'a self,
+        _db: &'a Db,
+        party: PartyId,
+    ) -> InvoiceFuture<'a, Vec<InvoiceSummary>> {
+        let found = self
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|i| i.party == party && i.status == InvoiceStatus::Overdue)
+            .cloned()
+            .collect();
+        Box::pin(async move { Ok(found) })
+    }
+}
+
+/// Provides the fakes; with `real`, only the notifier (wl-ticketing and
+/// wl-invoicing provide the rest).
 struct Fakes {
     notices: Recording,
     tasks: TaskBook,
     subscriptions: SubscriptionBook,
     tickets: TicketBook,
+    invoices: InvoiceBook,
+    real: bool,
 }
 
 impl Module for Fakes {
@@ -331,9 +633,12 @@ impl Module for Fakes {
 
     fn register(&self, app: &mut Registry) {
         provide_notifier(app, self.notices.clone());
-        provide_deadline_tasks(app, self.tasks.clone());
-        provide_subscriptions(app, self.subscriptions.clone());
-        provide_task_creator(app, self.tickets.clone());
+        if !self.real {
+            provide_deadline_tasks(app, self.tasks.clone());
+            provide_subscriptions(app, self.subscriptions.clone());
+            provide_task_creator(app, self.tickets.clone());
+            provide_invoicer(app, self.invoices.clone());
+        }
     }
 }
 
@@ -479,12 +784,44 @@ pub struct Booted {
     pub subscriptions: SubscriptionBook,
     /// The staff tasks opened.
     pub tickets: TicketBook,
+    /// The overdue invoices the invoicer answers.
+    pub invoices: InvoiceBook,
 }
+
+/// A client with parties, documents, ticketing and invoicing on (the real
+/// modules of [`boot_real`]).
+const CLIENT_REAL: &str = r#"
+[client]
+name = "Falcon Ledger Accountants LLC"
+app = "accounting"
+
+[modules]
+enabled = ["parties", "documents", "ticketing", "invoicing"]
+
+[[legal_entities]]
+code = "FLA"
+name_en = "Falcon Ledger Accountants LLC"
+trn = "100000000000003"
+default = true
+"#;
 
 /// Accounting booted with auth, the audit log, the kernel, the real
 /// wl-parties (screening on) and wl-documents, the fakes and the roles; the
 /// sanctions lists exist, current, and the KYC kinds are installed.
 pub async fn boot() -> Booted {
+    boot_with(false).await
+}
+
+/// [`boot`] with the real wl-ticketing (deadline tasks held, released and
+/// marked overdue, the manager's staff tasks; as the host sets it for 04:
+/// `ACC.RUL.04`, the manager role, the partner told) and the real
+/// wl-invoicing (the retainer subscription paused and resumed) instead of
+/// the fakes; the notifier is still the recording one.
+pub async fn boot_real() -> Booted {
+    boot_with(true).await
+}
+
+async fn boot_with(real: bool) -> Booted {
     let views = tempfile::tempdir().expect("a temporary views directory");
     let path = views.path().join("layouts/app.html");
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -494,23 +831,36 @@ pub async fn boot() -> Booted {
         tasks: TaskBook::default(),
         subscriptions: SubscriptionBook::default(),
         tickets: TicketBook::default(),
+        invoices: InvoiceBook::default(),
+        real,
     };
-    let (notices, tasks, subscriptions, tickets) = (
+    let (notices, tasks, subscriptions, tickets, invoices) = (
         fakes.notices.clone(),
         fakes.tasks.clone(),
         fakes.subscriptions.clone(),
         fakes.tickets.clone(),
+        fakes.invoices.clone(),
     );
-    let app = App::new()
+    let mut app = App::new()
         .module(Auth::new())
         .module(Permissions)
         .module(Audit)
         .module(WlParties::new().screening(true))
         .module(wl_documents::WlDocuments)
-        .module(wl_portal::WlPortal)
-        .module(Accounting)
-        .module(fakes);
-    let config = wl_kernel::ClientConfig::parse(CLIENT).expect("a valid client.toml");
+        .module(wl_portal::WlPortal);
+    if real {
+        app = app
+            .module(
+                wl_ticketing::WlTicketing::new()
+                    .overdue_rule_id(accounting::tasks::OVERDUE_RULE)
+                    .task_manager_role(MANAGER)
+                    .task_overdue_role(PARTNER),
+            )
+            .module(wl_invoicing::WlInvoicing::new());
+    }
+    let app = app.module(Accounting).module(fakes);
+    let client = if real { CLIENT_REAL } else { CLIENT };
+    let config = wl_kernel::ClientConfig::parse(client).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     let dir = views.path().to_path_buf();
     let app = TestApp::with_config(app, |c| c.views_path = dir).await;
@@ -519,6 +869,11 @@ pub async fn boot() -> Booted {
         .await
         .expect("wl:install runs");
     define_roles(app.db()).await;
+    if real {
+        wl_ticketing::seed::install(app.db())
+            .await
+            .expect("the ticket categories seed");
+    }
     let t = Booted {
         app,
         _views: views,
@@ -526,6 +881,7 @@ pub async fn boot() -> Booted {
         tasks,
         subscriptions,
         tickets,
+        invoices,
     };
     wl_parties::seed::lists(t.state())
         .await
