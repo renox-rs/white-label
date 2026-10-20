@@ -135,6 +135,25 @@ waiting for approval · 3 tenant Emirates IDs expiring within 30 days.
 **Must not appear.** Real building or community developer names, real owners, real Ejari
 numbers.
 
+**The local demo (`property:demo`).** The host's `property:demo` command, run by `db:seed`
+when `APP_ENV=local` (and by the command itself in `testing`; never in production), makes a
+smaller *Palm Grove Properties LLC* (entities PGP and PGFZ): 6 buildings in four emirates, 62
+units, 49 lease versions in every state, ~180 cheques, ~100 invoices with payments, deposits
+held, refunded, forfeited and handed to a new owner, owner statements in every state, tickets
+with a vendor and an SLA breach, leads, campaigns, staff and 15 months of history. It is made
+through the modules' own services and routes as the demo users (so permissions, guards and
+state machines are the real ones) with the simulated clock moved to each step's day; the
+only states it does not make are *reserved* units (the module refuses to reserve until
+booking deposits exist) and *archived* documents (no page archives). Seeding twice changes
+nothing (an audit entry `demo.seeded` marks it done). It takes about 12 s in a release build.
+Logins, all `@palmgrove.example` with the password of `seed.rs`: `admin`,
+`property_manager` (JVT-A and JVT-B), `property_manager.bay` (BBY, AQZ),
+`property_manager.north` (ADR, SHJ), `property_manager.all` (global: the pages of other modules
+check a global permission, so a building-scoped manager gets 403 on them),
+`leasing_agent`, `accountant`, `receivables`, `finance_manager`, `owner`, `coordinator`,
+`facility_manager`, `technician`, `compliance`, `marketing`, `marketing_manager`, `hr`. The
+login page lists them in local.
+
 ---
 
 ## 02 — Construction: *Al Waha Interiors & Fit-out LLC*
