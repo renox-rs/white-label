@@ -1,6 +1,6 @@
 # 0001 — Build two verticals first: Property, then Manpower
 
-- **Status:** accepted
+- **Status:** accepted; build order superseded by [0005](0005-phases-follow-vertical-numbers.md)
 - **Date:** 2026-10-14
 - **Related:** [ARCHITECTURE.md](../ARCHITECTURE.md) §6 (module × app matrix), §9 (roadmap)
 
@@ -75,7 +75,7 @@ Property and Manpower complement each other:
 
 ## Consequences
 
-- Phase F1 is the Property vertical and phase F2 is the Manpower vertical (see the roadmap).
+- Phase F1 is the Property vertical. (Phase F2 was Manpower here; since [0005](0005-phases-follow-vertical-numbers.md) F2 is Construction.)
 - Accounting is the preferred third vertical, as a quick win. Once Property and Manpower are
   done its modules are almost complete, which makes it cheap to build and useful as a sales
   demo.

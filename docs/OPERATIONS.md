@@ -164,7 +164,7 @@ client.
 | 7. Go-live | Cut-over date, opening balances frozen, first live transactions watched | — | First week without S1/S2 |
 | 8. Hypercare | Daily check-ins for 2 weeks | Support | Hand-over to normal support |
 
-Target from [ARCHITECTURE.md](ARCHITECTURE.md) §9 (F3): steps 2–3 in under one day for a client
+Target from [ARCHITECTURE.md](ARCHITECTURE.md) §9 (rollout track): steps 2–3 in under one day for a client
 without an extension crate.
 
 ## 10. Offboarding

@@ -3,7 +3,7 @@
 - **Status:** accepted
 - **Date:** 2026-10-18
 - **Ends:** [0002](0002-document-all-ten-verticals-first.md). The build order of
-  [0001](0001-first-two-verticals.md) (Property, then Manpower) applies.
+  [0001](0001-first-two-verticals.md) (Property first) applies; later phases follow [0005](0005-phases-follow-vertical-numbers.md).
 
 ## Context
 
