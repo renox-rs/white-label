@@ -335,6 +335,73 @@ async fn ptyeinv06_with_the_connection_down_the_lookup_is_off_and_entry_by_hand_
     assert_eq!(stored(&t, &party).await.as_deref(), Some("0235:555"));
 }
 
+/// AC5, with the connection really `down`: no success for N minutes, the
+/// scheduled `go_down` runs, the page shows the kernel banner with the
+/// manual fallback, the Look up button is rendered disabled, a posted lookup
+/// calls nothing, and the ID is still entered by hand.
+#[renox::test]
+async fn ptyeinv06_with_the_connection_marked_down_the_button_is_disabled_and_the_banner_shows() {
+    let (t, asp) = setup().await;
+    let party = company(&t, DELTA, Some(DELTA_TRN), None).await;
+    let staff = t.user("Sami", &[perm::VIEW, perm::UPDATE]).await;
+    t.app.acting_as(&staff);
+    let page = format!("/parties/{}/einvoice", party.id);
+
+    // Up: the button is live and there is no banner.
+    let before = t.app.get(&page).await;
+    before.assert_ok();
+    assert!(!before.text().contains("Enter the e-invoicing ID by hand."));
+    assert!(!before.text().contains("disabled"), "{}", before.text());
+
+    integrations::report_failure(t.app.state(), KEY, "timeout")
+        .await
+        .unwrap();
+    // Degraded is not down yet: no banner, and the button is already off.
+    let degraded = t.app.get(&page).await;
+    degraded.assert_ok();
+    assert!(
+        !degraded
+            .text()
+            .contains("Enter the e-invoicing ID by hand.")
+    );
+    assert!(degraded.text().contains("disabled"), "{}", degraded.text());
+
+    // N minutes (default 15) without a success: the scheduled run takes it down.
+    t.app.travel(std::time::Duration::from_secs(15 * 60));
+    t.app
+        .run_scheduled(integrations::service::TASK)
+        .await
+        .expect("the integration task runs");
+    let connection = integrations::IntegrationConnection::by_key(t.db(), KEY)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(connection.status, integrations::ConnectionStatus::Down);
+
+    let down = t.app.get(&page).await;
+    down.assert_ok();
+    let html = down.text();
+    assert!(html.contains("Enter the e-invoicing ID by hand."), "{html}");
+    assert!(html.contains("disabled"), "{html}");
+    assert!(
+        html.contains("The lookup is not available now; enter the ID by hand"),
+        "{html}"
+    );
+    t.app
+        .htmx()
+        .post(&format!("{page}/lookup"), &[])
+        .await
+        .assert_redirect(&format!("{page}?result=unavailable&found="));
+    assert_eq!(asp.calls(), 0);
+
+    t.app
+        .htmx()
+        .post(&page, &[("einvoice_recipient_id", "0235:777")])
+        .await
+        .assert_redirect(&format!("/parties/{}", party.id));
+    assert_eq!(stored(&t, &party).await.as_deref(), Some("0235:777"));
+}
+
 /// A company without a TRN cannot use the lookup: the button is off and the
 /// request is refused.
 #[renox::test]
