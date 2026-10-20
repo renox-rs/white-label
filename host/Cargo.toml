@@ -18,4 +18,5 @@ wl-ticketing = { path = "../crates/wl-ticketing" }
 wl-payments = { path = "../crates/wl-payments" }
 wl-sales = { path = "../crates/wl-sales" }
 wl-hr = { path = "../crates/wl-hr" }
+wl-attendance = { path = "../crates/wl-attendance" }
 wl-portal = { path = "../crates/wl-portal" }

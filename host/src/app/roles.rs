@@ -8,6 +8,7 @@ use renox::anyhow::anyhow;
 use renox::auth::permissions;
 use renox::command::Args;
 use renox::prelude::*;
+use wl_attendance::permissions as attendance;
 use wl_documents::permissions as documents;
 use wl_hr::permissions as hr;
 use wl_invoicing::permissions as invoices;
@@ -72,6 +73,9 @@ pub const LEASING_AGENT: &str = prp::LEASING_AGENT_ROLE;
 /// HR: keeps the employee records, starts and follows onboardings, and is the
 /// `hr` owner of onboarding steps (wl-hr §3, §6).
 pub const HR: &str = "hr";
+/// A site supervisor: marks attendance of the crews and people of their
+/// location and corrects it within the window (wl-attendance §6, `HRM.ACL.01`).
+pub const SUPERVISOR: &str = "supervisor";
 /// Everyone who signs up.
 pub const MEMBER: &str = "member";
 
@@ -170,6 +174,12 @@ pub const ROLES: &[(&str, &[&str])] = &[
             hr::EMPLOYEES_EXIT_APPROVE,
             hr::ONBOARDING_VIEW,
             hr::ONBOARDING_MANAGE,
+            attendance::VIEW,
+            attendance::MARK,
+            attendance::SELF_CHECK_IN,
+            attendance::REVIEW,
+            attendance::CORRECT,
+            attendance::WORK_LOCATIONS_MANAGE,
             prp::UNITS_VIEW,
             prp::UNITS_MANAGE,
             prp::UNITS_RESERVE,
@@ -331,7 +341,13 @@ pub const ROLES: &[(&str, &[&str])] = &[
             hr::EMPLOYEES_MANAGE,
             hr::ONBOARDING_VIEW,
             hr::ONBOARDING_MANAGE,
+            attendance::VIEW,
+            attendance::REVIEW,
         ],
+    ),
+    (
+        SUPERVISOR,
+        &[attendance::VIEW, attendance::MARK, attendance::CORRECT],
     ),
     (
         COORDINATOR,

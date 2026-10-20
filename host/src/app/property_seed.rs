@@ -156,6 +156,13 @@ pub fn hr_for(client_app: &str, owner_role: &str) -> wl_hr::WlHr {
     }
 }
 
+/// The attendance module with the client's settings: HR and the HSE officer
+/// are the roles of the roles module; the Property client has no construction
+/// crews, so the defaults of the module apply.
+pub fn attendance_for(_client_app: &str) -> wl_attendance::WlAttendance {
+    wl_attendance::WlAttendance::new().hr_role(super::roles::HR)
+}
+
 /// What [`install`] stored.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Installed {
