@@ -464,3 +464,48 @@ pub(crate) fn register(app: &mut Registry) {
         },
     );
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tax_return::{ReturnStatus, ReturnType};
+
+    #[test]
+    fn the_open_items_are_listed_in_the_order_of_the_checklist() {
+        let list = Checklist {
+            open_returns: vec![Return {
+                id: 1,
+                return_type: ReturnType::Vat,
+                period_end: NaiveDate::from_ymd_opt(2026, 10, 31).unwrap(),
+                status: ReturnStatus::InReview,
+                ..Return::default()
+            }],
+            unbilled: 1_000_000,
+            settled: false,
+        };
+        assert!(!list.is_clear());
+        let problems = list.problems();
+        assert_eq!(problems.len(), 3);
+        assert_eq!(
+            problems[0],
+            "RET-0001 (VAT return, period ending 2026-10-31) is still in review: file it or cancel it."
+        );
+        assert!(problems[1].contains("AED 10,000.00"), "{}", problems[1]);
+        assert!(
+            problems[2].contains("final invoice or credit"),
+            "{}",
+            problems[2]
+        );
+        let clear = Checklist {
+            open_returns: Vec::new(),
+            unbilled: 0,
+            settled: true,
+        };
+        assert!(clear.is_clear() && clear.problems().is_empty());
+    }
+
+    #[test]
+    fn a_scheduled_end_task_is_found_by_its_key() {
+        assert_eq!(scheduled_key(7), "accounting.scheduled_end:7");
+    }
+}
