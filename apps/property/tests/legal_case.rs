@@ -527,3 +527,114 @@ async fn bl_prp_13_the_tenant_gets_no_automatic_message_while_a_flag_is_open() {
     assert_eq!(told.len(), 1);
     assert_eq!(told[0].subject, leases[1].subject());
 }
+
+/// AC1 with the real invoicing: a lease with two overdue invoices and a flag
+/// gets no reminder (the real reminders run skips the held source) and no
+/// `PRP.RUL.10` task, yet the invoices still become `overdue`; an overdue
+/// invoice of a source with no flag is reminded in the same run.
+#[renox::test]
+async fn bl_prp_13_no_reminder_is_sent_while_a_flag_is_open_but_the_invoices_become_overdue() {
+    use wl_invoicing::reminders::{self, AFTER_DUE};
+    use wl_invoicing::{Invoice, ReminderLog};
+    use wl_kernel::invoicing::{DraftLine, InvoiceDraft, InvoiceStatus, VatCategory, invoicer};
+
+    let t = support::boot_with(support::Real::INVOICING).await;
+    let building = t.building().await;
+    let unit = t.unit(&building, "1204").await;
+    let agent = t.user_in("Ali", AGENT, building.id).await;
+    let manager = t.user_in("Mona", MANAGER, building.id).await;
+    renox::auth::permissions::define_role(
+        t.db(),
+        "invoice_clerk",
+        &[
+            wl_invoicing::permissions::VIEW,
+            wl_invoicing::permissions::ISSUE,
+        ],
+    )
+    .await
+    .unwrap();
+    let clerk = t.user_with("Clara", "invoice_clerk").await;
+    let lease = t.active_lease(&unit, &agent, &manager).await;
+
+    // Two instalments fell due long ago (300 and 209 days back): invoiced,
+    // issued, unpaid.
+    property::invoicing::run(t.state(), day(-150))
+        .await
+        .unwrap();
+    let mut ids: Vec<i64> = lease
+        .charges(t.db())
+        .await
+        .unwrap()
+        .iter()
+        .filter_map(|c| c.invoice_id)
+        .collect();
+    ids.sort_unstable();
+    assert_eq!(ids.len(), 2);
+    // An overdue invoice of a source with no flag, to show the run does remind.
+    let free = invoicer(t.state())
+        .draft(
+            t.db(),
+            InvoiceDraft::new(TENANT, wl_kernel::Subject::new("property.lease", 9999))
+                .due_date(day(-60))
+                .line(DraftLine::new("Unflagged", aed(1_000), VatCategory::Exempt)),
+        )
+        .await
+        .unwrap()
+        .expect("invoicing is on")
+        .0;
+    for id in ids.iter().copied().chain([free]) {
+        let issued = t.post(&clerk, &format!("/invoices/{id}/issue"), &[]).await;
+        assert!(
+            issued.status.is_success() || issued.status.is_redirection(),
+            "{}",
+            issued.text()
+        );
+    }
+
+    // The flag is set; the chase is held.
+    let s = Scene {
+        t,
+        building,
+        unit,
+        agent,
+        manager,
+    };
+    let case = s.flag(&lease).await;
+    assert_eq!(s.held(&lease).await, ChaseHold::Held);
+
+    // FIN.RUL.02: the invoices still become overdue, flag or not.
+    assert_eq!(wl_invoicing::overdue::run(s.t.state()).await.unwrap(), 3);
+    for id in &ids {
+        let invoice = Invoice::find_or_404(s.t.db(), *id).await.unwrap();
+        assert_eq!(invoice.status, InvoiceStatus::Overdue, "invoice {id}");
+    }
+
+    // FIN.RUL.01: only the unflagged invoice is reminded.
+    assert_eq!(reminders::run(s.t.state(), day(0)).await.unwrap(), 1);
+    assert_eq!(s.t.notices.of_type(AFTER_DUE).len(), 1);
+    for id in &ids {
+        let logged = ReminderLog::query()
+            .where_(ReminderLog::INVOICE_ID.eq(*id))
+            .count(s.t.db())
+            .await
+            .unwrap();
+        assert_eq!(logged, 0, "invoice {id} was not reminded");
+    }
+    assert_eq!(
+        ReminderLog::query()
+            .where_(ReminderLog::INVOICE_ID.eq(free))
+            .count(s.t.db())
+            .await
+            .unwrap(),
+        1
+    );
+
+    // PRP.RUL.10: no demand task for the flagged lease.
+    let report = property::arrears::run(s.t.state(), day(0)).await.unwrap();
+    assert_eq!(report.demands, 0);
+    assert!(s.t.tasks.with_key("property.arrears_demand:").is_empty());
+
+    // The flag clears with an outcome and the chase resumes.
+    s.clear(&lease, &case, "paid").await.assert_ok();
+    assert!(matches!(s.held(&lease).await, ChaseHold::Resumed { .. }));
+}
