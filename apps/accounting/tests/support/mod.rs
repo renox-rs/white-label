@@ -110,6 +110,9 @@ holidays = ["2026-12-02", "2026-12-03"]
 
 /// The guarded transition the KYC kinds block.
 pub const ACTIVATE_GUARDED: &str = "engagement.activate";
+/// The guarded transition the KYC kinds flag.
+pub const RETURN_FILE_GUARDED: &str = "return.file";
+use filing::QualificationBook;
 
 /// The UN list's name, as wl-parties seeds it.
 pub const UN: &str = "UN Consolidated List";
@@ -737,6 +740,7 @@ struct Fakes {
     tickets: TicketBook,
     invoices: InvoiceBook,
     wip: WipBook,
+    qualifications: QualificationBook,
     real: bool,
 }
 
@@ -748,6 +752,8 @@ impl Module for Fakes {
     fn register(&self, app: &mut Registry) {
         provide_notifier(app, self.notices.clone());
         provide_unbilled_time(app, self.wip.clone());
+        wl_kernel::workforce::provide_workforce(app, self.qualifications.clone());
+        wl_kernel::qualifications::provide_qualifications(app, self.qualifications.clone());
         if !self.real {
             provide_deadline_tasks(app, self.tasks.clone());
             provide_subscriptions(app, self.subscriptions.clone());
@@ -812,6 +818,7 @@ pub fn register_portal_section() {
     wl_portal::register_section(accounting::portal::RETURNS_SECTION, ReturnsSection);
 }
 
+mod filing;
 mod returns;
 #[allow(unused_imports)]
 pub use returns::Crew;
@@ -906,6 +913,7 @@ async fn define_roles(db: &Db) {
                 perm::CDD_VIEW,
                 perm::CDD_PREPARE,
                 perm::CDD_APPROVE,
+                perm::RETURNS_VIEW,
                 perm::BLOCK_REASON_VIEW,
                 // The MLRO's cases, and the second review of a confirmed
                 // match (the host gives the compliance role both).
@@ -970,6 +978,9 @@ pub struct Booted {
     pub invoices: InvoiceBook,
     /// The unbilled time (WIP) the time module would answer.
     pub wip: WipBook,
+    /// The staff with employee records and their FTA tax agent registrations
+    /// (wl-hr's `Qualifications`, faked).
+    pub qualifications: QualificationBook,
 }
 
 /// A client with parties, documents, ticketing and invoicing on (the real
@@ -1046,15 +1057,17 @@ async fn boot_with(real: bool, billing: bool, related_block: bool) -> Booted {
         tickets: TicketBook::default(),
         invoices: InvoiceBook::default(),
         wip: WipBook::default(),
+        qualifications: QualificationBook::default(),
         real,
     };
-    let (notices, tasks, subscriptions, tickets, invoices, wip) = (
+    let (notices, tasks, subscriptions, tickets, invoices, wip, qualifications) = (
         fakes.notices.clone(),
         fakes.tasks.clone(),
         fakes.subscriptions.clone(),
         fakes.tickets.clone(),
         fakes.invoices.clone(),
         fakes.wip.clone(),
+        fakes.qualifications.clone(),
     );
     let mut app = App::new()
         .module(Auth::new())
@@ -1109,6 +1122,7 @@ async fn boot_with(real: bool, billing: bool, related_block: bool) -> Booted {
         tickets,
         invoices,
         wip,
+        qualifications,
     };
     wl_parties::seed::lists(t.state())
         .await
@@ -1438,6 +1452,11 @@ impl Booted {
                     .blocks_when(
                         ACTIVATE_GUARDED,
                         BlockMode::Block,
+                        BlockCondition::new("party_role", kind.roles.iter().copied()),
+                    )
+                    .blocks_when(
+                        RETURN_FILE_GUARDED,
+                        BlockMode::Flag,
                         BlockCondition::new("party_role", kind.roles.iter().copied()),
                     )
             })

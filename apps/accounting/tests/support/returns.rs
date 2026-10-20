@@ -171,9 +171,11 @@ impl Booted {
         self.return_now(&ret).await
     }
 
-    /// `user` marks the approved `ret` filed through the route, as the filer
-    /// does (the FTA acknowledgement attached).
+    /// `user` marks the approved `ret` filed through the route, as a tax
+    /// agent: they get an employee record and a valid FTA registration if they
+    /// have none, and the acknowledgement is dated today.
     pub async fn file_return(&self, user: &User, ret: &Return) -> TestResponse {
+        self.qualifications.ensure(user.id);
         self.ret_act(user, ret, "file", &[("acknowledgement", "FTA-ACK-0002")])
             .await
     }

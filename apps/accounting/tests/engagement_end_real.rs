@@ -211,9 +211,7 @@ async fn after_the_end_the_clients_users_have_read_only_access_for_90_days() {
     let engagement = t.engagement_billed(&client, 300_000).await;
     let ret = t.open_return(&engagement, d(11, 28)).await;
     t.return_at(&ret, &crew, ReturnStatus::Approved).await;
-    t.ret_act(&crew.partner, &ret, "file", &[("acknowledgement", "FTA-1")])
-        .await
-        .assert_ok();
+    t.file_return(&crew.partner, &ret).await.assert_ok();
     let third = t.open_return(&engagement, d(12, 28)).await;
     t.return_at(&third, &crew, ReturnStatus::ClientApproval)
         .await;

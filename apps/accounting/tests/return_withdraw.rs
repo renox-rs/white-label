@@ -272,6 +272,7 @@ async fn an_overdue_linked_task_is_to_be_started_and_resubmitting_closes_the_tas
 async fn a_filed_return_offers_no_withdrawal() {
     let t = boot_real().await;
     let (ret, crew, _task) = approved(&t).await;
+    t.qualifications.ensure(crew.partner.id);
     t.ret_act(
         &crew.partner,
         &ret,

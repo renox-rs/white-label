@@ -254,9 +254,7 @@ async fn a_filed_return_offers_no_cancel_and_a_cancel_needs_a_reason() {
         .await
         .assert_ok()
         .assert_see("Cancel return");
-    t.ret_act(&crew.partner, &ret, "file", &[("acknowledgement", "FTA-1")])
-        .await
-        .assert_ok();
+    t.file_return(&crew.partner, &ret).await.assert_ok();
     t.ret_act(
         &crew.reviewer,
         &ret,

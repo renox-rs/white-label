@@ -87,9 +87,7 @@ async fn a_filed_return_does_not_stop_the_end() {
     let ret = t.open_return(&engagement, d(11, 28)).await;
     t.return_at(&ret, &crew, accounting::ReturnStatus::Approved)
         .await;
-    t.ret_act(&crew.partner, &ret, "file", &[("acknowledgement", "FTA-7")])
-        .await
-        .assert_ok();
+    t.file_return(&crew.partner, &ret).await.assert_ok();
     t.act(
         &crew.partner,
         &engagement,
