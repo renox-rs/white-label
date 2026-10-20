@@ -816,13 +816,42 @@ impl wl_portal::PortalSection for ReturnsSection {
     }
 }
 
-/// Registers the engagements and the returns sections of the portal.
+/// The KPI packs section of the portal, as the host registers it.
+struct KpiSection;
+
+impl wl_portal::PortalSection for KpiSection {
+    fn title(&self) -> String {
+        accounting::portal::kpi_title()
+    }
+
+    fn rows<'a>(
+        &'a self,
+        state: &'a AppState,
+        party: PartyId,
+    ) -> wl_portal::SectionFuture<'a, Vec<wl_portal::SectionRow>> {
+        Box::pin(async move {
+            let rows = accounting::portal::kpi_packs(state, party).await?;
+            Ok::<Vec<wl_portal::SectionRow>, Error>(
+                rows.iter()
+                    .map(|row| wl_portal::SectionRow::new(&row.label, &row.status))
+                    .collect(),
+            )
+        })
+    }
+}
+
+/// Registers the engagements, the returns and the KPI packs sections of the
+/// portal.
 pub fn register_portal_section() {
+    wl_portal::register_section(accounting::portal::KPI_SECTION, KpiSection);
     wl_portal::register_section(accounting::portal::SECTION, EngagementsSection);
     wl_portal::register_section(accounting::portal::RETURNS_SECTION, ReturnsSection);
 }
 
 mod filing;
+mod kpi;
+#[allow(unused_imports)]
+pub use kpi::{OCTOBER, TB_OCTOBER, TB_OCTOBER_LATE, TB_OCTOBER_NEW_ACCOUNT, october};
 pub mod notify;
 mod returns;
 #[allow(unused_imports)]
@@ -871,6 +900,8 @@ async fn define_roles(db: &Db) {
                 perm::RETURNS_REVIEW,
                 perm::RETURNS_FILE,
                 perm::WIP_WRITE_OFF,
+                perm::KPI_VIEW,
+                perm::KPI_PUBLISH,
                 perm::AML_RAISE,
                 PARTIES_VIEW,
             ],
@@ -888,6 +919,9 @@ async fn define_roles(db: &Db) {
                 perm::RETURNS_VIEW,
                 perm::RETURNS_REVIEW,
                 perm::WIP_WRITE_OFF,
+                perm::KPI_VIEW,
+                perm::KPI_MANAGE,
+                perm::KPI_PUBLISH,
                 perm::AML_RAISE,
                 PARTIES_VIEW,
                 DOCUMENTS_VIEW,
@@ -909,6 +943,8 @@ async fn define_roles(db: &Db) {
                 perm::TAX_PROFILES_MANAGE,
                 perm::RETURNS_VIEW,
                 perm::RETURNS_PREPARE,
+                perm::KPI_VIEW,
+                perm::KPI_MANAGE,
                 perm::AML_RAISE,
             ],
         ),

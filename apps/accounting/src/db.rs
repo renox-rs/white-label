@@ -6,6 +6,7 @@ use renox::prelude::*;
 use crate::aml::AmlCase;
 use crate::cdd::CddFile;
 use crate::engagement::Engagement;
+use crate::kpi::KpiPack;
 use crate::tax_return::Return;
 
 /// A 422 with `message`, like a refused guard.
@@ -76,6 +77,23 @@ pub(crate) async fn set_aml_case(
     all.push(("updated_at", &stamp));
     AmlCase::query()
         .where_(AmlCase::ID.eq(id))
+        .update(&mut *tx, &all)
+        .await?;
+    Ok(())
+}
+
+/// Sets columns of KPI pack `id` other than the status and stamps
+/// `updated_at`.
+pub(crate) async fn set_kpi_pack(
+    tx: &mut Transaction,
+    id: i64,
+    columns: &[(&str, &(dyn ToDbValue + Sync))],
+) -> Result {
+    let mut all: Vec<(&str, &(dyn ToDbValue + Sync))> = columns.to_vec();
+    let stamp = now();
+    all.push(("updated_at", &stamp));
+    KpiPack::query()
+        .where_(KpiPack::ID.eq(id))
         .update(&mut *tx, &all)
         .await?;
     Ok(())

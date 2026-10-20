@@ -21,6 +21,9 @@ pub mod engagements;
 mod events;
 pub mod exits;
 pub mod filing;
+pub mod kpi;
+pub mod kpi_machine;
+pub mod kpi_packs;
 pub mod kyc_updates;
 pub mod letters;
 pub mod pages;
@@ -50,6 +53,7 @@ use renox::prelude::*;
 pub use aml::{AmlCase, AmlDecision, AmlKind, AmlMatch, AmlStatus};
 pub use cdd::{CddFile, CddParty, CddStatus, RiskRating, ScreenedRole};
 pub use engagement::{Engagement, EngagementStatus, FeeBasis, NewEngagement};
+pub use kpi::{KpiFigure, KpiMapping, KpiPack, KpiStatus};
 pub use letters::EngagementLetter;
 pub use tax_profile::{TaxProfile, VatPeriod};
 pub use tax_return::{Return, ReturnSignature, ReturnStatus, ReturnType};
@@ -102,6 +106,18 @@ const VIEWS: &[(&str, &str)] = &[
         "accounting/portal_letter.html",
         include_str!("../views/accounting/portal_letter.html"),
     ),
+    (
+        "accounting/kpi_packs.html",
+        include_str!("../views/accounting/kpi_packs.html"),
+    ),
+    (
+        "accounting/kpi_pack.html",
+        include_str!("../views/accounting/kpi_pack.html"),
+    ),
+    (
+        "accounting/portal_kpi_pack.html",
+        include_str!("../views/accounting/portal_kpi_pack.html"),
+    ),
 ];
 
 /// Dirhams as text from fils: `AED 25,000.00`.
@@ -147,7 +163,10 @@ impl Module for Accounting {
             .view_data::<pages::portal_returns::PortalReturnPage>()
             .view_data::<pages::letters::PortalLetterPage>()
             .view_data::<pages::aml::IndexPage>()
-            .view_data::<pages::aml::ShowPage>();
+            .view_data::<pages::aml::ShowPage>()
+            .view_data::<pages::kpi::IndexPage>()
+            .view_data::<pages::kpi::ShowPage>()
+            .view_data::<pages::kpi::PortalPage>();
         app.templates(|env| {
             for (name, source) in VIEWS {
                 // The app's own file of that name wins.
@@ -170,12 +189,16 @@ impl Module for Accounting {
             .model::<letters::EngagementLetter>()
             .model::<Return>()
             .model::<ReturnSignature>()
-            .model::<WipWriteOff>();
+            .model::<WipWriteOff>()
+            .model::<KpiPack>()
+            .model::<KpiFigure>()
+            .model::<KpiMapping>();
         engagement_machine::register();
         return_machine::register();
         // `ACC.ACL.13`: a tax profile change waits for another manager.
         tax_profile_change::register();
         wip::register();
+        kpi_machine::register();
         ending::register(app);
         return_effects::register_types();
         cdd_machine::register();
@@ -202,6 +225,9 @@ impl Module for Accounting {
         // `ACC.RUL.11`: the unsigned engagement letter is chased and, at 30
         // days, the manager decides (BL-ACC-02).
         letters::register(app);
+        // `ACC.RUL.06`, the client notices of a published or withdrawn KPI
+        // pack and the privacy incident task (BL-ACC-20, BL-ACC-21).
+        kpi_packs::register(app);
         // In the app group of the staff sidebar; the label is the host's
         // `nav.engagements` text.
         app.nav(
@@ -220,6 +246,14 @@ impl Module for Accounting {
                 .group("nav.app")
                 .order(12)
                 .permission(permissions::AML_MANAGE),
+        );
+        app.nav(
+            "app",
+            NavLink::route("accounting.kpi_packs", "nav.kpi_packs")
+                .icon("chart-line")
+                .group("nav.app")
+                .order(13)
+                .permission(permissions::KPI_VIEW),
         );
         app.nav(
             "app",

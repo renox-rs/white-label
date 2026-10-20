@@ -20,6 +20,7 @@ use serde::Serialize;
 use wl_kernel::PartyId;
 
 use crate::engagement::{Engagement, EngagementStatus};
+use crate::kpi::{KpiPack, KpiStatus};
 use crate::reasons;
 use crate::tax_return::{Return, ReturnStatus};
 use crate::texts::english;
@@ -28,6 +29,8 @@ use crate::texts::english;
 pub const SECTION: &str = "engagements";
 /// The key of the portal section of the returns.
 pub const RETURNS_SECTION: &str = "returns";
+/// The key of the portal section of the KPI packs.
+pub const KPI_SECTION: &str = "kpi_packs";
 /// Days after an engagement ends the client's read-only access closes
 /// (`POR.ACL.01`).
 pub const CLOSES_AFTER_DAYS: i64 = 90;
@@ -173,6 +176,48 @@ pub async fn returns(state: &AppState, party: PartyId) -> Result<Vec<PortalRow>>
         })
         .map(return_row)
         .collect())
+}
+
+/// The section's title for the KPI packs.
+pub fn kpi_title() -> String {
+    english("accounting.portal.kpi_title", &[])
+}
+
+/// The KPI packs of `party` the client may see (`ACC.ACL.01`): the latest
+/// published version of each period, *being revised* while a newer draft
+/// exists; never a draft, a superseded or a withdrawn pack. None once the
+/// portal has closed.
+///
+/// # Errors
+///
+/// The database's errors.
+pub async fn kpi_packs(state: &AppState, party: PartyId) -> Result<Vec<PortalRow>> {
+    if !is_open(state, party, wl_kernel::documents::today()).await? {
+        return Ok(Vec::new());
+    }
+    let mut rows: Vec<PortalRow> = Vec::new();
+    let mut shown: Vec<NaiveDate> = Vec::new();
+    // Newest period and version first: the first published pack of a period
+    // is the latest one.
+    for pack in KpiPack::of_client(&state.db, party).await? {
+        if pack.status != KpiStatus::Published || shown.contains(&pack.period_end) {
+            continue;
+        }
+        shown.push(pack.period_end);
+        let status = if pack.is_being_revised(&state.db).await? {
+            english("accounting.portal.kpi_revised", &[])
+        } else {
+            english(
+                "accounting.portal.kpi_published",
+                &[("date", &pack.published_on.unwrap_or(pack.period_end))],
+            )
+        };
+        rows.push(PortalRow {
+            label: format!("{} · {}", pack.number(), pack.period_end.format("%B %Y")),
+            status,
+        });
+    }
+    Ok(rows)
 }
 
 #[cfg(test)]

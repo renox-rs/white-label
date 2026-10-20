@@ -6,6 +6,7 @@ pub mod aml;
 pub mod cdd;
 pub mod deadline_notices;
 pub mod engagements;
+pub mod kpi;
 pub mod letters;
 pub mod portal_returns;
 pub mod returns;
@@ -33,6 +34,7 @@ pub fn routes() -> Routes {
         .merge(portal_returns::routes())
         .merge(letters::routes())
         .merge(aml::routes())
+        .merge(kpi::routes())
 }
 
 /// The app text `key` (without the `accounting.` prefix).

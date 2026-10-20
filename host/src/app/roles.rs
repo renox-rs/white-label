@@ -220,6 +220,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             acc::RETURNS_REVIEW,
             acc::RETURNS_FILE,
             acc::WIP_WRITE_OFF,
+            acc::KPI_VIEW,
+            acc::KPI_MANAGE,
+            acc::KPI_PUBLISH,
         ],
     ),
     (
@@ -315,6 +318,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             acc::RETURNS_REVIEW,
             acc::RETURNS_FILE,
             acc::WIP_WRITE_OFF,
+            // 04 §3.1 "all": reads the KPI packs and can withdraw one.
+            acc::KPI_VIEW,
+            acc::KPI_PUBLISH,
             parties::VIEW,
             documents::VIEW,
             invoices::VIEW,
@@ -339,6 +345,10 @@ pub const ROLES: &[(&str, &[&str])] = &[
             acc::RETURNS_VIEW,
             acc::RETURNS_REVIEW,
             acc::WIP_WRITE_OFF,
+            // 04 §7.1 *KPI pack*: the manager prepares and publishes.
+            acc::KPI_VIEW,
+            acc::KPI_MANAGE,
+            acc::KPI_PUBLISH,
             parties::VIEW,
             parties::CREATE,
             parties::UPDATE,
@@ -446,6 +456,9 @@ pub const ROLES: &[(&str, &[&str])] = &[
             // 04 §3.1 "returns (prepare)".
             acc::RETURNS_VIEW,
             acc::RETURNS_PREPARE,
+            // 04 §3.1 "prepares KPI packs": imports, maps and comments.
+            acc::KPI_VIEW,
+            acc::KPI_MANAGE,
             payments::VIEW,
             payments::RECORD,
             payments::REVERSE,

@@ -40,6 +40,15 @@ pub const RETURNS_FILE: &str = "returns.file";
 /// WIP a partner decides.
 pub const WIP_WRITE_OFF: &str = "wip.write_off";
 
+/// See KPI packs, their versions and figures (§3.1).
+pub const KPI_VIEW: &str = "kpi.view";
+/// Import a trial balance, map its accounts to KPI categories, write the
+/// commentary and copy a withdrawn pack (the accountant who prepares the
+/// pack and the manager, `ACC.KPI.01`).
+pub const KPI_MANAGE: &str = "kpi.manage";
+/// `publish` and `withdraw` a KPI pack (the manager, §7.1 *KPI pack*).
+pub const KPI_PUBLISH: &str = "kpi.publish";
+
 /// Raise an AML concern about a client (any member of staff). It shows
 /// nothing afterwards: the case is the MLRO's (`ACC.ACL.05`).
 pub const AML_RAISE: &str = "aml.raise";
@@ -72,6 +81,9 @@ pub const ALL: &[&str] = &[
     RETURNS_REVIEW,
     RETURNS_FILE,
     WIP_WRITE_OFF,
+    KPI_VIEW,
+    KPI_MANAGE,
+    KPI_PUBLISH,
     AML_RAISE,
     AML_MANAGE,
 ];
