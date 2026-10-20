@@ -33,6 +33,10 @@ use wl_kernel::invoicing::{
     SupplierBillLine, SupplierBillLineId, SupplierBillStatus, SupplierBills,
     SupplierDebitNoteCancelled, SupplierDebitNoteId, SupplierDebitNoteIssued,
 };
+use wl_kernel::documents::{
+    BlockEntry, CheckOutcome, DocumentFuture, DocumentGuard, FlagFailure, InvalidReason,
+    NoDocuments, RecordFlag, Validity,
+};
 use wl_kernel::notify::{MessageId, Notifier, NotifyFuture, NotifyRequest};
 use wl_kernel::tickets::{OpenTicket, TaskCreator, TicketFuture, TicketId, TicketRef};
 use wl_kernel::{PartyId, Subject};
@@ -286,6 +290,108 @@ impl BlockGuard for Blocked {
     }
 }
 
+/// A document guard that knows which certificates have expired: every kind
+/// is valid for a party except those set as expired.
+#[derive(Clone, Default)]
+pub struct Certificates(Arc<Mutex<Vec<(PartyId, String)>>>);
+
+impl Certificates {
+    /// `supplier`'s certificate of `kind` has expired.
+    pub fn expire(&self, supplier: PartyId, kind: &str) {
+        self.0.lock().unwrap().push((supplier, kind.to_owned()));
+    }
+}
+
+impl DocumentGuard for Certificates {
+    fn blocks_for<'a>(
+        &'a self,
+        db: &'a Db,
+        guarded: &'a str,
+    ) -> DocumentFuture<'a, Vec<BlockEntry>> {
+        NoDocuments.blocks_for(db, guarded)
+    }
+
+    fn is_valid<'a>(
+        &'a self,
+        _db: &'a Db,
+        subject: &'a Subject,
+        kind: &'a str,
+        _on_date: renox::chrono::NaiveDate,
+    ) -> DocumentFuture<'a, Validity> {
+        let expired = self
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(party, k)| party.subject() == *subject && k == kind);
+        Box::pin(async move {
+            Ok(if expired {
+                Validity::Invalid {
+                    reason: InvalidReason::Expired,
+                    document: None,
+                    expired_on: None,
+                    pending: None,
+                }
+            } else {
+                Validity::Valid {
+                    document: None,
+                    expires_on: None,
+                }
+            })
+        })
+    }
+
+    fn check_as<'a>(
+        &'a self,
+        state: &'a AppState,
+        guarded: &'a str,
+        record_id: i64,
+        on_date: renox::chrono::NaiveDate,
+        actor: Option<i64>,
+    ) -> DocumentFuture<'a, std::result::Result<CheckOutcome, wl_kernel::documents::BlockRefusal>>
+    {
+        NoDocuments.check_as(state, guarded, record_id, on_date, actor)
+    }
+
+    fn record_flags<'a>(
+        &'a self,
+        db: &'a Db,
+        guarded: &'a str,
+        record_id: i64,
+        flags: &'a [FlagFailure],
+    ) -> DocumentFuture<'a, Vec<RecordFlag>> {
+        NoDocuments.record_flags(db, guarded, record_id, flags)
+    }
+
+    fn flags_for<'a>(
+        &'a self,
+        db: &'a Db,
+        record_type: &'a str,
+        record_id: i64,
+    ) -> DocumentFuture<'a, Vec<RecordFlag>> {
+        NoDocuments.flags_for(db, record_type, record_id)
+    }
+
+    fn open_flag_counts<'a>(
+        &'a self,
+        db: &'a Db,
+        record_type: &'a str,
+        ids: &'a [i64],
+    ) -> DocumentFuture<'a, std::collections::BTreeMap<i64, u64>> {
+        NoDocuments.open_flag_counts(db, record_type, ids)
+    }
+
+    fn review_flag<'a>(
+        &'a self,
+        db: &'a Db,
+        flag_id: i64,
+        reviewer: i64,
+        note: &'a str,
+    ) -> DocumentFuture<'a, RecordFlag> {
+        NoDocuments.review_flag(db, flag_id, reviewer, note)
+    }
+}
+
 /// The dates in a filed accounting period, as wl-invoicing would answer.
 #[derive(Clone, Default)]
 pub struct PeriodDesk(Arc<Mutex<Vec<renox::chrono::NaiveDate>>>);
@@ -353,6 +459,7 @@ struct Fakes {
     allocated: Arc<Mutex<Vec<LandedCostAllocated>>>,
     adjusted: Arc<Mutex<Vec<LandedCostAdjusted>>>,
     blocked: Blocked,
+    certificates: Certificates,
     locks: Option<PeriodDesk>,
     bills: Option<BillDesk>,
     received: Arc<Mutex<Vec<GoodsReceived>>>,
@@ -379,6 +486,7 @@ impl Module for Fakes {
             wl_kernel::invoicing::provide_period_locks(app, locks.clone());
         }
         provide_block_guard(app, self.blocked.clone());
+        wl_kernel::documents::provide_guard(app, self.certificates.clone());
         record(app, &self.received);
         record(app, &self.dispatched);
         record(app, &self.credited);
@@ -408,6 +516,8 @@ pub struct Booted {
     pub bills: BillDesk,
     /// The suppliers the block guard refuses.
     pub blocked: Blocked,
+    /// The certificates that have expired.
+    pub certificates: Certificates,
     /// `SupplierReturnCredited`.
     pub credited: Recorded<SupplierReturnCredited>,
     /// The tickets opened for tasks.
@@ -523,7 +633,20 @@ impl Booted {
         quantity_milli: i64,
         unit_price: i64,
     ) -> (PurchaseOrder, PurchaseOrderLine) {
-        let mut order = PurchaseOrder::new(SUPPLIER, location.id);
+        self.order_from(SUPPLIER, location, item, quantity_milli, unit_price)
+            .await
+    }
+
+    /// Like [`order`](Self::order), to `supplier`.
+    pub async fn order_from(
+        &self,
+        supplier: PartyId,
+        location: &Location,
+        item: &Item,
+        quantity_milli: i64,
+        unit_price: i64,
+    ) -> (PurchaseOrder, PurchaseOrderLine) {
+        let mut order = PurchaseOrder::new(supplier, location.id);
         order.status = PurchaseOrderStatus::Issued;
         let mut tx = self.db().begin().await.unwrap();
         order
@@ -938,6 +1061,7 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool) -> Booted {
     let locks = PeriodDesk::default();
     let bills = BillDesk::default();
     let blocked = Blocked::default();
+    let certificates = Certificates::default();
     let credited = Arc::new(Mutex::new(Vec::new()));
     let tickets = TicketDesk::default();
     let costs = CostDesk::default();
@@ -957,6 +1081,7 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool) -> Booted {
         allocated: allocated.clone(),
         adjusted: adjusted.clone(),
         blocked: blocked.clone(),
+        certificates: certificates.clone(),
         locks: (!with_invoicing).then(|| locks.clone()),
         bills: (!with_invoicing).then(|| bills.clone()),
         received: received.clone(),
@@ -1009,10 +1134,14 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool) -> Booted {
             perm::PURCHASE_ORDERS_ISSUE,
             perm::SUPPLIER_RETURNS_MANAGE,
             perm::LANDED_COSTS_POST,
+            perm::ITEM_SUPPLIERS_MANAGE,
         ],
     )
     .await
     .unwrap();
+    permissions::define_role(app.db(), "cost_viewer", &[perm::STOCK_COST_VIEW])
+        .await
+        .unwrap();
     Booted {
         app,
         received: Recorded(received),
@@ -1023,6 +1152,7 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool) -> Booted {
         locks,
         bills,
         blocked,
+        certificates,
         credited: Recorded(credited),
         tickets,
         costs,
