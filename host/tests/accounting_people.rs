@@ -62,7 +62,10 @@ async fn search_campaign(app: &TestApp, owner: &User) -> Campaign {
         .update(app.db(), &[("status", &"active")])
         .await
         .unwrap();
-    Campaign::find(app.db(), campaign.id).await.unwrap().unwrap()
+    Campaign::find(app.db(), campaign.id)
+        .await
+        .unwrap()
+        .unwrap()
 }
 
 /// The sources of the spec are offered, walk-in and aggregator are off.
@@ -70,11 +73,17 @@ async fn search_campaign(app: &TestApp, owner: &User) -> Campaign {
 async fn the_lead_sources_are_the_seven_of_the_spec() {
     let app = accounting_booted().await;
     for code in accounting::seed::LEAD_SOURCES {
-        let source = LeadSource::by_code(app.db(), code).await.unwrap().expect(code);
+        let source = LeadSource::by_code(app.db(), code)
+            .await
+            .unwrap()
+            .expect(code);
         assert!(source.active, "{code}");
     }
     for code in ["walk_in", "aggregator"] {
-        let source = LeadSource::by_code(app.db(), code).await.unwrap().expect(code);
+        let source = LeadSource::by_code(app.db(), code)
+            .await
+            .unwrap()
+            .expect(code);
         assert!(!source.active, "{code} is not used by an accounting firm");
     }
 }
@@ -96,20 +105,28 @@ async fn the_search_ads_campaign_reports_its_figures_and_an_overspend_waits_for_
         manages_costs: false,
     };
     for amount in [200_000, 100_000] {
-        let entry = costs::save(app.state(), input(amount)).await.unwrap().unwrap();
+        let entry = costs::save(app.state(), input(amount))
+            .await
+            .unwrap()
+            .unwrap();
         assert_eq!(entry.status, CostStatus::Approved);
     }
     for i in 0..20 {
         let new = NewLead::staff(None, &format!("Enquirer {i}"), "paid_ads").campaign_code(CODE);
-        let wl_sales::Captured::Created(lead) =
-            wl_sales::lead::capture(app.state(), new, day(-3)).await.unwrap().unwrap()
+        let wl_sales::Captured::Created(lead) = wl_sales::lead::capture(app.state(), new, day(-3))
+            .await
+            .unwrap()
+            .unwrap()
         else {
             panic!("a lead is created");
         };
         if i < 4 {
             Lead::query()
                 .where_(Lead::ID.eq(lead.id))
-                .update(app.db(), &[("status", &"won"), ("won_at", &Some(renox::db::now()))])
+                .update(
+                    app.db(),
+                    &[("status", &"won"), ("won_at", &Some(renox::db::now()))],
+                )
                 .await
                 .unwrap();
         }
@@ -118,13 +135,21 @@ async fn the_search_ads_campaign_reports_its_figures_and_an_overspend_waits_for_
     for n in 0..3_i64 {
         let party = PartyId(500 + n);
         attribution
-            .attribute(app.state(), Attribute::party(party, "paid_ads").campaign(CODE))
+            .attribute(
+                app.state(),
+                Attribute::party(party, "paid_ads").campaign(CODE),
+            )
             .await
             .unwrap();
         attribution
             .record_first_sale(
                 app.state(),
-                FirstSale::new(party, Subject::new("invoicing.invoice", 700 + n), 1_000_000, day(-1)),
+                FirstSale::new(
+                    party,
+                    Subject::new("invoicing.invoice", 700 + n),
+                    1_000_000,
+                    day(-1),
+                ),
             )
             .await
             .unwrap();
@@ -132,10 +157,19 @@ async fn the_search_ads_campaign_reports_its_figures_and_an_overspend_waits_for_
     let facts = report::load(app.db(), &wl_sales::config::config_of(app.state()))
         .await
         .unwrap();
-    let report = report::compute(&facts, &Filter::default(), GroupBy::Campaign, &Viewer::all());
+    let report = report::compute(
+        &facts,
+        &Filter::default(),
+        GroupBy::Campaign,
+        &Viewer::all(),
+    );
     let cells = report.rows[0].cells();
     assert_eq!(
-        (cells.leads.as_str(), cells.won.as_str(), cells.conversion.as_str()),
+        (
+            cells.leads.as_str(),
+            cells.won.as_str(),
+            cells.conversion.as_str()
+        ),
         ("20", "4", "20.0%")
     );
     assert_eq!(cells.cost_per_lead, "150.00");
@@ -143,14 +177,26 @@ async fn the_search_ads_campaign_reports_its_figures_and_an_overspend_waits_for_
     assert_eq!(cells.roas, "10.00");
 
     // AED 3,000 spent of 5,000: AED 2,500 more is over the budget.
-    let over = costs::save(app.state(), input(250_000)).await.unwrap().unwrap();
+    let over = costs::save(app.state(), input(250_000))
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(over.status, CostStatus::PendingApproval);
     let request = over.approval_request_id.expect("a request");
-    assert!(approvals::approve(app.state(), request, &staff, "").await.is_err());
-    approvals::approve(app.state(), request, &manager, "ok").await.unwrap();
+    assert!(
+        approvals::approve(app.state(), request, &staff, "")
+            .await
+            .is_err()
+    );
+    approvals::approve(app.state(), request, &manager, "ok")
+        .await
+        .unwrap();
     let approved = CostEntry::find(app.db(), over.id).await.unwrap().unwrap();
     assert_eq!(approved.status, CostStatus::Approved);
-    let stored = approvals::ApprovalRequest::find(app.db(), request).await.unwrap().unwrap();
+    let stored = approvals::ApprovalRequest::find(app.db(), request)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(stored.status, ApprovalStatus::Approved);
 }
 
@@ -208,19 +254,29 @@ async fn hiring_a_tax_specialist_creates_the_checklist_and_its_reminders_run() {
             _ => assert!(who.contains(&admin.id), "{}: {who:?}", s.title_en),
         }
     }
-    assert!(steps.iter().any(|s| s.owner == "manager") && steps.iter().any(|s| s.owner == "employee"));
+    assert!(
+        steps.iter().any(|s| s.owner == "manager") && steps.iter().any(|s| s.owner == "employee")
+    );
 
     // Active before the checklist is complete.
     app.acting_as(&admin);
     app.htmx()
-        .post(&format!("/hr/employees/{}/transitions/activate", employee.id), &[("reason", "")])
+        .post(
+            &format!("/hr/employees/{}/transitions/activate", employee.id),
+            &[("reason", "")],
+        )
         .await
         .assert_status(303);
     assert_eq!(
-        Employee::find_or_404(app.db(), employee.id).await.unwrap().status,
+        Employee::find_or_404(app.db(), employee.id)
+            .await
+            .unwrap()
+            .status,
         EmployeeStatus::Active
     );
-    let still = Onboarding::find_or_404(app.db(), onboarding.id).await.unwrap();
+    let still = Onboarding::find_or_404(app.db(), onboarding.id)
+        .await
+        .unwrap();
     assert_ne!(still.status, wl_hr::OnboardingStatus::Completed);
 
     // HRM.RUL.17: reminded on the first run after the due date, then every
@@ -251,14 +307,20 @@ async fn hiring_a_tax_specialist_creates_the_checklist_and_its_reminders_run() {
 async fn publish_version(app: &TestApp, by: &User, sop: &Sop) -> Document {
     app.acting_as(by);
     let uploaded = app
-        .post(&format!("/probe/sops/{}/versions", sop.id), &[("file_name", "aml.pdf")])
+        .post(
+            &format!("/probe/sops/{}/versions", sop.id),
+            &[("file_name", "aml.pdf")],
+        )
         .await;
     uploaded.assert_ok();
     let version = Document::find_or_404(app.db(), uploaded.text().parse().unwrap())
         .await
         .unwrap();
     app.htmx()
-        .post(&format!("/documents/sop-versions/{}/accept", version.id), &[])
+        .post(
+            &format!("/documents/sop-versions/{}/accept", version.id),
+            &[],
+        )
         .await
         .assert_ok();
     Document::find_or_404(app.db(), version.id).await.unwrap()
@@ -289,7 +351,9 @@ async fn a_new_mlro_sop_version_asks_the_readers_to_acknowledge_again_within_sev
         .into_iter()
         .map(|r| r.role_key)
         .collect();
-    assert!(readers.contains(&"tax_specialist".to_owned()) && readers.contains(&"partner".to_owned()));
+    assert!(
+        readers.contains(&"tax_specialist".to_owned()) && readers.contains(&"partner".to_owned())
+    );
     let manager_sop = Sop::query()
         .where_(Sop::CODE.eq("SOP-ACC-RETURNS"))
         .first(app.db())
@@ -299,14 +363,22 @@ async fn a_new_mlro_sop_version_asks_the_readers_to_acknowledge_again_within_sev
     assert_eq!(manager_sop.owner_role, "engagement_manager");
 
     let first = publish_version(&app, &owner, &sop).await;
-    let acks = Acknowledgements::of_version(app.db(), sop.id, first.id).await.unwrap();
-    let mine = acks.iter().find(|a| a.employee_id == employee.id).expect("asked");
+    let acks = Acknowledgements::of_version(app.db(), sop.id, first.id)
+        .await
+        .unwrap();
+    let mine = acks
+        .iter()
+        .find(|a| a.employee_id == employee.id)
+        .expect("asked");
     assert_eq!(mine.status, AckStatus::Pending);
     assert_eq!(mine.due_date, at(today(), 7));
     app.acting_as(&owner);
     let refused = app
         .htmx()
-        .post(&format!("/documents/acknowledgements/{}/acknowledge", mine.id), &[])
+        .post(
+            &format!("/documents/acknowledgements/{}/acknowledge", mine.id),
+            &[],
+        )
         .await;
     assert_eq!(refused.status.as_u16(), 403);
     Acknowledgements::open(app.state(), mine.id, specialist.id, first.id)
@@ -315,15 +387,26 @@ async fn a_new_mlro_sop_version_asks_the_readers_to_acknowledge_again_within_sev
         .unwrap();
     app.acting_as(&specialist);
     app.htmx()
-        .post(&format!("/documents/acknowledgements/{}/acknowledge", mine.id), &[])
+        .post(
+            &format!("/documents/acknowledgements/{}/acknowledge", mine.id),
+            &[],
+        )
         .await
         .assert_ok();
-    let done = SopAcknowledgement::find(app.db(), mine.id).await.unwrap().unwrap();
+    let done = SopAcknowledgement::find(app.db(), mine.id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_eq!(done.acknowledged_by, Some(specialist.id));
 
     let second = publish_version(&app, &owner, &sop).await;
-    let again = Acknowledgements::of_version(app.db(), sop.id, second.id).await.unwrap();
-    let asked = again.iter().find(|a| a.employee_id == employee.id).expect("asked again");
+    let again = Acknowledgements::of_version(app.db(), sop.id, second.id)
+        .await
+        .unwrap();
+    let asked = again
+        .iter()
+        .find(|a| a.employee_id == employee.id)
+        .expect("asked again");
     assert_eq!(asked.status, AckStatus::Pending);
     assert_eq!(asked.due_date, at(today(), 7));
 }

@@ -107,7 +107,9 @@ async fn a_list_older_than_24_hours_refuses_cdd_submit_until_the_mlro_uploads_it
     let refused = app.htmx().post(&submit, &[]).await;
     refused.assert_status(422);
     assert!(
-        refused.text().contains("Screening list is out of date: UN Consolidated List"),
+        refused
+            .text()
+            .contains("Screening list is out of date: UN Consolidated List"),
         "{}",
         refused.text()
     );
@@ -121,13 +123,20 @@ async fn a_list_older_than_24_hours_refuses_cdd_submit_until_the_mlro_uploads_it
                 ("source_url", "https://example.org/un-list"),
                 ("list_date", &wl_kernel::documents::today().to_string()),
             ],
-            &[("file", "un.xml", b"<list><entry><name>Omar K.</name></entry></list>")],
+            &[(
+                "file",
+                "un.xml",
+                b"<list><entry><name>Omar K.</name></entry></list>",
+            )],
         )
         .await
         .assert_ok();
     let uploaded = list(&app, UN).await;
     assert_eq!(uploaded.status, ListStatus::Current);
-    assert_eq!(uploaded.update_source, Some(wl_parties::UpdateSource::Manual));
+    assert_eq!(
+        uploaded.update_source,
+        Some(wl_parties::UpdateSource::Manual)
+    );
     // The accountant cannot upload one.
     app.acting_as(&preparer);
     let forbidden = app
@@ -161,7 +170,9 @@ async fn active_engagement(app: &TestApp, company: PartyId) -> Engagement {
         .await
         .unwrap();
     tx.commit().await.unwrap();
-    Engagement::find_or_404(app.db(), engagement.id).await.unwrap()
+    Engagement::find_or_404(app.db(), engagement.id)
+        .await
+        .unwrap()
 }
 
 /// A possible match on the UN list for `party`, recorded as the screening
@@ -227,7 +238,9 @@ async fn a_confirmed_match_on_a_ubo_blocks_the_company_and_the_partner_sees_on_h
         PartyStatus::Blocked,
         "the related-person block reaches the client company"
     );
-    let suspended = Engagement::find_or_404(app.db(), engagement.id).await.unwrap();
+    let suspended = Engagement::find_or_404(app.db(), engagement.id)
+        .await
+        .unwrap();
     assert_eq!(suspended.status, EngagementStatus::Suspended);
     assert_eq!(suspended.reason_code.as_deref(), Some("on_hold"));
 

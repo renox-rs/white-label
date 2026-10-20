@@ -12,11 +12,11 @@ use host::roles::{ADMIN, COMPLIANCE, PARTNER};
 use renox::prelude::*;
 use renox::testing::TestApp;
 use support::{accounting_booted, messages_to, person};
-use wl_kernel::automation::{MAX_ATTEMPTS, RuleRun, RuleRunSpec, run_rule};
-use wl_kernel::compliance::service::NOTIFICATION_TYPE as OWNER_ALERT;
-use wl_kernel::compliance::is_critical;
-use wl_kernel::integrations::{ConnectionStatus, IntegrationConnection, go_down, report_failure};
 use wl_kernel::Subject;
+use wl_kernel::automation::{MAX_ATTEMPTS, RuleRun, RuleRunSpec, run_rule};
+use wl_kernel::compliance::is_critical;
+use wl_kernel::compliance::service::NOTIFICATION_TYPE as OWNER_ALERT;
+use wl_kernel::integrations::{ConnectionStatus, IntegrationConnection, go_down, report_failure};
 
 const STALE: &str = "party.sanctions_list.stale";
 
@@ -80,9 +80,13 @@ async fn a_failed_or_stopped_critical_run_alerts_the_partner_and_the_admin_once_
     assert_eq!(messages_to(&app, OWNER_ALERT, &admin).await.len(), 1);
 
     // A stopped run (a chain too deep) alerts them once each as well.
-    let spec = RuleRunSpec::new("PTY.RUL.02", Subject::new("parties.sanctions_list", 99), "stopped")
-        .compliance_critical()
-        .chain_depth(4);
+    let spec = RuleRunSpec::new(
+        "PTY.RUL.02",
+        Subject::new("parties.sanctions_list", 99),
+        "stopped",
+    )
+    .compliance_critical()
+    .chain_depth(4);
     run_rule(app.state(), spec, |_state| async { Ok(()) })
         .await
         .unwrap();
@@ -128,6 +132,11 @@ async fn the_connections_with_a_manual_fallback_are_registered() {
     assert_eq!(down.status, ConnectionStatus::Down);
     // EmaraTax and goAML are manual: not connections.
     for key in ["emaratax", "goaml"] {
-        assert!(IntegrationConnection::by_key(app.db(), key).await.unwrap().is_none());
+        assert!(
+            IntegrationConnection::by_key(app.db(), key)
+                .await
+                .unwrap()
+                .is_none()
+        );
     }
 }

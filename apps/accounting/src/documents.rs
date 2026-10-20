@@ -191,7 +191,9 @@ impl FutureWork for PlannedActivations {
                 if engagement.status != EngagementStatus::Onboarding {
                     continue;
                 }
-                let date = engagement.start_date.unwrap_or_else(wl_kernel::documents::today);
+                let date = engagement
+                    .start_date
+                    .unwrap_or_else(wl_kernel::documents::today);
                 if date < from {
                     continue;
                 }

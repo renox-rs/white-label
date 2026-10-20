@@ -97,8 +97,10 @@ async fn the_kyc_kinds_block_activation_flag_the_filing_and_belong_to_the_mlro()
         assert_eq!(kind.override_mode, OverrideMode::WithApproval, "{key}");
         let mut blocks = kind.blocks(app.db()).await.unwrap();
         blocks.sort_by(|a, b| a.guarded.cmp(&b.guarded));
-        let seen: Vec<(&str, BlockMode)> =
-            blocks.iter().map(|b| (b.guarded.as_str(), b.mode)).collect();
+        let seen: Vec<(&str, BlockMode)> = blocks
+            .iter()
+            .map(|b| (b.guarded.as_str(), b.mode))
+            .collect();
         assert_eq!(
             seen,
             [
@@ -196,7 +198,9 @@ async fn an_expired_trade_licence_flags_the_filing_and_does_not_stop_it() {
         outcome.flags[0]
     );
     // Flagged for the MLRO after the filing.
-    let flagged = accounting::documents::flag_expired(state, &ret).await.unwrap();
+    let flagged = accounting::documents::flag_expired(state, &ret)
+        .await
+        .unwrap();
     assert_eq!(flagged, 1);
     assert_eq!(
         accounting::documents::flags_of(state, ret.id)
@@ -298,7 +302,11 @@ async fn the_registration_kinds_are_on_with_the_partner_and_block_nothing() {
     assert!(other.enabled && other.blocks(app.db()).await.unwrap().is_empty());
     assert_eq!(other.reminder_offsets.0, [90, 30, 7]);
     assert_eq!(other.responsible_role.as_deref(), Some(PARTNER));
-    for off in ["halal_certificate", "iso_certificate", "product_registration"] {
+    for off in [
+        "halal_certificate",
+        "iso_certificate",
+        "product_registration",
+    ] {
         let kind = DocumentKind::by_key(app.db(), off).await.unwrap().unwrap();
         assert!(!kind.enabled, "{off} stays off for 04");
     }

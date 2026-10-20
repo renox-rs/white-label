@@ -217,7 +217,10 @@ async fn a_non_payment_suspension_shows_the_real_overdue_invoice_and_resumes() {
         .await
         .unwrap()
         .expect("the retainer invoice");
-    let number = invoice.number.clone().expect("an issued invoice has a number");
+    let number = invoice
+        .number
+        .clone()
+        .expect("an issued invoice has a number");
     let page = t
         .get(
             &manager,
