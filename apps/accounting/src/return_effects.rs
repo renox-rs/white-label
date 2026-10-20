@@ -9,6 +9,8 @@
 //! | `send_back` | the preparer is told, with the comment |
 //! | `review` | the client approvers get the summary and the link to approve it |
 //! | `withdraw_approval` | the preparer and the reviewer are told; the preparer gets a task (due 1 working day) to rework the return and bring the linked task back to work |
+//! | `correct` | the voluntary disclosure task, or the adjustment attached to the named return ([`crate::corrections`]) |
+//! | `file` | the corrections made through this return are cancelled as *not required* |
 //! | `cancel` | the linked task is waived (*not required*, `upcoming`), listed for the manager (*not required*, otherwise) or handed over to the client (*client files itself*, *engagement ended*); the client is told who files it, unless the reason is restricted |
 //!
 //! The linked task is never moved back to work by the system after a
@@ -30,11 +32,12 @@ use wl_kernel::notify::{
 use wl_kernel::role_tasks::{self, RoleTask};
 use wl_kernel::tickets::{Assignee, OpenTicket, TASK_CATEGORY, TaskComment, task_creator};
 
+use crate::corrections;
 use crate::deadline_notices::client_recipients;
 use crate::engagement::Engagement;
 use crate::permissions::{ACCOUNTANT_ROLE, MANAGER_ROLE};
 use crate::reasons;
-use crate::return_machine::{CANCEL, REVIEW, SEND_BACK, SUBMIT, WITHDRAW_APPROVAL};
+use crate::return_machine::{CANCEL, CORRECT, FILE, REVIEW, SEND_BACK, SUBMIT, WITHDRAW_APPROVAL};
 use crate::tax_return::{Return, ReturnStatus};
 use crate::texts::english;
 
@@ -283,6 +286,10 @@ pub async fn after(state: &AppState, event: &Transitioned<Return>) -> Result {
             open_withdrawn_task(state, &ret).await?;
         }
         CANCEL => cancelled(state, &ret).await?,
+        CORRECT => corrections::after_correct(state, ret.id).await?,
+        FILE => {
+            corrections::on_filed(state, &ret).await?;
+        }
         _ => {}
     }
     Ok(())

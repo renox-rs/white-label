@@ -10,6 +10,7 @@ pub mod cdd;
 pub mod cdd_files;
 pub mod cdd_machine;
 pub mod client_notices;
+pub mod corrections;
 mod db;
 pub mod deadline_notices;
 pub mod documents;

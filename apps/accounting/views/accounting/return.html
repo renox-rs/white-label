@@ -45,6 +45,18 @@
           <rx-checkbox name="by_client" :label="tx['returns.by_client']" :id="'return-file-by-client-' ~ ret.id"/>
         </rx-action-sheet>
       </template>
+      <template rx-if="can_correct">
+        <rx-action-sheet :id="'return-correct-' ~ ret.id" :label="tx['corrections.action']" :action="route('accounting.return_correct', ret.id)"
+                         :title="tx['corrections.action']" :description="tx['corrections.description']" :submit-label="tx['corrections.action']" icon="pencil">
+          <rx-textarea name="reason" :label="tx['corrections.reason']" :id="'return-correct-reason-' ~ ret.id" required/>
+          <rx-input name="error_amount" :label="tx['corrections.error_amount']" :id="'return-correct-amount-' ~ ret.id" required/>
+          <rx-input name="found_on" type="date" :label="tx['corrections.found_on']" :id="'return-correct-found-' ~ ret.id" required/>
+          <rx-select name="route" :label="tx['corrections.route']" :options="routes" :selected="'voluntary_disclosure'" :id="'return-correct-route-' ~ ret.id"/>
+          <rx-input name="reference" :label="tx['corrections.reference']" :id="'return-correct-reference-' ~ ret.id"/>
+          <rx-input name="next_return" :label="tx['corrections.next_return']" :id="'return-correct-next-' ~ ret.id"/>
+          <rx-input name="next_period" type="date" :label="tx['corrections.next_period']" :id="'return-correct-period-' ~ ret.id"/>
+        </rx-action-sheet>
+      </template>
       <template rx-if="can_cancel">
         <rx-action-sheet :id="'return-cancel-' ~ ret.id" :label="tx['returns.cancel']" :action="route('accounting.return_cancel', ret.id)"
                          :title="tx['returns.cancel']" :description="tx['returns.cancel_description']" :submit-label="tx['returns.cancel']" icon="circle-x">
@@ -69,6 +81,7 @@
         <rx-entry :label="tx['returns.cancel_reason']" :value="ret.cancel_reason" :placeholder="tx['none']"/>
         <rx-entry :label="tx['returns.filed_on']" :value="ret.filed_on" :placeholder="tx['none']"/>
         <rx-entry :label="tx['returns.acknowledgement']" :value="ret.acknowledgement" :placeholder="tx['none']"/>
+        <rx-entry :label="tx['corrections.label']" :value="ret.correction" :placeholder="tx['none']"/>
       </rx-infolist>
     </rx-card>
     <rx-table :rows="signatures" as="row" :key="row.at ~ row.signer" :caption="tx['returns.signatures']" card>

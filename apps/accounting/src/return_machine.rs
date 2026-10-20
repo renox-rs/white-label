@@ -10,6 +10,7 @@
 //! | [`FILE`] | approved | filed | `returns.file` |
 //! | [`CORRECT`] | filed | superseded | `returns.prepare` |
 //! | [`CANCEL`] | preparing, in_review, client_approval, approved | cancelled | `returns.review` |
+//! | [`AUTO_CANCEL`] | preparing, in_review, client_approval, approved | cancelled | the system, once the return a correction went into is filed |
 //!
 //! A client approver has no staff permission: those transitions are open to
 //! any signed-in user and refuse unless the service found the user to be a
@@ -21,10 +22,10 @@
 //! after the commit ([`crate::events`]).
 //!
 //! Built here in full: `submit`, `send_back`, `review`, `approve`,
-//! `withdraw_approval` and `cancel`. `file` and `correct` are entries with
-//! their basic guards (an acknowledgement; a reason) and effects; the tax
-//! agent rule, the MLRO's approval for a blocked client, the linked task's
-//! completion and the new version come with BL-ACC-18 and BL-ACC-19.
+//! `withdraw_approval`, `cancel` and `correct` (the route rules and the new
+//! version of `ACC.ACL.04`, BL-ACC-18). `file` is an entry with its basic
+//! guards (an acknowledgement); the tax agent rule, the MLRO's approval for a
+//! blocked client and the linked task's completion come with BL-ACC-19.
 
 use renox::chrono::NaiveDate;
 use renox::db::ToDbValue;
@@ -35,6 +36,7 @@ use wl_kernel::approvals;
 use wl_kernel::documents::today;
 use wl_kernel::machines::SubjectMachine;
 
+use crate::corrections;
 use crate::db::set_return;
 use crate::permissions;
 use crate::reasons;
@@ -59,6 +61,9 @@ pub const FILE: &str = "file";
 pub const CORRECT: &str = "correct";
 /// The `cancel` transition's name.
 pub const CANCEL: &str = "cancel";
+/// The system twin of `cancel`: a correction made through the next return,
+/// once that return is filed (reason *not required*).
+pub const AUTO_CANCEL: &str = "auto_cancel";
 
 /// What a run carries to the guards and effects.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -109,6 +114,23 @@ pub struct ReturnInput {
     /// `correct`: how the error is corrected.
     #[serde(default)]
     pub route: Option<CorrectionRoute>,
+    /// `correct`: the error in tax, in fils.
+    #[serde(default)]
+    pub error_amount: Option<i64>,
+    /// `correct`: the day the error was found.
+    #[serde(default)]
+    pub found_on: Option<NaiveDate>,
+    /// `correct`: the voluntary disclosure reference, when already known.
+    #[serde(default)]
+    pub reference: Option<String>,
+    /// `correct`, next return route: the later VAT return that takes the
+    /// adjustment.
+    #[serde(default)]
+    pub next_return: Option<i64>,
+    /// `correct`, next return route: the period of that return, when it does
+    /// not exist yet.
+    #[serde(default)]
+    pub next_period: Option<NaiveDate>,
 }
 
 impl ReturnInput {
@@ -164,6 +186,7 @@ impl StateMachine for Return {
             .transition(file())
             .transition(correct())
             .transition(cancel())
+            .transition(auto_cancel())
     }
 }
 
@@ -379,6 +402,16 @@ fn file() -> Transition<Return> {
                 }
             })
         })
+        .guard("not_via_next_return", |r: &Return, _ctx| {
+            let marked = r.is_corrected_via_next_return();
+            Box::pin(async move {
+                if marked {
+                    Err(english("accounting.corrections.problem.never_filed", &[]))
+                } else {
+                    Ok(())
+                }
+            })
+        })
         .effect(|r: &Return, ctx, tx| {
             let id = r.id;
             let input = input_of(ctx);
@@ -401,8 +434,12 @@ fn file() -> Transition<Return> {
         })
 }
 
-/// `correct`: filed → superseded with a reason. Basic entry only;
-/// BL-ACC-19 adds the route rules and creates the new version.
+/// `correct`: filed → superseded, with the reason, the error in tax, the day
+/// it was found and the route (`ACC.ACL.04`). The effect makes the new
+/// `preparing` version in the same transaction: it copies the figures and
+/// workpapers, names the superseded one and carries the route. The
+/// disclosure task and the attachment to the named return follow the commit
+/// ([`crate::corrections::after_correct`]).
 fn correct() -> Transition<Return> {
     Transition::new(CORRECT)
         .label("Correct")
@@ -411,17 +448,105 @@ fn correct() -> Transition<Return> {
         .reason_required()
         .from([ReturnStatus::Filed])
         .to(ReturnStatus::Superseded)
-        .effect(|r: &Return, ctx, tx| {
-            let id = r.id;
-            let reason = ctx.reason().map(|c| c.trim().to_owned());
-            let route = input_of(ctx).route;
+        .guard("error_and_found_date", |_r: &Return, ctx| {
+            let input = input_of(ctx);
+            let on = input.on.unwrap_or_else(today);
             Box::pin(async move {
+                match (input.error_amount, input.found_on) {
+                    (Some(amount), Some(found)) if amount > 0 && found <= on => Ok(()),
+                    (Some(amount), Some(_)) if amount > 0 => {
+                        Err(english("accounting.corrections.problem.found_future", &[]))
+                    }
+                    _ => Err(english("accounting.corrections.problem.error", &[])),
+                }
+            })
+        })
+        .guard("route_allowed", |r: &Return, ctx| {
+            let input = input_of(ctx);
+            let offered = corrections::routes_for(r.return_type, input.error_amount.unwrap_or(0));
+            Box::pin(async move {
+                match input.route {
+                    Some(route) if offered.contains(&route) => Ok(()),
+                    Some(_) => Err(english("accounting.corrections.problem.route", &[])),
+                    None => Err(english("accounting.corrections.problem.no_route", &[])),
+                }
+            })
+        })
+        .guard("next_return_named", |_r: &Return, ctx| {
+            let input = input_of(ctx);
+            Box::pin(async move {
+                let named = input.next_return.is_some() || input.next_period.is_some();
+                if input.route == Some(CorrectionRoute::NextReturn) && !named {
+                    Err(english("accounting.corrections.problem.no_next", &[]))
+                } else {
+                    Ok(())
+                }
+            })
+        })
+        .effect(|r: &Return, ctx, tx| {
+            let old = r.clone();
+            let input = input_of(ctx);
+            let reason = ctx.reason().map(|c| c.trim().to_owned());
+            let by = ctx.actor().map(|u| u.id);
+            Box::pin(async move {
+                let next_return = input.next_return;
+                let next_period = if next_return.is_some() {
+                    None
+                } else {
+                    input.next_period
+                };
+                let reference = input
+                    .reference
+                    .map(|r| r.trim().to_owned())
+                    .filter(|r| !r.is_empty());
                 set_return(
                     &mut *tx,
-                    id,
-                    &[("correction_reason", &reason), ("correction_route", &route)],
+                    old.id,
+                    &[
+                        ("correction_reason", &reason),
+                        ("correction_route", &input.route),
+                        ("error_amount", &input.error_amount),
+                        ("error_found_on", &input.found_on),
+                        ("correction_reference", &reference),
+                        ("correction_return_id", &next_return),
+                        ("correction_period_end", &next_period),
+                    ],
                 )
-                .await
+                .await?;
+                Return::create(
+                    &mut *tx,
+                    Return {
+                        id: 0,
+                        task_id: None,
+                        version: old.version + 1,
+                        supersedes_id: Some(old.id),
+                        preparer_user_id: None,
+                        reviewer_user_id: None,
+                        send_back_comment: None,
+                        cancel_reason: None,
+                        client_messages_suppressed: false,
+                        filed_on: None,
+                        filed_by_user_id: None,
+                        filed_by_client: false,
+                        tax_agent_registration: None,
+                        acknowledgement: None,
+                        correction_reason: reason,
+                        correction_route: input.route,
+                        correction_reference: reference,
+                        error_amount: input.error_amount,
+                        error_found_on: input.found_on,
+                        correction_return_id: next_return,
+                        correction_period_end: next_period,
+                        disclosure_task_id: None,
+                        status: ReturnStatus::Preparing,
+                        created_by: by,
+                        created_at: None,
+                        updated_at: None,
+                        ..old
+                    },
+                )
+                .await?;
+                Ok(())
             })
         })
 }
@@ -466,6 +591,27 @@ fn cancel() -> Transition<Return> {
                 )
                 .await
             })
+        })
+}
+
+/// `auto_cancel`: the system cancels a correction made through the next
+/// return once that return is filed, with the reason *not required*.
+fn auto_cancel() -> Transition<Return> {
+    Transition::new(AUTO_CANCEL)
+        .label("Cancel (not required)")
+        .tone("danger")
+        .system()
+        .from([
+            ReturnStatus::Preparing,
+            ReturnStatus::InReview,
+            ReturnStatus::ClientApproval,
+            ReturnStatus::Approved,
+        ])
+        .to(ReturnStatus::Cancelled)
+        .effect(|r: &Return, ctx, tx| {
+            let id = r.id;
+            let code = ctx.reason().map(|c| c.trim().to_owned());
+            Box::pin(async move { set_return(&mut *tx, id, &[("cancel_reason", &code)]).await })
         })
 }
 
@@ -554,6 +700,7 @@ mod tests {
                 (FILE, vec!["approved".into()], Some("filed"), false),
                 (CORRECT, vec!["filed".into()], Some("superseded"), false),
                 (CANCEL, open(), Some("cancelled"), false),
+                (AUTO_CANCEL, open(), Some("cancelled"), true),
             ]
         );
         assert_eq!(
@@ -574,7 +721,11 @@ mod tests {
         );
         assert_eq!(
             machine.find(FILE).unwrap().guard_names(),
-            ["acknowledgement"]
+            ["acknowledgement", "not_via_next_return"]
+        );
+        assert_eq!(
+            machine.find(CORRECT).unwrap().guard_names(),
+            ["error_and_found_date", "route_allowed", "next_return_named"]
         );
         assert_eq!(
             machine.find(CANCEL).unwrap().guard_names(),

@@ -18,6 +18,7 @@ use wl_kernel::documents::today;
 use wl_kernel::portal::portal_users;
 
 use crate::cdd::CddFile;
+use crate::corrections;
 use crate::db::{refused, set_return};
 use crate::deadline_notices::APPROVER_ROLES;
 use crate::engagement::{Engagement, EngagementStatus};
@@ -26,7 +27,7 @@ use crate::reasons;
 use crate::return_machine::{
     APPROVE, CANCEL, CORRECT, FILE, REVIEW, ReturnInput, SEND_BACK, SUBMIT, WITHDRAW_APPROVAL,
 };
-use crate::tax_return::{CorrectionRoute, Return, ReturnType, document_hash};
+use crate::tax_return::{CorrectionRoute, Return, ReturnStatus, ReturnType, document_hash};
 use crate::texts::english;
 
 /// What a new return is made of.
@@ -123,7 +124,7 @@ pub async fn open(state: &AppState, by: Option<i64>, new: NewReturn) -> Result<R
             })
             .map(|task| task.id),
     };
-    Return::create(
+    let opened = Return::create(
         &state.db,
         Return {
             client_party_id: engagement.client_party_id,
@@ -138,7 +139,10 @@ pub async fn open(state: &AppState, by: Option<i64>, new: NewReturn) -> Result<R
             ..Return::default()
         },
     )
-    .await
+    .await?;
+    // Corrections waiting for a return of this period go into it.
+    corrections::attach(state, &opened).await?;
+    Ok(opened)
 }
 
 /// `by` records the figures of return `id` and whether its workpapers are
@@ -351,24 +355,154 @@ pub async fn file(
     run(state, by, id, FILE, None, input).await
 }
 
-/// `by` corrects the filed return `id` with `reason`. Basic form:
-/// BL-ACC-19 adds the route rules and the new version.
+/// What a correction of a filed return is made of (`ACC.ACL.04`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct Correction {
+    /// Why the return is corrected.
+    pub reason: String,
+    /// The error in tax, in fils.
+    pub error_amount: i64,
+    /// The day the error was found.
+    pub found_on: NaiveDate,
+    /// How the error is corrected.
+    pub route: CorrectionRoute,
+    /// The voluntary disclosure reference, when it is known already.
+    pub reference: Option<String>,
+    /// The later VAT return that takes the adjustment (*next return*).
+    pub next_return: Option<i64>,
+    /// The period of that return, while it does not exist yet.
+    pub next_period: Option<NaiveDate>,
+}
+
+impl Correction {
+    /// A correction for `reason` of an error of `error_amount` fils found on
+    /// `found_on`, by `route`.
+    pub fn new(
+        reason: &str,
+        error_amount: i64,
+        found_on: NaiveDate,
+        route: CorrectionRoute,
+    ) -> Self {
+        Correction {
+            reason: reason.to_owned(),
+            error_amount,
+            found_on,
+            route,
+            reference: None,
+            next_return: None,
+            next_period: None,
+        }
+    }
+
+    /// With the disclosure reference.
+    pub fn reference(mut self, reference: &str) -> Self {
+        self.reference = Some(reference.to_owned());
+        self
+    }
+
+    /// Going into the later VAT return `id`.
+    pub fn next_return(mut self, id: i64) -> Self {
+        self.next_return = Some(id);
+        self
+    }
+
+    /// Going into the later VAT return for the period ending `period_end`.
+    pub fn next_period(mut self, period_end: NaiveDate) -> Self {
+        self.next_period = Some(period_end);
+        self
+    }
+}
+
+/// The 422 for a later return that cannot take the adjustment.
+fn next_invalid() -> Error {
+    refused(english("accounting.corrections.problem.next_invalid", &[]))
+}
+
+/// The later return the *next return* route names, checked: an id of a VAT
+/// return of the same client for a later period that is not filed yet, or a
+/// later period (resolved to the return for it when one is open, refused when
+/// it is filed). Answers the return id and the period still to be opened.
+async fn resolve_next(
+    state: &AppState,
+    ret: &Return,
+    next_return: Option<i64>,
+    next_period: Option<NaiveDate>,
+) -> Result<(Option<i64>, Option<NaiveDate>)> {
+    if let Some(id) = next_return {
+        let target = Return::find_or_404(&state.db, id).await?;
+        let fits = target.client_party_id == ret.client_party_id
+            && target.return_type == ReturnType::Vat
+            && target.period_end > ret.period_end
+            && target.status.is_open();
+        return if fits {
+            Ok((Some(target.id), None))
+        } else {
+            Err(next_invalid())
+        };
+    }
+    let Some(period) = next_period else {
+        return Ok((None, None));
+    };
+    if period <= ret.period_end {
+        return Err(next_invalid());
+    }
+    let same_period: Vec<Return> = Return::of_client(&state.db, ret.client())
+        .await?
+        .into_iter()
+        .filter(|r| r.return_type == ReturnType::Vat && r.period_end == period)
+        .collect();
+    if let Some(open) = same_period.iter().find(|r| r.status.is_open()) {
+        return Ok((Some(open.id), None));
+    }
+    if same_period.iter().any(|r| r.status == ReturnStatus::Filed) {
+        return Err(next_invalid());
+    }
+    Ok((None, Some(period)))
+}
+
+/// `by` corrects the filed return `id` (`ACC.ACL.04`): the old version
+/// becomes `superseded`, a new `preparing` version copies its figures and
+/// workpapers, and the route decides the rest. After the commit a
+/// *voluntary disclosure* gets its task (due 20 business days after the error
+/// was found), and a *next return* correction is attached to the return it
+/// names ([`crate::corrections`]). Answers the new version.
 ///
 /// # Errors
 ///
-/// `Forbidden` without `returns.prepare`; a 422 without a reason.
+/// `Forbidden` without `returns.prepare`; a 422 without a reason, for an
+/// error of 0 or less or found in the future, for a route the error does not
+/// allow (only the voluntary disclosure above AED 10,000 and for corporate
+/// tax), and for a *next return* route without a later VAT return of the
+/// client not yet filed (or its period).
 pub async fn correct(
     state: &AppState,
     by: &AuthUser,
     id: i64,
-    reason: &str,
-    route: Option<CorrectionRoute>,
+    correction: Correction,
 ) -> Result<Return> {
+    let ret = load(state, id).await?;
+    let (next_return, next_period) = if correction.route == CorrectionRoute::NextReturn {
+        resolve_next(state, &ret, correction.next_return, correction.next_period).await?
+    } else {
+        (None, None)
+    };
     let input = ReturnInput {
-        route,
+        route: Some(correction.route),
+        error_amount: Some(correction.error_amount),
+        found_on: Some(correction.found_on),
+        reference: correction.reference.clone(),
+        next_return,
+        next_period,
         ..ReturnInput::on(today())
     };
-    run(state, by, id, CORRECT, Some(reason), input).await
+    run(state, by, id, CORRECT, Some(&correction.reason), input).await?;
+    Return::query()
+        .where_(Return::SUPERSEDES_ID.eq(id))
+        .order_by_desc(Return::ID)
+        .first(&state.db)
+        .await?
+        .ok_or_else(|| refused(english("accounting.corrections.problem.error", &[])))
 }
 
 /// `by` (a manager) cancels return `id` with `reason`, one of

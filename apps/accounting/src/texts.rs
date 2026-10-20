@@ -810,6 +810,97 @@ const TEXTS: &[(&str, &str)] = &[
     ("accounting.returns.transition.correct", "Corrected"),
     ("accounting.returns.transition.cancel", "Cancelled"),
     (
+        "accounting.returns.transition.auto_cancel",
+        "Cancelled (not required)",
+    ),
+    // The correction of a filed return (`ACC.ACL.04`).
+    ("accounting.corrections.label", "Correction"),
+    ("accounting.corrections.action", "Correct"),
+    (
+        "accounting.corrections.description",
+        "A filed return is locked: the correction is a new version. An error above AED 10,000 of VAT, and any corporate tax correction, is a voluntary disclosure.",
+    ),
+    ("accounting.corrections.reason", "Why it is corrected"),
+    ("accounting.corrections.error_amount", "Error in tax (AED)"),
+    (
+        "accounting.corrections.found_on",
+        "Date the error was found",
+    ),
+    ("accounting.corrections.route", "Route"),
+    (
+        "accounting.corrections.route.voluntary_disclosure",
+        "Voluntary disclosure",
+    ),
+    ("accounting.corrections.route.next_return", "Next return"),
+    (
+        "accounting.corrections.reference",
+        "Disclosure reference (may follow on the task)",
+    ),
+    (
+        "accounting.corrections.next_return",
+        "Next return (number of the later VAT return)",
+    ),
+    (
+        "accounting.corrections.next_period",
+        "or its period end, if it does not exist yet",
+    ),
+    (
+        "accounting.corrections.done",
+        "Return corrected: a new version is being prepared.",
+    ),
+    (
+        "accounting.corrections.summary",
+        ":route, error :amount found on :found. :detail",
+    ),
+    (
+        "accounting.corrections.detail_return",
+        "Adjustment in return :number.",
+    ),
+    (
+        "accounting.corrections.detail_period",
+        "Adjustment in the return for the period ending :period.",
+    ),
+    (
+        "accounting.corrections.detail_disclosure",
+        "Disclosure task due :due; reference: :reference.",
+    ),
+    (
+        "accounting.corrections.disclosure_title",
+        "Voluntary disclosure for :number (period ending :period)",
+    ),
+    (
+        "accounting.corrections.disclosure_description",
+        "File the voluntary disclosure for :number: error of :amount found on :found, due :days business days later. Complete the task with the disclosure reference as evidence. :link",
+    ),
+    (
+        "accounting.corrections.problem.error",
+        "Give the error in tax (more than 0) and the day it was found.",
+    ),
+    (
+        "accounting.corrections.problem.found_future",
+        "The error cannot have been found in the future.",
+    ),
+    (
+        "accounting.corrections.problem.route",
+        "That route is not allowed: above AED 10,000 of VAT, and for corporate tax, the correction is a voluntary disclosure.",
+    ),
+    (
+        "accounting.corrections.problem.no_route",
+        "Choose how the error is corrected.",
+    ),
+    (
+        "accounting.corrections.problem.no_next",
+        "Name the later VAT return that takes the adjustment, or its period.",
+    ),
+    (
+        "accounting.corrections.problem.next_invalid",
+        "The named return must be a VAT return of the client for a later period that is not filed yet.",
+    ),
+    (
+        "accounting.corrections.problem.never_filed",
+        "This version is corrected through the next return and is never filed itself.",
+    ),
+    (
         "accounting.returns.problem.no_figures",
         "Enter the figures first.",
     ),

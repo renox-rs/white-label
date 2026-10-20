@@ -152,6 +152,18 @@ pub struct Return {
     pub correction_reference: Option<String>,
     /// Why it was corrected.
     pub correction_reason: Option<String>,
+    /// The error in tax the correction fixes, in fils (`ACC.ACL.04`).
+    pub error_amount: Option<i64>,
+    /// The day the error was found; the voluntary disclosure is due 20
+    /// business days later.
+    pub error_found_on: Option<NaiveDate>,
+    /// The later VAT return the adjustment goes into (*next return* route).
+    pub correction_return_id: Option<i64>,
+    /// The period of that return, while it does not exist yet; the
+    /// adjustment attaches when a return for it is opened.
+    pub correction_period_end: Option<NaiveDate>,
+    /// The deadline task that tracks the voluntary disclosure.
+    pub disclosure_task_id: Option<i64>,
     /// The lifecycle state; changed only by a transition.
     pub status: ReturnStatus,
     /// The user who opened it.
@@ -176,6 +188,13 @@ impl Return {
     /// The return shown to people: `RET-0007`.
     pub fn number(&self) -> String {
         format!("RET-{:04}", self.id)
+    }
+
+    /// Whether it is the new version of a correction made through the next
+    /// return: it carries the corrected figures, is never filed itself and is
+    /// cancelled as *not required* once the named return is filed.
+    pub fn is_corrected_via_next_return(&self) -> bool {
+        self.supersedes_id.is_some() && self.correction_route == Some(CorrectionRoute::NextReturn)
     }
 
     /// The deadline task that tracks it.
@@ -324,6 +343,22 @@ mod tests {
         assert_eq!(ret.task(), Some(DeadlineTaskId(9)));
         assert_eq!(ReturnType::Vat.task_type(), "vat_return");
         assert_eq!(ReturnType::Ct.task_type(), "ct_return");
+    }
+
+    #[test]
+    fn only_a_new_version_on_the_next_return_route_is_marked() {
+        let mut ret = Return {
+            correction_route: Some(CorrectionRoute::NextReturn),
+            ..Return::default()
+        };
+        assert!(
+            !ret.is_corrected_via_next_return(),
+            "the superseded one is not"
+        );
+        ret.supersedes_id = Some(3);
+        assert!(ret.is_corrected_via_next_return());
+        ret.correction_route = Some(CorrectionRoute::VoluntaryDisclosure);
+        assert!(!ret.is_corrected_via_next_return());
     }
 
     #[test]

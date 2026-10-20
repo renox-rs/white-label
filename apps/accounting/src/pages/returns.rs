@@ -13,6 +13,7 @@
 //! | `POST /accounting/returns/{id}/withdraw` | `accounting.return_withdraw` | `returns.review` |
 //! | `POST /accounting/returns/{id}/cancel` | `accounting.return_cancel` | `returns.review` |
 //! | `POST /accounting/returns/{id}/file` | `accounting.return_file` | `returns.file` |
+//! | `POST /accounting/returns/{id}/correct` | `accounting.return_correct` | `returns.prepare` |
 //!
 //! The client approver's pages (approve, send back, withdraw) are in
 //! [`super::portal_returns`]. A button is offered only when the transition
@@ -26,12 +27,12 @@ use serde::{Deserialize, Serialize};
 use wl_kernel::deadlines::deadline_tasks;
 use wl_kernel::documents::dubai_text;
 
-use super::{Texts, invalid, parse_id, party_name, require, text, user_name};
+use super::{Texts, invalid, parse_aed, parse_id, party_name, require, text, user_name};
 use crate::engagement::Engagement;
 use crate::permissions;
 use crate::reasons;
 use crate::returns::{self, NewReturn};
-use crate::tax_return::{Return, ReturnSignature, ReturnStatus, ReturnType};
+use crate::tax_return::{CorrectionRoute, Return, ReturnSignature, ReturnStatus, ReturnType};
 use crate::texts;
 
 /// The routes of the pages.
@@ -57,6 +58,8 @@ pub fn routes() -> Routes {
         .name("accounting.return_cancel")
         .post("/accounting/returns/{id}/file", file)
         .name("accounting.return_file")
+        .post("/accounting/returns/{id}/correct", correct)
+        .name("accounting.return_correct")
         .require_auth()
 }
 
@@ -242,6 +245,9 @@ pub struct ReturnView {
     pub filed_on: String,
     /// The FTA acknowledgement.
     pub acknowledgement: String,
+    /// How the error of a corrected return is corrected, and where the
+    /// adjustment goes.
+    pub correction: String,
 }
 
 /// One row of the history.
@@ -289,6 +295,8 @@ pub(crate) struct ShowPage {
     can_withdraw: bool,
     can_cancel: bool,
     can_file: bool,
+    can_correct: bool,
+    routes: Vec<[String; 2]>,
     cancel_reasons: Vec<[String; 2]>,
     figures_text: String,
 }
@@ -366,6 +374,80 @@ pub(crate) async fn task_text(state: &AppState, lang: &Lang, ret: &Return) -> Re
     })
 }
 
+/// How the error of `ret` is corrected and where the adjustment goes, for
+/// people; empty for a return that is not part of a correction.
+async fn correction_text(state: &AppState, lang: &Lang, ret: &Return) -> Result<String> {
+    let Some(route) = ret.correction_route else {
+        return Ok(String::new());
+    };
+    let detail = match route {
+        CorrectionRoute::NextReturn => {
+            match (ret.correction_return_id, ret.correction_period_end) {
+                (Some(target), _) => {
+                    let number = Return::find(&state.db, target)
+                        .await?
+                        .map_or_else(|| format!("#{target}"), |r| r.number());
+                    texts::t_with(
+                        lang,
+                        "accounting.corrections.detail_return",
+                        &[("number", &number)],
+                    )
+                }
+                (None, Some(period)) => texts::t_with(
+                    lang,
+                    "accounting.corrections.detail_period",
+                    &[("period", &period)],
+                ),
+                (None, None) => String::new(),
+            }
+        }
+        CorrectionRoute::VoluntaryDisclosure => {
+            let due = match ret.disclosure_task_id {
+                Some(id) => deadline_tasks(state)
+                    .find(&state.db, wl_kernel::deadlines::DeadlineTaskId(id))
+                    .await?
+                    .map(|task| task.due_date.to_string())
+                    .unwrap_or_default(),
+                None => String::new(),
+            };
+            texts::t_with(
+                lang,
+                "accounting.corrections.detail_disclosure",
+                &[
+                    ("due", &due),
+                    (
+                        "reference",
+                        &ret.correction_reference
+                            .clone()
+                            .unwrap_or_else(|| text(lang, "none")),
+                    ),
+                ],
+            )
+        }
+    };
+    Ok(texts::t_with(
+        lang,
+        "accounting.corrections.summary",
+        &[
+            (
+                "route",
+                &text(lang, &format!("corrections.route.{}", route.as_str())),
+            ),
+            (
+                "amount",
+                &crate::money_text(ret.error_amount.unwrap_or_default()),
+            ),
+            (
+                "found",
+                &ret.error_found_on
+                    .map(|d| d.to_string())
+                    .unwrap_or_default(),
+            ),
+            ("detail", &detail),
+        ],
+    ))
+}
+
 /// `GET /accounting/returns/{id}`.
 async fn show(
     State(state): State<AppState>,
@@ -413,6 +495,7 @@ async fn show(
             .unwrap_or_default(),
         filed_on: found.filed_on.map(|d| d.to_string()).unwrap_or_default(),
         acknowledgement: found.acknowledgement.clone().unwrap_or_default(),
+        correction: correction_text(&state, &lang, &found).await?,
     };
     let prepare = user.has_permission(permissions::RETURNS_PREPARE);
     let review = user.has_permission(permissions::RETURNS_REVIEW);
@@ -437,6 +520,16 @@ async fn show(
         can_cancel: review && status.is_open(),
         can_file: user.has_permission(permissions::RETURNS_FILE)
             && status == ReturnStatus::Approved,
+        can_correct: prepare && status == ReturnStatus::Filed,
+        routes: CorrectionRoute::ALL
+            .iter()
+            .map(|route| {
+                [
+                    route.as_str().to_owned(),
+                    text(&lang, &format!("corrections.route.{}", route.as_str())),
+                ]
+            })
+            .collect(),
         cancel_reasons: returns::cancel_reasons()
             .iter()
             .map(|code| [(*code).to_owned(), reasons::label(&lang, code)])
@@ -589,4 +682,71 @@ async fn file(
     )
     .await?;
     Ok(done(&lang, "returns.filed"))
+}
+
+/// The form that corrects a filed return.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct CorrectForm {
+    /// Why it is corrected.
+    #[serde(default)]
+    pub reason: String,
+    /// The error in tax, in dirhams.
+    #[serde(default)]
+    pub error_amount: String,
+    /// The day the error was found.
+    #[serde(default)]
+    pub found_on: String,
+    /// `voluntary_disclosure` or `next_return`.
+    #[serde(default)]
+    pub route: String,
+    /// The disclosure reference, if known.
+    #[serde(default)]
+    pub reference: String,
+    /// The later VAT return (its id).
+    #[serde(default)]
+    pub next_return: String,
+    /// The period end of that return while it does not exist.
+    #[serde(default)]
+    pub next_period: String,
+}
+
+/// `POST /accounting/returns/{id}/correct`.
+async fn correct(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<CorrectForm>,
+) -> Result<Response> {
+    require(&user, permissions::RETURNS_PREPARE)?;
+    let error_amount = parse_aed(&form.error_amount)
+        .filter(|amount| *amount > 0)
+        .ok_or_else(|| invalid("error_amount: 12500.00"))?;
+    let found_on = form
+        .found_on
+        .trim()
+        .parse()
+        .map_err(|_| invalid("found_on: YYYY-MM-DD"))?;
+    let route = CorrectionRoute::ALL
+        .iter()
+        .copied()
+        .find(|route| route.as_str() == form.route.trim())
+        .ok_or_else(|| invalid(&text(&lang, "corrections.problem.no_route")))?;
+    let mut correction = returns::Correction::new(&form.reason, error_amount, found_on, route);
+    if !form.reference.trim().is_empty() {
+        correction = correction.reference(form.reference.trim());
+    }
+    if let Some(next) = parse_id(&form.next_return) {
+        correction = correction.next_return(next);
+    }
+    if !form.next_period.trim().is_empty() {
+        let period = form
+            .next_period
+            .trim()
+            .parse()
+            .map_err(|_| invalid("next_period: YYYY-MM-DD"))?;
+        correction = correction.next_period(period);
+    }
+    returns::correct(&state, &user, id, correction).await?;
+    Ok(done(&lang, "corrections.done"))
 }
