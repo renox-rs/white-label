@@ -392,6 +392,58 @@ impl DocumentGuard for Certificates {
     }
 }
 
+/// A `SupplierIncidentSource` the test reports incidents to, standing in for
+/// the NCRs on incoming lots of a vertical; an incident can be voided later.
+#[derive(Clone, Default)]
+pub struct SupplierIncidents(
+    Arc<Mutex<Vec<(wl_kernel::inventory::SupplierIncident, bool)>>>,
+);
+
+impl SupplierIncidents {
+    /// `reference` (an NCR, say) is reported for `supplier` on `on`.
+    pub fn report(&self, supplier: PartyId, on: renox::chrono::NaiveDate, reference: &Subject) {
+        self.0.lock().unwrap().push((
+            wl_kernel::inventory::SupplierIncident {
+                reference: reference.clone(),
+                supplier,
+                on,
+            },
+            false,
+        ));
+    }
+
+    /// The source reports `reference` voided: it is not answered any more.
+    pub fn void(&self, reference: &Subject) {
+        for (incident, voided) in self.0.lock().unwrap().iter_mut() {
+            if incident.reference == *reference {
+                *voided = true;
+            }
+        }
+    }
+}
+
+impl wl_kernel::inventory::SupplierIncidentSource for SupplierIncidents {
+    fn incidents<'a>(
+        &'a self,
+        _db: &'a Db,
+        supplier: PartyId,
+        from: renox::chrono::NaiveDate,
+        to: renox::chrono::NaiveDate,
+    ) -> wl_kernel::inventory::MatchFuture<'a, Vec<wl_kernel::inventory::SupplierIncident>> {
+        let found: Vec<_> = self
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(incident, voided)| {
+                !voided && incident.supplier == supplier && incident.on >= from && incident.on <= to
+            })
+            .map(|(incident, _)| incident.clone())
+            .collect();
+        Box::pin(async move { Ok(found) })
+    }
+}
+
 /// The dates in a filed accounting period, as wl-invoicing would answer.
 #[derive(Clone, Default)]
 pub struct PeriodDesk(Arc<Mutex<Vec<renox::chrono::NaiveDate>>>);
@@ -460,6 +512,7 @@ struct Fakes {
     adjusted: Arc<Mutex<Vec<LandedCostAdjusted>>>,
     blocked: Blocked,
     certificates: Certificates,
+    incidents: SupplierIncidents,
     locks: Option<PeriodDesk>,
     bills: Option<BillDesk>,
     received: Arc<Mutex<Vec<GoodsReceived>>>,
@@ -487,6 +540,7 @@ impl Module for Fakes {
         }
         provide_block_guard(app, self.blocked.clone());
         wl_kernel::documents::provide_guard(app, self.certificates.clone());
+        wl_kernel::inventory::provide_supplier_incidents(app, self.incidents.clone());
         record(app, &self.received);
         record(app, &self.dispatched);
         record(app, &self.credited);
@@ -518,6 +572,8 @@ pub struct Booted {
     pub blocked: Blocked,
     /// The certificates that have expired.
     pub certificates: Certificates,
+    /// The quality incidents the vertical would report.
+    pub incidents: SupplierIncidents,
     /// `SupplierReturnCredited`.
     pub credited: Recorded<SupplierReturnCredited>,
     /// The tickets opened for tasks.
@@ -1062,6 +1118,7 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool) -> Booted {
     let bills = BillDesk::default();
     let blocked = Blocked::default();
     let certificates = Certificates::default();
+    let incidents = SupplierIncidents::default();
     let credited = Arc::new(Mutex::new(Vec::new()));
     let tickets = TicketDesk::default();
     let costs = CostDesk::default();
@@ -1082,6 +1139,7 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool) -> Booted {
         adjusted: adjusted.clone(),
         blocked: blocked.clone(),
         certificates: certificates.clone(),
+        incidents: incidents.clone(),
         locks: (!with_invoicing).then(|| locks.clone()),
         bills: (!with_invoicing).then(|| bills.clone()),
         received: received.clone(),
@@ -1153,6 +1211,7 @@ async fn boot_modules(module: WlInventory, with_invoicing: bool) -> Booted {
         bills,
         blocked,
         certificates,
+        incidents,
         credited: Recorded(credited),
         tickets,
         costs,
