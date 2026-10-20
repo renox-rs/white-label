@@ -24,6 +24,7 @@ use renox::audit::Audit;
 use renox::auth::{Auth, Permissions};
 use renox::nav::NavLink;
 
+pub use app::negative_flow::{invoicing_for, payments_for};
 pub use app::roles;
 
 use wl_invoicing::WlInvoicing;

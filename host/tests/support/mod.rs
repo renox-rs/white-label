@@ -470,6 +470,76 @@ pub async fn block(app: &TestApp, party: PartyId) {
         .assert_ok();
 }
 
+/// An active management agreement with the owner `owner`, in force from 400
+/// days ago.
+pub async fn agreement_of(
+    app: &TestApp,
+    owner: PartyId,
+) -> property::agreement::ManagementAgreement {
+    use property::agreement::{AgreementStatus, ManagementAgreement};
+    use renox::state_machine::StateMachine;
+    let mut agreement = ManagementAgreement {
+        owner_party_id: owner.0,
+        fee_bp: 500,
+        payout_frequency: "monthly".to_owned(),
+        notice_days: 90,
+        start_date: day(-400),
+        status: AgreementStatus::Active,
+        ..Default::default()
+    };
+    let mut tx = app.db().begin().await.unwrap();
+    agreement
+        .insert_in_state(&mut tx, AgreementStatus::Active, "fixture")
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    agreement
+}
+
+/// A published owner statement of `agreement` with rent collected of `fils`:
+/// `accountant` adds the line and publishes it, `manager` approves it.
+pub async fn published_statement(
+    app: &TestApp,
+    agreement: &property::agreement::ManagementAgreement,
+    accountant: &User,
+    manager: &User,
+    fils: i64,
+) -> property::statement::OwnerStatement {
+    let draft = property::statement::generate(app.state(), agreement.id, day(-60), day(-31))
+        .await
+        .unwrap()
+        .expect("a draft");
+    app.acting_as(accountant);
+    app.htmx()
+        .post(
+            &format!("/property/statements/{}/lines", draft.id),
+            &[
+                ("kind", "collected"),
+                ("description", "Rent"),
+                ("amount", (fils / 100).to_string().as_str()),
+            ],
+        )
+        .await
+        .assert_ok();
+    app.acting_as(manager);
+    app.post(
+        &format!("/property/statements/{}/transitions/approve", draft.id),
+        &[],
+    )
+    .await
+    .assert_status(303);
+    app.acting_as(accountant);
+    app.post(
+        &format!("/property/statements/{}/transitions/publish", draft.id),
+        &[],
+    )
+    .await
+    .assert_status(303);
+    property::statement::OwnerStatement::find_or_404(app.db(), draft.id)
+        .await
+        .unwrap()
+}
+
 /// The invoice, as stored now.
 pub async fn reload(app: &TestApp, invoice: &Invoice) -> Invoice {
     Invoice::find_or_404(app.db(), invoice.id).await.unwrap()
