@@ -64,12 +64,18 @@ fn texts_in(lang: &Lang) -> impl Fn(&str) -> String + '_ {
 /// The module's routes, each behind its permission.
 pub fn routes() -> Routes {
     Routes::new()
-        .merge(
+        // Anywhere, not globally: a manager of one building sees the
+        // invoices of the building (`index`, `show`).
+        .merge(wl_kernel::scopes::anywhere(
             Routes::new()
                 .get("/invoices", index)
                 .name("wl_invoicing.index")
                 .get("/invoices/{id}", show)
-                .name("wl_invoicing.show")
+                .name("wl_invoicing.show"),
+            permissions::VIEW,
+        ))
+        .merge(
+            Routes::new()
                 .group(
                     "/invoices",
                     "wl_invoicing.transitions.",
@@ -189,8 +195,18 @@ pub(crate) struct IndexPage {
 }
 
 /// `GET /invoices`: the grid.
-async fn index(State(state): State<AppState>, lang: Lang, request: GridRequest) -> Result<View> {
-    let invoices = grid(&lang).page(Invoice::query(), &request).await?;
+async fn index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<View> {
+    // The invoices of the user's scope: all, or those billed for their buildings.
+    let reach = wl_kernel::scopes::reach(&state.db, &user, permissions::VIEW).await?;
+    let query = reach
+        .apply(&state.db, Invoice::query(), "scope_type", "scope_id")
+        .await?;
+    let invoices = grid(&lang).page(query, &request).await?;
     let queued = crate::einvoice_send::queued_count_all(&state.db).await?;
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
@@ -449,6 +465,10 @@ async fn show(
     lang: Lang,
     Found(invoice): Found<Invoice>,
 ) -> Result<View> {
+    let reach = wl_kernel::scopes::reach(&state.db, &user, permissions::VIEW).await?;
+    if !reach.contains(&state.db, &invoice.subject()).await? {
+        return Err(Error::Forbidden);
+    }
     let t = texts_in(&lang);
     let db = state.db.clone();
     let currency = invoice.currency.clone();

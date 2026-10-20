@@ -98,12 +98,21 @@ fn invalid(field: &str, message: String, input: &impl Serialize) -> Error {
 }
 
 /// Whether `user` may see the SOP pages.
-fn may_view(user: &User) -> bool {
+fn may_view(user: &AuthUser) -> bool {
+    full_access(user)
+        || user.has_permission_anywhere(permissions::VIEW)
+        || user.has_permission_anywhere(permissions::SOPS_MANAGE)
+}
+
+/// Whether `user` sees every SOP, drafts included: a company-wide holder. A
+/// holder in some buildings only reads the active and withdrawn ones; the
+/// SOPs are the company's, not a building's.
+fn full_access(user: &AuthUser) -> bool {
     user.has_permission(permissions::SOPS_MANAGE) || user.has_permission(permissions::VIEW)
 }
 
 /// `Forbidden` unless `user` may see the SOP pages.
-fn require_view(user: &User) -> Result<()> {
+fn require_view(user: &AuthUser) -> Result<()> {
     if may_view(user) {
         Ok(())
     } else {
@@ -271,6 +280,9 @@ async fn index(
     let mut rows = Vec::new();
     for sop in Sops::list(&db, wanted).await? {
         let status = Sops::status(&db, &sop).await?;
+        if status == SopStatus::Draft && !full_access(&user) {
+            continue;
+        }
         let review = Sops::review_state(&db, &sop, today).await?;
         let current = current_of(&db, &sop).await?;
         let version = match &current {
@@ -514,6 +526,9 @@ async fn show(
 ) -> Result<View> {
     require_view(&user)?;
     let db = state.db.clone();
+    if !full_access(&user) && Sops::status(&db, &sop).await? == SopStatus::Draft {
+        return Err(Error::NotFound);
+    }
     let manage = user.has_permission(permissions::SOPS_MANAGE);
     let owner = manage && holds_owner_role(&db, &user, &sop).await?;
     let today = wl_kernel::documents::dubai_date(renox::db::now());

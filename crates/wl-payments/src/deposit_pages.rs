@@ -52,14 +52,14 @@ const STATUSES: [DepositStatus; 5] = [
 /// The module's deposit routes, each behind its permission.
 pub fn routes() -> Routes {
     Routes::new()
-        .merge(
+        .merge(wl_kernel::scopes::anywhere(
             Routes::new()
                 .get("/deposits", index)
                 .name("wl_payments.deposits.index")
                 .get("/deposits/{id}", show)
-                .name("wl_payments.deposits.show")
-                .require_permission(permissions::DEPOSITS_VIEW),
-        )
+                .name("wl_payments.deposits.show"),
+            permissions::DEPOSITS_VIEW,
+        ))
         .merge(
             Routes::new()
                 .post("/deposits/{id}/deductions", store_deductions)
@@ -170,8 +170,18 @@ pub(crate) struct IndexPage {
 }
 
 /// `GET /deposits`: the grid.
-async fn index(lang: Lang, request: GridRequest) -> Result<View> {
-    let deposits = grid(&lang).page(Deposit::query(), &request).await?;
+async fn index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<View> {
+    // The deposits held for the agreements of the user's scope.
+    let reach = wl_kernel::scopes::reach(&state.db, &user, permissions::DEPOSITS_VIEW).await?;
+    let query = reach
+        .apply(&state.db, Deposit::query(), "source_type", "source_id")
+        .await?;
+    let deposits = grid(&lang).page(query, &request).await?;
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         deposits,
@@ -394,6 +404,10 @@ async fn show(
     lang: Lang,
     Found(deposit): Found<Deposit>,
 ) -> Result<View> {
+    let reach = wl_kernel::scopes::reach(&state.db, &user, permissions::DEPOSITS_VIEW).await?;
+    if !crate::scoped::deposit_in_reach(&state.db, &reach, &deposit).await? {
+        return Err(Error::Forbidden);
+    }
     let t = texts_in(&lang);
     let db = state.db.clone();
     let open = DepositDispute::open_of_deposit(&db, deposit.id).await?;

@@ -99,12 +99,18 @@ pub fn routes() -> Routes {
         .post("/parties", store)
         .name("wl_parties.store")
         .require_permission(permissions::CREATE)
-        .merge(
+        // Anywhere: a manager of some buildings sees the people of those
+        // buildings (their tenants, the owners of their units).
+        .merge(wl_kernel::scopes::anywhere(
             Routes::new()
                 .get("/parties", index)
                 .name("wl_parties.index")
                 .get("/parties/{id}", show)
-                .name("wl_parties.show")
+                .name("wl_parties.show"),
+            permissions::VIEW,
+        ))
+        .merge(
+            Routes::new()
                 .get("/parties/{id}/block-records/{record}", block_record)
                 .name("wl_parties.block_record")
                 .get("/parties/screening-tasks", screening_tasks_page)
@@ -291,15 +297,24 @@ async fn index(
     lang: Lang,
     request: GridRequest,
 ) -> Result<Response> {
+    let reach = wl_kernel::scopes::reach(&state.db, &user, permissions::VIEW).await?;
+    let query = reach
+        .apply_ids(
+            &state.db,
+            Party::query(),
+            "id",
+            wl_kernel::parties::PARTY_SUBJECT_TYPE,
+        )
+        .await?;
     let can_export = user.has_permission(permissions::EXPORT);
     let grid = grid(&lang, &BlockReasons::of(&state), can_export);
     if request.param("export").is_some() && !can_export {
         return Err(Error::Forbidden);
     }
-    if let Some(file) = grid.export(Party::query(), &request).await? {
+    if let Some(file) = grid.export(query.clone(), &request).await? {
         return Ok(file);
     }
-    let parties = grid.page(Party::query(), &request).await?;
+    let parties = grid.page(query, &request).await?;
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         parties,
@@ -600,6 +615,14 @@ async fn show(
     let db = state.db.clone();
     let person = PersonDetails::query()
         .where_(PersonDetails::PARTY_ID.eq(party.id))
+    let reach = wl_kernel::scopes::reach(&state.db, &user, permissions::VIEW).await?;
+    if let Some(ids) = reach
+        .ids(&state.db, wl_kernel::parties::PARTY_SUBJECT_TYPE)
+        .await?
+        && !ids.contains(&party.id)
+    {
+        return Err(Error::Forbidden);
+    }
         .first(&db)
         .await?;
     let company = CompanyDetails::query()

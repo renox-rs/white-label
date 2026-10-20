@@ -50,12 +50,16 @@ fn manual_kind_codes() -> Vec<&'static str> {
 /// The module's refund routes, each behind its permission.
 pub fn routes() -> Routes {
     Routes::new()
-        .merge(
+        .merge(wl_kernel::scopes::anywhere(
             Routes::new()
                 .get("/refunds", index)
                 .name("wl_payments.refunds.index")
                 .get("/refunds/{id}", show)
-                .name("wl_payments.refunds.show")
+                .name("wl_payments.refunds.show"),
+            permissions::VIEW,
+        ))
+        .merge(
+            Routes::new()
                 .group(
                     "/refunds",
                     "wl_payments.refunds.transitions.",
@@ -187,8 +191,19 @@ pub(crate) struct IndexPage {
 }
 
 /// `GET /refunds`: the grid.
-async fn index(lang: Lang, request: GridRequest) -> Result<View> {
-    let refunds = grid(&lang).page(Refund::query(), &request).await?;
+async fn index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<View> {
+    // The refunds of the payments in the user's scope.
+    let reach = wl_kernel::scopes::reach(&state.db, &user, permissions::VIEW).await?;
+    let query = match crate::scoped::refund_ids(&state.db, &reach).await? {
+        None => Refund::query(),
+        Some(ids) => Refund::query().where_in("id", ids),
+    };
+    let refunds = grid(&lang).page(query, &request).await?;
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         refunds,
@@ -286,6 +301,12 @@ async fn show(
     lang: Lang,
     Found(refund): Found<Refund>,
 ) -> Result<View> {
+    let reach = wl_kernel::scopes::reach(&state.db, &user, permissions::VIEW).await?;
+    if let Some(ids) = crate::scoped::refund_ids(&state.db, &reach).await?
+        && !ids.contains(&refund.id)
+    {
+        return Err(Error::Forbidden);
+    }
     let t = texts_in(&lang);
     let db = state.db.clone();
     let attempts = RefundAttempt::of_refund(&db, refund.id)

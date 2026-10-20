@@ -37,6 +37,7 @@ pub mod parse;
 pub mod permissions;
 pub mod renew;
 pub mod renewal;
+pub mod scope_members;
 pub mod seed;
 pub mod statement;
 pub mod statement_dispute;
@@ -228,6 +229,8 @@ impl Module for Property {
                 Ok(Building::find(db, id).await?.map(|b| b.name_en))
             })
         });
+        // And from the buildings to what is in them, for the lists.
+        scope_members::register();
         // A ticket about a building or one of its units is looked after by
         // the people of that building: the scope of a building is itself, the
         // scope of a unit is its building (the coordinators of the vendor's

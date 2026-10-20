@@ -770,6 +770,42 @@ impl Module for WlInvoicing {
                 }
             })
         });
+        // And the other way, for the lists: the invoices billed for the
+        // buildings (or other scope units) a user holds a permission in.
+        wl_kernel::scopes::register_derived_members(
+            wl_kernel::invoicing::INVOICE_SUBJECT_TYPE,
+            |db, scopes| {
+                Box::pin(async move {
+                    let reach = wl_kernel::scopes::Reach::only(scopes.to_vec());
+                    let query = reach
+                        .apply(db, Invoice::query(), "scope_type", "scope_id")
+                        .await?;
+                    Ok(query.get(db).await?.into_iter().map(|i| i.id).collect())
+                })
+            },
+        );
+        wl_kernel::scopes::register_derived_members(
+            wl_kernel::invoicing::CREDIT_NOTE_SUBJECT_TYPE,
+            |db, scopes| {
+                Box::pin(async move {
+                    let reach = wl_kernel::scopes::Reach::only(scopes.to_vec());
+                    let invoices = reach
+                        .ids(db, wl_kernel::invoicing::INVOICE_SUBJECT_TYPE)
+                        .await?
+                        .unwrap_or_default();
+                    if invoices.is_empty() {
+                        return Ok(Vec::new());
+                    }
+                    Ok(CreditNote::query()
+                        .where_in("invoice_id", invoices)
+                        .get(db)
+                        .await?
+                        .into_iter()
+                        .map(|note| note.id)
+                        .collect())
+                })
+            },
+        );
         app.model::<cash_balance::OpeningCashBalance>();
         app.model::<cash_alert::CashAlert>();
         app.model::<EInvoiceTransmission>();

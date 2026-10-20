@@ -30,7 +30,9 @@ use wl_kernel::documents::today;
 
 use super::statements::owner_name;
 use super::{Texts, text};
-use crate::agreement::{self, AgreementStatus, AgreementUnit, ManagementAgreement, NewAgreement};
+use crate::agreement::{
+    self, AGREEMENT_SUBJECT_TYPE, AgreementStatus, AgreementUnit, ManagementAgreement, NewAgreement,
+};
 use crate::agreement_lifecycle::{self as lifecycle, HandoverItem, Notice, NoticeParty};
 use crate::building::Building;
 use crate::money_text;
@@ -109,6 +111,24 @@ fn may_manage(user: &AuthUser) -> Result {
     }
 }
 
+/// Where `user` holds `agreements.manage`: everywhere, or in some buildings
+/// (403 in none). An agreement is in the buildings of its units.
+async fn manage_reach(state: &AppState, user: &AuthUser) -> Result<wl_kernel::scopes::Reach> {
+    wl_kernel::scopes::reach(&state.db, user, permissions::AGREEMENTS_MANAGE).await
+}
+
+/// `Forbidden` unless the agreement `id` is in `reach`.
+async fn ensure_in_reach(
+    state: &AppState,
+    reach: &wl_kernel::scopes::Reach,
+    id: i64,
+) -> Result<()> {
+    match reach.ids(&state.db, AGREEMENT_SUBJECT_TYPE).await? {
+        Some(ids) if !ids.contains(&id) => Err(Error::Forbidden),
+        _ => Ok(()),
+    }
+}
+
 /// One agreement of the list.
 #[derive(Serialize, Debug, Clone)]
 pub struct AgreementRow {
@@ -139,7 +159,16 @@ pub(crate) struct IndexPage {
 
 /// `GET /property/agreements`.
 async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Result<View> {
-    may_manage(&user)?;
+    // The agreements of the user's buildings (all, for a company-wide holder).
+    let reach = manage_reach(&state, &user).await?;
+    let query = reach
+        .apply_ids(
+            &state.db,
+            ManagementAgreement::query(),
+            "id",
+            AGREEMENT_SUBJECT_TYPE,
+        )
+        .await?;
     let mut rows = Vec::new();
     for found in ManagementAgreement::query()
         .order_by_desc(ManagementAgreement::ID)
@@ -393,7 +422,8 @@ async fn show(
     lang: Lang,
     Path(id): Path<i64>,
 ) -> Result<View> {
-    may_manage(&user)?;
+    let reach = manage_reach(&state, &user).await?;
+    ensure_in_reach(&state, &reach, id).await?;
     let found = ManagementAgreement::find(&state.db, id)
         .await?
         .ok_or(Error::NotFound)?;
@@ -575,7 +605,8 @@ async fn add_unit(
     Path(id): Path<i64>,
     Form(form): Form<UnitForm>,
 ) -> Result<Response> {
-    may_manage(&user)?;
+    let reach = manage_reach(&state, &user).await?;
+    ensure_in_reach(&state, &reach, id).await?;
     let found = ManagementAgreement::find(&state.db, id)
         .await?
         .ok_or(Error::NotFound)?;
@@ -587,6 +618,13 @@ async fn add_unit(
     }
     let unit: i64 = form
         .unit
+    // A manager of some buildings puts only the units of those buildings
+    // under an agreement.
+    if let Some(units) = reach.ids(&state.db, crate::unit::UNIT_SUBJECT_TYPE).await?
+        && !units.contains(&unit)
+    {
+        return Err(Error::Forbidden);
+    }
         .trim()
         .parse()
         .map_err(|_| invalid("unit: 1, 2, 3 ..."))?;
@@ -641,7 +679,8 @@ async fn give_notice(
     Path(id): Path<i64>,
     Form(form): Form<NoticeForm>,
 ) -> Result<Response> {
-    may_manage(&user)?;
+    let reach = manage_reach(&state, &user).await?;
+    ensure_in_reach(&state, &reach, id).await?;
     let on: NaiveDate =
         parse_date(&form.notice_on).ok_or_else(|| invalid("notice_on: YYYY-MM-DD"))?;
     let handover = parse_date(&form.handover).ok_or_else(|| invalid("handover: YYYY-MM-DD"))?;

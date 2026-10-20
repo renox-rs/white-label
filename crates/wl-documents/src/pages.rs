@@ -90,12 +90,12 @@ pub fn routes() -> Routes {
                 .name("wl_documents.correction.store")
                 .require_permission(permissions::UPLOAD),
         )
-        .merge(
+        .merge(wl_kernel::scopes::anywhere(
             Routes::new()
                 .get("/documents/flags", flags_index)
-                .name("wl_documents.flags")
-                .require_permission(permissions::VIEW),
-        )
+                .name("wl_documents.flags"),
+            permissions::VIEW,
+        ))
         .merge(
             Routes::new()
                 .get("/document-kinds", kinds_index)
@@ -684,17 +684,43 @@ async fn flags_index(
     lang: Lang,
     request: GridRequest,
 ) -> Result<View> {
-    let mut record_types: Vec<String> = DocumentFlag::query()
-        .get(&db)
-        .await?
-        .into_iter()
-        .map(|flag| flag.record_type)
-        .collect();
+    // The flags on the records of the user's scope (the lease, the party's
+    // document of a lease in their buildings).
+    let reach = wl_kernel::scopes::reach(&db, &user, permissions::VIEW).await?;
+    let mut in_reach: Vec<i64> = Vec::new();
+    let mut every = DocumentFlag::query().get(&db).await?;
+    if !reach.is_all() {
+        let mut kept = Vec::new();
+        for flag in every {
+            if reach
+                .contains_entity(&db, &flag.record_type, flag.record_id)
+                .await?
+                || reach
+                    .contains(
+                        &db,
+                        &wl_kernel::Subject::new(&flag.subject_type, flag.subject_id),
+                    )
+                    .await?
+            {
+                in_reach.push(flag.id);
+                kept.push(flag);
+            }
+        }
+        every = kept;
+    }
+    let mut record_types: Vec<String> = every.into_iter().map(|flag| flag.record_type).collect();
     record_types.sort();
     record_types.dedup();
     let can_review = user.has_permission(permissions::REVIEW);
     let grid = flags_grid(&lang, record_types, can_review);
-    let flags = grid.page(DocumentFlag::query(), &request).await?;
+    let query = if reach.is_all() {
+        DocumentFlag::query()
+    } else if in_reach.is_empty() {
+        DocumentFlag::query().none()
+    } else {
+        DocumentFlag::query().where_in("id", in_reach)
+    };
+    let flags = grid.page(query, &request).await?;
     Ok(View::typed(FlagsPage {
         tx: texts::all(&lang),
         flags,

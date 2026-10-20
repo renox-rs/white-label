@@ -83,14 +83,14 @@ pub(crate) fn reason_of(code: &str) -> Option<&'static str> {
 /// The module's cheque routes, each behind its permission.
 pub fn routes() -> Routes {
     Routes::new()
-        .merge(
+        .merge(wl_kernel::scopes::anywhere(
             Routes::new()
                 .get("/cheques", index)
                 .name("wl_payments.cheques.index")
                 .get("/cheques/{id}", show)
-                .name("wl_payments.cheques.show")
-                .require_permission(permissions::CHEQUES_VIEW),
-        )
+                .name("wl_payments.cheques.show"),
+            permissions::CHEQUES_VIEW,
+        ))
         .merge(
             Routes::new()
                 .post("/cheques/{id}/deposit", store_deposit)
@@ -211,8 +211,18 @@ pub(crate) struct IndexPage {
 }
 
 /// `GET /cheques`: the grid.
-async fn index(lang: Lang, request: GridRequest) -> Result<View> {
-    let cheques = grid(&lang).page(Cheque::query(), &request).await?;
+async fn index(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    request: GridRequest,
+) -> Result<View> {
+    // The cheques received with the agreements of the user's scope.
+    let reach = wl_kernel::scopes::reach(&state.db, &user, permissions::CHEQUES_VIEW).await?;
+    let query = reach
+        .apply(&state.db, Cheque::query(), "agreement_type", "agreement_id")
+        .await?;
+    let cheques = grid(&lang).page(query, &request).await?;
     Ok(View::typed(IndexPage {
         tx: texts::all(&lang),
         cheques,
@@ -486,6 +496,10 @@ async fn show(
         ("amount", money(cheque.amount)),
         ("open", money(cheque.open_amount)),
         ("honoured", money(cheque.honoured_amount)),
+    let reach = wl_kernel::scopes::reach(&state.db, &user, permissions::CHEQUES_VIEW).await?;
+    if !crate::scoped::agreement_in_reach(&state.db, &reach, cheque.agreement()).await? {
+        return Err(Error::Forbidden);
+    }
         ("settled", money(cheque.settled_amount)),
         ("fees", money(cheque.bounce_fee_total)),
     ]);
