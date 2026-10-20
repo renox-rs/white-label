@@ -136,3 +136,27 @@ async fn one_sidebar_link_marks_the_current_page() {
         assert_eq!(marked, vec![current], "the current link of {path}");
     }
 }
+
+/// Every link the sidebar offers opens for the person who sees it: a link
+/// shown to someone who then meets a 403 is a broken menu.
+#[renox::test]
+async fn every_sidebar_link_opens_for_the_admin() {
+    let app = TestApp::new(host::app()).await;
+    app.kernel().seed().await.unwrap();
+    let admin = admin(&app).await;
+    app.acting_as(&admin);
+    let html = app.get("/dashboard").await.text();
+    let hrefs: Vec<String> = html
+        .split("<a class=\"rx-sidebar__link\" href=\"")
+        .skip(1)
+        .map(|chunk| chunk[..chunk.find('"').unwrap()].to_owned())
+        .collect();
+    assert!(hrefs.len() > 30);
+    for href in hrefs {
+        let status = app.get(&href).await.status.as_u16();
+        assert_eq!(
+            status, 200,
+            "the sidebar links to {href}, which answers {status}"
+        );
+    }
+}
