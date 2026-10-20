@@ -472,7 +472,7 @@ async fn show(
             deadlines: notice.deadline_count,
         });
     }
-    let tasks = deadline_tasks(&state)
+    let tasks: Vec<TaskRow> = deadline_tasks(&state)
         .of_subject(&state.db, &found.subject())
         .await?
         .into_iter()
@@ -493,7 +493,7 @@ async fn show(
         && found.reason_code.as_deref() == Some(reasons::NON_PAYMENT);
     let (overdue_invoices, overdue_total) = if show_overdue {
         let (invoices, total) = engagements::overdue_invoices(&state, found.client()).await?;
-        let rows = invoices
+        let rows: Vec<OverdueRow> = invoices
             .iter()
             .map(|invoice| OverdueRow {
                 number: invoice
