@@ -535,3 +535,38 @@ async fn the_qs_prices_and_only_the_project_manager_submits_or_withdraws() {
         .await
         .assert_ok();
 }
+
+/// BL-CON-03 (#282) done when 2: the running project of a blocked client goes
+/// on with its variations too; the QS records the approval of a submitted
+/// variation of AED 50,000 and it adds to the contract value, no exception or
+/// review being asked.
+#[renox::test]
+async fn a_variation_of_a_blocked_clients_running_project_is_approved() {
+    let t = boot().await;
+    let pm = t.project_manager("Amal").await;
+    let qs = t.qs("Qasim").await;
+    let project = project(&t, &pm).await;
+    let made = submitted(&t, &qs, &pm, &project, false).await;
+    t.blocked.block(support::CLIENT_PARTY);
+    let before = t.reload(&project).await;
+
+    t.post(
+        &qs,
+        &path(&made, "approve"),
+        &[
+            ("client_reference", "CL-50"),
+            ("approved_amount", "5000000"),
+        ],
+    )
+    .await
+    .assert_ok();
+
+    let approved = t.reload_variation(made.id).await;
+    assert_eq!(approved.status, VariationStatus::Approved);
+    assert_eq!(approved.approved_amount, Some(aed(50_000)));
+    let after = t.reload(&project).await;
+    assert_eq!(after.status, ProjectStatus::InProgress);
+    assert_eq!(after.contract_value, before.contract_value + aed(50_000));
+    assert!(!t.has_pending(&approved.subject()).await);
+    assert!(!t.has_pending(&project.subject()).await);
+}
