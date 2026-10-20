@@ -100,18 +100,6 @@ pub enum ScoreBand {
     BelowThreshold,
 }
 
-impl ScoreBand {
-    /// The stored key.
-    pub fn as_str(self) -> &'static str {
-        match self {
-            ScoreBand::NotEnoughData => "not_enough_data",
-            ScoreBand::Good => "good",
-            ScoreBand::Watch => "watch",
-            ScoreBand::BelowThreshold => "below_threshold",
-        }
-    }
-}
-
 /// The numbers of a window, live or kept in a snapshot.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct Figures {

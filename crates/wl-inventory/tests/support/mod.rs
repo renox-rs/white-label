@@ -216,9 +216,12 @@ impl CostPoster for CostDesk {
 /// A block guard that refuses the suppliers set as blocked. A party blocked
 /// with a reason shows it to the users set as allowed to see it, as
 /// `parties.block_reason.view` does; everyone else gets *on hold*.
+/// A blocked party with the reason it shows to those who may see it.
+type BlockedParty = (PartyId, Option<String>);
+
 #[derive(Clone, Default)]
 pub struct Blocked {
-    parties: Arc<Mutex<Vec<(PartyId, Option<String>)>>>,
+    parties: Arc<Mutex<Vec<BlockedParty>>>,
     seers: Arc<Mutex<Vec<i64>>>,
 }
 

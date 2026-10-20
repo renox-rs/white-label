@@ -55,14 +55,6 @@ pub enum SupplierRole {
 }
 
 impl SupplierRole {
-    /// The stored key: `preferred` or `alternative`.
-    pub fn as_str(self) -> &'static str {
-        match self {
-            SupplierRole::Alternative => "alternative",
-            SupplierRole::Preferred => "preferred",
-        }
-    }
-
     /// The role called `text`.
     pub fn parse(text: &str) -> Option<Self> {
         match text.trim() {
