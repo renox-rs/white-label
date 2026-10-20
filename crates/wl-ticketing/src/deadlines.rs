@@ -39,9 +39,11 @@ use wl_kernel::automation::{RuleRunSpec, run_rule};
 use wl_kernel::compliance::{occurrence_key, schedule_subject};
 use wl_kernel::deadlines::{
     DeadlineFuture, DeadlineTaskId, DeadlineTaskStatus, DeadlineTaskSummary, DeadlineTasks,
-    NewDeadlineTask, TaskCompleted, TaskOverdue, WaiveTask,
+    EndedTasks, NewDeadlineTask, SOURCE_ENDED_REASON, TaskCompleted, TaskOverdue, WaiveTask,
 };
 use wl_kernel::notify::{self, NotificationTypeDef, NotifyChannel, NotifyRequest};
+use wl_kernel::role_tasks::{self, RoleTask};
+use wl_kernel::tickets::TicketRef;
 use wl_kernel::{COMPANY_ADMIN_ROLE, Subject};
 
 use crate::deadline::{DeadlineTask, TaskSource, start_date};
@@ -635,6 +637,17 @@ pub async fn remind(state: &AppState, today: NaiveDate) -> Result<ReminderReport
     Ok(report)
 }
 
+/// Sets the held flag on every open task of `source`.
+async fn set_held(db: &Db, source: &Subject, held: bool) -> Result<()> {
+    DeadlineTask::query()
+        .where_(DeadlineTask::SUBJECT_TYPE.eq(source.subject_type.as_str()))
+        .where_(DeadlineTask::SUBJECT_ID.eq(source.subject_id))
+        .where_(DeadlineTask::STATUS.is_in(OPEN))
+        .update(db, &[("held", &held)])
+        .await?;
+    Ok(())
+}
+
 /// The summaries of the tasks of `source`.
 async fn summaries(db: &Db, source: &Subject) -> Result<Vec<DeadlineTaskSummary>> {
     Ok(DeadlineTask::of_source(db, source)
@@ -642,6 +655,73 @@ async fn summaries(db: &Db, source: &Subject) -> Result<Vec<DeadlineTaskSummary>
         .iter()
         .map(DeadlineTask::summary)
         .collect())
+}
+
+/// Opens (or finds open) the manager's task about `source` keyed `key`.
+async fn manager_task(
+    state: &AppState,
+    source: &Subject,
+    key: &str,
+    title: &str,
+    lines: &[String],
+) -> Result<Option<TicketRef>> {
+    let role = settings(state).manager_role;
+    let task = RoleTask::new(source.clone(), &role, title, key).description(&lines.join("\n"));
+    role_tasks::open(state, task).await
+}
+
+/// `CT return (in_progress)`.
+fn open_line(task: &DeadlineTask) -> String {
+    english("wl_ticketing.task.open_line")
+        .replace(":title", &task.title)
+        .replace(":status", task.status.as_str())
+}
+
+/// The source agreement ended on `on` (BL-TKT-09): no next occurrence from
+/// now on, `upcoming` tasks (and started ones when the setting is on) waived
+/// with "source agreement ended", the held flag cleared without a release
+/// list, and the other open tasks listed for the manager on one task.
+/// Nothing for a source that ended already.
+///
+/// # Errors
+///
+/// The database's errors.
+pub async fn end_source(state: &AppState, source: &Subject, on: NaiveDate) -> Result<EndedTasks> {
+    let row = TaskSource::of_or_new(&state.db, source).await?;
+    if row.ended_on.is_some() {
+        return Ok(EndedTasks::default());
+    }
+    TaskSource::query()
+        .where_(TaskSource::ID.eq(row.id))
+        .update(
+            &state.db,
+            &[("ended_on", &Some(on)), ("held_on", &None::<NaiveDate>)],
+        )
+        .await?;
+    set_held(&state.db, source, false).await?;
+    let waive_started = settings(state).waive_started;
+    let waive = WaiveTask::new(SOURCE_ENDED_REASON).without_next();
+    let mut ended = EndedTasks::default();
+    let mut left = Vec::new();
+    for task in DeadlineTask::of_source(&state.db, source).await? {
+        if task.status.is_terminal() {
+            continue;
+        }
+        let waivable = task.status == DeadlineTaskStatus::Upcoming
+            || (waive_started && task.status.is_started());
+        if waivable && waive_as_system(state, &task, &waive, on).await? {
+            ended.waived.push(task.task_id());
+            continue;
+        }
+        ended.listed.push(task.task_id());
+        left.push(open_line(&task));
+    }
+    if !left.is_empty() {
+        let title = english("wl_ticketing.task.ended_title").to_owned();
+        let key = format!("ticketing.source_ended:{source}");
+        ended.manager_task = manager_task(state, source, &key, &title, &left).await?;
+    }
+    Ok(ended)
 }
 
 /// After a transition commits: the next occurrence, the events and the
@@ -829,6 +909,15 @@ impl DeadlineTasks for Deadlines {
             waive_as_system(state, &task, &waive, wl_kernel::documents::today()).await
         })
     }
+
+    fn end_source<'a>(
+        &'a self,
+        state: &'a AppState,
+        source: &'a Subject,
+        on: NaiveDate,
+    ) -> DeadlineFuture<'a, EndedTasks> {
+        Box::pin(async move { end_source(state, source, on).await })
+    }
 }
 
 #[cfg(test)]
@@ -841,5 +930,21 @@ mod tests {
         assert!(settings.waive_started);
         assert_eq!(settings.manager_role, COMPANY_ADMIN_ROLE);
         assert!(settings.reminder_days.is_empty());
+    }
+
+    fn overdue_task() -> DeadlineTask {
+        DeadlineTask {
+            title: "VAT Q3".into(),
+            subject_type: "accounting.engagement".into(),
+            subject_id: 12,
+            overdue_on: NaiveDate::from_ymd_opt(2026, 11, 29),
+            status: DeadlineTaskStatus::Overdue,
+            ..DeadlineTask::default()
+        }
+    }
+
+    #[test]
+    fn the_open_line_names_the_task_and_its_state() {
+        assert_eq!(open_line(&overdue_task()), "VAT Q3 (overdue)");
     }
 }
