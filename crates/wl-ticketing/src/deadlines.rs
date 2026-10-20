@@ -49,8 +49,8 @@ use wl_kernel::{COMPANY_ADMIN_ROLE, Subject};
 
 use crate::deadline::{DeadlineTask, TaskSource, start_date};
 use crate::deadline_machine::{
-    AUTO_UNBLOCK, AUTO_WAIVE, CLOSE_MISSED, COMPLETE, COMPLETE_REVIEWED, HAND_OVER, MARK_OVERDUE,
-    SEND_BACK, START, SUBMIT_REVIEW, TaskInput, UNBLOCK, WAIT, WAIVE,
+    AUTO_COMPLETE, AUTO_UNBLOCK, AUTO_WAIVE, CLOSE_MISSED, COMPLETE, COMPLETE_REVIEWED, HAND_OVER,
+    MARK_OVERDUE, SEND_BACK, START, SUBMIT_REVIEW, TaskInput, UNBLOCK, WAIT, WAIVE,
 };
 use crate::texts::english;
 use crate::visit_check::holders_in;
@@ -511,6 +511,34 @@ pub async fn waive_as_system(
         .reason(waive.reason.trim())
         .input(&input(state, today))
         .meta(json!({ "no_next": !waive.next_occurrence }))
+        .run(state)
+        .await;
+    match run {
+        Ok(_) => Ok(true),
+        Err(
+            TransitionError::NotFrom(_) | TransitionError::Guard(_) | TransitionError::Conflict,
+        ) => Ok(false),
+        Err(other) => Err(other.into_error()),
+    }
+}
+
+/// Completes `task` as the system with `evidence` (04 return `file`), from
+/// any open state; `Ok(false)` when it is closed already.
+///
+/// # Errors
+///
+/// The database's errors.
+pub async fn complete_as_system(
+    state: &AppState,
+    task: &DeadlineTask,
+    evidence: &str,
+) -> Result<bool> {
+    let mut gathered = input(state, wl_kernel::documents::today());
+    gathered.evidence = Some(evidence.to_owned());
+    let run = task
+        .transition(AUTO_COMPLETE)
+        .by_system()
+        .input(&gathered)
         .run(state)
         .await;
     match run {
@@ -983,7 +1011,7 @@ async fn after(state: &AppState, event: &Transitioned<DeadlineTask>) -> Result<(
                 })
                 .await?;
         }
-        COMPLETE | COMPLETE_REVIEWED => {
+        COMPLETE | COMPLETE_REVIEWED | AUTO_COMPLETE => {
             state
                 .emit(TaskCompleted {
                     task: task.task_id(),
@@ -1171,6 +1199,20 @@ impl DeadlineTasks for Deadlines {
                 return Ok(false);
             };
             waive_as_system(state, &task, &waive, wl_kernel::documents::today()).await
+        })
+    }
+
+    fn complete<'a>(
+        &'a self,
+        state: &'a AppState,
+        id: DeadlineTaskId,
+        evidence: &'a str,
+    ) -> DeadlineFuture<'a, bool> {
+        Box::pin(async move {
+            let Some(task) = DeadlineTask::find(&state.db, id.0).await? else {
+                return Ok(false);
+            };
+            complete_as_system(state, &task, evidence).await
         })
     }
 

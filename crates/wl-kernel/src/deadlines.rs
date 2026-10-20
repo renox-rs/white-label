@@ -28,6 +28,8 @@
 //! tasks.end_source(&state, &engagement.subject(), today).await?;
 //! // 04 return `cancel` (the client files itself):
 //! tasks.hand_over(&state, task_id, HandOverTask::new()).await?;
+//! // 04 return `file`: the linked task is completed with the acknowledgement.
+//! tasks.complete(&state, task_id, "FTA-ACK-0002").await?;
 //! // 04 `ACC.RUL.10`, a tax profile change: the same period with a new due date.
 //! tasks.reschedule(&state, task_id, new_due, "tax profile changed").await?;
 //! ```
@@ -493,6 +495,22 @@ pub trait DeadlineTasks: Send + Sync + 'static {
         _id: DeadlineTaskId,
         _due_date: NaiveDate,
         _reason: &'a str,
+    ) -> DeadlineFuture<'a, bool> {
+        Box::pin(async { Ok(false) })
+    }
+
+    /// Completes task `id` as the system with `evidence` (04 `file`: the
+    /// return the task tracks was filed; the evidence is the FTA
+    /// acknowledgement), from any open state. A task that went `overdue`
+    /// stays flagged *late*. `TaskCompleted` is emitted and the next
+    /// occurrence follows, as for a completion by a user. Answers whether it
+    /// was completed (`false` when the task is closed already); the default
+    /// completes nothing.
+    fn complete<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _id: DeadlineTaskId,
+        _evidence: &'a str,
     ) -> DeadlineFuture<'a, bool> {
         Box::pin(async { Ok(false) })
     }

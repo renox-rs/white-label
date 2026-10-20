@@ -35,6 +35,7 @@ pub mod numbering;
 pub mod parties;
 pub mod payments;
 pub mod portal;
+pub mod qualifications;
 pub mod role_tasks;
 pub mod sales;
 pub mod scopes;
@@ -165,6 +166,7 @@ pub use payments::{
     RefundFailureKind, RefundId, RefundPaid, RefundRequest, RefundSource, ReversalReason,
     UnpaidRefund,
 };
+pub use qualifications::{NoQualifications, QualificationStatus, Qualifications};
 pub use sales::{
     Attribute, AttributionTarget, CampaignActivated, CampaignAttribution, CampaignEnded,
     CampaignId, CustomerAcquired, CustomerAcquisitionChanged, FirstSale, LEAD_SUBJECT_TYPE,

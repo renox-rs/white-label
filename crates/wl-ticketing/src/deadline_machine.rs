@@ -7,6 +7,7 @@
 //! in_progress --complete--> completed     in_review --complete_reviewed--> completed
 //! upcoming | in_progress | waiting | in_review --mark_overdue (system)--> overdue
 //! open (any) --hand_over (system)--> completed   (the client files it itself)
+//! open (any) --auto_complete (system)--> completed   (the firm filed it)
 //! overdue --close_missed--> missed
 //! upcoming | in_progress | waiting --waive | auto_waive (system)--> not_required
 //! ```
@@ -60,6 +61,9 @@ pub const CLOSE_MISSED: &str = "close_missed";
 pub const WAIVE: &str = "waive";
 /// `waive`, run by the system (the source agreement ended, a regeneration).
 pub const AUTO_WAIVE: &str = "auto_waive";
+
+/// `complete`, run by the system (04: the return the task tracks was filed).
+pub const AUTO_COMPLETE: &str = "auto_complete";
 
 /// `hand_over`: the firm no longer files it, the client does; completed by
 /// the system with the evidence "handed over to client" (04 return `cancel`).
@@ -297,6 +301,41 @@ fn hand_over_transition() -> Transition<DeadlineTask> {
         })
 }
 
+/// `auto_complete`: any open task is completed by the system with the
+/// evidence it is given (the acknowledgement of the filing); no reviewer is
+/// needed because the work was done elsewhere. A task that was overdue keeps
+/// its *late* flag.
+fn auto_complete_transition() -> Transition<DeadlineTask> {
+    use DeadlineTaskStatus::{InProgress, InReview, Overdue, Upcoming, Waiting};
+    with_input(
+        Transition::new(AUTO_COMPLETE)
+            .label("Complete (system)")
+            .tone("success")
+            .from([Upcoming, InProgress, Waiting, InReview, Overdue])
+            .to(DeadlineTaskStatus::Completed)
+            .system(),
+    )
+    .effect(|task: &DeadlineTask, ctx, tx| {
+        let id = task.id;
+        let evidence = input(ctx)
+            .and_then(|i| i.evidence)
+            .map(|e| e.trim().to_owned())
+            .filter(|e| !e.is_empty())
+            .or_else(|| task.evidence.clone());
+        Box::pin(async move {
+            write(
+                tx,
+                id,
+                &[
+                    ("completed_at", &Some(renox::db::now())),
+                    ("evidence", &evidence),
+                ],
+            )
+            .await
+        })
+    })
+}
+
 fn mark_overdue_transition() -> Transition<DeadlineTask> {
     use DeadlineTaskStatus::{InProgress, InReview, Overdue, Upcoming, Waiting};
     with_input(
@@ -429,6 +468,7 @@ impl StateMachine for DeadlineTask {
             .transition(complete_reviewed_transition())
             .transition(mark_overdue_transition())
             .transition(hand_over_transition())
+            .transition(auto_complete_transition())
             .transition(close_missed_transition())
             .transition(waiving(
                 Transition::new(WAIVE)
@@ -494,6 +534,12 @@ mod tests {
                 "completed",
                 true,
             ),
+            (
+                "auto_complete",
+                vec!["upcoming", "in_progress", "waiting", "in_review", "overdue"],
+                "completed",
+                true,
+            ),
             ("close_missed", vec!["overdue"], "missed", false),
             (
                 "waive",
@@ -546,6 +592,7 @@ mod tests {
         assert_eq!(guards("complete"), ["input", "evidence", "no_reviewer"]);
         assert_eq!(guards("complete_reviewed"), ["input", "evidence"]);
         assert_eq!(guards("mark_overdue"), ["input", "due_passed"]);
+        assert_eq!(guards("auto_complete"), ["input"]);
         assert_eq!(guards("waive"), ["input", "started"]);
         assert_eq!(guards("auto_waive"), ["input", "started"]);
     }
