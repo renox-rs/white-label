@@ -1,6 +1,6 @@
 //! What a record gives the timesheet (wl-attendance §4 `accept` effects, §5.5
-//! point 3, BL-ATT-04). Timesheets come with their own issues; this is the
-//! part the checks decide, for them to call.
+//! point 3, BL-ATT-04). The entries are saved by [`crate::entry`] when a
+//! record is accepted; this is the part the checks decide.
 //!
 //! - **Only `accept` proposes hours.** While a record is `recorded`,
 //!   `flagged` or `rejected` it proposes none ([`proposed`]). A record that is

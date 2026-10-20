@@ -125,6 +125,44 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_attendance.submit.task_title",
         "The timesheet for :from to :to could not be submitted",
     ),
+    // The adjustment timesheet (`HRM.ACL.08`, BL-ATT-07).
+    (
+        "wl_attendance.adjustment.not_locked",
+        "Only a locked timesheet is corrected by an adjustment. An approved one that nothing used is reopened instead.",
+    ),
+    (
+        "wl_attendance.adjustment.of_adjustment",
+        "An adjustment always points to the original timesheet, never to another adjustment.",
+    ),
+    (
+        "wl_attendance.adjustment.reason_required",
+        "Give the reason for the adjustment.",
+    ),
+    (
+        "wl_attendance.adjustment.origin_required",
+        "Give the origin: client_dispute, attendance_error, payroll_error or provisional_reconciliation.",
+    ),
+    (
+        "wl_attendance.adjustment.link_required",
+        "An adjustment for a client dispute needs the linked ticket or invoice dispute.",
+    ),
+    (
+        "wl_attendance.adjustment.affects_required",
+        "Say where the adjustment flows: billing, payroll or both.",
+    ),
+    (
+        "wl_attendance.adjustment.no_entries",
+        "Give at least one entry with signed hours.",
+    ),
+    (
+        "wl_attendance.adjustment.bad_entries",
+        "The entries could not be read: :detail",
+    ),
+    (
+        "wl_attendance.adjustment.outside_original",
+        ":date is outside the period of the original timesheet, :from to :to.",
+    ),
+    ("wl_attendance.adjustment.opened", "Adjustment opened."),
     // Timesheets and their entries.
     (
         "wl_attendance.timesheet.no_consumer",

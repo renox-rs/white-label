@@ -9,6 +9,7 @@
 //! | `POST /attendance/records/{id}/accept` | `wl_attendance.accept` | `attendance.review` at the location (`HRM.ACL.09`) |
 //! | `POST /attendance/records/{id}/reject` | `wl_attendance.reject` | `attendance.review` at the location |
 //! | `POST /timesheets/{id}/reopen` | `wl_attendance.timesheet_reopen` | `timesheets.reopen` |
+//! | `POST /timesheets/{id}/adjustments` | `wl_attendance.adjustment_open` | `timesheets.adjust` in the scope of the original's context (`HRM.ACL.08`) |
 //! | `POST /timesheets/{id}/submit` | `wl_attendance.timesheet_submit` | `timesheets.submit` in the scope of the timesheet's context |
 //! | `POST /attendance/records/{id}/correct` | `wl_attendance.correct` | `attendance.correct` at the location, and `attendance.review` when a flag holds the record |
 //!
@@ -27,6 +28,7 @@ use wl_kernel::calendar::calendar;
 use wl_kernel::workforce::{EmployeeId, workforce};
 
 use crate::access;
+use crate::adjustment;
 use crate::location::WorkLocation;
 use crate::permissions;
 use crate::record::AttendanceRecord;
@@ -34,7 +36,7 @@ use crate::review::{self, Correction};
 use crate::service::{self, NewRecord, refuse};
 use crate::submit;
 use crate::texts;
-use crate::timesheet;
+use crate::timesheet::{self, AdjustmentOrigin, Affects};
 
 /// The routes of the module.
 pub fn routes() -> Routes {
@@ -53,6 +55,8 @@ pub fn routes() -> Routes {
         .name("wl_attendance.correct")
         .post("/timesheets/{id}/reopen", reopen)
         .name("wl_attendance.timesheet_reopen")
+        .post("/timesheets/{id}/adjustments", open_adjustment)
+        .name("wl_attendance.adjustment_open")
         .post("/timesheets/{id}/submit", submit_timesheet)
         .name("wl_attendance.timesheet_submit")
         .require_auth()
@@ -282,4 +286,71 @@ async fn submit_timesheet(
 ) -> Result<Response> {
     submit::submit(&state, &user, id).await?;
     Ok((Toast::success(text(&lang, "review.saved")), renox::HxRefresh).into_response())
+}
+
+/// What a user with `timesheets.adjust` submits to correct a locked
+/// timesheet.
+#[derive(Deserialize, Serialize, Validate, Debug, Default)]
+pub struct AdjustmentForm {
+    /// Why.
+    #[validate(max = 500)]
+    #[serde(default)]
+    pub reason: String,
+    /// `client_dispute`, `attendance_error`, `payroll_error` or
+    /// `provisional_reconciliation`.
+    #[validate(max = 40)]
+    #[serde(default)]
+    pub origin: String,
+    /// `billing`, `payroll` or `both`; the origin's default when empty.
+    #[validate(max = 20)]
+    #[serde(default)]
+    pub affects: String,
+    /// The linked ticket or invoice dispute, as `type:id`.
+    #[validate(max = 80)]
+    #[serde(default)]
+    pub linked: String,
+    /// The signed entries, a JSON list ([`crate::adjustment::parse_entries`]).
+    #[validate(max = 8000)]
+    #[serde(default)]
+    pub entries: String,
+}
+
+/// `POST /timesheets/{id}/adjustments`: a user opens an adjustment on a
+/// locked timesheet.
+async fn open_adjustment(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Valid(form): Valid<AdjustmentForm>,
+) -> Result<Response> {
+    let linked = if form.linked.trim().is_empty() {
+        None
+    } else {
+        Some(
+            form.linked
+                .trim()
+                .parse::<wl_kernel::Subject>()
+                .map_err(|_| refuse(text(&lang, "adjustment.link_required")))?,
+        )
+    };
+    let entries = if form.entries.trim().is_empty() {
+        Vec::new()
+    } else {
+        adjustment::parse_entries(&form.entries)?
+    };
+    adjustment::open(
+        &state,
+        &user,
+        adjustment::OpenAdjustment {
+            original: id,
+            reason: form.reason,
+            origin: AdjustmentOrigin::parse(&form.origin),
+            linked,
+            affects: Affects::parse(&form.affects),
+            entries,
+        },
+    )
+    .await?;
+    Ok((Toast::success(text(&lang, "adjustment.opened")), renox::HxRefresh).into_response())
 }

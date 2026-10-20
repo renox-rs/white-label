@@ -2,6 +2,7 @@
 #![warn(missing_docs)]
 
 pub mod access;
+pub mod adjustment;
 pub mod checks;
 pub mod config;
 pub mod flags;

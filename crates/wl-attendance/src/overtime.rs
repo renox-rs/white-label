@@ -22,11 +22,12 @@
 //! - **Hours.** A record with no check-out has no hours yet; the breaks taken
 //!   are taken off. A record belongs to the day of its check-in, also when it
 //!   runs past midnight.
-//! - **Timesheet entries.** Timesheets are another issue. [`EntryHours`] is
-//!   what they provide: the minutes of manual or generated entries (not the
-//!   ones proposed from attendance, which would count twice) of an employee on
-//!   a date. When an entry is saved the timesheets call [`on_entry_saved`].
-//!   Without a provider there are none.
+//! - **Timesheet entries.** [`EntryHours`] is what the timesheets provide
+//!   ([`crate::entry::TimesheetEntryHours`], registered by the module): the
+//!   minutes of manual or generated entries (not the ones proposed from
+//!   attendance, which would count twice) of an employee on a date. Saving an
+//!   entry ([`crate::entry::add`]) calls [`on_entry_saved`]. Without a
+//!   provider there are none.
 //! - **Settings.** The caps come from [`AttendanceConfig`]; nothing is
 //!   hard-coded.
 

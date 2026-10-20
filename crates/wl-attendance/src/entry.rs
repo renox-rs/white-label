@@ -242,7 +242,7 @@ impl NewEntry {
         self
     }
 
-    fn minutes_of(&self, category: Category) -> i64 {
+    pub(crate) fn minutes_of(&self, category: Category) -> i64 {
         self.minutes
             .iter()
             .filter(|(c, _)| *c == category)
@@ -324,42 +324,78 @@ async fn ensure_not_below_zero(state: &AppState, sheet: &Timesheet, new: &NewEnt
     let Some(original) = sheet.adjusts_id else {
         return Ok(());
     };
-    let approved: Vec<i64> = Timesheet::query()
+    let mut standing = standing_entries(&state.db, original, Some(sheet.id)).await?;
+    standing.retain(|e| e.date == new.date);
+    match below_zero(&standing, std::slice::from_ref(new)) {
+        Some(message) => Err(refuse(message)),
+        None => Ok(()),
+    }
+}
+
+/// The entries that stand for the original `original` of an adjustment: its
+/// own, those of its approved (or locked) adjustments, and, when `sheet` is
+/// given, those of that adjustment so far.
+pub(crate) async fn standing_entries(
+    db: &Db,
+    original: i64,
+    sheet: Option<i64>,
+) -> Result<Vec<TimesheetEntry>> {
+    let mut sheets: Vec<i64> = Timesheet::query()
         .where_(Timesheet::ADJUSTS_ID.eq(original))
-        .where_(Timesheet::ID.ne(sheet.id))
         .where_(Timesheet::STATUS.is_in([TimesheetStatus::Approved, TimesheetStatus::Locked]))
-        .get(&state.db)
+        .get(db)
         .await?
         .into_iter()
         .map(|t| t.id)
         .collect();
-    let mut sheets = approved;
     sheets.push(original);
-    sheets.push(sheet.id);
-    let entries = TimesheetEntry::query()
+    sheets.extend(sheet);
+    TimesheetEntry::query()
         .where_(TimesheetEntry::TIMESHEET_ID.is_in(sheets))
-        .where_(TimesheetEntry::DATE.eq(new.date))
-        .get(&state.db)
-        .await?;
-    for category in Category::ALL {
-        let delta = new.minutes_of(category);
+        .get(db)
+        .await
+}
+
+/// The message that refuses `news` when, for a day and category, the minutes
+/// that `standing` holds plus the deltas of `news` fall below zero; none when
+/// they do not.
+pub(crate) fn below_zero(standing: &[TimesheetEntry], news: &[NewEntry]) -> Option<String> {
+    let mut keys: BTreeSet<(NaiveDate, &'static str)> = BTreeSet::new();
+    for new in news {
+        for (category, _) in &new.minutes {
+            keys.insert((new.date, category.as_str()));
+        }
+    }
+    for (date, name) in keys {
+        let Some(category) = Category::parse(name) else {
+            continue;
+        };
+        let delta: i64 = news
+            .iter()
+            .filter(|n| n.date == date)
+            .map(|n| n.minutes_of(category))
+            .sum();
         if delta >= 0 {
             continue;
         }
-        let standing: i64 = entries.iter().map(|e| e.minutes_of(category)).sum();
-        if standing + delta < 0 {
-            return Err(refuse(english(
+        let held: i64 = standing
+            .iter()
+            .filter(|e| e.date == date)
+            .map(|e| e.minutes_of(category))
+            .sum();
+        if held + delta < 0 {
+            return Some(english(
                 "wl_attendance.entry.below_zero",
                 &[
-                    ("date", &new.date),
-                    ("category", &category.as_str()),
-                    ("standing", &hours_text(standing)),
+                    ("date", &date),
+                    ("category", &name),
+                    ("standing", &hours_text(held)),
                     ("delta", &hours_text(delta)),
                 ],
-            )));
+            ));
         }
     }
-    Ok(())
+    None
 }
 
 /// The open attendance timesheet of `employee` whose period holds `date`.
