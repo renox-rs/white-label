@@ -93,6 +93,11 @@ pub const ROLES: &[(&str, &[&str])] = &[
     (
         ADMIN,
         &[
+            // 04 `ACC.ACL.05`: any member of staff may raise an AML concern and
+            // then sees nothing of it.
+            acc::AML_RAISE,
+            // `aml.manage` is the MLRO's and deputy's alone, as the restricted block
+            // reasons are: not even the company admin sees an AML case.
             USERS,
             ACTIVITY,
             SETTINGS_VIEW,
@@ -261,6 +266,10 @@ pub const ROLES: &[(&str, &[&str])] = &[
     (
         COMPLIANCE,
         &[
+            // 04 `ACC.ACL.05`: the MLRO and deputy raise and work the AML cases
+            // (`ACC.RUL.12`, `report`, `close`).
+            acc::AML_RAISE,
+            acc::AML_MANAGE,
             parties::VIEW,
             parties::BLOCK,
             parties::BLOCK_REASON_VIEW,
@@ -285,6 +294,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
     (
         PARTNER,
         &[
+            acc::AML_RAISE,
             acc::ENGAGEMENTS_VIEW,
             acc::ENGAGEMENTS_MANAGE,
             acc::ENGAGEMENTS_END,
@@ -306,6 +316,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
     (
         ENGAGEMENT_MANAGER,
         &[
+            acc::AML_RAISE,
             acc::ENGAGEMENTS_VIEW,
             acc::ENGAGEMENTS_MANAGE,
             acc::CDD_VIEW,
@@ -337,6 +348,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
     (
         TAX_SPECIALIST,
         &[
+            acc::AML_RAISE,
             acc::ENGAGEMENTS_VIEW,
             acc::TAX_PROFILES_VIEW,
             acc::TAX_PROFILES_MANAGE,
@@ -355,6 +367,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
     (
         BILLING,
         &[
+            acc::AML_RAISE,
             acc::ENGAGEMENTS_VIEW,
             parties::VIEW,
             invoices::VIEW,
@@ -384,6 +397,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
     (
         ACCOUNTANT,
         &[
+            acc::AML_RAISE,
             prp::UNITS_VIEW,
             prp::LEASES_VIEW,
             prp::LEASES_CANCEL,
