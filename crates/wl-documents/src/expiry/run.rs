@@ -17,7 +17,8 @@
 //! When there is an offset or a new item, the document is handled in one
 //! transaction (the log rows are written), and after the commit one merged
 //! [`DocumentExpiring`] is emitted (with all the current affected records)
-//! and each responsible user gets one `documents.expiring` message through
+//! and each responsible user (the holders of the kind's responsible role and of
+//! its `also_notify` roles) gets one `documents.expiring` message through
 //! the kernel [`Notifier`](wl_kernel::notify::Notifier) (A7, A9). Without
 //! either, nothing is emitted or sent, so a second run on the same night
 //! does nothing.
@@ -310,7 +311,23 @@ async fn handle(
 
     // One message per recipient, listing only the new items.
     let role = responsible::role_of(db, kind, document).await?;
-    let recipients = responsible::resolve(state, &role, &kind.key, &subject, &new_groups).await?;
+    let mut recipients =
+        responsible::resolve(state, &role, &kind.key, &subject, &new_groups).await?;
+    // The kind's `also_notify` roles are told too (01: a compliance
+    // certificate's reminder goes to the coordinator and the property
+    // manager), once each user.
+    for extra in &kind.also_notify.0 {
+        if *extra == role {
+            continue;
+        }
+        for recipient in
+            responsible::resolve(state, extra, &kind.key, &subject, &new_groups).await?
+        {
+            if !recipients.iter().any(|r| r.user_id == recipient.user_id) {
+                recipients.push(recipient);
+            }
+        }
+    }
     let label = subject_label(state, &blocks, &subject).await;
     let mut done = Done {
         event: true,
