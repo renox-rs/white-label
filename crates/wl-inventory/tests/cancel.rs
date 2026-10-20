@@ -91,7 +91,9 @@ async fn a_cancel_needs_a_reason_a_draft_and_the_permission() {
     let clerk = t.procurement("Cara").await;
     let keeper = t.storekeeper("Amal").await;
 
-    t.cancel_as(&clerk, &ret, "  ", None).await.assert_status(422);
+    t.cancel_as(&clerk, &ret, "  ", None)
+        .await
+        .assert_status(422);
     t.cancel_as(&keeper, &ret, "no", None)
         .await
         .assert_status(403);
@@ -151,9 +153,14 @@ async fn kept_goods_are_discarded_or_received_on_a_new_receipt() {
         .assert_status(422);
     assert_eq!(t.return_now(&ret).await.status, ReturnStatus::Draft);
 
-    t.cancel_as(&clerk, &ret, "supplier will not come", Some("receive_again"))
-        .await
-        .assert_ok();
+    t.cancel_as(
+        &clerk,
+        &ret,
+        "supplier will not come",
+        Some("receive_again"),
+    )
+    .await
+    .assert_ok();
     let done = t.return_now(&ret).await;
     assert_eq!(done.status, ReturnStatus::Cancelled);
     assert_eq!(done.kept_goods.as_deref(), Some("received_again"));

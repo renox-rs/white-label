@@ -20,7 +20,12 @@ use wl_inventory::{
     DraftLine, DraftReceipt, GoodsReceipt, GoodsReceiptLine, Item, Location, Lot, LotStatus,
     PurchaseOrder, PurchaseOrderLine, PurchaseOrderStatus, SupplierReturn, WlInventory,
 };
-use wl_kernel::inventory::{GoodsReceived, SupplierReturnDispatched};
+use wl_kernel::inventory::{GoodsReceived, SupplierReturnCredited, SupplierReturnDispatched};
+use wl_kernel::invoicing::{
+    CostPoster, DebitedLine, PostCost, SupplierBillFuture, SupplierBillId,
+    SupplierDebitNoteCancelled, SupplierDebitNoteId, SupplierDebitNoteIssued,
+};
+use wl_kernel::tickets::{OpenTicket, TaskCreator, TicketFuture, TicketId, TicketRef};
 use wl_kernel::{PartyId, Subject};
 
 /// A client with the inventory module on.
@@ -64,10 +69,84 @@ fn record<E: Event + Clone + Send + Sync + 'static>(app: &mut Registry, log: &Ar
     });
 }
 
-/// Records the events.
+/// A `TaskCreator` that records the tickets it opens; a ticket opened with
+/// a source key that is still open is the same ticket.
+#[derive(Clone, Default)]
+pub struct TicketDesk {
+    opened: Arc<Mutex<Vec<OpenTicket>>>,
+}
+
+impl TicketDesk {
+    /// The tickets opened, oldest first.
+    pub fn opened(&self) -> Vec<OpenTicket> {
+        self.opened.lock().unwrap().clone()
+    }
+}
+
+impl TaskCreator for TicketDesk {
+    fn open<'a>(
+        &'a self,
+        _state: &'a AppState,
+        ticket: OpenTicket,
+    ) -> TicketFuture<'a, Option<TicketRef>> {
+        Box::pin(async move {
+            let mut opened = self.opened.lock().unwrap();
+            opened.push(ticket);
+            let n = opened.len() as i64;
+            Ok(Some(TicketRef {
+                id: TicketId(n),
+                number: format!("TKT-{n}"),
+            }))
+        })
+    }
+
+    fn find_open<'a>(
+        &'a self,
+        _state: &'a AppState,
+        source_key: &'a str,
+    ) -> TicketFuture<'a, Option<TicketRef>> {
+        Box::pin(async move {
+            let opened = self.opened.lock().unwrap();
+            Ok(opened
+                .iter()
+                .position(|t| t.source_key.as_deref() == Some(source_key))
+                .map(|n| TicketRef {
+                    id: TicketId(n as i64 + 1),
+                    number: format!("TKT-{}", n + 1),
+                }))
+        })
+    }
+}
+
+/// A `CostPoster` that records what is posted.
+#[derive(Clone, Default)]
+pub struct CostDesk {
+    posted: Arc<Mutex<Vec<PostCost>>>,
+}
+
+impl CostDesk {
+    /// The cost posted, oldest first.
+    pub fn posted(&self) -> Vec<PostCost> {
+        self.posted.lock().unwrap().clone()
+    }
+}
+
+impl CostPoster for CostDesk {
+    fn post<'a>(&'a self, _state: &'a AppState, request: PostCost) -> SupplierBillFuture<'a, ()> {
+        Box::pin(async move {
+            self.posted.lock().unwrap().push(request);
+            Ok(())
+        })
+    }
+}
+
+/// Records the events and stands in for ticketing and cost entries.
 struct Fakes {
     received: Arc<Mutex<Vec<GoodsReceived>>>,
     dispatched: Arc<Mutex<Vec<SupplierReturnDispatched>>>,
+    credited: Arc<Mutex<Vec<SupplierReturnCredited>>>,
+    tickets: TicketDesk,
+    costs: CostDesk,
 }
 
 impl Module for Fakes {
@@ -78,6 +157,9 @@ impl Module for Fakes {
     fn register(&self, app: &mut Registry) {
         record(app, &self.received);
         record(app, &self.dispatched);
+        record(app, &self.credited);
+        wl_kernel::tickets::provide_task_creator(app, self.tickets.clone());
+        wl_kernel::invoicing::provide_cost_poster(app, self.costs.clone());
     }
 }
 
@@ -89,6 +171,12 @@ pub struct Booted {
     pub received: Recorded<GoodsReceived>,
     /// `SupplierReturnDispatched`.
     pub dispatched: Recorded<SupplierReturnDispatched>,
+    /// `SupplierReturnCredited`.
+    pub credited: Recorded<SupplierReturnCredited>,
+    /// The tickets opened for tasks.
+    pub tickets: TicketDesk,
+    /// The cost posted (wastage).
+    pub costs: CostDesk,
 }
 
 impl Booted {
@@ -267,6 +355,83 @@ impl Booted {
             .await
     }
 
+    /// `POST /supplier-returns/{id}/credit` as `by`: `basis` is
+    /// `refund_received` or `supplier_refused`.
+    pub async fn credit_as(
+        &self,
+        by: &User,
+        ret: &SupplierReturn,
+        basis: &str,
+        reason: &str,
+    ) -> TestResponse {
+        self.app.acting_as(by);
+        self.app
+            .htmx()
+            .post(
+                &format!("/supplier-returns/{}/credit", ret.id),
+                &[("basis", basis), ("reason", reason)],
+            )
+            .await
+    }
+
+    /// The supplier issues debit note `id` for `ret`, debiting `lines`
+    /// (purchase order line, quantity in thousandths).
+    pub async fn debit_note_issued(&self, ret: &SupplierReturn, id: i64, lines: &[(i64, i64)]) {
+        self.state()
+            .emit(SupplierDebitNoteIssued {
+                debit_note: SupplierDebitNoteId(id),
+                supplier: SUPPLIER,
+                bill: SupplierBillId(1),
+                return_to_supplier: Some(ret.subject()),
+                amount: 0,
+                vat: 0,
+                lines: debited(lines),
+            })
+            .await
+            .unwrap();
+    }
+
+    /// Debit note `id` for `ret` is cancelled; it debited `lines`.
+    pub async fn debit_note_cancelled(&self, ret: &SupplierReturn, id: i64, lines: &[(i64, i64)]) {
+        self.state()
+            .emit(SupplierDebitNoteCancelled {
+                debit_note: SupplierDebitNoteId(id),
+                supplier: SUPPLIER,
+                bill: Some(SupplierBillId(1)),
+                return_to_supplier: Some(ret.subject()),
+                amount: 0,
+                reason: "issued in error".into(),
+                lines: debited(lines),
+            })
+            .await
+            .unwrap();
+    }
+
+    /// A dispatched return of credit lines, one per `(item, quantity_milli,
+    /// order line)`, each at AED 100.00 a unit, from a store holding enough.
+    pub async fn dispatched_credit_return(
+        &self,
+        store: &Location,
+        lines: &[(&Item, i64, &PurchaseOrderLine)],
+    ) -> SupplierReturn {
+        let mut new = Vec::new();
+        for (item, quantity_milli, po_line) in lines {
+            self.stock_in(item, store, None, *quantity_milli, 10_000)
+                .await;
+            let mut line = NewReturnLine::of(item.id, *quantity_milli, "damaged")
+                .credit()
+                .at_cost(10_000);
+            line.po_line_id = Some(po_line.id);
+            new.push(line);
+        }
+        let ret = self.stock_return(store, new).await;
+        let clerk = self.procurement("Dispatcher").await;
+        self.dispatch_as(&clerk, &ret, "courier", "C-1")
+            .await
+            .assert_ok();
+        self.return_now(&ret).await
+    }
+
     /// `quantity_milli` of `item` in `location` (and `lot`) at `unit_cost`
     /// fils a unit, as a `receive` movement of an earlier receipt.
     pub async fn stock_in(
@@ -373,6 +538,9 @@ pub async fn boot() -> Booted {
 pub async fn boot_with(module: WlInventory) -> Booted {
     let received = Arc::new(Mutex::new(Vec::new()));
     let dispatched = Arc::new(Mutex::new(Vec::new()));
+    let credited = Arc::new(Mutex::new(Vec::new()));
+    let tickets = TicketDesk::default();
+    let costs = CostDesk::default();
     let app = App::new()
         .module(Auth::new())
         .module(Permissions)
@@ -381,6 +549,9 @@ pub async fn boot_with(module: WlInventory) -> Booted {
         .module(Fakes {
             received: received.clone(),
             dispatched: dispatched.clone(),
+            credited: credited.clone(),
+            tickets: tickets.clone(),
+            costs: costs.clone(),
         });
     let config = wl_kernel::ClientConfig::parse(CLIENT).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
@@ -406,5 +577,19 @@ pub async fn boot_with(module: WlInventory) -> Booted {
         app,
         received: Recorded(received),
         dispatched: Recorded(dispatched),
+        credited: Recorded(credited),
+        tickets,
+        costs,
     }
+}
+
+/// The lines a debit note debits, as events carry them.
+fn debited(lines: &[(i64, i64)]) -> Vec<DebitedLine> {
+    lines
+        .iter()
+        .map(|(po_line, quantity_milli)| DebitedLine {
+            po_line: Some(*po_line),
+            quantity_milli: *quantity_milli,
+        })
+        .collect()
 }
