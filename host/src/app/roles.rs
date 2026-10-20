@@ -422,6 +422,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             con::PROJECTS_TERMINATE,
             con::PROJECTS_AWARD,
             con::IPAS_SUBMIT,
+            con::IPAS_DEDUCTIONS_DECIDE,
             inventory::ITEMS_VIEW,
             inventory::STOCK_VIEW,
             inventory::PURCHASE_ORDERS_VIEW,
@@ -429,7 +430,14 @@ pub const ROLES: &[(&str, &[&str])] = &[
             attendance::REVIEW,
         ],
     ),
-    (QUANTITY_SURVEYOR, &[con::PROJECTS_VIEW, con::IPAS_CERTIFY]),
+    (
+        QUANTITY_SURVEYOR,
+        &[
+            con::PROJECTS_VIEW,
+            con::IPAS_CERTIFY,
+            con::IPAS_DEDUCTIONS_RECORD,
+        ],
+    ),
     (
         PROCUREMENT_MANAGER,
         &[

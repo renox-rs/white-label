@@ -6,6 +6,9 @@
 //! | `POST /construction/ipas/{id}/submit` | `construction.ipa_submit` | `ipas.submit` in the project |
 //! | `POST /construction/ipas/{id}/certificate` | `construction.ipa_certificate` | `ipas.certify` in the project |
 //! | `GET /construction/ipas/{id}` | `construction.ipa_show` | `projects.view`, `projects.manage` or `ipas.certify` in the project |
+//! | `POST /construction/ipas/{id}/deductions` | `construction.deduction_record` | `ipas.deductions.record` in the project |
+//! | `POST /construction/deductions/{id}/accept` | `construction.deduction_accept` | `ipas.deductions.decide` in the project |
+//! | `POST /construction/deductions/{id}/contest` | `construction.deduction_contest` | `ipas.deductions.decide` in the project |
 //! | `POST /construction/projects/{id}/terminate` | `construction.project_terminate` | `projects.terminate` in the project |
 //! | `GET /construction/projects/{id}/closing` | `construction.project_closing` | `projects.view` or `projects.manage` in the project |
 //! | `POST /construction/projects/{id}/settle` | `construction.project_settle` | `projects.manage` in the project |
@@ -26,6 +29,7 @@ use wl_kernel::PartyId;
 use crate::award::{self, Award, Awarded};
 use crate::cancellation;
 use crate::certificate::{self, CertificateRequest, Recorded};
+use crate::deduction::{self, Decided, DeductionKind, NewDeduction};
 use crate::final_account::{self, ClosingWarnings};
 use crate::ipa::{self, Ipa};
 use crate::permissions;
@@ -45,6 +49,12 @@ pub fn routes() -> Routes {
         .name("construction.ipa_certificate")
         .get("/construction/ipas/{id}", show_ipa)
         .name("construction.ipa_show")
+        .post("/construction/ipas/{id}/deductions", record_deduction)
+        .name("construction.deduction_record")
+        .post("/construction/deductions/{id}/accept", accept_deduction)
+        .name("construction.deduction_accept")
+        .post("/construction/deductions/{id}/contest", contest_deduction)
+        .name("construction.deduction_contest")
         .post("/construction/projects/{id}/terminate", terminate)
         .name("construction.project_terminate")
         .get("/construction/projects/{id}/closing", closing)
@@ -206,6 +216,103 @@ async fn certificate(
     Ok((Toast::success(t(&lang, key)), renox::HxRefresh).into_response())
 }
 
+/// A deduction line as the screen shows it.
+#[derive(Debug, Serialize)]
+struct DeductionView {
+    id: i64,
+    ipa_id: i64,
+    kind: &'static str,
+    reference: String,
+    description: String,
+    amount: i64,
+    status: &'static str,
+}
+
+impl DeductionView {
+    fn of(line: &deduction::IpaDeduction) -> Self {
+        DeductionView {
+            id: line.id,
+            ipa_id: line.ipa_id,
+            kind: line.kind.as_str(),
+            reference: line.reference.clone(),
+            description: line.description.clone(),
+            amount: line.amount,
+            status: line.status.as_str(),
+        }
+    }
+}
+
+/// `POST /construction/ipas/{id}/deductions`: `kind`, `reference`, `amount`
+/// (fils, excluding VAT) and `description` (needed for the kind `other`).
+async fn record_deduction(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let text = |name: &str| form.get(name).cloned().unwrap_or_default();
+    let kind = [
+        DeductionKind::BackCharge,
+        DeductionKind::ContraCharge,
+        DeductionKind::LiquidatedDamages,
+        DeductionKind::Other,
+    ]
+    .into_iter()
+    .find(|kind| kind.as_str() == text("kind").trim())
+    .ok_or_else(|| refused(t(&lang, "construction.deduction.kind_unknown")))?;
+    let amount = text("amount")
+        .trim()
+        .parse::<i64>()
+        .map_err(|_| refused(t(&lang, "construction.deduction.amount_needed")))?;
+    let new = NewDeduction {
+        kind,
+        reference: text("reference"),
+        description: text("description"),
+        amount,
+    };
+    deduction::record(&state, &user, id, &new)
+        .await
+        .map_err(answer)?;
+    Ok((
+        Toast::success(t(&lang, "construction.deduction.recorded")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
+/// `POST /construction/deductions/{id}/accept`: above AED 25,000 the MD is
+/// asked and the line stays undecided until then.
+async fn accept_deduction(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    let key = match deduction::accept(&state, &user, id).await.map_err(answer)? {
+        Decided::Done(_) => "construction.deduction.accepted",
+        Decided::AwaitingMd(_) => "construction.deduction.awaiting_md",
+    };
+    Ok((Toast::success(t(&lang, key)), renox::HxRefresh).into_response())
+}
+
+/// `POST /construction/deductions/{id}/contest`.
+async fn contest_deduction(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    deduction::contest(&state, &user, id)
+        .await
+        .map_err(answer)?;
+    Ok((
+        Toast::success(t(&lang, "construction.deduction.contested")),
+        renox::HxRefresh,
+    )
+        .into_response())
+}
+
 /// An IPA as its screen shows it.
 #[derive(Debug, Serialize)]
 struct IpaView {
@@ -221,6 +328,7 @@ struct IpaView {
     claim_gap: Option<i64>,
     certificate: Option<String>,
     late_certificate: Option<String>,
+    deductions: Vec<DeductionView>,
 }
 
 /// `GET /construction/ipas/{id}`.
@@ -255,6 +363,11 @@ async fn show_ipa(
         claim_gap: found.claim_gap,
         certificate: found.certificate_ref.clone(),
         late_certificate: found.late_certificate_ref.clone(),
+        deductions: deduction::lines_of(&state.db, id)
+            .await?
+            .iter()
+            .map(DeductionView::of)
+            .collect(),
     };
     let body = renox::serde_json::to_string(&view)
         .map_err(|error| Error::Internal(renox::anyhow::Error::new(error)))?;
@@ -282,6 +395,7 @@ struct ClosingView {
     final_account: Option<FinalAccountView>,
     warnings: ClosingWarnings,
     warning_texts: Vec<String>,
+    contested_deductions: Vec<DeductionView>,
 }
 
 /// `GET /construction/projects/{id}/closing`.
@@ -314,6 +428,11 @@ async fn closing(
         }),
         warning_texts: warnings.texts(),
         warnings,
+        contested_deductions: deduction::final_account_items(&state.db, id)
+            .await?
+            .iter()
+            .map(DeductionView::of)
+            .collect(),
     };
     let body = renox::serde_json::to_string(&view)
         .map_err(|error| Error::Internal(renox::anyhow::Error::new(error)))?;

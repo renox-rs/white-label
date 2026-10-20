@@ -23,6 +23,12 @@ pub const IPAS_SUBMIT: &str = "ipas.submit";
 /// Record the client's certificate of an IPA (the QS's).
 pub const IPAS_CERTIFY: &str = "ipas.certify";
 
+/// Record the deduction lines of a certificate (the QS's, `CON.ACL.14`).
+pub const IPAS_DEDUCTIONS_RECORD: &str = "ipas.deductions.record";
+/// Accept or contest a deduction line (the project manager's, never for a
+/// line they recorded, `CON.ACL.14`).
+pub const IPAS_DEDUCTIONS_DECIDE: &str = "ipas.deductions.decide";
+
 /// The role of the project manager.
 pub const PROJECT_MANAGER_ROLE: &str = "project_manager";
 
@@ -44,6 +50,8 @@ pub const ALL: &[&str] = &[
     PROJECTS_AWARD,
     IPAS_SUBMIT,
     IPAS_CERTIFY,
+    IPAS_DEDUCTIONS_RECORD,
+    IPAS_DEDUCTIONS_DECIDE,
 ];
 
 #[cfg(test)]

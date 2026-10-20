@@ -5,6 +5,7 @@ pub mod award;
 pub mod cancellation;
 pub mod certificate;
 pub mod cutoff;
+pub mod deduction;
 pub mod events;
 pub mod final_account;
 pub mod guarantee;
@@ -22,6 +23,7 @@ use renox::db::Migration;
 use renox::prelude::*;
 use renox::state_machine::Transitioned;
 
+pub use deduction::{DeductionKind, DeductionStatus, IpaDeduction};
 pub use events::ProjectTerminated;
 pub use guarantee::{Guarantee, GuaranteeKind, GuaranteeStatus};
 pub use ipa::{Ipa, IpaKind, IpaStatus};
@@ -49,6 +51,7 @@ impl Module for Construction {
     fn register(&self, app: &mut Registry) {
         app.model::<Project>()
             .model::<Ipa>()
+            .model::<IpaDeduction>()
             .model::<Retention>()
             .model::<Guarantee>();
         project::register();
@@ -56,6 +59,7 @@ impl Module for Construction {
         renox::state_machine::register::<Retention>();
         renox::state_machine::register::<Guarantee>();
         award::register_block_effect();
+        deduction::register();
         submission::register_types();
         cutoff::schedule(app);
         termination::register_types();

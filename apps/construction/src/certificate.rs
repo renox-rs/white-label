@@ -17,6 +17,10 @@
 //! replacing claim is tracked as usual); when it is `certified` or `invoiced`
 //! already, the certificate is attached for reference only, no amount
 //! changes, and the QS gets a task.
+//!
+//! **Deductions** (`CON.ACL.14`, [`crate::deduction`]): `certify` is refused
+//! while a deduction line of the IPA is `undecided`; the certified amount
+//! stays the work before the deductions, which are separate lines.
 
 use renox::chrono::NaiveDate;
 use renox::db::Transaction;
@@ -25,6 +29,7 @@ use renox::state_machine::{StateMachine, TransitionCtx, TransitionError};
 use serde::{Deserialize, Serialize};
 use wl_kernel::documents::today;
 
+use crate::deduction;
 use crate::ipa::{self, CERTIFY, Ipa, IpaStatus};
 use crate::permissions;
 use crate::project::Project;
@@ -43,6 +48,10 @@ pub struct CertifyInput {
     /// The day the client certified; today when empty.
     #[serde(default)]
     pub certified_on: Option<NaiveDate>,
+    /// How many deduction lines of the IPA are still `undecided`, as the
+    /// caller read it; a run without the count is refused (`CON.ACL.14`).
+    #[serde(default)]
+    pub undecided: Option<i64>,
 }
 
 /// The input of a `certify` run.
@@ -51,7 +60,8 @@ pub(crate) fn certify_input(ctx: &TransitionCtx) -> CertifyInput {
 }
 
 /// Why the IPA cannot be certified with `input`, if it cannot: the amount and
-/// the certificate are needed.
+/// the certificate are needed, and every deduction line is typed and accepted
+/// or contested (`CON.ACL.14`).
 pub fn certify_problem(input: &CertifyInput) -> Option<String> {
     if input.certified_amount.is_none_or(|amount| amount < 0) {
         return Some(english("construction.ipa.certified_amount_needed", &[]));
@@ -59,7 +69,14 @@ pub fn certify_problem(input: &CertifyInput) -> Option<String> {
     if input.certificate.trim().is_empty() {
         return Some(english("construction.ipa.certificate_needed", &[]));
     }
-    None
+    match input.undecided {
+        None => Some(english("construction.bad_input", &[])),
+        Some(0) => None,
+        Some(count) => Some(english(
+            "construction.ipa.undecided_lines",
+            &[("count", &count)],
+        )),
+    }
 }
 
 /// The effect of `certify` inside its transaction: the certificate, the claim
@@ -152,6 +169,25 @@ pub async fn refresh_drafts_in(tx: &mut Transaction, project_id: i64) -> Result 
     Ok(())
 }
 
+/// The IPA that takes what is recorded for IPA `id`: `id` itself, or for a
+/// superseded IPA the one that replaced it (the last of the chain).
+///
+/// # Errors
+///
+/// 404 for an unknown IPA, a database error.
+pub async fn resolve(db: &Db, id: i64) -> Result<Ipa> {
+    let mut target = Ipa::find_or_404(db, id).await?;
+    let mut hops = 0;
+    while target.status == IpaStatus::Superseded && hops < 100 {
+        let Some(next) = ipa::replacement_of(db, target.id).await? else {
+            break;
+        };
+        target = next;
+        hops += 1;
+    }
+    Ok(target)
+}
+
 /// What the QS enters.
 #[derive(Debug, Clone)]
 pub struct CertificateRequest {
@@ -187,17 +223,7 @@ pub async fn record(
     id: i64,
     request: &CertificateRequest,
 ) -> std::result::Result<Recorded, TransitionError> {
-    let mut target = Ipa::find(&state.db, id)
-        .await?
-        .ok_or(TransitionError::Failed(Error::NotFound))?;
-    let mut hops = 0;
-    while target.status == IpaStatus::Superseded && hops < 100 {
-        let Some(next) = ipa::replacement_of(&state.db, target.id).await? else {
-            break;
-        };
-        target = next;
-        hops += 1;
-    }
+    let target = resolve(&state.db, id).await?;
     let project = Project::find_or_404(&state.db, target.project_id).await?;
     if !user.has_permission_in(permissions::IPAS_CERTIFY, &project.scope()) {
         return Err(TransitionError::Forbidden);
@@ -206,6 +232,7 @@ pub async fn record(
         certified_amount: Some(request.certified_amount),
         certificate: request.certificate.clone(),
         certified_on: request.certified_on,
+        undecided: Some(deduction::undecided_count(&state.db, target.id).await?),
     };
     match target.status {
         IpaStatus::Submitted => {
@@ -277,6 +304,7 @@ mod tests {
             certified_amount: Some(52_000_000),
             certificate: "CERT-5.pdf".into(),
             certified_on: None,
+            undecided: Some(0),
         };
         assert_eq!(certify_problem(&input), None);
         input.certificate = " ".into();
@@ -285,5 +313,20 @@ mod tests {
         assert!(certify_problem(&input).is_some_and(|p| p.contains("certified amount")));
         input.certified_amount = Some(-1);
         assert!(certify_problem(&input).is_some());
+    }
+
+    #[test]
+    fn a_line_still_undecided_stops_the_certificate() {
+        let mut input = CertifyInput {
+            certified_amount: Some(18_000_000),
+            certificate: "CERT-6.pdf".into(),
+            certified_on: None,
+            undecided: Some(2),
+        };
+        assert!(certify_problem(&input).is_some_and(|p| p.contains("2 deduction")));
+        input.undecided = None;
+        assert!(certify_problem(&input).is_some());
+        input.undecided = Some(0);
+        assert_eq!(certify_problem(&input), None);
     }
 }

@@ -223,6 +223,42 @@ const TEXTS: &[(&str, &str)] = &[
         "construction.ipa.cutoff_pending_body",
         "IPA {{ pending }} is still waiting for its certificate. Draft IPA {{ number }} is marked previous pending and can be submitted only as its replacement.",
     ),
+    (
+        "construction.ipa.undecided_lines",
+        "{{ count }} deduction line(s) are not accepted or contested yet.",
+    ),
+    // The deductions on a certificate (BL-CON-05).
+    (
+        "construction.deduction.own_line",
+        "The user who recorded a deduction cannot accept or contest it.",
+    ),
+    (
+        "construction.deduction.reference_needed",
+        "Give the client's reference of the deduction.",
+    ),
+    (
+        "construction.deduction.amount_needed",
+        "Give the amount of the deduction, above 0.",
+    ),
+    (
+        "construction.deduction.description_needed",
+        "Describe the deduction: a line of type other needs a description.",
+    ),
+    (
+        "construction.deduction.lines_closed",
+        "IPA {{ number }} is not waiting for its certificate: its deductions can no longer be recorded.",
+    ),
+    (
+        "construction.deduction.kind_unknown",
+        "The type of the deduction is back_charge, contra_charge, liquidated_damages or other.",
+    ),
+    ("construction.deduction.recorded", "Deduction recorded."),
+    ("construction.deduction.accepted", "Deduction accepted."),
+    (
+        "construction.deduction.awaiting_md",
+        "The deduction is above the limit: sent to the MD for approval.",
+    ),
+    ("construction.deduction.contested", "Deduction contested."),
     ("construction.ipa.submitted", "IPA submitted."),
     ("construction.ipa.certified", "Certificate recorded."),
     (
