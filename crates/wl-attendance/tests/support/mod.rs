@@ -13,6 +13,7 @@ use renox::chrono::NaiveDate;
 use renox::db::DateTime;
 use renox::prelude::*;
 use renox::testing::TestApp;
+use wl_attendance::overtime::{EntryHours, HoursFuture, provide_entry_hours};
 use wl_attendance::permissions as perm;
 use wl_attendance::{
     AttendanceMethod, AttendanceRecord, AttendanceStatus, WlAttendance, WorkLocation,
@@ -166,6 +167,37 @@ impl Workforce for Staff {
     }
 }
 
+/// The timesheet entries that do not come from attendance, in minutes per
+/// employee and day.
+#[derive(Clone, Default)]
+pub struct Entries(Arc<Mutex<BTreeMap<(i64, NaiveDate), i64>>>);
+
+impl Entries {
+    /// `employee` has `minutes` of entries on `date`.
+    pub fn set(&self, employee: EmployeeId, date: NaiveDate, minutes: i64) {
+        self.0.lock().unwrap().insert((employee.0, date), minutes);
+    }
+}
+
+impl EntryHours for Entries {
+    fn minutes_on<'a>(
+        &'a self,
+        _state: &'a AppState,
+        employee: EmployeeId,
+        date: NaiveDate,
+    ) -> HoursFuture<'a> {
+        Box::pin(async move {
+            Ok(self
+                .0
+                .lock()
+                .unwrap()
+                .get(&(employee.0, date))
+                .copied()
+                .unwrap_or(0))
+        })
+    }
+}
+
 /// An event log.
 #[derive(Clone)]
 pub struct Recorded<E>(pub Arc<Mutex<Vec<E>>>);
@@ -193,6 +225,7 @@ fn record<E: Event + Clone + Send + Sync + 'static>(app: &mut Registry, log: &Ar
 struct Fakes {
     notices: Recording,
     staff: Staff,
+    entries: Entries,
     recorded: Arc<Mutex<Vec<AttendanceRecorded>>>,
     flagged: Arc<Mutex<Vec<AttendanceFlagged>>>,
 }
@@ -205,6 +238,7 @@ impl Module for Fakes {
     fn register(&self, app: &mut Registry) {
         provide_notifier(app, self.notices.clone());
         provide_workforce(app, self.staff.clone());
+        provide_entry_hours(app, self.entries.clone());
         record(app, &self.recorded);
         record(app, &self.flagged);
     }
@@ -218,6 +252,8 @@ pub struct Booted {
     pub notices: Recording,
     /// The workforce.
     pub staff: Staff,
+    /// The timesheet entries.
+    pub entries: Entries,
     /// `AttendanceRecorded`.
     pub recorded: Recorded<AttendanceRecorded>,
     /// `AttendanceFlagged`.
@@ -303,6 +339,20 @@ impl Booted {
         check_out: Option<DateTime>,
         status: AttendanceStatus,
     ) -> AttendanceRecord {
+        self.fixture_by(employee, location, check_in, check_out, status, None)
+            .await
+    }
+
+    /// [`fixture`](Self::fixture) marked by the supervisor `by`.
+    pub async fn fixture_by(
+        &self,
+        employee: EmployeeId,
+        location: &WorkLocation,
+        check_in: DateTime,
+        check_out: Option<DateTime>,
+        status: AttendanceStatus,
+        by: Option<i64>,
+    ) -> AttendanceRecord {
         let mut record = AttendanceRecord {
             employee_id: employee.0,
             location_id: location.id,
@@ -310,7 +360,7 @@ impl Booted {
             check_in,
             check_out,
             method: AttendanceMethod::Supervisor,
-            recorded_by: None,
+            recorded_by: by,
             recorded_at: check_in,
             status,
             ..AttendanceRecord::default()
@@ -380,10 +430,15 @@ pub async fn boot_with(module: WlAttendance, extra: &str) -> Booted {
     let fakes = Fakes {
         notices: Recording::default(),
         staff: Staff::default(),
+        entries: Entries::default(),
         recorded: Arc::default(),
         flagged: Arc::default(),
     };
-    let (notices, staff) = (fakes.notices.clone(), fakes.staff.clone());
+    let (notices, staff, entries) = (
+        fakes.notices.clone(),
+        fakes.staff.clone(),
+        fakes.entries.clone(),
+    );
     let (recorded, flagged) = (
         Recorded(fakes.recorded.clone()),
         Recorded(fakes.flagged.clone()),
@@ -427,6 +482,7 @@ pub async fn boot_with(module: WlAttendance, extra: &str) -> Booted {
         app,
         notices,
         staff,
+        entries,
         recorded,
         flagged,
         clock_days: std::sync::atomic::AtomicI64::new(0),
