@@ -136,6 +136,9 @@
       <template rx-if="cdd_id">
         <a href="{{ route('accounting.cdd_file', cdd_id) }}">{{ tx['engagements.open_cdd'] }}</a>
       </template>
+      <template rx-if="tax_profile_id">
+        <a href="{{ route('accounting.tax_profile', tax_profile_id) }}">{{ tx['engagements.tax_profile'] }}</a>
+      </template>
     </rx-card>
     <rx-table :rows="letters" as="row" :key="row.version" :caption="tx['letters.title']" card>
       <rx-column :label="tx['letters.version']">{{ row.version }}</rx-column>

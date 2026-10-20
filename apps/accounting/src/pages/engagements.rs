@@ -381,6 +381,7 @@ pub(crate) struct ShowPage {
     status_kind: &'static str,
     history: Vec<HistoryRow>,
     cdd_id: Option<i64>,
+    tax_profile_id: Option<i64>,
     cdd_status: String,
     today: String,
     can_letter: bool,
@@ -672,6 +673,9 @@ async fn show(
         status_kind: status_kind(found.status),
         history: history_rows(&state, &lang, &found).await?,
         cdd_id: cdd.as_ref().map(|f| f.id),
+        tax_profile_id: user
+            .has_permission(permissions::TAX_PROFILES_VIEW)
+            .then_some(found.client_party_id),
         cdd_status: cdd
             .as_ref()
             .map(|f| text(&lang, &format!("cdd.status.{}", f.status.as_str())))
