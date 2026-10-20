@@ -408,3 +408,91 @@ async fn a_past_effective_date_waives_the_upcoming_and_lists_the_overdue() {
     let created = live(&all, "2026-11-30").expect("the first new period");
     assert!(created.held, "created held for a suspended engagement");
 }
+
+/// The accountant asks to deregister the client from VAT effective
+/// `effective`; a manager approves. Answers the change id.
+async fn deregister_and_approve(t: &Booted, client: &Client, effective: &str) -> i64 {
+    let accountant = t.accountant().await;
+    let manager = t.manager_named("Bashir").await;
+    t.post(
+        &accountant,
+        &format!(
+            "/accounting/clients/{}/tax-profile/change",
+            client.company.0
+        ),
+        &[
+            ("trn", "100000000000003"),
+            ("vat_period", "not_registered"),
+            ("financial_year_end", "2026-12-31"),
+            ("ct_registration_no", "CT-100200300"),
+            ("effective_date", effective),
+        ],
+    )
+    .await
+    .assert_ok();
+    let change = accounting::tax_profile_change::TaxProfileChange::pending(t.db(), client.company)
+        .await
+        .unwrap()
+        .expect("pending");
+    assert!(change.fields().contains(&"vat_registered"));
+    let request = approvals::pending_for(t.db(), &change.subject())
+        .await
+        .unwrap()
+        .remove(0);
+    t.run(approvals::approve(t.state(), request.id, &manager, "ok"))
+        .await
+        .unwrap();
+    change.id
+}
+
+/// A deregistration from VAT waives every upcoming VAT task from the
+/// effective date on and creates none; the task of the period that ended
+/// before it and the corporate tax task stay. (The final return a
+/// deregistration needs has no template in the calendar: deferred.)
+#[renox::test]
+async fn a_vat_deregistration_waives_the_upcoming_vat_tasks_and_creates_none() {
+    let t = boot_real().await;
+    let (client, engagement) = january_calendar(&t).await;
+    let april = vat(&t, &engagement, "2027-04-30", "2027-05-28").await;
+    let july = vat(&t, &engagement, "2027-07-31", "2027-08-28").await;
+    let before = tasks_of(&t, &engagement).await;
+
+    deregister_and_approve(&t, &client, "2027-02-01").await;
+
+    let after = tasks_of(&t, &engagement).await;
+    for id in [april, july] {
+        let task = t.task_now(id).await;
+        assert_eq!(task.status, DeadlineTaskStatus::NotRequired);
+        assert_eq!(task.closed_reason.as_deref(), Some("tax profile changed"));
+    }
+    let january = live(&after, "2027-01-31").expect("the ended period keeps its task");
+    assert_eq!(january.status, DeadlineTaskStatus::Upcoming);
+    assert_eq!(after.len(), before.len(), "no VAT task is created");
+    let ct = |tasks: &[DeadlineTaskSummary]| {
+        tasks
+            .iter()
+            .filter(|task| task.task_type == calendar::CT_RETURN)
+            .map(|task| (task.id, task.status))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(ct(&after), ct(&before));
+}
+
+/// An engagement that is not `active` or `suspended` (here `ended`) gets no
+/// calendar from an approved change.
+#[renox::test]
+async fn an_ended_engagement_is_skipped_by_the_regeneration() {
+    let t = boot_real().await;
+    t.set_clock(2, 10, 0);
+    let client = t.client().await;
+    t.tax_profile_staggered(&client, day("2026-01-31")).await;
+    let engagement = t
+        .engagement_in(&client, EngagementStatus::Ended, Some("client_request"))
+        .await;
+
+    let change = change_and_approve(&t, &client, "2026-02-28", "", "2026-12-01").await;
+
+    assert!(tasks_of(&t, &engagement).await.is_empty());
+    let applied = t.run(regeneration::apply(t.state(), change)).await.unwrap();
+    assert!(applied.is_empty(), "no engagement was regenerated");
+}
