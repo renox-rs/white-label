@@ -9,7 +9,8 @@ mod support;
 use renox::prelude::*;
 use wl_kernel::PartyId;
 use wl_kernel::documents::{
-    BlockEntry, BlockMode, DocumentAccepted, DocumentExpired, DocumentId, OverrideMode,
+    BlockEntry, BlockMode, DocumentAccepted, DocumentExpired, DocumentExpiring, DocumentId,
+    OverrideMode,
 };
 use wl_kernel::tickets::{Assignee, ComplianceFlagReason};
 use wl_ticketing::contract_end;
@@ -374,4 +375,32 @@ async fn tkt07_the_contract_end_replaces_the_flag_with_no_contract() {
     let cleared = w.cleared.all();
     assert_eq!(cleared.len(), 1);
     assert_eq!(cleared[0].reason, "vendor_document_expired");
+}
+
+/// Edge case: the look-ahead (`DocumentExpiring`, "expires in 30 days") raises
+/// no flag, flags no visit and tells nobody: only the expiry itself does.
+#[renox::test]
+async fn tkt07_the_look_ahead_event_raises_no_flag() {
+    let (w, docs) = world_with_documents().await;
+    let f = fire(&w, &docs).await;
+    w.t.state()
+        .emit(DocumentExpiring {
+            document_id: DocumentId(9),
+            subject: SAFEFIRE.subject(),
+            kind: CIVIL_DEFENCE.into(),
+            expires_on: date("2026-11-30"),
+            days_left: 30,
+            offset: Some(30),
+            affected: Vec::new(),
+        })
+        .await
+        .unwrap();
+
+    assert!(open_flags(&w).await.is_empty());
+    assert!(w.raised.all().is_empty());
+    assert!(!w.reload(&f.contract).await.vendor_document_flag);
+    assert!(!w.t.reload(&f.first).await.vendor_document_flag);
+    assert!(!w.t.reload(&f.second).await.vendor_document_flag);
+    assert_eq!(w.told(NOTIFICATION_TYPE, &w.coordinator), 0);
+    assert_eq!(w.told(NOTIFICATION_TYPE, &w.manager), 0);
 }
