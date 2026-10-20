@@ -39,6 +39,7 @@ pub mod scopes;
 pub mod screening_guard;
 pub mod segments;
 pub mod subject;
+pub mod subscriptions;
 mod texts;
 pub mod tickets;
 pub mod voids;
@@ -166,6 +167,12 @@ pub use sales::{
 pub use scopes::COMPANY_ADMIN_ROLE;
 pub use segments::{NoSegments, SegmentId, Segments};
 pub use subject::Subject;
+pub use subscriptions::{
+    BillingCycle, CancelSubscription, NoSubscriptions, PauseCause, PauseSubscription, PaymentMode,
+    SUBSCRIPTION_SUBJECT_TYPE, StartSubscription, SubscriptionCancelled, SubscriptionId,
+    SubscriptionPastDue, SubscriptionSettled, SubscriptionStatus, SubscriptionSummary,
+    SubscriptionSuspended, Subscriptions,
+};
 pub use tickets::{
     Assignee, ChecklistCompleted, ChecklistOutcome, ChecklistRunId, Checklists,
     ComplianceFlagCleared, ComplianceFlagRaised, ComplianceFlagReason, ContractCover, NoChecklists,

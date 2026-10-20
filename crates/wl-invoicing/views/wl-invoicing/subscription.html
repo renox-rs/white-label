@@ -1,0 +1,44 @@
+{#- wl-invoicing: one subscription: its terms, its open pause causes (a party
+    block shows only `on_hold`), its cycles with their invoices and, for a
+    holder of subscriptions.manage, the cancel sheet. Replace it with
+    resources/views/wl-invoicing/subscription.html in the app. -#}
+<rx-page layout="layouts/app.html" :title="title">
+  <rx-stack>
+    <rx-page-header :title="title" :subtitle="party" :back="route('wl_invoicing.subscriptions')" :back-label="tx['subscription.title']"
+                    :badge="status_label" :badge-kind="status_kind">
+      <rx-action-sheet rx-if="can_cancel" :id="'cancel-subscription-' ~ subscription.id" :label="tx['subscription.cancel.action']" :action="route('wl_invoicing.subscription_cancel', subscription.id)"
+                       :title="tx['subscription.cancel.title']" :description="cancel_description" :submit-label="tx['subscription.cancel.submit']" icon="x">
+        <rx-input name="on" :label="tx['subscription.cancel.on']" :hint="tx['subscription.cancel.on_hint']" :id="'cancel-subscription-on-' ~ subscription.id"/>
+        <rx-textarea name="reason" :label="tx['subscription.cancel.reason']" :id="'cancel-subscription-reason-' ~ subscription.id"/>
+      </rx-action-sheet>
+    </rx-page-header>
+    <rx-card :title="tx['subscription.sections.summary']">
+      <rx-infolist columns="2">
+        <rx-entry :label="tx['subscription.fields.source']" :value="source"/>
+        <rx-entry :label="tx['subscription.fields.price']" :value="price"/>
+        <rx-entry :label="tx['subscription.fields.cycle']" :value="cycle"/>
+        <rx-entry :label="tx['subscription.fields.start']" :value="start"/>
+        <rx-entry :label="tx['subscription.fields.end']" :value="end" placeholder="-"/>
+        <rx-entry :label="tx['subscription.fields.next_cycle']" :value="next_cycle"/>
+        <rx-entry :label="tx['subscription.fields.notice_days']" :value="subscription.notice_days"/>
+        <rx-entry rx-if="subscription.pause_reason" :label="tx['subscription.fields.pause_reason']" :value="subscription.pause_reason"/>
+        <rx-entry rx-if="cancel_on" :label="tx['subscription.fields.cancel_on']" :value="cancel_on"/>
+        <rx-entry rx-if="cancelled_on" :label="tx['subscription.fields.cancelled_on']" :value="cancelled_on"/>
+      </rx-infolist>
+    </rx-card>
+    <rx-table :rows="causes" as="item" :key="item.id" :caption="tx['subscription.sections.causes']" card>
+      <rx-column :label="tx['subscription.columns.cause']">{{ item.cause }}</rx-column>
+      <rx-column :label="tx['subscription.columns.reason']">{{ item.reason }}</rx-column>
+      <rx-column :label="tx['subscription.columns.since']" hide-narrow>{{ item.since }}</rx-column>
+      <rx-column :label="tx['subscription.columns.until']" hide-narrow>{{ item.until }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['subscription.causes.empty']" icon="pause"/></rx-slot>
+    </rx-table>
+    <rx-table :rows="cycles" as="item" :key="item.id" :caption="tx['subscription.sections.cycles']" card>
+      <rx-column :label="tx['subscription.columns.period']">{{ item.period }}</rx-column>
+      <rx-column :label="tx['subscription.columns.invoice']"><a href="{{ item.link }}">{{ item.invoice }}</a></rx-column>
+      <rx-column :label="tx['subscription.columns.invoice_status']" hide-narrow>{{ item.status }}</rx-column>
+      <rx-column :label="tx['subscription.columns.balance']">{{ item.balance }}</rx-column>
+      <rx-slot name="empty"><rx-empty :title="tx['subscription.cycles.empty']" icon="receipt"/></rx-slot>
+    </rx-table>
+  </rx-stack>
+</rx-page>
