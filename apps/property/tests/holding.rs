@@ -445,9 +445,22 @@ async fn bl_prp_06_a_six_month_lease_gets_six_months() {
 async fn bl_prp_06_a_lease_with_a_notice_does_not_expire() {
     let s = scene().await;
     let lease = s.year().await;
-    // The notice (BL-PRP-09) is a fixture here.
-    s.t.set(&lease, &[("status", &LeaseStatus::NoticeGiven)])
-        .await;
+    // The tenant's notice of 2027-11-01, recorded through the real transition
+    // (BL-PRP-09).
+    s.t.post(
+        &s.manager,
+        &format!("/property/leases/{}/notice", lease.id),
+        &[
+            ("date", "2027-11-01"),
+            ("party", "tenant"),
+            ("reason", "end_of_term"),
+            ("planned_move_out", "2027-12-31"),
+        ],
+    )
+    .await
+    .assert_ok();
+    assert_eq!(s.t.status(&lease).await, LeaseStatus::NoticeGiven);
+    assert_eq!(s.t.reload(&lease).await.notice_date, Some(d(11, 1)));
     let report = s.run(y28(1, 1)).await;
     assert_eq!((report.expired, report.extended, report.tasked), (0, 0, 0));
     assert_eq!(s.t.status(&lease).await, LeaseStatus::NoticeGiven);

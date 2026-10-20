@@ -277,7 +277,10 @@ async fn bl_prp_10_another_tenants_submitted_lease_blocks_it() {
     )
     .await
     .unwrap();
-    // Submitted: `pending_signature`.
+    // Submitted: `pending_signature`. The state is written as a fixture: a
+    // real `submit` of a lease for another tenant is refused while the unit is
+    // not `available` (reservations, `PRP.LEA.02`, are Later), so the
+    // transition cannot reach it on a unit with a notice.
     s.t.set(&other, &[("status", &LeaseStatus::PendingSignature)])
         .await;
     let refused = s.withdraw(&lease).await;
