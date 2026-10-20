@@ -55,6 +55,7 @@ pub mod refund_recover;
 pub mod refund_retry;
 pub mod reverse;
 pub mod seed;
+pub mod set_off;
 mod texts;
 
 use std::sync::Arc;
@@ -428,7 +429,14 @@ impl Module for WlPayments {
             .register();
         // A vertical may put the reversal of a payment behind an approval
         // (`payments.reverse`); the kernel runs `reverse_approved` by name.
+        // A set-off settles a payable: money out to the party, so a blocked
+        // party waits for an approved exception (`PTY.ACL.03`).
         wl_kernel::SubjectMachine::of::<Payment>(wl_kernel::payments::PAYMENT_SUBJECT_TYPE)
+            .block_guarded(
+                record::RECORD_SET_OFF,
+                wl_kernel::ActionKind::MoneyOut,
+                |payment: &Payment| Some(wl_kernel::PartyId(payment.party_id)),
+            )
             .register();
         app.model::<Payment>();
         app.model::<Allocation>();

@@ -7,7 +7,7 @@ use renox::prelude::*;
 use renox::state_machine::TransitionError;
 use wl_kernel::invoicing::{
     BillBalance, PayBill, SupplierBillFuture, SupplierBillId, SupplierBillLine, SupplierBillLineId,
-    SupplierBillStatus as KernelStatus, SupplierBills, UnallocateBill,
+    SupplierBillStatus as KernelStatus, SupplierBillSummary, SupplierBills, UnallocateBill,
 };
 
 use crate::bill_allocation::BillAllocation;
@@ -57,6 +57,20 @@ pub fn kernel_line(bill: &SupplierBill, line: &BillLine) -> SupplierBillLine {
     }
 }
 
+/// `bill` as the kernel shows it: its supplier, entity, currency, state and
+/// open balance.
+pub fn kernel_summary(bill: &SupplierBill) -> SupplierBillSummary {
+    SupplierBillSummary {
+        id: SupplierBillId(bill.id),
+        number: bill.supplier_invoice_number.clone(),
+        supplier: bill.supplier(),
+        legal_entity_id: bill.legal_entity_id,
+        currency: bill.currency.clone(),
+        status: kernel_status(bill.status),
+        balance: bill.balance,
+    }
+}
+
 /// The module's [`SupplierBills`].
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Payables;
@@ -75,6 +89,18 @@ impl SupplierBills for Payables {
                 return Ok(None);
             };
             Ok(Some(kernel_line(&bill, &line)))
+        })
+    }
+
+    fn find<'a>(
+        &'a self,
+        db: &'a Db,
+        id: SupplierBillId,
+    ) -> SupplierBillFuture<'a, Option<SupplierBillSummary>> {
+        Box::pin(async move {
+            Ok(SupplierBill::find(db, id.0)
+                .await?
+                .map(|bill| kernel_summary(&bill)))
         })
     }
 
@@ -157,6 +183,27 @@ mod tests {
             assert_eq!(local_status(kernel_status(s)), s);
         }
         assert_eq!(kernel_status(Exception), KernelStatus::Exception);
+    }
+
+    #[test]
+    fn a_bill_summary_shows_its_supplier_entity_state_and_balance() {
+        let bill = SupplierBill {
+            id: 3,
+            party_id: 4,
+            legal_entity_id: Some(1),
+            supplier_invoice_number: "SB-77".into(),
+            currency: "AED".into(),
+            balance: 525_000,
+            status: SupplierBillStatus::Approved,
+            ..Default::default()
+        };
+        let summary = kernel_summary(&bill);
+        assert_eq!(summary.id, SupplierBillId(3));
+        assert_eq!(summary.number, "SB-77");
+        assert_eq!(summary.supplier, wl_kernel::PartyId(4));
+        assert_eq!(summary.legal_entity_id, Some(1));
+        assert_eq!(summary.status, KernelStatus::Approved);
+        assert_eq!((summary.currency.as_str(), summary.balance), ("AED", 525_000));
     }
 
     #[test]

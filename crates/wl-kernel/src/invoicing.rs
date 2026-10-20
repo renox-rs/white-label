@@ -1324,6 +1324,27 @@ pub struct SupplierBillLine {
     pub bill_status: SupplierBillStatus,
 }
 
+/// What other modules see of a supplier bill: who it is from, who received
+/// it, its currency, state and open balance (a set-off reads it, wl-payments
+/// §4).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SupplierBillSummary {
+    /// The bill.
+    pub id: SupplierBillId,
+    /// The supplier's invoice number as entered.
+    pub number: String,
+    /// The supplier.
+    pub supplier: PartyId,
+    /// The receiving legal entity, if set.
+    pub legal_entity_id: Option<i64>,
+    /// The ISO currency code.
+    pub currency: String,
+    /// The bill's state now.
+    pub status: SupplierBillStatus,
+    /// What is still unpaid, in fils.
+    pub balance: i64,
+}
+
 /// Why a supplier bill is reopened (`unallocate`).
 #[derive(DbEnum, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum BillReopenReason {
@@ -1440,6 +1461,16 @@ pub trait SupplierBills: Send + Sync + 'static {
         db: &'a Db,
         id: SupplierBillLineId,
     ) -> SupplierBillFuture<'a, Option<SupplierBillLine>>;
+
+    /// The bill `id`, or `None` when there is no such bill (or invoicing is
+    /// off).
+    fn find<'a>(
+        &'a self,
+        _db: &'a Db,
+        _id: SupplierBillId,
+    ) -> SupplierBillFuture<'a, Option<SupplierBillSummary>> {
+        Box::pin(async { Ok(None) })
+    }
 
     /// Applies money to an `approved` or `partially_paid` bill (system
     /// `pay`/`pay_in_full`). 422 for an amount of 0 or less or above the

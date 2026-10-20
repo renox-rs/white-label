@@ -17,6 +17,8 @@
           <rx-input name="cheque_number" :label="tx['fields.cheque_number']"/>
           <rx-input name="cheque_bank" :label="tx['fields.cheque_bank']"/>
           <rx-input name="cheque_date" type="date" :label="tx['fields.cheque_date']"/>
+          <rx-input name="set_off_invoice_id" type="number" :label="tx['fields.set_off_invoice']" :hint="tx['fields.set_off_hint']"/>
+          <rx-input name="set_off_bill_id" type="number" :label="tx['fields.set_off_bill']"/>
           <rx-select name="purpose" :label="tx['fields.purpose']" :options="purposes" :selected="''"/>
           <rx-input name="drawing_category" :label="tx['fields.drawing_category']" :hint="tx['fields.drawing_category_hint']"/>
           <rx-select name="drawing_direction" :label="tx['fields.drawing_direction']" :options="drawing_directions" :selected="'out'"/>
