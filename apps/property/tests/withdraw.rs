@@ -16,7 +16,8 @@ use property::{ChargeStatus, Lease, LeaseCharge, LeaseStatus, UnitStatus};
 use renox::prelude::*;
 use wl_kernel::VatCategory;
 
-use support::{AGENT, Booted, COMPANY, MANAGER, aed, boot, day};
+use property::NewLease;
+use support::{AGENT, Booted, COMPANY, MANAGER, TENANT, aed, boot, d, day};
 
 struct Scene {
     t: Booted,
@@ -241,6 +242,82 @@ async fn bl_prp_10_a_lease_that_expires_meanwhile_gets_the_holding_over_effects(
     assert!(charges.iter().any(|c| c.holding_over));
     // The property managers are told that the lease is holding over.
     assert_eq!(s.t.notices.of_type(HOLDING_OVER).len(), 1);
+}
+
+/// AC1 and AC2 with the dates of the issue: a lease ending 2027-12-31 with a
+/// tenant notice (penalty AED 20,000, leaving 2027-08-31), the agreement
+/// attached. On 2027-06-01 the notice is withdrawn: `active`, the unit
+/// `occupied`, the inspection ticket and the uninvoiced penalty cancelled,
+/// `LeaseNoticeWithdrawn` emitted. On 2027-10-01 (inside the window that opened
+/// 2027-09-02) it becomes `renewal_due`.
+#[renox::test]
+async fn bl_prp_10_the_dates_of_the_issue_2027_06_01_and_2027_10_01() {
+    let s = scene().await;
+    s.configure_fee().await;
+    let mut leases = Vec::new();
+    for number in ["1204", "1300"] {
+        let unit = s.t.unit(&s.building, number).await;
+        let new = NewLease::new(unit.id, TENANT, d(1, 1), d(12, 31), aed(120_000), 12);
+        let lease = property::leases::create_draft(s.t.state(), None, new)
+            .await
+            .unwrap();
+        s.t.submit(&s.agent, &lease).await.assert_ok();
+        s.t.waive(&s.manager, &lease).await;
+        s.t.activate(&s.manager, &lease).await.assert_ok();
+        let lease = s.t.reload(&lease).await;
+        assert_eq!(lease.end_date, d(12, 31));
+        s.agreement(&lease);
+        leases.push((unit, lease));
+    }
+    let notice =
+        |lease: &Lease, given: renox::chrono::NaiveDate, leaves: renox::chrono::NaiveDate| {
+            let lease_id = lease.id;
+            let given = given.to_string();
+            let leaves = leaves.to_string();
+            let manager = s.manager.clone();
+            let t = &s.t;
+            async move {
+                t.post(
+                    &manager,
+                    &format!("/property/leases/{lease_id}/notice"),
+                    &[
+                        ("date", given.as_str()),
+                        ("party", "tenant"),
+                        ("reason", "early_termination"),
+                        ("planned_move_out", leaves.as_str()),
+                        ("penalty", "20000"),
+                    ],
+                )
+                .await
+                .assert_ok();
+            }
+        };
+
+    // Before the window: 2027-06-01.
+    let (unit, lease) = &leases[0];
+    s.t.at(d(5, 20), notice(lease, d(5, 20), d(8, 31))).await;
+    assert_eq!(s.t.status(lease).await, LeaseStatus::NoticeGiven);
+    assert_eq!(s.fees(lease).await[0].due_date, d(8, 31));
+    let key = notice::move_out_key(lease);
+    assert!(s.t.tasks.with_key(&key)[0].open);
+    s.t.at(d(6, 1), s.withdraw(lease)).await.assert_ok();
+    let after = s.t.reload(lease).await;
+    assert_eq!(after.status, LeaseStatus::Active);
+    assert_eq!(s.t.unit_now(unit).await.status, UnitStatus::Occupied);
+    assert!(!s.t.tasks.with_key(&key)[0].open);
+    assert_eq!(s.fees(lease).await[0].status, ChargeStatus::Cancelled);
+    assert_eq!(s.t.withdrawn.all().len(), 1);
+    assert_eq!(s.t.withdrawn.all()[0].lease, lease.id);
+
+    // Inside the window: 2027-10-01.
+    let (unit, lease) = &leases[1];
+    s.t.at(d(9, 15), notice(lease, d(9, 15), d(11, 30))).await;
+    s.t.at(d(10, 1), s.withdraw(lease)).await.assert_ok();
+    let after = s.t.reload(lease).await;
+    assert_eq!(after.status, LeaseStatus::RenewalDue);
+    assert_eq!(after.renewal_flagged_on, Some(d(10, 1)));
+    assert_eq!(s.t.unit_now(unit).await.status, UnitStatus::Occupied);
+    assert_eq!(s.t.withdrawn.all()[1].status, "renewal_due");
 }
 
 /// AC3: without the agreement document it is refused.
