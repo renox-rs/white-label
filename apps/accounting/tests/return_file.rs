@@ -21,8 +21,9 @@ use renox::prelude::*;
 use renox::testing::TestResponse;
 use wl_kernel::approvals::{self, ApprovalStatus};
 use wl_kernel::deadlines::{DeadlineTaskId, DeadlineTaskStatus};
+use wl_kernel::notify::NotifyRecipient;
 
-use support::{Booted, Client, Crew, boot_real, d};
+use support::{Booted, Client, Crew, boot_notify, boot_real, d};
 
 fn day(text: &str) -> NaiveDate {
     text.parse().unwrap()
@@ -388,6 +389,11 @@ async fn filing_completes_the_linked_task_and_reminds_the_client_to_pay() {
     assert_eq!(reminders.len(), 1);
     assert_eq!(reminders[0].data["amount"], "AED 8,000.00");
     assert_eq!(reminders[0].data["due"], "2026-11-28");
+    assert_eq!(
+        reminders[0].recipients,
+        [NotifyRecipient::Party { id: s.client.ubo }],
+        "the client approver, nobody else"
+    );
 
     // Nothing payable: no reminder.
     let other = t.open_return(&s.engagement, d(12, 28)).await;
@@ -404,4 +410,149 @@ async fn filing_completes_the_linked_task_and_reminds_the_client_to_pay() {
     .await
     .assert_ok();
     assert_eq!(t.notices.of_type(PAYMENT_REMINDER_NOTICE).len(), 1);
+}
+
+/// What the filer of a blocked client must never read: the block's code, its
+/// label, the MLRO's note.
+const BLOCK_LEAKS: [&str; 4] = [
+    "non_payment",
+    "Non-payment",
+    "reviewed by the MLRO",
+    "sanction",
+];
+
+/// Fails when `body` shows anything of the block.
+fn assert_no_block_leak(what: &str, body: &str) {
+    for leak in BLOCK_LEAKS {
+        assert!(!body.contains(leak), "{what} shows `{leak}`: {body}");
+    }
+}
+
+/// `ACC.ACL.14` for the filing of a blocked client's return: neither the
+/// filer's response to the filing, nor the return page with its approval
+/// card, nor the approval request, nor any task the filing opened shows the
+/// block's code, label or note.
+#[renox::test]
+async fn nothing_the_filer_can_read_shows_the_block() {
+    let t = boot_real().await;
+    let s = setup(&t).await;
+    let tariq = filer(&t).await;
+    t.qualifications.register(tariq.id, "TA-1001", d(12, 31));
+    t.block(s.client.company, "non_payment").await;
+
+    let response = file_on(&t, &tariq, &s.ret, "2026-12-05").await;
+    response.assert_ok();
+    assert_no_block_leak("the response to the filing", &response.text());
+    let page = t
+        .get(&tariq, &format!("/accounting/returns/{}", s.ret.id))
+        .await;
+    page.assert_ok()
+        .assert_see("On hold — MLRO approval needed");
+    assert_no_block_leak("the return page and its approval card", &page.text());
+    let pending = approvals::pending_for(t.db(), &s.ret.subject())
+        .await
+        .unwrap();
+    assert_eq!(pending.len(), 1);
+    let request = renox::serde_json::to_string(&pending[0].payload.0).unwrap();
+    assert_no_block_leak("the approval request", &request);
+    for ticket in wl_ticketing::Ticket::query().get(t.db()).await.unwrap() {
+        let text = format!("{} {}", ticket.title, ticket.description);
+        assert_no_block_leak("a task", &text);
+    }
+}
+
+/// The MLRO approves through the kernel's route: the approval is for this
+/// return only. A second approved return of the same blocked client waits
+/// for its own approval.
+#[renox::test]
+async fn the_mlros_approval_is_valid_for_this_return_only() {
+    let t = boot_real().await;
+    let s = setup(&t).await;
+    let mlro = t.mlro().await;
+    let tariq = filer(&t).await;
+    t.qualifications.register(tariq.id, "TA-1001", d(12, 31));
+    let other = t.open_return(&s.engagement, d(12, 28)).await;
+    let other = t.return_at(&other, &s.crew, ReturnStatus::Approved).await;
+    t.block(s.client.company, "non_payment").await;
+    file_on(&t, &tariq, &s.ret, "2026-12-05").await.assert_ok();
+    let pending = approvals::pending_for(t.db(), &s.ret.subject())
+        .await
+        .unwrap();
+    assert_eq!(pending.len(), 1);
+
+    // The requester is refused; the MLRO approves through the route.
+    t.post(
+        &tariq,
+        &format!("/approvals/{}/approve", pending[0].id),
+        &[("comment", "mine")],
+    )
+    .await
+    .assert_forbidden();
+    t.post(
+        &mlro,
+        &format!("/approvals/{}/approve", pending[0].id),
+        &[("comment", "Cleared")],
+    )
+    .await
+    .assert_ok();
+    assert_eq!(t.return_status(&s.ret).await, ReturnStatus::Filed);
+    assert!(
+        approvals::pending_for(t.db(), &s.ret.subject())
+            .await
+            .unwrap()
+            .is_empty()
+    );
+
+    // The other return still waits for the MLRO.
+    file_on(&t, &tariq, &other, "2026-12-05").await.assert_ok();
+    assert_eq!(t.return_status(&other).await, ReturnStatus::Approved);
+    let waiting = approvals::pending_for(t.db(), &other.subject())
+        .await
+        .unwrap();
+    assert_eq!(waiting.len(), 1);
+    assert_eq!(waiting[0].status, ApprovalStatus::Pending);
+}
+
+/// The payment reminder goes to the client approvers only, and the real
+/// wl-notify renders it: the e-mail to the approver names the amount, the
+/// due date and the return.
+#[renox::test]
+async fn the_payment_reminder_reaches_the_client_approver_through_wl_notify() {
+    let t = boot_notify().await;
+    let s = setup(&t).await;
+    let tariq = filer(&t).await;
+    t.qualifications.register(tariq.id, "TA-1001", d(12, 31));
+    t.email_for(s.client.ubo, "omar@gulf-trading.example").await;
+    t.set_clock_on(d(12, 5), 12, 0);
+
+    t.ret_act(
+        &tariq,
+        &s.ret,
+        "file",
+        &[
+            ("acknowledgement", "FTA-ACK-3000"),
+            ("filed_on", "2026-12-05"),
+            ("tax_payable", "8000.00"),
+        ],
+    )
+    .await
+    .assert_ok();
+    t.app.run_all_jobs().await;
+
+    let sent: Vec<_> = t
+        .mail
+        .attempts()
+        .into_iter()
+        .filter(|mail| mail.address == "omar@gulf-trading.example")
+        .collect();
+    assert_eq!(sent.len(), 1, "{sent:?}");
+    assert!(sent[0].body.contains("AED 8,000.00"), "{}", sent[0].body);
+    assert!(sent[0].body.contains("2026-11-28"), "{}", sent[0].body);
+    assert!(
+        t.mail
+            .attempts()
+            .iter()
+            .all(|mail| mail.address != "tariq@example.com"),
+        "the filer is not the one reminded"
+    );
 }
