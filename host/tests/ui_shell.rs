@@ -107,3 +107,32 @@ async fn the_brand_is_the_clients_name() {
         .assert_ok()
         .assert_see("Palm Grove Properties LLC");
 }
+
+/// One link of the sidebar is the current one, the most specific for the
+/// page: the kit lit every link of a module (`property.*`) at once.
+#[renox::test]
+async fn one_sidebar_link_marks_the_current_page() {
+    let app = TestApp::new(host::app()).await;
+    app.kernel().seed().await.unwrap();
+    let admin = admin(&app).await;
+    app.acting_as(&admin);
+    for (path, current) in [
+        ("/property/leases", "/property/leases"),
+        ("/property", "/property"),
+        ("/parties", "/parties"),
+        ("/parties/block-effects", "/parties/block-effects"),
+        ("/dashboard", "/dashboard"),
+    ] {
+        let html = app.get(path).await.text();
+        let marked: Vec<&str> = html
+            .split("<a class=\"rx-sidebar__link\" href=\"")
+            .skip(1)
+            .filter(|chunk| {
+                let tag = &chunk[..chunk.find('>').unwrap_or(chunk.len())];
+                tag.contains("aria-current=\"page\"")
+            })
+            .map(|chunk| &chunk[..chunk.find('"').unwrap()])
+            .collect();
+        assert_eq!(marked, vec![current], "the current link of {path}");
+    }
+}

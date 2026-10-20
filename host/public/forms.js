@@ -78,6 +78,7 @@
     var text = document.createElement("p");
     text.className = "rx-alert__message";
     text.textContent = message;
+    text.style.whiteSpace = "pre-line";
     body.appendChild(text);
     alert.appendChild(icon);
     alert.appendChild(body);
