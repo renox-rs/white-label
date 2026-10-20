@@ -559,7 +559,7 @@ pub(crate) fn t(lang: &Lang, key: &str) -> String {
 
 /// The English text for `key` with `params` filled in as `{{ name }}`; the
 /// key itself when it has no text.
-pub(crate) fn english(key: &str, params: &[(&str, &dyn Display)]) -> String {
+pub(crate) fn english(key: &str, params: &[(&str, &(dyn Display + Sync))]) -> String {
     let text = TEXTS
         .iter()
         .find(|(k, _)| *k == key)

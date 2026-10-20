@@ -60,6 +60,7 @@ pub struct Award {
 
 /// What [`accept`] did.
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum Awarded {
     /// The project was made, in `setup`.
     Started(Project),

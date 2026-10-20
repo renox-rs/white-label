@@ -19,13 +19,13 @@
 //! submitted --supersede--> superseded   (a later IPA submits as its replacement)
 //! ```
 //!
-//! - [`crate::submission`]: `submit` (the project manager, `ipas.submit`)
+//! - [`crate::submission`][]: `submit` (the project manager, `ipas.submit`)
 //!   and `supersede` (the system, at the replacing `submit`);
-//! - [`crate::certificate`]: `certify` (`ipas.certify`), the late certificate
+//! - [`crate::certificate`][]: `certify` (`ipas.certify`), the late certificate
 //!   of a superseded IPA and "previous certified";
-//! - [`crate::cutoff`]: the monthly draft (`CON.RUL.03`);
-//! - [`crate::deduction`]: the typed deductions on a certificate;
-//! - [`crate::invoice`]: `invoice` (`invoices.issue`).
+//! - [`crate::cutoff`][]: the monthly draft (`CON.RUL.03`);
+//! - [`crate::deduction`][]: the typed deductions on a certificate;
+//! - [`crate::invoice`][]: `invoice` (`invoices.issue`).
 //!
 //! `revise` comes with the issue that builds it.
 
