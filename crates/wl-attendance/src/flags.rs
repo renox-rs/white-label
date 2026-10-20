@@ -92,6 +92,15 @@ impl AttendanceFlag {
             .await
     }
 
+    /// The flags of a record inside `tx`, oldest first.
+    pub async fn of_record_in(tx: &mut Transaction, record_id: i64) -> Result<Vec<AttendanceFlag>> {
+        AttendanceFlag::query()
+            .where_(AttendanceFlag::RECORD_ID.eq(record_id))
+            .order_by(AttendanceFlag::ID)
+            .get(&mut *tx)
+            .await
+    }
+
     /// The flags of a record that no reviewer has settled yet, oldest first.
     pub async fn open_of_record(db: &Db, record_id: i64) -> Result<Vec<AttendanceFlag>> {
         Ok(Self::of_record(db, record_id)

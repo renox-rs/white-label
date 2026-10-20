@@ -4,6 +4,7 @@
 //! ```text
 //! [*] --create--> open
 //! [*] --open_adjustment--> open          (kind adjustment, BL-ATT-07)
+//! open --submit--> submitted
 //! approved --reopen--> open
 //! approved --lock--> locked
 //! ```
@@ -334,7 +335,7 @@ impl StateMachine for Timesheet {
 
     fn machine() -> Machine<Self> {
         use TimesheetStatus::{Approved, Locked, Open, Submitted};
-        Machine::new()
+        let machine = Machine::new()
             .initial([Open])
             .state(Open)
             .tone("neutral")
@@ -403,7 +404,10 @@ impl StateMachine for Timesheet {
                             }
                         })
                     }),
-            )
+            );
+        crate::submit::transitions()
+            .into_iter()
+            .fold(machine, Machine::transition)
     }
 }
 
@@ -470,6 +474,8 @@ mod tests {
         assert_eq!(machine.find(LOCK).unwrap().to_state(), Some("locked"));
         assert!(machine.find(LOCK).unwrap().is_system());
         assert_eq!(machine.find(REOPEN).unwrap().from_states(), ["approved"]);
+        assert_eq!(machine.find("submit").unwrap().to_state(), Some("submitted"));
+        assert!(machine.find("submit_by_system").unwrap().is_system());
     }
 
     #[test]

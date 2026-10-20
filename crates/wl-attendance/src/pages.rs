@@ -9,6 +9,7 @@
 //! | `POST /attendance/records/{id}/accept` | `wl_attendance.accept` | `attendance.review` at the location (`HRM.ACL.09`) |
 //! | `POST /attendance/records/{id}/reject` | `wl_attendance.reject` | `attendance.review` at the location |
 //! | `POST /timesheets/{id}/reopen` | `wl_attendance.timesheet_reopen` | `timesheets.reopen` |
+//! | `POST /timesheets/{id}/submit` | `wl_attendance.timesheet_submit` | `timesheets.submit` in the scope of the timesheet's context |
 //! | `POST /attendance/records/{id}/correct` | `wl_attendance.correct` | `attendance.correct` at the location, and `attendance.review` when a flag holds the record |
 //!
 //! The routes need a signed-in user and carry no permission guard of their
@@ -31,6 +32,7 @@ use crate::permissions;
 use crate::record::AttendanceRecord;
 use crate::review::{self, Correction};
 use crate::service::{self, NewRecord, refuse};
+use crate::submit;
 use crate::texts;
 use crate::timesheet;
 
@@ -51,6 +53,8 @@ pub fn routes() -> Routes {
         .name("wl_attendance.correct")
         .post("/timesheets/{id}/reopen", reopen)
         .name("wl_attendance.timesheet_reopen")
+        .post("/timesheets/{id}/submit", submit_timesheet)
+        .name("wl_attendance.timesheet_submit")
         .require_auth()
 }
 
@@ -266,5 +270,16 @@ async fn reopen(
     Valid(form): Valid<ReviewForm>,
 ) -> Result<Response> {
     timesheet::reopen(&state, &user, id, &form.reason).await?;
+    Ok((Toast::success(text(&lang, "review.saved")), renox::HxRefresh).into_response())
+}
+
+/// `POST /timesheets/{id}/submit`: a user submits an open timesheet.
+async fn submit_timesheet(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+) -> Result<Response> {
+    submit::submit(&state, &user, id).await?;
     Ok((Toast::success(text(&lang, "review.saved")), renox::HxRefresh).into_response())
 }

@@ -22,6 +22,9 @@ use wl_kernel::documents::{
     BlockEntry, CheckOutcome, DocumentFuture, DocumentGuard, FlagFailure, RecordFlag, Validity,
     provide_guard,
 };
+use wl_kernel::tickets::{
+    OpenTicket, TaskCreator, TicketFuture, TicketId, TicketRef, provide_task_creator,
+};
 use wl_kernel::notify::{
     MessageId, Notifier, NotifyFuture, NotifyRecipient, NotifyRequest, provide_notifier,
 };
@@ -167,6 +170,52 @@ impl Workforce for Staff {
                 .get(&user_id)
                 .copied()
                 .map(EmployeeId))
+        })
+    }
+}
+
+/// The tasks opened through the kernel's task creator.
+#[derive(Clone, Default)]
+pub struct Tasks(Arc<Mutex<Vec<OpenTicket>>>);
+
+impl Tasks {
+    /// Every task opened so far.
+    pub fn opened(&self) -> Vec<OpenTicket> {
+        self.0.lock().unwrap().clone()
+    }
+}
+
+impl TaskCreator for Tasks {
+    fn open<'a>(
+        &'a self,
+        _state: &'a AppState,
+        ticket: OpenTicket,
+    ) -> TicketFuture<'a, Option<TicketRef>> {
+        Box::pin(async move {
+            let mut all = self.0.lock().unwrap();
+            all.push(ticket);
+            let n = all.len();
+            Ok(Some(TicketRef {
+                id: TicketId(i64::try_from(n).unwrap()),
+                number: format!("TKT-2026-{n:04}"),
+            }))
+        })
+    }
+
+    fn find_open<'a>(
+        &'a self,
+        _state: &'a AppState,
+        source_key: &'a str,
+    ) -> TicketFuture<'a, Option<TicketRef>> {
+        Box::pin(async move {
+            let all = self.0.lock().unwrap();
+            Ok(all
+                .iter()
+                .position(|t| t.source_key.as_deref() == Some(source_key))
+                .map(|n| TicketRef {
+                    id: TicketId(i64::try_from(n).unwrap() + 1),
+                    number: format!("TKT-2026-{:04}", n + 1),
+                }))
         })
     }
 }
@@ -454,6 +503,7 @@ fn record<E: Event + Clone + Send + Sync + 'static>(app: &mut Registry, log: &Ar
 struct Fakes {
     notices: Recording,
     staff: Staff,
+    tasks: Tasks,
     docs: DocDesk,
     quals: Quals,
     recorded: Arc<Mutex<Vec<AttendanceRecorded>>>,
@@ -467,6 +517,7 @@ impl Module for Fakes {
 
     fn register(&self, app: &mut Registry) {
         provide_notifier(app, self.notices.clone());
+        provide_task_creator(app, self.tasks.clone());
         provide_workforce(app, self.staff.clone());
         provide_guard(app, self.docs.clone());
         provide_qualifications(app, self.quals.clone());
@@ -483,6 +534,8 @@ pub struct Booted {
     pub notices: Recording,
     /// The workforce.
     pub staff: Staff,
+    /// The tasks opened.
+    pub tasks: Tasks,
     /// The accepted documents.
     pub docs: DocDesk,
     /// The qualifications.
@@ -718,12 +771,17 @@ pub async fn boot_with(module: WlAttendance, extra: &str) -> Booted {
     let fakes = Fakes {
         notices: Recording::default(),
         staff: Staff::default(),
+        tasks: Tasks::default(),
         docs: DocDesk::default(),
         quals: Quals::default(),
         recorded: Arc::default(),
         flagged: Arc::default(),
     };
-    let (notices, staff) = (fakes.notices.clone(), fakes.staff.clone());
+    let (notices, staff, tasks) = (
+        fakes.notices.clone(),
+        fakes.staff.clone(),
+        fakes.tasks.clone(),
+    );
     let (docs, quals) = (fakes.docs.clone(), fakes.quals.clone());
     let (recorded, flagged) = (
         Recorded(fakes.recorded.clone()),
@@ -793,6 +851,7 @@ pub async fn boot_with(module: WlAttendance, extra: &str) -> Booted {
         app,
         notices,
         staff,
+        tasks,
         docs,
         quals,
         recorded,

@@ -112,6 +112,19 @@ const TEXTS: &[(&str, &str)] = &[
         "Corrected by hand: :reason",
     ),
     ("wl_attendance.review.saved", "Saved."),
+    // Submitting a timesheet (BL-ATT-06).
+    (
+        "wl_attendance.submit.over_allocated",
+        "The hours on :date exceed the attended hours by :excess (:allocated allocated, :attended attended).",
+    ),
+    (
+        "wl_attendance.submit.not_allocated",
+        "The attendance on :date has no hours allocated to a cost object.",
+    ),
+    (
+        "wl_attendance.submit.task_title",
+        "The timesheet for :from to :to could not be submitted",
+    ),
     // Timesheets and their entries.
     (
         "wl_attendance.timesheet.no_consumer",
