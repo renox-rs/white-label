@@ -148,11 +148,22 @@ booking deposits exist) and *archived* documents (no page archives). Seeding twi
 nothing (an audit entry `demo.seeded` marks it done). It takes about 12 s in a release build.
 Logins, all `@palmgrove.example` with the password of `seed.rs`: `admin`,
 `property_manager` (JVT-A and JVT-B), `property_manager.bay` (BBY, AQZ),
-`property_manager.north` (ADR, SHJ), `property_manager.all` (global: the pages of other modules
-check a global permission, so a building-scoped manager gets 403 on them),
+`property_manager.north` (ADR, SHJ), `property_manager.all` (global: every building),
 `leasing_agent`, `accountant`, `receivables`, `finance_manager`, `owner`, `coordinator`,
 `facility_manager`, `technician`, `compliance`, `marketing`, `marketing_manager`, `hr`. The
-login page lists them in local.
+login page lists them in local. The building-scoped managers see the module lists (invoices,
+cheques, deposits, parties, tickets, ...) of their buildings only ([ACCESS-CONTROL.md](ACCESS-CONTROL.md) §10).
+
+**Walking the lease path in the browser** (each step by the role that does it): the leasing agent
+adds the party (`/parties/new`) and its documents (button *Documents* on the party), the
+`compliance` role accepts them (`/documents/review`; nobody accepts their own upload), the
+agent drafts and submits the lease on the unit page, the property manager adds the signed
+contract to the lease's documents, compliance accepts it, the accountant records the deposit
+received (button on the lease), the property manager activates the lease and records the Ejari
+number (after adding the certificate), the agent records the cheques, the nightly run (or
+`host property:invoice-charges`) drafts the invoice of a due instalment, a receivables clerk
+issues it, the accountant deposits and clears the cheque (the invoice is paid) or records its
+bounce, and the property manager records the notice, the inspection and the move-out.
 
 ---
 
