@@ -12,10 +12,16 @@
 //! | `POST /accounting/engagements/{id}/suspend` | `accounting.engagement_suspend` | `engagements.manage` |
 //! | `POST /accounting/engagements/{id}/resume` | `accounting.engagement_resume` | `engagements.manage` |
 //! | `POST /accounting/engagements/{id}/end` | `accounting.engagement_end` | `engagements.end` |
+//! | `GET /accounting/engagements/export` | `accounting.engagements_export` | `engagements.view` |
+//! | `POST /accounting/engagements/{id}/client-notice` | `accounting.engagement_client_notice` | `parties.block_reason.view` |
 //!
-//! The reason shown everywhere is the engagement's neutral code
-//! ([`crate::reasons`]): the page never reads a block's reason. The actions
-//! answer with a toast and a refresh; a refusal answers 422 with its lines.
+//! The reason shown everywhere (the list, the page, the history, the export)
+//! is the engagement's neutral code ([`crate::reasons`]): no page reads a
+//! block's reason (`ACC.ACL.14`). A holder of `parties.block_reason.view`
+//! gets a link to the client's party page, where the Block record shows the
+//! real reason, and chooses the neutral template that tells the client. The
+//! actions answer with a toast and a refresh; a refusal answers 422 with its
+//! lines.
 
 use renox::prelude::*;
 use renox::state_machine::history;
@@ -25,6 +31,7 @@ use wl_kernel::documents::{dubai_text, today};
 
 use super::{Texts, invalid, parse_aed, parse_id, party_name, require, text, user_name};
 use crate::cdd::CddFile;
+use crate::client_notices::{self, ClientNotice, NeutralTemplate};
 use crate::engagement::{Engagement, EngagementStatus, FeeBasis, NewEngagement};
 use crate::engagement_machine::{DECLINE, END, SUSPEND};
 use crate::engagements;
@@ -54,6 +61,10 @@ pub fn routes() -> Routes {
         .name("accounting.engagement_resume")
         .post("/accounting/engagements/{id}/end", end)
         .name("accounting.engagement_end")
+        .get("/accounting/engagements/export", export)
+        .name("accounting.engagements_export")
+        .post("/accounting/engagements/{id}/client-notice", client_notice)
+        .name("accounting.engagement_client_notice")
         .require_auth()
 }
 
@@ -274,6 +285,17 @@ pub async fn history_rows(
     Ok(rows)
 }
 
+/// One neutral template sent to the client.
+#[derive(Serialize, Debug, Clone, PartialEq, Eq)]
+pub struct NoticeRow {
+    /// When (Asia/Dubai).
+    pub at: String,
+    /// The template's text.
+    pub template: String,
+    /// Who sent it.
+    pub by: String,
+}
+
 /// What an engagement page needs.
 #[derive(Serialize, ViewData)]
 #[view(template = "accounting/engagement.html")]
@@ -295,6 +317,11 @@ pub(crate) struct ShowPage {
     decline_reasons: Vec<[String; 2]>,
     suspend_reasons: Vec<[String; 2]>,
     end_reasons: Vec<[String; 2]>,
+    notices: Vec<NoticeRow>,
+    can_notify: bool,
+    notice_template: String,
+    notice_template_text: String,
+    block_record: String,
 }
 
 /// The options of a reason select for `transition`.
@@ -349,6 +376,20 @@ async fn show(
         ended: found.ended_on.map(|d| d.to_string()).unwrap_or_default(),
     };
     let onboarding = found.status == EngagementStatus::Onboarding;
+    // The MLRO and deputy: the link to the Block record and the neutral
+    // template that fits the status.
+    let sees_reasons = user.has_permission(permissions::BLOCK_REASON_VIEW);
+    let template = [NeutralTemplate::OnHold, NeutralTemplate::Ended]
+        .into_iter()
+        .find(|t| t.fits(found.status));
+    let mut notices = Vec::new();
+    for notice in ClientNotice::of_engagement(&state.db, found.id).await? {
+        notices.push(NoticeRow {
+            at: dubai_text(notice.sent_at),
+            template: template_text(&lang, notice.template),
+            by: user_name(&state.db, notice.sent_by).await,
+        });
+    }
     Ok(View::typed(ShowPage {
         tx: texts::all(&lang),
         status: status_label(&lang, found.status),
@@ -373,8 +414,106 @@ async fn show(
         decline_reasons: reason_options(&lang, DECLINE),
         suspend_reasons: reason_options(&lang, SUSPEND),
         end_reasons: reason_options(&lang, END),
+        notices,
+        can_notify: sees_reasons && template.is_some(),
+        notice_template: template.map(|t| t.as_str().to_owned()).unwrap_or_default(),
+        notice_template_text: template
+            .map(|t| template_text(&lang, t))
+            .unwrap_or_default(),
+        block_record: if sees_reasons {
+            format!("/parties/{}", found.client_party_id)
+        } else {
+            String::new()
+        },
         engagement: view,
     }))
+}
+
+/// The text of a neutral template, as the client reads it.
+fn template_text(lang: &Lang, template: NeutralTemplate) -> String {
+    text(
+        lang,
+        &format!("client_notices.{}_body", template.as_str()),
+    )
+}
+
+/// A CSV field: quoted when it holds a comma, a quote or a line break.
+fn csv_field(value: &str) -> String {
+    if value.contains([',', '"', '\n', '\r']) {
+        format!("\"{}\"", value.replace('"', "\"\""))
+    } else {
+        value.to_owned()
+    }
+}
+
+/// `GET /accounting/engagements/export`: every engagement as CSV, with its
+/// neutral reason only (`ACC.ACL.14`).
+async fn export(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+) -> Result<renox::Download> {
+    require(&user, permissions::ENGAGEMENTS_VIEW)?;
+    let all = Engagement::query()
+        .order_by(Engagement::ID)
+        .get(&state.db)
+        .await?;
+    let header = [
+        text(&lang, "engagements.number"),
+        text(&lang, "engagements.client"),
+        text(&lang, "engagements.services"),
+        text(&lang, "fields.status"),
+        text(&lang, "engagements.reason"),
+    ];
+    let mut lines = vec![
+        header
+            .iter()
+            .map(|h| csv_field(h))
+            .collect::<Vec<_>>()
+            .join(","),
+    ];
+    for row in rows(&state, &lang, &all).await {
+        lines.push(
+            [row.number, row.client, row.title, row.status, row.reason]
+                .iter()
+                .map(|f| csv_field(f))
+                .collect::<Vec<_>>()
+                .join(","),
+        );
+    }
+    let mut body = lines.join("\n");
+    body.push('\n');
+    Ok(renox::Download::bytes(
+        "engagements.csv",
+        "text/csv; charset=utf-8",
+        body.into_bytes(),
+    ))
+}
+
+/// The form that sends a neutral template.
+#[derive(Deserialize, Serialize, Debug, Default)]
+pub struct NoticeForm {
+    /// `on_hold` or `ended`.
+    #[serde(default)]
+    pub template: String,
+}
+
+/// `POST /accounting/engagements/{id}/client-notice`.
+async fn client_notice(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<NoticeForm>,
+) -> Result<Response> {
+    let template =
+        NeutralTemplate::parse(&form.template).ok_or_else(|| invalid("template: on_hold, ended"))?;
+    client_notices::send(&state, &user, id, template).await?;
+    Ok((
+        Toast::success(text(&lang, "client_notices.sent")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// The form that records the signed letter.

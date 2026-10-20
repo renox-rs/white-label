@@ -8,6 +8,7 @@ use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use renox::state_machine::{StateMachine, TransitionError};
 use wl_kernel::documents::today;
+use wl_kernel::PartyId;
 use wl_kernel::parties::{PartyStatus, directory};
 
 use crate::activation;
@@ -15,7 +16,7 @@ use crate::cdd::CddFile;
 use crate::db::{refused, set_engagement};
 use crate::engagement::{Engagement, EngagementStatus, NewEngagement};
 use crate::engagement_machine::{
-    AUTO_DECLINE, DECLINE, END, EngagementInput, RESUME, SUSPEND,
+    AUTO_DECLINE, AUTO_SUSPEND, DECLINE, END, EngagementInput, RESUME, SUSPEND,
 };
 use crate::permissions;
 use crate::reasons::{self, NOT_ACCEPTED};
@@ -138,7 +139,7 @@ pub async fn decline(state: &AppState, by: &AuthUser, id: i64, reason: &str) -> 
 /// # Errors
 ///
 /// The database's and the transition's errors.
-pub async fn decline_not_accepted(state: &AppState, client: wl_kernel::PartyId) -> Result {
+pub async fn decline_not_accepted(state: &AppState, client: PartyId) -> Result {
     for engagement in Engagement::of_client(&state.db, client).await? {
         if engagement.status != EngagementStatus::Onboarding {
             continue;
@@ -229,6 +230,59 @@ pub async fn end(state: &AppState, by: &AuthUser, id: i64, reason: &str) -> Resu
         .await
         .map_err(TransitionError::into_error)?;
     load(state, id).await
+}
+
+/// The client `party` was blocked (`PartyBlocked`, its display reason
+/// `display_reason`): each of its `active` engagements is suspended by the
+/// system with the neutral reason *on hold*, and on one already `suspended`
+/// the shown reason becomes *on hold* without a second transition.
+///
+/// The engagement never learns the block's reason: the event carries
+/// [`reasons::ON_HOLD`] for a restricted one (sanctions, AML concern), and
+/// then automatic messages to the client are off (`ACC.ACL.14`). Decision: a
+/// display reason of *on hold* counts as restricted, so a block whose own
+/// code is `on_hold` is treated the safe way. The held tasks and the paused
+/// retainer come with BL-ACC-03.
+///
+/// # Errors
+///
+/// The database's and the transition's errors.
+pub async fn suspend_for_block(state: &AppState, party: PartyId, display_reason: &str) -> Result {
+    let restricted = display_reason == reasons::ON_HOLD;
+    for engagement in Engagement::of_client(&state.db, party).await? {
+        match engagement.status {
+            EngagementStatus::Active => {
+                let input = EngagementInput {
+                    restricted,
+                    ..EngagementInput::on(today())
+                };
+                let _outcome = engagement
+                    .transition(AUTO_SUSPEND)
+                    .by_system()
+                    .reason(reasons::ON_HOLD)
+                    .input(&input)
+                    .run(state)
+                    .await
+                    .map_err(TransitionError::into_error)?;
+            }
+            EngagementStatus::Suspended => {
+                let suppressed = engagement.client_messages_suppressed || restricted;
+                let mut tx = state.db.begin().await?;
+                set_engagement(
+                    &mut tx,
+                    engagement.id,
+                    &[
+                        ("reason_code", &Some(reasons::ON_HOLD.to_owned())),
+                        ("client_messages_suppressed", &suppressed),
+                    ],
+                )
+                .await?;
+                tx.commit().await?;
+            }
+            _ => {}
+        }
+    }
+    Ok(())
 }
 
 /// The reasons a user may give for `transition` (for the forms).

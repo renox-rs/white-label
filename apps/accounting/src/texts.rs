@@ -88,6 +88,43 @@ const TEXTS: &[(&str, &str)] = &[
     ("accounting.engagements.transition.auto_suspend", "Suspended"),
     ("accounting.engagements.transition.resume", "Resumed"),
     ("accounting.engagements.transition.end", "Ended"),
+    (
+        "accounting.engagements.block_record",
+        "Open the client's Block record",
+    ),
+    // The neutral templates (`ACC.ACL.14`).
+    ("accounting.client_notices.title", "Told to the client"),
+    ("accounting.client_notices.template", "Template"),
+    ("accounting.client_notices.empty", "Nothing told to the client"),
+    ("accounting.client_notices.send", "Tell the client"),
+    ("accounting.client_notices.sent", "The client is told."),
+    (
+        "accounting.client_notices.wrong_template",
+        "This template does not fit the engagement's status.",
+    ),
+    (
+        "accounting.client_notices.on_hold_subject",
+        "Your engagement {{ number }}",
+    ),
+    (
+        "accounting.client_notices.on_hold_body",
+        "Your engagement is on hold, please contact your partner.",
+    ),
+    (
+        "accounting.client_notices.ended_subject",
+        "Your engagement {{ number }}",
+    ),
+    (
+        "accounting.client_notices.ended_body",
+        "Our engagement has ended.",
+    ),
+    // The portal.
+    ("accounting.portal.title", "Engagements"),
+    ("accounting.portal.status.onboarding", "Onboarding"),
+    ("accounting.portal.status.active", "Active"),
+    ("accounting.portal.status.suspended", "On hold"),
+    ("accounting.portal.status.ended", "Ended"),
+    ("accounting.portal.status.declined", "Declined"),
     // The history.
     ("accounting.history.title", "History"),
     ("accounting.history.at", "When"),

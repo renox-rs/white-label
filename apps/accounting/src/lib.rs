@@ -6,6 +6,7 @@ pub mod calendar;
 pub mod cdd;
 pub mod cdd_files;
 pub mod cdd_machine;
+pub mod client_notices;
 mod db;
 pub mod engagement;
 pub mod engagement_machine;
@@ -13,6 +14,7 @@ pub mod engagements;
 mod events;
 pub mod pages;
 pub mod permissions;
+pub mod portal;
 pub mod reasons;
 pub mod retainer;
 pub mod seed;
@@ -92,10 +94,13 @@ impl Module for Accounting {
         app.model::<Engagement>()
             .model::<CddFile>()
             .model::<CddParty>()
-            .model::<TaxProfile>();
+            .model::<TaxProfile>()
+            .model::<client_notices::ClientNotice>();
         engagement_machine::register();
         cdd_machine::register();
         events::register(app);
+        // The neutral templates the MLRO sends (`ACC.ACL.14`).
+        client_notices::register_types();
         // In the app group of the staff sidebar; the label is the host's
         // `nav.engagements` text.
         app.nav(
