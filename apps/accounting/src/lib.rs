@@ -25,6 +25,7 @@ pub mod pages;
 pub mod permissions;
 pub mod portal;
 pub mod reasons;
+pub mod regeneration;
 pub mod request_lists;
 pub mod retainer;
 pub mod return_effects;
@@ -35,6 +36,7 @@ pub mod seed;
 pub mod suspension;
 pub mod tasks;
 pub mod tax_profile;
+pub mod tax_profile_change;
 pub mod tax_return;
 mod texts;
 pub mod wip;
@@ -77,6 +79,10 @@ const VIEWS: &[(&str, &str)] = &[
     (
         "accounting/return.html",
         include_str!("../views/accounting/return.html"),
+    ),
+    (
+        "accounting/tax_profile.html",
+        include_str!("../views/accounting/tax_profile.html"),
     ),
     (
         "accounting/portal_return.html",
@@ -135,6 +141,7 @@ impl Module for Accounting {
             .view_data::<pages::deadline_notices::NoticePage>()
             .view_data::<pages::returns::IndexPage>()
             .view_data::<pages::returns::ShowPage>()
+            .view_data::<pages::tax_profiles::ShowPage>()
             .view_data::<pages::portal_returns::PortalReturnPage>()
             .view_data::<pages::letters::PortalLetterPage>()
             .view_data::<pages::aml::IndexPage>()
@@ -152,6 +159,7 @@ impl Module for Accounting {
             .model::<CddFile>()
             .model::<CddParty>()
             .model::<TaxProfile>()
+            .model::<tax_profile_change::TaxProfileChange>()
             .model::<client_notices::ClientNotice>()
             .model::<deadline_notices::DeadlineNotice>()
             .model::<request_lists::RequestList>()
@@ -163,6 +171,8 @@ impl Module for Accounting {
             .model::<WipWriteOff>();
         engagement_machine::register();
         return_machine::register();
+        // `ACC.ACL.13`: a tax profile change waits for another manager.
+        tax_profile_change::register();
         wip::register();
         ending::register(app);
         return_effects::register_types();

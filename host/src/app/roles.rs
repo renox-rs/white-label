@@ -214,6 +214,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             acc::CDD_APPROVE,
             acc::TAX_PROFILES_VIEW,
             acc::TAX_PROFILES_MANAGE,
+            acc::TAX_PROFILES_APPROVE,
             acc::RETURNS_VIEW,
             acc::RETURNS_PREPARE,
             acc::RETURNS_REVIEW,
@@ -300,6 +301,7 @@ pub const ROLES: &[(&str, &[&str])] = &[
             acc::ENGAGEMENTS_END,
             acc::CDD_VIEW,
             acc::TAX_PROFILES_VIEW,
+            acc::TAX_PROFILES_APPROVE,
             // 04 §3.1: signs off returns, files them, and decides the
             // write-offs of unbilled time above the manager's share.
             acc::RETURNS_VIEW,
@@ -323,6 +325,8 @@ pub const ROLES: &[(&str, &[&str])] = &[
             acc::CDD_PREPARE,
             acc::TAX_PROFILES_VIEW,
             acc::TAX_PROFILES_MANAGE,
+            // `ACC.ACL.13`: approves another person's change of a tax profile.
+            acc::TAX_PROFILES_APPROVE,
             // 04 §3.1 "returns (review)": reviews and cancels returns and
             // writes off unbilled time up to the limit (`ACC.ACL.09`).
             acc::RETURNS_VIEW,
@@ -430,6 +434,8 @@ pub const ROLES: &[(&str, &[&str])] = &[
             acc::CDD_VIEW,
             acc::CDD_PREPARE,
             acc::TAX_PROFILES_VIEW,
+            // `ACC.ACL.13`: asks for a change of a tax profile.
+            acc::TAX_PROFILES_MANAGE,
             // 04 §3.1 "returns (prepare)".
             acc::RETURNS_VIEW,
             acc::RETURNS_PREPARE,

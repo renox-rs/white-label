@@ -33,6 +33,9 @@
 //! - Engagement `end` and `auto_end`, after the notice: the retainer is
 //!   cancelled with its pro rata document, the upcoming tasks are waived and
 //!   the started ones listed ([`crate::ending::after_end`], BL-ACC-06).
+//! - Tax profile change `request_approved`: `ACC.RUL.10` regenerates the
+//!   calendar from the effective date ([`crate::regeneration`], BL-ACC-14,
+//!   BL-ACC-15).
 //! - Write-off `write_off` and `write_off_approved`: the time module writes
 //!   the unbilled time off ([`crate::wip::after`], `ACC.ACL.09`).
 
@@ -50,11 +53,12 @@ use crate::engagement::Engagement;
 use crate::engagement_machine::{
     ACTIVATE, AUTO_END, AUTO_SUSPEND, END, RESUME, RESUME_APPROVED, SUSPEND,
 };
+use crate::tax_profile_change::{REQUEST_APPROVED, TaxProfileChange};
 use crate::tax_return::Return;
 use crate::wip::{WRITE_OFF, WRITE_OFF_APPROVED, WipWriteOff};
 use crate::{
-    aml_cases, calendar, deadline_notices, ending, engagements, exits, retainer, return_effects,
-    suspension, wip,
+    aml_cases, calendar, deadline_notices, ending, engagements, exits, regeneration, retainer,
+    return_effects, suspension, wip,
 };
 
 /// Registers the listeners.
@@ -121,6 +125,16 @@ pub(crate) fn register(app: &mut Registry) {
     app.listen(|event: Transitioned<Return>, state: AppState| async move {
         return_effects::after(&state, &event).await
     });
+    app.listen(
+        |event: Transitioned<TaxProfileChange>, state: AppState| async move {
+            if event.transition != REQUEST_APPROVED {
+                return Ok(());
+            }
+            regeneration::run_for_change(&state, event.key)
+                .await
+                .map(|_| ())
+        },
+    );
     app.listen(
         |event: Transitioned<WipWriteOff>, state: AppState| async move {
             if event.transition != WRITE_OFF && event.transition != WRITE_OFF_APPROVED {

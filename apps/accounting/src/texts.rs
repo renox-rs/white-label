@@ -239,6 +239,94 @@ const TEXTS: &[(&str, &str)] = &[
         "accounting.tax_profile.vat_period",
         "VAT period and its first period end",
     ),
+    ("accounting.tax_profile.title", "Tax profile"),
+    ("accounting.tax_profile.versions", "Versions"),
+    ("accounting.tax_profile.empty", "No tax profile recorded"),
+    ("accounting.tax_profile.effective", "Effective from"),
+    ("accounting.tax_profile.approved_by", "Approved by"),
+    ("accounting.tax_profile.change", "Change the profile"),
+    (
+        "accounting.tax_profile.change_description",
+        "A change to what drives the calendar waits for a manager other than you.",
+    ),
+    ("accounting.tax_profile.note", "Why"),
+    ("accounting.tax_profile.pending", "Pending approval"),
+    (
+        "accounting.tax_profile.past_message",
+        "The effective date is in the past: the calendar is regenerated from it.",
+    ),
+    ("accounting.tax_profile.requested", "Change requested."),
+    ("accounting.tax_profile.contact", "Contact and notes"),
+    (
+        "accounting.tax_profile.contact_description",
+        "These need no approval.",
+    ),
+    ("accounting.tax_profile.contact_saved", "Saved."),
+    (
+        "accounting.tax_profile.period.not_registered",
+        "Not registered",
+    ),
+    ("accounting.tax_profile.period.monthly", "Monthly"),
+    ("accounting.tax_profile.period.quarterly", "Quarterly"),
+    (
+        "accounting.tax_profile.field.vat_registered",
+        "Registered for VAT",
+    ),
+    ("accounting.tax_profile.field.vat_period", "VAT period"),
+    (
+        "accounting.tax_profile.field.vat_first_period_end",
+        "End of the first VAT period (stagger)",
+    ),
+    ("accounting.tax_profile.field.trn", "VAT TRN"),
+    (
+        "accounting.tax_profile.field.financial_year_end",
+        "Financial year end",
+    ),
+    (
+        "accounting.tax_profile.field.ct_registration_no",
+        "Corporate tax registration no.",
+    ),
+    (
+        "accounting.tax_profile.field.small_business_relief",
+        "Small Business Relief",
+    ),
+    (
+        "accounting.tax_profile.field.qfzp",
+        "Qualifying Free Zone Person",
+    ),
+    (
+        "accounting.tax_profile.field.contact_email",
+        "Contact e-mail",
+    ),
+    ("accounting.tax_profile.field.notes", "Notes"),
+    (
+        "accounting.tax_profile.problem.exists",
+        "The client has a tax profile already: ask for a change instead.",
+    ),
+    (
+        "accounting.tax_profile.problem.no_profile",
+        "The client has no tax profile yet: record it first.",
+    ),
+    (
+        "accounting.tax_profile.problem.no_change",
+        "Nothing that drives the calendar differs from the current profile.",
+    ),
+    (
+        "accounting.tax_profile.problem.incomplete",
+        "The changed profile would be incomplete: :missing",
+    ),
+    (
+        "accounting.tax_profile.problem.pending",
+        "A change effective :on is waiting for approval: it is decided first.",
+    ),
+    (
+        "accounting.tax_profile.problem.no_requester",
+        "The change needs a signed-in requester.",
+    ),
+    (
+        "accounting.tax_profile.problem.no_approval_policy",
+        "No approval policy is active for tax profile changes.",
+    ),
     // The calendar and the retainer.
     (
         "accounting.calendar.vat_return",

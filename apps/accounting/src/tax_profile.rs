@@ -5,9 +5,10 @@
 //! a day is the latest row effective on or before it ([`TaxProfile::current`]).
 //! Engagement `activate` needs it complete ([`TaxProfile::missing`]), and the
 //! compliance calendar is generated from it ([`crate::calendar`]). The change
-//! control of `ACC.ACL.13` (another manager approves, one pending change per
-//! profile) comes with BL-ACC-14; until then [`record`] stores a version as
-//! approved by the user who records it.
+//! change control of `ACC.ACL.13` (another manager approves, one pending
+//! change per profile) is in [`crate::tax_profile_change`]: [`record`] stores
+//! only the first version of a client, every later version is the approval
+//! of a change.
 
 use renox::chrono::NaiveDate;
 use renox::db::{DateTime, Executor, now};
@@ -68,6 +69,11 @@ pub struct TaxProfile {
     pub small_business_relief: bool,
     /// Whether it is a Qualifying Free Zone Person.
     pub qfzp: bool,
+    /// The contact e-mail for tax matters (no approval to change,
+    /// `ACC.ACL.13`).
+    pub contact_email: Option<String>,
+    /// Notes on the profile (no approval to change).
+    pub notes: Option<String>,
     /// The day this version takes effect.
     pub effective_date: NaiveDate,
     /// Who approved this version.
@@ -96,6 +102,38 @@ impl TaxProfile {
     /// The client company.
     pub fn client(&self) -> PartyId {
         PartyId(self.client_party_id)
+    }
+
+    /// The newest version of `client`, whatever its effective date: the one
+    /// a change is made against.
+    ///
+    /// # Errors
+    ///
+    /// The database's errors.
+    pub async fn latest<'c>(db: impl Executor<'c>, client: PartyId) -> Result<Option<TaxProfile>> {
+        Ok(TaxProfile::query()
+            .where_(TaxProfile::CLIENT_PARTY_ID.eq(client.0))
+            .order_by_desc(TaxProfile::EFFECTIVE_DATE)
+            .order_by_desc(TaxProfile::ID)
+            .limit(1)
+            .get(db)
+            .await?
+            .into_iter()
+            .next())
+    }
+
+    /// The versions of `client`, oldest first.
+    ///
+    /// # Errors
+    ///
+    /// The database's errors.
+    pub async fn versions<'c>(db: impl Executor<'c>, client: PartyId) -> Result<Vec<TaxProfile>> {
+        TaxProfile::query()
+            .where_(TaxProfile::CLIENT_PARTY_ID.eq(client.0))
+            .order_by(TaxProfile::EFFECTIVE_DATE)
+            .order_by(TaxProfile::ID)
+            .get(db)
+            .await
     }
 
     /// The version of `client` in force on `on`: the latest effective on or
@@ -158,15 +196,73 @@ impl TaxProfile {
     }
 }
 
-/// `by` records `profile` as a new version of its client's tax profile.
+/// The names of the fields that drive the compliance calendar (`ACC.ACL.13`):
+/// VAT registration, period and stagger, the TRN, the financial year end,
+/// the corporate tax registration, Small Business Relief and QFZP status.
+pub const DRIVING_FIELDS: [&str; 8] = [
+    "vat_registered",
+    "vat_period",
+    "vat_first_period_end",
+    "trn",
+    "financial_year_end",
+    "ct_registration_no",
+    "small_business_relief",
+    "qfzp",
+];
+
+/// The calendar-driving fields in which `proposed` differs from `current`,
+/// by name ([`DRIVING_FIELDS`]); empty when only contacts or notes differ.
 ///
-/// Decision: until BL-ACC-14 adds the approval by another manager
-/// (`ACC.ACL.13`), a recorded version counts as approved by `by`.
+/// Decision: a blank text and no text are the same value.
+pub fn changed_fields(current: &TaxProfile, proposed: &TaxProfile) -> Vec<&'static str> {
+    fn text(value: &Option<String>) -> Option<&str> {
+        value.as_deref().map(str::trim).filter(|t| !t.is_empty())
+    }
+    let mut changed = Vec::new();
+    if current.vat_registered != proposed.vat_registered {
+        changed.push("vat_registered");
+    }
+    if current.vat_period != proposed.vat_period {
+        changed.push("vat_period");
+    }
+    if current.vat_first_period_end != proposed.vat_first_period_end {
+        changed.push("vat_first_period_end");
+    }
+    if text(&current.trn) != text(&proposed.trn) {
+        changed.push("trn");
+    }
+    if current.financial_year_end != proposed.financial_year_end {
+        changed.push("financial_year_end");
+    }
+    if text(&current.ct_registration_no) != text(&proposed.ct_registration_no) {
+        changed.push("ct_registration_no");
+    }
+    if current.small_business_relief != proposed.small_business_relief {
+        changed.push("small_business_relief");
+    }
+    if current.qfzp != proposed.qfzp {
+        changed.push("qfzp");
+    }
+    changed
+}
+
+/// `by` records `profile` as the first version of its client's tax profile.
+///
+/// Decision: `ACC.ACL.13` governs *changes* of a profile in use; the first
+/// version is the onboarding record (nothing is generated from it yet), so
+/// it counts as approved by `by`. Every later version is the approval of a
+/// [`TaxProfileChange`](crate::tax_profile_change::TaxProfileChange).
 ///
 /// # Errors
 ///
-/// The database's errors.
+/// A 422 when the client has a profile already; the database's errors.
 pub async fn record(db: &Db, by: Option<i64>, mut profile: TaxProfile) -> Result<TaxProfile> {
+    if TaxProfile::latest(db, profile.client()).await?.is_some() {
+        return Err(Error::Status(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            english("accounting.tax_profile.problem.exists", &[]),
+        ));
+    }
     profile.id = 0;
     profile.created_by = by;
     profile.approved_by = by;
@@ -201,6 +297,33 @@ mod tests {
         assert_eq!(
             profile.missing(),
             vec![english("accounting.tax_profile.financial_year_end", &[])]
+        );
+    }
+
+    #[test]
+    fn only_the_calendar_driving_fields_count_as_a_change() {
+        let base = TaxProfile {
+            vat_registered: true,
+            vat_period: VatPeriod::Quarterly,
+            vat_first_period_end: Some(day("2026-01-31")),
+            trn: Some("100000000000003".into()),
+            ..TaxProfile::default()
+        };
+        let mut other = base.clone();
+        other.contact_email = Some("tax@example.com".into());
+        other.notes = Some("Prefers e-mail".into());
+        other.trn = Some(" 100000000000003 ".into());
+        assert!(changed_fields(&base, &other).is_empty());
+        other.vat_first_period_end = Some(day("2026-02-28"));
+        other.qfzp = true;
+        assert_eq!(
+            changed_fields(&base, &other),
+            ["vat_first_period_end", "qfzp"]
+        );
+        assert!(
+            changed_fields(&base, &other)
+                .iter()
+                .all(|name| DRIVING_FIELDS.contains(name))
         );
     }
 

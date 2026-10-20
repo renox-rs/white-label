@@ -9,6 +9,7 @@ pub mod engagements;
 pub mod letters;
 pub mod portal_returns;
 pub mod returns;
+pub mod tax_profiles;
 
 use std::collections::BTreeMap;
 
@@ -28,6 +29,7 @@ pub fn routes() -> Routes {
         .merge(cdd::routes())
         .merge(deadline_notices::routes())
         .merge(returns::routes())
+        .merge(tax_profiles::routes())
         .merge(portal_returns::routes())
         .merge(letters::routes())
         .merge(aml::routes())

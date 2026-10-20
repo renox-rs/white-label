@@ -19,9 +19,12 @@ pub const CDD_PREPARE: &str = "cdd.prepare";
 pub const CDD_APPROVE: &str = "cdd.approve";
 /// See a client's tax profile.
 pub const TAX_PROFILES_VIEW: &str = "tax_profiles.view";
-/// Record a client's tax profile (its change control is `ACC.ACL.13`,
-/// BL-ACC-14).
+/// Record a client's tax profile and ask for a change of its calendar-driving
+/// fields (the accountant, the tax specialist and the manager, `ACC.ACL.13`).
 pub const TAX_PROFILES_MANAGE: &str = "tax_profiles.manage";
+/// Approve a change of a tax profile's calendar-driving fields, as a manager
+/// other than the requester (`ACC.ACL.13`).
+pub const TAX_PROFILES_APPROVE: &str = "tax_profiles.approve";
 
 /// See returns and their history.
 pub const RETURNS_VIEW: &str = "returns.view";
@@ -63,6 +66,7 @@ pub const ALL: &[&str] = &[
     CDD_APPROVE,
     TAX_PROFILES_VIEW,
     TAX_PROFILES_MANAGE,
+    TAX_PROFILES_APPROVE,
     RETURNS_VIEW,
     RETURNS_PREPARE,
     RETURNS_REVIEW,
