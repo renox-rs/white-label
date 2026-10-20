@@ -39,6 +39,9 @@ use wl_kernel::notify::{
 use wl_kernel::subscriptions::{
     StartSubscription, SubscriptionFuture, SubscriptionId, Subscriptions, provide_subscriptions,
 };
+use wl_kernel::tickets::{
+    Assignee, OpenTicket, TaskCreator, TicketFuture, TicketId, TicketRef, provide_task_creator,
+};
 use wl_kernel::{PartyId, PartyKind, Subject};
 use wl_parties::{
     ListStatus, ListUsed, NewCandidate, NewParty, Party, SanctionsList, Screening, ScreeningRun,
@@ -164,6 +167,129 @@ impl DeadlineTasks for TaskBook {
     }
 }
 
+/// A staff task opened through the kernel's `TaskCreator`.
+#[derive(Debug, Clone)]
+pub struct StaffTask {
+    /// The id.
+    pub id: i64,
+    /// What it is about.
+    pub subject: Subject,
+    /// The category.
+    pub category: String,
+    /// The title.
+    pub title: String,
+    /// The description.
+    pub description: String,
+    /// The source key.
+    pub key: Option<String>,
+    /// Who it is assigned to.
+    pub assignee: Option<Assignee>,
+    /// When it is due.
+    pub due_at: Option<DateTime>,
+    /// Whether it is still open.
+    pub open: bool,
+    /// The note it was completed with.
+    pub note: String,
+}
+
+/// The staff tasks opened (renewal tasks, CDD update tasks, owner alerts).
+#[derive(Clone, Default)]
+pub struct TicketBook(pub Arc<Mutex<Vec<StaffTask>>>);
+
+impl TicketBook {
+    /// Every task, oldest first.
+    pub fn all(&self) -> Vec<StaffTask> {
+        self.0.lock().unwrap().clone()
+    }
+
+    /// The tasks whose source key starts with `prefix`.
+    pub fn with_key(&self, prefix: &str) -> Vec<StaffTask> {
+        self.all()
+            .into_iter()
+            .filter(|t| t.key.as_deref().is_some_and(|k| k.starts_with(prefix)))
+            .collect()
+    }
+}
+
+/// The ticket reference of task `id`.
+fn ticket_ref(id: i64) -> TicketRef {
+    TicketRef {
+        id: TicketId(id),
+        number: format!("TKT-{id}"),
+    }
+}
+
+impl TaskCreator for TicketBook {
+    fn open<'a>(
+        &'a self,
+        _state: &'a AppState,
+        ticket: OpenTicket,
+    ) -> TicketFuture<'a, Option<TicketRef>> {
+        let id = {
+            let mut tasks = self.0.lock().unwrap();
+            let id = tasks.len() as i64 + 1;
+            tasks.push(StaffTask {
+                id,
+                subject: ticket.subject.clone(),
+                category: ticket.category_key.clone(),
+                title: ticket.title.clone(),
+                description: ticket.description.clone(),
+                key: ticket.source_key.clone(),
+                assignee: ticket.assignee,
+                due_at: ticket.due_at,
+                open: true,
+                note: String::new(),
+            });
+            id
+        };
+        Box::pin(async move { Ok(Some(ticket_ref(id))) })
+    }
+
+    fn find_open<'a>(
+        &'a self,
+        _state: &'a AppState,
+        source_key: &'a str,
+    ) -> TicketFuture<'a, Option<TicketRef>> {
+        let found = self
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|t| t.open && t.key.as_deref() == Some(source_key))
+            .map(|t| ticket_ref(t.id));
+        Box::pin(async move { Ok(found) })
+    }
+
+    fn complete<'a>(
+        &'a self,
+        _state: &'a AppState,
+        ticket: TicketId,
+        note: &'a str,
+    ) -> TicketFuture<'a, bool> {
+        let done = {
+            let mut tasks = self.0.lock().unwrap();
+            match tasks.iter_mut().find(|t| t.id == ticket.0 && t.open) {
+                Some(task) => {
+                    task.open = false;
+                    task.note = note.to_owned();
+                    true
+                }
+                None => false,
+            }
+        };
+        Box::pin(async move { Ok(done) })
+    }
+
+    fn resolve_from_source<'a>(
+        &'a self,
+        state: &'a AppState,
+        ticket: TicketId,
+        note: &'a str,
+    ) -> TicketFuture<'a, bool> {
+        self.complete(state, ticket, note)
+    }
+}
+
 /// The subscriptions started.
 #[derive(Clone, Default)]
 pub struct SubscriptionBook(pub Arc<Mutex<Vec<StartSubscription>>>);
@@ -195,6 +321,7 @@ struct Fakes {
     notices: Recording,
     tasks: TaskBook,
     subscriptions: SubscriptionBook,
+    tickets: TicketBook,
 }
 
 impl Module for Fakes {
@@ -206,6 +333,7 @@ impl Module for Fakes {
         provide_notifier(app, self.notices.clone());
         provide_deadline_tasks(app, self.tasks.clone());
         provide_subscriptions(app, self.subscriptions.clone());
+        provide_task_creator(app, self.tickets.clone());
     }
 }
 
@@ -349,6 +477,8 @@ pub struct Booted {
     pub tasks: TaskBook,
     /// The subscriptions started.
     pub subscriptions: SubscriptionBook,
+    /// The staff tasks opened.
+    pub tickets: TicketBook,
 }
 
 /// Accounting booted with auth, the audit log, the kernel, the real
@@ -363,11 +493,13 @@ pub async fn boot() -> Booted {
         notices: Recording::default(),
         tasks: TaskBook::default(),
         subscriptions: SubscriptionBook::default(),
+        tickets: TicketBook::default(),
     };
-    let (notices, tasks, subscriptions) = (
+    let (notices, tasks, subscriptions, tickets) = (
         fakes.notices.clone(),
         fakes.tasks.clone(),
         fakes.subscriptions.clone(),
+        fakes.tickets.clone(),
     );
     let app = App::new()
         .module(Auth::new())
@@ -393,6 +525,7 @@ pub async fn boot() -> Booted {
         notices,
         tasks,
         subscriptions,
+        tickets,
     };
     wl_parties::seed::lists(t.state())
         .await
