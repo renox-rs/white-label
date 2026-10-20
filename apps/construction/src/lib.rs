@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 #![warn(missing_docs)]
 
+pub mod award;
 pub mod cancellation;
 pub mod events;
 pub mod final_account;
@@ -51,6 +52,7 @@ impl Module for Construction {
         renox::state_machine::register::<Ipa>();
         renox::state_machine::register::<Retention>();
         renox::state_machine::register::<Guarantee>();
+        award::register_block_effect();
         termination::register_types();
         // The attendance module refuses a day after the last working day of a
         // terminated project (`CON.ACL.15`).

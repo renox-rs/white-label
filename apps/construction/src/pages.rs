@@ -2,6 +2,7 @@
 //!
 //! | Route | Name | Needs |
 //! |---|---|---|
+//! | `POST /construction/projects/award` | `construction.project_award` | `projects.award` |
 //! | `POST /construction/projects/{id}/terminate` | `construction.project_terminate` | `projects.terminate` in the project |
 //! | `GET /construction/projects/{id}/closing` | `construction.project_closing` | `projects.view` or `projects.manage` in the project |
 //! | `POST /construction/projects/{id}/settle` | `construction.project_settle` | `projects.manage` in the project |
@@ -17,7 +18,9 @@ use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use renox::state_machine::TransitionError;
 use serde::Serialize;
+use wl_kernel::PartyId;
 
+use crate::award::{self, Award, Awarded};
 use crate::cancellation;
 use crate::final_account::{self, ClosingWarnings};
 use crate::ipa;
@@ -29,6 +32,8 @@ use crate::texts::t;
 /// The routes.
 pub fn routes() -> Routes {
     Routes::new()
+        .post("/construction/projects/award", award)
+        .name("construction.project_award")
         .post("/construction/projects/{id}/terminate", terminate)
         .name("construction.project_terminate")
         .get("/construction/projects/{id}/closing", closing)
@@ -50,6 +55,44 @@ fn answer(error: TransitionError) -> Error {
     match error {
         TransitionError::Guard(message) => refused(message),
         other => other.into_error(),
+    }
+}
+
+/// `POST /construction/projects/award`: `client_party_id`, `code`, `name`,
+/// `contract_value` (fils) and `award_document`. A blocked client is refused
+/// with the text the viewer may see.
+async fn award(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let text = |name: &str| form.get(name).cloned().unwrap_or_default();
+    let client = text("client_party_id")
+        .trim()
+        .parse::<i64>()
+        .map_err(|_| refused(t(&lang, "construction.bad_input")))?;
+    let contract_value = match text("contract_value").trim() {
+        "" => 0,
+        value => value
+            .parse::<i64>()
+            .map_err(|_| refused(t(&lang, "construction.bad_input")))?,
+    };
+    let given = Award {
+        client: PartyId(client),
+        code: text("code"),
+        name: text("name"),
+        contract_value,
+        award_document: text("award_document"),
+        manager_user_id: None,
+    };
+    match award::accept(&state, &user, &given).await.map_err(answer)? {
+        Awarded::Started(_project) => Ok((
+            Toast::success(t(&lang, "construction.award.done")),
+            renox::HxRefresh,
+        )
+            .into_response()),
+        Awarded::Refused(refusal) => Err(refused(refusal.message(&lang))),
     }
 }
 

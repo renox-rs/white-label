@@ -148,7 +148,25 @@ const TEXTS: &[(&str, &str)] = &[
         "construction.cancel.orders_body",
         "The project was cancelled before work started. Tell each supplier and cancel the order: {{ orders }}.",
     ),
+    // Starting a project from an award (BL-CON-03).
+    (
+        "construction.award.document_needed",
+        "Attach the award document (the LPO or the subcontract).",
+    ),
+    (
+        "construction.award.code_and_name_needed",
+        "Give the code and the name of the project.",
+    ),
+    (
+        "construction.award.code_taken",
+        "A project with the code {{ code }} exists.",
+    ),
+    ("construction.award.history", "Started from the award"),
     // The pages.
+    (
+        "construction.award.done",
+        "Project started from the award.",
+    ),
     (
         "construction.terminate.requested",
         "Termination sent to the MD for approval.",

@@ -20,6 +20,10 @@ use renox::state_machine::StateMachine;
 use renox::testing::{TestApp, TestResponse};
 use wl_attendance::{WlAttendance, WorkLocation};
 use wl_inventory::{Location, PurchaseOrder, PurchaseOrderStatus, WlInventory};
+use wl_kernel::block_guard::{
+    ActionKind, BlockFuture, BlockGuard, BlockRefusal, ExceptionStep, GuardOutcome,
+    provide_block_guard,
+};
 use wl_kernel::invoicing::{
     InvoiceDraft, InvoiceFuture, InvoiceId, InvoiceStatus, InvoiceSummary, Invoicer,
     provide_invoicer,
@@ -352,8 +356,49 @@ impl Invoicer for Invoices {
     }
 }
 
+/// The parties wl-parties blocks, as the block guard answers for them: a
+/// blocked party is refused every action but a receipt, and an exception is
+/// approved by the compliance role.
+#[derive(Clone, Default)]
+pub struct Blocked(Arc<Mutex<Vec<PartyId>>>);
+
+impl Blocked {
+    /// `party` is blocked.
+    pub fn block(&self, party: PartyId) {
+        self.0.lock().unwrap().push(party);
+    }
+
+    /// `party` is not blocked any more.
+    pub fn unblock(&self, party: PartyId) {
+        self.0.lock().unwrap().retain(|blocked| *blocked != party);
+    }
+}
+
+impl BlockGuard for Blocked {
+    fn check_in<'a>(
+        &'a self,
+        _tx: &'a mut renox::db::Transaction,
+        _viewer: Option<&'a User>,
+        party: PartyId,
+        kind: ActionKind,
+    ) -> BlockFuture<'a, GuardOutcome> {
+        let blocked = self.0.lock().unwrap().contains(&party);
+        let outcome = if blocked && kind.is_guarded() {
+            GuardOutcome::Blocked(BlockRefusal::neutral(party, kind, "compliance"))
+        } else {
+            GuardOutcome::Allowed
+        };
+        Box::pin(async move { Ok(outcome) })
+    }
+
+    fn exception_step(&self) -> ExceptionStep {
+        ExceptionStep::new("compliance")
+    }
+}
+
 /// Records the events and provides the fakes.
 struct Fakes {
+    blocked: Blocked,
     staff: Staff,
     tasks: Tasks,
     notices: Recording,
@@ -371,6 +416,7 @@ impl Module for Fakes {
         provide_task_creator(app, self.tasks.clone());
         provide_notifier(app, self.notices.clone());
         provide_invoicer(app, self.invoices.clone());
+        provide_block_guard(app, self.blocked.clone());
         record(app, &self.terminated);
     }
 }
@@ -387,6 +433,8 @@ pub struct Booted {
     pub notices: Recording,
     /// The invoices of wl-invoicing.
     pub invoices: Invoices,
+    /// The parties wl-parties blocks.
+    pub blocked: Blocked,
     /// `ProjectTerminated`.
     pub terminated: Recorded<ProjectTerminated>,
     /// Days the clock was moved forward from the real one.
@@ -556,8 +604,10 @@ pub async fn boot() -> Booted {
     let tasks = Tasks::default();
     let notices = Recording::default();
     let invoices = Invoices::default();
+    let blocked = Blocked::default();
     let terminated = Arc::new(Mutex::new(Vec::new()));
     let fakes = Fakes {
+        blocked: blocked.clone(),
         staff: staff.clone(),
         tasks: tasks.clone(),
         notices: notices.clone(),
@@ -588,6 +638,7 @@ pub async fn boot() -> Booted {
             perm::PROJECTS_VIEW,
             perm::PROJECTS_MANAGE,
             perm::PROJECTS_TERMINATE,
+            perm::PROJECTS_AWARD,
         ],
     )
     .await
@@ -612,6 +663,7 @@ pub async fn boot() -> Booted {
         tasks,
         notices,
         invoices,
+        blocked,
         terminated: Recorded(terminated),
         clock_days: std::sync::atomic::AtomicI64::new(0),
         made: std::sync::atomic::AtomicI64::new(0),

@@ -14,6 +14,10 @@ pub const PROJECTS_TERMINATE: &str = "projects.terminate";
 /// (`CON.ACL.15`): the MD's, which the company admin holds.
 pub const PROJECTS_CANCEL: &str = "projects.cancel";
 
+/// Accept an award and start a project from it (the step the quotation's
+/// `accept` ends with, BL-CON-03).
+pub const PROJECTS_AWARD: &str = "projects.award";
+
 /// The role of the project manager.
 pub const PROJECT_MANAGER_ROLE: &str = "project_manager";
 
@@ -29,6 +33,7 @@ pub const ALL: &[&str] = &[
     PROJECTS_MANAGE,
     PROJECTS_TERMINATE,
     PROJECTS_CANCEL,
+    PROJECTS_AWARD,
 ];
 
 #[cfg(test)]
