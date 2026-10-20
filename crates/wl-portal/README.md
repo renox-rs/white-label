@@ -25,6 +25,7 @@ What is here so far:
 | The refusal log (portal user, party, action, time) for staff with `parties.block_reason.view` | §6 | `refusals` |
 
 | Read-only sections (`PortalSection`, `register_section`; the page `GET /portal/{party}/{section}` lists the rows a module stored, with their statuses, and never asks the block, so a request submitted before the block still reads *In review*) | §6 | `sections` |
+| Who acts for a party (`GrantUsers`, the kernel's `PortalUsers`): the users of the `active` grants of a party on a day, with their roles, and whether a user acts for it | §3, §6 | `users` |
 | Signed links (`SignedLinks::issue`, `GET /portal/link/{party}/{action}`): a payment link keeps working while the party is blocked, a link whose action is new business shows the neutral text and creates nothing (`PortalGuard::require_link`); `SignedLinkUsed` | §5.4, §6 | `links` |
 
 Invitations (tokens, mail), portal roles with their permissions, login methods, the other signed-link actions
