@@ -583,16 +583,23 @@ pub async fn boot_app(
     // The ticket list reads the names of vendor parties from wl-parties'
     // table, which this app does not have (the crate does not depend on
     // wl-parties): a stand-in with the two vendors of `TestDirectory`.
-    sql(
-        r#"CREATE TABLE "wl_parties_parties" (id INTEGER PRIMARY KEY, display_name TEXT NOT NULL)"#,
-    )
-    .execute(app.db())
-    .await
-    .expect("the stand-in table");
-    sql(r#"INSERT INTO "wl_parties_parties" (id, display_name) VALUES (5, 'CoolAir'), (6, 'Dusty Ducts'), (7, 'SafeFire LLC'), (8, 'BlueFire')"#)
+    // (Not when the real wl-parties is part of the app: it has the table.)
+    let real_parties = sql("SELECT name FROM sqlite_master WHERE name = 'wl_parties_parties'")
+        .scalar_optional::<String>(app.db())
+        .await
+        .expect("the table check");
+    if real_parties.is_none() {
+        sql(
+            r#"CREATE TABLE "wl_parties_parties" (id INTEGER PRIMARY KEY, display_name TEXT NOT NULL)"#,
+        )
         .execute(app.db())
         .await
-        .expect("the stand-in rows");
+        .expect("the stand-in table");
+        sql(r#"INSERT INTO "wl_parties_parties" (id, display_name) VALUES (5, 'CoolAir'), (6, 'Dusty Ducts'), (7, 'SafeFire LLC'), (8, 'BlueFire')"#)
+            .execute(app.db())
+            .await
+            .expect("the stand-in rows");
+    }
     if client == CLIENT {
         seed::install(app.db()).await.expect("the defaults seed");
     } else {
