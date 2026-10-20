@@ -8,6 +8,8 @@
 //! | `POST /supplier-returns/{id}/dispatch` | `wl_inventory.return_dispatch` | `supplier_returns.manage` |
 //! | `POST /supplier-returns/{id}/credit` | `wl_inventory.return_credit` | `supplier_returns.manage` |
 //! | `POST /supplier-returns/{id}/cancel` | `wl_inventory.return_cancel` | `supplier_returns.manage` |
+//! | `POST /purchase-orders/{id}/revise` | `wl_inventory.order_revise` | `purchase_orders.issue` |
+//! | `GET /purchase-orders/{id}/revisions/{revision}/document` | `wl_inventory.order_document` | `purchase_orders.view` or `.issue` |
 //! | `POST /goods-receipts/{id}/reverse` | `wl_inventory.receipt_reverse` | `goods_receipts.reverse` at the receiving location |
 //!
 //! The routes need a signed-in user and carry no permission guard of their
@@ -17,6 +19,8 @@
 //! like `80` or `12.5`. The screens of the field PWA come later; the receipt
 //! and its lines are recorded with [`crate::goods_receipt::create_draft`].
 
+use std::collections::BTreeMap;
+
 use renox::auth::permissions::users_with_permission_in;
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
@@ -25,6 +29,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::goods_receipt::{DraftLine, GoodsReceipt, GoodsReceiptStatus, update_line};
 use crate::permissions;
+use crate::po_revise::{ReviseInput, ReviseOutcome};
+use crate::purchase_order::PurchaseOrder;
 use crate::receipt_post::{PostOutcome, post};
 use crate::return_credit::{CreditBasis, CreditOutcome, KeptGoods};
 use crate::return_dispatch::{CollectionProof, DispatchOutcome};
@@ -40,6 +46,13 @@ pub fn routes() -> Routes {
         .name("wl_inventory.receipt_post")
         .post("/goods-receipts/{id}/reverse", reverse_receipt)
         .name("wl_inventory.receipt_reverse")
+        .post("/purchase-orders/{id}/revise", revise_order)
+        .name("wl_inventory.order_revise")
+        .get(
+            "/purchase-orders/{id}/revisions/{revision}/document",
+            order_document,
+        )
+        .name("wl_inventory.order_document")
         .post("/supplier-returns/{id}/dispatch", dispatch_return)
         .name("wl_inventory.return_dispatch")
         .post("/supplier-returns/{id}/credit", credit_return)
@@ -290,6 +303,128 @@ async fn reverse_receipt(
     }
 }
 
+/// `text` ("120", "1200.50", "0.5") as fils; `None` for anything else, a
+/// negative number or more than two decimals.
+pub fn parse_money(text: &str) -> Option<i64> {
+    let text = text.trim().replace(',', "");
+    let (whole, fraction) = match text.split_once('.') {
+        Some((whole, fraction)) => (whole, fraction),
+        None => (text.as_str(), ""),
+    };
+    if (whole.is_empty() && fraction.is_empty()) || fraction.len() > 2 {
+        return None;
+    }
+    let digits = |s: &str| s.chars().all(|c| c.is_ascii_digit());
+    if !digits(whole) || !digits(fraction) {
+        return None;
+    }
+    let whole: i64 = if whole.is_empty() {
+        0
+    } else {
+        whole.parse().ok()?
+    };
+    let fraction: i64 = format!("{fraction:0<2}").parse().ok()?;
+    whole.checked_mul(100)?.checked_add(fraction)
+}
+
+/// The revision of a purchase order the form of `revise` asks for: `reason`,
+/// optionally `expected_date` (like `2027-01-31`) with `requested_by` (`us`
+/// or `supplier`), and `qty_<line>` and `price_<line>` for each line that
+/// changes (price in the order's currency, like `1200.50`).
+fn revision_of(form: &BTreeMap<String, String>) -> std::result::Result<ReviseInput, &'static str> {
+    let field = |name: &str| form.get(name).map(|v| v.trim()).filter(|v| !v.is_empty());
+    let mut asked = ReviseInput::new(field("reason").unwrap_or_default());
+    asked.currency = field("currency").map(str::to_owned);
+    if let Some(date) = field("expected_date") {
+        asked.expected_date =
+            Some(NaiveDate::parse_from_str(date, "%Y-%m-%d").map_err(|_| "revise.bad_date")?);
+        asked.date_requested_by = field("requested_by").map(str::to_owned);
+    }
+    for (name, quantity) in form {
+        let Some(id) = name
+            .strip_prefix("qty_")
+            .and_then(|id| id.parse::<i64>().ok())
+        else {
+            continue;
+        };
+        let price = form
+            .get(&format!("price_{id}"))
+            .and_then(|price| parse_money(price));
+        match (parse_quantity(quantity), price) {
+            (Some(quantity), Some(price)) => {
+                asked = asked.line(id, quantity, price);
+            }
+            _ => return Err("revise.bad_number"),
+        }
+    }
+    Ok(asked)
+}
+
+/// `POST /purchase-orders/{id}/revise`: revises an issued order. A higher
+/// total above a limit asks the approvers instead, and the revision in force
+/// stays until they agree (`STK.ACL.03`).
+async fn revise_order(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Form(form): Form<BTreeMap<String, String>>,
+) -> Result<Response> {
+    let asked = revision_of(&form).map_err(|key| refused(text(&lang, key)))?;
+    match crate::po_revise::revise(&state, &user, id, &asked).await {
+        Ok(ReviseOutcome::Revised(_)) => Ok((
+            Toast::success(text(&lang, "revise.revised")),
+            renox::HxRefresh,
+        )
+            .into_response()),
+        Ok(ReviseOutcome::Waiting(_)) => Ok((
+            Toast::success(text(&lang, "revise.waiting")),
+            renox::HxRefresh,
+        )
+            .into_response()),
+        Err(TransitionError::Guard(message)) => Err(refused(message)),
+        Err(other) => Err(other.into_error()),
+    }
+}
+
+/// `GET /purchase-orders/{id}/revisions/{revision}/document`: the PDF of a
+/// revision, the one in force or an earlier one kept read-only.
+async fn order_document(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path((id, revision)): Path<(i64, i64)>,
+) -> Result<Response> {
+    let mut allowed = false;
+    for permission in [
+        permissions::PURCHASE_ORDERS_VIEW,
+        permissions::PURCHASE_ORDERS_ISSUE,
+    ] {
+        allowed |= users_with_permission_in(
+            &state.db,
+            permission,
+            &renox::auth::permissions::Scope::global(),
+        )
+        .await?
+        .iter()
+        .any(|holder| holder.id == user.id);
+    }
+    if !allowed {
+        return Err(Error::Forbidden);
+    }
+    let order = PurchaseOrder::find_or_404(&state.db, id).await?;
+    let document = if revision == order.revision {
+        order.document
+    } else {
+        crate::po_revise::revisions_of(&state.db, id)
+            .await?
+            .into_iter()
+            .find(|kept| kept.revision == revision)
+            .and_then(|kept| kept.document)
+    };
+    let document = document.ok_or(Error::NotFound)?;
+    Ok(([("content-type", "application/pdf")], document).into_response())
+}
+
 /// What procurement enters to dispatch a return.
 #[derive(Deserialize, Serialize, Validate, Debug, Default)]
 pub struct DispatchForm {
@@ -468,6 +603,42 @@ mod tests {
         for bad in ["", " ", "-5", "1.2345", "abc", "1.2.3", "."] {
             assert_eq!(parse_quantity(bad), None, "{bad:?}");
         }
+    }
+
+    #[test]
+    fn a_price_is_fils() {
+        assert_eq!(parse_money("120"), Some(12_000));
+        assert_eq!(parse_money("1,200.5"), Some(120_050));
+        assert_eq!(parse_money(" 0.05 "), Some(5));
+        assert_eq!(parse_money(".5"), Some(50));
+        for bad in ["", "-1", "1.234", "x", "."] {
+            assert_eq!(parse_money(bad), None, "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn a_revision_form_names_lines_by_id() {
+        let form: BTreeMap<String, String> = [
+            ("reason", "price rise"),
+            ("qty_11", "10"),
+            ("price_11", "1200.00"),
+            ("expected_date", "2027-01-31"),
+            ("requested_by", "supplier"),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_owned(), v.to_owned()))
+        .collect();
+        let asked = revision_of(&form).unwrap();
+        assert_eq!(asked.reason, "price rise");
+        assert_eq!(asked.lines.len(), 1);
+        assert_eq!(
+            (asked.lines[0].quantity_milli, asked.lines[0].unit_price),
+            (10_000, 120_000)
+        );
+        assert_eq!(asked.date_requested_by.as_deref(), Some("supplier"));
+        let mut bad = form.clone();
+        bad.insert("price_11".into(), "free".into());
+        assert!(revision_of(&bad).is_err());
     }
 
     #[test]
