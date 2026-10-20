@@ -103,6 +103,9 @@ code = "FLA"
 name_en = "Falcon Ledger Accountants LLC"
 trn = "100000000000003"
 default = true
+
+[calendar]
+holidays = ["2026-12-02", "2026-12-03"]
 "#;
 
 /// The guarded transition the KYC kinds block.
@@ -984,6 +987,9 @@ code = "FLA"
 name_en = "Falcon Ledger Accountants LLC"
 trn = "100000000000003"
 default = true
+
+[calendar]
+holidays = ["2026-12-02", "2026-12-03"]
 "#;
 
 /// Accounting booted with auth, the audit log, the kernel, the real

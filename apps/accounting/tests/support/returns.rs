@@ -7,6 +7,7 @@ use accounting::returns::{self, NewReturn};
 use accounting::{Engagement, Return, ReturnStatus, ReturnType};
 use renox::chrono::NaiveDate;
 use renox::prelude::*;
+use renox::state_machine::StateMachine;
 use renox::testing::TestResponse;
 use wl_kernel::PartyId;
 use wl_kernel::deadlines::{
@@ -135,6 +136,46 @@ impl Booted {
         )
         .await
         .expect("the return opens")
+    }
+
+    /// A return of `engagement` inserted directly in `status` (a fixture),
+    /// with figures and workpapers, for a period ending `period_end` and due
+    /// `due`; a `filed` one carries its acknowledgement.
+    pub async fn return_in(
+        &self,
+        engagement: &Engagement,
+        kind: ReturnType,
+        period_end: NaiveDate,
+        due: NaiveDate,
+        status: ReturnStatus,
+    ) -> Return {
+        let mut ret = Return {
+            client_party_id: engagement.client_party_id,
+            engagement_id: engagement.id,
+            return_type: kind,
+            period_end,
+            due_date: due,
+            version: 1,
+            figures: Some("Output VAT 12,000; input VAT 4,000".to_owned()),
+            workpapers_attached: true,
+            filed_on: (status == ReturnStatus::Filed).then_some(due),
+            acknowledgement: (status == ReturnStatus::Filed).then(|| "FTA-ACK-0001".to_owned()),
+            status,
+            ..Return::default()
+        };
+        let mut tx = self.db().begin().await.unwrap();
+        ret.insert_in_state(&mut tx, status, "fixture")
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+        self.return_now(&ret).await
+    }
+
+    /// `user` marks the approved `ret` filed through the route, as the filer
+    /// does (the FTA acknowledgement attached).
+    pub async fn file_return(&self, user: &User, ret: &Return) -> TestResponse {
+        self.ret_act(user, ret, "file", &[("acknowledgement", "FTA-ACK-0002")])
+            .await
     }
 
     /// `ret`, as stored now.
