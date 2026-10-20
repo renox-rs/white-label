@@ -89,7 +89,7 @@ pub use compliance::{ComplianceAlert, ComplianceRule, CriticalRule, Planned};
 pub use config::{ClientConfig, ConfigError, RolesConfig, owner_role};
 pub use consents::{Consents, NoConsents};
 pub use delivery::{
-    DELIVERY_SUBJECT_TYPE, DeliveredLine, DeliveryAssigned, DeliveryAttemptFailed,
+    CodAbsorber, CodAbsorption, DELIVERY_SUBJECT_TYPE, DeliveredLine, DeliveryAssigned, DeliveryAttemptFailed,
     DeliveryDelivered, DeliveryDisputeClosed, DeliveryDisputed, DeliveryFound, DeliveryFuture,
     DeliveryId,
     DeliveryItem, DeliveryLost, DeliveryOutForDelivery, DeliveryRefusedReceived, DeliveryRequest,

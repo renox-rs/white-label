@@ -440,6 +440,106 @@ pub struct DeliveryDelivered {
 
 impl Event for DeliveryDelivered {}
 
+/// Who absorbs a cash-on-delivery difference (`WRK.ACL.09`, wl-invoicing
+/// §5.2 step 4).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CodAbsorber {
+    /// The customer still owes it: it stays open on the invoice.
+    Customer,
+    /// The client (03) agreed to bear it: a negative line on the COD
+    /// remittance.
+    Client,
+    /// The business bears it: a COD loss, not billed.
+    Business,
+    /// The driver bears it: not billed, it stays expected in the driver's
+    /// cash handover.
+    Driver,
+}
+
+impl CodAbsorber {
+    /// The stored key: `customer`, `client`, `business` or `driver`.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            CodAbsorber::Customer => "customer",
+            CodAbsorber::Client => "client",
+            CodAbsorber::Business => "business",
+            CodAbsorber::Driver => "driver",
+        }
+    }
+
+    /// The absorber stored as `key`.
+    pub fn parse(key: &str) -> Option<CodAbsorber> {
+        [
+            CodAbsorber::Customer,
+            CodAbsorber::Client,
+            CodAbsorber::Business,
+            CodAbsorber::Driver,
+        ]
+        .into_iter()
+        .find(|a| a.as_str() == key.trim())
+    }
+
+    /// Whether the difference reduces what is billed (the business or the
+    /// driver bears it; the customer still owes it and the client bears it
+    /// on its remittance).
+    pub fn reduces_the_invoice(self) -> bool {
+        matches!(self, CodAbsorber::Business | CodAbsorber::Driver)
+    }
+}
+
+/// A COD difference with its absorber, as `DeliveryDelivered` carries it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CodAbsorption {
+    /// Who bears it.
+    pub absorber: CodAbsorber,
+    /// The difference in fils, above 0.
+    pub amount: i64,
+    /// The reason of the difference.
+    pub reason: String,
+}
+
+impl CodAbsorption {
+    /// The amount of the adjustment line this puts on the client's COD
+    /// remittance: the negative difference when the client bears it, else 0
+    /// (apps/logistics `LOG.COD.01`).
+    pub fn remittance_adjustment(&self) -> i64 {
+        if self.absorber == CodAbsorber::Client {
+            -self.amount
+        } else {
+            0
+        }
+    }
+}
+
+impl DeliveryDelivered {
+    /// The quantity to bill for the source line `line`, in thousandths: what
+    /// the recipient accepted, never the refused quantity. `None` for a
+    /// line the delivery does not carry. A source that drafts its invoice
+    /// after the delivery uses it for its quantities.
+    pub fn billable_milli(&self, line: &Subject) -> Option<i64> {
+        self.lines
+            .iter()
+            .find(|l| l.line.as_ref() == Some(line))
+            .map(|l| l.delivered_milli)
+    }
+
+    /// The COD difference and who bears it: `None` when cash matched or the
+    /// difference has no known absorber (a difference of the driver's own
+    /// accepting before `WRK.ACL.09` is built carries none).
+    pub fn cod_absorption(&self) -> Option<CodAbsorption> {
+        if self.cod_difference <= 0 {
+            return None;
+        }
+        let absorber = CodAbsorber::parse(self.absorbed_by.as_deref()?)?;
+        Some(CodAbsorption {
+            absorber,
+            amount: self.cod_difference,
+            reason: self.cod_difference_reason.clone().unwrap_or_default(),
+        })
+    }
+}
+
 /// A visit failed (`fail`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DeliveryAttemptFailed {
@@ -673,5 +773,55 @@ mod tests {
         assert_eq!(value["ticket"], json!(11));
         assert_eq!(value["was_under_review"], json!(true));
         assert_eq!(value["lines"].as_array().unwrap().len(), 1);
+    }
+
+    fn delivered(difference: i64, absorbed_by: Option<&str>) -> DeliveryDelivered {
+        let line = Subject::new("sales.order_line", 1);
+        DeliveryDelivered {
+            delivery: DeliveryId(7),
+            source: Subject::new("sales.order", 9),
+            attempt: 1,
+            proof: 1,
+            lines: vec![DeliveredLine {
+                line: Some(line),
+                description: "Cartons".to_owned(),
+                quantity_milli: 10_000,
+                delivered_milli: 8_000,
+                refused_milli: 2_000,
+                refusal_reason: Some("damaged".to_owned()),
+            }],
+            cash_expected: 40_000,
+            cash_collected: 40_000 - difference,
+            cod_difference: difference,
+            cod_difference_reason: Some("recipient short of cash".to_owned()),
+            absorbed_by: absorbed_by.map(str::to_owned),
+            cheque: None,
+        }
+    }
+
+    #[test]
+    fn the_billable_quantity_is_the_delivered_one() {
+        let event = delivered(0, None);
+        assert_eq!(
+            event.billable_milli(&Subject::new("sales.order_line", 1)),
+            Some(8_000)
+        );
+        assert_eq!(event.billable_milli(&Subject::new("sales.order_line", 2)), None);
+    }
+
+    #[test]
+    fn a_cod_difference_names_its_absorber_and_only_the_client_adjusts_a_remittance() {
+        assert_eq!(delivered(0, Some("client")).cod_absorption(), None);
+        assert_eq!(delivered(3_000, None).cod_absorption(), None);
+        assert_eq!(delivered(3_000, Some("carrier")).cod_absorption(), None);
+        let client = delivered(3_000, Some("client")).cod_absorption().unwrap();
+        assert_eq!(client.absorber, CodAbsorber::Client);
+        assert_eq!(client.remittance_adjustment(), -3_000);
+        let business = delivered(3_000, Some("business")).cod_absorption().unwrap();
+        assert_eq!(business.remittance_adjustment(), 0);
+        assert!(business.absorber.reduces_the_invoice());
+        assert!(CodAbsorber::Driver.reduces_the_invoice());
+        assert!(!CodAbsorber::Customer.reduces_the_invoice());
+        assert!(!CodAbsorber::Client.reduces_the_invoice());
     }
 }

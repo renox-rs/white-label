@@ -47,6 +47,7 @@ pub mod credit_notes;
 pub mod debit_note_line;
 mod debit_note_machine;
 pub mod debit_notes;
+pub mod delivery_billing;
 pub mod delivery_dispute;
 pub mod dispute;
 pub mod dispute_credit;
@@ -774,6 +775,7 @@ impl Module for WlInvoicing {
             .model::<InvoicingTask>()
             .model::<Dispute>()
             .model::<delivery_dispute::DeliveryReview>()
+            .model::<delivery_billing::CodDifference>()
             .model::<EscalationLog>()
             .model::<ReminderLog>()
             .model::<VatAdjustment>()
@@ -963,6 +965,9 @@ impl Module for WlInvoicing {
         // A delivery under review flags its invoices, and its close, reversal
         // or loss resolves them or tasks the owner (#69).
         delivery_dispute::register(app);
+        // `DeliveryDelivered` bills the delivered quantity and handles a COD
+        // difference (#85).
+        delivery_billing::register(app);
         // `invoicing.dispute_escalation`: the notice of `FIN.RUL.15`.
         escalation::register_types();
         escalation::schedule(app);
