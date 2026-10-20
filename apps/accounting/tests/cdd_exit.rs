@@ -325,3 +325,88 @@ async fn the_end_waits_for_the_returns_and_the_client_is_told_only_by_the_mlro()
     assert_eq!(t.notices.of_type(ENDED_NOTICE).len(), 1);
     assert_eq!(t.notices.to_party(client.company).len(), 1);
 }
+
+/// The reason of an exit or a reject is for the MLRO and the deputy: the
+/// deputy sees it on the file, a manager sees neither the exit reason nor the
+/// reject reason on the page, in the history of the file, of the engagement or
+/// of the partner's task.
+#[renox::test]
+async fn the_deputy_sees_the_reason_and_the_manager_sees_neither_exit_nor_reject_reason() {
+    use renox::state_machine::history;
+
+    let t = boot_real().await;
+    let (mlro, deputy, manager) = (t.mlro().await, t.deputy().await, t.manager().await);
+    let exited_client = t.client_named(" Exit").await;
+    let rejected_client = t.client_named(" Reject").await;
+    let exit_reason = "Exit: adverse media on the owner";
+    let reject_reason = "Reject: forged licence";
+
+    let approved = t.cdd_approved(&exited_client, &mlro).await;
+    let exit_engagement = t
+        .engagement_in(&exited_client, EngagementStatus::Active, None)
+        .await;
+    let pending = file_in(&t, rejected_client.company, CddStatus::PendingApproval).await;
+    let reject_engagement = t
+        .engagement_in(&rejected_client, EngagementStatus::Active, None)
+        .await;
+    t.post(
+        &mlro,
+        &format!("/accounting/cdd/{}/exit", approved.id),
+        &[("reason", exit_reason)],
+    )
+    .await
+    .assert_ok();
+    t.post(
+        &deputy,
+        &format!("/accounting/cdd/{}/reject", pending.id),
+        &[("reason", reject_reason)],
+    )
+    .await
+    .assert_ok();
+
+    for (file, reason, word) in [
+        (&approved, exit_reason, "adverse media"),
+        (&pending, reject_reason, "forged licence"),
+    ] {
+        let page = format!("/accounting/cdd/{}", file.id);
+        for viewer in [&mlro, &deputy] {
+            t.get(viewer, &page).await.assert_ok().assert_see(word);
+        }
+        let shown = t.get(&manager, &page).await;
+        shown.assert_ok();
+        assert!(!shown.text().contains(word), "{}", shown.text());
+        // History rows, the engagement's and the partner's task.
+        let rows = history(t.db(), CddFile::TABLE, file.id).await.unwrap();
+        assert!(
+            !format!("{rows:?}").contains(word),
+            "the history of {} carries the reason",
+            file.id
+        );
+        let key = partner_key(file);
+        for task in tickets_with(&t, &key).await {
+            assert!(!task.description.contains(word) && !task.title.contains(word));
+            assert!(!task.description.contains(reason));
+        }
+    }
+    for engagement in [&exit_engagement, &reject_engagement] {
+        let page = t
+            .get(
+                &manager,
+                &format!("/accounting/engagements/{}", engagement.id),
+            )
+            .await
+            .text();
+        for word in ["adverse media", "forged licence"] {
+            assert!(!page.contains(word), "the engagement page shows `{word}`");
+        }
+        let rows = history(t.db(), accounting::Engagement::TABLE, engagement.id)
+            .await
+            .unwrap();
+        let shown = format!("{rows:?}");
+        for word in ["adverse media", "forged licence"] {
+            assert!(!shown.contains(word));
+        }
+    }
+    let list = t.get(&manager, "/accounting/engagements").await.text();
+    assert!(!list.contains("adverse media") && !list.contains("forged licence"));
+}
