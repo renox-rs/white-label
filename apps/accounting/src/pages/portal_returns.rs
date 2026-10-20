@@ -87,20 +87,6 @@ async fn visible(state: &AppState, user: &AuthUser, id: i64) -> Result<Return> {
     Ok(ret)
 }
 
-/// The return `id` for a client user who may act on it: [`visible`] and the
-/// portal is not read-only. After the engagement ends the portal only reads
-/// for 90 days (`POR.ACL.01`), so approving, sending back and withdrawing
-/// are refused with 403.
-async fn writable(state: &AppState, user: &AuthUser, id: i64) -> Result<Return> {
-    let ret = visible(state, user, id).await?;
-    if !user.has_permission(permissions::RETURNS_VIEW)
-        && portal::is_read_only(state, ret.client()).await?
-    {
-        return Err(Error::Forbidden);
-    }
-    Ok(ret)
-}
-
 /// `GET /accounting/portal/returns/{id}`.
 async fn show(
     State(state): State<AppState>,
@@ -154,7 +140,7 @@ async fn approve(
     lang: Lang,
     Path(id): Path<i64>,
 ) -> Result<Response> {
-    writable(&state, &user, id).await?;
+    visible(&state, &user, id).await?;
     let ip = ip.map(|ip| ip.to_string());
     returns::approve(&state, &user, id, ip.as_deref()).await?;
     Ok((
@@ -180,7 +166,7 @@ async fn send_back(
     Path(id): Path<i64>,
     Form(form): Form<CommentForm>,
 ) -> Result<Response> {
-    writable(&state, &user, id).await?;
+    visible(&state, &user, id).await?;
     returns::send_back(&state, &user, id, &form.comment).await?;
     Ok((
         Toast::success(text(&lang, "returns.sent_back")),
@@ -198,7 +184,7 @@ async fn withdraw(
     Path(id): Path<i64>,
     Form(form): Form<CommentForm>,
 ) -> Result<Response> {
-    writable(&state, &user, id).await?;
+    visible(&state, &user, id).await?;
     returns::withdraw_approval(&state, &user, id, &form.comment, None).await?;
     Ok((
         Toast::success(text(&lang, "returns.withdrawn")),
