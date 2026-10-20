@@ -24,6 +24,10 @@ use wl_inventory::{
 use wl_kernel::block_guard::{
     ActionKind, BlockFuture, BlockGuard, BlockRefusal, GuardOutcome, provide_block_guard,
 };
+use wl_kernel::documents::{
+    BlockEntry, CheckOutcome, DocumentFuture, DocumentGuard, FlagFailure, InvalidReason,
+    NoDocuments, RecordFlag, Validity,
+};
 use wl_kernel::inventory::{
     GoodsReceived, LandedCostAdjusted, LandedCostAllocated, PurchaseOrderRevised,
     SupplierReturnCredited, SupplierReturnDispatched, SupplierScoreBelowThreshold,
@@ -32,10 +36,6 @@ use wl_kernel::invoicing::{
     CostPoster, DebitedLine, PeriodLocks, PostCost, SupplierBillFuture, SupplierBillId,
     SupplierBillLine, SupplierBillLineId, SupplierBillStatus, SupplierBills,
     SupplierDebitNoteCancelled, SupplierDebitNoteId, SupplierDebitNoteIssued,
-};
-use wl_kernel::documents::{
-    BlockEntry, CheckOutcome, DocumentFuture, DocumentGuard, FlagFailure, InvalidReason,
-    NoDocuments, RecordFlag, Validity,
 };
 use wl_kernel::notify::{MessageId, Notifier, NotifyFuture, NotifyRequest};
 use wl_kernel::tickets::{OpenTicket, TaskCreator, TicketFuture, TicketId, TicketRef};
@@ -248,7 +248,12 @@ impl Blocked {
 
     /// The suppliers blocked now.
     pub fn blocked(&self) -> Vec<PartyId> {
-        self.parties.lock().unwrap().iter().map(|(p, _)| *p).collect()
+        self.parties
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(p, _)| *p)
+            .collect()
     }
 }
 
@@ -395,9 +400,7 @@ impl DocumentGuard for Certificates {
 /// A `SupplierIncidentSource` the test reports incidents to, standing in for
 /// the NCRs on incoming lots of a vertical; an incident can be voided later.
 #[derive(Clone, Default)]
-pub struct SupplierIncidents(
-    Arc<Mutex<Vec<(wl_kernel::inventory::SupplierIncident, bool)>>>,
-);
+pub struct SupplierIncidents(Arc<Mutex<Vec<(wl_kernel::inventory::SupplierIncident, bool)>>>);
 
 impl SupplierIncidents {
     /// `reference` (an NCR, say) is reported for `supplier` on `on`.

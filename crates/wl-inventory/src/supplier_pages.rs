@@ -22,8 +22,8 @@ use renox::prelude::*;
 use serde::Serialize;
 
 use crate::item_supplier::{
-    self, DeactivateOutcome, LastPrice, NewItemSupplier, SupplierRole, holds,
-    is_on_hold, last_price, refused, rows_of, warnings_of,
+    self, DeactivateOutcome, LastPrice, NewItemSupplier, SupplierRole, holds, is_on_hold,
+    last_price, refused, rows_of, warnings_of,
 };
 use crate::pages::parse_quantity;
 use crate::permissions;
@@ -389,11 +389,7 @@ async fn add_score_note(
 ) -> Result<Response> {
     let note = form.get("note").map(String::as_str).unwrap_or_default();
     crate::supplier_score::add_note(&state, &user, id, note).await?;
-    Ok((
-        Toast::success(text(&lang, "score.noted")),
-        renox::HxRefresh,
-    )
-        .into_response())
+    Ok((Toast::success(text(&lang, "score.noted")), renox::HxRefresh).into_response())
 }
 
 /// `POST /supplier-reviews/{id}/close`: `decision` (`keep`, `watch`,

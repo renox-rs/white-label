@@ -7,8 +7,8 @@
 mod support;
 
 use renox::prelude::*;
-use wl_inventory::{DraftLine, Item, Location, PurchaseOrder, PurchaseOrderLine};
 use wl_inventory::PurchaseOrderStatus;
+use wl_inventory::{DraftLine, Item, Location, PurchaseOrder, PurchaseOrderLine};
 use wl_kernel::BLOCK_EXCEPTION_ACTION;
 use wl_kernel::approvals::{self, ApprovalRequest, ApprovalStatus};
 
@@ -70,18 +70,12 @@ async fn an_approved_exception_issues_the_order_once() {
     assert_eq!(requests.len(), 1);
     assert_eq!(requests[0].action, BLOCK_EXCEPTION_ACTION);
     assert_eq!(requests[0].transition, "issue");
-    assert_eq!(
-        t.order_now(&order).await.status,
-        PurchaseOrderStatus::Draft
-    );
+    assert_eq!(t.order_now(&order).await.status, PurchaseOrderStatus::Draft);
 
     // The requester does not decide it.
     let refused = approvals::approve(t.state(), requests[0].id, &a, "").await;
     assert!(matches!(refused, Err(Error::Forbidden)), "{refused:?}");
-    assert_eq!(
-        t.order_now(&order).await.status,
-        PurchaseOrderStatus::Draft
-    );
+    assert_eq!(t.order_now(&order).await.status, PurchaseOrderStatus::Draft);
 
     approvals::approve(t.state(), requests[0].id, &fatima, "approved")
         .await
@@ -89,7 +83,10 @@ async fn an_approved_exception_issues_the_order_once() {
     let issued = t.order_now(&order).await;
     assert_eq!(issued.status, PurchaseOrderStatus::Issued);
     assert!(
-        issued.number.as_deref().is_some_and(|n| n.starts_with("PO-")),
+        issued
+            .number
+            .as_deref()
+            .is_some_and(|n| n.starts_with("PO-")),
         "{:?}",
         issued.number
     );
@@ -136,7 +133,12 @@ async fn an_order_to_an_active_supplier_is_issued_and_numbered() {
     t.issue_as(&a, &order, &[]).await.assert_ok();
     let issued = t.order_now(&order).await;
     assert_eq!(issued.status, PurchaseOrderStatus::Issued);
-    assert!(issued.number.as_deref().is_some_and(|n| n.starts_with("PO-")));
+    assert!(
+        issued
+            .number
+            .as_deref()
+            .is_some_and(|n| n.starts_with("PO-"))
+    );
 
     let (free, _line) = t.draft_order(&store, &item, 10_000, 0).await;
     t.issue_as(&a, &free, &[]).await.assert_status(422);
@@ -213,10 +215,7 @@ async fn only_a_holder_of_the_reason_permission_sees_the_reason() {
     seen_by_mlro.assert_status(422);
     let body = seen_by_mlro.text();
     assert!(body.contains("Blocked: Sanctions"), "{body}");
-    assert_eq!(
-        t.order_now(&order).await.status,
-        PurchaseOrderStatus::Draft
-    );
+    assert_eq!(t.order_now(&order).await.status, PurchaseOrderStatus::Draft);
 }
 
 /// A supplier blocked while the exception waits has the exception failed at
@@ -238,5 +237,8 @@ async fn unblocking_does_not_stop_a_pending_exception_from_issuing() {
     approvals::approve(t.state(), requests[0].id, &fatima, "")
         .await
         .unwrap();
-    assert_eq!(t.order_now(&order).await.status, PurchaseOrderStatus::Issued);
+    assert_eq!(
+        t.order_now(&order).await.status,
+        PurchaseOrderStatus::Issued
+    );
 }

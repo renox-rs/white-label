@@ -10,8 +10,8 @@ use wl_inventory::PurchaseOrder;
 use wl_inventory::supplier_review::{self, ReviewStatus, SupplierReview, block_task_key, task_key};
 use wl_inventory::supplier_score::{self, ScoreBand};
 use wl_inventory::{
-    GoodsReceipt, GoodsReceiptLine, GoodsReceiptStatus, Item, ItemSupplier, PreferredSupplierRequest,
-    SupplierRole, SupplierScore,
+    GoodsReceipt, GoodsReceiptLine, GoodsReceiptStatus, Item, ItemSupplier,
+    PreferredSupplierRequest, SupplierRole, SupplierScore,
 };
 use wl_kernel::PartyId;
 use wl_kernel::notify::NotifyRecipient;
@@ -33,7 +33,9 @@ async fn snapshot(t: &Booted, date: NaiveDate, score: Option<i64>) -> SupplierSc
     let mut row = SupplierScore {
         supplier_party_id: GULF.0,
         snapshot_date: date,
-        window_from: date.checked_sub_months(renox::chrono::Months::new(3)).unwrap(),
+        window_from: date
+            .checked_sub_months(renox::chrono::Months::new(3))
+            .unwrap(),
         window_to: date.pred_opt().unwrap(),
         receipts: if score.is_some() { 5 } else { 2 },
         on_time: 2,
@@ -113,7 +115,11 @@ async fn a_snapshot_under_the_threshold_opens_one_review_and_updates_it() {
         tasks[0].source_key.as_deref(),
         Some(task_key(GULF.0).as_str())
     );
-    assert!(tasks[0].description.contains("Score 64"), "{}", tasks[0].description);
+    assert!(
+        tasks[0].description.contains("Score 64"),
+        "{}",
+        tasks[0].description
+    );
     let told: Vec<_> = t
         .notices
         .all()
@@ -121,10 +127,12 @@ async fn a_snapshot_under_the_threshold_opens_one_review_and_updates_it() {
         .filter(|n| n.type_key == supplier_review::NOTICE)
         .collect();
     assert_eq!(told.len(), 1);
-    assert!(told[0]
-        .recipients
-        .iter()
-        .any(|r| matches!(r, NotifyRecipient::User { id } if *id == manager.id)));
+    assert!(
+        told[0]
+            .recipients
+            .iter()
+            .any(|r| matches!(r, NotifyRecipient::User { id } if *id == manager.id))
+    );
     assert_eq!(t.below.all().len(), 1);
     assert_eq!(t.below.all()[0].score, 64);
 
@@ -196,10 +204,7 @@ async fn change_preferred_makes_one_request_per_item() {
     .await
     .assert_ok();
 
-    let requests = PreferredSupplierRequest::query()
-        .get(t.db())
-        .await
-        .unwrap();
+    let requests = PreferredSupplierRequest::query().get(t.db()).await.unwrap();
     assert_eq!(requests.len(), 2);
     for request in &requests {
         assert_eq!(request.from_supplier_party_id, GULF.0);
@@ -207,7 +212,9 @@ async fn change_preferred_makes_one_request_per_item() {
         assert_eq!(request.kind, "replace");
         assert_eq!(request.requested_by, Some(a.id));
     }
-    let closed = SupplierReview::find_or_404(t.db(), review.id).await.unwrap();
+    let closed = SupplierReview::find_or_404(t.db(), review.id)
+        .await
+        .unwrap();
     assert_eq!(closed.status, ReviewStatus::Closed);
     assert_eq!(closed.decision.as_deref(), Some("change_preferred"));
     assert_eq!(closed.items(), [first.id, second.id]);
@@ -237,21 +244,36 @@ async fn keep_closes_the_review_and_a_later_low_score_opens_a_new_one() {
         .await
         .assert_ok();
 
-    let closed = SupplierReview::find_or_404(t.db(), review.id).await.unwrap();
+    let closed = SupplierReview::find_or_404(t.db(), review.id)
+        .await
+        .unwrap();
     assert_eq!(closed.status, ReviewStatus::Closed);
     assert_eq!(closed.decision.as_deref(), Some("keep"));
-    assert!(PreferredSupplierRequest::query().get(t.db()).await.unwrap().is_empty());
+    assert!(
+        PreferredSupplierRequest::query()
+            .get(t.db())
+            .await
+            .unwrap()
+            .is_empty()
+    );
     let rows = wl_inventory::item_supplier::rows_of(t.db(), item.id)
         .await
         .unwrap();
     assert!(rows.iter().all(|row| row.active));
-    assert!(!supplier_review::is_watched(t.state(), GULF.0).await.unwrap());
+    assert!(
+        !supplier_review::is_watched(t.state(), GULF.0)
+            .await
+            .unwrap()
+    );
 
     snapshot(&t, day(2027, 2, 1), Some(62)).await;
     let found = reviews(&t).await;
     assert_eq!(found.len(), 2);
     assert_eq!(
-        found.iter().filter(|r| r.status == ReviewStatus::Open).count(),
+        found
+            .iter()
+            .filter(|r| r.status == ReviewStatus::Open)
+            .count(),
         1
     );
 }
@@ -268,7 +290,11 @@ async fn watch_marks_the_supplier_until_a_score_at_the_threshold() {
     close_as(&t, &a, &review, &[("decision", "watch")])
         .await
         .assert_ok();
-    assert!(supplier_review::is_watched(t.state(), GULF.0).await.unwrap());
+    assert!(
+        supplier_review::is_watched(t.state(), GULF.0)
+            .await
+            .unwrap()
+    );
 
     // The supplier shows watched on the scorecard and on the item's rows.
     let reader = t.user_with("Vera", "procurement").await;
@@ -293,7 +319,11 @@ async fn watch_marks_the_supplier_until_a_score_at_the_threshold() {
     // A score under the threshold keeps the mark (and opens a new review).
     snapshot(&t, day(2027, 1, 1), Some(69)).await;
     assert_eq!(reviews(&t).await.len(), 2);
-    assert!(supplier_review::is_watched(t.state(), GULF.0).await.unwrap());
+    assert!(
+        supplier_review::is_watched(t.state(), GULF.0)
+            .await
+            .unwrap()
+    );
 }
 
 /// Done when 6 (second part): after *watch*, a snapshot of 75 clears the mark
@@ -307,11 +337,19 @@ async fn a_good_score_clears_the_watch_without_a_task() {
     close_as(&t, &a, &review, &[("decision", "watch")])
         .await
         .assert_ok();
-    assert!(supplier_review::is_watched(t.state(), GULF.0).await.unwrap());
+    assert!(
+        supplier_review::is_watched(t.state(), GULF.0)
+            .await
+            .unwrap()
+    );
 
     snapshot(&t, day(2027, 2, 1), Some(75)).await;
 
-    assert!(!supplier_review::is_watched(t.state(), GULF.0).await.unwrap());
+    assert!(
+        !supplier_review::is_watched(t.state(), GULF.0)
+            .await
+            .unwrap()
+    );
     assert_eq!(reviews(&t).await.len(), 1);
     assert_eq!(t.tickets.opened().len(), 1);
 }
@@ -337,7 +375,9 @@ async fn request_block_only_asks_the_holders_of_parties_block() {
         .expect("a task to decide on the block");
     assert!(matches!(&ask.assignee, Some(Assignee::User { id }) if *id == blocker.id));
     assert!(t.blocked.blocked().is_empty());
-    let closed = SupplierReview::find_or_404(t.db(), review.id).await.unwrap();
+    let closed = SupplierReview::find_or_404(t.db(), review.id)
+        .await
+        .unwrap();
     assert_eq!(closed.decision.as_deref(), Some("request_block"));
 }
 

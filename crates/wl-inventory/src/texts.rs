@@ -448,10 +448,7 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_inventory.supplier.negative",
         "The lead time and the minimum order cannot be negative.",
     ),
-    (
-        "wl_inventory.supplier.added",
-        "Supplier added to the item.",
-    ),
+    ("wl_inventory.supplier.added", "Supplier added to the item."),
     (
         "wl_inventory.supplier.deactivated",
         "Supplier taken out of use for the item.",
@@ -506,10 +503,7 @@ const TEXTS: &[(&str, &str)] = &[
         "Today's run found {{ count }} item(s) at or below their reorder point. Open the suggestions to choose the supplier and order.",
     ),
     // The supplier score.
-    (
-        "wl_inventory.score.note_needed",
-        "Write the review note.",
-    ),
+    ("wl_inventory.score.note_needed", "Write the review note."),
     ("wl_inventory.score.noted", "Review note added."),
     // The review of a supplier under the threshold.
     (
@@ -532,10 +526,7 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_inventory.review.body",
         "The monthly score of supplier {{ supplier }} is {{ score }}, under the threshold. Procurement has a review task to decide on.",
     ),
-    (
-        "wl_inventory.review.not_open",
-        "This review is closed.",
-    ),
+    ("wl_inventory.review.not_open", "This review is closed."),
     (
         "wl_inventory.review.items_needed",
         "Choose the items whose preferred supplier should change.",
@@ -549,10 +540,7 @@ const TEXTS: &[(&str, &str)] = &[
         "Decide to keep, watch, change the preferred supplier or request a block.",
     ),
     ("wl_inventory.review.closed", "Review closed."),
-    (
-        "wl_inventory.review.resolved",
-        "Reviewed and decided.",
-    ),
+    ("wl_inventory.review.resolved", "Reviewed and decided."),
     (
         "wl_inventory.review.block_title",
         "Decide whether to block supplier {{ supplier }}",

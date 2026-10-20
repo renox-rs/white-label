@@ -19,15 +19,15 @@ pub mod po_issue;
 pub mod po_revise;
 pub mod purchase_order;
 pub mod receipt_post;
-pub mod reorder;
 pub mod receipt_reverse;
+pub mod reorder;
 pub mod return_credit;
 pub mod return_dispatch;
 pub mod return_note;
+mod supplier_pages;
 pub mod supplier_return;
 pub mod supplier_review;
 pub mod supplier_score;
-mod supplier_pages;
 mod texts;
 
 use std::sync::Arc;
@@ -53,13 +53,13 @@ pub use purchase_order::{PurchaseOrder, PurchaseOrderLine, PurchaseOrderStatus};
 pub use receipt_post::{PostOutcome, post};
 pub use receipt_reverse::reverse;
 pub use reorder::{ReorderSuggestion, SuggestionStatus};
-pub use supplier_review::{Decision, ReviewStatus, SupplierReview};
-pub use supplier_score::{Figures, ScoreBand, SupplierScore, SupplierScoreNote};
 pub use return_credit::{CreditBasis, CreditOutcome, KeptGoods, cancel, credit};
 pub use return_dispatch::{CollectionProof, DispatchOutcome, dispatch};
 pub use supplier_return::{
     RejectedHandling, ReturnOrigin, ReturnStatus, SupplierReturn, SupplierReturnLine, WantedOutcome,
 };
+pub use supplier_review::{Decision, ReviewStatus, SupplierReview};
+pub use supplier_score::{Figures, ScoreBand, SupplierScore, SupplierScoreNote};
 
 /// The module's permissions (wl-inventory §6).
 pub mod permissions {
@@ -345,9 +345,11 @@ impl Module for WlInventory {
                 supplier_score::on_debit_note_cancelled(&state, &event).await
             },
         );
-        app.listen(|event: wl_kernel::PartiesMerged, state: AppState| async move {
-            item_supplier::on_merged(&state, &event).await
-        });
+        app.listen(
+            |event: wl_kernel::PartiesMerged, state: AppState| async move {
+                item_supplier::on_merged(&state, &event).await
+            },
+        );
     }
 }
 

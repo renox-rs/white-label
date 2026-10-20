@@ -170,7 +170,11 @@ async fn ten_receipts_with_eight_on_time_score_79() {
             day(2026, 10, 1),
         )
         .await;
-        let on = if n < 8 { day(2026, 11, 10) } else { day(2026, 11, 20) };
+        let on = if n < 8 {
+            day(2026, 11, 10)
+        } else {
+            day(2026, 11, 20)
+        };
         let got = if n == 0 {
             // 100 arrive, 20 rejected for quality: 2% of the value received.
             Got::short(&line, 100_000, 80_000, "quality")
@@ -216,7 +220,14 @@ async fn the_grace_day_and_excess_rejections() {
             day(2026, 10, 1),
         )
         .await;
-        posted(&t, &order, &store, &[Got::short(&line, 100_000, 90_000, reason)], on).await;
+        posted(
+            &t,
+            &order,
+            &store,
+            &[Got::short(&line, 100_000, 90_000, reason)],
+            on,
+        )
+        .await;
     }
 
     let (from, to) = window();
@@ -237,7 +248,14 @@ async fn two_receipts_are_not_enough_data() {
     let store = t.location("STORE-1", None).await;
     for _ in 0..2 {
         let (order, line) = order_to(&t, GULF, &store, &item, 1_000, None, day(2026, 10, 1)).await;
-        posted(&t, &order, &store, &[Got::all(&line, 10_000)], day(2026, 11, 3)).await;
+        posted(
+            &t,
+            &order,
+            &store,
+            &[Got::all(&line, 10_000)],
+            day(2026, 11, 3),
+        )
+        .await;
     }
 
     let (from, to) = window();
@@ -256,8 +274,11 @@ async fn an_incident_counts_until_the_source_voids_it() {
     let ncr = Subject::new("manufacturing.ncr", 12);
     t.incidents.report(GULF, day(2026, 10, 20), &ncr);
     // Another supplier's incident is not ours.
-    t.incidents
-        .report(PartyId(99), day(2026, 10, 21), &Subject::new("manufacturing.ncr", 13));
+    t.incidents.report(
+        PartyId(99),
+        day(2026, 10, 21),
+        &Subject::new("manufacturing.ncr", 13),
+    );
 
     let (from, to) = window();
     let before = compute(t.state(), GULF.0, from, to).await.unwrap();
@@ -296,7 +317,14 @@ async fn a_late_entry_keeps_the_day_the_goods_arrived() {
         Some(day(2026, 11, 10)),
     )
     .await;
-    let plain = posted(&t, &order, &store, &[Got::all(&line, 10_000)], day(2026, 11, 13)).await;
+    let plain = posted(
+        &t,
+        &order,
+        &store,
+        &[Got::all(&line, 10_000)],
+        day(2026, 11, 13),
+    )
+    .await;
 
     let (from, to) = window();
     let figures = compute(t.state(), GULF.0, from, to).await.unwrap();
@@ -317,8 +345,16 @@ async fn a_late_entry_keeps_the_day_the_goods_arrived() {
         .unwrap();
     let stored = t.reload(&draft).await;
     assert!(stored.late_entry);
-    assert!(record_arrival(t.db(), late.id, at(day(2026, 11, 9)), true).await.is_err());
-    assert!(record_arrival(t.db(), plain.id, at(day(2026, 11, 9)), true).await.is_err());
+    assert!(
+        record_arrival(t.db(), late.id, at(day(2026, 11, 9)), true)
+            .await
+            .is_err()
+    );
+    assert!(
+        record_arrival(t.db(), plain.id, at(day(2026, 11, 9)), true)
+            .await
+            .is_err()
+    );
 }
 
 /// Done when 8: an order revised from 2026-11-10 to 2026-11-20 and received
@@ -357,11 +393,20 @@ async fn a_later_date_counts_only_when_we_asked_for_it() {
         let lines = wl_inventory::purchase_order::lines_of(t.db(), order.id)
             .await
             .unwrap();
-        posted(&t, &revised, &store, &[Got::all(&lines[0], 10_000)], day(2026, 11, 18)).await;
+        posted(
+            &t,
+            &revised,
+            &store,
+            &[Got::all(&lines[0], 10_000)],
+            day(2026, 11, 18),
+        )
+        .await;
     }
 
     let (from, to) = window();
-    let theirs = compute(t.state(), supplier_pushed.0, from, to).await.unwrap();
+    let theirs = compute(t.state(), supplier_pushed.0, from, to)
+        .await
+        .unwrap();
     assert_eq!((theirs.receipts, theirs.on_time), (1, 0));
     let ours = compute(t.state(), we_pushed.0, from, to).await.unwrap();
     assert_eq!((ours.receipts, ours.on_time), (1, 1));
@@ -381,7 +426,14 @@ async fn snapshots_are_built_once_caught_up_and_never_recomputed() {
         posted(&t, &order, &store, &[Got::all(&line, 10_000)], on).await;
     }
     let (order, line) = order_to(&t, GULF, &store, &item, 1_000, None, day(2026, 9, 20)).await;
-    posted(&t, &order, &store, &[Got::all(&line, 10_000)], day(2026, 12, 1)).await;
+    posted(
+        &t,
+        &order,
+        &store,
+        &[Got::all(&line, 10_000)],
+        day(2026, 12, 1),
+    )
+    .await;
 
     // No run on 12-01: the run on 12-02 builds it, once.
     let made = snapshot_run(t.state(), day(2026, 12, 2)).await.unwrap();
@@ -398,7 +450,12 @@ async fn snapshots_are_built_once_caught_up_and_never_recomputed() {
     assert_eq!(december[0].band, ScoreBand::Good);
 
     // Twice on the same day: still one per supplier and month.
-    assert!(snapshot_run(t.state(), day(2026, 12, 1)).await.unwrap().is_empty());
+    assert!(
+        snapshot_run(t.state(), day(2026, 12, 1))
+            .await
+            .unwrap()
+            .is_empty()
+    );
     let kept = SupplierScore::query()
         .where_(SupplierScore::SUPPLIER_PARTY_ID.eq(GULF.0))
         .where_(SupplierScore::SNAPSHOT_DATE.eq(day(2026, 12, 1)))
@@ -410,8 +467,15 @@ async fn snapshots_are_built_once_caught_up_and_never_recomputed() {
     // A record changed after a snapshot changes the live view only.
     let late = Subject::new("manufacturing.ncr", 5);
     t.incidents.report(GULF, day(2026, 11, 20), &late);
-    assert!(snapshot_run(t.state(), day(2026, 12, 20)).await.unwrap().is_empty());
-    let again = SupplierScore::find_or_404(t.db(), kept[0].id).await.unwrap();
+    assert!(
+        snapshot_run(t.state(), day(2026, 12, 20))
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    let again = SupplierScore::find_or_404(t.db(), kept[0].id)
+        .await
+        .unwrap();
     assert_eq!(again.incidents, 0);
     assert_eq!(again.computed_at, kept[0].computed_at);
     let live_window = compute(t.state(), GULF.0, day(2026, 9, 1), day(2026, 11, 30))
@@ -445,7 +509,14 @@ async fn an_unchanged_price_in_the_same_currency_is_zero_variance() {
             .await
             .unwrap();
     }
-    posted(&t, &old, &store, &[Got::all(&old_line, 10_000)], day(2026, 8, 20)).await;
+    posted(
+        &t,
+        &old,
+        &store,
+        &[Got::all(&old_line, 10_000)],
+        day(2026, 8, 20),
+    )
+    .await;
 
     let figures = compute(t.state(), GULF.0, day(2026, 10, 1), day(2026, 10, 31))
         .await
@@ -466,8 +537,22 @@ async fn the_last_price_is_the_receipt_before_the_issue() {
     let (first, first_line) = order_to(&t, GULF, &store, &item, 1_000, None, day(2026, 8, 1)).await;
     let (second, second_line) =
         order_to(&t, GULF, &store, &item, 1_100, None, day(2026, 8, 2)).await;
-    posted(&t, &first, &store, &[Got::all(&first_line, 10_000)], day(2026, 10, 5)).await;
-    posted(&t, &second, &store, &[Got::all(&second_line, 10_000)], day(2026, 10, 20)).await;
+    posted(
+        &t,
+        &first,
+        &store,
+        &[Got::all(&first_line, 10_000)],
+        day(2026, 10, 5),
+    )
+    .await;
+    posted(
+        &t,
+        &second,
+        &store,
+        &[Got::all(&second_line, 10_000)],
+        day(2026, 10, 20),
+    )
+    .await;
     order_to(&t, GULF, &store, &item, 1_200, None, day(2026, 10, 15)).await;
 
     let figures = compute(t.state(), GULF.0, day(2026, 10, 1), day(2026, 10, 31))
@@ -487,7 +572,9 @@ async fn debit_notes_returns_and_reversed_receipts() {
     let store = t.location("STORE-1", None).await;
     let today = wl_kernel::documents::today();
     let (from, to) = (
-        today.checked_sub_days(renox::chrono::Days::new(30)).unwrap(),
+        today
+            .checked_sub_days(renox::chrono::Days::new(30))
+            .unwrap(),
         today.checked_add_days(renox::chrono::Days::new(1)).unwrap(),
     );
     let issued = SupplierDebitNoteIssued {
@@ -529,7 +616,10 @@ async fn debit_notes_returns_and_reversed_receipts() {
         None,
     )
     .await;
-    assert_eq!(compute(t.state(), GULF.0, from, to).await.unwrap().receipts, 0);
+    assert_eq!(
+        compute(t.state(), GULF.0, from, to).await.unwrap().receipts,
+        0
+    );
 
     // 4 units go back from stock at AED 100.00 (10,000) a unit, and
     // count when the return is dispatched.
@@ -561,9 +651,13 @@ async fn the_score_is_read_with_its_permission_and_notes_change_nothing() {
         .unwrap();
     let a = t.procurement("Amal").await;
     let clerk = t.storekeeper("Sam").await;
-    define_role(t.db(), "scorer", &[wl_inventory::permissions::SUPPLIER_SCORES_VIEW])
-        .await
-        .unwrap();
+    define_role(
+        t.db(),
+        "scorer",
+        &[wl_inventory::permissions::SUPPLIER_SCORES_VIEW],
+    )
+    .await
+    .unwrap();
     let viewer = t.user_with("Vera", "scorer").await;
     viewer.assign_role(t.db(), "cost_viewer").await.unwrap();
     let plain = t.user_with("Pat", "scorer").await;
@@ -579,20 +673,31 @@ async fn the_score_is_read_with_its_permission_and_notes_change_nothing() {
         .assert_ok();
     t.app
         .htmx()
-        .post(&format!("/supplier-scores/{}/notes", snapshot.id), &[("note", " ")])
+        .post(
+            &format!("/supplier-scores/{}/notes", snapshot.id),
+            &[("note", " ")],
+        )
         .await
         .assert_status(422);
     t.app.acting_as(&clerk);
     t.app
         .htmx()
-        .post(&format!("/supplier-scores/{}/notes", snapshot.id), &[("note", "x")])
+        .post(
+            &format!("/supplier-scores/{}/notes", snapshot.id),
+            &[("note", "x")],
+        )
         .await
         .assert_status(403);
-    let after = SupplierScore::find_or_404(t.db(), snapshot.id).await.unwrap();
+    let after = SupplierScore::find_or_404(t.db(), snapshot.id)
+        .await
+        .unwrap();
     assert_eq!(after.score, snapshot.score);
     assert_eq!(after.receipts, snapshot.receipts);
     assert_eq!(
-        supplier_score::notes_of(t.db(), snapshot.id).await.unwrap().len(),
+        supplier_score::notes_of(t.db(), snapshot.id)
+            .await
+            .unwrap()
+            .len(),
         1
     );
 
@@ -604,7 +709,10 @@ async fn the_score_is_read_with_its_permission_and_notes_change_nothing() {
         renox::serde_json::from_str(&t.app.get(&path).await.text()).unwrap();
     assert_eq!(body["snapshots"][0]["receipts"], 3);
     assert!(body["snapshots"][0]["received_value"].is_null(), "{body}");
-    assert_eq!(body["snapshots"][0]["notes"][0], "Supplier contests the late delivery");
+    assert_eq!(
+        body["snapshots"][0]["notes"][0],
+        "Supplier contests the late delivery"
+    );
     t.app.acting_as(&viewer);
     let body: renox::serde_json::Value =
         renox::serde_json::from_str(&t.app.get(&path).await.text()).unwrap();

@@ -190,7 +190,10 @@ async fn with_every_supplier_blocked_the_suggestion_has_no_supplier() {
     assert_eq!(found.len(), 1);
     assert_eq!(found[0].supplier_party_id, None);
     assert_eq!(found[0].supplier_role, None);
-    assert_eq!(found[0].reason.as_deref(), Some("preferred supplier on hold"));
+    assert_eq!(
+        found[0].reason.as_deref(),
+        Some("preferred supplier on hold")
+    );
 }
 
 /// A preferred row that is not in use sends the suggestion to the first
@@ -210,7 +213,10 @@ async fn an_inactive_preferred_row_is_skipped() {
 
     let found = suggestions(&t, &item).await;
     assert_eq!(found[0].supplier_party_id, Some(GULF_BUILD.0));
-    assert_eq!(found[0].reason.as_deref(), Some("preferred supplier inactive"));
+    assert_eq!(
+        found[0].reason.as_deref(),
+        Some("preferred supplier inactive")
+    );
 }
 
 /// Done when 3: under the policy *reorder point + lead time* the lead time is
@@ -229,9 +235,11 @@ async fn the_lead_time_is_the_chosen_suppliers_under_the_lead_time_policy() {
     run(&t).await;
     let found = suggestions(&t, &item).await;
     assert_eq!(found.len(), 2);
-    assert!(found
-        .iter()
-        .any(|s| s.supplier_party_id == Some(GULF_BUILD.0) && s.lead_time_days == Some(10)));
+    assert!(
+        found
+            .iter()
+            .any(|s| s.supplier_party_id == Some(GULF_BUILD.0) && s.lead_time_days == Some(10))
+    );
 }
 
 /// A suggested quantity under the supplier's minimum order is raised to it,
@@ -244,16 +252,9 @@ async fn the_quantity_is_raised_to_the_minimum_order_quantity() {
     let store = t.location("STORE-1", None).await;
     t.stock_in(&item, &store, None, 0, 100).await;
     let a = t.procurement("Amal").await;
-    add(
-        &t,
-        &a,
-        &item,
-        AL_NOOR,
-        "preferred",
-        &[("min_qty", "500")],
-    )
-    .await
-    .assert_ok();
+    add(&t, &a, &item, AL_NOOR, "preferred", &[("min_qty", "500")])
+        .await
+        .assert_ok();
 
     run(&t).await;
 
@@ -287,7 +288,11 @@ async fn the_last_price_comes_from_the_latest_receipt() {
 
     let sam = t.storekeeper("Sam").await;
     let receipt = t
-        .receipt(&order, &store, vec![DraftLine::on(line.id, 100_000, 100_000)])
+        .receipt(
+            &order,
+            &store,
+            vec![DraftLine::on(line.id, 100_000, 100_000)],
+        )
         .await;
     t.post_as(&sam, &receipt).await.assert_ok();
 
@@ -335,7 +340,10 @@ async fn switching_a_suggestion_needs_a_reason_and_leaves_the_item_alone() {
         .htmx()
         .post(
             &path,
-            &[("supplier", gulf.as_str()), ("reason", "Al Noor is late again")],
+            &[
+                ("supplier", gulf.as_str()),
+                ("reason", "Al Noor is late again"),
+            ],
         )
         .await
         .assert_ok();
@@ -432,7 +440,10 @@ async fn one_row_per_item_and_supplier_and_one_preferred() {
     add(&t, &a, &item, third, "preferred", &[])
         .await
         .assert_status(422);
-    assert_eq!(item_supplier::rows_of(t.db(), item.id).await.unwrap().len(), 2);
+    assert_eq!(
+        item_supplier::rows_of(t.db(), item.id).await.unwrap().len(),
+        2
+    );
 
     let clerk = t.storekeeper("Sam").await;
     add(&t, &clerk, &item, third, "alternative", &[])
@@ -446,9 +457,16 @@ async fn one_row_per_item_and_supplier_and_one_preferred() {
 async fn alternatives_are_renumbered_and_a_deactivated_row_keeps_its_rank() {
     let t = boot().await;
     let (item, _store, a) = cement(&t, ReorderPolicy::MinMax).await;
-    add(&t, &a, &item, GULF_BUILD_LLC, "alternative", &[("rank", "1")])
-        .await
-        .assert_ok();
+    add(
+        &t,
+        &a,
+        &item,
+        GULF_BUILD_LLC,
+        "alternative",
+        &[("rank", "1")],
+    )
+    .await
+    .assert_ok();
     add(&t, &a, &item, PartyId(24), "alternative", &[])
         .await
         .assert_ok();
@@ -480,7 +498,10 @@ async fn alternatives_are_renumbered_and_a_deactivated_row_keeps_its_rank() {
 async fn deactivating_the_preferred_row_opens_a_request_and_changes_nothing() {
     let t = boot().await;
     let (item, _store, a) = cement(&t, ReorderPolicy::MinMax).await;
-    let preferred = item_supplier::rows_of(t.db(), item.id).await.unwrap().remove(0);
+    let preferred = item_supplier::rows_of(t.db(), item.id)
+        .await
+        .unwrap()
+        .remove(0);
     assert_eq!(preferred.role, SupplierRole::Preferred);
 
     t.app.acting_as(&a);
@@ -518,7 +539,10 @@ async fn an_expired_certificate_is_a_warning_and_blocks_nothing() {
     let gulf = rows.iter().find(|r| r.supplier_party_id == 22).unwrap();
     ItemSupplier::query()
         .where_(ItemSupplier::ID.eq(gulf.id))
-        .update(t.db(), &[("certificate_kinds", &"halal_certificate".to_owned())])
+        .update(
+            t.db(),
+            &[("certificate_kinds", &"halal_certificate".to_owned())],
+        )
         .await
         .unwrap();
     t.certificates.expire(GULF_BUILD, "halal_certificate");
@@ -532,10 +556,7 @@ async fn an_expired_certificate_is_a_warning_and_blocks_nothing() {
     assert_eq!(s.status, SuggestionStatus::Open);
 
     t.app.acting_as(&a);
-    let listed = t
-        .app
-        .get(&format!("/items/{}/suppliers", item.id))
-        .await;
+    let listed = t.app.get(&format!("/items/{}/suppliers", item.id)).await;
     listed.assert_ok();
     let body: renox::serde_json::Value = renox::serde_json::from_str(&listed.text()).unwrap();
     let row = body
@@ -629,10 +650,16 @@ async fn the_last_price_is_for_the_holders_of_cost_view() {
     run(&t).await;
     let open = suggestions(&t, &item).await.remove(0);
     t.app.acting_as(&a);
-    let shown = t.app.get(&format!("/reorder-suggestions/{}", open.id)).await;
+    let shown = t
+        .app
+        .get(&format!("/reorder-suggestions/{}", open.id))
+        .await;
     shown.assert_ok();
     assert!(!shown.text().contains("1777"), "{}", shown.text());
     t.app.acting_as(&reader);
-    let costly = t.app.get(&format!("/reorder-suggestions/{}", open.id)).await;
+    let costly = t
+        .app
+        .get(&format!("/reorder-suggestions/{}", open.id))
+        .await;
     assert!(costly.text().contains("1777"), "{}", costly.text());
 }

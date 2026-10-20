@@ -425,7 +425,10 @@ pub async fn compute(
         let order = PurchaseOrder::find_or_404(db, order_id).await?;
         if let Some(expected) = expected_date_of(db, &order).await? {
             dated += 1;
-            if expected.checked_add_days(grace).is_some_and(|due| day <= due) {
+            if expected
+                .checked_add_days(grace)
+                .is_some_and(|due| day <= due)
+            {
                 figures.on_time += 1;
             }
         }
@@ -459,8 +462,8 @@ pub async fn compute(
         }
     }
     figures.on_time_bp = (dated > 0).then(|| ratio_bp(figures.on_time, dated));
-    figures.rejected_bp =
-        (figures.received_value > 0).then(|| ratio_bp(figures.rejected_value, figures.received_value));
+    figures.rejected_bp = (figures.received_value > 0)
+        .then(|| ratio_bp(figures.rejected_value, figures.received_value));
     let found = supplier_incidents(state)
         .incidents(db, PartyId(supplier), from, to)
         .await?;

@@ -144,10 +144,7 @@ pub enum RequestStatus {
 /// (`STK.ACL.07`): decided by a holder of `item_suppliers.approve` who is not
 /// the requester (BL-STK-31).
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
-#[model(
-    table = "wl_inventory_preferred_supplier_requests",
-    index(item_id)
-)]
+#[model(table = "wl_inventory_preferred_supplier_requests", index(item_id))]
 pub struct PreferredSupplierRequest {
     /// The primary key.
     pub id: i64,
@@ -243,11 +240,7 @@ pub async fn rows_of(db: &Db, item_id: i64) -> Result<Vec<ItemSupplier>> {
 
 /// Ranks the alternatives of `item_id` 1..n in `tx`. `moved` is a row that
 /// goes to rank `wanted` (the others make room); without it the order stays.
-async fn renumber(
-    tx: &mut Transaction,
-    item_id: i64,
-    moved: Option<(i64, i64)>,
-) -> Result<()> {
+async fn renumber(tx: &mut Transaction, item_id: i64, moved: Option<(i64, i64)>) -> Result<()> {
     let mut alternatives: Vec<ItemSupplier> = rows_in(tx, item_id)
         .await?
         .into_iter()
@@ -348,11 +341,7 @@ impl NewItemSupplier {
 /// `Forbidden` without the permission; 422 when the supplier is already on
 /// the item, or when a preferred supplier is asked for that needs a request
 /// (the item has one, or ever had one).
-pub async fn add(
-    state: &AppState,
-    user: &AuthUser,
-    new: NewItemSupplier,
-) -> Result<ItemSupplier> {
+pub async fn add(state: &AppState, user: &AuthUser, new: NewItemSupplier) -> Result<ItemSupplier> {
     require(state, user, permissions::ITEM_SUPPLIERS_MANAGE).await?;
     let item = Item::find_or_404(&state.db, new.item_id).await?;
     if new.lead_time_days < 0 || new.min_order_qty_milli < 0 {
@@ -542,11 +531,7 @@ pub async fn last_price_before(
             .where_(GoodsReceiptLine::ITEM_ID.eq(item_id))
             .get(db)
             .await?;
-        if let Some(line) = lines
-            .iter()
-            .rev()
-            .find(|line| line.accepted_qty_milli > 0)
-        {
+        if let Some(line) = lines.iter().rev().find(|line| line.accepted_qty_milli > 0) {
             let order = PurchaseOrder::find_or_404(db, order_id).await?;
             return Ok(Some(LastPrice {
                 unit_price: line.unit_cost,
@@ -742,8 +727,14 @@ mod tests {
 
     #[test]
     fn a_role_is_parsed_from_its_key() {
-        assert_eq!(SupplierRole::parse("preferred"), Some(SupplierRole::Preferred));
-        assert_eq!(SupplierRole::parse(" alternative "), Some(SupplierRole::Alternative));
+        assert_eq!(
+            SupplierRole::parse("preferred"),
+            Some(SupplierRole::Preferred)
+        );
+        assert_eq!(
+            SupplierRole::parse(" alternative "),
+            Some(SupplierRole::Alternative)
+        );
         assert_eq!(SupplierRole::parse("other"), None);
         assert_eq!(SupplierRole::Preferred.as_str(), "preferred");
     }

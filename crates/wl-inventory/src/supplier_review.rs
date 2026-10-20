@@ -306,7 +306,8 @@ pub async fn open_review(db: &Db, supplier: i64) -> Result<Option<SupplierReview
 /// The text of the task: the score breakdown and the items where the
 /// supplier is preferred with their alternatives.
 async fn describe(state: &AppState, snapshot: &SupplierScore) -> Result<String> {
-    let percent = |bp: Option<i64>| bp.map_or_else(|| "-".to_owned(), |bp| format!("{}%", bp / 100));
+    let percent =
+        |bp: Option<i64>| bp.map_or_else(|| "-".to_owned(), |bp| format!("{}%", bp / 100));
     let mut text = said(
         "wl_inventory.review.breakdown",
         &[
@@ -321,7 +322,9 @@ async fn describe(state: &AppState, snapshot: &SupplierScore) -> Result<String> 
         ],
     );
     let rows = crate::item_supplier::ItemSupplier::query()
-        .where_(crate::item_supplier::ItemSupplier::SUPPLIER_PARTY_ID.eq(snapshot.supplier_party_id))
+        .where_(
+            crate::item_supplier::ItemSupplier::SUPPLIER_PARTY_ID.eq(snapshot.supplier_party_id),
+        )
         .where_(crate::item_supplier::ItemSupplier::ROLE.eq(SupplierRole::Preferred))
         .get(&state.db)
         .await?;

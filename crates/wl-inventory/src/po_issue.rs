@@ -235,15 +235,9 @@ async fn ask_exception(
     if let Some(problem) = problem_in(&mut tx, order).await? {
         return Err(TransitionError::Guard(problem));
     }
-    let request = block_guard::request_exception_in(
-        state,
-        &mut tx,
-        user,
-        &order.subject(),
-        ISSUE,
-        json!({}),
-    )
-    .await?;
+    let request =
+        block_guard::request_exception_in(state, &mut tx, user, &order.subject(), ISSUE, json!({}))
+            .await?;
     tx.commit().await?;
     approvals::announce_request(state, &request).await?;
     Ok(IssueOutcome::ExceptionRequested(request))
