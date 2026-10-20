@@ -1752,6 +1752,17 @@ pub struct SupplierDebitNoteSummary {
     pub debit_balance: i64,
 }
 
+/// What one line of a supplier debit note takes off, as the owner of the
+/// returned goods reads it to see which lines of a return the note covers.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DebitedLine {
+    /// The purchase order line the goods were ordered on, if the line names
+    /// one.
+    pub po_line: Option<i64>,
+    /// The debited quantity in thousandths.
+    pub quantity_milli: i64,
+}
+
 /// A supplier debit note was issued (`issue`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SupplierDebitNoteIssued {
@@ -1767,6 +1778,9 @@ pub struct SupplierDebitNoteIssued {
     pub amount: i64,
     /// The VAT in it, in fils of the bill's currency.
     pub vat: i64,
+    /// What its lines debit.
+    #[serde(default)]
+    pub lines: Vec<DebitedLine>,
 }
 
 impl Event for SupplierDebitNoteIssued {}
@@ -1805,6 +1819,9 @@ pub struct SupplierDebitNoteCancelled {
     pub amount: i64,
     /// Why it was cancelled.
     pub reason: String,
+    /// What its lines debited.
+    #[serde(default)]
+    pub lines: Vec<DebitedLine>,
 }
 
 impl Event for SupplierDebitNoteCancelled {}
@@ -2186,6 +2203,10 @@ mod tests {
             return_to_supplier: Some(Subject::new("inventory.supplier_return", 2)),
             amount: 31_500,
             vat: 1_500,
+            lines: vec![DebitedLine {
+                po_line: Some(11),
+                quantity_milli: 4_000,
+            }],
         };
         let json = renox::serde_json::to_string(&issued).unwrap();
         assert_eq!(
@@ -2233,6 +2254,7 @@ mod tests {
             return_to_supplier: None,
             amount: 31_500,
             reason: "issued in error".into(),
+            lines: Vec::new(),
         };
         let json = renox::serde_json::to_string(&cancelled).unwrap();
         assert_eq!(

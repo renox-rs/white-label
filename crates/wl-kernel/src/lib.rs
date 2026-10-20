@@ -124,6 +124,7 @@ pub use integrations::{
 pub use invoicing::{
     BillBalance, BillReopenReason, CostObjectAmount, CostPoster, CostReversal, CreditLine,
     CreditNoteId, CreditNoteIssued, CreditNoteReopened, CreditNoteStatus, CreditNoteSummary,
+    DebitedLine,
     DraftLine, InvoiceCredited, InvoiceDraft, InvoiceId, InvoiceIssued, InvoiceOverdue,
     InvoicePaid, InvoiceStatus, InvoiceSummary, InvoiceWrittenOff, Invoicer, LandedCostLine,
     LandedCosts, NoCostPoster, NoInvoicer, NoLandedCosts, NoSupplierBills, NoSupplierDebitNotes,

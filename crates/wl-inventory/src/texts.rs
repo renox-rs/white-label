@@ -183,6 +183,31 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_inventory.return.reason_needed",
         "Give a reason.",
     ),
+    // `credit` on a Return to supplier.
+    (
+        "wl_inventory.return.credit_dispatched_only",
+        "Only a dispatched return to supplier can be credited.",
+    ),
+    (
+        "wl_inventory.return.credited",
+        "Return to supplier credited.",
+    ),
+    (
+        "wl_inventory.return.credit_waiting",
+        "The refused credit is worth more than the limit and waits for a second person to approve it.",
+    ),
+    (
+        "wl_inventory.return.bad_basis",
+        "The credit is settled as refund received or supplier refused.",
+    ),
+    (
+        "wl_inventory.return.debit_note_cancelled_title",
+        "Debit note of return {{ number }} cancelled",
+    ),
+    (
+        "wl_inventory.return.debit_note_cancelled",
+        "The supplier debit note of return {{ number }} was cancelled ({{ reason }}). The return stays with the supplier: chase the credit or a replacement.",
+    ),
     // Names of the rejected goods' returns.
     (
         "wl_inventory.return.collection_proof",

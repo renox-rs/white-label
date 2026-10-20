@@ -13,6 +13,10 @@ pub const DEFAULT_TOLERANCE_BPS: i64 = 500;
 /// by default (§7, `STK.ACL.06`): AED 5,000, in fils.
 pub const DEFAULT_RETURN_APPROVAL_FILS: i64 = 500_000;
 
+/// The value of wastage or a write-off above which a second person approves
+/// it by default (`STK.ACL.02`): AED 1,000, in fils.
+pub const DEFAULT_WASTAGE_APPROVAL_FILS: i64 = 100_000;
+
 /// The rejection reasons by default (§7).
 pub const DEFAULT_REASONS: &[&str] = &[
     "temperature",
@@ -45,6 +49,9 @@ pub struct InventoryConfig {
     /// The value, in fils, above which dispatching a Return to supplier needs
     /// a second person (`STK.ACL.06`).
     pub return_approval_fils: i64,
+    /// The value, in fils, above which wastage (a credit the supplier
+    /// refused) needs a second person (`STK.ACL.02`).
+    pub wastage_approval_fils: i64,
 }
 
 impl InventoryConfig {
@@ -59,6 +66,7 @@ impl Default for InventoryConfig {
         InventoryConfig {
             over_receipt_tolerance_bps: DEFAULT_TOLERANCE_BPS,
             return_approval_fils: DEFAULT_RETURN_APPROVAL_FILS,
+            wastage_approval_fils: DEFAULT_WASTAGE_APPROVAL_FILS,
             rejection_reasons: DEFAULT_REASONS
                 .iter()
                 .map(|code| RejectionReason {
@@ -80,6 +88,7 @@ mod tests {
         assert_eq!(config.over_receipt_tolerance_bps, 500);
         assert_eq!(config.rejection_reasons.len(), 7);
         assert_eq!(config.return_approval_fils, 500_000);
+        assert_eq!(config.wastage_approval_fils, 100_000);
         assert!(
             config
                 .reason("temperature")

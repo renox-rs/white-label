@@ -19,7 +19,7 @@ use renox::prelude::*;
 use renox::serde_json::json;
 use renox::state_machine::Transitioned;
 use wl_kernel::invoicing::{
-    ReverseCost, SupplierBillId, SupplierDebitNoteCancelled, SupplierDebitNoteIssued,
+    DebitedLine, ReverseCost, SupplierBillId, SupplierDebitNoteCancelled, SupplierDebitNoteIssued,
     SupplierDebitNoteSettled, SupplierReturnDispatched, cost_poster,
 };
 use wl_kernel::notify::{self, Category, NotificationTypeDef, NotifyChannel, NotifyRequest};
@@ -93,6 +93,18 @@ pub async fn cost_reversals(db: &Db, note: &SupplierDebitNote) -> Result<Reverse
     Ok(request)
 }
 
+/// What the lines of note `note_id` debit.
+async fn debited(db: &Db, note_id: i64) -> Result<Vec<DebitedLine>> {
+    Ok(lines_of(db, note_id)
+        .await?
+        .into_iter()
+        .map(|line| DebitedLine {
+            po_line: line.po_line_id,
+            quantity_milli: line.quantity_milli,
+        })
+        .collect())
+}
+
 /// After the commit of `issue`: the cost reversal, the supplier notice and
 /// the event.
 async fn issued(state: &AppState, note_id: i64) -> Result {
@@ -124,6 +136,7 @@ async fn issued(state: &AppState, note_id: i64) -> Result {
             return_to_supplier: note.source(),
             amount: note.gross_total,
             vat: note.vat_total,
+            lines: debited(&state.db, note.id).await?,
         })
         .await
 }
@@ -176,6 +189,7 @@ async fn cancelled(state: &AppState, note_id: i64) -> Result {
             return_to_supplier: note.source(),
             amount: note.gross_total,
             reason,
+            lines: debited(&state.db, note.id).await?,
         })
         .await
 }

@@ -19,6 +19,7 @@ use std::sync::Arc;
 use renox::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::invoicing::SupplierDebitNoteId;
 use crate::parties::PartyId;
 use crate::subject::Subject;
 
@@ -128,6 +129,29 @@ pub struct SupplierReturnDispatched {
 }
 
 impl Event for SupplierReturnDispatched {}
+
+/// A Return to supplier was credited (wl-inventory §6 `credit`): the
+/// supplier's debit notes and replacements cover every line, or procurement
+/// settled it by hand with a reason.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SupplierReturnCredited {
+    /// The return, `inventory.supplier_return:4`.
+    pub supplier_return: Subject,
+    /// The supplier.
+    pub supplier: PartyId,
+    /// How: `debit_note`, `replacement`, `refund_received` or
+    /// `supplier_refused`.
+    pub basis: String,
+    /// The debit note that completed the cover, if one did.
+    pub debit_note: Option<SupplierDebitNoteId>,
+    /// The reason of a manual credit.
+    pub reason: Option<String>,
+    /// The value posted as wastage because the supplier refused the credit,
+    /// in fils; 0 otherwise.
+    pub wastage: i64,
+}
+
+impl Event for SupplierReturnCredited {}
 
 /// One purchase order line, as the supplier bill match reads it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

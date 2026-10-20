@@ -36,6 +36,7 @@ pub use movement::{MovementType, StockMovement};
 pub use purchase_order::{PurchaseOrder, PurchaseOrderLine, PurchaseOrderStatus};
 pub use receipt_post::{PostOutcome, post};
 pub use receipt_reverse::reverse;
+pub use return_credit::{CreditBasis, CreditOutcome, KeptGoods, cancel, credit};
 pub use return_dispatch::{CollectionProof, DispatchOutcome, dispatch};
 pub use supplier_return::{
     RejectedHandling, ReturnOrigin, ReturnStatus, SupplierReturn, SupplierReturnLine, WantedOutcome,
@@ -89,6 +90,14 @@ impl WlInventory {
     /// a second person's approval (default 500000, AED 5,000; `STK.ACL.06`).
     pub fn return_approval_fils(mut self, fils: i64) -> Self {
         self.config.return_approval_fils = fils.max(0);
+        self
+    }
+
+    /// The value, in fils, above which wastage, such as a credit the
+    /// supplier refused, needs a second person's approval (default 100000,
+    /// AED 1,000; `STK.ACL.02`).
+    pub fn wastage_approval_fils(mut self, fils: i64) -> Self {
+        self.config.wastage_approval_fils = fils.max(0);
         self
     }
 
@@ -164,10 +173,17 @@ impl Module for WlInventory {
             wl_kernel::inventory::SUPPLIER_RETURN_SUBJECT_TYPE,
         )
         .action(return_dispatch::DISPATCH, return_dispatch::ACTION)
+        .action(return_credit::CREDIT, return_credit::CREDIT_ACTION)
         .scope(|_ret: &SupplierReturn| renox::auth::permissions::Scope::global())
         .register();
         wl_kernel::PolicyDefault::new(return_dispatch::ACTION)
             .amount_above(self.config.return_approval_fils)
+            .step_permission(permissions::SUPPLIER_RETURNS_MANAGE)
+            .register();
+        // Wastage above the value (a credit the supplier refused) needs a
+        // second holder as well (`STK.ACL.02`).
+        wl_kernel::PolicyDefault::new(return_credit::CREDIT_ACTION)
+            .amount_above(self.config.wastage_approval_fils)
             .step_permission(permissions::SUPPLIER_RETURNS_MANAGE)
             .register();
         wl_kernel::PolicyDefault::new(receipt_post::ACTION)

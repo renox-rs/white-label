@@ -5,7 +5,13 @@
 //! line, and the return of the goods refused at the door that `post`
 //! dispatched gives [`SupplierReturnDispatched`] after it; a user's `dispatch`
 //! and `dispatch_approved` give [`SupplierReturnDispatched`] with the lines
-//! (item, lot, quantity, order line, order price, wanted outcome, reason).
+//! (item, lot, quantity, order line, order price, wanted outcome, reason); a
+//! return's `credit`, `credit_approved` and `credit_covered` give
+//! [`SupplierReturnCredited`] after the wastage of a refused credit was
+//! posted through the `CostPoster` (against the return as cost object, under
+//! one key per return so a repeat posts nothing twice). The supplier debit
+//! notes issued and cancelled by wl-invoicing are handled in
+//! [`crate::return_credit`].
 
 use std::collections::BTreeMap;
 
@@ -14,13 +20,17 @@ use renox::state_machine::Transitioned;
 use wl_kernel::Subject;
 use wl_kernel::inventory::{
     GoodsReceived, GoodsReceivedLine, ITEM_SUBJECT_TYPE, LOCATION_SUBJECT_TYPE, LOT_SUBJECT_TYPE,
-    ReturnOutcome, SupplierReturnDispatched, SupplierReturnDispatchedLine,
+    ReturnOutcome, SupplierReturnCredited, SupplierReturnDispatched, SupplierReturnDispatchedLine,
+};
+use wl_kernel::invoicing::{
+    PostCost, SupplierDebitNoteCancelled, SupplierDebitNoteId, SupplierDebitNoteIssued, post_cost,
 };
 
 use crate::goods_receipt::{GoodsReceipt, GoodsReceiptLine, lines_of};
 use crate::item::value_of;
 use crate::purchase_order::PurchaseOrderLine;
 use crate::receipt_post::{POST, POST_APPROVED};
+use crate::return_credit::{CREDIT, CREDIT_APPROVED, CREDIT_COVERED};
 use crate::return_dispatch::{DISPATCH, DISPATCH_APPROVED};
 use crate::supplier_return::{
     ReturnStatus, SupplierReturn, SupplierReturnLine, WantedOutcome, of_source,
@@ -100,6 +110,32 @@ async fn emit_dispatched(state: &AppState, id: i64) -> Result {
     state.emit(dispatched_event(&ret, &lines, &prices)).await
 }
 
+/// Posts the wastage of credited return `id` and emits
+/// [`SupplierReturnCredited`], read as committed.
+async fn emit_credited(state: &AppState, id: i64) -> Result {
+    let ret = SupplierReturn::find_or_404(&state.db, id).await?;
+    if ret.wastage_fils > 0 {
+        let request = PostCost::new(
+            ret.subject(),
+            format!("inventory.supplier_return_wastage:{}", ret.id),
+            ret.subject(),
+            ret.wastage_fils,
+        )
+        .cost_code("wastage");
+        post_cost(state, request).await?;
+    }
+    state
+        .emit(SupplierReturnCredited {
+            supplier_return: ret.subject(),
+            supplier: wl_kernel::PartyId(ret.supplier_party_id),
+            basis: ret.credit_basis.clone().unwrap_or_default(),
+            debit_note: ret.debit_note_id.map(SupplierDebitNoteId),
+            reason: ret.credit_reason.clone(),
+            wastage: ret.wastage_fils,
+        })
+        .await
+}
+
 /// Registers the listeners.
 pub(crate) fn register(app: &mut Registry) {
     app.listen(
@@ -123,10 +159,24 @@ pub(crate) fn register(app: &mut Registry) {
     );
     app.listen(
         |event: Transitioned<SupplierReturn>, state: AppState| async move {
-            if ![DISPATCH, DISPATCH_APPROVED].contains(&event.transition.as_str()) {
-                return Ok(());
+            let name = event.transition.as_str();
+            if [DISPATCH, DISPATCH_APPROVED].contains(&name) {
+                emit_dispatched(&state, event.key).await
+            } else if [CREDIT, CREDIT_APPROVED, CREDIT_COVERED].contains(&name) {
+                emit_credited(&state, event.key).await
+            } else {
+                Ok(())
             }
-            emit_dispatched(&state, event.key).await
+        },
+    );
+    app.listen(
+        |event: SupplierDebitNoteIssued, state: AppState| async move {
+            crate::return_credit::on_debit_note_issued(&state, &event).await
+        },
+    );
+    app.listen(
+        |event: SupplierDebitNoteCancelled, state: AppState| async move {
+            crate::return_credit::on_debit_note_cancelled(&state, &event).await
         },
     );
 }

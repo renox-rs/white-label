@@ -6,6 +6,7 @@
 //! | `POST /goods-receipts/{id}/lines/{line}` | `wl_inventory.receipt_line` | `goods_receipts.post` at the receiving location |
 //! | `POST /goods-receipts/{id}/post` | `wl_inventory.receipt_post` | `goods_receipts.post` at the receiving location |
 //! | `POST /supplier-returns/{id}/dispatch` | `wl_inventory.return_dispatch` | `supplier_returns.manage` |
+//! | `POST /supplier-returns/{id}/credit` | `wl_inventory.return_credit` | `supplier_returns.manage` |
 //! | `POST /supplier-returns/{id}/cancel` | `wl_inventory.return_cancel` | `supplier_returns.manage` |
 //! | `POST /goods-receipts/{id}/reverse` | `wl_inventory.receipt_reverse` | `goods_receipts.reverse` at the receiving location |
 //!
@@ -25,7 +26,7 @@ use serde::{Deserialize, Serialize};
 use crate::goods_receipt::{DraftLine, GoodsReceipt, GoodsReceiptStatus, update_line};
 use crate::permissions;
 use crate::receipt_post::{PostOutcome, post};
-use crate::return_credit::KeptGoods;
+use crate::return_credit::{CreditBasis, CreditOutcome, KeptGoods};
 use crate::return_dispatch::{CollectionProof, DispatchOutcome};
 use crate::supplier_return::{RejectedHandling, WantedOutcome};
 use crate::texts;
@@ -41,6 +42,8 @@ pub fn routes() -> Routes {
         .name("wl_inventory.receipt_reverse")
         .post("/supplier-returns/{id}/dispatch", dispatch_return)
         .name("wl_inventory.return_dispatch")
+        .post("/supplier-returns/{id}/credit", credit_return)
+        .name("wl_inventory.return_credit")
         .post("/supplier-returns/{id}/cancel", cancel_return)
         .name("wl_inventory.return_cancel")
         .require_auth()
@@ -348,6 +351,49 @@ async fn may_manage_returns(state: &AppState, user: &AuthUser) -> Result<bool> {
     .any(|holder| holder.id == user.id))
 }
 
+/// What procurement enters to credit a dispatched return by hand.
+#[derive(Deserialize, Serialize, Validate, Debug, Default)]
+pub struct CreditForm {
+    /// `refund_received` or `supplier_refused`.
+    #[validate(max = 32)]
+    pub basis: Option<String>,
+    /// Why.
+    #[validate(max = 500)]
+    pub reason: Option<String>,
+}
+
+/// `POST /supplier-returns/{id}/credit`: settles a dispatched return by hand.
+/// A refused credit above the limit asks a second person to approve instead
+/// (`STK.ACL.02`).
+async fn credit_return(
+    State(state): State<AppState>,
+    user: AuthUser,
+    lang: Lang,
+    Path(id): Path<i64>,
+    Valid(form): Valid<CreditForm>,
+) -> Result<Response> {
+    if !may_manage_returns(&state, &user).await? {
+        return Err(Error::Forbidden);
+    }
+    let basis = CreditBasis::parse(form.basis.as_deref().unwrap_or_default())
+        .ok_or_else(|| refused(text(&lang, "return.bad_basis")))?;
+    let reason = form.reason.as_deref().unwrap_or_default();
+    match crate::return_credit::credit(&state, &user, id, basis, reason).await {
+        Ok(CreditOutcome::Credited(_)) => Ok((
+            Toast::success(text(&lang, "return.credited")),
+            renox::HxRefresh,
+        )
+            .into_response()),
+        Ok(CreditOutcome::Waiting(_)) => Ok((
+            Toast::success(text(&lang, "return.credit_waiting")),
+            renox::HxRefresh,
+        )
+            .into_response()),
+        Err(TransitionError::Guard(message)) => Err(refused(message)),
+        Err(other) => Err(other.into_error()),
+    }
+}
+
 /// What procurement enters to cancel a draft return.
 #[derive(Deserialize, Serialize, Validate, Debug, Default)]
 pub struct CancelForm {
@@ -371,7 +417,12 @@ async fn cancel_return(
     if !may_manage_returns(&state, &user).await? {
         return Err(Error::Forbidden);
     }
-    let kept = match form.kept.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+    let kept = match form
+        .kept
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+    {
         None => None,
         Some(value) => Some(
             KeptGoods::parse(value).ok_or_else(|| refused(text(&lang, "return.bad_kept_goods")))?,
