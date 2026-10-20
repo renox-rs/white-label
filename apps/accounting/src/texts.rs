@@ -319,6 +319,24 @@ const TEXTS: &[(&str, &str)] = &[
         "The identity documents are not attached",
     ),
     ("accounting.cdd.not_rated", "The risk is not rated"),
+    // The CDD update task of an expired KYC document (BL-ACC-12).
+    ("accounting.cdd_update.title", "Update the CDD file: :kind of :party expired"),
+    (
+        "accounting.cdd_update.description",
+        "The :kind of :party (client :client, :engagement) expired on :expired. Collect the renewed document and update the CDD file. The engagement stays active.",
+    ),
+    (
+        "accounting.cdd_update.completed",
+        "The renewed :kind was accepted.",
+    ),
+    (
+        "accounting.cdd_update.notice_subject",
+        "CDD update for {{ number }}: {{ kind }} expired",
+    ),
+    (
+        "accounting.cdd_update.notice_body",
+        "The {{ kind }} of {{ party }} (client {{ client }}) expired on {{ expired }}. The compliance officer has the CDD update task {{ task }}, due {{ due }}; you may need to ask the client for the renewed document.",
+    ),
 ];
 
 /// Whether the app has a text for `key`.

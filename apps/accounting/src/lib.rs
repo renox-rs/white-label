@@ -13,6 +13,7 @@ pub mod engagement;
 pub mod engagement_machine;
 pub mod engagements;
 mod events;
+pub mod kyc_updates;
 pub mod pages;
 pub mod permissions;
 pub mod portal;
@@ -103,6 +104,9 @@ impl Module for Accounting {
         // `engagement.activate` checks the client's KYC documents.
         documents::register();
         events::register(app);
+        // An expired KYC document of a client being served opens a CDD
+        // update task (BL-ACC-12).
+        kyc_updates::register(app);
         // The neutral templates the MLRO sends (`ACC.ACL.14`).
         client_notices::register_types();
         // In the app group of the staff sidebar; the label is the host's
