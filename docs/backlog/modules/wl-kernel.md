@@ -20,6 +20,8 @@ every N1 item in the verticals relies on.
 | BL-KRN-07 | Monitor site devices by heartbeat | medium | s | Launch 06 | BL-KRN-05, BL-KRN-06 |
 | BL-KRN-08 | Alert the business owner when a compliance-critical rule fails or misses its schedule | high | m | Build 1 | Base: wl-kernel Rule run lifecycle |
 | BL-KRN-09 | Send managers a daily digest of voids and late entries | medium | s | Build 1 | BL-KRN-03, BL-KRN-04 |
+| BL-KRN-10 | Email the company admin a daily digest of failed rule runs (`PLT.RUL.03`) | medium | s | Build 1 | Base: wl-kernel Rule run lifecycle; BL-KRN-08 |
+| BL-KRN-11 | Let the money contracts join the caller's transaction | high | m | Build 1 | Base: wl-kernel Capabilities registry; Base: wl-invoicing Invoice and Credit note lifecycle; Base: wl-payments Cheque, Deposit and Refund lifecycles |
 
 ---
 
@@ -381,7 +383,7 @@ Each module's `void` declaration and reverse handlers (module epics); the daily 
 ### BL-KRN-04 — wl-kernel: flag and approve late entries
 
 **Labels:** `module:wl-kernel` `area:negative-flow` `priority:medium` `size:m` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
-**Depends on:** Base: wl-kernel Approval request lifecycle, Rule run lifecycle · **Blocks:** BL-KRN-06, BL-KRN-09, BL-ACC-24, BL-AUT-18, BL-CON-18, BL-FNB-10, BL-FNB-14, BL-FNB-15, BL-LOG-25, BL-MFG-14, BL-PRP-27
+**Depends on:** Base: wl-kernel Approval request lifecycle, Rule run lifecycle · **Blocks:** BL-KRN-06, BL-KRN-09, BL-ACC-24, BL-AUT-18, BL-CON-18, BL-FNB-10, BL-FNB-14, BL-FNB-15, BL-LOG-25, BL-MFG-14, BL-PRP-27, BL-TKT-13
 **Review items:** X-19 (late entry), 06-N7-c
 
 #### Goal
@@ -507,7 +509,7 @@ records that automations already changed (owning module); the digest (BL-KRN-09)
 ### BL-KRN-05 — wl-kernel: track integration health and switch to the manual fallback when a connection is down
 
 **Labels:** `module:wl-kernel` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
-**Depends on:** Base: wl-kernel Rule run lifecycle, Renox queue · **Blocks:** BL-KRN-06, BL-KRN-07, BL-PTY-10, BL-ACC-23, BL-AUT-18, BL-CLN-15, BL-EDU-17, BL-LOG-25, BL-MFG-14, BL-MPW-20
+**Depends on:** Base: wl-kernel Rule run lifecycle, Renox queue · **Blocks:** BL-KRN-06, BL-KRN-07, BL-PTY-10, BL-ACC-23, BL-AUT-18, BL-CLN-15, BL-EDU-17, BL-LOG-25, BL-MFG-14, BL-MPW-20, BL-PTY-11
 **Review items:** X-19 (integration down), 09-N7-a, 06-N7-c
 
 #### Goal
@@ -795,7 +797,7 @@ answers). Consumers react to `IntegrationStatusChanged`."
 ### BL-KRN-08 — wl-kernel: alert the business owner when a compliance-critical rule fails or misses its schedule
 
 **Labels:** `module:wl-kernel` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
-**Depends on:** Base: wl-kernel Rule run lifecycle, `PLT.RUL.03` digest · **Blocks:** BL-DOC-05, BL-TKT-03, BL-TKT-04, BL-PTY-07, BL-ACC-23, BL-AUT-04, BL-AUT-14, BL-AUT-18, BL-CLN-11, BL-CLN-12, BL-CLN-15, BL-CON-18, BL-EDU-07, BL-EDU-10, BL-EDU-17, BL-FNB-17, BL-LOG-25, BL-MFG-12, BL-MFG-14, BL-MPW-17, BL-MPW-20, BL-PRP-03, BL-PRP-25, BL-PRP-27
+**Depends on:** Base: wl-kernel Rule run lifecycle, `PLT.RUL.03` digest · **Blocks:** BL-DOC-05, BL-TKT-03, BL-TKT-04, BL-PTY-07, BL-ACC-23, BL-AUT-04, BL-AUT-14, BL-AUT-18, BL-CLN-11, BL-CLN-12, BL-CLN-15, BL-CON-18, BL-EDU-07, BL-EDU-10, BL-EDU-17, BL-FNB-17, BL-LOG-25, BL-MFG-12, BL-MFG-14, BL-MPW-17, BL-MPW-20, BL-PRP-03, BL-PRP-25, BL-PRP-27, BL-KRN-10
 **Review items:** X-19 (owner alert)
 
 #### Goal
@@ -963,3 +965,148 @@ gets no digest."
 
 #### Out of scope
 The void and late-entry mechanisms (BL-KRN-03, BL-KRN-04).
+
+---
+
+### BL-KRN-10 — wl-kernel: email the company admin a daily digest of failed rule runs (`PLT.RUL.03`)
+
+**Labels:** `module:wl-kernel` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
+**Depends on:** Base: wl-kernel Rule run lifecycle; BL-KRN-08 · **Blocks:** None.
+**Review items:** X-19 (owner alert); follow-up of BL-KRN-08, Done-when point 7
+
+#### Goal
+A rule run that fails or is stopped is shown on the admin page, but nobody is told unless the rule is
+compliance-critical (BL-KRN-08 alerts the owner at once). Every morning the company admin gets one
+e-mail listing the rule runs that failed or were stopped in the last 24 hours, so an ordinary failure
+(a reminder that did not go out) is seen and rerun.
+
+#### Surfaces
+- **Back office:** the company admin receives the digest by e-mail and in-app; each line links to the
+  rule run on the admin page, where `rerun` is offered (`automations.retry`).
+- **System:** a daily job at 07:00 Asia/Dubai builds the digest from the rule runs.
+
+#### Files to read
+- `docs/modules/wl-kernel.md` §4.2 *Rule run*, §5.15 (point 2), §6 *Automations owned* (`PLT.RUL.03`)
+- `docs/WORKFLOW.md` §8 (rule `PLT.RUL.03`), `docs/TESTING.md` §5 point 6
+
+#### Terms
+- **Failed run:** a rule run in `failed` (retries exhausted) or `stopped` (chain depth above 3).
+- **Compliance-critical rule:** a rule flagged so that `PLT.RUL.04` alerts at once (BL-KRN-08); its
+  failures are also listed in the digest.
+
+#### Spec excerpt (authoritative for this issue)
+| ID | Rule | When | Then | Parameter (default) |
+|---|---|---|---|---|
+| `PLT.RUL.03` | Failed-run alert digest | daily | email the company admin a list of failed rule runs | 07:00 |
+
+| Transition | From | To | By | Guards | Effects |
+|---|---|---|---|---|---|
+| `fail` | retrying | failed | system | attempts = 5 | admin alert; event `AutomationFailed` |
+| `stop` | queued | stopped | system | chain depth > 3 | admin alert |
+
+§5.15 point 2: a compliance-critical failure alerts the owner "at once (in-app and email), not only in
+the daily digest (`PLT.RUL.03`)".
+
+#### Edge cases decided
+- **Period:** 07:00 the previous day to 07:00 today (Asia/Dubai), by the time the run reached `failed`
+  or `stopped`, as for the `PLT.RUL.06` digest (BL-KRN-09).
+- **Nothing failed:** no digest is sent.
+- **A run rerun and succeeded before 07:00:** still listed, marked *rerun, succeeded*, so the admin
+  sees that it happened.
+- **Compliance-critical runs:** listed too, marked *compliance-critical, alert sent*.
+- **Repeated runs of the job:** one digest per day; running the job again for the same day sends
+  nothing new.
+- **Several company admins:** each gets the same digest; one message per admin.
+- **Line content:** rule name, subject (with its label), occurrence, last error, time it failed.
+
+#### Must not
+- Send a separate alert per ordinary failure (that is `PLT.RUL.04`, compliance-critical only).
+- Show data of a subject the admin may not see in a scope (the admin is global; the digest goes to
+  company admins only).
+
+#### Done when
+- [ ] Given the ordinary rule "invoice reminder" failed for INV-ACME-2026-0310 at 2026-11-04 16:20 and
+      nothing else failed, at 2026-11-05 07:00 the company admin receives one digest with that line,
+      linking to the run.
+- [ ] A run stopped for chain depth at 2026-11-04 20:00 is listed with reason *stopped*.
+- [ ] A compliance-critical run that failed at 2026-11-04 09:00 is listed and marked *alert sent*.
+- [ ] A run that failed at 2026-11-04 06:59 is not in the 2026-11-05 digest (it was in the previous one).
+- [ ] With no failed or stopped run in the period, no digest is sent.
+- [ ] Running the job twice on 2026-11-05 sends one digest.
+
+#### Out of scope
+The owner alert for compliance-critical rules (BL-KRN-08); the voids and late entries digest (BL-KRN-09).
+
+---
+
+### BL-KRN-11 — wl-kernel: let the money contracts join the caller's transaction
+
+**Labels:** `module:wl-kernel` `area:negative-flow` `priority:high` `size:m` `surface:system` · **Milestone:** Build 1 · **Size:** m
+**Depends on:** Base: wl-kernel Capabilities registry; Base: wl-invoicing Invoice and Credit note lifecycle; Base: wl-payments Cheque, Deposit and Refund lifecycles · **Blocks:** BL-PRP-33
+**Review items:** 01-N12-a; follow-up of BL-PRP-11, Done-when point 1 (b)
+
+#### Goal
+Some transitions must change several modules' records in one transaction: 01 lease `terminate` cancels
+charges, credits invoices, returns cheques and starts the deposit settlement "all in one transaction",
+and rolls back as a whole when one credit fails. Today the kernel contracts (`Invoicer`, `Cheques`,
+`Deposits`, `Refunds`) open their own transaction, so a vertical can only call them after its commit.
+This issue gives each money contract a variant that runs inside the caller's transaction, so the
+caller commits or rolls back everything together.
+
+#### Surfaces
+- **System:** no screen. The variants are used by the transitions that need them (BL-PRP-33 first).
+
+#### Files to read
+- `docs/modules/wl-kernel.md` §6 *Capabilities*, §4.1 (effects "in the same transaction")
+- `docs/verticals/01-property.md` §7.1 *Lease* (`terminate`), §4.3 row "Early termination by the tenant"
+- `docs/modules/wl-invoicing.md` §4 *Credit note* (`issue`); `docs/modules/wl-payments.md` §4 *Cheque*
+  (`return`), §4 *Deposit* (`start_settlement`), §4 *Refund* (`request`)
+- `crates/wl-kernel/src/invoicing.rs`, `cheques.rs`, `deposits.rs`, `payments.rs`;
+  `apps/property/src/termination.rs` (module comment: why the effects run after the commit today)
+
+#### Terms
+- **Money contract:** a kernel trait a module implements and others call (`Invoicer` for credit notes
+  and draft discard, `Cheques::return_undeposited`, `Deposits::start_settlement`, `Refunds::request`).
+- **Transaction-aware variant:** a method taking the caller's open transaction (`*_in(&mut tx, …)`), as
+  `BlockGuard::check_in` already does; it writes nothing outside that transaction and emits its events
+  only after the caller commits.
+
+#### Spec excerpt (authoritative for this issue)
+| Transition | From | To | By | Guards | Effects |
+|---|---|---|---|---|---|
+| `terminate` | notice_given | terminated | `leases.manage` | move-out inspection completed; all keys returned | unit `vacate`; deposit `start_settlement`; scheduled charges after the move-out date (or after `rent_due_until`, when set) cancelled; rent and recurring lines of invoices for periods after it credited pro rata by partial credit note; a credit on a paid invoice goes to the tenant's credit balance, applied to the deposit settlement's deductions first, the rest refunded through the Refund flow or kept as credit (property manager's choice); cheques in `received` or `due_for_deposit` dated after that date `return`; all in one transaction; Ejari cancellation task (`PRP.RUL.13`); tenant portal read-only (`POR.ACL.01`) |
+
+From the BL-PRP-11 edge cases: "if crediting fails for one invoice, the whole `terminate` rolls back
+(one transaction)".
+
+#### Edge cases decided
+- **Events:** each variant queues its events (`CreditNoteIssued`, `ChequeReturned`, …) on the caller's
+  transaction; they are emitted after the commit and dropped on rollback.
+- **Numbers:** credit note and receipt numbers come from the kernel's gapless series inside the same
+  transaction, so a rollback gives them back.
+- **A module that is off:** the no-op fallback of the capability answers the variant as it answers the
+  plain method today.
+- **The plain methods stay:** they open a transaction and call the variant, so existing callers keep
+  working.
+- **Notifications:** messages are requested after the commit only (no e-mail for a rolled-back run).
+
+#### Must not
+- Commit inside a variant, or open a second connection that the caller's rollback does not cover.
+- Emit an event or send a message for work that was rolled back.
+- Change the guards of the underlying transitions.
+
+#### Done when
+- [ ] Given a caller transaction that issues a credit note of AED 3,193.55 through the variant and then
+      fails, after the rollback no credit note exists, its number is unused and no `CreditNoteIssued`
+      was emitted.
+- [ ] The same run committed gives the credit note, the number and the event once.
+- [ ] `return_undeposited` in the caller's transaction returns 5 cheques against one receipt; on
+      rollback the cheques are `received` again and the receipt number is unused.
+- [ ] `start_settlement` in the caller's transaction moves the deposit to `settlement_pending` only when
+      the caller commits.
+- [ ] With wl-payments off, the cheques and deposits variants answer as the no-op fallback.
+- [ ] The plain methods still pass their existing tests.
+
+#### Out of scope
+Using the variants in `terminate` (BL-PRP-33); other transitions that run money effects after the
+commit (lease `cancel`, `amend`), which keep their current way until an issue needs it.

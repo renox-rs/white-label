@@ -30,7 +30,7 @@ absconding, write-off, cheques). Review items: D-04, D-05, 02-N1-a, 02-N2-a, 02-
 | BL-CON-15 | Open an absence case for a worker who stops coming (`CON.RUL.08`) | medium | s | Launch 02 | Base: wl-attendance Attendance record lifecycle; BL-HRM-07; BL-TKT-11 |
 | BL-CON-16 | Hold a PO to an unregistered subcontractor on a Dubai project (`CON.ACL.13`) | medium | s | Launch 02 | Base: wl-inventory Purchase order lifecycle; BL-KRN-01 |
 | BL-CON-17 | 02: configure shared negative-flow settings — money and procurement | high | m | Launch 02 | BL-INV-01; BL-INV-04; BL-INV-10; BL-INV-13; BL-PAY-09; BL-PAY-24; BL-STK-01; BL-STK-03; BL-STK-07; BL-STK-08; BL-STK-27; BL-CON-03; BL-INV-25; BL-INV-26; BL-INV-27; BL-INV-28; BL-INV-29; BL-INV-30; BL-PAY-25; BL-PAY-26; BL-STK-28; BL-STK-29; BL-STK-30; BL-STK-31 |
-| BL-CON-18 | 02: configure shared negative-flow settings — labour and compliance | high | m | Launch 02 | BL-ATT-01 to BL-ATT-08; BL-HRM-01; BL-HRM-04; BL-HRM-07; BL-DOC-02; BL-DOC-04; BL-KRN-04; BL-KRN-08; BL-SAL-19; BL-SAL-20; BL-SAL-21; BL-HRM-26; BL-HRM-27; BL-HRM-28; BL-DOC-08; BL-DOC-09; BL-DOC-10 |
+| BL-CON-18 | 02: configure shared negative-flow settings — labour and compliance | high | m | Launch 02 | BL-ATT-01 to BL-ATT-08; BL-HRM-01; BL-HRM-04; BL-HRM-07; BL-DOC-02; BL-DOC-04; BL-KRN-04; BL-KRN-08; BL-SAL-19; BL-SAL-20; BL-SAL-21; BL-HRM-26; BL-HRM-27; BL-HRM-28; BL-DOC-08; BL-DOC-09; BL-DOC-10; BL-SAL-28 |
 | BL-CON-19 | Make the client portal read-only after the final account | medium | s | Later | BL-CON-02; Base: wl-portal client portal (`POR.SLF.01`, Later in 02) |
 
 ---
@@ -1467,7 +1467,7 @@ The mechanisms themselves (module epics in Depends on); labour and compliance (B
 ### BL-CON-18 — 02 Construction: configure shared negative-flow settings — labour and compliance
 
 **Labels:** `vertical:02-construction` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:field-pwa` `surface:system` · **Milestone:** Launch 02 · **Size:** m
-**Depends on:** BL-ATT-01 · BL-ATT-02 · BL-ATT-03 · BL-ATT-04 · BL-ATT-05 · BL-ATT-06 · BL-ATT-07 · BL-ATT-08 · BL-HRM-01 · BL-HRM-04 · BL-HRM-07 · BL-DOC-02 · BL-DOC-04 · BL-KRN-04 · BL-KRN-08 · BL-SAL-19 · BL-SAL-20 · BL-SAL-21 · BL-HRM-26 · BL-HRM-27 · BL-HRM-28 · BL-DOC-08 · BL-DOC-09 · BL-DOC-10 · **Blocks:** None.
+**Depends on:** BL-ATT-01 · BL-ATT-02 · BL-ATT-03 · BL-ATT-04 · BL-ATT-05 · BL-ATT-06 · BL-ATT-07 · BL-ATT-08 · BL-HRM-01 · BL-HRM-04 · BL-HRM-07 · BL-DOC-02 · BL-DOC-04 · BL-KRN-04 · BL-KRN-08 · BL-SAL-19 · BL-SAL-20 · BL-SAL-21 · BL-HRM-26 · BL-HRM-27 · BL-HRM-28 · BL-DOC-08 · BL-DOC-09 · BL-DOC-10 · BL-SAL-28 · **Blocks:** None.
 **Review items:** X-13, X-15, X-16, X-19, 02-N5-d, 02-N8-a
 
 #### Goal

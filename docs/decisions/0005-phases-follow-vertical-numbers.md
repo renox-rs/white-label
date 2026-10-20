@@ -36,4 +36,5 @@ rollout, so the phase names and the vertical numbers disagreed.
   or through `Depends on`. (Corrected 2026-10-20 after F1: BL-HRM-26 was built without
   BL-HRM-05, listening to `EmployeeOnboardingCancelled`, so nothing in Build 1 needs BL-HRM-03,
   -05 or -24 any more, which moved to Launch 09, and BL-HRM-04 moved to Launch 02. Build 1 has
-  105 issues.)
+  105 issues. On 2026-10-20, 22 issues were added for the work the closed F1 issues deferred
+  (#458–#479), so Build 1 has 127 issues.)

@@ -23,6 +23,9 @@ reassignment", and the 04 task changes (D-09 area, 04-N8-a).
 | BL-TKT-09 | Waive a task when its agreement ends or a started task no longer applies | medium | s | Launch 04 | Base: wl-ticketing Task lifecycle |
 | BL-TKT-10 | Hold tasks while their source agreement is paused | medium | m | Launch 04 | Base: wl-ticketing Task lifecycle |
 | BL-TKT-11 | Seed the ticket categories that other modules open for negative flows | medium | s | Build 1 | Base: wl-ticketing Ticket lifecycle |
+| BL-TKT-12 | Assign a ticket to its category's role in the subject's scope | medium | m | Build 1 | Base: wl-ticketing Ticket lifecycle; BL-TKT-11; BL-INV-04 |
+| BL-TKT-13 | Open a ticket entered late at its business time | medium | s | Build 1 | Base: wl-ticketing Ticket lifecycle; BL-KRN-04 |
+| BL-TKT-14 | Raise a request from the portal and list the party's requests | high | s | Build 1 | Base: wl-ticketing Ticket lifecycle; BL-POR-02; BL-POR-01 |
 
 ---
 
@@ -847,7 +850,7 @@ The 04 engagement transitions (`Epic 04 Accounting`); request list reminders the
 ### BL-TKT-11 — wl-ticketing: seed the ticket categories that other modules open for negative flows
 
 **Labels:** `module:wl-ticketing` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
-**Depends on:** Base: wl-ticketing Ticket lifecycle · **Blocks:** BL-MPW-20, BL-AUT-06, BL-CON-15, BL-PRP-13, BL-PRP-21, BL-PRP-27
+**Depends on:** Base: wl-ticketing Ticket lifecycle · **Blocks:** BL-MPW-20, BL-AUT-06, BL-CON-15, BL-PRP-13, BL-PRP-21, BL-PRP-27, BL-TKT-12
 **Review items:** X-02, X-11, X-15
 
 #### Goal
@@ -912,3 +915,222 @@ may rename them but not remove them.
 #### Out of scope
 Opening the tickets (`Epic wl-invoicing: invoice dispute`, `Epic wl-hr: settlement dispute`,
 `Epic wl-delivery: review and lost deliveries`).
+
+---
+
+### BL-TKT-12 — wl-ticketing: assign a ticket to its category's role in the subject's scope
+
+**Labels:** `module:wl-ticketing` `area:negative-flow` `priority:medium` `size:m` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
+**Depends on:** Base: wl-ticketing Ticket lifecycle; BL-TKT-11; BL-INV-04 · **Blocks:** None.
+**Review items:** X-02; follow-up of BL-TKT-11, Done-when point 5
+
+#### Goal
+A ticket category names a default assignee role, and the default `TicketRouter` should assign the ticket
+to that role in the subject's scope. Today `default_assignee_role` is stored and shown but nothing
+resolves it, and the kernel `Assignee` is only a user or a vendor party. So a billing dispute on an
+invoice the system issued goes to the lowest-id holder of `invoices.issue` instead of the receivables
+role. In 01 every rent invoice is issued by the daily run, so this is the normal path. This issue adds a
+role assignee and the default router.
+
+#### Surfaces
+- **Back office:** a ticket assigned to a role shows "Receivables (ACME Properties LLC)" as its assignee and appears
+  in the queue of every holder of the role in that scope; any of them can *Take* it, which assigns it
+  to themselves (`assign`, reason *taken from queue*).
+- **System:** the default `TicketRouter` assigns new tickets of a category with a role to that role in
+  the subject's scope; wl-invoicing uses it for disputes whose invoice owner is the receivables role.
+
+#### Files to read
+- `docs/modules/wl-ticketing.md` §3 *Ticket*, *Ticket category*, §4 *Ticket* (`assign`), §5.1 point 2,
+  §8 (`TicketRouter`)
+- `docs/modules/wl-invoicing.md` §3 *Invoice owner*, §5.10 point 1
+- `crates/wl-kernel/src/tickets.rs` (`Assignee`), `crates/wl-invoicing/src/dispute.rs`
+
+#### Terms
+- **Role assignee:** a role key and a scope unit (e.g. `receivables` in the entity *ACME Properties
+  LLC*); the ticket is `assigned`, owned by the role, until one holder takes it.
+- **Receivables role:** the holders of `invoices.issue` in the invoice's scope (wl-invoicing §3).
+- **Queue:** the list of open tickets assigned to a role the user holds in that scope.
+
+#### Spec excerpt (authoritative for this issue)
+| Entity | Fields (excerpt) |
+|---|---|
+| Ticket | assignee (staff user or vendor party), … |
+| Ticket category | name (EN/AR), default priority, SLA policy, default assignee role, … |
+
+§5.1 point 2: "The category sets the default priority, SLA policy and assignee role. A coordinator
+confirms the priority and assigns staff or a vendor (`WRK.TKT.02`)."
+§8: "`TicketRouter`: chooses the assignee from category, subject and scope; the default is the
+category's role in the subject's scope."
+wl-invoicing §3: "When the system issued the invoice (a subscription cycle, a vertical automation) or
+the owner is no longer active, the owner is the receivables role: the holders of `invoices.issue` in
+the invoice's scope … Only the owner is stored; the fallback is resolved when a task or notice is sent."
+
+#### Edge cases decided
+- **Spec gap:** §3 lists the assignee as "staff user or vendor party" while §8 routes to a role. Decided:
+  the kernel `Assignee` gets a third variant `Role { role, scope }`; the SLA starts at the routing as for
+  any `assign`; "taking" the ticket is a reassignment to the user, which keeps the SLA (BL-TKT-01).
+- **Nobody holds the role in the scope:** the ticket stays `open` (unassigned) and the company admin is
+  told, as wl-invoicing does today when nobody holds `invoices.issue`.
+- **A holder leaves the role:** a role ticket stays with the role; a ticket a user took stays with the
+  user (reassignment is by hand).
+- **Every module matching on `Assignee`:** a role assignee is not a vendor (no `BlockGuard` vendor check,
+  no vendor notice) and not a user (no field-PWA "my jobs"); notices go to every holder.
+- **`labour_case` (role `hr`):** resolved the same way by the opener (wl-hr settlement dispute, Launch 09).
+
+#### Must not
+- Assign to the lowest user id as a stand-in for the role.
+- Show a role ticket to users who do not hold the role in the subject's scope (scope check as for any
+  ticket list).
+
+#### Done when
+- [ ] Given an invoice issued by the daily rent run in entity "ACME Properties LLC", a dispute opens a
+      billing dispute ticket assigned to *Receivables (ACME Properties LLC)*; accountants "Nadia" and
+      "Omar" both see it in their queue and both are told.
+- [ ] Omar takes it: the ticket is assigned to Omar, reason *taken from queue*, and leaves Nadia's queue;
+      the response SLA started at the dispute is unchanged.
+- [ ] An invoice issued by Nadia still opens the ticket assigned to Nadia.
+- [ ] A category without a default role leaves the new ticket `open` for the coordinator.
+- [ ] With nobody holding `invoices.issue` in the entity, the ticket stays `open` and the company admin is
+      told.
+- [ ] A user without the role in the scope does not see the ticket in any list.
+
+#### Out of scope
+Multiple assignees or crews (wl-ticketing §12 question 1); the `labour_case` opener (wl-hr, Launch 09).
+
+---
+
+### BL-TKT-13 — wl-ticketing: open a ticket entered late at its business time
+
+**Labels:** `module:wl-ticketing` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
+**Depends on:** Base: wl-ticketing Ticket lifecycle; BL-KRN-04 · **Blocks:** None.
+**Review items:** X-19 (late entry); follow-up of BL-KRN-04, Done-when point 5
+
+#### Goal
+When a building loses power or internet, the coordinator writes requests on paper and enters them later.
+The ticket must keep the time the tenant reported the problem, so its SLA runs from then, and it must be
+flagged as a late entry with a reason. The kernel late-entry check exists (BL-KRN-04) and
+`Tickets::open_at` already takes a business time, but wl-ticketing does not register its definition or
+pass the entry's business time, and it shows no overdue marker.
+
+#### Surfaces
+- **Back office:** the ticket form has a *Reported at* field (default now); a time more than M minutes
+  before now asks for the late reason and an optional outage reference; the ticket list and page show
+  *Overdue* once the response or resolution due time has passed.
+- **System:** wl-ticketing registers its late-entry definition for the ticket (business-time field
+  `reported_at`) at start-up.
+
+#### Files to read
+- `docs/modules/wl-kernel.md` §5.13 (points 1–4)
+- `docs/modules/wl-ticketing.md` §3 *Ticket*, §4 *Ticket* (`assign`, SLA), §5.1
+- `crates/wl-ticketing/tests/late_entry_sla.rs` (the proof BL-KRN-04 left, with a test-declared definition)
+
+#### Terms
+- **Business time:** when the thing really happened (the tenant's report); **entry time:** when it was
+  typed in.
+- **Late entry:** a record whose business time is more than M minutes before its entry time (kernel
+  setting, default per BL-KRN-04).
+
+#### Spec excerpt (authoritative for this issue)
+§5.13 point 1: "A module opts in to the late-entry check for an entity and names its business-time field
+… and, optionally, one parent-subject field."
+Point 2: "When the business time is more than M minutes before the entry time, the record is flagged
+**late entry**. The user gives a reason and may link an outage reference."
+Point 4: "Late entries keep the business time for reports, deadlines and SLA calculations, and the entry
+time for the audit."
+
+#### Edge cases decided
+- **Parent subject:** the ticket's subject (unit, building) is its parent-subject field, so rule runs on
+  the unit fired in between are listed for review.
+- **Beyond N hours:** the kernel's `PLT.ACL.10` approval applies as for any late entry; the ticket is
+  saved and waits for the approval like other late records (BL-KRN-04).
+- **Portal and system tickets:** reported at the time they are created; no late-entry check.
+- **Overdue:** shown when now is after the response due time (not yet started) or the resolution due time
+  (not resolved); no stored state.
+- **A future *Reported at*:** refused.
+
+#### Must not
+- Start the SLA at the entry time for a late entry.
+- Let a user change *Reported at* on an existing ticket without the same late-entry check.
+
+#### Done when
+- [ ] Given category "AC not cooling" with 4 hours to respond, a ticket entered at 2026-11-03 13:00 with
+      *Reported at* 10:00 and reason "power cut" is flagged late entry, has response due 14:00 and shows
+      *Overdue* from 14:00:01.
+- [ ] The same ticket entered at 10:05 (within M minutes) is not flagged.
+- [ ] A *Reported at* in the future is refused.
+- [ ] The late ticket appears in the next `PLT.RUL.06` digest of the building's manager.
+- [ ] A portal ticket is never flagged late.
+
+#### Out of scope
+The late-entry mechanism and its approval (BL-KRN-04); the digest (BL-KRN-09).
+
+---
+
+### BL-TKT-14 — wl-ticketing: raise a request from the portal and list the party's requests
+
+**Labels:** `module:wl-ticketing` `area:negative-flow` `priority:high` `size:s` `surface:portal` `surface:system` · **Milestone:** Build 1 · **Size:** s
+**Depends on:** Base: wl-ticketing Ticket lifecycle; BL-POR-02; BL-POR-01 · **Blocks:** None.
+**Review items:** X-18; follow-up of BL-POR-01, Done-when points 1 and 8
+
+#### Goal
+A tenant raises a maintenance request in the portal with a category, a description and photos, and
+follows it there. This is the F1 demo path ("maintenance ticket from the tenant portal"). wl-ticketing
+registers a *Requests* portal section that lists the party's tickets with the status ticketing stored,
+and a *New request* form. Raising a request works while the party is blocked (it is not new business).
+
+#### Surfaces
+- **Portal:** *Requests* lists the tickets the user raised and the tickets on subjects their party owns
+  (`WRK.ACL.01`), with status and comments marked visible; *New request* asks for the subject (one of
+  the party's units), category (the categories open to the portal), description and photos; the
+  requester confirms or reopens a resolved request.
+- **System:** the ticket is created with channel *portal* and requester = the portal user; the category
+  sets priority, SLA and assignee as for a staff ticket.
+
+#### Files to read
+- `docs/modules/wl-ticketing.md` §3 *Ticket*, §4 *Ticket* (`open`, `confirm`, `reopen`), §5.1, §9
+  (`WRK.ACL.01`), §6 permission `tickets.create`
+- `docs/modules/wl-portal.md` §6 (`PortalSections`, portal permission `portal.requests.create`, the
+  blocked-party list of refused actions)
+- `docs/verticals/01-property.md` §4.2 steps 1 and 5, §3.3 `PRP.ACL.01`
+
+#### Terms
+- **Portal section:** a page and menu entry a module registers per audience (BL-POR-02).
+- **Visible comment:** a ticket comment marked visible to the requester; internal ones never show.
+
+#### Spec excerpt (authoritative for this issue)
+| ID | Capability |
+|---|---|
+| `WRK.TKT.01` | Raise a ticket from the portal or by staff, with category and photos |
+| `POR.SLF.01` | Tenant self-service portal: lease, invoices, cheques, documents, requests |
+
+| ID | Rule | Pattern |
+|---|---|---|
+| `WRK.ACL.01` | An external requester sees only tickets they raised, or tickets on subjects they own, and only comments marked visible | `OWN`, `FLD` |
+
+wl-portal §6: "every other portal action (a maintenance request, a complaint, a message, a document
+upload, a profile change, cancelling without a refund) works as usual" while the party is blocked.
+
+#### Edge cases decided
+- **Categories offered:** those marked *portal* in the category settings; platform categories (billing
+  dispute, labour case) are never offered.
+- **Photos:** stored through `DocumentStore` on the ticket; the portal upload limits apply (20 MB, image
+  types).
+- **Read-only grant (`POR.ACL.01`):** the list stays, *New request* and *Reopen* are refused.
+- **Confirm by the tenant:** shows the charge amount for a chargeable job before confirming (01 §4.2
+  step 5).
+
+#### Must not
+- Show internal comments, the assignee's phone or another tenant's tickets.
+- Refuse a request because the party is blocked.
+
+#### Done when
+- [ ] Given tenant "Sara M." with an active grant on unit 1204, she raises "AC not cooling" with two
+      photos; a ticket with channel *portal*, requester Sara and the category's SLA is created and shows
+      *Open* in her Requests.
+- [ ] She does not see the ticket of unit 1205 or an internal comment on her own ticket.
+- [ ] With her party blocked (`non_payment`), she can still raise a request.
+- [ ] With her grant `read_only`, the list shows and *New request* is refused.
+- [ ] A resolved chargeable ticket shows AED 262.50 (incl. VAT) with *Confirm* and *Reopen*.
+
+#### Out of scope
+The portal menu and permissions (BL-POR-02); triage and invoicing of the ticket (BL-TKT-02).

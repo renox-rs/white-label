@@ -43,13 +43,17 @@ payment (G5, `FIN.BUD.01`: BL-PAY-26).
 | BL-PAY-24 | Set off a party's invoice against its supplier bill | medium | s | Launch 02 | Base: wl-payments Payment lifecycle; BL-PAY-01; BL-PTY-04 |
 | BL-PAY-25 | Expose open cheques, bank balances and payments for the cash-flow forecast | high | s | Build 1 | Base: wl-payments Payment, Cheque, Bank statement import lifecycles |
 | BL-PAY-26 | Record an owner-drawings payment only after approval (`FIN.ACL.21`) | high | m | Build 1 | Base: wl-payments Payment, Bank statement import lifecycles; BL-INV-27; BL-PAY-25 |
+| BL-PAY-27 | Show the deposit and its published deductions in the portal and let the party dispute lines | high | s | Build 1 | BL-POR-02; BL-PAY-15 |
+| BL-PAY-28 | Pay approved supplier bills, and hold a payment to a blocked supplier until an exception is approved | high | m | Build 1 | Base: wl-payments Payment lifecycle; Base: wl-invoicing Supplier bill lifecycle; BL-PTY-04; BL-INV-12 |
+| BL-PAY-29 | Suggest and confirm bank statement matches, and reverse a confirmed match (`FIN.BNK.01`, `PRP.ACL.16`) | high | m | Build 1 | BL-PAY-25; BL-PAY-01; BL-INV-07 |
+| BL-PAY-30 | Generate and send the cheque handover receipt | medium | s | Build 1 | BL-DOC-11; BL-NTF-10 |
 
 ---
 
 ### BL-PAY-01 — wl-payments: reverse a payment and remove its allocations
 
 **Labels:** `module:wl-payments` `area:negative-flow` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
-**Depends on:** Base: wl-payments Payment lifecycle (`record`, allocation) · **Blocks:** BL-INV-07, BL-INV-12, BL-INV-17, BL-PAY-04, BL-PAY-06, BL-PAY-24
+**Depends on:** Base: wl-payments Payment lifecycle (`record`, allocation) · **Blocks:** BL-INV-07, BL-INV-12, BL-INV-17, BL-PAY-04, BL-PAY-06, BL-PAY-24, BL-PAY-29
 **Review items:** X-03
 
 #### Goal
@@ -1052,7 +1056,7 @@ Setting (§7): *Bounced cheque reminders (`FIN.RUL.18`)* — party and staff at 
 ### BL-PAY-15 — wl-payments: dispute deposit deductions before the refund
 
 **Labels:** `module:wl-payments` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:portal` · **Milestone:** Build 1 · **Size:** m
-**Depends on:** Base: wl-payments Deposit lifecycle · Epic wl-portal: deductions shown to the party · **Blocks:** BL-PRP-12, BL-PRP-13, BL-PRP-16, BL-PRP-17, BL-PRP-26
+**Depends on:** Base: wl-payments Deposit lifecycle · Epic wl-portal: deductions shown to the party · **Blocks:** BL-PRP-12, BL-PRP-13, BL-PRP-16, BL-PRP-17, BL-PRP-26, BL-PAY-27, BL-PRP-32
 **Review items:** 01-N4-c
 
 #### Goal
@@ -1789,7 +1793,7 @@ Creating the supplier bill from the certificate (BL-CON-06).
 ### BL-PAY-25 — wl-payments: expose open cheques, bank balances and payments for the cash-flow forecast
 
 **Labels:** `module:wl-payments` `area:sme-gap` `priority:high` `size:s` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
-**Depends on:** Base: wl-payments Payment, Cheque and Bank statement import lifecycles · **Blocks:** BL-INV-28, BL-PAY-26, BL-ACC-24, BL-AUT-18, BL-CLN-16, BL-CON-17, BL-EDU-18, BL-FNB-16, BL-LOG-26, BL-MFG-14, BL-MPW-21, BL-PRP-26
+**Depends on:** Base: wl-payments Payment, Cheque and Bank statement import lifecycles · **Blocks:** BL-INV-28, BL-PAY-26, BL-ACC-24, BL-AUT-18, BL-CLN-16, BL-CON-17, BL-EDU-18, BL-FNB-16, BL-LOG-26, BL-MFG-14, BL-MPW-21, BL-PRP-26, BL-PAY-29
 **Review items:** G2 (SME problem map 12, 14)
 
 #### Goal
@@ -2016,3 +2020,304 @@ the reason, and the accountant is told).
 #### Out of scope
 Drawings as supplier bill or expense lines and `FIN.ACL.22`, `FIN.ACL.23` themselves
 (BL-INV-27); VAT and corporate tax treatment (wl-invoicing §12 question 14, A-16).
+
+---
+
+### BL-PAY-27 — wl-payments: show the deposit and its published deductions in the portal and let the party dispute lines
+
+**Labels:** `module:wl-payments` `area:negative-flow` `priority:high` `size:s` `surface:portal` `surface:system` · **Milestone:** Build 1 · **Size:** s
+**Depends on:** BL-POR-02; BL-PAY-15 · **Blocks:** None.
+**Review items:** 01-N4-c; follow-up of BL-POR-01, Done-when point 8
+
+#### Goal
+In 01 the tenant sees the itemised deductions in the portal before the refund is paid and may dispute
+one or more lines within 14 days (`PRP.RUL.11`). BL-PAY-15 built the dispute flag, its windows and the kernel
+contract the portal calls (`DepositDeductions`), but no portal page uses it. wl-payments registers a
+*Deposit* section that shows the held deposit, the published deductions (latest version) and the refund status,
+with a *Dispute* action on the lines while the window is open.
+
+#### Surfaces
+- **Portal:** *Deposit* shows the deposit amount and status, the latest published deductions with
+  evidence photos, the dispute window's last day, and the refund status (*In review*, *Paid*);
+  *Dispute* selects lines and asks for a reason.
+- **System:** the page reads and disputes through `DepositDeductions::published_for` and `dispute`.
+
+#### Files to read
+- `docs/modules/wl-payments.md` §4 *Deposit* (`refund`, `forfeit`, *Deductions dispute flag*), §5.4, §7
+  (deductions dispute setting)
+- `docs/verticals/01-property.md` §4.3 step 4 and row "The tenant disputes the deductions", §7.1 *Deposit*
+- `docs/modules/wl-portal.md` §6 (blocked parties: a request for a refund or a deposit release is money out)
+- `crates/wl-kernel/src/deposits.rs` (`DepositDeductions`), `crates/wl-payments/src/deposit_deductions.rs`
+
+#### Terms
+- **Published deductions:** a version of the itemised deductions shown to the party; a revision is a new
+  version and restarts the window.
+- **Dispute window:** days after publication during which the party may dispute (01: 14).
+
+#### Spec excerpt (authoritative for this issue)
+| Transition | From | To | By | Guards | Effects |
+|---|---|---|---|---|---|
+| `refund` | settlement_pending | refunded | `deposits.refund` | deductions itemised with evidence; deductions published to the party in the portal before payment (01 §13 question 5); when the deductions dispute is on for the vertical: the dispute window of the latest published version has passed and no deductions dispute is open (every disputed line revised or upheld); … | refund paid by transfer or issued cheque; deductions invoiced if billable; settlement statement generated |
+
+**Deductions dispute flag** (not a state, setting per vertical, off by default). After the deductions are
+published, the party may dispute one or more lines in the portal within the dispute window. While the
+flag is set, `refund` and `forfeit` wait.
+
+| Setting | Default |
+|---|---|
+| Deductions dispute by the party in the portal: on/off; dispute window; response window | off; 14 days; 7 days (01: on) |
+
+#### Edge cases decided
+- **Window:** the last day counts (published 2026-11-02, window 14 days: disputes until 2026-11-16
+  23:59 Asia/Dubai).
+- **A line already disputed:** shown as *Disputed*, not selectable again until revised or upheld.
+- **Party blocked:** viewing and disputing work (a dispute moves no money); the refund status shows as
+  stored (*In review*), with no block text (BL-POR-01).
+- **Read-only grant:** in 01 the grant is read-only after `terminate`, which is when deductions are
+  published; the deposit dispute stays allowed for a read-only grant during the window (the spec gives
+  the tenant this right after move-out), and is the only write action allowed there.
+- **Setting off:** no *Dispute* action.
+
+#### Must not
+- Show unpublished deduction drafts.
+- Show the internal notes of the deposit or another party's deposit.
+
+#### Done when
+- [ ] Given deposit AED 10,000 with deductions published on 2026-11-02 (cleaning AED 800, wall repair AED
+      1,200), Sara sees both lines, the window "until 16 Nov 2026" and the refund *In review*.
+- [ ] She disputes the wall repair with reason "pre-existing damage": the dispute flag is set and the
+      refund waits.
+- [ ] On 2026-11-17 the *Dispute* action is gone.
+- [ ] With her grant read-only after move-out, she can still dispute within the window.
+- [ ] A revision publishes version 2; her page shows version 2 and a new window.
+
+#### Out of scope
+The dispute flag, its response window and escalation (BL-PAY-15, BL-PRP-16); applying the deposit to
+deductions (BL-PRP-17).
+
+---
+
+### BL-PAY-28 — wl-payments: pay approved supplier bills, and hold a payment to a blocked supplier until an exception is approved
+
+**Labels:** `module:wl-payments` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
+**Depends on:** Base: wl-payments Payment lifecycle; Base: wl-invoicing Supplier bill lifecycle; BL-PTY-04; BL-INV-12 · **Blocks:** None.
+**Review items:** X-18, D-14; follow-up of BL-PRP-26, Done-when point 10
+
+#### Goal
+The accountant pays vendors by bank transfer against their approved bills: one outgoing payment for a
+supplier, allocated to one or more of its `approved` or `partially_paid` bills, each running the bill's
+`pay`. Today only an issued cheque can pay a bill (at `clear`), and nothing checks the block on a
+transfer. Paying a supplier is money out: while the supplier is blocked the payment is not recorded; the
+accountant may request an exception, and the payment is recorded once, as requested, when the compliance
+role approves it (`PTY.ACL.03`).
+
+#### Surfaces
+- **Back office:** *Pay supplier* on a supplier (or from its approved bills) lists the open approved
+  bills, proposes the oldest first, and asks for method (transfer, issued cheque), bank account, date,
+  reference and the amount per bill; a blocked supplier gives the on-hold refusal with *Request
+  exception*.
+- **System:** on approval of the exception the payment is recorded as the requester with the stored
+  payload; each allocation runs supplier bill `pay`; a reversal runs `unallocate` (BL-INV-12).
+
+#### Files to read
+- `docs/modules/wl-payments.md` §4 *Payment* (`record`, `reverse`), §5.1, §6 (`PaymentRecorder`)
+- `docs/modules/wl-invoicing.md` §4 *Supplier bill* (`pay`, `unallocate`), §5.4 point 4, §6
+  (`SupplierBills`)
+- `docs/modules/wl-parties.md` §6 (`BlockGuard`, `PTY.ACL.03`), §7 (exception approver)
+- `docs/verticals/01-property.md` §3.3 `PTY.ACL.03`; `crates/wl-payments/src/cheque_money.rs` (the
+  cheque path that already pays bills)
+
+#### Terms
+- **Outgoing payment:** a payment with direction *out* (voucher number from the payment voucher series).
+- **Money out:** refund, payout, deposit return, supplier payment (`ActionKind::MoneyOut`).
+- **Exception:** an approval request that lets one blocked action run once (BL-PTY-04).
+
+#### Spec excerpt (authoritative for this issue)
+| Transition | From | To | By | Guards | Effects |
+|---|---|---|---|---|---|
+| `record` | — | received | `payments.record` | method details complete (…); outgoing: an approved request (`FIN.ACL.21`, or `FIN.ACL.23` for a sole owner; wl-invoicing), incoming (repayment): no approval | event `PaymentReceived`; … |
+| `pay` (supplier bill) | approved, partially_paid | partially_paid, paid | system (payment from wl-payments, or a supplier debit note applied) | — | open balance reduced; `paid` when it reaches zero |
+
+`PTY.ACL.03`: "While a party is blocked, no new lease, renewal or amendment is activated for it, and no
+money goes out to it (deposit refund, owner payout, vendor payment) unless the compliance role approves
+an exception."
+wl-invoicing §5.4 point 4: "Approval posts actual cost to the cost objects and makes the bill payable in
+wl-payments."
+
+#### Edge cases decided
+- **`FIN.ACL.21` approved request:** applies to owner drawings only; an ordinary supplier payment needs
+  no approval of its own (the bill was approved).
+- **Amount per bill:** not above the bill's open balance; the total equals the payment amount (no
+  unallocated money out).
+- **Bills of several entities:** one payment pays bills of one receiving entity only.
+- **Block placed while an exception waits:** the kernel re-checks the guards at approval; a supplier
+  unblocked meanwhile is paid at once without the exception.
+- **Payload changed after the request:** a new request is needed (kernel rule, BL-KRN-01).
+- **Issued cheque:** recorded as an issued cheque (wl-payments Cheque), which pays the bills at `clear`
+  as today; the block guard runs when the cheque is issued.
+- **A bill held as possible duplicate:** not `approved`, not offered.
+
+#### Must not
+- Record any outgoing payment to a blocked supplier without an approved exception.
+- Let a payment exceed the open balance of a bill.
+- Mark a bill paid without a payment or debit note.
+
+#### Done when
+- [ ] Given vendor "CoolAir LLC" with approved bills B-101 AED 1,050 and B-102 AED 2,100, a transfer of
+      AED 3,150 pays both: both are `paid`, one voucher number is used, `PaymentReceived` (direction out)
+      is emitted.
+- [ ] A transfer of AED 1,500 pays B-101 in full and B-102 AED 450 (`partially_paid`), oldest first.
+- [ ] With CoolAir blocked, the payment is refused with the on-hold text; *Request exception* creates an
+      approval request; when the compliance officer approves it, the payment is recorded once as the
+      accountant with the stored amounts.
+- [ ] The exception rejected: nothing is recorded and the accountant is told.
+- [ ] Reversing the AED 3,150 payment (*entered in error*) reopens both bills (`approved`).
+- [ ] An amount above a bill's open balance is refused.
+
+#### Out of scope
+Supplier bill approval and duplicates (BL-INV-11, BL-INV-24); bank matching of outgoing lines (BL-PAY-29);
+payment runs that pay many suppliers in one file (Later).
+
+---
+
+### BL-PAY-29 — wl-payments: suggest and confirm bank statement matches, and reverse a confirmed match (`FIN.BNK.01`, `PRP.ACL.16`)
+
+**Labels:** `module:wl-payments` `area:negative-flow` `priority:high` `size:m` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** m
+**Depends on:** BL-PAY-25; BL-PAY-01; BL-INV-07 · **Blocks:** None.
+**Review items:** X-03; follow-up of BL-PRP-26, Done-when point 5
+
+#### Goal
+In 01 bank transfers from tenants are found by importing the bank statement: each credit line is matched
+to the tenant's open invoices by amount, payer name and reference, and the accountant confirms or
+corrects the suggestion. The import, the CSV and MT940 readers and the line model exist (BL-PAY-25), but
+lines can only be ignored or marked as an owner drawing. This issue builds the match engine for incoming
+lines: suggestions, confirm and manual match (one line to several invoices), the payment created at
+`complete`, and the reversal of a confirmed match, which needs a property manager in 01 (`PRP.ACL.16`).
+
+#### Surfaces
+- **Back office:** the import page shows each line with its suggestion (party, invoices, score);
+  *Confirm*, *Match manually* (search the party's open invoices, split the line) and *Ignore* with a
+  reason; a confirmed line's payment shows *Reverse match*, which in 01 a property manager approves.
+- **System:** `parse` computes suggestions; `complete` records and allocates the payments of confirmed
+  incoming lines; `revert` reverses them.
+
+#### Files to read
+- `docs/modules/wl-payments.md` §4 *Bank statement import*, §5.7, §6 (`BankStatements`), §4 *Payment*
+  (`record`, `reverse`)
+- `docs/verticals/01-property.md` §4.1 step 12 and row "A bank match was wrong", §3.3 `PRP.ACL.16`
+- `crates/wl-payments/src/bank_statement_flow.rs`, `bank_statement_line.rs`
+
+#### Terms
+- **Suggestion:** a proposed match of a line to a party and its open invoices, with the reason (amount,
+  reference, payer name).
+- **Confirmed match:** a line the accountant accepted; it becomes `matched`, and its payment is recorded at
+  `complete`.
+- **Reverse a match:** reverse the payment created by a confirmed line (*bank match wrong*); the
+  allocations are removed and the invoices reopen (`unallocate`).
+
+#### Spec excerpt (authoritative for this issue)
+| Transition | From | To | By | Guards | Effects |
+|---|---|---|---|---|---|
+| `parse` | uploaded | in_review | system | format recognised; bank account and period match the file; lines already imported are skipped | lines created; match suggestions computed; event `BankStatementImported` |
+| `complete` | in_review | completed | `bank.reconcile` | no line left `unmatched` or `suggested` | payments recorded for confirmed incoming lines that had none, and allocated; event `BankStatementCompleted` |
+| `revert` | in_review | reverted | `bank.reconcile` | payments created by this import have not been changed since | those payments reversed; lines removed |
+
+§5.7 point 2: "Each incoming line is compared with open invoices (amount and reference), deposited cheques
+(amount and date), expected gateway settlements and payments already recorded …" Point 3: "The
+accountant confirms suggestions, matches manually (including one line to several invoices), or ignores
+a line with a reason." Point 4: "Confirmed incoming lines without a payment create the payment and
+allocate it; matched cheques are cleared."
+
+| ID | Rule | Pattern | Applies to |
+|---|---|---|---|
+| `PRP.ACL.16` | A bank statement line is matched to a tenant's invoices by one user; reversing a confirmed match needs a property manager | `SOD`, `STA` | accountant |
+
+#### Edge cases decided
+- **Scoring:** exact amount and the invoice number in the reference first; then exact amount and payer
+  name similar to the party name; then the sum of the party's oldest open invoices equal to the amount.
+  No suggestion below these; the line stays `unmatched`.
+- **A line already covered by a recorded payment** (same party, amount, date ± 3 days, method transfer):
+  suggested as *already recorded*; confirming links the line and records nothing.
+- **Deposited cheque lines:** suggested against the deposited cheque; confirming clears the cheque
+  through its `clear` transition (no second payment).
+- **Overpayment:** the rest of the line stays on the party's credit balance.
+- **Reversal in 01:** an accountant's *Reverse match* creates an approval request for a property manager
+  (`PRP.ACL.16`); the payment's `reverse` runs at approval with reason *bank match wrong*.
+- **Outgoing lines** (supplier bills, refunds, issued cheques): suggested only as *payment already
+  recorded*; matching them to unpaid bills is later.
+
+#### Must not
+- Record a payment before `complete`.
+- Let the user who confirmed a match reverse it alone in 01.
+- Suggest an invoice of another entity than the bank account's.
+
+#### Done when
+- [ ] Given INV-ACME-2026-0310 open for AED 4,500 and a CSV line of +4,500 with reference "INV-ACME-2026-0310",
+      the line is suggested for that invoice; confirming and completing the import records one
+      transfer of AED 4,500 allocated to it and the invoice is `paid`.
+- [ ] A line of +9,000 matched manually to two invoices of AED 4,500 records one payment with two
+      allocations.
+- [ ] A line for a deposited cheque of AED 25,000 clears the cheque and creates no other payment.
+- [ ] An accountant cannot reverse the confirmed +9,000 match; a property manager approves it and both invoices
+      are open again with reminders resuming.
+- [ ] `revert` of an import in review removes its lines and records nothing.
+- [ ] A line with no candidate stays `unmatched` and blocks `complete`.
+
+#### Out of scope
+Match rules learned from past payments; Excel files (platform importer R23); the unmatched-lines task
+(`FIN.RUL.12`); outgoing line matching to bills.
+
+---
+
+### BL-PAY-30 — wl-payments: generate and send the cheque handover receipt
+
+**Labels:** `module:wl-payments` `area:negative-flow` `priority:medium` `size:s` `surface:back-office` `surface:system` · **Milestone:** Build 1 · **Size:** s
+**Depends on:** BL-DOC-11; BL-NTF-10 · **Blocks:** None.
+**Review items:** 01-N2-a, 01-N12-a; follow-up of BL-PRP-01 and BL-PRP-11 (cheques returned against a receipt)
+
+#### Goal
+Cheques that were never deposited go back to the tenant against a handover receipt (lease cancel,
+terminate, a handover to a new manager). The return already stores one receipt reference on every
+cheque it returned, but there is no receipt document. This issue generates the receipt PDF (`DOC.GEN.01`)
+for each return call, stores it on the party and the cheques, and e-mails it to the party.
+
+#### Surfaces
+- **Back office:** the cheques' history and the party's documents show the receipt *Cheque handover
+  receipt CHR-2026-0042* with a download link and a *Signed by the receiver* upload slot.
+- **System:** the return (`return`, `return_by_system`) generates the receipt and requests the e-mail.
+
+#### Files to read
+- `docs/modules/wl-payments.md` §4 *Cheque* (`return`), §5.3
+- `docs/verticals/01-property.md` §4.1 row "The prospect backs out", §7.1 *Lease* (`terminate`), §7.1
+  *Management agreement* (`end`)
+- `crates/wl-payments/src/cheque_return.rs`
+
+#### Terms
+- **Handover receipt:** the document listing the cheques handed back (number, bank, date, amount), the
+  party, the date and a signature block for the receiver.
+
+#### Spec excerpt (authoritative for this issue)
+01 §4.1: "Cheques not yet deposited are returned against a handover receipt."
+01 §7.1 *Lease* `terminate`: "cheques in `received` or `due_for_deposit` dated after that date `return`".
+wl-documents §5.3 point 4: "The PDF is stored as an accepted document with source `generated` … Issued
+documents are never regenerated."
+
+#### Edge cases decided
+- **One receipt per return call**, numbered from a kernel series `CHR-{YYYY}-{0000}` per entity.
+- **Language:** bilingual (sent to a party).
+- **Handover to a new manager** (agreement `end`): the receipt names the new holder as receiver and goes
+  to them, not to the tenant.
+- **No e-mail address:** the receipt is stored; the e-mail gives up as any message (its reaction).
+
+#### Must not
+- Regenerate a receipt when a cheque on it changes later.
+
+#### Done when
+- [ ] Given lease L-0042 terminated with 5 cheques dated after the move-out, one receipt CHR-2026-0042 is
+      generated listing the 5 cheques with their total, stored on the tenant and linked from each
+      cheque, and e-mailed to the tenant with the PDF attached.
+- [ ] A second return for the same lease the next day produces CHR-2026-0043.
+- [ ] On agreement `end`, the receipt names the new holder and is sent to them.
+
+#### Out of scope
+Generation and attachments themselves (BL-DOC-11, BL-NTF-10).
