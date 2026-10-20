@@ -147,6 +147,8 @@ async fn hrm26_death_and_exit_cancel_a_running_onboarding() {
     add_template(&t, supervisor_template()).await;
     // The SOPs of the role are pending, so every step is open.
     t.sops.set_pending(&[1]);
+    // HR is there to be reminded, so a reminder would have a recipient.
+    t.user_in_branch("Hana", "hr").await;
     for (n, deceased) in [(60, true), (61, false)] {
         let employee = employees::create(
             t.state(),
@@ -198,6 +200,46 @@ async fn hrm26_death_and_exit_cancel_a_running_onboarding() {
                 .all(|s| s.status == StepStatus::Cancelled)
         );
     }
+
+    // Weeks later no reminder or escalation is sent for the two cancelled
+    // onboardings, while a running one of a control employee is reminded.
+    let control = employees::create(
+        t.state(),
+        NewEmployee::new(PartyId(62), "supervisor", nov(1))
+            .scope(branch())
+            .status(EmployeeStatus::Active),
+    )
+    .await
+    .unwrap();
+    onboarding::start(
+        t.state(),
+        StartRequest {
+            employee_id: control.id,
+            trigger: StartTrigger::Manual,
+            templates: Vec::new(),
+            start_on: None,
+        },
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    t.notices.clear();
+    let later = wl_kernel::documents::today() + renox::chrono::Days::new(30);
+    let report = wl_hr::reminders::run(t.state(), later).await.unwrap();
+    assert!(report.reminded > 0, "the running onboarding is reminded");
+    let sent = t.notices.of_type("hr.onboarding_step_reminder");
+    assert_eq!(sent.len(), report.reminded);
+    let mine = format!("#{}", control.id);
+    assert!(
+        sent.iter().all(|r| r.data["employee"] == mine.as_str()),
+        "nothing is sent for the employee who died or exited: {sent:?}"
+    );
+    assert!(
+        t.notices
+            .of_type("hr.onboarding_step_escalated")
+            .iter()
+            .all(|r| r.data["employee"] == mine.as_str())
+    );
 }
 
 /// AC4 and AC5: HR cancels the manual "Supervisor" onboarding of an active
