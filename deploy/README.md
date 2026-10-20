@@ -95,7 +95,7 @@ C=demo; DOMAIN=demo.palmgrove.example; PORT=3100; TAG=v0.1.0
 ```bash
 sudo useradd --system --home-dir /var/lib/white-label/$C --shell /usr/sbin/nologin wl-$C
 sudo install -d -o wl-$C -g wl-$C -m 0750 /var/lib/white-label/$C /var/lib/white-label/$C/snapshots
-sudo install -d -m 0700 /etc/white-label/$C
+sudo install -d -o root -g wl-$C -m 0750 /etc/white-label/$C
 sudo install -d /opt/white-label/clients/$C
 sudo ln -sfn /opt/white-label/releases/$TAG/host /opt/white-label/clients/$C/host
 ```
@@ -106,7 +106,7 @@ Start from the demo client and edit `[client]` (name, domain, locales), `[brandi
 `[modules] enabled` and the `[[legal_entities]]` (trade licence, TRN, address):
 
 ```bash
-sudo install -m 0600 clients/demo-properties/client.toml /etc/white-label/$C/client.toml
+sudo install -m 0640 -g wl-$C clients/demo-properties/client.toml /etc/white-label/$C/client.toml
 sudoedit /etc/white-label/$C/client.toml
 ```
 
@@ -136,7 +136,7 @@ before go-live (see section 8, mail).
 sudo install -d /etc/systemd/system/white-label@$C.socket.d
 printf '[Socket]\nListenStream=\nListenStream=127.0.0.1:%s\n' "$PORT" \
   | sudo tee /etc/systemd/system/white-label@$C.socket.d/listen.conf >/dev/null
-sed "s/CLIENT/$C/g" deploy/litestream/litestream.yml | sudo install -m 0600 /dev/stdin /etc/white-label/$C/litestream.yml
+sed "s/CLIENT/$C/g" deploy/litestream/litestream.yml | sudo install -m 0640 -g wl-$C /dev/stdin /etc/white-label/$C/litestream.yml
 sudo install -m 0600 deploy/litestream/litestream.env.example /etc/white-label/$C/litestream.env
 sudoedit /etc/white-label/$C/litestream.yml     # endpoint and bucket of the backup VPS
 sudoedit /etc/white-label/$C/litestream.env     # the client's MinIO key
@@ -222,9 +222,11 @@ admin signs up, verifies the e-mail address and is then promoted:
    An address that has not signed up fails with `no user with the email ...`.
 4. Reload the page: the sidebar now shows the admin pages (users, activity, legal entities, property).
 
-An unverified user is redirected to `/verify-email` (dashboard) and gets 403 on `/property`:
-*tested here*, together with the whole sequence above (with the log mailer; the link in the log
-is built from `APP_URL`, so it carries the public domain).
+Before step 3 the user is redirected to `/verify-email` (unverified) or gets 403 on
+`/property` (verified, not admin); after it, `/dashboard` and `/property` answer 200. *Tested
+here*, together with the whole of section 3.1 to 3.8 run literally as the `wl-<client>` user, with the real
+`systemd-socket-activate` and a small stand-in for `systemd-run` (there is no systemd here), with the log mailer (the link in the
+log is built from `APP_URL`, so it carries the public domain).
 
 Anyone can also register as a plain `member` while `/register` is open. **Open item:** the
 host does not call `without_registration()` yet (host code, not part of the deployment files).
@@ -237,7 +239,7 @@ curl -fsS https://$DOMAIN/health                          # {"database":"ok","ma
 curl -s -o /dev/null -w '%{http_code}\n' https://$DOMAIN/login      # 200
 curl -sI https://$DOMAIN/login | grep -i 'strict-transport\|set-cookie'   # HSTS; session cookie has Secure
 sudo systemctl is-active white-label@$C litestream@$C
-sudo -u wl-$C litestream snapshots -config /etc/white-label/$C/litestream.yml /var/lib/white-label/$C/app.db   # a snapshot exists after a minute
+ls-run snapshots -config /etc/white-label/$C/litestream.yml /var/lib/white-label/$C/app.db   # a snapshot exists after a minute (ls-run: section 7)
 ```
 
 The first three are the same answers the sandbox gave (*tested here*, via simulated proxy
@@ -326,11 +328,20 @@ What is covered:
 | Uploads (`/var/lib/white-label/<client>/app/`) | to the backup VPS within 5 minutes | **not built** (suggest `mc mirror` or `rclone` on a systemd timer) |
 | `APP_KEY`, `env`, `client.toml` | the control plane's secret store | **not built**: copy them by hand when the client is created |
 
+Litestream reads its keys from `litestream.env`, so a manual `litestream` call goes through a
+helper that loads that file (as `wl-run` does for the app):
+
+```bash
+ls-run() { sudo systemd-run --quiet --wait --collect --pipe -p User=wl-$C \
+             -p EnvironmentFile=/etc/white-label/$C/litestream.env /usr/local/bin/litestream "$@"; }
+LSY=/etc/white-label/$C/litestream.yml; DB=/var/lib/white-label/$C/app.db
+```
+
 Check that the replica is current (any day):
 
 ```bash
-sudo -u wl-$C litestream generations -config /etc/white-label/$C/litestream.yml /var/lib/white-label/$C/app.db
-sudo -u wl-$C litestream snapshots   -config /etc/white-label/$C/litestream.yml /var/lib/white-label/$C/app.db
+ls-run generations -config $LSY $DB
+ls-run snapshots   -config $LSY $DB
 journalctl -u litestream@$C -n 20 --no-pager
 ```
 
@@ -338,19 +349,18 @@ journalctl -u litestream@$C -n 20 --no-pager
 file):
 
 ```bash
-D=$(mktemp -d); sudo chown wl-$C $D
+D=$(sudo mktemp -d /var/tmp/drill-XXXXXX); sudo chown wl-$C $D
 # 1. restore the latest replica (add -timestamp 2026-10-20T10:00:00Z for a point in time)
-sudo -u wl-$C litestream restore -config /etc/white-label/$C/litestream.yml -o $D/app.db /var/lib/white-label/$C/app.db
+ls-run restore -config $LSY -o $D/app.db $DB
 # 2. integrity and content
-sudo -u wl-$C sqlite3 $D/app.db 'pragma integrity_check;'
-sudo -u wl-$C sqlite3 $D/app.db 'select count(*) from users; select count(*) from wl_legal_entities;'
-sudo -u wl-$C sqlite3 $D/app.db 'select max(created_at) from audit_log;'     # last transaction time (check the table name)
-# 3. smoke test: run the binary on the copy, another port, same env but this database
-sudo systemd-run --quiet --wait --collect --pipe -p User=wl-$C -p WorkingDirectory=$D \
-  -p EnvironmentFile=/etc/white-label/$C/env \
-  -E DATABASE_URL="sqlite://$D/app.db?mode=rwc" -E STORAGE_PATH=$D -E APP_PORT=3199 -E SCHEDULER=false -E QUEUE_WORKERS=0 \
-  /opt/white-label/clients/$C/host serve &
-sleep 5; curl -fsS http://127.0.0.1:3199/health; kill %1
+sudo -u wl-$C sqlite3 $D/app.db 'pragma integrity_check;'                  # ok
+sudo -u wl-$C sqlite3 $D/app.db 'select count(*) from users; select count(*) from wl_legal_entities; select max(created_at) from audit_logs;'
+# 3. smoke test: the binary on the copy, on another port, with no queue and no scheduler
+sudo grep -v '^\(DATABASE_URL\|STORAGE_PATH\|APP_PORT\|APP_HOST\|SCHEDULER\|QUEUE_WORKERS\)=' /etc/white-label/$C/env | sudo tee $D/env >/dev/null
+printf 'DATABASE_URL=sqlite://%s/app.db?mode=rwc\nSTORAGE_PATH=%s\nAPP_HOST=127.0.0.1\nAPP_PORT=3199\nSCHEDULER=false\nQUEUE_WORKERS=0\n' $D $D | sudo tee -a $D/env >/dev/null
+sudo systemd-run --unit=drill-$C -p User=wl-$C -p WorkingDirectory=$D -p EnvironmentFile=$D/env /opt/white-label/clients/$C/host serve
+sleep 5; curl -fsS http://127.0.0.1:3199/health
+sudo systemctl stop drill-$C; sudo rm -rf $D
 ```
 
 Use `SCHEDULER=false` and `QUEUE_WORKERS=0` on a drill copy: the restored database holds real
@@ -378,7 +388,7 @@ These all came from running the real binary with `APP_ENV=production` (*tested h
 |---|---|---|
 | `Error: APP_KEY must be set in production` | no `APP_KEY` | set it (3.3) |
 | `client.toml: CLIENT_CONFIG is not set: name the client's client.toml` | production does not fall back to the demo client | set `CLIENT_CONFIG` |
-| `client.toml: cannot read ...` | wrong path or wrong owner | path in `env`; the file is read by the process, not by systemd: give `wl-<client>` read access to `client.toml` (the directory is 0700 root in 3.1; use `chgrp wl-<client>` and `chmod 0750/0640`, or `ReadOnlyPaths=`) |
+| `client.toml: cannot read ...` | wrong path, or the app user cannot read it: unlike `env` (read by systemd as root), `client.toml` is opened by the process | `/etc/white-label/<client>` is `root:wl-<client>` 0750 and `client.toml` 0640 `:wl-<client>` (3.1, 3.2) |
 | Sign-in redirects back to the login page, no error | `APP_URL` is `https://` so the session cookie is `Secure`, and you browse over `http://` (e.g. an SSH tunnel to the port) | browse through Caddy over https |
 | `400 Bad Request`, plain text, on every page except `/health` | `TRUSTED_HOSTS` is set and the `Host` header is not in it (`curl localhost:3100` has `Host: localhost`) | send the right Host: `curl -H 'Host: demo.palmgrove.example' ...` |
 | Rate limits and login lock count everyone as one visitor; logs show 127.0.0.1 | `TRUSTED_PROXIES` unset behind Caddy | `TRUSTED_PROXIES=127.0.0.1`; never set it when the app port is reachable from outside |
