@@ -39,7 +39,8 @@ use wl_kernel::automation::{RuleRunSpec, run_rule};
 use wl_kernel::compliance::{occurrence_key, schedule_subject};
 use wl_kernel::deadlines::{
     DeadlineFuture, DeadlineTaskId, DeadlineTaskStatus, DeadlineTaskSummary, DeadlineTasks,
-    EndedTasks, NewDeadlineTask, SOURCE_ENDED_REASON, TaskCompleted, TaskOverdue, WaiveTask,
+    EndedTasks, NewDeadlineTask, ReleasedTasks, SOURCE_ENDED_REASON, TaskCompleted, TaskOverdue,
+    WaiveTask,
 };
 use wl_kernel::notify::{self, NotificationTypeDef, NotifyChannel, NotifyRequest};
 use wl_kernel::role_tasks::{self, RoleTask};
@@ -657,6 +658,42 @@ async fn summaries(db: &Db, source: &Subject) -> Result<Vec<DeadlineTaskSummary>
         .collect())
 }
 
+/// Holds the tasks of `source` from `on` (§4.4 "Held tasks"): the flag on
+/// every open task, state and due date unchanged; tasks created later are
+/// created held. Nothing for a source held already or ended.
+///
+/// # Errors
+///
+/// The database's errors.
+pub async fn hold(
+    state: &AppState,
+    source: &Subject,
+    on: NaiveDate,
+) -> Result<Vec<DeadlineTaskSummary>> {
+    let row = TaskSource::of_or_new(&state.db, source).await?;
+    if row.ended_on.is_none() {
+        if row.held_on.is_none() {
+            TaskSource::query()
+                .where_(TaskSource::ID.eq(row.id))
+                .update(&state.db, &[("held_on", &Some(on))])
+                .await?;
+        }
+        set_held(&state.db, source, true).await?;
+    }
+    summaries(&state.db, source).await
+}
+
+/// `VAT Q3 (overdue since 2026-11-29)`.
+fn overdue_line(task: &DeadlineTaskSummary) -> String {
+    let since = task
+        .overdue_on
+        .map(|d| d.format("%Y-%m-%d").to_string())
+        .unwrap_or_default();
+    english("wl_ticketing.task.overdue_line")
+        .replace(":title", &task.title)
+        .replace(":since", &since)
+}
+
 /// Opens (or finds open) the manager's task about `source` keyed `key`.
 async fn manager_task(
     state: &AppState,
@@ -668,6 +705,57 @@ async fn manager_task(
     let role = settings(state).manager_role;
     let task = RoleTask::new(source.clone(), &role, title, key).description(&lines.join("\n"));
     role_tasks::open(state, task).await
+}
+
+/// Releases the tasks of `source` on `on` (§4.4 "Held tasks"): past-due
+/// open tasks go `overdue`, the flag clears, and the tasks that went overdue
+/// while held are listed once for the manager. Nothing for a source that is
+/// not held.
+///
+/// # Errors
+///
+/// The database's errors.
+pub async fn release(state: &AppState, source: &Subject, on: NaiveDate) -> Result<ReleasedTasks> {
+    let Some(row) = TaskSource::of(&state.db, source).await? else {
+        return Ok(ReleasedTasks::default());
+    };
+    let Some(held_on) = row.held_on else {
+        return Ok(ReleasedTasks::default());
+    };
+    if row.ended_on.is_some() {
+        return Ok(ReleasedTasks::default());
+    }
+    overdue_now(state, on, Some(source)).await?;
+    let released: Vec<DeadlineTaskId> = DeadlineTask::of_source(&state.db, source)
+        .await?
+        .iter()
+        .filter(|t| t.held)
+        .map(DeadlineTask::task_id)
+        .collect();
+    set_held(&state.db, source, false).await?;
+    TaskSource::query()
+        .where_(TaskSource::ID.eq(row.id))
+        .update(&state.db, &[("held_on", &None::<NaiveDate>)])
+        .await?;
+    let overdue: Vec<DeadlineTaskSummary> = summaries(&state.db, source)
+        .await?
+        .into_iter()
+        .filter(|t| t.status == DeadlineTaskStatus::Overdue)
+        .filter(|t| t.overdue_on.is_some_and(|d| d >= held_on))
+        .collect();
+    let manager_task = if overdue.is_empty() {
+        None
+    } else {
+        let lines: Vec<String> = overdue.iter().map(overdue_line).collect();
+        let title = english("wl_ticketing.task.released_title").to_owned();
+        let key = format!("ticketing.tasks_released:{source}:{held_on}");
+        manager_task(state, source, &key, &title, &lines).await?
+    };
+    Ok(ReleasedTasks {
+        released,
+        overdue,
+        manager_task,
+    })
 }
 
 /// `CT return (in_progress)`.
@@ -896,6 +984,24 @@ impl DeadlineTasks for Deadlines {
         Box::pin(async move { summaries(db, source).await })
     }
 
+    fn hold<'a>(
+        &'a self,
+        state: &'a AppState,
+        source: &'a Subject,
+        on: NaiveDate,
+    ) -> DeadlineFuture<'a, Vec<DeadlineTaskSummary>> {
+        Box::pin(async move { hold(state, source, on).await })
+    }
+
+    fn release<'a>(
+        &'a self,
+        state: &'a AppState,
+        source: &'a Subject,
+        on: NaiveDate,
+    ) -> DeadlineFuture<'a, ReleasedTasks> {
+        Box::pin(async move { release(state, source, on).await })
+    }
+
     fn waive<'a>(
         &'a self,
         state: &'a AppState,
@@ -946,5 +1052,13 @@ mod tests {
     #[test]
     fn the_open_line_names_the_task_and_its_state() {
         assert_eq!(open_line(&overdue_task()), "VAT Q3 (overdue)");
+    }
+
+    #[test]
+    fn the_overdue_line_names_the_day_it_went_overdue() {
+        assert_eq!(
+            overdue_line(&overdue_task().summary()),
+            "VAT Q3 (overdue since 2026-11-29)"
+        );
     }
 }
