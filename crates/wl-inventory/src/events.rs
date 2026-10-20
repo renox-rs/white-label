@@ -112,6 +112,18 @@ async fn emit_dispatched(state: &AppState, id: i64) -> Result {
             prices.insert(po_line.id, po_line.unit_price);
         }
     }
+    // The difference between the receipt's cost and the average cost goes to
+    // the price variance, once per line (the key makes a repeat harmless).
+    for line in lines.iter().filter(|line| line.variance != 0) {
+        let request = PostCost::new(
+            ret.subject(),
+            format!("inventory.supplier_return_variance:{}", line.id),
+            ret.subject(),
+            line.variance,
+        )
+        .cost_code("price_variance");
+        post_cost(state, request).await?;
+    }
     state.emit(dispatched_event(&ret, &lines, &prices)).await
 }
 

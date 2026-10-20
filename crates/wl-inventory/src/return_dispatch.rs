@@ -32,8 +32,8 @@
 //! Decisions: the guards read what [`gather`] found in a transaction of its
 //! own that is rolled back (or in the transaction of the receipt's `post`),
 //! and the effect finds it again and refuses with a 422 if stock moved in
-//! between. The price variance is kept on the line (and reaches the cost
-//! poster with the cost objects); the supplier contact is told through the
+//! between. The price variance is kept on the line and posted through the cost
+//! poster once the dispatch is committed; the supplier contact is told through the
 //! event.
 
 use std::collections::{BTreeMap, BTreeSet};

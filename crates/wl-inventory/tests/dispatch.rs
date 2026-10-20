@@ -80,6 +80,19 @@ async fn goods_from_quarantine_leave_at_the_receipt_cost_with_a_return_note() {
     // (50 - 48) x 10 = AED 20 to the price variance.
     let lines = supplier_return::lines_of(t.db(), ret.id).await.unwrap();
     assert_eq!(lines[0].variance, 2_000);
+    // ... and it is posted through the cost seam, once, on the return.
+    let posted = t.costs.posted();
+    let variance: Vec<_> = posted
+        .iter()
+        .filter(|cost| cost.cost_code.as_deref() == Some("price_variance"))
+        .collect();
+    assert_eq!(variance.len(), 1);
+    assert_eq!(variance[0].amount_aed, 2_000);
+    assert_eq!(variance[0].cost_object, done.subject());
+    assert_eq!(
+        variance[0].key,
+        format!("inventory.supplier_return_variance:{}", lines[0].id)
+    );
     // The return note.
     let note = done.return_note.clone().expect("a return note");
     assert!(note.starts_with("%PDF-"));
