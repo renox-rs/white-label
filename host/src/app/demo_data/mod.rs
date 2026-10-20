@@ -276,6 +276,18 @@ async fn run_command(client: wl_kernel::ClientConfig, state: AppState, said: boo
         }
         return Ok(());
     }
+    // The second app needs the same database; an in-memory one (a test's) is
+    // private to its app, so there the seeder has nothing to fill. `seed`
+    // takes the running kernel for such a case.
+    if state.config.database_url.contains(":memory:") {
+        if said {
+            return Err(renox::anyhow::anyhow!(
+                "the demo company needs a database file, not an in-memory database"
+            )
+            .into());
+        }
+        return Ok(());
+    }
     let app: App = crate::app_for(client).map_err(|e| renox::anyhow::anyhow!("{e}"))?;
     let kernel = app.config((*state.config).clone()).boot().await?;
     let report = seed(&kernel).await?;
