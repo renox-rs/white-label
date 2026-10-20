@@ -23,6 +23,7 @@ pub mod omission;
 pub mod pages;
 pub mod permissions;
 pub mod project;
+pub mod registration;
 pub mod release;
 pub mod retention;
 pub mod retention_deduction;
@@ -106,6 +107,10 @@ impl Module for Construction {
         renox::state_machine::register::<Ipa>();
         renox::state_machine::register::<Retention>();
         renox::state_machine::register::<Guarantee>();
+        // `CON.ACL.13`: a purchase order to a subcontractor without a valid
+        // registration on a Dubai project waits for the project manager.
+        registration::register();
+        wl_kernel::inventory::provide_order_rules(app, registration::RegistrationRule);
         award::register_block_effect();
         deduction::register();
         retention_deduction::register();

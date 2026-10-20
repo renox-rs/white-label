@@ -128,6 +128,9 @@ pub struct Project {
     /// Whether the site works on Saturdays: its calendar for `CON.RUL.08`
     /// (Sunday and the public holidays never count).
     pub works_saturdays: bool,
+    /// The emirate of the site: `dubai` (the default), `abu_dhabi`, ...
+    /// `CON.ACL.13` applies to Dubai projects.
+    pub emirate: String,
     /// The advance paid to the project, in fils.
     pub advance_paid: i64,
     /// What the invoiced IPAs recovered of the advance, in fils.
@@ -177,6 +180,7 @@ impl Project {
             name: name.trim().to_owned(),
             client_party_id: client.0,
             retention_first_bps: 5_000,
+            emirate: "dubai".to_owned(),
             retention_due_on_termination: true,
             defects_liability_days: 365,
             ..Project::default()
@@ -187,6 +191,17 @@ impl Project {
     pub fn with_budget(mut self, fils: i64) -> Self {
         self.budget = fils;
         self
+    }
+
+    /// With the site in `emirate` (`abu_dhabi`, `sharjah`...).
+    pub fn in_emirate(mut self, emirate: &str) -> Self {
+        self.emirate = emirate.trim().to_lowercase();
+        self
+    }
+
+    /// Whether the site is in Dubai.
+    pub fn is_dubai(&self) -> bool {
+        self.emirate.trim().eq_ignore_ascii_case("dubai")
     }
 
     /// With a site that works on Saturdays.
