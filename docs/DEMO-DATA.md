@@ -138,7 +138,7 @@ numbers.
 **The local demo (`property:demo`).** The host's `property:demo` command, run by `db:seed`
 when `APP_ENV=local` (and by the command itself in `testing`; never in production), makes a
 smaller *Palm Grove Properties LLC* (entities PGP and PGFZ): 6 buildings in four emirates, 62
-units, 49 lease versions in every state, ~180 cheques, ~100 invoices with payments, deposits
+units, 49 lease versions in every state, ~160 cheques, ~110 invoices with payments, deposits
 held, refunded, forfeited and handed to a new owner, owner statements in every state, tickets
 with a vendor and an SLA breach, leads, campaigns, staff and 15 months of history. It is made
 through the modules' own services and routes as the demo users (so permissions, guards and
