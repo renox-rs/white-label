@@ -95,6 +95,8 @@ mod task_pages;
 mod texts;
 pub mod unallocate;
 pub mod unallocation;
+pub mod usage;
+pub mod usage_adjustment;
 pub mod vat;
 pub mod vat_adjustment;
 pub mod vat_pages;
@@ -121,8 +123,8 @@ pub use budget_contract::Budgets;
 pub use budget_reminder::BudgetReminder;
 pub use budget_variance::BudgetWarning;
 pub use config::{
-    DuplicateKey, EInvoiceEntity, InputVatTiming, InvoicingConfig, ReasonProblem, ReliefMonths,
-    SettingError, WriteOffReason,
+    AdjustmentPlus, DuplicateKey, EInvoiceEntity, InputVatTiming, InvoicingConfig, ReasonProblem,
+    ReliefMonths, SettingError, WriteOffReason,
 };
 pub use credit_note::{CreditNote, CreditNoteKind};
 pub use credit_note_line::CreditNoteLine;
@@ -144,6 +146,8 @@ pub use supplier_bill::{BillDraft, SupplierBill, SupplierBillStatus};
 pub use supplier_debit_note::{DebitNoteOrigin, DebitNoteReason, SupplierDebitNote};
 pub use task::{InvoicingTask, TaskKind, TaskStatus};
 pub use unallocation::{Unallocation, UnallocationOutcome};
+pub use usage::{UsageDraft, UsageRecord};
+pub use usage_adjustment::{AdjustmentOutcome, UsageAdjustment};
 pub use vat::{CategoryTotal, LineAmounts, VatTotals};
 pub use vat_adjustment::{AdjustmentKind, AdjustmentStatus, VatAdjustment};
 pub use vat_period::TaxPeriod;
@@ -725,6 +729,20 @@ impl WlInvoicing {
         self
     }
 
+    /// What extra hours of an adjustment timesheet on invoiced hours become
+    /// (default an extra line on the next usage invoice).
+    pub fn adjustment_plus(mut self, plus: AdjustmentPlus) -> Self {
+        self.config.adjustment_plus = plus;
+        self
+    }
+
+    /// The role whose task opens when the credit of an adjustment is refused
+    /// (default `coordinator`).
+    pub fn adjustment_task_role(mut self, role: &str) -> Self {
+        self.config.adjustment_task_role = role.to_owned();
+        self
+    }
+
     /// The module's settings.
     pub fn config(&self) -> &InvoicingConfig {
         &self.config
@@ -811,6 +829,8 @@ impl Module for WlInvoicing {
             .model::<BudgetReminder>()
             .model::<BudgetWarning>()
             .model::<DrawingApproval>()
+            .model::<UsageRecord>()
+            .model::<UsageAdjustment>()
             .model::<BillRecoding>()
             .view_data::<pages::IndexPage>()
             .view_data::<pages::ShowPage>()

@@ -95,6 +95,19 @@ pub enum InputVatTiming {
     OnTaxCreditNote,
 }
 
+/// What billing does with extra hours of an adjustment timesheet whose
+/// original hours are already invoiced (§5.2 step 5, wl-attendance §7
+/// *Adjustment of already-invoiced hours (+)*).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum AdjustmentPlus {
+    /// An extra usage line on the next usage invoice (the default).
+    #[default]
+    ExtraLine,
+    /// A separate draft usage invoice at once, with only the adjustment
+    /// line.
+    SeparateInvoice,
+}
+
 /// The e-invoicing settings of one legal entity (`FIN.INV.01`, §7).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EInvoiceEntity {
@@ -229,6 +242,12 @@ pub struct InvoicingConfig {
     /// The role told when `FIN.RUL.17` drafts a debit note from a return
     /// (default `accountant`).
     pub debit_note_notify_role: String,
+    /// What extra hours of an adjustment on invoiced hours become (default
+    /// an extra line on the next usage invoice).
+    pub adjustment_plus: AdjustmentPlus,
+    /// The role whose task opens when an adjustment's credit is refused
+    /// (default `coordinator`).
+    pub adjustment_task_role: String,
 }
 
 impl Default for InvoicingConfig {
@@ -291,6 +310,8 @@ impl Default for InvoicingConfig {
             debit_note_vat_timing: InputVatTiming::OnIssue,
             tax_credit_note_required: true,
             debit_note_notify_role: "accountant".to_owned(),
+            adjustment_plus: AdjustmentPlus::ExtraLine,
+            adjustment_task_role: "coordinator".to_owned(),
         }
     }
 }
@@ -420,6 +441,8 @@ mod tests {
         assert_eq!(config.debit_note_vat_timing, InputVatTiming::OnIssue);
         assert!(config.tax_credit_note_required);
         assert_eq!(config.debit_note_notify_role, "accountant");
+        assert_eq!(config.adjustment_plus, AdjustmentPlus::ExtraLine);
+        assert_eq!(config.adjustment_task_role, "coordinator");
         assert_eq!(config.budget_fiscal_start_month, 1);
         assert!(!config.budget_revise_past_months);
         assert_eq!(config.budget_reminder_days, 30);
