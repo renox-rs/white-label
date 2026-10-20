@@ -89,8 +89,11 @@ pub use compliance::{ComplianceAlert, ComplianceRule, CriticalRule, Planned};
 pub use config::{ClientConfig, ConfigError, RolesConfig, owner_role};
 pub use consents::{Consents, NoConsents};
 pub use delivery::{
-    DELIVERY_SUBJECT_TYPE, DeliveryDisputeClosed, DeliveryDisputed, DeliveryId, DeliveryLost,
-    DeliveryReversed, ReviewOutcome,
+    DELIVERY_SUBJECT_TYPE, DeliveredLine, DeliveryAssigned, DeliveryAttemptFailed,
+    DeliveryDelivered, DeliveryDisputeClosed, DeliveryDisputed, DeliveryFuture, DeliveryId,
+    DeliveryItem, DeliveryLost, DeliveryOutForDelivery, DeliveryRequest, DeliveryRequester,
+    DeliveryReversed, NoDeliveries, PodMethod, RUN_SUBJECT_TYPE, ReviewOutcome, RunDispatched,
+    RunId, provide_requester,
 };
 pub use deposits::{
     AdjustDeposit, CancelSettlement, DeductionKind, DeductionLineView, DepositAdjusted,

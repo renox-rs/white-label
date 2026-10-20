@@ -622,6 +622,20 @@ pub trait DocumentGuard: Send + Sync + 'static {
         on_date: NaiveDate,
     ) -> DocumentFuture<'a, Validity>;
 
+    /// The subject types document kind `kind` attaches to (`hr.employee`,
+    /// `inventory.asset`). A [`BlockSubjects`] provider that maps a record to
+    /// several subjects (a run → its driver and its vehicle) uses it to give
+    /// each kind the subject it belongs to. The default is empty: the kind is
+    /// unknown (as without `wl-documents`), and the provider then gives every
+    /// subject.
+    fn kind_subject_types<'a>(
+        &'a self,
+        _db: &'a Db,
+        _kind: &'a str,
+    ) -> DocumentFuture<'a, Vec<String>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
     /// Checks record `record_id` before its transition `guarded`: runs
     /// [`blocks_for`](Self::blocks_for), the transition's [`BlockSubjects`]
     /// provider and [`is_valid`](Self::is_valid) for every subject and

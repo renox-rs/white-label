@@ -70,6 +70,19 @@ impl DocumentGuard for DocumentsGuard {
         Box::pin(is_valid(db, subject, kind, on_date))
     }
 
+    fn kind_subject_types<'a>(
+        &'a self,
+        db: &'a Db,
+        kind: &'a str,
+    ) -> DocumentFuture<'a, Vec<String>> {
+        Box::pin(async move {
+            Ok(DocumentKind::by_key(db, kind)
+                .await?
+                .map(|found| found.subject_types.0.clone())
+                .unwrap_or_default())
+        })
+    }
+
     fn check_as<'a>(
         &'a self,
         state: &'a AppState,
