@@ -6,6 +6,8 @@ pub mod config;
 mod events;
 pub mod goods_receipt;
 pub mod item;
+pub mod landed_adjust;
+pub mod landed_cost;
 pub mod location;
 pub mod lot;
 pub mod match_source;
@@ -31,6 +33,8 @@ pub use goods_receipt::{
     DraftLine, DraftReceipt, GoodsReceipt, GoodsReceiptLine, GoodsReceiptStatus,
 };
 pub use item::{Item, ItemType};
+pub use landed_adjust::{AdjustOutcome, AdjustmentStatus, LandedCostAdjustment, adjust};
+pub use landed_cost::{AllocationBasis, CostKind, LandedCost, LandedCostStatus, allocate};
 pub use location::{Location, LocationType, NegativeStockPolicy};
 pub use lot::{Lot, LotStatus};
 pub use match_source::PurchaseMatch;
@@ -66,6 +70,9 @@ pub mod permissions {
     pub const GOODS_RECEIPTS_REVERSE: &str = "goods_receipts.reverse";
     /// Manage returns to supplier.
     pub const SUPPLIER_RETURNS_MANAGE: &str = "supplier_returns.manage";
+    /// Allocate, adjust and cancel landed costs, and approve an adjustment
+    /// above the value (`STK.ACL.06`).
+    pub const LANDED_COSTS_POST: &str = "landed_costs.post";
 }
 
 /// The inventory module. The host adds it with
@@ -101,6 +108,13 @@ impl WlInventory {
     /// AED 1,000; `STK.ACL.02`).
     pub fn wastage_approval_fils(mut self, fils: i64) -> Self {
         self.config.wastage_approval_fils = fils.max(0);
+        self
+    }
+
+    /// The value, in fils, above which a landed cost adjustment needs a
+    /// second person's approval (default 500000, AED 5,000; `STK.ACL.06`).
+    pub fn landed_cost_approval_fils(mut self, fils: i64) -> Self {
+        self.config.landed_cost_approval_fils = fils.max(0);
         self
     }
 
@@ -172,6 +186,12 @@ impl Module for WlInventory {
         app.model::<PurchaseOrder>();
         app.model::<PurchaseOrderLine>();
         app.model::<PurchaseOrderRevision>();
+        app.model::<LandedCost>();
+        app.model::<landed_cost::LandedCostReceipt>();
+        app.model::<landed_cost::CostLine>();
+        app.model::<landed_cost::Allocation>();
+        app.model::<landed_cost::Share>();
+        app.model::<LandedCostAdjustment>();
         app.model::<Lot>();
         app.model::<StockMovement>();
         app.model::<GoodsReceipt>();
@@ -183,6 +203,8 @@ impl Module for WlInventory {
         renox::state_machine::register::<GoodsReceipt>();
         renox::state_machine::register::<Lot>();
         renox::state_machine::register::<SupplierReturn>();
+        renox::state_machine::register::<LandedCost>();
+        renox::state_machine::register::<LandedCostAdjustment>();
         // An over-receipt above the tolerance sends `post` to approval by a
         // holder of `purchase_orders.issue` in the location's scope
         // (`STK.ACL.04`, `PLT.APR.01`); the kernel runs `post_approved`.
@@ -223,6 +245,22 @@ impl Module for WlInventory {
             |tx, request| Box::pin(po_revise::recheck(tx, request)),
         );
         po_revise::register_types();
+        // Posting an adjustment of a landed cost above the value needs a
+        // second holder of `landed_costs.post` (`STK.ACL.06`).
+        wl_kernel::SubjectMachine::of::<LandedCost>(wl_kernel::inventory::LANDED_COST_SUBJECT_TYPE)
+            .action(landed_adjust::ADJUST, landed_adjust::ACTION)
+            .scope(|_landed: &LandedCost| renox::auth::permissions::Scope::global())
+            .register();
+        wl_kernel::PolicyDefault::new(landed_adjust::ACTION)
+            .amount_above(self.config.landed_cost_approval_fils)
+            .step_permission(permissions::LANDED_COSTS_POST)
+            .register();
+        wl_kernel::approvals::register_final_check(
+            wl_kernel::inventory::LANDED_COST_SUBJECT_TYPE,
+            |tx, request| Box::pin(landed_adjust::recheck(tx, request)),
+        );
+        // wl-invoicing codes a bill line to a landed cost it knows.
+        wl_kernel::invoicing::provide_landed_costs(app, landed_cost::LandedCostBook);
         wl_kernel::PolicyDefault::new(return_dispatch::ACTION)
             .amount_above(self.config.return_approval_fils)
             .step_permission(permissions::SUPPLIER_RETURNS_MANAGE)

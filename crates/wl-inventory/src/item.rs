@@ -116,6 +116,20 @@ pub fn average_after_removal(
     i64::try_from(((2 * value + left) / (2 * left)).max(0)).unwrap_or(average)
 }
 
+/// The moving weighted average cost after `delta` fils (a landed cost, or a
+/// refund of one when negative) are put on the `on_hand_milli` thousandths
+/// that were on hand at `average`: the value plus `delta`, over the quantity,
+/// rounded half up. The value stops at zero. Nothing on hand keeps the
+/// average.
+pub fn average_after_revalue(on_hand_milli: i64, average: i64, delta: i64) -> i64 {
+    if on_hand_milli <= 0 {
+        return average;
+    }
+    let value = (i128::from(value_of(on_hand_milli, average)) + i128::from(delta)).max(0);
+    let on_hand = i128::from(on_hand_milli);
+    i64::try_from((2 * value * 1_000 + on_hand) / (2 * on_hand)).unwrap_or(average)
+}
+
 /// `quantity_milli` thousandths as a number of base units for a message:
 /// `80`, `12.5`, `0.125`.
 pub fn quantity_text(quantity_milli: i64) -> String {
@@ -181,6 +195,17 @@ mod tests {
         assert_eq!(quantity_text(12_500), "12.5");
         assert_eq!(quantity_text(125), "0.125");
         assert_eq!(quantity_text(0), "0");
+    }
+
+    #[test]
+    fn a_landed_cost_raises_the_average_by_its_share_of_the_quantity() {
+        // 60 units at AED 10.00 (1,000 fils) and AED 600 more: AED 20.00.
+        assert_eq!(average_after_revalue(60_000, 1_000, 60_000), 2_000);
+        // A refund of AED 100: AED 8.33 (833.33 fils).
+        assert_eq!(average_after_revalue(60_000, 1_000, -10_000), 833);
+        // The value stops at zero.
+        assert_eq!(average_after_revalue(60_000, 1_000, -90_000), 0);
+        assert_eq!(average_after_revalue(0, 1_000, 5_000), 1_000);
     }
 
     #[test]

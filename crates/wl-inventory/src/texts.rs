@@ -315,6 +315,88 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_inventory.revise.body",
         "Purchase order {{ number }} was revised. Revision {{ revision }} is in force: the total is now {{ total }} {{ currency }}. Reason: {{ reason }}. The document: {{ link }}",
     ),
+    // Landed costs and their adjustments.
+    (
+        "wl_inventory.landed.draft_needs",
+        "A landed cost needs at least one receipt and one cost line.",
+    ),
+    (
+        "wl_inventory.landed.receipt_not_posted",
+        "Goods receipt {{ receipt }} is not posted yet.",
+    ),
+    (
+        "wl_inventory.landed.no_receipts",
+        "The receipts of the landed cost have no accepted goods to spread the cost over.",
+    ),
+    (
+        "wl_inventory.landed.no_costs",
+        "The landed cost has no cost to spread.",
+    ),
+    (
+        "wl_inventory.landed.weight_needed",
+        "Receipt line {{ line }} needs a weight or volume above zero.",
+    ),
+    (
+        "wl_inventory.landed.bad_input",
+        "The landed cost action is not complete.",
+    ),
+    (
+        "wl_inventory.landed.not_allocated",
+        "Only an allocated landed cost can be adjusted.",
+    ),
+    (
+        "wl_inventory.landed.not_draft",
+        "The adjustment is not a draft any more.",
+    ),
+    (
+        "wl_inventory.landed.no_lines",
+        "An adjustment needs at least one cost line.",
+    ),
+    (
+        "wl_inventory.landed.bill_reference",
+        "Give the supplier bill's reference.",
+    ),
+    (
+        "wl_inventory.landed.zero_total",
+        "The cost lines add up to nothing.",
+    ),
+    (
+        "wl_inventory.landed.no_adjustment",
+        "There is no such adjustment on this landed cost.",
+    ),
+    (
+        "wl_inventory.landed.period_locked",
+        "The posting date is in a period that was already filed; pick a date in an open period.",
+    ),
+    (
+        "wl_inventory.landed.pending",
+        "This adjustment already waits for approval.",
+    ),
+    (
+        "wl_inventory.landed.adjusted",
+        "Landed cost adjustment posted.",
+    ),
+    (
+        "wl_inventory.landed.waiting",
+        "The adjustment is above the value and waits for approval; nothing is posted until then.",
+    ),
+    ("wl_inventory.landed.allocated", "Landed cost allocated."),
+    (
+        "wl_inventory.landed.drafted",
+        "Adjustment saved as a draft.",
+    ),
+    (
+        "wl_inventory.landed.bad_kind",
+        "A cost line is freight, duty, clearing or insurance.",
+    ),
+    (
+        "wl_inventory.landed.bad_number",
+        "Enter the amounts as numbers.",
+    ),
+    (
+        "wl_inventory.landed.bad_date",
+        "Enter the posting date like 2027-01-31.",
+    ),
     // Names of the rejected goods' returns.
     (
         "wl_inventory.return.collection_proof",

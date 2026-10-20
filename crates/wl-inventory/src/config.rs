@@ -17,6 +17,10 @@ pub const DEFAULT_RETURN_APPROVAL_FILS: i64 = 500_000;
 /// it by default (`STK.ACL.02`): AED 1,000, in fils.
 pub const DEFAULT_WASTAGE_APPROVAL_FILS: i64 = 100_000;
 
+/// The value of a landed cost adjustment above which a second person
+/// approves it by default (§7, `STK.ACL.06`): AED 5,000, in fils.
+pub const DEFAULT_LANDED_COST_APPROVAL_FILS: i64 = 500_000;
+
 /// The values of a purchase order above which a revision that raises its
 /// total needs approval, one step per value passed (`STK.ACL.03`, 02): AED
 /// 10,000 and AED 50,000, in fils.
@@ -65,6 +69,9 @@ pub struct InventoryConfig {
     /// and finance are told, and the days between two notices
     /// (`STK.RUL.08`).
     pub return_chase_days: i64,
+    /// The absolute value, in fils, above which a landed cost adjustment
+    /// needs a second person (`STK.ACL.06`).
+    pub landed_cost_approval_fils: i64,
     /// The value limits of a purchase order, in fils, lowest first
     /// (`STK.ACL.03`): a new total above the first needs one approval, above
     /// the second two, and so on.
@@ -85,6 +92,7 @@ impl Default for InventoryConfig {
             return_approval_fils: DEFAULT_RETURN_APPROVAL_FILS,
             wastage_approval_fils: DEFAULT_WASTAGE_APPROVAL_FILS,
             return_chase_days: DEFAULT_RETURN_CHASE_DAYS,
+            landed_cost_approval_fils: DEFAULT_LANDED_COST_APPROVAL_FILS,
             order_limits_fils: DEFAULT_ORDER_LIMITS_FILS.to_vec(),
             rejection_reasons: DEFAULT_REASONS
                 .iter()
@@ -109,6 +117,7 @@ mod tests {
         assert_eq!(config.return_approval_fils, 500_000);
         assert_eq!(config.wastage_approval_fils, 100_000);
         assert_eq!(config.return_chase_days, 30);
+        assert_eq!(config.landed_cost_approval_fils, 500_000);
         assert_eq!(config.order_limits_fils, [1_000_000, 5_000_000]);
         assert!(
             config
