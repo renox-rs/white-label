@@ -29,6 +29,8 @@ use wl_kernel::invoicing::{
 
 use crate::goods_receipt::{GoodsReceipt, GoodsReceiptLine, lines_of};
 use crate::item::value_of;
+use crate::landed_adjust::{ADJUST, ADJUST_APPROVED};
+use crate::landed_cost::{ALLOCATE, LandedCost};
 use crate::po_revise::{self, PurchaseOrderRevision, RevisionLine};
 use crate::purchase_order::{PurchaseOrder, PurchaseOrderLine, lines_of as order_lines_of};
 use crate::receipt_post::{POST, POST_APPROVED};
@@ -254,6 +256,16 @@ pub(crate) fn register(app: &mut Registry) {
                 }
             }
             Ok(())
+        },
+    );
+    app.listen(
+        |event: Transitioned<LandedCost>, state: AppState| async move {
+            let name = event.transition.as_str();
+            if [ALLOCATE, ADJUST, ADJUST_APPROVED].contains(&name) {
+                crate::landed_adjust::announce(&state, event.key).await
+            } else {
+                Ok(())
+            }
         },
     );
     app.listen(
