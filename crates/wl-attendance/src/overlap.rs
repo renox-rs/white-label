@@ -33,7 +33,11 @@ fn clock(calendar: &BusinessCalendar, at: DateTime) -> String {
 
 /// The records of `employee` on `date` and the days around it (a span can
 /// cross midnight) that count, oldest first.
-async fn around(tx: &mut Transaction, employee: i64, date: NaiveDate) -> Result<Vec<AttendanceRecord>> {
+async fn around(
+    tx: &mut Transaction,
+    employee: i64,
+    date: NaiveDate,
+) -> Result<Vec<AttendanceRecord>> {
     let days: Vec<NaiveDate> = [
         date.checked_sub_days(Days::new(1)),
         Some(date),

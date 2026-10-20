@@ -96,9 +96,7 @@ pub fn supervisors(record: &AttendanceRecord, profile: Option<&StaffProfile>) ->
 pub(crate) async fn flag_added(state: &AppState, added: &Added) -> Result {
     let config = config_of(state);
     let record = &added.record;
-    let profile = workforce(state)
-        .staff(state, record.employee())
-        .await?;
+    let profile = workforce(state).staff(state, record.employee()).await?;
     let mut users: BTreeSet<i64> = reviewers(&state.db).await?.into_iter().collect();
     users.extend(supervisors(record, profile.as_ref()));
     match added.flag {

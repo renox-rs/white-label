@@ -102,7 +102,9 @@ async fn att06_the_same_hours_are_not_allocated_twice() {
     entry::add(
         t.state(),
         t2.id,
-        NewEntry::normal(nov(2), 180).on(&project(20)).from_attendance(),
+        NewEntry::normal(nov(2), 180)
+            .on(&project(20))
+            .from_attendance(),
     )
     .await
     .unwrap();
@@ -149,7 +151,10 @@ async fn att06_a_manual_timesheet_is_not_checked_against_attendance() {
     .await
     .unwrap();
     submit_as(&t, &keeper, &sheet).await.assert_ok();
-    assert_eq!(t.reload_sheet(&sheet).await.status, TimesheetStatus::Submitted);
+    assert_eq!(
+        t.reload_sheet(&sheet).await.status,
+        TimesheetStatus::Submitted
+    );
 }
 
 /// Attendance left `flagged` in the period holds the submit; an attended day
@@ -160,10 +165,22 @@ async fn att06_a_flagged_record_or_an_unallocated_day_holds_the_submit() {
     let keeper = t.user_with("Tariq", "timekeeper").await;
     let a = t.employee(1, &[]);
     let site = t.location("Site 1").await;
-    t.fixture(a, &site, at(2, 7, 0), Some(at(2, 15, 0)), AttendanceStatus::Accepted)
-        .await;
+    t.fixture(
+        a,
+        &site,
+        at(2, 7, 0),
+        Some(at(2, 15, 0)),
+        AttendanceStatus::Accepted,
+    )
+    .await;
     let flagged = t
-        .fixture(a, &site, at(3, 7, 0), Some(at(3, 15, 0)), AttendanceStatus::Flagged)
+        .fixture(
+            a,
+            &site,
+            at(3, 7, 0),
+            Some(at(3, 15, 0)),
+            AttendanceStatus::Flagged,
+        )
         .await;
     let sheet = sheet(&t, a, 10, &[(nov(2), 480)], None).await;
     submit_as(&t, &keeper, &sheet)
@@ -175,8 +192,14 @@ async fn att06_a_flagged_record_or_an_unallocated_day_holds_the_submit() {
 
     // An accepted day, 4 November, with no hours allocated at all.
     let b = t.employee(2, &[]);
-    t.fixture(b, &site, at(4, 7, 0), Some(at(4, 15, 0)), AttendanceStatus::Accepted)
-        .await;
+    t.fixture(
+        b,
+        &site,
+        at(4, 7, 0),
+        Some(at(4, 15, 0)),
+        AttendanceStatus::Accepted,
+    )
+    .await;
     let empty = sheet_for(&t, b).await;
     submit_as(&t, &keeper, &empty)
         .await
@@ -233,14 +256,23 @@ async fn att06_a_failed_system_submit_leaves_the_timesheet_open_and_opens_a_task
         panic!("T2 is over the attended hours");
     };
     assert_eq!(timesheet.status, TimesheetStatus::Open);
-    assert!(message.contains("2026-11-02") && message.contains("1 h"), "{message}");
+    assert!(
+        message.contains("2026-11-02") && message.contains("1 h"),
+        "{message}"
+    );
     assert!(task.is_some());
     let opened = t.tasks.opened();
     assert_eq!(opened.len(), 1);
     assert_eq!(opened[0].subject, t2.subject());
-    assert_eq!(opened[0].assignee, Some(wl_kernel::tickets::Assignee::user(keeper.id)));
+    assert_eq!(
+        opened[0].assignee,
+        Some(wl_kernel::tickets::Assignee::user(keeper.id))
+    );
     assert!(opened[0].description.contains("2026-11-02"));
-    assert_eq!(opened[0].source_key.as_deref(), Some(submit::task_key(t2.id).as_str()));
+    assert_eq!(
+        opened[0].source_key.as_deref(),
+        Some(submit::task_key(t2.id).as_str())
+    );
     assert_eq!(t.reload_sheet(&t2).await.status, TimesheetStatus::Open);
 
     // Run again: the open task is not opened twice.

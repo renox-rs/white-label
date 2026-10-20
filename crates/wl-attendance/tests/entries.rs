@@ -39,7 +39,9 @@ async fn week(t: &support::Booted, employee: EmployeeId) -> Timesheet {
 }
 
 async fn entries_of(t: &support::Booted, sheet: &Timesheet) -> Vec<TimesheetEntry> {
-    TimesheetEntry::of_timesheet(t.db(), sheet.id).await.unwrap()
+    TimesheetEntry::of_timesheet(t.db(), sheet.id)
+        .await
+        .unwrap()
 }
 
 /// `accept` proposes the eight hours on the open timesheet, against the
@@ -54,7 +56,13 @@ async fn att05_an_accepted_record_proposes_its_hours_on_the_open_timesheet() {
         .await;
     let sheet = week(&t, a).await;
     let record = t
-        .fixture(a, &site, at(3, 7, 0), Some(at(3, 16, 0)), AttendanceStatus::Recorded)
+        .fixture(
+            a,
+            &site,
+            at(3, 7, 0),
+            Some(at(3, 16, 0)),
+            AttendanceStatus::Recorded,
+        )
         .await;
     // One hour break: 8 h worked.
     set_break(&t, &record).await;
@@ -148,7 +156,13 @@ async fn att05_nothing_is_proposed_without_an_open_timesheet() {
         )
         .await;
     let record = t
-        .fixture(a, &site, at(3, 7, 0), Some(at(3, 15, 0)), AttendanceStatus::Recorded)
+        .fixture(
+            a,
+            &site,
+            at(3, 7, 0),
+            Some(at(3, 15, 0)),
+            AttendanceStatus::Recorded,
+        )
         .await;
     t.on(nov(3), async {
         t.app.acting_as(&c);
@@ -174,7 +188,13 @@ async fn att05_the_proposed_hours_follow_the_record() {
     let site = t.location("Site 1").await;
     let sheet = week(&t, a).await;
     let record = t
-        .fixture(a, &site, at(3, 7, 0), Some(at(3, 15, 0)), AttendanceStatus::Recorded)
+        .fixture(
+            a,
+            &site,
+            at(3, 7, 0),
+            Some(at(3, 15, 0)),
+            AttendanceStatus::Recorded,
+        )
         .await;
     t.on(nov(3), async {
         t.app.acting_as(&c);
@@ -237,14 +257,32 @@ async fn att05_an_entry_is_checked_on_save() {
         )
         .await;
     let day = nov(3);
-    assert!(entry::add(t.state(), open.id, NewEntry::normal(day, 0)).await.is_err());
-    assert!(entry::add(t.state(), open.id, NewEntry::normal(day, -60)).await.is_err());
-    assert!(entry::add(t.state(), open.id, NewEntry::normal(nov(9), 60)).await.is_err());
-    assert!(entry::add(t.state(), closed.id, NewEntry::normal(day, 60)).await.is_err());
+    assert!(
+        entry::add(t.state(), open.id, NewEntry::normal(day, 0))
+            .await
+            .is_err()
+    );
+    assert!(
+        entry::add(t.state(), open.id, NewEntry::normal(day, -60))
+            .await
+            .is_err()
+    );
+    assert!(
+        entry::add(t.state(), open.id, NewEntry::normal(nov(9), 60))
+            .await
+            .is_err()
+    );
+    assert!(
+        entry::add(t.state(), closed.id, NewEntry::normal(day, 60))
+            .await
+            .is_err()
+    );
     let saved = entry::add(
         t.state(),
         open.id,
-        NewEntry::of(day, Category::Overtime, 90).on(&project(5)).note(" late pour "),
+        NewEntry::of(day, Category::Overtime, 90)
+            .on(&project(5))
+            .note(" late pour "),
     )
     .await
     .unwrap();
@@ -268,20 +306,29 @@ async fn att05_only_manual_and_generated_entries_count_for_the_cap() {
     )
     .await
     .unwrap();
-    entry::add(t.state(), sheet.id, NewEntry::normal(nov(3), 120)).await.unwrap();
+    entry::add(t.state(), sheet.id, NewEntry::normal(nov(3), 120))
+        .await
+        .unwrap();
     let mut generated = NewEntry::normal(nov(3), 60);
     generated.source = HoursSource::Generated;
     entry::add(t.state(), sheet.id, generated).await.unwrap();
-    entry::add(t.state(), sheet.id, NewEntry::normal(nov(3), 480).from_attendance())
-        .await
-        .unwrap();
+    entry::add(
+        t.state(),
+        sheet.id,
+        NewEntry::normal(nov(3), 480).from_attendance(),
+    )
+    .await
+    .unwrap();
     let minutes = TimesheetEntryHours
         .minutes_on(t.state(), a, nov(3))
         .await
         .unwrap();
     assert_eq!(minutes, 180);
     assert_eq!(
-        TimesheetEntryHours.minutes_on(t.state(), a, nov(4)).await.unwrap(),
+        TimesheetEntryHours
+            .minutes_on(t.state(), a, nov(4))
+            .await
+            .unwrap(),
         0
     );
 }
@@ -296,7 +343,10 @@ async fn att05_reopen_is_refused_on_a_locked_or_consumed_timesheet() {
     let nobody = t.user_with("Nadia", "reviewer").await;
     let a = t.employee(1, &[]);
     let approved = t
-        .sheet_in(Timesheet::regular(a, nov(2), nov(8)), TimesheetStatus::Approved)
+        .sheet_in(
+            Timesheet::regular(a, nov(2), nov(8)),
+            TimesheetStatus::Approved,
+        )
         .await;
     t.app.acting_as(&nobody);
     reopen(&t, &approved, &[("reason", "typo")])
@@ -304,11 +354,17 @@ async fn att05_reopen_is_refused_on_a_locked_or_consumed_timesheet() {
         .assert_forbidden();
     t.app.acting_as(&keeper);
     reopen(&t, &approved, NONE).await.assert_status(422);
-    assert_eq!(t.reload_sheet(&approved).await.status, TimesheetStatus::Approved);
+    assert_eq!(
+        t.reload_sheet(&approved).await.status,
+        TimesheetStatus::Approved
+    );
     reopen(&t, &approved, &[("reason", "forgot a day")])
         .await
         .assert_ok();
-    assert_eq!(t.reload_sheet(&approved).await.status, TimesheetStatus::Open);
+    assert_eq!(
+        t.reload_sheet(&approved).await.status,
+        TimesheetStatus::Open
+    );
     let history = t.sheet_history(&approved).await;
     let reopened = history.iter().find(|h| h.0 == "reopen").unwrap();
     assert_eq!(reopened.1, Some(keeper.id));
@@ -316,7 +372,10 @@ async fn att05_reopen_is_refused_on_a_locked_or_consumed_timesheet() {
 
     // Locked by its first consumer: terminal.
     let used = t
-        .sheet_in(Timesheet::regular(a, nov(9), nov(15)), TimesheetStatus::Approved)
+        .sheet_in(
+            Timesheet::regular(a, nov(9), nov(15)),
+            TimesheetStatus::Approved,
+        )
         .await;
     let locked = timesheet::lock(t.state(), used.id, Consumer::Payroll, "hr.payroll_run:5")
         .await
@@ -327,7 +386,10 @@ async fn att05_reopen_is_refused_on_a_locked_or_consumed_timesheet() {
     reopen(&t, &locked, &[("reason", "again")])
         .await
         .assert_status(422);
-    assert_eq!(t.reload_sheet(&locked).await.status, TimesheetStatus::Locked);
+    assert_eq!(
+        t.reload_sheet(&locked).await.status,
+        TimesheetStatus::Locked
+    );
 
     // Approved but provisionally paid: consumed, so not reopened.
     let mut provisional = Timesheet::regular(a, nov(16), nov(22));
@@ -349,7 +411,10 @@ async fn att05_reopen_is_refused_on_a_locked_or_consumed_timesheet() {
             .is_err()
     );
     let exported = t
-        .sheet_in(Timesheet::regular(a, nov(23), nov(29)), TimesheetStatus::Approved)
+        .sheet_in(
+            Timesheet::regular(a, nov(23), nov(29)),
+            TimesheetStatus::Approved,
+        )
         .await;
     let exported = timesheet::lock(t.state(), exported.id, Consumer::Export, "export:1")
         .await

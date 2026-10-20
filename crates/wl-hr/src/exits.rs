@@ -232,11 +232,9 @@ pub fn available_actions(status: crate::employee::EmployeeStatus) -> Vec<&'stati
     EXIT_TRANSITIONS
         .into_iter()
         .filter(|name| {
-            machine.find(name).is_ok_and(|t| {
-                t.from_states()
-                    .iter()
-                    .any(|s| *s == status.as_str())
-            })
+            machine
+                .find(name)
+                .is_ok_and(|t| t.from_states().iter().any(|s| *s == status.as_str()))
         })
         .collect()
 }

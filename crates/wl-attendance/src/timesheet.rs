@@ -474,7 +474,10 @@ mod tests {
         assert_eq!(machine.find(LOCK).unwrap().to_state(), Some("locked"));
         assert!(machine.find(LOCK).unwrap().is_system());
         assert_eq!(machine.find(REOPEN).unwrap().from_states(), ["approved"]);
-        assert_eq!(machine.find("submit").unwrap().to_state(), Some("submitted"));
+        assert_eq!(
+            machine.find("submit").unwrap().to_state(),
+            Some("submitted")
+        );
         assert!(machine.find("submit_by_system").unwrap().is_system());
     }
 

@@ -91,25 +91,45 @@ pub async fn open(state: &AppState, actor: &AuthUser, input: OpenAdjustment) -> 
         return Err(Error::Forbidden);
     }
     if original.kind == TimesheetKind::Adjustment {
-        return Err(refuse(english("wl_attendance.adjustment.of_adjustment", &[])));
+        return Err(refuse(english(
+            "wl_attendance.adjustment.of_adjustment",
+            &[],
+        )));
     }
     if original.status != TimesheetStatus::Locked {
         return Err(refuse(english("wl_attendance.adjustment.not_locked", &[])));
     }
     let reason = input.reason.trim().to_owned();
     if reason.is_empty() {
-        return Err(refuse(english("wl_attendance.adjustment.reason_required", &[])));
+        return Err(refuse(english(
+            "wl_attendance.adjustment.reason_required",
+            &[],
+        )));
     }
     let Some(origin) = input.origin else {
-        return Err(refuse(english("wl_attendance.adjustment.origin_required", &[])));
+        return Err(refuse(english(
+            "wl_attendance.adjustment.origin_required",
+            &[],
+        )));
     };
     if origin == AdjustmentOrigin::ClientDispute && input.linked.is_none() {
-        return Err(refuse(english("wl_attendance.adjustment.link_required", &[])));
+        return Err(refuse(english(
+            "wl_attendance.adjustment.link_required",
+            &[],
+        )));
     }
     let Some(affects) = input.affects.or_else(|| default_affects(origin)) else {
-        return Err(refuse(english("wl_attendance.adjustment.affects_required", &[])));
+        return Err(refuse(english(
+            "wl_attendance.adjustment.affects_required",
+            &[],
+        )));
     };
-    if input.entries.is_empty() || input.entries.iter().any(|e| e.minutes.iter().all(|(_, m)| *m == 0)) {
+    if input.entries.is_empty()
+        || input
+            .entries
+            .iter()
+            .any(|e| e.minutes.iter().all(|(_, m)| *m == 0))
+    {
         return Err(refuse(english("wl_attendance.adjustment.no_entries", &[])));
     }
     for new in &input.entries {
@@ -130,7 +150,10 @@ pub async fn open(state: &AppState, actor: &AuthUser, input: OpenAdjustment) -> 
     }
 
     let mut tx = state.db.begin().await?;
-    let adjustment = create_in(&mut tx, &original, actor.id, &reason, origin, &input, affects).await?;
+    let adjustment = create_in(
+        &mut tx, &original, actor.id, &reason, origin, &input, affects,
+    )
+    .await?;
     tx.commit().await?;
     Timesheet::find_or_404(&state.db, adjustment.id).await
 }
@@ -224,8 +247,14 @@ fn normal() -> String {
 ///
 /// `422` naming what could not be read.
 pub fn parse_entries(text: &str) -> Result<Vec<NewEntry>> {
-    let bad = |detail: String| refuse(english("wl_attendance.adjustment.bad_entries", &[("detail", &detail)]));
-    let rows: Vec<EntryInput> = renox::serde_json::from_str(text).map_err(|e| bad(e.to_string()))?;
+    let bad = |detail: String| {
+        refuse(english(
+            "wl_attendance.adjustment.bad_entries",
+            &[("detail", &detail)],
+        ))
+    };
+    let rows: Vec<EntryInput> =
+        renox::serde_json::from_str(text).map_err(|e| bad(e.to_string()))?;
     rows.into_iter()
         .map(|row| {
             let category = Category::parse(&row.category)
@@ -265,9 +294,14 @@ mod tests {
         )
         .unwrap();
         assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].cost_object, Some(Subject::new("construction.cost_code", 3)));
+        assert_eq!(
+            entries[0].cost_object,
+            Some(Subject::new("construction.cost_code", 3))
+        );
         assert_eq!(entries[0].minutes, vec![(Category::Overtime, -60)]);
         assert!(parse_entries("not json").is_err());
-        assert!(parse_entries(r#"[{"date": "2026-11-02", "category": "x", "minutes": 1}]"#).is_err());
+        assert!(
+            parse_entries(r#"[{"date": "2026-11-02", "category": "x", "minutes": 1}]"#).is_err()
+        );
     }
 }

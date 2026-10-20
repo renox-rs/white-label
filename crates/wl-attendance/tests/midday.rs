@@ -8,8 +8,8 @@
 
 mod support;
 
-use renox::prelude::*;
 use renox::chrono::NaiveDate;
+use renox::prelude::*;
 use wl_attendance::flags::{self, Pending};
 use wl_attendance::midday::{self, MiddayWindow};
 use wl_attendance::service::{self, NewRecord};
@@ -146,7 +146,10 @@ async fn att03_a_partial_break_is_flagged() {
             .unwrap()
             .remove(0)
             .note;
-        assert!(note.contains("60 minutes") && note.contains("12:30"), "{note}");
+        assert!(
+            note.contains("60 minutes") && note.contains("12:30"),
+            "{note}"
+        );
     })
     .await;
 }
@@ -227,8 +230,13 @@ async fn att03_the_window_is_read_per_scope() {
     let a = t.employee(1, &[]);
     let b = t.employee(2, &[]);
     let project = support::project(5);
-    let mut window =
-        MiddayWindow::new(Some(&project), d(2027, 7, 1), d(2027, 8, 31), (13, 0), (16, 0));
+    let mut window = MiddayWindow::new(
+        Some(&project),
+        d(2027, 7, 1),
+        d(2027, 8, 31),
+        (13, 0),
+        (16, 0),
+    );
     window.save(t.db()).await.unwrap();
     let scoped = t
         .location_of(WorkLocation::named("Site 5").in_scope(&project).outdoors())
@@ -256,9 +264,13 @@ async fn att03_the_window_is_read_per_scope() {
                 boss.id,
             )
         };
-        let in_scope = service::record(t.state(), morning(a, &scoped)).await.unwrap();
+        let in_scope = service::record(t.state(), morning(a, &scoped))
+            .await
+            .unwrap();
         assert_eq!(in_scope.status, AttendanceStatus::Recorded);
-        let default = service::record(t.state(), morning(b, &other)).await.unwrap();
+        let default = service::record(t.state(), morning(b, &other))
+            .await
+            .unwrap();
         assert_eq!(default.status, AttendanceStatus::Flagged);
     })
     .await;

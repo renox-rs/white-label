@@ -48,7 +48,11 @@ async fn att01_marking_over_an_accepted_record_flags_both() {
         // One AttendanceFlagged per record.
         let events = t.flagged.all();
         assert_eq!(events.len(), 2);
-        assert!(events.iter().all(|e| e.flag == "overlap" && e.employee == a));
+        assert!(
+            events
+                .iter()
+                .all(|e| e.flag == "overlap" && e.employee == a)
+        );
         let mut ids: Vec<i64> = events.iter().map(|e| e.record.0).collect();
         ids.sort_unstable();
         assert_eq!(ids, [existing.id, new.id]);
@@ -318,7 +322,12 @@ async fn att01_two_parallel_markings_flag_both_records() {
                 assert_eq!(record.status, AttendanceStatus::Flagged, "run {n}");
                 assert_eq!(t.flags_of(record).await, ["overlap"], "run {n}");
             }
-            let events = t.flagged.all().into_iter().filter(|e| e.employee == a).count();
+            let events = t
+                .flagged
+                .all()
+                .into_iter()
+                .filter(|e| e.employee == a)
+                .count();
             assert_eq!(events, 2, "run {n}: one event per record");
         }
     })

@@ -115,7 +115,9 @@ pub(crate) fn refuse(message: String) -> Error {
 /// The earliest day a supervisor may mark on `today`.
 pub fn earliest_day(config: &AttendanceConfig, today: NaiveDate) -> NaiveDate {
     today
-        .checked_sub_days(Days::new(u64::try_from(config.late_entry_days).unwrap_or(0)))
+        .checked_sub_days(Days::new(
+            u64::try_from(config.late_entry_days).unwrap_or(0),
+        ))
         .unwrap_or(today)
 }
 

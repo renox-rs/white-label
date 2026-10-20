@@ -125,7 +125,11 @@ async fn mark(
         .note(&form.note),
     )
     .await?;
-    Ok((Toast::success(text(&lang, "record.saved")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(text(&lang, "record.saved")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// What an employee submits to check in.
@@ -158,7 +162,11 @@ async fn check_in(
     }
     let employee = employee_of(&state, &lang, user.id).await?;
     service::check_in_self(&state, employee, location.id, now(), Some(user.id)).await?;
-    Ok((Toast::success(text(&lang, "record.saved")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(text(&lang, "record.saved")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// `POST /attendance/records/{id}/check-out`: the employee checks out, or a
@@ -183,7 +191,11 @@ async fn check_out(
         return Err(Error::Forbidden);
     }
     service::check_out(&state, id, now()).await?;
-    Ok((Toast::success(text(&lang, "record.saved")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(text(&lang, "record.saved")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// What a reviewer submits to accept or reject.
@@ -204,7 +216,11 @@ async fn accept(
     Valid(form): Valid<ReviewForm>,
 ) -> Result<Response> {
     review::accept(&state, &user, id, &form.reason).await?;
-    Ok((Toast::success(text(&lang, "review.saved")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(text(&lang, "review.saved")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// `POST /attendance/records/{id}/reject`: a reviewer rejects the record.
@@ -216,7 +232,11 @@ async fn reject(
     Valid(form): Valid<ReviewForm>,
 ) -> Result<Response> {
     review::reject(&state, &user, id, &form.reason).await?;
-    Ok((Toast::success(text(&lang, "review.saved")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(text(&lang, "review.saved")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// What a user submits to correct a record.
@@ -261,7 +281,11 @@ async fn correct(
         &form.reason,
     )
     .await?;
-    Ok((Toast::success(text(&lang, "review.saved")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(text(&lang, "review.saved")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// `POST /timesheets/{id}/reopen`: a user reopens an approved timesheet that
@@ -274,7 +298,11 @@ async fn reopen(
     Valid(form): Valid<ReviewForm>,
 ) -> Result<Response> {
     timesheet::reopen(&state, &user, id, &form.reason).await?;
-    Ok((Toast::success(text(&lang, "review.saved")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(text(&lang, "review.saved")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// `POST /timesheets/{id}/submit`: a user submits an open timesheet.
@@ -285,7 +313,11 @@ async fn submit_timesheet(
     Path(id): Path<i64>,
 ) -> Result<Response> {
     submit::submit(&state, &user, id).await?;
-    Ok((Toast::success(text(&lang, "review.saved")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(text(&lang, "review.saved")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }
 
 /// What a user with `timesheets.adjust` submits to correct a locked
@@ -352,5 +384,9 @@ async fn open_adjustment(
         },
     )
     .await?;
-    Ok((Toast::success(text(&lang, "adjustment.opened")), renox::HxRefresh).into_response())
+    Ok((
+        Toast::success(text(&lang, "adjustment.opened")),
+        renox::HxRefresh,
+    )
+        .into_response())
 }

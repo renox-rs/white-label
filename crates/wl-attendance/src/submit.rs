@@ -207,7 +207,10 @@ pub async fn problems_in(tx: &mut Transaction, sheet: &Timesheet) -> Result<Vec<
             .chain(theirs.iter())
             .any(|e| e.date == *date && e.cost_object().is_some() && e.total_minutes() > 0);
         if !allocated {
-            problems.push(english("wl_attendance.submit.not_allocated", &[("date", date)]));
+            problems.push(english(
+                "wl_attendance.submit.not_allocated",
+                &[("date", date)],
+            ));
         }
     }
 

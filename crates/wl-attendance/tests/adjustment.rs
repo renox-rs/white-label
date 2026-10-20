@@ -115,7 +115,10 @@ async fn att07_a_locked_timesheet_is_corrected_by_an_adjustment_and_left_alone()
     assert_eq!(adjustment.kind, TimesheetKind::Adjustment);
     assert_eq!(adjustment.status, TimesheetStatus::Open);
     assert_eq!(adjustment.adjusts_id, Some(original.id));
-    assert_eq!(adjustment.reason.as_deref(), Some("marked present, was absent"));
+    assert_eq!(
+        adjustment.reason.as_deref(),
+        Some("marked present, was absent")
+    );
     assert_eq!(adjustment.origin, Some(AdjustmentOrigin::AttendanceError));
     assert_eq!(adjustment.affects, Some(Affects::Both));
     assert_eq!(adjustment.created_by, Some(a_user.id));
@@ -127,7 +130,9 @@ async fn att07_a_locked_timesheet_is_corrected_by_an_adjustment_and_left_alone()
     );
     assert_eq!(adjustment.approver_kind, original.approver_kind);
     assert!(!adjustment.consumed());
-    let rows = TimesheetEntry::of_timesheet(t.db(), adjustment.id).await.unwrap();
+    let rows = TimesheetEntry::of_timesheet(t.db(), adjustment.id)
+        .await
+        .unwrap();
     assert_eq!(rows.len(), 1);
     assert_eq!(rows[0].normal_minutes, -480);
     assert_eq!(rows[0].date, nov(2));
@@ -138,7 +143,9 @@ async fn att07_a_locked_timesheet_is_corrected_by_an_adjustment_and_left_alone()
     assert_eq!(after.status, TimesheetStatus::Locked);
     assert_eq!(after.paid_by.as_deref(), Some("hr.payroll_run:7"));
     assert_eq!(after.updated_at, before.updated_at);
-    let kept = TimesheetEntry::of_timesheet(t.db(), original.id).await.unwrap();
+    let kept = TimesheetEntry::of_timesheet(t.db(), original.id)
+        .await
+        .unwrap();
     assert_eq!(kept.len(), 1);
     assert_eq!(kept[0].normal_minutes, 480);
 
@@ -152,7 +159,10 @@ async fn att07_a_locked_timesheet_is_corrected_by_an_adjustment_and_left_alone()
         )
         .await
         .assert_status(422);
-    assert_eq!(t.reload_sheet(&original).await.status, TimesheetStatus::Locked);
+    assert_eq!(
+        t.reload_sheet(&original).await.status,
+        TimesheetStatus::Locked
+    );
 }
 
 /// Several adjustments on one original are allowed, each linked.
@@ -210,7 +220,9 @@ async fn att07_only_a_locked_regular_timesheet_takes_an_adjustment() {
 
     // An adjustment never points to another adjustment, locked or not.
     let locked = eight_hours(&t, a, TimesheetStatus::Locked).await;
-    adjust(&t, &a_user, &locked, &with_entries).await.assert_ok();
+    adjust(&t, &a_user, &locked, &with_entries)
+        .await
+        .assert_ok();
     let inner = adjustments_of(&t, &locked).await.remove(0);
     let mut stand_in = inner.clone();
     stand_in.id = 0;
@@ -235,17 +247,47 @@ async fn att07_the_reason_origin_link_and_entries_are_required() {
 
     for form in [
         // No reason.
-        vec![("origin", "attendance_error"), ("affects", "both"), ("entries", e.as_str())],
-        vec![("reason", "  "), ("origin", "attendance_error"), ("affects", "both"), ("entries", e.as_str())],
+        vec![
+            ("origin", "attendance_error"),
+            ("affects", "both"),
+            ("entries", e.as_str()),
+        ],
+        vec![
+            ("reason", "  "),
+            ("origin", "attendance_error"),
+            ("affects", "both"),
+            ("entries", e.as_str()),
+        ],
         // No origin, or an unknown one.
-        vec![("reason", "x"), ("affects", "both"), ("entries", e.as_str())],
-        vec![("reason", "x"), ("origin", "mood"), ("affects", "both"), ("entries", e.as_str())],
+        vec![
+            ("reason", "x"),
+            ("affects", "both"),
+            ("entries", e.as_str()),
+        ],
+        vec![
+            ("reason", "x"),
+            ("origin", "mood"),
+            ("affects", "both"),
+            ("entries", e.as_str()),
+        ],
         // A client dispute with nothing linked.
-        vec![("reason", "x"), ("origin", "client_dispute"), ("entries", e.as_str())],
+        vec![
+            ("reason", "x"),
+            ("origin", "client_dispute"),
+            ("entries", e.as_str()),
+        ],
         // No `affects` for an origin with no default.
-        vec![("reason", "x"), ("origin", "payroll_error"), ("entries", e.as_str())],
+        vec![
+            ("reason", "x"),
+            ("origin", "payroll_error"),
+            ("entries", e.as_str()),
+        ],
         // No entries, or one with no hours.
-        vec![("reason", "x"), ("origin", "payroll_error"), ("affects", "payroll")],
+        vec![
+            ("reason", "x"),
+            ("origin", "payroll_error"),
+            ("affects", "payroll"),
+        ],
         vec![
             ("reason", "x"),
             ("origin", "payroll_error"),
@@ -253,9 +295,16 @@ async fn att07_the_reason_origin_link_and_entries_are_required() {
             ("entries", "[]"),
         ],
         // Entries that cannot be read.
-        vec![("reason", "x"), ("origin", "payroll_error"), ("affects", "payroll"), ("entries", "oops")],
+        vec![
+            ("reason", "x"),
+            ("origin", "payroll_error"),
+            ("affects", "payroll"),
+            ("entries", "oops"),
+        ],
     ] {
-        adjust(&t, &a_user, &original, &form).await.assert_status(422);
+        adjust(&t, &a_user, &original, &form)
+            .await
+            .assert_status(422);
     }
     assert!(adjustments_of(&t, &original).await.is_empty());
 
@@ -276,7 +325,10 @@ async fn att07_the_reason_origin_link_and_entries_are_required() {
     let list = adjustments_of(&t, &original).await;
     assert_eq!(list.len(), 1);
     assert_eq!(list[0].affects, Some(Affects::Billing));
-    assert_eq!(list[0].linked(), Some(Subject::new("invoicing.invoice", 12)));
+    assert_eq!(
+        list[0].linked(),
+        Some(Subject::new("invoicing.invoice", 12))
+    );
     assert_eq!(list[0].origin, Some(AdjustmentOrigin::ClientDispute));
 }
 
@@ -370,8 +422,14 @@ async fn att07_an_adjustment_does_not_count_for_the_attended_hours() {
     let keeper = t.user_with("Tariq", "timekeeper").await;
     let a = t.employee(1, &[]);
     let site = t.location("Site 1").await;
-    t.fixture(a, &site, at(2, 7, 0), Some(at(2, 15, 0)), AttendanceStatus::Accepted)
-        .await;
+    t.fixture(
+        a,
+        &site,
+        at(2, 7, 0),
+        Some(at(2, 15, 0)),
+        AttendanceStatus::Accepted,
+    )
+    .await;
     // T locked with 5 h; an adjustment of +4 h (more than the 3 h left).
     let mut new = Timesheet::regular(a, nov(2), nov(8)).in_context(&project(5));
     new.paid_by = Some("hr.payroll_run:7".into());
@@ -409,7 +467,10 @@ async fn att07_an_adjustment_does_not_count_for_the_attended_hours() {
     t.app.acting_as(&keeper);
     t.app
         .htmx()
-        .post(&format!("/timesheets/{}/submit", adjustment.id), &[("x", "y")])
+        .post(
+            &format!("/timesheets/{}/submit", adjustment.id),
+            &[("x", "y")],
+        )
         .await
         .assert_ok();
     assert_eq!(

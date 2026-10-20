@@ -9,10 +9,10 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
 use renox::auth::{Permissions, permissions};
-use renox::state_machine::StateMachine;
 use renox::chrono::NaiveDate;
 use renox::db::DateTime;
 use renox::prelude::*;
+use renox::state_machine::StateMachine;
 use renox::testing::TestApp;
 use wl_attendance::permissions as perm;
 use wl_attendance::{
@@ -23,11 +23,11 @@ use wl_kernel::documents::{
     BlockEntry, CheckOutcome, DocumentFuture, DocumentGuard, FlagFailure, RecordFlag, Validity,
     provide_guard,
 };
-use wl_kernel::tickets::{
-    OpenTicket, TaskCreator, TicketFuture, TicketId, TicketRef, provide_task_creator,
-};
 use wl_kernel::notify::{
     MessageId, Notifier, NotifyFuture, NotifyRecipient, NotifyRequest, provide_notifier,
+};
+use wl_kernel::tickets::{
+    OpenTicket, TaskCreator, TicketFuture, TicketId, TicketRef, provide_task_creator,
 };
 use wl_kernel::workforce::{
     EmployeeId, Qualifications, StaffProfile, Workforce, WorkforceFuture, provide_qualifications,
@@ -611,8 +611,12 @@ impl Booted {
     /// The work permit and the residence visa of `employee`, valid until
     /// `expires` (never when none).
     pub fn papers(&self, employee: EmployeeId, expires: Option<NaiveDate>) {
-        self.docs
-            .accepted_until(&employee.subject(), "work_permit", 100 + employee.0, expires);
+        self.docs.accepted_until(
+            &employee.subject(),
+            "work_permit",
+            100 + employee.0,
+            expires,
+        );
         self.docs.accepted_until(
             &employee.subject(),
             "residence_visa",
@@ -794,8 +798,8 @@ pub async fn boot_with(module: WlAttendance, extra: &str) -> Booted {
         .module(renox::audit::Audit)
         .module(module)
         .module(fakes);
-    let config = wl_kernel::ClientConfig::parse(&format!("{CLIENT}\n{extra}"))
-        .expect("a valid client.toml");
+    let config =
+        wl_kernel::ClientConfig::parse(&format!("{CLIENT}\n{extra}")).expect("a valid client.toml");
     let app = wl_kernel::apply(app, config).expect("the kernel applies");
     let app = TestApp::new(app).await;
     app.kernel()

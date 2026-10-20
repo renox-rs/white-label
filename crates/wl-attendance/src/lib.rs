@@ -5,8 +5,8 @@ pub mod access;
 pub mod adjustment;
 pub mod checks;
 pub mod config;
-pub mod flags;
 pub mod entry;
+pub mod flags;
 pub mod location;
 pub mod lock;
 pub mod midday;
@@ -20,20 +20,20 @@ pub mod record;
 pub mod review;
 pub mod service;
 pub mod submit;
-pub mod timesheet;
 mod texts;
+pub mod timesheet;
 
 use renox::db::Migration;
 use renox::prelude::*;
 
 pub use config::AttendanceConfig;
+pub use entry::TimesheetEntry;
 pub use flags::{AttendanceFlag, FlagType};
 pub use location::WorkLocation;
 pub use midday::MiddayWindow;
 pub use record::{
     AttendanceMethod, AttendanceRecord, AttendanceStatus, BreakSpan, FLAG as FLAG_TRANSITION,
 };
-pub use entry::TimesheetEntry;
 pub use service::NewRecord;
 pub use timesheet::{Timesheet, TimesheetStatus};
 

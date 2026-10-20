@@ -75,7 +75,10 @@ impl AttendanceStatus {
 
     /// Whether the system `flag` can move a record in this state.
     pub fn can_be_flagged(self) -> bool {
-        matches!(self, AttendanceStatus::Recorded | AttendanceStatus::Accepted)
+        matches!(
+            self,
+            AttendanceStatus::Recorded | AttendanceStatus::Accepted
+        )
     }
 }
 
@@ -341,9 +344,19 @@ mod tests {
         let names: Vec<&str> = machine.transitions().iter().map(|t| t.name()).collect();
         assert_eq!(
             names,
-            ["flag", "accept", "accept_by_system", "correct", "reject", "lock"]
+            [
+                "flag",
+                "accept",
+                "accept_by_system",
+                "correct",
+                "reject",
+                "lock"
+            ]
         );
-        assert_eq!(machine.find(ACCEPT).unwrap().from_states(), ["recorded", "flagged"]);
+        assert_eq!(
+            machine.find(ACCEPT).unwrap().from_states(),
+            ["recorded", "flagged"]
+        );
         assert_eq!(
             machine.find(CORRECT).unwrap().from_states(),
             ["recorded", "flagged", "accepted"]
@@ -390,7 +403,10 @@ mod tests {
         let now = at("2026-11-02T05:00:00Z");
         assert_eq!(open.span(&calendar, now).end, now);
         // Before its own check-in the span is empty, never negative.
-        assert_eq!(open.span(&calendar, at("2026-11-02T01:00:00Z")).end, open.check_in);
+        assert_eq!(
+            open.span(&calendar, at("2026-11-02T01:00:00Z")).end,
+            open.check_in
+        );
         let marked = AttendanceRecord {
             method: AttendanceMethod::Supervisor,
             ..open

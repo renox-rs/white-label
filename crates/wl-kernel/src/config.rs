@@ -432,7 +432,9 @@ mod tests {
         assert_eq!(calendar.normal_minutes_on(day("2026-11-10")), 7 * 60);
         let plain = ClientConfig::parse(MINIMAL).unwrap().business_calendar();
         assert_eq!(plain.normal_minutes_on(day("2026-11-03")), 8 * 60);
-        let unknown = format!("{MINIMAL}\n[[calendar.reduced_hours]]\nfrom = \"2026-11-09\"\nto = \"2026-11-13\"\nhours_less = 2\nname = \"x\"\n");
+        let unknown = format!(
+            "{MINIMAL}\n[[calendar.reduced_hours]]\nfrom = \"2026-11-09\"\nto = \"2026-11-13\"\nhours_less = 2\nname = \"x\"\n"
+        );
         assert!(ClientConfig::parse(&unknown).is_err());
     }
 

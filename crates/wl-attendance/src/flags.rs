@@ -11,9 +11,9 @@
 
 use renox::db::{DateTime, Transaction};
 use renox::prelude::*;
-use renox::state_machine::StateMachine;
 use renox::serde_json::json;
 use renox::state_machine::Outcome;
+use renox::state_machine::StateMachine;
 use serde::{Deserialize, Serialize};
 use wl_kernel::attendance::AttendanceFlagged;
 
@@ -312,7 +312,10 @@ pub async fn note_in(
                 .where_(AttendanceFlag::ID.eq(held.id))
                 .update(
                     &mut *tx,
-                    &[("note", &note.to_owned()), ("updated_at", &renox::db::now())],
+                    &[
+                        ("note", &note.to_owned()),
+                        ("updated_at", &renox::db::now()),
+                    ],
                 )
                 .await?;
         }
@@ -358,7 +361,11 @@ mod tests {
         .collect();
         assert_eq!(
             held,
-            [FlagType::OvertimeCap, FlagType::PermitInvalid, FlagType::Overlap]
+            [
+                FlagType::OvertimeCap,
+                FlagType::PermitInvalid,
+                FlagType::Overlap
+            ]
         );
     }
 

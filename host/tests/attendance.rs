@@ -29,8 +29,10 @@ async fn a_client_with_attendance_boots_and_stores_work_locations() {
 #[test]
 fn attendance_needs_hr() {
     let demo = std::fs::read_to_string(host::DEMO_CLIENT).unwrap();
-    let without_hr = demo
-        .replace(r#""sales", "hr", "portal"]"#, r#""sales", "portal", "attendance"]"#);
+    let without_hr = demo.replace(
+        r#""sales", "hr", "portal"]"#,
+        r#""sales", "portal", "attendance"]"#,
+    );
     let err = ClientConfig::parse(&without_hr)
         .and_then(|config| host::app_for(config).map(|_| ()))
         .unwrap_err();
@@ -51,7 +53,9 @@ fn the_roles_hold_the_attendance_permissions() {
     assert!(holds(HR, attendance::REVIEW) && holds(HR, attendance::CORRECT));
     assert!(!holds(HR, attendance::MARK));
     assert!(holds(ADMIN, attendance::REVIEW) && holds(ADMIN, attendance::SELF_CHECK_IN));
-    assert!(holds(ADMIN, attendance::TIMESHEETS_SUBMIT) && holds(ADMIN, attendance::TIMESHEETS_ADJUST));
+    assert!(
+        holds(ADMIN, attendance::TIMESHEETS_SUBMIT) && holds(ADMIN, attendance::TIMESHEETS_ADJUST)
+    );
     assert!(holds(ADMIN, attendance::TIMESHEETS_REOPEN));
     assert!(!holds(MEMBER, attendance::MARK));
 }

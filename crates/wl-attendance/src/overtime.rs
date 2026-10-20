@@ -376,7 +376,12 @@ mod tests {
         let hours = |h: i64| BTreeMap::from([(tuesday, h * 60)]);
         assert_eq!(verdict(&config, &calendar, &hours(10), tuesday), None);
         assert_eq!(
-            verdict(&config, &calendar, &BTreeMap::from([(tuesday, 630)]), tuesday),
+            verdict(
+                &config,
+                &calendar,
+                &BTreeMap::from([(tuesday, 630)]),
+                tuesday
+            ),
             Some(Reason::Day {
                 total: 630,
                 normal: 480
@@ -385,19 +390,29 @@ mod tests {
         // On a rest day every hour is overtime and the cap is 2 h.
         let saturday = day(11, 7);
         assert_eq!(
-            verdict(&config, &calendar, &BTreeMap::from([(saturday, 120)]), saturday),
+            verdict(
+                &config,
+                &calendar,
+                &BTreeMap::from([(saturday, 120)]),
+                saturday
+            ),
             None
         );
         assert!(
-            verdict(&config, &calendar, &BTreeMap::from([(saturday, 121)]), saturday).is_some()
+            verdict(
+                &config,
+                &calendar,
+                &BTreeMap::from([(saturday, 121)]),
+                saturday
+            )
+            .is_some()
         );
     }
 
     #[test]
     fn ramadan_makes_the_normal_hours_two_hours_shorter() {
         let config = AttendanceConfig::default();
-        let calendar =
-            BusinessCalendar::default().with_reduced_hours(day(11, 9), day(11, 13), 2);
+        let calendar = BusinessCalendar::default().with_reduced_hours(day(11, 9), day(11, 13), 2);
         let tuesday = day(11, 10);
         let eight_and_a_half = BTreeMap::from([(tuesday, 510)]);
         assert!(verdict(&config, &calendar, &eight_and_a_half, tuesday).is_some());
@@ -456,8 +471,14 @@ mod tests {
             },
             day(11, 3),
         );
-        assert!(note.contains("10.5") && note.contains("8.0") && note.contains("2.0"), "{note}");
+        assert!(
+            note.contains("10.5") && note.contains("8.0") && note.contains("2.0"),
+            "{note}"
+        );
         let window = note_of(&config, Reason::Window { overtime: 8700 }, day(11, 30));
-        assert!(window.contains("145.0") && window.contains("144.0"), "{window}");
+        assert!(
+            window.contains("145.0") && window.contains("144.0"),
+            "{window}"
+        );
     }
 }

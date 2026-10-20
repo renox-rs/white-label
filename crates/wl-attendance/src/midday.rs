@@ -260,8 +260,14 @@ pub async fn check_in(
         "wl_attendance.midday.note",
         &[
             ("minutes", &minutes),
-            ("from", &format!("{:02}:{:02}", window.starts.hour(), window.starts.minute())),
-            ("to", &format!("{:02}:{:02}", window.ends.hour(), window.ends.minute())),
+            (
+                "from",
+                &format!("{:02}:{:02}", window.starts.hour(), window.starts.minute()),
+            ),
+            (
+                "to",
+                &format!("{:02}:{:02}", window.ends.hour(), window.ends.minute()),
+            ),
         ],
     );
     flags::add_in(tx, record.id, FlagType::MiddayBreak, &note, pending).await?;
@@ -313,12 +319,22 @@ mod tests {
     #[test]
     fn a_block_marking_with_the_break_kept_crosses_nothing_and_without_it_crosses_the_window() {
         let calendar = BusinessCalendar::default();
-        let kept = marked(&calendar, (7, 0), (17, 0), vec![BreakSpan::hm((12, 30), (15, 0))]);
+        let kept = marked(
+            &calendar,
+            (7, 0),
+            (17, 0),
+            vec![BreakSpan::hm((12, 30), (15, 0))],
+        );
         assert_eq!(worked_inside(&calendar, &kept, &window()), 0);
         let removed = marked(&calendar, (7, 0), (17, 0), Vec::new());
         assert_eq!(worked_inside(&calendar, &removed, &window()), 150);
         // A partial break leaves 14:00 to 15:00 worked inside the window.
-        let partial = marked(&calendar, (7, 0), (17, 0), vec![BreakSpan::hm((12, 30), (14, 0))]);
+        let partial = marked(
+            &calendar,
+            (7, 0),
+            (17, 0),
+            vec![BreakSpan::hm((12, 30), (14, 0))],
+        );
         assert_eq!(worked_inside(&calendar, &partial, &window()), 60);
         // Work that stops at 12:30 or starts at 15:00 does not cross it.
         let morning = marked(&calendar, (7, 0), (12, 30), Vec::new());
@@ -334,10 +350,15 @@ mod tests {
             ..MiddayWindow::new(None, day(7, 1), day(8, 31), (12, 0), (15, 30))
         };
         let date = day(7, 10);
-        let found = from_rows(std::slice::from_ref(&everyone), date).unwrap().unwrap();
+        let found = from_rows(std::slice::from_ref(&everyone), date)
+            .unwrap()
+            .unwrap();
         assert_eq!(found.starts, NaiveTime::from_hms_opt(12, 0, 0).unwrap());
         // The year has a row, and June is outside it: no window, not the default.
-        assert_eq!(from_rows(std::slice::from_ref(&everyone), day(6, 20)), Some(None));
+        assert_eq!(
+            from_rows(std::slice::from_ref(&everyone), day(6, 20)),
+            Some(None)
+        );
         // No row for the year: the caller falls back.
         let last_year = MiddayWindow {
             season_from: NaiveDate::from_ymd_opt(2026, 7, 1).unwrap(),

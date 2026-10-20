@@ -55,7 +55,11 @@ async fn att02_ten_and_a_half_hours_flag_both_records_and_tell_the_supervisor() 
         )
         .await
         .unwrap();
-        assert_eq!(first.status, AttendanceStatus::Recorded, "6 h alone is fine");
+        assert_eq!(
+            first.status,
+            AttendanceStatus::Recorded,
+            "6 h alone is fine"
+        );
         assert!(t.flagged.all().is_empty());
 
         let second = service::record(
@@ -252,7 +256,11 @@ async fn att02_overtime_above_144_hours_in_21_days_is_flagged() {
         )
         .await
         .unwrap();
-        assert_eq!(fine.status, AttendanceStatus::Recorded, "144 h is not above");
+        assert_eq!(
+            fine.status,
+            AttendanceStatus::Recorded,
+            "144 h is not above"
+        );
         assert!(t.flags_of(&fine).await.is_empty());
         // Only the record of the 30th was flagged, not the days before.
         assert_eq!(t.flagged.all().len(), 1);
@@ -290,7 +298,9 @@ async fn att02_a_timesheet_entry_flags_the_days_records_once() {
         assert!(support::users_of(&t.notices.flagged("overtime_cap")[0]).contains(&boss.id));
 
         // Saved again, and the record saved again: still one flag.
-        overtime::on_entry_saved(t.state(), a, nov(3)).await.unwrap();
+        overtime::on_entry_saved(t.state(), a, nov(3))
+            .await
+            .unwrap();
         assert_eq!(t.flags_of(&after).await, ["overtime_cap"]);
         assert_eq!(t.flagged.all().len(), 1);
         assert_eq!(t.notices.flagged("overtime_cap").len(), 1);
@@ -301,7 +311,9 @@ async fn att02_a_timesheet_entry_flags_the_days_records_once() {
             .delete(t.db())
             .await
             .unwrap();
-        let within = overtime::on_entry_saved(t.state(), a, nov(3)).await.unwrap();
+        let within = overtime::on_entry_saved(t.state(), a, nov(3))
+            .await
+            .unwrap();
         assert!(matches!(within, DayCheck::Within));
     })
     .await;
@@ -355,7 +367,10 @@ async fn att02_locked_records_are_left_alone() {
         entry::add(t.state(), sheet.id, NewEntry::normal(nov(3), 180))
             .await
             .unwrap();
-        assert_eq!(t.reload(&only_locked).await.status, AttendanceStatus::Locked);
+        assert_eq!(
+            t.reload(&only_locked).await.status,
+            AttendanceStatus::Locked
+        );
         assert!(t.flags_of(&only_locked).await.is_empty());
         let told = t.notices.of_type("attendance.over_cap");
         assert_eq!(told.len(), 1);

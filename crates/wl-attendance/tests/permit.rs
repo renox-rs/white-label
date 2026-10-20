@@ -40,7 +40,10 @@ async fn att04_an_expired_work_permit_flags_the_record_and_tells_hr_and_the_supe
             .unwrap()
             .remove(0)
             .note;
-        assert!(note.contains("work_permit") && !note.contains("residence_visa"), "{note}");
+        assert!(
+            note.contains("work_permit") && !note.contains("residence_visa"),
+            "{note}"
+        );
 
         let history = t.history_of(&record).await;
         let flags: Vec<_> = history.iter().filter(|h| h.0 == "flag").collect();
@@ -72,7 +75,8 @@ async fn att04_the_residence_visa_counts_and_a_pending_renewal_is_no() {
         .accepted_until(&expired.subject(), "residence_visa", 21, Some(nov(1)));
     t.docs
         .accepted_until(&pending.subject(), "residence_visa", 31, Some(nov(1)));
-    t.docs.pending_review(&pending.subject(), "residence_visa", 32);
+    t.docs
+        .pending_review(&pending.subject(), "residence_visa", 32);
     t.on(nov(2), async {
         let mark = |employee| {
             NewRecord::supervisor(employee, site.id, at(2, 7, 0), Some(at(2, 15, 0)), boss.id)
@@ -109,8 +113,13 @@ async fn att04_a_qualification_the_context_requires_is_checked() {
         .await;
     t.quals.grant(guard, "sira_licence", Some(nov(30)));
     t.quals.grant(lapsed, "sira_licence", Some(nov(1)));
-    t.quals
-        .bound(bound, "sira_licence", &["guard"], std::slice::from_ref(&tower), None);
+    t.quals.bound(
+        bound,
+        "sira_licence",
+        &["guard"],
+        std::slice::from_ref(&tower),
+        None,
+    );
     t.quals.bound(
         wrong_site,
         "sira_licence",
@@ -132,7 +141,12 @@ async fn att04_a_qualification_the_context_requires_is_checked() {
         }
         let told = t.notices.flagged("permit_invalid");
         assert_eq!(told.len(), 2);
-        assert!(told[0].data["note"].as_str().unwrap().contains("sira_licence"));
+        assert!(
+            told[0].data["note"]
+                .as_str()
+                .unwrap()
+                .contains("sira_licence")
+        );
     })
     .await;
 }
@@ -272,13 +286,22 @@ async fn att04_a_flagged_record_proposes_nothing_and_an_accepted_one_non_billabl
         .await
         .unwrap();
         assert_eq!(record.status, AttendanceStatus::Flagged);
-        assert_eq!(proposal::proposal_of(t.state(), record.id).await.unwrap(), None);
+        assert_eq!(
+            proposal::proposal_of(t.state(), record.id).await.unwrap(),
+            None
+        );
         let blocked = proposal::submit_blocker(t.state(), a, nov(2), nov(8))
             .await
             .unwrap()
             .expect("submit is held");
-        assert!(blocked.contains("Site 1") && blocked.contains("2026-11-02"), "{blocked}");
-        assert!(blocked.contains(&format!("record {}", record.id)), "{blocked}");
+        assert!(
+            blocked.contains("Site 1") && blocked.contains("2026-11-02"),
+            "{blocked}"
+        );
+        assert!(
+            blocked.contains(&format!("record {}", record.id)),
+            "{blocked}"
+        );
         assert!(blocked.contains("permit_invalid"), "{blocked}");
         // Another period is not held by it.
         assert_eq!(

@@ -39,8 +39,8 @@
 
 use renox::db::{DateTime, Json, Transaction, now};
 use renox::prelude::*;
-use renox::state_machine::StateMachine;
 use renox::serde_json::json;
+use renox::state_machine::StateMachine;
 use renox::state_machine::TransitionCtx;
 use serde::{Deserialize, Serialize};
 use wl_kernel::BusinessCalendar;
@@ -55,9 +55,7 @@ use crate::location::WorkLocation;
 use crate::lock;
 use crate::overlap;
 use crate::permissions;
-use crate::record::{
-    ACCEPT, ACCEPT_BY_SYSTEM, AttendanceRecord, BreakSpan, CORRECT, LOCK, REJECT,
-};
+use crate::record::{ACCEPT, ACCEPT_BY_SYSTEM, AttendanceRecord, BreakSpan, CORRECT, LOCK, REJECT};
 use crate::service::{self, refuse};
 use crate::texts::english;
 
@@ -239,7 +237,10 @@ pub(crate) async fn correct_in(
         .await?;
     let reason = who.reason.clone().unwrap_or_default();
     flags::settle_in(tx, record.id, who.actor, &reason).await?;
-    let note = english("wl_attendance.review.corrected_note", &[("reason", &reason)]);
+    let note = english(
+        "wl_attendance.review.corrected_note",
+        &[("reason", &reason)],
+    );
     flags::note_in(tx, record.id, FlagType::ManualCorrection, &note, who.actor).await?;
     // The hours proposed follow the corrected times.
     entry::propose_in(tx, &AttendanceRecord { breaks, ..view }).await
@@ -302,10 +303,7 @@ pub async fn accept(
     if !reason.trim().is_empty() {
         run = run.reason(reason.trim().to_owned());
     }
-    let outcome = run
-        .run_in(&mut tx)
-        .await
-        .map_err(|e| e.into_error())?;
+    let outcome = run.run_in(&mut tx).await.map_err(|e| e.into_error())?;
     tx.commit().await?;
     outcome.emit(state).await?;
     AttendanceRecord::find_or_404(&state.db, record_id).await
@@ -364,10 +362,7 @@ pub async fn reject(
     if !reason.trim().is_empty() {
         run = run.reason(reason.trim().to_owned());
     }
-    let outcome = run
-        .run_in(&mut tx)
-        .await
-        .map_err(|e| e.into_error())?;
+    let outcome = run.run_in(&mut tx).await.map_err(|e| e.into_error())?;
     tx.commit().await?;
     outcome.emit(state).await?;
     AttendanceRecord::find_or_404(&state.db, record_id).await
@@ -444,10 +439,7 @@ pub async fn correct(
     if !reason.trim().is_empty() {
         run = run.reason(reason.trim().to_owned());
     }
-    let outcome = run
-        .run_in(&mut tx)
-        .await
-        .map_err(|e| e.into_error())?;
+    let outcome = run.run_in(&mut tx).await.map_err(|e| e.into_error())?;
     let stored = AttendanceRecord::find(&mut tx, record_id)
         .await?
         .ok_or(Error::NotFound)?;

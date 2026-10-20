@@ -86,7 +86,10 @@ impl Default for AttendanceConfig {
             overtime_window_minutes: DEFAULT_OVERTIME_WINDOW_MINUTES,
             overtime_window_days: DEFAULT_OVERTIME_WINDOW_DAYS,
             permit_check: true,
-            permit_kinds: DEFAULT_PERMIT_KINDS.iter().map(|k| (*k).to_owned()).collect(),
+            permit_kinds: DEFAULT_PERMIT_KINDS
+                .iter()
+                .map(|k| (*k).to_owned())
+                .collect(),
             midday: MiddayDefault::default(),
         }
     }

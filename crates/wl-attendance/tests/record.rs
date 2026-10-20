@@ -48,7 +48,10 @@ async fn att01_a_supervisor_marks_an_employee_present() {
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].record.0, record.id);
         assert_eq!(events[0].employee, a);
-        assert_eq!(events[0].location.to_string(), format!("attendance.work_location:{}", site1.id));
+        assert_eq!(
+            events[0].location.to_string(),
+            format!("attendance.work_location:{}", site1.id)
+        );
         assert_eq!(events[0].date, nov(2));
         assert_eq!(events[0].method, "supervisor");
         assert!(events[0].flags.is_empty());
@@ -91,7 +94,11 @@ async fn att01_the_late_entry_window_is_one_day() {
         .await
         .unwrap_err();
         assert!(refusal(early).contains("has not come"));
-        assert_eq!(t.records_of(a).await.len(), 1, "only the day inside the window");
+        assert_eq!(
+            t.records_of(a).await.len(),
+            1,
+            "only the day inside the window"
+        );
     })
     .await;
 }
@@ -151,7 +158,13 @@ async fn att01_only_an_employee_at_work_with_sound_times_is_recorded() {
         assert!(refusal(gone).contains("not at work"));
         let unknown = service::record(
             t.state(),
-            NewRecord::supervisor(wl_kernel::workforce::EmployeeId(99), site1.id, at(2, 7, 0), None, boss.id),
+            NewRecord::supervisor(
+                wl_kernel::workforce::EmployeeId(99),
+                site1.id,
+                at(2, 7, 0),
+                None,
+                boss.id,
+            ),
         )
         .await
         .unwrap_err();
@@ -250,7 +263,13 @@ async fn att01_a_check_out_is_refused_for_a_locked_or_closed_record() {
     let site1 = t.location("Site 1").await;
     t.on(nov(2), async {
         let locked = t
-            .fixture(a, &site1, at(2, 7, 0), Some(at(2, 10, 0)), AttendanceStatus::Locked)
+            .fixture(
+                a,
+                &site1,
+                at(2, 7, 0),
+                Some(at(2, 10, 0)),
+                AttendanceStatus::Locked,
+            )
             .await;
         let refused = service::check_out(t.state(), locked.id, at(2, 15, 0))
             .await

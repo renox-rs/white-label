@@ -68,9 +68,7 @@ async fn att05_the_marker_cannot_accept_and_a_reviewer_needs_a_reason() {
         act(&t, &c, &record, "accept", &[("reason", "  ")])
             .await
             .assert_status(422);
-        act(&t, &c, &record, "accept", &[])
-            .await
-            .assert_status(422);
+        act(&t, &c, &record, "accept", &[]).await.assert_status(422);
         assert_eq!(t.reload(&record).await.status, AttendanceStatus::Flagged);
 
         let reason = "emergency repair, Art. exception";
@@ -159,7 +157,13 @@ async fn att05_a_flag_that_holds_nothing_may_be_accepted_by_the_marker() {
     t.on(july, async {
         let record = service::record(
             t.state(),
-            NewRecord::supervisor(a, site.id, dubai(july, 7, 0), Some(dubai(july, 17, 0)), b.id),
+            NewRecord::supervisor(
+                a,
+                site.id,
+                dubai(july, 7, 0),
+                Some(dubai(july, 17, 0)),
+                b.id,
+            ),
         )
         .await
         .unwrap();
@@ -301,7 +305,10 @@ async fn att05_a_correction_must_end_the_overlap_and_leaves_the_other_record_fla
             &c,
             &r2,
             "correct",
-            &[("check_in", "2026-11-02T15:00"), ("check_out", "2026-11-02T17:00")],
+            &[
+                ("check_in", "2026-11-02T15:00"),
+                ("check_out", "2026-11-02T17:00"),
+            ],
         )
         .await
         .assert_status(422);
@@ -360,10 +367,24 @@ async fn att05_a_correction_that_creates_an_overlap_flags_both_records() {
     let site1 = t.location("Site 1").await;
     let site2 = t.location("Site 2").await;
     let first = t
-        .fixture_by(a, &site1, at(2, 7, 0), Some(at(2, 15, 0)), AttendanceStatus::Accepted, Some(s.id))
+        .fixture_by(
+            a,
+            &site1,
+            at(2, 7, 0),
+            Some(at(2, 15, 0)),
+            AttendanceStatus::Accepted,
+            Some(s.id),
+        )
         .await;
     let second = t
-        .fixture_by(a, &site2, at(2, 16, 0), Some(at(2, 18, 0)), AttendanceStatus::Accepted, Some(s.id))
+        .fixture_by(
+            a,
+            &site2,
+            at(2, 16, 0),
+            Some(at(2, 18, 0)),
+            AttendanceStatus::Accepted,
+            Some(s.id),
+        )
         .await;
     t.on(nov(2), async {
         // The marker may correct what no flag holds, but not without a reason.
@@ -371,13 +392,17 @@ async fn att05_a_correction_that_creates_an_overlap_flags_both_records() {
             ("check_in", "2026-11-02T14:00"),
             ("check_out", "2026-11-02T18:00"),
         ];
-        act(&t, &s, &second, "correct", &form).await.assert_status(422);
+        act(&t, &s, &second, "correct", &form)
+            .await
+            .assert_status(422);
         let with_reason = [
             ("check_in", "2026-11-02T14:00"),
             ("check_out", "2026-11-02T18:00"),
             ("reason", "started at 14:00"),
         ];
-        act(&t, &s, &second, "correct", &with_reason).await.assert_ok();
+        act(&t, &s, &second, "correct", &with_reason)
+            .await
+            .assert_ok();
         let second = t.reload(&second).await;
         let first = t.reload(&first).await;
         assert_eq!(second.check_in, at(2, 14, 0));
@@ -398,7 +423,13 @@ async fn att05_a_correction_stays_in_the_window_and_in_order() {
     let a = t.employee(1, &[]);
     let site = t.location("Site 1").await;
     let old = t
-        .fixture(a, &site, at(2, 7, 0), Some(at(2, 15, 0)), AttendanceStatus::Accepted)
+        .fixture(
+            a,
+            &site,
+            at(2, 7, 0),
+            Some(at(2, 15, 0)),
+            AttendanceStatus::Accepted,
+        )
         .await;
     t.on(nov(6), async {
         act(
@@ -418,7 +449,13 @@ async fn att05_a_correction_stays_in_the_window_and_in_order() {
     })
     .await;
     let today = t
-        .fixture(a, &site, at(6, 7, 0), Some(at(6, 15, 0)), AttendanceStatus::Accepted)
+        .fixture(
+            a,
+            &site,
+            at(6, 7, 0),
+            Some(at(6, 15, 0)),
+            AttendanceStatus::Accepted,
+        )
         .await;
     t.on(nov(6), async {
         act(
@@ -455,7 +492,13 @@ async fn att05_the_system_never_accepts_a_record_with_a_held_flag() {
 
         // `recorded` with an open held flag: refused.
         let recorded = t
-            .fixture(b, &site, at(2, 7, 0), Some(at(2, 15, 0)), AttendanceStatus::Recorded)
+            .fixture(
+                b,
+                &site,
+                at(2, 7, 0),
+                Some(at(2, 15, 0)),
+                AttendanceStatus::Recorded,
+            )
             .await;
         AttendanceFlag::create(
             t.db(),
@@ -467,7 +510,11 @@ async fn att05_the_system_never_accepts_a_record_with_a_held_flag() {
         )
         .await
         .unwrap();
-        assert!(review::accept_by_system(t.state(), recorded.id).await.is_err());
+        assert!(
+            review::accept_by_system(t.state(), recorded.id)
+                .await
+                .is_err()
+        );
         assert_eq!(t.reload(&recorded).await.status, AttendanceStatus::Recorded);
     })
     .await;
@@ -475,7 +522,13 @@ async fn att05_the_system_never_accepts_a_record_with_a_held_flag() {
     // With no flag the system accepts it.
     let c = t.employee(3, &[]);
     let clean = t
-        .fixture(c, &site, at(3, 7, 0), Some(at(3, 15, 0)), AttendanceStatus::Recorded)
+        .fixture(
+            c,
+            &site,
+            at(3, 7, 0),
+            Some(at(3, 15, 0)),
+            AttendanceStatus::Recorded,
+        )
         .await;
     let accepted = review::accept_by_system(t.state(), clean.id).await.unwrap();
     assert_eq!(accepted.status, AttendanceStatus::Accepted);
@@ -493,10 +546,22 @@ async fn att05_an_accepted_record_is_locked_by_the_system_and_then_never_changes
     let a = t.employee(1, &[]);
     let site = t.location("Site 1").await;
     let accepted = t
-        .fixture(a, &site, at(2, 7, 0), Some(at(2, 15, 0)), AttendanceStatus::Accepted)
+        .fixture(
+            a,
+            &site,
+            at(2, 7, 0),
+            Some(at(2, 15, 0)),
+            AttendanceStatus::Accepted,
+        )
         .await;
     let recorded = t
-        .fixture(a, &site, at(3, 7, 0), Some(at(3, 15, 0)), AttendanceStatus::Recorded)
+        .fixture(
+            a,
+            &site,
+            at(3, 7, 0),
+            Some(at(3, 15, 0)),
+            AttendanceStatus::Recorded,
+        )
         .await;
     let mut tx = t.db().begin().await.unwrap();
     assert!(review::lock_in(&mut tx, recorded.id).await.is_err());

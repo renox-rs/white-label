@@ -40,19 +40,34 @@ const TEXTS: &[(&str, &str)] = &[
         "wl_attendance.self.already_here",
         "You are already checked in here.",
     ),
-    ("wl_attendance.self.no_employee", "No employee record belongs to your account."),
+    (
+        "wl_attendance.self.no_employee",
+        "No employee record belongs to your account.",
+    ),
     ("wl_attendance.record.saved", "Attendance saved."),
-    ("wl_attendance.record.bad_time", "Give the time as 2026-11-02T07:00."),
+    (
+        "wl_attendance.record.bad_time",
+        "Give the time as 2026-11-02T07:00.",
+    ),
     // Flags.
-    ("wl_attendance.flags.outside_geofence", "Outside the geofence"),
+    (
+        "wl_attendance.flags.outside_geofence",
+        "Outside the geofence",
+    ),
     ("wl_attendance.flags.midday_break", "Midday break"),
     ("wl_attendance.flags.missing_checkout", "Missing check-out"),
     ("wl_attendance.flags.late", "Late"),
     ("wl_attendance.flags.late_entry", "Late entry"),
     ("wl_attendance.flags.manual_correction", "Manual correction"),
     ("wl_attendance.flags.duplicate", "Duplicate"),
-    ("wl_attendance.flags.overtime_cap", "Hours above the overtime cap"),
-    ("wl_attendance.flags.permit_invalid", "No valid permit, visa or qualification"),
+    (
+        "wl_attendance.flags.overtime_cap",
+        "Hours above the overtime cap",
+    ),
+    (
+        "wl_attendance.flags.permit_invalid",
+        "No valid permit, visa or qualification",
+    ),
     ("wl_attendance.flags.overlap", "Overlaps another record"),
     // Notes of the flags.
     (
@@ -78,10 +93,7 @@ const TEXTS: &[(&str, &str)] = &[
         "Worked :minutes minutes inside the midday break, :from to :to.",
     ),
     // Work permit, visa and qualifications (`HRM.RUL.14`).
-    (
-        "wl_attendance.permit.note",
-        "Not valid on :date: :kinds.",
-    ),
+    ("wl_attendance.permit.note", "Not valid on :date: :kinds."),
     (
         "wl_attendance.submit.flagged_record",
         "The attendance record :record of :date at :location is flagged (:flags) and must be reviewed first.",
@@ -245,7 +257,10 @@ mod tests {
     #[test]
     fn a_placeholder_is_filled_in() {
         assert_eq!(
-            english("wl_attendance.self.open_elsewhere", &[("location", &"Site 1")]),
+            english(
+                "wl_attendance.self.open_elsewhere",
+                &[("location", &"Site 1")]
+            ),
             "You are still checked in at Site 1. Check out there first."
         );
     }
