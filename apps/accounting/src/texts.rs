@@ -1471,6 +1471,14 @@ const TEXTS: &[(&str, &str)] = &[
         ":client: record whether the engagements continue, are suspended or end. :link",
     ),
     ("accounting.aml.decision_done", "The decision is recorded."),
+    (
+        "accounting.aml.unblock_title",
+        "Decide whether to unblock the client",
+    ),
+    (
+        "accounting.aml.unblock_description",
+        ":client is still blocked. Closing the case does not unblock them: decide whether they are, from :party. :link",
+    ),
     ("accounting.aml.partner_subject", "Please contact the MLRO"),
     (
         "accounting.aml.partner_body",

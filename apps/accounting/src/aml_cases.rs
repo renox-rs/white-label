@@ -75,6 +75,12 @@ pub fn decision_key(case: &AmlCase) -> String {
     format!("accounting.aml_decision:{}", case.id)
 }
 
+/// The source key of the MLRO's task to decide whether the client of the
+/// closed concern `case` is unblocked.
+pub fn unblock_key(case: &AmlCase) -> String {
+    format!("accounting.aml_unblock:{}", case.id)
+}
+
 /// `NotFound` unless `user` holds `aml.manage` (ACC.ACL.05).
 fn require_mlro(user: &AuthUser) -> Result {
     if user.has_permission(permissions::AML_MANAGE) {
@@ -236,7 +242,46 @@ pub async fn close(state: &AppState, by: &AuthUser, id: i64, reason: &str) -> Re
         on: Some(today()),
         ..AmlInput::default()
     };
-    run(state, by, id, CLOSE, &input).await
+    let closed = run(state, by, id, CLOSE, &input).await?;
+    ask_to_unblock(state, &closed).await?;
+    Ok(closed)
+}
+
+/// Closing a concern about a client who is still blocked does not unblock
+/// them: the MLRO gets a confidential task to decide whether they are
+/// (BL-ACC-10 edge case: "the `aml_concern` unblock decision is a task for
+/// the MLRO"). Decision: the block of a concern case is the MLRO's own
+/// `aml_concern` block (or the one a *suspend* decision places); the app
+/// cannot read a block's reason code, so any concern case whose client is
+/// still blocked when it closes gives the task. A sanctions case gives none:
+/// its block is lifted only with the sanctions evidence in wl-parties.
+async fn ask_to_unblock(state: &AppState, case: &AmlCase) -> Result {
+    if case.kind != AmlKind::Concern {
+        return Ok(());
+    }
+    let blocked = directory(state).status(&state.db, case.client()).await?
+        == Some(wl_kernel::PartyStatus::Blocked);
+    if !blocked {
+        return Ok(());
+    }
+    let client_name = name_of(state, case.client()).await;
+    let title = english("accounting.aml.unblock_title", &[]);
+    let description = english(
+        "accounting.aml.unblock_description",
+        &[
+            ("client", &client_name),
+            ("link", &format!("/accounting/aml-cases/{}", case.id)),
+            ("party", &format!("/parties/{}", case.client().0)),
+        ],
+    );
+    role_tasks::open(
+        state,
+        RoleTask::new(case.subject(), MLRO_ROLE, &title, &unblock_key(case))
+            .description(&description)
+            .confidential(),
+    )
+    .await?;
+    Ok(())
 }
 
 /// `by` (the MLRO) records that the report of case `id` was filed on goAML

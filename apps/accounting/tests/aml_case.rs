@@ -319,7 +319,12 @@ async fn staff_without_the_mlro_permission_cannot_see_the_case() {
             .await
             .assert_ok()
             .assert_see("Omar K.")
-            .assert_see("QDi.001");
+            .assert_see("QDi.001")
+            // The freeze and the report task wl-parties opened, with their
+            // state and due day (2026-11-04, Asia/Dubai).
+            // (the clock is a few seconds before 14:00).
+            .assert_see("freeze: open, due 2026-11-04")
+            .assert_see("report: open, due 2026-11-04");
     }
 
     // Nothing of it shows on the pages the others can open.
@@ -460,4 +465,81 @@ async fn a_failed_run_of_the_rule_alerts_the_partner_and_the_admin() {
     assert_eq!(alerts[0].owner_role, support::PARTNER);
     assert!(alerted(partner.id), "the partner role is told");
     assert!(alerted(admin.id), "the company admin is told");
+}
+
+/// Edge case of `close`: closing a concern about a client who is still blocked
+/// does not unblock them; the MLRO gets a confidential task to decide
+/// whether to. A client who is not blocked, and a sanctions case, get none.
+#[renox::test]
+async fn closing_a_concern_about_a_blocked_client_gives_the_mlro_the_unblock_decision() {
+    use accounting::aml_cases::unblock_key;
+    use wl_ticketing::Ticket;
+
+    let t = boot_real().await;
+    let (mlro, deputy, manager) = (t.mlro().await, t.deputy().await, t.manager().await);
+    let (client, engagement) = falcon(&t, true).await;
+    let other = t.client_named(" Two").await;
+    t.cdd_prepared(&other).await;
+    let second = t
+        .engagement_in(&other, EngagementStatus::Active, None)
+        .await;
+
+    let raise =
+        |engagement: &Engagement| format!("/accounting/engagements/{}/aml-concern", engagement.id);
+    t.post(&manager, &raise(&engagement), &[("facts", "Odd payments")])
+        .await
+        .assert_ok();
+    t.post(&manager, &raise(&second), &[("facts", "Odd payments")])
+        .await
+        .assert_ok();
+    let cases = t.aml_cases().await;
+    assert_eq!(cases.len(), 2);
+
+    // The MLRO blocked the first client for the concern.
+    t.block(client.company, "aml_concern").await;
+    for case in &cases {
+        t.post(
+            &mlro,
+            &format!("/accounting/aml-cases/{}/review", case.id),
+            &[],
+        )
+        .await
+        .assert_ok();
+        t.post(
+            &mlro,
+            &format!("/accounting/aml-cases/{}/close", case.id),
+            &[("reason", "Explained")],
+        )
+        .await
+        .assert_ok();
+    }
+
+    let tickets = |case: &accounting::AmlCase| {
+        let key = unblock_key(case);
+        let db = t.db().clone();
+        async move {
+            Ticket::query()
+                .where_(Ticket::SOURCE_KEY.eq(key.as_str()))
+                .get(&db)
+                .await
+                .unwrap()
+        }
+    };
+    let blocked_case = cases.iter().find(|c| c.client() == client.company).unwrap();
+    let free_case = cases.iter().find(|c| c.client() == other.company).unwrap();
+    let task = tickets(blocked_case).await;
+    assert_eq!(task.len(), 1, "one decision for the blocked client");
+    assert!(task[0].confidential && task[0].is_open());
+    assert_eq!(task[0].assignee_user_id, Some(mlro.id));
+    assert!(task[0].description.contains("Falcon Trading LLC"));
+    assert!(tickets(free_case).await.is_empty(), "not blocked: no task");
+    assert_eq!(
+        t.party_row(client.company).await.status,
+        PartyStatus::Blocked,
+        "closing does not unblock"
+    );
+    // The deputy finds it, the manager does not.
+    let page = format!("/tickets/{}", task[0].id);
+    t.get(&deputy, &page).await.assert_ok();
+    t.get(&manager, &page).await.assert_not_found();
 }
