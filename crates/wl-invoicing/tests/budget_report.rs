@@ -532,3 +532,58 @@ async fn the_kernel_reads_the_actual() {
         0
     );
 }
+
+/// The paid payroll run of the stand-in for wl-hr: only the entity `HRCO`
+/// has one (the registry of sources is process wide).
+struct Payroll;
+
+impl wl_kernel::budgets::ActualCostSource for Payroll {
+    fn costs<'a>(
+        &'a self,
+        db: &'a Db,
+        entities: &'a [i64],
+        from: NaiveDate,
+        to: NaiveDate,
+    ) -> wl_kernel::budgets::BudgetFuture<'a, Vec<wl_kernel::budgets::ActualCost>> {
+        Box::pin(async move {
+            let mut found = Vec::new();
+            for id in entities {
+                let Some(entity) = LegalEntity::find(db, *id).await? else {
+                    continue;
+                };
+                // The March run, employer cost AED 80,000, paid.
+                if entity.code == "HRCO" && (from..=to).contains(&day(3, 31)) {
+                    found.push(wl_kernel::budgets::ActualCost {
+                        legal_entity_id: entity.id,
+                        date: day(3, 31),
+                        key_kind: "payroll".to_owned(),
+                        key: "payroll".to_owned(),
+                        amount: 8_000_000,
+                        label: "Payroll March".to_owned(),
+                        source: wl_kernel::Subject::new("hr.payroll_run", 7),
+                    });
+                }
+            }
+            Ok(found)
+        })
+    }
+}
+
+/// A paid March payroll run with an employer cost of AED 80,000 counts in
+/// *Salaries and staff costs* in March (through the kernel's actual cost
+/// sources, which wl-hr will register), and in no other month or entity.
+#[renox::test]
+async fn a_paid_payroll_run_counts_in_salaries_and_staff_costs() {
+    wl_kernel::budgets::register_actual_costs("test.hr", Payroll);
+    let t = boot().await;
+    let co = t.new_entity("HRCO").await;
+    let e1 = t.entity("PGP").await;
+    let march = report(&t, &[&co], 3, false, false).await;
+    let salaries = row(&march.expense, "Salaries and staff costs");
+    assert_eq!(salaries.actual, 8_000_000);
+    assert_eq!(march.expense_total().1, 8_000_000);
+    let april = report(&t, &[&co], 4, false, false).await;
+    assert!(april.expense.iter().all(|r| r.actual == 0));
+    let other = report(&t, &[&e1], 3, false, false).await;
+    assert!(other.expense.iter().all(|r| r.actual == 0));
+}

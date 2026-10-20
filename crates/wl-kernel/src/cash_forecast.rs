@@ -123,6 +123,50 @@ pub trait CashForecastSource: Send + Sync + 'static {
         from: NaiveDate,
         to: NaiveDate,
     ) -> ForecastFuture<'a, Vec<ForecastLine>>;
+
+    /// What the source confirmed paid after `since` (not on it) from the bank
+    /// account `account` of the entity, which the bank balance of `since`
+    /// does not hold yet and which is no wl-payments payment: a payroll run
+    /// or a WPS-paid final settlement confirmed paid after the statement
+    /// date (wl-invoicing §5.14 step 2). Each line's `date` is the day it
+    /// was paid, `amount` above 0, `direction` out for money that left the
+    /// account. The default knows none.
+    fn paid_after<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _legal_entity_id: i64,
+        _account: &'a str,
+        _since: NaiveDate,
+    ) -> ForecastFuture<'a, Vec<ForecastLine>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
+    /// Warnings the source adds to the forecast of the entity, e.g. `No
+    /// payroll history: the next payroll is not forecast`. The default has
+    /// none.
+    fn warnings<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _legal_entity_id: i64,
+    ) -> ForecastFuture<'a, Vec<String>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
+
+    /// The days late of the documents of `parties` that the source owns and
+    /// that were fully paid from `since` to `until`: each pair is a party and
+    /// the whole days from a document's due date to its full payment (payer
+    /// bills, `FIN.TPP.01`). They join the party's invoices in its average
+    /// days late (§5.14 step 6). The default knows none.
+    fn paid_late<'a>(
+        &'a self,
+        _state: &'a AppState,
+        _legal_entity_id: i64,
+        _parties: &'a [PartyId],
+        _since: NaiveDate,
+        _until: NaiveDate,
+    ) -> ForecastFuture<'a, Vec<(PartyId, i64)>> {
+        Box::pin(async { Ok(Vec::new()) })
+    }
 }
 
 static SOURCES: RwLock<BTreeMap<String, Arc<dyn CashForecastSource>>> =

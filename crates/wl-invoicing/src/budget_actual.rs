@@ -32,6 +32,7 @@ use renox::chrono::NaiveDate;
 use renox::prelude::*;
 use serde::Serialize;
 use wl_kernel::Subject;
+use wl_kernel::budgets::actual_cost_sources;
 use wl_kernel::drawings::drawing_payment_sources;
 use wl_kernel::invoicing::{CreditNoteStatus, InvoiceStatus, SupplierDebitNoteStatus};
 use wl_kernel::payments::Direction;
@@ -430,7 +431,46 @@ pub async fn items(
     let mut all = income_items(db, &mapped, entities, from, to).await?;
     all.extend(expense_items(db, &mapped, entities, from, to).await?);
     all.extend(drawing_payment_items(db, entities, from, to).await?);
+    all.extend(other_module_items(db, &mapped, entities, from, to).await?);
     Ok(all)
+}
+
+/// The items of the amounts other modules own (the employer cost of paid
+/// payroll runs of wl-hr, approved expense claim lines of wl-payments), read
+/// through the kernel's
+/// [`ActualCostSource`](wl_kernel::budgets::ActualCostSource)s and mapped
+/// through their key (`payroll` or `expense_category`).
+async fn other_module_items(
+    db: &Db,
+    mapped: &Mapped,
+    entities: &[i64],
+    from: NaiveDate,
+    to: NaiveDate,
+) -> Result<Vec<ActualItem>> {
+    let mut items = Vec::new();
+    for source in actual_cost_sources() {
+        for cost in source.costs(db, entities, from, to).await? {
+            let kind = match cost.key_kind.as_str() {
+                "payroll" => MappingKind::Payroll,
+                _ => MappingKind::ExpenseCategory,
+            };
+            let found = mapped
+                .find(kind, Some(&cost.key))
+                .filter(|(_, kind)| *kind != BudgetKind::Income);
+            items.push(ActualItem {
+                legal_entity_id: cost.legal_entity_id,
+                month: month_start(cost.date),
+                kind: found.map_or(BudgetKind::Expense, |(_, k)| k),
+                category_id: found.map(|(id, _)| id),
+                amount: cost.amount,
+                label: cost.label,
+                source: cost.source,
+                party_id: None,
+                self_approved: false,
+            });
+        }
+    }
+    Ok(items)
 }
 
 /// The items of the payments with purpose *owner drawings* (wl-payments,

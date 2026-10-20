@@ -240,6 +240,11 @@ pub(crate) fn warning_text(
             period_end.format("%Y-%m-%d"),
             t("cash.warning.vat_past_due")
         ),
+        Warning::Source {
+            legal_entity_id,
+            message,
+            ..
+        } => format!("{} - {message}", code(legal_entity_id)),
         Warning::NoBudget {
             legal_entity_id,
             months,

@@ -170,6 +170,74 @@ pub fn company_budgets(state: &AppState) -> Arc<dyn CompanyBudgets> {
     }
 }
 
+/// One amount of actual that another module owns: the employer cost of a
+/// payroll run confirmed paid (wl-hr), or an approved expense claim line
+/// (wl-payments `Expenses`). Money is AED fils without recoverable VAT.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ActualCost {
+    /// The legal entity.
+    pub legal_entity_id: i64,
+    /// The day the amount counts on: the period of a payroll run, the
+    /// expense date of a claim line.
+    pub date: NaiveDate,
+    /// What kind of key finds its budget category: `payroll` or
+    /// `expense_category`.
+    pub key_kind: String,
+    /// The key: the expense category code, or `payroll`.
+    pub key: String,
+    /// The amount in AED fils; negative for a correction.
+    pub amount: i64,
+    /// What it is, shown in the report.
+    pub label: String,
+    /// The record it comes from.
+    pub source: Subject,
+}
+
+/// Reads the actual that other modules own, for budget vs actual
+/// (`FIN.BUD.01`).
+pub trait ActualCostSource: Send + Sync + 'static {
+    /// The amounts of the legal entities `entities` dated from `from` to
+    /// `to`, both included.
+    fn costs<'a>(
+        &'a self,
+        db: &'a Db,
+        entities: &'a [i64],
+        from: NaiveDate,
+        to: NaiveDate,
+    ) -> BudgetFuture<'a, Vec<ActualCost>>;
+}
+
+static ACTUAL_SOURCES: std::sync::RwLock<
+    std::collections::BTreeMap<String, Arc<dyn ActualCostSource>>,
+> = std::sync::RwLock::new(std::collections::BTreeMap::new());
+
+/// Adds `source` under `name` to the process-wide registry; registering the
+/// same name again replaces it.
+pub fn register_actual_costs(name: &str, source: impl ActualCostSource) {
+    ACTUAL_SOURCES
+        .write()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .insert(name.to_owned(), Arc::new(source));
+}
+
+/// The registered sources, sorted by name.
+pub fn actual_cost_sources() -> Vec<Arc<dyn ActualCostSource>> {
+    ACTUAL_SOURCES
+        .read()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .values()
+        .map(Arc::clone)
+        .collect()
+}
+
+/// Removes the source `name`, for tests.
+pub fn remove_actual_costs(name: &str) {
+    ACTUAL_SOURCES
+        .write()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .remove(name);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

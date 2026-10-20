@@ -254,7 +254,12 @@ async fn a_scheduled_charge_not_yet_invoiced_counts() {
     register_cash_forecast_source("test.charges", Charges);
     // Only CHCO has a threshold: the seeded PGP has no bank balance and would
     // be below the one `module()` gives it.
-    let t = booted(WlInvoicing::new().cash_threshold("CHCO", THRESHOLD)).await;
+    let t = booted(
+        WlInvoicing::new()
+            .cash_threshold("CHCO", THRESHOLD)
+            .cash_threshold("NOCH", THRESHOLD),
+    )
+    .await;
     recipients(&t).await;
     let co = t.new_entity("CHCO").await;
     t.forecast.statement(co.id, "BA1", 5_000_000, day(1, 12));
@@ -262,6 +267,16 @@ async fn a_scheduled_charge_not_yet_invoiced_counts() {
     // 50,000 - 35,000 + 10,000 = 25,000, above the threshold of 20,000.
     assert_eq!(run_on(&t, day(1, 13)).await, 0);
     assert!(t.notices.of_type(BELOW_THRESHOLD).is_empty());
+
+    // The same entity without the charge (the source answers for CHCO only)
+    // is below in week 6: the charge is what lifts it.
+    let plain = t.new_entity("NOCH").await;
+    t.forecast.statement(plain.id, "BA1", 5_000_000, day(1, 12));
+    bill(&t, &plain, "SB-W6B", day(2, 16), 3_500_000).await;
+    recipients(&t).await;
+    assert_eq!(run_on(&t, day(1, 13)).await, 1);
+    assert_eq!(t.notices.of_type(BELOW_THRESHOLD)[0].data["entity"], "NOCH");
+    assert_eq!(t.notices.of_type(BELOW_THRESHOLD)[0].data["week"], 6);
 }
 
 /// An entity with no bank balance and week 3 below its threshold gets one
@@ -412,4 +427,56 @@ async fn the_check_changes_no_document() {
         (3_500_000, SupplierBillStatus::Approved)
     );
     assert_eq!(CashAlert::query().count(t.db()).await.unwrap(), 1);
+}
+
+/// The next run of the cash check task as `(zone, HH:MM in that zone)`.
+fn scheduled_at(module: &WlInvoicing) -> (String, String) {
+    use renox::Module;
+    let mut registry = renox::Registry::default();
+    module.register(&mut registry);
+    let run = registry
+        .schedule()
+        .upcoming(renox::timezone::Zone::UTC)
+        .into_iter()
+        .find(|run| run.name == cash_alert::TASK)
+        .expect("the daily cash check is scheduled");
+    let at = run.at.expect("it has a next run");
+    (
+        run.zone.to_string(),
+        run.zone.local(at.timestamp()).format("%H:%M").to_string(),
+    )
+}
+
+/// The daily check (the threshold rule and the stale balance task) is scheduled
+/// at 06:00 Asia/Dubai, the time the setting names; running the scheduled task
+/// at that moment does both.
+#[renox::test]
+async fn the_check_is_scheduled_at_six_in_the_morning_dubai_time() {
+    assert_eq!(
+        scheduled_at(&WlInvoicing::new()),
+        ("Asia/Dubai".to_owned(), "06:00".to_owned())
+    );
+    assert_eq!(
+        scheduled_at(&WlInvoicing::new().cash_alert_time("07:30")),
+        ("Asia/Dubai".to_owned(), "07:30".to_owned())
+    );
+
+    // 02:00 UTC is 06:00 in Dubai: the task tells the managers of the week
+    // below and asks for a statement of the stale account.
+    let t = booted(module()).await;
+    let both = recipients(&t).await;
+    let e1 = t.entity("PGP").await;
+    t.forecast.statement(e1.id, "BA1", 5_000_000, day(1, 5));
+    bill(&t, &e1, "SB-W2", day(1, 20), 4_900_000).await;
+    t.app
+        .run_scheduled(cash_alert::TASK)
+        .await
+        .expect("the task runs");
+    assert_eq!(told(&t), [both]);
+    let stale = InvoicingTask::query()
+        .where_(InvoicingTask::KIND.eq(TaskKind::StatementBalanceStale))
+        .count(t.db())
+        .await
+        .unwrap();
+    assert_eq!(stale, 1);
 }

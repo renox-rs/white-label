@@ -89,6 +89,10 @@ pub struct AccountInput {
     pub balance: Option<Balance>,
     /// The payments dated after the balance day.
     pub payments: Vec<BankPayment>,
+    /// What the sources confirmed paid from the account after the balance
+    /// day (payroll runs, WPS-paid final settlements), which are no
+    /// wl-payments payments.
+    pub paid: Vec<ForecastLine>,
 }
 
 /// An opening balance of the grid.
@@ -269,6 +273,8 @@ pub struct EntityInput {
     pub late_days: BTreeMap<i64, i64>,
     /// Foreign-currency documents left out for a missing rate.
     pub unpriced: Vec<Subject>,
+    /// What the sources warn about: `(source name, text)`.
+    pub source_warnings: Vec<(String, String)>,
 }
 
 /// What [`assemble`] reads.
@@ -447,6 +453,15 @@ pub enum Warning {
         /// The last day of the period.
         period_end: NaiveDate,
     },
+    /// A warning a source adds, e.g. no payroll history.
+    Source {
+        /// The entity.
+        legal_entity_id: i64,
+        /// The source's name.
+        source: String,
+        /// The text.
+        message: String,
+    },
     /// Months of the horizon with no approved budget.
     NoBudget {
         /// The entity.
@@ -616,6 +631,10 @@ fn add_openings(forecast: &mut Forecast, inputs: &Inputs, entity: &EntityInput) 
                 Direction::In => p.payment.amount,
                 Direction::Out => -p.payment.amount,
             })
+            .chain(account.paid.iter().map(|p| match p.direction {
+                Direction::In => p.amount,
+                Direction::Out => -p.amount,
+            }))
             .sum();
         match account.balance {
             None => forecast.warnings.push(Warning::NoBalance {
@@ -781,6 +800,13 @@ fn add_entity(forecast: &mut Forecast, inputs: &Inputs, entity: &EntityInput) {
     for document in &entity.unpriced {
         forecast.warnings.push(Warning::Unpriced {
             document: document.clone(),
+        });
+    }
+    for (source, message) in &entity.source_warnings {
+        forecast.warnings.push(Warning::Source {
+            legal_entity_id: id,
+            source: source.clone(),
+            message: message.clone(),
         });
     }
 
@@ -1030,7 +1056,31 @@ fn add_entity(forecast: &mut Forecast, inputs: &Inputs, entity: &EntityInput) {
                 .entry((*category, month_start(line.date)))
                 .or_insert(0) += line.amount;
         }
-        let Some(week) = week_of(line.date, &weeks) else {
+        // A receipt of a party moves by its days late, as an invoice does; it
+        // is listed after the horizon when that is where it lands.
+        let expected = match (line.direction, line.party) {
+            (Direction::In, Some(party)) => shifted(inputs, entity, party, line.date),
+            _ => line.date,
+        };
+        let Some(week) = week_of(expected, &weeks) else {
+            if expected != line.date && week_of(line.date, &weeks).is_some() {
+                forecast.after.push(Line {
+                    legal_entity_id: id,
+                    kind: LineKind::Source,
+                    label: line.label.clone(),
+                    category: line.category.clone(),
+                    source: Some(name.clone()),
+                    party: line.party,
+                    date: expected,
+                    week: weeks.len(),
+                    amount: line.amount,
+                    direction: line.direction,
+                    documents: line.documents.clone(),
+                    not_approved: false,
+                    estimate: false,
+                    total_only: line.total_only,
+                });
+            }
             continue;
         };
         push_line(
@@ -1042,7 +1092,7 @@ fn add_entity(forecast: &mut Forecast, inputs: &Inputs, entity: &EntityInput) {
                 category: line.category.clone(),
                 source: Some(name.clone()),
                 party: line.party,
-                date: line.date,
+                date: expected,
                 week,
                 amount: line.amount,
                 direction: line.direction,
@@ -1210,11 +1260,13 @@ mod tests {
                 payment(Direction::In, 500_000, day(2027, 1, 12)),
                 payment(Direction::Out, 100_000, day(2027, 1, 12)),
             ],
+            paid: vec![],
         });
         e.accounts.push(AccountInput {
             account: "BA2".into(),
             balance: None,
             payments: vec![],
+            paid: vec![],
         });
         let forecast = assemble(&inputs(e));
         assert_eq!(forecast.openings[0].amount, 5_400_000);
@@ -1237,6 +1289,7 @@ mod tests {
                 source: BalanceSource::Manual,
             }),
             payments: vec![],
+            paid: vec![],
         });
         let forecast = assemble(&inputs(e));
         assert_eq!(forecast.openings[0].amount, 100);

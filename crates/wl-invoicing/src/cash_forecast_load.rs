@@ -165,6 +165,7 @@ async fn load_entity(
     names.extend(statements.iter().map(|b| b.bank_account.clone()));
     names.extend(manual.keys().cloned());
     let recorder = payment_recorder(state);
+    let sources = cash_forecast_sources();
     for account in &names {
         let statement = statements
             .iter()
@@ -188,10 +189,24 @@ async fn load_entity(
             }
             None => Vec::new(),
         };
+        // What the sources confirmed paid from the account after that day.
+        let mut paid = Vec::new();
+        if let Some(balance) = balance {
+            for (_, source) in &sources {
+                paid.extend(
+                    source
+                        .paid_after(state, entity.id, account, balance.as_of)
+                        .await?
+                        .into_iter()
+                        .filter(|l| l.date > balance.as_of && l.amount > 0),
+                );
+            }
+        }
         input.accounts.push(AccountInput {
             account: account.clone(),
             balance,
             payments,
+            paid,
         });
     }
 
@@ -251,12 +266,6 @@ async fn load_entity(
             disputed,
             blocked: is_blocked,
         });
-    }
-
-    // How late each party pays, for the days-late adjustment.
-    if config.cash_days_late {
-        let parties: BTreeSet<i64> = input.invoices.iter().map(|i| i.party.0).collect();
-        input.late_days = late_days(db, &parties, today).await?;
     }
 
     // Supplier bills.
@@ -342,10 +351,48 @@ async fn load_entity(
         input.vat = load_vat(state, config, entity, today, horizon_end, &names).await?;
     }
 
-    // The lines other modules add.
-    for (name, source) in cash_forecast_sources() {
+    // The lines and warnings other modules add.
+    for (name, source) in &sources {
         for line in source.lines(state, entity.id, first, horizon_end).await? {
             input.sources.push((name.clone(), line));
+        }
+        for message in source.warnings(state, entity.id).await? {
+            input.source_warnings.push((name.clone(), message));
+        }
+    }
+
+    // How late each party pays, for the days-late adjustment: its invoices
+    // and the documents the sources own (payer bills).
+    if config.cash_days_late {
+        let parties: BTreeSet<i64> = input
+            .invoices
+            .iter()
+            .map(|i| i.party.0)
+            .chain(
+                input
+                    .sources
+                    .iter()
+                    .filter(|(_, l)| l.direction == Direction::In)
+                    .filter_map(|(_, l)| l.party.map(|p| p.0)),
+            )
+            .collect();
+        let mut samples = late_samples(db, &parties, today).await?;
+        let since = today
+            .checked_sub_months(Months::new(12))
+            .unwrap_or(NaiveDate::MIN);
+        let ids: Vec<PartyId> = parties.iter().copied().map(PartyId).collect();
+        for (_, source) in &sources {
+            for (party, days) in source
+                .paid_late(state, entity.id, &ids, since, today)
+                .await?
+            {
+                samples.entry(party.0).or_default().push(days);
+            }
+        }
+        for (party, days) in samples {
+            if let Some(average) = average_days_late(&days) {
+                input.late_days.insert(party, average);
+            }
         }
     }
 
@@ -354,18 +401,19 @@ async fn load_entity(
     Ok(input)
 }
 
-/// The days-late average of each of `parties` (their ids): over the invoices
-/// fully paid (`paid`, never written off or credited) in the 12 months before
-/// `today`, the days from the due date to the day of the last allocation,
-/// the one that brought the balance to 0. A party with fewer than three has
-/// no entry. Payer bills (`FIN.TPP.01`) join through the same average when
-/// their module exists.
-async fn late_days(
+/// The days late of the invoices of each of `parties` (their ids) fully paid
+/// (`paid`, never written off or credited) in the 12 months before `today`:
+/// the days from the due date to the day of the last allocation, the one that
+/// brought the balance to 0. The averages are taken once the documents the
+/// sources own (payer bills, `FIN.TPP.01`, through
+/// [`CashForecastSource::paid_late`](wl_kernel::cash_forecast::CashForecastSource::paid_late))
+/// are added.
+async fn late_samples(
     db: &Db,
     parties: &BTreeSet<i64>,
     today: NaiveDate,
-) -> Result<BTreeMap<i64, i64>> {
-    let mut found = BTreeMap::new();
+) -> Result<BTreeMap<i64, Vec<i64>>> {
+    let found = BTreeMap::new();
     if parties.is_empty() {
         return Ok(found);
     }
@@ -407,12 +455,7 @@ async fn late_days(
             .or_default()
             .push((on - due).num_days());
     }
-    for (party, days) in samples {
-        if let Some(average) = average_days_late(&days) {
-            found.insert(party, average);
-        }
-    }
-    Ok(found)
+    Ok(samples)
 }
 
 /// The category a line of a source counts in: the category with the line's
