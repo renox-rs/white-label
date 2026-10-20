@@ -860,6 +860,14 @@ const TEXTS: &[(&str, &str)] = &[
         "Reversal of {{ amount }} refused: {{ reason }}",
     ),
     (
+        "wl_invoicing.task.record_tax_credit_note",
+        "Record the supplier's tax credit note for debit note {{ number }} ({{ amount }}) so that it can be settled.",
+    ),
+    (
+        "wl_invoicing.tasks.kind.record_tax_credit_note",
+        "Record the tax credit note",
+    ),
+    (
         "wl_invoicing.task.statement_balance_stale",
         "The balance of bank account {{ account }} of {{ entity }} is missing or old (latest: {{ as_of }}, limit {{ days }} days). Import a statement or enter a balance.",
     ),
@@ -1238,16 +1246,64 @@ const TEXTS: &[(&str, &str)] = &[
         "FIN.ACL.17: the creator of a manual debit note cannot issue it. Another person must.",
     ),
     (
+        "wl_invoicing.debit_note.errors.no_tax_credit_note",
+        "Record the supplier's tax credit note before the debit note is settled.",
+    ),
+    (
+        "wl_invoicing.debit_note.errors.not_checked",
+        "The debit note could not be checked; use the settle or cancel action of the debit note.",
+    ),
+    (
+        "wl_invoicing.debit_note.errors.not_fully_applied",
+        "The debit note is not fully applied. Set the debit balance off on a bill, wait for the supplier's refund, or accept the difference with a reason.",
+    ),
+    (
+        "wl_invoicing.debit_note.errors.difference_reason",
+        "Give the reason for accepting the difference.",
+    ),
+    (
+        "wl_invoicing.debit_note.errors.refunded",
+        "The supplier has already paid part of this debit note back, so it cannot be cancelled.",
+    ),
+    (
+        "wl_invoicing.debit_note.errors.settle_state",
+        "Only an issued debit note can be settled, set off or refunded.",
+    ),
+    (
+        "wl_invoicing.debit_note.errors.set_off_bill",
+        "A debit balance is set off on an approved or partially paid bill of the same supplier and receiving entity.",
+    ),
+    (
+        "wl_invoicing.debit_note.errors.set_off_amount",
+        "The amount must be more than 0 and within the debit balance and the bill's open balance.",
+    ),
+    (
+        "wl_invoicing.debit_note.errors.tcn_number",
+        "Give the number on the supplier's tax credit note.",
+    ),
+    (
+        "wl_invoicing.debit_note.errors.tcn_twice",
+        "The supplier's tax credit note is already recorded.",
+    ),
+    (
+        "wl_invoicing.debit_note_cancelled.subject",
+        "Debit note {{ number }} withdrawn",
+    ),
+    (
+        "wl_invoicing.debit_note_cancelled.body",
+        "We have withdrawn debit note {{ number }} of {{ amount }} against your bill {{ bill }}: {{ reason }}",
+    ),
+    (
         "wl_invoicing.debit_note.errors.not_found",
         "The supplier debit note was not found.",
     ),
     (
         "wl_invoicing.debit_note_issued.subject",
-        "Debit note :number",
+        "Debit note {{ number }}",
     ),
     (
         "wl_invoicing.debit_note_issued.body",
-        "We have issued debit note :number for :amount against your bill :bill. Please send us your tax credit note for it.",
+        "We have issued debit note {{ number }} for {{ amount }} against your bill {{ bill }}. Please send us your tax credit note for it.",
     ),
     (
         "wl_invoicing.debit_note_drafted.subject",
@@ -1255,7 +1311,7 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     (
         "wl_invoicing.debit_note_drafted.body",
-        "A debit note of :amount was drafted for the goods returned to :supplier (:state). Check it and issue it.",
+        "A debit note of {{ amount }} was drafted for the goods returned to {{ supplier }} ({{ state }}). Check it and issue it: {{ link }}",
     ),
     ("wl_invoicing.budget.title", "Company budgets"),
     ("wl_invoicing.budget.empty", "No company budgets yet"),

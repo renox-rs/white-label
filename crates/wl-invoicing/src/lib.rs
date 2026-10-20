@@ -48,6 +48,8 @@ pub mod debit_note_contract;
 mod debit_note_events;
 pub mod debit_note_line;
 mod debit_note_machine;
+pub mod debit_note_movement;
+pub mod debit_note_settle;
 pub mod debit_note_vat;
 pub mod debit_notes;
 pub mod dispute;
@@ -126,6 +128,7 @@ pub use credit_note::{CreditNote, CreditNoteKind};
 pub use credit_note_line::CreditNoteLine;
 pub use credit_note_movement::{CreditNoteMovement, MovementKind};
 pub use debit_note_line::{DebitNoteLine, PricedAt};
+pub use debit_note_movement::{DebitMovementKind, DebitNoteMovement};
 pub use dispute::{Dispute, DisputeVia};
 pub use drawings::BillRecoding;
 pub use drawings_machine::{DrawingApproval, DrawingStatus};
@@ -785,6 +788,7 @@ impl Module for WlInvoicing {
             .model::<BillLine>()
             .model::<SupplierDebitNote>()
             .model::<DebitNoteLine>()
+            .model::<DebitNoteMovement>()
             .model::<duplicates::BillException>()
             .model::<CreditNote>()
             .model::<CreditNoteLine>()

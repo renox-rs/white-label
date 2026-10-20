@@ -60,6 +60,9 @@ pub enum TaskKind {
     /// An e-invoice transmission is not sent H hours after `issue`
     /// (`FIN.RUL.16`).
     EinvoiceStuck,
+    /// An issued supplier debit note waits for the supplier's tax credit
+    /// note (§5.13 step 4): record it so the note can settle.
+    RecordTaxCreditNote,
 }
 
 impl TaskKind {
@@ -81,6 +84,7 @@ impl TaskKind {
             TaskKind::StatementBalanceStale => "wl_invoicing.task.statement_balance_stale",
             TaskKind::EinvoiceRejected => "wl_invoicing.einvoice.task.rejected",
             TaskKind::EinvoiceStuck => "wl_invoicing.einvoice.task.stuck",
+            TaskKind::RecordTaxCreditNote => "wl_invoicing.task.record_tax_credit_note",
         }
     }
 }

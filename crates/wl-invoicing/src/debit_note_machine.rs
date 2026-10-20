@@ -9,7 +9,7 @@
 //! `cancelled` are terminal), and a new debit note is inserted only as
 //! `draft`. `SupplierDebitNote` is `#[model(state_machine)]`, so `save`
 //! refuses a changed status. `draft` is a service ([`crate::debit_notes`]),
-//! not a transition. `settle` and `cancel` come with the settle part.
+//! not a transition.
 //!
 //! `issue` (draft to issued, `supplier_bills.approve`) has a system twin,
 //! `issue_system`, for callers with no signed-in user; they name the acting
@@ -31,6 +31,16 @@
 //! bill's `pay`) and the rest, the supplier's `debit_balance`. The cost
 //! reversal, the supplier notice and `SupplierDebitNoteIssued` follow the
 //! commit ([`crate::debit_note_events`]).
+//!
+//! `settle` (issued to settled, `supplier_bills.approve`, system twin
+//! `settle_system`) needs the supplier's tax credit note recorded, unless the
+//! client's setting accepts the debit note alone, and the whole amount
+//! applied: nothing left of the debit balance, or the part the supplier paid
+//! short accepted with a reason (the difference). `cancel` (draft or issued to
+//! cancelled, `supplier_bills.approve`, system twin `cancel_system`) needs a
+//! reason and is refused once the supplier has paid something back. Both
+//! need what [`crate::debit_note_settle`] gathers, so only its services run
+//! them; the bills it reduced reopen there, in the same transaction.
 
 use renox::prelude::*;
 use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx};
@@ -49,6 +59,14 @@ use crate::texts::english;
 pub const ISSUE: &str = "issue";
 /// The system twin of [`ISSUE`], for callers with no signed-in user.
 pub const ISSUE_SYSTEM: &str = "issue_system";
+/// The transition that settles an issued note.
+pub const SETTLE: &str = "settle";
+/// The system twin of [`SETTLE`].
+pub const SETTLE_SYSTEM: &str = "settle_system";
+/// The transition that cancels a draft or issued note.
+pub const CANCEL: &str = "cancel";
+/// The system twin of [`CANCEL`].
+pub const CANCEL_SYSTEM: &str = "cancel_system";
 
 /// What an issue run carries to its guards, gathered by
 /// [`crate::debit_notes`].
@@ -66,6 +84,29 @@ pub(crate) struct IssueInput {
     pub by: Option<i64>,
 }
 
+/// What a settle run carries to its guards, gathered by
+/// [`crate::debit_note_settle`].
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub(crate) struct SettleInput {
+    /// Whether the supplier's tax credit note must be recorded first.
+    pub tax_credit_note_required: bool,
+    /// The part of the debit balance the supplier paid short, accepted.
+    pub difference: i64,
+    /// Why the difference is accepted.
+    pub difference_reason: Option<String>,
+    /// The user a system run acts for.
+    pub by: Option<i64>,
+}
+
+/// What a cancel run carries to its guards.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub(crate) struct CancelInput {
+    /// What the supplier already paid back, in fils.
+    pub refunded: i64,
+    /// The user a system run acts for.
+    pub by: Option<i64>,
+}
+
 /// The run's input, if it is an [`IssueInput`].
 fn input(ctx: &TransitionCtx) -> Option<IssueInput> {
     ctx.input_as::<IssueInput>().ok()
@@ -77,6 +118,175 @@ fn actor_id(ctx: &TransitionCtx) -> Option<i64> {
     ctx.actor()
         .map(|user| user.id)
         .or_else(|| input(ctx).and_then(|i| i.by))
+}
+
+/// The user a settle or cancel run acts for.
+fn settle_actor(ctx: &TransitionCtx) -> Option<i64> {
+    ctx.actor()
+        .map(|user| user.id)
+        .or_else(|| ctx.input_as::<SettleInput>().ok().and_then(|i| i.by))
+}
+
+/// The `settle` and `settle_system` transitions, for the machine.
+pub(crate) fn settle_transitions() -> [Transition<SupplierDebitNote>; 2] {
+    [
+        settle_rules(
+            Transition::new(SETTLE)
+                .label("Settle")
+                .tone("success")
+                .permission(permissions::SUPPLIER_BILLS_APPROVE),
+        ),
+        settle_rules(
+            Transition::new(SETTLE_SYSTEM)
+                .label("Settle (system)")
+                .system(),
+        ),
+    ]
+}
+
+/// What both settle transitions share.
+fn settle_rules(transition: Transition<SupplierDebitNote>) -> Transition<SupplierDebitNote> {
+    transition
+        .from([SupplierDebitNoteStatus::Issued])
+        .to(SupplierDebitNoteStatus::Settled)
+        .guard("tax_credit_note_recorded", |note: &SupplierDebitNote, ctx| {
+            let recorded = note.has_tax_credit_note();
+            let input = ctx.input_as::<SettleInput>().ok();
+            Box::pin(async move {
+                match input {
+                    Some(input) if !input.tax_credit_note_required || recorded => Ok(()),
+                    Some(_) => {
+                        Err(english("wl_invoicing.debit_note.errors.no_tax_credit_note").to_owned())
+                    }
+                    None => Err(english("wl_invoicing.debit_note.errors.not_checked").to_owned()),
+                }
+            })
+        })
+        .guard("fully_applied", |note: &SupplierDebitNote, ctx| {
+            let open = note.debit_balance;
+            let input = ctx.input_as::<SettleInput>().ok();
+            Box::pin(async move {
+                let Some(input) = input else {
+                    return Err(english("wl_invoicing.debit_note.errors.not_checked").to_owned());
+                };
+                let reason_given = input
+                    .difference_reason
+                    .as_deref()
+                    .is_some_and(|r| !r.trim().is_empty());
+                match (open, input.difference) {
+                    (0, 0) => Ok(()),
+                    (open, difference) if difference > 0 && difference == open => {
+                        if reason_given {
+                            Ok(())
+                        } else {
+                            Err(english("wl_invoicing.debit_note.errors.difference_reason").to_owned())
+                        }
+                    }
+                    _ => Err(english("wl_invoicing.debit_note.errors.not_fully_applied").to_owned()),
+                }
+            })
+        })
+        .effect(|note: &SupplierDebitNote, ctx, tx| {
+            let id = note.id;
+            let by = settle_actor(ctx);
+            let input = ctx.input_as::<SettleInput>().ok();
+            Box::pin(async move {
+                let difference = input.as_ref().map_or(0, |i| i.difference);
+                let reason = input
+                    .and_then(|i| i.difference_reason)
+                    .map(|r| r.trim().to_owned())
+                    .filter(|r| !r.is_empty());
+                if difference > 0 {
+                    crate::debit_note_movement::DebitNoteMovement::new(
+                        id,
+                        crate::debit_note_movement::DebitMovementKind::Difference,
+                        None,
+                        difference,
+                        by,
+                    )
+                    .insert(&mut *tx)
+                    .await?;
+                }
+                // Not the status column, so outside the machine's guard.
+                SupplierDebitNote::query()
+                    .where_(SupplierDebitNote::ID.eq(id))
+                    .update(
+                        &mut *tx,
+                        &[
+                            ("settled_at", &Some(renox::db::now())),
+                            ("settled_by", &by),
+                            ("settle_difference", &difference),
+                            ("settle_difference_reason", &reason),
+                            ("debit_balance", &0_i64),
+                            ("updated_at", &renox::db::now()),
+                        ],
+                    )
+                    .await?;
+                Ok(())
+            })
+        })
+}
+
+/// The `cancel` and `cancel_system` transitions, for the machine.
+pub(crate) fn cancel_transitions() -> [Transition<SupplierDebitNote>; 2] {
+    [
+        cancel_rules(
+            Transition::new(CANCEL)
+                .label("Cancel")
+                .tone("danger")
+                .permission(permissions::SUPPLIER_BILLS_APPROVE),
+        ),
+        cancel_rules(
+            Transition::new(CANCEL_SYSTEM)
+                .label("Cancel (system)")
+                .system(),
+        ),
+    ]
+}
+
+/// What both cancel transitions share.
+fn cancel_rules(transition: Transition<SupplierDebitNote>) -> Transition<SupplierDebitNote> {
+    transition
+        .from([SupplierDebitNoteStatus::Draft, SupplierDebitNoteStatus::Issued])
+        .to(SupplierDebitNoteStatus::Cancelled)
+        .reason_required()
+        .guard("nothing_refunded", |_note: &SupplierDebitNote, ctx| {
+            let input = ctx.input_as::<CancelInput>().ok();
+            Box::pin(async move {
+                match input {
+                    Some(input) if input.refunded == 0 => Ok(()),
+                    Some(_) => Err(english("wl_invoicing.debit_note.errors.refunded").to_owned()),
+                    None => Err(english("wl_invoicing.debit_note.errors.not_checked").to_owned()),
+                }
+            })
+        })
+        .effect(|note: &SupplierDebitNote, ctx, tx| {
+            let id = note.id;
+            let by = ctx
+                .actor()
+                .map(|user| user.id)
+                .or_else(|| ctx.input_as::<CancelInput>().ok().and_then(|i| i.by));
+            let reason = ctx
+                .reason()
+                .map(|r| r.trim().to_owned())
+                .filter(|r| !r.is_empty());
+            Box::pin(async move {
+                SupplierDebitNote::query()
+                    .where_(SupplierDebitNote::ID.eq(id))
+                    .update(
+                        &mut *tx,
+                        &[
+                            ("cancelled_at", &Some(renox::db::now())),
+                            ("cancelled_by", &by),
+                            ("cancel_reason", &reason),
+                            ("debit_balance", &0_i64),
+                            ("updated_at", &renox::db::now()),
+                        ],
+                    )
+                    .await?;
+                Ok(())
+            })
+        })
 }
 
 /// The `issue` and `issue_system` transitions, for the machine.
@@ -244,6 +454,8 @@ impl StateMachine for SupplierDebitNote {
             .terminal();
         issue_transitions()
             .into_iter()
+            .chain(settle_transitions())
+            .chain(cancel_transitions())
             .fold(machine, Machine::transition)
     }
 }
