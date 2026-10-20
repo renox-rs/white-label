@@ -411,3 +411,93 @@ async fn a_corporate_tax_correction_is_always_a_voluntary_disclosure() {
     assert_eq!(new.correction_reference.as_deref(), Some("VD-7"));
     assert_eq!(disclosures(&t, &engagement).await.len(), 1);
 }
+
+/// The error cannot have been found in the future: refused, nothing changes
+/// and no task is opened.
+#[renox::test]
+async fn an_error_found_in_the_future_is_refused() {
+    let t = boot_real().await;
+    let preparer = t.accountant().await;
+    let (_, engagement, filed) = filed_vat(&t).await;
+
+    t.ret_act(
+        &preparer,
+        &filed,
+        "correct",
+        &[
+            ("reason", "Input VAT counted twice"),
+            ("error_amount", "12500.00"),
+            ("found_on", "2026-11-06"),
+            ("route", "voluntary_disclosure"),
+        ],
+    )
+    .await
+    .assert_status(422)
+    .assert_see("cannot have been found in the future");
+    assert_eq!(t.return_status(&filed).await, ReturnStatus::Filed);
+    assert!(disclosures(&t, &engagement).await.is_empty());
+}
+
+/// Bug fix: a new version whose disclosure task was lost after the commit
+/// (the process ended before `after_correct`) gets it from the daily
+/// catch-up, once, due 20 business days after the error was found.
+#[renox::test]
+async fn the_catch_up_opens_the_disclosure_task_a_crash_lost() {
+    let t = boot_real().await;
+    let (_, engagement, filed) = filed_vat(&t).await;
+    // The rows as the commit of `correct` left them.
+    let new = t
+        .return_in(
+            &engagement,
+            ReturnType::Vat,
+            day("2026-09-30"),
+            day("2026-10-28"),
+            ReturnStatus::Preparing,
+        )
+        .await;
+    Return::query()
+        .where_(Return::ID.eq(new.id))
+        .update(
+            t.db(),
+            &[
+                ("supersedes_id", &Some(filed.id)),
+                (
+                    "correction_route",
+                    &Some(CorrectionRoute::VoluntaryDisclosure),
+                ),
+                ("error_amount", &Some(1_250_000_i64)),
+                ("error_found_on", &Some(day("2026-11-05"))),
+            ],
+        )
+        .await
+        .unwrap();
+    assert!(disclosures(&t, &engagement).await.is_empty());
+
+    let served = t
+        .run(accounting::corrections::catch_up_disclosures(t.state()))
+        .await
+        .unwrap();
+    assert_eq!(served, [new.id]);
+    let tasks = disclosures(&t, &engagement).await;
+    assert_eq!(tasks.len(), 1);
+    assert_eq!(tasks[0].due_date, day("2026-12-07"));
+    assert_eq!(
+        t.return_now(&new).await.disclosure_task_id,
+        Some(tasks[0].id.0)
+    );
+
+    // Run again, and with the link lost after the task was made: still one.
+    Return::query()
+        .where_(Return::ID.eq(new.id))
+        .update(t.db(), &[("disclosure_task_id", &None::<i64>)])
+        .await
+        .unwrap();
+    t.run(accounting::corrections::catch_up_disclosures(t.state()))
+        .await
+        .unwrap();
+    assert_eq!(disclosures(&t, &engagement).await.len(), 1);
+    assert_eq!(
+        t.return_now(&new).await.disclosure_task_id,
+        Some(tasks[0].id.0)
+    );
+}

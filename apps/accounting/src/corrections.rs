@@ -34,7 +34,7 @@ use crate::engagement::Engagement;
 use crate::permissions::ACCOUNTANT_ROLE;
 use crate::reasons::NOT_REQUIRED;
 use crate::return_machine::AUTO_CANCEL;
-use crate::tax_return::{CorrectionRoute, Return, ReturnType};
+use crate::tax_return::{CorrectionRoute, Return, ReturnStatus, ReturnType};
 use crate::texts::english;
 
 /// The largest VAT error, in fils of tax, that may be corrected in the next
@@ -103,6 +103,57 @@ pub async fn after_correct(state: &AppState, old: i64) -> Result {
     }
 }
 
+/// When the daily catch-up of missing disclosure tasks runs, Asia/Dubai.
+pub const CATCH_UP_AT: &str = "07:00";
+/// The scheduled task and command of the catch-up.
+pub const CATCH_UP_TASK: &str = "accounting:disclosure_catch_up";
+
+/// Opens the disclosure task of every voluntary disclosure that has none:
+/// the process ending between the commit of `correct` and
+/// [`after_correct`] leaves a new version without its task. Idempotent (a
+/// return with a task is skipped). Answers the ids of the returns served.
+///
+/// # Errors
+///
+/// The database's and the task service's errors.
+pub async fn catch_up_disclosures(state: &AppState) -> Result<Vec<i64>> {
+    let missing = Return::query()
+        .where_(Return::SUPERSEDES_ID.is_not_null())
+        .where_(Return::DISCLOSURE_TASK_ID.is_null())
+        .order_by(Return::ID)
+        .get(&state.db)
+        .await?;
+    let mut served = Vec::new();
+    for new in missing {
+        if new.correction_route == Some(CorrectionRoute::VoluntaryDisclosure)
+            && new.status != ReturnStatus::Cancelled
+            && new.error_found_on.is_some()
+        {
+            open_disclosure(state, &new).await?;
+            served.push(new.id);
+        }
+    }
+    Ok(served)
+}
+
+/// Registers the daily catch-up of [`catch_up_disclosures`] and its command.
+pub(crate) fn register(app: &mut Registry) {
+    app.schedule()
+        .daily_at(CATCH_UP_AT, CATCH_UP_TASK, |state: AppState| async move {
+            catch_up_disclosures(&state).await.map(|_| ())
+        })
+        .timezone("Asia/Dubai");
+    app.command(
+        CATCH_UP_TASK,
+        "Open the missing deadline task of voluntary disclosures (BL-ACC-18)",
+        |_args, state: AppState| async move {
+            let served = catch_up_disclosures(&state).await?;
+            println!("{} disclosures checked.", served.len());
+            Ok(())
+        },
+    );
+}
+
 /// Opens the disclosure task of `new` and stores its id on it.
 async fn open_disclosure(state: &AppState, new: &Return) -> Result {
     if new.disclosure_task_id.is_some() {
@@ -127,6 +178,19 @@ async fn open_disclosure(state: &AppState, new: &Return) -> Result {
             ("link", &format!("/accounting/returns/{}", new.id)),
         ],
     );
+    // A task created just before the process ended is linked, not repeated.
+    let existing = deadline_tasks(state)
+        .of_subject(&state.db, &engagement.subject())
+        .await?
+        .into_iter()
+        .find(|task| task.task_type == DISCLOSURE_TASK && task.title == title);
+    if let Some(task) = existing {
+        Return::query()
+            .where_(Return::ID.eq(new.id))
+            .update(&state.db, &[("disclosure_task_id", &Some(task.id.0))])
+            .await?;
+        return Ok(());
+    }
     let task = NewDeadlineTask::new(engagement.subject(), DISCLOSURE_TASK, &title, due)
         .description(&description)
         .party(engagement.client())

@@ -230,6 +230,9 @@ impl Module for Accounting {
         // `ACC.RUL.06`, the client notices of a published or withdrawn KPI
         // pack and the privacy incident task (BL-ACC-20, BL-ACC-21).
         kpi_packs::register(app);
+        // A voluntary disclosure whose task was lost after the commit is
+        // opened by the daily catch-up (BL-ACC-18).
+        corrections::register(app);
         // In the app group of the staff sidebar; the label is the host's
         // `nav.engagements` text.
         app.nav(

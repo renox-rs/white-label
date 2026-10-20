@@ -34,6 +34,8 @@ fn the_daily_tasks_are_registered_at_their_times() {
         ("accounting:deadline_notices", "08:00"),
         ("accounting:request_lists", "01:00"),
         ("accounting:scheduled_ends", "01:30"),
+        ("accounting:disclosure_catch_up", "07:00"),
+        ("accounting:kpi_incident_catch_up", "07:30"),
     ] {
         let found: Vec<_> = tasks.iter().filter(|(n, _)| n == name).collect();
         assert_eq!(found.len(), 1, "{name} is registered once: {tasks:?}");
