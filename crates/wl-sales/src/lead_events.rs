@@ -48,7 +48,7 @@ pub async fn revert_wins(state: &AppState, voided: &Subject) -> Result {
         .get(&state.db)
         .await?;
     for lead in leads {
-        lead.transition(REVERT_WIN)
+        let _outcome = lead.transition(REVERT_WIN)
             .by_system()
             .meta(json!({ "voided": voided.to_string() }))
             .run(state)

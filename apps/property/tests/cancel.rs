@@ -10,7 +10,7 @@ use property::{ChargeStatus, Lease, LeaseCharge, LeaseStatus};
 use renox::prelude::*;
 use wl_kernel::approvals::{ApprovalRequest, ApprovalStatus, approve, reject};
 use wl_kernel::cheques::{ChequeBounced, ChequeId, ChequeStatus};
-use wl_kernel::invoicing::{InvoiceStatus, Invoicer, invoicer};
+use wl_kernel::invoicing::{InvoiceStatus, invoicer};
 use wl_kernel::payments::{PaymentId, PaymentMethod, PaymentReceived, RefundSource};
 use wl_kernel::{PartyId, Subject};
 

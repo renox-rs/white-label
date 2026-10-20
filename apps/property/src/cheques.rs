@@ -17,7 +17,7 @@ use wl_kernel::LegalEntity;
 use wl_kernel::cheques::{ChequeSchedule, ChequeStatus, ChequeSummary, ScheduledCheque, cheques};
 
 use crate::building::{BUILDING_SUBJECT_TYPE, refused};
-use crate::charge::{CHARGE_SUBJECT_TYPE, ChargeStatus, LeaseCharge};
+use crate::charge::{CHARGE_SUBJECT_TYPE, ChargeStatus};
 use crate::lease::{Lease, LeaseStatus};
 use crate::texts::english;
 

@@ -186,6 +186,7 @@ pub use workforce::{
     workforce,
 };
 
+/// The permission names the kernel declares.
 pub mod permissions {
     /// See legal entities and scope–entity links.
     pub const LEGAL_ENTITIES_VIEW: &str = "legal_entities.view";

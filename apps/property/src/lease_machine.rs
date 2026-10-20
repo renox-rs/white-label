@@ -60,7 +60,7 @@
 
 use renox::db::Transaction;
 use renox::prelude::*;
-use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx, Transitioned};
+use renox::state_machine::{Machine, StateMachine, Transition, TransitionCtx};
 use serde::{Deserialize, Serialize};
 use wl_kernel::SubjectMachine;
 use wl_kernel::approvals::PolicyDefault;
@@ -549,11 +549,6 @@ pub(crate) fn register() {
     renox::state_machine::register::<Lease>();
     cancel_policy().register();
     crate::force::policy().register();
-}
-
-/// Whether `event` is the transition `name` of a lease.
-pub(crate) fn is(event: &Transitioned<Lease>, names: &[&str]) -> bool {
-    names.contains(&event.transition.as_str())
 }
 
 #[cfg(test)]

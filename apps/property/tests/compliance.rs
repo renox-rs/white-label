@@ -8,7 +8,6 @@ use property::compliance::{BuildingFlag, CERTIFICATE_EXPIRED, non_compliant};
 use property::notices::CERTIFICATE_EXPIRED as CERTIFICATE_NOTICE;
 use property::Building;
 use renox::chrono::Duration;
-use renox::prelude::*;
 use wl_kernel::documents::{DocumentAccepted, DocumentExpired, DocumentId};
 use wl_kernel::notify::NotifyRecipient;
 use wl_kernel::tickets::{ComplianceFlagCleared, ComplianceFlagRaised};

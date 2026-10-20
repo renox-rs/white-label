@@ -17,7 +17,7 @@ use renox::prelude::*;
 use renox::state_machine::StateMachine;
 use wl_kernel::notify::NotifyRecipient;
 use wl_kernel::parties::PartyKind;
-use wl_kernel::invoicing::{DraftLine, InvoiceDraft, Invoicer, invoicer};
+use wl_kernel::invoicing::{DraftLine, InvoiceDraft, invoicer};
 use wl_kernel::{PartyId, Subject, VatCategory};
 
 use support::{ACCOUNTANT, AGENT, Booted, MANAGER, TENANT, aed, boot};

@@ -153,7 +153,7 @@ impl PortalAccess {
     /// invitation. Emits `PortalAccessActivated`.
     pub async fn accept(state: &AppState, grant: i64, user: i64) -> Result<AccessGrant> {
         let row = AccessGrant::find_or_404(&state.db, grant).await?;
-        row.transition(ACCEPT)
+        let _outcome = row.transition(ACCEPT)
             .by_system()
             .input(&AcceptInput { user_id: user })
             .run(state)
@@ -177,7 +177,7 @@ impl PortalAccess {
         if let Some(reason) = reason.map(str::trim).filter(|r| !r.is_empty()) {
             run = run.reason(reason);
         }
-        run.run(state).await.map_err(|e| e.into_error())?;
+        let _outcome = run.run(state).await.map_err(|e| e.into_error())?;
         AccessGrant::find_or_404(&state.db, id).await
     }
 

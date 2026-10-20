@@ -652,7 +652,7 @@ async fn run_acknowledge(
     run: AckRun,
     witness: Option<i64>,
 ) -> Result<SopAcknowledgement> {
-    ack.transition(ACKNOWLEDGE)
+    let _outcome = ack.transition(ACKNOWLEDGE)
         .by_system()
         .input(&run)
         .meta(renox::serde_json::json!({ "ran_by": run.by }))
@@ -685,7 +685,7 @@ async fn run_acknowledge(
 
 /// Runs `replace` or `cancel` on `ack` with `reason`.
 async fn end(state: &AppState, ack: &SopAcknowledgement, transition: &str, reason: &str) -> Result {
-    ack.transition(transition)
+    let _outcome = ack.transition(transition)
         .by_system()
         .reason(reason)
         .input(&AckRun {

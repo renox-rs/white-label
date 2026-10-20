@@ -12,7 +12,7 @@ use property::{ChargeStatus, Lease, LeaseCharge, arrears, charge_type};
 use renox::prelude::*;
 use wl_kernel::VatCategory;
 use wl_kernel::Subject;
-use wl_kernel::invoicing::{DraftLine, InvoiceDraft, InvoiceStatus, Invoicer, invoicer};
+use wl_kernel::invoicing::{DraftLine, InvoiceDraft, InvoiceStatus, invoicer};
 
 use support::{ACCOUNTANT, AGENT, Booted, MANAGER, TENANT, aed, boot, day};
 

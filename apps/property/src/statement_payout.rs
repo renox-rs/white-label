@@ -196,7 +196,7 @@ pub async fn carry_forward(
     let statement = OwnerStatement::find(&state.db, id)
         .await?
         .ok_or(renox::state_machine::TransitionError::Failed(Error::NotFound))?;
-    statement
+    let _outcome = statement
         .transition(crate::statement_machine::CARRY_FORWARD)
         .by(user)
         .run(state)

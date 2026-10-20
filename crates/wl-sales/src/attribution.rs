@@ -108,7 +108,7 @@ async fn win(state: &AppState, lead: Lead, converted: Subject) -> Result<bool> {
     if !matches!(lead.status, LeadStatus::Contacted | LeadStatus::Qualified) {
         return Ok(false);
     }
-    lead.transition(WIN)
+    let _outcome = lead.transition(WIN)
         .by_system()
         .input(&WinInput { converted })
         .run(state)

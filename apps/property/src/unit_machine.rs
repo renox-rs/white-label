@@ -20,7 +20,6 @@
 //! declared and refuses with that reason; `mark_ready` does not check open
 //! tickets yet, since no kernel contract reads the tickets of a subject.
 
-use renox::prelude::*;
 use renox::state_machine::{Machine, StateMachine, Transition};
 
 use crate::building::Building;

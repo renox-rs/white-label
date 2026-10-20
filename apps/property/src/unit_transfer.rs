@@ -55,7 +55,6 @@ use serde::{Deserialize, Serialize};
 use wl_kernel::cheques::{ChequeStatus, cheques};
 use wl_kernel::deposits::deposits;
 use wl_kernel::documents::today;
-use wl_kernel::parties::directory;
 use wl_kernel::role_tasks::RoleTask;
 use wl_kernel::{PartyId, Subject};
 

@@ -10,7 +10,7 @@ use property::agreement::{self, AgreementStatus, AgreementUnit, ManagementAgreem
 use property::agreement_lifecycle::{self as lifecycle, HandoverItem, ItemKind, SIGNED_AGREEMENT_KIND};
 use property::notices::{AGREEMENT_NOTICE, PAYEE_CHANGED};
 use property::statement::{OwnerStatement, StatementStatus};
-use property::{ChargeStatus, Lease, LeaseCharge, Unit};
+use property::{ChargeStatus, Lease, LeaseCharge};
 use renox::chrono::Duration;
 use renox::prelude::*;
 use renox::state_machine::StateMachine;
@@ -31,7 +31,6 @@ const NEW_MANAGER: PartyId = PartyId(40);
 struct Scene {
     t: Booted,
     agreement: ManagementAgreement,
-    units: Vec<Unit>,
     leases: Vec<Lease>,
     cheques: Vec<ChequeId>,
     manager: User,
@@ -93,7 +92,6 @@ async fn scene(status: AgreementStatus) -> Scene {
     Scene {
         t,
         agreement,
-        units,
         leases,
         cheques,
         manager,

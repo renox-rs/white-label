@@ -300,7 +300,7 @@ pub async fn mark_done(
             }
         }
     }
-    step.transition(MARK_DONE)
+    let _outcome = step.transition(MARK_DONE)
         .by_system()
         .input(&run)
         .meta(json!({ "ran_by": by }))
@@ -365,7 +365,7 @@ pub async fn waive(
     if step.assignees(&state.db).await?.contains(&by) {
         return Ok(Err(StepRefused::AssigneeCannotWaive));
     }
-    step.transition(WAIVE)
+    let _outcome = step.transition(WAIVE)
         .by_system()
         .reason(reason)
         .input(&StepRun {
@@ -423,7 +423,7 @@ pub async fn reopen(
         return Ok(Err(StepRefused::SameUser));
     }
     let assignees = step.assignees(&state.db).await?;
-    step.transition(REOPEN)
+    let _outcome = step.transition(REOPEN)
         .by_system()
         .reason(reason.clone())
         .meta(json!({ "ran_by": by }))
@@ -491,7 +491,7 @@ pub async fn start_checklist(
 
 /// Runs `mark_done` on `step` for the system, with `run` as its evidence.
 async fn done_by_system(state: &AppState, step: &OnboardingStep, run: StepRun) -> Result {
-    step.transition(MARK_DONE)
+    let _outcome = step.transition(MARK_DONE)
         .by_system()
         .input(&run)
         .run(state)
@@ -693,7 +693,7 @@ pub async fn complete_if_done(state: &AppState, onboarding_id: i64) -> Result {
     if open_required > 0 {
         return Ok(());
     }
-    onboarding
+    let _outcome = onboarding
         .transition(COMPLETE)
         .by_system()
         .input(&CompleteInput { open_required })

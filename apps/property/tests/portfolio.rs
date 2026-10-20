@@ -119,18 +119,18 @@ async fn prp_prt_02_the_system_drives_the_unit() {
         let state = t.state().clone();
         async move { unit.transition(name).by_system().run(&state).await }
     };
-    run(unit.clone(), OCCUPY).await.unwrap();
+    let _outcome = run(unit.clone(), OCCUPY).await.unwrap();
     assert_eq!(t.unit_now(&unit).await.status, UnitStatus::Occupied);
-    run(t.unit_now(&unit).await, MARK_NOTICE).await.unwrap();
+    let _outcome = run(t.unit_now(&unit).await, MARK_NOTICE).await.unwrap();
     assert_eq!(t.unit_now(&unit).await.status, UnitStatus::NoticeGiven);
-    run(t.unit_now(&unit).await, CANCEL_NOTICE).await.unwrap();
+    let _outcome = run(t.unit_now(&unit).await, CANCEL_NOTICE).await.unwrap();
     assert_eq!(t.unit_now(&unit).await.status, UnitStatus::Occupied);
-    run(t.unit_now(&unit).await, MARK_NOTICE).await.unwrap();
-    run(t.unit_now(&unit).await, VACATE).await.unwrap();
+    let _outcome = run(t.unit_now(&unit).await, MARK_NOTICE).await.unwrap();
+    let _outcome = run(t.unit_now(&unit).await, VACATE).await.unwrap();
     assert_eq!(t.unit_now(&unit).await.status, UnitStatus::Available);
 
-    run(t.unit_now(&unit).await, OCCUPY).await.unwrap();
-    run(t.unit_now(&unit).await, VACATE_TO_MAINTENANCE).await.unwrap();
+    let _outcome = run(t.unit_now(&unit).await, OCCUPY).await.unwrap();
+    let _outcome = run(t.unit_now(&unit).await, VACATE_TO_MAINTENANCE).await.unwrap();
     assert_eq!(t.unit_now(&unit).await.status, UnitStatus::UnderMaintenance);
     // A unit cannot be occupied twice, nor released unless reserved.
     let refused = run(t.unit_now(&unit).await, OCCUPY).await;
@@ -222,7 +222,7 @@ async fn prp_prt_01_the_pages_show_the_buildings_and_their_units() {
     let one = t.unit(&mine, "1204").await;
     t.unit(&mine, "1205").await;
     t.unit(&other, "301").await;
-    one.transition(OCCUPY).by_system().run(t.state()).await.unwrap();
+    let _outcome = one.transition(OCCUPY).by_system().run(t.state()).await.unwrap();
     let manager = t.user_in("Mona", MANAGER, mine.id).await;
     t.app.acting_as(&manager);
 

@@ -14,7 +14,7 @@ use property::statement_machine::{INVOICE_ACTION, PAYOUT_ACTION};
 use property::statement_payout::RECHARGED_COSTS;
 use renox::prelude::*;
 use renox::state_machine::StateMachine;
-use wl_kernel::approvals::{ApprovalRequest, ApprovalStatus, approve};
+use wl_kernel::approvals::{ApprovalRequest, approve};
 use wl_kernel::parties::PartyKind;
 use wl_kernel::payments::{Direction, PaymentMethod};
 use wl_kernel::{BLOCK_EXCEPTION_ACTION, PartyId, VatCategory};

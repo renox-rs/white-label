@@ -2189,7 +2189,7 @@ impl Booted {
     pub async fn system(&self, lease: &Lease, name: &str) {
         use renox::state_machine::StateMachine;
         let current = self.reload(lease).await;
-        current
+        let _outcome = current
             .transition(name)
             .by_system()
             .run(self.state())

@@ -586,7 +586,7 @@ pub async fn resubmit(
         recipient_id: built.and_then(|b| b.recipient_id),
         adapter,
     };
-    t.transition(RESUBMIT).by(user).input(&input).run(state).await?;
+    let _outcome = t.transition(RESUBMIT).by(user).input(&input).run(state).await?;
     send_one(state, id).await.map_err(TransitionError::Failed)?;
     EInvoiceTransmission::find_or_404(&state.db, id)
         .await

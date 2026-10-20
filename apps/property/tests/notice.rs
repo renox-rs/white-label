@@ -27,7 +27,6 @@ fn y28(month: u32, day: u32) -> NaiveDate {
 
 struct Scene {
     t: Booted,
-    building: property::Building,
     unit: property::Unit,
     agent: User,
     manager: User,
@@ -41,7 +40,6 @@ async fn scene() -> Scene {
     let manager = t.user_in("Mona", MANAGER, building.id).await;
     Scene {
         t,
-        building,
         unit,
         agent,
         manager,

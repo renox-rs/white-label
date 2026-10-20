@@ -382,7 +382,7 @@ pub async fn request(
     )
     .await?;
     if !needs {
-        change
+        let _outcome = change
             .transition(APPLY)
             .by_system()
             .run(state)
@@ -408,7 +408,7 @@ pub async fn approve(
     if change.requested_by == by {
         return Ok(Err(ChangeRefused::SamePerson));
     }
-    change
+    let _outcome = change
         .transition(APPROVE)
         .by_system()
         .input(&Decision { by })
@@ -440,7 +440,7 @@ pub async fn reject(
     if !reason.trim().is_empty() {
         run = run.reason(reason.trim());
     }
-    run.run(state).await.map_err(|e| e.into_error())?;
+    let _outcome = run.run(state).await.map_err(|e| e.into_error())?;
     Ok(Ok(AcquisitionChange::find_or_404(&state.db, id).await?))
 }
 
