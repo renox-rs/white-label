@@ -49,3 +49,12 @@ What is here so far:
 Not built yet: sites and geofences, the BOQ, the calculation, `revise` and `CON.RUL.04` of the IPA, advance recovery, crews and their assignments (the reassign
 task stands for ending them), the project pages and the client portal (read-only after the final
 account, `POR.ACL.01`, BL-CON-19).
+
+## Shared settings of 02 (BL-CON-17, BL-CON-18)
+
+`construction::seed` holds every 02 value for the shared money, stock, labour
+and compliance settings; the host turns them into the owning modules' builder
+calls and one idempotent seed (`construction:install`: ticket categories
+`absence`, `snag` and `defect`, lead sources, onboarding checklists, SOPs and
+budget category owners). No bounce fee is seeded. The settings the modules do
+not expose yet are listed in the module documentation of `construction::seed`.
