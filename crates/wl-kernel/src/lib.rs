@@ -16,6 +16,7 @@ pub mod cheques;
 pub mod compliance;
 pub mod config;
 pub mod consents;
+pub mod custody;
 pub mod delivery;
 pub mod deposits;
 pub mod digest;
@@ -88,6 +89,12 @@ pub use cheques::{
 pub use compliance::{ComplianceAlert, ComplianceRule, CriticalRule, Planned};
 pub use config::{ClientConfig, ConfigError, RolesConfig, owner_role};
 pub use consents::{Consents, NoConsents};
+pub use custody::{
+    CASH_HANDOVER_SUBJECT_TYPE, CashCollection, CashCustody, CashHandoverCounted, CashShortage,
+    CashShortageSettled, HandoverId, HandoverKind, HandoverPeriod, HandoverStatus, HandoverSummary,
+    NoCustody, NoShortageRecovery, PeriodKind, ShortageDeduction, ShortageRecovery, custody,
+    provide_custody, provide_shortage_recovery, shortage_recovery,
+};
 pub use delivery::{
     CodAbsorber, CodAbsorption, DELIVERY_SUBJECT_TYPE, DeliveredLine, DeliveryAssigned, DeliveryAttemptFailed,
     DeliveryDelivered, DeliveryDisputeClosed, DeliveryDisputed, DeliveryFound, DeliveryFuture,
