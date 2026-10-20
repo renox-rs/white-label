@@ -1043,35 +1043,9 @@ fn whole<T: std::str::FromStr>(value: &str, field: &str) -> Result<T> {
         .map_err(|_| field_error(field, texts::english("property.form.number_invalid", &[])))
 }
 
-/// The party a lease form names in its tenant field: the number shown in the
-/// UI (`P-00012`, any case, `P-12` too) or the id the picker sends (`12`). A
-/// 422 on the field when no party has it.
+/// The party a lease form names in its tenant field (see [`super::party_of`]).
 async fn tenant_of(state: &AppState, value: &str) -> Result<wl_kernel::PartyId> {
-    let value = value.trim();
-    let directory = directory(state);
-    let found = if let Ok(id) = value.parse::<i64>() {
-        directory.find(&state.db, wl_kernel::PartyId(id)).await?
-    } else {
-        let digits = value
-            .get(..2)
-            .filter(|prefix| prefix.eq_ignore_ascii_case("p-"))
-            .map(|_| &value[2..])
-            .and_then(|rest| rest.trim().parse::<u32>().ok());
-        match digits {
-            Some(number) => {
-                directory
-                    .find_by_code(&state.db, &format!("P-{number:05}"))
-                    .await?
-            }
-            None => None,
-        }
-    };
-    found.map(|party| party.id).ok_or_else(|| {
-        field_error(
-            "tenant",
-            texts::english("property.leases.tenant_unknown", &[]),
-        )
-    })
+    super::party_of(state, value, "tenant").await
 }
 
 /// `GET /property/parties/options`: the parties a lease form's picker offers
@@ -1156,9 +1130,11 @@ pub struct VersionForm {
     #[serde(default)]
     pub kind: String,
     /// The first day of the term.
+    // The lease forms and the agreement form pick a party here.
     #[serde(default)]
     pub start_date: String,
     /// The last day of the term.
+        && !user.has_permission(permissions::AGREEMENTS_MANAGE)
     #[serde(default)]
     pub end_date: String,
     /// The annual rent in dirhams.

@@ -648,3 +648,62 @@ async fn bl_prp_22_the_pages_show_the_agreement_and_its_pack() {
     s.t.app.acting_as(&s.accountant);
     s.t.app.get("/property/agreements").await.assert_forbidden();
 }
+
+/// The agreement form takes the owner as the number shown in the UI
+/// (`P-00031`, in any case, `P-31`) as the lease form does, or the id the
+/// picker sends; a number no party has is refused under the field.
+#[renox::test]
+async fn the_agreement_form_accepts_the_owner_party_number() {
+    let s = scene(AgreementStatus::Active).await;
+    s.t.app.acting_as(&s.manager);
+    let before = ManagementAgreement::query()
+        .count(s.t.app.db())
+        .await
+        .unwrap();
+    for (n, owner) in ["P-00031", "p-31", " P-0031 ", "31"]
+        .into_iter()
+        .enumerate()
+    {
+        s.t.app
+            .htmx()
+            .post(
+                "/property/agreements",
+                &[
+                    ("owner", owner),
+                    ("fee", "5"),
+                    ("start", &day(10 + n as i64).to_string()),
+                ],
+            )
+            .await
+            .assert_ok();
+    }
+    let made = ManagementAgreement::query()
+        .order_by_desc(ManagementAgreement::ID)
+        .limit(4)
+        .get(s.t.app.db())
+        .await
+        .unwrap();
+    assert_eq!(made.len(), 4);
+    assert!(made.iter().all(|a| a.owner_party_id == OWNER.0), "{made:?}");
+    assert_eq!(
+        ManagementAgreement::query()
+            .count(s.t.app.db())
+            .await
+            .unwrap(),
+        before + 4
+    );
+    for wrong in ["P-99999", "owner", ""] {
+        s.t.app
+            .htmx()
+            .post(
+                "/property/agreements",
+                &[
+                    ("owner", wrong),
+                    ("fee", "5"),
+                    ("start", &day(20).to_string()),
+                ],
+            )
+            .await
+            .assert_invalid("owner");
+    }
+}

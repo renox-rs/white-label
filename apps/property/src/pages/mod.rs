@@ -57,6 +57,41 @@ pub(crate) fn buildings_with(user: &AuthUser, permission: &str) -> Result<Scopes
     Ok(scopes)
 }
 
+/// The party a form names in `field`: the number shown in the UI (`P-00012`,
+/// any case, `P-12` too) or the id the picker sends (`12`). A 422 on the
+/// field when no party has it.
+pub(crate) async fn party_of(
+    state: &AppState,
+    value: &str,
+    field: &str,
+) -> Result<wl_kernel::PartyId> {
+    let value = value.trim();
+    let directory = wl_kernel::parties::directory(state);
+    let found = if let Ok(id) = value.parse::<i64>() {
+        directory.find(&state.db, wl_kernel::PartyId(id)).await?
+    } else {
+        let digits = value
+            .get(..2)
+            .filter(|prefix| prefix.eq_ignore_ascii_case("p-"))
+            .map(|_| &value[2..])
+            .and_then(|rest| rest.trim().parse::<u32>().ok());
+        match digits {
+            Some(number) => {
+                directory
+                    .find_by_code(&state.db, &format!("P-{number:05}"))
+                    .await?
+            }
+            None => None,
+        }
+    };
+    found.map(|party| party.id).ok_or_else(|| {
+        field_error(
+            field,
+            crate::texts::english("property.leases.tenant_unknown", &[]),
+        )
+    })
+}
+
 /// The badge kind of a lease status.
 pub(crate) fn lease_kind(status: LeaseStatus) -> &'static str {
     match status {

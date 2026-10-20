@@ -170,7 +170,7 @@ async fn index(State(state): State<AppState>, user: AuthUser, lang: Lang) -> Res
         )
         .await?;
     let mut rows = Vec::new();
-    for found in ManagementAgreement::query()
+    for found in query
         .order_by_desc(ManagementAgreement::ID)
         .get(&state.db)
         .await?
@@ -220,11 +220,7 @@ async fn create(
     Form(form): Form<CreateForm>,
 ) -> Result<Response> {
     may_manage(&user)?;
-    let owner: i64 = form
-        .owner
-        .trim()
-        .parse()
-        .map_err(|_| invalid("owner: 1, 2, 3 ..."))?;
+    let owner = super::party_of(&state, &form.owner, "owner").await?.0;
     let fee_bp = if form.fee.trim().is_empty() {
         0
     } else {
@@ -618,6 +614,10 @@ async fn add_unit(
     }
     let unit: i64 = form
         .unit
+        .trim()
+        .parse()
+        .map_err(|_| invalid("unit: 1, 2, 3 ..."))?;
+    let date_in = parse_date(&form.date_in).ok_or_else(|| invalid("date_in: YYYY-MM-DD"))?;
     // A manager of some buildings puts only the units of those buildings
     // under an agreement.
     if let Some(units) = reach.ids(&state.db, crate::unit::UNIT_SUBJECT_TYPE).await?
@@ -625,10 +625,6 @@ async fn add_unit(
     {
         return Err(Error::Forbidden);
     }
-        .trim()
-        .parse()
-        .map_err(|_| invalid("unit: 1, 2, 3 ..."))?;
-    let date_in = parse_date(&form.date_in).ok_or_else(|| invalid("date_in: YYYY-MM-DD"))?;
     agreement::add_unit(&state.db, &found, unit, date_in).await?;
     Ok((
         Toast::success(text(&lang, "agreements.unit_added")),
@@ -688,12 +684,7 @@ async fn give_notice(
     let new_holder = if form.holder.trim().is_empty() {
         None
     } else {
-        Some(PartyId(
-            form.holder
-                .trim()
-                .parse()
-                .map_err(|_| invalid("holder: 1, 2, 3 ..."))?,
-        ))
+        Some(super::party_of(&state, &form.holder, "holder").await?)
     };
     lifecycle::give_notice(
         &state,
@@ -815,12 +806,7 @@ async fn request_transfer(
     let new_owner = if form.new_owner.trim().is_empty() {
         None
     } else {
-        Some(PartyId(
-            form.new_owner
-                .trim()
-                .parse()
-                .map_err(|_| invalid("new_owner: 1, 2, 3 ..."))?,
-        ))
+        Some(super::party_of(&state, &form.new_owner, "new_owner").await?)
     };
     let asked = TransferRequest {
         unit_id,
