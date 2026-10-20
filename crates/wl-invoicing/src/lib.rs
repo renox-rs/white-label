@@ -1171,7 +1171,7 @@ impl Module for WlInvoicing {
         app.nav(
             "app",
             NavLink::route("wl_invoicing.subscriptions", "nav.subscriptions")
-                .icon("repeat")
+                .icon("refresh-cw")
                 .group("nav.app")
                 .order(44)
                 .permission(permissions::SUBSCRIPTIONS_VIEW),
