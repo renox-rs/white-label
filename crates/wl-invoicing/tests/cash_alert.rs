@@ -123,7 +123,7 @@ async fn the_first_week_below_is_told_once() {
     bill(&t, &e1, "SB-W6", day(2, 16), 3_500_000).await;
 
     assert_eq!(run_on(&t, day(1, 13)).await, 1);
-    assert_eq!(told(&t), [both.clone()]);
+    assert_eq!(told(&t), std::slice::from_ref(&both));
     let notice = &t.notices.of_type(BELOW_THRESHOLD)[0];
     assert_eq!(notice.data["week"], 6);
     assert_eq!(notice.data["entity"], "PGP");

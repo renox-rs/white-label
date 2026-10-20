@@ -285,27 +285,25 @@ pub async fn send_one(state: &AppState, id: i64) -> Result<bool> {
     if t.recipient_id
         .as_deref()
         .is_none_or(|r| r.trim().is_empty())
-    {
-        if let Some(document) =
+        && let Some(document) =
             Document::load(&state.db, &Subject::new(&t.document_type, t.document_id)).await?
-        {
-            let built = payload::build(state, &document).await?;
-            if built.recipient_id.is_some() {
-                EInvoiceTransmission::query()
-                    .where_(EInvoiceTransmission::ID.eq(t.id))
-                    .update(
-                        &state.db,
-                        &[
-                            ("payload", &Json(built.payload.clone())),
-                            ("payload_hash", &built.hash),
-                            ("recipient_id", &built.recipient_id),
-                        ],
-                    )
-                    .await?;
-                t.payload = Json(built.payload);
-                t.payload_hash = built.hash;
-                t.recipient_id = built.recipient_id;
-            }
+    {
+        let built = payload::build(state, &document).await?;
+        if built.recipient_id.is_some() {
+            EInvoiceTransmission::query()
+                .where_(EInvoiceTransmission::ID.eq(t.id))
+                .update(
+                    &state.db,
+                    &[
+                        ("payload", &Json(built.payload.clone())),
+                        ("payload_hash", &built.hash),
+                        ("recipient_id", &built.recipient_id),
+                    ],
+                )
+                .await?;
+            t.payload = Json(built.payload);
+            t.payload_hash = built.hash;
+            t.recipient_id = built.recipient_id;
         }
     }
     let Some(recipient) = t.recipient_id.clone().filter(|r| !r.trim().is_empty()) else {

@@ -86,6 +86,7 @@ pub enum TransmissionStatus {
 
 /// One sending of a document to the ASP.
 #[derive(Model, Serialize, Deserialize, Default, Debug, Clone)]
+#[allow(clippy::duplicated_attributes)] // each `index(..)` is a separate index; `status` repeats by design
 #[model(
     table = "wl_invoicing_einvoice_transmissions",
     state_machine,

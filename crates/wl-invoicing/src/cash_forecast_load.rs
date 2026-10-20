@@ -228,17 +228,16 @@ async fn load_entity(
             input.unpriced.push(subject.clone());
         }
         let mut disputed = 0;
-        if invoice.disputed {
-            if let Some(id) = invoice.dispute_id {
-                if let Some(dispute) = Dispute::find(db, id).await? {
-                    disputed = in_aed(
-                        dispute.amount,
-                        &invoice.currency,
-                        invoice.exchange_rate_micro,
-                    )
-                    .unwrap_or(0);
-                }
-            }
+        if invoice.disputed
+            && let Some(id) = invoice.dispute_id
+            && let Some(dispute) = Dispute::find(db, id).await?
+        {
+            disputed = in_aed(
+                dispute.amount,
+                &invoice.currency,
+                invoice.exchange_rate_micro,
+            )
+            .unwrap_or(0);
         }
         input.invoices.push(InvoiceInput {
             label: invoice
@@ -488,8 +487,8 @@ async fn load_fill(
             continue;
         };
         budgeted.push(*month);
-        if !lines.contains_key(&budget.id) {
-            lines.insert(budget.id, CompanyBudgetLine::of(db, budget.id).await?);
+        if let std::collections::btree_map::Entry::Vacant(slot) = lines.entry(budget.id) {
+            slot.insert(CompanyBudgetLine::of(db, budget.id).await?);
         }
         for line in lines.get(&budget.id).into_iter().flatten() {
             if line.month == *month {
