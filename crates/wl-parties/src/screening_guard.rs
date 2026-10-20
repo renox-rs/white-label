@@ -25,12 +25,13 @@ use renox::prelude::*;
 use wl_kernel::PartyId;
 use wl_kernel::ScreeningStatus;
 use wl_kernel::screening_guard::{
-    ScreeningFuture, ScreeningGuard, ScreeningOutcome, ScreeningRefusal, ScreeningStanding,
-    StaleList, StaleListPolicy,
+    ConfirmedMatch, MatchTask, MatchTaskKind, ScreeningFuture, ScreeningGuard, ScreeningOutcome,
+    ScreeningRefusal, ScreeningStanding, StaleList, StaleListPolicy,
 };
 
+use crate::compliance_tasks::{ComplianceTask, ComplianceTaskKind, ComplianceTaskStatus};
 use crate::sanctions_lists::{ListStatus, SanctionsList};
-use crate::screening::Screening;
+use crate::screening::{Screening, ScreeningCandidate};
 
 /// Reads `wl_parties_screenings` and `wl_parties_sanctions_lists` for the
 /// kernel contract.
@@ -154,6 +155,47 @@ impl ScreeningGuard for PartiesScreeningGuard {
                 .get(&mut *tx)
                 .await?;
             Ok(standing_of(&rows))
+        })
+    }
+
+    fn confirmed_match<'a>(
+        &'a self,
+        db: &'a Db,
+        screening: i64,
+    ) -> ScreeningFuture<'a, Option<ConfirmedMatch>> {
+        Box::pin(async move {
+            let Some(found) = Screening::find(db, screening).await? else {
+                return Ok(None);
+            };
+            if found.status != ScreeningStatus::ConfirmedMatch {
+                return Ok(None);
+            }
+            let candidate = ScreeningCandidate::query()
+                .where_(ScreeningCandidate::SCREENING_ID.eq(screening))
+                .order_by(ScreeningCandidate::ID)
+                .first(db)
+                .await?;
+            let tasks = ComplianceTask::for_screening(db, screening)
+                .await?
+                .iter()
+                .map(|task| MatchTask {
+                    id: task.id,
+                    kind: match task.kind {
+                        ComplianceTaskKind::Freeze => MatchTaskKind::Freeze,
+                        ComplianceTaskKind::Report => MatchTaskKind::Report,
+                    },
+                    due_at: task.due_at,
+                    done: task.status == ComplianceTaskStatus::Done,
+                })
+                .collect();
+            Ok(Some(ConfirmedMatch {
+                party: PartyId(found.party_id),
+                screening,
+                flagged_at: found.run_at,
+                list_name: candidate.as_ref().map(|c| c.list_name.clone()),
+                list_entry: candidate.and_then(|c| c.list_entry),
+                tasks,
+            }))
         })
     }
 }

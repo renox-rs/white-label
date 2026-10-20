@@ -268,6 +268,47 @@ impl ScreeningStanding {
     };
 }
 
+/// What a freeze or report task of a confirmed match asks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum MatchTaskKind {
+    /// Freeze the money held for the named parties.
+    Freeze,
+    /// Report the match.
+    Report,
+}
+
+/// A freeze or report task of a confirmed match (wl-parties, `PTY.SCR.01`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MatchTask {
+    /// The task's id in wl-parties.
+    pub id: i64,
+    /// Freeze or report.
+    pub kind: MatchTaskKind,
+    /// When it is due: 24 hours after the flag, by default.
+    pub due_at: renox::db::DateTime,
+    /// Whether it is done.
+    pub done: bool,
+}
+
+/// A confirmed sanctions match as the compliance listeners may read it:
+/// the screening, what it matched and the two tasks. Only the MLRO's own
+/// pages may show it (`PTY.ACL.02`, no tipping off).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConfirmedMatch {
+    /// The matched party.
+    pub party: PartyId,
+    /// The screening.
+    pub screening: i64,
+    /// When the screening ran, hence was flagged.
+    pub flagged_at: renox::db::DateTime,
+    /// The list of the first candidate.
+    pub list_name: Option<String>,
+    /// The entry on that list.
+    pub list_entry: Option<String>,
+    /// The freeze and report tasks.
+    pub tasks: Vec<MatchTask>,
+}
+
 /// A boxed future, so the trait can be used as `dyn`.
 pub type ScreeningFuture<'a, T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'a>>;
 
@@ -299,6 +340,18 @@ pub trait ScreeningGuard: Send + Sync + 'static {
     ) -> ScreeningFuture<'a, ScreeningStanding> {
         let _ = (tx, party);
         Box::pin(async { Ok(ScreeningStanding::SETTLED) })
+    }
+
+    /// The confirmed match of `screening` with its freeze and report tasks,
+    /// or `None` when it was not confirmed. The default (screening off)
+    /// knows none.
+    fn confirmed_match<'a>(
+        &'a self,
+        db: &'a Db,
+        screening: i64,
+    ) -> ScreeningFuture<'a, Option<ConfirmedMatch>> {
+        let _ = (db, screening);
+        Box::pin(async { Ok(None) })
     }
 }
 

@@ -388,6 +388,62 @@ pub trait BlockGuard: Send + Sync + 'static {
     fn exception_step(&self) -> ExceptionStep {
         ExceptionStep::new("finance_manager")
     }
+
+    /// The system blocks `party` for `block`'s reason: an `active` party is
+    /// blocked (and `PartyBlocked` follows after the commit); a party
+    /// already `blocked` or `archived` only gets the Block record when the
+    /// block names a screening and has none for it yet. Answers whether this
+    /// call blocked the party. The default (no `parties` module) blocks
+    /// nobody.
+    fn block_by_system<'a>(
+        &'a self,
+        state: &'a AppState,
+        party: PartyId,
+        block: SystemBlock,
+    ) -> BlockFuture<'a, bool> {
+        let _ = (state, party, block);
+        Box::pin(async { Ok(false) })
+    }
+}
+
+/// A block the system places on a party for a reason code of wl-parties
+/// (04 `ACC.RUL.12`: `sanctions`; the MLRO's `aml_concern`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct SystemBlock {
+    /// The reason code; restricted ones show as *on hold* to everyone but
+    /// the MLRO and deputy.
+    pub code: String,
+    /// The note kept on the Block record.
+    pub note: String,
+    /// The screening the block is for, so a rerun adds no second record.
+    pub screening: Option<i64>,
+    /// The user whose action caused it, if any.
+    pub ran_by: Option<i64>,
+}
+
+impl SystemBlock {
+    /// A block with reason `code` and `note`.
+    pub fn new(code: &str, note: &str) -> Self {
+        SystemBlock {
+            code: code.to_owned(),
+            note: note.to_owned(),
+            screening: None,
+            ran_by: None,
+        }
+    }
+
+    /// For the screening `id`.
+    pub fn screening(mut self, id: i64) -> Self {
+        self.screening = Some(id);
+        self
+    }
+
+    /// Caused by the user `id`.
+    pub fn ran_by(mut self, id: i64) -> Self {
+        self.ran_by = Some(id);
+        self
+    }
 }
 
 /// The guard when the `parties` module is off: everything is allowed.
