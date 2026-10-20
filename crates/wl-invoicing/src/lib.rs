@@ -1001,6 +1001,12 @@ impl Module for WlInvoicing {
         });
         renox::state_machine::register::<EInvoiceTransmission>();
         register_asp_connections(&self.config);
+        // The *Look up* of a company's recipient identifier (wl-parties)
+        // asks the entity's ASP adapter.
+        wl_kernel::einvoice::provide_recipient_lookup(
+            app,
+            einvoice_adapter::AdapterLookup::of(&self.config),
+        );
         einvoice_send::register(app);
         // `FIN.RUL.23` and `FIN.RUL.25`: the notice type and the daily check
         // of the projected cash balance and of the bank balances.
