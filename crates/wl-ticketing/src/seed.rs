@@ -42,6 +42,11 @@ pub const DELIVERY_CLAIM_CATEGORY: &str = "delivery_claim";
 /// The role whose holders look after labour cases.
 pub const HR_ROLE: &str = "hr";
 
+/// The role whose holders look after billing disputes when the invoice has
+/// no owner (issued by the system, or the owner is gone): the holders of
+/// `invoices.issue` in the invoice's scope. `wl-invoicing` resolves the user.
+pub const RECEIVABLES_ROLE: &str = "receivables";
+
 /// A platform category: what the module that opens it needs of it.
 #[derive(Debug, Clone, Copy)]
 pub struct PlatformCategory {
@@ -70,7 +75,7 @@ pub const PLATFORM_CATEGORIES: [PlatformCategory; 3] = [
         name_en: "Billing dispute",
         name_ar: "نزاع على فاتورة",
         confidential: false,
-        assignee_role: None,
+        assignee_role: Some(RECEIVABLES_ROLE),
     },
     PlatformCategory {
         key: LABOUR_CASE_CATEGORY,

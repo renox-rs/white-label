@@ -64,6 +64,11 @@ async fn tkt11_the_three_platform_categories_exist_with_their_properties() {
     assert_eq!(dispute.default_priority, wl_ticketing::Priority::Normal);
     assert!(dispute.sla_policy_id.is_some());
     assert_eq!(dispute.name_en, "Billing dispute");
+    assert_eq!(
+        dispute.default_assignee_role.as_deref(),
+        Some("receivables"),
+        "the role the owner falls back to"
+    );
 
     let labour = category(&t, LABOUR_CASE_CATEGORY)
         .await

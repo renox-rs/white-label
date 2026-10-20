@@ -691,7 +691,7 @@ const TEXTS: &[(&str, &str)] = &[
     ),
     (
         "wl_invoicing.dispute.unassigned.body",
-        "{{ party_name }} disputed invoice {{ number }} for {{ amount }} (reason: {{ reason }}). The invoice owner is not available, so the ticket is unassigned. Please take it: {{ link }}",
+        "{{ party_name }} disputed invoice {{ number }} for {{ amount }} (reason: {{ reason }}). The invoice owner is not available, so the ticket went to the receivables role. Please take it: {{ link }}",
     ),
     (
         "wl_invoicing.dispute.resolved.subject",
