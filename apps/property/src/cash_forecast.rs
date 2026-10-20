@@ -47,6 +47,7 @@ use wl_kernel::invoicing::{InvoiceId, InvoiceStatus, invoicer};
 use wl_kernel::payments::Direction;
 
 use std::collections::BTreeMap;
+use std::collections::btree_map::Entry;
 
 use crate::agreement::ManagementAgreement;
 use crate::building::BUILDING_SUBJECT_TYPE;
@@ -184,9 +185,8 @@ impl CashForecastSource for ScheduledCharges {
                 if !not_yet_invoiced(state, &charge).await? {
                     continue;
                 }
-                if !leases.contains_key(&charge.lease_id) {
-                    let lease = Lease::find(&state.db, charge.lease_id).await?;
-                    leases.insert(charge.lease_id, lease);
+                if let Entry::Vacant(slot) = leases.entry(charge.lease_id) {
+                    slot.insert(Lease::find(&state.db, charge.lease_id).await?);
                 }
                 let Some(Some(lease)) = leases.get(&charge.lease_id) else {
                     continue;
