@@ -365,6 +365,111 @@ pub async fn settling_deposit(
         .unwrap()
 }
 
+/// The identity documents the lease of `tenant` asks for at `submit` (Emirates
+/// ID, passport and residence visa for a person; trade licence and TRN
+/// certificate for a company), accepted and valid for a year.
+pub async fn accept_identity(app: &TestApp, tenant: PartyId, company: bool) {
+    let keys: &[&str] = if company {
+        &["trade_licence", "trn_certificate"]
+    } else {
+        &["emirates_id", "passport", "residence_visa"]
+    };
+    for key in keys {
+        let kind = wl_documents::DocumentKind::by_key(app.db(), key)
+            .await
+            .unwrap()
+            .unwrap_or_else(|| panic!("the kind {key}"));
+        wl_documents::Document::create(
+            app.db(),
+            wl_documents::Document {
+                subject_type: "parties.party".into(),
+                subject_id: tenant.0,
+                kind_id: kind.id,
+                title: (*key).into(),
+                expiry_date: Some(day(365)),
+                current_version: 1,
+                status: wl_documents::DocumentStatus::Accepted,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    }
+}
+
+/// An active lease of `unit` for `tenant`: the leasing agent submits it, the
+/// property manager waives the deposit and activates it.
+pub async fn active_lease(
+    app: &TestApp,
+    unit: &property::Unit,
+    tenant: PartyId,
+    company: bool,
+) -> property::Lease {
+    accept_identity(app, tenant, company).await;
+    let agent = person(app, "Ali", host::roles::LEASING_AGENT).await;
+    let manager = person(app, "Mona", host::roles::PROPERTY_MANAGER).await;
+    let lease = draft_lease(app, unit, tenant, -300).await;
+    for (user, action) in [
+        (&agent, "submit"),
+        (&manager, "waive-deposit"),
+        (&manager, "activate"),
+    ] {
+        if action == "activate" {
+            // The signed tenancy contract is uploaded and accepted.
+            let kind = wl_documents::DocumentKind::by_key(app.db(), "signed_tenancy_contract")
+                .await
+                .unwrap()
+                .expect("the signed tenancy contract kind");
+            wl_documents::Document::create(
+                app.db(),
+                wl_documents::Document {
+                    subject_type: "property.lease".into(),
+                    subject_id: lease.id,
+                    kind_id: kind.id,
+                    title: "Signed tenancy contract".into(),
+                    current_version: 1,
+                    status: wl_documents::DocumentStatus::Accepted,
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        }
+        app.acting_as(user);
+        let done = app
+            .htmx()
+            .post(&format!("/property/leases/{}/{action}", lease.id), &[])
+            .await;
+        assert!(
+            done.status.is_success(),
+            "{action}: {} {}",
+            done.status,
+            done.text().len()
+        );
+    }
+    let active = property::Lease::find_or_404(app.db(), lease.id)
+        .await
+        .unwrap();
+    assert_eq!(active.status, property::LeaseStatus::Active);
+    active
+}
+
+/// The company admin of the host blocks `party` with `non_payment`.
+pub async fn block(app: &TestApp, party: PartyId) {
+    let officer = person(app, "Comply", host::roles::COMPLIANCE).await;
+    app.acting_as(&officer);
+    app.htmx()
+        .post(
+            &format!("/parties/{}/block", party.0),
+            &[
+                ("reason_code", "non_payment"),
+                ("note", "3 bounced cheques"),
+            ],
+        )
+        .await
+        .assert_ok();
+}
+
 /// The invoice, as stored now.
 pub async fn reload(app: &TestApp, invoice: &Invoice) -> Invoice {
     Invoice::find_or_404(app.db(), invoice.id).await.unwrap()
