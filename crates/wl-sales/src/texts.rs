@@ -142,10 +142,7 @@ const TEXTS: &[(&str, &str)] = &[
         "Another web form enquiry arrived on campaign :code.",
     ),
     ("wl_sales.enquiry.name_required", "Tell us your name."),
-    (
-        "wl_sales.enquiry.thanks",
-        "Thank you, we will be in touch.",
-    ),
+    ("wl_sales.enquiry.thanks", "Thank you, we will be in touch."),
     ("wl_sales.leads.problem.note", "Record the contact note."),
     (
         "wl_sales.leads.problem.converted",
