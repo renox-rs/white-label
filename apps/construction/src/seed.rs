@@ -213,7 +213,7 @@ const PROJECT: &str = crate::project::SUBJECT_TYPE;
 /// The kinds 02 seeds. Work permit and residence visa flag the attendance
 /// record (`HRM.RUL.14`, no override needed); the other kinds only remind
 /// (`DOC.RUL.01`) and block nothing.
-pub const KINDS: [KindSpec; 4] = [
+pub const KINDS: [KindSpec; 5] = [
     KindSpec {
         key: "work_permit",
         name_en: "Work permit",
@@ -241,6 +241,19 @@ pub const KINDS: [KindSpec; 4] = [
         subjects: &[PARTY],
         reminders: &[90, 30, 7],
         role: PROJECT_MANAGER,
+        flags: None,
+        look_ahead: 0,
+    },
+    // The registration a subcontractor must hold on a Dubai project
+    // (`CON.ACL.13`, [`crate::registration::REGISTRATION_KIND`]): without it
+    // a deployment holds every Dubai subcontractor order for approval.
+    KindSpec {
+        key: "dubai_municipality_contractor_registration",
+        name_en: "Dubai Municipality contractor registration",
+        name_ar: "تسجيل المقاول لدى بلدية دبي",
+        subjects: &[PARTY],
+        reminders: &[90, 30, 7],
+        role: PROCUREMENT,
         flags: None,
         look_ahead: 0,
     },
@@ -467,7 +480,17 @@ mod tests {
             let kind = KINDS.iter().find(|k| k.key == key).expect("a kind");
             assert_eq!(kind.flags, Some(ATTENDANCE_ACCEPT));
         }
-        assert!(KINDS.iter().filter(|k| k.flags.is_none()).count() == 2);
+        assert!(KINDS.iter().filter(|k| k.flags.is_none()).count() == 3);
+    }
+
+    #[test]
+    fn the_registration_kind_of_the_purchase_order_rule_is_seeded() {
+        let kind = KINDS
+            .iter()
+            .find(|k| k.key == crate::registration::REGISTRATION_KIND)
+            .expect("the kind CON.ACL.13 asks about");
+        assert_eq!(kind.role, PROCUREMENT);
+        assert_eq!(kind.flags, None);
     }
 
     #[test]

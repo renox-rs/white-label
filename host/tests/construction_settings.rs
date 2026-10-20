@@ -9,10 +9,14 @@ use renox::chrono::{Days, NaiveDate};
 use renox::prelude::*;
 use renox::testing::TestApp;
 use wl_documents::DocumentKind;
-use wl_invoicing::Invoice;
+use wl_invoicing::dispute::{self, Dispute};
+use wl_invoicing::{EscalationLog, Invoice, escalation};
 use wl_kernel::approvals::{self};
 use wl_kernel::documents::today;
-use wl_kernel::invoicing::{DraftLine, InvoiceDraft, InvoiceStatus, VatCategory, invoicer};
+use wl_kernel::invoicing::{
+    DisputeBy, DisputeRequest, DraftLine, InvoiceDraft, InvoiceId, InvoiceStatus, VatCategory,
+    invoicer,
+};
 use wl_kernel::{ClientConfig, PartyId, PartyKind, Subject};
 use wl_parties::{CompanyDetails, NewParty, create};
 use wl_sales::LeadSource;
@@ -141,6 +145,53 @@ async fn a_write_off_of_aed_1_waits_for_the_md() {
     assert_eq!(after.status, InvoiceStatus::WrittenOff);
 }
 
+/// Item 3 (#296, `FIN.RUL.15`): a dispute open 14 days reminds the person who
+/// follows the invoice up (the receivables role: in 02 the accountant's work,
+/// `ACCOUNTANT` holds no `invoices.issue`); from the second step, 28 days, the
+/// project manager is told as well, as 02 §7.2 says. The run is the module's
+/// own, with 02's days and role.
+#[renox::test]
+async fn a_dispute_open_14_days_reminds_the_invoice_owner_and_then_the_project_manager() {
+    let app = booted().await;
+    let accountant = person(&app, "Aisha", RECEIVABLES).await;
+    let manager = person(&app, "Pam", PROJECT_MANAGER).await;
+    let invoice = issued(&app, &accountant, 100_000).await;
+    let raised_on = today() - Days::new(14);
+    let id = dispute::raise(
+        app.state(),
+        DisputeRequest::new(
+            InvoiceId(invoice.id),
+            "wrong hours",
+            DisputeBy::User { id: accountant.id },
+        )
+        .amount(20_000),
+    )
+    .await
+    .unwrap();
+    let mut row = Dispute::find_or_404(app.db(), id).await.unwrap();
+    row.raised_at = raised_on.and_hms_opt(9, 0, 0).unwrap().and_utc();
+    row.save(app.db()).await.unwrap();
+
+    // Day 14: the first step goes to the accountant, not to the manager.
+    escalation::run(app.state(), today()).await.unwrap();
+    let first = EscalationLog::told(app.db(), id, 1).await.unwrap();
+    assert!(first.contains(&accountant.id), "{first:?}");
+    assert!(!first.contains(&manager.id), "{first:?}");
+    assert!(
+        EscalationLog::told(app.db(), id, 2)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+
+    // Day 28: the second step adds the project manager.
+    escalation::run(app.state(), today() + Days::new(14))
+        .await
+        .unwrap();
+    let second = EscalationLog::told(app.db(), id, 2).await.unwrap();
+    assert!(second.contains(&manager.id), "{second:?}");
+}
+
 /// The seed stores the ticket categories (`absence` among them, which the
 /// absence case needs), none chargeable, turns off the lead sources 02 does
 /// not use, creates the five checklists and the SOP library, and a second
@@ -204,6 +255,11 @@ async fn the_document_kinds_flag_remind_and_register_as_in_02() {
         assert_eq!(kind.responsible_role.as_deref(), Some(HR));
         assert_eq!(kind.blocks(app.db()).await.unwrap().len(), 1);
     }
+    // The registration the purchase order rule (`CON.ACL.13`) asks for is a
+    // kind of the deployment, so a real Dubai subcontractor can hold it.
+    let dubai = kind(construction::registration::REGISTRATION_KIND).await;
+    assert_eq!(dubai.responsible_role.as_deref(), Some("procurement"));
+    assert!(dubai.blocks(app.db()).await.unwrap().is_empty());
     for key in [
         "client_contractor_registration",
         "performance_bond_document",
