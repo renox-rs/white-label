@@ -181,9 +181,9 @@ pub fn register_integrations(client_app: &str) {
 }
 
 /// The key of the sanctions list download connection.
-pub const SANCTIONS_CONNECTION: &str = "sanctions.download";
+pub const SANCTIONS_CONNECTION: &str = wl_kernel::integrations::SANCTIONS_DOWNLOAD;
 /// The key of the e-mail connection.
-pub const EMAIL_CONNECTION: &str = "email";
+pub const EMAIL_CONNECTION: &str = wl_kernel::integrations::EMAIL;
 
 /// The sales module with the 04 client's settings: a cost entry that takes a
 /// campaign over its budget needs a manager (`SAL.ACL.07`), and no lead
